@@ -98,7 +98,7 @@ export function CalendarDayCell({
                 className="flex min-w-0 items-baseline gap-1 text-[8px] leading-tight sm:text-[9px]"
               >
                 <span
-                  className={`shrink-0 font-bold tabular-nums ${previewAmountClass(payment.amount, onDark)}`}
+                  className={`shrink-0 font-bold tabular-nums ${previewAmountClass(payment.amount, onDark ?? false)}`}
                 >
                   {formatPreviewAmount(payment.amount)}
                 </span>
