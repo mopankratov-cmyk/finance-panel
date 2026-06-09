@@ -58,7 +58,7 @@ interface SalesAnalyticsPageProps {
 export function SalesAnalyticsPage(_props: SalesAnalyticsPageProps) {
   const [range, setRange] = useState<DateRange>(() => {
     const to = new Date();
-    const from = addDays(to, -29);
+    const from = addDays(to, -6);
     return { from: toISODate(from), to: toISODate(to) };
   });
 
