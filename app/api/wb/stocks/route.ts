@@ -1,16 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { wbFetch } from "@/lib/wb/fetch";
+import { stocksDateFrom } from "@/lib/wb/keys";
 import type { WbStock } from "@/lib/wb/types";
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
-  let dateFrom = searchParams.get("dateFrom");
-
-  if (!dateFrom) {
-    const d = new Date();
-    d.setDate(d.getDate() - 30);
-    dateFrom = d.toISOString().split("T")[0];
-  }
+  const dateFrom = searchParams.get("dateFrom") ?? stocksDateFrom();
+  const refresh = searchParams.get("refresh") === "1";
 
   const url = new URL(
     "https://statistics-api.wildberries.ru/api/v1/supplier/stocks",
@@ -20,7 +16,7 @@ export async function GET(request: NextRequest) {
   const result = await wbFetch<WbStock[]>(
     url.toString(),
     { method: "GET" },
-    ["stocks", dateFrom],
+    { refresh },
   );
 
   return NextResponse.json(result);

@@ -3,11 +3,7 @@
 import { addDays, toISODate } from "@/lib/analytics/format";
 import type { DateRange } from "@/lib/wb/analytics/sales";
 
-const PRESETS = [
-  { label: "7д", days: 7 },
-  { label: "14д", days: 14 },
-  { label: "30д", days: 30 },
-];
+const PRESETS = [{ label: "7д", days: 7 }];
 
 interface DateRangeSelectorProps {
   range: DateRange;

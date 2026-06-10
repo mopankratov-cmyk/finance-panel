@@ -6,6 +6,7 @@ interface AdsStatBody {
   ids?: number[];
   beginDate?: string;
   endDate?: string;
+  refresh?: boolean;
 }
 
 export async function POST(request: NextRequest) {
@@ -51,12 +52,10 @@ export async function POST(request: NextRequest) {
   url.searchParams.set("beginDate", beginDate);
   url.searchParams.set("endDate", endDate);
 
-  const cacheKey = ["ads-stat-v3", beginDate, endDate, ...ids.map(String).sort()];
-
   const result = await wbFetch<WbAdStat[]>(
     url.toString(),
     { method: "GET" },
-    cacheKey,
+    { refresh: body.refresh === true },
   );
 
   return NextResponse.json(result);

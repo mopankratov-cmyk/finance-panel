@@ -6,6 +6,7 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const dateFrom = searchParams.get("dateFrom");
   const flag = searchParams.get("flag") ?? "0";
+  const refresh = searchParams.get("refresh") === "1";
 
   if (!dateFrom) {
     return NextResponse.json({
@@ -24,7 +25,7 @@ export async function GET(request: NextRequest) {
   const result = await wbFetch<WbOrder[]>(
     url.toString(),
     { method: "GET" },
-    ["orders", dateFrom, flag],
+    { refresh },
   );
 
   return NextResponse.json(result);

@@ -69,21 +69,9 @@ create table if not exists public.product_costs (
   updated_at timestamptz not null default now()
 );
 
-create table if not exists public.wb_cache (
-  key text primary key,
-  data jsonb not null,
-  cached_at timestamptz not null default now()
-);
-
 alter table public.product_costs enable row level security;
-alter table public.wb_cache enable row level security;
 
 create policy "Allow all access to product_costs"
   on public.product_costs for all
-  using (true)
-  with check (true);
-
-create policy "Allow all access to wb_cache"
-  on public.wb_cache for all
   using (true)
   with check (true);

@@ -1,13 +1,13 @@
-import { getCached, setCache, cacheKey } from "./cache";
-import { getLargeCache, setLargeCache } from "./largeCache";
 import type { WbApiResponse } from "./types";
 
 const WB_TOKEN_STATISTICS = process.env.WB_TOKEN_STATISTICS;
 const WB_TOKEN_ADVERT = process.env.WB_TOKEN_ADVERT;
-const TIMEOUT_MS = 60000;
+const TIMEOUT_MS = 60_000;
 const RETRY_STATUSES = [502, 503, 504];
 const MAX_RETRIES = 3;
 const RETRY_DELAY_MS = 2000;
+
+export const WB_FETCH_REVALIDATE = 3600;
 
 function isAdvertApi(url: string): boolean {
   try {
@@ -74,14 +74,13 @@ async function fetchWithRetry(
 }
 
 export interface WbFetchOptions {
-  /** Не читать кэш перед запросом (для cron/sync) */
-  skipCacheRead?: boolean;
+  /** Обойти Next.js Data Cache (кнопка «Обновить») */
+  refresh?: boolean;
 }
 
 export async function wbFetch<T>(
   url: string,
   options: RequestInit = {},
-  cacheParts?: string[],
   fetchOptions: WbFetchOptions = {},
 ): Promise<WbApiResponse<T>> {
   const timestamp = new Date().toISOString();
@@ -96,21 +95,14 @@ export async function wbFetch<T>(
     };
   }
 
-  const key = cacheParts ? cacheKey(cacheParts) : null;
-  if (key && !fetchOptions.skipCacheRead) {
-    const asLarge = await getLargeCache<unknown>(key);
-    if (asLarge) {
-      return { data: asLarge as T, error: null, timestamp };
-    }
-    const cached = await getCached<T>(key);
-    if (cached) {
-      return { data: cached, error: null, timestamp };
-    }
-  }
+  const cacheInit: RequestInit = fetchOptions.refresh
+    ? { cache: "no-store" }
+    : { next: { revalidate: WB_FETCH_REVALIDATE } };
 
   try {
     const res = await fetchWithRetry(url, {
       ...options,
+      ...cacheInit,
       headers: { ...wbHeaders(url), ...options.headers },
     });
 
@@ -124,13 +116,6 @@ export async function wbFetch<T>(
     }
 
     const data = (await res.json()) as T;
-    if (key) {
-      if (Array.isArray(data)) {
-        await setLargeCache(key, data);
-      } else {
-        await setCache(key, data);
-      }
-    }
     return { data, error: null, timestamp };
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Неизвестная ошибка";

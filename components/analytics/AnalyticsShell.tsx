@@ -75,7 +75,7 @@ export function AnalyticsShell({
       {!loading && empty && !error ? (
         <div className="rounded-xl border border-slate-700 bg-slate-800/50 p-6 text-center">
           <p className="text-sm text-slate-300">
-            Данных нет. Нажмите «Обновить» для загрузки из Wildberries.
+            Данных за выбранный период нет. Попробуйте «Обновить».
           </p>
         </div>
       ) : (

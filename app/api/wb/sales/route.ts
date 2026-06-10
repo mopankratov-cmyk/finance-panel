@@ -8,6 +8,7 @@ export async function GET(request: NextRequest) {
   const dateTo = searchParams.get("dateTo");
   const limit = searchParams.get("limit") ?? "100000";
   const rrdid = searchParams.get("rrdid") ?? "0";
+  const refresh = searchParams.get("refresh") === "1";
 
   if (!dateFrom || !dateTo) {
     return NextResponse.json({
@@ -28,7 +29,7 @@ export async function GET(request: NextRequest) {
   const result = await wbFetch<WbReportRow[]>(
     url.toString(),
     { method: "GET" },
-    ["sales", dateFrom, dateTo, limit, rrdid],
+    { refresh },
   );
 
   return NextResponse.json(result);
