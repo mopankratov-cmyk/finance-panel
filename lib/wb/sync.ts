@@ -132,8 +132,11 @@ async function syncChunk(
     FORCE,
   );
   if (sales.data) {
-    await setLargeCache(salesCacheKey(dateFrom, dateTo), trimSales(sales.data));
-    results[`${label}.sales`] = "ok";
+    const ok = await setLargeCache(
+      salesCacheKey(dateFrom, dateTo),
+      trimSales(sales.data),
+    );
+    results[`${label}.sales`] = ok ? "ok" : "cache write failed";
   } else {
     results[`${label}.sales`] = sales.error ?? "no data";
   }
@@ -146,8 +149,11 @@ async function syncChunk(
   );
   if (orders.data) {
     const filtered = filterOrdersInChunk(orders.data, dateFrom, dateTo);
-    await setLargeCache(ordersCacheKey(dateFrom, dateTo), trimOrders(filtered));
-    results[`${label}.orders`] = "ok";
+    const ok = await setLargeCache(
+      ordersCacheKey(dateFrom, dateTo),
+      trimOrders(filtered),
+    );
+    results[`${label}.orders`] = ok ? "ok" : "cache write failed";
   } else {
     results[`${label}.orders`] = orders.error ?? "no data";
   }
@@ -160,11 +166,11 @@ async function syncChunk(
       FORCE,
     );
     if (adStats.data) {
-      await setLargeCache(
+      const ok = await setLargeCache(
         adStatsCacheKey(dateFrom, dateTo, ids),
         trimAdStats(adStats.data),
       );
-      results[`${label}.adStats`] = "ok";
+      results[`${label}.adStats`] = ok ? "ok" : "cache write failed";
     } else {
       results[`${label}.adStats`] = adStats.error ?? "no data";
     }
@@ -192,33 +198,21 @@ export async function runWbSync(
       ? chunksForRange(options.dateFrom, options.dateTo)
       : [chunkRange(0)];
 
+  let advertIds: number[] = [];
+
   if (isFull) {
-    const [advertIds] = await Promise.all([
-      syncAds().then((ids) => {
-        results.ads = ids.length > 0 ? "ok" : "no data";
-        return ids;
-      }),
-      syncStocks().then((r) => {
-        results.stocks = r;
-      }),
-    ]);
-
-    const chunkResults = await Promise.all(
-      chunks.map((c) =>
-        syncChunk(c.dateFrom, c.dateTo, advertIds, `${c.dateFrom}`),
-      ),
-    );
-    for (const cr of chunkResults) Object.assign(results, cr);
+    const adsIds = await syncAds();
+    advertIds = adsIds;
+    results.ads = adsIds.length > 0 ? "ok" : "no data";
+    results.stocks = await syncStocks();
   } else {
-    const advertIds = await resolveAdvertIds();
+    advertIds = await resolveAdvertIds();
     if (advertIds.length === 0) results.ads = "no data";
+  }
 
-    const chunkResults = await Promise.all(
-      chunks.map((c) =>
-        syncChunk(c.dateFrom, c.dateTo, advertIds, `${c.dateFrom}`),
-      ),
-    );
-    for (const cr of chunkResults) Object.assign(results, cr);
+  for (const c of chunks) {
+    const cr = await syncChunk(c.dateFrom, c.dateTo, advertIds, `${c.dateFrom}`);
+    Object.assign(results, cr);
   }
 
   await setCache(SYNC_META_KEY, { synced_at });

@@ -1,5 +1,4 @@
 import { getCachedBatch } from "./cache";
-import { getLargeCacheWithMeta } from "./largeCache";
 import {
   legacyAdStatsKeys,
   legacyAdsKeys,
@@ -36,16 +35,6 @@ export interface WbCacheData {
   timestamp: string;
 }
 
-async function firstCachedRows<T>(
-  keys: string[],
-): Promise<{ data: T[]; cached_at: string } | undefined> {
-  for (const key of keys) {
-    const hit = await getLargeCacheWithMeta<T>(key);
-    if (hit && hit.data.length > 0) return hit;
-  }
-  return undefined;
-}
-
 function latestTimestamp(
   entries: Array<{ cached_at: string } | null | undefined>,
   syncMeta?: { synced_at: string } | null,
@@ -58,11 +47,43 @@ function latestTimestamp(
   return new Date(Math.max(...times)).toISOString();
 }
 
+async function loadRows<T>(
+  candidates: string[],
+): Promise<{ data: T[]; cached_at: string } | undefined> {
+  const unique = [...new Set(candidates)];
+  const batch = await getCachedBatch<T[]>(unique);
+  for (const key of unique) {
+    const hit = batch.get(key);
+    if (hit && hit.data.length > 0) {
+      return { data: hit.data, cached_at: hit.cached_at };
+    }
+  }
+  return undefined;
+}
+
 export async function readWbCache(
   dateFrom: string,
   dateTo: string,
 ): Promise<WbCacheData> {
   const chunks = chunksForRange(dateFrom, dateTo);
+
+  const salesCandidates = [
+    salesCacheKey(dateFrom, dateTo),
+    ...legacySalesKeys(dateFrom, dateTo),
+    ...chunks.flatMap((c) => [
+      salesCacheKey(c.dateFrom, c.dateTo),
+      ...legacySalesKeys(c.dateFrom, c.dateTo),
+    ]),
+  ];
+
+  const ordersCandidates = [
+    ordersCacheKey(dateFrom, dateTo),
+    ...legacyOrdersKeys(dateFrom, dateTo),
+    ...chunks.flatMap((c) => [
+      ordersCacheKey(c.dateFrom, c.dateTo),
+      ...legacyOrdersKeys(c.dateFrom, c.dateTo),
+    ]),
+  ];
 
   const metaBatch = await getCachedBatch([
     stocksCacheKey(),
@@ -70,6 +91,11 @@ export async function readWbCache(
     adsCacheKey(),
     ...legacyAdsKeys(),
     SYNC_META_KEY,
+  ]);
+
+  const [salesHit, ordersHit] = await Promise.all([
+    loadRows<WbReportRow>(salesCandidates),
+    loadRows<WbOrder>(ordersCandidates),
   ]);
 
   const stocksMeta =
@@ -89,80 +115,20 @@ export async function readWbCache(
   const ads = (adsMeta?.data as WbAdvertsResponse | undefined) ?? null;
   const advertIds = extractAdvertIds(ads);
 
-  const metaEntries: Array<{ cached_at: string } | undefined> = [
-    stocksMeta,
-    adsMeta,
+  const adStatsCandidates = [
+    ...chunks.map((c) => adStatsCacheKey(c.dateFrom, c.dateTo, advertIds)),
+    adStatsCacheKey(dateFrom, dateTo, advertIds),
+    ...legacyAdStatsKeys(dateFrom, dateTo, advertIds),
   ];
 
-  // Сначала точный ключ UI-диапазона, иначе — чанки
-  const exactSales = await firstCachedRows<WbReportRow>([
-    salesCacheKey(dateFrom, dateTo),
-    ...legacySalesKeys(dateFrom, dateTo),
-  ]);
-  const salesChunks: WbReportRow[][] = [];
-  if (exactSales) {
-    salesChunks.push(exactSales.data);
-    metaEntries.push(exactSales);
-  } else {
-    for (const c of chunks) {
-      const hit = await firstCachedRows<WbReportRow>([
-        salesCacheKey(c.dateFrom, c.dateTo),
-        ...legacySalesKeys(c.dateFrom, c.dateTo),
-      ]);
-      if (hit) {
-        salesChunks.push(hit.data);
-        metaEntries.push(hit);
-      }
-    }
-  }
+  const adStatsHit =
+    advertIds.length > 0
+      ? await loadRows<WbAdStat>(adStatsCandidates)
+      : undefined;
 
-  const exactOrders = await firstCachedRows<WbOrder>([
-    ordersCacheKey(dateFrom, dateTo),
-    ...legacyOrdersKeys(dateFrom, dateTo),
-  ]);
-  const ordersChunks: WbOrder[][] = [];
-  if (exactOrders) {
-    ordersChunks.push(exactOrders.data);
-    metaEntries.push(exactOrders);
-  } else {
-    for (const c of chunks) {
-      const hit = await firstCachedRows<WbOrder>([
-        ordersCacheKey(c.dateFrom, c.dateTo),
-        ...legacyOrdersKeys(c.dateFrom, c.dateTo),
-      ]);
-      if (hit) {
-        ordersChunks.push(hit.data);
-        metaEntries.push(hit);
-      }
-    }
-  }
-
-  const adStatsChunks: WbAdStat[][] = [];
-  if (advertIds.length > 0) {
-    const exactStats = await firstCachedRows<WbAdStat>([
-      adStatsCacheKey(dateFrom, dateTo, advertIds),
-      ...legacyAdStatsKeys(dateFrom, dateTo, advertIds),
-    ]);
-    if (exactStats) {
-      adStatsChunks.push(exactStats.data);
-      metaEntries.push(exactStats);
-    } else {
-      for (const c of chunks) {
-        const hit = await firstCachedRows<WbAdStat>([
-          adStatsCacheKey(c.dateFrom, c.dateTo, advertIds),
-          ...legacyAdStatsKeys(c.dateFrom, c.dateTo, advertIds),
-        ]);
-        if (hit) {
-          adStatsChunks.push(hit.data);
-          metaEntries.push(hit);
-        }
-      }
-    }
-  }
-
-  const sales = mergeSales(salesChunks);
-  const orders = mergeOrders(ordersChunks);
-  const adStats = mergeAdStats(adStatsChunks);
+  const sales = salesHit?.data ?? [];
+  const orders = ordersHit?.data ?? [];
+  const adStats = adStatsHit?.data ?? [];
 
   const hasData = !!(
     sales.length ||
@@ -179,6 +145,9 @@ export async function readWbCache(
     ads,
     adStats,
     empty: !hasData,
-    timestamp: latestTimestamp(metaEntries, syncMetaEntry?.data),
+    timestamp: latestTimestamp(
+      [salesHit, ordersHit, adStatsHit, stocksMeta, adsMeta],
+      syncMetaEntry?.data,
+    ),
   };
 }

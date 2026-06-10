@@ -13,22 +13,25 @@ export async function GET(request: Request) {
   return NextResponse.json(result);
 }
 
-/** Ручное обновление — только выбранный период */
+/** Ручное обновление — выбранный период или полная синхронизация */
 export async function POST(request: Request) {
   let dateFrom: string | undefined;
   let dateTo: string | undefined;
+  let full = false;
 
   try {
     const body = (await request.json()) as {
       dateFrom?: string;
       dateTo?: string;
+      full?: boolean;
     };
     dateFrom = body.dateFrom;
     dateTo = body.dateTo;
+    full = body.full === true;
   } catch {
     // пустое тело — синхронизируем 7 дней по умолчанию
   }
 
-  const result = await runWbSync({ dateFrom, dateTo });
+  const result = await runWbSync(full ? { full: true } : { dateFrom, dateTo });
   return NextResponse.json(result);
 }
