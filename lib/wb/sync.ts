@@ -1,4 +1,6 @@
 import { getCached, setCache } from "./cache";
+import { setLargeCache } from "./largeCache";
+import { trimAdStats, trimAdverts, trimOrders, trimSales } from "./trim";
 import { wbFetch } from "./fetch";
 import {
   SYNC_META_KEY,
@@ -54,7 +56,7 @@ async function resolveAdvertIds(): Promise<number[]> {
     FORCE,
   );
   if (ads.data) {
-    await setCache(adsCacheKey(), ads.data);
+    await setCache(adsCacheKey(), trimAdverts(ads.data));
     return extractAdvertIds(ads.data);
   }
   return [];
@@ -64,11 +66,11 @@ async function syncAds(): Promise<number[]> {
   const ads = await wbFetch<WbAdvertsResponse>(
     "https://advert-api.wildberries.ru/api/advert/v2/adverts",
     { method: "GET" },
-    ["ads-v2"],
+    undefined,
     FORCE,
   );
   if (ads.data) {
-    await setCache(adsCacheKey(), ads.data);
+    await setCache(adsCacheKey(), trimAdverts(ads.data));
     return extractAdvertIds(ads.data);
   }
   return [];
@@ -123,57 +125,53 @@ async function syncChunk(
   statUrl.searchParams.set("beginDate", dateFrom);
   statUrl.searchParams.set("endDate", dateTo);
 
-  const fetches: Promise<void>[] = [
-    wbFetch<WbReportRow[]>(
-      salesUrl.toString(),
-      { method: "GET" },
-      ["sales", dateFrom, dateTo, SALES_LIMIT, "0"],
-      FORCE,
-    ).then(async (sales) => {
-      if (sales.data) {
-        await setCache(salesCacheKey(dateFrom, dateTo), sales.data);
-        results[`${label}.sales`] = "ok";
-      } else {
-        results[`${label}.sales`] = sales.error ?? "no data";
-      }
-    }),
-    wbFetch<WbOrder[]>(
-      ordersUrl.toString(),
-      { method: "GET" },
-      ["orders", dateFrom, "0"],
-      FORCE,
-    ).then(async (orders) => {
-      if (orders.data) {
-        const filtered = filterOrdersInChunk(orders.data, dateFrom, dateTo);
-        await setCache(ordersCacheKey(dateFrom, dateTo), filtered);
-        results[`${label}.orders`] = "ok";
-      } else {
-        results[`${label}.orders`] = orders.error ?? "no data";
-      }
-    }),
-  ];
+  const sales = await wbFetch<WbReportRow[]>(
+    salesUrl.toString(),
+    { method: "GET" },
+    undefined,
+    FORCE,
+  );
+  if (sales.data) {
+    await setLargeCache(salesCacheKey(dateFrom, dateTo), trimSales(sales.data));
+    results[`${label}.sales`] = "ok";
+  } else {
+    results[`${label}.sales`] = sales.error ?? "no data";
+  }
+
+  const orders = await wbFetch<WbOrder[]>(
+    ordersUrl.toString(),
+    { method: "GET" },
+    undefined,
+    FORCE,
+  );
+  if (orders.data) {
+    const filtered = filterOrdersInChunk(orders.data, dateFrom, dateTo);
+    await setLargeCache(ordersCacheKey(dateFrom, dateTo), trimOrders(filtered));
+    results[`${label}.orders`] = "ok";
+  } else {
+    results[`${label}.orders`] = orders.error ?? "no data";
+  }
 
   if (ids.length > 0) {
-    fetches.push(
-      wbFetch<WbAdStat[]>(
-        statUrl.toString(),
-        { method: "GET" },
-        ["ads-stat-v3", dateFrom, dateTo, ...ids.map(String).sort()],
-        FORCE,
-      ).then(async (adStats) => {
-        if (adStats.data) {
-          await setCache(adStatsCacheKey(dateFrom, dateTo, ids), adStats.data);
-          results[`${label}.adStats`] = "ok";
-        } else {
-          results[`${label}.adStats`] = adStats.error ?? "no data";
-        }
-      }),
+    const adStats = await wbFetch<WbAdStat[]>(
+      statUrl.toString(),
+      { method: "GET" },
+      undefined,
+      FORCE,
     );
+    if (adStats.data) {
+      await setLargeCache(
+        adStatsCacheKey(dateFrom, dateTo, ids),
+        trimAdStats(adStats.data),
+      );
+      results[`${label}.adStats`] = "ok";
+    } else {
+      results[`${label}.adStats`] = adStats.error ?? "no data";
+    }
   } else {
     results[`${label}.adStats`] = "no ads";
   }
 
-  await Promise.all(fetches);
   return results;
 }
 

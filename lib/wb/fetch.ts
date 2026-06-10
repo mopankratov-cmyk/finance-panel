@@ -1,4 +1,5 @@
 import { getCached, setCache, cacheKey } from "./cache";
+import { getLargeCache, setLargeCache } from "./largeCache";
 import type { WbApiResponse } from "./types";
 
 const WB_TOKEN_STATISTICS = process.env.WB_TOKEN_STATISTICS;
@@ -97,6 +98,10 @@ export async function wbFetch<T>(
 
   const key = cacheParts ? cacheKey(cacheParts) : null;
   if (key && !fetchOptions.skipCacheRead) {
+    const asLarge = await getLargeCache<unknown>(key);
+    if (asLarge) {
+      return { data: asLarge as T, error: null, timestamp };
+    }
     const cached = await getCached<T>(key);
     if (cached) {
       return { data: cached, error: null, timestamp };
@@ -119,7 +124,13 @@ export async function wbFetch<T>(
     }
 
     const data = (await res.json()) as T;
-    if (key) await setCache(key, data);
+    if (key) {
+      if (Array.isArray(data)) {
+        await setLargeCache(key, data);
+      } else {
+        await setCache(key, data);
+      }
+    }
     return { data, error: null, timestamp };
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Неизвестная ошибка";

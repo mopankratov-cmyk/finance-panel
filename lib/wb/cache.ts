@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
 export function cacheKey(parts: string[]): string {
   return parts.join(":");
@@ -7,6 +8,10 @@ export function cacheKey(parts: string[]): string {
 export interface CachedEntry<T> {
   data: T;
   cached_at: string;
+}
+
+function db() {
+  return getSupabaseAdmin() ?? supabase;
 }
 
 export async function getCached<T>(key: string): Promise<T | null> {
@@ -28,11 +33,15 @@ export async function getCachedBatch<T>(
   if (keys.length === 0) return map;
 
   try {
-    const { data, error } = await supabase
+    const { data, error } = await db()
       .from("wb_cache")
       .select("key, data, cached_at")
       .in("key", keys);
-    if (error || !data) return map;
+    if (error) {
+      console.error("[wb_cache] read failed:", error.message);
+      return map;
+    }
+    if (!data) return map;
 
     for (const row of data) {
       map.set(row.key, {
@@ -40,20 +49,31 @@ export async function getCachedBatch<T>(
         cached_at: row.cached_at,
       });
     }
-  } catch {
-    // ignore
+  } catch (err) {
+    console.error("[wb_cache] read error:", err);
   }
   return map;
 }
 
-export async function setCache<T>(key: string, value: T): Promise<void> {
+export async function setCache<T>(key: string, value: T): Promise<boolean> {
   try {
-    await supabase.from("wb_cache").upsert({
-      key,
-      data: value,
-      cached_at: new Date().toISOString(),
-    });
-  } catch {
-    // ignore cache errors
+    const { error } = await db()
+      .from("wb_cache")
+      .upsert(
+        {
+          key,
+          data: value,
+          cached_at: new Date().toISOString(),
+        },
+        { onConflict: "key" },
+      );
+    if (error) {
+      console.error("[wb_cache] write failed:", key, error.message);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.error("[wb_cache] write error:", key, err);
+    return false;
   }
 }
