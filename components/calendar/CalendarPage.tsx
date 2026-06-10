@@ -148,7 +148,7 @@ export function CalendarPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-white">Календарь платежей</h1>
+        <h1 className="text-2xl font-bold text-slate-900">Календарь платежей</h1>
         <p className="text-sm text-slate-400 mt-1">
           Прогноз денежного потока по дням
         </p>
@@ -195,7 +195,7 @@ export function CalendarPage() {
               Отрицательный баланс
             </span>
             <span className="flex items-center gap-1.5">
-              <span className="h-3 w-3 rounded bg-slate-800 border border-slate-600" />
+              <span className="h-3 w-3 rounded bg-white border border-violet-300 border-l-violet-600 border-l-[3px]" />
               Итог недели
             </span>
           </div>

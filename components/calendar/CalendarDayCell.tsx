@@ -60,14 +60,14 @@ export function CalendarDayCell({
     <div
       className={`group relative min-h-[72px] rounded-lg border sm:min-h-[88px] ${
         isToday
-          ? "ring-2 ring-emerald-500 ring-offset-1 ring-offset-white"
+          ? "ring-2 ring-violet-600 ring-offset-1 ring-offset-white"
           : ""
-      } ${isSelected ? "ring-2 ring-emerald-400" : ""} ${bgClass}`}
+      } ${isSelected ? "ring-2 ring-violet-400" : ""} ${bgClass}`}
     >
       <button
         type="button"
         onClick={onSelect}
-        className="flex h-full w-full flex-col items-stretch rounded-lg p-1.5 text-left transition-colors hover:ring-2 hover:ring-emerald-500/30 sm:p-2"
+        className="flex h-full w-full flex-col items-stretch rounded-lg p-1.5 text-left transition-colors hover:ring-2 hover:ring-violet-500/30 sm:p-2"
       >
         <div className="flex items-start justify-between gap-1">
           <span
@@ -145,7 +145,7 @@ export function CalendarDayCell({
         className={`absolute bottom-1 right-1 flex h-5 w-5 items-center justify-center rounded-full opacity-0 shadow-sm transition-opacity group-hover:opacity-100 ${
           onDark
             ? "bg-white/90 text-slate-800 hover:bg-white"
-            : "bg-emerald-600 text-white hover:bg-emerald-500"
+            : "bg-violet-600 text-white hover:bg-violet-500"
         }`}
         aria-label={`Быстро добавить платёж на ${dateStr}`}
       >

@@ -31,7 +31,7 @@ export function AccountForm({ account, onSubmit, onCancel }: AccountFormProps) {
           name="name"
           required
           defaultValue={account?.name}
-          className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+          className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
           placeholder="WB Счёт 1"
         />
       </div>
@@ -44,7 +44,7 @@ export function AccountForm({ account, onSubmit, onCancel }: AccountFormProps) {
           <select
             name="type"
             defaultValue={account?.type ?? "marketplace"}
-            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
           >
             {Object.entries(ACCOUNT_TYPE_LABELS).map(([val, label]) => (
               <option key={val} value={val}>
@@ -61,7 +61,7 @@ export function AccountForm({ account, onSubmit, onCancel }: AccountFormProps) {
           <select
             name="currency"
             defaultValue={account?.currency ?? "RUB"}
-            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
           >
             <option value="RUB">RUB (₽)</option>
             <option value="USD">USD ($)</option>
@@ -79,7 +79,7 @@ export function AccountForm({ account, onSubmit, onCancel }: AccountFormProps) {
           step="0.01"
           required
           defaultValue={account?.balance ?? 0}
-          className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+          className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
         />
       </div>
 
@@ -93,7 +93,7 @@ export function AccountForm({ account, onSubmit, onCancel }: AccountFormProps) {
         </button>
         <button
           type="submit"
-          className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 transition-colors"
+          className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-700 transition-colors"
         >
           {account ? "Сохранить" : "Добавить"}
         </button>

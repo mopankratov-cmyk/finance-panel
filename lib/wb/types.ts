@@ -27,6 +27,13 @@ export interface WbReportRow {
   supplier_oper_name?: string;
   barcode?: string;
   office_name?: string;
+  rebill_logistic_cost?: number;
+  storage_fee?: number;
+  penalty?: number;
+  deduction?: number;
+  additional_payment?: number;
+  acceptance?: number;
+  acquiring_fee?: number;
   [key: string]: unknown;
 }
 

@@ -8,10 +8,10 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 
   if (!hydrated) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-950">
+      <div className="flex min-h-screen items-center justify-center bg-[#F5F5F5]">
         <div className="flex flex-col items-center gap-3">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-emerald-500 border-t-transparent" />
-          <p className="text-sm text-slate-400">Загрузка...</p>
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-violet-600 border-t-transparent" />
+          <p className="text-sm text-slate-500">Загрузка...</p>
         </div>
       </div>
     );
@@ -19,13 +19,13 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 
   if (loadError) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-950 px-4">
-        <div className="max-w-md rounded-xl border border-red-800/60 bg-slate-900 p-6 text-center">
-          <p className="text-lg font-semibold text-red-400">
+      <div className="flex min-h-screen items-center justify-center bg-[#F5F5F5] px-4">
+        <div className="max-w-md rounded-xl border border-red-200 bg-white p-6 text-center shadow-sm">
+          <p className="text-lg font-semibold text-red-600">
             Ошибка загрузки данных
           </p>
-          <p className="mt-2 text-sm text-slate-400">{loadError}</p>
-          <p className="mt-4 text-xs text-slate-500">
+          <p className="mt-2 text-sm text-slate-500">{loadError}</p>
+          <p className="mt-4 text-xs text-slate-400">
             Убедитесь, что таблицы созданы в Supabase (см. supabase/schema.sql)
           </p>
         </div>
@@ -34,7 +34,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="flex min-h-screen bg-slate-950">
+    <div className="flex min-h-screen bg-[#F5F5F5]">
       <Sidebar />
       <main className="flex-1 lg:ml-64">
         <div className="px-4 py-6 pt-16 lg:px-8 lg:py-8 lg:pt-8">

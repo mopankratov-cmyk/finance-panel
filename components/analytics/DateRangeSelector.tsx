@@ -24,7 +24,7 @@ export function DateRangeSelector({ range, onChange }: DateRangeSelectorProps) {
           key={p.label}
           type="button"
           onClick={() => setPreset(p.days)}
-          className="rounded-lg border border-slate-600 bg-slate-800 px-3 py-1.5 text-xs font-medium text-slate-300 hover:border-emerald-600 hover:text-emerald-400"
+          className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 shadow-sm hover:border-violet-400 hover:text-violet-600"
         >
           {p.label}
         </button>
@@ -33,14 +33,14 @@ export function DateRangeSelector({ range, onChange }: DateRangeSelectorProps) {
         type="date"
         value={range.from}
         onChange={(e) => onChange({ ...range, from: e.target.value })}
-        className="rounded-lg border border-slate-600 bg-slate-800 px-2 py-1.5 text-xs text-slate-200"
+        className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-700 shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
       />
-      <span className="text-slate-500">—</span>
+      <span className="text-slate-400">—</span>
       <input
         type="date"
         value={range.to}
         onChange={(e) => onChange({ ...range, to: e.target.value })}
-        className="rounded-lg border border-slate-600 bg-slate-800 px-2 py-1.5 text-xs text-slate-200"
+        className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-700 shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
       />
     </div>
   );

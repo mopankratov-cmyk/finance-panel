@@ -52,19 +52,19 @@ export function WeekSummaryCell({
 
   const netClass =
     summary.netFlow > 0
-      ? "text-emerald-400"
+      ? "text-emerald-600"
       : summary.netFlow < 0
-        ? "text-red-400"
-        : "text-slate-300";
+        ? "text-red-600"
+        : "text-slate-500";
 
   const balanceClass =
-    summary.runningBalance < 0 ? "text-red-400" : "text-slate-100";
+    summary.runningBalance < 0 ? "text-red-600" : "text-slate-900";
 
   return (
     <div
-      className={`flex h-full min-h-[72px] flex-col rounded-lg border border-slate-700 border-l-[3px] bg-slate-800/90 p-2 sm:min-h-[88px] sm:p-2.5 ${borderClass}`}
+      className={`flex h-full min-h-[72px] flex-col rounded-lg border border-slate-200 border-l-[3px] bg-white p-2 shadow-sm sm:min-h-[88px] sm:p-2.5 ${borderClass}`}
     >
-      <p className="mb-2 truncate text-[10px] font-semibold text-slate-300 sm:text-xs">
+      <p className="mb-2 truncate text-[10px] font-semibold text-slate-700 sm:text-xs">
         Неделя {summary.weekNumber}
         <span className="mx-1.5 font-normal text-slate-600">|</span>
         <span className="font-normal text-slate-400">
@@ -80,12 +80,12 @@ export function WeekSummaryCell({
         <Metric
           label="Поступления за неделю"
           value={formatMoney(summary.totalIncome)}
-          valueClass="text-emerald-400"
+          valueClass="text-emerald-600"
         />
         <Metric
           label="Выбытия за неделю"
           value={formatMoney(summary.totalExpense)}
-          valueClass="text-red-400"
+          valueClass="text-red-600"
         />
         <Metric
           label="Остаток с учётом прошлой недели"

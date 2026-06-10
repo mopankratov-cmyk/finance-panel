@@ -7,6 +7,7 @@ import {
   CreditCard,
   Landmark,
   LayoutDashboard,
+  LineChart,
   Megaphone,
   Menu,
   Package,
@@ -40,6 +41,7 @@ const NAV_GROUPS: NavGroup[] = [
       { href: "/payments", label: "Платежи", icon: CreditCard },
       { href: "/accounts", label: "Счета", icon: Wallet },
       { href: "/loans", label: "Кредиты", icon: Landmark },
+      { href: "/opiu", label: "ОПиУ", icon: LineChart },
     ],
   },
   {
@@ -87,15 +89,15 @@ export function Sidebar() {
   const linkClass = (active: boolean) =>
     `flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
       active
-        ? "bg-emerald-500/15 text-emerald-400"
-        : "text-slate-300 hover:bg-slate-800 hover:text-white"
+        ? "bg-violet-600/20 text-violet-300"
+        : "text-slate-300 hover:bg-white/10 hover:text-white"
     }`;
 
   const nav = (
     <>
-      <div className="flex items-center gap-3 border-b border-slate-700/50 px-4 py-6">
-        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-500/20">
-          <BarChart3 className="h-5 w-5 text-emerald-400" />
+      <div className="flex items-center gap-3 border-b border-white/10 px-4 py-6">
+        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-violet-600/25">
+          <BarChart3 className="h-5 w-5 text-violet-400" />
         </div>
         <div>
           <p className="text-sm font-semibold text-white">Финансы МП</p>
@@ -131,7 +133,7 @@ export function Sidebar() {
                 type="button"
                 onClick={() => toggleGroup(group.id)}
                 className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-xs font-semibold uppercase tracking-wider transition-colors ${
-                  groupActive ? "text-emerald-400" : "text-slate-500"
+                  groupActive ? "text-violet-400" : "text-slate-500"
                 } hover:text-slate-300`}
               >
                 <span>{group.label}</span>
@@ -164,7 +166,7 @@ export function Sidebar() {
   return (
     <>
       <button
-        className="fixed left-4 top-4 z-40 flex h-10 w-10 items-center justify-center rounded-lg bg-slate-800 text-white shadow-lg lg:hidden"
+        className="fixed left-4 top-4 z-40 flex h-10 w-10 items-center justify-center rounded-lg bg-[#1a1a2e] text-white shadow-lg lg:hidden"
         onClick={() => setMobileOpen(true)}
       >
         <Menu className="h-5 w-5" />
@@ -178,7 +180,7 @@ export function Sidebar() {
       )}
 
       <aside
-        className={`fixed inset-y-0 left-0 z-50 flex w-64 flex-col bg-slate-900 transition-transform lg:translate-x-0 ${
+        className={`fixed inset-y-0 left-0 z-50 flex w-64 flex-col bg-[#1a1a2e] transition-transform lg:translate-x-0 ${
           mobileOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >

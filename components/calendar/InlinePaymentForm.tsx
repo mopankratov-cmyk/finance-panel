@@ -13,7 +13,7 @@ interface InlinePaymentFormProps {
 }
 
 const inputClass =
-  "w-full rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500";
+  "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 placeholder:text-slate-500 focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500";
 
 export function InlinePaymentForm({
   flowType,
@@ -44,11 +44,11 @@ export function InlinePaymentForm({
   const defaultAmount = payment ? Math.abs(payment.amount) : "";
   const accent =
     flowType === "income"
-      ? "border-emerald-600/50 bg-emerald-950/30"
-      : "border-red-600/50 bg-red-950/30";
+      ? "border-emerald-200 bg-emerald-50"
+      : "border-red-200 bg-red-50";
   const submitClass =
     flowType === "income"
-      ? "bg-emerald-600 hover:bg-emerald-500"
+      ? "bg-violet-600 hover:bg-violet-500"
       : "bg-red-600 hover:bg-red-500";
 
   return (
@@ -139,7 +139,7 @@ export function InlinePaymentForm({
         <button
           type="button"
           onClick={onCancel}
-          className="rounded-lg px-3 py-1.5 text-sm text-slate-400 transition-colors hover:bg-slate-800 hover:text-slate-200"
+          className="rounded-lg px-3 py-1.5 text-sm text-slate-400 transition-colors hover:bg-white hover:text-slate-200"
         >
           Отмена
         </button>

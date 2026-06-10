@@ -30,19 +30,19 @@ import {
 import { computeExecutiveSummary, getPreviousRange, type DateRange } from "@/lib/wb/analytics/sales";
 
 function drrColor(drr: number): string {
-  if (drr < 10) return "text-emerald-400";
+  if (drr < 10) return "text-emerald-600";
   if (drr <= 20) return "text-amber-400";
   return "text-red-400";
 }
 
 function roasColor(roas: number): string {
-  if (roas > 5) return "text-emerald-400";
+  if (roas > 5) return "text-emerald-600";
   if (roas >= 3) return "text-amber-400";
   return "text-red-400";
 }
 
 function cpoColor(cpo: number): string {
-  if (cpo < 500) return "text-emerald-400";
+  if (cpo < 500) return "text-emerald-600";
   if (cpo <= 1500) return "text-amber-400";
   return "text-red-400";
 }
@@ -50,7 +50,7 @@ function cpoColor(cpo: number): string {
 export function AdsAnalyticsPage() {
   const [range, setRange] = useState<DateRange>(() => {
     const to = new Date();
-    const from = addDays(to, -29);
+    const from = addDays(to, -6);
     return { from: toISODate(from), to: toISODate(to) };
   });
 
@@ -75,11 +75,11 @@ export function AdsAnalyticsPage() {
   const campaignColumns: Column<CampaignRow>[] = [
     { key: "name", label: "Кампания", render: (r) => r.name, csv: (r) => r.name },
     { key: "type", label: "Тип", render: (r) => r.type, csv: (r) => r.type },
-    { key: "status", label: "Статус", render: (r) => <span className="rounded bg-emerald-900/50 px-1.5 py-0.5 text-xs text-emerald-400">{r.status}</span>, csv: (r) => r.status },
+    { key: "status", label: "Статус", render: (r) => <span className="rounded bg-violet-100 px-1.5 py-0.5 text-xs text-violet-700">{r.status}</span>, csv: (r) => r.status },
     { key: "spend", label: "Расходы", sortable: true, align: "right", render: (r) => formatRub(r.spend), csv: (r) => String(r.spend) },
     { key: "views", label: "Показы", sortable: true, align: "right", render: (r) => formatNumber(r.views), csv: (r) => String(r.views) },
     { key: "clicks", label: "Клики", sortable: true, align: "right", render: (r) => formatNumber(r.clicks), csv: (r) => String(r.clicks) },
-    { key: "ctr", label: "CTR%", sortable: true, align: "right", render: (r) => <span className={r.ctr > 1 ? "text-emerald-400" : ""}>{formatPct(r.ctr)}</span>, csv: (r) => String(r.ctr) },
+    { key: "ctr", label: "CTR%", sortable: true, align: "right", render: (r) => <span className={r.ctr > 1 ? "text-emerald-600" : ""}>{formatPct(r.ctr)}</span>, csv: (r) => String(r.ctr) },
     { key: "orders", label: "Заказов", sortable: true, align: "right", render: (r) => formatNumber(r.orders), csv: (r) => String(r.orders) },
     { key: "revenue", label: "Выручка", sortable: true, align: "right", render: (r) => formatRub(r.revenue), csv: (r) => String(r.revenue) },
     { key: "cpo", label: "CPO", sortable: true, align: "right", render: (r) => <span className={cpoColor(r.cpo)}>{formatRub(r.cpo)}</span>, csv: (r) => String(r.cpo) },
@@ -116,9 +116,9 @@ export function AdsAnalyticsPage() {
       )}
 
       <section>
-        <h2 className="mb-3 text-lg font-semibold text-white">Динамика расходов</h2>
+        <h2 className="mb-3 text-lg font-semibold text-slate-900">Динамика расходов</h2>
         {loading ? <ChartSkeleton /> : (
-          <div className="rounded-xl border border-slate-700/80 bg-slate-800/40 p-4">
+          <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-4">
             <ResponsiveContainer width="100%" height={260}>
               <LineChart data={daily}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
@@ -126,7 +126,7 @@ export function AdsAnalyticsPage() {
                 <YAxis yAxisId="left" tick={{ fontSize: 10, fill: "#94a3b8" }} />
                 <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 10, fill: "#94a3b8" }} />
                 <Tooltip
-                  contentStyle={{ background: "#1e293b", border: "1px solid #475569", borderRadius: 8 }}
+                  contentStyle={{ background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: 8 }}
                   formatter={(value, name) => {
                     const v = Number(value ?? 0);
                     const n = String(name);
@@ -145,14 +145,14 @@ export function AdsAnalyticsPage() {
       </section>
 
       <section>
-        <h2 className="mb-3 text-lg font-semibold text-white">Кампании</h2>
+        <h2 className="mb-3 text-lg font-semibold text-slate-900">Кампании</h2>
         {loading ? <TableSkeleton /> : <AnalyticsTable columns={campaignColumns} data={campaigns} filename="campaigns.csv" emptyMessage="Нет данных по кампаниям. Проверьте WB_TOKEN_ADVERT и доступ к рекламе." />}
       </section>
 
       <section>
-        <h2 className="mb-3 text-lg font-semibold text-white">Матрица эффективности</h2>
+        <h2 className="mb-3 text-lg font-semibold text-slate-900">Матрица эффективности</h2>
         {loading ? <ChartSkeleton height={300} /> : campaigns.length > 0 ? (
-          <div className="rounded-xl border border-slate-700/80 bg-slate-800/40 p-4">
+          <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-4">
             <div className="mb-2 grid grid-cols-2 gap-2 text-[10px] text-slate-500">
               <span>↖ Скрытые гемы</span>
               <span className="text-right">Звёзды ↗</span>
@@ -165,8 +165,8 @@ export function AdsAnalyticsPage() {
                 <XAxis type="number" dataKey="spend" name="Расходы" tick={{ fontSize: 10, fill: "#94a3b8" }} />
                 <YAxis type="number" dataKey="roas" name="ROAS" tick={{ fontSize: 10, fill: "#94a3b8" }} />
                 <ZAxis type="number" dataKey="orders" range={[40, 400]} />
-                <Tooltip contentStyle={{ background: "#1e293b", border: "1px solid #475569" }} cursor={{ strokeDasharray: "3 3" }} />
-                <Scatter data={scatterData} fill="#10b981" />
+                <Tooltip contentStyle={{ background: "#ffffff", border: "1px solid #e2e8f0" }} cursor={{ strokeDasharray: "3 3" }} />
+                <Scatter data={scatterData} fill="#7c3aed" />
               </ScatterChart>
             </ResponsiveContainer>
           </div>
@@ -176,8 +176,8 @@ export function AdsAnalyticsPage() {
       </section>
 
       <section>
-        <h2 className="mb-3 text-lg font-semibold text-white">Ключевые слова</h2>
-        <div className="rounded-xl border border-slate-700/80 bg-slate-800/40 p-6 text-center text-sm text-slate-500">
+        <h2 className="mb-3 text-lg font-semibold text-slate-900">Ключевые слова</h2>
+        <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-6 text-center text-sm text-slate-500">
           Данные по ключевым словам недоступны через текущий API. Подключите отчёт search-report для детализации.
         </div>
       </section>

@@ -33,10 +33,10 @@ export function AnalyticsShell({
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-white">{title}</h1>
-          {subtitle && <p className="mt-1 text-sm text-slate-400">{subtitle}</p>}
+          <h1 className="text-2xl font-bold text-slate-900">{title}</h1>
+          {subtitle && <p className="mt-1 text-sm text-slate-500">{subtitle}</p>}
           {timestamp && (
-            <p className="mt-1 text-xs text-slate-500">
+            <p className="mt-1 text-xs text-slate-400">
               Данные обновлены: {formatTime(timestamp)}
             </p>
           )}
@@ -48,7 +48,7 @@ export function AnalyticsShell({
               type="button"
               onClick={onRefresh}
               disabled={loading || syncing}
-              className="inline-flex items-center gap-2 rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-sm text-slate-200 hover:bg-slate-700 disabled:opacity-50"
+              className="inline-flex items-center gap-2 rounded-lg bg-violet-600 px-3 py-2 text-sm font-medium text-white shadow-sm hover:bg-violet-700 disabled:opacity-50"
             >
               <RefreshCw className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} />
               Обновить
@@ -58,13 +58,13 @@ export function AnalyticsShell({
       </div>
 
       {error && (
-        <div className="rounded-xl border border-red-800/60 bg-red-950/30 p-4">
-          <p className="text-sm text-red-400">{error}</p>
+        <div className="rounded-xl border border-red-200 bg-red-50 p-4">
+          <p className="text-sm text-red-600">{error}</p>
           {onRefresh && (
             <button
               type="button"
               onClick={onRefresh}
-              className="mt-2 text-sm font-medium text-red-300 underline"
+              className="mt-2 text-sm font-medium text-red-700 underline"
             >
               Попробовать снова
             </button>
@@ -73,8 +73,8 @@ export function AnalyticsShell({
       )}
 
       {!loading && empty && !error ? (
-        <div className="rounded-xl border border-slate-700 bg-slate-800/50 p-6 text-center">
-          <p className="text-sm text-slate-300">
+        <div className="rounded-xl border border-slate-200 bg-white p-6 text-center shadow-sm">
+          <p className="text-sm text-slate-500">
             Данных за выбранный период нет. Попробуйте «Обновить».
           </p>
         </div>

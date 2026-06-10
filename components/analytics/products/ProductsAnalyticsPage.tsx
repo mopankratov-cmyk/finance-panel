@@ -28,22 +28,22 @@ const STATUS_LABELS: Record<StockRow["status"], string> = {
 const STATUS_COLORS: Record<StockRow["status"], string> = {
   critical: "text-red-400",
   reorder: "text-amber-400",
-  normal: "text-emerald-400",
+  normal: "text-emerald-600",
   excess: "text-slate-400",
 };
 
-const PIE_COLORS = ["#10b981", "#3b82f6", "#f59e0b", "#8b5cf6", "#ec4899", "#06b6d4"];
+const PIE_COLORS = ["#7c3aed", "#3b82f6", "#f59e0b", "#8b5cf6", "#ec4899", "#06b6d4"];
 
 function daysColor(days: number): string {
   if (days < 14) return "text-red-400 font-bold";
   if (days <= 30) return "text-amber-400";
-  return "text-emerald-400";
+  return "text-emerald-600";
 }
 
 export function ProductsAnalyticsPage() {
   const [range, setRange] = useState<DateRange>(() => {
     const to = new Date();
-    const from = addDays(to, -29);
+    const from = addDays(to, -6);
     return { from: toISODate(from), to: toISODate(to) };
   });
 
@@ -83,45 +83,45 @@ export function ProductsAnalyticsPage() {
     >
       {!loading && (
         <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <div className="rounded-xl border border-red-800/50 bg-red-950/20 p-4">
-            <p className="text-xs text-red-400">🔴 Нет в наличии</p>
-            <p className="mt-1 text-2xl font-bold text-white">{alerts.outOfStock}</p>
+          <div className="rounded-xl border border-red-200 bg-red-50 p-4 shadow-sm">
+            <p className="text-xs text-red-600">🔴 Нет в наличии</p>
+            <p className="mt-1 text-2xl font-bold text-slate-900">{alerts.outOfStock}</p>
             <p className="text-xs text-slate-500">артикулов</p>
           </div>
-          <div className="rounded-xl border border-amber-800/50 bg-amber-950/20 p-4">
-            <p className="text-xs text-amber-400">🟡 Заканчивается (&lt;14 дн)</p>
-            <p className="mt-1 text-2xl font-bold text-white">{alerts.low}</p>
+          <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 shadow-sm">
+            <p className="text-xs text-amber-600">🟡 Заканчивается (&lt;14 дн)</p>
+            <p className="mt-1 text-2xl font-bold text-slate-900">{alerts.low}</p>
             <p className="text-xs text-slate-500">артикулов</p>
           </div>
-          <div className="rounded-xl border border-emerald-800/50 bg-emerald-950/20 p-4">
-            <p className="text-xs text-emerald-400">🟢 В норме</p>
-            <p className="mt-1 text-2xl font-bold text-white">{alerts.normal}</p>
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 shadow-sm">
+            <p className="text-xs text-emerald-600">🟢 В норме</p>
+            <p className="mt-1 text-2xl font-bold text-slate-900">{alerts.normal}</p>
             <p className="text-xs text-slate-500">артикулов</p>
           </div>
-          <div className="rounded-xl border border-slate-600 bg-slate-800/60 p-4">
+          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
             <p className="text-xs text-slate-400">📦 Излишки (&gt;90 дн)</p>
-            <p className="mt-1 text-2xl font-bold text-white">{alerts.excess}</p>
+            <p className="mt-1 text-2xl font-bold text-slate-900">{alerts.excess}</p>
             <p className="text-xs text-slate-500">деньги заморожены</p>
           </div>
         </section>
       )}
 
       <section>
-        <h2 className="mb-3 text-lg font-semibold text-white">Остатки по товарам</h2>
+        <h2 className="mb-3 text-lg font-semibold text-slate-900">Остатки по товарам</h2>
         {loading ? <TableSkeleton /> : <AnalyticsTable columns={stockColumns} data={stockRows} filename="stocks.csv" emptyMessage="Нет данных об остатках" />}
       </section>
 
       <section>
-        <h2 className="mb-3 text-lg font-semibold text-white">Распределение по складам</h2>
+        <h2 className="mb-3 text-lg font-semibold text-slate-900">Распределение по складам</h2>
         {loading ? <ChartSkeleton height={220} /> : warehouses.length > 0 ? (
           <div className="grid gap-4 lg:grid-cols-2">
-            <div className="rounded-xl border border-slate-700/80 bg-slate-800/40 p-4">
+            <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-4">
               <ResponsiveContainer width="100%" height={220}>
                 <PieChart>
                   <Pie data={warehouses} dataKey="stock" nameKey="warehouse" cx="50%" cy="50%" outerRadius={80} label={(props) => `${String(props.name ?? "")} ${Number(props.percent ?? 0).toFixed(0)}%`}>
                     {warehouses.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
                   </Pie>
-                  <Tooltip contentStyle={{ background: "#1e293b", border: "1px solid #475569" }} />
+                  <Tooltip contentStyle={{ background: "#ffffff", border: "1px solid #e2e8f0" }} />
                 </PieChart>
               </ResponsiveContainer>
             </div>

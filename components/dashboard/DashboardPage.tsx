@@ -36,7 +36,7 @@ export function DashboardPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-white">Дашборд</h1>
+        <h1 className="text-2xl font-bold text-slate-900">Дашборд</h1>
         <p className="text-sm text-slate-400 mt-1">
           Обзор финансового состояния
         </p>
@@ -46,8 +46,8 @@ export function DashboardPage() {
         <Card className="sm:col-span-2 lg:col-span-1">
           <CardContent className="pt-5">
             <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-500/10">
-                <TrendingUp className="h-5 w-5 text-emerald-500" />
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-violet-500/10">
+                <TrendingUp className="h-5 w-5 text-violet-600" />
               </div>
               <div>
                 <p className="text-sm text-slate-500">Общий баланс</p>
@@ -89,7 +89,7 @@ export function DashboardPage() {
           <CardContent className="pt-5">
             <p className="text-sm text-slate-500">Предупреждения</p>
             <p
-              className={`text-2xl font-bold mt-1 ${alerts.length > 0 ? "text-red-500" : "text-emerald-500"}`}
+              className={`text-2xl font-bold mt-1 ${alerts.length > 0 ? "text-red-600" : "text-emerald-600"}`}
             >
               {alerts.length}
             </p>

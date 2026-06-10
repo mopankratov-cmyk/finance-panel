@@ -37,10 +37,10 @@ function ChartTooltip({
   if (!active || !payload?.[0]) return null;
   const { day, balance } = payload[0].payload;
   return (
-    <div className="rounded-md border border-slate-600 bg-slate-800 px-2.5 py-1.5 text-xs shadow-lg">
-      <p className="text-slate-400">День {day}</p>
+    <div className="rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs shadow-md">
+      <p className="text-slate-500">День {day}</p>
       <p
-        className={`font-bold tabular-nums ${balance >= 0 ? "text-emerald-400" : "text-red-400"}`}
+        className={`font-bold tabular-nums ${balance >= 0 ? "text-emerald-600" : "text-red-600"}`}
       >
         {formatMoney(balance)}
       </p>
@@ -97,7 +97,7 @@ export function CashFlowSparkline({
           <Line
             type="monotone"
             dataKey="balancePositive"
-            stroke="#10b981"
+            stroke="#7c3aed"
             strokeWidth={2}
             dot={false}
             connectNulls={false}

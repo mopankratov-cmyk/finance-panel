@@ -96,14 +96,14 @@ export function PaymentsPage() {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-white">Платежи</h1>
+          <h1 className="text-2xl font-bold text-slate-900">Платежи</h1>
           <p className="text-sm text-slate-400 mt-1">
             Реестр платежей и поступлений
           </p>
         </div>
         <button
           onClick={openAdd}
-          className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-emerald-700 transition-colors"
+          className="inline-flex items-center gap-2 rounded-lg bg-violet-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-violet-700 transition-colors"
         >
           <Plus className="h-4 w-4" />
           Новый платёж
@@ -243,7 +243,7 @@ export function PaymentsPage() {
                           <button
                             onClick={() => handleMarkDone(p.id)}
                             title="Отметить выполненным"
-                            className="rounded-lg p-1.5 text-emerald-500 hover:bg-emerald-50"
+                            className="rounded-lg p-1.5 text-violet-600 hover:bg-violet-50"
                           >
                             <Check className="h-4 w-4" />
                           </button>

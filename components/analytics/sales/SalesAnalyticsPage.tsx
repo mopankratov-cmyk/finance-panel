@@ -40,15 +40,15 @@ import {
 } from "@/lib/wb/analytics/sales";
 
 function buyoutColor(pct: number): string {
-  if (pct >= 80) return "text-emerald-400";
+  if (pct >= 80) return "text-emerald-600";
   if (pct >= 60) return "text-amber-400";
   return "text-red-400";
 }
 
 function marginRowClass(margin: number): string {
-  if (margin > 30) return "bg-emerald-950/20";
-  if (margin >= 10) return "bg-amber-950/15";
-  return "bg-red-950/15";
+  if (margin > 30) return "bg-emerald-50";
+  if (margin >= 10) return "bg-amber-50";
+  return "bg-red-50";
 }
 
 interface SalesAnalyticsPageProps {
@@ -90,7 +90,7 @@ export function SalesAnalyticsPage(_props: SalesAnalyticsPageProps) {
         <div>
           <div>{formatRub(r.revenue)}</div>
           <div className="mt-1 h-1.5 w-full rounded bg-slate-700">
-            <div className="h-full rounded bg-emerald-500" style={{ width: `${(r.revenue / totalRev) * 100}%` }} />
+            <div className="h-full rounded bg-violet-600" style={{ width: `${(r.revenue / totalRev) * 100}%` }} />
           </div>
         </div>
       ),
@@ -137,7 +137,7 @@ export function SalesAnalyticsPage(_props: SalesAnalyticsPageProps) {
       render: (r) => (
         <input
           type="number"
-          className="w-20 rounded border border-slate-600 bg-slate-800 px-1 py-0.5 text-right text-xs"
+          className="w-20 rounded border border-slate-200 bg-white px-1 py-0.5 text-right text-xs"
           value={costs[r.nmId] ?? ""}
           onClick={(e) => e.stopPropagation()}
           onChange={(e) => setCost(r.nmId, Number(e.target.value) || 0)}
@@ -145,10 +145,10 @@ export function SalesAnalyticsPage(_props: SalesAnalyticsPageProps) {
       ),
       csv: (r) => String(r.cost),
     },
-    { key: "profit", label: "Прибыль", sortable: true, align: "right", render: (r) => <span className={r.profit >= 0 ? "text-emerald-400" : "text-red-400"}>{formatRub(r.profit)}</span>, csv: (r) => String(r.profit) },
+    { key: "profit", label: "Прибыль", sortable: true, align: "right", render: (r) => <span className={r.profit >= 0 ? "text-emerald-600" : "text-red-400"}>{formatRub(r.profit)}</span>, csv: (r) => String(r.profit) },
     { key: "margin", label: "Маржа %", sortable: true, align: "right", render: (r) => formatPct(r.marginPct), csv: (r) => String(r.marginPct) },
     { key: "roi", label: "ROI %", sortable: true, align: "right", render: (r) => formatPct(r.roiPct), csv: (r) => String(r.roiPct) },
-    { key: "abc", label: "ABC", render: (r) => <span className={r.abc === "A" ? "text-emerald-400" : r.abc === "B" ? "text-amber-400" : "text-red-400"}>{r.abc}</span>, csv: (r) => r.abc },
+    { key: "abc", label: "ABC", render: (r) => <span className={r.abc === "A" ? "text-emerald-600" : r.abc === "B" ? "text-amber-400" : "text-red-400"}>{r.abc}</span>, csv: (r) => r.abc },
   ];
 
   const returnColumns: Column<ReturnRow>[] = [
@@ -159,7 +159,7 @@ export function SalesAnalyticsPage(_props: SalesAnalyticsPageProps) {
   ];
 
   const abcData = [
-    { name: "A", value: articles.filter((a) => a.abc === "A").length, color: "#10b981" },
+    { name: "A", value: articles.filter((a) => a.abc === "A").length, color: "#7c3aed" },
     { name: "B", value: articles.filter((a) => a.abc === "B").length, color: "#f59e0b" },
     { name: "C", value: articles.filter((a) => a.abc === "C").length, color: "#ef4444" },
   ];
@@ -187,14 +187,14 @@ export function SalesAnalyticsPage(_props: SalesAnalyticsPageProps) {
           <MetricCard label="Продаж (выкуплено)" value={formatNumber(summary.sales)} change={metricChange(summary.sales, summary.prev.sales)} tooltip="Количество выкупленных единиц" />
           <MetricCard label="% Выкупа" value={formatPct(summary.buyoutPct)} valueClass={buyoutColor(summary.buyoutPct)} tooltip="Продажи / Заказы × 100" />
           <MetricCard label="Средний чек" value={formatRub(summary.avgCheck)} change={metricChange(summary.avgCheck, summary.prev.avgCheck)} tooltip="Выручка / Продажи" />
-          <MetricCard label="Возвраты" value={`${formatNumber(summary.returnsQty)} шт · ${formatRub(summary.returnsSum)}`} change={metricChange(summary.returnsSum, summary.prev.returnsSum)} valueClass={summary.returnsSum > summary.prev.returnsSum ? "text-red-400" : "text-white"} tooltip="Количество и сумма возвратов" />
+          <MetricCard label="Возвраты" value={`${formatNumber(summary.returnsQty)} шт · ${formatRub(summary.returnsSum)}`} change={metricChange(summary.returnsSum, summary.prev.returnsSum)} valueClass={summary.returnsSum > summary.prev.returnsSum ? "text-red-400" : "text-slate-900"} tooltip="Количество и сумма возвратов" />
         </section>
       )}
 
       <section>
-        <h2 className="mb-3 text-lg font-semibold text-white">Динамика выручки</h2>
+        <h2 className="mb-3 text-lg font-semibold text-slate-900">Динамика выручки</h2>
         {loading ? <ChartSkeleton /> : (
-          <div className="rounded-xl border border-slate-700/80 bg-slate-800/40 p-4">
+          <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-4">
             <ResponsiveContainer width="100%" height={280}>
               <ComposedChart data={daily}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
@@ -202,7 +202,7 @@ export function SalesAnalyticsPage(_props: SalesAnalyticsPageProps) {
                 <YAxis yAxisId="left" tick={{ fontSize: 10, fill: "#94a3b8" }} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
                 <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 10, fill: "#94a3b8" }} />
                 <Tooltip
-                  contentStyle={{ background: "#1e293b", border: "1px solid #475569", borderRadius: 8 }}
+                  contentStyle={{ background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: 8 }}
                   labelStyle={{ color: "#94a3b8" }}
                   formatter={(value, name) => {
                     const v = Number(value ?? 0);
@@ -213,7 +213,7 @@ export function SalesAnalyticsPage(_props: SalesAnalyticsPageProps) {
                     ];
                   }}
                 />
-                <Area yAxisId="left" type="monotone" dataKey="revenue" fill="#10b98133" stroke="#10b981" name="revenue" />
+                <Area yAxisId="left" type="monotone" dataKey="revenue" fill="#7c3aed33" stroke="#7c3aed" name="revenue" />
                 <Line yAxisId="right" type="monotone" dataKey="orders" stroke="#3b82f6" strokeWidth={2} dot={false} name="orders" />
               </ComposedChart>
             </ResponsiveContainer>
@@ -222,20 +222,20 @@ export function SalesAnalyticsPage(_props: SalesAnalyticsPageProps) {
       </section>
 
       <section>
-        <h2 className="mb-3 text-lg font-semibold text-white">Ниши</h2>
+        <h2 className="mb-3 text-lg font-semibold text-slate-900">Ниши</h2>
         {loading ? <TableSkeleton /> : <AnalyticsTable columns={nicheColumns} data={niches} filename="niches.csv" />}
       </section>
 
       <section>
-        <h2 className="mb-3 text-lg font-semibold text-white">Топ артикулов</h2>
+        <h2 className="mb-3 text-lg font-semibold text-slate-900">Топ артикулов</h2>
         {loading ? <ChartSkeleton height={200} /> : (
-          <div className="mb-4 rounded-xl border border-slate-700/80 bg-slate-800/40 p-4">
+          <div className="mb-4 rounded-xl border border-slate-200 bg-white shadow-sm p-4">
             <ResponsiveContainer width="100%" height={200}>
               <BarChart data={articles.slice(0, 15)} layout="vertical" margin={{ left: 80 }}>
                 <XAxis type="number" tick={{ fontSize: 10, fill: "#94a3b8" }} />
                 <YAxis type="category" dataKey="article" tick={{ fontSize: 9, fill: "#94a3b8" }} width={75} />
-                <Tooltip contentStyle={{ background: "#1e293b", border: "1px solid #475569" }} formatter={(v) => formatRub(Number(v ?? 0))} />
-                <Bar dataKey="revenue" fill="#10b981" radius={[0, 4, 4, 0]} />
+                <Tooltip contentStyle={{ background: "#ffffff", border: "1px solid #e2e8f0" }} formatter={(v) => formatRub(Number(v ?? 0))} />
+                <Bar dataKey="revenue" fill="#7c3aed" radius={[0, 4, 4, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -251,20 +251,20 @@ export function SalesAnalyticsPage(_props: SalesAnalyticsPageProps) {
       </section>
 
       <section>
-        <h2 className="mb-3 text-lg font-semibold text-white">ABC-анализ</h2>
+        <h2 className="mb-3 text-lg font-semibold text-slate-900">ABC-анализ</h2>
         {!loading && (
           <div className="grid gap-4 lg:grid-cols-2">
-            <div className="rounded-xl border border-slate-700/80 bg-slate-800/40 p-4">
+            <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-4">
               <ResponsiveContainer width="100%" height={200}>
                 <PieChart>
                   <Pie data={abcData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={70} label>
                     {abcData.map((e, i) => <Cell key={i} fill={e.color} />)}
                   </Pie>
-                  <Tooltip contentStyle={{ background: "#1e293b", border: "1px solid #475569" }} />
+                  <Tooltip contentStyle={{ background: "#ffffff", border: "1px solid #e2e8f0" }} />
                 </PieChart>
               </ResponsiveContainer>
             </div>
-            <div className="flex items-center rounded-xl border border-slate-700/80 bg-slate-800/40 p-4">
+            <div className="flex items-center rounded-xl border border-slate-200 bg-white shadow-sm p-4">
               <p className="text-sm text-slate-300">{abcInsight(articles)}</p>
             </div>
           </div>
@@ -272,19 +272,19 @@ export function SalesAnalyticsPage(_props: SalesAnalyticsPageProps) {
       </section>
 
       <section>
-        <h2 className="mb-3 text-lg font-semibold text-white">Возвраты</h2>
+        <h2 className="mb-3 text-lg font-semibold text-slate-900">Возвраты</h2>
         {topReturns && (
           <p className="mb-3 text-sm text-red-400">
             Артикул {topReturns.article} — возврат {formatPct(topReturns.returnPct)}, потери {formatRub(topReturns.loss)}/период
           </p>
         )}
         {loading ? <ChartSkeleton height={180} /> : (
-          <div className="mb-4 rounded-xl border border-slate-700/80 bg-slate-800/40 p-4">
+          <div className="mb-4 rounded-xl border border-slate-200 bg-white shadow-sm p-4">
             <ResponsiveContainer width="100%" height={180}>
               <BarChart data={returns.slice(0, 10)}>
                 <XAxis dataKey="article" tick={{ fontSize: 9, fill: "#94a3b8" }} />
                 <YAxis tick={{ fontSize: 10, fill: "#94a3b8" }} />
-                <Tooltip contentStyle={{ background: "#1e293b", border: "1px solid #475569" }} />
+                <Tooltip contentStyle={{ background: "#ffffff", border: "1px solid #e2e8f0" }} />
                 <Bar dataKey="returns" fill="#ef4444" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
@@ -294,14 +294,14 @@ export function SalesAnalyticsPage(_props: SalesAnalyticsPageProps) {
       </section>
 
       <section>
-        <h2 className="mb-3 text-lg font-semibold text-white">Недельная когорта</h2>
+        <h2 className="mb-3 text-lg font-semibold text-slate-900">Недельная когорта</h2>
         {loading ? <TableSkeleton /> : (
           <AnalyticsTable
             columns={[
               { key: "week", label: "Неделя", render: (r) => `${r.week} (${r.label})`, csv: (r) => r.week },
               { key: "revenue", label: "Выручка", sortable: true, align: "right", render: (r) => formatRub(r.revenue), csv: (r) => String(r.revenue) },
               { key: "orders", label: "Заказы", sortable: true, align: "right", render: (r) => formatNumber(r.orders), csv: (r) => String(r.orders) },
-              { key: "wow", label: "% к прошлой неделе", sortable: true, align: "right", render: (r) => <span className={r.wowPct >= 0 ? "text-emerald-400" : "text-red-400"}>{formatPct(r.wowPct)}</span>, csv: (r) => String(r.wowPct) },
+              { key: "wow", label: "% к прошлой неделе", sortable: true, align: "right", render: (r) => <span className={r.wowPct >= 0 ? "text-emerald-600" : "text-red-400"}>{formatPct(r.wowPct)}</span>, csv: (r) => String(r.wowPct) },
               { key: "top", label: "Лучший артикул", render: (r) => r.topArticle, csv: (r) => r.topArticle },
             ]}
             data={weekly}

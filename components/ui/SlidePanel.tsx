@@ -34,11 +34,11 @@ export function SlidePanel({
       aria-hidden={!open}
     >
       <div
-        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+        className="absolute inset-0 bg-black/40 backdrop-blur-sm"
         onClick={onClose}
       />
       <div
-        className={`fixed inset-y-0 right-0 flex h-full flex-col bg-slate-900 shadow-2xl transition-transform duration-300 ease-out ${
+        className={`fixed inset-y-0 right-0 flex h-full flex-col bg-white shadow-2xl transition-transform duration-300 ease-out ${
           fixedWidth
             ? "w-full"
             : narrow
@@ -56,7 +56,7 @@ export function SlidePanel({
           <>
             <button
               onClick={onClose}
-              className="absolute right-3 top-3 z-10 rounded-md p-1.5 text-slate-400 transition-colors hover:bg-slate-800 hover:text-slate-200"
+              className="absolute right-3 top-3 z-10 rounded-md p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
               aria-label="Закрыть"
             >
               <X className="h-5 w-5" />
@@ -65,13 +65,13 @@ export function SlidePanel({
           </>
         ) : (
           <>
-            <div className="flex shrink-0 items-start justify-between border-b border-slate-700/80 px-4 py-4 sm:px-6">
+            <div className="flex shrink-0 items-start justify-between border-b border-slate-200 px-4 py-4 sm:px-6">
               {header ?? (
-                <h2 className="text-lg font-semibold text-white">{title}</h2>
+                <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
               )}
               <button
                 onClick={onClose}
-                className="ml-4 shrink-0 rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-slate-800 hover:text-slate-200"
+                className="ml-4 shrink-0 rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
                 aria-label="Закрыть"
               >
                 <X className="h-5 w-5" />

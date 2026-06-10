@@ -246,10 +246,10 @@ export function DayDetailPanel({
   const dayNum = getDayNumber(dayInfo.date);
   const netClass =
     dayTotals.net > 0
-      ? "text-emerald-400"
+      ? "text-emerald-600"
       : dayTotals.net < 0
-        ? "text-red-400"
-        : "text-slate-300";
+        ? "text-red-600"
+        : "text-slate-500";
 
   const editingFlowType =
     editingPayment && editingPayment.amount < 0 ? "expense" : "income";
@@ -277,12 +277,12 @@ export function DayDetailPanel({
       title={formatDateLong(dayInfo.date)}
     >
       <div className="flex h-full flex-col">
-        <div className="flex items-center justify-between border-b border-slate-700 bg-slate-800/90 px-4 py-3 pr-12">
+        <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-4 py-3 pr-12">
           <div>
             <p className="text-[10px] uppercase tracking-wide text-slate-500">
               {formatDateLong(dayInfo.date).split(",")[0]}
             </p>
-            <p className="text-4xl font-bold leading-none text-white">{dayNum}</p>
+            <p className="text-4xl font-bold leading-none text-slate-900">{dayNum}</p>
           </div>
           <div className="text-right">
             <p className="text-[10px] text-slate-500">Сальдо за день</p>
@@ -292,36 +292,36 @@ export function DayDetailPanel({
           </div>
         </div>
 
-        <div className="flex items-center justify-between border-b border-emerald-800/40 bg-emerald-950/50 px-3 py-2 sm:px-4">
-          <span className="text-xs text-emerald-300/80 sm:text-sm">поступление</span>
-          <span className="text-sm font-bold tabular-nums text-emerald-400 sm:text-base">
+        <div className="flex items-center justify-between border-b border-emerald-100 bg-emerald-50 px-3 py-2 sm:px-4">
+          <span className="text-xs text-emerald-700 sm:text-sm">поступление</span>
+          <span className="text-sm font-bold tabular-nums text-emerald-600 sm:text-base">
             {formatMoney(dayTotals.income)}
           </span>
         </div>
-        <div className="flex items-center justify-between border-b border-red-800/40 bg-red-950/45 px-3 py-2 sm:px-4">
-          <span className="text-xs text-red-300/80 sm:text-sm">выбытие</span>
-          <span className="text-sm font-bold tabular-nums text-red-400 sm:text-base">
+        <div className="flex items-center justify-between border-b border-red-100 bg-red-50 px-3 py-2 sm:px-4">
+          <span className="text-xs text-red-700 sm:text-sm">выбытие</span>
+          <span className="text-sm font-bold tabular-nums text-red-600 sm:text-base">
             {formatMoney(dayTotals.expense)}
           </span>
         </div>
 
         {showQuickAddChooser && (
-          <div className="border-b border-slate-700 bg-slate-800/60 p-3">
-            <p className="mb-2 text-xs font-medium text-slate-300">
+          <div className="border-b border-slate-200 bg-violet-50 p-3">
+            <p className="mb-2 text-xs font-medium text-slate-700">
               Быстрое добавление
             </p>
             <div className="grid grid-cols-2 gap-2">
               <button
                 type="button"
                 onClick={openIncomeForm}
-                className="rounded border border-emerald-700/50 bg-emerald-950/40 px-2 py-2 text-xs font-medium text-emerald-400 hover:bg-emerald-950/60"
+                className="rounded-lg border border-emerald-200 bg-white px-2 py-2 text-xs font-medium text-emerald-700 hover:bg-emerald-50"
               >
                 + Поступление
               </button>
               <button
                 type="button"
                 onClick={openExpenseForm}
-                className="rounded border border-red-700/50 bg-red-950/40 px-2 py-2 text-xs font-medium text-red-400 hover:bg-red-950/60"
+                className="rounded-lg border border-red-200 bg-white px-2 py-2 text-xs font-medium text-red-700 hover:bg-red-50"
               >
                 + Списание
               </button>
@@ -329,14 +329,14 @@ export function DayDetailPanel({
           </div>
         )}
 
-        <div className="flex items-center border-b border-slate-600 bg-slate-800/40 px-2 py-1 text-[9px] font-medium uppercase tracking-wide text-slate-500 sm:px-3 sm:text-[10px]">
+        <div className="flex items-center border-b border-slate-200 bg-slate-50 px-2 py-1 text-[9px] font-medium uppercase tracking-wide text-slate-500 sm:px-3 sm:text-[10px]">
           <span className="w-[72px] shrink-0 text-right sm:w-[80px]">Сумма</span>
           <span className="min-w-0 flex-1 pl-2">Название</span>
           <span className="w-[56px] shrink-0 text-right sm:w-[64px]">Остаток</span>
           <span className="w-14 shrink-0" />
         </div>
 
-        <ul className="flex-1 overflow-y-auto bg-slate-100/5">
+        <ul className="flex-1 overflow-y-auto bg-white">
           {paymentRows.length === 0 &&
           !showIncomeForm &&
           !showExpenseForm &&
@@ -349,7 +349,7 @@ export function DayDetailPanel({
               editingPayment?.id === row.payment.id ? (
                 <li
                   key={row.payment.id}
-                  className="border-b border-slate-700/50 bg-slate-800 p-3"
+                  className="border-b border-slate-200 bg-slate-50 p-3"
                 >
                   <InlinePaymentForm
                     flowType={editingFlowType}
@@ -377,7 +377,7 @@ export function DayDetailPanel({
           )}
 
           {showIncomeForm && (
-            <li className="border-b border-slate-700/50 bg-slate-800 p-3">
+            <li className="border-b border-slate-200 bg-slate-50 p-3">
               <InlinePaymentForm
                 flowType="income"
                 date={date}
@@ -388,7 +388,7 @@ export function DayDetailPanel({
             </li>
           )}
           {showExpenseForm && (
-            <li className="border-b border-slate-700/50 bg-slate-800 p-3">
+            <li className="border-b border-slate-200 bg-slate-50 p-3">
               <InlinePaymentForm
                 flowType="expense"
                 date={date}
@@ -400,13 +400,13 @@ export function DayDetailPanel({
           )}
         </ul>
 
-        <div className="mt-auto space-y-2 border-t border-slate-700/80 bg-slate-900 p-3">
+        <div className="mt-auto space-y-2 border-t border-slate-200 bg-slate-50 p-3">
           {!showIncomeForm && !showExpenseForm && !editingPayment && (
             <>
               <button
                 type="button"
                 onClick={openIncomeForm}
-                className="flex w-full items-center justify-center gap-1.5 rounded border border-emerald-700/50 bg-emerald-950/30 px-3 py-2 text-xs font-medium text-emerald-400 transition-colors hover:bg-emerald-950/50 sm:text-sm"
+                className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-emerald-200 bg-white px-3 py-2 text-xs font-medium text-emerald-700 transition-colors hover:bg-emerald-50 sm:text-sm"
               >
                 <Plus className="h-4 w-4" />
                 Добавить поступление
@@ -414,7 +414,7 @@ export function DayDetailPanel({
               <button
                 type="button"
                 onClick={openExpenseForm}
-                className="flex w-full items-center justify-center gap-1.5 rounded border border-red-700/50 bg-red-950/30 px-3 py-2 text-xs font-medium text-red-400 transition-colors hover:bg-red-950/50 sm:text-sm"
+                className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-red-200 bg-white px-3 py-2 text-xs font-medium text-red-700 transition-colors hover:bg-red-50 sm:text-sm"
               >
                 <Plus className="h-4 w-4" />
                 Добавить списание

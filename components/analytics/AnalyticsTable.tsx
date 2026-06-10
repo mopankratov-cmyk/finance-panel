@@ -67,19 +67,19 @@ export function AnalyticsTable<T>({
 
   if (data.length === 0) {
     return (
-      <div className="rounded-xl border border-slate-700/80 bg-slate-800/40 py-12 text-center text-sm text-slate-500">
+      <div className="rounded-xl border border-slate-200 bg-white py-12 text-center text-sm text-slate-500 shadow-sm">
         {emptyMessage}
       </div>
     );
   }
 
   return (
-    <div className="rounded-xl border border-slate-700/80 bg-slate-800/40 overflow-hidden">
-      <div className="flex justify-end border-b border-slate-700/60 px-3 py-2">
+    <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className="flex justify-end border-b border-slate-100 px-3 py-2">
         <button
           type="button"
           onClick={handleExport}
-          className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs text-slate-400 hover:bg-slate-700 hover:text-slate-200"
+          className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs text-slate-500 hover:bg-slate-50 hover:text-slate-700"
         >
           <Download className="h-3.5 w-3.5" />
           CSV
@@ -87,14 +87,14 @@ export function AnalyticsTable<T>({
       </div>
       <div className="overflow-x-auto">
         <table className="w-full min-w-[640px] text-sm">
-          <thead className="sticky top-0 z-10 bg-slate-800">
-            <tr className="border-b border-slate-700/60 text-left text-xs text-slate-400">
+          <thead className="sticky top-0 z-10 bg-slate-50">
+            <tr className="border-b border-slate-200 text-left text-xs text-slate-500">
               {columns.map((col) => (
                 <th
                   key={col.key}
                   className={`px-3 py-2.5 font-medium whitespace-nowrap ${
                     col.align === "right" ? "text-right" : col.align === "center" ? "text-center" : ""
-                  } ${col.sortable ? "cursor-pointer hover:text-slate-200" : ""}`}
+                  } ${col.sortable ? "cursor-pointer hover:text-slate-800" : ""}`}
                   onClick={() => col.sortable && handleSort(col.key)}
                 >
                   {col.label}
@@ -103,17 +103,17 @@ export function AnalyticsTable<T>({
               ))}
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-700/40">
+          <tbody className="divide-y divide-slate-100">
             {sorted.map((row, i) => (
               <tr
                 key={i}
                 onClick={() => onRowClick?.(row)}
-                className={`hover:bg-slate-700/30 ${onRowClick ? "cursor-pointer" : ""} ${rowClassName?.(row) ?? ""}`}
+                className={`hover:bg-slate-50 ${onRowClick ? "cursor-pointer" : ""} ${rowClassName?.(row) ?? ""}`}
               >
                 {columns.map((col) => (
                   <td
                     key={col.key}
-                    className={`px-3 py-2 whitespace-nowrap ${
+                    className={`px-3 py-2 whitespace-nowrap text-slate-700 ${
                       col.align === "right" ? "text-right" : col.align === "center" ? "text-center" : ""
                     }`}
                   >

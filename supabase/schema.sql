@@ -75,3 +75,19 @@ create policy "Allow all access to product_costs"
   on public.product_costs for all
   using (true)
   with check (true);
+
+create table if not exists public.opiu_warehouse_costs (
+  entity text not null,
+  month text not null,
+  week_start date not null,
+  amount numeric not null default 0,
+  updated_at timestamptz not null default now(),
+  primary key (entity, month, week_start)
+);
+
+alter table public.opiu_warehouse_costs enable row level security;
+
+create policy "Allow all access to opiu_warehouse_costs"
+  on public.opiu_warehouse_costs for all
+  using (true)
+  with check (true);
