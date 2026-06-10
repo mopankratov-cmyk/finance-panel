@@ -25,7 +25,6 @@ interface CacheRow {
 }
 
 const COMPRESS_THRESHOLD = 8_000;
-/** PostgREST responses time out when batching large jsonb rows */
 const READ_CHUNK = 1;
 
 function restConfig(): { url: string; key: string } | null {
@@ -48,7 +47,17 @@ function isCompressed(value: unknown): value is CompressedPayload {
   );
 }
 
+function isPartPayload(value: unknown): boolean {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "__part" in value &&
+    (value as { __part: boolean }).__part === true
+  );
+}
+
 function encodeForStorage<T>(value: T): T | CompressedPayload {
+  if (isPartPayload(value)) return value;
   const json = JSON.stringify(value);
   if (json.length < COMPRESS_THRESHOLD) return value;
   return {
@@ -153,16 +162,23 @@ async function restSelect(keys: string[]): Promise<CacheRow[]> {
   const quoted = keys.map((k) => `"${k.replace(/"/g, '\\"')}"`).join(",");
   const path = `/rest/v1/wb_cache?select=key,data,cached_at&key=in.(${quoted})`;
 
-  const res = await httpsJson("GET", path, cfg);
-  if (!res.ok) {
-    console.error("[wb_cache] REST read failed:", res.status, res.text.slice(0, 200));
-    return [];
+  for (let attempt = 0; attempt < 4; attempt++) {
+    if (attempt > 0) await sleep(1000 * attempt);
+    const res = await httpsJson("GET", path, cfg);
+    if (res.ok) {
+      try {
+        return JSON.parse(res.text) as CacheRow[];
+      } catch {
+        return [];
+      }
+    }
+    console.error(
+      "[wb_cache] REST read failed:",
+      res.status,
+      res.text.slice(0, 200),
+    );
   }
-  try {
-    return JSON.parse(res.text) as CacheRow[];
-  } catch {
-    return [];
-  }
+  return [];
 }
 
 export async function getCached<T>(key: string): Promise<T | null> {

@@ -1,4 +1,5 @@
 import { getCachedBatch } from "./cache";
+import { resolveLargeCacheFromCandidates } from "./largeCache";
 import {
   legacyAdStatsKeys,
   legacyAdsKeys,
@@ -50,15 +51,7 @@ function latestTimestamp(
 async function loadRows<T>(
   candidates: string[],
 ): Promise<{ data: T[]; cached_at: string } | undefined> {
-  const unique = [...new Set(candidates)];
-  const batch = await getCachedBatch<T[]>(unique);
-  for (const key of unique) {
-    const hit = batch.get(key);
-    if (hit && hit.data.length > 0) {
-      return { data: hit.data, cached_at: hit.cached_at };
-    }
-  }
-  return undefined;
+  return resolveLargeCacheFromCandidates<T>(candidates);
 }
 
 export async function readWbCache(
