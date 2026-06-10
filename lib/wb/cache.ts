@@ -1,8 +1,8 @@
 import { gunzipSync, gzipSync } from "node:zlib";
 import { Agent, request as httpsRequest } from "node:https";
+import { supabase } from "@/lib/supabase";
 
 const httpsAgent = new Agent({ keepAlive: true, maxSockets: 1 });
-import { supabase } from "@/lib/supabase";
 
 export function cacheKey(parts: string[]): string {
   return parts.join(":");
@@ -25,6 +25,8 @@ interface CacheRow {
 }
 
 const COMPRESS_THRESHOLD = 8_000;
+/** PostgREST responses time out when batching large jsonb rows */
+const READ_CHUNK = 1;
 
 function restConfig(): { url: string; key: string } | null {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -184,9 +186,8 @@ export async function getCachedBatch<T>(
   const unique = [...new Set(keys)];
 
   if (restConfig()) {
-    const CHUNK = 25;
-    for (let i = 0; i < unique.length; i += CHUNK) {
-      const rows = await restSelect(unique.slice(i, i + CHUNK));
+    for (let i = 0; i < unique.length; i += READ_CHUNK) {
+      const rows = await restSelect(unique.slice(i, i + READ_CHUNK));
       for (const row of rows) {
         map.set(row.key, {
           data: decodeFromStorage<T>(row.data),
