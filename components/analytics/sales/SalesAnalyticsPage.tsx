@@ -62,7 +62,7 @@ export function SalesAnalyticsPage(_props: SalesAnalyticsPageProps) {
     return { from: toISODate(from), to: toISODate(to) };
   });
 
-  const { sales, orders, loading, error, timestamp, refresh } = useWbData(range.from, range.to);
+  const { sales, orders, loading, syncing, error, empty, timestamp, refresh } = useWbData(range.from, range.to);
   const { costs, setCost } = useProductCosts();
   const prevRange = useMemo(() => getPreviousRange(range), [range]);
 
@@ -168,8 +168,10 @@ export function SalesAnalyticsPage(_props: SalesAnalyticsPageProps) {
     <AnalyticsShell
       title="Аналитика продаж"
       subtitle="Выручка, выкуп, маржинальность и ABC по данным WB"
-      timestamp={timestamp}
+      timestamp={timestamp || undefined}
       loading={loading}
+      syncing={syncing}
+      empty={empty}
       error={error}
       onRefresh={refresh}
       toolbar={<DateRangeSelector range={range} onChange={setRange} />}

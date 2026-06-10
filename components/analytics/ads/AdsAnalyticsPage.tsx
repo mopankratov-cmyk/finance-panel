@@ -54,7 +54,7 @@ export function AdsAnalyticsPage() {
     return { from: toISODate(from), to: toISODate(to) };
   });
 
-  const { sales, orders, adStats, loading, error, timestamp, refresh } = useWbData(range.from, range.to);
+  const { sales, orders, adStats, loading, syncing, error, empty, timestamp, refresh } = useWbData(range.from, range.to);
   const prevRange = useMemo(() => getPreviousRange(range), [range]);
   const revenue = useMemo(
     () => computeExecutiveSummary(sales, orders, range, prevRange).revenue,
@@ -92,8 +92,10 @@ export function AdsAnalyticsPage() {
     <AnalyticsShell
       title="Аналитика рекламы"
       subtitle="CPO, ДРР, ROAS и эффективность кампаний WB"
-      timestamp={timestamp}
+      timestamp={timestamp || undefined}
       loading={loading}
+      syncing={syncing}
+      empty={empty}
       error={error}
       onRefresh={refresh}
       toolbar={<DateRangeSelector range={range} onChange={setRange} />}
@@ -144,7 +146,7 @@ export function AdsAnalyticsPage() {
 
       <section>
         <h2 className="mb-3 text-lg font-semibold text-white">Кампании</h2>
-        {loading ? <TableSkeleton /> : <AnalyticsTable columns={campaignColumns} data={campaigns} filename="campaigns.csv" emptyMessage="Нет данных по кампаниям. Проверьте WB_API_TOKEN и доступ к рекламе." />}
+        {loading ? <TableSkeleton /> : <AnalyticsTable columns={campaignColumns} data={campaigns} filename="campaigns.csv" emptyMessage="Нет данных по кампаниям. Проверьте WB_TOKEN_ADVERT и доступ к рекламе." />}
       </section>
 
       <section>

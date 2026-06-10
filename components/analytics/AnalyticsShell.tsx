@@ -9,6 +9,8 @@ interface AnalyticsShellProps {
   subtitle?: string;
   timestamp?: string;
   loading?: boolean;
+  syncing?: boolean;
+  empty?: boolean;
   error?: string | null;
   onRefresh?: () => void;
   toolbar?: ReactNode;
@@ -20,6 +22,8 @@ export function AnalyticsShell({
   subtitle,
   timestamp,
   loading,
+  syncing,
+  empty,
   error,
   onRefresh,
   toolbar,
@@ -43,10 +47,10 @@ export function AnalyticsShell({
             <button
               type="button"
               onClick={onRefresh}
-              disabled={loading}
+              disabled={loading || syncing}
               className="inline-flex items-center gap-2 rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-sm text-slate-200 hover:bg-slate-700 disabled:opacity-50"
             >
-              <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+              <RefreshCw className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} />
               Обновить
             </button>
           )}
@@ -68,7 +72,15 @@ export function AnalyticsShell({
         </div>
       )}
 
-      {children}
+      {!loading && empty && !error ? (
+        <div className="rounded-xl border border-slate-700 bg-slate-800/50 p-6 text-center">
+          <p className="text-sm text-slate-300">
+            Данных нет. Нажмите «Обновить» для загрузки из Wildberries.
+          </p>
+        </div>
+      ) : (
+        children
+      )}
     </div>
   );
 }

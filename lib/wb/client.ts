@@ -1,6 +1,14 @@
-import type { WbAdCount, WbAdStat, WbApiResponse, WbOrder, WbReportRow, WbStock } from "./types";
+import {
+  extractAdvertIds,
+  type WbAdStat,
+  type WbAdvertsResponse,
+  type WbApiResponse,
+  type WbOrder,
+  type WbReportRow,
+  type WbStock,
+} from "./types";
 
-const TIMEOUT_MS = 15000;
+const TIMEOUT_MS = 60000;
 
 async function fetchApi<T>(path: string, init?: RequestInit): Promise<WbApiResponse<T>> {
   const controller = new AbortController();
@@ -33,15 +41,19 @@ export async function fetchStocks(): Promise<WbApiResponse<WbStock[]>> {
   return fetchApi("/api/wb/stocks");
 }
 
-export async function fetchAds(): Promise<WbApiResponse<WbAdCount>> {
+export async function fetchAds(): Promise<WbApiResponse<WbAdvertsResponse>> {
   return fetchApi("/api/wb/ads");
 }
 
-export async function fetchAdsStat(ids: number[]): Promise<WbApiResponse<WbAdStat[]>> {
+export async function fetchAdsStat(
+  ids: number[],
+  beginDate: string,
+  endDate: string,
+): Promise<WbApiResponse<WbAdStat[]>> {
   return fetchApi("/api/wb/ads-stat", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(ids),
+    body: JSON.stringify({ ids, beginDate, endDate }),
   });
 }
 
@@ -63,14 +75,9 @@ export async function fetchAllWbData(dateFrom: string, dateTo: string) {
     error: null,
     timestamp: new Date().toISOString(),
   };
-  const advertIds: number[] = [];
-  ads.data?.adverts?.forEach((a: { advert_list?: { advertId?: number }[] }) =>
-    a.advert_list?.forEach((ad) => {
-      if (ad.advertId) advertIds.push(ad.advertId);
-    }),
-  );
+  const advertIds = extractAdvertIds(ads.data);
   if (advertIds.length > 0) {
-    adStats = await fetchAdsStat(advertIds.slice(0, 50));
+    adStats = await fetchAdsStat(advertIds.slice(0, 50), dateFrom, dateTo);
   }
 
   const timestamps = [sales.timestamp, orders.timestamp, stocks.timestamp, ads.timestamp, adStats.timestamp];
@@ -81,7 +88,7 @@ export async function fetchAllWbData(dateFrom: string, dateTo: string) {
     sales: (sales.data as WbReportRow[]) ?? [],
     orders: (orders.data as WbOrder[]) ?? [],
     stocks: (stocks.data as WbStock[]) ?? [],
-    ads: ads.data as WbAdCount | null,
+    ads: ads.data,
     adStats: (adStats.data as WbAdStat[]) ?? [],
     error,
     timestamp: latest,

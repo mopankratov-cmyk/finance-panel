@@ -1,46 +1,114 @@
 import { getCached, setCache, cacheKey } from "./cache";
 import type { WbApiResponse } from "./types";
 
-const WB_TOKEN = process.env.WB_API_TOKEN;
+const WB_TOKEN_STATISTICS = process.env.WB_TOKEN_STATISTICS;
+const WB_TOKEN_ADVERT = process.env.WB_TOKEN_ADVERT;
 const TIMEOUT_MS = 60000;
+const RETRY_STATUSES = [502, 503, 504];
+const MAX_RETRIES = 3;
+const RETRY_DELAY_MS = 2000;
 
-export function wbHeaders(): HeadersInit {
+function isAdvertApi(url: string): boolean {
+  try {
+    return new URL(url).hostname === "advert-api.wildberries.ru";
+  } catch {
+    return false;
+  }
+}
+
+function getWbToken(url: string): string | undefined {
+  return isAdvertApi(url) ? WB_TOKEN_ADVERT : WB_TOKEN_STATISTICS;
+}
+
+function tokenEnvName(url: string): string {
+  return isAdvertApi(url) ? "WB_TOKEN_ADVERT" : "WB_TOKEN_STATISTICS";
+}
+
+export function wbHeaders(url: string): HeadersInit {
   return {
-    Authorization: WB_TOKEN ?? "",
+    Authorization: getWbToken(url) ?? "",
     "Content-Type": "application/json",
   };
+}
+
+async function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function fetchWithRetry(
+  url: string,
+  options: RequestInit,
+): Promise<Response> {
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    if (attempt > 0) {
+      await sleep(RETRY_DELAY_MS * attempt);
+    }
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+
+    try {
+      const res = await fetch(url, {
+        ...options,
+        signal: controller.signal,
+      });
+      clearTimeout(timer);
+
+      if (RETRY_STATUSES.includes(res.status)) {
+        lastError = new Error(`WB API ${res.status}`);
+        continue;
+      }
+
+      return res;
+    } catch (err) {
+      clearTimeout(timer);
+      lastError = err instanceof Error ? err : new Error("Unknown error");
+      if (lastError.message.includes("abort")) break;
+    }
+  }
+
+  throw lastError ?? new Error("Max retries exceeded");
+}
+
+export interface WbFetchOptions {
+  /** Не читать кэш перед запросом (для cron/sync) */
+  skipCacheRead?: boolean;
 }
 
 export async function wbFetch<T>(
   url: string,
   options: RequestInit = {},
   cacheParts?: string[],
+  fetchOptions: WbFetchOptions = {},
 ): Promise<WbApiResponse<T>> {
   const timestamp = new Date().toISOString();
-  if (!WB_TOKEN) {
+  const token = getWbToken(url);
+
+  if (!token) {
+    const envName = tokenEnvName(url);
     return {
       data: null,
-      error: "WB_API_TOKEN не настроен. Добавьте токен в .env.local",
+      error: `${envName} не настроен. Добавьте токен в .env.local`,
       timestamp,
     };
   }
+
   const key = cacheParts ? cacheKey(cacheParts) : null;
-  if (key) {
+  if (key && !fetchOptions.skipCacheRead) {
     const cached = await getCached<T>(key);
     if (cached) {
       return { data: cached, error: null, timestamp };
     }
   }
+
   try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
-    const res = await fetch(url, {
+    const res = await fetchWithRetry(url, {
       ...options,
-      headers: { ...wbHeaders(), ...options.headers },
-      next: { revalidate: 3600 },
-      signal: controller.signal,
+      headers: { ...wbHeaders(url), ...options.headers },
     });
-    clearTimeout(timer);
+
     if (!res.ok) {
       const text = await res.text();
       return {
@@ -49,6 +117,7 @@ export async function wbFetch<T>(
         timestamp,
       };
     }
+
     const data = (await res.json()) as T;
     if (key) await setCache(key, data);
     return { data, error: null, timestamp };
@@ -57,7 +126,9 @@ export async function wbFetch<T>(
     const isTimeout = msg.includes("abort") || msg.includes("AbortError");
     return {
       data: null,
-      error: isTimeout ? "WB API не ответил за 60 секунд. Попробуйте позже." : msg,
+      error: isTimeout
+        ? "WB API не ответил за 60 секунд. Попробуйте позже."
+        : msg,
       timestamp,
     };
   }

@@ -64,13 +64,39 @@ export interface WbStock {
   [key: string]: unknown;
 }
 
-export interface WbAdCount {
-  adverts?: Array<{
-    type?: number;
-    status?: number;
-    count?: number;
-    advert_list?: Array<{ advertId?: number }>;
-  }>;
+export interface WbAdvertItem {
+  id?: number;
+  advertId?: number;
+  type?: number;
+  status?: number;
+  count?: number;
+  settings?: { name?: string };
+  advert_list?: Array<{ advertId?: number; changeTime?: string }>;
+  [key: string]: unknown;
+}
+
+/** Ответ GET /api/advert/v2/adverts или legacy GET /adv/v1/promotion/count */
+export interface WbAdvertsResponse {
+  adverts?: WbAdvertItem[];
+  all?: number;
+}
+
+/** @deprecated используйте WbAdvertsResponse */
+export type WbAdCount = WbAdvertsResponse;
+
+export function extractAdvertIds(ads: WbAdvertsResponse | null | undefined): number[] {
+  if (!ads?.adverts) return [];
+  const ids: number[] = [];
+  for (const item of ads.adverts) {
+    if (typeof item.id === "number") ids.push(item.id);
+    else if (typeof item.advertId === "number") ids.push(item.advertId);
+    else {
+      item.advert_list?.forEach((ad) => {
+        if (ad.advertId) ids.push(ad.advertId);
+      });
+    }
+  }
+  return [...new Set(ids)];
 }
 
 export interface WbAdStat {

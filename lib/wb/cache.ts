@@ -1,25 +1,49 @@
 import { supabase } from "@/lib/supabase";
 
-const TTL_HOURS = 24;
-
 export function cacheKey(parts: string[]): string {
   return parts.join(":");
 }
 
+export interface CachedEntry<T> {
+  data: T;
+  cached_at: string;
+}
+
 export async function getCached<T>(key: string): Promise<T | null> {
+  const entry = await getCachedWithMeta<T>(key);
+  return entry?.data ?? null;
+}
+
+export async function getCachedWithMeta<T>(
+  key: string,
+): Promise<CachedEntry<T> | null> {
+  const batch = await getCachedBatch<T>([key]);
+  return batch.get(key) ?? null;
+}
+
+export async function getCachedBatch<T>(
+  keys: string[],
+): Promise<Map<string, CachedEntry<T>>> {
+  const map = new Map<string, CachedEntry<T>>();
+  if (keys.length === 0) return map;
+
   try {
     const { data, error } = await supabase
       .from("wb_cache")
-      .select("data, cached_at")
-      .eq("key", key)
-      .single();
-    if (error || !data) return null;
-    const age = Date.now() - new Date(data.cached_at).getTime();
-    if (age > TTL_HOURS * 60 * 60 * 1000) return null;
-    return data.data as T;
+      .select("key, data, cached_at")
+      .in("key", keys);
+    if (error || !data) return map;
+
+    for (const row of data) {
+      map.set(row.key, {
+        data: row.data as T,
+        cached_at: row.cached_at,
+      });
+    }
   } catch {
-    return null;
+    // ignore
   }
+  return map;
 }
 
 export async function setCache<T>(key: string, value: T): Promise<void> {

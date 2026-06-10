@@ -9,7 +9,7 @@ export async function GET(request: NextRequest) {
   if (!dateFrom) {
     const d = new Date();
     d.setDate(d.getDate() - 30);
-    dateFrom = d.toISOString();
+    dateFrom = d.toISOString().split("T")[0];
   }
 
   const url = new URL(

@@ -7,8 +7,6 @@ const PRESETS = [
   { label: "7д", days: 7 },
   { label: "14д", days: 14 },
   { label: "30д", days: 30 },
-  { label: "60д", days: 60 },
-  { label: "90д", days: 90 },
 ];
 
 interface DateRangeSelectorProps {

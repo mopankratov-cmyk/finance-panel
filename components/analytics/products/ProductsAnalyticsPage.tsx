@@ -47,7 +47,7 @@ export function ProductsAnalyticsPage() {
     return { from: toISODate(from), to: toISODate(to) };
   });
 
-  const { sales, stocks, loading, error, timestamp, refresh } = useWbData(range.from, range.to);
+  const { sales, stocks, loading, syncing, error, empty, timestamp, refresh } = useWbData(range.from, range.to);
   const { costs } = useProductCosts();
 
   const stockRows = useMemo(
@@ -73,8 +73,10 @@ export function ProductsAnalyticsPage() {
     <AnalyticsShell
       title="Товары и остатки"
       subtitle="Контроль запасов, дозаказ и замороженные деньги"
-      timestamp={timestamp}
+      timestamp={timestamp || undefined}
       loading={loading}
+      syncing={syncing}
+      empty={empty}
       error={error}
       onRefresh={refresh}
       toolbar={<DateRangeSelector range={range} onChange={setRange} />}
