@@ -3,24 +3,15 @@
 import {
   BarChart3,
   Bot,
-  Calculator,
   Calendar,
   FlaskConical,
   ChevronDown,
   CreditCard,
-  Filter,
   Landmark,
-  Layers,
   LayoutDashboard,
   LineChart,
-  Search,
-  Megaphone,
   Menu,
-  Palette,
   RefreshCw,
-  Target,
-  TestTube,
-  ListTodo,
   Truck,
   Wallet,
   X,
@@ -55,16 +46,6 @@ const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
-    id: "analytics",
-    label: "Аналитика",
-    items: [
-      { href: "/analytics/funnel", label: "Воронка", icon: Filter },
-      { href: "/analytics/ctrtest", label: "CTR-тесты", icon: TestTube },
-      { href: "/analytics/seo", label: "SEO", icon: Search },
-      { href: "/analytics/design", label: "Дизайн-эффекты", icon: Palette },
-    ],
-  },
-  {
     id: "system",
     label: "Система",
     items: [
@@ -90,7 +71,6 @@ export function Sidebar() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
     finance: true,
-    analytics: true,
     system: true,
   });
 
