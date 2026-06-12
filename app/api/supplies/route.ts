@@ -82,7 +82,41 @@ export async function GET() {
     const warehouses = [...whMap.values()].sort((a, b) => b.quantity - a.quantity);
 
     skus.sort((a, b) => b.need45 - a.need45);
-    return NextResponse.json({ data: { skus, warehouses }, error: null });
+
+    // --- Контракт inferno-вкладки «Поставки» (top-level) ---
+    // Раскладка по складам строится из загруженной «готовой тары» (xlsx) — это отложенный
+    // ручной flow (тара/WMS/МойСклад, см. docs/отложено.md). Без тары список SKU пуст,
+    // показываем целевые склады с долями по фактическому остатку wb_stocks.
+    const totalQty = warehouses.reduce((a, w) => a + w.quantity, 0);
+    let acc = 0;
+    const whInferno = warehouses.map((w, i) => {
+      let pct: number;
+      if (i === warehouses.length - 1) pct = Math.max(0, 100 - acc);
+      else { pct = totalQty > 0 ? Math.round((w.quantity / totalQty) * 100) : 0; acc += pct; }
+      return { name: w.warehouse, pct: pct ? pct + "%" : "" };
+    });
+    const wbStockTotal = warehouses.reduce((a, w) => a + w.quantity, 0);
+
+    return NextResponse.json({
+      data: { skus, warehouses },
+      error: null,
+      // inferno top-level
+      warehouses: whInferno,
+      skus: [],
+      totals: { wb_stock: wbStockTotal, available: 0, qty: whInferno.map(() => 0) },
+      threshold: 30,
+      whEcon: [],
+      wb_wh: warehouses.length ? { updated_at: null, count: skus.length } : null,
+      tara: null,
+      restrictions_meta: null,
+      wms: null,
+      wb_supply_nums: {},
+      wms_orders: {},
+      coverage: null,
+      pallet_liters: 1230,
+      vol_known: 0,
+      vol_total: skus.length,
+    });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Unknown error";
     return NextResponse.json({ data: null, error: msg }, { status: 500 });
