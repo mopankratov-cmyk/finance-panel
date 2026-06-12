@@ -2,16 +2,22 @@
 
 import {
   BarChart3,
+  Bot,
+  Calculator,
   Calendar,
+  FlaskConical,
   ChevronDown,
   CreditCard,
+  Filter,
   Landmark,
   LayoutDashboard,
   LineChart,
   Megaphone,
   Menu,
   Package,
+  RefreshCw,
   ShoppingCart,
+  Truck,
   Wallet,
   Warehouse,
   X,
@@ -42,16 +48,29 @@ const NAV_GROUPS: NavGroup[] = [
       { href: "/accounts", label: "Счета", icon: Wallet },
       { href: "/loans", label: "Кредиты", icon: Landmark },
       { href: "/opiu", label: "ОПиУ", icon: LineChart },
+      { href: "/unit", label: "Юнит-экономика", icon: Calculator },
+      { href: "/supplies", label: "Закупки", icon: Truck },
     ],
   },
   {
     id: "analytics",
     label: "Аналитика",
     items: [
+      { href: "/analytics/rnp", label: "РНП", icon: BarChart3 },
+      { href: "/analytics/funnel", label: "Воронка", icon: Filter },
       { href: "/analytics/sales", label: "Продажи", icon: ShoppingCart },
       { href: "/analytics/ads", label: "Реклама", icon: Megaphone },
       { href: "/analytics/products", label: "Товары", icon: Package },
       { href: "/analytics/warehouse", label: "Склад", icon: Warehouse },
+    ],
+  },
+  {
+    id: "system",
+    label: "Система",
+    items: [
+      { href: "/agent", label: "AI-агент", icon: Bot },
+      { href: "/content", label: "Контент-лаб", icon: FlaskConical },
+      { href: "/sync", label: "Синхронизация", icon: RefreshCw },
     ],
   },
 ];
@@ -72,6 +91,7 @@ export function Sidebar() {
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
     finance: true,
     analytics: true,
+    system: true,
   });
 
   useEffect(() => {

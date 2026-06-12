@@ -1,5 +1,5 @@
-import { DashboardPage } from "@/components/dashboard/DashboardPage";
+import { ModulesHome } from "@/components/dashboard/ModulesHome";
 
 export default function Home() {
-  return <DashboardPage />;
+  return <ModulesHome />;
 }

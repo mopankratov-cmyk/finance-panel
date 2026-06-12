@@ -10,21 +10,37 @@ interface OpiuResponse {
   month: string;
   report: OpiuReport;
   timestamp: string;
+  meta?: {
+    salesRows: number;
+    ordersCount: number;
+    costsCount: number;
+    adCampaigns: number;
+  };
   error?: string;
 }
 
-function valueClass(value: number | null, kind: OpiuTableRow["kind"]): string {
-  if (value == null || kind === "separator") return "text-slate-400";
-  if (kind === "percent") return "text-slate-400";
+function valueClass(
+  value: number | null,
+  row: Pick<OpiuTableRow, "kind" | "expense" | "id">,
+): string {
+  if (value == null || row.kind === "separator") return "text-slate-400";
+  if (row.kind === "percent") return "text-slate-400";
+  if (row.expense) return value > 0 ? "text-red-400" : value < 0 ? "text-emerald-400" : "text-slate-300";
+  if (row.id === "marginal" || row.id === "gross") {
+    if (value > 0) return "text-emerald-400";
+    if (value < 0) return "text-red-400";
+    return "text-slate-300";
+  }
   if (value > 0) return "text-emerald-400";
   if (value < 0) return "text-red-400";
   return "text-slate-300";
 }
 
-function formatCell(value: number | null, kind: OpiuTableRow["kind"]): string {
+function formatCell(value: number | null, row: Pick<OpiuTableRow, "kind" | "expense">): string {
   if (value == null) return "—";
-  if (kind === "percent") return formatPct(value);
-  return formatRub(value);
+  if (row.kind === "percent") return formatPct(value);
+  const display = row.expense ? Math.abs(value) : value;
+  return formatRub(display);
 }
 
 function OpiuTableSkeleton({ cols }: { cols: number }) {
@@ -166,6 +182,14 @@ export function OpiuPage() {
       {data?.timestamp && !loading && (
         <p className="text-xs text-slate-400">
           Данные WB: {formatTime(data.timestamp)}
+          {data.meta && (
+            <>
+              {" · "}
+              строк отчёта: {data.meta.salesRows.toLocaleString("ru-RU")}, заказов:{" "}
+              {data.meta.ordersCount.toLocaleString("ru-RU")}, себестоимостей:{" "}
+              {data.meta.costsCount}
+            </>
+          )}
         </p>
       )}
 
@@ -254,18 +278,18 @@ export function OpiuPage() {
                           key={week?.weekStart ?? i}
                           className={`px-3 py-2.5 text-right tabular-nums ${
                             isPercent ? "text-xs" : ""
-                          } ${valueClass(val, row.kind)}`}
+                          } ${valueClass(val, row)}`}
                         >
-                          {formatCell(val, row.kind)}
+                          {formatCell(val, row)}
                         </td>
                       );
                     })}
                     <td
                       className={`px-4 py-2.5 text-right font-bold tabular-nums ${
                         isPercent ? "text-xs" : ""
-                      } ${valueClass(row.values[row.values.length - 1] ?? null, row.kind)}`}
+                      } ${valueClass(row.values[row.values.length - 1] ?? null, row)}`}
                     >
-                      {formatCell(row.values[row.values.length - 1] ?? null, row.kind)}
+                      {formatCell(row.values[row.values.length - 1] ?? null, row)}
                     </td>
                   </tr>
                 );

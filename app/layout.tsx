@@ -1,18 +1,13 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { GeistSans } from "geist/font/sans";
+import { GeistMono } from "geist/font/mono";
 import { AppLayout } from "@/components/AppLayout";
 import { FinanceProvider } from "@/components/providers/FinanceProvider";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin", "cyrillic"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
+// Локальные шрифты geist (Vercel) — без обращения к Google Fonts на сборке.
+const geistSans = GeistSans;
+const geistMono = GeistMono;
 
 export const metadata: Metadata = {
   title: "Финансы МП — Панель управления",

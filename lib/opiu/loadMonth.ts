@@ -1,6 +1,6 @@
 import { wbFetch } from "@/lib/wb/fetch";
-import { extractAdvertIds, type WbAdStat, type WbAdvertsResponse, type WbOrder, type WbReportRow } from "@/lib/wb/types";
-import { SALES_LIMIT } from "@/lib/wb/keys";
+import { fetchSalesReport } from "@/lib/wb/fetchSalesReport";
+import { extractAdvertIds, type WbAdStat, type WbAdvertsResponse, type WbOrder } from "@/lib/wb/types";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { supabase } from "@/lib/supabase";
 import { OPIU_ENTITY } from "./constants";
@@ -8,21 +8,11 @@ import { buildOpiuReport, type OpiuReport } from "./buildReport";
 import { weeksInMonth, type MonthWeek } from "./weeks";
 import type { ProductCostRow } from "./metrics";
 
-async function fetchSales(dateFrom: string, dateTo: string, refresh: boolean): Promise<WbReportRow[]> {
-  const url = new URL(
-    "https://statistics-api.wildberries.ru/api/v5/supplier/reportDetailByPeriod",
-  );
-  url.searchParams.set("dateFrom", dateFrom);
-  url.searchParams.set("dateTo", dateTo);
-  url.searchParams.set("limit", SALES_LIMIT);
-  url.searchParams.set("rrdid", "0");
-
-  const res = await wbFetch<WbReportRow[]>(url.toString(), { method: "GET" }, { refresh });
-  if (res.error) throw new Error(res.error);
-  return res.data ?? [];
-}
-
-async function fetchOrders(dateFrom: string, refresh: boolean): Promise<WbOrder[]> {
+async function fetchOrders(
+  dateFrom: string,
+  dateTo: string,
+  refresh: boolean,
+): Promise<WbOrder[]> {
   const url = new URL(
     "https://statistics-api.wildberries.ru/api/v1/supplier/orders",
   );
@@ -31,7 +21,10 @@ async function fetchOrders(dateFrom: string, refresh: boolean): Promise<WbOrder[
 
   const res = await wbFetch<WbOrder[]>(url.toString(), { method: "GET" }, { refresh });
   if (res.error) throw new Error(res.error);
-  return res.data ?? [];
+  return (res.data ?? []).filter((o) => {
+    const d = String(o.date ?? "").slice(0, 10);
+    return d >= dateFrom && d <= dateTo;
+  });
 }
 
 async function fetchAdStats(
@@ -44,17 +37,23 @@ async function fetchAdStats(
     { method: "GET" },
     { refresh },
   );
-  const ids = extractAdvertIds(adsRes.data).slice(0, 50);
+  const ids = extractAdvertIds(adsRes.data);
   if (!ids.length) return [];
 
-  const statUrl = new URL("https://advert-api.wildberries.ru/adv/v3/fullstats");
-  statUrl.searchParams.set("ids", ids.join(","));
-  statUrl.searchParams.set("beginDate", dateFrom);
-  statUrl.searchParams.set("endDate", dateTo);
+  const stats: WbAdStat[] = [];
+  const chunkSize = 50;
+  for (let i = 0; i < ids.length; i += chunkSize) {
+    const batch = ids.slice(i, i + chunkSize);
+    const statUrl = new URL("https://advert-api.wildberries.ru/adv/v3/fullstats");
+    statUrl.searchParams.set("ids", batch.join(","));
+    statUrl.searchParams.set("beginDate", dateFrom);
+    statUrl.searchParams.set("endDate", dateTo);
 
-  const res = await wbFetch<WbAdStat[]>(statUrl.toString(), { method: "GET" }, { refresh });
-  if (res.error) throw new Error(res.error);
-  return res.data ?? [];
+    const res = await wbFetch<WbAdStat[]>(statUrl.toString(), { method: "GET" }, { refresh });
+    if (res.error) throw new Error(res.error);
+    if (res.data?.length) stats.push(...res.data);
+  }
+  return stats;
 }
 
 async function fetchProductCosts(): Promise<ProductCostRow[]> {
@@ -97,11 +96,18 @@ async function fetchWarehouseCosts(
   return map;
 }
 
+export interface OpiuLoadMeta {
+  salesRows: number;
+  ordersCount: number;
+  costsCount: number;
+  adCampaigns: number;
+}
+
 export async function loadOpiuMonth(
   year: number,
   monthIndex: number,
   refresh = false,
-): Promise<{ month: string; report: OpiuReport; timestamp: string }> {
+): Promise<{ month: string; report: OpiuReport; timestamp: string; meta: OpiuLoadMeta }> {
   const month = `${year}-${String(monthIndex + 1).padStart(2, "0")}`;
   const weeks = weeksInMonth(year, monthIndex);
   if (weeks.length === 0) {
@@ -109,6 +115,7 @@ export async function loadOpiuMonth(
       month,
       report: { weeks: [], rows: [], warehouseByWeek: {} },
       timestamp: new Date().toISOString(),
+      meta: { salesRows: 0, ordersCount: 0, costsCount: 0, adCampaigns: 0 },
     };
   }
 
@@ -116,8 +123,8 @@ export async function loadOpiuMonth(
   const dateTo = weeks[weeks.length - 1]!.rangeTo;
 
   const [sales, orders, adStats, costs, warehouseByWeek] = await Promise.all([
-    fetchSales(dateFrom, dateTo, refresh),
-    fetchOrders(dateFrom, refresh),
+    fetchSalesReport(dateFrom, dateTo, refresh),
+    fetchOrders(dateFrom, dateTo, refresh),
     fetchAdStats(dateFrom, dateTo, refresh),
     fetchProductCosts(),
     fetchWarehouseCosts(month, weeks),
@@ -125,7 +132,17 @@ export async function loadOpiuMonth(
 
   const report = buildOpiuReport(weeks, sales, orders, adStats, costs, warehouseByWeek);
 
-  return { month, report, timestamp: new Date().toISOString() };
+  return {
+    month,
+    report,
+    timestamp: new Date().toISOString(),
+    meta: {
+      salesRows: sales.length,
+      ordersCount: orders.length,
+      costsCount: costs.length,
+      adCampaigns: adStats.length,
+    },
+  };
 }
 
 export async function saveWarehouseCost(

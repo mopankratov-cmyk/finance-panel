@@ -11,6 +11,8 @@ export interface WbReportRow {
   create_dt?: string;
   order_dt?: string;
   sale_dt?: string;
+  rr_dt?: string;
+  rrd_id?: number;
   nm_id?: number;
   subject_name?: string;
   brand_name?: string;

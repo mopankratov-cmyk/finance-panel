@@ -15,6 +15,8 @@ export interface OpiuTableRow {
   kind: OpiuRowKind;
   values: (number | null)[];
   editable?: boolean;
+  /** Расходная строка — положительное значение отображается как затрата */
+  expense?: boolean;
 }
 
 export interface OpiuReport {
@@ -92,20 +94,22 @@ export function buildOpiuReport(
       values: pctCols((d) => d.buyoutPct),
     },
     { id: "revenue", label: "Выручка, руб", kind: "metric", values: cols((m) => m.revenue) },
-    { id: "cogs", label: "Себестоимость", kind: "metric", values: cols((m) => m.cogs) },
+    { id: "cogs", label: "Себестоимость", kind: "metric", expense: true, values: cols((m) => m.cogs) },
     {
       id: "warehouse",
       label: "Склад / упаковка",
       kind: "metric",
       values: cols((m) => m.warehousePackaging),
       editable: true,
+      expense: true,
     },
-    { id: "commission", label: "Комиссия ВБ", kind: "metric", values: cols((m) => m.commission) },
-    { id: "logistics", label: "Логистика ВБ", kind: "metric", values: cols((m) => m.logistics) },
+    { id: "commission", label: "Комиссия ВБ", kind: "metric", expense: true, values: cols((m) => m.commission) },
+    { id: "logistics", label: "Логистика ВБ", kind: "metric", expense: true, values: cols((m) => m.logistics) },
     {
       id: "other",
       label: "Прочие удержания",
       kind: "metric",
+      expense: true,
       values: cols((m) => m.otherDeductions),
     },
     { id: "sep1", label: "", kind: "separator", values: weeks.map(() => null).concat([null]) },
@@ -122,7 +126,7 @@ export function buildOpiuReport(
       values: pctCols((d) => d.marginalPct),
     },
     { id: "sep2", label: "", kind: "separator", values: weeks.map(() => null).concat([null]) },
-    { id: "ads", label: "Реклама на МП", kind: "metric", values: cols((m) => m.adsSpend) },
+    { id: "ads", label: "Реклама на МП", kind: "metric", expense: true, values: cols((m) => m.adsSpend) },
     { id: "sep3", label: "", kind: "separator", values: weeks.map(() => null).concat([null]) },
     {
       id: "gross",

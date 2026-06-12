@@ -27,8 +27,12 @@ function inRange(date: string, from: string, to: string): boolean {
   return date >= from && date <= to;
 }
 
+/** Дата операции в финотчёте WB (rr_dt — основное поле отчёта) */
 function rowDate(row: WbReportRow): string {
-  return String(row.sale_dt ?? row.order_dt ?? row.create_dt ?? "").slice(0, 10);
+  return String(row.rr_dt ?? row.sale_dt ?? row.order_dt ?? row.create_dt ?? "").slice(
+    0,
+    10,
+  );
 }
 
 function orderDate(row: WbOrder): string {
@@ -48,29 +52,15 @@ function orderRub(row: WbOrder): number {
 }
 
 function revenueRub(row: WbReportRow): number {
-  if (isSale(row)) {
-    return Math.abs(num(row.retail_amount) || num(row.retail_price_withdisc_rub) * Math.abs(num(row.quantity) || 1));
-  }
-  return 0;
+  if (!isSale(row)) return 0;
+  const amount = num(row.retail_amount);
+  if (amount) return amount;
+  return num(row.retail_price_withdisc_rub) * Math.abs(num(row.quantity) || 1);
 }
 
-function commissionRub(row: WbReportRow): number {
-  return Math.abs(num(row.ppvz_sales_commission));
-}
-
-function logisticsRub(row: WbReportRow): number {
-  return Math.abs(num(row.delivery_rub)) + Math.abs(num(row.rebill_logistic_cost));
-}
-
-function otherDeductionsRub(row: WbReportRow): number {
-  return (
-    Math.abs(num(row.penalty)) +
-    Math.abs(num(row.deduction)) +
-    Math.abs(num(row.additional_payment)) +
-    Math.abs(num(row.storage_fee)) +
-    Math.abs(num(row.acceptance)) +
-    Math.abs(num(row.acquiring_fee))
-  );
+/** Суммируем со знаком: возвраты уменьшают удержания */
+function expenseRub(value: unknown): number {
+  return num(value);
 }
 
 function buildCostLookup(costs: ProductCostRow[]): {
@@ -140,9 +130,22 @@ export function aggregateWeek(
     ordersRub: weekOrders.reduce((s, o) => s + orderRub(o), 0),
     revenue: saleRows.reduce((s, r) => s + revenueRub(r), 0),
     cogs: cogsForSales(weekSales, costLookup),
-    commission: weekSales.reduce((s, r) => s + commissionRub(r), 0),
-    logistics: weekSales.reduce((s, r) => s + logisticsRub(r), 0),
-    otherDeductions: weekSales.reduce((s, r) => s + otherDeductionsRub(r), 0),
+    commission: weekSales.reduce((s, r) => s + expenseRub(r.ppvz_sales_commission), 0),
+    logistics: weekSales.reduce(
+      (s, r) => s + expenseRub(r.delivery_rub) + expenseRub(r.rebill_logistic_cost),
+      0,
+    ),
+    otherDeductions: weekSales.reduce(
+      (s, r) =>
+        s +
+        expenseRub(r.penalty) +
+        expenseRub(r.deduction) +
+        expenseRub(r.additional_payment) +
+        expenseRub(r.storage_fee) +
+        expenseRub(r.acceptance) +
+        expenseRub(r.acquiring_fee),
+      0,
+    ),
     adsSpend: adsSpendInRange(adStats, rangeFrom, rangeTo),
     warehousePackaging,
   };
