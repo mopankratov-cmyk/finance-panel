@@ -40,10 +40,14 @@ export async function GET() {
     const avgPrice = orders > 0 ? Math.round(rev / orders) : 0;
     const drr = rev > 0 ? Math.round((ad / rev) * 1000) / 10 : 0;
     const marginUnit = orders > 0 ? Math.round(avgPrice - cost - ad / orders) : 0;
+    // Схема inferno: первые 5 колонок sticky (Кабинет·Фото·Артикул·Название·SKU),
+    // col 1 = фото (пустой заголовок → разделитель), col 4 = nmId (ссылка на карточку).
     rows.push([
-      r.article || String(r.nm_id),
-      "", // фото (col index 1)
-      nameByArt.get(r.article) || "",
+      "Магазин", // 0 Кабинет (рядом с чекбоксом)
+      "", // 1 Фото
+      r.article || String(r.nm_id), // 2 Артикул
+      nameByArt.get(r.article) || "", // 3 Название
+      r.nm_id, // 4 SKU → ссылка на карточку WB
       Math.round(cost),
       avgPrice,
       orders,
@@ -56,7 +60,7 @@ export async function GET() {
   }
 
   return NextResponse.json({
-    headers: ["Артикул", "", "Название", "Себес ₽", "Ср. цена ₽", "Заказы/мес", "Выручка ₽", "Реклама ₽", "ДРР %", "Маржа/ед ₽"],
+    headers: ["Кабинет", "", "Артикул", "Название", "SKU", "Себес ₽", "Ср. цена ₽", "Заказы/мес", "Выручка ₽", "Реклама ₽", "ДРР %", "Маржа/ед ₽"],
     rows,
     img_urls,
     source_url: null,
