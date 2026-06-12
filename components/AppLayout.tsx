@@ -1,10 +1,14 @@
 "use client";
 
+import { usePathname } from "next/navigation";
 import { Sidebar } from "./Sidebar";
 import { useFinance } from "./providers/FinanceProvider";
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const { hydrated, loadError } = useFinance();
+  const pathname = usePathname();
+  // Главная — полноширинный лаунчер модулей без сайдбара (как infernoff.ru)
+  const isLauncher = pathname === "/";
 
   if (!hydrated) {
     return (
@@ -31,6 +35,10 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         </div>
       </div>
     );
+  }
+
+  if (isLauncher) {
+    return <div className="min-h-screen bg-gray-50">{children}</div>;
   }
 
   return (

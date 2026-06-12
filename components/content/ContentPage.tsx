@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, Copy, FlaskConical, ImageIcon, Sparkles } from "lucide-react";
+import { Check, Copy, FlaskConical, ImageIcon, Sparkles, Video } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { ContentProduct } from "@/app/api/content/route";
 
@@ -46,6 +46,10 @@ export function ContentPage() {
   const [imgLoading, setImgLoading] = useState(false);
   const [imgError, setImgError] = useState<string | null>(null);
   const [image, setImage] = useState<{ url: string; prompt: string; referenceUrl?: string | null } | null>(null);
+
+  const [vidLoading, setVidLoading] = useState(false);
+  const [vidError, setVidError] = useState<string | null>(null);
+  const [video, setVideo] = useState<{ url: string; prompt: string } | null>(null);
 
   useEffect(() => {
     fetch("/api/content")
@@ -105,6 +109,47 @@ export function ContentPage() {
       setImgError("Ошибка генерации фото");
     } finally {
       setImgLoading(false);
+    }
+  };
+
+  const generateVideo = async () => {
+    const p = products.find((x) => x.article === article);
+    if (!p) return;
+    setVidLoading(true);
+    setVidError(null);
+    setVideo(null);
+    try {
+      // 1) submit → jobSetId
+      const res = await fetch("/api/content/video", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ article: p.article, name: p.name, nmId: p.nmId, imageUrl: image?.url }),
+      });
+      const json = await res.json();
+      if (json.error || !json.jobSetId) {
+        setVidError(json.error ?? "Не удалось запустить");
+        return;
+      }
+      const prompt = json.prompt;
+      // 2) опрос статуса (видео рендерится ~1-3 мин)
+      for (let i = 0; i < 60; i++) {
+        await new Promise((r) => setTimeout(r, 4000));
+        const sres = await fetch(`/api/content/video/status?id=${json.jobSetId}`, { cache: "no-store" });
+        const s = await sres.json();
+        if (s.status === "completed" && s.videoUrl) {
+          setVideo({ url: s.videoUrl, prompt });
+          return;
+        }
+        if (s.status === "failed" || s.status === "nsfw") {
+          setVidError(`Higgsfield: ${s.status === "nsfw" ? "контент отклонён" : "ошибка генерации"}`);
+          return;
+        }
+      }
+      setVidError("Видео рендерится дольше обычного — обновите позже");
+    } catch {
+      setVidError("Ошибка генерации видео");
+    } finally {
+      setVidLoading(false);
     }
   };
 
@@ -222,6 +267,39 @@ export function ContentPage() {
                 </a>
                 <CopyButton text={image.url} />
               </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Видео из карточки через Higgsfield (image-to-video) */}
+      <div className="rounded-xl border border-slate-200 bg-white p-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <Video className="h-4 w-4 text-violet-600" />
+            <h3 className="font-semibold text-slate-900">Видео карточки (Higgsfield)</h3>
+            <span className="text-xs text-slate-400">из фото{image ? " (сгенерированного)" : " карточки"}</span>
+          </div>
+          <button
+            onClick={generateVideo}
+            disabled={vidLoading || !article}
+            className="flex items-center gap-2 rounded-lg bg-violet-600 px-3 py-2 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-50"
+          >
+            <Video className={`h-4 w-4 ${vidLoading ? "animate-pulse" : ""}`} />
+            {vidLoading ? "Рендерю..." : "Сгенерировать видео"}
+          </button>
+        </div>
+        {vidError && (
+          <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{vidError}</div>
+        )}
+        {video && (
+          <div className="mt-4 flex flex-col gap-3 sm:flex-row">
+            {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+            <video src={video.url} controls loop className="w-full max-w-xs rounded-lg border border-slate-200" />
+            <div className="flex-1 space-y-2">
+              <p className="text-xs uppercase text-slate-400">Промпт движения</p>
+              <p className="text-sm text-slate-600">{video.prompt}</p>
+              <a href={video.url} target="_blank" rel="noopener noreferrer" className="inline-block rounded border border-slate-200 px-2 py-1 text-xs text-slate-600 hover:bg-slate-50">Открыть видео</a>
             </div>
           </div>
         )}

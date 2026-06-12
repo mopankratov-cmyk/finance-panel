@@ -19,6 +19,14 @@ function estimateBasket(vol: number): number {
   return 25 + Math.ceil((vol - 4560) / 215);
 }
 
+/** Синхронный best-effort URL фото карточки (без HEAD-проверки) — для списков. */
+export function wbCardImageUrl(nmId: number, size = "c246x328"): string {
+  const vol = Math.floor(nmId / 100000);
+  const part = Math.floor(nmId / 1000);
+  const b = estimateBasket(vol);
+  return `https://basket-${String(b).padStart(2, "0")}.wbbasket.ru/vol${vol}/part${part}/${nmId}/images/${size}/1.webp`;
+}
+
 async function exists(url: string): Promise<boolean> {
   try {
     const res = await fetch(url, { method: "HEAD", cache: "no-store" });
