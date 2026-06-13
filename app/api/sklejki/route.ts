@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { wbCardImageUrl } from "@/lib/wb/cardImage";
+import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -12,12 +13,21 @@ interface WbCard {
   imtID: number;
   vendorCode: string;
   title?: string;
+  subjectName?: string;
 }
 
-// Контракт inferno: {groups_multi, groups_solo, total_sku, multi_groups, solo_skus, covered}
+interface FunnelRow { nm_id: number; date: string; add_to_cart: number; orders: number; orders_sum: number }
+interface AdRow { nm_id: number; date: string; views: number; spent: number }
+interface RpcTotal { nm_id: number; stock: number; cost: number | null }
+
+const r1 = (v: number) => Math.round(v * 10) / 10;
+
+// Контракт inferno: {groups_multi, groups_solo, total_sku, multi_groups, solo_skus, covered}.
+// Группа: {imt_id, skus:[{nm,art,img_url,shop,shows_7d,orders_sum_7d,adv_spend_7d,adv_spend_14d,drr_7d,margin_before_drr,stock,signal,...}], shop_label, category_label}.
 export async function GET() {
   if (!WB_CONTENT_TOKEN) return NextResponse.json({ groups_multi: [], groups_solo: [], total_sku: 0, multi_groups: 0, solo_skus: 0, covered: 0 });
 
+  // 1) карточки из Content API
   const cards: WbCard[] = [];
   let cursor: { updatedAt?: string; nmID?: number } = {};
   try {
@@ -29,7 +39,7 @@ export async function GET() {
         cache: "no-store",
       });
       if (!res.ok) break;
-      const json = (await res.json()) as { cards?: WbCard[]; cursor?: { updatedAt?: string; nmID?: number; total?: number } };
+      const json = (await res.json()) as { cards?: WbCard[]; cursor?: { updatedAt?: string; nmID?: number } };
       const batch = json.cards ?? [];
       cards.push(...batch);
       if (batch.length < 100) break;
@@ -39,22 +49,74 @@ export async function GET() {
     /* ignore */
   }
 
+  // 2) метрики воронки/рекламы по nm (7д и 14д) из синка
+  const db = getSupabaseAdmin();
+  const m7 = new Map<number, { views: number; spent: number; cart: number; oc: number; os: number }>();
+  const spent14 = new Map<number, number>();
+  const totals = new Map<number, RpcTotal>();
+  if (db) {
+    const since = new Date(Date.now() - 14 * 86400000).toISOString().slice(0, 10);
+    const week = new Set(
+      Array.from({ length: 7 }, (_, i) => new Date(Date.now() - i * 86400000).toISOString().slice(0, 10)),
+    );
+    const [fRes, aRes, tRes] = await Promise.all([
+      db.from("wb_funnel_daily").select("nm_id, date, add_to_cart, orders, orders_sum").gte("date", since),
+      db.from("wb_advert_nm_daily").select("nm_id, date, views, spent").gte("date", since),
+      db.rpc("rnp_report"),
+    ]);
+    const g7 = (nm: number) => { let x = m7.get(nm); if (!x) { x = { views: 0, spent: 0, cart: 0, oc: 0, os: 0 }; m7.set(nm, x); } return x; };
+    for (const f of (fRes.data ?? []) as FunnelRow[]) {
+      if (week.has(String(f.date).slice(0, 10))) { const x = g7(f.nm_id); x.cart += f.add_to_cart || 0; x.oc += f.orders || 0; x.os += Number(f.orders_sum || 0); }
+    }
+    for (const a of (aRes.data ?? []) as AdRow[]) {
+      const iso = String(a.date).slice(0, 10);
+      spent14.set(a.nm_id, (spent14.get(a.nm_id) ?? 0) + Number(a.spent || 0));
+      if (week.has(iso)) { const x = g7(a.nm_id); x.views += a.views || 0; x.spent += Number(a.spent || 0); }
+    }
+    for (const t of (tRes.data ?? []) as RpcTotal[]) totals.set(t.nm_id, t);
+  }
+
+  const enrich = (c: WbCard) => {
+    const a = m7.get(c.nmID);
+    const t = totals.get(c.nmID);
+    const cost = Number(t?.cost ?? 0);
+    const os = a?.os ?? 0, oc = a?.oc ?? 0, views = a?.views ?? 0, spent = a?.spent ?? 0;
+    const price = oc > 0 ? os / oc : 0;
+    return {
+      nm: c.nmID,
+      art: c.vendorCode || String(c.nmID),
+      name: c.title || c.vendorCode || "",
+      img_url: wbCardImageUrl(c.nmID),
+      shop: "Магазин",
+      shows_7d: views,
+      orders_sum_7d: Math.round(os),
+      adv_spend_7d: Math.round(spent),
+      adv_spend_14d: Math.round(spent14.get(c.nmID) ?? 0),
+      drr_7d: os > 0 ? r1((spent / os) * 100) : (spent > 0 ? null : 0),
+      margin_before_drr: price > 0 && cost > 0 ? r1(((price - cost) / price) * 100) : null,
+      stock: Number(t?.stock ?? 0),
+      nm_rating: null,
+      nm_feedbacks: undefined,
+      signal: views === 0 && oc === 0 ? "Без трафика" : null,
+    };
+  };
+
+  // 3) группировка по imtID
   const byImt = new Map<number, WbCard[]>();
   for (const c of cards) {
     if (!byImt.has(c.imtID)) byImt.set(c.imtID, []);
     byImt.get(c.imtID)!.push(c);
   }
 
-  const toItem = (c: WbCard) => ({
-    nm: c.nmID,
-    art: c.vendorCode || String(c.nmID),
-    name: c.title || c.vendorCode || "",
-    img_url: wbCardImageUrl(c.nmID),
-    rating: null,
-    feedbacks: null,
-    metrics: [],
+  const toGroup = (imt: number, items: WbCard[]) => ({
+    imt_id: imt,
+    shop_label: "Магазин",
+    category_label: items[0]?.subjectName || "",
+    valuation: null,
+    feedback_count: 0,
+    hide_group_rating: true,
+    skus: items.map(enrich),
   });
-  const toGroup = (imt: number, items: WbCard[]) => ({ imt, count: items.length, items: items.map(toItem) });
 
   const groups_multi: ReturnType<typeof toGroup>[] = [];
   const groups_solo: ReturnType<typeof toGroup>[] = [];
@@ -63,7 +125,7 @@ export async function GET() {
     if (items.length > 1) groups_multi.push(g);
     else groups_solo.push(g);
   }
-  groups_multi.sort((a, b) => b.count - a.count);
+  groups_multi.sort((a, b) => b.skus.length - a.skus.length);
 
   return NextResponse.json({
     groups_multi,
