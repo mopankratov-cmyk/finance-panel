@@ -166,11 +166,13 @@ export async function ozonStocks(
 }
 
 // Карта фото товаров: offer_id→url и каждый sku→url (sku берём из sources + top-level).
+// Плюс skuToOffer: каждый sku → offer_id (для джойна остатков/себеса).
 export async function ozonImages(
   c: OzonCreds,
-): Promise<{ byOffer: Record<string, string>; bySku: Record<string, string> }> {
+): Promise<{ byOffer: Record<string, string>; bySku: Record<string, string>; skuToOffer: Record<string, string> }> {
   const byOffer: Record<string, string> = {};
   const bySku: Record<string, string> = {};
+  const skuToOffer: Record<string, string> = {};
   try {
     // 1) все product_id
     const productIds: number[] = [];
@@ -202,6 +204,8 @@ export async function ozonImages(
       };
       for (const it of j.items ?? []) {
         const img = (it.images ?? [])[0];
+        if (it.offer_id && it.sku) skuToOffer[String(it.sku)] = it.offer_id;
+        for (const s of it.sources ?? []) if (s.sku && it.offer_id) skuToOffer[String(s.sku)] = it.offer_id;
         if (!img) continue;
         if (it.offer_id) byOffer[it.offer_id] = img;
         if (it.sku) bySku[String(it.sku)] = img;
@@ -211,7 +215,7 @@ export async function ozonImages(
   } catch {
     /* фото не критичны */
   }
-  return { byOffer, bySku };
+  return { byOffer, bySku, skuToOffer };
 }
 
 // Детализация услуг (реклама/хранение/...) из transaction/list по operation_type.

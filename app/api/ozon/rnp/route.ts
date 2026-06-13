@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getActiveOzonCreds } from "@/lib/ozon/cabinet";
-import { ozonImages, type OzonCreds } from "@/lib/ozon/api";
+import { ozonImages, ozonStocks, type OzonCreds } from "@/lib/ozon/api";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -10,14 +10,14 @@ const WEEKDAY = ["вс", "пн", "вт", "ср", "чт", "пт", "сб"];
 
 // analytics/data с разбивкой [day, sku] (постранично).
 async function fetchDaySku(c: OzonCreds, from: string, to: string) {
-  const rows: { sku: string; name: string; day: string; views: number; orders: number; revenue: number }[] = [];
+  const rows: { sku: string; name: string; day: string; views: number; cart: number; orders: number; revenue: number }[] = [];
   for (let offset = 0; offset < 5000; offset += 1000) {
     const res = await fetch(`${BASE}/v1/analytics/data`, {
       method: "POST",
       headers: { "Client-Id": c.clientId, "Api-Key": c.apiKey, "Content-Type": "application/json" },
       body: JSON.stringify({
         date_from: from, date_to: to,
-        metrics: ["hits_view", "ordered_units", "revenue"],
+        metrics: ["hits_view", "hits_tocart", "ordered_units", "revenue"],
         dimension: ["sku", "day"], limit: 1000, offset,
       }),
       next: { revalidate: 1800 },
@@ -31,7 +31,7 @@ async function fetchDaySku(c: OzonCreds, from: string, to: string) {
     for (const d of batch) rows.push({
       sku: d.dimensions[0]?.id ?? "", name: d.dimensions[0]?.name ?? "",
       day: d.dimensions[1]?.id ?? d.dimensions[1]?.name ?? "",
-      views: d.metrics[0] ?? 0, orders: d.metrics[1] ?? 0, revenue: d.metrics[2] ?? 0,
+      views: d.metrics[0] ?? 0, cart: d.metrics[1] ?? 0, orders: d.metrics[2] ?? 0, revenue: d.metrics[3] ?? 0,
     });
     if (batch.length < 1000) break;
   }
@@ -59,38 +59,47 @@ export async function GET(request: NextRequest) {
   const period = dates.map((d) => { const dt = new Date(d); return { label: `${String(dt.getDate()).padStart(2, "0")}.${String(dt.getMonth() + 1).padStart(2, "0")}`, period_type: WEEKDAY[dt.getDay()] }; });
 
   // группировка по sku
-  const bySku = new Map<string, { name: string; byDay: Map<string, { views: number; orders: number; revenue: number }> }>();
+  type Day = { views: number; cart: number; orders: number; revenue: number };
+  const bySku = new Map<string, { name: string; byDay: Map<string, Day> }>();
   for (const r of raw) {
     if (!bySku.has(r.sku)) bySku.set(r.sku, { name: r.name, byDay: new Map() });
-    bySku.get(r.sku)!.byDay.set(r.day.slice(0, 10), { views: r.views, orders: r.orders, revenue: r.revenue });
+    bySku.get(r.sku)!.byDay.set(r.day.slice(0, 10), { views: r.views, cart: r.cart, orders: r.orders, revenue: r.revenue });
   }
 
-  const buildMetrics = (byDay: Map<string, { views: number; orders: number; revenue: number }>) => {
-    const pick = (k: "views" | "orders" | "revenue") => dates.map((d) => Math.round(byDay.get(d)?.[k] ?? 0));
+  // остатки + карта sku→offer для джойна (фото тоже отсюда)
+  const [{ bySku: imgBySku, skuToOffer }, stk] = await Promise.all([ozonImages(cab.creds), ozonStocks(cab.creds)]);
+  const freeByOffer: Record<string, number> = {};
+  if (stk.ok) for (const s of stk.rows) freeByOffer[s.article] = (freeByOffer[s.article] ?? 0) + s.free;
+  const stockOfSku = (sku: string) => freeByOffer[skuToOffer[sku] ?? ""] ?? 0;
+
+  const buildMetrics = (byDay: Map<string, Day>, stock: number) => {
+    const pick = (k: keyof Day) => dates.map((d) => Math.round(byDay.get(d)?.[k] ?? 0));
     const sum = (a: number[]) => a.reduce((x, v) => x + v, 0);
-    const orders = pick("orders"), revenue = pick("revenue"), views = pick("views");
+    const orders = pick("orders"), revenue = pick("revenue"), views = pick("views"), cart = pick("cart");
     return [
       { field: "orders", label: "Заказы, шт", kind: "int", daily: orders, total: sum(orders), group_start: true },
       { field: "revenue", label: "Выручка, ₽", kind: "money", daily: revenue, total: sum(revenue) },
-      { field: "views", label: "Показы", kind: "int", daily: views, total: sum(views), group_start: true },
+      { field: "cart", label: "В корзину", kind: "int", daily: cart, total: sum(cart), group_start: true },
+      { field: "views", label: "Показы", kind: "int", daily: views, total: sum(views) },
+      { field: "stock", label: "Остаток, шт", kind: "int", daily: dates.map(() => 0), total: stock, group_start: true },
     ];
   };
 
-  const { bySku: imgBySku } = await ozonImages(cab.creds);
   const skus = [...bySku.entries()]
-    .map(([sku, v]) => ({ sku, name: v.name, img_url: imgBySku[sku] ?? null, metrics: buildMetrics(v.byDay), _o: [...v.byDay.values()].reduce((s, x) => s + x.revenue, 0) }))
+    .map(([sku, v]) => ({ sku, name: v.name, img_url: imgBySku[sku] ?? null, metrics: buildMetrics(v.byDay, stockOfSku(sku)), _o: [...v.byDay.values()].reduce((s, x) => s + x.revenue, 0) }))
     .sort((a, b) => b._o - a._o)
     .map(({ _o, ...rest }) => { void _o; return rest; });
 
   // сводка
-  const allDays = new Map<string, { views: number; orders: number; revenue: number }>();
+  const allDays = new Map<string, Day>();
   for (const r of raw) {
     const d = r.day.slice(0, 10);
-    const e = allDays.get(d) ?? { views: 0, orders: 0, revenue: 0 };
-    e.views += r.views; e.orders += r.orders; e.revenue += r.revenue;
+    const e = allDays.get(d) ?? { views: 0, cart: 0, orders: 0, revenue: 0 };
+    e.views += r.views; e.cart += r.cart; e.orders += r.orders; e.revenue += r.revenue;
     allDays.set(d, e);
   }
-  const summary = buildMetrics(allDays);
+  const totalStock = Object.values(freeByOffer).reduce((s, v) => s + v, 0);
+  const summary = buildMetrics(allDays, totalStock);
 
   return NextResponse.json({ cabinet: cab.name, period, summary, skus, sku_count: skus.length });
 }
