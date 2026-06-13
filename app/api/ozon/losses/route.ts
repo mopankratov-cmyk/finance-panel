@@ -56,6 +56,7 @@ export async function GET(request: NextRequest) {
     period: { from: fromIso.slice(0, 10), to: toIso.slice(0, 10), weeks },
     retail,
     payout: r0(tot.accruals_for_sale - Math.abs(tot.sale_commission) - Math.abs(tot.processing_and_delivery) - Math.abs(tot.services_amount) + tot.compensation_amount),
+    returns: r0(Math.abs(tot.refunds_and_cancellations)),
     totalDeductions,
     items,
     serviceItems,
