@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { getActiveOzonCreds } from "@/lib/ozon/cabinet";
-import { ozonPrices } from "@/lib/ozon/api";
+import { ozonPrices, ozonImages } from "@/lib/ozon/api";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -26,13 +26,14 @@ export async function GET(request: NextRequest) {
     }
   }
 
+  const { byOffer } = await ozonImages(cab.creds);
   const rows = r.rows.map((p) => {
     const cost = costByArt.get(p.offer_id) ?? 0;
     const commissionRub = Math.round((p.price * p.commissionPct) / 100);
     const profit = Math.round(p.price - cost - commissionRub - p.logistics - p.acquiring);
     const margin = p.price > 0 ? Math.round((profit / p.price) * 1000) / 10 : null;
     return {
-      art: p.offer_id, product_id: p.product_id, name: nameByArt.get(p.offer_id) || p.offer_id,
+      art: p.offer_id, product_id: p.product_id, name: nameByArt.get(p.offer_id) || p.offer_id, img_url: byOffer[p.offer_id] ?? null,
       price: Math.round(p.price), cost: Math.round(cost),
       commission_pct: p.commissionPct, commission_rub: commissionRub,
       logistics: Math.round(p.logistics), acquiring: Math.round(p.acquiring),

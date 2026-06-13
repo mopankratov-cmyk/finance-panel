@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getActiveOzonCreds } from "@/lib/ozon/cabinet";
-import { ozonAnalytics } from "@/lib/ozon/api";
+import { ozonAnalytics, ozonImages } from "@/lib/ozon/api";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -16,10 +16,12 @@ export async function GET(request: NextRequest) {
   const from = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
   const r = await ozonAnalytics(cab.creds, from, to);
   if (!r.ok) return NextResponse.json({ rows: [], error: r.error }, { status: 502 });
+  const { bySku } = await ozonImages(cab.creds);
 
   const rows = r.rows
     .map((x) => ({
       ...x,
+      img_url: bySku[x.sku] ?? null,
       revenue: Math.round(x.revenue),
       cr_cart: x.hits_view > 0 ? Math.round((x.hits_tocart / x.hits_view) * 1000) / 10 : null,
       cr_order: x.hits_tocart > 0 ? Math.round((x.ordered_units / x.hits_tocart) * 1000) / 10 : null,

@@ -165,6 +165,55 @@ export async function ozonStocks(
   }
 }
 
+// Карта фото товаров: offer_id→url и каждый sku→url (sku берём из sources + top-level).
+export async function ozonImages(
+  c: OzonCreds,
+): Promise<{ byOffer: Record<string, string>; bySku: Record<string, string> }> {
+  const byOffer: Record<string, string> = {};
+  const bySku: Record<string, string> = {};
+  try {
+    // 1) все product_id
+    const productIds: number[] = [];
+    let lastId = "";
+    for (let page = 0; page < 20; page++) {
+      const res = await fetch(`${BASE}/v3/product/list`, {
+        method: "POST", headers: headers(c),
+        body: JSON.stringify({ filter: { visibility: "ALL" }, limit: 1000, last_id: lastId }),
+        next: { revalidate: 1800 },
+      });
+      if (!res.ok) break;
+      const j = (await res.json()) as { result?: { items?: { product_id: number }[]; last_id?: string } };
+      const items = j.result?.items ?? [];
+      for (const it of items) productIds.push(it.product_id);
+      lastId = j.result?.last_id ?? "";
+      if (items.length < 1000 || !lastId) break;
+    }
+    // 2) инфо по батчам ≤1000
+    for (let i = 0; i < productIds.length; i += 1000) {
+      const batch = productIds.slice(i, i + 1000);
+      const res = await fetch(`${BASE}/v3/product/info/list`, {
+        method: "POST", headers: headers(c),
+        body: JSON.stringify({ product_id: batch }),
+        next: { revalidate: 1800 },
+      });
+      if (!res.ok) break;
+      const j = (await res.json()) as {
+        items?: { offer_id: string; sku?: number; images?: string[]; sources?: { sku: number }[] }[];
+      };
+      for (const it of j.items ?? []) {
+        const img = (it.images ?? [])[0];
+        if (!img) continue;
+        if (it.offer_id) byOffer[it.offer_id] = img;
+        if (it.sku) bySku[String(it.sku)] = img;
+        for (const s of it.sources ?? []) if (s.sku) bySku[String(s.sku)] = img;
+      }
+    }
+  } catch {
+    /* фото не критичны */
+  }
+  return { byOffer, bySku };
+}
+
 // Детализация услуг (реклама/хранение/...) из transaction/list по operation_type.
 export async function ozonServiceBreakdown(
   c: OzonCreds, fromIso: string, toIso: string,

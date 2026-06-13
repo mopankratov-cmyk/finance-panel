@@ -10,10 +10,16 @@ const fmtMoney = (n: number) => (n >= 1000 ? Math.round(n).toLocaleString("ru-RU
 const pct = (n: number | null | undefined) => (n == null ? "—" : n + "%");
 
 interface Metric { field: string; label: string; kind: string; daily: number[]; total: number; group_start?: boolean }
-interface RnpSku { sku: string; name: string; metrics: Metric[] }
-interface FunnelRow { sku: string; name: string; hits_view: number; hits_tocart: number; ordered_units: number; revenue: number; cr_cart: number | null; cr_order: number | null }
-interface UnitRow { art: string; name: string; price: number; cost: number; commission_pct: number; commission_rub: number; logistics: number; acquiring: number; profit: number; margin: number | null }
-interface StockRow { art: string; name: string; free: number; reserved: number; byWh: Record<string, number> }
+interface RnpSku { sku: string; name: string; img_url: string | null; metrics: Metric[] }
+interface FunnelRow { sku: string; name: string; img_url: string | null; hits_view: number; hits_tocart: number; ordered_units: number; revenue: number; cr_cart: number | null; cr_order: number | null }
+interface UnitRow { art: string; name: string; img_url: string | null; price: number; cost: number; commission_pct: number; commission_rub: number; logistics: number; acquiring: number; profit: number; margin: number | null }
+interface StockRow { art: string; name: string; img_url: string | null; free: number; reserved: number; byWh: Record<string, number> }
+
+function Thumb({ src }: { src: string | null }) {
+  if (!src) return <div className="h-9 w-9 shrink-0 rounded bg-gray-100" />;
+  // eslint-disable-next-line @next/next/no-img-element
+  return <img src={src} alt="" loading="lazy" className="h-9 w-9 shrink-0 rounded object-cover" onError={(e) => { (e.target as HTMLImageElement).style.visibility = "hidden"; }} />;
+}
 
 export default function OzonPage() {
   const [tab, setTab] = useState<Tab>("rnp");
@@ -112,7 +118,7 @@ export default function OzonPage() {
                 {/* сводка */}
                 <RnpGroup title="ОБЩЕЕ ПО КАБИНЕТУ" metrics={rnp.summary} period={rnp.period} cell={cell} highlight />
                 {flt(rnp.skus).map((s) => (
-                  <RnpGroup key={s.sku} title={s.name} sub={`sku ${s.sku}`} metrics={s.metrics} period={rnp.period} cell={cell} />
+                  <RnpGroup key={s.sku} title={s.name} sub={`sku ${s.sku}`} img={s.img_url} metrics={s.metrics} period={rnp.period} cell={cell} />
                 ))}
               </tbody>
             </table>
@@ -127,7 +133,7 @@ export default function OzonPage() {
               <tbody>
                 {flt(funnel).map((r) => (
                   <tr key={r.sku} className="border-t border-gray-100 hover:bg-gray-50">
-                    <td className="px-3 py-2"><div className="max-w-md truncate text-gray-800">{r.name}</div><div className="text-[11px] text-gray-400">sku {r.sku}</div></td>
+                    <td className="px-3 py-2"><div className="flex items-center gap-2"><Thumb src={r.img_url} /><div className="min-w-0"><div className="max-w-md truncate text-gray-800">{r.name}</div><div className="text-[11px] text-gray-400">sku {r.sku}</div></div></div></td>
                     <td className="px-3 py-2 text-right tabular-nums">{fmt(r.hits_view)}</td>
                     <td className="px-3 py-2 text-right tabular-nums">{fmt(r.hits_tocart)}</td>
                     <td className="px-3 py-2 text-right tabular-nums text-gray-500">{pct(r.cr_cart)}</td>
@@ -149,7 +155,7 @@ export default function OzonPage() {
               <tbody>
                 {flt(unit).map((r) => (
                   <tr key={r.art} className="border-t border-gray-100 hover:bg-gray-50">
-                    <td className="px-3 py-2"><div className="font-medium text-gray-800">{r.art}</div><div className="max-w-xs truncate text-[11px] text-gray-400">{r.name}</div></td>
+                    <td className="px-3 py-2"><div className="flex items-center gap-2"><Thumb src={r.img_url} /><div className="min-w-0"><div className="font-medium text-gray-800">{r.art}</div><div className="max-w-xs truncate text-[11px] text-gray-400">{r.name}</div></div></div></td>
                     <td className="px-3 py-2 text-right tabular-nums">{fmt(r.price)}</td>
                     <td className={`px-3 py-2 text-right tabular-nums ${r.cost === 0 ? "text-amber-500" : ""}`}>{r.cost === 0 ? "нет" : fmt(r.cost)}</td>
                     <td className="px-3 py-2 text-right tabular-nums text-gray-500">{r.commission_pct}%</td>
@@ -174,7 +180,7 @@ export default function OzonPage() {
                   const top = Object.entries(r.byWh).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]).slice(0, 4);
                   return (
                     <tr key={r.art} className="border-t border-gray-100 hover:bg-gray-50">
-                      <td className="px-3 py-2"><div className="font-medium text-gray-800">{r.art}</div><div className="max-w-xs truncate text-[11px] text-gray-400">{r.name}</div></td>
+                      <td className="px-3 py-2"><div className="flex items-center gap-2"><Thumb src={r.img_url} /><div className="min-w-0"><div className="font-medium text-gray-800">{r.art}</div><div className="max-w-xs truncate text-[11px] text-gray-400">{r.name}</div></div></div></td>
                       <td className={`px-3 py-2 text-right font-semibold tabular-nums ${r.free < 10 ? "text-red-600" : ""}`}>{fmt(r.free)}</td>
                       <td className="px-3 py-2 text-right tabular-nums text-gray-500">{fmt(r.reserved)}</td>
                       <td className="px-3 py-2 text-[11px] text-gray-500">{top.map(([w, v]) => `${w.replace(/_РФЦ$/, "")} ${v}`).join(" · ") || "—"}</td>
@@ -190,14 +196,17 @@ export default function OzonPage() {
   );
 }
 
-function RnpGroup({ title, sub, metrics, period, cell, highlight }: {
-  title: string; sub?: string; metrics: Metric[]; period: { label: string }[]; cell: (m: Metric, v: number) => string; highlight?: boolean;
+function RnpGroup({ title, sub, img, metrics, period, cell, highlight }: {
+  title: string; sub?: string; img?: string | null; metrics: Metric[]; period: { label: string }[]; cell: (m: Metric, v: number) => string; highlight?: boolean;
 }) {
   return (
     <>
       <tr className={highlight ? "bg-sky-50" : "bg-gray-50/60"}>
         <td className={`sticky left-0 z-10 px-3 py-1.5 font-semibold ${highlight ? "bg-sky-50 text-sky-800" : "bg-gray-50 text-gray-700"}`} colSpan={period.length + 2}>
-          {title}{sub && <span className="ml-2 text-[10px] font-normal text-gray-400">{sub}</span>}
+          <span className="flex items-center gap-2">
+            {img !== undefined && <Thumb src={img ?? null} />}
+            <span>{title}{sub && <span className="ml-2 text-[10px] font-normal text-gray-400">{sub}</span>}</span>
+          </span>
         </td>
       </tr>
       {metrics.map((m) => (

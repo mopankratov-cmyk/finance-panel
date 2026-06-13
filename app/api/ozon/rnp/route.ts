@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getActiveOzonCreds } from "@/lib/ozon/cabinet";
-import type { OzonCreds } from "@/lib/ozon/api";
+import { ozonImages, type OzonCreds } from "@/lib/ozon/api";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -76,8 +76,9 @@ export async function GET(request: NextRequest) {
     ];
   };
 
+  const { bySku: imgBySku } = await ozonImages(cab.creds);
   const skus = [...bySku.entries()]
-    .map(([sku, v]) => ({ sku, name: v.name, metrics: buildMetrics(v.byDay), _o: [...v.byDay.values()].reduce((s, x) => s + x.revenue, 0) }))
+    .map(([sku, v]) => ({ sku, name: v.name, img_url: imgBySku[sku] ?? null, metrics: buildMetrics(v.byDay), _o: [...v.byDay.values()].reduce((s, x) => s + x.revenue, 0) }))
     .sort((a, b) => b._o - a._o)
     .map(({ _o, ...rest }) => { void _o; return rest; });
 

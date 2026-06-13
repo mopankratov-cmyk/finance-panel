@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getActiveOzonCreds } from "@/lib/ozon/cabinet";
-import { ozonStocks } from "@/lib/ozon/api";
+import { ozonStocks, ozonImages } from "@/lib/ozon/api";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -23,8 +23,9 @@ export async function GET(request: NextRequest) {
     e.byWh[s.warehouse] = (e.byWh[s.warehouse] ?? 0) + s.free;
     byArt.set(s.article, e);
   }
+  const { byOffer } = await ozonImages(cab.creds);
   const warehouses = [...whSet].sort();
-  const rows = [...byArt.values()].sort((a, b) => b.free - a.free);
+  const rows = [...byArt.values()].map((r) => ({ ...r, img_url: byOffer[r.art] ?? null })).sort((a, b) => b.free - a.free);
   const totalFree = rows.reduce((s, x) => s + x.free, 0);
 
   return NextResponse.json({ cabinet: cab.name, warehouses, rows, count: rows.length, totalFree });
