@@ -84,17 +84,45 @@ export async function GET() {
     skus.sort((a, b) => b.need45 - a.need45);
 
     // --- Контракт inferno-вкладки «Поставки» (top-level) ---
-    // Раскладка по складам строится из загруженной «готовой тары» (xlsx) — это отложенный
-    // ручной flow (тара/WMS/МойСклад, см. docs/отложено.md). Без тары список SKU пуст,
-    // показываем целевые склады с долями по фактическому остатку wb_stocks.
-    const totalQty = warehouses.reduce((a, w) => a + w.quantity, 0);
+    // Юрин дизайн раскладывает «готовую тару» (xlsx). Тара/WMS — отложено (docs/отложено.md),
+    // поэтому показываем РЕАЛЬНУЮ рекомендованную раскладку: потребность к поставке (need45)
+    // каждого SKU, разнесённую по топ целевым складам в их долях.
+    const TOP_WH = 8;
+    const topWh = warehouses.slice(0, TOP_WH);
+    const topTotal = topWh.reduce((a, w) => a + w.quantity, 0) || 1;
     let acc = 0;
-    const whInferno = warehouses.map((w, i) => {
-      let pct: number;
-      if (i === warehouses.length - 1) pct = Math.max(0, 100 - acc);
-      else { pct = totalQty > 0 ? Math.round((w.quantity / totalQty) * 100) : 0; acc += pct; }
-      return { name: w.warehouse, pct: pct ? pct + "%" : "" };
+    const whPct = topWh.map((w, i) => {
+      const p = i === topWh.length - 1 ? Math.max(0, 100 - acc) : Math.round((w.quantity / topTotal) * 100);
+      if (i < topWh.length - 1) acc += p;
+      return p;
     });
+    const whInferno = topWh.map((w, i) => ({ name: w.warehouse, pct: whPct[i] ? whPct[i] + "%" : "" }));
+
+    // раскладка потребности по складам
+    const splitNeed = (total: number) => {
+      const q = whPct.map((p) => Math.round((total * p) / 100));
+      const diff = total - q.reduce((a, b) => a + b, 0);
+      if (q.length) q[0] += diff; // корректируем остаток на первый склад
+      return q;
+    };
+    const infernoSkus = skus
+      .filter((s) => s.need45 > 0)
+      .map((s) => {
+        const qty = splitNeed(s.need45);
+        return {
+          nm: s.nmId,
+          art: s.article || String(s.nmId),
+          shk: "",
+          wb_stock: s.stock,
+          available: s.need45,
+          qty,
+          excl: [] as number[],
+          wb_wh: null,
+        };
+      });
+
+    const totalsQty = whInferno.map((_, i) => infernoSkus.reduce((a, s) => a + (s.qty[i] || 0), 0));
+    const availableTotal = infernoSkus.reduce((a, s) => a + s.available, 0);
     const wbStockTotal = warehouses.reduce((a, w) => a + w.quantity, 0);
 
     return NextResponse.json({
@@ -102,8 +130,8 @@ export async function GET() {
       error: null,
       // inferno top-level
       warehouses: whInferno,
-      skus: [],
-      totals: { wb_stock: wbStockTotal, available: 0, qty: whInferno.map(() => 0) },
+      skus: infernoSkus,
+      totals: { wb_stock: wbStockTotal, available: availableTotal, qty: totalsQty },
       threshold: 30,
       whEcon: [],
       wb_wh: warehouses.length ? { updated_at: null, count: skus.length } : null,
