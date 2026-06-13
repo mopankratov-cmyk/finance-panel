@@ -1,5 +1,6 @@
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { wbCardImageUrl } from "@/lib/wb/cardImage";
+import { getWbCommission } from "@/lib/wb/commissions";
 
 const WEEKDAY = ["вс", "пн", "вт", "ср", "чт", "пт", "сб"];
 
@@ -32,7 +33,7 @@ export interface Metric {
 }
 
 // cost > 0 → добавляем Валовую ₽ и Маржу % (нужна себестоимость). Для сводки cost=0 → эти метрики вклеиваем отдельно (агрегат по SKU).
-function buildMetrics(days: string[], byDate: Map<string, DailyRow>, stock: number, stockMoney: number, cost = 0): Metric[] {
+function buildMetrics(days: string[], byDate: Map<string, DailyRow>, stock: number, stockMoney: number, cost = 0, commPct = 0): Metric[] {
   const pick = (k: keyof DailyRow) => days.map((d) => Number(byDate.get(d)?.[k] ?? 0));
   const s = (a: number[]) => a.reduce((x, v) => x + v, 0);
   const r1 = (n: number) => Math.round(n * 10) / 10;
@@ -51,10 +52,11 @@ function buildMetrics(days: string[], byDate: Map<string, DailyRow>, stock: numb
     { field: "drr", label: "ДРР, %", kind: "pct", daily: drr, total: totOs > 0 ? r1((s(ad) / totOs) * 100) : 0, forecast: null },
   ];
   if (cost > 0) {
-    // Валовая ₽ = выручка с выкупов − себес×выкупы − реклама. Маржа % = валовая / выручка с выкупов.
-    const gross = days.map((_, i) => Math.round(bs[i] - cost * bc[i] - ad[i]));
-    const totGross = s(bs) - cost * totBc - s(ad);
-    const marginPct = days.map((_, i) => (bs[i] > 0 ? r1(((bs[i] - cost * bc[i] - ad[i]) / bs[i]) * 100) : null));
+    // Валовая ₽ = выручка с выкупов − себес×выкупы − комиссия% − реклама. Маржа % = валовая / выручка.
+    const cm = commPct / 100;
+    const gross = days.map((_, i) => Math.round(bs[i] - cost * bc[i] - bs[i] * cm - ad[i]));
+    const totGross = s(bs) - cost * totBc - s(bs) * cm - s(ad);
+    const marginPct = days.map((_, i) => (bs[i] > 0 ? r1(((bs[i] - cost * bc[i] - bs[i] * cm - ad[i]) / bs[i]) * 100) : null));
     out.push(
       { field: "gross", label: "Валовая, ₽", kind: "money", daily: gross, total: Math.round(totGross), forecast: Math.round(totGross), group_start: true },
       { field: "margin_pct", label: "Маржа, %", kind: "pct", daily: marginPct, total: s(bs) > 0 ? r1((totGross / s(bs)) * 100) : 0, forecast: null },
@@ -79,13 +81,15 @@ export async function buildRnpTable(from: string, to: string): Promise<RnpTable 
   const db = getSupabaseAdmin();
   if (!db) return { error: "Supabase не настроен" };
 
-  const [dailyRes, skuRes, totalsRes, costsRes] = await Promise.all([
+  const [dailyRes, skuRes, totalsRes, costsRes, comm] = await Promise.all([
     db.rpc("rnp_daily", { p_from: from, p_to: to }),
     db.rpc("rnp_daily_sku", { p_from: from, p_to: to }),
     db.rpc("rnp_report"),
     db.from("product_costs").select("article, name"),
+    getWbCommission(30), // фактическая комиссия% по nm
   ]);
   if (dailyRes.error) return { error: dailyRes.error.message };
+  const commForNm = (nm: number) => comm.byNm.get(nm)?.pct ?? comm.avgPct;
 
   const days: string[] = [];
   const cur = new Date(from), end = new Date(to);
@@ -111,7 +115,7 @@ export async function buildRnpTable(from: string, to: string): Promise<RnpTable 
   const skus = [...totalByNm.values()]
     .map((t) => {
       const dmap = byNm.get(t.nm_id) ?? new Map<string, DailyRow>();
-      const metrics = buildMetrics(days, dmap, Number(t.stock ?? 0), Math.round(Number(t.stock ?? 0) * Number(t.cost ?? 0)), Number(t.cost ?? 0));
+      const metrics = buildMetrics(days, dmap, Number(t.stock ?? 0), Math.round(Number(t.stock ?? 0) * Number(t.cost ?? 0)), Number(t.cost ?? 0), commForNm(t.nm_id));
       return { nm: t.nm_id, art: t.article || String(t.nm_id), name: nameByArt.get(t.article) || t.article || String(t.nm_id), img_url: wbCardImageUrl(t.nm_id), metrics, _o: metrics[0]?.total ?? 0 };
     })
     .sort((a, b) => b._o - a._o)

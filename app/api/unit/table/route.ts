@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { wbCardImageUrl } from "@/lib/wb/cardImage";
+import { getWbCommission } from "@/lib/wb/commissions";
 
 export const dynamic = "force-dynamic";
 
@@ -26,16 +27,19 @@ export async function GET(req: NextRequest) {
 
   const sp = new URL(req.url).searchParams;
   const num = (k: string, def: number) => { const v = Number(sp.get(k)); return Number.isFinite(v) && sp.get(k) !== null ? v : def; };
-  const commPct = num("comm", 25);     // WB комиссия по категории — дефолт, правится под факт
+  const commDefault = num("comm", 25); // фолбэк, если фактической комиссии по nm нет
   const acqPct = num("acq", 1.5);      // эквайринг
   const taxPct = num("tax", 7);        // налог
   const ff = num("ff", 0);             // фулфилмент ₽/ед (нет per-SKU данных)
   const targetMargin = num("margin", 25); // целевая маржа для «цены до СПП для N% маржи»
 
-  const [rpcRes, costsRes] = await Promise.all([
+  const [rpcRes, costsRes, comm] = await Promise.all([
     db.rpc("rnp_report"),
     db.from("product_costs").select("article, name, entity, cost_rub, warehouse_expenses"),
+    getWbCommission(30), // фактическая комиссия% по nm из финотчёта
   ]);
+  // комиссия по nm: факт из отчёта → средняя по кабинету → дефолт из ?comm=
+  const commForNm = (nm: number) => comm.byNm.get(nm)?.pct ?? (comm.avgPct > 0 ? comm.avgPct : commDefault);
   const meta = new Map<string, { name: string; cat: string; storage: number }>();
   for (const c of costsRes.data ?? []) meta.set(c.article as string, { name: (c.name as string) ?? "", cat: (c.entity as string) ?? "", storage: Number(c.warehouse_expenses ?? 0) });
 
@@ -60,6 +64,7 @@ export async function GET(req: NextRequest) {
     const buyoutPct = orders > 0 ? (r.buyouts_month / orders) * 100 : null;
     const drr = rev > 0 ? (ad / rev) * 100 : 0;
     const adPerUnit = orders > 0 ? ad / orders : 0;
+    const commPct = commForNm(r.nm_id);
     const commRub = price * commPct / 100;
     const acqRub = price * acqPct / 100;
     const taxRub = price * taxPct / 100;
@@ -86,7 +91,7 @@ export async function GET(req: NextRequest) {
       orders,                               // 8 Заказы/мес
       r0(rev),                              // 9 Выручка ₽
       buyoutPct != null ? r1(buyoutPct) : "", // 10 Выкуп %
-      commPct,                              // 11 Комиссия %
+      r1(commPct),                          // 11 Комиссия % (факт из отчёта)
       blank(price > 0 ? r0(commRub) : null),// 12 Комиссия ₽
       blank(price > 0 ? r0(acqRub) : null), // 13 Эквайринг ₽
       r0(ad),                               // 14 Реклама ₽
@@ -114,6 +119,6 @@ export async function GET(req: NextRequest) {
     img_urls,
     names,
     source_url: null,
-    meta_text: `Юнит по ${rows.length} SKU · комиссия ${commPct}% · эквайринг ${acqPct}% · налог ${taxPct}% (правь под факт) · за 30 дней`,
+    meta_text: `Юнит по ${rows.length} SKU · комиссия ${comm.avgPct > 0 ? `${comm.avgPct}% (факт из отчёта)` : `${commDefault}% (дефолт)`} · эквайринг ${acqPct}% · налог ${taxPct}% · за 30 дней`,
   });
 }
