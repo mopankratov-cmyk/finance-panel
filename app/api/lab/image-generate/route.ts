@@ -26,14 +26,12 @@ export async function POST(request: NextRequest) {
   const referenceUrl: string | null = typeof body.reference_url === "string" ? body.reference_url : null;
   if (!prompt) return NextResponse.json({ detail: "Нет промпта" }, { status: 400 });
 
-  // Если выбрана AI-модель (лицо) → fal FLUX-PuLID для консистентного лица. task_id с префиксом fal:
-  const modelFace: string = typeof body.model_face_url === "string" ? body.model_face_url : "";
-  if (modelFace && process.env.FAL_KEY) {
-    const origin = new URL(request.url).origin;
-    const faceAbs = modelFace.startsWith("/") ? origin + modelFace : modelFace;
-    const reqId = await falPulidSubmit(prompt, faceAbs);
-    if (reqId) return NextResponse.json({ task_id: `fal:${reqId}` });
-    // если fal не ответил — падать не будем, уйдём в Higgsfield ниже
+  // Если выбрана AI-модель → fal FLUX (дефолтная красивая модель). task_id с префиксом fal:
+  const useModel: boolean = body.use_model === true || (typeof body.model_face_url === "string" && body.model_face_url.length > 0);
+  if (useModel && process.env.FAL_KEY) {
+    const token = await falPulidSubmit(prompt);
+    if (token) return NextResponse.json({ task_id: `fal:${token}` });
+    // если fal не ответил — не падаем, уйдём в Higgsfield ниже
   }
 
   // resolution '4K' → 1080p×высокое; Higgsfield Soul использует quality-строку (известно-рабочее 1080p).

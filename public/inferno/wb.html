@@ -3639,9 +3639,9 @@ function app() {
           { key: 'observe',    label: 'Наблюдаем',        badge: 'Нб',  cls: 'bg-amber-100 text-amber-700',    group: 'Статус' },
           { key: 'archive',    label: 'Архив',            badge: 'Ар',  cls: 'bg-slate-200 text-slate-500',    group: 'Статус' },
           { key: 'need_review', label: 'Нужен отзыв',     badge: 'От',  cls: 'bg-pink-100 text-pink-700',      group: 'Статус' },
-        ], lab: { panX: 0, panY: 0, zoom: 1, dragging: false, items: [], nextId: 1, urlInput: '', urlBusy: false, urlMsg: '', dropOffset: { x: 360, y: 60 }, aiModel: 'masha', aiModels: [
+        ], lab: { panX: 0, panY: 0, zoom: 1, dragging: false, items: [], nextId: 1, urlInput: '', urlBusy: false, urlMsg: '', dropOffset: { x: 360, y: 60 }, aiModel: 'ai', aiModels: [
       { id: 'product', name: 'Без модели', kind: 'text', photoCount: 0 },
-      { id: 'masha', name: 'МАША', avatar: (API_BASE || '') + '/api/lab/model-avatar/masha', photoCount: 0 },
+      { id: 'ai', name: 'AI-модель (fal)', kind: 'text', photoCount: 0 },
     ], skuList: [], skuTotal: 0, sku: '', skuObj: null, skuSearch: '', skuLoading: false, skuShowList: false, skuFiles: [], skuFilesLoading: false, skuFilesSelected: [], skuDims: '', skuDimsChecked: false, MAX_REFS: 2, MAX_SKU_FILES: 5,
       promptUser: '', promptBusy: false, promptGenerated: '', promptMeta: '', promptErr: '', promptProgress: '', promptAudit: null, promptElapsed: 0, promptEtaSec: 90, lastPromptTaskId: null, promptRecoverTaskId: null,
       competitorBrief: '', compBusy: false, compMsg: '', compErr: false, compProducts: [], compUsps: [], compShow: false, compQuery: '',
@@ -5165,7 +5165,7 @@ function app() {
           method:'POST', headers:{'Content-Type':'application/json'},
           body: JSON.stringify({ prompt: lab.promptGenerated, model: modelKey, resolution, aspect_ratio:'3:4', count:1,
                                  variant_index: v.idx, variant_total: (lab.resultVariants||[]).length, prompt_task_id: lab.lastPromptTaskId||null,
-                                 model_face_url: (lab.aiModel && lab.aiModel !== 'product') ? (lab.aiModels.find(m=>m.id===lab.aiModel)?.avatar || '') : '' })
+                                 use_model: !!(lab.aiModel && lab.aiModel !== 'product') })
         });
         const d = await r.json();
         if (!r.ok) { v.error = d.detail || ('HTTP '+r.status); clearInterval(tick); v.busy=false; return; }
@@ -5222,7 +5222,7 @@ function app() {
               variant_index: v.idx,
               variant_total: N,
               prompt_task_id: lab.lastPromptTaskId || null,
-              model_face_url: (lab.aiModel && lab.aiModel !== 'product') ? (lab.aiModels.find(m=>m.id===lab.aiModel)?.avatar || '') : '',
+              use_model: !!(lab.aiModel && lab.aiModel !== 'product'),
             })
           });
           const d = await r.json();
