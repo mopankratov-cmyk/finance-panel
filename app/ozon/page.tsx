@@ -122,7 +122,7 @@ export default function OzonPage() {
           <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">Ozon: {err}</div>
         ) : tab === "rnp" ? (
           <div className="overflow-auto rounded-xl border border-gray-200 bg-white">
-            <table className="w-full border-collapse text-xs">
+            <table className="border-collapse text-xs">
               <thead>
                 <tr className="bg-gray-800 text-gray-100">
                   <th className="sticky left-0 z-20 bg-gray-800 px-3 py-2 text-left font-semibold" style={{ minWidth: 240 }}>Товар / Метрика</th>

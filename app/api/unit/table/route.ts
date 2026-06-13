@@ -40,13 +40,14 @@ export async function GET() {
     const avgPrice = orders > 0 ? Math.round(rev / orders) : 0;
     const drr = rev > 0 ? Math.round((ad / rev) * 1000) / 10 : 0;
     const marginUnit = orders > 0 ? Math.round(avgPrice - cost - ad / orders) : 0;
-    // Схема inferno: первые 5 колонок sticky (Кабинет·Фото·Артикул·Название·SKU),
-    // col 1 = фото (пустой заголовок → разделитель), col 4 = nmId (ссылка на карточку).
+    // Схема inferno: первые 5 колонок sticky фикс-ширины (Кабинет·Фото·Артикул·Категория·SKU),
+    // col 1 = фото, col 4 = nmId (ссылка на карточку). Длинное «Название» НЕ кладём в sticky-колонки
+    // (узкие 72/78px → переполнение и наезд) — товар опознаётся по фото + артикулу + SKU.
     rows.push([
       "Магазин", // 0 Кабинет (рядом с чекбоксом)
       "", // 1 Фото
       r.article || String(r.nm_id), // 2 Артикул
-      nameByArt.get(r.article) || "", // 3 Название
+      "", // 3 Категория (пусто — нет данных)
       r.nm_id, // 4 SKU → ссылка на карточку WB
       Math.round(cost),
       avgPrice,
@@ -60,7 +61,7 @@ export async function GET() {
   }
 
   return NextResponse.json({
-    headers: ["Кабинет", "", "Артикул", "Название", "SKU", "Себес ₽", "Ср. цена ₽", "Заказы/мес", "Выручка ₽", "Реклама ₽", "ДРР %", "Маржа/ед ₽"],
+    headers: ["Кабинет", "", "Артикул", "", "SKU", "Себес ₽", "Ср. цена ₽", "Заказы/мес", "Выручка ₽", "Реклама ₽", "ДРР %", "Маржа/ед ₽"],
     rows,
     img_urls,
     source_url: null,
