@@ -1,6 +1,6 @@
 import { wbFetch } from "@/lib/wb/fetch";
 import { fetchSalesReport } from "@/lib/wb/fetchSalesReport";
-import { extractAdvertIds, type WbAdStat, type WbAdvertsResponse, type WbOrder } from "@/lib/wb/types";
+import type { WbAdStat, WbOrder } from "@/lib/wb/types";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { supabase } from "@/lib/supabase";
 import { OPIU_ENTITY } from "./constants";
@@ -27,33 +27,33 @@ async function fetchOrders(
   });
 }
 
+// Расход на рекламу берём из синхронизированной таблицы wb_advert_nm_daily (cron),
+// а не из живого advert/v3/fullstats — у того лимит 1 запрос/мин → ОПиУ ловил 429/500.
 async function fetchAdStats(
   dateFrom: string,
   dateTo: string,
-  refresh: boolean,
 ): Promise<WbAdStat[]> {
-  const adsRes = await wbFetch<WbAdvertsResponse>(
-    "https://advert-api.wildberries.ru/api/advert/v2/adverts",
-    { method: "GET" },
-    { refresh },
-  );
-  const ids = extractAdvertIds(adsRes.data);
-  if (!ids.length) return [];
+  const client = getSupabaseAdmin() ?? supabase;
+  const { data, error } = await client
+    .from("wb_advert_nm_daily")
+    .select("date, spent")
+    .gte("date", dateFrom)
+    .lte("date", dateTo);
 
-  const stats: WbAdStat[] = [];
-  const chunkSize = 50;
-  for (let i = 0; i < ids.length; i += chunkSize) {
-    const batch = ids.slice(i, i + chunkSize);
-    const statUrl = new URL("https://advert-api.wildberries.ru/adv/v3/fullstats");
-    statUrl.searchParams.set("ids", batch.join(","));
-    statUrl.searchParams.set("beginDate", dateFrom);
-    statUrl.searchParams.set("endDate", dateTo);
-
-    const res = await wbFetch<WbAdStat[]>(statUrl.toString(), { method: "GET" }, { refresh });
-    if (res.error) throw new Error(res.error);
-    if (res.data?.length) stats.push(...res.data);
+  if (error) {
+    console.error("[opiu] ad stats read:", error.message);
+    return [];
   }
-  return stats;
+
+  // Агрегируем расход по дате → один WbAdStat с массивом days (как ждёт adsSpendInRange).
+  const byDate = new Map<string, number>();
+  for (const row of data ?? []) {
+    const d = String(row.date).slice(0, 10);
+    byDate.set(d, (byDate.get(d) ?? 0) + Number(row.spent ?? 0));
+  }
+  if (byDate.size === 0) return [];
+  const days = [...byDate.entries()].map(([date, sum]) => ({ date, sum }));
+  return [{ days }];
 }
 
 async function fetchProductCosts(): Promise<ProductCostRow[]> {
@@ -125,7 +125,7 @@ export async function loadOpiuMonth(
   const [sales, orders, adStats, costs, warehouseByWeek] = await Promise.all([
     fetchSalesReport(dateFrom, dateTo, refresh),
     fetchOrders(dateFrom, dateTo, refresh),
-    fetchAdStats(dateFrom, dateTo, refresh),
+    fetchAdStats(dateFrom, dateTo),
     fetchProductCosts(),
     fetchWarehouseCosts(month, weeks),
   ]);
