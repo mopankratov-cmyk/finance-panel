@@ -4201,6 +4201,12 @@ function app() {
           if (num < 25) return 'background:#dcfce7 !important';
           return 'background:#bbf7d0 !important';
         }
+        if (/^GMROI/.test(label)) {
+          if (num >= 100) return 'background:#bbf7d0 !important';
+          if (num >= 50) return 'background:#dcfce7 !important';
+          if (num >= 20) return 'background:#fef9c3 !important';
+          return 'background:#fee2e2 !important';
+        }
         return '';
       };
       const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -6905,6 +6911,12 @@ function app() {
         if (num < 10) return 'background:#fef9c3 !important';
         if (num < 25) return 'background:#dcfce7 !important';
         return 'background:#bbf7d0 !important';
+      }
+      if (/^GMROI/.test(label)) {
+        if (num >= 100) return 'background:#bbf7d0 !important';
+        if (num >= 50) return 'background:#dcfce7 !important';
+        if (num >= 20) return 'background:#fef9c3 !important';
+        return 'background:#fee2e2 !important';
       }
       return '';
     },

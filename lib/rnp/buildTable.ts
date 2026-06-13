@@ -51,20 +51,28 @@ function buildMetrics(days: string[], byDate: Map<string, DailyRow>, stock: numb
     { field: "ad_spent", label: "Реклама, ₽", kind: "money", daily: ad, total: Math.round(s(ad)), forecast: Math.round(s(ad)), group_start: true },
     { field: "drr", label: "ДРР, %", kind: "pct", daily: drr, total: totOs > 0 ? r1((s(ad) / totOs) * 100) : 0, forecast: null },
   ];
+  let grossTotalForGmroi: number | null = null;
   if (cost > 0) {
     // Валовая ₽ = выручка с выкупов − себес×выкупы − комиссия% − реклама. Маржа % = валовая / выручка.
     const cm = commPct / 100;
     const gross = days.map((_, i) => Math.round(bs[i] - cost * bc[i] - bs[i] * cm - ad[i]));
     const totGross = s(bs) - cost * totBc - s(bs) * cm - s(ad);
+    grossTotalForGmroi = totGross;
     const marginPct = days.map((_, i) => (bs[i] > 0 ? r1(((bs[i] - cost * bc[i] - bs[i] * cm - ad[i]) / bs[i]) * 100) : null));
     out.push(
       { field: "gross", label: "Валовая, ₽", kind: "money", daily: gross, total: Math.round(totGross), forecast: Math.round(totGross), group_start: true },
       { field: "margin_pct", label: "Маржа, %", kind: "pct", daily: marginPct, total: s(bs) > 0 ? r1((totGross / s(bs)) * 100) : 0, forecast: null },
     );
   }
+  // Оборачиваемость, дней = остаток / (выкупы в день). GMROI % = валовая / деньги в остатках.
+  const dailyBuyouts = days.length > 0 ? totBc / days.length : 0;
+  const turnover = dailyBuyouts > 0 ? Math.round(stock / dailyBuyouts) : null;
+  const gmroi = grossTotalForGmroi != null && stockMoney > 0 ? r1(Math.min(999, (grossTotalForGmroi / stockMoney) * 100)) : null;
   out.push(
     { field: "stock", label: "Остаток, шт", kind: "int", daily: days.map(() => null), total: stock, forecast: null, group_start: true },
     { field: "money", label: "Деньги в остатках, ₽", kind: "money", daily: days.map(() => null), total: Math.round(stockMoney), forecast: null },
+    { field: "turnover", label: "Оборачиваемость, дней", kind: "int", daily: days.map(() => null), total: turnover ?? 0, forecast: null },
+    { field: "gmroi", label: "GMROI, %", kind: "pct", daily: days.map(() => null), total: gmroi ?? 0, forecast: null },
   );
   return out;
 }
@@ -137,6 +145,9 @@ export async function buildRnpTable(from: string, to: string): Promise<RnpTable 
     { field: "gross", label: "Валовая, ₽", kind: "money", daily: grossDaily, total: Math.round(grossTotal), forecast: Math.round(grossTotal), group_start: true },
     { field: "margin_pct", label: "Маржа, %", kind: "pct", daily: days.map((_, i) => { const bsv = Number(buyoutsSumDaily[i] ?? 0); const g = grossDaily[i]; return bsv > 0 && g != null ? Math.round((g / bsv) * 1000) / 10 : null; }), total: buyoutsSumTotal > 0 ? Math.round((grossTotal / buyoutsSumTotal) * 1000) / 10 : 0, forecast: null },
   );
+  // GMROI сводки — из агрегированной валовой / деньги в остатках
+  const gmroiM = summary.find((m) => m.field === "gmroi");
+  if (gmroiM) gmroiM.total = stockMoneyTotal > 0 ? Math.round(Math.min(999, (grossTotal / stockMoneyTotal) * 100) * 10) / 10 : 0;
 
   return { shop_label: "Магазин", sku_count: skus.length, period, summary, skus };
 }
