@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Loader2, LineChart } from "lucide-react";
+import { useActiveCabinet } from "@/lib/useActiveCabinet";
 
 type WB = { revenue_before_spp: number; coinvest: number; revenue: number; commission: number; logistics: number; storage: number; penalty: number; acquiring: number; ad: number; other: number; cogs: number; tax: number; profit: number; margin: number; error?: string };
 type OZ = { revenue: number; commission: number; delivery: number; services: number; cogs: number; tax: number; profit: number; margin: number; error?: string; noCabinet?: boolean };
@@ -25,12 +26,13 @@ export default function PnlPage() {
   const [tax, setTax] = useState(7);
   const [data, setData] = useState<{ wb: WB; ozon: OZ } | null>(null);
   const [loading, setLoading] = useState(true);
+  const [ozonCab] = useActiveCabinet("ozon");
 
   useEffect(() => {
     setLoading(true);
-    fetch(`/api/opiu/mp?weeks=${weeks}&tax=${tax}`, { cache: "no-store" })
+    fetch(`/api/opiu/mp?weeks=${weeks}&tax=${tax}${ozonCab ? `&cabinet=${ozonCab}` : ""}`, { cache: "no-store" })
       .then((r) => r.json()).then((d) => setData({ wb: d.wb, ozon: d.ozon })).catch(() => setData(null)).finally(() => setLoading(false));
-  }, [weeks, tax]);
+  }, [weeks, tax, ozonCab]);
 
   const wb = data?.wb, oz = data?.ozon;
   const totProfit = (wb && !wb.error ? wb.profit : 0) + (oz && !oz.error ? oz.profit : 0);

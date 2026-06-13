@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Loader2 } from "lucide-react";
 import { ModuleMenu } from "@/components/ModuleMenu";
+import { CabinetSwitcher } from "@/components/CabinetSwitcher";
+import { useActiveCabinet } from "@/lib/useActiveCabinet";
 
 type Tab = "rnp" | "funnel" | "unit" | "stocks";
 const fmt = (n: number | null | undefined) => (n == null ? "—" : Math.round(n).toLocaleString("ru-RU"));
@@ -25,6 +27,7 @@ function Thumb({ src }: { src: string | null }) {
 export default function OzonPage() {
   const [tab, setTab] = useState<Tab>("rnp");
   const [days, setDays] = useState(14);
+  const [cabId, setCabId] = useActiveCabinet("ozon");
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [noCab, setNoCab] = useState(false);
@@ -49,7 +52,8 @@ export default function OzonPage() {
 
   useEffect(() => {
     setLoading(true); setErr(null); setNoCab(false);
-    const url = tab === "rnp" ? `/api/ozon/rnp?days=${days}` : tab === "funnel" ? `/api/ozon/analytics?days=${days}` : tab === "unit" ? "/api/ozon/unit" : "/api/ozon/stocks";
+    const cab = cabId ? `${tab === "unit" || tab === "stocks" ? "?" : "&"}cabinet=${cabId}` : "";
+    const url = (tab === "rnp" ? `/api/ozon/rnp?days=${days}` : tab === "funnel" ? `/api/ozon/analytics?days=${days}` : tab === "unit" ? "/api/ozon/unit" : "/api/ozon/stocks") + cab;
     fetch(url, { cache: "no-store" }).then((r) => r.json()).then((d) => {
       if (d.noCabinet) { setNoCab(true); return; }
       if (d.error) { setErr(d.error); return; }
@@ -58,7 +62,7 @@ export default function OzonPage() {
       else if (tab === "unit") setUnit(d.rows ?? []);
       else setStocks({ rows: d.rows ?? [], warehouses: d.warehouses ?? [], totalFree: d.totalFree ?? 0 });
     }).catch((e) => setErr(String(e))).finally(() => setLoading(false));
-  }, [tab, days, reload]);
+  }, [tab, days, reload, cabId]);
 
   const flt = <T extends { name: string; art?: string; sku?: string }>(rows: T[]) => {
     const s = q.toLowerCase().trim();
@@ -85,7 +89,8 @@ export default function OzonPage() {
           <div className="flex h-8 w-8 items-center justify-center rounded-md bg-gradient-to-br from-sky-500 to-blue-700 text-xs font-extrabold text-white">OZ</div>
           <div className="text-base font-extrabold tracking-tight">Ozon Аналитика</div>
           <span className="ml-1 flex items-center gap-1.5 text-xs text-gray-500"><span className="h-2 w-2 rounded-full bg-green-400" /> система работает</span>
-          <Link href="/losses" className="ml-auto text-xs font-semibold text-red-600 hover:text-red-700">↘ Где теряем</Link>
+          <div className="ml-auto"><CabinetSwitcher mp="ozon" accent="sky" onChange={setCabId} /></div>
+          <Link href="/losses" className="text-xs font-semibold text-red-600 hover:text-red-700">↘ Где теряем</Link>
           <ModuleMenu accent="sky" />
         </div>
         {/* Таб-бар */}
