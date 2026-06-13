@@ -1330,7 +1330,10 @@ button:not(:disabled):active{ transform: translateY(0); }
       <div x-show="design.lab.lightbox" x-cloak @click="design.lab.lightbox=''" class="fixed inset-0 z-50 bg-black/85 flex items-center justify-center p-6 cursor-zoom-out">
         <img :src="design.lab.lightbox" class="max-w-full max-h-full object-contain shadow-2xl rounded">
         <button @click.stop="design.lab.lightbox=''" class="absolute top-4 right-4 text-white/90 hover:text-white text-2xl">×</button>
-        <a :href="design.lab.lightbox" download="lab-image.png" target="_blank" rel="noopener" @click.stop class="absolute bottom-4 right-4 text-[12px] px-3 py-1.5 bg-white/90 text-gray-800 rounded hover:bg-white">⬇ скачать</a>
+        <div class="absolute bottom-4 right-4 flex gap-2" @click.stop>
+          <a :href="'/card-editor?img='+encodeURIComponent(design.lab.lightbox)" target="_blank" rel="noopener" class="text-[12px] px-3 py-1.5 bg-violet-600 text-white rounded hover:bg-violet-700">✏ текст на карточку</a>
+          <a :href="design.lab.lightbox" download="lab-image.png" target="_blank" rel="noopener" class="text-[12px] px-3 py-1.5 bg-white/90 text-gray-800 rounded hover:bg-white">⬇ скачать</a>
+        </div>
       </div>
 
       <!-- Попап-пикер для слайда воронки: реф (файл/Pinterest) или кадр (из папки) — Юра 01.06.2026 -->
