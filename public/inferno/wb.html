@@ -1009,12 +1009,18 @@ button:not(:disabled):active{ transform: translateY(0); }
                     <template x-for="(cell, ci) in row" :key="ci">
                       <td :class="unitColClass(ci)" :style="unitColStyle(ci, false) + unitCellBg(ci, cell)">
                         <template x-if="ci === 1 && unit.data.img_urls[ri]">
-                          <img :src="unit.data.img_urls[ri]" loading="lazy" onerror="this.style.display='none'" style="width:34px;height:34px;object-fit:cover;border-radius:3px;display:block;margin:0 auto">
+                          <img :src="unit.data.img_urls[ri]" loading="lazy" onerror="this.style.display='none'" style="width:40px;height:40px;object-fit:cover;border-radius:5px;border:1px solid #e5e7eb;display:block;margin:0 auto">
                         </template>
                         <template x-if="ci === 0">
-                          <input type="checkbox" :checked="!!unit.rowHL[ri]" tabindex="-1" class="accent-violet-600 mr-1 align-middle" style="width:13px;height:13px;pointer-events:none" title="Выделить строку — работаю с ней">
+                          <input type="checkbox" :checked="!!unit.rowHL[ri]" tabindex="-1" class="accent-violet-600 align-middle" style="width:13px;height:13px;pointer-events:none" title="Выделить строку — работаю с ней">
                         </template>
-                        <template x-if="ci !== 1 && ci !== 4">
+                        <template x-if="ci === 2">
+                          <div style="text-align:left;line-height:1.2;overflow:hidden">
+                            <div class="font-medium" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis" x-text="cell"></div>
+                            <div style="font-size:10px;color:#9ca3af;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" x-text="(unit.data.names && unit.data.names[ri]) || ''"></div>
+                          </div>
+                        </template>
+                        <template x-if="ci !== 1 && ci !== 4 && ci !== 2 && ci !== 0">
                           <span :class="unitCellExtraClass(ri, ci, cell)" x-text="unitCellDisplay(ri, ci, cell)"></span>
                         </template>
                         <template x-if="ci === 4 && cell">
@@ -3671,24 +3677,26 @@ function app() {
       this.$nextTick(() => this.renderAllSkus());
     },
     unitColStyle(i, isHeader) {
-      // Sticky первые 5: Кабинет(55) Фото(44) Артикул(88) Категория(72) SKU(78)
-      const widths = [55, 44, 88, 72, 78];
+      // Sticky первые 5: чекбокс(34) Фото(50) Артикул+название(150) Категория(96) SKU(82)
+      const widths = [34, 50, 150, 96, 82];
       if (i < 5) {
         const left = widths.slice(0, i).reduce((s,w) => s+w, 0);
         const w = widths[i];
         const bg = isHeader ? '#f9fafb' : '#fff';
         const z = isHeader ? 6 : 2;
-        return `position:sticky;left:${left}px;background:${bg};z-index:${z};width:${w}px;min-width:${w}px;max-width:${w}px;text-align:center`;
+        const align = (i === 2 || i === 3) ? 'left' : 'center';
+        return `position:sticky;left:${left}px;background:${bg};z-index:${z};width:${w}px;min-width:${w}px;max-width:${w}px;text-align:${align}`;
       }
       // Остальные — по центру, узкая ширина
-      return `text-align:center;width:64px;min-width:64px;max-width:74px;${isHeader?'background:#f9fafb':''}`;
+      return `text-align:center;width:64px;min-width:64px;max-width:78px;${isHeader?'background:#f9fafb':''}`;
     },
     unitToggleRow(ri) {
       // radio: клик по строке — выделяем одну, повторный клик снимает
       this.unit.rowHL = this.unit.rowHL[ri] ? {} : { [ri]: true };
     },
     unitColClass(i) {
-      // Колонки-разделители (пустой заголовок) — серый фон
+      // Первые 5 — фикс. sticky-колонки (чекбокс/фото/артикул/скрытая/SKU), без серых разделителей
+      if (i < 5) return '';
       if (this.unit.data && !this.unit.data.headers[i]) return 'unit-sep';
       return '';
     },
@@ -3781,6 +3789,7 @@ function app() {
       const newImgs = sortable.map(s => this.unit.data.img_urls[s.idx]);
       this.unit.data.rows = newRows;
       this.unit.data.img_urls = newImgs;
+      if (this.unit.data.names) this.unit.data.names = sortable.map(s => this.unit.data.names[s.idx]);
     },
     async loadSnapshot(flt) {
       this.snap.filter = flt; this.snap.loading = true; this.snap.error = null;

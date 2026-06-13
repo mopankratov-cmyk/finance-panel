@@ -88,11 +88,17 @@ export async function GET(request: NextRequest) {
     const sum = (a: number[]) => a.reduce((x, v) => x + v, 0);
     const orders = pick("orders"), revenue = pick("revenue"), views = pick("views"), cart = pick("cart");
     const revTotal = sum(revenue);
+    const r1 = (a: number, b: number) => (b > 0 ? Math.round((a / b) * 1000) / 10 : 0);
+    const crCart = dates.map((_, i) => r1(cart[i], views[i]));
+    const crOrder = dates.map((_, i) => r1(orders[i], cart[i]));
+    const oV = sum(orders), cV = sum(cart), vV = sum(views);
     const m = [
-      { field: "orders", label: "Заказы, шт", kind: "int", daily: orders, total: sum(orders), group_start: true },
+      { field: "orders", label: "Заказы, шт", kind: "int", daily: orders, total: oV, group_start: true },
       { field: "revenue", label: "Выручка, ₽", kind: "money", daily: revenue, total: revTotal },
-      { field: "cart", label: "В корзину", kind: "int", daily: cart, total: sum(cart), group_start: true },
-      { field: "views", label: "Показы", kind: "int", daily: views, total: sum(views) },
+      { field: "cart", label: "В корзину", kind: "int", daily: cart, total: cV, group_start: true },
+      { field: "views", label: "Показы", kind: "int", daily: views, total: vV },
+      { field: "cr_cart", label: "CR в корзину, %", kind: "pct", daily: crCart, total: r1(cV, vV) },
+      { field: "cr_order", label: "CR корзина→заказ, %", kind: "pct", daily: crOrder, total: r1(oV, cV) },
       { field: "stock", label: "Остаток, шт", kind: "int", daily: dates.map(() => 0), total: stock, group_start: true },
     ];
     if (adSpent != null) {

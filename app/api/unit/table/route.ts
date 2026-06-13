@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { wbCardImageUrl } from "@/lib/wb/cardImage";
 
@@ -9,62 +9,111 @@ interface RpcRow {
   article: string;
   orders_month: number;
   orders_sum_month: number;
+  buyouts_month: number;
+  stock: number;
+  in_way_to_client: number;
   cost: number | null;
   ad_spend_month: number;
 }
 
-// Контракт inferno: {headers:[], rows:[[...]], img_urls:[], source_url, meta_text}
-export async function GET() {
+// Юнит-экономика WB «1 в 1» с инферноф (формула калькулятора Юры):
+// Прибыль/ед = Цена до СПП − Себес − Фулфилмент − Комиссия% − Эквайринг% − Реклама(ДРР)% − Налог%
+// Комиссия/эквайринг/налог/фулфилмент — настраиваемые дефолты «поправь под факт» (?comm=&acq=&tax=&ff=&margin=).
+// СПП %/Цена после СПП НЕ считаем — в БД нет (discount_percent ≠ СПП).
+export async function GET(req: NextRequest) {
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ headers: [], rows: [], img_urls: [] });
 
+  const sp = new URL(req.url).searchParams;
+  const num = (k: string, def: number) => { const v = Number(sp.get(k)); return Number.isFinite(v) && sp.get(k) !== null ? v : def; };
+  const commPct = num("comm", 25);     // WB комиссия по категории — дефолт, правится под факт
+  const acqPct = num("acq", 1.5);      // эквайринг
+  const taxPct = num("tax", 7);        // налог
+  const ff = num("ff", 0);             // фулфилмент ₽/ед (нет per-SKU данных)
+  const targetMargin = num("margin", 25); // целевая маржа для «цены до СПП для N% маржи»
+
   const [rpcRes, costsRes] = await Promise.all([
     db.rpc("rnp_report"),
-    db.from("product_costs").select("article, name"),
+    db.from("product_costs").select("article, name, entity, cost_rub, warehouse_expenses"),
   ]);
-  const nameByArt = new Map<string, string>();
-  for (const c of costsRes.data ?? []) nameByArt.set(c.article as string, (c.name as string) ?? "");
+  const meta = new Map<string, { name: string; cat: string; storage: number }>();
+  for (const c of costsRes.data ?? []) meta.set(c.article as string, { name: (c.name as string) ?? "", cat: (c.entity as string) ?? "", storage: Number(c.warehouse_expenses ?? 0) });
+
+  const r0 = (n: number) => Math.round(n);
+  const r1 = (n: number) => Math.round(n * 10) / 10;
+  const blank = (n: number | null) => (n == null || !isFinite(n) ? "" : n);
 
   const rows: (string | number)[][] = [];
   const img_urls: string[] = [];
+  const names: string[] = [];
 
-  const sorted = ((rpcRes.data ?? []) as RpcRow[])
-    .slice()
-    .sort((a, b) => Number(b.orders_sum_month) - Number(a.orders_sum_month));
+  const sorted = ((rpcRes.data ?? []) as RpcRow[]).slice().sort((a, b) => Number(b.orders_sum_month) - Number(a.orders_sum_month));
 
   for (const r of sorted) {
+    const m = meta.get(r.article);
     const orders = r.orders_month;
     const rev = Number(r.orders_sum_month);
     const cost = Number(r.cost ?? 0);
     const ad = Number(r.ad_spend_month ?? 0);
-    const avgPrice = orders > 0 ? Math.round(rev / orders) : 0;
-    const drr = rev > 0 ? Math.round((ad / rev) * 1000) / 10 : 0;
-    const marginUnit = orders > 0 ? Math.round(avgPrice - cost - ad / orders) : 0;
-    // Схема inferno: первые 5 колонок sticky фикс-ширины (Кабинет·Фото·Артикул·Категория·SKU),
-    // col 1 = фото, col 4 = nmId (ссылка на карточку). Длинное «Название» НЕ кладём в sticky-колонки
-    // (узкие 72/78px → переполнение и наезд) — товар опознаётся по фото + артикулу + SKU.
+    const stock = Number(r.stock ?? 0) + Number(r.in_way_to_client ?? 0);
+    const price = orders > 0 ? rev / orders : 0;          // Цена до СПП = ср. finished_price
+    const buyoutPct = orders > 0 ? (r.buyouts_month / orders) * 100 : null;
+    const drr = rev > 0 ? (ad / rev) * 100 : 0;
+    const adPerUnit = orders > 0 ? ad / orders : 0;
+    const commRub = price * commPct / 100;
+    const acqRub = price * acqPct / 100;
+    const taxRub = price * taxPct / 100;
+    // Маржа ДО ДРР (без рекламы)
+    const marginBeforeDrr = price - cost - ff - commRub - acqRub - taxRub;
+    const marginBeforeDrrPct = price > 0 ? (marginBeforeDrr / price) * 100 : null;
+    // Маржа/ед и вал % ПОСЛЕ ДРР (минус реклама)
+    const marginUnit = marginBeforeDrr - adPerUnit;
+    const valAfterDrrPct = price > 0 ? (marginUnit / price) * 100 : null;
+    // Целевая цена до СПП для N% маржи: price = (cost+ff) / (1 − (comm+acq+tax+drr+margin)/100)
+    const den = 1 - (commPct + acqPct + taxPct + drr + targetMargin) / 100;
+    const targetPrice = den > 0 ? (cost + ff) / den : null;
+    const deltaPct = targetPrice && price > 0 ? ((price - targetPrice) / targetPrice) * 100 : null;
+
     rows.push([
-      "Магазин", // 0 Кабинет (рядом с чекбоксом)
-      "", // 1 Фото
-      r.article || String(r.nm_id), // 2 Артикул
-      "", // 3 Категория (пусто — нет данных)
-      r.nm_id, // 4 SKU → ссылка на карточку WB
-      Math.round(cost),
-      avgPrice,
-      orders,
-      Math.round(rev),
-      Math.round(ad),
-      drr,
-      marginUnit,
+      "",                                   // 0 чекбокс
+      "",                                   // 1 фото
+      r.article || String(r.nm_id),         // 2 артикул (+ название под)
+      m?.cat || "",                         // 3 категория
+      r.nm_id,                              // 4 SKU → ссылка
+      stock,                                // 5 Остаток + в пути
+      r0(cost),                             // 6 Себес ₽
+      blank(price > 0 ? r0(price) : null),  // 7 Цена до СПП ₽
+      orders,                               // 8 Заказы/мес
+      r0(rev),                              // 9 Выручка ₽
+      buyoutPct != null ? r1(buyoutPct) : "", // 10 Выкуп %
+      commPct,                              // 11 Комиссия %
+      blank(price > 0 ? r0(commRub) : null),// 12 Комиссия ₽
+      blank(price > 0 ? r0(acqRub) : null), // 13 Эквайринг ₽
+      r0(ad),                               // 14 Реклама ₽
+      r1(drr),                              // 15 ДРР %
+      blank(price > 0 ? r0(taxRub) : null), // 16 Налог ₽
+      blank(price > 0 ? r0(marginUnit) : null), // 17 Маржа/ед ₽
+      marginBeforeDrrPct != null ? r1(marginBeforeDrrPct) : "", // 18 Маржа % до ДРР
+      valAfterDrrPct != null ? r1(valAfterDrrPct) : "",          // 19 Вал % ПОСЛЕ ДРР
+      targetPrice != null ? r0(targetPrice) : "",                // 20 Цена до СПП для N% маржи
+      deltaPct != null ? r1(deltaPct) : "",                      // 21 Дельта %
     ]);
     img_urls.push(wbCardImageUrl(r.nm_id));
+    names.push(m?.name || "");
   }
 
   return NextResponse.json({
-    headers: ["Кабинет", "", "Артикул", "", "SKU", "Себес ₽", "Ср. цена ₽", "Заказы/мес", "Выручка ₽", "Реклама ₽", "ДРР %", "Маржа/ед ₽"],
+    headers: [
+      "", "", "Артикул", "Юрлицо", "SKU",
+      "Остаток + в пути", "Себес ₽", "Цена до СПП ₽", "Заказы/мес", "Выручка ₽",
+      "Выкуп %", "Комиссия %", "Комиссия ₽", "Эквайринг ₽", "Реклама ₽",
+      "ДРР %", "Налог ₽", "Маржа/ед ₽", "Маржа % до ДРР", "Вал % ПОСЛЕ ДРР",
+      `Цена до СПП для ${targetMargin}% маржи`, "Дельта %",
+    ],
     rows,
     img_urls,
+    names,
     source_url: null,
-    meta_text: `Юнит-экономика по ${rows.length} SKU (за 30 дней)`,
+    meta_text: `Юнит по ${rows.length} SKU · комиссия ${commPct}% · эквайринг ${acqPct}% · налог ${taxPct}% (правь под факт) · за 30 дней`,
   });
 }
