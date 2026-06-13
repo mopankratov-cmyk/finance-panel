@@ -25,25 +25,17 @@ export async function GET() {
     db.from("product_costs").select("article, name"),
   ]);
 
-  // заказы из wb_orders для выручки ДО СПП (total_price×(1−disc%)) — постранично (cap 1000)
+  // Заказы по nm/день для выручки ДО СПП — через server-side агрегат rnp_daily_sku
+  // (orders_sum = coalesce(finished_price, total_price) = цена после скидки продавца = до СПП).
+  // Раньше тут шёл постраничный скан wb_orders по сети — рвал соединение и вис на 70с+.
+  const toDate = new Date().toISOString().slice(0, 10);
   const ordersByNm = new Map<number, Map<string, { cnt: number; sum: number }>>();
-  for (let page = 0; page < 30; page++) {
-    const { data, error } = await db
-      .from("wb_orders").select("nm_id, date, total_price, discount_percent, is_cancel")
-      .gte("date", since).range(page * 1000, page * 1000 + 999);
-    if (error || !data?.length) break;
-    for (const o of data) {
-      if (o.is_cancel) continue;
-      const nm = o.nm_id as number;
-      const d = String(o.date).slice(0, 10);
-      const beforeSpp = Number(o.total_price ?? 0) * (1 - Number(o.discount_percent ?? 0) / 100);
-      if (!ordersByNm.has(nm)) ordersByNm.set(nm, new Map());
-      const m = ordersByNm.get(nm)!;
-      const e = m.get(d) ?? { cnt: 0, sum: 0 };
-      e.cnt++; e.sum += beforeSpp;
-      m.set(d, e);
-    }
-    if (data.length < 1000) break;
+  const { data: dailySku } = await db.rpc("rnp_daily_sku", { p_from: since, p_to: toDate });
+  for (const row of (dailySku ?? []) as { nm_id: number; d: string; orders_count: number; orders_sum: number }[]) {
+    const nm = Number(row.nm_id);
+    const d = String(row.d).slice(0, 10);
+    if (!ordersByNm.has(nm)) ordersByNm.set(nm, new Map());
+    ordersByNm.get(nm)!.set(d, { cnt: Number(row.orders_count ?? 0), sum: Number(row.orders_sum ?? 0) });
   }
 
   const funnel = (funnelRes.data ?? []) as FunnelRow[];
