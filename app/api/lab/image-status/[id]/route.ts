@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { falPulidStatus } from "@/lib/fal/pulid";
 
 export const dynamic = "force-dynamic";
 
@@ -10,9 +11,18 @@ interface SoulJobSet { id: string; jobs: SoulJob[] }
 // Статус задачи генерации изображения (Higgsfield job-set) → контракт лабы.
 export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
+  if (!id) return NextResponse.json({ status: "error", error: "Нужен id" }, { status: 400 });
+
+  // fal FLUX-PuLID (модель с консистентным лицом)
+  if (id.startsWith("fal:")) {
+    const st = await falPulidStatus(id.slice(4));
+    if (st.status === "done") return NextResponse.json({ status: "done", image_url: st.imageUrl });
+    if (st.status === "error") return NextResponse.json({ status: "error", error: st.error });
+    return NextResponse.json({ status: "in_progress", progress: "модель генерится (fal)…" });
+  }
+
   const credentials = process.env.HF_CREDENTIALS;
   if (!credentials) return NextResponse.json({ status: "error", error: "HF_CREDENTIALS не настроен" }, { status: 500 });
-  if (!id) return NextResponse.json({ status: "error", error: "Нужен id" }, { status: 400 });
 
   try {
     const res = await fetch(`${HF_BASE}/v1/job-sets/${id}`, {

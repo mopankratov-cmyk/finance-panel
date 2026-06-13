@@ -5164,7 +5164,8 @@ function app() {
         const r = await fetch(API_BASE + '/api/lab/image-generate', {
           method:'POST', headers:{'Content-Type':'application/json'},
           body: JSON.stringify({ prompt: lab.promptGenerated, model: modelKey, resolution, aspect_ratio:'3:4', count:1,
-                                 variant_index: v.idx, variant_total: (lab.resultVariants||[]).length, prompt_task_id: lab.lastPromptTaskId||null })
+                                 variant_index: v.idx, variant_total: (lab.resultVariants||[]).length, prompt_task_id: lab.lastPromptTaskId||null,
+                                 model_face_url: (lab.aiModel && lab.aiModel !== 'product') ? (lab.aiModels.find(m=>m.id===lab.aiModel)?.avatar || '') : '' })
         });
         const d = await r.json();
         if (!r.ok) { v.error = d.detail || ('HTTP '+r.status); clearInterval(tick); v.busy=false; return; }
@@ -5221,6 +5222,7 @@ function app() {
               variant_index: v.idx,
               variant_total: N,
               prompt_task_id: lab.lastPromptTaskId || null,
+              model_face_url: (lab.aiModel && lab.aiModel !== 'product') ? (lab.aiModels.find(m=>m.id===lab.aiModel)?.avatar || '') : '',
             })
           });
           const d = await r.json();
