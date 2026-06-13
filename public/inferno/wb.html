@@ -907,6 +907,16 @@ button:not(:disabled):active{ transform: translateY(0); }
               <i data-lucide="calculator" class="inline-icon"></i> Калькулятор цены
             </button>
             <a :href="unit.data?.source_url" target="_blank" class="text-xs text-teal-600 hover:underline ml-2" x-show="unit.data">Google Sheets ↗</a>
+            <!-- Настройки расчёта: налог + фулфилмент (комиссия/эквайринг — факт из финотчёта) -->
+            <div class="flex items-center gap-2 ml-2 pl-2 border-l border-gray-200">
+              <label class="flex items-center gap-1 text-xs text-gray-500">Налог %
+                <input type="number" min="0" max="30" step="0.5" x-model.number="unit.params.tax" @change="saveUnitParams()" class="w-14 px-1.5 py-1 border border-gray-300 rounded text-sm">
+              </label>
+              <label class="flex items-center gap-1 text-xs text-gray-500">Фулфилмент ₽
+                <input type="number" min="0" step="1" x-model.number="unit.params.ff" @change="saveUnitParams()" class="w-16 px-1.5 py-1 border border-gray-300 rounded text-sm">
+              </label>
+              <span class="text-[10px] text-gray-400">комиссия и эквайринг — факт из финотчёта</span>
+            </div>
           </div>
         </div>
 
@@ -3574,6 +3584,7 @@ function app() {
     plan: { mode: false, byNm: {}, econ: {}, month: '', loading: false },
     pl: { loaded:false, busy:false, year:'2026', orders:[], norms:{}, skus:[], skuOpen:false, skuCatOpen:{}, skuOrders:{}, skuMeta:{}, _t:null },
     unit: { data: null, loading: false, error: null, refreshing: { prices: false, cogs: false, stocks: false }, sortCol: null, sortDir: 'desc', rowHL: {},
+            params: { tax: Number(localStorage.getItem('unit_tax') ?? 7), ff: Number(localStorage.getItem('unit_ff') ?? 0) },
             calc: { open:false, loaded:false, found:false, skus:[], art:'', category:'', curPrice:null, cab:'optima', commOptima:null, mode:'price', price:1000, targetMargin:30, cogs:0, ff:100, comm:24, drr:15, tax:7, acq:3 } },
     snap: { filter: null, data: null, loading: false, error: null, refreshing: false, access: null, syncRunning: false, syncStartedAt: null, syncLastLog: '', _pollerStarted: false, checkingAds: false, adsSummary: '' },
     seo: { loaded: false, loading: false, error: null, skus: [], shopFilter: '', search: '', expanded: {}, keywords: {}, metricsPeriod: '' },
@@ -4006,12 +4017,20 @@ function app() {
     async loadUnit() {
       this.unit.loading = true; this.unit.error = null;
       try {
-        const r = await fetch(API_BASE + '/api/unit/table');
+        const p = this.unit.params || {};
+        const qs = `?tax=${Number(p.tax) || 0}&ff=${Number(p.ff) || 0}`;
+        const r = await fetch(API_BASE + '/api/unit/table' + qs);
         const j = await r.json();
         if (j.error) { this.unit.error = j.error; this.unit.data = null; }
         else { this.unit.data = j; }
       } catch (e) { this.unit.error = String(e); }
       finally { this.unit.loading = false; }
+    },
+    saveUnitParams() {
+      const p = this.unit.params;
+      localStorage.setItem('unit_tax', String(Number(p.tax) || 0));
+      localStorage.setItem('unit_ff', String(Number(p.ff) || 0));
+      this.loadUnit();
     },
     // ── Калькулятор цены (Юра 06.06.2026): экономика снизу вверх для новинок/незаказанных ──
     openUnitCalc(){ this.unit.calc.open=true; if(!this.unit.calc.loaded) this.loadCalcSkus(); },
