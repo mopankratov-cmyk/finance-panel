@@ -17,7 +17,7 @@ async function fetchB64(url: string): Promise<ImgBlock | null> {
 export interface GenPromptInput {
   sku_folder_id?: string; sku_name?: string; sku_dims?: string; sku_art?: string;
   refs?: { src?: string }[]; model_name?: string; user_prompt?: string;
-  corrections?: string; prev_prompt?: string;
+  corrections?: string; prev_prompt?: string; competitor_brief?: string;
 }
 
 // Собирает промпт для Higgsfield: фото товара (Яндекс) + референсы → Claude vision → англ. промпт.
@@ -58,7 +58,7 @@ export async function genLabPrompt(inp: GenPromptInput): Promise<{ prompt: strin
   const parts: ({ type: "text"; text: string } | ImgBlock)[] = [];
   if (productBlocks.length) { parts.push({ type: "text", text: `PRODUCT photos (keep exactly) — ${inp.sku_name || inp.sku_art || "product"}${inp.sku_dims ? `, dimensions: ${inp.sku_dims}` : ""}:` }); parts.push(...productBlocks); }
   if (refBlocks.length) { parts.push({ type: "text", text: "STYLE REFERENCE images (use for mood/scene only):" }); parts.push(...refBlocks); }
-  const extra = [inp.model_name ? `Model/character vibe: ${inp.model_name}.` : "", inp.user_prompt ? `User wish: ${inp.user_prompt}.` : "", inp.corrections ? `Apply corrections to previous: ${inp.corrections}.` : "", inp.prev_prompt ? `Previous prompt (vary meaningfully): ${inp.prev_prompt}` : ""].filter(Boolean).join(" ");
+  const extra = [inp.model_name ? `Model/character vibe: ${inp.model_name}.` : "", inp.competitor_brief ? `Competitor research brief (match category norms AND stand out): ${inp.competitor_brief}.` : "", inp.user_prompt ? `User wish: ${inp.user_prompt}.` : "", inp.corrections ? `Apply corrections to previous: ${inp.corrections}.` : "", inp.prev_prompt ? `Previous prompt (vary meaningfully): ${inp.prev_prompt}` : ""].filter(Boolean).join(" ");
   parts.push({ type: "text", text: (extra || "Write the single best prompt.") + " Now write the single image-to-image prompt." });
 
   const res = await client.messages.create({

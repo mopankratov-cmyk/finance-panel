@@ -2677,6 +2677,26 @@ button:not(:disabled):active{ transform: translateY(0); }
               <textarea x-model="design.lab.promptUser" rows="6"
                         placeholder="Например: лёгкая летняя атмосфера, минимализм, девушка на улице города, акцент на сумке…"
                         class="w-full text-[11px] px-2 py-2 border border-gray-300 rounded bg-white leading-tight"></textarea>
+
+              <!-- Разведка конкурентов перед генерацией (Claude анализирует топ-20 карточек WB) -->
+              <div class="border border-sky-200 bg-sky-50/50 rounded-md p-2 space-y-1.5">
+                <div class="flex items-center gap-1.5">
+                  <input x-model="design.lab.compQuery" :placeholder="design.lab.skuObj?.name ? ('запрос (по умолч.: '+(design.lab.skuObj.name||'').slice(0,24)+'…)') : 'поисковый запрос WB'" class="flex-1 text-[10px] px-2 py-1 border border-sky-200 rounded">
+                  <button @click="analyzeCompetitors()" :disabled="design.lab.compBusy" class="text-[10px] px-2 py-1 rounded bg-sky-600 text-white hover:bg-sky-700 disabled:opacity-50 whitespace-nowrap">
+                    <span x-show="!design.lab.compBusy">🔍 Конкуренты</span><span x-show="design.lab.compBusy">⏳…</span>
+                  </button>
+                </div>
+                <div x-show="design.lab.compMsg" class="text-[10px]" :class="design.lab.compErr?'text-red-600':'text-sky-700'" x-text="design.lab.compMsg"></div>
+                <template x-if="design.lab.compShow">
+                  <div class="space-y-1">
+                    <div class="text-[10px] text-gray-600 leading-snug" x-text="design.lab.competitorBrief"></div>
+                    <div class="flex flex-wrap gap-1" x-show="design.lab.compUsps.length">
+                      <template x-for="(u,ui) in design.lab.compUsps" :key="ui"><span class="text-[9px] px-1.5 py-0.5 rounded bg-white border border-sky-200 text-sky-800" x-text="u"></span></template>
+                    </div>
+                  </div>
+                </template>
+              </div>
+
               <button @click="generateLabPrompt()" :disabled="design.lab.promptBusy || !design.lab.skuObj || !design.lab.skuDimsChecked || !design.lab.skuFilesSelected.length"
                       class="w-full text-xs py-2 rounded-md font-medium bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-50 disabled:cursor-wait flex items-center justify-center gap-2">
                 <span x-show="!design.lab.promptBusy"><i data-lucide="wand-2" class="inline-icon"></i> Генерация GPT (Лу)</span>
@@ -3624,6 +3644,7 @@ function app() {
       { id: 'masha', name: 'МАША', avatar: (API_BASE || '') + '/api/lab/model-avatar/masha', photoCount: 0 },
     ], skuList: [], skuTotal: 0, sku: '', skuObj: null, skuSearch: '', skuLoading: false, skuShowList: false, skuFiles: [], skuFilesLoading: false, skuFilesSelected: [], skuDims: '', skuDimsChecked: false, MAX_REFS: 2, MAX_SKU_FILES: 5,
       promptUser: '', promptBusy: false, promptGenerated: '', promptMeta: '', promptErr: '', promptProgress: '', promptAudit: null, promptElapsed: 0, promptEtaSec: 90, lastPromptTaskId: null, promptRecoverTaskId: null,
+      competitorBrief: '', compBusy: false, compMsg: '', compErr: false, compProducts: [], compUsps: [], compShow: false, compQuery: '',
       resGptRes: '2k', resNanoRes: '2k', resCount: 1, resultBusy: false, resultVariants: [], resultErr: '', lightbox: '', saveBusy: false, saveMsg: '', saveErr: false, saveFolderUrl: '', copiedHint: '',
       corrections: '', refineBusy: false, lastImageModel: '', lastImageRes: '', recoverBusy: false,
       funnelSaveMsg: '', funnelSaveErr: false, funnelSaveUrl: '',
@@ -5950,6 +5971,32 @@ function app() {
       lab.lastPromptTaskId=null; lab.promptRecoverTaskId=null;
       try { localStorage.removeItem('lab_last_prompt'); localStorage.removeItem('lab_last_pid'); } catch(e){}
     },
+    async analyzeCompetitors() {
+      const lab = this.design.lab;
+      const q = (lab.compQuery || lab.skuObj?.name || '').trim();
+      if (!q) { lab.compErr = true; lab.compMsg = 'Нет запроса — выбери SKU или введи запрос'; return; }
+      lab.compBusy = true; lab.compErr = false; lab.compShow = false; lab.compMsg = 'Ищу конкурентов на WB…';
+      let products = [];
+      try {
+        // Браузерный поиск WB (residential-IP не блокится, в отличие от сервера)
+        const u = `https://search.wb.ru/exactmatch/ru/common/v9/search?ab_testing=false&appType=1&curr=rub&dest=-1257786&query=${encodeURIComponent(q)}&resultset=catalog&sort=popular&spp=30`;
+        const sj = await (await fetch(u)).json();
+        products = (sj.data?.products || []).slice(0, 20).map(p => ({ id: p.id, name: p.name, brand: p.brand, reviewRating: p.reviewRating, feedbacks: p.feedbacks }));
+      } catch (e) { /* фолбэк на серверный поиск внутри эндпоинта */ }
+      lab.compMsg = `Анализирую ${products.length || ''} карточек…`;
+      try {
+        const r = await fetch(API_BASE + '/api/lab/competitors', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query: q, products }) });
+        const d = await r.json();
+        lab.compProducts = d.products || [];
+        if (d.analysis) {
+          lab.competitorBrief = d.analysis.brief || '';
+          lab.compUsps = d.analysis.usps || [];
+          lab.compShow = true;
+          lab.compMsg = `✓ ${d.analyzed || 0} карточек · бриф учту в промпте`;
+        } else { lab.compErr = true; lab.compMsg = d.error || 'Анализ не вернулся'; }
+      } catch (e) { lab.compErr = true; lab.compMsg = String(e).slice(0, 120); }
+      lab.compBusy = false;
+    },
     async generateLabPrompt(opts = {}) {
       const lab = this.design.lab;
       if (lab.promptBusy) return;
@@ -5986,6 +6033,7 @@ function app() {
             sku_files_ids: lab.skuFilesSelected,
             corrections: corrections,
             prev_prompt: prevPrompt,
+            competitor_brief: lab.competitorBrief || '',
           })
         });
         const d = await r.json();
