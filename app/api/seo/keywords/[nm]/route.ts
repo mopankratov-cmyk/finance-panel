@@ -1,9 +1,65 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
-// Позиции по поисковым запросам по дням требуют парсинга выдачи WB (нет в офиц. API).
-// Отдаём пустой набор, чтобы раскрытие строки не падало. См. docs/отложено.md.
-export async function GET() {
-  return NextResponse.json({ words: [], days: [], deferred: true });
+const WB_STATS_TOKEN = process.env.WB_STATS_TOKEN || process.env.WB_TOKEN_STATISTICS;
+const SEARCH_TEXTS_URL =
+  "https://seller-analytics-api.wildberries.ru/api/v2/search-report/product/search-texts";
+
+// Поисковые запросы по товару (частотность WB + позиция). Контракт inferno: {words:[{keyword,shows,daily:[{pos}]}], days:[]}.
+export async function GET(req: NextRequest, ctx: { params: Promise<{ nm: string }> }) {
+  const { nm } = await ctx.params;
+  const nmId = Number(nm);
+  const debug = new URL(req.url).searchParams.get("debug") === "1";
+  if (!nmId) return NextResponse.json({ words: [], days: [] });
+  if (!WB_STATS_TOKEN) return NextResponse.json({ error: "WB_STATS_TOKEN не настроен" });
+
+  const end = new Date();
+  const start = new Date(Date.now() - 13 * 86400000);
+  const fmt = (d: Date) => d.toISOString().slice(0, 10);
+
+  const body = {
+    currentPeriod: { start: fmt(start), end: fmt(end) },
+    nmIds: [nmId],
+    topOrderBy: "openCard",
+    orderBy: { field: "openCard", mode: "desc" },
+    limit: 30,
+    offset: 0,
+  };
+
+  interface SearchItem {
+    text?: string;
+    frequency?: { current?: number };
+    weekFrequency?: number;
+    medianPosition?: { current?: number };
+    avgPosition?: { current?: number };
+    openCard?: { current?: number };
+  }
+  let raw: { data?: { items?: SearchItem[] } } | string;
+  try {
+    const res = await fetch(SEARCH_TEXTS_URL, {
+      method: "POST",
+      headers: { Authorization: WB_STATS_TOKEN, "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      cache: "no-store",
+    });
+    const text = await res.text();
+    try { raw = JSON.parse(text); } catch { raw = text; }
+    if (!res.ok) return NextResponse.json({ error: `WB ${res.status}`, raw: debug ? raw : undefined });
+  } catch (e) {
+    return NextResponse.json({ error: String(e) });
+  }
+
+  if (debug) return NextResponse.json({ raw });
+
+  const items = (typeof raw === "object" && raw.data?.items) || [];
+  // WB отдаёт позицию агрегатом за период (не по дням) → одна колонка «медианная позиция».
+  const today = fmt(end);
+  const words = items.map((it) => ({
+    keyword: it.text || "",
+    shows: it.frequency?.current ?? it.weekFrequency ?? 0,
+    daily: [{ pos: it.medianPosition?.current ?? it.avgPosition?.current ?? null }],
+  }));
+  return NextResponse.json({ words, days: [today] });
 }
