@@ -39,7 +39,12 @@ export async function GET(request: NextRequest) {
       logistics: Math.round(p.logistics), acquiring: Math.round(p.acquiring),
       profit, margin,
     };
-  }).filter((x) => x.price > 0).sort((a, b) => (b.margin ?? -999) - (a.margin ?? -999));
+  }).filter((x) => x.price > 0)
+    // товары без себеса (cost=0) — в конец, чтобы фейковая «высокая маржа» не всплывала наверх
+    .sort((a, b) => {
+      if ((a.cost > 0) !== (b.cost > 0)) return a.cost > 0 ? -1 : 1;
+      return (b.margin ?? -999) - (a.margin ?? -999);
+    });
 
   return NextResponse.json({ cabinet: cab.name, rows, count: rows.length });
 }
