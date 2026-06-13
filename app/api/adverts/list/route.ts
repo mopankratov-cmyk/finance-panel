@@ -52,6 +52,21 @@ export async function GET() {
     byAdv.set(s.advert_id, a);
   }
 
+  // посуточные ряды по кампании для панели статистики (adverts.sel.days)
+  const daysByAdv = new Map<number, { ts: string; spend: number; clicks: number; views: number; orders: number }[]>();
+  for (const s of (statRes.data ?? []) as StatRow[]) {
+    const arr = daysByAdv.get(s.advert_id) ?? [];
+    arr.push({
+      ts: String(s.date).slice(0, 10),
+      spend: Math.round(Number(s.sum_spent ?? 0)),
+      clicks: Number(s.clicks ?? 0),
+      views: Number(s.views ?? 0),
+      orders: Number(s.sum_orders ?? 0),
+    });
+    daysByAdv.set(s.advert_id, arr);
+  }
+  for (const arr of daysByAdv.values()) arr.sort((a, b) => a.ts.localeCompare(b.ts));
+
   const artByNm = new Map<number, string>();
   for (const r of (rpcRes.data ?? []) as RpcRow[]) artByNm.set(r.nm_id, r.article);
 
@@ -78,6 +93,7 @@ export async function GET() {
       hours: [],
       payment: "cpm",
       cab: "JC",
+      days: daysByAdv.get(a.advert_id) ?? [],
     };
     let g = artMap.get(nm);
     if (!g) {
