@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { checkCronAuth } from "@/lib/sync/helpers";
+import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { generateInsights } from "@/lib/agent/rules";
 
 // Последовательный прогон всех синков — один cron-слот (Hobby) и кнопка «обновить всё».
 // Порядок важен: adverts до advert-stats (статистика читает живые кампании из wb_adverts).
@@ -23,6 +25,19 @@ export async function GET(request: NextRequest) {
     } catch (err) {
       results[job] = { error: err instanceof Error ? err.message : "Unknown error" };
     }
+  }
+
+  // После синхронизации — пересобрать правиловые алерты «что требует внимания»
+  try {
+    const db = getSupabaseAdmin();
+    if (db) {
+      const drafts = await generateInsights();
+      await db.from("agent_insights").delete().filter("data->>src", "eq", "rules");
+      if (drafts.length) await db.from("agent_insights").insert(drafts.map((d) => ({ ...d, is_read: false })));
+      results["insights"] = { generated: drafts.length };
+    }
+  } catch (err) {
+    results["insights"] = { error: err instanceof Error ? err.message : "Unknown error" };
   }
 
   return NextResponse.json({ ok: true, results });
