@@ -101,5 +101,22 @@ export async function GET(request: NextRequest) {
   const totalStock = Object.values(freeByOffer).reduce((s, v) => s + v, 0);
   const summary = buildMetrics(allDays, totalStock);
 
-  return NextResponse.json({ cabinet: cab.name, period, summary, skus, sku_count: skus.length });
+  // Реклама ₽ + ДРР по дням (Performance API, уровень кабинета) — добавляем в сводку
+  let perfAvailable = false;
+  if (cab.perf) {
+    const { perfDailySpend } = await import("@/lib/ozon/performance");
+    const ps = await perfDailySpend(cab.perf, from, to);
+    if (ps) {
+      perfAvailable = true;
+      const revDaily = summary.find((m) => m.field === "revenue")?.daily ?? dates.map(() => 0);
+      const adDaily = dates.map((d) => Math.round(ps.byDate[d]?.spent ?? 0));
+      const drrDaily = dates.map((_, i) => (revDaily[i] > 0 ? Math.round((adDaily[i] / revDaily[i]) * 1000) / 10 : 0));
+      const adTotal = adDaily.reduce((s, v) => s + v, 0);
+      const revTotal = revDaily.reduce((s, v) => s + v, 0);
+      summary.push({ field: "ad", label: "Реклама, ₽", kind: "money", daily: adDaily, total: adTotal, group_start: true });
+      summary.push({ field: "drr", label: "ДРР, %", kind: "pct", daily: drrDaily, total: revTotal > 0 ? Math.round((adTotal / revTotal) * 1000) / 10 : 0 });
+    }
+  }
+
+  return NextResponse.json({ cabinet: cab.name, period, summary, skus, sku_count: skus.length, perfAvailable });
 }

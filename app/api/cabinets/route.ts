@@ -40,6 +40,7 @@ export async function POST(request: NextRequest) {
   if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 500 });
   const b = (await request.json().catch(() => ({}))) as {
     marketplace?: string; token?: string; name?: string; client_id?: string; token_advert?: string; token_content?: string;
+    perf_client_id?: string; perf_secret?: string;
   };
   const marketplace = b.marketplace === "ozon" ? "ozon" : "wb";
   const token = (b.token || "").trim();
@@ -50,12 +51,21 @@ export async function POST(request: NextRequest) {
     if (!clientId || !token) return NextResponse.json({ error: "Укажите Client-Id и Api-Key Ozon" }, { status: 400 });
     const v = await validateOzon({ clientId, apiKey: token });
     if (!v.ok) return NextResponse.json({ error: v.error }, { status: 400 });
+    const perfId = (b.perf_client_id || "").trim();
+    const perfSecret = (b.perf_secret || "").trim();
+    if (perfId && perfSecret) {
+      const { validatePerf } = await import("@/lib/ozon/performance");
+      if (!(await validatePerf({ clientId: perfId, secret: perfSecret })))
+        return NextResponse.json({ error: "Performance-ключ невалиден" }, { status: 400 });
+    }
     row = {
       marketplace: "ozon",
       name: (b.name || "").trim() || `Ozon ${clientId}`,
       seller_id: clientId, // для Ozon seller_id = Client-Id
       client_id: clientId,
       token, // Api-Key
+      perf_client_id: perfId || null,
+      perf_secret: perfSecret || null,
       is_active: true,
     };
   } else {

@@ -58,6 +58,7 @@ export default function OzonPage() {
 
   // ячейка метрики РНП
   const cell = (m: Metric, v: number) => {
+    if (m.kind === "pct") return v ? v + "%" : "";
     if (m.kind === "money") return v ? fmtMoney(v) : "";
     return v ? fmt(v) : "";
   };

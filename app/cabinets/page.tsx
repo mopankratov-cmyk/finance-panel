@@ -24,6 +24,8 @@ export default function CabinetsPage() {
   const [mp, setMp] = useState<"wb" | "ozon">("wb");
   const [token, setToken] = useState("");
   const [clientId, setClientId] = useState("");
+  const [perfId, setPerfId] = useState("");
+  const [perfSecret, setPerfSecret] = useState("");
   const [name, setName] = useState("");
   const [advert, setAdvert] = useState("");
   const [content, setContent] = useState("");
@@ -52,14 +54,14 @@ export default function CabinetsPage() {
       const r = await fetch("/api/cabinets", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ marketplace: mp, token, client_id: clientId, name, token_advert: advert, token_content: content }),
+        body: JSON.stringify({ marketplace: mp, token, client_id: clientId, name, token_advert: advert, token_content: content, perf_client_id: perfId, perf_secret: perfSecret }),
       });
       const j = await r.json();
       if (!r.ok || j.error) {
         setMsg({ ok: false, text: j.error || `Ошибка ${r.status}` });
       } else {
         setMsg({ ok: true, text: `Кабинет «${j.cabinet?.name}» добавлен` });
-        setToken(""); setClientId(""); setName(""); setAdvert(""); setContent("");
+        setToken(""); setClientId(""); setPerfId(""); setPerfSecret(""); setName(""); setAdvert(""); setContent("");
         await load();
       }
     } catch (e) {
@@ -134,6 +136,9 @@ export default function CabinetsPage() {
               placeholder="Api-Key"
               className="mb-2 w-full rounded-lg border border-gray-300 px-3 py-2 font-mono text-xs focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
             />
+            <div className="mb-1 text-[11px] text-gray-400">Реклама (опц.) — Performance API (Реклама → API → создать ключ): даст Реклама ₽ и ДРР в РНП</div>
+            <input value={perfId} onChange={(e) => setPerfId(e.target.value)} placeholder="Performance Client Id (…@advertising.performance.ozon.ru)" className="mb-2 w-full rounded-lg border border-gray-300 px-3 py-2 font-mono text-xs focus:border-sky-500 focus:outline-none" />
+            <input value={perfSecret} onChange={(e) => setPerfSecret(e.target.value)} placeholder="Performance Client Secret" className="mb-2 w-full rounded-lg border border-gray-300 px-3 py-2 font-mono text-xs focus:border-sky-500 focus:outline-none" />
           </>
         )}
         <div className="mb-2 grid grid-cols-2 gap-2">
