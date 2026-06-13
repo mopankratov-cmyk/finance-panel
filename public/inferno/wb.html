@@ -7295,6 +7295,8 @@ function app() {
     },
     async init() {
       this.initCopyShortcut();
+      // deep-link #lab → сразу Лаборатория контента (карточка с дашборда)
+      if (location.hash.replace('#','') === 'lab') { this.page = 'design'; this.design.view = 'lab'; }
       // Watch page change → save to localStorage + URL hash + title
       const pageTitle = {
         rnp:'РНП', tasks:'Задачи', unit:'Unit', snapshot:'Снимок',
@@ -7312,6 +7314,7 @@ function app() {
       // Sync URL hash on browser back/forward
       window.addEventListener('hashchange', () => {
         const h = location.hash.replace('#','');
+        if (h === 'lab') { this.page = 'design'; this.design.view = 'lab'; return; }
         if (h && h !== this.page) this.page = h;
       });
       const r = await fetch(API_BASE + '/api/shops'); this.shops = await r.json();

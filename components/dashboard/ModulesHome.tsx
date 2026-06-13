@@ -29,7 +29,7 @@ const MODULES: ModuleCard[] = [
   { title: "Кабинеты", description: "Подключение WB и Ozon аккаунтов", href: "/cabinets", icon: Building2, zone: "Операции", color: ["bg-slate-100", "text-slate-700"] },
 
   { title: "AI-агент", description: "Анализ данных, аномалии, рекомендации", href: "/agent", icon: Bot, agent: "Мэнси", zone: "AI", color: ["bg-fuchsia-100", "text-fuchsia-700"] },
-  { title: "Контент-лаборатория", description: "AI-генерация текста, фото и видео", href: "/content", icon: FlaskConical, agent: "Лекси", zone: "AI", color: ["bg-pink-100", "text-pink-700"] },
+  { title: "Контент-лаборатория", description: "AI-генерация фото и видео (Higgsfield)", href: "/inferno/wb.html#lab", icon: FlaskConical, agent: "Лекси", zone: "AI", color: ["bg-pink-100", "text-pink-700"] },
 ];
 
 const ZONES = ["Аналитика", "Финансы", "Операции", "AI"] as const;

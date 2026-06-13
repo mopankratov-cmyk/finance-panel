@@ -85,7 +85,7 @@ const NAV_GROUPS: NavGroup[] = [
       { href: "/cabinets", label: "Кабинеты", icon: Building2 },
       { href: "/users", label: "Сотрудники", icon: Users },
       { href: "/agent", label: "AI-агент", icon: Bot },
-      { href: "/content", label: "Контент-лаб", icon: FlaskConical },
+      { href: "/inferno/wb.html#lab", label: "Контент-лаб", icon: FlaskConical },
       { href: "/sync", label: "Синхронизация", icon: RefreshCw },
     ],
   },
