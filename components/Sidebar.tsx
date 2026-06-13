@@ -15,6 +15,7 @@ import {
   Menu,
   LogOut,
   PieChart,
+  TrendingUp,
   RefreshCw,
   TrendingDown,
   Truck,
@@ -48,6 +49,7 @@ const NAV_GROUPS: NavGroup[] = [
       { href: "/inferno/wb.html", label: "WB Аналитика", icon: BarChart3 },
       { href: "/ozon", label: "Ozon Аналитика", icon: BarChart3 },
       { href: "/abc", label: "ABC прибыли", icon: PieChart },
+      { href: "/trends", label: "Динамика", icon: TrendingUp },
     ],
   },
   {
