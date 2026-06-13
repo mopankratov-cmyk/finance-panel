@@ -13,16 +13,20 @@ import {
   LayoutDashboard,
   LineChart,
   Menu,
+  LogOut,
   RefreshCw,
   Scale,
   TrendingDown,
   Truck,
+  Users,
   Wallet,
   X,
 } from "lucide-react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { allowedNav, ROLE_LABEL } from "@/lib/auth/roles";
+import type { Role } from "@/lib/auth/session";
 
 interface NavLink {
   href: string;
@@ -45,12 +49,18 @@ const NAV_GROUPS: NavGroup[] = [
       { href: "/payments", label: "Платежи", icon: CreditCard },
       { href: "/accounts", label: "Счета", icon: Wallet },
       { href: "/loans", label: "Кредиты", icon: Landmark },
-      { href: "/opiu", label: "ОПиУ", icon: LineChart },
-      { href: "/pnl", label: "ОПиУ МП", icon: LineChart },
+      { href: "/supplies", label: "Закупки", icon: Truck },
+      { href: "/costs", label: "Себестоимость", icon: Coins },
+    ],
+  },
+  {
+    id: "analytics",
+    label: "Аналитика МП",
+    items: [
+      { href: "/pnl", label: "ОПиУ WB+Ozon", icon: LineChart },
+      { href: "/opiu", label: "ОПиУ WB (недельный)", icon: LineChart },
       { href: "/summary", label: "Сводка МП", icon: Scale },
       { href: "/losses", label: "Где теряем", icon: TrendingDown },
-      { href: "/costs", label: "Себестоимость", icon: Coins },
-      { href: "/supplies", label: "Закупки", icon: Truck },
     ],
   },
   {
@@ -59,7 +69,8 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: "/agent", label: "AI-агент", icon: Bot },
       { href: "/content", label: "Контент-лаб", icon: FlaskConical },
-      { href: "/cabinets", label: "Кабинеты WB", icon: Building2 },
+      { href: "/cabinets", label: "Кабинеты", icon: Building2 },
+      { href: "/users", label: "Сотрудники", icon: Users },
       { href: "/sync", label: "Синхронизация", icon: RefreshCw },
     ],
   },
@@ -77,11 +88,29 @@ function isActive(pathname: string, href: string): boolean {
 
 export function Sidebar() {
   const pathname = usePathname();
+  const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [me, setMe] = useState<{ email: string; role: Role } | null>(null);
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
     finance: true,
+    analytics: true,
     system: true,
   });
+
+  useEffect(() => {
+    fetch("/api/auth/me", { cache: "no-store" }).then((r) => r.json()).then((j) => setMe(j.user)).catch(() => {});
+  }, []);
+
+  const logout = async () => {
+    await fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
+    router.push("/login");
+    router.refresh();
+  };
+
+  // группы с фильтром по роли (пустые группы скрываем)
+  const groups = NAV_GROUPS
+    .map((g) => ({ ...g, items: g.items.filter((i) => (me ? allowedNav(me.role, i.href) : true)) }))
+    .filter((g) => g.items.length > 0);
 
   useEffect(() => {
     for (const group of NAV_GROUPS) {
@@ -130,7 +159,7 @@ export function Sidebar() {
           {DASHBOARD.label}
         </Link>
 
-        {NAV_GROUPS.map((group) => {
+        {groups.map((group) => {
           const groupActive = group.items.some((item) =>
             isActive(pathname, item.href),
           );
@@ -169,6 +198,26 @@ export function Sidebar() {
           );
         })}
       </nav>
+
+      {/* Пользователь + выход */}
+      <div className="border-t border-white/10 p-3">
+        {me ? (
+          <div className="flex items-center gap-2">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-violet-600/30 text-xs font-bold text-violet-200">
+              {me.email.slice(0, 2).toUpperCase()}
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-xs font-medium text-white">{me.email}</div>
+              <div className="text-[10px] text-slate-400">{ROLE_LABEL[me.role]}</div>
+            </div>
+            <button onClick={logout} title="Выйти" className="rounded-md p-1.5 text-slate-400 hover:bg-white/10 hover:text-white">
+              <LogOut className="h-4 w-4" />
+            </button>
+          </div>
+        ) : (
+          <div className="h-8 animate-pulse rounded bg-white/5" />
+        )}
+      </div>
     </>
   );
 

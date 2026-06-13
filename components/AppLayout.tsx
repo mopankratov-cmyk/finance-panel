@@ -7,6 +7,8 @@ import { useFinance } from "./providers/FinanceProvider";
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const { hydrated, loadError } = useFinance();
   const pathname = usePathname();
+  // Страница входа — без сайдбара и без гейта загрузки финансов
+  if (pathname === "/login") return <>{children}</>;
   // Главная + Ozon-аналитика — полноэкранные, без финансового сайдбара (как infernoff.ru)
   const isLauncher = pathname === "/";
   const isFullscreen = isLauncher || pathname.startsWith("/ozon");
