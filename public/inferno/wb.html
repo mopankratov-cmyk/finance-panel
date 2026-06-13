@@ -4190,6 +4190,17 @@ function app() {
           if (num < 40) return 'background:#dcfce7 !important';
           return 'background:#fee2e2 !important';
         }
+        if (/^Выкуп/.test(label)) {
+          if (num >= 85) return 'background:#dcfce7 !important';
+          if (num >= 70) return 'background:#fef9c3 !important';
+          return 'background:#fee2e2 !important';
+        }
+        if (/^Маржа/.test(label)) {
+          if (num < 0) return 'background:#fee2e2 !important';
+          if (num < 10) return 'background:#fef9c3 !important';
+          if (num < 25) return 'background:#dcfce7 !important';
+          return 'background:#bbf7d0 !important';
+        }
         return '';
       };
       const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -6883,6 +6894,17 @@ function app() {
       if (/^Оборач/.test(label)) {
         if (num < 40) return 'background:#dcfce7 !important';
         return 'background:#fee2e2 !important';
+      }
+      if (/^Выкуп/.test(label)) {
+        if (num >= 85) return 'background:#dcfce7 !important';
+        if (num >= 70) return 'background:#fef9c3 !important';
+        return 'background:#fee2e2 !important';
+      }
+      if (/^Маржа/.test(label)) {
+        if (num < 0) return 'background:#fee2e2 !important';
+        if (num < 10) return 'background:#fef9c3 !important';
+        if (num < 25) return 'background:#dcfce7 !important';
+        return 'background:#bbf7d0 !important';
       }
       return '';
     },

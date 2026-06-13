@@ -31,22 +31,40 @@ export interface Metric {
   group_start?: boolean;
 }
 
-function buildMetrics(days: string[], byDate: Map<string, DailyRow>, stock: number, stockMoney: number): Metric[] {
+// cost > 0 → добавляем Валовую ₽ и Маржу % (нужна себестоимость). Для сводки cost=0 → эти метрики вклеиваем отдельно (агрегат по SKU).
+function buildMetrics(days: string[], byDate: Map<string, DailyRow>, stock: number, stockMoney: number, cost = 0): Metric[] {
   const pick = (k: keyof DailyRow) => days.map((d) => Number(byDate.get(d)?.[k] ?? 0));
   const s = (a: number[]) => a.reduce((x, v) => x + v, 0);
+  const r1 = (n: number) => Math.round(n * 10) / 10;
   const oc = pick("orders_count"), os = pick("orders_sum"), bc = pick("buyouts_count"), bs = pick("buyouts_sum"), ad = pick("ad_spent");
-  const drr = days.map((d) => { const r = byDate.get(d); return r && r.orders_sum > 0 ? Math.round((r.ad_spent / r.orders_sum) * 1000) / 10 : null; });
-  const totOs = s(os);
-  return [
-    { field: "orders_count", label: "Заказы, шт", kind: "int", daily: oc, total: s(oc), forecast: s(oc), group_start: true },
+  const drr = days.map((d) => { const r = byDate.get(d); return r && r.orders_sum > 0 ? r1((r.ad_spent / r.orders_sum) * 100) : null; });
+  // Выкуп % = выкупы шт / заказы шт
+  const buyoutPct = days.map((_, i) => (oc[i] > 0 ? r1((bc[i] / oc[i]) * 100) : null));
+  const totOs = s(os), totBc = s(bc), totOc = s(oc);
+  const out: Metric[] = [
+    { field: "orders_count", label: "Заказы, шт", kind: "int", daily: oc, total: totOc, forecast: totOc, group_start: true },
     { field: "orders_sum", label: "Заказы, ₽", kind: "money", daily: os, total: Math.round(totOs), forecast: Math.round(totOs) },
-    { field: "buyouts_count", label: "Выкупы, шт", kind: "int", daily: bc, total: s(bc), forecast: s(bc), group_start: true },
+    { field: "buyouts_count", label: "Выкупы, шт", kind: "int", daily: bc, total: totBc, forecast: totBc, group_start: true },
     { field: "buyouts_sum", label: "Выкупы, ₽", kind: "money", daily: bs, total: Math.round(s(bs)), forecast: Math.round(s(bs)) },
+    { field: "buyout_pct", label: "Выкуп, %", kind: "pct", daily: buyoutPct, total: totOc > 0 ? r1((totBc / totOc) * 100) : 0, forecast: null },
     { field: "ad_spent", label: "Реклама, ₽", kind: "money", daily: ad, total: Math.round(s(ad)), forecast: Math.round(s(ad)), group_start: true },
-    { field: "drr", label: "ДРР, %", kind: "pct", daily: drr, total: totOs > 0 ? Math.round((s(ad) / totOs) * 1000) / 10 : 0, forecast: null },
+    { field: "drr", label: "ДРР, %", kind: "pct", daily: drr, total: totOs > 0 ? r1((s(ad) / totOs) * 100) : 0, forecast: null },
+  ];
+  if (cost > 0) {
+    // Валовая ₽ = выручка с выкупов − себес×выкупы − реклама. Маржа % = валовая / выручка с выкупов.
+    const gross = days.map((_, i) => Math.round(bs[i] - cost * bc[i] - ad[i]));
+    const totGross = s(bs) - cost * totBc - s(ad);
+    const marginPct = days.map((_, i) => (bs[i] > 0 ? r1(((bs[i] - cost * bc[i] - ad[i]) / bs[i]) * 100) : null));
+    out.push(
+      { field: "gross", label: "Валовая, ₽", kind: "money", daily: gross, total: Math.round(totGross), forecast: Math.round(totGross), group_start: true },
+      { field: "margin_pct", label: "Маржа, %", kind: "pct", daily: marginPct, total: s(bs) > 0 ? r1((totGross / s(bs)) * 100) : 0, forecast: null },
+    );
+  }
+  out.push(
     { field: "stock", label: "Остаток, шт", kind: "int", daily: days.map(() => null), total: stock, forecast: null, group_start: true },
     { field: "money", label: "Деньги в остатках, ₽", kind: "money", daily: days.map(() => null), total: Math.round(stockMoney), forecast: null },
-  ];
+  );
+  return out;
 }
 
 export interface RnpTable {
@@ -79,7 +97,6 @@ export async function buildRnpTable(from: string, to: string): Promise<RnpTable 
   const totals = (totalsRes.data ?? []) as RpcTotal[];
   const stockTotal = totals.reduce((a, r) => a + Number(r.stock ?? 0), 0);
   const stockMoneyTotal = totals.reduce((a, r) => a + Number(r.stock ?? 0) * Number(r.cost ?? 0), 0);
-  const summary = buildMetrics(days, dailyByDate, stockTotal, Math.round(stockMoneyTotal));
 
   const nameByArt = new Map<string, string>();
   for (const c of costsRes.data ?? []) nameByArt.set(c.article as string, (c.name as string) ?? "");
@@ -94,11 +111,28 @@ export async function buildRnpTable(from: string, to: string): Promise<RnpTable 
   const skus = [...totalByNm.values()]
     .map((t) => {
       const dmap = byNm.get(t.nm_id) ?? new Map<string, DailyRow>();
-      const metrics = buildMetrics(days, dmap, Number(t.stock ?? 0), Math.round(Number(t.stock ?? 0) * Number(t.cost ?? 0)));
+      const metrics = buildMetrics(days, dmap, Number(t.stock ?? 0), Math.round(Number(t.stock ?? 0) * Number(t.cost ?? 0)), Number(t.cost ?? 0));
       return { nm: t.nm_id, art: t.article || String(t.nm_id), name: nameByArt.get(t.article) || t.article || String(t.nm_id), img_url: wbCardImageUrl(t.nm_id), metrics, _o: metrics[0]?.total ?? 0 };
     })
     .sort((a, b) => b._o - a._o)
     .map(({ _o, ...rest }) => { void _o; return rest; });
+
+  // Сводка: базовые метрики из дневной агрегации + Валовая/Маржа вклеиваем суммой по SKU (себес разный)
+  const summary = buildMetrics(days, dailyByDate, stockTotal, Math.round(stockMoneyTotal));
+  const sumDaily = (field: string) => days.map((_, i) => {
+    let acc = 0, any = false;
+    for (const sk of skus) { const m = sk.metrics.find((x) => x.field === field); const v = m?.daily[i]; if (v != null) { acc += Number(v); any = true; } }
+    return any ? Math.round(acc) : null;
+  });
+  const grossDaily = sumDaily("gross");
+  const grossTotal = skus.reduce((a, sk) => a + (sk.metrics.find((x) => x.field === "gross")?.total ?? 0), 0);
+  const buyoutsSumTotal = summary.find((m) => m.field === "buyouts_sum")?.total ?? 0;
+  const buyoutsSumDaily = summary.find((m) => m.field === "buyouts_sum")?.daily ?? days.map(() => 0);
+  const adIdx = summary.findIndex((m) => m.field === "drr");
+  summary.splice(adIdx + 1, 0,
+    { field: "gross", label: "Валовая, ₽", kind: "money", daily: grossDaily, total: Math.round(grossTotal), forecast: Math.round(grossTotal), group_start: true },
+    { field: "margin_pct", label: "Маржа, %", kind: "pct", daily: days.map((_, i) => { const bsv = Number(buyoutsSumDaily[i] ?? 0); const g = grossDaily[i]; return bsv > 0 && g != null ? Math.round((g / bsv) * 1000) / 10 : null; }), total: buyoutsSumTotal > 0 ? Math.round((grossTotal / buyoutsSumTotal) * 1000) / 10 : 0, forecast: null },
+  );
 
   return { shop_label: "Магазин", sku_count: skus.length, period, summary, skus };
 }
