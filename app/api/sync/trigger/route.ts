@@ -16,9 +16,11 @@ export async function POST(request: NextRequest) {
   const secret = process.env.CRON_SECRET;
   const base = new URL(request.url).origin;
   const headers: Record<string, string> = secret ? { Authorization: `Bearer ${secret}` } : {};
+  const from = searchParams.get("from");
+  const qs = from && job === "sales" ? `?from=${encodeURIComponent(from)}` : "";
 
   try {
-    const res = await fetch(`${base}/api/sync/${job}`, { headers, cache: "no-store" });
+    const res = await fetch(`${base}/api/sync/${job}${qs}`, { headers, cache: "no-store" });
     const body = await res.json().catch(() => ({}));
     return NextResponse.json({ ok: res.ok, status: res.status, result: body });
   } catch (err) {
