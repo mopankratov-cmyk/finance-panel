@@ -22,7 +22,12 @@ export interface WbCommission {
 
 const num = (v: unknown) => Number(v ?? 0) || 0;
 
+// In-process memo (отчёт тяжёлый ~12с). TTL 6ч. Живёт в процессе сервера — не зависит от Next fetch-кэша.
+let _memo: { ts: number; days: number; val: WbCommission } | null = null;
+const MEMO_TTL = 6 * 3600 * 1000;
+
 export async function getWbCommission(days = 30): Promise<WbCommission> {
+  if (_memo && _memo.days === days && Date.now() - _memo.ts < MEMO_TTL) return _memo.val;
   const empty: WbCommission = { byNm: new Map(), avgPct: 0, avgAcqPct: 0 };
   if (!WB_STATS_TOKEN) return empty;
   const to = new Date().toISOString().slice(0, 10);
@@ -66,5 +71,7 @@ export async function getWbCommission(days = 30): Promise<WbCommission> {
   });
   const avgPct = totRev > 0 ? Math.round((totW / totRev) * 10) / 10 : 0;
   const avgAcqPct = totRev > 0 ? Math.round((totAcq / totRev) * 1000) / 10 : 0;
-  return { byNm, avgPct, avgAcqPct };
+  const val: WbCommission = { byNm, avgPct, avgAcqPct };
+  if (byNm.size > 0) _memo = { ts: Date.now(), days, val }; // кэшируем только удачный результат
+  return val;
 }
