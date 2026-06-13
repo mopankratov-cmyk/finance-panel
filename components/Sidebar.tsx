@@ -3,6 +3,7 @@
 import {
   BarChart3,
   Bot,
+  Building2,
   Calendar,
   FlaskConical,
   ChevronDown,
@@ -51,6 +52,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: "/agent", label: "AI-агент", icon: Bot },
       { href: "/content", label: "Контент-лаб", icon: FlaskConical },
+      { href: "/cabinets", label: "Кабинеты WB", icon: Building2 },
       { href: "/sync", label: "Синхронизация", icon: RefreshCw },
     ],
   },
