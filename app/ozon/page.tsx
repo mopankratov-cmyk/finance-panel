@@ -1,34 +1,40 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Loader2, Filter, Calculator, Package, TrendingDown } from "lucide-react";
+import Link from "next/link";
+import { Loader2 } from "lucide-react";
 
-type Tab = "funnel" | "unit" | "stocks";
+type Tab = "rnp" | "funnel" | "unit" | "stocks";
 const fmt = (n: number | null | undefined) => (n == null ? "—" : Math.round(n).toLocaleString("ru-RU"));
+const fmtMoney = (n: number) => (n >= 1000 ? Math.round(n).toLocaleString("ru-RU") : String(Math.round(n)));
 const pct = (n: number | null | undefined) => (n == null ? "—" : n + "%");
 
+interface Metric { field: string; label: string; kind: string; daily: number[]; total: number; group_start?: boolean }
+interface RnpSku { sku: string; name: string; metrics: Metric[] }
 interface FunnelRow { sku: string; name: string; hits_view: number; hits_tocart: number; ordered_units: number; revenue: number; cr_cart: number | null; cr_order: number | null }
 interface UnitRow { art: string; name: string; price: number; cost: number; commission_pct: number; commission_rub: number; logistics: number; acquiring: number; profit: number; margin: number | null }
 interface StockRow { art: string; name: string; free: number; reserved: number; byWh: Record<string, number> }
 
 export default function OzonPage() {
-  const [tab, setTab] = useState<Tab>("funnel");
+  const [tab, setTab] = useState<Tab>("rnp");
   const [days, setDays] = useState(14);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [noCab, setNoCab] = useState(false);
+  const [q, setQ] = useState("");
+  const [rnp, setRnp] = useState<{ period: { label: string; period_type: string }[]; summary: Metric[]; skus: RnpSku[] }>({ period: [], summary: [], skus: [] });
   const [funnel, setFunnel] = useState<FunnelRow[]>([]);
   const [unit, setUnit] = useState<UnitRow[]>([]);
   const [stocks, setStocks] = useState<{ rows: StockRow[]; warehouses: string[]; totalFree: number }>({ rows: [], warehouses: [], totalFree: 0 });
-  const [q, setQ] = useState("");
 
   useEffect(() => {
     setLoading(true); setErr(null); setNoCab(false);
-    const url = tab === "funnel" ? `/api/ozon/analytics?days=${days}` : tab === "unit" ? "/api/ozon/unit" : "/api/ozon/stocks";
+    const url = tab === "rnp" ? `/api/ozon/rnp?days=${days}` : tab === "funnel" ? `/api/ozon/analytics?days=${days}` : tab === "unit" ? "/api/ozon/unit" : "/api/ozon/stocks";
     fetch(url, { cache: "no-store" }).then((r) => r.json()).then((d) => {
       if (d.noCabinet) { setNoCab(true); return; }
       if (d.error) { setErr(d.error); return; }
-      if (tab === "funnel") setFunnel(d.rows ?? []);
+      if (tab === "rnp") setRnp({ period: d.period ?? [], summary: d.summary ?? [], skus: d.skus ?? [] });
+      else if (tab === "funnel") setFunnel(d.rows ?? []);
       else if (tab === "unit") setUnit(d.rows ?? []);
       else setStocks({ rows: d.rows ?? [], warehouses: d.warehouses ?? [], totalFree: d.totalFree ?? 0 });
     }).catch((e) => setErr(String(e))).finally(() => setLoading(false));
@@ -39,53 +45,80 @@ export default function OzonPage() {
     return s ? rows.filter((r) => r.name.toLowerCase().includes(s) || (r.art || r.sku || "").toLowerCase().includes(s)) : rows;
   };
 
-  const TABS: { key: Tab; label: string; icon: typeof Filter }[] = [
-    { key: "funnel", label: "Воронка", icon: Filter },
-    { key: "unit", label: "Юнит-экономика", icon: Calculator },
-    { key: "stocks", label: "Остатки", icon: Package },
+  const TABS: { key: Tab; label: string }[] = [
+    { key: "rnp", label: "РНП" }, { key: "funnel", label: "Воронка" },
+    { key: "unit", label: "Юнит-экономика" }, { key: "stocks", label: "Остатки" },
   ];
 
-  return (
-    <div className="mx-auto max-w-7xl px-6 py-6">
-      <div className="mb-4 flex items-center gap-3">
-        <div className="flex h-9 w-9 items-center justify-center rounded-md bg-gradient-to-br from-sky-500 to-blue-700 text-xs font-extrabold text-white">OZ</div>
-        <h1 className="text-2xl font-bold text-gray-900">Ozon Аналитика</h1>
-        <a href="/losses" className="ml-auto inline-flex items-center gap-1.5 rounded-lg bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-100">
-          <TrendingDown className="h-3.5 w-3.5" /> Где теряем (Ozon)
-        </a>
-      </div>
+  // ячейка метрики РНП
+  const cell = (m: Metric, v: number) => {
+    if (m.kind === "money") return v ? fmtMoney(v) : "";
+    return v ? fmt(v) : "";
+  };
 
-      <div className="mb-4 flex flex-wrap items-center gap-2">
-        <div className="flex gap-1 rounded-lg bg-gray-100 p-0.5">
+  return (
+    <div className="min-h-screen bg-gray-50 text-gray-900">
+      {/* Шапка в стиле inferno */}
+      <header className="sticky top-0 z-30 border-b border-gray-200 bg-white">
+        <div className="mx-auto flex max-w-[1600px] items-center gap-3 px-5 py-3">
+          <div className="flex h-8 w-8 items-center justify-center rounded-md bg-gradient-to-br from-sky-500 to-blue-700 text-xs font-extrabold text-white">OZ</div>
+          <div className="text-base font-extrabold tracking-tight">Ozon Аналитика</div>
+          <span className="ml-1 flex items-center gap-1.5 text-xs text-gray-500"><span className="h-2 w-2 rounded-full bg-green-400" /> система работает</span>
+          <Link href="/losses" className="ml-auto text-xs font-semibold text-red-600 hover:text-red-700">↘ Где теряем (Ozon)</Link>
+          <Link href="/" className="text-xs text-gray-400 hover:text-gray-700">← модули</Link>
+        </div>
+        {/* Таб-бар */}
+        <div className="mx-auto flex max-w-[1600px] items-center gap-2 px-5 pb-2">
           {TABS.map((t) => (
             <button key={t.key} onClick={() => setTab(t.key)}
-              className={`inline-flex items-center gap-1.5 rounded px-3 py-1.5 text-sm font-semibold ${tab === t.key ? "bg-white text-sky-700 shadow" : "text-gray-500 hover:text-gray-700"}`}>
-              <t.icon className="h-4 w-4" /> {t.label}
+              className={`rounded-md px-3.5 py-1.5 text-sm font-semibold transition-colors ${tab === t.key ? "bg-sky-600 text-white shadow" : "text-gray-600 hover:bg-gray-100"}`}>
+              {t.label}
             </button>
           ))}
+          {(tab === "rnp" || tab === "funnel") && (
+            <div className="ml-2 flex gap-1 rounded-md bg-gray-100 p-0.5">
+              {[7, 14, 30].map((d) => (
+                <button key={d} onClick={() => setDays(d)} className={`rounded px-2.5 py-1 text-xs font-semibold ${days === d ? "bg-white text-sky-700 shadow" : "text-gray-500"}`}>{d} дн</button>
+              ))}
+            </div>
+          )}
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="поиск по артикулу/названию"
+            className="ml-auto w-64 rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-sky-500 focus:outline-none" />
         </div>
-        {tab === "funnel" && (
-          <div className="flex gap-1 rounded-lg bg-gray-100 p-0.5">
-            {[7, 14, 30].map((d) => (
-              <button key={d} onClick={() => setDays(d)} className={`rounded px-2.5 py-1 text-xs font-semibold ${days === d ? "bg-white text-sky-700 shadow" : "text-gray-500"}`}>{d} дн</button>
-            ))}
-          </div>
-        )}
-        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="поиск по артикулу/названию"
-          className="ml-auto w-64 rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:border-sky-500 focus:outline-none" />
-      </div>
+      </header>
 
-      {noCab ? (
-        <div className="rounded-lg border border-sky-200 bg-sky-50 p-4 text-sm text-sky-800">
-          Нет подключённого Ozon-кабинета → <a href="/cabinets" className="font-semibold underline">добавить</a>
-        </div>
-      ) : loading ? (
-        <div className="py-16 text-center text-gray-400"><Loader2 className="mx-auto h-6 w-6 animate-spin" /></div>
-      ) : err ? (
-        <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">Ozon: {err}</div>
-      ) : (
-        <div className="overflow-auto rounded-xl border border-gray-200 bg-white">
-          {tab === "funnel" && (
+      <main className="mx-auto max-w-[1600px] px-5 py-4">
+        {noCab ? (
+          <div className="rounded-lg border border-sky-200 bg-sky-50 p-4 text-sm text-sky-800">Нет подключённого Ozon-кабинета → <Link href="/cabinets" className="font-semibold underline">добавить</Link></div>
+        ) : loading ? (
+          <div className="py-20 text-center text-gray-400"><Loader2 className="mx-auto h-6 w-6 animate-spin" /></div>
+        ) : err ? (
+          <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">Ozon: {err}</div>
+        ) : tab === "rnp" ? (
+          <div className="overflow-auto rounded-xl border border-gray-200 bg-white">
+            <table className="w-full border-collapse text-xs">
+              <thead>
+                <tr className="bg-gray-800 text-gray-100">
+                  <th className="sticky left-0 z-20 bg-gray-800 px-3 py-2 text-left font-semibold" style={{ minWidth: 240 }}>Товар / Метрика</th>
+                  {rnp.period.map((p, i) => (
+                    <th key={i} className="px-2 py-1 text-center font-medium" style={{ minWidth: 52 }}>
+                      <div>{p.label}</div><div className="text-[9px] font-normal text-gray-400">{p.period_type}</div>
+                    </th>
+                  ))}
+                  <th className="px-3 py-2 text-right font-semibold">Итого</th>
+                </tr>
+              </thead>
+              <tbody>
+                {/* сводка */}
+                <RnpGroup title="ОБЩЕЕ ПО КАБИНЕТУ" metrics={rnp.summary} period={rnp.period} cell={cell} highlight />
+                {flt(rnp.skus).map((s) => (
+                  <RnpGroup key={s.sku} title={s.name} sub={`sku ${s.sku}`} metrics={s.metrics} period={rnp.period} cell={cell} />
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : tab === "funnel" ? (
+          <div className="overflow-auto rounded-xl border border-gray-200 bg-white">
             <table className="w-full text-sm">
               <thead className="sticky top-0 bg-gray-50 text-xs text-gray-500">
                 <tr>{["Товар", "Показы", "В корзину", "CR корзина", "Заказы шт", "CR заказ", "Выручка ₽"].map((h, i) => (
@@ -105,8 +138,9 @@ export default function OzonPage() {
                 ))}
               </tbody>
             </table>
-          )}
-          {tab === "unit" && (
+          </div>
+        ) : tab === "unit" ? (
+          <div className="overflow-auto rounded-xl border border-gray-200 bg-white">
             <table className="w-full text-sm">
               <thead className="sticky top-0 bg-gray-50 text-xs text-gray-500">
                 <tr>{["Артикул", "Цена ₽", "Себес ₽", "Комиссия %", "Комиссия ₽", "Логистика ₽", "Эквайринг ₽", "Прибыль/ед ₽", "Маржа %"].map((h, i) => (
@@ -128,16 +162,12 @@ export default function OzonPage() {
                 ))}
               </tbody>
             </table>
-          )}
-          {tab === "stocks" && (
+          </div>
+        ) : (
+          <div className="overflow-auto rounded-xl border border-gray-200 bg-white">
             <table className="w-full text-sm">
               <thead className="sticky top-0 bg-gray-50 text-xs text-gray-500">
-                <tr>
-                  <th className="px-3 py-2 text-left">Товар</th>
-                  <th className="px-3 py-2 text-right">Свободно</th>
-                  <th className="px-3 py-2 text-right">Резерв</th>
-                  <th className="px-3 py-2 text-left">Топ складов</th>
-                </tr>
+                <tr><th className="px-3 py-2 text-left">Товар</th><th className="px-3 py-2 text-right">Свободно</th><th className="px-3 py-2 text-right">Резерв</th><th className="px-3 py-2 text-left">Топ складов</th></tr>
               </thead>
               <tbody>
                 {flt(stocks.rows).map((r) => {
@@ -153,9 +183,32 @@ export default function OzonPage() {
                 })}
               </tbody>
             </table>
-          )}
-        </div>
-      )}
+          </div>
+        )}
+      </main>
     </div>
+  );
+}
+
+function RnpGroup({ title, sub, metrics, period, cell, highlight }: {
+  title: string; sub?: string; metrics: Metric[]; period: { label: string }[]; cell: (m: Metric, v: number) => string; highlight?: boolean;
+}) {
+  return (
+    <>
+      <tr className={highlight ? "bg-sky-50" : "bg-gray-50/60"}>
+        <td className={`sticky left-0 z-10 px-3 py-1.5 font-semibold ${highlight ? "bg-sky-50 text-sky-800" : "bg-gray-50 text-gray-700"}`} colSpan={period.length + 2}>
+          {title}{sub && <span className="ml-2 text-[10px] font-normal text-gray-400">{sub}</span>}
+        </td>
+      </tr>
+      {metrics.map((m) => (
+        <tr key={m.field} className="border-t border-gray-100 hover:bg-gray-50/50">
+          <td className="sticky left-0 z-10 bg-white px-3 py-1 text-gray-500" style={{ minWidth: 240 }}>{m.label}</td>
+          {m.daily.map((v, i) => (
+            <td key={i} className={`px-2 py-1 text-center tabular-nums ${v ? "text-gray-800" : "text-gray-300"}`}>{cell(m, v) || "·"}</td>
+          ))}
+          <td className="px-3 py-1 text-right font-semibold tabular-nums text-gray-900">{cell(m, m.total) || "0"}</td>
+        </tr>
+      ))}
+    </>
   );
 }

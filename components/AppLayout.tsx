@@ -7,8 +7,9 @@ import { useFinance } from "./providers/FinanceProvider";
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const { hydrated, loadError } = useFinance();
   const pathname = usePathname();
-  // Главная — полноширинный лаунчер модулей без сайдбара (как infernoff.ru)
+  // Главная + Ozon-аналитика — полноэкранные, без финансового сайдбара (как infernoff.ru)
   const isLauncher = pathname === "/";
+  const isFullscreen = isLauncher || pathname.startsWith("/ozon");
 
   if (!hydrated) {
     return (
@@ -37,7 +38,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (isLauncher) {
+  if (isFullscreen) {
     return <div className="min-h-screen bg-gray-50">{children}</div>;
   }
 
