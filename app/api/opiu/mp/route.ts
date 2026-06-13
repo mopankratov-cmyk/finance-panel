@@ -12,7 +12,7 @@ const r0 = (v: number) => Math.round(v);
 
 interface WbRow {
   supplier_oper_name?: string; sa_name?: string; quantity?: number;
-  retail_price_withdisc_rub?: number; ppvz_sales_commission?: number;
+  retail_price_withdisc_rub?: number; ppvz_for_pay?: number;
   installment_cofinancing_amount?: number; delivery_rub?: number; storage_fee?: number;
   penalty?: number; acquiring_fee?: number; deduction?: number; bonus_type_name?: string;
 }
@@ -42,20 +42,22 @@ export async function GET(request: NextRequest) {
       if (!res.ok) wb = { error: `WB ${res.status}` };
       else {
         const rows = (await res.json()) as WbRow[];
-        let revBeforeSpp = 0, coinvest = 0, commission = 0, logistics = 0, storage = 0, penalty = 0, acquiring = 0, ad = 0, otherDed = 0, cogs = 0, units = 0;
+        // комиссия WB = (выручка до СПП − выплата продавцу − эквайринг) по продажам ≈ реальные ~30%
+        // (ppvz_sales_commission занижен; WB компенсирует СПП, поэтому база — до СПП)
+        let revBeforeSpp = 0, salePayout = 0, saleAcq = 0, coinvest = 0, logistics = 0, storage = 0, penalty = 0, acquiring = 0, ad = 0, otherDed = 0, cogs = 0, units = 0;
         for (const x of rows) {
           const op = x.supplier_oper_name ?? "";
           if (op === "Продажа") {
             const q = num(x.quantity);
             revBeforeSpp += num(x.retail_price_withdisc_rub) * q;
-            // себес по артикулу: sa_name как есть, иначе без размерного суффикса (после пробела/слэша)
+            salePayout += num(x.ppvz_for_pay);
+            saleAcq += num(x.acquiring_fee);
             const sa = (x.sa_name ?? "").trim().toUpperCase();
             const c = costByArt.get(sa) ?? costByArt.get(sa.split(/[ /\\]/)[0]) ?? 0;
             cogs += c * q;
             units += q;
           }
           coinvest += num(x.installment_cofinancing_amount);
-          commission += Math.abs(num(x.ppvz_sales_commission));
           logistics += num(x.delivery_rub);
           storage += num(x.storage_fee);
           penalty += num(x.penalty);
@@ -63,6 +65,7 @@ export async function GET(request: NextRequest) {
           const d = num(x.deduction);
           if (d) { const bt = (x.bonus_type_name ?? "").toLowerCase(); if (bt.includes("продвижени") || bt.includes("реклам")) ad += d; else otherDed += d; }
         }
+        const commission = Math.max(0, revBeforeSpp - salePayout - saleAcq);
         const revenue = revBeforeSpp + coinvest;
         const tax_rub = revenue * (taxPct / 100);
         const costs = commission + logistics + storage + penalty + acquiring + ad + otherDed + cogs + tax_rub;
