@@ -10,6 +10,11 @@ function headers(c: OzonCreds): HeadersInit {
   return { "Client-Id": c.clientId.trim(), "Api-Key": c.apiKey.trim(), "Content-Type": "application/json" };
 }
 
+// fetch с таймаутом 20с — чтобы при стопоре сети/прокси не висеть минуту, а падать быстро.
+function tfetch(url: string, opts: RequestInit = {}): Promise<Response> {
+  return fetch(url, { ...opts, signal: AbortSignal.timeout(20000) });
+}
+
 // Валидация ключа: лёгкий запрос финансовых итогов за 1 день. 200 → ключ рабочий.
 export async function validateOzon(
   c: OzonCreds,
@@ -18,7 +23,7 @@ export async function validateOzon(
   const to = new Date();
   const from = new Date(Date.now() - 86400000);
   try {
-    const res = await fetch(`${BASE}/v3/finance/transaction/totals`, {
+    const res = await tfetch(`${BASE}/v3/finance/transaction/totals`, {
       method: "POST",
       headers: headers(c),
       body: JSON.stringify({ date: { from: from.toISOString(), to: to.toISOString() }, posting_number: "", transaction_type: "all" }),
@@ -48,7 +53,7 @@ export async function ozonTransactionTotals(
   c: OzonCreds, fromIso: string, toIso: string,
 ): Promise<{ ok: true; totals: OzonTotals } | { ok: false; error: string }> {
   try {
-    const res = await fetch(`${BASE}/v3/finance/transaction/totals`, {
+    const res = await tfetch(`${BASE}/v3/finance/transaction/totals`, {
       method: "POST",
       headers: headers(c),
       body: JSON.stringify({ date: { from: fromIso, to: toIso }, posting_number: "", transaction_type: "all" }),
@@ -72,7 +77,7 @@ export async function ozonAnalytics(
   c: OzonCreds, dateFrom: string, dateTo: string,
 ): Promise<{ ok: true; rows: OzonAnalyticsRow[] } | { ok: false; error: string }> {
   try {
-    const res = await fetch(`${BASE}/v1/analytics/data`, {
+    const res = await tfetch(`${BASE}/v1/analytics/data`, {
       method: "POST", headers: headers(c),
       body: JSON.stringify({
         date_from: dateFrom, date_to: dateTo,
@@ -106,7 +111,7 @@ export async function ozonPrices(
   try {
     let cursor = "";
     for (let page = 0; page < 20; page++) {
-      const res = await fetch(`${BASE}/v5/product/info/prices`, {
+      const res = await tfetch(`${BASE}/v5/product/info/prices`, {
         method: "POST", headers: headers(c),
         body: JSON.stringify({ filter: { visibility: "ALL" }, limit: 1000, cursor }),
         next: { revalidate: 1800 },
@@ -145,7 +150,7 @@ export async function ozonStocks(
   const rows: OzonStockRow[] = [];
   try {
     for (let page = 0; page < 20; page++) {
-      const res = await fetch(`${BASE}/v2/analytics/stock_on_warehouses`, {
+      const res = await tfetch(`${BASE}/v2/analytics/stock_on_warehouses`, {
         method: "POST", headers: headers(c),
         body: JSON.stringify({ limit: 1000, offset: page * 1000, warehouse_type: "ALL" }),
         next: { revalidate: 1800 },
@@ -178,7 +183,7 @@ export async function ozonImages(
     const productIds: number[] = [];
     let lastId = "";
     for (let page = 0; page < 20; page++) {
-      const res = await fetch(`${BASE}/v3/product/list`, {
+      const res = await tfetch(`${BASE}/v3/product/list`, {
         method: "POST", headers: headers(c),
         body: JSON.stringify({ filter: { visibility: "ALL" }, limit: 1000, last_id: lastId }),
         next: { revalidate: 1800 },
@@ -193,7 +198,7 @@ export async function ozonImages(
     // 2) инфо по батчам ≤1000
     for (let i = 0; i < productIds.length; i += 1000) {
       const batch = productIds.slice(i, i + 1000);
-      const res = await fetch(`${BASE}/v3/product/info/list`, {
+      const res = await tfetch(`${BASE}/v3/product/info/list`, {
         method: "POST", headers: headers(c),
         body: JSON.stringify({ product_id: batch }),
         next: { revalidate: 1800 },
@@ -225,7 +230,7 @@ export async function ozonServiceBreakdown(
   const acc: Record<string, number> = {};
   try {
     for (let page = 1; page <= 20; page++) {
-      const res = await fetch(`${BASE}/v3/finance/transaction/list`, {
+      const res = await tfetch(`${BASE}/v3/finance/transaction/list`, {
         method: "POST",
         headers: headers(c),
         body: JSON.stringify({ filter: { date: { from: fromIso, to: toIso }, transaction_type: "all" }, page, page_size: 1000 }),

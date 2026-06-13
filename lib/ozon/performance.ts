@@ -5,9 +5,14 @@ export interface PerfCreds { clientId: string; secret: string }
 
 const numRu = (v: unknown) => Number(String(v ?? "0").replace(/\s/g, "").replace(",", ".")) || 0;
 
+// fetch с таймаутом 20с — не висеть при стопоре сети/прокси.
+function tfetch(url: string, opts: RequestInit = {}): Promise<Response> {
+  return fetch(url, { ...opts, signal: AbortSignal.timeout(20000) });
+}
+
 export async function getPerfToken(c: PerfCreds): Promise<string | null> {
   try {
-    const res = await fetch(`${BASE}/api/client/token`, {
+    const res = await tfetch(`${BASE}/api/client/token`, {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ client_id: c.clientId, client_secret: c.secret, grant_type: "client_credentials" }),
       cache: "no-store",
@@ -36,7 +41,7 @@ export async function perfProductReport(
   const auth = { Authorization: `Bearer ${token}` };
   try {
     // 1) SKU-кампании
-    const cr = await fetch(`${BASE}/api/client/campaign`, { headers: auth, cache: "no-store" });
+    const cr = await tfetch(`${BASE}/api/client/campaign`, { headers: auth, cache: "no-store" });
     if (!cr.ok) return null;
     const cj = (await cr.json()) as { list?: { id: string | number; advObjectType?: string; state?: string }[] };
     const allIds = (cj.list ?? []).filter((c) => c.advObjectType === "SKU").map((c) => String(c.id));
@@ -48,7 +53,7 @@ export async function perfProductReport(
     // 2) отчёт батчами по 10 кампаний (лимит API)
     for (let i = 0; i < ids.length; i += 10) {
       const batch = ids.slice(i, i + 10);
-      const gen = await fetch(`${BASE}/api/client/statistics/json`, {
+      const gen = await tfetch(`${BASE}/api/client/statistics/json`, {
         method: "POST", headers: { ...auth, "Content-Type": "application/json" },
         body: JSON.stringify({ campaigns: batch, from: fromIso, to: toIso, groupBy: "NO_GROUP_BY" }),
         cache: "no-store",
@@ -60,12 +65,12 @@ export async function perfProductReport(
       let ready = false;
       for (let t = 0; t < 8; t++) {
         await sleep(1500);
-        const st = await fetch(`${BASE}/api/client/statistics/${uuid}`, { headers: auth, cache: "no-store" });
+        const st = await tfetch(`${BASE}/api/client/statistics/${uuid}`, { headers: auth, cache: "no-store" });
         if (st.ok && ((await st.json()) as { state?: string }).state === "OK") { ready = true; break; }
       }
       if (!ready) continue;
       // 4) скачать
-      const rep = await fetch(`${BASE}/api/client/statistics/report?UUID=${uuid}`, { headers: auth, cache: "no-store" });
+      const rep = await tfetch(`${BASE}/api/client/statistics/report?UUID=${uuid}`, { headers: auth, cache: "no-store" });
       if (!rep.ok) continue;
       const data = (await rep.json()) as Record<string, { report?: { rows?: { sku?: string; moneySpent?: string; ordersMoney?: string }[] } }>;
       for (const camp of Object.values(data)) {
@@ -92,7 +97,7 @@ export async function perfDailySpend(
   const token = await getPerfToken(c);
   if (!token) return null;
   try {
-    const res = await fetch(`${BASE}/api/client/statistics/daily/json?dateFrom=${dateFrom}&dateTo=${dateTo}`, {
+    const res = await tfetch(`${BASE}/api/client/statistics/daily/json?dateFrom=${dateFrom}&dateTo=${dateTo}`, {
       headers: { Authorization: `Bearer ${token}` }, next: { revalidate: 1800 },
     });
     if (!res.ok) return null;
