@@ -26,9 +26,13 @@ export async function GET(request: NextRequest) {
       .limit(1)
       .single();
 
-    const dateFrom = lastRow?.date
-      ? new Date(lastRow.date).toISOString().slice(0, 19)
-      : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 19);
+    // ?from=YYYY-MM-DD — принудительный ре-синк с даты (бэкфилл price_with_disc)
+    const forceFrom = new URL(request.url).searchParams.get("from");
+    const dateFrom = forceFrom
+      ? new Date(forceFrom).toISOString().slice(0, 19)
+      : lastRow?.date
+        ? new Date(lastRow.date).toISOString().slice(0, 19)
+        : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 19);
 
     const url = new URL("https://statistics-api.wildberries.ru/api/v1/supplier/sales");
     url.searchParams.set("dateFrom", dateFrom);
@@ -58,6 +62,8 @@ export async function GET(request: NextRequest) {
       date: s.date as string,
       for_pay: s.forPay as number | null,
       finished_price: s.finishedPrice as number | null,
+      // цена до СПП: priceWithDisc, иначе totalPrice×(1−disc%)
+      price_with_disc: (s.priceWithDisc as number | null) ?? (s.totalPrice != null ? Number(s.totalPrice) * (1 - Number(s.discountPercent ?? 0) / 100) : null),
       synced_at: new Date().toISOString(),
     })).filter((r) => r.sale_id);
 

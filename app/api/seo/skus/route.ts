@@ -25,9 +25,32 @@ export async function GET() {
     db.from("product_costs").select("article, name"),
   ]);
 
+  // заказы из wb_orders для выручки ДО СПП (total_price×(1−disc%)) — постранично (cap 1000)
+  const ordersByNm = new Map<number, Map<string, { cnt: number; sum: number }>>();
+  for (let page = 0; page < 30; page++) {
+    const { data, error } = await db
+      .from("wb_orders").select("nm_id, date, total_price, discount_percent, is_cancel")
+      .gte("date", since).range(page * 1000, page * 1000 + 999);
+    if (error || !data?.length) break;
+    for (const o of data) {
+      if (o.is_cancel) continue;
+      const nm = o.nm_id as number;
+      const d = String(o.date).slice(0, 10);
+      const beforeSpp = Number(o.total_price ?? 0) * (1 - Number(o.discount_percent ?? 0) / 100);
+      if (!ordersByNm.has(nm)) ordersByNm.set(nm, new Map());
+      const m = ordersByNm.get(nm)!;
+      const e = m.get(d) ?? { cnt: 0, sum: 0 };
+      e.cnt++; e.sum += beforeSpp;
+      m.set(d, e);
+    }
+    if (data.length < 1000) break;
+  }
+
   const funnel = (funnelRes.data ?? []) as FunnelRow[];
   const ad = (adRes.data ?? []) as AdRow[];
-  const dates = [...new Set([...funnel, ...ad].map((r) => String(r.date).slice(0, 10)))].sort();
+  const orderDates: string[] = [];
+  for (const m of ordersByNm.values()) for (const d of m.keys()) orderDates.push(d);
+  const dates = [...new Set([...funnel.map((r) => String(r.date).slice(0, 10)), ...ad.map((r) => String(r.date).slice(0, 10)), ...orderDates])].sort();
   const yest = dates[dates.length - 1] ?? new Date(Date.now() - 86400000).toISOString().slice(0, 10);
   const week = new Set(dates.slice(-7));
 
@@ -42,8 +65,12 @@ export async function GET() {
   const agg = (nm: number, days: Set<string> | "yest") => {
     let views = 0, clicks = 0, spent = 0, cart = 0, oc = 0, os = 0, open = 0;
     const has = (d: string) => (days === "yest" ? d === yest : days.has(d));
-    for (const f of funnel) if (f.nm_id === nm && has(String(f.date).slice(0, 10))) { cart += f.add_to_cart || 0; oc += f.orders || 0; os += Number(f.orders_sum || 0); open += f.open_card || 0; }
+    // воронка (показы/корзина/открытия) — из аналитики WB
+    for (const f of funnel) if (f.nm_id === nm && has(String(f.date).slice(0, 10))) { cart += f.add_to_cart || 0; open += f.open_card || 0; }
     for (const a of ad) if (a.nm_id === nm && has(String(a.date).slice(0, 10))) { views += a.views || 0; clicks += a.clicks || 0; spent += Number(a.spent || 0); }
+    // заказы шт/₽ — из wb_orders ДО СПП
+    const om = ordersByNm.get(nm);
+    if (om) for (const [d, e] of om) if (has(d)) { oc += e.cnt; os += e.sum; }
     return { views, clicks, spent, cart, oc, os, open };
   };
 
