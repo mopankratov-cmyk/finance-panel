@@ -63,6 +63,108 @@ export async function ozonTransactionTotals(
   }
 }
 
+// Воронка: analytics/data по SKU (показы, в корзину, заказы, выручка, конверсия).
+export interface OzonAnalyticsRow {
+  sku: string; name: string;
+  hits_view: number; hits_tocart: number; ordered_units: number; revenue: number; conv: number;
+}
+export async function ozonAnalytics(
+  c: OzonCreds, dateFrom: string, dateTo: string,
+): Promise<{ ok: true; rows: OzonAnalyticsRow[] } | { ok: false; error: string }> {
+  try {
+    const res = await fetch(`${BASE}/v1/analytics/data`, {
+      method: "POST", headers: headers(c),
+      body: JSON.stringify({
+        date_from: dateFrom, date_to: dateTo,
+        metrics: ["hits_view", "hits_tocart", "ordered_units", "revenue", "conv_tocart_pdp"],
+        dimension: ["sku"], limit: 1000, offset: 0,
+      }),
+      next: { revalidate: 1800 },
+    });
+    if (!res.ok) return { ok: false, error: `Ozon ${res.status}: ${(await res.text()).slice(0, 120)}` };
+    const j = (await res.json()) as { result?: { data?: { dimensions: { id: string; name: string }[]; metrics: number[] }[] } };
+    const rows = (j.result?.data ?? []).map((d) => ({
+      sku: d.dimensions[0]?.id ?? "", name: d.dimensions[0]?.name ?? "",
+      hits_view: d.metrics[0] ?? 0, hits_tocart: d.metrics[1] ?? 0,
+      ordered_units: d.metrics[2] ?? 0, revenue: d.metrics[3] ?? 0, conv: d.metrics[4] ?? 0,
+    }));
+    return { ok: true, rows };
+  } catch (e) {
+    return { ok: false, error: String(e).slice(0, 120) };
+  }
+}
+
+// Цены/комиссии по SKU (для юнит-экономики).
+export interface OzonPriceRow {
+  offer_id: string; product_id: number; price: number; commissionPct: number;
+  logistics: number; returnLogistics: number; acquiring: number;
+}
+export async function ozonPrices(
+  c: OzonCreds,
+): Promise<{ ok: true; rows: OzonPriceRow[] } | { ok: false; error: string }> {
+  const rows: OzonPriceRow[] = [];
+  try {
+    let cursor = "";
+    for (let page = 0; page < 20; page++) {
+      const res = await fetch(`${BASE}/v5/product/info/prices`, {
+        method: "POST", headers: headers(c),
+        body: JSON.stringify({ filter: { visibility: "ALL" }, limit: 1000, cursor }),
+        next: { revalidate: 1800 },
+      });
+      if (!res.ok) return { ok: false, error: `Ozon ${res.status}` };
+      const j = (await res.json()) as {
+        items?: { offer_id: string; product_id: number; acquiring?: number; price?: { price?: string | number }; commissions?: Record<string, number> }[];
+        cursor?: string;
+      };
+      const items = j.items ?? [];
+      for (const it of items) {
+        const cm = it.commissions ?? {};
+        rows.push({
+          offer_id: it.offer_id, product_id: it.product_id,
+          price: Number(it.price?.price ?? 0),
+          commissionPct: Number(cm.sales_percent_fbo ?? cm.sales_percent_fbs ?? 0),
+          logistics: Number(cm.fbo_deliv_to_customer_amount ?? 0) + Number(cm.fbo_direct_flow_trans_min_amount ?? 0),
+          returnLogistics: Number(cm.fbo_return_flow_amount ?? 0),
+          acquiring: Number(it.acquiring ?? 0),
+        });
+      }
+      cursor = j.cursor ?? "";
+      if (!items.length || !cursor) break;
+    }
+    return { ok: true, rows };
+  } catch (e) {
+    return { ok: false, error: String(e).slice(0, 120) };
+  }
+}
+
+// Остатки по складам.
+export interface OzonStockRow { sku: number; article: string; name: string; warehouse: string; free: number; reserved: number }
+export async function ozonStocks(
+  c: OzonCreds,
+): Promise<{ ok: true; rows: OzonStockRow[] } | { ok: false; error: string }> {
+  const rows: OzonStockRow[] = [];
+  try {
+    for (let page = 0; page < 20; page++) {
+      const res = await fetch(`${BASE}/v2/analytics/stock_on_warehouses`, {
+        method: "POST", headers: headers(c),
+        body: JSON.stringify({ limit: 1000, offset: page * 1000, warehouse_type: "ALL" }),
+        next: { revalidate: 1800 },
+      });
+      if (!res.ok) return { ok: false, error: `Ozon ${res.status}` };
+      const j = (await res.json()) as { result?: { rows?: { sku: number; warehouse_name: string; item_code: string; item_name: string; free_to_sell_amount: number; reserved_amount: number }[] } };
+      const batch = j.result?.rows ?? [];
+      for (const r of batch) rows.push({
+        sku: r.sku, article: r.item_code, name: r.item_name, warehouse: r.warehouse_name,
+        free: Number(r.free_to_sell_amount ?? 0), reserved: Number(r.reserved_amount ?? 0),
+      });
+      if (batch.length < 1000) break;
+    }
+    return { ok: true, rows };
+  } catch (e) {
+    return { ok: false, error: String(e).slice(0, 120) };
+  }
+}
+
 // Детализация услуг (реклама/хранение/...) из transaction/list по operation_type.
 export async function ozonServiceBreakdown(
   c: OzonCreds, fromIso: string, toIso: string,

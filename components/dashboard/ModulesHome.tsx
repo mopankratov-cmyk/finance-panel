@@ -27,6 +27,7 @@ interface ModuleCard {
 const MODULES: ModuleCard[] = [
   { title: "Финансы", description: "Календарь ДДС, платежи, счета, кредиты, ОПиУ", href: "/calendar", icon: Wallet, agent: "Нано", status: "active", color: ["bg-emerald-100", "text-emerald-700"] },
   { title: "WB Аналитика", description: "РНП, воронка, остатки, оборачиваемость, продажи", href: "/inferno/wb.html", icon: BarChart3, agent: "Андер", status: "active", color: ["bg-purple-100", "text-purple-700"] },
+  { title: "Ozon Аналитика", description: "Воронка, юнит-экономика, остатки, удержания", href: "/ozon", icon: BarChart3, agent: "Озар", status: "active", color: ["bg-sky-100", "text-sky-700"] },
   { title: "Реклама", description: "Кампании, ставки, CTR/CPC, анализ ДРР", href: "/inferno/wb.html", icon: Megaphone, agent: "Патрик", status: "active", color: ["bg-orange-100", "text-orange-700"] },
   { title: "Закупки", description: "План поставок по складам, потребность, мин. партии", href: "/supplies", icon: Package, agent: "Саму", status: "active", color: ["bg-cyan-100", "text-cyan-700"] },
   { title: "Юнит-экономика", description: "Калькулятор цены, маржа, себестоимость по SKU", href: "/inferno/wb.html", icon: Calculator, agent: "Гусман", status: "active", color: ["bg-violet-100", "text-violet-700"] },
