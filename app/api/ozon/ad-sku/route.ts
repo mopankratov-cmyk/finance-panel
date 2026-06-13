@@ -1,0 +1,45 @@
+import { NextRequest, NextResponse } from "next/server";
+import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { getActiveOzonCreds } from "@/lib/ozon/cabinet";
+import { perfProductReport } from "@/lib/ozon/performance";
+
+export const dynamic = "force-dynamic";
+export const maxDuration = 60;
+
+const FRESH_MS = 6 * 3600 * 1000;
+
+// Per-SKU расход рекламы Ozon (кэш 6ч; обновление через async-отчёт Performance).
+export async function GET(request: NextRequest) {
+  const sp = new URL(request.url).searchParams;
+  const days = Math.min(30, Math.max(3, Number(sp.get("days")) || 14));
+  const force = sp.get("force") === "1";
+  const db = getSupabaseAdmin();
+  if (!db) return NextResponse.json({ bySku: {} });
+
+  // 1) кэш
+  if (!force) {
+    const { data } = await db.from("ozon_ad_cache").select("sku, spent, orders_money, updated_at").eq("days", days);
+    if (data?.length) {
+      const fresh = data.every((r) => Date.now() - new Date(r.updated_at as string).getTime() < FRESH_MS);
+      if (fresh) {
+        const bySku: Record<string, { spent: number; ordersMoney: number }> = {};
+        for (const r of data) bySku[r.sku as string] = { spent: Number(r.spent), ordersMoney: Number(r.orders_money) };
+        return NextResponse.json({ bySku, cached: true });
+      }
+    }
+  }
+
+  // 2) обновление через Performance
+  const cab = await getActiveOzonCreds(sp.get("cabinet"));
+  if (!cab.ok || !cab.perf) return NextResponse.json({ bySku: {}, noPerf: true });
+  const to = new Date().toISOString();
+  const from = new Date(Date.now() - days * 86400000).toISOString();
+  const rep = await perfProductReport(cab.perf, from, to);
+  if (!rep) return NextResponse.json({ bySku: {}, error: "Performance report failed" });
+
+  // upsert в кэш
+  const rows = Object.entries(rep.bySku).map(([sku, v]) => ({ sku, days, spent: Math.round(v.spent), orders_money: Math.round(v.ordersMoney), updated_at: new Date().toISOString() }));
+  if (rows.length) await db.from("ozon_ad_cache").upsert(rows, { onConflict: "sku,days" });
+
+  return NextResponse.json({ bySku: rep.bySku, partial: rep.partial, refreshed: true });
+}

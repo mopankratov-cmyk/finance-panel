@@ -33,6 +33,19 @@ export default function OzonPage() {
   const [unit, setUnit] = useState<UnitRow[]>([]);
   const [stocks, setStocks] = useState<{ rows: StockRow[]; warehouses: string[]; totalFree: number }>({ rows: [], warehouses: [], totalFree: 0 });
 
+  const [reload, setReload] = useState(0);
+  const [adWarmed, setAdWarmed] = useState<Set<number>>(new Set());
+
+  // подогрев кэша per-SKU рекламы при заходе на РНП (фоном)
+  useEffect(() => {
+    if (tab !== "rnp" || adWarmed.has(days)) return;
+    setAdWarmed((s) => new Set(s).add(days));
+    fetch(`/api/ozon/ad-sku?days=${days}`, { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d) => { if (d.refreshed && Object.keys(d.bySku || {}).length) setReload((n) => n + 1); })
+      .catch(() => {});
+  }, [tab, days, adWarmed]);
+
   useEffect(() => {
     setLoading(true); setErr(null); setNoCab(false);
     const url = tab === "rnp" ? `/api/ozon/rnp?days=${days}` : tab === "funnel" ? `/api/ozon/analytics?days=${days}` : tab === "unit" ? "/api/ozon/unit" : "/api/ozon/stocks";
@@ -44,7 +57,7 @@ export default function OzonPage() {
       else if (tab === "unit") setUnit(d.rows ?? []);
       else setStocks({ rows: d.rows ?? [], warehouses: d.warehouses ?? [], totalFree: d.totalFree ?? 0 });
     }).catch((e) => setErr(String(e))).finally(() => setLoading(false));
-  }, [tab, days]);
+  }, [tab, days, reload]);
 
   const flt = <T extends { name: string; art?: string; sku?: string }>(rows: T[]) => {
     const s = q.toLowerCase().trim();

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getActiveOzonCreds } from "@/lib/ozon/cabinet";
 import { ozonImages, ozonStocks, type OzonCreds } from "@/lib/ozon/api";
+import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -72,21 +73,37 @@ export async function GET(request: NextRequest) {
   if (stk.ok) for (const s of stk.rows) freeByOffer[s.article] = (freeByOffer[s.article] ?? 0) + s.free;
   const stockOfSku = (sku: string) => freeByOffer[skuToOffer[sku] ?? ""] ?? 0;
 
-  const buildMetrics = (byDay: Map<string, Day>, stock: number) => {
+  // per-SKU расход рекламы из кэша (заполняется /api/ozon/ad-sku)
+  const adBySku = new Map<string, number>();
+  {
+    const db = getSupabaseAdmin();
+    if (db) {
+      const { data: adRows } = await db.from("ozon_ad_cache").select("sku, spent").eq("days", days);
+      for (const r of adRows ?? []) adBySku.set(r.sku as string, Number(r.spent));
+    }
+  }
+
+  const buildMetrics = (byDay: Map<string, Day>, stock: number, adSpent?: number) => {
     const pick = (k: keyof Day) => dates.map((d) => Math.round(byDay.get(d)?.[k] ?? 0));
     const sum = (a: number[]) => a.reduce((x, v) => x + v, 0);
     const orders = pick("orders"), revenue = pick("revenue"), views = pick("views"), cart = pick("cart");
-    return [
+    const revTotal = sum(revenue);
+    const m = [
       { field: "orders", label: "Заказы, шт", kind: "int", daily: orders, total: sum(orders), group_start: true },
-      { field: "revenue", label: "Выручка, ₽", kind: "money", daily: revenue, total: sum(revenue) },
+      { field: "revenue", label: "Выручка, ₽", kind: "money", daily: revenue, total: revTotal },
       { field: "cart", label: "В корзину", kind: "int", daily: cart, total: sum(cart), group_start: true },
       { field: "views", label: "Показы", kind: "int", daily: views, total: sum(views) },
       { field: "stock", label: "Остаток, шт", kind: "int", daily: dates.map(() => 0), total: stock, group_start: true },
     ];
+    if (adSpent != null) {
+      m.push({ field: "ad", label: "Реклама, ₽", kind: "money", daily: dates.map(() => 0), total: Math.round(adSpent), group_start: true });
+      m.push({ field: "drr", label: "ДРР, %", kind: "pct", daily: dates.map(() => 0), total: revTotal > 0 ? Math.round((adSpent / revTotal) * 1000) / 10 : 0 });
+    }
+    return m;
   };
 
   const skus = [...bySku.entries()]
-    .map(([sku, v]) => ({ sku, name: v.name, img_url: imgBySku[sku] ?? null, metrics: buildMetrics(v.byDay, stockOfSku(sku)), _o: [...v.byDay.values()].reduce((s, x) => s + x.revenue, 0) }))
+    .map(([sku, v]) => ({ sku, name: v.name, img_url: imgBySku[sku] ?? null, metrics: buildMetrics(v.byDay, stockOfSku(sku), adBySku.has(sku) ? adBySku.get(sku) : undefined), _o: [...v.byDay.values()].reduce((s, x) => s + x.revenue, 0) }))
     .sort((a, b) => b._o - a._o)
     .map(({ _o, ...rest }) => { void _o; return rest; });
 
