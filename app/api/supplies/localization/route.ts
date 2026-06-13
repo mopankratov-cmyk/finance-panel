@@ -12,17 +12,26 @@ export async function GET() {
 
   const since = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
 
-  // заказы постранично (PostgREST cap 1000)
+  // Серверный агрегат (быстро, один вызов). Фолбэк на пагинацию, если RPC ещё не создан в БД.
   const orders: { region: string | null; warehouse: string | null }[] = [];
-  for (let page = 0; page < 30; page++) {
-    const { data, error } = await db
-      .from("wb_orders")
-      .select("region, warehouse")
-      .gte("date", since)
-      .range(page * 1000, page * 1000 + 999);
-    if (error || !data?.length) break;
-    orders.push(...(data as { region: string | null; warehouse: string | null }[]));
-    if (data.length < 1000) break;
+  const agg = await db.rpc("wb_localization_30d");
+  if (!agg.error && Array.isArray(agg.data)) {
+    for (const r of agg.data as { region: string | null; warehouse: string | null; cnt: number }[]) {
+      const n = Number(r.cnt ?? 0);
+      for (let i = 0; i < n; i++) orders.push({ region: r.region, warehouse: r.warehouse });
+    }
+  } else {
+    for (let page = 0; page < 30; page++) {
+      const { data, error } = await db
+        .from("wb_orders")
+        .select("region, warehouse")
+        .gte("date", since)
+        .order("date")
+        .range(page * 1000, page * 1000 + 999);
+      if (error || !data?.length) break;
+      orders.push(...(data as { region: string | null; warehouse: string | null }[]));
+      if (data.length < 1000) break;
+    }
   }
 
   // округа, где у нас уже есть остаток (по складам в wb_stocks)
