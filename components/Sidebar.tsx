@@ -46,6 +46,7 @@ const NAV_GROUPS: NavGroup[] = [
       { href: "/accounts", label: "Счета", icon: Wallet },
       { href: "/loans", label: "Кредиты", icon: Landmark },
       { href: "/opiu", label: "ОПиУ", icon: LineChart },
+      { href: "/pnl", label: "ОПиУ МП", icon: LineChart },
       { href: "/summary", label: "Сводка МП", icon: Scale },
       { href: "/losses", label: "Где теряем", icon: TrendingDown },
       { href: "/costs", label: "Себестоимость", icon: Coins },
