@@ -1,7 +1,7 @@
 // fal.ai FLUX — генерация сцены с красивой AI-моделью (дефолтная модель fal, без face-референса).
 // Queue API: submit → request_id → poll status → result. Нужен FAL_KEY.
-const MODEL_ENDPOINT = "fal-ai/flux/dev";
-const QUEUE = `https://queue.fal.run/${MODEL_ENDPOINT}`;
+const QUEUE = "https://queue.fal.run/fal-ai/flux/dev"; // сабмит
+const STATUS = "https://queue.fal.run/fal-ai/flux";    // статус/результат — на уровне app (без /dev)
 
 function key(): string | null { return process.env.FAL_KEY || null; }
 
@@ -30,11 +30,11 @@ export async function falPulidStatus(requestId: string): Promise<FalStatus> {
   if (!k) return { status: "error", error: "FAL_KEY не настроен" };
   const auth = { Authorization: `Key ${k}` };
   try {
-    const st = await fetch(`${QUEUE}/requests/${requestId}/status`, { headers: auth, cache: "no-store", signal: AbortSignal.timeout(15000) });
+    const st = await fetch(`${STATUS}/requests/${requestId}/status`, { headers: auth, cache: "no-store", signal: AbortSignal.timeout(15000) });
     if (!st.ok) return { status: "error", error: `fal ${st.status}` };
     const sj = (await st.json()) as { status?: string };
     if (sj.status !== "COMPLETED") return { status: "in_progress" };
-    const res = await fetch(`${QUEUE}/requests/${requestId}`, { headers: auth, cache: "no-store", signal: AbortSignal.timeout(15000) });
+    const res = await fetch(`${STATUS}/requests/${requestId}`, { headers: auth, cache: "no-store", signal: AbortSignal.timeout(15000) });
     if (!res.ok) return { status: "error", error: `fal result ${res.status}` };
     const rj = (await res.json()) as { images?: { url: string }[]; detail?: string };
     const url = rj.images?.[0]?.url;
