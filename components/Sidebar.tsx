@@ -14,6 +14,7 @@ import {
   LineChart,
   Menu,
   LogOut,
+  PieChart,
   RefreshCw,
   TrendingDown,
   Truck,
@@ -46,6 +47,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: "/inferno/wb.html", label: "WB Аналитика", icon: BarChart3 },
       { href: "/ozon", label: "Ozon Аналитика", icon: BarChart3 },
+      { href: "/abc", label: "ABC прибыли", icon: PieChart },
     ],
   },
   {
