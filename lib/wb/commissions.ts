@@ -1,5 +1,5 @@
-// Фактическая комиссия WB по каждому nm_id — из детального финотчёта (reportDetailByPeriod).
-// Берём поле commission_percent (headline-% комиссии WB), взвешиваем по выручке строки.
+// Фактические ставки WB по каждому nm_id — из детального финотчёта (reportDetailByPeriod).
+// Комиссия: commission_percent (взвеш. по выручке). Эквайринг: acquiring_fee / выручка.
 // Кэш через Next fetch revalidate (отчёт тяжёлый ~12с) — тянется раз в 6ч на весь сервер.
 
 const WB_STATS_TOKEN = process.env.WB_STATS_TOKEN || process.env.WB_TOKEN_STATISTICS;
@@ -9,19 +9,21 @@ interface ReportRow {
   supplier_oper_name?: string;
   commission_percent?: number;
   ppvz_sales_commission?: number;
+  acquiring_fee?: number;
   retail_price_withdisc_rub?: number;
   retail_amount?: number;
 }
 
 export interface WbCommission {
-  byNm: Map<number, { pct: number; comm: number; rev: number }>;
-  avgPct: number; // средневзвешенная по всему кабинету — фолбэк для nm без данных
+  byNm: Map<number, { pct: number; acqPct: number; rev: number }>;
+  avgPct: number;    // средневзвешенная комиссия по кабинету — фолбэк
+  avgAcqPct: number; // средневзвешенный эквайринг по кабинету — фолбэк
 }
 
 const num = (v: unknown) => Number(v ?? 0) || 0;
 
 export async function getWbCommission(days = 30): Promise<WbCommission> {
-  const empty: WbCommission = { byNm: new Map(), avgPct: 0 };
+  const empty: WbCommission = { byNm: new Map(), avgPct: 0, avgAcqPct: 0 };
   if (!WB_STATS_TOKEN) return empty;
   const to = new Date().toISOString().slice(0, 10);
   const from = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
@@ -37,9 +39,9 @@ export async function getWbCommission(days = 30): Promise<WbCommission> {
   }
   if (!Array.isArray(rows)) return empty;
 
-  // На nm копим Σ(commission_percent × rev) и Σrev → взвешенный % комиссии
-  const acc = new Map<number, { wpct: number; rev: number }>();
-  let totW = 0, totRev = 0;
+  // На nm копим Σ(commission_percent × rev), Σ acquiring_fee, Σrev
+  const acc = new Map<number, { wpct: number; acq: number; rev: number }>();
+  let totW = 0, totAcq = 0, totRev = 0;
   for (const r of rows) {
     if (r.supplier_oper_name && r.supplier_oper_name !== "Продажа") continue; // только продажи
     const nm = Number(r.nm_id ?? 0);
@@ -49,14 +51,20 @@ export async function getWbCommission(days = 30): Promise<WbCommission> {
     // headline-% комиссии; фолбэк — |ppvz_sales_commission|/rev
     let pct = Math.abs(num(r.commission_percent));
     if (pct <= 0) pct = (Math.abs(num(r.ppvz_sales_commission)) / rev) * 100;
-    const e = acc.get(nm) ?? { wpct: 0, rev: 0 };
-    e.wpct += pct * rev; e.rev += rev;
+    const acq = Math.abs(num(r.acquiring_fee));
+    const e = acc.get(nm) ?? { wpct: 0, acq: 0, rev: 0 };
+    e.wpct += pct * rev; e.acq += acq; e.rev += rev;
     acc.set(nm, e);
-    totW += pct * rev; totRev += rev;
+    totW += pct * rev; totAcq += acq; totRev += rev;
   }
 
-  const byNm = new Map<number, { pct: number; comm: number; rev: number }>();
-  for (const [nm, e] of acc) byNm.set(nm, { pct: Math.round((e.wpct / e.rev) * 10) / 10, comm: 0, rev: e.rev });
+  const byNm = new Map<number, { pct: number; acqPct: number; rev: number }>();
+  for (const [nm, e] of acc) byNm.set(nm, {
+    pct: Math.round((e.wpct / e.rev) * 10) / 10,
+    acqPct: Math.round((e.acq / e.rev) * 1000) / 10,
+    rev: e.rev,
+  });
   const avgPct = totRev > 0 ? Math.round((totW / totRev) * 10) / 10 : 0;
-  return { byNm, avgPct };
+  const avgAcqPct = totRev > 0 ? Math.round((totAcq / totRev) * 1000) / 10 : 0;
+  return { byNm, avgPct, avgAcqPct };
 }
