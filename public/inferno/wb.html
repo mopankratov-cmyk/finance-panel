@@ -2074,6 +2074,46 @@ button:not(:disabled):active{ transform: translateY(0); }
           <span x-show="supplies.restrMsg" class="text-amber-700" x-text="supplies.restrMsg"></span>
           <span x-show="supplies.restrErr" class="text-red-600" x-text="'Ограничения: '+supplies.restrErr"></span>
         </div>
+
+        <!-- 🌍 ЛОКАЛИЗАЦИЯ WB (что грузить, чтобы поднять индекс) -->
+        <div x-show="supplies.localization" class="mb-3 bg-white rounded-xl border border-gray-200/70 p-3">
+          <div class="text-xs font-semibold text-gray-600 mb-2 flex items-center gap-1.5">
+            🌍 Локализация WB
+            <span class="font-normal text-gray-400">заказ «локальный» = склад отгрузки и регион покупателя в одном федокруге · выше локализация → дешевле логистика (ИРП=0 при ≥60%)</span>
+          </div>
+          <div class="flex flex-wrap gap-3 mb-3">
+            <div class="rounded-lg border px-4 py-2 min-w-[140px]" :class="(supplies.localization?.localizationPct||0)>=60 ? 'border-emerald-200 bg-emerald-50/50' : 'border-amber-200 bg-amber-50/50'">
+              <div class="text-[10px] text-gray-500 uppercase tracking-wide">% локализации</div>
+              <div class="text-2xl font-extrabold" :class="(supplies.localization?.localizationPct||0)>=60 ? 'text-emerald-700' : 'text-amber-700'" x-text="(supplies.localization?.localizationPct ?? 0) + '%'"></div>
+              <div class="text-[10px] text-gray-400" x-text="(supplies.localization?.localOrders||0).toLocaleString('ru-RU') + ' из ' + (supplies.localization?.totalOrders||0).toLocaleString('ru-RU') + ' заказов'"></div>
+            </div>
+            <div class="rounded-lg border border-gray-200 px-4 py-2 min-w-[120px]">
+              <div class="text-[10px] text-gray-500 uppercase tracking-wide" title="Индекс локализации — множитель стоимости логистики (ниже = дешевле). Оценка из доли локализации.">ИЛ <span class="text-gray-300">ⓘ</span></div>
+              <div class="text-2xl font-extrabold text-gray-800" x-text="supplies.localization?.il ?? '—'"></div>
+              <div class="text-[10px] text-gray-400">множитель логистики</div>
+            </div>
+            <div class="rounded-lg border px-4 py-2 min-w-[120px]" :class="(supplies.localization?.irp||0)===0 ? 'border-emerald-200 bg-emerald-50/50' : 'border-red-200 bg-red-50/50'">
+              <div class="text-[10px] text-gray-500 uppercase tracking-wide" title="Индекс распределения продаж — надбавка к логистике от цены товара. 0% при локализации ≥60%.">ИРП <span class="text-gray-300">ⓘ</span></div>
+              <div class="text-2xl font-extrabold" :class="(supplies.localization?.irp||0)===0 ? 'text-emerald-700' : 'text-red-600'" x-text="(supplies.localization?.irp ?? 0) + '%'"></div>
+              <div class="text-[10px] text-gray-400" x-text="(supplies.localization?.irp||0)===0 ? 'надбавки нет ✓' : 'надбавка к логистике'"></div>
+            </div>
+          </div>
+          <div x-show="supplies.localization?.recommendations?.length" class="text-[11px] font-semibold text-gray-600 mb-1">📦 Что грузить, чтобы поднять локализацию:</div>
+          <div class="flex flex-wrap gap-2">
+            <template x-for="r in (supplies.localization?.recommendations || [])" :key="r.okrug">
+              <div class="rounded-lg border px-3 py-2 min-w-[180px]" :class="!r.hasStock ? 'border-red-200 bg-red-50/40' : 'border-amber-200 bg-amber-50/40'">
+                <div class="text-xs font-bold text-gray-800 flex items-center gap-1">
+                  <span x-text="r.hub"></span>
+                  <span class="text-[9px] font-medium px-1 py-0 rounded bg-gray-200 text-gray-600" x-text="r.okrug"></span>
+                </div>
+                <div class="text-[11px] text-gray-500 mt-0.5">локализация округа: <b :class="r.localPct<40?'text-red-600':'text-gray-700'" x-text="r.localPct + '%'"></b></div>
+                <div class="text-[11px] mt-0.5"><span class="text-emerald-700 font-bold" x-text="'+' + r.potential.toLocaleString('ru-RU')"></span> <span class="text-gray-500">заказов станут локальными</span></div>
+                <div x-show="!r.hasStock" class="text-[10px] text-red-600 font-semibold mt-0.5">⚠ остатка в округе нет — приоритет</div>
+              </div>
+            </template>
+          </div>
+        </div>
+
         <div x-show="supplies.loaded && supplies.whEcon.length" class="mb-3 bg-white rounded-xl border border-gray-200/70 p-3">
           <div class="text-xs font-semibold text-gray-600 mb-2 flex items-center gap-1.5 flex-wrap">
             📦 Сводка по складам
@@ -3531,7 +3571,7 @@ function app() {
     supplies: { loaded: false, loading: false, warehouses: [], skus: [], totals: {}, sheet_url: '', cached_at: null, q: '',
                 wms: null, wmsBusy: false, wmsMsg: '', wmsErr: '',
                 editPctIdx: null, pctBusy: false, pctErr: '', threshold: 30, thrBusy: false,
-                wbBusy: false, wbMsg: '', wbErr: '', wbMeta: null, whEcon: [], palletL: 1230, volKnown: 0, volTotal: 0, expanded: null, exclBusy: false, _exclWh: '', taraBusy: false, tara: null, wmsBusy: null, wmsReady: { cookie: false, warehouses: [] }, wmsResult: null, wbSupplyNums: {}, wmsOrders: {}, supNumBusy: null, coverage: null, restrBusy: false, restrMeta: null, restrMsg: '', restrErr: '', health: { busy: false, result: null }, resetBusy: false },
+                wbBusy: false, wbMsg: '', wbErr: '', wbMeta: null, whEcon: [], palletL: 1230, volKnown: 0, volTotal: 0, expanded: null, exclBusy: false, _exclWh: '', taraBusy: false, tara: null, wmsBusy: null, wmsReady: { cookie: false, warehouses: [] }, wmsResult: null, wbSupplyNums: {}, wmsOrders: {}, supNumBusy: null, coverage: null, restrBusy: false, restrMeta: null, restrMsg: '', restrErr: '', health: { busy: false, result: null }, resetBusy: false, localization: null },
     design: { loaded: false, loading: false, skus: [], summary: [], period: '', window: 7, sortBy: 'shows', sortDir: 'desc', view: 'actions', videos: {}, fbq: {}, effects: {}, draft: {}, dayMetric: 'ctr', dayMetrics: {}, rowHL: {}, priceBusy: false, priceMsg: '', priceErr: false, cabFilter: '', catFilter: '', bulkMark: { open:false, date:'', busy:false, msg:'' }, ads: { nms: {}, spent: {}, checked: false, busy: false, ts: 0, active_count: 0 },
         dayMarks: {}, markPop: { open: false, nm: null, iso: '', x: 0, y: 0 },
         markTypes: [
@@ -4318,6 +4358,7 @@ function app() {
         this.supplies.wbSupplyNums = d.wb_supply_nums || {};
         this.supplies.wmsOrders = d.wms_orders || {};
         this.supplies.coverage = d.coverage || null;
+        fetch(API_BASE + '/api/supplies/localization').then(r => r.json()).then(v => { this.supplies.localization = v || null; }).catch(() => {});
         try { this.supplies.wmsReady = await (await fetch(API_BASE + '/api/supplies/wms-ready')).json(); }
         catch(_) { this.supplies.wmsReady = { cookie:false, warehouses:[] }; }
         this.supplies.palletL = d.pallet_liters || 1230;
