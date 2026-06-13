@@ -1,19 +1,22 @@
 import { NextResponse } from "next/server";
-import { driveList } from "@/lib/google/drive";
+import { yaList } from "@/lib/yandex/disk";
 
 export const dynamic = "force-dynamic";
 
-// Содержимое папки SKU (Drive): файлы с флагом is_image для фильтра в лабе.
+// Содержимое папки SKU (Яндекс.Диск). id = base64url пути. {files:[{is_image,url,name}]}.
 export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
   if (!id) return NextResponse.json({ files: [] });
-  const files = await driveList(id);
+  let path: string;
+  try { path = Buffer.from(id, "base64url").toString(); } catch { return NextResponse.json({ files: [] }); }
+  const items = await yaList(path);
   return NextResponse.json({
-    files: files.map((f) => ({
-      id: f.id, name: f.name,
-      is_image: f.mimeType.startsWith("image/"),
-      is_folder: f.mimeType === "application/vnd.google-apps.folder",
-      url: f.mimeType.startsWith("image/") ? `/api/lab/drive-img/${f.id}` : null,
+    files: items.map((f) => ({
+      name: f.name,
+      is_image: f.isImage,
+      is_folder: f.type === "dir",
+      url: f.isImage ? `/api/lab/yandex-img?path=${encodeURIComponent(f.path)}` : null,
+      sub: f.type === "dir" ? Buffer.from(f.path).toString("base64url") : null,
     })),
   });
 }
