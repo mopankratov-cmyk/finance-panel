@@ -368,6 +368,19 @@ button:not(:disabled):active{ transform: translateY(0); }
 </style>
 </head>
 <body class="bg-gray-50 text-gray-900 overflow-hidden">
+<!-- Сквозное меню модулей (убирает тупик: из WB-аналитики в другие модули) -->
+<details id="fp-modules" style="position:fixed;top:10px;right:14px;z-index:100000;font-family:Inter,system-ui,sans-serif">
+  <summary style="list-style:none;cursor:pointer;background:#7c3aed;color:#fff;font-size:12px;font-weight:600;padding:6px 12px;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,.15)">▦ Модули</summary>
+  <div style="position:absolute;right:0;margin-top:6px;width:210px;background:#fff;border:1px solid #e5e7eb;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.12);overflow:hidden;font-size:13px">
+    <a href="/" style="display:block;padding:8px 12px;color:#374151;text-decoration:none">← Все модули</a>
+    <a href="/ozon" style="display:block;padding:8px 12px;color:#374151;text-decoration:none;border-top:1px solid #f3f4f6">Ozon Аналитика</a>
+    <a href="/pnl" style="display:block;padding:8px 12px;color:#374151;text-decoration:none">ОПиУ WB+Ozon</a>
+    <a href="/losses" style="display:block;padding:8px 12px;color:#374151;text-decoration:none">Где теряем</a>
+    <a href="/supplies" style="display:block;padding:8px 12px;color:#374151;text-decoration:none">Закупки</a>
+    <a href="/calendar" style="display:block;padding:8px 12px;color:#374151;text-decoration:none">Календарь / ДДС</a>
+    <a href="/cabinets" style="display:block;padding:8px 12px;color:#374151;text-decoration:none;border-top:1px solid #f3f4f6">Кабинеты</a>
+  </div>
+</details>
 <!-- Лоадер пока Alpine не подгрузился (скрывается автоматически когда x-cloak снимается) -->
 <div id="boot-loader" style="position:fixed;inset:0;background:#f9fafb;display:flex;align-items:center;justify-content:center;z-index:99999;transition:opacity .25s">
   <div style="width:28px;height:28px;border:3px solid #e5e7eb;border-top-color:#7b28c0;border-radius:50%;animation:spin 0.8s linear infinite"></div>

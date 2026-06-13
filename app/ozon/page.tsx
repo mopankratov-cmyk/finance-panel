@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Loader2 } from "lucide-react";
+import { ModuleMenu } from "@/components/ModuleMenu";
 
 type Tab = "rnp" | "funnel" | "unit" | "stocks";
 const fmt = (n: number | null | undefined) => (n == null ? "—" : Math.round(n).toLocaleString("ru-RU"));
@@ -84,8 +85,8 @@ export default function OzonPage() {
           <div className="flex h-8 w-8 items-center justify-center rounded-md bg-gradient-to-br from-sky-500 to-blue-700 text-xs font-extrabold text-white">OZ</div>
           <div className="text-base font-extrabold tracking-tight">Ozon Аналитика</div>
           <span className="ml-1 flex items-center gap-1.5 text-xs text-gray-500"><span className="h-2 w-2 rounded-full bg-green-400" /> система работает</span>
-          <Link href="/losses" className="ml-auto text-xs font-semibold text-red-600 hover:text-red-700">↘ Где теряем (Ozon)</Link>
-          <Link href="/" className="text-xs text-gray-400 hover:text-gray-700">← модули</Link>
+          <Link href="/losses" className="ml-auto text-xs font-semibold text-red-600 hover:text-red-700">↘ Где теряем</Link>
+          <ModuleMenu accent="sky" />
         </div>
         {/* Таб-бар */}
         <div className="mx-auto flex max-w-[1600px] flex-wrap items-center gap-2 px-5 pb-2">
