@@ -1,7 +1,7 @@
 "use client";
 
 import {
-  BarChart3, Bot, Calculator, Coins, FlaskConical, LineChart, Megaphone,
+  BarChart3, Bot, Coins, FlaskConical, LineChart,
   Package, TrendingDown, Wallet, Building2, ArrowUpRight, LogOut, type LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
@@ -19,8 +19,6 @@ interface ModuleCard {
 const MODULES: ModuleCard[] = [
   { title: "WB Аналитика", description: "РНП, воронка, реклама, склейки, SEO, остатки", href: "/inferno/wb.html", icon: BarChart3, agent: "Андер", zone: "Аналитика", color: ["bg-violet-100", "text-violet-700"] },
   { title: "Ozon Аналитика", description: "РНП, воронка, юнит, остатки, удержания", href: "/ozon", icon: BarChart3, agent: "Озар", zone: "Аналитика", color: ["bg-sky-100", "text-sky-700"] },
-  { title: "Реклама", description: "Кампании, ставки, CTR/CPC, ДРР", href: "/inferno/wb.html#adverts", icon: Megaphone, agent: "Патрик", zone: "Аналитика", color: ["bg-orange-100", "text-orange-700"] },
-  { title: "Юнит-экономика", description: "Калькулятор цены, маржа по SKU", href: "/inferno/wb.html#unit", icon: Calculator, agent: "Гусман", zone: "Аналитика", color: ["bg-indigo-100", "text-indigo-700"] },
 
   { title: "Финансы", description: "Календарь ДДС, платежи, счета, кредиты", href: "/calendar", icon: Wallet, agent: "Нано", zone: "Финансы", color: ["bg-emerald-100", "text-emerald-700"] },
   { title: "ОПиУ WB+Ozon", description: "P&L до СПП + соинвест, маржа, налог", href: "/pnl", icon: LineChart, zone: "Финансы", color: ["bg-blue-100", "text-blue-700"] },
