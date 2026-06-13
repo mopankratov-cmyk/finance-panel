@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Loader2, Scale } from "lucide-react";
+import { FinanceTabs } from "@/components/FinanceTabs";
 
 interface LossItem { key: string; label: string; rub: number }
 interface Loss { retail: number; payout: number; totalDeductions: number; items: LossItem[]; error?: string; noCabinet?: boolean }
@@ -63,6 +64,7 @@ export default function SummaryPage() {
 
   return (
     <div className="mx-auto max-w-5xl px-6 py-8">
+      <FinanceTabs />
       <div className="mb-6 flex flex-wrap items-center gap-3">
         <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-violet-100 text-violet-700"><Scale className="h-5 w-5" /></div>
         <div className="flex-1">

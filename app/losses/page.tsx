@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { TrendingDown, Loader2, Info } from "lucide-react";
 import { useActiveCabinet } from "@/lib/useActiveCabinet";
+import { FinanceTabs } from "@/components/FinanceTabs";
 
 interface LossItem { key: string; label: string; rub: number; tip: string }
 interface LossData {
@@ -40,6 +41,7 @@ export default function LossesPage() {
 
   return (
     <div className="mx-auto max-w-4xl px-6 py-8">
+      <FinanceTabs />
       <div className="mb-6 flex items-center gap-3">
         <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-red-100 text-red-600">
           <TrendingDown className="h-5 w-5" />

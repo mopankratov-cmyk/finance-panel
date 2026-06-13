@@ -15,7 +15,6 @@ import {
   Menu,
   LogOut,
   RefreshCw,
-  Scale,
   TrendingDown,
   Truck,
   Users,
@@ -42,37 +41,47 @@ interface NavGroup {
 
 const NAV_GROUPS: NavGroup[] = [
   {
-    id: "finance",
-    label: "Финансы",
-    items: [
-      { href: "/calendar", label: "Календарь", icon: Calendar },
-      { href: "/payments", label: "Платежи", icon: CreditCard },
-      { href: "/accounts", label: "Счета", icon: Wallet },
-      { href: "/loans", label: "Кредиты", icon: Landmark },
-      { href: "/supplies", label: "Закупки", icon: Truck },
-      { href: "/costs", label: "Себестоимость", icon: Coins },
-    ],
-  },
-  {
     id: "analytics",
     label: "Аналитика МП",
     items: [
       { href: "/inferno/wb.html", label: "WB Аналитика", icon: BarChart3 },
       { href: "/ozon", label: "Ozon Аналитика", icon: BarChart3 },
-      { href: "/pnl", label: "ОПиУ WB+Ozon", icon: LineChart },
-      { href: "/opiu", label: "ОПиУ WB (недельный)", icon: LineChart },
-      { href: "/summary", label: "Сводка МП", icon: Scale },
+    ],
+  },
+  {
+    id: "finres",
+    label: "Финрезультат",
+    items: [
+      { href: "/pnl", label: "ОПиУ / P&L", icon: LineChart },
       { href: "/losses", label: "Где теряем", icon: TrendingDown },
+    ],
+  },
+  {
+    id: "money",
+    label: "Деньги (ДДС)",
+    items: [
+      { href: "/calendar", label: "Календарь", icon: Calendar },
+      { href: "/payments", label: "Платежи", icon: CreditCard },
+      { href: "/accounts", label: "Счета", icon: Wallet },
+      { href: "/loans", label: "Кредиты", icon: Landmark },
+    ],
+  },
+  {
+    id: "operations",
+    label: "Операции",
+    items: [
+      { href: "/supplies", label: "Закупки", icon: Truck },
+      { href: "/costs", label: "Себестоимость", icon: Coins },
     ],
   },
   {
     id: "system",
     label: "Система",
     items: [
-      { href: "/agent", label: "AI-агент", icon: Bot },
-      { href: "/content", label: "Контент-лаб", icon: FlaskConical },
       { href: "/cabinets", label: "Кабинеты", icon: Building2 },
       { href: "/users", label: "Сотрудники", icon: Users },
+      { href: "/agent", label: "AI-агент", icon: Bot },
+      { href: "/content", label: "Контент-лаб", icon: FlaskConical },
       { href: "/sync", label: "Синхронизация", icon: RefreshCw },
     ],
   },
@@ -94,8 +103,10 @@ export function Sidebar() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [me, setMe] = useState<{ email: string; role: Role } | null>(null);
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
-    finance: true,
     analytics: true,
+    finres: true,
+    money: true,
+    operations: true,
     system: true,
   });
 

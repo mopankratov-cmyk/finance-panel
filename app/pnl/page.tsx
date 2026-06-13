@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Loader2, LineChart } from "lucide-react";
 import { useActiveCabinet } from "@/lib/useActiveCabinet";
+import { FinanceTabs } from "@/components/FinanceTabs";
 
 type WB = { revenue_before_spp: number; coinvest: number; revenue: number; commission: number; logistics: number; storage: number; penalty: number; acquiring: number; ad: number; other: number; cogs: number; tax: number; profit: number; margin: number; error?: string };
 type OZ = { revenue: number; commission: number; delivery: number; services: number; cogs: number; tax: number; profit: number; margin: number; error?: string; noCabinet?: boolean };
@@ -40,6 +41,7 @@ export default function PnlPage() {
 
   return (
     <div className="mx-auto max-w-5xl px-6 py-8">
+      <FinanceTabs />
       <div className="mb-6 flex flex-wrap items-center gap-3">
         <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700"><LineChart className="h-5 w-5" /></div>
         <div className="flex-1">
