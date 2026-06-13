@@ -53,7 +53,7 @@ export default function PnlPage() {
       </div>
 
       {/* объединённая прибыль */}
-      <div className="mb-5 grid grid-cols-3 gap-3">
+      <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
         <div className="rounded-xl border border-gray-200 bg-white p-4 text-center"><div className="text-[11px] uppercase text-gray-400">Выручка WB+Ozon</div><div className="text-2xl font-extrabold">{fmt(totRev)} ₽</div></div>
         <div className="rounded-xl border border-emerald-200 bg-emerald-50/40 p-4 text-center"><div className="text-[11px] uppercase text-gray-400">Чистая прибыль</div><div className={`text-2xl font-extrabold ${totProfit >= 0 ? "text-emerald-700" : "text-red-600"}`}>{fmt(totProfit)} ₽</div></div>
         <div className="rounded-xl border border-gray-200 bg-white p-4 text-center"><div className="text-[11px] uppercase text-gray-400">Маржа общая</div><div className="text-2xl font-extrabold">{totRev > 0 ? Math.round((totProfit / totRev) * 1000) / 10 : 0}%</div></div>

@@ -1,0 +1,209 @@
+{
+  "version": 1,
+  "skills": {
+    "analytics-tracking": {
+      "source": "kostja94/marketing-skills",
+      "sourceType": "github",
+      "skillPath": "skills/analytics/tracking/SKILL.md",
+      "computedHash": "2655022cf72a71f3cf7ce886d9763a34c5e515837709794fef6e0feeef1fe066"
+    },
+    "article-content": {
+      "source": "kostja94/marketing-skills",
+      "sourceType": "github",
+      "skillPath": "skills/content/article/SKILL.md",
+      "computedHash": "d04bb2f5a5b00214bc61ccfd795a8d5a9d2a203f7202f6f17e06db66e51f86e4"
+    },
+    "copywriting": {
+      "source": "kostja94/marketing-skills",
+      "sourceType": "github",
+      "skillPath": "skills/content/copywriting/SKILL.md",
+      "computedHash": "79162e47f9a2eabcff5b69a5347909463cdded2608be7d2886392f9f28a7cd17"
+    },
+    "council-review": {
+      "source": "ngmeyer/council-review",
+      "sourceType": "github",
+      "skillPath": "SKILL.md",
+      "computedHash": "fba5bfed8835bc442eafb39410d1435c39111489ddfe6fd01acb0336ececb9aa"
+    },
+    "entity-seo": {
+      "source": "kostja94/marketing-skills",
+      "sourceType": "github",
+      "skillPath": "skills/seo/entity-seo/SKILL.md",
+      "computedHash": "040bbc5adfa21d3ae984df3f70c6ecff6aaf18f321a956a10612fb5e652bd5cd"
+    },
+    "find-skills": {
+      "source": "vercel-labs/skills",
+      "sourceType": "github",
+      "skillPath": "skills/find-skills/SKILL.md",
+      "computedHash": "9e1c8b3103f92fa8092568a44fe64858de7c5c9dc65ce4bea8f168080e889cfd"
+    },
+    "github": {
+      "source": "kostja94/marketing-skills",
+      "sourceType": "github",
+      "skillPath": "skills/platforms/github/SKILL.md",
+      "computedHash": "20963d173b1e18279b210b584c1b895b9cee8fed8b381b8870a4790b91b92dde"
+    },
+    "grokipedia-recommendations": {
+      "source": "kostja94/marketing-skills",
+      "sourceType": "github",
+      "skillPath": "skills/platforms/grokipedia/SKILL.md",
+      "computedHash": "223f83ce997d389132a0a79913093281d68f7a6397d1969323ba909ff69c6d33"
+    },
+    "linkedin-posts": {
+      "source": "kostja94/marketing-skills",
+      "sourceType": "github",
+      "skillPath": "skills/platforms/linkedin/SKILL.md",
+      "computedHash": "d487f95483268a7571e4a1a3be63a888388277863ad95def651ed33ee53b2dbd"
+    },
+    "local-seo": {
+      "source": "kostja94/marketing-skills",
+      "sourceType": "github",
+      "skillPath": "skills/seo/local/SKILL.md",
+      "computedHash": "845fa570291c17cf05a1491b488c298601ae5c54df6393a6d56b919188a7c479"
+    },
+    "medium-posts": {
+      "source": "kostja94/marketing-skills",
+      "sourceType": "github",
+      "skillPath": "skills/platforms/medium/SKILL.md",
+      "computedHash": "71bd413fb1c7b9ad189db7d0bf2871a1c177e8bbec442f7f4f8ac6d0e19791e0"
+    },
+    "n8n-binary-and-data": {
+      "source": "n8n-io/skills",
+      "sourceType": "github",
+      "skillPath": "skills/n8n-binary-and-data/SKILL.md",
+      "computedHash": "97752c2ad12d09fdb8dc365506410032d3fa706e02173310a508afbb7fecb894"
+    },
+    "n8n-code-nodes": {
+      "source": "n8n-io/skills",
+      "sourceType": "github",
+      "skillPath": "skills/n8n-code-nodes/SKILL.md",
+      "computedHash": "e3b32f8adacf075ab52f0d4d9c201b5b242113af97a4855686556d6de1cc4125"
+    },
+    "n8n-credentials-and-security": {
+      "source": "n8n-io/skills",
+      "sourceType": "github",
+      "skillPath": "skills/n8n-credentials-and-security/SKILL.md",
+      "computedHash": "90f4c3cc91fb61d0b1fa0fdd3aa52fb9331c1bf677499614253e1f8dff7c3436"
+    },
+    "n8n-data-tables": {
+      "source": "n8n-io/skills",
+      "sourceType": "github",
+      "skillPath": "skills/n8n-data-tables/SKILL.md",
+      "computedHash": "2f98e20055a5c69324a53c09e826a2ed693285cb968ce673a381426d69bb58d9"
+    },
+    "n8n-debugging": {
+      "source": "n8n-io/skills",
+      "sourceType": "github",
+      "skillPath": "skills/n8n-debugging/SKILL.md",
+      "computedHash": "1a11446e4d20ebcf2e69efee2757a52ccac8058e460aea1e3159fafdc25823ba"
+    },
+    "n8n-error-handling": {
+      "source": "n8n-io/skills",
+      "sourceType": "github",
+      "skillPath": "skills/n8n-error-handling/SKILL.md",
+      "computedHash": "b4e22d72b0bbaf92ce9264bdf2b3cc0857b726fa2c18991c2c6f8556e1b6efcd"
+    },
+    "n8n-expressions": {
+      "source": "n8n-io/skills",
+      "sourceType": "github",
+      "skillPath": "skills/n8n-expressions/SKILL.md",
+      "computedHash": "3dbfa360b2521156ee89a1ad1c08fe42c2aefba2613e0318d47c12bd02c1368f"
+    },
+    "n8n-loops": {
+      "source": "n8n-io/skills",
+      "sourceType": "github",
+      "skillPath": "skills/n8n-loops/SKILL.md",
+      "computedHash": "7631e6bec7a8887bfb66dd027f487797c16997dca8c39736625def0d395cd841"
+    },
+    "n8n-subworkflows": {
+      "source": "n8n-io/skills",
+      "sourceType": "github",
+      "skillPath": "skills/n8n-subworkflows/SKILL.md",
+      "computedHash": "8731b6471057623cfa7004940bc63af67ee9f25518f13ea6ac3654eba03e766d"
+    },
+    "n8n-workflow-lifecycle": {
+      "source": "n8n-io/skills",
+      "sourceType": "github",
+      "skillPath": "skills/n8n-workflow-lifecycle/SKILL.md",
+      "computedHash": "54c592de57f03cd7ea2f241b95af3f89c772f1b0c45ddf5112f8d83d16d9e6a0"
+    },
+    "parasite-seo": {
+      "source": "kostja94/marketing-skills",
+      "sourceType": "github",
+      "skillPath": "skills/seo/parasite-seo/SKILL.md",
+      "computedHash": "c8ee8782f4464fd4655a776126a5f360745208b1944457f0096ded94cbefab96"
+    },
+    "pinterest-posts": {
+      "source": "kostja94/marketing-skills",
+      "sourceType": "github",
+      "skillPath": "skills/platforms/pinterest/SKILL.md",
+      "computedHash": "1d8de7a67d223db161d1248c53124b3fa8a42bc01374a2b8ce42daa063f6692e"
+    },
+    "podcast-marketing": {
+      "source": "kostja94/marketing-skills",
+      "sourceType": "github",
+      "skillPath": "skills/content/podcast/SKILL.md",
+      "computedHash": "a10fbccbfd1965bdb2378b7e06aa78dd1f9b2cf2c31c3b105150bf4dfb26192a"
+    },
+    "programmatic-seo": {
+      "source": "kostja94/marketing-skills",
+      "sourceType": "github",
+      "skillPath": "skills/seo/programmatic-seo/SKILL.md",
+      "computedHash": "5f37d5c891319a3e1409c8b10c4dd7ddb41bf20ea3c9b425c37267e867c29e7d"
+    },
+    "reddit-posts": {
+      "source": "kostja94/marketing-skills",
+      "sourceType": "github",
+      "skillPath": "skills/platforms/reddit/SKILL.md",
+      "computedHash": "607b433cb157fe62a8393f8ff3143762d4d5244223e6c22040f2c01884bb01c6"
+    },
+    "tiktok-captions": {
+      "source": "kostja94/marketing-skills",
+      "sourceType": "github",
+      "skillPath": "skills/platforms/tiktok/SKILL.md",
+      "computedHash": "ba7179c15c73045ced538e25e02af9f10f5a4638df6ca728d40b0fba7389d5c9"
+    },
+    "translation": {
+      "source": "kostja94/marketing-skills",
+      "sourceType": "github",
+      "skillPath": "skills/content/translation/SKILL.md",
+      "computedHash": "8416425bae614dd3bbf72713f9a60dc3c2a6d90a47952aa698166744a13458ea"
+    },
+    "twitter-x-posts": {
+      "source": "kostja94/marketing-skills",
+      "sourceType": "github",
+      "skillPath": "skills/platforms/x/SKILL.md",
+      "computedHash": "5f6d086cc0592838a59aad606d73cdbb6c27f1f23129a5701f5fb000983d1768"
+    },
+    "ui-ux-pro-max": {
+      "source": "nextlevelbuilder/ui-ux-pro-max-skill",
+      "sourceType": "github",
+      "skillPath": ".claude/skills/ui-ux-pro-max/SKILL.md",
+      "computedHash": "0a413bf988d06481f69bb81df2070741c3ba12dd9f1be2706d57f259c905992d"
+    },
+    "using-n8n-skills": {
+      "source": "n8n-io/skills",
+      "sourceType": "github",
+      "skillPath": "skills/using-n8n-skills/SKILL.md",
+      "computedHash": "1db9aaf6ab08acffa5404b3aab9040137db4862699110aa638610b2c00c73d73"
+    },
+    "video-marketing": {
+      "source": "kostja94/marketing-skills",
+      "sourceType": "github",
+      "skillPath": "skills/content/video/SKILL.md",
+      "computedHash": "f6e2f686362cdecbb2b390a6af9e35c74480cd106856f8e5dd386b9c17c6448e"
+    },
+    "visual-content": {
+      "source": "kostja94/marketing-skills",
+      "sourceType": "github",
+      "skillPath": "skills/content/visual-content/SKILL.md",
+      "computedHash": "448ce5819574c9120dece89031c805c028551f573d3118f263100238a7bbe796"
+    },
+    "youtube-seo": {
+      "source": "kostja94/marketing-skills",
+      "sourceType": "github",
+      "skillPath": "skills/platforms/youtube/SKILL.md",
+      "computedHash": "2233fea25e273835753e733115cecddd6a566d7e09c3f26e1a265e2ab7335e53"
+    }
+  }
+}

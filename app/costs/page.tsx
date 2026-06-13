@@ -50,7 +50,7 @@ export default function CostsPage() {
       </div>
 
       {/* добавить */}
-      <div className="mb-4 flex gap-2 rounded-xl border border-gray-200 bg-white p-3">
+      <div className="mb-4 flex flex-col gap-2 rounded-xl border border-gray-200 bg-white p-3 sm:flex-row">
         <input value={newArt} onChange={(e) => setNewArt(e.target.value)} placeholder="Артикул (offer_id)" className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-amber-500 focus:outline-none" />
         <input value={newCost} onChange={(e) => setNewCost(e.target.value)} placeholder="Себес ₽" type="number" className="w-32 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-amber-500 focus:outline-none" />
         <button onClick={() => { if (newArt.trim()) { save(newArt.trim(), newCost); setNewArt(""); setNewCost(""); } }} disabled={!newArt.trim()} className="inline-flex items-center gap-1.5 rounded-lg bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-700 disabled:opacity-50"><Plus className="h-4 w-4" /> Добавить</button>
@@ -62,7 +62,7 @@ export default function CostsPage() {
         {loading ? <div className="py-12 text-center text-gray-400"><Loader2 className="mx-auto h-5 w-5 animate-spin" /></div>
           : (
             <table className="w-full text-sm">
-              <thead className="bg-gray-50 text-xs text-gray-500"><tr><th className="px-3 py-2 text-left">Артикул</th><th className="px-3 py-2 text-left">Название</th><th className="px-3 py-2 text-right">Себес ₽</th><th className="w-10"></th></tr></thead>
+              <thead className="bg-gray-50 text-xs text-gray-500"><tr><th className="px-3 py-2 text-left">Артикул</th><th className="hidden px-3 py-2 text-left sm:table-cell">Название</th><th className="px-3 py-2 text-right">Себес ₽</th><th className="w-10"></th></tr></thead>
               <tbody>
                 {flt.map((r) => {
                   const val = edits[r.article] ?? String(r.cost_rub || "");
@@ -70,7 +70,7 @@ export default function CostsPage() {
                   return (
                     <tr key={r.article} className="border-t border-gray-100 hover:bg-gray-50">
                       <td className="px-3 py-2 font-medium text-gray-800">{r.article}</td>
-                      <td className="px-3 py-2 max-w-xs truncate text-gray-500">{r.name}</td>
+                      <td className="hidden max-w-xs truncate px-3 py-2 text-gray-500 sm:table-cell">{r.name}</td>
                       <td className="px-3 py-2 text-right">
                         <input value={val} onChange={(e) => setEdits((s) => ({ ...s, [r.article]: e.target.value }))}
                           onKeyDown={(e) => { if (e.key === "Enter") save(r.article, val); }}

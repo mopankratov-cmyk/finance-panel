@@ -19,7 +19,7 @@ function MpCard({ title, color, data }: { title: string; color: string; data: Lo
       </div>
       {!data ? <div className="py-8 text-center text-gray-300"><Loader2 className="mx-auto h-5 w-5 animate-spin" /></div>
         : data.noCabinet ? <div className="py-6 text-sm text-gray-400">Кабинет не подключён</div>
-        : data.error ? <div className="py-6 text-sm text-red-500">{data.error}</div>
+        : data.error ? <div className="py-6 text-sm text-red-500 break-words">{data.error}</div>
         : (
           <>
             <div className="mb-3 grid grid-cols-3 gap-2 text-center">
@@ -63,7 +63,7 @@ export default function SummaryPage() {
 
   return (
     <div className="mx-auto max-w-5xl px-6 py-8">
-      <div className="mb-6 flex items-center gap-3">
+      <div className="mb-6 flex flex-wrap items-center gap-3">
         <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-violet-100 text-violet-700"><Scale className="h-5 w-5" /></div>
         <div className="flex-1">
           <h1 className="text-2xl font-bold text-gray-900">Сводка по маркетплейсам</h1>
@@ -77,7 +77,7 @@ export default function SummaryPage() {
       </div>
 
       {/* Объединённый итог */}
-      <div className="mb-5 grid grid-cols-3 gap-3">
+      <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
         <div className="rounded-xl border border-gray-200 bg-white p-4 text-center"><div className="text-[11px] uppercase text-gray-400">Выручка WB+Ozon</div><div className="text-2xl font-extrabold">{M(totRetail)} ₽</div></div>
         <div className="rounded-xl border border-red-200 bg-red-50/40 p-4 text-center"><div className="text-[11px] uppercase text-gray-400">Удержано всего</div><div className="text-2xl font-extrabold text-red-600">{M(totDed)} ₽</div><div className="text-[11px] text-red-400">{totRetail > 0 ? Math.round((totDed / totRetail) * 100) : 0}% от выручки</div></div>
         <div className="rounded-xl border border-emerald-200 bg-emerald-50/40 p-4 text-center"><div className="text-[11px] uppercase text-gray-400">К перечислению</div><div className="text-2xl font-extrabold text-emerald-700">{M(totPayout)} ₽</div></div>

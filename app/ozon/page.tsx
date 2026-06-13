@@ -88,10 +88,10 @@ export default function OzonPage() {
           <Link href="/" className="text-xs text-gray-400 hover:text-gray-700">← модули</Link>
         </div>
         {/* Таб-бар */}
-        <div className="mx-auto flex max-w-[1600px] items-center gap-2 px-5 pb-2">
+        <div className="mx-auto flex max-w-[1600px] flex-wrap items-center gap-2 px-5 pb-2">
           {TABS.map((t) => (
             <button key={t.key} onClick={() => setTab(t.key)}
-              className={`rounded-md px-3.5 py-1.5 text-sm font-semibold transition-colors ${tab === t.key ? "bg-sky-600 text-white shadow" : "text-gray-600 hover:bg-gray-100"}`}>
+              className={`shrink-0 whitespace-nowrap rounded-md px-3.5 py-1.5 text-sm font-semibold transition-colors ${tab === t.key ? "bg-sky-600 text-white shadow" : "text-gray-600 hover:bg-gray-100"}`}>
               {t.label}
             </button>
           ))}
@@ -103,7 +103,7 @@ export default function OzonPage() {
             </div>
           )}
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="поиск по артикулу/названию"
-            className="ml-auto w-64 rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-sky-500 focus:outline-none" />
+            className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-sky-500 focus:outline-none sm:ml-auto sm:w-64" />
         </div>
       </header>
 
