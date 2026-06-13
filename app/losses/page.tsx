@@ -7,7 +7,8 @@ interface LossItem { key: string; label: string; rub: number; tip: string }
 interface LossData {
   period: { from: string; to: string; weeks: number };
   retail: number; payout: number; commission: number; returns: number;
-  totalDeductions: number; items: LossItem[]; error?: string;
+  totalDeductions: number; items: LossItem[]; error?: string; noCabinet?: boolean;
+  serviceItems?: { name: string; rub: number }[];
 }
 
 const fmt = (n: number) => Math.round(n).toLocaleString("ru-RU");
@@ -15,15 +16,17 @@ const COLORS = ["bg-red-500", "bg-orange-500", "bg-amber-500", "bg-yellow-500", 
 
 export default function LossesPage() {
   const [weeks, setWeeks] = useState(4);
+  const [mp, setMp] = useState<"wb" | "ozon">("wb");
   const [data, setData] = useState<LossData | null>(null);
   const [loading, setLoading] = useState(true);
   const [loc, setLoc] = useState<{ localizationPct: number; il: number; irp: number } | null>(null);
 
   useEffect(() => {
     setLoading(true);
-    fetch(`/api/wb/losses?weeks=${weeks}`, { cache: "no-store" })
+    const url = mp === "ozon" ? `/api/ozon/losses?weeks=${weeks}` : `/api/wb/losses?weeks=${weeks}`;
+    fetch(url, { cache: "no-store" })
       .then((r) => r.json()).then(setData).catch(() => setData(null)).finally(() => setLoading(false));
-  }, [weeks]);
+  }, [weeks, mp]);
   useEffect(() => {
     fetch("/api/supplies/localization").then((r) => r.json()).then(setLoc).catch(() => {});
   }, []);
@@ -39,7 +42,11 @@ export default function LossesPage() {
         </div>
         <div className="flex-1">
           <h1 className="text-2xl font-bold text-gray-900">Где теряем деньги</h1>
-          <p className="text-sm text-gray-500">Удержания WB из финотчёта-детализации (reportDetailByPeriod)</p>
+          <p className="text-sm text-gray-500">{mp === "ozon" ? "Удержания Ozon (finance/transaction)" : "Удержания WB из финотчёта-детализации (reportDetailByPeriod)"}</p>
+        </div>
+        <div className="mr-2 flex gap-1 rounded-lg bg-gray-100 p-0.5">
+          <button onClick={() => setMp("wb")} className={`rounded px-3 py-1 text-xs font-semibold ${mp === "wb" ? "bg-white text-violet-700 shadow" : "text-gray-500"}`}>WB</button>
+          <button onClick={() => setMp("ozon")} className={`rounded px-3 py-1 text-xs font-semibold ${mp === "ozon" ? "bg-white text-sky-700 shadow" : "text-gray-500"}`}>Ozon</button>
         </div>
         <div className="flex gap-1 rounded-lg bg-gray-100 p-0.5">
           {[2, 4, 8].map((w) => (
@@ -53,8 +60,12 @@ export default function LossesPage() {
 
       {loading ? (
         <div className="py-16 text-center text-gray-400"><Loader2 className="mx-auto h-6 w-6 animate-spin" /></div>
+      ) : data?.noCabinet ? (
+        <div className="rounded-lg border border-sky-200 bg-sky-50 p-4 text-sm text-sky-800">
+          {data.error} → <a href="/cabinets" className="font-semibold underline">добавить Ozon-кабинет</a>
+        </div>
       ) : data?.error ? (
-        <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">Ошибка WB: {data.error}</div>
+        <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">Ошибка {mp === "ozon" ? "Ozon" : "WB"}: {data.error}</div>
       ) : !data ? (
         <div className="py-16 text-center text-gray-400">Нет данных</div>
       ) : (
@@ -100,8 +111,8 @@ export default function LossesPage() {
             </div>
           </div>
 
-          {/* Логистика / локализация — связка */}
-          {loc && (
+          {/* Логистика / локализация — связка (только WB) */}
+          {mp === "wb" && loc && (
             <div className="rounded-xl border border-gray-200 bg-white p-5">
               <div className="mb-1 text-sm font-semibold text-gray-700">Логистику можно снизить локализацией</div>
               <div className="text-sm text-gray-500">

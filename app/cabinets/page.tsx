@@ -6,8 +6,10 @@ import { Building2, Plus, Trash2, CheckCircle2, XCircle, Loader2 } from "lucide-
 interface Cabinet {
   id: string;
   name: string;
+  marketplace: string;
   trade_mark: string | null;
   seller_id: string;
+  client_id: string | null;
   inn: string | null;
   is_active: boolean;
   created_at: string;
@@ -19,7 +21,9 @@ interface Cabinet {
 export default function CabinetsPage() {
   const [cabinets, setCabinets] = useState<Cabinet[]>([]);
   const [loading, setLoading] = useState(true);
+  const [mp, setMp] = useState<"wb" | "ozon">("wb");
   const [token, setToken] = useState("");
+  const [clientId, setClientId] = useState("");
   const [name, setName] = useState("");
   const [advert, setAdvert] = useState("");
   const [content, setContent] = useState("");
@@ -48,14 +52,14 @@ export default function CabinetsPage() {
       const r = await fetch("/api/cabinets", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token, name, token_advert: advert, token_content: content }),
+        body: JSON.stringify({ marketplace: mp, token, client_id: clientId, name, token_advert: advert, token_content: content }),
       });
       const j = await r.json();
       if (!r.ok || j.error) {
         setMsg({ ok: false, text: j.error || `Ошибка ${r.status}` });
       } else {
         setMsg({ ok: true, text: `Кабинет «${j.cabinet?.name}» добавлен` });
-        setToken(""); setName(""); setAdvert(""); setContent("");
+        setToken(""); setClientId(""); setName(""); setAdvert(""); setContent("");
         await load();
       }
     } catch (e) {
@@ -93,17 +97,45 @@ export default function CabinetsPage() {
 
       {/* Форма добавления */}
       <div className="mb-6 rounded-xl border border-gray-200 bg-white p-5">
-        <div className="mb-3 text-sm font-semibold text-gray-700">Добавить кабинет</div>
-        <label className="mb-1 block text-xs text-gray-500">
-          API-токен WB <span className="text-gray-400">(Настройки → Доступ к API → создать токен с категориями Статистика, Аналитика, Контент, Продвижение)</span>
-        </label>
-        <textarea
-          value={token}
-          onChange={(e) => setToken(e.target.value)}
-          rows={2}
-          placeholder="eyJhbGciOi… вставьте токен"
-          className="mb-2 w-full rounded-lg border border-gray-300 px-3 py-2 font-mono text-xs focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
-        />
+        <div className="mb-3 flex items-center gap-3">
+          <span className="text-sm font-semibold text-gray-700">Добавить кабинет</span>
+          <div className="flex gap-1 rounded-lg bg-gray-100 p-0.5">
+            <button type="button" onClick={() => setMp("wb")} className={`rounded px-3 py-1 text-xs font-semibold ${mp === "wb" ? "bg-white text-violet-700 shadow" : "text-gray-500"}`}>Wildberries</button>
+            <button type="button" onClick={() => setMp("ozon")} className={`rounded px-3 py-1 text-xs font-semibold ${mp === "ozon" ? "bg-white text-sky-700 shadow" : "text-gray-500"}`}>Ozon</button>
+          </div>
+        </div>
+        {mp === "wb" ? (
+          <>
+            <label className="mb-1 block text-xs text-gray-500">
+              API-токен WB <span className="text-gray-400">(Настройки → Доступ к API → токен с категориями Статистика, Аналитика, Контент, Продвижение)</span>
+            </label>
+            <textarea
+              value={token}
+              onChange={(e) => setToken(e.target.value)}
+              rows={2}
+              placeholder="eyJhbGciOi… вставьте токен"
+              className="mb-2 w-full rounded-lg border border-gray-300 px-3 py-2 font-mono text-xs focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
+            />
+          </>
+        ) : (
+          <>
+            <label className="mb-1 block text-xs text-gray-500">
+              Ozon Client-Id и Api-Key <span className="text-gray-400">(Настройки → Seller API → создать ключ)</span>
+            </label>
+            <input
+              value={clientId}
+              onChange={(e) => setClientId(e.target.value)}
+              placeholder="Client-Id (число)"
+              className="mb-2 w-full rounded-lg border border-gray-300 px-3 py-2 font-mono text-xs focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+            />
+            <input
+              value={token}
+              onChange={(e) => setToken(e.target.value)}
+              placeholder="Api-Key"
+              className="mb-2 w-full rounded-lg border border-gray-300 px-3 py-2 font-mono text-xs focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+            />
+          </>
+        )}
         <div className="mb-2 grid grid-cols-2 gap-2">
           <input
             value={name}
@@ -111,15 +143,17 @@ export default function CabinetsPage() {
             placeholder="Название (необяз. — подтянем из WB)"
             className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-violet-500 focus:outline-none"
           />
-          <button
-            type="button"
-            onClick={() => setShowAdv((s) => !s)}
-            className="text-left text-xs text-gray-400 hover:text-violet-600"
-          >
-            {showAdv ? "▾" : "▸"} отдельные токены (если нужно)
-          </button>
+          {mp === "wb" ? (
+            <button
+              type="button"
+              onClick={() => setShowAdv((s) => !s)}
+              className="text-left text-xs text-gray-400 hover:text-violet-600"
+            >
+              {showAdv ? "▾" : "▸"} отдельные токены (если нужно)
+            </button>
+          ) : <span />}
         </div>
-        {showAdv && (
+        {mp === "wb" && showAdv && (
           <div className="mb-2 grid grid-cols-1 gap-2">
             <input value={advert} onChange={(e) => setAdvert(e.target.value)} placeholder="Токен Продвижение (если отдельный)" className="rounded-lg border border-gray-300 px-3 py-2 font-mono text-xs focus:border-violet-500 focus:outline-none" />
             <input value={content} onChange={(e) => setContent(e.target.value)} placeholder="Токен Контент (если отдельный)" className="rounded-lg border border-gray-300 px-3 py-2 font-mono text-xs focus:border-violet-500 focus:outline-none" />
@@ -128,11 +162,11 @@ export default function CabinetsPage() {
         <div className="flex items-center gap-3">
           <button
             onClick={add}
-            disabled={busy || !token.trim()}
-            className="inline-flex items-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50"
+            disabled={busy || !token.trim() || (mp === "ozon" && !clientId.trim())}
+            className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-50 ${mp === "ozon" ? "bg-sky-600 hover:bg-sky-700" : "bg-violet-600 hover:bg-violet-700"}`}
           >
             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-            {busy ? "Проверяю токен в WB…" : "Добавить и проверить"}
+            {busy ? `Проверяю ключ в ${mp === "ozon" ? "Ozon" : "WB"}…` : "Добавить и проверить"}
           </button>
           {msg && (
             <span className={`inline-flex items-center gap-1 text-sm ${msg.ok ? "text-emerald-600" : "text-red-600"}`}>
@@ -160,11 +194,14 @@ export default function CabinetsPage() {
                 <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${c.is_active ? "bg-emerald-500" : "bg-gray-300"}`} title={c.is_active ? "активен" : "выключен"} />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
+                    <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${c.marketplace === "ozon" ? "bg-sky-100 text-sky-700" : "bg-violet-100 text-violet-700"}`}>
+                      {c.marketplace === "ozon" ? "OZON" : "WB"}
+                    </span>
                     <span className="font-semibold text-gray-900">{c.name}</span>
                     {c.trade_mark && c.trade_mark !== c.name && <span className="text-xs text-gray-400">бренд: {c.trade_mark}</span>}
                   </div>
                   <div className="text-xs text-gray-400">
-                    sid {c.seller_id?.slice(0, 8)}… · {c.inn ? `ИНН ${c.inn} · ` : ""}токен {c.token_mask}
+                    {c.marketplace === "ozon" ? `Client-Id ${c.client_id} · Api-Key ${c.token_mask}` : `sid ${c.seller_id?.slice(0, 8)}… · ${c.inn ? `ИНН ${c.inn} · ` : ""}токен ${c.token_mask}`}
                     {c.has_advert && " · +Продвижение"}{c.has_content && " · +Контент"}
                   </div>
                 </div>
