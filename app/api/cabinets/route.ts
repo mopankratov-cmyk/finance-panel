@@ -75,11 +75,24 @@ export async function POST(request: NextRequest) {
     };
   }
 
-  const { data, error } = await db
+  // без ON CONFLICT (уникальный индекс частичный): проверяем существование и обновляем/вставляем
+  const { data: existing } = await db
     .from("wb_cabinets")
-    .upsert(row, { onConflict: "marketplace,seller_id" })
-    .select("id, name, marketplace, seller_id, is_active, created_at")
-    .single();
+    .select("id")
+    .eq("marketplace", marketplace)
+    .eq("seller_id", row.seller_id as string)
+    .maybeSingle();
+
+  let data, error;
+  if (existing?.id) {
+    ({ data, error } = await db
+      .from("wb_cabinets").update(row).eq("id", existing.id)
+      .select("id, name, marketplace, seller_id, is_active, created_at").single());
+  } else {
+    ({ data, error } = await db
+      .from("wb_cabinets").insert(row)
+      .select("id, name, marketplace, seller_id, is_active, created_at").single());
+  }
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ ok: true, cabinet: data });
 }
