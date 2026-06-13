@@ -12,6 +12,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   const items = await yaList(path);
   return NextResponse.json({
     files: items.map((f) => ({
+      id: Buffer.from(f.path).toString("base64url"),
       name: f.name,
       is_image: f.isImage,
       is_folder: f.type === "dir",
