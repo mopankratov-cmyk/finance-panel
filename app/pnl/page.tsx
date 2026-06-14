@@ -28,12 +28,14 @@ export default function PnlPage() {
   const [data, setData] = useState<{ wb: WB; ozon: OZ } | null>(null);
   const [loading, setLoading] = useState(true);
   const [ozonCab] = useActiveCabinet("ozon");
+  const [wbCab] = useActiveCabinet("wb");
 
   useEffect(() => {
     setLoading(true);
-    fetch(`/api/opiu/mp?weeks=${weeks}&tax=${tax}${ozonCab ? `&cabinet=${ozonCab}` : ""}`, { cache: "no-store" })
+    const q = `weeks=${weeks}&tax=${tax}${ozonCab ? `&cabinet=${ozonCab}` : ""}${wbCab ? `&wb_cabinet=${wbCab}` : ""}`;
+    fetch(`/api/opiu/mp?${q}`, { cache: "no-store" })
       .then((r) => r.json()).then((d) => setData({ wb: d.wb, ozon: d.ozon })).catch(() => setData(null)).finally(() => setLoading(false));
-  }, [weeks, tax, ozonCab]);
+  }, [weeks, tax, ozonCab, wbCab]);
 
   const wb = data?.wb, oz = data?.ozon;
   const totProfit = (wb && !wb.error ? wb.profit : 0) + (oz && !oz.error ? oz.profit : 0);

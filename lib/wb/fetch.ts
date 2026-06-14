@@ -1,6 +1,6 @@
 import type { WbApiResponse } from "./types";
 
-const WB_TOKEN_STATISTICS = process.env.WB_TOKEN_STATISTICS;
+const WB_TOKEN_STATISTICS = process.env.WB_STATS_TOKEN || process.env.WB_TOKEN_STATISTICS;
 const WB_TOKEN_ADVERT = process.env.WB_TOKEN_ADVERT;
 const TIMEOUT_MS = 60_000;
 const RETRY_STATUSES = [502, 503, 504];

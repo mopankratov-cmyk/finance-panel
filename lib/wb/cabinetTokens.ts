@@ -54,3 +54,16 @@ export function resolveWbToken(cabinet: WbCabinet, scope: WbScope): string {
       return cabinet.token;
   }
 }
+
+// Токены для финотчёта WB (reportDetailByPeriod) с ключом кэша на токен.
+// cabinetId задан → только этот кабинет; null → все активные (для сводного).
+// Нет кабинетов в БД → ENV-токен (legacy). key используется как разделитель кэша Next.
+export async function getWbReportTokens(cabinetId: string | null): Promise<{ key: string; token: string }[]> {
+  const cabs = await getActiveWbCabinets();
+  if (cabs.length) {
+    const sel = cabinetId ? cabs.filter((c) => c.id === cabinetId) : cabs;
+    return sel.map((c) => ({ key: c.id, token: c.token }));
+  }
+  const env = process.env.WB_STATS_TOKEN || process.env.WB_TOKEN_STATISTICS;
+  return env ? [{ key: "env", token: env }] : [];
+}
