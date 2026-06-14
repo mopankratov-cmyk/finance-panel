@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { CLAUDE_MODEL as MODEL, createClaudeClient } from "@/lib/agent/client";
+import { createClaudeClient } from "@/lib/agent/client";
+
+// Копирайтер: быстрый Sonnet (сильный креатив, в разы быстрее Opus — укладываемся в лимит функции).
+const MODEL = "claude-sonnet-4-6";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { geminiText, hasGemini } from "@/lib/llm/gemini";
 import { openRouterText, hasOpenRouter, openRouterModel } from "@/lib/llm/openrouter";
@@ -43,7 +46,7 @@ export async function POST(req: NextRequest) {
 
   // 1) Ансамбль: проход 1 = Claude; проход 2 = DeepSeek/OpenRouter (если есть) ИЛИ второй Claude другим углом.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const claudeCall = (sys: string) => client.messages.create({ model: MODEL, max_tokens: 3500, system: sys, messages: [{ role: "user", content: user }] }).then((r) => (r.content as any[]).filter((b) => b.type === "text").map((b) => b.text).join(" ")).catch(() => "");
+  const claudeCall = (sys: string) => client.messages.create({ model: MODEL, max_tokens: 2800, system: sys, messages: [{ role: "user", content: user }] }).then((r) => (r.content as any[]).filter((b) => b.type === "text").map((b) => b.text).join(" ")).catch(() => "");
   const SYS2 = SYS + " Делай хуки СМЕЛЕЕ и НЕОЖИДАННЕЕ, иной тон и ракурс, избегай шаблонных формулировок.";
   let secondLabel = "claude×2";
   let secondP: Promise<string | null>;
