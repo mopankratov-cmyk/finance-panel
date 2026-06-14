@@ -2,6 +2,11 @@ import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+// ?cabinet=<uuid> → uuid | null (для RPC p_cabinet). Пустое/"all"/мусор → null (все кабинеты).
+export function cabinetIdFromParam(v: string | null | undefined): string | null {
+  return v && UUID.test(v) ? v : null;
+}
+
 // Сегмент пути РНП → кабинет. uuid активного WB-кабинета → его id + имя.
 // "all" / "ip" / "" / неизвестное → null (все кабинеты).
 export async function resolveShopCabinet(shop: string | undefined): Promise<{ cabinetId: string | null; label: string | undefined }> {

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { cabinetIdFromParam } from "@/lib/rnp/resolveShop";
 
 export const dynamic = "force-dynamic";
 
@@ -9,13 +10,15 @@ interface DailyRow { d: string; orders_count: number; orders_sum: number; buyout
 export async function GET(req: NextRequest) {
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 500 });
-  const win = Math.min(30, Math.max(7, Number(new URL(req.url).searchParams.get("window")) || 7));
+  const sp = new URL(req.url).searchParams;
+  const win = Math.min(30, Math.max(7, Number(sp.get("window")) || 7));
+  const p_cabinet = cabinetIdFromParam(sp.get("cabinet"));
 
   const to = new Date();
   const from = new Date(Date.now() - (win * 2 - 1) * 86400000);
   const fromStr = from.toISOString().slice(0, 10);
   const toStr = to.toISOString().slice(0, 10);
-  const { data, error } = await db.rpc("rnp_daily", { p_from: fromStr, p_to: toStr });
+  const { data, error } = await db.rpc("rnp_daily", { p_from: fromStr, p_to: toStr, p_cabinet });
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   const byDate = new Map<string, DailyRow>();

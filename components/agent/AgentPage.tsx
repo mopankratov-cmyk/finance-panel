@@ -3,6 +3,8 @@
 import { AlertTriangle, Bot, Info, Send, Sparkles, XCircle } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { formatTime } from "@/lib/analytics/format";
+import { CabinetSwitcher } from "@/components/CabinetSwitcher";
+import { useActiveCabinet } from "@/lib/useActiveCabinet";
 import type { AgentInsight } from "@/app/api/agent/insights/route";
 
 const SEVERITY: Record<string, { color: string; icon: typeof Info }> = {
@@ -16,6 +18,7 @@ export function AgentPage() {
   const [analyzing, setAnalyzing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [cabId, setCabId] = useActiveCabinet("wb");
   const [question, setQuestion] = useState("");
   const [chat, setChat] = useState<{ role: "user" | "assistant"; text: string }[]>([]);
   const [chatting, setChatting] = useState(false);
@@ -48,7 +51,7 @@ export function AgentPage() {
       const res = await fetch("/api/agent", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode: "analyze" }),
+        body: JSON.stringify({ mode: "analyze", cabinet: cabId || undefined }),
       });
       const json = await res.json();
       if (json.error) setError(json.error);
@@ -70,7 +73,7 @@ export function AgentPage() {
       const res = await fetch("/api/agent", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode: "chat", question: q }),
+        body: JSON.stringify({ mode: "chat", question: q, cabinet: cabId || undefined }),
       });
       const json = await res.json();
       setChat((c) => [...c, { role: "assistant", text: json.answer ?? json.error ?? "—" }]);
@@ -93,6 +96,8 @@ export function AgentPage() {
             <p className="text-sm text-slate-400">Анализ аномалий и рекомендации по данным WB</p>
           </div>
         </div>
+        <div className="flex items-center gap-2">
+        <CabinetSwitcher mp="wb" accent="violet" onChange={setCabId} />
         <button
           onClick={runAnalysis}
           disabled={analyzing}
@@ -101,6 +106,7 @@ export function AgentPage() {
           <Sparkles className={`h-4 w-4 ${analyzing ? "animate-pulse" : ""}`} />
           {analyzing ? "Анализирую..." : "Запустить разбор"}
         </button>
+        </div>
       </div>
 
       {error && (

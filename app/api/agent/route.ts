@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { gatherAgentContext } from "@/lib/agent/gatherContext";
+import { cabinetIdFromParam } from "@/lib/rnp/resolveShop";
 import { CLAUDE_MODEL as MODEL, createClaudeClient } from "@/lib/agent/client";
 
 export const dynamic = "force-dynamic";
@@ -57,7 +58,7 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const context = await gatherAgentContext();
+    const context = await gatherAgentContext(cabinetIdFromParam(typeof body.cabinet === "string" ? body.cabinet : null));
     const contextJson = JSON.stringify(context);
 
     if (mode === "chat") {

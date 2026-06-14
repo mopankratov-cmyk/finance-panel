@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { Loader2, TrendingUp, ArrowUp, ArrowDown } from "lucide-react";
+import { CabinetSwitcher } from "@/components/CabinetSwitcher";
+import { useActiveCabinet } from "@/lib/useActiveCabinet";
 
 interface Metric { key: string; label: string; kind: string; goodUp: boolean; current: number; previous: number; deltaPct: number; series: number[] }
 interface TrendsData { window: number; current: { from: string; to: string }; previous: { from: string; to: string }; metrics: Metric[]; error?: string }
@@ -24,16 +26,17 @@ function Spark({ data, up }: { data: number[]; up: boolean }) {
 
 export default function TrendsPage() {
   const [win, setWin] = useState(7);
+  const [cabId, setCabId] = useActiveCabinet("wb");
   const [data, setData] = useState<TrendsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
     setLoading(true); setErr(null);
-    fetch(`/api/trends?window=${win}`, { cache: "no-store" }).then((r) => r.json()).then((d) => {
+    fetch(`/api/trends?window=${win}${cabId ? `&cabinet=${cabId}` : ""}`, { cache: "no-store" }).then((r) => r.json()).then((d) => {
       if (d.error) setErr(d.error); else setData(d);
     }).catch((e) => setErr(String(e))).finally(() => setLoading(false));
-  }, [win]);
+  }, [win, cabId]);
 
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900">
@@ -44,10 +47,13 @@ export default function TrendsPage() {
             <h1 className="text-lg font-extrabold tracking-tight">Динамика</h1>
             <p className="text-xs text-gray-500">{data ? `${data.current.from}→${data.current.to} vs ${data.previous.from}→${data.previous.to}` : "период к периоду"}</p>
           </div>
-          <div className="ml-auto flex gap-1 rounded-md bg-gray-100 p-0.5">
-            {[7, 14, 30].map((d) => (
-              <button key={d} onClick={() => setWin(d)} className={`rounded px-3 py-1 text-xs font-semibold ${win === d ? "bg-white text-blue-700 shadow" : "text-gray-500"}`}>{d}д vs {d}д</button>
-            ))}
+          <div className="ml-auto flex items-center gap-2">
+            <CabinetSwitcher mp="wb" accent="violet" onChange={setCabId} />
+            <div className="flex gap-1 rounded-md bg-gray-100 p-0.5">
+              {[7, 14, 30].map((d) => (
+                <button key={d} onClick={() => setWin(d)} className={`rounded px-3 py-1 text-xs font-semibold ${win === d ? "bg-white text-blue-700 shadow" : "text-gray-500"}`}>{d}д vs {d}д</button>
+              ))}
+            </div>
           </div>
         </div>
       </header>

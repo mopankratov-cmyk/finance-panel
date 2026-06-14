@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { Loader2, BarChart3 } from "lucide-react";
+import { CabinetSwitcher } from "@/components/CabinetSwitcher";
+import { useActiveCabinet } from "@/lib/useActiveCabinet";
 
 interface AbcRow {
   nm: number; art: string; name: string; img_url: string | null;
@@ -22,15 +24,17 @@ const CLS: Record<string, { bg: string; text: string; label: string }> = {
 };
 
 export default function AbcPage() {
+  const [cabId, setCabId] = useActiveCabinet("wb");
   const [data, setData] = useState<AbcData | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch("/api/abc", { cache: "no-store" }).then((r) => r.json()).then((d) => {
+    setLoading(true); setErr(null);
+    fetch(`/api/abc${cabId ? `?cabinet=${cabId}` : ""}`, { cache: "no-store" }).then((r) => r.json()).then((d) => {
       if (d.error) setErr(d.error); else setData(d);
     }).catch((e) => setErr(String(e))).finally(() => setLoading(false));
-  }, []);
+  }, [cabId]);
 
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900">
@@ -41,6 +45,7 @@ export default function AbcPage() {
             <h1 className="text-lg font-extrabold tracking-tight">ABC-анализ прибыли</h1>
             <p className="text-xs text-gray-500">Где сосредоточена чистая прибыль — за 30 дней</p>
           </div>
+          <div className="ml-auto"><CabinetSwitcher mp="wb" accent="violet" onChange={setCabId} /></div>
         </div>
       </header>
 

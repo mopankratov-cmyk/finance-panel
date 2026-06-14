@@ -1,5 +1,6 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { cabinetIdFromParam } from "@/lib/rnp/resolveShop";
 
 export const dynamic = "force-dynamic";
 
@@ -33,16 +34,19 @@ interface RpcRow {
   in_way_to_client: number;
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const db = getSupabaseAdmin();
   if (!db) {
     return NextResponse.json({ data: null, error: "Supabase не настроен" }, { status: 500 });
   }
+  const p_cabinet = cabinetIdFromParam(new URL(req.url).searchParams.get("cabinet"));
 
   try {
+    let stockQ = db.from("wb_stocks").select("warehouse, quantity, in_way_to_client").limit(2000);
+    if (p_cabinet) stockQ = stockQ.eq("cabinet_id", p_cabinet);
     const [reportRes, stocksRes] = await Promise.all([
-      db.rpc("rnp_report"),
-      db.from("wb_stocks").select("warehouse, quantity, in_way_to_client").limit(2000),
+      db.rpc("rnp_report", { p_cabinet }),
+      stockQ,
     ]);
 
     if (reportRes.error) throw new Error(reportRes.error.message);

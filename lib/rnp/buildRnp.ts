@@ -46,11 +46,11 @@ interface RpcRow {
   ad_spend_month: number | null;
 }
 
-export async function buildRnpReport(): Promise<RnpRow[]> {
+export async function buildRnpReport(cabinetId?: string | null): Promise<RnpRow[]> {
   const db = getSupabaseAdmin();
   if (!db) throw new Error("Supabase не настроен");
 
-  const reportRes = await db.rpc("rnp_report");
+  const reportRes = await db.rpc("rnp_report", { p_cabinet: cabinetId || null });
 
   if (reportRes.error) throw new Error(reportRes.error.message);
 

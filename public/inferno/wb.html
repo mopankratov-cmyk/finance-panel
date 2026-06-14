@@ -545,7 +545,7 @@ button:not(:disabled):active{ transform: translateY(0); }
             <button @click="setPreset('prev_month')" class="qp" :class="activePreset==='prev_month'?'active':''">Прошлый месяц</button>
           </div>
           <div class="toolbar-row flex items-center gap-1">
-            <select id="rnp-shop-select" x-model="rnp.shop" @change="localStorage.setItem('rnp_shop', rnp.shop); loadTable()" class="s-clean px-3 py-1 text-sm border border-gray-200 rounded-md bg-white text-gray-700">
+            <select id="rnp-shop-select" x-model="rnp.shop" @change="localStorage.setItem('fp_cab_wb', rnp.shop === 'all' ? '' : rnp.shop); loadTable()" class="s-clean px-3 py-1 text-sm border border-gray-200 rounded-md bg-white text-gray-700">
               <template x-for="s in shops"><option :value="s.key" x-text="s.label"></option></template>
             </select>
           </div>
@@ -3602,7 +3602,7 @@ function app() {
     sortDir: 'desc',
     sidebarOpen: false,
     mobileNav: false,
-    rnp: { shop: ((new URLSearchParams(location.search).get('shop')) || localStorage.getItem('rnp_shop') || 'all'), data: null, loading: false, error: null },
+    rnp: { shop: ((new URLSearchParams(location.search).get('shop')) || localStorage.getItem('fp_cab_wb') || 'all'), data: null, loading: false, error: null },
     tbl: { data: null, loading: false, error: null, preparing: null, expandedAll: false, shownInitial: 100000, shown: 100000, startedAt: 0, elapsedSec: 0, _tick: null },
     plan: { mode: false, byNm: {}, econ: {}, month: '', loading: false },
     pl: { loaded:false, busy:false, year:'2026', orders:[], norms:{}, skus:[], skuOpen:false, skuCatOpen:{}, skuOrders:{}, skuMeta:{}, _t:null },
@@ -7372,7 +7372,7 @@ function app() {
       const r = await fetch(API_BASE + '/api/shops'); this.shops = await r.json();
       // Восстановить выбранный магазин: приоритет — URL ?shop=, потом localStorage, потом default
       const urlShop = new URLSearchParams(location.search).get('shop');
-      const savedShop = urlShop || localStorage.getItem('rnp_shop');
+      const savedShop = urlShop || localStorage.getItem('fp_cab_wb');
       if (savedShop && this.shops.some(s => s.key === savedShop)) {
         this.rnp.shop = savedShop;
         // Прямая установка value через DOM — Alpine x-model+select не подхватывает после async fetch.
@@ -7614,7 +7614,7 @@ function app() {
       // Защита от сброса: сохраняем shop в localStorage + URL ?shop=...
       try {
         if (this.rnp.shop) {
-          localStorage.setItem('rnp_shop', this.rnp.shop);
+          localStorage.setItem('fp_cab_wb', this.rnp.shop === 'all' ? '' : this.rnp.shop);
         }
       } catch (e) {}
       if (!_isRetry) {
