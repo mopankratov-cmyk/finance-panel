@@ -223,7 +223,7 @@ export default function CabinetsPage() {
             {(["statistics", "analytics", "advert", "content"] as Scope[]).some((s) => scopeRep.scopes[s] === false) && (
               <p className="text-[11px] text-red-600">
                 Не хватает категорий: {(["statistics", "analytics", "advert", "content"] as Scope[]).filter((s) => scopeRep.scopes[s] === false).map((s) => SCOPE_LABEL[s]).join(", ")}.
-                Перевыпустите токен в WB с этими галками — или вставьте отдельный токен в «расширенном».
+                Перевыпустите токен в WB, отметив эти категории. Продвижение и Контент можно дать отдельным токеном в «расширенном».
               </p>
             )}
           </div>
