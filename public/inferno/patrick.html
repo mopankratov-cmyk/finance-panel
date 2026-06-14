@@ -99,7 +99,11 @@
 
       <template x-if="run.ideas.length">
         <div class="mt-3 border-t border-rose-100 pt-3">
-          <div class="text-sm font-semibold mb-2">🎬 Копирайтер выдал <span x-text="run.ideas.length"></span> идей <span class="text-[11px] text-gray-400" x-text="'(' + run.approved + ' прошли стандарт)'"></span></div>
+          <div class="flex items-center justify-between mb-2 flex-wrap gap-2">
+            <div class="text-sm font-semibold">🎬 Копирайтер выдал <span x-text="run.ideas.length"></span> идей <span class="text-[11px] text-gray-400" x-text="'(' + run.approved + ' прошли стандарт)'"></span></div>
+            <button @click="runFull()" :disabled="pipe.busy" class="btn btn-primary text-[12px]" x-text="pipe.busy ? ('⏳ ' + pipe.step) : '▶▶ Прогнать одобренные до роликов'"></button>
+          </div>
+          <div x-show="pipe.log" class="text-[11px] text-gray-500 mb-2 whitespace-pre-line" x-text="pipe.log"></div>
           <div class="space-y-1.5">
             <template x-for="(s,i) in run.ideas" :key="i">
               <div class="flex items-start gap-2 text-[13px] p-2 rounded-lg border" :class="s.verdict==='rework' ? 'border-amber-200 bg-amber-50/40' : 'border-gray-100'">
@@ -140,6 +144,11 @@
                     <div x-show="av.busy || av.status" class="text-[11px] text-gray-500" x-text="av.status || '⏳ генерю аватара…'"></div>
                     <video x-show="av.url && av.forIdx===i" :src="av.url" controls class="mt-1 rounded-lg border border-gray-200" style="max-height:320px"></video>
                   </div>
+                  <div x-show="s.gen" class="mt-2 border-t border-gray-100 pt-2">
+                    <div class="text-[11px]"><span class="pill pill-violet" x-text="s.gen?.route || 'pipeline'"></span> <span class="text-gray-500" x-text="s.gen?.status"></span></div>
+                    <video x-show="s.gen?.url" :src="s.gen?.url" controls class="mt-1 rounded-lg border border-gray-200" style="max-height:320px"></video>
+                    <a x-show="s.gen?.carouselUrl" :href="s.gen?.carouselUrl" target="_blank" class="inline-block mt-1 text-[11px] px-2 py-1 rounded bg-rose-600 text-white">→ собрать карусель</a>
+                  </div>
                 </div>
                 <div class="flex flex-col gap-1 shrink-0">
                   <button @click="expandScenario(s,i)" :disabled="sc.busy" class="btn btn-ghost text-[11px]">→ сценарий</button>
@@ -153,6 +162,30 @@
           <div class="text-[11px] text-gray-400 mt-2">Идеи попадают в конвейер «Идеи». Следующий шаг — развернуть выбранную в видео через лабу.</div>
         </div>
       </template>
+    </section>
+
+    <section class="card mb-6" x-show="bank.length">
+      <div class="flex items-center justify-between mb-3">
+        <div><div class="sec-h">🎞 Банк готового контента</div><div class="sec-sub">результаты автопрогона · статусы → утверждение → в расписание</div></div>
+        <span class="pill pill-violet" x-text="bank.length + ' шт'"></span>
+      </div>
+      <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+        <template x-for="(b,bi) in bank" :key="b.ts">
+          <div class="card-tight">
+            <video x-show="b.url" :src="b.url" controls class="w-full rounded-md border border-gray-100 mb-1.5" style="max-height:220px"></video>
+            <div class="text-[12px] font-medium leading-tight" x-text="b.hook"></div>
+            <div class="text-[10px] text-gray-400 mt-1"><span class="pill pill-rose" x-text="b.route"></span> · <span x-text="b.art"></span></div>
+            <div class="flex items-center gap-1 mt-1.5">
+              <select class="text-[10px] border border-gray-200 rounded px-1 py-0.5 flex-1" @change="setBankStatus(bi, $event.target.value)">
+                <option value="review" :selected="b.status==='review'">на утверждение</option>
+                <option value="approved" :selected="b.status==='approved'">одобрено</option>
+                <option value="scheduled" :selected="b.status==='scheduled'">в расписании</option>
+              </select>
+              <button @click="delBank(bi)" class="text-[10px] text-gray-400 hover:text-red-600 px-1">✕</button>
+            </div>
+          </div>
+        </template>
+      </div>
     </section>
 
     <section class="card mb-6">
@@ -272,9 +305,20 @@ function patrick() {
     products: [],
     async init() {
       try { const d = await (await fetch('/api/costs')).json(); this.products = (d.rows || d.items || []).filter(p => p.article); } catch (e) {}
+      try { this.bank = JSON.parse(localStorage.getItem('cf_bank') || '[]'); } catch (e) { this.bank = []; }
     },
+    bank: [],
+    saveToBank(s, art) {
+      const item = { ts: Date.now(), art, hook: s.hook || s.concept || '', route: s.gen?.route || '', url: s.gen?.url || '', caption: s.caption || s.scenario?.caption || '', status: 'review' };
+      this.bank.unshift(item);
+      this.bank = this.bank.slice(0, 100);
+      try { localStorage.setItem('cf_bank', JSON.stringify(this.bank)); } catch (e) {}
+    },
+    setBankStatus(idx, st) { if (this.bank[idx]) { this.bank[idx].status = st; try { localStorage.setItem('cf_bank', JSON.stringify(this.bank)); } catch (e) {} } },
+    delBank(idx) { this.bank.splice(idx, 1); try { localStorage.setItem('cf_bank', JSON.stringify(this.bank)); } catch (e) {} },
     dir: { task: '', busy: false, plan: null, err: '' },
     run: { busy: false, step: '', ideas: [], approved: 0, err: '' },
+    pipe: { busy: false, step: '', log: '', count: 3 },
     tr: { niche: '', raw: '', busy: false, data: null, err: '' },
     async analyzeTrends() {
       if (this.tr.busy) return;
@@ -407,6 +451,73 @@ function patrick() {
         if (d.error) { this.run.err = d.error; } else { this.run.ideas = d.scripts || []; this.run.approved = d.approved_count || 0; }
       } catch (e) { this.run.err = String(e).slice(0, 120); }
       this.run.busy = false; this.run.step = '';
+    },
+    // helper: дождаться готового видео по статус-эндпоинту
+    async _pollVideo(statusUrl, deadlineMs) {
+      const deadline = Date.now() + deadlineMs;
+      while (Date.now() < deadline) {
+        await new Promise(r => setTimeout(r, 7000));
+        try {
+          const sd = await (await fetch(statusUrl)).json();
+          if (sd.status === 'done' && (sd.video_url || (sd.frames && sd.frames[0]))) return { url: sd.video_url || sd.frames[0] };
+          if (sd.status === 'failed' || sd.error) return { error: sd.error || 'failed' };
+        } catch (e) {}
+      }
+      return { error: 'долго — проверь позже' };
+    },
+    // #1 сквозной автопайплайн: продюсер выбирает маршрут → нужный генератор → результат в идею
+    async runFull() {
+      if (this.pipe.busy) return;
+      const art = this.dir.plan?.target_article || this.orbit.article || '';
+      if (!art) { this.pipe.log = 'нужен артикул (укажи в ТЗ Директору или выбери в Орбите)'; return; }
+      // если идей ещё нет — сначала их сгенерим
+      if (!this.run.ideas.length) { this.pipe.step = 'идеи…'; this.pipe.busy = true; await this.runPlan(); }
+      this.pipe.busy = true; this.pipe.log = '';
+      const approved = this.run.ideas.filter(s => s.verdict !== 'rework').slice(0, this.pipe.count);
+      const pool = approved.length ? approved : this.run.ideas.slice(0, this.pipe.count);
+      let done = 0;
+      for (const s of pool) {
+        const i = this.run.ideas.indexOf(s);
+        const brief = s.hook || s.concept;
+        this.pipe.step = `идея ${done + 1}/${pool.length}`;
+        // 1) продюсер выбирает маршрут
+        s.gen = { route: '', status: 'продюсер выбирает маршрут…', url: '', carouselUrl: '' };
+        let route = 'ai_generation';
+        try {
+          const pr = await (await fetch('/api/factory/produce', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ idea: brief, product: art, trend_format: s.format || '', available: { photos: true } }) })).json();
+          if (pr.decision?.route) route = pr.decision.route;
+        } catch (e) {}
+        s.gen.route = route;
+        // 2) полный сценарий (озвучка) — #2: сценарий доходит до генератора
+        let script = '';
+        try {
+          const sr = await (await fetch('/api/factory/scenario', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ article: art, hook: brief, format: s.format || '' }) })).json();
+          if (sr.scenario) { s.scenario = sr.scenario; script = (sr.scenario.shots || []).map(x => x.voiceover).filter(Boolean).join(' '); }
+        } catch (e) {}
+        // 3) запуск нужного генератора по маршруту
+        try {
+          if (route === 'ai_avatar') {
+            s.gen.status = 'HeyGen: рендер аватара…';
+            const d = await (await fetch('/api/factory/avatar', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sku_art: art, brief, script }) })).json();
+            if (!d.task_id) { s.gen.status = 'аватар: ' + (d.detail || d.error || 'не запустился'); }
+            else { const res = await this._pollVideo('/api/factory/avatar-status/' + d.task_id, 5 * 60 * 1000); if (res.url) { s.gen.url = res.url; s.gen.status = '✓ готово'; } else s.gen.status = 'ошибка: ' + res.error; }
+          } else if (route === 'slideshow') {
+            s.gen.status = '✓ маршрут карусель — собери слайды';
+            s.gen.carouselUrl = '/carousel?texts=' + encodeURIComponent([brief, s.angle].filter(Boolean).join('\n'));
+          } else if (route === 'real_ugc') {
+            s.gen.status = 'снять вручную (реальный UGC) — сценарий готов';
+          } else { // ai_generation / repurpose_cut / default → Higgsfield
+            s.gen.status = 'Higgsfield: рендер видео…';
+            const d = await (await fetch('/api/lab/video-storyboard', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sku_art: art, brief }) })).json();
+            if (!d.task_id) { s.gen.status = 'видео: ' + (d.detail || d.error || 'не запустился'); }
+            else { const res = await this._pollVideo('/api/lab/video-storyboard-status/' + d.task_id, 4 * 60 * 1000); if (res.url) { s.gen.url = res.url; s.gen.status = '✓ готово'; } else s.gen.status = 'ошибка: ' + res.error; }
+          }
+        } catch (e) { s.gen.status = String(e).slice(0, 100); }
+        if (s.gen.url) this.saveToBank(s, art); // #3 банк готового
+        done++;
+        this.pipe.log = pool.map(p => '• ' + (p.hook || p.concept || '').slice(0, 40) + ' — ' + (p.gen?.status || '…')).join('\n');
+      }
+      this.pipe.busy = false; this.pipe.step = '';
     },
     async askDirector() {
       if (!this.dir.task.trim() || this.dir.busy) return;
