@@ -4,8 +4,8 @@ import { checkCronAuth, chunkedUpsert, writeSyncLog } from "@/lib/sync/helpers";
 import { getWbSyncTargets } from "@/lib/sync/cabinets";
 
 const FULLSTATS_URL = "https://advert-api.wildberries.ru/adv/v3/fullstats";
-// fullstats: лимит 1 запрос/мин на токен, до 100 кампаний за раз.
-const ID_BATCH = 100;
+// fullstats: лимит 1 запрос/мин на токен, до 50 кампаний за раз (WB 400 при >50).
+const ID_BATCH = 50;
 // сколько дней истории тянем
 const DAYS_BACK = 14;
 
