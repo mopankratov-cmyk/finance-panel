@@ -134,7 +134,8 @@
       <div class="flex items-center justify-between mb-2"><div><div class="sec-h">📈 Трендоскоп — разбор залетевших</div><div class="sec-sub">вставь ссылки/подписи виральных Reels (по строке) → паттерны-победители → бриф в Копирайтера</div></div></div>
       <div class="flex gap-2 mb-2">
         <input x-model="tr.niche" placeholder="ниша (напр.: солнцезащитный крем)" class="text-sm px-3 py-2 border border-gray-300 rounded-lg" style="width:280px">
-        <button @click="analyzeTrends()" :disabled="tr.busy" class="btn btn-ghost" x-text="tr.busy ? '⏳ разбираю…' : 'Разобрать'"></button>
+        <button @click="analyzeTrends()" :disabled="tr.busy" class="btn btn-ghost" x-text="tr.busy ? '⏳…' : 'Разобрать вставленное'"></button>
+        <button @click="autoTrends()" :disabled="tr.busy" class="btn btn-primary" title="требует APIFY_TOKEN/VIRLO_API_KEY">🔎 Авто-поиск</button>
         <span x-show="tr.err" class="text-[11px] text-red-600 self-center" x-text="tr.err"></span>
       </div>
       <textarea x-model="tr.raw" rows="3" placeholder="По строке на видео: ссылка или подпись + (просмотры). Напр.: 'POV: нашла санскрин без белого каста (1.2М)'" class="w-full text-[12px] px-3 py-2 border border-gray-300 rounded-lg"></textarea>
@@ -229,6 +230,17 @@ function patrick() {
       this.tr.busy = true; this.tr.err = ''; this.tr.data = null;
       try {
         const r = await fetch('/api/factory/trends', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ niche: this.tr.niche, videos }) });
+        const d = await r.json();
+        if (d.error && !d.patterns) { this.tr.err = d.error; } else { this.tr.data = d.patterns; }
+      } catch (e) { this.tr.err = String(e).slice(0, 120); }
+      this.tr.busy = false;
+    },
+    async autoTrends() {
+      if (this.tr.busy) return;
+      if (!this.tr.niche.trim()) { this.tr.err = 'укажи нишу для авто-поиска'; return; }
+      this.tr.busy = true; this.tr.err = ''; this.tr.data = null;
+      try {
+        const r = await fetch('/api/factory/trends', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ niche: this.tr.niche }) });
         const d = await r.json();
         if (d.error && !d.patterns) { this.tr.err = d.error; } else { this.tr.data = d.patterns; }
       } catch (e) { this.tr.err = String(e).slice(0, 120); }

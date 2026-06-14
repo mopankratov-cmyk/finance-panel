@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClaudeClient } from "@/lib/agent/client";
+import { fetchViral, hasTrendSource, trendSourceName } from "@/lib/factory/trendSources";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -13,8 +14,14 @@ interface ViralVideo { url?: string; caption?: string; title?: string; views?: n
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
   const niche: string = (body.niche || "").toString().trim();
-  const videos: ViralVideo[] = Array.isArray(body.videos) ? body.videos.slice(0, 30) : [];
-  if (!videos.length) return NextResponse.json({ error: "Передай список залетевших видео (ссылки/подписи/просмотры). Авто-поиск — позже через APIFY_TOKEN.", patterns: null }, { status: 200 });
+  let videos: ViralVideo[] = Array.isArray(body.videos) ? body.videos.slice(0, 30) : [];
+  let source = "ручной";
+  // Авто-поиск: если видео не переданы, но есть ключ-источник (Apify/Virlo) — тянем сами.
+  if (!videos.length && niche && hasTrendSource()) {
+    videos = await fetchViral(niche, 20);
+    source = trendSourceName();
+  }
+  if (!videos.length) return NextResponse.json({ error: hasTrendSource() ? "Источник не вернул видео — попробуй другую нишу или вставь вручную." : "Вставь залетевшие видео вручную, либо добавь APIFY_TOKEN/VIRLO_API_KEY для авто-поиска.", patterns: null }, { status: 200 });
 
   const client = await createClaudeClient();
   if (!client) return NextResponse.json({ error: "ANTHROPIC_API_KEY не настроен" }, { status: 500 });
@@ -31,7 +38,7 @@ export async function POST(req: NextRequest) {
     const txt = (res.content as any[]).filter((b) => b.type === "text").map((b) => b.text).join(" ");
     const m = txt.match(/\{[\s\S]*\}/);
     if (!m) return NextResponse.json({ error: "пустой разбор" }, { status: 502 });
-    return NextResponse.json({ niche, analyzed: videos.length, patterns: JSON.parse(m[0]) });
+    return NextResponse.json({ niche, analyzed: videos.length, source, patterns: JSON.parse(m[0]) });
   } catch (e) {
     return NextResponse.json({ error: String(e).slice(0, 200) }, { status: 502 });
   }
