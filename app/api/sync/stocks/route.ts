@@ -32,17 +32,23 @@ export async function GET(request: NextRequest) {
       const stocks: Record<string, unknown>[] = await res.json();
       if (!stocks.length) continue;
 
-      const rows = stocks
-        .map((s) => ({
-          nm_id: s.nmId as number,
-          warehouse: s.warehouseName as string,
-          quantity: s.quantity as number | null,
-          in_way_to_client: s.inWayToClient as number | null,
-          in_way_from_client: s.inWayFromClient as number | null,
-          cabinet_id: t.cabinetId,
-          synced_at: new Date().toISOString(),
-        }))
-        .filter((r) => r.nm_id && r.warehouse);
+      // WB отдаёт остаток по каждому размеру → один (nm_id, warehouse) встречается
+      // несколько раз. Схлопываем по ключу апсёрта, суммируя количества (иначе
+      // ON CONFLICT падает: «cannot affect row a second time»).
+      const agg = new Map<string, { nm_id: number; warehouse: string; quantity: number; in_way_to_client: number; in_way_from_client: number; cabinet_id: string | null; synced_at: string }>();
+      const stamp = new Date().toISOString();
+      for (const s of stocks) {
+        const nm_id = s.nmId as number;
+        const warehouse = s.warehouseName as string;
+        if (!nm_id || !warehouse) continue;
+        const key = `${nm_id}|${warehouse}`;
+        const cur = agg.get(key) ?? { nm_id, warehouse, quantity: 0, in_way_to_client: 0, in_way_from_client: 0, cabinet_id: t.cabinetId, synced_at: stamp };
+        cur.quantity += (s.quantity as number) ?? 0;
+        cur.in_way_to_client += (s.inWayToClient as number) ?? 0;
+        cur.in_way_from_client += (s.inWayFromClient as number) ?? 0;
+        agg.set(key, cur);
+      }
+      const rows = [...agg.values()];
 
       const upsertError = await chunkedUpsert("wb_stocks", rows, "nm_id,warehouse");
       if (upsertError) {
