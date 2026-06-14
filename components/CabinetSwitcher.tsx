@@ -32,7 +32,8 @@ export function CabinetSwitcher({ mp, accent = "sky", onChange }: { mp: "ozon" |
   return (
     <div ref={ref} className="relative">
       <button onClick={() => setOpen((o) => !o)}
-        className={`inline-flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-semibold ${ring} hover:bg-gray-50`}>
+        title="Кабинет (юрлицо) — переключи, чтобы вся аналитика показала его срез"
+        className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-semibold ${ring} ${active ? (accent === "violet" ? "border-violet-300 bg-violet-50" : "border-sky-300 bg-sky-50") : "border-gray-300 bg-white"} hover:bg-gray-50`}>
         <Building2 className="h-3.5 w-3.5" /> <span className="max-w-[140px] truncate">{label}</span> <ChevronDown className={`h-3 w-3 transition-transform ${open ? "rotate-180" : ""}`} />
       </button>
       {open && (

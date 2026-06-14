@@ -544,8 +544,9 @@ button:not(:disabled):active{ transform: translateY(0); }
             <button @click="setPreset('month')"     class="qp" :class="activePreset==='month'    ?'active':''">Этот месяц</button>
             <button @click="setPreset('prev_month')" class="qp" :class="activePreset==='prev_month'?'active':''">Прошлый месяц</button>
           </div>
-          <div class="toolbar-row flex items-center gap-1">
-            <select id="rnp-shop-select" x-model="rnp.shop" @change="localStorage.setItem('fp_cab_wb', rnp.shop === 'all' ? '' : rnp.shop); loadTable()" class="s-clean px-3 py-1 text-sm border border-gray-200 rounded-md bg-white text-gray-700">
+          <div class="toolbar-row flex items-center gap-1.5">
+            <span class="text-xs font-semibold text-gray-500">🏢 Кабинет</span>
+            <select id="rnp-shop-select" x-model="rnp.shop" @change="localStorage.setItem('fp_cab_wb', rnp.shop === 'all' ? '' : rnp.shop); loadTable()" :class="rnp.shop && rnp.shop !== 'all' ? 'border-violet-300 bg-violet-50 text-violet-800 font-semibold' : 'border-gray-200 bg-white text-gray-700'" class="s-clean px-3 py-1 text-sm border rounded-md">
               <template x-for="s in shops"><option :value="s.key" x-text="s.label"></option></template>
             </select>
           </div>
