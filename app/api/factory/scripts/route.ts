@@ -14,7 +14,7 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
   const article: string = (body.article || "").toString().trim();
   let name: string = (body.product_name || "").toString().trim();
-  const count = Math.min(10, Math.max(2, Number(body.count) || 6));
+  const count = Math.min(10, Math.max(2, Number(body.count) || 5));
   const brief: string = (body.brief || "").toString().trim();
   const competitorBrief: string = (body.competitor_brief || "").toString().trim();
 
@@ -30,14 +30,14 @@ export async function POST(req: NextRequest) {
 
   const sys = `Ты топ-маркетолог UGC-видео для Wildberries/Ozon И строгий QA-директор. Пишешь сценарии коротких вертикальных видео (Reels/Shorts/TikTok) под охват И переходы на карточку, потом сам оцениваешь каждый по стандарту.
 СТАНДАРТ: ${CONTENT_STANDARD}
-Сделай разные хуки/форматы/углы. Для КАЖДОГО сценария честно поставь score 1-10 по стандарту; если < ${QA_THRESHOLD} — verdict "rework" и в fix напиши что исправить.
-Верни СТРОГО JSON-массив: [{"hook":"...","angle":"какое возражение","script":"сценарий 15-30с по кадрам","caption":"подпись","hashtags":["..."],"format":"unboxing|POV|обзор|до/после|лайфхак|проблема-решение","cta":"...","score":8,"verdict":"approved|rework","fix":""}]. Только JSON, без преамбулы.`;
+Сделай разные хуки/форматы/углы. Это БЫСТРАЯ идеация — НЕ пиши покадровый сценарий, только идею. Полный сценарий развернём отдельно для выбранных. Для КАЖДОГО честно поставь score 1-10 по стандарту; если < ${QA_THRESHOLD} — verdict "rework" и в fix что исправить.
+Верни СТРОГО JSON-массив (кратко): [{"hook":"первая фраза-зацепка","angle":"какое возражение","concept":"идея ролика 1-2 предложения","caption":"подпись","format":"unboxing|POV|обзор|до/после|лайфхак|проблема-решение","cta":"кратко","score":8,"verdict":"approved|rework","fix":""}]. Только JSON, без преамбулы.`;
 
   const user = `Товар: ${subject}${article ? ` (артикул ${article})` : ""}. Сделай ${count} сценариев.` +
     (brief ? ` Бриф: ${brief}.` : "") + (competitorBrief ? ` Разведка конкурентов: ${competitorBrief}.` : "");
 
   try {
-    const res = await client.messages.create({ model: MODEL, max_tokens: 4000, system: sys, messages: [{ role: "user", content: user }] });
+    const res = await client.messages.create({ model: MODEL, max_tokens: 2200, system: sys, messages: [{ role: "user", content: user }] });
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const txt = (res.content as any[]).filter((b) => b.type === "text").map((b) => b.text).join(" ");
     const m = txt.match(/\[[\s\S]*\]/);
