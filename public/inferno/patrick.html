@@ -130,6 +130,25 @@
       </template>
     </section>
 
+    <section class="card mb-6">
+      <div class="flex items-center justify-between mb-2"><div><div class="sec-h">📈 Трендоскоп — разбор залетевших</div><div class="sec-sub">вставь ссылки/подписи виральных Reels (по строке) → паттерны-победители → бриф в Копирайтера</div></div></div>
+      <div class="flex gap-2 mb-2">
+        <input x-model="tr.niche" placeholder="ниша (напр.: солнцезащитный крем)" class="text-sm px-3 py-2 border border-gray-300 rounded-lg" style="width:280px">
+        <button @click="analyzeTrends()" :disabled="tr.busy" class="btn btn-ghost" x-text="tr.busy ? '⏳ разбираю…' : 'Разобрать'"></button>
+        <span x-show="tr.err" class="text-[11px] text-red-600 self-center" x-text="tr.err"></span>
+      </div>
+      <textarea x-model="tr.raw" rows="3" placeholder="По строке на видео: ссылка или подпись + (просмотры). Напр.: 'POV: нашла санскрин без белого каста (1.2М)'" class="w-full text-[12px] px-3 py-2 border border-gray-300 rounded-lg"></textarea>
+      <template x-if="tr.data">
+        <div class="mt-3 border-t border-gray-100 pt-3 text-[12px]">
+          <div class="mb-1"><b>Хуки-победители:</b> <span x-text="(tr.data.winning_hooks||[]).join(' · ')"></span></div>
+          <div class="mb-1"><b>Форматы:</b> <span x-text="(tr.data.formats||[]).join(', ')"></span> · <b>Звук:</b> <span x-text="(tr.data.sounds||[]).join(', ')"></span></div>
+          <div class="mb-1 text-gray-600" x-text="tr.data.brief"></div>
+          <div class="flex flex-wrap gap-1 mt-1"><template x-for="(h,i) in (tr.data.reuse_hooks||[])" :key="i"><span class="pill pill-sky" x-text="h"></span></template></div>
+          <div class="text-[11px] text-emerald-700 mt-2">✓ бриф трендов учтётся при «Запустить план»</div>
+        </div>
+      </template>
+    </section>
+
     <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
       <div class="card-tight"><div class="stat-num text-rose-700" x-text="kpi.accounts"></div><div class="stat-label">подключённых аккаунтов</div><div class="delta-up mt-1" x-text="kpi.accountsDelta"></div></div>
       <div class="card-tight"><div class="stat-num" x-text="kpi.posts"></div><div class="stat-label">постов за 7 дней</div><div class="delta-up mt-1" x-text="kpi.postsPlan"></div></div>
@@ -202,6 +221,19 @@ function patrick() {
     active: 'dashboard',
     dir: { task: '', busy: false, plan: null, err: '' },
     run: { busy: false, step: '', ideas: [], approved: 0, err: '' },
+    tr: { niche: '', raw: '', busy: false, data: null, err: '' },
+    async analyzeTrends() {
+      if (this.tr.busy) return;
+      const videos = (this.tr.raw || '').split('\n').map(l => l.trim()).filter(Boolean).map(l => ({ caption: l }));
+      if (!videos.length) { this.tr.err = 'вставь хотя бы одно видео'; return; }
+      this.tr.busy = true; this.tr.err = ''; this.tr.data = null;
+      try {
+        const r = await fetch('/api/factory/trends', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ niche: this.tr.niche, videos }) });
+        const d = await r.json();
+        if (d.error && !d.patterns) { this.tr.err = d.error; } else { this.tr.data = d.patterns; }
+      } catch (e) { this.tr.err = String(e).slice(0, 120); }
+      this.tr.busy = false;
+    },
     sc: { busy: false, forIdx: -1, data: null, err: '' },
     async expandScenario(idea, i) {
       if (this.sc.busy) return;
@@ -218,7 +250,8 @@ function patrick() {
       if (!art || this.run.busy) return;
       this.run.busy = true; this.run.err = ''; this.run.ideas = []; this.run.step = 'Копирайтер пишет идеи…';
       try {
-        const r = await fetch('/api/factory/scripts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ article: art }) });
+        const trendBrief = this.tr.data ? (this.tr.data.brief + ' Хуки-победители: ' + (this.tr.data.winning_hooks || []).join('; ')) : '';
+        const r = await fetch('/api/factory/scripts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ article: art, competitor_brief: trendBrief }) });
         const d = await r.json();
         if (d.error) { this.run.err = d.error; } else { this.run.ideas = d.scripts || []; this.run.approved = d.approved_count || 0; }
       } catch (e) { this.run.err = String(e).slice(0, 120); }

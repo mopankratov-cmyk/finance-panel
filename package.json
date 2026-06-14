@@ -11,6 +11,8 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.104.1",
     "@higgsfield/client": "^0.2.1",
+    "@remotion/cli": "^4.0.477",
+    "@remotion/lambda": "^4.0.477",
     "@supabase/supabase-js": "^2.108.0",
     "bcryptjs": "^3.0.3",
     "geist": "^1.7.2",
@@ -20,6 +22,7 @@
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "recharts": "^3.8.1",
+    "remotion": "^4.0.477",
     "undici": "^8.4.1"
   },
   "devDependencies": {
