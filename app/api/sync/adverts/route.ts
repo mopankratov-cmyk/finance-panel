@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { checkCronAuth, chunkedUpsert, writeSyncLog } from "@/lib/sync/helpers";
+import { getWbSyncTargets } from "@/lib/sync/cabinets";
 
-const WB_ADV_TOKEN = process.env.WB_TOKEN_ADVERT;
 // Информация о кампаниях: отдаёт все кампании продавца разом
 const ADVERTS_URL = "https://advert-api.wildberries.ru/api/advert/v2/adverts";
 
@@ -24,66 +23,62 @@ export async function GET(request: NextRequest) {
   if (authError) return authError;
 
   const startedAt = new Date();
-  const db = getSupabaseAdmin();
+  const targets = await getWbSyncTargets();
+  if (!targets.length) {
+    return NextResponse.json({ error: "Нет активных кабинетов и WB_TOKEN_ADVERT не настроен" }, { status: 500 });
+  }
 
-  if (!db) {
-    return NextResponse.json({ error: "Supabase не настроен" }, { status: 500 });
-  }
-  if (!WB_ADV_TOKEN) {
-    return NextResponse.json({ error: "WB_TOKEN_ADVERT не настроен" }, { status: 500 });
-  }
+  let total = 0;
+  const errors: string[] = [];
 
   try {
-    const res = await fetch(ADVERTS_URL, {
-      headers: { Authorization: WB_ADV_TOKEN },
-      cache: "no-store",
-    });
+    for (const t of targets) {
+      const res = await fetch(ADVERTS_URL, { headers: { Authorization: t.advertToken }, cache: "no-store" });
+      if (!res.ok) {
+        errors.push(`${t.name}: WB ${res.status}: ${(await res.text()).slice(0, 120)}`);
+        continue;
+      }
 
-    if (!res.ok) {
-      const text = await res.text();
-      await writeSyncLog("adverts", "error", null, `WB ${res.status}: ${text.slice(0, 200)}`, startedAt);
-      return NextResponse.json({ error: `WB API ${res.status}` }, { status: 502 });
+      const json = (await res.json()) as { adverts?: AdvertInfo[] };
+      const adverts = json.adverts ?? [];
+
+      const rows = adverts
+        .filter((a) => a.id)
+        .map((a) => {
+          const nmIds = [
+            ...new Set(
+              (a.nm_settings ?? [])
+                .map((n) => n.nm_id)
+                .filter((n): n is number => typeof n === "number"),
+            ),
+          ];
+          // дневной бюджет API больше не отдаёт в этом методе — оставляем ставку CPM как ориентир
+          const bid = a.nm_settings?.[0]?.bids_kopecks?.search;
+          return {
+            advert_id: a.id as number,
+            name: a.settings?.name ?? null,
+            type: null as number | null,
+            status: a.status ?? null,
+            daily_budget: bid != null ? bid / 100 : null,
+            nm_ids: nmIds.length ? nmIds : null,
+            cabinet_id: t.cabinetId,
+            synced_at: new Date().toISOString(),
+          };
+        });
+
+      if (!rows.length) continue;
+
+      const upsertError = await chunkedUpsert("wb_adverts", rows, "advert_id");
+      if (upsertError) {
+        errors.push(`${t.name}: ${upsertError}`);
+        continue;
+      }
+      total += rows.length;
     }
 
-    const json = (await res.json()) as { adverts?: AdvertInfo[] };
-    const adverts = json.adverts ?? [];
-
-    const rows = adverts
-      .filter((a) => a.id)
-      .map((a) => {
-        const nmIds = [
-          ...new Set(
-            (a.nm_settings ?? [])
-              .map((n) => n.nm_id)
-              .filter((n): n is number => typeof n === "number"),
-          ),
-        ];
-        // дневной бюджет API больше не отдаёт в этом методе — оставляем ставку CPM как ориентир
-        const bid = a.nm_settings?.[0]?.bids_kopecks?.search;
-        return {
-          advert_id: a.id as number,
-          name: a.settings?.name ?? null,
-          type: null as number | null,
-          status: a.status ?? null,
-          daily_budget: bid != null ? bid / 100 : null,
-          nm_ids: nmIds.length ? nmIds : null,
-          synced_at: new Date().toISOString(),
-        };
-      });
-
-    if (!rows.length) {
-      await writeSyncLog("adverts", "ok", 0, null, startedAt);
-      return NextResponse.json({ ok: true, rows: 0 });
-    }
-
-    const upsertError = await chunkedUpsert("wb_adverts", rows, "advert_id");
-    if (upsertError) {
-      await writeSyncLog("adverts", "error", null, upsertError, startedAt);
-      return NextResponse.json({ error: upsertError }, { status: 500 });
-    }
-
-    await writeSyncLog("adverts", "ok", rows.length, null, startedAt);
-    return NextResponse.json({ ok: true, rows: rows.length });
+    const ok = errors.length === 0;
+    await writeSyncLog("adverts", ok ? "ok" : "error", total, errors.join("; ") || null, startedAt);
+    return NextResponse.json({ ok, rows: total, cabinets: targets.length, errors });
   } catch (err) {
     const cause = err instanceof Error && err.cause instanceof Error ? ` (${err.cause.message})` : "";
     const msg = (err instanceof Error ? err.message : "Unknown error") + cause;

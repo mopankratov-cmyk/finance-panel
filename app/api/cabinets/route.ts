@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { validateWbToken } from "@/lib/wb/sellerInfo";
+import { decodeWbToken, probeWbScope, probeWbScopes, type ScopeStatus } from "@/lib/wb/token";
 import { validateOzon } from "@/lib/ozon/api";
 
 export const dynamic = "force-dynamic";
@@ -46,6 +47,8 @@ export async function POST(request: NextRequest) {
   const token = (b.token || "").trim();
 
   let row: Record<string, unknown>;
+  // Отчёт по WB-токену для формы: какие категории доступны + срок действия.
+  let scopeReport: { scopes: ScopeStatus; expiresAt: string | null; daysLeft: number | null; isTest: boolean } | undefined;
   if (marketplace === "ozon") {
     const clientId = (b.client_id || "").trim();
     if (!clientId || !token) return NextResponse.json({ error: "Укажите Client-Id и Api-Key Ozon" }, { status: 400 });
@@ -72,6 +75,14 @@ export async function POST(request: NextRequest) {
     if (!token) return NextResponse.json({ error: "Укажите API-токен WB" }, { status: 400 });
     const v = await validateWbToken(token);
     if (!v.ok) return NextResponse.json({ error: v.error }, { status: 400 });
+    const advTok = (b.token_advert || "").trim();
+    const contTok = (b.token_content || "").trim();
+    // Категории основного токена + добор из отдельных токенов, если их указали.
+    const scopes = await probeWbScopes(token);
+    if (!scopes.advert && advTok) scopes.advert = await probeWbScope(advTok, "advert");
+    if (!scopes.content && contTok) scopes.content = await probeWbScope(contTok, "content");
+    const info = decodeWbToken(token);
+    scopeReport = { scopes, expiresAt: info.expiresAt, daysLeft: info.daysLeft, isTest: info.isTest };
     row = {
       marketplace: "wb",
       name: (b.name || "").trim() || v.seller.tradeMark || v.seller.name || "Кабинет WB",
@@ -79,8 +90,8 @@ export async function POST(request: NextRequest) {
       seller_id: v.seller.sid,
       inn: v.seller.tin ?? null,
       token,
-      token_advert: (b.token_advert || "").trim() || null,
-      token_content: (b.token_content || "").trim() || null,
+      token_advert: advTok || null,
+      token_content: contTok || null,
       is_active: true,
     };
   }
@@ -104,5 +115,5 @@ export async function POST(request: NextRequest) {
       .select("id, name, marketplace, seller_id, is_active, created_at").single());
   }
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ ok: true, cabinet: data });
+  return NextResponse.json({ ok: true, cabinet: data, ...scopeReport });
 }
