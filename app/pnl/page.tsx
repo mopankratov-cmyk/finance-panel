@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Loader2, LineChart } from "lucide-react";
 import { useActiveCabinet } from "@/lib/useActiveCabinet";
+import { CabinetSwitcher } from "@/components/CabinetSwitcher";
 import { FinanceTabs } from "@/components/FinanceTabs";
 
 type WB = { revenue_before_spp: number; coinvest: number; revenue: number; commission: number; logistics: number; storage: number; penalty: number; acquiring: number; ad: number; other: number; cogs: number; tax: number; profit: number; margin: number; error?: string };
@@ -50,6 +51,8 @@ export default function PnlPage() {
           <h1 className="text-2xl font-bold text-gray-900">ОПиУ маркетплейсов</h1>
           <p className="text-sm text-gray-500">P&L от выручки до СПП + соинвест · WB и Ozon</p>
         </div>
+        <CabinetSwitcher mp="wb" accent="violet" onChange={setWbCab} />
+        <CabinetSwitcher mp="ozon" accent="sky" onChange={setOzonCab} />
         <label className="flex items-center gap-1.5 text-sm text-gray-500">Налог
           <input type="number" value={tax} onChange={(e) => setTax(Number(e.target.value))} className="w-16 rounded border border-gray-300 px-2 py-1 text-right text-sm" />%
         </label>

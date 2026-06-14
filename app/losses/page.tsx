@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { TrendingDown, Loader2, Info } from "lucide-react";
 import { useActiveCabinet } from "@/lib/useActiveCabinet";
+import { CabinetSwitcher } from "@/components/CabinetSwitcher";
 import { FinanceTabs } from "@/components/FinanceTabs";
 
 interface LossItem { key: string; label: string; rub: number; tip: string }
@@ -22,8 +23,8 @@ export default function LossesPage() {
   const [data, setData] = useState<LossData | null>(null);
   const [loading, setLoading] = useState(true);
   const [loc, setLoc] = useState<{ localizationPct: number; il: number; irp: number } | null>(null);
-  const [ozonCab] = useActiveCabinet("ozon");
-  const [wbCab] = useActiveCabinet("wb");
+  const [ozonCab, setOzonCab] = useActiveCabinet("ozon");
+  const [wbCab, setWbCab] = useActiveCabinet("wb");
 
   useEffect(() => {
     setLoading(true);
@@ -51,6 +52,7 @@ export default function LossesPage() {
           <h1 className="text-2xl font-bold text-gray-900">Где теряем деньги</h1>
           <p className="text-sm text-gray-500">{mp === "ozon" ? "Удержания Ozon (finance/transaction)" : "Удержания WB из финотчёта-детализации (reportDetailByPeriod)"}</p>
         </div>
+        <CabinetSwitcher mp={mp} accent={mp === "wb" ? "violet" : "sky"} onChange={mp === "wb" ? setWbCab : setOzonCab} />
         <div className="mr-2 flex gap-1 rounded-lg bg-gray-100 p-0.5">
           <button onClick={() => setMp("wb")} className={`rounded px-3 py-1 text-xs font-semibold ${mp === "wb" ? "bg-white text-violet-700 shadow" : "text-gray-500"}`}>WB</button>
           <button onClick={() => setMp("ozon")} className={`rounded px-3 py-1 text-xs font-semibold ${mp === "ozon" ? "bg-white text-sky-700 shadow" : "text-gray-500"}`}>Ozon</button>
