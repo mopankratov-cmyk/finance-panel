@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { CLAUDE_MODEL as MODEL, createClaudeClient } from "@/lib/agent/client";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { geminiText, hasGemini } from "@/lib/llm/gemini";
+import { openRouterText, hasOpenRouter, openRouterModel } from "@/lib/llm/openrouter";
 import { CONTENT_STANDARD, QA_THRESHOLD } from "@/lib/factory/standard";
 
 export const dynamic = "force-dynamic";
@@ -35,21 +36,25 @@ export async function POST(req: NextRequest) {
   const client = await createClaudeClient();
   if (!client) return NextResponse.json({ error: "ANTHROPIC_API_KEY не настроен" }, { status: 500 });
 
-  const per = hasGemini() ? Math.ceil(count / 2) : count;
+  const hasSecond = hasOpenRouter() || hasGemini();
+  const per = hasSecond ? Math.ceil(count / 2) : count;
   const user = `Товар: ${subject}${article ? ` (артикул ${article})` : ""}. Сделай ${per} РАЗНЫХ сценариев — разные хуки/форматы/углы.` +
     (brief ? ` Бриф: ${brief}.` : "") + (competitorBrief ? ` Разведка конкурентов: ${competitorBrief}.` : "") + ` Стандарт качества, которому обязан соответствовать каждый: ${CONTENT_STANDARD}`;
 
-  // 1) ансамбль: Claude + Gemini параллельно
-  const [claudeRes, geminiRaw] = await Promise.all([
-    client.messages.create({ model: MODEL, max_tokens: 3500, system: SYS, messages: [{ role: "user", content: user }] })
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .then((r) => (r.content as any[]).filter((b) => b.type === "text").map((b) => b.text).join(" ")).catch(() => ""),
-    hasGemini() ? geminiText(SYS, user, 3500) : Promise.resolve(null),
-  ]);
+  // 1) Ансамбль: проход 1 = Claude; проход 2 = DeepSeek/OpenRouter (если есть) ИЛИ второй Claude другим углом.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const claudeCall = (sys: string) => client.messages.create({ model: MODEL, max_tokens: 3500, system: sys, messages: [{ role: "user", content: user }] }).then((r) => (r.content as any[]).filter((b) => b.type === "text").map((b) => b.text).join(" ")).catch(() => "");
+  const SYS2 = SYS + " Делай хуки СМЕЛЕЕ и НЕОЖИДАННЕЕ, иной тон и ракурс, избегай шаблонных формулировок.";
+  let secondLabel = "claude×2";
+  let secondP: Promise<string | null>;
+  if (hasOpenRouter()) { secondP = openRouterText(SYS, user, 3500); secondLabel = `claude+${openRouterModel()}`; }
+  else if (hasGemini()) { secondP = geminiText(SYS, user, 3500); secondLabel = "claude+gemini"; }
+  else { secondP = claudeCall(SYS2); }
 
+  const [claudeRes, secondRaw] = await Promise.all([claudeCall(SYS), secondP]);
   let pool = [
     ...parseArr(claudeRes).map((s) => ({ ...(s as object), source: "claude" })),
-    ...parseArr(geminiRaw || "").map((s) => ({ ...(s as object), source: "gemini" })),
+    ...parseArr(secondRaw || "").map((s) => ({ ...(s as object), source: secondLabel.includes("+") ? secondLabel.split("+")[1] : "claude-2" })),
   ] as Record<string, unknown>[];
   if (!pool.length) return NextResponse.json({ error: "агенты не вернули сценарии" }, { status: 502 });
 
@@ -76,7 +81,7 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({
     article, product: subject, count: pool.length,
     approved_count: approved.length, rework_count: pool.length - approved.length,
-    ensemble: hasGemini() ? "claude+gemini" : "claude",
+    ensemble: secondLabel,
     scripts: pool,
   });
 }
