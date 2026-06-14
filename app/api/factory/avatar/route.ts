@@ -1,0 +1,66 @@
+import { NextRequest, NextResponse } from "next/server";
+import { CLAUDE_MODEL as MODEL, createClaudeClient } from "@/lib/agent/client";
+import { newAvatarId, putAvatar } from "@/lib/lab/avatarStore";
+
+export const dynamic = "force-dynamic";
+export const maxDuration = 60;
+
+const HG_BASE = "https://api.heygen.com";
+
+// AI-аватар: Claude пишет разговорный скрипт из брифа, HeyGen генерит говорящего блогера-актёра.
+export async function POST(req: NextRequest) {
+  const apiKey = process.env.HEYGEN_API_KEY;
+  if (!apiKey) return NextResponse.json({ detail: "HEYGEN_API_KEY не настроен — вставь ключ в env Vercel, маршрут заработает сразу" }, { status: 500 });
+  const avatarId = process.env.HEYGEN_AVATAR_ID;
+  const voiceId = process.env.HEYGEN_VOICE_ID;
+  if (!avatarId || !voiceId) return NextResponse.json({ detail: "Нужны HEYGEN_AVATAR_ID и HEYGEN_VOICE_ID (выбери на /api/factory/avatar/voices)" }, { status: 400 });
+
+  const body = await req.json().catch(() => ({}));
+  const brief: string = body.brief || body.hook || "";
+  if (!brief) return NextResponse.json({ detail: "Нужен brief/hook идеи" }, { status: 400 });
+
+  // 1) разговорный скрипт через Claude (живой UGC-тон, 12-20 сек)
+  let title = "UGC-аватар";
+  let spoken = brief;
+  try {
+    const client = await createClaudeClient();
+    if (client) {
+      const res = await client.messages.create({
+        model: MODEL, max_tokens: 350,
+        system: "Ты пишешь короткий разговорный монолог для говорящего UGC-блогера (12-20 секунд, ~45-65 слов). Живой русский, как настоящий человек рассказывает подруге. Хук в первой фразе, мягкий CTA в конце (искать на WB). Верни СТРОГО JSON: {\"title\":\"...\",\"spoken\":\"текст монолога без ремарок\"}. Без преамбулы.",
+        messages: [{ role: "user", content: `Товар: ${body.sku_name || body.sku_art || "товар"}${body.category ? `. Категория: ${body.category}` : ""}. Идея/хук: ${brief}. Напиши монолог для аватара.` }],
+      });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const txt = (res.content as any[]).filter((b) => b.type === "text").map((b) => b.text).join(" ");
+      const m = txt.match(/\{[\s\S]*\}/);
+      if (m) { const j = JSON.parse(m[0]); title = j.title || title; spoken = j.spoken || spoken; }
+    }
+  } catch { /* дефолт = brief */ }
+
+  // 2) HeyGen v2/video/generate — вертикаль 9:16
+  try {
+    const r = await fetch(`${HG_BASE}/v2/video/generate`, {
+      method: "POST",
+      headers: { "X-Api-Key": apiKey, "Content-Type": "application/json" },
+      cache: "no-store",
+      signal: AbortSignal.timeout(25000),
+      body: JSON.stringify({
+        title,
+        dimension: { width: 720, height: 1280 },
+        video_inputs: [{
+          character: { type: "avatar", avatar_id: avatarId, avatar_style: "normal" },
+          voice: { type: "text", input_text: spoken, voice_id: voiceId },
+        }],
+      }),
+    });
+    if (!r.ok) return NextResponse.json({ detail: `HeyGen ${r.status}: ${(await r.text()).slice(0, 180)}` }, { status: 502 });
+    const j = (await r.json()) as { data?: { video_id?: string }; error?: unknown };
+    const videoId = j.data?.video_id;
+    if (!videoId) return NextResponse.json({ detail: `HeyGen без video_id: ${JSON.stringify(j).slice(0, 150)}` }, { status: 502 });
+    const taskId = newAvatarId();
+    putAvatar(taskId, { videoId, title, spoken, avatarId, voiceId, createdAt: Date.now() });
+    return NextResponse.json({ task_id: taskId, title, spoken });
+  } catch (e) {
+    return NextResponse.json({ detail: String(e).slice(0, 120) }, { status: 502 });
+  }
+}
