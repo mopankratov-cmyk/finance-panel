@@ -183,10 +183,66 @@
               </select>
               <a x-show="b.url" :href="'/video-overlay?src='+encodeURIComponent(b.url)+'&hook='+encodeURIComponent(b.hook||'')" target="_blank" class="text-[10px] px-1.5 py-0.5 rounded bg-violet-100 text-violet-700">оверлей</a>
               <a x-show="b.url" :href="'/uniquizer?src='+encodeURIComponent(b.url)" target="_blank" class="text-[10px] px-1.5 py-0.5 rounded bg-rose-100 text-rose-700">копии</a>
+              <button x-show="b.url" @click="scheduleAll(b)" class="text-[10px] px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700">в расписание</button>
               <button @click="delBank(bi)" class="text-[10px] text-gray-400 hover:text-red-600 px-1">✕</button>
             </div>
           </div>
         </template>
+      </div>
+    </section>
+
+    <section class="card mb-6">
+      <div class="flex items-center justify-between mb-3">
+        <div><div class="sec-h">🌐 Дистрибуция — аккаунты и расписание</div><div class="sec-sub">реестр аккаунтов по соцсетям · план постинга по дням · UTM для атрибуции переходов на WB</div></div>
+        <span class="pill pill-violet" x-text="accReg.length + ' акк · ' + sched.length + ' постов'"></span>
+      </div>
+      <div class="grid md:grid-cols-2 gap-4">
+        <!-- Реестр аккаунтов -->
+        <div>
+          <div class="text-[12px] font-semibold mb-2">Аккаунты</div>
+          <div class="flex gap-1.5 mb-2">
+            <select x-model="newAcc.platform" class="text-[12px] border border-gray-300 rounded-lg px-2 py-1.5">
+              <template x-for="p in platforms" :key="p"><option x-text="p"></option></template>
+            </select>
+            <input x-model="newAcc.handle" @keydown.enter="addAcc()" placeholder="@хэндл" class="flex-1 text-[12px] border border-gray-300 rounded-lg px-2 py-1.5">
+            <button @click="addAcc()" class="btn btn-primary text-[12px]">＋</button>
+          </div>
+          <div x-show="!accReg.length" class="text-[11px] text-gray-400 italic">пока пусто — добавь аккаунты для постинга</div>
+          <div class="space-y-1">
+            <template x-for="(a,ai) in accReg" :key="a.id">
+              <div class="flex items-center gap-2 p-1.5 border border-gray-100 rounded-lg text-[12px]">
+                <span class="pill" :class="a.status==='активен' ? 'pill-live' : 'pill-off'" x-text="a.platform"></span>
+                <span class="font-medium flex-1" x-text="a.handle"></span>
+                <button @click="copyUtm(a)" title="UTM-ссылка на WB" class="text-[10px] text-sky-600">UTM</button>
+                <button @click="toggleAcc(ai)" class="text-[10px] text-gray-400" x-text="a.status==='активен' ? 'пауза' : 'вкл'"></button>
+                <button @click="delAcc(ai)" class="text-[10px] text-gray-400 hover:text-red-600">✕</button>
+              </div>
+            </template>
+          </div>
+          <div x-show="utmMsg" class="text-[11px] text-emerald-600 mt-1.5" x-text="utmMsg"></div>
+        </div>
+        <!-- Расписание -->
+        <div>
+          <div class="flex items-center justify-between mb-2">
+            <div class="text-[12px] font-semibold">Расписание</div>
+            <input type="datetime-local" x-model="schWhen" class="text-[11px] border border-gray-300 rounded px-1.5 py-1" title="старт публикаций">
+          </div>
+          <div x-show="!sched.length" class="text-[11px] text-gray-400 italic">пусто — жми «в расписание» на ролике из Банка (распланирует по всем активным аккаунтам, по одному в день)</div>
+          <div class="space-y-1 max-h-72 overflow-y-auto">
+            <template x-for="(s,si) in sched" :key="s.id">
+              <div class="flex items-center gap-2 p-1.5 border border-gray-100 rounded-lg text-[11px]">
+                <span class="pill pill-rose" x-text="s.platform"></span>
+                <div class="flex-1 min-w-0"><div class="truncate font-medium" x-text="s.hook || '(без хука)'"></div><div class="text-gray-400" x-text="s.handle + ' · ' + s.when.replace('T',' ')"></div></div>
+                <select class="text-[10px] border border-gray-200 rounded px-1 py-0.5" @change="setSchedStatus(si, $event.target.value)">
+                  <option value="запланировано" :selected="s.status==='запланировано'">план</option>
+                  <option value="опубликовано" :selected="s.status==='опубликовано'">опубл.</option>
+                </select>
+                <a x-show="s.url" :href="s.url" target="_blank" class="text-[10px] text-violet-600">видео</a>
+                <button @click="delSched(si)" class="text-[10px] text-gray-400 hover:text-red-600">✕</button>
+              </div>
+            </template>
+          </div>
+        </div>
       </div>
     </section>
 
@@ -308,7 +364,47 @@ function patrick() {
     async init() {
       try { const d = await (await fetch('/api/costs')).json(); this.products = (d.rows || d.items || []).filter(p => p.article); } catch (e) {}
       try { this.bank = JSON.parse(localStorage.getItem('cf_bank') || '[]'); } catch (e) { this.bank = []; }
+      try { this.accReg = JSON.parse(localStorage.getItem('cf_accounts') || '[]'); } catch (e) { this.accReg = []; }
+      try { this.sched = JSON.parse(localStorage.getItem('cf_sched') || '[]'); } catch (e) { this.sched = []; }
     },
+    // ── Дистрибуция: реестр аккаунтов ──
+    accReg: [],
+    newAcc: { platform: 'TikTok', handle: '', note: '' },
+    platforms: ['TikTok', 'Instagram', 'YouTube', 'VK', 'Telegram', 'Дзен', 'Pinterest', 'Threads'],
+    _saveAcc() { try { localStorage.setItem('cf_accounts', JSON.stringify(this.accReg)); } catch (e) {} },
+    addAcc() {
+      if (!this.newAcc.handle.trim()) return;
+      this.accReg.push({ id: Date.now(), platform: this.newAcc.platform, handle: this.newAcc.handle.trim(), note: this.newAcc.note.trim(), status: 'активен' });
+      this.newAcc.handle = ''; this.newAcc.note = ''; this._saveAcc();
+    },
+    delAcc(i) { this.accReg.splice(i, 1); this._saveAcc(); },
+    toggleAcc(i) { if (this.accReg[i]) { this.accReg[i].status = this.accReg[i].status === 'активен' ? 'пауза' : 'активен'; this._saveAcc(); } },
+    // UTM-ссылка на карточку WB для атрибуции переходов
+    utmFor(acc, art) {
+      const a = (art || this.dir.plan?.target_article || this.orbit.article || '').trim();
+      const base = a ? ('https://www.wildberries.ru/catalog/0/search.aspx?search=' + encodeURIComponent(a)) : 'https://www.wildberries.ru';
+      const src = (acc.platform || '').toLowerCase();
+      return base + (base.includes('?') ? '&' : '?') + 'utm_source=' + encodeURIComponent(src) + '&utm_medium=ugc&utm_campaign=' + encodeURIComponent(acc.handle || '');
+    },
+    copyUtm(acc) { const u = this.utmFor(acc); navigator.clipboard?.writeText(u); this.utmMsg = 'скопировано: ' + u.slice(0, 50) + '…'; setTimeout(() => this.utmMsg = '', 2500); },
+    utmMsg: '',
+    // ── Дистрибуция: расписание постинга ──
+    sched: [],
+    schWhen: '',
+    _saveSched() { try { localStorage.setItem('cf_sched', JSON.stringify(this.sched)); } catch (e) {} },
+    scheduleAll(b) {
+      // распланировать ролик из банка по всем активным аккаунтам (по одному в день, со сдвигом)
+      const active = this.accReg.filter(a => a.status === 'активен');
+      if (!active.length) { this.utmMsg = 'нет активных аккаунтов — добавь их выше'; setTimeout(() => this.utmMsg = '', 3000); return; }
+      const start = this.schWhen ? new Date(this.schWhen).getTime() : Date.now() + 3600000;
+      active.forEach((a, k) => {
+        this.sched.unshift({ id: Date.now() + k, when: new Date(start + k * 86400000).toISOString().slice(0, 16), platform: a.platform, handle: a.handle, hook: b.hook || '', url: b.url || '', status: 'запланировано' });
+      });
+      this._saveSched();
+      this.utmMsg = 'распланировано на ' + active.length + ' аккаунтов'; setTimeout(() => this.utmMsg = '', 3000);
+    },
+    setSchedStatus(i, st) { if (this.sched[i]) { this.sched[i].status = st; this._saveSched(); } },
+    delSched(i) { this.sched.splice(i, 1); this._saveSched(); },
     bank: [],
     saveToBank(s, art) {
       const item = { ts: Date.now(), art, hook: s.hook || s.concept || '', route: s.gen?.route || '', url: s.gen?.url || '', caption: s.caption || s.scenario?.caption || '', status: 'review' };
