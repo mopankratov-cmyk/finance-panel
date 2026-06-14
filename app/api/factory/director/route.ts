@@ -36,10 +36,10 @@ export async function POST(req: NextRequest) {
 
 Доступные товары (артикул — название): ${topProducts || "нет данных, спроси/уточни артикул"}
 
-Верни СТРОГО JSON: {"goal":"цель одним предложением","target_article":"артикул если ясно или ''","plan":[{"order":1,"agent":"Аналитик","action":"что сделать","params":{"...":"..."},"why":"зачем"}],"clarify":"что уточнить у владельца, если ТЗ неполное, иначе ''","summary":"короткое резюме плана для владельца"}. Без преамбулы.`;
+План — максимум 6 шагов, формулировки КОРОТКИЕ (action ≤12 слов, why ≤8 слов, params минимальны). Верни СТРОГО валидный компактный JSON: {"goal":"цель 1 предложением","target_article":"артикул или ''","plan":[{"order":1,"agent":"Аналитик","action":"кратко","params":{},"why":"кратко"}],"clarify":"что уточнить или ''","summary":"резюме 1-2 предложения"}. Только JSON, без преамбулы, без markdown.`;
 
   try {
-    const res = await client.messages.create({ model: MODEL, max_tokens: 1500, system: sys, messages: [{ role: "user", content: task }] });
+    const res = await client.messages.create({ model: MODEL, max_tokens: 2500, system: sys, messages: [{ role: "user", content: task }] });
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const txt = (res.content as any[]).filter((b) => b.type === "text").map((b) => b.text).join(" ");
     const m = txt.match(/\{[\s\S]*\}/);
