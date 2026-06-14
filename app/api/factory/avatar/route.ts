@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { CLAUDE_MODEL as MODEL, createClaudeClient } from "@/lib/agent/client";
-import { newAvatarId, putAvatar } from "@/lib/lab/avatarStore";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -59,9 +58,9 @@ export async function POST(req: NextRequest) {
     const j = (await r.json()) as { data?: { video_id?: string }; error?: unknown };
     const videoId = j.data?.video_id;
     if (!videoId) return NextResponse.json({ detail: `HeyGen без video_id: ${JSON.stringify(j).slice(0, 150)}` }, { status: 502 });
-    const taskId = newAvatarId();
-    putAvatar(taskId, { videoId, title, spoken, avatarId, voiceId, createdAt: Date.now() });
-    return NextResponse.json({ task_id: taskId, title, spoken });
+    // stateless: video_id зашит в task_id (serverless-инстансы не делят память)
+    const taskId = "av." + Buffer.from(videoId).toString("base64url");
+    return NextResponse.json({ task_id: taskId, video_id: videoId, title, spoken });
   } catch (e) {
     return NextResponse.json({ detail: String(e).slice(0, 120) }, { status: 502 });
   }

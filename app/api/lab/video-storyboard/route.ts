@@ -59,7 +59,8 @@ export async function POST(req: NextRequest) {
     if (!sub.ok) return NextResponse.json({ detail: `Higgsfield ${sub.status}: ${(await sub.text()).slice(0, 150)}` }, { status: 502 });
     const j = (await sub.json()) as { id?: string };
     if (!j.id) return NextResponse.json({ detail: "Higgsfield не вернул id" }, { status: 502 });
-    const taskId = newVideoId();
+    // stateless: hfJobId зашит в task_id (serverless-инстансы не делят память); стор — best-effort для recover/last
+    const taskId = "hf." + Buffer.from(j.id).toString("base64url");
     putVideo(taskId, { hfJobId: j.id, scenario_title: scenario.title, beats: scenario.beats, script: scenario.script, baseImage, createdAt: Date.now() });
     return NextResponse.json({ task_id: taskId, scenario_title: scenario.title, beats: scenario.beats, script: scenario.script });
   } catch (e) {

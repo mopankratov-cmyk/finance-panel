@@ -18,10 +18,14 @@ async function pollHf(jobId: string) {
 // Статус видео-сториборда: сценарий + видео (frames=[url]) когда готово.
 export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
+  // stateless: hfJobId декодируется из task_id; стор — фолбэк (для старых id/recover)
+  let hfJobId = "";
+  if (id.startsWith("hf.")) { try { hfJobId = Buffer.from(id.slice(3), "base64url").toString("utf8"); } catch { /* */ } }
   const t = getVideo(id);
-  if (!t) return NextResponse.json({ status: "error", error: "задача не найдена" });
-  const base = { scenario_title: t.scenario_title, beats: t.beats, script: t.script };
-  const job = await pollHf(t.hfJobId);
+  if (!hfJobId && t) hfJobId = t.hfJobId;
+  if (!hfJobId) return NextResponse.json({ status: "error", error: "задача не найдена" });
+  const base = { scenario_title: t?.scenario_title, beats: t?.beats, script: t?.script };
+  const job = await pollHf(hfJobId);
   if (!job) return NextResponse.json({ ...base, status: "rendering", progress: "рендер видео…" });
   if (job.status === "completed") {
     const url = job.results?.raw?.url ?? job.results?.min?.url ?? null;
