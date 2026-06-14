@@ -3,10 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta http-equiv="Cache-Control" content="no-cache">
-<title>Внешний трафик — Inferno</title>
-<link rel="icon" type="image/svg+xml" href="/favicon.svg?v=4">
-<link rel="alternate icon" href="/favicon.ico?v=4">
-<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<title>Контент-завод — Финансы МП</title>
 <meta name="theme-color" content="#e11d48">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <script src="https://cdn.tailwindcss.com"></script>
@@ -20,334 +17,124 @@
   .card { background:#fff; border:1px solid #e5e7eb; border-radius:.75rem; padding:1.25rem; }
   .card-tight { background:#fff; border:1px solid #e5e7eb; border-radius:.65rem; padding:.9rem; }
   .pill { display:inline-block; padding:.18rem .55rem; border-radius:1rem; font-size:.72rem; font-weight:500; white-space:nowrap; }
-  .pill-live { background:#dcfce7; color:#166534; }
-  .pill-warn { background:#fef3c7; color:#854d0e; }
-  .pill-off  { background:#f3f4f6; color:#6b7280; }
-  .pill-rose { background:#ffe4e6; color:#be123c; }
-  .pill-sky  { background:#e0f2fe; color:#075985; }
-  .pill-violet { background:#f3e8ff; color:#6b21a8; }
+  .pill-live { background:#dcfce7; color:#166534; } .pill-warn { background:#fef3c7; color:#854d0e; } .pill-off { background:#f3f4f6; color:#6b7280; }
+  .pill-rose { background:#ffe4e6; color:#be123c; } .pill-sky { background:#e0f2fe; color:#075985; } .pill-violet { background:#f3e8ff; color:#6b21a8; }
   .stat-num { font-size:1.65rem; font-weight:700; letter-spacing:-.02em; line-height:1; }
-  .stat-label { font-size:.72rem; color:#6b7280; margin-top:.35rem; }
-  .delta-up   { color:#16a34a; font-size:.72rem; font-weight:500; }
-  .delta-down { color:#dc2626; font-size:.72rem; font-weight:500; }
-  .acc-card { display:flex; align-items:center; gap:.7rem; padding:.65rem .8rem; border:1px solid #e5e7eb; border-radius:.55rem; background:#fff; transition:all .12s; }
-  .acc-card:hover { border-color:#fda4af; background:#fff7f8; }
-  .acc-ico { width:30px; height:30px; border-radius:.4rem; display:flex; align-items:center; justify-content:center; font-size:.85rem; font-weight:700; color:#fff; flex-shrink:0; }
-  .ico-ig { background:linear-gradient(135deg,#fa7e1e,#d62976 50%,#962fbf 100%); }
-  .ico-tt { background:#000; }
-  .ico-yt { background:#ff0000; }
-  .ico-vk { background:#0077ff; }
-  .ico-tg { background:#229ED9; }
-  .ico-dz { background:#000; color:#fdda22; }
-  .ico-pin { background:#bd081c; }
-  .ico-th { background:#000; }
-  .kanban-col { background:#f9fafb; border:1px solid #e5e7eb; border-radius:.6rem; padding:.7rem; min-height:340px; }
-  .kanban-card { background:#fff; border:1px solid #e5e7eb; border-radius:.5rem; padding:.65rem .75rem; margin-bottom:.5rem; cursor:grab; transition:all .12s; }
-  .kanban-card:hover { border-color:#fda4af; box-shadow:0 2px 6px rgba(225,29,72,.08); }
+  .stat-label { font-size:.72rem; color:#6b7280; margin-top:.35rem; } .delta-up { color:#16a34a; font-size:.72rem; font-weight:500; }
+  .acc-card { display:flex; align-items:center; gap:.7rem; padding:.65rem .8rem; border:1px solid #e5e7eb; border-radius:.55rem; background:#fff; }
+  .acc-ico { width:30px; height:30px; border-radius:.4rem; display:flex; align-items:center; justify-content:center; font-size:.78rem; font-weight:700; color:#fff; flex-shrink:0; }
+  .ico-ig { background:linear-gradient(135deg,#fa7e1e,#d62976 50%,#962fbf 100%); } .ico-tt { background:#000; } .ico-yt { background:#ff0000; }
+  .ico-vk { background:#0077ff; } .ico-tg { background:#229ED9; } .ico-dz { background:#000; color:#fdda22; } .ico-pin { background:#bd081c; } .ico-th { background:#000; }
+  .kanban-col { background:#f9fafb; border:1px solid #e5e7eb; border-radius:.6rem; padding:.7rem; min-height:300px; }
+  .kanban-card { background:#fff; border:1px solid #e5e7eb; border-radius:.5rem; padding:.65rem .75rem; margin-bottom:.5rem; }
   .kanban-card-title { font-size:.82rem; font-weight:600; color:#111827; line-height:1.25; margin-bottom:.3rem; }
   .kanban-card-meta { font-size:.7rem; color:#6b7280; display:flex; gap:.4rem; flex-wrap:wrap; align-items:center; }
   .kanban-empty { color:#9ca3af; font-size:.78rem; text-align:center; padding:.8rem .3rem; font-style:italic; }
   .col-head { display:flex; align-items:center; justify-content:space-between; padding:0 .15rem .55rem; }
-  .col-title { font-size:.75rem; font-weight:600; color:#374151; text-transform:uppercase; letter-spacing:.05em; }
+  .col-title { font-size:.72rem; font-weight:600; color:#374151; text-transform:uppercase; letter-spacing:.05em; }
   .col-count { background:#fff; border:1px solid #e5e7eb; color:#6b7280; font-size:.7rem; padding:.05rem .45rem; border-radius:.7rem; font-weight:600; }
   table.tbl { border-collapse:collapse; width:100%; font-size:.83rem; }
   table.tbl th { text-align:left; font-weight:600; color:#6b7280; font-size:.72rem; text-transform:uppercase; letter-spacing:.04em; padding:.55rem .75rem; background:#fafafa; border-bottom:1px solid #e5e7eb; }
-  table.tbl td { padding:.6rem .75rem; border-bottom:1px solid #f1f5f9; vertical-align:middle; }
-  table.tbl tbody tr:hover { background:#fff7f8; }
-  table.tbl tbody tr:last-child td { border-bottom:0; }
-  .sku-photo { width:38px; height:38px; border-radius:.45rem; object-fit:cover; background:#f3f4f6; border:1px solid #e5e7eb; }
-  .cal-grid { display:grid; grid-template-columns: 110px repeat(7, 1fr); gap:4px; font-size:.7rem; }
-  .cal-cell { background:#fafafa; border:1px solid #f1f5f9; border-radius:.35rem; padding:.4rem .35rem; min-height:54px; display:flex; flex-direction:column; gap:3px; }
-  .cal-head { background:#fff; border:0; font-weight:600; color:#6b7280; padding:.3rem; text-align:center; min-height:auto; text-transform:uppercase; letter-spacing:.04em; font-size:.65rem; }
-  .cal-row-label { font-size:.7rem; font-weight:600; color:#374151; display:flex; align-items:center; gap:.4rem; padding:.4rem .35rem; }
-  .post-dot { display:inline-block; padding:1px 5px; border-radius:.3rem; font-size:.62rem; font-weight:600; line-height:1.35; }
-  .post-vid { background:#fce7f3; color:#9d174d; }
-  .post-img { background:#dbeafe; color:#1e40af; }
-  .post-txt { background:#e5e7eb; color:#374151; }
-  .post-rls { background:#fef3c7; color:#854d0e; }
-  .progress { height:5px; background:#f3f4f6; border-radius:99px; overflow:hidden; }
-  .progress > div { height:100%; background:linear-gradient(90deg,#f43f5e,#ec4899); border-radius:99px; }
+  table.tbl td { padding:.6rem .75rem; border-bottom:1px solid #f1f5f9; } table.tbl tbody tr:last-child td { border-bottom:0; }
+  .sku-photo { width:38px; height:38px; border-radius:.45rem; border:1px solid #e5e7eb; }
   .ai-badge { display:inline-flex; align-items:center; gap:.25rem; padding:.1rem .4rem; background:#f3e8ff; color:#6b21a8; border-radius:.3rem; font-size:.66rem; font-weight:600; }
-  .btn { display:inline-flex; align-items:center; gap:.4rem; padding:.45rem .85rem; border-radius:.5rem; font-size:.82rem; font-weight:500; transition:all .12s; cursor:pointer; border:0; }
-  .btn-primary { background:#e11d48; color:#fff; }
-  .btn-primary:hover { background:#be123c; }
-  .btn-ghost { background:#fff; color:#374151; border:1px solid #e5e7eb; }
-  .btn-ghost:hover { background:#f9fafb; border-color:#d1d5db; }
+  .btn { display:inline-flex; align-items:center; gap:.4rem; padding:.45rem .85rem; border-radius:.5rem; font-size:.82rem; font-weight:500; cursor:pointer; border:0; text-decoration:none; }
+  .btn-primary { background:#e11d48; color:#fff; } .btn-ghost { background:#fff; color:#374151; border:1px solid #e5e7eb; }
   .mvp-tag { background:#fef3c7; color:#854d0e; padding:.15rem .5rem; border-radius:.3rem; font-size:.65rem; font-weight:600; text-transform:uppercase; letter-spacing:.05em; }
-  .sec-h { font-size:.95rem; font-weight:700; letter-spacing:-.01em; color:#111827; }
-  .sec-sub { font-size:.72rem; color:#9ca3af; margin-top:.15rem; }
-  .util-link { color:#9ca3af; font-size:.75rem; text-decoration:none; transition:color .12s; }
-  .util-link:hover { color:#be123c; }
+  .sec-h { font-size:.95rem; font-weight:700; color:#111827; } .sec-sub { font-size:.72rem; color:#9ca3af; margin-top:.15rem; }
+  .util-link { color:#9ca3af; font-size:.75rem; text-decoration:none; } .util-link:hover { color:#be123c; }
+  .progress { height:5px; background:#f3f4f6; border-radius:99px; overflow:hidden; } .progress > div { height:100%; background:linear-gradient(90deg,#f43f5e,#ec4899); }
   @media (max-width: 1024px) { aside.side { display:none; } }
 </style>
 </head>
 <body class="bg-gray-50 text-gray-900 min-h-screen" x-data="patrick()" x-cloak>
-
 <div class="flex">
-
   <aside class="side w-60 bg-white border-r border-gray-200 min-h-screen sticky top-0 p-4 flex flex-col gap-1">
-    <a href="/" class="flex items-center gap-2 px-2 py-2 mb-3">
+    <a href="/" class="flex items-center gap-2 px-2 py-2 mb-3 no-underline">
       <div class="w-8 h-8 rounded-md bg-gradient-to-br from-rose-500 to-pink-700 flex items-center justify-center text-white font-extrabold text-sm">📣</div>
-      <div>
-        <div class="font-extrabold text-sm tracking-tight">Внешний трафик</div>
-        <div class="text-[10px] text-gray-400 -mt-0.5">Inferno · Патрик</div>
-      </div>
+      <div><div class="font-extrabold text-sm tracking-tight text-gray-900">Контент-завод</div><div class="text-[10px] text-gray-400 -mt-0.5">Патрик · @mkt_aibot</div></div>
     </a>
-
     <template x-for="item in nav" :key="item.id">
       <div class="nav-item" :class="{ 'active': active === item.id }" @click="active = item.id">
-        <span x-text="item.icon" class="text-base"></span>
-        <span x-text="item.label" class="flex-1"></span>
+        <span x-text="item.icon" class="text-base"></span><span x-text="item.label" class="flex-1"></span>
         <span x-show="item.badge" x-text="item.badge" class="text-[10px] bg-rose-100 text-rose-700 px-1.5 py-0.5 rounded-full font-bold"></span>
       </div>
     </template>
-
-    <div class="mt-auto pt-4 border-t border-gray-100">
-      <div class="px-2 py-2 flex items-center gap-2">
-        <img src="/patrick.jpg" class="w-8 h-8 rounded-full object-cover border border-gray-200" alt="Патрик">
-        <div class="flex-1">
-          <div class="text-xs font-semibold">Патрик</div>
-          <div class="text-[10px] text-gray-400">@mkt_aibot · на связи</div>
-        </div>
-        <span class="w-1.5 h-1.5 rounded-full bg-green-400"></span>
-      </div>
-      <a href="/" class="util-link block px-2 py-1">← на главную</a>
-    </div>
+    <div class="mt-auto pt-4 border-t border-gray-100"><a href="/" class="util-link block px-2 py-1">← на дашборд</a></div>
   </aside>
 
   <main class="flex-1 p-6 lg:p-8 max-w-[1400px]">
-
     <div class="flex items-center justify-between mb-6 flex-wrap gap-3">
       <div>
-        <div class="flex items-center gap-2">
-          <h1 class="text-2xl font-extrabold tracking-tight">Контент-завод соцсетей</h1>
-          <span class="mvp-tag">MVP · мокап</span>
-        </div>
+        <div class="flex items-center gap-2"><h1 class="text-2xl font-extrabold tracking-tight">Контент-завод соцсетей</h1><span class="mvp-tag">MVP</span></div>
         <p class="text-sm text-gray-500 mt-1">Аккаунты, AI-генерация, расписание, переходы на карточки WB</p>
       </div>
-      <div class="flex gap-2">
-        <button class="btn btn-ghost">＋ Аккаунт</button>
-        <button class="btn btn-primary">＋ Новый контент</button>
-      </div>
+      <div class="flex gap-2"><button class="btn btn-ghost">＋ Аккаунт</button><a href="/inferno/wb.html#lab" class="btn btn-primary">＋ Новый контент</a></div>
     </div>
 
     <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-      <div class="card-tight">
-        <div class="stat-num text-rose-700">14</div>
-        <div class="stat-label">подключённых аккаунтов</div>
-        <div class="delta-up mt-1">+2 за неделю</div>
-      </div>
-      <div class="card-tight">
-        <div class="stat-num">38</div>
-        <div class="stat-label">постов за 7 дней</div>
-        <div class="delta-up mt-1">плановых 42 — 90%</div>
-      </div>
-      <div class="card-tight">
-        <div class="stat-num">2 184</div>
-        <div class="stat-label">переходов в WB</div>
-        <div class="delta-up mt-1">+31% к пред. неделе</div>
-      </div>
-      <div class="card-tight">
-        <div class="stat-num">147</div>
-        <div class="stat-label">заказов с UTM</div>
-        <div class="delta-up mt-1">CR 6.7% · ROAS 4.2x</div>
-      </div>
+      <div class="card-tight"><div class="stat-num text-rose-700" x-text="kpi.accounts"></div><div class="stat-label">подключённых аккаунтов</div><div class="delta-up mt-1" x-text="kpi.accountsDelta"></div></div>
+      <div class="card-tight"><div class="stat-num" x-text="kpi.posts"></div><div class="stat-label">постов за 7 дней</div><div class="delta-up mt-1" x-text="kpi.postsPlan"></div></div>
+      <div class="card-tight"><div class="stat-num" x-text="kpi.clicks"></div><div class="stat-label">переходов в WB</div><div class="delta-up mt-1" x-text="kpi.clicksDelta"></div></div>
+      <div class="card-tight"><div class="stat-num" x-text="kpi.orders"></div><div class="stat-label">заказов с UTM</div><div class="delta-up mt-1" x-text="kpi.ordersMeta"></div></div>
     </div>
 
     <section class="card mb-6">
-      <div class="flex items-center justify-between mb-4">
-        <div>
-          <div class="sec-h">Подключённые аккаунты</div>
-          <div class="sec-sub">8 платформ × несколько аккаунтов на каждой</div>
-        </div>
-        <a href="#" class="util-link">все аккаунты →</a>
-      </div>
-
+      <div class="flex items-center justify-between mb-4"><div><div class="sec-h">Подключённые аккаунты</div><div class="sec-sub">десятки аккаунтов на сеть · группы и антибан</div></div><a href="#" class="util-link">все аккаунты →</a></div>
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-2">
         <template x-for="a in accounts" :key="a.handle">
-          <div class="acc-card">
-            <div class="acc-ico" :class="a.ico" x-text="a.short"></div>
-            <div class="flex-1 min-w-0">
-              <div class="text-sm font-semibold truncate" x-text="a.handle"></div>
-              <div class="text-[11px] text-gray-500 truncate"><span x-text="a.platform"></span> · <span x-text="a.followers"></span></div>
-            </div>
-            <span class="pill" :class="a.statusClass" x-text="a.status"></span>
-          </div>
+          <div class="acc-card"><div class="acc-ico" :class="a.ico" x-text="a.short"></div>
+            <div class="flex-1 min-w-0"><div class="text-sm font-semibold truncate" x-text="a.handle"></div><div class="text-[11px] text-gray-500 truncate"><span x-text="a.platform"></span> · <span x-text="a.followers"></span></div></div>
+            <span class="pill" :class="a.statusClass" x-text="a.status"></span></div>
         </template>
       </div>
     </section>
 
     <section class="card mb-6">
-      <div class="flex items-center justify-between mb-4">
-        <div>
-          <div class="sec-h">Конвейер AI-контента</div>
-          <div class="sec-sub">От идеи до публикации — что в работе прямо сейчас</div>
-        </div>
-        <div class="flex gap-2 text-xs">
-          <span class="ai-badge">⚡ AI-генерация: 3 в очереди</span>
-        </div>
-      </div>
-
+      <div class="flex items-center justify-between mb-4"><div><div class="sec-h">Конвейер AI-контента</div><div class="sec-sub">От идеи до публикации — что в работе сейчас</div></div><span class="ai-badge">⚡ AI-генерация: 3 в очереди</span></div>
       <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-3">
         <template x-for="col in kanban" :key="col.id">
-          <div class="kanban-col">
-            <div class="col-head">
-              <div class="col-title" x-text="col.title"></div>
-              <span class="col-count" x-text="col.cards.length"></span>
-            </div>
+          <div class="kanban-col"><div class="col-head"><div class="col-title" x-text="col.title"></div><span class="col-count" x-text="col.cards.length"></span></div>
             <template x-for="c in col.cards" :key="c.id">
-              <div class="kanban-card">
-                <div class="kanban-card-title" x-text="c.title"></div>
-                <div class="kanban-card-meta">
-                  <span class="pill" :class="c.platformClass" x-text="c.platform"></span>
-                  <span x-show="c.ai" class="ai-badge">⚡ <span x-text="c.ai"></span></span>
-                  <span x-show="c.eta" x-text="c.eta" class="text-gray-400"></span>
-                </div>
-                <div x-show="c.sku" class="text-[10px] text-gray-400 mt-1.5">→ артикул <span x-text="c.sku" class="font-mono"></span></div>
-              </div>
+              <div class="kanban-card"><div class="kanban-card-title" x-text="c.title"></div>
+                <div class="kanban-card-meta"><span class="pill" :class="c.platformClass" x-text="c.platform"></span>
+                  <span x-show="c.ai" class="ai-badge">⚡ <span x-text="c.ai"></span></span><span x-show="c.eta" x-text="c.eta" class="text-gray-400"></span></div>
+                <div x-show="c.sku" class="text-[10px] text-gray-400 mt-1.5">→ артикул <span x-text="c.sku" class="font-mono"></span></div></div>
             </template>
-            <div x-show="col.cards.length === 0" class="kanban-empty">пусто</div>
-          </div>
-        </template>
-      </div>
-    </section>
-
-    <section class="card mb-6">
-      <div class="flex items-center justify-between mb-4">
-        <div>
-          <div class="sec-h">Расписание публикаций · 7 дней</div>
-          <div class="sec-sub">Серая — план. Цветная — пост (тип). Жёлтая — рилс/видео-флагман.</div>
-        </div>
-        <div class="flex gap-1.5 items-center text-[11px]">
-          <span class="post-dot post-vid">видео</span>
-          <span class="post-dot post-img">пост</span>
-          <span class="post-dot post-rls">флагман</span>
-          <span class="post-dot post-txt">текст</span>
-        </div>
-      </div>
-
-      <div class="cal-grid">
-        <div class="cal-head"></div>
-        <template x-for="d in days" :key="d">
-          <div class="cal-head" x-text="d"></div>
-        </template>
-
-        <template x-for="row in calendar" :key="row.platform">
-          <template x-for="(cell, i) in [row.platform, ...row.cells]" :key="i">
-            <template x-if="i === 0">
-              <div class="cal-row-label">
-                <span class="acc-ico" :class="row.ico" x-text="row.short" style="width:22px;height:22px;font-size:.65rem;border-radius:.3rem;"></span>
-                <span x-text="row.platform"></span>
-              </div>
-            </template>
-            <template x-if="i > 0">
-              <div class="cal-cell">
-                <template x-for="p in cell" :key="p.t + p.h">
-                  <span class="post-dot" :class="'post-' + p.t" x-text="p.h"></span>
-                </template>
-              </div>
-            </template>
-          </template>
+            <div x-show="col.cards.length === 0" class="kanban-empty">пусто</div></div>
         </template>
       </div>
     </section>
 
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
-
       <section class="card lg:col-span-2">
-        <div class="flex items-center justify-between mb-4">
-          <div>
-            <div class="sec-h">Товары WB в продвижении</div>
-            <div class="sec-sub">UTM-метки, переходы, заказы с внешки за 7 дней</div>
-          </div>
-          <a href="#" class="util-link">все товары →</a>
-        </div>
-
-        <div class="overflow-x-auto">
-          <table class="tbl">
-            <thead>
-              <tr>
-                <th>Товар</th>
-                <th>Артикул</th>
-                <th class="text-right">→ WB</th>
-                <th class="text-right">Заказов</th>
-                <th>Канал-лидер</th>
-                <th class="text-right">CR</th>
-              </tr>
-            </thead>
-            <tbody>
-              <template x-for="p in products" :key="p.sku">
-                <tr>
-                  <td>
-                    <div class="flex items-center gap-2.5">
-                      <div class="sku-photo" :style="'background:'+p.color"></div>
-                      <div class="font-medium" x-text="p.title"></div>
-                    </div>
-                  </td>
-                  <td class="font-mono text-[12px] text-gray-500" x-text="p.sku"></td>
-                  <td class="text-right font-semibold" x-text="p.clicks"></td>
-                  <td class="text-right font-semibold" x-text="p.orders"></td>
-                  <td><span class="pill" :class="p.channelClass" x-text="p.channel"></span></td>
-                  <td class="text-right text-gray-700" x-text="p.cr"></td>
-                </tr>
-              </template>
-            </tbody>
-          </table>
-        </div>
+        <div class="flex items-center justify-between mb-4"><div><div class="sec-h">Товары WB в продвижении</div><div class="sec-sub">UTM, переходы, заказы с внешки за 7 дней</div></div><a href="#" class="util-link">все товары →</a></div>
+        <div class="overflow-x-auto"><table class="tbl"><thead><tr><th>Товар</th><th>Артикул</th><th class="text-right">→ WB</th><th class="text-right">Заказов</th><th>Канал-лидер</th><th class="text-right">CR</th></tr></thead>
+          <tbody><template x-for="p in products" :key="p.sku"><tr>
+            <td><div class="flex items-center gap-2.5"><div class="sku-photo" :style="'background:'+p.color"></div><div class="font-medium" x-text="p.title"></div></div></td>
+            <td class="font-mono text-[12px] text-gray-500" x-text="p.sku"></td><td class="text-right font-semibold" x-text="p.clicks"></td>
+            <td class="text-right font-semibold" x-text="p.orders"></td><td><span class="pill" :class="p.channelClass" x-text="p.channel"></span></td><td class="text-right text-gray-700" x-text="p.cr"></td>
+          </tr></template></tbody></table></div>
       </section>
-
       <section class="card">
-        <div class="mb-3">
-          <div class="sec-h">Шаблоны и серии</div>
-          <div class="sec-sub">Регулярные сценарии — клик и Патрик собирает новую серию</div>
-        </div>
-
-        <div class="space-y-2.5">
-          <template x-for="t in templates" :key="t.id">
-            <div class="border border-gray-200 rounded-lg p-3 hover:border-rose-300 transition cursor-pointer">
-              <div class="flex items-center justify-between mb-1">
-                <div class="font-semibold text-sm" x-text="t.title"></div>
-                <span class="text-[11px] text-gray-400" x-text="t.cadence"></span>
-              </div>
-              <div class="text-[11px] text-gray-500 mb-1.5" x-text="t.format"></div>
-              <div class="flex items-center gap-2">
-                <div class="progress flex-1">
-                  <div :style="'width:' + t.progress + '%'"></div>
-                </div>
-                <span class="text-[11px] text-gray-500" x-text="t.next"></span>
-              </div>
-            </div>
-          </template>
-        </div>
+        <div class="mb-3"><div class="sec-h">Шаблоны и серии</div><div class="sec-sub">Регулярные сценарии — клик и Патрик собирает серию</div></div>
+        <div class="space-y-2.5"><template x-for="t in templates" :key="t.id">
+          <div class="border border-gray-200 rounded-lg p-3"><div class="flex items-center justify-between mb-1"><div class="font-semibold text-sm" x-text="t.title"></div><span class="text-[11px] text-gray-400" x-text="t.cadence"></span></div>
+            <div class="text-[11px] text-gray-500 mb-1.5" x-text="t.format"></div><div class="flex items-center gap-2"><div class="progress flex-1"><div :style="'width:'+t.progress+'%'"></div></div><span class="text-[11px] text-gray-500" x-text="t.next"></span></div></div>
+        </template></div>
       </section>
     </div>
 
     <section class="card mb-10">
-      <div class="flex items-center justify-between mb-4">
-        <div>
-          <div class="sec-h">Что нужно решить</div>
-          <div class="sec-sub">Патрик готов запустить — нужно одно действие от Юры</div>
-        </div>
-      </div>
-
-      <div class="space-y-2">
-        <template x-for="t in todos" :key="t.id">
-          <div class="flex items-start gap-3 p-3 border border-gray-200 rounded-lg hover:bg-rose-50/40">
-            <span class="pill mt-0.5" :class="t.tagClass" x-text="t.tag"></span>
-            <div class="flex-1">
-              <div class="font-medium text-sm" x-text="t.title"></div>
-              <div class="text-xs text-gray-500 mt-0.5" x-text="t.detail"></div>
-            </div>
-            <button class="btn btn-ghost text-xs" x-text="t.cta"></button>
-          </div>
-        </template>
-      </div>
+      <div class="mb-4"><div class="sec-h">Что нужно решить</div><div class="sec-sub">Патрик готов запустить — нужно одно действие</div></div>
+      <div class="space-y-2"><template x-for="t in todos" :key="t.id">
+        <div class="flex items-start gap-3 p-3 border border-gray-200 rounded-lg"><span class="pill mt-0.5" :class="t.tagClass" x-text="t.tag"></span>
+          <div class="flex-1"><div class="font-medium text-sm" x-text="t.title"></div><div class="text-xs text-gray-500 mt-0.5" x-text="t.detail"></div></div>
+          <button class="btn btn-ghost text-xs" x-text="t.cta"></button></div>
+      </template></div>
     </section>
 
-    <footer class="text-xs text-gray-400 pb-6">
-      MVP-мокап · данные демонстрационные · следующий шаг: подключение реальных аккаунтов и AI-генератора через Higgsfield
-    </footer>
-
+    <footer class="text-xs text-gray-400 pb-6" x-text="footer"></footer>
   </main>
 </div>
 
@@ -355,106 +142,49 @@
 function patrick() {
   return {
     active: 'dashboard',
+    footer: 'Кокпит контент-завода · данные демонстрационные · Фаза 0: подключаем живые KPI (переходы/заказы WB) и нашу AI-лабу',
     nav: [
-      { id: 'dashboard',  icon: '🏠', label: 'Главная' },
-      { id: 'accounts',   icon: '👥', label: 'Аккаунты', badge: '14' },
-      { id: 'pipeline',   icon: '⚡', label: 'Конвейер', badge: '17' },
-      { id: 'calendar',   icon: '📅', label: 'Расписание' },
-      { id: 'products',   icon: '🛒', label: 'Товары WB' },
-      { id: 'templates',  icon: '🧩', label: 'Шаблоны' },
-      { id: 'analytics',  icon: '📈', label: 'Метрики' },
-      { id: 'inbox',      icon: '💬', label: 'Комменты / DM', badge: '3' },
-      { id: 'settings',   icon: '⚙️', label: 'Настройки' },
+      { id:'dashboard', icon:'🏠', label:'Главная' }, { id:'accounts', icon:'👥', label:'Аккаунты', badge:'14' },
+      { id:'pipeline', icon:'⚡', label:'Конвейер', badge:'17' }, { id:'calendar', icon:'📅', label:'Расписание' },
+      { id:'products', icon:'🛒', label:'Товары WB' }, { id:'bloggers', icon:'🎭', label:'AI-блогеры' },
+      { id:'templates', icon:'🧩', label:'Шаблоны' }, { id:'analytics', icon:'📈', label:'Метрики' }, { id:'settings', icon:'⚙️', label:'Настройки' },
     ],
-    days: ['Сегодня','Вт','Ср','Чт','Пт','Сб','Вс'],
+    kpi: { accounts:'14', accountsDelta:'+2 за неделю', posts:'38', postsPlan:'план 42 — 90%', clicks:'2 184', clicksDelta:'+31% к неделе', orders:'147', ordersMeta:'CR 6.7% · ROAS 4.2x' },
     accounts: [
-      { platform: 'Instagram', short: 'IG', ico: 'ico-ig', handle: '@kovry.home',     followers: '12.4k',  status: 'активен',  statusClass: 'pill-live' },
-      { platform: 'Instagram', short: 'IG', ico: 'ico-ig', handle: '@joycity.kids',   followers: '3.1k',   status: 'активен',  statusClass: 'pill-live' },
-      { platform: 'TikTok',    short: 'TT', ico: 'ico-tt', handle: '@kovry.home',     followers: '28.2k',  status: 'активен',  statusClass: 'pill-live' },
-      { platform: 'TikTok',    short: 'TT', ico: 'ico-tt', handle: '@quicksi.shop',   followers: '5.7k',   status: 'нет API',  statusClass: 'pill-warn' },
-      { platform: 'YouTube',   short: 'YT', ico: 'ico-yt', handle: 'Ковры&Уют',       followers: '1.8k',   status: 'активен',  statusClass: 'pill-live' },
-      { platform: 'VK',        short: 'VK', ico: 'ico-vk', handle: 'club: ковры home',followers: '6.0k',   status: 'активен',  statusClass: 'pill-live' },
-      { platform: 'VK',        short: 'VK', ico: 'ico-vk', handle: 'club: joycity',   followers: '2.2k',   status: 'активен',  statusClass: 'pill-live' },
-      { platform: 'Telegram',  short: 'TG', ico: 'ico-tg', handle: '@kovry_home',     followers: '1.1k',   status: 'активен',  statusClass: 'pill-live' },
-      { platform: 'Telegram',  short: 'TG', ico: 'ico-tg', handle: '@joycity_kids',   followers: '480',    status: 'активен',  statusClass: 'pill-live' },
-      { platform: 'Дзен',      short: 'DZ', ico: 'ico-dz', handle: 'Ковры и уют',     followers: '900',    status: 'активен',  statusClass: 'pill-live' },
-      { platform: 'Pinterest', short: 'PIN',ico: 'ico-pin',handle: 'kovry_home',      followers: '410',    status: 'активен',  statusClass: 'pill-live' },
-      { platform: 'Pinterest', short: 'PIN',ico: 'ico-pin',handle: 'joycity_play',    followers: '120',    status: 'активен',  statusClass: 'pill-live' },
-      { platform: 'Threads',   short: 'TH', ico: 'ico-th', handle: '@kovry.home',     followers: '230',    status: 'тест',     statusClass: 'pill-warn' },
-      { platform: '+ ещё',     short: '+',  ico: 'ico-tg', handle: 'добавить',        followers: '— —',     status: 'off',      statusClass: 'pill-off'  },
+      { platform:'TikTok', short:'TT', ico:'ico-tt', handle:'@kovry.home', followers:'28.2k', status:'активен', statusClass:'pill-live' },
+      { platform:'Instagram', short:'IG', ico:'ico-ig', handle:'@kovry.home', followers:'12.4k', status:'активен', statusClass:'pill-live' },
+      { platform:'VK', short:'VK', ico:'ico-vk', handle:'ковры home', followers:'6.0k', status:'активен', statusClass:'pill-live' },
+      { platform:'YouTube', short:'YT', ico:'ico-yt', handle:'Ковры&Уют', followers:'1.8k', status:'активен', statusClass:'pill-live' },
+      { platform:'Telegram', short:'TG', ico:'ico-tg', handle:'@kovry_home', followers:'1.1k', status:'активен', statusClass:'pill-live' },
+      { platform:'Дзен', short:'DZ', ico:'ico-dz', handle:'Ковры и уют', followers:'900', status:'активен', statusClass:'pill-live' },
+      { platform:'Pinterest', short:'PIN', ico:'ico-pin', handle:'kovry_home', followers:'410', status:'активен', statusClass:'pill-live' },
+      { platform:'TikTok', short:'TT', ico:'ico-tt', handle:'@quicksi.shop', followers:'5.7k', status:'нет API', statusClass:'pill-warn' },
     ],
     kanban: [
-      { id:'idea', title:'Идеи', cards: [
-        { id:1, title:'Ковёр в детскую: до/после', platform:'TikTok',    platformClass:'pill-rose',   ai:'GPT-копи', sku:'KV-160' },
-        { id:2, title:'Топ-3 ошибки при выборе ковра', platform:'Reels', platformClass:'pill-rose',   ai:'GPT-копи' },
-        { id:3, title:'Распаковка нового артикула', platform:'YouTube',  platformClass:'pill-sky',                  sku:'BG-44'  },
-      ]},
-      { id:'draft', title:'AI-черновик', cards: [
-        { id:4, title:'Лайфхак: чем чистить ковёр (3 совета)', platform:'Shorts', platformClass:'pill-rose', ai:'Higgsfield · video', eta:'~6 мин' },
-        { id:5, title:'Цветовая палитра ковров на лето', platform:'IG карусель',  platformClass:'pill-violet', ai:'Higgsfield · img × 8' },
-      ]},
-      { id:'review', title:'На утверждение', cards: [
-        { id:6, title:'UGC-видео: распаковка BG-44',   platform:'TikTok',  platformClass:'pill-rose',  ai:'готово',  sku:'BG-44' },
-        { id:7, title:'Карусель: как стирать акрил',   platform:'IG',      platformClass:'pill-violet', ai:'готово' },
-        { id:8, title:'Пост-сторителлинг от Юры',      platform:'VK',      platformClass:'pill-sky' },
-      ]},
-      { id:'scheduled', title:'Запланировано', cards: [
-        { id:9,  title:'Серия "ковёр недели" — KV-160',     platform:'мульти-постинг', platformClass:'pill-rose', eta:'Сегодня 18:00', sku:'KV-160' },
-        { id:10, title:'Рилс: ребёнок и игровой коврик',     platform:'IG · Reels',     platformClass:'pill-violet', eta:'Завтра 09:30', sku:'JC-12' },
-        { id:11, title:'Шорт: 7 секунд распаковки',          platform:'YT Shorts',      platformClass:'pill-sky',    eta:'Завтра 14:00' },
-        { id:12, title:'Карусель: цветовые сочетания',       platform:'Pinterest',      platformClass:'pill-rose',   eta:'Ср 11:00' },
-      ]},
-      { id:'live', title:'Опубликовано (24ч)', cards: [
-        { id:13, title:'Рилс: распаковка BG-44',     platform:'IG · 8.4k показов', platformClass:'pill-violet', sku:'BG-44' },
-        { id:14, title:'TikTok: до/после ковра',     platform:'TT · 22k просмотров', platformClass:'pill-rose', sku:'KV-160' },
-        { id:15, title:'Пост: летняя коллекция',     platform:'VK · 1.2k охват',  platformClass:'pill-sky' },
-        { id:16, title:'Шорт: совет по чистке',      platform:'YT · 3.1k показов', platformClass:'pill-sky' },
-      ]},
-    ],
-    calendar: [
-      { platform:'Instagram', short:'IG', ico:'ico-ig', cells:[
-        [{t:'img',h:'10:00'},{t:'vid',h:'18:00'}], [{t:'rls',h:'09:30'}], [{t:'img',h:'12:00'}], [{t:'vid',h:'18:00'}], [{t:'rls',h:'19:00'}], [{t:'img',h:'11:00'}], []
-      ]},
-      { platform:'TikTok',    short:'TT', ico:'ico-tt', cells:[
-        [{t:'vid',h:'14:00'},{t:'vid',h:'21:00'}], [{t:'vid',h:'13:00'}], [{t:'vid',h:'14:00'},{t:'vid',h:'21:00'}], [{t:'vid',h:'13:00'}], [{t:'rls',h:'20:00'}], [{t:'vid',h:'12:00'}], [{t:'vid',h:'12:00'}]
-      ]},
-      { platform:'YT Shorts', short:'YT', ico:'ico-yt', cells:[
-        [{t:'vid',h:'15:00'}], [], [{t:'vid',h:'14:00'}], [], [{t:'vid',h:'15:00'}], [], [{t:'rls',h:'17:00'}]
-      ]},
-      { platform:'VK',        short:'VK', ico:'ico-vk', cells:[
-        [{t:'txt',h:'09:00'},{t:'img',h:'19:00'}], [{t:'img',h:'11:00'}], [{t:'txt',h:'09:00'}], [{t:'img',h:'19:00'}], [{t:'txt',h:'09:00'}], [], [{t:'img',h:'12:00'}]
-      ]},
-      { platform:'Telegram',  short:'TG', ico:'ico-tg', cells:[
-        [{t:'txt',h:'10:00'}], [{t:'img',h:'19:00'}], [{t:'txt',h:'10:00'}], [{t:'img',h:'19:00'}], [{t:'txt',h:'10:00'}], [{t:'img',h:'14:00'}], []
-      ]},
-      { platform:'Pinterest', short:'PIN', ico:'ico-pin', cells:[
-        [{t:'img',h:'13:00'},{t:'img',h:'13:00'}], [{t:'img',h:'13:00'}], [{t:'img',h:'13:00'},{t:'img',h:'13:00'}], [{t:'img',h:'13:00'}], [{t:'img',h:'13:00'}], [{t:'img',h:'13:00'}], [{t:'img',h:'13:00'}]
-      ]},
+      { id:'idea', title:'Идеи', cards:[ {id:1,title:'Ковёр в детскую: до/после',platform:'TikTok',platformClass:'pill-rose',ai:'GPT-копи',sku:'KV-160'}, {id:2,title:'Топ-3 ошибки при выборе ковра',platform:'Reels',platformClass:'pill-rose',ai:'GPT-копи'} ]},
+      { id:'draft', title:'AI-черновик', cards:[ {id:4,title:'Лайфхак: чем чистить ковёр',platform:'Shorts',platformClass:'pill-rose',ai:'Higgsfield · video',eta:'~6 мин'}, {id:5,title:'Палитра ковров на лето',platform:'IG карусель',platformClass:'pill-violet',ai:'Higgsfield · img ×8'} ]},
+      { id:'review', title:'На утверждение', cards:[ {id:6,title:'UGC: распаковка BG-44',platform:'TikTok',platformClass:'pill-rose',ai:'готово',sku:'BG-44'}, {id:7,title:'Карусель: как стирать акрил',platform:'IG',platformClass:'pill-violet',ai:'готово'} ]},
+      { id:'scheduled', title:'Запланировано', cards:[ {id:9,title:'Серия «ковёр недели» KV-160',platform:'мульти-постинг',platformClass:'pill-rose',eta:'Сегодня 18:00',sku:'KV-160'}, {id:10,title:'Рилс: игровой коврик',platform:'IG · Reels',platformClass:'pill-violet',eta:'Завтра 09:30',sku:'JC-12'} ]},
+      { id:'live', title:'Опубликовано (24ч)', cards:[ {id:13,title:'Рилс: распаковка BG-44',platform:'IG · 8.4k показов',platformClass:'pill-violet',sku:'BG-44'}, {id:14,title:'TikTok: до/после ковра',platform:'TT · 22k просмотров',platformClass:'pill-rose',sku:'KV-160'} ]},
     ],
     products: [
-      { sku:'KV-160-BG',  title:'Ковёр Beige 160×230',     color:'#e9d6b5', clicks:'687',  orders:'48',  channel:'TikTok',   channelClass:'pill-rose', cr:'7.0%' },
-      { sku:'KV-200-GR',  title:'Ковёр Graphite 200×290',  color:'#3f3f46', clicks:'412',  orders:'29',  channel:'Instagram',channelClass:'pill-violet', cr:'7.0%' },
-      { sku:'BG-44',      title:'Коврик игровой Pastel',   color:'#fbcfe8', clicks:'318',  orders:'22',  channel:'Pinterest',channelClass:'pill-rose', cr:'6.9%' },
-      { sku:'JC-12',      title:'Развивающий коврик JC',   color:'#bae6fd', clicks:'401',  orders:'31',  channel:'YT Shorts',channelClass:'pill-sky',  cr:'7.7%' },
-      { sku:'KV-160-IV',  title:'Ковёр Ivory 160×230',     color:'#fef3c7', clicks:'234',  orders:'12',  channel:'VK',       channelClass:'pill-sky',  cr:'5.1%' },
-      { sku:'OP-08',      title:'Оптима — комплект 8 шт',  color:'#d1fae5', clicks:'132',  orders:'5',   channel:'Дзен',     channelClass:'pill-sky',  cr:'3.8%' },
+      { sku:'KV-160', title:'Ковёр Beige 160×230', color:'#e9d6b5', clicks:'687', orders:'48', channel:'TikTok', channelClass:'pill-rose', cr:'7.0%' },
+      { sku:'JC-12', title:'Развивающий коврик JC', color:'#bae6fd', clicks:'401', orders:'31', channel:'YT Shorts', channelClass:'pill-sky', cr:'7.7%' },
+      { sku:'BG-44', title:'Коврик игровой Pastel', color:'#fbcfe8', clicks:'318', orders:'22', channel:'Pinterest', channelClass:'pill-rose', cr:'6.9%' },
+      { sku:'KV-200', title:'Ковёр Graphite 200×290', color:'#3f3f46', clicks:'412', orders:'29', channel:'Instagram', channelClass:'pill-violet', cr:'7.0%' },
     ],
     templates: [
-      { id:1, title:'Ковёр недели',          format:'мульти-постинг (IG+TT+VK+TG)',  cadence:'еженедельно', progress:70, next:'через 2 дня' },
-      { id:2, title:'Распаковка артикула',   format:'TT + Reels + YT Shorts',        cadence:'на новинку',  progress:30, next:'нужен SKU' },
-      { id:3, title:'Лайфхак-серия',         format:'TT + Reels',                    cadence:'2 раза в нед.', progress:55, next:'завтра' },
-      { id:4, title:'UGC-отзыв клиента',     format:'IG + TT + VK',                  cadence:'по событию',  progress:10, next:'жду материал' },
-      { id:5, title:'Цветовые сочетания',    format:'Pinterest + IG карусель',       cadence:'еженедельно', progress:90, next:'сегодня' },
+      { id:1, title:'Ковёр недели', format:'мульти-постинг (IG+TT+VK+TG)', cadence:'еженедельно', progress:70, next:'через 2 дня' },
+      { id:2, title:'Распаковка артикула', format:'TT + Reels + YT Shorts', cadence:'на новинку', progress:30, next:'нужен SKU' },
+      { id:3, title:'Лайфхак-серия', format:'TT + Reels', cadence:'2 раза/нед', progress:55, next:'завтра' },
     ],
     todos: [
-      { id:1, tag:'API',    tagClass:'pill-warn',   title:'Подключить TikTok Business API для @quicksi.shop',     detail:'Без API публикация только вручную. Нужен ваш QR-логин в приложении.', cta:'инструкция' },
-      { id:2, tag:'⚡ AI',  tagClass:'pill-violet', title:'Утвердить 3 черновика в «На утверждение»',              detail:'UGC-видео + 2 карусели готовы — посмотреть и одобрить публикацию.',     cta:'смотреть' },
-      { id:3, tag:'бюджет', tagClass:'pill-rose',   title:'Запустить тестовую кампанию VK Ads на @kovry.home',     detail:'Бюджет 5 000 ₽, гипотеза: лето + ковры для дачи. Нужен ваш апрув.',     cta:'апрув' },
-      { id:4, tag:'товар',  tagClass:'pill-sky',    title:'Указать UTM-метки для BG-44 и JC-12',                   detail:'Без меток заказы с внешки не атрибутируются. Сделаю автоматом если ОК.', cta:'сделать'},
+      { id:1, tag:'AI', tagClass:'pill-violet', title:'Утвердить 3 черновика в «На утверждение»', detail:'UGC-видео + 2 карусели готовы — одобрить публикацию.', cta:'смотреть' },
+      { id:2, tag:'UTM', tagClass:'pill-live', title:'Проставить UTM-метки и промокоды для BG-44, JC-12', detail:'Без меток заказы с внешки не атрибутируются.', cta:'сделать' },
+      { id:3, tag:'API', tagClass:'pill-warn', title:'Подключить TikTok Business API для @quicksi.shop', detail:'Без API публикация только вручную.', cta:'инструкция' },
     ],
   }
 }
 </script>
-
 </body>
 </html>

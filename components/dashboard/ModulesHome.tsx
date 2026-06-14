@@ -2,7 +2,7 @@
 
 import {
   BarChart3, Bot, Coins, FlaskConical, LineChart,
-  Package, TrendingDown, Wallet, Building2, ArrowUpRight, LogOut, type LucideIcon,
+  Package, TrendingDown, Wallet, Building2, ArrowUpRight, LogOut, Megaphone, type LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -30,6 +30,7 @@ const MODULES: ModuleCard[] = [
 
   { title: "AI-агент", description: "Анализ данных, аномалии, рекомендации", href: "/agent", icon: Bot, agent: "Мэнси", zone: "AI", color: ["bg-fuchsia-100", "text-fuchsia-700"] },
   { title: "Контент-лаборатория", description: "AI-генерация фото и видео (Higgsfield)", href: "/inferno/wb.html#lab", icon: FlaskConical, agent: "Лекси", zone: "AI", color: ["bg-pink-100", "text-pink-700"] },
+  { title: "Контент-завод", description: "Соцсети, AI-блогеры, переходы на WB", href: "/inferno/patrick.html", icon: Megaphone, agent: "Патрик", zone: "AI", color: ["bg-rose-100", "text-rose-700"] },
 ];
 
 const ZONES = ["Аналитика", "Финансы", "Операции", "AI"] as const;
