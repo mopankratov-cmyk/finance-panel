@@ -2,11 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { getActiveOzonCreds } from "@/lib/ozon/cabinet";
 import { ozonTransactionTotals, ozonAnalytics, ozonImages } from "@/lib/ozon/api";
+import { getWbReportTokens } from "@/lib/wb/cabinetTokens";
+import { fetchWbReportRows } from "@/lib/wb/report";
+import { cabinetIdFromParam } from "@/lib/rnp/resolveShop";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-const WB_STATS_TOKEN = process.env.WB_STATS_TOKEN || process.env.WB_TOKEN_STATISTICS;
 const num = (v: unknown) => Number(v ?? 0) || 0;
 const r0 = (v: number) => Math.round(v);
 
@@ -35,13 +37,14 @@ export async function GET(request: NextRequest) {
   const from = new Date(Date.now() - weeks * 7 * 86400000).toISOString().slice(0, 10);
 
   // ---------- WB (финотчёт, база до СПП) ----------
-  let wb: Record<string, number> | { error: string } = { error: "WB_STATS_TOKEN не настроен" };
-  if (WB_STATS_TOKEN) {
+  let wb: Record<string, number> | { error: string } = { error: "Нет активных WB-кабинетов" };
+  const wbCabinetId = cabinetIdFromParam(sp.get("wb_cabinet"));
+  const wbTokens = await getWbReportTokens(wbCabinetId);
+  if (wbTokens.length) {
     try {
-      const res = await fetch(`https://statistics-api.wildberries.ru/api/v5/supplier/reportDetailByPeriod?dateFrom=${from}&dateTo=${to}&limit=100000&rrdid=0`, { headers: { Authorization: WB_STATS_TOKEN }, next: { revalidate: 3600 } });
-      if (!res.ok) wb = { error: `WB ${res.status}` };
+      const { rows, errors } = await fetchWbReportRows<WbRow>(wbTokens, from, to);
+      if (!rows.length && errors.length) wb = { error: errors.join("; ").slice(0, 100) };
       else {
-        const rows = (await res.json()) as WbRow[];
         // комиссия WB = (выручка до СПП − выплата продавцу − эквайринг) по продажам ≈ реальные ~30%
         // (ppvz_sales_commission занижен; WB компенсирует СПП, поэтому база — до СПП)
         let revBeforeSpp = 0, salePayout = 0, saleAcq = 0, coinvest = 0, logistics = 0, storage = 0, penalty = 0, acquiring = 0, ad = 0, otherDed = 0, cogs = 0, units = 0;

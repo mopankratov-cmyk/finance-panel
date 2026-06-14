@@ -23,15 +23,16 @@ export default function LossesPage() {
   const [loading, setLoading] = useState(true);
   const [loc, setLoc] = useState<{ localizationPct: number; il: number; irp: number } | null>(null);
   const [ozonCab] = useActiveCabinet("ozon");
+  const [wbCab] = useActiveCabinet("wb");
 
   useEffect(() => {
     setLoading(true);
     const url = mp === "ozon"
       ? `/api/ozon/losses?weeks=${weeks}${ozonCab ? `&cabinet=${ozonCab}` : ""}`
-      : `/api/wb/losses?weeks=${weeks}`;
+      : `/api/wb/losses?weeks=${weeks}${wbCab ? `&cabinet=${wbCab}` : ""}`;
     fetch(url, { cache: "no-store" })
       .then((r) => r.json()).then(setData).catch(() => setData(null)).finally(() => setLoading(false));
-  }, [weeks, mp, ozonCab]);
+  }, [weeks, mp, ozonCab, wbCab]);
   useEffect(() => {
     fetch("/api/supplies/localization").then((r) => r.json()).then(setLoc).catch(() => {});
   }, []);

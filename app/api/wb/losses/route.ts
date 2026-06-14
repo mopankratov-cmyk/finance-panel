@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getWbReportTokens } from "@/lib/wb/cabinetTokens";
+import { fetchWbReportRows } from "@/lib/wb/report";
+import { cabinetIdFromParam } from "@/lib/rnp/resolveShop";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
-
-const WB_STATS_TOKEN = process.env.WB_STATS_TOKEN || process.env.WB_TOKEN_STATISTICS;
 
 interface DetailRow {
   supplier_oper_name?: string;
@@ -24,24 +25,19 @@ const num = (v: unknown) => Number(v ?? 0) || 0;
 
 // Финотчёт-детализация: где WB удерживает деньги (reportDetailByPeriod). Кэш 1ч (лимит 1 req/min).
 export async function GET(request: NextRequest) {
-  if (!WB_STATS_TOKEN) return NextResponse.json({ error: "WB_STATS_TOKEN не настроен" }, { status: 500 });
-  const weeks = Math.min(8, Math.max(1, Number(new URL(request.url).searchParams.get("weeks")) || 4));
+  const sp = new URL(request.url).searchParams;
+  const weeks = Math.min(8, Math.max(1, Number(sp.get("weeks")) || 4));
+  const cabinetId = cabinetIdFromParam(sp.get("cabinet"));
+  const tokens = await getWbReportTokens(cabinetId);
+  if (!tokens.length) return NextResponse.json({ error: "Нет активных WB-кабинетов" }, { status: 500 });
+
   const to = new Date().toISOString().slice(0, 10);
   const from = new Date(Date.now() - weeks * 7 * 86400000).toISOString().slice(0, 10);
-  const url = `https://statistics-api.wildberries.ru/api/v5/supplier/reportDetailByPeriod?dateFrom=${from}&dateTo=${to}&limit=100000&rrdid=0`;
 
-  let rows: DetailRow[];
-  try {
-    const res = await fetch(url, { headers: { Authorization: WB_STATS_TOKEN }, next: { revalidate: 3600 } });
-    if (!res.ok) {
-      const t = await res.text();
-      return NextResponse.json({ error: `WB ${res.status}: ${t.slice(0, 150)}` }, { status: 502 });
-    }
-    rows = (await res.json()) as DetailRow[];
-  } catch (e) {
-    return NextResponse.json({ error: String(e).slice(0, 120) }, { status: 502 });
+  const { rows, errors } = await fetchWbReportRows<DetailRow>(tokens, from, to);
+  if (!rows.length && errors.length) {
+    return NextResponse.json({ error: errors.join("; ") }, { status: 502 });
   }
-  if (!Array.isArray(rows)) rows = [];
 
   // суммы по статьям удержаний (по всем строкам)
   let retail = 0, ppvz = 0, logistics = 0, storage = 0, penalty = 0, acceptance = 0,
