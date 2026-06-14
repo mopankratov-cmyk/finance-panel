@@ -128,6 +128,7 @@
                         <div class="text-gray-600 mt-1" x-text="prod.data.why"></div>
                         <div class="text-gray-500 mt-1" x-show="prod.data.needs" x-text="'нужно: '+prod.data.needs"></div>
                         <div class="text-gray-400 mt-1" x-show="prod.data.alt_route" x-text="'запасной: '+prod.data.alt_route"></div>
+                        <a x-show="prod.data.route==='slideshow'" :href="'/carousel?texts='+encodeURIComponent((s.hook||'')+'\n'+(s.angle||''))" target="_blank" class="inline-block mt-2 text-[11px] px-2 py-1 rounded bg-rose-600 text-white">→ собрать карусель</a>
                       </div>
                     </template>
                   </div>
