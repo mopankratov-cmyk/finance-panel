@@ -15,8 +15,22 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
   const origin = new URL(req.url).origin;
   const abs = (u: string) => (u?.startsWith("/") ? origin + u : u);
-  const baseImage = abs(body.sku_img_url || (body.product_urls?.[0]) || (body.ready_frame_urls?.[0]) || "");
-  if (!baseImage) return NextResponse.json({ detail: "Нет исходного фото товара" }, { status: 400 });
+  let baseImage = abs(body.sku_img_url || (body.product_urls?.[0]) || (body.ready_frame_urls?.[0]) || "");
+  // если фото не передали, но есть артикул — берём фото карточки WB по nm
+  if (!baseImage && body.sku_art) {
+    try {
+      const { getSupabaseAdmin } = await import("@/lib/supabaseAdmin");
+      const { wbCardImageUrl } = await import("@/lib/wb/cardImage");
+      const db = getSupabaseAdmin();
+      if (db) {
+        const { data } = await db.rpc("rnp_report");
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const row = (data as any[] | null)?.find((r) => r.article === body.sku_art);
+        if (row?.nm_id) baseImage = wbCardImageUrl(Number(row.nm_id));
+      }
+    } catch { /* без фото — ошибка ниже */ }
+  }
+  if (!baseImage) return NextResponse.json({ detail: "Нет исходного фото товара (передай sku_img_url или артикул с данными)" }, { status: 400 });
 
   // 1) сценарий через Claude
   let scenario = { title: "Карточка-видео", beats: ["Показ товара", "Деталь", "Призыв"], script: "", motion: "slow cinematic push-in, keep product centered and intact, soft studio light" };

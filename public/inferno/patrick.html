@@ -132,10 +132,15 @@
                       </div>
                     </template>
                   </div>
+                  <div x-show="vid.forIdx===i" class="mt-2">
+                    <div x-show="vid.busy || vid.status" class="text-[11px] text-gray-500" x-text="vid.status || '⏳ генерю видео…'"></div>
+                    <video x-show="vid.url && vid.forIdx===i" :src="vid.url" controls class="mt-1 rounded-lg border border-gray-200" style="max-height:320px"></video>
+                  </div>
                 </div>
                 <div class="flex flex-col gap-1 shrink-0">
                   <button @click="expandScenario(s,i)" :disabled="sc.busy" class="btn btn-ghost text-[11px]">→ сценарий</button>
                   <button @click="produce(s,i)" :disabled="prod.busy" class="btn btn-ghost text-[11px]">🎬 как снимать</button>
+                  <button @click="makeVideo(s,i)" :disabled="vid.busy" class="btn btn-ghost text-[11px]">🎥 видео</button>
                 </div>
               </div>
             </template>
@@ -312,6 +317,32 @@ function patrick() {
         else { this.orbit.result = d; this.orbit.msg = '✓ готово'; this.tr.raw = (d.videos || []).map(v => (v.caption || '') + (v.views ? ' (' + v.views + ')' : '')).filter(Boolean).join('\n'); }
       } catch (e) { this.orbit.err = true; this.orbit.msg = String(e).slice(0, 120); }
       this.orbit.busy = false;
+    },
+    vid: { busy: false, forIdx: -1, taskId: '', url: '', status: '' },
+    async makeVideo(idea, i) {
+      if (this.vid.busy) return;
+      const art = this.dir.plan?.target_article || this.orbit.article || '';
+      if (!art) { this.vid.forIdx = i; this.vid.status = 'нужен товар (укажи артикул в ТЗ или выбери в Трендоскопе)'; return; }
+      this.vid.busy = true; this.vid.forIdx = i; this.vid.url = ''; this.vid.status = 'запускаю Higgsfield…';
+      try {
+        const r = await fetch('/api/lab/video-storyboard', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sku_art: art, brief: idea.hook || idea.concept }) });
+        const d = await r.json();
+        if (!d.task_id) { this.vid.status = d.detail || d.error || 'не удалось запустить'; this.vid.busy = false; return; }
+        this.vid.taskId = d.task_id; this.vid.status = 'рендер видео (≈1-2 мин)…';
+        const deadline = Date.now() + 4 * 60 * 1000;
+        while (Date.now() < deadline) {
+          await new Promise(res => setTimeout(res, 6000));
+          try {
+            const sr = await fetch('/api/lab/video-storyboard-status/' + this.vid.taskId);
+            const sd = await sr.json();
+            if (sd.status === 'done' && (sd.video_url || (sd.frames && sd.frames[0]))) { this.vid.url = sd.video_url || sd.frames[0]; this.vid.status = '✓ готово'; break; }
+            if (sd.status === 'failed' || sd.error) { this.vid.status = 'ошибка: ' + (sd.error || 'failed'); break; }
+            this.vid.status = sd.progress || 'рендер…';
+          } catch (e) {}
+        }
+        if (!this.vid.url && !this.vid.status.startsWith('ошибка')) this.vid.status = 'долго — проверь позже';
+      } catch (e) { this.vid.status = String(e).slice(0, 100); }
+      this.vid.busy = false;
     },
     prod: { busy: false, forIdx: -1, data: null },
     async produce(idea, i) {
