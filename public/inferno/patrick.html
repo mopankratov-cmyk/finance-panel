@@ -182,6 +182,7 @@
                 <option value="scheduled" :selected="b.status==='scheduled'">в расписании</option>
               </select>
               <a x-show="b.url" :href="'/video-overlay?src='+encodeURIComponent(b.url)+'&hook='+encodeURIComponent(b.hook||'')" target="_blank" class="text-[10px] px-1.5 py-0.5 rounded bg-violet-100 text-violet-700">оверлей</a>
+              <a x-show="b.url" :href="'/uniquizer?src='+encodeURIComponent(b.url)" target="_blank" class="text-[10px] px-1.5 py-0.5 rounded bg-rose-100 text-rose-700">копии</a>
               <button @click="delBank(bi)" class="text-[10px] text-gray-400 hover:text-red-600 px-1">✕</button>
             </div>
           </div>

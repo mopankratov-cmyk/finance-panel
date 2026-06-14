@@ -27,8 +27,8 @@ export default function PnlPage() {
   const [tax, setTax] = useState(7);
   const [data, setData] = useState<{ wb: WB; ozon: OZ } | null>(null);
   const [loading, setLoading] = useState(true);
-  const [ozonCab] = useActiveCabinet("ozon");
-  const [wbCab] = useActiveCabinet("wb");
+  const [ozonCab, setOzonCab] = useActiveCabinet("ozon");
+  const [wbCab, setWbCab] = useActiveCabinet("wb");
 
   useEffect(() => {
     setLoading(true);
