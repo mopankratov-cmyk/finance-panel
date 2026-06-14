@@ -33,8 +33,8 @@ export interface AgentContext {
  * остатки/оборачиваемость, реклама и ДРР. Считается из rnp_report() —
  * без выгрузки тысяч строк в контекст модели.
  */
-export async function gatherAgentContext(): Promise<AgentContext> {
-  const rnp = await buildRnpReport();
+export async function gatherAgentContext(cabinetId?: string | null): Promise<AgentContext> {
+  const rnp = await buildRnpReport(cabinetId);
 
   const skus: AgentSku[] = rnp.map((r) => {
     const avgDaily = r.periods.month.ordersCount / 30;

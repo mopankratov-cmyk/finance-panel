@@ -4,6 +4,8 @@ import { RefreshCw, Warehouse } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AnalyticsTable, type Column } from "@/components/analytics/AnalyticsTable";
 import { formatNumber } from "@/lib/analytics/format";
+import { CabinetSwitcher } from "@/components/CabinetSwitcher";
+import { useActiveCabinet } from "@/lib/useActiveCabinet";
 import type { SupplyRow, WarehouseSummary } from "@/app/api/supplies/route";
 
 type Horizon = 30 | 45 | 60;
@@ -22,12 +24,13 @@ export function SuppliesPage() {
   const [error, setError] = useState<string | null>(null);
   const [horizon, setHorizon] = useState<Horizon>(45);
   const [minBatch, setMinBatch] = useState<number>(0);
+  const [cabId, setCabId] = useActiveCabinet("wb");
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/supplies", { cache: "no-store" });
+      const res = await fetch(`/api/supplies${cabId ? `?cabinet=${cabId}` : ""}`, { cache: "no-store" });
       const json = await res.json();
       if (json.error) setError(json.error);
       else {
@@ -39,7 +42,7 @@ export function SuppliesPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [cabId]);
 
   useEffect(() => {
     load();
@@ -85,6 +88,8 @@ export function SuppliesPage() {
           <h1 className="text-2xl font-bold text-slate-900">Закупки</h1>
           <p className="text-sm text-slate-400 mt-1">Потребность к поставке по темпу заказов</p>
         </div>
+        <div className="flex items-center gap-2">
+        <CabinetSwitcher mp="wb" accent="violet" onChange={setCabId} />
         <button
           onClick={load}
           disabled={loading}
@@ -93,6 +98,7 @@ export function SuppliesPage() {
           <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
           Обновить
         </button>
+        </div>
       </div>
 
       {error && (

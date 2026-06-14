@@ -1,7 +1,8 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { getWbCommission } from "@/lib/wb/commissions";
 import { wbCardImageUrl } from "@/lib/wb/cardImage";
+import { cabinetIdFromParam } from "@/lib/rnp/resolveShop";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -16,12 +17,13 @@ interface RpcRow {
 const TAX = 7;
 
 // ABC-анализ прибыли: какие SKU дают основную долю чистой прибыли (A/B/C) + убыточный «хвост».
-export async function GET() {
+export async function GET(req: NextRequest) {
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 500 });
+  const p_cabinet = cabinetIdFromParam(new URL(req.url).searchParams.get("cabinet"));
 
   const [rpcRes, costsRes, comm] = await Promise.all([
-    db.rpc("rnp_report"),
+    db.rpc("rnp_report", { p_cabinet }),
     db.from("product_costs").select("article, name"),
     getWbCommission(30),
   ]);
