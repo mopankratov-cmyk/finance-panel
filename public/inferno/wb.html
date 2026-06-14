@@ -3602,7 +3602,7 @@ function app() {
     sortDir: 'desc',
     sidebarOpen: false,
     mobileNav: false,
-    rnp: { shop: ((new URLSearchParams(location.search).get('shop')) || localStorage.getItem('rnp_shop') || 'ip'), data: null, loading: false, error: null },
+    rnp: { shop: ((new URLSearchParams(location.search).get('shop')) || localStorage.getItem('rnp_shop') || 'all'), data: null, loading: false, error: null },
     tbl: { data: null, loading: false, error: null, preparing: null, expandedAll: false, shownInitial: 100000, shown: 100000, startedAt: 0, elapsedSec: 0, _tick: null },
     plan: { mode: false, byNm: {}, econ: {}, month: '', loading: false },
     pl: { loaded:false, busy:false, year:'2026', orders:[], norms:{}, skus:[], skuOpen:false, skuCatOpen:{}, skuOrders:{}, skuMeta:{}, _t:null },

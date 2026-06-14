@@ -85,14 +85,15 @@ export interface RnpTable {
   skus: { nm: number; art: string; name: string; img_url: string; metrics: Metric[] }[];
 }
 
-export async function buildRnpTable(from: string, to: string): Promise<RnpTable | { error: string }> {
+export async function buildRnpTable(from: string, to: string, cabinetId?: string | null, shopLabel?: string): Promise<RnpTable | { error: string }> {
   const db = getSupabaseAdmin();
   if (!db) return { error: "Supabase не настроен" };
 
+  const p_cabinet = cabinetId || null; // null = все кабинеты
   const [dailyRes, skuRes, totalsRes, costsRes, comm] = await Promise.all([
-    db.rpc("rnp_daily", { p_from: from, p_to: to }),
-    db.rpc("rnp_daily_sku", { p_from: from, p_to: to }),
-    db.rpc("rnp_report"),
+    db.rpc("rnp_daily", { p_from: from, p_to: to, p_cabinet }),
+    db.rpc("rnp_daily_sku", { p_from: from, p_to: to, p_cabinet }),
+    db.rpc("rnp_report", { p_cabinet }),
     db.from("product_costs").select("article, name"),
     getWbCommission(30), // фактическая комиссия% по nm
   ]);
@@ -149,5 +150,5 @@ export async function buildRnpTable(from: string, to: string): Promise<RnpTable 
   const gmroiM = summary.find((m) => m.field === "gmroi");
   if (gmroiM) gmroiM.total = stockMoneyTotal > 0 ? Math.round(Math.min(999, (grossTotal / stockMoneyTotal) * 100) * 10) / 10 : 0;
 
-  return { shop_label: "Магазин", sku_count: skus.length, period, summary, skus };
+  return { shop_label: shopLabel || "Все кабинеты", sku_count: skus.length, period, summary, skus };
 }
