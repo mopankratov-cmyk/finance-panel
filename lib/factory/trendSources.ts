@@ -66,6 +66,31 @@ async function fromVirlo(niche: string, limit: number): Promise<ViralVideo[]> {
   } catch { return []; }
 }
 
+// ── Virlo Orbit: продукт-ориентированный поиск по ключевым фразам (асинхронный) ──
+async function virloInitCall(method: string, params: unknown): Promise<unknown> {
+  await virloCall("initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "factory", version: "1" } });
+  return virloCall(method, params);
+}
+function virloToolJson(res: unknown): Record<string, unknown> | null {
+  const t = (res as { result?: { content?: { type: string; text?: string }[] } } | null)?.result?.content?.find((b) => b.type === "text")?.text;
+  if (!t) return null;
+  try { return JSON.parse(t) as Record<string, unknown>; } catch { return null; }
+}
+// Запустить Orbit-поиск по фразам. Возвращает job_id (или null).
+export async function virloSearchStart(keywords: string[], platforms: string[] = ["tiktok", "youtube", "instagram"], period = "this_month"): Promise<string | null> {
+  if (!process.env.VIRLO_API_KEY) return null;
+  const res = await virloInitCall("tools/call", { name: "search_keywords", arguments: { name: `factory ${keywords[0] || ""}`.slice(0, 60), keywords: keywords.slice(0, 7), time_period: period, platforms } });
+  const j = virloToolJson(res);
+  const data = (j?.data as Record<string, unknown>) || j;
+  return (data?.id || data?.job_id || null) as string | null;
+}
+// Забрать результат/статус Orbit. dataType: status|videos|analysis|trends|outliers.
+export async function virloSearchResult(id: string, dataType = "status"): Promise<Record<string, unknown> | null> {
+  if (!process.env.VIRLO_API_KEY) return null;
+  const res = await virloInitCall("tools/call", { name: "get_keyword_search_results", arguments: { id, data_type: dataType } });
+  return virloToolJson(res);
+}
+
 export async function fetchViral(niche: string, limit = 20): Promise<ViralVideo[]> {
   if (process.env.APIFY_TOKEN) return fromApify(niche, limit);
   if (process.env.VIRLO_API_KEY) return fromVirlo(niche, limit);

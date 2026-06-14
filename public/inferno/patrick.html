@@ -139,6 +139,27 @@
         <span x-show="tr.err" class="text-[11px] text-red-600 self-center" x-text="tr.err"></span>
       </div>
       <textarea x-model="tr.raw" rows="3" placeholder="По строке на видео: ссылка или подпись + (просмотры). Напр.: 'POV: нашла санскрин без белого каста (1.2М)'" class="w-full text-[12px] px-3 py-2 border border-gray-300 rounded-lg"></textarea>
+
+      <div class="mt-3 border-t border-rose-100 pt-3">
+        <div class="text-[12px] font-semibold mb-1">🎯 Тренды под товар (глубокий поиск Virlo по нише)</div>
+        <div class="flex gap-2 items-center">
+          <input x-model="orbit.article" placeholder="артикул товара (напр. YYS0101)" class="text-sm px-3 py-2 border border-gray-300 rounded-lg" style="width:240px">
+          <button @click="startOrbit()" :disabled="orbit.busy" class="btn btn-primary" x-text="orbit.busy ? '⏳ запускаю…' : 'Найти под товар'"></button>
+          <button x-show="orbit.jobId" @click="checkOrbit()" :disabled="orbit.busy" class="btn btn-ghost">Проверить результат</button>
+          <span x-show="orbit.msg" class="text-[11px] self-center" :class="orbit.err?'text-red-600':'text-gray-500'" x-text="orbit.msg"></span>
+        </div>
+        <div x-show="orbit.keywords.length" class="text-[11px] text-gray-500 mt-1">фразы: <span x-text="orbit.keywords.join(', ')"></span></div>
+        <template x-if="orbit.result">
+          <div class="mt-2 text-[12px] border border-rose-100 rounded-lg p-2 bg-white">
+            <div class="font-semibold mb-1">Готово · видео в нише: <span x-text="(orbit.result.videos||[]).length"></span></div>
+            <template x-for="(v,i) in (orbit.result.videos||[]).slice(0,6)" :key="i">
+              <div class="text-[11px] text-gray-600 truncate">• <span x-text="(v.views? (Math.round(v.views/1000)+'k · ') : '')"></span><span x-text="v.caption"></span></div>
+            </template>
+            <div class="text-[11px] text-emerald-700 mt-2">Полная аналитика Virlo получена — нажми «Разобрать вставленное» или используй в плане.</div>
+          </div>
+        </template>
+      </div>
+
       <template x-if="tr.data">
         <div class="mt-3 border-t border-gray-100 pt-3 text-[12px]">
           <div class="mb-1"><b>Хуки-победители:</b> <span x-text="(tr.data.winning_hooks||[]).join(' · ')"></span></div>
@@ -245,6 +266,30 @@ function patrick() {
         if (d.error && !d.patterns) { this.tr.err = d.error; } else { this.tr.data = d.patterns; }
       } catch (e) { this.tr.err = String(e).slice(0, 120); }
       this.tr.busy = false;
+    },
+    orbit: { article: '', busy: false, jobId: '', keywords: [], msg: '', err: false, result: null },
+    async startOrbit() {
+      if (this.orbit.busy) return;
+      if (!this.orbit.article.trim()) { this.orbit.err = true; this.orbit.msg = 'укажи артикул'; return; }
+      this.orbit.busy = true; this.orbit.err = false; this.orbit.msg = 'запускаю Orbit…'; this.orbit.result = null;
+      try {
+        const r = await fetch('/api/factory/trends/search', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ article: this.orbit.article }) });
+        const d = await r.json();
+        if (d.error) { this.orbit.err = true; this.orbit.msg = d.error; } else { this.orbit.jobId = d.job_id; this.orbit.keywords = d.keywords || []; this.orbit.msg = 'Orbit идёт ~15-20 мин. Нажми «Проверить результат» позже.'; }
+      } catch (e) { this.orbit.err = true; this.orbit.msg = String(e).slice(0, 120); }
+      this.orbit.busy = false;
+    },
+    async checkOrbit() {
+      if (!this.orbit.jobId || this.orbit.busy) return;
+      this.orbit.busy = true; this.orbit.err = false; this.orbit.msg = 'проверяю…';
+      try {
+        const r = await fetch('/api/factory/trends/result', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ job_id: this.orbit.jobId }) });
+        const d = await r.json();
+        if (d.error) { this.orbit.err = true; this.orbit.msg = d.error; }
+        else if (!d.finalized) { this.orbit.msg = 'ещё идёт (' + (d.status || 'pending') + ') — проверь через ~' + (d.retry_after || 60) + 'с'; }
+        else { this.orbit.result = d; this.orbit.msg = '✓ готово'; this.tr.raw = (d.videos || []).map(v => (v.caption || '') + (v.views ? ' (' + v.views + ')' : '')).filter(Boolean).join('\n'); }
+      } catch (e) { this.orbit.err = true; this.orbit.msg = String(e).slice(0, 120); }
+      this.orbit.busy = false;
     },
     sc: { busy: false, forIdx: -1, data: null, err: '' },
     async expandScenario(idea, i) {
