@@ -106,7 +106,22 @@
                 <span class="pill" :class="s.verdict==='rework' ? 'pill-warn' : 'pill-live'" x-text="(s.score||'') "></span>
                 <div class="flex-1"><div class="font-medium" x-text="s.hook || s.concept"></div>
                   <div class="text-[11px] text-gray-400" x-show="s.format" x-text="s.format + (s.angle ? (' · ' + s.angle) : '')"></div>
-                  <div class="text-[11px] text-amber-700" x-show="s.fix" x-text="'на переделку: ' + s.fix"></div></div>
+                  <div class="text-[11px] text-amber-700" x-show="s.fix" x-text="'на переделку: ' + s.fix"></div>
+                  <div x-show="sc.forIdx===i" class="mt-2">
+                    <div x-show="sc.busy" class="text-[11px] text-gray-400">⏳ режиссёр раскадровывает…</div>
+                    <template x-if="sc.data && sc.forIdx===i">
+                      <div class="border border-rose-100 rounded-lg p-2 bg-white">
+                        <div class="text-[12px] font-semibold" x-text="(sc.data.title||'') + ' · ' + (sc.data.duration_sec||'') + 'с'"></div>
+                        <template x-for="(sh,si) in (sc.data.shots||[])" :key="si">
+                          <div class="text-[11px] mt-1.5 border-t border-gray-100 pt-1.5"><b x-text="sh.t"></b> — <span x-text="sh.visual"></span><span x-show="sh.onscreen" class="text-rose-600" x-text="' · текст: '+sh.onscreen"></span><div x-show="sh.voiceover" class="text-gray-500" x-text="'🎙 '+sh.voiceover"></div></div>
+                        </template>
+                        <div class="text-[11px] text-gray-500 mt-2" x-show="sc.data.caption" x-text="'Подпись: '+sc.data.caption"></div>
+                        <div class="text-[11px] text-gray-400" x-show="sc.data.music" x-text="'🎵 '+sc.data.music"></div>
+                      </div>
+                    </template>
+                  </div>
+                </div>
+                <button @click="expandScenario(s,i)" :disabled="sc.busy" class="btn btn-ghost text-[11px] shrink-0">→ сценарий</button>
               </div>
             </template>
           </div>
@@ -187,6 +202,17 @@ function patrick() {
     active: 'dashboard',
     dir: { task: '', busy: false, plan: null, err: '' },
     run: { busy: false, step: '', ideas: [], approved: 0, err: '' },
+    sc: { busy: false, forIdx: -1, data: null, err: '' },
+    async expandScenario(idea, i) {
+      if (this.sc.busy) return;
+      this.sc.busy = true; this.sc.forIdx = i; this.sc.data = null; this.sc.err = '';
+      try {
+        const r = await fetch('/api/factory/scenario', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ article: this.dir.plan?.target_article || '', hook: idea.hook || idea.concept, format: idea.format || '' }) });
+        const d = await r.json();
+        if (d.error) { this.sc.err = d.error; } else { this.sc.data = d.scenario; }
+      } catch (e) { this.sc.err = String(e).slice(0, 120); }
+      this.sc.busy = false;
+    },
     async runPlan() {
       const art = this.dir.plan?.target_article;
       if (!art || this.run.busy) return;
