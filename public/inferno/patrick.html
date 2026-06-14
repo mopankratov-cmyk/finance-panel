@@ -120,8 +120,22 @@
                       </div>
                     </template>
                   </div>
+                  <div x-show="prod.forIdx===i" class="mt-2">
+                    <div x-show="prod.busy" class="text-[11px] text-gray-400">⏳ продюсер думает…</div>
+                    <template x-if="prod.data && prod.forIdx===i">
+                      <div class="border border-rose-100 rounded-lg p-2 bg-white text-[11px]">
+                        <div><b>🎬 Способ:</b> <span class="pill pill-rose" x-text="prod.data.route"></span> · <b x-text="prod.data.tool"></b> · <span class="text-gray-400" x-text="'стоимость: '+prod.data.cost"></span></div>
+                        <div class="text-gray-600 mt-1" x-text="prod.data.why"></div>
+                        <div class="text-gray-500 mt-1" x-show="prod.data.needs" x-text="'нужно: '+prod.data.needs"></div>
+                        <div class="text-gray-400 mt-1" x-show="prod.data.alt_route" x-text="'запасной: '+prod.data.alt_route"></div>
+                      </div>
+                    </template>
+                  </div>
                 </div>
-                <button @click="expandScenario(s,i)" :disabled="sc.busy" class="btn btn-ghost text-[11px] shrink-0">→ сценарий</button>
+                <div class="flex flex-col gap-1 shrink-0">
+                  <button @click="expandScenario(s,i)" :disabled="sc.busy" class="btn btn-ghost text-[11px]">→ сценарий</button>
+                  <button @click="produce(s,i)" :disabled="prod.busy" class="btn btn-ghost text-[11px]">🎬 как снимать</button>
+                </div>
               </div>
             </template>
           </div>
@@ -297,6 +311,17 @@ function patrick() {
         else { this.orbit.result = d; this.orbit.msg = '✓ готово'; this.tr.raw = (d.videos || []).map(v => (v.caption || '') + (v.views ? ' (' + v.views + ')' : '')).filter(Boolean).join('\n'); }
       } catch (e) { this.orbit.err = true; this.orbit.msg = String(e).slice(0, 120); }
       this.orbit.busy = false;
+    },
+    prod: { busy: false, forIdx: -1, data: null },
+    async produce(idea, i) {
+      if (this.prod.busy) return;
+      this.prod.busy = true; this.prod.forIdx = i; this.prod.data = null;
+      try {
+        const r = await fetch('/api/factory/produce', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ idea: idea.hook || idea.concept, product: this.dir.plan?.target_article || this.orbit.article || '', trend_format: idea.format || '', available: { photos: true } }) });
+        const d = await r.json();
+        if (!d.error) this.prod.data = d.decision;
+      } catch (e) {}
+      this.prod.busy = false;
     },
     sc: { busy: false, forIdx: -1, data: null, err: '' },
     async expandScenario(idea, i) {
