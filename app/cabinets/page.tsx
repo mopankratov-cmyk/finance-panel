@@ -18,6 +18,20 @@ interface Cabinet {
   has_content: boolean;
 }
 
+type Scope = "statistics" | "analytics" | "advert" | "content";
+const SCOPE_LABEL: Record<Scope, string> = {
+  statistics: "Статистика",
+  analytics: "Аналитика",
+  advert: "Продвижение",
+  content: "Контент",
+};
+interface ScopeReport {
+  scopes: Record<Scope, boolean | null>;
+  expiresAt: string | null;
+  daysLeft: number | null;
+  isTest: boolean;
+}
+
 export default function CabinetsPage() {
   const [cabinets, setCabinets] = useState<Cabinet[]>([]);
   const [loading, setLoading] = useState(true);
@@ -32,6 +46,7 @@ export default function CabinetsPage() {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [showAdv, setShowAdv] = useState(false);
+  const [scopeRep, setScopeRep] = useState<ScopeReport | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -50,6 +65,7 @@ export default function CabinetsPage() {
     if (!token.trim()) return;
     setBusy(true);
     setMsg(null);
+    setScopeRep(null);
     try {
       const r = await fetch("/api/cabinets", {
         method: "POST",
@@ -61,6 +77,7 @@ export default function CabinetsPage() {
         setMsg({ ok: false, text: j.error || `Ошибка ${r.status}` });
       } else {
         setMsg({ ok: true, text: `Кабинет «${j.cabinet?.name}» добавлен` });
+        if (mp === "wb" && j.scopes) setScopeRep({ scopes: j.scopes, expiresAt: j.expiresAt ?? null, daysLeft: j.daysLeft ?? null, isTest: !!j.isTest });
         setToken(""); setClientId(""); setPerfId(""); setPerfSecret(""); setName(""); setAdvert(""); setContent("");
         await load();
       }
@@ -180,6 +197,37 @@ export default function CabinetsPage() {
             </span>
           )}
         </div>
+        {scopeRep && (
+          <div className="mt-3 rounded-lg border border-gray-200 bg-gray-50 p-3">
+            <div className="mb-2 flex flex-wrap items-center gap-2 text-xs">
+              <span className="font-semibold text-gray-600">Доступ токена:</span>
+              {(["statistics", "analytics", "advert", "content"] as Scope[]).map((s) => {
+                const ok = scopeRep.scopes[s];
+                return (
+                  <span
+                    key={s}
+                    className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-medium ${ok === true ? "bg-emerald-100 text-emerald-700" : ok === false ? "bg-red-100 text-red-700" : "bg-gray-200 text-gray-500"}`}
+                  >
+                    {ok === true ? <CheckCircle2 className="h-3 w-3" /> : ok === false ? <XCircle className="h-3 w-3" /> : "?"}
+                    {SCOPE_LABEL[s]}
+                  </span>
+                );
+              })}
+              {scopeRep.isTest && <span className="rounded-full bg-amber-100 px-2 py-0.5 font-medium text-amber-700">тестовый токен</span>}
+              {scopeRep.daysLeft != null && (
+                <span className={`rounded-full px-2 py-0.5 font-medium ${scopeRep.daysLeft < 14 ? "bg-amber-100 text-amber-700" : "bg-gray-200 text-gray-500"}`}>
+                  {scopeRep.daysLeft <= 0 ? "истёк" : `действует ещё ${scopeRep.daysLeft} дн.`}
+                </span>
+              )}
+            </div>
+            {(["statistics", "analytics", "advert", "content"] as Scope[]).some((s) => scopeRep.scopes[s] === false) && (
+              <p className="text-[11px] text-red-600">
+                Не хватает категорий: {(["statistics", "analytics", "advert", "content"] as Scope[]).filter((s) => scopeRep.scopes[s] === false).map((s) => SCOPE_LABEL[s]).join(", ")}.
+                Перевыпустите токен в WB с этими галками — или вставьте отдельный токен в «расширенном».
+              </p>
+            )}
+          </div>
+        )}
         <p className="mt-2 text-[11px] text-gray-400">Токен проверяется через WB (common-api/seller-info) — добавится только рабочий. Имя и ИНН подтянутся автоматически.</p>
       </div>
 
