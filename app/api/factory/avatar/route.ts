@@ -11,9 +11,9 @@ const HG_BASE = "https://api.heygen.com";
 export async function POST(req: NextRequest) {
   const apiKey = process.env.HEYGEN_API_KEY;
   if (!apiKey) return NextResponse.json({ detail: "HEYGEN_API_KEY не настроен — вставь ключ в env Vercel, маршрут заработает сразу" }, { status: 500 });
-  const avatarId = process.env.HEYGEN_AVATAR_ID;
-  const voiceId = process.env.HEYGEN_VOICE_ID;
-  if (!avatarId || !voiceId) return NextResponse.json({ detail: "Нужны HEYGEN_AVATAR_ID и HEYGEN_VOICE_ID (выбери на /api/factory/avatar/voices)" }, { status: 400 });
+  // дефолты: Abigail (expressive) + Anya (женский русский). Переопределяются через env.
+  const avatarId = process.env.HEYGEN_AVATAR_ID || body.avatar_id || "Abigail_expressive_2024112501";
+  const voiceId = process.env.HEYGEN_VOICE_ID || body.voice_id || "37832e32d4f7475ab7a1cb0db8e5dd66";
 
   const body = await req.json().catch(() => ({}));
   const brief: string = body.brief || body.hook || "";
