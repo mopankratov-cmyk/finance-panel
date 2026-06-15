@@ -67,3 +67,20 @@ export async function getWbReportTokens(cabinetId: string | null): Promise<{ key
   const env = process.env.WB_STATS_TOKEN || process.env.WB_TOKEN_STATISTICS;
   return env ? [{ key: "env", token: env }] : [];
 }
+
+// Токен кабинета, которому принадлежит SKU (по cabinet_id из остатков/заказов).
+// Чинит 401 при per-cabinet данных: запрос по nm идёт токеном правильного юрлица.
+// Не нашли кабинет → ENV-токен (legacy).
+export async function wbTokenForNm(nmId: number, scope: WbScope): Promise<string | null> {
+  const envTok = process.env.WB_STATS_TOKEN || process.env.WB_TOKEN_STATISTICS || null;
+  const db = getSupabaseAdmin();
+  if (!db) return envTok;
+  let cabId: string | null = null;
+  for (const table of ["wb_stocks", "wb_orders"]) {
+    const { data } = await db.from(table).select("cabinet_id").eq("nm_id", nmId).not("cabinet_id", "is", null).limit(1).maybeSingle();
+    if (data?.cabinet_id) { cabId = data.cabinet_id as string; break; }
+  }
+  if (!cabId) return envTok;
+  const cab = await getWbCabinet(cabId);
+  return cab ? resolveWbToken(cab, scope) : envTok;
+}

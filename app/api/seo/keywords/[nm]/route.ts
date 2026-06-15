@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
+import { wbTokenForNm } from "@/lib/wb/cabinetTokens";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-const WB_STATS_TOKEN = process.env.WB_STATS_TOKEN || process.env.WB_TOKEN_STATISTICS;
 const SEARCH_TEXTS_URL =
   "https://seller-analytics-api.wildberries.ru/api/v2/search-report/product/search-texts";
 
@@ -13,7 +13,9 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ nm: string 
   const nmId = Number(nm);
   const debug = new URL(req.url).searchParams.get("debug") === "1";
   if (!nmId) return NextResponse.json({ words: [], days: [] });
-  if (!WB_STATS_TOKEN) return NextResponse.json({ error: "WB_STATS_TOKEN не настроен" });
+  // токен кабинета-владельца SKU (по cabinet_id) — иначе чужой токен даёт 401
+  const WB_STATS_TOKEN = await wbTokenForNm(nmId, "analytics");
+  if (!WB_STATS_TOKEN) return NextResponse.json({ error: "WB-токен не настроен" });
 
   const end = new Date();
   const start = new Date(Date.now() - 13 * 86400000);
