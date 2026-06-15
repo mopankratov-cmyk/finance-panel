@@ -1,11 +1,12 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { wbCardImageUrl } from "@/lib/wb/cardImage";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { getWbCabinetSources } from "@/lib/wb/cabinetTokens";
+import { resolveShopCabinet } from "@/lib/rnp/resolveShop";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-const WB_CONTENT_TOKEN = process.env.WB_TOKEN_CONTENT;
 const CARDS_URL = "https://content-api.wildberries.ru/content/v2/get/cards/list";
 
 interface WbCard {
@@ -14,6 +15,7 @@ interface WbCard {
   vendorCode: string;
   title?: string;
   subjectName?: string;
+  _shop?: string;
 }
 
 interface FunnelRow { nm_id: number; date: string; add_to_cart: number; orders: number; orders_sum: number }
@@ -22,34 +24,40 @@ interface RpcTotal { nm_id: number; stock: number; cost: number | null }
 
 const r1 = (v: number) => Math.round(v * 10) / 10;
 
-// Контракт inferno: {groups_multi, groups_solo, total_sku, multi_groups, solo_skus, covered}.
-// Группа: {imt_id, skus:[{nm,art,img_url,shop,shows_7d,orders_sum_7d,adv_spend_7d,adv_spend_14d,drr_7d,margin_before_drr,stock,signal,...}], shop_label, category_label}.
-export async function GET() {
-  if (!WB_CONTENT_TOKEN) return NextResponse.json({ groups_multi: [], groups_solo: [], total_sku: 0, multi_groups: 0, solo_skus: 0, covered: 0 });
+const EMPTY = { groups_multi: [], groups_solo: [], total_sku: 0, multi_groups: 0, solo_skus: 0, covered: 0 };
 
-  // 1) карточки из Content API
+// Контракт inferno: {groups_multi, groups_solo, total_sku, multi_groups, solo_skus, covered}.
+// ?cabinet=<uuid|all> — карточки тянем токеном Контент каждого кабинета, тегируем кабинетом.
+export async function GET(request: NextRequest) {
+  const { cabinetId } = await resolveShopCabinet(new URL(request.url).searchParams.get("cabinet") ?? undefined);
+  const sources = await getWbCabinetSources(cabinetId, "content");
+  if (!sources.length) return NextResponse.json(EMPTY);
+
+  // 1) карточки из Content API — по каждому кабинету своим токеном, с тегом кабинета
   const cards: WbCard[] = [];
-  let cursor: { updatedAt?: string; nmID?: number } = {};
-  try {
-    for (let page = 0; page < 10; page++) {
-      const res = await fetch(CARDS_URL, {
-        method: "POST",
-        headers: { Authorization: WB_CONTENT_TOKEN, "Content-Type": "application/json" },
-        body: JSON.stringify({ settings: { cursor: { limit: 100, ...cursor }, filter: { withPhoto: -1 } } }),
-        cache: "no-store",
-      });
-      if (!res.ok) break;
-      const json = (await res.json()) as { cards?: WbCard[]; cursor?: { updatedAt?: string; nmID?: number } };
-      const batch = json.cards ?? [];
-      cards.push(...batch);
-      if (batch.length < 100) break;
-      cursor = { updatedAt: json.cursor?.updatedAt, nmID: json.cursor?.nmID };
+  for (const src of sources) {
+    let cursor: { updatedAt?: string; nmID?: number } = {};
+    try {
+      for (let page = 0; page < 10; page++) {
+        const res = await fetch(CARDS_URL, {
+          method: "POST",
+          headers: { Authorization: src.token, "Content-Type": "application/json" },
+          body: JSON.stringify({ settings: { cursor: { limit: 100, ...cursor }, filter: { withPhoto: -1 } } }),
+          cache: "no-store",
+        });
+        if (!res.ok) break;
+        const json = (await res.json()) as { cards?: WbCard[]; cursor?: { updatedAt?: string; nmID?: number } };
+        const batch = json.cards ?? [];
+        for (const c of batch) cards.push({ ...c, _shop: src.name });
+        if (batch.length < 100) break;
+        cursor = { updatedAt: json.cursor?.updatedAt, nmID: json.cursor?.nmID };
+      }
+    } catch {
+      /* ignore */
     }
-  } catch {
-    /* ignore */
   }
 
-  // 2) метрики воронки/рекламы по nm (7д и 14д) из синка
+  // 2) метрики воронки/рекламы по nm (7д и 14д) из синка — в разрезе кабинета
   const db = getSupabaseAdmin();
   const m7 = new Map<number, { views: number; spent: number; cart: number; oc: number; os: number }>();
   const spent14 = new Map<number, number>();
@@ -59,11 +67,10 @@ export async function GET() {
     const week = new Set(
       Array.from({ length: 7 }, (_, i) => new Date(Date.now() - i * 86400000).toISOString().slice(0, 10)),
     );
-    const [fRes, aRes, tRes] = await Promise.all([
-      db.from("wb_funnel_daily").select("nm_id, date, add_to_cart, orders, orders_sum").gte("date", since),
-      db.from("wb_advert_nm_daily").select("nm_id, date, views, spent").gte("date", since),
-      db.rpc("rnp_report"),
-    ]);
+    let fQ = db.from("wb_funnel_daily").select("nm_id, date, add_to_cart, orders, orders_sum").gte("date", since);
+    let aQ = db.from("wb_advert_nm_daily").select("nm_id, date, views, spent").gte("date", since);
+    if (cabinetId) { fQ = fQ.eq("cabinet_id", cabinetId); aQ = aQ.eq("cabinet_id", cabinetId); }
+    const [fRes, aRes, tRes] = await Promise.all([fQ, aQ, db.rpc("rnp_report", { p_cabinet: cabinetId })]);
     const g7 = (nm: number) => { let x = m7.get(nm); if (!x) { x = { views: 0, spent: 0, cart: 0, oc: 0, os: 0 }; m7.set(nm, x); } return x; };
     for (const f of (fRes.data ?? []) as FunnelRow[]) {
       if (week.has(String(f.date).slice(0, 10))) { const x = g7(f.nm_id); x.cart += f.add_to_cart || 0; x.oc += f.orders || 0; x.os += Number(f.orders_sum || 0); }
@@ -87,7 +94,7 @@ export async function GET() {
       art: c.vendorCode || String(c.nmID),
       name: c.title || c.vendorCode || "",
       img_url: wbCardImageUrl(c.nmID),
-      shop: "Магазин",
+      shop: c._shop || "Магазин",
       shows_7d: views,
       orders_sum_7d: Math.round(os),
       adv_spend_7d: Math.round(spent),
@@ -110,7 +117,7 @@ export async function GET() {
 
   const toGroup = (imt: number, items: WbCard[]) => ({
     imt_id: imt,
-    shop_label: "Магазин",
+    shop_label: items[0]?._shop || "Магазин",
     category_label: items[0]?.subjectName || "",
     valuation: null,
     feedback_count: 0,

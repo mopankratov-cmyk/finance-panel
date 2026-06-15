@@ -68,6 +68,21 @@ export async function getWbReportTokens(cabinetId: string | null): Promise<{ key
   return env ? [{ key: "env", token: env }] : [];
 }
 
+// Источники по кабинету (id + имя + токен нужного scope) для живых WB-вызовов.
+// cabinetId задан → один кабинет; null → все активные. Нет кабинетов → ENV-фолбэк.
+export async function getWbCabinetSources(cabinetId: string | null, scope: WbScope): Promise<{ id: string | null; name: string; token: string }[]> {
+  const cabs = await getActiveWbCabinets();
+  if (cabs.length) {
+    const sel = cabinetId ? cabs.filter((c) => c.id === cabinetId) : cabs;
+    return sel.map((c) => ({ id: c.id, name: c.name, token: resolveWbToken(c, scope) }));
+  }
+  const env =
+    scope === "content" ? process.env.WB_TOKEN_CONTENT :
+    scope === "advert" ? process.env.WB_TOKEN_ADVERT :
+    (process.env.WB_STATS_TOKEN || process.env.WB_TOKEN_STATISTICS);
+  return env ? [{ id: null, name: "Магазин", token: env }] : [];
+}
+
 // Токен кабинета, которому принадлежит SKU (по cabinet_id из остатков/заказов).
 // Чинит 401 при per-cabinet данных: запрос по nm идёт токеном правильного юрлица.
 // Не нашли кабинет → ENV-токен (legacy).

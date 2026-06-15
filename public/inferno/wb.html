@@ -1211,11 +1211,11 @@ button:not(:disabled):active{ transform: translateY(0); }
           <div class="text-xl font-semibold">🔗 Склейки</div>
           <span class="text-xs text-gray-400" x-text="sklejki.stats"></span>
           <span class="text-[11px] text-teal-700 bg-teal-50 border border-teal-200 px-2 py-0.5 rounded" title="Показы, клики, заказы, расход и ДРР берутся из РНП за последние 7 дней — тот же источник, что в разделе РНП">данные из РНП · показы/заказы/ДРР за <span x-text="sklejkiPeriod()"></span></span>
-          <div class="flex items-center gap-1 text-[11px]">
-            <span class="text-gray-400">кабинет:</span>
-            <button @click="sklejki.cabFilter=''" :class="!sklejki.cabFilter ? 'bg-violet-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'" class="px-2 py-0.5 rounded font-semibold">Все</button>
-            <button @click="sklejki.cabFilter=(sklejki.cabFilter==='JC'?'':'JC')" :class="sklejki.cabFilter==='JC' ? 'bg-purple-600 text-white' : 'bg-purple-50 text-purple-700 hover:bg-purple-100'" class="px-2 py-0.5 rounded font-semibold">JoyCity</button>
-            <button @click="sklejki.cabFilter=(sklejki.cabFilter==='Оптима'?'':'Оптима')" :class="sklejki.cabFilter==='Оптима' ? 'bg-blue-600 text-white' : 'bg-blue-50 text-blue-700 hover:bg-blue-100'" class="px-2 py-0.5 rounded font-semibold">Оптима</button>
+          <div class="flex items-center gap-1.5 text-[11px]">
+            <span class="text-xs font-semibold text-gray-500">🏢 Кабинет</span>
+            <select x-model="rnp.shop" @change="localStorage.setItem('fp_cab_wb', rnp.shop === 'all' ? '' : rnp.shop); loadSklejki(true)" :class="rnp.shop && rnp.shop !== 'all' ? 'border-violet-300 bg-violet-50 text-violet-800 font-semibold' : 'border-gray-300'" class="border rounded px-2 py-1 text-sm">
+              <template x-for="s in shops" :key="s.key"><option :value="s.key" x-text="s.label"></option></template>
+            </select>
           </div>
           <button @click="loadSklejki(true)" class="ml-auto px-2 py-0.5 text-xs text-gray-500 hover:text-teal-600">↻ обновить</button>
         </div>
@@ -4845,7 +4845,7 @@ function app() {
     async loadSklejki(force) {
       this.sklejki.loading = true;
       try {
-        const url = API_BASE + '/api/sklejki' + (force ? '?_=' + Date.now() : '');
+        const url = API_BASE + '/api/sklejki?cabinet=' + encodeURIComponent(this.rnp.shop || 'all') + (force ? '&_=' + Date.now() : '');
         const r = await fetch(url);
         const d = await r.json();
         this.sklejki.multi = d.groups_multi || [];
