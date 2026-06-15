@@ -1051,10 +1051,9 @@ button:not(:disabled):active{ transform: translateY(0); }
       <div x-show="page==='seo'" x-init="if(page==='seo' && !seo.loaded) loadSeoSkus(); $watch('page', v => { if (v==='seo' && !seo.loaded) loadSeoSkus() })">
         <div class="text-xl font-semibold mb-3"><i data-lucide="search" class="inline-icon"></i> SEO и позиции</div>
         <div class="bg-white border border-gray-200 rounded-lg p-4 mb-3 flex items-center gap-3 flex-wrap">
-          <select x-model="seo.shopFilter" class="border border-gray-300 rounded px-2 py-1 text-sm">
-            <option value="">Все магазины</option>
-            <option value="JC">JoyCity</option>
-            <option value="Оптима">Optima</option>
+          <span class="text-xs font-semibold text-gray-500">🏢 Кабинет</span>
+          <select x-model="rnp.shop" @change="localStorage.setItem('fp_cab_wb', rnp.shop === 'all' ? '' : rnp.shop); loadSeoSkus()" :class="rnp.shop && rnp.shop !== 'all' ? 'border-violet-300 bg-violet-50 text-violet-800 font-semibold' : 'border-gray-300'" class="border rounded px-2 py-1 text-sm">
+            <template x-for="s in shops" :key="s.key"><option :value="s.key" x-text="s.label"></option></template>
           </select>
           <input type="text" x-model="seo.search" placeholder="Поиск по nm/арт/название" class="border border-gray-300 rounded px-2 py-1 text-sm flex-1 min-w-[200px]">
           <span class="text-sm text-gray-500" x-text="`${seoFiltered().length} SKU`"></span>
@@ -6886,7 +6885,7 @@ function app() {
     async loadSeoSkus() {
       this.seo.loading = true; this.seo.error = null;
       try {
-        const r = await fetch(API_BASE + '/api/seo/skus');
+        const r = await fetch(API_BASE + '/api/seo/skus?cabinet=' + encodeURIComponent(this.rnp.shop || 'all'));
         const d = await r.json();
         this.seo.skus = d.skus || [];
         this.seo.metricsPeriod = d.metrics_period || '';
@@ -6900,7 +6899,6 @@ function app() {
     seoFiltered() {
       const q = (this.seo.search || '').toLowerCase().trim();
       return this.seo.skus.filter(s => {
-        if (this.seo.shopFilter && s.shop !== this.seo.shopFilter) return false;
         if (q && !((s.nm + '').includes(q) || (s.art || '').toLowerCase().includes(q) || (s.name || '').toLowerCase().includes(q))) return false;
         return true;
       });

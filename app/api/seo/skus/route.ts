@@ -1,6 +1,7 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { wbCardImageUrl } from "@/lib/wb/cardImage";
+import { resolveShopCabinet } from "@/lib/rnp/resolveShop";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -13,15 +14,21 @@ const r2 = (v: number) => Math.round(v * 100) / 100;
 const pct = (num: number, den: number) => (den > 0 ? r2((num / den) * 100) : null);
 
 // Источник SKU для дизайн/«Воронка» (inferno loadDesign). Поля с суффиксом _7d (окно 7д) и _4d (вчера).
-export async function GET() {
+export async function GET(request: NextRequest) {
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ skus: [], metrics_period: "" });
 
+  // Кабинет из ?cabinet=<uuid|all> — фильтруем все источники по нему (или все, если "all").
+  const { cabinetId, label } = await resolveShopCabinet(new URL(request.url).searchParams.get("cabinet") ?? undefined);
+
   const since = new Date(Date.now() - 8 * 86400000).toISOString().slice(0, 10);
+  let funnelQ = db.from("wb_funnel_daily").select("nm_id, date, open_card, add_to_cart, orders, orders_sum").gte("date", since);
+  let adQ = db.from("wb_advert_nm_daily").select("nm_id, date, views, clicks, spent").gte("date", since);
+  if (cabinetId) { funnelQ = funnelQ.eq("cabinet_id", cabinetId); adQ = adQ.eq("cabinet_id", cabinetId); }
   const [funnelRes, adRes, totalsRes, costsRes] = await Promise.all([
-    db.from("wb_funnel_daily").select("nm_id, date, open_card, add_to_cart, orders, orders_sum").gte("date", since),
-    db.from("wb_advert_nm_daily").select("nm_id, date, views, clicks, spent").gte("date", since),
-    db.rpc("rnp_report"),
+    funnelQ,
+    adQ,
+    db.rpc("rnp_report", { p_cabinet: cabinetId }),
     db.from("product_costs").select("article, name"),
   ]);
 
@@ -30,7 +37,7 @@ export async function GET() {
   // Раньше тут шёл постраничный скан wb_orders по сети — рвал соединение и вис на 70с+.
   const toDate = new Date().toISOString().slice(0, 10);
   const ordersByNm = new Map<number, Map<string, { cnt: number; sum: number }>>();
-  const { data: dailySku } = await db.rpc("rnp_daily_sku", { p_from: since, p_to: toDate });
+  const { data: dailySku } = await db.rpc("rnp_daily_sku", { p_from: since, p_to: toDate, p_cabinet: cabinetId });
   for (const row of (dailySku ?? []) as { nm_id: number; d: string; orders_count: number; orders_sum: number }[]) {
     const nm = Number(row.nm_id);
     const d = String(row.d).slice(0, 10);
@@ -83,7 +90,7 @@ export async function GET() {
     const mb4 = margin(y), drr4 = pct(y.spent, y.os);
 
     return {
-      nm, art, shop: "Магазин", img_url: wbCardImageUrl(nm),
+      nm, art, shop: label || "Магазин", img_url: wbCardImageUrl(nm),
       name: nameByArt.get(art) || art,
       // окно 7 дней
       shows_7d: w.views, opens_7d: w.clicks || w.open, ctr_7d: pct(w.clicks, w.views), cart_7d: w.cart,
