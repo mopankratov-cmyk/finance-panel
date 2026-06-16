@@ -17,6 +17,7 @@ export async function POST(req: NextRequest) {
   const count = Math.min(10, Math.max(2, Number(body.count) || 5));
   const brief: string = (body.brief || "").toString().trim();
   const competitorBrief: string = (body.competitor_brief || "").toString().trim();
+  const profile: string = (body.profile || "").toString().trim().slice(0, 2000);
 
   if (!name && article) {
     const db = getSupabaseAdmin();
@@ -29,7 +30,7 @@ export async function POST(req: NextRequest) {
   if (!client) return NextResponse.json({ error: "ANTHROPIC_API_KEY не настроен" }, { status: 500 });
 
   const sys = `Ты топ-маркетолог UGC-видео для Wildberries/Ozon И строгий QA-директор. Пишешь сценарии коротких вертикальных видео (Reels/Shorts/TikTok) под охват И переходы на карточку, потом сам оцениваешь каждый по стандарту.
-СТАНДАРТ: ${CONTENT_STANDARD}
+${profile ? `ПРОФИЛЬ БРЕНДА/АУДИТОРИИ (пиши в этом голосе, под эту ЦА):\n${profile}\n` : ""}СТАНДАРТ: ${CONTENT_STANDARD}
 ${HOOK_FORMULAS}
 ${HOOK_ANTIPATTERNS}
 ${DEAI_FILTERS}

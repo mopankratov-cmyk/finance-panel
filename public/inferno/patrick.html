@@ -73,7 +73,14 @@
     </div>
 
     <section class="card mb-6" style="border-color:#fecdd3; background:#fff7f8">
-      <div class="flex items-center gap-2 mb-2"><div class="acc-ico" style="background:#e11d48">Д</div><div><div class="sec-h">Поставить задачу Директору по маркетингу</div><div class="sec-sub">опиши цель — Директор решит, кому из агентов что делать</div></div></div>
+      <div class="flex items-center gap-2 mb-2"><div class="acc-ico" style="background:#e11d48">Д</div><div class="flex-1"><div class="sec-h">Поставить задачу Директору по маркетингу</div><div class="sec-sub">опиши цель — Директор решит, кому из агентов что делать</div></div>
+        <button @click="profileOpen = !profileOpen" class="btn btn-ghost text-[12px]" :class="profile ? 'border-emerald-300 text-emerald-700' : ''" x-text="profile ? '⚙ Профиль ✓' : '⚙ Профиль бренда'"></button>
+      </div>
+      <div x-show="profileOpen" x-cloak class="mb-3 border border-rose-100 rounded-lg p-3 bg-white">
+        <div class="text-[12px] font-semibold mb-1">Профиль бренда и аудитории <span class="text-gray-400 font-normal">— персонализация: голос, ЦА, примеры удачных текстов. Подмешивается во все генерации.</span></div>
+        <textarea x-model="profile" rows="6" placeholder="Про бренд/товары: …&#10;Целевая аудитория: …&#10;Тон/голос: (напр. дружелюбно, на ты, с юмором)&#10;Примеры удачных постов/фраз: …&#10;Стоп-слова/что не писать: …" class="w-full text-[12px] px-2 py-2 border border-gray-300 rounded-lg"></textarea>
+        <div class="flex gap-2 mt-1.5"><button @click="saveProfile()" class="btn btn-primary text-[12px]">Сохранить</button><button @click="profileOpen=false" class="btn btn-ghost text-[12px]">Закрыть</button></div>
+      </div>
       <div class="flex gap-2">
         <input x-model="dir.task" @keydown.enter="askDirector()" placeholder="Напр.: подними продажи крема YoYo на этой неделе короткими видео" class="flex-1 text-sm px-3 py-2 border border-gray-300 rounded-lg">
         <button @click="askDirector()" :disabled="dir.busy" class="btn btn-primary" x-text="dir.busy ? '⏳ думает…' : 'Поставить'"></button>
@@ -144,6 +151,17 @@
                     <div x-show="av.busy || av.status" class="text-[11px] text-gray-500" x-text="av.status || '⏳ генерю аватара…'"></div>
                     <video x-show="av.url && av.forIdx===i" :src="av.url" controls class="mt-1 rounded-lg border border-gray-200" style="max-height:320px"></video>
                   </div>
+                  <div x-show="rep.forIdx===i" class="mt-2">
+                    <div x-show="rep.busy" class="text-[11px] text-gray-400">⏳ SMM размножает в посты…</div>
+                    <template x-for="(p,pi) in rep.posts" :key="pi">
+                      <div class="border border-rose-100 rounded-lg p-2 bg-white mt-1.5">
+                        <div class="flex items-center justify-between"><span class="pill pill-sky text-[10px]" x-text="p.platform"></span><button @click="copyText(p.text + (p.hashtags && p.hashtags.length ? '\n\n' + p.hashtags.map(h=>h[0]==='#'?h:'#'+h).join(' ') : ''))" class="text-[10px] text-violet-600">копировать</button></div>
+                        <div x-show="p.title" class="text-[12px] font-semibold mt-1" x-text="p.title"></div>
+                        <div class="text-[11px] text-gray-700 mt-1 whitespace-pre-line" x-text="p.text"></div>
+                        <div x-show="p.hashtags && p.hashtags.length" class="text-[10px] text-sky-600 mt-1" x-text="(p.hashtags||[]).map(h=>h[0]==='#'?h:'#'+h).join(' ')"></div>
+                      </div>
+                    </template>
+                  </div>
                   <div x-show="s.gen" class="mt-2 border-t border-gray-100 pt-2">
                     <div class="text-[11px]"><span class="pill pill-violet" x-text="s.gen?.route || 'pipeline'"></span> <span class="text-gray-500" x-text="s.gen?.status"></span></div>
                     <video x-show="s.gen?.url" :src="s.gen?.url" controls class="mt-1 rounded-lg border border-gray-200" style="max-height:320px"></video>
@@ -155,6 +173,7 @@
                   <button @click="produce(s,i)" :disabled="prod.busy" class="btn btn-ghost text-[11px]">🎬 как снимать</button>
                   <button @click="makeVideo(s,i)" :disabled="vid.busy" class="btn btn-ghost text-[11px]">🎥 видео</button>
                   <button @click="makeAvatar(s,i)" :disabled="av.busy" class="btn btn-ghost text-[11px]">🧑 аватар</button>
+                  <button @click="repurpose(s,i)" :disabled="rep.busy" class="btn btn-ghost text-[11px]">📝 посты</button>
                 </div>
               </div>
             </template>
@@ -366,7 +385,25 @@ function patrick() {
       try { this.bank = JSON.parse(localStorage.getItem('cf_bank') || '[]'); } catch (e) { this.bank = []; }
       try { this.accReg = JSON.parse(localStorage.getItem('cf_accounts') || '[]'); } catch (e) { this.accReg = []; }
       try { this.sched = JSON.parse(localStorage.getItem('cf_sched') || '[]'); } catch (e) { this.sched = []; }
+      try { this.profile = localStorage.getItem('cf_profile') || ''; } catch (e) { this.profile = ''; }
     },
+    // Профиль бренда/ЦА — персонализация (как «проект в Клоде»): голос, аудитория, примеры текстов
+    profile: '',
+    profileOpen: false,
+    saveProfile() { try { localStorage.setItem('cf_profile', this.profile); } catch (e) {} this.profileOpen = false; },
+    // «Размножение»: один сценарий → посты под площадки
+    rep: { busy: false, forIdx: -1, posts: [] },
+    async repurpose(idea, i) {
+      if (this.rep.busy) return;
+      this.rep.busy = true; this.rep.forIdx = i; this.rep.posts = [];
+      try {
+        const r = await fetch('/api/factory/repurpose', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ idea: idea.hook || idea.concept, script: idea.scenario ? (idea.scenario.shots || []).map(s => s.voiceover).filter(Boolean).join(' ') : '', product: this.dir.plan?.target_article || this.orbit.article || '', profile: this.profile }) });
+        const d = await r.json();
+        if (!d.error) this.rep.posts = d.posts || [];
+      } catch (e) {}
+      this.rep.busy = false;
+    },
+    copyText(t) { navigator.clipboard?.writeText(t); },
     // ── Дистрибуция: реестр аккаунтов ──
     accReg: [],
     newAcc: { platform: 'TikTok', handle: '', note: '' },
@@ -497,7 +534,7 @@ function patrick() {
       const art = this.dir.plan?.target_article || this.orbit.article || '';
       this.av.busy = true; this.av.forIdx = i; this.av.url = ''; this.av.status = 'пишу скрипт + запускаю HeyGen…';
       try {
-        const r = await fetch('/api/factory/avatar', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sku_art: art, brief: idea.hook || idea.concept }) });
+        const r = await fetch('/api/factory/avatar', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sku_art: art, brief: idea.hook || idea.concept, profile: this.profile }) });
         const d = await r.json();
         if (!d.task_id) { this.av.status = d.detail || d.error || 'не удалось запустить'; this.av.busy = false; return; }
         this.av.taskId = d.task_id; this.av.status = 'рендер аватара (≈1-3 мин)…';
@@ -532,7 +569,7 @@ function patrick() {
       if (this.sc.busy) return;
       this.sc.busy = true; this.sc.forIdx = i; this.sc.data = null; this.sc.err = '';
       try {
-        const r = await fetch('/api/factory/scenario', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ article: this.dir.plan?.target_article || '', hook: idea.hook || idea.concept, format: idea.format || '' }) });
+        const r = await fetch('/api/factory/scenario', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ article: this.dir.plan?.target_article || '', hook: idea.hook || idea.concept, format: idea.format || '', profile: this.profile }) });
         const d = await r.json();
         if (d.error) { this.sc.err = d.error; } else { this.sc.data = d.scenario; }
       } catch (e) { this.sc.err = String(e).slice(0, 120); }
@@ -544,7 +581,7 @@ function patrick() {
       this.run.busy = true; this.run.err = ''; this.run.ideas = []; this.run.step = 'Копирайтер пишет идеи…';
       try {
         const trendBrief = this.tr.data ? (this.tr.data.brief + ' Хуки-победители: ' + (this.tr.data.winning_hooks || []).join('; ')) : '';
-        const r = await fetch('/api/factory/scripts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ article: art, competitor_brief: trendBrief }) });
+        const r = await fetch('/api/factory/scripts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ article: art, competitor_brief: trendBrief, profile: this.profile }) });
         const d = await r.json();
         if (d.error) { this.run.err = d.error; } else { this.run.ideas = d.scripts || []; this.run.approved = d.approved_count || 0; }
       } catch (e) { this.run.err = String(e).slice(0, 120); }
@@ -589,14 +626,14 @@ function patrick() {
         // 2) полный сценарий (озвучка) — #2: сценарий доходит до генератора
         let script = '';
         try {
-          const sr = await (await fetch('/api/factory/scenario', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ article: art, hook: brief, format: s.format || '' }) })).json();
+          const sr = await (await fetch('/api/factory/scenario', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ article: art, hook: brief, format: s.format || '', profile: this.profile }) })).json();
           if (sr.scenario) { s.scenario = sr.scenario; script = (sr.scenario.shots || []).map(x => x.voiceover).filter(Boolean).join(' '); }
         } catch (e) {}
         // 3) запуск нужного генератора по маршруту
         try {
           if (route === 'ai_avatar') {
             s.gen.status = 'HeyGen: рендер аватара…';
-            const d = await (await fetch('/api/factory/avatar', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sku_art: art, brief, script }) })).json();
+            const d = await (await fetch('/api/factory/avatar', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sku_art: art, brief, script, profile: this.profile }) })).json();
             if (!d.task_id) { s.gen.status = 'аватар: ' + (d.detail || d.error || 'не запустился'); }
             else { const res = await this._pollVideo('/api/factory/avatar-status/' + d.task_id, 5 * 60 * 1000); if (res.url) { s.gen.url = res.url; s.gen.status = '✓ готово'; } else s.gen.status = 'ошибка: ' + res.error; }
           } else if (route === 'slideshow') {
@@ -621,7 +658,7 @@ function patrick() {
       if (!this.dir.task.trim() || this.dir.busy) return;
       this.dir.busy = true; this.dir.err = ''; this.dir.plan = null;
       try {
-        const r = await fetch('/api/factory/director', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ task: this.dir.task }) });
+        const r = await fetch('/api/factory/director', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ task: this.dir.task, profile: this.profile }) });
         const d = await r.json();
         if (d.error) { this.dir.err = d.error; } else { this.dir.plan = d; }
       } catch (e) { this.dir.err = String(e).slice(0, 120); }

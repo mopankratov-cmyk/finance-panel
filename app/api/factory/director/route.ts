@@ -10,6 +10,7 @@ export const maxDuration = 60;
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
   const task: string = (body.task || "").toString().trim();
+  const profile: string = (body.profile || "").toString().trim().slice(0, 2000);
   if (!task) return NextResponse.json({ error: "Нужно ТЗ (задача)" }, { status: 400 });
 
   // лёгкий контекст: топ-товары (ABC) — чтобы директор приоритизировал по факту
@@ -33,7 +34,7 @@ export async function POST(req: NextRequest) {
 - Трафик-аналитик — UTM/промокоды, отбор хуков-победителей. [пока в разработке]
 
 Принципы: приоритизируй товары класса A; начинай с разведки конкурентов перед креативом; мерь результат в маркетплейсе (брендовый поиск/продажи), не per-video; объём важнее единичного качества (виральность — игра вариативности).
-
+${profile ? `\nПРОФИЛЬ БРЕНДА/АУДИТОРИИ (учитывай при постановке задач):\n${profile}\n` : ""}
 Доступные товары (артикул — название): ${topProducts || "нет данных, спроси/уточни артикул"}
 
 План — максимум 6 шагов, формулировки КОРОТКИЕ (action ≤12 слов, why ≤8 слов, params минимальны). Верни СТРОГО валидный компактный JSON: {"goal":"цель 1 предложением","target_article":"артикул или ''","plan":[{"order":1,"agent":"Аналитик","action":"кратко","params":{},"why":"кратко"}],"clarify":"что уточнить или ''","summary":"резюме 1-2 предложения"}. Только JSON, без преамбулы, без markdown.`;
