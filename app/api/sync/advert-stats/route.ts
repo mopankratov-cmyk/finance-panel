@@ -59,6 +59,11 @@ export async function GET(request: NextRequest) {
   let advertDays = 0;
   let nmDays = 0;
   const errors: string[] = [];
+  const rotated: string[] = [];
+
+  // Тайм-бокс на 60с-функцию + ротация среза кампаний по дню (полное покрытие за неск. прогонов).
+  const deadline = Date.now() + 50_000;
+  const dayOfYear = Math.floor((Date.now() - Date.UTC(new Date().getUTCFullYear(), 0, 0)) / 86_400_000);
 
   try {
     for (const t of targets) {
@@ -77,10 +82,19 @@ export async function GET(request: NextRequest) {
       const dayRows: Record<string, unknown>[] = [];
       const nmDaily = new Map<string, { nm_id: number; date: string; views: number; clicks: number; spent: number; orders: number; orders_sum: number; cabinet_id: string | null }>();
 
+      // батчи кампаний; стартуем со сдвигом по дню и идём по кругу
+      const idBatches: number[][] = [];
+      for (let i = 0; i < ids.length; i += ID_BATCH) idBatches.push(ids.slice(i, i + ID_BATCH));
+      const startB = idBatches.length ? dayOfYear % idBatches.length : 0;
+      if (idBatches.length > 1) rotated.push(`${t.name}: срез ${startB + 1}/${idBatches.length}`);
+
       let failed = false;
-      for (let i = 0; i < ids.length; i += ID_BATCH) {
-        const batch = ids.slice(i, i + ID_BATCH);
-        if (i > 0) await new Promise((r) => setTimeout(r, 61000)); // лимит 1 req/min на токен
+      let processed = 0;
+      for (let k = 0; k < idBatches.length; k++) {
+        if (Date.now() > deadline) break; // тайм-бокс: остальное доберём следующим прогоном
+        const batch = idBatches[(startB + k) % idBatches.length];
+        if (processed > 0) await new Promise((r) => setTimeout(r, 61000)); // лимит 1 req/min на тот же токен
+        processed++;
 
         const url = new URL(FULLSTATS_URL);
         url.searchParams.set("ids", batch.join(","));
@@ -157,8 +171,9 @@ export async function GET(request: NextRequest) {
     }
 
     const ok = errors.length === 0;
-    await writeSyncLog("advert-stats", ok ? "ok" : "error", advertDays, errors.join("; ") || null, startedAt);
-    return NextResponse.json({ ok, advertDays, nmDays, cabinets: targets.length, errors });
+    const note = rotated.length ? ` [ротация: ${rotated.join(", ")}]` : "";
+    await writeSyncLog("advert-stats", ok ? "ok" : "error", advertDays, (errors.join("; ") + note).trim() || null, startedAt);
+    return NextResponse.json({ ok, advertDays, nmDays, cabinets: targets.length, rotated, errors });
   } catch (err) {
     const cause = err instanceof Error && err.cause instanceof Error ? ` (${err.cause.message})` : "";
     const msg = (err instanceof Error ? err.message : "Unknown error") + cause;

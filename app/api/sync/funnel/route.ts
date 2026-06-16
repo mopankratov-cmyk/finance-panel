@@ -69,16 +69,30 @@ export async function GET(request: NextRequest) {
 
   let total = 0;
   const errors: string[] = [];
+  const rotated: string[] = [];
+
+  // Бюджет на джобу (60с-функция): успеть upsert и лог. Внутри окна — несколько батчей.
+  const deadline = Date.now() + 50_000;
+  // Срез дня для ротации (разные SKU в разные дни — полное покрытие за неск. прогонов).
+  const dayOfYear = Math.floor((Date.now() - Date.UTC(new Date().getUTCFullYear(), 0, 0)) / 86_400_000);
 
   try {
     for (const t of targets) {
       const nmIds = await nmIdsForCabinet(db, t.cabinetId);
       if (!nmIds.length) continue;
 
+      // батчи SKU; стартуем со сдвигом по дню, идём по кругу
+      const batches: number[][] = [];
+      for (let i = 0; i < nmIds.length; i += NM_BATCH) batches.push(nmIds.slice(i, i + NM_BATCH));
+      const startB = batches.length ? dayOfYear % batches.length : 0;
+      if (batches.length > 1) rotated.push(`${t.name}: срез ${startB + 1}/${batches.length}`);
+
       const rows: Record<string, unknown>[] = [];
-      for (let i = 0; i < nmIds.length; i += NM_BATCH) {
-        const batch = nmIds.slice(i, i + NM_BATCH);
-        if (i > 0) await new Promise((r) => setTimeout(r, 21000)); // analytics: 3 req/мин
+      let processed = 0;
+      for (let k = 0; k < batches.length; k++) {
+        if (Date.now() > deadline) break; // тайм-бокс: остальное доберём следующим прогоном
+        if (processed > 0) await new Promise((r) => setTimeout(r, 21000)); // analytics: 3 req/мин (тот же токен)
+        const batch = batches[(startB + k) % batches.length];
 
         const res = await fetch(HISTORY_URL, {
           method: "POST",
@@ -86,6 +100,7 @@ export async function GET(request: NextRequest) {
           body: JSON.stringify({ nmIds: batch, selectedPeriod: { start: fmt(begin), end: fmt(end) } }),
           cache: "no-store",
         });
+        processed++;
         if (!res.ok) {
           errors.push(`${t.name}: WB ${res.status}: ${(await res.text()).slice(0, 120)}`);
           break;
@@ -123,8 +138,9 @@ export async function GET(request: NextRequest) {
     }
 
     const ok = errors.length === 0;
-    await writeSyncLog("funnel", ok ? "ok" : "error", total, errors.join("; ") || null, startedAt);
-    return NextResponse.json({ ok, rows: total, cabinets: targets.length, errors });
+    const note = rotated.length ? ` [ротация: ${rotated.join(", ")}]` : "";
+    await writeSyncLog("funnel", ok ? "ok" : "error", total, (errors.join("; ") + note).trim() || null, startedAt);
+    return NextResponse.json({ ok, rows: total, cabinets: targets.length, rotated, errors });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Unknown error";
     await writeSyncLog("funnel", "error", null, msg, startedAt);
