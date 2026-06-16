@@ -1630,10 +1630,9 @@ button:not(:disabled):active{ transform: translateY(0); }
           <div class="flex items-center justify-between mb-2">
             <span class="font-semibold text-gray-700 text-sm">📊 Анализ рекламы</span>
             <div class="flex items-center gap-2">
-            <div class="flex rounded-md overflow-hidden border border-blue-200 text-[11px]">
-              <button @click="ctrtest.adv.cabinet='JC'; loadAdvAnalysis()" :class="ctrtest.adv.cabinet==='JC'?'bg-blue-600 text-white':'bg-white text-gray-600'" class="px-2 py-0.5">JC</button>
-              <button @click="ctrtest.adv.cabinet='optima'; loadAdvAnalysis()" :class="ctrtest.adv.cabinet==='optima'?'bg-blue-600 text-white':'bg-white text-gray-600'" class="px-2 py-0.5 border-l border-blue-200">Оптима</button>
-            </div>
+            <select :value="ctrtest.adv.cabinet" @change="ctrtest.adv.cabinet=$event.target.value; localStorage.setItem('fp_cab_wb', ctrtest.adv.cabinet==='all'?'':ctrtest.adv.cabinet); loadAdvAnalysis()" class="border border-gray-300 rounded-md px-1.5 py-0.5 text-[11px] font-semibold">
+              <template x-for="s in shops" :key="s.key"><option :value="s.key" x-text="s.label"></option></template>
+            </select>
             <div class="flex rounded-md overflow-hidden border border-violet-200 text-[11px]">
               <button @click="ctrtest.adv.days=3; loadAdvAnalysis()" :class="ctrtest.adv.days===3?'bg-violet-600 text-white':'bg-white text-gray-600'" class="px-2 py-0.5">3д</button>
               <button @click="ctrtest.adv.days=7; loadAdvAnalysis()" :class="ctrtest.adv.days===7?'bg-violet-600 text-white':'bg-white text-gray-600'" class="px-2 py-0.5 border-l border-violet-200">7д</button>
@@ -3593,7 +3592,7 @@ function app() {
     // На старте всегда РНП (Юра 29.05.2026), переключения по хешу сохраняются в URL для текущей сессии
     page: (location.hash.replace('#','') || 'rnp'),
     ctrtest: { loaded:false, loading:false, tests:[], busy:false, msg:'', err:'',
-      selTest:null, ntBusy:false, lightbox:null, adv:{days:3,cabinet:'JC',list:[],loading:false,ctrFrom:null,ctrTo:null,collapsed:{},sortBy:'views',sortDir:'desc'},
+      selTest:null, ntBusy:false, lightbox:null, adv:{days:3,cabinet:(localStorage.getItem('fp_cab_wb')||'all'),list:[],loading:false,ctrFrom:null,ctrTo:null,collapsed:{},sortBy:'views',sortDir:'desc'},
       nt:{ open:false, skuObj:null, skuSearch:'', skuList:[], skuLoading:false, skuShow:false, interval_min:60, impr_per_round:350, target_impr_photo:1000, cpm:0, cpmReco:null, variants:[] } },
     adverts: { cabinet:(localStorage.getItem('fp_cab_wb')||'all'), cabinetName:'', loaded:false, busy:false, saving:false, q:'', typeFilter:'', cap_rub:5000, balance:null, count:0, today:'', yest:'', spend_today_total:0, spend_yest_total:0, articles:[], collapsed:{}, insight:{}, insightAt:'', dayMetrics:{}, deposits:[], history:[], changes:[], refreshing:false, err:'', msg:'', sel:null, saved:false, stats:{loading:false, days:[], summary:null, analysis:[], period:'3d', err:''}, bulk:{ open:false, filterSig:null, sel:{}, newHours:[18] }, actions:{ menu:false, modal:false, action:'', loading:false, items:[], sel:{}, busy:false, result:'', err:'' } },
     shops: [],
@@ -4694,7 +4693,7 @@ function app() {
     },
     loadAdvAnalysis() {
       this.ctrtest.adv.loading = true;
-      fetch(API_BASE+'/api/ctrtest/adv-analysis?days='+(this.ctrtest.adv.days||7)+'&cabinet='+(this.ctrtest.adv.cabinet||'JC'))
+      fetch(API_BASE+'/api/ctrtest/adv-analysis?days='+(this.ctrtest.adv.days||7)+'&cabinet='+(this.ctrtest.adv.cabinet||'all'))
         .then(r=>r.json()).then(d=>{ this.ctrtest.adv.list = (d.items||[]); })
         .catch(e=>{ this.ctrtest.adv.list=[]; }).finally(()=>{ this.ctrtest.adv.loading=false; });
     },

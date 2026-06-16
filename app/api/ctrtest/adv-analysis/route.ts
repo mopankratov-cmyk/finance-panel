@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { resolveShopCabinet } from "@/lib/rnp/resolveShop";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -14,14 +15,15 @@ const r2 = (v: number) => Math.round(v * 100) / 100;
 export async function GET(request: NextRequest) {
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ items: [] });
-  const days = Number(new URL(request.url).searchParams.get("days")) || 7;
+  const sp = new URL(request.url).searchParams;
+  const days = Number(sp.get("days")) || 7;
   const since = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
+  const { cabinetId } = await resolveShopCabinet(sp.get("cabinet") ?? undefined);
 
-  const [adRes, funnelRes, totalsRes] = await Promise.all([
-    db.from("wb_advert_nm_daily").select("nm_id, date, views, clicks, spent").gte("date", since),
-    db.from("wb_funnel_daily").select("nm_id, date, orders_sum").gte("date", since),
-    db.rpc("rnp_report"),
-  ]);
+  let adQ = db.from("wb_advert_nm_daily").select("nm_id, date, views, clicks, spent").gte("date", since);
+  let funnelQ = db.from("wb_funnel_daily").select("nm_id, date, orders_sum").gte("date", since);
+  if (cabinetId) { adQ = adQ.eq("cabinet_id", cabinetId); funnelQ = funnelQ.eq("cabinet_id", cabinetId); }
+  const [adRes, funnelRes, totalsRes] = await Promise.all([adQ, funnelQ, db.rpc("rnp_report", { p_cabinet: cabinetId })]);
 
   const acc = new Map<number, { views: number; clicks: number; spent: number; os: number }>();
   const get = (nm: number) => { let a = acc.get(nm); if (!a) { a = { views: 0, clicks: 0, spent: 0, os: 0 }; acc.set(nm, a); } return a; };
