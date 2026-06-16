@@ -14,6 +14,7 @@ import {
   Menu,
   LogOut,
   PieChart,
+  Target,
   TrendingUp,
   RefreshCw,
   TrendingDown,
@@ -49,6 +50,7 @@ const NAV_GROUPS: NavGroup[] = [
       { href: "/ozon", label: "Ozon Аналитика", icon: BarChart3 },
       { href: "/abc", label: "ABC прибыли", icon: PieChart },
       { href: "/trends", label: "Динамика", icon: TrendingUp },
+      { href: "/market", label: "Рынок", icon: Target },
     ],
   },
   {
