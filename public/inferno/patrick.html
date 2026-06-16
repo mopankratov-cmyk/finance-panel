@@ -193,7 +193,15 @@
           <div class="card-tight">
             <video x-show="b.url" :src="b.url" controls class="w-full rounded-md border border-gray-100 mb-1.5" style="max-height:220px"></video>
             <div class="text-[12px] font-medium leading-tight" x-text="b.hook"></div>
-            <div class="text-[10px] text-gray-400 mt-1"><span class="pill pill-rose" x-text="b.route"></span> · <span x-text="b.art"></span></div>
+            <div class="text-[10px] text-gray-400 mt-1"><span class="pill pill-rose" x-text="b.route"></span> · <span x-text="b.art"></span>
+              <span x-show="perfScore(b)!==null" class="pill pill-live ml-1" x-text="'score ' + perfScore(b)"></span>
+            </div>
+            <div class="grid grid-cols-4 gap-1 mt-1.5" title="метрики после публикации (вносятся вручную)">
+              <input type="number" min="0" :value="(b.m||{}).views||''" @input="setMetric(bi,'views',$event.target.value)" placeholder="показы" class="text-[10px] border border-gray-200 rounded px-1 py-0.5 w-full">
+              <input type="number" min="0" :value="(b.m||{}).hook3||''" @input="setMetric(bi,'hook3',$event.target.value)" placeholder="3-сек" class="text-[10px] border border-gray-200 rounded px-1 py-0.5 w-full">
+              <input type="number" min="0" :value="(b.m||{}).likes||''" @input="setMetric(bi,'likes',$event.target.value)" placeholder="лайки" class="text-[10px] border border-gray-200 rounded px-1 py-0.5 w-full">
+              <input type="number" min="0" :value="(b.m||{}).clicks||''" @input="setMetric(bi,'clicks',$event.target.value)" placeholder="клики" class="text-[10px] border border-gray-200 rounded px-1 py-0.5 w-full">
+            </div>
             <div class="flex items-center gap-1 mt-1.5">
               <select class="text-[10px] border border-gray-200 rounded px-1 py-0.5 flex-1" @change="setBankStatus(bi, $event.target.value)">
                 <option value="review" :selected="b.status==='review'">на утверждение</option>
@@ -208,6 +216,35 @@
           </div>
         </template>
       </div>
+    </section>
+
+    <section class="card mb-6" x-show="bank.length">
+      <div class="flex items-center justify-between mb-3">
+        <div><div class="sec-h">📊 Аналитика — что зашло</div><div class="sec-sub">внеси метрики ролика после публикации → завод учится: победители подмешиваются в новые идеи</div></div>
+        <button @click="feedWinners()" class="btn btn-primary text-[12px]">↺ Учесть победителей в идеях</button>
+      </div>
+      <div x-show="winnersBrief" class="text-[11px] mb-2 px-2 py-1.5 rounded" :class="winnersBrief.startsWith('нет') ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700'">
+        <span x-show="!winnersBrief.startsWith('нет')">✓ Учтено — при следующем «Запустить план» копирайтер усилит зашедшие хуки/форматы. <button @click="winnersBrief=''" class="underline">сбросить</button></span>
+        <span x-show="winnersBrief.startsWith('нет')" x-text="winnersBrief"></span>
+      </div>
+      <div x-show="!winners.length" class="text-[11px] text-gray-400 italic">пока нет роликов с ≥100 показов — внеси метрики в карточках Банка, и рейтинг появится здесь.</div>
+      <table class="tbl" x-show="winners.length">
+        <thead><tr><th>#</th><th>Хук</th><th>Формат</th><th>Показы</th><th>Hook-rate</th><th>Клики</th><th>Score</th></tr></thead>
+        <tbody>
+          <template x-for="(w,wi) in winners" :key="w.b.ts">
+            <tr>
+              <td x-text="wi+1"></td>
+              <td class="max-w-[260px]"><div class="truncate" x-text="w.b.hook"></div></td>
+              <td class="text-gray-500" x-text="w.b.format || w.b.route"></td>
+              <td x-text="(w.b.m||{}).views || 0"></td>
+              <td x-text="((w.b.m||{}).hook3 && (w.b.m||{}).views ? Math.round((w.b.m.hook3/w.b.m.views)*100) : 0) + '%'"></td>
+              <td x-text="(w.b.m||{}).clicks || 0"></td>
+              <td><span class="pill pill-live" x-text="w.sc"></span></td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+      <div class="text-[11px] text-gray-400 mt-2">Правило: не суди ролик с &lt;100 показов. Меняй по одному рычагу за раз (хук ИЛИ формат), чтобы понять, что сработало.</div>
     </section>
 
     <section class="card mb-6">
@@ -444,13 +481,37 @@ function patrick() {
     delSched(i) { this.sched.splice(i, 1); this._saveSched(); },
     bank: [],
     saveToBank(s, art) {
-      const item = { ts: Date.now(), art, hook: s.hook || s.concept || '', route: s.gen?.route || '', url: s.gen?.url || '', caption: s.caption || s.scenario?.caption || '', status: 'review' };
+      const item = { ts: Date.now(), art, hook: s.hook || s.concept || '', format: s.format || '', route: s.gen?.route || '', url: s.gen?.url || '', caption: s.caption || s.scenario?.caption || '', status: 'review', m: { views: 0, hook3: 0, likes: 0, clicks: 0 } };
       this.bank.unshift(item);
       this.bank = this.bank.slice(0, 100);
       try { localStorage.setItem('cf_bank', JSON.stringify(this.bank)); } catch (e) {}
     },
-    setBankStatus(idx, st) { if (this.bank[idx]) { this.bank[idx].status = st; try { localStorage.setItem('cf_bank', JSON.stringify(this.bank)); } catch (e) {} } },
-    delBank(idx) { this.bank.splice(idx, 1); try { localStorage.setItem('cf_bank', JSON.stringify(this.bank)); } catch (e) {} },
+    setBankStatus(idx, st) { if (this.bank[idx]) { this.bank[idx].status = st; this._saveBank(); } },
+    delBank(idx) { this.bank.splice(idx, 1); this._saveBank(); },
+    _saveBank() { try { localStorage.setItem('cf_bank', JSON.stringify(this.bank)); } catch (e) {} },
+    // #4 Аналитика: метрики ролика вносятся вручную (соцсети не дают API), петля обратной связи — авто
+    setMetric(idx, field, val) { if (this.bank[idx]) { if (!this.bank[idx].m) this.bank[idx].m = { views: 0, hook3: 0, likes: 0, clicks: 0 }; this.bank[idx].m[field] = Math.max(0, Number(val) || 0); this._saveBank(); } },
+    perfScore(b) {
+      const m = b.m || {}; const v = m.views || 0;
+      if (v < 100) return null; // мало данных — не судим
+      const hookRate = m.hook3 ? Math.min(1, m.hook3 / v) : 0;
+      const eng = Math.min(1, (m.likes || 0) / v);
+      const clk = Math.min(1, (m.clicks || 0) / v);
+      return Math.round((0.5 * hookRate + 0.2 * eng + 0.3 * clk) * 1000) / 10; // 0..100
+    },
+    get winners() {
+      return this.bank
+        .map((b, i) => ({ b, i, sc: this.perfScore(b) }))
+        .filter(x => x.sc !== null)
+        .sort((a, z) => z.sc - a.sc);
+    },
+    winnersBrief: '',
+    feedWinners() {
+      const top = this.winners.slice(0, 5).map(x => x.b);
+      if (!top.length) { this.winnersBrief = 'нет роликов с ≥100 просмотров — внеси метрики'; setTimeout(() => { if (this.winnersBrief.startsWith('нет')) this.winnersBrief = ''; }, 3000); return; }
+      // победившие хуки/форматы → бриф следующего батча копирайтера
+      this.winnersBrief = 'Повтори успех этих зашедших роликов (хук + формат): ' + top.map(b => `«${b.hook}» [${b.format || b.route}]`).join('; ') + '. Сделай новые в том же духе, меняя по одному рычагу.';
+    },
     dir: { task: '', busy: false, plan: null, err: '' },
     run: { busy: false, step: '', ideas: [], approved: 0, err: '' },
     pipe: { busy: false, step: '', log: '', count: 3 },
@@ -581,7 +642,8 @@ function patrick() {
       this.run.busy = true; this.run.err = ''; this.run.ideas = []; this.run.step = 'Копирайтер пишет идеи…';
       try {
         const trendBrief = this.tr.data ? (this.tr.data.brief + ' Хуки-победители: ' + (this.tr.data.winning_hooks || []).join('; ')) : '';
-        const r = await fetch('/api/factory/scripts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ article: art, competitor_brief: trendBrief, profile: this.profile }) });
+        const wb = this.winnersBrief && !this.winnersBrief.startsWith('нет') ? (' ' + this.winnersBrief) : '';
+        const r = await fetch('/api/factory/scripts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ article: art, competitor_brief: (trendBrief + wb).trim(), profile: this.profile }) });
         const d = await r.json();
         if (d.error) { this.run.err = d.error; } else { this.run.ideas = d.scripts || []; this.run.approved = d.approved_count || 0; }
       } catch (e) { this.run.err = String(e).slice(0, 120); }
