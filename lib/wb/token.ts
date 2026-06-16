@@ -46,15 +46,24 @@ export function decodeWbToken(token: string): WbTokenInfo {
 }
 
 // Один read-only зонд на категорию. 401/403 → доступа нет. Прочее (200/400/429) → есть.
-const PROBES: Record<WbScope, { url: string; method: "GET" | "POST"; body?: string }> = {
+interface Probe { url: string; method: "GET" | "POST"; body?: string; fallback?: Probe }
+
+const PROBES: Record<WbScope, Probe> = {
   statistics: {
     url: "https://statistics-api.wildberries.ru/api/v1/supplier/orders?dateFrom=2026-01-01&flag=1",
     method: "GET",
   },
   analytics: {
-    url: "https://seller-analytics-api.wildberries.ru/api/v2/search-report/product/search-texts",
+    // канонический analytics-эндпоинт (воронка продаж) — его даёт галка «Аналитика».
+    // запасной — search-texts: если WB выдал права через него, тоже считаем «Аналитика есть».
+    url: "https://seller-analytics-api.wildberries.ru/api/analytics/v3/sales-funnel/products/history",
     method: "POST",
     body: "{}",
+    fallback: {
+      url: "https://seller-analytics-api.wildberries.ru/api/v2/search-report/product/search-texts",
+      method: "POST",
+      body: "{}",
+    },
   },
   advert: {
     url: "https://advert-api.wildberries.ru/adv/v1/promotion/count",
@@ -70,8 +79,8 @@ const PROBES: Record<WbScope, { url: string; method: "GET" | "POST"; body?: stri
 // null = не удалось проверить (сеть), true/false = категория доступна/нет.
 export type ScopeStatus = Record<WbScope, boolean | null>;
 
-export async function probeWbScope(token: string, scope: WbScope): Promise<boolean | null> {
-  const p = PROBES[scope];
+// один HTTP-зонд: false = 401/403, true = принят (200/400/429/5xx), null = сеть
+async function hitProbe(token: string, p: Probe): Promise<boolean | null> {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), 12_000);
   try {
@@ -83,12 +92,27 @@ export async function probeWbScope(token: string, scope: WbScope): Promise<boole
       signal: ctrl.signal,
     });
     if (res.status === 401 || res.status === 403) return false;
-    return true; // 200/400/429/5xx — токен по категории принят
+    return true;
   } catch {
     return null;
   } finally {
     clearTimeout(t);
   }
+}
+
+export async function probeWbScope(token: string, scope: WbScope): Promise<boolean | null> {
+  const p = PROBES[scope];
+  const primary = await hitProbe(token, p);
+  // доступ подтверждён напрямую
+  if (primary === true) return true;
+  // основной отказал/не достучались — пробуем запасной эндпоинт категории
+  if (p.fallback) {
+    const fb = await hitProbe(token, p.fallback);
+    if (fb === true) return true;
+    if (primary === false || fb === false) return false;
+    return null; // оба не достучались
+  }
+  return primary;
 }
 
 // Проверить все категории параллельно.
