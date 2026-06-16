@@ -1705,7 +1705,7 @@ button:not(:disabled):active{ transform: translateY(0); }
             </div>
           </div>
           <button @click="advBulkOpen()" x-show="adverts.loaded" class="px-3 py-1.5 text-xs font-semibold rounded-md bg-purple-100 text-purple-700 hover:bg-purple-200 inline-flex items-center gap-1.5" title="Массово изменить окна расписания">🕑 Массово окна</button>
-          <button @click="advRefresh()" :disabled="adverts.busy" class="px-3 py-1.5 text-xs font-semibold rounded-md bg-gray-100 text-gray-700 hover:bg-gray-200 disabled:opacity-50 inline-flex items-center gap-1.5"><span x-show="!adverts.busy">↻ Обновить</span><span x-show="adverts.busy && adverts.refreshing">⏳ Освежаю статусы Оптимы (~25с)…</span><span x-show="adverts.busy && !adverts.refreshing">⏳ Читаю кабинет…</span></button>
+          <button @click="advRefresh()" :disabled="adverts.busy" class="px-3 py-1.5 text-xs font-semibold rounded-md bg-gray-100 text-gray-700 hover:bg-gray-200 disabled:opacity-50 inline-flex items-center gap-1.5"><span x-show="!adverts.busy">↻ Обновить</span><span x-show="adverts.busy">⏳ Читаю кабинет…</span></button>
         </div>
         <!-- Массовый редактор окон расписания (Юра 2026-06-09) -->
         <template x-if="adverts.bulk.open">
