@@ -22,21 +22,25 @@ export interface WbCommission {
 
 const num = (v: unknown) => Number(v ?? 0) || 0;
 
-// In-process memo (отчёт тяжёлый ~12с). TTL 6ч. Живёт в процессе сервера — не зависит от Next fetch-кэша.
-let _memo: { ts: number; days: number; val: WbCommission } | null = null;
+// In-process memo (отчёт тяжёлый ~12с). TTL 6ч. Ключ — кабинет+период (иначе кабинеты травят кэш друг друга).
+const _memo = new Map<string, { ts: number; val: WbCommission }>();
 const MEMO_TTL = 6 * 3600 * 1000;
 
-export async function getWbCommission(days = 30): Promise<WbCommission> {
-  if (_memo && _memo.days === days && Date.now() - _memo.ts < MEMO_TTL) return _memo.val;
+// opts.token — токен конкретного кабинета (per-cabinet факт-комиссия); opts.cacheKey — id кабинета.
+export async function getWbCommission(days = 30, opts?: { token?: string; cacheKey?: string }): Promise<WbCommission> {
+  const token = opts?.token || WB_STATS_TOKEN;
+  const key = `${opts?.cacheKey || "env"}|${days}`;
+  const hit = _memo.get(key);
+  if (hit && Date.now() - hit.ts < MEMO_TTL) return hit.val;
   const empty: WbCommission = { byNm: new Map(), avgPct: 0, avgAcqPct: 0 };
-  if (!WB_STATS_TOKEN) return empty;
+  if (!token) return empty;
   const to = new Date().toISOString().slice(0, 10);
   const from = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
-  const url = `https://statistics-api.wildberries.ru/api/v5/supplier/reportDetailByPeriod?dateFrom=${from}&dateTo=${to}&limit=100000&rrdid=0`;
+  const url = `https://statistics-api.wildberries.ru/api/v5/supplier/reportDetailByPeriod?dateFrom=${from}&dateTo=${to}&limit=100000&rrdid=0&_c=${encodeURIComponent(opts?.cacheKey || "env")}`;
 
   let rows: ReportRow[];
   try {
-    const res = await fetch(url, { headers: { Authorization: WB_STATS_TOKEN }, next: { revalidate: 21600 } });
+    const res = await fetch(url, { headers: { Authorization: token }, next: { revalidate: 21600 } });
     if (!res.ok) return empty;
     rows = (await res.json()) as ReportRow[];
   } catch {
@@ -72,6 +76,6 @@ export async function getWbCommission(days = 30): Promise<WbCommission> {
   const avgPct = totRev > 0 ? Math.round((totW / totRev) * 10) / 10 : 0;
   const avgAcqPct = totRev > 0 ? Math.round((totAcq / totRev) * 1000) / 10 : 0;
   const val: WbCommission = { byNm, avgPct, avgAcqPct };
-  if (byNm.size > 0) _memo = { ts: Date.now(), days, val }; // кэшируем только удачный результат
+  if (byNm.size > 0) _memo.set(key, { ts: Date.now(), val }); // кэшируем только удачный результат
   return val;
 }

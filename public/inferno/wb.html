@@ -948,12 +948,11 @@ button:not(:disabled):active{ transform: translateY(0); }
                 </div>
               </div>
               <div class="flex items-center gap-2 flex-wrap">
-                <span class="text-xs text-gray-500 font-medium">Кабинет:</span>
-                <div class="flex gap-1 bg-gray-100 rounded-md p-0.5 w-max">
-                  <button @click="unit.calc.cab='optima'; ucApplyComm()" :class="unit.calc.cab==='optima'?'bg-white shadow text-violet-700':'text-gray-500'" class="px-3 py-1 text-xs rounded font-semibold">Оптима<span class="text-[10px] opacity-70" x-show="unit.calc.commOptima!=null" x-text="' '+unit.calc.commOptima+'%'"></span></button>
-                  <button @click="unit.calc.cab='joycity'; ucApplyComm()" :class="unit.calc.cab==='joycity'?'bg-white shadow text-violet-700':'text-gray-500'" class="px-3 py-1 text-xs rounded font-semibold">JoyCity 38.5%</button>
-                </div>
-                <span class="text-[10px] text-gray-400">Оптима — из файла по категории <b>+5%</b>, JoyCity — 38.5% на всё</span>
+                <span class="text-xs text-gray-500 font-medium">🏢 Кабинет:</span>
+                <select :value="unit.calc.cab" @change="unit.calc.cab=$event.target.value; localStorage.setItem('fp_cab_wb', unit.calc.cab==='all'?'':unit.calc.cab); unit.calc.loaded=false; loadCalcSkus()" :class="unit.calc.cab && unit.calc.cab!=='all' ? 'border-violet-300 bg-violet-50 text-violet-800 font-semibold' : 'border-gray-300'" class="border rounded-md px-2.5 py-1 text-xs font-semibold">
+                  <template x-for="s in shops" :key="s.key"><option :value="s.key" x-text="s.label"></option></template>
+                </select>
+                <span class="text-[10px] text-gray-400">комиссия — факт из финотчёта выбранного кабинета</span>
               </div>
               <div class="flex gap-1 bg-gray-100 rounded-md p-0.5 w-max">
                 <button @click="unit.calc.mode='price'" :class="unit.calc.mode==='price'?'bg-white shadow text-violet-700':'text-gray-500'" class="px-3 py-1 text-xs rounded font-semibold">Цена → маржа</button>
@@ -3610,7 +3609,7 @@ function app() {
     pl: { loaded:false, busy:false, year:'2026', orders:[], norms:{}, skus:[], skuOpen:false, skuCatOpen:{}, skuOrders:{}, skuMeta:{}, _t:null },
     unit: { data: null, loading: false, error: null, refreshing: { prices: false, cogs: false, stocks: false }, sortCol: null, sortDir: 'desc', rowHL: {},
             params: { tax: Number(localStorage.getItem('unit_tax') ?? 7), ff: Number(localStorage.getItem('unit_ff') ?? 0) },
-            calc: { open:false, loaded:false, found:false, skus:[], art:'', category:'', curPrice:null, cab:'optima', commOptima:null, mode:'price', price:1000, targetMargin:30, cogs:0, ff:100, comm:24, drr:15, tax:7, acq:3 } },
+            calc: { open:false, loaded:false, found:false, skus:[], art:'', category:'', curPrice:null, cab:(localStorage.getItem('fp_cab_wb')||'all'), commOptima:null, mode:'price', price:1000, targetMargin:30, cogs:0, ff:100, comm:24, drr:15, tax:7, acq:3 } },
     snap: { filter: null, data: null, loading: false, error: null, refreshing: false, access: null, syncRunning: false, syncStartedAt: null, syncLastLog: '', _pollerStarted: false, checkingAds: false, adsSummary: '' },
     seo: { loaded: false, loading: false, error: null, skus: [], shopFilter: '', search: '', expanded: {}, keywords: {}, metricsPeriod: '' },
     tasks: { loaded: false, list: [], addingInBacklog: false, newTitle: '', actualizing: false, expandedRule: null, openReason: null },
@@ -4059,10 +4058,10 @@ function app() {
     },
     // ── Калькулятор цены (Юра 06.06.2026): экономика снизу вверх для новинок/незаказанных ──
     openUnitCalc(){ this.unit.calc.open=true; if(!this.unit.calc.loaded) this.loadCalcSkus(); },
-    async loadCalcSkus(){ try{ const r=await fetch(API_BASE+'/api/unit/calc-skus'); const j=await r.json(); this.unit.calc.skus=j.skus||[]; this.unit.calc.loaded=true; }catch(e){} },
+    async loadCalcSkus(){ try{ const r=await fetch(API_BASE+'/api/unit/calc-skus?cabinet='+encodeURIComponent(this.unit.calc.cab||'all')); const j=await r.json(); this.unit.calc.skus=j.skus||[]; this.unit.calc.loaded=true; }catch(e){} },
     ucCommDefault(cat){ const m={'Ковры':23,'Сумки женские':25,'Сумки':25,'Термосумки':25,'Домашняя одежда':25,'Игрушки':25}; return m[cat]||24; },
-    pickCalcSku(q){ const c=this.unit.calc; q=(q||'').trim(); const s=(c.skus||[]).find(x=>x.art===q || String(x.nm)===q); if(!s){ c.found=false; c.category=''; c.curPrice=null; c.commOptima=null; return; } c.found=true; c.category=s.category||''; c.curPrice=s.cur_price||null; c.cogs=(s.cogs!=null?s.cogs:0); c.ff=(s.ff!=null?s.ff:100); c.commOptima=(s.comm_optima!=null?s.comm_optima:null); c.cab=(s.shop==='JoyCity'?'joycity':'optima'); this.ucApplyComm(); if(s.cur_price) c.price=s.cur_price; },
-    ucApplyComm(){ const c=this.unit.calc; c.comm=(c.cab==='joycity')?38.5:(c.commOptima!=null?c.commOptima:this.ucCommDefault(c.category)); },
+    pickCalcSku(q){ const c=this.unit.calc; q=(q||'').trim(); const s=(c.skus||[]).find(x=>x.art===q || String(x.nm)===q); if(!s){ c.found=false; c.category=''; c.curPrice=null; c.commOptima=null; return; } c.found=true; c.category=s.category||''; c.curPrice=s.cur_price||null; c.cogs=(s.cogs!=null?s.cogs:0); c.ff=(s.ff!=null?s.ff:100); c.commOptima=(s.comm_optima!=null?s.comm_optima:null); this.ucApplyComm(); if(s.cur_price) c.price=s.cur_price; },
+    ucApplyComm(){ const c=this.unit.calc; c.comm=(c.commOptima!=null?c.commOptima:this.ucCommDefault(c.category)); },
     unitCalc(){
       const c=this.unit.calc; const num=x=>{ const n=Number(x); return isFinite(n)?n:0; };
       const pctSum=(num(c.comm)+num(c.acq)+num(c.drr)+num(c.tax))/100;
