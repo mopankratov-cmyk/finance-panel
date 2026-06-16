@@ -1412,7 +1412,7 @@ button:not(:disabled):active{ transform: translateY(0); }
           <div x-show="ctrtest.nt.open" x-cloak>
             <div class="grid md:grid-cols-3 gap-3">
               <div class="relative">
-                <label class="text-[11px] text-gray-500">Товар (SKU) · JoyCity</label>
+                <label class="text-[11px] text-gray-500">Товар (SKU)</label>
                 <input x-model="ctrtest.nt.skuSearch" @focus="ctrtest.nt.skuShow=true; if(!ctrtest.nt.skuList.length) loadCtrSkuList()" @input="ctrtest.nt.skuShow=true" placeholder="выбрать артикул… (арт / название / nm)" class="mt-1 w-full px-3 py-2 border border-gray-200 rounded text-sm">
                 <div x-show="ctrtest.nt.skuShow" @click.outside="ctrtest.nt.skuShow=false" class="absolute z-30 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-72 overflow-auto">
                   <div x-show="ctrtest.nt.skuLoading" class="px-3 py-2 text-xs text-gray-400">загружаю…</div>
@@ -3431,7 +3431,7 @@ button:not(:disabled):active{ transform: translateY(0); }
               <button @click="design.dayMetric='drr'" :class="design.dayMetric==='drr'?'bg-violet-600 text-white shadow':'text-gray-600 hover:bg-gray-200'" class="px-3.5 py-1 text-xs rounded font-semibold">ДРР</button>
               <button @click="design.dayMetric='valovaya'" :class="design.dayMetric==='valovaya'?'bg-violet-600 text-white shadow':'text-gray-600 hover:bg-gray-200'" class="px-3.5 py-1 text-xs rounded font-semibold">Валовая</button>
             </div>
-            <span class="text-[10px] text-gray-400" x-text="design.dayMetric==='turnover' ? 'оборачиваемость (дни) = остаток ÷ ср.продажи 7д · 🟢30-60 🟡<30 🔴>60 · JoyCity' : (design.dayMetric==='remains' ? 'остаток (шт) на конец дня · 🟢≥50 🟡<50 🔴=0 · JoyCity' : (design.dayMetric==='gmroi' ? 'GMROI (%) по дням · 🟢≥300 🟡150-299 🔴<150 · JoyCity' : (design.dayMetric==='margin' ? 'Маржа до ДРР (%) по дням · 🟢≥20 🟡<20 🔴<0 · JoyCity' : (design.dayMetric==='drr' ? 'ДРР (%) по дням — доля рекламы · 🟢≤10 🟡≤20 🔴>20 · JoyCity' : (design.dayMetric==='valovaya' ? 'Валовая (%) = маржа − ДРР, по дням · 🟢≥15 🟡<15 🔴<0 · JoyCity' : 'по дням, по артикулу (JoyCity) · фон: 🟢≥бенч 🟡80-99% 🔴<80% · будущие/без трафика — пусто')))))"></span>
+            <span class="text-[10px] text-gray-400" x-text="design.dayMetric==='turnover' ? 'оборачиваемость (дни) = остаток ÷ ср.продажи 7д · 🟢30-60 🟡<30 🔴>60' : (design.dayMetric==='remains' ? 'остаток (шт) на конец дня · 🟢≥50 🟡<50 🔴=0' : (design.dayMetric==='gmroi' ? 'GMROI (%) по дням · 🟢≥300 🟡150-299 🔴<150' : (design.dayMetric==='margin' ? 'Маржа до ДРР (%) по дням · 🟢≥20 🟡<20 🔴<0' : (design.dayMetric==='drr' ? 'ДРР (%) по дням — доля рекламы · 🟢≤10 🟡≤20 🔴>20' : (design.dayMetric==='valovaya' ? 'Валовая (%) = маржа − ДРР, по дням · 🟢≥15 🟡<15 🔴<0' : 'по дням, по артикулу · фон: 🟢≥бенч 🟡80-99% 🔴<80% · будущие/без трафика — пусто')))))"></span>
           </div>
           <div class="overflow-auto flex-1 min-h-0">
           <table class="w-full text-[11px] design-table" style="table-layout:fixed">
