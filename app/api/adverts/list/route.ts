@@ -1,10 +1,12 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { wbCardImageUrl } from "@/lib/wb/cardImage";
+import { resolveShopCabinet } from "@/lib/rnp/resolveShop";
+import { getWbCabinet, resolveWbToken } from "@/lib/wb/cabinetTokens";
 
 export const dynamic = "force-dynamic";
 
-const WB_ADV_TOKEN = process.env.WB_TOKEN_ADVERT;
+const ENV_ADV_TOKEN = process.env.WB_TOKEN_ADVERT;
 const ADV_BASE = "https://advert-api.wildberries.ru";
 
 interface RpcRow {
@@ -21,16 +23,18 @@ interface StatRow {
 }
 
 // Контракт inferno: {ok, articles:[{nm,art,photo,spend,campaigns:[{...}]}], balance, count, spend_today_total, spend_yest_total, today, yest, cap_rub}
-export async function GET() {
+export async function GET(request: NextRequest) {
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ ok: false, error: "Supabase не настроен" });
 
-  const since = new Date(Date.now() - 14 * 86400000).toISOString().slice(0, 10);
-  const [advRes, statRes, rpcRes] = await Promise.all([
-    db.from("wb_adverts").select("advert_id, name, status, daily_budget, nm_ids").in("status", [9, 11]),
-    db.from("wb_advert_stats").select("advert_id, date, sum_spent, views, clicks, sum_orders").gte("date", since).limit(5000),
-    db.rpc("rnp_report"),
-  ]);
+  // ?cabinet=<uuid|all> — срез рекламы по выбранному кабинету (данные уже синканы с cabinet_id)
+  const { cabinetId, label } = await resolveShopCabinet(new URL(request.url).searchParams.get("cabinet") ?? undefined);
+
+  let advQ = db.from("wb_adverts").select("advert_id, name, status, daily_budget, nm_ids").in("status", [9, 11]);
+  let statQ = db.from("wb_advert_stats").select("advert_id, date, sum_spent, views, clicks, sum_orders").gte("date", new Date(Date.now() - 14 * 86400000).toISOString().slice(0, 10)).limit(5000);
+  if (cabinetId) { advQ = advQ.eq("cabinet_id", cabinetId); statQ = statQ.eq("cabinet_id", cabinetId); }
+
+  const [advRes, statRes, rpcRes] = await Promise.all([advQ, statQ, db.rpc("rnp_report", { p_cabinet: cabinetId })]);
   if (advRes.error) return NextResponse.json({ ok: false, error: advRes.error.message });
 
   // даты «сегодня/вчера» по последним данным
@@ -70,6 +74,8 @@ export async function GET() {
   const artByNm = new Map<number, string>();
   for (const r of (rpcRes.data ?? []) as RpcRow[]) artByNm.set(r.nm_id, r.article);
 
+  const cabLabel = label || "Все кабинеты";
+
   // группируем кампании по основному nm → article
   const artMap = new Map<number, { nm: number; art: string; photo: string; spend: number; campaigns: Record<string, unknown>[] }>();
   for (const a of advRes.data ?? []) {
@@ -92,7 +98,7 @@ export async function GET() {
       category: "",
       hours: [],
       payment: "cpm",
-      cab: "JC",
+      cab: cabLabel,
       days: daysByAdv.get(a.advert_id) ?? [],
     };
     let g = artMap.get(nm);
@@ -108,11 +114,13 @@ export async function GET() {
   const spendTodayTotal = articles.reduce((s, a) => s + a.spend, 0);
   const spendYestTotal = [...byAdv.values()].reduce((s, a) => s + a.yest, 0);
 
-  // баланс кабинета
+  // баланс — только для конкретного кабинета (его токеном Продвижения); для «всех» неоднозначен
   let balance: number | null = null;
-  if (WB_ADV_TOKEN) {
+  const cab = cabinetId ? await getWbCabinet(cabinetId) : null;
+  const advToken = cab ? resolveWbToken(cab, "advert") : null;
+  if (cabinetId && advToken) {
     try {
-      const res = await fetch(`${ADV_BASE}/adv/v1/balance`, { headers: { Authorization: WB_ADV_TOKEN }, cache: "no-store" });
+      const res = await fetch(`${ADV_BASE}/adv/v1/balance`, { headers: { Authorization: advToken }, cache: "no-store" });
       if (res.ok) {
         const j = await res.json();
         balance = (j.balance ?? 0) + (j.net ?? 0);
@@ -124,6 +132,7 @@ export async function GET() {
 
   return NextResponse.json({
     ok: true,
+    cabinet: cabLabel,
     articles,
     count: advRes.data?.length ?? 0,
     cap_rub: 5000,

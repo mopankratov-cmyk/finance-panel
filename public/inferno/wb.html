@@ -1687,9 +1687,11 @@ button:not(:disabled):active{ transform: translateY(0); }
       <div x-show="page==='adverts'" class="flex flex-col" style="height:calc(100vh - 100px)" x-init="$watch('page', v => { if (v==='adverts' && !adverts.loaded && !adverts.busy) loadAdverts() }); if (page==='adverts' && !adverts.loaded) loadAdverts()">
         <div class="flex items-center gap-3 mb-3 flex-wrap flex-shrink-0 border-b border-gray-200 pb-2.5">
           <div class="text-xl font-semibold flex items-center gap-2"><i data-lucide="megaphone" class="inline-icon"></i> Реклама</div>
-          <div class="inline-flex rounded-lg bg-gray-100 p-0.5 text-xs font-semibold" title="Кабинет">
-            <button @click="advSwitchCabinet('JC')" class="px-3 py-1 rounded-md transition" :class="adverts.cabinet==='JC' ? 'bg-white shadow-sm text-purple-700' : 'text-gray-500 hover:text-gray-700'">JoyCity</button>
-            <button @click="advSwitchCabinet('optima')" class="px-3 py-1 rounded-md transition" :class="adverts.cabinet==='optima' ? 'bg-white shadow-sm text-blue-700' : 'text-gray-500 hover:text-gray-700'">Оптима</button>
+          <div class="inline-flex items-center gap-1.5" title="Кабинет">
+            <span class="text-xs font-semibold text-gray-500">🏢</span>
+            <select x-model="adverts.cabinet" @change="advSwitchCabinet(adverts.cabinet)" :class="adverts.cabinet && adverts.cabinet !== 'all' ? 'border-violet-300 bg-violet-50 text-violet-800 font-semibold' : 'border-gray-300'" class="border rounded-md px-2.5 py-1 text-xs font-semibold">
+              <template x-for="s in shops" :key="s.key"><option :value="s.key" x-text="s.label"></option></template>
+            </select>
           </div>
           <span class="text-xs text-gray-400" x-show="adverts.loaded" x-text="adverts.count + ' камп · ' + adverts.articles.length + ' арт'"></span>
           <span class="text-xs text-gray-500" x-show="adverts.balance!=null">Счёт: <b x-text="(adverts.balance||0).toLocaleString('ru-RU')+' ₽'"></b></span>
@@ -3594,7 +3596,7 @@ function app() {
     ctrtest: { loaded:false, loading:false, tests:[], busy:false, msg:'', err:'',
       selTest:null, ntBusy:false, lightbox:null, adv:{days:3,cabinet:'JC',list:[],loading:false,ctrFrom:null,ctrTo:null,collapsed:{},sortBy:'views',sortDir:'desc'},
       nt:{ open:false, skuObj:null, skuSearch:'', skuList:[], skuLoading:false, skuShow:false, interval_min:60, impr_per_round:350, target_impr_photo:1000, cpm:0, cpmReco:null, variants:[] } },
-    adverts: { cabinet:'JC', loaded:false, busy:false, saving:false, q:'', typeFilter:'', cap_rub:5000, balance:null, count:0, today:'', yest:'', spend_today_total:0, spend_yest_total:0, articles:[], collapsed:{}, insight:{}, insightAt:'', dayMetrics:{}, deposits:[], history:[], changes:[], refreshing:false, err:'', msg:'', sel:null, saved:false, stats:{loading:false, days:[], summary:null, analysis:[], period:'3d', err:''}, bulk:{ open:false, filterSig:null, sel:{}, newHours:[18] }, actions:{ menu:false, modal:false, action:'', loading:false, items:[], sel:{}, busy:false, result:'', err:'' } },
+    adverts: { cabinet:'all', cabinetName:'', loaded:false, busy:false, saving:false, q:'', typeFilter:'', cap_rub:5000, balance:null, count:0, today:'', yest:'', spend_today_total:0, spend_yest_total:0, articles:[], collapsed:{}, insight:{}, insightAt:'', dayMetrics:{}, deposits:[], history:[], changes:[], refreshing:false, err:'', msg:'', sel:null, saved:false, stats:{loading:false, days:[], summary:null, analysis:[], period:'3d', err:''}, bulk:{ open:false, filterSig:null, sel:{}, newHours:[18] }, actions:{ menu:false, modal:false, action:'', loading:false, items:[], sel:{}, busy:false, result:'', err:'' } },
     shops: [],
     dates: { from: '2026-05-01', to: '2026-05-31' },
     activePreset: 'month',
@@ -7009,18 +7011,8 @@ function app() {
       return v==null ? '—' : v;
     },
     async advRefresh() {
-      // JC: живое чтение кабинета. Оптима: сперва освежаем статусы запущенных кампаний в кэше, потом читаем кэш.
+      // Данные рекламы синкаются по кабинетам в БД — просто перечитываем срез выбранного кабинета.
       if (this.adverts.busy) return;
-      if (this.adverts.cabinet === 'optima') {
-        this.adverts.busy = true; this.adverts.refreshing = true; this.adverts.err=''; this.adverts.msg='';
-        try {
-          const r = await fetch(API_BASE+'/api/adverts/optima-refresh-status', { method:'POST' });
-          const j = await r.json();
-          if (!j.ok) { this.adverts.err = j.error || 'не удалось освежить статусы Оптимы'; }
-          else { this.adverts.msg = '✓ Статусы Оптимы освежены: '+(j.changed||0)+' изм. из '+(j.total||0)+' кампаний'; }
-        } catch(e) { this.adverts.err = 'сеть при освежении Оптимы: '+e; }
-        this.adverts.refreshing = false;
-      }
       await this.loadAdverts();
     },
     async loadAdverts() {
@@ -7032,7 +7024,7 @@ function app() {
           this.adverts.articles = j.articles || [];
           this.adverts.balance = j.balance; this.adverts.count = j.count || 0; this.adverts.cap_rub = j.cap_rub || 5000;
           this.adverts.spend_today_total = j.spend_today_total||0; this.adverts.spend_yest_total = j.spend_yest_total||0;
-          this.adverts.today = j.today||''; this.adverts.yest = j.yest||'';
+          this.adverts.today = j.today||''; this.adverts.yest = j.yest||''; this.adverts.cabinetName = j.cabinet||'';
           if (this.adverts.sel) { const id=this.adverts.sel.id; let f=null; for(const a of this.adverts.articles){const c=a.campaigns.find(x=>x.id===id); if(c){f=c;break;}} this.adverts.sel=f; }
         }
         this.adverts.loaded = true;

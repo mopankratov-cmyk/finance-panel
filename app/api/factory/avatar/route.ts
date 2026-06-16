@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { CLAUDE_MODEL as MODEL, createClaudeClient } from "@/lib/agent/client";
+import { DEAI_FILTERS } from "@/lib/factory/standard";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -28,7 +29,7 @@ export async function POST(req: NextRequest) {
     if (client) {
       const res = await client.messages.create({
         model: MODEL, max_tokens: 350,
-        system: "Ты пишешь короткий разговорный монолог для говорящего UGC-блогера (12-20 секунд, ~45-65 слов). Живой русский, как настоящий человек рассказывает подруге. Хук в первой фразе, мягкий CTA в конце (искать на WB). Верни СТРОГО JSON: {\"title\":\"...\",\"spoken\":\"текст монолога без ремарок\"}. Без преамбулы.",
+        system: "Ты пишешь короткий разговорный монолог для говорящего UGC-блогера (12-20 секунд, ~45-65 слов). Живой русский, как настоящий человек рассказывает подруге. Хук в первой фразе, мягкий CTA в конце (искать на WB). " + DEAI_FILTERS + " Верни СТРОГО JSON: {\"title\":\"...\",\"spoken\":\"текст монолога без ремарок\"}. Без преамбулы.",
         messages: [{ role: "user", content: `Товар: ${body.sku_name || body.sku_art || "товар"}${body.category ? `. Категория: ${body.category}` : ""}. Идея/хук: ${brief}. Напиши монолог для аватара.` }],
       });
       // eslint-disable-next-line @typescript-eslint/no-explicit-any

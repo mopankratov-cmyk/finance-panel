@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClaudeClient } from "@/lib/agent/client";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
-import { CONTENT_STANDARD, HOOK_FORMULAS, HOOK_ANTIPATTERNS, QA_THRESHOLD } from "@/lib/factory/standard";
+import { CONTENT_STANDARD, HOOK_FORMULAS, HOOK_ANTIPATTERNS, DEAI_FILTERS, QA_THRESHOLD } from "@/lib/factory/standard";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -32,7 +32,8 @@ export async function POST(req: NextRequest) {
 СТАНДАРТ: ${CONTENT_STANDARD}
 ${HOOK_FORMULAS}
 ${HOOK_ANTIPATTERNS}
-Сделай разные хуки/форматы/углы — КАЖДЫЙ хук по своей формуле, не повторяй структуру. Это БЫСТРАЯ идеация — НЕ пиши покадровый сценарий, только идею. Полный сценарий развернём отдельно для выбранных. Оценивай СТРОГО как придирчивый редактор: для КАЖДОГО честно поставь score 1-10 по стандарту и анти-паттернам; если < ${QA_THRESHOLD} — verdict "rework" и в fix конкретно что исправить (не общими словами).
+${DEAI_FILTERS}
+Сделай разные хуки/форматы/углы — КАЖДЫЙ хук по своей формуле, не повторяй структуру. Это БЫСТРАЯ идеация — НЕ пиши покадровый сценарий, только идею. Полный сценарий развернём отдельно для выбранных. Оценивай СТРОГО как придирчивый редактор: для КАЖДОГО честно поставь score 1-10 по стандарту, анти-паттернам И фильтрам анти-ИИ; если < ${QA_THRESHOLD} или текст пахнет нейронкой — verdict "rework" и в fix конкретно что исправить (не общими словами).
 Верни СТРОГО JSON-массив (кратко): [{"hook":"первая фраза-зацепка","angle":"какое возражение","concept":"идея ролика 1-2 предложения","caption":"подпись","format":"unboxing|POV|обзор|до/после|лайфхак|проблема-решение","cta":"кратко","score":8,"verdict":"approved|rework","fix":""}]. Только JSON, без преамбулы.`;
 
   const user = `Товар: ${subject}${article ? ` (артикул ${article})` : ""}. Сделай ${count} сценариев.` +
