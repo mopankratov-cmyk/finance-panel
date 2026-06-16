@@ -4,8 +4,11 @@ import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { generateInsights } from "@/lib/agent/rules";
 
 // Последовательный прогон всех синков — один cron-слот (Hobby) и кнопка «обновить всё».
-// Порядок важен: adverts до advert-stats (статистика читает живые кампании из wb_adverts).
-const JOBS = ["orders", "sales", "stocks", "adverts", "advert-stats", "funnel"] as const;
+// Порядок важен:
+//  - adverts до advert-stats (статистика читает живые кампании из wb_adverts);
+//  - funnel ПЕРЕД advert-stats: у advert-stats паузы 61с/батч (WB 1 req/min), они съедают
+//    60с-бюджет функции, и воронка не доходит. Воронка аналитически важнее → идёт раньше.
+const JOBS = ["orders", "sales", "stocks", "adverts", "funnel", "advert-stats"] as const;
 
 export const maxDuration = 60;
 
