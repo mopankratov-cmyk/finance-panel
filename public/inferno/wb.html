@@ -1689,7 +1689,7 @@ button:not(:disabled):active{ transform: translateY(0); }
           <div class="text-xl font-semibold flex items-center gap-2"><i data-lucide="megaphone" class="inline-icon"></i> Реклама</div>
           <div class="inline-flex items-center gap-1.5" title="Кабинет">
             <span class="text-xs font-semibold text-gray-500">🏢</span>
-            <select x-model="adverts.cabinet" @change="advSwitchCabinet(adverts.cabinet)" :class="adverts.cabinet && adverts.cabinet !== 'all' ? 'border-violet-300 bg-violet-50 text-violet-800 font-semibold' : 'border-gray-300'" class="border rounded-md px-2.5 py-1 text-xs font-semibold">
+            <select :value="adverts.cabinet" @change="advSwitchCabinet($event.target.value)" :class="adverts.cabinet && adverts.cabinet !== 'all' ? 'border-violet-300 bg-violet-50 text-violet-800 font-semibold' : 'border-gray-300'" class="border rounded-md px-2.5 py-1 text-xs font-semibold">
               <template x-for="s in shops" :key="s.key"><option :value="s.key" x-text="s.label"></option></template>
             </select>
           </div>
@@ -1715,7 +1715,7 @@ button:not(:disabled):active{ transform: translateY(0); }
             <div class="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[88vh] flex flex-col">
               <div class="flex items-center gap-2 px-5 py-3 border-b border-gray-200">
                 <div class="text-base font-semibold">🕑 Массово изменить окна</div>
-                <span class="text-xs text-gray-400" x-text="'кабинет: '+(adverts.cabinet==='JC'?'JoyCity':'Оптима')"></span>
+                <span class="text-xs text-gray-400" x-text="'кабинет: '+(adverts.cabinetName||'Все кабинеты')"></span>
                 <button @click="adverts.bulk.open=false" class="ml-auto text-gray-400 hover:text-gray-700 text-2xl leading-none">&times;</button>
               </div>
               <div class="px-5 py-3 overflow-y-auto flex-1 space-y-4">
@@ -1773,7 +1773,7 @@ button:not(:disabled):active{ transform: translateY(0); }
             <div class="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col">
               <div class="flex items-center gap-2 px-4 py-3 border-b">
                 <span class="text-sm font-semibold text-gray-800" x-text="advActionTitle()"></span>
-                <span class="text-xs text-gray-400" x-text="(adverts.cabinet==='JC'?'JoyCity':'Оптима')+' · найдено '+adverts.actions.items.length+' · выбрано '+advActionSelCount()"></span>
+                <span class="text-xs text-gray-400" x-text="(adverts.cabinetName||'Все кабинеты')+' · найдено '+adverts.actions.items.length+' · выбрано '+advActionSelCount()"></span>
                 <button @click="adverts.actions.modal=false" class="ml-auto text-gray-400 hover:text-gray-700 text-2xl leading-none">&times;</button>
               </div>
               <div x-show="!adverts.actions.loading && !adverts.actions.err && adverts.actions.items.length" class="px-4 py-2.5 bg-amber-50 border-b border-amber-100 text-[11px] leading-snug text-gray-700 space-y-1">
@@ -3596,7 +3596,7 @@ function app() {
     ctrtest: { loaded:false, loading:false, tests:[], busy:false, msg:'', err:'',
       selTest:null, ntBusy:false, lightbox:null, adv:{days:3,cabinet:'JC',list:[],loading:false,ctrFrom:null,ctrTo:null,collapsed:{},sortBy:'views',sortDir:'desc'},
       nt:{ open:false, skuObj:null, skuSearch:'', skuList:[], skuLoading:false, skuShow:false, interval_min:60, impr_per_round:350, target_impr_photo:1000, cpm:0, cpmReco:null, variants:[] } },
-    adverts: { cabinet:'all', cabinetName:'', loaded:false, busy:false, saving:false, q:'', typeFilter:'', cap_rub:5000, balance:null, count:0, today:'', yest:'', spend_today_total:0, spend_yest_total:0, articles:[], collapsed:{}, insight:{}, insightAt:'', dayMetrics:{}, deposits:[], history:[], changes:[], refreshing:false, err:'', msg:'', sel:null, saved:false, stats:{loading:false, days:[], summary:null, analysis:[], period:'3d', err:''}, bulk:{ open:false, filterSig:null, sel:{}, newHours:[18] }, actions:{ menu:false, modal:false, action:'', loading:false, items:[], sel:{}, busy:false, result:'', err:'' } },
+    adverts: { cabinet:(localStorage.getItem('fp_cab_wb')||'all'), cabinetName:'', loaded:false, busy:false, saving:false, q:'', typeFilter:'', cap_rub:5000, balance:null, count:0, today:'', yest:'', spend_today_total:0, spend_yest_total:0, articles:[], collapsed:{}, insight:{}, insightAt:'', dayMetrics:{}, deposits:[], history:[], changes:[], refreshing:false, err:'', msg:'', sel:null, saved:false, stats:{loading:false, days:[], summary:null, analysis:[], period:'3d', err:''}, bulk:{ open:false, filterSig:null, sel:{}, newHours:[18] }, actions:{ menu:false, modal:false, action:'', loading:false, items:[], sel:{}, busy:false, result:'', err:'' } },
     shops: [],
     dates: { from: '2026-05-01', to: '2026-05-31' },
     activePreset: 'month',
@@ -7056,6 +7056,7 @@ function app() {
     advSwitchCabinet(cab) {
       if (this.adverts.cabinet === cab) return;
       this.adverts.cabinet = cab;
+      try { localStorage.setItem('fp_cab_wb', cab === 'all' ? '' : cab); } catch(e) {}
       this.adverts.sel = null; this.adverts.articles = []; this.adverts.loaded = false; this.adverts.collapsed = {}; this.adverts.deposits = [];
       this.loadAdverts();
     },
@@ -7217,7 +7218,7 @@ function app() {
       const n = this.adverts.actions.items.filter(it=>it.qualifies).length;
       if (a === 'stock100') return {
         what: 'Поставлю на паузу ЕДИНУЮ и CPC + сниму расписание — у отмеченных карточек.',
-        basis: 'Карточки '+(this.adverts.cabinet==='JC'?'JoyCity':'Оптимы')+', у которых текущий остаток (на сегодня) меньше 100 шт.',
+        basis: 'Карточки '+(this.adverts.cabinetName||'кабинета')+', у которых текущий остаток (на сегодня) меньше 100 шт.',
         count: 'Подходит: '+tot+' карточек.' };
       if (a === 'edinaya_cpc') return {
         what: 'Поставлю на паузу только ЕДИНУЮ (CPC не трогаю) и сниму у неё расписание — у отмеченных карточек.',
