@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClaudeClient } from "@/lib/agent/client";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
-import { DEAI_FILTERS } from "@/lib/factory/standard";
+import { DEAI_FILTERS, PROBLEM_STACK } from "@/lib/factory/standard";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -29,7 +29,8 @@ export async function POST(req: NextRequest) {
     (profile ? "ПРОФИЛЬ БРЕНДА/АУДИТОРИИ (пиши в этом голосе): " + profile + " " : "") +
     "Озвучка (voiceover) и текст на экране обязаны звучать как живой человек, без «запаха нейронки». " + DEAI_FILTERS + " " +
     "Верни СТРОГО JSON: {\"title\":\"название\",\"duration_sec\":20,\"shots\":[{\"t\":\"0-3с\",\"visual\":\"что в кадре\",\"voiceover\":\"закадр/реплика\",\"onscreen\":\"текст на экране\"}],\"caption\":\"подпись под видео\",\"hashtags\":[\"...\"],\"cta\":\"призыв искать товар на WB\",\"music\":\"тип трендового звука\"}. Только JSON.";
-  const user = `Товар: ${name || article}${article ? ` (арт. ${article})` : ""}. Идея/хук: «${hook}».${format ? ` Формат: ${format}.` : ""} Сделай покадровый сценарий: первый кадр = хук в лоб, держит внимание, в конце мягкий CTA на поиск товара на WB.`;
+  const isStack = /проблем|3 проблем|problem|стек/i.test(format);
+  const user = `Товар: ${name || article}${article ? ` (арт. ${article})` : ""}. Идея/хук: «${hook}».${format ? ` Формат: ${format}.` : ""}${isStack ? ` Разверни по структуре «3 проблемы»: ${PROBLEM_STACK}` : ""} Сделай покадровый сценарий: первый кадр = хук в лоб, держит внимание, в конце мягкий CTA на поиск товара на WB.`;
 
   try {
     const res = await client.messages.create({ model: MODEL, max_tokens: 1800, system: sys, messages: [{ role: "user", content: user }] });

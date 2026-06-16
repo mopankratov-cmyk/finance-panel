@@ -6501,7 +6501,7 @@ function app() {
       const nms = selKeys.map(Number);
       const byNm = {}; (d.skus||[]).forEach(s => byNm[String(s.nm)] = s);
       const cabs = {};
-      selKeys.forEach(k => { const s = byNm[k]; cabs[k] = (s && s.shop === 'JC') ? 'joycity' : 'optima'; });
+      selKeys.forEach(k => { const s = byNm[k]; cabs[k] = (s && s.shop) || ''; }); // s.shop = имя кабинета (для будущего per-cabinet экспорта цен; сейчас бэкенд — заглушка 501)
       if (!nms.length) { d.priceErr = true; d.priceMsg = 'Отметь галочками артикулы'; setTimeout(()=>{ d.priceMsg=''; }, 4000); return; }
       d.priceBusy = true; d.priceMsg = ''; d.priceErr = false;
       try {
