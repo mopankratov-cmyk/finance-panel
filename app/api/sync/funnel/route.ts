@@ -78,6 +78,7 @@ export async function GET(request: NextRequest) {
 
   try {
     for (const t of targets) {
+      if (Date.now() > deadline) { rotated.push(`${t.name}: пропущен (бюджет)`); break; } // докрутим следующим прогоном
       const nmIds = await nmIdsForCabinet(db, t.cabinetId);
       if (!nmIds.length) continue;
 

@@ -67,6 +67,7 @@ export async function GET(request: NextRequest) {
 
   try {
     for (const t of targets) {
+      if (Date.now() > deadline) { rotated.push(`${t.name}: пропущен (бюджет)`); break; } // докрутим следующим прогоном
       // Живые кампании этого кабинета (активные + на паузе); архивные не тратят бюджет.
       let aq = db.from("wb_adverts").select("advert_id, status").in("status", [9, 11]);
       aq = t.cabinetId === null ? aq.is("cabinet_id", null) : aq.eq("cabinet_id", t.cabinetId);
@@ -92,8 +93,10 @@ export async function GET(request: NextRequest) {
       let processed = 0;
       for (let k = 0; k < idBatches.length; k++) {
         if (Date.now() > deadline) break; // тайм-бокс: остальное доберём следующим прогоном
+        // следующий батч ТОГО ЖЕ кабинета требует паузу 61с (WB 1 req/min) — она одна не влезает
+        // в 60с-функцию, поэтому за прогон берём максимум 1 батч на кабинет, остальное — ротацией по дням
+        if (processed > 0) break;
         const batch = idBatches[(startB + k) % idBatches.length];
-        if (processed > 0) await new Promise((r) => setTimeout(r, 61000)); // лимит 1 req/min на тот же токен
         processed++;
 
         const url = new URL(FULLSTATS_URL);
