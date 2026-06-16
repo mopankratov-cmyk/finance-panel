@@ -9,7 +9,7 @@ import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianG
 interface Query { word: string; wb_count: number; our_org: number | null; our_ad: number | null }
 interface Pulse {
   ok?: boolean; error?: string; subject: string; cabinet: string; weeks: number;
-  series: { week: string; niche: number; ours: number }[];
+  series: { week: string; niche: number; ours: number | null }[];
   niche_growth_pct: number | null; our_growth_pct: number | null; rel_growth_pct: number | null;
   share_pct: number | null; queries: Query[]; note?: string;
 }

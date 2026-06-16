@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
   const weeks = Math.min(12, Math.max(2, Number(sp.get("weeks")) || 8));
   const { cabinetId, label } = await resolveShopCabinet(sp.get("cabinet") ?? undefined);
 
-  const to = new Date();
+  const to = new Date(Date.now() - 86400000); // MPStats требует d2 < сегодня (вчера)
   const from = new Date(Date.now() - weeks * 7 * 86400000);
   const fmt = (d: Date) => d.toISOString().slice(0, 10);
   const d1 = fmt(from), d2 = fmt(to);
@@ -39,16 +39,29 @@ export async function GET(request: NextRequest) {
   for (const r of (ourDailyRes.data ?? []) as { d: string; orders_sum: number }[]) { const w = isoWeek(String(r.d).slice(0, 10)); ourByWeek.set(w, (ourByWeek.get(w) ?? 0) + Number(r.orders_sum ?? 0)); }
 
   const weeksList = [...new Set([...nicheByWeek.keys(), ...ourByWeek.keys()])].sort();
-  // выкидываем неполные крайние недели для роста (берём «вторая → предпоследняя»)
-  const full = weeksList.slice(1, -1).length >= 2 ? weeksList.slice(1, -1) : weeksList;
-  const series = weeksList.map((w) => ({ week: w, niche: Math.round(nicheByWeek.get(w) ?? 0), ours: Math.round(ourByWeek.get(w) ?? 0) }));
-  const growth = (m: Map<string, number>) => { const a = m.get(full[0]) ?? 0, b = m.get(full[full.length - 1]) ?? 0; return a > 0 ? Math.round((b / a - 1) * 100) : null; };
-  const nicheGrowth = growth(nicheByWeek);
-  const ourGrowth = growth(ourByWeek);
+  // окно сравнения — недели, где у НАС есть данные (история заказов короче ниши)
+  const ourWeeks = weeksList.filter((w) => (ourByWeek.get(w) ?? 0) > 0);
+  const firstOur = ourWeeks[0]; // нашу линию рисуем с этой недели (раньше — null, не 0)
+  const series = weeksList.map((w) => ({
+    week: w,
+    niche: Math.round(nicheByWeek.get(w) ?? 0),
+    ours: firstOur && w >= firstOur ? Math.round(ourByWeek.get(w) ?? 0) : null,
+  }));
+  // рост = средняя второй половины окна / средняя первой (устойчиво к нулям и выбросам)
+  const avg = (m: Map<string, number>, ws: string[]) => (ws.length ? ws.reduce((s, w) => s + (m.get(w) ?? 0), 0) / ws.length : 0);
+  const growthOver = (m: Map<string, number>, ws: string[]) => {
+    if (ws.length < 2) return null;
+    const h = Math.max(1, Math.floor(ws.length / 2));
+    const a = avg(m, ws.slice(0, h)), b = avg(m, ws.slice(-h));
+    return a > 0 ? Math.round((b / a - 1) * 100) : null;
+  };
+  const nicheGrowth = growthOver(nicheByWeek, ourWeeks);
+  const ourGrowth = growthOver(ourByWeek, ourWeeks);
 
-  const nicheRevTotal = [...nicheByWeek.values()].reduce((a, b) => a + b, 0);
-  const ourRevTotal = [...ourByWeek.values()].reduce((a, b) => a + b, 0);
-  const sharePct = nicheRevTotal > 0 ? Math.round((ourRevTotal / nicheRevTotal) * 1000) / 10 : null;
+  // доля — в окне наших данных (одинаковые недели); MPStats занижает нишу → доля скорее завышена
+  const nicheRevWin = ourWeeks.reduce((a, w) => a + (nicheByWeek.get(w) ?? 0), 0);
+  const ourRevWin = ourWeeks.reduce((a, w) => a + (ourByWeek.get(w) ?? 0), 0);
+  const sharePct = nicheRevWin > 0 ? Math.round((ourRevWin / nicheRevWin) * 1000) / 10 : null;
 
   // — топ-запросы ниши + наши позиции по топ-SKU кабинета —
   // топ-SKU кабинета по выручке (для позиций) — из rnp_report
