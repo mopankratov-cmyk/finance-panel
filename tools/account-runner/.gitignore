@@ -1,0 +1,4 @@
+.env
+shot_*.png
+proxyshard.py
+__pycache__/
