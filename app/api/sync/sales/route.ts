@@ -2,18 +2,27 @@ import { NextRequest, NextResponse } from "next/server";
 import { checkCronAuth, chunkedUpsert, writeSyncLog } from "@/lib/sync/helpers";
 import { getWbSyncTargets, lastSyncDate } from "@/lib/sync/cabinets";
 
+export const maxDuration = 60; // глубокий бэкфилл (?from=) пишет десятки тысяч строк
+
 export async function GET(request: NextRequest) {
   const authError = checkCronAuth(request);
   if (authError) return authError;
 
   const startedAt = new Date();
-  const targets = await getWbSyncTargets();
-  if (!targets.length) {
+  const allTargets = await getWbSyncTargets();
+  if (!allTargets.length) {
     return NextResponse.json({ error: "Нет активных кабинетов и WB_STATS_TOKEN не настроен" }, { status: 500 });
   }
 
-  // ?from=YYYY-MM-DD — принудительный ре-синк с даты (бэкфилл price_with_disc), общий для всех кабинетов
-  const forceFrom = new URL(request.url).searchParams.get("from");
+  const sp = new URL(request.url).searchParams;
+  // ?from=YYYY-MM-DD — принудительный ре-синк с даты (бэкфилл price_with_disc)
+  const forceFrom = sp.get("from");
+  // ?cabinet=<uuid> — один кабинет за вызов (большие объёмы влезают в 60с)
+  const onlyCab = sp.get("cabinet");
+  const targets = onlyCab ? allTargets.filter((t) => t.cabinetId === onlyCab) : allTargets;
+  if (!targets.length) {
+    return NextResponse.json({ error: `Кабинет не найден: ${onlyCab}` }, { status: 404 });
+  }
 
   let total = 0;
   const errors: string[] = [];

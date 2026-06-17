@@ -57,14 +57,21 @@ export function SyncPage() {
     }
   };
 
-  // Догрузка истории: заказы + продажи с выбранной даты (бэкфилл, идемпотентно по srid/saleID).
+  // Догрузка истории: заказы + продажи с выбранной даты, по одному кабинету за вызов
+  // (большие объёмы за один запрос упираются в лимит функции 60с). Идемпотентно по srid/saleID.
   const runBackfill = async () => {
     setRunning("backfill");
     setError(null);
     try {
-      const qs = `&from=${encodeURIComponent(backfillFrom)}`;
-      await fetch(`/api/sync/trigger?job=orders${qs}`, { method: "POST" });
-      await fetch(`/api/sync/trigger?job=sales${qs}`, { method: "POST" });
+      const shopsRes = await fetch("/api/shops", { cache: "no-store" });
+      const shops: { key: string }[] = await shopsRes.json();
+      const cabs = shops.map((s) => s.key).filter((k) => k && k !== "all");
+      const from = encodeURIComponent(backfillFrom);
+      for (const cab of cabs) {
+        await fetch(`/api/sync/trigger?job=orders&from=${from}&cabinet=${cab}`, { method: "POST" });
+        await fetch(`/api/sync/trigger?job=sales&from=${from}&cabinet=${cab}`, { method: "POST" });
+        loadLog();
+      }
     } catch {
       setError("Ошибка догрузки истории");
     } finally {
@@ -119,6 +126,7 @@ export function SyncPage() {
             <p className="mt-0.5 max-w-xl text-xs text-slate-500">
               Обычный синк тянет только последние 30 дней. Чтобы подтянуть продажи и заказы за более ранний
               период (графики «до 15 мая» и т.п.), укажите дату начала и запустите разовую догрузку.
+              Идёт по кабинетам последовательно — может занять пару минут, дождитесь окончания.
             </p>
           </div>
           <label className="flex flex-col gap-1 text-xs text-slate-500">
