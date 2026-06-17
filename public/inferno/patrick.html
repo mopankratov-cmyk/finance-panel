@@ -254,27 +254,52 @@
       <div class="grid md:grid-cols-2 gap-4">
         <!-- Реестр аккаунтов -->
         <div>
-          <div class="text-[12px] font-semibold mb-2">Аккаунты</div>
-          <div class="flex gap-1.5 mb-2">
+          <div class="text-[12px] font-semibold mb-2">Аккаунты <span class="text-gray-400 font-normal">· якорь=свой (ShardBrowser) · креатор=живой человек · расходник=разведка</span></div>
+          <div class="flex gap-1.5 mb-2 flex-wrap">
+            <select x-model="newAcc.type" class="text-[12px] border border-gray-300 rounded-lg px-2 py-1.5">
+              <template x-for="t in accTypes" :key="t"><option x-text="t"></option></template>
+            </select>
             <select x-model="newAcc.platform" class="text-[12px] border border-gray-300 rounded-lg px-2 py-1.5">
               <template x-for="p in platforms" :key="p"><option x-text="p"></option></template>
             </select>
-            <input x-model="newAcc.handle" @keydown.enter="addAcc()" placeholder="@хэндл" class="flex-1 text-[12px] border border-gray-300 rounded-lg px-2 py-1.5">
+            <input x-model="newAcc.handle" @keydown.enter="addAcc()" placeholder="@хэндл" class="flex-1 min-w-[120px] text-[12px] border border-gray-300 rounded-lg px-2 py-1.5">
             <button @click="addAcc()" class="btn btn-primary text-[12px]">＋</button>
           </div>
           <div x-show="!accReg.length" class="text-[11px] text-gray-400 italic">пока пусто — добавь аккаунты для постинга</div>
           <div class="space-y-1">
             <template x-for="(a,ai) in accReg" :key="a.id">
-              <div class="flex items-center gap-2 p-1.5 border border-gray-100 rounded-lg text-[12px]">
-                <span class="pill" :class="a.status==='активен' ? 'pill-live' : 'pill-off'" x-text="a.platform"></span>
-                <span class="font-medium flex-1" x-text="a.handle"></span>
-                <button @click="copyUtm(a)" title="UTM-ссылка на WB" class="text-[10px] text-sky-600">UTM</button>
-                <button @click="toggleAcc(ai)" class="text-[10px] text-gray-400" x-text="a.status==='активен' ? 'пауза' : 'вкл'"></button>
-                <button @click="delAcc(ai)" class="text-[10px] text-gray-400 hover:text-red-600">✕</button>
+              <div class="p-1.5 border border-gray-100 rounded-lg text-[12px]">
+                <div class="flex items-center gap-2">
+                  <span class="pill" :class="a.type==='якорь' ? 'pill-rose' : (a.type==='креатор' ? 'pill-live' : 'pill-off')" x-text="a.type"></span>
+                  <span class="text-gray-500" x-text="a.platform"></span>
+                  <span class="font-medium flex-1 truncate" x-text="a.handle"></span>
+                  <span x-show="legalRisk(a)" title="72-ФЗ: продающий постинг с юрлица в IG/TikTok штрафуется. Лучше через креатора." class="text-[11px] text-amber-600">⚠ 72-ФЗ</span>
+                  <button @click="copyUtm(a)" title="UTM на WB" class="text-[10px] text-sky-600">UTM</button>
+                  <button @click="delAcc(ai)" class="text-[10px] text-gray-400 hover:text-red-600">✕</button>
+                </div>
+                <div class="flex items-center gap-2 mt-1 text-[10px] text-gray-400">
+                  <span x-show="a.type!=='креатор'" :class="linkAllowed(a) ? 'text-emerald-600' : 'text-amber-600'" x-text="'прогрев: ' + warmupStage(a) + ' (д.' + warmupDay(a) + ')'"></span>
+                  <span x-show="a.type!=='креатор' && !linkAllowed(a)" class="text-amber-600">🔒 без ссылок до д.8</span>
+                  <span class="flex-1"></span>
+                  <select class="text-[10px] border border-gray-200 rounded px-1 py-0.5" @change="setAccStatus(ai, $event.target.value)">
+                    <template x-for="st in accStatuses" :key="st"><option :value="st" :selected="a.status===st" x-text="st"></option></template>
+                  </select>
+                </div>
               </div>
             </template>
           </div>
           <div x-show="utmMsg" class="text-[11px] text-emerald-600 mt-1.5" x-text="utmMsg"></div>
+          <!-- Здоровье когорт -->
+          <div x-show="cohorts().length" class="mt-3 border-t border-gray-100 pt-2">
+            <div class="text-[11px] font-semibold mb-1">Здоровье когорт <span class="text-gray-400 font-normal">· выживаемость (стоп если &lt;50%)</span></div>
+            <template x-for="c in cohorts()" :key="c.cohort">
+              <div class="flex items-center gap-2 text-[10px] mb-0.5">
+                <span class="text-gray-500 w-20" x-text="c.cohort"></span>
+                <div class="progress flex-1 max-w-[120px]"><div :style="'width:'+c.survival+'%; background:'+(c.survival>=70?'#16a34a':(c.survival>=50?'#f59e0b':'#dc2626'))"></div></div>
+                <span :class="c.survival>=70 ? 'text-emerald-600' : (c.survival>=50 ? 'text-amber-600' : 'text-red-600')" x-text="c.survival + '% жив (' + c.alive + '/' + c.total + ')'"></span>
+              </div>
+            </template>
+          </div>
         </div>
         <!-- Расписание -->
         <div>
@@ -287,7 +312,7 @@
             <template x-for="(s,si) in sched" :key="s.id">
               <div class="flex items-center gap-2 p-1.5 border border-gray-100 rounded-lg text-[11px]">
                 <span class="pill pill-rose" x-text="s.platform"></span>
-                <div class="flex-1 min-w-0"><div class="truncate font-medium" x-text="s.hook || '(без хука)'"></div><div class="text-gray-400" x-text="s.handle + ' · ' + s.when.replace('T',' ')"></div></div>
+                <div class="flex-1 min-w-0"><div class="truncate font-medium" x-text="s.hook || '(без хука)'"></div><div class="text-gray-400"><span x-text="s.handle + ' · ' + s.when.replace('T',' ')"></span><span x-show="s.link" :class="s.link==='UTM' ? 'text-emerald-600' : 'text-amber-600'" x-text="' · ' + s.link"></span></div></div>
                 <select class="text-[10px] border border-gray-200 rounded px-1 py-0.5" @change="setSchedStatus(si, $event.target.value)">
                   <option value="запланировано" :selected="s.status==='запланировано'">план</option>
                   <option value="опубликовано" :selected="s.status==='опубликовано'">опубл.</option>
@@ -442,16 +467,34 @@ function patrick() {
     copyText(t) { navigator.clipboard?.writeText(t); },
     // ── Дистрибуция: реестр аккаунтов ──
     accReg: [],
-    newAcc: { platform: 'TikTok', handle: '', note: '' },
-    platforms: ['TikTok', 'Instagram', 'YouTube', 'VK', 'Telegram', 'Дзен', 'Pinterest', 'Threads'],
+    newAcc: { platform: 'VK', handle: '', note: '', type: 'якорь' },
+    platforms: ['VK', 'Telegram', 'Дзен', 'YouTube', 'Instagram', 'TikTok', 'Pinterest', 'Rutube'],
+    accTypes: ['якорь', 'креатор', 'расходник'],
+    accStatuses: ['активен', 'пауза', 'бан', 'тень'],
     _saveAcc() { try { localStorage.setItem('cf_accounts', JSON.stringify(this.accReg)); } catch (e) {} },
     addAcc() {
       if (!this.newAcc.handle.trim()) return;
-      this.accReg.push({ id: Date.now(), platform: this.newAcc.platform, handle: this.newAcc.handle.trim(), note: this.newAcc.note.trim(), status: 'активен' });
+      const now = Date.now();
+      this.accReg.push({ id: now, platform: this.newAcc.platform, handle: this.newAcc.handle.trim(), note: this.newAcc.note.trim(), type: this.newAcc.type, status: 'активен', birthDate: now, cohort: new Date().toISOString().slice(0, 10), rate: '', utm_used: '' });
       this.newAcc.handle = ''; this.newAcc.note = ''; this._saveAcc();
     },
     delAcc(i) { this.accReg.splice(i, 1); this._saveAcc(); },
-    toggleAcc(i) { if (this.accReg[i]) { this.accReg[i].status = this.accReg[i].status === 'активен' ? 'пауза' : 'активен'; this._saveAcc(); } },
+    setAccStatus(i, st) { if (this.accReg[i]) { this.accReg[i].status = st; this._saveAcc(); } },
+    setAccType(i, t) { if (this.accReg[i]) { this.accReg[i].type = t; this._saveAcc(); } },
+    // ── Прогрев: день/стадия/гейт ссылок ──
+    warmupDay(acc) { if (acc.type === 'креатор') return 99; const bd = acc.birthDate || acc.id; return Math.floor((Date.now() - bd) / 86400000); },
+    warmupStage(acc) {
+      if (acc.type === 'креатор') return 'живой (без прогрева)';
+      const d = this.warmupDay(acc);
+      if (d <= 1) return 'отлёжка';
+      if (d <= 4) return 'потребление';
+      if (d <= 7) return 'нейтральный пост';
+      if (d <= 9) return 'можно ссылку';
+      return 'боевой';
+    },
+    linkAllowed(acc) { return acc.type === 'креатор' || this.warmupDay(acc) >= 8; },
+    // 72-ФЗ риск: свои (не креатор) аккаунты на IG/TikTok
+    legalRisk(acc) { return acc.type !== 'креатор' && ['Instagram', 'TikTok'].includes(acc.platform); },
     // UTM-ссылка на карточку WB для атрибуции переходов
     utmFor(acc, art) {
       const a = (art || this.dir.plan?.target_article || this.orbit.article || '').trim();
@@ -461,20 +504,31 @@ function patrick() {
     },
     copyUtm(acc) { const u = this.utmFor(acc); navigator.clipboard?.writeText(u); this.utmMsg = 'скопировано: ' + u.slice(0, 50) + '…'; setTimeout(() => this.utmMsg = '', 2500); },
     utmMsg: '',
+    // ── Здоровье когорт (выживаемость) ──
+    cohorts() {
+      const g = {};
+      for (const a of this.accReg) { const c = a.cohort || '—'; (g[c] = g[c] || { cohort: c, total: 0, banned: 0 }); g[c].total++; if (a.status === 'бан' || a.status === 'тень') g[c].banned++; }
+      return Object.values(g).map(x => ({ ...x, alive: x.total - x.banned, survival: x.total ? Math.round((x.total - x.banned) / x.total * 100) : 0 })).sort((a, z) => z.cohort.localeCompare(a.cohort));
+    },
     // ── Дистрибуция: расписание постинга ──
     sched: [],
     schWhen: '',
     _saveSched() { try { localStorage.setItem('cf_sched', JSON.stringify(this.sched)); } catch (e) {} },
     scheduleAll(b) {
-      // распланировать ролик из банка по всем активным аккаунтам (по одному в день, со сдвигом)
+      // распланировать ролик на активные аккаунты. Антибан: ссылку даём только «боевым»/креаторам,
+      // одинаковый ролик на >3 аккаунта — предупреждаем (риск duplicate-детекта).
       const active = this.accReg.filter(a => a.status === 'активен');
       if (!active.length) { this.utmMsg = 'нет активных аккаунтов — добавь их выше'; setTimeout(() => this.utmMsg = '', 3000); return; }
+      if (active.length > 3 && !confirm('Один и тот же ролик на ' + active.length + ' аккаунтов — это клон-паттерн (риск duplicate-детекта). Лучше: 1 ролик на якорь + вариации с разными хуками. Всё равно распланировать?')) return;
       const start = this.schWhen ? new Date(this.schWhen).getTime() : Date.now() + 3600000;
+      let warmed = 0;
       active.forEach((a, k) => {
-        this.sched.unshift({ id: Date.now() + k, when: new Date(start + k * 86400000).toISOString().slice(0, 16), platform: a.platform, handle: a.handle, hook: b.hook || '', url: b.url || '', status: 'запланировано' });
+        const ok = this.linkAllowed(a);
+        if (ok) warmed++;
+        this.sched.unshift({ id: Date.now() + k, when: new Date(start + k * 86400000).toISOString().slice(0, 16), platform: a.platform, handle: a.handle, type: a.type, hook: b.hook || '', url: b.url || '', link: ok ? 'UTM' : 'без ссылки (прогрев)', status: 'запланировано' });
       });
       this._saveSched();
-      this.utmMsg = 'распланировано на ' + active.length + ' аккаунтов'; setTimeout(() => this.utmMsg = '', 3000);
+      this.utmMsg = 'распланировано на ' + active.length + ' (' + warmed + ' со ссылкой, остальные на прогреве — без UTM)'; setTimeout(() => this.utmMsg = '', 4000);
     },
     setSchedStatus(i, st) { if (this.sched[i]) { this.sched[i].status = st; this._saveSched(); } },
     delSched(i) { this.sched.splice(i, 1); this._saveSched(); },
