@@ -17,7 +17,7 @@ export async function POST(request: NextRequest) {
   const base = new URL(request.url).origin;
   const headers: Record<string, string> = secret ? { Authorization: `Bearer ${secret}` } : {};
   const from = searchParams.get("from");
-  const qs = from && job === "sales" ? `?from=${encodeURIComponent(from)}` : "";
+  const qs = from && (job === "sales" || job === "orders") ? `?from=${encodeURIComponent(from)}` : "";
 
   try {
     const res = await fetch(`${base}/api/sync/${job}${qs}`, { headers, cache: "no-store" });

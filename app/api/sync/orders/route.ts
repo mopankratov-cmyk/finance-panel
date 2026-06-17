@@ -12,15 +12,21 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Нет активных кабинетов и WB_STATS_TOKEN не настроен" }, { status: 500 });
   }
 
+  // ?from=YYYY-MM-DD — принудительный бэкфилл истории заказов с даты (общий для всех кабинетов).
+  // Без него — инкрементально от последней даты в таблице, иначе 30 дней назад (первый синк).
+  const forceFrom = new URL(request.url).searchParams.get("from");
+
   let total = 0;
   const errors: string[] = [];
 
   try {
     for (const t of targets) {
-      const last = await lastSyncDate("wb_orders", t.cabinetId);
-      const dateFrom = last
-        ? new Date(last).toISOString().slice(0, 19)
-        : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 19);
+      const last = forceFrom ? null : await lastSyncDate("wb_orders", t.cabinetId);
+      const dateFrom = forceFrom
+        ? new Date(forceFrom).toISOString().slice(0, 19)
+        : last
+          ? new Date(last).toISOString().slice(0, 19)
+          : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 19);
 
       const url = new URL("https://statistics-api.wildberries.ru/api/v1/supplier/orders");
       url.searchParams.set("dateFrom", dateFrom);

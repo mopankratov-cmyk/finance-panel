@@ -24,6 +24,7 @@ export function SyncPage() {
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [backfillFrom, setBackfillFrom] = useState("2026-03-01");
 
   const loadLog = useCallback(async () => {
     setLoading(true);
@@ -50,6 +51,22 @@ export function SyncPage() {
       await fetch(`/api/sync/trigger?job=${job}`, { method: "POST" });
     } catch {
       setError("Ошибка запуска синхронизации");
+    } finally {
+      setRunning(null);
+      loadLog();
+    }
+  };
+
+  // Догрузка истории: заказы + продажи с выбранной даты (бэкфилл, идемпотентно по srid/saleID).
+  const runBackfill = async () => {
+    setRunning("backfill");
+    setError(null);
+    try {
+      const qs = `&from=${encodeURIComponent(backfillFrom)}`;
+      await fetch(`/api/sync/trigger?job=orders${qs}`, { method: "POST" });
+      await fetch(`/api/sync/trigger?job=sales${qs}`, { method: "POST" });
+    } catch {
+      setError("Ошибка догрузки истории");
     } finally {
       setRunning(null);
       loadLog();
@@ -94,6 +111,35 @@ export function SyncPage() {
       {error && (
         <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div>
       )}
+
+      <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+        <div className="flex flex-wrap items-end gap-3">
+          <div>
+            <p className="font-medium text-slate-900">Догрузить историю</p>
+            <p className="mt-0.5 max-w-xl text-xs text-slate-500">
+              Обычный синк тянет только последние 30 дней. Чтобы подтянуть продажи и заказы за более ранний
+              период (графики «до 15 мая» и т.п.), укажите дату начала и запустите разовую догрузку.
+            </p>
+          </div>
+          <label className="flex flex-col gap-1 text-xs text-slate-500">
+            С даты
+            <input
+              type="date"
+              value={backfillFrom}
+              onChange={(e) => setBackfillFrom(e.target.value)}
+              className="rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm text-slate-700"
+            />
+          </label>
+          <button
+            onClick={runBackfill}
+            disabled={running !== null}
+            className="flex items-center gap-2 rounded-lg bg-amber-600 px-3 py-2 text-sm font-medium text-white hover:bg-amber-700 disabled:opacity-50"
+          >
+            <Play className={`h-4 w-4 ${running === "backfill" ? "animate-pulse" : ""}`} />
+            Догрузить заказы + продажи
+          </button>
+        </div>
+      </div>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {JOBS.map((j) => {
