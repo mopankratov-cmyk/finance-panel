@@ -13,11 +13,28 @@ export async function POST(req: NextRequest) {
   const profile: string = (body.profile || "").toString().trim().slice(0, 2000);
   if (!task) return NextResponse.json({ error: "Нужно ТЗ (задача)" }, { status: 400 });
 
-  // лёгкий контекст: топ-товары (ABC) — чтобы директор приоритизировал по факту
+  // товары + ДЕТЕРМИНИРОВАННОЕ извлечение явного артикула из текста задачи
   let topProducts = "";
+  let explicitArt = "";
+  let explicitName = "";
   try {
     const db = getSupabaseAdmin();
-    if (db) { const { data } = await db.from("product_costs").select("article, name").limit(40); if (data?.length) topProducts = data.slice(0, 40).map((c) => `${c.article} — ${c.name}`).join("; "); }
+    if (db) {
+      const { data } = await db.from("product_costs").select("article, name");
+      const prods = (data as { article: string; name: string }[] | null) ?? [];
+      const taskU = task.toUpperCase();
+      // 1) известный артикул, упомянутый в задаче (берём самое длинное совпадение)
+      for (const p of prods) {
+        const a = String(p.article || "").toUpperCase();
+        if (a.length >= 4 && taskU.includes(a) && a.length > explicitArt.length) { explicitArt = p.article; explicitName = p.name; }
+      }
+      // 2) если среди известных не нашли — вытащим токен, похожий на артикул
+      if (!explicitArt) { const m = task.match(/\b[A-Za-z]{2,}\d{3,}[A-Za-z\d]*\b|\b\d{6,}\b/); if (m) explicitArt = m[0]; }
+      // список для Claude: явный товар первым, затем ещё до 40
+      const head = explicitArt && explicitName ? [`${explicitArt} — ${explicitName} ⟵ назван в задаче`] : [];
+      const rest = prods.filter((c) => c.article !== explicitArt).slice(0, 40).map((c) => `${c.article} — ${c.name}`);
+      topProducts = [...head, ...rest].join("; ");
+    }
   } catch { /* контекст не критичен */ }
 
   const client = await createClaudeClient();
@@ -36,6 +53,7 @@ export async function POST(req: NextRequest) {
 Принципы: приоритизируй товары класса A; начинай с разведки конкурентов перед креативом; мерь результат в маркетплейсе (брендовый поиск/продажи), не per-video; объём важнее единичного качества (виральность — игра вариативности).
 ${profile ? `\nПРОФИЛЬ БРЕНДА/АУДИТОРИИ (учитывай при постановке задач):\n${profile}\n` : ""}
 Доступные товары (артикул — название): ${topProducts || "нет данных, спроси/уточни артикул"}
+ВАЖНО: если в задаче явно назван артикул товара — используй ЕГО ТОЧНО в target_article, не заменяй похожим.${explicitArt ? ` В этой задаче назван артикул: ${explicitArt}.` : ""}
 
 План — максимум 6 шагов, формулировки КОРОТКИЕ (action ≤12 слов, why ≤8 слов, params минимальны). Верни СТРОГО валидный компактный JSON: {"goal":"цель 1 предложением","target_article":"артикул или ''","plan":[{"order":1,"agent":"Аналитик","action":"кратко","params":{},"why":"кратко"}],"clarify":"что уточнить или ''","summary":"резюме 1-2 предложения"}. Только JSON, без преамбулы, без markdown.`;
 
@@ -45,7 +63,10 @@ ${profile ? `\nПРОФИЛЬ БРЕНДА/АУДИТОРИИ (учитывай 
     const txt = (res.content as any[]).filter((b) => b.type === "text").map((b) => b.text).join(" ");
     const m = txt.match(/\{[\s\S]*\}/);
     if (!m) return NextResponse.json({ error: "пустой план", raw: txt.slice(0, 200) }, { status: 502 });
-    return NextResponse.json(JSON.parse(m[0]));
+    const plan = JSON.parse(m[0]);
+    // явный артикул из задачи всегда побеждает догадку модели
+    if (explicitArt) plan.target_article = explicitArt;
+    return NextResponse.json(plan);
   } catch (e) {
     return NextResponse.json({ error: String(e).slice(0, 200) }, { status: 502 });
   }
