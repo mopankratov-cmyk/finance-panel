@@ -34,6 +34,15 @@ function CarouselBuilder() {
     if (initImg) { setImgUrl(initImg); loadImage(proxied(initImg)); }
   }, [sp, loadImage]);
 
+  // авто-выбор товара по ?article= (из кокпита, напр. для Pinterest-пинов)
+  useEffect(() => {
+    const art = sp.get("article");
+    if (art && products.length && !imgUrl) {
+      const p = products.find((x) => x.article === art);
+      if (p) { setArticle(p.article); if (p.img) { setImgUrl(p.img); loadImage(proxied(p.img)); } }
+    }
+  }, [products, sp, imgUrl, loadImage]);
+
   const pickProduct = (art: string) => {
     setArticle(art);
     const p = products.find((x) => x.article === art);

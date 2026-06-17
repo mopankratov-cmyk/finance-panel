@@ -274,9 +274,11 @@
                   <span class="text-gray-500" x-text="a.platform"></span>
                   <span class="font-medium flex-1 truncate" x-text="a.handle"></span>
                   <span x-show="legalRisk(a)" title="72-ФЗ: продающий постинг с юрлица в IG/TikTok штрафуется. Лучше через креатора." class="text-[11px] text-amber-600">⚠ 72-ФЗ</span>
+                  <a x-show="a.platform==='Pinterest'" :href="carouselFor(a)" target="_blank" title="собрать пины из карусели" class="text-[10px] text-rose-600">карусель</a>
                   <button @click="copyUtm(a)" title="UTM на WB" class="text-[10px] text-sky-600">UTM</button>
                   <button @click="delAcc(ai)" class="text-[10px] text-gray-400 hover:text-red-600">✕</button>
                 </div>
+                <div x-show="platformHint(a.platform)" class="text-[10px] text-gray-400 mt-0.5" x-text="'режим: ' + platformHint(a.platform)"></div>
                 <div class="flex items-center gap-2 mt-1 text-[10px] text-gray-400">
                   <span x-show="a.type!=='креатор'" :class="linkAllowed(a) ? 'text-emerald-600' : 'text-amber-600'" x-text="'прогрев: ' + warmupStage(a) + ' (д.' + warmupDay(a) + ')'"></span>
                   <span x-show="a.type!=='креатор' && !linkAllowed(a)" class="text-amber-600">🔒 без ссылок до д.8</span>
@@ -495,6 +497,20 @@ function patrick() {
     linkAllowed(acc) { return acc.type === 'креатор' || this.warmupDay(acc) >= 8; },
     // 72-ФЗ риск: свои (не креатор) аккаунты на IG/TikTok
     legalRisk(acc) { return acc.type !== 'креатор' && ['Instagram', 'TikTok'].includes(acc.platform); },
+    // рекомендованный режим работы по платформе
+    platformHint(p) {
+      return ({
+        'VK': 'Клипы 9:16 + лента, deeplink на WB',
+        'Telegram': 'канал бренда + продуктовые подборки, deeplink',
+        'Дзен': 'лонгрид / видео-обзор, ссылка на WB',
+        'YouTube': 'Shorts 1-2/день, ссылка в описании',
+        'Pinterest': 'пины из карусели + прямая ссылка на WB (вечнозелёный SEO)',
+        'Instagram': 'лучше через креатора (72-ФЗ риск со своего)',
+        'TikTok': 'через креатора (блок + 72-ФЗ)',
+        'Rutube': 'репост якорного видео',
+      })[p] || '';
+    },
+    carouselFor(acc) { const art = this.dir.plan?.target_article || this.orbit.article || ''; return '/carousel' + (art ? '?article=' + encodeURIComponent(art) : ''); },
     // UTM-ссылка на карточку WB для атрибуции переходов
     utmFor(acc, art) {
       const a = (art || this.dir.plan?.target_article || this.orbit.article || '').trim();
