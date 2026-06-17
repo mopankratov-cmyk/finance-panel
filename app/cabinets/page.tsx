@@ -18,12 +18,13 @@ interface Cabinet {
   has_content: boolean;
 }
 
-type Scope = "statistics" | "analytics" | "advert" | "content";
+type Scope = "statistics" | "analytics" | "advert" | "content" | "prices";
 const SCOPE_LABEL: Record<Scope, string> = {
   statistics: "Статистика",
   analytics: "Аналитика",
   advert: "Продвижение",
   content: "Контент",
+  prices: "Цены и скидки",
 };
 interface ScopeReport {
   scopes: Record<Scope, boolean | null>;
@@ -126,7 +127,7 @@ export default function CabinetsPage() {
         {mp === "wb" ? (
           <>
             <label className="mb-1 block text-xs text-gray-500">
-              API-токен WB <span className="text-gray-400">(Настройки → Доступ к API → токен с категориями Статистика, Аналитика, Контент, Продвижение)</span>
+              API-токен WB <span className="text-gray-400">(Настройки → Доступ к API → токен с категориями Статистика, Аналитика, Контент, Продвижение, Цены и скидки)</span>
             </label>
             <textarea
               value={token}
@@ -201,7 +202,7 @@ export default function CabinetsPage() {
           <div className="mt-3 rounded-lg border border-gray-200 bg-gray-50 p-3">
             <div className="mb-2 flex flex-wrap items-center gap-2 text-xs">
               <span className="font-semibold text-gray-600">Доступ токена:</span>
-              {(["statistics", "analytics", "advert", "content"] as Scope[]).map((s) => {
+              {(["statistics", "analytics", "advert", "content", "prices"] as Scope[]).map((s) => {
                 const ok = scopeRep.scopes[s];
                 return (
                   <span
@@ -220,9 +221,9 @@ export default function CabinetsPage() {
                 </span>
               )}
             </div>
-            {(["statistics", "analytics", "advert", "content"] as Scope[]).some((s) => scopeRep.scopes[s] === false) && (
+            {(["statistics", "analytics", "advert", "content", "prices"] as Scope[]).some((s) => scopeRep.scopes[s] === false) && (
               <p className="text-[11px] text-red-600">
-                Не хватает категорий: {(["statistics", "analytics", "advert", "content"] as Scope[]).filter((s) => scopeRep.scopes[s] === false).map((s) => SCOPE_LABEL[s]).join(", ")}.
+                Не хватает категорий: {(["statistics", "analytics", "advert", "content", "prices"] as Scope[]).filter((s) => scopeRep.scopes[s] === false).map((s) => SCOPE_LABEL[s]).join(", ")}.
                 Перевыпустите токен в WB, отметив эти категории. Продвижение и Контент можно дать отдельным токеном в «расширенном».
               </p>
             )}
