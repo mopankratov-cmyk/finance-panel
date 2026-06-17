@@ -587,7 +587,7 @@ function patrick() {
     },
     bank: [],
     saveToBank(s, art) {
-      const item = { ts: Date.now(), art, hook: s.hook || s.concept || '', format: s.format || '', route: s.gen?.route || '', url: s.gen?.url || '', caption: s.caption || s.scenario?.caption || '', status: 'review', m: { views: 0, hook3: 0, likes: 0, clicks: 0 } };
+      const item = { ts: Date.now(), art, hook: s.hook || s.concept || '', format: s.format || '', route: s.gen?.route || '', url: s.gen?.url || '', caption: s.caption || s.scenario?.caption || '', status: 'review', critScore: s.gen?.critScore ?? null, m: { views: 0, hook3: 0, likes: 0, clicks: 0 } };
       this.bank.unshift(item);
       this.bank = this.bank.slice(0, 100);
       try { localStorage.setItem('cf_bank', JSON.stringify(this.bank)); } catch (e) {}
@@ -622,20 +622,22 @@ function patrick() {
         };
       });
     },
+    // переиспользуемый ОТК: url → кадры → Claude-зрение → вердикт
+    async _critiqueUrl(url, kind, context) {
+      const frames = await this._extractFrames(url, 4);
+      if (!frames.length) return { error: 'нет кадров (CORS/формат)' };
+      try {
+        return await (await fetch('/api/factory/video-critic', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ frames, context, kind }) })).json();
+      } catch (e) { return { error: String(e).slice(0, 80) }; }
+    },
     async critique(item) {
       if (this.crit.busy) return;
       const url = item.url; if (!url) return;
       const kind = item.route === 'ai_avatar' ? 'avatar' : 'product';
-      this.crit = { forTs: item.ts, busy: true, data: null, step: 'достаю кадры…' };
-      const frames = await this._extractFrames(url, 4);
-      if (!frames.length) { this.crit.data = { error: 'не достались кадры (CORS/формат)' }; this.crit.busy = false; return; }
-      this.crit.step = 'Claude смотрит кадры…';
-      try {
-        const ctx = (item.hook || '') + (item.art ? ' · товар ' + item.art : '');
-        const d = await (await fetch('/api/factory/video-critic', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ frames, context: ctx, kind }) })).json();
-        this.crit.data = d;
-        const b = this.bank.find(x => x.ts === item.ts); if (b) { b.critScore = d.score; b.critHint = d.regen_hint; this._saveBank(); }
-      } catch (e) { this.crit.data = { error: String(e).slice(0, 80) }; }
+      this.crit = { forTs: item.ts, busy: true, data: null, step: 'ОТК смотрит кадры…' };
+      const d = await this._critiqueUrl(url, kind, (item.hook || '') + (item.art ? ' · товар ' + item.art : ''));
+      this.crit.data = d;
+      if (!d.error) { const b = this.bank.find(x => x.ts === item.ts); if (b) { b.critScore = d.score; b.critHint = d.regen_hint; this._saveBank(); } }
       this.crit.busy = false; this.crit.step = '';
     },
     async regenWithFix(item) {
@@ -919,7 +921,27 @@ function patrick() {
             else { const res = await this._pollVideo('/api/lab/video-storyboard-status/' + d.task_id, 4 * 60 * 1000); if (res.url) { s.gen.url = res.url; s.gen.status = '✓ готово'; } else s.gen.status = 'ошибка: ' + res.error; }
           }
         } catch (e) { s.gen.status = String(e).slice(0, 100); }
-        if (s.gen.url) this.saveToBank(s, art); // #3 банк готового
+        // 4) ОТК: критик смотрит кадры → брак авто-перегенеривает 1 раз → отдаём человеку на утверждение
+        if (s.gen.url) {
+          const kind = route === 'ai_avatar' ? 'avatar' : 'product';
+          const genEp = route === 'ai_avatar' ? '/api/factory/avatar' : '/api/lab/video-storyboard';
+          const statEp = route === 'ai_avatar' ? '/api/factory/avatar-status/' : '/api/lab/video-storyboard-status/';
+          s.gen.status = 'ОТК проверяет…';
+          let v = await this._critiqueUrl(s.gen.url, kind, brief + ' · товар ' + art);
+          s.gen.critScore = v.error ? null : v.score;
+          if (!v.error && v.score < 7 && v.regen_hint) {
+            s.gen.status = 'ОТК брак (' + v.score + ') → перегенерю с правкой…';
+            try {
+              const rd = await (await fetch(genEp, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sku_art: art, brief: brief + ' [fix: ' + v.regen_hint + ']', script, profile: this.profile }) })).json();
+              if (rd.task_id) {
+                const res2 = await this._pollVideo(statEp + rd.task_id, 5 * 60 * 1000);
+                if (res2.url) { s.gen.url = res2.url; v = await this._critiqueUrl(s.gen.url, kind, brief + ' · товар ' + art); s.gen.critScore = v.error ? null : v.score; }
+              }
+            } catch (e) {}
+          }
+          s.gen.status = (s.gen.critScore != null ? ('ОТК ' + s.gen.critScore + '/10 → ') : '') + '🙋 на утверждение человеку';
+        }
+        if (s.gen.url) this.saveToBank(s, art); // #3 банк готового (статус review = человек проверяет)
         done++;
         this.pipe.log = pool.map(p => '• ' + (p.hook || p.concept || '').slice(0, 40) + ' — ' + (p.gen?.status || '…')).join('\n');
       }
