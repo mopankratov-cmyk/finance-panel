@@ -194,6 +194,24 @@
             <div class="text-[12px] font-medium leading-tight" x-text="b.hook"></div>
             <div class="text-[10px] text-gray-400 mt-1"><span class="pill pill-rose" x-text="b.route"></span> · <span x-text="b.art"></span>
               <span x-show="perfScore(b)!==null" class="pill pill-live ml-1" x-text="'score ' + perfScore(b)"></span>
+              <span x-show="b.critScore!=null" class="pill ml-1" :class="b.critScore>=7 ? 'pill-live' : (b.critScore>=4 ? 'pill-warn' : 'pill-off')" x-text="'ОТК ' + b.critScore"></span>
+            </div>
+            <div x-show="b.url" class="mt-1.5">
+              <button @click="critique(b)" :disabled="crit.busy" class="text-[10px] px-1.5 py-0.5 rounded bg-sky-100 text-sky-700">🔍 проверить ОТК</button>
+              <span x-show="crit.busy && crit.forTs===b.ts" class="text-[10px] text-gray-400 ml-1" x-text="crit.step"></span>
+              <template x-if="crit.forTs===b.ts && crit.data">
+                <div class="mt-1 border border-gray-100 rounded p-1.5 text-[10px] bg-gray-50">
+                  <div x-show="crit.data.error" class="text-red-600" x-text="crit.data.error"></div>
+                  <template x-if="!crit.data.error">
+                    <div>
+                      <div><b>Балл: <span x-text="crit.data.score"></span>/10</b> · <span :class="crit.data.verdict==='ok' ? 'text-emerald-600' : 'text-amber-600'" x-text="crit.data.verdict"></span></div>
+                      <div x-show="(crit.data.issues||[]).length" class="text-gray-600 mt-0.5">⚠ <span x-text="(crit.data.issues||[]).join('; ')"></span></div>
+                      <div x-show="(crit.data.fixes||[]).length" class="text-sky-700 mt-0.5">🔧 <span x-text="(crit.data.fixes||[]).join('; ')"></span></div>
+                      <button x-show="crit.data.score<7" @click="regenWithFix(b)" :disabled="crit.busy" class="mt-1 text-[10px] px-1.5 py-0.5 rounded bg-rose-600 text-white">♻ перегенерить с правкой</button>
+                    </div>
+                  </template>
+                </div>
+              </template>
             </div>
             <div class="grid grid-cols-4 gap-1 mt-1.5" title="метрики после публикации (вносятся вручную)">
               <input type="number" min="0" :value="(b.m||{}).views||''" @input="setMetric(bi,'views',$event.target.value)" placeholder="показы" class="text-[10px] border border-gray-200 rounded px-1 py-0.5 w-full">
@@ -577,6 +595,65 @@ function patrick() {
     setBankStatus(idx, st) { if (this.bank[idx]) { this.bank[idx].status = st; this._saveBank(); } },
     delBank(idx) { this.bank.splice(idx, 1); this._saveBank(); },
     _saveBank() { try { localStorage.setItem('cf_bank', JSON.stringify(this.bank)); } catch (e) {} },
+    // ── Видео-критик: кадры → Claude-зрение → балл/дефекты/правка, авто-переген брака ──
+    crit: { forTs: 0, busy: false, data: null, step: '' },
+    async _extractFrames(url, n) {
+      return new Promise((resolve) => {
+        const src = url.startsWith('/') ? url : '/api/lab/media-proxy?url=' + encodeURIComponent(url);
+        const v = document.createElement('video');
+        v.crossOrigin = 'anonymous'; v.muted = true; v.preload = 'auto'; v.src = src;
+        const frames = []; let done = false;
+        const finish = () => { if (!done) { done = true; resolve(frames); } };
+        v.onerror = finish; setTimeout(finish, 25000);
+        v.onloadeddata = async () => {
+          try {
+            const dur = (v.duration && isFinite(v.duration)) ? v.duration : 5;
+            const cv = document.createElement('canvas');
+            const W = Math.min(512, v.videoWidth || 512);
+            cv.width = W; cv.height = Math.round((v.videoHeight || 900) * (W / (v.videoWidth || W)));
+            const ctx = cv.getContext('2d');
+            for (let i = 0; i < n; i++) {
+              await new Promise(res => { v.onseeked = res; v.currentTime = Math.min(dur * (i + 0.5) / n, dur - 0.05); });
+              ctx.drawImage(v, 0, 0, cv.width, cv.height);
+              frames.push(cv.toDataURL('image/jpeg', 0.6).split(',')[1]);
+            }
+          } catch (e) {}
+          finish();
+        };
+      });
+    },
+    async critique(item) {
+      if (this.crit.busy) return;
+      const url = item.url; if (!url) return;
+      const kind = item.route === 'ai_avatar' ? 'avatar' : 'product';
+      this.crit = { forTs: item.ts, busy: true, data: null, step: 'достаю кадры…' };
+      const frames = await this._extractFrames(url, 4);
+      if (!frames.length) { this.crit.data = { error: 'не достались кадры (CORS/формат)' }; this.crit.busy = false; return; }
+      this.crit.step = 'Claude смотрит кадры…';
+      try {
+        const ctx = (item.hook || '') + (item.art ? ' · товар ' + item.art : '');
+        const d = await (await fetch('/api/factory/video-critic', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ frames, context: ctx, kind }) })).json();
+        this.crit.data = d;
+        const b = this.bank.find(x => x.ts === item.ts); if (b) { b.critScore = d.score; b.critHint = d.regen_hint; this._saveBank(); }
+      } catch (e) { this.crit.data = { error: String(e).slice(0, 80) }; }
+      this.crit.busy = false; this.crit.step = '';
+    },
+    async regenWithFix(item) {
+      if (this.crit.busy) return;
+      const art = item.art || ''; const hint = (this.crit.data && this.crit.data.regen_hint) || item.critHint || '';
+      this.crit = { forTs: item.ts, busy: true, data: this.crit.data, step: 'перегенерю с правкой…' };
+      const isAv = item.route === 'ai_avatar';
+      const ep = isAv ? '/api/factory/avatar' : '/api/lab/video-storyboard';
+      try {
+        const d = await (await fetch(ep, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sku_art: art, brief: (item.hook || '') + (hint ? ' [fix: ' + hint + ']' : ''), profile: this.profile }) })).json();
+        if (!d.task_id) { this.crit.step = 'ошибка: ' + (d.detail || 'не запустилось'); this.crit.busy = false; return; }
+        const statusUrl = isAv ? '/api/factory/avatar-status/' + d.task_id : '/api/lab/video-storyboard-status/' + d.task_id;
+        const res = await this._pollVideo(statusUrl, 5 * 60 * 1000);
+        if (res.url) { const b = this.bank.find(x => x.ts === item.ts); if (b) { b.url = res.url; b.critScore = null; this._saveBank(); } this.crit.step = '✓ перегенерено — проверь заново'; this.crit.data = null; }
+        else this.crit.step = 'ошибка: ' + res.error;
+      } catch (e) { this.crit.step = String(e).slice(0, 80); }
+      this.crit.busy = false;
+    },
     // #4 Аналитика: метрики ролика вносятся вручную (соцсети не дают API), петля обратной связи — авто
     setMetric(idx, field, val) { if (this.bank[idx]) { if (!this.bank[idx].m) this.bank[idx].m = { views: 0, hook3: 0, likes: 0, clicks: 0 }; this.bank[idx].m[field] = Math.max(0, Number(val) || 0); this._saveBank(); } },
     perfScore(b) {
