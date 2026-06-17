@@ -103,7 +103,12 @@
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
           <template x-for="b in reviewQueue" :key="b.ts">
             <div class="card-tight">
-              <video :src="b.url" controls class="w-full rounded-md border border-gray-100 mb-1.5" style="max-height:300px"></video>
+              <video x-show="b.url" :src="b.url" controls class="w-full rounded-md border border-gray-100 mb-1.5" style="max-height:300px"></video>
+              <div x-show="b.slides && b.slides.length" class="relative mb-1.5">
+                <img :src="slideSrc(b,0)" class="w-full rounded-md border border-gray-100" style="max-height:300px;object-fit:cover">
+                <span class="absolute top-1 right-1 pill pill-violet" x-text="'🖼 карусель · ' + (b.slides ? b.slides.length : 0) + ' слайдов'"></span>
+                <button @click="dlSlides(b)" class="absolute bottom-1 right-1 text-[10px] px-1.5 py-0.5 rounded bg-white/90 text-gray-700">скачать все</button>
+              </div>
               <div class="text-[12px] font-medium leading-tight" x-text="b.hook"></div>
               <div class="text-[10px] text-gray-400 mt-1"><span class="pill pill-rose" x-text="b.route"></span> · <span x-text="b.art"></span>
                 <span x-show="b.critScore!=null" class="pill ml-1" :class="b.critScore>=7 ? 'pill-live' : 'pill-warn'" x-text="'ОТК ' + b.critScore + '/10'"></span>
@@ -539,7 +544,9 @@ function patrick() {
       try { this.sched = JSON.parse(localStorage.getItem('cf_sched') || '[]'); } catch (e) { this.sched = []; }
       try { this.profile = localStorage.getItem('cf_profile') || ''; } catch (e) { this.profile = ''; }
       try { this.mode = localStorage.getItem('cf_mode') || 'operator'; } catch (e) { this.mode = 'operator'; }
+      try { const d = await (await fetch('/api/lab/sku-list')).json(); this.imgByArt = {}; (d.items || []).forEach(i => { if (i.art && i.img_url) this.imgByArt[i.art] = i.img_url; }); } catch (e) { this.imgByArt = {}; }
     },
+    imgByArt: {},
     // ── Режим: Оператор (ежедневно) / Настройка (владелец) ──
     mode: 'operator',
     setMode(m) { this.mode = m; try { localStorage.setItem('cf_mode', m); } catch (e) {} window.scrollTo({ top: 0, behavior: 'smooth' }); },
@@ -558,8 +565,10 @@ function patrick() {
       } catch (e) { this.op.log = 'ошибка: ' + String(e).slice(0, 100); }
       this.op.busy = false; this.op.step = '';
     },
-    get reviewQueue() { return this.bank.filter(b => b.status === 'review' && b.url && (b.critScore == null || b.critScore >= 5)).sort((a, z) => (z.critScore || 0) - (a.critScore || 0)); },
-    get approvedQueue() { return this.bank.filter(b => b.status === 'approved' && b.url); },
+    get reviewQueue() { return this.bank.filter(b => b.status === 'review' && (b.url || (b.slides && b.slides.length)) && (b.critScore == null || b.critScore >= 5)).sort((a, z) => (z.critScore || 0) - (a.critScore || 0)); },
+    get approvedQueue() { return this.bank.filter(b => b.status === 'approved' && (b.url || (b.slides && b.slides.length))); },
+    slideSrc(b, i) { return b.slides && b.slides[i] ? 'data:image/jpeg;base64,' + b.slides[i] : ''; },
+    dlSlides(b) { (b.slides || []).forEach((sl, i) => { const a = document.createElement('a'); a.href = 'data:image/jpeg;base64,' + sl; a.download = (b.art || 'slide') + '-' + (i + 1) + '.jpg'; a.click(); }); },
     opApprove(b) { const i = this.bank.findIndex(x => x.ts === b.ts); if (i >= 0) { this.bank[i].status = 'approved'; this._saveBank(); } },
     opReject(b) { const i = this.bank.findIndex(x => x.ts === b.ts); if (i >= 0) this.delBank(i); },
     // Профиль бренда/ЦА — персонализация (как «проект в Клоде»): голос, аудитория, примеры текстов
@@ -680,14 +689,14 @@ function patrick() {
     },
     bank: [],
     saveToBank(s, art) {
-      const item = { ts: Date.now(), art, hook: s.hook || s.concept || '', format: s.format || '', route: s.gen?.route || '', url: s.gen?.url || '', caption: s.caption || s.scenario?.caption || '', status: 'review', critScore: s.gen?.critScore ?? null, m: { views: 0, hook3: 0, likes: 0, clicks: 0 } };
+      const item = { ts: Date.now(), art, hook: s.hook || s.concept || '', format: s.format || '', route: s.gen?.route || '', url: s.gen?.url || '', slides: s.gen?.slides || null, caption: s.caption || s.scenario?.caption || '', status: 'review', critScore: s.gen?.critScore ?? null, m: { views: 0, hook3: 0, likes: 0, clicks: 0 } };
       this.bank.unshift(item);
       this.bank = this.bank.slice(0, 100);
       try { localStorage.setItem('cf_bank', JSON.stringify(this.bank)); } catch (e) {}
     },
     setBankStatus(idx, st) { if (this.bank[idx]) { this.bank[idx].status = st; this._saveBank(); } },
     delBank(idx) { this.bank.splice(idx, 1); this._saveBank(); },
-    _saveBank() { try { localStorage.setItem('cf_bank', JSON.stringify(this.bank)); } catch (e) {} },
+    _saveBank() { try { localStorage.setItem('cf_bank', JSON.stringify(this.bank.map(b => b.slides ? { ...b, slides: null, carouselN: b.slides.length } : b))); } catch (e) {} },
     // ── Видео-критик: кадры → Claude-зрение → балл/дефекты/правка, авто-переген брака ──
     crit: { forTs: 0, busy: false, data: null, step: '' },
     async _extractFrames(url, n) {
@@ -715,13 +724,49 @@ function patrick() {
         };
       });
     },
-    // переиспользуемый ОТК: url → кадры → Claude-зрение → вердикт
+    // ОТК по готовым кадрам (видео-кадры или слайды карусели) → Claude-зрение
+    async _critiqueFrames(frames, kind, context) {
+      if (!frames || !frames.length) return { error: 'нет кадров' };
+      try {
+        return await (await fetch('/api/factory/video-critic', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ frames: frames.slice(0, 4), context, kind }) })).json();
+      } catch (e) { return { error: String(e).slice(0, 80) }; }
+    },
     async _critiqueUrl(url, kind, context) {
       const frames = await this._extractFrames(url, 4);
       if (!frames.length) return { error: 'нет кадров (CORS/формат)' };
-      try {
-        return await (await fetch('/api/factory/video-critic', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ frames, context, kind }) })).json();
-      } catch (e) { return { error: String(e).slice(0, 80) }; }
+      return this._critiqueFrames(frames, kind, context);
+    },
+    // авто-карусель: фото товара + тексты → слайды (base64 JPEG). Товар не искажается.
+    async _renderCarousel(imgUrl, texts) {
+      return new Promise((resolve) => {
+        const img = new Image(); img.crossOrigin = 'anonymous';
+        img.onerror = () => resolve([]);
+        img.onload = () => {
+          const slides = []; const W = 1080, H = 1350;
+          texts.filter(Boolean).slice(0, 5).forEach((text, idx) => {
+            const cv = document.createElement('canvas'); cv.width = W; cv.height = H; const ctx = cv.getContext('2d');
+            const ir = img.naturalWidth / img.naturalHeight, cr = W / H; let dw = W, dh = H, dx = 0, dy = 0;
+            if (ir > cr) { dh = H; dw = H * ir; dx = (W - dw) / 2; } else { dw = W; dh = W / ir; dy = (H - dh) / 2; }
+            ctx.drawImage(img, dx, dy, dw, dh);
+            ctx.fillStyle = 'rgba(0,0,0,.34)'; ctx.fillRect(0, 0, W, H);
+            const top = idx === 0; const fs = top ? 86 : 62;
+            ctx.font = '800 ' + fs + 'px Arial, sans-serif'; ctx.textAlign = 'center';
+            const words = String(text).split(' '); const lines = []; let line = '';
+            for (const w of words) { const t = line ? line + ' ' + w : w; if (ctx.measureText(t).width > W * 0.82 && line) { lines.push(line); line = w; } else line = t; }
+            if (line) lines.push(line);
+            const lh = fs * 1.18; const cy = top ? H * 0.18 : H * 0.5 - lines.length * lh / 2;
+            lines.forEach((ln, i) => {
+              const y = cy + i * lh; const tw = ctx.measureText(ln).width; const padX = fs * 0.45, padY = fs * 0.22;
+              ctx.fillStyle = '#e11d48'; const bx = W / 2 - tw / 2 - padX, by = y - fs * 0.8, bw = tw + padX * 2, bh = fs + padY * 2;
+              if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(bx, by, bw, bh, 16); ctx.fill(); } else ctx.fillRect(bx, by, bw, bh);
+              ctx.fillStyle = '#fff'; ctx.fillText(ln, W / 2, y + fs * 0.1);
+            });
+            slides.push(cv.toDataURL('image/jpeg', 0.85).split(',')[1]);
+          });
+          resolve(slides);
+        };
+        img.src = imgUrl.startsWith('/') ? imgUrl : '/api/lab/img-proxy?url=' + encodeURIComponent(imgUrl);
+      });
     },
     async critique(item) {
       if (this.crit.busy) return;
@@ -1003,8 +1048,15 @@ function patrick() {
             if (!d.task_id) { s.gen.status = 'аватар: ' + (d.detail || d.error || 'не запустился'); }
             else { const res = await this._pollVideo('/api/factory/avatar-status/' + d.task_id, 5 * 60 * 1000); if (res.url) { s.gen.url = res.url; s.gen.status = '✓ готово'; } else s.gen.status = 'ошибка: ' + res.error; }
           } else if (route === 'slideshow') {
-            s.gen.status = '✓ маршрут карусель — собери слайды';
-            s.gen.carouselUrl = '/carousel?texts=' + encodeURIComponent([brief, s.angle].filter(Boolean).join('\n'));
+            s.gen.status = 'собираю карусель…';
+            const img = this.imgByArt && this.imgByArt[art];
+            if (img) {
+              const onscreen = (s.scenario?.shots || []).map(x => x.onscreen).filter(Boolean).slice(0, 3);
+              const texts = [brief, ...onscreen, 'Ищи на WB: ' + art];
+              const slides = await this._renderCarousel(img, texts);
+              if (slides.length) { s.gen.slides = slides; s.gen.status = '✓ карусель (' + slides.length + ' слайдов)'; }
+              else s.gen.status = 'не удалось собрать карусель (фото)';
+            } else { s.gen.carouselUrl = '/carousel?article=' + encodeURIComponent(art); s.gen.status = 'нет фото товара — собери карусель вручную'; }
           } else if (route === 'real_ugc') {
             s.gen.status = 'снять вручную (реальный UGC) — сценарий готов';
           } else { // ai_generation / repurpose_cut / default → Higgsfield
@@ -1014,27 +1066,33 @@ function patrick() {
             else { const res = await this._pollVideo('/api/lab/video-storyboard-status/' + d.task_id, 4 * 60 * 1000); if (res.url) { s.gen.url = res.url; s.gen.status = '✓ готово'; } else s.gen.status = 'ошибка: ' + res.error; }
           }
         } catch (e) { s.gen.status = String(e).slice(0, 100); }
-        // 4) ОТК: критик смотрит кадры → брак авто-перегенеривает 1 раз → отдаём человеку на утверждение
-        if (s.gen.url) {
-          const kind = route === 'ai_avatar' ? 'avatar' : 'product';
-          const genEp = route === 'ai_avatar' ? '/api/factory/avatar' : '/api/lab/video-storyboard';
-          const statEp = route === 'ai_avatar' ? '/api/factory/avatar-status/' : '/api/lab/video-storyboard-status/';
+        // 4) ОТК: критик смотрит кадры → видео-брак авто-перегенеривает 1 раз → отдаём человеку
+        if (s.gen.url || s.gen.slides) {
           s.gen.status = 'ОТК проверяет…';
-          let v = await this._critiqueUrl(s.gen.url, kind, brief + ' · товар ' + art);
-          s.gen.critScore = v.error ? null : v.score;
-          if (!v.error && v.score < 7 && v.regen_hint) {
-            s.gen.status = 'ОТК брак (' + v.score + ') → перегенерю с правкой…';
-            try {
-              const rd = await (await fetch(genEp, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sku_art: art, brief: brief + ' [fix: ' + v.regen_hint + ']', script, profile: this.profile }) })).json();
-              if (rd.task_id) {
-                const res2 = await this._pollVideo(statEp + rd.task_id, 5 * 60 * 1000);
-                if (res2.url) { s.gen.url = res2.url; v = await this._critiqueUrl(s.gen.url, kind, brief + ' · товар ' + art); s.gen.critScore = v.error ? null : v.score; }
-              }
-            } catch (e) {}
+          if (s.gen.slides) {
+            // карусель: критик по слайдам (товар реальный — не искажается)
+            const v = await this._critiqueFrames(s.gen.slides, 'product', brief + ' · карусель ' + art);
+            s.gen.critScore = v.error ? null : v.score;
+          } else {
+            const kind = route === 'ai_avatar' ? 'avatar' : 'product';
+            const genEp = route === 'ai_avatar' ? '/api/factory/avatar' : '/api/lab/video-storyboard';
+            const statEp = route === 'ai_avatar' ? '/api/factory/avatar-status/' : '/api/lab/video-storyboard-status/';
+            let v = await this._critiqueUrl(s.gen.url, kind, brief + ' · товар ' + art);
+            s.gen.critScore = v.error ? null : v.score;
+            if (!v.error && v.score < 7 && v.regen_hint) {
+              s.gen.status = 'ОТК брак (' + v.score + ') → перегенерю с правкой…';
+              try {
+                const rd = await (await fetch(genEp, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sku_art: art, brief: brief + ' [fix: ' + v.regen_hint + ']', script, profile: this.profile }) })).json();
+                if (rd.task_id) {
+                  const res2 = await this._pollVideo(statEp + rd.task_id, 5 * 60 * 1000);
+                  if (res2.url) { s.gen.url = res2.url; v = await this._critiqueUrl(s.gen.url, kind, brief + ' · товар ' + art); s.gen.critScore = v.error ? null : v.score; }
+                }
+              } catch (e) {}
+            }
           }
           s.gen.status = (s.gen.critScore != null ? ('ОТК ' + s.gen.critScore + '/10 → ') : '') + '🙋 на утверждение человеку';
         }
-        if (s.gen.url) this.saveToBank(s, art); // #3 банк готового (статус review = человек проверяет)
+        if (s.gen.url || s.gen.slides) this.saveToBank(s, art); // #3 банк (review = человек проверяет)
         done++;
         this.pipe.log = pool.map(p => '• ' + (p.hook || p.concept || '').slice(0, 40) + ' — ' + (p.gen?.status || '…')).join('\n');
       }
