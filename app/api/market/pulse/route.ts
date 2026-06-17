@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { resolveShopCabinet } from "@/lib/rnp/resolveShop";
-import { hasMpstats, subjectByDate, subjectKeywords, itemKeywords } from "@/lib/mpstats/client";
+import { hasMpstats, subjectByDate, subjectKeywords, subjectByDateId, subjectKeywordsId, itemKeywords } from "@/lib/mpstats/client";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -22,8 +22,9 @@ export async function GET(request: NextRequest) {
   if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 500 });
 
   const sp = new URL(request.url).searchParams;
-  const subject = sp.get("subject") || "";
-  if (!subject) return NextResponse.json({ error: "Укажите subject (путь предмета)" }, { status: 400 });
+  const subjectId = sp.get("subject_id"); // приоритет: предмет по id (точнее)
+  const subject = sp.get("subject") || ""; // legacy: путь категории
+  if (!subjectId && !subject) return NextResponse.json({ error: "Укажите ниши (subject_id или путь)" }, { status: 400 });
   const { cabinetId, label } = await resolveShopCabinet(sp.get("cabinet") ?? undefined);
   const gran: "day" | "week" = sp.get("gran") === "day" ? "day" : "week";
 
@@ -34,16 +35,17 @@ export async function GET(request: NextRequest) {
   if (dfP && dtP) { d1 = dfP; d2 = dtP > yest ? yest : dtP; }
   else { const weeks = Math.min(16, Math.max(2, Number(sp.get("weeks")) || 8)); d2 = yest; d1 = fmt(new Date(Date.now() - weeks * 7 * 86400000)); }
 
-  const cacheKey = `${subject}|${cabinetId || "all"}|${gran}|${d1}|${d2}`;
+  const cacheKey = `${subjectId || subject}|${cabinetId || "all"}|${gran}|${d1}|${d2}`;
   const hit = _memo.get(cacheKey);
   if (hit && Date.now() - hit.ts < MEMO_TTL) return NextResponse.json(hit.val);
 
-  // параллельно: ниша по дням (MPStats), запросы ниши (MPStats), наша динамика (своя БД)
-  const [nicheDays, nicheKw, ourDailyRes] = await Promise.all([
-    subjectByDate(subject, d1, d2),
-    subjectKeywords(subject, d1, d2, 300),
-    db.rpc("rnp_daily", { p_from: d1, p_to: d2, p_cabinet: cabinetId }),
-  ]);
+  // ниша + запросы: по subject_id (точнее) или по пути категории (legacy)
+  const [nicheDays, nicheKw] = await Promise.all(
+    subjectId
+      ? [subjectByDateId(subjectId, d1, d2), subjectKeywordsId(subjectId, d1, d2, 300)]
+      : [subjectByDate(subject, d1, d2), subjectKeywords(subject, d1, d2, 300)],
+  );
+  const ourDailyRes = await db.rpc("rnp_daily", { p_from: d1, p_to: d2, p_cabinet: cabinetId });
 
   // бакетизация: день = сама дата, неделя = понедельник недели
   const bkt = (s: string) => (gran === "day" ? s.slice(0, 10) : isoWeek(s.slice(0, 10)));
@@ -104,6 +106,7 @@ export async function GET(request: NextRequest) {
 
   const payload = {
     ok: true,
+    subject_id: subjectId || null,
     subject,
     cabinet: label || "Все кабинеты",
     gran,

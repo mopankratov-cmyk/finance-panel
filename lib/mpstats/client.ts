@@ -32,6 +32,19 @@ async function post<T>(path: string, query: string, body: unknown, revalidate = 
   return null;
 }
 
+async function get<T>(path: string, revalidate = TTL): Promise<T | null> {
+  if (!TOKEN) return null;
+  for (let i = 0; i < 3; i++) {
+    try {
+      const res = await fetch(`${BASE}${path}`, { headers: { "X-Mpstats-TOKEN": TOKEN }, next: { revalidate } });
+      if (res.status === 429) { await sleep(1500); continue; }
+      if (!res.ok) return null;
+      return (await res.json()) as T;
+    } catch { await sleep(1000); }
+  }
+  return null;
+}
+
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const enc = (s: string) => encodeURIComponent(s);
 
@@ -56,4 +69,24 @@ export async function subjectKeywords(subjectPath: string, d1: string, d2: strin
 export async function itemKeywords(nmId: number, d1: string, d2: string): Promise<SkuKwRow[]> {
   const data = await post<{ data?: { words?: SkuKwRow[] } }>(`/items/${nmId}/keywords`, `d1=${d1}&d2=${d2}`, {});
   return data?.data?.words ?? [];
+}
+
+// Предмет (ниша) товара: subject.id + subject.name — для авто-определения ниш кабинета.
+export async function itemSubject(nmId: number): Promise<{ id: number; name: string } | null> {
+  const data = await get<{ subject?: { id?: number; name?: string }; period_stats?: { subject_id?: number } }>(`/items/${nmId}/full`, 24 * 3600);
+  const id = data?.subject?.id ?? data?.period_stats?.subject_id;
+  const name = data?.subject?.name;
+  return id ? { id, name: name || `Предмет ${id}` } : null;
+}
+
+// Ниша по дням по subject_id (предмет целиком, все деревья — точнее, чем category path).
+export async function subjectByDateId(subjectId: number | string, d1: string, d2: string): Promise<SubjectDay[]> {
+  const data = await post<SubjectDay[]>("/subject/by_date", `d1=${d1}&d2=${d2}&path=${subjectId}`, {});
+  return Array.isArray(data) ? data : [];
+}
+
+// Запросы ниши по subject_id.
+export async function subjectKeywordsId(subjectId: number | string, d1: string, d2: string, limit = 400): Promise<NicheQuery[]> {
+  const data = await post<{ queries?: NicheQuery[] }>("/subject/keywords", `d1=${d1}&d2=${d2}&path=${subjectId}`, { startRow: 0, endRow: limit });
+  return (data?.queries ?? []).map((r) => ({ word: r.word, wb_count: Number(r.wb_count ?? 0), items_count: r.items_count }));
 }

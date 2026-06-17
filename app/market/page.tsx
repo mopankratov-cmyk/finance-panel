@@ -14,39 +14,50 @@ interface Pulse {
   share_pct: number | null; queries: Query[]; note?: string;
 }
 
-const PRESETS = [
-  { label: "Водные пистолеты (Игрушки)", path: "Игрушки/Игрушечное оружие и аксессуары/Игрушечное оружие" },
-  { label: "Водные пистолеты (Детям)", path: "Детям/Подарки детям/Игрушки/Игрушечное оружие" },
-];
+interface Niche { id: number; name: string; sku_count: number; cabinets: string[] }
 
 const fmt = (n: number) => Math.round(n).toLocaleString("ru-RU");
 const wk = (s: string) => { const [, m, d] = s.split("-"); return `${d}.${m}`; };
 
 export default function MarketPage() {
   const [wbCab] = useActiveCabinet("wb");
-  const [subject, setSubject] = useState(PRESETS[0].path);
+  const [niches, setNiches] = useState<Niche[]>([]);
+  const [nicheSel, setNicheSel] = useState(""); // "id:<num>" (авто-ниша) или "__custom"
+  const [subject, setSubject] = useState(""); // путь предмета для custom
   const [gran, setGran] = useState<"week" | "day">("week");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [data, setData] = useState<Pulse | null>(null);
   const [loading, setLoading] = useState(false);
+  const [nichesLoading, setNichesLoading] = useState(true);
   const [err, setErr] = useState("");
 
+  // авто-определение ниш кабинетов (1 раз)
+  useEffect(() => {
+    fetch("/api/market/niches", { cache: "no-store" }).then((r) => r.json()).then((j) => {
+      const ns: Niche[] = j.niches ?? [];
+      setNiches(ns);
+      setNicheSel((cur) => cur || (ns.length ? `id:${ns[0].id}` : "__custom"));
+    }).catch(() => setNicheSel("__custom")).finally(() => setNichesLoading(false));
+  }, []);
+
   const load = useCallback(async () => {
-    if (!subject.trim()) return;
+    const isId = nicheSel.startsWith("id:");
+    if (!isId && !subject.trim()) return;
     setLoading(true); setErr("");
     try {
+      const nicheParam = isId ? `subject_id=${nicheSel.slice(3)}` : `subject=${encodeURIComponent(subject)}`;
       const period = dateFrom && dateTo ? `&date_from=${dateFrom}&date_to=${dateTo}` : "&weeks=8";
-      const q = `subject=${encodeURIComponent(subject)}&gran=${gran}${period}${wbCab ? `&cabinet=${wbCab}` : ""}`;
+      const q = `${nicheParam}&gran=${gran}${period}${wbCab ? `&cabinet=${wbCab}` : ""}`;
       const r = await fetch(`/api/market/pulse?${q}`, { cache: "no-store" });
       const j = await r.json();
       if (!r.ok || j.error) { setErr(j.error || `Ошибка ${r.status}`); setData(null); }
       else setData(j);
     } catch (e) { setErr("Сеть: " + String(e)); }
     setLoading(false);
-  }, [subject, wbCab, gran, dateFrom, dateTo]);
+  }, [nicheSel, subject, wbCab, gran, dateFrom, dateTo]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { if (nicheSel) load(); }, [load, nicheSel]);
 
   const rel = data?.rel_growth_pct;
 
@@ -64,14 +75,17 @@ export default function MarketPage() {
       </div>
 
       <div className="mb-5 flex flex-wrap items-center gap-2">
-        <span className="text-xs font-semibold text-gray-500">Ниша:</span>
-        <select value={PRESETS.some((p) => p.path === subject) ? subject : "__custom"} onChange={(e) => { if (e.target.value !== "__custom") setSubject(e.target.value); }}
-          className="rounded-md border border-gray-300 px-2.5 py-1.5 text-sm">
-          {PRESETS.map((p) => <option key={p.path} value={p.path}>{p.label}</option>)}
+        <span className="text-xs font-semibold text-gray-500">🎯 Ниша:</span>
+        <select value={nicheSel} onChange={(e) => setNicheSel(e.target.value)}
+          className="max-w-[380px] rounded-md border border-gray-300 px-2.5 py-1.5 text-sm">
+          {nichesLoading && <option value="">определяю ниши кабинетов…</option>}
+          {niches.map((n) => <option key={n.id} value={`id:${n.id}`}>{n.name} · {n.sku_count} SKU{n.cabinets.length > 1 ? ` · ${n.cabinets.length} каб` : ""}</option>)}
           <option value="__custom">— свой путь —</option>
         </select>
-        <input value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="Путь предмета WB"
-          className="min-w-[280px] flex-1 rounded-md border border-gray-300 px-2.5 py-1.5 font-mono text-xs" />
+        {nicheSel === "__custom" && (
+          <input value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="Путь предмета WB (Игрушки/…/Игрушечное оружие)"
+            className="min-w-[260px] flex-1 rounded-md border border-gray-300 px-2.5 py-1.5 font-mono text-xs" />
+        )}
         <button onClick={load} disabled={loading} className="rounded-md bg-violet-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50">Показать</button>
       </div>
 
