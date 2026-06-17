@@ -2,6 +2,8 @@
 // Комиссия: commission_percent (взвеш. по выручке). Эквайринг: acquiring_fee / выручка.
 // Кэш через Next fetch revalidate (отчёт тяжёлый ~12с) — тянется раз в 6ч на весь сервер.
 
+import { getActiveWbCabinets } from "./cabinetTokens";
+
 const WB_STATS_TOKEN = process.env.WB_STATS_TOKEN || process.env.WB_TOKEN_STATISTICS;
 
 interface ReportRow {
@@ -78,4 +80,26 @@ export async function getWbCommission(days = 30, opts?: { token?: string; cacheK
   const val: WbCommission = { byNm, avgPct, avgAcqPct };
   if (byNm.size > 0) _memo.set(key, { ts: Date.now(), val }); // кэшируем только удачный результат
   return val;
+}
+
+// Факт-комиссия по nm со ВСЕХ активных кабинетов (каждый nm — из финотчёта своего кабинета).
+// Для кросс-кабинетных таблиц (юнит): ENV-токен пуст/неактуален → берём токены кабинетов из БД.
+export async function getWbCommissionMerged(days = 30): Promise<WbCommission> {
+  const cabs = await getActiveWbCabinets();
+  if (!cabs.length) return getWbCommission(days); // фолбэк на ENV
+  const parts = await Promise.all(cabs.map((c) => getWbCommission(days, { token: c.token, cacheKey: c.id })));
+  const byNm = new Map<number, { pct: number; acqPct: number; rev: number }>();
+  for (const p of parts) {
+    for (const [nm, e] of p.byNm) {
+      const ex = byNm.get(nm);
+      if (!ex || e.rev > ex.rev) byNm.set(nm, e); // один nm в двух кабинетах — берём с большей выручкой
+    }
+  }
+  let totW = 0, totAcq = 0, totRev = 0;
+  for (const e of byNm.values()) { totW += e.pct * e.rev; totAcq += e.acqPct * e.rev; totRev += e.rev; }
+  return {
+    byNm,
+    avgPct: totRev > 0 ? Math.round((totW / totRev) * 10) / 10 : 0,
+    avgAcqPct: totRev > 0 ? Math.round((totAcq / totRev) * 10) / 10 : 0,
+  };
 }

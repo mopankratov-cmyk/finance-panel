@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { wbCardImageUrl } from "@/lib/wb/cardImage";
-import { getWbCommission } from "@/lib/wb/commissions";
+import { getWbCommissionMerged } from "@/lib/wb/commissions";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60; // факт-комиссия = финотчёт по каждому кабинету (тяжёлый, кэш 6ч)
 
 interface RpcRow {
   nm_id: number;
@@ -36,7 +37,7 @@ export async function GET(req: NextRequest) {
   const [rpcRes, costsRes, comm] = await Promise.all([
     db.rpc("rnp_report"),
     db.from("product_costs").select("article, name, entity, cost_rub, warehouse_expenses"),
-    getWbCommission(30), // фактическая комиссия% по nm из финотчёта
+    getWbCommissionMerged(30), // факт-комиссия% по nm — финотчёт по каждому кабинету (ENV пуст)
   ]);
   // ставки по nm: факт из отчёта → средняя по кабинету → дефолт
   const commForNm = (nm: number) => comm.byNm.get(nm)?.pct ?? (comm.avgPct > 0 ? comm.avgPct : commDefault);

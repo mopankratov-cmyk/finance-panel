@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { resolveShopCabinet } from "@/lib/rnp/resolveShop";
 import { getWbCabinet, resolveWbToken } from "@/lib/wb/cabinetTokens";
-import { getWbCommission } from "@/lib/wb/commissions";
+import { getWbCommission, getWbCommissionMerged } from "@/lib/wb/commissions";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -24,7 +24,8 @@ export async function GET(request: NextRequest) {
   const [rpcRes, costsRes, comm] = await Promise.all([
     db.rpc("rnp_report", { p_cabinet: cabinetId }),
     db.from("product_costs").select("article, name"),
-    getWbCommission(30, { token: commToken, cacheKey: cabinetId || "env" }),
+    // конкретный кабинет → его финотчёт; «Все» → мердж по всем кабинетам (ENV пуст)
+    cabinetId ? getWbCommission(30, { token: commToken, cacheKey: cabinetId }) : getWbCommissionMerged(30),
   ]);
   const nameByArt = new Map<string, string>();
   for (const c of costsRes.data ?? []) nameByArt.set(c.article as string, (c.name as string) ?? "");
