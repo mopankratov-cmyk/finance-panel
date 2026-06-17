@@ -8,8 +8,8 @@ import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianG
 
 interface Query { word: string; wb_count: number; our_org: number | null; our_ad: number | null }
 interface Pulse {
-  ok?: boolean; error?: string; subject: string; cabinet: string; weeks: number;
-  series: { week: string; niche: number; ours: number | null }[];
+  ok?: boolean; error?: string; subject: string; cabinet: string; gran?: string; date_from?: string; date_to?: string;
+  series: { bucket: string; niche: number; ours: number | null }[];
   niche_growth_pct: number | null; our_growth_pct: number | null; rel_growth_pct: number | null;
   share_pct: number | null; queries: Query[]; note?: string;
 }
@@ -25,6 +25,9 @@ const wk = (s: string) => { const [, m, d] = s.split("-"); return `${d}.${m}`; }
 export default function MarketPage() {
   const [wbCab] = useActiveCabinet("wb");
   const [subject, setSubject] = useState(PRESETS[0].path);
+  const [gran, setGran] = useState<"week" | "day">("week");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const [data, setData] = useState<Pulse | null>(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
@@ -33,14 +36,15 @@ export default function MarketPage() {
     if (!subject.trim()) return;
     setLoading(true); setErr("");
     try {
-      const q = `subject=${encodeURIComponent(subject)}&weeks=8${wbCab ? `&cabinet=${wbCab}` : ""}`;
+      const period = dateFrom && dateTo ? `&date_from=${dateFrom}&date_to=${dateTo}` : "&weeks=8";
+      const q = `subject=${encodeURIComponent(subject)}&gran=${gran}${period}${wbCab ? `&cabinet=${wbCab}` : ""}`;
       const r = await fetch(`/api/market/pulse?${q}`, { cache: "no-store" });
       const j = await r.json();
       if (!r.ok || j.error) { setErr(j.error || `Ошибка ${r.status}`); setData(null); }
       else setData(j);
     } catch (e) { setErr("Сеть: " + String(e)); }
     setLoading(false);
-  }, [subject, wbCab]);
+  }, [subject, wbCab, gran, dateFrom, dateTo]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -71,6 +75,20 @@ export default function MarketPage() {
         <button onClick={load} disabled={loading} className="rounded-md bg-violet-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50">Показать</button>
       </div>
 
+      <div className="mb-5 flex flex-wrap items-center gap-3">
+        <div className="inline-flex rounded-md bg-gray-100 p-0.5 text-xs font-semibold">
+          <button onClick={() => setGran("week")} className={`rounded px-3 py-1 ${gran === "week" ? "bg-white text-violet-700 shadow-sm" : "text-gray-500"}`}>По неделям</button>
+          <button onClick={() => setGran("day")} className={`rounded px-3 py-1 ${gran === "day" ? "bg-white text-violet-700 shadow-sm" : "text-gray-500"}`}>По дням</button>
+        </div>
+        <span className="text-xs text-gray-400">·</span>
+        <span className="text-xs font-semibold text-gray-500">Период:</span>
+        <input type="date" value={dateFrom} max={dateTo || undefined} onChange={(e) => setDateFrom(e.target.value)} className="rounded-md border border-gray-300 px-2 py-1 text-xs" />
+        <span className="text-xs text-gray-400">—</span>
+        <input type="date" value={dateTo} min={dateFrom || undefined} onChange={(e) => setDateTo(e.target.value)} className="rounded-md border border-gray-300 px-2 py-1 text-xs" />
+        {(dateFrom || dateTo) && <button onClick={() => { setDateFrom(""); setDateTo(""); }} className="text-xs text-gray-400 hover:text-violet-600 underline">сброс (8 нед)</button>}
+        {!dateFrom && !dateTo && <span className="text-[11px] text-gray-400">пусто = последние 8 недель</span>}
+      </div>
+
       {loading && <div className="py-16 text-center text-gray-400"><Loader2 className="mx-auto h-6 w-6 animate-spin" /></div>}
       {err && !loading && <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{err}{err.includes("MPSTATS") && <span className="block text-xs text-red-500 mt-1">Добавьте MPSTATS_TOKEN в переменные окружения Vercel.</span>}</div>}
 
@@ -92,7 +110,7 @@ export default function MarketPage() {
               <ResponsiveContainer>
                 <LineChart data={data.series} margin={{ top: 6, right: 8, left: 8, bottom: 4 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#eee" />
-                  <XAxis dataKey="week" tickFormatter={wk} fontSize={11} />
+                  <XAxis dataKey="bucket" tickFormatter={wk} fontSize={11} minTickGap={20} />
                   <YAxis yAxisId="l" tickFormatter={(v) => `${Math.round(v / 1e6)}М`} fontSize={11} width={38} />
                   <YAxis yAxisId="r" orientation="right" tickFormatter={(v) => `${Math.round(v / 1e3)}к`} fontSize={11} width={38} />
                   <Tooltip formatter={(v) => fmt(Number(v)) + " ₽"} labelFormatter={(l) => wk(String(l))} />
