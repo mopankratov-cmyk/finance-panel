@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { wbTokenForNm } from "@/lib/wb/cabinetTokens";
+import { wbTokenForNm, wbCabinetForNm } from "@/lib/wb/cabinetTokens";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -54,7 +54,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ nm: string 
       const msg = res.status === 403 || /jam/i.test(detail)
         ? "Поисковая аналитика WB — только по подписке «Джем» (Аналитика → Джем в кабинете WB). Без неё позиции по запросам недоступны."
         : `WB ${res.status}`;
-      return NextResponse.json({ error: msg, raw: debug ? raw : undefined });
+      return NextResponse.json({ error: msg, status: res.status, resolved_cabinet: debug ? await wbCabinetForNm(nmId) : undefined, raw: debug ? raw : undefined });
     }
   } catch (e) {
     return NextResponse.json({ error: String(e) });

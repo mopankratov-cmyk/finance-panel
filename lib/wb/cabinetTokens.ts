@@ -99,3 +99,17 @@ export async function wbTokenForNm(nmId: number, scope: WbScope): Promise<string
   const cab = await getWbCabinet(cabId);
   return cab ? resolveWbToken(cab, scope) : envTok;
 }
+
+// Кабинет-владелец SKU (по cabinet_id в стоках/заказах) — для диагностики (без раскрытия токена).
+export async function wbCabinetForNm(nmId: number): Promise<{ id: string; name: string } | null> {
+  const db = getSupabaseAdmin();
+  if (!db) return null;
+  for (const table of ["wb_stocks", "wb_orders"]) {
+    const { data } = await db.from(table).select("cabinet_id").eq("nm_id", nmId).not("cabinet_id", "is", null).limit(1).maybeSingle();
+    if (data?.cabinet_id) {
+      const cab = await getWbCabinet(data.cabinet_id as string);
+      return cab ? { id: cab.id, name: cab.name } : null;
+    }
+  }
+  return null;
+}
