@@ -6,6 +6,10 @@ import { hasMpstats, subjectByDate, subjectKeywords, itemKeywords } from "@/lib/
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
+// In-process кэш (MPStats-вызовы POST — Next их НЕ кэширует; бережём квоту 10k).
+const _memo = new Map<string, { ts: number; val: unknown }>();
+const MEMO_TTL = 6 * 3600 * 1000;
+
 // «Пульс рынка»: ниша (MPStats) ↔ мы (свои wb_orders), и запросы ↔ наши позиции.
 // MPStats — оценочные данные (для тренда/направления, не абсолюта).
 export async function GET(request: NextRequest) {
@@ -18,6 +22,10 @@ export async function GET(request: NextRequest) {
   if (!subject) return NextResponse.json({ error: "Укажите subject (путь предмета)" }, { status: 400 });
   const weeks = Math.min(12, Math.max(2, Number(sp.get("weeks")) || 8));
   const { cabinetId, label } = await resolveShopCabinet(sp.get("cabinet") ?? undefined);
+
+  const cacheKey = `${subject}|${cabinetId || "all"}|${weeks}|${new Date(Date.now() - 86400000).toISOString().slice(0, 10)}`;
+  const hit = _memo.get(cacheKey);
+  if (hit && Date.now() - hit.ts < MEMO_TTL) return NextResponse.json(hit.val);
 
   const to = new Date(Date.now() - 86400000); // MPStats требует d2 < сегодня (вчера)
   const from = new Date(Date.now() - weeks * 7 * 86400000);
@@ -69,12 +77,12 @@ export async function GET(request: NextRequest) {
   const ourSkus = ((repRes.data ?? []) as { nm_id: number; orders_sum_month: number }[])
     .slice()
     .sort((a, b) => Number(b.orders_sum_month ?? 0) - Number(a.orders_sum_month ?? 0))
-    .slice(0, 3)
+    .slice(0, 15) // топ-15 по выручке — у небольших кабинетов это почти все SKU (ловим нишевые)
     .map((r) => r.nm_id);
 
   const posByQuery = new Map<string, { org: number | null; ad: number | null }>();
-  for (const nm of ourSkus) {
-    const kw = await itemKeywords(nm, d1, d2);
+  const kwLists = await Promise.all(ourSkus.map((nm) => itemKeywords(nm, d1, d2)));
+  for (const kw of kwLists) {
     for (const w of kw) {
       const cur = posByQuery.get(w.query);
       const org = w.avg_organic_position != null ? Math.round(w.avg_organic_position) : null;
@@ -93,7 +101,7 @@ export async function GET(request: NextRequest) {
       return { word: q.word, wb_count: q.wb_count, our_org: p?.org ?? null, our_ad: p?.ad ?? null };
     });
 
-  return NextResponse.json({
+  const payload = {
     ok: true,
     subject,
     cabinet: label || "Все кабинеты",
@@ -105,5 +113,8 @@ export async function GET(request: NextRequest) {
     share_pct: sharePct,
     queries,
     note: "MPStats — оценочные данные (для тренда). Свои деньги — из кабинета.",
-  });
+  };
+  // кэшируем только содержательный результат (есть данные ниши)
+  if (series.length) _memo.set(cacheKey, { ts: Date.now(), val: payload });
+  return NextResponse.json(payload);
 }
