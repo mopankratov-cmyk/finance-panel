@@ -1089,6 +1089,17 @@ function patrick() {
                 }
               } catch (e) {}
             }
+            // самолечение: видео всё равно плохое и не аватар → надёжный фолбэк на карусель (фото не плывёт)
+            if (route !== 'ai_avatar' && (s.gen.critScore == null || s.gen.critScore < 6) && this.imgByArt && this.imgByArt[art]) {
+              s.gen.status = 'видео не прошло ОТК → собираю карусель…';
+              const onscreen = (s.scenario?.shots || []).map(x => x.onscreen).filter(Boolean).slice(0, 3);
+              const slides = await this._renderCarousel(this.imgByArt[art], [brief, ...onscreen, 'Ищи на WB: ' + art]);
+              if (slides.length) {
+                s.gen.slides = slides; s.gen.url = ''; s.gen.route = 'slideshow';
+                const v2 = await this._critiqueFrames(slides, 'product', brief + ' · карусель ' + art);
+                s.gen.critScore = v2.error ? null : v2.score;
+              }
+            }
           }
           s.gen.status = (s.gen.critScore != null ? ('ОТК ' + s.gen.critScore + '/10 → ') : '') + '🙋 на утверждение человеку';
         }
