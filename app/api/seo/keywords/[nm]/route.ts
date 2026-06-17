@@ -19,6 +19,8 @@ interface SearchItem {
 interface SnapRow { keyword: string; frequency: number | null; median_position: number | null; snapshot_date: string }
 
 const fmt = (d: Date) => d.toISOString().slice(0, 10);
+// дата снимка — по Москве (UTC+3), иначе ночью МСК колонка получает вчерашнюю дату
+const mskDay = (ms = Date.now()) => new Date(ms + 3 * 3600 * 1000).toISOString().slice(0, 10);
 
 // Живой запрос поисковых текстов WB (доступен по подписке «Джем»). items или ошибка.
 async function fetchLive(nmId: number, token: string, debug: boolean) {
@@ -55,8 +57,8 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ nm: string 
   if (!nmId) return NextResponse.json({ words: [], days: [] });
 
   const db = getSupabaseAdmin();
-  const today = fmt(new Date());
-  const fromDate = fmt(new Date(Date.now() - HISTORY_DAYS * 86400000));
+  const today = mskDay();
+  const fromDate = mskDay(Date.now() - HISTORY_DAYS * 86400000);
 
   // 1) история из таблицы (если таблицы ещё нет — вернётся ошибка, тихо считаем пусто)
   let snaps: SnapRow[] = [];
