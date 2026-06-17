@@ -9,16 +9,20 @@ export const maxDuration = 60;
 const BASE = "https://api-seller.ozon.ru";
 const WEEKDAY = ["вс", "пн", "вт", "ср", "чт", "пт", "сб"];
 
-// analytics/data с разбивкой [day, sku] (постранично).
+// analytics/data с разбивкой [sku, day] (постранично).
+// ВАЖНО: запрашиваем ТОЛЬКО ordered_units + revenue. Метрики воронки (hits_view/hits_tocart)
+// доступны лишь в Ozon Premium Plus — без подписки Ozon молча выкидывает их из ответа,
+// массив metrics укорачивается и позиции «съезжают» (заказы/выручка читались как 0,
+// а показы/в корзину — как мусор → CR 218790%). Базовые ordered_units/revenue есть у всех.
 async function fetchDaySku(c: OzonCreds, from: string, to: string) {
-  const rows: { sku: string; name: string; day: string; views: number; cart: number; orders: number; revenue: number }[] = [];
-  for (let offset = 0; offset < 5000; offset += 1000) {
+  const rows: { sku: string; name: string; day: string; orders: number; revenue: number }[] = [];
+  for (let offset = 0; offset < 10000; offset += 1000) {
     const res = await fetch(`${BASE}/v1/analytics/data`, {
       method: "POST",
       headers: { "Client-Id": c.clientId, "Api-Key": c.apiKey, "Content-Type": "application/json" },
       body: JSON.stringify({
         date_from: from, date_to: to,
-        metrics: ["hits_view", "hits_tocart", "ordered_units", "revenue"],
+        metrics: ["ordered_units", "revenue"],
         dimension: ["sku", "day"], limit: 1000, offset,
       }),
       next: { revalidate: 1800 },
@@ -32,7 +36,7 @@ async function fetchDaySku(c: OzonCreds, from: string, to: string) {
     for (const d of batch) rows.push({
       sku: d.dimensions[0]?.id ?? "", name: d.dimensions[0]?.name ?? "",
       day: d.dimensions[1]?.id ?? d.dimensions[1]?.name ?? "",
-      views: d.metrics[0] ?? 0, cart: d.metrics[1] ?? 0, orders: d.metrics[2] ?? 0, revenue: d.metrics[3] ?? 0,
+      orders: d.metrics[0] ?? 0, revenue: d.metrics[1] ?? 0,
     });
     if (batch.length < 1000) break;
   }
@@ -72,11 +76,11 @@ export async function GET(request: NextRequest) {
   const period = dates.map((d) => { const dt = new Date(d); return { label: `${String(dt.getDate()).padStart(2, "0")}.${String(dt.getMonth() + 1).padStart(2, "0")}`, period_type: WEEKDAY[dt.getDay()] }; });
 
   // группировка по sku
-  type Day = { views: number; cart: number; orders: number; revenue: number };
+  type Day = { orders: number; revenue: number };
   const bySku = new Map<string, { name: string; byDay: Map<string, Day> }>();
   for (const r of raw) {
     if (!bySku.has(r.sku)) bySku.set(r.sku, { name: r.name, byDay: new Map() });
-    bySku.get(r.sku)!.byDay.set(r.day.slice(0, 10), { views: r.views, cart: r.cart, orders: r.orders, revenue: r.revenue });
+    bySku.get(r.sku)!.byDay.set(r.day.slice(0, 10), { orders: r.orders, revenue: r.revenue });
   }
 
   // остатки + карта sku→offer для джойна (фото тоже отсюда)
@@ -98,19 +102,15 @@ export async function GET(request: NextRequest) {
   const buildMetrics = (byDay: Map<string, Day>, stock: number, adSpent?: number) => {
     const pick = (k: keyof Day) => dates.map((d) => Math.round(byDay.get(d)?.[k] ?? 0));
     const sum = (a: number[]) => a.reduce((x, v) => x + v, 0);
-    const orders = pick("orders"), revenue = pick("revenue"), views = pick("views"), cart = pick("cart");
+    const orders = pick("orders"), revenue = pick("revenue");
     const revTotal = sum(revenue);
-    const r1 = (a: number, b: number) => (b > 0 ? Math.round((a / b) * 1000) / 10 : 0);
-    const crCart = dates.map((_, i) => r1(cart[i], views[i]));
-    const crOrder = dates.map((_, i) => r1(orders[i], cart[i]));
-    const oV = sum(orders), cV = sum(cart), vV = sum(views);
+    const oV = sum(orders);
+    // ср. цена заказа (выручка/заказы) — единственная производная, что можем без воронки
+    const avg = dates.map((_, i) => (orders[i] > 0 ? Math.round(revenue[i] / orders[i]) : 0));
     const m = [
       { field: "orders", label: "Заказы, шт", kind: "int", daily: orders, total: oV, group_start: true },
       { field: "revenue", label: "Выручка, ₽", kind: "money", daily: revenue, total: revTotal },
-      { field: "cart", label: "В корзину", kind: "int", daily: cart, total: cV, group_start: true },
-      { field: "views", label: "Показы", kind: "int", daily: views, total: vV },
-      { field: "cr_cart", label: "CR в корзину, %", kind: "pct", daily: crCart, total: r1(cV, vV) },
-      { field: "cr_order", label: "CR корзина→заказ, %", kind: "pct", daily: crOrder, total: r1(oV, cV) },
+      { field: "avg_check", label: "Ср. цена, ₽", kind: "money", daily: avg, total: oV > 0 ? Math.round(revTotal / oV) : 0 },
       { field: "stock", label: "Остаток, шт", kind: "int", daily: dates.map(() => 0), total: stock, group_start: true },
     ];
     if (adSpent != null) {
@@ -129,8 +129,8 @@ export async function GET(request: NextRequest) {
   const allDays = new Map<string, Day>();
   for (const r of raw) {
     const d = r.day.slice(0, 10);
-    const e = allDays.get(d) ?? { views: 0, cart: 0, orders: 0, revenue: 0 };
-    e.views += r.views; e.cart += r.cart; e.orders += r.orders; e.revenue += r.revenue;
+    const e = allDays.get(d) ?? { orders: 0, revenue: 0 };
+    e.orders += r.orders; e.revenue += r.revenue;
     allDays.set(d, e);
   }
   const totalStock = Object.values(freeByOffer).reduce((s, v) => s + v, 0);

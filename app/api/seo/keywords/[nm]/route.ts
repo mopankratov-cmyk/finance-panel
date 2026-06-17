@@ -48,7 +48,14 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ nm: string 
     });
     const text = await res.text();
     try { raw = JSON.parse(text); } catch { raw = text; }
-    if (!res.ok) return NextResponse.json({ error: `WB ${res.status}`, raw: debug ? raw : undefined });
+    if (!res.ok) {
+      // WB 403 «Available only in a Jam subscription» — поисковая аналитика за платной подпиской «Джем»
+      const detail = typeof raw === "object" && raw && "detail" in raw ? String((raw as { detail?: unknown }).detail ?? "") : "";
+      const msg = res.status === 403 || /jam/i.test(detail)
+        ? "Поисковая аналитика WB — только по подписке «Джем» (Аналитика → Джем в кабинете WB). Без неё позиции по запросам недоступны."
+        : `WB ${res.status}`;
+      return NextResponse.json({ error: msg, raw: debug ? raw : undefined });
+    }
   } catch (e) {
     return NextResponse.json({ error: String(e) });
   }
