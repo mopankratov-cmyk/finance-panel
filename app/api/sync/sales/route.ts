@@ -17,6 +17,8 @@ export async function GET(request: NextRequest) {
   const sp = new URL(request.url).searchParams;
   // ?from=YYYY-MM-DD — принудительный ре-синк с даты (бэкфилл price_with_disc)
   const forceFrom = sp.get("from");
+  // ?to=YYYY-MM-DD — верхняя граница (WB не умеет dateTo, режем у себя): окно [from, to)
+  const toDate = sp.get("to");
   // ?cabinet=<uuid> — один кабинет за вызов (большие объёмы влезают в 60с)
   const onlyCab = sp.get("cabinet");
   const targets = onlyCab ? allTargets.filter((t) => t.cabinetId === onlyCab) : allTargets;
@@ -61,9 +63,10 @@ export async function GET(request: NextRequest) {
           cabinet_id: t.cabinetId,
           synced_at: new Date().toISOString(),
         }))
-        .filter((r) => r.sale_id);
+        .filter((r) => r.sale_id)
+        .filter((r) => !toDate || String(r.date) < toDate);
 
-      const upsertError = await chunkedUpsert("wb_sales", rows, "sale_id");
+      const upsertError = await chunkedUpsert("wb_sales", rows, "sale_id", forceFrom ? 100_000 : undefined);
       if (upsertError) {
         errors.push(`${t.name}: ${upsertError}`);
         continue;

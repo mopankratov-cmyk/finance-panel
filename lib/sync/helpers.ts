@@ -12,13 +12,16 @@ export function checkCronAuth(request: NextRequest): NextResponse | null {
   return null;
 }
 
-// POST-payload к Supabase >~28КБ падает с ETIMEDOUT (сетевой лимит) — режем по ~20КБ
+// Дефолт 20КБ: в локальной песочнице POST >~28КБ к Supabase ловил ETIMEDOUT.
+// На Vercel→Supabase лимит выше — для бэкфилла (десятки тысяч строк) передаём крупнее,
+// чтобы резко сократить число round-trip'ов и уложиться в 60с функции.
 const CHUNK_BYTES = 20_000;
 
 export async function chunkedUpsert(
   table: string,
   rows: Record<string, unknown>[],
   onConflict: string,
+  chunkBytes: number = CHUNK_BYTES,
 ): Promise<string | null> {
   const db = getSupabaseAdmin();
   if (!db) return "Supabase не настроен";
@@ -47,7 +50,7 @@ export async function chunkedUpsert(
 
   for (const row of rows) {
     const size = JSON.stringify(row).length;
-    if (bytes + size > CHUNK_BYTES) {
+    if (bytes + size > chunkBytes) {
       const err = await flush();
       if (err) return err;
     }

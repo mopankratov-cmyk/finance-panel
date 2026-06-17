@@ -18,6 +18,8 @@ export async function GET(request: NextRequest) {
   // ?from=YYYY-MM-DD — принудительный бэкфилл истории заказов с даты.
   // Без него — инкрементально от последней даты в таблице, иначе 30 дней назад (первый синк).
   const forceFrom = sp.get("from");
+  // ?to=YYYY-MM-DD — верхняя граница (WB не умеет dateTo, режем на своей стороне): окно [from, to).
+  const toDate = sp.get("to");
   // ?cabinet=<uuid> — бэкфиллить один кабинет за вызов (большие объёмы влезают в 60с).
   const onlyCab = sp.get("cabinet");
   const targets = onlyCab ? allTargets.filter((t) => t.cabinetId === onlyCab) : allTargets;
@@ -65,9 +67,10 @@ export async function GET(request: NextRequest) {
           cabinet_id: t.cabinetId,
           synced_at: new Date().toISOString(),
         }))
-        .filter((r) => r.srid);
+        .filter((r) => r.srid)
+        .filter((r) => !toDate || String(r.date) < toDate);
 
-      const upsertError = await chunkedUpsert("wb_orders", rows, "srid");
+      const upsertError = await chunkedUpsert("wb_orders", rows, "srid", forceFrom ? 100_000 : undefined);
       if (upsertError) {
         errors.push(`${t.name}: ${upsertError}`);
         continue;
