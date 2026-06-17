@@ -55,9 +55,8 @@
       <div><div class="font-extrabold text-sm tracking-tight text-gray-900">Контент-завод</div><div class="text-[10px] text-gray-400 -mt-0.5">Патрик · @mkt_aibot</div></div>
     </a>
     <template x-for="item in nav" :key="item.id">
-      <div class="nav-item" :class="{ 'active': active === item.id }" @click="active = item.id">
+      <div class="nav-item" :class="{ 'active': active === item.id }" @click="active = item.id; scrollTo(item.anchor)">
         <span x-text="item.icon" class="text-base"></span><span x-text="item.label" class="flex-1"></span>
-        <span x-show="item.badge" x-text="item.badge" class="text-[10px] bg-rose-100 text-rose-700 px-1.5 py-0.5 rounded-full font-bold"></span>
       </div>
     </template>
     <div class="mt-auto pt-4 border-t border-gray-100"><a href="/" class="util-link block px-2 py-1">← на дашборд</a></div>
@@ -69,10 +68,10 @@
         <div class="flex items-center gap-2"><h1 class="text-2xl font-extrabold tracking-tight">Контент-завод соцсетей</h1><span class="mvp-tag">MVP</span></div>
         <p class="text-sm text-gray-500 mt-1">Аккаунты, AI-генерация, расписание, переходы на карточки WB</p>
       </div>
-      <div class="flex gap-2"><button class="btn btn-ghost">＋ Аккаунт</button><a href="/inferno/wb.html#lab" class="btn btn-primary">＋ Новый контент</a></div>
+      <div class="flex gap-2"><button @click="scrollTo('dist')" class="btn btn-ghost">＋ Аккаунт</button><a href="/inferno/wb.html#lab" class="btn btn-primary">＋ Новый контент</a></div>
     </div>
 
-    <section class="card mb-6" style="border-color:#fecdd3; background:#fff7f8">
+    <section class="card mb-6" id="top" style="border-color:#fecdd3; background:#fff7f8">
       <div class="flex items-center gap-2 mb-2"><div class="acc-ico" style="background:#e11d48">Д</div><div class="flex-1"><div class="sec-h">Поставить задачу Директору по маркетингу</div><div class="sec-sub">опиши цель — Директор решит, кому из агентов что делать</div></div>
         <button @click="profileOpen = !profileOpen" class="btn btn-ghost text-[12px]" :class="profile ? 'border-emerald-300 text-emerald-700' : ''" x-text="profile ? '⚙ Профиль ✓' : '⚙ Профиль бренда'"></button>
       </div>
@@ -185,7 +184,7 @@
 
     <section class="card mb-6" x-show="bank.length">
       <div class="flex items-center justify-between mb-3">
-        <div><div class="sec-h">🎞 Банк готового контента</div><div class="sec-sub">результаты автопрогона · статусы → утверждение → в расписание</div></div>
+        <div id="bank"><div class="sec-h">🎞 Банк готового контента</div><div class="sec-sub">результаты автопрогона · статусы → утверждение → в расписание</div></div>
         <span class="pill pill-violet" x-text="bank.length + ' шт'"></span>
       </div>
       <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
@@ -220,7 +219,7 @@
 
     <section class="card mb-6" x-show="bank.length">
       <div class="flex items-center justify-between mb-3">
-        <div><div class="sec-h">📊 Аналитика — что зашло</div><div class="sec-sub">внеси метрики ролика после публикации → завод учится: победители подмешиваются в новые идеи</div></div>
+        <div id="analytics"><div class="sec-h">📊 Аналитика — что зашло</div><div class="sec-sub">внеси метрики ролика после публикации → завод учится: победители подмешиваются в новые идеи</div></div>
         <button @click="feedWinners()" class="btn btn-primary text-[12px]">↺ Учесть победителей в идеях</button>
       </div>
       <div x-show="winnersBrief" class="text-[11px] mb-2 px-2 py-1.5 rounded" :class="winnersBrief.startsWith('нет') ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700'">
@@ -249,7 +248,7 @@
 
     <section class="card mb-6">
       <div class="flex items-center justify-between mb-3">
-        <div><div class="sec-h">🌐 Дистрибуция — аккаунты и расписание</div><div class="sec-sub">реестр аккаунтов по соцсетям · план постинга по дням · UTM для атрибуции переходов на WB</div></div>
+        <div id="dist"><div class="sec-h">🌐 Дистрибуция — аккаунты и расписание</div><div class="sec-sub">реестр аккаунтов по соцсетям · план постинга по дням · UTM для атрибуции переходов на WB</div></div>
         <span class="pill pill-violet" x-text="accReg.length + ' акк · ' + sched.length + ' постов'"></span>
       </div>
       <div class="grid md:grid-cols-2 gap-4">
@@ -303,7 +302,7 @@
     </section>
 
     <section class="card mb-6">
-      <div class="flex items-center justify-between mb-2"><div><div class="sec-h">📈 Трендоскоп — разбор залетевших</div><div class="sec-sub">вставь ссылки/подписи виральных Reels (по строке) → паттерны-победители → бриф в Копирайтера</div></div></div>
+      <div class="flex items-center justify-between mb-2"><div id="trends"><div class="sec-h">📈 Трендоскоп — разбор залетевших</div><div class="sec-sub">вставь ссылки/подписи виральных Reels (по строке) → паттерны-победители → бриф в Копирайтера</div></div></div>
       <div class="flex gap-2 mb-2">
         <input x-model="tr.niche" placeholder="ниша (напр.: солнцезащитный крем)" class="text-sm px-3 py-2 border border-gray-300 rounded-lg" style="width:280px">
         <button @click="analyzeTrends()" :disabled="tr.busy" class="btn btn-ghost" x-text="tr.busy ? '⏳…' : 'Разобрать вставленное'"></button>
@@ -347,33 +346,32 @@
     </section>
 
     <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-      <div class="card-tight"><div class="stat-num text-rose-700" x-text="kpi.accounts"></div><div class="stat-label">подключённых аккаунтов</div><div class="delta-up mt-1" x-text="kpi.accountsDelta"></div></div>
-      <div class="card-tight"><div class="stat-num" x-text="kpi.posts"></div><div class="stat-label">постов за 7 дней</div><div class="delta-up mt-1" x-text="kpi.postsPlan"></div></div>
-      <div class="card-tight"><div class="stat-num" x-text="kpi.clicks"></div><div class="stat-label">переходов в WB</div><div class="delta-up mt-1" x-text="kpi.clicksDelta"></div></div>
-      <div class="card-tight"><div class="stat-num" x-text="kpi.orders"></div><div class="stat-label">заказов с UTM</div><div class="delta-up mt-1" x-text="kpi.ordersMeta"></div></div>
+      <div class="card-tight"><div class="stat-num text-rose-700" x-text="kAccounts"></div><div class="stat-label">аккаунтов для постинга</div></div>
+      <div class="card-tight"><div class="stat-num" x-text="kBank"></div><div class="stat-label">роликов в банке</div></div>
+      <div class="card-tight"><div class="stat-num" x-text="kSched"></div><div class="stat-label">в расписании</div></div>
+      <div class="card-tight"><div class="stat-num" x-text="kClicks"></div><div class="stat-label">переходов в WB (UTM)</div><div class="delta-up mt-1" x-text="kViews ? (kViews.toLocaleString('ru') + ' показов') : ''"></div></div>
     </div>
 
     <section class="card mb-6">
-      <div class="flex items-center justify-between mb-4"><div><div class="sec-h">Подключённые аккаунты</div><div class="sec-sub">десятки аккаунтов на сеть · группы и антибан</div></div><a href="#" class="util-link">все аккаунты →</a></div>
+      <div class="flex items-center justify-between mb-4"><div><div class="sec-h">Подключённые аккаунты</div><div class="sec-sub">реальный реестр · добавление и статусы — в блоке «Дистрибуция»</div></div><a @click.prevent="scrollTo('dist')" href="#" class="util-link">управлять →</a></div>
+      <div x-show="!accReg.length" class="text-[12px] text-gray-400 italic">аккаунтов пока нет — добавь их в блоке «Дистрибуция» ниже.</div>
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-2">
-        <template x-for="a in accounts" :key="a.handle">
-          <div class="acc-card"><div class="acc-ico" :class="a.ico" x-text="a.short"></div>
-            <div class="flex-1 min-w-0"><div class="text-sm font-semibold truncate" x-text="a.handle"></div><div class="text-[11px] text-gray-500 truncate"><span x-text="a.platform"></span> · <span x-text="a.followers"></span></div></div>
-            <span class="pill" :class="a.statusClass" x-text="a.status"></span></div>
+        <template x-for="a in accReg" :key="a.id">
+          <div class="acc-card"><div class="acc-ico" :class="platIco(a.platform)" x-text="(a.platform||'').slice(0,2)"></div>
+            <div class="flex-1 min-w-0"><div class="text-sm font-semibold truncate" x-text="a.handle"></div><div class="text-[11px] text-gray-500 truncate"><span x-text="a.platform"></span><span x-show="a.note"> · </span><span x-text="a.note"></span></div></div>
+            <span class="pill" :class="a.status==='активен' ? 'pill-live' : 'pill-off'" x-text="a.status"></span></div>
         </template>
       </div>
     </section>
 
-    <section class="card mb-6">
-      <div class="flex items-center justify-between mb-4"><div><div class="sec-h">Конвейер AI-контента</div><div class="sec-sub">От идеи до публикации — что в работе сейчас</div></div><span class="ai-badge">⚡ AI-генерация: 3 в очереди</span></div>
+    <section class="card mb-6" id="kanban">
+      <div class="flex items-center justify-between mb-4"><div><div class="sec-h">Конвейер AI-контента</div><div class="sec-sub">реальное состояние: идеи → банк → расписание → опубликовано</div></div></div>
       <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-3">
-        <template x-for="col in kanban" :key="col.id">
+        <template x-for="col in kanbanReal" :key="col.id">
           <div class="kanban-col"><div class="col-head"><div class="col-title" x-text="col.title"></div><span class="col-count" x-text="col.cards.length"></span></div>
             <template x-for="c in col.cards" :key="c.id">
               <div class="kanban-card"><div class="kanban-card-title" x-text="c.title"></div>
-                <div class="kanban-card-meta"><span class="pill" :class="c.platformClass" x-text="c.platform"></span>
-                  <span x-show="c.ai" class="ai-badge">⚡ <span x-text="c.ai"></span></span><span x-show="c.eta" x-text="c.eta" class="text-gray-400"></span></div>
-                <div x-show="c.sku" class="text-[10px] text-gray-400 mt-1.5">→ артикул <span x-text="c.sku" class="font-mono"></span></div></div>
+                <div class="kanban-card-meta"><span class="pill" :class="c.cls" x-text="c.platform"></span></div></div>
             </template>
             <div x-show="col.cards.length === 0" class="kanban-empty">пусто</div></div>
         </template>
@@ -381,30 +379,31 @@
     </section>
 
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
-      <section class="card lg:col-span-2">
-        <div class="flex items-center justify-between mb-4"><div><div class="sec-h">Товары WB в продвижении</div><div class="sec-sub">UTM, переходы, заказы с внешки за 7 дней</div></div><a href="#" class="util-link">все товары →</a></div>
-        <div class="overflow-x-auto"><table class="tbl"><thead><tr><th>Товар</th><th>Артикул</th><th class="text-right">→ WB</th><th class="text-right">Заказов</th><th>Канал-лидер</th><th class="text-right">CR</th></tr></thead>
-          <tbody><template x-for="p in products" :key="p.sku"><tr>
-            <td><div class="flex items-center gap-2.5"><div class="sku-photo" :style="'background:'+p.color"></div><div class="font-medium" x-text="p.title"></div></div></td>
-            <td class="font-mono text-[12px] text-gray-500" x-text="p.sku"></td><td class="text-right font-semibold" x-text="p.clicks"></td>
-            <td class="text-right font-semibold" x-text="p.orders"></td><td><span class="pill" :class="p.channelClass" x-text="p.channel"></span></td><td class="text-right text-gray-700" x-text="p.cr"></td>
+      <section class="card lg:col-span-2" id="products">
+        <div class="flex items-center justify-between mb-4"><div><div class="sec-h">Товары в продвижении</div><div class="sec-sub">по сделанным роликам из банка · показы и UTM-переходы (из метрик)</div></div></div>
+        <div x-show="!promoProducts.length" class="text-[12px] text-gray-400 italic">пока нет роликов в банке — сгенерируй контент, и товары появятся здесь.</div>
+        <div class="overflow-x-auto" x-show="promoProducts.length"><table class="tbl"><thead><tr><th>Товар</th><th>Артикул</th><th class="text-right">Роликов</th><th class="text-right">Показы</th><th class="text-right">→ WB (клики)</th></tr></thead>
+          <tbody><template x-for="p in promoProducts" :key="p.art"><tr>
+            <td><div class="font-medium" x-text="p.name"></div></td>
+            <td class="font-mono text-[12px] text-gray-500" x-text="p.art"></td><td class="text-right font-semibold" x-text="p.n"></td>
+            <td class="text-right" x-text="(p.views||0).toLocaleString('ru')"></td><td class="text-right font-semibold text-rose-700" x-text="p.clicks||0"></td>
           </tr></template></tbody></table></div>
       </section>
       <section class="card">
-        <div class="mb-3"><div class="sec-h">Шаблоны и серии</div><div class="sec-sub">Регулярные сценарии — клик и Патрик собирает серию</div></div>
-        <div class="space-y-2.5"><template x-for="t in templates" :key="t.id">
-          <div class="border border-gray-200 rounded-lg p-3"><div class="flex items-center justify-between mb-1"><div class="font-semibold text-sm" x-text="t.title"></div><span class="text-[11px] text-gray-400" x-text="t.cadence"></span></div>
-            <div class="text-[11px] text-gray-500 mb-1.5" x-text="t.format"></div><div class="flex items-center gap-2"><div class="progress flex-1"><div :style="'width:'+t.progress+'%'"></div></div><span class="text-[11px] text-gray-500" x-text="t.next"></span></div></div>
+        <div class="mb-3"><div class="sec-h">Форматы, что заходят</div><div class="sec-sub">из аналитики: какие форматы дают лучший score</div></div>
+        <div x-show="!topFormats.length" class="text-[12px] text-gray-400 italic">появится, когда внесёшь метрики роликов (≥100 показов).</div>
+        <div class="space-y-2.5"><template x-for="t in topFormats" :key="t.format">
+          <div class="border border-gray-200 rounded-lg p-3"><div class="flex items-center justify-between mb-1"><div class="font-semibold text-sm" x-text="t.format"></div><span class="pill pill-live" x-text="'score ' + t.score"></span></div>
+            <div class="text-[11px] text-gray-500" x-text="t.n + ' роликов в топе'"></div></div>
         </template></div>
       </section>
     </div>
 
     <section class="card mb-10">
-      <div class="mb-4"><div class="sec-h">Что нужно решить</div><div class="sec-sub">Патрик готов запустить — нужно одно действие</div></div>
-      <div class="space-y-2"><template x-for="t in todos" :key="t.id">
+      <div class="mb-4"><div class="sec-h">Что нужно сделать</div><div class="sec-sub">реальные сигналы по состоянию завода</div></div>
+      <div class="space-y-2"><template x-for="(t,ti) in realTodos" :key="ti">
         <div class="flex items-start gap-3 p-3 border border-gray-200 rounded-lg"><span class="pill mt-0.5" :class="t.tagClass" x-text="t.tag"></span>
-          <div class="flex-1"><div class="font-medium text-sm" x-text="t.title"></div><div class="text-xs text-gray-500 mt-0.5" x-text="t.detail"></div></div>
-          <button class="btn btn-ghost text-xs" x-text="t.cta"></button></div>
+          <div class="flex-1"><div class="font-medium text-sm" x-text="t.title"></div><div class="text-xs text-gray-500 mt-0.5" x-text="t.detail"></div></div></div>
       </template></div>
     </section>
 
@@ -512,6 +511,50 @@ function patrick() {
       // победившие хуки/форматы → бриф следующего батча копирайтера
       this.winnersBrief = 'Повтори успех этих зашедших роликов (хук + формат): ' + top.map(b => `«${b.hook}» [${b.format || b.route}]`).join('; ') + '. Сделай новые в том же духе, меняя по одному рычагу.';
     },
+    // ── Реальные сводки дашборда (заменяют демо-макет) ──
+    get kAccounts() { return this.accReg.length; },
+    get kBank() { return this.bank.length; },
+    get kSched() { return this.sched.filter(s => s.status !== 'опубликовано').length; },
+    get kClicks() { return this.bank.reduce((s, b) => s + ((b.m || {}).clicks || 0), 0); },
+    get kViews() { return this.bank.reduce((s, b) => s + ((b.m || {}).views || 0), 0); },
+    platIco(p) { return ({ TikTok: 'ico-tt', Instagram: 'ico-ig', YouTube: 'ico-yt', VK: 'ico-vk', Telegram: 'ico-tg', 'Дзен': 'ico-dz', Pinterest: 'ico-pin', Threads: 'ico-th' })[p] || 'ico-tt'; },
+    get kanbanReal() {
+      const ideas = (this.run.ideas || []).map((s, i) => ({ id: 'i' + i, title: s.hook || s.concept, platform: s.format || 'идея', cls: 'pill-rose' }));
+      const review = this.bank.filter(b => b.status === 'review').map(b => ({ id: 'b' + b.ts, title: b.hook, platform: b.route, cls: 'pill-violet' }));
+      const approved = this.bank.filter(b => b.status === 'approved').map(b => ({ id: 'a' + b.ts, title: b.hook, platform: b.route, cls: 'pill-sky' }));
+      const planned = this.sched.filter(s => s.status === 'запланировано').map(s => ({ id: 's' + s.id, title: s.hook, platform: s.platform, cls: 'pill-rose' }));
+      const live = this.sched.filter(s => s.status === 'опубликовано').map(s => ({ id: 'l' + s.id, title: s.hook, platform: s.platform, cls: 'pill-live' }));
+      return [
+        { id: 'idea', title: 'Идеи', cards: ideas },
+        { id: 'draft', title: 'Готово (банк)', cards: review },
+        { id: 'review', title: 'Одобрено', cards: approved },
+        { id: 'sched', title: 'Запланировано', cards: planned },
+        { id: 'live', title: 'Опубликовано', cards: live },
+      ];
+    },
+    get promoProducts() {
+      const byArt = {};
+      for (const b of this.bank) { const a = b.art || '—'; (byArt[a] = byArt[a] || { art: a, n: 0, views: 0, clicks: 0 }); byArt[a].n++; byArt[a].views += (b.m || {}).views || 0; byArt[a].clicks += (b.m || {}).clicks || 0; }
+      const nameOf = (a) => { const p = (this.products || []).find(x => x.article === a); return p ? (p.name || p.title || a) : a; };
+      return Object.values(byArt).map(x => ({ ...x, name: nameOf(x.art) })).sort((a, z) => z.views - a.views);
+    },
+    get topFormats() {
+      const f = {};
+      for (const w of this.winners) { const k = w.b.format || w.b.route || '—'; (f[k] = f[k] || { format: k, n: 0, score: 0 }); f[k].n++; f[k].score = Math.max(f[k].score, w.sc); }
+      return Object.values(f).sort((a, z) => z.score - a.score).slice(0, 6);
+    },
+    get realTodos() {
+      const t = [];
+      const rev = this.bank.filter(b => b.status === 'review').length;
+      if (rev) t.push({ tag: 'банк', tagClass: 'pill-violet', title: rev + ' роликов на утверждении', detail: 'проверь и переведи в «одобрено» или «в расписание».' });
+      const noM = this.bank.filter(b => b.url && !((b.m || {}).views)).length;
+      if (noM) t.push({ tag: 'метрики', tagClass: 'pill-warn', title: noM + ' роликов без метрик', detail: 'внеси показы/клики после публикации — завод учится на победителях.' });
+      if (!this.accReg.length) t.push({ tag: 'аккаунты', tagClass: 'pill-live', title: 'Нет аккаунтов для постинга', detail: 'добавь в блоке «Дистрибуция».' });
+      if (!this.profile) t.push({ tag: 'профиль', tagClass: 'pill-rose', title: 'Профиль бренда не заполнен', detail: 'нажми ⚙ Профиль бренда — тексты станут «твоими».' });
+      if (!t.length) t.push({ tag: 'ок', tagClass: 'pill-live', title: 'Всё под контролем', detail: 'дай ТЗ Директору и запусти план.' });
+      return t;
+    },
+    scrollTo(id) { const el = document.getElementById(id); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); },
     dir: { task: '', busy: false, plan: null, err: '' },
     run: { busy: false, step: '', ideas: [], approved: 0, err: '' },
     pipe: { busy: false, step: '', log: '', count: 3 },
@@ -726,46 +769,15 @@ function patrick() {
       } catch (e) { this.dir.err = String(e).slice(0, 120); }
       this.dir.busy = false;
     },
-    footer: 'Кокпит контент-завода · данные демонстрационные · Фаза 0: подключаем живые KPI (переходы/заказы WB) и нашу AI-лабу',
+    footer: 'Кокпит контент-завода · реальные данные из банка/аккаунтов/расписания (localStorage)',
     nav: [
-      { id:'dashboard', icon:'🏠', label:'Главная' }, { id:'accounts', icon:'👥', label:'Аккаунты', badge:'14' },
-      { id:'pipeline', icon:'⚡', label:'Конвейер', badge:'17' }, { id:'calendar', icon:'📅', label:'Расписание' },
-      { id:'products', icon:'🛒', label:'Товары WB' }, { id:'bloggers', icon:'🎭', label:'AI-блогеры' },
-      { id:'templates', icon:'🧩', label:'Шаблоны' }, { id:'analytics', icon:'📈', label:'Метрики' }, { id:'settings', icon:'⚙️', label:'Настройки' },
-    ],
-    kpi: { accounts:'14', accountsDelta:'+2 за неделю', posts:'38', postsPlan:'план 42 — 90%', clicks:'2 184', clicksDelta:'+31% к неделе', orders:'147', ordersMeta:'CR 6.7% · ROAS 4.2x' },
-    accounts: [
-      { platform:'TikTok', short:'TT', ico:'ico-tt', handle:'@kovry.home', followers:'28.2k', status:'активен', statusClass:'pill-live' },
-      { platform:'Instagram', short:'IG', ico:'ico-ig', handle:'@kovry.home', followers:'12.4k', status:'активен', statusClass:'pill-live' },
-      { platform:'VK', short:'VK', ico:'ico-vk', handle:'ковры home', followers:'6.0k', status:'активен', statusClass:'pill-live' },
-      { platform:'YouTube', short:'YT', ico:'ico-yt', handle:'Ковры&Уют', followers:'1.8k', status:'активен', statusClass:'pill-live' },
-      { platform:'Telegram', short:'TG', ico:'ico-tg', handle:'@kovry_home', followers:'1.1k', status:'активен', statusClass:'pill-live' },
-      { platform:'Дзен', short:'DZ', ico:'ico-dz', handle:'Ковры и уют', followers:'900', status:'активен', statusClass:'pill-live' },
-      { platform:'Pinterest', short:'PIN', ico:'ico-pin', handle:'kovry_home', followers:'410', status:'активен', statusClass:'pill-live' },
-      { platform:'TikTok', short:'TT', ico:'ico-tt', handle:'@quicksi.shop', followers:'5.7k', status:'нет API', statusClass:'pill-warn' },
-    ],
-    kanban: [
-      { id:'idea', title:'Идеи', cards:[ {id:1,title:'Ковёр в детскую: до/после',platform:'TikTok',platformClass:'pill-rose',ai:'GPT-копи',sku:'KV-160'}, {id:2,title:'Топ-3 ошибки при выборе ковра',platform:'Reels',platformClass:'pill-rose',ai:'GPT-копи'} ]},
-      { id:'draft', title:'AI-черновик', cards:[ {id:4,title:'Лайфхак: чем чистить ковёр',platform:'Shorts',platformClass:'pill-rose',ai:'Higgsfield · video',eta:'~6 мин'}, {id:5,title:'Палитра ковров на лето',platform:'IG карусель',platformClass:'pill-violet',ai:'Higgsfield · img ×8'} ]},
-      { id:'review', title:'На утверждение', cards:[ {id:6,title:'UGC: распаковка BG-44',platform:'TikTok',platformClass:'pill-rose',ai:'готово',sku:'BG-44'}, {id:7,title:'Карусель: как стирать акрил',platform:'IG',platformClass:'pill-violet',ai:'готово'} ]},
-      { id:'scheduled', title:'Запланировано', cards:[ {id:9,title:'Серия «ковёр недели» KV-160',platform:'мульти-постинг',platformClass:'pill-rose',eta:'Сегодня 18:00',sku:'KV-160'}, {id:10,title:'Рилс: игровой коврик',platform:'IG · Reels',platformClass:'pill-violet',eta:'Завтра 09:30',sku:'JC-12'} ]},
-      { id:'live', title:'Опубликовано (24ч)', cards:[ {id:13,title:'Рилс: распаковка BG-44',platform:'IG · 8.4k показов',platformClass:'pill-violet',sku:'BG-44'}, {id:14,title:'TikTok: до/после ковра',platform:'TT · 22k просмотров',platformClass:'pill-rose',sku:'KV-160'} ]},
-    ],
-    products: [
-      { sku:'KV-160', title:'Ковёр Beige 160×230', color:'#e9d6b5', clicks:'687', orders:'48', channel:'TikTok', channelClass:'pill-rose', cr:'7.0%' },
-      { sku:'JC-12', title:'Развивающий коврик JC', color:'#bae6fd', clicks:'401', orders:'31', channel:'YT Shorts', channelClass:'pill-sky', cr:'7.7%' },
-      { sku:'BG-44', title:'Коврик игровой Pastel', color:'#fbcfe8', clicks:'318', orders:'22', channel:'Pinterest', channelClass:'pill-rose', cr:'6.9%' },
-      { sku:'KV-200', title:'Ковёр Graphite 200×290', color:'#3f3f46', clicks:'412', orders:'29', channel:'Instagram', channelClass:'pill-violet', cr:'7.0%' },
-    ],
-    templates: [
-      { id:1, title:'Ковёр недели', format:'мульти-постинг (IG+TT+VK+TG)', cadence:'еженедельно', progress:70, next:'через 2 дня' },
-      { id:2, title:'Распаковка артикула', format:'TT + Reels + YT Shorts', cadence:'на новинку', progress:30, next:'нужен SKU' },
-      { id:3, title:'Лайфхак-серия', format:'TT + Reels', cadence:'2 раза/нед', progress:55, next:'завтра' },
-    ],
-    todos: [
-      { id:1, tag:'AI', tagClass:'pill-violet', title:'Утвердить 3 черновика в «На утверждение»', detail:'UGC-видео + 2 карусели готовы — одобрить публикацию.', cta:'смотреть' },
-      { id:2, tag:'UTM', tagClass:'pill-live', title:'Проставить UTM-метки и промокоды для BG-44, JC-12', detail:'Без меток заказы с внешки не атрибутируются.', cta:'сделать' },
-      { id:3, tag:'API', tagClass:'pill-warn', title:'Подключить TikTok Business API для @quicksi.shop', detail:'Без API публикация только вручную.', cta:'инструкция' },
+      { id:'dashboard', icon:'🏠', label:'Главная', anchor:'top' },
+      { id:'pipeline', icon:'⚡', label:'Конвейер', anchor:'kanban' },
+      { id:'bank', icon:'🎞', label:'Банк', anchor:'bank' },
+      { id:'analytics', icon:'📊', label:'Аналитика', anchor:'analytics' },
+      { id:'dist', icon:'🌐', label:'Дистрибуция', anchor:'dist' },
+      { id:'products', icon:'🛒', label:'Товары', anchor:'products' },
+      { id:'trends', icon:'📈', label:'Тренды', anchor:'trends' },
     ],
   }
 }
