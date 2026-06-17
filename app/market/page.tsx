@@ -27,6 +27,7 @@ export default function MarketPage() {
   const [gran, setGran] = useState<"week" | "day">("week");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [preset, setPreset] = useState(""); // "7" | "30" | "90" | "" (свой/8 нед)
   const [data, setData] = useState<Pulse | null>(null);
   const [loading, setLoading] = useState(false);
   const [nichesLoading, setNichesLoading] = useState(true);
@@ -58,6 +59,16 @@ export default function MarketPage() {
   }, [nicheSel, subject, wbCab, gran, dateFrom, dateTo]);
 
   useEffect(() => { if (nicheSel) load(); }, [load, nicheSel]);
+
+  // Быстрый период: до вчера (MPStats не отдаёт сегодня), гранулярность по умолчанию ≤30д — день, иначе неделя.
+  const applyPreset = (days: number, key: string) => {
+    const iso = (ms: number) => new Date(ms).toISOString().slice(0, 10);
+    setDateTo(iso(Date.now() - 86400000));
+    setDateFrom(iso(Date.now() - days * 86400000));
+    setGran(days > 30 ? "week" : "day");
+    setPreset(key);
+  };
+  const clearPeriod = () => { setDateFrom(""); setDateTo(""); setPreset(""); };
 
   const rel = data?.rel_growth_pct;
 
@@ -96,10 +107,16 @@ export default function MarketPage() {
         </div>
         <span className="text-xs text-gray-400">·</span>
         <span className="text-xs font-semibold text-gray-500">Период:</span>
-        <input type="date" value={dateFrom} max={dateTo || undefined} onChange={(e) => setDateFrom(e.target.value)} className="rounded-md border border-gray-300 px-2 py-1 text-xs" />
+        <div className="inline-flex rounded-md bg-gray-100 p-0.5 text-xs font-semibold">
+          {([["7", "7 дней"], ["30", "30 дней"], ["90", "90 дней"]] as const).map(([k, label]) => (
+            <button key={k} onClick={() => applyPreset(Number(k), k)}
+              className={`rounded px-2.5 py-1 ${preset === k ? "bg-white text-violet-700 shadow-sm" : "text-gray-500"}`}>{label}</button>
+          ))}
+        </div>
+        <input type="date" value={dateFrom} max={dateTo || undefined} onChange={(e) => { setDateFrom(e.target.value); setPreset(""); }} className="rounded-md border border-gray-300 px-2 py-1 text-xs" />
         <span className="text-xs text-gray-400">—</span>
-        <input type="date" value={dateTo} min={dateFrom || undefined} onChange={(e) => setDateTo(e.target.value)} className="rounded-md border border-gray-300 px-2 py-1 text-xs" />
-        {(dateFrom || dateTo) && <button onClick={() => { setDateFrom(""); setDateTo(""); }} className="text-xs text-gray-400 hover:text-violet-600 underline">сброс (8 нед)</button>}
+        <input type="date" value={dateTo} min={dateFrom || undefined} onChange={(e) => { setDateTo(e.target.value); setPreset(""); }} className="rounded-md border border-gray-300 px-2 py-1 text-xs" />
+        {(dateFrom || dateTo) && <button onClick={clearPeriod} className="text-xs text-gray-400 hover:text-violet-600 underline">сброс (8 нед)</button>}
         {!dateFrom && !dateTo && <span className="text-[11px] text-gray-400">пусто = последние 8 недель</span>}
       </div>
 
