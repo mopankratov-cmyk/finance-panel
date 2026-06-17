@@ -39,7 +39,9 @@ export async function POST(req: NextRequest) {
     if (client) {
       const res = await client.messages.create({
         model: MODEL, max_tokens: 400,
-        system: "Ты режиссёр коротких рекламных видео для карточек маркетплейса. Верни СТРОГО JSON: {\"title\":\"...\",\"beats\":[\"...\",\"...\",\"...\"],\"script\":\"короткий сценарий 2-3 предложения на русском\",\"motion\":\"one English image-to-video motion prompt: subtle camera motion, keep product intact\"}. Без преамбулы.",
+        system: "Ты режиссёр коротких рекламных видео для карточек маркетплейса. " +
+          "motion — ОДИН английский image-to-video промпт, кинематографичный и УМЕСТНЫЙ для товара: выбери ОДНО осмысленное движение камеры (slow dolly-in / gentle parallax push / subtle orbit / soft handheld drift / rack focus reveal), добавь живость (мягкие блики, лёгкое движение света/ткани/пара, естественные тени), но ТОВАР держи целым, чётким и в центре, без деформаций и лишних объектов. Не повторяй банальный 'push-in' по умолчанию — подбери движение под суть товара. " +
+          "Верни СТРОГО JSON: {\"title\":\"...\",\"beats\":[\"...\",\"...\",\"...\"],\"script\":\"короткий сценарий 2-3 предложения на русском\",\"motion\":\"<english cinematic motion prompt, keep product intact and crisp>\"}. Без преамбулы.",
         messages: [{ role: "user", content: `Товар: ${body.sku_name || body.sku_art || "товар"}${body.brief ? `. Бриф: ${body.brief}` : ""}${body.category ? `. Категория: ${body.category}` : ""}. Сделай сценарий короткого видео для карточки.` }],
       });
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -49,13 +51,23 @@ export async function POST(req: NextRequest) {
     }
   } catch { /* дефолтный сценарий */ }
 
-  // 2) Higgsfield image-to-video
+  // 2) Higgsfield image-to-video (1 ретрай при транзиентном сбое)
+  const subBody = JSON.stringify({ params: { prompt: scenario.motion, input_images: [{ type: "image_url", image_url: baseImage }], quality: "720p" } });
   try {
-    const sub = await fetch(VIDEO_SUBMIT, {
-      method: "POST", headers: { Authorization: `Key ${credentials}`, "Content-Type": "application/json" }, cache: "no-store",
-      body: JSON.stringify({ params: { prompt: scenario.motion, input_images: [{ type: "image_url", image_url: baseImage }], quality: "720p" } }),
-      signal: AbortSignal.timeout(25000),
-    });
+    let sub: Response | null = null;
+    let lastErr = "";
+    for (let attempt = 0; attempt < 2; attempt++) {
+      if (attempt > 0) await new Promise((res) => setTimeout(res, 1500));
+      try {
+        sub = await fetch(VIDEO_SUBMIT, {
+          method: "POST", headers: { Authorization: `Key ${credentials}`, "Content-Type": "application/json" }, cache: "no-store",
+          body: subBody, signal: AbortSignal.timeout(25000),
+        });
+        if (sub.ok || (sub.status >= 400 && sub.status < 500)) break;
+        lastErr = `Higgsfield ${sub.status}`;
+      } catch (e) { lastErr = String(e).slice(0, 80); sub = null; }
+    }
+    if (!sub) return NextResponse.json({ detail: `Higgsfield недоступен: ${lastErr}` }, { status: 502 });
     if (!sub.ok) return NextResponse.json({ detail: `Higgsfield ${sub.status}: ${(await sub.text()).slice(0, 150)}` }, { status: 502 });
     const j = (await sub.json()) as { id?: string };
     if (!j.id) return NextResponse.json({ detail: "Higgsfield не вернул id" }, { status: 502 });
