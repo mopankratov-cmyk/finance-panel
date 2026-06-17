@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { Loader2, Target, TrendingUp, TrendingDown } from "lucide-react";
 import { useActiveCabinet } from "@/lib/useActiveCabinet";
 import { CabinetSwitcher } from "@/components/CabinetSwitcher";
-import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
+import { LineChart, Line, BarChart, Bar, Cell, LabelList, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 
 interface Query { word: string; wb_count: number; our_org: number | null; our_ad: number | null }
 interface Pulse {
@@ -152,6 +152,31 @@ export default function MarketPage() {
             </div>
           </div>
 
+          {data.queries.length > 0 && (
+            <div className="mb-6 rounded-xl border border-gray-200 bg-white p-4">
+              <div className="mb-1 text-sm font-semibold text-gray-700">Топ-5 запросов ниши по спросу</div>
+              <div className="mb-3 flex flex-wrap items-center gap-3 text-[11px] text-gray-400">
+                <span className="flex items-center gap-1"><span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: "#10b981" }} />🟢 мы в топе</span>
+                <span className="flex items-center gap-1"><span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: "#f59e0b" }} />🟡 глубоко (&gt;100)</span>
+                <span className="flex items-center gap-1"><span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: "#ef4444" }} />🔴 нас нет</span>
+              </div>
+              <div style={{ width: "100%", height: 40 + Math.min(5, data.queries.length) * 40 }}>
+                <ResponsiveContainer>
+                  <BarChart data={data.queries.slice(0, 5)} layout="vertical" margin={{ top: 4, right: 70, left: 8, bottom: 4 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#eee" horizontal={false} />
+                    <XAxis type="number" tickFormatter={(v) => `${Math.round(Number(v) / 1000)}к`} fontSize={11} />
+                    <YAxis type="category" dataKey="word" width={150} fontSize={11} tickFormatter={(s) => (String(s).length > 22 ? String(s).slice(0, 21) + "…" : String(s))} />
+                    <Tooltip formatter={(v) => fmt(Number(v)) + " показов/мес"} />
+                    <Bar dataKey="wb_count" radius={[0, 4, 4, 0]} barSize={22} isAnimationActive={false}>
+                      {data.queries.slice(0, 5).map((q, i) => <Cell key={i} fill={queryColor(q)} />)}
+                      <LabelList dataKey="wb_count" position="right" fontSize={11} fill="#666" formatter={(v) => fmt(Number(v))} />
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          )}
+
           <div className="rounded-xl border border-gray-200 bg-white p-4">
             <div className="mb-2 text-sm font-semibold text-gray-700">Запросы растут ↔ наши позиции</div>
             <table className="w-full text-sm">
@@ -186,6 +211,13 @@ export default function MarketPage() {
       )}
     </div>
   );
+}
+
+// цвет столбца запроса по нашей позиции: нет нас → красный, глубоко → жёлтый, в топе → зелёный
+function queryColor(q: { our_org: number | null; our_ad: number | null }): string {
+  if (q.our_org == null && q.our_ad == null) return "#ef4444";
+  if (q.our_org != null && q.our_org > 100) return "#f59e0b";
+  return "#10b981";
 }
 
 function pct(v: number | null | undefined) { return v == null ? "—" : `${v > 0 ? "+" : ""}${v}%`; }
