@@ -50,6 +50,18 @@ export async function GET(request: NextRequest) {
   const fromD = new Date(Date.now() - (days - 1) * 86400000);
   const from = fromD.toISOString().slice(0, 10);
 
+  // DEBUG: сырой ответ Ozon (analytics/data + образец postings) — понять, что реально приходит
+  if (sp.get("debug") === "1") {
+    const h = { "Client-Id": cab.creds.clientId, "Api-Key": cab.creds.apiKey, "Content-Type": "application/json" };
+    const aRes = await fetch(`${BASE}/v1/analytics/data`, { method: "POST", headers: h, body: JSON.stringify({ date_from: from, date_to: to, metrics: ["hits_view", "hits_tocart", "ordered_units", "revenue"], dimension: ["sku", "day"], limit: 5, offset: 0 }) });
+    const aTxt = await aRes.text();
+    let aJson: unknown; try { aJson = JSON.parse(aTxt); } catch { aJson = aTxt.slice(0, 500); }
+    const pRes = await fetch(`${BASE}/v2/posting/fbo/list`, { method: "POST", headers: h, body: JSON.stringify({ dir: "DESC", filter: { since: from + "T00:00:00.000Z", to: to + "T23:59:59.999Z", status: "" }, limit: 3, offset: 0, with: {} }) });
+    const pTxt = await pRes.text();
+    let pJson: unknown; try { pJson = JSON.parse(pTxt); } catch { pJson = pTxt.slice(0, 500); }
+    return NextResponse.json({ analytics_status: aRes.status, analytics: aJson, postings_status: pRes.status, postings: pJson });
+  }
+
   let raw;
   try { raw = await fetchDaySku(cab.creds, from, to); }
   catch (e) { return NextResponse.json({ skus: [], period: [], error: String(e instanceof Error ? e.message : e) }, { status: 502 }); }
