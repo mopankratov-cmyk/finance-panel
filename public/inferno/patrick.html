@@ -320,6 +320,7 @@
                   <option value="опубликовано" :selected="s.status==='опубликовано'">опубл.</option>
                 </select>
                 <a x-show="s.url" :href="s.url" target="_blank" class="text-[10px] text-violet-600">видео</a>
+                <button @click="postNow(s,si)" :title="(s.platform==='VK'||s.platform==='Telegram') ? 'опубликовать через API' : 'автопостинг только VK/Telegram'" class="text-[10px]" :class="(s.platform==='VK'||s.platform==='Telegram') ? 'text-emerald-600' : 'text-gray-300'">📤</button>
                 <button @click="delSched(si)" class="text-[10px] text-gray-400 hover:text-red-600">✕</button>
               </div>
             </template>
@@ -537,17 +538,35 @@ function patrick() {
       if (!active.length) { this.utmMsg = 'нет активных аккаунтов — добавь их выше'; setTimeout(() => this.utmMsg = '', 3000); return; }
       if (active.length > 3 && !confirm('Один и тот же ролик на ' + active.length + ' аккаунтов — это клон-паттерн (риск duplicate-детекта). Лучше: 1 ролик на якорь + вариации с разными хуками. Всё равно распланировать?')) return;
       const start = this.schWhen ? new Date(this.schWhen).getTime() : Date.now() + 3600000;
+      const art = this.dir.plan?.target_article || this.orbit.article || '';
       let warmed = 0;
       active.forEach((a, k) => {
         const ok = this.linkAllowed(a);
         if (ok) warmed++;
-        this.sched.unshift({ id: Date.now() + k, when: new Date(start + k * 86400000).toISOString().slice(0, 16), platform: a.platform, handle: a.handle, type: a.type, hook: b.hook || '', url: b.url || '', link: ok ? 'UTM' : 'без ссылки (прогрев)', status: 'запланировано' });
+        this.sched.unshift({ id: Date.now() + k, when: new Date(start + k * 86400000).toISOString().slice(0, 16), platform: a.platform, handle: a.handle, type: a.type, hook: b.hook || '', url: b.url || '', art, link: ok ? 'UTM' : 'без ссылки (прогрев)', status: 'запланировано' });
       });
       this._saveSched();
       this.utmMsg = 'распланировано на ' + active.length + ' (' + warmed + ' со ссылкой, остальные на прогреве — без UTM)'; setTimeout(() => this.utmMsg = '', 4000);
     },
     setSchedStatus(i, st) { if (this.sched[i]) { this.sched[i].status = st; this._saveSched(); } },
     delSched(i) { this.sched.splice(i, 1); this._saveSched(); },
+    // Реальная публикация: VK/Telegram через официальные API (твои токены). С подтверждением.
+    async postNow(s, si) {
+      if (s.platform !== 'VK' && s.platform !== 'Telegram') { this.utmMsg = s.platform + ': автопостинг пока только VK/Telegram — публикуй вручную (или через креатора)'; setTimeout(() => this.utmMsg = '', 4000); return; }
+      if (!confirm('Опубликовать в ' + s.platform + ' (' + s.handle + ') прямо сейчас?')) return;
+      const linkUrl = (s.link === 'UTM' && s.art) ? this.utmFor({ platform: s.platform, handle: s.handle }, s.art) : '';
+      const ep = s.platform === 'Telegram' ? '/api/post/telegram' : '/api/post/vk';
+      const payload = s.platform === 'Telegram'
+        ? { channel: s.handle, video_url: s.url, caption: s.hook, link: linkUrl }
+        : { message: s.hook, link: linkUrl };
+      this.utmMsg = 'публикую в ' + s.platform + '…';
+      try {
+        const d = await (await fetch(ep, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })).json();
+        if (d.ok) { this.setSchedStatus(si, 'опубликовано'); this.utmMsg = '✓ опубликовано' + (d.url ? ': ' + d.url : ''); }
+        else this.utmMsg = 'ошибка: ' + (d.detail || 'не удалось');
+      } catch (e) { this.utmMsg = String(e).slice(0, 100); }
+      setTimeout(() => { if (this.utmMsg[0] === '✓' || this.utmMsg.startsWith('ошибка')) this.utmMsg = ''; }, 6000);
+    },
     bank: [],
     saveToBank(s, art) {
       const item = { ts: Date.now(), art, hook: s.hook || s.concept || '', format: s.format || '', route: s.gen?.route || '', url: s.gen?.url || '', caption: s.caption || s.scenario?.caption || '', status: 'review', m: { views: 0, hook3: 0, likes: 0, clicks: 0 } };
