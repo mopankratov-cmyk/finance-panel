@@ -79,7 +79,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ nm: string 
         const live = await fetchLive(nmId, token, debug);
         if ("items" in live) {
           const cab = await wbCabinetForNm(nmId);
-          const rows = live.items.map((it) => ({
+          const rows = (live.items ?? []).map((it) => ({
             nm_id: nmId,
             keyword: it.text || "",
             frequency: it.frequency?.current ?? it.weekFrequency ?? 0,
