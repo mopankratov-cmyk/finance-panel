@@ -908,6 +908,10 @@ button:not(:disabled):active{ transform: translateY(0); }
               <i data-lucide="calculator" class="inline-icon"></i> Калькулятор цены
             </button>
             <a :href="unit.data?.source_url" target="_blank" class="text-xs text-teal-600 hover:underline ml-2" x-show="unit.data">Google Sheets ↗</a>
+            <select x-show="unit.data" x-model="unit.entity" title="Фильтр по юрлицу" :class="unit.entity!=='all' ? 'border-violet-300 bg-violet-50 text-violet-800 font-semibold' : 'border-gray-300'" class="ml-2 border rounded-md px-2 py-1 text-sm">
+              <option value="all">Все юрлица</option>
+              <template x-for="e in unitEntities()" :key="e"><option :value="e" x-text="e"></option></template>
+            </select>
             <!-- Настройки расчёта: налог + фулфилмент (комиссия/эквайринг — факт из финотчёта) -->
             <div class="flex items-center gap-2 ml-2 pl-2 border-l border-gray-200">
               <label class="flex items-center gap-1 text-xs text-gray-500">Налог %
@@ -1015,7 +1019,7 @@ button:not(:disabled):active{ transform: translateY(0); }
               </tr></thead>
               <tbody>
                 <template x-for="(row, ri) in unit.data.rows" :key="ri">
-                  <tr @click="unitToggleRow(ri)" :class="(unit.rowHL[ri] ? 'row-hl ' : '') + 'cursor-pointer'">
+                  <tr x-show="unitRowVisible(row)" @click="unitToggleRow(ri)" :class="(unit.rowHL[ri] ? 'row-hl ' : '') + 'cursor-pointer'">
                     <template x-for="(cell, ci) in row" :key="ci">
                       <td :class="unitColClass(ci)" :style="unitColStyle(ci, false) + unitCellBg(ci, cell)">
                         <template x-if="ci === 1 && unit.data.img_urls[ri]">
@@ -3609,7 +3613,7 @@ function app() {
     tbl: { data: null, loading: false, error: null, preparing: null, expandedAll: false, shownInitial: 100000, shown: 100000, startedAt: 0, elapsedSec: 0, _tick: null },
     plan: { mode: false, byNm: {}, econ: {}, month: '', loading: false },
     pl: { loaded:false, busy:false, year:'2026', orders:[], norms:{}, skus:[], skuOpen:false, skuCatOpen:{}, skuOrders:{}, skuMeta:{}, _t:null },
-    unit: { data: null, loading: false, error: null, refreshing: { prices: false, cogs: false, stocks: false }, sortCol: null, sortDir: 'desc', rowHL: {},
+    unit: { data: null, loading: false, error: null, refreshing: { prices: false, cogs: false, stocks: false }, sortCol: null, sortDir: 'desc', rowHL: {}, entity: 'all',
             params: { tax: Number(localStorage.getItem('unit_tax') ?? 7), ff: Number(localStorage.getItem('unit_ff') ?? 0) },
             calc: { open:false, loaded:false, found:false, skus:[], art:'', category:'', curPrice:null, cab:(localStorage.getItem('fp_cab_wb')||'all'), commOptima:null, mode:'price', price:1000, targetMargin:30, cogs:0, ff:100, comm:24, drr:15, tax:7, acq:3 } },
     snap: { filter: null, data: null, loading: false, error: null, refreshing: false, access: null, syncRunning: false, syncStartedAt: null, syncLastLog: '', _pollerStarted: false, checkingAds: false, adsSummary: '' },
@@ -3730,6 +3734,17 @@ function app() {
     unitToggleRow(ri) {
       // radio: клик по строке — выделяем одну, повторный клик снимает
       this.unit.rowHL = this.unit.rowHL[ri] ? {} : { [ri]: true };
+    },
+    // Юрлица (колонка 3) для фильтра-переключателя
+    unitEntities() {
+      const rows = this.unit.data?.rows || [];
+      const set = new Set();
+      for (const r of rows) { const e = (r[3] || '').trim(); if (e) set.add(e); }
+      return [...set].sort();
+    },
+    unitRowVisible(row) {
+      if (this.unit.entity === 'all') return true;
+      return (row[3] || '').trim() === this.unit.entity;
     },
     unitColClass(i) {
       // Первые 5 — фикс. sticky-колонки (чекбокс/фото/артикул/скрытая/SKU), без серых разделителей
