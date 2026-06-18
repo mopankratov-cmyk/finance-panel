@@ -69,12 +69,9 @@ export async function creatifyLinkVideo(opts: { url?: string; images?: string[];
   debug.create = { status: created.status, body: created.json || created.text };
   const vidId = (created.json?.id as string) || "";
   if (!vidId) return { error: `link_to_videos ${created.status}: ${created.text}`, debug };
-  // 3) render (если create не зарендерил сам). Пробуем /{id}/render/.
-  const st = (created.json?.status as string) || "";
-  if (st !== "rendering" && st !== "done" && st !== "in_queue" && st !== "running") {
-    const rend = await jpost(h, `/link_to_videos/${vidId}/render/`, {});
-    debug.render = { status: rend.status, body: rend.json || rend.text };
-  }
+  // 3) генерим ПРЕВЬЮ (обязательно перед render — render без превью даёт 400). Async, рендер запустим в опросе.
+  const prev = await jpost(h, `/link_to_videos/${vidId}/generate_preview/`, {});
+  debug.preview = { status: prev.status, body: prev.json || prev.text };
   return { token: Buffer.from("lv|" + vidId).toString("base64url"), debug };
 }
 
@@ -103,10 +100,20 @@ export async function creatifyStatus(token: string): Promise<CreatifyStatus> {
   try {
     const r = await fetch(`${BASE}${path}`, { headers: h, cache: "no-store", signal: AbortSignal.timeout(15000) });
     if (!r.ok) return { status: "error", error: `creatify ${r.status}` };
-    const j = (await r.json()) as { status?: string; output?: string; video_output?: string; failed_reason?: string };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const j = (await r.json()) as any;
     const url = j.video_output || j.output;
     if (j.status === "done" && url) return { status: "done", videoUrl: url };
-    if (j.status === "failed" || j.status === "error") return { status: "error", error: (j.failed_reason || "creatify failed").slice(0, 120) };
+    if (j.status === "failed" || j.status === "error") return { status: "error", error: (j.failed_reason || "creatify failed").toString().slice(0, 120) };
+    // link_to_videos: как только превью готово — запускаем render (стейт-машина в опросе)
+    if (isLink) {
+      const hasPreview = !!j.preview || (Array.isArray(j.previews) && j.previews.length > 0);
+      const notRendering = j.status === "pending" || j.status === "draft" || !j.status;
+      if (hasPreview && notRendering) {
+        await jpost(h, `/link_to_videos/${id}/render/`, {}); // запустить рендер (идемпотентно — статус сменится)
+        return { status: "in_progress", raw: "render" };
+      }
+    }
     return { status: "in_progress", raw: j.status };
   } catch (e) { return { status: "error", error: String(e).slice(0, 100) }; }
 }
