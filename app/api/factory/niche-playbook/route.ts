@@ -6,6 +6,41 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 const MODEL = "claude-sonnet-4-6";
 
+// Терпимый разбор JSON от модели: снимает ограждение, чинит висячие запятые,
+// и при обрыве по лимиту достраивает закрывающие ] и } до баланса.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function extractJson(raw: string): any | null {
+  let t = raw.replace(/```json\s*/gi, "").replace(/```/g, "").trim();
+  const start = t.indexOf("{");
+  if (start < 0) return null;
+  t = t.slice(start);
+  const tryParse = (s: string) => { try { return JSON.parse(s); } catch { return undefined; } };
+  let v = tryParse(t); if (v !== undefined) return v;
+  // 1) убрать висячие запятые
+  v = tryParse(t.replace(/,(\s*[}\]])/g, "$1")); if (v !== undefined) return v;
+  // 2) обрыв по лимиту: отрезать до последней «;,}]"» и достроить скобки по балансу (вне строк)
+  let depthCurly = 0, depthSq = 0, inStr = false, esc = false, lastSafe = -1;
+  for (let i = 0; i < t.length; i++) {
+    const c = t[i];
+    if (esc) { esc = false; continue; }
+    if (c === "\\") { esc = true; continue; }
+    if (c === '"') { inStr = !inStr; if (!inStr) lastSafe = i; continue; }
+    if (inStr) continue;
+    if (c === "{") depthCurly++; else if (c === "}") { depthCurly--; lastSafe = i; }
+    else if (c === "[") depthSq++; else if (c === "]") { depthSq--; lastSafe = i; }
+    else if (c === "," || /[0-9eel.]/i.test(c)) lastSafe = i;
+  }
+  if (lastSafe > 0) {
+    let cut = t.slice(0, lastSafe + 1).replace(/,(\s*)$/, "");
+    // пересчитать баланс по обрезанному и закрыть
+    let dc = 0, ds = 0, s2 = false, e2 = false;
+    for (let i = 0; i < cut.length; i++) { const c = cut[i]; if (e2) { e2 = false; continue; } if (c === "\\") { e2 = true; continue; } if (c === '"') { s2 = !s2; continue; } if (s2) continue; if (c === "{") dc++; else if (c === "}") dc--; else if (c === "[") ds++; else if (c === "]") ds--; }
+    cut += "]".repeat(Math.max(0, ds)) + "}".repeat(Math.max(0, dc));
+    v = tryParse(cut.replace(/,(\s*[}\]])/g, "$1")); if (v !== undefined) return v;
+  }
+  return null;
+}
+
 // «Мозг маркетолога»: превращает сырую аналитику ниши (Virlo Orbit) в ПРОИЗВОДСТВЕННЫЙ плейбук,
 // из которого пишут продюсер / промпт-инженер / сценарист. Это шаг ОБУЧЕНИЯ перед генерацией.
 // Вход: job_id готового Orbit (тянем analysis+sounds сами) ИЛИ уже готовые analysis/sounds инлайном.
@@ -66,13 +101,11 @@ export async function POST(req: NextRequest) {
 Собери плейбук.`;
 
   try {
-    const res = await client.messages.create({ model: MODEL, max_tokens: 1600, system: sys, messages: [{ role: "user", content: user }] });
+    const res = await client.messages.create({ model: MODEL, max_tokens: 3000, system: sys, messages: [{ role: "user", content: user }] });
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let txt = (res.content as any[]).filter((b) => b.type === "text").map((b) => b.text).join(" ").trim();
-    txt = txt.replace(/```json\s*/gi, "").replace(/```/g, "").trim();
-    const m = txt.match(/\{[\s\S]*\}/);
-    if (!m) return NextResponse.json({ error: "пустой плейбук", raw: txt.slice(0, 150) }, { status: 502 });
-    const playbook = JSON.parse(m[0]);
+    const txt = (res.content as any[]).filter((b) => b.type === "text").map((b) => b.text).join(" ").trim();
+    const playbook = extractJson(txt);
+    if (!playbook) return NextResponse.json({ error: "пустой плейбук", raw: txt.slice(0, 150) }, { status: 502 });
     return NextResponse.json({ playbook });
   } catch (e) {
     return NextResponse.json({ error: String(e).slice(0, 200) }, { status: 502 });
