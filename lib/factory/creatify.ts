@@ -1,9 +1,9 @@
-// Creatify API — AI UGC-актёр (Aurora): говорит наш сценарий. Тир выше HeyGen, но всё ещё AI → гнать через ОТК.
-// Флоу lipsyncs (подтверждён контрактом): POST /lipsyncs/ {text, creator, aspect_ratio:"9:16", model_version} авто-рендерит
-// → опрос GET /lipsyncs/{id}/ (status: pending|in_queue|running|failed|done, готовый url в поле output).
+// Creatify API — AI UGC-актёр. Два режима:
+//  • link_to_videos (ОСНОВНОЙ): URL карточки WB → UGC-ролик с ПОКАЗОМ товара (актёр + b-roll). 2 шага: создать → render.
+//  • lipsyncs (запас): актёр просто говорит наш текст (без товара в кадре).
+// Токен кодирует режим: base64url("lv|"+id) или ("ls|"+id) — чтобы статус опрашивал правильный эндпоинт.
 // Ключи в env: CREATIFY_API_ID + CREATIFY_API_KEY. Инертно без ключей.
 const BASE = "https://api.creatify.ai/api";
-const DEFAULT_CREATOR = "18fccce8-86e7-5f31-abc8-18915cb872be"; // из примера; переопределяется / можно листать /personas/
 const DEFAULT_MODEL = "aurora_v1_fast";
 
 function headers(): Record<string, string> | null {
@@ -12,12 +12,20 @@ function headers(): Record<string, string> | null {
   if (!id || !key) return null;
   return { "X-API-ID": id, "X-API-KEY": key, "Content-Type": "application/json" };
 }
-
 export function creatifyReady(): boolean {
   return !!(process.env.CREATIFY_API_ID && process.env.CREATIFY_API_KEY);
 }
 
-// список актёров (для выбора creator). Free — берём первый валидный, если creator не задан.
+async function jpost(h: Record<string, string>, path: string, body: unknown): Promise<{ ok: boolean; status: number; json: Record<string, unknown> | null; text: string }> {
+  try {
+    const r = await fetch(`${BASE}${path}`, { method: "POST", headers: h, cache: "no-store", body: JSON.stringify(body), signal: AbortSignal.timeout(30000) });
+    const text = await r.text();
+    let json: Record<string, unknown> | null = null;
+    try { json = JSON.parse(text); } catch { /* not json */ }
+    return { ok: r.ok, status: r.status, json, text: text.slice(0, 300) };
+  } catch (e) { return { ok: false, status: 0, json: null, text: String(e).slice(0, 200) }; }
+}
+
 export async function creatifyListCreators(): Promise<{ id: string; name?: string }[]> {
   const h = headers();
   if (!h) return [];
@@ -31,27 +39,45 @@ export async function creatifyListCreators(): Promise<{ id: string; name?: strin
   } catch { return []; }
 }
 
-// создать UGC-видео (актёр говорит text). Возвращает токен (base64url от lipsync id) или ошибку.
-export async function creatifyCreate(text: string, opts?: { creator?: string; aspect?: string; model?: string }): Promise<{ token?: string; error?: string }> {
+// ОСНОВНОЙ: link_to_videos — товар в кадре. Возвращает токен + debug (сырые ответы для отладки).
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function creatifyLinkVideo(productUrl: string, opts?: { script?: string; avatar?: string; length?: number }): Promise<{ token?: string; error?: string; debug?: any }> {
   const h = headers();
-  if (!h) return { error: "CREATIFY ключ не настроен (CREATIFY_API_ID/CREATIFY_API_KEY)" };
-  let creator = (opts?.creator || "").trim();
-  if (!creator) {
-    const list = await creatifyListCreators();
-    creator = list[0]?.id || DEFAULT_CREATOR; // реальный из аккаунта, иначе дефолт из примера
+  if (!h) return { error: "CREATIFY ключ не настроен" };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const debug: any = {};
+  // 1) link из URL
+  const link = await jpost(h, "/links/", { url: productUrl });
+  debug.link = { status: link.status, body: link.json || link.text };
+  const linkId = (link.json?.id as string) || "";
+  if (!linkId) return { error: `links ${link.status}: ${link.text}`, debug };
+  // 2) создать видео из link
+  const body: Record<string, unknown> = { link: linkId, aspect_ratio: "9x16", video_length: opts?.length || 15, target_platform: "Tiktok", language: "russian" };
+  if (opts?.script) body.override_script = opts.script.slice(0, 1500);
+  if (opts?.avatar) body.override_avatar = opts.avatar;
+  const created = await jpost(h, "/link_to_videos/", body);
+  debug.create = { status: created.status, body: created.json || created.text };
+  const vidId = (created.json?.id as string) || "";
+  if (!vidId) return { error: `link_to_videos ${created.status}: ${created.text}`, debug };
+  // 3) render (если create не зарендерил сам). Пробуем /{id}/render/.
+  const st = (created.json?.status as string) || "";
+  if (st !== "rendering" && st !== "done" && st !== "in_queue" && st !== "running") {
+    const rend = await jpost(h, `/link_to_videos/${vidId}/render/`, {});
+    debug.render = { status: rend.status, body: rend.json || rend.text };
   }
-  try {
-    const body = {
-      text: text.slice(0, 1500),
-      creator,
-      aspect_ratio: opts?.aspect || "9:16",
-      model_version: opts?.model || DEFAULT_MODEL,
-    };
-    const r = await fetch(`${BASE}/lipsyncs/`, { method: "POST", headers: h, cache: "no-store", body: JSON.stringify(body), signal: AbortSignal.timeout(25000) });
-    if (!r.ok) { const t = await r.text().catch(() => ""); return { error: `Creatify ${r.status}: ${t.slice(0, 160)}` }; }
-    const j = (await r.json()) as { id?: string };
-    return j.id ? { token: Buffer.from(String(j.id)).toString("base64url") } : { error: "Creatify без id" };
-  } catch (e) { return { error: String(e).slice(0, 140) }; }
+  return { token: Buffer.from("lv|" + vidId).toString("base64url"), debug };
+}
+
+// ЗАПАС: lipsyncs — актёр говорит text (без товара).
+export async function creatifyLipsync(text: string, opts?: { creator?: string; model?: string }): Promise<{ token?: string; error?: string }> {
+  const h = headers();
+  if (!h) return { error: "CREATIFY ключ не настроен" };
+  let creator = (opts?.creator || "").trim();
+  if (!creator) { const list = await creatifyListCreators(); creator = list[0]?.id || "18fccce8-86e7-5f31-abc8-18915cb872be"; }
+  const r = await jpost(h, "/lipsyncs/", { text: text.slice(0, 1500), creator, aspect_ratio: "9:16", model_version: opts?.model || DEFAULT_MODEL });
+  const id = (r.json?.id as string) || "";
+  if (!id) return { error: `lipsyncs ${r.status}: ${r.text}` };
+  return { token: Buffer.from("ls|" + id).toString("base64url") };
 }
 
 export interface CreatifyStatus { status: "in_progress" | "done" | "error"; videoUrl?: string; error?: string; raw?: string }
@@ -59,13 +85,16 @@ export interface CreatifyStatus { status: "in_progress" | "done" | "error"; vide
 export async function creatifyStatus(token: string): Promise<CreatifyStatus> {
   const h = headers();
   if (!h) return { status: "error", error: "CREATIFY ключ не настроен" };
-  let id: string;
-  try { id = Buffer.from(token, "base64url").toString(); } catch { return { status: "error", error: "плохой токен" }; }
+  let decoded: string;
+  try { decoded = Buffer.from(token, "base64url").toString(); } catch { return { status: "error", error: "плохой токен" }; }
+  const isLink = decoded.startsWith("lv|");
+  const id = decoded.replace(/^(lv|ls)\|/, "");
+  const path = isLink ? `/link_to_videos/${id}/` : `/lipsyncs/${id}/`;
   try {
-    const r = await fetch(`${BASE}/lipsyncs/${id}/`, { headers: h, cache: "no-store", signal: AbortSignal.timeout(15000) });
+    const r = await fetch(`${BASE}${path}`, { headers: h, cache: "no-store", signal: AbortSignal.timeout(15000) });
     if (!r.ok) return { status: "error", error: `creatify ${r.status}` };
     const j = (await r.json()) as { status?: string; output?: string; video_output?: string; failed_reason?: string };
-    const url = j.output || j.video_output;
+    const url = j.video_output || j.output;
     if (j.status === "done" && url) return { status: "done", videoUrl: url };
     if (j.status === "failed" || j.status === "error") return { status: "error", error: (j.failed_reason || "creatify failed").slice(0, 120) };
     return { status: "in_progress", raw: j.status };

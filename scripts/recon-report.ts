@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { createClient } from "@supabase/supabase-js";
 
 function loadEnv() {
@@ -19,8 +19,8 @@ const CUT = "2026-03-23";
 
 function klass(a: string): "куртка"|"ветровка"|"?" {
   const s=String(a||"").toUpperCase();
-  if(s.startsWith("NV-01")||s.startsWith("NV-816")||s.startsWith("NV-836")) return "куртка";
-  if(s.startsWith("NV-08")||s.startsWith("HT")) return "ветровка";
+  if(s.startsWith("NV")) return "куртка";   // ВСЕ NV- = куртки (вкл. NV-08)
+  if(s.startsWith("HT")) return "ветровка"; // ветровки = только HT-
   return "?";
 }
 const n=(x:any)=>{const v=Number(x);return Number.isFinite(v)?v:0;};
@@ -59,49 +59,55 @@ async function fetchReport(token: string) {
 async function main() {
   const { data: cab } = await sb.from("wb_cabinets").select("token").eq("id",CABINET_ID).maybeSingle();
   if(!cab?.token){ console.error("no token"); process.exit(1); }
-  console.error("fetching report",DATE_FROM,"..",DATE_TO);
-  const rows = await fetchReport(cab.token as string);
-  console.log("rows fetched:", rows.length);
-  // operation types present
-  const ops=new Map<string,number>();
-  for(const r of rows){ const o=String(r.supplier_oper_name??"?"); ops.set(o,(ops.get(o)??0)+1); }
-  console.log("=== supplier_oper_name ===");
-  for(const [o,c] of [...ops.entries()].sort((a,b)=>b[1]-a[1])) console.log(`  ${c}\t${o}`);
+  const CACHE="/tmp/rf-report.json";
+  let rows:any[];
+  if(existsSync(CACHE)){ rows=JSON.parse(readFileSync(CACHE,"utf8")); console.error("loaded cache",rows.length); }
+  else { console.error("fetching report",DATE_FROM,"..",DATE_TO); rows=await fetchReport(cab.token as string); writeFileSync(CACHE,JSON.stringify(rows)); }
+  console.log("rows:", rows.length);
 
-  type Acc={salesQ:number;retQ:number;rev:number;deliv:number;storage:number;comm:number;forpay:number;delivAmt:number};
-  const mk=():Acc=>({salesQ:0,retQ:0,rev:0,deliv:0,storage:0,comm:0,forpay:0,delivAmt:0});
-  const data:Record<string,Record<string,Acc>>={};
-  const get=(per:string,k:string)=>{ (data[per]??={}); (data[per][k]??=mk()); return data[per][k]; };
+  // куртки only (NV-*) — пользователь хочет именно куртку и последний период
+  const jrows = rows.filter(r=>klass(r.sa_name as string)==="куртка");
+  console.log("куртка rows:", jrows.length);
 
-  for(const r of rows){
-    const k=klass(r.sa_name as string); if(k==="?") continue;
-    const d=String(r.rr_dt??r.sale_dt??"").slice(0,10);
-    const per = d && d>=CUT ? "после 23.03" : "до 23.03";
-    const op=String(r.supplier_oper_name??"").toLowerCase();
-    const isSale=op.includes("продаж");
-    const isRet=op.includes("возврат");
-    const a=get(per,k);
-    if(isSale){ a.salesQ+=n(r.quantity); a.rev+=n(r.retail_amount); a.comm+=n(r.ppvz_sales_commission); a.forpay+=n(r.ppvz_for_pay); }
-    if(isRet){ a.retQ+=n(r.quantity); a.rev-=n(r.retail_amount); a.forpay-=n(r.ppvz_for_pay); }
-    a.deliv+=n(r.delivery_rub)+n(r.rebill_logistic_cost);
-    a.storage+=n(r.storage_fee);
-    a.delivAmt+=n(r.delivery_amount);
+  // 1) Состав ДЕНЕГ по типам операций: где сидит логистика? Сумма всех числовых *_rub/cost полей
+  console.log("\n=== КУРТКА: суммы ключевых полей по типу операции (весь период) ===");
+  const FIELDS=["delivery_rub","rebill_logistic_cost","storage_fee","ppvz_for_pay","retail_amount","quantity","delivery_amount","return_amount","penalty","deduction","acceptance","acquiring_fee","additional_payment"];
+  const byop:Record<string,Record<string,number>>={};
+  for(const r of jrows){ const o=String(r.supplier_oper_name??"?"); (byop[o]??={}); for(const f of FIELDS){ byop[o][f]=(byop[o][f]??0)+n(r[f]); } byop[o].__cnt=(byop[o].__cnt??0)+1; }
+  for(const [o,m] of Object.entries(byop).sort((a,b)=>b[1].__cnt-a[1].__cnt)){
+    const big=FIELDS.filter(f=>Math.abs(m[f]||0)>1000).map(f=>`${f}=${Math.round(m[f]).toLocaleString()}`).join("  ");
+    console.log(`  [${m.__cnt}] ${o}\n      ${big}`);
   }
 
-  for(const per of ["до 23.03","после 23.03"]){
-    console.log(`\n========== ${per} ==========`);
-    for(const k of ["куртка","ветровка"]){
-      const a=data[per]?.[k]; if(!a){console.log(`  ${k}: нет данных`);continue;}
-      const net=a.salesQ-a.retQ;
-      const buyout=(a.salesQ+a.retQ)? a.salesQ/(a.salesQ+a.retQ)*100:0;
-      const logPerSold=a.salesQ? a.deliv/a.salesQ:0;
-      const logPerNet=net? a.deliv/net:0;
-      const commPct=a.rev? a.comm/a.rev*100:0;
-      console.log(`  ${k}: продажи ${a.salesQ} шт | возвраты ${a.retQ} | нетто ${net} | выкуп ${buyout.toFixed(0)}%`);
-      console.log(`     выручка ${Math.round(a.rev).toLocaleString()} | логистика ${Math.round(a.deliv).toLocaleString()} | хранение ${Math.round(a.storage).toLocaleString()}`);
-      console.log(`     ЛОГИСТИКА на проданную ед: ${logPerSold.toFixed(0)} ₽ | на нетто-ед: ${logPerNet.toFixed(0)} ₽ | поставок ${a.delivAmt}`);
-      console.log(`     комиссия WB: ${commPct.toFixed(1)}% от выручки | к перечислению ${Math.round(a.forpay).toLocaleString()}`);
+  // 2) Логистика «по-честному» по периодам: forward(Логистика) + reverse(возврат+ПВЗ-возврат) на ВЫКУПЛЕННУЮ куртку
+  function periodStats(label:string, after?:string, before?:string){
+    let soldQ=0, retQ=0, deliveries=0, returns=0, allLog=0, rev_rub=0, forpay=0, acq=0, pen=0, ded=0;
+    for(const r of jrows){
+      const d=String(r.rr_dt??r.sale_dt??"").slice(0,10); if(!d) continue;
+      if(after && d<after) continue; if(before && d>=before) continue;
+      const op=String(r.supplier_oper_name??"").toLowerCase();
+      allLog+=n(r.delivery_rub)+n(r.rebill_logistic_cost);
+      deliveries+=n(r.delivery_amount); returns+=n(r.return_amount);
+      acq+=n(r.acquiring_fee); pen+=n(r.penalty); ded+=n(r.deduction);
+      if(op.includes("продаж")){ soldQ+=n(r.quantity); rev_rub+=n(r.retail_amount); forpay+=n(r.ppvz_for_pay); }
+      if(op.includes("возврат")){ retQ+=n(r.quantity); rev_rub-=n(r.retail_amount); forpay-=n(r.ppvz_for_pay); }
     }
+    const logPerSold=soldQ? allLog/soldQ:0;
+    const buyoutOp=(soldQ+retQ)? soldQ/(soldQ+retQ)*100:0;
+    const buyoutLegs=deliveries? soldQ/deliveries*100:0;
+    const price=soldQ? rev_rub/soldQ:0;
+    const commission=rev_rub-forpay; // удержано WB сверх к-перечислению (≈комиссия)
+    // P&L на выкупленную куртку (себест+FF=1780)
+    const cost=1780;
+    const net = price - logPerSold - (acq/Math.max(soldQ,1)) - (pen/Math.max(soldQ,1)) - (commission/Math.max(soldQ,1)) - cost;
+    const afterDrr = net - price*0.10;
+    console.log(`\n--- ${label} ---  (продажи ${soldQ}, выручка ${Math.round(rev_rub).toLocaleString()})`);
+    console.log(`  доставок ${deliveries} | возвратов(легов) ${returns} | возвраты(оп) ${retQ} | выкуп: по оп ${buyoutOp.toFixed(0)}%, по доставкам ${buyoutLegs.toFixed(0)}%`);
+    console.log(`  цена/ед ${price.toFixed(0)} | ЛОГИСТИКА/выкупл ${logPerSold.toFixed(0)} (${rev_rub?(allLog/rev_rub*100).toFixed(0):0}%) | эквайринг/ед ${(acq/Math.max(soldQ,1)).toFixed(0)} | штраф/ед ${(pen/Math.max(soldQ,1)).toFixed(0)} | комиссия/ед ${(commission/Math.max(soldQ,1)).toFixed(0)}`);
+    console.log(`  P&L/ед (себест+FF 1780): грязная ${net.toFixed(0)} (${price?(net/price*100).toFixed(0):0}%) | после ДРР10% ${afterDrr.toFixed(0)} (${price?(afterDrr/price*100).toFixed(0):0}%)`);
   }
+  periodStats("ВЕСЬ период фев–июнь");
+  periodStats("до 23.03", undefined, CUT);
+  periodStats("после 23.03 (ИРП)", CUT);
 }
 main().catch(e=>{console.error("FATAL",e);process.exit(1);});

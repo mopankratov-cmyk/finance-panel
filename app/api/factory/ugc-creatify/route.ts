@@ -1,18 +1,40 @@
 import { NextRequest, NextResponse } from "next/server";
-import { creatifyCreate, creatifyReady } from "@/lib/factory/creatify";
+import { creatifyLinkVideo, creatifyLipsync, creatifyReady } from "@/lib/factory/creatify";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-// UGC-актёр Creatify (lipsyncs/Aurora): актёр говорит наш сценарий → видео 9:16. Async: task_id, статус опрашивать.
+// UGC-актёр Creatify. Если есть товар (URL карточки WB) → link_to_videos (актёр + ПОКАЗ товара).
+// Иначе → lipsyncs (актёр просто говорит текст). Async: task_id, статус опрашивать.
 export async function POST(req: NextRequest) {
   if (!creatifyReady()) return NextResponse.json({ detail: "Creatify не подключён: добавь CREATIFY_API_ID и CREATIFY_API_KEY в Vercel env" }, { status: 503 });
   const body = await req.json().catch(() => ({}));
   const script: string = (body.script || body.brief || body.hook || "").toString().trim();
-  if (!script) return NextResponse.json({ detail: "Нужен текст/сценарий для актёра (script)" }, { status: 400 });
-  const creator: string = (body.creator || "").toString().trim();
+  const debugMode = body.debug === true;
+  let url: string = (body.product_url || "").toString().trim();
 
-  const res = await creatifyCreate(script, { creator: creator || undefined });
+  // резолв URL карточки WB по артикулу (nm_id из rnp_report)
+  if (!url && body.sku_art) {
+    try {
+      const { getSupabaseAdmin } = await import("@/lib/supabaseAdmin");
+      const db = getSupabaseAdmin();
+      if (db) {
+        const { data } = await db.rpc("rnp_report");
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const row = (data as any[] | null)?.find((r) => r.article === body.sku_art);
+        if (row?.nm_id) url = `https://www.wildberries.ru/catalog/${row.nm_id}/detail.aspx`;
+      }
+    } catch { /* без URL — уйдём в lipsync */ }
+  }
+
+  if (url) {
+    const res = await creatifyLinkVideo(url, { script: script || undefined, avatar: (body.creator || "").trim() || undefined });
+    if (res.error || !res.token) return NextResponse.json({ detail: res.error || "Creatify не запустил", ...(debugMode ? { debug: res.debug } : {}) }, { status: 502 });
+    return NextResponse.json({ task_id: "cf." + res.token, engine: "creatify", mode: "link_to_videos", product_url: url, ...(debugMode ? { debug: res.debug } : {}) });
+  }
+
+  if (!script) return NextResponse.json({ detail: "Нужен товар (артикул/URL) или текст для актёра" }, { status: 400 });
+  const res = await creatifyLipsync(script, { creator: (body.creator || "").trim() || undefined });
   if (res.error || !res.token) return NextResponse.json({ detail: res.error || "Creatify не запустил" }, { status: 502 });
-  return NextResponse.json({ task_id: "cf." + res.token, engine: "creatify" });
+  return NextResponse.json({ task_id: "cf." + res.token, engine: "creatify", mode: "lipsyncs" });
 }
