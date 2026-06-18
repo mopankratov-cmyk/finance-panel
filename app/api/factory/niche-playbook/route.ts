@@ -16,29 +16,27 @@ function extractJson(raw: string): any | null {
   t = t.slice(start);
   const tryParse = (s: string) => { try { return JSON.parse(s); } catch { return undefined; } };
   let v = tryParse(t); if (v !== undefined) return v;
-  // 1) убрать висячие запятые
-  v = tryParse(t.replace(/,(\s*[}\]])/g, "$1")); if (v !== undefined) return v;
-  // 2) обрыв по лимиту: отрезать до последней «;,}]"» и достроить скобки по балансу (вне строк)
-  let depthCurly = 0, depthSq = 0, inStr = false, esc = false, lastSafe = -1;
+  v = tryParse(t.replace(/,(\s*[}\]])/g, "$1")); if (v !== undefined) return v; // висячие запятые
+  // обрыв по лимиту: пройти со стеком скобок (учитывая строки) и достроить хвост
+  const stack: string[] = []; let inStr = false, esc = false;
   for (let i = 0; i < t.length; i++) {
     const c = t[i];
     if (esc) { esc = false; continue; }
     if (c === "\\") { esc = true; continue; }
-    if (c === '"') { inStr = !inStr; if (!inStr) lastSafe = i; continue; }
+    if (c === '"') { inStr = !inStr; continue; }
     if (inStr) continue;
-    if (c === "{") depthCurly++; else if (c === "}") { depthCurly--; lastSafe = i; }
-    else if (c === "[") depthSq++; else if (c === "]") { depthSq--; lastSafe = i; }
-    else if (c === "," || /[0-9eel.]/i.test(c)) lastSafe = i;
+    if (c === "{" || c === "[") stack.push(c);
+    else if (c === "}" || c === "]") stack.pop();
   }
-  if (lastSafe > 0) {
-    let cut = t.slice(0, lastSafe + 1).replace(/,(\s*)$/, "");
-    // пересчитать баланс по обрезанному и закрыть
-    let dc = 0, ds = 0, s2 = false, e2 = false;
-    for (let i = 0; i < cut.length; i++) { const c = cut[i]; if (e2) { e2 = false; continue; } if (c === "\\") { e2 = true; continue; } if (c === '"') { s2 = !s2; continue; } if (s2) continue; if (c === "{") dc++; else if (c === "}") dc--; else if (c === "[") ds++; else if (c === "]") ds--; }
-    cut += "]".repeat(Math.max(0, ds)) + "}".repeat(Math.max(0, dc));
-    v = tryParse(cut.replace(/,(\s*[}\]])/g, "$1")); if (v !== undefined) return v;
-  }
-  return null;
+  let s = t;
+  if (inStr) s += '"';                          // закрыть оборванную строку
+  s = s.replace(/\s+$/, "");
+  s = s.replace(/,\s*"[^"]*"\s*:\s*$/, "");      // ,"ключ": без значения
+  s = s.replace(/\{\s*"[^"]*"\s*:\s*$/, "{");    // {"ключ": без значения
+  s = s.replace(/,\s*$/, "");                    // висячая запятая
+  for (let i = stack.length - 1; i >= 0; i--) s += stack[i] === "{" ? "}" : "]";
+  s = s.replace(/,(\s*[}\]])/g, "$1");
+  return tryParse(s) ?? null;
 }
 
 // «Мозг маркетолога»: превращает сырую аналитику ниши (Virlo Orbit) в ПРОИЗВОДСТВЕННЫЙ плейбук,
@@ -91,7 +89,7 @@ export async function POST(req: NextRequest) {
  "cta": "призыв с артикулом WB",
  "render_strategy": "1 фраза: как использовать наш Kling/карусель-рендер в этой нише"
 }
-Только JSON, без преамбулы. 3-5 winning_formats, отсортируй по engagement.`;
+Верни ГОЛЫЙ JSON без markdown-ограждения и без преамбулы. Будь компактным: 3-4 winning_formats, beats ≤3 коротких, hooks ровно 5. Отсортируй форматы по engagement.`;
 
   const user = `Ниша: ${niche || "(из данных)"}.
 Темы/форматы (с метрикой): ${JSON.stringify(themes).slice(0, 3500)}
@@ -101,7 +99,7 @@ export async function POST(req: NextRequest) {
 Собери плейбук.`;
 
   try {
-    const res = await client.messages.create({ model: MODEL, max_tokens: 3000, system: sys, messages: [{ role: "user", content: user }] });
+    const res = await client.messages.create({ model: MODEL, max_tokens: 4000, system: sys, messages: [{ role: "user", content: user }] });
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const txt = (res.content as any[]).filter((b) => b.type === "text").map((b) => b.text).join(" ").trim();
     const playbook = extractJson(txt);
