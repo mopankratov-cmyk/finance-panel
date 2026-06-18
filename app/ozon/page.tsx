@@ -52,6 +52,7 @@ export default function OzonPage() {
   const [q, setQ] = useState("");
   const [rnp, setRnp] = useState<{ period: { label: string; period_type: string }[]; summary: Metric[]; skus: RnpSku[] }>({ period: [], summary: [], skus: [] });
   const [funnel, setFunnel] = useState<FunnelRow[]>([]);
+  const [funnelAvail, setFunnelAvail] = useState(true);
   const [unit, setUnit] = useState<UnitRow[]>([]);
   const [unitTax, setUnitTax] = useState(7);
   const [stocks, setStocks] = useState<{ rows: StockRow[]; warehouses: string[]; totalFree: number }>({ rows: [], warehouses: [], totalFree: 0 });
@@ -77,7 +78,7 @@ export default function OzonPage() {
       if (d.noCabinet) { setNoCab(true); return; }
       if (d.error) { setErr(d.error); return; }
       if (tab === "rnp") setRnp({ period: d.period ?? [], summary: d.summary ?? [], skus: d.skus ?? [] });
-      else if (tab === "funnel") setFunnel(d.rows ?? []);
+      else if (tab === "funnel") { setFunnel(d.rows ?? []); setFunnelAvail(d.funnel !== false); }
       else if (tab === "unit") { setUnit(d.rows ?? []); setUnitTax(d.taxPct ?? 7); }
       else setStocks({ rows: d.rows ?? [], warehouses: d.warehouses ?? [], totalFree: d.totalFree ?? 0 });
     }).catch((e) => setErr(String(e))).finally(() => setLoading(false));
@@ -169,7 +170,12 @@ export default function OzonPage() {
           </div>
         ) : tab === "funnel" ? (
           <div>
-            <FunnelSummary rows={flt(funnel)} />
+            {!funnelAvail && (
+              <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-800">
+                Воронка показов и корзины (показы → в корзину → CR) доступна только в подписке <b>Ozon Premium Plus</b> — без неё Ozon эти метрики не отдаёт. Показаны реальные <b>заказы и выручка</b>.
+              </div>
+            )}
+            <FunnelSummary rows={flt(funnel)} avail={funnelAvail} />
             <div className="mb-2 flex items-center gap-3 text-[11px] text-gray-500">
               <span>Конверсии:</span><Legend />
             </div>
@@ -183,11 +189,11 @@ export default function OzonPage() {
                 {flt(funnel).map((r) => (
                   <tr key={r.sku} className="border-t border-gray-100 hover:bg-gray-50">
                     <td className="px-3 py-2"><div className="flex items-center gap-2"><Thumb src={r.img_url} /><div className="min-w-0"><div className="max-w-md truncate text-gray-800">{r.name}</div><div className="text-[11px] text-gray-400">sku {r.sku}</div></div></div></td>
-                    <td className="px-3 py-2 text-right tabular-nums">{fmt(r.hits_view)}</td>
-                    <td className="px-3 py-2 text-right tabular-nums">{fmt(r.hits_tocart)}</td>
-                    <td className="px-3 py-2 text-right font-medium tabular-nums" style={{ background: heat("cr_cart", r.cr_cart) }}>{pct(r.cr_cart)}</td>
+                    <td className="px-3 py-2 text-right tabular-nums text-gray-400">{funnelAvail ? fmt(r.hits_view) : "—"}</td>
+                    <td className="px-3 py-2 text-right tabular-nums text-gray-400">{funnelAvail ? fmt(r.hits_tocart) : "—"}</td>
+                    <td className="px-3 py-2 text-right font-medium tabular-nums" style={{ background: funnelAvail ? heat("cr_cart", r.cr_cart) : undefined }}>{funnelAvail ? pct(r.cr_cart) : "—"}</td>
                     <td className="px-3 py-2 text-right tabular-nums font-medium">{fmt(r.ordered_units)}</td>
-                    <td className="px-3 py-2 text-right font-medium tabular-nums" style={{ background: heat("cr_order", r.cr_order) }}>{pct(r.cr_order)}</td>
+                    <td className="px-3 py-2 text-right font-medium tabular-nums" style={{ background: funnelAvail ? heat("cr_order", r.cr_order) : undefined }}>{funnelAvail ? pct(r.cr_order) : "—"}</td>
                     <td className="px-3 py-2 text-right font-semibold tabular-nums">{fmt(r.revenue)}</td>
                   </tr>
                 ))}
@@ -265,10 +271,25 @@ function Legend() {
   );
 }
 
-function FunnelSummary({ rows }: { rows: FunnelRow[] }) {
+function FunnelSummary({ rows, avail }: { rows: FunnelRow[]; avail: boolean }) {
   const views = rows.reduce((s, r) => s + r.hits_view, 0);
   const cart = rows.reduce((s, r) => s + r.hits_tocart, 0);
   const orders = rows.reduce((s, r) => s + r.ordered_units, 0);
+  const revenue = rows.reduce((s, r) => s + r.revenue, 0);
+  // воронка недоступна (нет Premium Plus) → показываем только реальные заказы/выручку
+  if (!avail) {
+    if (!orders && !revenue) return null;
+    return (
+      <div className="mb-3 grid gap-2 rounded-xl border border-gray-200 bg-white p-4 sm:grid-cols-2">
+        {[{ label: "Заказы, шт", val: orders }, { label: "Выручка, ₽", val: revenue }].map((c) => (
+          <div key={c.label}>
+            <span className="text-xs font-medium text-gray-500">{c.label}</span>
+            <div className="mt-1 text-lg font-bold tabular-nums text-gray-900">{fmt(c.val)}</div>
+          </div>
+        ))}
+      </div>
+    );
+  }
   if (!views) return null;
   const crCart = views ? Math.round((cart / views) * 1000) / 10 : 0;
   const crOrder = cart ? Math.round((orders / cart) * 1000) / 10 : 0;

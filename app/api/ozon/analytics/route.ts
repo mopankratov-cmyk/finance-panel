@@ -28,5 +28,6 @@ export async function GET(request: NextRequest) {
     }))
     .sort((a, b) => b.revenue - a.revenue);
 
-  return NextResponse.json({ cabinet: cab.name, period: { from, to, days }, rows, count: rows.length });
+  // funnel=false → показы/в корзину/CR недоступны (нет Ozon Premium Plus), есть только заказы/выручка
+  return NextResponse.json({ cabinet: cab.name, period: { from, to, days }, rows, count: rows.length, funnel: r.funnel });
 }

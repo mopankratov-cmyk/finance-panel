@@ -68,20 +68,24 @@ export async function ozonTransactionTotals(
   }
 }
 
-// Воронка: analytics/data по SKU (показы, в корзину, заказы, выручка, конверсия).
+// analytics/data по SKU. ВАЖНО: метрики воронки (hits_view/hits_tocart/conv) доступны
+// только в Ozon Premium Plus — без подписки Ozon молча выкидывает их из ответа, массив
+// укорачивается и позиции съезжают (показы=заказы, в корзину=выручка, заказы/выручка=0).
+// Поэтому просим только ordered_units+revenue (база, есть у всех); воронку отдаём нулями
+// (недоступна) — это честно и чинит Воронку/Юнит/ОПиУ, которым нужны заказы/выручка.
 export interface OzonAnalyticsRow {
   sku: string; name: string;
   hits_view: number; hits_tocart: number; ordered_units: number; revenue: number; conv: number;
 }
 export async function ozonAnalytics(
   c: OzonCreds, dateFrom: string, dateTo: string,
-): Promise<{ ok: true; rows: OzonAnalyticsRow[] } | { ok: false; error: string }> {
+): Promise<{ ok: true; rows: OzonAnalyticsRow[]; funnel: boolean } | { ok: false; error: string }> {
   try {
     const res = await tfetch(`${BASE}/v1/analytics/data`, {
       method: "POST", headers: headers(c),
       body: JSON.stringify({
         date_from: dateFrom, date_to: dateTo,
-        metrics: ["hits_view", "hits_tocart", "ordered_units", "revenue", "conv_tocart_pdp"],
+        metrics: ["ordered_units", "revenue"],
         dimension: ["sku"], limit: 1000, offset: 0,
       }),
       next: { revalidate: 1800 },
@@ -90,10 +94,10 @@ export async function ozonAnalytics(
     const j = (await res.json()) as { result?: { data?: { dimensions: { id: string; name: string }[]; metrics: number[] }[] } };
     const rows = (j.result?.data ?? []).map((d) => ({
       sku: d.dimensions[0]?.id ?? "", name: d.dimensions[0]?.name ?? "",
-      hits_view: d.metrics[0] ?? 0, hits_tocart: d.metrics[1] ?? 0,
-      ordered_units: d.metrics[2] ?? 0, revenue: d.metrics[3] ?? 0, conv: d.metrics[4] ?? 0,
+      ordered_units: d.metrics[0] ?? 0, revenue: d.metrics[1] ?? 0,
+      hits_view: 0, hits_tocart: 0, conv: 0, // воронка недоступна без Ozon Premium Plus
     }));
-    return { ok: true, rows };
+    return { ok: true, rows, funnel: false };
   } catch (e) {
     return { ok: false, error: String(e).slice(0, 120) };
   }
