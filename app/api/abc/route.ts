@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
-import { getWbCommission } from "@/lib/wb/commissions";
+import { getWbCommissionMerged } from "@/lib/wb/commissions";
 import { wbCardImageUrl } from "@/lib/wb/cardImage";
 import { cabinetIdFromParam } from "@/lib/rnp/resolveShop";
 
@@ -25,7 +25,7 @@ export async function GET(req: NextRequest) {
   const [rpcRes, costsRes, comm] = await Promise.all([
     db.rpc("rnp_report", { p_cabinet }),
     db.from("product_costs").select("article, name"),
-    getWbCommission(30),
+    getWbCommissionMerged(30),
   ]);
   const nameByArt = new Map<string, string>();
   for (const c of costsRes.data ?? []) nameByArt.set(c.article as string, (c.name as string) ?? "");

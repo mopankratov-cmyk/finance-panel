@@ -1,6 +1,6 @@
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { wbCardImageUrl } from "@/lib/wb/cardImage";
-import { getWbCommission } from "@/lib/wb/commissions";
+import { getWbCommissionMerged } from "@/lib/wb/commissions";
 
 const WEEKDAY = ["вс", "пн", "вт", "ср", "чт", "пт", "сб"];
 
@@ -33,7 +33,7 @@ export interface Metric {
 }
 
 // cost > 0 → добавляем Валовую ₽ и Маржу % (нужна себестоимость). Для сводки cost=0 → эти метрики вклеиваем отдельно (агрегат по SKU).
-function buildMetrics(days: string[], byDate: Map<string, DailyRow>, stock: number, stockMoney: number, cost = 0, commPct = 0): Metric[] {
+function buildMetrics(days: string[], byDate: Map<string, DailyRow>, stock: number, stockMoney: number, cost = 0, commPct = 0, acqPct = 0): Metric[] {
   const pick = (k: keyof DailyRow) => days.map((d) => Number(byDate.get(d)?.[k] ?? 0));
   const s = (a: number[]) => a.reduce((x, v) => x + v, 0);
   const r1 = (n: number) => Math.round(n * 10) / 10;
@@ -53,8 +53,9 @@ function buildMetrics(days: string[], byDate: Map<string, DailyRow>, stock: numb
   ];
   let grossTotalForGmroi: number | null = null;
   if (cost > 0) {
-    // Валовая ₽ = выручка с выкупов − себес×выкупы − комиссия% − реклама. Маржа % = валовая / выручка.
-    const cm = commPct / 100;
+    // Валовая ₽ = выкупы₽ − себес×выкупы − (комиссия%+эквайринг%) − реклама. Маржа % = валовая / выкупы₽.
+    // Комиссия+эквайринг — ФАКТ из финотчёта (раньше комиссия была 0 → маржа раздувалась до 70-80%).
+    const cm = (commPct + acqPct) / 100;
     const gross = days.map((_, i) => Math.round(bs[i] - cost * bc[i] - bs[i] * cm - ad[i]));
     const totGross = s(bs) - cost * totBc - s(bs) * cm - s(ad);
     grossTotalForGmroi = totGross;
@@ -95,10 +96,11 @@ export async function buildRnpTable(from: string, to: string, cabinetId?: string
     db.rpc("rnp_daily_sku", { p_from: from, p_to: to, p_cabinet }),
     db.rpc("rnp_report", { p_cabinet }),
     db.from("product_costs").select("article, name"),
-    getWbCommission(30), // фактическая комиссия% по nm
+    getWbCommissionMerged(30), // факт комиссия%+эквайринг% по nm (мердж по кабинетам; ENV пуст)
   ]);
   if (dailyRes.error) return { error: dailyRes.error.message };
   const commForNm = (nm: number) => comm.byNm.get(nm)?.pct ?? comm.avgPct;
+  const acqForNm = (nm: number) => comm.byNm.get(nm)?.acqPct ?? comm.avgAcqPct;
 
   const days: string[] = [];
   const cur = new Date(from), end = new Date(to);
@@ -124,7 +126,7 @@ export async function buildRnpTable(from: string, to: string, cabinetId?: string
   const skus = [...totalByNm.values()]
     .map((t) => {
       const dmap = byNm.get(t.nm_id) ?? new Map<string, DailyRow>();
-      const metrics = buildMetrics(days, dmap, Number(t.stock ?? 0), Math.round(Number(t.stock ?? 0) * Number(t.cost ?? 0)), Number(t.cost ?? 0), commForNm(t.nm_id));
+      const metrics = buildMetrics(days, dmap, Number(t.stock ?? 0), Math.round(Number(t.stock ?? 0) * Number(t.cost ?? 0)), Number(t.cost ?? 0), commForNm(t.nm_id), acqForNm(t.nm_id));
       return { nm: t.nm_id, art: t.article || String(t.nm_id), name: nameByArt.get(t.article) || t.article || String(t.nm_id), img_url: wbCardImageUrl(t.nm_id), metrics, _o: metrics[0]?.total ?? 0 };
     })
     .sort((a, b) => b._o - a._o)

@@ -1,5 +1,5 @@
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
-import { getWbCommission } from "@/lib/wb/commissions";
+import { getWbCommissionMerged } from "@/lib/wb/commissions";
 
 // Правиловый движок «что требует внимания» — пишет в agent_insights.
 // Использует уже посчитанные данные: rnp_report (заказы/выручка/выкупы/остаток/себес/реклама) + фактическую комиссию.
@@ -30,7 +30,7 @@ const TAX = 7; // налоговый дефолт (как в юните)
 export async function generateInsights(): Promise<InsightDraft[]> {
   const db = getSupabaseAdmin();
   if (!db) return [];
-  const [rpcRes, comm] = await Promise.all([db.rpc("rnp_report"), getWbCommission(30)]);
+  const [rpcRes, comm] = await Promise.all([db.rpc("rnp_report"), getWbCommissionMerged(30)]);
   const rows = (rpcRes.data ?? []) as RpcRow[];
   const acqAvg = comm.avgAcqPct > 0 ? comm.avgAcqPct : 1.5;
   const commForNm = (nm: number) => comm.byNm.get(nm)?.pct ?? (comm.avgPct > 0 ? comm.avgPct : 25);
