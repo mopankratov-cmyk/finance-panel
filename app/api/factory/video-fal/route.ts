@@ -30,11 +30,29 @@ export async function POST(req: NextRequest) {
   }
   if (!imageUrl) return NextResponse.json({ detail: "Нет фото товара (передай image_url или артикул с данными)" }, { status: 400 });
 
-  // промпт: выученный/улучшенный (body.prompt) ИЛИ дефолтный preservation-first
-  const prompt = (body.prompt || "").toString().trim() ||
-    `Keep the product EXACTLY as in the photo — identical shape, proportions, label, logo, colors; do NOT morph, deform, or replace it. ${motion || "Subtle cinematic camera motion: slow push-in with gentle parallax, soft studio light, the product stays centered, crisp and fully intact."}${brief ? ` Mood: ${brief}.` : ""}`;
+  // ПРОМПТ — приоритет: выученный/улучшенный (body.prompt) > Claude пишет под товар > шаблон-fallback
+  const TEMPLATE = `Keep the product EXACTLY as in the photo — identical shape, proportions, label, logo, colors; do NOT morph, deform, or replace it. ${motion || "Subtle cinematic camera motion: slow push-in with gentle parallax, soft studio light, the product stays centered, crisp and fully intact."}${brief ? ` Mood: ${brief}.` : ""}`;
+  let prompt = (body.prompt || "").toString().trim();
+  let promptBy: "выученный/готовый" | "ИИ" | "шаблон" = "выученный/готовый";
+  if (!prompt) {
+    // Claude-промпт-инженер: первичный motion-промпт под конкретный товар/идею
+    promptBy = "шаблон";
+    try {
+      const { createClaudeClient } = await import("@/lib/agent/client");
+      const client = await createClaudeClient();
+      if (client) {
+        const product = (body.product_name || body.sku_art || "товар").toString().slice(0, 120);
+        const sys = "Ты видео-промпт-инженер для Kling image-to-video (товар на WB). Напиши ОДИН английский motion-промпт. Учти ФОРМУ товара: жёсткая/простая (флакон, сумка) — можно мягкое движение камеры; детальная/сложная (игрушки, техника с мелкими частями) — движение МИНИМАЛЬНОЕ, чтобы не исказить. ОБЯЗАТЕЛЬНО preservation: keep product EXACT shape/label/proportions, no morphing/deformation/cap separation. Подбери движение под идею. Верни ТОЛЬКО английский промпт, без преамбулы.";
+        const res = await client.messages.create({ model: "claude-sonnet-4-6", max_tokens: 300, system: sys, messages: [{ role: "user", content: `Товар: ${product}. Идея/настроение: ${brief || "показать товар эффектно"}.` }] });
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const t = (res.content as any[]).filter((b) => b.type === "text").map((b) => b.text).join(" ").trim().replace(/^["«]|["»]$/g, "");
+        if (t) { prompt = t; promptBy = "ИИ"; }
+      }
+    } catch { /* fallback ниже */ }
+    if (!prompt) prompt = TEMPLATE;
+  }
 
   const token = await falVideoSubmit(model, imageUrl, prompt, { duration: body.duration === "10" ? "10" : "5" });
   if (!token) return NextResponse.json({ detail: "FAL не принял задачу (ключ/баланс/модель)" }, { status: 502 });
-  return NextResponse.json({ task_id: "fv." + token, model, image_url: imageUrl, prompt_used: prompt });
+  return NextResponse.json({ task_id: "fv." + token, model, image_url: imageUrl, prompt_used: prompt, prompt_by: promptBy });
 }

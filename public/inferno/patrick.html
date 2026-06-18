@@ -560,6 +560,8 @@ function patrick() {
       try { this.learnedPrompts = JSON.parse(localStorage.getItem('cf_learned') || '{}'); } catch (e) { this.learnedPrompts = {}; }
     },
     imgByArt: {},
+    // имя товара по артикулу — даём видео-промпт-инженеру понять форму товара
+    _prodName(art) { try { return ((this.products || []).find(p => p.article === art) || {}).name || ''; } catch (e) { return ''; } },
     // выученные лучшие промпты по маршрутам (память лучших практик)
     learnedPrompts: {},
     _saveLearned() { try { localStorage.setItem('cf_learned', JSON.stringify(this.learnedPrompts)); } catch (e) {} },
@@ -947,7 +949,7 @@ function patrick() {
       if (!art) { this.vid.forIdx = i; this.vid.status = 'нужен товар (укажи артикул в ТЗ или выбери в Трендоскопе)'; return; }
       this.vid.busy = true; this.vid.forIdx = i; this.vid.url = ''; this.vid.status = 'Kling: динамичное видео…';
       try {
-        const r = await fetch('/api/factory/video-fal', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sku_art: art, model: 'kling', brief: idea.hook || idea.concept }) });
+        const r = await fetch('/api/factory/video-fal', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sku_art: art, model: 'kling', brief: idea.hook || idea.concept, product_name: this._prodName(art) }) });
         const d = await r.json();
         if (!d.task_id) { this.vid.status = d.detail || d.error || 'не удалось запустить'; this.vid.busy = false; return; }
         this.vid.taskId = d.task_id; this.vid.status = 'рендер видео (≈1-3 мин)…';
@@ -1086,9 +1088,9 @@ function patrick() {
               else s.gen.status = 'не удалось собрать карусель (фото)';
             } else { s.gen.carouselUrl = '/carousel?article=' + encodeURIComponent(art); s.gen.status = 'нет фото товара — собери карусель вручную'; }
           } else if (route === 'ai_generation_ref') {
-            s.gen.status = (this.learnedPrompts['ai_generation_ref'] ? 'Kling (выученный промпт)…' : 'Kling: динамичное видео…');
+            s.gen.status = (this.learnedPrompts['ai_generation_ref'] ? 'Kling (выученный промпт)…' : 'Kling (ИИ пишет промпт под товар)…');
             const learned = (this.learnedPrompts['ai_generation_ref'] || {}).prompt || '';
-            const d = await (await fetch('/api/factory/video-fal', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sku_art: art, model: 'kling', brief, prompt: learned }) })).json();
+            const d = await (await fetch('/api/factory/video-fal', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sku_art: art, model: 'kling', brief, prompt: learned, product_name: this._prodName(art) }) })).json();
             if (!d.task_id) { s.gen.status = 'Kling: ' + (d.detail || d.error || 'не запустился'); }
             else { s.gen.promptUsed = d.prompt_used || learned; const res = await this._pollVideo('/api/factory/video-fal-status/' + d.task_id, 6 * 60 * 1000); if (res.url) { s.gen.url = res.url; s.gen.status = '✓ готово'; } else s.gen.status = 'ошибка: ' + res.error; }
           } else if (route === 'real_ugc') {
