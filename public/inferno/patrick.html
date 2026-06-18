@@ -1178,7 +1178,7 @@ function patrick() {
         // 1) продюсер выбирает маршрут
         s.gen = { route: '', status: 'продюсер выбирает маршрут…', url: '', carouselUrl: '' };
         let route = 'ai_generation';
-        let engine = 'kling';
+        let engine = 'seedance';
         try {
           const pr = await (await fetch('/api/factory/produce', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ idea: brief, product: art, trend_format: s.format || '', available: { photos: true }, playbook: this.activePb(art) }) })).json();
           if (pr.decision?.route) route = pr.decision.route;
