@@ -765,7 +765,8 @@ function patrick() {
           });
           resolve(slides);
         };
-        img.src = imgUrl.startsWith('/') ? imgUrl : '/api/lab/img-proxy?url=' + encodeURIComponent(imgUrl);
+        const big = imgUrl.replace('/c246x328/', '/c516x688/'); // крупнее для чёткой карусели
+        img.src = big.startsWith('/') ? big : '/api/lab/img-proxy?url=' + encodeURIComponent(big);
       });
     },
     async critique(item) {
