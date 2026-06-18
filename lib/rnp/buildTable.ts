@@ -33,7 +33,7 @@ export interface Metric {
 }
 
 // cost > 0 → добавляем Валовую ₽ и Маржу % (нужна себестоимость). Для сводки cost=0 → эти метрики вклеиваем отдельно (агрегат по SKU).
-function buildMetrics(days: string[], byDate: Map<string, DailyRow>, stock: number, stockMoney: number, cost = 0, commPct = 0, acqPct = 0): Metric[] {
+function buildMetrics(days: string[], byDate: Map<string, DailyRow>, stock: number, stockMoney: number, cost = 0, wbCostPct = 0): Metric[] {
   const pick = (k: keyof DailyRow) => days.map((d) => Number(byDate.get(d)?.[k] ?? 0));
   const s = (a: number[]) => a.reduce((x, v) => x + v, 0);
   const r1 = (n: number) => Math.round(n * 10) / 10;
@@ -53,9 +53,9 @@ function buildMetrics(days: string[], byDate: Map<string, DailyRow>, stock: numb
   ];
   let grossTotalForGmroi: number | null = null;
   if (cost > 0) {
-    // Валовая ₽ = выкупы₽ − себес×выкупы − (комиссия%+эквайринг%) − реклама. Маржа % = валовая / выкупы₽.
-    // Комиссия+эквайринг — ФАКТ из финотчёта (раньше комиссия была 0 → маржа раздувалась до 70-80%).
-    const cm = (commPct + acqPct) / 100;
+    // Маржа после ВСЕХ расходов МП: выкупы₽ − себес×выкупы − wbCost%(комиссия+эквайринг+логистика+
+    // хранение+штрафы+приёмка+прочие) − реклама. Всё из ФАКТ-финотчёта. Маржа % = это / выкупы₽.
+    const cm = wbCostPct / 100;
     const gross = days.map((_, i) => Math.round(bs[i] - cost * bc[i] - bs[i] * cm - ad[i]));
     const totGross = s(bs) - cost * totBc - s(bs) * cm - s(ad);
     grossTotalForGmroi = totGross;
@@ -99,8 +99,11 @@ export async function buildRnpTable(from: string, to: string, cabinetId?: string
     getWbCommissionMerged(30), // факт комиссия%+эквайринг% по nm (мердж по кабинетам; ENV пуст)
   ]);
   if (dailyRes.error) return { error: dailyRes.error.message };
-  const commForNm = (nm: number) => comm.byNm.get(nm)?.pct ?? comm.avgPct;
-  const acqForNm = (nm: number) => comm.byNm.get(nm)?.acqPct ?? comm.avgAcqPct;
+  // полный расход МП на nm = комиссия + эквайринг + прочие удержания (логистика/хранение/штрафы/…) + account-overhead
+  const wbCostForNm = (nm: number) => {
+    const e = comm.byNm.get(nm);
+    return (e?.pct ?? comm.avgPct) + (e?.acqPct ?? comm.avgAcqPct) + (e?.extraPct ?? comm.avgExtraPct) + comm.overheadPct;
+  };
 
   const days: string[] = [];
   const cur = new Date(from), end = new Date(to);
@@ -126,7 +129,7 @@ export async function buildRnpTable(from: string, to: string, cabinetId?: string
   const skus = [...totalByNm.values()]
     .map((t) => {
       const dmap = byNm.get(t.nm_id) ?? new Map<string, DailyRow>();
-      const metrics = buildMetrics(days, dmap, Number(t.stock ?? 0), Math.round(Number(t.stock ?? 0) * Number(t.cost ?? 0)), Number(t.cost ?? 0), commForNm(t.nm_id), acqForNm(t.nm_id));
+      const metrics = buildMetrics(days, dmap, Number(t.stock ?? 0), Math.round(Number(t.stock ?? 0) * Number(t.cost ?? 0)), Number(t.cost ?? 0), wbCostForNm(t.nm_id));
       return { nm: t.nm_id, art: t.article || String(t.nm_id), name: nameByArt.get(t.article) || t.article || String(t.nm_id), img_url: wbCardImageUrl(t.nm_id), metrics, _o: metrics[0]?.total ?? 0 };
     })
     .sort((a, b) => b._o - a._o)

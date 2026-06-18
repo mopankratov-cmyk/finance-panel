@@ -1,5 +1,8 @@
 // Фактические ставки WB по каждому nm_id — из детального финотчёта (reportDetailByPeriod).
 // Комиссия: commission_percent (взвеш. по выручке). Эквайринг: acquiring_fee / выручка.
+// extraPct: ВСЕ прочие удержания МП (логистика+хранение+штрафы+приёмка+прочие, КРОМЕ рекламы —
+// она вычитается отдельно как ad_spent) / выручка — для «маржи после всех расходов МП».
+// overheadPct: удержания без nm_id (account-level) → плоская надбавка ко всем SKU.
 // Кэш через Next fetch revalidate (отчёт тяжёлый ~12с) — тянется раз в 6ч на весь сервер.
 
 import { getActiveWbCabinets } from "./cabinetTokens";
@@ -9,22 +12,31 @@ const WB_STATS_TOKEN = process.env.WB_STATS_TOKEN || process.env.WB_TOKEN_STATIS
 interface ReportRow {
   nm_id?: number;
   supplier_oper_name?: string;
+  bonus_type_name?: string;
   commission_percent?: number;
   ppvz_sales_commission?: number;
   acquiring_fee?: number;
   retail_price_withdisc_rub?: number;
   retail_amount?: number;
+  delivery_rub?: number;
+  storage_fee?: number;
+  penalty?: number;
+  acceptance?: number;
+  deduction?: number;
 }
 
+export interface NmRates { pct: number; acqPct: number; extraPct: number; rev: number }
 export interface WbCommission {
-  byNm: Map<number, { pct: number; acqPct: number; rev: number }>;
-  avgPct: number;    // средневзвешенная комиссия по кабинету — фолбэк
-  avgAcqPct: number; // средневзвешенный эквайринг по кабинету — фолбэк
+  byNm: Map<number, NmRates>;
+  avgPct: number;      // средневзвеш. комиссия — фолбэк
+  avgAcqPct: number;   // средневзвеш. эквайринг — фолбэк
+  avgExtraPct: number; // средневзвеш. прочие удержания МП — фолбэк
+  overheadPct: number; // удержания без nm_id (account-level), плоско ко всем
 }
 
 const num = (v: unknown) => Number(v ?? 0) || 0;
+const r1 = (n: number) => Math.round(n * 10) / 10;
 
-// In-process memo (отчёт тяжёлый ~12с). TTL 6ч. Ключ — кабинет+период (иначе кабинеты травят кэш друг друга).
 const _memo = new Map<string, { ts: number; val: WbCommission }>();
 const MEMO_TTL = 6 * 3600 * 1000;
 
@@ -34,7 +46,7 @@ export async function getWbCommission(days = 30, opts?: { token?: string; cacheK
   const key = `${opts?.cacheKey || "env"}|${days}`;
   const hit = _memo.get(key);
   if (hit && Date.now() - hit.ts < MEMO_TTL) return hit.val;
-  const empty: WbCommission = { byNm: new Map(), avgPct: 0, avgAcqPct: 0 };
+  const empty: WbCommission = { byNm: new Map(), avgPct: 0, avgAcqPct: 0, avgExtraPct: 0, overheadPct: 0 };
   if (!token) return empty;
   const to = new Date().toISOString().slice(0, 10);
   const from = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
@@ -50,56 +62,75 @@ export async function getWbCommission(days = 30, opts?: { token?: string; cacheK
   }
   if (!Array.isArray(rows)) return empty;
 
-  // На nm копим Σ(commission_percent × rev), Σ acquiring_fee, Σrev
-  const acc = new Map<number, { wpct: number; acq: number; rev: number }>();
-  let totW = 0, totAcq = 0, totRev = 0;
+  // На nm: Σ(commission% × rev), Σ acquiring, Σ extra (прочие удержания МП), Σ rev. Без nm → overhead.
+  const acc = new Map<number, { wpct: number; acq: number; extra: number; rev: number }>();
+  let totW = 0, totAcq = 0, totRev = 0, totExtra = 0, noNmExtra = 0;
   for (const r of rows) {
-    if (r.supplier_oper_name && r.supplier_oper_name !== "Продажа") continue; // только продажи
+    const op = r.supplier_oper_name ?? "";
     const nm = Number(r.nm_id ?? 0);
-    if (!nm) continue;
+    const isSale = !op || op === "Продажа";
     const rev = num(r.retail_price_withdisc_rub) || num(r.retail_amount);
-    if (rev <= 0) continue;
-    // headline-% комиссии; фолбэк — |ppvz_sales_commission|/rev
-    let pct = Math.abs(num(r.commission_percent));
-    if (pct <= 0) pct = (Math.abs(num(r.ppvz_sales_commission)) / rev) * 100;
-    const acq = Math.abs(num(r.acquiring_fee));
-    const e = acc.get(nm) ?? { wpct: 0, acq: 0, rev: 0 };
-    e.wpct += pct * rev; e.acq += acq; e.rev += rev;
-    acc.set(nm, e);
-    totW += pct * rev; totAcq += acq; totRev += rev;
+    // прочие расходы МП в этой строке (КРОМЕ рекламы — она отдельно как ad_spent)
+    let ded = num(r.deduction);
+    const bt = (r.bonus_type_name ?? "").toLowerCase();
+    if (bt.includes("продвижени") || bt.includes("реклам")) ded = 0;
+    const extraRow = Math.abs(num(r.delivery_rub)) + Math.abs(num(r.storage_fee)) + Math.abs(num(r.penalty)) + Math.abs(num(r.acceptance)) + Math.max(0, ded);
+
+    if (nm) {
+      const e = acc.get(nm) ?? { wpct: 0, acq: 0, extra: 0, rev: 0 };
+      if (isSale && rev > 0) {
+        let pct = Math.abs(num(r.commission_percent));
+        if (pct <= 0) pct = (Math.abs(num(r.ppvz_sales_commission)) / rev) * 100;
+        const acq = Math.abs(num(r.acquiring_fee));
+        e.wpct += pct * rev; e.acq += acq; e.rev += rev;
+        totW += pct * rev; totAcq += acq; totRev += rev;
+      }
+      e.extra += extraRow;
+      acc.set(nm, e);
+      totExtra += extraRow;
+    } else {
+      noNmExtra += extraRow;
+    }
   }
 
-  const byNm = new Map<number, { pct: number; acqPct: number; rev: number }>();
+  const byNm = new Map<number, NmRates>();
   for (const [nm, e] of acc) byNm.set(nm, {
-    pct: Math.round((e.wpct / e.rev) * 10) / 10,
-    acqPct: Math.round((e.acq / e.rev) * 1000) / 10,
+    pct: e.rev > 0 ? r1(e.wpct / e.rev) : 0,
+    acqPct: e.rev > 0 ? r1((e.acq / e.rev) * 100) : 0,
+    extraPct: e.rev > 0 ? r1((e.extra / e.rev) * 100) : 0,
     rev: e.rev,
   });
-  const avgPct = totRev > 0 ? Math.round((totW / totRev) * 10) / 10 : 0;
-  const avgAcqPct = totRev > 0 ? Math.round((totAcq / totRev) * 1000) / 10 : 0;
-  const val: WbCommission = { byNm, avgPct, avgAcqPct };
-  if (byNm.size > 0) _memo.set(key, { ts: Date.now(), val }); // кэшируем только удачный результат
+  const avgPct = totRev > 0 ? r1(totW / totRev) : 0;
+  const avgAcqPct = totRev > 0 ? r1((totAcq / totRev) * 100) : 0;
+  const avgExtraPct = totRev > 0 ? r1((totExtra / totRev) * 100) : 0;
+  const overheadPct = totRev > 0 ? r1((noNmExtra / totRev) * 100) : 0;
+  const val: WbCommission = { byNm, avgPct, avgAcqPct, avgExtraPct, overheadPct };
+  if (byNm.size > 0) _memo.set(key, { ts: Date.now(), val });
   return val;
 }
 
-// Факт-комиссия по nm со ВСЕХ активных кабинетов (каждый nm — из финотчёта своего кабинета).
-// Для кросс-кабинетных таблиц (юнит): ENV-токен пуст/неактуален → берём токены кабинетов из БД.
+// Факт-ставки по nm со ВСЕХ активных кабинетов (каждый nm — из финотчёта своего кабинета).
+// Для кросс-кабинетных таблиц (юнит/РНП): ENV-токен пуст/неактуален → токены кабинетов из БД.
 export async function getWbCommissionMerged(days = 30): Promise<WbCommission> {
   const cabs = await getActiveWbCabinets();
   if (!cabs.length) return getWbCommission(days); // фолбэк на ENV
   const parts = await Promise.all(cabs.map((c) => getWbCommission(days, { token: c.token, cacheKey: c.id })));
-  const byNm = new Map<number, { pct: number; acqPct: number; rev: number }>();
+  const byNm = new Map<number, NmRates>();
   for (const p of parts) {
     for (const [nm, e] of p.byNm) {
       const ex = byNm.get(nm);
       if (!ex || e.rev > ex.rev) byNm.set(nm, e); // один nm в двух кабинетах — берём с большей выручкой
     }
   }
-  let totW = 0, totAcq = 0, totRev = 0;
-  for (const e of byNm.values()) { totW += e.pct * e.rev; totAcq += e.acqPct * e.rev; totRev += e.rev; }
+  let totW = 0, totAcq = 0, totExtra = 0, totRev = 0, totOverheadW = 0;
+  for (const e of byNm.values()) { totW += e.pct * e.rev; totAcq += e.acqPct * e.rev; totExtra += e.extraPct * e.rev; totRev += e.rev; }
+  // overhead взвешиваем по выручке кабинета
+  for (const p of parts) { const rev = [...p.byNm.values()].reduce((s, e) => s + e.rev, 0); totOverheadW += p.overheadPct * rev; }
   return {
     byNm,
-    avgPct: totRev > 0 ? Math.round((totW / totRev) * 10) / 10 : 0,
-    avgAcqPct: totRev > 0 ? Math.round((totAcq / totRev) * 10) / 10 : 0,
+    avgPct: totRev > 0 ? r1(totW / totRev) : 0,
+    avgAcqPct: totRev > 0 ? r1(totAcq / totRev) : 0,
+    avgExtraPct: totRev > 0 ? r1(totExtra / totRev) : 0,
+    overheadPct: totRev > 0 ? r1(totOverheadW / totRev) : 0,
   };
 }
