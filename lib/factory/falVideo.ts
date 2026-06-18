@@ -4,12 +4,24 @@ const QUEUE = "https://queue.fal.run/";
 
 // каталог моделей: добавление нового движка = строка здесь (как советует спек video-gen-system)
 export const FAL_VIDEO_MODELS = {
-  kling: "fal-ai/kling-video/v2.1/standard/image-to-video", // $0.28/5с, держит форму
-  seedance: "fal-ai/bytedance/seedance/v1/pro/image-to-video", // сильна на текстуре/мультишоте
+  kling: "fal-ai/kling-video/v2.1/standard/image-to-video", // $0.28/5с, держит форму — жёсткие формы
+  seedance: "fal-ai/bytedance/seedance/v1/pro/image-to-video", // динамика/движение камеры/мультисцена
+  pika: "fal-ai/pika/v2.2/image-to-video", // мягкие сцены, руки-в-кадре, живость
 } as const;
 export type FalVideoModel = keyof typeof FAL_VIDEO_MODELS;
 
+const DEFAULT_NEG = "distortion, morphing, deformed product, changed shape, extra objects, blurry, low quality, warped label";
+
 function key(): string | null { return process.env.FAL_KEY || null; }
+
+// у каждого движка СВОЯ схема входа — отправка лишних полей (cfg_scale/negative для seedance/pika) даёт 422.
+function buildInput(model: FalVideoModel, imageUrl: string, prompt: string, opts?: { duration?: "5" | "10"; aspect?: string; negative?: string }): Record<string, unknown> {
+  const dur = opts?.duration === "10" ? "10" : "5";
+  if (model === "seedance") return { image_url: imageUrl, prompt, resolution: "720p", duration: dur };
+  if (model === "pika") return { image_url: imageUrl, prompt, resolution: "720p", duration: Number(dur) };
+  // kling — богатый body (проверен): держит форму через preservation + negative
+  return { image_url: imageUrl, prompt, duration: dur, aspect_ratio: opts?.aspect || "9:16", negative_prompt: opts?.negative || DEFAULT_NEG, cfg_scale: 0.5 };
+}
 
 // Сабмит image-to-video. Возвращает токен (base64url от response_url) или null.
 export async function falVideoSubmit(model: FalVideoModel, imageUrl: string, prompt: string, opts?: { duration?: "5" | "10"; aspect?: string; negative?: string }): Promise<string | null> {
@@ -19,14 +31,7 @@ export async function falVideoSubmit(model: FalVideoModel, imageUrl: string, pro
   try {
     const r = await fetch(`${QUEUE}${endpoint}`, {
       method: "POST", headers: { Authorization: `Key ${k}`, "Content-Type": "application/json" }, cache: "no-store",
-      body: JSON.stringify({
-        image_url: imageUrl,
-        prompt,
-        duration: opts?.duration || "5",
-        aspect_ratio: opts?.aspect || "9:16",
-        negative_prompt: opts?.negative || "distortion, morphing, deformed product, changed shape, extra objects, blurry, low quality, warped label",
-        cfg_scale: 0.5,
-      }),
+      body: JSON.stringify(buildInput(model, imageUrl, prompt, opts)),
       signal: AbortSignal.timeout(25000),
     });
     if (!r.ok) return null;
