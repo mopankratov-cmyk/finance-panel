@@ -61,9 +61,10 @@ export async function creatifyLinkVideo(opts: { url?: string; images?: string[];
   }
   if (!linkId) return { error: `link не создан: ${JSON.stringify(debug).slice(0, 220)}`, debug };
   // 2) создать видео из link
-  const body: Record<string, unknown> = { link: linkId, aspect_ratio: "9x16", video_length: opts?.length || 15, target_platform: "Tiktok", language: "russian" };
-  if (opts?.script) body.override_script = opts.script.slice(0, 1500);
-  if (opts?.avatar) body.override_avatar = opts.avatar;
+  // language НЕ шлём — "russian" невалидно; язык подхватывается из override_script (он русский)
+  const body: Record<string, unknown> = { link: linkId, aspect_ratio: "9x16", video_length: opts.length || 15, target_platform: "Tiktok" };
+  if (opts.script) body.override_script = opts.script.slice(0, 1500);
+  if (opts.avatar) body.override_avatar = opts.avatar;
   const created = await jpost(h, "/link_to_videos/", body);
   debug.create = { status: created.status, body: created.json || created.text };
   const vidId = (created.json?.id as string) || "";
