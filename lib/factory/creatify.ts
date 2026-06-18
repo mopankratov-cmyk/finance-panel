@@ -40,17 +40,26 @@ export async function creatifyListCreators(): Promise<{ id: string; name?: strin
 }
 
 // ОСНОВНОЙ: link_to_videos — товар в кадре. Возвращает токен + debug (сырые ответы для отладки).
+// Фото товара передаём НАПРЯМУЮ (link_with_params) — WB не скрейпится, поэтому даём image_urls.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export async function creatifyLinkVideo(productUrl: string, opts?: { script?: string; avatar?: string; length?: number }): Promise<{ token?: string; error?: string; debug?: any }> {
+export async function creatifyLinkVideo(opts: { url?: string; images?: string[]; title?: string; description?: string; script?: string; avatar?: string; length?: number }): Promise<{ token?: string; error?: string; debug?: any }> {
   const h = headers();
   if (!h) return { error: "CREATIFY ключ не настроен" };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const debug: any = {};
-  // 1) link из URL
-  const link = await jpost(h, "/links/", { url: productUrl });
-  debug.link = { status: link.status, body: link.json || link.text };
-  const linkId = (link.json?.id as string) || "";
-  if (!linkId) return { error: `links ${link.status}: ${link.text}`, debug };
+  // 1) link: если есть фото — отдаём напрямую (link_with_params), иначе пробуем скрейп URL
+  let linkId = "";
+  if (opts.images && opts.images.length) {
+    const lp = await jpost(h, "/links/link_with_params/", { title: opts.title || "Товар", description: opts.description || opts.title || "", image_urls: opts.images.slice(0, 8), video_urls: [] });
+    debug.link_params = { status: lp.status, body: lp.json || lp.text };
+    linkId = (lp.json?.id as string) || "";
+  }
+  if (!linkId && opts.url) {
+    const link = await jpost(h, "/links/", { url: opts.url });
+    debug.link = { status: link.status, body: link.json || link.text };
+    linkId = (link.json?.id as string) || "";
+  }
+  if (!linkId) return { error: `link не создан: ${JSON.stringify(debug).slice(0, 220)}`, debug };
   // 2) создать видео из link
   const body: Record<string, unknown> = { link: linkId, aspect_ratio: "9x16", video_length: opts?.length || 15, target_platform: "Tiktok", language: "russian" };
   if (opts?.script) body.override_script = opts.script.slice(0, 1500);
