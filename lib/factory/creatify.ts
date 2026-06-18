@@ -61,8 +61,8 @@ export async function creatifyLinkVideo(opts: { url?: string; images?: string[];
   }
   if (!linkId) return { error: `link не создан: ${JSON.stringify(debug).slice(0, 220)}`, debug };
   // 2) создать видео из link
-  // language НЕ шлём — "russian" невалидно; язык подхватывается из override_script (он русский)
-  const body: Record<string, unknown> = { link: linkId, aspect_ratio: "9x16", video_length: opts.length || 15, target_platform: "Tiktok" };
+  // язык — КОД "ru" (не слово "russian"!), иначе CTA/плашки уходят в английский
+  const body: Record<string, unknown> = { link: linkId, aspect_ratio: "9x16", video_length: opts.length || 15, target_platform: "Tiktok", language: "ru" };
   if (opts.script) body.override_script = opts.script.slice(0, 1500);
   if (opts.avatar) body.override_avatar = opts.avatar;
   const created = await jpost(h, "/link_to_videos/", body);
