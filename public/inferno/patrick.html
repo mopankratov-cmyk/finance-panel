@@ -137,8 +137,9 @@
               <div x-show="b.slides && b.slides.length" class="relative mb-1.5 select-none"
                    @touchstart="b._tsx = $event.changedTouches[0].clientX"
                    @touchend="if (Math.abs($event.changedTouches[0].clientX - (b._tsx||0)) > 30) slideStep(b, ($event.changedTouches[0].clientX - (b._tsx||0)) < 0 ? 1 : -1)">
-                <img :src="slideSrc(b, b.si||0)" @click="slideStep(b,1)" class="w-full rounded-md border border-gray-100 cursor-pointer" style="max-height:340px;object-fit:contain;background:#faf7f8">
-                <span class="absolute top-1 right-1 pill pill-violet" x-text="'🖼 ' + ((b.si||0)+1) + '/' + (b.slides ? b.slides.length : 0)"></span>
+                <img :src="slideSrc(b, b.si||0)" @click="openLightbox(b)" title="открыть во весь экран" class="w-full rounded-md border border-gray-100 cursor-zoom-in" style="max-height:340px;object-fit:contain;background:#faf7f8">
+                <span class="absolute top-1 left-1 pill pill-violet" x-text="'🖼 ' + ((b.si||0)+1) + '/' + (b.slides ? b.slides.length : 0)"></span>
+                <button @click="openLightbox(b)" title="во весь экран" class="absolute top-1 right-1 text-[12px] px-1.5 py-0.5 rounded bg-white/85 hover:bg-white text-gray-700">⛶</button>
                 <template x-if="b.slides && b.slides.length > 1">
                   <div>
                     <button @click="slideStep(b,-1)" class="absolute left-1 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full bg-white/85 hover:bg-white text-gray-800 shadow flex items-center justify-center text-base leading-none">‹</button>
@@ -587,6 +588,27 @@
   </main>
 </div>
 
+<!-- Полноэкранный просмотр карусели -->
+<div x-show="lb.open" x-cloak
+     @keydown.escape.window="closeLightbox()" @keydown.arrow-right.window="lb.open && lbStep(1)" @keydown.arrow-left.window="lb.open && lbStep(-1)"
+     @click.self="closeLightbox()"
+     @touchstart="lb._tsx = $event.changedTouches[0].clientX"
+     @touchend="if (Math.abs($event.changedTouches[0].clientX - (lb._tsx||0)) > 30) lbStep(($event.changedTouches[0].clientX - (lb._tsx||0)) < 0 ? 1 : -1)"
+     class="fixed inset-0 z-[300] bg-black/90 flex items-center justify-center" style="touch-action:pan-y">
+  <button @click="closeLightbox()" title="закрыть (Esc)" class="absolute top-3 right-3 z-10 text-white text-2xl w-11 h-11 rounded-full bg-white/10 hover:bg-white/25 flex items-center justify-center">✕</button>
+  <button x-show="lb.slides.length>1" @click="lbStep(-1)" class="absolute left-2 md:left-6 top-1/2 -translate-y-1/2 z-10 text-white text-4xl w-14 h-14 rounded-full bg-white/10 hover:bg-white/25 flex items-center justify-center leading-none">‹</button>
+  <img :src="lbSrc()" @click.stop="lbStep(1)" class="max-h-[88vh] max-w-[94vw] object-contain rounded-lg shadow-2xl cursor-pointer">
+  <button x-show="lb.slides.length>1" @click="lbStep(1)" class="absolute right-2 md:right-6 top-1/2 -translate-y-1/2 z-10 text-white text-4xl w-14 h-14 rounded-full bg-white/10 hover:bg-white/25 flex items-center justify-center leading-none">›</button>
+  <div class="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 flex items-center gap-3">
+    <span class="text-white/85 text-sm tabular-nums" x-text="(lb.i+1) + ' / ' + lb.slides.length"></span>
+    <div class="flex gap-1.5" x-show="lb.slides.length>1">
+      <template x-for="(s,i) in lb.slides" :key="i">
+        <button @click="lb.i=i" class="w-2.5 h-2.5 rounded-full transition-colors" :class="lb.i===i ? 'bg-white' : 'bg-white/40 hover:bg-white/70'"></button>
+      </template>
+    </div>
+  </div>
+</div>
+
 <script>
 function patrick() {
   return {
@@ -669,6 +691,12 @@ function patrick() {
     get approvedQueue() { return this.bank.filter(b => b.status === 'approved' && (b.url || (b.slides && b.slides.length))); },
     slideSrc(b, i) { return b.slides && b.slides[i] ? 'data:image/jpeg;base64,' + b.slides[i] : ''; },
     slideStep(b, dir) { const n = (b.slides || []).length; if (!n) return; b.si = (((b.si || 0) + dir) % n + n) % n; },
+    // полноэкранный просмотр карусели (листать большими стрелками / стрелками клавиатуры / свайпом)
+    lb: { open: false, slides: [], i: 0, _tsx: 0 },
+    openLightbox(b) { if (!b.slides || !b.slides.length) return; this.lb = { open: true, slides: b.slides, i: (b.si || 0), _tsx: 0 }; },
+    closeLightbox() { this.lb.open = false; },
+    lbStep(dir) { const n = this.lb.slides.length; if (!n) return; this.lb.i = ((this.lb.i + dir) % n + n) % n; },
+    lbSrc() { const s = this.lb.slides; return s && s[this.lb.i] ? 'data:image/jpeg;base64,' + s[this.lb.i] : ''; },
     dlSlides(b) { (b.slides || []).forEach((sl, i) => { const a = document.createElement('a'); a.href = 'data:image/jpeg;base64,' + sl; a.download = (b.art || 'slide') + '-' + (i + 1) + '.jpg'; a.click(); }); },
     opApprove(b) { const i = this.bank.findIndex(x => x.ts === b.ts); if (i >= 0) { this.bank[i].status = 'approved'; this._saveBank(); } },
     opReject(b) { const i = this.bank.findIndex(x => x.ts === b.ts); if (i >= 0) this.delBank(i); },
