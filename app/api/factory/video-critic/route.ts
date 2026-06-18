@@ -4,6 +4,23 @@ import { CLAUDE_MODEL as MODEL, createClaudeClient } from "@/lib/agent/client";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
+// Терпимый парсер: сначала пробует полный JSON, иначе вытаскивает поля из обрезанного ответа (max_tokens).
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function parseLooseJson(txt: string): any | null {
+  const m = txt.match(/\{[\s\S]*\}/);
+  if (m) { try { return JSON.parse(m[0]); } catch { /* обрезан — ниже */ } }
+  const score = txt.match(/"score"\s*:\s*(\d+(?:\.\d+)?)/);
+  if (!score) return null; // совсем нет вердикта
+  const verdict = txt.match(/"verdict"\s*:\s*"([^"]+)"/);
+  const hint = txt.match(/"regen_hint"\s*:\s*"([^"]+)"/);
+  const arr = (key: string): string[] => {
+    const block = txt.match(new RegExp(`"${key}"\\s*:\\s*\\[([\\s\\S]*?)(\\]|$)`));
+    if (!block) return [];
+    return (block[1].match(/"([^"]+)"/g) || []).map((s) => s.replace(/^"|"$/g, ""));
+  };
+  return { score: Number(score[1]), verdict: verdict?.[1], issues: arr("issues"), fixes: arr("fixes"), regen_hint: hint?.[1] || "" };
+}
+
 // Видео-критик: оценивает кадры ролика зрением Claude и даёт балл + дефекты + правку для регена.
 // Принимает frames: массив base64-JPEG (без префикса data:). Липсинк/звук по кадрам не судит — только визуал.
 export async function POST(req: NextRequest) {
@@ -26,12 +43,12 @@ export async function POST(req: NextRequest) {
   for (const f of frames) content.push({ type: "image", source: { type: "base64", media_type: "image/jpeg", data: f } });
 
   try {
-    const res = await client.messages.create({ model: MODEL, max_tokens: 700, system: sys, messages: [{ role: "user", content }] });
+    const res = await client.messages.create({ model: MODEL, max_tokens: 1024, system: sys, messages: [{ role: "user", content }] });
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const txt = (res.content as any[]).filter((b) => b.type === "text").map((b) => b.text).join(" ");
-    const m = txt.match(/\{[\s\S]*\}/);
-    if (!m) return NextResponse.json({ error: "пустой ответ критика", raw: txt.slice(0, 150) }, { status: 502 });
-    const j = JSON.parse(m[0]);
+    let txt = (res.content as any[]).filter((b) => b.type === "text").map((b) => b.text).join(" ").trim();
+    txt = txt.replace(/```json\s*/gi, "").replace(/```/g, "").trim(); // снять markdown-ограждение
+    const j = parseLooseJson(txt);
+    if (!j) return NextResponse.json({ error: "пустой ответ критика", raw: txt.slice(0, 150) }, { status: 502 });
     const sc = Number(j.score) || 5;
     return NextResponse.json({ score: sc, verdict: j.verdict || (sc >= 7 ? "ok" : sc >= 4 ? "rework" : "trash"), issues: j.issues || [], fixes: j.fixes || [], regen_hint: j.regen_hint || "" });
   } catch (e) {
