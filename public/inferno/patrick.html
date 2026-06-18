@@ -745,20 +745,30 @@ function patrick() {
           const slides = []; const W = 1080, H = 1350;
           texts.filter(Boolean).slice(0, 5).forEach((text, idx) => {
             const cv = document.createElement('canvas'); cv.width = W; cv.height = H; const ctx = cv.getContext('2d');
-            const ir = img.naturalWidth / img.naturalHeight, cr = W / H; let dw = W, dh = H, dx = 0, dy = 0;
-            if (ir > cr) { dh = H; dw = H * ir; dx = (W - dw) / 2; } else { dw = W; dh = W / ir; dy = (H - dh) / 2; }
-            ctx.drawImage(img, dx, dy, dw, dh);
-            ctx.fillStyle = 'rgba(0,0,0,.34)'; ctx.fillRect(0, 0, W, H);
-            const top = idx === 0; const fs = top ? 86 : 62;
+            const ir = img.naturalWidth / img.naturalHeight, cr = W / H;
+            // ФОН: фото cover + блюр + затемнение (заполняет кадр)
+            let bw2 = W, bh2 = H, bx2 = 0, by2 = 0;
+            if (ir > cr) { bh2 = H; bw2 = H * ir; bx2 = (W - bw2) / 2; } else { bw2 = W; bh2 = W / ir; by2 = (H - bh2) / 2; }
+            ctx.filter = 'blur(28px) brightness(0.6)'; ctx.drawImage(img, bx2, by2, bw2, bh2); ctx.filter = 'none';
+            ctx.fillStyle = 'rgba(0,0,0,.30)'; ctx.fillRect(0, 0, W, H);
+            // ТОВАР: contain (целиком, не обрезаем голову/детали), по центру
+            let fw = W, fh = H, fx = 0, fy = 0;
+            if (ir > cr) { fw = W; fh = W / ir; fx = 0; fy = (H - fh) / 2; } else { fh = H; fw = H * ir; fy = 0; fx = (W - fw) / 2; }
+            ctx.drawImage(img, fx, fy, fw, fh);
+            // ТЕКСТ: в полосах сверху (хук) / снизу (остальное) — НЕ поверх центра товара
+            const top = idx === 0; const fs = top ? 80 : 58;
             ctx.font = '800 ' + fs + 'px Arial, sans-serif'; ctx.textAlign = 'center';
             const words = String(text).split(' '); const lines = []; let line = '';
-            for (const w of words) { const t = line ? line + ' ' + w : w; if (ctx.measureText(t).width > W * 0.82 && line) { lines.push(line); line = w; } else line = t; }
+            for (const w of words) { const t = line ? line + ' ' + w : w; if (ctx.measureText(t).width > W * 0.84 && line) { lines.push(line); line = w; } else line = t; }
             if (line) lines.push(line);
-            const lh = fs * 1.18; const cy = top ? H * 0.18 : H * 0.5 - lines.length * lh / 2;
+            const lh = fs * 1.16; const blockH = lines.length * lh;
+            const cy = top ? H * 0.13 : H - 0.13 * H - blockH + lh;
+            // подложка-полоса для читаемости
+            ctx.fillStyle = 'rgba(0,0,0,.45)'; ctx.fillRect(0, cy - fs, W, blockH + fs * 0.5);
             lines.forEach((ln, i) => {
-              const y = cy + i * lh; const tw = ctx.measureText(ln).width; const padX = fs * 0.45, padY = fs * 0.22;
-              ctx.fillStyle = '#e11d48'; const bx = W / 2 - tw / 2 - padX, by = y - fs * 0.8, bw = tw + padX * 2, bh = fs + padY * 2;
-              if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(bx, by, bw, bh, 16); ctx.fill(); } else ctx.fillRect(bx, by, bw, bh);
+              const y = cy + i * lh; const tw = ctx.measureText(ln).width; const padX = fs * 0.4, padY = fs * 0.18;
+              ctx.fillStyle = '#e11d48'; const bx = W / 2 - tw / 2 - padX, by = y - fs * 0.78, bw = tw + padX * 2, bh = fs + padY * 2;
+              if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(bx, by, bw, bh, 14); ctx.fill(); } else ctx.fillRect(bx, by, bw, bh);
               ctx.fillStyle = '#fff'; ctx.fillText(ln, W / 2, y + fs * 0.1);
             });
             slides.push(cv.toDataURL('image/jpeg', 0.85).split(',')[1]);
