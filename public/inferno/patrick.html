@@ -1096,15 +1096,20 @@ function patrick() {
             const statEp = route === 'ai_avatar' ? '/api/factory/avatar-status/' : (isFal ? '/api/factory/video-fal-status/' : '/api/lab/video-storyboard-status/');
             let v = await this._critiqueUrl(s.gen.url, kind, brief + ' · товар ' + art);
             s.gen.critScore = v.error ? null : v.score;
-            if (!v.error && v.score < 7 && v.regen_hint) {
-              s.gen.status = 'ОТК брак (' + v.score + ') → перегенерю с правкой…';
+            // переделка до 3 раз с правкой ОТК (стоп, если стало ≥7)
+            let attempt = 0;
+            while (!v.error && v.score < 7 && v.regen_hint && attempt < 3) {
+              attempt++;
+              s.gen.status = 'ОТК брак (' + v.score + ') → переделка ' + attempt + '/3…';
               try {
                 const rd = await (await fetch(genEp, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sku_art: art, brief: brief + ' [fix: ' + v.regen_hint + ']', script, profile: this.profile }) })).json();
-                if (rd.task_id) {
-                  const res2 = await this._pollVideo(statEp + rd.task_id, 5 * 60 * 1000);
-                  if (res2.url) { s.gen.url = res2.url; v = await this._critiqueUrl(s.gen.url, kind, brief + ' · товар ' + art); s.gen.critScore = v.error ? null : v.score; }
-                }
-              } catch (e) {}
+                if (!rd.task_id) break;
+                const res2 = await this._pollVideo(statEp + rd.task_id, 6 * 60 * 1000);
+                if (!res2.url) break;
+                s.gen.url = res2.url;
+                v = await this._critiqueUrl(s.gen.url, kind, brief + ' · товар ' + art);
+                s.gen.critScore = v.error ? null : v.score;
+              } catch (e) { break; }
             }
             // самолечение: видео всё равно плохое и не аватар → надёжный фолбэк на карусель (фото не плывёт)
             if (route !== 'ai_avatar' && (s.gen.critScore == null || s.gen.critScore < 6) && this.imgByArt && this.imgByArt[art]) {
