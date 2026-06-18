@@ -30,10 +30,11 @@ export async function POST(req: NextRequest) {
   }
   if (!imageUrl) return NextResponse.json({ detail: "Нет фото товара (передай image_url или артикул с данными)" }, { status: 400 });
 
-  // preservation-first промпт: сначала сохранить товар, потом движение
-  const prompt = `Keep the product EXACTLY as in the photo — identical shape, proportions, label, logo, colors; do NOT morph, deform, or replace it. ${motion || "Subtle cinematic camera motion: slow push-in with gentle parallax, soft studio light, the product stays centered, crisp and fully intact."}${brief ? ` Mood: ${brief}.` : ""}`;
+  // промпт: выученный/улучшенный (body.prompt) ИЛИ дефолтный preservation-first
+  const prompt = (body.prompt || "").toString().trim() ||
+    `Keep the product EXACTLY as in the photo — identical shape, proportions, label, logo, colors; do NOT morph, deform, or replace it. ${motion || "Subtle cinematic camera motion: slow push-in with gentle parallax, soft studio light, the product stays centered, crisp and fully intact."}${brief ? ` Mood: ${brief}.` : ""}`;
 
   const token = await falVideoSubmit(model, imageUrl, prompt, { duration: body.duration === "10" ? "10" : "5" });
   if (!token) return NextResponse.json({ detail: "FAL не принял задачу (ключ/баланс/модель)" }, { status: 502 });
-  return NextResponse.json({ task_id: "fv." + token, model, image_url: imageUrl });
+  return NextResponse.json({ task_id: "fv." + token, model, image_url: imageUrl, prompt_used: prompt });
 }

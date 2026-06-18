@@ -337,6 +337,18 @@
       <div class="text-[11px] text-gray-400 mt-2">Правило: не суди ролик с &lt;100 показов. Меняй по одному рычагу за раз (хук ИЛИ формат), чтобы понять, что сработало.</div>
     </section>
 
+    <section class="card mb-6" x-show="Object.keys(learnedPrompts).length">
+      <div class="flex items-center justify-between mb-2">
+        <div><div class="sec-h">🧠 Выученные практики</div><div class="sec-sub">промпты, давшие лучший ОТК — завод переиспользует их автоматически</div></div>
+      </div>
+      <template x-for="(lp,route) in learnedPrompts" :key="route">
+        <div class="border border-emerald-100 rounded-lg p-2 text-[11px] bg-emerald-50/40 mb-1.5">
+          <div class="flex items-center gap-2"><span class="pill pill-rose" x-text="route"></span><span class="pill pill-live" x-text="'лучший ОТК ' + lp.score"></span><span class="text-gray-400" x-text="'на товаре ' + (lp.art||'')"></span><button @click="forgetLearned(route)" class="ml-auto text-gray-400 hover:text-red-600">забыть</button></div>
+          <div class="text-gray-600 mt-1 line-clamp-2" x-text="lp.prompt"></div>
+        </div>
+      </template>
+    </section>
+
     <section class="card mb-6">
       <div class="flex items-center justify-between mb-3">
         <div id="dist"><div class="sec-h">🌐 Дистрибуция — аккаунты и расписание</div><div class="sec-sub">реестр аккаунтов по соцсетям · план постинга по дням · UTM для атрибуции переходов на WB</div></div>
@@ -545,8 +557,13 @@ function patrick() {
       try { this.profile = localStorage.getItem('cf_profile') || ''; } catch (e) { this.profile = ''; }
       try { this.mode = localStorage.getItem('cf_mode') || 'operator'; } catch (e) { this.mode = 'operator'; }
       try { const d = await (await fetch('/api/lab/sku-list')).json(); this.imgByArt = {}; (d.items || []).forEach(i => { if (i.art && i.img_url) this.imgByArt[i.art] = i.img_url; }); } catch (e) { this.imgByArt = {}; }
+      try { this.learnedPrompts = JSON.parse(localStorage.getItem('cf_learned') || '{}'); } catch (e) { this.learnedPrompts = {}; }
     },
     imgByArt: {},
+    // выученные лучшие промпты по маршрутам (память лучших практик)
+    learnedPrompts: {},
+    _saveLearned() { try { localStorage.setItem('cf_learned', JSON.stringify(this.learnedPrompts)); } catch (e) {} },
+    forgetLearned(route) { delete this.learnedPrompts[route]; this._saveLearned(); },
     // ── Режим: Оператор (ежедневно) / Настройка (владелец) ──
     mode: 'operator',
     setMode(m) { this.mode = m; try { localStorage.setItem('cf_mode', m); } catch (e) {} window.scrollTo({ top: 0, behavior: 'smooth' }); },
@@ -1069,10 +1086,11 @@ function patrick() {
               else s.gen.status = 'не удалось собрать карусель (фото)';
             } else { s.gen.carouselUrl = '/carousel?article=' + encodeURIComponent(art); s.gen.status = 'нет фото товара — собери карусель вручную'; }
           } else if (route === 'ai_generation_ref') {
-            s.gen.status = 'Kling: динамичное видео…';
-            const d = await (await fetch('/api/factory/video-fal', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sku_art: art, model: 'kling', brief }) })).json();
+            s.gen.status = (this.learnedPrompts['ai_generation_ref'] ? 'Kling (выученный промпт)…' : 'Kling: динамичное видео…');
+            const learned = (this.learnedPrompts['ai_generation_ref'] || {}).prompt || '';
+            const d = await (await fetch('/api/factory/video-fal', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sku_art: art, model: 'kling', brief, prompt: learned }) })).json();
             if (!d.task_id) { s.gen.status = 'Kling: ' + (d.detail || d.error || 'не запустился'); }
-            else { const res = await this._pollVideo('/api/factory/video-fal-status/' + d.task_id, 6 * 60 * 1000); if (res.url) { s.gen.url = res.url; s.gen.status = '✓ готово'; } else s.gen.status = 'ошибка: ' + res.error; }
+            else { s.gen.promptUsed = d.prompt_used || learned; const res = await this._pollVideo('/api/factory/video-fal-status/' + d.task_id, 6 * 60 * 1000); if (res.url) { s.gen.url = res.url; s.gen.status = '✓ готово'; } else s.gen.status = 'ошибка: ' + res.error; }
           } else if (route === 'real_ugc') {
             s.gen.status = 'снять вручную (реальный UGC) — сценарий готов';
           } else { // ai_generation / repurpose_cut / default → Higgsfield (атмосфера)
@@ -1096,20 +1114,38 @@ function patrick() {
             const statEp = route === 'ai_avatar' ? '/api/factory/avatar-status/' : (isFal ? '/api/factory/video-fal-status/' : '/api/lab/video-storyboard-status/');
             let v = await this._critiqueUrl(s.gen.url, kind, brief + ' · товар ' + art);
             s.gen.critScore = v.error ? null : v.score;
-            // переделка до 3 раз с правкой ОТК (стоп, если стало ≥7)
+            // переделка до 3 раз: критик даёт дефекты → УЛУЧШАЕМ промпт → новый рендер. Берём лучший.
+            let curPrompt = s.gen.promptUsed || '';
+            let bestScore = s.gen.critScore || 0, bestUrl = s.gen.url, bestPrompt = curPrompt;
             let attempt = 0;
-            while (!v.error && v.score < 7 && v.regen_hint && attempt < 3) {
+            while (!v.error && v.score < 7 && attempt < 3) {
               attempt++;
-              s.gen.status = 'ОТК брак (' + v.score + ') → переделка ' + attempt + '/3…';
+              s.gen.status = 'ОТК брак (' + v.score + ') → улучшаю промпт, переделка ' + attempt + '/3…';
               try {
-                const rd = await (await fetch(genEp, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sku_art: art, brief: brief + ' [fix: ' + v.regen_hint + ']', script, profile: this.profile }) })).json();
+                let body = { sku_art: art, brief: brief + ' [fix: ' + (v.regen_hint || '') + ']', script, profile: this.profile };
+                if (isFal) {
+                  // переписываем промпт под дефекты ОТК (самообучение)
+                  const imp = await (await fetch('/api/factory/improve-prompt', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ original: curPrompt, defects: v.issues || [], fixes: v.fixes || [], route, context: brief + ' · ' + art }) })).json();
+                  if (imp.prompt) curPrompt = imp.prompt;
+                  body = { sku_art: art, model: 'kling', prompt: curPrompt, brief };
+                }
+                const rd = await (await fetch(genEp, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })).json();
                 if (!rd.task_id) break;
+                if (isFal && rd.prompt_used) curPrompt = rd.prompt_used;
                 const res2 = await this._pollVideo(statEp + rd.task_id, 6 * 60 * 1000);
                 if (!res2.url) break;
                 s.gen.url = res2.url;
                 v = await this._critiqueUrl(s.gen.url, kind, brief + ' · товар ' + art);
                 s.gen.critScore = v.error ? null : v.score;
+                if (s.gen.critScore != null && s.gen.critScore > bestScore) { bestScore = s.gen.critScore; bestUrl = s.gen.url; bestPrompt = curPrompt; }
               } catch (e) { break; }
+            }
+            // взять ЛУЧШИЙ из попыток (не последний)
+            if (bestScore > (s.gen.critScore || 0)) { s.gen.url = bestUrl; s.gen.critScore = bestScore; }
+            // ЗАПОМНИТЬ лучшую практику: высокий балл → сохраняем выигрышный промпт для маршрута
+            if (isFal && bestScore >= 8 && bestPrompt) {
+              const prev = this.learnedPrompts['ai_generation_ref'];
+              if (!prev || bestScore > (prev.score || 0)) { this.learnedPrompts['ai_generation_ref'] = { prompt: bestPrompt, score: bestScore, art, ts: Date.now() }; this._saveLearned(); }
             }
             // самолечение: видео всё равно плохое и не аватар → надёжный фолбэк на карусель (фото не плывёт)
             if (route !== 'ai_avatar' && (s.gen.critScore == null || s.gen.critScore < 6) && this.imgByArt && this.imgByArt[art]) {
