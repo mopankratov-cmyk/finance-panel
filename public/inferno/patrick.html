@@ -134,10 +134,23 @@
           <template x-for="b in reviewQueue" :key="b.ts">
             <div class="card-tight">
               <video x-show="b.url" :src="b.url" controls class="w-full rounded-md border border-gray-100 mb-1.5" style="max-height:300px"></video>
-              <div x-show="b.slides && b.slides.length" class="relative mb-1.5">
-                <img :src="slideSrc(b,0)" class="w-full rounded-md border border-gray-100" style="max-height:300px;object-fit:cover">
-                <span class="absolute top-1 right-1 pill pill-violet" x-text="'🖼 карусель · ' + (b.slides ? b.slides.length : 0) + ' слайдов'"></span>
-                <button @click="dlSlides(b)" class="absolute bottom-1 right-1 text-[10px] px-1.5 py-0.5 rounded bg-white/90 text-gray-700">скачать все</button>
+              <div x-show="b.slides && b.slides.length" class="relative mb-1.5 select-none"
+                   @touchstart="b._tsx = $event.changedTouches[0].clientX"
+                   @touchend="if (Math.abs($event.changedTouches[0].clientX - (b._tsx||0)) > 30) slideStep(b, ($event.changedTouches[0].clientX - (b._tsx||0)) < 0 ? 1 : -1)">
+                <img :src="slideSrc(b, b.si||0)" @click="slideStep(b,1)" class="w-full rounded-md border border-gray-100 cursor-pointer" style="max-height:340px;object-fit:contain;background:#faf7f8">
+                <span class="absolute top-1 right-1 pill pill-violet" x-text="'🖼 ' + ((b.si||0)+1) + '/' + (b.slides ? b.slides.length : 0)"></span>
+                <template x-if="b.slides && b.slides.length > 1">
+                  <div>
+                    <button @click="slideStep(b,-1)" class="absolute left-1 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full bg-white/85 hover:bg-white text-gray-800 shadow flex items-center justify-center text-base leading-none">‹</button>
+                    <button @click="slideStep(b,1)" class="absolute right-1 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full bg-white/85 hover:bg-white text-gray-800 shadow flex items-center justify-center text-base leading-none">›</button>
+                    <div class="absolute bottom-1.5 left-1/2 -translate-x-1/2 flex gap-1">
+                      <template x-for="(sl,i) in b.slides" :key="i">
+                        <button @click="b.si=i" class="w-1.5 h-1.5 rounded-full transition-colors" :class="(b.si||0)===i ? 'bg-rose-500' : 'bg-white/80 ring-1 ring-black/10'"></button>
+                      </template>
+                    </div>
+                  </div>
+                </template>
+                <button @click="dlSlides(b)" title="скачать все слайды" class="absolute bottom-1 right-1 text-[11px] px-1.5 py-0.5 rounded bg-white/85 hover:bg-white text-gray-600">⤓</button>
               </div>
               <div class="text-[12px] font-medium leading-tight" x-text="b.hook"></div>
               <div class="text-[10px] text-gray-400 mt-1"><span class="pill pill-rose" x-text="b.route"></span> · <span x-text="b.art"></span>
@@ -655,6 +668,7 @@ function patrick() {
     get reviewQueue() { return this.bank.filter(b => b.status === 'review' && (b.url || (b.slides && b.slides.length)) && (b.critScore == null || b.critScore >= 5)).sort((a, z) => (z.critScore || 0) - (a.critScore || 0)); },
     get approvedQueue() { return this.bank.filter(b => b.status === 'approved' && (b.url || (b.slides && b.slides.length))); },
     slideSrc(b, i) { return b.slides && b.slides[i] ? 'data:image/jpeg;base64,' + b.slides[i] : ''; },
+    slideStep(b, dir) { const n = (b.slides || []).length; if (!n) return; b.si = (((b.si || 0) + dir) % n + n) % n; },
     dlSlides(b) { (b.slides || []).forEach((sl, i) => { const a = document.createElement('a'); a.href = 'data:image/jpeg;base64,' + sl; a.download = (b.art || 'slide') + '-' + (i + 1) + '.jpg'; a.click(); }); },
     opApprove(b) { const i = this.bank.findIndex(x => x.ts === b.ts); if (i >= 0) { this.bank[i].status = 'approved'; this._saveBank(); } },
     opReject(b) { const i = this.bank.findIndex(x => x.ts === b.ts); if (i >= 0) this.delBank(i); },
