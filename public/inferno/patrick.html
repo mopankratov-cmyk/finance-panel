@@ -263,6 +263,10 @@
                     <div x-show="vid.busy || vid.status" class="text-[11px] text-gray-500" x-text="vid.status || '⏳ генерю видео…'"></div>
                     <video x-show="vid.url && vid.forIdx===i" :src="vid.url" controls class="mt-1 rounded-lg border border-gray-200" style="max-height:320px"></video>
                   </div>
+                  <div x-show="ugc.forIdx===i" class="mt-2">
+                    <div x-show="ugc.busy || ugc.status" class="text-[11px] text-gray-500" x-text="ugc.status || '⏳ UGC-актёр…'"></div>
+                    <video x-show="ugc.url && ugc.forIdx===i" :src="ugc.url" controls class="mt-1 rounded-lg border border-gray-200" style="max-height:320px"></video>
+                  </div>
                   <div x-show="rep.forIdx===i" class="mt-2">
                     <div x-show="rep.busy" class="text-[11px] text-gray-400">⏳ SMM размножает в посты…</div>
                     <template x-for="(p,pi) in rep.posts" :key="pi">
@@ -284,6 +288,7 @@
                   <button @click="expandScenario(s,i)" :disabled="sc.busy" class="btn btn-ghost text-[11px]">→ сценарий</button>
                   <button @click="produce(s,i)" :disabled="prod.busy" class="btn btn-ghost text-[11px]">🎬 как снимать</button>
                   <button @click="makeVideo(s,i)" :disabled="vid.busy" class="btn btn-ghost text-[11px]">🎥 видео</button>
+                  <button @click="makeUGC(s,i)" :disabled="ugc.busy" title="AI UGC-актёр с товаром (Creatify) — нужен ключ" class="btn btn-ghost text-[11px]">🎭 UGC-актёр</button>
                   <button @click="repurpose(s,i)" :disabled="rep.busy" class="btn btn-ghost text-[11px]">📝 посты</button>
                 </div>
               </div>
@@ -1078,6 +1083,34 @@ function patrick() {
         if (!this.vid.url && !this.vid.status.startsWith('ошибка')) this.vid.status = 'долго — проверь позже';
       } catch (e) { this.vid.status = String(e).slice(0, 100); }
       this.vid.busy = false;
+    },
+    ugc: { busy: false, forIdx: -1, taskId: '', url: '', status: '' },
+    async makeUGC(idea, i) {
+      if (this.ugc.busy) return;
+      const art = this.dir.plan?.target_article || this.orbit.article || '';
+      if (!art) { this.ugc.forIdx = i; this.ugc.status = 'нужен товар (артикул в ТЗ или Трендоскопе)'; return; }
+      this.ugc.busy = true; this.ugc.forIdx = i; this.ugc.url = ''; this.ugc.status = 'Creatify: подбираю актёра + сценарий…';
+      try {
+        // сценарий из плейбука/идеи, если есть
+        const script = (idea.scenario?.shots || []).map(x => x.voiceover).filter(Boolean).join(' ') || idea.hook || idea.concept || '';
+        const r = await fetch('/api/factory/ugc-creatify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sku_art: art, brief: idea.hook || idea.concept, script }) });
+        const d = await r.json();
+        if (!d.task_id) { this.ugc.status = d.detail || d.error || 'не удалось запустить'; this.ugc.busy = false; return; }
+        this.ugc.taskId = d.task_id; this.ugc.status = 'рендер UGC-актёра (≈2-5 мин)…';
+        const deadline = Date.now() + 8 * 60 * 1000;
+        while (Date.now() < deadline) {
+          await new Promise(res => setTimeout(res, 8000));
+          try {
+            const sr = await fetch('/api/factory/ugc-creatify-status/' + this.ugc.taskId);
+            const sd = await sr.json();
+            if (sd.status === 'done' && sd.video_url) { this.ugc.url = sd.video_url; this.ugc.status = '✓ готово (проверь ОТК перед публикацией)'; break; }
+            if (sd.status === 'failed' || sd.error) { this.ugc.status = 'ошибка: ' + (sd.error || 'failed'); break; }
+            this.ugc.status = sd.progress || 'рендер…';
+          } catch (e) {}
+        }
+        if (!this.ugc.url && !this.ugc.status.startsWith('ошибка')) this.ugc.status = 'долго — проверь позже';
+      } catch (e) { this.ugc.status = String(e).slice(0, 100); }
+      this.ugc.busy = false;
     },
     prod: { busy: false, forIdx: -1, data: null },
     async produce(idea, i) {
