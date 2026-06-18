@@ -12,6 +12,13 @@ export async function POST(req: NextRequest) {
   if (!idea) return NextResponse.json({ error: "Нужна идея/сценарий" }, { status: 400 });
   const product: string = (body.product || body.article || "").toString().trim();
   const trend: string = (body.trend_format || "").toString().trim();
+  const pb = body.playbook && typeof body.playbook === "object" ? body.playbook : null;
+  // выжимка плейбука ниши: какие форматы реально заходят + роль AI-рендера (обложка/вставка/нет)
+  const pbHint = pb
+    ? `\nПЛЕЙБУК НИШИ (выбери формат из РЕАЛЬНО залетающих):\n` +
+      (Array.isArray(pb.winning_formats) ? pb.winning_formats.slice(0, 5).map((f: Record<string, unknown>) => `• ${f.name} [engagement: ${f.engagement || "?"}; нужен человек: ${f.needs_human ? "да" : "нет"}; роль рендера: ${f.render_role || "?"}]`).join("\n") : "") +
+      `\nПРАВИЛО: если у подходящего формата render_role = "нет" или начинается с "кадр-вставка"/"обложка" — НЕ делай AI-видео целым роликом (route ≠ ai_generation_ref), бери slideshow/repurpose_cut/real_ugc (рендер пойдёт обложкой/вставкой). ai_generation_ref только если render_role прямо допускает видео целиком.`
+    : "";
   const av = body.available || {};
   const availability = `есть фото товара: ${av.photos ? "да" : "нет/неизвестно"}; есть реальная видеосъёмка: ${av.footage ? "да" : "нет"}; AI-аватар разрешён: ${av.avatar === false ? "нет" : "да"}`;
 
@@ -37,7 +44,7 @@ export async function POST(req: NextRequest) {
 6. Сомневаешься → slideshow (безопасно) или ai_generation_ref (если хочется видео-движения).
 Верни СТРОГО JSON: {"route":"slideshow|ai_generation_ref|ai_avatar|ai_generation|repurpose_cut|real_ugc","tool":"конкретный инструмент","why":"кратко","needs":"что нужно","alt_route":"запасной","cost":"low|medium|high"}. Только JSON.`;
 
-  const user = `Идея/сценарий: «${idea}». Товар: ${product || "—"}. Тренд-формат: ${trend || "не указан"}. Что есть: ${availability}. Реши способ производства.`;
+  const user = `Идея/сценарий: «${idea}». Товар: ${product || "—"}. Тренд-формат: ${trend || "не указан"}. Что есть: ${availability}.${pbHint} Реши способ производства.`;
 
   try {
     const res = await client.messages.create({ model: MODEL, max_tokens: 600, system: sys, messages: [{ role: "user", content: user }] });

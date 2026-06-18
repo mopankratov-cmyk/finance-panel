@@ -88,6 +88,36 @@
           <button @click="opCreate()" :disabled="op.busy || !op.art" class="btn btn-primary text-base px-6 py-3 self-end" x-text="op.busy ? ('⏳ ' + op.step) : '✨ Сделать контент'"></button>
         </div>
         <div x-show="!profile" class="text-[12px] text-amber-700 mt-2">💡 Заполни «Профиль бренда» в Настройке — тексты станут в твоём стиле.</div>
+        <!-- Шаг 0 — маркетолог изучает нишу (обучение перед генерацией) -->
+        <div x-show="op.art" class="mt-3 pt-3 border-t border-rose-100">
+          <template x-if="activePb(op.art)">
+            <div class="text-[12px]">
+              <div class="flex items-center gap-2 flex-wrap">
+                <span class="pill pill-live">🧠 ниша изучена</span>
+                <span class="text-gray-600 flex-1" x-text="(activePb(op.art).summary||'').slice(0,140)"></span>
+                <button @click="studyNiche(op.art)" :disabled="pb.busy" class="text-[11px] text-sky-600">пересобрать</button>
+                <button @click="forgetPlaybook(op.art)" class="text-[11px] text-gray-400">забыть</button>
+              </div>
+              <div class="flex gap-1 flex-wrap mt-1.5">
+                <template x-for="f in (activePb(op.art).winning_formats||[]).slice(0,4)" :key="f.name">
+                  <span class="pill pill-violet text-[10px]" x-text="(f.engagement==='высокий'?'🔥 ':'') + f.name"></span>
+                </template>
+              </div>
+            </div>
+          </template>
+          <template x-if="!activePb(op.art)">
+            <div class="flex items-center gap-2 flex-wrap text-[12px]">
+              <template x-if="!pbJobs[op.art]">
+                <button @click="studyNiche(op.art)" :disabled="pb.busy" class="btn btn-ghost text-[12px] py-1.5 px-3" x-text="pb.busy && pb.art===op.art ? '⏳ '+pb.msg : '🔬 Изучить нишу (Orbit ~15-20 мин)'"></button>
+              </template>
+              <template x-if="pbJobs[op.art]">
+                <button @click="buildPlaybook(op.art)" :disabled="pb.busy" class="btn btn-primary text-[12px] py-1.5 px-3" x-text="pb.busy && pb.art===op.art ? '⏳ '+pb.msg : '🧩 Собрать плейбук (Orbit запущен)'"></button>
+              </template>
+              <span class="text-gray-500">маркетолог изучит, что реально залетает, прежде чем делать ролики</span>
+            </div>
+          </template>
+          <div x-show="pb.msg && pb.art===op.art" class="text-[11px] mt-1" :class="pb.err ? 'text-rose-600' : 'text-gray-500'" x-text="pb.msg"></div>
+        </div>
         <div x-show="op.log" class="text-[12px] text-gray-600 mt-2 whitespace-pre-line" x-text="op.log"></div>
       </section>
 
@@ -558,6 +588,8 @@ function patrick() {
       try { this.mode = localStorage.getItem('cf_mode') || 'operator'; } catch (e) { this.mode = 'operator'; }
       try { const d = await (await fetch('/api/lab/sku-list')).json(); this.imgByArt = {}; (d.items || []).forEach(i => { if (i.art && i.img_url) this.imgByArt[i.art] = i.img_url; }); } catch (e) { this.imgByArt = {}; }
       try { this.learnedPrompts = JSON.parse(localStorage.getItem('cf_learned') || '{}'); } catch (e) { this.learnedPrompts = {}; }
+      try { this.playbooks = JSON.parse(localStorage.getItem('cf_playbooks') || '{}'); } catch (e) { this.playbooks = {}; }
+      try { this.pbJobs = JSON.parse(localStorage.getItem('cf_pbjobs') || '{}'); } catch (e) { this.pbJobs = {}; }
     },
     imgByArt: {},
     // имя товара по артикулу — даём видео-промпт-инженеру понять форму товара
@@ -566,6 +598,42 @@ function patrick() {
     learnedPrompts: {},
     _saveLearned() { try { localStorage.setItem('cf_learned', JSON.stringify(this.learnedPrompts)); } catch (e) {} },
     forgetLearned(route) { delete this.learnedPrompts[route]; this._saveLearned(); },
+    // ── Маркетолог: плейбуки ниш (обучение перед генерацией). Ключ = артикул ──
+    playbooks: {},   // art → playbook
+    pbJobs: {},      // art → { jobId, ts } пока Orbit идёт
+    pb: { busy: false, art: '', msg: '', err: false },
+    _savePlaybooks() { try { localStorage.setItem('cf_playbooks', JSON.stringify(this.playbooks)); localStorage.setItem('cf_pbjobs', JSON.stringify(this.pbJobs)); } catch (e) {} },
+    activePb(art) { return this.playbooks[art] || null; },
+    forgetPlaybook(art) { delete this.playbooks[art]; this._savePlaybooks(); },
+    // шаг 1: запустить разбор ниши (Virlo Orbit) под товар
+    async studyNiche(art) {
+      art = (art || this.op.art || this.dir.plan?.target_article || this.orbit.article || '').trim();
+      if (!art || this.pb.busy) return;
+      this.pb.busy = true; this.pb.art = art; this.pb.err = false; this.pb.msg = 'запускаю разбор ниши (Orbit ~15-20 мин)…';
+      try {
+        const d = await (await fetch('/api/factory/trends/search', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ article: art, product_name: this._prodName(art) }) })).json();
+        if (d.job_id) { this.pbJobs[art] = { jobId: d.job_id, ts: Date.now() }; this._savePlaybooks(); this.pb.msg = 'Orbit идёт ~15-20 мин. Вернись и нажми «Собрать плейбук».'; }
+        else { this.pb.err = true; this.pb.msg = d.error || 'Virlo не запустил поиск'; }
+      } catch (e) { this.pb.err = true; this.pb.msg = String(e).slice(0, 120); }
+      this.pb.busy = false;
+    },
+    // шаг 2: когда Orbit готов — собрать плейбук и сохранить
+    async buildPlaybook(art) {
+      art = (art || this.pb.art || '').trim();
+      const job = this.pbJobs[art];
+      if (!art || !job || this.pb.busy) return;
+      this.pb.busy = true; this.pb.art = art; this.pb.err = false; this.pb.msg = 'проверяю Orbit…';
+      try {
+        const res = await (await fetch('/api/factory/trends/result', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ job_id: job.jobId }) })).json();
+        if (res.error) { this.pb.err = true; this.pb.msg = res.error; this.pb.busy = false; return; }
+        if (!res.finalized) { this.pb.msg = 'Orbit ещё идёт (' + (res.status || 'pending') + ') — проверь через ~' + (res.retry_after || 60) + 'с'; this.pb.busy = false; return; }
+        this.pb.msg = 'строю плейбук (маркетолог учится)…';
+        const pbr = await (await fetch('/api/factory/niche-playbook', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ job_id: job.jobId, niche: this._prodName(art) || art }) })).json();
+        if (pbr.playbook) { this.playbooks[art] = pbr.playbook; delete this.pbJobs[art]; this._savePlaybooks(); this.pb.msg = '✓ плейбук готов'; }
+        else { this.pb.err = true; this.pb.msg = pbr.error || 'плейбук не собрался'; }
+      } catch (e) { this.pb.err = true; this.pb.msg = String(e).slice(0, 120); }
+      this.pb.busy = false;
+    },
     // ── Режим: Оператор (ежедневно) / Настройка (владелец) ──
     mode: 'operator',
     setMode(m) { this.mode = m; try { localStorage.setItem('cf_mode', m); } catch (e) {} window.scrollTo({ top: 0, behavior: 'smooth' }); },
@@ -1060,14 +1128,14 @@ function patrick() {
         s.gen = { route: '', status: 'продюсер выбирает маршрут…', url: '', carouselUrl: '' };
         let route = 'ai_generation';
         try {
-          const pr = await (await fetch('/api/factory/produce', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ idea: brief, product: art, trend_format: s.format || '', available: { photos: true } }) })).json();
+          const pr = await (await fetch('/api/factory/produce', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ idea: brief, product: art, trend_format: s.format || '', available: { photos: true }, playbook: this.activePb(art) }) })).json();
           if (pr.decision?.route) route = pr.decision.route;
         } catch (e) {}
         s.gen.route = route;
         // 2) полный сценарий (озвучка) — #2: сценарий доходит до генератора
         let script = '';
         try {
-          const sr = await (await fetch('/api/factory/scenario', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ article: art, hook: brief, format: s.format || '', profile: this.profile }) })).json();
+          const sr = await (await fetch('/api/factory/scenario', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ article: art, hook: brief, format: s.format || '', profile: this.profile, playbook: this.activePb(art) }) })).json();
           if (sr.scenario) { s.scenario = sr.scenario; script = (sr.scenario.shots || []).map(x => x.voiceover).filter(Boolean).join(' '); }
         } catch (e) {}
         // 3) запуск нужного генератора по маршруту
