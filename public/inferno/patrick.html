@@ -1178,13 +1178,15 @@ function patrick() {
         // 1) продюсер выбирает маршрут
         s.gen = { route: '', status: 'продюсер выбирает маршрут…', url: '', carouselUrl: '' };
         let route = 'ai_generation';
+        let engine = 'kling';
         try {
           const pr = await (await fetch('/api/factory/produce', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ idea: brief, product: art, trend_format: s.format || '', available: { photos: true }, playbook: this.activePb(art) }) })).json();
           if (pr.decision?.route) route = pr.decision.route;
+          if (['kling', 'pika', 'seedance'].includes(pr.decision?.engine)) engine = pr.decision.engine;
         } catch (e) {}
         // аватары убраны из завода: любой залетевший ai_avatar → надёжный маршрут
         if (route === 'ai_avatar') route = (this.imgByArt && this.imgByArt[art]) ? 'slideshow' : 'ai_generation_ref';
-        s.gen.route = route;
+        s.gen.route = route; s.gen.engine = engine;
         // 2) полный сценарий (озвучка) — #2: сценарий доходит до генератора
         let script = '';
         try {
@@ -1204,9 +1206,9 @@ function patrick() {
               else s.gen.status = 'не удалось собрать карусель (фото)';
             } else { s.gen.carouselUrl = '/carousel?article=' + encodeURIComponent(art); s.gen.status = 'нет фото товара — собери карусель вручную'; }
           } else if (route === 'ai_generation_ref') {
-            s.gen.status = (this.learnedPrompts['ai_generation_ref'] ? 'Kling (выученный промпт)…' : 'Kling (ИИ пишет промпт под товар)…');
+            s.gen.status = engine + (this.learnedPrompts['ai_generation_ref'] ? ' (выученный промпт)…' : ' (ИИ пишет промпт под товар)…');
             const learned = (this.learnedPrompts['ai_generation_ref'] || {}).prompt || '';
-            const d = await (await fetch('/api/factory/video-fal', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sku_art: art, model: 'kling', brief, prompt: learned, product_name: this._prodName(art) }) })).json();
+            const d = await (await fetch('/api/factory/video-fal', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sku_art: art, model: engine, brief, prompt: learned, product_name: this._prodName(art) }) })).json();
             if (!d.task_id) { s.gen.status = 'Kling: ' + (d.detail || d.error || 'не запустился'); }
             else { s.gen.promptUsed = d.prompt_used || learned; const res = await this._pollVideo('/api/factory/video-fal-status/' + d.task_id, 6 * 60 * 1000); if (res.url) { s.gen.url = res.url; s.gen.status = '✓ готово'; } else s.gen.status = 'ошибка: ' + res.error; }
           } else if (route === 'real_ugc') {
@@ -1245,7 +1247,7 @@ function patrick() {
                   // переписываем промпт под дефекты ОТК (самообучение)
                   const imp = await (await fetch('/api/factory/improve-prompt', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ original: curPrompt, defects: v.issues || [], fixes: v.fixes || [], route, context: brief + ' · ' + art }) })).json();
                   if (imp.prompt) curPrompt = imp.prompt;
-                  body = { sku_art: art, model: 'kling', prompt: curPrompt, brief };
+                  body = { sku_art: art, model: engine, prompt: curPrompt, brief };
                 }
                 const rd = await (await fetch(genEp, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })).json();
                 if (!rd.task_id) break;
