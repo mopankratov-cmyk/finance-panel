@@ -104,6 +104,15 @@ export async function POST(req: NextRequest) {
     const txt = (res.content as any[]).filter((b) => b.type === "text").map((b) => b.text).join(" ").trim();
     const playbook = extractJson(txt);
     if (!playbook) return NextResponse.json({ error: "пустой плейбук", raw: txt.slice(0, 150) }, { status: 502 });
+    // ID звуков не доверяем модели (галлюцинирует UUID) — подставляем точные по названию из данных
+    if (Array.isArray(playbook.sounds)) {
+      const byTitle = new Map(soundShort.map((s) => [String(s.title || "").toLowerCase().trim(), s]));
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      playbook.sounds = playbook.sounds.map((p: any) => {
+        const src = byTitle.get(String(p?.title || "").toLowerCase().trim());
+        return src ? { ...p, id: src.id, commerce_safe: !!src.commerce } : p;
+      });
+    }
     return NextResponse.json({ playbook });
   } catch (e) {
     return NextResponse.json({ error: String(e).slice(0, 200) }, { status: 502 });
