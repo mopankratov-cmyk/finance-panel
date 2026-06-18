@@ -687,7 +687,14 @@ function patrick() {
       } catch (e) { this.op.log = 'ошибка: ' + String(e).slice(0, 100); }
       this.op.busy = false; this.op.step = '';
     },
-    get reviewQueue() { return this.bank.filter(b => b.status === 'review' && (b.url || (b.slides && b.slides.length)) && (b.critScore == null || b.critScore >= 5)).sort((a, z) => (z.critScore || 0) - (a.critScore || 0)); },
+    get reviewQueue() {
+      return this.bank.filter(b => {
+        if (b.status !== 'review' || !(b.url || (b.slides && b.slides.length))) return false;
+        // аватар: кадры не показывают липсинк/движение → пускаем только с безупречным баллом 8+ (null не проходит)
+        if (b.route === 'ai_avatar') return b.critScore != null && b.critScore >= 8;
+        return b.critScore == null || b.critScore >= 5;
+      }).sort((a, z) => (z.critScore || 0) - (a.critScore || 0));
+    },
     get approvedQueue() { return this.bank.filter(b => b.status === 'approved' && (b.url || (b.slides && b.slides.length))); },
     slideSrc(b, i) { return b.slides && b.slides[i] ? 'data:image/jpeg;base64,' + b.slides[i] : ''; },
     slideStep(b, dir) { const n = (b.slides || []).length; if (!n) return; b.si = (((b.si || 0) + dir) % n + n) % n; },
@@ -1259,9 +1266,11 @@ function patrick() {
               const prev = this.learnedPrompts['ai_generation_ref'];
               if (!prev || bestScore > (prev.score || 0)) { this.learnedPrompts['ai_generation_ref'] = { prompt: bestPrompt, score: bestScore, art, ts: Date.now() }; this._saveLearned(); }
             }
-            // самолечение: видео всё равно плохое и не аватар → надёжный фолбэк на карусель (фото не плывёт)
-            if (route !== 'ai_avatar' && (s.gen.critScore == null || s.gen.critScore < 6) && this.imgByArt && this.imgByArt[art]) {
-              s.gen.status = 'видео не прошло ОТК → собираю карусель…';
+            // самолечение: ролик всё равно плохой → надёжный фолбэк на карусель (фото не плывёт).
+            // аватар судим СТРОЖЕ (порог 8) — кадры не показывают липсинк/движение, где у аватара брак.
+            const failThresh = route === 'ai_avatar' ? 8 : 6;
+            if ((s.gen.critScore == null || s.gen.critScore < failThresh) && this.imgByArt && this.imgByArt[art]) {
+              s.gen.status = (route === 'ai_avatar' ? 'аватар ненадёжен (ОТК по кадрам не видит липсинк)' : 'видео не прошло ОТК') + ' → собираю карусель…';
               const onscreen = (s.scenario?.shots || []).map(x => x.onscreen).filter(Boolean).slice(0, 3);
               const slides = await this._renderCarousel(this.imgByArt[art], [brief, ...onscreen, 'Ищи на WB: ' + art]);
               if (slides.length) {
