@@ -132,7 +132,7 @@
 
       <section id="review" class="card mb-4">
         <div class="flex items-center justify-between mb-2">
-          <div><div class="sec-h">Шаг 2 — одобри лучшее</div><div class="sec-sub">показываем только прошедшее проверку качества (ОТК) · ты решаешь, что публиковать</div></div>
+          <div><div class="sec-h">Шаг 2 — одобри лучшее</div><div class="sec-sub">показываем только прошедшее проверку качества (ОТК) · ты решаешь, что публиковать<span x-show="learnRejects.length" class="text-violet-500" x-text="' · 🧠 завод учится: учтено отклонений — ' + learnRejects.length"></span></div></div>
           <span x-show="reviewQueue.length" class="pill pill-rose" x-text="reviewQueue.length + ' на проверку'"></span>
         </div>
         <div x-show="!reviewQueue.length && !op.busy" class="text-center text-gray-400 italic text-sm py-10">
@@ -168,7 +168,7 @@
               </div>
               <div class="flex gap-1.5 mt-2">
                 <button @click="opApprove(b)" class="flex-1 btn btn-primary text-[13px] py-2">✓ Одобрить</button>
-                <button @click="opReject(b)" title="отклонить" class="btn btn-ghost text-[13px] py-2 px-3">✕</button>
+                <button @click="opReject(b)" title="отклонить — завод запомнит и не будет предлагать похожее" class="btn btn-ghost text-[13px] py-2 px-3">✕</button>
               </div>
             </div>
           </template>
