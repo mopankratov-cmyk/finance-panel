@@ -51,6 +51,9 @@ export async function POST(req: NextRequest) {
   // дедуп по path
   const seen = new Set<string>();
   const uniqImgs = imgs.filter((i) => (seen.has(i.path) ? false : (seen.add(i.path), true)));
+  // слайд «1.*» в наборах карточек — обычно текстовый хедер; отодвигаем в конец, чтобы авто-подбор брал реальное фото
+  const isHeader = (n: string) => /^1\.(png|jpe?g|webp)$/i.test(n);
+  uniqImgs.sort((a, b) => Number(isHeader(a.name)) - Number(isHeader(b.name)));
   const images = uniqImgs.slice(0, 24).map((i) => ({ name: i.name, path: i.path, url: proxy(i.path) }));
   const videos = vids.slice(0, 12).map((v) => ({ name: v.name, path: v.path }));
 
