@@ -10,7 +10,8 @@ export const FAL_VIDEO_MODELS = {
 } as const;
 export type FalVideoModel = keyof typeof FAL_VIDEO_MODELS;
 
-const DEFAULT_NEG = "distortion, morphing, deformed product, changed shape, extra objects, blurry, low quality, warped label";
+// важнейшие термины первыми (модель сильнее весит ранние). Маркеры AI-слопа из ресёрча 2026.
+const DEFAULT_NEG = "mirrored text, warped label, deformed product, deformed packaging, melted edges, floating product, changed shape, morphing, distortion, blurry, low quality";
 
 function key(): string | null { return process.env.FAL_KEY || null; }
 
