@@ -1611,11 +1611,12 @@ function patrick() {
           else { s.gen.promptUsed = d.prompt_used || learned; const res = await this._pollVideo('/api/factory/video-fal-status/' + d.task_id, 6 * 60 * 1000); if (res.url) { s.gen.url = res.url; s.gen.status = '✓ готово'; } else s.gen.status = 'ошибка: ' + res.error; }
         } else if (route === 'real_ugc') {
           s.gen.status = 'снять вручную (реальный UGC) — сценарий готов';
-        } else { // ai_generation / default → Seedance без референса (Higgsfield убран из завода)
-          s.gen.status = engine + ' (ИИ промпт без референса)…';
-          const d = await (await fetch('/api/factory/video-fal', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sku_art: art, model: engine, brief, product_name: this._prodName(art) }) })).json();
-          if (!d.task_id) { s.gen.status = engine + ': ' + (d.detail || d.error || 'не запустился'); }
-          else { s.gen.promptUsed = d.prompt_used || ''; const res = await this._pollVideo('/api/factory/video-fal-status/' + d.task_id, 6 * 60 * 1000); if (res.url) { s.gen.url = res.url; s.gen.status = '✓ готово'; } else s.gen.status = 'ошибка: ' + res.error; }
+        } else { // ai_generation → Higgsfield (атмосфера/лайфстайл БЕЗ крупного товара — его роль по P0.1)
+          // ai_generation_ref (товар крупно) уже выше → fal.ai; ai_generation = кино-опенер/атмосфера = Higgsfield
+          s.gen.status = 'Higgsfield: атмосферный ролик…';
+          const d = await (await fetch('/api/lab/video-storyboard', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sku_art: art, brief }) })).json();
+          if (!d.task_id) { s.gen.status = 'Higgsfield: ' + (d.detail || d.error || 'не запустился'); }
+          else { const res = await this._pollVideo('/api/lab/video-storyboard-status/' + d.task_id, 4 * 60 * 1000); if (res.url) { s.gen.url = res.url; s.gen.status = '✓ атмосферный ролик готов'; } else s.gen.status = 'ошибка: ' + res.error; }
         }
       } catch (e) { s.gen.status = String(e).slice(0, 100); }
       // 4) ОТК: критик смотрит кадры → видео-брак авто-перегенеривает 1 раз → отдаём человеку
