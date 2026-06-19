@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClaudeClient } from "@/lib/agent/client";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { CONTENT_STANDARD, HOOK_FORMULAS, HOOK_ANTIPATTERNS, DEAI_FILTERS, PROBLEM_STACK, QA_THRESHOLD } from "@/lib/factory/standard";
+import { brandProfile } from "@/lib/factory/brandProfiles";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -17,7 +18,7 @@ export async function POST(req: NextRequest) {
   const count = Math.min(10, Math.max(2, Number(body.count) || 5));
   const brief: string = (body.brief || "").toString().trim();
   const competitorBrief: string = (body.competitor_brief || "").toString().trim();
-  const profile: string = (body.profile || "").toString().trim().slice(0, 2000);
+  let profile: string = (body.profile || "").toString().trim().slice(0, 2000);
   // отклонённое оператором — обучение «что НЕ выпускать» (петля обратной связи с человеком)
   const rejects: string[] = Array.isArray(body.rejects) ? body.rejects.slice(0, 20).map((x: unknown) => String(x)).filter(Boolean) : [];
   const rejHint = rejects.length
@@ -39,6 +40,8 @@ export async function POST(req: NextRequest) {
   }
   const subject = name || article;
   if (!subject) return NextResponse.json({ error: "Нужен артикул или название товара" }, { status: 400 });
+  // профиль не задан вручную → подбираем по БРЕНДУ товара (1 бренд = 1 профиль)
+  if (!profile) profile = brandProfile(article, name);
 
   const client = await createClaudeClient();
   if (!client) return NextResponse.json({ error: "ANTHROPIC_API_KEY не настроен" }, { status: 500 });

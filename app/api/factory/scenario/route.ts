@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClaudeClient } from "@/lib/agent/client";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { DEAI_FILTERS, PROBLEM_STACK } from "@/lib/factory/standard";
+import { brandProfile } from "@/lib/factory/brandProfiles";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -20,7 +21,8 @@ export async function POST(req: NextRequest) {
     if (db) { const { data } = await db.from("product_costs").select("name").eq("article", article).maybeSingle(); name = (data?.name as string) || ""; }
   }
   const format: string = (body.format || "").toString().trim();
-  const profile: string = (body.profile || "").toString().trim().slice(0, 2000);
+  // профиль не задан вручную → подбираем по БРЕНДУ товара (1 бренд = 1 профиль)
+  const profile: string = (body.profile || "").toString().trim().slice(0, 2000) || brandProfile(article, name);
   const pb = body.playbook && typeof body.playbook === "object" ? body.playbook : null;
   // из плейбука ниши: проверенные хуки + покадровая структура лучшего формата + тренд-звук
   let pbHint = "";
