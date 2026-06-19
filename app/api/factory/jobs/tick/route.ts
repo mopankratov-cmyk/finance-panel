@@ -51,7 +51,22 @@ async function runStep(db: SupabaseClient, origin: string, job: FactoryJob): Pro
 
   if (job.step === "scenario") {
     const hookBoost = !!st.hookBoost; // второй проход после слабого хука
-    const sr = await jpost(origin, "/api/factory/scenario", { article: art, hook, hook_boost: hookBoost });
+    // Загружаем скомпилированный плейбук ниши из кеша (niche_playbooks) — без браузерного localStorage.
+    // Даёт сценаристу winning_formats/hooks/anti_patterns из реального Virlo-анализа.
+    let cachedPlaybook: unknown = null;
+    if (!hookBoost) {
+      try {
+        const { nicheFromArticle: nfa } = await import("@/lib/factory/rubric");
+        const { getSupabaseAdmin } = await import("@/lib/supabaseAdmin");
+        const dbP = getSupabaseAdmin();
+        const rn = nfa(art, st.product_name || "");
+        if (dbP && rn) {
+          const { data: pb } = await dbP.from("niche_playbooks").select("playbook").eq("niche", rn).maybeSingle();
+          if (pb?.playbook) cachedPlaybook = pb.playbook;
+        }
+      } catch { /* niche_playbooks не применена → без плейбука */ }
+    }
+    const sr = await jpost(origin, "/api/factory/scenario", { article: art, hook, hook_boost: hookBoost, playbook: cachedPlaybook || undefined });
     const scenario = sr?.scenario || null;
 
     // Storyboard pre-filter: дешёвый текстовый ОТК ДО дорогого рендера (только первый раз).

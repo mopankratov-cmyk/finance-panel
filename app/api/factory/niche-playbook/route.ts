@@ -136,11 +136,11 @@ export async function POST(req: NextRequest) {
         return src ? { ...p, id: src.id, commerce_safe: !!src.commerce } : p;
       });
     }
-    // best-effort: проверенные хуки плейбука → viral_hooks (niche-уровень, mode=null) — чтобы хук-турнир калибровался
+    const rn = nicheFromArticle(article, niche);
+    // best-effort: проверенные хуки плейбука → viral_hooks — чтобы хук-турнир калибровался
     try {
       const db = getSupabaseAdmin();
       if (db && Array.isArray(playbook.hooks) && playbook.hooks.length) {
-        const rn = nicheFromArticle(article, niche);
         const hooks = (playbook.hooks as unknown[]).map((h) => String(h || "").trim()).filter(Boolean).slice(0, 10);
         const { data: existing } = await db.from("viral_hooks").select("hook_text").eq("niche", rn).limit(300);
         const have = new Set(((existing as { hook_text: string }[] | null) ?? []).map((r) => r.hook_text));
@@ -148,6 +148,17 @@ export async function POST(req: NextRequest) {
         if (fresh.length) await db.from("viral_hooks").insert(fresh);
       }
     } catch { /* корпуса ещё нет / не критично */ }
+
+    // best-effort: сохраняем скомпилированный плейбук в niche_playbooks → фоновая очередь может читать его без браузера
+    try {
+      const db = getSupabaseAdmin();
+      if (db && rn) {
+        await db.from("niche_playbooks").upsert({
+          niche: rn, article: article || null, orbit_job_id: jobId || null,
+          playbook, orbit_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+        }, { onConflict: "niche" });
+      }
+    } catch { /* niche_playbooks не применена / не критично */ }
 
     return NextResponse.json({ playbook });
   } catch (e) {
