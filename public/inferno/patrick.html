@@ -429,6 +429,9 @@
                   <div x-show="ugc.forIdx===i" class="mt-2">
                     <div x-show="ugc.busy || ugc.status" class="text-[11px] text-gray-500" x-text="ugc.status || '⏳ UGC-актёр…'"></div>
                     <video x-show="ugc.url && ugc.forIdx===i" :src="ugc.url" controls class="mt-1 rounded-lg border border-gray-200" style="max-height:320px"></video>
+                    <button x-show="ugc.url && ugc.forIdx===i && !hyb.busy" @click="makeHybrid(s,i)" class="btn btn-ghost text-[11px] mt-1" title="U2: склеить актёр-хук + реальные фото товара → гибридный ролик">📦 гибрид с товаром</button>
+                    <div x-show="hyb.forIdx===i && (hyb.busy || hyb.status)" class="text-[11px] text-gray-500 mt-1" x-text="hyb.status || '⏳ гибрид…'"></div>
+                    <video x-show="hyb.url && hyb.forIdx===i" :src="hyb.url" controls class="mt-1 rounded-lg border border-teal-200" style="max-height:320px"></video>
                   </div>
                   <div x-show="rep.forIdx===i" class="mt-2">
                     <div x-show="rep.busy" class="text-[11px] text-gray-400">⏳ SMM размножает в посты…</div>
@@ -1483,6 +1486,27 @@ function patrick() {
         if (!this.ugc.url && !this.ugc.status.startsWith('ошибка')) this.ugc.status = 'долго — проверь позже';
       } catch (e) { this.ugc.status = String(e).slice(0, 100); }
       this.ugc.busy = false;
+    },
+    hyb: { busy: false, forIdx: -1, url: '', status: '' },
+    async makeHybrid(idea, i) {
+      if (this.hyb.busy) return;
+      const art = this.dir.plan?.target_article || this.orbit.article || '';
+      if (!art) { this.hyb.forIdx = i; this.hyb.status = 'нужен артикул товара'; return; }
+      if (!this.ugc.url) { this.hyb.status = 'сначала создай UGC-актёра'; return; }
+      this.hyb.busy = true; this.hyb.forIdx = i; this.hyb.url = ''; this.hyb.status = 'Загружаю фото товара с диска…';
+      try {
+        const dsName = this._prodName(art) || '';
+        const ds = await fetch('/api/factory/disk-source', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ product: dsName, article: art }) });
+        const dsd = await ds.json();
+        const imgs = (dsd.images || []).slice(0, 4).map(im => im.url).filter(Boolean);
+        if (!imgs.length) { this.hyb.status = 'нет фото товара на диске — добавь съёмки в контент-диски'; this.hyb.busy = false; return; }
+        this.hyb.status = `Склеиваю актёр-хук (${Math.round(3)}с) + ${imgs.length} фото товара…`;
+        const r = await fetch('/api/factory/hybrid-compose', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ actor_video_url: this.ugc.url, product_images: imgs, actor_duration_sec: 3, product_sec_per_image: 3, hook: idea.hook || '', article: art }) });
+        const rd = await r.json();
+        if (rd.video_url) { this.hyb.url = rd.video_url; this.hyb.status = `✓ гибрид готов (${rd.duration_sec || '?'}с: актёр + ${rd.product_images || '?'} фото)`; }
+        else this.hyb.status = 'ошибка: ' + (rd.error || '?');
+      } catch (e) { this.hyb.status = String(e).slice(0, 100); }
+      this.hyb.busy = false;
     },
     prod: { busy: false, forIdx: -1, data: null },
     async produce(idea, i) {

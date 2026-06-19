@@ -83,6 +83,60 @@ export async function falMux(videoUrl: string, audioUrl: string, durationSec: nu
   return falCompose(videoUrl, { audioUrl, durationSec });
 }
 
+// Таймлайн из нескольких клипов (видео ИЛИ статичных изображений) — для U2 гибридного монтажа.
+// clips: [{url, type("video"|"image"), durationSec}] — склеиваем последовательно.
+// type="image" → статичный кадр нужной длительности (не оверлей, а full-frame заглушка между клипами).
+// В одну дорожку FAL получает несколько keyframes со смещениями → fal ffmpeg секвенирует их.
+export interface FalTimelineClip { url: string; type: "video" | "image"; durationSec: number }
+export async function falTimeline(
+  clips: FalTimelineClip[],
+  opts?: { audioUrl?: string; maxWaitMs?: number },
+): Promise<{ videoUrl?: string; error?: string }> {
+  const k = key();
+  if (!k) return { error: "FAL_KEY не настроен" };
+  if (!clips.length) return { error: "пустой список клипов" };
+
+  // Строим треки: видео-клипы → один video-трек с keyframes по таймлайну;
+  // image-клипы выставляем как полноэкранные image-треки в нужный временной слот.
+  // Полное наложение не то — FAL compose суммирует треки по z-order, а НЕ конкатенирует.
+  // Поэтому используем один video-трек: video-клипы последовательно, image-клипы — отдельные image-треки
+  // (видео-трек прерывается, image-трек «заполняет» паузу).
+  const videoKeyframes: { timestamp: number; duration: number; url: string }[] = [];
+  const imageKeyframes: { timestamp: number; duration: number; url: string }[] = [];
+  let t = 0;
+  for (const clip of clips) {
+    const d = Math.max(1, Math.round(clip.durationSec));
+    if (clip.type === "video") videoKeyframes.push({ timestamp: t, duration: d, url: clip.url });
+    else imageKeyframes.push({ timestamp: t, duration: d, url: clip.url });
+    t += d;
+  }
+  const totalDur = t;
+  const auth = { Authorization: `Key ${k}` };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const tracks: any[] = [];
+  if (videoKeyframes.length) tracks.push({ id: "v", type: "video", keyframes: videoKeyframes });
+  // каждый image-слот → отдельный image-трек (чтобы не перекрывались)
+  imageKeyframes.forEach((kf, i) => tracks.push({ id: `img${i}`, type: "image", keyframes: [kf] }));
+  if (opts?.audioUrl) tracks.push({ id: "a", type: "audio", keyframes: [{ timestamp: 0, duration: totalDur, url: opts.audioUrl }] });
+  const deadline = Date.now() + (opts?.maxWaitMs || 55000);
+  try {
+    const sub = await fetch(`${QUEUE}fal-ai/ffmpeg-api/compose`, { method: "POST", headers: { ...auth, "Content-Type": "application/json" }, cache: "no-store", body: JSON.stringify({ tracks }), signal: AbortSignal.timeout(25000) });
+    if (!sub.ok) return { error: `fal timeline compose ${sub.status}` };
+    const sj = (await sub.json()) as { response_url?: string };
+    const responseUrl = sj.response_url;
+    if (!responseUrl) return { error: "timeline compose без response_url" };
+    while (Date.now() < deadline) {
+      const st = await fetch(`${responseUrl}/status`, { headers: auth, cache: "no-store", signal: AbortSignal.timeout(15000) });
+      if (st.ok) { const s = (await st.json()) as { status?: string }; if (s.status === "COMPLETED") break; }
+      await new Promise((r) => setTimeout(r, 3000));
+    }
+    const res = await fetch(responseUrl, { headers: auth, cache: "no-store", signal: AbortSignal.timeout(15000) });
+    if (!res.ok) return { error: `timeline result ${res.status}` };
+    const rj = (await res.json()) as { video_url?: string };
+    return rj.video_url ? { videoUrl: rj.video_url } : { error: "timeline без video_url" };
+  } catch (e) { return { error: String(e).slice(0, 120) }; }
+}
+
 // диагностика: сырой ответ FAL на сабмит (статус+тело) — понять 401(ключ)/402-403(баланс)/422(модель)
 export async function falSubmitRaw(model: FalVideoModel, imageUrl: string, prompt: string): Promise<{ ok: boolean; status: number; body: string; hasKey: boolean }> {
   const k = key();
