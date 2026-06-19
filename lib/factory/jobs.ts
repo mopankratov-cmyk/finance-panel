@@ -4,7 +4,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 // пишет состояние, дёргает следующий тик. Лиз защищает от двойной обработки одной джобы.
 
 export type JobStatus = "queued" | "running" | "polling" | "done" | "failed";
-export type JobStep = "produce" | "scenario" | "submit" | "poll" | "otk" | "overlay" | "save" | "done";
+export type JobStep = "produce" | "scenario" | "submit" | "poll" | "otk" | "overlay" | "save" | "assemble" | "compose-submit" | "compose-poll" | "done";
 
 export interface FactoryJob {
   id: string;

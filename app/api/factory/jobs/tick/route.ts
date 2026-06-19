@@ -3,6 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { claimNextJob, saveJob, MAX_STEP_ATTEMPTS, MAX_POLLS, type FactoryJob } from "@/lib/factory/jobs";
 import { extractFrames, overlayPngBase64 } from "@/lib/factory/serverMedia";
+import { shotstackSubmit, shotstackStatus, shotstackReady } from "@/lib/factory/shotstack";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -28,7 +29,11 @@ async function runStep(db: SupabaseClient, origin: string, job: FactoryJob): Pro
     const pr = await jpost(origin, "/api/factory/produce", { idea: hook, product: art, available: { photos: true } });
     if (!pr || !pr.decision) throw new Error("produce без decision: " + (pr?.error || pr?.detail || "?")); // не молчим — иначе джоба «успешна» на сбое
     const engine = ["kling", "pika", "seedance"].includes(pr?.decision?.engine) ? pr.decision.engine : "seedance";
-    await saveJob(db, job.id, { step: "scenario", status: "running", attempts: 0, lease_until: null, state: { ...st, route: pr?.decision?.route || "ai_generation_ref", engine } });
+    const route = pr?.decision?.route || "ai_generation_ref";
+    // реальный хребет (slideshow/repurpose_cut) → Shotstack-сборка; AI-пути → сценарий+fal
+    const ASSEMBLY_ROUTES = ["repurpose_cut", "slideshow"];
+    const nextStep = ASSEMBLY_ROUTES.includes(route) ? "assemble" : "scenario";
+    await saveJob(db, job.id, { step: nextStep, status: "running", attempts: 0, lease_until: null, state: { ...st, route, engine } });
     return;
   }
 
@@ -130,8 +135,70 @@ async function runStep(db: SupabaseClient, origin: string, job: FactoryJob): Pro
     return;
   }
 
+  // ── Factory v2: реальный хребет (slideshow/repurpose_cut) → Shotstack-монтаж ──────────────────
+
+  if (job.step === "assemble") {
+    if (!shotstackReady()) {
+      // SHOTSTACK_API_KEY не задан → откат на AI-путь (scenario → submit → poll)
+      await saveJob(db, job.id, { step: "scenario", status: "running", attempts: 0, lease_until: null, state: { ...st, fallback: "shotstack_missing" } });
+      return;
+    }
+    const a = await jpost(origin, "/api/factory/assemble", { article: art, hook, mode: job.mode, product_name: st.product_name }, 30000);
+    if (!a?.edit_json || !a.block_ids?.length) {
+      // нет реальных ассетов в библиотеке → откат на AI-путь
+      await saveJob(db, job.id, { step: "scenario", status: "running", attempts: 0, lease_until: null, state: { ...st, fallback: a?.error || "no_assets" } });
+      return;
+    }
+    await saveJob(db, job.id, { step: "compose-submit", status: "running", attempts: 0, lease_until: null, state: { ...st, edit_json: a.edit_json, block_ids: a.block_ids, beat_times: a.beat_times || [], composeCount: 0 } });
+    return;
+  }
+
+  if (job.step === "compose-submit") {
+    if (st.render_id) {
+      // рендер уже запущен (ретрай после сбоя сохранения) — НЕ платим за второй Shotstack-рендер
+      await saveJob(db, job.id, { step: "compose-poll", status: "polling", attempts: 0, lease_until: null, state: { ...st, pollCount: st.pollCount || 0 } });
+      return;
+    }
+    const composeCount = (st.composeCount || 0) + 1;
+    if (composeCount > 3) throw new Error("превышен лимит Shotstack-рендеров (3) — стоп для защиты бюджета");
+    await saveJob(db, job.id, { state: { ...st, composeCount } }); // сохраняем до вызова API — не удвоим счётчик при сбое
+    const render_id = await shotstackSubmit(st.edit_json as Record<string, unknown>);
+    if (!render_id) throw new Error("shotstackSubmit вернул null — проверь SHOTSTACK_API_KEY и схему edit_json");
+    await saveJob(db, job.id, { step: "compose-poll", status: "polling", attempts: 0, lease_until: null, state: { ...st, composeCount, render_id, pollCount: 0 } });
+    return;
+  }
+
+  if (job.step === "compose-poll") {
+    await sleep(POLL_WAIT_MS);
+    const pollCount = (st.pollCount || 0) + 1;
+    const s = await shotstackStatus(st.render_id as string);
+    if (s.status === "done" && s.videoUrl) {
+      await saveJob(db, job.id, { step: "otk", status: "running", attempts: 0, lease_until: null, state: { ...st, video_url: s.videoUrl, pollCount } });
+    } else if (s.status === "error") {
+      throw new Error("Shotstack error: " + (s.error || "unknown"));
+    } else if (pollCount >= MAX_POLLS) {
+      throw new Error("Shotstack render timeout (" + pollCount + " тиков)");
+    } else {
+      await saveJob(db, job.id, { status: "polling", attempts: 0, lease_until: null, state: { ...st, pollCount } });
+    }
+    return;
+  }
+
+  // ────────────────────────────────────────────────────────────────────────────────────────────────
+
   if (job.step === "save") {
     const g = await jpost(origin, "/api/factory/gen-save", { video_url: st.video_url, article: art, product_name: st.product_name, hook, route: st.route, engine: st.engine, otk: st.critScore ?? null }, 120000);
+    // Factory v2: сохраняем рецепт сборки (edit_json + block_ids) для воспроизводимости и петли winners
+    if (st.edit_json) {
+      try {
+        await db.from("factory_assemblies").insert({
+          article: art || null, hook, mode: job.mode,
+          edit_json: st.edit_json, block_ids: st.block_ids || [],
+          beat_times: st.beat_times || [], render_id: st.render_id || null,
+          output_url: g?.url || null, otk_score: st.critScore ?? null,
+        });
+      } catch { /* factory_assemblies может ещё не быть (миграция 20260621 не применена) */ }
+    }
     await saveJob(db, job.id, { step: "done", status: "done", lease_until: null, result: { catalog_url: g?.url || null } });
     return;
   }
