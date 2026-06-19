@@ -21,11 +21,17 @@
   .note { background:#052e2b; border:1px solid #134e4a; color:#99f6e4; padding:10px 12px; border-radius:8px; font-size:12px; margin-bottom:16px; }
   .empty { color:#9ca3af; font-size:14px; padding:40px 0; text-align:center; }
   a.nav { color:#818cf8; font-size:12px; text-decoration:none; }
+  .topbar { display:flex; align-items:center; gap:12px; margin-bottom:14px; }
+  .back { display:inline-flex; align-items:center; gap:6px; background:#1f2937; border:1px solid #374151; color:#e5e7eb; font-size:13px; font-weight:600; padding:8px 14px; border-radius:10px; text-decoration:none; cursor:pointer; }
+  .back:hover { background:#374151; }
 </style>
 </head>
 <body>
+<div class="topbar">
+  <a class="back" href="/inferno/patrick.html">← Выйти в кокпит</a>
+</div>
 <h1>🎬 Видео контент-завода</h1>
-<div class="sub">Все генерации из <b>Базы контента</b> — постоянные ссылки (Supabase Storage, не протухают). <a class="nav" href="/inferno/patrick.html">← в кокпит</a></div>
+<div class="sub">Все генерации из <b>Базы контента</b> — постоянные ссылки (Supabase Storage, не протухают).</div>
 <div class="note">✅ Галерея читает Базу контента: каждый ролик, что делает завод, сохраняется сюда навсегда. Старые fal.media-ссылки были временные и удалены — показываем только то, что реально живёт.</div>
 
 <div id="root"><div class="empty">Загружаю Базу контента…</div></div>
