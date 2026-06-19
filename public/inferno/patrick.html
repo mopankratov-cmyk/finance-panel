@@ -66,11 +66,7 @@
     <div class="flex items-center justify-between mb-6 flex-wrap gap-3">
       <div>
         <div class="flex items-center gap-2"><h1 class="text-2xl font-extrabold tracking-tight">Контент-завод</h1></div>
-        <p class="text-sm text-gray-500 mt-1" x-text="mode==='operator' ? 'Создавай контент и одобряй лучшее к публикации' : 'Настройка завода — делается один раз'"></p>
-      </div>
-      <div class="flex gap-1 bg-gray-100 rounded-xl p-1">
-        <button @click="setMode('operator')" title="Ежедневная работа: делать и одобрять контент" class="px-4 py-2 rounded-lg text-sm font-semibold transition-all" :class="mode==='operator' ? 'bg-white shadow text-rose-700' : 'text-gray-500 hover:text-gray-700'">🎬 Оператор</button>
-        <button @click="setMode('setup')" title="Для владельца: настройка завода, делается один раз (аккаунты, токены, профиль)" class="px-4 py-2 rounded-lg text-sm font-semibold transition-all" :class="mode==='setup' ? 'bg-white shadow text-rose-700' : 'text-gray-500 hover:text-gray-700'">⚙ Настройка <span class="opacity-60 font-normal">· владелец</span></button>
+        <p class="text-sm text-gray-500 mt-1">Создавай контент и одобряй лучшее к публикации</p>
       </div>
     </div>
 
@@ -99,7 +95,7 @@
           </div>
           <button @click="opCreate()" :disabled="op.busy || !op.art" class="btn btn-primary text-base px-6 py-3 self-end" x-text="op.busy ? ('⏳ ' + op.step) : '✨ Сделать контент'"></button>
         </div>
-        <div x-show="!profile" class="text-[12px] text-amber-700 mt-2">💡 Заполни «Профиль бренда» в Настройке — тексты станут в твоём стиле.</div>
+        <div x-show="!profile" class="text-[12px] text-amber-700 mt-2">💡 Скажи Claude профиль бренда и аудиторию — тексты станут в твоём стиле.</div>
         <!-- Шаг 0 — маркетолог изучает нишу (обучение перед генерацией) -->
         <div x-show="op.art" class="mt-3 pt-3 border-t border-rose-100">
           <template x-if="activePb(op.art)">
@@ -133,7 +129,7 @@
         <div x-show="op.log" class="text-[12px] text-gray-600 mt-2 whitespace-pre-line" x-text="op.log"></div>
       </section>
 
-      <section class="card mb-4">
+      <section id="review" class="card mb-4">
         <div class="flex items-center justify-between mb-2">
           <div><div class="sec-h">Шаг 2 — одобри лучшее</div><div class="sec-sub">показываем только прошедшее проверку качества (ОТК) · ты решаешь, что публиковать</div></div>
           <span x-show="reviewQueue.length" class="pill pill-rose" x-text="reviewQueue.length + ' на проверку'"></span>
@@ -178,7 +174,7 @@
         </div>
       </section>
 
-      <section class="card mb-6" x-show="approvedQueue.length">
+      <section id="ready" class="card mb-6" x-show="approvedQueue.length">
         <div class="flex items-center justify-between mb-2">
           <div><div class="sec-h">Шаг 3 — публикация</div><div class="sec-sub">одобренное · VK/Telegram — кнопкой, остальное — вручную/через креатора</div></div>
           <span class="pill pill-live" x-text="approvedQueue.length + ' готово'"></span>
@@ -190,7 +186,7 @@
               <div class="flex-1 min-w-0"><div class="truncate text-[12px] font-medium" x-text="b.hook"></div><div class="text-[10px] text-gray-400" x-text="b.art"></div></div>
               <a :href="'/video-overlay?src='+encodeURIComponent(b.url)+'&hook='+encodeURIComponent(b.hook||'')" target="_blank" class="text-[11px] text-violet-600">оверлей</a>
               <a :href="'/uniquizer?src='+encodeURIComponent(b.url)" target="_blank" class="text-[11px] text-rose-600">копии</a>
-              <button @click="scheduleAll(b); setMode('setup'); scrollTo('dist')" class="text-[11px] px-2 py-1 rounded bg-emerald-100 text-emerald-700">в расписание</button>
+              <button @click="scheduleAll(b)" title="запланировать публикацию" class="text-[11px] px-2 py-1 rounded bg-emerald-100 text-emerald-700">в расписание</button>
             </div>
           </template>
         </div>
@@ -632,7 +628,7 @@ function patrick() {
       try { this.accReg = JSON.parse(localStorage.getItem('cf_accounts') || '[]'); } catch (e) { this.accReg = []; }
       try { this.sched = JSON.parse(localStorage.getItem('cf_sched') || '[]'); } catch (e) { this.sched = []; }
       try { this.profile = localStorage.getItem('cf_profile') || ''; } catch (e) { this.profile = ''; }
-      try { this.mode = localStorage.getItem('cf_mode') || 'operator'; } catch (e) { this.mode = 'operator'; }
+      this.mode = 'operator'; // кокпит чисто операторский; владельческая настройка — через чат с Claude
       try { const d = await (await fetch('/api/lab/sku-list')).json(); this.imgByArt = {}; (d.items || []).forEach(i => { if (i.art && i.img_url) this.imgByArt[i.art] = i.img_url; }); } catch (e) { this.imgByArt = {}; }
       try { this.learnedPrompts = JSON.parse(localStorage.getItem('cf_learned') || '{}'); } catch (e) { this.learnedPrompts = {}; }
       try { this.opHelp = localStorage.getItem('cf_help') !== '0'; } catch (e) { this.opHelp = true; }
@@ -1060,7 +1056,7 @@ function patrick() {
       if (!t.length) t.push({ tag: 'ок', tagClass: 'pill-live', title: 'Всё под контролем', detail: 'дай ТЗ Директору и запусти план.' });
       return t;
     },
-    scrollTo(id) { const el = document.getElementById(id); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); },
+    scrollTo(id) { if (id === 'top') { window.scrollTo({ top: 0, behavior: 'smooth' }); return; } const el = document.getElementById(id); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); },
     dir: { task: '', busy: false, plan: null, err: '' },
     run: { busy: false, step: '', ideas: [], approved: 0, err: '' },
     pipe: { busy: false, step: '', log: '', count: 3 },
@@ -1356,13 +1352,9 @@ function patrick() {
     },
     footer: 'Кокпит контент-завода · реальные данные из банка/аккаунтов/расписания (localStorage)',
     nav: [
-      { id:'dashboard', icon:'🏠', label:'Главная', anchor:'top' },
-      { id:'pipeline', icon:'⚡', label:'Конвейер', anchor:'kanban' },
-      { id:'bank', icon:'🎞', label:'Банк', anchor:'bank' },
-      { id:'analytics', icon:'📊', label:'Аналитика', anchor:'analytics' },
-      { id:'dist', icon:'🌐', label:'Дистрибуция', anchor:'dist' },
-      { id:'products', icon:'🛒', label:'Товары', anchor:'products' },
-      { id:'trends', icon:'📈', label:'Тренды', anchor:'trends' },
+      { id:'dashboard', icon:'🏠', label:'Создать контент', anchor:'top' },
+      { id:'review', icon:'✅', label:'На одобрение', anchor:'review' },
+      { id:'ready', icon:'📤', label:'Готово / публикация', anchor:'ready' },
     ],
   }
 }
