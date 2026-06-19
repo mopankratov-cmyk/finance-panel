@@ -69,8 +69,8 @@
         <p class="text-sm text-gray-500 mt-1" x-text="mode==='operator' ? 'Создавай контент и одобряй лучшее к публикации' : 'Настройка завода — делается один раз'"></p>
       </div>
       <div class="flex gap-1 bg-gray-100 rounded-xl p-1">
-        <button @click="setMode('operator')" class="px-4 py-2 rounded-lg text-sm font-semibold transition-all" :class="mode==='operator' ? 'bg-white shadow text-rose-700' : 'text-gray-500 hover:text-gray-700'">🎬 Оператор</button>
-        <button @click="setMode('setup')" class="px-4 py-2 rounded-lg text-sm font-semibold transition-all" :class="mode==='setup' ? 'bg-white shadow text-rose-700' : 'text-gray-500 hover:text-gray-700'">⚙ Настройка</button>
+        <button @click="setMode('operator')" title="Ежедневная работа: делать и одобрять контент" class="px-4 py-2 rounded-lg text-sm font-semibold transition-all" :class="mode==='operator' ? 'bg-white shadow text-rose-700' : 'text-gray-500 hover:text-gray-700'">🎬 Оператор</button>
+        <button @click="setMode('setup')" title="Для владельца: настройка завода, делается один раз (аккаунты, токены, профиль)" class="px-4 py-2 rounded-lg text-sm font-semibold transition-all" :class="mode==='setup' ? 'bg-white shadow text-rose-700' : 'text-gray-500 hover:text-gray-700'">⚙ Настройка <span class="opacity-60 font-normal">· владелец</span></button>
       </div>
     </div>
 
