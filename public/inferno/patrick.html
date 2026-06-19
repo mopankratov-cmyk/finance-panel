@@ -331,9 +331,20 @@
         <div class="mt-3 border-t border-rose-100 pt-3">
           <div class="flex items-center justify-between mb-2 flex-wrap gap-2">
             <div class="text-sm font-semibold">🎬 Копирайтер выдал <span x-text="run.ideas.length"></span> идей <span class="text-[11px] text-gray-400" x-text="'(' + run.approved + ' прошли стандарт)'"></span></div>
-            <button @click="runFull()" :disabled="pipe.busy" class="btn btn-primary text-[12px]" x-text="pipe.busy ? ('⏳ ' + pipe.step) : '▶▶ Прогнать одобренные до роликов'"></button>
+            <div class="flex items-center gap-2 flex-wrap">
+              <button @click="runFull()" :disabled="pipe.busy" class="btn btn-primary text-[12px]" x-text="pipe.busy ? ('⏳ ' + pipe.step) : '▶▶ Прогнать одобренные (во вкладке)'"></button>
+              <button @click="enqueueServer()" :disabled="pipe.busy" class="btn btn-ghost text-[12px]" title="Серверная очередь — можно закрыть вкладку, готовое появится в Базе контента">⚙️ В очередь (фоном)</button>
+              <button @click="loadJobs()" class="btn btn-ghost text-[11px]">🔄 Очередь</button>
+            </div>
           </div>
           <div x-show="pipe.log" class="text-[11px] text-gray-500 mb-2 whitespace-pre-line" x-text="pipe.log"></div>
+          <div x-show="(jobs||[]).length" class="text-[11px] text-gray-500 mb-2">
+            <span class="font-medium">Очередь:</span>
+            <span x-text="'queued ' + (jobsSummary.queued||0) + ' · идёт ' + ((jobsSummary.running||0)+(jobsSummary.polling||0)) + ' · готово ' + (jobsSummary.done||0) + ' · ошибок ' + (jobsSummary.failed||0)"></span>
+            <template x-for="j in (jobs||[]).slice(0,8)" :key="j.id">
+              <div class="ml-2" x-text="'• ' + (j.hook||j.article||'').slice(0,40) + ' — ' + j.status + '/' + j.step + (j.error ? (' (' + String(j.error).slice(0,40) + ')') : '')"></div>
+            </template>
+          </div>
           <div class="space-y-1.5">
             <template x-for="(s,i) in run.ideas" :key="i">
               <div class="flex items-start gap-2 text-[13px] p-2 rounded-lg border" :class="s.verdict==='rework' ? 'border-amber-200 bg-amber-50/40' : 'border-gray-100'">
@@ -835,7 +846,7 @@ function patrick() {
       this.diskBank.loading = true; this.diskBank.loaded = false;
       try {
         const d = await (await fetch('/api/factory/disk-source', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ product: this._prodName(art), article: art }) })).json();
-        this.diskBank.images = (d.images || []).map(i => ({ name: i.name, url: location.origin + i.url }));
+        this.diskBank.images = (d.images || []).map(i => ({ name: i.name, url: i.url }));
         this.diskBank.videos = d.videos || [];
         this.diskBank.note = d.found ? (d.note || '') : '';
         this.diskBank.learned = !!d.learned;
@@ -1278,6 +1289,7 @@ function patrick() {
     dir: { task: '', busy: false, plan: null, err: '' },
     run: { busy: false, step: '', ideas: [], approved: 0, err: '' },
     pipe: { busy: false, step: '', log: '', count: 3 },
+    jobs: [], jobsSummary: {}, // серверная очередь генераций (можно закрыть вкладку)
     tr: { niche: '', raw: '', busy: false, data: null, err: '' },
     async analyzeTrends() {
       if (this.tr.busy) return;
@@ -1427,7 +1439,7 @@ function patrick() {
       else try {
         const ds = await (await fetch('/api/factory/disk-source', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ product: this._prodName(art), article: art }) })).json();
         if (ds.found && Array.isArray(ds.images) && ds.images.length) {
-          realImg = location.origin + ds.images[0].url;
+          realImg = ds.images[0].url;
           s.gen.realSrc = ds.note || ds.source?.label || 'реальная съёмка';
         }
       } catch (e) {}
@@ -1620,6 +1632,29 @@ function patrick() {
         this.pipe.log = pool.map(p => '• ' + (p.hook || p.concept || '').slice(0, 40) + ' — ' + (p.gen?.status || '…')).join('\n');
       }
       this.pipe.busy = false; this.pipe.step = '';
+    },
+    // СЕРВЕРНАЯ очередь: те же идеи, но генерятся БЕЗ вкладки (self-chaining тики на сервере) — кокпит можно закрыть.
+    async enqueueServer() {
+      if (this.pipe.busy) return;
+      const art = this.dir.plan?.target_article || this.orbit.article || '';
+      if (!art) { this.pipe.log = 'нужен артикул (укажи в ТЗ Директору или выбери в Орбите)'; return; }
+      this.pipe.busy = true;
+      if (!this.run.ideas.length) { this.pipe.step = 'идеи…'; await this.runPlan(); }
+      const approved = this.run.ideas.filter(s => s.verdict !== 'rework').slice(0, this.pipe.count);
+      const pool = (approved.length ? approved : this.run.ideas.slice(0, this.pipe.count));
+      const jobs = pool.map(s => ({ article: art, hook: s.hook || s.concept || '' })).filter(j => j.hook);
+      if (!jobs.length) { this.pipe.log = 'нет идей для очереди'; this.pipe.busy = false; this.pipe.step = ''; return; }
+      this.pipe.step = 'ставлю в очередь…';
+      try {
+        const r = await (await fetch('/api/factory/jobs/enqueue', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ jobs }) })).json();
+        this.pipe.log = r.queued ? ('✅ в очереди ' + r.queued + ' — вкладку можно ЗАКРЫТЬ, готовое появится в Базе контента (disk=gen). Прогресс — кнопка «Очередь».') : ('ошибка очереди: ' + (r.error || '?'));
+        this.loadJobs();
+      } catch (e) { this.pipe.log = 'ошибка: ' + String(e).slice(0, 100); }
+      this.pipe.busy = false; this.pipe.step = '';
+    },
+    // Опрос серверной очереди (list-роут заодно воскрешает зависшие цепочки тиков).
+    async loadJobs() {
+      try { const r = await (await fetch('/api/factory/jobs/list')).json(); this.jobs = r.jobs || []; this.jobsSummary = r.summary || {}; } catch (e) {}
     },
     async askDirector() {
       if (!this.dir.task.trim() || this.dir.busy) return;
