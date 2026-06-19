@@ -8,51 +8,48 @@
   * { box-sizing: border-box; }
   body { margin:0; background:#0f0f14; color:#e5e7eb; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; padding:24px; }
   h1 { font-size:22px; margin:0 0 4px; }
-  .sub { color:#9ca3af; font-size:13px; margin-bottom:24px; }
-  h2 { font-size:16px; margin:28px 0 12px; border-bottom:1px solid #2a2a35; padding-bottom:6px; }
-  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:16px; }
+  .sub { color:#9ca3af; font-size:13px; margin-bottom:20px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:16px; }
   .card { background:#1a1a22; border:1px solid #2a2a35; border-radius:12px; overflow:hidden; }
-  video { width:100%; display:block; background:#000; aspect-ratio:9/16; object-fit:cover; }
+  video, img.thumb { width:100%; display:block; background:#000; aspect-ratio:9/16; object-fit:cover; }
   .meta { padding:8px 10px; }
   .label { font-size:12px; font-weight:600; }
   .badge { display:inline-block; font-size:10px; padding:2px 6px; border-radius:5px; margin-top:4px; }
   .ok { background:#064e3b; color:#6ee7b7; } .mid { background:#78350f; color:#fcd34d; } .low { background:#7f1d1d; color:#fca5a5; }
+  .pill { display:inline-block; font-size:10px; padding:2px 6px; border-radius:5px; background:#1e293b; color:#93c5fd; margin-top:4px; }
   .hook { font-size:11px; color:#cbd5e1; margin-top:5px; line-height:1.3; }
-  .note { background:#1e1b4b; border:1px solid #4338ca; color:#c7d2fe; padding:10px 12px; border-radius:8px; font-size:12px; margin-bottom:16px; }
+  .note { background:#052e2b; border:1px solid #134e4a; color:#99f6e4; padding:10px 12px; border-radius:8px; font-size:12px; margin-bottom:16px; }
+  .empty { color:#9ca3af; font-size:14px; padding:40px 0; text-align:center; }
+  a.nav { color:#818cf8; font-size:12px; text-decoration:none; }
 </style>
 </head>
 <body>
 <h1>🎬 Видео контент-завода</h1>
-<div class="sub">Все ролики, что мы сгенерили (Seedance). Ссылки fal.media временные — скачай нужное.</div>
-<div class="note">⚠️ Это страница-просмотр всех видео. В кокпите (Шаг 2) лежит только то, что сделано через кнопку «Сделать контент». Эти — генерились через API для проверки/доставки.</div>
+<div class="sub">Все генерации из <b>Базы контента</b> — постоянные ссылки (Supabase Storage, не протухают). <a class="nav" href="/inferno/patrick.html">← в кокпит</a></div>
+<div class="note">✅ Галерея читает Базу контента: каждый ролик, что делает завод, сохраняется сюда навсегда. Старые fal.media-ссылки были временные и удалены — показываем только то, что реально живёт.</div>
 
-<h2>📅 Контент-план на неделю (1 риллс на группу)</h2>
-<div class="grid" id="plan"></div>
-
-<h2>🗂 Все ролики по группам (по 3 на группу)</h2>
-<div class="grid" id="groups"></div>
+<div id="root"><div class="empty">Загружаю Базу контента…</div></div>
 
 <script>
-  const B = "https://v3b.fal.media/files/b/";
-  const v = (id) => B + id + "_video.mp4";
-  const plan = [
-    { id:"0a9ee873/qbVx7qAwGZ_qGWHd2Mqfs", label:"🔫 Tim Tin — бластер", otk:5, hook:"«Лето без этого — деньги на ветер 💦»" },
-    { id:"0a9ee873/57PZU82v5o-M0gZEi7gJt", label:"👜 CLÉRIN — сумка", otk:8, hook:"«POV: взяла на вечер — и она не убила образ»" },
-    { id:"0a9ee87a/LfFzZeHOclH8vvsw4xPCR", label:"☀️ YOYO — санскрин", otk:3, hook:"«90% берут крем без SPF — и зря»" },
-    { id:"0a9ee871/dZsNJKrt3Vr6tGzx1Fwfe", label:"🧥 NORVIA — ветровка", otk:4, hook:"«Не продует. И выглядит как у неё ☕️»" },
-  ];
-  const groups = [
-    { label:"🛍 Сумки", otk:7, ids:["0a9ed408/OtdBGIwAlqEe52eOG9M6j","0a9ed411/6sHlj9lfXPOCmAPRgBA02","0a9ed41c/6huIBVq-lDH9Zzm1cZHxx"] },
-    { label:"☀️ Санскрин", otk:8, ids:["0a9ed42d/I3zZE_IbqR4T8y4RUjjbC","0a9ed434/HS4J-lCbSZPp6_RRCzfS8","0a9ed43c/141CaC5xMYoHnMqlYf5M7"] },
-    { label:"💄 Макияж", otk:7, ids:["0a9ed442/zV08GVdlmdSdCUD_PXVK6","0a9ed5db/_i3fJNfVhH48_N2138QmB","0a9ee711/h8bUs0Y3xL0Dh7s0eteXA"] },
-    { label:"🔫 Игрушки", otk:7, ids:["0a9ed443/4zDrlboIaUAdJgDX9FLaW","0a9ed5e0/S-jo3Ma-ip7X0HIKbZ8kI","0a9ee711/ERGVu7a5WLTWyr3bh8bzS"] },
-    { label:"🦵 Ортопедия", otk:7, ids:["0a9ed5d9/R0UXbK1nT_r5nQSQl9Koz","0a9ed5e7/K53p9uo7nPOdiPGbUyUvm","0a9ee710/EStq9IebfMcfGARcMcDEN"] },
-    { label:"🩴 Обувь", otk:7, ids:["0a9ed50a/Ceq2sjFyAVgkr30s66t0a","0a9ed5e3/hZKttBJ5pHjvMSzSQxJTj","0a9ee712/PDXv555RVvjvftWBtRmME"] },
-  ];
   const cls = (o) => o>=7?"ok":o>=5?"mid":"low";
-  const card = (url, label, otk, hook) => `<div class="card"><video src="${url}" controls preload="metadata"></video><div class="meta"><div class="label">${label}</div><span class="badge ${cls(otk)}">ОТК ${otk}/10</span>${hook?`<div class="hook">${hook}</div>`:""}<div style="margin-top:6px"><a href="${url}" download style="color:#818cf8;font-size:11px">↓ скачать</a></div></div></div>`;
-  document.getElementById("plan").innerHTML = plan.map(p => card(v(p.id), p.label, p.otk, p.hook)).join("");
-  document.getElementById("groups").innerHTML = groups.flatMap(g => g.ids.map((id,i) => card(v(id), g.label+" · "+(i+1), g.otk, ""))).join("");
+  function card(g){
+    const a = g.analysis || {};
+    const otk = (a.otk!=null) ? `<span class="badge ${cls(a.otk)}">ОТК ${a.otk}/10</span>` : "";
+    const art = g.article ? `<span class="pill">${g.article}</span>` : (g.niche?`<span class="pill">${g.niche}</span>`:"");
+    const hook = (a.hook && a.hook!=='backfill') ? `<div class="hook">${a.hook}</div>` : "";
+    const media = g.kind==='video'
+      ? `<video src="${g.url}" controls preload="metadata"></video>`
+      : `<img class="thumb" src="${g.url}" loading="lazy">`;
+    return `<div class="card">${media}<div class="meta"><div class="label">${g.name||g.article||g.niche||'генерация'}</div>${art} ${otk}${hook}<div style="margin-top:6px"><a class="nav" href="${g.url}" download>↓ скачать</a></div></div></div>`;
+  }
+  fetch('/api/factory/gen-save').then(r=>r.json()).then(d=>{
+    const gens = d.generations || [];
+    const root = document.getElementById('root');
+    if (!gens.length){ root.innerHTML = '<div class="empty">В Базе контента пока нет генераций. Сделай ролик в кокпите — он появится здесь автоматически.</div>'; return; }
+    root.innerHTML = `<div class="sub">Всего в базе: <b>${d.count}</b></div><div class="grid">${gens.map(card).join("")}</div>`;
+  }).catch(()=>{
+    document.getElementById('root').innerHTML = '<div class="empty">Не удалось загрузить Базу контента.</div>';
+  });
 </script>
 </body>
 </html>
