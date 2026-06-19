@@ -34,7 +34,15 @@ export async function POST(req: NextRequest) {
     pbHint =
       `\nПЛЕЙБУК НИШИ (опирайся на РЕАЛЬНО залетающее):` +
       (Array.isArray(pb.hooks) && pb.hooks.length ? `\nРабочие хуки-образцы: ${pb.hooks.slice(0, 5).join(" | ")}` : "") +
-      (chosen ? `\nФормат «${chosen.name}» — покадровая структура: ${(chosen.beats || []).join(" → ")}. Первый кадр: ${chosen.hook || "хук в лоб"}.` : "") +
+      (chosen
+        ? `\nФормат «${chosen.name}»:` +
+          (chosen.structure_by_seconds ? ` Структура по секундам: ${chosen.structure_by_seconds}.` : ` Биты: ${(chosen.beats || []).join(" → ")}.`) +
+          (chosen.hook ? ` Первый кадр-хук: ${chosen.hook}.` : "") +
+          (chosen.retention_mechanism ? ` Механизм удержания: ${chosen.retention_mechanism}.` : "") +
+          (chosen.psycho_trigger ? ` Психо-триггер: ${chosen.psycho_trigger}.` : "") +
+          (chosen.attention_break_point ? ` Перелом внимания: ${chosen.attention_break_point}.` : "") +
+          (chosen.render_role && chosen.render_role !== "нет" ? ` AI-рендер: ${chosen.render_role} (не целый ролик!).` : "")
+        : "") +
       (Array.isArray(pb.anti_patterns) && pb.anti_patterns.length ? `\nНЕ делай: ${pb.anti_patterns.slice(0, 4).join("; ")}` : "") +
       (snd ? `\nТренд-звук под нишу: «${snd.title}»${snd.commerce_safe ? " (коммерч-безопасен)" : " (только органика, не для рекламы)"} — укажи его в поле music.` : "") +
       (pb.cta ? `\nCTA: ${pb.cta}` : "");

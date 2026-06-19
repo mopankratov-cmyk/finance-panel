@@ -26,10 +26,19 @@ export async function POST(req: NextRequest) {
     : "";
   // плейбук ниши (из «Изучить нишу») — РЕАЛЬНО залетающее: на этом строим идеи (research-first)
   const pb = body.playbook && typeof body.playbook === "object" ? body.playbook : null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const fmts: any[] = pb && Array.isArray(pb.winning_formats) ? pb.winning_formats : [];
   const pbHint = pb
     ? `\n\nПЛЕЙБУК НИШИ (данные Virlo — что РЕАЛЬНО залетает; СТРОЙ идеи на этом, адаптируя под товар):` +
       (pb.summary ? `\nСуть: ${String(pb.summary).slice(0, 300)}` : "") +
-      (Array.isArray(pb.winning_formats) && pb.winning_formats.length ? `\nФорматы-победители: ${pb.winning_formats.slice(0, 5).map((f: Record<string, unknown>) => f.name).filter(Boolean).join(" | ")}` : "") +
+      (fmts.length
+        ? `\nФорматы-победители (бери структуру, а не название): ` +
+          fmts.slice(0, 4).map((f) =>
+            `«${f.name}»` +
+            (f.structure_by_seconds ? ` [${String(f.structure_by_seconds).slice(0, 80)}]` : (Array.isArray(f.beats) ? ` [${f.beats.join("→")}]` : "")) +
+            (f.psycho_trigger ? ` (триггер: ${f.psycho_trigger})` : "")
+          ).join(" | ")
+        : "") +
       (Array.isArray(pb.hooks) && pb.hooks.length ? `\nРабочие хуки ниши (адаптируй, не копируй дословно): ${pb.hooks.slice(0, 7).join(" | ")}` : "") +
       (Array.isArray(pb.anti_patterns) && pb.anti_patterns.length ? `\nНЕ делай (анти-паттерны ниши): ${pb.anti_patterns.slice(0, 4).join("; ")}` : "")
     : "";
