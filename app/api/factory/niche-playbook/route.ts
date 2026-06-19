@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClaudeClient } from "@/lib/agent/client";
 import { virloSearchResult } from "@/lib/factory/trendSources";
+import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { nicheFromArticle } from "@/lib/factory/rubric";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -82,7 +84,7 @@ export async function POST(req: NextRequest) {
 {
  "niche": "коротко",
  "summary": "1-2 предложения: что реально заходит",
- "winning_formats": [{"name":"...","engagement":"высокий|средний","hook":"первая фраза 0-1 сек по-русски","beats":["кадр 1","кадр 2","кадр 3"],"needs_human":true|false,"render_role":"где тут AI-рендер: обложка|кадр-вставка|нет"}],
+ "winning_formats": [{"name":"...","engagement":"высокий|средний","hook":"первая фраза 0-1 сек по-русски","hook_type":"pattern_break|curiosity_gap|surprise|problem|demo","beats":["кадр 1","кадр 2","кадр 3"],"structure_by_seconds":"0-2 хук → 2-5 … → 5-10 … → payoff","retention_mechanism":"чем держит досмотр","psycho_trigger":"эмоция/триггер (shock|curiosity|flex|calm)","attention_break_point":"где перелом внимания","needs_human":true|false,"render_role":"где тут AI-рендер: обложка|кадр-вставка|нет"}],
  "hooks": ["5-7 готовых хуков под нишу, по-русски"],
  "sounds": [{"title":"...","id":"...","commerce_safe":true,"note":"метрика"}],
  "anti_patterns": ["что НЕ делать (что выглядит рекламой/скучно)"],
@@ -91,11 +93,31 @@ export async function POST(req: NextRequest) {
 }
 Верни ГОЛЫЙ JSON без markdown-ограждения и без преамбулы. Будь компактным: 3-4 winning_formats, beats ≤3 коротких, hooks ровно 5. Отсортируй форматы по engagement.`;
 
+  // грунтовка на корпусе: реальные примеры залетевшего из viral_videos/viral_hooks (таблицы могут ещё не существовать)
+  let corpusBlock = "";
+  try {
+    const db = getSupabaseAdmin();
+    if (db) {
+      const rn = nicheFromArticle("", niche);
+      const [vv, vh] = await Promise.all([
+        db.from("viral_videos").select("hook_text,format_detected,beat_structure,virality_score").eq("niche", rn).order("virality_score", { ascending: false }).limit(5),
+        db.from("viral_hooks").select("hook_text").eq("niche", rn).order("viability_score", { ascending: false }).limit(8),
+      ]);
+      const vids = (vv.data as Record<string, unknown>[] | null) ?? [];
+      const hks = ((vh.data as { hook_text: string }[] | null) ?? []).map((r) => r.hook_text).filter(Boolean);
+      if (vids.length || hks.length) {
+        corpusBlock = `\nРЕАЛЬНЫЙ КОРПУС (наши данные — строй НА ЭТОМ): ` +
+          (hks.length ? `\nЗалетевшие хуки ниши: ${hks.map((h) => `«${h}»`).join(" | ")}` : "") +
+          (vids.length ? `\nТоп-видео (hook · формат · beats): ${JSON.stringify(vids.map((v) => ({ hook: v.hook_text, format: v.format_detected, beats: v.beat_structure }))).slice(0, 1800)}` : "");
+      }
+    }
+  } catch { /* корпуса ещё нет — плейбук строится только на Orbit */ }
+
   const user = `Ниша: ${niche || "(из данных)"}.
 Темы/форматы (с метрикой): ${JSON.stringify(themes).slice(0, 3500)}
 Виральные тактики: ${JSON.stringify(ad.viral_tactics || []).slice(0, 1200)}
 Тайминг постинга: ${JSON.stringify(ad.timing_analysis || {}).slice(0, 300)}
-Тренд-звуки (коммерч.=commerce, avg_views=средние просмотры): ${JSON.stringify(soundShort).slice(0, 1500)}
+Тренд-звуки (коммерч.=commerce, avg_views=средние просмотры): ${JSON.stringify(soundShort).slice(0, 1500)}${corpusBlock}
 Собери плейбук.`;
 
   try {

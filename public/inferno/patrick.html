@@ -813,6 +813,8 @@ function patrick() {
         if (res.error) { this.pb.err = true; this.pb.msg = res.error; this.pb.busy = false; return; }
         if (!res.finalized) { this.pb.msg = 'Orbit ещё идёт (' + (res.status || 'pending') + ') — проверь через ~' + (res.retry_after || 60) + 'с'; this.pb.busy = false; return; }
         this.pb.msg = 'строю плейбук (маркетолог учится)…';
+        // R3: наполняем виральный корпус результатами Orbit — фоном, не блокируем плейбук (таблицы могут отсутствовать → catch)
+        fetch('/api/factory/corpus/sync-orbit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ job_id: job.jobId, article: art, niche: this._prodName(art) || art }) }).catch(() => {});
         const pbr = await (await fetch('/api/factory/niche-playbook', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ job_id: job.jobId, niche: this._prodName(art) || art }) })).json();
         if (pbr.playbook) { this.playbooks[key] = pbr.playbook; delete this.pbJobs[key]; this._savePlaybooks(); this.pb.msg = '✓ плейбук готов (бренд ' + key + ')'; }
         else { this.pb.err = true; this.pb.msg = pbr.error || 'плейбук не собрался'; }
