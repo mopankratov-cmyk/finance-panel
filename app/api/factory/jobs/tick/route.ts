@@ -26,14 +26,26 @@ async function runStep(db: SupabaseClient, origin: string, job: FactoryJob): Pro
   const hook = job.hook || "";
 
   if (job.step === "produce") {
-    const pr = await jpost(origin, "/api/factory/produce", { idea: hook, product: art, available: { photos: true } });
+    // Проверяем наличие реального материала ДО produce — чтобы маршрутизатор получил точные данные.
+    // Кешируем realImg в state → submit-шаг переиспользует без повторного запроса к диску.
+    let realImg = st.realImg || "";
+    let hasFootage = false;
+    if (!realImg && art) {
+      try {
+        const ds = await jpost(origin, "/api/factory/disk-source", { product: st.product_name || "", article: art }, 20000);
+        const u = ds?.found && Array.isArray(ds.images) && ds.images[0]?.url;
+        if (u) realImg = u.startsWith("http") ? u : origin + u;
+        hasFootage = ds?.found && Array.isArray(ds.videos) && ds.videos.length > 0;
+      } catch { /* нет реального фото — produce решит сам */ }
+    }
+    const pr = await jpost(origin, "/api/factory/produce", { idea: hook, product: art, available: { photos: !!realImg, footage: hasFootage } });
     if (!pr || !pr.decision) throw new Error("produce без decision: " + (pr?.error || pr?.detail || "?")); // не молчим — иначе джоба «успешна» на сбое
     const engine = ["kling", "pika", "seedance"].includes(pr?.decision?.engine) ? pr.decision.engine : "seedance";
     const route = pr?.decision?.route || "ai_generation_ref";
     // реальный хребет (slideshow/repurpose_cut) → Shotstack-сборка; AI-пути → сценарий+fal
     const ASSEMBLY_ROUTES = ["repurpose_cut", "slideshow"];
     const nextStep = ASSEMBLY_ROUTES.includes(route) ? "assemble" : "scenario";
-    await saveJob(db, job.id, { step: nextStep, status: "running", attempts: 0, lease_until: null, state: { ...st, route, engine } });
+    await saveJob(db, job.id, { step: nextStep, status: "running", attempts: 0, lease_until: null, state: { ...st, route, engine, realImg: realImg || null } });
     return;
   }
 
