@@ -40,6 +40,55 @@ export async function overlayPngBase64(hook: string, subs: string[]): Promise<st
   } catch { return null; }
 }
 
+// Server-side карусель: аналог браузерного _renderCarousel (Canvas → sharp+SVG).
+// Блюр+затемнение фон, товар contain по центру, хук-текст сверху/субтитры снизу.
+// Возвращает base64-JPEG строки (формат совместим с gen-save slides[]).
+export async function buildCarouselSlides(imageUrl: string, texts: string[]): Promise<string[]> {
+  try {
+    const r = await fetch(imageUrl, { signal: AbortSignal.timeout(25000) });
+    if (!r.ok) return [];
+    const imgBuf = Buffer.from(await r.arrayBuffer());
+    const W = 1080, H = 1350;
+    const slides: string[] = [];
+    for (const [idx, rawText] of texts.filter(Boolean).slice(0, 5).entries()) {
+      const text = String(rawText);
+      // блюр+затемнение как фон
+      const bgBuf = await sharp(imgBuf)
+        .resize(W, H, { fit: "cover" }).blur(22).jpeg({ quality: 80 }).toBuffer();
+      // полупрозрачный тёмный оверлей (35%)
+      const darkenSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}"><rect width="${W}" height="${H}" fill="rgba(0,0,0,0.38)"/></svg>`;
+      // товар: contain по центру (прозрачный фон → PNG)
+      const productBuf = await sharp(imgBuf)
+        .resize(W, H, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } }).png().toBuffer();
+      // текстовый SVG: хук сверху (idx=0), остальное снизу
+      const isHook = idx === 0;
+      const fs = isHook ? 80 : 58;
+      const lines = wrap(text, Math.floor(W * 0.84 / (fs * 0.58)), 4);
+      const lh = fs * 1.16;
+      const blockH = lines.length * lh;
+      const cy = isHook ? H * 0.14 : H - H * 0.13 - blockH + lh;
+      const bandH = blockH + fs * 0.6;
+      const textEls = lines.map((ln, i) => {
+        const y = Math.round(cy + i * lh + fs * 0.1);
+        return [
+          `<rect x="${Math.round(W * 0.08)}" y="${Math.round(cy + i * lh - fs * 0.78)}" width="${Math.round(W * 0.84)}" height="${Math.round(fs + fs * 0.36)}" rx="14" fill="#e11d48"/>`,
+          `<text x="${W / 2}" y="${y}" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-weight="800" font-size="${fs}" fill="#ffffff">${esc(ln)}</text>`,
+        ].join("");
+      }).join("");
+      const svgText = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}"><rect x="0" y="${Math.round(cy - fs)}" width="${W}" height="${Math.round(bandH)}" fill="rgba(0,0,0,0.45)"/>${textEls}</svg>`;
+      const slide = await sharp(bgBuf)
+        .composite([
+          { input: Buffer.from(darkenSvg), blend: "over" },
+          { input: productBuf, blend: "over" },
+          { input: Buffer.from(svgText), blend: "over" },
+        ])
+        .jpeg({ quality: 86 }).toBuffer();
+      slides.push(slide.toString("base64"));
+    }
+    return slides;
+  } catch { return []; }
+}
+
 // Кадры (first/middle/last) из видео через fal extract-frame → JPEG base64 (как ждёт video-critic).
 export async function extractFrames(videoUrl: string): Promise<string[]> {
   const k = process.env.FAL_KEY;

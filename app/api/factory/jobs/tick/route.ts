@@ -2,7 +2,7 @@ import { NextRequest, NextResponse, after } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { claimNextJob, saveJob, MAX_STEP_ATTEMPTS, MAX_POLLS, type FactoryJob } from "@/lib/factory/jobs";
-import { extractFrames, overlayPngBase64 } from "@/lib/factory/serverMedia";
+import { extractFrames, overlayPngBase64, buildCarouselSlides } from "@/lib/factory/serverMedia";
 import { shotstackSubmit, shotstackStatus, shotstackReady } from "@/lib/factory/shotstack";
 
 export const dynamic = "force-dynamic";
@@ -139,7 +139,35 @@ async function runStep(db: SupabaseClient, origin: string, job: FactoryJob): Pro
 
   if (job.step === "assemble") {
     if (!shotstackReady()) {
-      // SHOTSTACK_API_KEY не задан → откат на AI-путь (scenario → submit → poll)
+      // SHOTSTACK_API_KEY не задан.
+      // slideshow (реальное фото) → сервер-карусель (sharp, без Shotstack, без AI-слопа).
+      // repurpose_cut (видео-монтаж без Shotstack) → откат на AI-путь.
+      if (st.route === "slideshow") {
+        let imgUrl = st.realImg || "";
+        if (!imgUrl) {
+          try {
+            const ds = await jpost(origin, "/api/factory/disk-source", { product: st.product_name || "", article: art }, 20000);
+            if (ds?.found && Array.isArray(ds.images) && ds.images[0]?.url) {
+              const u = ds.images[0].url;
+              imgUrl = u.startsWith("http") ? u : origin + u;
+            }
+          } catch { /* нет фото — упадём в fallback ниже */ }
+        }
+        if (!imgUrl) {
+          // нет реального фото — всё-таки откатываемся на AI (лучше, чем пустой результат)
+          await saveJob(db, job.id, { step: "scenario", status: "running", attempts: 0, lease_until: null, state: { ...st, fallback: "no_image_for_carousel" } });
+          return;
+        }
+        const texts = [hook, st.product_name ? "Ищи на WB: " + art : art].filter(Boolean);
+        const slides = await buildCarouselSlides(imgUrl, texts);
+        if (!slides.length) {
+          await saveJob(db, job.id, { step: "scenario", status: "running", attempts: 0, lease_until: null, state: { ...st, fallback: "carousel_failed" } });
+          return;
+        }
+        const g = await jpost(origin, "/api/factory/gen-save", { slides, article: art, product_name: st.product_name, hook, route: "slideshow", engine: "server-carousel", otk: null }, 90000);
+        await saveJob(db, job.id, { step: "done", status: "done", lease_until: null, result: { catalog_url: g?.url || null, slides: slides.length } });
+        return;
+      }
       await saveJob(db, job.id, { step: "scenario", status: "running", attempts: 0, lease_until: null, state: { ...st, fallback: "shotstack_missing" } });
       return;
     }
