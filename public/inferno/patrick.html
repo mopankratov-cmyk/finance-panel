@@ -183,7 +183,7 @@
                 <button @click="dlSlides(b)" title="скачать все слайды" class="absolute bottom-1 right-1 text-[11px] px-1.5 py-0.5 rounded bg-white/85 hover:bg-white text-gray-600">⤓</button>
               </div>
               <div class="text-[12px] font-medium leading-tight" x-text="b.hook"></div>
-              <div class="text-[10px] text-gray-400 mt-1"><span class="pill pill-rose" x-text="b.route"></span><span x-show="b.engine" class="pill pill-violet ml-1" x-text="b.engine"></span> · <span x-text="b.art"></span>
+              <div class="text-[10px] text-gray-400 mt-1"><span class="pill pill-rose" x-text="b.route"></span><span x-show="b.engine && b.route!=='slideshow'" class="pill pill-violet ml-1" x-text="b.engine"></span> · <span x-text="b.art"></span>
                 <span x-show="b.critScore!=null" class="pill ml-1" :class="b.critScore>=7 ? 'pill-live' : 'pill-warn'" x-text="'ОТК ' + b.critScore + '/10'"></span>
               </div>
               <div class="flex gap-1.5 mt-2">
