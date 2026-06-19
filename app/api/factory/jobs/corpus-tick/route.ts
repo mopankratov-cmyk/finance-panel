@@ -118,13 +118,22 @@ export async function POST(req: NextRequest) {
           is_commerce_safe: typeof analysis.is_commerce_safe === "boolean" ? analysis.is_commerce_safe : true,
         }).eq("id", vid.id);
 
-        // Если хук извлечён — сеем в viral_hooks для хук-турнира (no unique idx → check first)
+        // Если хук извлечён — сеем в viral_hooks для хук-турнира
+        // unique idx на (coalesce(niche,''), hook_text) — миграция 20260624_viral_hooks_unique.sql
         if (analysis.hook_text) {
           const niche = vid.niche || nicheFromArticle("", "");
           try {
-            const { count } = await db.from("viral_hooks").select("id", { count: "exact", head: true }).eq("niche", niche).eq("hook_text", analysis.hook_text);
-            if (!count) await db.from("viral_hooks").insert({ niche, hook_text: analysis.hook_text, viability_score: 2, effectiveness_notes: "from analyze_video" });
-          } catch { /* viral_hooks не применена */ }
+            await db.from("viral_hooks").upsert(
+              { niche, hook_text: analysis.hook_text, viability_score: 2, effectiveness_notes: "from analyze_video" },
+              { onConflict: "niche,hook_text", ignoreDuplicates: true }
+            );
+          } catch {
+            // Если unique idx ещё не применён — fallback: check-then-insert
+            try {
+              const { count } = await db.from("viral_hooks").select("id", { count: "exact", head: true }).eq("niche", niche).eq("hook_text", analysis.hook_text);
+              if (!count) await db.from("viral_hooks").insert({ niche, hook_text: analysis.hook_text, viability_score: 2, effectiveness_notes: "from analyze_video" });
+            } catch { /* viral_hooks не применена */ }
+          }
         }
         analyzed++;
       } catch (e) { log.push(`analyze ${vid.url.slice(0, 50)}: ${String(e).slice(0, 60)}`); }

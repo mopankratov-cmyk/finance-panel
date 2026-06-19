@@ -15,7 +15,7 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
   const article: string = (body.article || "").toString().trim();
   let name: string = (body.product_name || "").toString().trim();
-  const count = Math.min(10, Math.max(2, Number(body.count) || 5));
+  const count = Math.min(15, Math.max(2, Number(body.count) || 10));
   const brief: string = (body.brief || "").toString().trim();
   const competitorBrief: string = (body.competitor_brief || "").toString().trim();
   let profile: string = (body.profile || "").toString().trim().slice(0, 2000);
@@ -89,13 +89,13 @@ ${HOOK_ANTIPATTERNS}
 ${DEAI_FILTERS}
 ${PROBLEM_STACK}
 Сделай разные хуки/форматы/углы — КАЖДЫЙ хук по своей формуле, не повторяй структуру. Хотя бы 1-2 идеи из набора сделай в формате «3 проблемы» (format: "проблема-стек"). Это БЫСТРАЯ идеация — НЕ пиши покадровый сценарий, только идею. Полный сценарий развернём отдельно для выбранных. Оценивай СТРОГО как придирчивый редактор: для КАЖДОГО честно поставь score 1-10 по стандарту, анти-паттернам И фильтрам анти-ИИ; если < ${QA_THRESHOLD} или текст пахнет нейронкой — verdict "rework" и в fix конкретно что исправить (не общими словами).
-Верни СТРОГО JSON-массив (кратко): [{"hook":"первая фраза-зацепка","angle":"какое возражение","concept":"идея ролика 1-2 предложения","caption":"подпись","format":"unboxing|POV|обзор|до/после|лайфхак|проблема-решение","cta":"кратко","score":8,"verdict":"approved|rework","fix":""}]. Только JSON, без преамбулы.`;
+Верни СТРОГО JSON-массив (кратко): [{"hook":"первая фраза-зацепка ≤12 слов","angle":"какое возражение","concept":"идея ролика 1-2 предложения","retention":"0-2 хук→2-5 конфликт→5-10 решение→payoff","caption":"подпись","format":"unboxing|POV|обзор|до/после|лайфхак|проблема-решение|reveal|реакция","cta":"кратко","score":8,"verdict":"approved|rework","fix":""}]. Только JSON, без преамбулы. РАЗНООБРАЗИЕ: минимум 4 разных format и 4 разных hook_type в наборе.`;
 
   const user = `Товар: ${subject}${article ? ` (артикул ${article})` : ""}. Сделай ${count} сценариев.` +
     (brief ? ` Бриф: ${brief}.` : "") + (competitorBrief ? ` Разведка конкурентов: ${competitorBrief}.` : "") + pbHint + winnersHint + rejHint;
 
   try {
-    const res = await client.messages.create({ model: MODEL, max_tokens: 2200, system: sys, messages: [{ role: "user", content: user }] });
+    const res = await client.messages.create({ model: MODEL, max_tokens: 3500, system: sys, messages: [{ role: "user", content: user }] });
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const txt = (res.content as any[]).filter((b) => b.type === "text").map((b) => b.text).join(" ");
     const m = txt.match(/\[[\s\S]*\]/);
