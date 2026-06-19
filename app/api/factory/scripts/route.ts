@@ -18,6 +18,15 @@ export async function POST(req: NextRequest) {
   const brief: string = (body.brief || "").toString().trim();
   const competitorBrief: string = (body.competitor_brief || "").toString().trim();
   const profile: string = (body.profile || "").toString().trim().slice(0, 2000);
+  // плейбук ниши (из «Изучить нишу») — РЕАЛЬНО залетающее: на этом строим идеи (research-first)
+  const pb = body.playbook && typeof body.playbook === "object" ? body.playbook : null;
+  const pbHint = pb
+    ? `\n\nПЛЕЙБУК НИШИ (данные Virlo — что РЕАЛЬНО залетает; СТРОЙ идеи на этом, адаптируя под товар):` +
+      (pb.summary ? `\nСуть: ${String(pb.summary).slice(0, 300)}` : "") +
+      (Array.isArray(pb.winning_formats) && pb.winning_formats.length ? `\nФорматы-победители: ${pb.winning_formats.slice(0, 5).map((f: Record<string, unknown>) => f.name).filter(Boolean).join(" | ")}` : "") +
+      (Array.isArray(pb.hooks) && pb.hooks.length ? `\nРабочие хуки ниши (адаптируй, не копируй дословно): ${pb.hooks.slice(0, 7).join(" | ")}` : "") +
+      (Array.isArray(pb.anti_patterns) && pb.anti_patterns.length ? `\nНЕ делай (анти-паттерны ниши): ${pb.anti_patterns.slice(0, 4).join("; ")}` : "")
+    : "";
 
   if (!name && article) {
     const db = getSupabaseAdmin();
@@ -39,7 +48,7 @@ ${PROBLEM_STACK}
 Верни СТРОГО JSON-массив (кратко): [{"hook":"первая фраза-зацепка","angle":"какое возражение","concept":"идея ролика 1-2 предложения","caption":"подпись","format":"unboxing|POV|обзор|до/после|лайфхак|проблема-решение","cta":"кратко","score":8,"verdict":"approved|rework","fix":""}]. Только JSON, без преамбулы.`;
 
   const user = `Товар: ${subject}${article ? ` (артикул ${article})` : ""}. Сделай ${count} сценариев.` +
-    (brief ? ` Бриф: ${brief}.` : "") + (competitorBrief ? ` Разведка конкурентов: ${competitorBrief}.` : "");
+    (brief ? ` Бриф: ${brief}.` : "") + (competitorBrief ? ` Разведка конкурентов: ${competitorBrief}.` : "") + pbHint;
 
   try {
     const res = await client.messages.create({ model: MODEL, max_tokens: 2200, system: sys, messages: [{ role: "user", content: user }] });

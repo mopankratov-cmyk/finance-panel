@@ -1180,7 +1180,7 @@ function patrick() {
       try {
         const trendBrief = this.tr.data ? (this.tr.data.brief + ' Хуки-победители: ' + (this.tr.data.winning_hooks || []).join('; ')) : '';
         const wb = this.winnersBrief && !this.winnersBrief.startsWith('нет') ? (' ' + this.winnersBrief) : '';
-        const r = await fetch('/api/factory/scripts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ article: art, competitor_brief: (trendBrief + wb).trim(), profile: this.profile }) });
+        const r = await fetch('/api/factory/scripts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ article: art, competitor_brief: (trendBrief + wb).trim(), profile: this.profile, playbook: this.activePb(art) }) });
         const d = await r.json();
         if (d.error) { this.run.err = d.error; } else { this.run.ideas = d.scripts || []; this.run.approved = d.approved_count || 0; }
       } catch (e) { this.run.err = String(e).slice(0, 120); }
