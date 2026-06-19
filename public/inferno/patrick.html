@@ -640,6 +640,12 @@ function patrick() {
       try { this.pbJobs = JSON.parse(localStorage.getItem('cf_pbjobs') || '{}'); } catch (e) { this.pbJobs = {}; }
     },
     imgByArt: {},
+    // фото товара: из sku-list, а если нет — резолвим с сервера (товары не из sku-list, иначе «нет фото»)
+    async _resolveImg(art) {
+      if (this.imgByArt && this.imgByArt[art]) return this.imgByArt[art];
+      try { const d = await (await fetch('/api/lab/product-image?art=' + encodeURIComponent(art))).json(); if (d.image_url) { this.imgByArt[art] = d.image_url; return d.image_url; } } catch (e) {}
+      return '';
+    },
     // имя товара по артикулу — даём видео-промпт-инженеру понять форму товара
     _prodName(art) { try { return ((this.products || []).find(p => p.article === art) || {}).name || ''; } catch (e) { return ''; } },
     // выученные лучшие промпты по маршрутам (память лучших практик)
@@ -1236,7 +1242,7 @@ function patrick() {
         try {
           if (route === 'slideshow') {
             s.gen.status = 'собираю карусель…';
-            const img = this.imgByArt && this.imgByArt[art];
+            const img = await this._resolveImg(art);
             if (img) {
               const onscreen = (s.scenario?.shots || []).map(x => x.onscreen).filter(Boolean).slice(0, 3);
               const texts = [brief, ...onscreen, 'Ищи на WB: ' + art];
@@ -1309,10 +1315,11 @@ function patrick() {
             // самолечение: ролик всё равно плохой → надёжный фолбэк на карусель (фото не плывёт).
             // ролик не прошёл ОТК → надёжный фолбэк на карусель (фото не плывёт)
             const failThresh = 6;
-            if ((s.gen.critScore == null || s.gen.critScore < failThresh) && this.imgByArt && this.imgByArt[art]) {
+            const fbImg = await this._resolveImg(art);
+            if ((s.gen.critScore == null || s.gen.critScore < failThresh) && fbImg) {
               s.gen.status = 'видео не прошло ОТК → собираю карусель…';
               const onscreen = (s.scenario?.shots || []).map(x => x.onscreen).filter(Boolean).slice(0, 3);
-              const slides = await this._renderCarousel(this.imgByArt[art], [brief, ...onscreen, 'Ищи на WB: ' + art]);
+              const slides = await this._renderCarousel(fbImg, [brief, ...onscreen, 'Ищи на WB: ' + art]);
               if (slides.length) {
                 s.gen.slides = slides; s.gen.url = ''; s.gen.route = 'slideshow';
                 const v2 = await this._critiqueFrames(slides, 'product', brief + ' · карусель ' + art);
