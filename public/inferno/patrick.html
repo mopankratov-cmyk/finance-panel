@@ -247,8 +247,9 @@
             </tbody>
           </table>
           <div class="text-[10px] text-amber-600 mt-2">≥35 = исключительный · ≥25 = очень сильный · &lt;25 = рядовой. Скор = ln(просмотры/подписчики)×ln(подписчики).</div>
-          <div class="flex gap-2 mt-2" x-data="{refreshing:false, refreshLog:''}">
-            <button @click="async()=>{refreshing=true; refreshLog=''; try{ const r=await(await fetch('/api/factory/jobs/corpus-tick',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})).json(); refreshLog=(r.ok?('✅ +'+r.new_videos+' видео, проанализировано: '+r.analyzed):(r.error||'?')); if(r.ok) load(); }catch(e){refreshLog=String(e).slice(0,60)} refreshing=false; }" :disabled="refreshing" class="btn btn-ghost text-[11px]" title="Опросить Comet-мониторы и проанализировать новые видео">⟳ Обновить корпус</button>
+          <div class="flex gap-2 flex-wrap mt-2" x-data="{refreshing:false, refreshLog:'', initing:false}">
+            <button @click="async()=>{refreshing=true; refreshLog=''; try{ const r=await(await fetch('/api/factory/jobs/corpus-tick',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})).json(); refreshLog=(r.ok?('✅ +'+r.new_videos+' видео, проанализировано: '+r.analyzed+(r.log&&r.log.length?' | '+r.log[0]:'')):(r.error||'?')); if(r.ok) load(); }catch(e){refreshLog=String(e).slice(0,60)} refreshing=false; }" :disabled="refreshing||initing" class="btn btn-ghost text-[11px]" title="Опросить Comet-мониторы и проанализировать новые видео">⟳ Обновить корпус</button>
+            <button @click="async()=>{initing=true; refreshLog=''; try{ const r=await(await fetch('/api/factory/corpus/init-monitors',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})).json(); refreshLog=(r.ok?('✅ мониторов: '+r.initialized+' (создано '+r.created+')'):(r.error||'?')); }catch(e){refreshLog=String(e).slice(0,60)} initing=false; }" :disabled="refreshing||initing" class="btn btn-ghost text-[11px]" title="Создать Comet-мониторы по нишам (~$1-2 разово, только один раз)">📡 Инициализировать мониторы</button>
             <span x-show="refreshLog" class="text-[11px] text-amber-700 self-center" x-text="refreshLog"></span>
           </div>
         </div>
