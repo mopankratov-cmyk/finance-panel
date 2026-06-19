@@ -116,10 +116,10 @@
           </template>
           <template x-if="!activePb(op.art)">
             <div class="flex items-center gap-2 flex-wrap text-[12px]">
-              <template x-if="!pbJobs[op.art]">
+              <template x-if="!pbJobs[_pbKey(op.art)]">
                 <button @click="studyNiche(op.art)" :disabled="pb.busy" class="btn btn-ghost text-[12px] py-1.5 px-3" x-text="pb.busy && pb.art===op.art ? '⏳ '+pb.msg : '🔬 Изучить нишу (Orbit ~15-20 мин)'"></button>
               </template>
-              <template x-if="pbJobs[op.art]">
+              <template x-if="pbJobs[_pbKey(op.art)]">
                 <button @click="buildPlaybook(op.art)" :disabled="pb.busy" class="btn btn-primary text-[12px] py-1.5 px-3" x-text="pb.busy && pb.art===op.art ? '⏳ '+pb.msg : '🧩 Собрать плейбук (Orbit запущен)'"></button>
               </template>
               <span class="text-gray-500">маркетолог изучит, что реально залетает, прежде чем делать ролики</span>
@@ -694,8 +694,9 @@ function patrick() {
     pbJobs: {},      // art → { jobId, ts } пока Orbit идёт
     pb: { busy: false, art: '', msg: '', err: false },
     _savePlaybooks() { try { localStorage.setItem('cf_playbooks', JSON.stringify(this.playbooks)); localStorage.setItem('cf_pbjobs', JSON.stringify(this.pbJobs)); } catch (e) {} },
-    activePb(art) { return this.playbooks[art] || null; },
-    forgetPlaybook(art) { delete this.playbooks[art]; this._savePlaybooks(); },
+    _pbKey(art) { return this._brandOf(art); }, // плейбук по БРЕНДУ: один разбор ниши → все товары бренда
+    activePb(art) { return this.playbooks[this._pbKey(art)] || null; },
+    forgetPlaybook(art) { delete this.playbooks[this._pbKey(art)]; this._savePlaybooks(); },
     // шаг 1: запустить разбор ниши (Virlo Orbit) под товар
     async studyNiche(art) {
       art = (art || this.op.art || this.dir.plan?.target_article || this.orbit.article || '').trim();
@@ -703,7 +704,7 @@ function patrick() {
       this.pb.busy = true; this.pb.art = art; this.pb.err = false; this.pb.msg = 'запускаю разбор ниши (Orbit ~15-20 мин)…';
       try {
         const d = await (await fetch('/api/factory/trends/search', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ article: art, product_name: this._prodName(art) }) })).json();
-        if (d.job_id) { this.pbJobs[art] = { jobId: d.job_id, ts: Date.now() }; this._savePlaybooks(); this.pb.msg = 'Orbit идёт ~15-20 мин. Вернись и нажми «Собрать плейбук».'; }
+        if (d.job_id) { this.pbJobs[this._pbKey(art)] = { jobId: d.job_id, ts: Date.now() }; this._savePlaybooks(); this.pb.msg = 'Orbit идёт ~15-20 мин (разбор бренда ' + this._pbKey(art) + ').'; }
         else { this.pb.err = true; this.pb.msg = d.error || 'Virlo не запустил поиск'; }
       } catch (e) { this.pb.err = true; this.pb.msg = String(e).slice(0, 120); }
       this.pb.busy = false;
@@ -711,7 +712,8 @@ function patrick() {
     // шаг 2: когда Orbit готов — собрать плейбук и сохранить
     async buildPlaybook(art) {
       art = (art || this.pb.art || '').trim();
-      const job = this.pbJobs[art];
+      const key = this._pbKey(art);
+      const job = this.pbJobs[key];
       if (!art || !job || this.pb.busy) return;
       this.pb.busy = true; this.pb.art = art; this.pb.err = false; this.pb.msg = 'проверяю Orbit…';
       try {
@@ -720,7 +722,7 @@ function patrick() {
         if (!res.finalized) { this.pb.msg = 'Orbit ещё идёт (' + (res.status || 'pending') + ') — проверь через ~' + (res.retry_after || 60) + 'с'; this.pb.busy = false; return; }
         this.pb.msg = 'строю плейбук (маркетолог учится)…';
         const pbr = await (await fetch('/api/factory/niche-playbook', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ job_id: job.jobId, niche: this._prodName(art) || art }) })).json();
-        if (pbr.playbook) { this.playbooks[art] = pbr.playbook; delete this.pbJobs[art]; this._savePlaybooks(); this.pb.msg = '✓ плейбук готов'; }
+        if (pbr.playbook) { this.playbooks[key] = pbr.playbook; delete this.pbJobs[key]; this._savePlaybooks(); this.pb.msg = '✓ плейбук готов (бренд ' + key + ')'; }
         else { this.pb.err = true; this.pb.msg = pbr.error || 'плейбук не собрался'; }
       } catch (e) { this.pb.err = true; this.pb.msg = String(e).slice(0, 120); }
       this.pb.busy = false;
@@ -729,8 +731,8 @@ function patrick() {
     async ensurePlaybook(art) {
       if (this.activePb(art)) return true;
       this.opProg = { idx: 0, total: 0, stage: 'анализ' };
-      if (!this.pbJobs[art]) await this.studyNiche(art);
-      if (!this.pbJobs[art]) return false; // Orbit не запустился (нет ключа Virlo и т.п.)
+      if (!this.pbJobs[this._pbKey(art)]) await this.studyNiche(art);
+      if (!this.pbJobs[this._pbKey(art)]) return false; // Orbit не запустился (нет ключа Virlo и т.п.)
       const deadline = Date.now() + 28 * 60 * 1000; // ждём до ~28 мин (Orbit обычно 15-20)
       while (Date.now() < deadline) {
         if (this.activePb(art)) return true;
