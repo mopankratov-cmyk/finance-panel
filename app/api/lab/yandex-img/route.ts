@@ -3,11 +3,15 @@ import { yaDownloadHref } from "@/lib/yandex/disk";
 
 export const dynamic = "force-dynamic";
 
-// Прокси изображения с Яндекс.Диска по пути (?path=/МАША/.../img.png).
+// Прокси файла с Яндекс.Диска по пути (?path=/МАША/.../img.jpg&key=<публ.ссылка>).
+// key опционален — без него берётся env YANDEX_PUBLIC_KEY. Отдаёт стабильный публичный URL,
+// который FAL/Seedance может фетчить напрямую (в отличие от 302-редиректа Яндекса).
 export async function GET(req: NextRequest) {
-  const path = new URL(req.url).searchParams.get("path");
+  const sp = new URL(req.url).searchParams;
+  const path = sp.get("path");
+  const key = sp.get("key") || undefined;
   if (!path) return new Response("no path", { status: 400 });
-  const href = await yaDownloadHref(path);
+  const href = await yaDownloadHref(path, key);
   if (!href) return new Response("not found", { status: 404 });
   try {
     const r = await fetch(href, { signal: AbortSignal.timeout(30000) });

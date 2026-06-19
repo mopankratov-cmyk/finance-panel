@@ -89,7 +89,7 @@
         <div class="flex items-center gap-3 flex-wrap">
           <div class="flex-1 min-w-[220px]">
             <div class="text-[13px] font-semibold mb-1">Шаг 1 — что продвигаем</div>
-            <select x-model="op.art" class="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg">
+            <select x-model="op.art" @change="resetDiskBank()" class="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg">
               <option value="">— выбери товар —</option>
               <template x-for="p in opProducts" :key="p.article"><option :value="p.article" x-text="((p.name||p.article) + (p.name ? ' · ' + p.article : '')).slice(0,55)"></option></template>
             </select>
@@ -127,6 +127,27 @@
             </div>
           </template>
           <div x-show="pb.msg && pb.art===op.art" class="text-[11px] mt-1" :class="pb.err ? 'text-rose-600' : 'text-gray-500'" x-text="pb.msg"></div>
+        </div>
+        <!-- Реальный контент со съёмки (Яндекс.Диск): фотореал > кроп карточки. Можно закрепить конкретный кадр. -->
+        <div x-show="op.art" class="mt-3 pt-3 border-t border-rose-100">
+          <div class="flex items-center gap-2 flex-wrap text-[12px]">
+            <button @click="loadDiskBank()" :disabled="diskBank.loading" class="btn btn-ghost text-[12px] py-1.5 px-3" x-text="diskBank.loading ? '⏳ ищу съёмку…' : '📸 Контент со съёмки'"></button>
+            <span x-show="diskBank.note" class="text-gray-600" x-text="diskBank.note"></span>
+            <span x-show="diskBank.loaded && !diskBank.images.length && !diskBank.videos.length" class="text-gray-400">съёмки под этот товар нет — рендер пойдёт с карточки</span>
+            <span x-show="diskBank.pinned" class="pill pill-live">📌 кадр закреплён как источник</span>
+          </div>
+          <div x-show="diskBank.images.length" class="grid grid-cols-4 sm:grid-cols-6 gap-1.5 mt-2">
+            <template x-for="(im,ii) in diskBank.images" :key="ii">
+              <button @click="diskBank.pinned = (diskBank.pinned===im.url ? '' : im.url)" type="button" class="relative rounded-lg overflow-hidden border-2 focus:outline-none" :class="diskBank.pinned===im.url ? 'border-rose-500' : 'border-transparent hover:border-rose-200'">
+                <img :src="im.url" loading="lazy" class="w-full aspect-[3/4] object-cover bg-gray-100" />
+                <span x-show="diskBank.pinned===im.url" class="absolute top-0.5 right-0.5 text-[10px] bg-rose-500 text-white rounded px-1">📌</span>
+              </button>
+            </template>
+          </div>
+          <div x-show="diskBank.videos.length" class="mt-2 text-[11px] text-gray-600 flex items-center gap-1 flex-wrap">
+            <span>🎬 Готовых видео со съёмки: <b x-text="diskBank.videos.length"></b> — режутся в риллсы без AI</span>
+            <template x-for="(vd,vi) in diskBank.videos" :key="vi"><span class="pill pill-sky text-[10px]" x-text="vd.name.slice(0,22)"></span></template>
+          </div>
         </div>
         <div x-show="op.log" class="text-[12px] text-gray-600 mt-2 whitespace-pre-line" x-text="op.log"></div>
       </section>
@@ -750,8 +771,22 @@ function patrick() {
     // ── Операторский поток: товар → сделать контент → очередь одобрения ──
     op: { art: '', busy: false, step: '', log: '' },
     // живой прогресс воркфлоу (видно оператору что завод делает прямо сейчас)
-    opProg: { idx: 0, total: 0, stage: '' }, // stage: идеи|продюсер|сценарий|рендер|отк
-    opStages: [{ k: 'анализ', i: '🔬', l: 'Анализ конкурентов' }, { k: 'идеи', i: '💡', l: 'ТЗ / идеи' }, { k: 'продюсер', i: '🎬', l: 'Продюсер' }, { k: 'сценарий', i: '✍️', l: 'Сценарий' }, { k: 'рендер', i: '🎥', l: 'Рендер' }, { k: 'отк', i: '✅', l: 'Проверка ОТК' }],
+    opProg: { idx: 0, total: 0, stage: '' }, // stage: идеи|продюсер|материалы|сценарий|рендер|отк
+    opStages: [{ k: 'анализ', i: '🔬', l: 'Анализ конкурентов' }, { k: 'идеи', i: '💡', l: 'ТЗ / идеи' }, { k: 'материалы', i: '📸', l: 'Материалы (съёмка)' }, { k: 'продюсер', i: '🎬', l: 'Продюсер' }, { k: 'сценарий', i: '✍️', l: 'Сценарий' }, { k: 'рендер', i: '🎥', l: 'Рендер' }, { k: 'отк', i: '✅', l: 'Проверка ОТК' }],
+    // реальный контент со съёмки (Яндекс.Диск): грид кадров + закреплённый кадр-источник
+    diskBank: { loading: false, loaded: false, note: '', images: [], videos: [], pinned: '' },
+    async loadDiskBank() {
+      const art = this.op.art; if (!art) return;
+      this.diskBank.loading = true; this.diskBank.loaded = false;
+      try {
+        const d = await (await fetch('/api/factory/disk-source', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ product: this._prodName(art), article: art }) })).json();
+        this.diskBank.images = (d.images || []).map(i => ({ name: i.name, url: location.origin + i.url }));
+        this.diskBank.videos = d.videos || [];
+        this.diskBank.note = d.found ? (d.note || '') : '';
+      } catch (e) { this.diskBank.note = 'ошибка загрузки диска'; this.diskBank.images = []; this.diskBank.videos = []; }
+      this.diskBank.loading = false; this.diskBank.loaded = true;
+    },
+    resetDiskBank() { this.diskBank = { loading: false, loaded: false, note: '', images: [], videos: [], pinned: '' }; },
     opHelp: true, // онбординг-плашка «3 шага» (сворачивается, состояние помнится)
     // оператору показываем только товары С ФОТО (cost-only без WB-данных контент сделать нельзя). Не оставляем пусто.
     get opProducts() { const w = (this.products || []).filter(p => this.imgByArt && this.imgByArt[p.article]); return w.length ? w : (this.products || []); },
@@ -1293,13 +1328,26 @@ function patrick() {
         this.opProg = { idx: done + 1, total: pool.length, stage: 'продюсер' };
         // 1) продюсер выбирает маршрут
         s.gen = { route: '', status: 'продюсер выбирает маршрут…', url: '', carouselUrl: '' };
+        // 0) есть реальная съёмка модели с товаром? фотореал >> кроп карточки (проверено: NORVIA-куртка)
+        this.opProg.stage = 'материалы';
+        let realImg = this.diskBank.pinned || ''; // оператор закрепил конкретный кадр — он в приоритете
+        if (realImg) { s.gen.realSrc = '📌 закреплённый кадр со съёмки'; }
+        else try {
+          const ds = await (await fetch('/api/factory/disk-source', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ product: this._prodName(art), article: art }) })).json();
+          if (ds.found && Array.isArray(ds.images) && ds.images.length) {
+            realImg = location.origin + ds.images[0].url;
+            s.gen.realSrc = ds.note || ds.source?.label || 'реальная съёмка';
+          }
+        } catch (e) {}
         let route = 'ai_generation';
         let engine = 'seedance';
         try {
-          const pr = await (await fetch('/api/factory/produce', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ idea: brief, product: art, trend_format: s.format || '', available: { photos: true }, playbook: this.activePb(art) }) })).json();
+          const pr = await (await fetch('/api/factory/produce', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ idea: brief, product: art, trend_format: s.format || '', available: { photos: true, footage: !!realImg }, playbook: this.activePb(art) }) })).json();
           if (pr.decision?.route) route = pr.decision.route;
           if (['kling', 'pika', 'seedance'].includes(pr.decision?.engine)) engine = pr.decision.engine;
         } catch (e) {}
+        // есть реальное фото со съёмки → проверенный путь: ВИДЕО из него на Seedance (бьёт всё остальное)
+        if (realImg) { route = 'ai_generation_ref'; engine = 'seedance'; }
         // аватары убраны из завода: любой залетевший ai_avatar → надёжный маршрут
         if (route === 'ai_avatar') route = (this.imgByArt && this.imgByArt[art]) ? 'slideshow' : 'ai_generation_ref';
         s.gen.route = route; s.gen.engine = engine;
@@ -1315,7 +1363,7 @@ function patrick() {
         try {
           if (route === 'slideshow') {
             s.gen.status = 'собираю карусель…';
-            const img = await this._resolveImg(art);
+            const img = realImg || await this._resolveImg(art);
             if (img) {
               const onscreen = (s.scenario?.shots || []).map(x => x.onscreen).filter(Boolean).slice(0, 3);
               const texts = [brief, ...onscreen, 'Ищи на WB: ' + art];
@@ -1324,9 +1372,9 @@ function patrick() {
               else s.gen.status = 'не удалось собрать карусель (фото)';
             } else { s.gen.carouselUrl = '/carousel?article=' + encodeURIComponent(art); s.gen.status = 'нет фото товара — собери карусель вручную'; }
           } else if (route === 'ai_generation_ref') {
-            s.gen.status = engine + (this.learnedPrompts['ai_generation_ref'] ? ' (выученный промпт)…' : ' (ИИ пишет промпт под товар)…');
+            s.gen.status = (realImg ? '📸 из реальной съёмки · ' : '') + engine + (this.learnedPrompts['ai_generation_ref'] ? ' (выученный промпт)…' : ' (ИИ пишет промпт под товар)…');
             const learned = (this.learnedPrompts['ai_generation_ref'] || {}).prompt || '';
-            const d = await (await fetch('/api/factory/video-fal', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sku_art: art, model: engine, brief, prompt: learned, product_name: this._prodName(art) }) })).json();
+            const d = await (await fetch('/api/factory/video-fal', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sku_art: art, image_url: realImg || undefined, model: engine, brief, prompt: learned, product_name: this._prodName(art) }) })).json();
             if (!d.task_id) { s.gen.status = 'Kling: ' + (d.detail || d.error || 'не запустился'); }
             else { s.gen.promptUsed = d.prompt_used || learned; const res = await this._pollVideo('/api/factory/video-fal-status/' + d.task_id, 6 * 60 * 1000); if (res.url) { s.gen.url = res.url; s.gen.status = '✓ готово'; } else s.gen.status = 'ошибка: ' + res.error; }
           } else if (route === 'real_ugc') {
@@ -1366,7 +1414,7 @@ function patrick() {
                   // переписываем промпт под дефекты ОТК (самообучение)
                   const imp = await (await fetch('/api/factory/improve-prompt', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ original: curPrompt, defects: v.issues || [], fixes: v.fixes || [], route, context: brief + ' · ' + art }) })).json();
                   if (imp.prompt) curPrompt = imp.prompt;
-                  body = { sku_art: art, model: engine, prompt: curPrompt, brief };
+                  body = { sku_art: art, image_url: realImg || undefined, model: engine, prompt: curPrompt, brief };
                 }
                 const rd = await (await fetch(genEp, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })).json();
                 if (!rd.task_id) break;
