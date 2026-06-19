@@ -18,6 +18,11 @@ export async function POST(req: NextRequest) {
   const brief: string = (body.brief || "").toString().trim();
   const competitorBrief: string = (body.competitor_brief || "").toString().trim();
   const profile: string = (body.profile || "").toString().trim().slice(0, 2000);
+  // отклонённое оператором — обучение «что НЕ выпускать» (петля обратной связи с человеком)
+  const rejects: string[] = Array.isArray(body.rejects) ? body.rejects.slice(0, 20).map((x: unknown) => String(x)).filter(Boolean) : [];
+  const rejHint = rejects.length
+    ? `\n\nОТКЛОНЕНО ОПЕРАТОРОМ РАНЕЕ (он забраковал готовый контент с этими идеями/хуками — НЕ делай похожие по смыслу/структуре, ищи другие углы): ${rejects.slice(0, 15).join(" | ")}`
+    : "";
   // плейбук ниши (из «Изучить нишу») — РЕАЛЬНО залетающее: на этом строим идеи (research-first)
   const pb = body.playbook && typeof body.playbook === "object" ? body.playbook : null;
   const pbHint = pb
@@ -48,7 +53,7 @@ ${PROBLEM_STACK}
 Верни СТРОГО JSON-массив (кратко): [{"hook":"первая фраза-зацепка","angle":"какое возражение","concept":"идея ролика 1-2 предложения","caption":"подпись","format":"unboxing|POV|обзор|до/после|лайфхак|проблема-решение","cta":"кратко","score":8,"verdict":"approved|rework","fix":""}]. Только JSON, без преамбулы.`;
 
   const user = `Товар: ${subject}${article ? ` (артикул ${article})` : ""}. Сделай ${count} сценариев.` +
-    (brief ? ` Бриф: ${brief}.` : "") + (competitorBrief ? ` Разведка конкурентов: ${competitorBrief}.` : "") + pbHint;
+    (brief ? ` Бриф: ${brief}.` : "") + (competitorBrief ? ` Разведка конкурентов: ${competitorBrief}.` : "") + pbHint + rejHint;
 
   try {
     const res = await client.messages.create({ model: MODEL, max_tokens: 2200, system: sys, messages: [{ role: "user", content: user }] });

@@ -94,7 +94,7 @@
             <div class="text-[13px] font-semibold mb-1">Шаг 1 — что продвигаем</div>
             <select x-model="op.art" class="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg">
               <option value="">— выбери товар —</option>
-              <template x-for="p in products" :key="p.article"><option :value="p.article" x-text="((p.name||p.article) + (p.name ? ' · ' + p.article : '')).slice(0,55)"></option></template>
+              <template x-for="p in opProducts" :key="p.article"><option :value="p.article" x-text="((p.name||p.article) + (p.name ? ' · ' + p.article : '')).slice(0,55)"></option></template>
             </select>
           </div>
           <button @click="opCreate()" :disabled="op.busy || !op.art" class="btn btn-primary text-base px-6 py-3 self-end" x-text="op.busy ? ('⏳ ' + op.step) : '✨ Сделать контент'"></button>
@@ -636,6 +636,7 @@ function patrick() {
       try { const d = await (await fetch('/api/lab/sku-list')).json(); this.imgByArt = {}; (d.items || []).forEach(i => { if (i.art && i.img_url) this.imgByArt[i.art] = i.img_url; }); } catch (e) { this.imgByArt = {}; }
       try { this.learnedPrompts = JSON.parse(localStorage.getItem('cf_learned') || '{}'); } catch (e) { this.learnedPrompts = {}; }
       try { this.opHelp = localStorage.getItem('cf_help') !== '0'; } catch (e) { this.opHelp = true; }
+      try { this.learnRejects = JSON.parse(localStorage.getItem('cf_rejects') || '[]'); } catch (e) { this.learnRejects = []; }
       try { this.playbooks = JSON.parse(localStorage.getItem('cf_playbooks') || '{}'); } catch (e) { this.playbooks = {}; }
       try { this.pbJobs = JSON.parse(localStorage.getItem('cf_pbjobs') || '{}'); } catch (e) { this.pbJobs = {}; }
     },
@@ -694,6 +695,8 @@ function patrick() {
     // ── Операторский поток: товар → сделать контент → очередь одобрения ──
     op: { art: '', busy: false, step: '', log: '' },
     opHelp: true, // онбординг-плашка «3 шага» (сворачивается, состояние помнится)
+    // оператору показываем только товары С ФОТО (cost-only без WB-данных контент сделать нельзя). Не оставляем пусто.
+    get opProducts() { const w = (this.products || []).filter(p => this.imgByArt && this.imgByArt[p.article]); return w.length ? w : (this.products || []); },
     toggleHelp() { this.opHelp = !this.opHelp; try { localStorage.setItem('cf_help', this.opHelp ? '1' : '0'); } catch (e) {} },
     async opCreate() {
       if (this.op.busy || !this.op.art) return;
@@ -728,7 +731,13 @@ function patrick() {
     lbSrc() { const s = this.lb.slides; return s && s[this.lb.i] ? this._slideSrc(s[this.lb.i]) : ''; },
     dlSlides(b) { (b.slides || []).forEach((sl, i) => { const a = document.createElement('a'); a.href = this._slideSrc(sl); a.download = (b.art || 'slide') + '-' + (i + 1) + '.jpg'; a.click(); }); },
     opApprove(b) { const i = this.bank.findIndex(x => x.ts === b.ts); if (i >= 0) { this.bank[i].status = 'approved'; this._saveBank(); } },
-    opReject(b) { const i = this.bank.findIndex(x => x.ts === b.ts); if (i >= 0) this.delBank(i); },
+    // отклонение = обучение: запоминаем забракованную идею, чтобы копирайтер больше такое не делал
+    learnRejects: [],
+    _saveRejects() { try { localStorage.setItem('cf_rejects', JSON.stringify(this.learnRejects.slice(0, 40))); } catch (e) {} },
+    opReject(b) {
+      if (b.hook) { this.learnRejects.unshift({ hook: b.hook, format: b.format || '', route: b.route || '', art: b.art || '', ts: Date.now() }); this.learnRejects = this.learnRejects.slice(0, 40); this._saveRejects(); }
+      const i = this.bank.findIndex(x => x.ts === b.ts); if (i >= 0) this.delBank(i);
+    },
     // Профиль бренда/ЦА — персонализация (как «проект в Клоде»): голос, аудитория, примеры текстов
     profile: '',
     profileOpen: false,
@@ -1186,7 +1195,7 @@ function patrick() {
       try {
         const trendBrief = this.tr.data ? (this.tr.data.brief + ' Хуки-победители: ' + (this.tr.data.winning_hooks || []).join('; ')) : '';
         const wb = this.winnersBrief && !this.winnersBrief.startsWith('нет') ? (' ' + this.winnersBrief) : '';
-        const r = await fetch('/api/factory/scripts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ article: art, competitor_brief: (trendBrief + wb).trim(), profile: this.profile, playbook: this.activePb(art) }) });
+        const r = await fetch('/api/factory/scripts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ article: art, competitor_brief: (trendBrief + wb).trim(), profile: this.profile, playbook: this.activePb(art), rejects: (this.learnRejects || []).map(x => x.hook).filter(Boolean) }) });
         const d = await r.json();
         if (d.error) { this.run.err = d.error; } else { this.run.ideas = d.scripts || []; this.run.approved = d.approved_count || 0; }
       } catch (e) { this.run.err = String(e).slice(0, 120); }
