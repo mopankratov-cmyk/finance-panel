@@ -32,15 +32,16 @@ export async function POST(req: NextRequest) {
 
   const sys = `Ты арт-директор бренда. На входе — реальные кадры профессиональной съёмки одной товарной ниши.
 Извлеки ПОВТОРЯЕМЫЙ визуальный рецепт этой съёмки, чтобы потом генерировать видео В ТОМ ЖЕ стиле.
-Верни СТРОГО JSON:
-{"framing":"общий план/портрет/деталь — как кадрируют","camera":"ракурс, дистанция, движение","lighting":"тип света, фон","model_action":"что делает модель (поза, жест, взаимодействие с товаром)","palette":"доминирующие цвета","props":"реквизит/окружение","mood":"настроение/эстетика","do":["что обязательно повторять",...],"dont":["что НЕ делать (типичный AI-брак для этой ниши)",...],"motion_prompt":"одна англ. фраза-основа для image-to-video в этом стиле (preservation товара обязательна)"}. Только JSON.`;
+ВАЖНО: каждое значение КОРОТКОЕ (до 12 слов), без длинных перечислений и нумерации. Массивы — максимум 3 пункта.
+Верни СТРОГО валидный JSON (с закрывающей скобкой):
+{"framing":"кратко как кадрируют","camera":"ракурс/дистанция/движение","lighting":"свет и фон","model_action":"что делает модель с товаром","palette":"доминирующие цвета","props":"реквизит/окружение","mood":"настроение","do":["до 3 пунктов"],"dont":["до 3 пунктов AI-брака"],"motion_prompt":"одна англ. фраза для image-to-video, preservation товара"}. Только JSON, ничего лишнего.`;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const content: any[] = [{ type: "text", text: `Ниша: ${niche}. Разбери эти ${assets.length} реальных кадра(ов) и выведи рецепт.` }];
   for (const a of assets) content.push({ type: "image", source: { type: "url", url: origin + a.url } });
 
   try {
-    const res = await client.messages.create({ model: MODEL, max_tokens: 1200, system: sys, messages: [{ role: "user", content }] });
+    const res = await client.messages.create({ model: MODEL, max_tokens: 2048, system: sys, messages: [{ role: "user", content }] });
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let txt = (res.content as any[]).filter((b) => b.type === "text").map((b) => b.text).join(" ").trim();
     txt = txt.replace(/```json\s*/gi, "").replace(/```/g, "").trim();
