@@ -76,10 +76,11 @@ export async function POST(req: NextRequest) {
 export async function GET() {
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 500 });
-  const cnt = async (build: (q: ReturnType<typeof db.from>) => unknown): Promise<number> => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const q = (db.from("content_assets").select("*", { count: "exact", head: true }) as any);
-    const { count, error } = await build(q);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const eqs = async (filters: [string, unknown][]): Promise<number> => {
+    let q = db.from("content_assets").select("*", { count: "exact", head: true });
+    for (const [c, v] of filters) q = q.eq(c, v);
+    const { count, error } = await q;
     if (error) throw new Error(error.message);
     return count || 0;
   };
@@ -88,17 +89,14 @@ export async function GET() {
     const by: Record<string, { images: number; videos: number; analyzed: number }> = {};
     for (const n of niches) {
       const [images, videos, analyzed] = await Promise.all([
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        cnt((q: any) => q.eq("niche", n).eq("kind", "image")),
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        cnt((q: any) => q.eq("niche", n).eq("kind", "video")),
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        cnt((q: any) => q.eq("niche", n).eq("analyzed", true)),
+        eqs([["niche", n], ["kind", "image"]]),
+        eqs([["niche", n], ["kind", "video"]]),
+        eqs([["niche", n], ["analyzed", true]]),
       ]);
       by[n] = { images, videos, analyzed };
     }
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const [total, wbPhotos] = await Promise.all([cnt((q: any) => q), cnt((q: any) => q.eq("disk", "wb"))]);
+    const total = (await db.from("content_assets").select("*", { count: "exact", head: true })).count || 0;
+    const wbPhotos = await eqs([["disk", "wb"]]);
     return NextResponse.json({ total, wb_photos: wbPhotos, by_niche: by });
   } catch (e) {
     return NextResponse.json({ error: String(e instanceof Error ? e.message : e) }, { status: 500 });
