@@ -15,7 +15,10 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
   const images: string[] = Array.isArray(body.images) ? body.images.slice(0, 12) : [];
   const prefix: string = (body.prefix || "slides").toString().replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 40) || "slides";
-  if (!images.length) return NextResponse.json({ detail: "Нет images (массив base64-JPEG без префикса data:)" }, { status: 400 });
+  // PNG нужен для оверлея с прозрачностью (хук-текст/субтитры поверх видео); по умолчанию JPEG (слайды карусели).
+  const ext = body.format === "png" ? "png" : "jpg";
+  const contentType = ext === "png" ? "image/png" : "image/jpeg";
+  if (!images.length) return NextResponse.json({ detail: "Нет images (массив base64 без префикса data:)" }, { status: 400 });
 
   // создать бакет (идемпотентно — если есть, проигнорим ошибку)
   try { await db.storage.createBucket(BUCKET, { public: true }); } catch { /* уже существует */ }
@@ -26,8 +29,8 @@ export async function POST(req: NextRequest) {
     try {
       const b64 = images[i].replace(/^data:image\/\w+;base64,/, "");
       const buf = Buffer.from(b64, "base64");
-      const path = `${prefix}/${stamp}-${i}.jpg`;
-      const { error } = await db.storage.from(BUCKET).upload(path, buf, { contentType: "image/jpeg", upsert: true });
+      const path = `${prefix}/${stamp}-${i}.${ext}`;
+      const { error } = await db.storage.from(BUCKET).upload(path, buf, { contentType, upsert: true });
       if (error) continue;
       const { data } = db.storage.from(BUCKET).getPublicUrl(path);
       if (data?.publicUrl) urls.push(data.publicUrl);

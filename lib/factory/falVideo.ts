@@ -40,27 +40,32 @@ export async function falVideoSubmit(model: FalVideoModel, imageUrl: string, pro
   } catch { return null; }
 }
 
-// Серверный мукс аудио+видео через fal-ai/ffmpeg-api/compose (НЕ браузер — отдаёт mp4, работает в батче).
-// Инфра под голос (ElevenLabs): накладывает mp3 на готовый ролик. FAL_KEY (крипто) уже есть.
-export async function falMux(videoUrl: string, audioUrl: string, durationSec: number): Promise<{ videoUrl?: string; error?: string }> {
+// Серверный compose через fal-ai/ffmpeg-api/compose (НЕ браузер — отдаёт mp4, работает в батче).
+// Слоит одновременные треки по таймлайну: видео + опц. прозрачный оверлей-PNG (хук-текст/субтитры,
+// тип image) + опц. аудио (mp3 ElevenLabs). FAL_KEY (крипто) уже есть. ВНИМАНИЕ: поведение image-трека
+// (наложение поверх видео с альфой) у fal недокументировано — нужен один живой смоук-тест (роут /api/factory/overlay).
+export async function falCompose(
+  videoUrl: string,
+  opts: { overlayUrl?: string; audioUrl?: string; durationSec: number; maxWaitMs?: number },
+): Promise<{ videoUrl?: string; error?: string }> {
   const k = key();
   if (!k) return { error: "FAL_KEY не настроен" };
-  const dur = Math.max(1, Math.round(durationSec || 5));
+  const dur = Math.max(1, Math.round(opts.durationSec || 5));
   const auth = { Authorization: `Key ${k}` };
-  const body = {
-    tracks: [
-      { id: "v", type: "video", keyframes: [{ timestamp: 0, duration: dur, url: videoUrl }] },
-      { id: "a", type: "audio", keyframes: [{ timestamp: 0, duration: dur, url: audioUrl }] },
-    ],
-  };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const tracks: any[] = [{ id: "v", type: "video", keyframes: [{ timestamp: 0, duration: dur, url: videoUrl }] }];
+  // image-трек кладём ПОСЛЕ видео — оверлей поверх (z-order по порядку треков)
+  if (opts.overlayUrl) tracks.push({ id: "o", type: "image", keyframes: [{ timestamp: 0, duration: dur, url: opts.overlayUrl }] });
+  if (opts.audioUrl) tracks.push({ id: "a", type: "audio", keyframes: [{ timestamp: 0, duration: dur, url: opts.audioUrl }] });
+  const deadline = Date.now() + (opts.maxWaitMs || 48000); // бюджет под 60с-функцию
   try {
-    const sub = await fetch(`${QUEUE}fal-ai/ffmpeg-api/compose`, { method: "POST", headers: { ...auth, "Content-Type": "application/json" }, cache: "no-store", body: JSON.stringify(body), signal: AbortSignal.timeout(25000) });
+    const sub = await fetch(`${QUEUE}fal-ai/ffmpeg-api/compose`, { method: "POST", headers: { ...auth, "Content-Type": "application/json" }, cache: "no-store", body: JSON.stringify({ tracks }), signal: AbortSignal.timeout(25000) });
     if (!sub.ok) return { error: `fal compose ${sub.status}` };
     const sj = (await sub.json()) as { response_url?: string };
     const responseUrl = sj.response_url;
     if (!responseUrl) return { error: "compose без response_url" };
-    // опрос до готовности (мукс быстрый, но async)
-    for (let i = 0; i < 30; i++) {
+    // опрос до готовности (compose быстрый, но async) — в пределах дедлайна
+    while (Date.now() < deadline) {
       const st = await fetch(`${responseUrl}/status`, { headers: auth, cache: "no-store", signal: AbortSignal.timeout(15000) });
       if (st.ok) { const s = (await st.json()) as { status?: string }; if (s.status === "COMPLETED") break; }
       await new Promise((r) => setTimeout(r, 3000));
@@ -70,6 +75,11 @@ export async function falMux(videoUrl: string, audioUrl: string, durationSec: nu
     const rj = (await res.json()) as { video_url?: string };
     return rj.video_url ? { videoUrl: rj.video_url } : { error: "compose без video_url" };
   } catch (e) { return { error: String(e).slice(0, 120) }; }
+}
+
+// Обратная совместимость: мукс голоса (ElevenLabs mp3) на ролик = compose без оверлея.
+export async function falMux(videoUrl: string, audioUrl: string, durationSec: number): Promise<{ videoUrl?: string; error?: string }> {
+  return falCompose(videoUrl, { audioUrl, durationSec });
 }
 
 // диагностика: сырой ответ FAL на сабмит (статус+тело) — понять 401(ключ)/402-403(баланс)/422(модель)
