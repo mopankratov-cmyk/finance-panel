@@ -408,6 +408,7 @@
                   <button @click="makeVideo(s,i)" :disabled="vid.busy" class="btn btn-ghost text-[11px]">🎥 видео</button>
                   <button @click="makeUGC(s,i)" :disabled="ugc.busy" title="AI UGC-актёр с товаром (Creatify) — нужен ключ" class="btn btn-ghost text-[11px]">🎭 UGC-актёр</button>
                   <button @click="repurpose(s,i)" :disabled="rep.busy" class="btn btn-ghost text-[11px]">📝 посты</button>
+                  <button @click="makeVariations(s,i)" :disabled="varz.busy" title="размножить идею в 8 вариаций (для объёма)" class="btn btn-ghost text-[11px]">🧪 вариации</button>
                 </div>
               </div>
             </template>
@@ -1379,6 +1380,22 @@ function patrick() {
       this.vid.busy = true; this.vid.forIdx = i;
       try { await this._genIdea(idea, art); } catch (e) { if (idea.gen) idea.gen.status = String(e).slice(0, 100); }
       this.vid.busy = false;
+    },
+    varz: { busy: false, forIdx: -1, msg: '' },
+    async makeVariations(idea, i) {
+      if (this.varz.busy) return;
+      const art = this.dir.plan?.target_article || this.orbit.article || '';
+      const base = idea.hook || idea.concept;
+      if (!base) { this.varz.forIdx = i; this.varz.msg = 'нет хука для вариаций'; return; }
+      this.varz.busy = true; this.varz.forIdx = i; this.varz.msg = 'делаю вариации…';
+      try {
+        const r = await (await fetch('/api/factory/variations', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ hook: base, article: art, format: idea.format, count: 8 }) })).json();
+        if (r.error || !Array.isArray(r.variations) || !r.variations.length) { this.varz.msg = r.error || 'не удалось'; this.varz.busy = false; return; }
+        const mapped = r.variations.map(v => ({ hook: v.hook || base, concept: v.note || ((v.first_2s || '') + ' → ' + (v.finale || '')), format: idea.format || '', angle: 'вариация: ' + (v.lever || ''), score: idea.score || 7, verdict: 'approved', hj: null }));
+        this.run.ideas = [...this.run.ideas, ...mapped];
+        this.varz.msg = '✓ +' + mapped.length + ' вариаций';
+      } catch (e) { this.varz.msg = String(e).slice(0, 100); }
+      this.varz.busy = false;
     },
     ugc: { busy: false, forIdx: -1, taskId: '', url: '', status: '' },
     async makeUGC(idea, i) {
