@@ -38,8 +38,22 @@ async function runStep(db: SupabaseClient, origin: string, job: FactoryJob): Pro
   }
 
   if (job.step === "scenario") {
-    const sr = await jpost(origin, "/api/factory/scenario", { article: art, hook });
-    await saveJob(db, job.id, { step: "submit", status: "running", attempts: 0, lease_until: null, state: { ...st, scenario: sr?.scenario || null, product_name: sr?.product || st.product_name } });
+    const hookBoost = !!st.hookBoost; // второй проход после слабого хука
+    const sr = await jpost(origin, "/api/factory/scenario", { article: art, hook, hook_boost: hookBoost });
+    const scenario = sr?.scenario || null;
+
+    // Storyboard pre-filter: дешёвый текстовый ОТК ДО дорогого рендера (только первый раз).
+    // Если хук слабый — перегоняем сценарий с hook_boost (уже проверенный флаг scenario-роута).
+    if (scenario && !hookBoost) {
+      const sv = await jpost(origin, "/api/factory/video-critic",
+        { storyboard: true, hook, scenario, mode: job.mode, article: art, product_name: st.product_name }, 20000).catch(() => null);
+      if (sv && typeof sv.score === "number" && sv.score < 5) {
+        await saveJob(db, job.id, { step: "scenario", status: "running", attempts: 0, lease_until: null, state: { ...st, hookBoost: true, storyboardScore: sv.score } });
+        return;
+      }
+    }
+
+    await saveJob(db, job.id, { step: "submit", status: "running", attempts: 0, lease_until: null, state: { ...st, scenario, product_name: sr?.product || st.product_name } });
     return;
   }
 
@@ -61,7 +75,10 @@ async function runStep(db: SupabaseClient, origin: string, job: FactoryJob): Pro
       } catch { /* нет реального фото — рендерим без референса */ }
     }
     // st.prompt — улучшенный промпт после провала ОТК (ретрай-петля)
-    const d = await jpost(origin, "/api/factory/video-fal", { sku_art: art, image_url: realImg || undefined, model: st.engine || "seedance", brief: hook, prompt: st.prompt || undefined, product_name: st.product_name });
+    // shot_visual — что должно быть в первом кадре (из сценария), для выравнивания промпта видео со сценарием
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const shot_visual = ((st.scenario?.shots as any[])?.[0]?.visual || "").toString().slice(0, 200) || undefined;
+    const d = await jpost(origin, "/api/factory/video-fal", { sku_art: art, image_url: realImg || undefined, model: st.engine || "seedance", brief: hook, prompt: st.prompt || undefined, product_name: st.product_name, shot_visual });
     if (!d?.task_id) throw new Error("video-fal не запустился: " + (d?.detail || d?.error || "?"));
     await saveJob(db, job.id, { step: "poll", status: "polling", attempts: 0, lease_until: null, state: { ...st, renderCount, realImg, task_id: d.task_id, prompt_used: d.prompt_used || st.prompt || "", pollCount: 0 } });
     return;

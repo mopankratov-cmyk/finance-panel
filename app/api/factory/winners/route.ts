@@ -41,7 +41,7 @@ export async function POST(req: NextRequest) {
     is_winner: true,
     winner_at: new Date().toISOString(),
     winner_learnings: learnings,
-  }).eq("id", assetId);
+  }).eq("id", asset.id);
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ ok: true, learnings });
