@@ -30,7 +30,14 @@
 - **R2 (create_niche_monitor) / R4 (analyze_video)** — Virlo-MCP отключился, точных схем платных инструментов нет. Угадывать контракт платного API нельзя. Сделать, когда MCP переподключится (схемы) — read бесплатно, create гейтить флагом.
 - **P1.1 авто-mux звука** — по ресёрчу Virlo НЕ отдаёт скачиваемый mp3 (только id/title) → авто-mux недоставляем без источника аудио; бит-синк демоутнут до фикс-сетки. Нужен реальный mp3-URL ИЛИ ручное наложение при постинге.
 - **U2 гибрид UGC** — нужна live-валидация Creatify (ключи стоят, но API мог быть Enterprise) + наш b-roll монтаж.
-- **Factory v2 / Shotstack** — нужен аккаунт/ключ Shotstack + новая веха (assemble + shotstack.ts + ветка шагов + DDL 20260621). Движок ВЫБРАН, архитектура расписана выше.
+- **Factory v2 / Shotstack — ФУНДАМЕНТ ПОСТРОЕН** (коммит d491873, build-green, инертно):
+  ✅ DDL `20260621_factory_v2_assembly.sql` (теги ассетов + factory_assemblies) — ⚠️ применить в Supabase.
+  ✅ `lib/factory/shotstack.ts` (submit/status + buildEdit + fixed бит-сетка).
+  ✅ `app/api/factory/assemble` (Assembly Agent v1 — edit_json из реальных блоков, без рендера).
+  ⏳ ОСТАЛОСЬ (нужен live): `SHOTSTACK_API_KEY` + `SHOTSTACK_FONT_URL` (Cyrillic-TTF) в env; смоук-тест
+  shotstackSubmit на ПРОДЕ (не sandbox=watermark, проверить RU-шрифт + схему edit_json); ветка шагов
+  produce→assemble→compose-submit→compose-poll в jobs/tick; UI-кнопка сборки в кокпите; asset-backfill
+  тегов (опц. — assemble v1 работает и на kind=video/image без тегов).
 - **U4** — нужен GEMINI_API_KEY (Nano Banana).
 
 ## Корневая причина
