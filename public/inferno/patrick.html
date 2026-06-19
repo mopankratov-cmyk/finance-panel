@@ -130,6 +130,26 @@
         <div x-show="op.log" class="text-[12px] text-gray-600 mt-2 whitespace-pre-line" x-text="op.log"></div>
       </section>
 
+      <!-- Живой воркфлоу: видно, что завод делает прямо сейчас (чтобы не «пустой экран») -->
+      <section x-show="op.busy" x-cloak class="card mb-4" style="border-color:#ddd6fe; background:#f5f3ff">
+        <div class="flex items-center justify-between mb-3">
+          <div class="text-[13px] font-semibold text-violet-800">🏭 Завод работает над контентом…</div>
+          <div x-show="opProg.total" class="text-[12px] text-violet-700 font-semibold" x-text="'Ролик ' + opProg.idx + ' из ' + opProg.total"></div>
+        </div>
+        <div class="flex items-center gap-1 flex-wrap">
+          <template x-for="(st, i) in opStages" :key="st.k">
+            <div class="flex items-center gap-1">
+              <div class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[12px]" :class="opProg.stage===st.k ? 'bg-violet-600 text-white font-semibold' : (opStages.findIndex(x=>x.k===opProg.stage) > i ? 'bg-violet-100 text-violet-700' : 'bg-white text-gray-400 border border-gray-200')">
+                <span x-text="st.i"></span><span x-text="st.l"></span>
+                <span x-show="opProg.stage===st.k" class="inline-block w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+              </div>
+              <span x-show="i < opStages.length-1" class="text-gray-300">→</span>
+            </div>
+          </template>
+        </div>
+        <div class="text-[11px] text-gray-500 mt-3">Готовые ролики (прошедшие ОТК) появляются в «Шаге 2» ниже — по одному, по мере проверки. Можно одобрять сразу. ↓</div>
+      </section>
+
       <section id="review" class="card mb-4">
         <div class="flex items-center justify-between mb-2">
           <div><div class="sec-h">Шаг 2 — одобри лучшее</div><div class="sec-sub">показываем только прошедшее проверку качества (ОТК) · ты решаешь, что публиковать<span x-show="learnRejects.length" class="text-violet-500" x-text="' · 🧠 завод учится: учтено отклонений — ' + learnRejects.length"></span></div></div>
@@ -709,6 +729,9 @@ function patrick() {
     setMode(m) { this.mode = m; try { localStorage.setItem('cf_mode', m); } catch (e) {} window.scrollTo({ top: 0, behavior: 'smooth' }); },
     // ── Операторский поток: товар → сделать контент → очередь одобрения ──
     op: { art: '', busy: false, step: '', log: '' },
+    // живой прогресс воркфлоу (видно оператору что завод делает прямо сейчас)
+    opProg: { idx: 0, total: 0, stage: '' }, // stage: идеи|продюсер|сценарий|рендер|отк
+    opStages: [{ k: 'идеи', i: '💡', l: 'Идеи' }, { k: 'продюсер', i: '🎬', l: 'Продюсер' }, { k: 'сценарий', i: '✍️', l: 'Сценарий' }, { k: 'рендер', i: '🎥', l: 'Рендер' }, { k: 'отк', i: '✅', l: 'Проверка ОТК' }],
     opHelp: true, // онбординг-плашка «3 шага» (сворачивается, состояние помнится)
     // оператору показываем только товары С ФОТО (cost-only без WB-данных контент сделать нельзя). Не оставляем пусто.
     get opProducts() { const w = (this.products || []).filter(p => this.imgByArt && this.imgByArt[p.article]); return w.length ? w : (this.products || []); },
@@ -724,7 +747,7 @@ function patrick() {
         this.op.step = 'делаю и проверяю ролики'; await this.runFull();
         this.op.log = '✓ Готово. Прошедшее ОТК — в очереди на одобрение ниже.';
       } catch (e) { this.op.log = 'ошибка: ' + String(e).slice(0, 100); }
-      this.op.busy = false; this.op.step = '';
+      this.op.busy = false; this.op.step = ''; this.opProg = { idx: 0, total: 0, stage: '' };
     },
     get reviewQueue() {
       return this.bank.filter(b => {
@@ -1207,6 +1230,7 @@ function patrick() {
       const art = this.dir.plan?.target_article;
       if (!art || this.run.busy) return;
       this.run.busy = true; this.run.err = ''; this.run.ideas = []; this.run.step = 'Копирайтер пишет идеи…';
+      if (this.op.busy) this.opProg = { idx: 0, total: 0, stage: 'идеи' };
       try {
         const trendBrief = this.tr.data ? (this.tr.data.brief + ' Хуки-победители: ' + (this.tr.data.winning_hooks || []).join('; ')) : '';
         const wb = this.winnersBrief && !this.winnersBrief.startsWith('нет') ? (' ' + this.winnersBrief) : '';
@@ -1244,6 +1268,7 @@ function patrick() {
         const i = this.run.ideas.indexOf(s);
         const brief = s.hook || s.concept;
         this.pipe.step = `идея ${done + 1}/${pool.length}`;
+        this.opProg = { idx: done + 1, total: pool.length, stage: 'продюсер' };
         // 1) продюсер выбирает маршрут
         s.gen = { route: '', status: 'продюсер выбирает маршрут…', url: '', carouselUrl: '' };
         let route = 'ai_generation';
@@ -1257,12 +1282,14 @@ function patrick() {
         if (route === 'ai_avatar') route = (this.imgByArt && this.imgByArt[art]) ? 'slideshow' : 'ai_generation_ref';
         s.gen.route = route; s.gen.engine = engine;
         // 2) полный сценарий (озвучка) — #2: сценарий доходит до генератора
+        this.opProg.stage = 'сценарий';
         let script = '';
         try {
           const sr = await (await fetch('/api/factory/scenario', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ article: art, hook: brief, format: s.format || '', profile: this.profile, playbook: this.activePb(art) }) })).json();
           if (sr.scenario) { s.scenario = sr.scenario; script = (sr.scenario.shots || []).map(x => x.voiceover).filter(Boolean).join(' '); }
         } catch (e) {}
         // 3) запуск нужного генератора по маршруту
+        this.opProg.stage = 'рендер';
         try {
           if (route === 'slideshow') {
             s.gen.status = 'собираю карусель…';
@@ -1291,6 +1318,7 @@ function patrick() {
         } catch (e) { s.gen.status = String(e).slice(0, 100); }
         // 4) ОТК: критик смотрит кадры → видео-брак авто-перегенеривает 1 раз → отдаём человеку
         if (s.gen.url || s.gen.slides) {
+          this.opProg.stage = 'отк';
           s.gen.status = 'ОТК проверяет…';
           if (s.gen.slides) {
             // карусель: критик по слайдам (товар реальный — не искажается)
