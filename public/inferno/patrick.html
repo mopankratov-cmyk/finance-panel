@@ -76,13 +76,25 @@
 
     <!-- ═══ РЕЖИМ ОПЕРАТОРА — чистый линейный поток ═══ -->
     <div x-show="mode==='operator'" x-cloak>
+      <!-- Онбординг для любого оператора: понятный поток в 3 шага -->
+      <div class="card mb-3" style="border-color:#e9d5ff; background:#faf5ff">
+        <div class="flex items-center justify-between">
+          <div class="text-[13px] font-semibold text-gray-800">🏭 Как это работает — 3 шага</div>
+          <button @click="toggleHelp()" class="text-[11px] text-violet-500" x-text="opHelp ? 'свернуть ▲' : 'показать ▼'"></button>
+        </div>
+        <div x-show="opHelp" x-cloak class="grid grid-cols-1 md:grid-cols-3 gap-2 mt-2 text-[12px] text-gray-600">
+          <div><b class="text-violet-700">1 · Выбери товар</b> и нажми «✨ Сделать контент». Завод сам подберёт формат и движок, напишет сценарий и снимет ролик.</div>
+          <div><b class="text-violet-700">2 · Одобри лучшее</b> — покажем только прошедшее проверку качества (ОТК). Листай, одобряй хорошее, отклоняй слабое.</div>
+          <div><b class="text-violet-700">3 · Опубликуй</b> — одобренное уходит в расписание и соцсети. Настраивать ничего не нужно.</div>
+        </div>
+      </div>
       <section class="card mb-4" style="border-color:#fecdd3; background:#fff7f8">
         <div class="flex items-center gap-3 flex-wrap">
           <div class="flex-1 min-w-[220px]">
             <div class="text-[13px] font-semibold mb-1">Шаг 1 — что продвигаем</div>
             <select x-model="op.art" class="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg">
               <option value="">— выбери товар —</option>
-              <template x-for="p in products" :key="p.article"><option :value="p.article" x-text="(p.article + ' · ' + (p.name||'')).slice(0,55)"></option></template>
+              <template x-for="p in products" :key="p.article"><option :value="p.article" x-text="((p.name||p.article) + (p.name ? ' · ' + p.article : '')).slice(0,55)"></option></template>
             </select>
           </div>
           <button @click="opCreate()" :disabled="op.busy || !op.art" class="btn btn-primary text-base px-6 py-3 self-end" x-text="op.busy ? ('⏳ ' + op.step) : '✨ Сделать контент'"></button>
@@ -491,7 +503,7 @@
         <div class="flex gap-2 items-center">
           <select x-model="orbit.article" class="text-sm px-3 py-2 border border-gray-300 rounded-lg bg-white" style="width:320px">
             <option value="">— выбери товар —</option>
-            <template x-for="p in products" :key="p.article"><option :value="p.article" x-text="(p.article + ' · ' + (p.name||'')).slice(0,60)"></option></template>
+            <template x-for="p in products" :key="p.article"><option :value="p.article" x-text="((p.name||p.article) + (p.name ? ' · ' + p.article : '')).slice(0,60)"></option></template>
           </select>
           <button @click="startOrbit()" :disabled="orbit.busy || !orbit.article" class="btn btn-primary" x-text="orbit.busy ? '⏳ запускаю…' : 'Найти под товар'"></button>
           <button x-show="orbit.jobId" @click="checkOrbit()" :disabled="orbit.busy" class="btn btn-ghost">Проверить результат</button>
@@ -623,6 +635,7 @@ function patrick() {
       try { this.mode = localStorage.getItem('cf_mode') || 'operator'; } catch (e) { this.mode = 'operator'; }
       try { const d = await (await fetch('/api/lab/sku-list')).json(); this.imgByArt = {}; (d.items || []).forEach(i => { if (i.art && i.img_url) this.imgByArt[i.art] = i.img_url; }); } catch (e) { this.imgByArt = {}; }
       try { this.learnedPrompts = JSON.parse(localStorage.getItem('cf_learned') || '{}'); } catch (e) { this.learnedPrompts = {}; }
+      try { this.opHelp = localStorage.getItem('cf_help') !== '0'; } catch (e) { this.opHelp = true; }
       try { this.playbooks = JSON.parse(localStorage.getItem('cf_playbooks') || '{}'); } catch (e) { this.playbooks = {}; }
       try { this.pbJobs = JSON.parse(localStorage.getItem('cf_pbjobs') || '{}'); } catch (e) { this.pbJobs = {}; }
     },
@@ -674,6 +687,8 @@ function patrick() {
     setMode(m) { this.mode = m; try { localStorage.setItem('cf_mode', m); } catch (e) {} window.scrollTo({ top: 0, behavior: 'smooth' }); },
     // ── Операторский поток: товар → сделать контент → очередь одобрения ──
     op: { art: '', busy: false, step: '', log: '' },
+    opHelp: true, // онбординг-плашка «3 шага» (сворачивается, состояние помнится)
+    toggleHelp() { this.opHelp = !this.opHelp; try { localStorage.setItem('cf_help', this.opHelp ? '1' : '0'); } catch (e) {} },
     async opCreate() {
       if (this.op.busy || !this.op.art) return;
       this.op.busy = true; this.op.log = '';
