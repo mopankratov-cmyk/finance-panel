@@ -696,15 +696,16 @@ function patrick() {
       }).sort((a, z) => (z.critScore || 0) - (a.critScore || 0));
     },
     get approvedQueue() { return this.bank.filter(b => b.status === 'approved' && (b.url || (b.slides && b.slides.length))); },
-    slideSrc(b, i) { return b.slides && b.slides[i] ? 'data:image/jpeg;base64,' + b.slides[i] : ''; },
+    _slideSrc(s) { return s ? (String(s).startsWith('http') ? s : 'data:image/jpeg;base64,' + s) : ''; },
+    slideSrc(b, i) { return b.slides && b.slides[i] ? this._slideSrc(b.slides[i]) : ''; },
     slideStep(b, dir) { const n = (b.slides || []).length; if (!n) return; b.si = (((b.si || 0) + dir) % n + n) % n; },
     // полноэкранный просмотр карусели (листать большими стрелками / стрелками клавиатуры / свайпом)
     lb: { open: false, slides: [], i: 0, _tsx: 0 },
     openLightbox(b) { if (!b.slides || !b.slides.length) return; this.lb = { open: true, slides: b.slides, i: (b.si || 0), _tsx: 0 }; },
     closeLightbox() { this.lb.open = false; },
     lbStep(dir) { const n = this.lb.slides.length; if (!n) return; this.lb.i = ((this.lb.i + dir) % n + n) % n; },
-    lbSrc() { const s = this.lb.slides; return s && s[this.lb.i] ? 'data:image/jpeg;base64,' + s[this.lb.i] : ''; },
-    dlSlides(b) { (b.slides || []).forEach((sl, i) => { const a = document.createElement('a'); a.href = 'data:image/jpeg;base64,' + sl; a.download = (b.art || 'slide') + '-' + (i + 1) + '.jpg'; a.click(); }); },
+    lbSrc() { const s = this.lb.slides; return s && s[this.lb.i] ? this._slideSrc(s[this.lb.i]) : ''; },
+    dlSlides(b) { (b.slides || []).forEach((sl, i) => { const a = document.createElement('a'); a.href = this._slideSrc(sl); a.download = (b.art || 'slide') + '-' + (i + 1) + '.jpg'; a.click(); }); },
     opApprove(b) { const i = this.bank.findIndex(x => x.ts === b.ts); if (i >= 0) { this.bank[i].status = 'approved'; this._saveBank(); } },
     opReject(b) { const i = this.bank.findIndex(x => x.ts === b.ts); if (i >= 0) this.delBank(i); },
     // Профиль бренда/ЦА — персонализация (как «проект в Клоде»): голос, аудитория, примеры текстов
@@ -820,13 +821,13 @@ function patrick() {
           // карусель без видео: заливаем слайды из банка в Storage → постим альбомом
           const b = this.bank.find(x => x.art === s.art && x.hook === s.hook);
           if (b && b.slides && b.slides.length) {
-            this.utmMsg = 'заливаю слайды в хранилище…';
-            try {
-              const ms = await (await fetch('/api/factory/media-store', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ images: b.slides, prefix: (s.art || 'slides').toString() }) })).json();
-              if (ms.urls && ms.urls.length) payload.images = ms.urls;
-            } catch (e) {}
+            if (String(b.slides[0]).startsWith('http')) payload.images = b.slides; // уже в Storage
+            else { // legacy base64 — зальём
+              this.utmMsg = 'заливаю слайды в хранилище…';
+              try { const ms = await (await fetch('/api/factory/media-store', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ images: b.slides, prefix: (s.art || 'slides').toString() }) })).json(); if (ms.urls && ms.urls.length) payload.images = ms.urls; } catch (e) {}
+            }
           }
-          if (!payload.images) { this.utmMsg = 'нет видео/слайдов для поста (карусель сделай заново — слайды не переживают перезагрузку)'; setTimeout(() => this.utmMsg = '', 5000); return; }
+          if (!payload.images) { this.utmMsg = 'нет видео/слайдов для поста'; setTimeout(() => this.utmMsg = '', 5000); return; }
         }
       } else payload = { message: s.hook, link: linkUrl };
       this.utmMsg = 'публикую в ' + s.platform + '…';
@@ -838,15 +839,24 @@ function patrick() {
       setTimeout(() => { if (this.utmMsg[0] === '✓' || this.utmMsg.startsWith('ошибка')) this.utmMsg = ''; }, 6000);
     },
     bank: [],
-    saveToBank(s, art) {
-      const item = { ts: Date.now(), art, hook: s.hook || s.concept || '', format: s.format || '', route: s.gen?.route || '', engine: s.gen?.engine || '', url: s.gen?.url || '', slides: s.gen?.slides || null, caption: s.caption || s.scenario?.caption || '', status: 'review', critScore: s.gen?.critScore ?? null, m: { views: 0, hook3: 0, likes: 0, clicks: 0 } };
+    async saveToBank(s, art) {
+      let slides = s.gen?.slides || null;
+      // карусель: заливаем base64-слайды в Storage → URL (переживают перезагрузку + публикуемо). ОТК уже отработал по base64 выше.
+      if (slides && slides.length && typeof slides[0] === 'string' && !slides[0].startsWith('http')) {
+        try {
+          const ms = await (await fetch('/api/factory/media-store', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ images: slides, prefix: (art || 'slides').toString() }) })).json();
+          if (ms.urls && ms.urls.length) slides = ms.urls;
+        } catch (e) {}
+      }
+      const item = { ts: Date.now(), art, hook: s.hook || s.concept || '', format: s.format || '', route: s.gen?.route || '', engine: s.gen?.engine || '', url: s.gen?.url || '', slides, caption: s.caption || s.scenario?.caption || '', status: 'review', critScore: s.gen?.critScore ?? null, m: { views: 0, hook3: 0, likes: 0, clicks: 0 } };
       this.bank.unshift(item);
       this.bank = this.bank.slice(0, 100);
       try { localStorage.setItem('cf_bank', JSON.stringify(this.bank)); } catch (e) {}
     },
     setBankStatus(idx, st) { if (this.bank[idx]) { this.bank[idx].status = st; this._saveBank(); } },
     delBank(idx) { this.bank.splice(idx, 1); this._saveBank(); },
-    _saveBank() { try { localStorage.setItem('cf_bank', JSON.stringify(this.bank.map(b => b.slides ? { ...b, slides: null, carouselN: b.slides.length } : b))); } catch (e) {} },
+    // URL-слайды (залиты в Storage) лёгкие → храним; base64-слайды тяжёлые → выкидываем из localStorage
+    _saveBank() { try { localStorage.setItem('cf_bank', JSON.stringify(this.bank.map(b => (b.slides && b.slides.length && !String(b.slides[0]).startsWith('http')) ? { ...b, slides: null, carouselN: b.slides.length } : b))); } catch (e) {} },
     // ── Видео-критик: кадры → Claude-зрение → балл/дефекты/правка, авто-переген брака ──
     crit: { forTs: 0, busy: false, data: null, step: '' },
     async _extractFrames(url, n) {
@@ -1297,7 +1307,7 @@ function patrick() {
           }
           s.gen.status = (s.gen.critScore != null ? ('ОТК ' + s.gen.critScore + '/10 → ') : '') + '🙋 на утверждение человеку';
         }
-        if (s.gen.url || s.gen.slides) this.saveToBank(s, art); // #3 банк (review = человек проверяет)
+        if (s.gen.url || s.gen.slides) await this.saveToBank(s, art); // #3 банк (review = человек проверяет)
         done++;
         this.pipe.log = pool.map(p => '• ' + (p.hook || p.concept || '').slice(0, 40) + ' — ' + (p.gen?.status || '…')).join('\n');
       }
