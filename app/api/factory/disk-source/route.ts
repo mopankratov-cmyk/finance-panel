@@ -16,6 +16,31 @@ export async function POST(req: NextRequest) {
   if (!product && !article) return NextResponse.json({ error: "нужен product или article" }, { status: 400 });
 
   const src = sourceFor(product, article);
+
+  // 1) если каталог проиндексирован — берём кадры ТОЧНО по артикулу (приоритет точности)
+  if (article) {
+    try {
+      const { getSupabaseAdmin } = await import("@/lib/supabaseAdmin");
+      const db = getSupabaseAdmin();
+      if (db) {
+        const { data } = await db.from("content_assets")
+          .select("name,path,url,kind").eq("article", article).neq("disk", "wb").not("url", "is", null).limit(24);
+        const imgsExact = (data || []).filter((r) => r.kind === "image");
+        if (imgsExact.length) {
+          let learnedX = false;
+          if (src) { const { data: pf } = await db.from("niche_visual_profiles").select("niche").eq("niche", src.niche).maybeSingle(); learnedX = !!pf; }
+          return NextResponse.json({
+            found: true, exact: true, note: `Реальная съёмка артикула ${article}`,
+            niche: src?.niche ?? null, learned: learnedX,
+            source: { disk: "catalog", label: "каталог (точно по артикулу)" },
+            images: imgsExact.map((r) => ({ name: r.name, path: r.path, url: r.url })),
+            videos: (data || []).filter((r) => r.kind === "video").map((r) => ({ name: r.name, path: r.path })),
+          });
+        }
+      }
+    } catch { /* каталога ещё нет — идём на живой обход */ }
+  }
+
   if (!src) return NextResponse.json({ found: false, reason: "нет реальной съёмки под эту группу — рендер пойдёт с карточки" });
 
   const proxy = (p: string) => `/api/lab/yandex-img?path=${encodeURIComponent(p)}&key=${encodeURIComponent(src.disk.key)}`;

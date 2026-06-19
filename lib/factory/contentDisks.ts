@@ -44,6 +44,39 @@ export function diskByNiche(niche: string): GroupSource | undefined {
   return GROUP_SOURCES.find((s) => s.niche === niche);
 }
 
+// Явная привязка ПАПКА СЪЁМКИ → АРТИКУЛ (по структуре дисков и каталогу товаров).
+// Самый длинный совпавший префикс выигрывает. NORVIA-куртки не в текущем кабинете /api/costs → без артикула.
+export interface ArticleFolder { disk: string; prefix: string; article: string }
+export const ARTICLE_FOLDERS: ArticleFolder[] = [
+  // водные бластеры (МАША)
+  { disk: "design", prefix: "/МАША/УЗИ черный", article: "TT04101" },        // УЗИ 207мл черный
+  { disk: "design", prefix: "/МАША/УЗИ зеленый", article: "TT04102" },       // УЗИ 210мл зеленый
+  { disk: "design", prefix: "/МАША/Винтовка белая", article: "TT05101" },    // винтовка M416 белая
+  { disk: "design", prefix: "/МАША/Винтовка песочная", article: "TT05102" }, // винтовка M416 беж
+  // крем YOYO (МАША)
+  { disk: "design", prefix: "/МАША/Крем-молочко YOYO", article: "YYS0101" }, // YoYo SPF50 крем
+  // сумки CLÉRIN (МАША/Сумки/<модель цвет>)
+  { disk: "design", prefix: "/МАША/Сумки/Кросс-боди капучино", article: "CLR00716" },
+  { disk: "design", prefix: "/МАША/Сумки/Кросс-боди шоколад", article: "CLR00715" },
+  { disk: "design", prefix: "/МАША/Сумки/Трапеция черная", article: "CLR001101" },
+  { disk: "design", prefix: "/МАША/Сумки/Трапеция коричневая", article: "CLR001102" },
+];
+
+// Папки-не-товар (служебное) — не индексируем как контент.
+export const SKIP_FOLDER = /зеркало|бирк|старая карточк/i;
+
+// Артикул по пути файла (если папка явно сопоставлена товару).
+export function articleForPath(diskId: string, path: string): string | null {
+  let best: ArticleFolder | null = null;
+  for (const a of ARTICLE_FOLDERS) {
+    if (a.disk !== diskId) continue;
+    if (path === a.prefix || path.startsWith(a.prefix + "/")) {
+      if (!best || a.prefix.length > best.prefix.length) best = a;
+    }
+  }
+  return best?.article ?? null;
+}
+
 // Файлы-«мусор», которые не годятся как кадр для рендера (лого/обложки/служебные).
 export const SKIP_FILE = /бренд|логотип|\blogo|\blого|cover|обложк|\.ds_store|screenshot|\bicon/i;
 
