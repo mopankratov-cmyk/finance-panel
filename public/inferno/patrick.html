@@ -870,21 +870,44 @@ function patrick() {
         this.cat.gens = Array.isArray(gn.generations) ? gn.generations : [];
       } catch (e) {}
     },
+    // POST с client-таймаутом — чтобы кнопки никогда не висли «мёртво»
+    async _catFetch(url, body, ms) {
+      const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), ms || 180000);
+      try {
+        const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}), signal: ctrl.signal });
+        clearTimeout(t);
+        if (!r.ok) return { ok: false, error: 'сервер ' + r.status + (r.status === 504 ? ' (долго — попробуй ещё раз)' : '') };
+        return await r.json();
+      } catch (e) { clearTimeout(t); return { ok: false, error: (e && e.name === 'AbortError') ? 'таймаут (попробуй ещё раз)' : String(e).slice(0, 80) }; }
+    },
     async catRun(kind) {
       if (this.cat.busy) return;
       this.cat.busy = kind; this.cat.err = false; this.cat.msg = '';
       try {
         if (kind === 'index') {
-          const d = await (await fetch('/api/factory/content-index', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })).json();
-          this.cat.err = !d.ok; this.cat.msg = d.ok ? ('Диски: ' + d.indexed + ' файлов · артикулов: ' + Object.keys(d.by_article || {}).length) : (d.error || d.reason || 'ошибка');
-          if (/миграц|content_assets|does not exist/i.test(this.cat.msg)) this.cat.migMissing = true;
+          // по одному диску (оба разом упираются в таймаут функции)
+          let total = 0; const parts = [];
+          for (const disk of ['design', 'norvia']) {
+            this.cat.msg = 'индексирую диск: ' + disk + '…';
+            const d = await this._catFetch('/api/factory/content-index', { disk });
+            if (d.ok) { total += d.indexed || 0; parts.push(disk + ' ✓ ' + (d.indexed || 0)); }
+            else { parts.push(disk + ' ✗ ' + (d.error || d.reason || 'ошибка')); this.cat.err = true; if (/миграц|content_assets|does not exist/i.test(d.error || '')) this.cat.migMissing = true; }
+            await this.catState();
+          }
+          this.cat.msg = 'Диски: ' + parts.join(' · ') + ' (всего ' + total + ')';
         } else if (kind === 'wb') {
-          const d = await (await fetch('/api/factory/wb-index', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })).json();
-          this.cat.err = !d.ok; this.cat.msg = d.ok ? ('WB: ' + d.photos_indexed + ' фото по ' + d.products_with_photos + ' товарам (≈' + d.avg_per_card + '/карточку)') : (d.error || d.reason || 'ошибка');
-          if (/миграц|content_assets|does not exist/i.test(this.cat.msg)) this.cat.migMissing = true;
+          this.cat.msg = 'тяну все фото карточек WB…';
+          const d = await this._catFetch('/api/factory/wb-index', {}, 280000);
+          this.cat.err = !d.ok; this.cat.msg = d.ok ? ('WB: ' + d.photos_indexed + ' фото по ' + d.products_with_photos + ' товарам') : (d.error || d.reason || 'ошибка');
+          if (/миграц|content_assets|does not exist/i.test(d.error || '')) this.cat.migMissing = true;
         } else if (kind === 'learn') {
           const niches = ['jackets', 'bags', 'blasters', 'cream']; let done = 0; const errs = [];
-          for (const n of niches) { this.cat.msg = 'обучаю: ' + n + '…'; const d = await (await fetch('/api/factory/content-learn', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ niche: n }) })).json(); if (d.ok) done++; else errs.push(n + '(' + String(d.error || '?').slice(0, 24) + ')'); }
+          for (const n of niches) {
+            this.cat.msg = 'обучаю нишу: ' + n + '…';
+            const d = await this._catFetch('/api/factory/content-learn', { niche: n }, 120000);
+            if (d.ok) done++; else errs.push(n + ' (' + String(d.error || '?').slice(0, 22) + ')');
+            await this.catState();
+          }
           this.cat.err = done === 0; this.cat.msg = 'Обучено ниш: ' + done + '/4' + (errs.length ? ' · пропуск: ' + errs.join(', ') : '');
         }
       } catch (e) { this.cat.msg = String(e).slice(0, 120); this.cat.err = true; }
