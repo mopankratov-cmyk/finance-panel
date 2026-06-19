@@ -312,6 +312,7 @@
               </div>
               <div class="flex gap-1.5 mt-2">
                 <button @click="opApprove(b)" class="flex-1 btn btn-primary text-[13px] py-2">✓ Одобрить</button>
+                <button @click="markWinner(b)" :title="b._winnerOk ? 'победитель отмечен ✓' : 'отметить победителем — завод учтёт в следующих идеях'" class="btn btn-ghost text-[13px] py-2 px-2" :class="b._winnerOk ? 'text-amber-500' : ''">🏆</button>
                 <button @click="opReject(b)" title="отклонить — завод запомнит и не будет предлагать похожее" class="btn btn-ghost text-[13px] py-2 px-3">✕</button>
               </div>
             </div>
@@ -1318,6 +1319,20 @@ function patrick() {
       if (!top.length) { this.winnersBrief = 'нет роликов с ≥100 просмотров — внеси метрики'; setTimeout(() => { if (this.winnersBrief.startsWith('нет')) this.winnersBrief = ''; }, 3000); return; }
       // победившие хуки/форматы → бриф следующего батча копирайтера
       this.winnersBrief = 'Повтори успех этих зашедших роликов (хук + формат): ' + top.map(b => `«${b.hook}» [${b.format || b.route}]`).join('; ') + '. Сделай новые в том же духе, меняя по одному рычагу.';
+    },
+    // P2.1: пометить ролик победителем → /api/factory/winners → будет учтён в следующих идеях
+    async markWinner(b) {
+      if (!b.url && !(b.slides && b.slides.length)) return;
+      const views = prompt('Сколько просмотров набрал ролик? (оставь пустым если ещё нет данных)');
+      if (views === null) return; // отмена
+      const url = b.url || (b.slides && b.slides[0]) || '';
+      try {
+        const r = await fetch('/api/factory/winners', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url, hook: b.hook || '', format: b.route || '', views: views ? Number(views) : undefined }) });
+        const d = await r.json();
+        if (d.ok) { b._winnerOk = true; this._saveBank(); }
+        else alert('Ошибка: ' + (d.error || '?') + '\n(примените миграцию 20260622 в Supabase)');
+      } catch (e) { alert('Сетевая ошибка: ' + String(e).slice(0, 80)); }
     },
     // ── Реальные сводки дашборда (заменяют демо-макет) ──
     get kAccounts() { return this.accReg.length; },

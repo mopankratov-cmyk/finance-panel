@@ -43,14 +43,41 @@ export async function POST(req: NextRequest) {
       (Array.isArray(pb.anti_patterns) && pb.anti_patterns.length ? `\nНЕ делай (анти-паттерны ниши): ${pb.anti_patterns.slice(0, 4).join("; ")}` : "")
     : "";
 
+  const db = getSupabaseAdmin();
   if (!name && article) {
-    const db = getSupabaseAdmin();
     if (db) { const { data } = await db.from("product_costs").select("name").eq("article", article).maybeSingle(); name = (data?.name as string) || ""; }
   }
   const subject = name || article;
   if (!subject) return NextResponse.json({ error: "Нужен артикул или название товара" }, { status: 400 });
   // профиль не задан вручную → подбираем по БРЕНДУ товара (1 бренд = 1 профиль)
   if (!profile) profile = brandProfile(article, name);
+
+  // P2.1 Winners loop: подтягиваем наши зашедшие ролики по нише → копирайтер строит вариации
+  let winnersHint = "";
+  if (db && article) {
+    try {
+      const { nicheFromArticle } = await import("@/lib/factory/rubric");
+      const niche = nicheFromArticle(article, name);
+      if (niche) {
+        const { data: wins } = await db.from("content_assets")
+          .select("winner_learnings,name")
+          .eq("niche", niche).eq("is_winner", true)
+          .order("winner_at", { ascending: false }).limit(5);
+        const list = (wins || [])
+          .map((w) => {
+            const l = (w.winner_learnings || {}) as Record<string, unknown>;
+            const hook = String(l.hook || w.name || "").slice(0, 80);
+            const fmt = String(l.format || l.route || "").slice(0, 30);
+            const views = l.views ? ` (${Number(l.views).toLocaleString("ru")} просмотров)` : "";
+            return hook ? `«${hook}» [${fmt || "неизв"}]${views}` : null;
+          })
+          .filter(Boolean);
+        if (list.length) {
+          winnersHint = `\n\nНАШИ ПОБЕДИТЕЛИ В НИШЕ (реально залетело у этого бренда — бери дух/механику, меняй по одному рычагу, не копируй дословно): ${list.join(" | ")}`;
+        }
+      }
+    } catch { /* winners-таблица может ещё не существовать */ }
+  }
 
   const client = await createClaudeClient();
   if (!client) return NextResponse.json({ error: "ANTHROPIC_API_KEY не настроен" }, { status: 500 });
@@ -65,7 +92,7 @@ ${PROBLEM_STACK}
 Верни СТРОГО JSON-массив (кратко): [{"hook":"первая фраза-зацепка","angle":"какое возражение","concept":"идея ролика 1-2 предложения","caption":"подпись","format":"unboxing|POV|обзор|до/после|лайфхак|проблема-решение","cta":"кратко","score":8,"verdict":"approved|rework","fix":""}]. Только JSON, без преамбулы.`;
 
   const user = `Товар: ${subject}${article ? ` (артикул ${article})` : ""}. Сделай ${count} сценариев.` +
-    (brief ? ` Бриф: ${brief}.` : "") + (competitorBrief ? ` Разведка конкурентов: ${competitorBrief}.` : "") + pbHint + rejHint;
+    (brief ? ` Бриф: ${brief}.` : "") + (competitorBrief ? ` Разведка конкурентов: ${competitorBrief}.` : "") + pbHint + winnersHint + rejHint;
 
   try {
     const res = await client.messages.create({ model: MODEL, max_tokens: 2200, system: sys, messages: [{ role: "user", content: user }] });
