@@ -92,6 +92,7 @@
               <option value="">— выбери товар —</option>
               <template x-for="p in opProducts" :key="p.article"><option :value="p.article" x-text="((p.name||p.article) + (p.name ? ' · ' + p.article : '')).slice(0,55)"></option></template>
             </select>
+            <div x-show="op.art" class="text-[11px] text-gray-500 mt-1">🏷 Бренд: <b class="text-rose-600" x-text="_brandOf(op.art)"></b> <span class="text-gray-400" x-text="'· голос: ' + _brandVoice(op.art)"></span></div>
           </div>
           <button @click="opCreate()" :disabled="op.busy || !op.art" class="btn btn-primary text-base px-6 py-3 self-end" x-text="op.busy ? ('⏳ ' + op.step) : '✨ Сделать контент'"></button>
         </div>
@@ -645,6 +646,24 @@ function patrick() {
     },
     // имя товара по артикулу — даём видео-промпт-инженеру понять форму товара
     _prodName(art) { try { return ((this.products || []).find(p => p.article === art) || {}).name || ''; } catch (e) { return ''; } },
+    // бренд товара (зеркало серверного detectBrand) — показываем оператору, чей голос
+    _brandOf(art) {
+      const a = (art || '').trim(); const al = a.toLowerCase(); const n = (this._prodName(art) || '').toLowerCase();
+      if (al.includes('sadoer')) return 'SADOER'; if (al.includes('lameila')) return 'LAMEILA'; if (al.includes('jomtam')) return 'JOMTAM';
+      if (/^clr/i.test(a) || /сумка/.test(n)) return 'CLÉRIN';
+      if (/^en/i.test(a) || /enough/.test(n)) return 'ENOUGH';
+      if (/^yys/i.test(a) || /yoyo/.test(n)) return 'YOYO';
+      if (/^anj/i.test(a) || /anjo/.test(n)) return 'ANJO';
+      if (/^tt/i.test(a) || /пистолет|бластер|винтовк/.test(n)) return 'Tim Tin';
+      if (/^nv/i.test(a) || /^ht-?/i.test(a) || /norvia|куртк|ветровк|пухови/.test(n)) return 'NORVIA';
+      if (/наколен|ортез|бандаж/.test(n)) return 'Ортопедия';
+      if (/шлеп|шлёп|тапоч/.test(n)) return 'Обувь';
+      return 'общий';
+    },
+    _brandVoice(art) {
+      const v = { 'NORVIA': 'тепло, защита от ветра, посадка', 'CLÉRIN': 'стиль, образы', 'ENOUGH': 'K-beauty, свотчи', 'YOYO': 'уход, SPF', 'ANJO': 'уход, SPF', 'Tim Tin': 'лето, веселье', 'SADOER': 'тренды, бюджет-макияж', 'LAMEILA': 'тренды, бюджет-макияж', 'JOMTAM': 'тренды, бюджет-макияж', 'Ортопедия': 'забота, поддержка', 'Обувь': 'лёгкий летний' };
+      return v[this._brandOf(art)] || 'находки с маркетплейса';
+    },
     // выученные лучшие промпты по маршрутам (память лучших практик)
     learnedPrompts: {},
     _saveLearned() { try { localStorage.setItem('cf_learned', JSON.stringify(this.learnedPrompts)); } catch (e) {} },
