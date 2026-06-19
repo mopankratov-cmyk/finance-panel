@@ -135,6 +135,19 @@ export async function POST(req: NextRequest) {
         return src ? { ...p, id: src.id, commerce_safe: !!src.commerce } : p;
       });
     }
+    // best-effort: проверенные хуки плейбука → viral_hooks (niche-уровень, mode=null) — чтобы хук-турнир калибровался
+    try {
+      const db = getSupabaseAdmin();
+      if (db && Array.isArray(playbook.hooks) && playbook.hooks.length) {
+        const rn = nicheFromArticle("", niche);
+        const hooks = (playbook.hooks as unknown[]).map((h) => String(h || "").trim()).filter(Boolean).slice(0, 10);
+        const { data: existing } = await db.from("viral_hooks").select("hook_text").eq("niche", rn).limit(300);
+        const have = new Set(((existing as { hook_text: string }[] | null) ?? []).map((r) => r.hook_text));
+        const fresh = hooks.filter((h) => !have.has(h)).map((h) => ({ niche: rn, hook_text: h, viability_score: 1, effectiveness_notes: "from playbook" }));
+        if (fresh.length) await db.from("viral_hooks").insert(fresh);
+      }
+    } catch { /* корпуса ещё нет / не критично */ }
+
     return NextResponse.json({ playbook });
   } catch (e) {
     return NextResponse.json({ error: String(e).slice(0, 200) }, { status: 502 });

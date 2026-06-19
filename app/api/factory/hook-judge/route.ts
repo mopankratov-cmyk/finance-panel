@@ -35,7 +35,9 @@ export async function POST(req: NextRequest) {
   try {
     const db = getSupabaseAdmin();
     if (db) {
-      const { data } = await db.from("viral_hooks").select("hook_text").eq("niche", niche).eq("mode", mode).order("viability_score", { ascending: false }).limit(8);
+      // калибровка niche-уровневая (mode-agnostic): берём проверенные хуки ниши независимо от режима —
+      // их сеет niche-playbook (mode=null) и одобрения турнира; так таблица не пустует до R4/analyze_video.
+      const { data } = await db.from("viral_hooks").select("hook_text").eq("niche", niche).order("viability_score", { ascending: false }).limit(8);
       corpusHooks = ((data as { hook_text: string }[] | null) ?? []).map((r) => r.hook_text).filter(Boolean);
     }
   } catch { /* корпуса ещё нет — судим без калибровки */ }
