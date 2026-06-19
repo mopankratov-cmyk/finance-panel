@@ -196,11 +196,12 @@
         </div>
       </section>
 
-      <section id="ready" class="card mb-6" x-show="approvedQueue.length">
+      <section id="ready" class="card mb-6">
         <div class="flex items-center justify-between mb-2">
           <div><div class="sec-h">Шаг 3 — публикация</div><div class="sec-sub">одобренное · VK/Telegram — кнопкой, остальное — вручную/через креатора</div></div>
-          <span class="pill pill-live" x-text="approvedQueue.length + ' готово'"></span>
+          <span x-show="approvedQueue.length" class="pill pill-live" x-text="approvedQueue.length + ' готово'"></span>
         </div>
+        <div x-show="!approvedQueue.length" class="text-center text-gray-400 italic text-sm py-8">пока пусто — одобри ролики в «Шаге 2» (✓ Одобрить), и они появятся здесь, готовые к публикации.</div>
         <div class="space-y-1.5">
           <template x-for="b in approvedQueue" :key="b.ts">
             <div class="flex items-center gap-2 p-2 border border-gray-100 rounded-lg">
