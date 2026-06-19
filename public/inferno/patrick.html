@@ -161,6 +161,7 @@
         </div>
         <div x-show="cat.open" x-cloak class="mt-3">
           <div class="text-[12px] text-gray-500 mb-2">Реальные съёмки (диски) + все фото WB — разложены по нише и точному артикулу. «Обучить» = агенты учат стиль наших съёмок.</div>
+          <div x-show="cat.total" class="text-[12px] text-indigo-700 font-semibold mb-2" x-text="'📦 В каталоге: ' + cat.total + ' ассетов · из них WB-фото: ' + cat.wb"></div>
           <div x-show="cat.migMissing" class="text-[12px] text-amber-700 bg-amber-50 border border-amber-200 rounded p-2 mb-2">⚠️ Нет таблиц каталога в БД — нужна миграция в Supabase (скажи Claude «дай SQL каталога»).</div>
           <div class="flex flex-wrap gap-2">
             <button @click="catRun('index')" :disabled="cat.busy" class="btn btn-ghost text-[12px] py-1.5 px-3" x-text="cat.busy==='index'?'⏳ индексирую диски…':'📀 Индексировать диски'"></button>
@@ -829,12 +830,12 @@ function patrick() {
     },
     resetDiskBank() { this.diskBank = { loading: false, loaded: false, note: '', images: [], videos: [], pinned: '', learned: false }; },
     // ── База контента и обучение (каталог дисков+WB по нише/артикулу, рецепты ниш) ──
-    cat: { open: false, busy: '', msg: '', err: false, migMissing: false, byNiche: null, profiles: [] },
+    cat: { open: false, busy: '', msg: '', err: false, migMissing: false, byNiche: null, profiles: [], total: 0, wb: 0 },
     async catState() {
       try {
         const s = await (await fetch('/api/factory/content-index')).json();
         if (s.error) { this.cat.migMissing = /relation|does not exist|миграц|content_assets/i.test(s.error); this.cat.byNiche = null; }
-        else { this.cat.byNiche = s.by_niche || {}; this.cat.migMissing = false; }
+        else { this.cat.byNiche = s.by_niche || {}; this.cat.total = s.total || 0; this.cat.wb = s.wb_photos || 0; this.cat.migMissing = false; }
         const lp = await (await fetch('/api/factory/content-learn')).json();
         this.cat.profiles = Array.isArray(lp.profiles) ? lp.profiles : (lp.profiles ? [lp.profiles] : []);
       } catch (e) {}

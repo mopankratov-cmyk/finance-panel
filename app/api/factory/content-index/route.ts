@@ -72,18 +72,35 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({ ok: true, indexed: rows.length, by_niche: byNiche, by_article: byArticle });
 }
 
-// GET — текущее состояние каталога (по нишам).
+// GET — текущее состояние каталога (агрегатные COUNT, не fetch строк: иначе лимит 1000).
 export async function GET() {
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 500 });
-  const { data, error } = await db.from("content_assets").select("niche,kind,analyzed");
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  const by: Record<string, { images: number; videos: number; analyzed: number }> = {};
-  for (const r of data || []) {
-    const k = (r.niche as string) || "—";
-    const b = (by[k] ||= { images: 0, videos: 0, analyzed: 0 });
-    if (r.kind === "video") b.videos++; else b.images++;
-    if (r.analyzed) b.analyzed++;
+  const cnt = async (build: (q: ReturnType<typeof db.from>) => unknown): Promise<number> => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const q = (db.from("content_assets").select("*", { count: "exact", head: true }) as any);
+    const { count, error } = await build(q);
+    if (error) throw new Error(error.message);
+    return count || 0;
+  };
+  try {
+    const niches = ["jackets", "bags", "blasters", "cream"];
+    const by: Record<string, { images: number; videos: number; analyzed: number }> = {};
+    for (const n of niches) {
+      const [images, videos, analyzed] = await Promise.all([
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        cnt((q: any) => q.eq("niche", n).eq("kind", "image")),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        cnt((q: any) => q.eq("niche", n).eq("kind", "video")),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        cnt((q: any) => q.eq("niche", n).eq("analyzed", true)),
+      ]);
+      by[n] = { images, videos, analyzed };
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const [total, wbPhotos] = await Promise.all([cnt((q: any) => q), cnt((q: any) => q.eq("disk", "wb"))]);
+    return NextResponse.json({ total, wb_photos: wbPhotos, by_niche: by });
+  } catch (e) {
+    return NextResponse.json({ error: String(e instanceof Error ? e.message : e) }, { status: 500 });
   }
-  return NextResponse.json({ total: (data || []).length, by_niche: by });
 }
