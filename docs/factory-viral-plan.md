@@ -29,6 +29,11 @@
 - **compose-ветка в `jobs/tick`** (коммит 02a3ed3): `assemble → compose-submit → compose-poll` встроена в self-chaining очередь. `produce` теперь ветвится: slideshow/repurpose_cut → `assemble` (Shotstack-сборка), AI-пути → `scenario` (fal). Guard `composeCount≤3` как у renderCount. При отсутствии ключа/ассетов — graceful откат на scenario.
 - **fix `ai_generation` → Seedance** (коммит 3f1be2d): убран Higgsfield из браузерного пути `_genIdea`. `else`-ветка теперь вызывает `video-fal` без референса вместо `/api/lab/video-storyboard`.
 - **R6 — галерея корпуса** (коммит 6457bdd): `GET /api/factory/corpus/top-videos` + секция «Корпус вирального» в кокпите (lazy, по скору, graceful при пустой таблице).
+- **P2.1 winners loop** (коммиты ba16404, 8d2c8cf): `POST /api/factory/winners` (mark as winner by url/id; bugfix — asset.id, не assetId=0), `GET /api/factory/winners`; кокпит: кнопка 🏆 на карточке банка; инъекция в scripts; миграция `20260622_winners.sql`.
+- **Storyboard pre-filter** (коммит ba16404): video-critic?storyboard=true между scenario и submit в tick — дешёвый текстовый ОТК хука ДО платного рендера (score < 5 → hookBoost → повтор scenario с усиленным хуком).
+- **Scenario→video alignment** (коммит ba16404): `shots[0].visual` из сценария передаётся в video-fal как первый кадр → Claude-промпт строит motion вокруг описания нужного кадра. Anti-slop reinforcement: `product stable and intact throughout, no shape change, crisp edges` в positive prompt для всех движков.
+- **Corpus grounding for scenario** (коммит 8d2c8cf): scenario/route.ts: в фоновой очереди (без playbook) делает прямой запрос viral_videos + viral_hooks по нише → реальные beat-структуры + хуки корпуса идут сценаристу без доп. LLM-вызова.
+- **Produce routing fix** (коммит d450593): disk-source вызывается ДО produce в tick → produce получает `available.photos/footage` по факту, а не `{photos: true}` всегда. realImg кешируется в state → submit/assemble переиспользуют без повторного диск-запроса.
 
 ### ⏳ ОСТАЛОСЬ — нужен ты / live / схемы:
 - **Factory v2 Shotstack (финальный шаг)**: применить миграцию `20260621` в Supabase → добавить `SHOTSTACK_API_KEY` + `SHOTSTACK_ENV=v1` + `SHOTSTACK_FONT_URL` (Cyrillic-TTF) в Vercel → смоук-тест `shotstackSubmit` на проде (sandbox=watermark). Код полностью готов (assemble + compose-submit + compose-poll в очереди).

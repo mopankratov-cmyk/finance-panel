@@ -59,7 +59,10 @@ async function runStep(db: SupabaseClient, origin: string, job: FactoryJob): Pro
     if (scenario && !hookBoost) {
       const sv = await jpost(origin, "/api/factory/video-critic",
         { storyboard: true, hook, scenario, mode: job.mode, article: art, product_name: st.product_name }, 20000).catch(() => null);
-      if (sv && typeof sv.score === "number" && sv.score < 5) {
+      // В text-режиме native/brand фиксированы на 3 → минимальный score≈5 даже при хуке=1.
+      // Смотрим напрямую на ось A (hook): < 3 из 5 = витрина/скучно → boostим.
+      const hookAxisWeak = sv && typeof sv.axes?.hook === "number" && sv.axes.hook < 3;
+      if (hookAxisWeak) {
         await saveJob(db, job.id, { step: "scenario", status: "running", attempts: 0, lease_until: null, state: { ...st, hookBoost: true, storyboardScore: sv.score } });
         return;
       }
