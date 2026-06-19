@@ -1,0 +1,41 @@
+// Карточки товаров кабинета(ов) через WB Content API: article + nm_id + name + цвет + ниша(subject).
+import { getWbCabinetSources } from "@/lib/wb/cabinetTokens";
+
+const CARDS_URL = "https://content-api.wildberries.ru/content/v2/get/cards/list";
+
+interface Characteristic { name?: string; value?: string | string[] }
+interface RawCard { nmID: number; vendorCode: string; title?: string; subjectName?: string; characteristics?: Characteristic[] }
+
+export interface CabinetCard { article: string; nm_id: number; name: string; color: string; subject: string; shop: string }
+
+function colorOf(c: RawCard): string {
+  const ch = (c.characteristics || []).find((x) => /цвет/i.test(x.name || ""));
+  if (!ch) return "";
+  return Array.isArray(ch.value) ? ch.value.join(", ") : String(ch.value || "");
+}
+
+// cabinetId задан → один кабинет; null → все активные.
+export async function fetchCabinetCards(cabinetId: string | null): Promise<CabinetCard[]> {
+  const sources = await getWbCabinetSources(cabinetId, "content");
+  const out: CabinetCard[] = [];
+  for (const src of sources) {
+    let cursor: { updatedAt?: string; nmID?: number } = {};
+    try {
+      for (let page = 0; page < 30; page++) {
+        const res = await fetch(CARDS_URL, {
+          method: "POST",
+          headers: { Authorization: src.token, "Content-Type": "application/json" },
+          body: JSON.stringify({ settings: { cursor: { limit: 100, ...cursor }, filter: { withPhoto: -1 } } }),
+          cache: "no-store",
+        });
+        if (!res.ok) break;
+        const json = (await res.json()) as { cards?: RawCard[]; cursor?: { updatedAt?: string; nmID?: number } };
+        const batch = json.cards ?? [];
+        for (const c of batch) out.push({ article: c.vendorCode || String(c.nmID), nm_id: c.nmID, name: c.title || "", color: colorOf(c), subject: c.subjectName || "", shop: src.name });
+        if (batch.length < 100) break;
+        cursor = { updatedAt: json.cursor?.updatedAt, nmID: json.cursor?.nmID };
+      }
+    } catch { /* пропускаем кабинет при ошибке */ }
+  }
+  return out;
+}

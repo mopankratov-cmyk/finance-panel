@@ -1,7 +1,8 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { getWbCardImages } from "@/lib/wb/cardImage";
 import { nicheFor } from "@/lib/factory/contentDisks";
+import { fetchCabinetCards } from "@/lib/wb/cards";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -22,22 +23,20 @@ async function pool<T, R>(items: T[], limit: number, fn: (it: T) => Promise<R>):
 }
 
 // Каталог ВСЕХ фото карточек WB по артикулам (disk='wb', точная привязка к article).
+// Источник — Content API всех кабинетов (или ?cabinet=<id>): полнее, чем rnp активного.
 // URL карточек публичны и стабильны — байты не качаем, складываем ссылки (FAL фетчит .webp напрямую).
-export async function POST() {
+export async function POST(req: NextRequest) {
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 500 });
+  const body = await req.json().catch(() => ({}));
+  const cabinet: string | null = body.cabinet || null;
 
-  // источник товаров: rnp_report (article + nm_id)
-  const { data, error } = await db.rpc("rnp_report");
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const products = ((data as any[] | null) || [])
-    .filter((r) => r.nm_id && r.article)
-    .map((r) => ({ article: String(r.article), nm_id: Number(r.nm_id), name: String(r.name || r.subject || "") }));
+  const cards = await fetchCabinetCards(cabinet);
+  const products = cards.filter((c) => c.nm_id && c.article).map((c) => ({ article: c.article, nm_id: c.nm_id, name: `${c.name} ${c.subject} ${c.color}`.trim() }));
   // дедуп по nm_id
   const seen = new Set<number>();
   const uniq = products.filter((p) => (seen.has(p.nm_id) ? false : (seen.add(p.nm_id), true)));
-  if (!uniq.length) return NextResponse.json({ ok: false, reason: "нет товаров с nm_id" });
+  if (!uniq.length) return NextResponse.json({ ok: false, reason: "нет карточек (content-токен кабинета?)" });
 
   const rows: Row[] = [];
   const perProduct = await pool(uniq, 8, async (p) => {
