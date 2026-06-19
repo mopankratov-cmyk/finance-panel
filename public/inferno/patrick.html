@@ -229,11 +229,14 @@
 
       <section id="review" class="card mb-4">
         <div class="flex items-center justify-between mb-2">
-          <div><div class="sec-h">Шаг 2 — одобри лучшее</div><div class="sec-sub">показываем только прошедшее проверку качества (ОТК) · ты решаешь, что публиковать<span x-show="learnRejects.length" class="text-violet-500" x-text="' · 🧠 завод учится: учтено отклонений — ' + learnRejects.length"></span></div></div>
+          <div><div class="sec-h">Шаг 2 — одобри лучшее</div><div class="sec-sub">показываем только ОТК ≥ 8 · ты решаешь, что публиковать<span x-show="filteredOut" class="text-amber-600" x-text="' · отфильтровано слабых (<8): ' + filteredOut"></span><span x-show="learnRejects.length" class="text-violet-500" x-text="' · 🧠 учтено отклонений — ' + learnRejects.length"></span></div></div>
           <span x-show="reviewQueue.length" class="pill pill-rose" x-text="reviewQueue.length + ' на проверку'"></span>
         </div>
-        <div x-show="!reviewQueue.length && !op.busy" class="text-center text-gray-400 italic text-sm py-10">
-          пусто — выбери товар выше и нажми «✨ Сделать контент».<br>Готовые ролики, прошедшие ОТК, появятся здесь на одобрение.
+        <div x-show="!reviewQueue.length && !op.busy && !filteredOut" class="text-center text-gray-400 italic text-sm py-10">
+          пусто — выбери товар выше и нажми «✨ Сделать контент».<br>Сюда попадут только ролики с ОТК ≥ 8.
+        </div>
+        <div x-show="!reviewQueue.length && !op.busy && filteredOut" class="text-center text-amber-600 text-sm py-10">
+          Завод сделал <span x-text="filteredOut"></span> — но ни один не дотянул до ОТК 8, поэтому не показываю.<br>Запусти ещё раз или смени товар — покажу только то, что прошло планку.
         </div>
         <div x-show="op.busy" class="text-center text-gray-400 text-sm py-10" x-text="'⏳ ' + op.step + '… (1-3 мин на ролик)'"></div>
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -908,12 +911,15 @@ function patrick() {
       this.op.busy = false; this.op.step = ''; this.opProg = { idx: 0, total: 0, stage: '' };
     },
     get reviewQueue() {
+      // показываем ТОЛЬКО ОТК ≥ 8 (владелец видит лучшее; слабое не показываем). null (ОТК не оценил) не проходит.
       return this.bank.filter(b => {
         if (b.status !== 'review' || !(b.url || (b.slides && b.slides.length))) return false;
-        // аватар: кадры не показывают липсинк/движение → пускаем только с безупречным баллом 8+ (null не проходит)
-        if (b.route === 'ai_avatar') return b.critScore != null && b.critScore >= 8;
-        return b.critScore == null || b.critScore >= 5;
+        return b.critScore != null && b.critScore >= 8;
       }).sort((a, z) => (z.critScore || 0) - (a.critScore || 0));
+    },
+    // сделано, но не дотянуло до порога 8 (отфильтровано из показа) — для счётчика
+    get filteredOut() {
+      return this.bank.filter(b => b.status === 'review' && (b.url || (b.slides && b.slides.length)) && (b.critScore == null || b.critScore < 8)).length;
     },
     get approvedQueue() { return this.bank.filter(b => b.status === 'approved' && (b.url || (b.slides && b.slides.length))); },
     _slideSrc(s) { return s ? (String(s).startsWith('http') ? s : 'data:image/jpeg;base64,' + s) : ''; },
@@ -1529,7 +1535,7 @@ function patrick() {
           let curPrompt = s.gen.promptUsed || '';
           let bestScore = s.gen.critScore || 0, bestUrl = s.gen.url, bestPrompt = curPrompt;
           let attempt = 0;
-          while (!v.error && v.score < 7 && attempt < 3) {
+          while (!v.error && v.score < 8 && attempt < 3) {
             attempt++;
             s.gen.status = 'ОТК брак (' + v.score + ') → улучшаю промпт, переделка ' + attempt + '/3…';
             try {
