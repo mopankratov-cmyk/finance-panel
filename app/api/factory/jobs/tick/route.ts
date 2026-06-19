@@ -146,7 +146,7 @@ async function runStep(db: SupabaseClient, origin: string, job: FactoryJob): Pro
     if (score < 7 && otkAttempt < 2) {
       // провал ОТК → улучшаем промпт под дефекты и перерендериваем (рендеры ограничены renderCount≤3)
       let prompt = st.prompt;
-      try { const imp = await jpost(origin, "/api/factory/improve-prompt", { original: st.prompt_used || "", defects: v?.issues || [], fixes: v?.fixes || [], route: st.route, context: hook + " · " + art }); if (imp?.prompt) prompt = imp.prompt; } catch { /* improve опционален — не валим джобу, рендерим с прежним промптом */ }
+      try { const imp = await jpost(origin, "/api/factory/improve-prompt", { original: st.prompt_used || "", defects: v?.issues || [], fixes: v?.fixes || [], route: st.route, engine: st.engine || "seedance", context: hook + " · " + art }); if (imp?.prompt) prompt = imp.prompt; } catch { /* improve опционален — не валим джобу, рендерим с прежним промптом */ }
       await saveJob(db, job.id, { step: "submit", status: "running", attempts: 0, lease_until: null, state: { ...st, prompt, task_id: null, pollCount: 0, otkAttempt: otkAttempt + 1, bestScore: best.score, bestUrl: best.url } });
     } else {
       await saveJob(db, job.id, { step: "overlay", status: "running", attempts: 0, lease_until: null, state: { ...st, video_url: best.url, critScore: best.score >= 0 ? best.score : score, critAxes: v?.axes || null } });

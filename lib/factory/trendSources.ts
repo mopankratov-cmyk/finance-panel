@@ -96,3 +96,69 @@ export async function fetchViral(niche: string, limit = 20): Promise<ViralVideo[
   if (process.env.VIRLO_API_KEY) return fromVirlo(niche, limit);
   return [];
 }
+
+// ── Virlo: niche monitors ──────────────────────────────────────────────────────────────────────────
+
+// Создать Comet-монитор для ниши (однократно, платный шаг ~$1-2).
+// Возвращает monitor_id или null.
+export async function virloCreateMonitor(niche: string, keywords: string[], platforms = ["tiktok", "instagram"]): Promise<string | null> {
+  if (!process.env.VIRLO_API_KEY) return null;
+  try {
+    const res = await virloInitCall("tools/call", { name: "create_niche_monitor", arguments: { name: `wb-factory-${niche}`, keywords: keywords.slice(0, 7), platforms, frequency: "weekly" } });
+    const j = virloToolJson(res);
+    const data = (j?.data as Record<string, unknown>) || j;
+    return (data?.id || data?.monitor_id || null) as string | null;
+  } catch { return null; }
+}
+
+// Список существующих Comet-мониторов (читает бесплатно).
+export async function virloListMonitors(): Promise<{ id: string; name: string; status: string }[]> {
+  if (!process.env.VIRLO_API_KEY) return [];
+  try {
+    const res = await virloInitCall("tools/call", { name: "list_niche_monitors", arguments: {} });
+    const j = virloToolJson(res);
+    const data = Array.isArray((j as Record<string, unknown>)?.data) ? ((j as Record<string, unknown>).data as { id: string; name: string; status: string }[]) : [];
+    return data.filter((m) => m.id);
+  } catch { return []; }
+}
+
+// Данные монитора: новые видео из Comet с момента last_checked (читает бесплатно).
+export async function virloMonitorData(monitorId: string): Promise<Record<string, unknown>[]> {
+  if (!process.env.VIRLO_API_KEY) return [];
+  try {
+    const res = await virloInitCall("tools/call", { name: "get_niche_monitor_data", arguments: { id: monitorId } });
+    const j = virloToolJson(res);
+    const data = Array.isArray((j as Record<string, unknown>)?.data) ? ((j as Record<string, unknown>).data as Record<string, unknown>[]) : [];
+    return data;
+  } catch { return []; }
+}
+
+// ── Virlo: deep video analysis ────────────────────────────────────────────────────────────────────
+
+export interface VirloVideoAnalysis {
+  hook_text?: string;
+  format_detected?: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  beat_structure?: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  viral_reason?: any;
+  is_commerce_safe?: boolean;
+}
+
+// Глубокий анализ видео: hook_text, формат, beat_structure, причина вирусности (читает бесплатно).
+export async function virloAnalyzeVideo(url: string): Promise<VirloVideoAnalysis | null> {
+  if (!process.env.VIRLO_API_KEY) return null;
+  try {
+    const res = await virloInitCall("tools/call", { name: "analyze_video", arguments: { url } });
+    const j = virloToolJson(res);
+    const data = ((j as Record<string, unknown>)?.data || j) as Record<string, unknown>;
+    if (!data) return null;
+    return {
+      hook_text: (data.hook_text || data.hook || "") as string,
+      format_detected: (data.format || data.format_detected || data.content_type || "") as string,
+      beat_structure: data.beat_structure || data.beats || null,
+      viral_reason: data.viral_reason || data.why_viral || null,
+      is_commerce_safe: typeof data.is_commerce_safe === "boolean" ? data.is_commerce_safe : true,
+    };
+  } catch { return null; }
+}

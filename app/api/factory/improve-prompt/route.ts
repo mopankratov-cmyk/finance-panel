@@ -13,6 +13,7 @@ export async function POST(req: NextRequest) {
   const defects: string[] = Array.isArray(body.defects) ? body.defects : [];
   const fixes: string[] = Array.isArray(body.fixes) ? body.fixes : [];
   const route: string = (body.route || "ai_generation_ref").toString();
+  const engine: string = (body.engine || "seedance").toString().toLowerCase();
   const context: string = (body.context || "").toString().slice(0, 200);
   if (!defects.length && !fixes.length) return NextResponse.json({ error: "нет дефектов" }, { status: 400 });
 
@@ -20,8 +21,15 @@ export async function POST(req: NextRequest) {
   if (!client) return NextResponse.json({ error: "ANTHROPIC_API_KEY не настроен" }, { status: 500 });
 
   const isVideo = route === "ai_generation_ref" || route === "ai_generation";
+  // Engine-specific guidance: Seedance holds product shape best with slow drift/light motion;
+  // Kling responds better to explicit preservation tokens; Higgsfield is atmosphere/lifestyle only.
+  const engineNote = engine.includes("seedance")
+    ? "Движок — Seedance (отлично держит форму товара). Предпочитай медленное/плавное движение (slow drift, gentle sway, subtle zoom). Не усиливай скорость или трансформацию — именно они ломают товар."
+    : engine.includes("higgsfield")
+    ? "Движок — Higgsfield (лайфстайл/атмосфера, НЕ крупный товар). Не упоминай товар вплотную — только среда/настроение."
+    : "Движок — Kling. Явно включи токены preservation: «product stable and intact throughout, no shape change, crisp edges».";
   const sys = isVideo
-    ? "Ты промпт-инженер для image-to-video (Kling). Перепиши motion-промпт (АНГЛИЙСКИЙ), чтобы устранить найденные дефекты, СОХРАНИВ товар точным (форма/лейбл/пропорции/цвет — не менять). Усиль preservation, ослабь то, что ломает товар (сильное движение/деформацию). Верни ТОЛЬКО улучшенный английский промпт, без преамбулы."
+    ? `Ты промпт-инженер для image-to-video. Перепиши motion-промпт (АНГЛИЙСКИЙ), чтобы устранить найденные дефекты, СОХРАНИВ товар точным (форма/лейбл/пропорции/цвет — не менять). ${engineNote} Верни ТОЛЬКО улучшенный английский промпт, без преамбулы.`
     : "Ты редактор. Перепиши текст/монолог, чтобы устранить дефекты, сохранив живой русский UGC-тон. Верни ТОЛЬКО улучшенный текст, без преамбулы.";
   const user = `Товар/контекст: ${context}. Исходный промпт: «${original}». Дефекты от ОТК: ${defects.join("; ")}. Что поправить: ${fixes.join("; ")}. Перепиши промпт, чтобы дефекты ушли.`;
 

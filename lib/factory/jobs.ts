@@ -30,7 +30,7 @@ const ACTIVE: JobStatus[] = ["queued", "running", "polling"];
 export async function createJob(db: SupabaseClient, j: { article?: string; hook: string; mode?: string }): Promise<string | null> {
   const { data, error } = await db.from("factory_jobs").insert({
     status: "queued", step: "produce",
-    article: j.article || null, hook: j.hook, mode: j.mode === "sell" ? "sell" : "audience",
+    article: j.article || null, hook: j.hook, mode: ["sell", "content", "audience"].includes(j.mode || "") ? j.mode! : "audience",
   }).select("id").maybeSingle();
   if (error || !data) return null;
   return (data as { id: string }).id;

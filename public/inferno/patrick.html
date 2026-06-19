@@ -247,6 +247,10 @@
             </tbody>
           </table>
           <div class="text-[10px] text-amber-600 mt-2">≥35 = исключительный · ≥25 = очень сильный · &lt;25 = рядовой. Скор = ln(просмотры/подписчики)×ln(подписчики).</div>
+          <div class="flex gap-2 mt-2" x-data="{refreshing:false, refreshLog:''}">
+            <button @click="async()=>{refreshing=true; refreshLog=''; try{ const r=await(await fetch('/api/factory/jobs/corpus-tick',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})).json(); refreshLog=(r.ok?('✅ +'+r.new_videos+' видео, проанализировано: '+r.analyzed):(r.error||'?')); if(r.ok) load(); }catch(e){refreshLog=String(e).slice(0,60)} refreshing=false; }" :disabled="refreshing" class="btn btn-ghost text-[11px]" title="Опросить Comet-мониторы и проанализировать новые видео">⟳ Обновить корпус</button>
+            <span x-show="refreshLog" class="text-[11px] text-amber-700 self-center" x-text="refreshLog"></span>
+          </div>
         </div>
       </section>
 
@@ -1792,7 +1796,8 @@ function patrick() {
       if (!this.run.ideas.length) { this.pipe.step = 'идеи…'; await this.runPlan(); }
       const approved = this.run.ideas.filter(s => s.verdict !== 'rework').slice(0, this.pipe.count);
       const pool = (approved.length ? approved : this.run.ideas.slice(0, this.pipe.count));
-      const jobs = pool.map(s => ({ article: art, hook: s.hook || s.concept || '' })).filter(j => j.hook);
+      const qMode = ['sell','content','audience'].includes(this.mode) ? this.mode : 'audience';
+      const jobs = pool.map(s => ({ article: art, hook: s.hook || s.concept || '', mode: qMode })).filter(j => j.hook);
       if (!jobs.length) { this.pipe.log = 'нет идей для очереди'; this.pipe.busy = false; this.pipe.step = ''; return; }
       this.pipe.step = 'ставлю в очередь…';
       try {
