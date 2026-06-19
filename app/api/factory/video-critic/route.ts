@@ -126,7 +126,8 @@ ${kind === "avatar" ? "Внимание: это AI-аватар — ось НА�
     const hasAxes = !!raw && AXIS_KEYS.some((k) => raw[k] != null);
     let axes: AxisScores;
     if (hasAxes) {
-      axes = { hook: axisOr3(raw.hook), retention: axisOr3(raw.retention), native: axisOr3(raw.native), brand: axisOr3(raw.brand), cta: axisOr3(raw.cta) };
+      // brand genuinely-absent НЕ должен валить sell-флор brand≥4 (нет сигнала ≠ провал) → дефолт под флор режима
+      axes = { hook: axisOr3(raw.hook), retention: axisOr3(raw.retention), native: axisOr3(raw.native), brand: (raw.brand != null ? Number(raw.brand) : (mode === "sell" ? 4 : 3)), cta: axisOr3(raw.cta) };
     } else {
       // плоский score: ЕСТЬ → масштабируем как есть (0 → clamp до 1 = провал), genuinely-absent → нейтральные 5/2≈3.
       const a = Math.max(1, Math.min(5, Math.round((j.score != null ? Number(j.score) : 5) / 2)));
