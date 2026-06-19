@@ -206,6 +206,50 @@
         </div>
       </section>
 
+      <!-- Корпус вирального: топ залетевших видео из Orbit (R6) -->
+      <section class="card mb-4" style="border-color:#fde68a; background:#fffbeb" x-data="{
+        open: false, loading: false, vids: [], err: '',
+        async load() {
+          if (this.loading) return;
+          this.loading = true; this.err = '';
+          try {
+            const d = await (await fetch('/api/factory/corpus/top-videos?limit=20&min_score=10')).json();
+            this.vids = d.videos || [];
+            if (!this.vids.length && d.error) this.err = 'таблица viral_videos не создана — примените миграцию 20260620';
+            else if (!this.vids.length) this.err = 'корпус пуст — нажмите «Изучить нишу» чтобы Orbit заполнил корпус';
+          } catch(e) { this.err = String(e).slice(0,80); }
+          this.loading = false;
+        }
+      }">
+        <div class="flex items-center justify-between cursor-pointer select-none" @click="open=!open; if(open && !vids.length && !loading) load()">
+          <div class="text-[13px] font-semibold text-amber-800">🔥 Корпус вирального (Virlo Orbit)</div>
+          <div class="flex items-center gap-2">
+            <span x-show="vids.length" class="pill pill-warn text-[10px]" x-text="vids.length + ' видео'"></span>
+            <span x-text="open ? '▲' : '▼'" class="text-gray-400 text-xs"></span>
+          </div>
+        </div>
+        <div x-show="open" x-cloak class="mt-3">
+          <div x-show="loading" class="text-sm text-amber-700 italic">загружаю корпус…</div>
+          <div x-show="err && !loading" class="text-sm text-amber-700 bg-amber-50 rounded px-2 py-1.5 mt-1" x-text="err"></div>
+          <div x-show="!loading && !err && !vids.length" class="text-sm text-gray-400 italic py-2">нет данных</div>
+          <table x-show="vids.length && !loading" class="tbl text-[11px] w-full mt-1">
+            <thead><tr><th class="text-left">#</th><th class="text-left">ниша</th><th class="text-left">балл</th><th class="text-left">разобран</th><th class="text-left">ссылка</th></tr></thead>
+            <tbody>
+              <template x-for="(v,i) in vids" :key="v.id || i">
+                <tr>
+                  <td class="text-gray-400" x-text="i+1"></td>
+                  <td x-text="v.niche || '—'"></td>
+                  <td class="font-semibold" :class="(v.score||0)>=35?'text-emerald-600':(v.score||0)>=25?'text-amber-600':'text-gray-500'" x-text="v.score ?? '—'"></td>
+                  <td x-text="v.analyzed ? '✓' : '—'" :class="v.analyzed ? 'text-emerald-600' : 'text-gray-400'"></td>
+                  <td><a :href="v.url" target="_blank" rel="noopener" class="text-blue-500 hover:underline text-[10px]" x-text="(v.url||'').replace('https://','').slice(0,38)+'…'"></a></td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+          <div class="text-[10px] text-amber-600 mt-2">≥35 = исключительный · ≥25 = очень сильный · &lt;25 = рядовой. Скор = ln(просмотры/подписчики)×ln(подписчики).</div>
+        </div>
+      </section>
+
       <!-- Живой воркфлоу: видно, что завод делает прямо сейчас (чтобы не «пустой экран») -->
       <section x-show="op.busy" x-cloak class="card mb-4" style="border-color:#ddd6fe; background:#f5f3ff">
         <div class="flex items-center justify-between mb-3">
