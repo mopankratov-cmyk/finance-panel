@@ -153,6 +153,45 @@
         <div x-show="op.log" class="text-[12px] text-gray-600 mt-2 whitespace-pre-line" x-text="op.log"></div>
       </section>
 
+      <!-- ═══ БАЗА КОНТЕНТА И ОБУЧЕНИЕ — каталог дисков + WB по артикулам + рецепты ниш ═══ -->
+      <section id="catalog" x-init="catState()" class="card mb-4" style="border-color:#c7d2fe; background:#eef2ff">
+        <div class="flex items-center justify-between cursor-pointer" @click="cat.open=!cat.open">
+          <div class="text-[13px] font-semibold text-gray-800">🧠 База контента и обучение</div>
+          <span class="text-[11px] text-indigo-500" x-text="cat.open?'свернуть ▲':'показать ▼'"></span>
+        </div>
+        <div x-show="cat.open" x-cloak class="mt-3">
+          <div class="text-[12px] text-gray-500 mb-2">Реальные съёмки (диски) + все фото WB — разложены по нише и точному артикулу. «Обучить» = агенты учат стиль наших съёмок.</div>
+          <div x-show="cat.migMissing" class="text-[12px] text-amber-700 bg-amber-50 border border-amber-200 rounded p-2 mb-2">⚠️ Нет таблиц каталога в БД — нужна миграция в Supabase (скажи Claude «дай SQL каталога»).</div>
+          <div class="flex flex-wrap gap-2">
+            <button @click="catRun('index')" :disabled="cat.busy" class="btn btn-ghost text-[12px] py-1.5 px-3" x-text="cat.busy==='index'?'⏳ индексирую диски…':'📀 Индексировать диски'"></button>
+            <button @click="catRun('wb')" :disabled="cat.busy" class="btn btn-ghost text-[12px] py-1.5 px-3" x-text="cat.busy==='wb'?'⏳ тяну WB-фото…':'🖼 Индексировать WB-фото'"></button>
+            <button @click="catRun('learn')" :disabled="cat.busy" class="btn btn-primary text-[12px] py-1.5 px-3" x-text="cat.busy==='learn'?'⏳ обучаю ниши…':'🧠 Обучить ниши'"></button>
+            <button @click="catState()" :disabled="!!cat.busy" class="text-[11px] text-indigo-500 self-center">обновить</button>
+          </div>
+          <div x-show="cat.msg" class="text-[12px] mt-2" :class="cat.err?'text-rose-600':'text-emerald-600'" x-text="cat.msg"></div>
+          <!-- сводка по нишам -->
+          <div x-show="cat.byNiche && Object.keys(cat.byNiche).length" class="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2">
+            <template x-for="(v,n) in cat.byNiche" :key="n">
+              <div class="bg-white rounded-lg border border-indigo-100 p-2 text-[11px]">
+                <div class="font-semibold" x-text="n"></div>
+                <div class="text-gray-500" x-text="(v.images||0)+' фото · '+(v.videos||0)+' видео'"></div>
+                <div x-show="v.analyzed" class="text-violet-600" x-text="'🧠 обучен ('+v.analyzed+' кадров)'"></div>
+              </div>
+            </template>
+          </div>
+          <!-- выученные рецепты ниш -->
+          <div x-show="cat.profiles && cat.profiles.length" class="mt-3">
+            <div class="text-[12px] font-semibold mb-1">Выученные рецепты:</div>
+            <template x-for="p in cat.profiles" :key="p.niche">
+              <div class="text-[11px] bg-white rounded border border-violet-100 p-2 mb-1">
+                <b x-text="p.niche"></b><span class="text-gray-400" x-text="' · '+(p.sample_count||0)+' кадров'"></span>
+                <div class="text-gray-600" x-text="[(p.profile&&p.profile.mood)||'',(p.profile&&p.profile.framing)||''].filter(Boolean).join(' · ')"></div>
+              </div>
+            </template>
+          </div>
+        </div>
+      </section>
+
       <!-- Живой воркфлоу: видно, что завод делает прямо сейчас (чтобы не «пустой экран») -->
       <section x-show="op.busy" x-cloak class="card mb-4" style="border-color:#ddd6fe; background:#f5f3ff">
         <div class="flex items-center justify-between mb-3">
@@ -788,7 +827,39 @@ function patrick() {
       } catch (e) { this.diskBank.note = 'ошибка загрузки диска'; this.diskBank.images = []; this.diskBank.videos = []; }
       this.diskBank.loading = false; this.diskBank.loaded = true;
     },
-    resetDiskBank() { this.diskBank = { loading: false, loaded: false, note: '', images: [], videos: [], pinned: '' }; },
+    resetDiskBank() { this.diskBank = { loading: false, loaded: false, note: '', images: [], videos: [], pinned: '', learned: false }; },
+    // ── База контента и обучение (каталог дисков+WB по нише/артикулу, рецепты ниш) ──
+    cat: { open: false, busy: '', msg: '', err: false, migMissing: false, byNiche: null, profiles: [] },
+    async catState() {
+      try {
+        const s = await (await fetch('/api/factory/content-index')).json();
+        if (s.error) { this.cat.migMissing = /relation|does not exist|миграц|content_assets/i.test(s.error); this.cat.byNiche = null; }
+        else { this.cat.byNiche = s.by_niche || {}; this.cat.migMissing = false; }
+        const lp = await (await fetch('/api/factory/content-learn')).json();
+        this.cat.profiles = Array.isArray(lp.profiles) ? lp.profiles : (lp.profiles ? [lp.profiles] : []);
+      } catch (e) {}
+    },
+    async catRun(kind) {
+      if (this.cat.busy) return;
+      this.cat.busy = kind; this.cat.err = false; this.cat.msg = '';
+      try {
+        if (kind === 'index') {
+          const d = await (await fetch('/api/factory/content-index', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })).json();
+          this.cat.err = !d.ok; this.cat.msg = d.ok ? ('Диски: ' + d.indexed + ' файлов · артикулов: ' + Object.keys(d.by_article || {}).length) : (d.error || d.reason || 'ошибка');
+          if (/миграц|content_assets|does not exist/i.test(this.cat.msg)) this.cat.migMissing = true;
+        } else if (kind === 'wb') {
+          const d = await (await fetch('/api/factory/wb-index', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })).json();
+          this.cat.err = !d.ok; this.cat.msg = d.ok ? ('WB: ' + d.photos_indexed + ' фото по ' + d.products_with_photos + ' товарам (≈' + d.avg_per_card + '/карточку)') : (d.error || d.reason || 'ошибка');
+          if (/миграц|content_assets|does not exist/i.test(this.cat.msg)) this.cat.migMissing = true;
+        } else if (kind === 'learn') {
+          const niches = ['jackets', 'bags', 'blasters', 'cream']; let done = 0; const errs = [];
+          for (const n of niches) { this.cat.msg = 'обучаю: ' + n + '…'; const d = await (await fetch('/api/factory/content-learn', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ niche: n }) })).json(); if (d.ok) done++; else errs.push(n + '(' + String(d.error || '?').slice(0, 24) + ')'); }
+          this.cat.err = done === 0; this.cat.msg = 'Обучено ниш: ' + done + '/4' + (errs.length ? ' · пропуск: ' + errs.join(', ') : '');
+        }
+      } catch (e) { this.cat.msg = String(e).slice(0, 120); this.cat.err = true; }
+      this.cat.busy = '';
+      await this.catState();
+    },
     opHelp: true, // онбординг-плашка «3 шага» (сворачивается, состояние помнится)
     // оператору показываем только товары С ФОТО (cost-only без WB-данных контент сделать нельзя). Не оставляем пусто.
     get opProducts() { const w = (this.products || []).filter(p => this.imgByArt && this.imgByArt[p.article]); return w.length ? w : (this.products || []); },
@@ -1474,6 +1545,7 @@ function patrick() {
       { id:'dashboard', icon:'🏠', label:'Создать контент', anchor:'top' },
       { id:'review', icon:'✅', label:'На одобрение', anchor:'review' },
       { id:'ready', icon:'📤', label:'Готово / публикация', anchor:'ready' },
+      { id:'catalog', icon:'🧠', label:'База контента', anchor:'catalog' },
     ],
   }
 }
