@@ -164,9 +164,9 @@
           <div x-show="cat.total" class="text-[12px] text-indigo-700 font-semibold mb-2" x-text="'📦 В каталоге: ' + cat.total + ' ассетов · из них WB-фото: ' + cat.wb"></div>
           <div x-show="cat.migMissing" class="text-[12px] text-amber-700 bg-amber-50 border border-amber-200 rounded p-2 mb-2">⚠️ Нет таблиц каталога в БД — нужна миграция в Supabase (скажи Claude «дай SQL каталога»).</div>
           <div class="flex flex-wrap gap-2">
-            <button @click="catRun('index')" :disabled="cat.busy" class="btn btn-ghost text-[12px] py-1.5 px-3" x-text="cat.busy==='index'?'⏳ индексирую диски…':'📀 Индексировать диски'"></button>
-            <button @click="catRun('wb')" :disabled="cat.busy" class="btn btn-ghost text-[12px] py-1.5 px-3" x-text="cat.busy==='wb'?'⏳ тяну WB-фото…':'🖼 Индексировать WB-фото'"></button>
-            <button @click="catRun('learn')" :disabled="cat.busy" class="btn btn-primary text-[12px] py-1.5 px-3" x-text="cat.busy==='learn'?'⏳ обучаю ниши…':'🧠 Обучить ниши'"></button>
+            <button @click="catRun('index')" :disabled="!!cat.busy" class="btn btn-ghost text-[12px] py-1.5 px-3" x-text="cat.busy==='index'?'⏳ индексирую диски…':'📀 Индексировать диски'"></button>
+            <button @click="catRun('wb')" :disabled="!!cat.busy" class="btn btn-ghost text-[12px] py-1.5 px-3" x-text="cat.busy==='wb'?'⏳ тяну WB-фото…':'🖼 Индексировать WB-фото'"></button>
+            <button @click="catRun('learn')" :disabled="!!cat.busy" class="btn btn-primary text-[12px] py-1.5 px-3" x-text="cat.busy==='learn'?'⏳ обучаю ниши…':'🧠 Обучить ниши'"></button>
             <button @click="catState()" :disabled="!!cat.busy" class="text-[11px] text-indigo-500 self-center">обновить</button>
           </div>
           <div x-show="cat.msg" class="text-[12px] mt-2" :class="cat.err?'text-rose-600':'text-emerald-600'" x-text="cat.msg"></div>
@@ -337,7 +337,7 @@
             <div class="flex items-center gap-2 flex-wrap">
               <button @click="runFull()" :disabled="pipe.busy" class="btn btn-primary text-[12px]" x-text="pipe.busy ? ('⏳ ' + pipe.step) : '▶▶ Прогнать одобренные (во вкладке)'"></button>
               <button @click="enqueueServer()" :disabled="pipe.busy" class="btn btn-ghost text-[12px]" title="Серверная очередь — можно закрыть вкладку, готовое появится в Базе контента">⚙️ В очередь (фоном)</button>
-              <button @click="loadJobs()" class="btn btn-ghost text-[11px]">🔄 Очередь</button>
+              <button @click="loadJobs(); _startJobsPoll()" class="btn btn-ghost text-[11px]">🔄 Очередь</button>
             </div>
           </div>
           <div x-show="pipe.log" class="text-[11px] text-gray-500 mb-2 whitespace-pre-line" x-text="pipe.log"></div>
@@ -1318,7 +1318,7 @@ function patrick() {
     dir: { task: '', busy: false, plan: null, err: '' },
     run: { busy: false, step: '', ideas: [], approved: 0, err: '' },
     pipe: { busy: false, step: '', log: '', count: 3 },
-    jobs: [], jobsSummary: {}, // серверная очередь генераций (можно закрыть вкладку)
+    jobs: [], jobsSummary: {}, _jobsPoll: null, // серверная очередь генераций (можно закрыть вкладку)
     tr: { niche: '', raw: '', busy: false, data: null, err: '' },
     async analyzeTrends() {
       if (this.tr.busy) return;
@@ -1676,14 +1676,23 @@ function patrick() {
       this.pipe.step = 'ставлю в очередь…';
       try {
         const r = await (await fetch('/api/factory/jobs/enqueue', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ jobs }) })).json();
-        this.pipe.log = r.queued ? ('✅ в очереди ' + r.queued + ' — вкладку можно ЗАКРЫТЬ, готовое появится в Базе контента (disk=gen). Прогресс — кнопка «Очередь».') : ('ошибка очереди: ' + (r.error || '?'));
-        this.loadJobs();
+        this.pipe.log = r.queued ? ('✅ в очереди ' + r.queued + ' — вкладку можно ЗАКРЫТЬ, готовое появится в Базе контента (disk=gen). Прогресс — ниже, обновляется сам.') : ('ошибка очереди: ' + (r.error || '?'));
+        this.loadJobs(); this._startJobsPoll();
       } catch (e) { this.pipe.log = 'ошибка: ' + String(e).slice(0, 100); }
       this.pipe.busy = false; this.pipe.step = '';
     },
     // Опрос серверной очереди (list-роут заодно воскрешает зависшие цепочки тиков).
     async loadJobs() {
       try { const r = await (await fetch('/api/factory/jobs/list')).json(); this.jobs = r.jobs || []; this.jobsSummary = r.summary || {}; } catch (e) {}
+    },
+    // авто-опрос очереди, пока есть активные джобы (живой прогресс); сам останавливается, когда всё done/failed
+    _startJobsPoll() {
+      if (this._jobsPoll) return;
+      this._jobsPoll = setInterval(async () => {
+        await this.loadJobs();
+        const s = this.jobsSummary || {};
+        if (!((s.queued || 0) + (s.running || 0) + (s.polling || 0))) { clearInterval(this._jobsPoll); this._jobsPoll = null; }
+      }, 10000);
     },
     async askDirector() {
       if (!this.dir.task.trim() || this.dir.busy) return;
