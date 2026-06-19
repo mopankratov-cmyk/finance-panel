@@ -1439,7 +1439,22 @@ function patrick() {
         const wb = this.winnersBrief && !this.winnersBrief.startsWith('нет') ? (' ' + this.winnersBrief) : '';
         const r = await fetch('/api/factory/scripts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ article: art, competitor_brief: (trendBrief + wb).trim(), profile: this.profile, playbook: this.activePb(art), rejects: (this.learnRejects || []).map(x => x.hook).filter(Boolean) }) });
         const d = await r.json();
-        if (d.error) { this.run.err = d.error; } else { this.run.ideas = d.scripts || []; this.run.approved = d.approved_count || 0; }
+        if (d.error) { this.run.err = d.error; }
+        else {
+          this.run.ideas = d.scripts || []; this.run.approved = d.approved_count || 0;
+          // P0.2 хук-турнир: судим хуки идей и ставим сильнейшие вперёд (additive, фолбэк = порядок копирайтера)
+          try {
+            const hooks = this.run.ideas.map(s => s.hook).filter(Boolean);
+            if (hooks.length > 1) {
+              this.run.step = 'хук-турнир (отбор сильнейших)…';
+              const hj = await (await fetch('/api/factory/hook-judge', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ hooks, article: art }) })).json();
+              if (hj && Array.isArray(hj.ranked) && hj.ranked.length) {
+                const sc = {}; hj.ranked.forEach(r => { if (r.hook) sc[r.hook] = r.score; });
+                this.run.ideas = this.run.ideas.map(s => ({ ...s, hj: (sc[s.hook] != null ? sc[s.hook] : null) })).sort((a, b) => (b.hj || 0) - (a.hj || 0));
+              }
+            }
+          } catch (e) { /* хук-турнир опционален — порядок остаётся от копирайтера */ }
+        }
       } catch (e) { this.run.err = String(e).slice(0, 120); }
       this.run.busy = false; this.run.step = '';
     },
