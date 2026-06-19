@@ -48,8 +48,22 @@ export async function POST(req: NextRequest) {
       const client = await createClaudeClient();
       if (client) {
         const product = (body.product_name || body.sku_art || "товар").toString().slice(0, 120);
-        const sys = "Ты видео-промпт-инженер для Kling image-to-video (товар на WB). Напиши ОДИН английский motion-промпт. Учти ФОРМУ товара: жёсткая/простая (флакон, сумка) — можно мягкое движение камеры; детальная/сложная (игрушки, техника с мелкими частями) — движение МИНИМАЛЬНОЕ, чтобы не исказить. ОБЯЗАТЕЛЬНО preservation: keep product EXACT shape/label/proportions, no morphing/deformation/cap separation. Подбери движение под идею. Верни ТОЛЬКО английский промпт, без преамбулы.";
-        const res = await client.messages.create({ model: "claude-sonnet-4-6", max_tokens: 300, system: sys, messages: [{ role: "user", content: `Товар: ${product}. Идея/настроение: ${brief || "показать товар эффектно"}.` }] });
+        // грудинг на реальных съёмках: рецепт ниши из niche_visual_profiles
+        let recipe = "";
+        try {
+          const { nicheFor } = await import("@/lib/factory/contentDisks");
+          const { getSupabaseAdmin } = await import("@/lib/supabaseAdmin");
+          const niche = nicheFor(product, (body.sku_art || "").toString());
+          const db = getSupabaseAdmin();
+          if (niche && db) {
+            const { data } = await db.from("niche_visual_profiles").select("profile").eq("niche", niche).maybeSingle();
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const p = (data?.profile || null) as any;
+            if (p) recipe = `\nСТИЛЬ НАШИХ РЕАЛЬНЫХ СЪЁМОК (ниша ${niche}) — следуй ему: framing=${p.framing||""}; camera=${p.camera||""}; light=${p.lighting||""}; action=${p.model_action||""}; palette=${p.palette||""}; mood=${p.mood||""}. DO: ${(p.do||[]).join("; ")}. DONT: ${(p.dont||[]).join("; ")}.${p.motion_prompt ? ` Опорная фраза: ${p.motion_prompt}` : ""}`;
+          }
+        } catch { /* профиля нет — пишем без грудинга */ }
+        const sys = "Ты видео-промпт-инженер для Kling image-to-video (товар на WB). Напиши ОДИН английский motion-промпт. Учти ФОРМУ товара: жёсткая/простая (флакон, сумка) — можно мягкое движение камеры; детальная/сложная (игрушки, техника с мелкими частями) — движение МИНИМАЛЬНОЕ, чтобы не исказить. ОБЯЗАТЕЛЬНО preservation: keep product EXACT shape/label/proportions, no morphing/deformation/cap separation. Если дан СТИЛЬ НАШИХ СЪЁМОК — повтори его эстетику. Подбери движение под идею. Верни ТОЛЬКО английский промпт, без преамбулы.";
+        const res = await client.messages.create({ model: "claude-sonnet-4-6", max_tokens: 300, system: sys, messages: [{ role: "user", content: `Товар: ${product}. Идея/настроение: ${brief || "показать товар эффектно"}.${recipe}` }] });
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const t = (res.content as any[]).filter((b) => b.type === "text").map((b) => b.text).join(" ").trim().replace(/^["«]|["»]$/g, "");
         if (t) { prompt = t; promptBy = "ИИ"; }

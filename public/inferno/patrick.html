@@ -134,6 +134,7 @@
             <button @click="loadDiskBank()" :disabled="diskBank.loading" class="btn btn-ghost text-[12px] py-1.5 px-3" x-text="diskBank.loading ? '⏳ ищу съёмку…' : '📸 Контент со съёмки'"></button>
             <span x-show="diskBank.note" class="text-gray-600" x-text="diskBank.note"></span>
             <span x-show="diskBank.loaded && !diskBank.images.length && !diskBank.videos.length" class="text-gray-400">съёмки под этот товар нет — рендер пойдёт с карточки</span>
+            <span x-show="diskBank.learned" class="pill pill-violet">🧠 агенты обучены на этой съёмке</span>
             <span x-show="diskBank.pinned" class="pill pill-live">📌 кадр закреплён как источник</span>
           </div>
           <div x-show="diskBank.images.length" class="grid grid-cols-4 sm:grid-cols-6 gap-1.5 mt-2">
@@ -774,7 +775,7 @@ function patrick() {
     opProg: { idx: 0, total: 0, stage: '' }, // stage: идеи|продюсер|материалы|сценарий|рендер|отк
     opStages: [{ k: 'анализ', i: '🔬', l: 'Анализ конкурентов' }, { k: 'идеи', i: '💡', l: 'ТЗ / идеи' }, { k: 'материалы', i: '📸', l: 'Материалы (съёмка)' }, { k: 'продюсер', i: '🎬', l: 'Продюсер' }, { k: 'сценарий', i: '✍️', l: 'Сценарий' }, { k: 'рендер', i: '🎥', l: 'Рендер' }, { k: 'отк', i: '✅', l: 'Проверка ОТК' }],
     // реальный контент со съёмки (Яндекс.Диск): грид кадров + закреплённый кадр-источник
-    diskBank: { loading: false, loaded: false, note: '', images: [], videos: [], pinned: '' },
+    diskBank: { loading: false, loaded: false, note: '', images: [], videos: [], pinned: '', learned: false },
     async loadDiskBank() {
       const art = this.op.art; if (!art) return;
       this.diskBank.loading = true; this.diskBank.loaded = false;
@@ -783,6 +784,7 @@ function patrick() {
         this.diskBank.images = (d.images || []).map(i => ({ name: i.name, url: location.origin + i.url }));
         this.diskBank.videos = d.videos || [];
         this.diskBank.note = d.found ? (d.note || '') : '';
+        this.diskBank.learned = !!d.learned;
       } catch (e) { this.diskBank.note = 'ошибка загрузки диска'; this.diskBank.images = []; this.diskBank.videos = []; }
       this.diskBank.loading = false; this.diskBank.loaded = true;
     },

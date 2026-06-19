@@ -29,9 +29,22 @@ export async function POST(req: NextRequest) {
   const images = uniqImgs.slice(0, 24).map((i) => ({ name: i.name, path: i.path, url: proxy(i.path) }));
   const videos = vids.slice(0, 12).map((v) => ({ name: v.name, path: v.path }));
 
+  // обучены ли агенты на этой нише (есть визуальный профиль)?
+  let learned = false;
+  try {
+    const { getSupabaseAdmin } = await import("@/lib/supabaseAdmin");
+    const db = getSupabaseAdmin();
+    if (db) {
+      const { data } = await db.from("niche_visual_profiles").select("niche").eq("niche", src.niche).maybeSingle();
+      learned = !!data;
+    }
+  } catch { /* профиля/таблицы ещё нет */ }
+
   return NextResponse.json({
     found: images.length > 0 || videos.length > 0,
     note: src.note,
+    niche: src.niche,
+    learned,
     source: { disk: src.disk.id, label: src.disk.label, paths: src.paths },
     images,
     videos,
