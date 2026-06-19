@@ -72,6 +72,18 @@ export async function falMux(videoUrl: string, audioUrl: string, durationSec: nu
   } catch (e) { return { error: String(e).slice(0, 120) }; }
 }
 
+// диагностика: сырой ответ FAL на сабмит (статус+тело) — понять 401(ключ)/402-403(баланс)/422(модель)
+export async function falSubmitRaw(model: FalVideoModel, imageUrl: string, prompt: string): Promise<{ ok: boolean; status: number; body: string; hasKey: boolean }> {
+  const k = key();
+  if (!k) return { ok: false, status: 0, body: "FAL_KEY не настроен в env", hasKey: false };
+  const endpoint = FAL_VIDEO_MODELS[model] || FAL_VIDEO_MODELS.kling;
+  try {
+    const r = await fetch(`${QUEUE}${endpoint}`, { method: "POST", headers: { Authorization: `Key ${k}`, "Content-Type": "application/json" }, cache: "no-store", body: JSON.stringify(buildInput(model, imageUrl, prompt)), signal: AbortSignal.timeout(25000) });
+    const body = (await r.text()).slice(0, 300);
+    return { ok: r.ok, status: r.status, body, hasKey: true };
+  } catch (e) { return { ok: false, status: -1, body: String(e).slice(0, 200), hasKey: true }; }
+}
+
 export interface FalVideoStatus { status: "in_progress" | "done" | "error"; videoUrl?: string; error?: string }
 
 export async function falVideoStatus(token: string): Promise<FalVideoStatus> {

@@ -9,6 +9,12 @@ export const maxDuration = 60;
 export async function POST(req: NextRequest) {
   if (!process.env.FAL_KEY) return NextResponse.json({ detail: "FAL_KEY не настроен" }, { status: 500 });
   const body = await req.json().catch(() => ({}));
+  // диагностика FAL: сырой ответ (статус 401=ключ, 402/403=баланс/доступ, 422=модель)
+  if (body.debug === "fal") {
+    const { falSubmitRaw } = await import("@/lib/factory/falVideo");
+    const raw = await falSubmitRaw("seedance", "https://basket-36.wbbasket.ru/vol7691/part769167/769167956/images/big/1.webp", "test");
+    return NextResponse.json({ debug_fal: raw });
+  }
   const model: FalVideoModel = (body.model in FAL_VIDEO_MODELS ? body.model : "kling") as FalVideoModel;
   const brief: string = (body.brief || body.hook || "").toString().trim();
   const motion: string = (body.motion || "").toString().trim();
