@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { yaList } from "@/lib/yandex/disk";
-import { CONTENT_DISKS, nicheForPath, articleForPath, SKIP_FILE, SKIP_FOLDER } from "@/lib/factory/contentDisks";
+import { CONTENT_DISKS, nicheForPath, articleForPath, norviaArticle, SKIP_FILE, SKIP_FOLDER } from "@/lib/factory/contentDisks";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { fetchCabinetCards } from "@/lib/wb/cards";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -39,7 +40,19 @@ export async function POST(req: NextRequest) {
   const disks = CONTENT_DISKS.filter((d) => !only || d.id === only);
 
   const rows: Row[] = [];
-  for (const d of disks) await walk(d.id, d.key, "/", 4, rows);
+  for (const d of disks) {
+    const before = rows.length;
+    await walk(d.id, d.key, "/", 4, rows);
+    // диск с привязанным кабинетом (NORVIA) → проставляем точный артикул по цвету карточки
+    if (d.cabinetId) {
+      try {
+        const cards = await fetchCabinetCards(d.cabinetId);
+        if (cards.length) for (let i = before; i < rows.length; i++) {
+          if (!rows[i].article) rows[i].article = norviaArticle(rows[i].path, cards);
+        }
+      } catch { /* без карточек — останется niche+цвет */ }
+    }
+  }
   if (!rows.length) return NextResponse.json({ ok: false, reason: "ничего не собрано (диск пуст/недоступен)", indexed: 0 });
 
   const { error } = await db.from("content_assets").upsert(rows, { onConflict: "disk,path", ignoreDuplicates: false });

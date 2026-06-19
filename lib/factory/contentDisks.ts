@@ -2,12 +2,60 @@
 // Завод тянет отсюда настоящие фото/видео и предпочитает их кропу с карточки WB.
 // Ключ = публичная ссылка на расшаренную папку.
 
-export interface ContentDisk { id: string; key: string; label: string }
+export interface ContentDisk { id: string; key: string; label: string; cabinetId?: string }
 
 export const CONTENT_DISKS: ContentDisk[] = [
-  { id: "norvia", key: "https://disk.yandex.ru/d/wrlUYpWVjgWBww", label: "NORVIA — куртки/ветровки (съёмка 15.01.26)" },
+  // cabinetId Retail Family — кабинет курток/ветровок NORVIA (для привязки папок к артикулам по цвету карточки)
+  { id: "norvia", key: "https://disk.yandex.ru/d/wrlUYpWVjgWBww", label: "NORVIA — куртки/ветровки (съёмка 15.01.26)", cabinetId: "1f173bb0-e687-4f06-9bb8-a1a44d5621bf" },
   { id: "design", key: "https://disk.yandex.ru/d/12-84kRP_PMbzg", label: "Дизайн — модель МАША (товары в руках)" },
 ];
+
+// NORVIA: модель-папка съёмки → линия артикула (подтверждено владельцем).
+// Точный цвет внутри линии добиваем сопоставлением с текстом цвета карточки (bestArticleByColor).
+export const NORVIA_LINE: Record<string, string> = {
+  "КУЛИСА": "NV-08",        // куртка база с кулиской
+  "КОКЕТКА": "NV-836",      // парка с поясом и кокеткой
+  "ПОЯС": "NV-816",         // куртка с поясом и строчкой
+  "ОЛЬГА МАНЖЕТ": "NV-01",  // куртка с поясом и строчкой (Ольга/манжет)
+};
+
+// Нормализация названия цвета (папка диска ↔ текст цвета карточки). \b в JS не дружит с кириллицей — без него.
+export function normColor(s: string): string {
+  let x = (s || "").toLowerCase().replace(/ё/g, "е").replace(/[-.,]/g, " ");
+  x = x.replace(/перекерас|перекрас|перекр|манжет/g, " ");
+  x = x.replace(/темн(?!о)/g, "темно").replace(/светл(?!о)/g, "светло").replace(/(^|\s)св(\s|$)/g, "$1светло$2");
+  x = x.replace(/беж\w*/g, "бежев").replace(/зел\w*/g, "зелен").replace(/син\w*/g, "син")
+    .replace(/голуб\w*/g, "голуб").replace(/борд\w*/g, "бордов").replace(/шоколад\w*/g, "шоколад");
+  return x.replace(/\s+/g, " ").trim();
+}
+
+// Подобрать артикул по цвету папки среди кандидатов линии (у каждого — текст цвета карточки).
+export function bestArticleByColor(folderColor: string, candidates: { article: string; color: string }[]): string | null {
+  const f = normColor(folderColor);
+  if (!f) return null;
+  let best: string | null = null, bs = 0;
+  for (const c of candidates) {
+    const toks = c.color.split(",").map(normColor).filter(Boolean);
+    for (let i = 0; i < toks.length; i++) {
+      const t = toks[i];
+      let s = t === f ? 10 : (t.includes(f) || f.includes(t)) ? 6 : 0;
+      if (s) s += i === 0 ? 2 : 0; // первичный цвет карточки важнее
+      if (s > bs) { bs = s; best = c.article; }
+    }
+  }
+  return bs >= 6 ? best : null;
+}
+
+// Артикул NORVIA по пути файла съёмки (модель-папка → линия, цвет-папка → точный SKU по карточкам).
+export function norviaArticle(path: string, cards: { article: string; color: string }[]): string | null {
+  const segs = path.replace(/^\/+/, "").split("/");
+  if (segs.length < 2) return null;
+  const line = NORVIA_LINE[segs[0].trim()];
+  if (!line) return null;
+  const cand = cards.filter((c) => c.article.startsWith(line + "-") || c.article.startsWith(line));
+  if (!cand.length) return null;
+  return bestArticleByColor(segs[1], cand);
+}
 
 export function diskById(id: string): ContentDisk | undefined {
   return CONTENT_DISKS.find((d) => d.id === id);
