@@ -352,6 +352,7 @@
             <template x-for="(s,i) in run.ideas" :key="i">
               <div class="flex items-start gap-2 text-[13px] p-2 rounded-lg border" :class="s.verdict==='rework' ? 'border-amber-200 bg-amber-50/40' : 'border-gray-100'">
                 <span class="pill" :class="s.verdict==='rework' ? 'pill-warn' : 'pill-live'" x-text="(s.score||'') "></span>
+                <span x-show="s.hj != null" class="pill pill-rose" :title="'балл хука (турнир): ' + s.hj + '/10'" x-text="'🎯 ' + s.hj"></span>
                 <div class="flex-1"><div class="font-medium" x-text="s.hook || s.concept"></div>
                   <div class="text-[11px] text-gray-400" x-show="s.format" x-text="s.format + (s.angle ? (' · ' + s.angle) : '')"></div>
                   <div class="text-[11px] text-amber-700" x-show="s.fix" x-text="'на переделку: ' + s.fix"></div>
