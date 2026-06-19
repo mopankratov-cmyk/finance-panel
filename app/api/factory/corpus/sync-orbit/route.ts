@@ -78,8 +78,9 @@ export async function POST(req: NextRequest) {
 
   let inserted = 0;
   if (rows.length) {
-    // upsert по url (ON CONFLICT DO NOTHING для дублей; обновляем метрики, если видео уже есть)
-    const { error: vErr, count } = await db.from("viral_videos").upsert(rows, { onConflict: "url", ignoreDuplicates: false, count: "exact" });
+    // upsert по url с ON CONFLICT DO NOTHING (ignoreDuplicates) — дубли пропускаем, существующие НЕ трогаем,
+    // чтобы ре-синк не сбросил analyzed/analyzed_full уже разобранного видео (R4). count = только новые вставки.
+    const { error: vErr, count } = await db.from("viral_videos").upsert(rows, { onConflict: "url", ignoreDuplicates: true, count: "exact" });
     if (vErr) return NextResponse.json({ error: "viral_videos: " + vErr.message }, { status: 500 });
     inserted = count ?? rows.length;
   }

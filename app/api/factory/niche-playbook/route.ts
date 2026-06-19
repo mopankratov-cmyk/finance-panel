@@ -48,6 +48,7 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
   const niche: string = (body.niche || body.product_name || "").toString().trim();
   const jobId: string = (body.job_id || body.id || "").toString().trim();
+  const article: string = (body.article || "").toString().trim(); // нужен для согласованной нормализации ниши с sync-orbit
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let analysis: any = body.analysis || null;
@@ -98,7 +99,7 @@ export async function POST(req: NextRequest) {
   try {
     const db = getSupabaseAdmin();
     if (db) {
-      const rn = nicheFromArticle("", niche);
+      const rn = nicheFromArticle(article, niche);
       const [vv, vh] = await Promise.all([
         db.from("viral_videos").select("hook_text,format_detected,beat_structure,virality_score").eq("niche", rn).order("virality_score", { ascending: false }).limit(5),
         db.from("viral_hooks").select("hook_text").eq("niche", rn).order("viability_score", { ascending: false }).limit(8),
@@ -139,7 +140,7 @@ export async function POST(req: NextRequest) {
     try {
       const db = getSupabaseAdmin();
       if (db && Array.isArray(playbook.hooks) && playbook.hooks.length) {
-        const rn = nicheFromArticle("", niche);
+        const rn = nicheFromArticle(article, niche);
         const hooks = (playbook.hooks as unknown[]).map((h) => String(h || "").trim()).filter(Boolean).slice(0, 10);
         const { data: existing } = await db.from("viral_hooks").select("hook_text").eq("niche", rn).limit(300);
         const have = new Set(((existing as { hook_text: string }[] | null) ?? []).map((r) => r.hook_text));
