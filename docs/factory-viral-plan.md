@@ -12,7 +12,21 @@
 - ✅ **P0.3** — анти-слоп флор на ВСЕ рендеры (video-critic: зеркальный текст/плывущий товар/деформация → native≤2) + анти-AI на скрипт (бан-фразы + мёртвые форматы 2026 в standard.ts).
 - ✅ **R5** — `niche-playbook` обогащён (hook_type/structure_by_seconds/retention_mechanism/psycho_trigger/attention_break_point + грунтовка на корпусе).
 - ✅ **R3** — `app/api/factory/corpus/sync-orbit` (Orbit → orbit_searches + viral_videos, дедуп по url, virality_score) + подключён в кокпит (`buildPlaybook` фоном). Корпус-конвейер замкнут.
-- ⏳ ОСТАЛОСЬ (след. батч): **R2** (create_niche_monitor) и **R4** (analyze_video) — НЕ писал вслепую, нужны точные схемы Virlo-MCP инструментов (отключился); wiring hook-judge в render-pipeline (jobs/tick перед рендером); серверное исполнение slideshow/repurpose; P1.1 звук-mux; P1.2 объём; U2 гибрид. Factory v2/Shotstack — отдельная веха.
+- ✅ **P1.2** — `app/api/factory/variations` (из 1 победителя N вариаций, по одному рычагу за раз).
+- ✅ **Анти-слоп рендера** — DEFAULT_NEG усилен (mirrored text/melted edges/floating product/deformed packaging, kling).
+- ✅ **Петля калибровки хуков** — niche-playbook сеет playbook.hooks → viral_hooks; hook-judge калибруется niche-уровнево.
+- ✅ **Проверено** — `video-fal` уже preservation-first (TEMPLATE «keep product EXACTLY, no morph/deform» + мин. движение для детальных) → правок не нужно.
+
+КОММИТЫ ветки `feat/factory-viral-night`: d433296 (Блок 1) · 9d4c71e (P1.2+neg) · 3abf1cb (калибровка).
+
+### ⏳ ОСТАЛОСЬ — и ПОЧЕМУ не сделано вслепую (нужен ты / live / схемы):
+- **UI-wiring** hook-judge + variations в кокпит (`patrick.html`) — Alpine без compile-сети; синтакс-ошибка = белый экран. Нужен live-тест в браузере (one button + render). НЕ делал вслепую, чтобы не сломать рабочий кокпит ночью.
+- **Серверное исполнение slideshow/repurpose** в `jobs/tick` — нужен server-side slideshow-renderer (сейчас очередь только i2v) + live-тест на fal/Supabase. produce уже РЕШАЕТ правильно; исполнение — отдельный безопасный шаг с тестом.
+- **R2 (create_niche_monitor) / R4 (analyze_video)** — Virlo-MCP отключился, точных схем платных инструментов нет. Угадывать контракт платного API нельзя. Сделать, когда MCP переподключится (схемы) — read бесплатно, create гейтить флагом.
+- **P1.1 авто-mux звука** — по ресёрчу Virlo НЕ отдаёт скачиваемый mp3 (только id/title) → авто-mux недоставляем без источника аудио; бит-синк демоутнут до фикс-сетки. Нужен реальный mp3-URL ИЛИ ручное наложение при постинге.
+- **U2 гибрид UGC** — нужна live-валидация Creatify (ключи стоят, но API мог быть Enterprise) + наш b-roll монтаж.
+- **Factory v2 / Shotstack** — нужен аккаунт/ключ Shotstack + новая веха (assemble + shotstack.ts + ветка шагов + DDL 20260621). Движок ВЫБРАН, архитектура расписана выше.
+- **U4** — нужен GEMINI_API_KEY (Nano Banana).
 
 ## Корневая причина
 
