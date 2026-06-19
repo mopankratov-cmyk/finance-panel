@@ -1514,8 +1514,10 @@ function patrick() {
         if (pr.decision?.route) route = pr.decision.route;
         if (['kling', 'pika', 'seedance'].includes(pr.decision?.engine)) engine = pr.decision.engine;
       } catch (e) {}
-      // есть реальное фото со съёмки → проверенный путь: ВИДЕО из него на Seedance (бьёт всё остальное)
-      if (realImg) { route = 'ai_generation_ref'; engine = 'seedance'; }
+      // P0.1: УВАЖАЕМ маршрут продюсера — реальное фото = ХРЕБЕТ ролика, не повод авто-гнать AI-видео целиком (это давало слоп).
+      // repurpose_cut предполагает реальное ВИДЕО; у нас фото → надёжный slideshow (реальный товар, не плывёт). Нет фото → атмосфера.
+      if (route === 'repurpose_cut') route = realImg ? 'slideshow' : 'ai_generation';
+      if (route === 'ai_generation_ref' && !['kling', 'pika', 'seedance'].includes(engine)) engine = 'seedance';
       // аватары убраны из завода: любой залетевший ai_avatar → надёжный маршрут
       if (route === 'ai_avatar') route = (this.imgByArt && this.imgByArt[art]) ? 'slideshow' : 'ai_generation_ref';
       s.gen.route = route; s.gen.engine = engine;
