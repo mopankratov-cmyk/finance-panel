@@ -61,8 +61,9 @@ export async function creatifyLinkVideo(opts: { url?: string; images?: string[];
   }
   if (!linkId) return { error: `link не создан: ${JSON.stringify(debug).slice(0, 220)}`, debug };
   // 2) создать видео из link
-  // язык — КОД "ru" (не слово "russian"!), иначе CTA/плашки уходят в английский
-  const body: Record<string, unknown> = { link: linkId, aspect_ratio: "9x16", video_length: opts.length || 15, target_platform: "Tiktok", language: "ru" };
+  // язык — КОД "ru" (не слово "russian"!), иначе CTA/плашки уходят в английский.
+  // no_cta — убираем англоязычную плашку-концовку ("Blast Away with Wildberries / BUY NOW"); CTA уже в субтитрах по-русски.
+  const body: Record<string, unknown> = { link: linkId, aspect_ratio: "9x16", video_length: opts.length || 15, target_platform: "Tiktok", language: "ru", no_cta: true };
   if (opts.script) body.override_script = opts.script.slice(0, 1500);
   if (opts.avatar) body.override_avatar = opts.avatar;
   const created = await jpost(h, "/link_to_videos/", body);
