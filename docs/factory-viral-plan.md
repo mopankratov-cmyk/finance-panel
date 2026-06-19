@@ -25,20 +25,18 @@
 - **★ P0.1 РЕАЛЬНО включён в кокпите** — `_genIdea` больше НЕ затирает route на `ai_generation_ref` при наличии реального фото (строка 1518 форсила AI-i2v на КАЖДЫЙ товар = источник слопа, нейтрализовала переворот продюсера). Теперь уважает решение produce: реальное фото → **slideshow** (товар не плывёт); repurpose_cut без видео → slideshow; i2v только если продюсер явно выбрал (+ анти-слоп ОТК ловит брак). **Эффект: кокпит делает карусели на реальном фото вместо AI-слоп-видео.**
 - ⚠️ Эти 4 cockpit-правки проверены node --check (синтаксис) + баланс тегов, но НЕ прогнаны визуально (кокпит за auth). Глянь глазами при первом запуске.
 
+### ✅ ДОДЕЛАНО в продолжении (2026-06-20):
+- **compose-ветка в `jobs/tick`** (коммит 02a3ed3): `assemble → compose-submit → compose-poll` встроена в self-chaining очередь. `produce` теперь ветвится: slideshow/repurpose_cut → `assemble` (Shotstack-сборка), AI-пути → `scenario` (fal). Guard `composeCount≤3` как у renderCount. При отсутствии ключа/ассетов — graceful откат на scenario.
+- **fix `ai_generation` → Seedance** (коммит 3f1be2d): убран Higgsfield из браузерного пути `_genIdea`. `else`-ветка теперь вызывает `video-fal` без референса вместо `/api/lab/video-storyboard`.
+- **R6 — галерея корпуса** (коммит 6457bdd): `GET /api/factory/corpus/top-videos` + секция «Корпус вирального» в кокпите (lazy, по скору, graceful при пустой таблице).
+
 ### ⏳ ОСТАЛОСЬ — нужен ты / live / схемы:
-- **Серверное исполнение slideshow/repurpose** в `jobs/tick` — нужен server-side slideshow-renderer (сейчас очередь только i2v) + live-тест на fal/Supabase. produce уже РЕШАЕТ правильно; исполнение — отдельный безопасный шаг с тестом.
-- **R2 (create_niche_monitor) / R4 (analyze_video)** — Virlo-MCP отключился, точных схем платных инструментов нет. Угадывать контракт платного API нельзя. Сделать, когда MCP переподключится (схемы) — read бесплатно, create гейтить флагом.
-- **P1.1 авто-mux звука** — по ресёрчу Virlo НЕ отдаёт скачиваемый mp3 (только id/title) → авто-mux недоставляем без источника аудио; бит-синк демоутнут до фикс-сетки. Нужен реальный mp3-URL ИЛИ ручное наложение при постинге.
-- **U2 гибрид UGC** — нужна live-валидация Creatify (ключи стоят, но API мог быть Enterprise) + наш b-roll монтаж.
-- **Factory v2 / Shotstack — ФУНДАМЕНТ ПОСТРОЕН** (коммит d491873, build-green, инертно):
-  ✅ DDL `20260621_factory_v2_assembly.sql` (теги ассетов + factory_assemblies) — ⚠️ применить в Supabase.
-  ✅ `lib/factory/shotstack.ts` (submit/status + buildEdit + fixed бит-сетка).
-  ✅ `app/api/factory/assemble` (Assembly Agent v1 — edit_json из реальных блоков, без рендера).
-  ⏳ ОСТАЛОСЬ (нужен live): `SHOTSTACK_API_KEY` + `SHOTSTACK_FONT_URL` (Cyrillic-TTF) в env; смоук-тест
-  shotstackSubmit на ПРОДЕ (не sandbox=watermark, проверить RU-шрифт + схему edit_json); ветка шагов
-  produce→assemble→compose-submit→compose-poll в jobs/tick; UI-кнопка сборки в кокпите; asset-backfill
-  тегов (опц. — assemble v1 работает и на kind=video/image без тегов).
-- **U4** — нужен GEMINI_API_KEY (Nano Banana).
+- **Factory v2 Shotstack (финальный шаг)**: применить миграцию `20260621` в Supabase → добавить `SHOTSTACK_API_KEY` + `SHOTSTACK_ENV=v1` + `SHOTSTACK_FONT_URL` (Cyrillic-TTF) в Vercel → смоук-тест `shotstackSubmit` на проде (sandbox=watermark). Код полностью готов (assemble + compose-submit + compose-poll в очереди).
+- **R2 (create_niche_monitor) / R4 (analyze_video)** — Virlo-MCP отключился, точных схем платных инструментов нет. Сделать, когда MCP переподключится.
+- **P1.1 авто-mux звука** — Virlo не отдаёт скачиваемый mp3 (только id/title); нужен реальный mp3-URL или ручное наложение при постинге.
+- **U2 гибрид UGC** — live-валидация Creatify (ключи стоят, адаптер готов; риск Enterprise-тарифа).
+- **U4** — нужен `GEMINI_API_KEY` (Nano Banana).
+- **P2.1 winners loop** — дурабельная петля победителей (миграция + mark-winner route + инъекция в scripts) — отдельная сессия, нужны данные в системе.
 
 ## Корневая причина
 
