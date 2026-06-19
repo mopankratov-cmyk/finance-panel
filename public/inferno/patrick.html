@@ -812,9 +812,23 @@ function patrick() {
       if (!confirm('Опубликовать в ' + s.platform + ' (' + s.handle + ') прямо сейчас?')) return;
       const linkUrl = (s.link === 'UTM' && s.art) ? this.utmFor({ platform: s.platform, handle: s.handle }, s.art) : '';
       const ep = s.platform === 'Telegram' ? '/api/post/telegram' : '/api/post/vk';
-      const payload = s.platform === 'Telegram'
-        ? { channel: s.handle, video_url: s.url, caption: s.hook, link: linkUrl }
-        : { message: s.hook, link: linkUrl };
+      let payload;
+      if (s.platform === 'Telegram') {
+        payload = { channel: s.handle, caption: s.hook, link: linkUrl };
+        if (s.url) payload.video_url = s.url;
+        else {
+          // карусель без видео: заливаем слайды из банка в Storage → постим альбомом
+          const b = this.bank.find(x => x.art === s.art && x.hook === s.hook);
+          if (b && b.slides && b.slides.length) {
+            this.utmMsg = 'заливаю слайды в хранилище…';
+            try {
+              const ms = await (await fetch('/api/factory/media-store', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ images: b.slides, prefix: (s.art || 'slides').toString() }) })).json();
+              if (ms.urls && ms.urls.length) payload.images = ms.urls;
+            } catch (e) {}
+          }
+          if (!payload.images) { this.utmMsg = 'нет видео/слайдов для поста (карусель сделай заново — слайды не переживают перезагрузку)'; setTimeout(() => this.utmMsg = '', 5000); return; }
+        }
+      } else payload = { message: s.hook, link: linkUrl };
       this.utmMsg = 'публикую в ' + s.platform + '…';
       try {
         const d = await (await fetch(ep, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })).json();
