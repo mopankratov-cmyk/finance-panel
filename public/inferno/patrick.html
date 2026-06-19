@@ -718,13 +718,18 @@ function patrick() {
     active: 'dashboard',
     products: [],
     async init() {
-      try { const d = await (await fetch('/api/costs')).json(); this.products = (d.rows || d.items || []).filter(p => p.article); } catch (e) {}
+      this.imgByArt = {};
+      // полный список товаров ВСЕХ кабинетов (вкл. куртки NORVIA) + проверенные картинки из каталога
+      try { const fp = await (await fetch('/api/factory/products')).json(); this.products = (fp.items || []).map(i => ({ article: i.article, name: i.name, niche: i.niche })); (fp.items || []).forEach(i => { if (i.img) this.imgByArt[i.article] = i.img; }); } catch (e) {}
+      // дополним из costs (себестоимость-имена) — добавим то, чего ещё нет
+      try { const d = await (await fetch('/api/costs')).json(); const rows = (d.rows || d.items || []).filter(p => p.article); if (!this.products.length) this.products = rows; else { const have = new Set(this.products.map(p => p.article)); rows.forEach(r => { if (!have.has(r.article)) this.products.push(r); }); } } catch (e) {}
       try { this.bank = JSON.parse(localStorage.getItem('cf_bank') || '[]'); } catch (e) { this.bank = []; }
       try { this.accReg = JSON.parse(localStorage.getItem('cf_accounts') || '[]'); } catch (e) { this.accReg = []; }
       try { this.sched = JSON.parse(localStorage.getItem('cf_sched') || '[]'); } catch (e) { this.sched = []; }
       try { this.profile = localStorage.getItem('cf_profile') || ''; } catch (e) { this.profile = ''; }
       this.mode = 'operator'; // кокпит чисто операторский; владельческая настройка — через чат с Claude
-      try { const d = await (await fetch('/api/lab/sku-list')).json(); this.imgByArt = {}; (d.items || []).forEach(i => { if (i.art && i.img_url) this.imgByArt[i.art] = i.img_url; }); } catch (e) { this.imgByArt = {}; }
+      // fallback картинок из sku-list — только для тех, у кого ещё нет (не затираем каталожные)
+      try { const d = await (await fetch('/api/lab/sku-list')).json(); (d.items || []).forEach(i => { if (i.art && i.img_url && !this.imgByArt[i.art]) this.imgByArt[i.art] = i.img_url; }); } catch (e) {}
       try { this.learnedPrompts = JSON.parse(localStorage.getItem('cf_learned') || '{}'); } catch (e) { this.learnedPrompts = {}; }
       try { this.opHelp = localStorage.getItem('cf_help') !== '0'; } catch (e) { this.opHelp = true; }
       try { this.learnRejects = JSON.parse(localStorage.getItem('cf_rejects') || '[]'); } catch (e) { this.learnRejects = []; }
@@ -1453,7 +1458,7 @@ function patrick() {
           const g = await (await fetch('/api/factory/video-critic', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: gateBody(s.scenario) })).json();
           s.gen.textGate = g.error ? null : { hook: (g.axes && g.axes.hook) ?? null, verdict: g.verdict };
           if (!g.error && Array.isArray(g.floor_fail) && g.floor_fail.includes('hook')) {
-            onStage('усиливаю хук');
+            onStage('сценарий'); // остаёмся на стадии «сценарий» — нет ключа 'усиливаю хук' в opStages, иначе прогресс-бар обнуляется
             const sr2 = await (await fetch('/api/factory/scenario', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ article: art, hook: brief, format: s.format || '', profile: this.profile, playbook: this.activePb(art), hook_boost: true }) })).json();
             if (sr2.scenario) {
               const g2 = await (await fetch('/api/factory/video-critic', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: gateBody(sr2.scenario) })).json();
@@ -1566,7 +1571,7 @@ function patrick() {
                 const up = await (await fetch('/api/factory/media-store', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ images: [png], prefix: 'overlay', format: 'png' }) })).json();
                 const overlayUrl = up.urls && up.urls[0];
                 if (overlayUrl) {
-                  const cmp = await (await fetch('/api/factory/overlay', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ video_url: s.gen.url, overlay_url: overlayUrl, duration: sc.duration_sec || 5 }) })).json();
+                  const cmp = await (await fetch('/api/factory/overlay', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ video_url: s.gen.url, overlay_url: overlayUrl, duration: 5 }) })).json(); // fal-клип ВСЕГДА 5с (video-fal дефолт), НЕ длина сценария (15-30с растянула бы видео-трек)
                   if (cmp.video_url) {
                     s.gen.url = cmp.video_url; s.gen.overlay = true;
                     // v2: критик ПЕРЕСУЖИВАЕТ оверленное видео — хук-текст/субтитры теперь в кадре, ось A их видит.
@@ -1575,7 +1580,11 @@ function patrick() {
                     s.gen.critBase = s.gen.critScore;
                     try {
                       const vo = await this._critiqueUrl(s.gen.url, 'product', brief + ' · с текстом ' + art, critMeta);
-                      if (!vo.error && vo.score != null) { s.gen.critScore = vo.score; s.gen.critAxes = vo.axes || s.gen.critAxes; s.gen.overlayScored = true; }
+                      if (!vo.error && vo.score != null) {
+                        s.gen.critOverlay = vo.score; s.gen.critAxes = vo.axes || s.gen.critAxes; s.gen.overlayScored = true;
+                        // оверлей НЕ должен топить прошедший ОТК рендер ниже гейта очереди (>=5) → берём лучший base/overlay
+                        s.gen.critScore = Math.max(s.gen.critBase ?? 0, vo.score);
+                      }
                     } catch (e) {}
                   }
                 }
@@ -1588,7 +1597,7 @@ function patrick() {
       if (s.gen.url || s.gen.slides) {
         await this.saveToBank(s, art); // #3 банк (review = человек проверяет)
         // + навсегда в Базу контента: fal-видео → Storage → каталог (disk='gen'). Fire-and-forget.
-        try { fetch('/api/factory/gen-save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ video_url: s.gen.url || '', slides: s.gen.slides || [], article: art, product_name: this._prodName(art), hook: brief, route: s.gen.route, engine: s.gen.engine, otk: s.gen.critScore, otk_base: s.gen.critBase ?? null, text_gate: s.gen.textGate || null, overlay: !!s.gen.overlay }) }); } catch (e) {}
+        try { fetch('/api/factory/gen-save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ video_url: s.gen.url || '', slides: s.gen.slides || [], article: art, product_name: this._prodName(art), hook: brief, route: s.gen.route, engine: s.gen.engine, otk: s.gen.critScore, otk_base: s.gen.critBase ?? null, otk_overlay: s.gen.critOverlay ?? null, text_gate: s.gen.textGate || null, overlay: !!s.gen.overlay }) }); } catch (e) {}
       }
       return s.gen;
     },
