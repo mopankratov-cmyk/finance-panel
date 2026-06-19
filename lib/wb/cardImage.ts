@@ -42,6 +42,49 @@ async function exists(url: string): Promise<boolean> {
   }
 }
 
+/** Найти рабочий номер basket для nmId (по фото 1), либо 0. */
+async function resolveBasket(nmId: number): Promise<number> {
+  const vol = Math.floor(nmId / 100000);
+  const part = Math.floor(nmId / 1000);
+  const est = estimateBasket(vol);
+  const order: number[] = [est];
+  for (let d = 1; d <= 6; d++) order.push(est + d, est - d);
+  const tried = new Set<number>();
+  for (const b of order) {
+    if (b < 1 || tried.has(b)) continue;
+    tried.add(b);
+    if (await exists(`https://basket-${String(b).padStart(2, "0")}.wbbasket.ru/vol${vol}/part${part}/${nmId}/images/big/1.webp`)) return b;
+  }
+  return 0;
+}
+
+/** Все фото карточки (big .webp) по nmId. Кол-во берём из card.json, иначе последовательный пробинг. */
+export async function getWbCardImages(nmId: number, size = "big"): Promise<string[]> {
+  const basket = await resolveBasket(nmId);
+  if (!basket) return [];
+  const vol = Math.floor(nmId / 100000);
+  const part = Math.floor(nmId / 1000);
+  const base = `https://basket-${String(basket).padStart(2, "0")}.wbbasket.ru/vol${vol}/part${part}/${nmId}`;
+  let count = 0;
+  try {
+    const r = await fetch(`${base}/info/ru/card.json`, { cache: "no-store" });
+    if (r.ok) {
+      const j = (await r.json()) as { media?: { photo_count?: number }; photo_count?: number };
+      count = Number(j?.media?.photo_count ?? j?.photo_count ?? 0);
+    }
+  } catch { /* падём на пробинг */ }
+  const urls: string[] = [];
+  if (count > 0) {
+    for (let k = 1; k <= count; k++) urls.push(`${base}/images/${size}/${k}.webp`);
+  } else {
+    for (let k = 1; k <= 15; k++) {
+      if (await exists(`${base}/images/big/${k}.webp`)) urls.push(`${base}/images/${size}/${k}.webp`);
+      else break;
+    }
+  }
+  return urls;
+}
+
 /** Возвращает URL главного фото карточки или null. */
 export async function getWbCardImage(nmId: number): Promise<string | null> {
   const vol = Math.floor(nmId / 100000);

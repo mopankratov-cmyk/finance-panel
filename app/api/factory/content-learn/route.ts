@@ -17,10 +17,11 @@ export async function POST(req: NextRequest) {
   if (!niche) return NextResponse.json({ error: "нужна niche" }, { status: 400 });
   const sample = Math.min(Math.max(Number(body.sample) || 6, 3), 10);
 
+  // рецепт учим по РЕАЛЬНЫМ съёмкам (модель+товар), не по студийным кропам WB
   const { data: assets, error } = await db
     .from("content_assets")
     .select("path,url,color")
-    .eq("niche", niche).eq("kind", "image").not("url", "is", null)
+    .eq("niche", niche).eq("kind", "image").neq("disk", "wb").not("url", "is", null)
     .limit(sample);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   if (!assets || !assets.length) return NextResponse.json({ error: "нет кадров этой ниши в каталоге (сначала проиндексируй)" }, { status: 404 });
