@@ -20,13 +20,6 @@ export async function POST(req: NextRequest) {
 
   const { getSupabaseAdmin } = await import("@/lib/supabaseAdmin");
   const db = getSupabaseAdmin();
-
-  // диагностика: какие строки каталога у артикула
-  if (body.debug === "rows" && db && article) {
-    const { data } = await db.from("content_assets").select("disk,path,kind,url").eq("article", article).limit(50);
-    return NextResponse.json({ article, rows: (data || []).map((r) => ({ disk: r.disk, kind: r.kind, path: r.path, url_head: String(r.url || "").slice(0, 50), url_is_b64: !String(r.url || "").startsWith("http") && !String(r.url || "").startsWith("/api") })) });
-  }
-
   let learned = false;
   if (db && niche) { try { const { data } = await db.from("niche_visual_profiles").select("niche").eq("niche", niche).maybeSingle(); learned = !!data; } catch { /* нет таблицы */ } }
 

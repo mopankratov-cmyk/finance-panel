@@ -53,21 +53,43 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, url: stored });
   }
 
-  // 2) КАРУСЕЛЬ: слайды уже в Storage (media-store) — просто фиксируем в каталоге одной записью
+  // 2) КАРУСЕЛЬ: слайды могут прийти как base64 — заливаем в Storage, в каталог пишем ССЫЛКИ (не base64)
+  const slideUrls: string[] = [];
+  for (let i = 0; i < slides.length; i++) {
+    const s = slides[i];
+    if (s.startsWith("http")) { slideUrls.push(s); continue; }
+    try {
+      const b64 = s.replace(/^data:image\/\w+;base64,/, "");
+      const buf = Buffer.from(b64, "base64");
+      const path = `gen/${stamp}-${rand}-${i}.jpg`;
+      const { error } = await db.storage.from(BUCKET).upload(path, buf, { contentType: "image/jpeg", upsert: true });
+      if (!error) slideUrls.push(db.storage.from(BUCKET).getPublicUrl(path).data?.publicUrl || "");
+    } catch { /* пропустим битый слайд */ }
+  }
+  const clean = slideUrls.filter(Boolean);
+  if (!clean.length) return NextResponse.json({ ok: false, error: "не удалось залить слайды карусели" });
   const { error: insErr } = await db.from("content_assets").insert({
     disk: "gen", path: `gen/${stamp}-${rand}`, name: (b.hook || article || "карусель").toString().slice(0, 120),
-    kind: "image", niche, article: article || null, color: null, url: slides[0], analyzed: true,
-    analysis: { ...meta, slides },
+    kind: "image", niche, article: article || null, color: null, url: clean[0], analyzed: true,
+    analysis: { ...meta, slides: clean },
   });
   if (insErr) return NextResponse.json({ ok: false, error: insErr.message });
-  return NextResponse.json({ ok: true, url: slides[0], slides: slides.length });
+  return NextResponse.json({ ok: true, url: clean[0], slides: clean.length });
 }
 
-// GET — список сохранённых генераций (для Базы контента).
-export async function GET() {
+// GET — список сохранённых генераций. ?clean=bad — удалить битые строки (url не ссылка, напр. base64).
+export async function GET(req: NextRequest) {
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 500 });
+  if (new URL(req.url).searchParams.get("clean") === "bad") {
+    const { data } = await db.from("content_assets").select("id,url").eq("disk", "gen");
+    const badIds = (data || []).filter((r) => { const u = String(r.url || ""); return !u.startsWith("http"); }).map((r) => r.id);
+    if (badIds.length) await db.from("content_assets").delete().in("id", badIds);
+    return NextResponse.json({ cleaned: badIds.length });
+  }
   const { data, error } = await db.from("content_assets").select("name,kind,url,niche,article,analysis,created_at").eq("disk", "gen").order("created_at", { ascending: false }).limit(200);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ count: (data || []).length, generations: data || [] });
+  // на всякий — не отдаём в галерею битые (не-ссылка) url
+  const gens = (data || []).filter((r) => String(r.url || "").startsWith("http"));
+  return NextResponse.json({ count: gens.length, generations: gens });
 }
