@@ -79,7 +79,7 @@
           <button @click="toggleHelp()" class="text-[11px] text-violet-500" x-text="opHelp ? 'свернуть ▲' : 'показать ▼'"></button>
         </div>
         <div x-show="opHelp" x-cloak class="grid grid-cols-1 md:grid-cols-3 gap-2 mt-2 text-[12px] text-gray-600">
-          <div><b class="text-violet-700">1 · Выбери товар</b> и нажми «✨ Сделать контент». Завод сам подберёт формат и движок, напишет сценарий и снимет ролик.</div>
+          <div><b class="text-violet-700">1 · Выбери товар</b> и нажми «✨ Сделать контент». Завод изучит конкурентов в нише, напишет ТЗ и снимет видео. <span class="text-gray-400">(первый раз по нише — анализ ~15-20 мин, потом быстро)</span></div>
           <div><b class="text-violet-700">2 · Одобри лучшее</b> — покажем только прошедшее проверку качества (ОТК). Листай, одобряй хорошее, отклоняй слабое.</div>
           <div><b class="text-violet-700">3 · Опубликуй</b> — одобренное уходит в расписание и соцсети. Настраивать ничего не нужно.</div>
         </div>
@@ -147,6 +147,7 @@
             </div>
           </template>
         </div>
+        <div x-show="opProg.stage==='анализ' && pb.msg" class="text-[12px] text-violet-700 mt-2" x-text="'🔬 ' + pb.msg"></div>
         <div class="text-[11px] text-gray-500 mt-3">Готовые ролики (прошедшие ОТК) появляются в «Шаге 2» ниже — по одному, по мере проверки. Можно одобрять сразу. ↓</div>
       </section>
 
@@ -724,6 +725,21 @@ function patrick() {
       } catch (e) { this.pb.err = true; this.pb.msg = String(e).slice(0, 120); }
       this.pb.busy = false;
     },
+    // гарантировать плейбук ниши (анализ конкурентов) ПЕРЕД генерацией: есть → берём; нет → Orbit и ждём готовности.
+    async ensurePlaybook(art) {
+      if (this.activePb(art)) return true;
+      this.opProg = { idx: 0, total: 0, stage: 'анализ' };
+      if (!this.pbJobs[art]) await this.studyNiche(art);
+      if (!this.pbJobs[art]) return false; // Orbit не запустился (нет ключа Virlo и т.п.)
+      const deadline = Date.now() + 28 * 60 * 1000; // ждём до ~28 мин (Orbit обычно 15-20)
+      while (Date.now() < deadline) {
+        if (this.activePb(art)) return true;
+        await this.buildPlaybook(art);
+        if (this.activePb(art)) return true;
+        await new Promise(r => setTimeout(r, 45000));
+      }
+      return false; // не успело — генерация пойдёт без разбора (fallback)
+    },
     // ── Режим: Оператор (ежедневно) / Настройка (владелец) ──
     mode: 'operator',
     setMode(m) { this.mode = m; try { localStorage.setItem('cf_mode', m); } catch (e) {} window.scrollTo({ top: 0, behavior: 'smooth' }); },
@@ -731,7 +747,7 @@ function patrick() {
     op: { art: '', busy: false, step: '', log: '' },
     // живой прогресс воркфлоу (видно оператору что завод делает прямо сейчас)
     opProg: { idx: 0, total: 0, stage: '' }, // stage: идеи|продюсер|сценарий|рендер|отк
-    opStages: [{ k: 'идеи', i: '💡', l: 'Идеи' }, { k: 'продюсер', i: '🎬', l: 'Продюсер' }, { k: 'сценарий', i: '✍️', l: 'Сценарий' }, { k: 'рендер', i: '🎥', l: 'Рендер' }, { k: 'отк', i: '✅', l: 'Проверка ОТК' }],
+    opStages: [{ k: 'анализ', i: '🔬', l: 'Анализ конкурентов' }, { k: 'идеи', i: '💡', l: 'ТЗ / идеи' }, { k: 'продюсер', i: '🎬', l: 'Продюсер' }, { k: 'сценарий', i: '✍️', l: 'Сценарий' }, { k: 'рендер', i: '🎥', l: 'Рендер' }, { k: 'отк', i: '✅', l: 'Проверка ОТК' }],
     opHelp: true, // онбординг-плашка «3 шага» (сворачивается, состояние помнится)
     // оператору показываем только товары С ФОТО (cost-only без WB-данных контент сделать нельзя). Не оставляем пусто.
     get opProducts() { const w = (this.products || []).filter(p => this.imgByArt && this.imgByArt[p.article]); return w.length ? w : (this.products || []); },
@@ -742,6 +758,8 @@ function patrick() {
       this.dir.plan = { target_article: this.op.art, goal: 'контент для ' + this.op.art };
       this.run.ideas = [];
       try {
+        // 0) анализ конкурентов по нише (Orbit) — ТЗ строим на реально залетающем
+        this.op.step = 'анализирую конкурентов в нише'; await this.ensurePlaybook(this.op.art);
         this.op.step = 'придумываю идеи'; await this.runPlan();
         if (!this.run.ideas.length) { this.op.log = 'не удалось придумать идеи — попробуй ещё раз'; this.op.busy = false; this.op.step = ''; return; }
         this.op.step = 'делаю и проверяю ролики'; await this.runFull();
