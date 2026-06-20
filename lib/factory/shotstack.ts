@@ -1,8 +1,12 @@
 // Shotstack — managed render-API для модульной сборки видео (Factory v2). Async submit→poll, ложится
 // на нашу self-chaining очередь (контракт как falVideo). Ключ SHOTSTACK_API_KEY (+SHOTSTACK_ENV=v1|stage).
 // ⚠️ НЕ ВАЛИДИРОВАНО LIVE: JSON-схема Shotstack собрана по докам/ресёрчу — нужен 1 смоук-тест на ПРОДЕ
-// (sandbox=stage ставит watermark) + Cyrillic-TTF в timeline.fonts, иначе RU-текст = tofu-квадраты.
+// (sandbox=stage ставит watermark). Кириллица: Noto Sans из jsDelivr/Google Fonts CDN — дефолт, без загрузки.
 // Вся схема Edit изолирована в buildEdit() — миграция на ffmpeg/другой движок трогает ТОЛЬКО этот файл.
+
+// Noto Sans с Кириллицей (Google Fonts → jsDelivr CDN, стабильный TTF, загрузка не нужна)
+const CYRILLIC_FONT_URL = "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/notosans/NotoSans-Regular.ttf";
+const CYRILLIC_FONT_FAMILY = "Noto Sans";
 
 const KEY = (): string | null => process.env.SHOTSTACK_API_KEY || null;
 const ENV = (): string => (process.env.SHOTSTACK_ENV === "stage" ? "stage" : "v1"); // дефолт prod (stage=watermark)
@@ -38,7 +42,8 @@ export function buildEdit(opts: {
   fontFamily?: string;       // должен совпадать с family внутри TTF
   aspect?: "9:16" | "1:1" | "16:9";
 }): Record<string, unknown> {
-  const family = opts.fontFamily || "Montserrat";
+  const resolvedFontUrl = opts.fontUrl || process.env.SHOTSTACK_FONT_URL || CYRILLIC_FONT_URL;
+  const family = opts.fontFamily || process.env.SHOTSTACK_FONT_FAMILY || CYRILLIC_FONT_FAMILY;
   const totalLen = opts.clips.reduce((m, c) => Math.max(m, c.start + c.length), 0) || 5;
 
   const visualClips = opts.clips.map((c) => ({
@@ -62,7 +67,7 @@ export function buildEdit(opts: {
   if (opts.audioUrl) tracks.push({ clips: [{ asset: { type: "audio", src: opts.audioUrl, volume: 1 }, start: 0, length: totalLen }] });
 
   const timeline: Record<string, unknown> = { background: "#000000", tracks };
-  if (opts.fontUrl) timeline.fonts = [{ src: opts.fontUrl }];
+  timeline.fonts = [{ src: resolvedFontUrl }];
   return { timeline, output: { format: "mp4", size: aspectSize(opts.aspect || "9:16") } };
 }
 

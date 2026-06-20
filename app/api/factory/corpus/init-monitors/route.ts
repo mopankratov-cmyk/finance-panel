@@ -60,8 +60,9 @@ export async function POST(req: NextRequest) {
     // Монитора нет — создаём ($1-2)
     const keywords = NICHE_KEYWORDS[niche] || [];
     try {
-      const id = await virloCreateMonitor(niche, keywords, ["tiktok", "instagram"]);
-      if (!id) { errors.push(`${niche}: Virlo не вернул monitor_id`); continue; }
+      const created = await virloCreateMonitor(niche, keywords, ["tiktok", "instagram"]);
+      const id = created.id;
+      if (!id) { errors.push(`${niche}: ${created.error || "Virlo не вернул monitor_id"}`); continue; }
 
       try {
         await db.from("niche_monitors").upsert({

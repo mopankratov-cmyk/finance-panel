@@ -35,13 +35,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, total: orbits.length, completed: 0, synced: 0, skipped: 0, log: ["Нет завершённых Orbit с видео"] });
   }
 
-  // 2. Уже синкнутые — берём из orbit_searches, чтобы пропустить повторно
+  // 2. Уже синкнутые — считаем синкнутой ТОЛЬКО орбиту, у которой реально есть видео в viral_videos.
+  // Если в orbit_searches лежит только «шапка» без видео (прерванный синк) — НЕ пропускаем, ре-синкаем.
   let alreadySynced = new Set<string>();
   try {
-    const { data } = await db.from("orbit_searches").select("job_id").in("job_id", completed.map((o) => o.id));
-    if (data) alreadySynced = new Set((data as { job_id: string }[]).map((r) => r.job_id));
+    const { data } = await db.from("viral_videos").select("source_orbit_id").in("source_orbit_id", completed.map((o) => o.id));
+    if (data) alreadySynced = new Set((data as { source_orbit_id: string }[]).map((r) => r.source_orbit_id).filter(Boolean));
   } catch {
-    // orbit_searches не применена — синкаем всё
+    // viral_videos не применена — синкаем всё (синк затем вернёт явную ошибку про миграцию)
   }
 
   const toSync = completed.filter((o) => !alreadySynced.has(o.id));
@@ -62,6 +63,8 @@ export async function POST(req: NextRequest) {
       if (r.ok && j.ok) {
         log.push(`✓ ${orbit.name.slice(0, 50)} → ${j.videos ?? 0} видео (${j.upserted ?? 0} новых), ниша: ${niche}`);
         synced++;
+      } else if (j.finalized === false) {
+        log.push(`… ${orbit.id.slice(0, 8)}: ещё не финализирован (status: ${j.status ?? "pending"})`);
       } else {
         log.push(`✗ ${orbit.id.slice(0, 8)}: ${j.error || r.statusText}`);
       }

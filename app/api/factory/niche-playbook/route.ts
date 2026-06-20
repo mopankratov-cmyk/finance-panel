@@ -64,7 +64,20 @@ export async function POST(req: NextRequest) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     if (s) sounds = ((s as any).data || s) as any[];
   }
-  if (!analysis) return NextResponse.json({ error: "Нет аналитики ниши (передай job_id готового Orbit или analysis)" }, { status: 400 });
+  // Orbit-аналитики может не быть (data_intelligence выключен / orbit без анализа). Тогда строим из НАШЕГО
+  // корпуса: viral_videos (реальные залетевшие видео ниши) + viral_hooks. 182 видео достаточно для плейбука —
+  // их описания/метрики уходят в corpusBlock ниже, а themes остаются пустыми (синтетический плейсхолдер).
+  if (!analysis) {
+    try {
+      const db0 = getSupabaseAdmin();
+      if (db0) {
+        const rn0 = nicheFromArticle(article, niche);
+        const { count } = await db0.from("viral_videos").select("id", { count: "exact", head: true }).eq("niche", rn0);
+        if ((count ?? 0) > 0) analysis = { themes: [], viral_tactics: [], timing_analysis: {}, _from_corpus: true };
+      }
+    } catch { /* корпус недоступен */ }
+  }
+  if (!analysis) return NextResponse.json({ error: "Нет данных ниши: ни Orbit-аналитики, ни видео в корпусе (синкни орбиты)" }, { status: 400 });
 
   const client = await createClaudeClient();
   if (!client) return NextResponse.json({ error: "ANTHROPIC_API_KEY не настроен" }, { status: 500 });
@@ -101,15 +114,15 @@ export async function POST(req: NextRequest) {
     if (db) {
       const rn = nicheFromArticle(article, niche);
       const [vv, vh] = await Promise.all([
-        db.from("viral_videos").select("hook_text,format_detected,beat_structure,virality_score").eq("niche", rn).order("virality_score", { ascending: false }).limit(5),
-        db.from("viral_hooks").select("hook_text").eq("niche", rn).order("viability_score", { ascending: false }).limit(8),
+        db.from("viral_videos").select("hook_text,format_detected,caption,views,virality_score").eq("niche", rn).order("virality_score", { ascending: false, nullsFirst: false }).limit(12),
+        db.from("viral_hooks").select("hook_text").eq("niche", rn).order("viability_score", { ascending: false }).limit(10),
       ]);
       const vids = (vv.data as Record<string, unknown>[] | null) ?? [];
       const hks = ((vh.data as { hook_text: string }[] | null) ?? []).map((r) => r.hook_text).filter(Boolean);
       if (vids.length || hks.length) {
         corpusBlock = `\nРЕАЛЬНЫЙ КОРПУС (наши данные — строй НА ЭТОМ): ` +
           (hks.length ? `\nЗалетевшие хуки ниши: ${hks.map((h) => `«${h}»`).join(" | ")}` : "") +
-          (vids.length ? `\nТоп-видео (hook · формат · beats): ${JSON.stringify(vids.map((v) => ({ hook: v.hook_text, format: v.format_detected, beats: v.beat_structure }))).slice(0, 1800)}` : "");
+          (vids.length ? `\nТоп залетевших видео ниши (описание · просмотры · hook/формат если разобран): ${JSON.stringify(vids.map((v) => ({ caption: typeof v.caption === "string" ? v.caption.slice(0, 200) : null, views: v.views, hook: v.hook_text, format: v.format_detected }))).slice(0, 3000)}` : "");
       }
     }
   } catch { /* корпуса ещё нет — плейбук строится только на Orbit */ }

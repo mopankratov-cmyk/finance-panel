@@ -85,9 +85,11 @@ export async function virloSearchStart(keywords: string[], platforms: string[] =
   return (data?.id || data?.job_id || null) as string | null;
 }
 // Забрать результат/статус Orbit. dataType: status|videos|analysis|trends|outliers.
-export async function virloSearchResult(id: string, dataType = "status"): Promise<Record<string, unknown> | null> {
+// extraArgs — для пагинации видео (limit/offset): ответ videos приходит как { data: { total, limit:50, offset, videos:[...] } },
+// поэтому орбиты с >50 видео (у нас есть 110 и 127) нужно тянуть страницами через offset.
+export async function virloSearchResult(id: string, dataType = "status", extraArgs: Record<string, unknown> = {}): Promise<Record<string, unknown> | null> {
   if (!process.env.VIRLO_API_KEY) return null;
-  const res = await virloInitCall("tools/call", { name: "get_keyword_search_results", arguments: { id, data_type: dataType } });
+  const res = await virloInitCall("tools/call", { name: "get_keyword_search_results", arguments: { id, data_type: dataType, ...extraArgs } });
   return virloToolJson(res);
 }
 
@@ -113,14 +115,25 @@ export async function virloListOrbits(limit = 50): Promise<{ id: string; name: s
 
 // Создать Comet-монитор для ниши (однократно, платный шаг ~$1-2).
 // Возвращает monitor_id или null.
-export async function virloCreateMonitor(niche: string, keywords: string[], platforms = ["tiktok", "instagram"]): Promise<string | null> {
-  if (!process.env.VIRLO_API_KEY) return null;
+export interface VirloCreateResult { id: string | null; error?: string; }
+export async function virloCreateMonitor(niche: string, keywords: string[], platforms = ["tiktok", "instagram"]): Promise<VirloCreateResult> {
+  if (!process.env.VIRLO_API_KEY) return { id: null, error: "VIRLO_API_KEY не настроен" };
   try {
     const res = await virloInitCall("tools/call", { name: "create_niche_monitor", arguments: { name: `wb-factory-${niche}`, keywords: keywords.slice(0, 7), platforms, frequency: "weekly" } });
+    // MCP-level error (JSON-RPC error) — surface it instead of swallowing into null.
+    const rpcErr = (res as { error?: { message?: string } } | null)?.error?.message;
+    if (rpcErr) return { id: null, error: `Virlo MCP error: ${String(rpcErr).slice(0, 160)}` };
     const j = virloToolJson(res);
-    const data = (j?.data as Record<string, unknown>) || j;
-    return (data?.id || data?.monitor_id || null) as string | null;
-  } catch { return null; }
+    if (!j) return { id: null, error: "Virlo вернул пустой/непарсируемый ответ (нет text-блока)" };
+    if (j.error) return { id: null, error: `Virlo error: ${String(j.error).slice(0, 160)}` };
+    const data = ((j.data as Record<string, unknown>) || j) as Record<string, unknown>;
+    if (data.error) return { id: null, error: `Virlo error: ${String(data.error).slice(0, 160)}` };
+    // id монитора может лежать как data.id или data.monitor_id (или вложен в data.monitor.* — терпим и это).
+    const monitor = (data.monitor && typeof data.monitor === "object" ? (data.monitor as Record<string, unknown>) : null);
+    const id = data.id ?? data.monitor_id ?? monitor?.id ?? monitor?.monitor_id ?? null;
+    if (id == null) return { id: null, error: `monitor_id не найден; ключи ответа: [${Object.keys(data).slice(0, 8).join(", ")}]` };
+    return { id: String(id) };
+  } catch (e) { return { id: null, error: String(e).slice(0, 160) }; }
 }
 
 // Список существующих Comet-мониторов (читает бесплатно).
@@ -129,8 +142,14 @@ export async function virloListMonitors(): Promise<{ id: string; name: string; s
   try {
     const res = await virloInitCall("tools/call", { name: "list_niche_monitors", arguments: {} });
     const j = virloToolJson(res);
-    const data = Array.isArray((j as Record<string, unknown>)?.data) ? ((j as Record<string, unknown>).data as { id: string; name: string; status: string }[]) : [];
-    return data.filter((m) => m.id);
+    // Дамп вернул пусто → форма не подтверждена. Терпим ОБА варианта: { data: [...] } и { data: { monitors: [...] } }
+    // (последнее зеркалит подтверждённый list_keyword_searches → data.orbits).
+    const d = (j as Record<string, unknown> | null)?.data;
+    const arr = Array.isArray(d)
+      ? d
+      : (d && typeof d === "object" && Array.isArray((d as Record<string, unknown>).monitors) ? (d as Record<string, unknown>).monitors : []);
+    const data = arr as { id: string; name: string; status: string }[];
+    return data.filter((m) => m && m.id);
   } catch { return []; }
 }
 
@@ -140,8 +159,17 @@ export async function virloMonitorData(monitorId: string): Promise<Record<string
   try {
     const res = await virloInitCall("tools/call", { name: "get_niche_monitor_data", arguments: { id: monitorId } });
     const j = virloToolJson(res);
-    const data = Array.isArray((j as Record<string, unknown>)?.data) ? ((j as Record<string, unknown>).data as Record<string, unknown>[]) : [];
-    return data;
+    // По общему правилу дампа массив лежит на один уровень глубже под именованным ключом (зеркало data.videos).
+    // Терпим: { data: [...] }, { data: { videos: [...] } } и { data: { data: [...] } }.
+    const d = (j as Record<string, unknown> | null)?.data;
+    const arr = Array.isArray(d)
+      ? d
+      : (d && typeof d === "object"
+          ? (Array.isArray((d as Record<string, unknown>).videos) ? (d as Record<string, unknown>).videos
+            : Array.isArray((d as Record<string, unknown>).data) ? (d as Record<string, unknown>).data
+            : [])
+          : []);
+    return arr as Record<string, unknown>[];
   } catch { return []; }
 }
 
@@ -163,8 +191,10 @@ export async function virloAnalyzeVideo(url: string): Promise<VirloVideoAnalysis
   try {
     const res = await virloInitCall("tools/call", { name: "analyze_video", arguments: { url } });
     const j = virloToolJson(res);
-    const data = ((j as Record<string, unknown>)?.data || j) as Record<string, unknown>;
-    if (!data) return null;
+    if (!j || j.error) return null;
+    // Как и все вызовы Virlo, payload завёрнут в .data; падаем на j, если .data нет (analyze_video в дампе не снят).
+    const data = ((j.data as Record<string, unknown>) || j) as Record<string, unknown>;
+    if (!data || data.error) return null;
     return {
       hook_text: (data.hook_text || data.hook || "") as string,
       format_detected: (data.format || data.format_detected || data.content_type || "") as string,

@@ -53,13 +53,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true, built: [], skipped, log: ["Все ниши покрыты актуальными плейбуками"] });
     }
 
-    for (const niche of need) {
+    // Параллельно: ниши независимы, niche-playbook строит из корпуса (без Virlo) → общее время = одна ниша, не сумма.
+    await Promise.all(need.map(async (niche) => {
       try {
         const r = await fetch(`${origin}/api/factory/niche-playbook`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ niche }),
-          signal: AbortSignal.timeout(20000),
+          signal: AbortSignal.timeout(45000),
         });
         const j = await r.json().catch(() => ({}));
         if (r.ok && (j.playbook || j.ok !== false)) {
@@ -71,7 +72,7 @@ export async function POST(req: NextRequest) {
       } catch (e) {
         log.push(`✗ ${niche}: ${String(e).slice(0, 60)}`);
       }
-    }
+    }));
 
     skipped.push(...orbitNiches.filter((n) => playbookMap.has(n) && !stale.includes(n) && !missing.includes(n)));
   } catch (e) {

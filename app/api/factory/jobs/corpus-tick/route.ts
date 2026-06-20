@@ -53,25 +53,33 @@ export async function POST(req: NextRequest) {
           if (!videos.length) continue;
           monitorsPolled++;
 
+          const obj = (x: unknown): Record<string, unknown> =>
+            x && typeof x === "object" ? (x as Record<string, unknown>) : {};
           const toInsert = videos
             .filter((v) => v.url)
-            .map((v) => ({
-              niche: mon.niche,
-              platform: (v.platform || "tiktok") as string,
-              url: v.url as string,
-              views: num(v.views),
-              likes: num(v.likes),
-              followers_creator: num(v.followers || v.creator_followers),
-              virality_score: viralityScore(num(v.views), num(v.followers || v.creator_followers)),
-              caption: (v.description || v.caption || "") as string,
-              hook_text: (v.hook_text || "") as string,
-              format_detected: (v.format || "") as string,
-              sound_id: (v.sound_id || v.music_id || null) as string | null,
-              sound_title: (v.sound_title || v.music_title || null) as string | null,
-              is_commerce_safe: typeof v.is_commerce_safe === "boolean" ? v.is_commerce_safe : true,
-              source_comet_id: mon.monitor_id,
-              analyzed: false,
-            }));
+            .map((v) => {
+              // followers/sound — во вложенных объектах author/sound; top-level ключей нет (подтверждено дампом).
+              const author = obj(v.author);
+              const sound = obj(v.sound);
+              const followers = num(
+                author.follower_count ?? author.followers ?? author.followers_count ?? author.fans ?? author.fan_count,
+              );
+              return {
+                niche: mon.niche,
+                platform: (v.platform || "tiktok") as string,
+                url: v.url as string,
+                views: num(v.views),
+                likes: num(v.likes),
+                followers_creator: followers,
+                virality_score: viralityScore(num(v.views), followers),
+                caption: (v.description || "") as string,
+                sound_id: (sound.id != null ? String(sound.id) : (sound.sound_id != null ? String(sound.sound_id) : null)) as string | null,
+                sound_title: (sound.title != null ? String(sound.title) : (sound.name != null ? String(sound.name) : null)) as string | null,
+                is_commerce_safe: typeof v.is_commerce_safe === "boolean" ? v.is_commerce_safe : true,
+                source_comet_id: mon.monitor_id,
+                analyzed: false,
+              };
+            });
 
           if (toInsert.length) {
             const { error } = await db.from("viral_videos").upsert(toInsert, { onConflict: "url", ignoreDuplicates: true });

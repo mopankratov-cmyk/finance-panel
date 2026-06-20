@@ -21,22 +21,44 @@ export async function POST(req: NextRequest) {
   const nicheRaw: string = (body.niche || body.product_name || "").toString().trim();
   const niche = nicheFromArticle(article, nicheRaw); // rubric-ниша для консистентности с запросами корпуса
 
-  const status = await virloSearchResult(jobId, "status");
-  if (!status) return NextResponse.json({ error: "Virlo не ответил по статусу" }, { status: 502 });
+  const statusRaw = await virloSearchResult(jobId, "status");
+  if (!statusRaw) return NextResponse.json({ error: "Virlo не ответил по статусу" }, { status: 502 });
+  // Virlo заворачивает ответ в .data — распаковываем как для analysis/videos/sounds ниже (иначе finalized всегда false)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const status: any = (statusRaw as any).data || statusRaw;
   const finalized = status.finalized === true || status.status === "completed" || status.status === "partial_failure";
-  if (!finalized) return NextResponse.json({ finalized: false, status: status.status || "pending" });
+  if (!finalized) return NextResponse.json({ finalized: false, status: status.status || "pending", raw_keys: Object.keys(statusRaw).slice(0, 8) });
 
-  const [analysisR, videosR, soundsR] = await Promise.all([
+  const PAGE = 50;
+  const CAP = 200;
+  // Видео пагинируются: Virlo отдаёт { data: { total, limit:50, offset, videos:[...] } } (data — ОБЪЕКТ, не массив),
+  // а орбиты держат 110-127 видео. Тянем страницами через offset до CAP. extraArgs у virloSearchResult уже есть.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const videoPages: any[] = [];
+  for (let offset = 0; offset < CAP; offset += PAGE) {
+    const pageR = await virloSearchResult(jobId, "videos", { limit: PAGE, offset }).catch(() => null);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const pageData: any = (pageR as any)?.data || pageR;
+    // массив на data.videos; терпим и data-как-массив на случай смены формы Virlo
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const pageVids: any[] = Array.isArray(pageData?.videos) ? (pageData.videos as any[]) : (Array.isArray(pageData) ? (pageData as any[]) : []);
+    videoPages.push(...pageVids);
+    const total = num(pageData?.total);
+    if (pageVids.length < PAGE || (total > 0 && videoPages.length >= total)) break;
+  }
+  const [analysisR, soundsR] = await Promise.all([
     virloSearchResult(jobId, "analysis").catch(() => null),
-    virloSearchResult(jobId, "videos").catch(() => null),
     virloSearchResult(jobId, "sounds").catch(() => null),
   ]);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const analysis: any = analysisR?.analysis_data || analysisR?.data || analysisR || null;
+  // sounds завёрнуты так же: массив на data.sounds (data — объект). Терпим оба варианта.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const sounds: any[] = (soundsR?.data || (soundsR as any)?.sounds || []) as any[];
+  const soundsData: any = (soundsR as any)?.data || soundsR;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const rawVids: any[] = (videosR?.data || (videosR as any)?.videos || []) as any[];
+  const sounds: any[] = Array.isArray(soundsData?.sounds) ? (soundsData.sounds as any[]) : (Array.isArray(soundsData) ? (soundsData as any[]) : []);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const rawVids: any[] = videoPages;
 
   // кеш Orbit-поиска
   const { error: osErr } = await db.from("orbit_searches").upsert({
@@ -56,8 +78,14 @@ export async function POST(req: NextRequest) {
   const rows = rawVids.map((v) => {
     const url = String(v.url || v.video_url || "");
     if (!url) return null;
+    // followers и sound лежат во ВЛОЖЕННЫХ объектах author/sound — top-level ключей нет (подтверждено дампом).
+    const author = v.author && typeof v.author === "object" ? v.author : {};
+    const sound = v.sound && typeof v.sound === "object" ? v.sound : {};
     const views = num(v.views ?? v.play_count);
-    const followers = num(v.followers ?? v.creator_followers ?? v.number_of_followers ?? v.author_followers);
+    const followers = num(
+      author.followers ?? author.follower_count ?? author.followers_count ?? author.fans ?? author.fan_count ?? author.number_of_followers ??
+      v.followers ?? v.creator_followers ?? v.number_of_followers ?? v.author_followers,
+    );
     let score: number | null = null;
     if (views > 0 && followers > 0) { const s = Math.log(views / followers) * Math.log(followers); if (Number.isFinite(s)) score = Math.round(s * 100) / 100; }
     return {
@@ -69,8 +97,8 @@ export async function POST(req: NextRequest) {
       followers_creator: followers || null,
       virality_score: score,
       caption: (v.description || v.title || v.caption || "").toString().slice(0, 2000) || null,
-      sound_id: v.sound_id ? String(v.sound_id) : null,
-      sound_title: v.sound_title ? String(v.sound_title) : null,
+      sound_id: sound.id ? String(sound.id) : (sound.sound_id ? String(sound.sound_id) : (v.sound_id ? String(v.sound_id) : null)),
+      sound_title: sound.title ? String(sound.title) : (sound.name ? String(sound.name) : (sound.sound_title ? String(sound.sound_title) : (v.sound_title ? String(v.sound_title) : null))),
       source_orbit_id: jobId,
       analyzed: false,
     };

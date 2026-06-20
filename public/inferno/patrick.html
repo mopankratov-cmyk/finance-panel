@@ -234,7 +234,7 @@
           try {
             const d = await (await fetch('/api/factory/corpus/top-videos?limit=20&min_score=10')).json();
             this.vids = d.videos || [];
-            if (!this.vids.length && d.error) this.err = 'таблица viral_videos не создана — примените миграцию 20260620';
+            if (!this.vids.length && d.error) this.err = (String(d.error).includes('42P01') ? 'таблица viral_videos не создана — примените миграцию 20260620' : ('ошибка корпуса: ' + String(d.error).slice(0,120)));
             else if (!this.vids.length) this.err = 'корпус пуст — нажмите «Изучить нишу» чтобы Orbit заполнил корпус';
           } catch(e) { this.err = String(e).slice(0,80); }
           this.loading = false;

@@ -18,7 +18,7 @@ export async function GET(req: NextRequest) {
   try {
     let q = db
       .from("viral_videos")
-      .select("id,url,niche,virality_score,analyzed,views,followers,created_at")
+      .select("id,url,niche,virality_score,analyzed,views,followers_creator,created_at")
       .order("virality_score", { ascending: false })
       .limit(limit);
 
@@ -35,7 +35,7 @@ export async function GET(req: NextRequest) {
       score: typeof v.virality_score === "number" ? Math.round(v.virality_score * 10) / 10 : null,
       analyzed: v.analyzed,
       views: v.views,
-      followers: v.followers,
+      followers: v.followers_creator,
       created_at: v.created_at,
     }));
 
