@@ -6,7 +6,7 @@
 
 const KEY = (): string | null => process.env.SHOTSTACK_API_KEY || null;
 const ENV = (): string => (process.env.SHOTSTACK_ENV === "stage" ? "stage" : "v1"); // дефолт prod (stage=watermark)
-const BASE = (): string => `https://api.shotstack.io/${ENV()}`;
+const BASE = (): string => `https://api.shotstack.io/edit/${ENV()}`; // /edit/ — текущий формат API (видно в dashboard)
 
 export function shotstackReady(): boolean {
   return !!process.env.SHOTSTACK_API_KEY;
