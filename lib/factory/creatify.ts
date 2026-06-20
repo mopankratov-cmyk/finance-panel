@@ -56,6 +56,8 @@ export interface CreatifyAvatar {
 export interface AvatarFilters { gender?: string; age?: string; style?: string; location?: string; search?: string; limit?: number }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
+function toStr(v: any): string { return Array.isArray(v) ? v.filter(Boolean).join(", ") : (v == null ? "" : String(v)); }
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function normAvatar(p: any): CreatifyAvatar | null {
   if (!p?.id) return null;
   return {
@@ -68,7 +70,8 @@ function normAvatar(p: any): CreatifyAvatar | null {
     scene: p.video_scene || "",
     thumb: p.preview_image_9_16 || p.preview_image_1_1 || p.preview_image_16_9 || "",
     video: p.portrait_preview_video || p.preview_video_9_16 || p.squared_preview_video || p.preview_video_1_1 || p.landscape_preview_video || p.preview_video_16_9 || "",
-    industries: p.suitable_industries || p.keywords || "",
+    // live API отдаёт suitable_industries МАССИВОМ (не строкой как в доках) → приводим к строке, иначе UI-фильтр .toLowerCase() падает
+    industries: toStr(p.suitable_industries) || toStr(p.keywords),
   };
 }
 

@@ -1617,7 +1617,7 @@ function patrick() {
       return (a.list || []).filter(x =>
         (!a.gender || x.gender === a.gender) &&
         (!a.style || x.style === a.style) &&
-        (!q || (x.name || '').toLowerCase().includes(q) || (x.scene || '').toLowerCase().includes(q) || (x.industries || '').toLowerCase().includes(q))
+        (!q || String(x.name || '').toLowerCase().includes(q) || String(x.scene || '').toLowerCase().includes(q) || String(x.industries || '').toLowerCase().includes(q))
       );
     },
     async toggleAvatars() {

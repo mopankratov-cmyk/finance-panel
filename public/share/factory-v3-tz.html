@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>V3 — Нод-студия · ТЗ на прототип</title>
+<style>
+  :root{ --ink:#1c1c1a; --muted:#5f5e5a; --hint:#8a8980; --line:#e7e5df; --bg:#faf9f6; --card:#fff;
+    --violet:#534ab7; --violet-bg:#eeedfe; --violet-ink:#3c3489; --violet-line:#cecbf6;
+    --teal:#0f6e56; --teal-bg:#e1f5ee; --teal-line:#9fe1cb; --amber-bg:#faeeda; --amber-ink:#854f0b;
+    --code-bg:#f1efe8; }
+  @media (prefers-color-scheme:dark){
+    :root{ --ink:#ece9e2; --muted:#a8a69d; --hint:#86847c; --line:#33312c; --bg:#16150f; --card:#1e1d16;
+      --violet:#afa9ec; --violet-bg:#241f3a; --violet-ink:#cecbf6; --violet-line:#3c3489;
+      --teal:#5dcaa5; --teal-bg:#0e2a22; --teal-line:#0f6e56; --amber-bg:#2e2410; --amber-ink:#fac775;
+      --code-bg:#26251c; } }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    line-height:1.7;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:880px;margin:0 auto;padding:40px 26px 80px}
+  .tag{display:inline-block;font-size:12px;letter-spacing:.04em;text-transform:uppercase;
+    color:var(--violet-ink);background:var(--violet-bg);border:1px solid var(--violet-line);
+    border-radius:999px;padding:4px 12px;margin-bottom:14px}
+  #md h1{font-size:30px;line-height:1.25;margin:.2em 0 .5em;font-weight:700;letter-spacing:-.01em}
+  #md h2{font-size:21px;margin:1.8em 0 .5em;padding-top:1.2em;border-top:1px solid var(--line);font-weight:650}
+  #md h2:first-of-type{border-top:none;padding-top:0}
+  #md h3{font-size:16px;margin:1.4em 0 .4em;color:var(--violet-ink);font-weight:650}
+  #md p{margin:.6em 0;color:var(--ink)}
+  #md a{color:var(--violet);text-underline-offset:2px}
+  #md strong{font-weight:650}
+  #md ul,#md ol{margin:.5em 0 .9em;padding-left:1.4em}
+  #md li{margin:.3em 0}
+  #md code{background:var(--code-bg);border-radius:5px;padding:1px 6px;font-size:.88em;
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  #md pre{background:var(--code-bg);border:1px solid var(--line);border-radius:10px;padding:14px 16px;
+    overflow:auto;font-size:13px;line-height:1.55}
+  #md pre code{background:none;padding:0}
+  #md blockquote{margin:1.1em 0;padding:14px 18px;background:var(--violet-bg);
+    border:1px solid var(--violet-line);border-left:4px solid var(--violet);border-radius:0 10px 10px 0}
+  #md blockquote h3{margin-top:.2em;color:var(--violet-ink)}
+  #md blockquote p{color:var(--ink)}
+  #md table{border-collapse:collapse;width:100%;margin:1.1em 0;font-size:14px;display:block;overflow-x:auto}
+  #md th,#md td{border:1px solid var(--line);padding:8px 11px;text-align:left;vertical-align:top}
+  #md th{background:var(--code-bg);font-weight:650;white-space:nowrap}
+  #md hr{border:none;border-top:1px solid var(--line);margin:2em 0}
+  #md h2:nth-of-type(1){color:var(--teal)}
+  .foot{margin-top:60px;padding-top:20px;border-top:1px solid var(--line);
+    font-size:13px;color:var(--hint)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="tag">ТЗ на прототип · выверено советом</div>
+  <article id="md"></article>
+  <div class="foot">Источник: docs/factory-v3-tz.md · finance-panel · рендер Markdown в браузере (marked.js)</div>
+</div>
+
+<script type="text/markdown" id="src">
+# V3 — Нод-студия виральных видео
+
+ТЗ на прототип → дизайн. Выверено: глубокий ресёрч (5 агентов) → продакт-синтез (Opus) → council-review (DMAD: 5 советников + рецензии + девилз-адвокат). Дата: 2026-06-20. Связано: бэкенд-сборка `docs/factory-shotstack-tz.md` (V3 надстраивается над ним).
+
+---
+
+## 0. Вердикт совета (читать первым)
+
+> ### ⭐ Главный принцип (закон дизайна): настраиваемо ПОД КАПОТОМ, просто СВЕРХУ
+> - **Под капотом** — движок и data-модель моделируют, хранят и дают контроль над 100% API-настроек каждого инструмента. Ничего не захардкожено, ни одна ручка не потеряна.
+> - **Сейчас (фаза ручной калибровки):** владелец — эксперт и единственный юзер — хочет видеть и крутить ВСЕ настройки. Чем больше настроек, тем лучше результат. **Ничего не прячем.** Инспектор показывает все поля инструмента, сгруппированные для навигации (не плоская стена), но не скрытые.
+> - **«Просто сверху» — это будущий слой**, не сегодняшнее упрощение: по мере наполнения дата-стека система пре-заполняет хорошие дефолты, предлагает пресеты, сворачивает рутину → в пределе «нажми кнопку — получи результат». Это надстройка на том же полном движке, а не удаление ручек.
+> - Следствие: проектируем data-модель и инспектор так, чтобы оба режима («всё открыто» сейчас и «свернуто-просто» потом) жили на одном движке. Per-tool JSON-Schema настроек — обязательна с первого дня.
+
+> ### 🎨 Дизайн — профессиональный (отменяет «для тупого чела»)
+> Дизайн = качественный профи-инструмент для эксперта-владельца, не «ноль терминов / одна кнопка». Отменяет `content-factory-spec.md §9` и его «граф нельзя давать, 6 ручек». Чистый, плотный, мощный UI уровня ComfyUI / Figma / Linear, не упрощённый мастер.
+
+> ### 📊 Реальные метрики соцсети — позже (владелец)
+> Контур постинга→метрик делаем после того, как научимся генерить реальный контент — «пока далеко». Сейчас сигнал = корпус Virlo. post_metrics — задел в архитектуре, вне scope прототипа.
+
+**Строить нод-студию — да, «корпус-первый, контроль-первый».** Вход = клон конкурента (не стена настроек), но внутри ноды — все ручки открыты.
+
+Три переворота против наивного спека:
+
+1. **Корпус Virlo = это и есть сигнал.** 350+ разобранных залетевших видео по нишам (beat-структуры, хуки, звуки) дают плотный сигнал за часы. «Нельзя учиться без постинга» — слишком сильно: корпус = быстрый внутренний контур; реальный постинг = медленная внешняя правда (копится параллельно, не гейт).
+2. **Глубинная ценность студии — контроль / доверие + перевод экспертизы владельца в явный переиспользуемый актив**, а не «обучение агентов». Владельца сожгла чёрная коробка автогена. Студия даёт авторство и видимость — это и есть «исключительный результат».
+3. **Вход = не пустой холст и не «опиши агенту» (это та же чёрная коробка).** Вход = разбор реального конкурента-победителя на ноды → «Перенести себе» → правка. Человеком выбранный каркас.
+
+**Не-переговорные требования:** счётчик стоимости рендеров + кэш превью по `hash(tool+prompt+params)` — теперь особенно критично (все ручки открыты → больше итераций → больше трат Seedance/Creatify; кэш не перегенерит неизменённое); все настройки инструмента открыты и сгруппированы; честный звук («нет mp3 → фикс-каденс», не фейк бит-синк); предусловие-блокер — бэкфилл `content_assets.duration_sec` (ffprobe).
+
+---
+
+## 1. Что это за продукт
+
+**V3 — нод-студия виральных видео для селлера WB/Ozon.** Единая ПРО-среда, где человек прецизионно собирает короткое видео / карусель / пост из типизированных нод-кирпичиков, на каждую ноду навешивая инструмент (Seedance / Creatify / Claude-промпт / Higgsfield / Gemini / Shotstack / звук) и его настройки. Прорыв: (1) система визуально осознаёт ниши/товары/готовый контент; (2) сценарист-агент раскладывает залетевшее видео конкурента на ноды, владелец одной кнопкой переносит каркас себе и меняет содержимое на свой товар; (3) каждое ручное решение пишется в дата-стек → постепенный подъём автономии (manual → assisted → auto, по-нишево).
+
+**Это не переписывание бэкенда.** ~70% «осознания», все адаптеры инструментов, монтаж + ОТК + банк уже работают (Shotstack-смоук пройден — кириллица рисуется). V3 = продукт-слой (React Flow холст + node-runner + per-node инспектор) поверх выверенного assembly-движка.
+
+---
+
+## 1.5 Поток продукта — мульти-формат это ШАГ, не параллельный столп
+
+```
+Карта осознания (маркетолог-резюме ниши: что заходит + примеры виральных + варианты контента/дистрибуции)
+  → выбираешь ТОВАР
+    → выбираешь ФОРМАТ:  ● Видео   ○ Карусель   ○ Статик
+         ├─ [Видео] → разбор видео конкурентов на ноды → «Перенести себе» → канвас
+         │              → per-node инструмент + ВСЕ настройки → сборка → ОТК → банк
+         ├─ [Карусель] → разбор каруселей на ноды-слайды (позже)
+         └─ [Статик]  → разбор статик-постов (позже)
+  → (ПОЗЖЕ) постинг + реальные метрики
+```
+
+Формат — развилка ПОСЛЕ карты осознания: задаёт, что разбираем у конкурентов и какой набор нод. Видео = путь MVP.
+
+---
+
+## 2. Семь столпов
+
+| Столп | Что | Источник |
+|---|---|---|
+| **1. Карта осознания + маркетолог-разбор** | Дашборд ниши → товары → контент ПЛЮС агент-главный-маркетолог: резюме «что заходит» по нише, веб/корпус-ресёрч, примеры виральных видео/постов, рекомендации видов контента + дистрибуции на площадках — полный разбор ниши | Req1 + расширено |
+| **2. Разбор конкурента → ноды + перенос** | Залетевшие видео (ранг по virality_score) → лента типизированных нод + таксономия формата. «Перенести себе» = клон каркаса, содержимое обнуляется под твой товар. Копируется каркас, не пиксели | Req2 — beat_structure уже пишется |
+| **3. Нода = инструмент + промпт + настройки** | Каждая нода: слот инструмента (нижний порт) + редактор промпта + панель ВСЕХ настроек инструмента | Req3+4+7 |
+| **4. Сборка → тайминг → звук → ОТК → банк** | Граф сверху + таймлайн снизу. «Смонтировать» (Shotstack) → ОТК 5 осей → база видосов | Req5 |
+| **5. Мульти-формат — РАЗВИЛКА** | Шаг после карты осознания: выбрал формат → свой путь разбора и набор нод. Видео = MVP; карусель/статик — тот же язык нод, позже. Не параллельный столп (см. §1.5) | Req6 — уточнено |
+| **6. Дата-стек → автономия** | Каждое решение → cf_signals + node_recipe_nodes (включая фейлы<8, agent_suggestion). Retrieval → few-shot. manual→assisted→auto | Req4 |
+| **7. Контур постинга → сигнал (ПОЗЖЕ)** | post_metrics + иерархия доверия (постинг ×1.0 > беру/не-то ×0.5 > ОТК ×0.25). **Владелец: после реального контента — пока далеко.** Сейчас сигнал = корпус. Задел в архитектуре, вне scope прототипа | отложено |
+| **+ Версии / шаринг / стоимость** | parent_graph_id (форк→A/B), библиотека пресет-нод, счётчик цены, права на материалы | добавлено |
+
+---
+
+## 3. Экраны
+
+1. **Командный центр / Карта осознания + маркетолог** — плитки ниш (готовность: playbook / viral_videos / съёмка / шаблоны), раскрытие → товары, карточка товара (понимание + счётчики + winner + пробелы). **Панель главного маркетолога:** резюме «что заходит» по нише (niche_playbooks + Virlo + веб-ресёрч), галерея примеров виральных видео/постов конкурентов, рекомендации видов контента (видео/карусель/статик) и дистрибуции (площадки/каденс). Кнопка «собрать контент» → выбор формата → поток §1.5.
+2. **Анализ конкурентов / Decompose** — лента залетевших (ранг virality_score), на каждое — горизонтальная лента нод (beat_structure) с иконкой инструмента-кандидата, таксономия формата, раскрытие ноды (role/hook_type/onscreen/voiceover/emotion/duration), кнопка **«Перенести ноды себе»**. Карусель: panel_texts как ноды-слайды.
+3. **Нод-канвас** — React Flow: ноды-карточки (мини-превью + статус + ОТК), типизированные цветные порты (невалидные связи блокируются), слот инструмента на нижнем порту, палитра + поиск, минимап, **не пустой холст** (старт с клона), кэш превью по hash.
+4. **Инспектор ноды** — правый сайдбар, **все настройки инструмента видны, сгруппированы по смыслу** (генерация / камера / звук / композиция / служебное) — ничего не скрыто. Группы можно сворачивать визуально (организация, не сокрытие). Поля по per-tool JSON-Schema, крупный редактор промпта, счётчик цены + «сгенерировать превью». На выходе пишет теги content_assets + cf_signals (включая все params — это и есть дата-стек).
+5. **Сборка / Таймлайн / ОТК** — дорожки video/ugc/animation/sound/music/captions, хронометраж + звук + per-clip transition/effect, «Смонтировать» → Shotstack, панель ОТК (5 осей + verdict + issues + fixes, включая фейлы<8), «беру / не то» + чипы-причины → дата-стек.
+6. **База видосов / Библиотека рецептов** — галерея результатов (фильтр ниша/формат/confidence), версии графа (форк для A/B), библиотека пресет-нод, экран «Рост» (post_metrics), наблюдаемость стоимости рендеров.
+
+---
+
+## 4. Модель нод-графа
+
+Два уровня (урок ComfyUI): `graph_doc` (UI-снимок: позиции/цвета/превью/статусы) отдельно от `run_plan` (плоская мапа node_id→{tool,prompt,params,deps} для исполнения очередью).
+
+```
+NODE: { id, type: node_type_enum, position{x,y}, size,
+  data: { tool, prompt, params{по JSON-Schema инструмента},
+          preview{url,kind}, status: draft|running|ready|qc_pass|qc_fail, qc_verdict },
+  inputs:[Port], outputs:[Port], collapsed, color }
+PORT: { id, role: source|target, dataType: video|audio|image|script|caption|product, position }
+       // соединять можно только совпадающий dataType (типобезопасность блокирует невалид)
+EDGE: { id, source, sourceHandle, target, targetHandle }
+       // слева-направо = монтаж/тайминг; вертикальные связи внизу = привязка инструмента/звука
+NODE_TYPE (role-слоты hook→problem→solution→proof→cta):
+  hook_ugc, ai_product_render, talking_head, prank, before_after, pov, b_roll,
+  captions, sound, music, carousel_slide, static_post
+  // каждый: дефолтный инструмент + порты + шаблон промпта + дефолтные настройки
+```
+
+---
+
+## 5. Модель данных (новые таблицы)
+
+- **`node_recipes`** (граф-голова): id, article, niche (`nicheFromArticle` — единый ключ, не бренд), mode, format_detected, source_viral_video_id, parent_graph_id (форк/версия), built_by (manual|assisted|auto), otk_verdict (5 осей + issues + fixes, включая фейлы<8), otk_score, render_id, output_url, status, recipe_confidence 1-5, graph_doc, run_plan.
+- **`node_recipe_nodes`** (строка-на-ноду — ключевая для обучения): recipe_id, ordinal, slot, tool, prompt, params (ВСЕ настройки), asset_id, duration_sec, source (human_chosen|agent_suggested|transferred_from_corpus), human_edited, **agent_suggestion** (что агент предлагал до правки — золото для обучения).
+- **`node_templates`** — шаблоны из анализа конкурентов: source_video_url, format_type, nodes, niche.
+- **`cf_signals`** (центральный дата-стек): event(generated|approved|rejected|published|metrics), node_id, slot, tool, params, niche, article, mode, 5 осей ОТК, engine, format, sound_id, reason_chip. Включая фейлы<8.
+- **`post_metrics`** (контур постинга): recipe_id, platform, posted_at, views, watch_rate, ctr_card, saves.
+
+Расширить: `content_assets` теги {asset_type, role, emotion, **duration_sec (ffprobe!)**, beat_suitable} — бэкфилл при индексации (блокер #1). `winner_learnings` → полный слот-граф.
+
+---
+
+## 6. Плагины инструментов (инспектор — всё открыто, сгруппировано)
+
+Все поля видны. Колонки ниже — лишь группы (частые / расширенные), обе на экране. Per-tool JSON-Schema обязательна с первого дня (под капотом — 100% ручек).
+
+> 📋 **Полные настройки каждого инструмента** вынесены в отдельные ТЗ: `creatify-settings-tz.md` (~70 настроек) + `tool-settings-tz.md` (Seedance · Kling · Shotstack · изображение · Claude · звук · disk_real). Найдено: Seedance шлёт 4 поля из ~10 (aspect_ratio БАГ → не вертикаль; resolution прибит 720p; упущен end_image_url для before/after); Kling прибит v2.1-standard; Shotstack Edit-схема (переходы/эффекты/фильтры/авто-субтитры) почти не используется. Инспектор берёт полный набор оттуда.
+
+| Инструмент | Ноды | Группа «частые» | Группа «расширенные» (тоже видны) |
+|---|---|---|---|
+| **seedance_i2v** | ai_product_render, b_roll, pov, before_after | prompt, duration (2-12с — захардкожено!), resolution (480/720/1080 — захардкожено 720!), aspect, image_url, camera_fixed | seed, negative |
+| **kling_i2v** | ai_product_render (жёсткие формы) | prompt, duration (5/10), negative_prompt (редактируемый анти-слоп), cfg_scale (0-1) | tail_image |
+| **creatify_ugc** | hook_ugc, talking_head, prank | **script_style (enum 57 = прямой маппинг на «кирпичики»!)**, avatar (галерея), scene-фон, язык=ru, aspect, override_script, длительность | ~24 поля |
+| **shotstack_assemble** | captions, transition, effect + сборщик графа | transition (fade/wipe/slide/zoom), effect (Ken Burns), filter, fit, scale, шрифт (Noto Sans Cyrillic) | — |
+| **higgsfield/gemini** | carousel_slide, static_post, hook-кадр | prompt, aspect, quality, batch_size, reference_url (img2img) | seed, style |
+| **claude_prompt_engineer** | служебная нода-сценарист | model, system (редактируемый), temperature, max_tokens | top_p, stop |
+| **sound/music + disk_real** | sound, music, scene/b_roll (реальный хребет) | sound_id из Virlo (подменять по title), commerce_safe, volume | — |
+
+⚠️ Сейчас параметры захардкожены (falVideo шлёт 4 поля из 10, Creatify 6 из ~30) — V3 поднимает их в инспектор.
+
+---
+
+## 7. Лестница автономии (manual → assisted → auto)
+
+- **MANUAL** — человек строит весь граф, агент молчит, всё логируется (наполняем дата-стек).
+- **ASSISTED** — агент предлагает граф через `agent_suggestion` на каждой ноде, человек правит, `human_edited` фиксирует что изменено.
+- **AUTO** — агент собирает, человек только ОТК.
+- Флаг `built_by` по-нишево, не глобальный рубильник. Подъём — когда accept-rate в assisted стабильно высок.
+- Обучение стартует с RETRIEVAL (работает на десятках примеров, без fine-tune): сценарист — выборка node_recipes по нише с confidence≥4 → few-shot; настройщик нод — retrieval (niche,slot,tool) по реальным params, давшим native≥7. Fine-tune — позже.
+
+---
+
+## 8. Scope прототипа (тонкий срез)
+
+Ходячий скелет на 1 нише с реальной съёмкой:
+
+1. **Предусловие-блокер:** бэкфилл `duration_sec` (ffprobe) + теги. Без этого тайминг фиктивен.
+2. **Карта осознания** — дашборд на существующих GET (~70% UI).
+3. **Разбор одного конкурента** — рендер beat_structure по-блочно + таксономия + «Перенести себе». ⚠️ нормализовать форму beat_structure.
+4. **Нод-канвас React Flow** — 3-5 типов нод + типизированные порты + не пустой холст (старт с клона).
+5. **Инспектор для 2-3 инструментов** (Seedance + Creatify + Shotstack) — **все их настройки**, сгруппированы. Per-tool JSON-Schema.
+6. **Сборка → Shotstack → ОТК → банк** — buildEdit готов, критик готов, нужен UI-таймлайн.
+7. **Счётчик стоимости + кэш превью по hash** — обязательны.
+8. **Таблицы** node_recipes / node_recipe_nodes + cf_signals (post_metrics — только схема, без UI).
+
+**Позже (за MVP):** контур постинга + ввод метрик (после реального контента); мульти-формат карусели/посты; полный набор настроек Creatify (итеративно); assisted/auto; fine-tune; A/B-бандит; Shotstack Templates+merge; шаринг-библиотека.
+
+---
+
+## 9. Reuse vs Build
+
+**Reuse (есть):** все адаптеры инструментов (изоморфны submit→token→poll); очередь jobs.ts; корпус viral_videos/hooks/playbooks; ОТК video-critic+rubric; nicheFromArticle; Shotstack (смоук пройден); банк gen-save+Storage; brandProfiles.
+
+**Build (новое):** React Flow холст + ноды-карточки + типизированные порты + инспектор + таймлайн; **node-runner** (переворот per-video→per-node: инструмент на каждую ноду, Shotstack=сборщик); 3 таблицы + cf_signals; **Decomposer Agent** `/api/factory/decompose`; per-tool JSON-Schema настроек; бэкфилл duration_sec+теги; winner_learnings → слот-граф; контур post_metrics.
+
+---
+
+## 10. Риски и митигации
+
+| Риск | Митигация |
+|---|---|
+| Over-scope (всё сразу, base rate 60%+ провал) | Тонкий срез на 1 нише; флаг; фазы |
+| Голый граф = смерть продукта для нетехнаря | Вход = клон конкурента; настройки открыты, но сгруппированы; ПРО-режим; «просто сверху» = будущий слой |
+| Блокер тегов (duration_sec=null) | Бэкфилл ffprobe первым |
+| Обучение без сигнала = фикция | Корпус = быстрый сигнал сейчас + post_metrics (внешняя правда) |
+| Звук немой (нет mp3) | Честно фикс-каденс; решать через generate_audio (Kling v3) / Creatify background_music позже |
+| Стоимость API при ручной итерации | Счётчик цены + кэш превью по hash — non-negotiable |
+| beat_structure не типизирован | Нормализатор формы ответа перед маппингом в ноды |
+| Keyspace разорван (бренд vs ниша) | Унифицировать на nicheFromArticle |
+| Виральность непредсказуема | Продукт продаёт процесс + обучаемость + контроль, не гарантию |
+
+---
+
+## 11. Конфликт снят — content-factory-spec.md устаревает
+
+⚠️ В репо есть `docs/content-factory-spec.md` — параллельный спек с противоположной философией («граф нельзя давать», «6 ручек», «дизайн для тупого чела»). **Владелец явно выбрал V3-направление**, отменив его: нод-граф да, все настройки открыты, дизайн профессиональный. **Этот документ — канонический «север»; content-factory-spec.md устарел.** При реализации сверяться с V3-ТЗ.
+
+---
+
+## 12. Первый шаг
+
+Бэкфилл `content_assets.duration_sec` (ffprobe) на 1 нише со съёмкой + экран «разобрать одного конкурента на ноды» (analyze_video уже добывает beat_structure). Доказывает decompose→clone, ничего платного не рендерит. Дальше — клон → инструменты → сборка → ОТК → первое постимое видео.
+
+**Готово отдавать Claude Design** (экраны §3 + нод-модель §4 + инспектор §6).
+</script>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
+<script>
+  (function(){
+    var src = document.getElementById('src').textContent;
+    document.getElementById('md').innerHTML = window.marked ? window.marked.parse(src) : '<pre>'+src+'</pre>';
+  })();
+</script>
+</body>
+</html>
