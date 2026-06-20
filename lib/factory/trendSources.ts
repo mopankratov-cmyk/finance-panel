@@ -97,6 +97,18 @@ export async function fetchViral(niche: string, limit = 20): Promise<ViralVideo[
   return [];
 }
 
+// ── Virlo: list existing orbits (reads free) ────────────────────────────────────────────────────────
+export async function virloListOrbits(limit = 50): Promise<{ id: string; name: string; status: string; totalVideos: number }[]> {
+  if (!process.env.VIRLO_API_KEY) return [];
+  try {
+    const res = await virloInitCall("tools/call", { name: "list_keyword_searches", arguments: { limit } });
+    const j = virloToolJson(res);
+    const data = (j?.data as Record<string, unknown>) || {};
+    const orbits = Array.isArray((data as Record<string, unknown>).orbits) ? ((data as Record<string, unknown>).orbits as { id: string; name: string; status: string; totalVideos: number }[]) : [];
+    return orbits;
+  } catch { return []; }
+}
+
 // ── Virlo: niche monitors ──────────────────────────────────────────────────────────────────────────
 
 // Создать Comet-монитор для ниши (однократно, платный шаг ~$1-2).

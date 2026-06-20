@@ -247,9 +247,10 @@
             </tbody>
           </table>
           <div class="text-[10px] text-amber-600 mt-2">≥35 = исключительный · ≥25 = очень сильный · &lt;25 = рядовой. Скор = ln(просмотры/подписчики)×ln(подписчики).</div>
-          <div class="flex gap-2 flex-wrap mt-2" x-data="{refreshing:false, refreshLog:'', initing:false}">
-            <button @click="async()=>{refreshing=true; refreshLog=''; try{ const r=await(await fetch('/api/factory/jobs/corpus-tick',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})).json(); refreshLog=(r.ok?('✅ +'+r.new_videos+' видео, проанализировано: '+r.analyzed+(r.log&&r.log.length?' | '+r.log[0]:'')):(r.error||'?')); if(r.ok) load(); }catch(e){refreshLog=String(e).slice(0,60)} refreshing=false; }" :disabled="refreshing||initing" class="btn btn-ghost text-[11px]" title="Опросить Comet-мониторы и проанализировать новые видео">⟳ Обновить корпус</button>
-            <button @click="async()=>{initing=true; refreshLog=''; try{ const r=await(await fetch('/api/factory/corpus/init-monitors',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})).json(); refreshLog=(r.ok?('✅ мониторов: '+r.initialized+' (создано '+r.created+')'):(r.error||'?')); }catch(e){refreshLog=String(e).slice(0,60)} initing=false; }" :disabled="refreshing||initing" class="btn btn-ghost text-[11px]" title="Создать Comet-мониторы по нишам (~$1-2 разово, только один раз)">📡 Инициализировать мониторы</button>
+          <div class="flex gap-2 flex-wrap mt-2" x-data="{refreshing:false, refreshLog:'', initing:false, syncing:false}">
+            <button @click="async()=>{refreshing=true; refreshLog=''; try{ const r=await(await fetch('/api/factory/jobs/corpus-tick',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})).json(); refreshLog=(r.ok?('✅ +'+r.new_videos+' видео, проанализировано: '+r.analyzed+(r.log&&r.log.length?' | '+r.log[0]:'')):(r.error||'?')); if(r.ok) load(); }catch(e){refreshLog=String(e).slice(0,60)} refreshing=false; }" :disabled="refreshing||initing||syncing" class="btn btn-ghost text-[11px]" title="Опросить Comet-мониторы и проанализировать новые видео">⟳ Обновить корпус</button>
+            <button @click="async()=>{syncing=true; refreshLog='синхронизирую орбиты…'; try{ const r=await(await fetch('/api/factory/corpus/sync-all-orbits',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})).json(); refreshLog=(r.ok?('✅ синкнуто: '+r.synced+' орбит, уже было: '+r.already_synced+(r.log&&r.log[0]?' | '+r.log[0]:'')):(r.error||'?')); if(r.ok) load(); }catch(e){refreshLog=String(e).slice(0,60)} syncing=false; }" :disabled="refreshing||initing||syncing" class="btn btn-ghost text-[11px]" title="Скачать все завершённые Orbit → orbital_searches + viral_videos (бесплатно, дедуп по url)">🔄 Синк орбит</button>
+            <button @click="async()=>{initing=true; refreshLog=''; try{ const r=await(await fetch('/api/factory/corpus/init-monitors',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})).json(); refreshLog=(r.ok?('✅ мониторов: '+r.initialized+' (создано '+r.created+')'):(r.error||'?')); }catch(e){refreshLog=String(e).slice(0,60)} initing=false; }" :disabled="refreshing||initing||syncing" class="btn btn-ghost text-[11px]" title="Создать Comet-мониторы по нишам (~$1-2 разово, только один раз)">📡 Инициализировать мониторы</button>
             <span x-show="refreshLog" class="text-[11px] text-amber-700 self-center" x-text="refreshLog"></span>
           </div>
         </div>
@@ -405,6 +406,7 @@
                 <span x-show="s.hj != null" class="pill pill-rose" :title="'балл хука (турнир): ' + s.hj + '/10'" x-text="'🎯 ' + s.hj"></span>
                 <div class="flex-1"><div class="font-medium" x-text="s.hook || s.concept"></div>
                   <div class="text-[11px] text-gray-400" x-show="s.format" x-text="s.format + (s.angle ? (' · ' + s.angle) : '')"></div>
+                  <div class="text-[11px] text-blue-400 mt-0.5" x-show="s.retention" x-text="'⏱ ' + s.retention"></div>
                   <div class="text-[11px] text-amber-700" x-show="s.fix" x-text="'на переделку: ' + s.fix"></div>
                   <div x-show="sc.forIdx===i" class="mt-2">
                     <div x-show="sc.busy" class="text-[11px] text-gray-400">⏳ режиссёр раскадровывает…</div>
