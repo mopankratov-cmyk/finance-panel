@@ -79,6 +79,21 @@ export async function POST(req: NextRequest) {
     } catch { /* winners-таблица может ещё не существовать */ }
   }
 
+  // Прямая калибровка корпусных хуков: если плейбука нет — берём из viral_hooks напрямую
+  // (плейбук тоже читает их, но только когда пользователь явно запустил «Изучить нишу»)
+  let corpusHookHint = "";
+  if (!pb && db && article) {
+    try {
+      const { nicheFromArticle } = await import("@/lib/factory/rubric");
+      const rn = nicheFromArticle(article, name);
+      if (rn) {
+        const { data: chks } = await db.from("viral_hooks").select("hook_text,viability_score").eq("niche", rn).order("viability_score", { ascending: false }).limit(10);
+        const hooks = ((chks as { hook_text: string; viability_score: number }[] | null) ?? []).map((h) => h.hook_text).filter(Boolean);
+        if (hooks.length) corpusHookHint = `\n\nКОРПУС ХУКОВ НИШИ (проверены реальными просмотрами — возьми ДУХ/ПАТТЕРН, не копируй дословно): ${hooks.map((h) => `«${h}»`).join(" | ")}`;
+      }
+    } catch { /* corpus optional */ }
+  }
+
   const client = await createClaudeClient();
   if (!client) return NextResponse.json({ error: "ANTHROPIC_API_KEY не настроен" }, { status: 500 });
 
@@ -92,7 +107,7 @@ ${PROBLEM_STACK}
 Верни СТРОГО JSON-массив (кратко): [{"hook":"первая фраза-зацепка ≤12 слов","angle":"какое возражение","concept":"идея ролика 1-2 предложения","retention":"0-2 хук→2-5 конфликт→5-10 решение→payoff","caption":"подпись","format":"unboxing|POV|обзор|до/после|лайфхак|проблема-решение|reveal|реакция","cta":"кратко","score":8,"verdict":"approved|rework","fix":""}]. Только JSON, без преамбулы. РАЗНООБРАЗИЕ: минимум 4 разных format и 4 разных hook_type в наборе.`;
 
   const user = `Товар: ${subject}${article ? ` (артикул ${article})` : ""}. Сделай ${count} сценариев.` +
-    (brief ? ` Бриф: ${brief}.` : "") + (competitorBrief ? ` Разведка конкурентов: ${competitorBrief}.` : "") + pbHint + winnersHint + rejHint;
+    (brief ? ` Бриф: ${brief}.` : "") + (competitorBrief ? ` Разведка конкурентов: ${competitorBrief}.` : "") + pbHint + winnersHint + corpusHookHint + rejHint;
 
   try {
     const res = await client.messages.create({ model: MODEL, max_tokens: 3500, system: sys, messages: [{ role: "user", content: user }] });
