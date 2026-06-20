@@ -117,6 +117,59 @@
           <button @click="opCreate()" :disabled="op.busy || !op.art" class="btn btn-primary text-base px-6 py-3 self-end" x-text="op.busy ? ('⏳ ' + op.step) : '✨ Сделать контент'"></button>
         </div>
         <div x-show="!profile" class="text-[12px] text-amber-700 mt-2">💡 Скажи Claude профиль бренда и аудиторию — тексты станут в твоём стиле.</div>
+        <div x-show="op.art" class="mt-2 flex items-center gap-2 flex-wrap">
+          <button @click="testUGC()" :disabled="ugc.busy || !op.art" class="btn btn-ghost text-[12px]" title="Прямой тест AI UGC-актёра (Creatify) по выбранному товару — без полного прогона завода">🎭 Тест UGC-актёра (Creatify)</button>
+          <button @click="toggleAvatars()" class="btn btn-ghost text-[12px]" title="Выбрать аватара Creatify и композицию сцены — применится ко всем UGC-роликам">🧑‍🎤 Аватар<span x-show="avatars.pickedName" x-text="': ' + avatars.pickedName"></span></button>
+          <span x-show="ugc.forIdx===-2 && (ugc.busy || ugc.status)" class="text-[11px] text-gray-600" x-text="ugc.status"></span>
+          <a x-show="ugc.forIdx===-2 && ugc.url" :href="ugc.url" target="_blank" class="text-[11px] text-rose-600 font-semibold">→ открыть видео</a>
+        </div>
+        <!-- Пикер аватаров Creatify + композиция сцены (visual_style). Применяется ко всем UGC-роликам завода. -->
+        <div x-show="op.art && avatars.open" x-cloak class="mt-2 p-3 border border-rose-100 rounded-lg bg-rose-50/40">
+          <div class="flex items-center gap-2 flex-wrap mb-2">
+            <span class="text-[12px] font-semibold">🧑‍🎤 Аватар Creatify</span>
+            <span x-show="avatars.busy" class="text-[11px] text-gray-500">загружаю галерею…</span>
+            <span x-show="avatars.loaded && !avatars.busy" class="text-[11px] text-gray-500" x-text="avatarsFiltered.length + ' из ' + avatars.list.length"></span>
+            <button @click="loadAvatars()" :disabled="avatars.busy" class="text-[11px] text-sky-600 ml-auto">обновить</button>
+          </div>
+          <div x-show="avatars.error" class="text-[11px] text-amber-700 mb-2" x-text="'⚠ ' + avatars.error"></div>
+          <!-- Композиция сцены -->
+          <div class="mb-2">
+            <div class="text-[11px] text-gray-500 mb-1">Композиция сцены</div>
+            <div class="flex gap-1 flex-wrap">
+              <template x-for="sc in avatars.scenes" :key="sc.id">
+                <button @click="avatars.scene = sc.id; _saveAvatar()" :title="sc.hint"
+                  class="text-[11px] px-2 py-1 rounded border"
+                  :class="avatars.scene === sc.id ? 'bg-rose-600 text-white border-rose-600' : 'bg-white text-gray-600 border-gray-300'"
+                  x-text="sc.label"></button>
+              </template>
+            </div>
+          </div>
+          <!-- Фильтры галереи -->
+          <div x-show="avatars.list.length" class="flex gap-2 flex-wrap items-center mb-2">
+            <input x-model="avatars.search" placeholder="поиск (имя, ниша)…" class="text-[11px] px-2 py-1 border border-gray-300 rounded w-40">
+            <select x-model="avatars.gender" class="text-[11px] px-2 py-1 border border-gray-300 rounded">
+              <option value="">пол: любой</option><option value="f">женский</option><option value="m">мужской</option><option value="nb">нб</option>
+            </select>
+            <select x-model="avatars.style" class="text-[11px] px-2 py-1 border border-gray-300 rounded">
+              <option value="">стиль: любой</option><option value="selfie">селфи</option><option value="presenter">презентер</option><option value="other">другое</option>
+            </select>
+            <button x-show="avatars.pickedId" @click="avatars.pickedId=''; avatars.pickedName=''; _saveAvatar()" class="text-[11px] text-gray-400">сбросить выбор</button>
+          </div>
+          <!-- Галерея -->
+          <div x-show="avatars.list.length" class="grid grid-cols-4 sm:grid-cols-6 gap-2 max-h-72 overflow-y-auto">
+            <template x-for="a in avatarsFiltered" :key="a.id">
+              <button @click="pickAvatar(a)" class="relative rounded-lg overflow-hidden border-2 text-left"
+                :class="avatars.pickedId === a.id ? 'border-rose-600 ring-2 ring-rose-300' : 'border-transparent'"
+                :title="a.name + (a.scene ? ' · ' + a.scene : '')">
+                <img :src="a.thumb" :alt="a.name" loading="lazy" class="w-full aspect-[9/16] object-cover bg-gray-200">
+                <div class="absolute bottom-0 inset-x-0 px-1 py-0.5 text-[9px] text-white bg-black/55 truncate" x-text="a.name"></div>
+                <div x-show="avatars.pickedId === a.id" class="absolute top-0.5 right-0.5 text-[10px] bg-rose-600 text-white rounded-full w-4 h-4 flex items-center justify-center">✓</div>
+              </button>
+            </template>
+          </div>
+          <div x-show="avatars.loaded && !avatars.list.length && !avatars.busy" class="text-[11px] text-gray-500">Аватары не пришли. Если ошибка выше про тариф/доступ — API недоступен на текущем плане Creatify; настройки сцены работают.</div>
+          <div class="text-[10px] text-gray-400 mt-2">Выбор применяется ко всем UGC-роликам (кнопки «🎭 UGC-актёр»). Пусто = аватар по умолчанию от Creatify.</div>
+        </div>
         <!-- Шаг 0 — маркетолог изучает нишу (обучение перед генерацией) -->
         <div x-show="op.art" class="mt-3 pt-3 border-t border-rose-100">
           <template x-if="activePb(op.art)">
@@ -1557,6 +1610,50 @@ function patrick() {
       this.varz.busy = false;
     },
     ugc: { busy: false, forIdx: -1, taskId: '', url: '', status: '' },
+    // Галерея аватаров Creatify + выбор композиции сцены (visual_style). Грузится по требованию (read-only, без кредитов).
+    avatars: { open: false, loaded: false, busy: false, error: '', list: [], scenes: [], gender: '', style: '', search: '', pickedId: '', pickedName: '', scene: '' },
+    get avatarsFiltered() {
+      const a = this.avatars; const q = (a.search || '').trim().toLowerCase();
+      return (a.list || []).filter(x =>
+        (!a.gender || x.gender === a.gender) &&
+        (!a.style || x.style === a.style) &&
+        (!q || (x.name || '').toLowerCase().includes(q) || (x.scene || '').toLowerCase().includes(q) || (x.industries || '').toLowerCase().includes(q))
+      );
+    },
+    async toggleAvatars() {
+      this.avatars.open = !this.avatars.open;
+      if (this.avatars.open && !this.avatars.loaded && !this.avatars.busy) await this.loadAvatars();
+    },
+    async loadAvatars() {
+      if (this.avatars.busy) return;
+      this.avatars.busy = true; this.avatars.error = '';
+      try {
+        const r = await fetch('/api/factory/creatify-avatars?limit=160');
+        const d = await r.json();
+        this.avatars.scenes = d.scenes || [];
+        if (!this.avatars.scene && this.avatars.scenes.length) this.avatars.scene = this.avatars.scenes[0].id;
+        if (d.ready === false) { this.avatars.error = d.detail || 'Creatify не подключён'; }
+        else if (d.error) { this.avatars.error = 'API: ' + d.error; }
+        this.avatars.list = d.avatars || [];
+        this.avatars.loaded = true;
+        // восстановить ранее выбранного аватара по id
+        try { const sv = JSON.parse(localStorage.getItem('cf_avatar') || '{}'); if (sv.id) { this.avatars.pickedId = sv.id; this.avatars.pickedName = sv.name || ''; } if (sv.scene) this.avatars.scene = sv.scene; } catch (e) {}
+      } catch (e) { this.avatars.error = String(e).slice(0, 120); }
+      this.avatars.busy = false;
+    },
+    pickAvatar(a) {
+      this.avatars.pickedId = (this.avatars.pickedId === a.id) ? '' : a.id;
+      this.avatars.pickedName = this.avatars.pickedId ? (a.name || '') : '';
+      this._saveAvatar();
+    },
+    _saveAvatar() { try { localStorage.setItem('cf_avatar', JSON.stringify({ id: this.avatars.pickedId, name: this.avatars.pickedName, scene: this.avatars.scene })); } catch (e) {} },
+    // Прямой тест Creatify по выбранному товару (Шаг 1) — без полного прогона завода. forIdx=-2 = «тестовая» метка.
+    async testUGC() {
+      const art = (this.op.art || this.dir.plan?.target_article || '').trim();
+      if (!art) { this.ugc.forIdx = -2; this.ugc.status = 'сначала выбери товар в Шаге 1'; return; }
+      if (!this.dir.plan) this.dir.plan = { target_article: art }; else this.dir.plan.target_article = art;
+      await this.makeUGC({ hook: this._prodName(art) || ('обзор ' + art), concept: 'UGC-тест' }, -2);
+    },
     async makeUGC(idea, i) {
       if (this.ugc.busy) return;
       const art = this.dir.plan?.target_article || this.orbit.article || '';
@@ -1565,7 +1662,7 @@ function patrick() {
       try {
         // сценарий из плейбука/идеи, если есть
         const script = (idea.scenario?.shots || []).map(x => x.voiceover).filter(Boolean).join(' ') || idea.hook || idea.concept || '';
-        const r = await fetch('/api/factory/ugc-creatify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sku_art: art, brief: idea.hook || idea.concept, script }) });
+        const r = await fetch('/api/factory/ugc-creatify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sku_art: art, brief: idea.hook || idea.concept, script, creator: this.avatars.pickedId || undefined, visual_style: this.avatars.scene || undefined }) });
         const d = await r.json();
         if (!d.task_id) { this.ugc.status = d.detail || d.error || 'не удалось запустить'; this.ugc.busy = false; return; }
         this.ugc.taskId = d.task_id; this.ugc.status = 'рендер UGC-актёра (≈2-5 мин)…';

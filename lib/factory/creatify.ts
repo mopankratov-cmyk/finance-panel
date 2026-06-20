@@ -39,10 +39,88 @@ export async function creatifyListCreators(): Promise<{ id: string; name?: strin
   } catch { return []; }
 }
 
+// ── Галерея аватаров Creatify (GET /personas/) — для пикера в кокпите ──
+// Полные метаданные: id, имя, пол/возраст/стиль, сцена-фон, превью-картинка + видео (9:16 для вертикали).
+export interface CreatifyAvatar {
+  id: string;
+  name: string;
+  gender: string; // m | f | nb
+  age: string;    // child | teen | adult | senior
+  style: string;  // selfie | presenter | other
+  location: string;
+  scene: string;  // video_scene — описание фона
+  thumb: string;  // превью-картинка (приоритет 9:16)
+  video: string;  // превью-видео (приоритет 9:16)
+  industries: string;
+}
+export interface AvatarFilters { gender?: string; age?: string; style?: string; location?: string; search?: string; limit?: number }
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function normAvatar(p: any): CreatifyAvatar | null {
+  if (!p?.id) return null;
+  return {
+    id: String(p.id),
+    name: p.creator_name || p.name || p.persona_name || "Аватар",
+    gender: p.gender || "",
+    age: p.age_range || p.age || "",
+    style: p.style || "",
+    location: p.location || "",
+    scene: p.video_scene || "",
+    thumb: p.preview_image_9_16 || p.preview_image_1_1 || p.preview_image_16_9 || "",
+    video: p.portrait_preview_video || p.preview_video_9_16 || p.squared_preview_video || p.preview_video_1_1 || p.landscape_preview_video || p.preview_video_16_9 || "",
+    industries: p.suitable_industries || p.keywords || "",
+  };
+}
+
+// Возвращает аватаров + диагностику (status/error), чтобы первый live-вызов сразу показал, работает ли API на тарифе.
+export async function creatifyListAvatars(f: AvatarFilters = {}): Promise<{ avatars: CreatifyAvatar[]; error?: string; status?: number }> {
+  const h = headers();
+  if (!h) return { avatars: [], error: "CREATIFY ключ не настроен" };
+  const cap = Math.min(Math.max(f.limit || 120, 12), 400);
+  const qp = new URLSearchParams();
+  if (f.gender) qp.set("gender", f.gender);
+  if (f.age) qp.set("age_range", f.age);
+  if (f.style) qp.set("style", f.style);
+  if (f.location) qp.set("location", f.location);
+  if (f.search) qp.set("keyword", f.search);
+  const out: CreatifyAvatar[] = [];
+  let url: string | null = `${BASE}/personas/?${qp.toString()}`;
+  let lastStatus = 0;
+  try {
+    for (let page = 0; page < 5 && url && out.length < cap; page++) {
+      const r: Response = await fetch(url, { headers: h, cache: "no-store", signal: AbortSignal.timeout(15000) });
+      lastStatus = r.status;
+      if (!r.ok) {
+        const t = await r.text().catch(() => "");
+        return { avatars: out, error: `personas ${r.status}: ${t.slice(0, 160)}`, status: r.status };
+      }
+      const j = await r.json();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const arr: any[] = Array.isArray(j) ? j : j.results || j.data || [];
+      for (const p of arr) { const a = normAvatar(p); if (a) out.push(a); }
+      url = (!Array.isArray(j) && typeof j.next === "string" && j.next) ? j.next : null;
+    }
+    return { avatars: out.slice(0, cap), status: lastStatus };
+  } catch (e) {
+    return { avatars: out, error: String(e).slice(0, 160), status: lastStatus };
+  }
+}
+
+// Композиции сцены (= visual_style в link_to_videos) — то, что в UI Creatify «Bottom left / Circle overlay / Side by side / Top and bottom».
+export const CREATIFY_SCENES: { id: string; label: string; hint: string }[] = [
+  { id: "AvatarBubbleTemplate", label: "Кружок-оверлей", hint: "Аватар в кружке поверх товара (дефолт)" },
+  { id: "SideBySideTemplate", label: "Бок о бок", hint: "Аватар и товар рядом — половина/половина" },
+  { id: "TopBottomTemplate", label: "Сверху и снизу", hint: "Аватар сверху, товар снизу (или наоборот)" },
+  { id: "DynamicProductTemplate", label: "Динамика товара", hint: "Акцент на товаре, аватар комментирует" },
+  { id: "MotionCardsTemplate", label: "Карточки в движении", hint: "Текст-карточки + аватар" },
+  { id: "VlogTemplate", label: "Влог", hint: "Полноэкранный аватар, как влог" },
+  { id: "VanillaTemplate", label: "Чистый", hint: "Без оформления — только аватар + субтитры" },
+];
+
 // ОСНОВНОЙ: link_to_videos — товар в кадре. Возвращает токен + debug (сырые ответы для отладки).
 // Фото товара передаём НАПРЯМУЮ (link_with_params) — WB не скрейпится, поэтому даём image_urls.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export async function creatifyLinkVideo(opts: { url?: string; images?: string[]; title?: string; description?: string; script?: string; avatar?: string; length?: number }): Promise<{ token?: string; error?: string; debug?: any }> {
+export async function creatifyLinkVideo(opts: { url?: string; images?: string[]; title?: string; description?: string; script?: string; avatar?: string; visual_style?: string; length?: number }): Promise<{ token?: string; error?: string; debug?: any }> {
   const h = headers();
   if (!h) return { error: "CREATIFY ключ не настроен" };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -66,6 +144,7 @@ export async function creatifyLinkVideo(opts: { url?: string; images?: string[];
   const body: Record<string, unknown> = { link: linkId, aspect_ratio: "9x16", video_length: opts.length || 15, target_platform: "Tiktok", language: "ru", no_cta: true };
   if (opts.script) body.override_script = opts.script.slice(0, 1500);
   if (opts.avatar) body.override_avatar = opts.avatar;
+  if (opts.visual_style) body.visual_style = opts.visual_style; // композиция сцены (AvatarBubble/SideBySide/TopBottom…)
   const created = await jpost(h, "/link_to_videos/", body);
   debug.create = { status: created.status, body: created.json || created.text };
   const vidId = (created.json?.id as string) || "";
