@@ -160,7 +160,7 @@ async function runStep(db: SupabaseClient, origin: string, job: FactoryJob): Pro
     let overlaid = false;
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const subs = ((st.scenario?.shots || []) as any[]).map((x) => x.onscreen).filter(Boolean).slice(0, 4) as string[];
+      const subs = ((st.scenario?.shots || []) as any[]).map((x) => (x.onscreen || x.voiceover || "").trim()).filter(Boolean).slice(0, 4) as string[];
       const png = await overlayPngBase64(hook, subs);
       if (png) {
         const up = await jpost(origin, "/api/factory/media-store", { images: [png], prefix: "overlay", format: "png" });
