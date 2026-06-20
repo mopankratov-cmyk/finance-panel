@@ -108,6 +108,8 @@ export async function GET() {
   if (orbitCount === 0 && hasOrbits) pending.push("Нажать «🔄 Синк орбит» в кокпите чтобы скачать ~350 видео из 4 орбит");
   if (orbitsWithoutPlaybook > 0) pending.push(`Нажать «🧠 Плейбуки» в кокпите — ${orbitsWithoutPlaybook} ниш без плейбука`);
   if (!keys.shotstack) pending.push("Добавить SHOTSTACK_API_KEY в Vercel (v2 монтаж реального видео)");
+  if (keys.shotstack && !process.env.SHOTSTACK_FONT_URL) pending.push("Добавить SHOTSTACK_FONT_URL в Vercel (Cyrillic-TTF URL, иначе RU текст = квадраты)");
+  if (keys.shotstack && !process.env.SHOTSTACK_FONT_FAMILY) pending.push("Добавить SHOTSTACK_FONT_FAMILY в Vercel (имя шрифта из TTF, напр. «Roboto»)");
   if (!keys.gemini) pending.push("Добавить GEMINI_API_KEY в Vercel (U4 Nano Banana)");
 
   return NextResponse.json({

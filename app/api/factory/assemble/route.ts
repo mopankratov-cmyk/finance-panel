@@ -53,7 +53,8 @@ export async function POST(req: NextRequest) {
 
   const caption: string = (body.caption || (article ? "Ищи на WB: " + article : "")).toString().slice(0, 120);
   const fontUrl: string | undefined = (process.env.SHOTSTACK_FONT_URL || "").trim() || undefined; // Cyrillic-TTF, иначе RU=tofu
-  const edit = buildEdit({ clips, hookText: hook || undefined, caption: caption || undefined, fontUrl, aspect: "9:16" });
+  const fontFamily: string | undefined = (process.env.SHOTSTACK_FONT_FAMILY || "").trim() || undefined; // имя семейства внутри TTF (напр. "Roboto")
+  const edit = buildEdit({ clips, hookText: hook || undefined, caption: caption || undefined, fontUrl, fontFamily, aspect: "9:16" });
 
   return NextResponse.json({
     niche, mode,
