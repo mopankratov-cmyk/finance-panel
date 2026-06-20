@@ -71,6 +71,25 @@
       </div>
     </div>
 
+    <!-- Статус системы: миграции / ключи / счётчики (lazy, загружается один раз) -->
+    <div x-data="{st:null,open:false,async load(){try{const d=await(await fetch('/api/factory/status')).json();this.st=d;}catch{}}}" x-init="load()">
+      <div x-show="st&&st.pending&&st.pending.length" class="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 mb-4 cursor-pointer text-[11px]" @click="open=!open">
+        <div class="flex items-center justify-between">
+          <span class="font-semibold text-amber-800">⚠️ Требуются действия: <span x-text="st&&st.pending&&st.pending.length"></span> шага</span>
+          <span class="text-amber-600" x-text="open?'▲':'▼ показать'"></span>
+        </div>
+        <div x-show="open" class="mt-1.5 space-y-0.5">
+          <template x-for="(p,i) in (st&&st.pending||[])" :key="i">
+            <div class="text-amber-700" x-text="'• ' + p"></div>
+          </template>
+          <div x-show="st&&st.counts" class="text-gray-500 mt-1" x-text="'Корпус: ' + (st&&st.counts&&st.counts.viral_videos||0) + ' видео · ' + (st&&st.counts&&st.counts.viral_hooks||0) + ' хуков · ' + (st&&st.counts&&st.counts.orbit_searches||0) + ' орбит'"></div>
+        </div>
+      </div>
+      <div x-show="st&&st.ready" class="text-[11px] text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-3 py-1.5 mb-4">
+        ✅ Система готова · <span x-text="'корпус: ' + (st&&st.counts&&st.counts.viral_videos||0) + ' видео, ' + (st&&st.counts&&st.counts.viral_hooks||0) + ' хуков'"></span>
+      </div>
+    </div>
+
     <!-- ═══ РЕЖИМ ОПЕРАТОРА — чистый линейный поток ═══ -->
     <div x-show="mode==='operator'" x-cloak>
       <!-- Онбординг для любого оператора: понятный поток в 3 шага -->
