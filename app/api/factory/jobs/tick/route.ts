@@ -38,7 +38,17 @@ async function runStep(db: SupabaseClient, origin: string, job: FactoryJob): Pro
         hasFootage = ds?.found && Array.isArray(ds.videos) && ds.videos.length > 0;
       } catch { /* нет реального фото — produce решит сам */ }
     }
-    const pr = await jpost(origin, "/api/factory/produce", { idea: hook, product: art, available: { photos: !!realImg, footage: hasFootage } });
+    // Плейбук ниши для produce: render_role говорит «нельзя AI целым роликом» → продюсер не выберет ai_generation_ref
+    let producePlaybook: unknown = null;
+    try {
+      const dbPr = getSupabaseAdmin();
+      if (dbPr && art) {
+        const { nicheFromArticle: nfa } = await import("@/lib/factory/rubric");
+        const rn = nfa(art, st.product_name || "");
+        if (rn) { const { data: pb } = await dbPr.from("niche_playbooks").select("playbook").eq("niche", rn).maybeSingle(); if (pb?.playbook) producePlaybook = pb.playbook; }
+      }
+    } catch { /* niche_playbooks не применена */ }
+    const pr = await jpost(origin, "/api/factory/produce", { idea: hook, product: art, available: { photos: !!realImg, footage: hasFootage }, playbook: producePlaybook || undefined });
     if (!pr || !pr.decision) throw new Error("produce без decision: " + (pr?.error || pr?.detail || "?")); // не молчим — иначе джоба «успешна» на сбое
     const engine = ["kling", "pika", "seedance"].includes(pr?.decision?.engine) ? pr.decision.engine : "seedance";
     const route = pr?.decision?.route || "ai_generation_ref";
