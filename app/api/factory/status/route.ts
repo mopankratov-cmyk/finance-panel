@@ -56,6 +56,8 @@ export async function GET() {
   let hookCount = 0;
   let videoCount = 0;
   let orbitCount = 0;
+  let playbookCount = 0;
+  let orbitsWithoutPlaybook = 0;
   if (hasHooks) {
     try { const { count } = await db.from("viral_hooks").select("id", { count: "exact", head: true }); hookCount = count ?? 0; } catch { /* */ }
   }
@@ -64,6 +66,16 @@ export async function GET() {
   }
   if (hasOrbits) {
     try { const { count } = await db.from("orbit_searches").select("job_id", { count: "exact", head: true }); orbitCount = count ?? 0; } catch { /* */ }
+  }
+  if (hasPlaybooks && hasOrbits) {
+    try {
+      const { data: orbitNiches } = await db.from("orbit_searches").select("niche").limit(20);
+      const { data: pbNiches } = await db.from("niche_playbooks").select("niche").limit(20);
+      playbookCount = (pbNiches ?? []).length;
+      const have = new Set((pbNiches ?? []).map((r: { niche: string }) => r.niche));
+      const need = [...new Set((orbitNiches ?? []).map((r: { niche: string }) => r.niche))].filter((n) => n && !have.has(n));
+      orbitsWithoutPlaybook = need.length;
+    } catch { /* */ }
   }
 
   const tables = {
@@ -94,6 +106,7 @@ export async function GET() {
   if (!hasAssemblies) pending.push("Применить 20260621_factory_v2_assembly.sql (Shotstack)");
   if (!hasPlaybooks) pending.push("Применить 20260623_niche_playbooks.sql (кеш плейбуков)");
   if (orbitCount === 0 && hasOrbits) pending.push("Нажать «🔄 Синк орбит» в кокпите чтобы скачать ~350 видео из 4 орбит");
+  if (orbitsWithoutPlaybook > 0) pending.push(`Нажать «🧠 Плейбуки» в кокпите — ${orbitsWithoutPlaybook} ниш без плейбука`);
   if (!keys.shotstack) pending.push("Добавить SHOTSTACK_API_KEY в Vercel (v2 монтаж реального видео)");
   if (!keys.gemini) pending.push("Добавить GEMINI_API_KEY в Vercel (U4 Nano Banana)");
 
@@ -101,7 +114,7 @@ export async function GET() {
     ok: true,
     tables,
     keys,
-    counts: { viral_videos: videoCount, viral_hooks: hookCount, orbit_searches: orbitCount },
+    counts: { viral_videos: videoCount, viral_hooks: hookCount, orbit_searches: orbitCount, niche_playbooks: playbookCount },
     pending,
     ready: pending.length === 0,
   });
