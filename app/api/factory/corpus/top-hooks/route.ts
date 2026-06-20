@@ -6,7 +6,7 @@ export const maxDuration = 10;
 
 // GET /api/factory/corpus/top-hooks?niche=cosmetics&limit=30
 // Возвращает хуки из viral_hooks, отсортированные по viability_score DESC.
-// viability_score: 1=from playbook, 2=from analyze_video, 3=hook-judge score≥8, 5=winner
+// viability_score: 1=from playbook, 2=from analyze_video, 3=hook-judge score≥8, 4=gen-save OTK≥8, 5=winner(🏆)
 // Graceful при отсутствии таблицы.
 
 export async function GET(req: NextRequest) {

@@ -305,7 +305,7 @@
                 </div>
               </template>
             </div>
-            <div x-show="hooks.length" class="text-[9px] text-amber-500 mt-0.5">🏆 = победитель · ✓ = hook-judge≥8 · · = из анализа. Используются автоматически скриптом и сценарием.</div>
+            <div x-show="hooks.length" class="text-[9px] text-amber-500 mt-0.5">🏆 = победитель · ✓ = турнир≥8 или OTK≥8 · · = из анализа. Используются автоматически скриптом и сценарием.</div>
           </div>
           <div class="flex gap-2 flex-wrap mt-2" x-data="{refreshing:false, refreshLog:'', initing:false, syncing:false, buildingPb:false}">
             <button @click="async()=>{refreshing=true; refreshLog=''; try{ const r=await(await fetch('/api/factory/jobs/corpus-tick',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})).json(); refreshLog=(r.ok?('✅ +'+r.new_videos+' видео, проанализировано: '+r.analyzed+(r.log&&r.log.length?' | '+r.log[0]:'')):(r.error||'?')); if(r.ok) load(); }catch(e){refreshLog=String(e).slice(0,60)} refreshing=false; }" :disabled="refreshing||initing||syncing||buildingPb" class="btn btn-ghost text-[11px]" title="Опросить Comet-мониторы и проанализировать новые видео">⟳ Обновить корпус</button>
