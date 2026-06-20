@@ -47,8 +47,8 @@ export function floorsFor(mode: ContentMode, basis: RubricBasis = "frames"): Par
 export function nicheFromArticle(article = "", name = ""): RubricNiche {
   const s = `${article} ${name}`.toLowerCase();
   if (/^nv|^ht|куртк|ветровк|пухов|пальто|плащ|жилет|одежд/.test(s)) return "clothing";
-  if (/^tt|пистолет|игрушк|бластер|toy|water gun/.test(s)) return "toys";
-  if (/крем|сыворотк|маск|косметик|уход|тонер|патч|cosmet|cream|serum|skincare/.test(s)) return "cosmetics";
+  if (/^tt|пистолет|игрушк|бластер|toy|water.gun/.test(s)) return "toys";
+  if (/крем|сыворотк|маск|косметик|уход|тонер|патч|cosmet|cream|serum|skincare|spf|sunscreen|collagen|коллаген|retinol|niacinamide|hyaluron|тональн|пудра|помад|туш|тени/.test(s)) return "cosmetics";
   return "default";
 }
 
