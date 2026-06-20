@@ -206,9 +206,15 @@ NODE_TYPE enum (role-слоты hook→problem→solution→proof→cta):
 
 **Эндпоинт:** `POST /api/factory/decompose` — `{ video_url? , viral_video_id?, niche? }` → `{ ok, format, nodes:[Node], confidence, template_id }`.
 
+> ⚠️ **ДЕ-РИСК 2026-06-20 (проверено через Virlo MCP):** `analyze_video` отдаёт ТОЛЬКО статистику
+> (percentile/outlier_score/performance_label), НЕ покадровую структуру, и стоит $0.50. **Virlo НЕ даёт
+> beat_structure** — поле `viral_videos.beat_structure` пустое не случайно. **Decompose раскладывает из ОПИСАНИЯ**
+> (Virlo отдаёт `caption`/`description` — у виральных видео он описывает весь питч) + hook + format через Claude.
+> Реализовано так в `app/api/factory/decompose/route.ts`. Позже — vision-разбор реальных кадров (Claude/Gemini vision) для точности.
+
 **Конвейер:**
-1. **Получить beat_structure.** Если `viral_video_id` есть в `viral_videos.beat_structure` — взять. Иначе `Virlo analyze_video(url)` (если не разобрано — поставить в очередь анализа, вернуть `status:analyzing`).
-2. **Нормализовать** свободный текст Virlo (недетерминирован!) в строгую схему — отдельный LLM-вызов или парсер:
+1. **Взять ОПИСАНИЕ** видео: из `viral_videos.caption` (по `viral_video_id` или топ по нише), либо передать `description` напрямую. (НЕ звать analyze_video — он без структуры и платный.)
+2. **Восстановить структуру** из описания (LLM-инференс): Claude по описанию+хуку+формату восстанавливает вероятную покадровую раскладку:
    ```
    NormBeat = { ordinal, duration_sec, role:hook|problem|solution|proof|cta,
                 hook_type, onscreen_text, voiceover, emotion, visual_desc }
