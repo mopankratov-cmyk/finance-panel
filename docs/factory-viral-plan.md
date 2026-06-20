@@ -43,6 +43,19 @@
 - **scripts прямая калибровка** (`ad0d7d1`): scripts без playbook читает viral_hooks по нише напрямую → «дух/паттерн» реальных корпусных хуков идут в идеацию без предварительного «Изучить нишу».
 - **fix overlay** (`d7e76e4`): subtитры PNG используют `onscreen || voiceover` — теперь не пустые при talking-head/POV форматах.
 
+### ✅ ДОДЕЛАНО в сессии 2026-06-20 (продолжение 2):
+- **corpus-cron автономный** (`e2b197a`): sync-all-orbits + corpus-tick параллельно (55с каждый) + авто-сборка плейбуков (до 3 ниш × 20с). maxDuration 60→120. Теперь ПОЛНОСТЬЮ АВТОНОМЕН раз в неделю.
+- **build-missing-playbooks** (`e2b197a`): POST `/api/factory/corpus/build-missing-playbooks` — ниши с orbit-данными без плейбука → строит последовательно (макс 5, 20с/ниша). Кнопка «🧠 Плейбуки» в кокпите.
+- **top-hooks** (`0a8b15c`): GET `/api/factory/corpus/top-hooks` — viral_hooks по убыванию viability. Кокпит: секция «🎯 Хуки корпуса» (lazy-load, значки 🏆/✓/·).
+- **Банк из БД** (`01d1227`): init() авто-подгружает gen-save если банк пуст; кнопка «📥 Из БД» мёрджит новые записи по URL. Банк не теряется при обновлении.
+- **status нишевой gap** (`e2b197a`): `/api/factory/status` теперь считает ниши без плейбука → добавляет в pending[]. Счётчик плейбуков в "✅ Система готова".
+- **fix(critic)** (`8810dc7`): video-critic читает viral_hooks(viability≥3) → инъектирует в оба промпта (storyboard + full OTK). Слепой критик → нишевой критик. Закрывает дефект #2 из плана.
+- **feat(hook-judge generation)** (`29f3823`): при генерации хуков (нет входных) — топ-5 corpus hooks как примеры паттернов в genSys. Генерирует ближе к реальным победителям.
+- **fix(rubric EN)** (`2d620d5`): `spf|sunscreen|collagen|коллаген|retinol|niacinamide|hyaluron` → cosmetics. Orbit-ниши SPF/collagen теперь не падают в default.
+- **fix(rubric RU)** (`88815da`): `санскрин|санскрей|солнцезащит|консилер|праймер|тональн` → cosmetics. Хук-тексты косметики корректно ниши.
+- **auto orbit check on load** (`c42575b`): init() проверяет pbJobs старше 10 мин через sync-orbit → если finalized → авто-строит playbook. Больше не нужно вручную нажимать «Собрать плейбук».
+- **fix(tick): produce + playbook** (`52689ee`): produce-шаг фоновой очереди теперь загружает niche_playbooks и передаёт в produce → render_role соблюдается даже без браузера.
+
 ### ⏳ ОСТАЛОСЬ — нужен ты / live / схемы:
 - **ПРИМЕНИТЬ МИГРАЦИИ** (⚠️ обязательно — без этого corpus, winners, unique-idx не работают):
   - `20260620_viral_corpus.sql` — 4 таблицы корпуса
