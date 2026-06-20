@@ -86,17 +86,22 @@ ${HOOK_ANTIPATTERNS}${calib}
     const winners = ranked.slice(0, want);
 
     // Авто-сид: хуки score>=8 → viral_hooks viability_score=3 (AI-турнирные, хуже real-corpus но лучше ничего)
-    // Это гарантирует что hook-judge не работает вхолостую: каждый прогон обогащает корпус
+    // Это гарантирует что hook-judge не работает вхолостую: каждый прогон обогащает корпус.
+    // Для уже существующих viability=2 (from analyze_video) — апгрейд до 3. Не перебиваем 4/5.
     const toSeed = ranked.filter((r) => r.score >= 8).slice(0, 5);
     if (toSeed.length) {
       const db = getSupabaseAdmin();
       if (db) {
         await Promise.allSettled(toSeed.map(async (r) => {
           try {
-            await db.from("viral_hooks").upsert(
-              { niche, hook_text: r.hook, viability_score: 3, effectiveness_notes: `hook-judge ${r.pattern} score=${r.score}` },
-              { onConflict: "niche,hook_text", ignoreDuplicates: true }
-            );
+            const note = `hook-judge ${r.pattern} score=${r.score}`;
+            const hookSlice = r.hook.toString().slice(0, 300);
+            const { error: ie } = await db.from("viral_hooks").insert({ niche, hook_text: hookSlice, viability_score: 3, effectiveness_notes: note });
+            if (ie?.code === "23505") {
+              // хук уже есть — обновляем только если viability < 3 (не перебиваем OTK=4 или winners=5)
+              await db.from("viral_hooks").update({ viability_score: 3, effectiveness_notes: note })
+                .eq("niche", niche).eq("hook_text", hookSlice).lt("viability_score", 3);
+            }
           } catch { /* corpus optional */ }
         }));
       }
