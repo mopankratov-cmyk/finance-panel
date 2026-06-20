@@ -1636,7 +1636,7 @@ function patrick() {
             const hooks = this.run.ideas.map(s => s.hook).filter(Boolean);
             if (hooks.length > 1) {
               this.run.step = 'хук-турнир (отбор сильнейших)…';
-              const hj = await (await fetch('/api/factory/hook-judge', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ hooks, article: art }) })).json();
+              const hj = await (await fetch('/api/factory/hook-judge', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ hooks, article: art, product_name: this._prodName(art) }) })).json();
               if (hj && Array.isArray(hj.ranked) && hj.ranked.length) {
                 const sc = {}; hj.ranked.forEach(r => { if (r.hook) sc[r.hook] = r.score; });
                 this.run.ideas = this.run.ideas.map(s => ({ ...s, hj: (sc[s.hook] != null ? sc[s.hook] : null) })).sort((a, b) => (b.hj || 0) - (a.hj || 0));
