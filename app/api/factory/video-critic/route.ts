@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { CLAUDE_MODEL as MODEL, createClaudeClient } from "@/lib/agent/client";
 import { rubricPrompt, scoreRubric, nicheFromArticle } from "@/lib/factory/rubric";
 import type { ContentMode, RubricNiche, AxisScores } from "@/lib/factory/rubric";
+import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -69,6 +70,17 @@ export async function POST(req: NextRequest) {
   const niche: RubricNiche = (["clothing", "toys", "cosmetics", "default"].includes(body.niche) ? body.niche : nicheFromArticle(article, name)) as RubricNiche;
   const scenarioText = scenarioDigest(body.scenario);
 
+  // Топ хуков ниши из corpus (для калибровки критика — «не хуже чем»)
+  let corpusHint = "";
+  try {
+    const db = getSupabaseAdmin();
+    if (db && niche) {
+      const { data: hks } = await db.from("viral_hooks").select("hook_text").eq("niche", niche).gte("viability_score", 3).order("viability_score", { ascending: false }).limit(5);
+      const hooks = ((hks ?? []) as { hook_text: string }[]).map((h) => h.hook_text).filter(Boolean);
+      if (hooks.length) corpusHint = `\nДОКАЗАННЫЕ ХУКИ НИШИ (из реальных просмотров): ${hooks.map((h) => `«${h}»`).join(" | ")} — хук оцениваемого ролика должен соответствовать их уровню по паттерн-брейку/интриге.`;
+    }
+  } catch { /* corpus optional — не валим критика */ }
+
   // ── ТЕКСТОВЫЙ ПРЕДФИЛЬТР (storyboard): отсев слабого ХУКА по ТЕКСТУ хука+сценария ДО дорогого рендера.
   // Строго за флагом body.storyboard===true + пустые frames + есть hook — иначе путь по кадрам байт-в-байт прежний.
   // Флор только по хуку (basis='text'); native/brand из текста не судятся; regen_hint пуст (не для ретрай-петли).
@@ -77,7 +89,7 @@ export async function POST(req: NextRequest) {
     if (!tClient) return NextResponse.json({ error: "ANTHROPIC_API_KEY не настроен" }, { status: 500 });
     const tLabel = mode === "sell" ? "ПРОДАЖА (ведём на WB)" : "АУДИТОРИЯ (рост охвата/подписок)";
     const sysT = `Ты отсеиваешь слабый ХУК сценария короткого вертикального видео ДО дорогого рендера. На входе — ТЕКСТ (хук + покадровый сценарий), кадров нет. Режим: ${tLabel}. Ниша: ${niche}.
-По тексту честно читаются ось A (ХУК), частично E (CTA) и структура B; оси C (нативность) и D (товар в кадре) из текста НЕ оценить — ставь им 3 (нейтрально), решения по ним не принимаем. Суди СТРОГО ось A: сильный хук = паттерн-брейк/новизна/интрига в первой фразе, за 1 сек ясно «зачем смотреть»; слабый = общая витрина/«здравствуйте».
+По тексту честно читаются ось A (ХУК), частично E (CTA) и структура B; оси C (нативность) и D (товар в кадре) из текста НЕ оценить — ставь им 3 (нейтрально), решения по ним не принимаем. Суди СТРОГО ось A: сильный хук = паттерн-брейк/новизна/интрига в первой фразе, за 1 сек ясно «зачем смотреть»; слабый = общая витрина/«здравствуйте».${corpusHint}
 ${rubricPrompt(mode)}
 Верни СТРОГО JSON: {"axes":{"hook":1-5,"retention":1-5,"native":3,"brand":3,"cta":1-5},"issues":["что слабо в хуке/структуре",...],"fixes":["как усилить хук",...]}. Только JSON.`;
     try {
@@ -103,7 +115,7 @@ ${rubricPrompt(mode)}
 
   const modeLabel = mode === "sell" ? "ПРОДАЖА (ведём на WB)" : "АУДИТОРИЯ (рост охвата/подписок, без давления на WB)";
   const sys = `Ты — строгий ОТК коротких вертикальных видео (Reels/Shorts/VK Клипы) бренда-селлера WB/Ozon. Твоя задача — оценить, обойдёт ли этот ролик контент КОНКУРЕНТОВ в ленте, а не просто «нет ли брака».
-Режим ролика: ${modeLabel}. Ниша: ${niche}.
+Режим ролика: ${modeLabel}. Ниша: ${niche}.${corpusHint}
 Тебе дают КАДРЫ ОДНОГО ролика В ХРОНОЛОГИЧЕСКОМ ПОРЯДКЕ (кадр 1 ≈ первая секунда/хук, последний ≈ финал), а также текст хука и сценария. Суди: ось A (хук) — по первому кадру и тексту хука; ось B (удержание/темп) — по тому, как меняются кадры от первого к последнему и есть ли причина досмотреть; оси C/D/E — по кадрам вместе со сценарием.
 АНТИ-СЛОП (для ЛЮБОГО рендера, не только аватара): если на товаре/в кадре виден AI-артефакт — зеркальный/искажённый текст и лого, «плывущий»/парящий товар, оплавленные края, деформированная упаковка/форма, лишние/кривые пальцы, восковая кожа, морфинг — ставь ось НАТИВНОСТЬ ≤2 (это валит флор и отправляет на перегенер). Сомневаешься — снижай: для маркетплейса искажённый товар = брак (покупатель сверяет с карточкой). ${kind === "avatar" ? "Это AI-аватар — НАТИВНОСТЬ занижай при любом «AI-запахе» (восковая кожа, мёртвые/асимметричные глаза, кривой рот, синтетичность). " : ""}${rubricPrompt(mode)}
 Не завышай баллы из вежливости — это для конкуренции в ленте. Верни СТРОГО JSON:
