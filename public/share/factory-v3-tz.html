@@ -255,6 +255,54 @@ NODE_TYPE (role-слоты hook→problem→solution→proof→cta):
 Бэкфилл `content_assets.duration_sec` (ffprobe) на 1 нише со съёмкой + экран «разобрать одного конкурента на ноды» (analyze_video уже добывает beat_structure). Доказывает decompose→clone, ничего платного не рендерит. Дальше — клон → инструменты → сборка → ОТК → первое постимое видео.
 
 **Готово отдавать Claude Design** (экраны §3 + нод-модель §4 + инспектор §6).
+
+---
+
+## 13. Decomposer-агент (сердце Req2)
+
+`POST /api/factory/decompose` `{video_url|viral_video_id, niche?}` → `{format, nodes[], confidence, template_id}`.
+Конвейер: получить beat_structure (Virlo analyze_video) → **нормализовать** свободный текст в схему `{ordinal,duration_sec,role,hook_type,onscreen,voiceover,emotion,visual}` → определить формат (enum: ugc_anim/ai_render/prank/talking_head/before_after/pov/carousel) → **маппинг beat → node_type + tool_candidate** (актёр-лицо→hook_ugc/creatify; ревил товара→ai_product_render/seedance; до-после→before_after/seedance end_image; реал-демо→b_roll/disk; текст→captions/shotstack; звук→music) → собрать Node[] со слотами «вставь инструмент». Промпт: Claude-декомпозитор, few-shot, строгий JSON. «Перенести себе» = клон каркаса (структура/тайминги/role), content обнуляется, перемап на твой товар.
+
+## 14. Маркетолог-агент (расширение Req1)
+
+`GET /api/factory/niche-brief?niche=X` → `{summary, top_formats[], content_recommendations[], distribution[], viral_examples[]}`. Источники: niche_playbooks + viral_videos (топ по score) + viral_hooks + top-sounds + веб-ресёрч. Кеш как плейбуки (corpus-cron еженедельно). UI: панель на экране 1.
+
+## 15. API-контракты новых эндпоинтов
+
+Все: force-dynamic, весь обработчик в try/catch → ВСЕГДА JSON (урок сессии).
+
+| Эндпоинт | вход → выход |
+|---|---|
+| `/decompose` | POST `{video}` → `{format,nodes[],confidence}` \| `{status:analyzing}` |
+| `/recipes` | POST `{template_id,article,niche}` → `{recipe_id,graph_doc}` (черновой граф) |
+| `/node-preview` | POST `{tool,prompt,params}` → `{preview_url,cost,cached}` (кэш по hash) |
+| `/graph-run` | POST `{recipe_id}` → `{job_id}` — per-node через очередь, Shotstack=сборка |
+| `/niche-brief` | GET `?niche=` → NicheBrief (§14) |
+| `/tool-schema` | GET `?tool=` → JSON-Schema полей для инспектора |
+
+node-runner = переворот per-video→per-node: каждая нода = шаг очереди (гарды renderCount≤3); edges = порядок; финальная нода shotstack собирает по таймингу → ОТК → банк.
+
+## 16. UX-состояния (никогда не голо)
+
+loading = skeleton; empty = что сделать дальше (CTA); error = реальный текст + ретрай; generating = прогресс + счётчик цены. Холст пустым НЕ бывает (старт с клона). Decompose: «анализирую ~15-20 мин если ново». Сборка: «монтирую…»/«ОТК проверяет…».
+
+## 17. Критерии приёмки прототипа (DoD)
+
+- [ ] ffprobe duration_sec на 1 нише; теги непустые
+- [ ] Карта осознания + маркетолог-бриф по нише
+- [ ] Decompose 1 конкурента → ноды; «Перенести себе» создаёт граф
+- [ ] React Flow: 3-5 нод, типизированные порты, старт с клона
+- [ ] Инспектор Seedance+Creatify+Shotstack: все настройки, значение долетает до API (debug)
+- [ ] Seedance aspect_ratio=9:16 форсится (баг закрыт)
+- [ ] Сборка → Shotstack → ОТК (5 осей, вкл фейлы<8) → банк
+- [ ] Счётчик цены + кэш превью по hash
+- [ ] cf_signals пишет каждое решение (вкл agent_suggestion, фейлы<8)
+- [ ] Все экраны: loading/empty/error не голые
+- [ ] **Главный: один ролик владелец готов запостить**
+
+## 18. Live-проверки (Фаза 0)
+
+Снять энум-дампы (Creatify/fal/Shotstack/image, с датой); подтвердить Seedance aspect-баг; снять форму beat_structure Virlo на 3 видео → нормализатор; ffprobe где гонять; Shotstack caption-asset (авто-субтитры) на stage.
 </script>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
