@@ -35,13 +35,27 @@
 - **Corpus grounding for scenario** (коммит 8d2c8cf): scenario/route.ts: в фоновой очереди (без playbook) делает прямой запрос viral_videos + viral_hooks по нише → реальные beat-структуры + хуки корпуса идут сценаристу без доп. LLM-вызова.
 - **Produce routing fix** (коммит d450593): disk-source вызывается ДО produce в tick → produce получает `available.photos/footage` по факту, а не `{photos: true}` всегда. realImg кешируется в state → submit/assemble переиспользуют без повторного диск-запроса.
 
+### ✅ ДОДЕЛАНО в сессии 2026-06-20 (продолжение):
+- **sync-all-orbits** (`af159e4`): POST `/api/factory/corpus/sync-all-orbits` — пакетно синкает все завершённые Orbit из Virlo в orbit_searches + viral_videos. Кнопка «🔄 Синк орбит» в кокпите. `virloListOrbits()` в trendSources. 4 готовых орбиты: SPF (127 вид.), collagen (110), мини сумка замша (73), мини сумка (40).
+- **top-sounds** (`9e705c0`): GET `/api/factory/corpus/top-sounds` — агрегирует commerce-safe звуки из orbit_searches.sounds. Кокпит: секция «🎵 Трендовые звуки» (lazy-load). Миграция `20260625_viral_hooks_seed.sql`: 37 реальных хуков из Virlo анализа (cosmetics/default/toys/clothing).
+- **Самообучающаяся петля** (`e654f5a`): winners POST → сеет хук в viral_hooks (viability=5). hook-judge → сеет хуки score≥8 в viral_hooks (viability=3, ignoreDuplicates). Каждый прогон обогащает корпус.
+- **Звук в scenario без playbook** (`6ac49d2`): scenario corpusHint теперь включает топ commerce-safe звук из orbit_searches.sounds по нише → подсказывает конкретный трек в music-поле.
+- **scripts прямая калибровка** (`ad0d7d1`): scripts без playbook читает viral_hooks по нише напрямую → «дух/паттерн» реальных корпусных хуков идут в идеацию без предварительного «Изучить нишу».
+- **fix overlay** (`d7e76e4`): subtитры PNG используют `onscreen || voiceover` — теперь не пустые при talking-head/POV форматах.
+
 ### ⏳ ОСТАЛОСЬ — нужен ты / live / схемы:
-- **Factory v2 Shotstack (финальный шаг)**: применить миграцию `20260621` в Supabase → добавить `SHOTSTACK_API_KEY` + `SHOTSTACK_ENV=v1` + `SHOTSTACK_FONT_URL` (Cyrillic-TTF) в Vercel → смоук-тест `shotstackSubmit` на проде (sandbox=watermark). Код полностью готов (assemble + compose-submit + compose-poll в очереди).
-- **R2 (create_niche_monitor) / R4 (analyze_video)** — Virlo-MCP отключился, точных схем платных инструментов нет. Сделать, когда MCP переподключится.
-- **P1.1 авто-mux звука** — Virlo не отдаёт скачиваемый mp3 (только id/title); нужен реальный mp3-URL или ручное наложение при постинге.
+- **ПРИМЕНИТЬ МИГРАЦИИ** (⚠️ обязательно — без этого corpus, winners, unique-idx не работают):
+  - `20260620_viral_corpus.sql` — 4 таблицы корпуса
+  - `20260621_factory_v2_assembly.sql` — Shotstack ассемблирование
+  - `20260622_winners.sql` — winners loop
+  - `20260623_niche_playbooks.sql` — кеш плейбуков
+  - `20260624_viral_hooks_unique.sql` — unique idx (нужен для upsert)
+  - `20260625_viral_hooks_seed.sql` — 37 сидовых хуков (после 20260624)
+- **НАЖАТЬ «🔄 Синк орбит»** в кокпите (после применения миграций) — скачает ~350 видео из 4 орбит.
+- **Factory v2 Shotstack**: добавить `SHOTSTACK_API_KEY` + `SHOTSTACK_ENV=v1` + `SHOTSTACK_FONT_URL` (Cyrillic-TTF) в Vercel → смоук-тест. Код готов.
+- **P1.1 авто-mux звука** — Virlo не отдаёт mp3-URL; нужен реальный файл или ручное наложение при постинге.
 - **U2 гибрид UGC** — live-валидация Creatify (ключи стоят, адаптер готов; риск Enterprise-тарифа).
-- **U4** — нужен `GEMINI_API_KEY` (Nano Banana).
-- **P2.1 winners loop** — дурабельная петля победителей (миграция + mark-winner route + инъекция в scripts) — отдельная сессия, нужны данные в системе.
+- **U4** — нужен `GEMINI_API_KEY` (Nano Banana: Gemini Image compositor → Seedance i2v).
 
 ## Корневая причина
 
