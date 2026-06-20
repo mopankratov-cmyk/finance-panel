@@ -537,7 +537,10 @@
     <section class="card mb-6" x-show="bank.length">
       <div class="flex items-center justify-between mb-3">
         <div id="bank"><div class="sec-h">🎞 Банк готового контента</div><div class="sec-sub">результаты автопрогона · статусы → утверждение → в расписание</div></div>
-        <span class="pill pill-violet" x-text="bank.length + ' шт'"></span>
+        <div class="flex items-center gap-2">
+          <button @click="async()=>{ try{ const gd=await(await fetch('/api/factory/gen-save')).json(); const existUrls=new Set(bank.map(b=>b.url).filter(Boolean)); const dbi=(gd.data||[]).filter(e=>e.url&&!existUrls.has(e.url)).map(e=>({ts:e.created_at?new Date(e.created_at).getTime():Date.now(),art:e.article||'',hook:(e.analysis&&e.analysis.hook)||e.name||'',url:e.kind==='video'?e.url:null,slides:e.kind==='image'&&e.url?[e.url]:null,status:'review',critScore:(e.analysis&&typeof e.analysis.otk==='number')?e.analysis.otk:null,engine:(e.analysis&&e.analysis.engine)||'',route:(e.analysis&&e.analysis.route)||'',mode:'operator',product_name:e.name||'',niche:e.niche||null,_fromDb:true})); if(dbi.length){bank.push(...dbi);bank.sort((a,b)=>b.ts-a.ts);_saveBank();} alert(dbi.length?'📥 добавлено '+dbi.length+' из БД':'Новых записей из БД нет'); }catch(e){alert('Ошибка: '+e);} }" class="btn btn-ghost text-[10px] px-2 py-1" title="Подгрузить новые записи из gen-save БД (дедуп по URL)">📥 Из БД</button>
+          <span class="pill pill-violet" x-text="bank.length + ' шт'"></span>
+        </div>
       </div>
       <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
         <template x-for="(b,bi) in bank" :key="b.ts">
@@ -856,6 +859,8 @@ function patrick() {
       // дополним из costs (себестоимость-имена) — добавим то, чего ещё нет
       try { const d = await (await fetch('/api/costs')).json(); const rows = (d.rows || d.items || []).filter(p => p.article); if (!this.products.length) this.products = rows; else { const have = new Set(this.products.map(p => p.article)); rows.forEach(r => { if (!have.has(r.article)) this.products.push(r); }); } } catch (e) {}
       try { this.bank = JSON.parse(localStorage.getItem('cf_bank') || '[]'); } catch (e) { this.bank = []; }
+      // Если банк пуст — подгрузить последние 50 генераций из БД (ген-сейв)
+      if (!this.bank.length) { try { const gd = await (await fetch('/api/factory/gen-save')).json(); const dbi = (gd.data||[]).filter(e=>e.url).map(e=>({ ts: e.created_at?new Date(e.created_at).getTime():Date.now(), art: e.article||'', hook: (e.analysis&&e.analysis.hook)||e.name||'', url: e.kind==='video'?e.url:null, slides: e.kind==='image'&&e.url?[e.url]:null, status:'review', critScore:(e.analysis&&typeof e.analysis.otk==='number')?e.analysis.otk:null, engine:(e.analysis&&e.analysis.engine)||'', route:(e.analysis&&e.analysis.route)||'', mode:'operator', product_name:e.name||'', niche:e.niche||null, _fromDb:true })); if(dbi.length){this.bank=dbi;this._saveBank();} } catch(e){} }
       try { this.accReg = JSON.parse(localStorage.getItem('cf_accounts') || '[]'); } catch (e) { this.accReg = []; }
       try { this.sched = JSON.parse(localStorage.getItem('cf_sched') || '[]'); } catch (e) { this.sched = []; }
       try { this.profile = localStorage.getItem('cf_profile') || ''; } catch (e) { this.profile = ''; }
