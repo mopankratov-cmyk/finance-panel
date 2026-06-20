@@ -872,6 +872,21 @@ function patrick() {
       try { this.learnRejects = JSON.parse(localStorage.getItem('cf_rejects') || '[]'); } catch (e) { this.learnRejects = []; }
       try { this.playbooks = JSON.parse(localStorage.getItem('cf_playbooks') || '{}'); } catch (e) { this.playbooks = {}; }
       try { this.pbJobs = JSON.parse(localStorage.getItem('cf_pbjobs') || '{}'); } catch (e) { this.pbJobs = {}; }
+      // Авто-проверка: если есть незавершённые Orbit-задания — проверяем статус сейчас и строим плейбуки
+      if (Object.keys(this.pbJobs).length) {
+        for (const [key, job] of Object.entries(this.pbJobs)) {
+          if (!job || !job.jobId) continue;
+          const ageMs = Date.now() - (job.ts || 0);
+          if (ageMs < 10 * 60 * 1000) continue; // < 10 мин — Orbit ещё точно не готов, пропускаем
+          try {
+            const sr = await (await fetch('/api/factory/corpus/sync-orbit', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ job_id: job.jobId, niche: key }) })).json();
+            if (sr.finalized === false) continue; // ещё идёт
+            // Orbit готов — строим плейбук
+            const pbr = await (await fetch('/api/factory/niche-playbook', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ niche: key, job_id: job.jobId }) })).json();
+            if (pbr.playbook) { this.playbooks[key] = pbr.playbook; delete this.pbJobs[key]; this._savePlaybooks(); this.pb.msg = '✓ Плейбук «' + key + '» готов (Orbit завершился)'; }
+          } catch(e) {}
+        }
+      }
     },
     imgByArt: {},
     // фото товара: из sku-list, а если нет — резолвим с сервера (товары не из sku-list, иначе «нет фото»)
