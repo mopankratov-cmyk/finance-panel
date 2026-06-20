@@ -58,7 +58,8 @@ ${HOOK_ANTIPATTERNS}${calib}
   // если хуков не дали — генерим genCount штук под товар (дешёвый шаг)
   let genNote = "";
   if (!hooks.length) {
-    const genSys = `Ты топ-маркетолог UGC. Дай ${genCount} РАЗНЫХ хуков (первых фраз) под товар, каждый по своей формуле, ≤12 слов, разговорный, паттерн-брейк/интрига/боль. БЕЗ вступлений-пустышек. ${HOOK_FORMULAS}\nВерни СТРОГО JSON-массив строк. Только JSON.`;
+    const calibForGen = corpusHooks.length ? `\nПРИМЕРЫ ЗАЛЕТЕВШИХ ХУКОВ НИШИ (изучи паттерн, НЕ копируй): ${corpusHooks.slice(0, 5).map((h) => `«${h}»`).join(" | ")}` : "";
+    const genSys = `Ты топ-маркетолог UGC. Дай ${genCount} РАЗНЫХ хуков (первых фраз) под товар, каждый по своей формуле, ≤12 слов, разговорный, паттерн-брейк/интрига/боль. БЕЗ вступлений-пустышек. ${HOOK_FORMULAS}${calibForGen}\nВерни СТРОГО JSON-массив строк. Только JSON.`;
     try {
       const gr = await client.messages.create({ model: MODEL, max_tokens: 1500, system: genSys, messages: [{ role: "user", content: `Товар: ${subject}${article ? ` (арт. ${article})` : ""}. Дай ${genCount} хуков.` }] });
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
