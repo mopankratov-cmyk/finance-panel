@@ -56,6 +56,15 @@
 - **auto orbit check on load** (`c42575b`): init() проверяет pbJobs старше 10 мин через sync-orbit → если finalized → авто-строит playbook. Больше не нужно вручную нажимать «Собрать плейбук».
 - **fix(tick): produce + playbook** (`52689ee`): produce-шаг фоновой очереди теперь загружает niche_playbooks и передаёт в produce → render_role соблюдается даже без браузера.
 
+### ✅ ДОДЕЛАНО в сессии 2026-06-20 (продолжение 3):
+- **fix(gen-save niche)** (`d34ca46`): заменён `nicheFor` (contentDisks, "cream"/"bags") на `nicheFromArticle` (rubric, "cosmetics"/"clothing") — теперь content_assets.niche консистентен с viral_hooks и запросами scripts-winners.
+- **feat(gen-save OTK seed)** (`d34ca46`): OTK ≥ 8 при сохранении видео → viral_hooks viability=4 ("AI+OTK verified"). Использует insert+conditional-update: никогда не понижает viability=5.
+- **fix(hook-judge seed)** (`7cca866`): заменён ignoreDuplicates:true → insert+conditional-update → viability=2 (analyze_video) апгрейдится до 3 при hook-judge score≥8. Раньше дублирующиеся записи молча пропускались.
+- **feat(build-missing-playbooks refresh_days)** (`7cca866`): параметр refresh_days=N → перестраивает плейбуки старше N дней. Сохраняет Map niche→updated_at для эффективной проверки.
+- **refactor(corpus-cron)** (`7cca866`): inline код плейбуков заменён на build-missing-playbooks с refresh_days=7 → раз в неделю обновляются и отсутствующие и сталые плейбуки. Убран дублирующий getSupabaseAdmin.
+- **feat(assemble SHOTSTACK_FONT_FAMILY)** (`d34ca46`): env SHOTSTACK_FONT_FAMILY передаётся в buildEdit; status-роут предупреждает если ключ есть а шрифт не задан.
+- **docs(viability=4)** (`331f312`): задокументирован 5-уровневый стек: 1=playbook, 2=analyze_video, 3=турнир, 4=OTK, 5=winner. Обновлён tooltip кокпита.
+
 ### ⏳ ОСТАЛОСЬ — нужен ты / live / схемы:
 - **ПРИМЕНИТЬ МИГРАЦИИ** (⚠️ обязательно — без этого corpus, winners, unique-idx не работают):
   - `20260620_viral_corpus.sql` — 4 таблицы корпуса
