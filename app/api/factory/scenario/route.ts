@@ -49,7 +49,7 @@ export async function POST(req: NextRequest) {
       (pb.cta ? `\nCTA: ${pb.cta}` : "");
   }
 
-  // Корпус вирального: грунтовка на реально залетевших видео/хуках ниши (таблицы могут не существовать).
+  // Корпус вирального: грунтовка на реально залетевших видео/хуках/звуках ниши (таблицы могут не существовать).
   // Работает из фоновой очереди — не требует playbook (который только в браузере).
   let corpusHint = "";
   if (!pb && article) {
@@ -57,20 +57,30 @@ export async function POST(req: NextRequest) {
       const dbC = getSupabaseAdmin();
       const rn = nicheFromArticle(article, name);
       if (dbC && rn) {
-        const [{ data: vids }, { data: hks }] = await Promise.all([
+        const [{ data: vids }, { data: hks }, { data: orbits }] = await Promise.all([
           dbC.from("viral_videos").select("hook_text,format_detected,beat_structure").eq("niche", rn).order("virality_score", { ascending: false }).limit(3),
           dbC.from("viral_hooks").select("hook_text").eq("niche", rn).order("viability_score", { ascending: false }).limit(6),
+          dbC.from("orbit_searches").select("sounds").eq("niche", rn).not("sounds", "is", null).limit(3),
         ]);
         const vidLines = ((vids || []) as { hook_text?: string; format_detected?: string; beat_structure?: unknown }[])
           .filter((v) => v.hook_text || v.beat_structure)
           .map((v) => `• «${v.hook_text || "?"}» [${v.format_detected || ""}${v.beat_structure ? " / " + JSON.stringify(v.beat_structure).slice(0, 80) : ""}]`)
           .join("\n");
         const hkLine = ((hks || []) as { hook_text: string }[]).map((h) => `«${h.hook_text}»`).join(" | ");
+        // top commerce-safe звук из synced орбит этой ниши
+        let sndHint = "";
+        try {
+          const sounds = (orbits || []).flatMap((o: { sounds: unknown }) => Array.isArray(o.sounds) ? o.sounds as Record<string, unknown>[] : [])
+            .filter((s) => typeof s.is_commerce_safe !== "boolean" || s.is_commerce_safe)
+            .sort((a, b) => (Number(b.avg_views) || 0) - (Number(a.avg_views) || 0));
+          if (sounds[0]?.title) sndHint = `\nТоп звук ниши (commerce-safe): «${sounds[0].title}»${sounds[0].avg_views ? ` (avg ${Math.round(Number(sounds[0].avg_views) / 1000)}K просм.)` : ""} — укажи его в поле music.`;
+        } catch { /* */ }
         if (vidLines || hkLine) {
           corpusHint =
             "\n\nКОРПУС ЗАЛЕТЕВШЕГО В НИШЕ (реальные примеры — повтори дух/структуру в первом кадре):" +
             (vidLines ? "\n" + vidLines : "") +
-            (hkLine ? "\nПроверенные хуки: " + hkLine : "");
+            (hkLine ? "\nПроверенные хуки: " + hkLine : "") +
+            sndHint;
         }
       }
     } catch { /* corpus optional */ }
