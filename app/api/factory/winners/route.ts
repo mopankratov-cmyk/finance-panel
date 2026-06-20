@@ -44,6 +44,26 @@ export async function POST(req: NextRequest) {
   }).eq("id", asset.id);
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  // Замыкаем петлю: победивший хук → viral_hooks с максимальным весом (viability_score=5)
+  // Так hook-judge автоматически поднимает наши проверенные хуки в следующем цикле генерации
+  if (learnings.hook) {
+    const niche = nicheFromArticle(asset.article || "", asset.name || "");
+    const note = `winner: ${learnings.format || "unknown"} | otk: ${learnings.otk_score ?? "?"} | ${learnings.note || ""}`.slice(0, 200);
+    try {
+      await db.from("viral_hooks").upsert(
+        { niche, hook_text: String(learnings.hook), viability_score: 5, effectiveness_notes: note },
+        { onConflict: "niche,hook_text", ignoreDuplicates: false }
+      );
+    } catch {
+      try {
+        const { count } = await db.from("viral_hooks").select("id", { count: "exact", head: true }).eq("niche", niche).eq("hook_text", String(learnings.hook));
+        if (!count) await db.from("viral_hooks").insert({ niche, hook_text: String(learnings.hook), viability_score: 5, effectiveness_notes: note });
+        else await db.from("viral_hooks").update({ viability_score: 5, effectiveness_notes: note }).eq("niche", niche).eq("hook_text", String(learnings.hook));
+      } catch { /* viral_hooks не применена */ }
+    }
+  }
+
   return NextResponse.json({ ok: true, learnings });
 }
 

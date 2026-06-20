@@ -83,7 +83,25 @@ ${HOOK_ANTIPATTERNS}${calib}
     ranked = ranked.map((r) => ({ hook: String(r.hook || ""), score: Math.max(1, Math.min(10, Number(r.score) || 1)), pattern: String(r.pattern || "other"), why: String(r.why || "") }))
       .filter((r) => r.hook).sort((a, b) => b.score - a.score);
     const winners = ranked.slice(0, want);
-    return NextResponse.json({ niche, mode, source: genNote || "provided", calibrated: corpusHooks.length > 0, count: ranked.length, winners, ranked });
+
+    // Авто-сид: хуки score>=8 → viral_hooks viability_score=3 (AI-турнирные, хуже real-corpus но лучше ничего)
+    // Это гарантирует что hook-judge не работает вхолостую: каждый прогон обогащает корпус
+    const toSeed = ranked.filter((r) => r.score >= 8).slice(0, 5);
+    if (toSeed.length) {
+      const db = getSupabaseAdmin();
+      if (db) {
+        await Promise.allSettled(toSeed.map(async (r) => {
+          try {
+            await db.from("viral_hooks").upsert(
+              { niche, hook_text: r.hook, viability_score: 3, effectiveness_notes: `hook-judge ${r.pattern} score=${r.score}` },
+              { onConflict: "niche,hook_text", ignoreDuplicates: true }
+            );
+          } catch { /* corpus optional */ }
+        }));
+      }
+    }
+
+    return NextResponse.json({ niche, mode, source: genNote || "provided", calibrated: corpusHooks.length > 0, count: ranked.length, winners, ranked, seeded: toSeed.length });
   } catch (e) {
     return NextResponse.json({ error: String(e).slice(0, 200) }, { status: 502 });
   }
