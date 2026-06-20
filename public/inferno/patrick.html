@@ -307,10 +307,11 @@
             </div>
             <div x-show="hooks.length" class="text-[9px] text-amber-500 mt-0.5">🏆 = победитель · ✓ = турнир≥8 или OTK≥8 · · = из анализа. Используются автоматически скриптом и сценарием.</div>
           </div>
-          <div class="flex gap-2 flex-wrap mt-2" x-data="{refreshing:false, refreshLog:'', initing:false, syncing:false, buildingPb:false}">
+          <div class="flex gap-2 flex-wrap mt-2" x-data="{refreshing:false, refreshLog:'', initing:false, syncing:false, buildingPb:false, analyzingNiches:false}">
             <button @click="async()=>{refreshing=true; refreshLog=''; try{ const r=await(await fetch('/api/factory/jobs/corpus-tick',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})).json(); refreshLog=(r.ok?('✅ +'+r.new_videos+' видео, проанализировано: '+r.analyzed+(r.log&&r.log.length?' | '+r.log[0]:'')):(r.error||'?')); if(r.ok) load(); }catch(e){refreshLog=String(e).slice(0,60)} refreshing=false; }" :disabled="refreshing||initing||syncing||buildingPb" class="btn btn-ghost text-[11px]" title="Опросить Comet-мониторы и проанализировать новые видео">⟳ Обновить корпус</button>
             <button @click="async()=>{syncing=true; refreshLog='синхронизирую орбиты…'; try{ const r=await(await fetch('/api/factory/corpus/sync-all-orbits',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})).json(); refreshLog=(r.ok?('✅ синкнуто: '+r.synced+' орбит, уже было: '+r.already_synced+(r.log&&r.log[0]?' | '+r.log[0]:'')):(r.error||'?')); if(r.ok) load(); }catch(e){refreshLog=String(e).slice(0,60)} syncing=false; }" :disabled="refreshing||initing||syncing||buildingPb" class="btn btn-ghost text-[11px]" title="Скачать все завершённые Orbit → orbital_searches + viral_videos (бесплатно, дедуп по url)">🔄 Синк орбит</button>
             <button @click="async()=>{buildingPb=true; refreshLog='строю плейбуки…'; try{ const r=await(await fetch('/api/factory/corpus/build-missing-playbooks',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})).json(); refreshLog=(r.ok?('✅ плейбуков: '+r.built.length+(r.built.length?' ('+r.built.join(', ')+')':'')+(r.log&&r.log[0]?' | '+r.log[0]:'')):(r.error||'?')); }catch(e){refreshLog=String(e).slice(0,60)} buildingPb=false; }" :disabled="refreshing||initing||syncing||buildingPb" class="btn btn-ghost text-[11px]" title="Собрать niche_playbooks для ниш с данными, но без плейбука (~20с/ниша)">🧠 Плейбуки</button>
+            <button @click="async()=>{analyzingNiches=true; refreshLog='разбираю наши ниши…'; try{ const r=await(await fetch('/api/factory/corpus/analyze-niches',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})).json(); const ic={ready:'✓',analyzing:'⏳',syncing:'🔄',started:'🚀',failed:'✗'}; refreshLog = r.ok ? ('✅ готовы '+r.ready+'/'+r.total+' · '+(r.status||[]).map(s=>s.niche+':'+(ic[s.state]||s.state)).join('  ')) : (r.error||'?'); if(r.ok) load(); }catch(e){refreshLog=String(e).slice(0,90)} analyzingNiches=false; }" :disabled="refreshing||initing||syncing||buildingPb||analyzingNiches" class="btn btn-primary text-[11px]" title="Один проход: синк готовых орбит → плейбук на каждую нишу с данными → для ниш без данных запустить разбор. Выводы пишутся в niche_playbooks, готовы к контенту.">📊 Разобрать наши ниши</button>
             <button @click="async()=>{initing=true; refreshLog=''; try{ const r=await(await fetch('/api/factory/corpus/init-monitors',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})).json(); refreshLog=(r.ok?('✅ мониторов: '+r.initialized+' (создано '+r.created+')'):(r.error||'?')); }catch(e){refreshLog=String(e).slice(0,60)} initing=false; }" :disabled="refreshing||initing||syncing||buildingPb" class="btn btn-ghost text-[11px]" title="Создать Comet-мониторы по нишам (~$1-2 разово, только один раз)">📡 Инициализировать мониторы</button>
             <span x-show="refreshLog" class="text-[11px] text-amber-700 self-center" x-text="refreshLog"></span>
           </div>
@@ -879,10 +880,13 @@ function patrick() {
           const ageMs = Date.now() - (job.ts || 0);
           if (ageMs < 10 * 60 * 1000) continue; // < 10 мин — Orbit ещё точно не готов, пропускаем
           try {
-            const sr = await (await fetch('/api/factory/corpus/sync-orbit', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ job_id: job.jobId, niche: key }) })).json();
+            // артикул из job (новые) или любой товар бренда (легаси-jobs) → сервер считает ВЕРНУЮ нишу (не бренд)
+            const jart = job.art || (((this.products || []).find(p => this._brandOf(p.article) === key) || {}).article) || '';
+            const pn = this._prodName(jart);
+            const sr = await (await fetch('/api/factory/corpus/sync-orbit', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ job_id: job.jobId, article: jart, product_name: pn }) })).json();
             if (sr.finalized === false) continue; // ещё идёт
-            // Orbit готов — строим плейбук
-            const pbr = await (await fetch('/api/factory/niche-playbook', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ niche: key, job_id: job.jobId }) })).json();
+            // Orbit готов — строим плейбук (под нишей, которую сервер выведет из артикула/названия)
+            const pbr = await (await fetch('/api/factory/niche-playbook', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ article: jart, product_name: pn, job_id: job.jobId }) })).json();
             if (pbr.playbook) { this.playbooks[key] = pbr.playbook; delete this.pbJobs[key]; this._savePlaybooks(); this.pb.msg = '✓ Плейбук «' + key + '» готов (Orbit завершился)'; }
           } catch(e) {}
         }
@@ -934,7 +938,7 @@ function patrick() {
       this.pb.busy = true; this.pb.art = art; this.pb.err = false; this.pb.msg = 'запускаю разбор ниши (Orbit ~15-20 мин)…';
       try {
         const d = await (await fetch('/api/factory/trends/search', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ article: art, product_name: this._prodName(art) }) })).json();
-        if (d.job_id) { this.pbJobs[this._pbKey(art)] = { jobId: d.job_id, ts: Date.now() }; this._savePlaybooks(); this.pb.msg = 'Orbit идёт ~15-20 мин (разбор бренда ' + this._pbKey(art) + ').'; }
+        if (d.job_id) { this.pbJobs[this._pbKey(art)] = { jobId: d.job_id, ts: Date.now(), art }; this._savePlaybooks(); this.pb.msg = 'Orbit идёт ~15-20 мин (разбор бренда ' + this._pbKey(art) + ').'; }
         else { this.pb.err = true; this.pb.msg = d.error || 'Virlo не запустил поиск'; }
       } catch (e) { this.pb.err = true; this.pb.msg = String(e).slice(0, 120); }
       this.pb.busy = false;
@@ -962,6 +966,11 @@ function patrick() {
     // гарантировать плейбук ниши (анализ конкурентов) ПЕРЕД генерацией: есть → берём; нет → Orbit и ждём готовности.
     async ensurePlaybook(art) {
       if (this.activePb(art)) return true;
+      // ниша разбирается раз в неделю и лежит в памяти (niche_playbooks). Берём из БД — без ожидания Orbit.
+      try {
+        const c = await (await fetch('/api/factory/niche-playbook/cached?article=' + encodeURIComponent(art) + '&product_name=' + encodeURIComponent(this._prodName(art)))).json();
+        if (c && c.playbook) { this.playbooks[this._pbKey(art)] = c.playbook; this._savePlaybooks(); return true; }
+      } catch (e) {}
       this.opProg = { idx: 0, total: 0, stage: 'анализ' };
       if (!this.pbJobs[this._pbKey(art)]) await this.studyNiche(art);
       if (!this.pbJobs[this._pbKey(art)]) return false; // Orbit не запустился (нет ключа Virlo и т.п.)
@@ -1067,7 +1076,7 @@ function patrick() {
         // 0) анализ конкурентов по нише (Orbit) — ТЗ строим на реально залетающем
         this.op.step = 'анализирую конкурентов в нише'; await this.ensurePlaybook(this.op.art);
         this.op.step = 'придумываю идеи'; await this.runPlan();
-        if (!this.run.ideas.length) { this.op.log = 'не удалось придумать идеи — попробуй ещё раз'; this.op.busy = false; this.op.step = ''; return; }
+        if (!this.run.ideas.length) { this.op.log = 'не удалось придумать идеи' + (this.run.err ? ' — причина: ' + this.run.err : ' — попробуй ещё раз'); this.op.busy = false; this.op.step = ''; return; }
         this.op.step = 'делаю и проверяю ролики'; await this.runFull();
         this.op.log = '✓ Готово. Прошедшее ОТК — в очереди на одобрение ниже.';
       } catch (e) { this.op.log = 'ошибка: ' + String(e).slice(0, 100); }
@@ -1856,20 +1865,25 @@ function patrick() {
       if (this.pipe.busy) return;
       const art = this.dir.plan?.target_article || this.orbit.article || '';
       if (!art) { this.pipe.log = 'нужен артикул (укажи в ТЗ Директору или выбери в Орбите)'; return; }
-      // если идей ещё нет — сначала их сгенерим
-      if (!this.run.ideas.length) { this.pipe.step = 'идеи…'; this.pipe.busy = true; await this.runPlan(); }
       this.pipe.busy = true; this.pipe.log = '';
-      const approved = this.run.ideas.filter(s => s.verdict !== 'rework').slice(0, this.pipe.count);
-      const pool = approved.length ? approved : this.run.ideas.slice(0, this.pipe.count);
-      let done = 0;
-      for (const s of pool) {
-        this.pipe.step = `идея ${done + 1}/${pool.length}`;
-        this.opProg = { idx: done + 1, total: pool.length, stage: 'продюсер' };
-        await this._genIdea(s, art, { onStage: (st) => { this.opProg.stage = st; } });
-        done++;
-        this.pipe.log = pool.map(p => '• ' + (p.hook || p.concept || '').slice(0, 40) + ' — ' + (p.gen?.status || '…')).join('\n');
+      try {
+        // если идей ещё нет — сначала их сгенерим
+        if (!this.run.ideas.length) { this.pipe.step = 'идеи…'; await this.runPlan(); }
+        const approved = this.run.ideas.filter(s => s.verdict !== 'rework').slice(0, this.pipe.count);
+        const pool = approved.length ? approved : this.run.ideas.slice(0, this.pipe.count);
+        let done = 0;
+        for (const s of pool) {
+          this.pipe.step = `идея ${done + 1}/${pool.length}`;
+          this.opProg = { idx: done + 1, total: pool.length, stage: 'продюсер' };
+          // сбой ОДНОЙ идеи НЕ роняет весь батч и не прячет прогресс-бар → ошибка идёт в статус карточки
+          try { await this._genIdea(s, art, { onStage: (st) => { this.opProg.stage = st; } }); }
+          catch (e) { if (!s.gen) s.gen = { route: '', status: '' }; s.gen.status = 'ошибка: ' + String(e && e.message ? e.message : e).slice(0, 90); }
+          done++;
+          this.pipe.log = pool.map(p => '• ' + (p.hook || p.concept || '').slice(0, 40) + ' — ' + (p.gen?.status || '…')).join('\n');
+        }
+      } finally {
+        this.pipe.busy = false; this.pipe.step = '';
       }
-      this.pipe.busy = false; this.pipe.step = '';
     },
     // СЕРВЕРНАЯ очередь: те же идеи, но генерятся БЕЗ вкладки (self-chaining тики на сервере) — кокпит можно закрыть.
     async enqueueServer() {

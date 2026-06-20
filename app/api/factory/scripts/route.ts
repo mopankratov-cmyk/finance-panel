@@ -5,13 +5,39 @@ import { CONTENT_STANDARD, HOOK_FORMULAS, HOOK_ANTIPATTERNS, DEAI_FILTERS, PROBL
 import { brandProfile } from "@/lib/factory/brandProfiles";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+export const maxDuration = 120;
 
 // Копирайтер: быстрый Sonnet, один вызов — генерит N сценариев И сам оценивает каждый по стандарту
 // (self-QA: score/verdict/fix). Брак (< порога) → verdict "rework". Укладывается в лимит функции.
 const MODEL = "claude-sonnet-4-6";
 
+// Толерантный сбор сценариев: вытаскиваем ВСЕ цельные top-level {…}-объекты из ответа, даже если массив
+// оборван по лимиту токенов (строгий JSON.parse падал на неполном `[...]` → 0 идей → бар гас). Битый
+// последний объект просто отбрасываем, остальные сохраняем.
+function extractScripts(txt: string): Record<string, unknown>[] {
+  const start = txt.indexOf("[");
+  const s = start >= 0 ? txt.slice(start + 1) : txt;
+  // быстрый путь — вдруг массив целый
+  if (start >= 0) {
+    const m = txt.slice(start).match(/\[[\s\S]*\]/);
+    if (m) { try { const a = JSON.parse(m[0]); if (Array.isArray(a) && a.length) return a as Record<string, unknown>[]; } catch { /* падаем на пообъектный сбор */ } }
+  }
+  const out: Record<string, unknown>[] = [];
+  let depth = 0, objStart = -1, inStr = false, esc = false;
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (esc) { esc = false; continue; }
+    if (c === "\\") { esc = true; continue; }
+    if (c === '"') { inStr = !inStr; continue; }
+    if (inStr) continue;
+    if (c === "{") { if (depth === 0) objStart = i; depth++; }
+    else if (c === "}") { depth--; if (depth === 0 && objStart >= 0) { try { out.push(JSON.parse(s.slice(objStart, i + 1)) as Record<string, unknown>); } catch { /* битый объект — пропускаем */ } objStart = -1; } }
+  }
+  return out;
+}
+
 export async function POST(req: NextRequest) {
+ try {
   const body = await req.json().catch(() => ({}));
   const article: string = (body.article || "").toString().trim();
   let name: string = (body.product_name || "").toString().trim();
@@ -44,8 +70,12 @@ export async function POST(req: NextRequest) {
     : "";
 
   const db = getSupabaseAdmin();
-  if (!name && article) {
-    if (db) { const { data } = await db.from("product_costs").select("name").eq("article", article).maybeSingle(); name = (data?.name as string) || ""; }
+  if (!name && article && db) {
+    // limit(1)+[0], НЕ maybeSingle(): при дублях артикула maybeSingle бросает «multiple rows» → краш функции
+    try {
+      const { data } = await db.from("product_costs").select("name").eq("article", article).limit(1);
+      name = ((data as { name: string }[] | null)?.[0]?.name) || "";
+    } catch { /* product_costs может отсутствовать — не критично */ }
   }
   const subject = name || article;
   if (!subject) return NextResponse.json({ error: "Нужен артикул или название товара" }, { status: 400 });
@@ -110,13 +140,11 @@ ${PROBLEM_STACK}
     (brief ? ` Бриф: ${brief}.` : "") + (competitorBrief ? ` Разведка конкурентов: ${competitorBrief}.` : "") + pbHint + winnersHint + corpusHookHint + rejHint;
 
   try {
-    const res = await client.messages.create({ model: MODEL, max_tokens: 3500, system: sys, messages: [{ role: "user", content: user }] });
+    const res = await client.messages.create({ model: MODEL, max_tokens: 8000, system: sys, messages: [{ role: "user", content: user }] });
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const txt = (res.content as any[]).filter((b) => b.type === "text").map((b) => b.text).join(" ");
-    const m = txt.match(/\[[\s\S]*\]/);
-    if (!m) return NextResponse.json({ error: "пустой ответ", raw: txt.slice(0, 200) }, { status: 502 });
-    let scripts: Record<string, unknown>[] = [];
-    try { scripts = JSON.parse(m[0]); } catch { return NextResponse.json({ error: "невалидный JSON от агента" }, { status: 502 }); }
+    let scripts = extractScripts(txt); // толерантно: переживает обрыв по лимиту токенов
+    if (!scripts.length) return NextResponse.json({ error: "копирайтер не вернул сценариев", raw: txt.slice(0, 200) }, { status: 502 });
     // нормализация verdict по порогу
     scripts = scripts.map((s) => { const sc = Number(s.score) || 6; return { ...s, score: sc, verdict: sc >= QA_THRESHOLD ? "approved" : "rework", fix: sc >= QA_THRESHOLD ? "" : (s.fix || "усилить хук/аутентичность") }; });
     scripts.sort((a, b) => (Number(b.score) || 0) - (Number(a.score) || 0));
@@ -125,4 +153,8 @@ ${PROBLEM_STACK}
   } catch (e) {
     return NextResponse.json({ error: String(e).slice(0, 200) }, { status: 502 });
   }
+ } catch (outer) {
+  // ВСЁ обёрнуто: любой сбой (DB/инициализация/таймаут-обработка) → JSON, а не платформенный «An error occurred»
+  return NextResponse.json({ error: "scripts crash: " + String((outer as Error)?.message || outer).slice(0, 180) }, { status: 500 });
+ }
 }
