@@ -97,7 +97,18 @@ async function decompose(params: { viral_video_id?: string; niche?: string; desc
     const txt = (res.content as any[]).filter((b) => b.type === "text").map((b) => b.text).join(" ");
     const parsed = extractJson(txt);
     if (!parsed || !Array.isArray(parsed.nodes) || !parsed.nodes.length) return { error: "декомпозитор не вернул ноды", raw: txt.slice(0, 200) };
-    return { ok: true, format: parsed.format || fmt || "ugc_anim", nodes: parsed.nodes, confidence: parsed.confidence || "med", source_url: url, niche, from: "description" };
+    const format = parsed.format || fmt || "ugc_anim";
+    const confidence = parsed.confidence || "med";
+    // сохраняем каркас в node_templates → можно «перенести себе» по template_id
+    let template_id: number | null = null;
+    if (db) {
+      try {
+        const svid = params.viral_video_id && /^\d+$/.test(params.viral_video_id) ? Number(params.viral_video_id) : null;
+        const { data: t } = await db.from("node_templates").insert({ source_video_url: url || null, source_viral_video_id: svid, format_type: format, niche, nodes: parsed.nodes, confidence }).select("id").limit(1);
+        template_id = (t as { id: number }[] | null)?.[0]?.id ?? null;
+      } catch { /* node_templates не применена — каркас всё равно вернём */ }
+    }
+    return { ok: true, format, nodes: parsed.nodes, confidence, source_url: url, niche, from: "description", template_id };
   } catch (e) {
     return { error: "claude decompose: " + String((e as Error)?.message || e).slice(0, 160) };
   }
