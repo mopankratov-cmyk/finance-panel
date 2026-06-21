@@ -103,6 +103,38 @@ body{background:var(--bg-deep);font-family:var(--sans);color:var(--tx-hi);-webki
 .grp-t{font-size:11px;font-weight:600;letter-spacing:.4px;color:var(--tx-bd);}
 .grp-b{padding:13px;display:flex;flex-direction:column;gap:13px;}
 .chev{color:var(--tx-lo2);font-size:11px;transition:.15s;}
+/* ---- guide-btn (точка входа проводника в шапке) ---- */
+.guide-btn{font-family:var(--sans);font-size:11.5px;font-weight:500;border-radius:7px;padding:5px 9px;cursor:pointer;border:1px solid var(--bd-acc);background:var(--acc-soft);color:var(--acc-lt);transition:.12s;display:inline-flex;align-items:center;gap:5px;margin-left:2px;}
+.guide-btn:hover{background:rgba(124,116,255,.2);border-color:var(--acc);}
+/* ---- ASSIST (проводник) ---- */
+.assist{width:300px;flex:none;background:var(--bg-panel);border-left:1px solid var(--bd);display:flex;flex-direction:column;min-height:0;transition:width .14s;}
+.assist.collapsed{width:46px;}
+.assist.collapsed .assist-body{display:none;}
+.assist-head{height:56px;flex:none;display:flex;align-items:center;gap:9px;padding:0 12px 0 14px;border-bottom:1px solid var(--bd);}
+.assist-head .ttl{font-size:13px;font-weight:600;display:flex;align-items:center;gap:7px;flex:1;min-width:0;}
+.assist-head .dotlive{width:7px;height:7px;border-radius:50%;background:var(--ok);flex:none;animation:pulseDot 2s infinite;}
+.assist-col{flex:1;min-height:0;display:flex;flex-direction:column;}
+.assist-body{flex:1;min-height:0;display:flex;flex-direction:column;}
+.assist-step{flex:none;padding:13px 14px;border-bottom:1px solid var(--bd);}
+.astep-cap{font-size:9.5px;letter-spacing:1.3px;text-transform:uppercase;color:var(--acc-lt);font-weight:600;margin-bottom:7px;display:flex;align-items:center;gap:6px;}
+.astep-t{font-size:13px;font-weight:600;line-height:1.35;color:var(--tx-hi);}
+.astep-why{font-size:11.5px;color:var(--tx-mid);line-height:1.45;margin-top:6px;}
+.astep-cta{margin-top:10px;}
+.assist-thread{flex:1;min-height:0;overflow-y:auto;padding:13px 14px;display:flex;flex-direction:column;gap:10px;}
+.assist-thread .hint0{font-size:11.5px;color:var(--tx-lo);line-height:1.5;}
+.assist-chip{align-self:flex-start;font-size:11px;color:var(--acc-lt);background:var(--acc-soft);border:1px solid var(--bd-acc);padding:6px 9px;border-radius:7px;cursor:pointer;line-height:1.3;text-align:left;}
+.assist-chip:hover{background:rgba(124,116,255,.18);}
+.bub{max-width:88%;font-size:12px;line-height:1.5;padding:8px 11px;border-radius:11px;white-space:pre-wrap;word-break:break-word;}
+.bub.u{align-self:flex-end;background:var(--acc);color:#fff;border-bottom-right-radius:4px;}
+.bub.a{align-self:flex-start;background:var(--bg-card);border:1px solid var(--bd);color:var(--tx-bd);border-bottom-left-radius:4px;}
+.bub.a .cur{display:inline-block;width:6px;height:13px;background:var(--acc-lt);vertical-align:text-bottom;animation:pulseDot 1s infinite;margin-left:1px;}
+.assist-input{flex:none;border-top:1px solid var(--bd);padding:10px 12px;display:flex;gap:8px;align-items:flex-end;}
+.assist-input textarea{flex:1;background:var(--bg-input);border:1px solid var(--bd2);border-radius:9px;color:var(--tx-hi);font-family:var(--sans);font-size:12.5px;padding:9px 11px;outline:none;resize:none;max-height:120px;line-height:1.4;}
+.assist-input textarea:focus{border-color:var(--acc);}
+.assist-send{flex:none;width:34px;height:34px;border-radius:9px;border:none;background:var(--acc);color:#fff;font-size:15px;cursor:pointer;display:flex;align-items:center;justify-content:center;}
+.assist-send:hover{background:#6b63ef;} .assist-send:disabled{opacity:.4;cursor:default;}
+.assist-collapsed-tab{display:none;flex-direction:column;align-items:center;gap:14px;padding-top:14px;}
+.assist.collapsed .assist-collapsed-tab{display:flex;}
 </style>
 </head>
 <body>
@@ -136,6 +168,23 @@ body{background:var(--bg-deep);font-family:var(--sans);color:var(--tx-hi);-webki
     <header class="hdr" id="hdr"></header>
     <div class="body" id="screen"></div>
   </main>
+  <aside class="assist" id="assist">
+    <div class="assist-head">
+      <span class="ttl" id="assist-ttl"><span class="dotlive"></span>Проводник</span>
+      <button class="btn sm" id="assist-toggle" title="свернуть/развернуть" style="padding:5px 8px;">⟩</button>
+    </div>
+    <div class="assist-collapsed-tab">
+      <button class="btn sm" title="развернуть проводника" onclick="toggleAssist()" style="padding:6px 7px;">🧭</button>
+    </div>
+    <div class="assist-body">
+      <div class="assist-step" id="assist-step"></div>
+      <div class="assist-thread" id="assist-thread"></div>
+      <div class="assist-input">
+        <textarea id="assist-q" rows="1" placeholder="Спроси проводника…"></textarea>
+        <button class="assist-send" id="assist-send" title="отправить">↑</button>
+      </div>
+    </div>
+  </aside>
 </div>
 <div class="toast" id="toast"></div>
 
@@ -236,6 +285,8 @@ async function restoreSession(){
 function header(title,meta,right){
   const h=document.getElementById("hdr"); h.innerHTML="";
   const l=el("div",{class:"hdr-l"},el("span",{class:"hdr-t"},title)); if(meta)l.appendChild(el("span",{class:"meta-chip"},meta));
+  // проводник: единая точка входа на КАЖДОМ экране — развернуть панель и попросить объяснить, что тут
+  l.appendChild(el("button",{class:"guide-btn",title:"Проводник объяснит этот экран и подскажет следующий шаг",onclick:explainScreen},"🧭 что тут?"));
   h.appendChild(l); h.appendChild(right||el("div",{class:"hdr-r"}));
 }
 function loadingCard(t){ return el("div",{class:"card",style:"padding:18px;display:flex;align-items:center;gap:12px;"},el("div",{class:"spinner"}),el("span",{class:"muted"},t||"загрузка…")); }
@@ -245,6 +296,7 @@ async function render(){
   saveSession(); // запоминаем текущий экран/нишу/рецепт для возврата после reload
   const root=document.getElementById("screen"); root.innerHTML="";
   ({center:screenCenter,compete:screenCompete,canvas:screenCanvas,inspector:screenInspector,assembly:screenAssembly,library:screenLibrary,balances:screenBalances,ds:screenDS}[S.screen]||screenCenter)(root);
+  refreshAssistStep(); // проводник: пересчитать «следующий шаг» под новый экран/состояние
 }
 
 //==================== 01 · COMMAND CENTER ====================
@@ -1040,7 +1092,128 @@ function screenDS(root){
     el("div",{class:"card",style:"width:196px;padding:14px;border-color:var(--bd-err);color:var(--err);font-size:12px;"},"✕ ошибка генерации",el("div",{class:"btn sm",style:"margin-top:8px;display:inline-flex;"},"Повторить"))));
 }
 
-(async()=>{ await restoreSession(); renderNav(); render(); })(); // восстановить сессию → отрисовать там, где был
+//==================== ПРОВОДНИК (ИИ-ассистент) ====================
+const assistMsgs=[]; // история чата {role,content}
+let assistBusy=false;
+
+// Компактный дайджест состояния S → «глаза» проводника (что у юзера прямо сейчас).
+function assistantContext(){
+  const rec=S.recipe&&S.recipe.recipe, nodes=(S.recipe&&S.recipe.nodes)||[];
+  const sel=S.selectedNode, run=S.run, d=S.decompose;
+  const withTool=nodes.filter(n=>n&&n.tool).length;
+  const withPrev=nodes.filter(n=>n&&(S.preview[n.id]&&S.preview[n.id].url)).length;
+  return {
+    screen:S.screen, screenName:(SCREENS.find(s=>s.id===S.screen)||{}).tt||S.screen,
+    niche:S.activeNiche, nicheLabel:nicheLabel(S.activeNiche),
+    briefReady:!!(S.briefCache&&S.briefCache[S.activeNiche]),
+    decompose:d?(d.error?{error:String(d.error).slice(0,80)}:{format:d.format||null,nodes:(d.nodes||[]).length}):null,
+    recipe:rec?{id:rec.id,title:rec.title||rec.article||null,nodesTotal:nodes.length,nodesWithTool:withTool,nodesWithPreview:withPrev}:null,
+    selectedNode:sel?{id:sel.id,type:sel.node_type||null,tool:sel.tool||null,hasPrompt:!!(sel.prompt&&sel.prompt.trim()),hasPreview:!!(S.preview[sel.id]&&S.preview[sel.id].url)}:null,
+    run:run?{status:run.status||null,step:run.step||null,otk:(run.otk_score!=null?run.otk_score:(run.otk&&run.otk.score))??null}:null,
+  };
+}
+
+// Детерминированный «следующий шаг» — мгновенно, без Claude. {cap,t,why,cta?,chips?}
+function coachNextStep(){
+  const c=assistantContext();
+  switch(S.screen){
+    case "center":
+      if(!c.briefReady) return {cap:"Шаг 1 · ниша",t:"Выбери нишу — кликни плитку слева.",why:"От ниши зависит, по каким конкурентам и трендам завод соберёт контент. Справа появится бриф маркетолога: что реально заходит.",chips:["Чем ниши отличаются?","Как читать бриф маркетолога?"]};
+      return {cap:"Шаг 2 · формат",t:`Бриф по нише «${c.nicheLabel}» готов. Выбери товар/формат → уйдёшь на анализ конкурентов (02).`,why:"Формат задаёт, какой скелет ролика собирать. Дальше завод разложит вирусное видео конкурента на ноды.",cta:{label:"К конкурентам (02) →",fn:()=>go("compete")},chips:["Какой формат выбрать для этой ниши?"]};
+    case "compete":
+      if(c.decompose&&c.decompose.error) return {cap:"Шаг · разбор",t:"Разбор не удался — выбери другое вирусное видео слева.",why:"Декомпозитор не смог разложить ролик. Возьми видео с явной структурой (хук→демо→оффер).",chips:["Почему видео не разбирается?"]};
+      if(c.decompose&&c.decompose.nodes) return {cap:"Шаг · готово",t:`Видео разобрано на ${c.decompose.nodes} нод. Жми «собрать граф» → канвас (03).`,why:"Это скелет твоего ролика — повторяешь структуру того, что уже залетело у конкурента.",cta:{label:"На канвас (03) →",fn:()=>go("canvas")}};
+      return {cap:"Шаг · конкуренты",t:"Выбери ВИРУСНОЕ видео сверху (отсортированы по виральности).",why:"Завод разложит его на типизированные ноды — хук, сцены, пейофф, титры, звук. Берём то, что уже доказало вирусность.",chips:["Что значит виральность тут?","На что смотреть в видео конкурента?"]};
+    case "canvas":
+      if(!c.recipe) return {cap:"Шаг · граф",t:"Граф пуст. Перенеси конкурента из 02 или открой рецепт из базы (06).",why:"Канвас работает с графом нод. Без скелета настраивать нечего.",cta:{label:"К конкурентам (02) →",fn:()=>go("compete")}};
+      if(c.recipe.nodesWithTool<c.recipe.nodesTotal) return {cap:"Шаг · инструменты",t:`Граф из ${c.recipe.nodesTotal} нод. На ${c.recipe.nodesTotal-c.recipe.nodesWithTool} ещё не выбран инструмент — кликни ноду.`,why:"Каждая нода без инструмента не попадёт в сборку. Клик по ноде открывает инспектор (04).",chips:["Какой инструмент под какую ноду?"]};
+      return {cap:"Шаг · к сборке",t:`Все ${c.recipe.nodesTotal} нод с инструментами. Можно собирать (05).`,why:"Скелет укомплектован — дальше таймлайн и ОТК.",cta:{label:"К сборке (05) →",fn:()=>go("assembly")}};
+    case "inspector":
+      if(!c.selectedNode) return {cap:"Шаг · нода",t:"Вернись на канвас (03) и выбери ноду.",why:"Инспектор настраивает конкретную ноду. Сейчас ни одна не выбрана.",cta:{label:"На канвас (03) →",fn:()=>go("canvas")}};
+      if(!c.selectedNode.tool) return {cap:"Шаг · инструмент",t:`Нода «${c.selectedNode.type||c.selectedNode.id}»: выбери инструмент.`,why:"Эвристика: детальная игрушка/реальное фото → seedance; простое/жёсткое движение → kling; живой актёр/UGC → creatify.",chips:["seedance или kling для этой ноды?","Когда брать creatify?"]};
+      if(!c.selectedNode.hasPreview) return {cap:"Шаг · превью",t:`Инструмент ${c.selectedNode.tool} выбран. Заполни поля и сгенерь ПРЕВЬЮ.`,why:"Превью даёт увидеть результат до дорогой сборки — не работаешь вслепую.",chips:["Как написать промпт для этой ноды?"]};
+      return {cap:"Шаг · дальше",t:"Превью готово. Настрой остальные ноды или иди на сборку (05).",why:"Когда у всех нод есть превью — таймлайн соберётся предсказуемо.",cta:{label:"К сборке (05) →",fn:()=>go("assembly")}};
+    case "assembly":
+      if(!c.recipe) return {cap:"Шаг · граф",t:"Нет графа — собери на канвасе (03).",why:"Сборка раскладывает ноды графа на таймлайн.",cta:{label:"На канвас (03) →",fn:()=>go("canvas")}};
+      if(c.run&&(c.run.status==="running"||c.run.step&&c.run.step!=="done"&&c.run.step!=="failed")) return {cap:"Шаг · идёт сборка",t:`Собираю… шаг: ${c.run.step||"…"}. Дождись ОТК.`,why:"Завод рендерит ноды и сшивает таймлайн. ОТК оценит результат по 5 осям."};
+      if(c.run&&c.run.otk!=null) return {cap:"Шаг · ОТК",t:c.run.otk>=7?`ОТК ${c.run.otk}/10 — годен. Опубликуй или сохрани в победители.`:`ОТК ${c.run.otk}/10 — доработай. Хук<7? Вернись на ноду хука (04).`,why:"5 осей: хук, удержание, нативность, бренд, CTA. Слабое звено — точка роста.",chips:["Как поднять балл хука?","Что чаще всего проседает?"]};
+      return {cap:"Шаг · запуск",t:"Запусти сборку — кнопка на экране.",why:"Таймлайн авто-разложит ноды по длительности, потом ОТК вынесет вердикт.",chips:["Что проверяет ОТК?"]};
+    case "library":
+      return {cap:"База",t:"Открой рецепт, чтобы продолжить граф, или начни новый через конкурентов (02).",why:"Рецепты — сохранённые графы-шаблоны. Удобно переиспользовать удачную структуру.",cta:{label:"К конкурентам (02) →",fn:()=>go("compete")}};
+    case "balances":
+      return {cap:"Балансы",t:"Следи за остатками по сервисам. Сервис на нуле — генерация по нему встанет.",why:"Seedance/Kling/Creatify/Shotstack/FAL платные. Пустой баланс = упавшая нода в сборке."};
+    default:
+      return {cap:"Справочник",t:"Это служебный экран дизайн-системы.",why:"Токены цвета/типографики — для разработки, не для флоу."};
+  }
+}
+
+function refreshAssistStep(){
+  const box=document.getElementById("assist-step"); if(!box)return;
+  const s=coachNextStep(); box.innerHTML="";
+  box.appendChild(el("div",{class:"astep-cap"},el("span",{},"◆"),s.cap||"Следующий шаг"));
+  box.appendChild(el("div",{class:"astep-t"},s.t));
+  if(s.why)box.appendChild(el("div",{class:"astep-why"},s.why));
+  if(s.cta)box.appendChild(el("div",{class:"astep-cta"},el("button",{class:"btn sm primary",onclick:s.cta.fn},s.cta.label)));
+  // подсказки-вопросы кладём в тред (если он ещё пустой — как стартовые чипы)
+  const thread=document.getElementById("assist-thread");
+  if(thread && !assistMsgs.length){
+    thread.innerHTML="";
+    thread.appendChild(el("div",{class:"hint0"},"Спроси что угодно про этот экран — отвечу с учётом того, что у тебя сейчас открыто."));
+    (s.chips||[]).forEach(q=>thread.appendChild(el("button",{class:"assist-chip",onclick:()=>askAssistant(q)},"💬 "+q)));
+  }
+}
+
+function assistBubble(role,text){
+  const thread=document.getElementById("assist-thread");
+  const b=el("div",{class:"bub "+(role==="user"?"u":"a")},text||"");
+  thread.appendChild(b); thread.scrollTop=thread.scrollHeight; return b;
+}
+
+async function askAssistant(text){
+  text=(text||"").trim(); if(!text||assistBusy)return;
+  const q=document.getElementById("assist-q"); if(q)q.value="";
+  if(!assistMsgs.length){ const th=document.getElementById("assist-thread"); if(th)th.innerHTML=""; } // убрать стартовые чипы
+  assistBusy=true; const send=document.getElementById("assist-send"); if(send)send.disabled=true;
+  assistMsgs.push({role:"user",content:text}); assistBubble("user",text);
+  const bub=assistBubble("assistant",""); const cur=el("span",{class:"cur"}); bub.appendChild(cur);
+  let acc="";
+  try{
+    const res=await fetch(API+"/assistant",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({ctx:assistantContext(),messages:assistMsgs})});
+    const reader=res.body.getReader(); const dec=new TextDecoder();
+    for(;;){ const {done,value}=await reader.read(); if(done)break; acc+=dec.decode(value,{stream:true}); bub.textContent=acc; bub.appendChild(cur); const th=document.getElementById("assist-thread"); th.scrollTop=th.scrollHeight; }
+  }catch(e){ acc=acc||("⚠ нет связи с проводником: "+String(e).slice(0,100)); }
+  cur.remove(); bub.textContent=acc||"…";
+  assistMsgs.push({role:"assistant",content:acc});
+  assistBusy=false; if(send)send.disabled=false;
+  const th=document.getElementById("assist-thread"); if(th)th.scrollTop=th.scrollHeight;
+}
+
+function toggleAssist(){
+  const a=document.getElementById("assist"); const col=!a.classList.contains("collapsed");
+  a.classList.toggle("collapsed",col); try{localStorage.setItem("noda_assist_col",col?"1":"0");}catch(e){}
+  const tg=document.getElementById("assist-toggle"); if(tg)tg.textContent=col?"⟨":"⟩";
+}
+
+// клик по «🧭 что тут?» в шапке: развернуть панель (если свёрнута) и попросить объяснить текущий экран
+function explainScreen(){
+  const a=document.getElementById("assist"); if(a&&a.classList.contains("collapsed"))toggleAssist();
+  askAssistant("Что тут происходит на этом экране? Коротко объясни, что я вижу и что делать дальше.");
+}
+
+function mountAssistant(){
+  const send=document.getElementById("assist-send"); const q=document.getElementById("assist-q"); const tg=document.getElementById("assist-toggle");
+  if(send)send.onclick=()=>askAssistant(q.value);
+  if(q){
+    q.addEventListener("keydown",e=>{ if(e.key==="Enter"&&!e.shiftKey){ e.preventDefault(); askAssistant(q.value); } });
+    q.addEventListener("input",()=>{ q.style.height="auto"; q.style.height=Math.min(120,q.scrollHeight)+"px"; });
+  }
+  if(tg)tg.onclick=toggleAssist;
+  let col=false; try{col=localStorage.getItem("noda_assist_col")==="1";}catch(e){}
+  if(col){ document.getElementById("assist").classList.add("collapsed"); if(tg)tg.textContent="⟨"; }
+  refreshAssistStep();
+}
+
+(async()=>{ await restoreSession(); renderNav(); render(); mountAssistant(); })(); // восстановить сессию → отрисовать там, где был → поднять проводника
 </script>
 </body>
 </html>
