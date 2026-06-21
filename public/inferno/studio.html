@@ -179,6 +179,22 @@ function esc(s){ return String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;",
 function toast(m){ const t=document.getElementById("toast"); t.textContent=m; t.classList.add("show"); clearTimeout(t._t); t._t=setTimeout(()=>t.classList.remove("show"),2600); }
 function fmtViews(n){ n=Number(n)||0; return n>=1e6?(n/1e6).toFixed(1)+"M":n>=1e3?Math.round(n/1e3)+"K":String(n); }
 function trunc(s,n){ s=String(s==null?"":s); return s.length>n?s.slice(0,n).trimEnd()+"…":s; }
+function isVideoUrl(u){ return /\.(mp4|webm|mov|m4v)(\?|$)/i.test(u||"")||/(fal|shotstack|creatify|storage)/i.test(u||"")&&!/\.(jpg|jpeg|png|webp|gif)(\?|$)/i.test(u||""); }
+// модалка-плеер: даёт ПОСМОТРЕТЬ результат, а не работать вслепую. ext-ссылки (tiktok/reels) — в новую вкладку.
+function openMedia(url,opts){ opts=opts||{};
+  if(!url){ toast("нет ссылки на медиа"); return; }
+  if(opts.external||/^https?:\/\/(www\.)?(tiktok|instagram|youtube|youtu\.be|vk)\./i.test(url)){ window.open(url,"_blank"); return; }
+  const ov=el("div",{style:"position:fixed;inset:0;background:rgba(0,0,0,.82);display:flex;align-items:center;justify-content:center;z-index:60;padding:24px;",onclick:(e)=>{ if(e.target===ov)ov.remove(); }});
+  const vid=opts.video!=null?opts.video:isVideoUrl(url);
+  const media=vid?el("video",{src:url,controls:"controls",autoplay:"autoplay",playsinline:"playsinline",style:"max-height:88vh;max-width:92vw;border-radius:12px;background:#000;box-shadow:0 18px 60px rgba(0,0,0,.6);"})
+    :el("img",{src:url,style:"max-height:88vh;max-width:92vw;border-radius:12px;box-shadow:0 18px 60px rgba(0,0,0,.6);"});
+  ov.appendChild(el("div",{style:"display:flex;flex-direction:column;align-items:center;gap:12px;"},media,
+    el("div",{style:"display:flex;gap:10px;"},
+      el("a",{href:url,target:"_blank",class:"btn sm"},"открыть ↗"),
+      el("button",{class:"btn sm",onclick:()=>ov.remove()},"закрыть"))));
+  document.addEventListener("keydown",function esc(e){ if(e.key==="Escape"){ ov.remove(); document.removeEventListener("keydown",esc); } });
+  document.body.appendChild(ov);
+}
 function nicheLabel(n){ const f=S.niches.find(x=>x.niche===n); return (f&&f.label)||({cosmetics:"Косметика",clothing:"Одежда",toys:"Игрушки",default:"Прочее"}[n])||n; }
 
 function renderNav(){
@@ -384,7 +400,7 @@ async function screenCompete(root){
     feedList.appendChild(el("div",{style:"display:flex;gap:10px;padding:8px;border-radius:9px;cursor:pointer;"+(sel?"background:var(--bg-node);border:1.5px solid var(--acc);box-shadow:0 0 0 3px rgba(124,116,255,.08);":"background:var(--bg-card);border:1px solid var(--bd);"),
       onclick:()=>{ S.selectedVideo=v.id; runDecompose(v); }},
       el("span",{class:"mono",style:"font-size:12px;color:"+(sel?"var(--acc)":"var(--tx-lo2)")+";width:16px;"},String(i+1)),
-      el("div",{style:"width:34px;height:46px;border-radius:5px;flex:none;background:repeating-linear-gradient(135deg,"+(sel?"#2a2440 0 6px,#231f33":"#23272f 0 6px,#1d2128")+" 6px 12px);"}),
+      el("div",{title:v.url?"смотреть оригинал":"",style:"width:34px;height:46px;border-radius:5px;flex:none;position:relative;cursor:"+(v.url?"pointer":"default")+";background:repeating-linear-gradient(135deg,"+(sel?"#2a2440 0 6px,#231f33":"#23272f 0 6px,#1d2128")+" 6px 12px);display:flex;align-items:center;justify-content:center;",onclick:v.url?(e)=>{ e.stopPropagation(); openMedia(v.url,{external:true}); }:null},v.url?el("span",{style:"font-size:11px;color:rgba(255,255,255,.85);"},"▶"):null),
       el("div",{style:"min-width:0;"},
         el("div",{style:"font-size:12px;font-weight:"+(sel?"600":"500")+";white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"},(v.caption||v.hook_text||(v.format_detected?v.format_detected+" · "+(v.platform||""):"клип "+fmtViews(v.views))).slice(0,28)),
         el("div",{class:"mono",style:"font-size:10px;color:"+(sel?"var(--acc-lt)":"var(--tx-lo2)")+";margin-top:3px;"},fmtViews(v.views)+" · score "+(v.virality_score?Number(v.virality_score).toFixed(0):"?")))));
@@ -407,7 +423,9 @@ function renderDecompose(){
   if(S.decompose.error){ stage.appendChild(emptyBox("ошибка разбора: "+S.decompose.error)); return; }
   const d=S.decompose, v=S.decomposeVideo||{};
   stage.appendChild(el("div",{style:"display:flex;gap:18px;padding:18px 22px;border-bottom:1px solid var(--bd);"},
-    el("div",{style:"width:108px;height:144px;flex:none;border-radius:9px;border:1px solid var(--bd2);background:repeating-linear-gradient(135deg,#2a2440 0 8px,#231f33 8px 16px);display:flex;align-items:flex-end;justify-content:center;padding-bottom:8px;"},el("span",{class:"mono",style:"font-size:10px;color:var(--acc-lt);"},"▶ "+fmtViews(v.views))),
+    el("div",{title:v.url?"смотреть оригинал конкурента":"",style:"width:108px;height:144px;flex:none;border-radius:9px;border:1px solid var(--bd2);cursor:"+(v.url?"pointer":"default")+";background:repeating-linear-gradient(135deg,#2a2440 0 8px,#231f33 8px 16px);display:flex;align-items:center;justify-content:center;position:relative;",onclick:v.url?()=>openMedia(v.url,{external:true}):null},
+      el("span",{style:"width:38px;height:38px;border-radius:50%;background:rgba(12,13,16,.55);border:1px solid #3a414d;display:flex;align-items:center;justify-content:center;font-size:15px;color:#fff;"},"▶"),
+      el("span",{class:"mono",style:"position:absolute;bottom:7px;font-size:10px;color:var(--acc-lt);"},fmtViews(v.views))),
     el("div",{style:"flex:1;min-width:0;"},
       el("div",{style:"font-size:15px;font-weight:600;"},(v.caption||"Видео конкурента").slice(0,90)),
       el("div",{style:"font-size:12px;color:var(--tx-lo);margin-top:5px;line-height:1.5;"},"Формат: "+(d.format||"?")+" · восстановлен каркас из "+((d.nodes||[]).length)+" нод. Меняй содержимое под свой товар."),
@@ -495,8 +513,13 @@ function canvasNode(n,p){
   const draft=!n.prompt&&(!n.params||!Object.keys(n.params||{}).length)&&!n.asset_url;
   const card=el("div",{style:"position:absolute;left:"+p.x+"px;top:"+p.y+"px;width:196px;background:"+(draft?"var(--bg-card)":"var(--bg-node)")+";border-radius:12px;cursor:pointer;"+(sel?"border:1.5px solid var(--acc);box-shadow:0 0 0 3px rgba(124,116,255,.12),0 8px 24px rgba(0,0,0,.4);":draft?"border:1px dashed var(--bd3);":"border:1px solid var(--bd2);box-shadow:0 8px 24px rgba(0,0,0,.35);"),
     onclick:()=>{ S.selectedNode=n; if(n.tool)S.tool=n.tool; go("inspector"); }},  // адаптируем S.tool к ЛЮБОМУ инструменту ноды (kling/sound/disk_real…), иначе сейв затрёт чужой tool
-    el("div",{style:"aspect-ratio:16/10;margin:9px 9px 0;border-radius:8px;overflow:hidden;position:relative;"+(draft?"background:#131519;border:1px dashed var(--bd2);display:flex;align-items:center;justify-content:center;":"background:repeating-linear-gradient(135deg,#23272f 0 8px,#1d2128 8px 16px);")},
-      draft?el("span",{class:"mono",style:"font-size:10px;color:var(--tx-lo3);"},"пусто"):el("span",{class:"mono",style:"position:absolute;bottom:6px;left:7px;font-size:9px;color:var(--tx-mid);"},(n.duration_sec||"?")+"с")),
+    (function(){ const pv=S.preview[n.id]; const url=(pv&&pv.status==="done"&&pv.url)||n.asset_url||(n.params&&n.params.url)||""; const vid=isVideoUrl(url);
+      const box=el("div",{title:url?"посмотреть превью":"",style:"aspect-ratio:16/10;margin:9px 9px 0;border-radius:8px;overflow:hidden;position:relative;cursor:"+(url?"zoom-in":"pointer")+";"+(url?"background:#0c0d10;":draft?"background:#131519;border:1px dashed var(--bd2);display:flex;align-items:center;justify-content:center;":"background:repeating-linear-gradient(135deg,#23272f 0 8px,#1d2128 8px 16px);"),onclick:url?(e)=>{ e.stopPropagation(); openMedia(url,{video:vid}); }:null});
+      if(url){ box.appendChild(vid?el("video",{src:url+"#t=0.1",muted:"muted",playsinline:"playsinline",preload:"metadata",style:"position:absolute;inset:0;width:100%;height:100%;object-fit:cover;"}):el("img",{src:url,style:"position:absolute;inset:0;width:100%;height:100%;object-fit:cover;"}));
+        box.appendChild(el("span",{class:"mono",style:"position:absolute;bottom:5px;left:6px;font-size:8.5px;color:#fff;background:rgba(0,0,0,.5);padding:1px 4px;border-radius:3px;"},(n.duration_sec||"?")+"с")); }
+      else if(pv&&pv.status==="in_progress")box.appendChild(el("div",{class:"spinner",style:"width:16px;height:16px;"}));
+      else box.appendChild(draft?el("span",{class:"mono",style:"font-size:10px;color:var(--tx-lo3);"},"пусто"):el("span",{class:"mono",style:"position:absolute;bottom:6px;left:7px;font-size:9px;color:var(--tx-mid);"},(n.duration_sec||"?")+"с"));
+      return box; })(),
     el("div",{style:"padding:9px 11px 11px;"},
       el("div",{style:"display:flex;align-items:center;justify-content:space-between;"},
         el("span",{class:"mono tbadge",style:"background:"+c+";"},(n.node_type||n.slot||"node").toUpperCase().slice(0,9)),
@@ -808,10 +831,14 @@ async function screenLibrary(root){
   aside.appendChild(el("div",{class:"card",style:"padding:12px;margin-top:14px;display:flex;align-items:center;"},el("span",{style:"flex:1;font-size:12px;"},"Итого по видео"),el("span",{class:"mono",style:"font-weight:600;"},"$"+COST.reduce((s,r)=>s+r[3],0).toFixed(2))));
 }
 function genCard(g){ const a=g.analysis||{}; const isVid=g.kind==="video"; const win=a.otk&&a.otk>=8;
-  return el("div",{class:"card",style:"overflow:hidden;cursor:pointer;",onclick:()=>{ if(g.url)window.open(g.url,"_blank"); }},
-    el("div",{class:"ph",style:"aspect-ratio:9/14;position:relative;display:flex;align-items:center;justify-content:center;"},
-      win?el("span",{class:"mono tbadge",style:"position:absolute;top:7px;left:7px;background:var(--ok);"},"★ ПОБЕДИТЕЛЬ"):null,
-      isVid?el("span",{style:"width:34px;height:34px;border-radius:50%;background:rgba(12,13,16,.6);border:1px solid #3a414d;display:flex;align-items:center;justify-content:center;font-size:12px;color:var(--tx-hi);"},"▶"):null),
+  const thumb=el("div",{class:"ph",style:"aspect-ratio:9/14;position:relative;display:flex;align-items:center;justify-content:center;overflow:hidden;background:#0c0d10;"},
+    win?el("span",{class:"mono tbadge",style:"position:absolute;top:7px;left:7px;z-index:2;background:var(--ok);"},"★ ПОБЕДИТЕЛЬ"):null,
+    el("span",{style:"position:absolute;z-index:2;width:34px;height:34px;border-radius:50%;background:rgba(12,13,16,.6);border:1px solid #3a414d;display:flex;align-items:center;justify-content:center;font-size:12px;color:var(--tx-hi);"},"▶"));
+  // реальный кадр в плитке (а не полосатый плейсхолдер) — видно, ЧТО за генерация
+  if(g.url){ if(isVid)thumb.insertBefore(el("video",{src:g.url+"#t=0.1",muted:"muted",playsinline:"playsinline",preload:"metadata",style:"position:absolute;inset:0;width:100%;height:100%;object-fit:cover;"}),thumb.firstChild);
+    else thumb.insertBefore(el("img",{src:g.url,style:"position:absolute;inset:0;width:100%;height:100%;object-fit:cover;"}),thumb.firstChild); }
+  return el("div",{class:"card",style:"overflow:hidden;cursor:pointer;",onclick:()=>openMedia(g.url,{video:isVid})},
+    thumb,
     el("div",{style:"padding:10px;"},el("div",{style:"font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"},g.name||"генерация"),
       el("div",{style:"display:flex;gap:5px;margin-top:8px;flex-wrap:wrap;"},
         el("span",{style:"font-size:9px;color:var(--tx-lo);background:var(--bg-input);padding:2px 6px;border-radius:4px;"},g.niche||"—"),
