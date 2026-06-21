@@ -33,9 +33,11 @@ export async function POST(req: NextRequest) {
     const comps = ((vv as { id: number; caption: string | null; hook_text: string | null }[] | null) || []).filter((v) => (v.caption && v.caption.length > 20) || v.hook_text);
     if (!comps.length) return NextResponse.json({ ok: false, error: `нет конкурентов в корпусе ниши «${niche}» — синкни орбиту` }, { status: 400 });
 
-    // 3) пары round-robin (конкурент × товар) до count
+    // 3) УНИКАЛЬНЫЕ пары (конкурент × товар), diverse-порядок (цикл по конкурентам), кап min(count, C×A).
+    // round-robin по i давал молчаливые дубли при count>C×A → дубль-черновики/генерация. Теперь все пары уникальны.
+    const total = Math.min(count, comps.length * articles.length);
     const pairs: { viral_video_id: number; article: string }[] = [];
-    for (let i = 0; i < count; i++) pairs.push({ viral_video_id: comps[i % comps.length].id, article: articles[i % articles.length] });
+    for (let i = 0; i < total; i++) pairs.push({ viral_video_id: comps[i % comps.length].id, article: articles[Math.floor(i / comps.length) % articles.length] });
 
     // прикидка без сборки (ничего не создаём)
     if (b.dry_run === true) return NextResponse.json({ ok: true, dry: true, pairs: pairs.length, competitors: comps.length, products: articles.length, note: `Соберётся ${pairs.length} черновиков: ${comps.length} конкурентов × ${articles.length} товаров (ничего не создано/оплачено).` });
@@ -59,7 +61,7 @@ export async function GET(req: NextRequest) {
   if (!db) return NextResponse.json({ ok: false, error: "Supabase не настроен" }, { status: 500 });
   const buildId = Number(req.nextUrl.searchParams.get("build_id"));
   if (!buildId) return NextResponse.json({ ok: false, error: "нужен build_id" }, { status: 400 });
-  const { data } = await db.from("batch_builds").select("id,niche,pairs,cursor,built_recipe_ids,status,note,error,budget_usd").eq("id", buildId).maybeSingle();
+  const { data } = await db.from("batch_builds").select("id,niche,pairs,cursor,built_recipe_ids,status,note,budget_usd").eq("id", buildId).maybeSingle();
   const r = data as Record<string, unknown> | null;
   if (!r) return NextResponse.json({ ok: false, error: "сборка не найдена" }, { status: 404 });
   const pairs = Array.isArray(r.pairs) ? (r.pairs as unknown[]).length : 0;
@@ -68,5 +70,5 @@ export async function GET(req: NextRequest) {
     const origin = req.nextUrl.origin;
     after(async () => { try { await fetch(`${origin}/api/factory/batch-build/tick`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ build_id: buildId }), signal: AbortSignal.timeout(15000) }); } catch { /* следующий опрос */ } });
   }
-  return NextResponse.json({ ok: true, build_id: buildId, niche: r.niche, status: r.status, built: Array.isArray(r.built_recipe_ids) ? (r.built_recipe_ids as unknown[]).length : 0, total: pairs, cursor: r.cursor, recipe_ids: r.built_recipe_ids, note: r.note, error: r.error }, { headers: { "Cache-Control": "no-store" } });
+  return NextResponse.json({ ok: true, build_id: buildId, niche: r.niche, status: r.status, built: Array.isArray(r.built_recipe_ids) ? (r.built_recipe_ids as unknown[]).length : 0, total: pairs, cursor: r.cursor, recipe_ids: r.built_recipe_ids, note: r.note }, { headers: { "Cache-Control": "no-store" } });
 }

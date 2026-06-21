@@ -32,8 +32,8 @@ export async function POST(req: NextRequest) {
     try {
       chain = await runBuildStep(db, origin, ctx);
     } catch (e) {
-      // краш шага → снять лиз, записать ошибку (без status=failed: следующий тик дообработает оставшееся)
-      try { await db.from("batch_builds").update({ lease_until: null, error: String((e as Error)?.message || e).slice(0, 200), updated_at: new Date().toISOString() }).eq("id", ctx.id); } catch { /* */ }
+      // краш шага → снять лиз, записать ошибку в note (без status=failed: следующий тик дообработает оставшееся)
+      try { await db.from("batch_builds").update({ lease_until: null, note: ("ошибка: " + String((e as Error)?.message || e)).slice(0, 200), updated_at: new Date().toISOString() }).eq("id", ctx.id); } catch { /* */ }
     }
     if (chain) { try { await fetch(`${origin}/api/factory/batch-build/tick`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ build_id: ctx.id }), signal: AbortSignal.timeout(20000) }); } catch { /* воскресит опрос */ } }
   });
@@ -71,12 +71,15 @@ async function runBuildStep(db: SupabaseClient, origin: string, ctx: any): Promi
   const cursor = Number(ctx.cursor) || 0;
   const built = (Array.isArray(ctx.built_recipe_ids) ? ctx.built_recipe_ids : []) as number[];
 
-  // ── все пары собраны → запускаем генерацию через /batch и закрываем сборку ──
+  // ── все пары собраны → handoff на генерацию. АТОМАРНО (CAS building→done): только ОДИН тик пройдёт
+  // и вызовет /batch (иначе гонка/ретрай → двойной enqueue → двойная оплата генерации). ──
   if (cursor >= pairs.length) {
-    if (built.length) {
+    const { data: won } = await db.from("batch_builds")
+      .update({ status: "done", lease_until: null, note: `${built.length} черновиков собрано → запущена генерация (бюджет $${ctx.budget_usd})`, updated_at: new Date().toISOString() })
+      .eq("id", id).eq("status", "building").select("id").maybeSingle();
+    if (won && built.length) { // переход выиграли мы → запускаем генерацию ровно раз
       try { await jpost(origin, "/api/factory/batch", { recipe_ids: built, budget_usd: Number(ctx.budget_usd) || 40 }, 30000); } catch { /* батч сам воскресит очередь */ }
     }
-    await db.from("batch_builds").update({ status: "done", lease_until: null, note: `${built.length} черновиков собрано → запущена генерация (бюджет $${ctx.budget_usd})`, updated_at: new Date().toISOString() }).eq("id", id);
     return false; // цепочка завершена
   }
 

@@ -16,6 +16,7 @@ const TOOL_COST: Record<string, number> = { seedance: 0.42, seedance_fast: 0.14,
 const REQUIRED = ["fal", "creatify", "shotstack"]; // движки батча
 
 const DEFAULT_RECIPE_COST = 3.2; // CONSERVATIVE: autofill может выбрать дороже (creatify+seedance×4) + реген ×3 → бюджет-гард не должен недооценивать черновики
+const REGEN_FACTOR = 2.5;        // бюджет-гард считает по WORST-CASE (реген-петля до ×3 рендеров) → автопилот не перерасходует; показываем типовую смету отдельно
 
 // смета одного рецепта по нодам (×реген до 3 не учитываем — это потолок, не ожидание).
 // V21: рецепт-черновик конфигурируется §17 уже В ОЧЕРЕДИ → tool может ещё не стоять. Если по нодам цены нет
@@ -59,12 +60,14 @@ export async function POST(req: NextRequest) {
   recipeIds = recipeIds.slice(0, count);
   if (!recipeIds.length) return NextResponse.json({ ok: false, error: "нет рецептов-черновиков для батча (создай в студии или передай recipe_ids)" });
 
-  // 3) смета по нодам + отсечка по бюджету
-  const enqueued: number[] = []; let spent = 0; let cappedByBudget = false;
+  // 3) смета по нодам + отсечка по бюджету. Гард по WORST-CASE (est×REGEN_FACTOR) — иначе реген-петля
+  // (до ×3 рендеров) перерасходует на unattended-автопилоте. spent — типовая смета для показа.
+  const enqueued: number[] = []; let spent = 0; let spentWorst = 0; let cappedByBudget = false;
   for (const rid of recipeIds) {
     const { data: nodes } = await db.from("node_recipe_nodes").select("tool,node_type,slot").eq("recipe_id", rid);
     const est = estimateRecipe((nodes as Record<string, unknown>[] | null) || []);
-    if (spent + est > cap) { cappedByBudget = true; break; }
+    if (spentWorst + est * REGEN_FACTOR > cap) { cappedByBudget = true; break; }
+    spentWorst = Math.round((spentWorst + est * REGEN_FACTOR) * 100) / 100;
     spent = Math.round((spent + est) * 100) / 100;
     if (!dryRun) {
       // autofill:true → рецепт сам сконфигурируется (§17 + бренд-кит) первым шагом очереди, затем генерация→ОТК→банк→Telegram
@@ -74,8 +77,8 @@ export async function POST(req: NextRequest) {
   }
 
   return NextResponse.json({
-    ok: true, dry_run: dryRun, enqueued, estimated_usd: spent, budget_usd: cap, capped_by_budget: cappedByBudget,
+    ok: true, dry_run: dryRun, enqueued, estimated_usd: spent, worst_case_usd: spentWorst, budget_usd: cap, capped_by_budget: cappedByBudget,
     balance_unknown: balanceUnknown, // ⚠ по этим сервисам баланс не проверен (нет ключа/гео) — гард не гарантирует
-    note: "Прошедшее ОТК уйдёт в Telegram на ревью (notify=true). R4-варианты ×3 и openreels-ассеты — после V2/V9/V22/V23." + (balanceUnknown.length ? ` ⚠ Баланс не проверен: ${balanceUnknown.join(", ")}.` : ""),
+    note: `Бюджет-гард по worst-case (реген до ×3): уложились в $${cap}, типовая трата ≈ $${spent}, потолок ≈ $${spentWorst}. Прошедшее ОТК → Telegram (notify).` + (balanceUnknown.length ? ` ⚠ Баланс не проверен: ${balanceUnknown.join(", ")}.` : ""),
   });
 }

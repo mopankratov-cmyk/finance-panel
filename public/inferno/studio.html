@@ -911,6 +911,7 @@ async function autofillSingleNode(n){
 
 // V21 · автопилот: ночной прогон черновиков (бюджет-гард → §17 автозаполнение в очереди → генерация → ОТК → банк → Telegram-ревью)
 async function openNightRun(){
+  if(!(S.niches&&S.niches.length)){ try{ const d=await api("/studio"); if(d&&d.niches)S.niches=d.niches; }catch(e){} } // ниши для режима «с нуля» (могли не загрузиться)
   const ov=el("div",{style:"position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:60;padding:24px;",onclick:(e)=>{ if(e.target===ov)ov.remove(); }});
   const box=el("div",{class:"card",style:"padding:22px;width:min(520px,95vw);max-height:88vh;overflow:auto;"});
   box.appendChild(el("div",{style:"font-size:16px;font-weight:600;"},"🌙 Ночной прогон"));
@@ -936,7 +937,9 @@ async function openNightRun(){
   let _busy=false;
   const errBox=(t)=>el("div",{style:"font-size:12.5px;color:var(--err);padding:10px;background:var(--err-bg);border:1px solid var(--err);border-radius:8px;"},t);
   const run=async(dry)=>{
-    if(_busy)return; _busy=true; // гард от двойного клика (не идемпотентно → дубль-enqueue/трата)
+    if(_busy)return;
+    if(_zero&&!nicheSel.value){ out.innerHTML=""; out.appendChild(errBox("выбери нишу (список ниш не загрузился — обнови центр)")); return; }
+    _busy=true; // гард от двойного клика (не идемпотентно → дубль-enqueue/трата)
     const btns=foot.querySelectorAll("button"); btns.forEach(b=>b.disabled=true);
     out.innerHTML=""; out.appendChild(loadingCard(dry?"считаю…":(_zero?"собираю черновики…":"запускаю прогон…")));
     const cnt=Math.min(30,Math.max(1,Number(cntIn.value)||5)); if(Number(cntIn.value)>30)cntIn.value=30;
@@ -952,8 +955,11 @@ async function openNightRun(){
       out.appendChild(el("div",{style:"font-size:13px;margin-bottom:6px;"},"🏗 Сборка запущена: ",el("b",{style:"color:var(--acc-lt);"},(r.pairs||0)+" черновиков")));
       out.appendChild(el("div",{style:"font-size:11.5px;color:var(--tx-lo);line-height:1.5;margin-bottom:8px;"},"Декомпоз конкурентов → перенос на товары (в фоне). По готовности сам запустит генерацию в пределах $"+bud+" → Telegram-ревью."));
       const prog=el("div",{class:"mono",style:"font-size:11px;color:var(--tx-lo2);"},"собрано 0/"+(r.pairs||0)+"…"); out.appendChild(prog);
-      const bid=r.build_id; let stop=false;
-      const poll=async()=>{ if(stop||!bid)return; const s=await api("/batch-build?build_id="+bid); if(s&&s.ok){ prog.textContent=(s.status==="done"?"✓ собрано "+s.built+"/"+s.total+" → генерация пошла, смотри Telegram/базу (06)":"собрано "+(s.built||0)+"/"+(s.total||0)+"…"); if(s.status==="done"||s.status==="failed"){ stop=true; return; } } setTimeout(poll,6000); };
+      const bid=r.build_id; let stop=false, _perr=0;
+      const poll=async()=>{ if(stop||!bid)return; const s=await api("/batch-build?build_id="+bid);
+        if(s&&s.ok){ _perr=0; prog.textContent=(s.status==="done"?"✓ собрано "+s.built+"/"+s.total+" → генерация пошла, смотри Telegram/базу (06)":"собрано "+(s.built||0)+"/"+(s.total||0)+"…"); if(s.status==="done"||s.status==="failed"){ stop=true; return; } setTimeout(poll,6000); }
+        else if(++_perr<5){ setTimeout(poll,8000); } // транзиент сети — пара ретраев
+        else { prog.textContent="⚠ опрос статуса не отвечает — сборка идёт в фоне, смотри базу видосов (06)"; stop=true; } };
       setTimeout(poll,5000);
       return;
     }
