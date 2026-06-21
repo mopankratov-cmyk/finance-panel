@@ -97,8 +97,21 @@ export async function POST(req: NextRequest) {
   const hookBoost = body.hook_boost === true; // хук-гейт забраковал хук → просим резче
   const user = `Товар: ${name || article}${article ? ` (арт. ${article})` : ""}. Идея/хук: «${hook}».${format ? ` Формат: ${format}.` : ""}${isStack ? ` Разверни по структуре «3 проблемы»: ${PROBLEM_STACK}` : ""}${pbHint}${corpusHint} Сделай покадровый сценарий: первый кадр = хук в лоб, держит внимание, в конце мягкий CTA на поиск товара на WB.${hookBoost ? " ВАЖНО: предыдущий хук получился слабым — сделай ПЕРВУЮ ФРАЗУ и первый кадр заметно резче: паттерн-брейк/новизна/интрига/неожиданность, без общих слов и витрины." : ""}`;
 
+  // сэмплинг из ноды Claude (инспектор) — раньше всё было захардкожено
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const samp: Record<string, any> = { model: typeof body.model === "string" && body.model ? body.model : MODEL, max_tokens: Math.min(8192, Math.max(1800, Number(body.max_tokens) || 1800)), system: sys, messages: [{ role: "user", content: user }] };
+  if (typeof body.system === "string" && body.system.trim()) samp.system = body.system.trim() + "\n\n" + sys; // доп. system-промпт владельца сверху
+  if (typeof body.temperature === "number") samp.temperature = Math.min(1, Math.max(0, body.temperature));
+  else if (typeof body.top_p === "number") samp.top_p = Math.min(1, Math.max(0, body.top_p)); // temperature XOR top_p
+  if (typeof body.top_k === "number" && body.top_k >= 1) samp.top_k = body.top_k; // top_k минимум 1 (0 невалиден)
+  const stopRaw = Array.isArray(body.stop_sequences) ? body.stop_sequences : (typeof body.stop_sequences === "string" ? body.stop_sequences.split("\n") : []);
+  const stops = stopRaw.map((s: unknown) => String(s).trim()).filter(Boolean).slice(0, 4);
+  if (stops.length) samp.stop_sequences = stops;
+  if (body.service_tier === "auto" || body.service_tier === "standard_only") samp.service_tier = body.service_tier;
+  if (typeof body.thinking_budget === "number" && body.thinking_budget >= 1024) { samp.thinking = { type: "enabled", budget_tokens: Math.min(body.thinking_budget, (samp.max_tokens as number) - 1) }; delete samp.temperature; delete samp.top_p; delete samp.top_k; } // extended thinking запрещает temp/top_p/top_k
   try {
-    const res = await client.messages.create({ model: MODEL, max_tokens: 1800, system: sys, messages: [{ role: "user", content: user }] });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const res = await client.messages.create(samp as any);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const txt = (res.content as any[]).filter((b) => b.type === "text").map((b) => b.text).join(" ");
     const m = txt.match(/\{[\s\S]*\}/);

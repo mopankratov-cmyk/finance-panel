@@ -93,8 +93,17 @@ export const TOOL_SCHEMAS: Record<string, ToolSchema> = {
         { name: "Без англо-CTA", api_param: "no_cta", ui: "toggle", default: true, hint: "держать true" },
       ] },
       { group: "Субтитры", fields: [
+        { name: "Без субтитров", api_param: "no_caption", ui: "toggle", default: false },
         { name: "Шрифт (RU-safe)", api_param: "caption_setting.font_family", ui: "dropdown", values: ["Montserrat", "Poppins", "Comfortaa", "Quantico"], default: "Montserrat", hint: "только эти держат кириллицу" },
+        { name: "Кегль", api_param: "caption_setting.font_size", ui: "slider", min: 20, max: 120, step: 2, default: 70 },
+        { name: "Начертание", api_param: "caption_setting.font_style", ui: "dropdown", values: ["", "font-bold", "italic", "underline"], valueLabels: ["обычное", "жирное", "курсив", "подчёркнутое"], default: "", hint: "Creatify: только bold/italic/underline; пусто = без декора" },
         { name: "Цвет текста", api_param: "caption_setting.text_color", ui: "color", hint: "#RRGGBBAA с альфой" },
+        { name: "Цвет фона", api_param: "caption_setting.background_color", ui: "color", hint: "#RRGGBBAA (подложка)" },
+        { name: "Цвет подсветки (karaoke)", api_param: "caption_setting.highlight_text_color", ui: "color" },
+        { name: "Смещение X", api_param: "caption_setting.offset.x", ui: "slider", min: -1, max: 1, step: 0.05, default: 0 },
+        { name: "Смещение Y", api_param: "caption_setting.offset.y", ui: "slider", min: -1, max: 1, step: 0.05, default: 0.4 },
+        { name: "Макс. ширина, px", api_param: "caption_setting.max_width", ui: "slider", min: 400, max: 1080, step: 20, default: 900, hint: "Creatify: пиксели, не доля (кадр 9×16 = 1080px)" },
+        { name: "Межстрочный", api_param: "caption_setting.line_height", ui: "slider", min: 0.8, max: 2, step: 0.05, default: 1.2 },
       ] },
       { group: "Музыка", fields: [
         { name: "Фоновая музыка", api_param: "background_music_url", ui: "picker", hint: "живой список из Creatify /musics/ (▶ прослушать)" },
@@ -163,8 +172,13 @@ export const TOOL_SCHEMAS: Record<string, ToolSchema> = {
     groups: [
       { group: "Модель / сэмплинг", fields: [
         { name: "Модель", api_param: "model", ui: "dropdown", values: ["claude-sonnet-4-6", "claude-opus-4-8", "claude-haiku-4-5"], default: "claude-sonnet-4-6" },
-        { name: "Temperature", api_param: "temperature", ui: "slider", min: 0, max: 1, step: 0.05, default: 1 },
-        { name: "Max tokens", api_param: "max_tokens", ui: "number", min: 256, max: 8192, default: 3000 },
+        { name: "Temperature", api_param: "temperature", ui: "slider", min: 0, max: 1, step: 0.05, default: 1, hint: "temperature ИЛИ top_p, не оба" },
+        { name: "Top-p", api_param: "top_p", ui: "slider", min: 0, max: 1, step: 0.05, hint: "альтернатива temperature" },
+        { name: "Top-k", api_param: "top_k", ui: "number", min: 1, hint: "≥1 (0 невалиден)" },
+        { name: "Max tokens", api_param: "max_tokens", ui: "number", min: 1800, max: 8192, default: 1800, hint: "флор 1800 (нужно сценарию)" },
+        { name: "Stop-последовательности", api_param: "stop_sequences", ui: "textarea", hint: "до 4 строк, по одной на строку" },
+        { name: "Расширенное мышление, токенов", api_param: "thinking_budget", ui: "number", min: 1024, hint: "≥1024, <max_tokens; отключает temp/top_p/top_k" },
+        { name: "Service tier", api_param: "service_tier", ui: "dropdown", values: ["auto", "standard_only"], default: "auto" },
       ] },
       { group: "Промпт / грундинг", fields: [
         { name: "System-промпт", api_param: "system", ui: "textarea" },
