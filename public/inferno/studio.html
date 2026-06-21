@@ -143,9 +143,9 @@ body{background:var(--bg-deep);font-family:var(--sans);color:var(--tx-hi);-webki
 //==================== CORE ====================
 const API="/api/factory";
 const S={
-  screen:"center", niches:[], generations:[], recipes:[],
+  screen:"center", niches:[], generations:[], recipes:[], allProducts:null, prodCounts:{}, centerLoaded:false,
   activeNiche:"cosmetics", activeNicheLabel:"",
-  feedCache:{},
+  feedCache:{}, briefCache:{},
   decompose:null, decomposeLoading:false, decomposeVideo:null, selectedVideo:null,
   recipe:null, selectedNode:null,
   tool:"seedance", toolSchemas:{},
@@ -201,9 +201,13 @@ async function render(){
 }
 
 //==================== 01 · COMMAND CENTER ====================
-async function screenCenter(root){
+// force=true → принудительная пересборка (кнопка ↻ или жёсткая перезагрузка страницы сбрасывает S).
+// Иначе всё, что уже загружено, берётся из памяти — переключение экранов НЕ дёргает сеть/Claude.
+async function screenCenter(root, force){
+  if(force){ S.centerLoaded=false; S.briefCache={}; }
   header("Командный центр","карта осознания", el("div",{class:"hdr-r"},
     el("div",{class:"searchbox",style:"width:240px;"},el("span",{style:"font-size:13px;"},"⌕"),el("span",{},"Поиск ниши, товара…")),
+    el("button",{class:"btn",title:"принудительно пересобрать данные и разбор ниши",onclick:()=>screenCenter(root,true)},"↻ Обновить"),
     el("button",{class:"btn primary",onclick:()=>toast("Новая ниша — заведи товары в кабинете")},"+ Новая ниша")));
   const left=el("div",{class:"scroll"}), aside=el("div",{class:"aside",style:"width:340px;padding:18px;"});
   root.appendChild(left); root.appendChild(aside);
@@ -215,12 +219,14 @@ async function screenCenter(root){
       el("span",{class:"legend"},el("span",{class:"sq",style:"background:var(--warn)"}),"есть съёмка")));
   left.appendChild(nicheHead);
   const tiles=el("div",{style:"display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:26px;"}); left.appendChild(tiles);
-  tiles.appendChild(loadingCard("ниши…"));
 
-  const [data,prods]=await Promise.all([api("/studio"),api("/products")]);
-  S.allProducts=prods.items||[];
-  S.prodCounts={}; S.allProducts.forEach(p=>{ S.prodCounts[p.niche]=(S.prodCounts[p.niche]||0)+1; });
-  S.niches=data.niches||[]; S.generations=data.generations||[]; S.recipes=data.recipes||[];
+  if(!S.centerLoaded){
+    tiles.appendChild(loadingCard("ниши…"));
+    const data=await api("/studio"); // быстрый Supabase-запрос; товары (медленный WB API) — отдельно, не блокируем плитки
+    S.niches=data.niches||[]; S.generations=data.generations||[]; S.recipes=data.recipes||[];
+    S.centerLoaded=true;
+    if(S.screen!=="center")return; // ушли с экрана пока грузили
+  }
   nicheHead.querySelector(".cnt").textContent=String(S.niches.length);
   tiles.innerHTML="";
   if(!S.niches.length)tiles.appendChild(emptyBox("нет данных — синкни орбиты"));
@@ -255,9 +261,19 @@ function nicheTile(n){
     el("div",{style:"display:flex;flex-wrap:wrap;gap:5px;"},...chips));
 }
 async function loadProducts(plist){
-  const all=S.allProducts||((await api("/products")).items||[]);
+  // товары грузим один раз и кэшируем (S.allProducts). /products бьёт по WB API — медленно, поэтому НЕ блокирует плитки/маркетолога.
+  if(!S.allProducts){
+    if(S.productsLoading)return;            // уже в полёте — не дублируем запрос при возврате на экран
+    S.productsLoading=true;
+    const d=await api("/products");
+    S.productsLoading=false;
+    S.allProducts=Array.isArray(d.items)?d.items:[];
+    S.prodCounts={}; S.allProducts.forEach(p=>{ S.prodCounts[p.niche]=(S.prodCounts[p.niche]||0)+1; });
+    if(S.screen==="center"){ render(); return; } // перерисуем центр со счётчиками товаров (без рефетча — всё в кэше)
+    return;
+  }
   plist.innerHTML="";
-  const items=all.filter(p=>p.niche===S.activeNiche).slice(0,14);
+  const items=S.allProducts.filter(p=>p.niche===S.activeNiche).slice(0,14);
   const c=document.getElementById("prod-cnt"); if(c)c.textContent=String(items.length);
   if(!items.length){ plist.appendChild(emptyBox("нет товаров в нише «"+nicheLabel(S.activeNiche)+"»")); return; }
   items.forEach((p,i)=>plist.appendChild(productCard(p,i)));
@@ -296,17 +312,25 @@ function openFormatFork(p){
 function fmtCard(ic,t,sub,on){ return el("div",{class:"card",style:"padding:14px;text-align:center;cursor:pointer;background:var(--bg-node);",onclick:on},
   el("div",{style:"font-size:26px;"},ic),el("div",{style:"font-size:13px;font-weight:600;margin-top:6px;"},t),el("div",{class:"mono",style:"font-size:9.5px;color:var(--tx-lo2);margin-top:3px;"},sub)); }
 
-async function renderMarketer(aside){
+// Бриф ниши кэшируется в S.briefCache[niche] — переключение экранов/ниш НЕ перезапускает Claude.
+// force=true (кнопка «↻ Повторить» / «↻ Обновить») рвёт и клиентский кэш, и серверный (refresh=1).
+async function renderMarketer(aside, force){
   aside.innerHTML="";
+  const niche=S.activeNiche;
   aside.appendChild(el("div",{style:"display:flex;align-items:center;gap:9px;margin-bottom:14px;"},
     el("div",{style:"width:30px;height:30px;border-radius:8px;background:linear-gradient(135deg,#7c74ff,#5a52d8);display:flex;align-items:center;justify-content:center;font-size:15px;"},"🧠"),
-    el("div",{style:"line-height:1.2;"},el("div",{style:"font-size:13.5px;font-weight:600;"},"Главный маркетолог"),el("div",{class:"mono",style:"font-size:10.5px;color:var(--tx-lo2);"},"ниша: "+nicheLabel(S.activeNiche)))));
+    el("div",{style:"line-height:1.2;"},el("div",{style:"font-size:13.5px;font-weight:600;"},"Главный маркетолог"),el("div",{class:"mono",style:"font-size:10.5px;color:var(--tx-lo2);"},"ниша: "+nicheLabel(niche)))));
   const body=el("div",{}); aside.appendChild(body);
-  body.appendChild(loadingCard("маркетолог изучает нишу…"));
-  const b=await api("/niche-brief?niche="+encodeURIComponent(S.activeNiche));
+  let b=S.briefCache[niche];
+  if(!b||force){
+    body.appendChild(loadingCard("маркетолог изучает нишу…"));
+    b=await api("/niche-brief?niche="+encodeURIComponent(niche)+(force?"&refresh=1":""));
+    if(S.activeNiche!==niche||S.screen!=="center")return; // ниша/экран сменились пока грузили
+    if(!b.error&&b.brief)S.briefCache[niche]=b; // кэшируем только успешный бриф
+  }
   body.innerHTML="";
   if(b.error||!b.brief){ body.appendChild(emptyBox(b.error||"нет данных по нише — запусти разбор"));
-    body.appendChild(el("button",{class:"btn sm",style:"margin-top:10px;",onclick:()=>renderMarketer(aside)},"↻ Повторить")); return; }
+    body.appendChild(el("button",{class:"btn sm",style:"margin-top:10px;",onclick:()=>renderMarketer(aside,true)},"↻ Повторить")); return; }
   const br=b.brief;
   body.appendChild(el("div",{class:"card",style:"padding:13px;margin-bottom:14px;"},
     el("div",{style:"font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--acc);font-weight:600;margin-bottom:7px;"},"Что заходит"),
