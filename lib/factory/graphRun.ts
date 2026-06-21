@@ -164,7 +164,8 @@ export async function runRecipeStep(
 
   // ── assemble: смонтировать готовые клипы через Shotstack ──
   if (plan.step === "assemble") {
-    const visualNodes = plan.nodes.filter((n) => n.status === "done" && n.url && n.node_type !== "captions");
+    // role="skip" (инспектор disk_real) → выкинуть клип из сборки
+    const visualNodes = plan.nodes.filter((n) => n.status === "done" && n.url && n.node_type !== "captions" && String(((n.params || {}) as Record<string, unknown>)["role"] || "").toLowerCase() !== "skip");
     if (!visualNodes.length) throw new Error("нет готовых клипов для сборки (все ноды упали — проверь image_url/ключи)");
 
     // одиночный клип без Shotstack → используем как есть (минуем рендер)
@@ -186,17 +187,33 @@ export async function runRecipeStep(
     // нода shotstack несёт настройки монтажа (плоские точечные ключи из инспектора) — раньше игнорились
     const ssNode = plan.nodes.find((n) => String(n.tool).toLowerCase() === "shotstack");
     const ssp = (ssNode?.params || {}) as Record<string, unknown>;
-    const transIn = (ssp["transition.in"] as string) || "fade";
+    const transIn = (ssp["transition.in"] as string) || "none";   // совпадает с дефолтом инспектора (WYSIWYG)
     const ssEffect = ssp["effect"] as string | undefined;
     const ssFilter = ssp["filter"] as string | undefined;
     const ssFontSize = Number(ssp["font.size"]);
     const ssFontColor = ssp["font.color"] as string | undefined;
+    // вывод/композиция ноды shotstack (аспект сейчас зашит 9:16 → теперь из ноды)
+    const ssAspect = ((ssp["output.aspectRatio"] as string) || (ssp["aspect_ratio"] as string) || "9:16") as "9:16" | "1:1" | "16:9";
+    const ssOutFormat = ssp["output.format"] as string | undefined;
+    const ssFps = Number(ssp["output.fps"]);
+    const ssQuality = ssp["output.quality"] as string | undefined;
+    const ssFit = ssp["fit"] as string | undefined;
+    const ssBg = (ssp["timeline.background"] as string) || (ssp["background"] as string) || undefined;
 
-    // раскладка по таймлайну: видео-ноды последовательно, длительность из ноды
+    // раскладка по таймлайну: видео-ноды последовательно, длительность из ноды.
+    // disk_real несёт trim_start/trim_end (обрезка исходника) + asset.volume.
     let t = 0;
     const raw: AssemblyClip[] = visualNodes.map((n, i) => {
-      const len = Math.min(8, Math.max(2, Number(n.duration_sec) || 5));
+      const p = (n.params || {}) as Record<string, unknown>;
+      const trimStart = Number(p["trim_start"]);
+      const trimEnd = Number(p["trim_end"]);
+      const baseLen = !isNaN(trimEnd) && trimEnd > 0 && !isNaN(trimStart) ? Math.max(1, trimEnd - trimStart)
+        : (!isNaN(trimEnd) && trimEnd > 0 ? trimEnd : (Number(n.duration_sec) || 5));
+      const len = Math.min(8, Math.max(2, baseLen));
       const clip: AssemblyClip = { url: n.url!, type: "video", start: t, length: len };
+      if (!isNaN(trimStart) && trimStart > 0) clip.trim = trimStart;
+      const cv = Number(p["asset.volume"]); if (!isNaN(cv)) clip.volume = cv;
+      if (typeof p["asset.fit"] === "string") clip.fit = p["asset.fit"] as string;
       if (i > 0 && transIn !== "none") clip.transition = transIn;
       t += len;
       return clip;
@@ -204,7 +221,7 @@ export async function runRecipeStep(
     const total = Math.max(5, t);
     const clips = quantizeToBeats(raw, fixedBeatGrid(120, total));
 
-    const hookNode = plan.nodes.find((n) => n.slot === "hook") || plan.nodes[0];
+    const hookNode = plan.nodes.find((n) => String(((n.params || {}) as Record<string, unknown>)["role"] || n.slot || "").toLowerCase() === "hook") || plan.nodes[0];
     const hookText = (hookNode?.onscreen_text || "").toString().slice(0, 120) || undefined;
     const captionNode = plan.nodes.find((n) => n.node_type === "captions");
     const caption = (captionNode?.onscreen_text || (article ? "Ищи на WB: " + article : "")).toString().slice(0, 120) || undefined;
@@ -214,8 +231,9 @@ export async function runRecipeStep(
     const fontUrl = (process.env.SHOTSTACK_FONT_URL || "").trim() || undefined;
     const fontFamily = (process.env.SHOTSTACK_FONT_FAMILY || "").trim() || undefined;
 
-    const edit = buildEdit({ clips, hookText, caption, audioUrl, audioVolume, fontUrl, fontFamily, aspect: "9:16",
-      fontSize: isNaN(ssFontSize) ? undefined : ssFontSize, fontColor: ssFontColor, effect: ssEffect, filter: ssFilter });
+    const edit = buildEdit({ clips, hookText, caption, audioUrl, audioVolume, fontUrl, fontFamily, aspect: ssAspect,
+      fontSize: isNaN(ssFontSize) ? undefined : ssFontSize, fontColor: ssFontColor, effect: ssEffect, filter: ssFilter,
+      outputFormat: ssOutFormat, fps: isNaN(ssFps) ? undefined : ssFps, quality: ssQuality, fit: ssFit, background: ssBg });
     // сохраним edit в run_plan для воспроизводимости
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (plan as any).edit_json = edit;
@@ -266,7 +284,7 @@ export async function runRecipeStep(
       await savePlan(db, id, plan);
       return;
     }
-    const hookNode = plan.nodes.find((n) => n.slot === "hook") || plan.nodes[0];
+    const hookNode = plan.nodes.find((n) => String(((n.params || {}) as Record<string, unknown>)["role"] || n.slot || "").toLowerCase() === "hook") || plan.nodes[0];
     const v = await jpost(origin, "/api/factory/video-critic", { frames, hook: hookNode?.onscreen_text || hookNode?.prompt || "", mode, article, niche }, 55000);
     const score = typeof v?.score === "number" ? v.score : null;
     plan.otk = { score, verdict: v?.verdict, axes: v?.axes || null, issues: Array.isArray(v?.issues) ? v.issues : [] };
@@ -279,7 +297,7 @@ export async function runRecipeStep(
   if (plan.step === "bank") {
     const url = plan.output_url;
     const score = plan.otk?.score ?? null;
-    const hookNode = plan.nodes.find((n) => n.slot === "hook") || plan.nodes[0];
+    const hookNode = plan.nodes.find((n) => String(((n.params || {}) as Record<string, unknown>)["role"] || n.slot || "").toLowerCase() === "hook") || plan.nodes[0];
     const hook = (hookNode?.onscreen_text || hookNode?.prompt || "").toString().slice(0, 200);
     // в библиотеку контента (каталог кокпита)
     let catalogUrl: string | null = null;

@@ -21,8 +21,10 @@ export interface FalVideoOpts {
   negative?: string;            // kling negative_prompt (анти-слоп, редактируемый)
   end_image_url?: string;       // seedance end_image_url / kling tail_image_url — before/after
   camera_fixed?: boolean;       // seedance — меньше искажений детальных товаров
-  seed?: number;                // воспроизводимость
+  seed?: number;                // воспроизводимость (-1 = random)
   cfg_scale?: number;           // kling 0-1
+  num_frames?: number;          // seedance 29-289 — ПЕРЕБИВАЕТ duration
+  enable_safety_checker?: boolean; // seedance safety-чек
   endpoint?: string;            // прямой override эндпоинта (выбор pro/fast)
 }
 
@@ -32,6 +34,29 @@ const DEFAULT_NEG = "mirrored text, warped label, deformed product, deformed pac
 function key(): string | null { return process.env.FAL_KEY || null; }
 function family(model: string): "seedance" | "kling" | "pika" { return model.startsWith("seedance") ? "seedance" : model.startsWith("pika") ? "pika" : "kling"; }
 
+// Остаток баланса аккаунта FAL (GET https://api.fal.ai/v1/account/billing?expand=credits).
+// ⚠️ Нужен ADMIN-ключ: обычный FAL_KEY → 403 authorization_error (проверено live). Владелец кладёт
+// admin-ключ в FAL_BILLING_KEY (Vercel); без него фолбэк на FAL_KEY и честная ошибка «нужен admin-ключ».
+// Ответ: { credits: { current_balance: number, currency: "USD" } } (поля при expand=credits).
+export async function falBalance(): Promise<{ balance: number | null; currency: string; raw?: unknown; error?: string }> {
+  const k = process.env.FAL_BILLING_KEY || process.env.FAL_KEY || null;
+  if (!k) return { balance: null, currency: "USD", error: "FAL_KEY не настроен" };
+  try {
+    const r = await fetch("https://api.fal.ai/v1/account/billing?expand=credits", { headers: { Authorization: `Key ${k}` }, cache: "no-store", signal: AbortSignal.timeout(15000) });
+    const text = await r.text();
+    let j: Record<string, unknown> | null = null;
+    try { j = JSON.parse(text); } catch { /* not json */ }
+    if (r.status === 401 || r.status === 403) return { balance: null, currency: "USD", error: "нужен admin-ключ (FAL_BILLING_KEY)", raw: j ?? text.slice(0, 200) };
+    if (!r.ok || !j) return { balance: null, currency: "USD", error: `fal ${r.status}: ${text.slice(0, 140)}`, raw: j ?? text.slice(0, 200) };
+    const credits = (j.credits && typeof j.credits === "object" ? j.credits : j) as Record<string, unknown>;
+    const v = credits.current_balance ?? credits.balance ?? credits.amount ?? j.balance;
+    const n = typeof v === "number" ? v : Number(v);
+    const currency = (typeof credits.currency === "string" && credits.currency) || "USD";
+    if (!Number.isFinite(n)) return { balance: null, currency, error: "поле баланса не найдено", raw: j };
+    return { balance: n, currency, raw: j };
+  } catch (e) { return { balance: null, currency: "USD", error: String(e).slice(0, 140) }; }
+}
+
 // у каждого СЕМЕЙСТВА своя схема входа — лишние поля дают 422. Условно шлём только заданные опции.
 function buildInput(model: FalVideoModel, imageUrl: string, prompt: string, opts?: FalVideoOpts): Record<string, unknown> {
   const fam = family(model);
@@ -40,6 +65,8 @@ function buildInput(model: FalVideoModel, imageUrl: string, prompt: string, opts
     if (opts?.end_image_url) inp.end_image_url = opts.end_image_url;   // before/after (только pro)
     if (typeof opts?.camera_fixed === "boolean") inp.camera_fixed = opts.camera_fixed;
     if (typeof opts?.seed === "number") inp.seed = opts.seed;
+    if (typeof opts?.num_frames === "number") inp.num_frames = opts.num_frames; // 29-289, перебивает duration
+    if (typeof opts?.enable_safety_checker === "boolean") inp.enable_safety_checker = opts.enable_safety_checker;
     return inp;
   }
   if (fam === "pika") return { image_url: imageUrl, prompt, resolution: opts?.resolution || "720p", duration: Number(opts?.duration ?? 5) };
