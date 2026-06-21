@@ -2,32 +2,58 @@
 // Премиум-маршрут: реальное фото товара → динамичное видео. Reference/preservation промпт держит товар.
 const QUEUE = "https://queue.fal.run/";
 
-// каталог моделей: добавление нового движка = строка здесь (как советует спек video-gen-system)
+// каталог моделей: добавление нового движка/версии = строка здесь. Семейство (seedance*/kling*/pika*)
+// определяет СХЕМУ входа (buildInput). pro-fast = в 3× дешевле для черновиков-ОТК.
 export const FAL_VIDEO_MODELS = {
-  kling: "fal-ai/kling-video/v2.1/standard/image-to-video", // $0.28/5с, держит форму — жёсткие формы
+  kling: "fal-ai/kling-video/v2.1/standard/image-to-video", // $0.28/5с, держит форму
+  kling_pro: "fal-ai/kling-video/v2.1/pro/image-to-video",  // жёсткие формы/лого лучше
   seedance: "fal-ai/bytedance/seedance/v1/pro/image-to-video", // динамика/движение камеры/мультисцена
-  pika: "fal-ai/pika/v2.2/image-to-video", // мягкие сцены, руки-в-кадре, живость
+  seedance_fast: "fal-ai/bytedance/seedance/v1/pro/fast/image-to-video", // черновик, ×3 дешевле
+  pika: "fal-ai/pika/v2.2/image-to-video", // мягкие сцены, живость
 } as const;
 export type FalVideoModel = keyof typeof FAL_VIDEO_MODELS;
 
-const DEFAULT_NEG = "distortion, morphing, deformed product, changed shape, extra objects, blurry, low quality, warped label";
+// Полный набор настроек инструмента (вынесено в инспектор ноды §6 ТЗ — «всё открыто под капотом»).
+export interface FalVideoOpts {
+  duration?: string | number;   // seedance "2".."12" · kling "5"|"10"
+  aspect?: string;              // "9:16" дефолт (БАГ фикс — seedance не слал → auto/не вертикаль)
+  resolution?: string;          // "480p"|"720p"|"1080p" (seedance/pika)
+  negative?: string;            // kling negative_prompt (анти-слоп, редактируемый)
+  end_image_url?: string;       // seedance end_image_url / kling tail_image_url — before/after
+  camera_fixed?: boolean;       // seedance — меньше искажений детальных товаров
+  seed?: number;                // воспроизводимость
+  cfg_scale?: number;           // kling 0-1
+  endpoint?: string;            // прямой override эндпоинта (выбор pro/fast)
+}
+
+// важнейшие термины первыми (модель сильнее весит ранние). Маркеры AI-слопа из ресёрча 2026.
+const DEFAULT_NEG = "mirrored text, warped label, deformed product, deformed packaging, melted edges, floating product, changed shape, morphing, distortion, blurry, low quality";
 
 function key(): string | null { return process.env.FAL_KEY || null; }
+function family(model: string): "seedance" | "kling" | "pika" { return model.startsWith("seedance") ? "seedance" : model.startsWith("pika") ? "pika" : "kling"; }
 
-// у каждого движка СВОЯ схема входа — отправка лишних полей (cfg_scale/negative для seedance/pika) даёт 422.
-function buildInput(model: FalVideoModel, imageUrl: string, prompt: string, opts?: { duration?: "5" | "10"; aspect?: string; negative?: string }): Record<string, unknown> {
-  const dur = opts?.duration === "10" ? "10" : "5";
-  if (model === "seedance") return { image_url: imageUrl, prompt, resolution: "720p", duration: dur };
-  if (model === "pika") return { image_url: imageUrl, prompt, resolution: "720p", duration: Number(dur) };
+// у каждого СЕМЕЙСТВА своя схема входа — лишние поля дают 422. Условно шлём только заданные опции.
+function buildInput(model: FalVideoModel, imageUrl: string, prompt: string, opts?: FalVideoOpts): Record<string, unknown> {
+  const fam = family(model);
+  if (fam === "seedance") {
+    const inp: Record<string, unknown> = { image_url: imageUrl, prompt, resolution: opts?.resolution || "720p", aspect_ratio: opts?.aspect || "9:16", duration: String(opts?.duration ?? "5") };
+    if (opts?.end_image_url) inp.end_image_url = opts.end_image_url;   // before/after (только pro)
+    if (typeof opts?.camera_fixed === "boolean") inp.camera_fixed = opts.camera_fixed;
+    if (typeof opts?.seed === "number") inp.seed = opts.seed;
+    return inp;
+  }
+  if (fam === "pika") return { image_url: imageUrl, prompt, resolution: opts?.resolution || "720p", duration: Number(opts?.duration ?? 5) };
   // kling — богатый body (проверен): держит форму через preservation + negative
-  return { image_url: imageUrl, prompt, duration: dur, aspect_ratio: opts?.aspect || "9:16", negative_prompt: opts?.negative || DEFAULT_NEG, cfg_scale: 0.5 };
+  const inp: Record<string, unknown> = { image_url: imageUrl, prompt, duration: String(opts?.duration === "10" || opts?.duration === 10 ? "10" : "5"), aspect_ratio: opts?.aspect || "9:16", negative_prompt: opts?.negative || DEFAULT_NEG, cfg_scale: typeof opts?.cfg_scale === "number" ? opts.cfg_scale : 0.5 };
+  if (opts?.end_image_url) inp.tail_image_url = opts.end_image_url;
+  return inp;
 }
 
 // Сабмит image-to-video. Возвращает токен (base64url от response_url) или null.
-export async function falVideoSubmit(model: FalVideoModel, imageUrl: string, prompt: string, opts?: { duration?: "5" | "10"; aspect?: string; negative?: string }): Promise<string | null> {
+export async function falVideoSubmit(model: FalVideoModel, imageUrl: string, prompt: string, opts?: FalVideoOpts): Promise<string | null> {
   const k = key();
   if (!k) return null;
-  const endpoint = FAL_VIDEO_MODELS[model] || FAL_VIDEO_MODELS.kling;
+  const endpoint = opts?.endpoint || FAL_VIDEO_MODELS[model] || FAL_VIDEO_MODELS.kling;
   try {
     const r = await fetch(`${QUEUE}${endpoint}`, {
       method: "POST", headers: { Authorization: `Key ${k}`, "Content-Type": "application/json" }, cache: "no-store",
@@ -80,6 +106,60 @@ export async function falCompose(
 // Обратная совместимость: мукс голоса (ElevenLabs mp3) на ролик = compose без оверлея.
 export async function falMux(videoUrl: string, audioUrl: string, durationSec: number): Promise<{ videoUrl?: string; error?: string }> {
   return falCompose(videoUrl, { audioUrl, durationSec });
+}
+
+// Таймлайн из нескольких клипов (видео ИЛИ статичных изображений) — для U2 гибридного монтажа.
+// clips: [{url, type("video"|"image"), durationSec}] — склеиваем последовательно.
+// type="image" → статичный кадр нужной длительности (не оверлей, а full-frame заглушка между клипами).
+// В одну дорожку FAL получает несколько keyframes со смещениями → fal ffmpeg секвенирует их.
+export interface FalTimelineClip { url: string; type: "video" | "image"; durationSec: number }
+export async function falTimeline(
+  clips: FalTimelineClip[],
+  opts?: { audioUrl?: string; maxWaitMs?: number },
+): Promise<{ videoUrl?: string; error?: string }> {
+  const k = key();
+  if (!k) return { error: "FAL_KEY не настроен" };
+  if (!clips.length) return { error: "пустой список клипов" };
+
+  // Строим треки: видео-клипы → один video-трек с keyframes по таймлайну;
+  // image-клипы выставляем как полноэкранные image-треки в нужный временной слот.
+  // Полное наложение не то — FAL compose суммирует треки по z-order, а НЕ конкатенирует.
+  // Поэтому используем один video-трек: video-клипы последовательно, image-клипы — отдельные image-треки
+  // (видео-трек прерывается, image-трек «заполняет» паузу).
+  const videoKeyframes: { timestamp: number; duration: number; url: string }[] = [];
+  const imageKeyframes: { timestamp: number; duration: number; url: string }[] = [];
+  let t = 0;
+  for (const clip of clips) {
+    const d = Math.max(1, Math.round(clip.durationSec));
+    if (clip.type === "video") videoKeyframes.push({ timestamp: t, duration: d, url: clip.url });
+    else imageKeyframes.push({ timestamp: t, duration: d, url: clip.url });
+    t += d;
+  }
+  const totalDur = t;
+  const auth = { Authorization: `Key ${k}` };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const tracks: any[] = [];
+  if (videoKeyframes.length) tracks.push({ id: "v", type: "video", keyframes: videoKeyframes });
+  // каждый image-слот → отдельный image-трек (чтобы не перекрывались)
+  imageKeyframes.forEach((kf, i) => tracks.push({ id: `img${i}`, type: "image", keyframes: [kf] }));
+  if (opts?.audioUrl) tracks.push({ id: "a", type: "audio", keyframes: [{ timestamp: 0, duration: totalDur, url: opts.audioUrl }] });
+  const deadline = Date.now() + (opts?.maxWaitMs || 55000);
+  try {
+    const sub = await fetch(`${QUEUE}fal-ai/ffmpeg-api/compose`, { method: "POST", headers: { ...auth, "Content-Type": "application/json" }, cache: "no-store", body: JSON.stringify({ tracks }), signal: AbortSignal.timeout(25000) });
+    if (!sub.ok) return { error: `fal timeline compose ${sub.status}` };
+    const sj = (await sub.json()) as { response_url?: string };
+    const responseUrl = sj.response_url;
+    if (!responseUrl) return { error: "timeline compose без response_url" };
+    while (Date.now() < deadline) {
+      const st = await fetch(`${responseUrl}/status`, { headers: auth, cache: "no-store", signal: AbortSignal.timeout(15000) });
+      if (st.ok) { const s = (await st.json()) as { status?: string }; if (s.status === "COMPLETED") break; }
+      await new Promise((r) => setTimeout(r, 3000));
+    }
+    const res = await fetch(responseUrl, { headers: auth, cache: "no-store", signal: AbortSignal.timeout(15000) });
+    if (!res.ok) return { error: `timeline result ${res.status}` };
+    const rj = (await res.json()) as { video_url?: string };
+    return rj.video_url ? { videoUrl: rj.video_url } : { error: "timeline без video_url" };
+  } catch (e) { return { error: String(e).slice(0, 120) }; }
 }
 
 // диагностика: сырой ответ FAL на сабмит (статус+тело) — понять 401(ключ)/402-403(баланс)/422(модель)

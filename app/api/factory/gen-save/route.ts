@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
-import { nicheFor } from "@/lib/factory/contentDisks";
+import { nicheFromArticle } from "@/lib/factory/rubric";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -17,7 +17,7 @@ export async function POST(req: NextRequest) {
   const videoUrl: string = (b.video_url || "").toString().trim();
   const slides: string[] = Array.isArray(b.slides) ? b.slides.filter((s: unknown) => typeof s === "string") : [];
   const article: string = (b.article || b.sku_art || "").toString().trim();
-  const niche: string | null = (b.niche || nicheFor((b.product_name || "").toString(), article) || null);
+  const niche: string = b.niche || nicheFromArticle(article, (b.product_name || b.hook || "").toString());
   if (!videoUrl && !slides.length) return NextResponse.json({ error: "нужен video_url или slides" }, { status: 400 });
 
   try { await db.storage.createBucket(BUCKET, { public: true }); } catch { /* есть */ }
@@ -50,6 +50,22 @@ export async function POST(req: NextRequest) {
       kind: "video", niche, article: article || null, color: null, url: stored, analyzed: true, analysis: meta,
     });
     if (insErr) return NextResponse.json({ ok: false, error: insErr.message });
+
+    // Авто-сид корпуса: OTK ≥ 8 → viral_hooks viability=4 (AI+OTК verified, ниже explicit winner=5)
+    const otkScore = typeof b.otk === "number" ? b.otk : null;
+    const hookText = (b.hook || "").toString().trim().slice(0, 300);
+    if (otkScore !== null && otkScore >= 8 && hookText) {
+      try {
+        const note = `gen-save OTK=${otkScore} engine=${b.engine || "?"} route=${b.route || "?"}`;
+        const { error: ie } = await db.from("viral_hooks").insert({ niche, hook_text: hookText, viability_score: 4, effectiveness_notes: note });
+        if (ie?.code === "23505") {
+          // хук уже есть — обновляем только если viability < 4 (не перебиваем winners=5)
+          await db.from("viral_hooks").update({ viability_score: 4, effectiveness_notes: note })
+            .eq("niche", niche).eq("hook_text", hookText).lt("viability_score", 4);
+        }
+      } catch { /* corpus optional */ }
+    }
+
     return NextResponse.json({ ok: true, url: stored });
   }
 

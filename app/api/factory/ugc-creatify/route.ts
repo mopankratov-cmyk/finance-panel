@@ -35,7 +35,7 @@ export async function POST(req: NextRequest) {
   }
 
   if (images.length || url) {
-    const res = await creatifyLinkVideo({ url: url || undefined, images, title: title || (body.brief || "").toString(), description: script || (body.brief || "").toString(), script: script || undefined, avatar: (body.creator || "").trim() || undefined });
+    const res = await creatifyLinkVideo({ url: url || undefined, images, title: title || (body.brief || "").toString(), description: script || (body.brief || "").toString(), script: script || undefined, avatar: (body.creator || body.avatar || "").trim() || undefined, visual_style: (body.visual_style || "").toString().trim() || undefined });
     if (res.error || !res.token) return NextResponse.json({ detail: res.error || "Creatify не запустил", ...(debugMode ? { debug: res.debug } : {}) }, { status: 502 });
     return NextResponse.json({ task_id: "cf." + res.token, engine: "creatify", mode: "link_to_videos", product_url: url, ...(debugMode ? { debug: res.debug } : {}) });
   }

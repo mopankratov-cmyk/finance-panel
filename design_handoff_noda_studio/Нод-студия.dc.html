@@ -1,0 +1,1152 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body { background: #0c0d10; font-family: 'IBM Plex Sans', sans-serif; -webkit-font-smoothing: antialiased; }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #2b313b; border-radius: 6px; border: 2px solid #0c0d10; }
+  ::-webkit-scrollbar-thumb:hover { background: #3a414d; }
+  @keyframes pulseDot { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
+  @keyframes shimmer { 0% { background-position: -480px 0; } 100% { background-position: 480px 0; } }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes dash { to { stroke-dashoffset: -16; } }
+</style>
+</helmet>
+
+<div style="display:flex; height:100vh; width:100%; color:#e8eaee; font-family:'IBM Plex Sans',sans-serif; background:#0c0d10; overflow:hidden;">
+
+  <!-- ===================== LEFT RAIL ===================== -->
+  <aside style="width:236px; flex:none; background:#101216; border-right:1px solid #21262e; display:flex; flex-direction:column;">
+    <div style="height:56px; flex:none; display:flex; align-items:center; gap:10px; padding:0 16px; border-bottom:1px solid #21262e;">
+      <div style="width:26px; height:26px; border-radius:7px; background:linear-gradient(135deg,#7c74ff,#5a52d8); display:flex; align-items:center; justify-content:center; font-weight:700; font-size:14px; color:#fff;">N</div>
+      <div style="display:flex; flex-direction:column; line-height:1.1;">
+        <span style="font-size:13px; font-weight:600; letter-spacing:.2px;">NODA<span style="color:#7c74ff;">/</span>studio</span>
+        <span style="font-size:10px; color:#5c636e; font-family:'IBM Plex Mono',monospace; margin-top:2px;">viral video graph</span>
+      </div>
+    </div>
+
+    <div style="padding:14px 12px 6px; font-size:10px; letter-spacing:1.4px; text-transform:uppercase; color:#4f5662; font-weight:600;">Экраны</div>
+    <nav style="display:flex; flex-direction:column; gap:2px; padding:0 8px; flex:1; overflow-y:auto;">
+      <sc-for list="{{ nav }}" as="item" hint-placeholder-count="7">
+        <button onClick="{{ item.go }}" style="{{ item.style }}">
+          <span style="{{ item.numStyle }}">{{ item.n }}</span>
+          <span style="display:flex; flex-direction:column; align-items:flex-start; line-height:1.15; min-width:0;">
+            <span style="font-size:13px; font-weight:500;">{{ item.label }}</span>
+            <span style="font-size:10.5px; color:#5c636e; font-family:'IBM Plex Mono',monospace; margin-top:2px;">{{ item.sub }}</span>
+          </span>
+        </button>
+      </sc-for>
+    </nav>
+
+    <div style="padding:12px; border-top:1px solid #21262e; display:flex; flex-direction:column; gap:8px;">
+      <div style="display:flex; align-items:center; justify-content:space-between; font-size:11px; color:#7c828c;">
+        <span style="font-family:'IBM Plex Mono',monospace;">Бюджет рендеров</span>
+        <span style="color:#e8eaee; font-family:'IBM Plex Mono',monospace; font-weight:600;">$182<span style="color:#5c636e;">/250</span></span>
+      </div>
+      <div style="height:5px; border-radius:3px; background:#21262e; overflow:hidden;">
+        <div style="width:73%; height:100%; background:linear-gradient(90deg,#7c74ff,#9a93ff);"></div>
+      </div>
+      <div style="display:flex; align-items:center; gap:8px; margin-top:4px;">
+        <div style="width:24px; height:24px; border-radius:50%; background:#2b313b; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:600; color:#b9bec7;">А</div>
+        <div style="display:flex; flex-direction:column; line-height:1.2;">
+          <span style="font-size:12px; font-weight:500;">Алексей · селлер</span>
+          <span style="font-size:10px; color:#5c636e;">WB · 3 ниши</span>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ===================== MAIN ===================== -->
+  <main style="flex:1; min-width:0; display:flex; flex-direction:column; background:#0c0d10;">
+
+    <!-- ===== SCREEN 1: КОМАНДНЫЙ ЦЕНТР ===== -->
+    <sc-if value="{{ isCenter }}" hint-placeholder-val="{{ true }}">
+    <div style="display:flex; flex-direction:column; height:100%; min-height:0;">
+      <header style="height:56px; flex:none; display:flex; align-items:center; justify-content:space-between; padding:0 22px; border-bottom:1px solid #21262e;">
+        <div style="display:flex; align-items:center; gap:10px;">
+          <span style="font-size:15px; font-weight:600;">Командный центр</span>
+          <span style="font-size:11px; color:#5c636e; font-family:'IBM Plex Mono',monospace; background:#16191f; border:1px solid #21262e; padding:3px 8px; border-radius:5px;">карта осознания</span>
+        </div>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <div style="display:flex; align-items:center; gap:8px; background:#16191f; border:1px solid #21262e; border-radius:7px; padding:7px 10px; width:240px;">
+            <span style="color:#5c636e; font-size:13px;">⌕</span>
+            <span style="font-size:12.5px; color:#5c636e;">Поиск ниши, товара…</span>
+          </div>
+          <button style="display:flex; align-items:center; gap:7px; background:#7c74ff; color:#fff; border:none; border-radius:7px; padding:8px 13px; font-size:12.5px; font-weight:600; font-family:inherit; cursor:pointer;">+ Новая ниша</button>
+        </div>
+      </header>
+
+      <div style="flex:1; min-height:0; display:flex;">
+        <!-- LEFT: niches + products -->
+        <div style="flex:1; min-width:0; overflow-y:auto; padding:22px;">
+          <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;">
+            <h2 style="margin:0; font-size:13px; font-weight:600; color:#98a0ab; letter-spacing:.3px;">НИШИ <span style="color:#4f5662; font-family:'IBM Plex Mono',monospace; font-weight:400;">3</span></h2>
+            <div style="display:flex; gap:6px;">
+              <span style="font-size:11px; color:#7c828c; display:flex; align-items:center; gap:5px;"><span style="width:7px;height:7px;border-radius:2px;background:#46c08f;"></span>есть плейбук</span>
+              <span style="font-size:11px; color:#7c828c; display:flex; align-items:center; gap:5px; margin-left:8px;"><span style="width:7px;height:7px;border-radius:2px;background:#7c74ff;"></span>виральные</span>
+              <span style="font-size:11px; color:#7c828c; display:flex; align-items:center; gap:5px; margin-left:8px;"><span style="width:7px;height:7px;border-radius:2px;background:#d6a94e;"></span>есть съёмка</span>
+            </div>
+          </div>
+
+          <!-- niche tiles -->
+          <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-bottom:26px;">
+            <!-- active niche -->
+            <button onClick="{{ noop }}" style="text-align:left; cursor:pointer; background:#181b21; border:1.5px solid #7c74ff; border-radius:11px; padding:15px; display:flex; flex-direction:column; gap:12px; box-shadow:0 0 0 3px rgba(124,116,255,.10);">
+              <div style="display:flex; align-items:center; justify-content:space-between;">
+                <span style="font-size:22px;">💄</span>
+                <span style="font-size:10px; font-family:'IBM Plex Mono',monospace; color:#7c74ff; background:rgba(124,116,255,.12); padding:3px 7px; border-radius:5px; font-weight:600;">АКТИВНА</span>
+              </div>
+              <div>
+                <div style="font-size:14.5px; font-weight:600;">Бьюти / уход</div>
+                <div style="font-size:11.5px; color:#7c828c; margin-top:2px;">12 товаров · 48 видео</div>
+              </div>
+              <div style="display:flex; flex-wrap:wrap; gap:5px;">
+                <span style="font-size:10px; display:flex; align-items:center; gap:4px; background:#13261d; color:#46c08f; padding:3px 7px; border-radius:5px;"><span style="width:6px;height:6px;border-radius:2px;background:#46c08f;"></span>плейбук</span>
+                <span style="font-size:10px; display:flex; align-items:center; gap:4px; background:#1a1830; color:#9a93ff; padding:3px 7px; border-radius:5px;"><span style="width:6px;height:6px;border-radius:2px;background:#7c74ff;"></span>9 виральных</span>
+                <span style="font-size:10px; display:flex; align-items:center; gap:4px; background:#241f12; color:#d6a94e; padding:3px 7px; border-radius:5px;"><span style="width:6px;height:6px;border-radius:2px;background:#d6a94e;"></span>съёмка</span>
+              </div>
+            </button>
+            <!-- niche 2 -->
+            <button style="text-align:left; cursor:pointer; background:#15171c; border:1px solid #21262e; border-radius:11px; padding:15px; display:flex; flex-direction:column; gap:12px;">
+              <div style="display:flex; align-items:center; justify-content:space-between;">
+                <span style="font-size:22px;">🏠</span>
+                <span style="font-size:14px; color:#5c636e;">›</span>
+              </div>
+              <div>
+                <div style="font-size:14.5px; font-weight:600;">Дом / органайзеры</div>
+                <div style="font-size:11.5px; color:#7c828c; margin-top:2px;">8 товаров · 21 видео</div>
+              </div>
+              <div style="display:flex; flex-wrap:wrap; gap:5px;">
+                <span style="font-size:10px; display:flex; align-items:center; gap:4px; background:#13261d; color:#46c08f; padding:3px 7px; border-radius:5px;"><span style="width:6px;height:6px;border-radius:2px;background:#46c08f;"></span>плейбук</span>
+                <span style="font-size:10px; display:flex; align-items:center; gap:4px; background:#1a1830; color:#9a93ff; padding:3px 7px; border-radius:5px;"><span style="width:6px;height:6px;border-radius:2px;background:#7c74ff;"></span>4 виральных</span>
+              </div>
+            </button>
+            <!-- niche 3 empty-ish -->
+            <button style="text-align:left; cursor:pointer; background:#15171c; border:1px solid #21262e; border-radius:11px; padding:15px; display:flex; flex-direction:column; gap:12px;">
+              <div style="display:flex; align-items:center; justify-content:space-between;">
+                <span style="font-size:22px;">🐶</span>
+                <span style="font-size:14px; color:#5c636e;">›</span>
+              </div>
+              <div>
+                <div style="font-size:14.5px; font-weight:600;">Зоотовары</div>
+                <div style="font-size:11.5px; color:#7c828c; margin-top:2px;">5 товаров · 3 видео</div>
+              </div>
+              <div style="display:flex; flex-wrap:wrap; gap:5px;">
+                <span style="font-size:10px; display:flex; align-items:center; gap:4px; background:#211a1a; color:#e5604f; padding:3px 7px; border-radius:5px;"><span style="width:6px;height:6px;border-radius:2px;background:#e5604f;"></span>нет плейбука</span>
+              </div>
+            </button>
+          </div>
+
+          <!-- products of active niche -->
+          <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
+            <h2 style="margin:0; font-size:13px; font-weight:600; color:#98a0ab; letter-spacing:.3px;">ТОВАРЫ · БЬЮТИ <span style="color:#4f5662; font-family:'IBM Plex Mono',monospace; font-weight:400;">12</span></h2>
+            <div style="display:flex; gap:4px;">
+              <span style="font-size:11.5px; color:#e8eaee; background:#1f232b; border:1px solid #2b313b; padding:5px 10px; border-radius:6px;">Все</span>
+              <span style="font-size:11.5px; color:#7c828c; padding:5px 10px;">С победителем</span>
+              <span style="font-size:11.5px; color:#7c828c; padding:5px 10px;">Есть пробелы</span>
+            </div>
+          </div>
+
+          <div style="display:flex; flex-direction:column; gap:9px;">
+            <!-- product card WITH winner -->
+            <div style="display:flex; gap:14px; background:#15171c; border:1px solid #21262e; border-radius:10px; padding:13px; align-items:center;">
+              <div style="width:54px; height:72px; flex:none; border-radius:7px; background:repeating-linear-gradient(135deg,#22262e 0 7px,#1d2128 7px 14px); border:1px solid #2b313b; display:flex; align-items:flex-end; justify-content:center; padding-bottom:5px;"><span style="font-size:8px; color:#5c636e; font-family:'IBM Plex Mono',monospace;">фото</span></div>
+              <div style="flex:1; min-width:0;">
+                <div style="display:flex; align-items:center; gap:8px;">
+                  <span style="font-size:13.5px; font-weight:600;">Сыворотка с ниацинамидом 30мл</span>
+                  <span style="font-size:9.5px; font-family:'IBM Plex Mono',monospace; color:#0c0d10; background:#46c08f; padding:2px 6px; border-radius:4px; font-weight:600;">★ ПОБЕДИТЕЛЬ</span>
+                </div>
+                <div style="font-size:11px; color:#7c828c; margin-top:3px;">Понимание ниши: <span style="color:#46c08f;">высокое</span> · «проблема→результат за 14 дней»</div>
+                <div style="display:flex; gap:16px; margin-top:9px;">
+                  <span style="font-size:11px; color:#98a0ab; font-family:'IBM Plex Mono',monospace;"><span style="color:#d6a94e;">◆</span> 24 реальных кадра</span>
+                  <span style="font-size:11px; color:#98a0ab; font-family:'IBM Plex Mono',monospace;"><span style="color:#7c74ff;">▣</span> 11 генераций</span>
+                  <span style="font-size:11px; color:#98a0ab; font-family:'IBM Plex Mono',monospace;"><span style="color:#46c08f;">●</span> ОТК ср. 84</span>
+                </div>
+              </div>
+              <button style="flex:none; display:flex; align-items:center; gap:7px; background:#7c74ff; color:#fff; border:none; border-radius:7px; padding:9px 14px; font-size:12.5px; font-weight:600; font-family:inherit; cursor:pointer;">Собрать контент</button>
+            </div>
+            <!-- product card WITH gap -->
+            <div style="display:flex; gap:14px; background:#15171c; border:1px solid #21262e; border-radius:10px; padding:13px; align-items:center;">
+              <div style="width:54px; height:72px; flex:none; border-radius:7px; background:repeating-linear-gradient(135deg,#22262e 0 7px,#1d2128 7px 14px); border:1px solid #2b313b; display:flex; align-items:flex-end; justify-content:center; padding-bottom:5px;"><span style="font-size:8px; color:#5c636e; font-family:'IBM Plex Mono',monospace;">фото</span></div>
+              <div style="flex:1; min-width:0;">
+                <div style="display:flex; align-items:center; gap:8px;">
+                  <span style="font-size:13.5px; font-weight:600;">Патчи гидрогелевые 60шт</span>
+                  <span style="font-size:9.5px; font-family:'IBM Plex Mono',monospace; color:#e5604f; background:#211a1a; border:1px solid #3a2420; padding:2px 6px; border-radius:4px;">⚠ нет съёмки</span>
+                </div>
+                <div style="font-size:11px; color:#7c828c; margin-top:3px;">Понимание ниши: <span style="color:#d6a94e;">среднее</span> · нужен UGC-актёр под распаковку</div>
+                <div style="display:flex; gap:16px; margin-top:9px;">
+                  <span style="font-size:11px; color:#98a0ab; font-family:'IBM Plex Mono',monospace;"><span style="color:#5c636e;">◇</span> 0 реальных кадров</span>
+                  <span style="font-size:11px; color:#98a0ab; font-family:'IBM Plex Mono',monospace;"><span style="color:#7c74ff;">▣</span> 3 генерации</span>
+                  <span style="font-size:11px; color:#98a0ab; font-family:'IBM Plex Mono',monospace;"><span style="color:#5c636e;">○</span> нет победителя</span>
+                </div>
+              </div>
+              <button style="flex:none; display:flex; align-items:center; gap:7px; background:#1f232b; color:#e8eaee; border:1px solid #2b313b; border-radius:7px; padding:9px 14px; font-size:12.5px; font-weight:600; font-family:inherit; cursor:pointer;">Собрать контент</button>
+            </div>
+            <!-- product card neutral -->
+            <div style="display:flex; gap:14px; background:#15171c; border:1px solid #21262e; border-radius:10px; padding:13px; align-items:center;">
+              <div style="width:54px; height:72px; flex:none; border-radius:7px; background:repeating-linear-gradient(135deg,#22262e 0 7px,#1d2128 7px 14px); border:1px solid #2b313b; display:flex; align-items:flex-end; justify-content:center; padding-bottom:5px;"><span style="font-size:8px; color:#5c636e; font-family:'IBM Plex Mono',monospace;">фото</span></div>
+              <div style="flex:1; min-width:0;">
+                <div style="display:flex; align-items:center; gap:8px;">
+                  <span style="font-size:13.5px; font-weight:600;">Крем SPF50 матирующий</span>
+                </div>
+                <div style="font-size:11px; color:#7c828c; margin-top:3px;">Понимание ниши: <span style="color:#46c08f;">высокое</span> · сезонный спрос растёт</div>
+                <div style="display:flex; gap:16px; margin-top:9px;">
+                  <span style="font-size:11px; color:#98a0ab; font-family:'IBM Plex Mono',monospace;"><span style="color:#d6a94e;">◆</span> 9 реальных кадров</span>
+                  <span style="font-size:11px; color:#98a0ab; font-family:'IBM Plex Mono',monospace;"><span style="color:#7c74ff;">▣</span> 6 генераций</span>
+                  <span style="font-size:11px; color:#98a0ab; font-family:'IBM Plex Mono',monospace;"><span style="color:#d6a94e;">◐</span> ОТК ср. 71</span>
+                </div>
+              </div>
+              <button style="flex:none; display:flex; align-items:center; gap:7px; background:#1f232b; color:#e8eaee; border:1px solid #2b313b; border-radius:7px; padding:9px 14px; font-size:12.5px; font-weight:600; font-family:inherit; cursor:pointer;">Собрать контент</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- RIGHT: главный маркетолог -->
+        <aside style="width:340px; flex:none; border-left:1px solid #21262e; background:#101216; overflow-y:auto; padding:18px;">
+          <div style="display:flex; align-items:center; gap:9px; margin-bottom:14px;">
+            <div style="width:30px; height:30px; border-radius:8px; background:linear-gradient(135deg,#7c74ff,#5a52d8); display:flex; align-items:center; justify-content:center; font-size:15px;">🧠</div>
+            <div style="line-height:1.2;">
+              <div style="font-size:13.5px; font-weight:600;">Главный маркетолог</div>
+              <div style="font-size:10.5px; color:#5c636e; font-family:'IBM Plex Mono',monospace;">ниша: Бьюти / уход</div>
+            </div>
+          </div>
+
+          <div style="background:#15171c; border:1px solid #21262e; border-radius:10px; padding:13px; margin-bottom:14px;">
+            <div style="font-size:10px; letter-spacing:1px; text-transform:uppercase; color:#7c74ff; font-weight:600; margin-bottom:7px;">Что заходит</div>
+            <p style="margin:0; font-size:12.5px; line-height:1.55; color:#c2c7cf;">Залетают «проблема → видимый результат» с реальной кожей крупным планом. Первые <b style="color:#e8eaee;">1.5 сек</b> — макро-хук без лица. UGC-распаковка собирает удержание, но требует живого голоса. Тренд месяца — <span style="color:#9a93ff;">«честный обзор без фильтров»</span>.</p>
+          </div>
+
+          <div style="font-size:11px; font-weight:600; color:#98a0ab; margin-bottom:9px; display:flex; align-items:center; justify-content:space-between;">
+            <span>Примеры конкурентов</span>
+            <span style="font-size:10px; color:#5c636e; font-family:'IBM Plex Mono',monospace;">по виральности</span>
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:9px; margin-bottom:16px;">
+            <div style="border-radius:9px; overflow:hidden; border:1px solid #21262e; background:#15171c;">
+              <div style="aspect-ratio:9/13; background:repeating-linear-gradient(135deg,#23272f 0 8px,#1d2128 8px 16px); position:relative; display:flex; align-items:flex-end; padding:7px;">
+                <span style="position:absolute; top:6px; left:6px; font-size:9px; font-family:'IBM Plex Mono',monospace; color:#0c0d10; background:#46c08f; padding:2px 5px; border-radius:4px; font-weight:600;">2.4M</span>
+                <span style="font-size:10px; color:#9aa0ab; font-family:'IBM Plex Mono',monospace;">tiktok</span>
+              </div>
+              <div style="padding:7px;"><div style="font-size:10.5px; color:#c2c7cf; line-height:1.3;">Макро-хук «до/после» 14 дней</div><div style="font-size:9.5px; color:#5c636e; font-family:'IBM Plex Mono',monospace; margin-top:3px;">ER 12% · 0:21</div></div>
+            </div>
+            <div style="border-radius:9px; overflow:hidden; border:1px solid #21262e; background:#15171c;">
+              <div style="aspect-ratio:9/13; background:repeating-linear-gradient(135deg,#23272f 0 8px,#1d2128 8px 16px); position:relative; display:flex; align-items:flex-end; padding:7px;">
+                <span style="position:absolute; top:6px; left:6px; font-size:9px; font-family:'IBM Plex Mono',monospace; color:#0c0d10; background:#46c08f; padding:2px 5px; border-radius:4px; font-weight:600;">1.1M</span>
+                <span style="font-size:10px; color:#9aa0ab; font-family:'IBM Plex Mono',monospace;">reels</span>
+              </div>
+              <div style="padding:7px;"><div style="font-size:10.5px; color:#c2c7cf; line-height:1.3;">UGC-распаковка + голос за кадром</div><div style="font-size:9.5px; color:#5c636e; font-family:'IBM Plex Mono',monospace; margin-top:3px;">ER 9% · 0:18</div></div>
+            </div>
+          </div>
+
+          <div style="font-size:11px; font-weight:600; color:#98a0ab; margin-bottom:9px;">Рекомендации</div>
+          <div style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px;">
+            <span style="font-size:11px; color:#9a93ff; background:rgba(124,116,255,.10); border:1px solid rgba(124,116,255,.25); padding:5px 9px; border-radius:6px;">＋ Сделать макро-хук</span>
+            <span style="font-size:11px; color:#9a93ff; background:rgba(124,116,255,.10); border:1px solid rgba(124,116,255,.25); padding:5px 9px; border-radius:6px;">＋ UGC-распаковка</span>
+            <span style="font-size:11px; color:#9a93ff; background:rgba(124,116,255,.10); border:1px solid rgba(124,116,255,.25); padding:5px 9px; border-radius:6px;">＋ «честный обзор»</span>
+          </div>
+          <div style="display:flex; flex-wrap:wrap; gap:6px;">
+            <span style="font-size:11px; color:#7c828c; background:#15171c; border:1px solid #21262e; padding:5px 9px; border-radius:6px;">→ TikTok 0:15–0:21</span>
+            <span style="font-size:11px; color:#7c828c; background:#15171c; border:1px solid #21262e; padding:5px 9px; border-radius:6px;">→ Reels пакетом ×3</span>
+            <span style="font-size:11px; color:#7c828c; background:#15171c; border:1px solid #21262e; padding:5px 9px; border-radius:6px;">→ в карточку WB</span>
+          </div>
+        </aside>
+      </div>
+    </div>
+    </sc-if>
+
+    <!-- ===== SCREEN 2: АНАЛИЗ КОНКУРЕНТОВ / DECOMPOSE ===== -->
+    <sc-if value="{{ isCompete }}" hint-placeholder-val="{{ true }}">
+    <div style="display:flex; flex-direction:column; height:100%; min-height:0;">
+      <header style="height:56px; flex:none; display:flex; align-items:center; justify-content:space-between; padding:0 22px; border-bottom:1px solid #21262e;">
+        <div style="display:flex; align-items:center; gap:10px;">
+          <span style="font-size:15px; font-weight:600;">Анализ конкурентов</span>
+          <span style="font-size:11px; color:#5c636e; font-family:'IBM Plex Mono',monospace; background:#16191f; border:1px solid #21262e; padding:3px 8px; border-radius:5px;">decompose · бьюти</span>
+        </div>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span style="font-size:12px; color:#7c828c;">Видео #3 разобрано на <b style="color:#e8eaee;">5 нод</b></span>
+          <button style="display:flex; align-items:center; gap:7px; background:#7c74ff; color:#fff; border:none; border-radius:7px; padding:8px 13px; font-size:12.5px; font-weight:600; font-family:inherit; cursor:pointer;">⇪ Перенести ноды себе</button>
+        </div>
+      </header>
+
+      <div style="flex:1; min-height:0; display:flex;">
+        <!-- feed -->
+        <aside style="width:268px; flex:none; border-right:1px solid #21262e; background:#101216; overflow-y:auto; padding:14px;">
+          <div style="font-size:10px; letter-spacing:1.2px; text-transform:uppercase; color:#4f5662; font-weight:600; margin-bottom:11px;">Залетевшие видео · ранг</div>
+          <div style="display:flex; flex-direction:column; gap:8px;">
+            <div style="display:flex; gap:10px; padding:8px; border-radius:9px; background:#15171c; border:1px solid #21262e;"><span style="font-family:'IBM Plex Mono',monospace; font-size:12px; color:#5c636e; width:16px;">1</span><div style="width:34px;height:46px;border-radius:5px;background:repeating-linear-gradient(135deg,#23272f 0 6px,#1d2128 6px 12px);flex:none;"></div><div style="min-width:0;"><div style="font-size:12px; font-weight:500;">До/после 14 дней</div><div style="font-size:10px; color:#5c636e; font-family:'IBM Plex Mono',monospace; margin-top:3px;">2.4M · ER 12%</div></div></div>
+            <div style="display:flex; gap:10px; padding:8px; border-radius:9px; background:#15171c; border:1px solid #21262e;"><span style="font-family:'IBM Plex Mono',monospace; font-size:12px; color:#5c636e; width:16px;">2</span><div style="width:34px;height:46px;border-radius:5px;background:repeating-linear-gradient(135deg,#23272f 0 6px,#1d2128 6px 12px);flex:none;"></div><div style="min-width:0;"><div style="font-size:12px; font-weight:500;">Распаковка + голос</div><div style="font-size:10px; color:#5c636e; font-family:'IBM Plex Mono',monospace; margin-top:3px;">1.1M · ER 9%</div></div></div>
+            <div style="display:flex; gap:10px; padding:8px; border-radius:9px; background:#181b21; border:1.5px solid #7c74ff; box-shadow:0 0 0 3px rgba(124,116,255,.08);"><span style="font-family:'IBM Plex Mono',monospace; font-size:12px; color:#7c74ff; width:16px;">3</span><div style="width:34px;height:46px;border-radius:5px;background:repeating-linear-gradient(135deg,#2a2440 0 6px,#231f33 6px 12px);flex:none;"></div><div style="min-width:0;"><div style="font-size:12px; font-weight:600;">Честный обзор</div><div style="font-size:10px; color:#9a93ff; font-family:'IBM Plex Mono',monospace; margin-top:3px;">860K · ER 14%</div></div></div>
+            <div style="display:flex; gap:10px; padding:8px; border-radius:9px; background:#15171c; border:1px solid #21262e;"><span style="font-family:'IBM Plex Mono',monospace; font-size:12px; color:#5c636e; width:16px;">4</span><div style="width:34px;height:46px;border-radius:5px;background:repeating-linear-gradient(135deg,#23272f 0 6px,#1d2128 6px 12px);flex:none;"></div><div style="min-width:0;"><div style="font-size:12px; font-weight:500;">ASMR нанесение</div><div style="font-size:10px; color:#5c636e; font-family:'IBM Plex Mono',monospace; margin-top:3px;">540K · ER 7%</div></div></div>
+            <div style="display:flex; gap:10px; padding:8px; border-radius:9px; background:#15171c; border:1px solid #21262e;"><span style="font-family:'IBM Plex Mono',monospace; font-size:12px; color:#5c636e; width:16px;">5</span><div style="width:34px;height:46px;border-radius:5px;background:repeating-linear-gradient(135deg,#23272f 0 6px,#1d2128 6px 12px);flex:none;"></div><div style="min-width:0;"><div style="font-size:12px; font-weight:500;">3 ошибки ухода</div><div style="font-size:10px; color:#5c636e; font-family:'IBM Plex Mono',monospace; margin-top:3px;">410K · ER 8%</div></div></div>
+          </div>
+        </aside>
+
+        <!-- decompose stage -->
+        <div style="flex:1; min-width:0; display:flex; flex-direction:column; overflow:hidden;">
+          <div style="display:flex; gap:18px; padding:18px 22px; border-bottom:1px solid #21262e;">
+            <div style="width:108px; height:144px; flex:none; border-radius:9px; background:repeating-linear-gradient(135deg,#2a2440 0 8px,#231f33 8px 16px); border:1px solid #2b313b; display:flex; align-items:flex-end; justify-content:center; padding-bottom:8px;"><span style="font-size:10px; color:#9a93ff; font-family:'IBM Plex Mono',monospace;">▶ 0:19</span></div>
+            <div style="flex:1; min-width:0;">
+              <div style="font-size:15px; font-weight:600;">«Честный обзор сыворотки — без фильтров»</div>
+              <div style="font-size:12px; color:#7c828c; margin-top:5px; line-height:1.5;">Каркас: макро-хук без лица → проблема крупным планом → нанесение → результат через 14 дней → CTA в карточку. Удержание держится на смене ритма каждые 3–4 сек.</div>
+              <div style="display:flex; gap:7px; margin-top:11px;">
+                <span style="font-size:10.5px; font-family:'IBM Plex Mono',monospace; color:#46c08f; background:#13261d; padding:3px 8px; border-radius:5px;">хук-сила 9/10</span>
+                <span style="font-size:10.5px; font-family:'IBM Plex Mono',monospace; color:#d6a94e; background:#241f12; padding:3px 8px; border-radius:5px;">смен ритма: 6</span>
+                <span style="font-size:10.5px; font-family:'IBM Plex Mono',monospace; color:#9a93ff; background:#1a1830; padding:3px 8px; border-radius:5px;">нативность 8/10</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- node lane -->
+          <div style="flex:1; min-height:0; overflow-x:auto; overflow-y:hidden; padding:22px; display:flex; align-items:center; gap:0;">
+            <!-- brick template repeated -->
+            <div style="flex:none; width:178px; background:#181b21; border:1px solid #2b313b; border-radius:11px; overflow:hidden;">
+              <div style="aspect-ratio:16/10; background:repeating-linear-gradient(135deg,#23272f 0 8px,#1d2128 8px 16px); display:flex; align-items:center; justify-content:center; position:relative;"><span style="position:absolute; top:7px; left:7px; font-size:9.5px; font-family:'IBM Plex Mono',monospace; color:#0c0d10; background:#5b9cf2; padding:2px 6px; border-radius:4px; font-weight:600;">0:00–0:02</span></div>
+              <div style="padding:11px;">
+                <div style="display:flex; align-items:center; gap:6px; margin-bottom:7px;"><span style="font-size:9px; font-family:'IBM Plex Mono',monospace; color:#0c0d10; background:#5b9cf2; padding:2px 6px; border-radius:4px; font-weight:600;">ХУК</span><span style="font-size:10.5px; color:#7c828c;">▦ Seedance</span></div>
+                <div style="font-size:11.5px; color:#c2c7cf; line-height:1.35;">Макро-капля на коже, без лица</div>
+                <div style="font-size:10px; color:#5c636e; margin-top:7px; font-style:italic; border-left:2px solid #2b313b; padding-left:7px;">«это меняет всё за 14 дней»</div>
+              </div>
+            </div>
+            <div style="flex:none; width:28px; height:2px; background:#333a45; position:relative;"><span style="position:absolute; right:-1px; top:-4px; color:#5c636e; font-size:11px;">▶</span></div>
+
+            <div style="flex:none; width:178px; background:#181b21; border:1px solid #2b313b; border-radius:11px; overflow:hidden;">
+              <div style="aspect-ratio:16/10; background:repeating-linear-gradient(135deg,#23272f 0 8px,#1d2128 8px 16px); display:flex; align-items:center; justify-content:center; position:relative;"><span style="position:absolute; top:7px; left:7px; font-size:9.5px; font-family:'IBM Plex Mono',monospace; color:#0c0d10; background:#46c08f; padding:2px 6px; border-radius:4px; font-weight:600;">0:02–0:07</span></div>
+              <div style="padding:11px;">
+                <div style="display:flex; align-items:center; gap:6px; margin-bottom:7px;"><span style="font-size:9px; font-family:'IBM Plex Mono',monospace; color:#0c0d10; background:#46c08f; padding:2px 6px; border-radius:4px; font-weight:600;">СЦЕНА</span><span style="font-size:10.5px; color:#7c828c;">◔ Creatify</span></div>
+                <div style="font-size:11.5px; color:#c2c7cf; line-height:1.35;">UGC-актёр: «у меня была та же проблема»</div>
+                <div style="font-size:10px; color:#5c636e; margin-top:7px; font-style:italic; border-left:2px solid #2b313b; padding-left:7px;">проблема крупно</div>
+              </div>
+            </div>
+            <div style="flex:none; width:28px; height:2px; background:#333a45; position:relative;"><span style="position:absolute; right:-1px; top:-4px; color:#5c636e; font-size:11px;">▶</span></div>
+
+            <div style="flex:none; width:178px; background:#181b21; border:1px solid #2b313b; border-radius:11px; overflow:hidden;">
+              <div style="aspect-ratio:16/10; background:repeating-linear-gradient(135deg,#23272f 0 8px,#1d2128 8px 16px); display:flex; align-items:center; justify-content:center; position:relative;"><span style="position:absolute; top:7px; left:7px; font-size:9.5px; font-family:'IBM Plex Mono',monospace; color:#0c0d10; background:#46c08f; padding:2px 6px; border-radius:4px; font-weight:600;">0:07–0:13</span></div>
+              <div style="padding:11px;">
+                <div style="display:flex; align-items:center; gap:6px; margin-bottom:7px;"><span style="font-size:9px; font-family:'IBM Plex Mono',monospace; color:#0c0d10; background:#46c08f; padding:2px 6px; border-radius:4px; font-weight:600;">СЦЕНА</span><span style="font-size:10.5px; color:#7c828c;">▦ Seedance</span></div>
+                <div style="font-size:11.5px; color:#c2c7cf; line-height:1.35;">ASMR-нанесение, текстура крупно</div>
+                <div style="font-size:10px; color:#5c636e; margin-top:7px; font-style:italic; border-left:2px solid #2b313b; padding-left:7px;">без текста, звук</div>
+              </div>
+            </div>
+            <div style="flex:none; width:28px; height:2px; background:#333a45; position:relative;"><span style="position:absolute; right:-1px; top:-4px; color:#5c636e; font-size:11px;">▶</span></div>
+
+            <div style="flex:none; width:178px; background:#181b21; border:1px solid #2b313b; border-radius:11px; overflow:hidden;">
+              <div style="aspect-ratio:16/10; background:repeating-linear-gradient(135deg,#23272f 0 8px,#1d2128 8px 16px); display:flex; align-items:center; justify-content:center; position:relative;"><span style="position:absolute; top:7px; left:7px; font-size:9.5px; font-family:'IBM Plex Mono',monospace; color:#0c0d10; background:#b078ef; padding:2px 6px; border-radius:4px; font-weight:600;">0:13–0:17</span></div>
+              <div style="padding:11px;">
+                <div style="display:flex; align-items:center; gap:6px; margin-bottom:7px;"><span style="font-size:9px; font-family:'IBM Plex Mono',monospace; color:#0c0d10; background:#b078ef; padding:2px 6px; border-radius:4px; font-weight:600;">РЕВИЛ</span><span style="font-size:10.5px; color:#7c828c;">▦ Seedance</span></div>
+                <div style="font-size:11.5px; color:#c2c7cf; line-height:1.35;">Результат: чистая кожа, split-screen</div>
+                <div style="font-size:10px; color:#5c636e; margin-top:7px; font-style:italic; border-left:2px solid #2b313b; padding-left:7px;">«день 1 vs день 14»</div>
+              </div>
+            </div>
+            <div style="flex:none; width:28px; height:2px; background:#333a45; position:relative;"><span style="position:absolute; right:-1px; top:-4px; color:#5c636e; font-size:11px;">▶</span></div>
+
+            <div style="flex:none; width:178px; background:#181b21; border:1px solid #2b313b; border-radius:11px; overflow:hidden;">
+              <div style="aspect-ratio:16/10; background:repeating-linear-gradient(135deg,#23272f 0 8px,#1d2128 8px 16px); display:flex; align-items:center; justify-content:center; position:relative;"><span style="position:absolute; top:7px; left:7px; font-size:9.5px; font-family:'IBM Plex Mono',monospace; color:#0c0d10; background:#ef6fa6; padding:2px 6px; border-radius:4px; font-weight:600;">0:17–0:19</span></div>
+              <div style="padding:11px;">
+                <div style="display:flex; align-items:center; gap:6px; margin-bottom:7px;"><span style="font-size:9px; font-family:'IBM Plex Mono',monospace; color:#0c0d10; background:#ef6fa6; padding:2px 6px; border-radius:4px; font-weight:600;">CTA</span><span style="font-size:10.5px; color:#7c828c;">◇ Shotstack</span></div>
+                <div style="font-size:11.5px; color:#c2c7cf; line-height:1.35;">Субтитр + стрелка в карточку</div>
+                <div style="font-size:10px; color:#5c636e; margin-top:7px; font-style:italic; border-left:2px solid #2b313b; padding-left:7px;">«ищи в закрепе»</div>
+              </div>
+            </div>
+          </div>
+
+          <div style="flex:none; padding:13px 22px; border-top:1px solid #21262e; display:flex; align-items:center; justify-content:space-between; background:#101216;">
+            <span style="font-size:11.5px; color:#7c828c;">При переносе каркас клонируется в студию, содержимое <b style="color:#e8eaee;">обнуляется</b> под твой товар.</span>
+            <button style="display:flex; align-items:center; gap:7px; background:#7c74ff; color:#fff; border:none; border-radius:7px; padding:9px 15px; font-size:12.5px; font-weight:600; font-family:inherit; cursor:pointer;">⇪ Перенести 5 нод в студию →</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    </sc-if>
+
+    <!-- ===== SCREEN 3: НОД-КАНВАС ===== -->
+    <sc-if value="{{ isCanvas }}" hint-placeholder-val="{{ true }}">
+    <div style="display:flex; flex-direction:column; height:100%; min-height:0;">
+      <header style="height:56px; flex:none; display:flex; align-items:center; justify-content:space-between; padding:0 22px; border-bottom:1px solid #21262e;">
+        <div style="display:flex; align-items:center; gap:10px;">
+          <span style="font-size:15px; font-weight:600;">Нод-канвас</span>
+          <span style="font-size:11px; color:#5c636e; font-family:'IBM Plex Mono',monospace; background:#16191f; border:1px solid #21262e; padding:3px 8px; border-radius:5px;">Сыворотка · v3 · клон конкурента #3</span>
+        </div>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <div style="display:flex; align-items:center; gap:2px; background:#16191f; border:1px solid #21262e; border-radius:7px; padding:3px;">
+            <span style="font-size:11px; color:#7c828c; padding:4px 8px;">−</span><span style="font-size:11px; color:#e8eaee; font-family:'IBM Plex Mono',monospace; padding:4px 6px;">68%</span><span style="font-size:11px; color:#7c828c; padding:4px 8px;">＋</span>
+          </div>
+          <button style="display:flex; align-items:center; gap:7px; background:#1f232b; color:#e8eaee; border:1px solid #2b313b; border-radius:7px; padding:8px 12px; font-size:12.5px; font-weight:500; font-family:inherit; cursor:pointer;">⤢ Авто-укладка</button>
+          <button style="display:flex; align-items:center; gap:7px; background:#7c74ff; color:#fff; border:none; border-radius:7px; padding:8px 13px; font-size:12.5px; font-weight:600; font-family:inherit; cursor:pointer;">▶ Сборка</button>
+        </div>
+      </header>
+
+      <div style="flex:1; min-height:0; display:flex;">
+        <!-- palette -->
+        <aside style="width:208px; flex:none; border-right:1px solid #21262e; background:#101216; display:flex; flex-direction:column;">
+          <div style="padding:12px; border-bottom:1px solid #21262e;">
+            <div style="display:flex; align-items:center; gap:7px; background:#16191f; border:1px solid #21262e; border-radius:7px; padding:7px 9px;"><span style="color:#5c636e; font-size:12px;">⌕</span><span style="font-size:12px; color:#5c636e;">Найти ноду…</span></div>
+          </div>
+          <div style="flex:1; overflow-y:auto; padding:12px;">
+            <div style="font-size:10px; letter-spacing:1.2px; text-transform:uppercase; color:#4f5662; font-weight:600; margin-bottom:9px;">Палитра нод</div>
+            <div style="display:flex; flex-direction:column; gap:5px;">
+              <div style="display:flex; align-items:center; gap:9px; padding:8px 9px; border-radius:8px; background:#15171c; border:1px solid #21262e; cursor:grab;"><span style="width:8px;height:8px;border-radius:2px;background:#5b9cf2;"></span><span style="font-size:12px; flex:1;">Hook · хук</span><span style="color:#3a414d; font-size:13px;">⠿</span></div>
+              <div style="display:flex; align-items:center; gap:9px; padding:8px 9px; border-radius:8px; background:#15171c; border:1px solid #21262e; cursor:grab;"><span style="width:8px;height:8px;border-radius:2px;background:#46c08f;"></span><span style="font-size:12px; flex:1;">Scene · сцена</span><span style="color:#3a414d; font-size:13px;">⠿</span></div>
+              <div style="display:flex; align-items:center; gap:9px; padding:8px 9px; border-radius:8px; background:#15171c; border:1px solid #21262e; cursor:grab;"><span style="width:8px;height:8px;border-radius:2px;background:#b078ef;"></span><span style="font-size:12px; flex:1;">Payoff · ревил</span><span style="color:#3a414d; font-size:13px;">⠿</span></div>
+              <div style="display:flex; align-items:center; gap:9px; padding:8px 9px; border-radius:8px; background:#15171c; border:1px solid #21262e; cursor:grab;"><span style="width:8px;height:8px;border-radius:2px;background:#ef6fa6;"></span><span style="font-size:12px; flex:1;">Captions · титры</span><span style="color:#3a414d; font-size:13px;">⠿</span></div>
+              <div style="display:flex; align-items:center; gap:9px; padding:8px 9px; border-radius:8px; background:#15171c; border:1px solid #21262e; cursor:grab;"><span style="width:8px;height:8px;border-radius:2px;background:#46c08f;"></span><span style="font-size:12px; flex:1;">Music · музыка</span><span style="color:#3a414d; font-size:13px;">⠿</span></div>
+              <div style="display:flex; align-items:center; gap:9px; padding:8px 9px; border-radius:8px; background:#15171c; border:1px solid #21262e; cursor:grab;"><span style="width:8px;height:8px;border-radius:2px;background:#d6a94e;"></span><span style="font-size:12px; flex:1;">Effects · эффекты</span><span style="color:#3a414d; font-size:13px;">⠿</span></div>
+            </div>
+            <div style="font-size:10px; letter-spacing:1.2px; text-transform:uppercase; color:#4f5662; font-weight:600; margin:16px 0 9px;">Типы портов</div>
+            <div style="display:flex; flex-direction:column; gap:6px; font-size:11px; color:#9aa0ab; font-family:'IBM Plex Mono',monospace;">
+              <span style="display:flex; align-items:center; gap:8px;"><span style="width:10px;height:10px;border-radius:50%;background:#5b9cf2;"></span>video</span>
+              <span style="display:flex; align-items:center; gap:8px;"><span style="width:10px;height:10px;border-radius:50%;background:#46c08f;"></span>audio</span>
+              <span style="display:flex; align-items:center; gap:8px;"><span style="width:10px;height:10px;border-radius:50%;background:#d6a94e;"></span>image</span>
+              <span style="display:flex; align-items:center; gap:8px;"><span style="width:10px;height:10px;border-radius:50%;background:#b078ef;"></span>script</span>
+              <span style="display:flex; align-items:center; gap:8px;"><span style="width:10px;height:10px;border-radius:50%;background:#ef6fa6;"></span>caption</span>
+              <span style="display:flex; align-items:center; gap:8px;"><span style="width:10px;height:10px;border-radius:50%;background:#3fb9c2;"></span>product</span>
+            </div>
+          </div>
+        </aside>
+
+        <!-- canvas -->
+        <div style="flex:1; min-width:0; position:relative; overflow:hidden; background-color:#0c0d10; background-image:radial-gradient(circle,#1b1f27 1px,transparent 1px); background-size:22px 22px;">
+          <div style="position:absolute; inset:0; transform:scale(.92); transform-origin:40px 40px;">
+            <!-- wires -->
+            <svg width="1400" height="760" style="position:absolute; top:0; left:0; pointer-events:none; overflow:visible;">
+              <path d="M256,194 C300,194 296,164 340,164" fill="none" stroke="#5b9cf2" stroke-width="2.5"/>
+              <path d="M536,164 C580,164 576,194 620,194" fill="none" stroke="#5b9cf2" stroke-width="2.5"/>
+              <path d="M816,194 C860,194 856,164 900,164" fill="none" stroke="#5b9cf2" stroke-width="2.5"/>
+              <path d="M1096,164 C1140,164 1136,194 1180,194" fill="none" stroke="#5b9cf2" stroke-width="2.5"/>
+              <path d="M998,470 C998,420 998,400 998,348" fill="none" stroke="#46c08f" stroke-width="2.5" stroke-dasharray="6 4" style="animation:dash 1s linear infinite;"/>
+            </svg>
+
+            <!-- NODE A: HOOK / ready ОТК✓ -->
+            <div style="position:absolute; left:60px; top:140px; width:196px; background:#181b21; border:1px solid #2b313b; border-radius:12px; box-shadow:0 8px 24px rgba(0,0,0,.35);">
+              <span style="position:absolute; left:-7px; top:48px; width:13px; height:13px; border-radius:50%; background:#3fb9c2; border:2px solid #0c0d10;"></span>
+              <span style="position:absolute; right:-7px; top:48px; width:13px; height:13px; border-radius:50%; background:#5b9cf2; border:2px solid #0c0d10;"></span>
+              <div style="aspect-ratio:16/10; margin:9px 9px 0; border-radius:8px; background:repeating-linear-gradient(135deg,#23272f 0 8px,#1d2128 8px 16px); position:relative; overflow:hidden;"><span style="position:absolute; bottom:6px; left:7px; font-size:9px; font-family:'IBM Plex Mono',monospace; color:#9aa0ab;">0:00–0:02</span></div>
+              <div style="padding:9px 11px 11px;">
+                <div style="display:flex; align-items:center; justify-content:space-between;"><span style="font-size:9px; font-family:'IBM Plex Mono',monospace; color:#0c0d10; background:#5b9cf2; padding:2px 6px; border-radius:4px; font-weight:600;">HOOK</span><span style="display:flex; align-items:center; gap:4px; font-size:9.5px; font-family:'IBM Plex Mono',monospace; color:#46c08f; background:#13261d; padding:2px 6px; border-radius:4px;">ОТК✓ 88</span></div>
+                <div style="font-size:12.5px; font-weight:600; margin-top:8px;">Макро-хук</div>
+                <div style="display:flex; align-items:center; gap:6px; margin-top:9px; padding-top:9px; border-top:1px solid #21262e;"><span style="width:7px;height:7px;border-radius:50%;background:#5b9cf2;"></span><span style="font-size:10.5px; color:#9aa0ab;">▦ Seedance 1.0</span></div>
+              </div>
+            </div>
+
+            <!-- NODE B: SCENE / generating -->
+            <div style="position:absolute; left:340px; top:110px; width:196px; background:#181b21; border:1.5px solid #d6a94e; border-radius:12px; box-shadow:0 8px 28px rgba(214,169,78,.18), 0 8px 24px rgba(0,0,0,.35);">
+              <span style="position:absolute; left:-7px; top:48px; width:13px; height:13px; border-radius:50%; background:#5b9cf2; border:2px solid #0c0d10;"></span>
+              <span style="position:absolute; right:-7px; top:48px; width:13px; height:13px; border-radius:50%; background:#5b9cf2; border:2px solid #0c0d10;"></span>
+              <div style="aspect-ratio:16/10; margin:9px 9px 0; border-radius:8px; background:#16181d; position:relative; overflow:hidden; display:flex; align-items:center; justify-content:center;">
+                <div style="width:22px; height:22px; border-radius:50%; border:2.5px solid #2b313b; border-top-color:#d6a94e; animation:spin .8s linear infinite;"></div>
+                <span style="position:absolute; bottom:6px; left:7px; right:7px; height:4px; border-radius:2px; background:#23272f; overflow:hidden;"><span style="display:block; width:62%; height:100%; background:#d6a94e;"></span></span>
+              </div>
+              <div style="padding:9px 11px 11px;">
+                <div style="display:flex; align-items:center; justify-content:space-between;"><span style="font-size:9px; font-family:'IBM Plex Mono',monospace; color:#0c0d10; background:#46c08f; padding:2px 6px; border-radius:4px; font-weight:600;">SCENE</span><span style="display:flex; align-items:center; gap:4px; font-size:9.5px; font-family:'IBM Plex Mono',monospace; color:#d6a94e; background:#241f12; padding:2px 6px; border-radius:4px;"><span style="width:5px;height:5px;border-radius:50%;background:#d6a94e;animation:pulseDot 1s infinite;"></span>62% · 0:14</span></div>
+                <div style="font-size:12.5px; font-weight:600; margin-top:8px;">UGC проблема</div>
+                <div style="display:flex; align-items:center; gap:6px; margin-top:9px; padding-top:9px; border-top:1px solid #21262e;"><span style="width:7px;height:7px;border-radius:50%;background:#5b9cf2;"></span><span style="font-size:10.5px; color:#9aa0ab;">◔ Creatify UGC</span></div>
+              </div>
+            </div>
+
+            <!-- NODE C: SCENE / ready ОТК✓ (selected) -->
+            <div style="position:absolute; left:620px; top:140px; width:196px; background:#181b21; border:1.5px solid #7c74ff; border-radius:12px; box-shadow:0 0 0 3px rgba(124,116,255,.12), 0 8px 24px rgba(0,0,0,.4);">
+              <span style="position:absolute; left:-7px; top:48px; width:13px; height:13px; border-radius:50%; background:#5b9cf2; border:2px solid #0c0d10;"></span>
+              <span style="position:absolute; right:-7px; top:48px; width:13px; height:13px; border-radius:50%; background:#5b9cf2; border:2px solid #0c0d10;"></span>
+              <span style="position:absolute; left:88px; bottom:-7px; width:13px; height:13px; border-radius:50%; background:#46c08f; border:2px solid #0c0d10;"></span>
+              <span style="position:absolute; left:115px; bottom:-7px; width:13px; height:13px; border-radius:50%; background:#ef6fa6; border:2px solid #0c0d10;"></span>
+              <div style="aspect-ratio:16/10; margin:9px 9px 0; border-radius:8px; background:repeating-linear-gradient(135deg,#23272f 0 8px,#1d2128 8px 16px); position:relative; overflow:hidden;"><span style="position:absolute; bottom:6px; left:7px; font-size:9px; font-family:'IBM Plex Mono',monospace; color:#9aa0ab;">0:07–0:13</span></div>
+              <div style="padding:9px 11px 11px;">
+                <div style="display:flex; align-items:center; justify-content:space-between;"><span style="font-size:9px; font-family:'IBM Plex Mono',monospace; color:#0c0d10; background:#46c08f; padding:2px 6px; border-radius:4px; font-weight:600;">SCENE</span><span style="display:flex; align-items:center; gap:4px; font-size:9.5px; font-family:'IBM Plex Mono',monospace; color:#46c08f; background:#13261d; padding:2px 6px; border-radius:4px;">ОТК✓ 84</span></div>
+                <div style="font-size:12.5px; font-weight:600; margin-top:8px;">ASMR нанесение</div>
+                <div style="display:flex; align-items:center; gap:6px; margin-top:9px; padding-top:9px; border-top:1px solid #21262e;"><span style="width:7px;height:7px;border-radius:50%;background:#5b9cf2;"></span><span style="font-size:10.5px; color:#9aa0ab;">▦ Seedance 1.0</span></div>
+              </div>
+            </div>
+
+            <!-- NODE D: PAYOFF / ОТК✗ -->
+            <div style="position:absolute; left:900px; top:110px; width:196px; background:#181b21; border:1px solid #3a2420; border-radius:12px; box-shadow:0 8px 24px rgba(0,0,0,.35);">
+              <span style="position:absolute; left:-7px; top:48px; width:13px; height:13px; border-radius:50%; background:#5b9cf2; border:2px solid #0c0d10;"></span>
+              <span style="position:absolute; right:-7px; top:48px; width:13px; height:13px; border-radius:50%; background:#5b9cf2; border:2px solid #0c0d10;"></span>
+              <span style="position:absolute; left:90px; bottom:-7px; width:13px; height:13px; border-radius:50%; background:#46c08f; border:2px solid #0c0d10;"></span>
+              <div style="aspect-ratio:16/10; margin:9px 9px 0; border-radius:8px; background:repeating-linear-gradient(135deg,#23272f 0 8px,#1d2128 8px 16px); position:relative; overflow:hidden;"><span style="position:absolute; bottom:6px; left:7px; font-size:9px; font-family:'IBM Plex Mono',monospace; color:#9aa0ab;">0:13–0:17</span></div>
+              <div style="padding:9px 11px 11px;">
+                <div style="display:flex; align-items:center; justify-content:space-between;"><span style="font-size:9px; font-family:'IBM Plex Mono',monospace; color:#0c0d10; background:#b078ef; padding:2px 6px; border-radius:4px; font-weight:600;">PAYOFF</span><span style="display:flex; align-items:center; gap:4px; font-size:9.5px; font-family:'IBM Plex Mono',monospace; color:#e5604f; background:#211a1a; padding:2px 6px; border-radius:4px;">ОТК✗ 52</span></div>
+                <div style="font-size:12.5px; font-weight:600; margin-top:8px;">Результат до/после</div>
+                <div style="display:flex; align-items:center; gap:6px; margin-top:9px; padding-top:9px; border-top:1px solid #21262e;"><span style="width:7px;height:7px;border-radius:50%;background:#5b9cf2;"></span><span style="font-size:10.5px; color:#9aa0ab;">▦ Seedance 1.0</span></div>
+              </div>
+            </div>
+
+            <!-- NODE E: CAPTIONS / draft -->
+            <div style="position:absolute; left:1180px; top:140px; width:196px; background:#15171c; border:1px dashed #333a45; border-radius:12px;">
+              <span style="position:absolute; left:-7px; top:48px; width:13px; height:13px; border-radius:50%; background:#5b9cf2; border:2px solid #0c0d10;"></span>
+              <span style="position:absolute; left:88px; bottom:-7px; width:13px; height:13px; border-radius:50%; background:#b078ef; border:2px solid #0c0d10;"></span>
+              <div style="aspect-ratio:16/10; margin:9px 9px 0; border-radius:8px; background:#131519; border:1px dashed #2b313b; display:flex; align-items:center; justify-content:center;"><span style="font-size:10px; color:#4f5662; font-family:'IBM Plex Mono',monospace;">пусто</span></div>
+              <div style="padding:9px 11px 11px;">
+                <div style="display:flex; align-items:center; justify-content:space-between;"><span style="font-size:9px; font-family:'IBM Plex Mono',monospace; color:#0c0d10; background:#ef6fa6; padding:2px 6px; border-radius:4px; font-weight:600;">CAPTIONS</span><span style="font-size:9.5px; font-family:'IBM Plex Mono',monospace; color:#7c828c; background:#1f232b; padding:2px 6px; border-radius:4px;">черновик</span></div>
+                <div style="font-size:12.5px; font-weight:600; margin-top:8px; color:#9aa0ab;">Субтитры + CTA</div>
+                <div style="display:flex; align-items:center; gap:6px; margin-top:9px; padding-top:9px; border-top:1px solid #21262e;"><span style="width:7px;height:7px;border-radius:50%;background:#5c636e;"></span><span style="font-size:10.5px; color:#5c636e;">＋ выбрать инструмент</span></div>
+              </div>
+            </div>
+
+            <!-- MUSIC node (below, audio binding up) -->
+            <div style="position:absolute; left:900px; top:470px; width:196px; background:#181b21; border:1px solid #2b313b; border-radius:12px; box-shadow:0 8px 24px rgba(0,0,0,.35);">
+              <span style="position:absolute; left:90px; top:-7px; width:13px; height:13px; border-radius:50%; background:#46c08f; border:2px solid #0c0d10;"></span>
+              <div style="padding:11px;">
+                <div style="display:flex; align-items:center; justify-content:space-between;"><span style="font-size:9px; font-family:'IBM Plex Mono',monospace; color:#0c0d10; background:#46c08f; padding:2px 6px; border-radius:4px; font-weight:600;">MUSIC</span><span style="font-size:9.5px; font-family:'IBM Plex Mono',monospace; color:#46c08f; background:#13261d; padding:2px 6px; border-radius:4px;">готово</span></div>
+                <div style="font-size:12.5px; font-weight:600; margin-top:8px;">Трендовый бит</div>
+                <div style="display:flex; align-items:center; gap:3px; margin-top:9px; height:20px;">
+                  <span style="flex:1; background:#46c08f; height:40%; border-radius:1px;"></span><span style="flex:1; background:#46c08f; height:80%; border-radius:1px;"></span><span style="flex:1; background:#46c08f; height:55%; border-radius:1px;"></span><span style="flex:1; background:#46c08f; height:100%; border-radius:1px;"></span><span style="flex:1; background:#46c08f; height:35%; border-radius:1px;"></span><span style="flex:1; background:#46c08f; height:70%; border-radius:1px;"></span><span style="flex:1; background:#46c08f; height:50%; border-radius:1px;"></span><span style="flex:1; background:#46c08f; height:90%; border-radius:1px;"></span><span style="flex:1; background:#46c08f; height:45%; border-radius:1px;"></span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- minimap -->
+          <div style="position:absolute; right:16px; bottom:16px; width:168px; height:104px; background:rgba(16,18,22,.92); border:1px solid #2b313b; border-radius:9px; padding:8px; backdrop-filter:blur(4px);">
+            <div style="font-size:9px; color:#4f5662; font-family:'IBM Plex Mono',monospace; position:absolute; top:5px; left:8px;">minimap</div>
+            <div style="position:relative; width:100%; height:100%;">
+              <span style="position:absolute; left:6%; top:38%; width:13%; height:20%; background:#5b9cf2; border-radius:2px; opacity:.85;"></span>
+              <span style="position:absolute; left:26%; top:30%; width:13%; height:20%; background:#d6a94e; border-radius:2px; opacity:.85;"></span>
+              <span style="position:absolute; left:46%; top:38%; width:13%; height:20%; background:#7c74ff; border-radius:2px;"></span>
+              <span style="position:absolute; left:66%; top:30%; width:13%; height:20%; background:#e5604f; border-radius:2px; opacity:.85;"></span>
+              <span style="position:absolute; left:86%; top:38%; width:13%; height:20%; background:#5c636e; border-radius:2px; opacity:.85;"></span>
+              <span style="position:absolute; left:66%; top:74%; width:13%; height:16%; background:#46c08f; border-radius:2px; opacity:.85;"></span>
+              <span style="position:absolute; left:2%; top:18%; width:62%; height:62%; border:1.5px solid #7c74ff; border-radius:3px;"></span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    </sc-if>
+
+    <!-- ===== SCREEN 4: ИНСПЕКТОР НОДЫ ===== -->
+    <sc-if value="{{ isInspector }}" hint-placeholder-val="{{ true }}">
+    <div style="display:flex; flex-direction:column; height:100%; min-height:0;">
+      <header style="height:56px; flex:none; display:flex; align-items:center; justify-content:space-between; padding:0 22px; border-bottom:1px solid #21262e;">
+        <div style="display:flex; align-items:center; gap:10px;">
+          <span style="font-size:15px; font-weight:600;">Инспектор ноды</span>
+          <span style="font-size:11px; color:#5c636e; font-family:'IBM Plex Mono',monospace; background:#16191f; border:1px solid #21262e; padding:3px 8px; border-radius:5px;">поля адаптируются под инструмент</span>
+        </div>
+        <div style="display:flex; gap:7px;">
+          <sc-for list="{{ tabs }}" as="tb" hint-placeholder-count="3">
+            <button onClick="{{ tb.go }}" style="{{ tb.style }}"><span style="{{ tb.dotStyle }}"></span><span style="display:flex; flex-direction:column; align-items:flex-start; line-height:1.15;"><span style="font-size:12.5px; font-weight:600;">{{ tb.label }}</span><span style="font-size:9.5px; color:#5c636e; font-family:'IBM Plex Mono',monospace;">{{ tb.sub }}</span></span></button>
+          </sc-for>
+        </div>
+      </header>
+
+      <div style="flex:1; min-height:0; display:flex;">
+        <!-- context (dimmed canvas with the node) -->
+        <div style="flex:1; min-width:0; position:relative; background-color:#0c0d10; background-image:radial-gradient(circle,#15191f 1px,transparent 1px); background-size:22px 22px; display:flex; align-items:center; justify-content:center;">
+          <div style="position:absolute; inset:0; background:rgba(8,9,11,.55);"></div>
+          <div style="position:relative; width:230px; background:#181b21; border:1.5px solid #7c74ff; border-radius:13px; box-shadow:0 0 0 4px rgba(124,116,255,.12), 0 18px 50px rgba(0,0,0,.5);">
+            <span style="position:absolute; left:-7px; top:56px; width:13px; height:13px; border-radius:50%; background:#5b9cf2; border:2px solid #0c0d10;"></span>
+            <span style="position:absolute; right:-7px; top:56px; width:13px; height:13px; border-radius:50%; background:#5b9cf2; border:2px solid #0c0d10;"></span>
+            <div style="aspect-ratio:9/13; margin:10px 10px 0; border-radius:9px; background:repeating-linear-gradient(135deg,#23272f 0 8px,#1d2128 8px 16px); position:relative; overflow:hidden; display:flex; align-items:flex-end; padding:10px;"><span style="font-size:10px; color:#9aa0ab; font-family:'IBM Plex Mono',monospace;">▶ превью 9:16</span></div>
+            <div style="padding:11px 13px 13px;">
+              <div style="display:flex; align-items:center; justify-content:space-between;"><span style="font-size:9.5px; font-family:'IBM Plex Mono',monospace; color:#0c0d10; background:#46c08f; padding:2px 7px; border-radius:4px; font-weight:600;">SCENE</span><span style="font-size:10px; font-family:'IBM Plex Mono',monospace; color:#46c08f; background:#13261d; padding:2px 7px; border-radius:4px;">ОТК✓ 84</span></div>
+              <div style="font-size:13.5px; font-weight:600; margin-top:9px;">ASMR нанесение</div>
+            </div>
+          </div>
+          <div style="position:absolute; bottom:18px; left:50%; transform:translateX(-50%); font-size:11px; color:#5c636e; font-family:'IBM Plex Mono',monospace;">клик по ноде открывает инспектор →</div>
+        </div>
+
+        <!-- INSPECTOR PANEL -->
+        <aside style="width:432px; flex:none; border-left:1px solid #21262e; background:#101216; display:flex; flex-direction:column;">
+          <!-- price + generate (per tool) -->
+          <div style="flex:none; padding:14px 16px; border-bottom:1px solid #21262e;">
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:11px;">
+              <div style="display:flex; align-items:center; gap:8px;"><span style="width:10px; height:10px; border-radius:50%; background:{{ priceDot }};"></span><span style="font-size:13.5px; font-weight:600;">{{ priceTitle }}</span></div>
+              <span style="font-size:10px; color:#5c636e; font-family:'IBM Plex Mono',monospace;">нода #C3</span>
+            </div>
+            <div style="display:flex; align-items:stretch; gap:9px;">
+              <div style="flex:1; background:#15171c; border:1px solid #21262e; border-radius:9px; padding:9px 11px;">
+                <div style="font-size:9.5px; letter-spacing:.8px; text-transform:uppercase; color:#5c636e; margin-bottom:3px;">Цена генерации</div>
+                <div style="display:flex; align-items:baseline; gap:6px;"><span style="font-size:18px; font-weight:700; font-family:'IBM Plex Mono',monospace; color:#e8eaee;">{{ priceVal }}</span><span style="font-size:10px; color:#7c828c; font-family:'IBM Plex Mono',monospace;">{{ priceFormula }}</span></div>
+              </div>
+              <button style="flex:none; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; background:#7c74ff; color:#fff; border:none; border-radius:9px; padding:0 18px; font-family:inherit; cursor:pointer;"><span style="font-size:15px;">▶</span><span style="font-size:11px; font-weight:600;">Превью</span></button>
+            </div>
+          </div>
+
+          <div style="flex:1; overflow-y:auto; padding:14px 16px;">
+          <sc-if value="{{ toolSeedance }}" hint-placeholder-val="{{ true }}">
+            <!-- GROUP: Движок -->
+            <div style="margin-bottom:11px; background:#15171c; border:1px solid #21262e; border-radius:10px; overflow:hidden;">
+              <div style="display:flex; align-items:center; justify-content:space-between; padding:11px 13px; border-bottom:1px solid #21262e;"><span style="font-size:11px; font-weight:600; letter-spacing:.4px; color:#c2c7cf;">ДВИЖОК / МОДЕЛЬ</span><span style="color:#5c636e; font-size:11px;">▾</span></div>
+              <div style="padding:13px; display:flex; flex-direction:column; gap:13px;">
+                <div><div style="font-size:11px; color:#9aa0ab; margin-bottom:6px;">Модель</div><div style="display:flex; align-items:center; justify-content:space-between; background:#1f232b; border:1px solid #2b313b; border-radius:7px; padding:9px 11px; font-size:12.5px;">Seedance 1.0 Pro<span style="color:#5c636e;">▾</span></div></div>
+                <div><div style="font-size:11px; color:#9aa0ab; margin-bottom:6px;">Качество</div><div style="display:flex; align-items:center; justify-content:space-between; background:#1f232b; border:1px solid #2b313b; border-radius:7px; padding:9px 11px; font-size:12.5px;">High · детализация<span style="color:#5c636e;">▾</span></div></div>
+              </div>
+            </div>
+            <!-- GROUP: Вход/кадры -->
+            <div style="margin-bottom:11px; background:#15171c; border:1px solid #21262e; border-radius:10px; overflow:hidden;">
+              <div style="display:flex; align-items:center; justify-content:space-between; padding:11px 13px; border-bottom:1px solid #21262e;"><span style="font-size:11px; font-weight:600; letter-spacing:.4px; color:#c2c7cf;">ВХОД / КАДРЫ</span><span style="color:#5c636e; font-size:11px;">▾</span></div>
+              <div style="padding:13px; display:flex; flex-direction:column; gap:12px;">
+                <div><div style="display:flex; align-items:center; gap:6px; margin-bottom:6px;"><span style="width:8px;height:8px;border-radius:50%;background:#3fb9c2;"></span><span style="font-size:11px; color:#9aa0ab;">Продукт-кадр (port: product)</span></div><div style="display:flex; align-items:center; gap:10px; background:#1f232b; border:1px dashed #333a45; border-radius:8px; padding:10px;"><div style="width:36px;height:48px;border-radius:5px;background:repeating-linear-gradient(135deg,#262b33 0 6px,#20242b 6px 12px);"></div><div style="font-size:11px; color:#7c828c;">сыворотка_30мл.png<br><span style="color:#5c636e; font-size:10px;">подключён с ноды Product</span></div></div></div>
+                <div><div style="font-size:11px; color:#9aa0ab; margin-bottom:6px;">Реф-кадры (image)</div><div style="display:flex; gap:7px;"><div style="width:42px;height:42px;border-radius:6px;background:repeating-linear-gradient(135deg,#262b33 0 6px,#20242b 6px 12px);border:1px solid #2b313b;"></div><div style="width:42px;height:42px;border-radius:6px;background:repeating-linear-gradient(135deg,#262b33 0 6px,#20242b 6px 12px);border:1px solid #2b313b;"></div><div style="width:42px;height:42px;border-radius:6px;border:1px dashed #333a45; display:flex; align-items:center; justify-content:center; color:#5c636e; font-size:16px;">＋</div></div></div>
+              </div>
+            </div>
+            <!-- GROUP: Камера/движение -->
+            <div style="margin-bottom:11px; background:#15171c; border:1px solid #21262e; border-radius:10px; overflow:hidden;">
+              <div style="display:flex; align-items:center; justify-content:space-between; padding:11px 13px; border-bottom:1px solid #21262e;"><span style="font-size:11px; font-weight:600; letter-spacing:.4px; color:#c2c7cf;">КАМЕРА / ДВИЖЕНИЕ</span><span style="color:#5c636e; font-size:11px;">▾</span></div>
+              <div style="padding:13px; display:flex; flex-direction:column; gap:14px;">
+                <div><div style="font-size:11px; color:#9aa0ab; margin-bottom:6px;">Движение камеры</div><div style="display:flex; align-items:center; justify-content:space-between; background:#1f232b; border:1px solid #2b313b; border-radius:7px; padding:9px 11px; font-size:12.5px;">Орбита 180° медленно<span style="color:#5c636e;">▾</span></div></div>
+                <div><div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:7px;"><span style="font-size:11px; color:#9aa0ab;">Сила движения</span><span style="font-size:11px; color:#e8eaee; font-family:'IBM Plex Mono',monospace;">0.6</span></div><div style="position:relative; height:5px; border-radius:3px; background:#2b313b;"><div style="width:60%; height:100%; border-radius:3px; background:#7c74ff;"></div><div style="position:absolute; left:60%; top:50%; transform:translate(-50%,-50%); width:14px; height:14px; border-radius:50%; background:#e8eaee; border:3px solid #7c74ff;"></div></div></div>
+                <div style="display:flex; align-items:center; justify-content:space-between;"><span style="font-size:12px; color:#c2c7cf;">Фикс. камера (без движения)</span><div style="width:38px; height:21px; border-radius:11px; background:#2b313b; position:relative;"><div style="position:absolute; left:2px; top:2px; width:17px; height:17px; border-radius:50%; background:#5c636e;"></div></div></div>
+              </div>
+            </div>
+            <!-- GROUP: Формат -->
+            <div style="margin-bottom:11px; background:#15171c; border:1px solid #21262e; border-radius:10px; overflow:hidden;">
+              <div style="display:flex; align-items:center; justify-content:space-between; padding:11px 13px; border-bottom:1px solid #21262e;"><span style="font-size:11px; font-weight:600; letter-spacing:.4px; color:#c2c7cf;">ФОРМАТ / РАЗРЕШЕНИЕ</span><span style="color:#5c636e; font-size:11px;">▾</span></div>
+              <div style="padding:13px; display:flex; flex-direction:column; gap:14px;">
+                <div style="display:flex; gap:10px;"><div style="flex:1;"><div style="font-size:11px; color:#9aa0ab; margin-bottom:6px;">Соотношение</div><div style="display:flex; align-items:center; justify-content:space-between; background:#1f232b; border:1px solid #2b313b; border-radius:7px; padding:9px 11px; font-size:12.5px;">9:16<span style="color:#5c636e;">▾</span></div></div><div style="flex:1;"><div style="font-size:11px; color:#9aa0ab; margin-bottom:6px;">Разрешение</div><div style="display:flex; align-items:center; justify-content:space-between; background:#1f232b; border:1px solid #2b313b; border-radius:7px; padding:9px 11px; font-size:12.5px;">1080×1920<span style="color:#5c636e;">▾</span></div></div></div>
+                <div><div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:7px;"><span style="font-size:11px; color:#9aa0ab;">Длительность</span><span style="font-size:11px; color:#e8eaee; font-family:'IBM Plex Mono',monospace;">6.0 с</span></div><div style="position:relative; height:5px; border-radius:3px; background:#2b313b;"><div style="width:50%; height:100%; border-radius:3px; background:#7c74ff;"></div><div style="position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); width:14px; height:14px; border-radius:50%; background:#e8eaee; border:3px solid #7c74ff;"></div></div><div style="display:flex; justify-content:space-between; margin-top:5px; font-size:9.5px; color:#5c636e; font-family:'IBM Plex Mono',monospace;"><span>2с</span><span>длиннее = дороже</span><span>10с</span></div></div>
+              </div>
+            </div>
+            <!-- GROUP: Контроль (collapsed) -->
+            <div style="margin-bottom:11px; background:#15171c; border:1px solid #21262e; border-radius:10px; overflow:hidden;">
+              <div style="display:flex; align-items:center; justify-content:space-between; padding:11px 13px;"><span style="font-size:11px; font-weight:600; letter-spacing:.4px; color:#9aa0ab;">КОНТРОЛЬ (SEED / SAFETY)</span><span style="color:#5c636e; font-size:11px; transform:rotate(-90deg); display:inline-block;">▾</span></div>
+            </div>
+            <!-- GROUP: Аудио (collapsed) -->
+            <div style="margin-bottom:14px; background:#15171c; border:1px solid #21262e; border-radius:10px; overflow:hidden;">
+              <div style="display:flex; align-items:center; justify-content:space-between; padding:11px 13px;"><span style="font-size:11px; font-weight:600; letter-spacing:.4px; color:#9aa0ab;">АУДИО</span><span style="color:#5c636e; font-size:11px; transform:rotate(-90deg); display:inline-block;">▾</span></div>
+            </div>
+            <!-- PROMPT editor -->
+            <div style="background:#15171c; border:1px solid #2b2a45; border-radius:10px; overflow:hidden;">
+              <div style="display:flex; align-items:center; justify-content:space-between; padding:11px 13px; border-bottom:1px solid #21262e;"><span style="font-size:11px; font-weight:600; letter-spacing:.4px; color:#9a93ff;">ПРОМПТ</span><span style="font-size:10px; color:#5c636e; font-family:'IBM Plex Mono',monospace; cursor:pointer;">⤢ на весь сайдбар</span></div>
+              <div style="padding:13px;"><div style="background:#0f1115; border:1px solid #21262e; border-radius:8px; padding:11px; font-size:12px; line-height:1.6; color:#c2c7cf; min-height:96px;">Макро-съёмка нанесения сыворотки на кожу щеки, капля растекается, мягкий дневной свет, неоновый блик, гипер-детализация пор, замедление 0.5×, эстетика «честный бьюти-обзор».<span style="color:#5c636e;">|</span></div></div>
+            </div>
+          </sc-if>
+          <sc-if value="{{ toolCreatify }}" hint-placeholder-val="{{ false }}">
+            <!-- GROUP: Движок -->
+            <div style="margin-bottom:11px; background:#15171c; border:1px solid #21262e; border-radius:10px; overflow:hidden;">
+              <div style="display:flex; align-items:center; justify-content:space-between; padding:11px 13px; border-bottom:1px solid #21262e;"><span style="font-size:11px; font-weight:600; letter-spacing:.4px; color:#c2c7cf;">ДВИЖОК / МОДЕЛЬ</span><span style="color:#5c636e; font-size:11px;">▾</span></div>
+              <div style="padding:13px; display:flex; flex-direction:column; gap:13px;">
+                <div><div style="font-size:11px; color:#9aa0ab; margin-bottom:6px;">Движок UGC</div><div style="display:flex; align-items:center; justify-content:space-between; background:#1f232b; border:1px solid #2b313b; border-radius:7px; padding:9px 11px; font-size:12.5px;">Creatify UGC v2<span style="color:#5c636e;">▾</span></div></div>
+                <div><div style="font-size:11px; color:#9aa0ab; margin-bottom:6px;">Стиль ролика</div><div style="display:flex; align-items:center; justify-content:space-between; background:#1f232b; border:1px solid #2b313b; border-radius:7px; padding:9px 11px; font-size:12.5px;">Распаковка · selfie<span style="color:#5c636e;">▾</span></div></div>
+              </div>
+            </div>
+            <!-- GROUP: Актёр / аватар -->
+            <div style="margin-bottom:11px; background:#15171c; border:1px solid #21262e; border-radius:10px; overflow:hidden;">
+              <div style="display:flex; align-items:center; justify-content:space-between; padding:11px 13px; border-bottom:1px solid #21262e;"><span style="font-size:11px; font-weight:600; letter-spacing:.4px; color:#c2c7cf;">АКТЁР / АВАТАР</span><span style="color:#5c636e; font-size:11px;">▾</span></div>
+              <div style="padding:13px;">
+                <div style="display:flex; gap:7px; margin-bottom:11px;"><span style="font-size:11px; color:#e8eaee; background:#1f232b; border:1px solid #2b313b; padding:5px 10px; border-radius:6px;">Жен.</span><span style="font-size:11px; color:#7c828c; padding:5px 10px;">Муж.</span><span style="font-size:11px; color:#7c828c; padding:5px 10px;">25–34</span><span style="font-size:11px; color:#7c828c; padding:5px 10px;">RU</span></div>
+                <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:8px;">
+                  <div style="aspect-ratio:3/4; border-radius:8px; background:repeating-linear-gradient(135deg,#262b33 0 6px,#20242b 6px 12px); border:2px solid #7c74ff; box-shadow:0 0 0 3px rgba(124,116,255,.12); position:relative;"><span style="position:absolute; bottom:4px; left:4px; font-size:8px; color:#9a93ff; font-family:'IBM Plex Mono',monospace;">Аня</span></div>
+                  <div style="aspect-ratio:3/4; border-radius:8px; background:repeating-linear-gradient(135deg,#262b33 0 6px,#20242b 6px 12px); border:1px solid #2b313b; position:relative;"><span style="position:absolute; bottom:4px; left:4px; font-size:8px; color:#7c828c; font-family:'IBM Plex Mono',monospace;">Лиза</span></div>
+                  <div style="aspect-ratio:3/4; border-radius:8px; background:repeating-linear-gradient(135deg,#262b33 0 6px,#20242b 6px 12px); border:1px solid #2b313b; position:relative;"><span style="position:absolute; bottom:4px; left:4px; font-size:8px; color:#7c828c; font-family:'IBM Plex Mono',monospace;">Кира</span></div>
+                  <div style="aspect-ratio:3/4; border-radius:8px; background:repeating-linear-gradient(135deg,#262b33 0 6px,#20242b 6px 12px); border:1px solid #2b313b; position:relative;"><span style="position:absolute; bottom:4px; left:4px; font-size:8px; color:#7c828c; font-family:'IBM Plex Mono',monospace;">Маша</span></div>
+                  <div style="aspect-ratio:3/4; border-radius:8px; background:repeating-linear-gradient(135deg,#262b33 0 6px,#20242b 6px 12px); border:1px solid #2b313b;"></div>
+                  <div style="aspect-ratio:3/4; border-radius:8px; background:repeating-linear-gradient(135deg,#262b33 0 6px,#20242b 6px 12px); border:1px solid #2b313b;"></div>
+                  <div style="aspect-ratio:3/4; border-radius:8px; background:repeating-linear-gradient(135deg,#262b33 0 6px,#20242b 6px 12px); border:1px solid #2b313b;"></div>
+                  <div style="aspect-ratio:3/4; border-radius:8px; border:1px dashed #333a45; display:flex; align-items:center; justify-content:center; color:#5c636e; font-size:14px;">+24</div>
+                </div>
+              </div>
+            </div>
+            <!-- GROUP: Голос -->
+            <div style="margin-bottom:11px; background:#15171c; border:1px solid #21262e; border-radius:10px; overflow:hidden;">
+              <div style="display:flex; align-items:center; justify-content:space-between; padding:11px 13px; border-bottom:1px solid #21262e;"><span style="font-size:11px; font-weight:600; letter-spacing:.4px; color:#c2c7cf;">ГОЛОС</span><span style="color:#5c636e; font-size:11px;">▾</span></div>
+              <div style="padding:13px; display:flex; flex-direction:column; gap:12px;">
+                <div style="display:flex; flex-direction:column; gap:6px;">
+                  <div style="display:flex; align-items:center; gap:10px; background:#1f232b; border:1px solid #2b2a45; border-radius:8px; padding:8px 11px;"><span style="width:24px; height:24px; border-radius:50%; background:#7c74ff; color:#fff; display:flex; align-items:center; justify-content:center; font-size:10px;">▶</span><div style="flex:1;"><div style="font-size:12px; font-weight:500;">Аня · тёплый</div><div style="display:flex; gap:2px; margin-top:4px; height:11px; align-items:center;"><span style="flex:1;background:#7c74ff;height:40%;border-radius:1px;"></span><span style="flex:1;background:#7c74ff;height:90%;border-radius:1px;"></span><span style="flex:1;background:#7c74ff;height:60%;border-radius:1px;"></span><span style="flex:1;background:#7c74ff;height:100%;border-radius:1px;"></span><span style="flex:1;background:#7c74ff;height:45%;border-radius:1px;"></span><span style="flex:1;background:#7c74ff;height:75%;border-radius:1px;"></span><span style="flex:1;background:#2b313b;height:50%;border-radius:1px;"></span><span style="flex:1;background:#2b313b;height:70%;border-radius:1px;"></span></div></div></div>
+                  <div style="display:flex; align-items:center; gap:10px; background:#1f232b; border:1px solid #2b313b; border-radius:8px; padding:8px 11px;"><span style="width:24px; height:24px; border-radius:50%; background:#2b313b; color:#9aa0ab; display:flex; align-items:center; justify-content:center; font-size:10px;">▶</span><div style="font-size:12px; color:#9aa0ab;">Игорь · уверенный</div></div>
+                </div>
+                <div style="display:flex; gap:10px;">
+                  <div style="flex:1;"><div style="font-size:11px; color:#9aa0ab; margin-bottom:6px;">Язык</div><div style="display:flex; align-items:center; justify-content:space-between; background:#1f232b; border:1px solid #2b313b; border-radius:7px; padding:9px 11px; font-size:12.5px;">Русский<span style="color:#5c636e;">▾</span></div></div>
+                  <div style="flex:1;"><div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;"><span style="font-size:11px; color:#9aa0ab;">Скорость</span><span style="font-size:11px; color:#e8eaee; font-family:'IBM Plex Mono',monospace;">1.05×</span></div><div style="position:relative; height:5px; border-radius:3px; background:#2b313b; margin-top:9px;"><div style="width:55%; height:100%; border-radius:3px; background:#7c74ff;"></div><div style="position:absolute; left:55%; top:50%; transform:translate(-50%,-50%); width:14px; height:14px; border-radius:50%; background:#e8eaee; border:3px solid #7c74ff;"></div></div></div>
+                </div>
+              </div>
+            </div>
+            <!-- GROUP: Скрипт -->
+            <div style="margin-bottom:11px; background:#15171c; border:1px solid #21262e; border-radius:10px; overflow:hidden;">
+              <div style="display:flex; align-items:center; justify-content:space-between; padding:11px 13px; border-bottom:1px solid #21262e;"><span style="font-size:11px; font-weight:600; letter-spacing:.4px; color:#c2c7cf;">СКРИПТ АКТЁРА (port: script)</span><span style="color:#5c636e; font-size:11px;">▾</span></div>
+              <div style="padding:13px;"><div style="background:#0f1115; border:1px solid #21262e; border-radius:8px; padding:11px; font-size:12px; line-height:1.6; color:#c2c7cf; min-height:70px;">«Честно — я не верила, что патчи реально работают. Но за неделю отёки под глазами ушли. Показываю как наношу…»<span style="color:#5c636e;">|</span></div></div>
+            </div>
+            <!-- collapsed groups -->
+            <div style="margin-bottom:11px; background:#15171c; border:1px solid #21262e; border-radius:10px;"><div style="display:flex; align-items:center; justify-content:space-between; padding:11px 13px;"><span style="font-size:11px; font-weight:600; letter-spacing:.4px; color:#9aa0ab;">ФОРМАТ / РАЗРЕШЕНИЕ</span><span style="color:#5c636e; font-size:11px; transform:rotate(-90deg); display:inline-block;">▾</span></div></div>
+            <div style="margin-bottom:11px; background:#15171c; border:1px solid #21262e; border-radius:10px;"><div style="display:flex; align-items:center; justify-content:space-between; padding:11px 13px;"><span style="font-size:11px; font-weight:600; letter-spacing:.4px; color:#9aa0ab;">КОНТРОЛЬ (SEED / SAFETY)</span><span style="color:#5c636e; font-size:11px; transform:rotate(-90deg); display:inline-block;">▾</span></div></div>
+          </sc-if>
+          <sc-if value="{{ toolShotstack }}" hint-placeholder-val="{{ false }}">
+            <!-- GROUP: Движок -->
+            <div style="margin-bottom:11px; background:#15171c; border:1px solid #21262e; border-radius:10px; overflow:hidden;">
+              <div style="display:flex; align-items:center; justify-content:space-between; padding:11px 13px; border-bottom:1px solid #21262e;"><span style="font-size:11px; font-weight:600; letter-spacing:.4px; color:#c2c7cf;">ДВИЖОК / МОНТАЖ</span><span style="color:#5c636e; font-size:11px;">▾</span></div>
+              <div style="padding:13px;"><div style="font-size:11px; color:#9aa0ab; margin-bottom:6px;">Рендер-движок</div><div style="display:flex; align-items:center; justify-content:space-between; background:#1f232b; border:1px solid #2b313b; border-radius:7px; padding:9px 11px; font-size:12.5px;">Shotstack Edit API<span style="color:#5c636e;">▾</span></div></div>
+            </div>
+            <!-- GROUP: Переходы -->
+            <div style="margin-bottom:11px; background:#15171c; border:1px solid #21262e; border-radius:10px; overflow:hidden;">
+              <div style="display:flex; align-items:center; justify-content:space-between; padding:11px 13px; border-bottom:1px solid #21262e;"><span style="font-size:11px; font-weight:600; letter-spacing:.4px; color:#c2c7cf;">ПЕРЕХОДЫ</span><span style="color:#5c636e; font-size:11px;">▾</span></div>
+              <div style="padding:13px; display:flex; flex-direction:column; gap:14px;">
+                <div><div style="font-size:11px; color:#9aa0ab; margin-bottom:6px;">Тип перехода</div><div style="display:flex; align-items:center; justify-content:space-between; background:#1f232b; border:1px solid #2b313b; border-radius:7px; padding:9px 11px; font-size:12.5px;">Whip pan · быстрый<span style="color:#5c636e;">▾</span></div></div>
+                <div><div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:7px;"><span style="font-size:11px; color:#9aa0ab;">Длительность перехода</span><span style="font-size:11px; color:#e8eaee; font-family:'IBM Plex Mono',monospace;">0.2 с</span></div><div style="position:relative; height:5px; border-radius:3px; background:#2b313b;"><div style="width:25%; height:100%; border-radius:3px; background:#7c74ff;"></div><div style="position:absolute; left:25%; top:50%; transform:translate(-50%,-50%); width:14px; height:14px; border-radius:50%; background:#e8eaee; border:3px solid #7c74ff;"></div></div></div>
+              </div>
+            </div>
+            <!-- GROUP: Субтитры -->
+            <div style="margin-bottom:11px; background:#15171c; border:1px solid #2b2a45; border-radius:10px; overflow:hidden;">
+              <div style="display:flex; align-items:center; justify-content:space-between; padding:11px 13px; border-bottom:1px solid #21262e;"><span style="font-size:11px; font-weight:600; letter-spacing:.4px; color:#9a93ff;">ТЕКСТ-СУБТИТРЫ (port: caption)</span><span style="color:#5c636e; font-size:11px;">▾</span></div>
+              <div style="padding:13px; display:flex; flex-direction:column; gap:13px;">
+                <div style="display:flex; gap:10px;"><div style="flex:1;"><div style="font-size:11px; color:#9aa0ab; margin-bottom:6px;">Шрифт</div><div style="display:flex; align-items:center; justify-content:space-between; background:#1f232b; border:1px solid #2b313b; border-radius:7px; padding:9px 11px; font-size:12.5px;">TT Norms Bold<span style="color:#5c636e;">▾</span></div></div><div style="flex:1;"><div style="font-size:11px; color:#9aa0ab; margin-bottom:6px;">Анимация слов</div><div style="display:flex; align-items:center; justify-content:space-between; background:#1f232b; border:1px solid #2b313b; border-radius:7px; padding:9px 11px; font-size:12.5px;">Karaoke<span style="color:#5c636e;">▾</span></div></div></div>
+                <div><div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:7px;"><span style="font-size:11px; color:#9aa0ab;">Кегль</span><span style="font-size:11px; color:#e8eaee; font-family:'IBM Plex Mono',monospace;">64 px</span></div><div style="position:relative; height:5px; border-radius:3px; background:#2b313b;"><div style="width:64%; height:100%; border-radius:3px; background:#7c74ff;"></div><div style="position:absolute; left:64%; top:50%; transform:translate(-50%,-50%); width:14px; height:14px; border-radius:50%; background:#e8eaee; border:3px solid #7c74ff;"></div></div></div>
+                <!-- color + alpha -->
+                <div>
+                  <div style="font-size:11px; color:#9aa0ab; margin-bottom:6px;">Цвет субтитров</div>
+                  <div style="display:flex; align-items:center; gap:10px;">
+                    <div style="width:34px; height:34px; border-radius:8px; background:#f5e14a; border:1px solid #2b313b; flex:none;"></div>
+                    <div style="background:#1f232b; border:1px solid #2b313b; border-radius:7px; padding:8px 11px; font-size:12px; font-family:'IBM Plex Mono',monospace; color:#e8eaee;">#F5E14A</div>
+                    <div style="flex:1;"><div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:5px;"><span style="font-size:10px; color:#7c828c;">Альфа</span><span style="font-size:10px; color:#e8eaee; font-family:'IBM Plex Mono',monospace;">100%</span></div><div style="position:relative; height:5px; border-radius:3px; background:linear-gradient(90deg,transparent,#f5e14a);"><div style="position:absolute; right:0; top:50%; transform:translate(50%,-50%); width:13px; height:13px; border-radius:50%; background:#e8eaee; border:3px solid #7c74ff;"></div></div></div>
+                  </div>
+                </div>
+                <div><div style="font-size:11px; color:#9aa0ab; margin-bottom:6px;">Обводка / фон</div><div style="display:flex; gap:7px;"><span style="font-size:11px; color:#e8eaee; background:#1f232b; border:1px solid #2b2a45; padding:6px 11px; border-radius:6px;">Обводка 3px</span><span style="font-size:11px; color:#7c828c; background:#15171c; border:1px solid #2b313b; padding:6px 11px; border-radius:6px;">Плашка</span><span style="font-size:11px; color:#7c828c; background:#15171c; border:1px solid #2b313b; padding:6px 11px; border-radius:6px;">Нет</span></div></div>
+                <div style="display:flex; align-items:center; justify-content:space-between;"><span style="font-size:12px; color:#c2c7cf;">Позиция: низ · safe-zone</span><div style="width:38px; height:21px; border-radius:11px; background:#7c74ff; position:relative;"><div style="position:absolute; right:2px; top:2px; width:17px; height:17px; border-radius:50%; background:#fff;"></div></div></div>
+              </div>
+            </div>
+            <!-- collapsed -->
+            <div style="margin-bottom:11px; background:#15171c; border:1px solid #21262e; border-radius:10px;"><div style="display:flex; align-items:center; justify-content:space-between; padding:11px 13px;"><span style="font-size:11px; font-weight:600; letter-spacing:.4px; color:#9aa0ab;">ФОРМАТ / РАЗРЕШЕНИЕ</span><span style="color:#5c636e; font-size:11px; transform:rotate(-90deg); display:inline-block;">▾</span></div></div>
+            <div style="margin-bottom:11px; background:#15171c; border:1px solid #21262e; border-radius:10px;"><div style="display:flex; align-items:center; justify-content:space-between; padding:11px 13px;"><span style="font-size:11px; font-weight:600; letter-spacing:.4px; color:#9aa0ab;">АУДИО / МИКС</span><span style="color:#5c636e; font-size:11px; transform:rotate(-90deg); display:inline-block;">▾</span></div></div>
+          </sc-if>
+          </div>
+        </aside>
+      </div>
+    </div>
+    </sc-if>
+
+    <!-- ===== SCREEN 5: СБОРКА / ТАЙМЛАЙН / ОТК ===== -->
+    <sc-if value="{{ isAssembly }}" hint-placeholder-val="{{ true }}">
+    <div style="display:flex; flex-direction:column; height:100%; min-height:0;">
+      <header style="height:56px; flex:none; display:flex; align-items:center; justify-content:space-between; padding:0 22px; border-bottom:1px solid #21262e;">
+        <div style="display:flex; align-items:center; gap:10px;">
+          <span style="font-size:15px; font-weight:600;">Сборка / Таймлайн</span>
+          <span style="font-size:11px; color:#5c636e; font-family:'IBM Plex Mono',monospace; background:#16191f; border:1px solid #21262e; padding:3px 8px; border-radius:5px;">Сыворотка · v3 · 0:19</span>
+        </div>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span style="font-size:11.5px; color:#7c828c; font-family:'IBM Plex Mono',monospace;">рендер ~$1.08</span>
+          <button style="display:flex; align-items:center; gap:7px; background:#7c74ff; color:#fff; border:none; border-radius:7px; padding:8px 14px; font-size:12.5px; font-weight:600; font-family:inherit; cursor:pointer;">⧉ Смонтировать</button>
+        </div>
+      </header>
+
+      <div style="flex:1; min-height:0; display:flex;">
+        <div style="flex:1; min-width:0; display:flex; flex-direction:column;">
+          <!-- mini graph -->
+          <div style="flex:none; padding:16px 22px; border-bottom:1px solid #21262e; background-color:#0c0d10; background-image:radial-gradient(circle,#15191f 1px,transparent 1px); background-size:20px 20px;">
+            <div style="font-size:10px; letter-spacing:1.2px; text-transform:uppercase; color:#4f5662; font-weight:600; margin-bottom:11px;">Граф (мини)</div>
+            <div style="display:flex; align-items:center; gap:0;">
+              <div style="flex:none; width:120px; background:#181b21; border:1px solid #2b313b; border-radius:9px; padding:9px 11px;"><div style="display:flex; align-items:center; justify-content:space-between;"><span style="font-size:8.5px; font-family:'IBM Plex Mono',monospace; color:#0c0d10; background:#5b9cf2; padding:1px 5px; border-radius:3px; font-weight:600;">HOOK</span><span style="font-size:9px; color:#46c08f;">✓88</span></div><div style="font-size:11px; font-weight:500; margin-top:6px;">Макро-хук</div></div>
+              <div style="flex:none; width:24px; height:2px; background:#5b9cf2;"></div>
+              <div style="flex:none; width:120px; background:#181b21; border:1px solid #2b313b; border-radius:9px; padding:9px 11px;"><div style="display:flex; align-items:center; justify-content:space-between;"><span style="font-size:8.5px; font-family:'IBM Plex Mono',monospace; color:#0c0d10; background:#46c08f; padding:1px 5px; border-radius:3px; font-weight:600;">SCENE</span><span style="font-size:9px; color:#46c08f;">✓81</span></div><div style="font-size:11px; font-weight:500; margin-top:6px;">UGC проблема</div></div>
+              <div style="flex:none; width:24px; height:2px; background:#5b9cf2;"></div>
+              <div style="flex:none; width:120px; background:#181b21; border:1px solid #2b313b; border-radius:9px; padding:9px 11px;"><div style="display:flex; align-items:center; justify-content:space-between;"><span style="font-size:8.5px; font-family:'IBM Plex Mono',monospace; color:#0c0d10; background:#46c08f; padding:1px 5px; border-radius:3px; font-weight:600;">SCENE</span><span style="font-size:9px; color:#46c08f;">✓84</span></div><div style="font-size:11px; font-weight:500; margin-top:6px;">ASMR</div></div>
+              <div style="flex:none; width:24px; height:2px; background:#5b9cf2;"></div>
+              <div style="flex:none; width:120px; background:#181b21; border:1px solid #3a2420; border-radius:9px; padding:9px 11px;"><div style="display:flex; align-items:center; justify-content:space-between;"><span style="font-size:8.5px; font-family:'IBM Plex Mono',monospace; color:#0c0d10; background:#b078ef; padding:1px 5px; border-radius:3px; font-weight:600;">PAYOFF</span><span style="font-size:9px; color:#e5604f;">✗52</span></div><div style="font-size:11px; font-weight:500; margin-top:6px;">До/после</div></div>
+              <div style="flex:none; width:24px; height:2px; background:#5b9cf2;"></div>
+              <div style="flex:none; width:120px; background:#181b21; border:1px solid #2b313b; border-radius:9px; padding:9px 11px;"><div style="display:flex; align-items:center; justify-content:space-between;"><span style="font-size:8.5px; font-family:'IBM Plex Mono',monospace; color:#0c0d10; background:#ef6fa6; padding:1px 5px; border-radius:3px; font-weight:600;">CAP</span><span style="font-size:9px; color:#46c08f;">✓90</span></div><div style="font-size:11px; font-weight:500; margin-top:6px;">CTA-титр</div></div>
+            </div>
+          </div>
+
+          <!-- timeline -->
+          <div style="flex:1; min-height:0; overflow-y:auto; padding:16px 22px;">
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
+              <div style="font-size:10px; letter-spacing:1.2px; text-transform:uppercase; color:#4f5662; font-weight:600;">Таймлайн · дорожки</div>
+              <div style="display:flex; align-items:center; gap:2px; background:#16191f; border:1px solid #21262e; border-radius:6px; padding:3px;"><span style="font-size:11px; color:#7c828c; padding:3px 7px;">−</span><span style="font-size:10px; color:#e8eaee; font-family:'IBM Plex Mono',monospace; padding:3px 5px;">1×</span><span style="font-size:11px; color:#7c828c; padding:3px 7px;">＋</span></div>
+            </div>
+            <!-- ruler -->
+            <div style="display:flex; margin-bottom:6px; padding-left:88px;"><div style="flex:1; display:flex; justify-content:space-between; font-size:9.5px; color:#5c636e; font-family:'IBM Plex Mono',monospace; border-bottom:1px solid #21262e; padding-bottom:4px;"><span>0:00</span><span>0:05</span><span>0:10</span><span>0:15</span><span>0:19</span></div></div>
+            <!-- tracks -->
+            <div style="display:flex; flex-direction:column; gap:6px;">
+              <!-- track row template -->
+              <div style="display:flex; align-items:center; gap:0;"><div style="width:88px; flex:none; font-size:11px; color:#9aa0ab; display:flex; align-items:center; gap:6px;"><span style="width:7px;height:7px;border-radius:2px;background:#5b9cf2;"></span>video</div><div style="flex:1; position:relative; height:34px; background:#101216; border:1px solid #1c2027; border-radius:6px;"><div style="position:absolute; left:0%; width:10%; top:3px; bottom:3px; background:rgba(91,156,242,.22); border:1px solid #5b9cf2; border-radius:4px; display:flex; align-items:center; padding-left:7px; font-size:9.5px; color:#bcd6f7; font-family:'IBM Plex Mono',monospace; overflow:hidden;">хук</div><div style="position:absolute; left:65%; width:21%; top:3px; bottom:3px; background:rgba(176,120,239,.18); border:1px solid #b078ef; border-radius:4px; display:flex; align-items:center; padding-left:7px; font-size:9.5px; color:#d6bcf7; font-family:'IBM Plex Mono',monospace; overflow:hidden;">payoff</div></div></div>
+              <div style="display:flex; align-items:center; gap:0;"><div style="width:88px; flex:none; font-size:11px; color:#9aa0ab; display:flex; align-items:center; gap:6px;"><span style="width:7px;height:7px;border-radius:2px;background:#46c08f;"></span>ugc</div><div style="flex:1; position:relative; height:34px; background:#101216; border:1px solid #1c2027; border-radius:6px;"><div style="position:absolute; left:10%; width:26%; top:3px; bottom:3px; background:rgba(70,192,143,.20); border:1px solid #46c08f; border-radius:4px; display:flex; align-items:center; padding-left:7px; font-size:9.5px; color:#a8e6cd; font-family:'IBM Plex Mono',monospace; overflow:hidden;">UGC проблема · Creatify</div></div></div>
+              <div style="display:flex; align-items:center; gap:0;"><div style="width:88px; flex:none; font-size:11px; color:#9aa0ab; display:flex; align-items:center; gap:6px;"><span style="width:7px;height:7px;border-radius:2px;background:#b078ef;"></span>animation</div><div style="flex:1; position:relative; height:34px; background:#101216; border:1px solid #1c2027; border-radius:6px;"><div style="position:absolute; left:65%; width:14%; top:3px; bottom:3px; background:rgba(176,120,239,.18); border:1px solid #b078ef; border-radius:4px; display:flex; align-items:center; padding-left:7px; font-size:9.5px; color:#d6bcf7; font-family:'IBM Plex Mono',monospace; overflow:hidden;">split</div></div></div>
+              <div style="display:flex; align-items:center; gap:0;"><div style="width:88px; flex:none; font-size:11px; color:#9aa0ab; display:flex; align-items:center; gap:6px;"><span style="width:7px;height:7px;border-radius:2px;background:#3fb9c2;"></span>sound</div><div style="flex:1; position:relative; height:34px; background:#101216; border:1px solid #1c2027; border-radius:6px;"><div style="position:absolute; left:36%; width:29%; top:3px; bottom:3px; background:rgba(63,185,194,.18); border:1px solid #3fb9c2; border-radius:4px; display:flex; align-items:center; padding-left:7px; font-size:9.5px; color:#a8e1e6; font-family:'IBM Plex Mono',monospace; overflow:hidden;">ASMR sfx</div></div></div>
+              <div style="display:flex; align-items:center; gap:0;"><div style="width:88px; flex:none; font-size:11px; color:#9aa0ab; display:flex; align-items:center; gap:6px;"><span style="width:7px;height:7px;border-radius:2px;background:#46c08f;"></span>music</div><div style="flex:1; position:relative; height:34px; background:#101216; border:1px solid #1c2027; border-radius:6px;"><div style="position:absolute; left:0%; width:100%; top:3px; bottom:3px; background:rgba(70,192,143,.12); border:1px solid rgba(70,192,143,.5); border-radius:4px; display:flex; align-items:center; gap:2px; padding:0 7px; overflow:hidden;"><span style="flex:1;background:rgba(70,192,143,.5);height:30%;"></span><span style="flex:1;background:rgba(70,192,143,.5);height:70%;"></span><span style="flex:1;background:rgba(70,192,143,.5);height:45%;"></span><span style="flex:1;background:rgba(70,192,143,.5);height:85%;"></span><span style="flex:1;background:rgba(70,192,143,.5);height:40%;"></span><span style="flex:1;background:rgba(70,192,143,.5);height:65%;"></span><span style="flex:1;background:rgba(70,192,143,.5);height:55%;"></span><span style="flex:1;background:rgba(70,192,143,.5);height:90%;"></span><span style="flex:1;background:rgba(70,192,143,.5);height:35%;"></span><span style="flex:1;background:rgba(70,192,143,.5);height:60%;"></span></div></div></div>
+              <div style="display:flex; align-items:center; gap:0;"><div style="width:88px; flex:none; font-size:11px; color:#9aa0ab; display:flex; align-items:center; gap:6px;"><span style="width:7px;height:7px;border-radius:2px;background:#ef6fa6;"></span>captions</div><div style="flex:1; position:relative; height:34px; background:#101216; border:1px solid #1c2027; border-radius:6px;"><div style="position:absolute; left:2%; width:16%; top:3px; bottom:3px; background:rgba(239,111,166,.18); border:1px solid #ef6fa6; border-radius:4px; display:flex; align-items:center; padding-left:6px; font-size:9px; color:#f7bcd6; font-family:'IBM Plex Mono',monospace; overflow:hidden;">это меняет всё</div><div style="position:absolute; left:88%; width:11%; top:3px; bottom:3px; background:rgba(239,111,166,.18); border:1px solid #ef6fa6; border-radius:4px; display:flex; align-items:center; padding-left:6px; font-size:9px; color:#f7bcd6; font-family:'IBM Plex Mono',monospace; overflow:hidden;">CTA</div></div></div>
+            </div>
+            <!-- playhead hint -->
+            <div style="margin-top:14px; font-size:10.5px; color:#5c636e; font-family:'IBM Plex Mono',monospace;">⟂ плейхед 0:08 · перетаскивай клипы между дорожками</div>
+          </div>
+        </div>
+
+        <!-- ОТК panel -->
+        <aside style="width:368px; flex:none; border-left:1px solid #21262e; background:#101216; overflow-y:auto; padding:18px;">
+          <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;">
+            <div style="display:flex; align-items:center; gap:9px;"><div style="width:30px; height:30px; border-radius:8px; background:#13261d; display:flex; align-items:center; justify-content:center; font-size:14px;">✓</div><div style="line-height:1.2;"><div style="font-size:13.5px; font-weight:600;">ОТК · контроль качества</div><div style="font-size:10.5px; color:#5c636e; font-family:'IBM Plex Mono',monospace;">5 осей · вердикт</div></div></div>
+            <div style="text-align:right;"><div style="font-size:22px; font-weight:700; font-family:'IBM Plex Mono',monospace; color:#46c08f; line-height:1;">79</div><div style="font-size:9px; color:#5c636e;">из 100</div></div>
+          </div>
+
+          <div style="background:#13261d; border:1px solid #1d3a2b; border-radius:9px; padding:11px 13px; margin-bottom:15px; display:flex; align-items:center; gap:9px;"><span style="font-size:14px;">✓</span><div><div style="font-size:12.5px; font-weight:600; color:#7fe0b3;">Годен к публикации</div><div style="font-size:11px; color:#9aa0ab; margin-top:2px;">Слабое звено — payoff (ревил). Можно публиковать, но A/B с перегенерённым ревилом даст +удержание.</div></div></div>
+
+          <!-- 5 axes -->
+          <div style="display:flex; flex-direction:column; gap:11px; margin-bottom:16px;">
+            <div><div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:5px;"><span style="font-size:12px; color:#c2c7cf;">Хук (первые 1.5с)</span><span style="font-size:11px; font-family:'IBM Plex Mono',monospace; color:#46c08f;">9.0</span></div><div style="height:5px; border-radius:3px; background:#2b313b;"><div style="width:90%; height:100%; border-radius:3px; background:#46c08f;"></div></div></div>
+            <div><div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:5px;"><span style="font-size:12px; color:#c2c7cf;">Удержание</span><span style="font-size:11px; font-family:'IBM Plex Mono',monospace; color:#d6a94e;">6.5</span></div><div style="height:5px; border-radius:3px; background:#2b313b;"><div style="width:65%; height:100%; border-radius:3px; background:#d6a94e;"></div></div></div>
+            <div><div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:5px;"><span style="font-size:12px; color:#c2c7cf;">Нативность (не реклама)</span><span style="font-size:11px; font-family:'IBM Plex Mono',monospace; color:#46c08f;">8.5</span></div><div style="height:5px; border-radius:3px; background:#2b313b;"><div style="width:85%; height:100%; border-radius:3px; background:#46c08f;"></div></div></div>
+            <div><div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:5px;"><span style="font-size:12px; color:#c2c7cf;">Бренд / товар виден</span><span style="font-size:11px; font-family:'IBM Plex Mono',monospace; color:#46c08f;">8.0</span></div><div style="height:5px; border-radius:3px; background:#2b313b;"><div style="width:80%; height:100%; border-radius:3px; background:#46c08f;"></div></div></div>
+            <div><div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:5px;"><span style="font-size:12px; color:#c2c7cf;">CTA / действие</span><span style="font-size:11px; font-family:'IBM Plex Mono',monospace; color:#d6a94e;">7.0</span></div><div style="height:5px; border-radius:3px; background:#2b313b;"><div style="width:70%; height:100%; border-radius:3px; background:#d6a94e;"></div></div></div>
+          </div>
+
+          <div style="font-size:11px; font-weight:600; color:#98a0ab; margin-bottom:9px;">Замечания и фиксы</div>
+          <div style="display:flex; flex-direction:column; gap:7px; margin-bottom:16px;">
+            <div style="display:flex; gap:9px; background:#15171c; border:1px solid #21262e; border-radius:8px; padding:9px 11px;"><span style="color:#e5604f; font-size:12px;">⚠</span><div style="font-size:11.5px; color:#c2c7cf; line-height:1.4;">Ревил «до/после» нечитаемый на 1080p — перегенери с фикс. камерой. <span style="color:#9a93ff; cursor:pointer;">→ открыть ноду</span></div></div>
+            <div style="display:flex; gap:9px; background:#15171c; border:1px solid #21262e; border-radius:8px; padding:9px 11px;"><span style="color:#d6a94e; font-size:12px;">◐</span><div style="font-size:11.5px; color:#c2c7cf; line-height:1.4;">Провал удержания на 0:09–0:11 — укороти ASMR-сцену на 1.5с. <span style="color:#9a93ff; cursor:pointer;">→ к таймлайну</span></div></div>
+          </div>
+
+          <!-- verdict actions -->
+          <div style="border-top:1px solid #21262e; padding-top:14px;">
+            <div style="display:flex; gap:9px; margin-bottom:11px;"><button style="flex:1; background:#46c08f; color:#06140d; border:none; border-radius:8px; padding:10px; font-size:12.5px; font-weight:700; font-family:inherit; cursor:pointer;">✓ Беру</button><button style="flex:1; background:#1f232b; color:#e8eaee; border:1px solid #2b313b; border-radius:8px; padding:10px; font-size:12.5px; font-weight:600; font-family:inherit; cursor:pointer;">✕ Не то</button></div>
+            <div style="font-size:10.5px; color:#5c636e; margin-bottom:7px;">Причина «не то» (для обучения графа):</div>
+            <div style="display:flex; flex-wrap:wrap; gap:6px;">
+              <span style="font-size:11px; color:#9aa0ab; background:#15171c; border:1px solid #2b313b; padding:5px 9px; border-radius:6px;">слабый хук</span>
+              <span style="font-size:11px; color:#9aa0ab; background:#15171c; border:1px solid #2b313b; padding:5px 9px; border-radius:6px;">не нативно</span>
+              <span style="font-size:11px; color:#e8eaee; background:rgba(229,96,79,.12); border:1px solid rgba(229,96,79,.4); padding:5px 9px; border-radius:6px;">ревил слабый</span>
+              <span style="font-size:11px; color:#9aa0ab; background:#15171c; border:1px solid #2b313b; padding:5px 9px; border-radius:6px;">товар не виден</span>
+              <span style="font-size:11px; color:#9aa0ab; background:#15171c; border:1px solid #2b313b; padding:5px 9px; border-radius:6px;">звук</span>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </div>
+    </sc-if>
+
+    <!-- ===== SCREEN 6: БАЗА ВИДОСОВ / БИБЛИОТЕКА ===== -->
+    <sc-if value="{{ isLibrary }}" hint-placeholder-val="{{ true }}">
+    <div style="display:flex; flex-direction:column; height:100%; min-height:0;">
+      <header style="height:56px; flex:none; display:flex; align-items:center; justify-content:space-between; padding:0 22px; border-bottom:1px solid #21262e;">
+        <div style="display:flex; align-items:center; gap:10px;">
+          <span style="font-size:15px; font-weight:600;">База видосов</span>
+          <span style="font-size:11px; color:#5c636e; font-family:'IBM Plex Mono',monospace; background:#16191f; border:1px solid #21262e; padding:3px 8px; border-radius:5px;">библиотека рецептов</span>
+        </div>
+        <div style="display:flex; align-items:center; gap:7px;">
+          <span style="font-size:11.5px; color:#e8eaee; background:#1f232b; border:1px solid #2b313b; padding:6px 11px; border-radius:7px;">Все ниши</span>
+          <span style="font-size:11.5px; color:#7c828c; padding:6px 8px;">Видео</span>
+          <span style="font-size:11.5px; color:#7c828c; padding:6px 8px;">Карусель</span>
+          <span style="font-size:11.5px; color:#7c828c; padding:6px 8px;">Статик</span>
+        </div>
+      </header>
+
+      <div style="flex:1; min-height:0; display:flex;">
+        <div style="flex:1; min-width:0; overflow-y:auto; padding:22px;">
+          <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;">
+            <h2 style="margin:0; font-size:13px; font-weight:600; color:#98a0ab;">ГОТОВЫЕ ВИДЕО <span style="color:#4f5662; font-family:'IBM Plex Mono',monospace; font-weight:400;">28</span></h2>
+            <div style="display:flex; gap:6px;"><span style="font-size:11px; color:#7c828c;">сортировка:</span><span style="font-size:11px; color:#e8eaee; font-family:'IBM Plex Mono',monospace;">виральность ▾</span></div>
+          </div>
+          <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:13px; margin-bottom:28px;">
+            <!-- video card winner -->
+            <div style="background:#15171c; border:1px solid #21262e; border-radius:11px; overflow:hidden;">
+              <div style="aspect-ratio:9/14; background:repeating-linear-gradient(135deg,#23272f 0 8px,#1d2128 8px 16px); position:relative; display:flex; align-items:center; justify-content:center;"><span style="position:absolute; top:7px; left:7px; font-size:9px; font-family:'IBM Plex Mono',monospace; color:#06140d; background:#46c08f; padding:2px 6px; border-radius:4px; font-weight:600;">★ ПОБЕДИТЕЛЬ</span><span style="width:34px;height:34px;border-radius:50%;background:rgba(12,13,16,.6);border:1px solid #3a414d; display:flex; align-items:center; justify-content:center; font-size:12px; color:#e8eaee;">▶</span></div>
+              <div style="padding:10px;"><div style="font-size:12px; font-weight:600;">Честный обзор сыворотки</div><div style="display:flex; gap:8px; margin-top:6px;"><span style="font-size:10px; color:#9aa0ab; font-family:'IBM Plex Mono',monospace;">▲ 412K</span><span style="font-size:10px; color:#46c08f; font-family:'IBM Plex Mono',monospace;">ER 11%</span></div><div style="display:flex; gap:5px; margin-top:8px;"><span style="font-size:9px; color:#7c828c; background:#1f232b; padding:2px 6px; border-radius:4px;">бьюти</span><span style="font-size:9px; color:#9a93ff; background:#1a1830; padding:2px 6px; border-radius:4px;">видео</span><span style="font-size:9px; color:#46c08f; background:#13261d; padding:2px 6px; border-radius:4px;">ОТК 84</span></div></div>
+            </div>
+            <div style="background:#15171c; border:1px solid #21262e; border-radius:11px; overflow:hidden;">
+              <div style="aspect-ratio:9/14; background:repeating-linear-gradient(135deg,#23272f 0 8px,#1d2128 8px 16px); position:relative; display:flex; align-items:center; justify-content:center;"><span style="width:34px;height:34px;border-radius:50%;background:rgba(12,13,16,.6);border:1px solid #3a414d; display:flex; align-items:center; justify-content:center; font-size:12px; color:#e8eaee;">▶</span></div>
+              <div style="padding:10px;"><div style="font-size:12px; font-weight:600;">UGC-распаковка патчей</div><div style="display:flex; gap:8px; margin-top:6px;"><span style="font-size:10px; color:#9aa0ab; font-family:'IBM Plex Mono',monospace;">▲ 188K</span><span style="font-size:10px; color:#46c08f; font-family:'IBM Plex Mono',monospace;">ER 9%</span></div><div style="display:flex; gap:5px; margin-top:8px;"><span style="font-size:9px; color:#7c828c; background:#1f232b; padding:2px 6px; border-radius:4px;">бьюти</span><span style="font-size:9px; color:#9a93ff; background:#1a1830; padding:2px 6px; border-radius:4px;">видео</span></div></div>
+            </div>
+            <!-- GENERATING state card -->
+            <div style="background:#15171c; border:1.5px solid #d6a94e; border-radius:11px; overflow:hidden;">
+              <div style="aspect-ratio:9/14; background:#16181d; position:relative; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px;"><div style="width:26px; height:26px; border-radius:50%; border:3px solid #2b313b; border-top-color:#d6a94e; animation:spin .8s linear infinite;"></div><span style="font-size:10px; color:#d6a94e; font-family:'IBM Plex Mono',monospace;">рендер 74%</span><span style="position:absolute; bottom:0; left:0; right:0; height:4px; background:#23272f;"><span style="display:block; width:74%; height:100%; background:#d6a94e;"></span></span></div>
+              <div style="padding:10px;"><div style="font-size:12px; font-weight:600; color:#d6a94e;">SPF50 · A/B вариант B</div><div style="font-size:10px; color:#7c828c; margin-top:6px; font-family:'IBM Plex Mono',monospace;">монтаж · ~40 сек · $0.31</div></div>
+            </div>
+            <!-- SKELETON loading card -->
+            <div style="background:#15171c; border:1px solid #21262e; border-radius:11px; overflow:hidden;">
+              <div style="aspect-ratio:9/14; background:linear-gradient(90deg,#181b21 25%,#22262e 37%,#181b21 63%); background-size:480px 100%; animation:shimmer 1.4s linear infinite;"></div>
+              <div style="padding:10px;"><div style="height:11px; width:75%; border-radius:4px; background:#22262e; margin-bottom:8px;"></div><div style="height:9px; width:45%; border-radius:4px; background:#1d2128;"></div></div>
+            </div>
+          </div>
+
+          <!-- preset nodes -->
+          <h2 style="margin:0 0 12px; font-size:13px; font-weight:600; color:#98a0ab;">БИБЛИОТЕКА ПРЕСЕТ-НОД <span style="color:#4f5662; font-family:'IBM Plex Mono',monospace; font-weight:400;">переиспользуемые</span></h2>
+          <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:11px;">
+            <div style="background:#15171c; border:1px solid #21262e; border-radius:10px; padding:12px;"><div style="display:flex; align-items:center; gap:8px; margin-bottom:7px;"><span style="width:8px;height:8px;border-radius:2px;background:#5b9cf2;"></span><span style="font-size:9px; font-family:'IBM Plex Mono',monospace; color:#0c0d10; background:#5b9cf2; padding:1px 5px; border-radius:3px; font-weight:600;">HOOK</span></div><div style="font-size:12.5px; font-weight:600;">Макро-хук без лица</div><div style="font-size:10.5px; color:#7c828c; margin-top:4px;">Seedance · орбита · 2с</div><div style="font-size:10px; color:#5c636e; font-family:'IBM Plex Mono',monospace; margin-top:7px;">использовано 14×</div></div>
+            <div style="background:#15171c; border:1px solid #21262e; border-radius:10px; padding:12px;"><div style="display:flex; align-items:center; gap:8px; margin-bottom:7px;"><span style="width:8px;height:8px;border-radius:2px;background:#46c08f;"></span><span style="font-size:9px; font-family:'IBM Plex Mono',monospace; color:#0c0d10; background:#46c08f; padding:1px 5px; border-radius:3px; font-weight:600;">SCENE</span></div><div style="font-size:12.5px; font-weight:600;">UGC «у меня была проблема»</div><div style="font-size:10.5px; color:#7c828c; margin-top:4px;">Creatify · Аня · RU</div><div style="font-size:10px; color:#5c636e; font-family:'IBM Plex Mono',monospace; margin-top:7px;">использовано 9×</div></div>
+            <div style="background:#15171c; border:1px solid #21262e; border-radius:10px; padding:12px;"><div style="display:flex; align-items:center; gap:8px; margin-bottom:7px;"><span style="width:8px;height:8px;border-radius:2px;background:#ef6fa6;"></span><span style="font-size:9px; font-family:'IBM Plex Mono',monospace; color:#0c0d10; background:#ef6fa6; padding:1px 5px; border-radius:3px; font-weight:600;">CAPTIONS</span></div><div style="font-size:12.5px; font-weight:600;">Karaoke-титры жёлтые</div><div style="font-size:10.5px; color:#7c828c; margin-top:4px;">Shotstack · TT Norms · #F5E14A</div><div style="font-size:10px; color:#5c636e; font-family:'IBM Plex Mono',monospace; margin-top:7px;">использовано 21×</div></div>
+          </div>
+        </div>
+
+        <!-- right: versions + cost -->
+        <aside style="width:328px; flex:none; border-left:1px solid #21262e; background:#101216; overflow-y:auto; padding:18px;">
+          <div style="font-size:11px; font-weight:600; color:#98a0ab; margin-bottom:12px;">Версии графа · форки A/B</div>
+          <div style="position:relative; padding-left:6px; margin-bottom:20px;">
+            <div style="display:flex; align-items:center; gap:10px; margin-bottom:9px;"><span style="width:10px;height:10px;border-radius:50%;background:#5c636e; flex:none;"></span><div style="flex:1; display:flex; align-items:center; justify-content:space-between;"><div><div style="font-size:12px; color:#9aa0ab;">v1 · базовый клон</div><div style="font-size:9.5px; color:#5c636e; font-family:'IBM Plex Mono',monospace;">ОТК 61</div></div></div></div>
+            <div style="border-left:1.5px solid #2b313b; margin-left:4px; padding-left:16px;">
+              <div style="display:flex; align-items:center; gap:10px; margin-bottom:9px;"><span style="width:10px;height:10px;border-radius:50%;background:#5c636e; flex:none; margin-left:-22px;"></span><div style="flex:1;"><div style="font-size:12px; color:#9aa0ab;">v2 · новый хук</div><div style="font-size:9.5px; color:#5c636e; font-family:'IBM Plex Mono',monospace;">ОТК 72</div></div></div>
+              <div style="display:flex; align-items:center; gap:10px; margin-bottom:9px;"><span style="width:11px;height:11px;border-radius:50%;background:#7c74ff; flex:none; margin-left:-22.5px; box-shadow:0 0 0 3px rgba(124,116,255,.18);"></span><div style="flex:1; display:flex; align-items:center; justify-content:space-between;"><div><div style="font-size:12px; color:#e8eaee; font-weight:600;">v3 · текущая</div><div style="font-size:9.5px; color:#46c08f; font-family:'IBM Plex Mono',monospace;">ОТК 79</div></div><span style="font-size:9px; color:#9a93ff; background:#1a1830; padding:2px 6px; border-radius:4px; font-family:'IBM Plex Mono',monospace;">HEAD</span></div></div>
+              <div style="border-left:1.5px solid #2b313b; margin-left:4px; padding-left:16px;"><div style="display:flex; align-items:center; gap:10px;"><span style="width:9px;height:9px;border-radius:50%;background:#d6a94e; flex:none; margin-left:-21.5px;"></span><div style="flex:1;"><div style="font-size:12px; color:#9aa0ab;">v3a · A/B ревил <span style="color:#d6a94e;">(рендерится)</span></div><div style="font-size:9.5px; color:#5c636e; font-family:'IBM Plex Mono',monospace;">форк от v3</div></div></div></div>
+            </div>
+          </div>
+          <button style="width:100%; background:#1f232b; color:#e8eaee; border:1px solid #2b313b; border-radius:8px; padding:9px; font-size:12px; font-weight:600; font-family:inherit; cursor:pointer; margin-bottom:22px;">⑂ Форкнуть текущую для A/B</button>
+
+          <div style="font-size:11px; font-weight:600; color:#98a0ab; margin-bottom:12px;">Стоимость рендеров по графу</div>
+          <div style="display:flex; flex-direction:column; gap:11px;">
+            <div><div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:5px;"><span style="font-size:11.5px; color:#c2c7cf;">Seedance · видео</span><span style="font-size:11px; font-family:'IBM Plex Mono',monospace; color:#e8eaee;">$3.36</span></div><div style="height:5px; border-radius:3px; background:#2b313b;"><div style="width:62%; height:100%; border-radius:3px; background:#5b9cf2;"></div></div></div>
+            <div><div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:5px;"><span style="font-size:11.5px; color:#c2c7cf;">Creatify · UGC</span><span style="font-size:11px; font-family:'IBM Plex Mono',monospace; color:#e8eaee;">$1.20</span></div><div style="height:5px; border-radius:3px; background:#2b313b;"><div style="width:30%; height:100%; border-radius:3px; background:#46c08f;"></div></div></div>
+            <div><div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:5px;"><span style="font-size:11.5px; color:#c2c7cf;">Shotstack · монтаж</span><span style="font-size:11px; font-family:'IBM Plex Mono',monospace; color:#e8eaee;">$0.48</span></div><div style="height:5px; border-radius:3px; background:#2b313b;"><div style="width:12%; height:100%; border-radius:3px; background:#ef6fa6;"></div></div></div>
+            <div style="display:flex; align-items:center; justify-content:space-between; border-top:1px solid #21262e; padding-top:11px; margin-top:4px;"><span style="font-size:12px; color:#9aa0ab;">Итого по видео v3</span><span style="font-size:14px; font-weight:700; font-family:'IBM Plex Mono',monospace; color:#e8eaee;">$5.04</span></div>
+          </div>
+        </aside>
+      </div>
+    </div>
+    </sc-if>
+
+    <!-- ===== SCREEN DS: ДИЗАЙН-СИСТЕМА ===== -->
+    <sc-if value="{{ isDS }}" hint-placeholder-val="{{ true }}">
+    <div style="display:flex; flex-direction:column; height:100%; min-height:0;">
+      <header style="height:56px; flex:none; display:flex; align-items:center; justify-content:space-between; padding:0 22px; border-bottom:1px solid #21262e;">
+        <div style="display:flex; align-items:center; gap:10px;">
+          <span style="font-size:15px; font-weight:600;">Дизайн-система</span>
+          <span style="font-size:11px; color:#5c636e; font-family:'IBM Plex Mono',monospace; background:#16191f; border:1px solid #21262e; padding:3px 8px; border-radius:5px;">токены · компоненты · состояния</span>
+        </div>
+      </header>
+
+      <div style="flex:1; min-height:0; overflow-y:auto; padding:26px 32px;">
+        <div style="max-width:1080px; margin:0 auto; display:flex; flex-direction:column; gap:34px;">
+
+          <!-- COLORS -->
+          <section>
+            <div style="font-size:11px; letter-spacing:1.4px; text-transform:uppercase; color:#4f5662; font-weight:600; margin-bottom:14px;">01 · Палитра</div>
+            <div style="display:grid; grid-template-columns:repeat(2,1fr); gap:22px;">
+              <div>
+                <div style="font-size:12px; color:#9aa0ab; margin-bottom:9px;">Тёмная база (cool neutral)</div>
+                <div style="display:flex; border-radius:9px; overflow:hidden; border:1px solid #21262e;">
+                  <div style="flex:1; height:62px; background:#0c0d10; display:flex; align-items:flex-end; padding:5px;"><span style="font-size:8px; color:#7c828c; font-family:'IBM Plex Mono',monospace;">#0C0D10</span></div>
+                  <div style="flex:1; height:62px; background:#101216; display:flex; align-items:flex-end; padding:5px;"><span style="font-size:8px; color:#7c828c; font-family:'IBM Plex Mono',monospace;">#101216</span></div>
+                  <div style="flex:1; height:62px; background:#15171c; display:flex; align-items:flex-end; padding:5px;"><span style="font-size:8px; color:#7c828c; font-family:'IBM Plex Mono',monospace;">#15171C</span></div>
+                  <div style="flex:1; height:62px; background:#1f232b; display:flex; align-items:flex-end; padding:5px;"><span style="font-size:8px; color:#9aa0ab; font-family:'IBM Plex Mono',monospace;">#1F232B</span></div>
+                  <div style="flex:1; height:62px; background:#2b313b; display:flex; align-items:flex-end; padding:5px;"><span style="font-size:8px; color:#9aa0ab; font-family:'IBM Plex Mono',monospace;">#2B313B</span></div>
+                </div>
+                <div style="font-size:12px; color:#9aa0ab; margin:16px 0 9px;">Текст</div>
+                <div style="display:flex; gap:9px;">
+                  <div style="flex:1; background:#15171c; border:1px solid #21262e; border-radius:7px; padding:9px;"><div style="font-size:14px; color:#e8eaee; font-weight:600;">Aa</div><div style="font-size:8px; color:#5c636e; font-family:'IBM Plex Mono',monospace; margin-top:3px;">#E8EAEE</div></div>
+                  <div style="flex:1; background:#15171c; border:1px solid #21262e; border-radius:7px; padding:9px;"><div style="font-size:14px; color:#98a0ab; font-weight:600;">Aa</div><div style="font-size:8px; color:#5c636e; font-family:'IBM Plex Mono',monospace; margin-top:3px;">#98A0AB</div></div>
+                  <div style="flex:1; background:#15171c; border:1px solid #21262e; border-radius:7px; padding:9px;"><div style="font-size:14px; color:#5c636e; font-weight:600;">Aa</div><div style="font-size:8px; color:#5c636e; font-family:'IBM Plex Mono',monospace; margin-top:3px;">#5C636E</div></div>
+                </div>
+              </div>
+              <div>
+                <div style="font-size:12px; color:#9aa0ab; margin-bottom:9px;">Акцент + статусы</div>
+                <div style="display:flex; gap:9px; margin-bottom:16px;">
+                  <div style="flex:1;"><div style="height:46px; border-radius:7px; background:#7c74ff;"></div><div style="font-size:8px; color:#7c828c; font-family:'IBM Plex Mono',monospace; margin-top:5px;">accent #7C74FF</div></div>
+                  <div style="flex:1;"><div style="height:46px; border-radius:7px; background:#46c08f;"></div><div style="font-size:8px; color:#7c828c; font-family:'IBM Plex Mono',monospace; margin-top:5px;">ok #46C08F</div></div>
+                  <div style="flex:1;"><div style="height:46px; border-radius:7px; background:#d6a94e;"></div><div style="font-size:8px; color:#7c828c; font-family:'IBM Plex Mono',monospace; margin-top:5px;">warn #D6A94E</div></div>
+                  <div style="flex:1;"><div style="height:46px; border-radius:7px; background:#e5604f;"></div><div style="font-size:8px; color:#7c828c; font-family:'IBM Plex Mono',monospace; margin-top:5px;">err #E5604F</div></div>
+                </div>
+                <div style="font-size:12px; color:#9aa0ab; margin-bottom:9px;">Цвета типов портов</div>
+                <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:9px;">
+                  <div style="display:flex; align-items:center; gap:8px; background:#15171c; border:1px solid #21262e; border-radius:7px; padding:8px 10px;"><span style="width:13px;height:13px;border-radius:50%;background:#5b9cf2;border:2px solid #0c0d10;"></span><div style="line-height:1.1;"><div style="font-size:11px;">video</div><div style="font-size:8px; color:#5c636e; font-family:'IBM Plex Mono',monospace;">#5B9CF2</div></div></div>
+                  <div style="display:flex; align-items:center; gap:8px; background:#15171c; border:1px solid #21262e; border-radius:7px; padding:8px 10px;"><span style="width:13px;height:13px;border-radius:50%;background:#46c08f;border:2px solid #0c0d10;"></span><div style="line-height:1.1;"><div style="font-size:11px;">audio</div><div style="font-size:8px; color:#5c636e; font-family:'IBM Plex Mono',monospace;">#46C08F</div></div></div>
+                  <div style="display:flex; align-items:center; gap:8px; background:#15171c; border:1px solid #21262e; border-radius:7px; padding:8px 10px;"><span style="width:13px;height:13px;border-radius:50%;background:#d6a94e;border:2px solid #0c0d10;"></span><div style="line-height:1.1;"><div style="font-size:11px;">image</div><div style="font-size:8px; color:#5c636e; font-family:'IBM Plex Mono',monospace;">#D6A94E</div></div></div>
+                  <div style="display:flex; align-items:center; gap:8px; background:#15171c; border:1px solid #21262e; border-radius:7px; padding:8px 10px;"><span style="width:13px;height:13px;border-radius:50%;background:#b078ef;border:2px solid #0c0d10;"></span><div style="line-height:1.1;"><div style="font-size:11px;">script</div><div style="font-size:8px; color:#5c636e; font-family:'IBM Plex Mono',monospace;">#B078EF</div></div></div>
+                  <div style="display:flex; align-items:center; gap:8px; background:#15171c; border:1px solid #21262e; border-radius:7px; padding:8px 10px;"><span style="width:13px;height:13px;border-radius:50%;background:#ef6fa6;border:2px solid #0c0d10;"></span><div style="line-height:1.1;"><div style="font-size:11px;">caption</div><div style="font-size:8px; color:#5c636e; font-family:'IBM Plex Mono',monospace;">#EF6FA6</div></div></div>
+                  <div style="display:flex; align-items:center; gap:8px; background:#15171c; border:1px solid #21262e; border-radius:7px; padding:8px 10px;"><span style="width:13px;height:13px;border-radius:50%;background:#3fb9c2;border:2px solid #0c0d10;"></span><div style="line-height:1.1;"><div style="font-size:11px;">product</div><div style="font-size:8px; color:#5c636e; font-family:'IBM Plex Mono',monospace;">#3FB9C2</div></div></div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- TYPE + GRID -->
+          <section>
+            <div style="font-size:11px; letter-spacing:1.4px; text-transform:uppercase; color:#4f5662; font-weight:600; margin-bottom:14px;">02 · Типографика и сетка</div>
+            <div style="display:grid; grid-template-columns:1.4fr 1fr; gap:22px;">
+              <div style="background:#15171c; border:1px solid #21262e; border-radius:11px; padding:18px;">
+                <div style="display:flex; align-items:baseline; justify-content:space-between; border-bottom:1px solid #21262e; padding-bottom:11px; margin-bottom:11px;"><span style="font-size:26px; font-weight:700;">IBM Plex Sans</span><span style="font-size:10px; color:#5c636e; font-family:'IBM Plex Mono',monospace;">интерфейс</span></div>
+                <div style="display:flex; flex-direction:column; gap:9px;">
+                  <div style="display:flex; align-items:baseline; gap:14px;"><span style="font-size:22px; font-weight:600;">Заголовок 22/600</span><span style="font-size:9px; color:#5c636e; font-family:'IBM Plex Mono',monospace;">H1</span></div>
+                  <div style="display:flex; align-items:baseline; gap:14px;"><span style="font-size:15px; font-weight:600;">Секция 15/600</span><span style="font-size:9px; color:#5c636e; font-family:'IBM Plex Mono',monospace;">H2</span></div>
+                  <div style="display:flex; align-items:baseline; gap:14px;"><span style="font-size:12.5px;">Тело текста 12.5/400 — настраиваемо под капотом, просто сверху.</span></div>
+                  <div style="display:flex; align-items:baseline; gap:14px;"><span style="font-size:11px; color:#9aa0ab;">Подпись 11/400 muted</span></div>
+                  <div style="display:flex; align-items:baseline; gap:14px; border-top:1px solid #21262e; padding-top:11px; margin-top:4px;"><span style="font-size:13px; font-family:'IBM Plex Mono',monospace;">IBM Plex Mono · $0.42 · 1080×1920 · seed 84213</span></div>
+                  <div style="font-size:9px; color:#5c636e; font-family:'IBM Plex Mono',monospace;">мета · цены · тайминги · seed</div>
+                </div>
+              </div>
+              <div style="background:#15171c; border:1px solid #21262e; border-radius:11px; padding:18px;">
+                <div style="font-size:12px; color:#9aa0ab; margin-bottom:11px;">Сетка / отступы / радиусы</div>
+                <div style="display:flex; gap:6px; align-items:flex-end; margin-bottom:14px;">
+                  <div style="width:4px; height:18px; background:#7c74ff; border-radius:2px;"></div><div style="width:8px; height:18px; background:#7c74ff; border-radius:2px;"></div><div style="width:12px; height:18px; background:#7c74ff; border-radius:2px;"></div><div style="width:16px; height:18px; background:#7c74ff; border-radius:2px;"></div><div style="width:22px; height:18px; background:#7c74ff; border-radius:2px;"></div>
+                  <span style="font-size:9px; color:#5c636e; font-family:'IBM Plex Mono',monospace; margin-left:6px;">4·8·12·16·22</span>
+                </div>
+                <div style="display:flex; gap:10px;">
+                  <div style="flex:1; height:42px; background:#1f232b; border:1px solid #2b313b; border-radius:6px; display:flex; align-items:center; justify-content:center; font-size:9px; color:#7c828c; font-family:'IBM Plex Mono',monospace;">6 input</div>
+                  <div style="flex:1; height:42px; background:#1f232b; border:1px solid #2b313b; border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:9px; color:#7c828c; font-family:'IBM Plex Mono',monospace;">10 card</div>
+                  <div style="flex:1; height:42px; background:#1f232b; border:1px solid #2b313b; border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:9px; color:#7c828c; font-family:'IBM Plex Mono',monospace;">12 node</div>
+                </div>
+                <div style="font-size:10.5px; color:#5c636e; margin-top:13px; line-height:1.5;">База 8px. Панели 56px шапка. Сайдбары 208–432px. Канвас — точечная сетка 22px.</div>
+              </div>
+            </div>
+          </section>
+
+          <!-- COMPONENTS: big node card anatomy -->
+          <section>
+            <div style="font-size:11px; letter-spacing:1.4px; text-transform:uppercase; color:#4f5662; font-weight:600; margin-bottom:14px;">03 · Анатомия нод-карточки <span style="text-transform:none; letter-spacing:0; color:#7c828c;">(крупно)</span></div>
+            <div style="display:flex; gap:34px; align-items:center; background:#0e1014; border:1px solid #21262e; border-radius:13px; padding:30px; background-image:radial-gradient(circle,#15191f 1px,transparent 1px); background-size:22px 22px;">
+              <!-- the card -->
+              <div style="position:relative; width:262px; flex:none; background:#181b21; border:1.5px solid #7c74ff; border-radius:14px; box-shadow:0 0 0 4px rgba(124,116,255,.12), 0 18px 50px rgba(0,0,0,.5);">
+                <span style="position:absolute; left:-8px; top:64px; width:15px; height:15px; border-radius:50%; background:#5b9cf2; border:2px solid #0c0d10;"></span>
+                <span style="position:absolute; left:-8px; top:90px; width:15px; height:15px; border-radius:50%; background:#3fb9c2; border:2px solid #0c0d10;"></span>
+                <span style="position:absolute; right:-8px; top:64px; width:15px; height:15px; border-radius:50%; background:#5b9cf2; border:2px solid #0c0d10;"></span>
+                <span style="position:absolute; left:108px; bottom:-8px; width:15px; height:15px; border-radius:50%; background:#46c08f; border:2px solid #0c0d10;"></span>
+                <span style="position:absolute; left:138px; bottom:-8px; width:15px; height:15px; border-radius:50%; background:#ef6fa6; border:2px solid #0c0d10;"></span>
+                <!-- numbered callouts -->
+                <span style="position:absolute; left:-8px; top:-8px; width:20px; height:20px; border-radius:50%; background:#7c74ff; color:#fff; font-size:11px; font-weight:700; display:flex; align-items:center; justify-content:center; font-family:'IBM Plex Mono',monospace;">3</span>
+                <div style="position:relative; aspect-ratio:16/10; margin:11px 11px 0; border-radius:9px; background:repeating-linear-gradient(135deg,#23272f 0 8px,#1d2128 8px 16px); overflow:hidden; display:flex; align-items:flex-end; padding:8px;"><span style="font-size:10px; color:#9aa0ab; font-family:'IBM Plex Mono',monospace;">0:07–0:13</span><span style="position:absolute; right:8px; top:8px; width:20px; height:20px; border-radius:50%; background:#7c74ff; color:#fff; font-size:11px; font-weight:700; display:flex; align-items:center; justify-content:center; font-family:'IBM Plex Mono',monospace;">1</span></div>
+                <div style="padding:11px 13px 13px;">
+                  <div style="display:flex; align-items:center; justify-content:space-between;"><span style="font-size:10px; font-family:'IBM Plex Mono',monospace; color:#0c0d10; background:#46c08f; padding:2px 7px; border-radius:4px; font-weight:600;">SCENE</span><span style="display:flex; align-items:center; gap:5px; font-size:10px; font-family:'IBM Plex Mono',monospace; color:#46c08f; background:#13261d; padding:2px 7px; border-radius:4px;">ОТК✓ 84 <span style="width:18px; height:18px; border-radius:50%; background:#7c74ff; color:#fff; font-weight:700; display:flex; align-items:center; justify-content:center; font-size:10px;">2</span></span></div>
+                  <div style="font-size:14px; font-weight:600; margin-top:9px;">ASMR нанесение</div>
+                  <div style="display:flex; align-items:center; gap:7px; margin-top:11px; padding-top:11px; border-top:1px solid #21262e;"><span style="width:8px;height:8px;border-radius:50%;background:#5b9cf2;"></span><span style="font-size:11.5px; color:#9aa0ab;">▦ Seedance 1.0</span><span style="margin-left:auto; width:18px; height:18px; border-radius:50%; background:#7c74ff; color:#fff; font-weight:700; display:flex; align-items:center; justify-content:center; font-size:10px; font-family:'IBM Plex Mono',monospace;">5</span></div>
+                </div>
+                <span style="position:absolute; left:101px; bottom:-30px; font-size:10px; color:#46c08f; font-family:'IBM Plex Mono',monospace;"><span style="width:18px; height:18px; border-radius:50%; background:#7c74ff; color:#fff; font-weight:700; display:inline-flex; align-items:center; justify-content:center; font-size:10px; vertical-align:middle;">4</span></span>
+              </div>
+              <!-- legend -->
+              <div style="flex:1; display:flex; flex-direction:column; gap:13px;">
+                <div style="display:flex; gap:11px;"><span style="width:22px; height:22px; flex:none; border-radius:50%; background:#7c74ff; color:#fff; font-size:11px; font-weight:700; display:flex; align-items:center; justify-content:center; font-family:'IBM Plex Mono',monospace;">1</span><div><div style="font-size:13px; font-weight:600;">Мини-превью результата</div><div style="font-size:11.5px; color:#7c828c; margin-top:2px;">Кадр генерации + тайминг в монтаже. Скелетон/спиннер при рендере.</div></div></div>
+                <div style="display:flex; gap:11px;"><span style="width:22px; height:22px; flex:none; border-radius:50%; background:#7c74ff; color:#fff; font-size:11px; font-weight:700; display:flex; align-items:center; justify-content:center; font-family:'IBM Plex Mono',monospace;">2</span><div><div style="font-size:13px; font-weight:600;">Тип ноды + статус-бейдж + балл ОТК</div><div style="font-size:11.5px; color:#7c828c; margin-top:2px;">черновик / генерится / готово / ОТК✓ / ОТК✗ с числовым баллом.</div></div></div>
+                <div style="display:flex; gap:11px;"><span style="width:22px; height:22px; flex:none; border-radius:50%; background:#7c74ff; color:#fff; font-size:11px; font-weight:700; display:flex; align-items:center; justify-content:center; font-family:'IBM Plex Mono',monospace;">3</span><div><div style="font-size:13px; font-weight:600;">Типизированные цветные порты</div><div style="font-size:11.5px; color:#7c828c; margin-top:2px;">Слева вход, справа выход. Цвет = тип. Несовместимые соединить нельзя.</div></div></div>
+                <div style="display:flex; gap:11px;"><span style="width:22px; height:22px; flex:none; border-radius:50%; background:#7c74ff; color:#fff; font-size:11px; font-weight:700; display:flex; align-items:center; justify-content:center; font-family:'IBM Plex Mono',monospace;">4</span><div><div style="font-size:13px; font-weight:600;">Нижние порты — привязка инструмента/звука</div><div style="font-size:11.5px; color:#7c828c; margin-top:2px;">Вертикальные связи: audio (зелёный), caption (розовый).</div></div></div>
+                <div style="display:flex; gap:11px;"><span style="width:22px; height:22px; flex:none; border-radius:50%; background:#7c74ff; color:#fff; font-size:11px; font-weight:700; display:flex; align-items:center; justify-content:center; font-family:'IBM Plex Mono',monospace;">5</span><div><div style="font-size:13px; font-weight:600;">Слот инструмента-генератора</div><div style="font-size:11.5px; color:#7c828c; margin-top:2px;">Seedance / Creatify / Shotstack — клик открывает инспектор со всеми API-настройками.</div></div></div>
+              </div>
+            </div>
+          </section>
+
+          <!-- COMPONENTS: chips, ports, controls, tiles -->
+          <section>
+            <div style="font-size:11px; letter-spacing:1.4px; text-transform:uppercase; color:#4f5662; font-weight:600; margin-bottom:14px;">04 · Компоненты</div>
+            <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:14px;">
+              <div style="background:#15171c; border:1px solid #21262e; border-radius:11px; padding:15px;">
+                <div style="font-size:11px; color:#9aa0ab; margin-bottom:11px;">Чипы-статусы</div>
+                <div style="display:flex; flex-wrap:wrap; gap:7px;">
+                  <span style="font-size:10px; font-family:'IBM Plex Mono',monospace; color:#7c828c; background:#1f232b; padding:3px 8px; border-radius:5px;">черновик</span>
+                  <span style="font-size:10px; font-family:'IBM Plex Mono',monospace; color:#d6a94e; background:#241f12; padding:3px 8px; border-radius:5px;"><span style="display:inline-block;width:5px;height:5px;border-radius:50%;background:#d6a94e;animation:pulseDot 1s infinite;"></span> генерится</span>
+                  <span style="font-size:10px; font-family:'IBM Plex Mono',monospace; color:#46c08f; background:#13261d; padding:3px 8px; border-radius:5px;">готово</span>
+                  <span style="font-size:10px; font-family:'IBM Plex Mono',monospace; color:#46c08f; background:#13261d; padding:3px 8px; border-radius:5px;">ОТК✓ 84</span>
+                  <span style="font-size:10px; font-family:'IBM Plex Mono',monospace; color:#e5604f; background:#211a1a; padding:3px 8px; border-radius:5px;">ОТК✗ 52</span>
+                </div>
+                <div style="font-size:11px; color:#9aa0ab; margin:15px 0 9px;">Порты</div>
+                <div style="display:flex; gap:9px;"><span style="width:14px;height:14px;border-radius:50%;background:#5b9cf2;border:2px solid #0c0d10;"></span><span style="width:14px;height:14px;border-radius:50%;background:#46c08f;border:2px solid #0c0d10;"></span><span style="width:14px;height:14px;border-radius:50%;background:#d6a94e;border:2px solid #0c0d10;"></span><span style="width:14px;height:14px;border-radius:50%;background:#b078ef;border:2px solid #0c0d10;"></span><span style="width:14px;height:14px;border-radius:50%;background:#ef6fa6;border:2px solid #0c0d10;"></span><span style="width:14px;height:14px;border-radius:50%;background:#3fb9c2;border:2px solid #0c0d10;"></span></div>
+              </div>
+              <div style="background:#15171c; border:1px solid #21262e; border-radius:11px; padding:15px;">
+                <div style="font-size:11px; color:#9aa0ab; margin-bottom:11px;">Контролы инспектора</div>
+                <div style="display:flex; flex-direction:column; gap:11px;">
+                  <div style="display:flex; align-items:center; justify-content:space-between; background:#1f232b; border:1px solid #2b313b; border-radius:7px; padding:8px 10px; font-size:11.5px;">Dropdown<span style="color:#5c636e;">▾</span></div>
+                  <div><div style="display:flex; justify-content:space-between; margin-bottom:6px;"><span style="font-size:11px; color:#9aa0ab;">Slider</span><span style="font-size:10px; color:#e8eaee; font-family:'IBM Plex Mono',monospace;">0.6</span></div><div style="position:relative; height:5px; border-radius:3px; background:#2b313b;"><div style="width:60%; height:100%; border-radius:3px; background:#7c74ff;"></div><div style="position:absolute; left:60%; top:50%; transform:translate(-50%,-50%); width:13px; height:13px; border-radius:50%; background:#e8eaee; border:3px solid #7c74ff;"></div></div></div>
+                  <div style="display:flex; align-items:center; justify-content:space-between;"><span style="font-size:11.5px; color:#c2c7cf;">Toggle</span><div style="width:36px; height:20px; border-radius:11px; background:#7c74ff; position:relative;"><div style="position:absolute; right:2px; top:2px; width:16px; height:16px; border-radius:50%; background:#fff;"></div></div></div>
+                  <div style="display:flex; align-items:center; gap:8px;"><div style="width:26px; height:26px; border-radius:7px; background:#f5e14a; border:1px solid #2b313b;"></div><span style="font-size:10px; font-family:'IBM Plex Mono',monospace; color:#9aa0ab;">color+альфа</span></div>
+                </div>
+              </div>
+              <div style="background:#15171c; border:1px solid #21262e; border-radius:11px; padding:15px;">
+                <div style="font-size:11px; color:#9aa0ab; margin-bottom:11px;">Плитка ниши / карточка примера</div>
+                <div style="background:#181b21; border:1px solid #2b313b; border-radius:9px; padding:11px; margin-bottom:10px;"><div style="display:flex; align-items:center; justify-content:space-between;"><span style="font-size:18px;">💄</span><span style="font-size:9px; font-family:'IBM Plex Mono',monospace; color:#7c74ff; background:rgba(124,116,255,.12); padding:2px 6px; border-radius:4px;">АКТИВНА</span></div><div style="font-size:12.5px; font-weight:600; margin-top:8px;">Бьюти / уход</div></div>
+                <div style="border-radius:8px; overflow:hidden; border:1px solid #21262e; display:flex; gap:9px; padding:8px; background:#181b21;"><div style="width:32px;height:42px;border-radius:5px;background:repeating-linear-gradient(135deg,#23272f 0 6px,#1d2128 6px 12px);flex:none;"></div><div><div style="font-size:11px;">До/после 14 дней</div><div style="font-size:9px; color:#5c636e; font-family:'IBM Plex Mono',monospace; margin-top:3px;">2.4M · ER 12%</div></div></div>
+              </div>
+            </div>
+          </section>
+
+          <!-- STATES -->
+          <section>
+            <div style="font-size:11px; letter-spacing:1.4px; text-transform:uppercase; color:#4f5662; font-weight:600; margin-bottom:14px;">05 · Состояния <span style="text-transform:none; letter-spacing:0; color:#7c828c;">loading · empty · error · generating</span></div>
+            <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:14px;">
+              <!-- loading -->
+              <div style="background:#15171c; border:1px solid #21262e; border-radius:11px; padding:13px;">
+                <div style="font-size:10px; color:#5c636e; font-family:'IBM Plex Mono',monospace; margin-bottom:10px;">loading · skeleton</div>
+                <div style="aspect-ratio:16/10; border-radius:8px; background:linear-gradient(90deg,#181b21 25%,#22262e 37%,#181b21 63%); background-size:480px 100%; animation:shimmer 1.4s linear infinite; margin-bottom:9px;"></div>
+                <div style="height:10px; width:70%; border-radius:4px; background:#22262e; margin-bottom:7px;"></div>
+                <div style="height:8px; width:45%; border-radius:4px; background:#1d2128;"></div>
+              </div>
+              <!-- empty -->
+              <div style="background:#15171c; border:1px dashed #333a45; border-radius:11px; padding:13px; display:flex; flex-direction:column;">
+                <div style="font-size:10px; color:#5c636e; font-family:'IBM Plex Mono',monospace; margin-bottom:10px;">empty · CTA</div>
+                <div style="flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; gap:9px; padding:10px 0;">
+                  <span style="font-size:22px;">⌗</span>
+                  <div style="font-size:11.5px; color:#c2c7cf; line-height:1.4;">Холст никогда не пустой</div>
+                  <div style="font-size:10px; color:#7c828c;">Начни с клона конкурента или шаблона</div>
+                  <button style="background:#7c74ff; color:#fff; border:none; border-radius:7px; padding:7px 12px; font-size:11px; font-weight:600; font-family:inherit; cursor:pointer; margin-top:2px;">＋ Выбрать шаблон</button>
+                </div>
+              </div>
+              <!-- error -->
+              <div style="background:#15171c; border:1px solid #3a2420; border-radius:11px; padding:13px; display:flex; flex-direction:column;">
+                <div style="font-size:10px; color:#e5604f; font-family:'IBM Plex Mono',monospace; margin-bottom:10px;">error · повтор</div>
+                <div style="flex:1; display:flex; flex-direction:column; gap:9px; justify-content:center;">
+                  <span style="font-size:20px; color:#e5604f;">⚠</span>
+                  <div style="font-size:11.5px; color:#e8eaee; line-height:1.4;">Seedance: таймаут API (504)</div>
+                  <div style="font-size:10px; color:#7c828c; line-height:1.4;">Кадр не сгенерирован. Списания нет. Сид сохранён.</div>
+                  <div style="display:flex; gap:7px; margin-top:3px;"><button style="background:#1f232b; color:#e8eaee; border:1px solid #3a2420; border-radius:7px; padding:6px 11px; font-size:11px; font-weight:600; font-family:inherit; cursor:pointer;">↻ Повторить</button><button style="background:transparent; color:#7c828c; border:none; padding:6px 4px; font-size:11px; font-family:inherit; cursor:pointer;">Логи</button></div>
+                </div>
+              </div>
+              <!-- generating -->
+              <div style="background:#15171c; border:1.5px solid #d6a94e; border-radius:11px; padding:13px;">
+                <div style="font-size:10px; color:#d6a94e; font-family:'IBM Plex Mono',monospace; margin-bottom:10px;">generating · прогресс</div>
+                <div style="aspect-ratio:16/10; border-radius:8px; background:#16181d; display:flex; align-items:center; justify-content:center; margin-bottom:9px;"><div style="width:24px; height:24px; border-radius:50%; border:3px solid #2b313b; border-top-color:#d6a94e; animation:spin .8s linear infinite;"></div></div>
+                <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;"><span style="font-size:11px; color:#d6a94e;">Генерация…</span><span style="font-size:10px; color:#e8eaee; font-family:'IBM Plex Mono',monospace;">62% · $0.42</span></div>
+                <div style="height:5px; border-radius:3px; background:#23272f; overflow:hidden;"><div style="width:62%; height:100%; background:#d6a94e;"></div></div>
+              </div>
+            </div>
+          </section>
+
+          <div style="height:8px;"></div>
+        </div>
+      </div>
+    </div>
+    </sc-if>
+
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = { screen: 'center', tool: 'seedance' };
+
+  renderVals() {
+    const screen = this.state.screen;
+    const items = [
+      { id:'center',   n:'01', label:'Командный центр', sub:'карта осознания' },
+      { id:'compete',  n:'02', label:'Анализ конкурентов', sub:'decompose' },
+      { id:'canvas',   n:'03', label:'Нод-канвас', sub:'граф видео' },
+      { id:'inspector',n:'04', label:'Инспектор ноды', sub:'настройки' },
+      { id:'assembly', n:'05', label:'Сборка / ОТК', sub:'таймлайн' },
+      { id:'library',  n:'06', label:'База видосов', sub:'рецепты' },
+      { id:'ds',       n:'DS', label:'Дизайн-система', sub:'токены' },
+    ];
+    const nav = items.map(it => {
+      const active = it.id === screen;
+      return {
+        ...it,
+        go: () => this.setState({ screen: it.id }),
+        style: `display:flex; align-items:center; gap:11px; width:100%; text-align:left; cursor:pointer; padding:8px 10px; border-radius:8px; border:1px solid ${active ? '#2b2a45' : 'transparent'}; background:${active ? 'rgba(124,116,255,.12)' : 'transparent'}; color:${active ? '#e8eaee' : '#9aa0ab'}; font-family:inherit;`,
+        numStyle: `flex:none; width:26px; height:26px; border-radius:6px; display:flex; align-items:center; justify-content:center; font-size:10.5px; font-weight:600; font-family:'IBM Plex Mono',monospace; background:${active ? '#7c74ff' : '#1a1d23'}; color:${active ? '#fff' : '#5c636e'}; border:1px solid ${active ? 'transparent' : '#262b33'};`,
+      };
+    });
+
+    const t = this.state.tool;
+    const tabs = [
+      { id:'seedance', label:'Seedance', sub:'AI-видео', dot:'#5b9cf2' },
+      { id:'creatify', label:'Creatify', sub:'UGC-актёр', dot:'#46c08f' },
+      { id:'shotstack', label:'Shotstack', sub:'монтаж/титры', dot:'#ef6fa6' },
+    ].map(x => {
+      const active = x.id === t;
+      return { ...x, go:()=>this.setState({tool:x.id}),
+        style:`display:flex; align-items:center; gap:9px; cursor:pointer; padding:9px 13px; border-radius:8px; font-family:inherit; border:1px solid ${active?'#2b2a45':'#21262e'}; background:${active?'rgba(124,116,255,.12)':'#15171c'}; color:${active?'#e8eaee':'#9aa0ab'};`,
+        dotStyle:`width:9px; height:9px; border-radius:50%; background:${x.dot};` };
+    });
+
+    return {
+      nav,
+      tabs,
+      toolSeedance:  t === 'seedance',
+      toolCreatify:  t === 'creatify',
+      toolShotstack: t === 'shotstack',
+      priceDot:     t==='seedance' ? '#5b9cf2' : t==='creatify' ? '#46c08f' : '#ef6fa6',
+      priceTitle:   t==='seedance' ? 'Seedance 1.0 · AI-видео' : t==='creatify' ? 'Creatify · UGC-актёр' : 'Shotstack · монтаж/титры',
+      priceVal:     t==='seedance' ? '$0.42' : t==='creatify' ? '$1.20' : '$0.08',
+      priceFormula: t==='seedance' ? 'Pro × 6с × 1080p' : t==='creatify' ? 'аватар × голос × 12с' : 'рендер × титры × 1080p',
+      noop: () => {},
+      setTool: (id) => this.setState({ tool: id }),
+      tool: this.state.tool,
+      isCenter:    screen === 'center',
+      isCompete:   screen === 'compete',
+      isCanvas:    screen === 'canvas',
+      isInspector: screen === 'inspector',
+      isAssembly:  screen === 'assembly',
+      isLibrary:   screen === 'library',
+      isDS:        screen === 'ds',
+    };
+  }
+}
+</script>
+</body>
+</html>

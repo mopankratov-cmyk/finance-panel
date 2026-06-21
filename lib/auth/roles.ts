@@ -17,7 +17,7 @@ export const ROLE_LABEL: Record<Role, string> = {
 const ACCESS: Record<Role, string[]> = {
   director: ["*"],
   finance: ["/", "/calendar", "/payments", "/accounts", "/loans", "/opiu", "/pnl", "/summary", "/losses", "/costs", "/supplies", "/agent", "/sync", "/ozon", "/inferno", "/abc", "/trends", "/market", "/card-editor", "/carousel", "/video-overlay", "/uniquizer"],
-  manager: ["/", "/ozon", "/inferno", "/content", "/costs", "/agent", "/abc", "/trends", "/market", "/card-editor", "/carousel", "/video-overlay", "/uniquizer"],
+  manager: ["/", "/ozon", "/inferno", "/costs", "/agent", "/abc", "/trends", "/market", "/card-editor", "/carousel", "/video-overlay", "/uniquizer"],
 };
 
 export function canAccess(role: Role, path: string): boolean {

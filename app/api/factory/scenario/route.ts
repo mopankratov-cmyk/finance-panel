@@ -3,6 +3,7 @@ import { createClaudeClient } from "@/lib/agent/client";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { DEAI_FILTERS, PROBLEM_STACK } from "@/lib/factory/standard";
 import { brandProfile } from "@/lib/factory/brandProfiles";
+import { nicheFromArticle } from "@/lib/factory/rubric";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -34,10 +35,55 @@ export async function POST(req: NextRequest) {
     pbHint =
       `\nПЛЕЙБУК НИШИ (опирайся на РЕАЛЬНО залетающее):` +
       (Array.isArray(pb.hooks) && pb.hooks.length ? `\nРабочие хуки-образцы: ${pb.hooks.slice(0, 5).join(" | ")}` : "") +
-      (chosen ? `\nФормат «${chosen.name}» — покадровая структура: ${(chosen.beats || []).join(" → ")}. Первый кадр: ${chosen.hook || "хук в лоб"}.` : "") +
+      (chosen
+        ? `\nФормат «${chosen.name}»:` +
+          (chosen.structure_by_seconds ? ` Структура по секундам: ${chosen.structure_by_seconds}.` : ` Биты: ${(chosen.beats || []).join(" → ")}.`) +
+          (chosen.hook ? ` Первый кадр-хук: ${chosen.hook}.` : "") +
+          (chosen.retention_mechanism ? ` Механизм удержания: ${chosen.retention_mechanism}.` : "") +
+          (chosen.psycho_trigger ? ` Психо-триггер: ${chosen.psycho_trigger}.` : "") +
+          (chosen.attention_break_point ? ` Перелом внимания: ${chosen.attention_break_point}.` : "") +
+          (chosen.render_role && chosen.render_role !== "нет" ? ` AI-рендер: ${chosen.render_role} (не целый ролик!).` : "")
+        : "") +
       (Array.isArray(pb.anti_patterns) && pb.anti_patterns.length ? `\nНЕ делай: ${pb.anti_patterns.slice(0, 4).join("; ")}` : "") +
       (snd ? `\nТренд-звук под нишу: «${snd.title}»${snd.commerce_safe ? " (коммерч-безопасен)" : " (только органика, не для рекламы)"} — укажи его в поле music.` : "") +
       (pb.cta ? `\nCTA: ${pb.cta}` : "");
+  }
+
+  // Корпус вирального: грунтовка на реально залетевших видео/хуках/звуках ниши (таблицы могут не существовать).
+  // Работает из фоновой очереди — не требует playbook (который только в браузере).
+  let corpusHint = "";
+  if (!pb && article) {
+    try {
+      const dbC = getSupabaseAdmin();
+      const rn = nicheFromArticle(article, name);
+      if (dbC && rn) {
+        const [{ data: vids }, { data: hks }, { data: orbits }] = await Promise.all([
+          dbC.from("viral_videos").select("hook_text,format_detected,beat_structure").eq("niche", rn).order("virality_score", { ascending: false }).limit(3),
+          dbC.from("viral_hooks").select("hook_text").eq("niche", rn).order("viability_score", { ascending: false }).limit(6),
+          dbC.from("orbit_searches").select("sounds").eq("niche", rn).not("sounds", "is", null).limit(3),
+        ]);
+        const vidLines = ((vids || []) as { hook_text?: string; format_detected?: string; beat_structure?: unknown }[])
+          .filter((v) => v.hook_text || v.beat_structure)
+          .map((v) => `• «${v.hook_text || "?"}» [${v.format_detected || ""}${v.beat_structure ? " / " + JSON.stringify(v.beat_structure).slice(0, 80) : ""}]`)
+          .join("\n");
+        const hkLine = ((hks || []) as { hook_text: string }[]).map((h) => `«${h.hook_text}»`).join(" | ");
+        // top commerce-safe звук из synced орбит этой ниши
+        let sndHint = "";
+        try {
+          const sounds = (orbits || []).flatMap((o: { sounds: unknown }) => Array.isArray(o.sounds) ? o.sounds as Record<string, unknown>[] : [])
+            .filter((s) => typeof s.is_commerce_safe !== "boolean" || s.is_commerce_safe)
+            .sort((a, b) => (Number(b.avg_views) || 0) - (Number(a.avg_views) || 0));
+          if (sounds[0]?.title) sndHint = `\nТоп звук ниши (commerce-safe): «${sounds[0].title}»${sounds[0].avg_views ? ` (avg ${Math.round(Number(sounds[0].avg_views) / 1000)}K просм.)` : ""} — укажи его в поле music.`;
+        } catch { /* */ }
+        if (vidLines || hkLine) {
+          corpusHint =
+            "\n\nКОРПУС ЗАЛЕТЕВШЕГО В НИШЕ (реальные примеры — повтори дух/структуру в первом кадре):" +
+            (vidLines ? "\n" + vidLines : "") +
+            (hkLine ? "\nПроверенные хуки: " + hkLine : "") +
+            sndHint;
+        }
+      }
+    } catch { /* corpus optional */ }
   }
 
   const client = await createClaudeClient();
@@ -49,7 +95,7 @@ export async function POST(req: NextRequest) {
     "Верни СТРОГО JSON: {\"title\":\"название\",\"duration_sec\":20,\"shots\":[{\"t\":\"0-3с\",\"visual\":\"что в кадре\",\"voiceover\":\"закадр/реплика\",\"onscreen\":\"текст на экране\"}],\"caption\":\"подпись под видео\",\"hashtags\":[\"...\"],\"cta\":\"призыв искать товар на WB\",\"music\":\"тип трендового звука\"}. Только JSON.";
   const isStack = /проблем|3 проблем|problem|стек/i.test(format);
   const hookBoost = body.hook_boost === true; // хук-гейт забраковал хук → просим резче
-  const user = `Товар: ${name || article}${article ? ` (арт. ${article})` : ""}. Идея/хук: «${hook}».${format ? ` Формат: ${format}.` : ""}${isStack ? ` Разверни по структуре «3 проблемы»: ${PROBLEM_STACK}` : ""}${pbHint} Сделай покадровый сценарий: первый кадр = хук в лоб, держит внимание, в конце мягкий CTA на поиск товара на WB.${hookBoost ? " ВАЖНО: предыдущий хук получился слабым — сделай ПЕРВУЮ ФРАЗУ и первый кадр заметно резче: паттерн-брейк/новизна/интрига/неожиданность, без общих слов и витрины." : ""}`;
+  const user = `Товар: ${name || article}${article ? ` (арт. ${article})` : ""}. Идея/хук: «${hook}».${format ? ` Формат: ${format}.` : ""}${isStack ? ` Разверни по структуре «3 проблемы»: ${PROBLEM_STACK}` : ""}${pbHint}${corpusHint} Сделай покадровый сценарий: первый кадр = хук в лоб, держит внимание, в конце мягкий CTA на поиск товара на WB.${hookBoost ? " ВАЖНО: предыдущий хук получился слабым — сделай ПЕРВУЮ ФРАЗУ и первый кадр заметно резче: паттерн-брейк/новизна/интрига/неожиданность, без общих слов и витрины." : ""}`;
 
   try {
     const res = await client.messages.create({ model: MODEL, max_tokens: 1800, system: sys, messages: [{ role: "user", content: user }] });

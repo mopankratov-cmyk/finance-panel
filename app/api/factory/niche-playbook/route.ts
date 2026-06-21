@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClaudeClient } from "@/lib/agent/client";
 import { virloSearchResult } from "@/lib/factory/trendSources";
+import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { nicheFromArticle } from "@/lib/factory/rubric";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -46,6 +48,7 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
   const niche: string = (body.niche || body.product_name || "").toString().trim();
   const jobId: string = (body.job_id || body.id || "").toString().trim();
+  const article: string = (body.article || "").toString().trim(); // нужен для согласованной нормализации ниши с sync-orbit
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let analysis: any = body.analysis || null;
@@ -61,7 +64,20 @@ export async function POST(req: NextRequest) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     if (s) sounds = ((s as any).data || s) as any[];
   }
-  if (!analysis) return NextResponse.json({ error: "Нет аналитики ниши (передай job_id готового Orbit или analysis)" }, { status: 400 });
+  // Orbit-аналитики может не быть (data_intelligence выключен / orbit без анализа). Тогда строим из НАШЕГО
+  // корпуса: viral_videos (реальные залетевшие видео ниши) + viral_hooks. 182 видео достаточно для плейбука —
+  // их описания/метрики уходят в corpusBlock ниже, а themes остаются пустыми (синтетический плейсхолдер).
+  if (!analysis) {
+    try {
+      const db0 = getSupabaseAdmin();
+      if (db0) {
+        const rn0 = nicheFromArticle(article, niche);
+        const { count } = await db0.from("viral_videos").select("id", { count: "exact", head: true }).eq("niche", rn0);
+        if ((count ?? 0) > 0) analysis = { themes: [], viral_tactics: [], timing_analysis: {}, _from_corpus: true };
+      }
+    } catch { /* корпус недоступен */ }
+  }
+  if (!analysis) return NextResponse.json({ error: "Нет данных ниши: ни Orbit-аналитики, ни видео в корпусе (синкни орбиты)" }, { status: 400 });
 
   const client = await createClaudeClient();
   if (!client) return NextResponse.json({ error: "ANTHROPIC_API_KEY не настроен" }, { status: 500 });
@@ -82,7 +98,7 @@ export async function POST(req: NextRequest) {
 {
  "niche": "коротко",
  "summary": "1-2 предложения: что реально заходит",
- "winning_formats": [{"name":"...","engagement":"высокий|средний","hook":"первая фраза 0-1 сек по-русски","beats":["кадр 1","кадр 2","кадр 3"],"needs_human":true|false,"render_role":"где тут AI-рендер: обложка|кадр-вставка|нет"}],
+ "winning_formats": [{"name":"...","engagement":"высокий|средний","hook":"первая фраза 0-1 сек по-русски","hook_type":"pattern_break|curiosity_gap|surprise|problem|demo","beats":["кадр 1","кадр 2","кадр 3"],"structure_by_seconds":"0-2 хук → 2-5 … → 5-10 … → payoff","retention_mechanism":"чем держит досмотр","psycho_trigger":"эмоция/триггер (shock|curiosity|flex|calm)","attention_break_point":"где перелом внимания","needs_human":true|false,"render_role":"где тут AI-рендер: обложка|кадр-вставка|нет"}],
  "hooks": ["5-7 готовых хуков под нишу, по-русски"],
  "sounds": [{"title":"...","id":"...","commerce_safe":true,"note":"метрика"}],
  "anti_patterns": ["что НЕ делать (что выглядит рекламой/скучно)"],
@@ -91,11 +107,31 @@ export async function POST(req: NextRequest) {
 }
 Верни ГОЛЫЙ JSON без markdown-ограждения и без преамбулы. Будь компактным: 3-4 winning_formats, beats ≤3 коротких, hooks ровно 5. Отсортируй форматы по engagement.`;
 
+  // грунтовка на корпусе: реальные примеры залетевшего из viral_videos/viral_hooks (таблицы могут ещё не существовать)
+  let corpusBlock = "";
+  try {
+    const db = getSupabaseAdmin();
+    if (db) {
+      const rn = nicheFromArticle(article, niche);
+      const [vv, vh] = await Promise.all([
+        db.from("viral_videos").select("hook_text,format_detected,caption,views,virality_score").eq("niche", rn).order("virality_score", { ascending: false, nullsFirst: false }).limit(12),
+        db.from("viral_hooks").select("hook_text").eq("niche", rn).order("viability_score", { ascending: false }).limit(10),
+      ]);
+      const vids = (vv.data as Record<string, unknown>[] | null) ?? [];
+      const hks = ((vh.data as { hook_text: string }[] | null) ?? []).map((r) => r.hook_text).filter(Boolean);
+      if (vids.length || hks.length) {
+        corpusBlock = `\nРЕАЛЬНЫЙ КОРПУС (наши данные — строй НА ЭТОМ): ` +
+          (hks.length ? `\nЗалетевшие хуки ниши: ${hks.map((h) => `«${h}»`).join(" | ")}` : "") +
+          (vids.length ? `\nТоп залетевших видео ниши (описание · просмотры · hook/формат если разобран): ${JSON.stringify(vids.map((v) => ({ caption: typeof v.caption === "string" ? v.caption.slice(0, 200) : null, views: v.views, hook: v.hook_text, format: v.format_detected }))).slice(0, 3000)}` : "");
+      }
+    }
+  } catch { /* корпуса ещё нет — плейбук строится только на Orbit */ }
+
   const user = `Ниша: ${niche || "(из данных)"}.
 Темы/форматы (с метрикой): ${JSON.stringify(themes).slice(0, 3500)}
 Виральные тактики: ${JSON.stringify(ad.viral_tactics || []).slice(0, 1200)}
 Тайминг постинга: ${JSON.stringify(ad.timing_analysis || {}).slice(0, 300)}
-Тренд-звуки (коммерч.=commerce, avg_views=средние просмотры): ${JSON.stringify(soundShort).slice(0, 1500)}
+Тренд-звуки (коммерч.=commerce, avg_views=средние просмотры): ${JSON.stringify(soundShort).slice(0, 1500)}${corpusBlock}
 Собери плейбук.`;
 
   try {
@@ -113,6 +149,30 @@ export async function POST(req: NextRequest) {
         return src ? { ...p, id: src.id, commerce_safe: !!src.commerce } : p;
       });
     }
+    const rn = nicheFromArticle(article, niche);
+    // best-effort: проверенные хуки плейбука → viral_hooks — чтобы хук-турнир калибровался
+    try {
+      const db = getSupabaseAdmin();
+      if (db && Array.isArray(playbook.hooks) && playbook.hooks.length) {
+        const hooks = (playbook.hooks as unknown[]).map((h) => String(h || "").trim()).filter(Boolean).slice(0, 10);
+        const { data: existing } = await db.from("viral_hooks").select("hook_text").eq("niche", rn).limit(300);
+        const have = new Set(((existing as { hook_text: string }[] | null) ?? []).map((r) => r.hook_text));
+        const fresh = hooks.filter((h) => !have.has(h)).map((h) => ({ niche: rn, hook_text: h, viability_score: 1, effectiveness_notes: "from playbook" }));
+        if (fresh.length) await db.from("viral_hooks").insert(fresh);
+      }
+    } catch { /* корпуса ещё нет / не критично */ }
+
+    // best-effort: сохраняем скомпилированный плейбук в niche_playbooks → фоновая очередь может читать его без браузера
+    try {
+      const db = getSupabaseAdmin();
+      if (db && rn) {
+        await db.from("niche_playbooks").upsert({
+          niche: rn, article: article || null, orbit_job_id: jobId || null,
+          playbook, orbit_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+        }, { onConflict: "niche" });
+      }
+    } catch { /* niche_playbooks не применена / не критично */ }
+
     return NextResponse.json({ playbook });
   } catch (e) {
     return NextResponse.json({ error: String(e).slice(0, 200) }, { status: 502 });

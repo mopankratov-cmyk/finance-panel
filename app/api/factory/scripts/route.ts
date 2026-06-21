@@ -5,17 +5,43 @@ import { CONTENT_STANDARD, HOOK_FORMULAS, HOOK_ANTIPATTERNS, DEAI_FILTERS, PROBL
 import { brandProfile } from "@/lib/factory/brandProfiles";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+export const maxDuration = 120;
 
 // Копирайтер: быстрый Sonnet, один вызов — генерит N сценариев И сам оценивает каждый по стандарту
 // (self-QA: score/verdict/fix). Брак (< порога) → verdict "rework". Укладывается в лимит функции.
 const MODEL = "claude-sonnet-4-6";
 
+// Толерантный сбор сценариев: вытаскиваем ВСЕ цельные top-level {…}-объекты из ответа, даже если массив
+// оборван по лимиту токенов (строгий JSON.parse падал на неполном `[...]` → 0 идей → бар гас). Битый
+// последний объект просто отбрасываем, остальные сохраняем.
+function extractScripts(txt: string): Record<string, unknown>[] {
+  const start = txt.indexOf("[");
+  const s = start >= 0 ? txt.slice(start + 1) : txt;
+  // быстрый путь — вдруг массив целый
+  if (start >= 0) {
+    const m = txt.slice(start).match(/\[[\s\S]*\]/);
+    if (m) { try { const a = JSON.parse(m[0]); if (Array.isArray(a) && a.length) return a as Record<string, unknown>[]; } catch { /* падаем на пообъектный сбор */ } }
+  }
+  const out: Record<string, unknown>[] = [];
+  let depth = 0, objStart = -1, inStr = false, esc = false;
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (esc) { esc = false; continue; }
+    if (c === "\\") { esc = true; continue; }
+    if (c === '"') { inStr = !inStr; continue; }
+    if (inStr) continue;
+    if (c === "{") { if (depth === 0) objStart = i; depth++; }
+    else if (c === "}") { depth--; if (depth === 0 && objStart >= 0) { try { out.push(JSON.parse(s.slice(objStart, i + 1)) as Record<string, unknown>); } catch { /* битый объект — пропускаем */ } objStart = -1; } }
+  }
+  return out;
+}
+
 export async function POST(req: NextRequest) {
+ try {
   const body = await req.json().catch(() => ({}));
   const article: string = (body.article || "").toString().trim();
   let name: string = (body.product_name || "").toString().trim();
-  const count = Math.min(10, Math.max(2, Number(body.count) || 5));
+  const count = Math.min(15, Math.max(2, Number(body.count) || 10));
   const brief: string = (body.brief || "").toString().trim();
   const competitorBrief: string = (body.competitor_brief || "").toString().trim();
   let profile: string = (body.profile || "").toString().trim().slice(0, 2000);
@@ -26,22 +52,77 @@ export async function POST(req: NextRequest) {
     : "";
   // плейбук ниши (из «Изучить нишу») — РЕАЛЬНО залетающее: на этом строим идеи (research-first)
   const pb = body.playbook && typeof body.playbook === "object" ? body.playbook : null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const fmts: any[] = pb && Array.isArray(pb.winning_formats) ? pb.winning_formats : [];
   const pbHint = pb
     ? `\n\nПЛЕЙБУК НИШИ (данные Virlo — что РЕАЛЬНО залетает; СТРОЙ идеи на этом, адаптируя под товар):` +
       (pb.summary ? `\nСуть: ${String(pb.summary).slice(0, 300)}` : "") +
-      (Array.isArray(pb.winning_formats) && pb.winning_formats.length ? `\nФорматы-победители: ${pb.winning_formats.slice(0, 5).map((f: Record<string, unknown>) => f.name).filter(Boolean).join(" | ")}` : "") +
+      (fmts.length
+        ? `\nФорматы-победители (бери структуру, а не название): ` +
+          fmts.slice(0, 4).map((f) =>
+            `«${f.name}»` +
+            (f.structure_by_seconds ? ` [${String(f.structure_by_seconds).slice(0, 80)}]` : (Array.isArray(f.beats) ? ` [${f.beats.join("→")}]` : "")) +
+            (f.psycho_trigger ? ` (триггер: ${f.psycho_trigger})` : "")
+          ).join(" | ")
+        : "") +
       (Array.isArray(pb.hooks) && pb.hooks.length ? `\nРабочие хуки ниши (адаптируй, не копируй дословно): ${pb.hooks.slice(0, 7).join(" | ")}` : "") +
       (Array.isArray(pb.anti_patterns) && pb.anti_patterns.length ? `\nНЕ делай (анти-паттерны ниши): ${pb.anti_patterns.slice(0, 4).join("; ")}` : "")
     : "";
 
-  if (!name && article) {
-    const db = getSupabaseAdmin();
-    if (db) { const { data } = await db.from("product_costs").select("name").eq("article", article).maybeSingle(); name = (data?.name as string) || ""; }
+  const db = getSupabaseAdmin();
+  if (!name && article && db) {
+    // limit(1)+[0], НЕ maybeSingle(): при дублях артикула maybeSingle бросает «multiple rows» → краш функции
+    try {
+      const { data } = await db.from("product_costs").select("name").eq("article", article).limit(1);
+      name = ((data as { name: string }[] | null)?.[0]?.name) || "";
+    } catch { /* product_costs может отсутствовать — не критично */ }
   }
   const subject = name || article;
   if (!subject) return NextResponse.json({ error: "Нужен артикул или название товара" }, { status: 400 });
   // профиль не задан вручную → подбираем по БРЕНДУ товара (1 бренд = 1 профиль)
   if (!profile) profile = brandProfile(article, name);
+
+  // P2.1 Winners loop: подтягиваем наши зашедшие ролики по нише → копирайтер строит вариации
+  let winnersHint = "";
+  if (db && article) {
+    try {
+      const { nicheFromArticle } = await import("@/lib/factory/rubric");
+      const niche = nicheFromArticle(article, name);
+      if (niche) {
+        const { data: wins } = await db.from("content_assets")
+          .select("winner_learnings,name")
+          .eq("niche", niche).eq("is_winner", true)
+          .order("winner_at", { ascending: false }).limit(5);
+        const list = (wins || [])
+          .map((w) => {
+            const l = (w.winner_learnings || {}) as Record<string, unknown>;
+            const hook = String(l.hook || w.name || "").slice(0, 80);
+            const fmt = String(l.format || l.route || "").slice(0, 30);
+            const views = l.views ? ` (${Number(l.views).toLocaleString("ru")} просмотров)` : "";
+            return hook ? `«${hook}» [${fmt || "неизв"}]${views}` : null;
+          })
+          .filter(Boolean);
+        if (list.length) {
+          winnersHint = `\n\nНАШИ ПОБЕДИТЕЛИ В НИШЕ (реально залетело у этого бренда — бери дух/механику, меняй по одному рычагу, не копируй дословно): ${list.join(" | ")}`;
+        }
+      }
+    } catch { /* winners-таблица может ещё не существовать */ }
+  }
+
+  // Прямая калибровка корпусных хуков: если плейбука нет — берём из viral_hooks напрямую
+  // (плейбук тоже читает их, но только когда пользователь явно запустил «Изучить нишу»)
+  let corpusHookHint = "";
+  if (!pb && db && article) {
+    try {
+      const { nicheFromArticle } = await import("@/lib/factory/rubric");
+      const rn = nicheFromArticle(article, name);
+      if (rn) {
+        const { data: chks } = await db.from("viral_hooks").select("hook_text,viability_score").eq("niche", rn).order("viability_score", { ascending: false }).limit(10);
+        const hooks = ((chks as { hook_text: string; viability_score: number }[] | null) ?? []).map((h) => h.hook_text).filter(Boolean);
+        if (hooks.length) corpusHookHint = `\n\nКОРПУС ХУКОВ НИШИ (проверены реальными просмотрами — возьми ДУХ/ПАТТЕРН, не копируй дословно): ${hooks.map((h) => `«${h}»`).join(" | ")}`;
+      }
+    } catch { /* corpus optional */ }
+  }
 
   const client = await createClaudeClient();
   if (!client) return NextResponse.json({ error: "ANTHROPIC_API_KEY не настроен" }, { status: 500 });
@@ -53,19 +134,17 @@ ${HOOK_ANTIPATTERNS}
 ${DEAI_FILTERS}
 ${PROBLEM_STACK}
 Сделай разные хуки/форматы/углы — КАЖДЫЙ хук по своей формуле, не повторяй структуру. Хотя бы 1-2 идеи из набора сделай в формате «3 проблемы» (format: "проблема-стек"). Это БЫСТРАЯ идеация — НЕ пиши покадровый сценарий, только идею. Полный сценарий развернём отдельно для выбранных. Оценивай СТРОГО как придирчивый редактор: для КАЖДОГО честно поставь score 1-10 по стандарту, анти-паттернам И фильтрам анти-ИИ; если < ${QA_THRESHOLD} или текст пахнет нейронкой — verdict "rework" и в fix конкретно что исправить (не общими словами).
-Верни СТРОГО JSON-массив (кратко): [{"hook":"первая фраза-зацепка","angle":"какое возражение","concept":"идея ролика 1-2 предложения","caption":"подпись","format":"unboxing|POV|обзор|до/после|лайфхак|проблема-решение","cta":"кратко","score":8,"verdict":"approved|rework","fix":""}]. Только JSON, без преамбулы.`;
+Верни СТРОГО JSON-массив (кратко): [{"hook":"первая фраза-зацепка ≤12 слов","angle":"какое возражение","concept":"идея ролика 1-2 предложения","retention":"0-2 хук→2-5 конфликт→5-10 решение→payoff","caption":"подпись","format":"unboxing|POV|обзор|до/после|лайфхак|проблема-решение|reveal|реакция","cta":"кратко","score":8,"verdict":"approved|rework","fix":""}]. Только JSON, без преамбулы. РАЗНООБРАЗИЕ: минимум 4 разных format и 4 разных hook_type в наборе.`;
 
   const user = `Товар: ${subject}${article ? ` (артикул ${article})` : ""}. Сделай ${count} сценариев.` +
-    (brief ? ` Бриф: ${brief}.` : "") + (competitorBrief ? ` Разведка конкурентов: ${competitorBrief}.` : "") + pbHint + rejHint;
+    (brief ? ` Бриф: ${brief}.` : "") + (competitorBrief ? ` Разведка конкурентов: ${competitorBrief}.` : "") + pbHint + winnersHint + corpusHookHint + rejHint;
 
   try {
-    const res = await client.messages.create({ model: MODEL, max_tokens: 2200, system: sys, messages: [{ role: "user", content: user }] });
+    const res = await client.messages.create({ model: MODEL, max_tokens: 8000, system: sys, messages: [{ role: "user", content: user }] });
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const txt = (res.content as any[]).filter((b) => b.type === "text").map((b) => b.text).join(" ");
-    const m = txt.match(/\[[\s\S]*\]/);
-    if (!m) return NextResponse.json({ error: "пустой ответ", raw: txt.slice(0, 200) }, { status: 502 });
-    let scripts: Record<string, unknown>[] = [];
-    try { scripts = JSON.parse(m[0]); } catch { return NextResponse.json({ error: "невалидный JSON от агента" }, { status: 502 }); }
+    let scripts = extractScripts(txt); // толерантно: переживает обрыв по лимиту токенов
+    if (!scripts.length) return NextResponse.json({ error: "копирайтер не вернул сценариев", raw: txt.slice(0, 200) }, { status: 502 });
     // нормализация verdict по порогу
     scripts = scripts.map((s) => { const sc = Number(s.score) || 6; return { ...s, score: sc, verdict: sc >= QA_THRESHOLD ? "approved" : "rework", fix: sc >= QA_THRESHOLD ? "" : (s.fix || "усилить хук/аутентичность") }; });
     scripts.sort((a, b) => (Number(b.score) || 0) - (Number(a.score) || 0));
@@ -74,4 +153,8 @@ ${PROBLEM_STACK}
   } catch (e) {
     return NextResponse.json({ error: String(e).slice(0, 200) }, { status: 502 });
   }
+ } catch (outer) {
+  // ВСЁ обёрнуто: любой сбой (DB/инициализация/таймаут-обработка) → JSON, а не платформенный «An error occurred»
+  return NextResponse.json({ error: "scripts crash: " + String((outer as Error)?.message || outer).slice(0, 180) }, { status: 500 });
+ }
 }
