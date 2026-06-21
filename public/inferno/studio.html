@@ -145,7 +145,7 @@ const API="/api/factory";
 const S={
   screen:"center", niches:[], generations:[], recipes:[], allProducts:null, prodCounts:{}, centerLoaded:false,
   activeNiche:"cosmetics", activeNicheLabel:"",
-  feedCache:{}, briefCache:{},
+  feedCache:{}, briefCache:{}, covers:{}, embeds:{},
   decompose:null, decomposeLoading:false, decomposeVideo:null, selectedVideo:null,
   recipe:null, selectedNode:null,
   tool:"seedance", toolSchemas:{},
@@ -187,6 +187,15 @@ function isVideoUrl(u){ return /\.(mp4|webm|mov|m4v)(\?|$)/i.test(u||"")||/(fal|
 // модалка-плеер: даёт ПОСМОТРЕТЬ результат, а не работать вслепую. ext-ссылки (tiktok/reels) — в новую вкладку.
 function openMedia(url,opts){ opts=opts||{};
   if(!url){ toast("нет ссылки на медиа"); return; }
+  // инлайн-плеер из oEmbed (tiktok/youtube) — смотреть конкурента ПРЯМО в продукте, не уходя
+  if(opts.embed){
+    const ov=el("div",{style:"position:fixed;inset:0;background:rgba(0,0,0,.85);display:flex;align-items:center;justify-content:center;z-index:60;padding:24px;",onclick:(e)=>{ if(e.target===ov)ov.remove(); }});
+    const box=el("div",{style:"max-width:min(420px,92vw);max-height:86vh;overflow:auto;background:#000;border-radius:12px;"});
+    box.innerHTML=opts.embed;
+    box.querySelectorAll("script").forEach(o=>{ const s=document.createElement("script"); if(o.src)s.src=o.src; s.async=true; s.textContent=o.textContent; o.replaceWith(s); }); // innerHTML не запускает <script> → пересоздаём (TikTok embed.js)
+    ov.appendChild(el("div",{style:"display:flex;flex-direction:column;align-items:center;gap:10px;"},box,el("a",{href:url,target:"_blank",class:"btn sm"},"открыть оригинал ↗")));
+    document.body.appendChild(ov); return;
+  }
   if(opts.external||/^https?:\/\/(www\.)?(tiktok|instagram|youtube|youtu\.be|vk)\./i.test(url)){ window.open(url,"_blank"); return; }
   const isAudio=opts.audio||/\.(mp3|wav|m4a|ogg|aac)(\?|$)/i.test(url);
   const ov=el("div",{style:"position:fixed;inset:0;background:rgba(0,0,0,.82);display:flex;align-items:center;justify-content:center;z-index:60;padding:24px;",onclick:(e)=>{ if(e.target===ov)ov.remove(); }});
@@ -398,6 +407,19 @@ async function renderMarketer(aside, force){
 }
 
 //==================== 02 · COMPETE / DECOMPOSE ====================
+// обложки/эмбеды конкурентов через oEmbed (кэш в S.covers/S.embeds) — лента визуальная, видно ЧТО за ролик
+async function loadCovers(feed){
+  const need=(feed||[]).filter(v=>v&&v.id&&v.url&&!(v.id in S.covers)).map(v=>v.id);
+  if(!need.length)return;
+  need.forEach(id=>{ S.covers[id]=null; }); // помечаем «запрошено» → openMedia не дёргает повторно и нет цикла перерисовки
+  try{
+    const r=await api("/oembed",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({ids:need})});
+    if(r&&Array.isArray(r.items)&&r.items.length){
+      r.items.forEach(it=>{ if(it.cover_url)S.covers[it.id]=it.cover_url; if(it.embed_html)S.embeds[it.id]=it.embed_html; });
+      if(S.screen==="compete")screenCompete(document.getElementById("screen")); // перерисовать ленту с обложками (фид кэширован)
+    }
+  }catch(e){}
+}
 async function screenCompete(root){
   root.innerHTML="";                       // runDecompose зовёт напрямую (минуя render) — чистим, иначе feed+stage дублируются
   const dn=S.decompose&&S.decompose.nodes?S.decompose.nodes.length:0;
@@ -415,6 +437,7 @@ async function screenCompete(root){
   let d=S.feedCache[S.activeNiche];
   if(!d){ d=await api("/studio?niche="+encodeURIComponent(S.activeNiche)); if(d&&!d.error)S.feedCache[S.activeNiche]=d; } // кэш ленты ниши — клик по видео (runDecompose) не дёргает медленный /studio заново
   const feed=d.feed||[];
+  loadCovers(feed); // подтянуть обложки/эмбеды (oEmbed) → серые карточки станут визуальными
   feedList.innerHTML="";
   if(!feed.length)feedList.appendChild(emptyBox("нет виральных видео в нише"));
   feed.forEach((v,i)=>{
@@ -422,7 +445,9 @@ async function screenCompete(root){
     feedList.appendChild(el("div",{style:"display:flex;gap:10px;padding:8px;border-radius:9px;cursor:pointer;"+(sel?"background:var(--bg-node);border:1.5px solid var(--acc);box-shadow:0 0 0 3px rgba(124,116,255,.08);":"background:var(--bg-card);border:1px solid var(--bd);"),
       onclick:()=>{ S.selectedVideo=v.id; runDecompose(v); }},
       el("span",{class:"mono",style:"font-size:12px;color:"+(sel?"var(--acc)":"var(--tx-lo2)")+";width:16px;"},String(i+1)),
-      el("div",{title:v.url?"смотреть оригинал":"",style:"width:34px;height:46px;border-radius:5px;flex:none;position:relative;cursor:"+(v.url?"pointer":"default")+";background:repeating-linear-gradient(135deg,"+(sel?"#2a2440 0 6px,#231f33":"#23272f 0 6px,#1d2128")+" 6px 12px);display:flex;align-items:center;justify-content:center;",onclick:v.url?(e)=>{ e.stopPropagation(); openMedia(v.url,{external:true}); }:null},v.url?el("span",{style:"font-size:11px;color:rgba(255,255,255,.85);"},"▶"):null),
+      el("div",{title:v.url?"смотреть оригинал":"",style:"width:34px;height:46px;border-radius:5px;flex:none;position:relative;overflow:hidden;cursor:"+(v.url?"pointer":"default")+";background:repeating-linear-gradient(135deg,"+(sel?"#2a2440 0 6px,#231f33":"#23272f 0 6px,#1d2128")+" 6px 12px);display:flex;align-items:center;justify-content:center;",onclick:v.url?(e)=>{ e.stopPropagation(); openMedia(v.url,{external:true,embed:S.embeds[v.id]}); }:null},
+        S.covers[v.id]?el("img",{src:S.covers[v.id],loading:"lazy",style:"position:absolute;inset:0;width:100%;height:100%;object-fit:cover;"}):null,
+        v.url?el("span",{style:"font-size:11px;color:rgba(255,255,255,.9);position:relative;z-index:1;"+(S.covers[v.id]?"text-shadow:0 1px 5px #000;":"")},"▶"):null),
       el("div",{style:"min-width:0;"},
         el("div",{style:"font-size:12px;font-weight:"+(sel?"600":"500")+";white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"},(v.caption||v.hook_text||(v.format_detected?v.format_detected+" · "+(v.platform||""):"клип "+fmtViews(v.views))).slice(0,28)),
         el("div",{class:"mono",style:"font-size:10px;color:"+(sel?"var(--acc-lt)":"var(--tx-lo2)")+";margin-top:3px;"},fmtViews(v.views)+" · score "+(v.virality_score?Number(v.virality_score).toFixed(0):"?")))));
@@ -445,8 +470,9 @@ function renderDecompose(){
   if(S.decompose.error){ stage.appendChild(emptyBox("ошибка разбора: "+S.decompose.error)); return; }
   const d=S.decompose, v=S.decomposeVideo||{};
   stage.appendChild(el("div",{style:"display:flex;gap:18px;padding:18px 22px;border-bottom:1px solid var(--bd);"},
-    el("div",{title:v.url?"смотреть оригинал конкурента":"",style:"width:108px;height:144px;flex:none;border-radius:9px;border:1px solid var(--bd2);cursor:"+(v.url?"pointer":"default")+";background:repeating-linear-gradient(135deg,#2a2440 0 8px,#231f33 8px 16px);display:flex;align-items:center;justify-content:center;position:relative;",onclick:v.url?()=>openMedia(v.url,{external:true}):null},
-      el("span",{style:"width:38px;height:38px;border-radius:50%;background:rgba(12,13,16,.55);border:1px solid #3a414d;display:flex;align-items:center;justify-content:center;font-size:15px;color:#fff;"},"▶"),
+    el("div",{title:v.url?"смотреть оригинал конкурента":"",style:"width:108px;height:144px;flex:none;border-radius:9px;border:1px solid var(--bd2);overflow:hidden;cursor:"+(v.url?"pointer":"default")+";background:repeating-linear-gradient(135deg,#2a2440 0 8px,#231f33 8px 16px);display:flex;align-items:center;justify-content:center;position:relative;",onclick:v.url?()=>openMedia(v.url,{external:true,embed:S.embeds[v.id]}):null},
+      S.covers[v.id]?el("img",{src:S.covers[v.id],style:"position:absolute;inset:0;width:100%;height:100%;object-fit:cover;"}):null,
+      el("span",{style:"width:38px;height:38px;border-radius:50%;background:rgba(12,13,16,.6);border:1px solid #3a414d;display:flex;align-items:center;justify-content:center;font-size:15px;color:#fff;position:relative;z-index:1;"},"▶"),
       el("span",{class:"mono",style:"position:absolute;bottom:7px;font-size:10px;color:var(--acc-lt);"},fmtViews(v.views))),
     el("div",{style:"flex:1;min-width:0;"},
       el("div",{style:"font-size:15px;font-weight:600;"},(v.caption||"Видео конкурента").slice(0,90)),
