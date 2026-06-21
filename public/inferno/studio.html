@@ -162,7 +162,7 @@ const SCREENS=[
 ];
 const NICHE_EMOJI={cosmetics:"💄",clothing:"🧥",toys:"🔫",default:"📦"};
 // picker-поля, которые тянут точный список из ЖИВОГО Creatify API (не хардкод)
-const LIVE_PICKER={ override_voice:{type:"voices",route:"/creatify-options?type=voices",audio:true}, background_music_url:{type:"musics",route:"/creatify-options?type=musics",audio:true} };
+const LIVE_PICKER={ override_voice:{type:"voices",route:"/creatify-options?type=voices",audio:true}, background_music_url:{type:"musics",route:"/creatify-options?type=musics",audio:true}, visual_style:{type:"templates",route:"/creatify-options?type=templates",builtin:true} };
 const _liveOpts={};
 
 async function api(path,opts){ try{ const r=await fetch(API+path,opts); return await r.json().catch(()=>({error:"не JSON"})); }catch(e){ return {error:String(e).slice(0,120)}; } }
@@ -628,16 +628,20 @@ function inspectorField(f,n){
   } else if(f.ui==="textarea"){
     wrap.appendChild(el("textarea",{class:"input",style:"min-height:60px;font-family:var(--mono);",oninput:(e)=>set(e.target.value)},cur||""));
   } else if(f.ui==="picker"&&LIVE_PICKER[f.api_param]){
-    // ЖИВОЙ пикер: список тянется из Creatify API → точные id, без хардкода
+    // ЖИВОЙ пикер: список тянется из Creatify API → точные id, без хардкода.
+    // src.builtin → сначала встроенные значения поля (f.values), потом живые из API под разделителем.
     const src=LIVE_PICKER[f.api_param];
     const sel=el("select",{onchange:(e)=>set(e.target.value)});
-    sel.appendChild(el("option",{value:cur||""},cur?("текущий: "+String(cur).slice(0,16)):"загрузка из Creatify…"));
-    const prev=el("button",{class:"btn sm",style:"flex:none;",title:"прослушать",onclick:()=>{ const o=(_liveOpts[src.type]||[]).find(x=>String(x.id)===String(sel.value)); if(o&&o.preview)openMedia(o.preview,{audio:!!src.audio}); else toast("нет превью"); }},"▶");
+    const fillBuiltin=()=>{ if(!src.builtin||!Array.isArray(f.values))return; (f.values||[]).forEach((v,i)=>sel.appendChild(el("option",{value:v,selected:String(cur)===String(v)?"selected":null},(f.valueLabels&&f.valueLabels[i])||v))); };
+    fillBuiltin();
+    if(!src.builtin)sel.appendChild(el("option",{value:cur||""},cur?("текущий: "+String(cur).slice(0,16)):"загрузка из Creatify…"));
+    const prev=src.audio?el("button",{class:"btn sm",style:"flex:none;",title:"прослушать",onclick:()=>{ const o=(_liveOpts[src.type]||[]).find(x=>String(x.id)===String(sel.value)); if(o&&o.preview)openMedia(o.preview,{audio:true}); else toast("нет превью"); }},"▶"):null;
     wrap.appendChild(el("div",{style:"display:flex;gap:6px;"},el("div",{class:"dd",style:"flex:1;"},sel,el("span",{class:"cv"},"▾")),prev));
     (async()=>{ let opts=_liveOpts[src.type]; if(!opts){ const r=await api(src.route); opts=(r&&(r.options||r[src.type]))||[]; _liveOpts[src.type]=opts; }
-      if(S.selectedNode!==n)return; sel.innerHTML="";
-      sel.appendChild(el("option",{value:""},opts.length?"— выбрать —":"нет данных (нужны ключи Creatify в Vercel)"));
-      opts.forEach(o=>sel.appendChild(el("option",{value:o.id,selected:String(cur)===String(o.id)?"selected":null},(o.name||o.id)+(o.meta?" · "+o.meta:""))));
+      if(S.selectedNode!==n)return; sel.innerHTML=""; fillBuiltin();
+      if(opts.length){ const sep=el("option",{value:"",disabled:"disabled"},src.builtin?"— кастомные (Creatify) —":"— выбрать —"); sel.appendChild(sep);
+        opts.forEach(o=>sel.appendChild(el("option",{value:o.id,selected:String(cur)===String(o.id)?"selected":null},(o.name||o.id)+(o.meta?" · "+o.meta:"")))); }
+      else if(!src.builtin)sel.appendChild(el("option",{value:""},"нет данных (нужны ключи Creatify в Vercel)"));
     })();
   } else if(f.ui==="file"||f.ui==="picker"){
     wrap.appendChild(el("div",{style:"display:flex;align-items:center;gap:10px;background:var(--bg-input);border:1px dashed var(--bd3);border-radius:8px;padding:10px;"},

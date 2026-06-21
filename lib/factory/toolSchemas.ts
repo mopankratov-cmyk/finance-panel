@@ -72,7 +72,7 @@ export const TOOL_SCHEMAS: Record<string, ToolSchema> = {
     groups: [
       { group: "Актёр / сцена", fields: [
         { name: "Аватар", api_param: "override_avatar", ui: "picker", hint: "галерея персон" },
-        { name: "Композиция", api_param: "visual_style", ui: "dropdown", values: CREATIFY_SCENES.map((s) => s.id), valueLabels: CREATIFY_SCENES.map((s) => s.label), default: "AvatarBubbleTemplate", hint: "API ждёт *Template-id" },
+        { name: "Композиция", api_param: "visual_style", ui: "picker", values: CREATIFY_SCENES.map((s) => s.id), valueLabels: CREATIFY_SCENES.map((s) => s.label), default: "AvatarBubbleTemplate", hint: "встроенные + твои кастомные шаблоны (живой список)" },
         { name: "Голос (RU)", api_param: "override_voice", ui: "picker", hint: "RU-whitelist; у API нет language" },
         { name: "Громкость озвучки", api_param: "voiceover_volume", ui: "slider", min: 0, max: 1, step: 0.05, default: 1 },
         { name: "Без эмоции аватара", api_param: "no_emotion", ui: "toggle", default: false },
