@@ -12,7 +12,7 @@
 - [ ] R3 артефакт-гейт (vision-чек → авто-реген)
 - [ ] R4 3 варианта на ТЗ
 - [ ] V11 смета + бюджет-кап
-- [ ] V8 reality-first дефолты decompose
+- [x] **V8** reality-first дефолты decompose — problem/solution/proof → disk_real (хребет), seedance/creatify только hook-ревил/нет съёмки. Промпт decompose.
 - [ ] R6 skills-updater (обратка → дельты)
 - [ ] R5 Telegram-бот + fal-whisper
 - [ ] V21 планировщик батча

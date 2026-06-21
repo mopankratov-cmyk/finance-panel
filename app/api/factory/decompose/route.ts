@@ -29,7 +29,7 @@ function extractJson(raw: string): any | null {
   if (a < 0) return null;
   t = t.slice(a);
   const tryParse = (x: string) => { try { return JSON.parse(x); } catch { return undefined; } };
-  let v = tryParse(t); if (v !== undefined) return v;
+  const v = tryParse(t); if (v !== undefined) return v;
   const stack: string[] = []; let inStr = false, esc = false;
   for (let i = 0; i < t.length; i++) {
     const c = t[i];
@@ -77,9 +77,14 @@ async function decompose(params: { viral_video_id?: string; niche?: string; desc
 типизированные КИРПИЧИКИ-НОДЫ, из которых владелец потом пересоберёт похожее под СВОЙ товар. Думай о СТРУКТУРЕ и
 РОЛЯХ кадров (хук 0-3с → проблема → решение/демо → доказательство → CTA), смене кадра каждые 1.5-2.5с.
 Для КАЖДОЙ ноды: node_type (${NODE_TYPES}), role (hook|problem|solution|proof|cta), и tool_candidate — каким нашим
-инструментом её воспроизвести (${TOOLS}): говорящий актёр/лицо → creatify; крупный показ/ревил товара → seedance
-(i2v от фото); до/после два состояния → before_after+seedance(end_image); реальная съёмка-демо → disk_real; текст на
-экране → shotstack(captions); трендовый звук → sound/music; слайд → sharp/higgsfield/gemini.
+инструментом её воспроизвести (${TOOLS}).
+ГЛАВНОЕ ПРАВИЛО РОУТИНГА — РЕАЛЬНАЯ СЪЁМКА = ХРЕБЕТ, AI = ТОЛЬКО АКЦЕНТ (иначе «пахнет рекламой» и AI-слоп):
+- По умолчанию роли problem|solution|proof → disk_real (реальный клип/фото модели с товаром). Это база ролика.
+- seedance (i2v от РЕАЛЬНОГО фото) — для hook-ревила и динамики, КОГДА реальной съёмки под кадр нет.
+- creatify (актёр-липсинк под СВОЮ озвучку, не TTS) — только говорящая голова / UGC-отзыв. Взрослые персоны.
+- до/после два состояния → before_after + seedance(end_image); текст на экране → shotstack(captions);
+  трендовый звук → sound/music; слайд → sharp/higgsfield/gemini.
+НЕ ставь creatify/seedance в каждую вторую ноду — это слоп. Если кадр можно снять реально → disk_real.
 Верни СТРОГО JSON без преамбулы:
 { "format": "(${FORMATS})",
   "nodes": [ { "ordinal":1, "node_type":"...", "role":"...", "duration_sec":2.5, "hook_type":"...",
