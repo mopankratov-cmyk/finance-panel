@@ -9,7 +9,7 @@
 - [x] **V20** история генераций — таблица `generation_history` (lineage/params/otk/attempt/variant) + `lib/factory/genHistory.ts` (logGeneration/getRecipeHistory, best-effort) + врезки в gen-save (финал) и node-preview (sync+async done) + GET `/api/factory/generation-history?recipe_id=`. tsc+eslint 0.
 - [x] **V1** одобрение → «✓ Беру» зовёт /winners (хук в viral_hooks=5), «✕ Не то»/чипы → новый POST /api/factory/reject (cf_signals reason_chip + generation_history status=rejected). studio.html sendWinner/sendReject. Раньше — голый toast.
 - [x] **V3+V4** ОТК-петля regen-on-fail в graphRun — score<7 & бюджет → pickCulprit (слабая ось→нода) + improve-prompt → реген ТОЛЬКО виновника → банк ЛУЧШЕЙ попытки (bestScore/bestUrl). Жёстко ≤MAX_RENDERS=3. Адверсариал-ревью: петля loop-safe; пофикшен CRITICAL (attempts не сбрасывался → run_fail выбрасывал оплаченный лучший — теперь сброс на успешном шаге в tick).
-- [ ] R3 артефакт-гейт (vision-чек → авто-реген)
+- [x] **R3** артефакт-гейт — POST /api/factory/artifact-check (Claude vision ТОЛЬКО на сломанный AI-брак: уанкэни/текст-блид/руки/морфинг) в graphRun ПЕРЕД рубрикой → broken → regenCulprit (общий хелпер с V3/V4). Липсинк по статике не судится (отмечено). Мягкая деградация без ключа.
 - [ ] R4 3 варианта на ТЗ
 - [ ] V11 смета + бюджет-кап
 - [x] **V8** reality-first дефолты decompose — problem/solution/proof → disk_real (хребет), seedance/creatify только hook-ревил/нет съёмки. Промпт decompose.
