@@ -76,7 +76,7 @@ function pickCulprit(plan: RunPlan, axes: unknown): { node: RunNode; axis: strin
 // Бюджет (renderCount<MAX_RENDERS) проверяет ВЫЗЫВАЮЩИЙ. Общий путь для ОТК-фейла и артефакт-гейта.
 async function regenCulprit(
   db: SupabaseClient, origin: string, id: number, plan: RunPlan, niche: string, article: string,
-  node: RunNode, defects: string[], fixHint: string, reason: string,
+  node: RunNode, defects: string[], fixHint: string, reason: string, isArtifact = false,
 ): Promise<void> {
   try {
     const imp = await jpost(origin, "/api/factory/improve-prompt", {
@@ -88,7 +88,8 @@ async function regenCulprit(
     }, 55000);
     if (imp?.prompt) node.prompt = String(imp.prompt).slice(0, 2000);
   } catch { /* improve опционален — реген и без него */ }
-  await logGeneration({ recipe_id: id, tool: node.tool, engine: node.engine, node_type: node.node_type, prompt: node.prompt, output_url: plan.output_url, otk_score: plan.otk?.score ?? null, otk_axes: plan.otk?.axes ?? null, status: "regen", attempt: (plan.renderCount || 0), reason, source: "graph_run", niche, article });
+  // при артефакт-регене plan.otk ещё/уже неактуален (рубрика не про этот брак) → не пишем стейл-балл, метим artifact_ok=false
+  await logGeneration({ recipe_id: id, tool: node.tool, engine: node.engine, node_type: node.node_type, prompt: node.prompt, output_url: plan.output_url, otk_score: isArtifact ? null : (plan.otk?.score ?? null), otk_axes: isArtifact ? null : (plan.otk?.axes ?? null), artifact_ok: isArtifact ? false : null, status: "regen", attempt: (plan.renderCount || 0), reason, source: "graph_run", niche, article });
   node.status = "pending"; node.url = undefined; node.token = undefined;
   plan.render_id = null;
   plan.step = "submit"; // renderCount инкрементнётся в submit → жёстко ограничен MAX_RENDERS
@@ -343,7 +344,7 @@ export async function runRecipeStep(
         const culprit = pickCulprit(plan, { native: 1 }); // артефакты → генеративная нода (фолбэк-выбор)
         if (culprit) {
           const defs = Array.isArray(art.defects) ? art.defects : [];
-          await regenCulprit(db, origin, id, plan, niche, article, culprit.node, defs, "убрать сломанные AI-артефакты: " + (defs.join("; ") || "уанкэни/морфинг/кривые руки"), "артефакты: " + (defs.join(", ") || "broken"));
+          await regenCulprit(db, origin, id, plan, niche, article, culprit.node, defs, "убрать сломанные AI-артефакты: " + (defs.join("; ") || "уанкэни/морфинг/кривые руки"), "артефакты: " + (defs.join(", ") || "broken"), true);
           return;
         }
       }

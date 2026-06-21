@@ -39,8 +39,9 @@ async function applyVerdict(origin: string, db: any, recipeId: number, verdict: 
   } catch { /* рецепт мог не найтись */ }
   const post = async (path: string, body: unknown) => { try { const r = await fetch(`${origin}${path}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(30000) }); return await r.json(); } catch { return null; } };
   if (verdict === "approve") {
-    await post("/api/factory/winners", { url, hook, note: "одобрено в Telegram" });
-    return `✓ Беру — в банк, хук в корпус победителей.`;
+    const r = await post("/api/factory/winners", { url, hook, note: "одобрено в Telegram" });
+    if (r && !r.error) return `✓ Беру — в банк, хук в корпус победителей.`;
+    return `⚠ Не записал в winners: ${r?.error || (url ? "ролик не найден в каталоге" : "у рецепта нет url")}. Возможно ещё не забанкован.`;
   }
   await post("/api/factory/reject", { recipe_id: recipeId, url, hook, reason: reason || "не то", niche, article });
   return `✕ Учтено${reason ? `: «${reason}»` : ""} — пойдёт в обучение (анти-паттерн ниши).`;
@@ -50,9 +51,9 @@ async function applyVerdict(origin: string, db: any, recipeId: number, verdict: 
 async function parseIntent(text: string): Promise<{ verdict: string; reason: string }> {
   const client = await createClaudeClient();
   if (!client) {
-    // фолбэк без LLM — простые ключи
-    const ok = /\b(ок|окей|беру|годится|хорош|супер|оставля|подход)/i.test(text);
-    const no = /\b(не\s|нет|плох|брак|передел|слаб|говн|туфт|убери)/i.test(text);
+    // фолбэк без LLM — простые ключи (без \b: он ASCII-only, на кириллице не якорится)
+    const ok = /(^|\W)(ок|окей|беру|годится|хорош|супер|оставля|подход)/i.test(text);
+    const no = /(^|\W)(не |нет|плох|брак|передел|слаб|говн|туфт|убери)/i.test(text);
     return { verdict: ok && !no ? "approve" : no ? "reject" : "unclear", reason: no ? text.slice(0, 120) : "" };
   }
   try {
@@ -72,9 +73,9 @@ async function parseIntent(text: string): Promise<{ verdict: string; reason: str
 const recipeFromCaption = (cap?: string): number | null => { const m = (cap || "").match(/#r(\d+)/); return m ? Number(m[1]) : null; };
 
 export async function POST(req: NextRequest) {
-  // верификация: вызов реально от Telegram (секрет в заголовке)
+  // верификация FAIL-CLOSED: без токена ИЛИ при неверном секрете — молча игнорим (не пускаем дальше).
   const secret = req.headers.get("x-telegram-bot-api-secret-token");
-  if (tgReady() && secret !== tgWebhookSecret()) return NextResponse.json({ ok: true }); // молча игнорим чужое
+  if (!tgReady() || secret !== tgWebhookSecret()) return NextResponse.json({ ok: true });
   const origin = req.nextUrl.origin;
   const db = getSupabaseAdmin();
   const update = await req.json().catch(() => ({}));
@@ -85,7 +86,7 @@ export async function POST(req: NextRequest) {
     if (update.callback_query) {
       const cq = update.callback_query;
       const chatId = String(cq.message?.chat?.id || "");
-      if (owner && chatId !== owner) return NextResponse.json({ ok: true });
+      if (!owner || chatId !== owner) { await tgAnswerCallback(cq.id, owner ? "не твой чат" : "сначала задай FACTORY_TG_CHAT_ID в Vercel"); return NextResponse.json({ ok: true }); }
       const [act, idStr] = String(cq.data || "").split(":");
       const recipeId = Number(idStr);
       let msg = "не понял кнопку";
@@ -102,7 +103,7 @@ export async function POST(req: NextRequest) {
         await tgSendMessage(`Заводской бот на связи. Твой chat_id: ${chatId}\nПоложи его в Vercel как FACTORY_TG_CHAT_ID.`, chatId);
         return NextResponse.json({ ok: true });
       }
-      if (owner && chatId !== owner) return NextResponse.json({ ok: true });
+      if (!owner || chatId !== owner) return NextResponse.json({ ok: true }); // голос/текст-вердикты — только владельцу (owner задан)
 
       // голос-ревью: скачать → whisper → классифицировать → применить к рецепту из подписи-ответа
       const voice = m.voice || m.audio;

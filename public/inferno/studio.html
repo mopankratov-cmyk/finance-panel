@@ -802,16 +802,18 @@ function renderOTK(otk){
 function nodeRunRow(n){ const c={done:"var(--ok)",error:"var(--err)",submitted:"var(--warn)",pending:"var(--tx-lo2)",skip:"var(--tx-lo3)"}[n.status]||"var(--tx-lo2)";
   return el("div",{style:"display:flex;align-items:center;gap:8px;font-size:11px;"},el("span",{class:"dot",style:"width:8px;height:8px;background:"+c}),el("span",{style:"flex:1;color:var(--tx-mid);"},n.node_type||n.slot||"нода"),el("span",{class:"mono",style:"font-size:9.5px;color:"+c+";"},n.status)); }
 // V1 · одобрение/реджект оператора замыкают петлю (раньше — голый toast)
+// текст ХУКА из hook-ноды графа (а НЕ артикул — иначе корпус хуков засоряется цифрами)
+function _hookText(){ const ns=(S.recipe&&S.recipe.nodes)||[]; const h=ns.find(n=>String(n.slot||"").toLowerCase()==="hook"||String(n.node_type||"").toLowerCase().indexOf("hook")===0); return (h&&(h.prompt||(h.agent_suggestion&&h.agent_suggestion.onscreen_text)))||""; }
 async function sendWinner(){
   const run=S.run, rec=S.recipe&&S.recipe.recipe;
   if(!run||!run.output_url){ toast("нет готового видео"); return; }
   const score=run.otk_score!=null?run.otk_score:(run.otk&&run.otk.score);
-  const r=await api("/winners",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({url:run.output_url,hook:(rec&&rec.article)||"",note:"студия ОТК "+(score!=null?score:"")})});
+  const r=await api("/winners",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({url:run.output_url,hook:_hookText(),note:"студия ОТК "+(score!=null?score:"")})});
   toast(r&&r.ok?"в банк — winner ✓ (хук в корпус)":("не вышло: "+((r&&r.error)||"?").toString().slice(0,40)));
 }
 async function sendReject(reason){
   const run=S.run, rec=S.recipe&&S.recipe.recipe;
-  const r=await api("/reject",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({recipe_id:rec&&rec.id,url:run&&run.output_url,hook:(rec&&rec.article)||"",reason,niche:rec&&rec.niche,article:rec&&rec.article})});
+  const r=await api("/reject",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({recipe_id:rec&&rec.id,url:run&&run.output_url,hook:_hookText(),reason,niche:rec&&rec.niche,article:rec&&rec.article})});
   toast(r&&r.ok?("учтено: "+reason+" (в обучение)"):"не вышло");
 }
 let _runPolling=false;

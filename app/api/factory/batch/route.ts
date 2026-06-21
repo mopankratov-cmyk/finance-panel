@@ -34,10 +34,12 @@ export async function POST(req: NextRequest) {
   const dryRun = b.dry_run === true;
 
   // 1) бюджет-гард по балансам (раз на батч; collectBalances живой ~9с — ОК для одного вызова)
+  let balanceUnknown: string[] = []; // баланс null (нет FAL admin-ключа / гео) → гард не смог проверить
   try {
     const balances = await collectBalances(db, { throttleMs: 60000 });
     const low = balances.filter((s) => REQUIRED.includes(s.service) && s.low === true).map((s) => s.service);
     if (low.length) return NextResponse.json({ ok: false, balance_block: low, error: `Низкий баланс: ${low.join(", ")} — пополни или подними порог. Батч не запущен.` });
+    balanceUnknown = balances.filter((s) => REQUIRED.includes(s.service) && s.balance == null).map((s) => s.service);
   } catch { /* балансы не определились → не блокируем по неопределённости */ }
 
   // 2) резолв рецептов: явные id ИЛИ черновики ниши
@@ -66,6 +68,7 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({
     ok: true, dry_run: dryRun, enqueued, estimated_usd: spent, budget_usd: cap, capped_by_budget: cappedByBudget,
-    note: "Прошедшее ОТК уйдёт в Telegram на ревью (notify=true). R4-варианты ×3 и openreels-ассеты — после V2/V9/V22/V23.",
+    balance_unknown: balanceUnknown, // ⚠ по этим сервисам баланс не проверен (нет ключа/гео) — гард не гарантирует
+    note: "Прошедшее ОТК уйдёт в Telegram на ревью (notify=true). R4-варианты ×3 и openreels-ассеты — после V2/V9/V22/V23." + (balanceUnknown.length ? ` ⚠ Баланс не проверен: ${balanceUnknown.join(", ")}.` : ""),
   });
 }
