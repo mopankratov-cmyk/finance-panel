@@ -87,10 +87,20 @@ export async function submitNode(node: EngineNode): Promise<SubmitResult> {
 
   // creatify UGC-актёр
   if (tool === "creatify") {
-    // субтитры приходят плоскими точечными ключами из инспектора (caption_setting.font_family) → собираем вложенный объект
+    // субтитры приходят ПЛОСКИМИ точечными ключами (caption_setting.font_size, caption_setting.offset.x) →
+    // собираем ВЛОЖЕННЫЙ объект (offset.x → offset:{x}). ВАЖНО: при любой правке субтитров шлём
+    // override_visual_style:true, иначе шаблон Creatify игнорит наши caption_setting.
     const caption_setting: Record<string, unknown> = {};
-    if (params["caption_setting.font_family"]) caption_setting.font_family = params["caption_setting.font_family"];
-    if (params["caption_setting.text_color"]) caption_setting.text_color = params["caption_setting.text_color"];
+    const setNested = (obj: Record<string, unknown>, path: string, val: unknown) => {
+      const parts = path.split(".");
+      let o = obj;
+      for (let i = 0; i < parts.length - 1; i++) { if (typeof o[parts[i]] !== "object" || o[parts[i]] === null) o[parts[i]] = {}; o = o[parts[i]] as Record<string, unknown>; }
+      o[parts[parts.length - 1]] = val;
+    };
+    for (const k of Object.keys(params)) {
+      if (k.startsWith("caption_setting.") && params[k] !== "" && params[k] != null) setNested(caption_setting, k.slice("caption_setting.".length), params[k]);
+    }
+    if (Object.keys(caption_setting).length) caption_setting.override_visual_style = true;
     const r = await creatifyLinkVideo({
       url: params.url || undefined,
       images: imageUrl ? [imageUrl] : (Array.isArray(params.images) ? params.images : undefined),
@@ -107,6 +117,7 @@ export async function submitNode(node: EngineNode): Promise<SubmitResult> {
       model_version: params.model_version || undefined,
       no_cta: typeof params.no_cta === "boolean" ? params.no_cta : undefined,
       script_style: params.script_style || undefined,
+      no_caption: typeof params.no_caption === "boolean" ? params.no_caption : undefined,
       caption_setting: Object.keys(caption_setting).length ? caption_setting : undefined,
       aspect_ratio: params.aspect_ratio || undefined,
       target_platform: params.target_platform || undefined,
