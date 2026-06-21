@@ -118,3 +118,18 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "recipes crash: " + String((e as Error)?.message || e).slice(0, 160) }, { status: 500 });
   }
 }
+
+// Удалить рецепт из библиотеки (ноды снимаются каскадом). DELETE ?recipe_id= или POST?_method=delete.
+export async function DELETE(req: NextRequest) {
+  try {
+    const db = getSupabaseAdmin();
+    if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 500 });
+    const recipeId = req.nextUrl.searchParams.get("recipe_id");
+    if (!recipeId) return NextResponse.json({ error: "нужен recipe_id" }, { status: 400 });
+    const { error } = await db.from("node_recipes").delete().eq("id", recipeId);
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ ok: true, deleted: recipeId });
+  } catch (e) {
+    return NextResponse.json({ error: "recipes crash: " + String((e as Error)?.message || e).slice(0, 160) }, { status: 500 });
+  }
+}
