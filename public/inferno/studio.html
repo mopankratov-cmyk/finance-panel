@@ -575,7 +575,7 @@ async function openRecipe(id){ const r=await api("/recipes?recipe_id="+id); if(r
 async function screenCanvas(root){
   header("Нод-канвас",S.recipe?("граф #"+S.recipe.recipe.id+" · клон конкурента"):"граф видео", el("div",{class:"hdr-r"},
     el("div",{title:"зум/пан — скоро",style:"display:flex;align-items:center;background:var(--bg-chip);border:1px solid var(--bd);border-radius:7px;padding:3px;opacity:.45;cursor:not-allowed;"},el("span",{style:"font-size:11px;color:var(--tx-lo);padding:4px 8px;"},"−"),el("span",{class:"mono",style:"font-size:11px;color:var(--tx-hi);padding:4px 6px;"},"100%"),el("span",{style:"font-size:11px;color:var(--tx-lo);padding:4px 8px;"},"＋")),
-    el("button",{class:"btn",disabled:"disabled",title:"авто-укладка — скоро",style:"opacity:.45;cursor:not-allowed;"},"⤢ Авто-укладка"),
+    el("button",{class:"btn",title:"ИИ-режиссёр: выберет движок и заполнит настройки на КАЖДОЙ ноде графа",onclick:()=>runAutofillGraph(false)},"🪄 ИИ-заполнить граф"),
     el("button",{class:"btn primary",onclick:()=>{ if(S.recipe)go("assembly"); else toast("сначала открой/создай граф"); }},"▶ Сборка")));
   const palette=el("div",{class:"aside",style:"width:208px;border-left:none;border-right:1px solid var(--bd);display:flex;flex-direction:column;"});
   const canvas=el("div",{style:"flex:1;min-width:0;position:relative;overflow:auto;background-color:var(--bg-deep);background-image:radial-gradient(circle,#1b1f27 1px,transparent 1px);background-size:22px 22px;"});
@@ -844,6 +844,38 @@ function openHookPicker(n,ranked){
   });
   ov.appendChild(box); document.body.appendChild(ov);
 }
+// §17 · ИИ-заполнить граф: один вызов — режиссёр выбирает движок + заполняет настройки на каждой ноде
+async function runAutofillGraph(force){
+  const rec=S.recipe&&S.recipe.recipe; if(!rec){ toast("сначала открой/создай граф"); return; }
+  const n=(S.recipe.nodes||[]).length;
+  toast("🪄 ИИ заполняет "+n+" нод"+(force?" (перезапись ручных)":"")+"…");
+  const r=await api("/autofill",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({recipe_id:rec.id,force:!!force})});
+  if(!r||!r.ok){ toast("не вышло: "+((r&&r.error)||"?").toString().slice(0,60)); return; }
+  await openRecipe(rec.id); // перетянуть ноды с новыми tool/params
+  if(S.screen==="canvas")screenCanvas(document.getElementById("screen")); else render();
+  openAutofillResult(r);
+}
+function openAutofillResult(r){
+  const ov=el("div",{style:"position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:60;padding:24px;",onclick:(e)=>{ if(e.target===ov)ov.remove(); }});
+  const box=el("div",{class:"card",style:"padding:20px;width:min(480px,94vw);max-height:84vh;overflow:auto;"});
+  box.appendChild(el("div",{style:"font-size:15px;font-weight:600;margin-bottom:4px;"},"🪄 Граф заполнен"));
+  const by=r.byTool||{}; const byStr=Object.keys(by).map(k=>k+"×"+by[k]).join(" · ")||"—";
+  box.appendChild(el("div",{style:"font-size:12.5px;color:var(--tx-bd);margin-bottom:12px;"},
+    el("b",{style:"color:var(--ok);"},String(r.filled||0)+" нод")," заполнено"+(r.skipped?" · "+r.skipped+" пропущено (ручные)":"")));
+  box.appendChild(el("div",{style:"display:flex;gap:7px;flex-wrap:wrap;margin-bottom:14px;"},
+    ...Object.keys(by).map(k=>el("span",{class:"mono",style:"font-size:11px;background:var(--bg-input);border:1px solid var(--bd2);padding:3px 9px;border-radius:6px;"},(NICHE_EMOJI[k]?"":"")+k+" ×"+by[k]))));
+  const ws=(r.warnings||[]).filter(w=>w!=="needs_image");
+  if(ws.length){
+    box.appendChild(el("div",{class:"sec-cap",style:"margin:4px 0 8px;"},"⚠ Предупреждения"));
+    ws.slice(0,10).forEach(w=>box.appendChild(el("div",{style:"font-size:11px;color:var(--warn);padding:4px 0;border-top:1px solid var(--bd);line-height:1.4;"},w)));
+  }
+  const foot=el("div",{style:"display:flex;gap:9px;margin-top:16px;justify-content:flex-end;"});
+  if(r.skipped)foot.appendChild(el("button",{class:"btn sm",title:"перезаписать ноды, тронутые вручную",onclick:()=>{ ov.remove(); runAutofillGraph(true); }},"↻ Перезаписать ручные"));
+  foot.appendChild(el("button",{class:"btn sm primary",onclick:()=>{ ov.remove(); go("assembly"); }},"▶ К сборке"));
+  box.appendChild(foot);
+  ov.appendChild(box); document.body.appendChild(ov);
+}
+
 //==================== 05 · ASSEMBLY / OTK ====================
 async function screenAssembly(root){
   header("Сборка / Таймлайн",S.recipe?("граф #"+S.recipe.recipe.id):"таймлайн", el("div",{class:"hdr-r"},

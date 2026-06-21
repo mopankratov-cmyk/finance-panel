@@ -1,6 +1,6 @@
 // §17 Ф0 · юнит-фикстуры нормализатора. Запуск: npx tsx lib/factory/normalizeParams.test.mts
 // Без фреймворка (в проекте нет) — простые ассерты, exit 1 при первом провале.
-import { normalizeParams } from "./normalizeParams.ts";
+import { normalizeParams } from "./normalizeParams";
 
 let pass = 0, fail = 0;
 function ok(cond: boolean, msg: string) { if (cond) { pass++; } else { fail++; console.error("✗ " + msg); } }
