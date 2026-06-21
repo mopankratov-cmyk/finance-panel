@@ -146,9 +146,10 @@ export async function claimNextRecipe(db: SupabaseClient, recipeId?: number): Pr
       .update({ run_plan: plan, updated_at: nowIso }).eq("id", row.id)
       .or(`run_plan->>lease_until.is.null,run_plan->>lease_until.lt.${nowIso}`)
       .select("id").maybeSingle();
-    if (wErr) { // PostgREST не принял JSONB-предикат → фолбэк на best-effort (как было), чтобы прогон не застрял
-      await db.from("node_recipes").update({ run_plan: plan, updated_at: nowIso }).eq("id", row.id);
-    } else if (!won) continue; // гонку проиграли — рецепт уже захватил другой тик
+    // CAS-предикат не сработал (wErr) → НЕ клеймим вслепую: безусловный апдейт убил бы атомарность, два тика
+    // захватили бы ОДИН рецепт = двойная оплата fal/creatify. Пропускаем — воскресит следующий тик/опрос (как в jobs.ts).
+    if (wErr) continue;
+    if (!won) continue; // гонку проиграли — рецепт уже захватил другой тик
     return { id: row.id as number, plan, article: String(row.article || ""), niche: String(row.niche || ""), mode: String(row.mode || "audience") };
   }
   return null;
@@ -172,10 +173,17 @@ export async function runRecipeStep(
   // Один тик = autofill (~45с Claude, влезает в 60с), затем перечитываем заполненные ноды и идём в submit.
   // human_edited-ноды autofill не трогает (force=false) → ручная настройка сохраняется. Best-effort: фейл → submit как есть.
   if (plan.step === "autofill") {
-    try {
-      const r = await jpost(origin, "/api/factory/autofill", { recipe_id: id }, 90000);
-      await logSignal(db, "batch_autofill", { recipe_id: id, niche, article: article || null, params: { filled: r?.filled ?? null, byTool: r?.byTool ?? null } });
-    } catch { /* автозаполнение best-effort — пойдём с тем, что есть */ }
+    // ИДЕМПОТЕНТНОСТЬ (DB-state, переживает ретраи шага): зовём Claude ТОЛЬКО если рецепт ещё не сконфигурён.
+    // Уже настроенный (ai_autofilled/human_chosen + tool) → пропускаем платный вызов, сразу в submit.
+    const { data: cur } = await db.from("node_recipe_nodes").select("tool,source").eq("recipe_id", id);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const needsFill = ((cur as any[]) || []).some((n) => !n.tool || (n.source !== "ai_autofilled" && n.source !== "human_chosen"));
+    if (needsFill) {
+      try {
+        const r = await jpost(origin, "/api/factory/autofill", { recipe_id: id }, 90000);
+        await logSignal(db, "batch_autofill", { recipe_id: id, niche, article: article || null, params: { filled: r?.filled ?? null, byTool: r?.byTool ?? null } });
+      } catch { /* автозаполнение best-effort — пойдём с тем, что есть */ }
+    }
     // перечитываем ноды с заполненными tool/params/prompt и пересобираем СПИСОК нод (счётчики прогона не трогаем)
     const { data } = await db.from("node_recipe_nodes").select("ordinal,slot,node_type,tool,prompt,params,asset_url,duration_sec,agent_suggestion").eq("recipe_id", id).order("ordinal");
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -400,7 +408,7 @@ export async function runRecipeStep(
     let catalogUrl: string | null = null;
     if (url) {
       try {
-        const g = await jpost(origin, "/api/factory/gen-save", { video_url: url, article, niche, hook, route: "node_graph", engine: "shotstack", otk: score }, 120000);
+        const g = await jpost(origin, "/api/factory/gen-save", { video_url: url, article, niche, hook, route: "node_graph", engine: "shotstack", otk: score }, 40000); // ≤40с: влезть в maxDuration 60 тика (был 120с → Vercel убивал handler, catalogUrl терялся)
         catalogUrl = g?.url || null;
       } catch { /* банк библиотеки опционален */ }
     }

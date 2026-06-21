@@ -15,7 +15,7 @@ export const maxDuration = 60;
 const TOOL_COST: Record<string, number> = { seedance: 0.42, seedance_fast: 0.14, kling: 0.38, kling_pro: 0.5, pika: 0.3, creatify: 1.2, shotstack: 0.08, higgsfield: 0.5, gemini: 0.4 };
 const REQUIRED = ["fal", "creatify", "shotstack"]; // движки батча
 
-const DEFAULT_RECIPE_COST = 2.2; // типовой рецепт после §17-автозаполнения (creatify+seedance×2+shotstack ≈ $2.12)
+const DEFAULT_RECIPE_COST = 3.2; // CONSERVATIVE: autofill может выбрать дороже (creatify+seedance×4) + реген ×3 → бюджет-гард не должен недооценивать черновики
 
 // смета одного рецепта по нодам (×реген до 3 не учитываем — это потолок, не ожидание).
 // V21: рецепт-черновик конфигурируется §17 уже В ОЧЕРЕДИ → tool может ещё не стоять. Если по нодам цены нет

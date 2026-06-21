@@ -216,6 +216,23 @@ export const TOOL_SCHEMAS: Record<string, ToolSchema> = {
       ] },
     ],
   },
+  elevenlabs: {
+    // available:false пока генерация-путь (nodeEngine submitNode + сборка voiceover-дорожки) не дописан —
+    // чтобы autofill не роутил ноду на ещё-не-исполнимый движок. Флипнуть в true по готовности V22.
+    tool: "elevenlabs", label: "ElevenLabs (RU-озвучка)", node_types: ["voiceover", "narration"], available: false,
+    groups: [
+      { group: "Голос", fields: [
+        { name: "Голос (RU)", api_param: "voice_id", ui: "picker", hint: "живой список ElevenLabs; multilingual держит русский" },
+        { name: "Сценарий (RU)", api_param: "script", ui: "textarea", hint: "текст закадра; пусто = берётся из промпта/onscreen ноды" },
+      ] },
+      { group: "Настройки", fields: [
+        { name: "Стабильность", api_param: "stability", ui: "slider", min: 0, max: 1, step: 0.05, default: 0.5, hint: "выше = ровнее/монотоннее" },
+        { name: "Похожесть", api_param: "similarity_boost", ui: "slider", min: 0, max: 1, step: 0.05, default: 0.75 },
+        { name: "Экспрессия (style)", api_param: "style", ui: "slider", min: 0, max: 1, step: 0.05, default: 0, hint: "выше = эмоциональнее (медленнее)" },
+        { name: "Громкость в миксе", api_param: "volume", ui: "slider", min: 0, max: 1, step: 0.05, default: 1, hint: "закадр поверх музыки (музыка дакается)" },
+      ] },
+    ],
+  },
 };
 
 export function toolSchema(tool: string): ToolSchema | null {

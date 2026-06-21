@@ -24,7 +24,10 @@ export async function POST(req: NextRequest) {
     // если уже бежит — не перезапускаем (идемпотентно), просто дёрнем тик
     const existing = recipe.run_plan as RunPlan | null;
     const running = recipe.status === "running" && existing && existing.step !== "done" && existing.step !== "failed";
-    if (!running || body.restart) {
+    // restart НЕ затирает активно бегущий рецепт с живым лизом: иначе buildRunPlan сбросит mid-генерации
+    // ноды в pending (потеря токенов fal → двойной сабмит). Перезапуск только если лиз свободен/протух.
+    const leaseFree = !existing || !existing.lease_until || new Date(existing.lease_until as string).getTime() < Date.now();
+    if (!running || (body.restart && leaseFree)) {
       const { data: nodes } = await db.from("node_recipe_nodes").select("ordinal,slot,node_type,tool,prompt,params,asset_url,duration_sec,agent_suggestion").eq("recipe_id", recipeId).order("ordinal");
       const rows = (nodes as Record<string, unknown>[] | null) || [];
       if (!rows.length) return NextResponse.json({ error: "у рецепта нет нод" }, { status: 400 });

@@ -922,11 +922,16 @@ async function openNightRun(){
     el("div",{},el("div",{style:"font-size:11px;color:var(--tx-lo);margin-bottom:3px;"},"Бюджет, $"),budIn),
     el("div",{},el("div",{style:"font-size:11px;color:var(--tx-lo);margin-bottom:3px;"},"Сколько видео (макс 30)"),cntIn)));
   const out=el("div",{style:"margin-top:14px;"}); box.appendChild(out);
+  let _busy=false;
   const run=async(dry)=>{
+    if(_busy)return; _busy=true; // гард от двойного клика (батч не идемпотентен → дубль-enqueue/двойная трата)
+    const btns=foot.querySelectorAll("button"); btns.forEach(b=>b.disabled=true);
     out.innerHTML=""; out.appendChild(loadingCard(dry?"считаю смету…":"запускаю прогон…"));
-    const r=await api("/batch",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({budget_usd:Number(budIn.value)||40,count:Number(cntIn.value)||5,dry_run:!!dry})});
+    const cnt=Math.min(30,Math.max(1,Number(cntIn.value)||5)); if(Number(cntIn.value)>30)cntIn.value=30; // clamp ≤30 (сервер всё равно режет)
+    const r=await api("/batch",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({budget_usd:Math.max(1,Number(budIn.value)||40),count:cnt,dry_run:!!dry})});
+    _busy=false; btns.forEach(b=>b.disabled=false);
     out.innerHTML="";
-    if(!r||r.ok===false){ out.appendChild(el("div",{style:"font-size:12.5px;color:var(--err);padding:10px;background:var(--err-bg);border:1px solid var(--err);border-radius:8px;"},(r&&(r.error||(r.balance_block&&("низкий баланс: "+r.balance_block.join(", ")))))||"не вышло")); return; }
+    if(!r||r.ok!==true){ const bb=Array.isArray(r&&r.balance_block)?r.balance_block.join(", "):(r&&r.balance_block); out.appendChild(el("div",{style:"font-size:12.5px;color:var(--err);padding:10px;background:var(--err-bg);border:1px solid var(--err);border-radius:8px;"},(r&&(r.error||(bb&&("низкий баланс: "+bb))))||"не вышло (сеть/сервер)")); return; }
     const enq=(r.enqueued||[]).length;
     out.appendChild(el("div",{style:"font-size:13px;margin-bottom:8px;"},
       (dry?"📊 Смета: ":"🚀 Запущено: "),
