@@ -221,8 +221,8 @@ ${JSON.stringify(nodeLines, null, 1).slice(0, 6000)}`;
       const meta = (node.params || {}) as Record<string, unknown>;
       let rawParams: Record<string, unknown> = { ...(a.params && typeof a.params === "object" ? a.params : {}) };
       for (const k of ["role", "onscreen_text", "emotion", "visual_desc"]) if (meta[k] !== undefined && rawParams[k] === undefined) rawParams[k] = meta[k];
-      // V24 · накладываем фикс-айдентику бренда (голос/персона/шрифт/цвет) — normalizeParams per-tool оставит релевантные
-      rawParams = applyKitToParams(rawParams, kit);
+      // V24 · накладываем фикс-айдентику бренда только на релевантные движку поля (creatify/shotstack)
+      rawParams = applyKitToParams(tool, rawParams, kit);
       // нормализация с изоляцией краша на ОДНУ ноду (не валим весь батч → не теряем уже записанные)
       const norm0 = (t: string) => { try { return normalizeParams(t, rawParams); } catch (e) { warnings.push(`нода #${ord}: ошибка нормализации (${String((e as Error)?.message || e).slice(0, 40)})`); return null; } };
       let norm = norm0(tool); if (!norm) continue;

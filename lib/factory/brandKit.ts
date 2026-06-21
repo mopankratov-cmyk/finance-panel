@@ -45,18 +45,24 @@ export async function resolveBrandKit(db: SupabaseClient, article: string, name 
   } catch { return null; } // таблица не применена / best-effort
 }
 
-// Накладываем брендовую айдентику на params ноды. Кладём ОБА представления (creatify caption_setting.* и
-// shotstack font.*) — normalizeParams per-tool оставит релевантные, лишние дропнет. Только заданные поля кита.
-export function applyKitToParams(params: Record<string, unknown>, kit: BrandKit | null): Record<string, unknown> {
+// Накладываем брендовую айдентику на params ноды — ТОЛЬКО релевантные движку поля (creatify: голос/персона/
+// стиль/музыка + caption_setting.*; shotstack: font.*). Не лезем в seedance/disk_real (там нет брендовых полей)
+// — иначе normalizeParams завалит вывод варнингами «движок не знает поле». Только заданные поля кита.
+export function applyKitToParams(tool: string, params: Record<string, unknown>, kit: BrandKit | null): Record<string, unknown> {
   if (!kit) return params;
   const p = { ...params };
-  if (kit.voice_id) p.override_voice = kit.voice_id;
-  if (kit.persona_id) p.override_avatar = kit.persona_id;
-  if (kit.visual_style) p.visual_style = kit.visual_style;
-  if (kit.music_url) p.background_music_url = kit.music_url;
-  if (kit.caption_font) { p["caption_setting.font_family"] = kit.caption_font; p["font.family"] = kit.caption_font; }
-  if (kit.caption_color) { p["caption_setting.text_color"] = kit.caption_color; p["font.color"] = kit.caption_color; }
-  if (kit.caption_highlight) p["caption_setting.highlight_text_color"] = kit.caption_highlight;
+  if (tool === "creatify") {
+    if (kit.voice_id) p.override_voice = kit.voice_id;
+    if (kit.persona_id) p.override_avatar = kit.persona_id;
+    if (kit.visual_style) p.visual_style = kit.visual_style;
+    if (kit.music_url) p.background_music_url = kit.music_url;
+    if (kit.caption_font) p["caption_setting.font_family"] = kit.caption_font;
+    if (kit.caption_color) p["caption_setting.text_color"] = kit.caption_color;
+    if (kit.caption_highlight) p["caption_setting.highlight_text_color"] = kit.caption_highlight;
+  } else if (tool === "shotstack") {
+    if (kit.caption_font) p["font.family"] = kit.caption_font;
+    if (kit.caption_color) p["font.color"] = kit.caption_color;
+  }
   return p;
 }
 
