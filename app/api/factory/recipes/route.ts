@@ -65,8 +65,12 @@ async function transfer(db: any, p: { template_id?: string | number; nodes?: any
     node_type: n.node_type || null,
     tool: n.tool_candidate || n.tool || null,
     // V2: предзаполняем ЧЕРНОВИК-СКЕЛЕТ из подсказки конкурента (владелец ПРАВИТ под товар, не копирует дословно — иначе клон-слоп)
-    prompt: String(n.voiceover || n.visual_desc || "").slice(0, 1500),
+    // V14: winner-пресет несёт готовый prompt → берём его первым
+    prompt: String(n.prompt || n.voiceover || n.visual_desc || "").slice(0, 1500),
     params: {
+      // V14: winner-пресет несёт ПРОИЗВОДСТВЕННЫЕ params (движок/сабтайтры/музыка/визстиль) — наследуем их под низ,
+      // контент-ключи ниже перекрывают. Для decompose-шаблонов n.params нет → это {} (поведение как раньше).
+      ...(n.params && typeof n.params === "object" && !Array.isArray(n.params) ? n.params : {}),
       ...(n.onscreen_text ? { onscreen_text: String(n.onscreen_text).slice(0, 300) } : {}),
       ...(n.role ? { role: String(n.role).toLowerCase() } : {}),       // нужно ОТК-регену (pickCulprit) и фильтру сборки
       ...(n.emotion ? { emotion: String(n.emotion) } : {}),

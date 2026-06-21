@@ -64,7 +64,60 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  return NextResponse.json({ ok: true, learnings });
+  // V14 · снимок ПРОИЗВОДСТВЕННЫХ настроек победителя в пресет (если знаем рецепт-первоисточник)
+  let preset_id: number | null = null;
+  const recipeId = Number(body.recipe_id) || 0;
+  if (recipeId) {
+    try {
+      const wniche = nicheFromArticle(asset.article || "", asset.name || "");
+      preset_id = await snapshotWinnerPreset(db, recipeId, wniche, String(learnings.format || ""), String((learnings.note as string) || `otk ${learnings.otk_score ?? "?"} · ${learnings.views ?? "?"} просм`).slice(0, 180));
+    } catch { /* пресет best-effort */ }
+  }
+
+  return NextResponse.json({ ok: true, learnings, preset_id });
+}
+
+// V14 · из run_plan победившего рецепта собираем переиспользуемый пресет в node_templates:
+// движок (tool) + params (настройки движка/сабтайтров/музыки/визстиля) + длительности по РОЛЯМ.
+// Снимаем volatile-ключи (preview_url/preview_hash) — иначе на НОВОМ товаре V10 переиспользует
+// старый рендер победителя. prompt оставляем как черновик (transfer всё равно правится под товар).
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function snapshotWinnerPreset(db: any, recipeId: number, niche: string, format: string, winNote: string): Promise<number | null> {
+  const { data } = await db.from("node_recipes").select("run_plan,format_detected,niche").eq("id", recipeId).maybeSingle();
+  if (!data) return null;
+  const plan = (data.run_plan || {}) as Record<string, unknown>;
+  const rawNodes = (Array.isArray(plan.nodes) ? plan.nodes : []) as Record<string, unknown>[];
+  if (!rawNodes.length) return null;
+  const VOLATILE = new Set(["preview_url", "preview_hash"]);
+  const nodes = rawNodes
+    .filter((n) => String(n.status || "") !== "skip" && (n.tool || n.node_type))
+    .map((n, i) => {
+      const params = { ...((n.params as Record<string, unknown>) || {}) };
+      for (const k of VOLATILE) delete params[k];
+      const role = String((params.role as string) || (n.slot as string) || "").toLowerCase();
+      return {
+        ordinal: typeof n.ordinal === "number" ? n.ordinal : i + 1,
+        node_type: n.node_type || null,
+        tool: n.tool || null,
+        role,
+        prompt: String(n.prompt || "").slice(0, 1500),
+        onscreen_text: String((n.onscreen_text as string) || (params.onscreen_text as string) || "").slice(0, 300) || null,
+        emotion: (params.emotion as string) || null,
+        visual_desc: String((params.visual_desc as string) || "").slice(0, 300) || null,
+        params,
+        duration_sec: typeof n.duration_sec === "number" ? n.duration_sec : null,
+      };
+    });
+  if (!nodes.length) return null;
+  const fmt = format || String(data.format_detected || "") || "winner";
+  const nch = niche || String(data.niche || "") || "default";
+  // дедуп: один пресет на рецепт-первоисточник (пересохранение победителя не плодит дубли)
+  try { await db.from("node_templates").delete().eq("source_recipe_id", recipeId); } catch { /* колонки нет — пойдём вставкой */ }
+  const { data: ins } = await db.from("node_templates").insert({
+    format_type: fmt, niche: nch, nodes, confidence: "high",
+    from_winner: true, win_note: winNote, source_recipe_id: recipeId,
+  }).select("id").maybeSingle();
+  return (ins?.id as number) ?? null;
 }
 
 export async function GET(req: NextRequest) {

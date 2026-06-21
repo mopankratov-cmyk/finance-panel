@@ -208,6 +208,7 @@ const SCREENS=[
   {id:"assembly",chip:"05",tt:"Сборка · ОТК",st:"таймлайн"},
   {id:"library",chip:"06",tt:"База видосов",st:"рецепты"},
   {id:"balances",chip:"07",tt:"Балансы сервисов",st:"сколько осталось $"},
+  {id:"learn",chip:"🧠",tt:"Обучение",st:"что завод выучил"},
   {id:"ds",chip:"DS",tt:"Дизайн-система",st:"токены"},
 ];
 const NICHE_EMOJI={cosmetics:"💄",clothing:"🧥",toys:"🔫",default:"📦"};
@@ -295,7 +296,7 @@ function emptyBox(t){ return el("div",{class:"empty"},el("div",{style:"font-size
 async function render(){
   saveSession(); // запоминаем текущий экран/нишу/рецепт для возврата после reload
   const root=document.getElementById("screen"); root.innerHTML="";
-  ({center:screenCenter,compete:screenCompete,canvas:screenCanvas,inspector:screenInspector,assembly:screenAssembly,library:screenLibrary,balances:screenBalances,ds:screenDS}[S.screen]||screenCenter)(root);
+  ({center:screenCenter,compete:screenCompete,canvas:screenCanvas,inspector:screenInspector,assembly:screenAssembly,library:screenLibrary,balances:screenBalances,learn:screenLearn,ds:screenDS}[S.screen]||screenCenter)(root);
   refreshAssistStep(); // проводник: пересчитать «следующий шаг» под новый экран/состояние
 }
 
@@ -676,6 +677,9 @@ async function screenInspector(root){
   groups.appendChild(el("div",{style:"background:var(--bg-card);border:1px solid var(--bd-acc);border-radius:10px;overflow:hidden;"},
     el("div",{class:"grp-h open"},el("span",{class:"grp-t",style:"color:var(--acc-lt);"},"ПРОМПТ НОДЫ"),el("span",{class:"chev"},"⤢")),
     el("div",{style:"padding:13px;"},el("textarea",{style:"width:100%;min-height:90px;resize:vertical;background:#0f1115;border:1px solid var(--bd);border-radius:8px;color:var(--tx-bd);font-family:var(--mono);font-size:12px;line-height:1.6;padding:11px;outline:none;",placeholder:"опиши, что в кадре…",oninput:(e)=>{ n.prompt=e.target.value; scheduleSave(n); }},n.prompt||""))));
+  // V9: хук-турнир — только для hook-ноды (хук решает залёт)
+  if((function(){ const r=String((n.params&&n.params.role)||n.slot||"").toLowerCase(),t=String(n.node_type||"").toLowerCase(); return r==="hook"||t.indexOf("hook")===0; })())
+    groups.appendChild(el("div",{style:"margin-top:12px;"},el("button",{class:"btn",style:"width:100%;justify-content:center;border-color:var(--bd-acc);color:var(--acc-lt);",onclick:()=>runHookTournament(n)},"🏆 Хук-турнир — варианты на выбор")));
   aside.appendChild(el("div",{id:"preview-out",style:"padding:0 16px 16px;"}));
   renderPreviewOut(n);
 }
@@ -806,6 +810,40 @@ function renderPreviewOut(n){
         el("a",{href:p.url,target:"_blank",class:"mono",style:"font-size:10px;color:var(--tx-lo);"+(p.hash?"":"margin-left:auto;")},"открыть ↗")))); }
 }
 
+// V9 · хук-турнир: варианты хука (/variations) → ранжирование (/hook-judge) → выбор лучшего (хук = ось №1 залёта)
+async function runHookTournament(n){
+  const rec=S.recipe&&S.recipe.recipe;
+  const base=(n.params&&n.params.onscreen_text)||n.prompt||_hookText()||(rec&&rec.article)||"";
+  if(!base){ toast("нет базового хука для вариаций"); return; }
+  toast("генерю варианты хука…");
+  const vr=await api("/variations",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({hook:base,article:rec&&rec.article,product_name:rec&&rec.article,count:6})});
+  const variations=(vr&&(Array.isArray(vr)?vr:vr.variations))||[];
+  const hooks=variations.map(v=>v&&(v.hook||v.first_2s)).filter(Boolean);
+  if(!hooks.length){ toast("вариации не вышли: "+((vr&&vr.error)||"пусто")); return; }
+  toast("сужу варианты…");
+  const jr=await api("/hook-judge",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({hooks,article:rec&&rec.article,niche:rec&&rec.niche,winners:3})});
+  const ranked=(jr&&(jr.ranked||jr.winners))||hooks.map(h=>({hook:h}));
+  openHookPicker(n,ranked.length?ranked:hooks.map(h=>({hook:h})));
+}
+function openHookPicker(n,ranked){
+  const ov=el("div",{style:"position:fixed;inset:0;background:rgba(0,0,0,.65);display:flex;align-items:center;justify-content:center;z-index:60;padding:24px;",onclick:(e)=>{ if(e.target===ov)ov.remove(); }});
+  const box=el("div",{class:"card",style:"padding:20px;width:min(500px,94vw);max-height:84vh;overflow:auto;"});
+  box.appendChild(el("div",{style:"font-size:15px;font-weight:600;margin-bottom:3px;"},"🏆 Хук-турнир"));
+  box.appendChild(el("div",{class:"muted",style:"margin-bottom:14px;"},"выбери лучший — станет хуком ноды (отвергнутые → сигнал предпочтения)"));
+  ranked.slice(0,5).forEach((w,i)=>{
+    const txt=(w&&(w.hook||w.hook_text))||w; const sc=w&&w.score;
+    box.appendChild(el("div",{style:"display:flex;gap:10px;align-items:center;padding:11px;border-radius:9px;background:var(--bg-card);border:1px solid var(--bd);margin-bottom:8px;cursor:pointer;",
+      onclick:async()=>{ n.params=n.params||{}; n.params.onscreen_text=String(txt).slice(0,300); n.prompt=String(txt).slice(0,300); scheduleSave(n); ov.remove();
+        // сигнал предпочтения: выбранный + отвергнутые (для обучения)
+        try{ await api("/hook-pick",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({recipe_id:(S.recipe&&S.recipe.recipe&&S.recipe.recipe.id),node_id:n.id,chosen:String(txt).slice(0,300),rejected:ranked.filter(x=>x!==w).map(x=>String((x&&(x.hook||x.hook_text))||x).slice(0,120)).slice(0,8),niche:(S.recipe&&S.recipe.recipe&&S.recipe.recipe.niche)})}); }catch(e){}
+        screenInspector(document.getElementById("screen")); toast("хук закреплён ✓"); },
+      mouseenter:null},
+      el("span",{class:"mono",style:"color:var(--acc);font-size:13px;"},"#"+(i+1)),
+      el("div",{style:"flex:1;font-size:13px;line-height:1.4;"},txt),
+      (sc!=null?el("span",{class:"mono tbadge",style:"background:"+(sc>=8?"var(--ok)":sc>=6?"var(--warn)":"var(--err)")+";"},"score "+Math.round(sc)):null)));
+  });
+  ov.appendChild(box); document.body.appendChild(ov);
+}
 //==================== 05 · ASSEMBLY / OTK ====================
 async function screenAssembly(root){
   header("Сборка / Таймлайн",S.recipe?("граф #"+S.recipe.recipe.id):"таймлайн", el("div",{class:"hdr-r"},
@@ -906,8 +944,8 @@ async function sendWinner(){
   const run=S.run, rec=S.recipe&&S.recipe.recipe;
   if(!run||!run.output_url){ toast("нет готового видео"); return; }
   const score=run.otk_score!=null?run.otk_score:(run.otk&&run.otk.score);
-  const r=await api("/winners",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({url:run.output_url,hook:_hookText(),note:"студия ОТК "+(score!=null?score:"")})});
-  toast(r&&r.ok?"в банк — winner ✓ (хук в корпус)":("не вышло: "+((r&&r.error)||"?").toString().slice(0,40)));
+  const r=await api("/winners",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({url:run.output_url,hook:_hookText(),note:"студия ОТК "+(score!=null?score:""),recipe_id:rec&&rec.id})});
+  toast(r&&r.ok?("в банк — winner ✓ (хук в корпус"+(r.preset_id?" + пресет":"")+")"):("не вышло: "+((r&&r.error)||"?").toString().slice(0,40)));
 }
 async function sendReject(reason){
   const run=S.run, rec=S.recipe&&S.recipe.recipe;
@@ -1078,6 +1116,106 @@ function balanceCard(s,root){
       el("button",{class:"btn sm",onclick:async()=>{ if(balIn.value===""){toast("введи баланс");return;} const r=await api("/balances",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({service:s.service,balance:Number(balIn.value),currency:s.unit})}); toast(r.ok?"баланс записан":("ошибка: "+(r.error||"?"))); if(r.ok)screenBalances(root); }},"Записать")));
   }
   return card;
+}
+
+//==================== ОБУЧЕНИЕ (V16) ====================
+// Дашборд «что завод выучил»: сигналы (winners/hook_chosen/rejected) + тренд ОТК + пресеты-победители
+// + корпус хуков по нишам + история генераций. Делает компаунд ВИДИМЫМ — оператор смотрит, как растёт.
+const EVENT_LABEL={hook_chosen:"🏆 выбран хук",approved:"✓ одобрено",rejected:"✕ не то",generated:"⚙ сгенерено",published:"📤 опубликовано",metrics:"📊 метрики",hook_passed:"· хук-пас"};
+async function screenLearn(root){
+  if(!S.learnDays)S.learnDays=7;
+  const seg=(d,lbl)=>el("button",{class:"btn"+(S.learnDays===d?" prim":""),style:"padding:5px 11px;font-size:12px;",onclick:()=>{ S.learnDays=d; screenLearn(root); }},lbl);
+  header("Обучение","что завод выучил за "+S.learnDays+" дн", el("div",{class:"hdr-r"},
+    seg(7,"7 дней"),seg(30,"30 дней"),seg(90,"всё"),
+    el("button",{class:"btn",title:"обновить",onclick:()=>screenLearn(root)},"↻")));
+  const wrap=el("div",{class:"scroll",style:"padding:18px;"}); root.appendChild(wrap);
+  wrap.appendChild(loadingCard("собираю, что выучил завод…"));
+  const d=await api("/learning?days="+S.learnDays);
+  if(S.screen!=="learn")return;
+  wrap.innerHTML="";
+  if(d.error){ wrap.appendChild(emptyBox("ошибка обучения: "+d.error)); return; }
+  const cap=(t)=>wrap.appendChild(el("div",{class:"sec-cap",style:"margin:6px 0 11px;"},t));
+
+  // ── 1) Сигналы: счётчики ───────────────────────────────────────────────
+  cap("Сигналы за период");
+  const sg=d.signals||{by_event:{},total:0,top_reject:[]};
+  const ev=sg.by_event||{};
+  const tiles=[["winners",(d.winners||[]).length,"var(--ok)","🏆 победители"],["hook_chosen",ev.hook_chosen||0,"var(--acc-lt)","выбрано хуков"],["approved",ev.approved||0,"var(--ok)","одобрено"],["rejected",ev.rejected||0,"var(--err)","забраковано"],["generated",ev.generated||0,"var(--tx-bd)","сгенерено"]];
+  const tg=el("div",{style:"display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;margin-bottom:8px;"}); wrap.appendChild(tg);
+  tiles.forEach(([k,n,c,lbl])=>tg.appendChild(el("div",{class:"card",style:"padding:14px 16px;"},
+    el("div",{style:"font-size:26px;font-weight:700;color:"+c+";"},String(n)),
+    el("div",{style:"font-size:11.5px;color:var(--tx-lo);margin-top:2px;"},lbl))));
+  if((sg.top_reject||[]).length){
+    wrap.appendChild(el("div",{style:"margin:6px 0 18px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;"},
+      el("span",{style:"font-size:11.5px;color:var(--tx-lo);"},"анти-паттерны (почему браковали):"),
+      ...sg.top_reject.map(r=>el("span",{class:"mono",style:"font-size:10.5px;background:var(--err-bg);color:var(--err);border:1px solid var(--err);padding:3px 8px;border-radius:6px;"},r.reason+" ×"+r.n))));
+  } else wrap.appendChild(el("div",{style:"height:10px;"}));
+
+  // ── 2) Тренд ОТК по дням ───────────────────────────────────────────────
+  const tr=d.otk_trend||[];
+  if(tr.length){
+    cap("Тренд ОТК (средний балл · проход/фейл по дням)");
+    const maxGen=Math.max(1,...tr.map(x=>x.gen||0));
+    const bars=el("div",{class:"card",style:"padding:16px;display:flex;align-items:flex-end;gap:10px;height:150px;margin-bottom:18px;overflow-x:auto;"}); wrap.appendChild(bars);
+    tr.forEach(x=>{
+      const h=Math.round(20+(x.gen/maxGen)*88);
+      const scoreCol=x.avg_otk==null?"var(--tx-lo2)":x.avg_otk>=7?"var(--ok)":x.avg_otk>=5?"var(--warn)":"var(--err)";
+      bars.appendChild(el("div",{style:"display:flex;flex-direction:column;align-items:center;gap:5px;min-width:42px;"},
+        el("div",{style:"font-size:11px;font-weight:700;color:"+scoreCol+";"},x.avg_otk==null?"—":String(x.avg_otk)),
+        el("div",{style:"width:30px;height:"+h+"px;background:linear-gradient(180deg,var(--acc),var(--acc-dk,#4b44c9));border-radius:4px 4px 0 0;position:relative;",title:x.gen+" генераций · "+x.pass+"✓ "+x.fail+"✕"},
+          x.pass?el("div",{style:"position:absolute;bottom:0;left:0;right:0;height:"+Math.round((x.pass/Math.max(1,x.gen))*h)+"px;background:var(--ok);border-radius:0 0 0 0;opacity:.55;"}):null),
+        el("div",{class:"mono",style:"font-size:9px;color:var(--tx-lo2);"},String(x.day).slice(5))));
+    });
+  }
+
+  // ── 3) Пресеты-победители ──────────────────────────────────────────────
+  cap("Пресеты-победители — переиспуй выигравшую формулу");
+  const wp=d.winner_presets||[];
+  if(!wp.length){ wrap.appendChild(el("div",{style:"margin-bottom:18px;"},emptyBox("пока нет пресетов — отметь видео «✓ Беру», и его настройки лягут сюда (нужна миграция 20260622_winner_presets)"))); }
+  else{
+    const wg=el("div",{style:"display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;margin-bottom:18px;"}); wrap.appendChild(wg);
+    wp.forEach(p=>wg.appendChild(el("div",{class:"card",style:"padding:14px;display:flex;flex-direction:column;gap:8px;"},
+      el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:8px;"},
+        el("div",{style:"font-size:13.5px;font-weight:600;"},(NICHE_EMOJI[p.niche]||"📦")+" "+(p.format_type||"формат")),
+        el("span",{class:"mono",style:"font-size:9.5px;background:var(--ok);color:#062;padding:2px 6px;border-radius:5px;font-weight:700;"},"WINNER")),
+      el("div",{style:"font-size:11px;color:var(--tx-lo);line-height:1.4;"},p.win_note||""),
+      el("div",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);"},p.nodes_count+" нод · "+nicheLabel(p.niche)+" · "+fmtWhen(p.created_at)),
+      el("button",{class:"btn sm",style:"justify-content:center;",onclick:async()=>{ const art=prompt("Артикул товара, под который переносим выигравшую формулу:"); if(!art)return; toast("переношу пресет…"); const r=await api("/recipes?template_id="+p.id+"&article="+encodeURIComponent(art.trim())); if(r&&r.recipe_id){ if(await openRecipe(r.recipe_id))go("canvas"); toast("пресет перенесён → правь под товар"); } else toast("не вышло: "+((r&&r.error)||"?")); }},"⇪ Перенести себе"))));
+  }
+
+  // ── 4) Корпус хуков по нишам ───────────────────────────────────────────
+  cap("Корпус хуков — что завод знает по нишам");
+  const hn=d.hooks_by_niche||[];
+  if(!hn.length){ wrap.appendChild(el("div",{style:"margin-bottom:18px;"},emptyBox("корпус хуков пуст — собери плейбук ниши или отметь победителей"))); }
+  else hn.forEach(g=>{
+    const blk=el("div",{class:"card",style:"padding:14px;margin-bottom:12px;"}); wrap.appendChild(blk);
+    blk.appendChild(el("div",{style:"font-size:13px;font-weight:600;margin-bottom:9px;"},(NICHE_EMOJI[g.niche]||"📦")+" "+nicheLabel(g.niche)+" ",el("span",{style:"color:var(--tx-lo2);font-weight:400;font-size:11px;"},"· "+g.count+" хуков")));
+    g.top.forEach(h=>{
+      const sc=h.score||0, col=sc>=5?"var(--ok)":sc>=4?"var(--acc-lt)":sc>=3?"var(--warn)":"var(--tx-lo2)";
+      blk.appendChild(el("div",{style:"display:flex;gap:9px;align-items:center;padding:6px 0;border-top:1px solid var(--bd);"},
+        el("span",{class:"mono",style:"font-size:10px;font-weight:700;color:"+col+";min-width:26px;"},"v"+sc),
+        el("div",{style:"flex:1;font-size:12px;color:var(--tx-bd);line-height:1.4;"},h.hook),
+        h.note?el("span",{class:"mono",style:"font-size:9px;color:var(--tx-lo2);white-space:nowrap;"},h.note):null));
+    });
+  });
+
+  // ── 5) История генераций ───────────────────────────────────────────────
+  cap("История генераций");
+  const rg=d.recent_generations||[];
+  if(!rg.length){ wrap.appendChild(emptyBox("история пуста — после первых прогонов появятся записи (нужна миграция generation_history)")); }
+  else{
+    const ST={otk_pass:["var(--ok)","ОТК ✓"],approved:["var(--ok)","одобрено"],otk_fail:["var(--err)","ОТК ✕"],rejected:["var(--err)","реджект"],artifact_fail:["var(--err)","артефакт"],regen:["var(--warn)","реген"],generated:["var(--tx-bd)","сгенерено"]};
+    const list=el("div",{style:"display:flex;flex-direction:column;gap:6px;"}); wrap.appendChild(list);
+    rg.forEach(r=>{
+      const st=ST[r.status]||["var(--tx-lo2)",r.status||"?"];
+      list.appendChild(el("div",{class:"card",style:"padding:9px 13px;display:flex;align-items:center;gap:11px;"+(r.output_url?"cursor:pointer;":""),onclick:r.output_url?()=>openMedia(r.output_url):null},
+        el("span",{class:"mono",style:"font-size:9.5px;font-weight:700;color:"+st[0]+";background:var(--bg-input);border:1px solid var(--bd2);padding:2px 7px;border-radius:5px;min-width:62px;text-align:center;"},st[1]),
+        el("span",{style:"font-size:13px;font-weight:700;color:"+(r.otk_score>=7?"var(--ok)":r.otk_score>=5?"var(--warn)":r.otk_score!=null?"var(--err)":"var(--tx-lo2)")+";min-width:30px;"},r.otk_score!=null?r.otk_score:"—"),
+        el("div",{style:"flex:1;font-size:11.5px;color:var(--tx-bd);min-width:0;"},(NICHE_EMOJI[r.niche]||"")+" "+(r.tool||r.engine||"—")+" ",el("span",{style:"color:var(--tx-lo2);"},"· "+(r.source||""))),
+        r.output_url?el("span",{style:"font-size:12px;color:var(--acc-lt);"},"▶"):null,
+        el("span",{class:"mono",style:"font-size:9.5px;color:var(--tx-lo2);white-space:nowrap;"},fmtWhen(r.created_at))));
+    });
+  }
 }
 
 //==================== DS ====================
