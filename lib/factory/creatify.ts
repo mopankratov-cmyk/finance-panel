@@ -109,15 +109,23 @@ export async function creatifyListAvatars(f: AvatarFilters = {}): Promise<{ avat
   }
 }
 
-// Композиции сцены (= visual_style в link_to_videos) — то, что в UI Creatify «Bottom left / Circle overlay / Side by side / Top and bottom».
+// Композиции сцены (= visual_style в link_to_videos). Подтверждено по docs.creatify.ai (июнь 2026).
+// Полный каталог (~54) живёт в API — точные значения брать GET-ом (custom_templates) при наличии ключа.
 export const CREATIFY_SCENES: { id: string; label: string; hint: string }[] = [
   { id: "AvatarBubbleTemplate", label: "Кружок-оверлей", hint: "Аватар в кружке поверх товара (дефолт)" },
   { id: "SideBySideTemplate", label: "Бок о бок", hint: "Аватар и товар рядом — половина/половина" },
-  { id: "TopBottomTemplate", label: "Сверху и снизу", hint: "Аватар сверху, товар снизу (или наоборот)" },
+  { id: "TopBottomTemplate", label: "Сверху и снизу", hint: "Аватар сверху, товар снизу" },
   { id: "DynamicProductTemplate", label: "Динамика товара", hint: "Акцент на товаре, аватар комментирует" },
+  { id: "FeatureHighlightTemplate", label: "Фичи-выделение", hint: "Подсветка свойств товара" },
   { id: "MotionCardsTemplate", label: "Карточки в движении", hint: "Текст-карточки + аватар" },
+  { id: "QuickTransitionTemplate", label: "Быстрые переходы", hint: "Динамичная нарезка" },
+  { id: "GreenScreenEffectTemplate", label: "Хромакей", hint: "Аватар на хромакее" },
+  { id: "DynamicGreenScreenEffect", label: "Хромакей-динамика", hint: "Хромакей с движением" },
+  { id: "SimpleAvatarOverlayTemplate", label: "Простой оверлей", hint: "Аватар поверх без рамки" },
+  { id: "FullScreenTemplate", label: "Полный экран", hint: "Аватар на весь кадр" },
   { id: "VlogTemplate", label: "Влог", hint: "Полноэкранный аватар, как влог" },
-  { id: "VanillaTemplate", label: "Чистый", hint: "Без оформления — только аватар + субтитры" },
+  { id: "EnhancedVanillaTemplate", label: "Чистый+", hint: "Минимал с лёгким оформлением" },
+  { id: "VanillaTemplate", label: "Чистый", hint: "Только аватар + субтитры" },
 ];
 
 // ОСНОВНОЙ: link_to_videos — товар в кадре. Возвращает токен + debug (сырые ответы для отладки).

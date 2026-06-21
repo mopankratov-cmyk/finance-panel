@@ -80,12 +80,12 @@ export const TOOL_SCHEMAS: Record<string, ToolSchema> = {
       ] },
       { group: "Скрипт", fields: [
         { name: "Наш сценарий", api_param: "override_script", ui: "textarea", hint: "русский, после ОТК" },
-        { name: "Стиль (fallback)", api_param: "script_style", ui: "dropdown", values: ["BenefitsV2", "ProblemSolutionV2", "ThreeReasonsHook", "NegativeHook"], hint: "(enum 57 — дамп); игнор при override_script" },
+        { name: "Стиль (fallback)", api_param: "script_style", ui: "dropdown", values: ["DiscoveryWriter", "DontWorryWriter", "EnthusiasticWriter", "BenefitsV2", "ProblemSolutionV2", "ThreeReasonsHook", "NegativeHook"], default: "DiscoveryWriter", hint: "подтв. по docs; полный enum ~59 в API; игнор при override_script" },
       ] },
       { group: "Движок / формат", fields: [
         { name: "Модель", api_param: "model_version", ui: "dropdown", values: ["aurora_v1_fast", "aurora_v1", "standard"], default: "aurora_v1_fast", hint: "БАГ был — не слался" },
         { name: "Длительность", api_param: "video_length", ui: "dropdown", values: ["15", "30", "45", "60"], default: "15" },
-        { name: "Соотношение", api_param: "aspect_ratio", ui: "dropdown", values: ["9x16", "1x1", "16x9"], default: "9x16", hint: "ltv формат XxY" },
+        { name: "Соотношение", api_param: "aspect_ratio", ui: "dropdown", values: ["9x16", "1x1", "16x9", "4x3", "3x4"], default: "9x16", hint: "ltv формат XxY (подтв. по API-клиенту)" },
         { name: "Платформа", api_param: "target_platform", ui: "dropdown", values: ["Tiktok", "Instagram", "Youtube"], default: "Tiktok" },
         { name: "Без англо-CTA", api_param: "no_cta", ui: "toggle", default: true, hint: "держать true" },
       ] },
