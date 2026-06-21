@@ -313,6 +313,7 @@ async function screenCenter(root, force){
   if(force){ S.centerLoaded=false; S.briefCache={}; }
   header("Командный центр","карта осознания", el("div",{class:"hdr-r"},
     el("div",{class:"searchbox",title:"поиск — скоро",style:"width:240px;opacity:.5;cursor:not-allowed;"},el("span",{style:"font-size:13px;"},"⌕"),el("span",{},"Поиск ниши, товара…")),
+    el("button",{class:"btn",title:"автопилот: заполнить черновики ИИ + сгенерить + ОТК + банк, прошедшее уйдёт в Telegram на ревью",onclick:()=>openNightRun()},"🌙 Ночной прогон"),
     el("button",{class:"btn",title:"фикс-айдентика брендов: голос/персона/шрифт/цвет/CTA/бан-слова/хэштеги — автозаполнение берёт как дефолты",onclick:()=>openBrandKit()},"🎨 Бренд-кит"),
     el("button",{class:"btn",title:"принудительно пересобрать данные и разбор ниши",onclick:()=>screenCenter(root,true)},"↻ Обновить"),
     el("button",{class:"btn primary",onclick:()=>toast("Новая ниша — заведи товары в кабинете")},"+ Новая ниша")));
@@ -906,6 +907,42 @@ async function autofillSingleNode(n){
   if(S.screen==="inspector")screenInspector(document.getElementById("screen")); else render();
   const w=(r.warnings||[]).filter(x=>x!=="needs_image");
   toast(r.filled?("✨ нода заполнена"+(w.length?" · ⚠ "+w[0]:"")):"нода не заполнилась");
+}
+
+// V21 · автопилот: ночной прогон черновиков (бюджет-гард → §17 автозаполнение в очереди → генерация → ОТК → банк → Telegram-ревью)
+async function openNightRun(){
+  const ov=el("div",{style:"position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:60;padding:24px;",onclick:(e)=>{ if(e.target===ov)ov.remove(); }});
+  const box=el("div",{class:"card",style:"padding:22px;width:min(520px,95vw);max-height:88vh;overflow:auto;"});
+  box.appendChild(el("div",{style:"font-size:16px;font-weight:600;"},"🌙 Ночной прогон"));
+  box.appendChild(el("div",{class:"muted",style:"margin-bottom:16px;"},"берёт черновики-рецепты → ИИ сам конфигурит ноды (§17 + бренд-кит) → генерит → ОТК → банк. Прошедшее ОТК придёт в Telegram на голос-ревью."));
+  const INP="background:var(--bg-input);border:1px solid var(--bd2);color:var(--tx-hi);border-radius:7px;padding:7px 9px;font-size:13px;font-family:inherit;width:120px;";
+  const budIn=el("input",{type:"number",step:"1",min:"1",value:"40",style:INP});
+  const cntIn=el("input",{type:"number",step:"1",min:"1",max:"30",value:"5",style:INP});
+  box.appendChild(el("div",{style:"display:flex;gap:18px;margin-bottom:8px;"},
+    el("div",{},el("div",{style:"font-size:11px;color:var(--tx-lo);margin-bottom:3px;"},"Бюджет, $"),budIn),
+    el("div",{},el("div",{style:"font-size:11px;color:var(--tx-lo);margin-bottom:3px;"},"Сколько видео (макс 30)"),cntIn)));
+  const out=el("div",{style:"margin-top:14px;"}); box.appendChild(out);
+  const run=async(dry)=>{
+    out.innerHTML=""; out.appendChild(loadingCard(dry?"считаю смету…":"запускаю прогон…"));
+    const r=await api("/batch",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({budget_usd:Number(budIn.value)||40,count:Number(cntIn.value)||5,dry_run:!!dry})});
+    out.innerHTML="";
+    if(!r||r.ok===false){ out.appendChild(el("div",{style:"font-size:12.5px;color:var(--err);padding:10px;background:var(--err-bg);border:1px solid var(--err);border-radius:8px;"},(r&&(r.error||(r.balance_block&&("низкий баланс: "+r.balance_block.join(", ")))))||"не вышло")); return; }
+    const enq=(r.enqueued||[]).length;
+    out.appendChild(el("div",{style:"font-size:13px;margin-bottom:8px;"},
+      (dry?"📊 Смета: ":"🚀 Запущено: "),
+      el("b",{style:"color:var(--acc-lt);"},enq+" рецептов"),
+      " · ≈ $"+(r.estimated_usd!=null?r.estimated_usd:"?")+(r.capped_by_budget?" (упёрлись в бюджет)":"")));
+    if(r.balance_unknown&&r.balance_unknown.length)out.appendChild(el("div",{style:"font-size:11px;color:var(--warn);margin-bottom:6px;"},"⚠ баланс не проверен: "+r.balance_unknown.join(", ")));
+    if(r.enqueued&&r.enqueued.length)out.appendChild(el("div",{class:"mono",style:"font-size:10.5px;color:var(--tx-lo2);margin-bottom:8px;"},"рецепты: #"+r.enqueued.join(" #")));
+    if(!dry)out.appendChild(el("div",{style:"font-size:11.5px;color:var(--tx-lo);line-height:1.5;"},"Идёт в фоне (самоподдерживающаяся очередь). Прошедшее ОТК → Telegram. Прогресс — в базе видосов (06)."));
+    else out.appendChild(el("div",{style:"font-size:11px;color:var(--tx-lo2);"},"это только прикидка — ничего не запущено и не оплачено."));
+  };
+  const foot=el("div",{style:"display:flex;justify-content:flex-end;gap:9px;margin-top:18px;"});
+  foot.appendChild(el("button",{class:"btn sm",onclick:()=>ov.remove()},"Закрыть"));
+  foot.appendChild(el("button",{class:"btn sm",onclick:()=>run(true)},"📊 Прикинуть"));
+  foot.appendChild(el("button",{class:"btn sm primary",onclick:()=>{ if(confirm("Запустить ночной прогон? Будут потрачены деньги на генерацию (в пределах бюджета).")) run(false); }},"🌙 Запустить"));
+  box.appendChild(foot);
+  ov.appendChild(box); document.body.appendChild(ov);
 }
 
 // V24 · редактор бренд-кита: фикс-айдентика бренда (голос/персона/шрифт/цвет/CTA/бан/хэштеги) → автозаполнение берёт дефолтами

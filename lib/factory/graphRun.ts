@@ -9,7 +9,7 @@ import { tgReady, tgSendReview } from "./telegram";
 // Self-chaining машина по образцу jobs/tick: один тик = ОДИН шаг (<60с), состояние в node_recipes.run_plan.
 // Платные шаги (fal/creatify/shotstack) защищены счётчиками; лиз бережёт от двойной обработки.
 
-export type RunStep = "submit" | "gen-poll" | "assemble" | "render-submit" | "render-poll" | "otk" | "bank" | "done" | "failed";
+export type RunStep = "autofill" | "submit" | "gen-poll" | "assemble" | "render-submit" | "render-poll" | "otk" | "bank" | "done" | "failed";
 
 export interface RunNode {
   ordinal: number; slot: string | null; node_type: string | null; tool: string | null;
@@ -167,6 +167,23 @@ export async function runRecipeStep(
 ): Promise<void> {
   const { id, plan, article, niche, mode } = ctx;
   plan.lease_until = null; // снимаем лиз в начале — повторный заход разрешён после сохранения
+
+  // ── autofill (V21): черновик-рецепт из батча сам конфигурируется (§17 ИИ-режиссёр) ПЕРЕД генерацией ──
+  // Один тик = autofill (~45с Claude, влезает в 60с), затем перечитываем заполненные ноды и идём в submit.
+  // human_edited-ноды autofill не трогает (force=false) → ручная настройка сохраняется. Best-effort: фейл → submit как есть.
+  if (plan.step === "autofill") {
+    try {
+      const r = await jpost(origin, "/api/factory/autofill", { recipe_id: id }, 90000);
+      await logSignal(db, "batch_autofill", { recipe_id: id, niche, article: article || null, params: { filled: r?.filled ?? null, byTool: r?.byTool ?? null } });
+    } catch { /* автозаполнение best-effort — пойдём с тем, что есть */ }
+    // перечитываем ноды с заполненными tool/params/prompt и пересобираем СПИСОК нод (счётчики прогона не трогаем)
+    const { data } = await db.from("node_recipe_nodes").select("ordinal,slot,node_type,tool,prompt,params,asset_url,duration_sec,agent_suggestion").eq("recipe_id", id).order("ordinal");
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    plan.nodes = buildRunPlan((data as any[]) || []).nodes;
+    plan.step = "submit";
+    await savePlan(db, id, plan, { status: "running" });
+    return;
+  }
 
   // ── submit: разослать генеративные ноды на их движки ──
   if (plan.step === "submit") {

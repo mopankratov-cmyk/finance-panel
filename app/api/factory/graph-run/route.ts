@@ -30,6 +30,7 @@ export async function POST(req: NextRequest) {
       if (!rows.length) return NextResponse.json({ error: "у рецепта нет нод" }, { status: 400 });
       const plan = buildRunPlan(rows);
       if (body.notify) plan.notify = true; // V21/R5: батч-прогон → слать прошедшее ОТК в Telegram
+      if (body.autofill) plan.step = "autofill"; // V21: батч-черновик сам сконфигурируется (§17) перед генерацией
       await db.from("node_recipes").update({ run_plan: plan, status: "running", otk_verdict: null, otk_score: null, output_url: null, render_id: null, updated_at: new Date().toISOString() }).eq("id", recipeId);
     }
 
