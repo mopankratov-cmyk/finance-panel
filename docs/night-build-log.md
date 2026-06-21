@@ -7,7 +7,7 @@
 
 ## Прогресс
 - [x] **V20** история генераций — таблица `generation_history` (lineage/params/otk/attempt/variant) + `lib/factory/genHistory.ts` (logGeneration/getRecipeHistory, best-effort) + врезки в gen-save (финал) и node-preview (sync+async done) + GET `/api/factory/generation-history?recipe_id=`. tsc+eslint 0.
-- [ ] V1 одобрение → /winners + cf_signals
+- [x] **V1** одобрение → «✓ Беру» зовёт /winners (хук в viral_hooks=5), «✕ Не то»/чипы → новый POST /api/factory/reject (cf_signals reason_chip + generation_history status=rejected). studio.html sendWinner/sendReject. Раньше — голый toast.
 - [ ] V3+V4 ОТК-петля regen-on-fail + improve-prompt
 - [ ] R3 артефакт-гейт (vision-чек → авто-реген)
 - [ ] R4 3 варианта на ТЗ
