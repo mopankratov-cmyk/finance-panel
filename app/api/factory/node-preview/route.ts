@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { submitNode, pollNode, nodeHash, type EngineNode } from "@/lib/factory/nodeEngine";
+import { logGeneration } from "@/lib/factory/genHistory";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -50,6 +51,8 @@ export async function POST(req: NextRequest) {
     if (r.done && r.url) {
       let preview_id: number | null = null;
       if (db) { try { const { data } = await db.from("node_previews").upsert({ hash, tool: node.tool, engine: r.engine, node_type: node.node_type, recipe_id: body.recipe_id ?? null, node_id: body.node_id ?? null, status: "done", output_url: r.url, cost_hint: r.cost_hint, updated_at: new Date().toISOString() }, { onConflict: "hash" }).select("id").limit(1); preview_id = (data as { id: number }[] | null)?.[0]?.id ?? null; } catch { /* без кэша */ } }
+      // V20 · память итераций (мгновенный движок: disk_real/asset)
+      await logGeneration({ recipe_id: body.recipe_id ?? null, node_id: body.node_id ?? null, tool: node.tool, engine: r.engine, node_type: node.node_type, prompt: node.prompt, params: node.params, output_url: r.url, cost_hint: r.cost_hint, status: "generated", source: "node_preview" });
       return NextResponse.json({ ok: true, cached: false, status: "done", url: r.url, engine: r.engine, hash, preview_id, cost_hint: r.cost_hint });
     }
 
@@ -113,7 +116,16 @@ async function pollAndPersist(db: any, token: string, previewId: number | null) 
       if (previewId) await db.from("node_previews").update(patch).eq("id", previewId);
       else await db.from("node_previews").update(patch).eq("token", token);
     } catch { /* без кэша */ }
-    if (s.status === "done") await logSignal(db, "node_preview_done", {});
+    if (s.status === "done") {
+      await logSignal(db, "node_preview_done", {});
+      // V20 · память итераций: async-генерация (fal/creatify) завершилась — тянем контекст из node_previews и пишем
+      try {
+        const q = previewId ? db.from("node_previews").select("*").eq("id", previewId) : db.from("node_previews").select("*").eq("token", token);
+        const { data } = await q.limit(1);
+        const row = (data as Record<string, unknown>[] | null)?.[0];
+        if (row) await logGeneration({ recipe_id: (row.recipe_id as number) ?? null, node_id: (row.node_id as number) ?? null, tool: (row.tool as string) ?? null, engine: (row.engine as string) ?? null, node_type: (row.node_type as string) ?? null, output_url: s.url || null, cost_hint: (row.cost_hint as string) ?? null, status: "generated", source: "node_preview" });
+      } catch { /* история best-effort */ }
+    }
   }
   return NextResponse.json({ ok: true, status: s.status, url: s.url, error: s.error });
 }

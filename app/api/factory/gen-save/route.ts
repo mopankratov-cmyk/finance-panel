@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { nicheFromArticle } from "@/lib/factory/rubric";
+import { logGeneration } from "@/lib/factory/genHistory";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -50,6 +51,18 @@ export async function POST(req: NextRequest) {
       kind: "video", niche, article: article || null, color: null, url: stored, analyzed: true, analysis: meta,
     });
     if (insErr) return NextResponse.json({ ok: false, error: insErr.message });
+
+    // V20 · память итераций: пишем финальную генерацию в историю (best-effort, не дедупим)
+    await logGeneration({
+      recipe_id: typeof b.recipe_id === "number" ? b.recipe_id : null,
+      node_id: typeof b.node_id === "number" ? b.node_id : null,
+      parent_id: typeof b.parent_id === "number" ? b.parent_id : null,
+      variant_idx: typeof b.variant_idx === "number" ? b.variant_idx : null,
+      engine: b.engine || null, prompt: b.hook || null, input_url: videoUrl || null, output_url: stored,
+      otk_score: typeof b.otk === "number" ? b.otk : null, otk_axes: b.otk_axes ?? null,
+      status: typeof b.otk === "number" && b.otk < 7 ? "otk_fail" : "generated",
+      source: b.source || "graph_run", niche, article: article || null,
+    });
 
     // Авто-сид корпуса: OTK ≥ 8 → viral_hooks viability=4 (AI+OTК verified, ниже explicit winner=5)
     const otkScore = typeof b.otk === "number" ? b.otk : null;
