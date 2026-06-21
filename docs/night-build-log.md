@@ -5,6 +5,24 @@
 Кап $40 · ASR=fal-whisper · заводской бот `FACTORY_TG_*`. Канон качества: docs/openreels-pipeline.md.
 ⏳ Отложено до ключей владельца: V22 ElevenLabs (`ELEVENLABS_API_KEY`), V23 Remotion-lambda.
 
+## ИТОГ — собрано 9/9 кусков ядра (запушено в ветку, в прод НЕ влито)
+
+Замкнута рабочая петля **end-to-end**: разбор конкурента (грундится обучением V7) → перенос → граф → сборка →
+**артефакт-гейт (R3)** → **ОТК-петля regen-on-fail (V3+V4)** → банк лучшей попытки → **Telegram голос-ревью (R5)** →
+**одобрение/реджект → навыки (V1+R6/V7)** → следующий прогон грундится накопленным сигналом = **компаунд**.
+Память итераций (**V20**), смета без демо (**V11**), reality-first (**V8**), батч-скелет с бюджет-гардом (**V21**).
+Все куски: tsc+eslint+next build зелёные. V3+V4 прошёл адверсариал-ревью (пойман+пофикшен CRITICAL).
+
+### УТРОМ (владельцу)
+1. **Ревью диффа → влить в main** (сейчас всё на ветке `feat/service-balances-dashboard`).
+2. **Миграция** `supabase/migrations/20260621_factory_generation_history.sql` в Supabase SQL Editor.
+3. **Telegram:** `https://<прод>/api/factory/telegram?setup=https://<прод>` → боту `/start` → chat_id в Vercel `FACTORY_TG_CHAT_ID`.
+4. **Тонкий тест:** студия → graph-run 1 рецепта (артефакт-гейт/ОТК-реген); если Telegram настроен — POST `/api/factory/batch {count:1}` → ролик в бот → ответить голосом.
+
+### ОТЛОЖЕНО (для полного автопилота «100 видео» — нужны ключи)
+- **V22** ElevenLabs (`ELEVENLABS_API_KEY`) · **V23** Remotion-lambda · **V2** предзаполнение нод · **V9/R4** хук-турнир/×3 варианта.
+Без них V21-батч = скелет (гард+очередь+Telegram работают, видео сырые).
+
 ## Прогресс
 - [x] **V20** история генераций — таблица `generation_history` (lineage/params/otk/attempt/variant) + `lib/factory/genHistory.ts` (logGeneration/getRecipeHistory, best-effort) + врезки в gen-save (финал) и node-preview (sync+async done) + GET `/api/factory/generation-history?recipe_id=`. tsc+eslint 0.
 - [x] **V1** одобрение → «✓ Беру» зовёт /winners (хук в viral_hooks=5), «✕ Не то»/чипы → новый POST /api/factory/reject (cf_signals reason_chip + generation_history status=rejected). studio.html sendWinner/sendReject. Раньше — голый toast.
