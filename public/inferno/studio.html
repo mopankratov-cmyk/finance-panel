@@ -664,7 +664,7 @@ async function screenInspector(root){
   aside.appendChild(el("div",{style:"flex:none;padding:14px 16px;border-bottom:1px solid var(--bd);"},
     el("div",{style:"display:flex;align-items:center;justify-content:space-between;margin-bottom:11px;"},
       el("div",{style:"display:flex;align-items:center;gap:8px;"},el("span",{style:"width:10px;height:10px;border-radius:50%;background:"+pr[2]}),el("span",{style:"font-size:13.5px;font-weight:600;"},pr[3])),
-      el("div",{style:"display:flex;align-items:center;gap:8px;"},el("span",{class:"mono",id:"save-ind",style:"font-size:10px;color:var(--tx-lo2);"},n.id?"сохранено ✓":"не в графе"),el("span",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);"},"нода #"+n.ordinal))),
+      el("div",{style:"display:flex;align-items:center;gap:8px;"},el("span",{class:"mono",id:"save-ind",style:"font-size:10px;color:"+(n.source==="ai_autofilled"?"var(--acc-lt)":"var(--tx-lo2)")+";"},n.source==="ai_autofilled"?"✨ заполнено ИИ":(n.id?"сохранено ✓":"не в графе")),el("span",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);"},"нода #"+n.ordinal))),
     el("div",{style:"display:flex;align-items:stretch;gap:9px;"},
       el("div",{style:"flex:1;background:var(--bg-card);border:1px solid var(--bd);border-radius:9px;padding:9px 11px;"},
         el("div",{style:"font-size:9.5px;letter-spacing:.8px;text-transform:uppercase;color:var(--tx-lo2);margin-bottom:3px;"},"Цена · ориентир"),
@@ -683,6 +683,9 @@ async function screenInspector(root){
   groups.appendChild(el("div",{style:"background:var(--bg-card);border:1px solid var(--bd-acc);border-radius:10px;overflow:hidden;"},
     el("div",{class:"grp-h open"},el("span",{class:"grp-t",style:"color:var(--acc-lt);"},"ПРОМПТ НОДЫ"),el("span",{class:"chev"},"⤢")),
     el("div",{style:"padding:13px;"},el("textarea",{style:"width:100%;min-height:90px;resize:vertical;background:#0f1115;border:1px solid var(--bd);border-radius:8px;color:var(--tx-bd);font-family:var(--mono);font-size:12px;line-height:1.6;padding:11px;outline:none;",placeholder:"опиши, что в кадре…",oninput:(e)=>{ n.prompt=e.target.value; scheduleSave(n); }},n.prompt||""))));
+  // §17 Ф3: заполнить ОДНУ ноду ИИ (движок+params+промпт) — для любой ноды в графе
+  if(n.id)
+    groups.appendChild(el("div",{style:"margin-top:12px;"},el("button",{class:"btn primary",style:"width:100%;justify-content:center;",onclick:()=>autofillSingleNode(n)},"🪄 Заполнить ноду ИИ")));
   // V9: хук-турнир — только для hook-ноды (хук решает залёт)
   if((function(){ const r=String((n.params&&n.params.role)||n.slot||"").toLowerCase(),t=String(n.node_type||"").toLowerCase(); return r==="hook"||t.indexOf("hook")===0; })())
     groups.appendChild(el("div",{style:"margin-top:12px;"},el("button",{class:"btn",style:"width:100%;justify-content:center;border-color:var(--bd-acc);color:var(--acc-lt);",onclick:()=>runHookTournament(n)},"🏆 Хук-турнир — варианты на выбор")));
@@ -868,8 +871,16 @@ function openAutofillResult(r){
   const by=r.byTool||{}; const byStr=Object.keys(by).map(k=>k+"×"+by[k]).join(" · ")||"—";
   box.appendChild(el("div",{style:"font-size:12.5px;color:var(--tx-bd);margin-bottom:12px;"},
     el("b",{style:"color:var(--ok);"},String(r.filled||0)+" нод")," заполнено"+(r.skipped?" · "+r.skipped+" пропущено (ручные)":"")));
-  box.appendChild(el("div",{style:"display:flex;gap:7px;flex-wrap:wrap;margin-bottom:14px;"},
+  box.appendChild(el("div",{style:"display:flex;gap:7px;flex-wrap:wrap;margin-bottom:10px;"},
     ...Object.keys(by).map(k=>el("span",{class:"mono",style:"font-size:11px;background:var(--bg-input);border:1px solid var(--bd2);padding:3px 9px;border-radius:6px;"},(NICHE_EMOJI[k]?"":"")+k+" ×"+by[k]))));
+  // §17 Ф2: смета + грундинг (что учёл ИИ)
+  const g=r.grounded||{}; const gbits=[];
+  if(g.footage==="real")gbits.push("🎬 реальная съёмка");else if(g.footage==="photo")gbits.push("🖼 фото товара");
+  if(g.playbook)gbits.push("📘 плейбук");if(g.learning)gbits.push("🧠 обучение");
+  if((g.low_balance||[]).length)gbits.push("⚠ баланс: "+g.low_balance.join("/"));
+  box.appendChild(el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px;flex-wrap:wrap;"},
+    r.cost_estimate?el("span",{class:"mono",style:"font-size:13px;font-weight:700;color:var(--acc-lt);"},"смета "+r.cost_estimate):el("span"),
+    gbits.length?el("span",{style:"font-size:10.5px;color:var(--tx-lo);"},gbits.join(" · ")):el("span")));
   const ws=(r.warnings||[]).filter(w=>w!=="needs_image");
   if(ws.length){
     box.appendChild(el("div",{class:"sec-cap",style:"margin:4px 0 8px;"},"⚠ Предупреждения"));
@@ -880,6 +891,20 @@ function openAutofillResult(r){
   foot.appendChild(el("button",{class:"btn sm primary",onclick:()=>{ ov.remove(); go("assembly"); }},"▶ К сборке"));
   box.appendChild(foot);
   ov.appendChild(box); document.body.appendChild(ov);
+}
+// §17 Ф3 · заполнить ОДНУ ноду ИИ (из инспектора) — force=true (перезаписать, оператор явно просит)
+async function autofillSingleNode(n){
+  const rec=S.recipe&&S.recipe.recipe; if(!rec){ toast("сначала открой граф"); return; }
+  if(!n||!n.id){ toast("нода ещё не в графе"); return; }
+  toast("🪄 ИИ заполняет ноду…");
+  const r=await api("/autofill",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({recipe_id:rec.id,node_ids:[n.id],force:true})});
+  if(!r||!r.ok){ toast("не вышло: "+((r&&r.error)||"?").toString().slice(0,60)); return; }
+  await openRecipe(rec.id);
+  // вернуть выбор на ту же ноду (openRecipe ставит первую) → перерисовать инспектор
+  const same=(S.recipe.nodes||[]).find(x=>String(x.id)===String(n.id)); if(same)S.selectedNode=same;
+  if(S.screen==="inspector")screenInspector(document.getElementById("screen")); else render();
+  const w=(r.warnings||[]).filter(x=>x!=="needs_image");
+  toast(r.filled?("✨ нода заполнена"+(w.length?" · ⚠ "+w[0]:"")):"нода не заполнилась");
 }
 
 //==================== 05 · ASSEMBLY / OTK ====================
@@ -1309,7 +1334,7 @@ function coachNextStep(){
       return {cap:"Шаг · конкуренты",t:"Выбери ВИРУСНОЕ видео сверху (отсортированы по виральности).",why:"Завод разложит его на типизированные ноды — хук, сцены, пейофф, титры, звук. Берём то, что уже доказало вирусность.",chips:["Что значит виральность тут?","На что смотреть в видео конкурента?"]};
     case "canvas":
       if(!c.recipe) return {cap:"Шаг · граф",t:"Граф пуст. Перенеси конкурента из 02 или открой рецепт из базы (06).",why:"Канвас работает с графом нод. Без скелета настраивать нечего.",cta:{label:"К конкурентам (02) →",fn:()=>go("compete")}};
-      if(c.recipe.nodesWithTool<c.recipe.nodesTotal) return {cap:"Шаг · инструменты",t:`Граф из ${c.recipe.nodesTotal} нод. На ${c.recipe.nodesTotal-c.recipe.nodesWithTool} ещё не выбран инструмент — кликни ноду.`,why:"Каждая нода без инструмента не попадёт в сборку. Клик по ноде открывает инспектор (04).",chips:["Какой инструмент под какую ноду?"]};
+      if(c.recipe.nodesWithTool<c.recipe.nodesTotal) return {cap:"Шаг · инструменты",t:`Граф из ${c.recipe.nodesTotal} нод. На ${c.recipe.nodesTotal-c.recipe.nodesWithTool} ещё нет инструмента. Жми «🪄 заполнить всё ИИ» — режиссёр сам разложит движки и настройки.`,why:"ИИ выберет движок и заполнит params на каждой ноде по доктрине (реальная съёмка=хребет, AI=акцент). Дальше донастроишь при желании.",cta:{label:"🪄 заполнить всё ИИ",fn:()=>runAutofillGraph(false)},chips:["Какой инструмент под какую ноду?"]};
       return {cap:"Шаг · к сборке",t:`Все ${c.recipe.nodesTotal} нод с инструментами. Можно собирать (05).`,why:"Скелет укомплектован — дальше таймлайн и ОТК.",cta:{label:"К сборке (05) →",fn:()=>go("assembly")}};
     case "inspector":
       if(!c.selectedNode) return {cap:"Шаг · нода",t:"Вернись на канвас (03) и выбери ноду.",why:"Инспектор настраивает конкретную ноду. Сейчас ни одна не выбрана.",cta:{label:"На канвас (03) →",fn:()=>go("canvas")}};
