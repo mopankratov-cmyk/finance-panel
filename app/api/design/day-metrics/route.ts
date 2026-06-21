@@ -1,5 +1,6 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { cabinetIdFromParam } from "@/lib/rnp/resolveShop";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -10,15 +11,16 @@ interface AdRow { nm_id: number; date: string; views: number; clicks: number; sp
 const r2 = (v: number) => Math.round(v * 100) / 100;
 
 // Контракт inferno: {metrics: {nm: {iso: {ctr, cr, views, orders_sum, advert_sum, drr}}}} — посуточные дата-ячейки.
-export async function GET() {
+export async function GET(req: NextRequest) {
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ metrics: {} });
 
+  const p_cabinet = cabinetIdFromParam(new URL(req.url).searchParams.get("cabinet")); // null → все кабинеты
   const since = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
-  const [funnelRes, adRes] = await Promise.all([
-    db.from("wb_funnel_daily").select("nm_id, date, open_card, add_to_cart, orders, orders_sum").gte("date", since),
-    db.from("wb_advert_nm_daily").select("nm_id, date, views, clicks, spent").gte("date", since),
-  ]);
+  let funnelQ = db.from("wb_funnel_daily").select("nm_id, date, open_card, add_to_cart, orders, orders_sum").gte("date", since);
+  let adQ = db.from("wb_advert_nm_daily").select("nm_id, date, views, clicks, spent").gte("date", since);
+  if (p_cabinet) { funnelQ = funnelQ.eq("cabinet_id", p_cabinet); adQ = adQ.eq("cabinet_id", p_cabinet); }
+  const [funnelRes, adRes] = await Promise.all([funnelQ, adQ]);
 
   const metrics: Record<number, Record<string, Record<string, number | null>>> = {};
   const cell = (nm: number, iso: string) => {

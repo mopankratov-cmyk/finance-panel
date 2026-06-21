@@ -94,7 +94,8 @@ export async function GET(request: NextRequest) {
   {
     const db = getSupabaseAdmin();
     if (db) {
-      const { data: adRows } = await db.from("ozon_ad_cache").select("sku, spent").eq("days", days);
+      // per-кабинет: фильтр по client_id (без миграции client_id .eq упадёт → adRows null → реклама per-SKU скрыта, сводная остаётся)
+      const { data: adRows } = await db.from("ozon_ad_cache").select("sku, spent").eq("days", days).eq("client_id", cab.creds.clientId);
       for (const r of adRows ?? []) adBySku.set(r.sku as string, Number(r.spent));
     }
   }
