@@ -52,6 +52,17 @@ export async function GET(req: NextRequest) {
     if (!recipe) return NextResponse.json({ error: "рецепт не найден" }, { status: 404 });
     const plan = recipe.run_plan as RunPlan | null;
     const nodes = (plan?.nodes || []).map((n) => ({ ordinal: n.ordinal, slot: n.slot, node_type: n.node_type, tool: n.tool, status: n.status, url: n.url || null, error: n.error || null, engine: n.engine || null }));
+
+    // САМО-ВОСКРЕШЕНИЕ: цепочка тиков могла оборваться (Vercel убил after / транзиент). Если прогон активен,
+    // а лиз протух → дёргаем тик. Опрос статуса из кокпита заодно поддерживает цепочку живой (лиз бережёт от дубля).
+    if (recipe.status === "running" && plan && plan.step !== "done" && plan.step !== "failed") {
+      const leaseFree = !plan.lease_until || new Date(plan.lease_until).getTime() < Date.now();
+      if (leaseFree) {
+        const origin = req.nextUrl.origin;
+        after(async () => { try { await fetch(`${origin}/api/factory/graph-run/tick`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ recipe_id: recipeId }), signal: AbortSignal.timeout(15000) }); } catch { /* следующий опрос воскресит */ } });
+      }
+    }
+
     return NextResponse.json({ ok: true, recipe_id: recipeId, status: recipe.status, step: plan?.step || null, nodes, otk: recipe.otk_verdict, otk_score: recipe.otk_score, output_url: recipe.output_url, error: plan?.error || null }, { headers: { "Cache-Control": "no-store" } });
   } catch (e) {
     return NextResponse.json({ error: "graph-run crash: " + String((e as Error)?.message || e).slice(0, 160) }, { status: 500 });
