@@ -9,7 +9,8 @@ export interface ToolField {
   name: string;            // RU-лейбл
   api_param: string;       // точное имя поля API
   ui: UiControl;
-  values?: string[];       // для dropdown
+  values?: string[];       // для dropdown — МАШИННЫЕ значения (то, что уходит в API)
+  valueLabels?: string[];  // опц. человекочитаемые подписи (параллельно values); если нет — показываем values
   min?: number; max?: number; step?: number; // для slider/number
   default?: string | number | boolean;
   group_note?: string;
@@ -23,7 +24,7 @@ export const TOOL_SCHEMAS: Record<string, ToolSchema> = {
     tool: "seedance", label: "Seedance (AI-видео)", node_types: ["ai_product_render", "b_roll", "pov", "before_after"],
     groups: [
       { group: "Движок", fields: [
-        { name: "Модель", api_param: "endpoint", ui: "dropdown", values: ["seedance (pro)", "seedance_fast (×3 дешевле)"], default: "seedance", hint: "pro=финал, fast=черновик-ОТК" },
+        { name: "Модель", api_param: "model", ui: "dropdown", values: ["seedance", "seedance_fast"], valueLabels: ["Seedance Pro (финал)", "Seedance fast (×3 дешевле)"], default: "seedance", hint: "pro=финал, fast=черновик-ОТК" },
       ] },
       { group: "Вход / кадры", fields: [
         { name: "Фото товара (старт)", api_param: "image_url", ui: "file", hint: "реальное фото карточки WB" },
