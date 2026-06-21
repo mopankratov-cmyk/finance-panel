@@ -914,8 +914,19 @@ async function openNightRun(){
   const ov=el("div",{style:"position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:60;padding:24px;",onclick:(e)=>{ if(e.target===ov)ov.remove(); }});
   const box=el("div",{class:"card",style:"padding:22px;width:min(520px,95vw);max-height:88vh;overflow:auto;"});
   box.appendChild(el("div",{style:"font-size:16px;font-weight:600;"},"🌙 Ночной прогон"));
-  box.appendChild(el("div",{class:"muted",style:"margin-bottom:16px;"},"берёт черновики-рецепты → ИИ сам конфигурит ноды (§17 + бренд-кит) → генерит → ОТК → банк. Прошедшее ОТК придёт в Telegram на голос-ревью."));
+  box.appendChild(el("div",{class:"muted",style:"margin-bottom:14px;"},"ИИ сам конфигурит ноды (§17 + бренд-кит) → генерит → ОТК → банк. Прошедшее ОТК придёт в Telegram на голос-ревью."));
   const INP="background:var(--bg-input);border:1px solid var(--bd2);color:var(--tx-hi);border-radius:7px;padding:7px 9px;font-size:13px;font-family:inherit;width:120px;";
+  // V21.2 · режим: из готовых черновиков ИЛИ собрать с нуля (декомпозит конкурентов на твои товары)
+  let _zero=false;
+  const seg=(z,lbl,sub)=>el("button",{class:"btn"+(_zero===z?" prim":""),style:"flex:1;flex-direction:column;align-items:flex-start;padding:8px 11px;gap:1px;",onclick:()=>{ _zero=z; m0.className="btn"+(!z?" prim":"")+"";m1.className="btn"+(z?" prim":"")+""; m0.style.cssText=segCss(!z);m1.style.cssText=segCss(z); nicheRow.style.display=z?"":"none"; }},el("span",{style:"font-size:12.5px;font-weight:600;"},lbl),el("span",{style:"font-size:10px;color:var(--tx-lo2);"},sub));
+  const segCss=(on)=>"flex:1;flex-direction:column;align-items:flex-start;padding:8px 11px;gap:1px;"+(on?"border-color:var(--acc);":"");
+  const m0=seg(false,"📁 Из черновиков","уже созданные рецепты"); const m1=seg(true,"🏗 С нуля","декомпоз конкурентов→товары");
+  m0.style.cssText=segCss(true);m1.style.cssText=segCss(false);
+  box.appendChild(el("div",{style:"display:flex;gap:8px;margin-bottom:12px;"},m0,m1));
+  // ниша (для режима «с нуля»)
+  const nicheSel=el("select",{style:INP+"width:100%;"},...(S.niches||[]).map(n=>el("option",{value:n.niche},(NICHE_EMOJI[n.niche]||"")+" "+nicheLabel(n.niche))));
+  const nicheRow=el("div",{style:"display:none;margin-bottom:10px;"},el("div",{style:"font-size:11px;color:var(--tx-lo);margin-bottom:3px;"},"Ниша (откуда брать конкурентов и товары)"),nicheSel);
+  box.appendChild(nicheRow);
   const budIn=el("input",{type:"number",step:"1",min:"1",value:"40",style:INP});
   const cntIn=el("input",{type:"number",step:"1",min:"1",max:"30",value:"5",style:INP});
   box.appendChild(el("div",{style:"display:flex;gap:18px;margin-bottom:8px;"},
@@ -923,15 +934,29 @@ async function openNightRun(){
     el("div",{},el("div",{style:"font-size:11px;color:var(--tx-lo);margin-bottom:3px;"},"Сколько видео (макс 30)"),cntIn)));
   const out=el("div",{style:"margin-top:14px;"}); box.appendChild(out);
   let _busy=false;
+  const errBox=(t)=>el("div",{style:"font-size:12.5px;color:var(--err);padding:10px;background:var(--err-bg);border:1px solid var(--err);border-radius:8px;"},t);
   const run=async(dry)=>{
-    if(_busy)return; _busy=true; // гард от двойного клика (батч не идемпотентен → дубль-enqueue/двойная трата)
+    if(_busy)return; _busy=true; // гард от двойного клика (не идемпотентно → дубль-enqueue/трата)
     const btns=foot.querySelectorAll("button"); btns.forEach(b=>b.disabled=true);
-    out.innerHTML=""; out.appendChild(loadingCard(dry?"считаю смету…":"запускаю прогон…"));
-    const cnt=Math.min(30,Math.max(1,Number(cntIn.value)||5)); if(Number(cntIn.value)>30)cntIn.value=30; // clamp ≤30 (сервер всё равно режет)
-    const r=await api("/batch",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({budget_usd:Math.max(1,Number(budIn.value)||40),count:cnt,dry_run:!!dry})});
+    out.innerHTML=""; out.appendChild(loadingCard(dry?"считаю…":(_zero?"собираю черновики…":"запускаю прогон…")));
+    const cnt=Math.min(30,Math.max(1,Number(cntIn.value)||5)); if(Number(cntIn.value)>30)cntIn.value=30;
+    const bud=Math.max(1,Number(budIn.value)||40);
+    const r=_zero
+      ? await api("/batch-build",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({niche:nicheSel.value,count:cnt,budget_usd:bud,dry_run:!!dry})})
+      : await api("/batch",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({budget_usd:bud,count:cnt,dry_run:!!dry})});
     _busy=false; btns.forEach(b=>b.disabled=false);
     out.innerHTML="";
-    if(!r||r.ok!==true){ const bb=Array.isArray(r&&r.balance_block)?r.balance_block.join(", "):(r&&r.balance_block); out.appendChild(el("div",{style:"font-size:12.5px;color:var(--err);padding:10px;background:var(--err-bg);border:1px solid var(--err);border-radius:8px;"},(r&&(r.error||(bb&&("низкий баланс: "+bb))))||"не вышло (сеть/сервер)")); return; }
+    if(!r||r.ok!==true){ const bb=Array.isArray(r&&r.balance_block)?r.balance_block.join(", "):(r&&r.balance_block); out.appendChild(errBox((r&&(r.error||(bb&&("низкий баланс: "+bb))))||"не вышло (сеть/сервер)")); return; }
+    if(_zero){
+      if(dry||r.dry){ out.appendChild(el("div",{style:"font-size:13px;margin-bottom:6px;"},"📊 Соберётся ",el("b",{style:"color:var(--acc-lt);"},(r.pairs||0)+" черновиков"))); out.appendChild(el("div",{style:"font-size:11px;color:var(--tx-lo2);"},(r.competitors||0)+" конкурентов × "+(r.products||0)+" товаров · ничего не создано")); return; }
+      out.appendChild(el("div",{style:"font-size:13px;margin-bottom:6px;"},"🏗 Сборка запущена: ",el("b",{style:"color:var(--acc-lt);"},(r.pairs||0)+" черновиков")));
+      out.appendChild(el("div",{style:"font-size:11.5px;color:var(--tx-lo);line-height:1.5;margin-bottom:8px;"},"Декомпоз конкурентов → перенос на товары (в фоне). По готовности сам запустит генерацию в пределах $"+bud+" → Telegram-ревью."));
+      const prog=el("div",{class:"mono",style:"font-size:11px;color:var(--tx-lo2);"},"собрано 0/"+(r.pairs||0)+"…"); out.appendChild(prog);
+      const bid=r.build_id; let stop=false;
+      const poll=async()=>{ if(stop||!bid)return; const s=await api("/batch-build?build_id="+bid); if(s&&s.ok){ prog.textContent=(s.status==="done"?"✓ собрано "+s.built+"/"+s.total+" → генерация пошла, смотри Telegram/базу (06)":"собрано "+(s.built||0)+"/"+(s.total||0)+"…"); if(s.status==="done"||s.status==="failed"){ stop=true; return; } } setTimeout(poll,6000); };
+      setTimeout(poll,5000);
+      return;
+    }
     const enq=(r.enqueued||[]).length;
     out.appendChild(el("div",{style:"font-size:13px;margin-bottom:8px;"},
       (dry?"📊 Смета: ":"🚀 Запущено: "),
