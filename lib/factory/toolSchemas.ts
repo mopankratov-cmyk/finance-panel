@@ -121,6 +121,16 @@ export const TOOL_SCHEMAS: Record<string, ToolSchema> = {
         { name: "Громкость трека", api_param: "asset.volume", ui: "slider", min: 0, max: 1, step: 0.05, default: 1 },
         { name: "Fade", api_param: "asset.effect", ui: "dropdown", values: ["none", "fadeIn", "fadeOut", "fadeInFadeOut"], default: "none" },
       ] },
+      { group: "Композиция", fields: [
+        { name: "Вписывание", api_param: "fit", ui: "dropdown", values: ["cover", "contain", "crop", "none"], default: "cover" },
+        { name: "Фон таймлайна", api_param: "timeline.background", ui: "color", default: "#000000" },
+      ] },
+      { group: "Формат / вывод", fields: [
+        { name: "Формат", api_param: "output.format", ui: "dropdown", values: ["mp4", "gif"], default: "mp4", hint: "mp4 — основной (gif niche); webm/mp3 Shotstack для этого пайплайна не валиден" },
+        { name: "Соотношение", api_param: "aspect_ratio", ui: "dropdown", values: ["9:16", "1:1", "16:9"], default: "9:16", hint: "→ output.size (не отдельное поле)" },
+        { name: "FPS", api_param: "output.fps", ui: "dropdown", values: ["12", "15", "24", "25", "30"], default: "25" },
+        { name: "Качество", api_param: "output.quality", ui: "dropdown", values: ["low", "medium", "high"], default: "medium" },
+      ] },
     ],
   },
   higgsfield: {
@@ -182,7 +192,13 @@ export const TOOL_SCHEMAS: Record<string, ToolSchema> = {
       { group: "Клип", fields: [
         { name: "Кадр/клип", api_param: "url", ui: "picker", hint: "по артикулу/цвету" },
         { name: "Trim старт, с", api_param: "trim_start", ui: "slider", min: 0, max: 30, step: 0.5, default: 0 },
-        { name: "Длительность, с", api_param: "duration_sec", ui: "number", hint: "ffprobe" },
+        { name: "Trim конец, с", api_param: "trim_end", ui: "slider", min: 0, max: 30, step: 0.5, hint: "0 = до конца; длина клипа = end−start" },
+        { name: "Длительность, с", api_param: "duration_sec", ui: "number", hint: "ffprobe / ручками" },
+        { name: "Роль в графе", api_param: "role", ui: "dropdown", values: ["scene", "hook", "payoff", "skip"], default: "scene" },
+      ] },
+      { group: "Формат", fields: [
+        { name: "Вписывание", api_param: "asset.fit", ui: "dropdown", values: ["cover", "contain", "crop", "none"], default: "cover" },
+        { name: "Громкость клипа", api_param: "asset.volume", ui: "slider", min: 0, max: 1, step: 0.05, default: 0 },
       ] },
     ],
   },

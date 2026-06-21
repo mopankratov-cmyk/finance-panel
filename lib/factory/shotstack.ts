@@ -23,6 +23,9 @@ export interface AssemblyClip {
   start: number;
   length: number;
   transition?: string; // fade | slideLeft | ... (Shotstack transition in)
+  trim?: number;       // отрезать начало исходника, с (disk_real trim_start)
+  volume?: number;     // громкость видео-клипа 0-1
+  fit?: string;        // per-clip вписывание (перебивает глобальный)
 }
 
 function aspectSize(a: string): { width: number; height: number } {
@@ -47,6 +50,12 @@ export function buildEdit(opts: {
   effect?: string;           // Ken Burns на видео-клипах (zoomIn/slideLeft…)
   filter?: string;           // фильтр (boost/contrast/muted…)
   audioVolume?: number;      // громкость трека 0-1 (дефолт 1)
+  // вывод / композиция (нода shotstack) — раньше захардкожены
+  outputFormat?: string;     // mp4|gif|webm|mp3 (дефолт mp4)
+  fps?: number;              // 12|15|24|25|30
+  quality?: string;          // low|medium|high
+  fit?: string;              // cover|contain|crop|none (дефолт cover)
+  background?: string;       // фон таймлайна (#RRGGBB, дефолт #000000)
 }): Record<string, unknown> {
   const resolvedFontUrl = opts.fontUrl || process.env.SHOTSTACK_FONT_URL || CYRILLIC_FONT_URL;
   const family = opts.fontFamily || process.env.SHOTSTACK_FONT_FAMILY || CYRILLIC_FONT_FAMILY;
@@ -55,12 +64,14 @@ export function buildEdit(opts: {
   const capColor = opts.fontColor || "#ffffff";
   const ef = opts.effect && opts.effect !== "none" ? opts.effect : undefined;
   const fl = opts.filter && opts.filter !== "none" ? opts.filter : undefined;
+  const fit = opts.fit && opts.fit !== "none" ? opts.fit : "cover";
 
   const visualClips = opts.clips.map((c) => ({
-    asset: { type: c.type, src: c.url },
+    // trim — отрезаем начало исходника (disk_real); volume — для видео-клипа со звуком
+    asset: { type: c.type, src: c.url, ...(typeof c.trim === "number" && c.trim > 0 ? { trim: c.trim } : {}), ...(typeof c.volume === "number" ? { volume: c.volume } : {}) },
     start: c.start,
     length: c.length,
-    fit: "cover",
+    fit: c.fit && c.fit !== "none" ? c.fit : fit,
     ...(c.transition ? { transition: { in: c.transition } } : {}),
     ...(ef ? { effect: ef } : {}),
     ...(fl ? { filter: fl } : {}),
@@ -78,9 +89,13 @@ export function buildEdit(opts: {
   // трендовый звук — отдельный аудио-трек (порядок для аудио не влияет на z)
   if (opts.audioUrl) tracks.push({ clips: [{ asset: { type: "audio", src: opts.audioUrl, volume: typeof opts.audioVolume === "number" ? opts.audioVolume : 1 }, start: 0, length: totalLen }] });
 
-  const timeline: Record<string, unknown> = { background: "#000000", tracks };
+  const timeline: Record<string, unknown> = { background: opts.background || "#000000", tracks };
   timeline.fonts = [{ src: resolvedFontUrl }];
-  return { timeline, output: { format: "mp4", size: aspectSize(opts.aspect || "9:16") } };
+  const ALLOWED_FORMATS = new Set(["mp4", "gif", "jpg", "png", "bmp", "mp3"]); // защита: чужой format → 422; падаем на mp4
+  const output: Record<string, unknown> = { format: ALLOWED_FORMATS.has(String(opts.outputFormat)) ? opts.outputFormat! : "mp4", size: aspectSize(opts.aspect || "9:16") };
+  if (typeof opts.fps === "number") output.fps = opts.fps;
+  if (opts.quality) output.quality = opts.quality;
+  return { timeline, output };
 }
 
 // Бит-синк ДЕМОУТНУТ до фикс-сетки: Virlo не отдаёт скачиваемый mp3/bpm → захардкоженный каденс
