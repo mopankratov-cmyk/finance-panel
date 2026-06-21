@@ -93,6 +93,11 @@ export const TOOL_SCHEMAS: Record<string, ToolSchema> = {
         { name: "Шрифт (RU-safe)", api_param: "caption_setting.font_family", ui: "dropdown", values: ["Montserrat", "Poppins", "Comfortaa", "Quantico"], default: "Montserrat", hint: "только эти держат кириллицу" },
         { name: "Цвет текста", api_param: "caption_setting.text_color", ui: "color", hint: "#RRGGBBAA с альфой" },
       ] },
+      { group: "Музыка", fields: [
+        { name: "Фоновая музыка", api_param: "background_music_url", ui: "picker", hint: "живой список из Creatify /musics/ (▶ прослушать)" },
+        { name: "Громкость музыки", api_param: "background_music_volume", ui: "slider", min: 0, max: 1, step: 0.05, default: 0.2, hint: "≤0.2–0.3 под озвучку" },
+        { name: "Без фоновой музыки", api_param: "no_background_music", ui: "toggle", default: false },
+      ] },
     ],
   },
   shotstack: {

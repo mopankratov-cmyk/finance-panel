@@ -109,6 +109,47 @@ export async function creatifyListAvatars(f: AvatarFilters = {}): Promise<{ avat
   }
 }
 
+// ── Живые списки из Creatify API (голоса/музыка/шаблоны) — чтобы дропдауны были ТОЧНЫЕ, без хардкода ──
+export interface CreatifyOption { id: string; name: string; meta?: string; preview?: string }
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function creatifyGetArray(path: string): Promise<any[]> {
+  const h = headers();
+  if (!h) return [];
+  try {
+    const r = await fetch(`${BASE}${path}`, { headers: h, cache: "no-store", signal: AbortSignal.timeout(15000) });
+    if (!r.ok) return [];
+    const j = await r.json();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return Array.isArray(j) ? j : ((j as any).results || (j as any).data || []);
+  } catch { return []; }
+}
+// GET /api/voices/ → [{name, gender, accents:[{id, accent_name, preview_url}]}] — выбираемый голос = accent.id
+export async function creatifyListVoices(): Promise<CreatifyOption[]> {
+  const arr = await creatifyGetArray("/voices/");
+  const out: CreatifyOption[] = [];
+  for (const v of arr) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const accents: any[] = Array.isArray(v.accents) && v.accents.length ? v.accents : [{ id: v.id, accent_name: "", preview_url: v.preview_url }];
+    for (const a of accents) {
+      if (!a?.id) continue;
+      out.push({ id: String(a.id), name: (v.name || "voice") + (a.accent_name ? " · " + a.accent_name : ""), meta: v.gender || "", preview: a.preview_url || "" });
+    }
+  }
+  return out.slice(0, 400);
+}
+// GET /api/musics/ → треки фона
+export async function creatifyListMusic(): Promise<CreatifyOption[]> {
+  const arr = await creatifyGetArray("/musics/");
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return arr.map((m: any) => ({ id: String(m.id || m.url || ""), name: m.name || m.title || "трек", meta: m.category || m.mood || "", preview: m.url || m.preview_url || "" })).filter((x) => x.id).slice(0, 300);
+}
+// GET /api/custom_templates/ → пользовательские шаблоны (visual_style template_id)
+export async function creatifyListTemplates(): Promise<CreatifyOption[]> {
+  const arr = await creatifyGetArray("/custom_templates/");
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return arr.map((t: any) => ({ id: String(t.id || t.template_id || ""), name: t.name || "шаблон", meta: t.category || "" })).filter((x) => x.id).slice(0, 200);
+}
+
 // Композиции сцены (= visual_style в link_to_videos). Подтверждено по docs.creatify.ai (июнь 2026).
 // Полный каталог (~54) живёт в API — точные значения брать GET-ом (custom_templates) при наличии ключа.
 export const CREATIFY_SCENES: { id: string; label: string; hint: string }[] = [
@@ -131,7 +172,7 @@ export const CREATIFY_SCENES: { id: string; label: string; hint: string }[] = [
 // ОСНОВНОЙ: link_to_videos — товар в кадре. Возвращает токен + debug (сырые ответы для отладки).
 // Фото товара передаём НАПРЯМУЮ (link_with_params) — WB не скрейпится, поэтому даём image_urls.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export async function creatifyLinkVideo(opts: { url?: string; images?: string[]; title?: string; description?: string; script?: string; avatar?: string; visual_style?: string; length?: number; model_version?: string; no_cta?: boolean; script_style?: string; caption_setting?: Record<string, unknown>; aspect_ratio?: string; target_platform?: string; voiceover_volume?: number; no_emotion?: boolean; no_stock_broll?: boolean }): Promise<{ token?: string; error?: string; debug?: any }> {
+export async function creatifyLinkVideo(opts: { url?: string; images?: string[]; title?: string; description?: string; script?: string; avatar?: string; visual_style?: string; length?: number; model_version?: string; no_cta?: boolean; script_style?: string; caption_setting?: Record<string, unknown>; aspect_ratio?: string; target_platform?: string; voiceover_volume?: number; no_emotion?: boolean; no_stock_broll?: boolean; override_voice?: string; background_music_url?: string; background_music_volume?: number; no_background_music?: boolean }): Promise<{ token?: string; error?: string; debug?: any }> {
   const h = headers();
   if (!h) return { error: "CREATIFY ключ не настроен" };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -158,6 +199,10 @@ export async function creatifyLinkVideo(opts: { url?: string; images?: string[];
   if (typeof opts.voiceover_volume === "number") body.voiceover_volume = opts.voiceover_volume;
   if (opts.no_emotion) body.no_emotion = true;
   if (typeof opts.no_stock_broll === "boolean") body.no_stock_broll = opts.no_stock_broll;
+  if (opts.override_voice) body.override_voice = opts.override_voice;                    // голос из живого /voices/ (accent id) — раньше не слался
+  if (opts.background_music_url) body.background_music_url = opts.background_music_url;     // трек из живого /musics/
+  if (typeof opts.background_music_volume === "number") body.background_music_volume = opts.background_music_volume;
+  if (typeof opts.no_background_music === "boolean") body.no_background_music = opts.no_background_music;
   if (opts.visual_style) body.visual_style = opts.visual_style; // композиция сцены (*Template)
   if (opts.model_version) body.model_version = opts.model_version; // aurora_v1_fast/aurora_v1/standard (раньше не слался — БАГ)
   if (opts.script_style && !opts.script) body.script_style = opts.script_style; // стиль-fallback, игнор при override_script
