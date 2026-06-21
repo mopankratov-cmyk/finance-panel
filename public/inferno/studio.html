@@ -505,7 +505,7 @@ async function screenInspector(root){
   aside.appendChild(el("div",{style:"flex:none;padding:14px 16px;border-bottom:1px solid var(--bd);"},
     el("div",{style:"display:flex;align-items:center;justify-content:space-between;margin-bottom:11px;"},
       el("div",{style:"display:flex;align-items:center;gap:8px;"},el("span",{style:"width:10px;height:10px;border-radius:50%;background:"+pr[2]}),el("span",{style:"font-size:13.5px;font-weight:600;"},pr[3])),
-      el("span",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);"},"нода #"+n.ordinal)),
+      el("div",{style:"display:flex;align-items:center;gap:8px;"},el("span",{class:"mono",id:"save-ind",style:"font-size:10px;color:var(--tx-lo2);"},n.id?"сохранено ✓":"не в графе"),el("span",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);"},"нода #"+n.ordinal))),
     el("div",{style:"display:flex;align-items:stretch;gap:9px;"},
       el("div",{style:"flex:1;background:var(--bg-card);border:1px solid var(--bd);border-radius:9px;padding:9px 11px;"},
         el("div",{style:"font-size:9.5px;letter-spacing:.8px;text-transform:uppercase;color:var(--tx-lo2);margin-bottom:3px;"},"Цена генерации"),
@@ -521,7 +521,7 @@ async function screenInspector(root){
   sch.groups.forEach((g,gi)=>groups.appendChild(inspectorGroup(g,gi<3,n)));
   groups.appendChild(el("div",{style:"background:var(--bg-card);border:1px solid var(--bd-acc);border-radius:10px;overflow:hidden;"},
     el("div",{class:"grp-h open"},el("span",{class:"grp-t",style:"color:var(--acc-lt);"},"ПРОМПТ НОДЫ"),el("span",{class:"chev"},"⤢")),
-    el("div",{style:"padding:13px;"},el("textarea",{style:"width:100%;min-height:90px;resize:vertical;background:#0f1115;border:1px solid var(--bd);border-radius:8px;color:var(--tx-bd);font-family:var(--mono);font-size:12px;line-height:1.6;padding:11px;outline:none;",placeholder:"опиши, что в кадре…",oninput:(e)=>{ n.prompt=e.target.value; }},n.prompt||""))));
+    el("div",{style:"padding:13px;"},el("textarea",{style:"width:100%;min-height:90px;resize:vertical;background:#0f1115;border:1px solid var(--bd);border-radius:8px;color:var(--tx-bd);font-family:var(--mono);font-size:12px;line-height:1.6;padding:11px;outline:none;",placeholder:"опиши, что в кадре…",oninput:(e)=>{ n.prompt=e.target.value; scheduleSave(n); }},n.prompt||""))));
   aside.appendChild(el("div",{id:"preview-out",style:"padding:0 16px 16px;"}));
   renderPreviewOut(n);
 }
@@ -535,7 +535,7 @@ function inspectorGroup(g,open,n){
 function inspectorField(f,n){
   const wrap=el("div",{});
   const cur=n.params[f.api_param]!=null?n.params[f.api_param]:f.default;
-  const set=(v)=>{ n.params[f.api_param]=v; };
+  const set=(v)=>{ n.params[f.api_param]=v; scheduleSave(n); };
   const lblRow=el("div",{style:"display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;"},el("span",{class:"flbl",style:"margin:0;"},f.name));
   if(f.hint)lblRow.appendChild(el("span",{class:"mono",style:"font-size:9px;color:var(--tx-lo3);max-width:160px;text-align:right;line-height:1.2;"},f.hint));
   if(f.ui!=="slider"&&f.ui!=="toggle")wrap.appendChild(lblRow);
@@ -578,6 +578,19 @@ function inspectorField(f,n){
   }
   wrap.style.marginBottom="0";
   return wrap;
+}
+let _saveTimer=null;
+function setSaveInd(txt,col){ const e=document.getElementById("save-ind"); if(e){ e.textContent=txt; e.style.color=col||"var(--tx-lo2)"; } }
+function scheduleSave(n){
+  if(!S.recipe||!n||!n.id)return; // нода вне сохранённого графа — нечего персистить
+  setSaveInd("есть правки…","var(--warn)");
+  clearTimeout(_saveTimer); _saveTimer=setTimeout(()=>saveNode(n),800);
+}
+async function saveNode(n){
+  if(!S.recipe||!n||!n.id)return;
+  setSaveInd("сохраняю…","var(--tx-mid)");
+  const r=await api("/node-save",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({recipe_id:S.recipe.recipe.id,node_id:n.id,prompt:n.prompt||"",params:n.params||{},tool:S.tool})});
+  if(r.ok){ setSaveInd("сохранено ✓","var(--ok)"); n.human_edited=true; } else setSaveInd("ошибка сохр.","var(--err)");
 }
 async function runPreview(n){
   const btn=document.getElementById("prev-btn"); if(btn){ btn.style.opacity=".6"; btn.disabled=true; }
