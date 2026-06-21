@@ -9,6 +9,7 @@ const nextConfig: NextConfig = {
     return [
       { source: "/inferno/patrick.html", headers: [{ key: "Cache-Control", value: "no-cache, no-store, must-revalidate" }] },
       { source: "/inferno/wb.html", headers: [{ key: "Cache-Control", value: "no-cache, no-store, must-revalidate" }] },
+      { source: "/inferno/studio.html", headers: [{ key: "Cache-Control", value: "no-cache, no-store, must-revalidate" }] },
     ];
   },
 };
