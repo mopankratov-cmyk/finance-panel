@@ -11,7 +11,7 @@
 - [x] **V3+V4** ОТК-петля regen-on-fail в graphRun — score<7 & бюджет → pickCulprit (слабая ось→нода) + improve-prompt → реген ТОЛЬКО виновника → банк ЛУЧШЕЙ попытки (bestScore/bestUrl). Жёстко ≤MAX_RENDERS=3. Адверсариал-ревью: петля loop-safe; пофикшен CRITICAL (attempts не сбрасывался → run_fail выбрасывал оплаченный лучший — теперь сброс на успешном шаге в tick).
 - [x] **R3** артефакт-гейт — POST /api/factory/artifact-check (Claude vision ТОЛЬКО на сломанный AI-брак: уанкэни/текст-блид/руки/морфинг) в graphRun ПЕРЕД рубрикой → broken → regenCulprit (общий хелпер с V3/V4). Липсинк по статике не судится (отмечено). Мягкая деградация без ключа.
 - [ ] R4 3 варианта на ТЗ
-- [ ] V11 смета + бюджет-кап
+- [x] **V11** смета — экран сборки: РЕАЛЬНАЯ смета прогона из нод рецепта × PRICE (была демо $182/250) + рейл «$182/250 демо»→«Балансы экран 07». Бюджет-гард по balances.low перенесён в V21-оркестратор (раз на батч + кап $40, не на каждый рецепт — collectBalances живой ~9с).
 - [x] **V8** reality-first дефолты decompose — problem/solution/proof → disk_real (хребет), seedance/creatify только hook-ревил/нет съёмки. Промпт decompose.
 - [ ] R6 skills-updater (обратка → дельты)
 - [ ] R5 Telegram-бот + fal-whisper
