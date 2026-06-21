@@ -951,7 +951,11 @@ async function openBrandKit(){
   const foot=el("div",{style:"display:flex;justify-content:flex-end;gap:9px;margin-top:18px;"});
   foot.appendChild(el("button",{class:"btn sm",onclick:()=>ov.remove()},"Закрыть"));
   foot.appendChild(el("button",{class:"btn sm primary",onclick:async(e)=>{
-    const brand=sel.value; e.target.textContent="сохраняю…";
+    const brand=sel.value;
+    // client-side гард hex-цветов (пустое = ок «не задано», иначе строго #RRGGBB[AA])
+    const HEX=/^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/;
+    for(const ck of ["caption_color","caption_highlight"]){ const v=refs[ck].value.trim(); if(v&&!HEX.test(v)){ toast("цвет «"+v+"» не hex (#RRGGBB) — поправь"); refs[ck].focus(); return; } }
+    e.target.textContent="сохраняю…";
     const payload={brand,
       voice_id:refs.voice_id.value.trim()||null, persona_id:refs.persona_id.value.trim()||null, visual_style:refs.visual_style.value.trim()||null, music_url:refs.music_url.value.trim()||null,
       caption_font:refs.caption_font.value||null, caption_color:refs.caption_color.value.trim()||null, caption_highlight:refs.caption_highlight.value.trim()||null,

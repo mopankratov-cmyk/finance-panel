@@ -98,5 +98,21 @@ function eq(a: unknown, b: unknown, msg: string) { ok(JSON.stringify(a) === JSON
   ok(!r.warnings.some(w => w.includes("visual_style")), "встроенный visual_style без варнинга");
 }
 
+// ── цвет (ui:color): валидный hex проходит, мусор отбрасывается/на дефолт ──
+{
+  const r = normalizeParams("creatify", { "caption_setting.text_color": "#FFEE00", "caption_setting.highlight_text_color": "красный" });
+  eq(r.params["caption_setting.text_color"], "#FFEE00", "валидный hex цвета сохранён");
+  ok(!("caption_setting.highlight_text_color" in r.params), "мусорный цвет «красный» отброшен (нет дефолта)");
+}
+{
+  const r = normalizeParams("shotstack", { "font.color": "#GGGGGG" });
+  eq(r.params["font.color"], "#ffffff", "невалидный hex shotstack font.color → дефолт #ffffff");
+  ok(r.warnings.some(w => w.includes("не hex-цвет")), "варнинг про не-hex цвет");
+}
+{
+  const r = normalizeParams("creatify", { "caption_setting.text_color": "#FFEE0080" });
+  eq(r.params["caption_setting.text_color"], "#FFEE0080", "hex с альфой (8 знаков) принят");
+}
+
 console.log(`\nnormalizeParams: ${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

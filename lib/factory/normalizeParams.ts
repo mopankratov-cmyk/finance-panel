@@ -69,7 +69,16 @@ function coerce(f: ToolField, v: any, warnings: string[]): unknown {
     const s = String(v).toLowerCase().trim();
     return s === "true" || s === "1" || s === "yes" || s === "да";
   }
-  // text/textarea/file/color — строка как есть (null/undefined пропускаем)
+  // цвет — строго #RRGGBB или #RRGGBBAA; мусор («red», «#GGG», кириллица) → дефолт схемы или дроп
+  // (иначе уходит в Creatify/Shotstack → 422 или молчаливый дефолт). Защищает и бренд-кит, и ручной ввод.
+  if (f.ui === "color") {
+    if (v == null || v === "") return undefined;
+    const s = String(v).trim();
+    if (/^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/.test(s)) return s;
+    warnings.push(`${f.api_param}=«${s}» не hex-цвет — ${f.default !== undefined ? "дефолт " + f.default : "отброшен"}`);
+    return f.default !== undefined ? f.default : undefined;
+  }
+  // text/textarea/file — строка как есть (null/undefined пропускаем)
   if (v == null) return v;
   return typeof v === "string" ? v : String(v);
 }

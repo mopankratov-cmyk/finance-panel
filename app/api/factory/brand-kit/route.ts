@@ -45,11 +45,18 @@ export async function POST(req: NextRequest) {
   const brand = (b.brand || "").toString().trim();
   if (!brand) return NextResponse.json({ ok: false, error: "нужен brand" }, { status: 400 });
 
+  const HEX = /^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/;
+  const COLOR_FIELDS = new Set(["caption_color", "caption_highlight"]);
   const patch: Record<string, unknown> = { brand, updated_at: new Date().toISOString() };
-  for (const f of STR_FIELDS) if (b[f] !== undefined) patch[f] = b[f] === null || b[f] === "" ? null : String(b[f]).slice(0, 600);
-  if (!patch.niche && b.article) patch.niche = nicheFromArticle(String(b.article), brand);
+  for (const f of STR_FIELDS) {
+    if (b[f] === undefined) continue;
+    const v = b[f] === null ? null : String(b[f]).trim().slice(0, 600);
+    if (v && COLOR_FIELDS.has(f) && !HEX.test(v)) continue; // мусорный цвет не пишем (защита движков от 422)
+    patch[f] = v || null;
+  }
+  if (!patch.niche && b.article) patch.niche = nicheFromArticle(String(b.article), ""); // name=product, не brand (иначе ENOUGH→default)
   if (Array.isArray(b.ban_words)) patch.ban_words = b.ban_words.map((x: unknown) => String(x || "").trim()).filter(Boolean).slice(0, 40);
-  if (Array.isArray(b.hashtags)) patch.hashtags = b.hashtags.map((x: unknown) => String(x || "").trim().replace(/^#?/, "#")).filter((x: string) => x.length > 1).slice(0, 30);
+  if (Array.isArray(b.hashtags)) patch.hashtags = b.hashtags.map((x: unknown) => String(x || "").trim().replace(/^#+/, "#")).filter((x: string) => x.length > 1).slice(0, 30);
 
   try {
     const { error } = await db.from("brand_kits").upsert(patch, { onConflict: "brand" });
