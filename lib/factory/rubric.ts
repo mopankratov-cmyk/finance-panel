@@ -48,7 +48,7 @@ export function nicheFromArticle(article = "", name = ""): RubricNiche {
   const s = `${article} ${name}`.toLowerCase();
   if (/^nv|^ht|куртк|ветровк|пухов|пальто|плащ|жилет|одежд/.test(s)) return "clothing";
   if (/^tt|пистолет|игрушк|бластер|toy|water.gun/.test(s)) return "toys";
-  if (/крем|сыворотк|маск|косметик|уход|тонер|патч|санскрин|санскрей|солнцезащит|тональн|пудра|помад|туш|тени|консилер|праймер|бальзам.*губ|cosmet|cream|serum|skincare|spf|sunscreen|collagen|коллаген|retinol|niacinamide|hyaluron/.test(s)) return "cosmetics";
+  if (/крем|сыворотк|маск|косметик|уход|тонер|патч|санскрин|санскрей|солнцезащит|тональн|пудра|помад|туш|тени|консилер|праймер|бальзам.*губ|cosmet|cream|serum|skincare|spf|sunscreen|collagen|коллаген|retinol|niacinamide|hyaluron|concealer|foundation|blush|mascara|lipstick|lipgloss|\blip\b|eyeshadow|eyeliner|brow|highlighter|contour|bronzer|primer|toner|essence|ampoule|moistur|cleanser|peeling|lash|setting.*powder|makeup|make.up|beauty|cushion|bb.?cream|cc.?cream/.test(s)) return "cosmetics";
   return "default";
 }
 

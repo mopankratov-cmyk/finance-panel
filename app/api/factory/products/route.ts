@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { fetchCabinetCards } from "@/lib/wb/cards";
 import { wbCardImageUrl } from "@/lib/wb/cardImage";
 import { nicheFor } from "@/lib/factory/contentDisks";
+import { nicheFromArticle } from "@/lib/factory/rubric";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -37,7 +38,8 @@ export async function GET() {
     article: p.article,
     name: p.name,
     nm_id: p.nm_id,
-    niche: p.niche,
+    niche: p.niche,                                   // тонкая ниша (cream/…) — для market-модуля
+    cniche: nicheFromArticle(p.article, p.name || ""),// КАНОНИЧЕСКАЯ ниша студии (cosmetics/clothing/toys/default)
     shop: p.shop,
     img: imgByArt[p.article] || wbCardImageUrl(p.nm_id),
   }));

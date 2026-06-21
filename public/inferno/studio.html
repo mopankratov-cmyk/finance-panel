@@ -285,12 +285,12 @@ async function loadProducts(plist){
     const d=await api("/products");
     S.productsLoading=false;
     S.allProducts=Array.isArray(d.items)?d.items:[];
-    S.prodCounts={}; S.allProducts.forEach(p=>{ S.prodCounts[p.niche]=(S.prodCounts[p.niche]||0)+1; });
+    S.prodCounts={}; S.allProducts.forEach(p=>{ const nk=p.cniche||p.niche||"default"; S.prodCounts[nk]=(S.prodCounts[nk]||0)+1; });
     if(S.screen==="center"){ render(); return; } // перерисуем центр со счётчиками товаров (без рефетча — всё в кэше)
     return;
   }
   plist.innerHTML="";
-  const items=S.allProducts.filter(p=>p.niche===S.activeNiche).slice(0,14);
+  const items=S.allProducts.filter(p=>(p.cniche||p.niche||"default")===S.activeNiche).slice(0,14);
   const c=document.getElementById("prod-cnt"); if(c)c.textContent=String(items.length);
   if(!items.length){ plist.appendChild(emptyBox("нет товаров в нише «"+nicheLabel(S.activeNiche)+"»")); return; }
   items.forEach((p,i)=>plist.appendChild(productCard(p,i)));
