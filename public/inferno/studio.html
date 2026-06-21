@@ -167,7 +167,7 @@ body{background:var(--bg-deep);font-family:var(--sans);color:var(--tx-hi);-webki
           <span style="font-size:10px;color:var(--tx-lo2);">WB · 3 ниши</span>
         </div>
       </div>
-      <a href="/inferno/patrick-legacy.html" title="Старый кокпит: дистрибуция, аналитика, трендоскоп, аккаунты — функции, которых пока нет в V3" style="display:flex;align-items:center;gap:6px;margin-top:6px;padding:6px 8px;border-radius:7px;border:1px solid var(--bd);color:var(--tx-lo);font-size:10.5px;text-decoration:none;background:var(--bg-card);">↩ Старый завод <span style="color:var(--tx-lo2);">· дистрибуция/аналитика</span></a>
+      <!-- V18-1: ссылка на legacy скрыта из навигации V3 (файлы не трогаем — patrick-legacy.html жив по прямому URL + из patrick.html, держит winners/аналитику до V18-2) -->
     </div>
   </aside>
   <main class="main">
@@ -313,6 +313,7 @@ async function screenCenter(root, force){
   if(force){ S.centerLoaded=false; S.briefCache={}; }
   header("Командный центр","карта осознания", el("div",{class:"hdr-r"},
     el("div",{class:"searchbox",title:"поиск — скоро",style:"width:240px;opacity:.5;cursor:not-allowed;"},el("span",{style:"font-size:13px;"},"⌕"),el("span",{},"Поиск ниши, товара…")),
+    el("button",{class:"btn",title:"фикс-айдентика брендов: голос/персона/шрифт/цвет/CTA/бан-слова/хэштеги — автозаполнение берёт как дефолты",onclick:()=>openBrandKit()},"🎨 Бренд-кит"),
     el("button",{class:"btn",title:"принудительно пересобрать данные и разбор ниши",onclick:()=>screenCenter(root,true)},"↻ Обновить"),
     el("button",{class:"btn primary",onclick:()=>toast("Новая ниша — заведи товары в кабинете")},"+ Новая ниша")));
   const left=el("div",{class:"scroll"}), aside=el("div",{class:"aside",style:"width:340px;padding:18px;"});
@@ -905,6 +906,62 @@ async function autofillSingleNode(n){
   if(S.screen==="inspector")screenInspector(document.getElementById("screen")); else render();
   const w=(r.warnings||[]).filter(x=>x!=="needs_image");
   toast(r.filled?("✨ нода заполнена"+(w.length?" · ⚠ "+w[0]:"")):"нода не заполнилась");
+}
+
+// V24 · редактор бренд-кита: фикс-айдентика бренда (голос/персона/шрифт/цвет/CTA/бан/хэштеги) → автозаполнение берёт дефолтами
+async function openBrandKit(){
+  const ov=el("div",{style:"position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:60;padding:24px;",onclick:(e)=>{ if(e.target===ov)ov.remove(); }});
+  const box=el("div",{class:"card",style:"padding:22px;width:min(580px,95vw);max-height:88vh;overflow:auto;"});
+  box.appendChild(el("div",{style:"font-size:16px;font-weight:600;"},"🎨 Бренд-кит"));
+  box.appendChild(el("div",{class:"muted",style:"margin-bottom:16px;"},"фикс-айдентика бренда — автозаполнение (§17) и сборка берут как дефолты (голос/персона/шрифт/цвет всегда брендовые)"));
+  const bodyEl=el("div"); box.appendChild(bodyEl); bodyEl.appendChild(loadingCard("гружу бренды…"));
+  ov.appendChild(box); document.body.appendChild(ov);
+  const d=await api("/brand-kit?list=1"); bodyEl.innerHTML="";
+  const brands=(d&&d.brands)||[];
+  if(!brands.length){ bodyEl.appendChild(emptyBox("нет брендов (или миграция brand_kits не применена)")); return; }
+  const INP="width:100%;background:var(--bg-input);border:1px solid var(--bd2);color:var(--tx-hi);border-radius:7px;padding:7px 9px;font-size:12px;font-family:inherit;box-sizing:border-box;";
+  const refs={}; const FONTS=["","Montserrat","Poppins","Comfortaa","Quantico","Noto Sans"];
+  bodyEl.appendChild(el("div",{style:"font-size:11px;color:var(--tx-lo);margin-bottom:3px;"},"Бренд"));
+  const sel=el("select",{style:INP+"margin-bottom:14px;"},...brands.map(b=>el("option",{value:b.brand},b.brand+(b.has_kit?" · кит есть ✓":""))));
+  bodyEl.appendChild(sel);
+  const form=el("div",{style:"display:flex;flex-direction:column;gap:10px;"}); bodyEl.appendChild(form);
+  const mk=(key,label,hint,kind)=>{ const w=el("div");
+    w.appendChild(el("div",{style:"font-size:11px;color:var(--tx-lo);margin-bottom:3px;"},label,hint?el("span",{style:"color:var(--tx-lo2);"}," · "+hint):null));
+    let inp;
+    if(kind==="font")inp=el("select",{style:INP},...FONTS.map(f=>el("option",{value:f},f||"— по умолчанию —")));
+    else if(kind==="area")inp=el("textarea",{style:INP+"min-height:52px;resize:vertical;"});
+    else inp=el("input",{type:"text",style:INP,placeholder:kind==="color"?"#RRGGBB":(hint||"")});
+    w.appendChild(inp); refs[key]=inp; form.appendChild(w); };
+  mk("voice_id","Голос (override_voice id)","скопируй из пикера в инспекторе");
+  mk("persona_id","Персона (override_avatar id)");
+  mk("visual_style","Шаблон композиции (visual_style id)");
+  mk("music_url","Фоновая музыка (url/id)");
+  mk("caption_font","Шрифт субтитров","кириллица-safe","font");
+  mk("caption_color","Цвет субтитров","","color");
+  mk("caption_highlight","Цвет подсветки (karaoke)","","color");
+  mk("cta","CTA-шаблон","призыв искать на WB","area");
+  mk("ban_words","Бан-слова","через запятую");
+  mk("hashtags","Бренд-хэштеги","через запятую");
+  mk("notes","Заметка","","area");
+  const load=()=>{ const b=brands.find(x=>x.brand===sel.value), k=(b&&b.kit)||{};
+    refs.voice_id.value=k.voice_id||""; refs.persona_id.value=k.persona_id||""; refs.visual_style.value=k.visual_style||""; refs.music_url.value=k.music_url||"";
+    refs.caption_font.value=k.caption_font||""; refs.caption_color.value=k.caption_color||""; refs.caption_highlight.value=k.caption_highlight||"";
+    refs.cta.value=k.cta||""; refs.ban_words.value=(k.ban_words||[]).join(", "); refs.hashtags.value=(k.hashtags||[]).join(", "); refs.notes.value=k.notes||""; };
+  sel.onchange=load; load();
+  const foot=el("div",{style:"display:flex;justify-content:flex-end;gap:9px;margin-top:18px;"});
+  foot.appendChild(el("button",{class:"btn sm",onclick:()=>ov.remove()},"Закрыть"));
+  foot.appendChild(el("button",{class:"btn sm primary",onclick:async(e)=>{
+    const brand=sel.value; e.target.textContent="сохраняю…";
+    const payload={brand,
+      voice_id:refs.voice_id.value.trim()||null, persona_id:refs.persona_id.value.trim()||null, visual_style:refs.visual_style.value.trim()||null, music_url:refs.music_url.value.trim()||null,
+      caption_font:refs.caption_font.value||null, caption_color:refs.caption_color.value.trim()||null, caption_highlight:refs.caption_highlight.value.trim()||null,
+      cta:refs.cta.value.trim()||null, notes:refs.notes.value.trim()||null,
+      ban_words:refs.ban_words.value.split(",").map(s=>s.trim()).filter(Boolean), hashtags:refs.hashtags.value.split(",").map(s=>s.trim()).filter(Boolean)};
+    const r=await api("/brand-kit",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
+    e.target.textContent="Сохранить";
+    if(r&&r.ok){ toast("бренд-кит «"+brand+"» сохранён ✓"); const b=brands.find(x=>x.brand===brand); if(b){ b.kit=payload; b.has_kit=true; } }
+    else toast("не вышло: "+((r&&r.error)||"?").toString().slice(0,50)); }},"Сохранить"));
+  box.appendChild(foot);
 }
 
 //==================== 05 · ASSEMBLY / OTK ====================
