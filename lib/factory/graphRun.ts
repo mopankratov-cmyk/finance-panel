@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { submitNode, pollNode, type EngineNode } from "./nodeEngine";
+import { submitNode, pollNode, nodeHash, type EngineNode } from "./nodeEngine";
 import { buildEdit, fixedBeatGrid, quantizeToBeats, shotstackSubmit, shotstackStatus, shotstackReady, type AssemblyClip } from "./shotstack";
 import { extractFrames } from "./serverMedia";
 import { logGeneration } from "./genHistory";
@@ -176,6 +176,10 @@ export async function runRecipeStep(
       const tool = String(n.tool || "").toLowerCase();
       if (!tool || ASSEMBLY_TOOLS.has(tool) || tool === "captions") { n.status = "skip"; continue; }
       if (n.status === "done" || n.status === "submitted") continue;
+      // V10: владелец принял превью этой ноды (hash совпадает с текущими prompt/params/вход) → берём готовый
+      // клип, НЕ платим fal повторно. Привязка к nodeHash инвалидирует при любой правке ноды.
+      const pv = (n.params || {})["preview_url"]; const ph = (n.params || {})["preview_hash"];
+      if (pv && ph && nodeHash(asNode(n)) === ph) { n.status = "done"; n.url = String(pv); n.engine = "preview"; continue; }
       const r = await submitNode(asNode(n));
       n.engine = r.engine;
       if (r.error) { n.status = "error"; n.error = r.error; }

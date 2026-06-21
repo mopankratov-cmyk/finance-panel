@@ -64,7 +64,15 @@ async function transfer(db: any, p: { template_id?: string | number; nodes?: any
     slot: roleToSlot(n),
     node_type: n.node_type || null,
     tool: n.tool_candidate || n.tool || null,
-    prompt: "", params: {}, asset_url: "",          // ОБНУЛЕНО под твой товар
+    // V2: предзаполняем ЧЕРНОВИК-СКЕЛЕТ из подсказки конкурента (владелец ПРАВИТ под товар, не копирует дословно — иначе клон-слоп)
+    prompt: String(n.voiceover || n.visual_desc || "").slice(0, 1500),
+    params: {
+      ...(n.onscreen_text ? { onscreen_text: String(n.onscreen_text).slice(0, 300) } : {}),
+      ...(n.role ? { role: String(n.role).toLowerCase() } : {}),       // нужно ОТК-регену (pickCulprit) и фильтру сборки
+      ...(n.emotion ? { emotion: String(n.emotion) } : {}),
+      ...(n.visual_desc ? { visual_desc: String(n.visual_desc).slice(0, 300) } : {}),
+    },
+    asset_url: "",                                  // фото/ассет под СВОЙ товар цепляешь сам
     duration_sec: typeof n.duration_sec === "number" ? n.duration_sec : null,
     source: "transferred_from_corpus", human_edited: false,
     agent_suggestion: { role: n.role, hook_type: n.hook_type, onscreen_text: n.onscreen_text, voiceover: n.voiceover, emotion: n.emotion, visual_desc: n.visual_desc },
