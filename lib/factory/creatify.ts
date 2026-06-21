@@ -123,7 +123,7 @@ export const CREATIFY_SCENES: { id: string; label: string; hint: string }[] = [
 // ОСНОВНОЙ: link_to_videos — товар в кадре. Возвращает токен + debug (сырые ответы для отладки).
 // Фото товара передаём НАПРЯМУЮ (link_with_params) — WB не скрейпится, поэтому даём image_urls.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export async function creatifyLinkVideo(opts: { url?: string; images?: string[]; title?: string; description?: string; script?: string; avatar?: string; visual_style?: string; length?: number; model_version?: string; no_cta?: boolean; script_style?: string; caption_setting?: Record<string, unknown> }): Promise<{ token?: string; error?: string; debug?: any }> {
+export async function creatifyLinkVideo(opts: { url?: string; images?: string[]; title?: string; description?: string; script?: string; avatar?: string; visual_style?: string; length?: number; model_version?: string; no_cta?: boolean; script_style?: string; caption_setting?: Record<string, unknown>; aspect_ratio?: string; target_platform?: string; voiceover_volume?: number; no_emotion?: boolean; no_stock_broll?: boolean }): Promise<{ token?: string; error?: string; debug?: any }> {
   const h = headers();
   if (!h) return { error: "CREATIFY ключ не настроен" };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -144,9 +144,12 @@ export async function creatifyLinkVideo(opts: { url?: string; images?: string[];
   // 2) создать видео из link
   // язык — КОД "ru" (не слово "russian"!), иначе CTA/плашки уходят в английский.
   // no_cta — убираем англоязычную плашку-концовку ("Blast Away with Wildberries / BUY NOW"); CTA уже в субтитрах по-русски.
-  const body: Record<string, unknown> = { link: linkId, aspect_ratio: "9x16", video_length: opts.length || 15, target_platform: "Tiktok", language: "ru", no_cta: opts.no_cta !== false };
+  const body: Record<string, unknown> = { link: linkId, aspect_ratio: opts.aspect_ratio || "9x16", video_length: opts.length || 15, target_platform: opts.target_platform || "Tiktok", language: "ru", no_cta: opts.no_cta !== false };
   if (opts.script) body.override_script = opts.script.slice(0, 1500);
   if (opts.avatar) body.override_avatar = opts.avatar;
+  if (typeof opts.voiceover_volume === "number") body.voiceover_volume = opts.voiceover_volume;
+  if (opts.no_emotion) body.no_emotion = true;
+  if (typeof opts.no_stock_broll === "boolean") body.no_stock_broll = opts.no_stock_broll;
   if (opts.visual_style) body.visual_style = opts.visual_style; // композиция сцены (*Template)
   if (opts.model_version) body.model_version = opts.model_version; // aurora_v1_fast/aurora_v1/standard (раньше не слался — БАГ)
   if (opts.script_style && !opts.script) body.script_style = opts.script_style; // стиль-fallback, игнор при override_script

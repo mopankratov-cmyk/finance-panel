@@ -102,6 +102,11 @@ export async function submitNode(node: EngineNode): Promise<SubmitResult> {
       no_cta: typeof params.no_cta === "boolean" ? params.no_cta : undefined,
       script_style: params.script_style || undefined,
       caption_setting: Object.keys(caption_setting).length ? caption_setting : undefined,
+      aspect_ratio: params.aspect_ratio || undefined,
+      target_platform: params.target_platform || undefined,
+      voiceover_volume: typeof params.voiceover_volume === "number" ? params.voiceover_volume : undefined,
+      no_emotion: typeof params.no_emotion === "boolean" ? params.no_emotion : undefined,
+      no_stock_broll: typeof params.no_stock_broll === "boolean" ? params.no_stock_broll : undefined,
     });
     if (r.error || !r.token) return { engine: "creatify", error: r.error || "creatify без токена" };
     return { engine: "creatify", token: packToken("creatify", r.token), cost_hint: "med" };

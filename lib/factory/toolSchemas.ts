@@ -60,7 +60,10 @@ export const TOOL_SCHEMAS: Record<string, ToolSchema> = {
       ] },
       { group: "Формат", fields: [
         { name: "Длительность", api_param: "duration", ui: "dropdown", values: ["5", "10"], default: "5" },
-        { name: "Соотношение", api_param: "aspect_ratio", ui: "dropdown", values: ["9:16", "1:1", "16:9"], default: "9:16" },
+        { name: "Соотношение", api_param: "aspect_ratio", ui: "dropdown", values: ["9:16", "1:1", "16:9"], default: "9:16", hint: "невалидно на standard i2v — может дать 422" },
+      ] },
+      { group: "Контроль", fields: [
+        { name: "Сид", api_param: "seed", ui: "number", hint: "фиксировать удачный дубль" },
       ] },
     ],
   },
@@ -71,6 +74,9 @@ export const TOOL_SCHEMAS: Record<string, ToolSchema> = {
         { name: "Аватар", api_param: "override_avatar", ui: "picker", hint: "галерея персон" },
         { name: "Композиция", api_param: "visual_style", ui: "dropdown", values: CREATIFY_SCENES.map((s) => s.id), valueLabels: CREATIFY_SCENES.map((s) => s.label), default: "AvatarBubbleTemplate", hint: "API ждёт *Template-id" },
         { name: "Голос (RU)", api_param: "override_voice", ui: "picker", hint: "RU-whitelist; у API нет language" },
+        { name: "Громкость озвучки", api_param: "voiceover_volume", ui: "slider", min: 0, max: 1, step: 0.05, default: 1 },
+        { name: "Без эмоции аватара", api_param: "no_emotion", ui: "toggle", default: false },
+        { name: "Без сток-broll", api_param: "no_stock_broll", ui: "toggle", default: true, hint: "анти-слоп — держать true" },
       ] },
       { group: "Скрипт", fields: [
         { name: "Наш сценарий", api_param: "override_script", ui: "textarea", hint: "русский, после ОТК" },
@@ -79,6 +85,8 @@ export const TOOL_SCHEMAS: Record<string, ToolSchema> = {
       { group: "Движок / формат", fields: [
         { name: "Модель", api_param: "model_version", ui: "dropdown", values: ["aurora_v1_fast", "aurora_v1", "standard"], default: "aurora_v1_fast", hint: "БАГ был — не слался" },
         { name: "Длительность", api_param: "video_length", ui: "dropdown", values: ["15", "30", "45", "60"], default: "15" },
+        { name: "Соотношение", api_param: "aspect_ratio", ui: "dropdown", values: ["9x16", "1x1", "16x9"], default: "9x16", hint: "ltv формат XxY" },
+        { name: "Платформа", api_param: "target_platform", ui: "dropdown", values: ["Tiktok", "Instagram", "Youtube"], default: "Tiktok" },
         { name: "Без англо-CTA", api_param: "no_cta", ui: "toggle", default: true, hint: "держать true" },
       ] },
       { group: "Субтитры", fields: [
@@ -91,9 +99,9 @@ export const TOOL_SCHEMAS: Record<string, ToolSchema> = {
     tool: "shotstack", label: "Shotstack (монтаж/субтитры)", node_types: ["captions", "transition", "effect"],
     groups: [
       { group: "Переходы / эффекты", fields: [
-        { name: "Переход вход", api_param: "transition.in", ui: "dropdown", values: ["none", "fade", "wipeLeft", "slideUp", "zoom", "reveal"], default: "none" },
-        { name: "Эффект (Ken Burns)", api_param: "effect", ui: "dropdown", values: ["none", "zoomIn", "zoomOut", "slideLeft", "slideRight"], default: "none" },
-        { name: "Фильтр", api_param: "filter", ui: "dropdown", values: ["none", "boost", "contrast", "darken", "lighten", "muted"], default: "none" },
+        { name: "Переход вход", api_param: "transition.in", ui: "dropdown", values: ["none", "fade", "reveal", "wipeLeft", "wipeRight", "slideLeft", "slideRight", "slideUp", "slideDown", "carouselLeft", "carouselRight", "carouselUp", "carouselDown", "shuffleTopRight", "zoom"], default: "none" },
+        { name: "Эффект (Ken Burns)", api_param: "effect", ui: "dropdown", values: ["none", "zoomIn", "zoomInSlow", "zoomOut", "zoomOutSlow", "slideLeft", "slideLeftSlow", "slideRight", "slideRightSlow", "slideUp", "slideDown"], default: "none" },
+        { name: "Фильтр", api_param: "filter", ui: "dropdown", values: ["none", "boost", "contrast", "darken", "greyscale", "lighten", "muted", "negative"], default: "none" },
       ] },
       { group: "Текст-субтитры", fields: [
         { name: "Шрифт", api_param: "font.family", ui: "dropdown", values: ["Noto Sans", "Montserrat"], default: "Noto Sans", hint: "кириллица ✓ (смоук пройден)" },
@@ -147,8 +155,10 @@ export const TOOL_SCHEMAS: Record<string, ToolSchema> = {
     tool: "sound", label: "Звук / музыка", node_types: ["sound", "music"],
     groups: [
       { group: "Трек", fields: [
-        { name: "Источник", api_param: "source", ui: "dropdown", values: ["virlo_trending", "orbit_synced", "creatify_music"], default: "orbit_synced" },
+        { name: "URL трека (mp3)", api_param: "url", ui: "picker", hint: "прямой mp3 — доходит до сборки; sound_id без url не играет" },
+        { name: "Источник", api_param: "source", ui: "dropdown", values: ["virlo_trending", "virlo_breakout", "orbit_synced", "creatify_music"], default: "orbit_synced" },
         { name: "ID трека", api_param: "sound_id", ui: "picker", hint: "подменять по title (модель галлюцинирует UUID)" },
+        { name: "Название", api_param: "title", ui: "text", hint: "маппится на sound_id" },
         { name: "Commerce-safe", api_param: "is_commerce_safe", ui: "toggle", default: true },
         { name: "Громкость", api_param: "volume", ui: "slider", min: 0, max: 1, step: 0.05, default: 0.3, hint: "≤0.3 под озвучку" },
       ] },
