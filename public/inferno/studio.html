@@ -685,17 +685,19 @@ async function runPreview(n){
   const r=await api("/node-preview",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
   if(btn){ btn.style.opacity="1"; btn.disabled=false; }
   if(r.error){ _previewing[n.id]=false; S.preview[n.id]={status:"error",error:r.error}; renderPreviewOut(n); return; }
-  if(r.status==="done"){ _previewing[n.id]=false; S.preview[n.id]={status:"done",url:r.url,cached:r.cached}; renderPreviewOut(n); return; }
-  S.preview[n.id]={status:"in_progress",token:r.token}; renderPreviewOut(n); pollPreview(n,r.token,0);
+  if(r.status==="done"){ _previewing[n.id]=false; S.preview[n.id]={status:"done",url:r.url,cached:r.cached,hash:r.hash}; renderPreviewOut(n); return; }
+  S.preview[n.id]={status:"in_progress",token:r.token,hash:r.hash}; renderPreviewOut(n); pollPreview(n,r.token,0);
 }
 async function pollPreview(n,token,c){
   if(c>40){ _previewing[n.id]=false; S.preview[n.id]={status:"error",error:"timeout"}; renderPreviewOut(n); return; }
   await new Promise(r=>setTimeout(r,4000)); if(S.selectedNode!==n){ _previewing[n.id]=false; return; }
   const r=await api("/node-preview?token="+encodeURIComponent(token));
-  if(r.status==="done"){ _previewing[n.id]=false; S.preview[n.id]={status:"done",url:r.url}; renderPreviewOut(n); return; }
+  if(r.status==="done"){ _previewing[n.id]=false; S.preview[n.id]={status:"done",url:r.url,hash:(S.preview[n.id]||{}).hash}; renderPreviewOut(n); return; }
   if(r.status==="error"){ _previewing[n.id]=false; S.preview[n.id]={status:"error",error:r.error}; renderPreviewOut(n); return; }
   pollPreview(n,token,c+1);
 }
+// V10: закрепить превью как финальный клип ноды → сборка не платит fal заново (привязка к hash инвалидирует при правке)
+function takePreview(n,p){ if(!p||!p.hash){ toast("нет hash превью"); return; } n.params=n.params||{}; n.params.preview_url=p.url; n.params.preview_hash=p.hash; scheduleSave(n); renderPreviewOut(n); toast("клип закреплён — сборка не платит заново"); }
 function renderPreviewOut(n){
   const out=document.getElementById("preview-out"); if(!out)return; out.innerHTML="";
   const p=S.preview[n.id]; if(!p)return;
@@ -705,7 +707,9 @@ function renderPreviewOut(n){
   if(p.status==="done"){ const isVid=p.url&&(/\.(mp4|webm|mov)(\?|$)/i.test(p.url)||p.url.includes("video")||p.url.includes("fal"));
     out.appendChild(el("div",{class:"card",style:"overflow:hidden;"},
       isVid?el("video",{src:p.url,controls:"controls",style:"width:100%;display:block;background:#000;"}):el("img",{src:p.url,style:"width:100%;display:block;"}),
-      el("div",{style:"padding:8px 10px;display:flex;align-items:center;"},el("span",{class:"tbadge",style:"background:var(--ok);"},p.cached?"кеш $0":"готово"),el("a",{href:p.url,target:"_blank",class:"mono",style:"font-size:10px;color:var(--tx-lo);margin-left:auto;"},"открыть ↗")))); }
+      el("div",{style:"padding:8px 10px;display:flex;align-items:center;gap:8px;"},el("span",{class:"tbadge",style:"background:var(--ok);"},p.cached?"кеш $0":"готово"),
+        p.hash?(function(){ const taken=n.params&&n.params.preview_url===p.url; return el("button",{class:"btn sm",style:"margin-left:auto;"+(taken?"border-color:var(--ok);color:var(--ok);":""),onclick:()=>takePreview(n,p)},taken?"✓ закреплён":"брать этот клип"); })():null,
+        el("a",{href:p.url,target:"_blank",class:"mono",style:"font-size:10px;color:var(--tx-lo);"+(p.hash?"":"margin-left:auto;")},"открыть ↗")))); }
 }
 
 //==================== 05 · ASSEMBLY / OTK ====================
