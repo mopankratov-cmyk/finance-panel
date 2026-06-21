@@ -210,6 +210,20 @@ function renderNav(){
     el("span",{style:"display:flex;flex-direction:column;align-items:flex-start;min-width:0;"},el("span",{class:"nav-tt"},s.tt),el("span",{class:"nav-st"},s.st)))));
 }
 function go(id){ S.screen=id; renderNav(); render(); }
+// персист сессии: после reload вернуться на тот же экран/нишу/открытый рецепт (раньше сбрасывало на старт)
+function saveSession(){ try{ localStorage.setItem("noda_sess", JSON.stringify({screen:S.screen, niche:S.activeNiche, recipeId:(S.recipe&&S.recipe.recipe&&S.recipe.recipe.id)||null})); }catch(e){} }
+async function restoreSession(){
+  let s=null; try{ s=JSON.parse(localStorage.getItem("noda_sess")||"null"); }catch(e){}
+  if(!s)return;
+  if(s.niche)S.activeNiche=s.niche;
+  const needsRecipe=["canvas","inspector","assembly"].includes(s.screen);
+  if(needsRecipe){ // эти экраны без рецепта пусты → подгружаем сохранённый рецепт, иначе уводим в библиотеку
+    if(!s.recipeId){ S.screen="library"; return; }
+    const ok=await openRecipe(s.recipeId).catch(()=>false);
+    if(!ok){ S.screen="library"; return; }
+  }
+  if(s.screen)S.screen=s.screen;
+}
 function header(title,meta,right){
   const h=document.getElementById("hdr"); h.innerHTML="";
   const l=el("div",{class:"hdr-l"},el("span",{class:"hdr-t"},title)); if(meta)l.appendChild(el("span",{class:"meta-chip"},meta));
@@ -219,6 +233,7 @@ function loadingCard(t){ return el("div",{class:"card",style:"padding:18px;displ
 function emptyBox(t){ return el("div",{class:"empty"},el("div",{style:"font-size:26px;opacity:.4;"},"◇"),el("div",{style:"font-size:12.5px;max-width:300px;"},t)); }
 
 async function render(){
+  saveSession(); // запоминаем текущий экран/нишу/рецепт для возврата после reload
   const root=document.getElementById("screen"); root.innerHTML="";
   ({center:screenCenter,compete:screenCompete,canvas:screenCanvas,inspector:screenInspector,assembly:screenAssembly,library:screenLibrary,balances:screenBalances,ds:screenDS}[S.screen]||screenCenter)(root);
 }
@@ -999,7 +1014,7 @@ function screenDS(root){
     el("div",{class:"card",style:"width:196px;padding:14px;border-color:var(--bd-err);color:var(--err);font-size:12px;"},"✕ ошибка генерации",el("div",{class:"btn sm",style:"margin-top:8px;display:inline-flex;"},"Повторить"))));
 }
 
-renderNav(); render();
+(async()=>{ await restoreSession(); renderNav(); render(); })(); // восстановить сессию → отрисовать там, где был
 </script>
 </body>
 </html>
