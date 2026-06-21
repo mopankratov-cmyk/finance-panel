@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { createClaudeClient } from "@/lib/agent/client";
+import { learningHints } from "@/lib/factory/learningHints";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -93,8 +94,10 @@ async function decompose(params: { viral_video_id?: string; niche?: string; desc
   "confidence": "high|med|low" }
 Тайминг реалистичный (ролик 15-30с). 4-7 нод. Тексты по-русски. Только JSON.`;
 
+  // V7/R6 · петля обучения: грундим декомпозицию накопленным сигналом ниши (победители/корпус/анти-паттерны)
+  const lh = db ? await learningHints(db, niche) : "";
   const user = `Ниша: ${niche || "?"}\nХук (если известен): ${hook || "?"}\nФормат-детект: ${fmt || "?"}\n` +
-    `ОПИСАНИЕ видео конкурента (его подпись/питч):\n${desc.slice(0, 2500)}\nВосстанови структуру и разложи на ноды.`;
+    `ОПИСАНИЕ видео конкурента (его подпись/питч):\n${desc.slice(0, 2500)}\nВосстанови структуру и разложи на ноды.${lh}`;
 
   try {
     const res = await client.messages.create({ model: MODEL, max_tokens: 3000, system: sys, messages: [{ role: "user", content: user }] });

@@ -3,6 +3,7 @@ import { CLAUDE_MODEL as MODEL, createClaudeClient } from "@/lib/agent/client";
 import { rubricPrompt, scoreRubric, nicheFromArticle } from "@/lib/factory/rubric";
 import type { ContentMode, RubricNiche, AxisScores } from "@/lib/factory/rubric";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { rejectAntiFor } from "@/lib/factory/learningHints";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -121,8 +122,11 @@ ${rubricPrompt(mode)}
 Не завышай баллы из вежливости — это для конкуренции в ленте. Верни СТРОГО JSON:
 {"axes":{"hook":1-5,"retention":1-5,"native":1-5,"brand":1-5,"cta":1-5},"issues":["конкретный изъян, мешающий обойти конкурентов",...],"fixes":["что поправить",...],"regen_hint":"одна короткая англ. фраза-добавка к промпту image-to-video, чтобы убрать главный ВИЗУАЛЬНЫЙ дефект"}. Только JSON, без преамбулы.`;
 
+  // V7 · калибровка под нишу: что РАНЬШЕ браковали (cf_signals) — суди эти аспекты строже
+  const dbAnti = getSupabaseAdmin();
+  const antiHint = dbAnti ? await rejectAntiFor(dbAnti, niche) : "";
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const content: any[] = [{ type: "text", text: `Хук: «${hook || "—"}».\nСценарий:\n${scenarioText || "—"}\nДоп. контекст: ${context || "—"}\n\nНиже ${frames.length} кадр(ов) ролика ПО ПОРЯДКУ (первый = старт/хук, последний = финал). Оцени по рубрике.` }];
+  const content: any[] = [{ type: "text", text: `Хук: «${hook || "—"}».\nСценарий:\n${scenarioText || "—"}\nДоп. контекст: ${context || "—"}${antiHint}\n\nНиже ${frames.length} кадр(ов) ролика ПО ПОРЯДКУ (первый = старт/хук, последний = финал). Оцени по рубрике.` }];
   for (const f of frames) content.push({ type: "image", source: { type: "base64", media_type: "image/jpeg", data: f } });
 
   try {

@@ -13,7 +13,7 @@
 - [ ] R4 3 варианта на ТЗ
 - [x] **V11** смета — экран сборки: РЕАЛЬНАЯ смета прогона из нод рецепта × PRICE (была демо $182/250) + рейл «$182/250 демо»→«Балансы экран 07». Бюджет-гард по balances.low перенесён в V21-оркестратор (раз на батч + кап $40, не на каждый рецепт — collectBalances живой ~9с).
 - [x] **V8** reality-first дефолты decompose — problem/solution/proof → disk_real (хребет), seedance/creatify только hook-ревил/нет съёмки. Промпт decompose.
-- [ ] R6 skills-updater (обратка → дельты)
+- [x] **R6+V7** петля обучения — lib/factory/learningHints.ts (winnersHintFor/corpusHooksFor/rejectAntiFor — ЧИТАЕТ cf_signals reject-агрегаты, раньше write-only) → вшито в decompose (грундинг клона) + video-critic (калибровка под нишу). Одобрение уже писало winners (V1); теперь сигнал ВОЗВРАЩАЕТСЯ в идеацию/критика = компаунд.
 - [ ] R5 Telegram-бот + fal-whisper
 - [ ] V21 планировщик батча
 
