@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { submitNode, pollNode, type EngineNode } from "./nodeEngine";
 import { buildEdit, fixedBeatGrid, quantizeToBeats, shotstackSubmit, shotstackStatus, shotstackReady, type AssemblyClip } from "./shotstack";
 import { extractFrames } from "./serverMedia";
+import { logGeneration } from "./genHistory";
 
 // V3 исполнитель графа: рецепт (node_recipe_nodes) → генерация нод → Shotstack-сборка → ОТК → банк.
 // Self-chaining машина по образцу jobs/tick: один тик = ОДИН шаг (<60с), состояние в node_recipes.run_plan.
@@ -27,6 +28,8 @@ export interface RunPlan {
   attempts?: number;
   lease_until?: string | null;
   error?: string | null;
+  bestScore?: number | null;   // V3: лучший ОТК-балл за все попытки реген-петли
+  bestUrl?: string | null;     // и сборка с этим баллом — банкуем ЕЁ
 }
 
 const LEASE_MS = 90_000;
@@ -41,6 +44,30 @@ const ASSEMBLY_TOOLS = new Set(["shotstack", "sound", "music", "sharp"]);
 
 function asNode(n: RunNode): EngineNode {
   return { tool: n.tool, node_type: n.node_type, prompt: n.prompt, params: n.params, image_url: n.image_url, asset_url: n.asset_url, duration_sec: n.duration_sec ?? undefined };
+}
+
+// нода РЕГЕНЕРИРУЕМА: сгенерирована движком (не реальный клип/сборка) — реген disk_real бессмыслен
+function isRegenerable(n: RunNode): boolean {
+  const t = String(n.tool || "").toLowerCase();
+  return n.status === "done" && !!t && !ASSEMBLY_TOOLS.has(t) && t !== "captions" && t !== "disk" && t !== "disk_real";
+}
+const roleOf = (n: RunNode) => String(((n.params || {}) as Record<string, unknown>)["role"] || n.slot || "").toLowerCase();
+
+// V3/V4: по слабейшей оси ОТК выбрать ноду-виновника для регена (только генеративную)
+function pickCulprit(plan: RunPlan, axes: unknown): { node: RunNode; axis: string; val: number } | null {
+  const a = (axes && typeof axes === "object") ? (axes as Record<string, unknown>) : {};
+  let axis: string | null = null, val = 99;
+  for (const k of ["hook", "retention", "native", "brand", "cta"]) {
+    const v = Number(a[k]); if (!isNaN(v) && v < val) { val = v; axis = k; }
+  }
+  if (!axis) return null;
+  let node: RunNode | undefined;
+  if (axis === "hook") node = plan.nodes.find((n) => isRegenerable(n) && roleOf(n) === "hook");
+  else if (axis === "cta") node = plan.nodes.find((n) => isRegenerable(n) && roleOf(n) === "cta");
+  else if (axis === "brand") node = plan.nodes.find((n) => isRegenerable(n) && (roleOf(n) === "proof" || roleOf(n) === "solution"));
+  // native/retention/фолбэк → первая генеративная нода (AI = источник слопа)
+  if (!node) node = plan.nodes.find(isRegenerable);
+  return node ? { node, axis, val } : null;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -288,6 +315,34 @@ export async function runRecipeStep(
     const v = await jpost(origin, "/api/factory/video-critic", { frames, hook: hookNode?.onscreen_text || hookNode?.prompt || "", mode, article, niche }, 55000);
     const score = typeof v?.score === "number" ? v.score : null;
     plan.otk = { score, verdict: v?.verdict, axes: v?.axes || null, issues: Array.isArray(v?.issues) ? v.issues : [] };
+    // V3: запоминаем ЛУЧШУЮ сборку за все попытки реген-петли (банкуем её, не последнюю)
+    if (score != null && score > (plan.bestScore ?? -1)) { plan.bestScore = score; plan.bestUrl = url; }
+
+    // V3+V4: regen-on-fail — score<7 и есть бюджет рендеров → чиним ноду-виновника и пере-генерим ТОЛЬКО её
+    const canRegen = score != null && score < 7 && (plan.renderCount || 0) < MAX_RENDERS;
+    const culprit = canRegen ? pickCulprit(plan, plan.otk.axes) : null;
+    if (canRegen && culprit) {
+      const n = culprit.node;
+      // V4: переписать промпт провальной ноды по слабой оси/замечаниям (improve-prompt опционален)
+      try {
+        const imp = await jpost(origin, "/api/factory/improve-prompt", {
+          original: n.prompt || n.onscreen_text || "",
+          defects: (plan.otk.issues || []).slice(0, 3),
+          fixes: [`усилить ось «${culprit.axis}» (сейчас ${culprit.val}/5)`],
+          route: "node_graph", engine: n.engine || n.tool || "seedance",
+          context: `${article} · ${plan.otk.verdict || ""}`.slice(0, 200),
+        }, 55000);
+        if (imp?.prompt) n.prompt = String(imp.prompt).slice(0, 2000);
+      } catch { /* improve опционален — реген и без него */ }
+      // V20: память «что чинили»
+      await logGeneration({ recipe_id: id, tool: n.tool, engine: n.engine, node_type: n.node_type, prompt: n.prompt, output_url: url, otk_score: score, otk_axes: plan.otk.axes, status: "regen", attempt: (plan.renderCount || 0), reason: `ось ${culprit.axis} ${culprit.val}/5`, source: "graph_run", niche, article });
+      // сброс ТОЛЬКО ноды-виновника → пере-сабмит (остальные done пропускаются); новый рендер сборки
+      n.status = "pending"; n.url = undefined; n.token = undefined;
+      plan.render_id = null;
+      plan.step = "submit"; // renderCount инкрементнётся в submit → жёстко ограничен MAX_RENDERS
+      await savePlan(db, id, plan, { otk_verdict: plan.otk, otk_score: score });
+      return;
+    }
     plan.step = "bank";
     await savePlan(db, id, plan, { otk_verdict: plan.otk, otk_score: score });
     return;
@@ -295,8 +350,9 @@ export async function runRecipeStep(
 
   // ── bank: сохранить в библиотеку + финализировать рецепт + сигнал ──
   if (plan.step === "bank") {
-    const url = plan.output_url;
-    const score = plan.otk?.score ?? null;
+    // V3: банкуем ЛУЧШУЮ сборку за все попытки реген-петли (а не последнюю, которая могла просесть)
+    const url = plan.bestUrl || plan.output_url;
+    const score = plan.bestScore != null ? plan.bestScore : (plan.otk?.score ?? null);
     const hookNode = plan.nodes.find((n) => String(((n.params || {}) as Record<string, unknown>)["role"] || n.slot || "").toLowerCase() === "hook") || plan.nodes[0];
     const hook = (hookNode?.onscreen_text || hookNode?.prompt || "").toString().slice(0, 200);
     // в библиотеку контента (каталог кокпита)

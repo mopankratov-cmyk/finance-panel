@@ -20,6 +20,11 @@ export async function POST(req: NextRequest) {
   after(async () => {
     try {
       await runRecipeStep(db, origin, ctx);
+      // успешный шаг → сбрасываем счётчик ИСКЛЮЧЕНИЙ (он про ПОДРЯД-фейлы шага, не про весь ран).
+      // Иначе 3 транзиента (502 критика/Shotstack/таймаут), размазанные по длинному прогону
+      // с реген-петлёй (×3 рендера), убивали ран в run_fail и ВЫБРАСЫВАЛИ оплаченный лучший результат.
+      const p = ctx.plan as RunPlan;
+      if (p.attempts) { p.attempts = 0; await db.from("node_recipes").update({ run_plan: p, updated_at: new Date().toISOString() }).eq("id", ctx.id); }
     } catch (e) {
       const msg = String(e instanceof Error ? e.message : e).slice(0, 300);
       const plan = ctx.plan as RunPlan;

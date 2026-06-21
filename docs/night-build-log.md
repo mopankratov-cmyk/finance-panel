@@ -8,7 +8,7 @@
 ## Прогресс
 - [x] **V20** история генераций — таблица `generation_history` (lineage/params/otk/attempt/variant) + `lib/factory/genHistory.ts` (logGeneration/getRecipeHistory, best-effort) + врезки в gen-save (финал) и node-preview (sync+async done) + GET `/api/factory/generation-history?recipe_id=`. tsc+eslint 0.
 - [x] **V1** одобрение → «✓ Беру» зовёт /winners (хук в viral_hooks=5), «✕ Не то»/чипы → новый POST /api/factory/reject (cf_signals reason_chip + generation_history status=rejected). studio.html sendWinner/sendReject. Раньше — голый toast.
-- [ ] V3+V4 ОТК-петля regen-on-fail + improve-prompt
+- [x] **V3+V4** ОТК-петля regen-on-fail в graphRun — score<7 & бюджет → pickCulprit (слабая ось→нода) + improve-prompt → реген ТОЛЬКО виновника → банк ЛУЧШЕЙ попытки (bestScore/bestUrl). Жёстко ≤MAX_RENDERS=3. Адверсариал-ревью: петля loop-safe; пофикшен CRITICAL (attempts не сбрасывался → run_fail выбрасывал оплаченный лучший — теперь сброс на успешном шаге в tick).
 - [ ] R3 артефакт-гейт (vision-чек → авто-реген)
 - [ ] R4 3 варианта на ТЗ
 - [ ] V11 смета + бюджет-кап
@@ -21,4 +21,5 @@
 - `supabase/migrations/20260621_factory_generation_history.sql` (V20) — без неё genHistory мягко деградирует (история не пишется).
 
 ## Заметки/решения
+- V3+V4: известный pre-existing MAJOR (не фикшу сейчас) — submit персистит renderCount/ноды ПОСЛЕ всего цикла; если submitNode КИНЕТ исключение (не вернёт {error}) посреди цикла, ретрай пере-сабмитит уже оплаченные fal-ноды. Низкий риск (submitNode ошибки возвращает, не кидает). Фикс на потом: чекпойнт после каждого submitNode.
 - _(append по ходу)_
