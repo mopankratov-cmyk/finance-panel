@@ -321,7 +321,8 @@ function metaStat(c,glyph,txt){ return el("span",{class:"mono",style:"font-size:
 function openFormatFork(p){
   S.contentProduct=p;
   const ov=el("div",{style:"position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:50;",onclick:(e)=>{ if(e.target===ov)ov.remove(); }});
-  const pick=(fmt)=>{ ov.remove(); if(S.activeNiche!==p.niche){ S.activeNiche=p.niche; S.decompose=null; S.decomposeLoading=false; S.decomposeVideo=null; S.selectedVideo=null; } toast("Формат: "+fmt+" → анализ конкурентов"); go("compete"); };
+  const nk=p.cniche||p.niche||"default"; // КАНОНИЧЕСКАЯ ниша рубрики (как плитки/фильтр/корпус), НЕ WB-категория p.niche («blasters») — иначе лента конкурентов пустая
+  const pick=(fmt)=>{ ov.remove(); if(S.activeNiche!==nk){ S.activeNiche=nk; S.decompose=null; S.decomposeLoading=false; S.decomposeVideo=null; S.selectedVideo=null; } toast("Формат: "+fmt+" → анализ конкурентов"); go("compete"); };
   ov.appendChild(el("div",{class:"card",style:"padding:22px;width:420px;"},
     el("div",{style:"font-size:16px;font-weight:600;margin-bottom:4px;"},"Собрать контент"),
     el("div",{class:"muted",style:"margin-bottom:16px;"},p.name||p.article),
