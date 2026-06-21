@@ -37,13 +37,21 @@ function snapNumber(f: ToolField, n: number): number {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function coerce(f: ToolField, v: any, warnings: string[]): unknown {
-  // энум (dropdown/picker со списком значений): значение ДОЛЖНО быть из values
-  if ((f.ui === "dropdown" || f.ui === "picker") && Array.isArray(f.values) && f.values.length) {
+  // dropdown — ЗАКРЫТЫЙ энум: значение не из набора → снап на default/первое
+  if (f.ui === "dropdown" && Array.isArray(f.values) && f.values.length) {
     const s = String(v);
     if (f.values.includes(s)) return s;
     const snap = f.default !== undefined && f.values.includes(String(f.default)) ? String(f.default) : f.values[0];
     warnings.push(`${f.api_param}=«${s}» не из набора — снап на «${snap}»`);
     return snap;
+  }
+  // picker — ЖИВОЙ список (voices/templates/musics): статичные values лишь встроенное подмножество, кастомные id
+  // тянутся из API → валидный «чужой» id (напр. кастомный visual_style из бренд-кита) НЕ снапаем, оставляем как есть
+  if (f.ui === "picker") {
+    if (v == null) return undefined;
+    const s = String(v);
+    if (Array.isArray(f.values) && f.values.length && !f.values.includes(s)) warnings.push(`${f.api_param}=«${s}» вне встроенного набора (живой id — оставлен)`);
+    return s;
   }
   // число/слайдер: clamp [min,max] + снап к step
   if (f.ui === "slider" || f.ui === "number") {

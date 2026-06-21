@@ -85,5 +85,18 @@ function eq(a: unknown, b: unknown, msg: string) { ok(JSON.stringify(a) === JSON
   eq(r.params.no_stock_broll, true, "null тумблер → дефолт схемы true (анти-слоп держится)");
 }
 
+// ── picker: кастомный live-id (бренд-кит visual_style) НЕ снапается на дефолт ──
+{
+  const r = normalizeParams("creatify", { visual_style: "custom_template_abc123", override_voice: "ru-voice-xyz" });
+  eq(r.params.visual_style, "custom_template_abc123", "picker visual_style кастомный id оставлен (не снап)");
+  eq(r.params.override_voice, "ru-voice-xyz", "picker override_voice (без values) проходит как есть");
+}
+// ── picker со встроенным значением — проходит без варнинга ──
+{
+  const r = normalizeParams("creatify", { visual_style: "AvatarBubbleTemplate" });
+  eq(r.params.visual_style, "AvatarBubbleTemplate", "picker встроенный visual_style сохранён");
+  ok(!r.warnings.some(w => w.includes("visual_style")), "встроенный visual_style без варнинга");
+}
+
 console.log(`\nnormalizeParams: ${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
