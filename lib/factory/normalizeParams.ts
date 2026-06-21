@@ -54,8 +54,9 @@ function coerce(f: ToolField, v: any, warnings: string[]): unknown {
     }
     return snapNumber(f, n);
   }
-  // тумблер: к булю
+  // тумблер: к булю (null/undefined → «не задано» → дефолт схемы применится ниже, а НЕ false)
   if (f.ui === "toggle") {
+    if (v == null) return undefined;
     if (typeof v === "boolean") return v;
     const s = String(v).toLowerCase().trim();
     return s === "true" || s === "1" || s === "yes" || s === "да";
@@ -65,11 +66,26 @@ function coerce(f: ToolField, v: any, warnings: string[]): unknown {
   return typeof v === "string" ? v : String(v);
 }
 
+// Сплющиваем вложенные объекты в dotted-ключи: схемы движков используют api_param вида
+// "caption_setting.font_size" / "font.size" / "output.fps" / "caption_setting.offset.x", а Claude
+// по JSON-привычке шлёт ВЛОЖЕННО ({caption_setting:{font_size:70}}). Без сплющивания весь блок
+// дропался как «неизвестное поле» → стиль субтитров/титров терялся молча. nodeEngine/graphRun ждут плоские dotted-ключи.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function flattenDotted(obj: Record<string, any>, prefix = ""): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(obj)) {
+    const key = prefix ? `${prefix}.${k}` : k;
+    if (v !== null && typeof v === "object" && !Array.isArray(v)) Object.assign(out, flattenDotted(v as Record<string, unknown>, key));
+    else out[key] = v;
+  }
+  return out;
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function normalizeParams(tool: string, raw: Record<string, any> | null | undefined): NormalizeResult {
   const warnings: string[] = [];
   const fields = fieldsOf(tool);
-  const rawObj = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
+  const rawObj = raw && typeof raw === "object" && !Array.isArray(raw) ? flattenDotted(raw) : {};
 
   // у движка нет строгой схемы (напр. внешний/новый) — не валидируем, но честно говорим об этом
   if (!fields.size) {

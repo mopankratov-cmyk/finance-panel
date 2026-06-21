@@ -132,6 +132,10 @@ export async function POST(req: NextRequest) {
       return true;
     });
     if (blockedByBudget.length) warnings.push(`низкий баланс (${lowServices.join("/")}) — исключены движки: ${blockedByBudget.join(", ")} → роутинг на бесплатные`);
+    // shotstack нагружен (сборка+титры, без альтернативы) → не блокируем, но предупреждаем при низком балансе
+    if (lowServices.includes("shotstack")) warnings.push("низкий баланс shotstack — пополни, иначе сборка/титры встанут (движок не исключён: замены нет)");
+    // все движки выпали (баланс/оффлайн) — не шлём Claude пустой список (иначе галлюцинация инструмента), отдаём честно
+    if (!available.length) return NextResponse.json({ ok: true, filled: 0, skipped: targets.length, byTool: {}, cost_estimate: "≈ $0.00", grounded: { footage, low_balance: lowServices, playbook: !!pbRow, learning: !!(lh && (lh as string).trim()) }, warnings: [...warnings, "нет доступных движков — все заблокированы балансом/отключены, пополни баланс"], nodes: [] });
     const digests = available.map(toolDigest).filter(Boolean).join("\n\n");
     const grounding = buildGrounding(niche, lh as string, pbRow as Record<string, unknown> | null, footage, lowServices);
 
@@ -203,28 +207,29 @@ ${JSON.stringify(nodeLines, null, 1).slice(0, 6000)}`;
       const node = byOrdinal.get(ord);
       if (!node) continue;
       let tool = String(a.tool || "").trim();
-      // движок недоступен/неизвестен → откат на кандидата ноды, иначе на disk_real
+      // движок недоступен/неизвестен → откат ТОЛЬКО на доступный (кандидат → disk_real → первый доступный), не вслепую
       if (!available.includes(tool)) {
         const cand = String(node.tool || "");
-        const fallback = available.includes(cand) ? cand : "disk_real";
-        warnings.push(`нода #${ord}: движок «${tool || "—"}» недоступен → ${fallback}`);
-        tool = fallback;
+        const fb = available.includes(cand) ? cand : (available.includes("disk_real") ? "disk_real" : available[0]);
+        if (!fb) { warnings.push(`нода #${ord}: нет доступного движка — пропуск`); continue; }
+        warnings.push(`нода #${ord}: движок «${tool || "—"}» недоступен → ${fb}`);
+        tool = fb;
       }
-      // сохраняем мета-ключи ноды (role/onscreen_text/emotion/visual_desc) + params от Claude → нормализуем
+      // мета-ключи ноды (role/onscreen_text/emotion/visual_desc) + params от Claude
       const meta = (node.params || {}) as Record<string, unknown>;
       const rawParams: Record<string, unknown> = { ...(a.params && typeof a.params === "object" ? a.params : {}) };
       for (const k of ["role", "onscreen_text", "emotion", "visual_desc"]) if (meta[k] !== undefined && rawParams[k] === undefined) rawParams[k] = meta[k];
-      let norm = normalizeParams(tool, rawParams);
-      // Ф2 · i2v без стартового кадра → даунгрейд по наличию материала под товар (анти-422 + анти-слоп)
+      // нормализация с изоляцией краша на ОДНУ ноду (не валим весь батч → не теряем уже записанные)
+      const norm0 = (t: string) => { try { return normalizeParams(t, rawParams); } catch (e) { warnings.push(`нода #${ord}: ошибка нормализации (${String((e as Error)?.message || e).slice(0, 40)})`); return null; } };
+      let norm = norm0(tool); if (!norm) continue;
+      // Ф2 · i2v без стартового кадра → даунгрейд на disk_real ВО ВСЕХ случаях (иначе нода сохранится как seedance
+      // без image_url → submitNode вернёт ошибку «нужно image_url», нарушив критерий «валидное превью без 422»).
       if (norm.warnings.includes("needs_image") && !node.asset_url) {
-        if (hasRealFootage) {
-          warnings.push(`нода #${ord}: ${tool} без кадра → disk_real (под товар есть реальная съёмка)`);
-          tool = "disk_real"; norm = normalizeParams(tool, rawParams);
-        } else if (hasProductPhoto) {
-          warnings.push(`нода #${ord}: ${tool} нужен стартовый кадр — фото товара есть на Я.Диске, прицепи в инспекторе`);
-        } else {
-          warnings.push(`нода #${ord}: ${tool} нужен стартовый кадр (нет фото на диске — прицепи вручную)`);
-        }
+        const dr = available.includes("disk_real") ? "disk_real" : tool;
+        if (hasRealFootage) warnings.push(`нода #${ord}: ${tool} без кадра → disk_real (под товар есть реальная съёмка)`);
+        else if (hasProductPhoto) warnings.push(`нода #${ord}: ${tool} без кадра → disk_real; фото товара есть на Я.Диске — можешь вернуть ${tool} и прицепить его`);
+        else warnings.push(`нода #${ord}: ${tool} без кадра → disk_real (нет материала — прицепи ассет вручную)`);
+        if (dr !== tool) { tool = dr; const dn = norm0(tool); if (!dn) continue; norm = dn; }
       }
       for (const w of norm.warnings) if (w !== "needs_image") warnings.push(`нода #${ord}: ${w}`);
 

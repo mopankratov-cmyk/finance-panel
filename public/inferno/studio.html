@@ -780,7 +780,7 @@ async function saveNode(n){
   setSaveInd("сохраняю…","var(--tx-mid)");
   const r=await api("/node-save",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({recipe_id:S.recipe.recipe.id,node_id:n.id,prompt:n.prompt||"",params:n.params||{},tool:n.tool||S.tool})});
   _saving=false;
-  if(r.ok){ n.human_edited=true; setSaveInd(_saveDirty?"сохраняю…":"сохранено ✓",_saveDirty?"var(--tx-mid)":"var(--ok)"); }
+  if(r.ok){ n.human_edited=true; n.source=(r.node&&r.node.source)||"human_chosen"; setSaveInd(_saveDirty?"сохраняю…":"сохранено ✓",_saveDirty?"var(--tx-mid)":"var(--ok)"); } // §17: ручная правка снимает «✨ заполнено ИИ» (source=human_chosen)
   else setSaveInd("ошибка сохр.","var(--err)");
   if(_saveDirty){ const d=_saveDirty; _saveDirty=null; saveNode(d); } // были правки во время сохранения — досохраняем последнее
 }

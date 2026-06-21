@@ -59,5 +59,31 @@ function eq(a: unknown, b: unknown, msg: string) { ok(JSON.stringify(a) === JSON
   eq(r.params.aspect_ratio, "9:16", "null params → дефолтная вертикаль");
 }
 
+// ── вложенный объект caption_setting (creatify) → плоские dotted-ключи ──
+{
+  const r = normalizeParams("creatify", { caption_setting: { font_size: 70, font_family: "Poppins", offset: { x: 0, y: 10 } } });
+  eq(r.params["caption_setting.font_size"], 70, "creatify вложенный caption_setting.font_size сплющен");
+  eq(r.params["caption_setting.font_family"], "Poppins", "creatify вложенный font_family сплющен");
+  eq(r.params["caption_setting.offset.x"], 0, "creatify тройная вложенность offset.x сплющена");
+  ok(!r.warnings.some(w => w.includes("caption_setting»")), "creatify caption_setting НЕ отброшен как неизвестный");
+}
+// ── вложенные font/output (shotstack) → dotted ──
+{
+  const r = normalizeParams("shotstack", { font: { size: 60, color: "#fff" }, output: { fps: "25" } });
+  eq(r.params["font.size"], 60, "shotstack font.size сплющен");
+  eq(r.params["output.fps"], "25", "shotstack output.fps сплющен");
+}
+// ── смешанные плоский + вложенный в одном вызове ──
+{
+  const r = normalizeParams("creatify", { aspect_ratio: "9x16", caption_setting: { font_size: 50 } });
+  eq(r.params.aspect_ratio, "9x16", "смешанный: плоский aspect_ratio сохранён");
+  eq(r.params["caption_setting.font_size"], 50, "смешанный: вложенный caption_setting сплющен");
+}
+// ── null в тумблере → дефолт схемы (а НЕ false) ──
+{
+  const r = normalizeParams("creatify", { no_stock_broll: null });
+  eq(r.params.no_stock_broll, true, "null тумблер → дефолт схемы true (анти-слоп держится)");
+}
+
 console.log(`\nnormalizeParams: ${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
