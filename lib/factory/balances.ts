@@ -55,6 +55,22 @@ function num(v: any): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+// Сетевые сбои к зарубежным API (гео/ISP-блок) → понятный текст вместо «TypeError: fetch failed».
+// Частый кейс: локалка в РФ не пускает к virlo/fal (ECONNRESET), а Vercel (US) пускает.
+function friendlyNetError(err?: string): string | undefined {
+  if (!err) return err;
+  if (/fetch failed|ECONNRESET|ENOTFOUND|ECONNREFUSED|ETIMEDOUT|EAI_AGAIN|socket hang up|terminated|network/i.test(err)) {
+    return "сеть не пускает к API (гео-блок?) — заработает на Vercel";
+  }
+  return err;
+}
+
+// Кэп на живой опрос: один залипший сервис не должен валить весь GET (Vercel рубит роут на maxDuration=30).
+// virloBalance внутри держит 50с×2 — без кэпа дашборд завис бы. 9с × 5 сервисов параллельно = безопасно.
+function withTimeout<T>(p: Promise<T>, ms: number, fallback: T): Promise<T> {
+  return Promise.race([p, new Promise<T>((res) => setTimeout(() => res(fallback), ms))]);
+}
+
 async function liveApiBalance(service: string): Promise<{ balance: number | null; currency: string; raw?: unknown; error?: string }> {
   if (service === "virlo") return virloBalance();
   if (service === "creatify") return creatifyBalance();
@@ -134,11 +150,11 @@ export async function collectBalances(db: SupabaseClient, opts: CollectOpts = {}
     let wroteFresh = false;
 
     if (m.capability === "api") {
-      const live = await liveApiBalance(m.service);
+      const live = await withTimeout(liveApiBalance(m.service), 9000, { balance: null, currency: m.unit, error: "опрос завис >9с (сеть/гео) — заработает на Vercel" });
       if (live.balance != null) {
         balance = live.balance; currency = live.currency || currency; source = "api"; freshApiRaw = live.raw; updatedAt = new Date().toISOString(); wroteFresh = true;
       } else {
-        error = live.error;
+        error = friendlyNetError(live.error);
         const snap = await latestSnapshot(db, m.service); // фолбэк на последнее известное, чтобы не пусто
         if (snap) { balance = snap.balance; currency = snap.currency || currency; source = snap.source; updatedAt = snap.snapshot_at; }
       }
