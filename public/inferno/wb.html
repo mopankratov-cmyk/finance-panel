@@ -908,6 +908,9 @@ button:not(:disabled):active{ transform: translateY(0); }
               <i data-lucide="calculator" class="inline-icon"></i> Калькулятор цены
             </button>
             <a :href="unit.data?.source_url" target="_blank" class="text-xs text-teal-600 hover:underline ml-2" x-show="unit.data">Google Sheets ↗</a>
+            <select x-model="rnp.shop" @change="localStorage.setItem('fp_cab_wb', rnp.shop === 'all' ? '' : rnp.shop); loadUnit()" title="Кабинет — юнит считается по выбранному" :class="rnp.shop && rnp.shop !== 'all' ? 'border-violet-300 bg-violet-50 text-violet-800 font-semibold' : 'border-gray-300'" class="ml-2 border rounded-md px-2 py-1 text-sm">
+              <template x-for="s in shops"><option :value="s.key" x-text="s.label"></option></template>
+            </select>
             <select x-show="unit.data" x-model="unit.entity" title="Фильтр по юрлицу" :class="unit.entity!=='all' ? 'border-violet-300 bg-violet-50 text-violet-800 font-semibold' : 'border-gray-300'" class="ml-2 border rounded-md px-2 py-1 text-sm">
               <option value="all">Все юрлица</option>
               <template x-for="e in unitEntities()" :key="e"><option :value="e" x-text="e"></option></template>
@@ -4059,7 +4062,8 @@ function app() {
       this.unit.loading = true; this.unit.error = null;
       try {
         const p = this.unit.params || {};
-        const qs = `?tax=${Number(p.tax) || 0}&ff=${Number(p.ff) || 0}`;
+        const cab = (this.rnp && this.rnp.shop && this.rnp.shop !== 'all') ? this.rnp.shop : '';
+        const qs = `?tax=${Number(p.tax) || 0}&ff=${Number(p.ff) || 0}` + (cab ? `&cabinet=${encodeURIComponent(cab)}` : '');
         const r = await fetch(API_BASE + '/api/unit/table' + qs);
         const j = await r.json();
         if (j.error) { this.unit.error = j.error; this.unit.data = null; }
@@ -6327,7 +6331,7 @@ function app() {
         // НЕ перезагружаем при переключении 7д/Вчера — правая дата-таблица не зависит от окна (Юра 02.06.2026).
         {
           // Юра 12.06: всегда перегружаем свежим (+кэш-бастер) — раньше грузилось только если пусто, залипал старый 0
-          fetch(API_BASE + '/api/design/day-metrics?_=' + Date.now()).then(r => r.json()).then(v => { this.design.dayMetrics = (v && v.metrics) || {}; }).catch(() => {});
+          fetch(API_BASE + '/api/design/day-metrics?_=' + Date.now() + '&cabinet=' + encodeURIComponent((this.rnp && this.rnp.shop) || 'all')).then(r => r.json()).then(v => { this.design.dayMetrics = (v && v.metrics) || {}; }).catch(() => {});
         }
         // Отметки изменений по дням (Юра 02.06.2026)
         if (force || !Object.keys(this.design.dayMarks || {}).length) {
@@ -7112,7 +7116,7 @@ function app() {
     },
     advPeriodLabel() { return ({today:'сегодня', yest:'вчера', '3d':'3 дня', '7d':'7 дней'})[this.adverts.stats.period] || this.adverts.stats.period; },
     async loadAdvDayMetrics() {
-      try { const r = await fetch(API_BASE+'/api/design/day-metrics'); const j = await r.json(); this.adverts.dayMetrics = (j && j.metrics) || {}; }
+      try { const r = await fetch(API_BASE+'/api/design/day-metrics?cabinet='+encodeURIComponent(this.adverts.cabinet||'all')); const j = await r.json(); this.adverts.dayMetrics = (j && j.metrics) || {}; }
       catch(e) { this.adverts.dayMetrics = {}; }
     },
     advFunnel() {

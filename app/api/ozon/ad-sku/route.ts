@@ -16,9 +16,14 @@ export async function GET(request: NextRequest) {
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ bySku: {} });
 
-  // 1) кэш
+  // Кабинет резолвим заранее — кэш рекламы скоупится по client_id (один Ozon Client-Id = один кабинет).
+  const cab = await getActiveOzonCreds(sp.get("cabinet"));
+  if (!cab.ok) return NextResponse.json({ bySku: {}, noCabinet: true });
+  const clientId = cab.creds.clientId;
+
+  // 1) кэш (per-кабинет). Если миграция client_id ещё не применена — .eq упадёт, data=null → промах → свежий фетч.
   if (!force) {
-    const { data } = await db.from("ozon_ad_cache").select("sku, spent, orders_money, updated_at").eq("days", days);
+    const { data } = await db.from("ozon_ad_cache").select("sku, spent, orders_money, updated_at").eq("days", days).eq("client_id", clientId);
     if (data?.length) {
       const fresh = data.every((r) => Date.now() - new Date(r.updated_at as string).getTime() < FRESH_MS);
       if (fresh) {
@@ -29,17 +34,16 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  // 2) обновление через Performance
-  const cab = await getActiveOzonCreds(sp.get("cabinet"));
-  if (!cab.ok || !cab.perf) return NextResponse.json({ bySku: {}, noPerf: true });
+  // 2) обновление через Performance выбранного кабинета
+  if (!cab.perf) return NextResponse.json({ bySku: {}, noPerf: true });
   const to = new Date().toISOString();
   const from = new Date(Date.now() - days * 86400000).toISOString();
   const rep = await perfProductReport(cab.perf, from, to);
   if (!rep) return NextResponse.json({ bySku: {}, error: "Performance report failed" });
 
-  // upsert в кэш
-  const rows = Object.entries(rep.bySku).map(([sku, v]) => ({ sku, days, spent: Math.round(v.spent), orders_money: Math.round(v.ordersMoney), updated_at: new Date().toISOString() }));
-  if (rows.length) await db.from("ozon_ad_cache").upsert(rows, { onConflict: "sku,days" });
+  // upsert в кэш (тег client_id). Без миграции upsert по новому ключу не пройдёт — данные всё равно вернём свежими.
+  const rows = Object.entries(rep.bySku).map(([sku, v]) => ({ client_id: clientId, sku, days, spent: Math.round(v.spent), orders_money: Math.round(v.ordersMoney), updated_at: new Date().toISOString() }));
+  if (rows.length) await db.from("ozon_ad_cache").upsert(rows, { onConflict: "client_id,sku,days" });
 
   return NextResponse.json({ bySku: rep.bySku, partial: rep.partial, refreshed: true });
 }

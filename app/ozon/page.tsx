@@ -58,17 +58,18 @@ export default function OzonPage() {
   const [stocks, setStocks] = useState<{ rows: StockRow[]; warehouses: string[]; totalFree: number }>({ rows: [], warehouses: [], totalFree: 0 });
 
   const [reload, setReload] = useState(0);
-  const [adWarmed, setAdWarmed] = useState<Set<number>>(new Set());
+  const [adWarmed, setAdWarmed] = useState<Set<string>>(new Set());
 
-  // подогрев кэша per-SKU рекламы при заходе на РНП (фоном)
+  // подогрев кэша per-SKU рекламы при заходе на РНП (фоном) — ключ включает кабинет
   useEffect(() => {
-    if (tab !== "rnp" || adWarmed.has(days)) return;
-    setAdWarmed((s) => new Set(s).add(days));
-    fetch(`/api/ozon/ad-sku?days=${days}`, { cache: "no-store" })
+    const warmKey = `${cabId}|${days}`;
+    if (tab !== "rnp" || adWarmed.has(warmKey)) return;
+    setAdWarmed((s) => new Set(s).add(warmKey));
+    fetch(`/api/ozon/ad-sku?days=${days}${cabId ? `&cabinet=${cabId}` : ""}`, { cache: "no-store" })
       .then((r) => r.json())
       .then((d) => { if (d.refreshed && Object.keys(d.bySku || {}).length) setReload((n) => n + 1); })
       .catch(() => {});
-  }, [tab, days, adWarmed]);
+  }, [tab, days, adWarmed, cabId]);
 
   useEffect(() => {
     setLoading(true); setErr(null); setNoCab(false);
