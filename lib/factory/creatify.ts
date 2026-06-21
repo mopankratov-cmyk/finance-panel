@@ -16,6 +16,24 @@ export function creatifyReady(): boolean {
   return !!(process.env.CREATIFY_API_ID && process.env.CREATIFY_API_KEY);
 }
 
+// Остаток кредитов аккаунта Creatify (GET /api/remaining_credits/) — подтверждено по docs.creatify.ai (Workspace).
+// Терпим разные имена поля (remaining_credits / credits / balance) — на разных тарифах форма может отличаться.
+export async function creatifyBalance(): Promise<{ balance: number | null; currency: string; raw?: unknown; error?: string }> {
+  const h = headers();
+  if (!h) return { balance: null, currency: "credits", error: "CREATIFY ключ не настроен" };
+  try {
+    const r = await fetch(`${BASE}/remaining_credits/`, { headers: h, cache: "no-store", signal: AbortSignal.timeout(15000) });
+    const text = await r.text();
+    let j: Record<string, unknown> | null = null;
+    try { j = JSON.parse(text); } catch { /* not json */ }
+    if (!r.ok || !j) return { balance: null, currency: "credits", error: `creatify ${r.status}: ${text.slice(0, 140)}`, raw: j ?? text.slice(0, 200) };
+    const v = j.remaining_credits ?? j.credits ?? j.credit ?? j.balance ?? j.remaining;
+    const n = typeof v === "number" ? v : Number(v);
+    if (!Number.isFinite(n)) return { balance: null, currency: "credits", error: "поле кредитов не найдено", raw: j };
+    return { balance: n, currency: "credits", raw: j };
+  } catch (e) { return { balance: null, currency: "credits", error: String(e).slice(0, 140) }; }
+}
+
 async function jpost(h: Record<string, string>, path: string, body: unknown): Promise<{ ok: boolean; status: number; json: Record<string, unknown> | null; text: string }> {
   try {
     const r = await fetch(`${BASE}${path}`, { method: "POST", headers: h, cache: "no-store", body: JSON.stringify(body), signal: AbortSignal.timeout(30000) });

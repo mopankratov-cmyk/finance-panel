@@ -158,6 +158,7 @@ const SCREENS=[
   {id:"inspector",chip:"04",tt:"Инспектор ноды",st:"настройки"},
   {id:"assembly",chip:"05",tt:"Сборка · ОТК",st:"таймлайн"},
   {id:"library",chip:"06",tt:"База видосов",st:"рецепты"},
+  {id:"balances",chip:"07",tt:"Балансы сервисов",st:"сколько осталось $"},
   {id:"ds",chip:"DS",tt:"Дизайн-система",st:"токены"},
 ];
 const NICHE_EMOJI={cosmetics:"💄",clothing:"🧥",toys:"🔫",default:"📦"};
@@ -219,7 +220,7 @@ function emptyBox(t){ return el("div",{class:"empty"},el("div",{style:"font-size
 
 async function render(){
   const root=document.getElementById("screen"); root.innerHTML="";
-  ({center:screenCenter,compete:screenCompete,canvas:screenCanvas,inspector:screenInspector,assembly:screenAssembly,library:screenLibrary,ds:screenDS}[S.screen]||screenCenter)(root);
+  ({center:screenCenter,compete:screenCompete,canvas:screenCanvas,inspector:screenInspector,assembly:screenAssembly,library:screenLibrary,balances:screenBalances,ds:screenDS}[S.screen]||screenCenter)(root);
 }
 
 //==================== 01 · COMMAND CENTER ====================
@@ -874,6 +875,79 @@ function recipeCard(r){ const stC={otk_pass:"var(--ok)",otk_fail:"var(--err)",ru
     el("div",{style:"font-size:12.5px;font-weight:600;"},(r.article||"—")),
     el("div",{style:"font-size:10.5px;color:var(--tx-lo);margin-top:4px;"},(r.niche||"")+" · "+(r.format_detected||"")+" · "+(r.built_by||"")),
     el("div",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);margin-top:7px;"},r.status+(r.otk_score?" · ОТК "+Math.round(r.otk_score*10):"")));
+}
+
+//==================== 07 · БАЛАНСЫ СЕРВИСОВ ====================
+// «Сколько бабок осталось» по каждому платному сервису завода + тренд + громкий красный алерт когда мало.
+// Живой опрос (virlo/creatify/fal) + ручной баланс (shotstack/claude). Работа вслепую недопустима → low громко.
+function fmtBal(b,cur){ if(b==null)return "—"; b=Number(b); return cur==="USD"?"$"+b.toFixed(2):(Math.round(b*100)/100)+" cr"; }
+function fmtWhen(iso){ if(!iso)return "—"; try{ return new Date(iso).toLocaleString("ru-RU",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}); }catch(e){ return String(iso); } }
+function sparkSvg(history,low){
+  const pts=(history||[]).map(h=>h&&h.balance).filter(v=>v!=null&&isFinite(v));
+  const W=132,H=36;
+  if(pts.length<2)return '<svg width="'+W+'" height="'+H+'" style="opacity:.4;"><text x="4" y="22" fill="#6b7280" font-size="10" font-family="monospace">нет истории</text></svg>';
+  const min=Math.min.apply(null,pts),max=Math.max.apply(null,pts),rng=(max-min)||1,step=W/(pts.length-1);
+  const co=pts.map((v,i)=>[Math.round(i*step),Math.round(H-2-((v-min)/rng)*(H-5))]);
+  const d=co.map((c,i)=>(i?"L":"M")+c[0]+" "+c[1]).join(" ");
+  const col=low?"#ff5a5a":"#7c74ff",last=co[co.length-1];
+  return '<svg width="'+W+'" height="'+H+'" viewBox="0 0 '+W+' '+H+'">'
+    +'<path d="'+d+'" fill="none" stroke="'+col+'" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/>'
+    +'<circle cx="'+last[0]+'" cy="'+last[1]+'" r="2.4" fill="'+col+'"/></svg>';
+}
+async function screenBalances(root){
+  header("Балансы сервисов","сколько осталось $", el("div",{class:"hdr-r"},
+    el("button",{class:"btn",title:"опросить балансы заново",onclick:()=>screenBalances(root)},"↻ Обновить")));
+  const wrap=el("div",{class:"scroll",style:"padding:18px;"}); root.appendChild(wrap);
+  wrap.appendChild(loadingCard("опрашиваю балансы сервисов…"));
+  const data=await api("/balances");
+  if(S.screen!=="balances")return;
+  wrap.innerHTML="";
+  if(data.error){ wrap.appendChild(emptyBox("ошибка балансов: "+data.error)); return; }
+  const services=data.services||[];
+  const low=services.filter(s=>s.low);
+  if(low.length){
+    wrap.appendChild(el("div",{style:"background:var(--err-bg);border:1px solid var(--err);color:var(--err);border-radius:10px;padding:13px 16px;margin-bottom:16px;display:flex;align-items:center;gap:10px;font-size:13px;font-weight:600;"},
+      el("span",{style:"font-size:17px;"},"⚠"),
+      "Кончаются бабки: "+low.map(s=>s.label+" — "+fmtBal(s.balance,s.currency)).join(" · ")));
+  }
+  const grid=el("div",{style:"display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:14px;"}); wrap.appendChild(grid);
+  if(!services.length){ grid.appendChild(emptyBox("нет сервисов — проверь миграцию service_balances")); }
+  services.forEach(s=>grid.appendChild(balanceCard(s,root)));
+  wrap.appendChild(el("div",{class:"mono",style:"margin-top:16px;font-size:10.5px;color:var(--tx-lo2);"},
+    "live API — опрос сейчас · ручной — введён владельцем · оценка — по журналу событий"+(data.updated_at?" · обновлено "+fmtWhen(data.updated_at):"")));
+}
+function balanceCard(s,root){
+  const cur=s.currency||s.unit, unit=(s.unit==="USD"||cur==="USD")?"$":"cr";
+  const srcColor={api:"var(--ok)",manual:"var(--warn)",estimated:"var(--acc)"}[s.source]||"var(--tx-lo2)";
+  const srcLabel={api:"live API",manual:"ручной",estimated:"оценка"}[s.source]||s.source;
+  const INP="flex:1;min-width:88px;background:var(--bg-input);border:1px solid var(--bd2);color:var(--tx-hi);border-radius:7px;padding:6px 9px;font-size:12px;font-family:inherit;";
+  const card=el("div",{class:"card",style:"padding:16px;display:flex;flex-direction:column;gap:12px;"+(s.low?"border:1.5px solid var(--err);box-shadow:0 0 0 3px rgba(255,90,90,.08);":"")});
+  card.appendChild(el("div",{style:"display:flex;align-items:flex-start;justify-content:space-between;gap:8px;"},
+    el("div",{style:"min-width:0;"},
+      el("div",{style:"font-size:15px;font-weight:600;display:flex;align-items:center;gap:8px;"},s.label,
+        s.low?el("span",{class:"mono",style:"font-size:9.5px;background:var(--err);color:#fff;padding:2px 6px;border-radius:5px;font-weight:700;"},"МАЛО"):null),
+      el("div",{style:"font-size:11px;color:var(--tx-lo);margin-top:3px;"},s.hint||"")),
+    el("span",{class:"mono",style:"font-size:9.5px;color:"+srcColor+";background:var(--bg-input);border:1px solid var(--bd2);padding:3px 7px;border-radius:5px;white-space:nowrap;flex:none;"},srcLabel)));
+  card.appendChild(el("div",{style:"display:flex;align-items:flex-end;justify-content:space-between;gap:10px;"},
+    el("div",{style:"font-size:27px;font-weight:700;color:"+(s.low?"var(--err)":"var(--tx-hi)")+";"},fmtBal(s.balance,cur)),
+    el("div",{html:sparkSvg(s.history,s.low)})));
+  if(s.error)card.appendChild(el("div",{style:"font-size:10.5px;color:var(--warn);"},"⚠ "+s.error));
+  if(s.note)card.appendChild(el("div",{style:"font-size:10.5px;color:var(--tx-lo2);"},s.note));
+  if(s.estimated_spend_30d!=null)card.appendChild(el("div",{style:"font-size:11px;color:var(--tx-lo);"},"оценка трат за 30д: ",el("span",{style:"color:var(--acc-lt);font-weight:600;"},"$"+Number(s.estimated_spend_30d).toFixed(2))));
+  card.appendChild(el("div",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);"},"обновлено "+fmtWhen(s.updated_at)));
+  // порог предупреждения
+  const thIn=el("input",{type:"number",step:"any",value:s.threshold==null?"":s.threshold,placeholder:"порог "+unit,style:INP});
+  card.appendChild(el("div",{style:"display:flex;gap:8px;align-items:center;flex-wrap:wrap;"},
+    el("label",{style:"font-size:11px;color:var(--tx-lo);min-width:62px;"},"Порог "+unit),thIn,
+    el("button",{class:"btn sm",onclick:async()=>{ const r=await api("/balances",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({service:s.service,threshold:thIn.value===""?null:Number(thIn.value)})}); toast(r.ok?"порог сохранён":("ошибка: "+(r.error||"?"))); if(r.ok)screenBalances(root); }},"Сохранить")));
+  // ручной баланс — для сервисов без API баланса (shotstack/claude)
+  if(s.capability!=="api"){
+    const balIn=el("input",{type:"number",step:"any",placeholder:"баланс "+unit,style:INP});
+    card.appendChild(el("div",{style:"display:flex;gap:8px;align-items:center;flex-wrap:wrap;"},
+      el("label",{style:"font-size:11px;color:var(--tx-lo);min-width:62px;"},"Баланс "+unit),balIn,
+      el("button",{class:"btn sm",onclick:async()=>{ if(balIn.value===""){toast("введи баланс");return;} const r=await api("/balances",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({service:s.service,balance:Number(balIn.value),currency:s.unit})}); toast(r.ok?"баланс записан":("ошибка: "+(r.error||"?"))); if(r.ok)screenBalances(root); }},"Записать")));
+  }
+  return card;
 }
 
 //==================== DS ====================

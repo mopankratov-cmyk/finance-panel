@@ -76,6 +76,23 @@ function virloToolJson(res: unknown): Record<string, unknown> | null {
   if (!t) return null;
   try { return JSON.parse(t) as Record<string, unknown>; } catch { return null; }
 }
+// Остаток баланса Virlo (get_credit_balance — бесплатный вызов). Тот же серверный путь, что и остальные
+// вызовы Virlo (MCP-over-HTTP, VIRLO_API_KEY). Ответ: { balance:"$15.00", credits_remaining:1500, status }.
+// Возвращаем USD-баланс (парсим "$15.00" → 15; фолбэк credits_remaining/100) + сырой ответ.
+export async function virloBalance(): Promise<{ balance: number | null; currency: string; raw?: unknown; error?: string }> {
+  if (!process.env.VIRLO_API_KEY) return { balance: null, currency: "USD", error: "VIRLO_API_KEY не настроен" };
+  try {
+    const res = await virloInitCall("tools/call", { name: "get_credit_balance", arguments: {} });
+    const j = virloToolJson(res);
+    if (!j) return { balance: null, currency: "USD", error: "Virlo вернул пустой/непарсируемый ответ" };
+    const balStr = j.balance != null ? String(j.balance).replace(/[^0-9.\-]/g, "") : "";
+    let n = Number(balStr);
+    if (!Number.isFinite(n) && j.credits_remaining != null) n = Number(j.credits_remaining) / 100; // 1 credit = $0.01
+    if (!Number.isFinite(n)) return { balance: null, currency: "USD", error: "поле баланса не найдено", raw: j };
+    return { balance: n, currency: "USD", raw: j };
+  } catch (e) { return { balance: null, currency: "USD", error: String(e).slice(0, 140) }; }
+}
+
 // Запустить Orbit-поиск по фразам. Возвращает job_id (или null).
 export async function virloSearchStart(keywords: string[], platforms: string[] = ["tiktok", "youtube", "instagram"], period = "this_month"): Promise<string | null> {
   if (!process.env.VIRLO_API_KEY) return null;
