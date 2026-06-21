@@ -3,6 +3,7 @@ import { submitNode, pollNode, type EngineNode } from "./nodeEngine";
 import { buildEdit, fixedBeatGrid, quantizeToBeats, shotstackSubmit, shotstackStatus, shotstackReady, type AssemblyClip } from "./shotstack";
 import { extractFrames } from "./serverMedia";
 import { logGeneration } from "./genHistory";
+import { tgReady, tgSendReview } from "./telegram";
 
 // V3 исполнитель графа: рецепт (node_recipe_nodes) → генерация нод → Shotstack-сборка → ОТК → банк.
 // Self-chaining машина по образцу jobs/tick: один тик = ОДИН шаг (<60с), состояние в node_recipes.run_plan.
@@ -30,6 +31,7 @@ export interface RunPlan {
   error?: string | null;
   bestScore?: number | null;   // V3: лучший ОТК-балл за все попытки реген-петли
   bestUrl?: string | null;     // и сборка с этим баллом — банкуем ЕЁ
+  notify?: boolean;            // V21/R5: батч-прогон → слать прошедшее ОТК в Telegram на ревью (студийные — нет, без спама)
 }
 
 const LEASE_MS = 90_000;
@@ -387,6 +389,10 @@ export async function runRecipeStep(
       recipe_id: id, niche, article, mode, format: null, engine: "shotstack",
       axes: plan.otk?.axes ?? null, reason_chip: status === "otk_fail" ? (plan.otk?.issues?.[0] || "ОТК<7") : null,
     });
+    // V21/R5: батч-прогон прошёл ОТК → шлём оператору в Telegram на ревью (студийные прогоны — нет, без спама)
+    if (plan.notify && status === "otk_pass" && (catalogUrl || url) && tgReady()) {
+      try { await tgSendReview((catalogUrl || url)!, `${hook || article || "генерация"}\nОТК ${score != null ? Math.round(score * 10) : "—"}/100 · ниша ${niche}`, id); } catch { /* telegram опционален */ }
+    }
     return;
   }
 }

@@ -15,7 +15,7 @@
 - [x] **V8** reality-first дефолты decompose — problem/solution/proof → disk_real (хребет), seedance/creatify только hook-ревил/нет съёмки. Промпт decompose.
 - [x] **R6+V7** петля обучения — lib/factory/learningHints.ts (winnersHintFor/corpusHooksFor/rejectAntiFor — ЧИТАЕТ cf_signals reject-агрегаты, раньше write-only) → вшито в decompose (грундинг клона) + video-critic (калибровка под нишу). Одобрение уже писало winners (V1); теперь сигнал ВОЗВРАЩАЕТСЯ в идеацию/критика = компаунд.
 - [x] **R5** Telegram голос-ревью — lib/factory/telegram.ts (отдельный бот FACTORY_TG_*, sendReview с кнопками + #r<id> в подписи), lib/factory/asr.ts (fal-whisper), webhook /api/factory/telegram (кнопки win/rej → applyVerdict→/winners|/reject; голос→whisper→Claude-intent→применить к рецепту из reply; /start отдаёт chat_id; секрет-заголовок). Утром: GET /api/factory/telegram?setup=<prod-url> + /start боту → FACTORY_TG_CHAT_ID.
-- [ ] V21 планировщик батча
+- [x] **V21** (скелет) — Telegram-on-bank: graph-run при ОТК-пройдено + plan.notify → tgSendReview (замыкает петлю end-to-end: прогон→Telegram→голос→обучение). graph-run POST принимает notify. /api/factory/batch: бюджет-гард (collectBalances, блок при balances.low REQUIRED), смета по нодам, отсечка по кап $40, ставит черновики в очередь с notify. ⚠️ R4-варианты ×3 + openreels-ассеты (V2/V9/V22/V23) — финальные видео без них сырые; это скелет автопилота.
 
 ## Настройка вебхука Telegram — утром
 - После деплоя: открыть `https://<прод>/api/factory/telegram?setup=https://<прод>` (регистрирует вебхук) → написать боту `/start` → положить выданный chat_id в Vercel `FACTORY_TG_CHAT_ID`.
@@ -24,5 +24,6 @@
 - `supabase/migrations/20260621_factory_generation_history.sql` (V20) — без неё genHistory мягко деградирует (история не пишется).
 
 ## Заметки/решения
+- V21 батч — СКЕЛЕТ: бюджет-гард + очередь + Telegram-доставка работают; но без V2 (заполнение нод) и openreels-цепочки (V22 ElevenLabs/V23 Remotion) рецепты в батче дадут сырой/падающий результат. Полный автопилот «100 видео» = после ключей владельца (ELEVENLABS_API_KEY + Remotion-lambda).
 - V3+V4: известный pre-existing MAJOR (не фикшу сейчас) — submit персистит renderCount/ноды ПОСЛЕ всего цикла; если submitNode КИНЕТ исключение (не вернёт {error}) посреди цикла, ретрай пере-сабмитит уже оплаченные fal-ноды. Низкий риск (submitNode ошибки возвращает, не кидает). Фикс на потом: чекпойнт после каждого submitNode.
 - _(append по ходу)_
