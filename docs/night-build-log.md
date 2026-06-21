@@ -14,8 +14,11 @@
 - [x] **V11** смета — экран сборки: РЕАЛЬНАЯ смета прогона из нод рецепта × PRICE (была демо $182/250) + рейл «$182/250 демо»→«Балансы экран 07». Бюджет-гард по balances.low перенесён в V21-оркестратор (раз на батч + кап $40, не на каждый рецепт — collectBalances живой ~9с).
 - [x] **V8** reality-first дефолты decompose — problem/solution/proof → disk_real (хребет), seedance/creatify только hook-ревил/нет съёмки. Промпт decompose.
 - [x] **R6+V7** петля обучения — lib/factory/learningHints.ts (winnersHintFor/corpusHooksFor/rejectAntiFor — ЧИТАЕТ cf_signals reject-агрегаты, раньше write-only) → вшито в decompose (грундинг клона) + video-critic (калибровка под нишу). Одобрение уже писало winners (V1); теперь сигнал ВОЗВРАЩАЕТСЯ в идеацию/критика = компаунд.
-- [ ] R5 Telegram-бот + fal-whisper
+- [x] **R5** Telegram голос-ревью — lib/factory/telegram.ts (отдельный бот FACTORY_TG_*, sendReview с кнопками + #r<id> в подписи), lib/factory/asr.ts (fal-whisper), webhook /api/factory/telegram (кнопки win/rej → applyVerdict→/winners|/reject; голос→whisper→Claude-intent→применить к рецепту из reply; /start отдаёт chat_id; секрет-заголовок). Утром: GET /api/factory/telegram?setup=<prod-url> + /start боту → FACTORY_TG_CHAT_ID.
 - [ ] V21 планировщик батча
+
+## Настройка вебхука Telegram — утром
+- После деплоя: открыть `https://<прод>/api/factory/telegram?setup=https://<прод>` (регистрирует вебхук) → написать боту `/start` → положить выданный chat_id в Vercel `FACTORY_TG_CHAT_ID`.
 
 ## Миграции к применению (Supabase SQL Editor) — утром
 - `supabase/migrations/20260621_factory_generation_history.sql` (V20) — без неё genHistory мягко деградирует (история не пишется).
