@@ -36,11 +36,13 @@ export const TOOL_SCHEMAS: Record<string, ToolSchema> = {
       { group: "Камера / формат", fields: [
         { name: "Фикс. камера", api_param: "camera_fixed", ui: "toggle", default: false, hint: "true для детальных товаров — меньше искажений" },
         { name: "Разрешение", api_param: "resolution", ui: "dropdown", values: ["480p", "720p", "1080p"], default: "720p", hint: "480p черновик, 1080p финал" },
-        { name: "Соотношение", api_param: "aspect_ratio", ui: "dropdown", values: ["9:16", "1:1", "16:9", "3:4", "4:3"], default: "9:16", hint: "форсим вертикаль (был БАГ)" },
+        { name: "Соотношение", api_param: "aspect_ratio", ui: "dropdown", values: ["9:16", "1:1", "16:9", "3:4", "4:3", "21:9", "auto"], default: "9:16", hint: "форсим вертикаль (был БАГ)" },
         { name: "Длительность, с", api_param: "duration", ui: "slider", min: 2, max: 12, step: 1, default: 5, hint: "цена ∝ длине" },
       ] },
       { group: "Контроль", fields: [
-        { name: "Сид", api_param: "seed", ui: "number", hint: "фиксировать удачный дубль" },
+        { name: "Сид", api_param: "seed", ui: "number", hint: "-1 = случайно; фиксировать удачный дубль" },
+        { name: "Число кадров", api_param: "num_frames", ui: "number", min: 29, max: 289, hint: "29–289; ПЕРЕБИВАЕТ длительность" },
+        { name: "Safety-чек", api_param: "enable_safety_checker", ui: "toggle", default: true },
       ] },
     ],
   },
@@ -58,9 +60,10 @@ export const TOOL_SCHEMAS: Record<string, ToolSchema> = {
         { name: "Негатив (анти-слоп)", api_param: "negative_prompt", ui: "textarea", hint: "редактируемый" },
         { name: "CFG (сила промпта)", api_param: "cfg_scale", ui: "slider", min: 0, max: 1, step: 0.05, default: 0.5 },
       ] },
-      { group: "Формат", fields: [
+      { group: "Формат / эффекты", fields: [
         { name: "Длительность", api_param: "duration", ui: "dropdown", values: ["5", "10"], default: "5" },
         { name: "Соотношение", api_param: "aspect_ratio", ui: "dropdown", values: ["9:16", "1:1", "16:9"], default: "9:16", hint: "невалидно на standard i2v — может дать 422" },
+        { name: "Спец-эффект (1.6)", api_param: "special_fx", ui: "dropdown", values: ["none", "hug", "kiss", "heart_gesture", "squish", "expansion", "fuzzyfuzzy", "bloombloom", "dizzydizzy", "jelly_press", "jelly_slice", "jelly_squish", "jelly_jiggle", "pixelpixel", "yearbook", "instant_film", "anime_figure"], default: "none", hint: "нужен effects-эндпоинт (1.6) — пока не применяется в i2v" },
       ] },
       { group: "Контроль", fields: [
         { name: "Сид", api_param: "seed", ui: "number", hint: "фиксировать удачный дубль" },
@@ -125,10 +128,12 @@ export const TOOL_SCHEMAS: Record<string, ToolSchema> = {
     groups: [
       { group: "Soul (text2image)", fields: [
         { name: "Промпт", api_param: "prompt", ui: "textarea" },
-        { name: "Соотношение", api_param: "aspect_ratio", ui: "dropdown", values: ["9:16", "1:1", "16:9", "4:5"], default: "9:16" },
-        { name: "Качество", api_param: "quality", ui: "dropdown", values: ["basic", "high"], default: "high" },
+        // width_and_height — реальное поле Soul API (WH-строки из нашего WH_BY_RATIO), не «соотношение»
+        { name: "Размер (соотношение)", api_param: "width_and_height", ui: "dropdown", values: ["1536x2048", "2048x2048", "1152x2048", "2048x1152", "2048x1536"], valueLabels: ["3:4", "1:1", "9:16", "16:9", "4:3"], default: "1536x2048" },
+        { name: "Качество", api_param: "quality", ui: "dropdown", values: ["720p", "1080p"], default: "1080p", hint: "Soul: строка-разрешение" },
         { name: "Вариантов", api_param: "batch_size", ui: "number", min: 1, max: 4, default: 1 },
-        { name: "Реф (img2img)", api_param: "reference_url", ui: "file" },
+        { name: "Реф (img2img)", api_param: "reference_url", ui: "file", hint: "→ image_reference{type:image_url}" },
+        { name: "Сила рефа", api_param: "reference_strength", ui: "slider", min: 0, max: 1, step: 0.05, default: 0.6 },
       ] },
     ],
   },
@@ -137,7 +142,9 @@ export const TOOL_SCHEMAS: Record<string, ToolSchema> = {
     groups: [
       { group: "Композит (U4)", fields: [
         { name: "Промпт", api_param: "prompt", ui: "textarea", hint: "«вставь товар + upscale by real photo»" },
-        { name: "Входные изображения", api_param: "images", ui: "file", hint: "фото актёра + PNG товара" },
+        { name: "Входные изображения", api_param: "images", ui: "file", hint: "→ contents.parts.inlineData (фото актёра + PNG товара)" },
+        { name: "Соотношение", api_param: "aspect_ratio", ui: "dropdown", values: ["1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9"], default: "9:16", hint: "image_config.aspectRatio" },
+        { name: "PNG товара (guide)", api_param: "product_image_url", ui: "file" },
       ] },
     ],
   },

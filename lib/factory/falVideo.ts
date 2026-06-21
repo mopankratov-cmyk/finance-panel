@@ -21,8 +21,10 @@ export interface FalVideoOpts {
   negative?: string;            // kling negative_prompt (анти-слоп, редактируемый)
   end_image_url?: string;       // seedance end_image_url / kling tail_image_url — before/after
   camera_fixed?: boolean;       // seedance — меньше искажений детальных товаров
-  seed?: number;                // воспроизводимость
+  seed?: number;                // воспроизводимость (-1 = random)
   cfg_scale?: number;           // kling 0-1
+  num_frames?: number;          // seedance 29-289 — ПЕРЕБИВАЕТ duration
+  enable_safety_checker?: boolean; // seedance safety-чек
   endpoint?: string;            // прямой override эндпоинта (выбор pro/fast)
 }
 
@@ -63,6 +65,8 @@ function buildInput(model: FalVideoModel, imageUrl: string, prompt: string, opts
     if (opts?.end_image_url) inp.end_image_url = opts.end_image_url;   // before/after (только pro)
     if (typeof opts?.camera_fixed === "boolean") inp.camera_fixed = opts.camera_fixed;
     if (typeof opts?.seed === "number") inp.seed = opts.seed;
+    if (typeof opts?.num_frames === "number") inp.num_frames = opts.num_frames; // 29-289, перебивает duration
+    if (typeof opts?.enable_safety_checker === "boolean") inp.enable_safety_checker = opts.enable_safety_checker;
     return inp;
   }
   if (fam === "pika") return { image_url: imageUrl, prompt, resolution: opts?.resolution || "720p", duration: Number(opts?.duration ?? 5) };

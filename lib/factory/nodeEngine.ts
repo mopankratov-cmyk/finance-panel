@@ -52,6 +52,8 @@ function falOptsFromParams(p: Record<string, any> | null | undefined): FalVideoO
   if (typeof p.camera_fixed === "boolean") o.camera_fixed = p.camera_fixed;
   if (typeof p.seed === "number") o.seed = p.seed;
   if (typeof p.cfg_scale === "number") o.cfg_scale = p.cfg_scale;
+  if (typeof p.num_frames === "number") o.num_frames = p.num_frames;
+  if (typeof p.enable_safety_checker === "boolean") o.enable_safety_checker = p.enable_safety_checker;
   // выбор эндпоинта: явный endpoint > kling mode=pro > model-ключ. Иначе движок берёт дефолт семейства.
   if (p.endpoint) o.endpoint = p.endpoint;
   else if (p.mode === "pro") o.endpoint = FAL_VIDEO_MODELS.kling_pro;          // kling Режим=pro → kling_pro эндпоинт
