@@ -27,7 +27,8 @@ export async function POST(req: NextRequest) {
       plan.attempts = attempts;
       plan.error = msg;
       plan.lease_until = null;
-      if (attempts >= MAX_STEP_ATTEMPTS) { plan.step = "failed"; await db.from("node_recipes").update({ run_plan: plan, status: "otk_fail", updated_at: new Date().toISOString() }).eq("id", ctx.id); }
+      // КРАШ шага (не вердикт ОТК) → status=run_fail, чтобы не путать инфра-сбой с «качество не прошло»
+      if (attempts >= MAX_STEP_ATTEMPTS) { plan.step = "failed"; await db.from("node_recipes").update({ run_plan: plan, status: "run_fail", updated_at: new Date().toISOString() }).eq("id", ctx.id); }
       else await db.from("node_recipes").update({ run_plan: plan, updated_at: new Date().toISOString() }).eq("id", ctx.id);
     }
     // продолжить цепочку

@@ -123,7 +123,7 @@ export const CREATIFY_SCENES: { id: string; label: string; hint: string }[] = [
 // ОСНОВНОЙ: link_to_videos — товар в кадре. Возвращает токен + debug (сырые ответы для отладки).
 // Фото товара передаём НАПРЯМУЮ (link_with_params) — WB не скрейпится, поэтому даём image_urls.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export async function creatifyLinkVideo(opts: { url?: string; images?: string[]; title?: string; description?: string; script?: string; avatar?: string; visual_style?: string; length?: number }): Promise<{ token?: string; error?: string; debug?: any }> {
+export async function creatifyLinkVideo(opts: { url?: string; images?: string[]; title?: string; description?: string; script?: string; avatar?: string; visual_style?: string; length?: number; model_version?: string; no_cta?: boolean; script_style?: string; caption_setting?: Record<string, unknown> }): Promise<{ token?: string; error?: string; debug?: any }> {
   const h = headers();
   if (!h) return { error: "CREATIFY ключ не настроен" };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -144,10 +144,13 @@ export async function creatifyLinkVideo(opts: { url?: string; images?: string[];
   // 2) создать видео из link
   // язык — КОД "ru" (не слово "russian"!), иначе CTA/плашки уходят в английский.
   // no_cta — убираем англоязычную плашку-концовку ("Blast Away with Wildberries / BUY NOW"); CTA уже в субтитрах по-русски.
-  const body: Record<string, unknown> = { link: linkId, aspect_ratio: "9x16", video_length: opts.length || 15, target_platform: "Tiktok", language: "ru", no_cta: true };
+  const body: Record<string, unknown> = { link: linkId, aspect_ratio: "9x16", video_length: opts.length || 15, target_platform: "Tiktok", language: "ru", no_cta: opts.no_cta !== false };
   if (opts.script) body.override_script = opts.script.slice(0, 1500);
   if (opts.avatar) body.override_avatar = opts.avatar;
-  if (opts.visual_style) body.visual_style = opts.visual_style; // композиция сцены (AvatarBubble/SideBySide/TopBottom…)
+  if (opts.visual_style) body.visual_style = opts.visual_style; // композиция сцены (*Template)
+  if (opts.model_version) body.model_version = opts.model_version; // aurora_v1_fast/aurora_v1/standard (раньше не слался — БАГ)
+  if (opts.script_style && !opts.script) body.script_style = opts.script_style; // стиль-fallback, игнор при override_script
+  if (opts.caption_setting && Object.keys(opts.caption_setting).length) body.caption_setting = opts.caption_setting; // шрифт/цвет субтитров (сверить дампом)
   const created = await jpost(h, "/link_to_videos/", body);
   debug.create = { status: created.status, body: created.json || created.text };
   const vidId = (created.json?.id as string) || "";

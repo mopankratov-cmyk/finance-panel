@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { allToolKeys } from "@/lib/factory/toolSchemas";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 15;
@@ -21,9 +22,12 @@ export async function POST(req: NextRequest) {
     const patch: Record<string, unknown> = { human_edited: true, source: "human_chosen" };
     if (typeof b.prompt === "string") patch.prompt = b.prompt;
     if (b.params && typeof b.params === "object") patch.params = b.params;
-    if (typeof b.tool === "string") patch.tool = b.tool;
+    // защита: tool пишем ТОЛЬКО если это известный инструмент — пустая/чужая строка не должна затирать tool ноды
+    if (typeof b.tool === "string" && b.tool && allToolKeys().includes(b.tool)) patch.tool = b.tool;
     if (typeof b.asset_url === "string") patch.asset_url = b.asset_url;
     if (b.asset_id != null) patch.asset_id = b.asset_id;
+    // disk_real пишет длительность в params — продублируем в колонку duration_sec (её читает таймлайн/сборка)
+    if (b.params && typeof b.params.duration_sec === "number") patch.duration_sec = b.params.duration_sec;
 
     const { data, error } = await db.from("node_recipe_nodes").update(patch).eq("id", nodeId).select("*").limit(1);
     if (error) return NextResponse.json({ error: "node_recipe_nodes: " + error.message }, { status: 500 });

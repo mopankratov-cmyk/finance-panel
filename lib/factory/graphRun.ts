@@ -55,7 +55,9 @@ export function buildRunPlan(rows: any[]): RunPlan {
       params,
       image_url: r.asset_url || params.image_url || null,
       asset_url: r.asset_url || null,
-      duration_sec: typeof r.duration_sec === "number" ? r.duration_sec : null,
+      // колонка duration_sec ИЛИ инспекторский params.duration_sec (disk_real пишет только в params)
+      duration_sec: typeof r.duration_sec === "number" ? r.duration_sec
+        : (params.duration_sec != null && !isNaN(Number(params.duration_sec)) ? Number(params.duration_sec) : null),
       onscreen_text: params.onscreen_text || sug.onscreen_text || null,
       status: "pending" as const,
     };
@@ -84,9 +86,16 @@ export async function claimNextRecipe(db: SupabaseClient, recipeId?: number): Pr
     const plan = (row.run_plan as RunPlan) || null;
     if (!plan || plan.step === "done" || plan.step === "failed") continue;
     if (plan.lease_until && new Date(plan.lease_until as string).getTime() > Date.now()) continue; // занят
-    // best-effort захват: ставим лиз
+    // АТОМАРНЫЙ захват (compare-and-swap): ставим лиз ТОЛЬКО если в БД он всё ещё свободен.
+    // Иначе два параллельных тика (resurrection GET каждые 4с + self-chain) дважды оплатят fal/creatify.
     plan.lease_until = leaseIso;
-    await db.from("node_recipes").update({ run_plan: plan, updated_at: nowIso }).eq("id", row.id);
+    const { data: won, error: wErr } = await db.from("node_recipes")
+      .update({ run_plan: plan, updated_at: nowIso }).eq("id", row.id)
+      .or(`run_plan->>lease_until.is.null,run_plan->>lease_until.lt.${nowIso}`)
+      .select("id").maybeSingle();
+    if (wErr) { // PostgREST не принял JSONB-предикат → фолбэк на best-effort (как было), чтобы прогон не застрял
+      await db.from("node_recipes").update({ run_plan: plan, updated_at: nowIso }).eq("id", row.id);
+    } else if (!won) continue; // гонку проиграли — рецепт уже захватил другой тик
     return { id: row.id as number, plan, article: String(row.article || ""), niche: String(row.niche || ""), mode: String(row.mode || "audience") };
   }
   return null;
@@ -174,12 +183,21 @@ export async function runRecipeStep(
       return;
     }
 
+    // нода shotstack несёт настройки монтажа (плоские точечные ключи из инспектора) — раньше игнорились
+    const ssNode = plan.nodes.find((n) => String(n.tool).toLowerCase() === "shotstack");
+    const ssp = (ssNode?.params || {}) as Record<string, unknown>;
+    const transIn = (ssp["transition.in"] as string) || "fade";
+    const ssEffect = ssp["effect"] as string | undefined;
+    const ssFilter = ssp["filter"] as string | undefined;
+    const ssFontSize = Number(ssp["font.size"]);
+    const ssFontColor = ssp["font.color"] as string | undefined;
+
     // раскладка по таймлайну: видео-ноды последовательно, длительность из ноды
     let t = 0;
     const raw: AssemblyClip[] = visualNodes.map((n, i) => {
       const len = Math.min(8, Math.max(2, Number(n.duration_sec) || 5));
       const clip: AssemblyClip = { url: n.url!, type: "video", start: t, length: len };
-      if (i > 0) clip.transition = "fade";
+      if (i > 0 && transIn !== "none") clip.transition = transIn;
       t += len;
       return clip;
     });
@@ -192,10 +210,12 @@ export async function runRecipeStep(
     const caption = (captionNode?.onscreen_text || (article ? "Ищи на WB: " + article : "")).toString().slice(0, 120) || undefined;
     const soundNode = plan.nodes.find((n) => String(n.tool).toLowerCase() === "sound" || String(n.tool).toLowerCase() === "music");
     const audioUrl = (soundNode?.asset_url || (soundNode?.params?.url as string) || "") || undefined;
+    const audioVolume = typeof soundNode?.params?.volume === "number" ? (soundNode.params.volume as number) : 0.3;
     const fontUrl = (process.env.SHOTSTACK_FONT_URL || "").trim() || undefined;
     const fontFamily = (process.env.SHOTSTACK_FONT_FAMILY || "").trim() || undefined;
 
-    const edit = buildEdit({ clips, hookText, caption, audioUrl, fontUrl, fontFamily, aspect: "9:16" });
+    const edit = buildEdit({ clips, hookText, caption, audioUrl, audioVolume, fontUrl, fontFamily, aspect: "9:16",
+      fontSize: isNaN(ssFontSize) ? undefined : ssFontSize, fontColor: ssFontColor, effect: ssEffect, filter: ssFilter });
     // сохраним edit в run_plan для воспроизводимости
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (plan as any).edit_json = edit;

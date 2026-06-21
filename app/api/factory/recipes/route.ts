@@ -70,7 +70,7 @@ async function transfer(db: any, p: { template_id?: string | number; nodes?: any
     agent_suggestion: { role: n.role, hook_type: n.hook_type, onscreen_text: n.onscreen_text, voiceover: n.voiceover, emotion: n.emotion, visual_desc: n.visual_desc },
   }));
   const { error: nErr } = await db.from("node_recipe_nodes").insert(rows);
-  if (nErr) return { error: "node_recipe_nodes: " + nErr.message, status: 500 };
+  if (nErr) { await db.from("node_recipes").delete().eq("id", recipeId); return { error: "node_recipe_nodes: " + nErr.message, status: 500 }; } // откат головы — иначе осиротевший черновик в библиотеке
 
   const graph_doc = {
     nodes: rows.map((r, i) => ({ id: `n${r.ordinal}`, type: r.node_type, slot: r.slot, tool: r.tool, position: { x: i * 240, y: 0 }, duration_sec: r.duration_sec, ref: r.agent_suggestion, status: "draft" })),

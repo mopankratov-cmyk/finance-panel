@@ -41,10 +41,20 @@ export function buildEdit(opts: {
   fontUrl?: string;          // Cyrillic-TTF (Supabase Storage URL) — ОБЯЗАТЕЛЬНО для RU
   fontFamily?: string;       // должен совпадать с family внутри TTF
   aspect?: "9:16" | "1:1" | "16:9";
+  // настройки ноды shotstack (инспектор) — раньше игнорились, теперь применяются
+  fontSize?: number;         // кегль субтитров (дефолт 28)
+  fontColor?: string;        // цвет субтитров (#RRGGBB)
+  effect?: string;           // Ken Burns на видео-клипах (zoomIn/slideLeft…)
+  filter?: string;           // фильтр (boost/contrast/muted…)
+  audioVolume?: number;      // громкость трека 0-1 (дефолт 1)
 }): Record<string, unknown> {
   const resolvedFontUrl = opts.fontUrl || process.env.SHOTSTACK_FONT_URL || CYRILLIC_FONT_URL;
   const family = opts.fontFamily || process.env.SHOTSTACK_FONT_FAMILY || CYRILLIC_FONT_FAMILY;
   const totalLen = opts.clips.reduce((m, c) => Math.max(m, c.start + c.length), 0) || 5;
+  const capSize = typeof opts.fontSize === "number" ? opts.fontSize : 28;
+  const capColor = opts.fontColor || "#ffffff";
+  const ef = opts.effect && opts.effect !== "none" ? opts.effect : undefined;
+  const fl = opts.filter && opts.filter !== "none" ? opts.filter : undefined;
 
   const visualClips = opts.clips.map((c) => ({
     asset: { type: c.type, src: c.url },
@@ -52,19 +62,21 @@ export function buildEdit(opts: {
     length: c.length,
     fit: "cover",
     ...(c.transition ? { transition: { in: c.transition } } : {}),
+    ...(ef ? { effect: ef } : {}),
+    ...(fl ? { filter: fl } : {}),
   }));
   const tracks: Record<string, unknown>[] = [{ clips: visualClips }];
 
   // субтитры/подпись внизу — весь ролик (кладём раньше визуала → выше по z)
   if (opts.caption) {
-    tracks.unshift({ clips: [{ asset: { type: "text", text: opts.caption, font: { family, size: 28, color: "#ffffff" }, alignment: { horizontal: "center", vertical: "bottom" } }, start: 0, length: totalLen }] });
+    tracks.unshift({ clips: [{ asset: { type: "text", text: opts.caption, font: { family, size: capSize, color: capColor }, alignment: { horizontal: "center", vertical: "bottom" } }, start: 0, length: totalLen }] });
   }
-  // хук-текст сверху — первые ~3с
+  // хук-текст сверху — первые ~3с (крупнее субтитров)
   if (opts.hookText) {
-    tracks.unshift({ clips: [{ asset: { type: "text", text: opts.hookText, font: { family, size: 48, color: "#ffffff" }, alignment: { horizontal: "center", vertical: "top" }, background: { color: "#000000", opacity: 0.45 } }, start: 0, length: Math.min(3, totalLen) }] });
+    tracks.unshift({ clips: [{ asset: { type: "text", text: opts.hookText, font: { family, size: Math.max(capSize, 48), color: capColor }, alignment: { horizontal: "center", vertical: "top" }, background: { color: "#000000", opacity: 0.45 } }, start: 0, length: Math.min(3, totalLen) }] });
   }
   // трендовый звук — отдельный аудио-трек (порядок для аудио не влияет на z)
-  if (opts.audioUrl) tracks.push({ clips: [{ asset: { type: "audio", src: opts.audioUrl, volume: 1 }, start: 0, length: totalLen }] });
+  if (opts.audioUrl) tracks.push({ clips: [{ asset: { type: "audio", src: opts.audioUrl, volume: typeof opts.audioVolume === "number" ? opts.audioVolume : 1 }, start: 0, length: totalLen }] });
 
   const timeline: Record<string, unknown> = { background: "#000000", tracks };
   timeline.fonts = [{ src: resolvedFontUrl }];

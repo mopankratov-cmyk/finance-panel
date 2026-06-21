@@ -52,8 +52,9 @@ function falOptsFromParams(p: Record<string, any> | null | undefined): FalVideoO
   if (typeof p.camera_fixed === "boolean") o.camera_fixed = p.camera_fixed;
   if (typeof p.seed === "number") o.seed = p.seed;
   if (typeof p.cfg_scale === "number") o.cfg_scale = p.cfg_scale;
-  // прямой выбор pro/fast эндпоинта
+  // выбор эндпоинта: явный endpoint > kling mode=pro > model-ключ. Иначе движок берёт дефолт семейства.
   if (p.endpoint) o.endpoint = p.endpoint;
+  else if (p.mode === "pro") o.endpoint = FAL_VIDEO_MODELS.kling_pro;          // kling Режим=pro → kling_pro эндпоинт
   else if (p.model && FAL_VIDEO_MODELS[p.model as FalVideoModel]) o.endpoint = FAL_VIDEO_MODELS[p.model as FalVideoModel];
   return o;
 }
@@ -84,6 +85,10 @@ export async function submitNode(node: EngineNode): Promise<SubmitResult> {
 
   // creatify UGC-актёр
   if (tool === "creatify") {
+    // субтитры приходят плоскими точечными ключами из инспектора (caption_setting.font_family) → собираем вложенный объект
+    const caption_setting: Record<string, unknown> = {};
+    if (params["caption_setting.font_family"]) caption_setting.font_family = params["caption_setting.font_family"];
+    if (params["caption_setting.text_color"]) caption_setting.text_color = params["caption_setting.text_color"];
     const r = await creatifyLinkVideo({
       url: params.url || undefined,
       images: imageUrl ? [imageUrl] : (Array.isArray(params.images) ? params.images : undefined),
@@ -93,6 +98,10 @@ export async function submitNode(node: EngineNode): Promise<SubmitResult> {
       avatar: params.override_avatar || params.avatar || undefined,
       visual_style: params.visual_style || undefined,
       length: Number(params.video_length || params.length || node.duration_sec || 15) || 15,
+      model_version: params.model_version || undefined,
+      no_cta: typeof params.no_cta === "boolean" ? params.no_cta : undefined,
+      script_style: params.script_style || undefined,
+      caption_setting: Object.keys(caption_setting).length ? caption_setting : undefined,
     });
     if (r.error || !r.token) return { engine: "creatify", error: r.error || "creatify без токена" };
     return { engine: "creatify", token: packToken("creatify", r.token), cost_hint: "med" };

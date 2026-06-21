@@ -3,6 +3,8 @@
 // Полные таблицы — docs/tool-settings-tz.md + docs/creatify-settings-tz.md. Здесь — машинная форма для UI.
 // Энумы помечены «(сверить)» там, где брать живой дамп до прода. ui_control → как рисует инспектор.
 
+import { CREATIFY_SCENES } from "./creatify";
+
 export type UiControl = "dropdown" | "slider" | "toggle" | "text" | "textarea" | "color" | "number" | "picker" | "file";
 
 export interface ToolField {
@@ -17,7 +19,7 @@ export interface ToolField {
   hint?: string;           // RU/ОТК-подсказка
 }
 export interface ToolGroup { group: string; fields: ToolField[] }
-export interface ToolSchema { tool: string; label: string; node_types: string[]; groups: ToolGroup[] }
+export interface ToolSchema { tool: string; label: string; node_types: string[]; groups: ToolGroup[]; available?: boolean }
 
 export const TOOL_SCHEMAS: Record<string, ToolSchema> = {
   seedance: {
@@ -46,7 +48,7 @@ export const TOOL_SCHEMAS: Record<string, ToolSchema> = {
     tool: "kling", label: "Kling (AI-видео, жёсткие формы)", node_types: ["ai_product_render", "before_after"],
     groups: [
       { group: "Движок", fields: [
-        { name: "Версия", api_param: "version", ui: "dropdown", values: ["v2.1", "v1.6", "v2.5-turbo"], default: "v2.1", hint: "(сверить дампом)" },
+        { name: "Версия", api_param: "version", ui: "dropdown", values: ["v2.1", "v1.6"], default: "v2.1", hint: "v2.5-turbo — когда зарегаем эндпоинт" },
         { name: "Режим", api_param: "mode", ui: "dropdown", values: ["standard", "pro"], default: "standard", hint: "pro=лучше держит лого/форму" },
       ] },
       { group: "Вход / промпт", fields: [
@@ -67,7 +69,7 @@ export const TOOL_SCHEMAS: Record<string, ToolSchema> = {
     groups: [
       { group: "Актёр / сцена", fields: [
         { name: "Аватар", api_param: "override_avatar", ui: "picker", hint: "галерея персон" },
-        { name: "Композиция", api_param: "visual_style", ui: "dropdown", values: ["DynamicProduct", "SideBySide", "TopBottom", "AvatarBubble", "Vlog"], default: "AvatarBubble", hint: "(полный каталог — дамп)" },
+        { name: "Композиция", api_param: "visual_style", ui: "dropdown", values: CREATIFY_SCENES.map((s) => s.id), valueLabels: CREATIFY_SCENES.map((s) => s.label), default: "AvatarBubbleTemplate", hint: "API ждёт *Template-id" },
         { name: "Голос (RU)", api_param: "override_voice", ui: "picker", hint: "RU-whitelist; у API нет language" },
       ] },
       { group: "Скрипт", fields: [
@@ -106,7 +108,7 @@ export const TOOL_SCHEMAS: Record<string, ToolSchema> = {
     ],
   },
   higgsfield: {
-    tool: "higgsfield", label: "Higgsfield (изображение/камера)", node_types: ["carousel_slide", "static_post", "ai_product_render"],
+    tool: "higgsfield", label: "Higgsfield (изображение/камера)", node_types: ["carousel_slide", "static_post", "ai_product_render"], available: false,
     groups: [
       { group: "Soul (text2image)", fields: [
         { name: "Промпт", api_param: "prompt", ui: "textarea" },
@@ -118,7 +120,7 @@ export const TOOL_SCHEMAS: Record<string, ToolSchema> = {
     ],
   },
   gemini: {
-    tool: "gemini", label: "Gemini Nano-Banana (композит товара)", node_types: ["ai_product_render", "static_post"],
+    tool: "gemini", label: "Gemini Nano-Banana (композит товара)", node_types: ["ai_product_render", "static_post"], available: false,
     groups: [
       { group: "Композит (U4)", fields: [
         { name: "Промпт", api_param: "prompt", ui: "textarea", hint: "«вставь товар + upscale by real photo»" },
@@ -127,7 +129,7 @@ export const TOOL_SCHEMAS: Record<string, ToolSchema> = {
     ],
   },
   claude: {
-    tool: "claude", label: "Claude (сценарист)", node_types: ["scenarist"],
+    tool: "claude", label: "Claude (сценарист)", node_types: ["scenarist"], available: false,
     groups: [
       { group: "Модель / сэмплинг", fields: [
         { name: "Модель", api_param: "model", ui: "dropdown", values: ["claude-sonnet-4-6", "claude-opus-4-8", "claude-haiku-4-5"], default: "claude-sonnet-4-6" },
