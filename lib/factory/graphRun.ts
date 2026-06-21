@@ -246,8 +246,8 @@ export async function runRecipeStep(
 
   // ── assemble: смонтировать готовые клипы через Shotstack ──
   if (plan.step === "assemble") {
-    // role="skip" (инспектор disk_real) → выкинуть клип из сборки
-    const visualNodes = plan.nodes.filter((n) => n.status === "done" && n.url && n.node_type !== "captions" && String(((n.params || {}) as Record<string, unknown>)["role"] || "").toLowerCase() !== "skip");
+    // role="skip" (инспектор disk_real) → выкинуть клип из сборки; elevenlabs — это АУДИО (закадр), не визуал
+    const visualNodes = plan.nodes.filter((n) => n.status === "done" && n.url && n.node_type !== "captions" && String(n.tool).toLowerCase() !== "elevenlabs" && String(((n.params || {}) as Record<string, unknown>)["role"] || "").toLowerCase() !== "skip");
     if (!visualNodes.length) throw new Error("нет готовых клипов для сборки (все ноды упали — проверь image_url/ключи)");
 
     // одиночный клип без Shotstack → используем как есть (минуем рендер)
@@ -310,10 +310,14 @@ export async function runRecipeStep(
     const soundNode = plan.nodes.find((n) => String(n.tool).toLowerCase() === "sound" || String(n.tool).toLowerCase() === "music");
     const audioUrl = (soundNode?.asset_url || (soundNode?.params?.url as string) || "") || undefined;
     const audioVolume = typeof soundNode?.params?.volume === "number" ? (soundNode.params.volume as number) : 0.3;
+    // V22 · закадр ElevenLabs (отдельная дорожка, поверх музыки; музыка дакается дефолтом 0.3)
+    const voiceNode = plan.nodes.find((n) => String(n.tool).toLowerCase() === "elevenlabs" && n.status === "done" && n.url);
+    const voiceoverUrl = voiceNode?.url || undefined;
+    const voiceoverVolume = typeof voiceNode?.params?.volume === "number" ? (voiceNode.params.volume as number) : 1;
     const fontUrl = (process.env.SHOTSTACK_FONT_URL || "").trim() || undefined;
     const fontFamily = (process.env.SHOTSTACK_FONT_FAMILY || "").trim() || undefined;
 
-    const edit = buildEdit({ clips, hookText, caption, audioUrl, audioVolume, fontUrl, fontFamily, aspect: ssAspect,
+    const edit = buildEdit({ clips, hookText, caption, audioUrl, audioVolume, voiceoverUrl, voiceoverVolume, fontUrl, fontFamily, aspect: ssAspect,
       fontSize: isNaN(ssFontSize) ? undefined : ssFontSize, fontColor: ssFontColor, effect: ssEffect, filter: ssFilter,
       outputFormat: ssOutFormat, fps: isNaN(ssFps) ? undefined : ssFps, quality: ssQuality, fit: ssFit, background: ssBg });
     // сохраним edit в run_plan для воспроизводимости

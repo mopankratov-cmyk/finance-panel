@@ -217,9 +217,8 @@ export const TOOL_SCHEMAS: Record<string, ToolSchema> = {
     ],
   },
   elevenlabs: {
-    // available:false пока генерация-путь (nodeEngine submitNode + сборка voiceover-дорожки) не дописан —
-    // чтобы autofill не роутил ноду на ещё-не-исполнимый движок. Флипнуть в true по готовности V22.
-    tool: "elevenlabs", label: "ElevenLabs (RU-озвучка)", node_types: ["voiceover", "narration"], available: false,
+    // V22 готов: submitNode (TTS→Storage→url) + сборка (voiceover-дорожка в buildEdit) врезаны → доступен в автозаполнении.
+    tool: "elevenlabs", label: "ElevenLabs (RU-озвучка)", node_types: ["voiceover", "narration"],
     groups: [
       { group: "Голос", fields: [
         { name: "Голос (RU)", api_param: "voice_id", ui: "picker", hint: "живой список ElevenLabs; multilingual держит русский" },

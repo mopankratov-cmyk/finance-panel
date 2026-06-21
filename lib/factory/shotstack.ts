@@ -41,6 +41,8 @@ export function buildEdit(opts: {
   hookText?: string;
   caption?: string;
   audioUrl?: string;
+  voiceoverUrl?: string;     // V22 · закадр ElevenLabs (отдельная дорожка поверх музыки)
+  voiceoverVolume?: number;
   fontUrl?: string;          // Cyrillic-TTF (Supabase Storage URL) — ОБЯЗАТЕЛЬНО для RU
   fontFamily?: string;       // должен совпадать с family внутри TTF
   aspect?: "9:16" | "1:1" | "16:9";
@@ -88,6 +90,8 @@ export function buildEdit(opts: {
   }
   // трендовый звук — отдельный аудио-трек (порядок для аудио не влияет на z)
   if (opts.audioUrl) tracks.push({ clips: [{ asset: { type: "audio", src: opts.audioUrl, volume: typeof opts.audioVolume === "number" ? opts.audioVolume : 1 }, start: 0, length: totalLen }] });
+  // V22 · закадр ElevenLabs — ещё одна аудио-дорожка поверх музыки (громкость 1 по умолчанию)
+  if (opts.voiceoverUrl) tracks.push({ clips: [{ asset: { type: "audio", src: opts.voiceoverUrl, volume: typeof opts.voiceoverVolume === "number" ? opts.voiceoverVolume : 1 }, start: 0, length: totalLen }] });
 
   const timeline: Record<string, unknown> = { background: opts.background || "#000000", tracks };
   timeline.fonts = [{ src: resolvedFontUrl }];
