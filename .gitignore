@@ -43,3 +43,7 @@ next-env.d.ts
 # claude code local tooling
 /.claude
 .gstack/
+
+# openreels: тяжёлые тестовые медиа-инпуты v0-v9 (46MB видео) — локальные, не в git.
+# После V23 шаблон Remotion на пропсах → ассеты динамические из брифа; эти mp4 в проде не нужны.
+/public/reel-assets/

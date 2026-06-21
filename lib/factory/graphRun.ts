@@ -2,6 +2,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { submitNode, pollNode, type EngineNode } from "./nodeEngine";
 import { buildEdit, fixedBeatGrid, quantizeToBeats, shotstackSubmit, shotstackStatus, shotstackReady, type AssemblyClip } from "./shotstack";
 import { extractFrames } from "./serverMedia";
+import { logGeneration } from "./genHistory";
+import { tgReady, tgSendReview } from "./telegram";
 
 // V3 исполнитель графа: рецепт (node_recipe_nodes) → генерация нод → Shotstack-сборка → ОТК → банк.
 // Self-chaining машина по образцу jobs/tick: один тик = ОДИН шаг (<60с), состояние в node_recipes.run_plan.
@@ -27,6 +29,9 @@ export interface RunPlan {
   attempts?: number;
   lease_until?: string | null;
   error?: string | null;
+  bestScore?: number | null;   // V3: лучший ОТК-балл за все попытки реген-петли
+  bestUrl?: string | null;     // и сборка с этим баллом — банкуем ЕЁ
+  notify?: boolean;            // V21/R5: батч-прогон → слать прошедшее ОТК в Telegram на ревью (студийные — нет, без спама)
 }
 
 const LEASE_MS = 90_000;
@@ -41,6 +46,54 @@ const ASSEMBLY_TOOLS = new Set(["shotstack", "sound", "music", "sharp"]);
 
 function asNode(n: RunNode): EngineNode {
   return { tool: n.tool, node_type: n.node_type, prompt: n.prompt, params: n.params, image_url: n.image_url, asset_url: n.asset_url, duration_sec: n.duration_sec ?? undefined };
+}
+
+// нода РЕГЕНЕРИРУЕМА: сгенерирована движком (не реальный клип/сборка) — реген disk_real бессмыслен
+function isRegenerable(n: RunNode): boolean {
+  const t = String(n.tool || "").toLowerCase();
+  return n.status === "done" && !!t && !ASSEMBLY_TOOLS.has(t) && t !== "captions" && t !== "disk" && t !== "disk_real";
+}
+const roleOf = (n: RunNode) => String(((n.params || {}) as Record<string, unknown>)["role"] || n.slot || "").toLowerCase();
+
+// V3/V4: по слабейшей оси ОТК выбрать ноду-виновника для регена (только генеративную)
+function pickCulprit(plan: RunPlan, axes: unknown): { node: RunNode; axis: string; val: number } | null {
+  const a = (axes && typeof axes === "object") ? (axes as Record<string, unknown>) : {};
+  let axis: string | null = null, val = 99;
+  for (const k of ["hook", "retention", "native", "brand", "cta"]) {
+    const v = Number(a[k]); if (!isNaN(v) && v < val) { val = v; axis = k; }
+  }
+  if (!axis) return null;
+  let node: RunNode | undefined;
+  if (axis === "hook") node = plan.nodes.find((n) => isRegenerable(n) && roleOf(n) === "hook");
+  else if (axis === "cta") node = plan.nodes.find((n) => isRegenerable(n) && roleOf(n) === "cta");
+  else if (axis === "brand") node = plan.nodes.find((n) => isRegenerable(n) && (roleOf(n) === "proof" || roleOf(n) === "solution"));
+  // native/retention/фолбэк → первая генеративная нода (AI = источник слопа)
+  if (!node) node = plan.nodes.find(isRegenerable);
+  return node ? { node, axis, val } : null;
+}
+
+// V3/V4/R3: пере-генерить ноду-виновника — improve-prompt по дефектам → сброс ТОЛЬКО её → назад в submit.
+// Бюджет (renderCount<MAX_RENDERS) проверяет ВЫЗЫВАЮЩИЙ. Общий путь для ОТК-фейла и артефакт-гейта.
+async function regenCulprit(
+  db: SupabaseClient, origin: string, id: number, plan: RunPlan, niche: string, article: string,
+  node: RunNode, defects: string[], fixHint: string, reason: string, isArtifact = false,
+): Promise<void> {
+  try {
+    const imp = await jpost(origin, "/api/factory/improve-prompt", {
+      original: node.prompt || node.onscreen_text || "",
+      defects: (defects || []).slice(0, 3),
+      fixes: [fixHint],
+      route: "node_graph", engine: node.engine || node.tool || "seedance",
+      context: String(article || "").slice(0, 200),
+    }, 55000);
+    if (imp?.prompt) node.prompt = String(imp.prompt).slice(0, 2000);
+  } catch { /* improve опционален — реген и без него */ }
+  // при артефакт-регене plan.otk ещё/уже неактуален (рубрика не про этот брак) → не пишем стейл-балл, метим artifact_ok=false
+  await logGeneration({ recipe_id: id, tool: node.tool, engine: node.engine, node_type: node.node_type, prompt: node.prompt, output_url: plan.output_url, otk_score: isArtifact ? null : (plan.otk?.score ?? null), otk_axes: isArtifact ? null : (plan.otk?.axes ?? null), artifact_ok: isArtifact ? false : null, status: "regen", attempt: (plan.renderCount || 0), reason, source: "graph_run", niche, article });
+  node.status = "pending"; node.url = undefined; node.token = undefined;
+  plan.render_id = null;
+  plan.step = "submit"; // renderCount инкрементнётся в submit → жёстко ограничен MAX_RENDERS
+  await savePlan(db, id, plan, { otk_verdict: plan.otk ?? null, otk_score: plan.otk?.score ?? null });
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -284,10 +337,32 @@ export async function runRecipeStep(
       await savePlan(db, id, plan);
       return;
     }
+    // R3 · АРТЕФАКТ-ГЕЙТ до рубрики: сломанный AI-брак (уанкэни/текст-блид/руки/морфинг) → реген, к рубрике/человеку не доходит
+    if ((plan.renderCount || 0) < MAX_RENDERS) {
+      const art = await jpost(origin, "/api/factory/artifact-check", { frames }, 45000);
+      if (art && art.ok === false) {
+        const culprit = pickCulprit(plan, { native: 1 }); // артефакты → генеративная нода (фолбэк-выбор)
+        if (culprit) {
+          const defs = Array.isArray(art.defects) ? art.defects : [];
+          await regenCulprit(db, origin, id, plan, niche, article, culprit.node, defs, "убрать сломанные AI-артефакты: " + (defs.join("; ") || "уанкэни/морфинг/кривые руки"), "артефакты: " + (defs.join(", ") || "broken"), true);
+          return;
+        }
+      }
+    }
     const hookNode = plan.nodes.find((n) => String(((n.params || {}) as Record<string, unknown>)["role"] || n.slot || "").toLowerCase() === "hook") || plan.nodes[0];
     const v = await jpost(origin, "/api/factory/video-critic", { frames, hook: hookNode?.onscreen_text || hookNode?.prompt || "", mode, article, niche }, 55000);
     const score = typeof v?.score === "number" ? v.score : null;
     plan.otk = { score, verdict: v?.verdict, axes: v?.axes || null, issues: Array.isArray(v?.issues) ? v.issues : [] };
+    // V3: запоминаем ЛУЧШУЮ сборку за все попытки реген-петли (банкуем её, не последнюю)
+    if (score != null && score > (plan.bestScore ?? -1)) { plan.bestScore = score; plan.bestUrl = url; }
+
+    // V3+V4: regen-on-fail — score<7 и есть бюджет рендеров → чиним ноду-виновника и пере-генерим ТОЛЬКО её
+    const canRegen = score != null && score < 7 && (plan.renderCount || 0) < MAX_RENDERS;
+    const culprit = canRegen ? pickCulprit(plan, plan.otk.axes) : null;
+    if (canRegen && culprit) {
+      await regenCulprit(db, origin, id, plan, niche, article, culprit.node, plan.otk.issues || [], `усилить ось «${culprit.axis}» (сейчас ${culprit.val}/5)`, `ось ${culprit.axis} ${culprit.val}/5`);
+      return;
+    }
     plan.step = "bank";
     await savePlan(db, id, plan, { otk_verdict: plan.otk, otk_score: score });
     return;
@@ -295,8 +370,9 @@ export async function runRecipeStep(
 
   // ── bank: сохранить в библиотеку + финализировать рецепт + сигнал ──
   if (plan.step === "bank") {
-    const url = plan.output_url;
-    const score = plan.otk?.score ?? null;
+    // V3: банкуем ЛУЧШУЮ сборку за все попытки реген-петли (а не последнюю, которая могла просесть)
+    const url = plan.bestUrl || plan.output_url;
+    const score = plan.bestScore != null ? plan.bestScore : (plan.otk?.score ?? null);
     const hookNode = plan.nodes.find((n) => String(((n.params || {}) as Record<string, unknown>)["role"] || n.slot || "").toLowerCase() === "hook") || plan.nodes[0];
     const hook = (hookNode?.onscreen_text || hookNode?.prompt || "").toString().slice(0, 200);
     // в библиотеку контента (каталог кокпита)
@@ -314,6 +390,10 @@ export async function runRecipeStep(
       recipe_id: id, niche, article, mode, format: null, engine: "shotstack",
       axes: plan.otk?.axes ?? null, reason_chip: status === "otk_fail" ? (plan.otk?.issues?.[0] || "ОТК<7") : null,
     });
+    // V21/R5: батч-прогон прошёл ОТК → шлём оператору в Telegram на ревью (студийные прогоны — нет, без спама)
+    if (plan.notify && status === "otk_pass" && (catalogUrl || url) && tgReady()) {
+      try { await tgSendReview((catalogUrl || url)!, `${hook || article || "генерация"}\nОТК ${score != null ? Math.round(score * 10) : "—"}/100 · ниша ${niche}`, id); } catch { /* telegram опционален */ }
+    }
     return;
   }
 }
