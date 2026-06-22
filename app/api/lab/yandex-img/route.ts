@@ -1,12 +1,16 @@
 import { NextRequest } from "next/server";
 import { yaDownloadHref } from "@/lib/yandex/disk";
+import { proxyAuthorized } from "@/lib/auth/proxyAuth";
 
 export const dynamic = "force-dynamic";
 
 // Прокси файла с Яндекс.Диска по пути (?path=/МАША/.../img.jpg&key=<публ.ссылка>).
 // key опционален — без него берётся env YANDEX_PUBLIC_KEY. Отдаёт стабильный публичный URL,
 // который FAL/Seedance может фетчить напрямую (в отличие от 302-редиректа Яндекса).
+// Доступ: подпись (URL подписывается в disk-source перед отдачей FAL) ИЛИ сессия (превью фото
+// моделей в браузере) ИЛИ cron — см. proxyAuthorized.
 export async function GET(req: NextRequest) {
+  if (!(await proxyAuthorized(req))) return new Response("unauthorized", { status: 401 });
   const sp = new URL(req.url).searchParams;
   const path = sp.get("path");
   const key = sp.get("key") || undefined;
