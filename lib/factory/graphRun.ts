@@ -8,6 +8,8 @@ import { logGeneration } from "./genHistory";
 import { tgReady, tgSendReview } from "./telegram";
 import { classifyAssets, chooseBinding, type DiskAsset } from "./assetBind";
 import { isPlaceholderSource } from "./toolSchemas";
+import { isOurStorage } from "./rehostImage";
+import { createHash } from "node:crypto";
 
 // V3 исполнитель графа: рецепт (node_recipe_nodes) → генерация нод → Shotstack-сборка → ОТК → банк.
 // Self-chaining машина по образцу jobs/tick: один тик = ОДИН шаг (<60с), состояние в node_recipes.run_plan.
@@ -234,6 +236,35 @@ async function autoBindAssets(db: SupabaseClient, plan: RunPlan, article: string
   }
 }
 
+// Durable-персист сгенерённых клипов в наш бакет + каталог (content_assets). КОРЕНЬ: i2v-клипы (seedance/kling/
+// pika) живут на fal.media — эфемерное CDN fal → reel-recompose/ре-кат «потом» не из чего делать, когда URL
+// протухнет. Здесь скачиваем каждый внешний клип в factory-media/clips/<sha1>.mp4, ПОДМЕНЯЕМ node.url на наш
+// (бонус: VM рендерит из нашего бакета, не с fal → надёжнее, как rehost фото) и заводим строку content_assets
+// (disk=gen, kind=clip — библиотека по артикулу/нише). Best-effort+идемпотентно (дедуп по source_url): любой
+// сбой → клип остаётся на fal (пайплайн не падает). disk_real/уже-наши URL пропускаем.
+const CLIP_BUCKET = "factory-media";
+export async function persistClips(db: SupabaseClient, nodes: RunNode[], article: string, niche: string): Promise<void> {
+  await Promise.all(nodes.map(async (n) => {
+    const src = n.url;
+    if (!src || !/^https?:\/\//i.test(src) || isOurStorage(src)) return; // пусто/не-http/уже у нас
+    try {
+      const { data: dup } = await db.from("content_assets").select("url").eq("disk", "gen").contains("analysis", { source_url: src }).maybeSingle();
+      if (dup && (dup as { url?: string }).url) { n.url = (dup as { url: string }).url; return; } // уже сохранён — переиспользуем durable
+      const r = await fetch(src, { cache: "no-store", signal: AbortSignal.timeout(30000) });
+      if (!r.ok) return;
+      const buf = Buffer.from(await r.arrayBuffer());
+      if (!buf.length) return;
+      const path = `clips/${createHash("sha1").update(src).digest("hex")}.mp4`;
+      const { error } = await db.storage.from(CLIP_BUCKET).upload(path, buf, { contentType: "video/mp4", upsert: true });
+      if (error) return;
+      const pub = db.storage.from(CLIP_BUCKET).getPublicUrl(path).data?.publicUrl;
+      if (!pub) return;
+      await db.from("content_assets").insert({ disk: "gen", kind: "clip", niche: niche || null, article: article || null, url: pub, analyzed: true, analysis: { source_url: src, role: roleOf(n), tool: n.tool || null, source: "clip_library" } });
+      n.url = pub; // рендерим из durable-URL
+    } catch { /* best-effort — теряем клип на fal, но пайплайн жив */ }
+  }));
+}
+
 // Захват рецепта на исполнение: status=running, активный шаг, свободный лиз.
 export async function claimNextRecipe(db: SupabaseClient, recipeId?: number): Promise<{ id: number; plan: RunPlan; article: string; niche: string; mode: string; product_name?: string } | null> {
   const nowIso = new Date().toISOString();
@@ -358,6 +389,10 @@ export async function runRecipeStep(
     // role="skip" (инспектор disk_real) → выкинуть клип из сборки; elevenlabs — это АУДИО (закадр), не визуал
     const visualNodes = plan.nodes.filter((n) => n.status === "done" && n.url && n.node_type !== "captions" && String(n.tool).toLowerCase() !== "elevenlabs" && String(((n.params || {}) as Record<string, unknown>)["role"] || "").toLowerCase() !== "skip");
     if (!visualNodes.length) throw new Error("нет готовых клипов для сборки (все ноды упали — проверь image_url/ключи)");
+
+    // durable-персист клипов в наш бакет (fal.media эфемерно) → библиотека для ре-ката + надёжный рендер.
+    // ДО сборки пропсов: подменит node.url на наш, и render/shotstack пойдут уже с durable-URL. Best-effort.
+    await persistClips(db, visualNodes, article, niche);
 
     // ── V23 · движок REMOTION (премиум ReelV5) — опт-ин FACTORY_RENDER_ENGINE=remotion, минует Shotstack-схему ──
     if (remotionEngineSelected()) {
