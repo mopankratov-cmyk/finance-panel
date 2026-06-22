@@ -1,0 +1,3 @@
+# Владелец — обязательный ревьюер на всё.
+# Работает вместе с branch protection (Require review from Code Owners) на main.
+* @mopankratov-cmyk
