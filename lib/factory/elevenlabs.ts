@@ -35,7 +35,10 @@ export async function elevenTTS(text: string, voiceId: string, opts?: { stabilit
   if (!elevenReady()) return { error: "ELEVENLABS_API_KEY не задан (добавь в Vercel)" };
   const t = String(text || "").trim().slice(0, 2500);
   if (!t) return { error: "пустой текст озвучки" };
-  if (!voiceId) return { error: "не выбран голос (voice_id)" };
+  // voice_id может не прийти (автозаполнение не знает live-id, бренд-кит не задан) → берём первый доступный голос аккаунта
+  let vid = voiceId;
+  if (!vid) { const vs = await elevenListVoices(); vid = (vs[0]?.id) || ""; }
+  if (!vid) return { error: "нет голоса (voice_id) и не удалось взять дефолтный из ElevenLabs" };
   const db = getSupabaseAdmin();
   if (!db) return { error: "Supabase не настроен (негде хостить аудио)" };
 
@@ -45,7 +48,7 @@ export async function elevenTTS(text: string, voiceId: string, opts?: { stabilit
     if (typeof opts?.stability === "number") vs.stability = Math.max(0, Math.min(1, opts.stability));
     if (typeof opts?.similarity_boost === "number") vs.similarity_boost = Math.max(0, Math.min(1, opts.similarity_boost));
     if (typeof opts?.style === "number") vs.style = Math.max(0, Math.min(1, opts.style));
-    const r = await fetch(`${API}/text-to-speech/${encodeURIComponent(voiceId)}`, {
+    const r = await fetch(`${API}/text-to-speech/${encodeURIComponent(vid)}`, {
       method: "POST",
       headers: { "xi-api-key": KEY(), "Content-Type": "application/json", "Accept": "audio/mpeg" },
       body: JSON.stringify({ text: t, model_id: opts?.model || MODEL, voice_settings: vs }),
@@ -64,7 +67,7 @@ export async function elevenTTS(text: string, voiceId: string, opts?: { stabilit
 
   try {
     try { await db.storage.createBucket(BUCKET, { public: true }); } catch { /* есть */ }
-    const path = `voiceover/${voiceId.slice(0, 12)}-${buf.length}.mp3`; // имя по голосу+размеру (детерминированно для кеша)
+    const path = `voiceover/${vid.slice(0, 12)}-${buf.length}.mp3`; // имя по голосу+размеру (детерминированно для кеша)
     const { error } = await db.storage.from(BUCKET).upload(path, buf, { contentType: "audio/mpeg", upsert: true });
     if (error) return { error: "не залилось в Storage: " + error.message.slice(0, 100) };
     const url = db.storage.from(BUCKET).getPublicUrl(path).data?.publicUrl;

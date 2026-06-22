@@ -1,0 +1,15 @@
+[Unit]
+Description=Remotion render service (factory premium)
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/opt/finance-panel
+ExecStart=/usr/bin/node --env-file=.env.local render-service/server.mjs
+Restart=always
+RestartSec=3
+Environment=NODE_ENV=production
+
+[Install]
+WantedBy=multi-user.target

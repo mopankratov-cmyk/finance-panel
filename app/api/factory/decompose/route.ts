@@ -18,7 +18,7 @@ export const maxDuration = 60;
 
 const MODEL = "claude-sonnet-4-6";
 
-const NODE_TYPES = "hook_ugc|ai_product_render|talking_head|prank|before_after|pov|b_roll|captions|sound|music|carousel_slide|static_post";
+const NODE_TYPES = "hook_ugc|ai_product_render|talking_head|prank|before_after|pov|b_roll|captions|sound|music|carousel_slide|static_post|voiceover";
 const TOOLS = "seedance|kling|creatify|higgsfield|gemini|shotstack|sharp|disk_real|sound";
 const FORMATS = "ugc_anim|ai_render|prank|talking_head|before_after|pov|unboxing|reaction|problem_solution|carousel|static";
 
@@ -86,6 +86,9 @@ async function decompose(params: { viral_video_id?: string; niche?: string; desc
 - до/после два состояния → before_after + seedance(end_image); текст на экране → shotstack(captions);
   трендовый звук → sound/music; слайд → sharp/higgsfield/gemini.
 НЕ ставь creatify/seedance в каждую вторую ноду — это слоп. Если кадр можно снять реально → disk_real.
+- ЗАКАДР: если формат — голос ПОВЕРХ реальной съёмки/b-roll (а НЕ говорящая голова), добавь ОДНУ ноду
+  node_type=voiceover, tool_candidate=elevenlabs, role=cta; в её поле voiceover склей ВЕСЬ текст закадра по сценам.
+  ElevenLabs озвучит русским → ляжет аудио-дорожкой поверх видео. Сильный анти-слоп (живое видео + проф. голос).
 Верни СТРОГО JSON без преамбулы:
 { "format": "(${FORMATS})",
   "nodes": [ { "ordinal":1, "node_type":"...", "role":"...", "duration_sec":2.5, "hook_type":"...",

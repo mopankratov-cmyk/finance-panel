@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { submitNode, pollNode, nodeHash, type EngineNode } from "./nodeEngine";
 import { buildEdit, fixedBeatGrid, quantizeToBeats, shotstackSubmit, shotstackStatus, shotstackReady, type AssemblyClip } from "./shotstack";
+import { remotionEngineSelected, remotionReady, remotionSubmit, remotionStatus } from "./remotionRender";
 import { extractFrames } from "./serverMedia";
 import { logGeneration } from "./genHistory";
 import { tgReady, tgSendReview } from "./telegram";
@@ -32,6 +33,9 @@ export interface RunPlan {
   bestScore?: number | null;   // V3: лучший ОТК-балл за все попытки реген-петли
   bestUrl?: string | null;     // и сборка с этим баллом — банкуем ЕЁ
   notify?: boolean;            // V21/R5: батч-прогон → слать прошедшее ОТК в Telegram на ревью (студийные — нет, без спама)
+  render_engine?: string | null;            // V23: "remotion" | "shotstack" — какой движок собирал (для poll/bank)
+  reel_props?: Record<string, unknown> | null; // V23: пропсы ReelV5 для render-сервиса
+  duration_frames?: number | null;          // V23: длительность ролика в кадрах (Remotion)
 }
 
 const LEASE_MS = 90_000;
@@ -54,6 +58,53 @@ function isRegenerable(n: RunNode): boolean {
   return n.status === "done" && !!t && !ASSEMBLY_TOOLS.has(t) && t !== "captions" && t !== "disk" && t !== "disk_real";
 }
 const roleOf = (n: RunNode) => String(((n.params || {}) as Record<string, unknown>)["role"] || n.slot || "").toLowerCase();
+
+// V23 · сборка пропсов ReelV5 (премиум-движок Remotion). ⚠️ v0 МЭППИНГ — груб, опт-ин (FACTORY_RENDER_ENGINE=remotion).
+// Приоритет у явных пропсов (params.reel_props ноды) — их отдаёт бриф/автопилот, когда рецепт выверен.
+// Иначе строим связную montage-раскладку: клипы → overlays по таймлайну, capt/hook → капшены, sound → музыка, hook/арт → CTA.
+const REEL_FPS = 30;
+const REEL_CTA_FRAMES = 55;
+function chunkCaptions(text: string, article: string): { text: string; accent?: boolean }[] {
+  const parts = String(text || "").split(/(?<=[.!?…])\s+|,\s+|\s—\s/).map((s) => s.trim()).filter(Boolean).slice(0, 12);
+  const art = String(article || "").toLowerCase();
+  return parts.map((p) => ({ text: p, accent: /\d/.test(p) || (!!art && p.toLowerCase().includes(art)) || /wb|wildberries|купи|беги/i.test(p) }));
+}
+function buildReelProps(plan: RunPlan, visualNodes: RunNode[], article: string): { inputProps: Record<string, unknown>; durationInFrames: number } {
+  // явный override (точные пропсы из брифа) — высший приоритет
+  const explicitNode = plan.nodes.find((n) => n.params && typeof (n.params as Record<string, unknown>)["reel_props"] === "object");
+  const explicit = explicitNode ? ((explicitNode.params as Record<string, unknown>)["reel_props"] as Record<string, unknown>) : null;
+  if (explicit) {
+    const dur = Number(explicit["durationInFrames"]) || 614;
+    return { inputProps: explicit, durationInFrames: dur };
+  }
+  // актёр-спайн: creatify/lipsync/actor; иначе первый клип как база
+  const actorNode = plan.nodes.find((n) => n.status === "done" && n.url && (["creatify", "lipsync"].includes(String(n.tool).toLowerCase()) || roleOf(n) === "actor"));
+  const overlayNodes = visualNodes.filter((n) => n !== actorNode);
+  let t = 0;
+  const overlays = overlayNodes.map((n) => {
+    const dur = Math.round(Math.min(8, Math.max(2, Number(n.duration_sec) || 5)) * REEL_FPS);
+    const o = { src: n.url!, from: t, duration: dur, startFrom: 0, flash: true };
+    t += dur; return o;
+  });
+  const actorEnd = Math.max(t, REEL_FPS * 3);
+  const durationInFrames = actorEnd + REEL_CTA_FRAMES;
+  const hookNode = plan.nodes.find((n) => roleOf(n) === "hook") || plan.nodes[0];
+  const captionNode = plan.nodes.find((n) => n.node_type === "captions");
+  const capText = [hookNode?.onscreen_text, captionNode?.onscreen_text].filter(Boolean).join(". ");
+  const captions = chunkCaptions(capText, article);
+  const soundNode = plan.nodes.find((n) => ["sound", "music"].includes(String(n.tool).toLowerCase()));
+  const audioSrc = soundNode?.asset_url || (soundNode?.params?.url as string) || undefined;
+  const ctaTitle = (hookNode?.onscreen_text || article || "").toString().slice(0, 40) || undefined;
+  const inputProps: Record<string, unknown> = {
+    durationInFrames, actorEnd, overlays,
+    ...(actorNode?.url ? { actorSrc: actorNode.url } : overlays[0] ? { actorSrc: overlays[0].src } : {}),
+    ...(captions.length ? { captions } : { captions: [] }),
+    ...(audioSrc ? { audioSrc } : {}),
+    ...(ctaTitle ? { ctaTitle } : {}),
+    ...(article ? { ctaButton: "ищи на WB" } : {}),
+  };
+  return { inputProps, durationInFrames };
+}
 
 // V3/V4: по слабейшей оси ОТК выбрать ноду-виновника для регена (только генеративную)
 function pickCulprit(plan: RunPlan, axes: unknown): { node: RunNode; axis: string; val: number } | null {
@@ -250,6 +301,18 @@ export async function runRecipeStep(
     const visualNodes = plan.nodes.filter((n) => n.status === "done" && n.url && n.node_type !== "captions" && String(n.tool).toLowerCase() !== "elevenlabs" && String(((n.params || {}) as Record<string, unknown>)["role"] || "").toLowerCase() !== "skip");
     if (!visualNodes.length) throw new Error("нет готовых клипов для сборки (все ноды упали — проверь image_url/ключи)");
 
+    // ── V23 · движок REMOTION (премиум ReelV5) — опт-ин FACTORY_RENDER_ENGINE=remotion, минует Shotstack-схему ──
+    if (remotionEngineSelected()) {
+      if (!remotionReady()) throw new Error("FACTORY_RENDER_ENGINE=remotion, но REMOTION_RENDER_URL не задан (render-сервис на VM)");
+      const { inputProps, durationInFrames } = buildReelProps(plan, visualNodes, article);
+      plan.reel_props = inputProps;
+      plan.duration_frames = durationInFrames;
+      plan.render_engine = "remotion";
+      plan.step = "render-submit";
+      await savePlan(db, id, plan);
+      return;
+    }
+
     // одиночный клип без Shotstack → используем как есть (минуем рендер)
     if (visualNodes.length === 1 && !shotstackReady()) {
       plan.output_url = visualNodes[0].url!;
@@ -328,9 +391,16 @@ export async function runRecipeStep(
     return;
   }
 
-  // ── render-submit: запустить Shotstack ──
+  // ── render-submit: запустить рендер (Remotion VM или Shotstack) ──
   if (plan.step === "render-submit") {
     if (plan.render_id) { plan.step = "render-poll"; plan.pollCount = 0; await savePlan(db, id, plan, { status: "running" }); return; }
+    if (plan.render_engine === "remotion") {
+      const renderId = await remotionSubmit("ReelV5", plan.reel_props || {}, plan.duration_frames || undefined);
+      if (!renderId) throw new Error("remotionSubmit вернул null — проверь REMOTION_RENDER_URL/REMOTION_RENDER_TOKEN/живость VM");
+      plan.render_id = renderId; plan.step = "render-poll"; plan.pollCount = 0;
+      await savePlan(db, id, plan, { render_id: renderId, status: "running" });
+      return;
+    }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const edit = (plan as any).edit_json as Record<string, unknown>;
     if (!edit) throw new Error("нет edit_json для рендера");
@@ -341,18 +411,19 @@ export async function runRecipeStep(
     return;
   }
 
-  // ── render-poll: ждать Shotstack ──
+  // ── render-poll: ждать рендер (Remotion VM или Shotstack) ──
   if (plan.step === "render-poll") {
     await sleep(POLL_WAIT_MS);
     const pollCount = (plan.pollCount || 0) + 1;
-    const s = await shotstackStatus(String(plan.render_id));
+    const engineName = plan.render_engine === "remotion" ? "Remotion" : "Shotstack";
+    const s = plan.render_engine === "remotion" ? await remotionStatus(String(plan.render_id)) : await shotstackStatus(String(plan.render_id));
     if (s.status === "done" && s.videoUrl) {
       plan.output_url = s.videoUrl; plan.step = "otk";
       await savePlan(db, id, plan, { output_url: s.videoUrl });
     } else if (s.status === "error") {
-      throw new Error("Shotstack error: " + (s.error || "unknown"));
+      throw new Error(`${engineName} error: ` + (s.error || "unknown"));
     } else if (pollCount >= MAX_POLLS) {
-      throw new Error("Shotstack render timeout");
+      throw new Error(`${engineName} render timeout`);
     } else {
       plan.pollCount = pollCount;
       await savePlan(db, id, plan, { status: "running" });
@@ -412,7 +483,7 @@ export async function runRecipeStep(
     let catalogUrl: string | null = null;
     if (url) {
       try {
-        const g = await jpost(origin, "/api/factory/gen-save", { video_url: url, article, niche, hook, route: "node_graph", engine: "shotstack", otk: score }, 40000); // ≤40с: влезть в maxDuration 60 тика (был 120с → Vercel убивал handler, catalogUrl терялся)
+        const g = await jpost(origin, "/api/factory/gen-save", { video_url: url, article, niche, hook, route: "node_graph", engine: plan.render_engine || "shotstack", otk: score }, 40000); // ≤40с: влезть в maxDuration 60 тика (был 120с → Vercel убивал handler, catalogUrl терялся)
         catalogUrl = g?.url || null;
       } catch { /* банк библиотеки опционален */ }
     }
@@ -420,7 +491,7 @@ export async function runRecipeStep(
     plan.step = "done";
     await savePlan(db, id, plan, { status, output_url: catalogUrl || url || null });
     await logSignal(db, status === "otk_pass" ? "approved" : "rejected", {
-      recipe_id: id, niche, article, mode, format: null, engine: "shotstack",
+      recipe_id: id, niche, article, mode, format: null, engine: plan.render_engine || "shotstack",
       axes: plan.otk?.axes ?? null, reason_chip: status === "otk_fail" ? (plan.otk?.issues?.[0] || "ОТК<7") : null,
     });
     // V21/R5: батч-прогон прошёл ОТК → шлём оператору в Telegram на ревью (студийные прогоны — нет, без спама)
