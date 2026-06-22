@@ -1,0 +1,87 @@
+name: ai-gate
+
+# Двухуровневое одобрение PR. БЕЗОПАСНОСТЬ: триггер pull_request_target —
+# workflow и скрипт берутся из БАЗОВОЙ ветки (их нельзя подменить внутри PR),
+# код PR здесь НЕ исполняется; дифф и список файлов читаются из GitHub API как ДАННЫЕ.
+#
+#   approve (только доки/текст + ассистент одобрил) → авто-мёрж (squash) → Vercel деплоит прод
+#   escalate (код/конфиг/риск/форк/большой дифф)    → чек КРАСНЫЙ (мёрж заблокирован) + пинг в Telegram
+#
+# Бэкстоп: в branch protection сделай чек `ai-gate` обязательным, а себя — в bypass-листе.
+# Секреты репозитория (Settings → Secrets and variables → Actions):
+#   TELEGRAM_BOT_TOKEN, TELEGRAM_ALERT_CHAT_ID, REVIEW_TOKEN, DIRECTOR_COCKPIT_URL(опц.)
+# Репо-настройка: Settings → General → Pull Requests → ✅ Allow auto-merge, ✅ Allow squash merging.
+
+on:
+  pull_request_target:
+    # edited — обязательно: смена базовой ветки PR шлёт 'edited' (НЕ synchronize), иначе гейт
+    # не перепроверит дифф против новой базы и старый зелёный чек пропустит чужой код.
+    types: [opened, synchronize, reopened, ready_for_review, edited]
+
+permissions:
+  contents: write        # для включения авто-мёржа
+  pull-requests: write   # коммент + enable auto-merge
+
+concurrency:
+  group: ai-gate-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  ai-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout BASE (доверенный код, НЕ код PR)
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          persist-credentials: false
+
+      - name: Fetch PR diff + files via API (только данные)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          # имена файлов из API — чистые JSON-строки (без git octal-квотинга).
+          # Сбой пагинации НЕ глотаем (иначе усечённый список пройдёт как «только доки»):
+          # пишем сентинел → pr-gate увидит его и эскалирует.
+          if ! gh api "repos/$REPO/pulls/$PR/files" --paginate --jq '.[] | [.status, .filename] | @tsv' > /tmp/pr.files; then
+            echo "__FETCH_FAILED__" > /tmp/pr.files
+          fi
+          # дифф как текст через API (никакой код PR не исполняется)
+          gh api "repos/$REPO/pulls/$PR" -H "Accept: application/vnd.github.v3.diff" > /tmp/pr.diff || true
+          echo "files: $(wc -l < /tmp/pr.files) | diff bytes: $(wc -c < /tmp/pr.diff)"
+
+      - name: Gate decision (доверенный скрипт базовой ветки)
+        id: gate
+        env:
+          GITHUB_EVENT_PATH: ${{ github.event_path }}
+          PR_DIFF_FILE: /tmp/pr.diff
+          PR_FILES_FILE: /tmp/pr.files
+          DIRECTOR_COCKPIT_URL: ${{ secrets.DIRECTOR_COCKPIT_URL }}
+          REVIEW_TOKEN: ${{ secrets.REVIEW_TOKEN }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_ALERT_CHAT_ID: ${{ secrets.TELEGRAM_ALERT_CHAT_ID }}
+        run: node scripts/pr-gate.mjs
+
+      - name: Auto-merge (approved, только доки/текст)
+        if: steps.gate.outputs.decision == 'approve'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          gh pr comment "$PR" --body "🤖 AI-гейт: одобрено (доки/текст, низкий риск). Включаю авто-мёрж." || true
+          gh pr merge "$PR" --auto --squash
+
+      - name: Block (escalated → human review)
+        if: steps.gate.outputs.decision != 'approve'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          # снимаем ранее армированный авто-мёрж (если PR был одобрен прошлым прогоном, а теперь
+          # эскалирован) — чтобы защита не висела только на обязательности чека в branch protection
+          gh pr merge "$PR" --disable-auto || true
+          gh pr comment "$PR" --body "🛑 AI-гейт: нужна проверка владельца (детали в Telegram). Авто-мёрж заблокирован: ${{ steps.gate.outputs.reason }}" || true
+          echo "Escalated: ${{ steps.gate.outputs.reason }} — валю чек, чтобы заблокировать мёрж."
+          exit 1
