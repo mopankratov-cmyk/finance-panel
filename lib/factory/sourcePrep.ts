@@ -88,7 +88,7 @@ export async function prepareProductImage(
       const { error } = await db.storage.from(BUCKET).upload(path, buf, { contentType: "image/png", upsert: true });
       if (error) return null;
       const pub = db.storage.from(BUCKET).getPublicUrl(path).data?.publicUrl || null;
-      if (pub) await db.from("content_assets").insert({ disk: "prepared", kind: "image", niche: opts.niche || null, article: opts.article || null, url: pub, analyzed: true, analysis: { source_url: srcUrl, stage: tag, scene, engine: "nano-banana", product } });
+      if (pub) await db.from("content_assets").insert({ disk: "prepared", path, name: `${opts.article} · prepared ${tag}`.slice(0, 120), kind: "image", niche: opts.niche || null, article: opts.article || null, color: null, url: pub, analyzed: true, analysis: { source_url: srcUrl, stage: tag, scene, engine: "nano-banana", product } });
       return pub;
     } catch { return null; }
   };
