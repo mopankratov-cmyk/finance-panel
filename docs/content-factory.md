@@ -47,7 +47,11 @@ WB-фото → [1 detect] → если грязь:
 → N чистых рендеров (hero / деталь / ракурс / сцена) → [7 store disk='prepared']
 ```
 
-**Маппинг шаг → сервис/модель (с фолбэками; всё доступно из РФ — MPStats нативно, fal уже интегрирован):**
+**🏆 ДВИЖОК РЕШЁН, ПОСТРОЕН И ПОДТВЕРЖДЁН (2026-06-22):** основной = **Google Nano Banana (Gemini Flash Image) через fal** — `fal-ai/nano-banana/edit`, 2 шага clean→stage (identity-якорь = оригинал во 2-м шаге), фолбэк **Seedream v4** (`fal-ai/bytedance/seedream/v4/edit`) для пиксель-фиделити лого. Лидер по сохранению идентичности товара + релайт; доступен из РФ через FAL_KEY (Google напрямую заблокирован). ⚠️ Промпт строить как СОЗИДАНИЕ («recreate clean professional studio product photo … keep product exactly»), НЕ «remove watermark/logo» (Nano отклоняет как политику) + `safety_tolerance:"6"`. Реализовано в `lib/factory/sourcePrep.ts`; подтверждено вживую (CLR01012/00911/00912 → лайфстайл-кадры из инфографики). MPStats = НЕ движок качества, только РФ-фолбэк на механику.
+
+Ниже — компонентные опции (если когда-то собирать prep по отдельным шагам вместо единой Nano-правки):
+
+**Маппинг шаг → сервис/модель (с фолбэками):**
 
 | # | Шаг | Основной | Фолбэк | Примечание |
 |---|---|---|---|---|
@@ -134,7 +138,7 @@ WB-фото → [1 detect] → если грязь:
 
 ## 9. Роадмап / долги
 
-- [ ] **source-prep стадия** (§2.2) — детектор + prep-рецепт (MPStats/fal) + `disk='prepared'` + правка assetBind. ← следующий билд.
+- [x] **source-prep стадия** (§2.2) — ПОСТРОЕНА+ВЛИТА: `lib/factory/sourcePrep.ts` (Nano Banana clean→stage→persist) + `/api/factory/prepare-product` + assetBind приоритет `prepared`. Полная цепочка доказана через рецепт #15 (cron-driven). Осталось: вызывать prepare-product upstream (батч/крон), A-B Nano vs Seedream per-форма.
 - [ ] **постинг → метрики** — замкнуть контур обучения (автозалив + автоимпорт метрик).
 - [ ] **хранилище на масштабе** — R2 + retention-политика.
 - [ ] gemini/nano-banana композит (был gated) — оценить vs fal Flux Kontext для стейджа.
