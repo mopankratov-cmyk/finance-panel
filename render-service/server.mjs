@@ -31,6 +31,7 @@ import { fileURLToPath } from "node:url";
 import { bundle } from "@remotion/bundler";
 import { selectComposition, renderMedia, ensureBrowser } from "@remotion/renderer";
 import { createClient } from "@supabase/supabase-js";
+import { createJobStore } from "./jobStore.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, "..");
@@ -54,13 +55,24 @@ const RENDER_TIMEOUT_MS = Number(process.env.RENDER_TIMEOUT_MS) || 120000;
 
 const log = (...a) => console.log(new Date().toISOString(), ...a);
 
-// ── Supabase (заливка результата) ──
+// ── Supabase (заливка результата + кросс-инстанс стор джоб) ──
+let _supa = null;
 function supa() {
+  if (_supa) return _supa;
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !key) return null;
-  return createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
+  _supa = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
+  return _supa;
 }
+
+// ── стор статуса джоб: in-memory (быстрый путь, та же инстанс) + Supabase (кросс-инстанс для ФЛОТА) ──
+// Рендер всегда идёт на инстанс, принявшей /render. В Supabase пишем только статус/прогресс/результат,
+// чтобы /status/:id отвечал с ЛЮБОЙ инстанс за балансировщиком. Нет таблицы/Supabase → тихо только in-memory.
+// Логика и тесты — в jobStore.mjs (телеметрия НИКОГДА не валит рендер). Миграция: 20260622_render_jobs.sql.
+const store = createJobStore({ getClient: supa, log });
+const persistJob = (id, fields) => store.persist(id, fields);
+const fetchJob = (id) => store.fetch(id);
 
 // ── одноразовый бандл (кешируется в памяти; /reload пересоберёт после деплоя новой композиции) ──
 let serveUrlPromise = null;
@@ -118,7 +130,12 @@ async function runRender(id, composition, inputProps, durationInFrames) {
       x264Preset: X264_PRESET,
       // дефолтные 28с малы: несколько рендереров разом тянут кадры из тяжёлых видео (OffthreadVideo → <Img blob>)
       timeoutInMilliseconds: RENDER_TIMEOUT_MS,
-      onProgress: ({ progress }) => { job.progress = Math.round(progress * 100); },
+      onProgress: ({ progress }) => {
+        job.progress = Math.round(progress * 100);
+        // кросс-инстанс прогресс (троттл ≥3с, чтобы не молотить БД на каждом кадре)
+        const now = Date.now();
+        if (now - (job._dbAt || 0) > 3000) { job._dbAt = now; persistJob(id, { status: "in_progress", progress: job.progress }); }
+      },
     });
     const tRendered = Date.now();
 
@@ -138,9 +155,11 @@ async function runRender(id, composition, inputProps, durationInFrames) {
     // разбивка времени → видно, что душит: select(бандл/браузер), render(кадры+извлечение+x264), upload(сеть)
     log(`[timing] ${id}: select=${sec(tSelected - t0)}s render=${sec(tRendered - tSelected)}s upload=${sec(tDone - tRendered)}s total=${sec(tDone - t0)}s`);
     job.status = "done"; job.videoUrl = videoUrl;
+    await persistJob(id, { status: "done", progress: 100, video_url: videoUrl, error: null });
     log(`✅ ${id} → ${videoUrl}`);
   } catch (e) {
     job.status = "error"; job.error = String(e?.message || e).slice(0, 300);
+    await persistJob(id, { status: "error", error: job.error });
     log(`❌ ${id}: ${job.error}`);
   } finally {
     await fs.rm(tmp, { force: true }).catch(() => {});
@@ -176,7 +195,7 @@ const server = http.createServer(async (req, res) => {
  try {
   const url = new URL(req.url, "http://x");
   if (req.method === "GET" && url.pathname === "/health") {
-    return send(res, 200, { ok: true, bundled: !!serveUrlPromise, busy: active, queued: queue.length });
+    return send(res, 200, { ok: true, bundled: !!serveUrlPromise, busy: active, queued: queue.length, store: store.active() ? "supabase+memory" : "memory" });
   }
   if (req.method === "POST" && url.pathname === "/reload") {
     if (!authed(req)) return send(res, 401, { error: "unauthorized" });
@@ -189,6 +208,8 @@ const server = http.createServer(async (req, res) => {
     if (!body || !body.composition) return send(res, 400, { error: "нужен composition" });
     const id = `${Date.now().toString(36)}-${(idSeq++).toString(36)}`;
     jobs.set(id, { status: "in_progress", progress: 0, createdAt: Date.now() });
+    // создаём строку в общем сторе ДО ответа → немедленный кросс-инстанс /status найдёт джобу (фолбэк-безопасно)
+    await persistJob(id, { status: "in_progress", progress: 0, created_at: new Date().toISOString() });
     queue.push(() => runRender(id, String(body.composition), body.inputProps || {}, Number(body.durationInFrames)));
     pump();
     return send(res, 200, { id });
@@ -197,8 +218,11 @@ const server = http.createServer(async (req, res) => {
     if (!authed(req)) return send(res, 401, { error: "unauthorized" });
     const id = url.pathname.slice("/status/".length);
     const job = jobs.get(id);
-    if (!job) return send(res, 404, { status: "error", error: "job не найден" });
-    return send(res, 200, { status: job.status, progress: job.progress, videoUrl: job.videoUrl, error: job.error });
+    if (job) return send(res, 200, { status: job.status, progress: job.progress, videoUrl: job.videoUrl, error: job.error });
+    // не на этой инстанс (флот за балансировщиком) → спросим общий стор
+    const remote = await fetchJob(id);
+    if (remote) return send(res, 200, remote);
+    return send(res, 404, { status: "error", error: "job не найден" });
   }
   send(res, 404, { error: "not found" });
  } catch (e) {
@@ -214,6 +238,7 @@ server.headersTimeout = 65e3;
 setInterval(() => {
   const cutoff = Date.now() - 6 * 3600e3;
   for (const [id, j] of jobs) if (j.status !== "in_progress" && j.createdAt < cutoff) jobs.delete(id);
+  store.cleanup(new Date(cutoff).toISOString()); // и в общем сторе (флот): чистим завершённые старше 6ч
 }, 3600e3).unref();
 
 server.listen(PORT, () => {

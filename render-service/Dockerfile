@@ -34,6 +34,7 @@ COPY remotion ./remotion
 COPY public/fonts ./public/fonts
 COPY public/reel-assets ./public/reel-assets
 COPY render-service/server.mjs ./render-service/server.mjs
+COPY render-service/jobStore.mjs ./render-service/jobStore.mjs
 
 # 5. HEALTHCHECK — bundled:true означает, что бандл прогрет и сервис готов рендерить
 HEALTHCHECK --interval=15s --timeout=5s --start-period=90s --retries=4 \

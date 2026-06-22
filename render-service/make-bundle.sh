@@ -10,6 +10,7 @@ tar -czf "$OUT" \
   public/reel-assets \
   scripts/render-local.mjs \
   render-service/server.mjs \
+  render-service/jobStore.mjs \
   render-service/package.deploy.json \
   render-service/bootstrap.sh \
   render-service/README.md
