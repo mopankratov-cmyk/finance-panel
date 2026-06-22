@@ -1,11 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
+import { proxyAuthorized } from "@/lib/auth/proxyAuth";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 // Прокси видео/аудио с CORS-заголовками, чтобы canvas не «тейнтился» при записи оверлея.
 // Только для коротких клипов завода (HeyGen/Higgsfield ~ единицы МБ).
+// Доступ: подпись (внешний рендер) ИЛИ сессия (браузер-редакторы) ИЛИ cron — см. proxyAuthorized.
+// Host-allowlist здесь нет: апстримы — разнородные видео-CDN; контроль = подпись/сессия.
 export async function GET(req: NextRequest) {
+  if (!(await proxyAuthorized(req))) return NextResponse.json({ error: "Не авторизовано" }, { status: 401 });
   const url = req.nextUrl.searchParams.get("url");
   if (!url || !/^https?:\/\//.test(url)) return NextResponse.json({ error: "url обязателен" }, { status: 400 });
   try {

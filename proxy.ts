@@ -12,12 +12,18 @@ export const config = {
 // (FAL/Seedance), которые фетчат его сервер-сайд без нашей куки, — и вебхук Telegram,
 // который проверяет собственный секрет (x-telegram-bot-api-secret-token).
 // ВНИМАНИЕ: всё ОСТАЛЬНОЕ под /api/* требует сессию ИЛИ Bearer CRON_SECRET (fail-closed).
+//
+// img-proxy / media-proxy / yandex-img / drive-img НЕ открыты нараспашку: гейт их пропускает,
+// но САМ РОУТ требует HMAC-подпись (signProxyUrl) ИЛИ сессию ИЛИ cron (lib/auth/proxyAuth.ts),
+// иначе 401 — это закрывает open-relay/SSRF. img-proxy вдобавок пускает только WB-баскеты.
+// Подпись им выдаёт сервер при отдаче URL внешнему рендеру (см. disk-source). Прод-инвариант:
+// задан SIGN_SECRET или AUTH_SECRET, иначе подпись на небезопасном дефолте.
 const PUBLIC_API: { prefix: string; methods?: string[] }[] = [
   { prefix: "/api/factory/telegram", methods: ["POST"] }, // вебхук Telegram (валидирует свой секрет сам)
-  { prefix: "/api/lab/img-proxy" }, // CORS-прокси картинок (канвас-редакторы + внешние рендеры)
-  { prefix: "/api/lab/media-proxy" }, // CORS-прокси видео/аудио
-  { prefix: "/api/lab/yandex-img" }, // «стабильный публичный URL» → FAL/Seedance фетчат напрямую
-  { prefix: "/api/lab/drive-img" }, // фото моделей с Google Drive → Seedance i2v
+  { prefix: "/api/lab/img-proxy" }, // CORS-прокси картинок (само-гард: подпись/сессия + host-allowlist WB)
+  { prefix: "/api/lab/media-proxy" }, // CORS-прокси видео/аудио (само-гард: подпись/сессия)
+  { prefix: "/api/lab/yandex-img" }, // «стабильный публичный URL» → FAL/Seedance (само-гард: подпись/сессия)
+  { prefix: "/api/lab/drive-img" }, // фото моделей с Google Drive → Seedance i2v (само-гард: подпись/сессия)
   { prefix: "/api/lab/model-avatar" }, // аватар модели (<img> + внешний рендер)
   { prefix: "/api/lab/model-photos" }, // список фото модели (отдаёт yandex-img URL)
   { prefix: "/api/lab/product-image" }, // резолвер WB-картинки товара

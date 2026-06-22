@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { yaCollectImages, yaCollectVideos } from "@/lib/yandex/disk";
 import { sourceFor, nicheFor, SKIP_FILE } from "@/lib/factory/contentDisks";
+import { signProxyUrl } from "@/lib/auth/proxySign";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
@@ -15,7 +16,9 @@ export async function POST(req: NextRequest) {
   if (!product && !article) return NextResponse.json({ error: "нужен product или article" }, { status: 400 });
 
   const origin = new URL(req.url).origin;
-  const abs = (u: string) => (u && u.startsWith("http") ? u : origin + u); // WB-урлы абсолютные, прокси-урлы относительные
+  // Прокси-урлы (/api/lab/*) подписываем HMAC — их фетчит FAL/Seedance cookie-less; WB-урлы уже абсолютные.
+  const signRel = (u: string) => (u.startsWith("/api/lab/") ? signProxyUrl(u) : u);
+  const abs = (u: string) => (u && u.startsWith("http") ? u : origin + signRel(u));
   const niche = nicheFor(product, article);
 
   const { getSupabaseAdmin } = await import("@/lib/supabaseAdmin");
