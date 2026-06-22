@@ -28,6 +28,7 @@ Remotion render-микросервис премиум-цепочки завод�
 | `RENDER_SCALE` | `1` | масштаб (0.66 ≈ 720p — кратно быстрее, ниже качество) |
 | `RENDER_X264_PRESET` | `faster` | `veryfast`/`ultrafast` — быстрее/хуже |
 | `RENDER_TIMEOUT_MS` | `120000` | таймаут кадра |
+| `RENDER_REUSE_BROWSER` | `1` | один Chrome на `selectComposition`+`renderMedia` (вместо двух запусков); `0` — выключить. Эффект виден по падению `select=` в `[timing]` |
 
 Каждый рендер пишет в лог `[timing] select=… render=… upload=… total=…` — видно, что душит.
 

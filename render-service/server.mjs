@@ -23,13 +23,14 @@
 //   RENDER_SCALE                 — масштаб рендера (1 = 1080×1920; 0.66 ≈ 720p — кратно быстрее, ниже качество)
 //   RENDER_X264_PRESET           — x264-пресет (дефолт faster; veryfast/ultrafast — быстрее/хуже)
 //   RENDER_TIMEOUT_MS            — таймаут кадра, мс (дефолт 120000)
+//   RENDER_REUSE_BROWSER         — 1 (дефолт): один Chrome на selectComposition+renderMedia (вместо двух запусков). 0 — выключить
 import http from "node:http";
 import path from "node:path";
 import os from "node:os";
 import fs from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { bundle } from "@remotion/bundler";
-import { selectComposition, renderMedia, ensureBrowser } from "@remotion/renderer";
+import { selectComposition, renderMedia, ensureBrowser, openBrowser } from "@remotion/renderer";
 import { createClient } from "@supabase/supabase-js";
 import { createJobStore } from "./jobStore.mjs";
 
@@ -52,6 +53,7 @@ const OFFTHREAD_CACHE_BYTES = Math.max(0, Number(process.env.RENDER_OFFTHREAD_CA
 const RENDER_SCALE = Number(process.env.RENDER_SCALE) || 1;
 const X264_PRESET = process.env.RENDER_X264_PRESET || "faster";
 const RENDER_TIMEOUT_MS = Number(process.env.RENDER_TIMEOUT_MS) || 120000;
+const REUSE_BROWSER = process.env.RENDER_REUSE_BROWSER !== "0"; // переиспользовать Chrome в пределах одного рендера
 
 const log = (...a) => console.log(new Date().toISOString(), ...a);
 
@@ -110,16 +112,24 @@ async function runRender(id, composition, inputProps, durationInFrames) {
   const tmp = path.join(os.tmpdir(), `remotion-${id}.mp4`);
   const t0 = Date.now();
   let tSelected = t0;
+  let browser = null;
   try {
     const serveUrl = await getServeUrl();
-    const comp = await selectComposition({ serveUrl, id: composition, inputProps });
+    // один Chrome на весь рендер: общий для selectComposition+renderMedia (иначе Remotion поднимает его дважды).
+    // fail-safe: не открылся → ppt пустой, Remotion поднимет свой на каждый вызов (поведение как раньше).
+    if (REUSE_BROWSER) {
+      try { browser = await openBrowser("chrome"); }
+      catch (e) { log(`warm browser недоступен — fallback на свежий: ${String(e?.message || e).slice(0, 120)}`); browser = null; }
+    }
+    const ppt = browser ? { puppeteerInstance: browser } : {};
+    const comp = await selectComposition({ serveUrl, id: composition, inputProps, ...ppt });
     tSelected = Date.now();
     const durationOverride = Number.isFinite(durationInFrames) && durationInFrames > 0
       ? { durationInFrames } : {};
     log(`render ${id}: ${composition} ${comp.width}x${comp.height} @${comp.fps} ${durationOverride.durationInFrames || comp.durationInFrames}f | conc=${FRAME_CONCURRENCY} threads=${OFFTHREAD_THREADS} scale=${RENDER_SCALE} preset=${X264_PRESET}`);
     await renderMedia({
       composition: { ...comp, ...durationOverride },
-      serveUrl, inputProps, codec: "h264", outputLocation: tmp,
+      serveUrl, inputProps, ...ppt, codec: "h264", outputLocation: tmp,
       // Затык ReelV5 — извлечение кадров из 6 OffthreadVideo-слоёв. Remotion-дефолт = 2 потока (offthreadVideoThreads),
       // поэтому раньше frame-concurrency приходилось душить до 4. Теперь поднимаем ОБА синхронно (см. ENV-блок вверху):
       // threads ≳ concurrency → пул извлечения поспевает, и ядра ВМ реально грузятся. Тюнить по логу [timing].
@@ -162,6 +172,7 @@ async function runRender(id, composition, inputProps, durationInFrames) {
     await persistJob(id, { status: "error", error: job.error });
     log(`❌ ${id}: ${job.error}`);
   } finally {
+    if (browser) { try { await browser.close({ silent: true }); } catch { /* уже закрыт/упал — не мешаем завершению */ } }
     await fs.rm(tmp, { force: true }).catch(() => {});
   }
 }
