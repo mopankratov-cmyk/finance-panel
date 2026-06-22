@@ -1,0 +1,12 @@
+{
+  "_comment": "Командные MCP-серверы. Токены через env (НЕ хранить в репо). virlo заработает, когда задашь VIRLO_TOKEN в окружении; без него Claude Code просто покажет сервер недоступным. Palmier — личный (по подписке владельца), здесь не описан.",
+  "mcpServers": {
+    "virlo": {
+      "type": "http",
+      "url": "https://dev.virlo.ai/api/mcp/mcp",
+      "headers": {
+        "Authorization": "Bearer ${VIRLO_TOKEN}"
+      }
+    }
+  }
+}

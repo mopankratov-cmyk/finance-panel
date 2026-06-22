@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { buildRunPlan, type RunPlan } from "@/lib/factory/graphRun";
+import { internalFetch } from "@/lib/internalFetch";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
@@ -24,17 +25,21 @@ export async function POST(req: NextRequest) {
     // если уже бежит — не перезапускаем (идемпотентно), просто дёрнем тик
     const existing = recipe.run_plan as RunPlan | null;
     const running = recipe.status === "running" && existing && existing.step !== "done" && existing.step !== "failed";
-    if (!running || body.restart) {
+    // restart НЕ затирает активно бегущий рецепт с живым лизом: иначе buildRunPlan сбросит mid-генерации
+    // ноды в pending (потеря токенов fal → двойной сабмит). Перезапуск только если лиз свободен/протух.
+    const leaseFree = !existing || !existing.lease_until || new Date(existing.lease_until as string).getTime() < Date.now();
+    if (!running || (body.restart && leaseFree)) {
       const { data: nodes } = await db.from("node_recipe_nodes").select("ordinal,slot,node_type,tool,prompt,params,asset_url,duration_sec,agent_suggestion").eq("recipe_id", recipeId).order("ordinal");
       const rows = (nodes as Record<string, unknown>[] | null) || [];
       if (!rows.length) return NextResponse.json({ error: "у рецепта нет нод" }, { status: 400 });
       const plan = buildRunPlan(rows);
       if (body.notify) plan.notify = true; // V21/R5: батч-прогон → слать прошедшее ОТК в Telegram
+      if (body.autofill) plan.step = "autofill"; // V21: батч-черновик сам сконфигурируется (§17) перед генерацией
       await db.from("node_recipes").update({ run_plan: plan, status: "running", otk_verdict: null, otk_score: null, output_url: null, render_id: null, updated_at: new Date().toISOString() }).eq("id", recipeId);
     }
 
     const origin = req.nextUrl.origin;
-    after(async () => { try { await fetch(`${origin}/api/factory/graph-run/tick`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ recipe_id: recipeId }), signal: AbortSignal.timeout(20000) }); } catch { /* воскресит ручной тик */ } });
+    after(async () => { try { await internalFetch(`${origin}/api/factory/graph-run/tick`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ recipe_id: recipeId }), signal: AbortSignal.timeout(20000) }); } catch { /* воскресит ручной тик */ } });
 
     return NextResponse.json({ ok: true, recipe_id: recipeId, started: true });
   } catch (e) {
@@ -60,7 +65,7 @@ export async function GET(req: NextRequest) {
       const leaseFree = !plan.lease_until || new Date(plan.lease_until).getTime() < Date.now();
       if (leaseFree) {
         const origin = req.nextUrl.origin;
-        after(async () => { try { await fetch(`${origin}/api/factory/graph-run/tick`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ recipe_id: recipeId }), signal: AbortSignal.timeout(15000) }); } catch { /* следующий опрос воскресит */ } });
+        after(async () => { try { await internalFetch(`${origin}/api/factory/graph-run/tick`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ recipe_id: recipeId }), signal: AbortSignal.timeout(15000) }); } catch { /* следующий опрос воскресит */ } });
       }
     }
 

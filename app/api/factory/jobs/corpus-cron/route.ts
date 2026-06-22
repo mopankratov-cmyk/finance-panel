@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { internalFetch } from "@/lib/internalFetch";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -24,14 +25,14 @@ export async function GET(req: NextRequest) {
 
   // Запускаем orbit-sync и corpus-tick параллельно (независимы по данным в момент старта)
   const [orbitsResult, tickResult] = await Promise.allSettled([
-    fetch(`${origin}/api/factory/corpus/sync-all-orbits`, {
+    internalFetch(`${origin}/api/factory/corpus/sync-all-orbits`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: "{}",
       signal: AbortSignal.timeout(55000),
     }).then((r) => r.json()).catch((e) => ({ error: String(e).slice(0, 100) })),
 
-    fetch(`${origin}/api/factory/jobs/corpus-tick`, {
+    internalFetch(`${origin}/api/factory/jobs/corpus-tick`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ secret }),
@@ -40,7 +41,7 @@ export async function GET(req: NextRequest) {
   ]);
 
   // Шаг 2 — после синка: авто-сборка + обновление сталых плейбуков (>7 дней, макс 5 × 20с)
-  const playbooksResult = await fetch(`${origin}/api/factory/corpus/build-missing-playbooks`, {
+  const playbooksResult = await internalFetch(`${origin}/api/factory/corpus/build-missing-playbooks`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ refresh_days: 7 }),

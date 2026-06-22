@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { virloListOrbits } from "@/lib/factory/trendSources";
 import { nicheFromArticle } from "@/lib/factory/rubric";
+import { internalFetch } from "@/lib/internalFetch";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -53,7 +54,7 @@ export async function POST(req: NextRequest) {
   for (const orbit of toSync) {
     const niche = nicheFromOrbitName(orbit.name);
     try {
-      const r = await fetch(`${origin}/api/factory/corpus/sync-orbit`, {
+      const r = await internalFetch(`${origin}/api/factory/corpus/sync-orbit`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ job_id: orbit.id, niche }),

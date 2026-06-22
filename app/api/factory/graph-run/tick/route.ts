@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { claimNextRecipe, runRecipeStep, MAX_STEP_ATTEMPTS, type RunPlan } from "@/lib/factory/graphRun";
+import { internalFetch } from "@/lib/internalFetch";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -37,7 +38,7 @@ export async function POST(req: NextRequest) {
       else await db.from("node_recipes").update({ run_plan: plan, updated_at: new Date().toISOString() }).eq("id", ctx.id);
     }
     // продолжить цепочку
-    try { await fetch(`${origin}/api/factory/graph-run/tick`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(recipeId ? { recipe_id: recipeId } : {}), signal: AbortSignal.timeout(20000) }); } catch { /* цепочка прервётся — воскресит ручной запуск */ }
+    try { await internalFetch(`${origin}/api/factory/graph-run/tick`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(recipeId ? { recipe_id: recipeId } : {}), signal: AbortSignal.timeout(20000) }); } catch { /* цепочка прервётся — воскресит ручной запуск */ }
   });
 
   return NextResponse.json({ claimed: ctx.id, step: ctx.plan.step });

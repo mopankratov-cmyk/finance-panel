@@ -3,8 +3,9 @@
 // и в node-preview (одна нода), и в graph-run (весь граф). Токен несёт движок: base64url("engine::inner").
 import { falVideoSubmit, falVideoStatus, FAL_VIDEO_MODELS, type FalVideoModel, type FalVideoOpts } from "./falVideo";
 import { creatifyLinkVideo, creatifyStatus } from "./creatify";
+import { elevenTTS } from "./elevenlabs";
 
-export type NodeEngine = "fal" | "creatify" | "disk" | "asset" | "none";
+export type NodeEngine = "fal" | "creatify" | "disk" | "asset" | "voice" | "none";
 
 // нормализованная нода (из node_recipe_nodes ИЛИ из инспектора)
 export interface EngineNode {
@@ -127,6 +128,20 @@ export async function submitNode(node: EngineNode): Promise<SubmitResult> {
     });
     if (r.error || !r.token) return { engine: "creatify", error: r.error || "creatify без токена" };
     return { engine: "creatify", token: packToken("creatify", r.token), cost_hint: "med" };
+  }
+
+  // V22 · ElevenLabs RU-озвучка → mp3 в Storage → url (закадр-дорожка для сборки). Синхронно (TTS ~5-10с).
+  if (tool === "elevenlabs") {
+    const voiceId = String(params.voice_id || ""); // пуст (autofill не знает live-id) → elevenTTS возьмёт дефолтный голос аккаунта
+    const text = String(params.script || node.prompt || params.onscreen_text || "").trim();
+    if (!text) return { engine: "voice", error: "elevenlabs: пустой текст озвучки (script/prompt)" };
+    const r = await elevenTTS(text, voiceId, {
+      stability: typeof params.stability === "number" ? params.stability : undefined,
+      similarity_boost: typeof params.similarity_boost === "number" ? params.similarity_boost : undefined,
+      style: typeof params.style === "number" ? params.style : undefined,
+    });
+    if (r.error || !r.url) return { engine: "voice", error: r.error || "elevenlabs без url" };
+    return { engine: "voice", url: r.url, done: true, cost_hint: "low" };
   }
 
   // shotstack/sound/captions — это СБОРКА/аудио, отдельного превью ноды нет (рендерится в graph-run)

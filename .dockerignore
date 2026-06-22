@@ -1,0 +1,17 @@
+# Контекст сборки = корень репо (Dockerfile берёт remotion/ и public/).
+# Выкидываем тяжёлое/ненужное, чтобы контекст не раздувался (node_modules — гигабайты).
+node_modules
+**/node_modules
+.next
+.git
+.vercel
+.turbo
+coverage
+*.log
+.env*
+/tmp
+/render-service/*.tar.gz
+# тянем только то, что реально копирует Dockerfile из public/
+public/*
+!public/fonts
+!public/reel-assets

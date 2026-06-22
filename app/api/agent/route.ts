@@ -4,6 +4,7 @@ import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { gatherAgentContext } from "@/lib/agent/gatherContext";
 import { cabinetIdFromParam } from "@/lib/rnp/resolveShop";
 import { CLAUDE_MODEL as MODEL, createClaudeClient } from "@/lib/agent/client";
+import { requireApiSession } from "@/lib/auth/apiGuard";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -48,6 +49,8 @@ interface Insight {
 }
 
 export async function POST(request: NextRequest) {
+  const gate = await requireApiSession();
+  if (gate) return gate;
   const body = await request.json().catch(() => ({}));
   const mode: "analyze" | "chat" = body.mode === "chat" ? "chat" : "analyze";
   const question: string = typeof body.question === "string" ? body.question : "";

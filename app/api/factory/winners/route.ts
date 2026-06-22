@@ -112,11 +112,14 @@ async function snapshotWinnerPreset(db: any, recipeId: number, niche: string, fo
   const fmt = format || String(data.format_detected || "") || "winner";
   const nch = niche || String(data.niche || "") || "default";
   // дедуп: один пресет на рецепт-первоисточник (пересохранение победителя не плодит дубли)
-  try { await db.from("node_templates").delete().eq("source_recipe_id", recipeId); } catch { /* колонки нет — пойдём вставкой */ }
-  const { data: ins } = await db.from("node_templates").insert({
+  // supabase возвращает { error } (а не throws) → старый try/catch тут не ловил. Проверяем error явно и логируем.
+  const { error: delErr } = await db.from("node_templates").delete().eq("source_recipe_id", recipeId);
+  if (delErr) console.error("[winners] dedup-delete error (миграция source_recipe_id применена?):", delErr.message);
+  const { data: ins, error: insErr } = await db.from("node_templates").insert({
     format_type: fmt, niche: nch, nodes, confidence: "high",
     from_winner: true, win_note: winNote, source_recipe_id: recipeId,
   }).select("id").maybeSingle();
+  if (insErr) console.error("[winners] preset insert error:", insErr.message);
   return (ins?.id as number) ?? null;
 }
 

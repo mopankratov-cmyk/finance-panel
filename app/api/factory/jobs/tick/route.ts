@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { internalFetch } from "@/lib/internalFetch";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { claimNextJob, saveJob, MAX_STEP_ATTEMPTS, MAX_POLLS, type FactoryJob } from "@/lib/factory/jobs";
 import { extractFrames, overlayPngBase64, buildCarouselSlides } from "@/lib/factory/serverMedia";
@@ -13,11 +14,12 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function jpost(origin: string, path: string, body: unknown, ms = 55000): Promise<any> { // LLM-шаги (produce/scenario/video-fal) зовут Claude — даём почти весь бюджет дочернего роута (maxDuration 60)
-  const r = await fetch(`${origin}${path}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(ms) });
+  const r = await internalFetch(`${origin}${path}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(ms) });
   return r.json().catch(() => ({}));
 }
 
-// ОДИН шаг джобы: переиспускаем существующие роуты завода (auth их не гейтит — см. proxy.ts).
+// ОДИН шаг джобы: переиспускаем существующие роуты завода. internalFetch несёт Bearer CRON_SECRET,
+// чтобы внутренние вызовы прошли гейт авторизации /api/* в proxy.ts.
 // Полный конвейер (Стадия 2): produce → scenario → submit → poll → otk(кадры+критик+ретрай) → overlay(текст+пересуд) → save.
 // Серверные аналоги браузерных кусков: serverMedia.extractFrames (fal extract-frame) + overlayPngBase64 (sharp SVG→PNG).
 async function runStep(db: SupabaseClient, origin: string, job: FactoryJob): Promise<void> {
@@ -129,7 +131,7 @@ async function runStep(db: SupabaseClient, origin: string, job: FactoryJob): Pro
     const pollCount = (st.pollCount || 0) + 1;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let s: any = {};
-    try { s = await fetch(`${origin}/api/factory/video-fal-status/${st.task_id}`, { signal: AbortSignal.timeout(15000) }).then((r) => r.json()); } catch { s = {}; }
+    try { s = await internalFetch(`${origin}/api/factory/video-fal-status/${st.task_id}`, { signal: AbortSignal.timeout(15000) }).then((r) => r.json()); } catch { s = {}; }
     if (s?.status === "done" && s.video_url) {
       await saveJob(db, job.id, { step: "otk", status: "running", attempts: 0, lease_until: null, state: { ...st, video_url: s.video_url, pollCount } });
     } else if (pollCount >= MAX_POLLS) {
@@ -307,7 +309,7 @@ export async function POST(req: NextRequest) {
       else await saveJob(db, job.id, { status: "running", attempts, error: msg, lease_until: null }); // ретрай того же шага
     }
     // продолжить цепочку: следующий тик возьмёт следующий шаг/джобу (или вернёт idle и остановится)
-    try { await fetch(`${origin}/api/factory/jobs/tick`, { method: "POST", signal: AbortSignal.timeout(20000) }); } catch { /* цепочка прервётся — воскресит list-резурекция/cron-бэкстоп */ }
+    try { await internalFetch(`${origin}/api/factory/jobs/tick`, { method: "POST", signal: AbortSignal.timeout(20000) }); } catch { /* цепочка прервётся — воскресит list-резурекция/cron-бэкстоп */ }
   });
 
   return NextResponse.json({ claimed: job.id, step: job.step });

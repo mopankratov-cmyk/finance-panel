@@ -37,16 +37,29 @@ function snapNumber(f: ToolField, n: number): number {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function coerce(f: ToolField, v: any, warnings: string[]): unknown {
-  // энум (dropdown/picker со списком значений): значение ДОЛЖНО быть из values
-  if ((f.ui === "dropdown" || f.ui === "picker") && Array.isArray(f.values) && f.values.length) {
+  // dropdown — ЗАКРЫТЫЙ энум: значение не из набора → снап на default/первое
+  if (f.ui === "dropdown" && Array.isArray(f.values) && f.values.length) {
     const s = String(v);
     if (f.values.includes(s)) return s;
     const snap = f.default !== undefined && f.values.includes(String(f.default)) ? String(f.default) : f.values[0];
     warnings.push(`${f.api_param}=«${s}» не из набора — снап на «${snap}»`);
     return snap;
   }
+  // picker — ЖИВОЙ список (voices/templates/musics): статичные values лишь встроенное подмножество, кастомные id
+  // тянутся из API → валидный «чужой» id (напр. кастомный visual_style из бренд-кита) НЕ снапаем, оставляем как есть
+  if (f.ui === "picker") {
+    if (v == null) return undefined;
+    const s = String(v);
+    if (Array.isArray(f.values) && f.values.length && !f.values.includes(s)) warnings.push(`${f.api_param}=«${s}» вне встроенного набора (живой id — оставлен)`);
+    return s;
+  }
   // число/слайдер: clamp [min,max] + снап к step
   if (f.ui === "slider" || f.ui === "number") {
+    // Number('')/Number(null)/Number(false)/Number([]) === 0 (а Number(true)===1) → клэмпнулось бы к min вместо дефолта.
+    // Отсекаем «незначащие» входы ДО Number(), чтобы пустое/булево/массив уходили в дефолт схемы.
+    if (v == null || typeof v === "boolean" || Array.isArray(v) || (typeof v === "string" && v.trim() === "")) {
+      return f.default !== undefined ? f.default : undefined;
+    }
     const n = Number(v);
     if (!Number.isFinite(n)) {
       warnings.push(`${f.api_param}=«${v}» не число — ${f.default !== undefined ? "дефолт " + f.default : "пропуск"}`);
@@ -54,22 +67,47 @@ function coerce(f: ToolField, v: any, warnings: string[]): unknown {
     }
     return snapNumber(f, n);
   }
-  // тумблер: к булю
+  // тумблер: к булю (null/undefined → «не задано» → дефолт схемы применится ниже, а НЕ false)
   if (f.ui === "toggle") {
+    if (v == null) return undefined;
     if (typeof v === "boolean") return v;
     const s = String(v).toLowerCase().trim();
     return s === "true" || s === "1" || s === "yes" || s === "да";
   }
-  // text/textarea/file/color — строка как есть (null/undefined пропускаем)
+  // цвет — строго #RRGGBB или #RRGGBBAA; мусор («red», «#GGG», кириллица) → дефолт схемы или дроп
+  // (иначе уходит в Creatify/Shotstack → 422 или молчаливый дефолт). Защищает и бренд-кит, и ручной ввод.
+  if (f.ui === "color") {
+    if (v == null || v === "") return undefined;
+    const s = String(v).trim();
+    if (/^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/.test(s)) return s;
+    warnings.push(`${f.api_param}=«${s}» не hex-цвет — ${f.default !== undefined ? "дефолт " + f.default : "отброшен"}`);
+    return f.default !== undefined ? f.default : undefined;
+  }
+  // text/textarea/file — строка как есть (null/undefined пропускаем)
   if (v == null) return v;
   return typeof v === "string" ? v : String(v);
+}
+
+// Сплющиваем вложенные объекты в dotted-ключи: схемы движков используют api_param вида
+// "caption_setting.font_size" / "font.size" / "output.fps" / "caption_setting.offset.x", а Claude
+// по JSON-привычке шлёт ВЛОЖЕННО ({caption_setting:{font_size:70}}). Без сплющивания весь блок
+// дропался как «неизвестное поле» → стиль субтитров/титров терялся молча. nodeEngine/graphRun ждут плоские dotted-ключи.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function flattenDotted(obj: Record<string, any>, prefix = ""): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(obj)) {
+    const key = prefix ? `${prefix}.${k}` : k;
+    if (v !== null && typeof v === "object" && !Array.isArray(v)) Object.assign(out, flattenDotted(v as Record<string, unknown>, key));
+    else out[key] = v;
+  }
+  return out;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function normalizeParams(tool: string, raw: Record<string, any> | null | undefined): NormalizeResult {
   const warnings: string[] = [];
   const fields = fieldsOf(tool);
-  const rawObj = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
+  const rawObj = raw && typeof raw === "object" && !Array.isArray(raw) ? flattenDotted(raw) : {};
 
   // у движка нет строгой схемы (напр. внешний/новый) — не валидируем, но честно говорим об этом
   if (!fields.size) {

@@ -32,6 +32,7 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.example
 
 # vercel
 .vercel
@@ -40,8 +41,13 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# claude code local tooling
-/.claude
+# claude code: делимся командным конфигом (agents/settings/launch), но НЕ локальным.
+# Скиллы НЕ коммитим симлинками (ломаются на Windows) — их разворачивает scripts/setup-claude.mjs
+# из .agents/skills (тот каталог трекается). settings.local.json / sessions / worktrees / skills — локальные.
+/.claude/*
+!/.claude/agents/
+!/.claude/settings.json
+!/.claude/launch.json
 .gstack/
 
 # openreels: тяжёлые тестовые медиа-инпуты v0-v9 (46MB видео) — локальные, не в git.
