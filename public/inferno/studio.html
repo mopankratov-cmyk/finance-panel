@@ -500,7 +500,18 @@ async function screenCompete(root){
   const feed=d.feed||[];
   loadCovers(feed); // подтянуть обложки/эмбеды (oEmbed) → серые карточки станут визуальными
   feedList.innerHTML="";
-  if(!feed.length)feedList.appendChild(emptyBox("нет виральных видео в нише"));
+  if(!feed.length){ // #4: пустая ниша — не тупик, а CTA «найти конкурентов» (сеет viral_videos из трендов)
+    const box=el("div",{style:"display:flex;flex-direction:column;align-items:center;gap:11px;padding:10px 6px;text-align:center;"});
+    box.appendChild(el("div",{class:"muted",style:"font-size:12px;line-height:1.5;"},"нет виральных видео в нише «"+nicheLabel(S.activeNiche)+"»"));
+    const btn=el("button",{class:"btn primary",style:"width:100%;justify-content:center;"},"🔎 Найти конкурентов");
+    btn.onclick=async()=>{ btn.disabled=true; btn.textContent="ищу конкурентов…";
+      const r=await api("/seed-niche",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({niche:S.activeNiche,query:nicheLabel(S.activeNiche)})});
+      if(r&&r.ok&&r.inserted>0){ toast("нашёл "+r.inserted+" видео → лента наполнена"); delete S.feedCache[S.activeNiche]; if(S.screen==="compete")screenCompete(document.getElementById("screen")); }
+      else { btn.disabled=false; btn.textContent="🔎 Найти конкурентов"; toast(r&&r.error?("не вышло: "+r.error):"источник не вернул видео — попробуй позже"); } };
+    box.appendChild(btn);
+    box.appendChild(el("div",{class:"mono",style:"font-size:9.5px;color:var(--tx-lo3);"},"тянем залетевшие TikTok-видео ниши"));
+    feedList.appendChild(box);
+  }
   feed.forEach((v,i)=>{
     const sel=S.selectedVideo===v.id;
     feedList.appendChild(el("div",{style:"display:flex;gap:10px;padding:8px;border-radius:9px;cursor:pointer;"+(sel?"background:var(--bg-node);border:1.5px solid var(--acc);box-shadow:0 0 0 3px rgba(124,116,255,.08);":"background:var(--bg-card);border:1px solid var(--bd);"),
