@@ -13,8 +13,16 @@
 //   NEXT_PUBLIC_SUPABASE_URL     — Supabase URL
 //   SUPABASE_SERVICE_ROLE_KEY    — service-role ключ (заливка в Storage)
 //   PORT                         — порт (дефолт 8080)
-//   RENDER_CONCURRENCY           — сколько рендеров параллельно (дефолт 1; renderMedia тяжёлый по CPU)
+//   RENDER_CONCURRENCY           — сколько РЕНДЕРОВ (джоб) параллельно (дефолт 1; renderMedia тяжёлый по CPU)
 //   REMOTION_ENTRY               — путь к точке входа (дефолт ../remotion/index.ts от этого файла)
+//   ── тюнинг скорости ОДНОГО рендера (см. лог [timing] чтобы настраивать по цифрам) ──
+//   RENDER_FRAME_CONCURRENCY     — сколько КАДРОВ рендерить параллельно (дефолт min(6, ядра))
+//   RENDER_OFFTHREAD_THREADS     — потоков извлечения видео-кадров (Remotion-дефолт 2 — это и был затык!; наш дефолт min(6, ядра))
+//                                  ВАЖНО: держи ≳ RENDER_FRAME_CONCURRENCY, иначе 6 OffthreadVideo-слоёв ReelV5 задушат пул извлечения
+//   RENDER_OFFTHREAD_CACHE_MB    — кэш декодированных кадров компоновщика, МБ (0 = дефолт Remotion)
+//   RENDER_SCALE                 — масштаб рендера (1 = 1080×1920; 0.66 ≈ 720p — кратно быстрее, ниже качество)
+//   RENDER_X264_PRESET           — x264-пресет (дефолт faster; veryfast/ultrafast — быстрее/хуже)
+//   RENDER_TIMEOUT_MS            — таймаут кадра, мс (дефолт 120000)
 import http from "node:http";
 import path from "node:path";
 import os from "node:os";
@@ -32,6 +40,17 @@ const PORT = Number(process.env.PORT || 8080);
 const TOKEN = process.env.REMOTION_RENDER_TOKEN || "";
 const CONCURRENCY = Math.max(1, Number(process.env.RENDER_CONCURRENCY || 1));
 const BUCKET = "factory-media";
+
+// ── тюнинг скорости одного рендера (резолвим один раз; см. лог [timing]) ──
+const CORES = os.cpus().length;
+// Remotion-дефолт offthreadVideoThreads=2 — корень «очень долго»: 6 OffthreadVideo-слоёв ReelV5 на 2 потока.
+// Поднимаем извлечение И frame-concurrency синхронно, чтобы реально загрузить ядра ВМ.
+const FRAME_CONCURRENCY = Math.max(1, Number(process.env.RENDER_FRAME_CONCURRENCY) || Math.min(6, CORES));
+const OFFTHREAD_THREADS = Math.max(1, Number(process.env.RENDER_OFFTHREAD_THREADS) || Math.min(6, CORES));
+const OFFTHREAD_CACHE_BYTES = Math.max(0, Number(process.env.RENDER_OFFTHREAD_CACHE_MB) || 0) * 1024 * 1024;
+const RENDER_SCALE = Number(process.env.RENDER_SCALE) || 1;
+const X264_PRESET = process.env.RENDER_X264_PRESET || "faster";
+const RENDER_TIMEOUT_MS = Number(process.env.RENDER_TIMEOUT_MS) || 120000;
 
 const log = (...a) => console.log(new Date().toISOString(), ...a);
 
@@ -75,18 +94,33 @@ function pump() {
 
 async function runRender(id, composition, inputProps, durationInFrames) {
   const job = jobs.get(id);
+  if (!job) return; // джоба уже вычищена/отменена — рендерить нечего (а onProgress не упадёт на undefined)
   const tmp = path.join(os.tmpdir(), `remotion-${id}.mp4`);
+  const t0 = Date.now();
+  let tSelected = t0;
   try {
     const serveUrl = await getServeUrl();
     const comp = await selectComposition({ serveUrl, id: composition, inputProps });
+    tSelected = Date.now();
     const durationOverride = Number.isFinite(durationInFrames) && durationInFrames > 0
       ? { durationInFrames } : {};
-    log(`render ${id}: ${composition} ${comp.width}x${comp.height} @${comp.fps} ${durationOverride.durationInFrames || comp.durationInFrames}f`);
+    log(`render ${id}: ${composition} ${comp.width}x${comp.height} @${comp.fps} ${durationOverride.durationInFrames || comp.durationInFrames}f | conc=${FRAME_CONCURRENCY} threads=${OFFTHREAD_THREADS} scale=${RENDER_SCALE} preset=${X264_PRESET}`);
     await renderMedia({
       composition: { ...comp, ...durationOverride },
       serveUrl, inputProps, codec: "h264", outputLocation: tmp,
+      // Затык ReelV5 — извлечение кадров из 6 OffthreadVideo-слоёв. Remotion-дефолт = 2 потока (offthreadVideoThreads),
+      // поэтому раньше frame-concurrency приходилось душить до 4. Теперь поднимаем ОБА синхронно (см. ENV-блок вверху):
+      // threads ≳ concurrency → пул извлечения поспевает, и ядра ВМ реально грузятся. Тюнить по логу [timing].
+      concurrency: FRAME_CONCURRENCY,
+      offthreadVideoThreads: OFFTHREAD_THREADS,
+      ...(OFFTHREAD_CACHE_BYTES ? { offthreadVideoCacheSizeInBytes: OFFTHREAD_CACHE_BYTES } : {}),
+      ...(RENDER_SCALE !== 1 ? { scale: RENDER_SCALE } : {}),
+      x264Preset: X264_PRESET,
+      // дефолтные 28с малы: несколько рендереров разом тянут кадры из тяжёлых видео (OffthreadVideo → <Img blob>)
+      timeoutInMilliseconds: RENDER_TIMEOUT_MS,
       onProgress: ({ progress }) => { job.progress = Math.round(progress * 100); },
     });
+    const tRendered = Date.now();
 
     // заливка в Supabase Storage
     const db = supa();
@@ -99,6 +133,10 @@ async function runRender(id, composition, inputProps, durationInFrames) {
     const videoUrl = db.storage.from(BUCKET).getPublicUrl(objPath).data?.publicUrl;
     if (!videoUrl) throw new Error("getPublicUrl вернул пусто");
 
+    const tDone = Date.now();
+    const sec = (ms) => (ms / 1000).toFixed(1);
+    // разбивка времени → видно, что душит: select(бандл/браузер), render(кадры+извлечение+x264), upload(сеть)
+    log(`[timing] ${id}: select=${sec(tSelected - t0)}s render=${sec(tRendered - tSelected)}s upload=${sec(tDone - tRendered)}s total=${sec(tDone - t0)}s`);
     job.status = "done"; job.videoUrl = videoUrl;
     log(`✅ ${id} → ${videoUrl}`);
   } catch (e) {
@@ -120,13 +158,22 @@ function authed(req) {
 }
 function readBody(req) {
   return new Promise((resolve) => {
-    let b = ""; req.on("data", (c) => { b += c; if (b.length > 2e6) req.destroy(); });
-    req.on("end", () => { try { resolve(JSON.parse(b || "{}")); } catch { resolve(null); } });
+    let b = ""; let done = false;
+    const finish = (v) => { if (!done) { done = true; resolve(v); } };
+    req.on("data", (c) => {
+      if (done) return;
+      b += c;
+      if (b.length > 2e6) { finish({ __tooLarge: true }); req.destroy(); } // резолвим ДО destroy — иначе промис висел бы вечно ('end' не придёт)
+    });
+    req.on("end", () => { try { finish(JSON.parse(b || "{}")); } catch { finish(null); } });
+    req.on("error", () => finish(null));   // обрыв/destroy — не зависаем
+    req.on("aborted", () => finish(null));
   });
 }
 
 let idSeq = 0;
 const server = http.createServer(async (req, res) => {
+ try {
   const url = new URL(req.url, "http://x");
   if (req.method === "GET" && url.pathname === "/health") {
     return send(res, 200, { ok: true, bundled: !!serveUrlPromise, busy: active, queued: queue.length });
@@ -138,6 +185,7 @@ const server = http.createServer(async (req, res) => {
   if (req.method === "POST" && url.pathname === "/render") {
     if (!authed(req)) return send(res, 401, { error: "unauthorized" });
     const body = await readBody(req);
+    if (body && body.__tooLarge) return send(res, 413, { error: "тело запроса слишком большое (>2MB)" });
     if (!body || !body.composition) return send(res, 400, { error: "нужен composition" });
     const id = `${Date.now().toString(36)}-${(idSeq++).toString(36)}`;
     jobs.set(id, { status: "in_progress", progress: 0, createdAt: Date.now() });
@@ -153,15 +201,22 @@ const server = http.createServer(async (req, res) => {
     return send(res, 200, { status: job.status, progress: job.progress, videoUrl: job.videoUrl, error: job.error });
   }
   send(res, 404, { error: "not found" });
+ } catch (e) {
+    log("handler error:", e?.message || e);
+    if (!res.headersSent) send(res, 500, { error: "internal" });
+ }
 });
+// зависшие сокеты гарантированно закрываются (см. защиту readBody от больших тел)
+server.requestTimeout = 120e3;
+server.headersTimeout = 65e3;
 
-// чистим старые джобы раз в час (память)
+// чистим старые ЗАВЕРШЁННЫЕ джобы раз в час (in_progress не трогаем — иначе потеряем готовый результат)
 setInterval(() => {
   const cutoff = Date.now() - 6 * 3600e3;
-  for (const [id, j] of jobs) if (j.createdAt < cutoff) jobs.delete(id);
+  for (const [id, j] of jobs) if (j.status !== "in_progress" && j.createdAt < cutoff) jobs.delete(id);
 }, 3600e3).unref();
 
 server.listen(PORT, () => {
-  log(`render-service на :${PORT} | concurrency=${CONCURRENCY} | token=${TOKEN ? "set" : "OPEN(!)"}`);
+  log(`render-service на :${PORT} | jobs=${CONCURRENCY} frame-conc=${FRAME_CONCURRENCY} offthread-threads=${OFFTHREAD_THREADS} scale=${RENDER_SCALE} preset=${X264_PRESET} cores=${CORES} | token=${TOKEN ? "set" : "OPEN(!)"}`);
   getServeUrl().catch((e) => log("bundle при старте упал:", e?.message || e)); // прогреть бандл
 });
