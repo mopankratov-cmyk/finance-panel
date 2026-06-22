@@ -513,8 +513,11 @@ async function screenCompete(root){
         el("div",{style:"font-size:12px;font-weight:"+(sel?"600":"500")+";white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"},(v.caption||v.hook_text||(v.format_detected?v.format_detected+" · "+(v.platform||""):"клип "+fmtViews(v.views))).slice(0,28)),
         el("div",{class:"mono",style:"font-size:10px;color:"+(sel?"var(--acc-lt)":"var(--tx-lo2)")+";margin-top:3px;"},fmtViews(v.views)+" · score "+(v.virality_score?Number(v.virality_score).toFixed(0):"?")))));
   });
+  const justRan=_decomposeJustRan; _decomposeJustRan=false;
+  if(S.decompose&&S.decompose.error&&!justRan){ S.decompose=null; S.decomposeVideo=null; S.selectedVideo=null; } // стейл-ошибка разбора не висит при свежем входе на 02
   if(S.decompose||S.decomposeLoading)renderDecompose();
 }
+let _decomposeJustRan=false; // отличаем «ошибку разбора только что» от стейл-ошибки прошлого раза
 async function runDecompose(v){
   S.decomposeLoading=true; S.decompose=null; S.decomposeVideo=v;
   header("Анализ конкурентов","decompose · "+nicheLabel(S.activeNiche));
@@ -522,6 +525,7 @@ async function runDecompose(v){
   const d=await api("/decompose?viral_video_id="+v.id);
   S.decomposeLoading=false;
   S.decompose=d.error?{error:d.error}:d;
+  _decomposeJustRan=true; // ошибку покажем live, но не дадим залипнуть при следующем заходе
   await screenCompete(document.getElementById("screen")); // refresh header count + feed selection
 }
 function renderDecompose(){
@@ -789,20 +793,21 @@ async function saveNode(n){
 let _saving=false, _saveDirty=null, _previewing={};
 async function runPreview(n){
   if(_previewing[n.id])return; _previewing[n.id]=true;   // защита от двойного клика → дубль платного fal-сабмита
+  const tool=S.tool; // тег превью инструментом: при смене таба чужой результат/ошибка не показывается
   const btn=document.getElementById("prev-btn"); if(btn){ btn.style.opacity=".6"; btn.disabled=true; }
   const body={tool:S.tool,node_type:n.node_type,prompt:n.prompt||"",params:n.params||{},image_url:n.asset_url||(n.params&&n.params.image_url)||null,recipe_id:S.recipe&&S.recipe.recipe.id,node_id:n.id};
   const r=await api("/node-preview",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
   if(btn){ btn.style.opacity="1"; btn.disabled=false; }
-  if(r.error){ _previewing[n.id]=false; S.preview[n.id]={status:"error",error:r.error}; renderPreviewOut(n); return; }
-  if(r.status==="done"){ _previewing[n.id]=false; S.preview[n.id]={status:"done",url:r.url,cached:r.cached,hash:r.hash}; renderPreviewOut(n); return; }
-  S.preview[n.id]={status:"in_progress",token:r.token,hash:r.hash}; renderPreviewOut(n); pollPreview(n,r.token,0);
+  if(r.error){ _previewing[n.id]=false; S.preview[n.id]={status:"error",error:r.error,tool}; renderPreviewOut(n); return; }
+  if(r.status==="done"){ _previewing[n.id]=false; S.preview[n.id]={status:"done",url:r.url,cached:r.cached,hash:r.hash,tool}; renderPreviewOut(n); return; }
+  S.preview[n.id]={status:"in_progress",token:r.token,hash:r.hash,tool}; renderPreviewOut(n); pollPreview(n,r.token,0);
 }
 async function pollPreview(n,token,c){
-  if(c>40){ _previewing[n.id]=false; S.preview[n.id]={status:"error",error:"timeout"}; renderPreviewOut(n); return; }
+  if(c>40){ _previewing[n.id]=false; S.preview[n.id]={status:"error",error:"timeout",tool:(S.preview[n.id]||{}).tool}; renderPreviewOut(n); return; }
   await new Promise(r=>setTimeout(r,4000)); if(S.selectedNode!==n){ _previewing[n.id]=false; return; }
   const r=await api("/node-preview?token="+encodeURIComponent(token));
-  if(r.status==="done"){ _previewing[n.id]=false; S.preview[n.id]={status:"done",url:r.url,hash:(S.preview[n.id]||{}).hash}; renderPreviewOut(n); return; }
-  if(r.status==="error"){ _previewing[n.id]=false; S.preview[n.id]={status:"error",error:r.error}; renderPreviewOut(n); return; }
+  if(r.status==="done"){ _previewing[n.id]=false; S.preview[n.id]={status:"done",url:r.url,hash:(S.preview[n.id]||{}).hash,tool:(S.preview[n.id]||{}).tool}; renderPreviewOut(n); return; }
+  if(r.status==="error"){ _previewing[n.id]=false; S.preview[n.id]={status:"error",error:r.error,tool:(S.preview[n.id]||{}).tool}; renderPreviewOut(n); return; }
   pollPreview(n,token,c+1);
 }
 // V10: закрепить превью как финальный клип ноды → сборка не платит fal заново (привязка к hash инвалидирует при правке)
@@ -810,6 +815,7 @@ function takePreview(n,p){ if(!p||!p.hash){ toast("нет hash превью"); r
 function renderPreviewOut(n){
   const out=document.getElementById("preview-out"); if(!out)return; out.innerHTML="";
   const p=S.preview[n.id]; if(!p)return;
+  if(p.tool&&p.tool!==S.tool)return; // превью/ошибка от другого инструмента не показываем при смене таба
   out.appendChild(el("div",{class:"sec-cap",style:"margin-bottom:8px;"},"Превью ноды"));
   if(p.status==="in_progress"){ out.appendChild(el("div",{class:"card",style:"padding:18px;display:flex;align-items:center;gap:12px;"},el("div",{class:"spinner"}),el("span",{class:"muted"},"генерация…"))); return; }
   if(p.status==="error"){ out.appendChild(el("div",{class:"card",style:"padding:14px;border-color:var(--bd-err);color:var(--err);font-size:12px;display:flex;align-items:center;gap:8px;"},el("span",{},"✕ "+p.error),el("button",{class:"btn sm",onclick:()=>runPreview(n)},"Повторить"))); return; }
@@ -1179,28 +1185,37 @@ async function pollRun(id,c,errs){
 }
 
 //==================== 06 · LIBRARY ====================
-async function screenLibrary(root){
+let _libCache=null; // кэш /studio, чтобы клик по фильтру/сортировке не дёргал бэкенд заново
+function classifyFmt(s,kind){ s=String(s||"").toLowerCase(); if(kind==="image")return "static"; if(/carousel|карусел|slide|слайд/.test(s))return "carousel"; if(/static|статик|photo|кадр|image/.test(s))return "static"; return "video"; }
+function genVScore(g){ const a=g.analysis||{}; return Number(a.otk||a.virality||a.views||g.views||0); }
+async function screenLibrary(root,useCache){
+  root.innerHTML="";                       // фильтр/сортировка зовут screenLibrary напрямую (минуя render) — чистим, иначе секции дублируются
+  S.libFmt=S.libFmt||"all"; S.librarySort=S.librarySort||"viral";
+  const FMTS=[["all","Все"],["video","Видео"],["carousel","Карусель"],["static","Статик"]];
   header("База видосов","библиотека рецептов", el("div",{class:"hdr-r"},
-    el("span",{style:"font-size:11.5px;color:var(--tx-hi);background:var(--bg-input);border:1px solid var(--bd2);padding:6px 11px;border-radius:7px;"},"Все ниши"),
-    el("span",{style:"font-size:11.5px;color:var(--tx-lo);padding:6px 8px;"},"Видео"),
-    el("span",{style:"font-size:11.5px;color:var(--tx-lo);padding:6px 8px;"},"Карусель"),
-    el("span",{style:"font-size:11.5px;color:var(--tx-lo);padding:6px 8px;"},"Статик")));
+    ...FMTS.map(([k,l])=>el("span",{style:"font-size:11.5px;cursor:pointer;border-radius:7px;padding:6px 11px;"+(S.libFmt===k?"color:var(--tx-hi);background:var(--bg-input);border:1px solid var(--bd2);":"color:var(--tx-lo);"),onclick:()=>{ S.libFmt=k; screenLibrary(root,true); }},l))));
   const left=el("div",{class:"scroll"}), aside=el("div",{class:"aside",style:"width:328px;padding:18px;"});
   root.appendChild(left); root.appendChild(aside);
-  left.appendChild(el("div",{style:"display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;"},el("h2",{class:"sec-h"},"ГОТОВЫЕ ВИДЕО ",el("span",{class:"cnt",id:"gen-cnt"},"")),el("div",{style:"display:flex;gap:6px;align-items:center;"},el("span",{style:"font-size:11px;color:var(--tx-lo);"},"сортировка:"),el("span",{class:"mono",style:"font-size:11px;color:var(--tx-hi);"},"виральность ▾"))));
+  left.appendChild(el("div",{style:"display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;"},el("h2",{class:"sec-h"},"ГОТОВЫЕ ВИДЕО ",el("span",{class:"cnt",id:"gen-cnt"},"")),el("div",{style:"display:flex;gap:6px;align-items:center;"},el("span",{style:"font-size:11px;color:var(--tx-lo);"},"сортировка:"),el("span",{class:"mono",style:"font-size:11px;color:var(--tx-hi);cursor:pointer;",title:"переключить сортировку",onclick:()=>{ S.librarySort=S.librarySort==="viral"?"date":"viral"; screenLibrary(root,true); }},S.librarySort==="date"?"дата ▾":"виральность ▾"))));
   const gal=el("div",{style:"display:grid;grid-template-columns:repeat(4,1fr);gap:13px;margin-bottom:28px;"}); left.appendChild(gal);
   gal.appendChild(loadingCard("галерея…"));
   left.appendChild(el("h2",{class:"sec-h",style:"margin:0 0 12px;"},"БИБЛИОТЕКА ПРЕСЕТ-НОД ",el("span",{class:"cnt"},"переиспользуемые")));
   const recList=el("div",{style:"display:grid;grid-template-columns:repeat(3,1fr);gap:11px;"}); left.appendChild(recList);
 
-  const d=await api("/studio");
-  const gens=d.generations||[];
+  const d=(useCache&&_libCache)?_libCache:await api("/studio"); _libCache=d;
+  const fm=S.libFmt, sortViral=S.librarySort!=="date";
+  const byDate=(a,b)=>new Date(b.created_at||0)-new Date(a.created_at||0);
+  let gens=(d.generations||[]).slice();
+  if(fm!=="all")gens=gens.filter(g=>classifyFmt((g.analysis&&(g.analysis.format||g.analysis.format_detected))||g.format,g.kind)===fm);
+  gens.sort(sortViral?(a,b)=>genVScore(b)-genVScore(a):byDate);
   gal.innerHTML=""; const gc=document.getElementById("gen-cnt"); if(gc)gc.textContent=String(gens.length);
-  if(!gens.length)gal.appendChild(emptyBox("пока нет генераций"));
+  if(!gens.length)gal.appendChild(emptyBox(fm==="all"?"пока нет генераций":"нет видео в формате «"+fm+"»"));
   gens.forEach(g=>gal.appendChild(genCard(g)));
-  const recipes=d.recipes||[];
+  let recipes=(d.recipes||[]).slice();
+  if(fm!=="all")recipes=recipes.filter(r=>classifyFmt(r.format_detected||r.format||r.mode,null)===fm);
+  recipes.sort(sortViral?(a,b)=>(b.otk_score||0)-(a.otk_score||0):byDate);
   recList.innerHTML="";
-  if(!recipes.length)recList.appendChild(emptyBox("нет рецептов — перенеси конкурента (экран 02)"));
+  if(!recipes.length)recList.appendChild(emptyBox(fm==="all"?"нет рецептов — перенеси конкурента (экран 02)":"нет рецептов в формате «"+fm+"»"));
   recipes.slice(0,9).forEach(r=>recList.appendChild(recipeCard(r)));
 
   // V11: РЕАЛЬНАЯ смета прогона из нод рецепта × PRICE (была демо $182/250)
