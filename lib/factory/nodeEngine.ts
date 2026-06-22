@@ -5,6 +5,7 @@ import { falVideoSubmit, falVideoStatus, FAL_VIDEO_MODELS, type FalVideoModel, t
 import { creatifyLinkVideo, creatifyStatus } from "./creatify";
 import { elevenTTS } from "./elevenlabs";
 import { isPlaceholderSource } from "./toolSchemas";
+import { rehostImageForFal } from "./rehostImage";
 
 export type NodeEngine = "fal" | "creatify" | "disk" | "asset" | "voice" | "none";
 
@@ -85,7 +86,11 @@ export async function submitNode(node: EngineNode): Promise<SubmitResult> {
     if (!imageUrl) return { engine: "fal", error: `${tool}: нужно image_url (фото товара/стартовый кадр)` };
     const model = FAL_TOOLS[tool];
     const opts = falOptsFromParams(params);
-    const inner = await falVideoSubmit(model, imageUrl, String(node.prompt || params.prompt || ""), opts);
+    // WB-CDN флэйкит на серверной загрузке fal ("file_download") → рехостим фото товара в наш бакет (надёжно).
+    // Best-effort: при любом сбое вернётся исходный url. end_image_url (before/after) — тоже.
+    const srcImg = await rehostImageForFal(imageUrl);
+    if (opts.end_image_url) opts.end_image_url = await rehostImageForFal(opts.end_image_url);
+    const inner = await falVideoSubmit(model, srcImg, String(node.prompt || params.prompt || ""), opts);
     if (!inner) return { engine: "fal", error: "fal не принял сабмит (FAL_KEY / баланс / 422 модель)" };
     return { engine: "fal", token: packToken("fal", inner), cost_hint: model.includes("fast") ? "low" : "med" };
   }
