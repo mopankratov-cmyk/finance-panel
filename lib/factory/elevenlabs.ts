@@ -36,6 +36,8 @@ export async function elevenListVoices(): Promise<ElevenVoice[]> {
   } catch { return []; }
 }
 
+let _elevenDefaultVoice: string | null = null; // memoize дефолтного голоса — не дёргаем /voices на каждую озвучку
+
 // TTS → mp3 в Storage → публичный URL. text — русский сценарий. voiceId — из пикера/бренд-кита.
 // voice_settings: stability/similarity_boost/style 0..1, use_speaker_boost. Возвращает { url } или { error }.
 export async function elevenTTS(text: string, voiceId: string, opts?: { stability?: number; similarity_boost?: number; style?: number; model?: string }): Promise<{ url?: string; error?: string }> {
@@ -46,7 +48,7 @@ export async function elevenTTS(text: string, voiceId: string, opts?: { stabilit
   let vid = voiceId;
   if (!vid) vid = (process.env.ELEVENLABS_DEFAULT_VOICE_ID || "").trim();
   // детерминированный дефолт: сортируем по id, чтобы голос был стабильным (а не «первый как вернул API»)
-  if (!vid) { const voices = await elevenListVoices(); vid = ([...voices].sort((a, b) => a.id.localeCompare(b.id))[0]?.id) || ""; }
+  if (!vid) { if (_elevenDefaultVoice === null) { const voices = await elevenListVoices(); _elevenDefaultVoice = ([...voices].sort((a, b) => a.id.localeCompare(b.id))[0]?.id) || ""; } vid = _elevenDefaultVoice; }
   if (!vid) return { error: "ElevenLabs не дал голосов (гео-блок/неверный ключ?) — задай voice_id в бренд-ките или инспекторе" };
   const db = getSupabaseAdmin();
   if (!db) return { error: "Supabase не настроен (негде хостить аудио)" };

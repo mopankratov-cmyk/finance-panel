@@ -16,7 +16,9 @@ export async function POST(req: NextRequest) {
   if (!videoUrl) return NextResponse.json({ error: "Нужен video_url" }, { status: 400 });
   if (!overlayUrl && !audioUrl) return NextResponse.json({ error: "Нужен overlay_url или audio_url" }, { status: 400 });
 
-  const r = await falCompose(videoUrl, { overlayUrl: overlayUrl || undefined, audioUrl: audioUrl || undefined, durationSec: duration });
-  if (r.error || !r.videoUrl) return NextResponse.json({ error: r.error || "compose без видео" }, { status: 502 });
-  return NextResponse.json({ video_url: r.videoUrl });
+  try {
+    const r = await falCompose(videoUrl, { overlayUrl: overlayUrl || undefined, audioUrl: audioUrl || undefined, durationSec: duration });
+    if (r.error || !r.videoUrl) return NextResponse.json({ error: r.error || "compose без видео" }, { status: 502 });
+    return NextResponse.json({ video_url: r.videoUrl });
+  } catch (e) { return NextResponse.json({ error: String(e).slice(0, 200) }, { status: 502 }); }
 }
