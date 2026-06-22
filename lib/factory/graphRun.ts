@@ -341,10 +341,15 @@ export async function runRecipeStep(
     if (renderCount > MAX_RENDERS) throw new Error("превышен лимит запусков генерации графа — стоп для бюджета");
     // авто-привязка ассетов товара к нодам без источника (фикс пустого автопилота, см. assetBind.ts)
     await autoBindAssets(db, plan, article, niche);
+    plan.renderCount = renderCount; // фиксируем счётчик рендеров СРАЗУ (вместе с токенами), а не после цикла
+    // держим лиз ВО ВРЕМЯ серийного сабмита: мид-луп savePlan персистит токены fal/creatify по каждой ноде
+    // сразу после получения. Если хендлер убьют/лиз протухнет в середине — повторный заход видит ноду уже
+    // submitted+token (guard ниже) и НЕ пересабмитит = нет двойной оплаты. Лиз future блокирует конкурентный claim.
+    plan.lease_until = new Date(Date.now() + LEASE_MS).toISOString();
     for (const n of plan.nodes) {
       const tool = String(n.tool || "").toLowerCase();
       if (!tool || ASSEMBLY_TOOLS.has(tool) || tool === "captions") { n.status = "skip"; continue; }
-      if (n.status === "done" || n.status === "submitted") continue;
+      if (n.status === "done" || n.status === "submitted") continue; // идемпотентность: уже отправлено (токен в БД) — не платим повторно
       // V10: владелец принял превью этой ноды (hash совпадает с текущими prompt/params/вход) → берём готовый
       // клип, НЕ платим fal повторно. Привязка к nodeHash инвалидирует при любой правке ноды.
       const pv = (n.params || {})["preview_url"]; const ph = (n.params || {})["preview_hash"];
@@ -355,9 +360,10 @@ export async function runRecipeStep(
       else if (r.done && r.url) { n.status = "done"; n.url = r.url; }
       else if (r.token) { n.status = "submitted"; n.token = r.token; }
       else { n.status = "error"; n.error = "движок без токена"; }
+      await savePlan(db, id, plan); // ПЕРСИСТ ТОКЕНА сразу после сабмита ноды → защита от двойного сабмита при убийстве хендлера
     }
-    plan.renderCount = renderCount;
     plan.step = "gen-poll"; plan.pollCount = 0;
+    plan.lease_until = null; // шаг завершён — освобождаем лиз для следующего тика (gen-poll)
     await savePlan(db, id, plan);
     return;
   }
