@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { createClaudeClient } from "@/lib/agent/client";
 import { learningHints } from "@/lib/factory/learningHints";
+import { extractJson } from "@/lib/factory/extractJson";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -24,28 +25,7 @@ const FORMATS = "ugc_anim|ai_render|prank|talking_head|before_after|pov|unboxing
 
 // толерантный парсер JSON-объекта (переживает обрезку/ограждение)
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function extractJson(raw: string): any | null {
-  let t = raw.replace(/```json\s*/gi, "").replace(/```/g, "").trim();
-  const a = t.indexOf("{");
-  if (a < 0) return null;
-  t = t.slice(a);
-  const tryParse = (x: string) => { try { return JSON.parse(x); } catch { return undefined; } };
-  const v = tryParse(t); if (v !== undefined) return v;
-  const stack: string[] = []; let inStr = false, esc = false;
-  for (let i = 0; i < t.length; i++) {
-    const c = t[i];
-    if (esc) { esc = false; continue; }
-    if (c === "\\") { esc = true; continue; }
-    if (c === '"') { inStr = !inStr; continue; }
-    if (inStr) continue;
-    if (c === "{" || c === "[") stack.push(c);
-    else if (c === "}" || c === "]") stack.pop();
-  }
-  let out = t; if (inStr) out += '"';
-  out = out.replace(/,\s*$/, "");
-  for (let i = stack.length - 1; i >= 0; i--) out += stack[i] === "{" ? "}" : "]";
-  return tryParse(out.replace(/,(\s*[}\]])/g, "$1")) ?? null;
-}
+// extractJson вынесен в @/lib/factory/extractJson (общий с produce/scenario)
 
 async function decompose(params: { viral_video_id?: string; niche?: string; description?: string; hook?: string; format?: string; video_url?: string }) {
   const db = getSupabaseAdmin();

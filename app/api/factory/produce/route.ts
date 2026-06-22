@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClaudeClient } from "@/lib/agent/client";
+import { extractJson } from "@/lib/factory/extractJson";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -55,9 +56,9 @@ export async function POST(req: NextRequest) {
     const res = await client.messages.create({ model: MODEL, max_tokens: 600, system: sys, messages: [{ role: "user", content: user }] });
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const txt = (res.content as any[]).filter((b) => b.type === "text").map((b) => b.text).join(" ");
-    const m = txt.match(/\{[\s\S]*\}/);
-    if (!m) return NextResponse.json({ error: "пустое решение" }, { status: 502 });
-    return NextResponse.json({ decision: JSON.parse(m[0]) });
+    const decision = extractJson(txt);
+    if (!decision) return NextResponse.json({ error: "пустое/нечитаемое решение продюсера" }, { status: 502 });
+    return NextResponse.json({ decision });
   } catch (e) {
     return NextResponse.json({ error: String(e).slice(0, 200) }, { status: 502 });
   }

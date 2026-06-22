@@ -217,8 +217,9 @@ export async function falVideoStatus(token: string): Promise<FalVideoStatus> {
     if (sj.status !== "COMPLETED") return { status: "in_progress" };
     const res = await fetch(responseUrl, { headers: auth, cache: "no-store", signal: AbortSignal.timeout(15000) });
     if (!res.ok) return { status: "error", error: `fal result ${res.status}` };
-    const rj = (await res.json()) as { video?: { url?: string }; detail?: string };
-    const url = rj.video?.url;
+    // разные fal-модели кладут URL в разные поля: seedance → video.url, другие → url/video_url/output.url
+    const rj = (await res.json()) as { video?: { url?: string }; url?: string; video_url?: string; output?: { url?: string } | string; detail?: string };
+    const url = rj.video?.url || rj.video_url || rj.url || (typeof rj.output === "string" ? rj.output : rj.output?.url);
     return url ? { status: "done", videoUrl: url } : { status: "error", error: (rj.detail || "fal без видео").slice(0, 100) };
   } catch (e) { return { status: "error", error: String(e).slice(0, 100) }; }
 }
