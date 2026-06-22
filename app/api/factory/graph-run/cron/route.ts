@@ -1,21 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
-import { internalFetch } from "@/lib/internalFetch";
-import type { RunPlan } from "@/lib/factory/graphRun";
+import { claimNextRecipe, runRecipeStep, MAX_STEP_ATTEMPTS, type RunPlan } from "@/lib/factory/graphRun";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-// Vercel Cron · СТРАХОВКА надёжности графа-исполнителя. self-chain тиков (graph-run/tick через Vercel after())
-// иногда ОБРЫВАЕТСЯ на долгом render-poll → рецепт висит status=running «готов на VM, но не забанчен» без будильника.
-// Этот крон будит ЗАВИСШИЕ рецепты: status=running + активный шаг + updated_at устарел (здоровая цепочка
-// обновляет updated_at каждые ~12с на каждом poll-цикле) + лиз свободен/протух. claimNextRecipe в тике ставит
-// CAS-лиз → даже если живая цепочка вдруг тикнет параллельно, двойного захвата/двойной оплаты НЕ будет.
-// Регистрация в vercel.json: { "path": "/api/factory/graph-run/cron", "schedule": "*/2 * * * *" }.
-// Авторизация: Bearer CRON_SECRET (как balances-cron/corpus-cron). Вызывается кроном или кнопкой из кокпита.
+// Vercel Cron · СТРАХОВКА надёжности графа-исполнителя. self-chain тиков (graph-run/tick) делает работу в
+// Vercel after() — а after() НЕ исполняется надёжно при server-to-server вызове (крон→internalFetch→tick):
+// тик отвечает, but after() с runRecipeStep не докручивается → рецепт висит status=running, pollCount не растёт
+// (диагностировано вживую: крон звал тик, graph_resurrect писался, а шаг не исполнялся). Поэтому здесь крон
+// гоняет runRecipeStep СИНХРОННО (await в своём хендлере) — гарантированно, без зависимости от after().
+// Будит зависшие: status=running + активный шаг + updated_at>90с (здоровая цепочка освежает ~12с) + лиз свободен.
+// claimNextRecipe ставит CAS-лиз → нет двойного захвата с живой цепочкой. Один шаг на рецепт за прогон;
+// 2-минутный такт доводит рецепт по шагам (render-poll→otk→bank→done). cf_signals graph_resurrect — телеметрия.
+// vercel.json: { "path": "/api/factory/graph-run/cron", "schedule": "*/2 * * * *" }. Auth: Bearer CRON_SECRET.
 
-const STALE_MS = 90_000;   // > самого долгого здорового «молчания» шага (autofill ~45с) → не будим живые
-const MAX_WAKE = 25;       // защита от лавины: за один прогон будим не больше N зависших
+const STALE_MS = 90_000;   // > самого долгого здорового «молчания» шага → не трогаем живые
+const MAX_WAKE = 10;       // синхронно гоняем шаги → держим в бюджете maxDuration; остальное добьёт след. прогон
 
 function leaseFree(plan: RunPlan | null): boolean {
   if (!plan) return false;
@@ -42,7 +43,6 @@ export async function GET(req: NextRequest) {
     .limit(MAX_WAKE);
 
   const rows = (data as { id: number; run_plan: RunPlan | null }[] | null) || [];
-  // только реально зависшие: активный шаг (не done/failed) + свободный/протухший лиз
   const stuck = rows.filter((r) => {
     const p = r.run_plan;
     return p && p.step !== "done" && p.step !== "failed" && leaseFree(p);
@@ -50,21 +50,33 @@ export async function GET(req: NextRequest) {
 
   const origin = req.nextUrl.origin;
   const woken: number[] = [];
-  await Promise.all(stuck.map(async (r) => {
+  const advanced: { id: number; from: string }[] = [];
+
+  await Promise.all(stuck.map(async (row) => {
+    const ctx = await claimNextRecipe(db, row.id);
+    if (!ctx) return;                                   // лиз заняла живая цепочка / гонка — пропускаем
+    woken.push(row.id);
+    const before = ctx.plan.step;
     try {
-      await internalFetch(`${origin}/api/factory/graph-run/tick`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ recipe_id: r.id }), signal: AbortSignal.timeout(20000),
-      });
-      woken.push(r.id);
-    } catch { /* следующий прогон крона добьёт */ }
+      await runRecipeStep(db, origin, ctx);             // СИНХРОННО — гарантированный шаг (не через after())
+      const p = ctx.plan;
+      if (p.attempts) { p.attempts = 0; await db.from("node_recipes").update({ run_plan: p, updated_at: new Date().toISOString() }).eq("id", ctx.id); }
+      advanced.push({ id: row.id, from: before });
+    } catch (e) {
+      // зеркалит обработку ошибки в graph-run/tick: ретрай шага до MAX_STEP_ATTEMPTS, затем run_fail. Лиз снимаем.
+      const msg = String(e instanceof Error ? e.message : e).slice(0, 300);
+      const plan = ctx.plan;
+      const attempts = (plan.attempts || 0) + 1;
+      plan.attempts = attempts; plan.error = msg; plan.lease_until = null;
+      if (attempts >= MAX_STEP_ATTEMPTS) { plan.step = "failed"; await db.from("node_recipes").update({ run_plan: plan, status: "run_fail", updated_at: new Date().toISOString() }).eq("id", ctx.id); }
+      else await db.from("node_recipes").update({ run_plan: plan, updated_at: new Date().toISOString() }).eq("id", ctx.id);
+    }
   }));
 
-  // телеметрия: если будим рецепты — значит self-chain оборвалась; durable-сигнал для диагностики надёжности
   if (woken.length) {
-    try { await db.from("cf_signals").insert({ event: "graph_resurrect", params: { woken, scanned: rows.length } }); } catch { /* журнал best-effort */ }
-    console.warn(`[graph-cron] разбужено зависших рецептов: ${woken.length} (${woken.join(",")})`);
+    try { await db.from("cf_signals").insert({ event: "graph_resurrect", params: { woken, advanced, scanned: rows.length } }); } catch { /* журнал best-effort */ }
+    console.warn(`[graph-cron] разбужено: ${woken.length} (${woken.join(",")}), продвинуто: ${advanced.length}`);
   }
 
-  return NextResponse.json({ ok: true, scanned: rows.length, stuck: stuck.length, woken });
+  return NextResponse.json({ ok: true, scanned: rows.length, stuck: stuck.length, woken, advanced });
 }
