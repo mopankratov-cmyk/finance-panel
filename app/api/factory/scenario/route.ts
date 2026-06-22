@@ -4,6 +4,7 @@ import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { DEAI_FILTERS, PROBLEM_STACK } from "@/lib/factory/standard";
 import { brandProfile } from "@/lib/factory/brandProfiles";
 import { nicheFromArticle } from "@/lib/factory/rubric";
+import { extractJson } from "@/lib/factory/extractJson";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -114,9 +115,9 @@ export async function POST(req: NextRequest) {
     const res = await client.messages.create(samp as any);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const txt = (res.content as any[]).filter((b) => b.type === "text").map((b) => b.text).join(" ");
-    const m = txt.match(/\{[\s\S]*\}/);
-    if (!m) return NextResponse.json({ error: "пустой сценарий" }, { status: 502 });
-    return NextResponse.json({ article, product: name || article, scenario: JSON.parse(m[0]) });
+    const scenario = extractJson(txt);
+    if (!scenario) return NextResponse.json({ error: "пустой/нечитаемый сценарий" }, { status: 502 });
+    return NextResponse.json({ article, product: name || article, scenario });
   } catch (e) {
     return NextResponse.json({ error: String(e).slice(0, 200) }, { status: 502 });
   }

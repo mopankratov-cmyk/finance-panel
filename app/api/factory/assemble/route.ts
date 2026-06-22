@@ -26,15 +26,20 @@ export async function POST(req: NextRequest) {
   // блоки библиотеки: сперва по точному артикулу, иначе по нише. url обязателен.
   const cols = "id,url,kind,role,duration_sec";
   let assets: AssetRow[] = [];
+  let dbErr: string | null = null; // не маскируем сбой БД (RLS/нет таблицы) под «пустую библиотеку»
   if (article) {
-    const { data } = await db.from("content_assets").select(cols).eq("article", article).not("url", "is", null).limit(8);
+    const { data, error } = await db.from("content_assets").select(cols).eq("article", article).not("url", "is", null).limit(8);
+    if (error) dbErr = error.message;
     assets = (data as AssetRow[] | null) ?? [];
   }
   if (!assets.length) {
-    const { data } = await db.from("content_assets").select(cols).eq("niche", niche).not("url", "is", null).limit(8);
+    const { data, error } = await db.from("content_assets").select(cols).eq("niche", niche).not("url", "is", null).limit(8);
+    if (error) dbErr = error.message;
     assets = (data as AssetRow[] | null) ?? [];
   }
-  if (!assets.length) return NextResponse.json({ error: "нет реальных блоков для сборки (наполни библиотеку content_assets)", niche }, { status: 404 });
+  if (!assets.length) return dbErr
+    ? NextResponse.json({ error: "сбой запроса библиотеки: " + dbErr, niche }, { status: 500 })
+    : NextResponse.json({ error: "нет реальных блоков для сборки (наполни библиотеку content_assets)", niche }, { status: 404 });
 
   // порядок: видео раньше изображений (видео = живой хребет). Берём до 4 блоков.
   const ordered = [...assets].sort((a, b) => (a.kind === "video" ? 0 : 1) - (b.kind === "video" ? 0 : 1)).slice(0, 4);

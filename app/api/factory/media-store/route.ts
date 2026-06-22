@@ -10,7 +10,7 @@ const BUCKET = "factory-media"; // публичный бакет под слай
 // Нужно чтобы НЕМАЯ карусель (slides в base64) получила URL и доходила до автопостинга/PostMyPost.
 export async function POST(req: NextRequest) {
   const db = getSupabaseAdmin();
-  if (!db) return NextResponse.json({ detail: "Supabase не настроен (NEXT_PUBLIC_SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY)" }, { status: 500 });
+  if (!db) return NextResponse.json({ error:"Supabase не настроен (NEXT_PUBLIC_SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY)" }, { status: 500 });
 
   const body = await req.json().catch(() => ({}));
   const images: string[] = Array.isArray(body.images) ? body.images.slice(0, 12) : [];
@@ -18,7 +18,7 @@ export async function POST(req: NextRequest) {
   // PNG нужен для оверлея с прозрачностью (хук-текст/субтитры поверх видео); по умолчанию JPEG (слайды карусели).
   const ext = body.format === "png" ? "png" : "jpg";
   const contentType = ext === "png" ? "image/png" : "image/jpeg";
-  if (!images.length) return NextResponse.json({ detail: "Нет images (массив base64 без префикса data:)" }, { status: 400 });
+  if (!images.length) return NextResponse.json({ error:"Нет images (массив base64 без префикса data:)" }, { status: 400 });
 
   // создать бакет (идемпотентно — если есть, проигнорим ошибку)
   try { await db.storage.createBucket(BUCKET, { public: true }); } catch { /* уже существует */ }
@@ -36,6 +36,6 @@ export async function POST(req: NextRequest) {
       if (data?.publicUrl) urls.push(data.publicUrl);
     } catch { /* пропустим битый слайд */ }
   }
-  if (!urls.length) return NextResponse.json({ detail: "не удалось залить ни один слайд" }, { status: 502 });
+  if (!urls.length) return NextResponse.json({ error:"не удалось залить ни один слайд" }, { status: 502 });
   return NextResponse.json({ urls });
 }

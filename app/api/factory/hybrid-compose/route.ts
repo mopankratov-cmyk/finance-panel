@@ -28,27 +28,29 @@ export async function POST(req: NextRequest) {
   const actorDur = Math.max(1, Math.min(10, Number(body.actor_duration_sec) || 3));
   const productSecPerImage = Math.max(1, Math.min(5, Number(body.product_sec_per_image) || 3));
 
-  // WB-CDN флэйкит на серверной загрузке fal-compose ("file_download") → рехостим фото товара в наш бакет.
-  // actorUrl не трогаем (Creatify/HeyGen видео, не WB-CDN). Best-effort: при сбое вернётся исходный url.
-  const rehosted = await Promise.all(productImages.map((u) => rehostImageForFal(u)));
+  try {
+    // WB-CDN флэйкит на серверной загрузке fal-compose ("file_download") → рехостим фото товара в наш бакет.
+    // actorUrl не трогаем (Creatify/HeyGen видео, не WB-CDN). Best-effort: при сбое вернётся исходный url.
+    const rehosted = await Promise.all(productImages.map((u) => rehostImageForFal(u)));
 
-  // Строим таймлайн: актёр (talking-head хук) → фото товара последовательно
-  // Образец U2: hook(0-3с) → product demo(3-12с). Простой, без outro актёра.
-  const clips: FalTimelineClip[] = [
-    { url: actorUrl, type: "video", durationSec: actorDur },
-    ...rehosted.map((img) => ({ url: img, type: "image" as const, durationSec: productSecPerImage })),
-  ];
+    // Строим таймлайн: актёр (talking-head хук) → фото товара последовательно
+    // Образец U2: hook(0-3с) → product demo(3-12с). Простой, без outro актёра.
+    const clips: FalTimelineClip[] = [
+      { url: actorUrl, type: "video", durationSec: actorDur },
+      ...rehosted.map((img) => ({ url: img, type: "image" as const, durationSec: productSecPerImage })),
+    ];
 
-  const totalDur = actorDur + productImages.length * productSecPerImage;
-  const r = await falTimeline(clips, { maxWaitMs: 55000 });
-  if (r.error || !r.videoUrl) {
-    return NextResponse.json({ error: r.error || "compose без видео" }, { status: 502 });
-  }
-  return NextResponse.json({
-    video_url: r.videoUrl,
-    duration_sec: totalDur,
-    clips: clips.length,
-    actor_dur: actorDur,
-    product_images: productImages.length,
-  });
+    const totalDur = actorDur + productImages.length * productSecPerImage;
+    const r = await falTimeline(clips, { maxWaitMs: 55000 });
+    if (r.error || !r.videoUrl) {
+      return NextResponse.json({ error: r.error || "compose без видео" }, { status: 502 });
+    }
+    return NextResponse.json({
+      video_url: r.videoUrl,
+      duration_sec: totalDur,
+      clips: clips.length,
+      actor_dur: actorDur,
+      product_images: productImages.length,
+    });
+  } catch (e) { return NextResponse.json({ error: String(e).slice(0, 200) }, { status: 502 }); }
 }

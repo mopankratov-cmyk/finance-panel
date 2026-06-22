@@ -8,7 +8,7 @@ export const maxDuration = 60;
 // Премиум image-to-video (Kling/Seedance через FAL): реальное фото товара → динамичное видео 9:16.
 // Preservation-first промпт держит форму/лейбл товара. Async: возвращает task_id, статус опрашивать.
 export async function POST(req: NextRequest) {
-  if (!process.env.FAL_KEY) return NextResponse.json({ detail: "FAL_KEY не настроен" }, { status: 500 });
+  if (!process.env.FAL_KEY) return NextResponse.json({ error:"FAL_KEY не настроен" }, { status: 500 });
   const body = await req.json().catch(() => ({}));
   // диагностика FAL: сырой ответ (статус 401=ключ, 402/403=баланс/доступ, 422=модель)
   if (body.debug === "fal") {
@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
       }
     } catch { /* без фото — ошибка ниже */ }
   }
-  if (!imageUrl) return NextResponse.json({ detail: "Нет фото товара (передай image_url или артикул с данными)" }, { status: 400 });
+  if (!imageUrl) return NextResponse.json({ error:"Нет фото товара (передай image_url или артикул с данными)" }, { status: 400 });
 
   // ПРОМПТ — приоритет: выученный/улучшенный (body.prompt) > Claude пишет под товар > шаблон-fallback
   const TEMPLATE = `Keep the product EXACTLY as in the photo — identical shape, proportions, label, logo, colors; do NOT morph, deform, or replace it. ${motion || "Subtle cinematic camera motion: slow push-in with gentle parallax, soft studio light, the product stays centered, crisp and fully intact."}${brief ? ` Mood: ${brief}.` : ""}`;
@@ -79,6 +79,6 @@ export async function POST(req: NextRequest) {
   // Best-effort: при сбое вернётся исходный url. Тот же фикс, что в nodeEngine.submitNode (этот путь — автопилот/legacy-UI).
   const srcImg = await rehostImageForFal(imageUrl);
   const token = await falVideoSubmit(model, srcImg, prompt, { duration: body.duration === "10" ? "10" : "5" });
-  if (!token) return NextResponse.json({ detail: "FAL не принял задачу (ключ/баланс/модель)" }, { status: 502 });
+  if (!token) return NextResponse.json({ error:"FAL не принял задачу (ключ/баланс/модель)" }, { status: 502 });
   return NextResponse.json({ task_id: "fv." + token, model, image_url: imageUrl, prompt_used: prompt, prompt_by: promptBy });
 }
