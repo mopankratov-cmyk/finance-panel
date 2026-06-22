@@ -203,7 +203,7 @@ async function savePlan(db: SupabaseClient, recipeId: number, plan: RunPlan, ext
 // (estimateRecipe, disk_real не в TOOL_COST) НЕ видит. В обычном случае запас REGEN_FACTOR=3 это поглощает
 // (факт ≤ est×1.9 < est×3). Для UNATTENDED-масштаба правильный фикс — пост-autofill $-чек против бюджета батча
 // (плюмбинг budget_usd в graphRun) — это долг (см. self-review B1), а не правка money-guard вслепую.
-async function autoBindAssets(db: SupabaseClient, plan: RunPlan, article: string): Promise<void> {
+async function autoBindAssets(db: SupabaseClient, plan: RunPlan, article: string, niche: string): Promise<void> {
   if (!article) return;
   const hasSrc = (n: RunNode) => {
     const p = (n.params || {}) as Record<string, unknown>;
@@ -227,13 +227,17 @@ async function autoBindAssets(db: SupabaseClient, plan: RunPlan, article: string
   } catch { return; } // каталог недоступен — ноды упадут штатно, как раньше
   const pool = classifyAssets(assets);
   let imgIdx = 0; // разные стартовые фото на разные i2v-ноды (анти-сэйминес: не 5 клипов с одного кадра)
+  let unbound = 0;
   for (const n of needs) {
     const b = chooseBinding(String(n.tool || ""), false, pool, imgIdx);
-    if (!b) continue;
+    if (!b) { unbound++; continue; }
     if (b.tool) n.tool = b.tool;
     if (b.asset_url) n.asset_url = b.asset_url;
     if (b.image_url) { n.image_url = b.image_url; (n.params as Record<string, unknown>)["image_url"] = b.image_url; imgIdx++; }
   }
+  // часть нод осталась без источника (нет реальной съёмки/WB-фото под товар) → они упадут в submit.
+  // Раньше тихо → автопилот «пустой» без причины; теперь сигнал, чтобы оператор видел почему.
+  if (unbound) { try { await logSignal(db, "asset_bind_empty", { niche, article, params: { unbound, needs: needs.length, assets: assets.length } }); } catch { /* сигнал best-effort */ } }
 }
 
 // Durable-персист сгенерённых клипов в наш бакет + каталог (content_assets). КОРЕНЬ: i2v-клипы (seedance/kling/
@@ -259,8 +263,8 @@ export async function persistClips(db: SupabaseClient, nodes: RunNode[], article
       if (error) return;
       const pub = db.storage.from(CLIP_BUCKET).getPublicUrl(path).data?.publicUrl;
       if (!pub) return;
+      n.url = pub; // рендерим из durable-URL — ставим ДО insert: если каталожная вставка упадёт, клип уже в нашем бакете и рендер не вернётся на эфемерный fal-URL
       await db.from("content_assets").insert({ disk: "gen", kind: "clip", niche: niche || null, article: article || null, url: pub, analyzed: true, analysis: { source_url: src, role: roleOf(n), tool: n.tool || null, source: "clip_library" } });
-      n.url = pub; // рендерим из durable-URL
     } catch { /* best-effort — теряем клип на fal, но пайплайн жив */ }
   }));
 }
@@ -336,7 +340,7 @@ export async function runRecipeStep(
     const renderCount = (plan.renderCount || 0) + 1;
     if (renderCount > MAX_RENDERS) throw new Error("превышен лимит запусков генерации графа — стоп для бюджета");
     // авто-привязка ассетов товара к нодам без источника (фикс пустого автопилота, см. assetBind.ts)
-    await autoBindAssets(db, plan, article);
+    await autoBindAssets(db, plan, article, niche);
     for (const n of plan.nodes) {
       const tool = String(n.tool || "").toLowerCase();
       if (!tool || ASSEMBLY_TOOLS.has(tool) || tool === "captions") { n.status = "skip"; continue; }
@@ -379,6 +383,17 @@ export async function runRecipeStep(
     }
     // таймаут оставшихся → помечаем error, идём дальше с тем, что готово
     for (const n of stillPending) { n.status = "error"; n.error = "render timeout"; }
+    // ни одна нода не готова → фейлим СРАЗУ с причинами нод (раньше шли в assemble → throw «нет клипов»
+    // → 3 ретрая шага → run_fail без деталей; теперь оператор видит, КАКИЕ ноды и ПОЧЕМУ упали)
+    const anyDone = plan.nodes.some((n) => n.status === "done" && n.url);
+    if (!anyDone) {
+      const errs = plan.nodes.filter((n) => n.status === "error")
+        .map((n) => `${n.node_type || n.slot || "нода"}: ${n.error || "?"}`).slice(0, 6).join("; ");
+      plan.step = "failed";
+      plan.error = "все ноды генерации упали — " + (errs || "без деталей");
+      await savePlan(db, id, plan, { status: "run_fail" });
+      return;
+    }
     plan.step = "assemble";
     await savePlan(db, id, plan);
     return;

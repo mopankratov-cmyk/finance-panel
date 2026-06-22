@@ -90,25 +90,28 @@ export async function buildCarouselSlides(imageUrl: string, texts: string[]): Pr
 }
 
 // Кадры (first/middle/last) из видео через fal extract-frame → JPEG base64 (как ждёт video-critic).
+// ПАРАЛЛЕЛЬНО: раньше серийно 3 кадра × до 50с = до 150с → шаг otk не влезал ни в лиз (90с), ни в
+// maxDuration (60с) → Vercel убивал хендлер до savePlan (ОТК/output_url терялись) ИЛИ лиз протухал в
+// середине шага → крон захватывал тот же рецепт и гонял otk повторно (повторный платный video-critic).
+// Promise.all сохраняет порядок [first, middle, last], который ждёт video-critic.
 export async function extractFrames(videoUrl: string): Promise<string[]> {
   const k = process.env.FAL_KEY;
   if (!k || !videoUrl) return [];
-  const out: string[] = [];
-  for (const frame_type of ["first", "middle", "last"]) {
+  const results = await Promise.all((["first", "middle", "last"] as const).map(async (frame_type) => {
     try {
       const r = await fetch("https://fal.run/fal-ai/ffmpeg-api/extract-frame", {
         method: "POST", headers: { Authorization: `Key ${k}`, "Content-Type": "application/json" }, cache: "no-store",
         body: JSON.stringify({ video_url: videoUrl, frame_type }), signal: AbortSignal.timeout(30000),
       });
-      if (!r.ok) continue;
+      if (!r.ok) return null;
       const j = (await r.json()) as { images?: { url?: string }[] };
       const u = j.images?.[0]?.url;
-      if (!u) continue;
+      if (!u) return null;
       const img = await fetch(u, { signal: AbortSignal.timeout(20000) });
-      if (!img.ok) continue;
+      if (!img.ok) return null;
       const jpeg = await sharp(Buffer.from(await img.arrayBuffer())).resize(512, null, { fit: "inside", withoutEnlargement: true }).jpeg({ quality: 70 }).toBuffer();
-      out.push(jpeg.toString("base64"));
-    } catch { /* пропускаем кадр */ }
-  }
-  return out;
+      return jpeg.toString("base64");
+    } catch { return null; /* пропускаем кадр */ }
+  }));
+  return results.filter((x): x is string => !!x);
 }
