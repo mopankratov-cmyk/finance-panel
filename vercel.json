@@ -2,6 +2,7 @@
   "crons": [
     { "path": "/api/sync/all", "schedule": "0 6 * * *" },
     { "path": "/api/factory/jobs/corpus-cron", "schedule": "0 3 * * 1" },
-    { "path": "/api/factory/jobs/balances-cron", "schedule": "0 7 * * *" }
+    { "path": "/api/factory/jobs/balances-cron", "schedule": "0 7 * * *" },
+    { "path": "/api/factory/graph-run/cron", "schedule": "*/2 * * * *" }
   ]
 }
