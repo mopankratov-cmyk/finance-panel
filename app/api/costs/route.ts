@@ -1,12 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { OPIU_ENTITY } from "@/lib/opiu/constants";
+import { requireApiSession } from "@/lib/auth/apiGuard";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
 
 // GET — список себестоимостей. POST — upsert по артикулу.
 export async function GET(request: NextRequest) {
+  const gate = await requireApiSession();
+  if (gate) return gate;
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ rows: [] });
   const q = (new URL(request.url).searchParams.get("q") || "").toLowerCase().trim();
@@ -19,6 +22,8 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const gate = await requireApiSession();
+  if (gate) return gate;
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 500 });
   const b = (await request.json().catch(() => ({}))) as { article?: string; cost_rub?: number; name?: string };

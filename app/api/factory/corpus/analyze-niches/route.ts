@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { virloListOrbits, virloSearchStart } from "@/lib/factory/trendSources";
 import { nicheFromArticle } from "@/lib/factory/rubric";
+import { internalFetch } from "@/lib/internalFetch";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -60,11 +61,11 @@ export async function POST(req: NextRequest) {
   await Promise.all(toBuild.map(async (niche) => {
     const ob = bestOrbit[niche];
     try {
-      await fetch(`${origin}/api/factory/corpus/sync-orbit`, {
+      await internalFetch(`${origin}/api/factory/corpus/sync-orbit`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ job_id: ob.id, product_name: ob.name }), signal: AbortSignal.timeout(40000),
       }).then((r) => r.json()).catch(() => null);
-      const pbr = await fetch(`${origin}/api/factory/niche-playbook`, {
+      const pbr = await internalFetch(`${origin}/api/factory/niche-playbook`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ product_name: ob.name, job_id: ob.id }), signal: AbortSignal.timeout(55000),
       }).then((r) => r.json()).catch(() => ({}));

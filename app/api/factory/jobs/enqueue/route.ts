@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { createJob } from "@/lib/factory/jobs";
+import { internalFetch } from "@/lib/internalFetch";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
@@ -25,7 +26,7 @@ export async function POST(req: NextRequest) {
 
   // разбудить цепочку тиков ПОСЛЕ ответа (Vercel держит функцию через waitUntil)
   const origin = req.nextUrl.origin;
-  after(async () => { try { await fetch(`${origin}/api/factory/jobs/tick`, { method: "POST", signal: AbortSignal.timeout(8000) }); } catch { /* подхватит list-резурекция или следующий enqueue */ } });
+  after(async () => { try { await internalFetch(`${origin}/api/factory/jobs/tick`, { method: "POST", signal: AbortSignal.timeout(8000) }); } catch { /* подхватит list-резурекция или следующий enqueue */ } });
 
   return NextResponse.json({ queued: ids.length, ids });
 }

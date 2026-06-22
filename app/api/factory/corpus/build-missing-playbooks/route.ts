@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { internalFetch } from "@/lib/internalFetch";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -56,7 +57,7 @@ export async function POST(req: NextRequest) {
     // Параллельно: ниши независимы, niche-playbook строит из корпуса (без Virlo) → общее время = одна ниша, не сумма.
     await Promise.all(need.map(async (niche) => {
       try {
-        const r = await fetch(`${origin}/api/factory/niche-playbook`, {
+        const r = await internalFetch(`${origin}/api/factory/niche-playbook`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ niche }),

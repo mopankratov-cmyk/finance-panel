@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { collectBalances } from "@/lib/factory/balances";
+import { internalFetch } from "@/lib/internalFetch";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -61,7 +62,7 @@ export async function POST(req: NextRequest) {
     if (spent + est > cap) { cappedByBudget = true; break; }
     spent = Math.round((spent + est) * 100) / 100;
     if (!dryRun) {
-      try { await fetch(`${origin}/api/factory/graph-run`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ recipe_id: rid, notify: true, restart: true }), signal: AbortSignal.timeout(20000) }); } catch { /* очередь воскресит */ }
+      try { await internalFetch(`${origin}/api/factory/graph-run`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ recipe_id: rid, notify: true, restart: true }), signal: AbortSignal.timeout(20000) }); } catch { /* очередь воскресит */ }
     }
     enqueued.push(rid);
   }

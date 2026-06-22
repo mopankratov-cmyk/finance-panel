@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { listJobs, hasStuck } from "@/lib/factory/jobs";
+import { internalFetch } from "@/lib/internalFetch";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
@@ -14,7 +15,7 @@ export async function GET(req: NextRequest) {
 
   if (hasStuck(jobs)) {
     const origin = req.nextUrl.origin;
-    after(async () => { try { await fetch(`${origin}/api/factory/jobs/tick`, { method: "POST", signal: AbortSignal.timeout(8000) }); } catch { /* ok */ } });
+    after(async () => { try { await internalFetch(`${origin}/api/factory/jobs/tick`, { method: "POST", signal: AbortSignal.timeout(8000) }); } catch { /* ok */ } });
   }
 
   const summary: Record<string, number> = { queued: 0, running: 0, polling: 0, done: 0, failed: 0 };

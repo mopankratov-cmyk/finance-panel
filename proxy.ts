@@ -7,24 +7,61 @@ export const config = {
   matcher: ["/((?!_next/static|_next/image|favicon.ico|login|api/auth|inferno/vendor|share).*)"],
 };
 
+// /api/*-эндпоинты, доступные БЕЗ сессии и БЕЗ cron-секрета (явный allowlist).
+// Это тонкие прокси внешнего медиа — их публичный URL отдаётся внешним рендерам
+// (FAL/Seedance), которые фетчат его сервер-сайд без нашей куки, — и вебхук Telegram,
+// который проверяет собственный секрет (x-telegram-bot-api-secret-token).
+// ВНИМАНИЕ: всё ОСТАЛЬНОЕ под /api/* требует сессию ИЛИ Bearer CRON_SECRET (fail-closed).
+const PUBLIC_API: { prefix: string; methods?: string[] }[] = [
+  { prefix: "/api/factory/telegram", methods: ["POST"] }, // вебхук Telegram (валидирует свой секрет сам)
+  { prefix: "/api/lab/img-proxy" }, // CORS-прокси картинок (канвас-редакторы + внешние рендеры)
+  { prefix: "/api/lab/media-proxy" }, // CORS-прокси видео/аудио
+  { prefix: "/api/lab/yandex-img" }, // «стабильный публичный URL» → FAL/Seedance фетчат напрямую
+  { prefix: "/api/lab/drive-img" }, // фото моделей с Google Drive → Seedance i2v
+  { prefix: "/api/lab/model-avatar" }, // аватар модели (<img> + внешний рендер)
+  { prefix: "/api/lab/model-photos" }, // список фото модели (отдаёт yandex-img URL)
+  { prefix: "/api/lab/product-image" }, // резолвер WB-картинки товара
+];
+
+function isPublicApi(pathname: string, method: string): boolean {
+  return PUBLIC_API.some(
+    (p) => pathname.startsWith(p.prefix) && (!p.methods || p.methods.includes(method)),
+  );
+}
+
 export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
-
-  // API кроме auth — пропускаем (защита данных — отдельно; гейтим страницы)
-  const isPage = !pathname.startsWith("/api/");
-
   const session = await verifySession(req.cookies.get(SESSION_COOKIE)?.value);
 
+  // ── API: явная авторизация на уровне приложения ──
+  // Не полагаемся на Vercel Deployment Protection как на единственный контроль:
+  // утечка preview-URL или мисконфиг протекшна не должны открывать данные/мутации.
+  if (pathname.startsWith("/api/")) {
+    // 1) явные публичные эндпоинты (медиа-прокси для внешних рендеров, вебхук Telegram)
+    if (isPublicApi(pathname, req.method)) return NextResponse.next();
+    // 2) залогиненный пользователь — кука fp_session уходит автоматически
+    //    на same-origin fetch() и подзапросы <img>/<video src="/api/...">
+    if (session) return NextResponse.next();
+    // 3) машинные/cron-вызовы и внутренний фан-аут (route→route): Bearer CRON_SECRET
+    const secret = process.env.CRON_SECRET;
+    if (secret && req.headers.get("authorization") === `Bearer ${secret}`) {
+      return NextResponse.next();
+    }
+    // 4) локальная разработка (не production) — не блокируем, как и прежний checkCronAuth dev-skip
+    if (process.env.NODE_ENV !== "production") return NextResponse.next();
+    // иначе — fail-closed
+    return NextResponse.json({ error: "Не авторизовано" }, { status: 401 });
+  }
+
+  // ── Страницы: гейтим по сессии и роли ──
   if (!session) {
-    if (!isPage) return NextResponse.next(); // API без сессии не редиректим (вернёт данные/401 сам)
     const url = req.nextUrl.clone();
     url.pathname = "/login";
     url.searchParams.set("from", pathname);
     return NextResponse.redirect(url);
   }
 
-  // Ролевой гейтинг страниц
-  if (isPage && !canAccess(session.role, pathname)) {
+  if (!canAccess(session.role, pathname)) {
     const url = req.nextUrl.clone();
     url.pathname = ROLE_HOME[session.role] || "/";
     return NextResponse.redirect(url);

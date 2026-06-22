@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { internalFetch } from "@/lib/internalFetch";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
@@ -40,7 +41,7 @@ export async function POST(req: NextRequest) {
       const nodes = (((rec?.run_plan as Record<string, unknown>)?.nodes) as Record<string, unknown>[]) || [];
       const h = nodes.find((n) => String((n.params as Record<string, unknown>)?.role || n.slot || "").toLowerCase() === "hook") || nodes[0];
       const hook = String((h?.onscreen_text as string) || (h?.prompt as string) || "").slice(0, 120);
-      await fetch(`${req.nextUrl.origin}/api/factory/winners`, {
+      await internalFetch(`${req.nextUrl.origin}/api/factory/winners`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url, hook, views, note: `рынок: ${views} просм · ${b.platform || "TikTok"}` }),
         signal: AbortSignal.timeout(20000),
