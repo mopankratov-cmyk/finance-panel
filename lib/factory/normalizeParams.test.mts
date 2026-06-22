@@ -98,6 +98,23 @@ function eq(a: unknown, b: unknown, msg: string) { ok(JSON.stringify(a) === JSON
   ok(!r.warnings.some(w => w.includes("visual_style")), "встроенный visual_style без варнинга");
 }
 
+// ── picker-сентинел: автофилл вписал ИМЯ контрола в значение source-поля → отброшено (не доедет до Remotion как staticFile("picker")) ──
+{
+  const r = normalizeParams("disk_real", { url: "picker", role: "scene" });
+  ok(!("url" in r.params) || r.params.url === undefined, "disk_real url=«picker» (имя контрола) отброшен");
+  eq(r.params.role, "scene", "мета-поле role при этом сохранено");
+  ok(r.warnings.some(w => w.includes("picker") && w.includes("ui-контрол")), "варнинг про плейсхолдер-сентинел");
+}
+{
+  const r = normalizeParams("seedance", { image_url: "picker" });
+  ok(!("image_url" in r.params) || r.params.image_url === undefined, "seedance image_url=«picker» отброшен");
+  ok(r.warnings.includes("needs_image"), "после сброса заглушки i2v-гард просит реальное image_url (needs_image)");
+}
+{ // реальный URL в том же поле — НЕ трогаем
+  const r = normalizeParams("disk_real", { url: "https://cdn.example.com/clip.mp4" });
+  eq(r.params.url, "https://cdn.example.com/clip.mp4", "реальный url источника сохранён (сентинел-гард не задевает валидное)");
+}
+
 // ── цвет (ui:color): валидный hex проходит, мусор отбрасывается/на дефолт ──
 {
   const r = normalizeParams("creatify", { "caption_setting.text_color": "#FFEE00", "caption_setting.highlight_text_color": "красный" });

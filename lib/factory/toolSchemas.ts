@@ -7,6 +7,17 @@ import { CREATIFY_SCENES } from "./creatify";
 
 export type UiControl = "dropdown" | "slider" | "toggle" | "text" | "textarea" | "color" | "number" | "picker" | "file";
 
+// Автофилл (Claude) иногда вписывает ИМЯ ui-контрола в ЗНАЧЕНИЕ поля-источника (url="picker", image_url="picker")
+// — это маркер «выбрать в студии», не реальный ассет. Такое значение (как и пустое) НЕ источник: иначе submit
+// помечает ноду done с заглушкой, авто-байнд её пропускает (думает «источник есть»), и «picker» доезжает до
+// Remotion → staticFile("picker") → 404. Здесь — единый детектор плейсхолдера для source-полей.
+const UI_CONTROL_NAMES = new Set<string>(["dropdown", "slider", "toggle", "text", "textarea", "color", "number", "picker", "file"]);
+export function isPlaceholderSource(v: unknown): boolean {
+  if (v == null) return true;
+  const s = String(v).trim().toLowerCase();
+  return s === "" || UI_CONTROL_NAMES.has(s);
+}
+
 export interface ToolField {
   name: string;            // RU-лейбл
   api_param: string;       // точное имя поля API

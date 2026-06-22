@@ -7,6 +7,7 @@ import { extractFrames } from "./serverMedia";
 import { logGeneration } from "./genHistory";
 import { tgReady, tgSendReview } from "./telegram";
 import { classifyAssets, chooseBinding, type DiskAsset } from "./assetBind";
+import { isPlaceholderSource } from "./toolSchemas";
 
 // V3 исполнитель графа: рецепт (node_recipe_nodes) → генерация нод → Shotstack-сборка → ОТК → банк.
 // Self-chaining машина по образцу jobs/tick: один тик = ОДИН шаг (<60с), состояние в node_recipes.run_plan.
@@ -206,7 +207,9 @@ async function autoBindAssets(db: SupabaseClient, plan: RunPlan, article: string
     const p = (n.params || {}) as Record<string, unknown>;
     // preview_url ВКЛЮЧЁН: нода с одобренным оператором превью (V10-кэш по nodeHash) уже имеет источник —
     // если её тронуть (дописать image_url), hash сменится → кэш-чек упадёт → лишний оплаченный ререндер.
-    return !!(n.image_url || n.asset_url || p["url"] || p["image_url"] || p["preview_url"]);
+    // isPlaceholderSource: «picker»/пустое НЕ источник → нода с url="picker" попадёт в авто-байнд и получит
+    // реальный ассет (иначе заглушка ехала в Remotion → 404). Источник есть, если ХОТЯ БЫ одно поле реальное.
+    return [n.image_url, n.asset_url, p["url"], p["image_url"], p["preview_url"]].some((v) => !isPlaceholderSource(v));
   };
   const needs = plan.nodes.filter((n) => {
     const t = String(n.tool || "").toLowerCase();

@@ -3,7 +3,7 @@
 // объект, а выходит API-ВАЛИДНЫЙ: только known-поля, энумы снапнуты, числа заклэмплены к [min,max]/step,
 // дефолты подставлены, вертикаль форсирована, i2v-картинка проверена. → превью/graph-run не падают с 422.
 // Чистая функция, без сети/БД. Покрыта lib/factory/normalizeParams.test.mts.
-import { TOOL_SCHEMAS, type ToolField } from "./toolSchemas";
+import { TOOL_SCHEMAS, isPlaceholderSource, type ToolField } from "./toolSchemas";
 
 export interface NormalizeResult {
   params: Record<string, unknown>;
@@ -37,6 +37,13 @@ function snapNumber(f: ToolField, n: number): number {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function coerce(f: ToolField, v: any, warnings: string[]): unknown {
+  // source-поля (picker/file: url/image_url/…) — автофилл иногда echo-ит сюда ИМЯ ui-контрола («picker»/«file»)
+  // вместо реального ассета. Это маркер «выбрать в студии», не значение → отбрасываем (подставит дефолт/авто-байнд).
+  // Узко по picker|file: на этих полях bare-имя-контрола НИКОГДА не легитимно, текст/энумы не задеваются.
+  if ((f.ui === "picker" || f.ui === "file") && typeof v === "string" && isPlaceholderSource(v) && v.trim() !== "") {
+    warnings.push(`${f.api_param}=«${v}» — имя ui-контрола, не значение (плейсхолдер автофилла) — отброшено`);
+    return undefined;
+  }
   // dropdown — ЗАКРЫТЫЙ энум: значение не из набора → снап на default/первое
   if (f.ui === "dropdown" && Array.isArray(f.values) && f.values.length) {
     const s = String(v);
