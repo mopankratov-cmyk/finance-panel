@@ -1,11 +1,22 @@
 import { NextRequest } from "next/server";
+import { proxyAuthorized } from "@/lib/auth/proxyAuth";
 
 export const dynamic = "force-dynamic";
 
-// Прокси любой картинки на наш origin — чтобы canvas-редактор мог экспортировать без CORS-taint.
+// Прокси картинки на наш origin — чтобы canvas-редактор мог экспортировать без CORS-taint.
+// Доступ: подпись (внешний рендер) ИЛИ сессия (браузер-редакторы) ИЛИ cron — см. proxyAuthorized.
+// SSRF-замок: апстрим — ТОЛЬКО WB-баскеты (единственный источник, который сюда подаётся).
+const HOST_OK = (host: string) =>
+  /(^|\.)wbbasket\.ru$/i.test(host) || /(^|\.)wbstatic\.net$/i.test(host) || /(^|\.)wb\.ru$/i.test(host);
+
 export async function GET(req: NextRequest) {
+  if (!(await proxyAuthorized(req))) return new Response("unauthorized", { status: 401 });
+
   const url = new URL(req.url).searchParams.get("url");
   if (!url || !/^https?:\/\//.test(url)) return new Response("bad url", { status: 400 });
+  let host: string;
+  try { host = new URL(url).hostname; } catch { return new Response("bad url", { status: 400 }); }
+  if (!HOST_OK(host)) return new Response("forbidden host", { status: 403 });
 
   const tryFetch = async (u: string): Promise<Response | null> => {
     try { const r = await fetch(u, { signal: AbortSignal.timeout(15000) }); return r.ok && /^image\//.test(r.headers.get("content-type") || "") ? r : null; } catch { return null; }
