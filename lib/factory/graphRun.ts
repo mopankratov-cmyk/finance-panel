@@ -6,6 +6,7 @@ import { remotionEngineSelected, remotionReady, remotionSubmit, remotionStatus }
 import { extractFrames } from "./serverMedia";
 import { logGeneration } from "./genHistory";
 import { tgReady, tgSendReview } from "./telegram";
+import { classifyAssets, chooseBinding, type DiskAsset } from "./assetBind";
 
 // V3 исполнитель графа: рецепт (node_recipe_nodes) → генерация нод → Shotstack-сборка → ОТК → банк.
 // Self-chaining машина по образцу jobs/tick: один тик = ОДИН шаг (<60с), состояние в node_recipes.run_plan.
@@ -71,7 +72,7 @@ function chunkCaptions(text: string, article: string): { text: string; accent?: 
   const art = String(article || "").toLowerCase();
   return parts.map((p) => ({ text: p, accent: /\d/.test(p) || (!!art && p.toLowerCase().includes(art)) || /wb|wildberries|купи|беги/i.test(p) }));
 }
-function buildReelProps(plan: RunPlan, visualNodes: RunNode[], article: string): { inputProps: Record<string, unknown>; durationInFrames: number } {
+export function buildReelProps(plan: RunPlan, visualNodes: RunNode[], article: string): { inputProps: Record<string, unknown>; durationInFrames: number } {
   // явный override (точные пропсы из брифа) — высший приоритет (именно объект, не массив)
   const explicitNode = plan.nodes.find((n) => {
     const rp = n.params && (n.params as Record<string, unknown>)["reel_props"];
@@ -191,6 +192,45 @@ async function savePlan(db: SupabaseClient, recipeId: number, plan: RunPlan, ext
   await db.from("node_recipes").update({ run_plan: plan, updated_at: new Date().toISOString(), ...extra }).eq("id", recipeId);
 }
 
+// Авто-привязка ассетов товара к визуальным нодам БЕЗ источника (фикс пустого автопилота: autofill выбирает
+// инструмент, но клип/фото привязывал только оператор в кокпите → в батче ноды падали «нет url/image_url»).
+// Тянем content_assets по артикулу ОДИН раз и только если есть незаполненные ноды. Срабатывает лишь на нодах,
+// которые и так упали бы → рабочие не трогает. disk_real без видео → перевод на seedance i2v из фото (нет съёмки → AI).
+// ⚠️ ДЕНЬГИ: перевод disk_real($0)→seedance($0.42) рантайм-эскалирует стоимость, которую смета batch/route.ts
+// (estimateRecipe, disk_real не в TOOL_COST) НЕ видит. В обычном случае запас REGEN_FACTOR=3 это поглощает
+// (факт ≤ est×1.9 < est×3). Для UNATTENDED-масштаба правильный фикс — пост-autofill $-чек против бюджета батча
+// (плюмбинг budget_usd в graphRun) — это долг (см. self-review B1), а не правка money-guard вслепую.
+async function autoBindAssets(db: SupabaseClient, plan: RunPlan, article: string): Promise<void> {
+  if (!article) return;
+  const hasSrc = (n: RunNode) => {
+    const p = (n.params || {}) as Record<string, unknown>;
+    // preview_url ВКЛЮЧЁН: нода с одобренным оператором превью (V10-кэш по nodeHash) уже имеет источник —
+    // если её тронуть (дописать image_url), hash сменится → кэш-чек упадёт → лишний оплаченный ререндер.
+    return !!(n.image_url || n.asset_url || p["url"] || p["image_url"] || p["preview_url"]);
+  };
+  const needs = plan.nodes.filter((n) => {
+    const t = String(n.tool || "").toLowerCase();
+    if (!t || ASSEMBLY_TOOLS.has(t) || t === "captions" || t === "elevenlabs" || t === "creatify") return false;
+    if (n.status === "done" || n.status === "submitted") return false;
+    return !hasSrc(n);
+  });
+  if (!needs.length) return;
+  let assets: DiskAsset[] = [];
+  try {
+    const { data } = await db.from("content_assets").select("disk,kind,url").eq("article", article).not("url", "is", null).limit(60);
+    assets = (data as DiskAsset[] | null) || [];
+  } catch { return; } // каталог недоступен — ноды упадут штатно, как раньше
+  const pool = classifyAssets(assets);
+  let imgIdx = 0; // разные стартовые фото на разные i2v-ноды (анти-сэйминес: не 5 клипов с одного кадра)
+  for (const n of needs) {
+    const b = chooseBinding(String(n.tool || ""), false, pool, imgIdx);
+    if (!b) continue;
+    if (b.tool) n.tool = b.tool;
+    if (b.asset_url) n.asset_url = b.asset_url;
+    if (b.image_url) { n.image_url = b.image_url; (n.params as Record<string, unknown>)["image_url"] = b.image_url; imgIdx++; }
+  }
+}
+
 // Захват рецепта на исполнение: status=running, активный шаг, свободный лиз.
 export async function claimNextRecipe(db: SupabaseClient, recipeId?: number): Promise<{ id: number; plan: RunPlan; article: string; niche: string; mode: string; product_name?: string } | null> {
   const nowIso = new Date().toISOString();
@@ -261,6 +301,8 @@ export async function runRecipeStep(
   if (plan.step === "submit") {
     const renderCount = (plan.renderCount || 0) + 1;
     if (renderCount > MAX_RENDERS) throw new Error("превышен лимит запусков генерации графа — стоп для бюджета");
+    // авто-привязка ассетов товара к нодам без источника (фикс пустого автопилота, см. assetBind.ts)
+    await autoBindAssets(db, plan, article);
     for (const n of plan.nodes) {
       const tool = String(n.tool || "").toLowerCase();
       if (!tool || ASSEMBLY_TOOLS.has(tool) || tool === "captions") { n.status = "skip"; continue; }
