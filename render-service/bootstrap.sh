@@ -51,6 +51,8 @@ SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
 REMOTION_RENDER_TOKEN=${REMOTION_RENDER_TOKEN}
 PORT=${PORT}
 RENDER_CONCURRENCY=${RENDER_CONCURRENCY:-1}
+# рендер I/O-bound на облачном SSD (замер 2026-06-22: 38% iowait, ядра простаивают) → temp в RAM-диск
+TMPDIR=/dev/shm
 EOF
   echo "▶ .env.local записан"
 fi
@@ -70,6 +72,8 @@ ExecStart=$(command -v node) --env-file=.env.local render-service/server.mjs
 Restart=always
 RestartSec=3
 Environment=NODE_ENV=production
+# temp рендера в RAM-диск: ВМ I/O-bound, диск-SSD не успевает (см. README · Производительность)
+Environment=TMPDIR=/dev/shm
 
 [Install]
 WantedBy=multi-user.target

@@ -32,6 +32,20 @@ Remotion render-микросервис премиум-цепочки завод�
 
 Каждый рендер пишет в лог `[timing] select=… render=… upload=… total=…` — видно, что душит.
 
+## Производительность: рендер I/O-bound (не CPU!)
+Замер на боевой ВМ (8 vCPU, 2026-06-22): полный ReelV5 ~минуты против ~31с на dev-Mac. `top` во время рендера:
+`%Cpu 0.8 us … 60 id … 38 wa` — **CPU простаивает, 38% времени = ожидание диска**. Облачный SSD не успевает
+кормить извлечение кадров OffthreadVideo + запись временных файлов. Поэтому кнобы потоков/concurrency тут
+**бесполезны** — упор в диск, а не в ядра.
+
+**Фикс — temp рендера в RAM-диск** (`TMPDIR=/dev/shm`): Node (`os.tmpdir()`) и Remotion начинают писать/читать
+временные файлы из памяти, iowait уходит. Зашит в `bootstrap.sh` (.env.local + systemd `Environment=TMPDIR=/dev/shm`).
+На уже поднятой ВМ — одной строкой: `echo 'TMPDIR=/dev/shm' >> .env.local && sudo systemctl restart remotion-render`.
+(`/dev/shm` по умолчанию = 50% RAM; на 16 ГБ ≈ 8 ГБ — для одного рендера хватает. Если ENOSPC — увеличить tmpfs или убрать строку.)
+
+Только ПОСЛЕ устранения iowait имеет смысл крутить `RENDER_FRAME_CONCURRENCY`/`RENDER_SCALE` — иначе больше
+параллельных кадров = больше конкуренции за диск = хуже.
+
 ## Локально
 ```bash
 node --env-file=.env.local render-service/server.mjs   # из корня репо
