@@ -11,7 +11,7 @@ import { resolveBrandKit, applyKitToParams, brandKitPromptBlock } from "@/lib/fa
 
 // Ф2 · tool → сервис баланса (бесплатные disk_real/sound не блокируются) и tool → примерная $-цена (зеркало TOOL_COST)
 const TOOL_SERVICE: Record<string, string> = { seedance: "fal", seedance_fast: "fal", seedance_pro: "fal", kling: "fal", kling_pro: "fal", pika: "fal", creatify: "creatify" };
-const TOOL_COST: Record<string, number> = { seedance: 0.42, seedance_fast: 0.14, seedance_pro: 0.42, kling: 0.38, kling_pro: 0.50, pika: 0.30, creatify: 1.20, shotstack: 0.08, disk_real: 0, disk: 0, sound: 0, music: 0 };
+const TOOL_COST: Record<string, number> = { seedance: 0.42, seedance_fast: 0.14, seedance_pro: 0.42, kling: 0.38, kling_pro: 0.50, pika: 0.30, creatify: 1.20, shotstack: 0.08, disk_real: 0, disk: 0, sound: 0, music: 0, elevenlabs: 0.1 };
 
 // Ф2 · грундинг-блок для system-промпта: обучение ниши + плейбук (render_role-роутинг) + наличие съёмки + баланс
 function buildGrounding(niche: string, lh: string, playbook: Record<string, unknown> | null, footage: "real" | "photo" | "none", lowServices: string[]): string {

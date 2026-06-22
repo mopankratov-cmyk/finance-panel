@@ -132,9 +132,8 @@ export async function submitNode(node: EngineNode): Promise<SubmitResult> {
 
   // V22 · ElevenLabs RU-озвучка → mp3 в Storage → url (закадр-дорожка для сборки). Синхронно (TTS ~5-10с).
   if (tool === "elevenlabs") {
-    const voiceId = String(params.voice_id || "");
+    const voiceId = String(params.voice_id || ""); // пуст (autofill не знает live-id) → elevenTTS возьмёт дефолтный голос аккаунта
     const text = String(params.script || node.prompt || params.onscreen_text || "").trim();
-    if (!voiceId) return { engine: "voice", error: "elevenlabs: не выбран голос (voice_id)" };
     if (!text) return { engine: "voice", error: "elevenlabs: пустой текст озвучки (script/prompt)" };
     const r = await elevenTTS(text, voiceId, {
       stability: typeof params.stability === "number" ? params.stability : undefined,

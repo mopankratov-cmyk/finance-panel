@@ -52,10 +52,11 @@ function asNode(n: RunNode): EngineNode {
   return { tool: n.tool, node_type: n.node_type, prompt: n.prompt, params: n.params, image_url: n.image_url, asset_url: n.asset_url, duration_sec: n.duration_sec ?? undefined };
 }
 
-// нода РЕГЕНЕРИРУЕМА: сгенерирована движком (не реальный клип/сборка) — реген disk_real бессмыслен
+// нода РЕГЕНЕРИРУЕМА: сгенерирована движком (не реальный клип/сборка) — реген disk_real бессмыслен.
+// elevenlabs (закадр) тоже НЕ реген: переозвучка под ОТК бессмысленна + реген должен трогать ВИЗУАЛ, не аудио.
 function isRegenerable(n: RunNode): boolean {
   const t = String(n.tool || "").toLowerCase();
-  return n.status === "done" && !!t && !ASSEMBLY_TOOLS.has(t) && t !== "captions" && t !== "disk" && t !== "disk_real";
+  return n.status === "done" && !!t && !ASSEMBLY_TOOLS.has(t) && t !== "captions" && t !== "disk" && t !== "disk_real" && t !== "elevenlabs";
 }
 const roleOf = (n: RunNode) => String(((n.params || {}) as Record<string, unknown>)["role"] || n.slot || "").toLowerCase();
 

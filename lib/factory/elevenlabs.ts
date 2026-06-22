@@ -38,7 +38,7 @@ export async function elevenTTS(text: string, voiceId: string, opts?: { stabilit
   // voice_id может не прийти (автозаполнение не знает live-id, бренд-кит не задан) → берём первый доступный голос аккаунта
   let vid = voiceId;
   if (!vid) { const vs = await elevenListVoices(); vid = (vs[0]?.id) || ""; }
-  if (!vid) return { error: "нет голоса (voice_id) и не удалось взять дефолтный из ElevenLabs" };
+  if (!vid) return { error: "ElevenLabs не дал голосов (гео-блок/неверный ключ?) — задай voice_id в бренд-ките или инспекторе" };
   const db = getSupabaseAdmin();
   if (!db) return { error: "Supabase не настроен (негде хостить аудио)" };
 

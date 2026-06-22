@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
     };
     const hookNode = nodes.find(isHook);
     const baseHook = String((hookNode?.params as Record<string, unknown>)?.onscreen_text || hookNode?.prompt || hookNode?.onscreen_text || "").trim();
-    if (!baseHook) return NextResponse.json({ ok: false, error: "нет хука для вариаций (заполни hook-ноду)" }, { status: 400 });
+    if (!hookNode || !baseHook) return NextResponse.json({ ok: false, error: "нет отдельной hook-ноды с текстом — варианты строятся вокруг хука (для рецепта без hook-ноды недоступно)" }, { status: 400 });
 
     // 2) варьируем ОДИН рычаг (хук) через /variations
     const article = String(rec.article || "");
@@ -49,7 +49,7 @@ export async function POST(req: NextRequest) {
     if (!variedHooks.length) return NextResponse.json({ ok: false, error: "вариации хука не вышли (Claude/variations)" }, { status: 502 });
 
     // 3) клон рецепта на каждый новый хук (копируем ноды, в hook-ноде подменяем текст хука)
-    const variants: number[] = [];
+    const variants: number[] = []; const createdHooks: string[] = []; // createdHooks синхронен variants (если клон упал — оба не растут)
     for (const vh of variedHooks) {
       const { data: nr, error: rErr } = await db.from("node_recipes").insert({
         article: rec.article, niche: rec.niche, mode: rec.mode, format_detected: rec.format_detected,
@@ -58,9 +58,10 @@ export async function POST(req: NextRequest) {
       if (rErr || !nr) continue;
       const newId = (nr as { id: number }).id;
       const rows = nodes.map((nd) => {
-        const params = { ...((nd.params as Record<string, unknown>) || {}) };
+        // только плоский объект спредим (мусор-строка/массив из БД → {} вместо indexed-corruption)
+        const p = nd.params; const params: Record<string, unknown> = (p && typeof p === "object" && !Array.isArray(p)) ? { ...(p as Record<string, unknown>) } : {};
         let prompt = nd.prompt;
-        if (isHook(nd)) { if (params.onscreen_text !== undefined) params.onscreen_text = vh; prompt = vh; } // подменяем хук
+        if (isHook(nd)) { params.onscreen_text = vh; prompt = vh; } // подменяем хук (всегда оба — паритет prompt/onscreen_text)
         return {
           recipe_id: newId, ordinal: nd.ordinal, slot: nd.slot, node_type: nd.node_type, tool: nd.tool,
           prompt, params, asset_url: nd.asset_url || "", duration_sec: nd.duration_sec,
@@ -74,10 +75,10 @@ export async function POST(req: NextRequest) {
         edges: rows.slice(1).map((r, i) => ({ id: `e${i}`, source: `n${rows[i].ordinal}`, target: `n${r.ordinal}` })),
       };
       await db.from("node_recipes").update({ graph_doc }).eq("id", newId);
-      variants.push(newId);
+      variants.push(newId); createdHooks.push(vh);
     }
 
-    return NextResponse.json({ ok: true, base: recipeId, variants, hooks: [baseHook, ...variedHooks].slice(0, variants.length + 1), note: `${variants.length} вариант(ов) с другими хуками — генерь все, рынок выберет залетевший.` });
+    return NextResponse.json({ ok: true, base: recipeId, variants, hooks: [baseHook, ...createdHooks], note: `${variants.length} вариант(ов) с другими хуками — генерь все, рынок выберет залетевший.` });
   } catch (e) {
     return NextResponse.json({ ok: false, error: "recipe-variants crash: " + String((e as Error)?.message || e).slice(0, 160) }, { status: 500 });
   }
