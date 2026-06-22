@@ -264,7 +264,7 @@ export async function persistClips(db: SupabaseClient, nodes: RunNode[], article
       const pub = db.storage.from(CLIP_BUCKET).getPublicUrl(path).data?.publicUrl;
       if (!pub) return;
       n.url = pub; // рендерим из durable-URL — ставим ДО insert: если каталожная вставка упадёт, клип уже в нашем бакете и рендер не вернётся на эфемерный fal-URL
-      await db.from("content_assets").insert({ disk: "gen", kind: "clip", niche: niche || null, article: article || null, url: pub, analyzed: true, analysis: { source_url: src, role: roleOf(n), tool: n.tool || null, source: "clip_library" } });
+      await db.from("content_assets").insert({ disk: "gen", path, name: `${article || "clip"} · clip ${roleOf(n) || ""}`.slice(0, 120), kind: "clip", niche: niche || null, article: article || null, color: null, url: pub, analyzed: true, analysis: { source_url: src, role: roleOf(n), tool: n.tool || null, source: "clip_library" } });
     } catch { /* best-effort — теряем клип на fal, но пайплайн жив */ }
   }));
 }
