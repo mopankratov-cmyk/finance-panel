@@ -24,10 +24,14 @@
 //   RENDER_X264_PRESET           — x264-пресет (дефолт faster; veryfast/ultrafast — быстрее/хуже)
 //   RENDER_TIMEOUT_MS            — таймаут кадра, мс (дефолт 120000)
 //   RENDER_REUSE_BROWSER         — 1 (дефолт): один Chrome на selectComposition+renderMedia (вместо двух запусков). 0 — выключить
+//   LOCALIZE_ASSETS              — 1 (дефолт): качать+нормализовать remote-видео из пропсов локально, отдавать по 127.0.0.1 (×2-5 для прод-рендеров). 0 — выкл
+//   ASSET_PORT                   — порт локального статик-сервера ассетов (дефолт 8090, только 127.0.0.1)
 import http from "node:http";
 import path from "node:path";
 import os from "node:os";
 import fs from "node:fs/promises";
+import { createReadStream } from "node:fs";
+import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { bundle } from "@remotion/bundler";
 import { selectComposition, renderMedia, ensureBrowser, openBrowser } from "@remotion/renderer";
@@ -76,6 +80,77 @@ const store = createJobStore({ getClient: supa, log });
 const persistJob = (id, fields) => store.persist(id, fields);
 const fetchJob = (id) => store.fetch(id);
 
+// ── локализация ассетов: завод шлёт remote-URL клипов, и OffthreadVideo иначе ходит в сеть ПОКАДРОВО
+// (×сотни кадров × несколько слоёв). Качаем каждый уникальный видео/аудио-URL ОДИН раз во временную папку,
+// видео нормализуем ffmpeg'ом (g=1 → мгновенный seek, единый yuv420p/aac), и отдаём Remotion'у по
+// http://127.0.0.1 (локальное чтение). Смоук на staticFile-ассетах не затрагивается (там не http-URL).
+// Выключить: LOCALIZE_ASSETS=0. Любая ошибка → оставляем исходный URL (рендер не падает, просто медленнее).
+const LOCALIZE = process.env.LOCALIZE_ASSETS !== "0";
+const ASSET_PORT = Number(process.env.ASSET_PORT || 8090);
+const ASSET_DIR = path.join(os.tmpdir(), "render-assets");
+const VIDEO_RE = /\.(mp4|mov|webm|mkv|m4v)(\?|$)/i;
+const MEDIA_RE = /\.(mp4|mov|webm|mkv|m4v|mp3|wav|m4a|aac|ogg)(\?|$)/i;
+const localCache = new Map(); // remote URL → http://127.0.0.1 URL (переживает несколько рендеров)
+const fnv1a = (s) => { let h = 0x811c9dc5; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193); } return (h >>> 0).toString(36); };
+
+function ffmpegNormalize(input, output) {
+  return new Promise((resolve, reject) => {
+    const p = spawn("ffmpeg", ["-y", "-loglevel", "error", "-i", input, "-c:v", "libx264", "-preset", "veryfast",
+      "-crf", "20", "-g", "1", "-keyint_min", "1", "-sc_threshold", "0", "-pix_fmt", "yuv420p", "-c:a", "aac", output]);
+    p.on("error", reject);
+    p.on("close", (code) => (code === 0 ? resolve() : reject(new Error("ffmpeg exit " + code))));
+  });
+}
+
+async function localizeUrl(u) {
+  const cached = localCache.get(u);
+  if (cached) return cached;
+  const key = fnv1a(u);
+  const isVideo = VIDEO_RE.test(u);
+  const ext = isVideo ? "mp4" : ((u.split("?")[0].match(/\.(\w{2,4})$/) || [])[1] || "bin");
+  const out = path.join(ASSET_DIR, `${key}.${ext}`);
+  const localUrl = `http://127.0.0.1:${ASSET_PORT}/${key}.${ext}`;
+  try {
+    await fs.mkdir(ASSET_DIR, { recursive: true });
+    const exists = await fs.access(out).then(() => true).catch(() => false);
+    if (!exists) {
+      const r = await fetch(u, { signal: AbortSignal.timeout(120000) });
+      if (!r.ok) throw new Error(`fetch ${r.status}`);
+      const raw = path.join(ASSET_DIR, `${key}.src`);
+      await fs.writeFile(raw, Buffer.from(await r.arrayBuffer()));
+      if (isVideo) { await ffmpegNormalize(raw, out); await fs.rm(raw, { force: true }); }
+      else { await fs.rename(raw, out); }
+    }
+    localCache.set(u, localUrl);
+    return localUrl;
+  } catch (e) {
+    log(`localize пропущен ${u.slice(0, 60)}: ${String(e?.message || e).slice(0, 80)}`);
+    return u; // graceful — рендер пойдёт с исходным URL
+  }
+}
+
+// глубокий обход пропсов: каждую строку-медиа-URL заменяем на локальный
+async function localizeAssets(obj) {
+  if (Array.isArray(obj)) return Promise.all(obj.map(localizeAssets));
+  if (obj && typeof obj === "object") {
+    const out = {};
+    for (const [k, v] of Object.entries(obj)) out[k] = await localizeAssets(v);
+    return out;
+  }
+  if (typeof obj === "string" && /^https?:\/\//.test(obj) && MEDIA_RE.test(obj)) return localizeUrl(obj);
+  return obj;
+}
+
+// статик-сервер локализованных ассетов (Remotion читает их по localhost — без сети покадрово)
+if (LOCALIZE) {
+  http.createServer((req, res) => {
+    const name = path.basename(decodeURIComponent(new URL(req.url, "http://x").pathname));
+    const s = createReadStream(path.join(ASSET_DIR, name));
+    s.on("error", () => { res.writeHead(404); res.end(); });
+    s.on("open", () => { res.writeHead(200, { "Content-Type": "application/octet-stream" }); s.pipe(res); });
+  }).listen(ASSET_PORT, "127.0.0.1", () => log(`asset-server на 127.0.0.1:${ASSET_PORT}`));
+}
+
 // ── одноразовый бандл (кешируется в памяти; /reload пересоберёт после деплоя новой композиции) ──
 let serveUrlPromise = null;
 function getServeUrl(force = false) {
@@ -111,10 +186,14 @@ async function runRender(id, composition, inputProps, durationInFrames) {
   if (!job) return; // джоба уже вычищена/отменена — рендерить нечего (а onProgress не упадёт на undefined)
   const tmp = path.join(os.tmpdir(), `remotion-${id}.mp4`);
   const t0 = Date.now();
+  let tLocalized = t0;
   let tSelected = t0;
   let browser = null;
   try {
     const serveUrl = await getServeUrl();
+    // локализуем remote-ассеты (скачать+нормализовать один раз) — иначе OffthreadVideo тянет их из сети покадрово
+    const props = LOCALIZE ? await localizeAssets(inputProps) : inputProps;
+    tLocalized = Date.now();
     // один Chrome на весь рендер: общий для selectComposition+renderMedia (иначе Remotion поднимает его дважды).
     // fail-safe: не открылся → ppt пустой, Remotion поднимет свой на каждый вызов (поведение как раньше).
     if (REUSE_BROWSER) {
@@ -122,14 +201,14 @@ async function runRender(id, composition, inputProps, durationInFrames) {
       catch (e) { log(`warm browser недоступен — fallback на свежий: ${String(e?.message || e).slice(0, 120)}`); browser = null; }
     }
     const ppt = browser ? { puppeteerInstance: browser } : {};
-    const comp = await selectComposition({ serveUrl, id: composition, inputProps, ...ppt });
+    const comp = await selectComposition({ serveUrl, id: composition, inputProps: props, ...ppt });
     tSelected = Date.now();
     const durationOverride = Number.isFinite(durationInFrames) && durationInFrames > 0
       ? { durationInFrames } : {};
     log(`render ${id}: ${composition} ${comp.width}x${comp.height} @${comp.fps} ${durationOverride.durationInFrames || comp.durationInFrames}f | conc=${FRAME_CONCURRENCY} threads=${OFFTHREAD_THREADS} scale=${RENDER_SCALE} preset=${X264_PRESET}`);
     await renderMedia({
       composition: { ...comp, ...durationOverride },
-      serveUrl, inputProps, ...ppt, codec: "h264", outputLocation: tmp,
+      serveUrl, inputProps: props, ...ppt, codec: "h264", outputLocation: tmp,
       // Затык ReelV5 — извлечение кадров из 6 OffthreadVideo-слоёв. Remotion-дефолт = 2 потока (offthreadVideoThreads),
       // поэтому раньше frame-concurrency приходилось душить до 4. Теперь поднимаем ОБА синхронно (см. ENV-блок вверху):
       // threads ≳ concurrency → пул извлечения поспевает, и ядра ВМ реально грузятся. Тюнить по логу [timing].
@@ -152,18 +231,29 @@ async function runRender(id, composition, inputProps, durationInFrames) {
     // заливка в Supabase Storage
     const db = supa();
     if (!db) throw new Error("Supabase env не настроен (NEXT_PUBLIC_SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY)");
-    try { await db.storage.createBucket(BUCKET, { public: true }); } catch { /* уже есть */ }
     const buf = await fs.readFile(tmp);
     const objPath = `renders/${id}.mp4`;
-    const { error } = await db.storage.from(BUCKET).upload(objPath, buf, { contentType: "video/mp4", upsert: true });
-    if (error) throw new Error(`upload: ${error.message}`);
+    // ретрай заливки: транзиентный "fetch failed"/5xx к Supabase НЕ должен хоронить уже готовый (оплаченный) рендер.
+    // upload бросает на сетевой ошибке И возвращает {error} на серверной — ловим оба, бэкофф 1.5с×попытка.
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    let upErr = null;
+    for (let attempt = 1; attempt <= 4; attempt++) {
+      try {
+        if (attempt === 1) { try { await db.storage.createBucket(BUCKET, { public: true }); } catch { /* уже есть */ } }
+        const { error } = await db.storage.from(BUCKET).upload(objPath, buf, { contentType: "video/mp4", upsert: true });
+        if (!error) { upErr = null; break; }
+        upErr = error.message || String(error);
+      } catch (e) { upErr = String(e?.message || e); } // напр. "fetch failed" — сетевой транзиент
+      if (attempt < 4) { log(`upload ${id} retry ${attempt}/3 (${upErr})`); await sleep(1500 * attempt); }
+    }
+    if (upErr) throw new Error(`upload (после 4 попыток): ${upErr}`);
     const videoUrl = db.storage.from(BUCKET).getPublicUrl(objPath).data?.publicUrl;
     if (!videoUrl) throw new Error("getPublicUrl вернул пусто");
 
     const tDone = Date.now();
     const sec = (ms) => (ms / 1000).toFixed(1);
     // разбивка времени → видно, что душит: select(бандл/браузер), render(кадры+извлечение+x264), upload(сеть)
-    log(`[timing] ${id}: select=${sec(tSelected - t0)}s render=${sec(tRendered - tSelected)}s upload=${sec(tDone - tRendered)}s total=${sec(tDone - t0)}s`);
+    log(`[timing] ${id}: localize=${sec(tLocalized - t0)}s select=${sec(tSelected - tLocalized)}s render=${sec(tRendered - tSelected)}s upload=${sec(tDone - tRendered)}s total=${sec(tDone - t0)}s`);
     job.status = "done"; job.videoUrl = videoUrl;
     await persistJob(id, { status: "done", progress: 100, video_url: videoUrl, error: null });
     log(`✅ ${id} → ${videoUrl}`);
