@@ -18,8 +18,9 @@ export async function POST(req: NextRequest) {
   if (!views) return NextResponse.json({ ok: false, error: "нужны просмотры" }, { status: 400 });
 
   // 1) запись метрик в post_metrics (оживляем мёртвую таблицу)
+  let metricsSaved = false;
   try {
-    await db.from("post_metrics").insert({
+    const { error } = await db.from("post_metrics").insert({
       recipe_id: recipeId,
       platform: (b.platform || "TikTok").toString().slice(0, 20),
       posted_at: b.posted_at || new Date().toISOString(),
@@ -28,7 +29,9 @@ export async function POST(req: NextRequest) {
       ctr_card: b.ctr != null ? Number(b.ctr) : null,
       saves: b.saves != null ? Number(b.saves) : null,
     });
-  } catch { /* post_metrics в миграции 20260620 */ }
+    if (error) console.error("[post-metrics] insert error:", error.message); // напр. миграция 20260620 не применена
+    else metricsSaved = true;
+  } catch (e) { console.error("[post-metrics] insert exception:", e); }
 
   // 2) рынок → winners: тянем output_url рецепта + хук, апгрейдим хук реальными просмотрами
   let forwarded = false;
@@ -42,12 +45,12 @@ export async function POST(req: NextRequest) {
       const hook = String((h?.onscreen_text as string) || (h?.prompt as string) || "").slice(0, 120);
       await fetch(`${req.nextUrl.origin}/api/factory/winners`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url, hook, views, note: `рынок: ${views} просм · ${b.platform || "TikTok"}` }),
+        body: JSON.stringify({ url, hook, views, recipe_id: recipeId, note: `рынок: ${views} просм · ${b.platform || "TikTok"}` }),
         signal: AbortSignal.timeout(20000),
       });
       forwarded = true;
     }
   } catch { /* winners опционально */ }
 
-  return NextResponse.json({ ok: true, forwarded });
+  return NextResponse.json({ ok: true, forwarded, metrics_saved: metricsSaved });
 }

@@ -45,7 +45,9 @@ export async function remotionSubmit(
   } catch { return null; }
 }
 
-export interface RemotionStatus { status: "in_progress" | "done" | "error"; videoUrl?: string; error?: string; progress?: number }
+// retryable=true → сбой транспорта/опроса (сеть, таймаут, non-2xx, пропавшая in-memory джоба), НЕ настоящий отказ рендера.
+// render-poll не должен хоронить из-за такого уже оплаченный/готовый рендер — он продолжает опрос до таймаута.
+export interface RemotionStatus { status: "in_progress" | "done" | "error"; videoUrl?: string; error?: string; progress?: number; retryable?: boolean }
 
 // status: GET /status/{id} → { status, videoUrl?, error?, progress? }
 export async function remotionStatus(id: string): Promise<RemotionStatus> {
@@ -53,10 +55,10 @@ export async function remotionStatus(id: string): Promise<RemotionStatus> {
   if (!base) return { status: "error", error: "REMOTION_RENDER_URL не настроен" };
   try {
     const r = await fetch(`${base}/status/${id}`, { headers: HEADERS(), cache: "no-store", signal: AbortSignal.timeout(15000) });
-    if (!r.ok) return { status: "error", error: `remotion ${r.status}` };
+    if (!r.ok) return { status: "error", error: `remotion ${r.status}`, retryable: true }; // 404 (джоба пропала после рестарта VM) и др. — транспорт, не отказ рендера
     const j = (await r.json()) as { status?: string; videoUrl?: string; error?: string; progress?: number };
     if (j.status === "done" && j.videoUrl) return { status: "done", videoUrl: j.videoUrl, progress: j.progress };
-    if (j.status === "error") return { status: "error", error: (j.error || "remotion failed").slice(0, 200) };
+    if (j.status === "error") return { status: "error", error: (j.error || "remotion failed").slice(0, 200) }; // явный отказ рендера — НЕ retryable
     return { status: "in_progress", progress: j.progress };
-  } catch (e) { return { status: "error", error: String(e).slice(0, 120) }; }
+  } catch (e) { return { status: "error", error: String(e).slice(0, 120), retryable: true }; } // сеть/таймаут — транзиент
 }

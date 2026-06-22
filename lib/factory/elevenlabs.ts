@@ -10,6 +10,13 @@ const BUCKET = "factory-media"; // тот же публичный бакет, ч
 const MODEL = "eleven_multilingual_v2"; // поддерживает русский
 const KEY = () => (process.env.ELEVENLABS_API_KEY || "").trim();
 
+// детерминированный хэш для имени кеш-файла (зависит от текста+голоса+настроек, иначе коллизия по длине → подмена озвучки)
+function fnv1a(s: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193); }
+  return (h >>> 0).toString(36);
+}
+
 export function elevenReady(): boolean { return !!KEY(); }
 
 export interface ElevenVoice { id: string; name: string; preview?: string; labels?: string; meta?: string }
@@ -37,7 +44,9 @@ export async function elevenTTS(text: string, voiceId: string, opts?: { stabilit
   if (!t) return { error: "пустой текст озвучки" };
   // voice_id может не прийти (автозаполнение не знает live-id, бренд-кит не задан) → берём первый доступный голос аккаунта
   let vid = voiceId;
-  if (!vid) { const vs = await elevenListVoices(); vid = (vs[0]?.id) || ""; }
+  if (!vid) vid = (process.env.ELEVENLABS_DEFAULT_VOICE_ID || "").trim();
+  // детерминированный дефолт: сортируем по id, чтобы голос был стабильным (а не «первый как вернул API»)
+  if (!vid) { const voices = await elevenListVoices(); vid = ([...voices].sort((a, b) => a.id.localeCompare(b.id))[0]?.id) || ""; }
   if (!vid) return { error: "ElevenLabs не дал голосов (гео-блок/неверный ключ?) — задай voice_id в бренд-ките или инспекторе" };
   const db = getSupabaseAdmin();
   if (!db) return { error: "Supabase не настроен (негде хостить аудио)" };
@@ -67,7 +76,8 @@ export async function elevenTTS(text: string, voiceId: string, opts?: { stabilit
 
   try {
     try { await db.storage.createBucket(BUCKET, { public: true }); } catch { /* есть */ }
-    const path = `voiceover/${vid.slice(0, 12)}-${buf.length}.mp3`; // имя по голосу+размеру (детерминированно для кеша)
+    const cacheKey = fnv1a([vid, opts?.model || MODEL, opts?.stability, opts?.similarity_boost, opts?.style, t].join("|"));
+    const path = `voiceover/${vid.slice(0, 12)}-${cacheKey}.mp3`; // ключ зависит от текста+голоса+настроек — без коллизий по длине
     const { error } = await db.storage.from(BUCKET).upload(path, buf, { contentType: "audio/mpeg", upsert: true });
     if (error) return { error: "не залилось в Storage: " + error.message.slice(0, 100) };
     const url = db.storage.from(BUCKET).getPublicUrl(path).data?.publicUrl;

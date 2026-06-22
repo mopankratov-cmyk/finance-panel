@@ -172,11 +172,15 @@ export const ReelV5: React.FC<Partial<ReelV5Props>> = (props) => {
   const p = {...DEFAULT_PROPS, ...props};
   useFonts();
   const frame = useCurrentFrame();
-  const actorKb = 1 + Math.min(frame, p.actorEnd) / p.actorEnd * 0.03;
+  // защита от краша рендера: Remotion требует durationInFrames > 0 у Sequence/Clip.
+  // если из брифа пришло actorEnd >= durationInFrames (или <= 0) — клампим, иначе вся композиция падает.
+  const safeActorEnd = Math.max(1, Math.min(p.actorEnd, p.durationInFrames - 1));
+  const ctaDur = Math.max(1, p.durationInFrames - safeActorEnd);
+  const actorKb = 1 + Math.min(frame, safeActorEnd) / safeActorEnd * 0.03;
   return (
     <AbsoluteFill style={{backgroundColor: "#000"}}>
       {/* base: actor (audio spine + video) */}
-      <Sequence from={0} durationInFrames={p.actorEnd}>
+      <Sequence from={0} durationInFrames={safeActorEnd}>
         <AbsoluteFill style={{overflow: "hidden"}}>
           <OffthreadVideo src={resolveSrc(p.actorSrc)} playbackRate={p.actorRate}
             style={{width: "100%", height: "100%", objectFit: "cover", transform: `scale(${actorKb})`, filter: "contrast(1.05) saturate(1.1)"}} />
@@ -185,23 +189,23 @@ export const ReelV5: React.FC<Partial<ReelV5Props>> = (props) => {
       </Sequence>
 
       {/* overlays: our footage during spec narration (actor audio continues) */}
-      {p.overlays.map((o, i) => (
-        <Sequence key={i} from={o.from} durationInFrames={o.duration}>
-          <Clip src={o.src} durationInFrames={o.duration} startFrom={o.startFrom} cropScale={o.cropScale} ty={o.ty} flash={o.flash} />
+      {p.overlays.filter((o) => o.duration > 0).map((o, i) => (
+        <Sequence key={i} from={o.from} durationInFrames={Math.max(1, o.duration)}>
+          <Clip src={o.src} durationInFrames={Math.max(1, o.duration)} startFrom={o.startFrom} cropScale={o.cropScale} ty={o.ty} flash={o.flash} />
           <Scrim />
         </Sequence>
       ))}
 
       {/* CTA card over product blast */}
-      <Sequence from={p.actorEnd} durationInFrames={p.durationInFrames - p.actorEnd}>
-        <Clip src={p.ctaClipSrc} durationInFrames={p.durationInFrames - p.actorEnd} startFrom={p.ctaClipStartFrom} flash />
+      <Sequence from={safeActorEnd} durationInFrames={ctaDur}>
+        <Clip src={p.ctaClipSrc} durationInFrames={ctaDur} startFrom={p.ctaClipStartFrom} flash />
         <AbsoluteFill style={{background: "linear-gradient(180deg, rgba(0,0,0,.2) 0%, rgba(0,0,0,.3) 45%, rgba(0,0,0,.7) 100%)"}} />
       </Sequence>
 
       <Audio src={resolveSrc(p.audioSrc)} volume={p.audioVolume} />
       <Grade />
-      <Captions captions={p.captions} actorEnd={p.actorEnd} accent={p.accent} />
-      <CtaCard actorEnd={p.actorEnd} accent={p.accent} title={p.ctaTitle} button={p.ctaButton} brand={p.ctaBrand} />
+      <Captions captions={p.captions} actorEnd={safeActorEnd} accent={p.accent} />
+      <CtaCard actorEnd={safeActorEnd} accent={p.accent} title={p.ctaTitle} button={p.ctaButton} brand={p.ctaBrand} />
       <Vignette />
     </AbsoluteFill>
   );

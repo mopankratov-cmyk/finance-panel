@@ -130,7 +130,7 @@ export async function shotstackSubmit(editJson: Record<string, unknown>): Promis
   } catch { return null; }
 }
 
-export interface ShotstackStatus { status: "in_progress" | "done" | "error"; videoUrl?: string; error?: string }
+export interface ShotstackStatus { status: "in_progress" | "done" | "error"; videoUrl?: string; error?: string; retryable?: boolean }
 
 // status: GET /render/{id} → queued|fetching|rendering|saving|done|failed (+ url).
 export async function shotstackStatus(id: string): Promise<ShotstackStatus> {
@@ -138,11 +138,11 @@ export async function shotstackStatus(id: string): Promise<ShotstackStatus> {
   if (!k) return { status: "error", error: "SHOTSTACK_API_KEY не настроен" };
   try {
     const r = await fetch(`${BASE()}/render/${id}`, { headers: { "x-api-key": k }, cache: "no-store", signal: AbortSignal.timeout(15000) });
-    if (!r.ok) return { status: "error", error: `shotstack ${r.status}` };
+    if (!r.ok) return { status: "error", error: `shotstack ${r.status}`, retryable: true }; // non-2xx — транспорт, не отказ рендера
     const j = (await r.json()) as { response?: { status?: string; url?: string; error?: string } };
     const st = j.response?.status;
     if (st === "done" && j.response?.url) return { status: "done", videoUrl: j.response.url };
-    if (st === "failed") return { status: "error", error: (j.response?.error || "shotstack failed").slice(0, 120) };
+    if (st === "failed") return { status: "error", error: (j.response?.error || "shotstack failed").slice(0, 120) }; // явный отказ — НЕ retryable
     return { status: "in_progress" };
-  } catch (e) { return { status: "error", error: String(e).slice(0, 100) }; }
+  } catch (e) { return { status: "error", error: String(e).slice(0, 100), retryable: true }; } // сеть/таймаут — транзиент
 }

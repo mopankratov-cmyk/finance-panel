@@ -114,5 +114,17 @@ function eq(a: unknown, b: unknown, msg: string) { ok(JSON.stringify(a) === JSON
   eq(r.params["caption_setting.text_color"], "#FFEE0080", "hex с альфой (8 знаков) принят");
 }
 
+// ── РЕГРЕСС (баг #5): «незначащее» число (''/null/boolean/array/пробелы) → ДЕФОЛТ схемы,
+//    а не Number()→0/1 → клэмп к min. seedance.duration: min 2, max 12, default 5. ──
+{
+  eq(normalizeParams("seedance", { duration: "" }).params.duration, 5, "duration:'' → дефолт 5 (не min 2)");
+  eq(normalizeParams("seedance", { duration: null }).params.duration, 5, "duration:null → дефолт 5");
+  eq(normalizeParams("seedance", { duration: true }).params.duration, 5, "duration:true → дефолт 5 (а не Number(true)=1→min)");
+  eq(normalizeParams("seedance", { duration: [] }).params.duration, 5, "duration:[] → дефолт 5");
+  eq(normalizeParams("seedance", { duration: "   " }).params.duration, 5, "duration:'   ' (пробелы) → дефолт 5");
+  eq(normalizeParams("seedance", { duration: "8" }).params.duration, 8, "duration:'8' (валидная строка-число) всё ещё парсится");
+  eq(normalizeParams("seedance", { duration: 0 }).params.duration, 2, "duration:0 (явный ноль) → клэмп к min 2 (это НЕ незначащий вход)");
+}
+
 console.log(`\nnormalizeParams: ${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

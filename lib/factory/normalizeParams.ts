@@ -55,6 +55,11 @@ function coerce(f: ToolField, v: any, warnings: string[]): unknown {
   }
   // число/слайдер: clamp [min,max] + снап к step
   if (f.ui === "slider" || f.ui === "number") {
+    // Number('')/Number(null)/Number(false)/Number([]) === 0 (а Number(true)===1) → клэмпнулось бы к min вместо дефолта.
+    // Отсекаем «незначащие» входы ДО Number(), чтобы пустое/булево/массив уходили в дефолт схемы.
+    if (v == null || typeof v === "boolean" || Array.isArray(v) || (typeof v === "string" && v.trim() === "")) {
+      return f.default !== undefined ? f.default : undefined;
+    }
     const n = Number(v);
     if (!Number.isFinite(n)) {
       warnings.push(`${f.api_param}=«${v}» не число — ${f.default !== undefined ? "дефолт " + f.default : "пропуск"}`);

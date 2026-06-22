@@ -71,8 +71,11 @@ function chunkCaptions(text: string, article: string): { text: string; accent?: 
   return parts.map((p) => ({ text: p, accent: /\d/.test(p) || (!!art && p.toLowerCase().includes(art)) || /wb|wildberries|купи|беги/i.test(p) }));
 }
 function buildReelProps(plan: RunPlan, visualNodes: RunNode[], article: string): { inputProps: Record<string, unknown>; durationInFrames: number } {
-  // явный override (точные пропсы из брифа) — высший приоритет
-  const explicitNode = plan.nodes.find((n) => n.params && typeof (n.params as Record<string, unknown>)["reel_props"] === "object");
+  // явный override (точные пропсы из брифа) — высший приоритет (именно объект, не массив)
+  const explicitNode = plan.nodes.find((n) => {
+    const rp = n.params && (n.params as Record<string, unknown>)["reel_props"];
+    return !!rp && typeof rp === "object" && !Array.isArray(rp);
+  });
   const explicit = explicitNode ? ((explicitNode.params as Record<string, unknown>)["reel_props"] as Record<string, unknown>) : null;
   if (explicit) {
     const dur = Number(explicit["durationInFrames"]) || 614;
@@ -87,7 +90,15 @@ function buildReelProps(plan: RunPlan, visualNodes: RunNode[], article: string):
     const o = { src: n.url!, from: t, duration: dur, startFrom: 0, flash: true };
     t += dur; return o;
   });
-  const actorEnd = Math.max(t, REEL_FPS * 3);
+  // выбор спайна: реальная нода-актёр; иначе первый клип — и тогда исключаем его из врезок (иначе он рендерится дважды)
+  let actorSrc: string | undefined;
+  let renderOverlays = overlays;
+  if (actorNode?.url) actorSrc = actorNode.url;
+  else if (overlays.length) { actorSrc = overlays[0].src; renderOverlays = overlays.slice(1); }
+  // длина актёра: собственная длительность ноды-актёра, иначе суммарная длина врезок, минимум 3с
+  // (не схлопывается в 3с, когда актёр есть, но врезок нет)
+  const actorFrames = actorNode ? Math.round((Number(actorNode.duration_sec) || 18) * REEL_FPS) : 0;
+  const actorEnd = Math.max(t, actorFrames, REEL_FPS * 3);
   const durationInFrames = actorEnd + REEL_CTA_FRAMES;
   const hookNode = plan.nodes.find((n) => roleOf(n) === "hook") || plan.nodes[0];
   const captionNode = plan.nodes.find((n) => n.node_type === "captions");
@@ -97,8 +108,8 @@ function buildReelProps(plan: RunPlan, visualNodes: RunNode[], article: string):
   const audioSrc = soundNode?.asset_url || (soundNode?.params?.url as string) || undefined;
   const ctaTitle = (hookNode?.onscreen_text || article || "").toString().slice(0, 40) || undefined;
   const inputProps: Record<string, unknown> = {
-    durationInFrames, actorEnd, overlays,
-    ...(actorNode?.url ? { actorSrc: actorNode.url } : overlays[0] ? { actorSrc: overlays[0].src } : {}),
+    durationInFrames, actorEnd, overlays: renderOverlays,
+    ...(actorSrc ? { actorSrc } : {}),
     ...(captions.length ? { captions } : { captions: [] }),
     ...(audioSrc ? { audioSrc } : {}),
     ...(ctaTitle ? { ctaTitle } : {}),
@@ -421,10 +432,11 @@ export async function runRecipeStep(
     if (s.status === "done" && s.videoUrl) {
       plan.output_url = s.videoUrl; plan.step = "otk";
       await savePlan(db, id, plan, { output_url: s.videoUrl });
-    } else if (s.status === "error") {
+    } else if (s.status === "error" && s.retryable !== true) {
+      // настоящий отказ рендера — фейлим. Транзиент/404 (retryable) НЕ роняет уже оплаченный рендер — продолжаем опрос до таймаута.
       throw new Error(`${engineName} error: ` + (s.error || "unknown"));
     } else if (pollCount >= MAX_POLLS) {
-      throw new Error(`${engineName} render timeout`);
+      throw new Error(`${engineName} render timeout` + (s.status === "error" ? ` (последний опрос: ${s.error})` : ""));
     } else {
       plan.pollCount = pollCount;
       await savePlan(db, id, plan, { status: "running" });
