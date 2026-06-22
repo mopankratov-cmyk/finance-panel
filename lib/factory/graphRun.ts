@@ -71,7 +71,7 @@ function chunkCaptions(text: string, article: string): { text: string; accent?: 
   const art = String(article || "").toLowerCase();
   return parts.map((p) => ({ text: p, accent: /\d/.test(p) || (!!art && p.toLowerCase().includes(art)) || /wb|wildberries|купи|беги/i.test(p) }));
 }
-function buildReelProps(plan: RunPlan, visualNodes: RunNode[], article: string): { inputProps: Record<string, unknown>; durationInFrames: number } {
+export function buildReelProps(plan: RunPlan, visualNodes: RunNode[], article: string): { inputProps: Record<string, unknown>; durationInFrames: number } {
   // явный override (точные пропсы из брифа) — высший приоритет (именно объект, не массив)
   const explicitNode = plan.nodes.find((n) => {
     const rp = n.params && (n.params as Record<string, unknown>)["reel_props"];
