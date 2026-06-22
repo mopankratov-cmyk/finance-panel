@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { collectBalances } from "@/lib/factory/balances";
+import { internalFetch } from "@/lib/internalFetch";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -71,7 +72,7 @@ export async function POST(req: NextRequest) {
     spent = Math.round((spent + est) * 100) / 100;
     if (!dryRun) {
       // autofill:true → рецепт сам сконфигурируется (§17 + бренд-кит) первым шагом очереди, затем генерация→ОТК→банк→Telegram
-      try { await fetch(`${origin}/api/factory/graph-run`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ recipe_id: rid, notify: true, restart: true, autofill: true }), signal: AbortSignal.timeout(20000) }); } catch { /* очередь воскресит */ }
+      try { await internalFetch(`${origin}/api/factory/graph-run`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ recipe_id: rid, notify: true, restart: true, autofill: true }), signal: AbortSignal.timeout(20000) }); } catch { /* очередь воскресит */ }
     }
     enqueued.push(rid);
   }

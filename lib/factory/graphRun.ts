@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { internalFetch } from "@/lib/internalFetch";
 import { submitNode, pollNode, nodeHash, type EngineNode } from "./nodeEngine";
 import { buildEdit, fixedBeatGrid, quantizeToBeats, shotstackSubmit, shotstackStatus, shotstackReady, type AssemblyClip } from "./shotstack";
 import { remotionEngineSelected, remotionReady, remotionSubmit, remotionStatus } from "./remotionRender";
@@ -220,7 +221,7 @@ export async function claimNextRecipe(db: SupabaseClient, recipeId?: number): Pr
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function jpost(origin: string, path: string, body: unknown, ms = 90000): Promise<any> {
-  const r = await fetch(`${origin}${path}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(ms) });
+  const r = await internalFetch(`${origin}${path}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(ms) });
   return r.json().catch(() => ({}));
 }
 

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { nicheFromArticle } from "@/lib/factory/rubric";
+import { internalFetch } from "@/lib/internalFetch";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
@@ -48,7 +49,7 @@ export async function POST(req: NextRequest) {
     const buildId = (ins as { id: number }).id;
 
     const origin = req.nextUrl.origin;
-    after(async () => { try { await fetch(`${origin}/api/factory/batch-build/tick`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ build_id: buildId }), signal: AbortSignal.timeout(20000) }); } catch { /* воскресит опрос */ } });
+    after(async () => { try { await internalFetch(`${origin}/api/factory/batch-build/tick`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ build_id: buildId }), signal: AbortSignal.timeout(20000) }); } catch { /* воскресит опрос */ } });
 
     return NextResponse.json({ ok: true, build_id: buildId, pairs: pairs.length, competitors: comps.length, products: articles.length, note: `Собираю ${pairs.length} черновиков (decompose→перенос), затем генерю в пределах $${budget}. Прогресс: GET ?build_id=${buildId}.` });
   } catch (e) {
@@ -68,7 +69,7 @@ export async function GET(req: NextRequest) {
   // самовоскрешение цепочки, если зависла (как graph-run GET)
   if (r.status === "building") {
     const origin = req.nextUrl.origin;
-    after(async () => { try { await fetch(`${origin}/api/factory/batch-build/tick`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ build_id: buildId }), signal: AbortSignal.timeout(15000) }); } catch { /* следующий опрос */ } });
+    after(async () => { try { await internalFetch(`${origin}/api/factory/batch-build/tick`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ build_id: buildId }), signal: AbortSignal.timeout(15000) }); } catch { /* следующий опрос */ } });
   }
   return NextResponse.json({ ok: true, build_id: buildId, niche: r.niche, status: r.status, built: Array.isArray(r.built_recipe_ids) ? (r.built_recipe_ids as unknown[]).length : 0, total: pairs, cursor: r.cursor, recipe_ids: r.built_recipe_ids, note: r.note }, { headers: { "Cache-Control": "no-store" } });
 }

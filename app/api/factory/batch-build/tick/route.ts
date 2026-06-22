@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { internalFetch } from "@/lib/internalFetch";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const dynamic = "force-dynamic";
@@ -13,7 +14,7 @@ const LEASE_MS = 90_000;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function jpost(origin: string, path: string, body: unknown, ms: number): Promise<any> {
-  const r = await fetch(`${origin}${path}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(ms) });
+  const r = await internalFetch(`${origin}${path}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(ms) });
   return r.json().catch(() => ({}));
 }
 
@@ -35,7 +36,7 @@ export async function POST(req: NextRequest) {
       // краш шага → снять лиз, записать ошибку в note (без status=failed: следующий тик дообработает оставшееся)
       try { await db.from("batch_builds").update({ lease_until: null, note: ("ошибка: " + String((e as Error)?.message || e)).slice(0, 200), updated_at: new Date().toISOString() }).eq("id", ctx.id); } catch { /* */ }
     }
-    if (chain) { try { await fetch(`${origin}/api/factory/batch-build/tick`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ build_id: ctx.id }), signal: AbortSignal.timeout(20000) }); } catch { /* воскресит опрос */ } }
+    if (chain) { try { await internalFetch(`${origin}/api/factory/batch-build/tick`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ build_id: ctx.id }), signal: AbortSignal.timeout(20000) }); } catch { /* воскресит опрос */ } }
   });
 
   return NextResponse.json({ claimed: ctx.id, cursor: ctx.cursor });

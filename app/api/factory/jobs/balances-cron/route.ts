@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { internalFetch } from "@/lib/internalFetch";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -15,7 +16,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
   const origin = req.nextUrl.origin;
-  const tick = await fetch(`${origin}/api/factory/jobs/balances-tick`, {
+  const tick = await internalFetch(`${origin}/api/factory/jobs/balances-tick`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ secret }),

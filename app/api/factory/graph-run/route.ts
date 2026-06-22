@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { buildRunPlan, type RunPlan } from "@/lib/factory/graphRun";
+import { internalFetch } from "@/lib/internalFetch";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
@@ -38,7 +39,7 @@ export async function POST(req: NextRequest) {
     }
 
     const origin = req.nextUrl.origin;
-    after(async () => { try { await fetch(`${origin}/api/factory/graph-run/tick`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ recipe_id: recipeId }), signal: AbortSignal.timeout(20000) }); } catch { /* воскресит ручной тик */ } });
+    after(async () => { try { await internalFetch(`${origin}/api/factory/graph-run/tick`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ recipe_id: recipeId }), signal: AbortSignal.timeout(20000) }); } catch { /* воскресит ручной тик */ } });
 
     return NextResponse.json({ ok: true, recipe_id: recipeId, started: true });
   } catch (e) {
@@ -64,7 +65,7 @@ export async function GET(req: NextRequest) {
       const leaseFree = !plan.lease_until || new Date(plan.lease_until).getTime() < Date.now();
       if (leaseFree) {
         const origin = req.nextUrl.origin;
-        after(async () => { try { await fetch(`${origin}/api/factory/graph-run/tick`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ recipe_id: recipeId }), signal: AbortSignal.timeout(15000) }); } catch { /* следующий опрос воскресит */ } });
+        after(async () => { try { await internalFetch(`${origin}/api/factory/graph-run/tick`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ recipe_id: recipeId }), signal: AbortSignal.timeout(15000) }); } catch { /* следующий опрос воскресит */ } });
       }
     }
 

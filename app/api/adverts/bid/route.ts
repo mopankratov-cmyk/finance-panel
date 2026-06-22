@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { requireApiSession } from "@/lib/auth/apiGuard";
 
 export const dynamic = "force-dynamic";
 
@@ -32,6 +33,8 @@ async function logChange(advertId: number, oldBid: number | null, newBid: number
 }
 
 export async function POST(request: NextRequest) {
+  const gate = await requireApiSession();
+  if (gate) return gate;
   if (!WB_ADV_TOKEN) return NextResponse.json({ error: "WB_TOKEN_ADVERT не настроен" }, { status: 500 });
   const b = await request.json().catch(() => ({}));
   const advertId: number | null = typeof b.advertId === "number" ? b.advertId : null;

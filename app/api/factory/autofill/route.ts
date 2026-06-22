@@ -8,6 +8,7 @@ import { nicheFromArticle } from "@/lib/factory/rubric";
 import { collectBalances } from "@/lib/factory/balances";
 import { learningHints } from "@/lib/factory/learningHints";
 import { resolveBrandKit, applyKitToParams, brandKitPromptBlock } from "@/lib/factory/brandKit";
+import { internalFetch } from "@/lib/internalFetch";
 
 // Ф2 · tool → сервис баланса (бесплатные disk_real/sound не блокируются) и tool → примерная $-цена (зеркало TOOL_COST)
 const TOOL_SERVICE: Record<string, string> = { seedance: "fal", seedance_fast: "fal", seedance_pro: "fal", kling: "fal", kling_pro: "fal", pika: "fal", creatify: "creatify" };
@@ -114,7 +115,7 @@ export async function POST(req: NextRequest) {
       collectBalances(db, { throttleMs: 60000 }).catch(() => [] as Record<string, unknown>[]),
       learningHints(db, niche).catch(() => ""),
       (async () => { try { const r = await db.from("niche_playbooks").select("playbook,updated_at").eq("niche", niche).order("updated_at", { ascending: false }).limit(1); return (r.data as Record<string, unknown>[] | null)?.[0] || null; } catch { return null; } })(),
-      fetch(`${req.nextUrl.origin}/api/factory/disk-source`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ article }), signal: AbortSignal.timeout(12000) }).then((r) => r.json()).catch(() => null),
+      internalFetch(`${req.nextUrl.origin}/api/factory/disk-source`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ article }), signal: AbortSignal.timeout(12000) }).then((r) => r.json()).catch(() => null),
       resolveBrandKit(db, article, "").catch(() => null), // V24 · фикс-айдентика бренда (голос/персона/шрифт/цвет/CTA/бан/хэштеги)
     ]);
     const lowServices = (balances as Record<string, unknown>[]).filter((s) => s && s.low === true).map((s) => String(s.service));

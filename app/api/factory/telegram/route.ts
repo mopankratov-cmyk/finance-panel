@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { createClaudeClient } from "@/lib/agent/client";
+import { internalFetch } from "@/lib/internalFetch";
 import { transcribeFal } from "@/lib/factory/asr";
 import { tgReady, tgOwnerChat, tgWebhookSecret, tgSetWebhook, tgFileUrl, tgAnswerCallback, tgSendMessage } from "@/lib/factory/telegram";
 
@@ -37,7 +38,7 @@ async function applyVerdict(origin: string, db: any, recipeId: number, verdict: 
       hook = String((h?.onscreen_text as string) || (h?.prompt as string) || article || "").slice(0, 200);
     }
   } catch { /* рецепт мог не найтись */ }
-  const post = async (path: string, body: unknown) => { try { const r = await fetch(`${origin}${path}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(30000) }); return await r.json(); } catch { return null; } };
+  const post = async (path: string, body: unknown) => { try { const r = await internalFetch(`${origin}${path}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(30000) }); return await r.json(); } catch { return null; } };
   if (verdict === "approve") {
     const r = await post("/api/factory/winners", { url, hook, note: "одобрено в Telegram" });
     if (r && !r.error) return `✓ Беру — в банк, хук в корпус победителей.`;

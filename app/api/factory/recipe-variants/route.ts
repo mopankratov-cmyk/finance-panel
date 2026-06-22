@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { internalFetch } from "@/lib/internalFetch";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 45;
@@ -38,7 +39,7 @@ export async function POST(req: NextRequest) {
     const article = String(rec.article || "");
     let variedHooks: string[] = [];
     try {
-      const vr = await fetch(`${req.nextUrl.origin}/api/factory/variations`, {
+      const vr = await internalFetch(`${req.nextUrl.origin}/api/factory/variations`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ hook: baseHook, article, product_name: article, count: Math.max(3, n + 1) }),
         signal: AbortSignal.timeout(35000),
