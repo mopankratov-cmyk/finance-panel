@@ -25,7 +25,9 @@ export async function POST(req: NextRequest) {
       // Иначе 3 транзиента (502 критика/Shotstack/таймаут), размазанные по длинному прогону
       // с реген-петлёй (×3 рендера), убивали ран в run_fail и ВЫБРАСЫВАЛИ оплаченный лучший результат.
       const p = ctx.plan as RunPlan;
-      if (p.attempts) { p.attempts = 0; await db.from("node_recipes").update({ run_plan: p, updated_at: new Date().toISOString() }).eq("id", ctx.id); }
+      // #9: сброс счётчика подряд-фейлов через RPC (jsonb_set только поле attempts) — НЕ затирает
+      // конкурентный claim/продвижение плана. Fallback на полный апдейт, если RPC не задеплоен (миграция 20260626).
+      if (p.attempts) { p.attempts = 0; const { error: rErr } = await db.rpc("reset_step_attempts", { p_recipe_id: ctx.id }); if (rErr) await db.from("node_recipes").update({ run_plan: p, updated_at: new Date().toISOString() }).eq("id", ctx.id); }
     } catch (e) {
       const msg = String(e instanceof Error ? e.message : e).slice(0, 300);
       const plan = ctx.plan as RunPlan;
