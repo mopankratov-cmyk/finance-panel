@@ -39,7 +39,10 @@ export async function POST(req: NextRequest) {
     }
 
     const origin = req.nextUrl.origin;
-    after(async () => { try { await internalFetch(`${origin}/api/factory/graph-run/tick`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ recipe_id: recipeId }), signal: AbortSignal.timeout(20000) }); } catch { /* воскресит ручной тик */ } });
+    // первый тик СИНХРОННО (не after): after() не исполняется надёжно при server-to-server (см. крон-фикс
+    // d9ccb5a) → рецепт зависал в running до крон-страховки (~90с). Дёргаем тик и ждём; таймаут бережёт POST,
+    // а тик-хендлер продолжит свой шаг сам, даже если мы отвалимся по таймауту. Сбой кика → подберёт крон.
+    try { await internalFetch(`${origin}/api/factory/graph-run/tick`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ recipe_id: recipeId }), signal: AbortSignal.timeout(20000) }); } catch { /* воскресит крон/ручной тик */ }
 
     return NextResponse.json({ ok: true, recipe_id: recipeId, started: true });
   } catch (e) {
