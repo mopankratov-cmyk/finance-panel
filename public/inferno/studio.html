@@ -579,7 +579,7 @@ async function transferRecipe(){
 }
 
 //==================== 03 · CANVAS ====================
-async function openRecipe(id){ const r=await api("/recipes?recipe_id="+id); if(r.error){ toast("рецепт: "+r.error); return false; } S.recipe=r; S.selectedNode=(r.nodes&&r.nodes[0])||null; return true; }
+async function openRecipe(id){ const r=await api("/recipes?recipe_id="+id); if(r.error){ toast("рецепт: "+r.error); return false; } S.recipe=r; S.selectedNode=(r.nodes&&r.nodes[0])||null; S.run=null; _runPolling=false; return true; } // сбрасываем прогон прошлого рецепта, иначе ОТК показывает стейл-спиннер/вердикт
 async function screenCanvas(root){
   header("Нод-канвас",S.recipe?("граф #"+S.recipe.recipe.id+" · клон конкурента"):"граф видео", el("div",{class:"hdr-r"},
     el("div",{title:"зум/пан — скоро",style:"display:flex;align-items:center;background:var(--bg-chip);border:1px solid var(--bd);border-radius:7px;padding:3px;opacity:.45;cursor:not-allowed;"},el("span",{style:"font-size:11px;color:var(--tx-lo);padding:4px 8px;"},"−"),el("span",{class:"mono",style:"font-size:11px;color:var(--tx-hi);padding:4px 6px;"},"100%"),el("span",{style:"font-size:11px;color:var(--tx-lo);padding:4px 8px;"},"＋")),
@@ -1095,7 +1095,11 @@ function renderOTK(otk){
   const run=S.run;
   if(!run){ otk.appendChild(el("div",{style:"display:flex;align-items:center;gap:9px;margin-bottom:14px;"},el("div",{style:"width:30px;height:30px;border-radius:8px;background:var(--bg-card);display:flex;align-items:center;justify-content:center;font-size:14px;color:var(--tx-lo);"},"○"),el("div",{},el("div",{style:"font-size:13.5px;font-weight:600;"},"ОТК · контроль качества"),el("div",{class:"mono",style:"font-size:10.5px;color:var(--tx-lo2);"},"5 осей · вердикт"))));
     otk.appendChild(el("div",{class:"card",style:"padding:22px;text-align:center;color:var(--tx-lo);font-size:12.5px;line-height:1.5;"},"нажми «Смонтировать» — запустится генерация нод → Shotstack → ОТК")); return; }
-  const active=run.status==="running"||(run.step&&run.step!=="done"&&run.step!=="failed");
+  // прогон провален, если: шаг failed / статус run_fail|otk_fail / есть текст ошибки —
+  // тогда НЕ держим спиннер (раньше status="running" + step="failed" из таймаут-веток pollRun
+  // оставлял active=true навсегда → вечный «исполняю граф…», ошибку юзер не видел).
+  const failed=run.step==="failed"||run.status==="run_fail"||run.status==="otk_fail"||!!run.error;
+  const active=!failed&&(run.status==="running"||(run.step&&run.step!=="done"));
   const score=run.otk_score!=null?run.otk_score:(run.otk&&run.otk.score);
   const sc100=score==null?null:Math.round(score*10);
   otk.appendChild(el("div",{style:"display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;"},
@@ -1104,7 +1108,7 @@ function renderOTK(otk){
   if(active){ otk.appendChild(el("div",{class:"card",style:"padding:16px;"},el("div",{style:"display:flex;align-items:center;gap:12px;margin-bottom:14px;"},el("div",{class:"spinner"}),el("div",{class:"muted"},"исполняю граф…")),
     el("div",{style:"display:flex;flex-direction:column;gap:6px;"},...(run.nodes||[]).map(nodeRunRow)))); return; }
   // прогон упал ДО ОТК (нет балла) → показываем ошибку + ноды + повтор, а не ложное «Годен»
-  if((run.step==="failed"||run.status==="otk_fail")&&sc100==null){
+  if((run.step==="failed"||run.status==="run_fail"||run.status==="otk_fail"||run.error)&&sc100==null){
     otk.appendChild(el("div",{style:"background:var(--err-bg);border:1px solid var(--bd-err);border-radius:9px;padding:11px 13px;margin-bottom:14px;"},
       el("div",{style:"font-size:12.5px;font-weight:600;color:var(--err);"},"✗ Сборка не удалась"),
       el("div",{style:"font-size:11px;color:var(--tx-mid);margin-top:3px;"},String(run.error||"одна или несколько нод упали — проверь image_url/инструменты/ключи").slice(0,140))));
@@ -1162,11 +1166,12 @@ async function startRun(){
 }
 async function pollRun(id,c,errs){
   errs=errs||0;
-  if(c>80){ _runPolling=false; if(S.run){ S.run.step="failed"; S.run.error="опрос превысил лимит времени"; const p=document.getElementById("otk-panel"); if(p)renderOTK(p); } return; }
+  if(c>80){ _runPolling=false; if(S.run){ S.run.status="run_fail"; S.run.step="failed"; S.run.error="опрос превысил лимит времени"; const p=document.getElementById("otk-panel"); if(p)renderOTK(p); } return; }
   await new Promise(r=>setTimeout(r,4000)); if(S.screen!=="assembly"){ _runPolling=false; return; }
+  if(!S.recipe||!S.recipe.recipe||S.recipe.recipe.id!==id){ _runPolling=false; return; } // рецепт сменили — старый опрос не должен затирать новую панель
   const r=await api("/graph-run?recipe_id="+id);
   if(r.error){ // транзиентная ошибка опроса — НЕ роняем спиннер навсегда: ретраим, после 6 подряд показываем фейл
-    if(errs>=6){ _runPolling=false; if(S.run){ S.run.step="failed"; S.run.error=r.error; const p=document.getElementById("otk-panel"); if(p)renderOTK(p); } return; }
+    if(errs>=6){ _runPolling=false; if(S.run){ S.run.status="run_fail"; S.run.step="failed"; S.run.error=r.error; const p=document.getElementById("otk-panel"); if(p)renderOTK(p); } return; }
     return pollRun(id,c+1,errs+1);
   }
   S.run=r; const panel=document.getElementById("otk-panel"); if(panel)renderOTK(panel);
@@ -1369,7 +1374,7 @@ async function screenLearn(root){
   // ── 3) Пресеты-победители ──────────────────────────────────────────────
   cap("Пресеты-победители — переиспуй выигравшую формулу");
   const wp=d.winner_presets||[];
-  if(!wp.length){ wrap.appendChild(el("div",{style:"margin-bottom:18px;"},emptyBox("пока нет пресетов — отметь видео «✓ Беру», и его настройки лягут сюда (нужна миграция 20260622_winner_presets)"))); }
+  if(!wp.length){ wrap.appendChild(el("div",{style:"margin-bottom:18px;"},emptyBox("пока нет пресетов — отметь видео «✓ Беру», и его настройки лягут сюда"))); }
   else{
     const wg=el("div",{style:"display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;margin-bottom:18px;"}); wrap.appendChild(wg);
     wp.forEach(p=>wg.appendChild(el("div",{class:"card",style:"padding:14px;display:flex;flex-direction:column;gap:8px;"},
@@ -1400,7 +1405,7 @@ async function screenLearn(root){
   // ── 5) История генераций ───────────────────────────────────────────────
   cap("История генераций");
   const rg=d.recent_generations||[];
-  if(!rg.length){ wrap.appendChild(emptyBox("история пуста — после первых прогонов появятся записи (нужна миграция generation_history)")); }
+  if(!rg.length){ wrap.appendChild(emptyBox("история пуста — после первых прогонов появятся записи")); }
   else{
     const ST={otk_pass:["var(--ok)","ОТК ✓"],approved:["var(--ok)","одобрено"],otk_fail:["var(--err)","ОТК ✕"],rejected:["var(--err)","реджект"],artifact_fail:["var(--err)","артефакт"],regen:["var(--warn)","реген"],generated:["var(--tx-bd)","сгенерено"]};
     const list=el("div",{style:"display:flex;flex-direction:column;gap:6px;"}); wrap.appendChild(list);
