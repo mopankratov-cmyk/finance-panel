@@ -33,21 +33,29 @@ export async function POST(req: NextRequest) {
     const { data: dup } = await db.from("content_assets").select("id,url").eq("disk", "gen").contains("analysis", { source_url: videoUrl }).maybeSingle();
     if (dup?.url) return NextResponse.json({ ok: true, already: true, url: dup.url });
     let stored = "";
+    let storedPath = `gen/${stamp}-${rand}`;
     let diag = "";
-    try {
-      const r = await fetch(videoUrl, { signal: AbortSignal.timeout(90000) });
-      if (!r.ok) diag = `fetch ${r.status}`;
-      else {
-        const buf = Buffer.from(await r.arrayBuffer());
-        const path = `gen/${stamp}-${rand}.mp4`;
-        const { error } = await db.storage.from(BUCKET).upload(path, buf, { contentType: "video/mp4", upsert: true });
-        if (error) diag = `upload: ${error.message}`;
-        else stored = db.storage.from(BUCKET).getPublicUrl(path).data?.publicUrl || "";
-      }
-    } catch (e) { diag = `fetch-exc: ${String(e instanceof Error ? e.message : e).slice(0, 80)}`; }
+    // VM-рендеры (Remotion) УЖЕ в нашем бакете → НЕ перекачиваем (иначе 40с-бюджет банка таймаутит на полном
+    // рилсе → output_url и строка видео-базы не сохраняются). Каталогизируем существующий URL напрямую.
+    if (/\/storage\/v1\/object\/public\/[^/]+\//.test(videoUrl)) {
+      stored = videoUrl;
+      storedPath = videoUrl.split(/\/public\/[^/]+\//)[1] || storedPath;
+    } else {
+      try {
+        const r = await fetch(videoUrl, { signal: AbortSignal.timeout(90000) });
+        if (!r.ok) diag = `fetch ${r.status}`;
+        else {
+          const buf = Buffer.from(await r.arrayBuffer());
+          const path = `gen/${stamp}-${rand}.mp4`;
+          const { error } = await db.storage.from(BUCKET).upload(path, buf, { contentType: "video/mp4", upsert: true });
+          if (error) diag = `upload: ${error.message}`;
+          else { stored = db.storage.from(BUCKET).getPublicUrl(path).data?.publicUrl || ""; storedPath = path; }
+        }
+      } catch (e) { diag = `fetch-exc: ${String(e instanceof Error ? e.message : e).slice(0, 80)}`; }
+    }
     if (!stored) return NextResponse.json({ ok: false, error: "не удалось скачать/залить видео", diag });
     const { error: insErr } = await db.from("content_assets").insert({
-      disk: "gen", path: `gen/${stamp}-${rand}`, name: (b.hook || article || "генерация").toString().slice(0, 120),
+      disk: "gen", path: storedPath, name: (b.hook || article || "генерация").toString().slice(0, 120),
       kind: "video", niche, article: article || null, color: null, url: stored, analyzed: true, analysis: meta,
     });
     if (insErr) return NextResponse.json({ ok: false, error: insErr.message });
