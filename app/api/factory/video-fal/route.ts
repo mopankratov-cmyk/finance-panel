@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { falVideoSubmit, FAL_VIDEO_MODELS, type FalVideoModel } from "@/lib/factory/falVideo";
+import { rehostImageForFal } from "@/lib/factory/rehostImage";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -74,7 +75,10 @@ export async function POST(req: NextRequest) {
     if (!prompt) prompt = TEMPLATE;
   }
 
-  const token = await falVideoSubmit(model, imageUrl, prompt, { duration: body.duration === "10" ? "10" : "5" });
+  // WB-CDN флэйкит на серверной загрузке fal ("file_download") → рехостим фото товара в наш бакет (надёжно).
+  // Best-effort: при сбое вернётся исходный url. Тот же фикс, что в nodeEngine.submitNode (этот путь — автопилот/legacy-UI).
+  const srcImg = await rehostImageForFal(imageUrl);
+  const token = await falVideoSubmit(model, srcImg, prompt, { duration: body.duration === "10" ? "10" : "5" });
   if (!token) return NextResponse.json({ detail: "FAL не принял задачу (ключ/баланс/модель)" }, { status: 502 });
   return NextResponse.json({ task_id: "fv." + token, model, image_url: imageUrl, prompt_used: prompt, prompt_by: promptBy });
 }
