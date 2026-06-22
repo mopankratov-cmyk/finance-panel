@@ -1,6 +1,6 @@
 // Юнит-тест чистых трансформов вариантов. Запуск: npx tsx lib/factory/reelVariants.test.mts
 // Без фреймворка (как normalizeParams.test.mts) — простые ассерты, exit 1 при первом провале.
-import { selectVisualNodes, cloneNodesWithHook, reorderVisual, patchVariantProps, sanitizeVariant } from "./reelVariants";
+import { selectVisualNodes, cloneNodesWithHook, reorderVisual, patchVariantProps, sanitizeVariant, isPrivateOrLocalUrl } from "./reelVariants";
 
 let pass = 0, fail = 0;
 function ok(c: boolean, m: string) { if (c) { pass++; } else { fail++; console.error("✗", m); } }
@@ -90,6 +90,24 @@ const node = (o: any) => ({ ordinal: 0, slot: null, node_type: null, tool: null,
   eq(sanitizeVariant({ hook: 123 as unknown as string }).hook, undefined, "не-строковый hook отброшен");
   eq(sanitizeVariant({ hook: "   " }).hook, undefined, "пустой/пробельный hook отброшен");
   eq(sanitizeVariant(undefined), {}, "undefined вариант → пустой объект");
+}
+
+// ── isPrivateOrLocalUrl: SSRF-гард ──
+{
+  ok(isPrivateOrLocalUrl("http://127.0.0.1/x"), "loopback 127.0.0.1");
+  ok(isPrivateOrLocalUrl("http://localhost:8080/x"), "localhost");
+  ok(isPrivateOrLocalUrl("https://169.254.169.254/latest/meta-data"), "cloud-metadata 169.254.169.254");
+  ok(isPrivateOrLocalUrl("http://10.0.0.5/x"), "private 10.x");
+  ok(isPrivateOrLocalUrl("http://192.168.1.1/x"), "private 192.168.x");
+  ok(isPrivateOrLocalUrl("http://172.16.0.1/x"), "private 172.16.x");
+  ok(isPrivateOrLocalUrl("http://[::1]/x"), "IPv6 loopback");
+  ok(isPrivateOrLocalUrl("не-урл"), "мусор → reject (true)");
+  ok(!isPrivateOrLocalUrl("https://storage.googleapis.com/bucket/a.mp3"), "публичный CDN — ок");
+  ok(!isPrivateOrLocalUrl("https://x.supabase.co/storage/v1/object/public/a.mp3"), "supabase — ок");
+  ok(!isPrivateOrLocalUrl("http://172.32.0.1/x"), "172.32 — НЕ приватный (вне 16-31)");
+  // sanitizeVariant отсекает приватный audioSrc, пропускает публичный
+  eq(sanitizeVariant({ audioSrc: "https://169.254.169.254/x.mp3" }).audioSrc, undefined, "sanitize: metadata-IP audioSrc отброшен");
+  eq(sanitizeVariant({ audioSrc: "https://cdn.example.com/x.mp3" }).audioSrc, "https://cdn.example.com/x.mp3", "sanitize: публичный audioSrc принят");
 }
 
 console.log(`\nreelVariants: ${pass} passed, ${fail} failed`);

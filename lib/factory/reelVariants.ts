@@ -44,13 +44,31 @@ const clampStr = (s: unknown, max: number): string | undefined => {
   const t = s.trim();
   return t ? t.slice(0, max) : undefined;
 };
+
+// SSRF-гард: audioSrc (юзер-вход) уходит на render-VM, которая его фетчит → блокируем приватные/loopback/
+// link-local/metadata-хосты (169.254.169.254 и т.п.). Не парсится → reject.
+export function isPrivateOrLocalUrl(u: string): boolean {
+  let host: string;
+  try { host = new URL(u).hostname.toLowerCase().replace(/^\[|\]$/g, ""); } catch { return true; }
+  if (host === "localhost" || host.endsWith(".localhost") || host === "0.0.0.0" || host === "::1") return true;
+  if (host.startsWith("fe80:") || host.startsWith("fc") || host.startsWith("fd")) return true; // IPv6 link-local/ULA
+  const m = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (m) {
+    const a = Number(m[1]), b = Number(m[2]);
+    if (a === 127 || a === 10 || a === 0) return true;
+    if (a === 169 && b === 254) return true;            // link-local + cloud-metadata 169.254.169.254
+    if (a === 172 && b >= 16 && b <= 31) return true;
+    if (a === 192 && b === 168) return true;
+  }
+  return false;
+}
 export function sanitizeVariant(v: ReelVariant | undefined): ReelVariant {
   const out: ReelVariant = {};
   const hook = clampStr(v?.hook, 200); if (hook) out.hook = hook;
   const accent = clampStr(v?.accent, 16); if (accent) out.accent = accent;
   const ctaTitle = clampStr(v?.ctaTitle, 60); if (ctaTitle) out.ctaTitle = ctaTitle;
   const ctaButton = clampStr(v?.ctaButton, 40); if (ctaButton) out.ctaButton = ctaButton;
-  const audioSrc = clampStr(v?.audioSrc, 500); if (audioSrc && /^https?:\/\//.test(audioSrc)) out.audioSrc = audioSrc; // только http(s) — без staticFile-путей
+  const audioSrc = clampStr(v?.audioSrc, 500); if (audioSrc && /^https?:\/\//.test(audioSrc) && !isPrivateOrLocalUrl(audioSrc)) out.audioSrc = audioSrc; // http(s), не приватный/metadata-хост (SSRF)
   if (Array.isArray(v?.overlayOrder)) {
     const ord = v!.overlayOrder!.filter((i) => Number.isInteger(i) && i >= 0).slice(0, 32);
     if (ord.length) out.overlayOrder = ord;

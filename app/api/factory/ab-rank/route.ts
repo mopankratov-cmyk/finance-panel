@@ -24,7 +24,7 @@ export async function GET(req: NextRequest) {
     const niche = (sp.get("niche") || "").trim();
     const since = (sp.get("since") || "").trim();
     const limit = Math.min(2000, Math.max(10, Number(sp.get("limit")) || 500));
-    const explicitIds = (sp.get("recipe_ids") || "").split(",").map((s) => Number(s.trim())).filter((n) => n > 0);
+    const explicitIds = (sp.get("recipe_ids") || "").split(",").slice(0, 1000).map((s) => Number(s.trim())).filter((n) => n > 0);
 
     // 1) метрики рынка (несколько снапшотов на ролик возможны → берём лучший по views)
     let mq = db.from("post_metrics").select("recipe_id,views,watch_rate,ctr_card,saves,posted_at").order("posted_at", { ascending: false }).limit(limit);

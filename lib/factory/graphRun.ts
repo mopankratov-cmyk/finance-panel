@@ -196,11 +196,17 @@ async function savePlan(db: SupabaseClient, recipeId: number, plan: RunPlan, ext
 // инструмент, но клип/фото привязывал только оператор в кокпите → в батче ноды падали «нет url/image_url»).
 // Тянем content_assets по артикулу ОДИН раз и только если есть незаполненные ноды. Срабатывает лишь на нодах,
 // которые и так упали бы → рабочие не трогает. disk_real без видео → перевод на seedance i2v из фото (нет съёмки → AI).
+// ⚠️ ДЕНЬГИ: перевод disk_real($0)→seedance($0.42) рантайм-эскалирует стоимость, которую смета batch/route.ts
+// (estimateRecipe, disk_real не в TOOL_COST) НЕ видит. В обычном случае запас REGEN_FACTOR=3 это поглощает
+// (факт ≤ est×1.9 < est×3). Для UNATTENDED-масштаба правильный фикс — пост-autofill $-чек против бюджета батча
+// (плюмбинг budget_usd в graphRun) — это долг (см. self-review B1), а не правка money-guard вслепую.
 async function autoBindAssets(db: SupabaseClient, plan: RunPlan, article: string): Promise<void> {
   if (!article) return;
   const hasSrc = (n: RunNode) => {
     const p = (n.params || {}) as Record<string, unknown>;
-    return !!(n.image_url || n.asset_url || p["url"] || p["image_url"]);
+    // preview_url ВКЛЮЧЁН: нода с одобренным оператором превью (V10-кэш по nodeHash) уже имеет источник —
+    // если её тронуть (дописать image_url), hash сменится → кэш-чек упадёт → лишний оплаченный ререндер.
+    return !!(n.image_url || n.asset_url || p["url"] || p["image_url"] || p["preview_url"]);
   };
   const needs = plan.nodes.filter((n) => {
     const t = String(n.tool || "").toLowerCase();
