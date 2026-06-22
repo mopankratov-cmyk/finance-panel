@@ -134,7 +134,8 @@ async function main() {
   if (!pr) { setOutput("escalate", "нет pull_request в событии"); return; }
 
   const diff = readFile(process.env.PR_DIFF_FILE);
-  const files = parseFiles(readFile(process.env.PR_FILES_FILE));
+  const filesRaw = readFile(process.env.PR_FILES_FILE);
+  const files = parseFiles(filesRaw);
   const cockpit = await askCockpit(pr, diff);
 
   const flags = denyFlags(files);
@@ -145,13 +146,17 @@ async function main() {
   // авто-мёрж только в защищённый main. Иначе (PR в throwaway-базу) дифф считается против неё —
   // классический обход: «доки против левой базы» → потом смена базы на main. Не одобряем.
   const baseNotMain = (pr.base?.ref || "") !== "main";
-  // крупный PR → к человеку (текст по строкам + страховка от бинарного bloat, который в diff виден одной строкой).
-  const changeCount = files.length || Number(pr.changed_files || 0);
+  // Список файлов — АВТОРИТЕТНЫЙ вход (allowlist/деней/размер). Если пагинация упала (сентинел из workflow)
+  // или он расходится с pr.changed_files (усечён) — нельзя доверять усечённому списку → эскалация.
+  const declaredCount = Number(pr.changed_files || 0);
+  const fileListBad = filesRaw.includes("__FETCH_FAILED__") || (declaredCount > 0 && files.length !== declaredCount);
+  // крупный PR → к человеку. Берём БОЛЬШИЙ из (список, pr.changed_files), чтобы усечение не занижало счётчик.
+  const changeCount = Math.max(files.length, declaredCount);
   const lineCount = Number(pr.additions || 0) + Number(pr.deletions || 0);
   const tooMany = changeCount > 25 || lineCount > 1500;
   const safe = allFilesSafe(files);
 
-  const approved = safe && !flags.length && !tooBig && !isFork && !baseNotMain && !tooMany
+  const approved = safe && !flags.length && !tooBig && !isFork && !baseNotMain && !tooMany && !fileListBad
     && cockpit.decision === "approve" && cockpit.risk === "low";
 
   const author = pr.user?.login || "сотрудник";
@@ -173,6 +178,7 @@ async function main() {
   }
 
   const why = [
+    fileListBad ? "список файлов неполный/недоступен" : "",
     isFork ? "PR не из этого репозитория" : "",
     baseNotMain ? `база не main (${pr.base?.ref || "?"})` : "",
     tooBig || tooMany ? "крупный PR" : "",

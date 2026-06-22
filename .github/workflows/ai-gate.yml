@@ -42,8 +42,12 @@ jobs:
           PR: ${{ github.event.pull_request.number }}
           REPO: ${{ github.repository }}
         run: |
-          # имена файлов из API — чистые JSON-строки (без git octal-квотинга)
-          gh api "repos/$REPO/pulls/$PR/files" --paginate --jq '.[] | [.status, .filename] | @tsv' > /tmp/pr.files || true
+          # имена файлов из API — чистые JSON-строки (без git octal-квотинга).
+          # Сбой пагинации НЕ глотаем (иначе усечённый список пройдёт как «только доки»):
+          # пишем сентинел → pr-gate увидит его и эскалирует.
+          if ! gh api "repos/$REPO/pulls/$PR/files" --paginate --jq '.[] | [.status, .filename] | @tsv' > /tmp/pr.files; then
+            echo "__FETCH_FAILED__" > /tmp/pr.files
+          fi
           # дифф как текст через API (никакой код PR не исполняется)
           gh api "repos/$REPO/pulls/$PR" -H "Accept: application/vnd.github.v3.diff" > /tmp/pr.diff || true
           echo "files: $(wc -l < /tmp/pr.files) | diff bytes: $(wc -c < /tmp/pr.diff)"
@@ -75,6 +79,9 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR: ${{ github.event.pull_request.number }}
         run: |
+          # снимаем ранее армированный авто-мёрж (если PR был одобрен прошлым прогоном, а теперь
+          # эскалирован) — чтобы защита не висела только на обязательности чека в branch protection
+          gh pr merge "$PR" --disable-auto || true
           gh pr comment "$PR" --body "🛑 AI-гейт: нужна проверка владельца (детали в Telegram). Авто-мёрж заблокирован: ${{ steps.gate.outputs.reason }}" || true
           echo "Escalated: ${{ steps.gate.outputs.reason }} — валю чек, чтобы заблокировать мёрж."
           exit 1
