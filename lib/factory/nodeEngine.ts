@@ -4,6 +4,7 @@
 import { falVideoSubmit, falVideoStatus, FAL_VIDEO_MODELS, type FalVideoModel, type FalVideoOpts } from "./falVideo";
 import { creatifyLinkVideo, creatifyStatus } from "./creatify";
 import { elevenTTS } from "./elevenlabs";
+import { isPlaceholderSource } from "./toolSchemas";
 
 export type NodeEngine = "fal" | "creatify" | "disk" | "asset" | "voice" | "none";
 
@@ -66,11 +67,14 @@ function falOptsFromParams(p: Record<string, any> | null | undefined): FalVideoO
 export async function submitNode(node: EngineNode): Promise<SubmitResult> {
   const tool = String(node.tool || "").toLowerCase();
   const params = node.params || {};
-  const imageUrl = node.image_url || params.image_url || node.asset_url || "";
+  // isPlaceholderSource: «picker»/«file»/пустое — это echo имени ui-контрола из автофилла, не источник.
+  // Без этого seedance слал бы image_url="picker" в fal (→ 422), а disk_real помечался done с заглушкой (→ Remotion 404).
+  const pick = (...cands: unknown[]) => { for (const c of cands) if (!isPlaceholderSource(c)) return String(c); return ""; };
+  const imageUrl = pick(node.image_url, params.image_url, node.asset_url);
 
   // disk_real / готовый ассет — «превью» = сам клип, без генерации ($0)
   if (tool === "disk_real" || tool === "disk") {
-    const url = node.asset_url || params.url || node.image_url;
+    const url = pick(node.asset_url, params.url, node.image_url);
     if (url) return { engine: "disk", url, done: true, cost_hint: "free" };
     return { engine: "disk", error: "disk_real: нет url клипа (params.url / asset_url)" };
   }
@@ -103,7 +107,7 @@ export async function submitNode(node: EngineNode): Promise<SubmitResult> {
     }
     if (Object.keys(caption_setting).length) caption_setting.override_visual_style = true;
     const r = await creatifyLinkVideo({
-      url: params.url || undefined,
+      url: pick(params.url) || undefined,
       images: imageUrl ? [imageUrl] : (Array.isArray(params.images) ? params.images : undefined),
       title: params.title || undefined,
       description: params.description || undefined,
