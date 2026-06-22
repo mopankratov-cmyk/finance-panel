@@ -231,11 +231,22 @@ async function runRender(id, composition, inputProps, durationInFrames) {
     // заливка в Supabase Storage
     const db = supa();
     if (!db) throw new Error("Supabase env не настроен (NEXT_PUBLIC_SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY)");
-    try { await db.storage.createBucket(BUCKET, { public: true }); } catch { /* уже есть */ }
     const buf = await fs.readFile(tmp);
     const objPath = `renders/${id}.mp4`;
-    const { error } = await db.storage.from(BUCKET).upload(objPath, buf, { contentType: "video/mp4", upsert: true });
-    if (error) throw new Error(`upload: ${error.message}`);
+    // ретрай заливки: транзиентный "fetch failed"/5xx к Supabase НЕ должен хоронить уже готовый (оплаченный) рендер.
+    // upload бросает на сетевой ошибке И возвращает {error} на серверной — ловим оба, бэкофф 1.5с×попытка.
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    let upErr = null;
+    for (let attempt = 1; attempt <= 4; attempt++) {
+      try {
+        if (attempt === 1) { try { await db.storage.createBucket(BUCKET, { public: true }); } catch { /* уже есть */ } }
+        const { error } = await db.storage.from(BUCKET).upload(objPath, buf, { contentType: "video/mp4", upsert: true });
+        if (!error) { upErr = null; break; }
+        upErr = error.message || String(error);
+      } catch (e) { upErr = String(e?.message || e); } // напр. "fetch failed" — сетевой транзиент
+      if (attempt < 4) { log(`upload ${id} retry ${attempt}/3 (${upErr})`); await sleep(1500 * attempt); }
+    }
+    if (upErr) throw new Error(`upload (после 4 попыток): ${upErr}`);
     const videoUrl = db.storage.from(BUCKET).getPublicUrl(objPath).data?.publicUrl;
     if (!videoUrl) throw new Error("getPublicUrl вернул пусто");
 
