@@ -25,8 +25,14 @@ export function classifyAssets(assets: DiskAsset[]): AssetPool {
   return { realVideos, realImages, wbImages };
 }
 
-// лучшее фото товара: реальная съёмка приоритетнее WB-карточки
-export function bestImage(p: AssetPool): string | undefined { return p.realImages[0] || p.wbImages[0]; }
+// фото товара по индексу (реальная съёмка приоритетнее WB), циклично — чтобы РАЗНЫЕ i2v-ноды
+// брали РАЗНЫЕ стартовые кадры (анти-сэйминес: 5 клипов с одного фото = слоп-риск).
+export function pickImage(p: AssetPool, idx = 0): string | undefined {
+  const imgs = [...p.realImages, ...p.wbImages];
+  return imgs.length ? imgs[((idx % imgs.length) + imgs.length) % imgs.length] : undefined;
+}
+// лучшее (первое) фото — для обратной совместимости/простых случаев
+export function bestImage(p: AssetPool): string | undefined { return pickImage(p, 0); }
 
 const I2V = new Set(["seedance", "seedance_fast", "seedance_pro", "kling", "kling_pro", "pika"]);
 
@@ -34,11 +40,11 @@ const I2V = new Set(["seedance", "seedance_fast", "seedance_pro", "kling", "klin
 //   disk_real: есть реальное видео → asset_url; иначе фото есть → ПЕРЕВОДИМ на seedance i2v (нет съёмки → AI из фото)
 //   i2v (seedance/kling/pika): нужен стартовый кадр → image_url из лучшего фото
 export function chooseBinding(
-  tool: string, hasSource: boolean, pool: AssetPool,
+  tool: string, hasSource: boolean, pool: AssetPool, imageIdx = 0,
 ): { image_url?: string; asset_url?: string; tool?: string; reason: string } | null {
   if (hasSource) return null; // нода уже с источником — не вмешиваемся
   const t = String(tool || "").toLowerCase();
-  const img = bestImage(pool);
+  const img = pickImage(pool, imageIdx); // разный кадр на каждую i2v-ноду (анти-сэйминес)
   if (t === "disk_real" || t === "disk") {
     if (pool.realVideos.length) return { asset_url: pool.realVideos[0], reason: "disk_real ← реальное видео товара" };
     if (img) return { tool: "seedance", image_url: img, reason: "нет реального видео → seedance i2v из фото товара" };

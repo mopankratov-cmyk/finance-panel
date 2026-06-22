@@ -215,12 +215,13 @@ async function autoBindAssets(db: SupabaseClient, plan: RunPlan, article: string
     assets = (data as DiskAsset[] | null) || [];
   } catch { return; } // каталог недоступен — ноды упадут штатно, как раньше
   const pool = classifyAssets(assets);
+  let imgIdx = 0; // разные стартовые фото на разные i2v-ноды (анти-сэйминес: не 5 клипов с одного кадра)
   for (const n of needs) {
-    const b = chooseBinding(String(n.tool || ""), false, pool);
+    const b = chooseBinding(String(n.tool || ""), false, pool, imgIdx);
     if (!b) continue;
     if (b.tool) n.tool = b.tool;
     if (b.asset_url) n.asset_url = b.asset_url;
-    if (b.image_url) { n.image_url = b.image_url; (n.params as Record<string, unknown>)["image_url"] = b.image_url; }
+    if (b.image_url) { n.image_url = b.image_url; (n.params as Record<string, unknown>)["image_url"] = b.image_url; imgIdx++; }
   }
 }
 

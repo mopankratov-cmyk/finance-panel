@@ -1,5 +1,5 @@
 // Юнит-тест авто-привязки ассетов. Запуск: npx tsx lib/factory/assetBind.test.mts
-import { classifyAssets, bestImage, chooseBinding, type DiskAsset } from "./assetBind";
+import { classifyAssets, bestImage, pickImage, chooseBinding, type DiskAsset } from "./assetBind";
 
 let pass = 0, fail = 0;
 function ok(c: boolean, m: string) { if (c) { pass++; } else { fail++; console.error("✗", m); } }
@@ -47,6 +47,24 @@ function eq(a: unknown, b: unknown, m: string) { ok(JSON.stringify(a) === JSON.s
   eq(chooseBinding("seedance", true, pool), null, "нода С источником → null (не вмешиваемся)");
   eq(chooseBinding("creatify", false, pool), null, "creatify → null (не наша забота)");
   eq(chooseBinding("sound", false, pool), null, "sound → null");
+}
+
+// ── pickImage: ротация по индексу (real → wb), циклично ──
+{
+  const p = { realVideos: [], realImages: ["ri1"], wbImages: ["wb1", "wb2"] };
+  eq(pickImage(p, 0), "ri1", "idx0 → первое (real)");
+  eq(pickImage(p, 1), "wb1", "idx1 → wb1");
+  eq(pickImage(p, 2), "wb2", "idx2 → wb2");
+  eq(pickImage(p, 3), "ri1", "idx3 → цикл к началу");
+  eq(pickImage({ realVideos: [], realImages: [], wbImages: [] }, 0), undefined, "пусто → undefined");
+}
+
+// ── chooseBinding с imageIdx: разные i2v-ноды берут разные фото ──
+{
+  const pool = { realVideos: [], realImages: [], wbImages: ["wb1", "wb2", "wb3"] };
+  eq(chooseBinding("seedance", false, pool, 0)?.image_url, "wb1", "i2v idx0 → wb1");
+  eq(chooseBinding("seedance", false, pool, 1)?.image_url, "wb2", "i2v idx1 → wb2");
+  eq(chooseBinding("disk_real", false, pool, 2)?.image_url, "wb3", "disk_real→seedance idx2 → wb3");
 }
 
 console.log(`\nassetBind: ${pass} passed, ${fail} failed`);
