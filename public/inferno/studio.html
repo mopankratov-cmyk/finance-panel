@@ -1268,9 +1268,14 @@ function genCard(g){ const a=g.analysis||{}; const isVid=g.kind==="video"; const
   const thumb=el("div",{class:"ph",style:"aspect-ratio:9/14;position:relative;display:flex;align-items:center;justify-content:center;overflow:hidden;background:#0c0d10;"},
     win?el("span",{class:"mono tbadge",style:"position:absolute;top:7px;left:7px;z-index:2;background:var(--ok);"},"★ ПОБЕДИТЕЛЬ"):null,
     el("span",{style:"position:absolute;z-index:2;width:34px;height:34px;border-radius:50%;background:rgba(12,13,16,.6);border:1px solid #3a414d;display:flex;align-items:center;justify-content:center;font-size:12px;color:var(--tx-hi);"},"▶"));
-  // реальный кадр в плитке (а не полосатый плейсхолдер) — видно, ЧТО за генерация
-  if(g.url){ if(isVid)thumb.insertBefore(el("video",{src:g.url+"#t=0.1",muted:"muted",playsinline:"playsinline",preload:"metadata",style:"position:absolute;inset:0;width:100%;height:100%;object-fit:cover;"}),thumb.firstChild);
-    else thumb.insertBefore(el("img",{src:g.url,style:"position:absolute;inset:0;width:100%;height:100%;object-fit:cover;"}),thumb.firstChild); }
+  // реальный кадр в плитке (а не полосатый плейсхолдер) — видно, ЧТО за генерация.
+  // #21: у видео приоритет — сохранённый постер-кадр (a.poster): <video> не рендерит первый кадр на
+  // supabase (range-requests) → раньше пустые квадраты. Старые гены без постера — фолбэк на кадр из <video>.
+  const COVER="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;";
+  if(g.url){
+    if(isVid&&a.poster)thumb.insertBefore(el("img",{src:a.poster,loading:"lazy",style:COVER}),thumb.firstChild);
+    else if(isVid)thumb.insertBefore(el("video",{src:g.url+"#t=0.1",muted:"muted",playsinline:"playsinline",preload:"metadata",style:COVER}),thumb.firstChild);
+    else thumb.insertBefore(el("img",{src:g.url,loading:"lazy",style:COVER}),thumb.firstChild); }
   return el("div",{class:"card",style:"overflow:hidden;cursor:pointer;",onclick:()=>openMedia(g.url,{video:isVid})},
     thumb,
     el("div",{style:"padding:10px;"},el("div",{style:"font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"},g.name||"генерация"),

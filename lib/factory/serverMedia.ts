@@ -1,4 +1,5 @@
 import sharp from "sharp";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 // Серверные аналоги браузерных canvas-кусков завода — чтобы фоновые джобы давали полное качество без вкладки.
 // (1) overlayPngBase64 — прозрачный PNG-оверлей (хук+субтитры) через sharp (SVG→PNG), как _renderOverlayPng.
@@ -114,4 +115,30 @@ export async function extractFrames(videoUrl: string): Promise<string[]> {
     } catch { return null; /* пропускаем кадр */ }
   }));
   return results.filter((x): x is string => !!x);
+}
+
+// Постер-кадр (первый) для галереи «База видосов»: fal extract-frame → sharp JPG → Storage → публичный URL.
+// Чинит «пустые тёмные квадраты» — <video preload=metadata #t=0.1> не рендерит первый кадр на supabase
+// (range-requests). Один fal-вызов (дешевле extractFrames с 3). Best-effort: любой сбой → null (галерея
+// откатывается на попытку кадра из <video>, как раньше).
+export async function extractPosterUrl(db: SupabaseClient, videoUrl: string, bucket: string, pathBase: string): Promise<string | null> {
+  const k = process.env.FAL_KEY;
+  if (!k || !videoUrl) return null;
+  try {
+    const r = await fetch("https://fal.run/fal-ai/ffmpeg-api/extract-frame", {
+      method: "POST", headers: { Authorization: `Key ${k}`, "Content-Type": "application/json" }, cache: "no-store",
+      body: JSON.stringify({ video_url: videoUrl, frame_type: "first" }), signal: AbortSignal.timeout(25000),
+    });
+    if (!r.ok) return null;
+    const j = (await r.json()) as { images?: { url?: string }[] };
+    const u = j.images?.[0]?.url;
+    if (!u) return null;
+    const img = await fetch(u, { signal: AbortSignal.timeout(15000) });
+    if (!img.ok) return null;
+    const jpeg = await sharp(Buffer.from(await img.arrayBuffer())).resize(420, null, { fit: "inside", withoutEnlargement: true }).jpeg({ quality: 72 }).toBuffer();
+    const path = `${pathBase}.jpg`;
+    const { error } = await db.storage.from(bucket).upload(path, jpeg, { contentType: "image/jpeg", upsert: true });
+    if (error) return null;
+    return db.storage.from(bucket).getPublicUrl(path).data?.publicUrl || null;
+  } catch { return null; }
 }
