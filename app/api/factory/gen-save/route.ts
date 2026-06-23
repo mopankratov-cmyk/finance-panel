@@ -46,11 +46,23 @@ export async function POST(req: NextRequest) {
       }
     } catch (e) { diag = `fetch-exc: ${String(e instanceof Error ? e.message : e).slice(0, 80)}`; }
     if (!stored) return NextResponse.json({ ok: false, error: "не удалось скачать/залить видео", diag });
+    // #14: повторная проверка дедупа ПРЯМО перед вставкой — параллельный gen-poll мог успеть сохранить
+    // это же видео, пока мы качали (~до 90с). Сужает окно гонки; полную гарантию даёт уникальный индекс
+    // (миграция 20260627) — конфликт обработан ниже.
+    const { data: dup2 } = await db.from("content_assets").select("url").eq("disk", "gen").contains("analysis", { source_url: videoUrl }).maybeSingle();
+    if (dup2?.url) return NextResponse.json({ ok: true, already: true, url: dup2.url });
     const { error: insErr } = await db.from("content_assets").insert({
       disk: "gen", path: `gen/${stamp}-${rand}`, name: (b.hook || article || "генерация").toString().slice(0, 120),
       kind: "video", niche, article: article || null, color: null, url: stored, analyzed: true, analysis: meta,
     });
-    if (insErr) return NextResponse.json({ ok: false, error: insErr.message });
+    if (insErr) {
+      // гонка проиграна: уникальный индекс (миграция 20260627) отбил дубль → вернём уже сохранённую строку
+      if ((insErr as { code?: string }).code === "23505") {
+        const { data: ex } = await db.from("content_assets").select("url").eq("disk", "gen").contains("analysis", { source_url: videoUrl }).maybeSingle();
+        if (ex?.url) return NextResponse.json({ ok: true, already: true, url: ex.url });
+      }
+      return NextResponse.json({ ok: false, error: insErr.message });
+    }
 
     // V20 · память итераций: пишем финальную генерацию в историю (best-effort, не дедупим)
     await logGeneration({
