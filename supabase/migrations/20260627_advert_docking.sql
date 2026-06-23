@@ -31,5 +31,7 @@ create index if not exists advert_docking_log_adv on public.advert_docking_log (
 
 alter table public.advert_docking_config enable row level security;
 alter table public.advert_docking_log enable row level security;
+drop policy if exists "all" on public.advert_docking_config;
 create policy "all" on public.advert_docking_config for all using (true) with check (true);
+drop policy if exists "all" on public.advert_docking_log;
 create policy "all" on public.advert_docking_log for all using (true) with check (true);
