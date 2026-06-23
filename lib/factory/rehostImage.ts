@@ -55,7 +55,7 @@ export async function rehostImageForFal(url: string | null | undefined): Promise
     const buf = Buffer.from(await r.arrayBuffer());
     if (!buf.length) { warnFallback(u, "пустой буфер"); return u; }
     const ext = extOf(u);
-    const { error } = await db.storage.from(BUCKET).upload(path, buf, { contentType: contentTypeOf(ext), upsert: true });
+    const { error } = await db.storage.from(BUCKET).upload(path, buf, { contentType: contentTypeOf(ext), upsert: true, cacheControl: "31536000" });
     if (error) { warnFallback(u, `upload: ${error.message}`); return u; }
     return pub;
   } catch (e) { warnFallback(u, String((e as Error)?.message || e).slice(0, 100)); return u; }

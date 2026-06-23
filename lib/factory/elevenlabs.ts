@@ -55,14 +55,19 @@ export async function elevenTTS(text: string, voiceId: string, opts?: { stabilit
 
   let buf: Buffer;
   try {
-    const vs: Record<string, unknown> = { use_speaker_boost: true };
-    if (typeof opts?.stability === "number") vs.stability = Math.max(0, Math.min(1, opts.stability));
-    if (typeof opts?.similarity_boost === "number") vs.similarity_boost = Math.max(0, Math.min(1, opts.similarity_boost));
-    if (typeof opts?.style === "number") vs.style = Math.max(0, Math.min(1, opts.style));
+    // Пресет естественного UGC-голоса (исследование ElevenLabs): stability 0.5 / similarity 0.75 / style 0 —
+    // меньше артефактов и латентности, чем дефолт. Любой параметр переопределяется через opts.
+    const vs: Record<string, unknown> = {
+      stability: typeof opts?.stability === "number" ? Math.max(0, Math.min(1, opts.stability)) : 0.5,
+      similarity_boost: typeof opts?.similarity_boost === "number" ? Math.max(0, Math.min(1, opts.similarity_boost)) : 0.75,
+      style: typeof opts?.style === "number" ? Math.max(0, Math.min(1, opts.style)) : 0,
+      use_speaker_boost: true,
+    };
     const r = await fetch(`${API}/text-to-speech/${encodeURIComponent(vid)}`, {
       method: "POST",
       headers: { "xi-api-key": KEY(), "Content-Type": "application/json", "Accept": "audio/mpeg" },
-      body: JSON.stringify({ text: t, model_id: opts?.model || MODEL, voice_settings: vs }),
+      // apply_text_normalization:"auto" — числа/цены/проценты/даты озвучиваются словами (иначе «2990₽» искажается)
+      body: JSON.stringify({ text: t, model_id: opts?.model || MODEL, voice_settings: vs, apply_text_normalization: "auto" }),
       signal: AbortSignal.timeout(45000),
     });
     if (!r.ok) {
@@ -80,7 +85,7 @@ export async function elevenTTS(text: string, voiceId: string, opts?: { stabilit
     try { await db.storage.createBucket(BUCKET, { public: true }); } catch { /* есть */ }
     const cacheKey = fnv1a([vid, opts?.model || MODEL, opts?.stability, opts?.similarity_boost, opts?.style, t].join("|"));
     const path = `voiceover/${vid.slice(0, 12)}-${cacheKey}.mp3`; // ключ зависит от текста+голоса+настроек — без коллизий по длине
-    const { error } = await db.storage.from(BUCKET).upload(path, buf, { contentType: "audio/mpeg", upsert: true });
+    const { error } = await db.storage.from(BUCKET).upload(path, buf, { contentType: "audio/mpeg", upsert: true, cacheControl: "31536000" });
     if (error) return { error: "не залилось в Storage: " + error.message.slice(0, 100) };
     const url = db.storage.from(BUCKET).getPublicUrl(path).data?.publicUrl;
     return url ? { url } : { error: "нет publicUrl для аудио" };

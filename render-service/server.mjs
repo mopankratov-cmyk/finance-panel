@@ -23,6 +23,9 @@
 //   RENDER_SCALE                 — масштаб рендера (1 = 1080×1920; 0.66 ≈ 720p — кратно быстрее, ниже качество)
 //   RENDER_X264_PRESET           — x264-пресет (дефолт faster; veryfast/ultrafast — быстрее/хуже)
 //   RENDER_TIMEOUT_MS            — таймаут кадра, мс (дефолт 120000)
+//   RENDER_GL                    — WebGL-бэкенд headless Chrome (пусто=дефолт Chrome). На VM БЕЗ GPU Remotion
+//                                  рекомендует "swangle" (надёжный software-ANGLE: ровные градиенты/без пустых кадров,
+//                                  критично для CSS-моушена BRoll). Также: "angle", "egl", "swiftshader". Ставить на VM.
 //   RENDER_REUSE_BROWSER         — 1 (дефолт): один Chrome на selectComposition+renderMedia (вместо двух запусков). 0 — выключить
 //   LOCALIZE_ASSETS              — 1 (дефолт): качать+нормализовать remote-видео из пропсов локально, отдавать по 127.0.0.1 (×2-5 для прод-рендеров). 0 — выкл
 //   ASSET_PORT                   — порт локального статик-сервера ассетов (дефолт 8090, только 127.0.0.1)
@@ -58,6 +61,9 @@ const RENDER_SCALE = Number(process.env.RENDER_SCALE) || 1;
 const X264_PRESET = process.env.RENDER_X264_PRESET || "faster";
 const RENDER_TIMEOUT_MS = Number(process.env.RENDER_TIMEOUT_MS) || 120000;
 const REUSE_BROWSER = process.env.RENDER_REUSE_BROWSER !== "0"; // переиспользовать Chrome в пределах одного рендера
+// GL-бэкенд: дефолт пуст (текущее рабочее поведение). На VM без GPU выставить RENDER_GL=swangle (см. ENV-блок).
+const RENDER_GL = (process.env.RENDER_GL || "").trim();
+const CHROMIUM_OPTIONS = RENDER_GL ? { gl: RENDER_GL } : undefined;
 
 const log = (...a) => console.log(new Date().toISOString(), ...a);
 
@@ -197,11 +203,11 @@ async function runRender(id, composition, inputProps, durationInFrames) {
     // один Chrome на весь рендер: общий для selectComposition+renderMedia (иначе Remotion поднимает его дважды).
     // fail-safe: не открылся → ppt пустой, Remotion поднимет свой на каждый вызов (поведение как раньше).
     if (REUSE_BROWSER) {
-      try { browser = await openBrowser("chrome"); }
+      try { browser = await openBrowser("chrome", CHROMIUM_OPTIONS ? { chromiumOptions: CHROMIUM_OPTIONS } : undefined); }
       catch (e) { log(`warm browser недоступен — fallback на свежий: ${String(e?.message || e).slice(0, 120)}`); browser = null; }
     }
     const ppt = browser ? { puppeteerInstance: browser } : {};
-    const comp = await selectComposition({ serveUrl, id: composition, inputProps: props, ...ppt });
+    const comp = await selectComposition({ serveUrl, id: composition, inputProps: props, ...ppt, ...(CHROMIUM_OPTIONS ? { chromiumOptions: CHROMIUM_OPTIONS } : {}) });
     tSelected = Date.now();
     const durationOverride = Number.isFinite(durationInFrames) && durationInFrames > 0
       ? { durationInFrames } : {};
@@ -217,6 +223,7 @@ async function runRender(id, composition, inputProps, durationInFrames) {
       ...(OFFTHREAD_CACHE_BYTES ? { offthreadVideoCacheSizeInBytes: OFFTHREAD_CACHE_BYTES } : {}),
       ...(RENDER_SCALE !== 1 ? { scale: RENDER_SCALE } : {}),
       x264Preset: X264_PRESET,
+      ...(CHROMIUM_OPTIONS ? { chromiumOptions: CHROMIUM_OPTIONS } : {}), // GL-бэкенд (RENDER_GL=swangle на VM без GPU)
       // дефолтные 28с малы: несколько рендереров разом тянут кадры из тяжёлых видео (OffthreadVideo → <Img blob>)
       timeoutInMilliseconds: RENDER_TIMEOUT_MS,
       onProgress: ({ progress }) => {

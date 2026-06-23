@@ -10,6 +10,28 @@ export const maxDuration = 60;
 
 const AXIS_KEYS: (keyof AxisScores)[] = ["hook", "retention", "native", "brand", "cta"];
 
+// #17 Structured Outputs: критик ОБЯЗАН вернуть схема-валидный вердикт через forced tool_use →
+// нет обрезанного/кривого JSON (главная флаки ОТК-маховика). parseLooseJson остаётся фолбэком.
+const AXIS_SCHEMA = { type: "integer", minimum: 1, maximum: 5 } as const;
+const CRITIQUE_TOOL = {
+  name: "submit_critique",
+  description: "Verdict per rubric: оси 1-5 + изъяны/фиксы + одна англ. regen-фраза для i2v.",
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      axes: {
+        type: "object",
+        properties: { hook: AXIS_SCHEMA, retention: AXIS_SCHEMA, native: AXIS_SCHEMA, brand: AXIS_SCHEMA, cta: AXIS_SCHEMA },
+        required: ["hook", "retention", "native", "brand", "cta"],
+      },
+      issues: { type: "array", items: { type: "string" } },
+      fixes: { type: "array", items: { type: "string" } },
+      regen_hint: { type: "string" },
+    },
+    required: ["axes", "issues", "fixes"],
+  },
+};
+
 // Ось из ответа модели: значение ЕСТЬ → пропускаем как есть (явный 0/мусор → scoreRubric.clamp опустит до 1 = провал флора),
 // genuinely-absent (null/undefined) → нейтральная 3. Прежний `+raw.hook || 3` маскировал явный низкий 0/NaN под проходной флор 3.
 const axisOr3 = (v: unknown): number => (v != null ? Number(v) : 3);
@@ -94,7 +116,7 @@ export async function POST(req: NextRequest) {
 ${rubricPrompt(mode)}
 Верни СТРОГО JSON: {"axes":{"hook":1-5,"retention":1-5,"native":3,"brand":3,"cta":1-5},"issues":["что слабо в хуке/структуре",...],"fixes":["как усилить хук",...]}. Только JSON.`;
     try {
-      const resT = await tClient.messages.create({ model: MODEL, max_tokens: 700, system: sysT, messages: [{ role: "user", content: `Хук: «${hook}».\nСценарий:\n${scenarioText || "—"}` }] });
+      const resT = await tClient.messages.create({ model: MODEL, max_tokens: 700, temperature: 0.2, system: sysT, messages: [{ role: "user", content: `Хук: «${hook}».\nСценарий:\n${scenarioText || "—"}` }] });
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       let txtT = (resT.content as any[]).filter((b) => b.type === "text").map((b) => b.text).join(" ").trim();
       txtT = txtT.replace(/```json\s*/gi, "").replace(/```/g, "").trim();
@@ -117,7 +139,7 @@ ${rubricPrompt(mode)}
   const modeLabel = mode === "sell" ? "ПРОДАЖА (ведём на WB)" : "АУДИТОРИЯ (рост охвата/подписок, без давления на WB)";
   const sys = `Ты — строгий ОТК коротких вертикальных видео (Reels/Shorts/VK Клипы) бренда-селлера WB/Ozon. Твоя задача — оценить, обойдёт ли этот ролик контент КОНКУРЕНТОВ в ленте, а не просто «нет ли брака».
 Режим ролика: ${modeLabel}. Ниша: ${niche}.${corpusHint}
-Тебе дают КАДРЫ ОДНОГО ролика В ХРОНОЛОГИЧЕСКОМ ПОРЯДКЕ (кадр 1 ≈ первая секунда/хук, последний ≈ финал), а также текст хука и сценария. Суди: ось A (хук) — по первому кадру и тексту хука; ось B (удержание/темп) — по тому, как меняются кадры от первого к последнему и есть ли причина досмотреть; оси C/D/E — по кадрам вместе со сценарием.
+Тебе дают ПОДПИСАННЫЕ КАДРЫ ОДНОГО ролика В ХРОНОЛОГИЧЕСКОМ ПОРЯДКЕ (кадр 1 ≈ первая секунда/хук, последний ≈ финал), а ПОСЛЕ них — текст хука/сценария и вопрос. Суди: ось A (хук) — по первому кадру и тексту хука; ось B (удержание/темп) — по тому, как меняются кадры от первого к последнему и есть ли причина досмотреть; оси C/D/E — по кадрам вместе со сценарием.
 АНТИ-СЛОП (для ЛЮБОГО рендера, не только аватара): если на товаре/в кадре виден AI-артефакт — зеркальный/искажённый текст и лого, «плывущий»/парящий товар, оплавленные края, деформированная упаковка/форма, лишние/кривые пальцы, восковая кожа, морфинг — ставь ось НАТИВНОСТЬ ≤2 (это валит флор и отправляет на перегенер). Сомневаешься — снижай: для маркетплейса искажённый товар = брак (покупатель сверяет с карточкой). ${kind === "avatar" ? "Это AI-аватар — НАТИВНОСТЬ занижай при любом «AI-запахе» (восковая кожа, мёртвые/асимметричные глаза, кривой рот, синтетичность). " : ""}${rubricPrompt(mode)}
 Не завышай баллы из вежливости — это для конкуренции в ленте. Верни СТРОГО JSON:
 {"axes":{"hook":1-5,"retention":1-5,"native":1-5,"brand":1-5,"cta":1-5},"issues":["конкретный изъян, мешающий обойти конкурентов",...],"fixes":["что поправить",...],"regen_hint":"одна короткая англ. фраза-добавка к промпту image-to-video, чтобы убрать главный ВИЗУАЛЬНЫЙ дефект"}. Только JSON, без преамбулы.`;
@@ -125,17 +147,34 @@ ${rubricPrompt(mode)}
   // V7 · калибровка под нишу: что РАНЬШЕ браковали (cf_signals) — суди эти аспекты строже
   const dbAnti = getSupabaseAdmin();
   const antiHint = dbAnti ? await rejectAntiFor(dbAnti, niche) : "";
+  // #11 КАДРЫ-ПЕРВЫМИ: Anthropic — изображения ДО вопроса дают лучшее рассуждение по хуку/удержанию.
+  // Каждый кадр подписан порядком (старт/финал) → критик точнее судит динамику от первого к последнему.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const content: any[] = [{ type: "text", text: `Хук: «${hook || "—"}».\nСценарий:\n${scenarioText || "—"}\nДоп. контекст: ${context || "—"}${antiHint}\n\nНиже ${frames.length} кадр(ов) ролика ПО ПОРЯДКУ (первый = старт/хук, последний = финал). Оцени по рубрике.` }];
-  for (const f of frames) content.push({ type: "image", source: { type: "base64", media_type: "image/jpeg", data: f } });
+  const content: any[] = [];
+  frames.forEach((f, i) => {
+    const label = i === 0 ? "Кадр 1 (старт / хук)" : i === frames.length - 1 ? `Кадр ${i + 1} (финал)` : `Кадр ${i + 1}`;
+    content.push({ type: "text", text: label });
+    content.push({ type: "image", source: { type: "base64", media_type: "image/jpeg", data: f } });
+  });
+  content.push({ type: "text", text: `Выше — ${frames.length} кадр(ов) ОДНОГО ролика ПО ПОРЯДКУ (первый = старт/хук, последний = финал).\nХук: «${hook || "—"}».\nСценарий:\n${scenarioText || "—"}\nДоп. контекст: ${context || "—"}${antiHint}\nОцени строго по рубрике.` });
 
   try {
-    const res = await client.messages.create({ model: MODEL, max_tokens: 1536, system: sys, messages: [{ role: "user", content }] });
+    const res = await client.messages.create({
+      model: MODEL, max_tokens: 1536, temperature: 0.2, system: sys,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      tools: [CRITIQUE_TOOL as any], tool_choice: { type: "tool", name: "submit_critique" },
+      messages: [{ role: "user", content }],
+    });
+    // ПЕРВИЧНО: schema-валидный вердикт из tool_use. ФОЛБЭК: терпимый текст-парсер (если tool_use не пришёл).
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let txt = (res.content as any[]).filter((b) => b.type === "text").map((b) => b.text).join(" ").trim();
-    txt = txt.replace(/```json\s*/gi, "").replace(/```/g, "").trim(); // снять markdown-ограждение
-    const j = parseLooseJson(txt);
-    if (!j) return NextResponse.json({ error: "пустой ответ критика", raw: txt.slice(0, 150) }, { status: 502 });
+    const blocks = res.content as any[];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let j: any = blocks.find((b) => b.type === "tool_use" && b.name === "submit_critique")?.input || null;
+    if (!j) {
+      const txt = blocks.filter((b) => b.type === "text").map((b) => b.text).join(" ").trim().replace(/```json\s*/gi, "").replace(/```/g, "").trim();
+      j = parseLooseJson(txt);
+    }
+    if (!j) return NextResponse.json({ error: "пустой ответ критика" }, { status: 502 });
 
     // оси: из ответа модели; фолбэк — равномерно из плоского score, если модель не дала оси.
     const raw = (j.axes && typeof j.axes === "object") ? j.axes : null;

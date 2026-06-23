@@ -61,7 +61,7 @@ export async function falBalance(): Promise<{ balance: number | null; currency: 
 function buildInput(model: FalVideoModel, imageUrl: string, prompt: string, opts?: FalVideoOpts): Record<string, unknown> {
   const fam = family(model);
   if (fam === "seedance") {
-    const inp: Record<string, unknown> = { image_url: imageUrl, prompt, resolution: opts?.resolution || "720p", aspect_ratio: opts?.aspect || "9:16", duration: String(opts?.duration ?? "5") };
+    const inp: Record<string, unknown> = { image_url: imageUrl, prompt, resolution: opts?.resolution || process.env.FACTORY_I2V_RESOLUTION || "720p", aspect_ratio: opts?.aspect || "9:16", duration: String(opts?.duration ?? "5") };
     if (opts?.end_image_url) inp.end_image_url = opts.end_image_url;   // before/after (только pro)
     if (typeof opts?.camera_fixed === "boolean") inp.camera_fixed = opts.camera_fixed;
     if (typeof opts?.seed === "number") inp.seed = opts.seed;
@@ -83,14 +83,29 @@ export async function falVideoSubmit(model: FalVideoModel, imageUrl: string, pro
   const endpoint = opts?.endpoint || FAL_VIDEO_MODELS[model] || FAL_VIDEO_MODELS.kling;
   try {
     const r = await fetch(`${QUEUE}${endpoint}`, {
-      method: "POST", headers: { Authorization: `Key ${k}`, "Content-Type": "application/json" }, cache: "no-store",
+      method: "POST",
+      // X-Fal-Request-Timeout — серверный дедлайн рендера (наш AbortSignal стопит только НАШ опрос, fal продолжал бы биллить)
+      headers: { Authorization: `Key ${k}`, "Content-Type": "application/json", "X-Fal-Request-Timeout": "180" },
+      cache: "no-store",
       body: JSON.stringify(buildInput(model, imageUrl, prompt, opts)),
       signal: AbortSignal.timeout(25000),
     });
-    if (!r.ok) return null;
+    if (!r.ok) {
+      // #9 классификация (раньше любой сбой = тихий null → автопилот не отличал «нет денег» от «кривое поле»).
+      // 403 «User locked / Exhausted balance» — ровно тот кейс, что молча валил ночной батч под видом rate-limit.
+      const body = await r.text().catch(() => "");
+      const reason = r.status === 401 ? "ключ невалиден (FAL_KEY)"
+        : r.status === 402 || r.status === 403 ? "БАЛАНС/ДОСТУП — пополни fal (User locked / Exhausted balance)"
+        : r.status === 422 ? "схема запроса (неверное поле/значение модели)"
+        : r.status === 429 ? "rate-limit (бэкпрешер) — повтор позже"
+        : r.status >= 500 ? "fal 5xx (транзиент)"
+        : "иная ошибка";
+      console.warn(`[falVideoSubmit] ${model} → ${r.status} ${reason}: ${body.slice(0, 160)}`);
+      return null;
+    }
     const j = (await r.json()) as { response_url?: string };
     return j.response_url ? Buffer.from(j.response_url).toString("base64url") : null;
-  } catch { return null; }
+  } catch (e) { console.warn(`[falVideoSubmit] ${model} сеть/таймаут: ${String(e).slice(0, 120)}`); return null; }
 }
 
 // Серверный compose через fal-ai/ffmpeg-api/compose (НЕ браузер — отдаёт mp4, работает в батче).
@@ -103,13 +118,13 @@ export async function falCompose(
 ): Promise<{ videoUrl?: string; error?: string }> {
   const k = key();
   if (!k) return { error: "FAL_KEY не настроен" };
-  const dur = Math.max(1, Math.round(opts.durationSec || 5));
+  const durMs = Math.max(1, Math.round(opts.durationSec || 5)) * 1000; // ⚠️ fal compose keyframes — в МИЛЛИСЕКУНДАХ (раньше слали секунды → клип 5мс = чёрный кадр)
   const auth = { Authorization: `Key ${k}` };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const tracks: any[] = [{ id: "v", type: "video", keyframes: [{ timestamp: 0, duration: dur, url: videoUrl }] }];
+  const tracks: any[] = [{ id: "v", type: "video", keyframes: [{ timestamp: 0, duration: durMs, url: videoUrl }] }];
   // image-трек кладём ПОСЛЕ видео — оверлей поверх (z-order по порядку треков)
-  if (opts.overlayUrl) tracks.push({ id: "o", type: "image", keyframes: [{ timestamp: 0, duration: dur, url: opts.overlayUrl }] });
-  if (opts.audioUrl) tracks.push({ id: "a", type: "audio", keyframes: [{ timestamp: 0, duration: dur, url: opts.audioUrl }] });
+  if (opts.overlayUrl) tracks.push({ id: "o", type: "image", keyframes: [{ timestamp: 0, duration: durMs, url: opts.overlayUrl }] });
+  if (opts.audioUrl) tracks.push({ id: "a", type: "audio", keyframes: [{ timestamp: 0, duration: durMs, url: opts.audioUrl }] });
   const deadline = Date.now() + (opts.maxWaitMs || 48000); // бюджет под 60с-функцию
   try {
     const sub = await fetch(`${QUEUE}fal-ai/ffmpeg-api/compose`, { method: "POST", headers: { ...auth, "Content-Type": "application/json" }, cache: "no-store", body: JSON.stringify({ tracks }), signal: AbortSignal.timeout(25000) });
@@ -155,14 +170,14 @@ export async function falTimeline(
   // (видео-трек прерывается, image-трек «заполняет» паузу).
   const videoKeyframes: { timestamp: number; duration: number; url: string }[] = [];
   const imageKeyframes: { timestamp: number; duration: number; url: string }[] = [];
-  let t = 0;
+  let t = 0; // мс (fal compose keyframes — в МИЛЛИСЕКУНДАХ, не секундах)
   for (const clip of clips) {
-    const d = Math.max(1, Math.round(clip.durationSec));
+    const d = Math.max(1, Math.round(clip.durationSec)) * 1000; // сек → мс
     if (clip.type === "video") videoKeyframes.push({ timestamp: t, duration: d, url: clip.url });
     else imageKeyframes.push({ timestamp: t, duration: d, url: clip.url });
     t += d;
   }
-  const totalDur = t;
+  const totalDur = t; // мс
   const auth = { Authorization: `Key ${k}` };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const tracks: any[] = [];
@@ -187,6 +202,68 @@ export async function falTimeline(
     const rj = (await res.json()) as { video_url?: string };
     return rj.video_url ? { videoUrl: rj.video_url } : { error: "timeline без video_url" };
   } catch (e) { return { error: String(e).slice(0, 120) }; }
+}
+
+// общий poll очереди fal для utility-моделей (merge/subtitle): submit → status → result.video.url. Best-effort.
+async function falQueueVideo(endpoint: string, body: Record<string, unknown>, maxWaitMs: number): Promise<{ result?: Record<string, unknown>; error?: string }> {
+  const k = key();
+  if (!k) return { error: "FAL_KEY не настроен" };
+  const auth = { Authorization: `Key ${k}` };
+  const deadline = Date.now() + maxWaitMs;
+  try {
+    const sub = await fetch(`${QUEUE}${endpoint}`, { method: "POST", headers: { ...auth, "Content-Type": "application/json" }, cache: "no-store", body: JSON.stringify(body), signal: AbortSignal.timeout(25000) });
+    if (!sub.ok) { const t = await sub.text().catch(() => ""); return { error: `fal ${endpoint.split("/").pop()} ${sub.status}: ${t.slice(0, 120)}` }; }
+    const sj = (await sub.json()) as { response_url?: string };
+    const responseUrl = sj.response_url;
+    if (!responseUrl) return { error: "нет response_url" };
+    while (Date.now() < deadline) {
+      const st = await fetch(`${responseUrl}/status`, { headers: auth, cache: "no-store", signal: AbortSignal.timeout(15000) }).catch(() => null);
+      if (st?.ok) { const s = (await st.json()) as { status?: string }; if (s.status === "COMPLETED") break; }
+      await new Promise((r) => setTimeout(r, 3000));
+    }
+    const res = await fetch(responseUrl, { headers: auth, cache: "no-store", signal: AbortSignal.timeout(15000) });
+    if (!res.ok) return { error: `result ${res.status}` };
+    return { result: (await res.json()) as Record<string, unknown> };
+  } catch (e) { return { error: String(e).slice(0, 120) }; }
+}
+
+// #16 · конкатенация клипов с НОРМАЛИЗАЦИЕЙ fps/разрешения (compose их НЕ нормализует → смешанные seedance/kling
+// клипы дрожат/леттербоксятся). fal-ai/ffmpeg-api/merge-videos: video_urls[] (по порядку) → video.url.
+export async function falMergeVideos(
+  videoUrls: string[],
+  opts?: { resolution?: string; targetFps?: number; maxWaitMs?: number },
+): Promise<{ videoUrl?: string; error?: string }> {
+  if (!videoUrls.length) return { error: "пустой список видео" };
+  const body: Record<string, unknown> = { video_urls: videoUrls, resolution: opts?.resolution || "portrait_16_9" };
+  if (typeof opts?.targetFps === "number") body.target_fps = opts.targetFps;
+  const r = await falQueueVideo("fal-ai/ffmpeg-api/merge-videos", body, opts?.maxWaitMs || 90000);
+  if (r.error) return { error: r.error };
+  const url = (r.result?.video as { url?: string } | undefined)?.url;
+  return url ? { videoUrl: url } : { error: "merge без video.url" };
+}
+
+// #15 · авто-субтитры со словесной караоке-подсветкой, выжженные в видео (главный native-feel рывок для Reels/TikTok).
+// fal-ai/workflow-utilities/auto-subtitle: video_url → video.url (+ words). Дефолты под наш стиль: RU, Montserrat,
+// акцент-подсветка cyan, низ, анимация. Заменяет статичный PNG-капшен на word-level (compose-путь/полировка готового).
+export async function falAutoSubtitle(
+  videoUrl: string,
+  opts?: { language?: string; fontName?: string; fontSize?: number; fontColor?: string; highlightColor?: string; position?: "top" | "center" | "bottom"; animation?: boolean; maxWaitMs?: number },
+): Promise<{ videoUrl?: string; words?: unknown; error?: string }> {
+  if (!videoUrl) return { error: "нет video_url" };
+  const body: Record<string, unknown> = {
+    video_url: videoUrl,
+    language: opts?.language || "ru",
+    font_name: opts?.fontName || "Montserrat",
+    font_size: opts?.fontSize ?? 84,
+    font_color: opts?.fontColor || "white",
+    highlight_color: opts?.highlightColor || "cyan", // караоке-подсветка в акцент канона
+    position: opts?.position || "bottom",
+    enable_animation: opts?.animation ?? true,
+  };
+  const r = await falQueueVideo("fal-ai/workflow-utilities/auto-subtitle", body, opts?.maxWaitMs || 120000);
+  if (r.error) return { error: r.error };
+  const url = (r.result?.video as { url?: string } | undefined)?.url;
+  return url ? { videoUrl: url, words: r.result?.words } : { error: "auto-subtitle без video.url" };
 }
 
 // диагностика: сырой ответ FAL на сабмит (статус+тело) — понять 401(ключ)/402-403(баланс)/422(модель)

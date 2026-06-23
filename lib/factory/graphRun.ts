@@ -6,7 +6,7 @@ import { remotionEngineSelected, remotionReady, remotionSubmit, remotionStatus }
 import { extractFrames } from "./serverMedia";
 import { logGeneration } from "./genHistory";
 import { tgReady, tgSendReview } from "./telegram";
-import { classifyAssets, chooseBinding, type DiskAsset } from "./assetBind";
+import { classifyAssets, chooseBinding, assetMatchesArticle, type DiskAsset } from "./assetBind";
 import { isPlaceholderSource } from "./toolSchemas";
 import { isOurStorage } from "./rehostImage";
 import { createHash } from "node:crypto";
@@ -223,7 +223,12 @@ async function autoBindAssets(db: SupabaseClient, plan: RunPlan, article: string
   let assets: DiskAsset[] = [];
   try {
     const { data } = await db.from("content_assets").select("disk,kind,url").eq("article", article).not("url", "is", null).limit(60);
-    assets = (data as DiskAsset[] | null) || [];
+    const raw = (data as DiskAsset[] | null) || [];
+    // ГАРД от кросс-контаминации («пистолет в сумке»): даже если строка каталога мислейбл (article=CLR…, а путь
+    // prepared/TT…), НЕ привязываем чужой кадр к рецепту. Источник распознаём по артикулу в пути prepared/i2v-src.
+    assets = raw.filter((a) => assetMatchesArticle(a.url, article));
+    const dropped = raw.length - assets.length;
+    if (dropped) { try { await logSignal(db, "asset_article_mismatch", { niche, article, params: { dropped, kept: assets.length } }); } catch { /* сигнал best-effort */ } }
   } catch { return; } // каталог недоступен — ноды упадут штатно, как раньше
   const pool = classifyAssets(assets);
   let imgIdx = 0; // разные стартовые фото на разные i2v-ноды (анти-сэйминес: не 5 клипов с одного кадра)
@@ -259,7 +264,7 @@ export async function persistClips(db: SupabaseClient, nodes: RunNode[], article
       const buf = Buffer.from(await r.arrayBuffer());
       if (!buf.length) return;
       const path = `clips/${createHash("sha1").update(src).digest("hex")}.mp4`;
-      const { error } = await db.storage.from(CLIP_BUCKET).upload(path, buf, { contentType: "video/mp4", upsert: true });
+      const { error } = await db.storage.from(CLIP_BUCKET).upload(path, buf, { contentType: "video/mp4", upsert: true, cacheControl: "31536000" });
       if (error) return;
       const pub = db.storage.from(CLIP_BUCKET).getPublicUrl(path).data?.publicUrl;
       if (!pub) return;
