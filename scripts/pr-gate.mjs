@@ -34,14 +34,18 @@ const RISK_RULES = [
   [/(^|\/)package\.json$/i, "зависимости (package.json)"],
   [/(^|\/)(package-lock\.json|pnpm-lock\.yaml|yarn\.lock|bun\.lockb)$/i, "lock-файл зависимостей"],
   [/(^|\/)\.npmrc$/i, ".npmrc (реестр/install-хуки)"],
-  [/(^|\/)\.github\//i, "CI/CD (.github)"],
+  [/(^|\/)\.(github|gitea)\//i, "CI/CD (.github/.gitea)"],
   [/(^|\/)pr-gate\.mjs$/i, "сам гейт (pr-gate.mjs)"],
   [/\.(mjs|cjs|sh|bash|ps1)$/i, "исполняемый скрипт"],
   [/(^|\/)(Dockerfile|\.dockerignore|docker-compose\.ya?ml|fly\.toml|render\.yaml|netlify\.toml|Procfile|\.vercelignore|now\.json|app\.json)$/i, "деплой/инфра-конфиг"],
   [/(^|\/)vercel\.json$/i, "vercel.json"],
   [/(^|\/)next\.config\.[a-z]+$/i, "next.config"],
   [/(^|\/)(middleware|proxy)\.(ts|js|tsx|jsx|mjs|cjs)$/i, "middleware / proxy"],
-  [/(auth|authz|session|permission|oauth|token|password|secret|credential|payment|billing|stripe|webhook|checkout|invoice|payout)/i, "авторизация / оплата / вебхуки"],
+  [/(auth|authz|session|permission|oauth|token|password|secret|credential)/i, "авторизация / секреты"],
+  // NB: bare «payment» намеренно НЕ ловим — раздел «Платежи» у нас = планирование ДДС (учёт/прогноз,
+  // не процессинг денег), он внутри FINANCE_SCOPE и должен авто-мёржиться. Реальный процессинг/биллинг
+  // ловим по этим словам:
+  [/(billing|stripe|webhook|checkout|invoice|payout)/i, "оплата / биллинг / вебхуки"],
 ];
 
 function readEvent() {
@@ -82,8 +86,8 @@ function allFilesSafe(files) {
 // Зона «Финансы» — пути вкладки, которую дорабатывают сотрудники; им разрешён авто-мёрж
 // (после approve+low ассистента). Только презентационный слой + ФИНАНСОВЫЙ бэкенд/lib.
 // СОЗНАТЕЛЬНО ВНЕ зоны (→ к владельцу): общие /api/{wb,ozon,supplies}, CabinetSwitcher,
-// useActiveCabinet и прочий общий код; раздел «Платежи» дополнительно ловит deny-флаг
-// «оплата» в RISK_RULES (см. строку с payment|billing|...) → тоже всегда к владельцу.
+// useActiveCabinet и прочий общий код. Раздел «Платежи» ВХОДИТ в зону и авто-мёржится —
+// это планирование ДДС (учёт/прогноз), не процессинг денег (см. RISK_RULES: bare «payment» не ловим).
 const FINANCE_SCOPE = [
   /^app\/(calendar|pnl|opiu|losses|summary|payments|loans)\//,  // страницы вкладки
   /^app\/api\/opiu\//,                                          // финансовый бэкенд (mp, warehouse)

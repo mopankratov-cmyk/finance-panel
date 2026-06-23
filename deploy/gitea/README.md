@@ -104,9 +104,10 @@ auto-merge включается API-вызовом из гейта — `merge_wh
 Тест-матрица (создавай PR от тестового НЕ-владельца):
 1. **Док-PR** (`*.md`) → ожидаем: `ai-gate` зелёный → авто-мёрж + «✅ влил» в Telegram.
 2. **Финанс-PR** (правка `components/opiu/OpiuPage.tsx`) → ассистент low → авто-мёрж.
-3. **Платежи** (правка `components/payments/PaymentForm.tsx`) → escalate (deny-флаг «оплата») → к владельцу.
-4. **Вне зоны** (правка `app/api/wb/route.ts` или завода) → escalate.
-5. **Деплой**: после мёржа в `main` сработал `deploy` → `vercel --prod` → прод обновился.
+3. **Платежи** (правка `components/payments/PaymentForm.tsx`) → авто-мёрж (планирование ДДС, входит в зону).
+4. **Биллинг/авторизация** (файл со `stripe/checkout/payout` или `token/secret`) → escalate (deny-флаг).
+5. **Вне зоны** (правка `app/api/wb/route.ts` или завода) → escalate.
+6. **Деплой**: после мёржа в `main` сработал `deploy` → `vercel --prod` → прод обновился.
 
 Чек-лист «живой проверки» (то, что зависит от версии Gitea — проверить на стенде):
 - [ ] `pull_request_target` поддержан и берёт workflow/скрипт из БАЗЫ (не из PR).
