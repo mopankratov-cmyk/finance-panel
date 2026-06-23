@@ -131,18 +131,21 @@ async function askCockpit(pr, diff) {
 }
 
 async function sendTelegram(text) {
-  const token = process.env.TELEGRAM_BOT_TOKEN;
-  const chat = process.env.TELEGRAM_ALERT_CHAT_ID || process.env.TELEGRAM_CHANNEL || "";
-  if (!token || !chat) { log("Telegram не настроен — печатаю:\n" + text); return; }
+  // Раннер в РФ (Yandex Cloud) НЕ имеет egress к api.telegram.org → релеим алерт через cockpit
+  // (он на Vercel/US, Telegram достаёт; эндпоинт /api/notify шлёт владельцу). Тот же base+токен, что у ревью.
+  const base = (process.env.DIRECTOR_COCKPIT_URL || "https://director-cockpit.vercel.app").replace(/\/$/, "");
+  const secret = process.env.REVIEW_TOKEN || process.env.CRON_SECRET;
+  if (!secret) { log("Telegram-релей не настроен (нет REVIEW_TOKEN) — печатаю:\n" + text); return; }
   try {
-    const r = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-      method: "POST", headers: { "content-type": "application/json" },
+    const r = await fetch(`${base}/api/notify`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${secret}` },
       signal: AbortSignal.timeout(15000),
-      body: JSON.stringify({ chat_id: chat, text: text.slice(0, 4000), disable_web_page_preview: true }),
+      body: JSON.stringify({ text: text.slice(0, 4000) }),
     });
     const j = await r.json().catch(() => ({}));
-    if (!j.ok) log("Telegram отказал:", j.description || r.status);
-  } catch (e) { log("Telegram упал:", String(e?.message || e)); }
+    if (!j.ok) log("Telegram-релей отказал:", j.error || r.status);
+  } catch (e) { log("Telegram-релей упал:", String(e?.message || e)); }
 }
 
 function setOutput(decision, reason) {
