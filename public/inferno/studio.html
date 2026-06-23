@@ -214,6 +214,7 @@ const SCREENS=[
   {id:"inspector",chip:"04",tt:"Инспектор ноды",st:"настройки"},
   {id:"assembly",chip:"05",tt:"Сборка · ОТК",st:"таймлайн"},
   {id:"library",chip:"06",tt:"База видосов",st:"рецепты"},
+  {id:"static",chip:"🖼",tt:"Статика",st:"пины · карточки"},
   {id:"balances",chip:"07",tt:"Балансы сервисов",st:"сколько осталось $"},
   {id:"learn",chip:"🧠",tt:"Обучение",st:"что завод выучил"},
   {id:"ds",chip:"DS",tt:"Дизайн-система",st:"токены"},
@@ -300,10 +301,83 @@ function header(title,meta,right){
 function loadingCard(t){ return el("div",{class:"card",style:"padding:18px;display:flex;align-items:center;gap:12px;"},el("div",{class:"spinner"}),el("span",{class:"muted"},t||"загрузка…")); }
 function emptyBox(t){ return el("div",{class:"empty"},el("div",{style:"font-size:26px;opacity:.4;"},"◇"),el("div",{style:"font-size:12.5px;max-width:300px;"},t)); }
 
+// ── ЭКРАН СТАТИКИ: новая линия завода (пины/карточки/IG) — код-рендер StaticV1 (renderStill, без fal). ──
+function screenStatic(root){
+  header("Статика","пины · карточки · IG");
+  S.staticForm=S.staticForm||{article:"",formats:["card_3x4","pin_2x3"],archetype:"auto",headline:"",price:"",objective:"reach"};
+  const f=S.staticForm;
+  const FORMATS=[["card_3x4","Карточка WB 3:4"],["pin_2x3","Пин 2:3"],["ig_4x5","IG/VK 4:5"]];
+  const ARCH=[["auto","Авто"],["headline_hero","Хедлайн-герой"],["product_color","Продукт на цвете"],["social_proof","Соц-пруф"],["collage","Коллаж 2×2"],["card_benefits","Карточка-выгоды"]];
+  const inp=(ph,val,on)=>el("input",{value:val||"",placeholder:ph,style:"width:100%;background:var(--bg-input);border:1px solid var(--bd2);border-radius:7px;padding:8px 10px;color:var(--tx-hi);font-family:inherit;font-size:13px;box-sizing:border-box;",oninput:e=>on(e.target.value)});
+  const lab=t=>el("div",{class:"muted",style:"font-size:12px;margin-bottom:5px;"},t);
+  const chip=(label,active,on)=>el("button",{class:"btn sm",style:active?"background:var(--acc-soft);border-color:var(--acc);color:var(--acc-lt);":"",onclick:on},label);
+  const fmtRow=el("div",{style:"display:flex;flex-wrap:wrap;gap:7px;"});
+  FORMATS.forEach(([id,l])=>fmtRow.appendChild(chip((f.formats.includes(id)?"✓ ":"")+l,f.formats.includes(id),()=>{f.formats=f.formats.includes(id)?f.formats.filter(x=>x!==id):[...f.formats,id];render();})));
+  const archSel=el("select",{style:"width:100%;background:var(--bg-input);border:1px solid var(--bd2);border-radius:7px;padding:8px 10px;color:var(--tx-hi);font-family:inherit;font-size:13px;",onchange:e=>{f.archetype=e.target.value;}});
+  ARCH.forEach(([id,l])=>{const o=el("option",{value:id},l); if(f.archetype===id)o.setAttribute("selected","selected"); archSel.appendChild(o);});
+  const objRow=el("div",{style:"display:flex;gap:7px;"},chip("Reach",f.objective==="reach",()=>{f.objective="reach";render();}),chip("Saves",f.objective==="saves",()=>{f.objective="saves";render();}));
+  const form=el("div",{class:"card",style:"padding:16px;display:flex;flex-direction:column;gap:12px;max-width:640px;"},
+    el("div",{},lab("Артикул товара"),inp("CLR00912",f.article,v=>f.article=v)),
+    el("div",{},lab("Форматы (одно намерение → N экспортов)"),fmtRow),
+    el("div",{style:"display:flex;gap:12px;flex-wrap:wrap;"},
+      el("div",{style:"flex:1;min-width:200px;"},lab("Архетип"),archSel),
+      el("div",{},lab("Цель цвета"),objRow)),
+    el("div",{},lab("Хук (≤7 слов, обрежется)"),inp("Сумка, в которую влезает рабочая неделя",f.headline,v=>f.headline=v)),
+    el("div",{},lab("Цена"),inp("2 990 ₽",f.price,v=>f.price=v)),
+    el("button",{class:"btn primary",style:"align-self:flex-start;",onclick:()=>genStatic()},"✨ Сгенерировать"),
+    el("div",{class:"muted",style:"font-size:11.5px;"},"Код-рендер (renderStill) — без fal. Канон: docs/factory-pin-canon.md"));
+  root.appendChild(form);
+  const res=el("div",{id:"static-res",style:"margin-top:16px;"}); root.appendChild(res); renderStaticResults(res);
+}
+function renderStaticResults(c){
+  c=c||document.getElementById("static-res"); if(!c)return; c.innerHTML="";
+  const jobs=S.staticJobs||[];
+  if(!jobs.length){ c.appendChild(emptyBox("Статики появятся здесь после генерации")); return; }
+  c.appendChild(el("div",{class:"muted",style:"font-size:12px;margin-bottom:8px;"},"Готово "+jobs.filter(j=>j.url).length+"/"+jobs.length));
+  const grid=el("div",{style:"display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;"});
+  jobs.forEach(j=>{
+    const ar=j.format==="card_3x4"?"3/4":j.format==="ig_4x5"?"4/5":"2/3";
+    const top=el("div",{style:"aspect-ratio:"+ar+";background:var(--bg-node);display:flex;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;",onclick:()=>j.url&&openMedia(j.url,{video:false})});
+    if(j.url)top.appendChild(el("img",{src:j.url,style:"width:100%;height:100%;object-fit:cover;"}));
+    else if(j.error)top.appendChild(el("span",{style:"color:var(--err);font-size:11px;padding:8px;text-align:center;"},trunc(j.error,80)));
+    else top.appendChild(el("div",{class:"spinner"}));
+    const foot=el("div",{style:"display:flex;justify-content:space-between;align-items:center;padding:6px 8px;font-size:11px;color:var(--tx-mid);"},
+      el("span",{},j.label),
+      j.url?el("span",{style:"display:flex;gap:9px;"},el("span",{style:"cursor:pointer;color:var(--ok);",title:"в банк (доработка помощницы)",onclick:()=>toast("банк PNG — в очереди помощницы (canon)")},"✓"),el("a",{href:j.url,target:"_blank",style:"color:var(--acc-lt);"},"↧")):el("span",{class:"muted"},"…"));
+    grid.appendChild(el("div",{class:"card",style:"overflow:hidden;"},top,foot));
+  });
+  c.appendChild(grid);
+}
+async function genStatic(){
+  const f=S.staticForm;
+  if(!f.headline.trim()){ toast("впиши хук"); return; }
+  if(!f.formats.length){ toast("выбери формат"); return; }
+  const autoArch={card_3x4:"card_benefits",pin_2x3:"headline_hero",ig_4x5:"product_color"};
+  const labels={card_3x4:"Карточка 3:4",pin_2x3:"Пин 2:3",ig_4x5:"IG 4:5"};
+  S.staticJobs=[]; renderStaticResults();
+  for(const fmt of f.formats){
+    const arch=f.archetype==="auto"?(autoArch[fmt]||"headline_hero"):f.archetype;
+    const job={format:fmt,label:labels[fmt]||fmt,id:null,url:null,error:null}; S.staticJobs.push(job); renderStaticResults();
+    const r=await api("/static-generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({article:f.article,format:fmt,archetype:arch,headline:f.headline,price:f.price,objective:f.objective})});
+    if(r&&r.task_id){ job.id=r.task_id; pollStatic(job); } else { job.error=(r&&r.error)||"submit fail"; }
+    renderStaticResults();
+  }
+}
+async function pollStatic(job){
+  for(let i=0;i<40;i++){
+    await new Promise(s=>setTimeout(s,3000));
+    if(S.screen!=="static")return;
+    const s=await api("/static-status?id="+encodeURIComponent(job.id));
+    if(s&&s.status==="done"&&s.videoUrl){ job.url=s.videoUrl; renderStaticResults(); return; }
+    if(s&&s.status==="error"&&s.retryable===false){ job.error=s.error||"render error"; renderStaticResults(); return; }
+  }
+  job.error="таймаут рендера"; renderStaticResults();
+}
+
 async function render(){
   saveSession(); // запоминаем текущий экран/нишу/рецепт для возврата после reload
   const root=document.getElementById("screen"); root.innerHTML="";
-  ({center:screenCenter,compete:screenCompete,canvas:screenCanvas,inspector:screenInspector,assembly:screenAssembly,library:screenLibrary,balances:screenBalances,learn:screenLearn,ds:screenDS}[S.screen]||screenCenter)(root);
+  ({center:screenCenter,compete:screenCompete,canvas:screenCanvas,inspector:screenInspector,assembly:screenAssembly,library:screenLibrary,static:screenStatic,balances:screenBalances,learn:screenLearn,ds:screenDS}[S.screen]||screenCenter)(root);
   refreshAssistStep(); // проводник: пересчитать «следующий шаг» под новый экран/состояние
 }
 

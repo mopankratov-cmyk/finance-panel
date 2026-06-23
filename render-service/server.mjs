@@ -37,7 +37,7 @@ import { createReadStream } from "node:fs";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { bundle } from "@remotion/bundler";
-import { selectComposition, renderMedia, ensureBrowser, openBrowser } from "@remotion/renderer";
+import { selectComposition, renderMedia, renderStill, ensureBrowser, openBrowser } from "@remotion/renderer";
 import { createClient } from "@supabase/supabase-js";
 import { createJobStore } from "./jobStore.mjs";
 
@@ -187,10 +187,10 @@ function pump() {
   }
 }
 
-async function runRender(id, composition, inputProps, durationInFrames) {
+async function runRender(id, composition, inputProps, durationInFrames, still = false) {
   const job = jobs.get(id);
   if (!job) return; // джоба уже вычищена/отменена — рендерить нечего (а onProgress не упадёт на undefined)
-  const tmp = path.join(os.tmpdir(), `remotion-${id}.mp4`);
+  const tmp = path.join(os.tmpdir(), `remotion-${id}.${still ? "png" : "mp4"}`); // СТАТИКА: renderStill→PNG, иначе видео
   const t0 = Date.now();
   let tLocalized = t0;
   let tSelected = t0;
@@ -212,6 +212,10 @@ async function runRender(id, composition, inputProps, durationInFrames) {
     const durationOverride = Number.isFinite(durationInFrames) && durationInFrames > 0
       ? { durationInFrames } : {};
     log(`render ${id}: ${composition} ${comp.width}x${comp.height} @${comp.fps} ${durationOverride.durationInFrames || comp.durationInFrames}f | conc=${FRAME_CONCURRENCY} threads=${OFFTHREAD_THREADS} scale=${RENDER_SCALE} preset=${X264_PRESET}`);
+    if (still) {
+      // СТАТИКА: один кадр → PNG (линия пинов/карточек, без видео-кодека)
+      await renderStill({ serveUrl, composition: { ...comp, ...durationOverride }, inputProps: props, ...ppt, output: tmp, frame: 0, ...(CHROMIUM_OPTIONS ? { chromiumOptions: CHROMIUM_OPTIONS } : {}) });
+    } else {
     await renderMedia({
       composition: { ...comp, ...durationOverride },
       serveUrl, inputProps: props, ...ppt, codec: "h264", outputLocation: tmp,
@@ -233,13 +237,14 @@ async function runRender(id, composition, inputProps, durationInFrames) {
         if (now - (job._dbAt || 0) > 3000) { job._dbAt = now; persistJob(id, { status: "in_progress", progress: job.progress }); }
       },
     });
+    }
     const tRendered = Date.now();
 
     // заливка в Supabase Storage
     const db = supa();
     if (!db) throw new Error("Supabase env не настроен (NEXT_PUBLIC_SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY)");
     const buf = await fs.readFile(tmp);
-    const objPath = `renders/${id}.mp4`;
+    const objPath = `renders/${id}.${still ? "png" : "mp4"}`;
     // ретрай заливки: транзиентный "fetch failed"/5xx к Supabase НЕ должен хоронить уже готовый (оплаченный) рендер.
     // upload бросает на сетевой ошибке И возвращает {error} на серверной — ловим оба, бэкофф 1.5с×попытка.
     const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -247,7 +252,7 @@ async function runRender(id, composition, inputProps, durationInFrames) {
     for (let attempt = 1; attempt <= 4; attempt++) {
       try {
         if (attempt === 1) { try { await db.storage.createBucket(BUCKET, { public: true }); } catch { /* уже есть */ } }
-        const { error } = await db.storage.from(BUCKET).upload(objPath, buf, { contentType: "video/mp4", upsert: true });
+        const { error } = await db.storage.from(BUCKET).upload(objPath, buf, { contentType: still ? "image/png" : "video/mp4", upsert: true });
         if (!error) { upErr = null; break; }
         upErr = error.message || String(error);
       } catch (e) { upErr = String(e?.message || e); } // напр. "fetch failed" — сетевой транзиент
@@ -318,7 +323,7 @@ const server = http.createServer(async (req, res) => {
     jobs.set(id, { status: "in_progress", progress: 0, createdAt: Date.now() });
     // создаём строку в общем сторе ДО ответа → немедленный кросс-инстанс /status найдёт джобу (фолбэк-безопасно)
     await persistJob(id, { status: "in_progress", progress: 0, created_at: new Date().toISOString() });
-    queue.push(() => runRender(id, String(body.composition), body.inputProps || {}, Number(body.durationInFrames)));
+    queue.push(() => runRender(id, String(body.composition), body.inputProps || {}, Number(body.durationInFrames), !!body.still));
     pump();
     return send(res, 200, { id });
   }
