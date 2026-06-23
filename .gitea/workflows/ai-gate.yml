@@ -1,0 +1,111 @@
+name: ai-gate
+
+# AI-гейт PR для Gitea/Forgejo Actions — порт .github/workflows/ai-gate.yml без единого
+# обращения к github.com (Gitea API через curl; никаких `uses:` внешних экшенов).
+#
+# БЕЗОПАСНОСТЬ (как в GitHub-версии):
+#   • триггер pull_request_target → workflow и pr-gate.mjs берутся из БАЗОВОЙ ветки,
+#     код самого PR здесь НЕ исполняется (тащим pr-gate.mjs из base.sha как RAW-данные);
+#   • дифф и список файлов читаются из Gitea API как ДАННЫЕ;
+#   • approve (зона Финансы/доки + ассистент low-risk) → авто-мёрж после прохождения чеков;
+#   • escalate → чек КРАСНЫЙ (мёрж заблокирован branch protection) + пинг в Telegram (из pr-gate).
+#
+# ТРЕБОВАНИЯ:
+#   • Gitea ≥ 1.21 / Forgejo (поддержка pull_request_target + Actions);
+#   • раннер с меткой `gate` в host-режиме, где есть node ≥18, git, curl, jq (см. deploy/gitea/runner.Dockerfile);
+#   • секреты репо (Settings → Actions → Secrets): TELEGRAM_BOT_TOKEN, TELEGRAM_ALERT_CHAT_ID,
+#     REVIEW_TOKEN, DIRECTOR_COCKPIT_URL (опц.). GITHUB_TOKEN выдаётся раннером автоматически.
+#   • branch protection на main: обязательный статус-чек `ai-gate / ai-gate`, владелец в bypass.
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review, edited]
+
+concurrency:
+  group: ai-gate-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  ai-gate:
+    runs-on: gate
+    steps:
+      - name: Тащим ДОВЕРЕННЫЙ pr-gate.mjs из BASE (не код PR)
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          API="${GITHUB_SERVER_URL}/api/v1/repos/${GITHUB_REPOSITORY}"
+          mkdir -p scripts
+          # RAW из базового коммита — его нельзя подменить из PR
+          curl -fsSL -H "Authorization: token $TOKEN" \
+            "$API/raw/${BASE_SHA}/scripts/pr-gate.mjs" -o scripts/pr-gate.mjs
+          test -s scripts/pr-gate.mjs
+
+      - name: Дифф + список файлов через Gitea API (только данные)
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -uo pipefail
+          API="${GITHUB_SERVER_URL}/api/v1/repos/${GITHUB_REPOSITORY}"
+          : > /tmp/pr.files
+          page=1; ok=1
+          while :; do
+            resp=$(curl -fsS -H "Authorization: token $TOKEN" "$API/pulls/$PR/files?page=$page&limit=50") || { ok=0; break; }
+            n=$(printf '%s' "$resp" | jq 'length')
+            [ "$n" = "0" ] && break
+            printf '%s' "$resp" | jq -r '.[] | [.status, .filename] | @tsv' >> /tmp/pr.files
+            [ "$n" -lt 50 ] && break
+            page=$((page+1))
+          done
+          # Сбой пагинации НЕ глотаем: сентинел → pr-gate эскалирует (иначе усечённый список «пройдёт как доки»).
+          [ "$ok" = "1" ] || echo "__FETCH_FAILED__" > /tmp/pr.files
+          # дифф как текст (код PR не исполняется)
+          curl -fsS -H "Authorization: token $TOKEN" "$API/pulls/$PR.diff" -o /tmp/pr.diff || true
+          echo "files: $(wc -l < /tmp/pr.files) | diff bytes: $(wc -c < /tmp/pr.diff)"
+
+      - name: Решение гейта (доверенный скрипт из base)
+        id: gate
+        env:
+          GITHUB_EVENT_PATH: ${{ github.event_path }}
+          PR_DIFF_FILE: /tmp/pr.diff
+          PR_FILES_FILE: /tmp/pr.files
+          DIRECTOR_COCKPIT_URL: ${{ secrets.DIRECTOR_COCKPIT_URL }}
+          REVIEW_TOKEN: ${{ secrets.REVIEW_TOKEN }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_ALERT_CHAT_ID: ${{ secrets.TELEGRAM_ALERT_CHAT_ID }}
+        run: node scripts/pr-gate.mjs
+
+      - name: Авто-мёрж (approved — зона Финансы/доки)
+        if: steps.gate.outputs.decision == 'approve'
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -uo pipefail
+          API="${GITHUB_SERVER_URL}/api/v1/repos/${GITHUB_REPOSITORY}"
+          curl -fsS -X POST -H "Authorization: token $TOKEN" -H "Content-Type: application/json" \
+            "$API/issues/$PR/comments" \
+            -d '{"body":"🤖 AI-гейт: одобрено (зона Финансы/доки, низкий риск). Вливаю после прохождения чеков."}' || true
+          # merge_when_checks_succeed = аналог GitHub --auto: Gitea вольёт, когда чек ai-gate станет зелёным
+          curl -fsS -X POST -H "Authorization: token $TOKEN" -H "Content-Type: application/json" \
+            "$API/pulls/$PR/merge" \
+            -d '{"Do":"squash","merge_when_checks_succeed":true,"delete_branch_after_merge":true}'
+
+      - name: Блок (escalate → к владельцу)
+        if: steps.gate.outputs.decision != 'approve'
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ github.event.pull_request.number }}
+          REASON: ${{ steps.gate.outputs.reason }}
+        run: |
+          set -uo pipefail
+          API="${GITHUB_SERVER_URL}/api/v1/repos/${GITHUB_REPOSITORY}"
+          # снимаем возможный ранее армированный авто-мёрж (если прошлый прогон одобрял, а теперь эскалация)
+          curl -fsS -X DELETE -H "Authorization: token $TOKEN" "$API/pulls/$PR/merge" || true
+          body=$(jq -nc --arg r "$REASON" '{body: ("🛑 AI-гейт: нужна проверка владельца (детали в Telegram). Авто-мёрж заблокирован: " + $r)}')
+          curl -fsS -X POST -H "Authorization: token $TOKEN" -H "Content-Type: application/json" \
+            "$API/issues/$PR/comments" -d "$body" || true
+          echo "Escalated: $REASON — валю чек, чтобы заблокировать мёрж."
+          exit 1

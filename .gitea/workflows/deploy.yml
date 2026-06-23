@@ -1,0 +1,46 @@
+name: deploy
+
+# Деплой панели в прод БЕЗ GitHub: push в main → сборка и выкладка через Vercel CLI.
+# Заменяет GitHub→Vercel git-интеграцию. Тот же подход уже используется в director-cockpit.
+#
+# ТРЕБОВАНИЯ:
+#   • раннер с меткой `gate` (node ≥18, git, curl — см. deploy/gitea/runner.Dockerfile);
+#   • секреты репо: VERCEL_TOKEN, VERCEL_ORG_ID, VERCEL_PROJECT_ID
+#     (ORG/PROJECT id берутся из `vercel link` → .vercel/project.json, токен — vercel.com/account/tokens).
+#   • crons из vercel.json продолжают работать (они часть деплоя).
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: gate
+    env:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+    steps:
+      - name: Клон репо из Gitea (без github.com)
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          rm -rf repo
+          git -c http.extraheader="Authorization: token $TOKEN" \
+            clone --depth=1 "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git" repo
+          cd repo && git -c http.extraheader="Authorization: token $TOKEN" fetch --depth=1 origin "$GITHUB_SHA" && git checkout "$GITHUB_SHA"
+
+      - name: Сборка и деплой в прод (Vercel CLI)
+        working-directory: repo
+        run: |
+          set -euo pipefail
+          npm i -g vercel@latest
+          vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
+          vercel build --prod --token="$VERCEL_TOKEN"
+          url=$(vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN")
+          echo "Прод задеплоен: $url"
