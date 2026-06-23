@@ -1,0 +1,377 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>infernoff — клон визуала · styleguide</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --font: "Inter", -apple-system, system-ui, "Segoe UI", sans-serif;
+    --page-bg:#F7F8FA; --surface:#FFFFFF; --subtle:#F9FAFB; --subtle2:#F3F4F6;
+    --border:#E5E7EB; --border2:#ECEEF2;
+    --text-primary:#111827; --text-secondary:#374151; --text-muted:#9CA3AF; --text-muted2:#6B7280; --text-slate:#5B6472;
+    --teal:#0A8888; --violet:#7C3AED; --violet700:#6D28D9; --violet-surface:#F4F1FE;
+    --wb-magenta:#CB11AB;
+    --pos:#16A34A; --neg:#DC2626; --warn:#F59E0B; --orange:#EA580C;
+    --green-strong:#4ADE80; --green-bg:#DCFCE7; --red-bg:#FEE2E2; --yellow-bg:#FEF9C3;
+    --radius-card:10px; --radius-control:8px; --radius-pill:6px;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    font-family:var(--font); background:var(--page-bg); color:var(--text-primary);
+    font-size:16px; line-height:1.5; -webkit-font-smoothing:antialiased;
+  }
+  a{color:var(--teal); text-decoration:none;}
+  .wrap{max-width:1120px; margin:0 auto; padding:28px 24px 64px;}
+
+  /* page header */
+  .page-head{display:flex; align-items:center; gap:14px; margin-bottom:6px;}
+  .logo{width:36px; height:36px; border-radius:var(--radius-card); background:var(--wb-magenta);
+    color:#fff; font-weight:800; font-size:15px; display:flex; align-items:center; justify-content:center;}
+  .page-title{font-size:20px; font-weight:600; letter-spacing:-0.01em;}
+  .page-sub{color:var(--text-muted2); font-size:14px; margin:2px 0 0;}
+  .lede{color:var(--text-slate); font-size:14px; max-width:760px; margin:18px 0 30px; line-height:1.6;}
+
+  /* sections */
+  section{margin-bottom:38px;}
+  .sec-head{display:flex; align-items:baseline; gap:10px; margin:0 0 14px; padding-bottom:8px; border-bottom:1px solid var(--border2);}
+  .sec-num{font-size:12.8px; font-weight:600; color:var(--teal); font-variant-numeric:tabular-nums;}
+  .sec-title{font-size:14px; font-weight:600; color:var(--text-primary); text-transform:uppercase; letter-spacing:.06em;}
+  .sec-note{font-size:12.8px; color:var(--text-muted); margin-left:auto;}
+
+  .card{background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-card); padding:18px;}
+
+  /* swatches */
+  .swatch-grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(176px,1fr)); gap:12px;}
+  .sw{border:1px solid var(--border); border-radius:var(--radius-control); overflow:hidden; background:var(--surface);}
+  .sw-chip{height:56px; border-bottom:1px solid var(--border2);}
+  .sw-meta{padding:8px 10px;}
+  .sw-role{font-size:12.8px; font-weight:600; color:var(--text-primary); line-height:1.3;}
+  .sw-hex{font-size:12.8px; color:var(--text-muted2); font-variant-numeric:tabular-nums; margin-top:1px;}
+  .sw.bordered .sw-chip{box-shadow:inset 0 0 0 1px var(--border2);}
+
+  /* typography */
+  .type-row{display:flex; align-items:baseline; gap:16px; padding:9px 0; border-bottom:1px solid var(--border2);}
+  .type-row:last-child{border-bottom:0;}
+  .type-tag{flex:0 0 150px; font-size:12.8px; color:var(--text-muted2); font-variant-numeric:tabular-nums;}
+  .t-logo{font-weight:800; font-size:24px;}
+  .t-title{font-weight:600; font-size:20px;}
+  .t-body{font-weight:400; font-size:16px;}
+  .t-nav{font-weight:500; font-size:14px;}
+  .t-control{font-weight:500; font-size:12.8px;}
+  .weights span{margin-right:18px; font-size:16px;}
+
+  /* buttons */
+  .btn{font-family:var(--font); font-size:12.8px; font-weight:600; border-radius:var(--radius-control);
+    padding:9px 14px; border:1px solid transparent; cursor:pointer; line-height:1; display:inline-flex; align-items:center; gap:7px;}
+  .btn-primary{background:var(--violet); color:#fff;}
+  .btn-secondary{background:var(--surface); border-color:var(--border); color:var(--text-secondary);}
+  .btn-success{background:var(--pos); color:#fff;}
+  .btn-ghost{background:transparent; color:var(--teal); border-color:transparent; font-weight:600;}
+  .btn-row{display:flex; gap:10px; flex-wrap:wrap; align-items:center;}
+
+  /* chips & pills */
+  .chip{display:inline-flex; align-items:center; gap:6px; font-size:12.8px; font-weight:600; padding:9px 11px; border-radius:var(--radius-card);}
+  .chip-active{background:var(--violet-surface); color:var(--violet700);}
+  .chip-idle{background:var(--surface); border:1px solid var(--border); color:var(--text-secondary); font-weight:500;}
+  .chip-status{background:var(--green-bg); color:var(--pos);}
+  .pill{display:inline-flex; align-items:center; gap:5px; font-size:12.8px; font-weight:500; padding:3px 9px; border-radius:var(--radius-pill);}
+  .pill-ok{background:var(--green-bg); color:var(--pos);}
+  .pill-hold{background:var(--green-bg); color:var(--pos);}
+  .pill-drop{background:var(--red-bg); color:var(--neg);}
+  .pill-warn{background:var(--yellow-bg); color:var(--orange);}
+  .row-gap{display:flex; gap:10px; flex-wrap:wrap; align-items:center;}
+
+  /* table */
+  table.fx{width:100%; border-collapse:collapse; font-size:12.8px;}
+  table.fx thead th{background:var(--subtle2); color:var(--text-muted2); font-weight:600; text-align:right;
+    padding:9px 12px; border-bottom:1px solid var(--border); white-space:nowrap;}
+  table.fx thead th:first-child{text-align:left;}
+  table.fx td{padding:9px 12px; border-bottom:1px solid var(--border2); text-align:right; font-variant-numeric:tabular-nums; color:var(--text-secondary);}
+  table.fx td:first-child{text-align:left; color:var(--text-primary);}
+  table.fx tr.section-row td{background:var(--subtle); font-weight:600; color:var(--text-primary);}
+  .num-pos{color:var(--pos); font-weight:600;}
+  .num-neg{color:var(--neg); font-weight:600;}
+  .sku{color:var(--text-muted2); font-variant-numeric:tabular-nums;}
+
+  /* heatmap */
+  .heat{display:grid; grid-template-columns:120px repeat(5,1fr); gap:6px; font-size:12.8px;}
+  .heat .hh{color:var(--text-muted2); font-weight:600; text-align:center; padding:6px 0;}
+  .heat .rh{color:var(--text-secondary); font-weight:500; display:flex; align-items:center;}
+  .heat .cell{height:40px; border-radius:var(--radius-pill); display:flex; align-items:center; justify-content:center;
+    font-weight:600; font-variant-numeric:tabular-nums;}
+  .cell-g{background:var(--green-strong); color:#111827;}
+  .cell-y{background:var(--yellow-bg); color:#111827;}
+  .cell-r{background:var(--red-bg); color:var(--neg);}
+  .heat-legend{display:flex; gap:18px; margin-top:12px; font-size:12.8px; color:var(--text-muted2); flex-wrap:wrap;}
+  .heat-legend i{width:12px; height:12px; border-radius:3px; display:inline-block; vertical-align:-1px; margin-right:6px;}
+
+  /* strategy dots */
+  .strat{display:flex; gap:22px; flex-wrap:wrap;}
+  .strat-item{display:flex; align-items:center; gap:9px; font-size:14px; color:var(--text-secondary);}
+  .dot{width:8px; height:8px; border-radius:50%; flex:0 0 auto;}
+  .dot-go{background:var(--green-strong);} .dot-out{background:var(--warn);} .dot-margin{background:var(--violet);}
+
+  /* signal badges — нейтральная пилюля + цветная точка (все цвета из GT) */
+  .signals{display:flex; gap:10px; flex-wrap:wrap;}
+  .sig{display:inline-flex; align-items:center; gap:6px; background:var(--subtle2); color:var(--text-secondary); font-size:12.8px; font-weight:600; padding:3px 10px; border-radius:var(--radius-pill);}
+  .sig::before{content:""; width:8px; height:8px; border-radius:50%; background:var(--sig-dot,var(--text-muted));}
+  .sig-content{--sig-dot:var(--violet);}
+  .sig-comp{--sig-dot:var(--neg);}
+  .sig-ads{--sig-dot:var(--teal);}
+  .sig-stock{--sig-dot:var(--warn);}
+  .sig-drr{--sig-dot:var(--orange);}
+  .sig-margin{--sig-dot:var(--pos);}
+
+  /* repricer mockup */
+  .app{border:1px solid var(--border); border-radius:var(--radius-card); overflow:hidden; background:var(--surface); display:flex; min-height:520px;}
+  .rail{flex:0 0 52px; background:var(--surface); border-right:1px solid var(--border); display:flex; flex-direction:column; align-items:center; padding:12px 0; gap:6px;}
+  .rail .rlogo{width:32px; height:32px; border-radius:var(--radius-card); background:var(--wb-magenta); color:#fff; font-weight:800; font-size:13px; display:flex; align-items:center; justify-content:center; margin-bottom:8px;}
+  .rail .ric{width:34px; height:34px; border-radius:var(--radius-control); display:flex; align-items:center; justify-content:center; color:var(--text-muted); font-size:18px;}
+  .rail .ric.active{background:var(--violet-surface); color:var(--violet700);}
+  .app-main{flex:1; display:flex; flex-direction:column; min-width:0;}
+  .topbar{display:flex; align-items:center; gap:12px; padding:11px 18px; border-bottom:1px solid var(--border); background:var(--surface);}
+  .wbtag{display:inline-flex; align-items:center; gap:7px; font-size:12.8px; font-weight:600; color:var(--text-secondary);}
+  .wbtag .sq{width:18px; height:18px; border-radius:5px; background:var(--wb-magenta);}
+  .topbar .crumb{font-size:14px; font-weight:600; color:var(--text-primary);}
+  .topbar-right{margin-left:auto; display:flex; gap:8px; align-items:center;}
+  .screen-head{padding:16px 18px 6px;}
+  .screen-head h2{font-size:20px; font-weight:600; margin:0;}
+  .screen-head p{font-size:12.8px; color:var(--text-muted2); margin:4px 0 0;}
+  .toolbar{display:flex; gap:8px; align-items:center; padding:10px 18px; flex-wrap:wrap;}
+  .table-pad{padding:0 18px 6px;}
+  .cron-bar{display:flex; gap:9px; align-items:center; padding:12px 18px 18px; border-top:1px solid var(--border2); flex-wrap:wrap;}
+  .cron-meta{margin-left:auto; font-size:12.8px; color:var(--text-muted); display:flex; align-items:center; gap:6px;}
+  .cron-meta .live{width:7px; height:7px; border-radius:50%; background:var(--green-strong);}
+  .inp{font-family:var(--font); font-size:12.8px; padding:8px 10px; border:1px solid var(--border); border-radius:var(--radius-control); color:var(--text-secondary); background:var(--surface);}
+  .delta-up{color:var(--pos); font-weight:600;} .delta-dn{color:var(--neg); font-weight:600;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="page-head">
+    <div class="logo">FP</div>
+    <div>
+      <div class="page-title">infernoff — клон визуала</div>
+      <p class="page-sub">Живой styleguide · светлая тема · Next 16 + Tailwind v4 · шрифт Inter</p>
+    </div>
+  </div>
+  <p class="lede">Ground-truth дизайн-система из живых computed-стилей infernoff.ru, воспроизведённая 1-в-1 точными hex. Используется как эталон при сборке P0/P1 фич: репрайсер, решатель цены, сигналы, докидывание рекламы, CTR-тест.</p>
+
+  <!-- 1. PALETTE -->
+  <section>
+    <div class="sec-head"><span class="sec-num">01</span><span class="sec-title">Палитра</span><span class="sec-note">точные hex + роль</span></div>
+    <div class="swatch-grid">
+      <div class="sw bordered"><div class="sw-chip" style="background:#F7F8FA"></div><div class="sw-meta"><div class="sw-role">pageBg</div><div class="sw-hex">#F7F8FA</div></div></div>
+      <div class="sw bordered"><div class="sw-chip" style="background:#FFFFFF"></div><div class="sw-meta"><div class="sw-role">surface</div><div class="sw-hex">#FFFFFF</div></div></div>
+      <div class="sw bordered"><div class="sw-chip" style="background:#F9FAFB"></div><div class="sw-meta"><div class="sw-role">subtle</div><div class="sw-hex">#F9FAFB</div></div></div>
+      <div class="sw bordered"><div class="sw-chip" style="background:#F3F4F6"></div><div class="sw-meta"><div class="sw-role">subtle2 · thead</div><div class="sw-hex">#F3F4F6</div></div></div>
+      <div class="sw bordered"><div class="sw-chip" style="background:#E5E7EB"></div><div class="sw-meta"><div class="sw-role">border</div><div class="sw-hex">#E5E7EB</div></div></div>
+      <div class="sw bordered"><div class="sw-chip" style="background:#ECEEF2"></div><div class="sw-meta"><div class="sw-role">border2</div><div class="sw-hex">#ECEEF2</div></div></div>
+      <div class="sw"><div class="sw-chip" style="background:#111827"></div><div class="sw-meta"><div class="sw-role">textPrimary</div><div class="sw-hex">#111827</div></div></div>
+      <div class="sw"><div class="sw-chip" style="background:#374151"></div><div class="sw-meta"><div class="sw-role">textSecondary</div><div class="sw-hex">#374151</div></div></div>
+      <div class="sw"><div class="sw-chip" style="background:#9CA3AF"></div><div class="sw-meta"><div class="sw-role">textMuted</div><div class="sw-hex">#9CA3AF</div></div></div>
+      <div class="sw"><div class="sw-chip" style="background:#6B7280"></div><div class="sw-meta"><div class="sw-role">textMuted2</div><div class="sw-hex">#6B7280</div></div></div>
+      <div class="sw"><div class="sw-chip" style="background:#5B6472"></div><div class="sw-meta"><div class="sw-role">textSlate</div><div class="sw-hex">#5B6472</div></div></div>
+      <div class="sw"><div class="sw-chip" style="background:#0A8888"></div><div class="sw-meta"><div class="sw-role">teal · акцент</div><div class="sw-hex">#0A8888</div></div></div>
+      <div class="sw"><div class="sw-chip" style="background:#7C3AED"></div><div class="sw-meta"><div class="sw-role">violet · нав-актив</div><div class="sw-hex">#7C3AED</div></div></div>
+      <div class="sw"><div class="sw-chip" style="background:#6D28D9"></div><div class="sw-meta"><div class="sw-role">violet700</div><div class="sw-hex">#6D28D9</div></div></div>
+      <div class="sw bordered"><div class="sw-chip" style="background:#F4F1FE"></div><div class="sw-meta"><div class="sw-role">violetSurface</div><div class="sw-hex">#F4F1FE</div></div></div>
+      <div class="sw"><div class="sw-chip" style="background:#CB11AB"></div><div class="sw-meta"><div class="sw-role">wbMagenta · logo</div><div class="sw-hex">#CB11AB</div></div></div>
+      <div class="sw"><div class="sw-chip" style="background:#16A34A"></div><div class="sw-meta"><div class="sw-role">pos</div><div class="sw-hex">#16A34A</div></div></div>
+      <div class="sw"><div class="sw-chip" style="background:#DC2626"></div><div class="sw-meta"><div class="sw-role">neg</div><div class="sw-hex">#DC2626</div></div></div>
+      <div class="sw"><div class="sw-chip" style="background:#F59E0B"></div><div class="sw-meta"><div class="sw-role">warn</div><div class="sw-hex">#F59E0B</div></div></div>
+      <div class="sw"><div class="sw-chip" style="background:#EA580C"></div><div class="sw-meta"><div class="sw-role">orange</div><div class="sw-hex">#EA580C</div></div></div>
+      <div class="sw"><div class="sw-chip" style="background:#4ADE80"></div><div class="sw-meta"><div class="sw-role">greenStrong · heatmap</div><div class="sw-hex">#4ADE80</div></div></div>
+      <div class="sw bordered"><div class="sw-chip" style="background:#DCFCE7"></div><div class="sw-meta"><div class="sw-role">greenBg</div><div class="sw-hex">#DCFCE7</div></div></div>
+      <div class="sw bordered"><div class="sw-chip" style="background:#FEE2E2"></div><div class="sw-meta"><div class="sw-role">redBg</div><div class="sw-hex">#FEE2E2</div></div></div>
+      <div class="sw bordered"><div class="sw-chip" style="background:#FEF9C3"></div><div class="sw-meta"><div class="sw-role">yellowBg</div><div class="sw-hex">#FEF9C3</div></div></div>
+    </div>
+  </section>
+
+  <!-- 2. TYPOGRAPHY -->
+  <section>
+    <div class="sec-head"><span class="sec-num">02</span><span class="sec-title">Типографика</span><span class="sec-note">Inter · 400 / 500 / 600 / 800</span></div>
+    <div class="card">
+      <div class="type-row"><span class="type-tag">logo · 24 / 800</span><span class="t-logo">Контент Завод</span></div>
+      <div class="type-row"><span class="type-tag">title · 20 / 600</span><span class="t-title">Репрайсер — управление ценой</span></div>
+      <div class="type-row"><span class="type-tag">body · 16 / 400</span><span class="t-body">Цена пересчитывается по марже и остатку склада.</span></div>
+      <div class="type-row"><span class="type-tag">nav · 14 / 500</span><span class="t-nav">Дашборд · Сигналы · Реклама · Ассортимент</span></div>
+      <div class="type-row"><span class="type-tag">control · 12.8 / 500</span><span class="t-control">Применить к выбранным · 24 SKU</span></div>
+      <div class="type-row"><span class="type-tag">weights</span><span class="weights"><span style="font-weight:400">Regular 400</span><span style="font-weight:500">Medium 500</span><span style="font-weight:600">Semibold 600</span><span style="font-weight:800">Logo 800</span></span></div>
+    </div>
+  </section>
+
+  <!-- 3. BUTTONS -->
+  <section>
+    <div class="sec-head"><span class="sec-num">03</span><span class="sec-title">Кнопки</span><span class="sec-note">primary / secondary / success</span></div>
+    <div class="card">
+      <div class="btn-row">
+        <button class="btn btn-primary">Применить цены</button>
+        <button class="btn btn-secondary">Отменить</button>
+        <button class="btn btn-success">Запустить крон</button>
+        <button class="btn btn-secondary">Экспорт CSV</button>
+        <button class="btn btn-ghost">Подробнее →</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- 4. CHIPS & PILLS -->
+  <section>
+    <div class="sec-head"><span class="sec-num">04</span><span class="sec-title">Чипы и пилюли</span><span class="sec-note">active / status · ok / держится / просела</span></div>
+    <div class="card">
+      <div class="row-gap" style="margin-bottom:14px;">
+        <span class="chip chip-active">Репрайсер</span>
+        <span class="chip chip-idle">Сигналы</span>
+        <span class="chip chip-idle">Реклама</span>
+        <span class="chip chip-status">Режим планирования</span>
+      </div>
+      <div class="row-gap">
+        <span class="pill pill-ok">Завершён</span>
+        <span class="pill pill-hold">Держится</span>
+        <span class="pill pill-warn">Под наблюдением</span>
+        <span class="pill pill-drop">Просела</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- 5. TABLE -->
+  <section>
+    <div class="sec-head"><span class="sec-num">05</span><span class="sec-title">Таблица</span><span class="sec-note">thead #F3F4F6 · section-row · pos/neg числа</span></div>
+    <div class="card" style="padding:0; overflow:hidden;">
+      <table class="fx">
+        <thead>
+          <tr>
+            <th>Артикул / товар</th><th>Цена</th><th>Новая цена</th><th>Δ цены</th><th>Маржа</th><th>Остаток</th><th>GMROI</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="section-row"><td colspan="7">Tim Tin · водные пистолеты</td></tr>
+          <tr><td>Аквабластер Pro <span class="sku">· 184422301</span></td><td>1 290 ₽</td><td>1 190 ₽</td><td class="num-neg">−100 ₽</td><td class="num-pos">38%</td><td>412</td><td class="num-pos">2.9</td></tr>
+          <tr><td>Помповый XL <span class="sku">· 184422318</span></td><td>1 540 ₽</td><td>1 690 ₽</td><td class="num-pos">+150 ₽</td><td class="num-pos">44%</td><td>96</td><td class="num-pos">3.4</td></tr>
+          <tr><td>Мини-сплеш 2-pack <span class="sku">· 184422342</span></td><td>690 ₽</td><td>690 ₽</td><td>0 ₽</td><td class="num-neg">19%</td><td>23</td><td class="num-neg">0.8</td></tr>
+          <tr class="section-row"><td colspan="7">Retail Family · ветровки</td></tr>
+          <tr><td>Ветровка унисекс <span class="sku">· 209118044</span></td><td>3 290 ₽</td><td>3 490 ₽</td><td class="num-pos">+200 ₽</td><td class="num-pos">41%</td><td>318</td><td class="num-pos">2.2</td></tr>
+          <tr><td>Куртка демисезон <span class="sku">· 209118077</span></td><td>5 990 ₽</td><td>5 490 ₽</td><td class="num-neg">−500 ₽</td><td class="num-neg">27%</td><td>61</td><td class="num-neg">1.1</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- 6. HEATMAP -->
+  <section>
+    <div class="sec-head"><span class="sec-num">06</span><span class="sec-title">Heatmap-сетка 5×4</span><span class="sec-note">% от нормы выкупа по дням</span></div>
+    <div class="card">
+      <div class="heat">
+        <div></div><div class="hh">Пн</div><div class="hh">Вт</div><div class="hh">Ср</div><div class="hh">Чт</div><div class="hh">Пт</div>
+        <div class="rh">Аквабластер</div>
+        <div class="cell cell-g">112</div><div class="cell cell-g">104</div><div class="cell cell-y">88</div><div class="cell cell-g">101</div><div class="cell cell-g">119</div>
+        <div class="rh">Помповый XL</div>
+        <div class="cell cell-y">91</div><div class="cell cell-g">106</div><div class="cell cell-r">62</div><div class="cell cell-y">83</div><div class="cell cell-g">108</div>
+        <div class="rh">Мини-сплеш</div>
+        <div class="cell cell-r">54</div><div class="cell cell-r">71</div><div class="cell cell-y">85</div><div class="cell cell-g">100</div><div class="cell cell-y">94</div>
+        <div class="rh">Ветровка</div>
+        <div class="cell cell-g">128</div><div class="cell cell-g">115</div><div class="cell cell-g">103</div><div class="cell cell-y">89</div><div class="cell cell-r">68</div>
+      </div>
+      <div class="heat-legend">
+        <span><i style="background:#4ADE80"></i>≥ нормы (≥100%)</span>
+        <span><i style="background:#FEF9C3"></i>80–99%</span>
+        <span><i style="background:#FEE2E2"></i>&lt; 80%</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- 7. STRATEGY DOTS -->
+  <section>
+    <div class="sec-head"><span class="sec-num">07</span><span class="sec-title">Strategy-dots</span><span class="sec-note">маркер стратегии товара</span></div>
+    <div class="card">
+      <div class="strat">
+        <span class="strat-item"><span class="dot dot-go"></span>Разгон GMROI</span>
+        <span class="strat-item"><span class="dot dot-out"></span>Скоро аут</span>
+        <span class="strat-item"><span class="dot dot-margin"></span>Рост маржи</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- 8. SIGNAL BADGES -->
+  <section>
+    <div class="sec-head"><span class="sec-num">08</span><span class="sec-title">Signal-badges</span><span class="sec-note">6 типов · цветная точка из акцентов</span></div>
+    <div class="card">
+      <div class="signals">
+        <span class="sig sig-content">Контент</span>
+        <span class="sig sig-comp">Конкуренты</span>
+        <span class="sig sig-ads">Реклама</span>
+        <span class="sig sig-stock">Остатки</span>
+        <span class="sig sig-drr">ДРР</span>
+        <span class="sig sig-margin">Маржа</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- 9. REPRICER SCREEN MOCKUP -->
+  <section>
+    <div class="sec-head"><span class="sec-num">09</span><span class="sec-title">Мини-макет экрана «Репрайсер»</span><span class="sec-note">рейл + топбар + таблица + крон</span></div>
+    <div class="app">
+      <nav class="rail">
+        <div class="rlogo">FP</div>
+        <div class="ric active" title="Репрайсер"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></div>
+        <div class="ric" title="Сигналы"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l3 8 4-16 3 8h4"/></svg></div>
+        <div class="ric" title="Реклама"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l18-5v12L3 14v-3zM11.6 16.8a3 3 0 1 1-5.8-1.6"/></svg></div>
+        <div class="ric" title="Ассортимент"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z"/></svg></div>
+      </nav>
+      <div class="app-main">
+        <div class="topbar">
+          <span class="wbtag"><span class="sq"></span>Wildberries · Tim Tin</span>
+          <span style="color:var(--border)">/</span>
+          <span class="crumb">Репрайсер</span>
+          <div class="topbar-right">
+            <span class="chip chip-status">Режим планирования</span>
+            <button class="btn btn-secondary">Кабинет ▾</button>
+          </div>
+        </div>
+
+        <div class="screen-head">
+          <h2>Репрайсер</h2>
+          <p>Решатель цены по марже, остатку и позиции. Пересчёт ночью, применение — по подтверждению.</p>
+        </div>
+
+        <div class="toolbar">
+          <input class="inp" style="width:200px" placeholder="Поиск по артикулу / названию">
+          <select class="inp"><option>Все стратегии</option><option>Разгон GMROI</option><option>Рост маржи</option></select>
+          <select class="inp"><option>Маржа ≥ 30%</option></select>
+          <span class="pill pill-ok" style="margin-left:auto">7 цен готовы к применению</span>
+        </div>
+
+        <div class="table-pad">
+          <table class="fx">
+            <thead>
+              <tr><th>Артикул / товар</th><th>Стратегия</th><th>Цена</th><th>Реком.</th><th>Δ</th><th>Маржа</th><th>Сигнал</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Аквабластер Pro <span class="sku">· 184422301</span></td><td style="text-align:left"><span class="dot dot-go" style="display:inline-block;margin-right:6px"></span>Разгон GMROI</td><td>1 290 ₽</td><td>1 190 ₽</td><td class="delta-dn">−100</td><td class="num-pos">38%</td><td style="text-align:left"><span class="sig sig-comp">Конкуренты</span></td></tr>
+              <tr><td>Помповый XL <span class="sku">· 184422318</span></td><td style="text-align:left"><span class="dot dot-margin" style="display:inline-block;margin-right:6px"></span>Рост маржи</td><td>1 540 ₽</td><td>1 690 ₽</td><td class="delta-up">+150</td><td class="num-pos">44%</td><td style="text-align:left"><span class="sig sig-margin">Маржа</span></td></tr>
+              <tr><td>Мини-сплеш 2-pack <span class="sku">· 184422342</span></td><td style="text-align:left"><span class="dot dot-out" style="display:inline-block;margin-right:6px"></span>Скоро аут</td><td>690 ₽</td><td>790 ₽</td><td class="delta-up">+100</td><td class="num-neg">19%</td><td style="text-align:left"><span class="sig sig-stock">Остатки</span></td></tr>
+              <tr><td>Ветровка унисекс <span class="sku">· 209118044</span></td><td style="text-align:left"><span class="dot dot-go" style="display:inline-block;margin-right:6px"></span>Разгон GMROI</td><td>3 290 ₽</td><td>3 490 ₽</td><td class="delta-up">+200</td><td class="num-pos">41%</td><td style="text-align:left"><span class="sig sig-ads">Реклама</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="cron-bar">
+          <button class="btn btn-primary">Применить выбранные</button>
+          <button class="btn btn-success">Запустить крон сейчас</button>
+          <button class="btn btn-secondary">Сухой прогон</button>
+          <button class="btn btn-secondary">История запусков</button>
+          <span class="cron-meta"><span class="live"></span>Крон активен · следующий прогон 03:00 МСК · последний: 7 цен обновлено</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</div>
+</body>
+</html>

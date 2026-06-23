@@ -1,0 +1,313 @@
+:root {
+  /* ── Backgrounds / surfaces ── */
+  --bg-page: #F7F8FA;
+  --surface: #FFFFFF;
+  --subtle: #F9FAFB;
+  --subtle-2: #F3F4F6;
+  --border: #E5E7EB;
+  --border-2: #ECEEF2;
+
+  /* ── Text ── */
+  --text-primary: #111827;
+  --text-secondary: #374151;
+  --text-muted: #9CA3AF;
+  --text-muted-2: #6B7280;
+  --text-slate: #5B6472;
+
+  /* ── Brand / accents ── */
+  --c-teal: #0A8888;
+  --c-violet: #7C3AED;
+  --c-violet-700: #6D28D9;
+  --c-violet-surface: #F4F1FE;
+  --c-wb: #CB11AB;
+
+  /* ── Semantic ── */
+  --c-pos: #16A34A;
+  --c-neg: #DC2626;
+  --c-warn: #F59E0B;
+  --c-orange: #EA580C;
+  --c-green-strong: #4ADE80;
+
+  /* ── Tints (backgrounds for chips / heatmap) ── */
+  --bg-green: #DCFCE7;
+  --bg-red: #FEE2E2;
+  --bg-yellow: #FEF9C3;
+
+  /* ── Radius ── */
+  --radius-card: 10px;
+  --radius-control: 8px;
+  --radius-pill: 6px;
+
+  /* ── Typography ── */
+  --font-sans: Inter, -apple-system, system-ui, "Segoe UI", sans-serif;
+
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-logo: 800;
+
+  --fs-control: 12.8px;
+  --fs-nav: 14px;
+  --fs-body: 16px;
+  --fs-title: 20px;
+}
+
+/* ─────────────────────────────────────────────
+   Tailwind v4 theme bridge (@tailwindcss/postcss)
+   exposes classes: bg-teal, text-pos, rounded-card,
+   font-sans, etc.
+   ───────────────────────────────────────────── */
+@theme {
+  --color-bg-page: #F7F8FA;
+  --color-surface: #FFFFFF;
+  --color-subtle: #F9FAFB;
+  --color-subtle-2: #F3F4F6;
+  --color-border: #E5E7EB;
+  --color-border-2: #ECEEF2;
+
+  --color-text-primary: #111827;
+  --color-text-secondary: #374151;
+  --color-text-muted: #9CA3AF;
+  --color-text-muted-2: #6B7280;
+  --color-text-slate: #5B6472;
+
+  --color-teal: #0A8888;
+  --color-violet: #7C3AED;
+  --color-violet-700: #6D28D9;
+  --color-violet-surface: #F4F1FE;
+  --color-wb: #CB11AB;
+
+  --color-pos: #16A34A;
+  --color-neg: #DC2626;
+  --color-warn: #F59E0B;
+  --color-orange: #EA580C;
+  --color-green-strong: #4ADE80;
+
+  --color-green-bg: #DCFCE7;
+  --color-red-bg: #FEE2E2;
+  --color-yellow-bg: #FEF9C3;
+
+  --radius-card: 10px;
+  --radius-control: 8px;
+  --radius-pill: 6px;
+
+  --font-sans: Inter, -apple-system, system-ui, "Segoe UI", sans-serif;
+}
+
+/* ─────────────────────────────────────────────
+   Reusable utility classes (plain CSS)
+   ───────────────────────────────────────────── */
+
+/* Active header chip — bg violet-surface, fg violet-700 */
+.chip-active {
+  display: inline-flex;
+  align-items: center;
+  background: var(--c-violet-surface);
+  color: var(--c-violet-700);
+  border-radius: var(--radius-card);
+  font-weight: var(--weight-semibold);
+  font-size: var(--fs-control);
+  padding: 9px 11px;
+}
+
+/* Status chip — «Режим планирования» */
+.status-ok {
+  display: inline-flex;
+  align-items: center;
+  background: var(--bg-green);
+  color: var(--c-pos);
+  border-radius: var(--radius-pill);
+  font-weight: var(--weight-medium);
+  font-size: var(--fs-control);
+  padding: 4px 8px;
+}
+
+/* Ok-pill — «завершён / держится» */
+.pill-ok {
+  display: inline-flex;
+  align-items: center;
+  background: var(--bg-green);
+  color: var(--c-pos);
+  border-radius: var(--radius-pill);
+  font-weight: var(--weight-medium);
+  font-size: var(--fs-control);
+  padding: 2px 8px;
+}
+
+/* Warn-pill — «под наблюдением / просела» (мягкое) */
+.pill-warn {
+  display: inline-flex;
+  align-items: center;
+  background: var(--bg-yellow);
+  color: var(--c-orange);
+  border-radius: var(--radius-pill);
+  font-weight: var(--weight-medium);
+  font-size: var(--fs-control);
+  padding: 2px 8px;
+}
+
+/* Danger-pill — «просела» (жёсткое) */
+.pill-bad {
+  display: inline-flex;
+  align-items: center;
+  background: var(--bg-red);
+  color: var(--c-neg);
+  border-radius: var(--radius-pill);
+  font-weight: var(--weight-medium);
+  font-size: var(--fs-control);
+  padding: 2px 8px;
+}
+
+/* ── Buttons ── */
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--c-violet);
+  color: #FFFFFF;
+  border: none;
+  border-radius: var(--radius-control);
+  font-weight: var(--weight-semibold);
+  font-size: var(--fs-control);
+  padding: 9px 14px;
+  cursor: pointer;
+}
+.btn-primary:hover { background: var(--c-violet-700); }
+
+.btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  font-weight: var(--weight-medium);
+  font-size: var(--fs-control);
+  padding: 9px 14px;
+  cursor: pointer;
+}
+.btn-secondary:hover { background: var(--subtle-2); }
+
+.btn-success {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--c-pos);
+  color: #FFFFFF;
+  border: none;
+  border-radius: var(--radius-control);
+  font-weight: var(--weight-semibold);
+  font-size: var(--fs-control);
+  padding: 9px 14px;
+  cursor: pointer;
+}
+.btn-success:hover { filter: brightness(0.95); }
+
+/* ── Numeric cells ── */
+.num-pos {
+  color: var(--c-pos);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.num-neg {
+  color: var(--c-neg);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+/* ── Heatmap cells (текст = text-primary, читается на всех трёх фонах) ── */
+.heat-g { background: var(--c-green-strong); color: var(--text-primary); }
+.heat-y { background: var(--bg-yellow);      color: var(--text-primary); }
+.heat-r { background: var(--bg-red);         color: var(--c-neg); }
+
+/* ── Strategy dot — 8px ── */
+.strategy-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-muted);
+}
+.strategy-dot.is-razgon { background: var(--c-green-strong); } /* Разгон GMROI */
+.strategy-dot.is-aut    { background: var(--c-warn); }         /* Скоро аут */
+.strategy-dot.is-margin { background: var(--c-violet); }       /* Рост маржи */
+
+/* ── Signal badges — нейтральная пилюля + цветная точка.
+   GT не задаёт per-type цвета, поэтому КАНОНИЧНАЯ карта:
+   фон/текст нейтральные (subtle-2 / text-secondary), различие — точка
+   из акцентов GT. Один и тот же набор во всех артефактах. ── */
+.signal-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--subtle-2);
+  color: var(--text-secondary);
+  border-radius: var(--radius-pill);
+  font-weight: var(--weight-medium);
+  font-size: var(--fs-control);
+  padding: 2px 8px;
+}
+.signal-badge::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--sig-dot, var(--text-muted));
+}
+.sig-content { --sig-dot: var(--c-violet); }   /* Контент */
+.sig-comp    { --sig-dot: var(--c-neg); }       /* Конкуренты */
+.sig-ads     { --sig-dot: var(--c-teal); }      /* Реклама */
+.sig-stock   { --sig-dot: var(--c-warn); }      /* Остатки */
+.sig-drr     { --sig-dot: var(--c-orange); }    /* ДРР */
+.sig-margin  { --sig-dot: var(--c-pos); }       /* Маржа */
+
+/* ── Table ── */
+.table-head {
+  background: var(--subtle-2);
+  color: var(--text-muted-2);
+  font-weight: var(--weight-medium);
+  font-size: var(--fs-control);
+  text-align: right;
+}
+.table-head th:first-child { text-align: left; }
+
+.table-section {
+  background: var(--subtle);
+  color: var(--text-primary);
+  font-weight: var(--weight-semibold);
+}
+
+/* ── Left icon rail ── */
+.rail {
+  width: 52px;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.rail-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-control);
+  color: var(--text-muted-2);
+}
+.rail-icon.is-active {
+  background: var(--c-violet-surface);
+  color: var(--c-violet-700);
+}
+
+/* ── WB logo tile ── */
+.wb-logo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--c-wb);
+  color: #FFFFFF;
+  font-weight: var(--weight-logo);
+  border-radius: var(--radius-card);
+}

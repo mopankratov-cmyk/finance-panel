@@ -5,6 +5,7 @@ import {
   Bot,
   Building2,
   Calendar,
+  Calculator,
   Coins,
   ChevronDown,
   CreditCard,
@@ -14,6 +15,7 @@ import {
   Menu,
   LogOut,
   PieChart,
+  Tag,
   Target,
   TrendingUp,
   RefreshCw,
@@ -77,6 +79,8 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: "/supplies", label: "Закупки", icon: Truck },
       { href: "/costs", label: "Себестоимость", icon: Coins },
+      { href: "/repricer", label: "Репрайсер", icon: Tag },
+      { href: "/price-solver", label: "Решатель цены", icon: Calculator },
     ],
   },
   {
