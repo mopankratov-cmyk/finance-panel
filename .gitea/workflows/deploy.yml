@@ -35,12 +35,13 @@ jobs:
             clone --depth=1 "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git" repo
           cd repo && git -c http.extraheader="Authorization: token $TOKEN" fetch --depth=1 origin "$GITHUB_SHA" && git checkout "$GITHUB_SHA"
 
-      - name: Сборка и деплой в прод (Vercel CLI)
+      - name: Деплой в прод (Vercel CLI, удалённая сборка)
         working-directory: repo
         run: |
           set -euo pipefail
           npm i -g vercel@latest
-          vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
-          vercel build --prod --token="$VERCEL_TOKEN"
-          url=$(vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN")
+          # Удалённая сборка на стороне Vercel (как делала GitHub-интеграция): раннер только
+          # заливает исходники, без локального `next build` — не упирается в RAM маленькой VM.
+          # VERCEL_ORG_ID/VERCEL_PROJECT_ID из env указывают проект.
+          url=$(vercel deploy --prod --yes --token="$VERCEL_TOKEN")
           echo "Прод задеплоен: $url"
