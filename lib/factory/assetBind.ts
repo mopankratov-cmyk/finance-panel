@@ -36,6 +36,21 @@ export function pickImage(p: AssetPool, idx = 0): string | undefined {
 // лучшее (первое) фото — для обратной совместимости/простых случаев
 export function bestImage(p: AssetPool): string | undefined { return pickImage(p, 0); }
 
+// Артикул, закодированный в URL подготовленного кадра (prepared/<art>/… или i2v-src/<art>-orig). null — если
+// путь артикул НЕ кодирует (сырое WB-CDN / реальная съёмка) → сверять нечего. Защита от МИСЛЕЙБЛА в каталоге.
+export function articleFromAssetUrl(url?: string | null): string | null {
+  const u = String(url || "");
+  const m = u.match(/\/prepared\/([^/]+)\//) || u.match(/\/i2v-src\/(.+?)-orig\b/);
+  try { return m ? decodeURIComponent(m[1]) : null; } catch { return m ? m[1] : null; }
+}
+
+// Можно ли привязать этот кадр к ЭТОМУ артикулу: путь кодирует тот же артикул ИЛИ не кодирует вовсе.
+// Отклоняем ТОЛЬКО явное расхождение (prepared/TT… для рецепта CLR…) — это и есть «пистолет в сумке».
+export function assetMatchesArticle(url: string | null | undefined, article: string): boolean {
+  const a = articleFromAssetUrl(url);
+  return !a || !article || a === article;
+}
+
 const I2V = new Set(["seedance", "seedance_fast", "seedance_pro", "kling", "kling_pro", "pika"]);
 
 // Решение по ноде БЕЗ источника: чем её накормить (или null — не трогаем/нечем).
