@@ -35,7 +35,9 @@ create unique index if not exists repricer_decisions_uniq on public.repricer_dec
 
 alter table public.repricer_strategies enable row level security;
 alter table public.repricer_decisions enable row level security;
+drop policy if exists "all" on public.repricer_strategies;
 create policy "all" on public.repricer_strategies for all using (true) with check (true);
+drop policy if exists "all" on public.repricer_decisions;
 create policy "all" on public.repricer_decisions for all using (true) with check (true);
 
 -- Сид-стратегии (как у Юры; margin_floor 15%). Идемпотентно по имени.
