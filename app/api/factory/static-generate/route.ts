@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { detectBrand } from "@/lib/factory/brandProfiles";
 import { specFor, accentFor, fitHeadline, type StaticFormat } from "@/lib/factory/staticCanon";
 import { remotionSubmit, remotionReady } from "@/lib/factory/remotionRender";
+import { classifyAssets, pickImage, type DiskAsset } from "@/lib/factory/assetBind";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -38,14 +39,14 @@ export async function POST(req: NextRequest) {
     try {
       const db = getSupabaseAdmin();
       if (db) {
-        const { data } = await db.from("content_assets").select("url,disk")
-          .eq("article", article).eq("kind", "image").in("disk", ["prepared", "wb"]).not("url", "is", null).limit(8);
-        const rows = (data as { url: string; disk: string }[] | null) || [];
-        const prepared = rows.filter((r) => r.disk === "prepared").map((r) => r.url);
-        const wb = rows.filter((r) => r.disk === "wb").map((r) => r.url);
-        const pool = prepared.length ? prepared : wb;
-        productImage = pool[0] || "";
-        if (!productImages.length) productImages = pool.slice(0, 4);
+        // ВЕСЬ наш контент по артикулу (не только wb-карточки): приоритет prepared > РЕАЛЬНАЯ СЪЁМКА (design/norvia) > wb —
+        // тот же classifyAssets/pickImage, что у рилсов (реальное фото модели/студии качественнее WB-инфографики).
+        const { data } = await db.from("content_assets").select("disk,kind,url")
+          .eq("article", article).eq("kind", "image").not("url", "is", null).limit(60);
+        const pool = classifyAssets((data as DiskAsset[] | null) || []);
+        const ordered = [...(pool.preparedImages || []), ...pool.realImages, ...pool.wbImages];
+        productImage = pickImage(pool, 0) || "";
+        if (!productImages.length) productImages = ordered.slice(0, 4);
       }
     } catch { /* без фото → плейсхолдер в StaticV1 */ }
   }
