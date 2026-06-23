@@ -4,9 +4,11 @@
 // Список файлов и дифф приходят как ДАННЫЕ из GitHub API (см. workflow), не из дерева PR.
 //
 // Логика (безопасно-по-умолчанию):
-//   • авто-мёрж разрешён ТОЛЬКО если ВСЕ изменённые файлы из allowlist (доки/текст/картинки),
+//   • авто-мёрж разрешён ТОЛЬКО если ВСЕ изменённые файлы либо из allowlist (доки/текст/картинки),
+//     либо целиком внутри зоны «Финансы» (FINANCE_SCOPE — вкладка, которую дорабатывают сотрудники),
 //     PR не из форка, дифф не огромный, нет deny-флагов И ассистент сказал approve+low;
-//   • что угодно иное → escalate (красный чек + пинг владельцу, вливает он сам);
+//   • что угодно иное (общий код, завод, авторизация, миграции, файлы вне зоны) → escalate
+//     (красный чек + пинг владельцу, вливает он сам);
 //   • любая ошибка/недоступность → escalate (fail-safe).
 //
 // ENV: GITHUB_EVENT_PATH, PR_DIFF_FILE, PR_FILES_FILE, DIRECTOR_COCKPIT_URL,
@@ -75,6 +77,25 @@ function denyFlags(files) {
 function allFilesSafe(files) {
   if (!files.length) return false;
   return files.every((f) => SAFE_FILE.test(f.path) && /^(add|modif|chang)/.test(f.status));
+}
+
+// Зона «Финансы» — пути вкладки, которую дорабатывают сотрудники; им разрешён авто-мёрж
+// (после approve+low ассистента). Только презентационный слой + ФИНАНСОВЫЙ бэкенд/lib.
+// СОЗНАТЕЛЬНО ВНЕ зоны (→ к владельцу): общие /api/{wb,ozon,supplies}, CabinetSwitcher,
+// useActiveCabinet и прочий общий код; раздел «Платежи» дополнительно ловит deny-флаг
+// «оплата» в RISK_RULES (см. строку с payment|billing|...) → тоже всегда к владельцу.
+const FINANCE_SCOPE = [
+  /^app\/(calendar|pnl|opiu|losses|summary|payments|loans)\//,  // страницы вкладки
+  /^app\/api\/opiu\//,                                          // финансовый бэкенд (mp, warehouse)
+  /^components\/(calendar|payments|loans|opiu)\//,              // UI-код разделов
+  /^components\/FinanceTabs\.tsx$/,                             // табы финансов
+  /^lib\/opiu\//,                                               // логика P&L
+];
+
+// finance-allowlist: каждый файл — внутри зоны Финансы и только добавлен/изменён (без удалений/переименований).
+function allFinanceScoped(files) {
+  if (!files.length) return false;
+  return files.every((f) => FINANCE_SCOPE.some((re) => re.test(f.path)) && /^(add|modif|chang)/.test(f.status));
 }
 
 async function askCockpit(pr, diff) {
@@ -155,8 +176,10 @@ async function main() {
   const lineCount = Number(pr.additions || 0) + Number(pr.deletions || 0);
   const tooMany = changeCount > 25 || lineCount > 1500;
   const safe = allFilesSafe(files);
+  const financeScoped = allFinanceScoped(files);
+  const mergeable = safe || financeScoped; // доки/картинки ИЛИ целиком в зоне Финансы
 
-  const approved = safe && !flags.length && !tooBig && !isFork && !baseNotMain && !tooMany && !fileListBad
+  const approved = mergeable && !flags.length && !tooBig && !isFork && !baseNotMain && !tooMany && !fileListBad
     && cockpit.decision === "approve" && cockpit.risk === "low";
 
   const author = pr.user?.login || "сотрудник";
@@ -173,7 +196,7 @@ async function main() {
       cockpit.summary ? `📝 ${cockpit.summary}` : "", reasons, "",
       `🔗 ${pr.html_url || ""}`,
     ].filter(Boolean).join("\n"));
-    setOutput("approve", "доки/текст + ассистент одобрил");
+    setOutput("approve", (safe ? "доки/текст" : "зона Финансы") + " + ассистент одобрил");
     return;
   }
 
@@ -182,7 +205,7 @@ async function main() {
     isFork ? "PR не из этого репозитория" : "",
     baseNotMain ? `база не main (${pr.base?.ref || "?"})` : "",
     tooBig || tooMany ? "крупный PR" : "",
-    !safe && !flags.length ? "затронут код/конфиг (не доки)" : "",
+    !mergeable && !flags.length ? "файлы вне зоны Финансы (общий код/конфиг)" : "",
     flags.length ? `риск: ${flags.join(", ")}` : "",
     cockpit.decision !== "approve" ? "ассистент не одобрил" : (cockpit.risk !== "low" ? "ассистент: риск высокий" : ""),
   ].filter(Boolean).join("; ");
