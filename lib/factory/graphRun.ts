@@ -276,6 +276,21 @@ export async function persistClips(db: SupabaseClient, nodes: RunNode[], article
 
 // Захват рецепта на исполнение: status=running, активный шаг, свободный лиз.
 export async function claimNextRecipe(db: SupabaseClient, recipeId?: number): Promise<{ id: number; plan: RunPlan; article: string; niche: string; mode: string; product_name?: string } | null> {
+  // вариант Б (#3): атомарный claim через RPC claim_recipe — jsonb_set ставит ТОЛЬКО лиз, FOR UPDATE SKIP
+  // LOCKED не даёт двум тикам взять одну строку, run_plan не переписывается целиком (стейл-перезапись
+  // токенов/нод невозможна). Fallback на JS-CAS ниже, если RPC ещё не задеплоен (миграция 20260626 не
+  // применена) → поведение полностью как раньше.
+  try {
+    const { data: rpcData, error: rpcErr } = await db.rpc("claim_recipe", { p_recipe_id: recipeId ?? null, p_lease_ms: LEASE_MS });
+    if (!rpcErr) {
+      const row = (Array.isArray(rpcData) ? rpcData[0] : null) as Record<string, unknown> | null;
+      if (!row) return null; // RPC сработал, захватывать нечего
+      const plan = (row.run_plan as RunPlan) || null;
+      if (!plan || plan.step === "done" || plan.step === "failed") return null;
+      return { id: Number(row.id), plan, article: String(row.article || ""), niche: String(row.niche || ""), mode: String(row.mode || "audience") };
+    }
+    // rpcErr → функции нет (миграция не применена) → падаем в JS-CAS
+  } catch { /* fallback на JS-CAS */ }
   const nowIso = new Date().toISOString();
   const leaseIso = new Date(Date.now() + LEASE_MS).toISOString();
   let q = db.from("node_recipes").select("id,article,niche,mode,run_plan,status").eq("status", "running").limit(5);

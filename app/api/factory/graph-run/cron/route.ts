@@ -60,7 +60,9 @@ export async function GET(req: NextRequest) {
     try {
       await runRecipeStep(db, origin, ctx);             // СИНХРОННО — гарантированный шаг (не через after())
       const p = ctx.plan;
-      if (p.attempts) { p.attempts = 0; await db.from("node_recipes").update({ run_plan: p, updated_at: new Date().toISOString() }).eq("id", ctx.id); }
+      // #9: сброс счётчика подряд-фейлов через RPC (jsonb_set только attempts) — не затирает конкурентный
+      // claim/продвижение. Fallback на полный апдейт, если RPC не задеплоен (миграция 20260626).
+      if (p.attempts) { p.attempts = 0; const { error: rErr } = await db.rpc("reset_step_attempts", { p_recipe_id: ctx.id }); if (rErr) await db.from("node_recipes").update({ run_plan: p, updated_at: new Date().toISOString() }).eq("id", ctx.id); }
       advanced.push({ id: row.id, from: before });
     } catch (e) {
       // зеркалит обработку ошибки в graph-run/tick: ретрай шага до MAX_STEP_ATTEMPTS, затем run_fail. Лиз снимаем.
