@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireApiSession } from "@/lib/auth/apiGuard";
+import { checkCronAuth } from "@/lib/sync/helpers";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { buildRnpReport, type RnpRow } from "@/lib/rnp/buildRnp";
 import { getWbCommissionMerged } from "@/lib/wb/commissions";
@@ -12,8 +13,12 @@ export const maxDuration = 60;
 // GET /api/signals?cabinet=&window=14&persist=0
 // Классифицирует «узкое место» каждого SKU. persist=1 → пишет не-OK в agent_insights (идемпотентно за день).
 export async function GET(request: NextRequest) {
-  const gate = await requireApiSession();
-  if (gate) return gate;
+  // Доступ: валидный крон (Bearer CRON_SECRET) ИЛИ сессия пользователя.
+  const isCron = !!request.headers.get("authorization") && checkCronAuth(request) === null;
+  if (!isCron) {
+    const gate = await requireApiSession();
+    if (gate) return gate;
+  }
 
   const url = new URL(request.url);
   const cabinet = url.searchParams.get("cabinet");

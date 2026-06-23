@@ -2,6 +2,7 @@
   "crons": [
     { "path": "/api/sync/all", "schedule": "0 6 * * *" },
     { "path": "/api/repricer/run/cron", "schedule": "30 6 * * *" },
+    { "path": "/api/signals?persist=1", "schedule": "40 6 * * *" },
     { "path": "/api/factory/jobs/corpus-cron", "schedule": "0 3 * * 1" },
     { "path": "/api/factory/jobs/balances-cron", "schedule": "0 7 * * *" },
     { "path": "/api/factory/graph-run/cron", "schedule": "*/2 * * * *" }
