@@ -23,16 +23,25 @@ export function detectBrand(article: string, name: string): string {
   const a = (article || "").trim();
   const al = a.toLowerCase();
   const n = (name || "").toLowerCase();
+  // Пасс 1 — по АРТИКУЛУ (авторитетно: префикс уникально идентифицирует бренд и ИМЕЕТ ПРИОРИТЕТ над названием.
+  // Иначе слово в названии — напр. «сумка для косметики» у ENOUGH — ошибочно перебивало бренд по артикулу).
   if (al.includes("sadoer")) return "SADOER";
   if (al.includes("lameila")) return "LAMEILA";
   if (al.includes("jomtam")) return "JOMTAM";
-  if (/^clr/i.test(a) || /clérin|clerin|сумка/.test(n)) return "CLÉRIN";
-  if (/^en/i.test(a) || /enough/.test(n)) return "ENOUGH";
-  if (/^yys/i.test(a) || /yoyo|yo yo/.test(n)) return "YOYO";
-  if (/^anj/i.test(a) || /anjo/.test(n)) return "ANJO";
-  if (/^tt/i.test(a) || /пистолет|бластер|винтовк/.test(n)) return "Tim Tin";
+  if (/^clr/i.test(a)) return "CLÉRIN";
+  if (/^en/i.test(a)) return "ENOUGH";
+  if (/^yys/i.test(a)) return "YOYO";
+  if (/^anj/i.test(a)) return "ANJO";
+  if (/^tt/i.test(a)) return "Tim Tin";
   // NORVIA — верхняя одежда; артикулы NV* И HT* (оба бренда NORVIA, подтверждено владельцем)
-  if (/^nv/i.test(a) || /^ht-?/i.test(a) || /norvia|куртк|ветровк|пухови/.test(n)) return "NORVIA";
+  if (/^nv/i.test(a) || /^ht-?/i.test(a)) return "NORVIA";
+  // Пасс 2 — по НАЗВАНИЮ (фолбэк: только если артикул бренд не дал; НЕ перебивает артикульную детекцию).
+  if (/clérin|clerin|сумка/.test(n)) return "CLÉRIN";
+  if (/enough/.test(n)) return "ENOUGH";
+  if (/yoyo|yo yo/.test(n)) return "YOYO";
+  if (/anjo/.test(n)) return "ANJO";
+  if (/пистолет|бластер|винтовк/.test(n)) return "Tim Tin";
+  if (/norvia|куртк|ветровк|пухови/.test(n)) return "NORVIA";
   if (/наколен|ортез|бандаж/.test(n)) return "Ортопедия";
   if (/шлеп|шлёп|тапоч/.test(n)) return "Обувь";
   return "";
