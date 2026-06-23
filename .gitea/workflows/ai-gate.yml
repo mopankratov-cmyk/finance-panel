@@ -88,10 +88,18 @@ jobs:
           curl -fsS -X POST -H "Authorization: token $TOKEN" -H "Content-Type: application/json" \
             "$API/issues/$PR/comments" \
             -d '{"body":"🤖 AI-гейт: одобрено (зона Финансы/доки, низкий риск). Вливаю."}' || true
-          # merge_when_checks_succeed = аналог GitHub --auto: Gitea вольёт, когда чек ai-gate станет зелёным
-          curl -fsS -X POST -H "Authorization: token $TOKEN" -H "Content-Type: application/json" \
-            "$API/pulls/$PR/merge" \
-            -d '{"Do":"squash","force_merge":true,"delete_branch_after_merge":true}'
+          # Прямой squash-merge (защита main без обяз. чека → force не нужен). Код ответа Gitea
+          # на merge бывает квирковым (405 хотя мёрж прошёл) — поэтому НЕ полагаемся на curl-код,
+          # а проверяем факт: PR действительно merged.
+          code=$(curl -s -o /tmp/merge.json -w "%{http_code}" -X POST -H "Authorization: token $TOKEN" \
+            -H "Content-Type: application/json" "$API/pulls/$PR/merge" \
+            -d '{"Do":"squash","delete_branch_after_merge":true}')
+          merged=$(curl -s -H "Authorization: token $TOKEN" "$API/pulls/$PR" | grep -o '"merged":true' || true)
+          if [ -n "$merged" ]; then
+            echo "PR #$PR влит (код merge=$code)"
+          else
+            echo "МЁРЖ НЕ ПРОШЁЛ (код=$code): $(cat /tmp/merge.json)"; exit 1
+          fi
 
       - name: Блок (escalate → к владельцу)
         if: steps.gate.outputs.decision != 'approve'
