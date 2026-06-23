@@ -1,13 +1,32 @@
-# Самохостинг Gitea + Postgres + Actions-раннер.
-# Назначение: (1) канон конфигурации, (2) локальный прогон/тест перед Railway,
-# (3) запасной аэродром, если уйдём с Railway на любой VPS.
-# На Railway каждый сервис заводится отдельно теми же образами/env (см. README.md).
+# Самохостинг форжа: Caddy (авто-HTTPS) + Gitea + Postgres + Actions-раннер.
+# Цель — Yandex Cloud Compute VM (Ubuntu). Тот же стек работает на любом VPS и локально.
 #
-# Запуск локально:  cd deploy/gitea && cp .env.example .env && (заполнить) && docker compose up -d
-# Дальше: открыть http://localhost:3000 → завершить установку → создать registration token
-#         для раннера → положить его в .env (RUNNER_TOKEN) → docker compose up -d runner
+# Поднятие на VM:
+#   1) scp -r deploy/gitea  user@<vm-ip>:~/gitea-stack   (репо ещё не на форже — копируем папку)
+#   2) ssh user@<vm-ip>; cd ~/gitea-stack
+#   3) cp .env.example .env  && заполнить (GITEA_DOMAIN, ACME_EMAIL, GITEA_DB_PASSWORD)
+#   4) bash setup-vm.sh      (поставит Docker и поднимет caddy+gitea+db)
+#   5) открыть https://<GITEA_DOMAIN> → установка → выключить регистрацию →
+#      Admin → Actions → Runners → создать registration token → вписать RUNNER_TOKEN в .env →
+#      docker compose up -d runner
 
 services:
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"     # ACME HTTP-01 + редирект на HTTPS
+      - "443:443"   # HTTPS к Gitea
+    environment:
+      GITEA_DOMAIN: ${GITEA_DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data      # сертификаты Let's Encrypt (персистентно!)
+      - caddy-config:/config
+    depends_on:
+      - gitea
+
   gitea:
     image: gitea/gitea:1.22
     restart: unless-stopped
@@ -17,16 +36,18 @@ services:
       GITEA__database__NAME: gitea
       GITEA__database__USER: gitea
       GITEA__database__PASSWD: ${GITEA_DB_PASSWORD}
-      GITEA__server__ROOT_URL: ${GITEA_ROOT_URL}
-      GITEA__server__DISABLE_SSH: "true"          # работаем по HTTPS (Railway не даёт удобный SSH)
-      GITEA__service__DISABLE_REGISTRATION: "true" # только владелец заводит аккаунты сотрудникам
+      # Публичный адрес — https через Caddy. Gitea доверяет X-Forwarded от прокси по умолчанию.
+      GITEA__server__ROOT_URL: https://${GITEA_DOMAIN}/
+      GITEA__server__DOMAIN: ${GITEA_DOMAIN}
+      GITEA__server__DISABLE_SSH: "true"           # git по HTTPS; SSH-порт наружу не открываем
+      GITEA__service__DISABLE_REGISTRATION: "true"  # аккаунты сотрудникам заводит только владелец
       GITEA__actions__ENABLED: "true"
-      # чтобы `uses:`-экшены (если вдруг понадобятся) шли НЕ через github.com:
-      GITEA__actions__DEFAULT_ACTIONS_URL: https://gitea.com
+      GITEA__actions__DEFAULT_ACTIONS_URL: https://gitea.com  # `uses:` (если нужны) НЕ через github.com
     volumes:
       - gitea-data:/data
-    ports:
-      - "3000:3000"
+    # порт наружу НЕ публикуем — доступ только через Caddy (внутренняя сеть compose)
+    expose:
+      - "3000"
     depends_on:
       - db
 
@@ -46,7 +67,9 @@ services:
       dockerfile: runner.Dockerfile
     restart: unless-stopped
     environment:
-      GITEA_INSTANCE_URL: ${GITEA_ROOT_URL}
+      # демон раннера ходит к Gitea по ВНУТРЕННЕЙ сети (без зависимости от TLS-бутстрапа Caddy);
+      # job-шаги используют публичный https-URL из GITHUB_SERVER_URL (= ROOT_URL) сами.
+      GITEA_INSTANCE_URL: http://gitea:3000
       GITEA_RUNNER_REGISTRATION_TOKEN: ${RUNNER_TOKEN}
       GITEA_RUNNER_LABELS: gate:host
     volumes:
@@ -55,6 +78,8 @@ services:
       - gitea
 
 volumes:
+  caddy-data:
+  caddy-config:
   gitea-data:
   gitea-db:
   runner-data:

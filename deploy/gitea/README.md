@@ -1,58 +1,64 @@
-# Свой форж на Railway — Gitea вместо GitHub (контур без github.com)
+# Свой форж на Yandex Cloud — Gitea вместо GitHub (контур без github.com)
 
 Цель: сотрудники дорабатывают **вкладку Финансы** через свой Claude Code → PR в нашем Gitea →
 тот же AI-гейт (финанс-зона + ассистент) → авто-мёрж/эскалация → деплой прода через Vercel CLI.
-Ни github.com, ни статус GitHub-аккаунта больше не в контуре.
+Ни github.com, ни статус GitHub-аккаунта больше не в контуре. Хостинг — Compute VM в Yandex Cloud
+(🇷🇺 юрисдикция, рубли, доступ из РФ без VPN).
 
 Что уже лежит в репо (Фаза 0, готово):
 - `.gitea/workflows/ai-gate.yml` — гейт на Gitea API (порт GitHub-версии, без `uses:`/github.com).
 - `.gitea/workflows/deploy.yml` — push в `main` → `vercel --prod`.
 - `scripts/pr-gate.mjs` — логика гейта с **финанс-зоной** (общая для GitHub и Gitea, не меняется).
-- `deploy/gitea/` — `docker-compose.yml`, `runner.Dockerfile`, `runner-entrypoint.sh`, этот runbook.
+- `deploy/gitea/` — `docker-compose.yml` (Caddy+Gitea+Postgres+runner), `Caddyfile`, `setup-vm.sh`,
+  `runner.Dockerfile`, `runner-entrypoint.sh`, `env.sample`, этот runbook.
 
 ---
 
-## Фаза 1 — поднять на Railway (делает владелец)
+## Фаза 1 — поднять на Yandex Cloud VM (делает владелец)
 
-### 1. Сервис Postgres
-Railway → New → Database → **PostgreSQL**. Запомни внутренние креды (Railway даёт их как переменные).
+### 1. Создать VM (Compute Cloud)
+Yandex Cloud Console → Compute Cloud → **Создать ВМ**:
+- ОС: **Ubuntu 22.04**.
+- Тип: 2 vCPU (можно 20–50% «прерываемая»/burstable для экономии) / **2–4 ГБ RAM** / 20+ ГБ SSD.
+  Gitea лёгкий; раннер собирает next/vercel — потому 4 ГБ комфортнее.
+- Сеть: **публичный IP** (нужен для домена и Let's Encrypt).
+- Доступ: добавь свой **SSH-ключ** (логин, напр., `yc-user`).
+- Создай → запиши **публичный IP**.
 
-### 2. Сервис Gitea
-New → **Docker Image** → `gitea/gitea:1.22`. Переменные окружения:
+### 2. Открыть порты (Security Group)
+В сетевом интерфейсе ВМ → Security Group → входящие правила: разреши **TCP 22, 80, 443**
+(80 нужен Caddy для ACME-проверки, 443 — сам HTTPS).
+
+### 3. Домен
+- Свой домен → создай **A-запись** `gitea.твойдомен` → публичный IP ВМ.
+- Нет домена → используем **sslip.io**: `GITEA_DOMAIN=gitea.<IP-через-дефис>.sslip.io`
+  (напр. IP `51.250.1.2` → `gitea.51-250-1-2.sslip.io`). Резолвится на IP, Caddy выдаст настоящий cert.
+
+### 4. Залить стек и поднять
+Репо ещё не на форже — копируем папку стека с локальной машины:
+```bash
+scp -r deploy/gitea  yc-user@<IP-ВМ>:~/gitea-stack
+ssh yc-user@<IP-ВМ>
+cd ~/gitea-stack
+cp env.sample .env && nano .env     # GITEA_DOMAIN, ACME_EMAIL, GITEA_DB_PASSWORD
+bash setup-vm.sh                    # ставит Docker и поднимает caddy+gitea+db
 ```
-GITEA__database__DB_TYPE = postgres
-GITEA__database__HOST    = <host:port из Postgres-сервиса>
-GITEA__database__NAME    = railway        # имя БД из Postgres-сервиса
-GITEA__database__USER    = postgres       # из Postgres-сервиса
-GITEA__database__PASSWD  = <пароль из Postgres-сервиса>
-GITEA__server__ROOT_URL  = https://<домен-который-выдаст-railway>/
-GITEA__server__DISABLE_SSH = true
-GITEA__service__DISABLE_REGISTRATION = true
-GITEA__actions__ENABLED  = true
-GITEA__actions__DEFAULT_ACTIONS_URL = https://gitea.com
+Открой `https://<GITEA_DOMAIN>` → пройди установку (админ = ты) → проверь, что регистрация выключена.
+
+### 5. Раннер (Gitea Actions)
+В Gitea: **Site Admin → Actions → Runners → Create registration token** — скопируй токен,
+впиши `RUNNER_TOKEN=...` в `~/gitea-stack/.env` на ВМ, затем:
+```bash
+cd ~/gitea-stack && docker compose up -d runner
 ```
-- Привяжи **Volume** к `/data` (иначе репозитории и конфиг потеряются при рестарте).
-- Networking → Generate Domain (порт 3000). Впиши этот домен в `ROOT_URL` и передеплой.
-- Открой домен → пройди первичную установку (админ-аккаунт = ты). После — зайди и
-  убедись, что регистрация выключена.
+В Gitea (Admin → Actions → Runners) появится раннер с меткой `gate`, статус online.
 
-### 3. Сервис раннера (Gitea Actions)
-Сначала в Gitea: **Site Admin → Actions → Runners → Create registration token** — скопируй токен.
+> Host-режим (`gate:host`): шаги workflow идут прямо в контейнере раннера (без Docker-in-Docker),
+> у него на борту node/git/curl/jq (см. `runner.Dockerfile`).
+>
+> Бэкап: делай снапшот диска ВМ (или дамп тома `gitea-data`) — это весь форж.
 
-New сервис из этого репозитория-папки **`deploy/gitea`** (Dockerfile = `runner.Dockerfile`),
-либо собери образ и запушь — как удобнее. Переменные:
-```
-GITEA_INSTANCE_URL = https://<домен-gitea>/
-GITEA_RUNNER_REGISTRATION_TOKEN = <токен из шага выше>
-GITEA_RUNNER_LABELS = gate:host
-```
-- Привяжи **Volume** к `/data` (хранит регистрацию раннера).
-- После старта в Gitea (Admin → Actions → Runners) появится раннер с меткой `gate`, статус online.
-
-> Почему host-режим (`gate:host`): на Railway нет Docker-in-Docker, поэтому шаги выполняются
-> прямо в контейнере раннера — у него на борту node/git/curl/jq (см. `runner.Dockerfile`).
-
-### 4. Перенести репозиторий (со всеми ветками и историей)
+### 6. Перенести репозиторий (со всеми ветками и историей)
 В Gitea создай пустой репозиторий `finance-panel` (без init). Затем локально:
 ```bash
 cd /Users/maksimpankratov/finance-panel
@@ -64,7 +70,7 @@ git push gitea --tags
 
 > Это работает БЕЗ GitHub: пушим из локального клона (у нас есть полная история, вкл. `origin/main`).
 
-### 5. Секреты репозитория (Settings → Actions → Secrets)
+### 7. Секреты репозитория (Settings → Actions → Secrets)
 | Секрет | Откуда |
 |---|---|
 | `TELEGRAM_BOT_TOKEN` | как в GitHub-гейте (тот же бот) |
@@ -84,7 +90,7 @@ vercel link          # выбрать существующий проект fina
 cat .vercel/project.json   # → orgId, projectId
 ```
 
-### 6. Защита main (branch protection)
+### 8. Защита main (branch protection)
 Settings → Branches → Protect `main`:
 - ✅ Enable status check, обязательный чек: **`ai-gate`** (появится после первого прогона).
 - ✅ Block on official review requests / запретить прямой push (мёрж только через PR).
@@ -93,7 +99,7 @@ Settings → Branches → Protect `main`:
   сам блокировал их правку не-владельцем. Зона гейта (для справки) задана в `scripts/pr-gate.mjs`
   → `FINANCE_SCOPE`.
 
-### 7. Включить авто-мёрж в репо
+### 9. Включить авто-мёрж в репо
 Settings → убедись, что разрешён squash-merge и авто-мёрж (Gitea: «Enable merge style: squash»,
 auto-merge включается API-вызовом из гейта — `merge_when_checks_succeed`).
 

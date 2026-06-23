@@ -1,0 +1,12 @@
+# Caddy: автоматический HTTPS (Let's Encrypt) + реверс-прокси на Gitea.
+# Домен и e-mail берутся из env (см. docker-compose.yml / .env).
+# Если своего домена нет — используй sslip.io: GITEA_DOMAIN=gitea.<ip-через-дефис>.sslip.io
+# (резолвится на твой IP, Caddy выдаст настоящий сертификат по HTTP-01).
+
+{
+	email {$ACME_EMAIL}
+}
+
+{$GITEA_DOMAIN} {
+	reverse_proxy gitea:3000
+}

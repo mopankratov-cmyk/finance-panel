@@ -1,6 +1,6 @@
 # Раннер Gitea Actions в HOST-режиме с Node/git/curl/jq на борту.
-# Host-режим = шаги workflow выполняются прямо в этом контейнере (без Docker-in-Docker,
-# которого на Railway нет). Поэтому всё, что нужно гейту и деплою, ставим в образ.
+# Host-режим = шаги workflow выполняются прямо в этом контейнере (без Docker-in-Docker).
+# Поэтому всё, что нужно гейту и деплою (node/git/curl/jq), ставим прямо в образ.
 #
 # Сборка:  docker build -t finance-gitea-runner -f runner.Dockerfile .
 # Регистрация выполняется энтрипоинтом по env (см. ниже / docker-compose.yml / README).
@@ -20,7 +20,7 @@ RUN apt-get update \
 WORKDIR /data
 
 # Энтрипоинт: один раз регистрируется на инстансе (по токену регистрации), затем демонит.
-# ENV (задаются на Railway / в compose):
+# ENV (задаются в compose / .env):
 #   GITEA_INSTANCE_URL          — https://<твой-gitea-домен>
 #   GITEA_RUNNER_REGISTRATION_TOKEN — из Gitea: Site Admin → Actions → Runners → Create registration token
 #   GITEA_RUNNER_NAME           — имя (опц., по умолчанию hostname)
