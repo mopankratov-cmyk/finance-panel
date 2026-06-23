@@ -81,20 +81,25 @@ jobs:
         if: steps.gate.outputs.decision == 'approve'
         env:
           TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MERGE_TOKEN: ${{ secrets.MERGE_TOKEN }}
           PR: ${{ github.event.pull_request.number }}
         run: |
           set -uo pipefail
           API="${GITHUB_SERVER_URL}/api/v1/repos/${GITHUB_REPOSITORY}"
+          # Коммент — под gitea-actions (GITHUB_TOKEN). А МЁРЖ — токеном владельца (MERGE_TOKEN = PAT
+          # pankman100), т.к. gitea-actions НЕ в merge-whitelist и системного юзера туда не добавить.
+          # Фолбэк на GITHUB_TOKEN, если MERGE_TOKEN не задан.
+          MT="${MERGE_TOKEN:-$TOKEN}"
           curl -fsS -X POST -H "Authorization: token $TOKEN" -H "Content-Type: application/json" \
             "$API/issues/$PR/comments" \
             -d '{"body":"🤖 AI-гейт: одобрено (зона Финансы/доки, низкий риск). Вливаю."}' || true
           # Прямой squash-merge (защита main без обяз. чека → force не нужен). Код ответа Gitea
           # на merge бывает квирковым (405 хотя мёрж прошёл) — поэтому НЕ полагаемся на curl-код,
           # а проверяем факт: PR действительно merged.
-          code=$(curl -s -o /tmp/merge.json -w "%{http_code}" -X POST -H "Authorization: token $TOKEN" \
+          code=$(curl -s -o /tmp/merge.json -w "%{http_code}" -X POST -H "Authorization: token $MT" \
             -H "Content-Type: application/json" "$API/pulls/$PR/merge" \
             -d '{"Do":"squash","delete_branch_after_merge":true}')
-          merged=$(curl -s -H "Authorization: token $TOKEN" "$API/pulls/$PR" | grep -o '"merged":true' || true)
+          merged=$(curl -s -H "Authorization: token $MT" "$API/pulls/$PR" | grep -o '"merged":true' || true)
           if [ -n "$merged" ]; then
             echo "PR #$PR влит (код merge=$code)"
           else
