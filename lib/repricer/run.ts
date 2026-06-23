@@ -70,10 +70,14 @@ export async function runRepricer(cabinet: string | null, strategies: RepricerSt
     const marginPct = solvePrices({ cogs: r.cost ?? 0, feeFraction, currentRevenue, margins: [] }).currentMarginPct;
 
     const inventoryCost = r.stockMoney; // остаток × себестоимость
-    const gmroi =
+    // Калибровка по реальному прогону (120 SKU): медиана gmroi ~149, но крошечный остаток
+    // даёт выбросы до сотен тысяч %. Клампим в [-999, 9999] — пороги (gmroi≷200) не меняются,
+    // но число читаемо (как ~999%-потолок у Юры).
+    const gmroiRaw =
       marginPct != null && inventoryCost != null && inventoryCost > 0
-        ? Math.round(((marginPct / 100) * month.ordersSum * 12) / inventoryCost * 100)
+        ? ((marginPct / 100) * month.ordersSum * 12) / inventoryCost * 100
         : null;
+    const gmroi = gmroiRaw == null ? null : Math.round(Math.max(-999, Math.min(9999, gmroiRaw)));
 
     const currentPrice = priceByNm.get(r.nmId) ?? null;
     const m: SkuMetrics = {
