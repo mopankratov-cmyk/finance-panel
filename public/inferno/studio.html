@@ -770,6 +770,26 @@ function inspectorField(f,n){
         opts.forEach(o=>sel.appendChild(el("option",{value:o.id,selected:String(cur)===String(o.id)?"selected":null},(o.name||o.id)+(o.meta?" · "+o.meta:"")))); }
       else if(!src.builtin)sel.appendChild(el("option",{value:""},"нет данных (нужны ключи Creatify в Vercel)"));
     })();
+  } else if(f.ui==="picker"&&S.tool==="disk_real"){
+    // #20: живой пикер реальной съёмки по артикулу рецепта — оператор ВЫБИРАЕТ кадр, а не печатает вслепую
+    const txt=el("input",{class:"input",style:"font-family:var(--mono);font-size:11px;",placeholder:"URL клипа или выбери кадр ниже…",value:cur||"",oninput:(e)=>set(e.target.value)});
+    wrap.appendChild(txt);
+    const grid=el("div",{style:"display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:8px;"}); wrap.appendChild(grid);
+    const hint=(t)=>{ grid.innerHTML=""; grid.appendChild(el("div",{class:"muted",style:"grid-column:1/-1;font-size:10.5px;"},t)); };
+    const art=(S.recipe&&S.recipe.recipe&&S.recipe.recipe.article)||"";
+    if(!art)hint("нет артикула рецепта — впиши URL вручную");
+    else{ hint("ищу съёмку артикула "+art+"…");
+      (async()=>{ const r=await api("/disk-source",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({article:art})});
+        if(S.selectedNode!==n||S.tool!=="disk_real")return;
+        const imgs=(r&&r.images)||[];
+        if(!imgs.length){ hint("нет реальной съёмки по артикулу — впиши URL вручную"); return; }
+        grid.innerHTML="";
+        imgs.slice(0,12).forEach(im=>{ const cell=el("div",{title:im.name||im.path||"",style:"aspect-ratio:3/4;border-radius:6px;overflow:hidden;cursor:pointer;background:var(--bg-card);border:1.5px solid "+(String(cur)===String(im.url)?"var(--acc)":"var(--bd2)")+";"});
+          cell.onclick=()=>{ set(im.url); txt.value=im.url||""; [...grid.children].forEach(c=>c.style.borderColor="var(--bd2)"); cell.style.borderColor="var(--acc)"; };
+          if(im.url)cell.appendChild(el("img",{src:im.url,loading:"lazy",style:"width:100%;height:100%;object-fit:cover;"}));
+          grid.appendChild(cell); });
+      })();
+    }
   } else if(f.ui==="file"||f.ui==="picker"){
     wrap.appendChild(el("div",{style:"display:flex;align-items:center;gap:10px;background:var(--bg-input);border:1px dashed var(--bd3);border-radius:8px;padding:10px;"},
       el("div",{style:"width:32px;height:42px;border-radius:5px;background:repeating-linear-gradient(135deg,#262b33 0 6px,#20242b 6px 12px);flex:none;"}),
