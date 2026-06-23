@@ -207,17 +207,19 @@ const S={
   tool:"seedance", toolSchemas:{},
   run:null, preview:{}, contentProduct:null,
 };
+// ИА студии: главная ось — ВИД КОНТЕНТА (после общей разведки). Старт → тип контента (свой пайплайн) → Система.
 const SCREENS=[
-  {id:"center",chip:"01",tt:"Командный центр",st:"карта осознания"},
-  {id:"compete",chip:"02",tt:"Анализ конкурентов",st:"decompose"},
-  {id:"canvas",chip:"03",tt:"Нод-канвас",st:"граф видео"},
-  {id:"inspector",chip:"04",tt:"Инспектор ноды",st:"настройки"},
-  {id:"assembly",chip:"05",tt:"Сборка · ОТК",st:"таймлайн"},
-  {id:"library",chip:"06",tt:"База видосов",st:"рецепты"},
-  {id:"static",chip:"🖼",tt:"Статика",st:"пины · карточки"},
-  {id:"balances",chip:"07",tt:"Балансы сервисов",st:"сколько осталось $"},
-  {id:"learn",chip:"🧠",tt:"Обучение",st:"что завод выучил"},
-  {id:"ds",chip:"DS",tt:"Дизайн-система",st:"токены"},
+  {id:"center",grp:"Старт",chip:"01",tt:"Командный центр",st:"карта осознания"},
+  {id:"compete",grp:"Старт",chip:"02",tt:"Анализ конкурентов",st:"разведка · decompose"},
+  {id:"canvas",grp:"🎬 Видео",chip:"03",tt:"Нод-канвас",st:"граф видео"},
+  {id:"inspector",grp:"🎬 Видео",chip:"04",tt:"Инспектор ноды",st:"настройки"},
+  {id:"assembly",grp:"🎬 Видео",chip:"05",tt:"Сборка · ОТК",st:"таймлайн"},
+  {id:"library",grp:"🎬 Видео",chip:"06",tt:"База видосов",st:"рецепты"},
+  {id:"static",grp:"🖼 Статика",chip:"🖼",tt:"Пины и карточки",st:"форматы · архетипы"},
+  {id:"text",grp:"✍️ Текст",chip:"✍",tt:"Тексты",st:"скоро: посты · описания · SEO"},
+  {id:"balances",grp:"⚙ Система",chip:"07",tt:"Балансы сервисов",st:"сколько осталось $"},
+  {id:"learn",grp:"⚙ Система",chip:"🧠",tt:"Обучение",st:"что завод выучил"},
+  {id:"ds",grp:"⚙ Система",chip:"DS",tt:"Дизайн-система",st:"токены"},
 ];
 const NICHE_EMOJI={cosmetics:"💄",clothing:"🧥",toys:"🔫",default:"📦"};
 // picker-поля, которые тянут точный список из ЖИВОГО Creatify API (не хардкод)
@@ -271,10 +273,13 @@ function openMedia(url,opts){ opts=opts||{};
 function nicheLabel(n){ const f=S.niches.find(x=>x.niche===n); return (f&&f.label)||({cosmetics:"Косметика",clothing:"Одежда",toys:"Игрушки",default:"Прочее"}[n])||n; }
 
 function renderNav(){
-  const nav=document.getElementById("nav"); nav.innerHTML="";
-  SCREENS.forEach(s=>nav.appendChild(el("button",{class:"nav-item"+(S.screen===s.id?" active":""),onclick:()=>go(s.id)},
-    el("span",{class:"nav-chip"},s.chip),
-    el("span",{style:"display:flex;flex-direction:column;align-items:flex-start;min-width:0;"},el("span",{class:"nav-tt"},s.tt),el("span",{class:"nav-st"},s.st)))));
+  const nav=document.getElementById("nav"); nav.innerHTML=""; let lastGrp=null;
+  SCREENS.forEach(s=>{
+    if(s.grp&&s.grp!==lastGrp){ lastGrp=s.grp; nav.appendChild(el("div",{style:"font-size:10px;letter-spacing:1.2px;text-transform:uppercase;color:var(--tx-lo2);padding:13px 9px 5px;font-weight:600;"},s.grp)); }
+    nav.appendChild(el("button",{class:"nav-item"+(S.screen===s.id?" active":""),onclick:()=>go(s.id)},
+      el("span",{class:"nav-chip"},s.chip),
+      el("span",{style:"display:flex;flex-direction:column;align-items:flex-start;min-width:0;"},el("span",{class:"nav-tt"},s.tt),el("span",{class:"nav-st"},s.st))));
+  });
 }
 function go(id){ S.screen=id; renderNav(); render(); }
 // персист сессии: после reload вернуться на тот же экран/нишу/открытый рецепт (раньше сбрасывало на старт)
@@ -300,6 +305,12 @@ function header(title,meta,right){
 }
 function loadingCard(t){ return el("div",{class:"card",style:"padding:18px;display:flex;align-items:center;gap:12px;"},el("div",{class:"spinner"}),el("span",{class:"muted"},t||"загрузка…")); }
 function emptyBox(t){ return el("div",{class:"empty"},el("div",{style:"font-size:26px;opacity:.4;"},"◇"),el("div",{style:"font-size:12.5px;max-width:300px;"},t)); }
+
+// ── ЭКРАН ТЕКСТА: третий вид контента (заглушка — следующая линия завода). ──
+function screenText(root){
+  header("Тексты","посты · описания · SEO");
+  root.appendChild(emptyBox("Скоро: третья линия завода — генерация постов, описаний карточек WB/Ozon и SEO-текстов. Общий мозг (бренд/ниши/winners), своя линия вывода — как видео и статика."));
+}
 
 // ── ЭКРАН СТАТИКИ: новая линия завода (пины/карточки/IG) — код-рендер StaticV1 (renderStill, без fal). ──
 function screenStatic(root){
@@ -377,7 +388,7 @@ async function pollStatic(job){
 async function render(){
   saveSession(); // запоминаем текущий экран/нишу/рецепт для возврата после reload
   const root=document.getElementById("screen"); root.innerHTML="";
-  ({center:screenCenter,compete:screenCompete,canvas:screenCanvas,inspector:screenInspector,assembly:screenAssembly,library:screenLibrary,static:screenStatic,balances:screenBalances,learn:screenLearn,ds:screenDS}[S.screen]||screenCenter)(root);
+  ({center:screenCenter,compete:screenCompete,canvas:screenCanvas,inspector:screenInspector,assembly:screenAssembly,library:screenLibrary,static:screenStatic,text:screenText,balances:screenBalances,learn:screenLearn,ds:screenDS}[S.screen]||screenCenter)(root);
   refreshAssistStep(); // проводник: пересчитать «следующий шаг» под новый экран/состояние
 }
 
