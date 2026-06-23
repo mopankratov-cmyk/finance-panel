@@ -161,6 +161,23 @@ async function main() {
   const pr = ev?.pull_request;
   if (!pr) { setOutput("escalate", "нет pull_request в событии"); return; }
 
+  // БАЙПАС ВЛАДЕЛЬЦА: гейт нужен для СОТРУДНИКОВ. Собственные PR владельца репозитория
+  // (он же в merge-whitelist, полностью доверенный) не ревьюим и не эскалируем — сразу approve.
+  // Спуфить автора нельзя: pr.user.login проставляет сам форж. Доп. владельцы — GATE_OWNERS (через запятую).
+  const repoOwner = (process.env.GITHUB_REPOSITORY || "").split("/")[0] || pr.base?.repo?.owner?.login || "";
+  const extraOwners = (process.env.GATE_OWNERS || "").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
+  const prAuthorLogin = (pr.user?.login || "").toLowerCase();
+  const isOwner = prAuthorLogin && (prAuthorLogin === repoOwner.toLowerCase() || extraOwners.includes(prAuthorLogin));
+  if (isOwner) {
+    await sendTelegram([
+      `✅ AI-гейт: PR #${pr.number} от ВЛАДЕЛЬЦА (${pr.user?.login}) — ревью не требуется, вливаю.`,
+      `📌 ${pr.title || "(без заголовка)"}`,
+      `🔗 ${pr.html_url || ""}`,
+    ].filter(Boolean).join("\n"));
+    setOutput("approve", `владелец (${pr.user?.login}) — гейт пропущен`);
+    return;
+  }
+
   const diff = readFile(process.env.PR_DIFF_FILE);
   const filesRaw = readFile(process.env.PR_FILES_FILE);
   const files = parseFiles(filesRaw);
