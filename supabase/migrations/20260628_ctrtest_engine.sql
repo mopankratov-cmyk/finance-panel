@@ -32,4 +32,5 @@ create table if not exists public.ctr_test_log (
 );
 create index if not exists ctr_test_log_test on public.ctr_test_log (test_id, created_at);
 alter table public.ctr_test_log enable row level security;
+drop policy if exists "all" on public.ctr_test_log;
 create policy "all" on public.ctr_test_log for all using (true) with check (true);
