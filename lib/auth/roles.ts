@@ -16,7 +16,7 @@ export const ROLE_LABEL: Record<Role, string> = {
 // Доступные префиксы путей по роли. director — всё.
 const ACCESS: Record<Role, string[]> = {
   director: ["*"],
-  finance: ["/", "/calendar", "/payments", "/accounts", "/loans", "/opiu", "/pnl", "/summary", "/losses", "/costs", "/supplies", "/agent", "/sync", "/ozon", "/inferno", "/abc", "/trends", "/market", "/card-editor", "/carousel", "/video-overlay", "/uniquizer"],
+  finance: ["/", "/calendar", "/payments", "/accounts", "/loans", "/opiu", "/pnl", "/summary", "/losses", "/costs", "/supplies", "/ad-docking", "/agent", "/sync", "/ozon", "/inferno", "/abc", "/trends", "/market", "/card-editor", "/carousel", "/video-overlay", "/uniquizer"],
   manager: ["/", "/ozon", "/inferno", "/costs", "/agent", "/abc", "/trends", "/market", "/card-editor", "/carousel", "/video-overlay", "/uniquizer"],
 };
 
