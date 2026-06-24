@@ -41,6 +41,8 @@ export interface RunPlan {
   render_engine?: string | null;            // V23: "remotion" | "shotstack" — какой движок собирал (для poll/bank)
   reel_props?: Record<string, unknown> | null; // V23: пропсы ReelV5 для render-сервиса
   duration_frames?: number | null;          // V23: длительность ролика в кадрах (Remotion)
+  catalog_url?: string | null;              // permanent content_assets URL, when gen-save succeeded
+  catalog_error?: string | null;            // last gen-save failure, visible in cockpit
 }
 
 const LEASE_MS = 90_000;
@@ -320,7 +322,9 @@ export async function claimNextRecipe(db: SupabaseClient, recipeId?: number): Pr
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function jpost(origin: string, path: string, body: unknown, ms = 90000): Promise<any> {
   const r = await internalFetch(`${origin}${path}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(ms) });
-  return r.json().catch(() => ({}));
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(`${path} ${r.status}: ${String(j?.error || j?.detail || r.statusText || "ошибка").slice(0, 180)}`);
+  return j;
 }
 
 // ОДИН шаг исполнения графа.
@@ -571,11 +575,7 @@ export async function runRecipeStep(
     const url = plan.output_url;
     if (!url) throw new Error("нет output_url для ОТК");
     const frames = await extractFrames(url);
-    if (!frames.length) { // кадры не извлеклись → банк без ОТК (не блокируем)
-      plan.otk = null; plan.step = "bank";
-      await savePlan(db, id, plan);
-      return;
-    }
+    if (!frames.length) throw new Error("ОТК не извлёк кадры из output_url — не банкуем без оценки");
     // R3 · АРТЕФАКТ-ГЕЙТ до рубрики: сломанный AI-брак (уанкэни/текст-блид/руки/морфинг) → реген, к рубрике/человеку не доходит
     if ((plan.renderCount || 0) < MAX_RENDERS) {
       const art = await jpost(origin, "/api/factory/artifact-check", { frames }, 45000);
@@ -591,6 +591,7 @@ export async function runRecipeStep(
     const hookNode = plan.nodes.find((n) => String(((n.params || {}) as Record<string, unknown>)["role"] || n.slot || "").toLowerCase() === "hook") || plan.nodes[0];
     const v = await jpost(origin, "/api/factory/video-critic", { frames, hook: hookNode?.onscreen_text || hookNode?.prompt || "", mode, article, niche }, 55000);
     const score = typeof v?.score === "number" ? v.score : null;
+    if (score == null) throw new Error("video-critic не вернул score — не банкуем без ОТК");
     plan.otk = { score, verdict: v?.verdict, axes: v?.axes || null, issues: Array.isArray(v?.issues) ? v.issues : [] };
     // V3: запоминаем ЛУЧШУЮ сборку за все попытки реген-петли (банкуем её, не последнюю)
     if (score != null && score > (plan.bestScore ?? -1)) { plan.bestScore = score; plan.bestUrl = url; }
@@ -616,15 +617,24 @@ export async function runRecipeStep(
     const hook = (hookNode?.onscreen_text || hookNode?.prompt || "").toString().slice(0, 200);
     // в библиотеку контента (каталог кокпита)
     let catalogUrl: string | null = null;
+    let catalogError: string | null = null;
     if (url) {
       try {
-        const g = await jpost(origin, "/api/factory/gen-save", { video_url: url, article, niche, hook, route: "node_graph", engine: plan.render_engine || "shotstack", otk: score }, 40000); // ≤40с: влезть в maxDuration 60 тика (был 120с → Vercel убивал handler, catalogUrl терялся)
+        const g = await jpost(origin, "/api/factory/gen-save", { video_url: url, article, niche, hook, route: "node_graph", engine: plan.render_engine || "shotstack", otk: score, otk_axes: plan.otk?.axes ?? null, recipe_id: id }, 40000); // ≤40с: влезть в maxDuration 60 тика (был 120с → Vercel убивал handler, catalogUrl терялся)
         catalogUrl = g?.url || null;
-      } catch { /* банк библиотеки опционален */ }
+      } catch (e) { catalogError = String((e as Error)?.message || e).slice(0, 220); }
     }
-    const status = score == null ? "otk_pass" : score >= 7 ? "otk_pass" : "otk_fail";
+    const status = score != null && score >= 7 ? "otk_pass" : "otk_fail";
     plan.step = "done";
+    plan.catalog_url = catalogUrl;
+    plan.catalog_error = catalogError;
     await savePlan(db, id, plan, { status, output_url: catalogUrl || url || null });
+    if (url && !catalogUrl && catalogError) {
+      await logSignal(db, "catalog_save_failed", {
+        recipe_id: id, niche, article, mode, format: null, engine: plan.render_engine || "shotstack",
+        params: { source: "graph_run_bank", raw_url: url, error: catalogError },
+      });
+    }
     await logSignal(db, status === "otk_pass" ? "approved" : "rejected", {
       recipe_id: id, niche, article, mode, format: null, engine: plan.render_engine || "shotstack",
       axes: plan.otk?.axes ?? null, reason_chip: status === "otk_fail" ? (plan.otk?.issues?.[0] || "ОТК<7") : null,

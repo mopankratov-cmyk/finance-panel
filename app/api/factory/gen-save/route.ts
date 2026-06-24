@@ -26,7 +26,16 @@ export async function POST(req: NextRequest) {
 
   const stamp = Date.now();
   const rand = Math.random().toString(36).slice(2, 8);
-  const meta = { hook: b.hook || "", route: b.route || "", engine: b.engine || "", otk: b.otk ?? null, source_url: videoUrl || slides[0] || "" };
+  const recipeId = typeof b.recipe_id === "number" ? b.recipe_id : null;
+  const meta = {
+    hook: b.hook || "",
+    route: b.route || "",
+    engine: b.engine || "",
+    otk: b.otk ?? null,
+    otk_axes: b.otk_axes ?? null,
+    recipe_id: recipeId,
+    source_url: videoUrl || slides[0] || "",
+  };
 
   // 1) ВИДЕО: качаем с fal (временная ссылка) → Storage → постоянный URL
   if (videoUrl) {
@@ -70,7 +79,7 @@ export async function POST(req: NextRequest) {
 
     // V20 · память итераций: пишем финальную генерацию в историю (best-effort, не дедупим)
     await logGeneration({
-      recipe_id: typeof b.recipe_id === "number" ? b.recipe_id : null,
+      recipe_id: recipeId,
       node_id: typeof b.node_id === "number" ? b.node_id : null,
       parent_id: typeof b.parent_id === "number" ? b.parent_id : null,
       variant_idx: typeof b.variant_idx === "number" ? b.variant_idx : null,

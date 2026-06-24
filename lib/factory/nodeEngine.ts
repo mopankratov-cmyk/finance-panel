@@ -1,8 +1,8 @@
 // V3 нод-движок: единый диспетчер «нода → инструмент → сабмит/опрос».
 // Одна точка маппинга params(jsonb из инспектора) → тело конкретного API. Переиспользуется
 // и в node-preview (одна нода), и в graph-run (весь граф). Токен несёт движок: base64url("engine::inner").
-import { falVideoSubmit, falVideoStatus, FAL_VIDEO_MODELS, type FalVideoModel, type FalVideoOpts } from "./falVideo";
-import { creatifyLinkVideo, creatifyStatus } from "./creatify";
+import { falVideoSubmitDetailed, falVideoStatus, FAL_VIDEO_MODELS, type FalVideoModel, type FalVideoOpts } from "./falVideo";
+import { creatifyLinkVideo, creatifyLipsync, creatifyStatus } from "./creatify";
 import { elevenTTS } from "./elevenlabs";
 import { isPlaceholderSource } from "./toolSchemas";
 import { rehostImageForFal } from "./rehostImage";
@@ -90,8 +90,13 @@ export async function submitNode(node: EngineNode): Promise<SubmitResult> {
     // Best-effort: при любом сбое вернётся исходный url. end_image_url (before/after) — тоже.
     const srcImg = await rehostImageForFal(imageUrl);
     if (opts.end_image_url) opts.end_image_url = await rehostImageForFal(opts.end_image_url);
-    const inner = await falVideoSubmit(model, srcImg, String(node.prompt || params.prompt || ""), opts);
-    if (!inner) return { engine: "fal", error: "fal не принял сабмит (FAL_KEY / баланс / 422 модель)" };
+    const sub = await falVideoSubmitDetailed(model, srcImg, String(node.prompt || params.prompt || ""), opts);
+    const inner = sub.token;
+    if (!inner) {
+      const status = sub.status ? ` ${sub.status}` : "";
+      const detail = sub.detail ? `: ${sub.detail}` : "";
+      return { engine: "fal", error: `${tool} submit${status}: ${sub.reason || "fal не принял сабмит"}${detail}`.slice(0, 320) };
+    }
     return { engine: "fal", token: packToken("fal", inner), cost_hint: model.includes("fast") ? "low" : "med" };
   }
 
@@ -111,12 +116,21 @@ export async function submitNode(node: EngineNode): Promise<SubmitResult> {
       if (k.startsWith("caption_setting.") && params[k] !== "" && params[k] != null) setNested(caption_setting, k.slice("caption_setting.".length), params[k]);
     }
     if (Object.keys(caption_setting).length) caption_setting.override_visual_style = true;
+    const script = String(node.prompt || params.override_script || params.script || "").trim();
+    const productUrl = pick(params.url);
+    const images = imageUrl ? [imageUrl] : (Array.isArray(params.images) ? params.images : undefined);
+    if (!productUrl && !images?.length) {
+      if (!script) return { engine: "creatify", error: "creatify: нужен product url/image или script для lipsync" };
+      const r = await creatifyLipsync(script, { creator: params.override_avatar || params.avatar || undefined, model: params.model_version || undefined });
+      if (r.error || !r.token) return { engine: "creatify", error: r.error || "creatify lipsync без токена" };
+      return { engine: "creatify", token: packToken("creatify", r.token), cost_hint: "med" };
+    }
     const r = await creatifyLinkVideo({
-      url: pick(params.url) || undefined,
-      images: imageUrl ? [imageUrl] : (Array.isArray(params.images) ? params.images : undefined),
+      url: productUrl || undefined,
+      images,
       title: params.title || undefined,
       description: params.description || undefined,
-      script: node.prompt || params.override_script || params.script || undefined,
+      script: script || undefined,
       avatar: params.override_avatar || params.avatar || undefined,
       override_voice: params.override_voice || undefined,
       background_music_url: params.background_music_url || undefined,

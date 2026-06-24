@@ -37,6 +37,19 @@ export async function elevenListVoices(): Promise<ElevenVoice[]> {
 }
 
 let _elevenDefaultVoice: string | null = null; // memoize дефолтного голоса — не дёргаем /voices на каждую озвучку
+let _ttsQueue: Promise<void> = Promise.resolve(); // ElevenLabs часто ограничивает concurrent TTS на аккаунт
+
+async function withTtsSlot<T>(fn: () => Promise<T>): Promise<T> {
+  const prev = _ttsQueue;
+  let release!: () => void;
+  _ttsQueue = new Promise<void>((resolve) => { release = resolve; });
+  await prev.catch(() => undefined);
+  try { return await fn(); }
+  finally {
+    await new Promise((resolve) => setTimeout(resolve, 750));
+    release();
+  }
+}
 
 // TTS → mp3 в Storage → публичный URL. text — русский сценарий. voiceId — из пикера/бренд-кита.
 // voice_settings: stability/similarity_boost/style 0..1, use_speaker_boost. Возвращает { url } или { error }.
@@ -63,13 +76,13 @@ export async function elevenTTS(text: string, voiceId: string, opts?: { stabilit
       style: typeof opts?.style === "number" ? Math.max(0, Math.min(1, opts.style)) : 0,
       use_speaker_boost: true,
     };
-    const r = await fetch(`${API}/text-to-speech/${encodeURIComponent(vid)}`, {
+    const r = await withTtsSlot(() => fetch(`${API}/text-to-speech/${encodeURIComponent(vid)}`, {
       method: "POST",
       headers: { "xi-api-key": KEY(), "Content-Type": "application/json", "Accept": "audio/mpeg" },
       // apply_text_normalization:"auto" — числа/цены/проценты/даты озвучиваются словами (иначе «2990₽» искажается)
       body: JSON.stringify({ text: t, model_id: opts?.model || MODEL, voice_settings: vs, apply_text_normalization: "auto" }),
       signal: AbortSignal.timeout(45000),
-    });
+    }));
     if (!r.ok) {
       const detail = await r.text().catch(() => "");
       // 401/403 = ключ/гео-блок; surface честно, чтобы откатиться на Creatify-голос
