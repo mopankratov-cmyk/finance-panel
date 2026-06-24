@@ -32,12 +32,15 @@ export async function remotionSubmit(
   composition: string,
   inputProps: Record<string, unknown>,
   durationInFrames?: number,
+  opts?: { still?: boolean },
 ): Promise<string | null> {
   const base = URL();
   if (!base) return null;
   try {
     const body: Record<string, unknown> = { composition, inputProps };
     if (typeof durationInFrames === "number" && durationInFrames > 0) body.durationInFrames = durationInFrames;
+    if (opts?.still) body.still = true; // СТАТИКА: renderStill → PNG (1 кадр), не видео
+
     const r = await fetch(`${base}/render`, { method: "POST", headers: HEADERS(), cache: "no-store", body: JSON.stringify(body), signal: AbortSignal.timeout(25000) });
     if (!r.ok) return null;
     const j = (await r.json()) as { id?: string };

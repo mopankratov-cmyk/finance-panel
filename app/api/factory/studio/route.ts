@@ -27,6 +27,27 @@ async function count(db: any, table: string, niche: string, extra?: (q: any) => 
   } catch { return 0; }
 }
 
+function recipeSummary(r: Record<string, unknown>) {
+  const plan = (r.run_plan && typeof r.run_plan === "object") ? r.run_plan as Record<string, unknown> : {};
+  const nodes = Array.isArray(plan.nodes) ? plan.nodes as Record<string, unknown>[] : [];
+  const nodeErrors = nodes
+    .filter((n) => n.status === "error" || n.error)
+    .map((n) => ({
+      tool: n.tool || n.engine || null,
+      slot: n.slot || n.node_type || null,
+      error: String(n.error || "").slice(0, 180),
+    }))
+    .slice(0, 3);
+  return {
+    ...r,
+    run_plan: undefined,
+    step: plan.step || null,
+    catalog_error: plan.catalog_error || null,
+    needs_rejudge: r.status === "otk_pass" && !!r.output_url && r.otk_score == null,
+    node_errors: nodeErrors,
+  };
+}
+
 export async function GET(req: NextRequest) {
   try {
     const db = getSupabaseAdmin();
@@ -47,8 +68,8 @@ export async function GET(req: NextRequest) {
         templates = (data || []).map((t: Record<string, unknown>) => ({ ...t, nodes_count: Array.isArray(t.nodes) ? t.nodes.length : 0, nodes: undefined }));
       } catch { /* нет шаблонов */ }
       try {
-        const { data } = await db.from("node_recipes").select("id,article,niche,mode,status,otk_score,output_url,format_detected,created_at").eq("niche", niche).order("created_at", { ascending: false }).limit(20);
-        recipes = data || [];
+        const { data } = await db.from("node_recipes").select("id,article,niche,mode,status,otk_score,output_url,format_detected,created_at,run_plan").eq("niche", niche).order("created_at", { ascending: false }).limit(20);
+        recipes = (data || []).map(recipeSummary);
       } catch { /* нет рецептов */ }
       return NextResponse.json({ ok: true, niche, feed, templates, recipes }, { headers: { "Cache-Control": "no-store" } });
     }
@@ -73,8 +94,8 @@ export async function GET(req: NextRequest) {
 
     let recipes: unknown[] = [];
     try {
-      const { data } = await db.from("node_recipes").select("id,article,niche,mode,status,otk_score,output_url,format_detected,built_by,created_at").order("created_at", { ascending: false }).limit(30);
-      recipes = data || [];
+      const { data } = await db.from("node_recipes").select("id,article,niche,mode,status,otk_score,output_url,format_detected,built_by,created_at,run_plan").order("created_at", { ascending: false }).limit(30);
+      recipes = (data || []).map(recipeSummary);
     } catch { /* нет рецептов */ }
 
     return NextResponse.json({ ok: true, niches, generations, recipes }, { headers: { "Cache-Control": "no-store" } });

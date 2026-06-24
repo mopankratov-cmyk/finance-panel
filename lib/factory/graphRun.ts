@@ -6,7 +6,8 @@ import { remotionEngineSelected, remotionReady, remotionSubmit, remotionStatus }
 import { extractFrames } from "./serverMedia";
 import { logGeneration } from "./genHistory";
 import { tgReady, tgSendReview } from "./telegram";
-import { classifyAssets, chooseBinding, type DiskAsset } from "./assetBind";
+import { speechReady } from "./elevenlabs";
+import { classifyAssets, chooseBinding, assetMatchesArticle, type DiskAsset } from "./assetBind";
 import { isPlaceholderSource } from "./toolSchemas";
 import { isOurStorage } from "./rehostImage";
 import { createHash } from "node:crypto";
@@ -41,6 +42,8 @@ export interface RunPlan {
   render_engine?: string | null;            // V23: "remotion" | "shotstack" — какой движок собирал (для poll/bank)
   reel_props?: Record<string, unknown> | null; // V23: пропсы ReelV5 для render-сервиса
   duration_frames?: number | null;          // V23: длительность ролика в кадрах (Remotion)
+  catalog_url?: string | null;              // permanent content_assets URL, when gen-save succeeded
+  catalog_error?: string | null;            // last gen-save failure, visible in cockpit
 }
 
 const LEASE_MS = 90_000;
@@ -223,7 +226,12 @@ async function autoBindAssets(db: SupabaseClient, plan: RunPlan, article: string
   let assets: DiskAsset[] = [];
   try {
     const { data } = await db.from("content_assets").select("disk,kind,url").eq("article", article).not("url", "is", null).limit(60);
-    assets = (data as DiskAsset[] | null) || [];
+    const raw = (data as DiskAsset[] | null) || [];
+    // ГАРД от кросс-контаминации («пистолет в сумке»): даже если строка каталога мислейбл (article=CLR…, а путь
+    // prepared/TT…), НЕ привязываем чужой кадр к рецепту. Источник распознаём по артикулу в пути prepared/i2v-src.
+    assets = raw.filter((a) => assetMatchesArticle(a.url, article));
+    const dropped = raw.length - assets.length;
+    if (dropped) { try { await logSignal(db, "asset_article_mismatch", { niche, article, params: { dropped, kept: assets.length } }); } catch { /* сигнал best-effort */ } }
   } catch { return; } // каталог недоступен — ноды упадут штатно, как раньше
   const pool = classifyAssets(assets);
   let imgIdx = 0; // разные стартовые фото на разные i2v-ноды (анти-сэйминес: не 5 клипов с одного кадра)
@@ -259,7 +267,7 @@ export async function persistClips(db: SupabaseClient, nodes: RunNode[], article
       const buf = Buffer.from(await r.arrayBuffer());
       if (!buf.length) return;
       const path = `clips/${createHash("sha1").update(src).digest("hex")}.mp4`;
-      const { error } = await db.storage.from(CLIP_BUCKET).upload(path, buf, { contentType: "video/mp4", upsert: true });
+      const { error } = await db.storage.from(CLIP_BUCKET).upload(path, buf, { contentType: "video/mp4", upsert: true, cacheControl: "31536000" });
       if (error) return;
       const pub = db.storage.from(CLIP_BUCKET).getPublicUrl(path).data?.publicUrl;
       if (!pub) return;
@@ -271,6 +279,21 @@ export async function persistClips(db: SupabaseClient, nodes: RunNode[], article
 
 // Захват рецепта на исполнение: status=running, активный шаг, свободный лиз.
 export async function claimNextRecipe(db: SupabaseClient, recipeId?: number): Promise<{ id: number; plan: RunPlan; article: string; niche: string; mode: string; product_name?: string } | null> {
+  // вариант Б (#3): атомарный claim через RPC claim_recipe — jsonb_set ставит ТОЛЬКО лиз, FOR UPDATE SKIP
+  // LOCKED не даёт двум тикам взять одну строку, run_plan не переписывается целиком (стейл-перезапись
+  // токенов/нод невозможна). Fallback на JS-CAS ниже, если RPC ещё не задеплоен (миграция 20260626 не
+  // применена) → поведение полностью как раньше.
+  try {
+    const { data: rpcData, error: rpcErr } = await db.rpc("claim_recipe", { p_recipe_id: recipeId ?? null, p_lease_ms: LEASE_MS });
+    if (!rpcErr) {
+      const row = (Array.isArray(rpcData) ? rpcData[0] : null) as Record<string, unknown> | null;
+      if (!row) return null; // RPC сработал, захватывать нечего
+      const plan = (row.run_plan as RunPlan) || null;
+      if (!plan || plan.step === "done" || plan.step === "failed") return null;
+      return { id: Number(row.id), plan, article: String(row.article || ""), niche: String(row.niche || ""), mode: String(row.mode || "audience") };
+    }
+    // rpcErr → функции нет (миграция не применена) → падаем в JS-CAS
+  } catch { /* fallback на JS-CAS */ }
   const nowIso = new Date().toISOString();
   const leaseIso = new Date(Date.now() + LEASE_MS).toISOString();
   let q = db.from("node_recipes").select("id,article,niche,mode,run_plan,status").eq("status", "running").limit(5);
@@ -300,7 +323,9 @@ export async function claimNextRecipe(db: SupabaseClient, recipeId?: number): Pr
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function jpost(origin: string, path: string, body: unknown, ms = 90000): Promise<any> {
   const r = await internalFetch(`${origin}${path}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(ms) });
-  return r.json().catch(() => ({}));
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(`${path} ${r.status}: ${String(j?.error || j?.detail || r.statusText || "ошибка").slice(0, 180)}`);
+  return j;
 }
 
 // ОДИН шаг исполнения графа.
@@ -349,6 +374,12 @@ export async function runRecipeStep(
     for (const n of plan.nodes) {
       const tool = String(n.tool || "").toLowerCase();
       if (!tool || ASSEMBLY_TOOLS.has(tool) || tool === "captions") { n.status = "skip"; continue; }
+      if (tool === "elevenlabs" && !speechReady()) {
+        n.status = "skip";
+        n.engine = "voice";
+        n.error = undefined;
+        continue;
+      }
       if (n.status === "done" || n.status === "submitted") continue; // идемпотентность: уже отправлено (токен в БД) — не платим повторно
       // V10: владелец принял превью этой ноды (hash совпадает с текущими prompt/params/вход) → берём готовый
       // клип, НЕ платим fal повторно. Привязка к nodeHash инвалидирует при любой правке ноды.
@@ -551,11 +582,7 @@ export async function runRecipeStep(
     const url = plan.output_url;
     if (!url) throw new Error("нет output_url для ОТК");
     const frames = await extractFrames(url);
-    if (!frames.length) { // кадры не извлеклись → банк без ОТК (не блокируем)
-      plan.otk = null; plan.step = "bank";
-      await savePlan(db, id, plan);
-      return;
-    }
+    if (!frames.length) throw new Error("ОТК не извлёк кадры из output_url — не банкуем без оценки");
     // R3 · АРТЕФАКТ-ГЕЙТ до рубрики: сломанный AI-брак (уанкэни/текст-блид/руки/морфинг) → реген, к рубрике/человеку не доходит
     if ((plan.renderCount || 0) < MAX_RENDERS) {
       const art = await jpost(origin, "/api/factory/artifact-check", { frames }, 45000);
@@ -571,6 +598,7 @@ export async function runRecipeStep(
     const hookNode = plan.nodes.find((n) => String(((n.params || {}) as Record<string, unknown>)["role"] || n.slot || "").toLowerCase() === "hook") || plan.nodes[0];
     const v = await jpost(origin, "/api/factory/video-critic", { frames, hook: hookNode?.onscreen_text || hookNode?.prompt || "", mode, article, niche }, 55000);
     const score = typeof v?.score === "number" ? v.score : null;
+    if (score == null) throw new Error("video-critic не вернул score — не банкуем без ОТК");
     plan.otk = { score, verdict: v?.verdict, axes: v?.axes || null, issues: Array.isArray(v?.issues) ? v.issues : [] };
     // V3: запоминаем ЛУЧШУЮ сборку за все попытки реген-петли (банкуем её, не последнюю)
     if (score != null && score > (plan.bestScore ?? -1)) { plan.bestScore = score; plan.bestUrl = url; }
@@ -596,15 +624,24 @@ export async function runRecipeStep(
     const hook = (hookNode?.onscreen_text || hookNode?.prompt || "").toString().slice(0, 200);
     // в библиотеку контента (каталог кокпита)
     let catalogUrl: string | null = null;
+    let catalogError: string | null = null;
     if (url) {
       try {
-        const g = await jpost(origin, "/api/factory/gen-save", { video_url: url, article, niche, hook, route: "node_graph", engine: plan.render_engine || "shotstack", otk: score }, 40000); // ≤40с: влезть в maxDuration 60 тика (был 120с → Vercel убивал handler, catalogUrl терялся)
+        const g = await jpost(origin, "/api/factory/gen-save", { video_url: url, article, niche, hook, route: "node_graph", engine: plan.render_engine || "shotstack", otk: score, otk_axes: plan.otk?.axes ?? null, recipe_id: id }, 40000); // ≤40с: влезть в maxDuration 60 тика (был 120с → Vercel убивал handler, catalogUrl терялся)
         catalogUrl = g?.url || null;
-      } catch { /* банк библиотеки опционален */ }
+      } catch (e) { catalogError = String((e as Error)?.message || e).slice(0, 220); }
     }
-    const status = score == null ? "otk_pass" : score >= 7 ? "otk_pass" : "otk_fail";
+    const status = score != null && score >= 7 ? "otk_pass" : "otk_fail";
     plan.step = "done";
+    plan.catalog_url = catalogUrl;
+    plan.catalog_error = catalogError;
     await savePlan(db, id, plan, { status, output_url: catalogUrl || url || null });
+    if (url && !catalogUrl && catalogError) {
+      await logSignal(db, "catalog_save_failed", {
+        recipe_id: id, niche, article, mode, format: null, engine: plan.render_engine || "shotstack",
+        params: { source: "graph_run_bank", raw_url: url, error: catalogError },
+      });
+    }
     await logSignal(db, status === "otk_pass" ? "approved" : "rejected", {
       recipe_id: id, niche, article, mode, format: null, engine: plan.render_engine || "shotstack",
       axes: plan.otk?.axes ?? null, reason_chip: status === "otk_fail" ? (plan.otk?.issues?.[0] || "ОТК<7") : null,

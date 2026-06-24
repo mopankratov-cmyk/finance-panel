@@ -1,4 +1,5 @@
 import sharp from "sharp";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 // Серверные аналоги браузерных canvas-кусков завода — чтобы фоновые джобы давали полное качество без вкладки.
 // (1) overlayPngBase64 — прозрачный PNG-оверлей (хук+субтитры) через sharp (SVG→PNG), как _renderOverlayPng.
@@ -18,6 +19,19 @@ function wrap(text: string, maxChars: number, maxLines: number): string[] {
   }
   if (line) lines.push(line);
   return lines.slice(0, maxLines);
+}
+
+async function fetchWithRetry(url: string, init: RequestInit, attempts = 2): Promise<Response | null> {
+  for (let i = 0; i < attempts; i++) {
+    try {
+      const r = await fetch(url, init);
+      if (r.ok || i === attempts - 1) return r;
+    } catch {
+      if (i === attempts - 1) return null;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 600 * (i + 1)));
+  }
+  return null;
 }
 
 // 720×1280 прозрачный PNG: хук-плашка сверху, субтитры снизу (центр чист — товар виден).
@@ -99,19 +113,45 @@ export async function extractFrames(videoUrl: string): Promise<string[]> {
   if (!k || !videoUrl) return [];
   const results = await Promise.all((["first", "middle", "last"] as const).map(async (frame_type) => {
     try {
-      const r = await fetch("https://fal.run/fal-ai/ffmpeg-api/extract-frame", {
+      const r = await fetchWithRetry("https://fal.run/fal-ai/ffmpeg-api/extract-frame", {
         method: "POST", headers: { Authorization: `Key ${k}`, "Content-Type": "application/json" }, cache: "no-store",
         body: JSON.stringify({ video_url: videoUrl, frame_type }), signal: AbortSignal.timeout(30000),
       });
-      if (!r.ok) return null;
+      if (!r?.ok) return null;
       const j = (await r.json()) as { images?: { url?: string }[] };
       const u = j.images?.[0]?.url;
       if (!u) return null;
-      const img = await fetch(u, { signal: AbortSignal.timeout(20000) });
-      if (!img.ok) return null;
+      const img = await fetchWithRetry(u, { signal: AbortSignal.timeout(20000) });
+      if (!img?.ok) return null;
       const jpeg = await sharp(Buffer.from(await img.arrayBuffer())).resize(512, null, { fit: "inside", withoutEnlargement: true }).jpeg({ quality: 70 }).toBuffer();
       return jpeg.toString("base64");
     } catch { return null; /* пропускаем кадр */ }
   }));
   return results.filter((x): x is string => !!x);
+}
+
+// Постер-кадр (первый) для галереи «База видосов»: fal extract-frame → sharp JPG → Storage → публичный URL.
+// Чинит «пустые тёмные квадраты» — <video preload=metadata #t=0.1> не рендерит первый кадр на supabase
+// (range-requests). Один fal-вызов (дешевле extractFrames с 3). Best-effort: любой сбой → null (галерея
+// откатывается на попытку кадра из <video>, как раньше).
+export async function extractPosterUrl(db: SupabaseClient, videoUrl: string, bucket: string, pathBase: string): Promise<string | null> {
+  const k = process.env.FAL_KEY;
+  if (!k || !videoUrl) return null;
+  try {
+    const r = await fetchWithRetry("https://fal.run/fal-ai/ffmpeg-api/extract-frame", {
+      method: "POST", headers: { Authorization: `Key ${k}`, "Content-Type": "application/json" }, cache: "no-store",
+      body: JSON.stringify({ video_url: videoUrl, frame_type: "first" }), signal: AbortSignal.timeout(25000),
+    });
+    if (!r?.ok) return null;
+    const j = (await r.json()) as { images?: { url?: string }[] };
+    const u = j.images?.[0]?.url;
+    if (!u) return null;
+    const img = await fetchWithRetry(u, { signal: AbortSignal.timeout(15000) });
+    if (!img?.ok) return null;
+    const jpeg = await sharp(Buffer.from(await img.arrayBuffer())).resize(420, null, { fit: "inside", withoutEnlargement: true }).jpeg({ quality: 72 }).toBuffer();
+    const path = `${pathBase}.jpg`;
+    const { error } = await db.storage.from(bucket).upload(path, jpeg, { contentType: "image/jpeg", upsert: true });
+    if (error) return null;
+    return db.storage.from(bucket).getPublicUrl(path).data?.publicUrl || null;
+  } catch { return null; }
 }

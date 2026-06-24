@@ -72,8 +72,8 @@
       <a href="/inferno/studio.html" class="btn btn-primary text-[13px]" title="V3 НОДА/studio — нод-студия виральных видео (карта осознания, decompose, нод-канвас, инспектор, сборка/ОТК, библиотека)" style="background:linear-gradient(135deg,#7c74ff,#5a52d8);color:#fff;border:none;">⬢ Открыть V3 · НОДА/studio →</a>
     </div>
 
-    <!-- Статус системы: миграции / ключи / счётчики (lazy, загружается один раз) -->
-    <div x-data="{st:null,open:false,async load(){try{const d=await(await fetch('/api/factory/status')).json();this.st=d;}catch{}}}" x-init="load()">
+    <!-- Статус системы: миграции / ключи / счётчики / живой баланс Creatify (lazy, загружается один раз) -->
+    <div x-data="{st:null,bal:null,open:false,async load(){try{const d=await(await fetch('/api/factory/status')).json();this.st=d; const b=await(await fetch('/api/factory/creatify-credits')).json(); this.bal=b;}catch{}}}" x-init="load()">
       <div x-show="st&&st.pending&&st.pending.length" class="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 mb-4 cursor-pointer text-[11px]" @click="open=!open">
         <div class="flex items-center justify-between">
           <span class="font-semibold text-amber-800">⚠️ Требуются действия: <span x-text="st&&st.pending&&st.pending.length"></span> шага</span>
@@ -88,6 +88,10 @@
       </div>
       <div x-show="st&&st.ready" class="text-[11px] text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-3 py-1.5 mb-4">
         ✅ Система готова · <span x-text="'корпус: ' + (st&&st.counts&&st.counts.viral_videos||0) + ' видео, ' + (st&&st.counts&&st.counts.viral_hooks||0) + ' хуков, ' + (st&&st.counts&&st.counts.niche_playbooks||0) + ' плейбуков'"></span>
+      </div>
+      <div x-show="bal" class="text-[11px] text-sky-700 bg-sky-50 border border-sky-200 rounded px-3 py-1.5 mb-4 flex items-center justify-between gap-3">
+        <span>Creatify</span>
+        <span class="font-semibold" x-text="(bal&&bal.balance!=null ? bal.balance : '—') + ' ' + (bal&&bal.currency || 'credits')"></span>
       </div>
     </div>
 
@@ -145,6 +149,31 @@
               </template>
             </div>
           </div>
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-2 mb-2">
+            <label class="block">
+              <div class="text-[11px] text-gray-500 mb-1">Голос Creatify</div>
+              <select x-model="ugc.voiceId" @change="ugc.voiceName = ((ugc.voices.find(v => v.id === ugc.voiceId) || {}).name || ''); _saveUGC()" class="w-full text-[11px] px-2 py-1 border border-gray-300 rounded bg-white">
+                <option value="">авто</option>
+                <template x-for="v in ugc.voices" :key="v.id">
+                  <option :value="v.id" x-text="v.name + (v.meta ? ' · ' + v.meta : '')"></option>
+                </template>
+              </select>
+            </label>
+            <label class="block md:col-span-2">
+              <div class="text-[11px] text-gray-500 mb-1">Музыка Creatify</div>
+              <select x-model="ugc.musicUrl" @change="ugc.noBackgroundMusic = !ugc.musicUrl; ugc.musicName = ((ugc.musics.find(m => (m.preview || m.id) === ugc.musicUrl) || {}).name || ''); _saveUGC()" class="w-full text-[11px] px-2 py-1 border border-gray-300 rounded bg-white">
+                <option value="">без трека</option>
+                <template x-for="m in ugc.musics" :key="m.id">
+                  <option :value="m.preview || m.id" x-text="m.name + (m.meta ? ' · ' + m.meta : '')"></option>
+                </template>
+              </select>
+            </label>
+          </div>
+          <label class="inline-flex items-center gap-2 mb-2 text-[11px] text-gray-600">
+            <input type="checkbox" x-model="ugc.noBackgroundMusic" @change="if (ugc.noBackgroundMusic) { ugc.musicUrl=''; ugc.musicName=''; } _saveUGC()" class="rounded border-gray-300">
+            <span>без фоновой музыки</span>
+          </label>
+          <div x-show="ugc.optsError" class="text-[11px] text-amber-700 mb-2" x-text="'⚠ ' + ugc.optsError"></div>
           <!-- Фильтры галереи -->
           <div x-show="avatars.list.length" class="flex gap-2 flex-wrap items-center mb-2">
             <input x-model="avatars.search" placeholder="поиск (имя, ниша)…" class="text-[11px] px-2 py-1 border border-gray-300 rounded w-40">
@@ -1610,7 +1639,7 @@ function patrick() {
       } catch (e) { this.varz.msg = String(e).slice(0, 100); }
       this.varz.busy = false;
     },
-    ugc: { busy: false, forIdx: -1, taskId: '', url: '', status: '' },
+    ugc: { busy: false, forIdx: -1, taskId: '', url: '', status: '', renderStarted: false, voiceId: '', voiceName: '', musicUrl: '', musicName: '', noBackgroundMusic: true, voices: [], musics: [], optsBusy: false, optsLoaded: false, optsError: '' },
     // Галерея аватаров Creatify + выбор композиции сцены (visual_style). Грузится по требованию (read-only, без кредитов).
     avatars: { open: false, loaded: false, busy: false, error: '', list: [], scenes: [], gender: '', style: '', search: '', pickedId: '', pickedName: '', scene: '' },
     get avatarsFiltered() {
@@ -1623,7 +1652,10 @@ function patrick() {
     },
     async toggleAvatars() {
       this.avatars.open = !this.avatars.open;
-      if (this.avatars.open && !this.avatars.loaded && !this.avatars.busy) await this.loadAvatars();
+      if (this.avatars.open) {
+        if (!this.avatars.loaded && !this.avatars.busy) await this.loadAvatars();
+        if (!this.ugc.optsLoaded && !this.ugc.optsBusy) await this.loadUGCOptions();
+      }
     },
     async loadAvatars() {
       if (this.avatars.busy) return;
@@ -1648,25 +1680,62 @@ function patrick() {
       this._saveAvatar();
     },
     _saveAvatar() { try { localStorage.setItem('cf_avatar', JSON.stringify({ id: this.avatars.pickedId, name: this.avatars.pickedName, scene: this.avatars.scene })); } catch (e) {} },
+    _saveUGC() {
+      try {
+        localStorage.setItem('cf_ugc', JSON.stringify({
+          voiceId: this.ugc.voiceId,
+          voiceName: this.ugc.voiceName,
+          musicUrl: this.ugc.musicUrl,
+          musicName: this.ugc.musicName,
+          noBackgroundMusic: this.ugc.noBackgroundMusic,
+        }));
+      } catch (e) {}
+    },
+    async loadUGCOptions() {
+      if (this.ugc.optsBusy || this.ugc.optsLoaded) return;
+      this.ugc.optsBusy = true; this.ugc.optsError = '';
+      try {
+        const [rv, rm] = await Promise.all([
+          fetch('/api/factory/creatify-voices').then(r => r.json()).catch(() => null),
+          fetch('/api/factory/creatify-music').then(r => r.json()).catch(() => null),
+        ]);
+        this.ugc.voices = (rv && rv.voices) || [];
+        this.ugc.musics = (rm && rm.musics) || [];
+        this.ugc.optsLoaded = true;
+        try {
+          const sv = JSON.parse(localStorage.getItem('cf_ugc') || '{}');
+          if (sv.voiceId) this.ugc.voiceId = sv.voiceId;
+          if (sv.voiceName) this.ugc.voiceName = sv.voiceName;
+          if (sv.musicUrl) this.ugc.musicUrl = sv.musicUrl;
+          if (sv.musicName) this.ugc.musicName = sv.musicName;
+          if (typeof sv.noBackgroundMusic === 'boolean') this.ugc.noBackgroundMusic = sv.noBackgroundMusic;
+        } catch (e) {}
+      } catch (e) {
+        this.ugc.optsError = String(e).slice(0, 120);
+      }
+      this.ugc.optsBusy = false;
+    },
     // Прямой тест Creatify по выбранному товару (Шаг 1) — без полного прогона завода. forIdx=-2 = «тестовая» метка.
     async testUGC() {
       const art = (this.op.art || this.dir.plan?.target_article || '').trim();
       if (!art) { this.ugc.forIdx = -2; this.ugc.status = 'сначала выбери товар в Шаге 1'; return; }
       if (!this.dir.plan) this.dir.plan = { target_article: art }; else this.dir.plan.target_article = art;
+      if (!this.ugc.optsLoaded && !this.ugc.optsBusy) await this.loadUGCOptions();
       await this.makeUGC({ hook: this._prodName(art) || ('обзор ' + art), concept: 'UGC-тест' }, -2);
     },
     async makeUGC(idea, i) {
       if (this.ugc.busy) return;
       const art = this.dir.plan?.target_article || this.orbit.article || '';
       if (!art) { this.ugc.forIdx = i; this.ugc.status = 'нужен товар (артикул в ТЗ или Трендоскопе)'; return; }
+      if (!this.ugc.optsLoaded && !this.ugc.optsBusy) await this.loadUGCOptions();
       this.ugc.busy = true; this.ugc.forIdx = i; this.ugc.url = ''; this.ugc.status = 'Creatify: подбираю актёра + сценарий…';
       try {
         // сценарий из плейбука/идеи, если есть
         const script = (idea.scenario?.shots || []).map(x => x.voiceover).filter(Boolean).join(' ') || idea.hook || idea.concept || '';
-        const r = await fetch('/api/factory/ugc-creatify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sku_art: art, brief: idea.hook || idea.concept, script, creator: this.avatars.pickedId || undefined, visual_style: this.avatars.scene || undefined }) });
+        const r = await fetch('/api/factory/ugc-creatify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sku_art: art, brief: idea.hook || idea.concept, script, creator: this.avatars.pickedId || undefined, visual_style: this.avatars.scene || undefined, override_voice: this.ugc.voiceId || undefined, background_music_url: this.ugc.musicUrl || undefined, no_background_music: this.ugc.noBackgroundMusic, no_cta: true }) });
         const d = await r.json();
         if (!d.task_id) { this.ugc.status = d.detail || d.error || 'не удалось запустить'; this.ugc.busy = false; return; }
-        this.ugc.taskId = d.task_id; this.ugc.status = 'рендер UGC-актёра (≈2-5 мин)…';
+        this.ugc.taskId = d.task_id; this.ugc.status = 'рендер UGC-актёра (≈2-5 мин)…'; this.ugc.renderStarted = false;
         const deadline = Date.now() + 8 * 60 * 1000;
         while (Date.now() < deadline) {
           await new Promise(res => setTimeout(res, 8000));
@@ -1675,6 +1744,12 @@ function patrick() {
             const sd = await sr.json();
             if (sd.status === 'done' && sd.video_url) { this.ugc.url = sd.video_url; this.ugc.status = '✓ готово (проверь ОТК перед публикацией)'; break; }
             if (sd.status === 'failed' || sd.error) { this.ugc.status = 'ошибка: ' + (sd.error || 'failed'); break; }
+            if (sd.status === 'preview_ready' && !this.ugc.renderStarted) {
+              this.ugc.renderStarted = true;
+              this.ugc.status = 'превью готово — запускаю render…';
+              try { await fetch('/api/factory/ugc-creatify-render/' + this.ugc.taskId, { method: 'POST' }); } catch (e) {}
+              continue;
+    }
             this.ugc.status = sd.progress || 'рендер…';
           } catch (e) {}
         }

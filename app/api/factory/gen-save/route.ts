@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { nicheFromArticle } from "@/lib/factory/rubric";
 import { logGeneration } from "@/lib/factory/genHistory";
+import { extractPosterUrl } from "@/lib/factory/serverMedia";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -25,7 +26,16 @@ export async function POST(req: NextRequest) {
 
   const stamp = Date.now();
   const rand = Math.random().toString(36).slice(2, 8);
-  const meta = { hook: b.hook || "", route: b.route || "", engine: b.engine || "", otk: b.otk ?? null, source_url: videoUrl || slides[0] || "" };
+  const recipeId = typeof b.recipe_id === "number" ? b.recipe_id : null;
+  const meta = {
+    hook: b.hook || "",
+    route: b.route || "",
+    engine: b.engine || "",
+    otk: b.otk ?? null,
+    otk_axes: b.otk_axes ?? null,
+    recipe_id: recipeId,
+    source_url: videoUrl || slides[0] || "",
+  };
 
   // 1) ВИДЕО: качаем с fal (временная ссылка) → Storage → постоянный URL
   if (videoUrl) {
@@ -46,15 +56,30 @@ export async function POST(req: NextRequest) {
       }
     } catch (e) { diag = `fetch-exc: ${String(e instanceof Error ? e.message : e).slice(0, 80)}`; }
     if (!stored) return NextResponse.json({ ok: false, error: "не удалось скачать/залить видео", diag });
+    // #14: повторная проверка дедупа ПРЯМО перед вставкой — параллельный gen-poll мог успеть сохранить
+    // это же видео, пока мы качали (~до 90с). Сужает окно гонки; полную гарантию даёт уникальный индекс
+    // (миграция 20260627) — конфликт обработан ниже.
+    const { data: dup2 } = await db.from("content_assets").select("url").eq("disk", "gen").contains("analysis", { source_url: videoUrl }).maybeSingle();
+    if (dup2?.url) return NextResponse.json({ ok: true, already: true, url: dup2.url });
+    // #21 постер-кадр для галереи (best-effort): чинит пустые квадраты в Базе видосов
+    const poster = await extractPosterUrl(db, stored, BUCKET, `gen/${stamp}-${rand}-poster`);
     const { error: insErr } = await db.from("content_assets").insert({
       disk: "gen", path: `gen/${stamp}-${rand}`, name: (b.hook || article || "генерация").toString().slice(0, 120),
-      kind: "video", niche, article: article || null, color: null, url: stored, analyzed: true, analysis: meta,
+      kind: "video", niche, article: article || null, color: null, url: stored, analyzed: true,
+      analysis: poster ? { ...meta, poster } : meta,
     });
-    if (insErr) return NextResponse.json({ ok: false, error: insErr.message });
+    if (insErr) {
+      // гонка проиграна: уникальный индекс (миграция 20260627) отбил дубль → вернём уже сохранённую строку
+      if ((insErr as { code?: string }).code === "23505") {
+        const { data: ex } = await db.from("content_assets").select("url").eq("disk", "gen").contains("analysis", { source_url: videoUrl }).maybeSingle();
+        if (ex?.url) return NextResponse.json({ ok: true, already: true, url: ex.url });
+      }
+      return NextResponse.json({ ok: false, error: insErr.message });
+    }
 
     // V20 · память итераций: пишем финальную генерацию в историю (best-effort, не дедупим)
     await logGeneration({
-      recipe_id: typeof b.recipe_id === "number" ? b.recipe_id : null,
+      recipe_id: recipeId,
       node_id: typeof b.node_id === "number" ? b.node_id : null,
       parent_id: typeof b.parent_id === "number" ? b.parent_id : null,
       variant_idx: typeof b.variant_idx === "number" ? b.variant_idx : null,

@@ -53,7 +53,8 @@ body{background:var(--bg-deep);font-family:var(--sans);color:var(--tx-hi);-webki
 .hdr-l{display:flex;align-items:center;gap:10px;}
 .hdr-t{font-size:15px;font-weight:600;}
 .meta-chip{font-size:11px;font-family:var(--mono);color:var(--tx-lo2);background:var(--bg-chip);border:1px solid var(--bd);padding:3px 8px;border-radius:5px;}
-.hdr-r{display:flex;align-items:center;gap:8px;}
+.hdr-r{display:flex;align-items:center;gap:8px;overflow-x:auto;scrollbar-width:thin;}
+.hdr-r::-webkit-scrollbar{height:5px;} .hdr-r::-webkit-scrollbar-thumb{background:var(--bd3);border-radius:3px;}
 .body{flex:1;min-height:0;display:flex;overflow:hidden;}
 .scroll{flex:1;min-width:0;overflow-y:auto;padding:22px;}
 .aside{flex:none;border-left:1px solid var(--bd);background:var(--bg-panel);overflow-y:auto;}
@@ -167,6 +168,7 @@ body{background:var(--bg-deep);font-family:var(--sans);color:var(--tx-hi);-webki
           <span style="font-size:10px;color:var(--tx-lo2);">WB · 3 ниши</span>
         </div>
       </div>
+      <div id="factory-pulse" style="margin-top:10px;padding-top:10px;border-top:1px solid var(--bd);"></div>
       <!-- V18-1: ссылка на legacy скрыта из навигации V3 (файлы не трогаем — patrick-legacy.html жив по прямому URL + из patrick.html, держит winners/аналитику до V18-2) -->
     </div>
   </aside>
@@ -205,17 +207,23 @@ const S={
   recipe:null, selectedNode:null,
   tool:"seedance", toolSchemas:{},
   run:null, preview:{}, contentProduct:null,
+  observer:null, observerLoading:false, observerError:"", observerUpdatedAt:null,
+  workerState:null, workerTimer:null,
 };
+// ИА студии: главная ось — ВИД КОНТЕНТА (после общей разведки). Старт → тип контента (свой пайплайн) → Система.
 const SCREENS=[
-  {id:"center",chip:"01",tt:"Командный центр",st:"карта осознания"},
-  {id:"compete",chip:"02",tt:"Анализ конкурентов",st:"decompose"},
-  {id:"canvas",chip:"03",tt:"Нод-канвас",st:"граф видео"},
-  {id:"inspector",chip:"04",tt:"Инспектор ноды",st:"настройки"},
-  {id:"assembly",chip:"05",tt:"Сборка · ОТК",st:"таймлайн"},
-  {id:"library",chip:"06",tt:"База видосов",st:"рецепты"},
-  {id:"balances",chip:"07",tt:"Балансы сервисов",st:"сколько осталось $"},
-  {id:"learn",chip:"🧠",tt:"Обучение",st:"что завод выучил"},
-  {id:"ds",chip:"DS",tt:"Дизайн-система",st:"токены"},
+  {id:"center",grp:"Старт",chip:"01",tt:"Командный центр",st:"карта осознания"},
+  {id:"compete",grp:"Старт",chip:"02",tt:"Анализ конкурентов",st:"разведка · decompose"},
+  {id:"canvas",grp:"🎬 Видео",chip:"03",tt:"Нод-канвас",st:"граф видео"},
+  {id:"inspector",grp:"🎬 Видео",chip:"04",tt:"Инспектор ноды",st:"настройки"},
+  {id:"assembly",grp:"🎬 Видео",chip:"05",tt:"Сборка · ОТК",st:"таймлайн"},
+  {id:"library",grp:"🎬 Видео",chip:"06",tt:"База видосов",st:"рецепты"},
+  {id:"static",grp:"🖼 Статика",chip:"🖼",tt:"Пины и карточки",st:"форматы · архетипы"},
+  {id:"text",grp:"✍️ Текст",chip:"✍",tt:"Тексты",st:"скоро: посты · описания · SEO"},
+  {id:"worker",grp:"⚙ Система",chip:"RW",tt:"Railway worker",st:"живой статус"},
+  {id:"balances",grp:"⚙ Система",chip:"07",tt:"Балансы сервисов",st:"сколько осталось $"},
+  {id:"learn",grp:"⚙ Система",chip:"🧠",tt:"Обучение",st:"что завод выучил"},
+  {id:"ds",grp:"⚙ Система",chip:"DS",tt:"Дизайн-система",st:"токены"},
 ];
 const NICHE_EMOJI={cosmetics:"💄",clothing:"🧥",toys:"🔫",default:"📦"};
 // picker-поля, которые тянут точный список из ЖИВОГО Creatify API (не хардкод)
@@ -223,6 +231,28 @@ const LIVE_PICKER={ override_voice:{type:"voices",route:"/creatify-options?type=
 const _liveOpts={};
 
 async function api(path,opts){ try{ const r=await fetch(API+path,opts); return await r.json().catch(()=>({error:"не JSON"})); }catch(e){ return {error:String(e).slice(0,120)}; } }
+let _selfHealBusy=false;
+async function selfHeal(action,payload,okText){
+  if(_selfHealBusy){ toast("самопочинка уже идёт…"); return null; }
+  _selfHealBusy=true;
+  try{
+    toast(action==="wake"?"буду зависшие прогоны…":"переоцениваю ОТК…");
+    const r=await api("/self-heal",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action,...payload})});
+    if(r&&r.ok!==false&&!r.error){
+      const res=r.result||{};
+      toast(okText || (action==="wake"
+        ? `разбудил ${(res.woken||[]).length||0} прогонов`
+        : `rejudge: ${(res.processed||[]).length||0} карточек`));
+      loadObserver().catch(()=>{});
+      if(S.screen==="library")screenLibrary(document.getElementById("screen"), false);
+      return r;
+    }
+    toast("не вышло: "+String((r&&r.error)||"?").slice(0,80));
+    return r;
+  } finally {
+    _selfHealBusy=false;
+  }
+}
 function el(tag,attrs,...kids){
   const e=document.createElement(tag);
   if(attrs)for(const k in attrs){
@@ -268,11 +298,102 @@ function openMedia(url,opts){ opts=opts||{};
 }
 function nicheLabel(n){ const f=S.niches.find(x=>x.niche===n); return (f&&f.label)||({cosmetics:"Косметика",clothing:"Одежда",toys:"Игрушки",default:"Прочее"}[n])||n; }
 
+function observerTone(o){
+  if(S.observerLoading && !o) return { label:"читаю пульс", tone:"warn", hint:"смотрю, жив ли ночной прогон" };
+  if(!o) return { label:"пульс не читался", tone:"muted", hint:"ждём первый ответ от завода" };
+  const h=o.heartbeat||{};
+  const runs=o.runs||{};
+  const batches=Number(o.batches_active)||0;
+  const resurrects=Number(o.signals&&o.signals.resurrects_24h)||0;
+  const active=Number(runs.active)||0;
+  const broken=Number(runs.broken)||0;
+  const stale=h.stale_min;
+  if(active>0||batches>0) return { label:"ночной прогон жив", tone:"ok", hint:`активных ${active}${batches?` · батчей ${batches}`:""}` };
+  if(broken>0) return { label:"есть сбойные ноды", tone:"warn", hint:`сломанных ${broken} · пульс ${stale==null?"?":stale+"м назад"}` };
+  if(resurrects>0) return { label:"самопочинка срабатывала", tone:"ok", hint:`разбудили ${resurrects} прогонов за 24ч` };
+  if(h.alive===false || (stale!=null && stale>=180)) return { label:"пульс затух", tone:"err", hint:`последняя активность ${stale==null?"неизвестно":stale+"м назад"}` };
+  if(stale==null) return { label:"пульс есть, но без метки", tone:"warn", hint:"источник активности не дал timestamp" };
+  return { label:"завод слушает", tone:"ok", hint:`последняя активность ${stale}м назад` };
+}
+
+function signalLabel(ev){
+  const s=String(ev||"");
+  return s==="graph_resurrect"?"самопочинка":s==="rejected"?"отбраковано":s==="approved"?"в банк":s||"сигнал";
+}
+
+function renderFactoryPulse(){
+  const box=document.getElementById("factory-pulse");
+  if(!box) return;
+  const o=S.observer;
+  const tone=observerTone(o);
+  const up=S.observerUpdatedAt?new Date(S.observerUpdatedAt):null;
+  const updated=up?up.toLocaleTimeString("ru-RU",{hour:"2-digit",minute:"2-digit"}):"—";
+  const gens=o&&o.gens?o.gens:null;
+  const otk=o&&o.otk?o.otk:null;
+  const signals=o&&o.signals?o.signals:null;
+  const signalBits=signals?[
+    signals.resurrects_24h!=null?`воскр ${signals.resurrects_24h}`:null,
+    signals.rejects_24h!=null?`отк ${signals.rejects_24h}`:null,
+  ].filter(Boolean):[];
+  const recentSignals=(o&&o.signals&&Array.isArray(o.signals.recent))?o.signals.recent.slice(0,3):[];
+  const recentBits=recentSignals.map((s)=>{
+    const ev=String(s.event||"");
+    const chip=String(s.chip||"");
+    const label=ev==="graph_resurrect"?"самопочинка":ev==="rejected"?"отбраковано":ev==="approved"?"в банк":ev;
+    return chip ? `${label}: ${chip}` : label;
+  });
+  box.innerHTML="";
+  box.appendChild(el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:11px;color:var(--tx-lo);"},
+    el("span",{class:"mono"},"Ночной пульс"),
+    el("span",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);"},"обновл. "+updated)));
+  box.appendChild(el("div",{style:"display:flex;align-items:center;gap:8px;margin-top:5px;"},
+    el("span",{class:"dot",style:"width:8px;height:8px;background:"+(tone.tone==="ok"?"var(--ok)":tone.tone==="warn"?"var(--warn)":"var(--err)")+";box-shadow:0 0 0 4px rgba(255,255,255,.03);"}),
+    el("span",{style:"font-size:12px;font-weight:600;color:var(--tx-hi);"},tone.label)));
+  box.appendChild(el("div",{style:"font-size:10.5px;color:var(--tx-lo2);line-height:1.35;margin-top:3px;"},tone.hint));
+  if(gens||otk||signalBits.length){
+    const bits=[];
+    if(gens) bits.push(`24h ${gens.last_24h??0}`);
+    if(otk) bits.push(`ОТК ${otk.avg_24h??"?"}${otk.pass_rate!=null?` · pass ${otk.pass_rate}%`:""}`);
+    if(signalBits.length) bits.push(signalBits.join(" · "));
+    box.appendChild(el("div",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);line-height:1.45;margin-top:6px;white-space:pre-wrap;"},bits.join(" · ")));
+  }
+  if(recentBits.length){
+    box.appendChild(el("div",{style:"display:flex;flex-wrap:wrap;gap:5px;margin-top:7px;"},
+      ...recentBits.map((t)=>el("span",{style:"font-size:9.5px;font-family:var(--mono);color:var(--tx-mid);background:var(--bg-chip);border:1px solid var(--bd);padding:2px 6px;border-radius:999px;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"},t))));
+  }
+  box.appendChild(el("div",{style:"display:flex;flex-wrap:wrap;gap:8px;margin-top:9px;"},
+    el("button",{class:"btn sm",onclick:()=>selfHeal("wake",{stale_ms:90000,max_wake:10},"самопочинка запущена")},"⚡ будить"),
+    el("button",{class:"btn sm",onclick:()=>selfHeal("rejudge",{apply:true,max_items:3,since_hours:72},"ОТК карточек запущен")},"↻ rejudge ОТК ?")));
+  if(o&&o.partial){
+    box.appendChild(el("div",{style:"font-size:10.5px;color:var(--warn);line-height:1.35;margin-top:6px;"},"частичный ответ: часть метрик не успела прийти"));
+  }
+  if(S.observerError){
+    box.appendChild(el("div",{style:"font-size:10.5px;color:var(--warn);line-height:1.35;margin-top:6px;"},S.observerError));
+  }
+}
+
+async function loadObserver(){
+  S.observerLoading=true; S.observerError=""; renderFactoryPulse();
+  const r=await api("/observer");
+  S.observerLoading=false;
+  if(r&&r.ok!==false&&!r.error){
+    S.observer=r;
+    S.observerUpdatedAt=r.updated_at||new Date().toISOString();
+    S.observerError="";
+  }else{
+    S.observerError=(r&&r.error)||"observer недоступен";
+  }
+  renderFactoryPulse();
+}
+
 function renderNav(){
-  const nav=document.getElementById("nav"); nav.innerHTML="";
-  SCREENS.forEach(s=>nav.appendChild(el("button",{class:"nav-item"+(S.screen===s.id?" active":""),onclick:()=>go(s.id)},
-    el("span",{class:"nav-chip"},s.chip),
-    el("span",{style:"display:flex;flex-direction:column;align-items:flex-start;min-width:0;"},el("span",{class:"nav-tt"},s.tt),el("span",{class:"nav-st"},s.st)))));
+  const nav=document.getElementById("nav"); nav.innerHTML=""; let lastGrp=null;
+  SCREENS.forEach(s=>{
+    if(s.grp&&s.grp!==lastGrp){ lastGrp=s.grp; nav.appendChild(el("div",{style:"font-size:10px;letter-spacing:1.2px;text-transform:uppercase;color:var(--tx-lo2);padding:13px 9px 5px;font-weight:600;"},s.grp)); }
+    nav.appendChild(el("button",{class:"nav-item"+(S.screen===s.id?" active":""),onclick:()=>go(s.id)},
+      el("span",{class:"nav-chip"},s.chip),
+      el("span",{style:"display:flex;flex-direction:column;align-items:flex-start;min-width:0;"},el("span",{class:"nav-tt"},s.tt),el("span",{class:"nav-st"},s.st))));
+  });
 }
 function go(id){ S.screen=id; renderNav(); render(); }
 // персист сессии: после reload вернуться на тот же экран/нишу/открытый рецепт (раньше сбрасывало на старт)
@@ -299,10 +420,273 @@ function header(title,meta,right){
 function loadingCard(t){ return el("div",{class:"card",style:"padding:18px;display:flex;align-items:center;gap:12px;"},el("div",{class:"spinner"}),el("span",{class:"muted"},t||"загрузка…")); }
 function emptyBox(t){ return el("div",{class:"empty"},el("div",{style:"font-size:26px;opacity:.4;"},"◇"),el("div",{style:"font-size:12.5px;max-width:300px;"},t)); }
 
+// ── ЭКРАН ТЕКСТА: третий вид контента (заглушка — следующая линия завода). ──
+function screenText(root){
+  header("Тексты","посты · описания · SEO");
+  root.appendChild(emptyBox("Скоро: третья линия завода — генерация постов, описаний карточек WB/Ozon и SEO-текстов. Общий мозг (бренд/ниши/winners), своя линия вывода — как видео и статика."));
+}
+
+// ── ЭКРАН СТАТИКИ: новая линия завода (пины/карточки/IG) — код-рендер StaticV1 (renderStill, без fal). ──
+function screenStatic(root){
+  header("Статика","пины · карточки · IG");
+  S.staticForm=S.staticForm||{article:"",formats:["card_3x4","pin_2x3"],archetype:"auto",headline:"",price:"",objective:"reach"};
+  const f=S.staticForm;
+  const FORMATS=[["card_3x4","Карточка WB 3:4"],["pin_2x3","Пин 2:3"],["ig_4x5","IG/VK 4:5"]];
+  const ARCH=[["auto","Авто"],["headline_hero","Хедлайн-герой"],["product_color","Продукт на цвете"],["social_proof","Соц-пруф"],["collage","Коллаж 2×2"],["card_benefits","Карточка-выгоды"]];
+  const inp=(ph,val,on)=>el("input",{value:val||"",placeholder:ph,style:"width:100%;background:var(--bg-input);border:1px solid var(--bd2);border-radius:7px;padding:8px 10px;color:var(--tx-hi);font-family:inherit;font-size:13px;box-sizing:border-box;",oninput:e=>on(e.target.value)});
+  const lab=t=>el("div",{class:"muted",style:"font-size:12px;margin-bottom:5px;"},t);
+  const chip=(label,active,on)=>el("button",{class:"btn sm",style:active?"background:var(--acc-soft);border-color:var(--acc);color:var(--acc-lt);":"",onclick:on},label);
+  const fmtRow=el("div",{style:"display:flex;flex-wrap:wrap;gap:7px;"});
+  FORMATS.forEach(([id,l])=>fmtRow.appendChild(chip((f.formats.includes(id)?"✓ ":"")+l,f.formats.includes(id),()=>{f.formats=f.formats.includes(id)?f.formats.filter(x=>x!==id):[...f.formats,id];render();})));
+  const archSel=el("select",{style:"width:100%;background:var(--bg-input);border:1px solid var(--bd2);border-radius:7px;padding:8px 10px;color:var(--tx-hi);font-family:inherit;font-size:13px;",onchange:e=>{f.archetype=e.target.value;}});
+  ARCH.forEach(([id,l])=>{const o=el("option",{value:id},l); if(f.archetype===id)o.setAttribute("selected","selected"); archSel.appendChild(o);});
+  const objRow=el("div",{style:"display:flex;gap:7px;"},chip("Reach",f.objective==="reach",()=>{f.objective="reach";render();}),chip("Saves",f.objective==="saves",()=>{f.objective="saves";render();}));
+  const form=el("div",{class:"card",style:"padding:16px;display:flex;flex-direction:column;gap:12px;max-width:640px;"},
+    el("div",{},lab("Артикул товара"),inp("CLR00912",f.article,v=>f.article=v)),
+    el("div",{},lab("Форматы (одно намерение → N экспортов)"),fmtRow),
+    el("div",{style:"display:flex;gap:12px;flex-wrap:wrap;"},
+      el("div",{style:"flex:1;min-width:200px;"},lab("Архетип"),archSel),
+      el("div",{},lab("Цель цвета"),objRow)),
+    el("div",{},lab("Хук (≤7 слов, обрежется)"),inp("Сумка, в которую влезает рабочая неделя",f.headline,v=>f.headline=v)),
+    el("div",{},lab("Цена"),inp("2 990 ₽",f.price,v=>f.price=v)),
+    el("button",{class:"btn primary",style:"align-self:flex-start;",onclick:()=>genStatic()},"✨ Сгенерировать"),
+    el("div",{class:"muted",style:"font-size:11.5px;"},"Код-рендер (renderStill) — без fal. Канон: docs/factory-pin-canon.md"));
+  root.appendChild(form);
+  const res=el("div",{id:"static-res",style:"margin-top:16px;"}); root.appendChild(res); renderStaticResults(res);
+}
+function renderStaticResults(c){
+  c=c||document.getElementById("static-res"); if(!c)return; c.innerHTML="";
+  const jobs=S.staticJobs||[];
+  if(!jobs.length){ c.appendChild(emptyBox("Статики появятся здесь после генерации")); return; }
+  c.appendChild(el("div",{class:"muted",style:"font-size:12px;margin-bottom:8px;"},"Готово "+jobs.filter(j=>j.url).length+"/"+jobs.length));
+  const grid=el("div",{style:"display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;"});
+  jobs.forEach(j=>{
+    const ar=j.format==="card_3x4"?"3/4":j.format==="ig_4x5"?"4/5":"2/3";
+    const top=el("div",{style:"aspect-ratio:"+ar+";background:var(--bg-node);display:flex;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;",onclick:()=>j.url&&openMedia(j.url,{video:false})});
+    if(j.url)top.appendChild(el("img",{src:j.url,style:"width:100%;height:100%;object-fit:cover;"}));
+    else if(j.error)top.appendChild(el("span",{style:"color:var(--err);font-size:11px;padding:8px;text-align:center;"},trunc(j.error,80)));
+    else top.appendChild(el("div",{class:"spinner"}));
+    const foot=el("div",{style:"display:flex;justify-content:space-between;align-items:center;padding:6px 8px;font-size:11px;color:var(--tx-mid);"},
+      el("span",{},j.label),
+      j.url?el("span",{style:"display:flex;gap:9px;"},el("span",{style:"cursor:pointer;color:var(--ok);",title:"в банк (доработка помощницы)",onclick:()=>toast("банк PNG — в очереди помощницы (canon)")},"✓"),el("a",{href:j.url,target:"_blank",style:"color:var(--acc-lt);"},"↧")):el("span",{class:"muted"},"…"));
+    grid.appendChild(el("div",{class:"card",style:"overflow:hidden;"},top,foot));
+  });
+  c.appendChild(grid);
+}
+
+function workerStatusTone(state){
+  return state==="alive" ? {c:"var(--ok)", bg:"var(--ok-bg)", label:"ALIVE"}
+    : state==="stale" ? {c:"var(--warn)", bg:"var(--warn-bg)", label:"STALE"}
+    : state==="dead" ? {c:"var(--err)", bg:"var(--err-bg)", label:"DEAD"}
+    : {c:"var(--tx-lo2)", bg:"var(--bg-input)", label:"UNKNOWN"};
+}
+
+function fmtSecAgo(sec){
+  if(sec==null) return "—";
+  if(sec < 60) return sec + "s";
+  const m = Math.floor(sec / 60);
+  const r = sec % 60;
+  return m + "m" + (r ? " " + r + "s" : "");
+}
+
+function queueTaskTone(status){
+  return {
+    todo:{c:"var(--tx-lo2)", bg:"var(--bg-input)", label:"todo"},
+    doing:{c:"var(--acc-lt)", bg:"var(--vio-bg)", label:"doing"},
+    blocked:{c:"var(--warn)", bg:"var(--warn-bg)", label:"blocked"},
+    pr_open:{c:"var(--ok)", bg:"var(--ok-bg)", label:"pr_open"},
+    done:{c:"var(--ok)", bg:"var(--ok-bg)", label:"done"},
+  }[status] || {c:"var(--tx-lo2)", bg:"var(--bg-input)", label:status||"?"};
+}
+
+async function screenWorker(root){
+  if(S.workerTimer){ clearTimeout(S.workerTimer); S.workerTimer=null; }
+  root.innerHTML="";
+  header("Railway worker","heartbeat · очередь · night log", el("div",{class:"hdr-r"},
+    el("button",{class:"btn",onclick:()=>screenWorker(root)},"↻ Обновить"),
+    el("button",{class:"btn primary",onclick:()=>go("learn")},"🧠 Обучение")));
+  const wrap=el("div",{class:"scroll",style:"padding:18px;"}); root.appendChild(wrap);
+  wrap.appendChild(loadingCard("смотрю heartbeat и очередь…"));
+  const d=await api("/worker-state");
+  if(S.screen!=="worker") return;
+  S.workerState=d;
+  wrap.innerHTML="";
+  if(d.error){ wrap.appendChild(emptyBox("ошибка worker-state: "+d.error)); return; }
+
+  const worker=d.worker||null;
+  const q=(worker&&Array.isArray(worker.queue)&&worker.queue.length?worker.queue:(d.queue||[]))||[];
+  const live=worker&&worker.liveness?worker.liveness:{state:"unknown",age_sec:null};
+  const obs=S.observer||null;
+  const obsTone=observerTone(obs);
+  const recentSignals=(obs&&obs.signals&&Array.isArray(obs.signals.recent))?obs.signals.recent.slice(0,4):[];
+  const liveTone=workerStatusTone(live.state);
+  const aliveNote=live.state==="alive"?"heartbeat свежий":live.state==="stale"?"heartbeat молчит":"worker не отвечает";
+
+  const top=el("div",{style:"display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin-bottom:14px;"});
+  top.appendChild(el("div",{class:"card",style:"padding:15px;"},
+    el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;"},
+      el("div",{style:"font-size:14px;font-weight:600;"},"Статус"),
+      el("span",{class:"mono",style:"font-size:10px;color:"+liveTone.c+";background:"+liveTone.bg+";padding:3px 7px;border-radius:5px;font-weight:700;"},liveTone.label)),
+    el("div",{style:"font-size:22px;font-weight:700;color:"+liveTone.c+";"},aliveNote),
+    el("div",{style:"font-size:11.5px;color:var(--tx-lo);margin-top:6px;line-height:1.5;"},
+      "last_seen: ",el("b",{style:"color:var(--tx-hi);"},worker&&worker.last_seen?fmtWhen(worker.last_seen):"—"),
+      " · age: ",el("b",{style:"color:var(--tx-hi);"},fmtSecAgo(live.age_sec)),
+      " · db: ",el("b",{style:"color:var(--tx-hi);"},d.db_ready?"ok":"fallback"))));
+  top.appendChild(el("div",{class:"card",style:"padding:15px;"},
+    el("div",{style:"font-size:14px;font-weight:600;margin-bottom:10px;"},"Текущая задача"),
+    worker&&worker.current_task_id?el("div",{style:"display:flex;flex-direction:column;gap:6px;"},
+      el("div",{style:"font-size:19px;font-weight:700;"},worker.current_task_id),
+      el("div",{style:"font-size:13px;color:var(--tx-bd);line-height:1.45;"},worker.current_task_title||"—"),
+      el("div",{style:"font-size:11.5px;color:var(--tx-lo);line-height:1.45;"},
+        worker.branch?el("span",{},el("b",{style:"color:var(--tx-hi);"},"branch "),worker.branch," · "):null,
+        worker.pr?el("span",{},el("b",{style:"color:var(--tx-hi);"},"PR "),worker.pr," · "):null,
+        worker.progress?el("span",{},el("b",{style:"color:var(--tx-hi);"},"progress "),worker.progress):"")):
+      el("div",{class:"muted",style:"font-size:12px;line-height:1.5;"},"worker ещё не прислал текущую задачу"),
+    worker&&worker.blocker?el("div",{style:"margin-top:10px;font-size:11.5px;color:var(--warn);background:var(--warn-bg);border:1px solid rgba(214,169,78,.55);padding:8px 10px;border-radius:8px;"},"Блокер: "+worker.blocker):null));
+  top.appendChild(el("div",{class:"card",style:"padding:15px;"},
+    el("div",{style:"font-size:14px;font-weight:600;margin-bottom:10px;"},"Очередь"),
+    el("div",{style:"display:flex;align-items:center;gap:8px;flex-wrap:wrap;"},
+      el("span",{class:"mono",style:"font-size:10px;background:var(--bg-input);border:1px solid var(--bd2);padding:3px 7px;border-radius:5px;"},"todo "+(q.filter(t=>t.status==="todo").length||0)),
+      el("span",{class:"mono",style:"font-size:10px;background:var(--vio-bg);border:1px solid var(--bd2);padding:3px 7px;border-radius:5px;"},"doing "+(q.filter(t=>t.status==="doing").length||0)),
+      el("span",{class:"mono",style:"font-size:10px;background:var(--warn-bg);border:1px solid var(--bd2);padding:3px 7px;border-radius:5px;"},"blocked "+(q.filter(t=>t.status==="blocked").length||0)),
+      el("span",{class:"mono",style:"font-size:10px;background:var(--ok-bg);border:1px solid var(--bd2);padding:3px 7px;border-radius:5px;"},"done "+(q.filter(t=>t.status==="done").length||0))),
+    el("div",{style:"font-size:11.5px;color:var(--tx-lo);margin-top:10px;line-height:1.45;"},
+      "Отслеживание идёт через heartbeat. Если он пропадает, верхняя карточка станет ",el("b",{style:"color:var(--warn);"},"stale")," или ",el("b",{style:"color:var(--err);"},"dead"),".")));
+  wrap.appendChild(top);
+
+  const signalBits=(obs&&obs.signals)?[
+    obs.signals.resurrects_24h!=null?`воскр ${obs.signals.resurrects_24h}`:null,
+    obs.signals.rejects_24h!=null?`отк ${obs.signals.rejects_24h}`:null,
+    obs.runs&&obs.runs.active!=null?`active ${obs.runs.active}`:null,
+    obs.batches_active!=null?`batches ${obs.batches_active}`:null,
+  ].filter(Boolean):[];
+  const incident=el("div",{class:"card",style:"padding:14px;margin-bottom:14px;border-color:"+(live.state==="dead"?"var(--err)":live.state==="stale"||worker&&worker.blocker?"var(--warn)":"var(--bd)")+";background:"+(live.state==="dead"?"var(--err-bg)":live.state==="stale"||worker&&worker.blocker?"var(--warn-bg)":"var(--bg-card)")+";"},
+    el("div",{style:"display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;"},
+      el("div",{style:"min-width:0;display:flex;flex-direction:column;gap:4px;"},
+        el("div",{style:"display:flex;align-items:center;gap:8px;flex-wrap:wrap;"},
+          el("span",{class:"mono",style:"font-size:10px;color:"+(obsTone.tone==="ok"?"var(--ok)":obsTone.tone==="warn"?"var(--warn)":"var(--err)")+";background:"+(obsTone.tone==="ok"?"var(--ok-bg)":obsTone.tone==="warn"?"var(--warn-bg)":"var(--err-bg)")+";padding:3px 7px;border-radius:5px;font-weight:700;"},obsTone.label),
+          el("span",{style:"font-size:13px;font-weight:700;color:var(--tx-hi);"},"Инцидентная сводка"),
+          worker&&worker.current_task_id?el("span",{class:"mono",style:"font-size:10px;color:#fff;background:var(--acc);padding:3px 7px;border-radius:5px;font-weight:700;"},"task "+worker.current_task_id):null),
+        el("div",{style:"font-size:12px;line-height:1.5;color:var(--tx-bd);"},
+          "что видим: ",el("b",{style:"color:var(--tx-hi);"},obsTone.hint),
+          worker&&worker.blocker?el("span",{}, " · ",el("b",{style:"color:var(--warn);"},"blocker: "),worker.blocker):null,
+          live.state!=="alive"&&live.age_sec!=null?el("span",{}, " · ",el("b",{style:"color:var(--warn);"},"heartbeat: "),fmtSecAgo(live.age_sec)," назад"):""),
+        el("div",{style:"font-size:11.5px;line-height:1.45;color:var(--tx-lo);"},
+          "последняя задача: ",el("b",{style:"color:var(--tx-hi);"},worker&&worker.current_task_title?worker.current_task_title:"—"))),
+      el("div",{style:"display:flex;flex-direction:column;gap:8px;align-items:flex-end;"},
+        el("div",{style:"display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-end;"},
+          ...signalBits.map((bit)=>el("span",{class:"mono",style:"font-size:9.5px;color:var(--tx-mid);background:var(--bg-chip);border:1px solid var(--bd);padding:2px 6px;border-radius:999px;"} ,bit))),
+        el("div",{style:"display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;"},
+          el("button",{class:"btn sm",onclick:()=>selfHeal("wake",{stale_ms:90000,max_wake:10},"самопочинка запущена")},"⚡ будить"),
+          el("button",{class:"btn sm",onclick:()=>selfHeal("rejudge",{apply:true,max_items:3,since_hours:72},"ОТК карточек запущен")},"↻ rejudge ОТК ?")))));
+  if(recentSignals.length){
+    incident.appendChild(el("div",{style:"display:flex;flex-wrap:wrap;gap:5px;margin-top:10px;"},
+          ...recentSignals.map((s)=>el("span",{style:"font-size:9.5px;font-family:var(--mono);color:var(--tx-mid);background:var(--bg-input);border:1px solid var(--bd);padding:2px 6px;border-radius:999px;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"},
+            `${signalLabel(s.event)}${s.chip?`: ${s.chip}`:""}`))));
+  }
+  if(!obs){
+    incident.appendChild(emptyBox("observer ещё не загрузился — после первого пинга здесь появится причина простоя"));
+  }
+  wrap.appendChild(incident);
+
+  const list=el("div",{style:"display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:12px;"}); wrap.appendChild(list);
+  if(!q.length){
+    list.appendChild(emptyBox("очередь пуста или worker ещё не прислал snapshot"));
+  } else {
+    const currentId=worker&&worker.current_task_id?String(worker.current_task_id):"";
+    const ordered=[...q].sort((a,b)=>{
+      const ac=String(a.id||"")===currentId;
+      const bc=String(b.id||"")===currentId;
+      if(ac!==bc) return ac?-1:1;
+      const ap=Number(a.priority)||99;
+      const bp=Number(b.priority)||99;
+      if(ap!==bp) return ap-bp;
+      return String(a.title||"").localeCompare(String(b.title||""));
+    });
+    ordered.forEach((t)=>{
+      const tt=queueTaskTone(t.status);
+      const isCurrent=String(t.id||"")===currentId;
+      list.appendChild(el("div",{class:"card",style:"padding:14px;display:flex;flex-direction:column;gap:10px;border-color:"+(isCurrent?"var(--acc)":"rgba(255,255,255,.06)")+";box-shadow:"+(isCurrent?"0 0 0 2px rgba(124,116,255,.14)":"none")+";background:"+(isCurrent?"rgba(124,116,255,.04)":"var(--bg-card)")+";"},
+        el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:10px;"},
+          el("div",{style:"display:flex;align-items:center;gap:8px;min-width:0;"},
+            el("div",{style:"font-size:12px;font-weight:700;color:var(--tx-hi);"},t.id||"task"),
+            isCurrent?el("span",{class:"mono",style:"font-size:9.5px;color:#fff;background:var(--acc);padding:2px 6px;border-radius:5px;font-weight:700;"},"current"):null),
+          el("span",{class:"mono",style:"font-size:10px;color:"+tt.c+";background:"+tt.bg+";padding:3px 7px;border-radius:5px;font-weight:700;"},tt.label)),
+        el("div",{style:"font-size:13px;font-weight:600;line-height:1.45;"},t.title||"—"),
+        el("div",{style:"font-size:11.5px;color:var(--tx-lo);line-height:1.5;"},
+          t.goal?el("div",{},el("b",{style:"color:var(--tx-hi);"},"цель: "),t.goal):null,
+          t.zone?el("div",{},el("b",{style:"color:var(--tx-hi);"},"зона: "),t.zone):null,
+          t.branch?el("div",{},el("b",{style:"color:var(--tx-hi);"},"ветка: "),t.branch):null,
+          t.pr?el("div",{},el("b",{style:"color:var(--tx-hi);"},"PR: "),t.pr):null),
+        t.acceptance&&t.acceptance.length?el("div",{style:"font-size:11.5px;color:var(--tx-bd);line-height:1.45;"},
+          el("div",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);margin-bottom:4px;"},"acceptance"),
+          ...t.acceptance.slice(0,3).map(s=>el("div",{style:"margin-left:2px;"},"• ",s))):null,
+        t.checks&&t.checks.length?el("div",{style:"font-size:11.5px;color:var(--tx-bd);line-height:1.45;"},
+          el("div",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);margin-bottom:4px;"},"checks"),
+          ...t.checks.slice(0,3).map(s=>el("div",{style:"margin-left:2px;"},"• ",s))):null,
+        t.blockers&&t.blockers.length?el("div",{style:"font-size:11.5px;color:var(--warn);background:var(--warn-bg);padding:8px 10px;border-radius:8px;line-height:1.45;"},
+          el("div",{class:"mono",style:"font-size:10px;color:var(--warn);margin-bottom:3px;"},"blockers"),
+          ...t.blockers.slice(0,2).map(s=>el("div",{},s))):null,
+        t.result?el("div",{style:"font-size:11px;color:var(--tx-lo2);"},t.result):null,
+        el("div",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);display:flex;justify-content:space-between;gap:8px;"},
+          el("span",{},t.priority?("prio "+t.priority):""),
+          el("span",{},t.pr?("pr "+t.pr):""))));
+    });
+  }
+
+  const log=el("div",{style:"margin-top:16px;display:grid;grid-template-columns:1.15fr .85fr;gap:12px;"});
+  wrap.appendChild(log);
+  const logCard=el("div",{class:"card",style:"padding:14px;"});
+  logCard.appendChild(el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;"},
+    el("div",{style:"font-size:14px;font-weight:600;"},"Night log"),
+    el("span",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);"},"docs/factory-railway-night-log.md")));
+  const topLines=((d.docs&&d.docs.log&&d.docs.log.lines)||[]).slice(0,14);
+  if(!topLines.length) logCard.appendChild(emptyBox("ночной лог пуст"));
+  else logCard.appendChild(el("div",{class:"mono",style:"font-size:10.5px;color:var(--tx-bd);line-height:1.65;white-space:pre-wrap;"},topLines.join("\n")));
+  log.appendChild(logCard);
+  const fileCard=el("div",{class:"card",style:"padding:14px;"});
+  fileCard.appendChild(el("div",{style:"font-size:14px;font-weight:600;margin-bottom:10px;"},"Источники"));
+  fileCard.appendChild(el("div",{style:"display:flex;flex-direction:column;gap:8px;font-size:11.5px;color:var(--tx-bd);line-height:1.5;"},
+    el("div",{},el("b",{style:"color:var(--tx-hi);"},"queue md")," · ",fmtWhen(d.docs&&d.docs.queue_file_mtime||null)),
+    el("div",{},el("b",{style:"color:var(--tx-hi);"},"night log")," · ",fmtWhen(d.docs&&d.docs.log_file_mtime||null)),
+    el("div",{},el("b",{style:"color:var(--tx-hi);"},"db")," · ",d.db_ready?"connected":"docs fallback"),
+    d.db_error?el("div",{style:"color:var(--warn);"},"DB warning: "+d.db_error):null,
+    el("div",{style:"color:var(--tx-lo);"},"Если worker умрёт, heartbeat застынет и верхняя карточка пометится stale/dead.")));
+  log.appendChild(fileCard);
+
+  S.workerTimer=setTimeout(()=>{ if(S.screen==="worker")screenWorker(document.getElementById("screen")); },15000);
+}
+
+async function genStatic(){
+  const f=S.staticForm;
+  if(!f.headline.trim()){ toast("впиши хук"); return; }
+  if(!f.formats.length){ toast("выбери формат"); return; }
+  const autoArch={card_3x4:"card_benefits",pin_2x3:"headline_hero",ig_4x5:"product_color"};
+  const labels={card_3x4:"Карточка 3:4",pin_2x3:"Пин 2:3",ig_4x5:"IG 4:5"};
+  S.staticJobs=[]; renderStaticResults();
+  for(const fmt of f.formats){
+    const arch=f.archetype==="auto"?(autoArch[fmt]||"headline_hero"):f.archetype;
+    const job={format:fmt,label:labels[fmt]||fmt,id:null,url:null,error:null}; S.staticJobs.push(job); renderStaticResults();
+    const r=await api("/static-generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({article:f.article,format:fmt,archetype:arch,headline:f.headline,price:f.price,objective:f.objective})});
+    if(r&&r.task_id){ job.id=r.task_id; pollStatic(job); } else { job.error=(r&&r.error)||"submit fail"; }
+    renderStaticResults();
+  }
+}
+async function pollStatic(job){
+  for(let i=0;i<40;i++){
+    await new Promise(s=>setTimeout(s,3000));
+    if(S.screen!=="static")return;
+    const s=await api("/static-status?id="+encodeURIComponent(job.id));
+    if(s&&s.status==="done"&&s.videoUrl){ job.url=s.videoUrl; renderStaticResults(); return; }
+    if(s&&s.status==="error"&&s.retryable===false){ job.error=s.error||"render error"; renderStaticResults(); return; }
+  }
+  job.error="таймаут рендера"; renderStaticResults();
+}
+
 async function render(){
   saveSession(); // запоминаем текущий экран/нишу/рецепт для возврата после reload
   const root=document.getElementById("screen"); root.innerHTML="";
-  ({center:screenCenter,compete:screenCompete,canvas:screenCanvas,inspector:screenInspector,assembly:screenAssembly,library:screenLibrary,balances:screenBalances,learn:screenLearn,ds:screenDS}[S.screen]||screenCenter)(root);
+  ({center:screenCenter,compete:screenCompete,canvas:screenCanvas,inspector:screenInspector,assembly:screenAssembly,library:screenLibrary,static:screenStatic,text:screenText,worker:screenWorker,balances:screenBalances,learn:screenLearn,ds:screenDS}[S.screen]||screenCenter)(root);
   refreshAssistStep(); // проводник: пересчитать «следующий шаг» под новый экран/состояние
 }
 
@@ -311,14 +695,37 @@ async function render(){
 // Иначе всё, что уже загружено, берётся из памяти — переключение экранов НЕ дёргает сеть/Claude.
 async function screenCenter(root, force){
   if(force){ S.centerLoaded=false; S.briefCache={}; }
+  if(force || !S.workerState){
+    const workerData=await api("/worker-state");
+    if(S.screen!=="center") return;
+    S.workerState=workerData;
+  }
+  const workerRow=S.workerState&&S.workerState.worker||null;
+  const workerLive=workerRow&&workerRow.liveness?workerRow.liveness.state:"unknown";
   header("Командный центр","карта осознания", el("div",{class:"hdr-r"},
     el("div",{class:"searchbox",title:"поиск — скоро",style:"width:240px;opacity:.5;cursor:not-allowed;"},el("span",{style:"font-size:13px;"},"⌕"),el("span",{},"Поиск ниши, товара…")),
     el("button",{class:"btn",title:"автопилот: заполнить черновики ИИ + сгенерить + ОТК + банк, прошедшее уйдёт в Telegram на ревью",onclick:()=>openNightRun()},"🌙 Ночной прогон"),
     el("button",{class:"btn",title:"фикс-айдентика брендов: голос/персона/шрифт/цвет/CTA/бан-слова/хэштеги — автозаполнение берёт как дефолты",onclick:()=>openBrandKit()},"🎨 Бренд-кит"),
+    el("button",{class:"btn",title:workerRow?`живой статус Railway worker · ${workerLive}${workerRow.current_task_id?` · ${workerRow.current_task_id}`:""}`:"живой статус Railway worker и очередь задач",onclick:()=>go("worker")},
+      "🛰 RW ",workerLive==="alive"?"живой":workerLive==="stale"?"stale":workerLive==="dead"?"dead":"?",workerRow&&workerRow.current_task_id?` · ${workerRow.current_task_id}`:""),
     el("button",{class:"btn",title:"принудительно пересобрать данные и разбор ниши",onclick:()=>screenCenter(root,true)},"↻ Обновить"),
     el("button",{class:"btn primary",onclick:()=>toast("Новая ниша — заведи товары в кабинете")},"+ Новая ниша")));
   const left=el("div",{class:"scroll"}), aside=el("div",{class:"aside",style:"width:340px;padding:18px;"});
   root.appendChild(left); root.appendChild(aside);
+  if(workerRow){
+    const tone=workerStatusTone(workerLive);
+    left.appendChild(el("div",{class:"card",style:"padding:12px 14px;margin-bottom:14px;border-color:"+(workerLive==="dead"?"var(--err)":workerLive==="stale"?"var(--warn)":"var(--bd)")+";background:"+(workerLive==="dead"?"var(--err-bg)":workerLive==="stale"?"var(--warn-bg)":"var(--bg-card)")+";display:flex;align-items:flex-start;justify-content:space-between;gap:12px;"},
+      el("div",{style:"min-width:0;display:flex;flex-direction:column;gap:4px;"},
+        el("div",{style:"display:flex;align-items:center;gap:8px;flex-wrap:wrap;"},
+          el("span",{class:"mono",style:"font-size:10px;color:"+tone.c+";background:"+tone.bg+";padding:3px 7px;border-radius:5px;font-weight:700;"},tone.label),
+          el("span",{style:"font-size:12px;font-weight:700;"},"Railway worker"),
+          workerRow.current_task_id?el("span",{class:"mono",style:"font-size:10px;color:#fff;background:var(--acc);padding:3px 7px;border-radius:5px;font-weight:700;"},"task "+workerRow.current_task_id):null),
+        el("div",{style:"font-size:11.5px;line-height:1.45;color:var(--tx-bd);"},
+          "heartbeat: ",el("b",{style:"color:var(--tx-hi);"},workerRow.last_seen?fmtWhen(workerRow.last_seen):"—"),
+          " · ",el("b",{style:"color:var(--tx-hi);"},workerRow.current_task_title||"нет активной задачи"),
+          workerRow.blocker?el("span",{}, " · blocker: ",el("b",{style:"color:var(--warn);"},workerRow.blocker)):"")),
+      el("button",{class:"btn sm",onclick:()=>go("worker")},"Открыть worker")));
+  }
   const nicheHead=el("div",{style:"display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;"},
     el("h2",{class:"sec-h"},"НИШИ ",el("span",{class:"cnt"},String(S.niches.length||""))),
     el("div",{style:"display:flex;gap:14px;"},
@@ -500,7 +907,18 @@ async function screenCompete(root){
   const feed=d.feed||[];
   loadCovers(feed); // подтянуть обложки/эмбеды (oEmbed) → серые карточки станут визуальными
   feedList.innerHTML="";
-  if(!feed.length)feedList.appendChild(emptyBox("нет виральных видео в нише"));
+  if(!feed.length){ // #4: пустая ниша — не тупик, а CTA «найти конкурентов» (сеет viral_videos из трендов)
+    const box=el("div",{style:"display:flex;flex-direction:column;align-items:center;gap:11px;padding:10px 6px;text-align:center;"});
+    box.appendChild(el("div",{class:"muted",style:"font-size:12px;line-height:1.5;"},"нет виральных видео в нише «"+nicheLabel(S.activeNiche)+"»"));
+    const btn=el("button",{class:"btn primary",style:"width:100%;justify-content:center;"},"🔎 Найти конкурентов");
+    btn.onclick=async()=>{ btn.disabled=true; btn.textContent="ищу конкурентов…";
+      const r=await api("/seed-niche",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({niche:S.activeNiche,query:nicheLabel(S.activeNiche)})});
+      if(r&&r.ok&&r.inserted>0){ toast("нашёл "+r.inserted+" видео → лента наполнена"); delete S.feedCache[S.activeNiche]; if(S.screen==="compete")screenCompete(document.getElementById("screen")); }
+      else { btn.disabled=false; btn.textContent="🔎 Найти конкурентов"; toast(r&&r.error?("не вышло: "+r.error):"источник не вернул видео — попробуй позже"); } };
+    box.appendChild(btn);
+    box.appendChild(el("div",{class:"mono",style:"font-size:9.5px;color:var(--tx-lo3);"},"тянем залетевшие TikTok-видео ниши"));
+    feedList.appendChild(box);
+  }
   feed.forEach((v,i)=>{
     const sel=S.selectedVideo===v.id;
     feedList.appendChild(el("div",{style:"display:flex;gap:10px;padding:8px;border-radius:9px;cursor:pointer;"+(sel?"background:var(--bg-node);border:1.5px solid var(--acc);box-shadow:0 0 0 3px rgba(124,116,255,.08);":"background:var(--bg-card);border:1px solid var(--bd);"),
@@ -759,6 +1177,26 @@ function inspectorField(f,n){
         opts.forEach(o=>sel.appendChild(el("option",{value:o.id,selected:String(cur)===String(o.id)?"selected":null},(o.name||o.id)+(o.meta?" · "+o.meta:"")))); }
       else if(!src.builtin)sel.appendChild(el("option",{value:""},"нет данных (нужны ключи Creatify в Vercel)"));
     })();
+  } else if(f.ui==="picker"&&S.tool==="disk_real"){
+    // #20: живой пикер реальной съёмки по артикулу рецепта — оператор ВЫБИРАЕТ кадр, а не печатает вслепую
+    const txt=el("input",{class:"input",style:"font-family:var(--mono);font-size:11px;",placeholder:"URL клипа или выбери кадр ниже…",value:cur||"",oninput:(e)=>set(e.target.value)});
+    wrap.appendChild(txt);
+    const grid=el("div",{style:"display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:8px;"}); wrap.appendChild(grid);
+    const hint=(t)=>{ grid.innerHTML=""; grid.appendChild(el("div",{class:"muted",style:"grid-column:1/-1;font-size:10.5px;"},t)); };
+    const art=(S.recipe&&S.recipe.recipe&&S.recipe.recipe.article)||"";
+    if(!art)hint("нет артикула рецепта — впиши URL вручную");
+    else{ hint("ищу съёмку артикула "+art+"…");
+      (async()=>{ const r=await api("/disk-source",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({article:art})});
+        if(S.selectedNode!==n||S.tool!=="disk_real")return;
+        const imgs=(r&&r.images)||[];
+        if(!imgs.length){ hint("нет реальной съёмки по артикулу — впиши URL вручную"); return; }
+        grid.innerHTML="";
+        imgs.slice(0,12).forEach(im=>{ const cell=el("div",{title:im.name||im.path||"",style:"aspect-ratio:3/4;border-radius:6px;overflow:hidden;cursor:pointer;background:var(--bg-card);border:1.5px solid "+(String(cur)===String(im.url)?"var(--acc)":"var(--bd2)")+";"});
+          cell.onclick=()=>{ set(im.url); txt.value=im.url||""; [...grid.children].forEach(c=>c.style.borderColor="var(--bd2)"); cell.style.borderColor="var(--acc)"; };
+          if(im.url)cell.appendChild(el("img",{src:im.url,loading:"lazy",style:"width:100%;height:100%;object-fit:cover;"}));
+          grid.appendChild(cell); });
+      })();
+    }
   } else if(f.ui==="file"||f.ui==="picker"){
     wrap.appendChild(el("div",{style:"display:flex;align-items:center;gap:10px;background:var(--bg-input);border:1px dashed var(--bd3);border-radius:8px;padding:10px;"},
       el("div",{style:"width:32px;height:42px;border-radius:5px;background:repeating-linear-gradient(135deg,#262b33 0 6px,#20242b 6px 12px);flex:none;"}),
@@ -1236,9 +1674,14 @@ function genCard(g){ const a=g.analysis||{}; const isVid=g.kind==="video"; const
   const thumb=el("div",{class:"ph",style:"aspect-ratio:9/14;position:relative;display:flex;align-items:center;justify-content:center;overflow:hidden;background:#0c0d10;"},
     win?el("span",{class:"mono tbadge",style:"position:absolute;top:7px;left:7px;z-index:2;background:var(--ok);"},"★ ПОБЕДИТЕЛЬ"):null,
     el("span",{style:"position:absolute;z-index:2;width:34px;height:34px;border-radius:50%;background:rgba(12,13,16,.6);border:1px solid #3a414d;display:flex;align-items:center;justify-content:center;font-size:12px;color:var(--tx-hi);"},"▶"));
-  // реальный кадр в плитке (а не полосатый плейсхолдер) — видно, ЧТО за генерация
-  if(g.url){ if(isVid)thumb.insertBefore(el("video",{src:g.url+"#t=0.1",muted:"muted",playsinline:"playsinline",preload:"metadata",style:"position:absolute;inset:0;width:100%;height:100%;object-fit:cover;"}),thumb.firstChild);
-    else thumb.insertBefore(el("img",{src:g.url,style:"position:absolute;inset:0;width:100%;height:100%;object-fit:cover;"}),thumb.firstChild); }
+  // реальный кадр в плитке (а не полосатый плейсхолдер) — видно, ЧТО за генерация.
+  // #21: у видео приоритет — сохранённый постер-кадр (a.poster): <video> не рендерит первый кадр на
+  // supabase (range-requests) → раньше пустые квадраты. Старые гены без постера — фолбэк на кадр из <video>.
+  const COVER="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;";
+  if(g.url){
+    if(isVid&&a.poster)thumb.insertBefore(el("img",{src:a.poster,loading:"lazy",style:COVER}),thumb.firstChild);
+    else if(isVid)thumb.insertBefore(el("video",{src:g.url+"#t=0.1",muted:"muted",playsinline:"playsinline",preload:"metadata",style:COVER}),thumb.firstChild);
+    else thumb.insertBefore(el("img",{src:g.url,loading:"lazy",style:COVER}),thumb.firstChild); }
   return el("div",{class:"card",style:"overflow:hidden;cursor:pointer;",onclick:()=>openMedia(g.url,{video:isVid})},
     thumb,
     el("div",{style:"padding:10px;"},el("div",{style:"font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"},g.name||"генерация"),
@@ -1247,15 +1690,23 @@ function genCard(g){ const a=g.analysis||{}; const isVid=g.kind==="video"; const
         el("span",{style:"font-size:9px;color:var(--acc-lt);background:var(--vio-bg);padding:2px 6px;border-radius:4px;"},isVid?"видео":"карусель"),
         a.otk?el("span",{style:"font-size:9px;color:var(--ok);background:var(--ok-bg);padding:2px 6px;border-radius:4px;"},"ОТК "+a.otk):null)));
 }
-function recipeCard(r){ const stC={otk_pass:"var(--ok)",otk_fail:"var(--err)",run_fail:"var(--err)",draft:"var(--tx-lo2)",running:"var(--warn)",posted:"var(--acc)"}[r.status]||"var(--tx-lo2)";
+function recipeCard(r){ const needsRejudge=!!(r.needs_rejudge||(r.status==="otk_pass"&&r.output_url&&r.otk_score==null));
+  const hasErr=needsRejudge||r.catalog_error||(r.node_errors&&r.node_errors.length);
+  const stC=needsRejudge?"var(--warn)":({otk_pass:"var(--ok)",otk_fail:"var(--err)",run_fail:"var(--err)",draft:"var(--tx-lo2)",running:"var(--warn)",posted:"var(--acc)"}[r.status]||"var(--tx-lo2)");
   const c=NODE_TYPE_COLOR[r.format_detected]||"#5b9cf2";
-  return el("div",{class:"card",style:"padding:12px;cursor:pointer;",onclick:()=>openRecipe(r.id).then(ok=>{ if(ok)go("canvas"); })},
+  const errText=needsRejudge?"нужен rejudge":(r.catalog_error?("catalog: "+String(r.catalog_error).slice(0,90)):((r.node_errors&&r.node_errors[0])?String(r.node_errors[0].error||"node error").slice(0,90):""));
+  return el("div",{class:"card",style:"padding:12px;cursor:pointer;"+(hasErr?"border-color:rgba(245,158,11,.55);":""),
+    title:errText||"",onclick:()=>openRecipe(r.id).then(ok=>{ if(ok)go("canvas"); })},
     el("div",{style:"display:flex;align-items:center;gap:8px;margin-bottom:7px;"},el("span",{class:"sq",style:"width:8px;height:8px;background:"+c}),el("span",{class:"mono",style:"font-size:9px;color:var(--tx-lo);"},"граф #"+r.id),el("span",{class:"dot",style:"width:8px;height:8px;background:"+stC+";margin-left:auto;"}),
+      needsRejudge?el("span",{class:"mono",style:"font-size:9px;color:var(--warn);background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.35);padding:2px 5px;border-radius:4px;"},"ОТК ?"):null,
+      needsRejudge?el("button",{class:"btn sm",style:"padding:3px 7px;margin-left:2px;",onclick:async(e)=>{ e.stopPropagation(); await selfHeal("rejudge",{apply:true,max_items:1,recipe_ids:[r.id]},"rejudge запущен"); }},"↻ rejudge"):null,
+      r.status==="running"&&r.step!=="done"&&r.step!=="failed"?el("button",{class:"btn sm",style:"padding:3px 7px;margin-left:2px;",onclick:async(e)=>{ e.stopPropagation(); await selfHeal("wake",{stale_ms:90000,max_wake:3},"будилка дернулась"); }},"⚡ wake"):null,
       el("span",{style:"font-size:12px;color:var(--acc-lt);cursor:pointer;padding:0 2px;",title:"R4: 3 варианта с разными хуками (A/B на объёме)",onclick:async(e)=>{ e.stopPropagation(); toast("делаю варианты хука…"); const d=await api("/recipe-variants",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({recipe_id:r.id,n:3})}); if(d&&d.ok){ toast("✓ "+(d.variants||[]).length+" вариант(ов) → в базе, гоняй все"); if(S.screen==="library")screenLibrary(document.getElementById("screen")); } else toast("не вышло: "+((d&&d.error)||"?").toString().slice(0,45)); }},"🔀"),
       el("span",{style:"font-size:12px;color:var(--tx-lo2);cursor:pointer;padding:0 2px;",title:"удалить рецепт",onclick:async(e)=>{ e.stopPropagation(); if(!confirm("Удалить граф #"+r.id+"?"))return; const cardEl=e.currentTarget.closest(".card"); const d=await api("/recipes?recipe_id="+r.id,{method:"DELETE"}); if(d.ok){ toast("удалён"); if(cardEl)cardEl.remove(); S.recipes=(S.recipes||[]).filter(x=>x.id!==r.id); if(S.recipe&&S.recipe.recipe&&String(S.recipe.recipe.id)===String(r.id)){ S.recipe=null; S.selectedNode=null; if(["canvas","inspector","assembly"].includes(S.screen))render(); } } else toast(d.error||"ошибка"); }},"✕")),
     el("div",{style:"font-size:12.5px;font-weight:600;"},(r.article||"—")),
     el("div",{style:"font-size:10.5px;color:var(--tx-lo);margin-top:4px;"},(r.niche||"")+" · "+(r.format_detected||"")+" · "+(r.built_by||"")),
-    el("div",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);margin-top:7px;"},r.status+(r.otk_score?" · ОТК "+Math.round(r.otk_score*10):"")),
+    el("div",{class:"mono",style:"font-size:10px;color:"+(needsRejudge?"var(--warn)":"var(--tx-lo2)")+";margin-top:7px;"},r.status+(r.otk_score!=null?" · ОТК "+Math.round(r.otk_score*10):(needsRejudge?" · ОТК ?":""))+(r.step?" · "+r.step:"")),
+    errText?el("div",{class:"mono",style:"font-size:9.5px;color:var(--warn);margin-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"},errText):null,
     // V5: метрики после поста → обучение на РЫНКЕ (а не только ОТК-робот)
     el("div",{style:"margin-top:8px;display:flex;gap:5px;align-items:center;",title:"впиши реальные просмотры после публикации → хук валидируется рынком",onclick:(e)=>e.stopPropagation()},
       el("input",{class:"input",type:"number",placeholder:"просмотры (48ч)",style:"flex:1;min-width:0;font-size:11px;padding:4px 7px;",id:"pm-v-"+r.id}),
@@ -1284,7 +1735,14 @@ async function screenBalances(root){
   header("Балансы сервисов","сколько осталось $", el("div",{class:"hdr-r"},
     el("button",{class:"btn",title:"опросить балансы заново",onclick:()=>screenBalances(root)},"↻ Обновить")));
   const wrap=el("div",{class:"scroll",style:"padding:18px;"}); root.appendChild(wrap);
-  wrap.appendChild(loadingCard("опрашиваю балансы сервисов…"));
+  // скелет-карточки на время живого опроса (до ~9с на сервис) — экран не выглядит мёртвым спиннером
+  wrap.appendChild(el("div",{class:"mono",style:"font-size:11px;color:var(--tx-lo2);margin-bottom:14px;display:flex;align-items:center;gap:9px;"},el("div",{class:"spinner"}),"опрашиваю балансы сервисов…"));
+  const skel=el("div",{style:"display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:14px;"});
+  for(let i=0;i<6;i++)skel.appendChild(el("div",{class:"card",style:"padding:16px;display:flex;flex-direction:column;gap:12px;opacity:.45;animation:pulse 1.4s ease-in-out infinite;"},
+    el("div",{style:"height:15px;width:42%;border-radius:5px;background:var(--bg-input);"}),
+    el("div",{style:"height:28px;width:58%;border-radius:6px;background:var(--bg-input);"}),
+    el("div",{style:"height:34px;width:100%;border-radius:6px;background:var(--bg-input);"})));
+  wrap.appendChild(skel);
   const data=await api("/balances");
   if(S.screen!=="balances")return;
   wrap.innerHTML="";
@@ -1505,6 +1963,8 @@ function coachNextStep(){
       return {cap:"База",t:"Открой рецепт, чтобы продолжить граф, или начни новый через конкурентов (02).",why:"Рецепты — сохранённые графы-шаблоны. Удобно переиспользовать удачную структуру.",cta:{label:"К конкурентам (02) →",fn:()=>go("compete")}};
     case "balances":
       return {cap:"Балансы",t:"Следи за остатками по сервисам. Сервис на нуле — генерация по нему встанет.",why:"Seedance/Kling/Creatify/Shotstack/FAL платные. Пустой баланс = упавшая нода в сборке."};
+    case "worker":
+      return {cap:"Railway worker",t:"Смотри на heartbeat, current task и очередь. Если станет stale/dead — воркер не шлёт пульс и его нужно будить или перезапускать.",why:"Это экран живого контроля: видно, что воркер делает сейчас, и видно, когда он перестал отвечать. Следующий шаг обычно либо исправить блокер, либо дождаться следующего heartbeat.",chips:["Как понять stale vs dead?","Где смотреть очередь задач?"]};
     case "learn":
       return {cap:"Обучение",t:"Смотри, что завод выучил: победившие хуки, тренд ОТК, пресеты-победители за период.",why:"Это память завода. Переноси удачные хуки и пресеты в новые ролики — повторяешь то, что уже заходило.",chips:["Как применить выученное?","Что показывает тренд ОТК?"]};
     case "ds":
@@ -1598,7 +2058,7 @@ function mountAssistant(){
   refreshAssistStep();
 }
 
-(async()=>{ await restoreSession(); renderNav(); render(); mountAssistant(); })(); // восстановить сессию → отрисовать там, где был → поднять проводника
+(async()=>{ await restoreSession(); renderNav(); render(); mountAssistant(); loadObserver().catch(()=>{}); setInterval(()=>loadObserver().catch(()=>{}),60000); })(); // восстановить сессию → отрисовать там, где был → поднять проводника
 </script>
 </body>
 </html>

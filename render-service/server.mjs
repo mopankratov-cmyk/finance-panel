@@ -23,6 +23,9 @@
 //   RENDER_SCALE                 — масштаб рендера (1 = 1080×1920; 0.66 ≈ 720p — кратно быстрее, ниже качество)
 //   RENDER_X264_PRESET           — x264-пресет (дефолт faster; veryfast/ultrafast — быстрее/хуже)
 //   RENDER_TIMEOUT_MS            — таймаут кадра, мс (дефолт 120000)
+//   RENDER_GL                    — WebGL-бэкенд headless Chrome (пусто=дефолт Chrome). На VM БЕЗ GPU Remotion
+//                                  рекомендует "swangle" (надёжный software-ANGLE: ровные градиенты/без пустых кадров,
+//                                  критично для CSS-моушена BRoll). Также: "angle", "egl", "swiftshader". Ставить на VM.
 //   RENDER_REUSE_BROWSER         — 1 (дефолт): один Chrome на selectComposition+renderMedia (вместо двух запусков). 0 — выключить
 //   LOCALIZE_ASSETS              — 1 (дефолт): качать+нормализовать remote-видео из пропсов локально, отдавать по 127.0.0.1 (×2-5 для прод-рендеров). 0 — выкл
 //   ASSET_PORT                   — порт локального статик-сервера ассетов (дефолт 8090, только 127.0.0.1)
@@ -34,7 +37,7 @@ import { createReadStream } from "node:fs";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { bundle } from "@remotion/bundler";
-import { selectComposition, renderMedia, ensureBrowser, openBrowser } from "@remotion/renderer";
+import { selectComposition, renderMedia, renderStill, ensureBrowser, openBrowser } from "@remotion/renderer";
 import { createClient } from "@supabase/supabase-js";
 import { createJobStore } from "./jobStore.mjs";
 
@@ -58,6 +61,9 @@ const RENDER_SCALE = Number(process.env.RENDER_SCALE) || 1;
 const X264_PRESET = process.env.RENDER_X264_PRESET || "faster";
 const RENDER_TIMEOUT_MS = Number(process.env.RENDER_TIMEOUT_MS) || 120000;
 const REUSE_BROWSER = process.env.RENDER_REUSE_BROWSER !== "0"; // переиспользовать Chrome в пределах одного рендера
+// GL-бэкенд: дефолт пуст (текущее рабочее поведение). На VM без GPU выставить RENDER_GL=swangle (см. ENV-блок).
+const RENDER_GL = (process.env.RENDER_GL || "").trim();
+const CHROMIUM_OPTIONS = RENDER_GL ? { gl: RENDER_GL } : undefined;
 
 const log = (...a) => console.log(new Date().toISOString(), ...a);
 
@@ -181,10 +187,10 @@ function pump() {
   }
 }
 
-async function runRender(id, composition, inputProps, durationInFrames) {
+async function runRender(id, composition, inputProps, durationInFrames, still = false) {
   const job = jobs.get(id);
   if (!job) return; // джоба уже вычищена/отменена — рендерить нечего (а onProgress не упадёт на undefined)
-  const tmp = path.join(os.tmpdir(), `remotion-${id}.mp4`);
+  const tmp = path.join(os.tmpdir(), `remotion-${id}.${still ? "png" : "mp4"}`); // СТАТИКА: renderStill→PNG, иначе видео
   const t0 = Date.now();
   let tLocalized = t0;
   let tSelected = t0;
@@ -197,15 +203,19 @@ async function runRender(id, composition, inputProps, durationInFrames) {
     // один Chrome на весь рендер: общий для selectComposition+renderMedia (иначе Remotion поднимает его дважды).
     // fail-safe: не открылся → ppt пустой, Remotion поднимет свой на каждый вызов (поведение как раньше).
     if (REUSE_BROWSER) {
-      try { browser = await openBrowser("chrome"); }
+      try { browser = await openBrowser("chrome", CHROMIUM_OPTIONS ? { chromiumOptions: CHROMIUM_OPTIONS } : undefined); }
       catch (e) { log(`warm browser недоступен — fallback на свежий: ${String(e?.message || e).slice(0, 120)}`); browser = null; }
     }
     const ppt = browser ? { puppeteerInstance: browser } : {};
-    const comp = await selectComposition({ serveUrl, id: composition, inputProps: props, ...ppt });
+    const comp = await selectComposition({ serveUrl, id: composition, inputProps: props, ...ppt, ...(CHROMIUM_OPTIONS ? { chromiumOptions: CHROMIUM_OPTIONS } : {}) });
     tSelected = Date.now();
     const durationOverride = Number.isFinite(durationInFrames) && durationInFrames > 0
       ? { durationInFrames } : {};
     log(`render ${id}: ${composition} ${comp.width}x${comp.height} @${comp.fps} ${durationOverride.durationInFrames || comp.durationInFrames}f | conc=${FRAME_CONCURRENCY} threads=${OFFTHREAD_THREADS} scale=${RENDER_SCALE} preset=${X264_PRESET}`);
+    if (still) {
+      // СТАТИКА: один кадр → PNG (линия пинов/карточек, без видео-кодека)
+      await renderStill({ serveUrl, composition: { ...comp, ...durationOverride }, inputProps: props, ...ppt, output: tmp, frame: 0, ...(CHROMIUM_OPTIONS ? { chromiumOptions: CHROMIUM_OPTIONS } : {}) });
+    } else {
     await renderMedia({
       composition: { ...comp, ...durationOverride },
       serveUrl, inputProps: props, ...ppt, codec: "h264", outputLocation: tmp,
@@ -217,6 +227,7 @@ async function runRender(id, composition, inputProps, durationInFrames) {
       ...(OFFTHREAD_CACHE_BYTES ? { offthreadVideoCacheSizeInBytes: OFFTHREAD_CACHE_BYTES } : {}),
       ...(RENDER_SCALE !== 1 ? { scale: RENDER_SCALE } : {}),
       x264Preset: X264_PRESET,
+      ...(CHROMIUM_OPTIONS ? { chromiumOptions: CHROMIUM_OPTIONS } : {}), // GL-бэкенд (RENDER_GL=swangle на VM без GPU)
       // дефолтные 28с малы: несколько рендереров разом тянут кадры из тяжёлых видео (OffthreadVideo → <Img blob>)
       timeoutInMilliseconds: RENDER_TIMEOUT_MS,
       onProgress: ({ progress }) => {
@@ -226,13 +237,14 @@ async function runRender(id, composition, inputProps, durationInFrames) {
         if (now - (job._dbAt || 0) > 3000) { job._dbAt = now; persistJob(id, { status: "in_progress", progress: job.progress }); }
       },
     });
+    }
     const tRendered = Date.now();
 
     // заливка в Supabase Storage
     const db = supa();
     if (!db) throw new Error("Supabase env не настроен (NEXT_PUBLIC_SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY)");
     const buf = await fs.readFile(tmp);
-    const objPath = `renders/${id}.mp4`;
+    const objPath = `renders/${id}.${still ? "png" : "mp4"}`;
     // ретрай заливки: транзиентный "fetch failed"/5xx к Supabase НЕ должен хоронить уже готовый (оплаченный) рендер.
     // upload бросает на сетевой ошибке И возвращает {error} на серверной — ловим оба, бэкофф 1.5с×попытка.
     const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -240,7 +252,7 @@ async function runRender(id, composition, inputProps, durationInFrames) {
     for (let attempt = 1; attempt <= 4; attempt++) {
       try {
         if (attempt === 1) { try { await db.storage.createBucket(BUCKET, { public: true }); } catch { /* уже есть */ } }
-        const { error } = await db.storage.from(BUCKET).upload(objPath, buf, { contentType: "video/mp4", upsert: true });
+        const { error } = await db.storage.from(BUCKET).upload(objPath, buf, { contentType: still ? "image/png" : "video/mp4", upsert: true });
         if (!error) { upErr = null; break; }
         upErr = error.message || String(error);
       } catch (e) { upErr = String(e?.message || e); } // напр. "fetch failed" — сетевой транзиент
@@ -311,7 +323,7 @@ const server = http.createServer(async (req, res) => {
     jobs.set(id, { status: "in_progress", progress: 0, createdAt: Date.now() });
     // создаём строку в общем сторе ДО ответа → немедленный кросс-инстанс /status найдёт джобу (фолбэк-безопасно)
     await persistJob(id, { status: "in_progress", progress: 0, created_at: new Date().toISOString() });
-    queue.push(() => runRender(id, String(body.composition), body.inputProps || {}, Number(body.durationInFrames)));
+    queue.push(() => runRender(id, String(body.composition), body.inputProps || {}, Number(body.durationInFrames), !!body.still));
     pump();
     return send(res, 200, { id });
   }

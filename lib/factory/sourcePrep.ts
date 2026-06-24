@@ -9,6 +9,7 @@
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { createHash } from "node:crypto";
 import { rehostImageForFal } from "./rehostImage";
+import { buildEditPrompt, categoryFor, defaultSceneFor } from "./editPrompts";
 
 const QUEUE = "https://queue.fal.run/";
 const NANO = "fal-ai/nano-banana/edit";
@@ -17,8 +18,20 @@ const BUCKET = "factory-media";
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const falKey = () => process.env.FAL_KEY || "";
 
+// Тело запроса ПО МОДЕЛИ (params различаются — общее тело слало Seedream безответные safety_tolerance/output_format
+// → риск 422, фолбэк мог не работать; и без явного размера обе модели дают ~квадрат → рилс кадрируется).
+// op='stage' → вертикаль 9:16 (это i2v-источник), op='clean' → 1:1 (изолированный товар, чёткость лого). По докам fal.
+function editBody(model: string, imageUrls: string[], prompt: string, op: "clean" | "stage"): Record<string, unknown> {
+  const base = { prompt, image_urls: imageUrls, num_images: 1 };
+  if (model === SEEDREAM) {
+    return { ...base, image_size: op === "stage" ? "portrait_16_9" : "square_hd", enable_safety_checker: false, enhance_prompt_mode: "standard" };
+  }
+  // Nano (Gemini Flash Image edit)
+  return { ...base, aspect_ratio: op === "stage" ? "9:16" : "1:1", safety_tolerance: "6", output_format: "png" };
+}
+
 // один edit-вызов (Nano → при провале Seedream) → URL результата на fal.media или null. Best-effort.
-async function edit(imageUrls: string[], prompt: string, maxWaitMs = 110_000): Promise<string | null> {
+async function edit(imageUrls: string[], prompt: string, op: "clean" | "stage", maxWaitMs = 110_000): Promise<string | null> {
   const k = falKey();
   if (!k || !imageUrls.length) return null;
   const auth = { Authorization: `Key ${k}`, "Content-Type": "application/json" };
@@ -26,7 +39,7 @@ async function edit(imageUrls: string[], prompt: string, maxWaitMs = 110_000): P
     try {
       const sub = await fetch(`${QUEUE}${model}`, {
         method: "POST", headers: auth, cache: "no-store",
-        body: JSON.stringify({ prompt, image_urls: imageUrls, num_images: 1, safety_tolerance: "6", output_format: "png" }),
+        body: JSON.stringify(editBody(model, imageUrls, prompt, op)),
         signal: AbortSignal.timeout(25_000),
       });
       if (!sub.ok) continue;
@@ -51,11 +64,8 @@ async function edit(imageUrls: string[], prompt: string, maxWaitMs = 110_000): P
   return null;
 }
 
-// промпты (валидированы на CLR01012). product — короткое описание («коричневая кожаная сумка-тоут»).
-const cleanPrompt = (product: string) =>
-  `Recreate this as a clean professional studio product photograph showing ONLY the ${product}, isolated on a seamless light-grey studio background. Keep the ${product} exactly as shown — same shape, color, materials, branding and embossing, hardware and proportions. Photorealistic e-commerce product photography, soft even lighting, no surrounding objects, no captions, no graphic design or text.`;
-const stagePrompt = (product: string, scene: string) =>
-  `Place THIS exact ${product} (do not alter the product, its shape, color, branding or hardware) into an aesthetic premium lifestyle scene: ${scene}. Soft natural light, realistic contact shadows and reflections, shallow depth of field, editorial mood. Photorealistic, vertical 9:16 composition with headroom around the product.`;
+// промпты — детерминированный сборщик по категории (Lock/Change/Amount/Constraints), см. lib/factory/editPrompts.ts
+// и docs/factory-prompting-canon.md. Раньше тут было 2 хардкода без вариаций по нише — главная дыра качества.
 
 export interface PrepResult { ok: boolean; cleanUrl?: string; stagedUrl?: string; error?: string }
 
@@ -68,33 +78,39 @@ export async function prepareProductImage(
   const db = getSupabaseAdmin();
   if (!db) return { ok: false, error: "нет supabase-admin" };
   const product = (opts.product || "product").slice(0, 120);
-  const scene = (opts.scene || "a tasteful minimal interior surface with complementary lifestyle props").slice(0, 240);
+  // категория (через тот же detectBrand, что и копирайтер) → шаблон под нишу; сцена оператора или дефолт ниши
+  const category = categoryFor(opts.article || "", opts.product || "");
+  const scene = (opts.scene || defaultSceneFor(category)).slice(0, 240);
+  const cleanP = buildEditPrompt({ category, op: "clean", product });
+  const stageP = buildEditPrompt({ category, op: "stage", product, scene });
 
   // WB-CDN флапает на серверной загрузке fal → рехостим исходник в наш бакет (как в i2v). Best-effort.
   const src = await rehostImageForFal(srcUrl);
-  const cleanFal = await edit([src], cleanPrompt(product));
+  const cleanFal = await edit([src], cleanP, "clean");
   if (!cleanFal) return { ok: false, error: "clean-шаг не дал результата (контент-фильтр/доступ/сеть)" };
-  // стейдж: clean + рехостнутый оригинал как identity-якорь (Nano иногда дрейфит лого при смене фона)
-  const stagedFal = await edit([cleanFal, src], stagePrompt(product, scene)) || cleanFal; // фолбэк — чистый кадр
+  // стейдж: clean + рехостнутый оригинал как identity-якорь (Nano иногда дрейфит лого при смене фона).
+  // null = стейдж не вышел → НЕ персистим staged (иначе prompt_used врал бы про несостоявшийся стейдж); останется чистый кадр.
+  const stagedFal = await edit([cleanFal, src], stageP, "stage");
 
   // персист в наш бакет (fal.media эфемерна) + каталог
-  const persist = async (falUrl: string, tag: "clean" | "staged"): Promise<string | null> => {
+  const persist = async (falUrl: string, tag: "clean" | "staged", promptUsed: string): Promise<string | null> => {
     try {
       const r = await fetch(falUrl, { cache: "no-store", signal: AbortSignal.timeout(30_000) });
       if (!r.ok) return null;
       const buf = Buffer.from(await r.arrayBuffer());
       if (!buf.length) return null;
       const path = `prepared/${opts.article}/${createHash("sha1").update(falUrl).digest("hex").slice(0, 12)}-${tag}.png`;
-      const { error } = await db.storage.from(BUCKET).upload(path, buf, { contentType: "image/png", upsert: true });
+      const { error } = await db.storage.from(BUCKET).upload(path, buf, { contentType: "image/png", upsert: true, cacheControl: "31536000" });
       if (error) return null;
       const pub = db.storage.from(BUCKET).getPublicUrl(path).data?.publicUrl || null;
-      if (pub) await db.from("content_assets").insert({ disk: "prepared", path, name: `${opts.article} · prepared ${tag}`.slice(0, 120), kind: "image", niche: opts.niche || null, article: opts.article || null, color: null, url: pub, analyzed: true, analysis: { source_url: srcUrl, stage: tag, scene, engine: "nano-banana", product } });
+      // analysis.category + prompt_used → winners-петля: выигравшие prepared-кадры возвращают «золотые» промпты в шаблон
+      if (pub) await db.from("content_assets").insert({ disk: "prepared", path, name: `${opts.article} · prepared ${tag}`.slice(0, 120), kind: "image", niche: opts.niche || null, article: opts.article || null, color: null, url: pub, analyzed: true, analysis: { source_url: srcUrl, stage: tag, scene, category, engine: "nano-banana", product, prompt_used: promptUsed } });
       return pub;
     } catch { return null; }
   };
 
-  const stagedUrl = (await persist(stagedFal, "staged")) || undefined;
-  const cleanUrl = (await persist(cleanFal, "clean")) || undefined;
+  const stagedUrl = stagedFal ? (await persist(stagedFal, "staged", stageP)) || undefined : undefined;
+  const cleanUrl = (await persist(cleanFal, "clean", cleanP)) || undefined;
   if (!stagedUrl && !cleanUrl) return { ok: false, error: "персист в бакет не удался" };
   return { ok: true, cleanUrl, stagedUrl };
 }

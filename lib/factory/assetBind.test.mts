@@ -1,5 +1,5 @@
 // Юнит-тест авто-привязки ассетов. Запуск: npx tsx lib/factory/assetBind.test.mts
-import { classifyAssets, bestImage, pickImage, chooseBinding, type DiskAsset } from "./assetBind";
+import { classifyAssets, bestImage, pickImage, chooseBinding, articleFromAssetUrl, assetMatchesArticle, type DiskAsset } from "./assetBind";
 
 let pass = 0, fail = 0;
 function ok(c: boolean, m: string) { if (c) { pass++; } else { fail++; console.error("✗", m); } }
@@ -85,6 +85,22 @@ function eq(a: unknown, b: unknown, m: string) { ok(JSON.stringify(a) === JSON.s
   eq(chooseBinding("seedance", false, pool, 0)?.image_url, "wb1", "i2v idx0 → wb1");
   eq(chooseBinding("seedance", false, pool, 1)?.image_url, "wb2", "i2v idx1 → wb2");
   eq(chooseBinding("disk_real", false, pool, 2)?.image_url, "wb3", "disk_real→seedance idx2 → wb3");
+}
+
+// ── ГАРД кросс-контаминации: артикул из URL + сверка с рецептом ──
+{
+  const B = "https://x.supabase.co/storage/v1/object/public/factory-media";
+  eq(articleFromAssetUrl(`${B}/prepared/CLR00912/abc-staged.png`), "CLR00912", "article из prepared-пути");
+  eq(articleFromAssetUrl(`${B}/i2v-src/TT06103-orig.png`), "TT06103", "article из i2v-src-пути");
+  eq(articleFromAssetUrl(`${B}/clips/deadbeef.mp4`), null, "clip-путь не кодирует article → null");
+  eq(articleFromAssetUrl("https://basket-36.wbbasket.ru/vol1/x.webp"), null, "WB-CDN не кодирует article → null");
+  eq(articleFromAssetUrl(""), null, "пусто → null");
+  // ключевой кейс «пистолет в сумке»: prepared/TT для рецепта CLR → ОТКЛОНИТЬ
+  ok(!assetMatchesArticle(`${B}/prepared/TT06103/x-s0.png`, "CLR00912"), "prepared/TT для CLR → отклонён (анти-пистолет-в-сумке)");
+  ok(assetMatchesArticle(`${B}/prepared/CLR00912/x-staged.png`, "CLR00912"), "prepared/CLR для своего CLR → принят");
+  ok(assetMatchesArticle(`${B}/clips/x.mp4`, "CLR00912"), "clip без article в пути → принят (сверять нечего)");
+  ok(assetMatchesArticle("https://basket.wbbasket.ru/x.webp", "CLR00912"), "WB-CDN → принят (article не закодирован)");
+  ok(assetMatchesArticle(`${B}/prepared/CLR00912/x.png`, ""), "пустой article рецепта → не блокируем");
 }
 
 console.log(`\nassetBind: ${pass} passed, ${fail} failed`);

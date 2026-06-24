@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { falVideoSubmit, FAL_VIDEO_MODELS, type FalVideoModel } from "@/lib/factory/falVideo";
 import { rehostImageForFal } from "@/lib/factory/rehostImage";
+import { buildMotionPrompt, categoryFor } from "@/lib/factory/editPrompts";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -39,8 +40,16 @@ export async function POST(req: NextRequest) {
   }
   if (!imageUrl) return NextResponse.json({ error:"Нет фото товара (передай image_url или артикул с данными)" }, { status: 400 });
 
-  // ПРОМПТ — приоритет: выученный/улучшенный (body.prompt) > Claude пишет под товар > шаблон-fallback
-  const TEMPLATE = `Keep the product EXACTLY as in the photo — identical shape, proportions, label, logo, colors; do NOT morph, deform, or replace it. ${motion || "Subtle cinematic camera motion: slow push-in with gentle parallax, soft studio light, the product stays centered, crisp and fully intact."}${brief ? ` Mood: ${brief}.` : ""}`;
+  // товар + категория (через тот же detectBrand) → motion-скелет канона (ОДИН camera move под форму товара)
+  const product = (body.product_name || body.sku_art || "товар").toString().slice(0, 120);
+  const category = categoryFor((body.sku_art || "").toString(), (body.product_name || "").toString());
+  const skeleton = buildMotionPrompt({ category, product });
+
+  // ПРОМПТ — приоритет: выученный/улучшенный (body.prompt) > Claude пишет ПОВЕРХ скелета > скелет-fallback.
+  // motion-only: НЕ описываем внешность/свет/цвет (они уже в кадре — дубль = competing instructions → дрейф).
+  const TEMPLATE = motion
+    ? `${motion} The product stays exactly as in the photo — no shape change, no morphing, crisp edges.${brief ? ` Mood: ${brief}.` : ""}`
+    : `${skeleton}${brief ? ` Mood: ${brief}.` : ""}`;
   let prompt = (body.prompt || "").toString().trim();
   let promptBy: "выученный/готовый" | "ИИ" | "шаблон" = "выученный/готовый";
   if (!prompt) {
@@ -50,8 +59,7 @@ export async function POST(req: NextRequest) {
       const { createClaudeClient } = await import("@/lib/agent/client");
       const client = await createClaudeClient();
       if (client) {
-        const product = (body.product_name || body.sku_art || "товар").toString().slice(0, 120);
-        // грудинг на реальных съёмках: рецепт ниши из niche_visual_profiles
+        // грудинг на реальных съёмках: рецепт ниши из niche_visual_profiles + петля обучения (winners/анти-паттерны)
         let recipe = "";
         try {
           const { nicheFor } = await import("@/lib/factory/contentDisks");
@@ -62,11 +70,13 @@ export async function POST(req: NextRequest) {
             const { data } = await db.from("niche_visual_profiles").select("profile").eq("niche", niche).maybeSingle();
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const p = (data?.profile || null) as any;
-            if (p) recipe = `\nСТИЛЬ НАШИХ РЕАЛЬНЫХ СЪЁМОК (ниша ${niche}) — следуй ему: framing=${p.framing||""}; camera=${p.camera||""}; light=${p.lighting||""}; action=${p.model_action||""}; palette=${p.palette||""}; mood=${p.mood||""}. DO: ${(p.do||[]).join("; ")}. DONT: ${(p.dont||[]).join("; ")}.${p.motion_prompt ? ` Опорная фраза: ${p.motion_prompt}` : ""}`;
+            // полный экспертный грундинг ниши как КОНТЕКСТ для выбора движения; system запрещает переписывать
+            // внешность/свет/цвет в сам motion-промпт (motion-only) — так грундинг и канон не конфликтуют.
+            if (p) recipe = `\nСТИЛЬ НАШИХ РЕАЛЬНЫХ СЪЁМОК (ниша ${niche}) — следуй ЭСТЕТИКЕ для выбора камеры/движения, но НЕ переписывай внешность/свет/цвет в motion-промпт: framing=${p.framing||""}; camera=${p.camera||""}; light=${p.lighting||""}; action=${p.model_action||""}; palette=${p.palette||""}; mood=${p.mood||""}. DO: ${(p.do||[]).join("; ")}. DONT: ${(p.dont||[]).join("; ")}.${p.motion_prompt ? ` Опорная фраза движения: ${p.motion_prompt}` : ""}`;
           }
         } catch { /* профиля нет — пишем без грудинга */ }
-        const sys = `Ты видео-промпт-инженер для ${model} image-to-video (товар на WB). Напиши ОДИН английский motion-промпт. Учти ФОРМУ товара: жёсткая/простая (флакон, сумка) — можно мягкое движение камеры; детальная/сложная (игрушки, техника с мелкими частями) — движение МИНИМАЛЬНОЕ, чтобы не исказить. ОБЯЗАТЕЛЬНО preservation: keep product EXACT shape/label/proportions, no morphing/deformation/cap separation. Явно включи в промпт: «product stable and intact throughout, no shape change, crisp edges». Если дан СТИЛЬ НАШИХ СЪЁМОК — повтори его эстетику. Если задан первый кадр — начни движение именно с него. Подбери движение под идею. Верни ТОЛЬКО английский промпт, без преамбулы.`;
-        const res = await client.messages.create({ model: "claude-sonnet-4-6", max_tokens: 350, system: sys, messages: [{ role: "user", content: `Товар: ${product}. Идея/настроение: ${brief || "показать товар эффектно"}.${shot_visual ? ` Первый кадр (из сценария): ${shot_visual}.` : ""}${recipe}` }] });
+        const sys = `Ты видео-промпт-инженер для ${model} image-to-video (товар на WB). Тебе дан СКЕЛЕТ — пиши ПОВЕРХ него, не с нуля, сохранив его camera-move и preservation-клозет. Промпт = MOTION-СКРИПТ, НЕ описание сцены: стартовый кадр уже несёт внешность/свет/цвет/текст — НЕ повторяй их (это competing instructions → дрейф/морфинг). Только: микро-движение субъекта + ОДИН camera move + темп. Камера-инструкция в НАЧАЛЕ. ОДИН мув (стек orbit+zoom+pan = jitter и деформация лейбла); для товара не совмещай движение КАМЕРЫ и ОБЪЕКТА — выбери одно. Форма товара: жёсткая/простая (флакон, сумка) — мягкий камера-мув ок; детальная/сложная (игрушки, техника) — движение МИНИМАЛЬНОЕ (static + лёгкий push-in). ОБЯЗАТЕЛЬНО короткий preservation-клозет: «product stable and intact, no shape change, crisp edges». Лаконично, ~15-25 слов. Если задан первый кадр — начни движение с него. Верни ТОЛЬКО английский промпт, без преамбулы.`;
+        const res = await client.messages.create({ model: "claude-sonnet-4-6", max_tokens: 350, temperature: 0.4, system: sys, messages: [{ role: "user", content: `Товар: ${product}. Идея/настроение: ${brief || "показать товар эффектно"}.${shot_visual ? ` Первый кадр (из сценария): ${shot_visual}.` : ""}\nСКЕЛЕТ (пиши поверх, сохрани camera-move и preservation): ${skeleton}${recipe}` }] });
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const t = (res.content as any[]).filter((b) => b.type === "text").map((b) => b.text).join(" ").trim().replace(/^["«]|["»]$/g, "");
         if (t) { prompt = t; promptBy = "ИИ"; }

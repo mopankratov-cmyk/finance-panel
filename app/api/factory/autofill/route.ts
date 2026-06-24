@@ -190,7 +190,7 @@ ${JSON.stringify(nodeLines, null, 1).slice(0, 6000)}`;
 
     let assignments: Record<string, unknown>[] = [];
     try {
-      const res = await client.messages.create({ model: MODEL, max_tokens: 4000, system: sys, messages: [{ role: "user", content: user }] });
+      const res = await client.messages.create({ model: MODEL, max_tokens: 4000, temperature: 0.2, system: sys, messages: [{ role: "user", content: user }] });
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const txt = (res.content as any[]).filter((x) => x.type === "text").map((x) => x.text).join(" ");
       const j = looseJson(txt);

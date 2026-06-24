@@ -65,16 +65,27 @@ export async function POST(req: NextRequest) {
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
     async start(controller) {
+      let emitted = false;
       try {
         const s = await client.messages.create({ model: MODEL, max_tokens: 700, system: sysPrompt(ctx), messages, stream: true });
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         for await (const ev of s as any) {
           if (ev?.type === "content_block_delta" && ev.delta?.type === "text_delta" && ev.delta.text) {
-            controller.enqueue(encoder.encode(ev.delta.text));
+            controller.enqueue(encoder.encode(ev.delta.text)); emitted = true;
           }
         }
       } catch (e) {
-        controller.enqueue(encoder.encode("\n⚠ сбой проводника: " + String((e as Error)?.message || e).slice(0, 140)));
+        // SSE-стрим рвётся на некоторых egress (РФ-локалка/прокси), хотя обычный POST к Anthropic работает.
+        // Если ещё ничего не отдали — ОДИН retry БЕЗ stream: Проводник отвечает целиком, а не «Connection error».
+        if (!emitted) {
+          try {
+            const r = await client.messages.create({ model: MODEL, max_tokens: 700, system: sysPrompt(ctx), messages });
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const t = (r.content as any[]).filter((b) => b.type === "text").map((b) => b.text).join("");
+            if (t) { controller.enqueue(encoder.encode(t)); emitted = true; }
+          } catch { /* и не-стрим не вышел — отдадим ошибку ниже */ }
+        }
+        if (!emitted) controller.enqueue(encoder.encode("\n⚠ сбой проводника: " + String((e as Error)?.message || e).slice(0, 140)));
       }
       controller.close();
     },
