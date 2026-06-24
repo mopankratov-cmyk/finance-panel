@@ -4,6 +4,7 @@
 // Чистый модуль (без React/fal) → юнит-тестируемо (staticCanon.test.mts).
 
 export type StaticFormat = "card_3x4" | "pin_2x3" | "ig_4x5" | "ig_carousel";
+export const DEFAULT_STATIC_FORMAT: StaticFormat = "card_3x4";
 
 export interface FormatSpec {
   format: StaticFormat;
@@ -24,7 +25,7 @@ export const FORMATS: Record<StaticFormat, FormatSpec> = {
 };
 
 export function specFor(format: StaticFormat): FormatSpec {
-  return FORMATS[format] || FORMATS.pin_2x3;
+  return FORMATS[format] || FORMATS[DEFAULT_STATIC_FORMAT];
 }
 
 // Палитра: графит-канон завода (как BRoll) + тёплые акценты (разведка: тёплый/яркий фон = >3× repins).

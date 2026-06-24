@@ -1,5 +1,5 @@
 // Юнит-фикстуры канона статики. Запуск: npx tsx lib/factory/staticCanon.test.mts
-import { specFor, FORMATS, accentFor, scaleType, fitHeadline, clampDesc, luminance, contrastRatio, pickTextColor, TYPE_FLOOR, SEO } from "./staticCanon";
+import { specFor, DEFAULT_STATIC_FORMAT, accentFor, scaleType, fitHeadline, clampDesc, luminance, contrastRatio, pickTextColor, TYPE_FLOOR, SEO } from "./staticCanon";
 
 let pass = 0, fail = 0;
 function ok(c: boolean, m: string) { if (c) { pass++; } else { fail++; console.error("✗", m); } }
@@ -10,7 +10,8 @@ eq(specFor("pin_2x3").w, 1000, "pin 2:3 ширина 1000");
 eq(specFor("pin_2x3").h, 1500, "pin 2:3 высота 1500");
 eq(specFor("card_3x4").w / specFor("card_3x4").h, 1080 / 1440, "карточка 3:4 пропорция");
 eq(specFor("ig_4x5").h, 1350, "IG 4:5 = 1080×1350");
-eq(specFor("zzz" as never).format, "pin_2x3", "неизвестный формат → дефолт pin");
+eq(DEFAULT_STATIC_FORMAT, "card_3x4", "дефолт статики → карточка WB/Ozon 3:4");
+eq(specFor("zzz" as never).format, DEFAULT_STATIC_FORMAT, "неизвестный формат → дефолт статики");
 ok(specFor("pin_2x3").marginY === 150, "pin safe-зона top/bottom 150");
 
 // ── акцент → цель ──

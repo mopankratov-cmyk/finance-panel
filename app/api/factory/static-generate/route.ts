@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { detectBrand } from "@/lib/factory/brandProfiles";
-import { specFor, accentFor, fitHeadline, type StaticFormat } from "@/lib/factory/staticCanon";
+import { specFor, accentFor, fitHeadline, DEFAULT_STATIC_FORMAT, type StaticFormat } from "@/lib/factory/staticCanon";
 import { remotionSubmit, remotionReady } from "@/lib/factory/remotionRender";
 import { classifyAssets, pickImage, type DiskAsset } from "@/lib/factory/assetBind";
 
@@ -12,7 +12,7 @@ export const maxDuration = 60;
 // Резолвит фото товара (prepared>wb по артикулу) + бренд + акцент → рендерит StaticV1 (renderStill→PNG) на Remotion-VM.
 // Канон/правила — lib/factory/staticCanon.ts; спека — docs/factory-pin-canon.md. БЕЗ fal (код-рендер).
 //
-// POST { article, niche?, format?(pin_2x3|card_3x4|ig_4x5), archetype?, headline, subhead?, bullets?, price?,
+// POST { article, niche?, format?(card_3x4|pin_2x3|ig_4x5), archetype?, headline, subhead?, bullets?, price?,
 //        oldPrice?, badge?, brand?, proof?, productImage?, productImages?, objective?(reach|saves) }
 //   → { ok, task_id, format, archetype, image_used }   (статус опрашивать на render-service /status/:id)
 //
@@ -27,7 +27,7 @@ export async function POST(req: NextRequest) {
   if (!remotionReady()) return NextResponse.json({ error: "REMOTION_RENDER_URL не задан — статика рендерится на Remotion-VM (renderStill)" }, { status: 400 });
   const body = await req.json().catch(() => ({}));
   const article: string = (body.article || "").toString().trim();
-  const format: StaticFormat = (["pin_2x3", "card_3x4", "ig_4x5", "ig_carousel"].includes(body.format) ? body.format : "pin_2x3") as StaticFormat;
+  const format: StaticFormat = (["card_3x4", "pin_2x3", "ig_4x5", "ig_carousel"].includes(body.format) ? body.format : DEFAULT_STATIC_FORMAT) as StaticFormat;
   const archetype: string = (body.archetype || "headline_hero").toString();
   const headlineRaw: string = (body.headline || "").toString().trim();
   if (!headlineRaw) return NextResponse.json({ error: "нужен headline (хук-строка)" }, { status: 400 });

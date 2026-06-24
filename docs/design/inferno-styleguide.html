@@ -118,8 +118,8 @@
 
   /* signal badges — нейтральная пилюля + цветная точка (все цвета из GT) */
   .signals{display:flex; gap:10px; flex-wrap:wrap;}
-  .sig{display:inline-flex; align-items:center; gap:6px; background:var(--subtle2); color:var(--text-secondary); font-size:12.8px; font-weight:600; padding:3px 10px; border-radius:var(--radius-pill);}
-  .sig::before{content:""; width:8px; height:8px; border-radius:50%; background:var(--sig-dot,var(--text-muted));}
+  .signal-badge{display:inline-flex; align-items:center; gap:6px; background:var(--subtle2); color:var(--text-secondary); font-size:12.8px; font-weight:600; padding:3px 10px; border-radius:var(--radius-pill);}
+  .signal-badge::before{content:""; width:8px; height:8px; border-radius:50%; background:var(--sig-dot,var(--text-muted));}
   .sig-content{--sig-dot:var(--violet);}
   .sig-comp{--sig-dot:var(--neg);}
   .sig-ads{--sig-dot:var(--teal);}
@@ -303,12 +303,12 @@
     <div class="sec-head"><span class="sec-num">08</span><span class="sec-title">Signal-badges</span><span class="sec-note">6 типов · цветная точка из акцентов</span></div>
     <div class="card">
       <div class="signals">
-        <span class="sig sig-content">Контент</span>
-        <span class="sig sig-comp">Конкуренты</span>
-        <span class="sig sig-ads">Реклама</span>
-        <span class="sig sig-stock">Остатки</span>
-        <span class="sig sig-drr">ДРР</span>
-        <span class="sig sig-margin">Маржа</span>
+        <span class="signal-badge sig-content">Контент</span>
+        <span class="signal-badge sig-comp">Конкуренты</span>
+        <span class="signal-badge sig-ads">Реклама</span>
+        <span class="signal-badge sig-stock">Остатки</span>
+        <span class="signal-badge sig-drr">ДРР</span>
+        <span class="signal-badge sig-margin">Маржа</span>
       </div>
     </div>
   </section>
@@ -353,10 +353,10 @@
               <tr><th>Артикул / товар</th><th>Стратегия</th><th>Цена</th><th>Реком.</th><th>Δ</th><th>Маржа</th><th>Сигнал</th></tr>
             </thead>
             <tbody>
-              <tr><td>Аквабластер Pro <span class="sku">· 184422301</span></td><td style="text-align:left"><span class="dot dot-go" style="display:inline-block;margin-right:6px"></span>Разгон GMROI</td><td>1 290 ₽</td><td>1 190 ₽</td><td class="delta-dn">−100</td><td class="num-pos">38%</td><td style="text-align:left"><span class="sig sig-comp">Конкуренты</span></td></tr>
-              <tr><td>Помповый XL <span class="sku">· 184422318</span></td><td style="text-align:left"><span class="dot dot-margin" style="display:inline-block;margin-right:6px"></span>Рост маржи</td><td>1 540 ₽</td><td>1 690 ₽</td><td class="delta-up">+150</td><td class="num-pos">44%</td><td style="text-align:left"><span class="sig sig-margin">Маржа</span></td></tr>
-              <tr><td>Мини-сплеш 2-pack <span class="sku">· 184422342</span></td><td style="text-align:left"><span class="dot dot-out" style="display:inline-block;margin-right:6px"></span>Скоро аут</td><td>690 ₽</td><td>790 ₽</td><td class="delta-up">+100</td><td class="num-neg">19%</td><td style="text-align:left"><span class="sig sig-stock">Остатки</span></td></tr>
-              <tr><td>Ветровка унисекс <span class="sku">· 209118044</span></td><td style="text-align:left"><span class="dot dot-go" style="display:inline-block;margin-right:6px"></span>Разгон GMROI</td><td>3 290 ₽</td><td>3 490 ₽</td><td class="delta-up">+200</td><td class="num-pos">41%</td><td style="text-align:left"><span class="sig sig-ads">Реклама</span></td></tr>
+              <tr><td>Аквабластер Pro <span class="sku">· 184422301</span></td><td style="text-align:left"><span class="dot dot-go" style="display:inline-block;margin-right:6px"></span>Разгон GMROI</td><td>1 290 ₽</td><td>1 190 ₽</td><td class="delta-dn">−100</td><td class="num-pos">38%</td><td style="text-align:left"><span class="signal-badge sig-comp">Конкуренты</span></td></tr>
+              <tr><td>Помповый XL <span class="sku">· 184422318</span></td><td style="text-align:left"><span class="dot dot-margin" style="display:inline-block;margin-right:6px"></span>Рост маржи</td><td>1 540 ₽</td><td>1 690 ₽</td><td class="delta-up">+150</td><td class="num-pos">44%</td><td style="text-align:left"><span class="signal-badge sig-margin">Маржа</span></td></tr>
+              <tr><td>Мини-сплеш 2-pack <span class="sku">· 184422342</span></td><td style="text-align:left"><span class="dot dot-out" style="display:inline-block;margin-right:6px"></span>Скоро аут</td><td>690 ₽</td><td>790 ₽</td><td class="delta-up">+100</td><td class="num-neg">19%</td><td style="text-align:left"><span class="signal-badge sig-stock">Остатки</span></td></tr>
+              <tr><td>Ветровка унисекс <span class="sku">· 209118044</span></td><td style="text-align:left"><span class="dot dot-go" style="display:inline-block;margin-right:6px"></span>Разгон GMROI</td><td>3 290 ₽</td><td>3 490 ₽</td><td class="delta-up">+200</td><td class="num-pos">41%</td><td style="text-align:left"><span class="signal-badge sig-ads">Реклама</span></td></tr>
             </tbody>
           </table>
         </div>
