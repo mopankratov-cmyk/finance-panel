@@ -1,0 +1,125 @@
+import { NextRequest, NextResponse } from "next/server";
+import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { internalFetch } from "@/lib/internalFetch";
+import { extractFrames } from "@/lib/factory/serverMedia";
+import type { RunPlan } from "@/lib/factory/graphRun";
+
+export const dynamic = "force-dynamic";
+export const maxDuration = 60;
+
+interface RecipeRow {
+  id: number;
+  article: string | null;
+  niche: string | null;
+  mode: string | null;
+  output_url: string | null;
+  run_plan: RunPlan | null;
+}
+
+function authOk(req: NextRequest): boolean {
+  const secret = process.env.CRON_SECRET || "";
+  return !!secret && req.headers.get("authorization") === `Bearer ${secret}`;
+}
+
+async function critic(origin: string, body: Record<string, unknown>) {
+  const r = await internalFetch(`${origin}/api/factory/video-critic`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(55000),
+  });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(`video-critic ${r.status}: ${String(j?.error || j?.detail || r.statusText || "ошибка").slice(0, 160)}`);
+  return j as { score?: number; verdict?: string; axes?: unknown; issues?: string[] };
+}
+
+export async function POST(req: NextRequest) {
+  if (!authOk(req)) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const db = getSupabaseAdmin();
+  if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 500 });
+
+  const body = await req.json().catch(() => ({}));
+  const apply = body.apply === true;
+  const recipeIds = Array.isArray(body.recipe_ids) ? body.recipe_ids.map((x: unknown) => Number(x)).filter(Boolean).slice(0, 1) : [];
+  const sinceHours = Math.min(168, Math.max(1, Number(body.since_hours) || 72));
+  const since = new Date(Date.now() - sinceHours * 3600_000).toISOString();
+
+  let q = db.from("node_recipes")
+    .select("id,article,niche,mode,output_url,run_plan")
+    .eq("status", "otk_pass")
+    .is("otk_score", null)
+    .not("output_url", "is", null)
+    .order("updated_at", { ascending: false })
+    .limit(1);
+  if (recipeIds.length) q = q.in("id", recipeIds);
+  else q = q.gte("updated_at", since);
+
+  const { data, error } = await q;
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  const rows = (data as RecipeRow[] | null) || [];
+  if (!rows.length) return NextResponse.json({ ok: true, apply, processed: [], note: "нет otk_pass с пустым otk_score" });
+
+  const origin = req.nextUrl.origin;
+  const processed = [];
+  for (const row of rows) {
+    const plan = row.run_plan || ({ step: "done", nodes: [] } as RunPlan);
+    const url = row.output_url || plan.output_url;
+    if (!url) { processed.push({ id: row.id, error: "нет output_url" }); continue; }
+    let frames: string[];
+    try {
+      frames = await extractFrames(url);
+    } catch (e) {
+      processed.push({ id: row.id, error: `extractFrames: ${String((e as Error)?.message || e).slice(0, 180)}` });
+      continue;
+    }
+    if (!frames.length) { processed.push({ id: row.id, error: "не извлеклись кадры" }); continue; }
+    const hookNode = (plan.nodes || []).find((n) => String(((n.params || {}) as Record<string, unknown>)["role"] || n.slot || "").toLowerCase() === "hook") || (plan.nodes || [])[0];
+    let verdict: { score?: number; verdict?: string; axes?: unknown; issues?: string[] };
+    try {
+      verdict = await critic(origin, {
+        frames,
+        hook: hookNode?.onscreen_text || hookNode?.prompt || "",
+        mode: row.mode || "audience",
+        article: row.article || "",
+        niche: row.niche || "",
+      });
+    } catch (e) {
+      processed.push({ id: row.id, error: String((e as Error)?.message || e).slice(0, 220) });
+      continue;
+    }
+    const score = typeof verdict.score === "number" ? verdict.score : null;
+    if (score == null) { processed.push({ id: row.id, error: "video-critic без score" }); continue; }
+    const status = score >= 7 ? "otk_pass" : "otk_fail";
+    const otk = { score, verdict: verdict.verdict, axes: verdict.axes || null, issues: Array.isArray(verdict.issues) ? verdict.issues : [] };
+    processed.push({ id: row.id, apply, status, score, issues: otk.issues.slice(0, 3) });
+    if (!apply) continue;
+
+    plan.otk = otk;
+    plan.bestScore = score;
+    plan.bestUrl = url;
+    plan.error = null;
+    await db.from("node_recipes").update({
+      status,
+      otk_score: score,
+      otk_verdict: otk,
+      run_plan: plan,
+      updated_at: new Date().toISOString(),
+    }).eq("id", row.id);
+
+    try {
+      await db.from("cf_signals").insert({
+        event: status === "otk_pass" ? "approved" : "rejected",
+        recipe_id: row.id,
+        niche: row.niche,
+        article: row.article,
+        mode: row.mode || "audience",
+        engine: plan.render_engine || "remotion",
+        axes: otk.axes,
+        reason_chip: status === "otk_fail" ? (otk.issues[0] || "ОТК<7") : "rejudge",
+        params: { source: "graph_run_rejudge", previous_status: "otk_pass" },
+      });
+    } catch { /* сигнал best-effort */ }
+  }
+
+  return NextResponse.json({ ok: true, apply, processed });
+}
