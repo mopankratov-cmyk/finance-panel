@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { creatifyLinkVideo, creatifyLipsync, creatifyReady } from "@/lib/factory/creatify";
+import { internalFetch } from "@/lib/internalFetch";
+import { analyzeScenarioQuality } from "@/lib/factory/scenarioQuality";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -13,6 +15,16 @@ export async function POST(req: NextRequest) {
   const debugMode = body.debug === true;
   let url: string = (body.product_url || "").toString().trim();
   let images: string[] = Array.isArray(body.images) ? body.images : [];
+  let videoUrls: string[] = Array.isArray(body.video_urls) ? body.video_urls.map((v: unknown) => String(v).trim()).filter(Boolean) : [];
+  const overrideVoice = (body.override_voice || body.voice_id || "").toString().trim();
+  const backgroundMusicUrl = (body.background_music_url || body.music_url || "").toString().trim();
+  const backgroundMusicVolume = typeof body.background_music_volume === "number" ? body.background_music_volume : undefined;
+  const noBackgroundMusic = typeof body.no_background_music === "boolean" ? body.no_background_music : undefined;
+  const noCaption = typeof body.no_caption === "boolean" ? body.no_caption : undefined;
+  const noStockBroll = typeof body.no_stock_broll === "boolean" ? body.no_stock_broll : undefined;
+  const voiceoverVolume = typeof body.voiceover_volume === "number" ? body.voiceover_volume : undefined;
+  const modelVersion = (body.model_version || "").toString().trim() || undefined;
+  const noCta = typeof body.no_cta === "boolean" ? body.no_cta : undefined;
   let title = "";
 
   // резолв фото+названия+URL карточки WB по артикулу (nm_id из rnp_report). Фото отдаём Creatify напрямую.
@@ -34,10 +46,65 @@ export async function POST(req: NextRequest) {
     } catch { /* без фото — уйдём в lipsync */ }
   }
 
-  if (images.length || url) {
-    const res = await creatifyLinkVideo({ url: url || undefined, images, title: title || (body.brief || "").toString(), description: script || (body.brief || "").toString(), script: script || undefined, avatar: (body.creator || body.avatar || "").trim() || undefined, visual_style: (body.visual_style || "").toString().trim() || undefined });
-    if (res.error || !res.token) return NextResponse.json({ detail: res.error || "Creatify не запустил", ...(debugMode ? { debug: res.debug } : {}) }, { status: 502 });
-    return NextResponse.json({ task_id: "cf." + res.token, engine: "creatify", mode: "link_to_videos", product_url: url, ...(debugMode ? { debug: res.debug } : {}) });
+  const quality = script
+    ? await analyzeScenarioQuality({
+        article: String(body.sku_art || body.article || ""),
+        product_name: title || String(body.brief || "").trim(),
+        niche: String(body.niche || body.category || "default"),
+        scenario: script,
+        hooks: body.hook ? [String(body.hook)] : [],
+        visual_beats: Array.isArray(body.visual_beats) ? body.visual_beats : String(body.visual_beats || ""),
+        threshold: typeof body.threshold === "number" ? body.threshold : undefined,
+      })
+    : null;
+
+  if (quality && quality.should_render === false) {
+    return NextResponse.json({
+      detail: "Сценарий не прошёл quality gate до рендера",
+      quality_gate: quality,
+    }, { status: 422 });
+  }
+
+  if (!videoUrls.length && body.sku_art) {
+    try {
+      const r = await internalFetch(`${req.nextUrl.origin}/api/factory/disk-source`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ article: String(body.sku_art), product: title || (body.brief || "").toString() || url }),
+        signal: AbortSignal.timeout(12000),
+      });
+      const d = await r.json().catch(() => null);
+      if (r.ok && d && Array.isArray((d as { videos?: unknown[] }).videos)) {
+        videoUrls = ((d as { videos?: { url?: unknown }[] }).videos || [])
+          .map((v) => String(v?.url || "").trim())
+          .filter(Boolean)
+          .slice(0, 8);
+      }
+    } catch { /* видео — best effort */ }
+  }
+
+  if (images.length || url || videoUrls.length) {
+    const res = await creatifyLinkVideo({
+      url: url || undefined,
+      images,
+      videoUrls,
+      title: title || (body.brief || "").toString(),
+      description: script || (body.brief || "").toString(),
+      script: script || undefined,
+      avatar: (body.creator || body.avatar || "").trim() || undefined,
+      visual_style: (body.visual_style || "").toString().trim() || undefined,
+      override_voice: overrideVoice || undefined,
+      background_music_url: backgroundMusicUrl || undefined,
+      background_music_volume: backgroundMusicVolume,
+      no_background_music: noBackgroundMusic,
+      no_caption: noCaption,
+      no_stock_broll: noStockBroll,
+      voiceover_volume: voiceoverVolume,
+      model_version: modelVersion,
+      no_cta: noCta,
+    });
+    if (res.error || !res.token) return NextResponse.json({ detail: res.error || "Creatify не запустил", ...(debugMode ? { debug: res.debug } : {}), ...(quality ? { quality_gate: quality } : {}) }, { status: 502 });
+    return NextResponse.json({ task_id: "cf." + res.token, engine: "creatify", mode: "link_to_videos", product_url: url, ...(quality ? { quality_gate: quality } : {}), ...(debugMode ? { debug: res.debug } : {}) });
   }
 
   if (!script) return NextResponse.json({ detail: "Нужен товар (артикул/URL) или текст для актёра" }, { status: 400 });
