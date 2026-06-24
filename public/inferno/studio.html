@@ -231,6 +231,28 @@ const LIVE_PICKER={ override_voice:{type:"voices",route:"/creatify-options?type=
 const _liveOpts={};
 
 async function api(path,opts){ try{ const r=await fetch(API+path,opts); return await r.json().catch(()=>({error:"не JSON"})); }catch(e){ return {error:String(e).slice(0,120)}; } }
+let _selfHealBusy=false;
+async function selfHeal(action,payload,okText){
+  if(_selfHealBusy){ toast("самопочинка уже идёт…"); return null; }
+  _selfHealBusy=true;
+  try{
+    toast(action==="wake"?"буду зависшие прогоны…":"переоцениваю ОТК…");
+    const r=await api("/self-heal",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action,...payload})});
+    if(r&&r.ok!==false&&!r.error){
+      const res=r.result||{};
+      toast(okText || (action==="wake"
+        ? `разбудил ${(res.woken||[]).length||0} прогонов`
+        : `rejudge: ${(res.processed||[]).length||0} карточек`));
+      loadObserver().catch(()=>{});
+      if(S.screen==="library")screenLibrary(document.getElementById("screen"), false);
+      return r;
+    }
+    toast("не вышло: "+String((r&&r.error)||"?").slice(0,80));
+    return r;
+  } finally {
+    _selfHealBusy=false;
+  }
+}
 function el(tag,attrs,...kids){
   const e=document.createElement(tag);
   if(attrs)for(const k in attrs){
@@ -334,6 +356,9 @@ function renderFactoryPulse(){
     box.appendChild(el("div",{style:"display:flex;flex-wrap:wrap;gap:5px;margin-top:7px;"},
       ...recentBits.map((t)=>el("span",{style:"font-size:9.5px;font-family:var(--mono);color:var(--tx-mid);background:var(--bg-chip);border:1px solid var(--bd);padding:2px 6px;border-radius:999px;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"},t))));
   }
+  box.appendChild(el("div",{style:"display:flex;flex-wrap:wrap;gap:8px;margin-top:9px;"},
+    el("button",{class:"btn sm",onclick:()=>selfHeal("wake",{stale_ms:90000,max_wake:10},"самопочинка запущена")},"⚡ будить"),
+    el("button",{class:"btn sm",onclick:()=>selfHeal("rejudge",{apply:true,max_items:3,since_hours:72},"ОТК карточек запущен")},"↻ rejudge ОТК ?")));
   if(o&&o.partial){
     box.appendChild(el("div",{style:"font-size:10.5px;color:var(--warn);line-height:1.35;margin-top:6px;"},"частичный ответ: часть метрик не успела прийти"));
   }
@@ -1631,6 +1656,8 @@ function recipeCard(r){ const needsRejudge=!!(r.needs_rejudge||(r.status==="otk_
     title:errText||"",onclick:()=>openRecipe(r.id).then(ok=>{ if(ok)go("canvas"); })},
     el("div",{style:"display:flex;align-items:center;gap:8px;margin-bottom:7px;"},el("span",{class:"sq",style:"width:8px;height:8px;background:"+c}),el("span",{class:"mono",style:"font-size:9px;color:var(--tx-lo);"},"граф #"+r.id),el("span",{class:"dot",style:"width:8px;height:8px;background:"+stC+";margin-left:auto;"}),
       needsRejudge?el("span",{class:"mono",style:"font-size:9px;color:var(--warn);background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.35);padding:2px 5px;border-radius:4px;"},"ОТК ?"):null,
+      needsRejudge?el("button",{class:"btn sm",style:"padding:3px 7px;margin-left:2px;",onclick:async(e)=>{ e.stopPropagation(); await selfHeal("rejudge",{apply:true,max_items:1,recipe_ids:[r.id]},"rejudge запущен"); }},"↻ rejudge"):null,
+      r.status==="running"&&r.step!=="done"&&r.step!=="failed"?el("button",{class:"btn sm",style:"padding:3px 7px;margin-left:2px;",onclick:async(e)=>{ e.stopPropagation(); await selfHeal("wake",{stale_ms:90000,max_wake:3},"будилка дернулась"); }},"⚡ wake"):null,
       el("span",{style:"font-size:12px;color:var(--acc-lt);cursor:pointer;padding:0 2px;",title:"R4: 3 варианта с разными хуками (A/B на объёме)",onclick:async(e)=>{ e.stopPropagation(); toast("делаю варианты хука…"); const d=await api("/recipe-variants",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({recipe_id:r.id,n:3})}); if(d&&d.ok){ toast("✓ "+(d.variants||[]).length+" вариант(ов) → в базе, гоняй все"); if(S.screen==="library")screenLibrary(document.getElementById("screen")); } else toast("не вышло: "+((d&&d.error)||"?").toString().slice(0,45)); }},"🔀"),
       el("span",{style:"font-size:12px;color:var(--tx-lo2);cursor:pointer;padding:0 2px;",title:"удалить рецепт",onclick:async(e)=>{ e.stopPropagation(); if(!confirm("Удалить граф #"+r.id+"?"))return; const cardEl=e.currentTarget.closest(".card"); const d=await api("/recipes?recipe_id="+r.id,{method:"DELETE"}); if(d.ok){ toast("удалён"); if(cardEl)cardEl.remove(); S.recipes=(S.recipes||[]).filter(x=>x.id!==r.id); if(S.recipe&&S.recipe.recipe&&String(S.recipe.recipe.id)===String(r.id)){ S.recipe=null; S.selectedNode=null; if(["canvas","inspector","assembly"].includes(S.screen))render(); } } else toast(d.error||"ошибка"); }},"✕")),
     el("div",{style:"font-size:12.5px;font-weight:600;"},(r.article||"—")),
