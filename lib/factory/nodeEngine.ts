@@ -128,6 +128,7 @@ export async function submitNode(node: EngineNode): Promise<SubmitResult> {
     const r = await creatifyLinkVideo({
       url: productUrl || undefined,
       images,
+      videoUrls: Array.isArray(params.video_urls) ? params.video_urls.map((v) => String(v)).filter(Boolean) : undefined,
       title: params.title || undefined,
       description: params.description || undefined,
       script: script || undefined,

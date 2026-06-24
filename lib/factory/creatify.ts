@@ -188,17 +188,22 @@ export const CREATIFY_SCENES: { id: string; label: string; hint: string }[] = [
 ];
 
 // ОСНОВНОЙ: link_to_videos — товар в кадре. Возвращает токен + debug (сырые ответы для отладки).
-// Фото товара передаём НАПРЯМУЮ (link_with_params) — WB не скрейпится, поэтому даём image_urls.
+// Фото/видео товара передаём НАПРЯМУЮ (link_with_params) — WB не скрейпится, поэтому даём image_urls/video_urls.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export async function creatifyLinkVideo(opts: { url?: string; images?: string[]; title?: string; description?: string; script?: string; avatar?: string; visual_style?: string; length?: number; model_version?: string; no_cta?: boolean; script_style?: string; no_caption?: boolean; caption_setting?: Record<string, unknown>; aspect_ratio?: string; target_platform?: string; voiceover_volume?: number; no_emotion?: boolean; no_stock_broll?: boolean; override_voice?: string; background_music_url?: string; background_music_volume?: number; no_background_music?: boolean }): Promise<{ token?: string; error?: string; debug?: any }> {
+export async function creatifyLinkVideo(opts: { url?: string; images?: string[]; videoUrls?: string[]; title?: string; description?: string; script?: string; avatar?: string; visual_style?: string; length?: number; model_version?: string; no_cta?: boolean; script_style?: string; no_caption?: boolean; caption_setting?: Record<string, unknown>; aspect_ratio?: string; target_platform?: string; voiceover_volume?: number; no_emotion?: boolean; no_stock_broll?: boolean; override_voice?: string; background_music_url?: string; background_music_volume?: number; no_background_music?: boolean }): Promise<{ token?: string; error?: string; debug?: any }> {
   const h = headers();
   if (!h) return { error: "CREATIFY ключ не настроен" };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const debug: any = {};
   // 1) link: если есть фото — отдаём напрямую (link_with_params), иначе пробуем скрейп URL
   let linkId = "";
-  if (opts.images && opts.images.length) {
-    const lp = await jpost(h, "/links/link_with_params/", { title: opts.title || "Товар", description: opts.description || opts.title || "", image_urls: opts.images.slice(0, 8), video_urls: [] });
+  if ((opts.images && opts.images.length) || (opts.videoUrls && opts.videoUrls.length)) {
+    const lp = await jpost(h, "/links/link_with_params/", {
+      title: opts.title || "Товар",
+      description: opts.description || opts.title || "",
+      image_urls: (opts.images || []).slice(0, 8),
+      video_urls: (opts.videoUrls || []).slice(0, 8),
+    });
     debug.link_params = { status: lp.status, body: lp.json || lp.text };
     linkId = (lp.json?.id as string) || "";
   }
@@ -220,7 +225,7 @@ export async function creatifyLinkVideo(opts: { url?: string; images?: string[];
   if (opts.override_voice) body.override_voice = opts.override_voice;                    // голос из живого /voices/ (accent id) — раньше не слался
   if (opts.background_music_url) body.background_music_url = opts.background_music_url;     // трек из живого /musics/
   if (typeof opts.background_music_volume === "number") body.background_music_volume = opts.background_music_volume;
-  if (typeof opts.no_background_music === "boolean") body.no_background_music = opts.no_background_music;
+  body.no_background_music = typeof opts.no_background_music === "boolean" ? opts.no_background_music : true;
   if (opts.visual_style) body.visual_style = opts.visual_style; // композиция сцены (*Template)
   if (opts.model_version) body.model_version = opts.model_version; // aurora_v1_fast/aurora_v1/standard (раньше не слался — БАГ)
   if (opts.script_style && !opts.script) body.script_style = opts.script_style; // стиль-fallback, игнор при override_script
@@ -249,15 +254,39 @@ export async function creatifyLipsync(text: string, opts?: { creator?: string; m
   return { token: Buffer.from("ls|" + id).toString("base64url") };
 }
 
-export interface CreatifyStatus { status: "in_progress" | "done" | "error"; videoUrl?: string; error?: string; raw?: string }
+export interface CreatifyStatus { status: "preview_ready" | "in_progress" | "done" | "error"; videoUrl?: string; previewUrl?: string; error?: string; raw?: string }
+
+function decodeToken(token: string): { isLink: boolean; id: string } | null {
+  try {
+    const decoded = Buffer.from(token, "base64url").toString();
+    const isLink = decoded.startsWith("lv|");
+    const id = decoded.replace(/^(lv|ls)\|/, "");
+    return id ? { isLink, id } : null;
+  } catch {
+    return null;
+  }
+}
+
+function previewUrlFromJob(j: Record<string, unknown>): string | undefined {
+  const preview = j.preview;
+  if (typeof preview === "string" && preview.trim()) return preview;
+  if (Array.isArray(j.previews) && j.previews.length) {
+    const first = j.previews[0] as Record<string, unknown> | string | undefined;
+    if (typeof first === "string" && first.trim()) return first;
+    if (first && typeof first === "object") {
+      const u = (first as Record<string, unknown>).url || (first as Record<string, unknown>).preview_url;
+      if (typeof u === "string" && u.trim()) return u;
+    }
+  }
+  return undefined;
+}
 
 export async function creatifyStatus(token: string): Promise<CreatifyStatus> {
   const h = headers();
   if (!h) return { status: "error", error: "CREATIFY ключ не настроен" };
-  let decoded: string;
-  try { decoded = Buffer.from(token, "base64url").toString(); } catch { return { status: "error", error: "плохой токен" }; }
-  const isLink = decoded.startsWith("lv|");
-  const id = decoded.replace(/^(lv|ls)\|/, "");
+  const decoded = decodeToken(token);
+  if (!decoded) return { status: "error", error: "плохой токен" };
+  const { isLink, id } = decoded;
   const path = isLink ? `/link_to_videos/${id}/` : `/lipsyncs/${id}/`;
   try {
     const r = await fetch(`${BASE}${path}`, { headers: h, cache: "no-store", signal: AbortSignal.timeout(15000) });
@@ -267,15 +296,36 @@ export async function creatifyStatus(token: string): Promise<CreatifyStatus> {
     const url = j.video_output || j.output;
     if (j.status === "done" && url) return { status: "done", videoUrl: url };
     if (j.status === "failed" || j.status === "error") return { status: "error", error: (j.failed_reason || "creatify failed").toString().slice(0, 120) };
-    // link_to_videos: как только превью готово — запускаем render (стейт-машина в опросе)
     if (isLink) {
-      const hasPreview = !!j.preview || (Array.isArray(j.previews) && j.previews.length > 0);
-      const notRendering = j.status === "pending" || j.status === "draft" || !j.status;
-      if (hasPreview && notRendering) {
-        await jpost(h, `/link_to_videos/${id}/render/`, {}); // запустить рендер (идемпотентно — статус сменится)
-        return { status: "in_progress", raw: "render" };
-      }
+      const previewUrl = previewUrlFromJob(j);
+      const hasPreview = !!previewUrl;
+      const notRendering = j.status === "pending" || j.status === "draft" || j.status === "preview" || !j.status;
+      if (hasPreview && notRendering) return { status: "preview_ready", previewUrl, raw: "preview_ready" };
+      if (hasPreview) return { status: "in_progress", previewUrl, raw: j.status };
     }
     return { status: "in_progress", raw: j.status };
   } catch (e) { return { status: "error", error: String(e).slice(0, 100) }; }
+}
+
+export async function creatifyStartRender(token: string): Promise<CreatifyStatus> {
+  const h = headers();
+  if (!h) return { status: "error", error: "CREATIFY ключ не настроен" };
+  const decoded = decodeToken(token);
+  if (!decoded) return { status: "error", error: "плохой токен" };
+  if (!decoded.isLink) return { status: "error", error: "render доступен только для link_to_videos" };
+  const { id } = decoded;
+  try {
+    const current = await creatifyStatus(token);
+    if (current.status === "done" || current.status === "error") return current;
+    if (current.status === "in_progress" && current.videoUrl) return current;
+    const r = await jpost(h, `/link_to_videos/${id}/render/`, {});
+    const body = r.json || {};
+    if (!r.ok) {
+      const msg = (body as Record<string, unknown>).detail || r.text || `creatify ${r.status}`;
+      return { status: "error", error: String(msg).slice(0, 120), raw: r.text };
+    }
+    return { status: "in_progress", raw: "render_started" };
+  } catch (e) {
+    return { status: "error", error: String(e).slice(0, 100) };
+  }
 }

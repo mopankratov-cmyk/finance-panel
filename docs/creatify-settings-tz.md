@@ -183,7 +183,7 @@ curl -s https://api.creatify.ai/api/schema/ -H "X-API-ID: $CREATIFY_API_ID" -H "
 |---|---|---|---|---|---|---|---|
 | Свой трек | `background_music_url` | URL ≤255; null→рандом. Каталог `/api/musics/` | null | picker (+ новый роут `/api/factory/creatify-music`) | **добавить** | body link_to_videos | тренд-саунды под RU-TikTok (Virlo `get_trending_sounds`); права из каталога |
 | Громкость музыки | `background_music_volume` | 0.0–1.0 | null | slider | **добавить** | body | ≤0.2–0.3 при озвучке |
-| Без музыки | `no_background_music` | true\|false | false | toggle | **добавить** | body | true → url/volume игнор; для «говорящей головы» или если звук кладём в Shotstack |
+| Без музыки | `no_background_music` | true\|false | true | toggle | **добавить** | body | true → url/volume игнор; для «говорящей головы» или если звук кладём в Shotstack |
 
 ### 3.7 Формат и длина (format)
 
@@ -414,7 +414,7 @@ interface CreatifySettings {
 | `lib/factory/creatify.ts` | (1) Фикс БАГ №1: `model_version` в тело link_to_videos. (2) Расширить сигнатуру `creatifyLinkVideo` до `CreatifySettings`; собрать полное тело + `caption_setting`. (3) В `link_with_params` добавить `logo_url`, `reviews`. (4) Расширить `CREATIFY_SCENES`→ полный `VISUAL_STYLES_LTV` из дампа; добавить `SCRIPT_STYLES`, `CAPTION_STYLES_LTV_V2`, `LANGUAGES`, `VISUAL_STYLES_LIPSYNC_V2`, `CAPTION_STYLES_V1`. (5) Новые адаптеры: `creatifyListVoices()`, (опц.) `creatifyListMusic()`, `creatifyCreatePersona()`, `creatifyCloneVoice()`, `creatifyLipsyncV2()`, `creatifyTTS()`. (6) Мигрировать `creatifyListAvatars` на `/personas_v2/` (+ клиентский keyword, проверка suitable_industries). (7) В `creatifyLipsync` добавить `accent`, `audio`, `no_caption=false`, `no_music`. (8) Константы `CREATIFY_RU_VOICES`, `CAPTION_RU_FONTS`. |
 | `app/api/factory/ugc-creatify/route.ts` | Принять `body.settings`, ОТК pre-flight (§8), пробросить в адаптер. |
 | `app/api/factory/creatify-avatars/route.ts` | Прокинуть `age`/`location`/`industry` query (уже частично). |
-| **Новые роуты** | `creatify-voices` (GET, read-only), `creatify-music` (GET, read-only), `creatify-persona` (POST, BYOA), `creatify-webhook` (POST, приёмник). |
+| **Новые роуты** | `creatify-voices` (GET, read-only), `creatify-music` (GET, read-only), `creatify-credits` (GET, read-only), `creatify-persona` (POST, BYOA), `creatify-webhook` (POST, приёмник). `creatify-voices`/`creatify-music`/`creatify-credits` уже добавлены в код. |
 | `public/inferno/patrick.html` | (1) Панель «⚙️ Настройки UGC» со всеми контролами по группам §3. (2) Расширить состояние `avatars`→ полный `CreatifySettings` + пикер голосов/музыки. (3) Реактивные правила-зависимости §5 + индикатор кредитов. (4) Color+альфа контрол для #RRGGBBAA. (5) Пресет v2 §6 + миграция `cf_avatar`. (6) `makeUGC`/`testUGC` шлют `settings`. |
 | `lib/factory/brandProfiles.ts` | (опц.) per-бренд дефолтный `override_voice`/`logo_url`. |
 
