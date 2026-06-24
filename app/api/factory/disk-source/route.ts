@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { yaCollectImages, yaCollectVideos } from "@/lib/yandex/disk";
+import { yaCollectImages, yaCollectVideos, yaDownloadHref } from "@/lib/yandex/disk";
 import { sourceFor, nicheFor, SKIP_FILE } from "@/lib/factory/contentDisks";
 import { signProxyUrl } from "@/lib/auth/proxySign";
 
@@ -8,7 +8,7 @@ export const maxDuration = 30;
 
 // Подбор контента под КОНКРЕТНЫЙ товар (по артикулу) — строго этого артикула, без чужих цветов/моделей.
 // Приоритет: реальная съёмка этого артикула → WB-фото этой карточки (верный цвет) → иначе «нет».
-//  POST { product, article } → { found, exact, note, source, images:[{name,path,url}], videos }
+//  POST { product, article } → { found, exact, note, source, images:[{name,path,url}], videos:[{name,path,url}] }
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
   const product: string = (body.product || body.name || "").toString().trim();
@@ -39,7 +39,7 @@ export async function POST(req: NextRequest) {
           note: `Реальная съёмка артикула ${article}`,
           source: { disk: "catalog", label: "съёмка (точно по артикулу)" },
           images: realImgs.map((r) => ({ name: r.name, path: r.path, url: abs(r.url as string) })),
-          videos: (real || []).filter((r) => r.kind === "video").map((r) => ({ name: r.name, path: r.path })),
+          videos: (real || []).filter((r) => r.kind === "video").map((r) => ({ name: r.name, path: r.path, url: abs(r.url as string) })),
         });
       }
       // 2) фото карточки WB именно этого артикула (верный цвет, хоть и студийный кроп)
@@ -64,6 +64,10 @@ export async function POST(req: NextRequest) {
   const src = sourceFor(product, article);
   if (!src) return NextResponse.json({ found: false, niche, reason: "нет реальной съёмки под эту группу — рендер пойдёт с карточки" });
   const proxy = (p: string) => abs(`/api/lab/yandex-img?path=${encodeURIComponent(p)}&key=${encodeURIComponent(src.disk.key)}`);
+  const videoProxy = async (p: string) => {
+    const href = await yaDownloadHref(p, src.disk.key);
+    return href ? abs(`/api/lab/media-proxy?url=${encodeURIComponent(href)}`) : "";
+  };
   const collected = await Promise.all(src.paths.flatMap((p) => [yaCollectImages(p, 2, src.disk.key), yaCollectVideos(p, 2, src.disk.key)]));
   const imgs = collected.filter((_, idx) => idx % 2 === 0).flat().filter((i) => !SKIP_FILE.test(i.name));
   const vids = collected.filter((_, idx) => idx % 2 === 1).flat().filter((v) => !SKIP_FILE.test(v.name));
@@ -71,11 +75,19 @@ export async function POST(req: NextRequest) {
   const uniqImgs = imgs.filter((i) => (seen.has(i.path) ? false : (seen.add(i.path), true)));
   const isHeader = (n: string) => /^1\.(png|jpe?g|webp)$/i.test(n);
   uniqImgs.sort((a, b) => Number(isHeader(a.name)) - Number(isHeader(b.name)));
+  const uniqVids: typeof vids = [];
+  const seenVids = new Set<string>();
+  for (const v of vids) {
+    if (seenVids.has(v.path)) continue;
+    seenVids.add(v.path);
+    uniqVids.push(v);
+  }
+  const videoUrls = await Promise.all(uniqVids.slice(0, 12).map(async (v) => ({ name: v.name, path: v.path, url: await videoProxy(v.path) })));
   return NextResponse.json({
-    found: uniqImgs.length > 0 || vids.length > 0, exact: false, niche: src.niche, learned,
+    found: uniqImgs.length > 0 || uniqVids.length > 0, exact: false, niche: src.niche, learned,
     note: src.note,
     source: { disk: src.disk.id, label: src.disk.label, paths: src.paths },
     images: uniqImgs.slice(0, 24).map((i) => ({ name: i.name, path: i.path, url: proxy(i.path) })),
-    videos: vids.slice(0, 12).map((v) => ({ name: v.name, path: v.path })),
+    videos: videoUrls,
   });
 }
