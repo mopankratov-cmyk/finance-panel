@@ -6,7 +6,6 @@ let pass = 0, fail = 0;
 function ok(c: boolean, m: string) { if (c) { pass++; } else { fail++; console.error("✗", m); } }
 function eq(a: unknown, b: unknown, m: string) { ok(JSON.stringify(a) === JSON.stringify(b), `${m} (got ${JSON.stringify(a)})`); }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const node = (o: any) => ({ ordinal: 0, slot: null, node_type: null, tool: null, prompt: "", params: {}, image_url: null, asset_url: null, duration_sec: null, onscreen_text: null, status: "done", ...o });
 
 // ── selectVisualNodes: только готовый клип с url; не captions/elevenlabs/skip ──

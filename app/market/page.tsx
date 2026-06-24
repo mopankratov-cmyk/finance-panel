@@ -62,9 +62,13 @@ export default function MarketPage() {
 
   // Быстрый период: до вчера (MPStats не отдаёт сегодня), гранулярность по умолчанию ≤30д — день, иначе неделя.
   const applyPreset = (days: number, key: string) => {
-    const iso = (ms: number) => new Date(ms).toISOString().slice(0, 10);
-    setDateTo(iso(Date.now() - 86400000));
-    setDateFrom(iso(Date.now() - days * 86400000));
+    const iso = (d: Date) => d.toISOString().slice(0, 10);
+    const end = new Date();
+    end.setDate(end.getDate() - 1);
+    const start = new Date(end);
+    start.setDate(start.getDate() - (days - 1));
+    setDateTo(iso(end));
+    setDateFrom(iso(start));
     setGran(days > 30 ? "week" : "day");
     setPreset(key);
   };
