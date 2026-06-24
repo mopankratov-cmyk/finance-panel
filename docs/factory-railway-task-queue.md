@@ -27,11 +27,10 @@
 
 ### T-001 · Scenario quality gate before render
 
-- Статус: `doing`
+- Статус: `done`
 - Приоритет: P0
 - Ветка: `feat/factory-scenario-quality-gate`
-- PR:
-- Старт сейчас: бери эту задачу первой, не жди подтверждения.
+- PR: #30
 - Зона: `app/api/factory/`, `lib/factory/`, `docs/factory-*.md`
 - Цель: перед дорогим видео-рендером оценивать сценарии/хуки/visual beats и не пропускать слабые варианты дальше.
 - Контекст:
@@ -59,24 +58,25 @@
   - Вернуть `winner`, `ranked`, `issues`, `rewrite_hints`, `score`, `should_render`.
   - Слабый сценарий должен получать `should_render:false`.
 - Acceptance criteria:
-  - [ ] Можно POST-нуть один сценарий и получить score + `should_render`.
-  - [ ] Можно POST-нуть пачку хуков/сценариев и получить ranking.
-  - [ ] Слабый общий текст получает issues про слабый хук/нет интриги/AI-стерильность.
-  - [ ] Ошибки Claude/JSON возвращаются контролируемым JSON, не сырой 500-простынёй.
-  - [ ] Есть документация в `docs/factory-scenario-quality-gate.md` или обновление `docs/factory-prompting-canon.md`.
+  - [x] Можно POST-нуть один сценарий и получить score + `should_render`.
+  - [x] Можно POST-нуть пачку хуков/сценариев и получить ranking.
+  - [x] Слабый общий текст получает issues про слабый хук/нет интриги/AI-стерильность.
+  - [x] Ошибки Claude/JSON возвращаются контролируемым JSON, не сырой 500-простынёй.
+  - [x] Есть документация в `docs/factory-scenario-quality-gate.md` или обновление `docs/factory-prompting-canon.md`.
 - Проверки:
   - `npx tsc --noEmit --pretty false`
   - `npx eslint app/api/factory/scenario-quality/route.ts lib/factory/scenarioQuality.ts`
   - `npm run dev`
-- Итог: quality gate, taste patterns, rewrite route и Creatify-safe wire-up собраны в рабочем дереве; dev/tests зелёные, ждёт commit/PR.
+- Итог: quality gate, taste patterns, rewrite route и Creatify-safe wire-up собраны и влиты; PR #30 закрыт, dev/tests зелёные.
 - Блокеры:
 
 ### T-002 · Taste pattern library
 
-- Статус: `todo`
+- Статус: `doing`
 - Приоритет: P1
 - Ветка: `feat/factory-taste-patterns`
-- PR:
+- PR: будет открыт после завершения блока
+- Старт сейчас: это следующий блок после T-001, воркер берёт его сразу.
 - Зона: `lib/factory/`, `docs/factory-*.md`, опционально `app/api/factory/`
 - Цель: дать генератору и критику библиотеку структур победителей, чтобы они копировали удерживающий каркас, а не придумывали с нуля.
 - Контекст:
@@ -110,7 +110,7 @@
   - `npx tsc --noEmit --pretty false`
   - `npx eslint lib/factory/tastePatterns.ts`
   - `npm run dev`
-- Итог: библиотека паттернов победителей добавлена и готова к использованию в gate/rewrite.
+- Итог: библиотека паттернов победителей добавлена и уже используется в gate/rewrite; следующий PR открыт отдельно.
 - Блокеры:
 
 ### T-003 · Anti-AI-slop rewrite before render
@@ -182,7 +182,7 @@
 - Статус: `todo`
 - Приоритет: P0
 - Ветка: текущие рабочие ветки
-- PR:
+- PR: не нужен, это отчетный блок
 - Зона: `docs/factory-railway-night-log.md`, PR descriptions
 - Цель: в конце смены оставить владельцу понятный утренний отчёт.
 - Acceptance criteria:

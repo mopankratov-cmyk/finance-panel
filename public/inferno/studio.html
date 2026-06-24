@@ -524,7 +524,7 @@ async function screenWorker(root){
 
   const top=el("div",{style:"display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin-bottom:14px;"});
   top.appendChild(el("div",{class:"card",style:"padding:15px;"},
-      el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;"},
+    el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;"},
       el("div",{style:"font-size:14px;font-weight:600;"},"Статус"),
       el("span",{class:"mono",style:"font-size:10px;color:"+liveTone.c+";background:"+liveTone.bg+";padding:3px 7px;border-radius:5px;font-weight:700;"},liveTone.label)),
     el("div",{style:"font-size:22px;font-weight:700;color:"+liveTone.c+";"},aliveNote),
