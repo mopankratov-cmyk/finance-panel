@@ -52,7 +52,8 @@ export async function POST(req: NextRequest) {
 
   const body = await req.json().catch(() => ({}));
   const apply = body.apply === true;
-  const recipeIds = Array.isArray(body.recipe_ids) ? body.recipe_ids.map((x: unknown) => Number(x)).filter(Boolean).slice(0, 1) : [];
+  const maxItems = Math.max(1, Math.min(apply ? 3 : 10, Number(body.max_items) || (apply ? 3 : 10)));
+  const recipeIds = Array.isArray(body.recipe_ids) ? body.recipe_ids.map((x: unknown) => Number(x)).filter(Boolean).slice(0, maxItems) : [];
   const sinceHours = Math.min(168, Math.max(1, Number(body.since_hours) || 72));
   const since = new Date(Date.now() - sinceHours * 3600_000).toISOString();
 
@@ -62,7 +63,7 @@ export async function POST(req: NextRequest) {
     .is("otk_score", null)
     .not("output_url", "is", null)
     .order("updated_at", { ascending: false })
-    .limit(1);
+    .limit(maxItems);
   if (recipeIds.length) q = q.in("id", recipeIds);
   else q = q.gte("updated_at", since);
 
@@ -161,5 +162,5 @@ export async function POST(req: NextRequest) {
     } catch { /* сигнал best-effort */ }
   }
 
-  return NextResponse.json({ ok: true, apply, processed });
+  return NextResponse.json({ ok: true, apply, max_items: maxItems, processed });
 }
