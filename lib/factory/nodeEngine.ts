@@ -1,7 +1,7 @@
 // V3 нод-движок: единый диспетчер «нода → инструмент → сабмит/опрос».
 // Одна точка маппинга params(jsonb из инспектора) → тело конкретного API. Переиспользуется
 // и в node-preview (одна нода), и в graph-run (весь граф). Токен несёт движок: base64url("engine::inner").
-import { falVideoSubmit, falVideoStatus, FAL_VIDEO_MODELS, type FalVideoModel, type FalVideoOpts } from "./falVideo";
+import { falVideoSubmitDetailed, falVideoStatus, FAL_VIDEO_MODELS, type FalVideoModel, type FalVideoOpts } from "./falVideo";
 import { creatifyLinkVideo, creatifyLipsync, creatifyStatus } from "./creatify";
 import { elevenTTS } from "./elevenlabs";
 import { isPlaceholderSource } from "./toolSchemas";
@@ -90,8 +90,13 @@ export async function submitNode(node: EngineNode): Promise<SubmitResult> {
     // Best-effort: при любом сбое вернётся исходный url. end_image_url (before/after) — тоже.
     const srcImg = await rehostImageForFal(imageUrl);
     if (opts.end_image_url) opts.end_image_url = await rehostImageForFal(opts.end_image_url);
-    const inner = await falVideoSubmit(model, srcImg, String(node.prompt || params.prompt || ""), opts);
-    if (!inner) return { engine: "fal", error: "fal не принял сабмит (FAL_KEY / баланс / 422 модель)" };
+    const sub = await falVideoSubmitDetailed(model, srcImg, String(node.prompt || params.prompt || ""), opts);
+    const inner = sub.token;
+    if (!inner) {
+      const status = sub.status ? ` ${sub.status}` : "";
+      const detail = sub.detail ? `: ${sub.detail}` : "";
+      return { engine: "fal", error: `${tool} submit${status}: ${sub.reason || "fal не принял сабмит"}${detail}`.slice(0, 320) };
+    }
     return { engine: "fal", token: packToken("fal", inner), cost_hint: model.includes("fast") ? "low" : "med" };
   }
 

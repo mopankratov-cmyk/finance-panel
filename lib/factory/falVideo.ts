@@ -28,6 +28,13 @@ export interface FalVideoOpts {
   endpoint?: string;            // прямой override эндпоинта (выбор pro/fast)
 }
 
+export interface FalSubmitResult {
+  token: string | null;
+  status?: number;
+  reason?: string;
+  detail?: string;
+}
+
 // важнейшие термины первыми (модель сильнее весит ранние). Маркеры AI-слопа из ресёрча 2026.
 const DEFAULT_NEG = "mirrored text, warped label, deformed product, deformed packaging, melted edges, floating product, changed shape, morphing, distortion, blurry, low quality";
 
@@ -76,10 +83,19 @@ function buildInput(model: FalVideoModel, imageUrl: string, prompt: string, opts
   return inp;
 }
 
-// Сабмит image-to-video. Возвращает токен (base64url от response_url) или null.
-export async function falVideoSubmit(model: FalVideoModel, imageUrl: string, prompt: string, opts?: FalVideoOpts): Promise<string | null> {
+function falFailureReason(status: number): string {
+  return status === 401 ? "ключ невалиден (FAL_KEY)"
+    : status === 402 || status === 403 ? "БАЛАНС/ДОСТУП — пополни fal (User locked / Exhausted balance)"
+    : status === 422 ? "схема запроса (неверное поле/значение модели)"
+    : status === 429 ? "rate-limit (бэкпрешер) — повтор позже"
+    : status >= 500 ? "fal 5xx (транзиент)"
+    : "иная ошибка";
+}
+
+// Сабмит image-to-video с диагностикой. Токен = base64url от response_url.
+export async function falVideoSubmitDetailed(model: FalVideoModel, imageUrl: string, prompt: string, opts?: FalVideoOpts): Promise<FalSubmitResult> {
   const k = key();
-  if (!k) return null;
+  if (!k) return { token: null, reason: "FAL_KEY не настроен" };
   const endpoint = opts?.endpoint || FAL_VIDEO_MODELS[model] || FAL_VIDEO_MODELS.kling;
   try {
     const r = await fetch(`${QUEUE}${endpoint}`, {
@@ -91,21 +107,26 @@ export async function falVideoSubmit(model: FalVideoModel, imageUrl: string, pro
       signal: AbortSignal.timeout(25000),
     });
     if (!r.ok) {
-      // #9 классификация (раньше любой сбой = тихий null → автопилот не отличал «нет денег» от «кривое поле»).
-      // 403 «User locked / Exhausted balance» — ровно тот кейс, что молча валил ночной батч под видом rate-limit.
       const body = await r.text().catch(() => "");
-      const reason = r.status === 401 ? "ключ невалиден (FAL_KEY)"
-        : r.status === 402 || r.status === 403 ? "БАЛАНС/ДОСТУП — пополни fal (User locked / Exhausted balance)"
-        : r.status === 422 ? "схема запроса (неверное поле/значение модели)"
-        : r.status === 429 ? "rate-limit (бэкпрешер) — повтор позже"
-        : r.status >= 500 ? "fal 5xx (транзиент)"
-        : "иная ошибка";
-      console.warn(`[falVideoSubmit] ${model} → ${r.status} ${reason}: ${body.slice(0, 160)}`);
-      return null;
+      const reason = falFailureReason(r.status);
+      const detail = body.slice(0, 240);
+      console.warn(`[falVideoSubmit] ${model} → ${r.status} ${reason}: ${detail}`);
+      return { token: null, status: r.status, reason, detail };
     }
     const j = (await r.json()) as { response_url?: string };
-    return j.response_url ? Buffer.from(j.response_url).toString("base64url") : null;
-  } catch (e) { console.warn(`[falVideoSubmit] ${model} сеть/таймаут: ${String(e).slice(0, 120)}`); return null; }
+    return { token: j.response_url ? Buffer.from(j.response_url).toString("base64url") : null, reason: j.response_url ? undefined : "fal submit без response_url" };
+  } catch (e) {
+    const reason = "сеть/таймаут";
+    const detail = String(e).slice(0, 180);
+    console.warn(`[falVideoSubmit] ${model} ${reason}: ${detail}`);
+    return { token: null, reason, detail };
+  }
+}
+
+// Обратная совместимость: старые роуты ждут только token/null.
+export async function falVideoSubmit(model: FalVideoModel, imageUrl: string, prompt: string, opts?: FalVideoOpts): Promise<string | null> {
+  const r = await falVideoSubmitDetailed(model, imageUrl, prompt, opts);
+  return r.token;
 }
 
 // Серверный compose через fal-ai/ffmpeg-api/compose (НЕ браузер — отдаёт mp4, работает в батче).

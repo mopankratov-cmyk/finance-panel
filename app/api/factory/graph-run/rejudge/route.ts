@@ -33,6 +33,18 @@ async function critic(origin: string, body: Record<string, unknown>) {
   return j as { score?: number; verdict?: string; axes?: unknown; issues?: string[] };
 }
 
+async function genSave(origin: string, body: Record<string, unknown>) {
+  const r = await internalFetch(`${origin}/api/factory/gen-save`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(55000),
+  });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok || j?.ok === false) throw new Error(`gen-save ${r.status}: ${String(j?.error || j?.diag || r.statusText || "ошибка").slice(0, 180)}`);
+  return j as { url?: string; already?: boolean };
+}
+
 export async function POST(req: NextRequest) {
   if (!authOk(req)) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const db = getSupabaseAdmin();
@@ -91,17 +103,45 @@ export async function POST(req: NextRequest) {
     if (score == null) { processed.push({ id: row.id, error: "video-critic без score" }); continue; }
     const status = score >= 7 ? "otk_pass" : "otk_fail";
     const otk = { score, verdict: verdict.verdict, axes: verdict.axes || null, issues: Array.isArray(verdict.issues) ? verdict.issues : [] };
-    processed.push({ id: row.id, apply, status, score, issues: otk.issues.slice(0, 3) });
+    const result: Record<string, unknown> = { id: row.id, apply, status, score, issues: otk.issues.slice(0, 3) };
+    processed.push(result);
     if (!apply) continue;
+
+    const hook = (hookNode?.onscreen_text || hookNode?.prompt || "").toString().slice(0, 200);
+    let catalogUrl: string | null = null;
+    let catalogError: string | null = null;
+    try {
+      const saved = await genSave(origin, {
+        video_url: url,
+        article: row.article || "",
+        niche: row.niche || "",
+        hook,
+        route: "node_graph_rejudge",
+        engine: plan.render_engine || "remotion",
+        otk: score,
+        otk_axes: otk.axes ?? null,
+        recipe_id: row.id,
+        source: "graph_run_rejudge",
+      });
+      catalogUrl = saved.url || null;
+      result.catalog_url = catalogUrl;
+      result.catalog_already = saved.already === true;
+    } catch (e) {
+      catalogError = String((e as Error)?.message || e).slice(0, 220);
+      result.catalog_error = catalogError;
+    }
 
     plan.otk = otk;
     plan.bestScore = score;
     plan.bestUrl = url;
+    plan.catalog_url = catalogUrl;
+    plan.catalog_error = catalogError;
     plan.error = null;
     await db.from("node_recipes").update({
       status,
       otk_score: score,
       otk_verdict: otk,
+      output_url: catalogUrl || url,
       run_plan: plan,
       updated_at: new Date().toISOString(),
     }).eq("id", row.id);
@@ -116,7 +156,7 @@ export async function POST(req: NextRequest) {
         engine: plan.render_engine || "remotion",
         axes: otk.axes,
         reason_chip: status === "otk_fail" ? (otk.issues[0] || "ОТК<7") : "rejudge",
-        params: { source: "graph_run_rejudge", previous_status: "otk_pass" },
+        params: { source: "graph_run_rejudge", previous_status: "otk_pass", catalog_url: catalogUrl, catalog_error: catalogError },
       });
     } catch { /* сигнал best-effort */ }
   }
