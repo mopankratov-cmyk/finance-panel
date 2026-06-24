@@ -316,6 +316,11 @@ function observerTone(o){
   return { label:"завод слушает", tone:"ok", hint:`последняя активность ${stale}м назад` };
 }
 
+function signalLabel(ev){
+  const s=String(ev||"");
+  return s==="graph_resurrect"?"самопочинка":s==="rejected"?"отбраковано":s==="approved"?"в банк":s||"сигнал";
+}
+
 function renderFactoryPulse(){
   const box=document.getElementById("factory-pulse");
   if(!box) return;
@@ -511,15 +516,18 @@ async function screenWorker(root){
   const worker=d.worker||null;
   const q=(worker&&Array.isArray(worker.queue)&&worker.queue.length?worker.queue:(d.queue||[]))||[];
   const live=worker&&worker.liveness?worker.liveness:{state:"unknown",age_sec:null};
-  const tone=workerStatusTone(live.state);
+  const obs=S.observer||null;
+  const obsTone=observerTone(obs);
+  const recentSignals=(obs&&obs.signals&&Array.isArray(obs.signals.recent))?obs.signals.recent.slice(0,4):[];
+  const liveTone=workerStatusTone(live.state);
   const aliveNote=live.state==="alive"?"heartbeat свежий":live.state==="stale"?"heartbeat молчит":"worker не отвечает";
 
   const top=el("div",{style:"display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin-bottom:14px;"});
   top.appendChild(el("div",{class:"card",style:"padding:15px;"},
-    el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;"},
+      el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;"},
       el("div",{style:"font-size:14px;font-weight:600;"},"Статус"),
-      el("span",{class:"mono",style:"font-size:10px;color:"+tone.c+";background:"+tone.bg+";padding:3px 7px;border-radius:5px;font-weight:700;"},tone.label)),
-    el("div",{style:"font-size:22px;font-weight:700;color:"+tone.c+";"},aliveNote),
+      el("span",{class:"mono",style:"font-size:10px;color:"+liveTone.c+";background:"+liveTone.bg+";padding:3px 7px;border-radius:5px;font-weight:700;"},liveTone.label)),
+    el("div",{style:"font-size:22px;font-weight:700;color:"+liveTone.c+";"},aliveNote),
     el("div",{style:"font-size:11.5px;color:var(--tx-lo);margin-top:6px;line-height:1.5;"},
       "last_seen: ",el("b",{style:"color:var(--tx-hi);"},worker&&worker.last_seen?fmtWhen(worker.last_seen):"—"),
       " · age: ",el("b",{style:"color:var(--tx-hi);"},fmtSecAgo(live.age_sec)),
@@ -545,6 +553,41 @@ async function screenWorker(root){
     el("div",{style:"font-size:11.5px;color:var(--tx-lo);margin-top:10px;line-height:1.45;"},
       "Отслеживание идёт через heartbeat. Если он пропадает, верхняя карточка станет ",el("b",{style:"color:var(--warn);"},"stale")," или ",el("b",{style:"color:var(--err);"},"dead"),".")));
   wrap.appendChild(top);
+
+  const signalBits=(obs&&obs.signals)?[
+    obs.signals.resurrects_24h!=null?`воскр ${obs.signals.resurrects_24h}`:null,
+    obs.signals.rejects_24h!=null?`отк ${obs.signals.rejects_24h}`:null,
+    obs.runs&&obs.runs.active!=null?`active ${obs.runs.active}`:null,
+    obs.batches_active!=null?`batches ${obs.batches_active}`:null,
+  ].filter(Boolean):[];
+  const incident=el("div",{class:"card",style:"padding:14px;margin-bottom:14px;border-color:"+(live.state==="dead"?"var(--err)":live.state==="stale"||worker&&worker.blocker?"var(--warn)":"var(--bd)")+";background:"+(live.state==="dead"?"var(--err-bg)":live.state==="stale"||worker&&worker.blocker?"var(--warn-bg)":"var(--bg-card)")+";"},
+    el("div",{style:"display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;"},
+      el("div",{style:"min-width:0;display:flex;flex-direction:column;gap:4px;"},
+        el("div",{style:"display:flex;align-items:center;gap:8px;flex-wrap:wrap;"},
+          el("span",{class:"mono",style:"font-size:10px;color:"+(obsTone.tone==="ok"?"var(--ok)":obsTone.tone==="warn"?"var(--warn)":"var(--err)")+";background:"+(obsTone.tone==="ok"?"var(--ok-bg)":obsTone.tone==="warn"?"var(--warn-bg)":"var(--err-bg)")+";padding:3px 7px;border-radius:5px;font-weight:700;"},obsTone.label),
+          el("span",{style:"font-size:13px;font-weight:700;color:var(--tx-hi);"},"Инцидентная сводка"),
+          worker&&worker.current_task_id?el("span",{class:"mono",style:"font-size:10px;color:#fff;background:var(--acc);padding:3px 7px;border-radius:5px;font-weight:700;"},"task "+worker.current_task_id):null),
+        el("div",{style:"font-size:12px;line-height:1.5;color:var(--tx-bd);"},
+          "что видим: ",el("b",{style:"color:var(--tx-hi);"},obsTone.hint),
+          worker&&worker.blocker?el("span",{}, " · ",el("b",{style:"color:var(--warn);"},"blocker: "),worker.blocker):null,
+          live.state!=="alive"&&live.age_sec!=null?el("span",{}, " · ",el("b",{style:"color:var(--warn);"},"heartbeat: "),fmtSecAgo(live.age_sec)," назад"):""),
+        el("div",{style:"font-size:11.5px;line-height:1.45;color:var(--tx-lo);"},
+          "последняя задача: ",el("b",{style:"color:var(--tx-hi);"},worker&&worker.current_task_title?worker.current_task_title:"—"))),
+      el("div",{style:"display:flex;flex-direction:column;gap:8px;align-items:flex-end;"},
+        el("div",{style:"display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-end;"},
+          ...signalBits.map((bit)=>el("span",{class:"mono",style:"font-size:9.5px;color:var(--tx-mid);background:var(--bg-chip);border:1px solid var(--bd);padding:2px 6px;border-radius:999px;"} ,bit))),
+        el("div",{style:"display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;"},
+          el("button",{class:"btn sm",onclick:()=>selfHeal("wake",{stale_ms:90000,max_wake:10},"самопочинка запущена")},"⚡ будить"),
+          el("button",{class:"btn sm",onclick:()=>selfHeal("rejudge",{apply:true,max_items:3,since_hours:72},"ОТК карточек запущен")},"↻ rejudge ОТК ?"))));
+  if(recentSignals.length){
+    incident.appendChild(el("div",{style:"display:flex;flex-wrap:wrap;gap:5px;margin-top:10px;"},
+          ...recentSignals.map((s)=>el("span",{style:"font-size:9.5px;font-family:var(--mono);color:var(--tx-mid);background:var(--bg-input);border:1px solid var(--bd);padding:2px 6px;border-radius:999px;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"},
+            `${signalLabel(s.event)}${s.chip?`: ${s.chip}`:""}`))));
+  }
+  if(!obs){
+    incident.appendChild(emptyBox("observer ещё не загрузился — после первого пинга здесь появится причина простоя"));
+  }
+  wrap.appendChild(incident);
 
   const list=el("div",{style:"display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:12px;"}); wrap.appendChild(list);
   if(!q.length){
