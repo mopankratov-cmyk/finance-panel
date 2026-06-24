@@ -60,3 +60,11 @@ tick/cron зовут RPC; при ошибке — fallback на прежний �
   `(run_plan->>'lease_until')::timestamptz < now()` консистентны между RPC и JS.
 - `FOR UPDATE SKIP LOCKED` в подзапросе `select … limit 1` — стандартный паттерн atomic-claim.
 - Тип `id bigint` в RETURNS TABLE — безопасно даже если колонка `int` (расширяющий каст).
+
+## Nightly video recovery 2026-06-24
+
+- Для старых `otk_pass` без `otk_score` добавлен guarded endpoint `POST /api/factory/graph-run/rejudge`.
+- Скрипт для post-deploy batch recovery: `node scripts/rejudge-video-batch.mjs --ids=... --max-items=3 --apply`.
+- В студии такие карточки помечаются как `ОТК ?` и получают `needs_rejudge`.
+- Если `gen-save` не смог сохранить видео в библиотеку, `graph-run` пишет `catalog_error` в `run_plan` и `cf_signals`.
+- Для батчевого прохода держим лимит `max_items` маленьким: по умолчанию `3` при `apply:true`, `10` в dry-run.
