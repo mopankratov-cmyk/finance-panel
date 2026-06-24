@@ -9,6 +9,7 @@
 - Last heartbeat: локально, в процессе работы
 - Ветки: feat/factory-video-public-urls
 - PR: не открыт
+- Очередь на ночь: T-001 active, T-002/T-003 next, T-004 after gate, T-005 at the end
 - Готово к ревью: scenario-quality gate, scenario-rewrite, taste-patterns, Creatify quality gate wire-up
 - Не успел: оформить commit/push/PR и довести очередь до `pr_open`
 - Блокеры: live Claude в тесте ответа дал connection error, но fallback JSON работает

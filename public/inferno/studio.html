@@ -443,11 +443,24 @@ async function screenWorker(root){
   if(!q.length){
     list.appendChild(emptyBox("очередь пуста или worker ещё не прислал snapshot"));
   } else {
-    q.forEach((t)=>{
+    const currentId=worker&&worker.current_task_id?String(worker.current_task_id):"";
+    const ordered=[...q].sort((a,b)=>{
+      const ac=String(a.id||"")===currentId;
+      const bc=String(b.id||"")===currentId;
+      if(ac!==bc) return ac?-1:1;
+      const ap=Number(a.priority)||99;
+      const bp=Number(b.priority)||99;
+      if(ap!==bp) return ap-bp;
+      return String(a.title||"").localeCompare(String(b.title||""));
+    });
+    ordered.forEach((t)=>{
       const tt=queueTaskTone(t.status);
-      list.appendChild(el("div",{class:"card",style:"padding:14px;display:flex;flex-direction:column;gap:10px;border-color:rgba(255,255,255,.06);"},
+      const isCurrent=String(t.id||"")===currentId;
+      list.appendChild(el("div",{class:"card",style:"padding:14px;display:flex;flex-direction:column;gap:10px;border-color:"+(isCurrent?"var(--acc)":"rgba(255,255,255,.06)")+";box-shadow:"+(isCurrent?"0 0 0 2px rgba(124,116,255,.14)":"none")+";background:"+(isCurrent?"rgba(124,116,255,.04)":"var(--bg-card)")+";"},
         el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:10px;"},
-          el("div",{style:"font-size:12px;font-weight:700;color:var(--tx-hi);"},t.id||"task"),
+          el("div",{style:"display:flex;align-items:center;gap:8px;min-width:0;"},
+            el("div",{style:"font-size:12px;font-weight:700;color:var(--tx-hi);"},t.id||"task"),
+            isCurrent?el("span",{class:"mono",style:"font-size:9.5px;color:#fff;background:var(--acc);padding:2px 6px;border-radius:5px;font-weight:700;"},"current"):null),
           el("span",{class:"mono",style:"font-size:10px;color:"+tt.c+";background:"+tt.bg+";padding:3px 7px;border-radius:5px;font-weight:700;"},tt.label)),
         el("div",{style:"font-size:13px;font-weight:600;line-height:1.45;"},t.title||"—"),
         el("div",{style:"font-size:11.5px;color:var(--tx-lo);line-height:1.5;"},
@@ -532,15 +545,37 @@ async function render(){
 // Иначе всё, что уже загружено, берётся из памяти — переключение экранов НЕ дёргает сеть/Claude.
 async function screenCenter(root, force){
   if(force){ S.centerLoaded=false; S.briefCache={}; }
+  if(force || !S.workerState){
+    const workerData=await api("/worker-state");
+    if(S.screen!=="center") return;
+    S.workerState=workerData;
+  }
+  const workerRow=S.workerState&&S.workerState.worker||null;
+  const workerLive=workerRow&&workerRow.liveness?workerRow.liveness.state:"unknown";
   header("Командный центр","карта осознания", el("div",{class:"hdr-r"},
     el("div",{class:"searchbox",title:"поиск — скоро",style:"width:240px;opacity:.5;cursor:not-allowed;"},el("span",{style:"font-size:13px;"},"⌕"),el("span",{},"Поиск ниши, товара…")),
     el("button",{class:"btn",title:"автопилот: заполнить черновики ИИ + сгенерить + ОТК + банк, прошедшее уйдёт в Telegram на ревью",onclick:()=>openNightRun()},"🌙 Ночной прогон"),
     el("button",{class:"btn",title:"фикс-айдентика брендов: голос/персона/шрифт/цвет/CTA/бан-слова/хэштеги — автозаполнение берёт как дефолты",onclick:()=>openBrandKit()},"🎨 Бренд-кит"),
-    el("button",{class:"btn",title:"живой статус Railway worker и очередь задач",onclick:()=>go("worker")},"🛰 Worker"),
+    el("button",{class:"btn",title:workerRow?`живой статус Railway worker · ${workerLive}${workerRow.current_task_id?` · ${workerRow.current_task_id}`:""}`:"живой статус Railway worker и очередь задач",onclick:()=>go("worker")},
+      "🛰 RW ",workerLive==="alive"?"живой":workerLive==="stale"?"stale":workerLive==="dead"?"dead":"?",workerRow&&workerRow.current_task_id?` · ${workerRow.current_task_id}`:""),
     el("button",{class:"btn",title:"принудительно пересобрать данные и разбор ниши",onclick:()=>screenCenter(root,true)},"↻ Обновить"),
     el("button",{class:"btn primary",onclick:()=>toast("Новая ниша — заведи товары в кабинете")},"+ Новая ниша")));
   const left=el("div",{class:"scroll"}), aside=el("div",{class:"aside",style:"width:340px;padding:18px;"});
   root.appendChild(left); root.appendChild(aside);
+  if(workerRow){
+    const tone=workerStatusTone(workerLive);
+    left.appendChild(el("div",{class:"card",style:"padding:12px 14px;margin-bottom:14px;border-color:"+(workerLive==="dead"?"var(--err)":workerLive==="stale"?"var(--warn)":"var(--bd)")+";background:"+(workerLive==="dead"?"var(--err-bg)":workerLive==="stale"?"var(--warn-bg)":"var(--bg-card)")+";display:flex;align-items:flex-start;justify-content:space-between;gap:12px;"},
+      el("div",{style:"min-width:0;display:flex;flex-direction:column;gap:4px;"},
+        el("div",{style:"display:flex;align-items:center;gap:8px;flex-wrap:wrap;"},
+          el("span",{class:"mono",style:"font-size:10px;color:"+tone.c+";background:"+tone.bg+";padding:3px 7px;border-radius:5px;font-weight:700;"},tone.label),
+          el("span",{style:"font-size:12px;font-weight:700;"},"Railway worker"),
+          workerRow.current_task_id?el("span",{class:"mono",style:"font-size:10px;color:#fff;background:var(--acc);padding:3px 7px;border-radius:5px;font-weight:700;"},"task "+workerRow.current_task_id):null),
+        el("div",{style:"font-size:11.5px;line-height:1.45;color:var(--tx-bd);"},
+          "heartbeat: ",el("b",{style:"color:var(--tx-hi);"},workerRow.last_seen?fmtWhen(workerRow.last_seen):"—"),
+          " · ",el("b",{style:"color:var(--tx-hi);"},workerRow.current_task_title||"нет активной задачи"),
+          workerRow.blocker?el("span",{}, " · blocker: ",el("b",{style:"color:var(--warn);"},workerRow.blocker)):"")),
+      el("button",{class:"btn sm",onclick:()=>go("worker")},"Открыть worker")));
+  }
   const nicheHead=el("div",{style:"display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;"},
     el("h2",{class:"sec-h"},"НИШИ ",el("span",{class:"cnt"},String(S.niches.length||""))),
     el("div",{style:"display:flex;gap:14px;"},

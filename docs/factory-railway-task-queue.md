@@ -18,18 +18,31 @@
 
 ## Текущие задачи
 
+Ночной порядок на старт:
+
+1. Сначала T-001.
+2. Затем T-002 и T-003.
+3. T-004 только после T-001.
+4. T-005 в конце смены.
+
 ### T-001 · Scenario quality gate before render
 
 - Статус: `doing`
 - Приоритет: P0
 - Ветка: `feat/factory-scenario-quality-gate`
 - PR:
+- Старт сейчас: бери эту задачу первой, не жди подтверждения.
 - Зона: `app/api/factory/`, `lib/factory/`, `docs/factory-*.md`
 - Цель: перед дорогим видео-рендером оценивать сценарии/хуки/visual beats и не пропускать слабые варианты дальше.
 - Контекст:
   - Главный принцип из диалога о промптинге: система должна быстро отбрасывать плохой контент, а не просто быстро генерировать.
   - Не менять видео-рендер и не запускать платные генерации.
   - Использовать существующий подход к Claude client, JSON extraction и factory routes.
+- Первый шаг:
+  - открыть `app/api/factory/scenario-quality/route.ts` и `lib/factory/scenarioQuality.ts`;
+  - проверить, что вход/выход уже соответствуют очереди;
+  - если что-то нестыкуется, сначала довести `scenario-quality` до чистого JSON-fallback;
+  - только потом трогать `scenario-rewrite` и wire-up.
 - Реализация:
   - Добавить серверную логику в `lib/factory/`, например `scenarioQuality.ts`.
   - Добавить endpoint в `app/api/factory/`, например `scenario-quality/route.ts`.
@@ -60,7 +73,7 @@
 
 ### T-002 · Taste pattern library
 
-- Статус: `doing`
+- Статус: `todo`
 - Приоритет: P1
 - Ветка: `feat/factory-taste-patterns`
 - PR:
@@ -102,7 +115,7 @@
 
 ### T-003 · Anti-AI-slop rewrite before render
 
-- Статус: `doing`
+- Статус: `todo`
 - Приоритет: P1
 - Ветка: `feat/factory-anti-slop-rewrite`
 - PR:
@@ -137,7 +150,7 @@
 
 ### T-004 · Wire quality gate into existing factory flow safely
 
-- Статус: `doing`
+- Статус: `todo`
 - Приоритет: P2
 - Ветка: `feat/factory-quality-gate-wireup`
 - PR:
@@ -166,7 +179,7 @@
 
 ### T-005 · Morning report cleanup
 
-- Статус: `doing`
+- Статус: `todo`
 - Приоритет: P0
 - Ветка: текущие рабочие ветки
 - PR:
