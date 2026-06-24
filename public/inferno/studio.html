@@ -168,6 +168,7 @@ body{background:var(--bg-deep);font-family:var(--sans);color:var(--tx-hi);-webki
           <span style="font-size:10px;color:var(--tx-lo2);">WB · 3 ниши</span>
         </div>
       </div>
+      <div id="factory-pulse" style="margin-top:10px;padding-top:10px;border-top:1px solid var(--bd);"></div>
       <!-- V18-1: ссылка на legacy скрыта из навигации V3 (файлы не трогаем — patrick-legacy.html жив по прямому URL + из patrick.html, держит winners/аналитику до V18-2) -->
     </div>
   </aside>
@@ -206,6 +207,7 @@ const S={
   recipe:null, selectedNode:null,
   tool:"seedance", toolSchemas:{},
   run:null, preview:{}, contentProduct:null,
+  observer:null, observerLoading:false, observerError:"", observerUpdatedAt:null,
   workerState:null, workerTimer:null,
 };
 // ИА студии: главная ось — ВИД КОНТЕНТА (после общей разведки). Старт → тип контента (свой пайплайн) → Система.
@@ -273,6 +275,73 @@ function openMedia(url,opts){ opts=opts||{};
   document.body.appendChild(ov);
 }
 function nicheLabel(n){ const f=S.niches.find(x=>x.niche===n); return (f&&f.label)||({cosmetics:"Косметика",clothing:"Одежда",toys:"Игрушки",default:"Прочее"}[n])||n; }
+
+function observerTone(o){
+  if(S.observerLoading && !o) return { label:"читаю пульс", tone:"warn", hint:"смотрю, жив ли ночной прогон" };
+  if(!o) return { label:"пульс не читался", tone:"muted", hint:"ждём первый ответ от завода" };
+  const h=o.heartbeat||{};
+  const runs=o.runs||{};
+  const batches=Number(o.batches_active)||0;
+  const active=Number(runs.active)||0;
+  const broken=Number(runs.broken)||0;
+  const stale=h.stale_min;
+  if(active>0||batches>0) return { label:"ночной прогон жив", tone:"ok", hint:`активных ${active}${batches?` · батчей ${batches}`:""}` };
+  if(broken>0) return { label:"есть сбойные ноды", tone:"warn", hint:`сломанных ${broken} · пульс ${stale==null?"?":stale+"м назад"}` };
+  if(h.alive===false || (stale!=null && stale>=180)) return { label:"пульс затух", tone:"err", hint:`последняя активность ${stale==null?"неизвестно":stale+"м назад"}` };
+  if(stale==null) return { label:"пульс есть, но без метки", tone:"warn", hint:"источник активности не дал timestamp" };
+  return { label:"завод слушает", tone:"ok", hint:`последняя активность ${stale}м назад` };
+}
+
+function renderFactoryPulse(){
+  const box=document.getElementById("factory-pulse");
+  if(!box) return;
+  const o=S.observer;
+  const tone=observerTone(o);
+  const up=S.observerUpdatedAt?new Date(S.observerUpdatedAt):null;
+  const updated=up?up.toLocaleTimeString("ru-RU",{hour:"2-digit",minute:"2-digit"}):"—";
+  const gens=o&&o.gens?o.gens:null;
+  const otk=o&&o.otk?o.otk:null;
+  const signals=o&&o.signals?o.signals:null;
+  const signalBits=signals?[
+    signals.resurrects_24h!=null?`воскр ${signals.resurrects_24h}`:null,
+    signals.rejects_24h!=null?`отк ${signals.rejects_24h}`:null,
+  ].filter(Boolean):[];
+  box.innerHTML="";
+  box.appendChild(el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:11px;color:var(--tx-lo);"},
+    el("span",{class:"mono"},"Ночной пульс"),
+    el("span",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);"},"обновл. "+updated)));
+  box.appendChild(el("div",{style:"display:flex;align-items:center;gap:8px;margin-top:5px;"},
+    el("span",{class:"dot",style:"width:8px;height:8px;background:"+(tone.tone==="ok"?"var(--ok)":tone.tone==="warn"?"var(--warn)":"var(--err)")+";box-shadow:0 0 0 4px rgba(255,255,255,.03);"}),
+    el("span",{style:"font-size:12px;font-weight:600;color:var(--tx-hi);"},tone.label)));
+  box.appendChild(el("div",{style:"font-size:10.5px;color:var(--tx-lo2);line-height:1.35;margin-top:3px;"},tone.hint));
+  if(gens||otk||signalBits.length){
+    const bits=[];
+    if(gens) bits.push(`24h ${gens.last_24h??0}`);
+    if(otk) bits.push(`ОТК ${otk.avg_24h??"?"}${otk.pass_rate!=null?` · pass ${otk.pass_rate}%`:""}`);
+    if(signalBits.length) bits.push(signalBits.join(" · "));
+    box.appendChild(el("div",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);line-height:1.45;margin-top:6px;white-space:pre-wrap;"},bits.join(" · ")));
+  }
+  if(o&&o.partial){
+    box.appendChild(el("div",{style:"font-size:10.5px;color:var(--warn);line-height:1.35;margin-top:6px;"},"частичный ответ: часть метрик не успела прийти"));
+  }
+  if(S.observerError){
+    box.appendChild(el("div",{style:"font-size:10.5px;color:var(--warn);line-height:1.35;margin-top:6px;"},S.observerError));
+  }
+}
+
+async function loadObserver(){
+  S.observerLoading=true; S.observerError=""; renderFactoryPulse();
+  const r=await api("/observer");
+  S.observerLoading=false;
+  if(r&&r.ok!==false&&!r.error){
+    S.observer=r;
+    S.observerUpdatedAt=r.updated_at||new Date().toISOString();
+    S.observerError="";
+  }else{
+    S.observerError=(r&&r.error)||"observer недоступен";
+  }
+  renderFactoryPulse();
+}
 
 function renderNav(){
   const nav=document.getElementById("nav"); nav.innerHTML=""; let lastGrp=null;
@@ -1906,7 +1975,7 @@ function mountAssistant(){
   refreshAssistStep();
 }
 
-(async()=>{ await restoreSession(); renderNav(); render(); mountAssistant(); })(); // восстановить сессию → отрисовать там, где был → поднять проводника
+(async()=>{ await restoreSession(); renderNav(); render(); mountAssistant(); loadObserver().catch(()=>{}); setInterval(()=>loadObserver().catch(()=>{}),60000); })(); // восстановить сессию → отрисовать там, где был → поднять проводника
 </script>
 </body>
 </html>
