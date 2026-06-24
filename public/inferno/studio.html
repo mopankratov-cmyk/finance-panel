@@ -282,11 +282,13 @@ function observerTone(o){
   const h=o.heartbeat||{};
   const runs=o.runs||{};
   const batches=Number(o.batches_active)||0;
+  const resurrects=Number(o.signals&&o.signals.resurrects_24h)||0;
   const active=Number(runs.active)||0;
   const broken=Number(runs.broken)||0;
   const stale=h.stale_min;
   if(active>0||batches>0) return { label:"ночной прогон жив", tone:"ok", hint:`активных ${active}${batches?` · батчей ${batches}`:""}` };
   if(broken>0) return { label:"есть сбойные ноды", tone:"warn", hint:`сломанных ${broken} · пульс ${stale==null?"?":stale+"м назад"}` };
+  if(resurrects>0) return { label:"самопочинка срабатывала", tone:"ok", hint:`разбудили ${resurrects} прогонов за 24ч` };
   if(h.alive===false || (stale!=null && stale>=180)) return { label:"пульс затух", tone:"err", hint:`последняя активность ${stale==null?"неизвестно":stale+"м назад"}` };
   if(stale==null) return { label:"пульс есть, но без метки", tone:"warn", hint:"источник активности не дал timestamp" };
   return { label:"завод слушает", tone:"ok", hint:`последняя активность ${stale}м назад` };
@@ -306,6 +308,13 @@ function renderFactoryPulse(){
     signals.resurrects_24h!=null?`воскр ${signals.resurrects_24h}`:null,
     signals.rejects_24h!=null?`отк ${signals.rejects_24h}`:null,
   ].filter(Boolean):[];
+  const recentSignals=(o&&o.signals&&Array.isArray(o.signals.recent))?o.signals.recent.slice(0,3):[];
+  const recentBits=recentSignals.map((s)=>{
+    const ev=String(s.event||"");
+    const chip=String(s.chip||"");
+    const label=ev==="graph_resurrect"?"самопочинка":ev==="rejected"?"отбраковано":ev==="approved"?"в банк":ev;
+    return chip ? `${label}: ${chip}` : label;
+  });
   box.innerHTML="";
   box.appendChild(el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:11px;color:var(--tx-lo);"},
     el("span",{class:"mono"},"Ночной пульс"),
@@ -320,6 +329,10 @@ function renderFactoryPulse(){
     if(otk) bits.push(`ОТК ${otk.avg_24h??"?"}${otk.pass_rate!=null?` · pass ${otk.pass_rate}%`:""}`);
     if(signalBits.length) bits.push(signalBits.join(" · "));
     box.appendChild(el("div",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);line-height:1.45;margin-top:6px;white-space:pre-wrap;"},bits.join(" · ")));
+  }
+  if(recentBits.length){
+    box.appendChild(el("div",{style:"display:flex;flex-wrap:wrap;gap:5px;margin-top:7px;"},
+      ...recentBits.map((t)=>el("span",{style:"font-size:9.5px;font-family:var(--mono);color:var(--tx-mid);background:var(--bg-chip);border:1px solid var(--bd);padding:2px 6px;border-radius:999px;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"},t))));
   }
   if(o&&o.partial){
     box.appendChild(el("div",{style:"font-size:10.5px;color:var(--warn);line-height:1.35;margin-top:6px;"},"частичный ответ: часть метрик не успела прийти"));
