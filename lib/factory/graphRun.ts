@@ -6,7 +6,7 @@ import { remotionEngineSelected, remotionReady, remotionSubmit, remotionStatus }
 import { extractFrames } from "./serverMedia";
 import { logGeneration } from "./genHistory";
 import { tgReady, tgSendReview } from "./telegram";
-import { elevenReady } from "./elevenlabs";
+import { speechReady } from "./elevenlabs";
 import { classifyAssets, chooseBinding, assetMatchesArticle, type DiskAsset } from "./assetBind";
 import { isPlaceholderSource } from "./toolSchemas";
 import { isOurStorage } from "./rehostImage";
@@ -374,7 +374,7 @@ export async function runRecipeStep(
     for (const n of plan.nodes) {
       const tool = String(n.tool || "").toLowerCase();
       if (!tool || ASSEMBLY_TOOLS.has(tool) || tool === "captions") { n.status = "skip"; continue; }
-      if (tool === "elevenlabs" && !elevenReady()) {
+      if (tool === "elevenlabs" && !speechReady()) {
         n.status = "skip";
         n.engine = "voice";
         n.error = undefined;
