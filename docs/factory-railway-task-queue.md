@@ -27,10 +27,10 @@
 
 ### T-001 · Scenario quality gate before render
 
-- Статус: `doing`
+- Статус: `pr_open`
 - Приоритет: P0
 - Ветка: `feat/factory-scenario-quality-gate`
-- PR:
+- PR: #30
 - Старт сейчас: бери эту задачу первой, не жди подтверждения.
 - Зона: `app/api/factory/`, `lib/factory/`, `docs/factory-*.md`
 - Цель: перед дорогим видео-рендером оценивать сценарии/хуки/visual beats и не пропускать слабые варианты дальше.
@@ -68,15 +68,15 @@
   - `npx tsc --noEmit --pretty false`
   - `npx eslint app/api/factory/scenario-quality/route.ts lib/factory/scenarioQuality.ts`
   - `npm run dev`
-- Итог: quality gate, taste patterns, rewrite route и Creatify-safe wire-up собраны в рабочем дереве; dev/tests зелёные, ждёт commit/PR.
+- Итог: quality gate, taste patterns, rewrite route и Creatify-safe wire-up собраны; PR #30 открыт, dev/tests зелёные.
 - Блокеры:
 
 ### T-002 · Taste pattern library
 
-- Статус: `todo`
+- Статус: `pr_open`
 - Приоритет: P1
 - Ветка: `feat/factory-taste-patterns`
-- PR:
+- PR: #30
 - Зона: `lib/factory/`, `docs/factory-*.md`, опционально `app/api/factory/`
 - Цель: дать генератору и критику библиотеку структур победителей, чтобы они копировали удерживающий каркас, а не придумывали с нуля.
 - Контекст:
@@ -110,15 +110,15 @@
   - `npx tsc --noEmit --pretty false`
   - `npx eslint lib/factory/tastePatterns.ts`
   - `npm run dev`
-- Итог: библиотека паттернов победителей добавлена и готова к использованию в gate/rewrite.
+- Итог: библиотека паттернов победителей добавлена и уже используется в gate/rewrite; PR #30 открыт.
 - Блокеры:
 
 ### T-003 · Anti-AI-slop rewrite before render
 
-- Статус: `todo`
+- Статус: `pr_open`
 - Приоритет: P1
 - Ветка: `feat/factory-anti-slop-rewrite`
-- PR:
+- PR: #30
 - Зона: `app/api/factory/`, `lib/factory/`, `docs/factory-*.md`
 - Цель: если scenario quality gate нашёл стерильный/общий текст, переписывать его до рендера в живой UGC-тон с конкретикой.
 - Контекст:
@@ -145,15 +145,15 @@
   - `npx tsc --noEmit --pretty false`
   - `npx eslint app/api/factory/scenario-rewrite/route.ts lib/factory/scenarioRewrite.ts`
   - `npm run dev`
-- Итог: endpoint переписывания сценария добавлен, fallback живой.
+- Итог: endpoint переписывания сценария добавлен, fallback живой; PR #30 открыт.
 - Блокеры:
 
 ### T-004 · Wire quality gate into existing factory flow safely
 
-- Статус: `todo`
+- Статус: `pr_open`
 - Приоритет: P2
 - Ветка: `feat/factory-quality-gate-wireup`
-- PR:
+- PR: #30
 - Зона: `app/api/factory/`, `lib/factory/`, `docs/factory-*.md`
 - Цель: аккуратно подключить scenario quality gate к существующему потоку там, где это можно сделать без риска и без платных прогонов.
 - Контекст:
@@ -174,15 +174,15 @@
   - `npx tsc --noEmit --pretty false`
   - `npx eslint` по затронутым файлам
   - `npm run dev`
-- Итог: Creatify UGC route теперь режет слабые сценарии до запуска render path.
+- Итог: Creatify UGC route теперь режет слабые сценарии до запуска render path; PR #30 открыт.
 - Блокеры:
 
 ### T-005 · Morning report cleanup
 
-- Статус: `todo`
+- Статус: `pr_open`
 - Приоритет: P0
 - Ветка: текущие рабочие ветки
-- PR:
+- PR: #30
 - Зона: `docs/factory-railway-night-log.md`, PR descriptions
 - Цель: в конце смены оставить владельцу понятный утренний отчёт.
 - Acceptance criteria:
@@ -192,7 +192,7 @@
   - [ ] Отдельно перечислено, что не успел и где нужен владелец.
 - Проверки:
   - Не требуется, если менялся только отчёт.
-- Итог: ночной отчёт обновлён текущими результатами и проверками.
+- Итог: ночной отчёт обновлён, PR #30 открыт.
 - Блокеры:
 
 ## Архив
