@@ -231,6 +231,28 @@ const LIVE_PICKER={ override_voice:{type:"voices",route:"/creatify-options?type=
 const _liveOpts={};
 
 async function api(path,opts){ try{ const r=await fetch(API+path,opts); return await r.json().catch(()=>({error:"не JSON"})); }catch(e){ return {error:String(e).slice(0,120)}; } }
+let _selfHealBusy=false;
+async function selfHeal(action,payload,okText){
+  if(_selfHealBusy){ toast("самопочинка уже идёт…"); return null; }
+  _selfHealBusy=true;
+  try{
+    toast(action==="wake"?"буду зависшие прогоны…":"переоцениваю ОТК…");
+    const r=await api("/self-heal",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action,...payload})});
+    if(r&&r.ok!==false&&!r.error){
+      const res=r.result||{};
+      toast(okText || (action==="wake"
+        ? `разбудил ${(res.woken||[]).length||0} прогонов`
+        : `rejudge: ${(res.processed||[]).length||0} карточек`));
+      loadObserver().catch(()=>{});
+      if(S.screen==="library")screenLibrary(document.getElementById("screen"), false);
+      return r;
+    }
+    toast("не вышло: "+String((r&&r.error)||"?").slice(0,80));
+    return r;
+  } finally {
+    _selfHealBusy=false;
+  }
+}
 function el(tag,attrs,...kids){
   const e=document.createElement(tag);
   if(attrs)for(const k in attrs){
@@ -282,14 +304,21 @@ function observerTone(o){
   const h=o.heartbeat||{};
   const runs=o.runs||{};
   const batches=Number(o.batches_active)||0;
+  const resurrects=Number(o.signals&&o.signals.resurrects_24h)||0;
   const active=Number(runs.active)||0;
   const broken=Number(runs.broken)||0;
   const stale=h.stale_min;
   if(active>0||batches>0) return { label:"ночной прогон жив", tone:"ok", hint:`активных ${active}${batches?` · батчей ${batches}`:""}` };
   if(broken>0) return { label:"есть сбойные ноды", tone:"warn", hint:`сломанных ${broken} · пульс ${stale==null?"?":stale+"м назад"}` };
+  if(resurrects>0) return { label:"самопочинка срабатывала", tone:"ok", hint:`разбудили ${resurrects} прогонов за 24ч` };
   if(h.alive===false || (stale!=null && stale>=180)) return { label:"пульс затух", tone:"err", hint:`последняя активность ${stale==null?"неизвестно":stale+"м назад"}` };
   if(stale==null) return { label:"пульс есть, но без метки", tone:"warn", hint:"источник активности не дал timestamp" };
   return { label:"завод слушает", tone:"ok", hint:`последняя активность ${stale}м назад` };
+}
+
+function signalLabel(ev){
+  const s=String(ev||"");
+  return s==="graph_resurrect"?"самопочинка":s==="rejected"?"отбраковано":s==="approved"?"в банк":s||"сигнал";
 }
 
 function renderFactoryPulse(){
@@ -306,6 +335,13 @@ function renderFactoryPulse(){
     signals.resurrects_24h!=null?`воскр ${signals.resurrects_24h}`:null,
     signals.rejects_24h!=null?`отк ${signals.rejects_24h}`:null,
   ].filter(Boolean):[];
+  const recentSignals=(o&&o.signals&&Array.isArray(o.signals.recent))?o.signals.recent.slice(0,3):[];
+  const recentBits=recentSignals.map((s)=>{
+    const ev=String(s.event||"");
+    const chip=String(s.chip||"");
+    const label=ev==="graph_resurrect"?"самопочинка":ev==="rejected"?"отбраковано":ev==="approved"?"в банк":ev;
+    return chip ? `${label}: ${chip}` : label;
+  });
   box.innerHTML="";
   box.appendChild(el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:11px;color:var(--tx-lo);"},
     el("span",{class:"mono"},"Ночной пульс"),
@@ -321,6 +357,13 @@ function renderFactoryPulse(){
     if(signalBits.length) bits.push(signalBits.join(" · "));
     box.appendChild(el("div",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);line-height:1.45;margin-top:6px;white-space:pre-wrap;"},bits.join(" · ")));
   }
+  if(recentBits.length){
+    box.appendChild(el("div",{style:"display:flex;flex-wrap:wrap;gap:5px;margin-top:7px;"},
+      ...recentBits.map((t)=>el("span",{style:"font-size:9.5px;font-family:var(--mono);color:var(--tx-mid);background:var(--bg-chip);border:1px solid var(--bd);padding:2px 6px;border-radius:999px;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"},t))));
+  }
+  box.appendChild(el("div",{style:"display:flex;flex-wrap:wrap;gap:8px;margin-top:9px;"},
+    el("button",{class:"btn sm",onclick:()=>selfHeal("wake",{stale_ms:90000,max_wake:10},"самопочинка запущена")},"⚡ будить"),
+    el("button",{class:"btn sm",onclick:()=>selfHeal("rejudge",{apply:true,max_items:3,since_hours:72},"ОТК карточек запущен")},"↻ rejudge ОТК ?")));
   if(o&&o.partial){
     box.appendChild(el("div",{style:"font-size:10.5px;color:var(--warn);line-height:1.35;margin-top:6px;"},"частичный ответ: часть метрик не успела прийти"));
   }
@@ -473,15 +516,18 @@ async function screenWorker(root){
   const worker=d.worker||null;
   const q=(worker&&Array.isArray(worker.queue)&&worker.queue.length?worker.queue:(d.queue||[]))||[];
   const live=worker&&worker.liveness?worker.liveness:{state:"unknown",age_sec:null};
-  const tone=workerStatusTone(live.state);
+  const obs=S.observer||null;
+  const obsTone=observerTone(obs);
+  const recentSignals=(obs&&obs.signals&&Array.isArray(obs.signals.recent))?obs.signals.recent.slice(0,4):[];
+  const liveTone=workerStatusTone(live.state);
   const aliveNote=live.state==="alive"?"heartbeat свежий":live.state==="stale"?"heartbeat молчит":"worker не отвечает";
 
   const top=el("div",{style:"display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin-bottom:14px;"});
   top.appendChild(el("div",{class:"card",style:"padding:15px;"},
-    el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;"},
+      el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;"},
       el("div",{style:"font-size:14px;font-weight:600;"},"Статус"),
-      el("span",{class:"mono",style:"font-size:10px;color:"+tone.c+";background:"+tone.bg+";padding:3px 7px;border-radius:5px;font-weight:700;"},tone.label)),
-    el("div",{style:"font-size:22px;font-weight:700;color:"+tone.c+";"},aliveNote),
+      el("span",{class:"mono",style:"font-size:10px;color:"+liveTone.c+";background:"+liveTone.bg+";padding:3px 7px;border-radius:5px;font-weight:700;"},liveTone.label)),
+    el("div",{style:"font-size:22px;font-weight:700;color:"+liveTone.c+";"},aliveNote),
     el("div",{style:"font-size:11.5px;color:var(--tx-lo);margin-top:6px;line-height:1.5;"},
       "last_seen: ",el("b",{style:"color:var(--tx-hi);"},worker&&worker.last_seen?fmtWhen(worker.last_seen):"—"),
       " · age: ",el("b",{style:"color:var(--tx-hi);"},fmtSecAgo(live.age_sec)),
@@ -507,6 +553,41 @@ async function screenWorker(root){
     el("div",{style:"font-size:11.5px;color:var(--tx-lo);margin-top:10px;line-height:1.45;"},
       "Отслеживание идёт через heartbeat. Если он пропадает, верхняя карточка станет ",el("b",{style:"color:var(--warn);"},"stale")," или ",el("b",{style:"color:var(--err);"},"dead"),".")));
   wrap.appendChild(top);
+
+  const signalBits=(obs&&obs.signals)?[
+    obs.signals.resurrects_24h!=null?`воскр ${obs.signals.resurrects_24h}`:null,
+    obs.signals.rejects_24h!=null?`отк ${obs.signals.rejects_24h}`:null,
+    obs.runs&&obs.runs.active!=null?`active ${obs.runs.active}`:null,
+    obs.batches_active!=null?`batches ${obs.batches_active}`:null,
+  ].filter(Boolean):[];
+  const incident=el("div",{class:"card",style:"padding:14px;margin-bottom:14px;border-color:"+(live.state==="dead"?"var(--err)":live.state==="stale"||worker&&worker.blocker?"var(--warn)":"var(--bd)")+";background:"+(live.state==="dead"?"var(--err-bg)":live.state==="stale"||worker&&worker.blocker?"var(--warn-bg)":"var(--bg-card)")+";"},
+    el("div",{style:"display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;"},
+      el("div",{style:"min-width:0;display:flex;flex-direction:column;gap:4px;"},
+        el("div",{style:"display:flex;align-items:center;gap:8px;flex-wrap:wrap;"},
+          el("span",{class:"mono",style:"font-size:10px;color:"+(obsTone.tone==="ok"?"var(--ok)":obsTone.tone==="warn"?"var(--warn)":"var(--err)")+";background:"+(obsTone.tone==="ok"?"var(--ok-bg)":obsTone.tone==="warn"?"var(--warn-bg)":"var(--err-bg)")+";padding:3px 7px;border-radius:5px;font-weight:700;"},obsTone.label),
+          el("span",{style:"font-size:13px;font-weight:700;color:var(--tx-hi);"},"Инцидентная сводка"),
+          worker&&worker.current_task_id?el("span",{class:"mono",style:"font-size:10px;color:#fff;background:var(--acc);padding:3px 7px;border-radius:5px;font-weight:700;"},"task "+worker.current_task_id):null),
+        el("div",{style:"font-size:12px;line-height:1.5;color:var(--tx-bd);"},
+          "что видим: ",el("b",{style:"color:var(--tx-hi);"},obsTone.hint),
+          worker&&worker.blocker?el("span",{}, " · ",el("b",{style:"color:var(--warn);"},"blocker: "),worker.blocker):null,
+          live.state!=="alive"&&live.age_sec!=null?el("span",{}, " · ",el("b",{style:"color:var(--warn);"},"heartbeat: "),fmtSecAgo(live.age_sec)," назад"):""),
+        el("div",{style:"font-size:11.5px;line-height:1.45;color:var(--tx-lo);"},
+          "последняя задача: ",el("b",{style:"color:var(--tx-hi);"},worker&&worker.current_task_title?worker.current_task_title:"—"))),
+      el("div",{style:"display:flex;flex-direction:column;gap:8px;align-items:flex-end;"},
+        el("div",{style:"display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-end;"},
+          ...signalBits.map((bit)=>el("span",{class:"mono",style:"font-size:9.5px;color:var(--tx-mid);background:var(--bg-chip);border:1px solid var(--bd);padding:2px 6px;border-radius:999px;"} ,bit))),
+        el("div",{style:"display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;"},
+          el("button",{class:"btn sm",onclick:()=>selfHeal("wake",{stale_ms:90000,max_wake:10},"самопочинка запущена")},"⚡ будить"),
+          el("button",{class:"btn sm",onclick:()=>selfHeal("rejudge",{apply:true,max_items:3,since_hours:72},"ОТК карточек запущен")},"↻ rejudge ОТК ?"))));
+  if(recentSignals.length){
+    incident.appendChild(el("div",{style:"display:flex;flex-wrap:wrap;gap:5px;margin-top:10px;"},
+          ...recentSignals.map((s)=>el("span",{style:"font-size:9.5px;font-family:var(--mono);color:var(--tx-mid);background:var(--bg-input);border:1px solid var(--bd);padding:2px 6px;border-radius:999px;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"},
+            `${signalLabel(s.event)}${s.chip?`: ${s.chip}`:""}`))));
+  }
+  if(!obs){
+    incident.appendChild(emptyBox("observer ещё не загрузился — после первого пинга здесь появится причина простоя"));
+  }
+  wrap.appendChild(incident);
 
   const list=el("div",{style:"display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:12px;"}); wrap.appendChild(list);
   if(!q.length){
@@ -1618,6 +1699,8 @@ function recipeCard(r){ const needsRejudge=!!(r.needs_rejudge||(r.status==="otk_
     title:errText||"",onclick:()=>openRecipe(r.id).then(ok=>{ if(ok)go("canvas"); })},
     el("div",{style:"display:flex;align-items:center;gap:8px;margin-bottom:7px;"},el("span",{class:"sq",style:"width:8px;height:8px;background:"+c}),el("span",{class:"mono",style:"font-size:9px;color:var(--tx-lo);"},"граф #"+r.id),el("span",{class:"dot",style:"width:8px;height:8px;background:"+stC+";margin-left:auto;"}),
       needsRejudge?el("span",{class:"mono",style:"font-size:9px;color:var(--warn);background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.35);padding:2px 5px;border-radius:4px;"},"ОТК ?"):null,
+      needsRejudge?el("button",{class:"btn sm",style:"padding:3px 7px;margin-left:2px;",onclick:async(e)=>{ e.stopPropagation(); await selfHeal("rejudge",{apply:true,max_items:1,recipe_ids:[r.id]},"rejudge запущен"); }},"↻ rejudge"):null,
+      r.status==="running"&&r.step!=="done"&&r.step!=="failed"?el("button",{class:"btn sm",style:"padding:3px 7px;margin-left:2px;",onclick:async(e)=>{ e.stopPropagation(); await selfHeal("wake",{stale_ms:90000,max_wake:3},"будилка дернулась"); }},"⚡ wake"):null,
       el("span",{style:"font-size:12px;color:var(--acc-lt);cursor:pointer;padding:0 2px;",title:"R4: 3 варианта с разными хуками (A/B на объёме)",onclick:async(e)=>{ e.stopPropagation(); toast("делаю варианты хука…"); const d=await api("/recipe-variants",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({recipe_id:r.id,n:3})}); if(d&&d.ok){ toast("✓ "+(d.variants||[]).length+" вариант(ов) → в базе, гоняй все"); if(S.screen==="library")screenLibrary(document.getElementById("screen")); } else toast("не вышло: "+((d&&d.error)||"?").toString().slice(0,45)); }},"🔀"),
       el("span",{style:"font-size:12px;color:var(--tx-lo2);cursor:pointer;padding:0 2px;",title:"удалить рецепт",onclick:async(e)=>{ e.stopPropagation(); if(!confirm("Удалить граф #"+r.id+"?"))return; const cardEl=e.currentTarget.closest(".card"); const d=await api("/recipes?recipe_id="+r.id,{method:"DELETE"}); if(d.ok){ toast("удалён"); if(cardEl)cardEl.remove(); S.recipes=(S.recipes||[]).filter(x=>x.id!==r.id); if(S.recipe&&S.recipe.recipe&&String(S.recipe.recipe.id)===String(r.id)){ S.recipe=null; S.selectedNode=null; if(["canvas","inspector","assembly"].includes(S.screen))render(); } } else toast(d.error||"ошибка"); }},"✕")),
     el("div",{style:"font-size:12.5px;font-weight:600;"},(r.article||"—")),
