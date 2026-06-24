@@ -6,6 +6,7 @@ import { remotionEngineSelected, remotionReady, remotionSubmit, remotionStatus }
 import { extractFrames } from "./serverMedia";
 import { logGeneration } from "./genHistory";
 import { tgReady, tgSendReview } from "./telegram";
+import { elevenReady } from "./elevenlabs";
 import { classifyAssets, chooseBinding, assetMatchesArticle, type DiskAsset } from "./assetBind";
 import { isPlaceholderSource } from "./toolSchemas";
 import { isOurStorage } from "./rehostImage";
@@ -373,6 +374,12 @@ export async function runRecipeStep(
     for (const n of plan.nodes) {
       const tool = String(n.tool || "").toLowerCase();
       if (!tool || ASSEMBLY_TOOLS.has(tool) || tool === "captions") { n.status = "skip"; continue; }
+      if (tool === "elevenlabs" && !elevenReady()) {
+        n.status = "skip";
+        n.engine = "voice";
+        n.error = undefined;
+        continue;
+      }
       if (n.status === "done" || n.status === "submitted") continue; // идемпотентность: уже отправлено (токен в БД) — не платим повторно
       // V10: владелец принял превью этой ноды (hash совпадает с текущими prompt/params/вход) → берём готовый
       // клип, НЕ платим fal повторно. Привязка к nodeHash инвалидирует при любой правке ноды.
