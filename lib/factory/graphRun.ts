@@ -320,7 +320,9 @@ export async function claimNextRecipe(db: SupabaseClient, recipeId?: number): Pr
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function jpost(origin: string, path: string, body: unknown, ms = 90000): Promise<any> {
   const r = await internalFetch(`${origin}${path}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(ms) });
-  return r.json().catch(() => ({}));
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(`${path} ${r.status}: ${String(j?.error || j?.detail || r.statusText || "ошибка").slice(0, 180)}`);
+  return j;
 }
 
 // ОДИН шаг исполнения графа.
@@ -571,11 +573,7 @@ export async function runRecipeStep(
     const url = plan.output_url;
     if (!url) throw new Error("нет output_url для ОТК");
     const frames = await extractFrames(url);
-    if (!frames.length) { // кадры не извлеклись → банк без ОТК (не блокируем)
-      plan.otk = null; plan.step = "bank";
-      await savePlan(db, id, plan);
-      return;
-    }
+    if (!frames.length) throw new Error("ОТК не извлёк кадры из output_url — не банкуем без оценки");
     // R3 · АРТЕФАКТ-ГЕЙТ до рубрики: сломанный AI-брак (уанкэни/текст-блид/руки/морфинг) → реген, к рубрике/человеку не доходит
     if ((plan.renderCount || 0) < MAX_RENDERS) {
       const art = await jpost(origin, "/api/factory/artifact-check", { frames }, 45000);
@@ -591,6 +589,7 @@ export async function runRecipeStep(
     const hookNode = plan.nodes.find((n) => String(((n.params || {}) as Record<string, unknown>)["role"] || n.slot || "").toLowerCase() === "hook") || plan.nodes[0];
     const v = await jpost(origin, "/api/factory/video-critic", { frames, hook: hookNode?.onscreen_text || hookNode?.prompt || "", mode, article, niche }, 55000);
     const score = typeof v?.score === "number" ? v.score : null;
+    if (score == null) throw new Error("video-critic не вернул score — не банкуем без ОТК");
     plan.otk = { score, verdict: v?.verdict, axes: v?.axes || null, issues: Array.isArray(v?.issues) ? v.issues : [] };
     // V3: запоминаем ЛУЧШУЮ сборку за все попытки реген-петли (банкуем её, не последнюю)
     if (score != null && score > (plan.bestScore ?? -1)) { plan.bestScore = score; plan.bestUrl = url; }
@@ -622,7 +621,7 @@ export async function runRecipeStep(
         catalogUrl = g?.url || null;
       } catch { /* банк библиотеки опционален */ }
     }
-    const status = score == null ? "otk_pass" : score >= 7 ? "otk_pass" : "otk_fail";
+    const status = score != null && score >= 7 ? "otk_pass" : "otk_fail";
     plan.step = "done";
     await savePlan(db, id, plan, { status, output_url: catalogUrl || url || null });
     await logSignal(db, status === "otk_pass" ? "approved" : "rejected", {
