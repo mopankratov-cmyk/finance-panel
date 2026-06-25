@@ -2408,6 +2408,9 @@ button:not(:disabled):active{ transform: translateY(0); }
       <div x-show="page==='design'" class="flex flex-col" style="height: calc(100vh - 90px)" x-init="if(page==='design' && !design.loaded) loadDesign(); $watch('page', v => { if (v==='design' && !design.loaded) loadDesign() })">
         <div class="mb-3 flex items-center gap-3 flex-wrap shrink-0">
           <div class="text-xl font-semibold"><i data-lucide="filter" class="inline-icon"></i> Воронка</div>
+          <button @click="loadDesign(false, 30)" class="text-xs px-3 py-1.5 rounded-md font-medium" :class="design.window===30 ? 'bg-violet-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'">
+            1 мес<span x-show="design.window===30 && design.period" class="ml-1 opacity-90" x-text="': '+design.period"></span>
+          </button>
           <button @click="loadDesign(false, 7)" class="text-xs px-3 py-1.5 rounded-md font-medium" :class="design.window===7 ? 'bg-violet-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'">
             7 дней<span x-show="design.window===7 && design.period" class="ml-1 opacity-90" x-text="': '+design.period"></span>
           </button>
@@ -2429,10 +2432,15 @@ button:not(:disabled):active{ transform: translateY(0); }
           <div x-show="design.view==='actions'" class="flex items-center gap-1 flex-wrap" style="border-left:1px solid #e5e7eb;padding-left:.7rem;margin-left:.2rem">
             <span class="text-[11px] text-gray-500 font-medium">Категория:</span>
             <button @click="design.catFilter=''" class="text-xs px-2 py-1 rounded-md font-medium" :class="!design.catFilter ? 'bg-violet-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'">Все</button>
+            <button @click="design.catFilter=(design.catFilter==='Куртки'?'':'Куртки')" class="text-xs px-2 py-1 rounded-md font-medium" :class="design.catFilter==='Куртки' ? 'bg-violet-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'">Куртки</button>
+            <button @click="design.catFilter=(design.catFilter==='Ветровки'?'':'Ветровки')" class="text-xs px-2 py-1 rounded-md font-medium" :class="design.catFilter==='Ветровки' ? 'bg-violet-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'">Ветровки</button>
             <button @click="design.catFilter=(design.catFilter==='Ковры'?'':'Ковры')" class="text-xs px-2 py-1 rounded-md font-medium" :class="design.catFilter==='Ковры' ? 'bg-violet-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'">Ковры</button>
             <button @click="design.catFilter=(design.catFilter==='Сумки'?'':'Сумки')" class="text-xs px-2 py-1 rounded-md font-medium" :class="design.catFilter==='Сумки' ? 'bg-violet-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'">Сумки</button>
             <button @click="design.catFilter=(design.catFilter==='Остальное'?'':'Остальное')" class="text-xs px-2 py-1 rounded-md font-medium" :class="design.catFilter==='Остальное' ? 'bg-violet-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'">Остальное</button>
           </div>
+          <input type="search" x-model.debounce.150ms="design.search" placeholder="Артикул или nm"
+                 class="text-xs px-2.5 py-1.5 rounded-md border border-gray-200 min-w-[160px] focus:outline-none focus:ring-2 focus:ring-violet-200"
+                 title="Фильтр по артикулу, nm или названию">
           <!-- Статус рекламы (Юра 04.06): проверка по кнопке -->
           <div x-show="design.view==='actions'" class="flex items-center gap-1.5" style="border-left:1px solid #e5e7eb;padding-left:.7rem;margin-left:.2rem">
             <button @click="refreshAds()" :disabled="design.ads.busy" class="text-xs px-2.5 py-1.5 rounded-md font-semibold bg-cyan-100 text-cyan-700 hover:bg-cyan-200 disabled:opacity-50" title="Проверить, по каким артикулам сейчас идёт реклама">
@@ -3430,18 +3438,14 @@ button:not(:disabled):active{ transform: translateY(0); }
             <span class="text-xs text-gray-500">В ячейках дат показывать:</span>
             <div class="flex gap-0.5 bg-gray-100 rounded-md p-0.5">
               <button @click="design.dayMetric='views'" :class="design.dayMetric==='views'?'bg-violet-600 text-white shadow':'text-gray-600 hover:bg-gray-200'" class="px-3.5 py-1 text-xs rounded font-semibold">Показы</button>
+              <button @click="design.dayMetric='clicks'" :class="design.dayMetric==='clicks'?'bg-violet-600 text-white shadow':'text-gray-600 hover:bg-gray-200'" class="px-3.5 py-1 text-xs rounded font-semibold">Клики</button>
+              <button @click="design.dayMetric='carts'" :class="design.dayMetric==='carts'?'bg-violet-600 text-white shadow':'text-gray-600 hover:bg-gray-200'" class="px-3.5 py-1 text-xs rounded font-semibold">Корзины</button>
+              <button @click="design.dayMetric='orders_count'" :class="design.dayMetric==='orders_count'?'bg-violet-600 text-white shadow':'text-gray-600 hover:bg-gray-200'" class="px-3.5 py-1 text-xs rounded font-semibold">Заказы шт</button>
+              <button @click="design.dayMetric='orders_sum'" :class="design.dayMetric==='orders_sum'?'bg-violet-600 text-white shadow':'text-gray-600 hover:bg-gray-200'" class="px-3.5 py-1 text-xs rounded font-semibold">Заказы ₽</button>
               <button @click="design.dayMetric='ctr'" :class="design.dayMetric==='ctr'?'bg-violet-600 text-white shadow':'text-gray-600 hover:bg-gray-200'" class="px-3.5 py-1 text-xs rounded font-semibold">CTR</button>
               <button @click="design.dayMetric='cr'" :class="design.dayMetric==='cr'?'bg-violet-600 text-white shadow':'text-gray-600 hover:bg-gray-200'" class="px-3.5 py-1 text-xs rounded font-semibold">CR</button>
-              <button @click="design.dayMetric='turnover'" :class="design.dayMetric==='turnover'?'bg-violet-600 text-white shadow':'text-gray-600 hover:bg-gray-200'" class="px-3.5 py-1 text-xs rounded font-semibold">Оборач.</button>
-              <button @click="design.dayMetric='remains'" :class="design.dayMetric==='remains'?'bg-violet-600 text-white shadow':'text-gray-600 hover:bg-gray-200'" class="px-3.5 py-1 text-xs rounded font-semibold">Остатки</button>
-              <button @click="design.dayMetric='gmroi'" :class="design.dayMetric==='gmroi'?'bg-violet-600 text-white shadow':'text-gray-600 hover:bg-gray-200'" class="px-3.5 py-1 text-xs rounded font-semibold">GMROI</button>
-              <button @click="design.dayMetric='orders_sum'" :class="design.dayMetric==='orders_sum'?'bg-violet-600 text-white shadow':'text-gray-600 hover:bg-gray-200'" class="px-3.5 py-1 text-xs rounded font-semibold">Заказы ₽</button>
-              <button @click="design.dayMetric='advert_sum'" :class="design.dayMetric==='advert_sum'?'bg-violet-600 text-white shadow':'text-gray-600 hover:bg-gray-200'" class="px-3.5 py-1 text-xs rounded font-semibold" title="Рекл расход (₽) по дням из РНП">Рекл расход</button>
-              <button @click="design.dayMetric='margin'" :class="design.dayMetric==='margin'?'bg-violet-600 text-white shadow':'text-gray-600 hover:bg-gray-200'" class="px-3.5 py-1 text-xs rounded font-semibold" title="Маржа до ДРР %">Маржа доДРР</button>
-              <button @click="design.dayMetric='drr'" :class="design.dayMetric==='drr'?'bg-violet-600 text-white shadow':'text-gray-600 hover:bg-gray-200'" class="px-3.5 py-1 text-xs rounded font-semibold">ДРР</button>
-              <button @click="design.dayMetric='valovaya'" :class="design.dayMetric==='valovaya'?'bg-violet-600 text-white shadow':'text-gray-600 hover:bg-gray-200'" class="px-3.5 py-1 text-xs rounded font-semibold">Валовая</button>
             </div>
-            <span class="text-[10px] text-gray-400" x-text="design.dayMetric==='turnover' ? 'оборачиваемость (дни) = остаток ÷ ср.продажи 7д · 🟢30-60 🟡<30 🔴>60' : (design.dayMetric==='remains' ? 'остаток (шт) на конец дня · 🟢≥50 🟡<50 🔴=0' : (design.dayMetric==='gmroi' ? 'GMROI (%) по дням · 🟢≥300 🟡150-299 🔴<150' : (design.dayMetric==='margin' ? 'Маржа до ДРР (%) по дням · 🟢≥20 🟡<20 🔴<0' : (design.dayMetric==='drr' ? 'ДРР (%) по дням — доля рекламы · 🟢≤10 🟡≤20 🔴>20' : (design.dayMetric==='valovaya' ? 'Валовая (%) = маржа − ДРР, по дням · 🟢≥15 🟡<15 🔴<0' : 'по дням, по артикулу · фон: 🟢≥бенч 🟡80-99% 🔴<80% · будущие/без трафика — пусто')))))"></span>
+            <span class="text-[10px] text-gray-400" x-text="['ctr','cr'].includes(design.dayMetric) ? 'проценты по дням · фон: 🟢≥бенч 🟡80-99% 🔴<80% · будущие/без трафика — пусто' : 'факт по дням из WB/рекламы · будущие/без данных — пусто'"></span>
           </div>
           <div class="overflow-auto flex-1 min-h-0">
           <table class="w-full text-[11px] design-table" style="table-layout:fixed">
@@ -3519,7 +3523,7 @@ button:not(:disabled):active{ transform: translateY(0); }
                   <template x-for="(d, di) in rolling30()" :key="s.nm+'_'+d.iso">
                     <td class="px-0.5 py-1.5 text-center text-[10px] tabular-nums whitespace-nowrap hover:bg-violet-100"
                         :class="'relative cursor-pointer ' + (di===0 ? 'border-l-4 border-violet-300' : (d.first ? 'border-l-2 border-l-violet-300' : 'border-l border-gray-100')) + ' ' + dayCellBg(s.nm, d.iso, d, s.art)"
-                        :title="d.full + (dayVal(s.nm,d.iso)!=null ? ' · '+({views:'Показы',ctr:'CTR',cr:'CR',turnover:'Оборач',remains:'Остаток',gmroi:'GMROI',margin:'Маржа доДРР',drr:'ДРР',valovaya:'Валовая',orders_sum:'Заказы ₽',advert_sum:'Рекл расход'}[design.dayMetric]||design.dayMetric)+' '+dayCellText(s.nm,d.iso) : '') + ' · клик: отметить изменение'"
+                        :title="d.full + (dayVal(s.nm,d.iso)!=null ? ' · '+({views:'Показы',clicks:'Клики',carts:'Корзины',orders_count:'Заказы шт',ctr:'CTR',cr:'CR',orders_sum:'Заказы ₽'}[design.dayMetric]||design.dayMetric)+' '+dayCellText(s.nm,d.iso) : '') + ' · клик: отметить изменение'"
                         @click.stop="openMarkPop($event, s.nm, d.iso)" :style="dayCellStyle(s.nm, d.iso)">
                       <span x-text="dayCellText(s.nm, d.iso)"></span>
                       <!-- маркеры рисуем ТОЛЬКО где есть отметка (перф: не плодим узлы в пустых ячейках) -->
@@ -3635,7 +3639,7 @@ function app() {
                 wms: null, wmsBusy: false, wmsMsg: '', wmsErr: '',
                 editPctIdx: null, pctBusy: false, pctErr: '', threshold: 30, thrBusy: false,
                 wbBusy: false, wbMsg: '', wbErr: '', wbMeta: null, whEcon: [], palletL: 1230, volKnown: 0, volTotal: 0, expanded: null, exclBusy: false, _exclWh: '', taraBusy: false, tara: null, wmsBusy: null, wmsReady: { cookie: false, warehouses: [] }, wmsResult: null, wbSupplyNums: {}, wmsOrders: {}, supNumBusy: null, coverage: null, restrBusy: false, restrMeta: null, restrMsg: '', restrErr: '', health: { busy: false, result: null }, resetBusy: false, localization: null },
-    design: { loaded: false, loading: false, skus: [], summary: [], period: '', window: 7, sortBy: 'shows', sortDir: 'desc', view: 'actions', videos: {}, fbq: {}, effects: {}, draft: {}, dayMetric: 'ctr', dayMetrics: {}, rowHL: {}, priceBusy: false, priceMsg: '', priceErr: false, cabFilter: '', catFilter: '', bulkMark: { open:false, date:'', busy:false, msg:'' }, ads: { nms: {}, spent: {}, checked: false, busy: false, ts: 0, active_count: 0 },
+    design: { loaded: false, loading: false, skus: [], summary: [], period: '', window: 7, sortBy: 'shows', sortDir: 'desc', view: 'actions', videos: {}, fbq: {}, effects: {}, draft: {}, dayMetric: 'clicks', dayMetrics: {}, rowHL: {}, priceBusy: false, priceMsg: '', priceErr: false, cabFilter: '', catFilter: '', search: '', bulkMark: { open:false, date:'', busy:false, msg:'' }, ads: { nms: {}, spent: {}, checked: false, busy: false, ts: 0, active_count: 0 },
         dayMarks: {}, markPop: { open: false, nm: null, iso: '', x: 0, y: 0 },
         markTypes: [
           { key: 'price_up',   label: 'Цена вверх',      badge: 'Ц↑',  cls: 'bg-red-100 text-red-700',        group: 'Цена' },
@@ -6252,7 +6256,10 @@ function app() {
       const window_ = win || this.design.window || 7;
       this.design.window = window_;
       try {
-        const url = API_BASE + `/api/seo/skus?window=${window_}` + (force ? '&fresh=1&_=' + Date.now() : '');
+        const params = new URLSearchParams({ window: String(window_) });
+        params.set('cabinet', (this.rnp && this.rnp.shop) || 'all');
+        if (force) { params.set('fresh', '1'); params.set('_', String(Date.now())); }
+        const url = API_BASE + '/api/seo/skus?' + params.toString();
         const r = await fetch(url);
         const d = await r.json();
         const raw = (d.skus || []);
@@ -6261,62 +6268,29 @@ function app() {
         for (const s of raw) (byShop[s.shop] ||= []).push(s);
         const summary = Object.entries(byShop).map(([shop, lst]) => ({ shop, n_skus: lst.length }));
 
-        let enriched;
-        if (window_ === 7) {
-          // 7 дней — воронка из выгрузки, ДРР из РНП (Юра 29.05.2026)
-          // Юра 31.05.2026: скользящие 7 дней до вчера, не хардкод
-          {
-            const t = new Date();
-            const y = new Date(t.getTime() - 24*3600*1000);
-            const s = new Date(t.getTime() - 7*24*3600*1000);
-            const fmt = d => String(d.getDate()).padStart(2,'0')+'.'+String(d.getMonth()+1).padStart(2,'0');
-            this.design.period = fmt(s) + '–' + fmt(y);
-          }
-          enriched = raw.map(s => {
-            const opens = s.opens_7d;
-            const orders_count = s.orders_count_7d;
-            const cr_order = (opens > 0 && orders_count != null) ? +(orders_count / opens * 100).toFixed(2) : null;
-            const margin = s.margin_before_drr_7d;
-            const drr = s.drr_7d;  // Юра 01.06.2026: для JC считается из wb.mandarin_upd, для Опт/ip/ooo — из выгрузки
-            const valovaya = (margin != null && drr != null) ? +(margin - drr).toFixed(2) : null;
-            return {
-              nm: s.nm, art: s.art, shop: s.shop, img_url: s.img_url,
-              shows: s.shows_7d, opens, ctr: s.ctr_7d, cart: s.cart_7d,
-              cv_cart: s.cv_cart_7d, cv_order: s.cv_order_7d, cr_order,
-              orders_count, orders_sum: s.orders_sum_7d,
-              margin, drr, valovaya,
-              price_before_spp: s.price_before_spp_unit,
-              stock: s.stock, turnover: s.turnover_4d,
-              rating: s.rating, reviews: s.reviews,
-            };
-          });
-        } else {
-          // Вчера — из mpump RNP (skользящее window=1)
-          this.design.period = d.metrics_period || 'вчера';
-          enriched = raw.map(s => {
-            const shows = s.views_4d;
-            const opens = s.clicks_4d;
-            const ctr = s.ctr_4d;
-            const cart = s.cart_4d;
-            const orders_count = s.orders_count_4d;
-            const cv_cart = (opens > 0 && cart != null) ? +(cart / opens * 100).toFixed(2) : null;
-            const cv_order = (cart > 0 && orders_count != null) ? +(orders_count / cart * 100).toFixed(2) : null;
-            const cr_order = (opens > 0 && orders_count != null) ? +(orders_count / opens * 100).toFixed(2) : null;
-            const margin = s.margin_pct_4d;
-            const drr = s.sae_4d;
-            const valovaya = s.profitability_4d;
-            return {
-              nm: s.nm, art: s.art, shop: s.shop, img_url: s.img_url,
-              shows, opens, ctr, cart,
-              cv_cart, cv_order, cr_order,
-              orders_count, orders_sum: s.orders_sum_4d,
-              margin, drr, valovaya,
-              price_before_spp: s.price_before_spp_unit,
-              stock: s.stock, turnover: s.turnover_4d,
-              rating: s.rating, reviews: s.reviews,
-            };
-          });
-        }
+        this.design.period = d.metrics_period || (window_ === 1 ? 'вчера' : '');
+        const enriched = raw.map(s => {
+          const shows = s.shows_window ?? (window_ === 1 ? s.views_4d : s.shows_7d);
+          const opens = s.clicks_window ?? s.opens_window ?? (window_ === 1 ? s.clicks_4d : (s.clicks_7d ?? s.opens_7d));
+          const ctr = s.ctr_window ?? (window_ === 1 ? s.ctr_4d : s.ctr_7d);
+          const cart = s.cart_window ?? (window_ === 1 ? s.cart_4d : s.cart_7d);
+          const orders_count = s.orders_count_window ?? (window_ === 1 ? s.orders_count_4d : s.orders_count_7d);
+          const cv_cart = s.cv_cart_window ?? ((opens > 0 && cart != null) ? +(cart / opens * 100).toFixed(2) : null);
+          const cv_order = s.cv_order_window ?? ((cart > 0 && orders_count != null) ? +(orders_count / cart * 100).toFixed(2) : null);
+          const cr_order = (opens > 0 && orders_count != null) ? +(orders_count / opens * 100).toFixed(2) : null;
+          const orders_sum = s.orders_sum_window ?? (window_ === 1 ? s.orders_sum_4d : s.orders_sum_7d);
+          const margin = s.margin_before_drr_window ?? (window_ === 1 ? s.margin_pct_4d : s.margin_before_drr_7d);
+          const drr = s.drr_window ?? (window_ === 1 ? s.sae_4d : s.drr_7d);
+          const valovaya = (margin != null && drr != null) ? +(margin - drr).toFixed(2) : null;
+          return {
+            nm: s.nm, art: s.art, name: s.name, shop: s.shop, img_url: s.img_url,
+            shows, opens, ctr, cart, cv_cart, cv_order, cr_order,
+            orders_count, orders_sum, margin, drr, valovaya,
+            price_before_spp: s.price_before_spp_unit,
+            stock: s.stock, turnover: s.turnover_4d,
+            rating: s.rating, reviews: s.reviews,
+          };
+        });
 
         this.design.summary = summary;
         this.design.skus = enriched; this.loadAdsCache();
@@ -6376,6 +6350,7 @@ function app() {
       if (m === 'orders_sum') return v >= 1000 ? (Math.round(v/1000)+'к') : String(v);
       if (m === 'advert_sum') return v >= 1000 ? (Math.round(v/1000)+'к') : String(v);
       if (m === 'views') return v >= 1000 ? (Math.round(v/1000)+'к') : String(v);
+      if (m === 'clicks' || m === 'carts' || m === 'orders_count') return v >= 1000 ? (Math.round(v/1000)+'к') : String(v);
       return v + '%';   // ctr / cr / gmroi / margin / valovaya
     },
     dayCellBg(nm, iso, d, art) {
@@ -6394,7 +6369,7 @@ function app() {
         return v < 0 ? 'bg-red-100 text-red-700 font-semibold' : (v < 15 ? 'bg-amber-50 text-amber-800' : 'bg-green-50 text-green-800');
       if (m === 'drr')   // ДРР — расход, чем меньше тем лучше
         return v <= 10 ? 'bg-green-50 text-green-800' : (v <= 20 ? 'bg-amber-50 text-amber-800' : 'bg-red-100 text-red-700 font-semibold');
-      if (m === 'orders_sum' || m === 'views' || m === 'advert_sum') return '';   // деньги/показы/реклама — без фона-бенчмарка
+      if (m === 'orders_sum' || m === 'views' || m === 'clicks' || m === 'carts' || m === 'orders_count' || m === 'advert_sum') return '';   // фактовые счётчики — без фона-бенчмарка
       return this.benchBg(v, this.dayBench(art));   // ctr / cr
     },
     toggleRowHL(nm) {
@@ -6463,7 +6438,9 @@ function app() {
       const f = this.design.cabFilter;
       if (f) out = out.filter(s => s.shop === f);
       const cf = this.design.catFilter;
-      if (cf) out = out.filter(s => this.designCat(s.art) === cf);
+      if (cf) out = out.filter(s => this.designCat(s.art, s.name) === cf);
+      const q = (this.design.search || '').toLowerCase().trim();
+      if (q) out = out.filter(s => [s.art, s.nm, s.name, s.shop].some(v => String(v || '').toLowerCase().includes(q)));
       return out;
     },
     designTotals() {
@@ -6485,14 +6462,14 @@ function app() {
     designDayTotal(iso) {
       // Итог по дню: суммы для сумм-метрик; точные отношения для CTR/CR/ДРР; взвешенное среднее для margin/valovaya/gmroi/turnover.
       const mt = this.design.dayMetric;
-      let n=0, views=0, clicks=0, crW=0, osum=0, adv=0, rem=0, scalc=0, gv=0, gb=0;
+      let n=0, views=0, clicks=0, carts=0, ordersCount=0, osum=0, adv=0, rem=0, scalc=0, gv=0, gb=0;
       for (const x of this.designVisible()) {
         const m = this.design.dayMetrics?.[x.nm]?.[iso];
         if (!m) continue;
         n++;
-        const vw = m.views||0, ck = vw*(m.ctr||0)/100;
+        const vw = m.views||0, ck = (m.clicks != null ? m.clicks : vw*(m.ctr||0)/100);
         views += vw; clicks += ck;
-        if (m.cr!=null) crW += m.cr*ck;
+        carts += m.carts||0; ordersCount += m.orders_count||0;
         osum += m.orders_sum||0; adv += m.advert_sum||0; rem += m.remains||0; scalc += m.sales_sum_calc||0;
         const val = m[mt];
         if (val!=null) { const w = (mt==='turnover') ? (m.remains||0) : (m.orders_sum||0); gv += val*w; gb += w; }
@@ -6501,21 +6478,27 @@ function app() {
       const ru = v => Math.round(v).toLocaleString('ru-RU');
       const p2 = v => (Math.round(v*100)/100)+'%';
       if (mt==='views') return ru(views);
+      if (mt==='clicks') return ru(clicks);
+      if (mt==='carts') return ru(carts);
+      if (mt==='orders_count') return ru(ordersCount);
       if (mt==='orders_sum') return ru(osum);
       if (mt==='advert_sum') return ru(adv);
       if (mt==='remains') return ru(rem);
       if (mt==='ctr') return views>0 ? p2(clicks/views*100) : '—';
-      if (mt==='cr') return clicks>0 ? p2(crW/clicks) : '—';
+      if (mt==='cr') return carts>0 ? p2(ordersCount/carts*100) : '—';
       if (mt==='drr') return scalc>0 ? p2(adv/scalc*100) : '—';
       if (mt==='turnover') return gb>0 ? Math.round(gv/gb)+'д' : '—';
       if (mt==='gmroi') return gb>0 ? Math.round(gv/gb)+'%' : '—';
       return gb>0 ? p2(gv/gb) : '—';
     },
-    designCat(art) {
+    designCat(art, name) {
       const b = this.designBenchmark(art);
-      const n = (b ? b.name : '') || '';
+      const n = (((b ? b.name : '') || '') + ' ' + (art || '') + ' ' + (name || '')).toLowerCase();
+      if (n.indexOf('куртк') >= 0 || n.indexOf('jacket') >= 0) return 'Куртки';
+      if (n.indexOf('ветров') >= 0 || n.indexOf('windbreaker') >= 0) return 'Ветровки';
       if (n.indexOf('Ковр') >= 0) return 'Ковры';
-      if (n.indexOf('умк') >= 0) return 'Сумки';
+      if (n.indexOf('ковр') >= 0) return 'Ковры';
+      if (n.indexOf('умк') >= 0 || n.indexOf('сумк') >= 0 || n.indexOf('bag') >= 0) return 'Сумки';
       return 'Остальное';
     },
     priceSelCount() {

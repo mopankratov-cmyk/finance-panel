@@ -12,18 +12,36 @@ interface RpcTotal { nm_id: number; article: string; stock: number; cost: number
 
 const r2 = (v: number) => Math.round(v * 100) / 100;
 const pct = (num: number, den: number) => (den > 0 ? r2((num / den) * 100) : null);
+const iso = (d: Date) => d.toISOString().slice(0, 10);
+const ruDate = (s: string) => `${s.slice(8, 10)}.${s.slice(5, 7)}`;
+
+function windowDays(raw: string | null): number {
+  if (raw === "1" || raw === "yesterday") return 1;
+  if (raw === "30" || raw === "month" || raw === "1m") return 30;
+  return 7;
+}
+
+function selectedPeriod(days: number) {
+  const end = new Date();
+  end.setDate(end.getDate() - 1);
+  const start = new Date(end);
+  start.setDate(start.getDate() - (days - 1));
+  return { start: iso(start), end: iso(end), label: days === 1 ? ruDate(iso(end)) : `${ruDate(iso(start))}-${ruDate(iso(end))}` };
+}
 
 // Источник SKU для дизайн/«Воронка» (inferno loadDesign). Поля с суффиксом _7d (окно 7д) и _4d (вчера).
 export async function GET(request: NextRequest) {
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ skus: [], metrics_period: "" });
 
+  const params = new URL(request.url).searchParams;
   // Кабинет из ?cabinet=<uuid|all> — фильтруем все источники по нему (или все, если "all").
-  const { cabinetId, label } = await resolveShopCabinet(new URL(request.url).searchParams.get("cabinet") ?? undefined);
+  const { cabinetId, label } = await resolveShopCabinet(params.get("cabinet") ?? undefined);
+  const days = windowDays(params.get("window"));
+  const period = selectedPeriod(days);
 
-  const since = new Date(Date.now() - 8 * 86400000).toISOString().slice(0, 10);
-  let funnelQ = db.from("wb_funnel_daily").select("nm_id, date, open_card, add_to_cart, orders, orders_sum").gte("date", since);
-  let adQ = db.from("wb_advert_nm_daily").select("nm_id, date, views, clicks, spent").gte("date", since);
+  let funnelQ = db.from("wb_funnel_daily").select("nm_id, date, open_card, add_to_cart, orders, orders_sum").gte("date", period.start).lte("date", period.end);
+  let adQ = db.from("wb_advert_nm_daily").select("nm_id, date, views, clicks, spent").gte("date", period.start).lte("date", period.end);
   if (cabinetId) { funnelQ = funnelQ.eq("cabinet_id", cabinetId); adQ = adQ.eq("cabinet_id", cabinetId); }
   const [funnelRes, adRes, totalsRes, costsRes] = await Promise.all([
     funnelQ,
@@ -35,9 +53,8 @@ export async function GET(request: NextRequest) {
   // Заказы по nm/день для выручки ДО СПП — через server-side агрегат rnp_daily_sku
   // (orders_sum = coalesce(finished_price, total_price) = цена после скидки продавца = до СПП).
   // Раньше тут шёл постраничный скан wb_orders по сети — рвал соединение и вис на 70с+.
-  const toDate = new Date().toISOString().slice(0, 10);
   const ordersByNm = new Map<number, Map<string, { cnt: number; sum: number }>>();
-  const { data: dailySku } = await db.rpc("rnp_daily_sku", { p_from: since, p_to: toDate, p_cabinet: cabinetId });
+  const { data: dailySku } = await db.rpc("rnp_daily_sku", { p_from: period.start, p_to: period.end, p_cabinet: cabinetId });
   for (const row of (dailySku ?? []) as { nm_id: number; d: string; orders_count: number; orders_sum: number }[]) {
     const nm = Number(row.nm_id);
     const d = String(row.d).slice(0, 10);
@@ -50,8 +67,8 @@ export async function GET(request: NextRequest) {
   const orderDates: string[] = [];
   for (const m of ordersByNm.values()) for (const d of m.keys()) orderDates.push(d);
   const dates = [...new Set([...funnel.map((r) => String(r.date).slice(0, 10)), ...ad.map((r) => String(r.date).slice(0, 10)), ...orderDates])].sort();
-  const yest = dates[dates.length - 1] ?? new Date(Date.now() - 86400000).toISOString().slice(0, 10);
-  const week = new Set(dates.slice(-7));
+  const yest = period.end;
+  const selected = new Set(dates.filter((d) => d >= period.start && d <= period.end));
 
   const totals = (totalsRes.data ?? []) as RpcTotal[];
   const totalByNm = new Map<number, RpcTotal>();
@@ -79,7 +96,7 @@ export async function GET(request: NextRequest) {
     const cost = Number(t?.cost ?? 0);
     const stock = Number(t?.stock ?? 0);
 
-    const w = agg(nm, week);
+    const w = agg(nm, selected);
     const y = agg(nm, "yest");
 
     const priceUnit = (a: typeof w) => (a.oc > 0 ? Math.round(a.os / a.oc) : 0);
@@ -93,10 +110,15 @@ export async function GET(request: NextRequest) {
       nm, art, shop: label || "Магазин", img_url: wbCardImageUrl(nm),
       name: nameByArt.get(art) || art,
       // окно 7 дней
-      shows_7d: w.views, opens_7d: w.clicks || w.open, ctr_7d: pct(w.clicks, w.views), cart_7d: w.cart,
+      shows_7d: w.views, opens_7d: w.clicks || w.open, clicks_7d: w.clicks, ctr_7d: pct(w.clicks, w.views), cart_7d: w.cart,
       cv_cart_7d: pct(w.cart, w.clicks || w.open), cv_order_7d: pct(w.oc, w.cart),
       orders_count_7d: w.oc, orders_sum_7d: Math.round(w.os),
       margin_before_drr_7d: mb7, drr_7d: drr7,
+      // выбранное окно из ?window=1|7|30
+      shows_window: w.views, opens_window: w.clicks || w.open, clicks_window: w.clicks, ctr_window: pct(w.clicks, w.views), cart_window: w.cart,
+      cv_cart_window: pct(w.cart, w.clicks || w.open), cv_order_window: pct(w.oc, w.cart),
+      orders_count_window: w.oc, orders_sum_window: Math.round(w.os),
+      margin_before_drr_window: mb7, drr_window: drr7,
       // окно вчера
       views_4d: y.views, clicks_4d: y.clicks, ctr_4d: pct(y.clicks, y.views), cart_4d: y.cart,
       orders_count_4d: y.oc, orders_sum_4d: Math.round(y.os),
@@ -108,5 +130,5 @@ export async function GET(request: NextRequest) {
   }).filter((s) => s.shows_7d > 0 || s.orders_count_7d > 0 || s.stock > 0)
     .sort((a, b) => b.orders_sum_7d - a.orders_sum_7d);
 
-  return NextResponse.json({ skus, metrics_period: "вчера", count: skus.length });
+  return NextResponse.json({ skus, metrics_period: period.label, window_days: days, count: skus.length });
 }
