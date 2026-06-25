@@ -868,9 +868,9 @@ async function screenCenter(root, force, renderToken){
     el("div",{class:"header-action-row"},
       el("button",{class:"btn primary",title:"автопилот: заполнить черновики ИИ + сгенерить + ОТК + банк, прошедшее уйдёт в Telegram на ревью",onclick:()=>openNightRun()},"🌙 Ночной прогон"),
       el("button",{class:"btn",title:"фикс-айдентика брендов: голос/персона/шрифт/цвет/CTA/бан-слова/хэштеги — автозаполнение берёт как дефолты",onclick:()=>openBrandKit()},"🎨 Бренд-кит")),
-    opsStatus?el("button",{class:"system-pill",title:systemTitle,onclick:()=>go("worker"),"aria-label":"Открыть системный статус: "+systemTitle},
+    opsStatus?el("button",{class:"system-pill",title:systemTitle,onclick:()=>go("worker"),"aria-label":"Открыть пульс завода: "+systemTitle},
       el("span",{class:"dot",style:"background:"+opsTone.c+";box-shadow:0 0 0 4px rgba(255,255,255,.035);"}),
-      el("span",{class:"label"},"Система: "+opsTone.label.toLowerCase())):null,
+      el("span",{class:"label"},"Пульс: "+opsTone.label.toLowerCase())):null,
     el("button",{class:"btn sm","aria-label":"Обновить данные",title:"принудительно пересобрать данные и разбор ниши",onclick:()=>{ S.centerLoaded=false; S.allProducts=null; S.productsLoading=false; S.prodCounts={}; S.briefCache={}; render(); }},"↻")));
   const left=el("div",{class:"scroll"}), aside=el("div",{class:"aside",style:"width:340px;padding:18px;"});
   root.appendChild(left); root.appendChild(aside);
@@ -1146,7 +1146,6 @@ function renderCenterOpsSummary(host,input){
   const failDiag=input&&input.failDiag||null;
   const opsAlerts=Array.isArray(input&&input.opsAlerts)?input.opsAlerts:[];
   const lowBalances=Array.isArray(input&&input.lowBalances)?input.lowBalances:[];
-  const workerRow=input&&input.workerRow||null;
   const stability=input&&input.stabilitySnapshot||null;
   const latestStress=input&&input.latestStress||null;
   const stressHistory=input&&input.stressHistory||null;
@@ -1155,7 +1154,7 @@ function renderCenterOpsSummary(host,input){
   const level=(opsStatus&&opsStatus.level)||"unknown";
   const hasCriticalSystemAlert=level==="critical"||opsAlerts.some((a)=>a&&a.level==="error")||lowBalances.length>0;
   if(!hasCriticalSystemAlert)return;
-  const statusTitle=level==="critical"?"Нужна проверка системы":level==="degraded"?"Есть предупреждения системы":level==="healthy"?"Система работает штатно":"Состояние системы неизвестно";
+  const statusTitle=level==="critical"?"Нужна проверка":level==="degraded"?"Есть риск":level==="healthy"?"Система в норме":"Статус неясен";
   const summary=(opsStatus&&opsStatus.summary)||"нет активных системных сообщений";
   const card=el("div",{class:"card health-banner "+(level||"unknown"),role:level==="critical"?"alert":"status","aria-label":statusTitle+". "+summary});
   card.appendChild(el("div",{class:"health-main"},
@@ -1173,18 +1172,21 @@ function renderCenterOpsSummary(host,input){
     const lsSummary=latestStress.summary||{};
     detailItems.push(["стресс "+String(lsSummary.completed||0)+"/"+String(lsSummary.totalRuns||0), lsSummary.failed||lsSummary.runFail||lsSummary.timeouts?"err":"ok"]);
   }
-  if(heartbeatDiag)detailItems.push(["пульс "+String(heartbeatDiag.issue||heartbeatDiag.title||"unknown"), heartbeatDiag.issue==="table_missing"?"warn":"muted"]);
-  if(failDiag)detailItems.push(["сбои "+String(failDiag.issue||failDiag.category||"unknown"), "warn"]);
+  if(heartbeatDiag)detailItems.push(["пульс "+heartbeatIssueLabel(heartbeatDiag.issue||heartbeatDiag.title||"unknown"), heartbeatDiag.issue==="table_missing"?"warn":"muted"]);
+  if(failDiag)detailItems.push(["сбои "+errorCategoryLabel(failDiag.category||failDiag.issue||"unknown"), "warn"]);
   if(opsAlerts.length){
-    opsAlerts.slice(0,3).forEach((a)=>detailItems.push([a.code||a.level||"alert", a.level==="error"?"err":"warn"]));
+    opsAlerts.slice(0,3).forEach((a)=>{
+      const alertLabel=String(a.title||a.reason||a.code||a.level||"сигнал").replace(/_/g," ");
+      detailItems.push([alertLabel, a.level==="error"?"err":"warn"]);
+    });
   }
   if(lowBalances.length){
-    lowBalances.slice(0,2).forEach((b)=>detailItems.push([String(b.provider||"balance")+": "+(b.status||"low")+(b.remaining_pct!=null?(" · "+Math.round(Number(b.remaining_pct)||0)+"%"):""), "err"]));
+    lowBalances.slice(0,2).forEach((b)=>detailItems.push([String(b.provider||"баланс")+": "+(b.status||"низкий")+(b.remaining_pct!=null?(" · "+Math.round(Number(b.remaining_pct)||0)+"%"):""), "err"]));
   }
   if(detailItems.length){
     const colorFor=(t)=>t==="err"?["var(--err)","var(--err-bg)"]:t==="warn"?["var(--warn)","var(--warn-bg)"]:t==="ok"?["var(--ok)","var(--ok-bg)"]:["var(--tx-mid)","var(--bg-input)"];
     const details=el("details",{class:"health-details"});
-    details.appendChild(el("summary",{},"Технические детали"));
+    details.appendChild(el("summary",{},"Что проверить"));
     const chips=el("div",{class:"health-codes"});
     detailItems.forEach(([text,type])=>{
       const [c,bg]=colorFor(type);
