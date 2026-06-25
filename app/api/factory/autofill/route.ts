@@ -9,6 +9,7 @@ import { collectBalances } from "@/lib/factory/balances";
 import { learningHints } from "@/lib/factory/learningHints";
 import { resolveBrandKit, applyKitToParams, brandKitPromptBlock } from "@/lib/factory/brandKit";
 import { internalFetch } from "@/lib/internalFetch";
+import { extractJson } from "@/lib/factory/extractJson";
 
 // Ф2 · tool → сервис баланса (бесплатные disk_real/sound не блокируются) и tool → примерная $-цена (зеркало TOOL_COST)
 const TOOL_SERVICE: Record<string, string> = { seedance: "fal", seedance_fast: "fal", seedance_pro: "fal", kling: "fal", kling_pro: "fal", pika: "fal", creatify: "creatify" };
@@ -18,7 +19,7 @@ const TOOL_COST: Record<string, number> = { seedance: 0.42, seedance_fast: 0.14,
 function buildGrounding(niche: string, lh: string, playbook: Record<string, unknown> | null, footage: "real" | "photo" | "none", lowServices: string[]): string {
   const parts: string[] = [`ГРУНДИНГ НИШИ «${niche}» (реальные данные завода — учитывай в роутинге):`];
   if (lh && lh.trim()) parts.push(lh.trim());
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   const fmts = (playbook && Array.isArray((playbook as any).winning_formats)) ? (playbook as any).winning_formats as Record<string, unknown>[] : [];
   if (fmts.length) {
     parts.push("ПЛЕЙБУК (реально залетающие форматы и роль AI-рендера):");
@@ -27,7 +28,7 @@ function buildGrounding(niche: string, lh: string, playbook: Record<string, unkn
       const rule = rr === "нет" ? "ЗАПРЕТ AI-видео целиком → disk_real" : (rr.includes("вставка") || rr === "обложка") ? "AI только одним кадром-вставкой/обложкой" : "AI ок, но disk_real дешевле если есть клип";
       return `• ${f.name} [engagement: ${f.engagement || "?"}; нужен человек: ${f.needs_human ? "да" : "нет"}; render_role: ${rr} → ${rule}]`;
     }).join("\n"));
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     const anti = (playbook as any).anti_patterns; if (Array.isArray(anti) && anti.length) parts.push(`АНТИ-ПАТТЕРНЫ ниши (не делай): ${anti.slice(0, 5).join("; ")}`);
   }
   parts.push(footage === "real"
@@ -48,16 +49,6 @@ const MODEL = "claude-sonnet-4-6";
 // промпт и параметры. normalizeParams (Ф0) гарантирует валидность для API. Человек главнее: ноды с
 // human_edited=true пропускаются (если не force). Шаг «auto» поверх готового «manual».
 //   POST { recipe_id, node_ids?: number[], force?: boolean }
-
-// терпимый парсер JSON от модели (снять ограждение, найти первый объект)
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function looseJson(raw: string): any | null {
-  let t = String(raw || "").replace(/```json\s*/gi, "").replace(/```/g, "").trim();
-  const s = t.indexOf("{"); if (s < 0) return null;
-  t = t.slice(s);
-  try { return JSON.parse(t); } catch { /* пробуем починить */ }
-  try { return JSON.parse(t.replace(/,(\s*[}\]])/g, "$1")); } catch { return null; }
-}
 
 // дайджест схемы инструмента для system-промпта: только api_param + values/default/hint (чтобы Claude заполнял валидно)
 function toolDigest(tool: string): string {
@@ -110,7 +101,7 @@ export async function POST(req: NextRequest) {
 
     // Ф2 · ГРУНДИНГ (всё параллельно, всё best-effort — autofill работает и без них):
     //   балансы (гард по деньгам) · обучение ниши · плейбук (render_role-роутинг) · наличие реальной съёмки
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     const [balances, lh, pbRow, diskRes, kit] = await Promise.all([
       collectBalances(db, { throttleMs: 60000 }).catch(() => [] as Record<string, unknown>[]),
       learningHints(db, niche).catch(() => ""),
@@ -191,9 +182,9 @@ ${JSON.stringify(nodeLines, null, 1).slice(0, 6000)}`;
     let assignments: Record<string, unknown>[] = [];
     try {
       const res = await client.messages.create({ model: MODEL, max_tokens: 4000, temperature: 0.2, system: sys, messages: [{ role: "user", content: user }] });
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
       const txt = (res.content as any[]).filter((x) => x.type === "text").map((x) => x.text).join(" ");
-      const j = looseJson(txt);
+      const j = extractJson(txt);
       assignments = Array.isArray(j?.assignments) ? j.assignments : [];
       if (!assignments.length) return NextResponse.json({ ok: false, error: "Claude не вернул assignments", raw: txt.slice(0, 160) }, { status: 502 });
     } catch (e) {
@@ -204,7 +195,7 @@ ${JSON.stringify(nodeLines, null, 1).slice(0, 6000)}`;
     const byOrdinal = new Map(targets.map((n) => [Number(n.ordinal), n]));
     const byTool: Record<string, number> = {};
     const written: { node_id: number; tool: string; ordinal: number }[] = [];
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     const graphDoc = (rec.graph_doc && typeof rec.graph_doc === "object") ? rec.graph_doc as { nodes?: any[] } : null;
 
     for (const a of assignments) {

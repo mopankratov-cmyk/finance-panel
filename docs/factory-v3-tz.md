@@ -85,7 +85,7 @@
 
 ## 4. Модель нод-графа
 
-**Два уровня (урок ComfyUI):** `graph_doc` (UI-снимок: позиции/цвета/раскрытия/превью/статусы) ОТДЕЛЬНО от `run_plan` (плоская мапа node_id→{tool,prompt,params,deps} для исполнения очередью).
+**Два уровня (урок ComfyUI):** `graph_doc` (UI-снимок: позиции/цвета/раскрытия/превью/статусы) ОТДЕЛЬНО от `run_plan` (плоская мапа node_id→{tool,prompt,params,deps} для исполнения server-side runner `graph-run`).
 
 ```
 NODE: { id, type: node_type_enum, position{x,y}, size,
@@ -106,7 +106,7 @@ NODE_TYPE enum (role-слоты hook→problem→solution→proof→cta):
 
 ## 5. Модель данных (новые таблицы)
 
-- **`node_recipes`** (граф-голова): id, article, niche (`nicheFromArticle` — ЕДИНЫЙ ключ, НЕ бренд), mode (audience|sell), format_detected, source_viral_video_id FK (если перенесён), parent_graph_id (форк/версия), built_by (manual|assisted|auto), otk_verdict jsonb (5 осей + verdict + issues + fixes, **включая фейлы<8**), otk_score, render_id, output_url, status (draft|otk_pass|otk_fail|posted), recipe_confidence 1-5, graph_doc jsonb, run_plan jsonb. Индексы (niche, recipe_confidence desc, otk_score desc), (built_by), (status).
+- **`node_recipes`** (граф-голова): id, article, niche (`nicheFromArticle` — ЕДИНЫЙ ключ, НЕ бренд), mode (audience|sell), format_detected, source_viral_video_id FK (если перенесён), parent_graph_id (форк/версия), built_by (manual|assisted|auto), otk_verdict jsonb (5 осей + verdict + issues + fixes, **включая фейлы<8**), otk_score, render_id, output_url, status (draft|warning|otk_pass|posted; `otk_fail` только как legacy-история), recipe_confidence 1-5, graph_doc jsonb, run_plan jsonb. Индексы (niche, recipe_confidence desc, otk_score desc), (built_by), (status).
 - **`node_recipe_nodes`** (строка-на-ноду — КЛЮЧЕВАЯ для обучения): recipe_id FK, ordinal, slot, tool, prompt, params jsonb (ВСЕ настройки), asset_id FK content_assets, duration_sec, source (human_chosen|agent_suggested|transferred_from_corpus), human_edited bool, **agent_suggestion jsonb** (что агент предлагал ДО правки — золото для обучения). Индекс (niche, slot, tool) через join.
 - **`node_templates`** (шаблоны из анализа конкурентов): source_video_url, format_type, nodes jsonb[], niche.
 - **`cf_signals`** (журнал событий — центральный дата-стек): {event(generated|approved|rejected|published|metrics), node_id, slot, tool, params, niche, article, mode, axes(5 осей ОТК), engine, format, sound_id, reason_chip}. Включая фейлы<8 (сейчас испаряются).
@@ -164,7 +164,7 @@ NODE_TYPE enum (role-слоты hook→problem→solution→proof→cta):
 
 ## 9. Reuse vs Build
 
-**REUSE (есть):** все адаптеры инструментов (изоморфны submit→token→poll); очередь jobs.ts (lease, renderCount/composeCount≤3); корпус viral_videos/hooks/playbooks; ОТК video-critic+rubric; nicheFromArticle; Shotstack (смоук пройден, кириллица ✓); банк gen-save+Storage; brandProfiles; канонический Block из factory-shotstack-tz.md.
+**REUSE (есть):** все адаптеры инструментов (изоморфны submit→token→poll); `graph-run` (lease/step orchestration, render guards, execution log); корпус viral_videos/hooks/playbooks; ОТК video-critic+rubric; nicheFromArticle; Shotstack (смоук пройден, кириллица ✓); банк gen-save+Storage; brandProfiles; канонический Block из factory-shotstack-tz.md.
 
 **BUILD (новое):** React Flow холст + ноды-карточки + типизированные порты + инспектор + таймлайн-зона; **node-runner** (переворот per-video→per-node: route/engine на КАЖДУЮ ноду, Shotstack=сборщик графа); 3 таблицы + cf_signals; **Decomposer Agent** `/api/factory/decompose` (POST {url|video_id} → типизированные ноды); per-tool JSON-Schema настроек (вынос захардкоженных params); бэкфилл duration_sec+теги; winner_learnings → полный слот-граф; контур post_metrics.
 
@@ -271,7 +271,7 @@ NicheBrief = {
 | `/api/factory/decompose` | POST `{video_url?\|viral_video_id?, niche?}` | `{ok, format, nodes[], confidence, template_id}` \| `{status:'analyzing'}` \| `{error}` |
 | `/api/factory/recipes` | POST `{template_id\|graph_doc, article, niche, mode}` | `{ok, recipe_id, graph_doc}` (создаёт черновой граф) |
 | `/api/factory/node-preview` | POST `{tool, prompt, params, inputs}` | `{ok, preview_url, cost, cached:bool}` (кэш по hash; превью ОДНОЙ ноды) |
-| `/api/factory/graph-run` | POST `{recipe_id}` | `{ok, job_id}` — ставит в очередь; per-node исполнение через jobs/tick (route/engine на КАЖДУЮ ноду, Shotstack=финальная сборка); статус через существующий status-роут |
+| `/api/factory/graph-run` | POST `{recipe_id}` | `{ok, job_id}` — ставит рецепт в канонический graph-run execution path; per-node исполнение делает `graph-run/tick`, Shotstack/renderer остаётся финальной сборкой; статус через существующий status-роут |
 | `/api/factory/niche-brief` | GET `?niche=` | `NicheBrief` (§14) |
 | `/api/factory/tool-schema` | GET `?tool=` | `{ groups:[{group, fields:[{name, api_param, type, values, default, ui_control}]}] }` — JSON-Schema для рендера инспектора |
 

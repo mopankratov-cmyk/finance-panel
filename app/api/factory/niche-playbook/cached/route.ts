@@ -9,6 +9,7 @@ export const maxDuration = 10;
 // Кокпит зовёт это ПЕРЕД запуском Orbit: если ниша уже разобрана (раз в неделю обновляет corpus-cron),
 // берём плейбук из памяти — без ожидания анализа 15-20 мин. GET ?article=HT-80-35&product_name=Ветровка
 export async function GET(req: NextRequest) {
+  try {
   const sp = req.nextUrl.searchParams;
   const article = (sp.get("article") || "").trim();
   const productName = (sp.get("product_name") || "").trim();
@@ -36,5 +37,12 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ niche, playbook: row.playbook, updated_at: updatedAt, stale });
   } catch (e) {
     return NextResponse.json({ niche, playbook: null, note: String(e).slice(0, 120) });
+  }
+  } catch (e) {
+    return NextResponse.json({
+      niche: "default",
+      playbook: null,
+      note: "niche-playbook/cached crash: " + String((e as Error)?.message || e).slice(0, 160),
+    });
   }
 }

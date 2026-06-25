@@ -12,6 +12,7 @@ export const maxDuration = 30;
 //   → generation_history status='rejected' (V20 — память «забраковано и почему»)
 // Без этого петля одобрения рвётся: «не то» не доезжает до обучения. Best-effort, всегда JSON.
 export async function POST(req: NextRequest) {
+  try {
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ ok: false, error: "Supabase не настроен" }, { status: 500 });
   const b = await req.json().catch(() => ({}));
@@ -35,4 +36,11 @@ export async function POST(req: NextRequest) {
   });
 
   return NextResponse.json({ ok: true, reason });
+  } catch (e) {
+    return NextResponse.json({
+      ok: false,
+      reason: "",
+      error: "reject crash: " + String((e as Error)?.message || e).slice(0, 160),
+    }, { status: 500 });
+  }
 }

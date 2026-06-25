@@ -12,6 +12,7 @@ export const maxDuration = 20;
 //             просто не выбраны; не кормим их в rejectAntiFor, чтобы не глушить норм-хуки).
 //   POST { recipe_id?, node_id?, chosen, rejected?:[], niche?, article? }
 export async function POST(req: NextRequest) {
+  try {
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ ok: false, error: "Supabase не настроен" }, { status: 500 });
   const b = await req.json().catch(() => ({}));
@@ -48,4 +49,12 @@ export async function POST(req: NextRequest) {
   }
 
   return NextResponse.json({ ok: true, seeded, passed: rejected.length });
+  } catch (e) {
+    return NextResponse.json({
+      ok: false,
+      seeded: false,
+      passed: 0,
+      error: "hook-pick crash: " + String((e as Error)?.message || e).slice(0, 160),
+    }, { status: 500 });
+  }
 }

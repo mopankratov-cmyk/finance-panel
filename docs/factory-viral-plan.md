@@ -4,6 +4,8 @@
 > ВСЕМ 4 осям — AI-слоп/артефакты, скучно/не цепляет, пахнет рекламой, слабый хук/текст.
 > Может лить объём 20+/нед. Хочет авто-mux трендового звука в файл.
 
+> Historical note (2026-06-25): ниже много ссылок на `jobs/tick` / `lib/factory/jobs.ts`, потому что документ описывает старый execution contour. Текущий runtime уже переведён на `graph-run`; `jobs/*` сведён к disabled stub routes, а `lib/factory/jobs.ts` удалён.
+
 ## СТАТУС ПРОГОНА (ветка `feat/factory-viral-night`, билд зелёный)
 - ✅ **C** — чистка: удалены cabinet-cards, lib/factory/tts.ts, весь модуль /content (6 файлов) + /content из roles.ts. `next build` ✓.
 - ✅ **R1** — миграция `supabase/migrations/20260620_viral_corpus.sql` (4 таблицы). ⚠️ ВЛАДЕЛЕЦ применяет в Supabase SQL Editor.
@@ -26,7 +28,7 @@
 - ⚠️ Эти 4 cockpit-правки проверены node --check (синтаксис) + баланс тегов, но НЕ прогнаны визуально (кокпит за auth). Глянь глазами при первом запуске.
 
 ### ✅ ДОДЕЛАНО в продолжении (2026-06-20):
-- **compose-ветка в `jobs/tick`** (коммит 02a3ed3): `assemble → compose-submit → compose-poll` встроена в self-chaining очередь. `produce` теперь ветвится: slideshow/repurpose_cut → `assemble` (Shotstack-сборка), AI-пути → `scenario` (fal). Guard `composeCount≤3` как у renderCount. При отсутствии ключа/ассетов — graceful откат на scenario.
+- **compose-ветка в историческом `jobs/tick`** (коммит 02a3ed3): `assemble → compose-submit → compose-poll` была встроена в self-chaining очередь. Дальше эта же логика должна жить только в `graph-run`: `produce` ветвится в `assemble` (Shotstack-сборка) или `scenario` (fal), guard `composeCount≤3` / `renderCount` сохраняется.
 - **fix `ai_generation` → Seedance** (коммит 3f1be2d): убран Higgsfield из браузерного пути `_genIdea`. `else`-ветка теперь вызывает `video-fal` без референса вместо `/api/lab/video-storyboard`.
 - **R6 — галерея корпуса** (коммит 6457bdd): `GET /api/factory/corpus/top-videos` + секция «Корпус вирального» в кокпите (lazy, по скору, graceful при пустой таблице).
 - **P2.1 winners loop** (коммиты ba16404, 8d2c8cf): `POST /api/factory/winners` (mark as winner by url/id; bugfix — asset.id, не assetId=0), `GET /api/factory/winners`; кокпит: кнопка 🏆 на карточке банка; инъекция в scripts; миграция `20260622_winners.sql`.
@@ -117,7 +119,7 @@ AI-i2v статичного объекта — источник артефакт
       текста/плывущей упаковки; анти-AI фильтр на скрипт; список мёртвых форматов 2026.
 
 **ВОЛНА P1 — рычаги виральности:**
-- [ ] P1.1 — авто-mux трендового звука (`audio-mux` + Virlo `get_sound_details` + шаг в `jobs/tick`).
+- [ ] P1.1 — авто-mux трендового звука (`audio-mux` + Virlo `get_sound_details` + шаг в execution runner; исторически это делалось в `jobs/tick`, текущий контур — `graph-run`).
 - [ ] P1.2 — объёмный движок (1 победитель → N вариантов в очередь).
 - [ ] P1.3 — раскадровка конкурента → шаблон рендера (`niche-playbook` + `scenario`).
 
@@ -128,6 +130,8 @@ AI-i2v статичного объекта — источник артефакт
 - [ ] U4 — товар в руках через Nano Banana → Seedance (НЕ inpaint).
 
 **ВОЛНА P2 — компаундинг (отдельной ночью):**
+> Основной execution path уже переведён на `graph-run`.
+> `app/api/factory/jobs/*` здесь оставлен как legacy/compatibility-контур, а не как главный оркестратор.
 - [ ] P2.1 — замкнуть петлю winners durably (`winners` route + `content_winners` + авто-инъекция в идеи).
 - [ ] P2.X (РУЧНОЙ пилот, НЕ автопрогон) — 3DGS turntable 1 hero-SKU, сравнить ОТК-дельту.
 
@@ -182,7 +186,7 @@ AI-i2v статичного объекта — источник артефакт
 
 ### P0.2 — Хук-турнир ДО рендера
 **Файлы:** `app/api/factory/scripts/route.ts` (есть), новый `app/api/factory/hook-judge/route.ts`,
-вызов в `jobs/tick.ts` перед `produce`.
+вызов в execution runner перед `produce` (теперь `graph-run`, а не legacy `jobs/tick`).
 - Копирайтер генерит 10–12 хуков (уже умеет, поднять count).
 - Новый `hook-judge`: судит хуки head-to-head по рубрике «останавливает скролл / паттерн-брейк»
   (НЕ «компетентно»). Few-shot калибровка — РЕАЛЬНО залетевшие хуки конкурентов из Virlo
@@ -208,7 +212,7 @@ AI-i2v статичного объекта — источник артефакт
 
 ### P1.1 — Трендовый звук: авто-mux в файл  ← владелец явно просил
 **Файлы:** `lib/factory/trendSources.ts` (добавить `get_sound_details`/preview-URL Virlo),
-новый `app/api/factory/audio-mux/route.ts` (fal ffmpeg или fal audio-overlay), шаг в `jobs/tick.ts`
+новый `app/api/factory/audio-mux/route.ts` (fal ffmpeg или fal audio-overlay), шаг в execution runner
 между `overlay` и `save`.
 - Из плейбука/Orbit берём коммерч-безопасный трендовый звук → тянем аудио-превью (Virlo
   `get_sound_details`/`get_sound_videos`) → mux поверх видео (приглушить/убрать оригинальный трек).
@@ -217,7 +221,7 @@ AI-i2v статичного объекта — источник артефакт
 - **Критерий приёмки:** в `gen-save` уходит видео С аудиодорожкой; в карточке банка виден трек.
 
 ### P1.2 — Объёмный движок (владелец льёт 20+/нед)
-**Файлы:** `lib/factory/jobs.ts`, `app/api/factory/jobs/enqueue/route.ts`, кокпит `patrick.html`.
+**Файлы:** `app/api/factory/graph-run/route.ts`, `app/api/factory/graph-run/tick/route.ts`, кокпит `patrick.html`.
 - 1 победивший хук → fan-out N дешёвых вариантов (разный первый кадр / разный реальный клип /
   разная подпись) → все в серверную очередь → ОТК фильтрует → в банк попадают выжившие.
 - Кнопка в кокпите «размножить победителя ×N».
@@ -253,7 +257,7 @@ AI-i2v статичного объекта — источник артефакт
 
 ## Инварианты (не сломать)
 - `next build` зелёный (строгая типизация COUNT/JSON — были падения, см. git log).
-- Бюджет рендеров: `renderCount≤3`, `otkAttempt≤2` в `jobs/tick.ts` — не трогать лимиты.
+- Бюджет рендеров: `renderCount≤3`, `otkAttempt≤2` в execution runner (`graph-run`) — не трогать лимиты.
 - Реальная съёмка строго по артикулу (без чужих цветов) — `disk-source` уже так делает, не регрессить.
 - Auth не гейтит factory-роуты (proxy.ts) — серверная очередь это использует.
 
@@ -321,7 +325,7 @@ analysis+sounds в `orbit_searches`, видео в `viral_videos` (source_orbit_
 - Критерий: повторный запрос по нише читает из БД, а не re-create.
 
 ### R4 — Еженедельный тикер корпуса (effort L)
-`app/api/factory/jobs/corpus-tick/route.ts` (cron 1×/нед или из jobs/tick):
+`app/api/factory/jobs/corpus-tick/route.ts` (cron 1×/нед или из server runner; историческая привязка к `jobs/tick` уже неактуальна):
 1) по каждому active-монитору `get_niche_monitor_data` (free) → новые видео в `viral_videos`;
 2) топ-50 по (score DESC, analyzed=false) → `analyze_video` (free) → заполнить beat_structure,
    hook_text, viral_reason, analyzed_full;
@@ -399,7 +403,7 @@ API подсунуть НЕЛЬЗЯ — только URL-парсинг, зат�
 - **Анти-паттерн:** one-shot i2v «актёр держит товар» — самый ненадёжный (детали плывут тем сильнее,
   чем ближе план и дольше движение). Не делать целым роликом.
 
-## ПРОДАКШН-СПЕКИ (вшить в scenario + jobs/tick + ОТК)
+## ПРОДАКШН-СПЕКИ (вшить в scenario + execution runner + ОТК)
 - **Микс 90% реальный товар-b-roll / 10% talking-head.** Аватар только в hook (0-3с) и на эмо-битах.
 - **Скелет 30с:** Hook 0-3 → Problem 3-8 → Solution+демо 8-20 → CTA 20-25; cut-down 9-15с для TikTok.
 - **Темп:** резка каждые 1.5-2с (TikTok)/2-3с (Reels) первые 10с; ничего статичного дольше 4с;
@@ -543,8 +547,8 @@ video-critic/ОТК → сравнить native-балл и дрейф това�
    Новый роут `app/api/factory/assemble`. Легко (промпт + выборка по библиотеке).
 3. **Движок монтажа — ВЫБРАН: Shotstack** (ресёрч + 4 линзы high-confidence + 3 скептика, 2026-06-19).
    Сейчас `lib/factory/falVideo.ts` `falCompose` умеет ТОЛЬКО плоский оверлей (без склейки/переходов/бит-синка).
-   Shotstack — managed render-API: async submit→poll ложится **1-в-1 на нашу self-chaining очередь**
-   (`jobs.ts`+`jobs/tick.ts`), полный JSON-таймлайн (треки+переходы+trim+audio-mux) под схему
+   Shotstack — managed render-API: async submit→poll ложится **1-в-1 на наш server execution runner**
+   (исторически это были `jobs.ts`+`jobs/tick.ts`, сейчас — `graph-run`), полный JSON-таймлайн (треки+переходы+trim+audio-mux) под схему
    [HOOK]+[SCENE]+[PAYOFF]+[MUSIC]+[CAPTIONS]. **Render-воркер НЕ нужен** (рендерит в своём облаке — лимит
    Vercel обойдён физически). Резерв №2 — **JSON2Video** (если RU-шрифты/watermark подведут или тираж >190
    рендер-мин/мес → фикс $49.95/200мин). **ffmpeg-Lambda** = план миграции при кратном росте (1000+/мес).
@@ -556,7 +560,7 @@ video-critic/ОТК → сравнить native-балл и дрейф това�
      `edit_json` (Shotstack timeline). Чистый промпт+выборка, рендер не трогает → влезает в 60с.
    - Новый `lib/factory/shotstack.ts` по образу `falVideo.ts`: `shotstackSubmit(editJson)` → render_id;
      `shotstackStatus(id)`. Тот же контракт, что `falVideoSubmit/Status`.
-   - Ветка шагов в `jobs.ts`/`jobs/tick.ts`: `produce→assemble→compose-submit→compose-poll→otk→save`
+   - Историческая ветка шагов в `jobs.ts`/`jobs/tick.ts`: `produce→assemble→compose-submit→compose-poll→otk→save`; текущий home для этой логики — `graph-run`
      (клон submit/poll, **тот же гард renderCount≤3** против двойной оплаты). Старый falCompose-overlay —
      легаси-ветка одиночных роликов, НЕ ломаем.
    - RU-субтитры: грузить Cyrillic-TTF (Supabase Storage URL) в `timeline.fonts`, family в шаблон — иначе tofu.

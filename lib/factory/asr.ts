@@ -17,7 +17,7 @@ export async function transcribeFal(audioUrl: string, language = "ru"): Promise<
       signal: AbortSignal.timeout(50000),
     });
     if (!r.ok) return { text: null, error: `whisper ${r.status}` };
-    const j = (await r.json()) as { text?: string };
+    const j = (await r.json().catch(() => ({}))) as { text?: string };
     return { text: (j.text || "").trim() || null };
   } catch (e) {
     return { text: null, error: String((e as Error)?.message || e).slice(0, 120) };

@@ -3,56 +3,55 @@ import { createClaudeClient } from "@/lib/agent/client";
 import { virloSearchResult } from "@/lib/factory/trendSources";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { nicheFromArticle } from "@/lib/factory/rubric";
+import { extractJson } from "@/lib/factory/extractJson";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 const MODEL = "claude-sonnet-4-6";
 
-// Терпимый разбор JSON от модели: снимает ограждение, чинит висячие запятые,
-// и при обрыве по лимиту достраивает закрывающие ] и } до баланса.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function extractJson(raw: string): any | null {
-  let t = raw.replace(/```json\s*/gi, "").replace(/```/g, "").trim();
-  const start = t.indexOf("{");
-  if (start < 0) return null;
-  t = t.slice(start);
-  const tryParse = (s: string) => { try { return JSON.parse(s); } catch { return undefined; } };
-  let v = tryParse(t); if (v !== undefined) return v;
-  v = tryParse(t.replace(/,(\s*[}\]])/g, "$1")); if (v !== undefined) return v; // висячие запятые
-  // обрыв по лимиту: пройти со стеком скобок (учитывая строки) и достроить хвост
-  const stack: string[] = []; let inStr = false, esc = false;
-  for (let i = 0; i < t.length; i++) {
-    const c = t[i];
-    if (esc) { esc = false; continue; }
-    if (c === "\\") { esc = true; continue; }
-    if (c === '"') { inStr = !inStr; continue; }
-    if (inStr) continue;
-    if (c === "{" || c === "[") stack.push(c);
-    else if (c === "}" || c === "]") stack.pop();
-  }
-  let s = t;
-  if (inStr) s += '"';                          // закрыть оборванную строку
-  s = s.replace(/\s+$/, "");
-  s = s.replace(/,\s*"[^"]*"\s*:\s*$/, "");      // ,"ключ": без значения
-  s = s.replace(/\{\s*"[^"]*"\s*:\s*$/, "{");    // {"ключ": без значения
-  s = s.replace(/,\s*$/, "");                    // висячая запятая
-  for (let i = stack.length - 1; i >= 0; i--) s += stack[i] === "{" ? "}" : "]";
-  s = s.replace(/,(\s*[}\]])/g, "$1");
-  return tryParse(s) ?? null;
+function fallbackPlaybook(niche: string, reason: string) {
+  return {
+    playbook: {
+      niche: niche || "default",
+      summary: `fallback playbook: ${reason}`,
+      winning_formats: [
+        {
+          name: "simple product slideshow",
+          engagement: "средний",
+          hook: "Вот что важно заметить",
+          hook_type: "problem",
+          beats: ["первый кадр с товаром", "2-3 детали пользы", "мягкий CTA"],
+          structure_by_seconds: "0-2 хук → 2-10 детали → 10-15 CTA",
+          retention_mechanism: "быстрые смены деталей",
+          psycho_trigger: "curiosity",
+          attention_break_point: "после первой пользы",
+          needs_human: false,
+          render_role: "нет",
+        },
+      ],
+      hooks: ["Вот что важно заметить", "Не покупай, пока не увидишь это", "Одна деталь меняет всё", "Почему это удобно каждый день", "Проверь перед заказом"],
+      sounds: [],
+      anti_patterns: ["глянцевый AI-ролик целиком", "длинное вступление", "абстрактная реклама"],
+      cta: "Ищи артикул на WB",
+      render_strategy: "Использовать slideshow из реальных фото; AI только как вставка/обложка.",
+      warnings: [reason],
+    },
+  };
 }
 
 // «Мозг маркетолога»: превращает сырую аналитику ниши (Virlo Orbit) в ПРОИЗВОДСТВЕННЫЙ плейбук,
 // из которого пишут продюсер / промпт-инженер / сценарист. Это шаг ОБУЧЕНИЯ перед генерацией.
 // Вход: job_id готового Orbit (тянем analysis+sounds сами) ИЛИ уже готовые analysis/sounds инлайном.
 export async function POST(req: NextRequest) {
+  try {
   const body = await req.json().catch(() => ({}));
   const niche: string = (body.niche || body.product_name || "").toString().trim();
   const jobId: string = (body.job_id || body.id || "").toString().trim();
   const article: string = (body.article || "").toString().trim(); // нужен для согласованной нормализации ниши с sync-orbit
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   let analysis: any = body.analysis || null;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   let sounds: any[] = Array.isArray(body.sounds) ? body.sounds : [];
 
   if (jobId && (!analysis || !sounds.length)) {
@@ -61,7 +60,7 @@ export async function POST(req: NextRequest) {
       sounds.length ? Promise.resolve(null) : virloSearchResult(jobId, "sounds").catch(() => null),
     ]);
     if (a) analysis = a.data || a;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     if (s) sounds = ((s as any).data || s) as any[];
   }
   // Orbit-аналитики может не быть (data_intelligence выключен / orbit без анализа). Тогда строим из НАШЕГО
@@ -77,10 +76,10 @@ export async function POST(req: NextRequest) {
       }
     } catch { /* корпус недоступен */ }
   }
-  if (!analysis) return NextResponse.json({ error: "Нет данных ниши: ни Orbit-аналитики, ни видео в корпусе (синкни орбиты)" }, { status: 400 });
+  if (!analysis) return NextResponse.json(fallbackPlaybook(niche, "Нет данных ниши: ни Orbit-аналитики, ни видео в корпусе"));
 
   const client = await createClaudeClient();
-  if (!client) return NextResponse.json({ error: "ANTHROPIC_API_KEY не настроен" }, { status: 500 });
+  if (!client) return NextResponse.json(fallbackPlaybook(niche, "ANTHROPIC_API_KEY не настроен"));
 
   // сжимаем вход, чтобы влезть в контекст: темы/тактики + только коммерчески-чистые звуки с метрикой
   const ad = analysis.analysis_data || analysis;
@@ -136,14 +135,14 @@ export async function POST(req: NextRequest) {
 
   try {
     const res = await client.messages.create({ model: MODEL, max_tokens: 4000, system: sys, messages: [{ role: "user", content: user }] });
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     const txt = (res.content as any[]).filter((b) => b.type === "text").map((b) => b.text).join(" ").trim();
     const playbook = extractJson(txt);
-    if (!playbook) return NextResponse.json({ error: "пустой плейбук", raw: txt.slice(0, 150) }, { status: 502 });
+    if (!playbook) return NextResponse.json(fallbackPlaybook(niche, "пустой плейбук"));
     // ID звуков не доверяем модели (галлюцинирует UUID) — подставляем точные по названию из данных
     if (Array.isArray(playbook.sounds)) {
       const byTitle = new Map(soundShort.map((s) => [String(s.title || "").toLowerCase().trim(), s]));
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
       playbook.sounds = playbook.sounds.map((p: any) => {
         const src = byTitle.get(String(p?.title || "").toLowerCase().trim());
         return src ? { ...p, id: src.id, commerce_safe: !!src.commerce } : p;
@@ -175,6 +174,12 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ playbook });
   } catch (e) {
-    return NextResponse.json({ error: String(e).slice(0, 200) }, { status: 502 });
+    return NextResponse.json(fallbackPlaybook(niche, String(e).slice(0, 160)));
+  }
+  } catch (e) {
+    return NextResponse.json({
+      error: "niche-playbook crash: " + String((e as Error)?.message || e).slice(0, 160),
+      ...fallbackPlaybook("", "route-level crash"),
+    }, { status: 500 });
   }
 }

@@ -6,7 +6,8 @@ import { nicheFromArticle } from "@/lib/factory/rubric";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-// R4: Еженедельный тикер корпуса вирального контента.
+// R4 legacy compatibility: еженедельный тикер корпуса вирального контента.
+// Главный execution path завода уже переведён на graph-run; этот роут нужен старому cron-цепочечному контуру.
 // 1. Опрашивает Comet-мониторы (niche_monitors) — новые видео → viral_videos (дедуп по url).
 // 2. Берёт топ-20 неанализированных видео → analyze_video (beat_structure / hook_text).
 // 3. Обновляет last_polled_at мониторов.

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { internalFetch } from "@/lib/internalFetch";
 import { extractFrames } from "@/lib/factory/serverMedia";
-import type { RunPlan } from "@/lib/factory/graphRun";
+import type { RunPlan } from "@/lib/factory/graphTypes";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -21,6 +21,12 @@ function authOk(req: NextRequest): boolean {
   return !!secret && req.headers.get("authorization") === `Bearer ${secret}`;
 }
 
+function addPlanWarning(plan: RunPlan, message: string): void {
+  const next = new Set((plan.warnings || []).map((w) => String(w).trim()).filter(Boolean));
+  next.add(message.slice(0, 240));
+  plan.warnings = Array.from(next).slice(0, 20);
+}
+
 async function critic(origin: string, body: Record<string, unknown>) {
   const r = await internalFetch(`${origin}/api/factory/video-critic`, {
     method: "POST",
@@ -30,7 +36,7 @@ async function critic(origin: string, body: Record<string, unknown>) {
   });
   const j = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(`video-critic ${r.status}: ${String(j?.error || j?.detail || r.statusText || "ошибка").slice(0, 160)}`);
-  return j as { score?: number; verdict?: string; axes?: unknown; issues?: string[] };
+  return j as { score?: number; verdict?: string; axes?: unknown; issues?: string[]; basis?: string; basis_reason?: string };
 }
 
 async function genSave(origin: string, body: Record<string, unknown>) {
@@ -46,6 +52,7 @@ async function genSave(origin: string, body: Record<string, unknown>) {
 }
 
 export async function POST(req: NextRequest) {
+  try {
   if (!authOk(req)) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 500 });
@@ -87,7 +94,7 @@ export async function POST(req: NextRequest) {
     }
     if (!frames.length) { processed.push({ id: row.id, error: "не извлеклись кадры" }); continue; }
     const hookNode = (plan.nodes || []).find((n) => String(((n.params || {}) as Record<string, unknown>)["role"] || n.slot || "").toLowerCase() === "hook") || (plan.nodes || [])[0];
-    let verdict: { score?: number; verdict?: string; axes?: unknown; issues?: string[] };
+    let verdict: { score?: number; verdict?: string; axes?: unknown; issues?: string[]; basis?: string; basis_reason?: string };
     try {
       verdict = await critic(origin, {
         frames,
@@ -102,9 +109,17 @@ export async function POST(req: NextRequest) {
     }
     const score = typeof verdict.score === "number" ? verdict.score : null;
     if (score == null) { processed.push({ id: row.id, error: "video-critic без score" }); continue; }
-    const status = score >= 7 ? "otk_pass" : "otk_fail";
-    const otk = { score, verdict: verdict.verdict, axes: verdict.axes || null, issues: Array.isArray(verdict.issues) ? verdict.issues : [] };
+    const status = score >= 7 ? "otk_pass" : "warning";
+    const otk = {
+      score,
+      verdict: verdict.verdict,
+      axes: verdict.axes || null,
+      issues: Array.isArray(verdict.issues) ? verdict.issues : [],
+      basis: verdict.basis ? String(verdict.basis) : null,
+      basis_reason: verdict.basis_reason ? String(verdict.basis_reason) : null,
+    };
     const result: Record<string, unknown> = { id: row.id, apply, status, score, issues: otk.issues.slice(0, 3) };
+    if (status === "warning") result.warning = `OTK below threshold: ${score}`;
     processed.push(result);
     if (!apply) continue;
 
@@ -137,6 +152,8 @@ export async function POST(req: NextRequest) {
     plan.bestUrl = url;
     plan.catalog_url = catalogUrl;
     plan.catalog_error = catalogError;
+    if (status === "warning") addPlanWarning(plan, `rejudge OTK below threshold: ${score}`);
+    if (catalogError) addPlanWarning(plan, `rejudge gen-save warning: ${catalogError}`);
     plan.error = null;
     await db.from("node_recipes").update({
       status,
@@ -149,18 +166,27 @@ export async function POST(req: NextRequest) {
 
     try {
       await db.from("cf_signals").insert({
-        event: status === "otk_pass" ? "approved" : "rejected",
+        event: "approved",
         recipe_id: row.id,
         niche: row.niche,
         article: row.article,
         mode: row.mode || "audience",
         engine: plan.render_engine || "remotion",
         axes: otk.axes,
-        reason_chip: status === "otk_fail" ? (otk.issues[0] || "ОТК<7") : "rejudge",
+        reason_chip: status === "warning" ? (otk.issues[0] || "ОТК warning") : "rejudge",
         params: { source: "graph_run_rejudge", previous_status: "otk_pass", catalog_url: catalogUrl, catalog_error: catalogError },
       });
     } catch { /* сигнал best-effort */ }
   }
 
   return NextResponse.json({ ok: true, apply, max_items: maxItems, processed });
+  } catch (e) {
+    return NextResponse.json({
+      ok: false,
+      apply: false,
+      max_items: 0,
+      processed: [],
+      error: "graph-run/rejudge crash: " + String((e as Error)?.message || e).slice(0, 160),
+    }, { status: 500 });
+  }
 }

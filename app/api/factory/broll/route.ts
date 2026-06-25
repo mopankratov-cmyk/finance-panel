@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClaudeClient } from "@/lib/agent/client";
 import { buildBRollSpec, type BRollSpecInput } from "@/lib/factory/brollSpec";
 import { remotionSubmit, remotionStatus, remotionReady } from "@/lib/factory/remotionRender";
+import { extractJson } from "@/lib/factory/extractJson";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -18,15 +19,21 @@ const MODEL = "claude-sonnet-4-6";
 
 interface BrollPick { phrase: string; preset?: string; accent?: string; kicker?: string; stat?: { value: string; label: string } }
 
-function parseJson(txt: string): { brolls?: BrollPick[] } | null {
-  const t = txt.replace(/```json\s*/gi, "").replace(/```/g, "").trim();
-  try { return JSON.parse(t); } catch { /* try slice */ }
-  const a = t.indexOf("{"), b = t.lastIndexOf("}");
-  if (a >= 0 && b > a) { try { return JSON.parse(t.slice(a, b + 1)); } catch { /* nope */ } }
-  return null;
+function fallbackBrollPicks(script: string, count: number): BrollPick[] {
+  return script
+    .split(/[.!?\n]+/)
+    .map((s) => s.trim().replace(/^[-–—•\s]+/, ""))
+    .filter((s) => s.length >= 8)
+    .slice(0, count)
+    .map((phrase) => ({
+      phrase: phrase.split(/\s+/).slice(0, 7).join(" "),
+      preset: /\d/.test(phrase) ? "stat" : phrase.split(/\s+/).length <= 3 ? "quote" : "cascade",
+      accent: "cyan",
+    }));
 }
 
 export async function POST(req: NextRequest) {
+  try {
   const body = await req.json().catch(() => ({}));
   const script: string = (body.script || "").toString().trim();
   if (!script) return NextResponse.json({ error: "нужен script (сценарий ролика)" }, { status: 400 });
@@ -36,7 +43,7 @@ export async function POST(req: NextRequest) {
   const durationSec = Number(body.durationSec) || 4;
 
   const client = await createClaudeClient();
-  if (!client) return NextResponse.json({ error: "ANTHROPIC_API_KEY не настроен" }, { status: 500 });
+  const fallbackPicks = () => fallbackBrollPicks(script, count);
 
   // 1) агент выбирает сильные фразы + назначает форму (стиль зафиксирован в каноне, не в промпте)
   const sys = `Ты — агент-монтажёр коротких видео. На входе СЦЕНАРИЙ ролика. Выбери ${count} САМЫХ СИЛЬНЫХ фраз под моушен-графику b-ролл (по 4 секунды): хук, боль, ирония, кульминация, цифра-доказательство. Не описывай картинку — выбери ФРАЗЫ и форму подачи.
@@ -50,16 +57,20 @@ export async function POST(req: NextRequest) {
   const user = `Бренд/рубрика: ${brand || "—"}. Желаемый акцент: ${accentHint || "на твой вкус (1-2 цвета)"}.\nСЦЕНАРИЙ:\n${script.slice(0, 6000)}`;
 
   let picks: BrollPick[] = [];
-  try {
-    const res = await client.messages.create({ model: MODEL, max_tokens: 1500, temperature: 0.5, system: sys, messages: [{ role: "user", content: user }] });
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const txt = (res.content as any[]).filter((b) => b.type === "text").map((b) => b.text).join(" ").trim();
-    const j = parseJson(txt);
-    picks = Array.isArray(j?.brolls) ? j!.brolls!.slice(0, count) : [];
-  } catch (e) {
-    return NextResponse.json({ error: "Claude: " + String(e).slice(0, 150) }, { status: 502 });
+  if (!client) {
+    picks = fallbackPicks();
+  } else {
+    try {
+      const res = await client.messages.create({ model: MODEL, max_tokens: 1500, temperature: 0.5, system: sys, messages: [{ role: "user", content: user }] });
+
+      const txt = (res.content as any[]).filter((b) => b.type === "text").map((b) => b.text).join(" ").trim();
+      const j = extractJson(txt) as { brolls?: BrollPick[] } | null;
+      picks = Array.isArray(j?.brolls) ? j!.brolls!.slice(0, count) : [];
+    } catch {
+      picks = fallbackPicks();
+    }
   }
-  if (!picks.length) return NextResponse.json({ error: "агент не выделил фраз — уточни сценарий" }, { status: 502 });
+  if (!picks.length) picks = [{ phrase: script.split(/\s+/).slice(0, 7).join(" "), preset: "cascade", accent: "cyan" }];
 
   // 2) нормализуем в валидные спеки BRoll (детерминированно)
   const specs = picks.map((p, i) => {
@@ -98,4 +109,13 @@ export async function POST(req: NextRequest) {
   }));
 
   return NextResponse.json({ ok: true, render_ready: true, rendered: results.filter((r) => r.url).length, brolls: results });
+  } catch (e) {
+    return NextResponse.json({
+      ok: false,
+      render_ready: false,
+      rendered: 0,
+      brolls: [],
+      error: "broll crash: " + String((e as Error)?.message || e).slice(0, 160),
+    }, { status: 500 });
+  }
 }

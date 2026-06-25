@@ -35,7 +35,7 @@ function snapNumber(f: ToolField, n: number): number {
   return n;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+
 function coerce(f: ToolField, v: any, warnings: string[]): unknown {
   // source-поля (picker/file: url/image_url/…) — автофилл иногда echo-ит сюда ИМЯ ui-контрола («picker»/«file»)
   // вместо реального ассета. Это маркер «выбрать в студии», не значение → отбрасываем (подставит дефолт/авто-байнд).
@@ -99,7 +99,7 @@ function coerce(f: ToolField, v: any, warnings: string[]): unknown {
 // "caption_setting.font_size" / "font.size" / "output.fps" / "caption_setting.offset.x", а Claude
 // по JSON-привычке шлёт ВЛОЖЕННО ({caption_setting:{font_size:70}}). Без сплющивания весь блок
 // дропался как «неизвестное поле» → стиль субтитров/титров терялся молча. nodeEngine/graphRun ждут плоские dotted-ключи.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+
 function flattenDotted(obj: Record<string, any>, prefix = ""): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(obj)) {
@@ -110,7 +110,7 @@ function flattenDotted(obj: Record<string, any>, prefix = ""): Record<string, un
   return out;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+
 export function normalizeParams(tool: string, raw: Record<string, any> | null | undefined): NormalizeResult {
   const warnings: string[] = [];
   const fields = fieldsOf(tool);

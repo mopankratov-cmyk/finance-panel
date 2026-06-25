@@ -55,7 +55,7 @@ export async function elevenListVoices(): Promise<ElevenVoice[]> {
   try {
     const r = await fetch(`${API}/voices`, { headers: { "xi-api-key": KEY() }, cache: "no-store", signal: AbortSignal.timeout(12000) });
     if (!r.ok) return [];
-    const j = (await r.json()) as { voices?: Record<string, unknown>[] };
+    const j = (await r.json().catch(() => ({}))) as { voices?: Record<string, unknown>[] };
     return (j.voices || []).map((v) => {
       const labels = (v.labels || {}) as Record<string, string>;
       const lab = [labels.gender, labels.accent, labels.age, labels.use_case].filter(Boolean).join(" · ");

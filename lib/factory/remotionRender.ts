@@ -1,5 +1,5 @@
 // Remotion render-движок — клиент к render-микросервису (render-service/server.mjs на Yandex VM).
-// Контракт submit→poll ЗЕРКАЛЬНЫЙ к shotstack.ts: ложится на ту же self-chaining очередь graphRun без переписывания.
+// Контракт submit→poll ЗЕРКАЛЬНЫЙ к shotstack.ts: ложится в тот же graph-run runner без переписывания.
 // Премиум-слой (ReelV5: кинетик-капшены, обводка, грейд, бренд-эндкард) Shotstack не умеет — это путь под него.
 //
 // ENV:
@@ -43,7 +43,7 @@ export async function remotionSubmit(
 
     const r = await fetch(`${base}/render`, { method: "POST", headers: HEADERS(), cache: "no-store", body: JSON.stringify(body), signal: AbortSignal.timeout(25000) });
     if (!r.ok) return null;
-    const j = (await r.json()) as { id?: string };
+    const j = (await r.json().catch(() => ({}))) as { id?: string };
     return j.id || null;
   } catch { return null; }
 }
@@ -59,7 +59,7 @@ export async function remotionStatus(id: string): Promise<RemotionStatus> {
   try {
     const r = await fetch(`${base}/status/${id}`, { headers: HEADERS(), cache: "no-store", signal: AbortSignal.timeout(15000) });
     if (!r.ok) return { status: "error", error: `remotion ${r.status}`, retryable: true }; // 404 (джоба пропала после рестарта VM) и др. — транспорт, не отказ рендера
-    const j = (await r.json()) as { status?: string; videoUrl?: string; error?: string; progress?: number };
+    const j = (await r.json().catch(() => ({}))) as { status?: string; videoUrl?: string; error?: string; progress?: number };
     if (j.status === "done" && j.videoUrl) return { status: "done", videoUrl: j.videoUrl, progress: j.progress };
     if (j.status === "error") return { status: "error", error: (j.error || "remotion failed").slice(0, 200) }; // явный отказ рендера — НЕ retryable
     return { status: "in_progress", progress: j.progress };

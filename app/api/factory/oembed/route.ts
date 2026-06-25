@@ -23,12 +23,13 @@ async function fetchOembed(url: string): Promise<{ thumbnail_url?: string; html?
   try {
     const r = await fetch(api, { headers: { "User-Agent": "Mozilla/5.0 (factory oembed)" }, cache: "no-store", signal: AbortSignal.timeout(8000) });
     if (!r.ok) return null;
-    const j = (await r.json()) as { thumbnail_url?: string; html?: string };
+    const j = (await r.json().catch(() => ({}))) as { thumbnail_url?: string; html?: string };
     return { thumbnail_url: j.thumbnail_url, html: j.html };
   } catch { return null; }
 }
 
 export async function POST(req: NextRequest) {
+  try {
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ ok: false, items: [] });
   const b = await req.json().catch(() => ({}));
@@ -61,4 +62,11 @@ export async function POST(req: NextRequest) {
   }));
 
   return NextResponse.json({ ok: true, items: rows.map((r) => ({ id: r.id, cover_url: r.cover_url, embed_html: r.embed_html })) });
+  } catch (e) {
+    return NextResponse.json({
+      ok: false,
+      items: [],
+      note: "oembed crash: " + String((e as Error)?.message || e).slice(0, 160),
+    });
+  }
 }

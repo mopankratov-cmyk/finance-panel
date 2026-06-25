@@ -6,7 +6,7 @@ import { notifyOwner } from "@/lib/factory/notify";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-// Суточный тик балансов: снимает баланс каждого сервиса в историю + алертит, когда баланс <= порога.
+// Legacy compatibility tick балансов: снимает баланс каждого сервиса в историю + алертит, когда баланс <= порога.
 // Вызывается из /api/factory/jobs/balances-cron (GET, Bearer CRON_SECRET) или кнопкой из кокпита.
 // Антидребезг: один сервис алертит не чаще раза в сутки (service_thresholds.alerted_at).
 // «Выздоровел» (стал выше порога) → alerted_at сбрасываем, чтобы следующее падение снова сработало.

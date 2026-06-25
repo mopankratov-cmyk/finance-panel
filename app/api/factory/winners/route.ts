@@ -10,6 +10,7 @@ export const maxDuration = 15;
 //   asset_id — прямой id; url — поиск по url (из bank-карточки кокпита)
 // GET  ?niche=blasters&limit=5  → примеры-победители для инъекции в идеацию
 export async function POST(req: NextRequest) {
+  try {
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 500 });
   const body = await req.json().catch(() => ({}));
@@ -18,7 +19,7 @@ export async function POST(req: NextRequest) {
   if (!assetId && !url) return NextResponse.json({ error: "нужен asset_id или url" }, { status: 400 });
 
   // читаем текущую запись: по id или по url (url — из bank-карточки кокпита, сохранён в content_assets disk='gen')
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   let assetQ: any = db.from("content_assets").select("*");
   if (assetId) assetQ = assetQ.eq("id", assetId);
   else assetQ = assetQ.eq("url", url).eq("disk", "gen");
@@ -75,13 +76,21 @@ export async function POST(req: NextRequest) {
   }
 
   return NextResponse.json({ ok: true, learnings, preset_id });
+  } catch (e) {
+    return NextResponse.json({
+      ok: false,
+      learnings: null,
+      preset_id: null,
+      error: "winners POST crash: " + String((e as Error)?.message || e).slice(0, 160),
+    }, { status: 500 });
+  }
 }
 
 // V14 · из run_plan победившего рецепта собираем переиспользуемый пресет в node_templates:
 // движок (tool) + params (настройки движка/сабтайтров/музыки/визстиля) + длительности по РОЛЯМ.
 // Снимаем volatile-ключи (preview_url/preview_hash) — иначе на НОВОМ товаре V10 переиспользует
 // старый рендер победителя. prompt оставляем как черновик (transfer всё равно правится под товар).
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+
 async function snapshotWinnerPreset(db: any, recipeId: number, niche: string, format: string, winNote: string): Promise<number | null> {
   const { data } = await db.from("node_recipes").select("run_plan,format_detected,niche").eq("id", recipeId).maybeSingle();
   if (!data) return null;
@@ -124,6 +133,7 @@ async function snapshotWinnerPreset(db: any, recipeId: number, niche: string, fo
 }
 
 export async function GET(req: NextRequest) {
+  try {
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 500 });
   const { searchParams } = req.nextUrl;
@@ -144,5 +154,12 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ winners: data || [], niche });
   } catch (e) {
     return NextResponse.json({ winners: [], error: String(e).slice(0, 100) });
+  }
+  } catch (e) {
+    return NextResponse.json({
+      winners: [],
+      niche: "",
+      error: "winners GET crash: " + String((e as Error)?.message || e).slice(0, 160),
+    }, { status: 500 });
   }
 }

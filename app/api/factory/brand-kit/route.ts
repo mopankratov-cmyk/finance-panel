@@ -16,6 +16,7 @@ export const maxDuration = 20;
 const STR_FIELDS = ["niche", "voice_id", "persona_id", "visual_style", "music_url", "caption_font", "caption_color", "caption_highlight", "cta", "notes"] as const;
 
 export async function GET(req: NextRequest) {
+  try {
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ ok: false, error: "Supabase не настроен" }, { status: 500 });
   const sp = req.nextUrl.searchParams;
@@ -36,9 +37,18 @@ export async function GET(req: NextRequest) {
   const brand = detectBrand(article, name);
   const kit = await resolveBrandKit(db, article, name);
   return NextResponse.json({ ok: true, brand: brand || null, kit });
+  } catch (e) {
+    return NextResponse.json({
+      ok: false,
+      brand: null,
+      kit: null,
+      error: "brand-kit GET crash: " + String((e as Error)?.message || e).slice(0, 160),
+    }, { status: 500 });
+  }
 }
 
 export async function POST(req: NextRequest) {
+  try {
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ ok: false, error: "Supabase не настроен" }, { status: 500 });
   const b = await req.json().catch(() => ({}));
@@ -65,4 +75,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: String((e as Error)?.message || e).slice(0, 160) }, { status: 500 });
   }
   return NextResponse.json({ ok: true, brand });
+  } catch (e) {
+    return NextResponse.json({
+      ok: false,
+      error: "brand-kit POST crash: " + String((e as Error)?.message || e).slice(0, 160),
+    }, { status: 500 });
+  }
 }

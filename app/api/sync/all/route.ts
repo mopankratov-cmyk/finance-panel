@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { checkCronAuth } from "@/lib/sync/helpers";
-import { internalFetch } from "@/lib/internalFetch";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { generateInsights } from "@/lib/agent/rules";
 
@@ -42,14 +41,6 @@ export async function GET(request: NextRequest) {
     }
   } catch (err) {
     results["insights"] = { error: err instanceof Error ? err.message : "Unknown error" };
-  }
-
-  // Бэкстоп серверной очереди генераций: будим тик — разгрести зависшие джобы, если цепочка тиков оборвалась.
-  try {
-    await internalFetch(`${base}/api/factory/jobs/tick`, { method: "POST", cache: "no-store", signal: AbortSignal.timeout(20000) });
-    results["factory_jobs_tick"] = { woke: true };
-  } catch (err) {
-    results["factory_jobs_tick"] = { error: err instanceof Error ? err.message : "Unknown error" };
   }
 
   return NextResponse.json({ ok: true, results });

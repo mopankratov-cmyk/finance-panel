@@ -10,41 +10,14 @@ import { speechReady } from "./elevenlabs";
 import { classifyAssets, chooseBinding, assetMatchesArticle, type DiskAsset } from "./assetBind";
 import { isPlaceholderSource } from "./toolSchemas";
 import { isOurStorage } from "./rehostImage";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
+import type { ExecutionLogEntry, RunNode, RunPlan, RunStep } from "./graphTypes";
+
+export type { ExecutionLogEntry, RunNode, RunPlan, RunStep } from "./graphTypes";
 
 // V3 исполнитель графа: рецепт (node_recipe_nodes) → генерация нод → Shotstack-сборка → ОТК → банк.
-// Self-chaining машина по образцу jobs/tick: один тик = ОДИН шаг (<60с), состояние в node_recipes.run_plan.
+// Self-chaining graph-run runner: один тик = ОДИН шаг (<60с), состояние в node_recipes.run_plan.
 // Платные шаги (fal/creatify/shotstack) защищены счётчиками; лиз бережёт от двойной обработки.
-
-export type RunStep = "autofill" | "submit" | "gen-poll" | "assemble" | "render-submit" | "render-poll" | "otk" | "bank" | "done" | "failed";
-
-export interface RunNode {
-  ordinal: number; slot: string | null; node_type: string | null; tool: string | null;
-  prompt: string; params: Record<string, unknown>; image_url: string | null; asset_url: string | null;
-  duration_sec: number | null; onscreen_text: string | null;
-  status: "pending" | "submitted" | "done" | "error" | "skip";
-  token?: string; url?: string; error?: string; engine?: string;
-}
-export interface RunPlan {
-  step: RunStep;
-  nodes: RunNode[];
-  render_id?: string | null;
-  output_url?: string | null;
-  pollCount?: number;
-  renderCount?: number;
-  otk?: { score: number | null; verdict?: string; axes?: unknown; issues?: string[] } | null;
-  attempts?: number;
-  lease_until?: string | null;
-  error?: string | null;
-  bestScore?: number | null;   // V3: лучший ОТК-балл за все попытки реген-петли
-  bestUrl?: string | null;     // и сборка с этим баллом — банкуем ЕЁ
-  notify?: boolean;            // V21/R5: батч-прогон → слать прошедшее ОТК в Telegram на ревью (студийные — нет, без спама)
-  render_engine?: string | null;            // V23: "remotion" | "shotstack" — какой движок собирал (для poll/bank)
-  reel_props?: Record<string, unknown> | null; // V23: пропсы ReelV5 для render-сервиса
-  duration_frames?: number | null;          // V23: длительность ролика в кадрах (Remotion)
-  catalog_url?: string | null;              // permanent content_assets URL, when gen-save succeeded
-  catalog_error?: string | null;            // last gen-save failure, visible in cockpit
-}
 
 const LEASE_MS = 90_000;
 const MAX_POLLS = 35;
@@ -53,11 +26,73 @@ const MAX_RENDERS = 3;
 export const MAX_STEP_ATTEMPTS = 3;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+export function makeRunId(recipeId: number): string {
+  return `run_${recipeId}_${randomUUID().slice(0, 8)}`;
+}
+
+async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`${label} timeout after ${ms}ms`)), ms);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+function keepTail<T>(items: T[] | null | undefined, max = 120): T[] {
+  return (items || []).slice(-max);
+}
+
+function appendExecutionLog(plan: RunPlan, entry: ExecutionLogEntry): void {
+  plan.execution_log = keepTail([...(plan.execution_log || []), entry]);
+}
+
+function startExecutionLog(plan: RunPlan, step: string, input_artifact: string | null, note?: string | null): ExecutionLogEntry {
+  const runId = plan.run_id || "run_unknown";
+  return {
+    run_id: runId,
+    step,
+    started_at: new Date().toISOString(),
+    finished_at: null,
+    status: "running",
+    input_artifact,
+    output_artifact: null,
+    error: null,
+    note: note || null,
+  };
+}
+
+function finishExecutionLog(plan: RunPlan, entry: ExecutionLogEntry, status: ExecutionLogEntry["status"], output_artifact: string | null, error?: string | null, note?: string | null): void {
+  entry.finished_at = new Date().toISOString();
+  entry.status = status;
+  entry.output_artifact = output_artifact;
+  entry.error = error || null;
+  if (note !== undefined) entry.note = note;
+  appendExecutionLog(plan, entry);
+}
+
+function summarizeWarnings(plan: RunPlan): string | null {
+  const warnings = Array.from(new Set((plan.warnings || []).map((s) => String(s).trim()).filter(Boolean)));
+  plan.warnings = warnings.length ? warnings : null;
+  return warnings.length ? warnings.join(" | ") : null;
+}
+
 // «сборочные» инструменты не генерят отдельный клип — участвуют в монтаже/звуке
 const ASSEMBLY_TOOLS = new Set(["shotstack", "sound", "music", "sharp"]);
 
 function asNode(n: RunNode): EngineNode {
   return { tool: n.tool, node_type: n.node_type, prompt: n.prompt, params: n.params, image_url: n.image_url, asset_url: n.asset_url, duration_sec: n.duration_sec ?? undefined };
+}
+
+function textOfNode(n: RunNode | undefined | null): string {
+  if (!n) return "";
+  const p = (n.params || {}) as Record<string, unknown>;
+  return String(n.onscreen_text || p["onscreen_text"] || p["script"] || p["override_script"] || n.prompt || "").trim();
 }
 
 // нода РЕГЕНЕРИРУЕМА: сгенерирована движком (не реальный клип/сборка) — реген disk_real бессмыслен.
@@ -110,11 +145,11 @@ export function buildReelProps(plan: RunPlan, visualNodes: RunNode[], article: s
   const durationInFrames = actorEnd + REEL_CTA_FRAMES;
   const hookNode = plan.nodes.find((n) => roleOf(n) === "hook") || plan.nodes[0];
   const captionNode = plan.nodes.find((n) => n.node_type === "captions");
-  const capText = [hookNode?.onscreen_text, captionNode?.onscreen_text].filter(Boolean).join(". ");
+  const capText = [textOfNode(hookNode), textOfNode(captionNode)].filter(Boolean).join(". ");
   const captions = chunkCaptions(capText, article);
   const soundNode = plan.nodes.find((n) => ["sound", "music"].includes(String(n.tool).toLowerCase()));
   const audioSrc = soundNode?.asset_url || (soundNode?.params?.url as string) || undefined;
-  const ctaTitle = (hookNode?.onscreen_text || article || "").toString().slice(0, 40) || undefined;
+  const ctaTitle = (textOfNode(hookNode) || article || "").toString().slice(0, 40) || undefined;
   const inputProps: Record<string, unknown> = {
     durationInFrames, actorEnd, overlays: renderOverlays,
     ...(actorSrc ? { actorSrc } : {}),
@@ -167,7 +202,6 @@ async function regenCulprit(
   await savePlan(db, id, plan, { otk_verdict: plan.otk ?? null, otk_score: plan.otk?.score ?? null });
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function buildRunPlan(rows: any[]): RunPlan {
   const nodes: RunNode[] = (rows || []).map((r) => {
     const params = (r.params && typeof r.params === "object") ? r.params : {};
@@ -189,7 +223,6 @@ export function buildRunPlan(rows: any[]): RunPlan {
   return { step: "submit", nodes, attempts: 0, pollCount: 0, renderCount: 0 };
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function logSignal(db: SupabaseClient, ev: string, extra: Record<string, any>) {
   try { await db.from("cf_signals").insert({ event: ev, ...extra }); } catch { /* журнал best-effort */ }
 }
@@ -255,24 +288,42 @@ async function autoBindAssets(db: SupabaseClient, plan: RunPlan, article: string
 // (disk=gen, kind=clip — библиотека по артикулу/нише). Best-effort+идемпотентно (дедуп по source_url): любой
 // сбой → клип остаётся на fal (пайплайн не падает). disk_real/уже-наши URL пропускаем.
 const CLIP_BUCKET = "factory-media";
-export async function persistClips(db: SupabaseClient, nodes: RunNode[], article: string, niche: string): Promise<void> {
+export async function persistClips(db: SupabaseClient, nodes: RunNode[], article: string, niche: string, recipeId?: number): Promise<void> {
   await Promise.all(nodes.map(async (n) => {
     const src = n.url;
     if (!src || !/^https?:\/\//i.test(src) || isOurStorage(src)) return; // пусто/не-http/уже у нас
     try {
       const { data: dup } = await db.from("content_assets").select("url").eq("disk", "gen").contains("analysis", { source_url: src }).maybeSingle();
-      if (dup && (dup as { url?: string }).url) { n.url = (dup as { url: string }).url; return; } // уже сохранён — переиспользуем durable
+      if (dup && (dup as { url?: string }).url) {
+        const durable = (dup as { url: string }).url;
+        n.url = durable;
+        await logGeneration({ recipe_id: recipeId ?? null, tool: n.tool, engine: n.engine, node_type: n.node_type, prompt: n.prompt, input_url: src, output_url: durable, status: "generated", source: "graph_run", reason: "clip_library_dedupe", niche, article });
+        return;
+      } // уже сохранён — переиспользуем durable
       const r = await fetch(src, { cache: "no-store", signal: AbortSignal.timeout(30000) });
-      if (!r.ok) return;
+      if (!r.ok) {
+        await logGeneration({ recipe_id: recipeId ?? null, tool: n.tool, engine: n.engine, node_type: n.node_type, prompt: n.prompt, input_url: src, output_url: null, artifact_ok: false, status: "artifact_fail", source: "graph_run", reason: `clip fetch ${r.status}`, niche, article });
+        return;
+      }
       const buf = Buffer.from(await r.arrayBuffer());
-      if (!buf.length) return;
+      if (!buf.length) {
+        await logGeneration({ recipe_id: recipeId ?? null, tool: n.tool, engine: n.engine, node_type: n.node_type, prompt: n.prompt, input_url: src, output_url: null, artifact_ok: false, status: "artifact_fail", source: "graph_run", reason: "clip fetch empty", niche, article });
+        return;
+      }
       const path = `clips/${createHash("sha1").update(src).digest("hex")}.mp4`;
       const { error } = await db.storage.from(CLIP_BUCKET).upload(path, buf, { contentType: "video/mp4", upsert: true, cacheControl: "31536000" });
-      if (error) return;
+      if (error) {
+        await logGeneration({ recipe_id: recipeId ?? null, tool: n.tool, engine: n.engine, node_type: n.node_type, prompt: n.prompt, input_url: src, output_url: null, artifact_ok: false, status: "artifact_fail", source: "graph_run", reason: `clip upload: ${error.message}`.slice(0, 160), niche, article });
+        return;
+      }
       const pub = db.storage.from(CLIP_BUCKET).getPublicUrl(path).data?.publicUrl;
-      if (!pub) return;
+      if (!pub) {
+        await logGeneration({ recipe_id: recipeId ?? null, tool: n.tool, engine: n.engine, node_type: n.node_type, prompt: n.prompt, input_url: src, output_url: null, artifact_ok: false, status: "artifact_fail", source: "graph_run", reason: "clip publicUrl missing", niche, article });
+        return;
+      }
       n.url = pub; // рендерим из durable-URL — ставим ДО insert: если каталожная вставка упадёт, клип уже в нашем бакете и рендер не вернётся на эфемерный fal-URL
       await db.from("content_assets").insert({ disk: "gen", path, name: `${article || "clip"} · clip ${roleOf(n) || ""}`.slice(0, 120), kind: "clip", niche: niche || null, article: article || null, color: null, url: pub, analyzed: true, analysis: { source_url: src, role: roleOf(n), tool: n.tool || null, source: "clip_library" } });
+      await logGeneration({ recipe_id: recipeId ?? null, tool: n.tool, engine: n.engine, node_type: n.node_type, prompt: n.prompt, input_url: src, output_url: pub, status: "generated", source: "graph_run", reason: "clip_library", niche, article });
     } catch { /* best-effort — теряем клип на fal, но пайплайн жив */ }
   }));
 }
@@ -312,7 +363,7 @@ export async function claimNextRecipe(db: SupabaseClient, recipeId?: number): Pr
       .or(`run_plan->>lease_until.is.null,run_plan->>lease_until.lt.${nowIso}`)
       .select("id").maybeSingle();
     // CAS-предикат не сработал (wErr) → НЕ клеймим вслепую: безусловный апдейт убил бы атомарность, два тика
-    // захватили бы ОДИН рецепт = двойная оплата fal/creatify. Пропускаем — воскресит следующий тик/опрос (как в jobs.ts).
+    // захватили бы ОДИН рецепт = двойная оплата fal/creatify. Пропускаем — следующий tick/cron fallback подхватит.
     if (wErr) continue;
     if (!won) continue; // гонку проиграли — рецепт уже захватил другой тик
     return { id: row.id as number, plan, article: String(row.article || ""), niche: String(row.niche || ""), mode: String(row.mode || "audience") };
@@ -320,10 +371,18 @@ export async function claimNextRecipe(db: SupabaseClient, recipeId?: number): Pr
   return null;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function jpost(origin: string, path: string, body: unknown, ms = 90000): Promise<any> {
-  const r = await internalFetch(`${origin}${path}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(ms) });
-  const j = await r.json().catch(() => ({}));
+  const r = await withTimeout(
+    internalFetch(`${origin}${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(ms),
+    }),
+    ms,
+    path,
+  );
+  const j = await withTimeout(r.json().catch(() => ({})), Math.max(5000, Math.floor(ms / 2)), `${path} json`);
   if (!r.ok) throw new Error(`${path} ${r.status}: ${String(j?.error || j?.detail || r.statusText || "ошибка").slice(0, 180)}`);
   return j;
 }
@@ -335,6 +394,31 @@ export async function runRecipeStep(
 ): Promise<void> {
   const { id, plan, article, niche, mode } = ctx;
   plan.lease_until = null; // снимаем лиз в начале — повторный заход разрешён после сохранения
+  if (!plan.run_id) plan.run_id = makeRunId(id);
+
+  const step = String(plan.step || "unknown");
+  const inputArtifact = (() => {
+    const nodes = plan.nodes || [];
+    if (step === "autofill") return `nodes=${nodes.length}`;
+    if (step === "submit") return nodes.map((n) => `${n.ordinal}:${String(n.tool || "none")}`).join(",").slice(0, 240);
+    if (step === "gen-poll") {
+      const submitted = nodes.filter((n) => n.status === "submitted").length;
+      const done = nodes.filter((n) => n.status === "done").length;
+      return `submitted=${submitted};done=${done}`;
+    }
+    if (step === "assemble") return `visual=${nodes.filter((n) => n.status === "done" && n.url).length};engine=${plan.render_engine || "shotstack"}`;
+    if (step === "render-submit") return `engine=${plan.render_engine || "shotstack"};render=${plan.render_id || "new"}`;
+    if (step === "render-poll") return `render=${plan.render_id || "none"}`;
+    if (step === "otk") return `output=${plan.output_url || "none"}`;
+    if (step === "bank") return `output=${plan.bestUrl || plan.output_url || "none"}`;
+    return `step=${step}`;
+  })();
+  const trace = startExecutionLog(plan, step, inputArtifact);
+  const addWarning = (msg: string) => {
+    const next = new Set(plan.warnings || []);
+    next.add(msg.slice(0, 240));
+    plan.warnings = Array.from(next).slice(0, 20);
+  };
 
   // ── autofill (V21): черновик-рецепт из батча сам конфигурируется (§17 ИИ-режиссёр) ПЕРЕД генерацией ──
   // Один тик = autofill (~45с Claude, влезает в 60с), затем перечитываем заполненные ноды и идём в submit.
@@ -343,7 +427,6 @@ export async function runRecipeStep(
     // ИДЕМПОТЕНТНОСТЬ (DB-state, переживает ретраи шага): зовём Claude ТОЛЬКО если рецепт ещё не сконфигурён.
     // Уже настроенный (ai_autofilled/human_chosen + tool) → пропускаем платный вызов, сразу в submit.
     const { data: cur } = await db.from("node_recipe_nodes").select("tool,source").eq("recipe_id", id);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const needsFill = ((cur as any[]) || []).some((n) => !n.tool || (n.source !== "ai_autofilled" && n.source !== "human_chosen"));
     if (needsFill) {
       try {
@@ -353,9 +436,9 @@ export async function runRecipeStep(
     }
     // перечитываем ноды с заполненными tool/params/prompt и пересобираем СПИСОК нод (счётчики прогона не трогаем)
     const { data } = await db.from("node_recipe_nodes").select("ordinal,slot,node_type,tool,prompt,params,asset_url,duration_sec,agent_suggestion").eq("recipe_id", id).order("ordinal");
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     plan.nodes = buildRunPlan((data as any[]) || []).nodes;
     plan.step = "submit";
+    finishExecutionLog(plan, trace, "done", "submit", null, "autofill→submit");
     await savePlan(db, id, plan, { status: "running" });
     return;
   }
@@ -395,6 +478,7 @@ export async function runRecipeStep(
     }
     plan.step = "gen-poll"; plan.pollCount = 0;
     plan.lease_until = null; // шаг завершён — освобождаем лиз для следующего тика (gen-poll)
+    finishExecutionLog(plan, trace, "done", `submitted=${plan.nodes.filter((n) => n.status === "submitted").length}`, null, "submit→gen-poll");
     await savePlan(db, id, plan);
     return;
   }
@@ -415,6 +499,7 @@ export async function runRecipeStep(
     const pollCount = (plan.pollCount || 0) + 1;
     if (stillPending.length && pollCount < MAX_POLLS) {
       plan.pollCount = pollCount;
+      finishExecutionLog(plan, trace, "running", `submitted=${stillPending.length}`, null, "gen-poll waiting");
       await savePlan(db, id, plan, { status: "running" });
       return;
     }
@@ -428,10 +513,12 @@ export async function runRecipeStep(
         .map((n) => `${n.node_type || n.slot || "нода"}: ${n.error || "?"}`).slice(0, 6).join("; ");
       plan.step = "failed";
       plan.error = "все ноды генерации упали — " + (errs || "без деталей");
+      finishExecutionLog(plan, trace, "error", null, plan.error, "gen-poll failed");
       await savePlan(db, id, plan, { status: "run_fail" });
       return;
     }
     plan.step = "assemble";
+    finishExecutionLog(plan, trace, "done", `done=${plan.nodes.filter((n) => n.status === "done" && n.url).length}`, null, "gen-poll→assemble");
     await savePlan(db, id, plan);
     return;
   }
@@ -440,28 +527,37 @@ export async function runRecipeStep(
   if (plan.step === "assemble") {
     // role="skip" (инспектор disk_real) → выкинуть клип из сборки; elevenlabs — это АУДИО (закадр), не визуал
     const visualNodes = plan.nodes.filter((n) => n.status === "done" && n.url && n.node_type !== "captions" && String(n.tool).toLowerCase() !== "elevenlabs" && String(((n.params || {}) as Record<string, unknown>)["role"] || "").toLowerCase() !== "skip");
-    if (!visualNodes.length) throw new Error("нет готовых клипов для сборки (все ноды упали — проверь image_url/ключи)");
+    plan.backup_url = visualNodes[0]?.url || null;
+    if (!visualNodes.length) {
+      const msg = "нет готовых клипов для сборки (все ноды упали — проверь image_url/ключи)";
+      finishExecutionLog(plan, trace, "error", null, msg, "assemble");
+      throw new Error(msg);
+    }
 
     // durable-персист клипов в наш бакет (fal.media эфемерно) → библиотека для ре-ката + надёжный рендер.
     // ДО сборки пропсов: подменит node.url на наш, и render/shotstack пойдут уже с durable-URL. Best-effort.
-    await persistClips(db, visualNodes, article, niche);
+    await persistClips(db, visualNodes, article, niche, id);
 
     // ── V23 · движок REMOTION (премиум ReelV5) — опт-ин FACTORY_RENDER_ENGINE=remotion, минует Shotstack-схему ──
     if (remotionEngineSelected()) {
-      if (!remotionReady()) throw new Error("FACTORY_RENDER_ENGINE=remotion, но REMOTION_RENDER_URL не задан (render-сервис на VM)");
-      const { inputProps, durationInFrames } = buildReelProps(plan, visualNodes, article);
-      plan.reel_props = inputProps;
-      plan.duration_frames = durationInFrames;
-      plan.render_engine = "remotion";
-      plan.step = "render-submit";
-      await savePlan(db, id, plan);
-      return;
+      if (remotionReady()) {
+        const { inputProps, durationInFrames } = buildReelProps(plan, visualNodes, article);
+        plan.reel_props = inputProps;
+        plan.duration_frames = durationInFrames;
+        plan.render_engine = "remotion";
+        plan.step = "render-submit";
+        finishExecutionLog(plan, trace, "done", "render-submit", null, "assemble→render-submit(remotion)");
+        await savePlan(db, id, plan);
+        return;
+      }
+      addWarning("remotion выбран, но сервис не готов; используем Shotstack");
     }
 
     // одиночный клип без Shotstack → используем как есть (минуем рендер)
     if (visualNodes.length === 1 && !shotstackReady()) {
       plan.output_url = visualNodes[0].url!;
       plan.step = "otk";
+      finishExecutionLog(plan, trace, "warning", plan.output_url, null, "single clip fallback");
       await savePlan(db, id, plan, { output_url: plan.output_url });
       return;
     }
@@ -470,6 +566,7 @@ export async function runRecipeStep(
       plan.output_url = visualNodes[0].url!;
       plan.error = "SHOTSTACK_API_KEY не задан — взят первый клип без монтажа";
       plan.step = "otk";
+      finishExecutionLog(plan, trace, "warning", plan.output_url, null, "shotstack missing");
       await savePlan(db, id, plan, { output_url: plan.output_url });
       return;
     }
@@ -512,9 +609,9 @@ export async function runRecipeStep(
     const clips = quantizeToBeats(raw, fixedBeatGrid(120, total));
 
     const hookNode = plan.nodes.find((n) => String(((n.params || {}) as Record<string, unknown>)["role"] || n.slot || "").toLowerCase() === "hook") || plan.nodes[0];
-    const hookText = (hookNode?.onscreen_text || "").toString().slice(0, 120) || undefined;
+    const hookText = textOfNode(hookNode).slice(0, 120) || undefined;
     const captionNode = plan.nodes.find((n) => n.node_type === "captions");
-    const caption = (captionNode?.onscreen_text || (article ? "Ищи на WB: " + article : "")).toString().slice(0, 120) || undefined;
+    const caption = (textOfNode(captionNode) || (article ? "Ищи на WB: " + article : "")).toString().slice(0, 120) || undefined;
     const soundNode = plan.nodes.find((n) => String(n.tool).toLowerCase() === "sound" || String(n.tool).toLowerCase() === "music");
     const audioUrl = (soundNode?.asset_url || (soundNode?.params?.url as string) || "") || undefined;
     const audioVolume = typeof soundNode?.params?.volume === "number" ? (soundNode.params.volume as number) : 0.3;
@@ -529,29 +626,74 @@ export async function runRecipeStep(
       fontSize: isNaN(ssFontSize) ? undefined : ssFontSize, fontColor: ssFontColor, effect: ssEffect, filter: ssFilter,
       outputFormat: ssOutFormat, fps: isNaN(ssFps) ? undefined : ssFps, quality: ssQuality, fit: ssFit, background: ssBg });
     // сохраним edit в run_plan для воспроизводимости
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (plan as any).edit_json = edit;
     plan.step = "render-submit";
+    finishExecutionLog(plan, trace, "done", "render-submit", null, summarizeWarnings(plan) || undefined);
     await savePlan(db, id, plan);
     return;
   }
 
   // ── render-submit: запустить рендер (Remotion VM или Shotstack) ──
   if (plan.step === "render-submit") {
-    if (plan.render_id) { plan.step = "render-poll"; plan.pollCount = 0; await savePlan(db, id, plan, { status: "running" }); return; }
+    if (plan.render_id) {
+      plan.step = "render-poll"; plan.pollCount = 0;
+      finishExecutionLog(plan, trace, "running", `render=${plan.render_id}`, null, "render already started");
+      await savePlan(db, id, plan, { status: "running" });
+      return;
+    }
     if (plan.render_engine === "remotion") {
       const renderId = await remotionSubmit("ReelV5", plan.reel_props || {}, plan.duration_frames || undefined);
-      if (!renderId) throw new Error("remotionSubmit вернул null — проверь REMOTION_RENDER_URL/REMOTION_RENDER_TOKEN/живость VM");
+      if (!renderId) {
+        if (plan.backup_url) {
+          const warn = "remotionSubmit вернул null; fallback raw clip";
+          addWarning(warn);
+          plan.output_url = plan.backup_url;
+          plan.step = "otk";
+          finishExecutionLog(plan, trace, "warning", plan.backup_url, null, warn);
+          await savePlan(db, id, plan, { output_url: plan.backup_url, status: "running" });
+          return;
+        }
+        const msg = "remotionSubmit вернул null — проверь REMOTION_RENDER_URL/REMOTION_RENDER_TOKEN/живость VM";
+        finishExecutionLog(plan, trace, "error", null, msg, "render-submit");
+        throw new Error(msg);
+      }
       plan.render_id = renderId; plan.step = "render-poll"; plan.pollCount = 0;
+      finishExecutionLog(plan, trace, "done", `render=${renderId}`, null, "render-submit→render-poll");
       await savePlan(db, id, plan, { render_id: renderId, status: "running" });
       return;
     }
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const edit = (plan as any).edit_json as Record<string, unknown>;
-    if (!edit) throw new Error("нет edit_json для рендера");
+    if (!edit) {
+      if (plan.backup_url) {
+        const warn = "нет edit_json; fallback raw clip";
+        addWarning(warn);
+        plan.output_url = plan.backup_url;
+        plan.step = "otk";
+        finishExecutionLog(plan, trace, "warning", plan.backup_url, null, warn);
+        await savePlan(db, id, plan, { output_url: plan.backup_url, status: "running" });
+        return;
+      }
+      const msg = "нет edit_json для рендера";
+      finishExecutionLog(plan, trace, "error", null, msg, "render-submit");
+      throw new Error(msg);
+    }
     const renderId = await shotstackSubmit(edit);
-    if (!renderId) throw new Error("shotstackSubmit вернул null — проверь SHOTSTACK_API_KEY/схему");
+    if (!renderId) {
+      if (plan.backup_url) {
+        const warn = "shotstackSubmit вернул null; fallback raw clip";
+        addWarning(warn);
+        plan.output_url = plan.backup_url;
+        plan.step = "otk";
+        finishExecutionLog(plan, trace, "warning", plan.backup_url, null, warn);
+        await savePlan(db, id, plan, { output_url: plan.backup_url, status: "running" });
+        return;
+      }
+      const msg = "shotstackSubmit вернул null — проверь SHOTSTACK_API_KEY/схему";
+      finishExecutionLog(plan, trace, "error", null, msg, "render-submit");
+      throw new Error(msg);
+    }
     plan.render_id = renderId; plan.step = "render-poll"; plan.pollCount = 0;
+    finishExecutionLog(plan, trace, "done", `render=${renderId}`, null, "render-submit→render-poll");
     await savePlan(db, id, plan, { render_id: renderId, status: "running" });
     return;
   }
@@ -564,14 +706,38 @@ export async function runRecipeStep(
     const s = plan.render_engine === "remotion" ? await remotionStatus(String(plan.render_id)) : await shotstackStatus(String(plan.render_id));
     if (s.status === "done" && s.videoUrl) {
       plan.output_url = s.videoUrl; plan.step = "otk";
+      finishExecutionLog(plan, trace, "done", s.videoUrl, null, "render complete");
       await savePlan(db, id, plan, { output_url: s.videoUrl });
     } else if (s.status === "error" && s.retryable !== true) {
-      // настоящий отказ рендера — фейлим. Транзиент/404 (retryable) НЕ роняет уже оплаченный рендер — продолжаем опрос до таймаута.
-      throw new Error(`${engineName} error: ` + (s.error || "unknown"));
+      // Если есть запасной клип, не рвём прогон: сохраняем raw fallback и идём дальше с warning.
+      if (plan.backup_url) {
+        const warn = `${engineName} error: ${(s.error || "unknown").slice(0, 120)}; fallback raw clip`;
+        addWarning(warn);
+        plan.output_url = plan.backup_url;
+        plan.step = "otk";
+        finishExecutionLog(plan, trace, "warning", plan.backup_url, null, warn);
+        await savePlan(db, id, plan, { output_url: plan.backup_url, status: "running" });
+      } else {
+        const msg = `${engineName} error: ` + (s.error || "unknown");
+        finishExecutionLog(plan, trace, "error", null, msg, "render-poll");
+        throw new Error(msg);
+      }
     } else if (pollCount >= MAX_POLLS) {
-      throw new Error(`${engineName} render timeout` + (s.status === "error" ? ` (последний опрос: ${s.error})` : ""));
+      if (plan.backup_url) {
+        const warn = `${engineName} render timeout` + (s.status === "error" ? ` (последний опрос: ${s.error})` : "") + "; fallback raw clip";
+        addWarning(warn);
+        plan.output_url = plan.backup_url;
+        plan.step = "otk";
+        finishExecutionLog(plan, trace, "warning", plan.backup_url, null, warn);
+        await savePlan(db, id, plan, { output_url: plan.backup_url, status: "running" });
+      } else {
+        const msg = `${engineName} render timeout` + (s.status === "error" ? ` (последний опрос: ${s.error})` : "");
+        finishExecutionLog(plan, trace, "error", null, msg, "render-poll");
+        throw new Error(msg);
+      }
     } else {
       plan.pollCount = pollCount;
+      finishExecutionLog(plan, trace, "running", `render=${plan.render_id || "none"}`, null, "render-poll waiting");
       await savePlan(db, id, plan, { status: "running" });
     }
     return;
@@ -580,38 +746,61 @@ export async function runRecipeStep(
   // ── otk: кадры → видео-критик → вердикт ──
   if (plan.step === "otk") {
     const url = plan.output_url;
-    if (!url) throw new Error("нет output_url для ОТК");
-    const frames = await extractFrames(url);
-    if (!frames.length) throw new Error("ОТК не извлёк кадры из output_url — не банкуем без оценки");
-    // R3 · АРТЕФАКТ-ГЕЙТ до рубрики: сломанный AI-брак (уанкэни/текст-блид/руки/морфинг) → реген, к рубрике/человеку не доходит
-    if ((plan.renderCount || 0) < MAX_RENDERS) {
-      const art = await jpost(origin, "/api/factory/artifact-check", { frames }, 45000);
-      if (art && art.ok === false) {
-        const culprit = pickCulprit(plan, { native: 1 }); // артефакты → генеративная нода (фолбэк-выбор)
-        if (culprit) {
-          const defs = Array.isArray(art.defects) ? art.defects : [];
-          await regenCulprit(db, origin, id, plan, niche, article, culprit.node, defs, "убрать сломанные AI-артефакты: " + (defs.join("; ") || "уанкэни/морфинг/кривые руки"), "артефакты: " + (defs.join(", ") || "broken"), true);
-          return;
-        }
+    if (!url) {
+      const msg = "нет output_url для ОТК";
+      finishExecutionLog(plan, trace, "error", null, msg, "otk");
+      throw new Error(msg);
+    }
+    let frames: string[] = [];
+    try {
+      frames = await extractFrames(url);
+    } catch (e) {
+      addWarning(`extractFrames failed: ${String((e as Error)?.message || e).slice(0, 120)}`);
+    }
+    if (!frames.length) addWarning("ОТК не извлёк кадры; сохраняем ролик без оценки");
+
+    let artifactOk = true;
+    let artifactDefects: string[] = [];
+    if (frames.length) {
+      try {
+        const art = await jpost(origin, "/api/factory/artifact-check", { frames }, 45000);
+        artifactOk = art?.ok !== false;
+        artifactDefects = Array.isArray(art?.defects) ? art.defects.map((d: unknown) => String(d).slice(0, 120)).slice(0, 5) : [];
+        if (!artifactOk) addWarning(`artifact-check warning: ${artifactDefects.join(", ") || "broken"}`);
+      } catch (e) {
+        artifactOk = false;
+        addWarning(`artifact-check unavailable: ${String((e as Error)?.message || e).slice(0, 120)}`);
       }
     }
+
     const hookNode = plan.nodes.find((n) => String(((n.params || {}) as Record<string, unknown>)["role"] || n.slot || "").toLowerCase() === "hook") || plan.nodes[0];
-    const v = await jpost(origin, "/api/factory/video-critic", { frames, hook: hookNode?.onscreen_text || hookNode?.prompt || "", mode, article, niche }, 55000);
-    const score = typeof v?.score === "number" ? v.score : null;
-    if (score == null) throw new Error("video-critic не вернул score — не банкуем без ОТК");
-    plan.otk = { score, verdict: v?.verdict, axes: v?.axes || null, issues: Array.isArray(v?.issues) ? v.issues : [] };
-    // V3: запоминаем ЛУЧШУЮ сборку за все попытки реген-петли (банкуем её, не последнюю)
+    let score: number | null = null;
+    let verdict: string | undefined;
+    let axes: unknown = null;
+    let issues: string[] = [];
+    let basis: string | null = null;
+    let basisReason: string | null = null;
+    try {
+      const v = frames.length ? await jpost(origin, "/api/factory/video-critic", { frames, hook: textOfNode(hookNode), mode, article, niche }, 55000) : null;
+      score = typeof v?.score === "number" ? v.score : null;
+      verdict = v?.verdict;
+      axes = v?.axes || null;
+      issues = Array.isArray(v?.issues) ? v.issues : [];
+      basis = v?.basis ? String(v.basis) : null;
+      basisReason = v?.basis_reason ? String(v.basis_reason) : null;
+    } catch (e) {
+      addWarning(`video-critic unavailable: ${String((e as Error)?.message || e).slice(0, 120)}`);
+    }
+
+    if (score == null) addWarning("video-critic did not return score");
+    if (typeof score === "number" && score < 7) addWarning(`OTK below threshold: ${score}`);
+    plan.otk = { score, verdict, axes, issues, basis, basis_reason: basisReason };
     if (score != null && score > (plan.bestScore ?? -1)) { plan.bestScore = score; plan.bestUrl = url; }
 
-    // V3+V4: regen-on-fail — score<7 и есть бюджет рендеров → чиним ноду-виновника и пере-генерим ТОЛЬКО её
-    const canRegen = score != null && score < 7 && (plan.renderCount || 0) < MAX_RENDERS;
-    const culprit = canRegen ? pickCulprit(plan, plan.otk.axes) : null;
-    if (canRegen && culprit) {
-      await regenCulprit(db, origin, id, plan, niche, article, culprit.node, plan.otk.issues || [], `усилить ось «${culprit.axis}» (сейчас ${culprit.val}/5)`, `ось ${culprit.axis} ${culprit.val}/5`);
-      return;
-    }
+    const status = summarizeWarnings(plan) ? "warning" : "done";
     plan.step = "bank";
-    await savePlan(db, id, plan, { otk_verdict: plan.otk, otk_score: score });
+    finishExecutionLog(plan, trace, status === "warning" ? "warning" : "done", url, null, status === "warning" ? summarizeWarnings(plan) : "otk→bank");
+    await savePlan(db, id, plan, { otk_verdict: plan.otk, otk_score: score, status: "running" });
     return;
   }
 
@@ -621,7 +810,7 @@ export async function runRecipeStep(
     const url = plan.bestUrl || plan.output_url;
     const score = plan.bestScore != null ? plan.bestScore : (plan.otk?.score ?? null);
     const hookNode = plan.nodes.find((n) => String(((n.params || {}) as Record<string, unknown>)["role"] || n.slot || "").toLowerCase() === "hook") || plan.nodes[0];
-    const hook = (hookNode?.onscreen_text || hookNode?.prompt || "").toString().slice(0, 200);
+    const hook = textOfNode(hookNode).slice(0, 200);
     // в библиотеку контента (каталог кокпита)
     let catalogUrl: string | null = null;
     let catalogError: string | null = null;
@@ -631,25 +820,72 @@ export async function runRecipeStep(
         catalogUrl = g?.url || null;
       } catch (e) { catalogError = String((e as Error)?.message || e).slice(0, 220); }
     }
-    const status = score != null && score >= 7 ? "otk_pass" : "otk_fail";
+    if (url && !catalogUrl && catalogError) {
+      addWarning(`gen-save warning: ${catalogError}`);
+    }
+    const qualityStatus = score != null && score >= 7 ? "otk_pass" : "warning";
+    const finalStatus = summarizeWarnings(plan) ? "warning" : qualityStatus;
     plan.step = "done";
     plan.catalog_url = catalogUrl;
     plan.catalog_error = catalogError;
-    await savePlan(db, id, plan, { status, output_url: catalogUrl || url || null });
     if (url && !catalogUrl && catalogError) {
       await logSignal(db, "catalog_save_failed", {
         recipe_id: id, niche, article, mode, format: null, engine: plan.render_engine || "shotstack",
         params: { source: "graph_run_bank", raw_url: url, error: catalogError },
       });
     }
-    await logSignal(db, status === "otk_pass" ? "approved" : "rejected", {
+    await logSignal(db, finalStatus === "otk_pass" ? "approved" : "approved", {
       recipe_id: id, niche, article, mode, format: null, engine: plan.render_engine || "shotstack",
-      axes: plan.otk?.axes ?? null, reason_chip: status === "otk_fail" ? (plan.otk?.issues?.[0] || "ОТК<7") : null,
+      axes: plan.otk?.axes ?? null, reason_chip: finalStatus === "warning" ? (plan.warnings?.[0] || "warning") : null,
     });
     // V21/R5: батч-прогон прошёл ОТК → шлём оператору в Telegram на ревью (студийные прогоны — нет, без спама)
-    if (plan.notify && status === "otk_pass" && (catalogUrl || url) && tgReady()) {
+    if (plan.notify && finalStatus === "otk_pass" && (catalogUrl || url) && tgReady()) {
       try { await tgSendReview((catalogUrl || url)!, `${hook || article || "генерация"}\nОТК ${score != null ? Math.round(score * 10) : "—"}/100 · ниша ${niche}`, id); } catch { /* telegram опционален */ }
     }
+    finishExecutionLog(plan, trace, finalStatus === "warning" ? "warning" : "done", catalogUrl || url || null, null, summarizeWarnings(plan) || "bank");
+    await savePlan(db, id, plan, {
+      status: finalStatus,
+      output_url: catalogUrl || url || null,
+      otk_verdict: plan.otk ?? null,
+      otk_score: score,
+    });
     return;
   }
+}
+
+export async function advanceClaimedRecipe(
+  db: SupabaseClient,
+  origin: string,
+  ctx: { id: number; plan: RunPlan; article: string; niche: string; mode: string; product_name?: string },
+): Promise<{ ok: boolean; error: string | null; terminal: boolean; step: RunPlan["step"] }> {
+  let crashed = false;
+  let errorMessage: string | null = null;
+  try {
+    await runRecipeStep(db, origin, ctx);
+    const p = ctx.plan as RunPlan;
+    if (p.attempts) {
+      p.attempts = 0;
+      const { error: rErr } = await db.rpc("reset_step_attempts", { p_recipe_id: ctx.id });
+      if (rErr) {
+        await db.from("node_recipes").update({ run_plan: p, updated_at: new Date().toISOString() }).eq("id", ctx.id);
+      }
+    }
+  } catch (e) {
+    crashed = true;
+    errorMessage = String(e instanceof Error ? e.message : e).slice(0, 300);
+    const plan = ctx.plan as RunPlan;
+    const attempts = (plan.attempts || 0) + 1;
+    plan.attempts = attempts;
+    plan.error = errorMessage;
+    plan.lease_until = null;
+    if (attempts >= MAX_STEP_ATTEMPTS) {
+      plan.step = "failed";
+      await db.from("node_recipes").update({ run_plan: plan, status: "run_fail", updated_at: new Date().toISOString() }).eq("id", ctx.id);
+    } else {
+      await db.from("node_recipes").update({ run_plan: plan, updated_at: new Date().toISOString() }).eq("id", ctx.id);
+    }
+  }
+  const currentStep = ctx.plan.step;
+  const terminal = currentStep === "done" || currentStep === "failed";
+  return { ok: !crashed, error: errorMessage, terminal, step: currentStep };
 }

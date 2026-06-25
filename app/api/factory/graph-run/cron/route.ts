@@ -16,13 +16,17 @@ export const maxDuration = 60;
 // vercel.json: { "path": "/api/factory/graph-run/cron", "schedule": "*/2 * * * *" }. Auth: Bearer CRON_SECRET.
 
 export async function GET(req: NextRequest) {
-  const auth = req.headers.get("authorization") || "";
-  const secret = process.env.CRON_SECRET || "";
-  if (secret && auth !== `Bearer ${secret}`) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  try {
+    const auth = req.headers.get("authorization") || "";
+    const secret = process.env.CRON_SECRET || "";
+    if (secret && auth !== `Bearer ${secret}`) {
+      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    }
+    const db = getSupabaseAdmin();
+    if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 500 });
+    const result = await wakeStaleRecipes(db, req.nextUrl.origin, { trigger: "cron" });
+    return NextResponse.json({ ok: true, ...result });
+  } catch (e) {
+    return NextResponse.json({ error: "graph-run/cron crash: " + String((e as Error)?.message || e).slice(0, 180) }, { status: 500 });
   }
-  const db = getSupabaseAdmin();
-  if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 500 });
-  const result = await wakeStaleRecipes(db, req.nextUrl.origin, { trigger: "cron" });
-  return NextResponse.json({ ok: true, ...result });
 }

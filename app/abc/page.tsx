@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useState } from "react";
 import { Loader2, BarChart3 } from "lucide-react";
 import { CabinetSwitcher } from "@/components/CabinetSwitcher";
@@ -85,7 +86,7 @@ export default function AbcPage() {
                       <td className="px-3 py-2"><span className={`inline-flex h-6 w-6 items-center justify-center rounded-lg text-xs font-bold ${CLS[r.cls].bg} ${CLS[r.cls].text}`}>{r.cls}</span></td>
                       <td className="px-3 py-2">
                         <div className="flex items-center gap-2">
-                          {r.img_url ? /* eslint-disable-next-line @next/next/no-img-element */ <img src={r.img_url} alt="" loading="lazy" className="h-9 w-9 shrink-0 rounded border border-gray-200 object-cover" onError={(e) => { (e.target as HTMLImageElement).style.visibility = "hidden"; }} /> : <div className="h-9 w-9 shrink-0 rounded bg-gray-100" />}
+                          {r.img_url ? <Image src={r.img_url} alt="" width={36} height={36} unoptimized className="h-9 w-9 shrink-0 rounded border border-gray-200 object-cover" onError={(e) => { (e.target as HTMLImageElement).style.visibility = "hidden"; }} /> : <div className="h-9 w-9 shrink-0 rounded bg-gray-100" />}
                           <div className="min-w-0"><div className="font-medium text-gray-800">{r.art}</div><div className="max-w-xs truncate text-[11px] text-gray-400">{r.name}</div></div>
                         </div>
                       </td>

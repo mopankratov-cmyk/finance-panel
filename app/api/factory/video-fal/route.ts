@@ -9,6 +9,7 @@ export const maxDuration = 60;
 // Премиум image-to-video (Kling/Seedance через FAL): реальное фото товара → динамичное видео 9:16.
 // Preservation-first промпт держит форму/лейбл товара. Async: возвращает task_id, статус опрашивать.
 export async function POST(req: NextRequest) {
+  try {
   if (!process.env.FAL_KEY) return NextResponse.json({ error:"FAL_KEY не настроен" }, { status: 500 });
   const body = await req.json().catch(() => ({}));
   // диагностика FAL: сырой ответ (статус 401=ключ, 402/403=баланс/доступ, 422=модель)
@@ -32,7 +33,7 @@ export async function POST(req: NextRequest) {
       const db = getSupabaseAdmin();
       if (db) {
         const { data } = await db.rpc("rnp_report");
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
         const row = (data as any[] | null)?.find((r) => r.article === body.sku_art);
         if (row?.nm_id) imageUrl = (await getWbCardImage(Number(row.nm_id))) || "";
       }
@@ -68,7 +69,7 @@ export async function POST(req: NextRequest) {
           const db = getSupabaseAdmin();
           if (niche && db) {
             const { data } = await db.from("niche_visual_profiles").select("profile").eq("niche", niche).maybeSingle();
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
             const p = (data?.profile || null) as any;
             // полный экспертный грундинг ниши как КОНТЕКСТ для выбора движения; system запрещает переписывать
             // внешность/свет/цвет в сам motion-промпт (motion-only) — так грундинг и канон не конфликтуют.
@@ -77,7 +78,7 @@ export async function POST(req: NextRequest) {
         } catch { /* профиля нет — пишем без грудинга */ }
         const sys = `Ты видео-промпт-инженер для ${model} image-to-video (товар на WB). Тебе дан СКЕЛЕТ — пиши ПОВЕРХ него, не с нуля, сохранив его camera-move и preservation-клозет. Промпт = MOTION-СКРИПТ, НЕ описание сцены: стартовый кадр уже несёт внешность/свет/цвет/текст — НЕ повторяй их (это competing instructions → дрейф/морфинг). Только: микро-движение субъекта + ОДИН camera move + темп. Камера-инструкция в НАЧАЛЕ. ОДИН мув (стек orbit+zoom+pan = jitter и деформация лейбла); для товара не совмещай движение КАМЕРЫ и ОБЪЕКТА — выбери одно. Форма товара: жёсткая/простая (флакон, сумка) — мягкий камера-мув ок; детальная/сложная (игрушки, техника) — движение МИНИМАЛЬНОЕ (static + лёгкий push-in). ОБЯЗАТЕЛЬНО короткий preservation-клозет: «product stable and intact, no shape change, crisp edges». Лаконично, ~15-25 слов. Если задан первый кадр — начни движение с него. Верни ТОЛЬКО английский промпт, без преамбулы.`;
         const res = await client.messages.create({ model: "claude-sonnet-4-6", max_tokens: 350, temperature: 0.4, system: sys, messages: [{ role: "user", content: `Товар: ${product}. Идея/настроение: ${brief || "показать товар эффектно"}.${shot_visual ? ` Первый кадр (из сценария): ${shot_visual}.` : ""}\nСКЕЛЕТ (пиши поверх, сохрани camera-move и preservation): ${skeleton}${recipe}` }] });
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
         const t = (res.content as any[]).filter((b) => b.type === "text").map((b) => b.text).join(" ").trim().replace(/^["«]|["»]$/g, "");
         if (t) { prompt = t; promptBy = "ИИ"; }
       }
@@ -91,4 +92,9 @@ export async function POST(req: NextRequest) {
   const token = await falVideoSubmit(model, srcImg, prompt, { duration: body.duration === "10" ? "10" : "5" });
   if (!token) return NextResponse.json({ error:"FAL не принял задачу (ключ/баланс/модель)" }, { status: 502 });
   return NextResponse.json({ task_id: "fv." + token, model, image_url: imageUrl, prompt_used: prompt, prompt_by: promptBy });
+  } catch (e) {
+    return NextResponse.json({
+      error: "video-fal crash: " + String((e as Error)?.message || e).slice(0, 160),
+    }, { status: 500 });
+  }
 }

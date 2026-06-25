@@ -14,7 +14,7 @@ export async function GET(req: NextRequest) {
     const db = getSupabaseAdmin();
     if (!db) return NextResponse.json({ error: "supabase нет" }, { status: 500 });
     const { data } = await db.rpc("rnp_report");
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     const row = (data as any[] | null)?.find((r) => r.article === art);
     if (!row?.nm_id) return NextResponse.json({ image_url: "" });
     const img = await getWbCardImage(Number(row.nm_id));

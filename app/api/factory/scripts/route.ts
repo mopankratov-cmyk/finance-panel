@@ -3,6 +3,7 @@ import { createClaudeClient } from "@/lib/agent/client";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { CONTENT_STANDARD, HOOK_FORMULAS, HOOK_ANTIPATTERNS, DEAI_FILTERS, PROBLEM_STACK, QA_THRESHOLD } from "@/lib/factory/standard";
 import { brandProfile } from "@/lib/factory/brandProfiles";
+import { extractJsonArray } from "@/lib/factory/extractJson";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -10,31 +11,6 @@ export const maxDuration = 120;
 // Копирайтер: быстрый Sonnet, один вызов — генерит N сценариев И сам оценивает каждый по стандарту
 // (self-QA: score/verdict/fix). Брак (< порога) → verdict "rework". Укладывается в лимит функции.
 const MODEL = "claude-sonnet-4-6";
-
-// Толерантный сбор сценариев: вытаскиваем ВСЕ цельные top-level {…}-объекты из ответа, даже если массив
-// оборван по лимиту токенов (строгий JSON.parse падал на неполном `[...]` → 0 идей → бар гас). Битый
-// последний объект просто отбрасываем, остальные сохраняем.
-function extractScripts(txt: string): Record<string, unknown>[] {
-  const start = txt.indexOf("[");
-  const s = start >= 0 ? txt.slice(start + 1) : txt;
-  // быстрый путь — вдруг массив целый
-  if (start >= 0) {
-    const m = txt.slice(start).match(/\[[\s\S]*\]/);
-    if (m) { try { const a = JSON.parse(m[0]); if (Array.isArray(a) && a.length) return a as Record<string, unknown>[]; } catch { /* падаем на пообъектный сбор */ } }
-  }
-  const out: Record<string, unknown>[] = [];
-  let depth = 0, objStart = -1, inStr = false, esc = false;
-  for (let i = 0; i < s.length; i++) {
-    const c = s[i];
-    if (esc) { esc = false; continue; }
-    if (c === "\\") { esc = true; continue; }
-    if (c === '"') { inStr = !inStr; continue; }
-    if (inStr) continue;
-    if (c === "{") { if (depth === 0) objStart = i; depth++; }
-    else if (c === "}") { depth--; if (depth === 0 && objStart >= 0) { try { out.push(JSON.parse(s.slice(objStart, i + 1)) as Record<string, unknown>); } catch { /* битый объект — пропускаем */ } objStart = -1; } }
-  }
-  return out;
-}
 
 export async function POST(req: NextRequest) {
  try {
@@ -52,7 +28,7 @@ export async function POST(req: NextRequest) {
     : "";
   // плейбук ниши (из «Изучить нишу») — РЕАЛЬНО залетающее: на этом строим идеи (research-first)
   const pb = body.playbook && typeof body.playbook === "object" ? body.playbook : null;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   const fmts: any[] = pb && Array.isArray(pb.winning_formats) ? pb.winning_formats : [];
   const pbHint = pb
     ? `\n\nПЛЕЙБУК НИШИ (данные Virlo — что РЕАЛЬНО залетает; СТРОЙ идеи на этом, адаптируя под товар):` +
@@ -141,9 +117,9 @@ ${PROBLEM_STACK}
 
   try {
     const res = await client.messages.create({ model: MODEL, max_tokens: 8000, system: sys, messages: [{ role: "user", content: user }] });
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     const txt = (res.content as any[]).filter((b) => b.type === "text").map((b) => b.text).join(" ");
-    let scripts = extractScripts(txt); // толерантно: переживает обрыв по лимиту токенов
+    let scripts = (extractJsonArray(txt) as Record<string, unknown>[] | null) || [];
     if (!scripts.length) return NextResponse.json({ error: "копирайтер не вернул сценариев", raw: txt.slice(0, 200) }, { status: 502 });
     // нормализация verdict по порогу
     scripts = scripts.map((s) => { const sc = Number(s.score) || 6; return { ...s, score: sc, verdict: sc >= QA_THRESHOLD ? "approved" : "rework", fix: sc >= QA_THRESHOLD ? "" : (s.fix || "усилить хук/аутентичность") }; });

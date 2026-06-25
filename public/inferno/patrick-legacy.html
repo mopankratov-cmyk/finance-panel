@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta http-equiv="Cache-Control" content="no-cache">
-<title>Контент-завод — Финансы МП</title>
+<title>Контент-завод Legacy — Финансы МП</title>
 <meta name="theme-color" content="#e11d48">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <script src="/inferno/vendor/tailwind.js"></script>
@@ -52,7 +52,7 @@
   <aside class="side w-60 bg-white border-r border-gray-200 min-h-screen sticky top-0 p-4 flex flex-col gap-1">
     <a href="/" class="flex items-center gap-2 px-2 py-2 mb-3 no-underline">
       <div class="w-8 h-8 rounded-md bg-gradient-to-br from-rose-500 to-pink-700 flex items-center justify-center text-white font-extrabold text-sm">📣</div>
-      <div><div class="font-extrabold text-sm tracking-tight text-gray-900">Контент-завод</div><div class="text-[10px] text-gray-400 -mt-0.5">Патрик · @mkt_aibot</div></div>
+      <div><div class="font-extrabold text-sm tracking-tight text-gray-900">Контент-завод Legacy</div><div class="text-[10px] text-gray-400 -mt-0.5">Патрик · @mkt_aibot</div></div>
     </a>
     <template x-for="item in nav" :key="item.id">
       <div class="nav-item" :class="{ 'active': active === item.id }" @click="active = item.id; scrollTo(item.anchor)">
@@ -66,10 +66,14 @@
   <main class="flex-1 p-6 lg:p-8 max-w-[1400px]">
     <div class="flex items-center justify-between mb-6 flex-wrap gap-3">
       <div>
-        <div class="flex items-center gap-2"><h1 class="text-2xl font-extrabold tracking-tight">Контент-завод</h1></div>
-        <p class="text-sm text-gray-500 mt-1">Создавай контент и одобряй лучшее к публикации</p>
+        <div class="flex items-center gap-2"><h1 class="text-2xl font-extrabold tracking-tight">Контент-завод Legacy</h1><span class="pill pill-warn">historical surface</span></div>
+        <p class="text-sm text-gray-500 mt-1">Старый операторский кокпит. Канонический путь создания и исполнения контента теперь живёт в V3 studio.</p>
       </div>
       <a href="/inferno/studio.html" class="btn btn-primary text-[13px]" title="V3 НОДА/studio — нод-студия виральных видео (карта осознания, decompose, нод-канвас, инспектор, сборка/ОТК, библиотека)" style="background:linear-gradient(135deg,#7c74ff,#5a52d8);color:#fff;border:none;">⬢ Открыть V3 · НОДА/studio →</a>
+    </div>
+
+    <div class="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 mb-4 text-[12px] text-amber-800">
+      Этот экран сохранён для historical/operator-задач. Новые запуски, orchestration и runtime-контур завода идут через <a href="/inferno/studio.html" class="font-semibold underline">V3 studio</a> и `graph-run`.
     </div>
 
     <!-- Статус системы: миграции / ключи / счётчики / живой баланс Creatify (lazy, загружается один раз) -->
@@ -532,18 +536,11 @@
             <div class="text-sm font-semibold">🎬 Копирайтер выдал <span x-text="run.ideas.length"></span> идей <span class="text-[11px] text-gray-400" x-text="'(' + run.approved + ' прошли стандарт)'"></span></div>
             <div class="flex items-center gap-2 flex-wrap">
               <button @click="runFull()" :disabled="pipe.busy" class="btn btn-primary text-[12px]" x-text="pipe.busy ? ('⏳ ' + pipe.step) : '▶▶ Прогнать одобренные (во вкладке)'"></button>
-              <button @click="enqueueServer()" :disabled="pipe.busy" class="btn btn-ghost text-[12px]" title="Серверная очередь — можно закрыть вкладку, готовое появится в Базе контента">⚙️ В очередь (фоном)</button>
-              <button @click="loadJobs(); _startJobsPoll()" class="btn btn-ghost text-[11px]">🔄 Очередь</button>
+              <a href="/inferno/studio.html" target="_blank" class="btn btn-ghost text-[12px]" title="Канонический execution path завода теперь живёт в V3 studio / graph-run">⬢ V3 studio</a>
             </div>
           </div>
           <div x-show="pipe.log" class="text-[11px] text-gray-500 mb-2 whitespace-pre-line" x-text="pipe.log"></div>
-          <div x-show="(jobs||[]).length" class="text-[11px] text-gray-500 mb-2">
-            <span class="font-medium">Очередь:</span>
-            <span x-text="'queued ' + (jobsSummary.queued||0) + ' · идёт ' + ((jobsSummary.running||0)+(jobsSummary.polling||0)) + ' · готово ' + (jobsSummary.done||0) + ' · ошибок ' + (jobsSummary.failed||0)"></span>
-            <template x-for="j in (jobs||[]).slice(0,8)" :key="j.id">
-              <div class="ml-2" x-text="'• ' + (j.hook||j.article||'').slice(0,40) + ' — ' + j.status + '/' + j.step + (j.error ? (' (' + String(j.error).slice(0,40) + ')') : '')"></div>
-            </template>
-          </div>
+          <div class="text-[10px] text-amber-700 mb-2">Legacy queue path выведен из runtime. Этот кокпит оставлен как historical/operator surface; запуск и исполнение завода теперь идут через V3 studio и `graph-run`.</div>
           <div class="space-y-1.5">
             <template x-for="(s,i) in run.ideas" :key="i">
               <div class="flex items-start gap-2 text-[13px] p-2 rounded-lg border" :class="s.verdict==='rework' ? 'border-amber-200 bg-amber-50/40' : 'border-gray-100'">
@@ -1564,7 +1561,7 @@ function patrick() {
     dir: { task: '', busy: false, plan: null, err: '' },
     run: { busy: false, step: '', ideas: [], approved: 0, err: '' },
     pipe: { busy: false, step: '', log: '', count: 3 },
-    jobs: [], jobsSummary: {}, _jobsPoll: null, // серверная очередь генераций (можно закрыть вкладку)
+    // legacy queue removed from runtime; patrick-legacy stays as historical/operator surface only
     tr: { niche: '', raw: '', busy: false, data: null, err: '' },
     async analyzeTrends() {
       if (this.tr.busy) return;
@@ -1624,21 +1621,14 @@ function patrick() {
       this.vid.busy = false;
     },
     varz: { busy: false, forIdx: -1, msg: '' },
-    async makeVariations(idea, i) {
-      if (this.varz.busy) return;
-      const art = this.dir.plan?.target_article || this.orbit.article || '';
-      const base = idea.hook || idea.concept;
-      if (!base) { this.varz.forIdx = i; this.varz.msg = 'нет хука для вариаций'; return; }
-      this.varz.busy = true; this.varz.forIdx = i; this.varz.msg = 'делаю вариации…';
-      try {
-        const r = await (await fetch('/api/factory/variations', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ hook: base, article: art, format: idea.format, count: 8 }) })).json();
-        if (r.error || !Array.isArray(r.variations) || !r.variations.length) { this.varz.msg = r.error || 'не удалось'; this.varz.busy = false; return; }
-        const mapped = r.variations.map(v => ({ hook: v.hook || base, concept: v.note || ((v.first_2s || '') + ' → ' + (v.finale || '')), format: idea.format || '', angle: 'вариация: ' + (v.lever || ''), score: idea.score || 7, verdict: 'approved', hj: null }));
-        this.run.ideas = [...this.run.ideas, ...mapped];
-        this.varz.msg = '✓ +' + mapped.length + ' вариаций';
-      } catch (e) { this.varz.msg = String(e).slice(0, 100); }
-      this.varz.busy = false;
-    },
+	    async makeVariations(idea, i) {
+	      if (this.varz.busy) return;
+	      const art = this.dir.plan?.target_article || this.orbit.article || '';
+	      const base = idea.hook || idea.concept;
+	      if (!base) { this.varz.forIdx = i; this.varz.msg = 'нет хука для вариаций'; return; }
+	      this.varz.forIdx = i;
+	      this.varz.msg = 'вариации отключены в Sprint 1: используй V3 studio / graph-run без variant-оркестратора';
+	    },
     ugc: { busy: false, forIdx: -1, taskId: '', url: '', status: '', renderStarted: false, voiceId: '', voiceName: '', musicUrl: '', musicName: '', noBackgroundMusic: true, voices: [], musics: [], optsBusy: false, optsLoaded: false, optsError: '' },
     // Галерея аватаров Creatify + выбор композиции сцены (visual_style). Грузится по требованию (read-only, без кредитов).
     avatars: { open: false, loaded: false, busy: false, error: '', list: [], scenes: [], gender: '', style: '', search: '', pickedId: '', pickedName: '', scene: '' },
@@ -1813,18 +1803,7 @@ function patrick() {
         if (d.error) { this.run.err = d.error; }
         else {
           this.run.ideas = d.scripts || []; this.run.approved = d.approved_count || 0;
-          // P0.2 хук-турнир: судим хуки идей и ставим сильнейшие вперёд (additive, фолбэк = порядок копирайтера)
-          try {
-            const hooks = this.run.ideas.map(s => s.hook).filter(Boolean);
-            if (hooks.length > 1) {
-              this.run.step = 'хук-турнир (отбор сильнейших)…';
-              const hj = await (await fetch('/api/factory/hook-judge', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ hooks, article: art, product_name: this._prodName(art) }) })).json();
-              if (hj && Array.isArray(hj.ranked) && hj.ranked.length) {
-                const sc = {}; hj.ranked.forEach(r => { if (r.hook) sc[r.hook] = r.score; });
-                this.run.ideas = this.run.ideas.map(s => ({ ...s, hj: (sc[s.hook] != null ? sc[s.hook] : null) })).sort((a, b) => (b.hj || 0) - (a.hj || 0));
-              }
-            }
-          } catch (e) { /* хук-турнир опционален — порядок остаётся от копирайтера */ }
+	          // Sprint 1: hook-judge отключён, порядок остаётся от копирайтера.
         }
       } catch (e) { this.run.err = String(e).slice(0, 120); }
       this.run.busy = false; this.run.step = '';
@@ -2057,39 +2036,6 @@ function patrick() {
       } finally {
         this.pipe.busy = false; this.pipe.step = '';
       }
-    },
-    // СЕРВЕРНАЯ очередь: те же идеи, но генерятся БЕЗ вкладки (self-chaining тики на сервере) — кокпит можно закрыть.
-    async enqueueServer() {
-      if (this.pipe.busy) return;
-      const art = this.dir.plan?.target_article || this.orbit.article || '';
-      if (!art) { this.pipe.log = 'нужен артикул (укажи в ТЗ Директору или выбери в Орбите)'; return; }
-      this.pipe.busy = true;
-      if (!this.run.ideas.length) { this.pipe.step = 'идеи…'; await this.runPlan(); }
-      const approved = this.run.ideas.filter(s => s.verdict !== 'rework').slice(0, this.pipe.count);
-      const pool = (approved.length ? approved : this.run.ideas.slice(0, this.pipe.count));
-      const qMode = ['sell','content','audience'].includes(this.mode) ? this.mode : 'audience';
-      const jobs = pool.map(s => ({ article: art, hook: s.hook || s.concept || '', mode: qMode })).filter(j => j.hook);
-      if (!jobs.length) { this.pipe.log = 'нет идей для очереди'; this.pipe.busy = false; this.pipe.step = ''; return; }
-      this.pipe.step = 'ставлю в очередь…';
-      try {
-        const r = await (await fetch('/api/factory/jobs/enqueue', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ jobs }) })).json();
-        this.pipe.log = r.queued ? ('✅ в очереди ' + r.queued + ' — вкладку можно ЗАКРЫТЬ, готовое появится в Базе контента (disk=gen). Прогресс — ниже, обновляется сам.') : ('ошибка очереди: ' + (r.error || '?'));
-        this.loadJobs(); this._startJobsPoll();
-      } catch (e) { this.pipe.log = 'ошибка: ' + String(e).slice(0, 100); }
-      this.pipe.busy = false; this.pipe.step = '';
-    },
-    // Опрос серверной очереди (list-роут заодно воскрешает зависшие цепочки тиков).
-    async loadJobs() {
-      try { const r = await (await fetch('/api/factory/jobs/list')).json(); this.jobs = r.jobs || []; this.jobsSummary = r.summary || {}; } catch (e) {}
-    },
-    // авто-опрос очереди, пока есть активные джобы (живой прогресс); сам останавливается, когда всё done/failed
-    _startJobsPoll() {
-      if (this._jobsPoll) return;
-      this._jobsPoll = setInterval(async () => {
-        await this.loadJobs();
-        const s = this.jobsSummary || {};
-        if (!((s.queued || 0) + (s.running || 0) + (s.polling || 0))) { clearInterval(this._jobsPoll); this._jobsPoll = null; }
-      }, 10000);
     },
     async askDirector() {
       if (!this.dir.task.trim() || this.dir.busy) return;

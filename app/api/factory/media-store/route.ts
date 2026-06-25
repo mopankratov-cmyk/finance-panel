@@ -9,6 +9,7 @@ const BUCKET = "factory-media"; // публичный бакет под слай
 // Заливает base64-картинки (слайды карусели) в Supabase Storage → отдаёт публичные URL.
 // Нужно чтобы НЕМАЯ карусель (slides в base64) получила URL и доходила до автопостинга/PostMyPost.
 export async function POST(req: NextRequest) {
+  try {
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ error:"Supabase не настроен (NEXT_PUBLIC_SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY)" }, { status: 500 });
 
@@ -24,6 +25,7 @@ export async function POST(req: NextRequest) {
   try { await db.storage.createBucket(BUCKET, { public: true }); } catch { /* уже существует */ }
 
   const urls: string[] = [];
+  const errors: string[] = [];
   const stamp = Date.now();
   for (let i = 0; i < images.length; i++) {
     try {
@@ -31,11 +33,21 @@ export async function POST(req: NextRequest) {
       const buf = Buffer.from(b64, "base64");
       const path = `${prefix}/${stamp}-${i}.${ext}`;
       const { error } = await db.storage.from(BUCKET).upload(path, buf, { contentType, upsert: true });
-      if (error) continue;
+      if (error) { errors.push(`#${i}: upload ${error.message}`); continue; }
       const { data } = db.storage.from(BUCKET).getPublicUrl(path);
       if (data?.publicUrl) urls.push(data.publicUrl);
-    } catch { /* пропустим битый слайд */ }
+      else errors.push(`#${i}: publicUrl missing`);
+    } catch (e) { errors.push(`#${i}: ${String(e instanceof Error ? e.message : e).slice(0, 120)}`); }
   }
-  if (!urls.length) return NextResponse.json({ error:"не удалось залить ни один слайд" }, { status: 502 });
-  return NextResponse.json({ urls });
+  if (!urls.length) return NextResponse.json({ error:"не удалось залить ни один слайд", attempted: images.length, failed: errors.slice(0, 5) }, { status: 502 });
+  return NextResponse.json({ urls, uploaded: urls.length, skipped: Math.max(0, images.length - urls.length), warnings: errors.slice(0, 5) });
+  } catch (e) {
+    return NextResponse.json({
+      urls: [],
+      uploaded: 0,
+      skipped: 0,
+      warnings: [],
+      error: "media-store crash: " + String((e as Error)?.message || e).slice(0, 160),
+    }, { status: 500 });
+  }
 }

@@ -8,12 +8,12 @@ export const tgReady = (): boolean => !!token();
 
 const API = (m: string) => `https://api.telegram.org/bot${token()}/${m}`;
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+
 async function tgApi(method: string, body: Record<string, unknown>): Promise<any> {
   if (!token()) return { ok: false, error: "FACTORY_TG_BOT_TOKEN не настроен" };
   try {
     const r = await fetch(API(method), { method: "POST", headers: { "Content-Type": "application/json" }, cache: "no-store", body: JSON.stringify(body), signal: AbortSignal.timeout(25000) });
-    return await r.json();
+    return await r.json().catch(() => ({ ok: false, error: `telegram ${r.status}: не JSON` }));
   } catch (e) { return { ok: false, error: String((e as Error)?.message || e).slice(0, 120) }; }
 }
 

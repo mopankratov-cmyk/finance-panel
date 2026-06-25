@@ -14,7 +14,7 @@ export interface EngineNode {
   tool?: string | null;          // seedance|kling|creatify|disk_real|...
   node_type?: string | null;
   prompt?: string | null;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   params?: Record<string, any> | null;  // ВСЕ api-настройки (имена api_param из toolSchemas)
   image_url?: string | null;     // вход для i2v / товар
   asset_url?: string | null;     // готовый ассет (disk_real / уже сгенерённое)
@@ -43,7 +43,7 @@ function unpackToken(token: string): { engine: NodeEngine; inner: string } | nul
 }
 
 // params(api_param имена) → FalVideoOpts. Терпит и aspect_ratio, и aspect.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+
 function falOptsFromParams(p: Record<string, any> | null | undefined): FalVideoOpts {
   const o: FalVideoOpts = {};
   if (!p) return o;
@@ -207,7 +207,7 @@ export function nodeHash(node: EngineNode): string {
   for (let i = 0; i < basis.length; i++) { h ^= basis.charCodeAt(i); h = Math.imul(h, 0x01000193); }
   return (h >>> 0).toString(16).padStart(8, "0");
 }
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+
 function stableParams(p: Record<string, any> | null | undefined): string {
   if (!p) return "";
   const keys = Object.keys(p).filter((k) => k !== "prompt").sort();

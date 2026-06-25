@@ -10,6 +10,7 @@ export const maxDuration = 30;
 // Приоритет: реальная съёмка этого артикула → WB-фото этой карточки (верный цвет) → иначе «нет».
 //  POST { product, article } → { found, exact, note, source, images:[{name,path,url}], videos:[{name,path,url}] }
 export async function POST(req: NextRequest) {
+  try {
   const body = await req.json().catch(() => ({}));
   const product: string = (body.product || body.name || "").toString().trim();
   const article: string = (body.article || body.art || "").toString().trim();
@@ -90,4 +91,15 @@ export async function POST(req: NextRequest) {
     images: uniqImgs.slice(0, 24).map((i) => ({ name: i.name, path: i.path, url: proxy(i.path) })),
     videos: videoUrls,
   });
+  } catch (e) {
+    return NextResponse.json({
+      found: false,
+      exact: false,
+      niche: null,
+      learned: false,
+      reason: "disk-source crash: " + String((e as Error)?.message || e).slice(0, 160),
+      images: [],
+      videos: [],
+    });
+  }
 }

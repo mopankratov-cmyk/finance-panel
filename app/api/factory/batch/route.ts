@@ -6,7 +6,7 @@ import { internalFetch } from "@/lib/internalFetch";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-// V21 · Оркестратор батча автопилота: бюджет-гард + смета → ставит рецепты в self-chaining очередь
+// V21 · Оркестратор батча автопилота: бюджет-гард + смета → запускает рецепты через graph-run runner
 // с notify=true (прошедшее ОТК уйдёт оператору в Telegram на голос-ревью). R4-варианты (×3) и полная
 // openreels-цепочка (ElevenLabs→Creatify→Seedance→Remotion) — ждут V2/V9/V22/V23 (заполнение нод/ассеты).
 //   POST { recipe_ids?:[], niche?, count?, budget_usd?, dry_run? }
@@ -22,7 +22,7 @@ const REGEN_FACTOR = 3;          // = MAX_RENDERS: бюджет-гард по А
 // смета одного рецепта по нодам (×реген до 3 не учитываем — это потолок, не ожидание).
 // V21: рецепт-черновик конфигурируется §17 уже В ОЧЕРЕДИ → tool может ещё не стоять. Если по нодам цены нет
 // (нули) — берём conservative-оценку по числу генеративных нод, иначе бюджет-гард не сдержит черновики.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+
 function estimateRecipe(nodes: any[]): number {
   let sum = 0; let hasVisual = false; let priced = 0;
   const gen = (nodes || []).filter((n) => { const t = String(n.node_type || n.slot || "").toLowerCase(); return !["captions", "caption", "music", "sound", "transition"].includes(t); }).length;
@@ -33,6 +33,7 @@ function estimateRecipe(nodes: any[]): number {
 }
 
 export async function POST(req: NextRequest) {
+  try {
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 500 });
   const origin = req.nextUrl.origin;
@@ -71,8 +72,8 @@ export async function POST(req: NextRequest) {
     spentWorst = Math.round((spentWorst + est * REGEN_FACTOR) * 100) / 100;
     spent = Math.round((spent + est) * 100) / 100;
     if (!dryRun) {
-      // autofill:true → рецепт сам сконфигурируется (§17 + бренд-кит) первым шагом очереди, затем генерация→ОТК→банк→Telegram
-      try { await internalFetch(`${origin}/api/factory/graph-run`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ recipe_id: rid, notify: true, restart: true, autofill: true }), signal: AbortSignal.timeout(20000) }); } catch { /* очередь воскресит */ }
+      // autofill:true → рецепт сам сконфигурируется (§17 + бренд-кит) первым graph-run шагом, затем генерация→ОТК→банк→Telegram
+      try { await internalFetch(`${origin}/api/factory/graph-run`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ recipe_id: rid, notify: true, restart: true, autofill: true }), signal: AbortSignal.timeout(20000) }); } catch { /* tick/cron fallback подхватит */ }
     }
     enqueued.push(rid);
   }
@@ -82,4 +83,17 @@ export async function POST(req: NextRequest) {
     balance_unknown: balanceUnknown, // ⚠ по этим сервисам баланс не проверен (нет ключа/гео) — гард не гарантирует
     note: `Бюджет-гард по worst-case (реген до ×3): уложились в $${cap}, типовая трата ≈ $${spent}, потолок ≈ $${spentWorst}. Прошедшее ОТК → Telegram (notify).` + (balanceUnknown.length ? ` ⚠ Баланс не проверен: ${balanceUnknown.join(", ")}.` : ""),
   });
+  } catch (e) {
+    return NextResponse.json({
+      ok: false,
+      dry_run: true,
+      enqueued: [],
+      estimated_usd: 0,
+      worst_case_usd: 0,
+      budget_usd: 0,
+      capped_by_budget: true,
+      balance_unknown: [],
+      error: "batch crash: " + String((e as Error)?.message || e).slice(0, 160),
+    }, { status: 500 });
+  }
 }

@@ -17,6 +17,7 @@ function nicheFromOrbitName(name: string): string {
 }
 
 export async function POST(req: NextRequest) {
+  try {
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 500 });
 
@@ -83,4 +84,15 @@ export async function POST(req: NextRequest) {
     skipped: toSync.length - synced,
     log,
   });
+  } catch (e) {
+    return NextResponse.json({
+      ok: false,
+      total: 0,
+      completed: 0,
+      already_synced: 0,
+      synced: 0,
+      skipped: 0,
+      log: ["corpus/sync-all-orbits crash: " + String((e as Error)?.message || e).slice(0, 160)],
+    }, { status: 500 });
+  }
 }

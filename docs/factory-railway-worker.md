@@ -66,6 +66,40 @@
 }
 ```
 
+Готовый sender уже лежит в репозитории:
+
+```bash
+BASE_URL=https://finance-panel-two.vercel.app \
+CRON_SECRET=... \
+node lib/factory/workerHeartbeat.mjs --every-sec=120
+```
+
+One-shot проверка:
+
+```bash
+BASE_URL=https://finance-panel-two.vercel.app \
+CRON_SECRET=... \
+WORKER_STATUS=working \
+WORKER_TASK_ID=T-002 \
+WORKER_TASK_TITLE="Taste pattern library" \
+node lib/factory/workerHeartbeat.mjs --once
+```
+
+Как он работает:
+
+- по умолчанию читает `docs/factory-railway-task-queue.md`;
+- сам находит `doing`-задачу и подставляет её в heartbeat;
+- может быть переопределён через `WORKER_*` env или `--task-id/--task-title/--status`;
+- шлёт `queue[]` в Studio, чтобы worker screen не зависел только от одной БД-строки.
+
+Если queue не нужна:
+
+```bash
+BASE_URL=https://finance-panel-two.vercel.app \
+CRON_SECRET=... \
+node lib/factory/workerHeartbeat.mjs --every-sec=120 --no-queue
+```
+
 Если heartbeat молчит дольше 5 минут, Studio помечает worker как `stale`. Дольше 15 минут — `dead`.
 
 Каждая запись должна содержать:

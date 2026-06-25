@@ -6,13 +6,15 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+const snippet = (value: unknown, max = 120): string => String(value || "").replace(/\s+/g, " ").trim().slice(0, max);
+
 // Победители ниши (одобрено оператором / реально зашло) → бери дух/механику.
 export async function winnersHintFor(db: SupabaseClient, niche: string): Promise<string> {
   try {
     const { data } = await db.from("content_assets").select("winner_learnings,name")
       .eq("niche", niche).eq("is_winner", true).order("winner_at", { ascending: false }).limit(5);
     const list = ((data || []) as { winner_learnings?: Record<string, unknown>; name?: string }[])
-      .map((w) => String((w.winner_learnings?.hook as string) || w.name || "").trim()).filter(Boolean).slice(0, 5);
+      .map((w) => snippet((w.winner_learnings?.hook as string) || w.name, 120)).filter(Boolean).slice(0, 5);
     return list.length ? `\nНАШИ ПОБЕДИТЕЛИ В НИШЕ (реально зашло — бери дух/механику, не копируй дословно): ${list.map((h) => `«${h}»`).join(" | ")}` : "";
   } catch { return ""; }
 }
@@ -22,7 +24,7 @@ export async function corpusHooksFor(db: SupabaseClient, niche: string): Promise
   try {
     const { data } = await db.from("viral_hooks").select("hook_text,viability_score")
       .eq("niche", niche).order("viability_score", { ascending: false }).limit(10);
-    const hooks = ((data || []) as { hook_text: string }[]).map((h) => h.hook_text).filter(Boolean).slice(0, 8);
+    const hooks = ((data || []) as { hook_text: string }[]).map((h) => snippet(h.hook_text, 120)).filter(Boolean).slice(0, 8);
     return hooks.length ? `\nКОРПУС ХУКОВ НИШИ (проверены — бери ПАТТЕРН, не дословно): ${hooks.map((h) => `«${h}»`).join(" | ")}` : "";
   } catch { return ""; }
 }
@@ -34,7 +36,7 @@ export async function rejectAntiFor(db: SupabaseClient, niche: string): Promise<
       .eq("event", "rejected").eq("niche", niche).not("reason_chip", "is", null)
       .order("created_at", { ascending: false }).limit(120);
     const counts: Record<string, number> = {};
-    ((data || []) as { reason_chip: string }[]).forEach((r) => { const c = String(r.reason_chip || "").trim(); if (c) counts[c] = (counts[c] || 0) + 1; });
+    ((data || []) as { reason_chip: string }[]).forEach((r) => { const c = snippet(r.reason_chip, 80); if (c) counts[c] = (counts[c] || 0) + 1; });
     const top = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 5);
     return top.length ? `\nЧАСТО БРАКУЮТ В НИШЕ (избегай этих дыр, ищи другие углы): ${top.map(([c, n]) => `${c} (×${n})`).join(", ")}` : "";
   } catch { return ""; }

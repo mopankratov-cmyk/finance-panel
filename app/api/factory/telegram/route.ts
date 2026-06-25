@@ -4,6 +4,7 @@ import { createClaudeClient } from "@/lib/agent/client";
 import { internalFetch } from "@/lib/internalFetch";
 import { transcribeFal } from "@/lib/factory/asr";
 import { tgReady, tgOwnerChat, tgWebhookSecret, tgSetWebhook, tgFileUrl, tgAnswerCallback, tgSendMessage } from "@/lib/factory/telegram";
+import { extractJson } from "@/lib/factory/extractJson";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -15,6 +16,7 @@ export const maxDuration = 60;
 // Безопасность: секрет в заголовке (от Telegram) + chat_id == FACTORY_TG_CHAT_ID (только владелец).
 
 export async function GET(req: NextRequest) {
+  try {
   const setup = req.nextUrl.searchParams.get("setup");
   if (setup) {
     if (!tgReady()) return NextResponse.json({ ok: false, error: "FACTORY_TG_BOT_TOKEN не настроен в Vercel" });
@@ -22,10 +24,18 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ ok: !!r?.ok, setWebhook: r, note: "напиши боту /start чтобы получить chat_id" });
   }
   return NextResponse.json({ ok: true, ready: tgReady(), owner_set: !!tgOwnerChat() });
+  } catch (e) {
+    return NextResponse.json({
+      ok: false,
+      ready: false,
+      owner_set: false,
+      error: "telegram GET crash: " + String((e as Error)?.message || e).slice(0, 160),
+    });
+  }
 }
 
 // применить вердикт оператора к рецепту: approve→/winners, reject→/reject
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+
 async function applyVerdict(origin: string, db: any, recipeId: number, verdict: string, reason: string): Promise<string> {
   let url: string | null = null, article = "", niche = "", hook = "";
   try {
@@ -38,7 +48,7 @@ async function applyVerdict(origin: string, db: any, recipeId: number, verdict: 
       hook = String((h?.onscreen_text as string) || (h?.prompt as string) || article || "").slice(0, 200);
     }
   } catch { /* рецепт мог не найтись */ }
-  const post = async (path: string, body: unknown) => { try { const r = await internalFetch(`${origin}${path}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(30000) }); return await r.json(); } catch { return null; } };
+  const post = async (path: string, body: unknown) => { try { const r = await internalFetch(`${origin}${path}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(30000) }); return await r.json().catch(() => null); } catch { return null; } };
   if (verdict === "approve") {
     const r = await post("/api/factory/winners", { url, hook, note: "одобрено в Telegram" });
     if (r && !r.error) return `✓ Беру — в банк, хук в корпус победителей.`;
@@ -63,10 +73,10 @@ async function parseIntent(text: string): Promise<{ verdict: string; reason: str
       system: "Классифицируй отзыв оператора о сгенерированном ролике. Верни СТРОГО JSON {\"verdict\":\"approve|reject|unclear\",\"reason\":\"кратко что не так, если reject\"}. approve — берёт/одобряет; reject — забраковал; unclear — непонятно. Только JSON.",
       messages: [{ role: "user", content: `Отзыв: «${text.slice(0, 500)}»` }],
     });
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     const txt = (res.content as any[]).filter((b) => b.type === "text").map((b) => b.text).join(" ");
-    const m = txt.match(/\{[\s\S]*\}/);
-    if (m) { const j = JSON.parse(m[0]); return { verdict: ["approve", "reject", "unclear"].includes(j.verdict) ? j.verdict : "unclear", reason: String(j.reason || "").slice(0, 120) }; }
+    const j = extractJson(txt);
+    if (j) return { verdict: ["approve", "reject", "unclear"].includes(j.verdict) ? j.verdict : "unclear", reason: String(j.reason || "").slice(0, 120) };
   } catch { /* фолбэк ниже */ }
   return { verdict: "unclear", reason: "" };
 }
@@ -74,6 +84,7 @@ async function parseIntent(text: string): Promise<{ verdict: string; reason: str
 const recipeFromCaption = (cap?: string): number | null => { const m = (cap || "").match(/#r(\d+)/); return m ? Number(m[1]) : null; };
 
 export async function POST(req: NextRequest) {
+  try {
   // верификация FAIL-CLOSED: без токена ИЛИ при неверном секрете — молча игнорим (не пускаем дальше).
   const secret = req.headers.get("x-telegram-bot-api-secret-token");
   if (!tgReady() || secret !== tgWebhookSecret()) return NextResponse.json({ ok: true });
@@ -130,4 +141,10 @@ export async function POST(req: NextRequest) {
     }
   } catch { /* вебхук всегда 200, иначе Telegram ретраит */ }
   return NextResponse.json({ ok: true });
+  } catch (e) {
+    return NextResponse.json({
+      ok: true,
+      warning: "telegram POST crash: " + String((e as Error)?.message || e).slice(0, 160),
+    });
+  }
 }

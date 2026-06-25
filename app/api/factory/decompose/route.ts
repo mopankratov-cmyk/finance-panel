@@ -20,11 +20,10 @@ export const maxDuration = 60;
 const MODEL = "claude-sonnet-4-6";
 
 const NODE_TYPES = "hook_ugc|ai_product_render|talking_head|prank|before_after|pov|b_roll|captions|sound|music|carousel_slide|static_post|voiceover";
-const TOOLS = "seedance|kling|creatify|higgsfield|gemini|shotstack|sharp|disk_real|sound";
+const TOOLS = "seedance|kling|creatify|shotstack|disk_real|sound|elevenlabs";
 const FORMATS = "ugc_anim|ai_render|prank|talking_head|before_after|pov|unboxing|reaction|problem_solution|carousel|static";
 
 // толерантный парсер JSON-объекта (переживает обрезку/ограждение)
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 // extractJson вынесен в @/lib/factory/extractJson (общий с produce/scenario)
 
 async function decompose(params: { viral_video_id?: string; niche?: string; description?: string; hook?: string; format?: string; video_url?: string }) {
@@ -64,7 +63,7 @@ async function decompose(params: { viral_video_id?: string; niche?: string; desc
 - seedance (i2v от РЕАЛЬНОГО фото) — для hook-ревила и динамики, КОГДА реальной съёмки под кадр нет.
 - creatify (актёр-липсинк под СВОЮ озвучку, не TTS) — только говорящая голова / UGC-отзыв. Взрослые персоны.
 - до/после два состояния → before_after + seedance(end_image); текст на экране → shotstack(captions);
-  трендовый звук → sound/music; слайд → sharp/higgsfield/gemini.
+  трендовый звук → sound/music; статик/карусель собираются отдельным экраном, не через video-граф.
 НЕ ставь creatify/seedance в каждую вторую ноду — это слоп. Если кадр можно снять реально → disk_real.
 - ЗАКАДР: если формат — голос ПОВЕРХ реальной съёмки/b-roll (а НЕ говорящая голова), добавь ОДНУ ноду
   node_type=voiceover, tool_candidate=elevenlabs, role=cta; в её поле voiceover склей ВЕСЬ текст закадра по сценам.
@@ -84,8 +83,7 @@ async function decompose(params: { viral_video_id?: string; niche?: string; desc
 
   try {
     const res = await client.messages.create({ model: MODEL, max_tokens: 3000, system: sys, messages: [{ role: "user", content: user }] });
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const txt = (res.content as any[]).filter((b) => b.type === "text").map((b) => b.text).join(" ");
+    const txt = (res.content as Array<{ type: string; text?: string }>).filter((b) => b.type === "text").map((b) => b.text || "").join(" ");
     const parsed = extractJson(txt);
     if (!parsed || !Array.isArray(parsed.nodes) || !parsed.nodes.length) return { error: "декомпозитор не вернул ноды", raw: txt.slice(0, 200) };
     const format = parsed.format || fmt || "ugc_anim";

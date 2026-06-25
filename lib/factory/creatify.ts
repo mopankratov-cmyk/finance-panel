@@ -3,6 +3,8 @@
 //  • lipsyncs (запас): актёр просто говорит наш текст (без товара в кадре).
 // Токен кодирует режим: base64url("lv|"+id) или ("ls|"+id) — чтобы статус опрашивал правильный эндпоинт.
 // Ключи в env: CREATIFY_API_ID + CREATIFY_API_KEY. Инертно без ключей.
+import { extractJson } from "@/lib/factory/extractJson";
+
 const BASE = "https://api.creatify.ai/api";
 const DEFAULT_MODEL = "aurora_v1_fast";
 
@@ -24,8 +26,8 @@ export async function creatifyBalance(): Promise<{ balance: number | null; curre
   try {
     const r = await fetch(`${BASE}/remaining_credits/`, { headers: h, cache: "no-store", signal: AbortSignal.timeout(15000) });
     const text = await r.text();
-    let j: Record<string, unknown> | null = null;
-    try { j = JSON.parse(text); } catch { /* not json */ }
+    const parsed = extractJson(text);
+    const j = parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : null;
     if (!r.ok || !j) return { balance: null, currency: "credits", error: `creatify ${r.status}: ${text.slice(0, 140)}`, raw: j ?? text.slice(0, 200) };
     const v = j.remaining_credits ?? j.credits ?? j.credit ?? j.balance ?? j.remaining;
     const n = typeof v === "number" ? v : Number(v);
@@ -38,8 +40,8 @@ async function jpost(h: Record<string, string>, path: string, body: unknown): Pr
   try {
     const r = await fetch(`${BASE}${path}`, { method: "POST", headers: h, cache: "no-store", body: JSON.stringify(body), signal: AbortSignal.timeout(30000) });
     const text = await r.text();
-    let json: Record<string, unknown> | null = null;
-    try { json = JSON.parse(text); } catch { /* not json */ }
+    const parsed = extractJson(text);
+    const json = parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : null;
     return { ok: r.ok, status: r.status, json, text: text.slice(0, 300) };
   } catch (e) { return { ok: false, status: 0, json: null, text: String(e).slice(0, 200) }; }
 }
@@ -50,8 +52,8 @@ export async function creatifyListCreators(): Promise<{ id: string; name?: strin
   try {
     const r = await fetch(`${BASE}/personas/`, { headers: h, cache: "no-store", signal: AbortSignal.timeout(15000) });
     if (!r.ok) return [];
-    const j = await r.json();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const j = await r.json().catch(() => ({}));
+
     const arr: any[] = Array.isArray(j) ? j : j.results || j.data || [];
     return arr.map((p) => ({ id: p.id, name: p.name || p.creator_name || p.persona_name })).filter((p) => p.id);
   } catch { return []; }
@@ -73,9 +75,9 @@ export interface CreatifyAvatar {
 }
 export interface AvatarFilters { gender?: string; age?: string; style?: string; location?: string; search?: string; limit?: number }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+
 function toStr(v: any): string { return Array.isArray(v) ? v.filter(Boolean).join(", ") : (v == null ? "" : String(v)); }
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+
 function normAvatar(p: any): CreatifyAvatar | null {
   if (!p?.id) return null;
   return {
@@ -115,8 +117,8 @@ export async function creatifyListAvatars(f: AvatarFilters = {}): Promise<{ avat
         const t = await r.text().catch(() => "");
         return { avatars: out, error: `personas ${r.status}: ${t.slice(0, 160)}`, status: r.status };
       }
-      const j = await r.json();
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const j = await r.json().catch(() => ({}));
+
       const arr: any[] = Array.isArray(j) ? j : j.results || j.data || [];
       for (const p of arr) { const a = normAvatar(p); if (a) out.push(a); }
       url = (!Array.isArray(j) && typeof j.next === "string" && j.next) ? j.next : null;
@@ -129,15 +131,15 @@ export async function creatifyListAvatars(f: AvatarFilters = {}): Promise<{ avat
 
 // ── Живые списки из Creatify API (голоса/музыка/шаблоны) — чтобы дропдауны были ТОЧНЫЕ, без хардкода ──
 export interface CreatifyOption { id: string; name: string; meta?: string; preview?: string }
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+
 async function creatifyGetArray(path: string): Promise<any[]> {
   const h = headers();
   if (!h) return [];
   try {
     const r = await fetch(`${BASE}${path}`, { headers: h, cache: "no-store", signal: AbortSignal.timeout(15000) });
     if (!r.ok) return [];
-    const j = await r.json();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const j = await r.json().catch(() => ({}));
+
     return Array.isArray(j) ? j : ((j as any).results || (j as any).data || []);
   } catch { return []; }
 }
@@ -146,7 +148,7 @@ export async function creatifyListVoices(): Promise<CreatifyOption[]> {
   const arr = await creatifyGetArray("/voices/");
   const out: CreatifyOption[] = [];
   for (const v of arr) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     const accents: any[] = Array.isArray(v.accents) && v.accents.length ? v.accents : [{ id: v.id, accent_name: "", preview_url: v.preview_url }];
     for (const a of accents) {
       if (!a?.id) continue;
@@ -158,13 +160,13 @@ export async function creatifyListVoices(): Promise<CreatifyOption[]> {
 // GET /api/musics/ → треки фона
 export async function creatifyListMusic(): Promise<CreatifyOption[]> {
   const arr = await creatifyGetArray("/musics/");
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   return arr.map((m: any) => ({ id: String(m.id || m.url || ""), name: m.name || m.title || "трек", meta: m.category || m.mood || "", preview: m.url || m.preview_url || "" })).filter((x) => x.id).slice(0, 300);
 }
 // GET /api/custom_templates/ → пользовательские шаблоны (visual_style template_id)
 export async function creatifyListTemplates(): Promise<CreatifyOption[]> {
   const arr = await creatifyGetArray("/custom_templates/");
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   return arr.map((t: any) => ({ id: String(t.id || t.template_id || ""), name: t.name || "шаблон", meta: t.category || "" })).filter((x) => x.id).slice(0, 200);
 }
 
@@ -189,11 +191,11 @@ export const CREATIFY_SCENES: { id: string; label: string; hint: string }[] = [
 
 // ОСНОВНОЙ: link_to_videos — товар в кадре. Возвращает токен + debug (сырые ответы для отладки).
 // Фото/видео товара передаём НАПРЯМУЮ (link_with_params) — WB не скрейпится, поэтому даём image_urls/video_urls.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+
 export async function creatifyLinkVideo(opts: { url?: string; images?: string[]; videoUrls?: string[]; title?: string; description?: string; script?: string; avatar?: string; visual_style?: string; length?: number; model_version?: string; no_cta?: boolean; script_style?: string; no_caption?: boolean; caption_setting?: Record<string, unknown>; aspect_ratio?: string; target_platform?: string; voiceover_volume?: number; no_emotion?: boolean; no_stock_broll?: boolean; override_voice?: string; background_music_url?: string; background_music_volume?: number; no_background_music?: boolean }): Promise<{ token?: string; error?: string; debug?: any }> {
   const h = headers();
   if (!h) return { error: "CREATIFY ключ не настроен" };
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   const debug: any = {};
   // 1) link: если есть фото — отдаём напрямую (link_with_params), иначе пробуем скрейп URL
   let linkId = "";
@@ -291,8 +293,8 @@ export async function creatifyStatus(token: string): Promise<CreatifyStatus> {
   try {
     const r = await fetch(`${BASE}${path}`, { headers: h, cache: "no-store", signal: AbortSignal.timeout(15000) });
     if (!r.ok) return { status: "error", error: `creatify ${r.status}` };
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const j = (await r.json()) as any;
+
+    const j = (await r.json().catch(() => ({}))) as any;
     const url = j.video_output || j.output;
     if (j.status === "done" && url) return { status: "done", videoUrl: url };
     if (j.status === "failed" || j.status === "error") return { status: "error", error: (j.failed_reason || "creatify failed").toString().slice(0, 120) };
