@@ -372,26 +372,18 @@ function openMedia(url,opts){ opts=opts||{};
 function nicheLabel(n){ const f=S.niches.find(x=>x.niche===n); return (f&&f.label)||({cosmetics:"Косметика",clothing:"Одежда",toys:"Игрушки",default:"Прочее"}[n])||n; }
 
 function observerTone(o){
-  if(S.observerLoading && !o) return { label:"читаю пульс", tone:"warn", hint:"смотрю, жив ли ночной прогон" };
-  if(!o) return { label:"пульс не читался", tone:"muted", hint:"ждём первый ответ от завода" };
+  if(S.observerLoading && !o) return { label:"читаю пульс", tone:"warn", hint:"обновляю состояние завода" };
+  if(!o) return { label:"пульс недоступен", tone:"muted", hint:"ждём первый ответ от завода" };
   const h=o.heartbeat||{};
   const runs=o.runs||{};
-  const batches=Number(o.batches_active)||0;
-  const resurrects=Number(o.signals&&o.signals.resurrects_24h)||0;
   const active=Number(runs.active)||0;
   const broken=Number(runs.broken)||0;
   const stale=h.stale_min;
-  if(active>0||batches>0) return { label:"ночной прогон жив", tone:"ok", hint:`активных ${active}${batches?` · батчей ${batches}`:""}` };
-  if(broken>0) return { label:"есть сбойные ноды", tone:"warn", hint:`сломанных ${broken} · пульс ${stale==null?"?":stale+"м назад"}` };
-  if(resurrects>0) return { label:"самопочинка срабатывала", tone:"ok", hint:`разбудили ${resurrects} прогонов за 24ч` };
-  if(h.alive===false || (stale!=null && stale>=180)) return { label:"пульс затух", tone:"err", hint:`последняя активность ${stale==null?"неизвестно":stale+"м назад"}` };
-  if(stale==null) return { label:"пульс есть, но без метки", tone:"warn", hint:"источник активности не дал timestamp" };
-  return { label:"завод слушает", tone:"ok", hint:`последняя активность ${stale}м назад` };
-}
-
-function signalLabel(ev){
-  const s=String(ev||"");
-  return s==="graph_resurrect"?"самопочинка":s==="rejected"?"отбраковано":s==="approved"?"в банк":s||"сигнал";
+  if(active>0) return { label:"идут прогоны", tone:"ok", hint:`активных ${active}` };
+  if(broken>0) return { label:"есть сбои", tone:"warn", hint:`проблемных ${broken}` };
+  if(h.alive===false || (stale!=null && stale>=180)) return { label:"пульс пропал", tone:"err", hint:`последняя активность ${stale==null?"неизвестно":stale+"м назад"}` };
+  if(stale==null) return { label:"пульс без времени", tone:"warn", hint:"источник активности не дал timestamp" };
+  return { label:"завод на связи", tone:"ok", hint:`обновлялся ${stale}м назад` };
 }
 
 function renderFactoryPulse(){
