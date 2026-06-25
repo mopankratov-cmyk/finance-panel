@@ -58,11 +58,17 @@ body{background:var(--bg-deep);font-family:var(--sans);color:var(--tx-hi);-webki
 .body{flex:1;min-height:0;display:flex;overflow:hidden;}
 .scroll{flex:1;min-width:0;overflow-y:auto;padding:22px;}
 .aside{flex:none;border-left:1px solid var(--bd);background:var(--bg-panel);overflow-y:auto;}
+.app.compact .assist{display:none;}
+.app.compact .scroll{padding:14px;}
+.app.compact .hdr{padding:0 16px;}
 /* ---- atoms ---- */
 .btn{font-family:var(--sans);font-size:12.5px;font-weight:600;border-radius:7px;padding:8px 13px;cursor:pointer;border:1px solid var(--bd2);background:var(--bg-input);color:var(--tx-hi);transition:.12s;display:inline-flex;align-items:center;gap:7px;}
 .btn:hover{background:#252a33;}
+.btn:disabled{opacity:.45;cursor:not-allowed;}
+.btn:disabled:hover{background:var(--bg-input);}
 .btn.primary{background:var(--acc);border-color:var(--acc);color:#fff;}
 .btn.primary:hover{background:#6b63ef;}
+.btn.prim{border-color:var(--bd-acc);background:var(--acc-soft);color:var(--acc-lt);}
 .btn.ok{background:var(--ok);border-color:var(--ok);color:#06140d;}
 .btn.sm{padding:6px 10px;font-size:11.5px;}
 .input{background:var(--bg-input);border:1px solid var(--bd2);border-radius:7px;color:var(--tx-hi);font-family:var(--sans);font-size:12.5px;padding:9px 11px;outline:none;width:100%;}
@@ -202,13 +208,18 @@ const API="/api/factory";
 const S={
   screen:"center", niches:[], generations:[], recipes:[], allProducts:null, prodCounts:{}, centerLoaded:false,
   activeNiche:"cosmetics", activeNicheLabel:"",
+  searchQuery:"",
+  balanceCache:null,
+  productFilter:"all",
   feedCache:{}, briefCache:{}, covers:{}, embeds:{},
   decompose:null, decomposeLoading:false, decomposeVideo:null, selectedVideo:null,
   recipe:null, selectedNode:null,
   tool:"seedance", toolSchemas:{},
   run:null, preview:{}, contentProduct:null,
-  observer:null, observerLoading:false, observerError:"", observerUpdatedAt:null,
+  observability:null,
+  observerLoading:false, observerError:"", observerUpdatedAt:null,
   workerState:null, workerTimer:null,
+  compact:false,
 };
 // ИА студии: главная ось — ВИД КОНТЕНТА (после общей разведки). Старт → тип контента (свой пайплайн) → Система.
 const SCREENS=[
@@ -219,11 +230,9 @@ const SCREENS=[
   {id:"assembly",grp:"🎬 Видео",chip:"05",tt:"Сборка · ОТК",st:"таймлайн"},
   {id:"library",grp:"🎬 Видео",chip:"06",tt:"База видосов",st:"рецепты"},
   {id:"static",grp:"🖼 Статика",chip:"🖼",tt:"Пины и карточки",st:"форматы · архетипы"},
-  {id:"text",grp:"✍️ Текст",chip:"✍",tt:"Тексты",st:"скоро: посты · описания · SEO"},
   {id:"worker",grp:"⚙ Система",chip:"RW",tt:"Railway worker",st:"живой статус"},
   {id:"balances",grp:"⚙ Система",chip:"07",tt:"Балансы сервисов",st:"сколько осталось $"},
   {id:"learn",grp:"⚙ Система",chip:"🧠",tt:"Обучение",st:"что завод выучил"},
-  {id:"ds",grp:"⚙ Система",chip:"DS",tt:"Дизайн-система",st:"токены"},
 ];
 const NICHE_EMOJI={cosmetics:"💄",clothing:"🧥",toys:"🔫",default:"📦"};
 // picker-поля, которые тянут точный список из ЖИВОГО Creatify API (не хардкод)
@@ -231,28 +240,6 @@ const LIVE_PICKER={ override_voice:{type:"voices",route:"/creatify-options?type=
 const _liveOpts={};
 
 async function api(path,opts){ try{ const r=await fetch(API+path,opts); return await r.json().catch(()=>({error:"не JSON"})); }catch(e){ return {error:String(e).slice(0,120)}; } }
-let _selfHealBusy=false;
-async function selfHeal(action,payload,okText){
-  if(_selfHealBusy){ toast("самопочинка уже идёт…"); return null; }
-  _selfHealBusy=true;
-  try{
-    toast(action==="wake"?"буду зависшие прогоны…":"переоцениваю ОТК…");
-    const r=await api("/self-heal",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action,...payload})});
-    if(r&&r.ok!==false&&!r.error){
-      const res=r.result||{};
-      toast(okText || (action==="wake"
-        ? `разбудил ${(res.woken||[]).length||0} прогонов`
-        : `rejudge: ${(res.processed||[]).length||0} карточек`));
-      loadObserver().catch(()=>{});
-      if(S.screen==="library")screenLibrary(document.getElementById("screen"), false);
-      return r;
-    }
-    toast("не вышло: "+String((r&&r.error)||"?").slice(0,80));
-    return r;
-  } finally {
-    _selfHealBusy=false;
-  }
-}
 function el(tag,attrs,...kids){
   const e=document.createElement(tag);
   if(attrs)for(const k in attrs){
@@ -324,9 +311,10 @@ function signalLabel(ev){
 function renderFactoryPulse(){
   const box=document.getElementById("factory-pulse");
   if(!box) return;
-  const o=S.observer;
+  const o=S.workerState&&S.workerState.observer||null;
   const tone=observerTone(o);
-  const up=S.observerUpdatedAt?new Date(S.observerUpdatedAt):null;
+  const pulseUpdated=(o&&o.updated_at)||S.observerUpdatedAt||null;
+  const up=pulseUpdated?new Date(pulseUpdated):null;
   const updated=up?up.toLocaleTimeString("ru-RU",{hour:"2-digit",minute:"2-digit"}):"—";
   const gens=o&&o.gens?o.gens:null;
   const otk=o&&o.otk?o.otk:null;
@@ -362,8 +350,8 @@ function renderFactoryPulse(){
       ...recentBits.map((t)=>el("span",{style:"font-size:9.5px;font-family:var(--mono);color:var(--tx-mid);background:var(--bg-chip);border:1px solid var(--bd);padding:2px 6px;border-radius:999px;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"},t))));
   }
   box.appendChild(el("div",{style:"display:flex;flex-wrap:wrap;gap:8px;margin-top:9px;"},
-    el("button",{class:"btn sm",onclick:()=>selfHeal("wake",{stale_ms:90000,max_wake:10},"самопочинка запущена")},"⚡ будить"),
-    el("button",{class:"btn sm",onclick:()=>selfHeal("rejudge",{apply:true,max_items:3,since_hours:72},"ОТК карточек запущен")},"↻ rejudge ОТК ?")));
+    el("span",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);background:var(--bg-chip);border:1px solid var(--bd);padding:4px 7px;border-radius:5px;"},
+      "sprint 1 · fail-open")));
   if(o&&o.partial){
     box.appendChild(el("div",{style:"font-size:10.5px;color:var(--warn);line-height:1.35;margin-top:6px;"},"частичный ответ: часть метрик не успела прийти"));
   }
@@ -374,14 +362,14 @@ function renderFactoryPulse(){
 
 async function loadObserver(){
   S.observerLoading=true; S.observerError=""; renderFactoryPulse();
-  const r=await api("/observer");
+  const r=await api("/ops");
   S.observerLoading=false;
   if(r&&r.ok!==false&&!r.error){
-    S.observer=r;
-    S.observerUpdatedAt=r.updated_at||new Date().toISOString();
+    S.workerState=r;
+    S.observerUpdatedAt=(r.observer&&r.observer.updated_at)||r.generated_at||new Date().toISOString();
     S.observerError="";
   }else{
-    S.observerError=(r&&r.error)||"observer недоступен";
+    S.observerError=(r&&r.error)||"ops snapshot недоступен";
   }
   renderFactoryPulse();
 }
@@ -395,13 +383,21 @@ function renderNav(){
       el("span",{style:"display:flex;flex-direction:column;align-items:flex-start;min-width:0;"},el("span",{class:"nav-tt"},s.tt),el("span",{class:"nav-st"},s.st))));
   });
 }
-function go(id){ S.screen=id; renderNav(); render(); }
+function go(id){
+  const prev=S.screen;
+  if(prev&&prev!==id) resetAssistantThread(id);
+  S.screen=id;
+  renderNav();
+  render();
+}
 // персист сессии: после reload вернуться на тот же экран/нишу/открытый рецепт (раньше сбрасывало на старт)
 function saveSession(){ try{ localStorage.setItem("noda_sess", JSON.stringify({screen:S.screen, niche:S.activeNiche, recipeId:(S.recipe&&S.recipe.recipe&&S.recipe.recipe.id)||null})); }catch(e){} }
 async function restoreSession(){
   let s=null; try{ s=JSON.parse(localStorage.getItem("noda_sess")||"null"); }catch(e){}
   if(!s)return;
   if(s.niche)S.activeNiche=s.niche;
+  if(s.screen==="text")s.screen="center"; // legacy placeholder screen выключен из MVP-навигации
+  if(s.screen==="ds")s.screen="center";   // служебный дизайн-экран убран из MVP-навигации
   const needsRecipe=["canvas","inspector","assembly"].includes(s.screen);
   if(needsRecipe){ // эти экраны без рецепта пусты → подгружаем сохранённый рецепт, иначе уводим в библиотеку
     if(!s.recipeId){ S.screen="library"; return; }
@@ -415,6 +411,7 @@ function header(title,meta,right){
   const l=el("div",{class:"hdr-l"},el("span",{class:"hdr-t"},title)); if(meta)l.appendChild(el("span",{class:"meta-chip"},meta));
   // проводник: единая точка входа на КАЖДОМ экране — развернуть панель и попросить объяснить, что тут
   l.appendChild(el("button",{class:"guide-btn",title:"Проводник объяснит этот экран и подскажет следующий шаг",onclick:explainScreen},"🧭 что тут?"));
+  l.appendChild(el("button",{class:"guide-btn",title:"Скрыть лишний шум в студии",onclick:toggleCompact},S.compact?"◧ compact":"◫ full"));
   h.appendChild(l); h.appendChild(right||el("div",{class:"hdr-r"}));
 }
 function loadingCard(t){ return el("div",{class:"card",style:"padding:18px;display:flex;align-items:center;gap:12px;"},el("div",{class:"spinner"}),el("span",{class:"muted"},t||"загрузка…")); }
@@ -423,7 +420,7 @@ function emptyBox(t){ return el("div",{class:"empty"},el("div",{style:"font-size
 // ── ЭКРАН ТЕКСТА: третий вид контента (заглушка — следующая линия завода). ──
 function screenText(root){
   header("Тексты","посты · описания · SEO");
-  root.appendChild(emptyBox("Скоро: третья линия завода — генерация постов, описаний карточек WB/Ozon и SEO-текстов. Общий мозг (бренд/ниши/winners), своя линия вывода — как видео и статика."));
+  root.appendChild(emptyBox("Линия текстов пока выключена в текущем MVP. Основной фокус сейчас — стабильный выпуск видео и статики."));
 }
 
 // ── ЭКРАН СТАТИКИ: новая линия завода (пины/карточки/IG) — код-рендер StaticV1 (renderStill, без fal). ──
@@ -468,7 +465,7 @@ function renderStaticResults(c){
     else top.appendChild(el("div",{class:"spinner"}));
     const foot=el("div",{style:"display:flex;justify-content:space-between;align-items:center;padding:6px 8px;font-size:11px;color:var(--tx-mid);"},
       el("span",{},j.label),
-      j.url?el("span",{style:"display:flex;gap:9px;"},el("span",{style:"cursor:pointer;color:var(--ok);",title:"в банк (доработка помощницы)",onclick:()=>toast("банк PNG — в очереди помощницы (canon)")},"✓"),el("a",{href:j.url,target:"_blank",style:"color:var(--acc-lt);"},"↧")):el("span",{class:"muted"},"…"));
+      j.url?el("span",{style:"display:flex;gap:9px;"},el("span",{class:"mono",style:"color:var(--tx-lo2);font-size:10px;",title:"банк PNG ещё не подключён"},"банк позже"),el("a",{href:j.url,target:"_blank",style:"color:var(--acc-lt);"},"↧")):el("span",{class:"muted"},"…"));
     grid.appendChild(el("div",{class:"card",style:"overflow:hidden;"},top,foot));
   });
   c.appendChild(grid);
@@ -478,6 +475,12 @@ function workerStatusTone(state){
   return state==="alive" ? {c:"var(--ok)", bg:"var(--ok-bg)", label:"ALIVE"}
     : state==="stale" ? {c:"var(--warn)", bg:"var(--warn-bg)", label:"STALE"}
     : state==="dead" ? {c:"var(--err)", bg:"var(--err-bg)", label:"DEAD"}
+    : {c:"var(--tx-lo2)", bg:"var(--bg-input)", label:"UNKNOWN"};
+}
+function opsStatusTone(level){
+  return level==="healthy" ? {c:"var(--ok)", bg:"var(--ok-bg)", label:"HEALTHY"}
+    : level==="degraded" ? {c:"var(--warn)", bg:"var(--warn-bg)", label:"DEGRADED"}
+    : level==="critical" ? {c:"var(--err)", bg:"var(--err-bg)", label:"CRITICAL"}
     : {c:"var(--tx-lo2)", bg:"var(--bg-input)", label:"UNKNOWN"};
 }
 
@@ -502,27 +505,51 @@ function queueTaskTone(status){
 async function screenWorker(root){
   if(S.workerTimer){ clearTimeout(S.workerTimer); S.workerTimer=null; }
   root.innerHTML="";
-  header("Railway worker","heartbeat · очередь · night log", el("div",{class:"hdr-r"},
-    el("button",{class:"btn",onclick:()=>screenWorker(root)},"↻ Обновить"),
-    el("button",{class:"btn primary",onclick:()=>go("learn")},"🧠 Обучение")));
+  header("Railway worker","статус · задача · очередь", el("div",{class:"hdr-r"},
+    el("button",{class:"btn",onclick:()=>screenWorker(root)},"↻ Обновить")));
   const wrap=el("div",{class:"scroll",style:"padding:18px;"}); root.appendChild(wrap);
   wrap.appendChild(loadingCard("смотрю heartbeat и очередь…"));
-  const d=await api("/worker-state");
+  const d=await api("/ops");
   if(S.screen!=="worker") return;
   S.workerState=d;
   wrap.innerHTML="";
-  if(d.error){ wrap.appendChild(emptyBox("ошибка worker-state: "+d.error)); return; }
+  if(d.error){ wrap.appendChild(emptyBox("ошибка ops: "+d.error)); return; }
 
   const worker=d.worker||null;
   const q=(worker&&Array.isArray(worker.queue)&&worker.queue.length?worker.queue:(d.queue||[]))||[];
+  const alerts=Array.isArray(d.alerts)?d.alerts:[];
+  const suggested=Array.isArray(d.suggested_actions)?d.suggested_actions:[];
+  const heartbeatDiag=d.heartbeat_diagnostics||null;
+  const opsStatus=d.ops_status||null;
+  const opsTone=opsStatusTone(opsStatus&&opsStatus.level);
   const live=worker&&worker.liveness?worker.liveness:{state:"unknown",age_sec:null};
-  const obs=S.observer||null;
-  const obsTone=observerTone(obs);
-  const recentSignals=(obs&&obs.signals&&Array.isArray(obs.signals.recent))?obs.signals.recent.slice(0,4):[];
+  const workerSource=worker&&worker.source||"unknown";
+  const latestStress=d.latest_stress||null;
+  const stressHistory=d.stress_history||null;
   const liveTone=workerStatusTone(live.state);
   const aliveNote=live.state==="alive"?"heartbeat свежий":live.state==="stale"?"heartbeat молчит":"worker не отвечает";
+  const sourceLabel=workerSource==="heartbeat_db"?"heartbeat":"queue fallback";
+  const currentId=worker&&worker.current_task_id?String(worker.current_task_id):"";
+  const ordered=[...q].sort((a,b)=>{
+    const ac=String(a.id||"")===currentId;
+    const bc=String(b.id||"")===currentId;
+    if(ac!==bc) return ac?-1:1;
+    const aw=a.status==="doing"?0:a.status==="blocked"?1:a.status==="todo"?2:a.status==="done"?3:4;
+    const bw=b.status==="doing"?0:b.status==="blocked"?1:b.status==="todo"?2:b.status==="done"?3:4;
+    if(aw!==bw) return aw-bw;
+    return String(a.title||"").localeCompare(String(b.title||""));
+  });
+  renderFactoryPulse();
 
   const top=el("div",{style:"display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin-bottom:14px;"});
+  if(opsStatus){
+    top.appendChild(el("div",{class:"card",style:"padding:15px;border-color:"+opsTone.c+";background:"+opsTone.bg+";"},
+      el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;"},
+        el("div",{style:"font-size:14px;font-weight:600;"},"Состояние завода"),
+        el("span",{class:"mono",style:"font-size:10px;color:"+opsTone.c+";background:rgba(0,0,0,.08);padding:3px 7px;border-radius:5px;font-weight:700;"},opsTone.label)),
+      el("div",{style:"font-size:20px;font-weight:700;color:"+opsTone.c+";"},opsTone.label.toLowerCase()),
+      el("div",{style:"font-size:11.5px;color:var(--tx-lo);margin-top:6px;line-height:1.5;"},String(opsStatus.summary||""))));
+  }
   top.appendChild(el("div",{class:"card",style:"padding:15px;"},
     el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;"},
       el("div",{style:"font-size:14px;font-weight:600;"},"Статус"),
@@ -531,7 +558,8 @@ async function screenWorker(root){
     el("div",{style:"font-size:11.5px;color:var(--tx-lo);margin-top:6px;line-height:1.5;"},
       "last_seen: ",el("b",{style:"color:var(--tx-hi);"},worker&&worker.last_seen?fmtWhen(worker.last_seen):"—"),
       " · age: ",el("b",{style:"color:var(--tx-hi);"},fmtSecAgo(live.age_sec)),
-      " · db: ",el("b",{style:"color:var(--tx-hi);"},d.db_ready?"ok":"fallback"))));
+      " · источник: ",el("b",{style:"color:var(--tx-hi);"},sourceLabel),
+      worker&&worker.note?el("span",{}, " · ",worker.note):null)));
   top.appendChild(el("div",{class:"card",style:"padding:15px;"},
     el("div",{style:"font-size:14px;font-weight:600;margin-bottom:10px;"},"Текущая задача"),
     worker&&worker.current_task_id?el("div",{style:"display:flex;flex-direction:column;gap:6px;"},
@@ -543,116 +571,109 @@ async function screenWorker(root){
         worker.progress?el("span",{},el("b",{style:"color:var(--tx-hi);"},"progress "),worker.progress):"")):
       el("div",{class:"muted",style:"font-size:12px;line-height:1.5;"},"worker ещё не прислал текущую задачу"),
     worker&&worker.blocker?el("div",{style:"margin-top:10px;font-size:11.5px;color:var(--warn);background:var(--warn-bg);border:1px solid rgba(214,169,78,.55);padding:8px 10px;border-radius:8px;"},"Блокер: "+worker.blocker):null));
-  top.appendChild(el("div",{class:"card",style:"padding:15px;"},
-    el("div",{style:"font-size:14px;font-weight:600;margin-bottom:10px;"},"Очередь"),
-    el("div",{style:"display:flex;align-items:center;gap:8px;flex-wrap:wrap;"},
-      el("span",{class:"mono",style:"font-size:10px;background:var(--bg-input);border:1px solid var(--bd2);padding:3px 7px;border-radius:5px;"},"todo "+(q.filter(t=>t.status==="todo").length||0)),
-      el("span",{class:"mono",style:"font-size:10px;background:var(--vio-bg);border:1px solid var(--bd2);padding:3px 7px;border-radius:5px;"},"doing "+(q.filter(t=>t.status==="doing").length||0)),
-      el("span",{class:"mono",style:"font-size:10px;background:var(--warn-bg);border:1px solid var(--bd2);padding:3px 7px;border-radius:5px;"},"blocked "+(q.filter(t=>t.status==="blocked").length||0)),
-      el("span",{class:"mono",style:"font-size:10px;background:var(--ok-bg);border:1px solid var(--bd2);padding:3px 7px;border-radius:5px;"},"done "+(q.filter(t=>t.status==="done").length||0))),
-    el("div",{style:"font-size:11.5px;color:var(--tx-lo);margin-top:10px;line-height:1.45;"},
-      "Отслеживание идёт через heartbeat. Если он пропадает, верхняя карточка станет ",el("b",{style:"color:var(--warn);"},"stale")," или ",el("b",{style:"color:var(--err);"},"dead"),".")));
   wrap.appendChild(top);
 
-  const signalBits=(obs&&obs.signals)?[
-    obs.signals.resurrects_24h!=null?`воскр ${obs.signals.resurrects_24h}`:null,
-    obs.signals.rejects_24h!=null?`отк ${obs.signals.rejects_24h}`:null,
-    obs.runs&&obs.runs.active!=null?`active ${obs.runs.active}`:null,
-    obs.batches_active!=null?`batches ${obs.batches_active}`:null,
-  ].filter(Boolean):[];
-  const incident=el("div",{class:"card",style:"padding:14px;margin-bottom:14px;border-color:"+(live.state==="dead"?"var(--err)":live.state==="stale"||worker&&worker.blocker?"var(--warn)":"var(--bd)")+";background:"+(live.state==="dead"?"var(--err-bg)":live.state==="stale"||worker&&worker.blocker?"var(--warn-bg)":"var(--bg-card)")+";"},
-    el("div",{style:"display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;"},
-      el("div",{style:"min-width:0;display:flex;flex-direction:column;gap:4px;"},
+  if(suggested.length){
+    const nextCard=el("div",{class:"card",style:"padding:14px;margin-bottom:14px;"});
+    nextCard.appendChild(el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;"},
+      el("div",{style:"font-size:14px;font-weight:600;"},"Что сделать дальше"),
+      el("span",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);"},String(suggested.length)+" items")));
+    suggested.forEach((a)=>nextCard.appendChild(el("div",{style:"display:flex;align-items:flex-start;justify-content:space-between;gap:10px;font-size:11.5px;color:var(--tx-bd);padding:7px 0;border-top:1px solid var(--bd);"},
+      el("div",{style:"min-width:0;display:flex;flex-direction:column;gap:3px;"},
         el("div",{style:"display:flex;align-items:center;gap:8px;flex-wrap:wrap;"},
-          el("span",{class:"mono",style:"font-size:10px;color:"+(obsTone.tone==="ok"?"var(--ok)":obsTone.tone==="warn"?"var(--warn)":"var(--err)")+";background:"+(obsTone.tone==="ok"?"var(--ok-bg)":obsTone.tone==="warn"?"var(--warn-bg)":"var(--err-bg)")+";padding:3px 7px;border-radius:5px;font-weight:700;"},obsTone.label),
-          el("span",{style:"font-size:13px;font-weight:700;color:var(--tx-hi);"},"Инцидентная сводка"),
-          worker&&worker.current_task_id?el("span",{class:"mono",style:"font-size:10px;color:#fff;background:var(--acc);padding:3px 7px;border-radius:5px;font-weight:700;"},"task "+worker.current_task_id):null),
-        el("div",{style:"font-size:12px;line-height:1.5;color:var(--tx-bd);"},
-          "что видим: ",el("b",{style:"color:var(--tx-hi);"},obsTone.hint),
-          worker&&worker.blocker?el("span",{}, " · ",el("b",{style:"color:var(--warn);"},"blocker: "),worker.blocker):null,
-          live.state!=="alive"&&live.age_sec!=null?el("span",{}, " · ",el("b",{style:"color:var(--warn);"},"heartbeat: "),fmtSecAgo(live.age_sec)," назад"):""),
-        el("div",{style:"font-size:11.5px;line-height:1.45;color:var(--tx-lo);"},
-          "последняя задача: ",el("b",{style:"color:var(--tx-hi);"},worker&&worker.current_task_title?worker.current_task_title:"—"))),
-      el("div",{style:"display:flex;flex-direction:column;gap:8px;align-items:flex-end;"},
-        el("div",{style:"display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-end;"},
-          ...signalBits.map((bit)=>el("span",{class:"mono",style:"font-size:9.5px;color:var(--tx-mid);background:var(--bg-chip);border:1px solid var(--bd);padding:2px 6px;border-radius:999px;"} ,bit))),
-        el("div",{style:"display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;"},
-          el("button",{class:"btn sm",onclick:()=>selfHeal("wake",{stale_ms:90000,max_wake:10},"самопочинка запущена")},"⚡ будить"),
-          el("button",{class:"btn sm",onclick:()=>selfHeal("rejudge",{apply:true,max_items:3,since_hours:72},"ОТК карточек запущен")},"↻ rejudge ОТК ?")))));
-  if(recentSignals.length){
-    incident.appendChild(el("div",{style:"display:flex;flex-wrap:wrap;gap:5px;margin-top:10px;"},
-          ...recentSignals.map((s)=>el("span",{style:"font-size:9.5px;font-family:var(--mono);color:var(--tx-mid);background:var(--bg-input);border:1px solid var(--bd);padding:2px 6px;border-radius:999px;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"},
-            `${signalLabel(s.event)}${s.chip?`: ${s.chip}`:""}`))));
+          el("span",{class:"mono",style:"font-size:9.5px;color:"+(a.priority==="p0"?"var(--err)":a.priority==="p1"?"var(--warn)":"var(--acc-lt)")+";background:"+(a.priority==="p0"?"var(--err-bg)":a.priority==="p1"?"var(--warn-bg)":"var(--vio-bg)")+";padding:2px 6px;border-radius:5px;font-weight:700;"},String(a.priority||"p2").toUpperCase()),
+          el("span",{class:"mono",style:"font-size:10px;color:var(--tx-hi);"},String(a.action||"action"))),
+        el("div",{style:"line-height:1.45;color:var(--tx-lo);"},String(a.reason||""))),
+      null)));
+    wrap.appendChild(nextCard);
   }
-  if(!obs){
-    incident.appendChild(emptyBox("observer ещё не загрузился — после первого пинга здесь появится причина простоя"));
-  }
-  wrap.appendChild(incident);
 
-  const list=el("div",{style:"display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:12px;"}); wrap.appendChild(list);
+  if(heartbeatDiag){
+    const diagCard=el("div",{class:"card",style:"padding:14px;margin-bottom:14px;border-color:"+(heartbeatDiag.issue==="table_missing"?"var(--err)":"var(--warn)")+";background:"+(heartbeatDiag.issue==="table_missing"?"var(--err-bg)":"var(--warn-bg)")+";"});
+    diagCard.appendChild(el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;"},
+      el("div",{style:"font-size:14px;font-weight:600;"},"Диагностика heartbeat"),
+      el("span",{class:"mono",style:"font-size:10px;color:"+(heartbeatDiag.issue==="table_missing"?"var(--err)":"var(--warn)")+";background:rgba(0,0,0,.08);padding:3px 7px;border-radius:5px;font-weight:700;"},String(heartbeatDiag.issue||"issue"))));
+    diagCard.appendChild(el("div",{style:"font-size:11.5px;color:var(--tx-bd);line-height:1.55;display:flex;flex-direction:column;gap:6px;"},
+      heartbeatDiag.detail?el("div",{},el("b",{style:"color:var(--tx-hi);"},"detail: "),String(heartbeatDiag.detail)):null,
+      heartbeatDiag.migration_path?el("div",{},el("b",{style:"color:var(--tx-hi);"},"migration: "),String(heartbeatDiag.migration_path)):null,
+      heartbeatDiag.sender_script?el("div",{},el("b",{style:"color:var(--tx-hi);"},"sender: "),String(heartbeatDiag.sender_script)):null,
+      heartbeatDiag.next_step?el("div",{},el("b",{style:"color:var(--tx-hi);"},"next: "),String(heartbeatDiag.next_step)):null));
+    wrap.appendChild(diagCard);
+  }
+
+  if(latestStress&&latestStress.summary){
+    const lsSummary=latestStress.summary||{};
+    const lsStability=latestStress.stability&&latestStress.stability.stability?latestStress.stability.stability:null;
+    const latestCard=el("div",{class:"card",style:"padding:14px;margin-bottom:14px;"});
+    latestCard.appendChild(el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;"},
+      el("div",{style:"font-size:14px;font-weight:600;"},"Последний стресс-тест"),
+      el("span",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);"},latestStress.generatedAt?fmtWhen(latestStress.generatedAt):"artifact")));
+    latestCard.appendChild(el("div",{style:"display:flex;flex-wrap:wrap;gap:6px;"},
+      el("span",{class:"mono",style:"font-size:10px;color:var(--tx-hi);background:var(--bg-input);border:1px solid var(--bd2);padding:3px 7px;border-radius:5px;"},"runs "+String(lsSummary.completed||0)+"/"+String(lsSummary.totalRuns||0)),
+      el("span",{class:"mono",style:"font-size:10px;color:"+(lsSummary.failed?"var(--err)":"var(--ok)")+";background:"+(lsSummary.failed?"var(--err-bg)":"var(--ok-bg)")+";padding:3px 7px;border-radius:5px;"},"fails "+String(lsSummary.failed||0)),
+      el("span",{class:"mono",style:"font-size:10px;color:var(--warn);background:var(--warn-bg);padding:3px 7px;border-radius:5px;"},"warn "+String(lsSummary.warnings||0)),
+      el("span",{class:"mono",style:"font-size:10px;color:var(--tx-hi);background:var(--bg-input);border:1px solid var(--bd2);padding:3px 7px;border-radius:5px;"},"avg "+String(lsSummary.avgDurationSec||0)+"s")));
+    if(lsStability){
+      latestCard.appendChild(el("div",{style:"display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;"},
+        el("span",{class:"mono",style:"font-size:10px;color:var(--tx-hi);background:var(--bg-input);border:1px solid var(--bd2);padding:3px 7px;border-radius:5px;"},"streak "+String(lsStability.success_streak||0)),
+        el("span",{class:"mono",style:"font-size:10px;color:"+(lsStability.target_met?"var(--ok)":"var(--warn)")+";background:"+(lsStability.target_met?"var(--ok-bg)":"var(--warn-bg)")+";padding:3px 7px;border-radius:5px;"},
+          lsStability.target_met?"target met":"target open")));
+      if(lsStability.failure_diagnostics&&lsStability.failure_diagnostics.issue){
+        latestCard.appendChild(el("div",{style:"font-size:11px;color:var(--tx-lo);line-height:1.45;margin-top:8px;"},
+          String(lsStability.failure_diagnostics.issue)));
+      }
+    }
+    wrap.appendChild(latestCard);
+  }
+  if(stressHistory&&stressHistory.total_reports){
+    const histCard=el("div",{class:"card",style:"padding:14px;margin-bottom:14px;"});
+    histCard.appendChild(el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;"},
+      el("div",{style:"font-size:14px;font-weight:600;"},"История стресс-тестов"),
+      el("span",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);"},stressHistory.latest_generated_at?fmtWhen(stressHistory.latest_generated_at):"archive")));
+    const fails=(stressHistory.failed_runs||0)+(stressHistory.run_failures||0)+(stressHistory.timeouts||0);
+    histCard.appendChild(el("div",{style:"display:flex;flex-wrap:wrap;gap:6px;"},
+      el("span",{class:"mono",style:"font-size:10px;color:var(--tx-hi);background:var(--bg-input);border:1px solid var(--bd2);padding:3px 7px;border-radius:5px;"},"reports "+String(stressHistory.total_reports||0)),
+      el("span",{class:"mono",style:"font-size:10px;color:var(--ok);background:var(--ok-bg);padding:3px 7px;border-radius:5px;"},"done "+String(stressHistory.completed_runs||0)+"/"+String(stressHistory.total_runs||0)),
+      el("span",{class:"mono",style:"font-size:10px;color:"+(fails?"var(--err)":"var(--tx-hi)")+";background:"+(fails?"var(--err-bg)":"var(--bg-input)")+";border:1px solid "+(fails?"rgba(239,68,68,.35)":"var(--bd2)")+";padding:3px 7px;border-radius:5px;"},"fail "+String(fails)),
+      el("span",{class:"mono",style:"font-size:10px;color:var(--warn);background:var(--warn-bg);padding:3px 7px;border-radius:5px;"},"warn "+String(stressHistory.warning_runs||0)),
+      el("span",{class:"mono",style:"font-size:10px;color:var(--tx-hi);background:var(--bg-input);border:1px solid var(--bd2);padding:3px 7px;border-radius:5px;"},"target "+String(stressHistory.target_met_reports||0)+"/"+String(stressHistory.total_reports||0))));
+    wrap.appendChild(histCard);
+  }
+
+  const list=el("div",{class:"card",style:"padding:14px;margin-bottom:14px;"}); wrap.appendChild(list);
+  list.appendChild(el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;"},
+    el("div",{style:"font-size:14px;font-weight:600;"},"Очередь задач"),
+    el("span",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);"},String(q.length||0)+" items")));
   if(!q.length){
     list.appendChild(emptyBox("очередь пуста или worker ещё не прислал snapshot"));
   } else {
-    const currentId=worker&&worker.current_task_id?String(worker.current_task_id):"";
-    const ordered=[...q].sort((a,b)=>{
-      const ac=String(a.id||"")===currentId;
-      const bc=String(b.id||"")===currentId;
-      if(ac!==bc) return ac?-1:1;
-      const ap=Number(a.priority)||99;
-      const bp=Number(b.priority)||99;
-      if(ap!==bp) return ap-bp;
-      return String(a.title||"").localeCompare(String(b.title||""));
-    });
-    ordered.forEach((t)=>{
+    const queueMeta=el("div",{style:"display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;"});
+    [
+      ["todo", q.filter(t=>t.status==="todo").length, "var(--bg-input)"],
+      ["doing", q.filter(t=>t.status==="doing").length, "var(--vio-bg)"],
+      ["blocked", q.filter(t=>t.status==="blocked").length, "var(--warn-bg)"],
+      ["done", q.filter(t=>t.status==="done").length, "var(--ok-bg)"],
+    ].forEach(([label,count,bg])=>queueMeta.appendChild(
+      el("span",{class:"mono",style:"font-size:10px;background:"+bg+";border:1px solid var(--bd2);padding:3px 7px;border-radius:5px;"},String(label)+" "+String(count||0))
+    ));
+    list.appendChild(queueMeta);
+    ordered.slice(0,6).forEach((t,idx)=>{
       const tt=queueTaskTone(t.status);
       const isCurrent=String(t.id||"")===currentId;
-      list.appendChild(el("div",{class:"card",style:"padding:14px;display:flex;flex-direction:column;gap:10px;border-color:"+(isCurrent?"var(--acc)":"rgba(255,255,255,.06)")+";box-shadow:"+(isCurrent?"0 0 0 2px rgba(124,116,255,.14)":"none")+";background:"+(isCurrent?"rgba(124,116,255,.04)":"var(--bg-card)")+";"},
-        el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:10px;"},
-          el("div",{style:"display:flex;align-items:center;gap:8px;min-width:0;"},
-            el("div",{style:"font-size:12px;font-weight:700;color:var(--tx-hi);"},t.id||"task"),
-            isCurrent?el("span",{class:"mono",style:"font-size:9.5px;color:#fff;background:var(--acc);padding:2px 6px;border-radius:5px;font-weight:700;"},"current"):null),
-          el("span",{class:"mono",style:"font-size:10px;color:"+tt.c+";background:"+tt.bg+";padding:3px 7px;border-radius:5px;font-weight:700;"},tt.label)),
-        el("div",{style:"font-size:13px;font-weight:600;line-height:1.45;"},t.title||"—"),
-        el("div",{style:"font-size:11.5px;color:var(--tx-lo);line-height:1.5;"},
-          t.goal?el("div",{},el("b",{style:"color:var(--tx-hi);"},"цель: "),t.goal):null,
-          t.zone?el("div",{},el("b",{style:"color:var(--tx-hi);"},"зона: "),t.zone):null,
-          t.branch?el("div",{},el("b",{style:"color:var(--tx-hi);"},"ветка: "),t.branch):null,
-          t.pr?el("div",{},el("b",{style:"color:var(--tx-hi);"},"PR: "),t.pr):null),
-        t.acceptance&&t.acceptance.length?el("div",{style:"font-size:11.5px;color:var(--tx-bd);line-height:1.45;"},
-          el("div",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);margin-bottom:4px;"},"acceptance"),
-          ...t.acceptance.slice(0,3).map(s=>el("div",{style:"margin-left:2px;"},"• ",s))):null,
-        t.checks&&t.checks.length?el("div",{style:"font-size:11.5px;color:var(--tx-bd);line-height:1.45;"},
-          el("div",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);margin-bottom:4px;"},"checks"),
-          ...t.checks.slice(0,3).map(s=>el("div",{style:"margin-left:2px;"},"• ",s))):null,
-        t.blockers&&t.blockers.length?el("div",{style:"font-size:11.5px;color:var(--warn);background:var(--warn-bg);padding:8px 10px;border-radius:8px;line-height:1.45;"},
-          el("div",{class:"mono",style:"font-size:10px;color:var(--warn);margin-bottom:3px;"},"blockers"),
-          ...t.blockers.slice(0,2).map(s=>el("div",{},s))):null,
-        t.result?el("div",{style:"font-size:11px;color:var(--tx-lo2);"},t.result):null,
-        el("div",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);display:flex;justify-content:space-between;gap:8px;"},
-          el("span",{},t.priority?("prio "+t.priority):""),
-          el("span",{},t.pr?("pr "+t.pr):""))));
+      list.appendChild(el("div",{style:"display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:start;padding:"+(idx? "10px 0 0":"0")+";border-top:"+(idx?"1px solid var(--bd)":"none")+";"},
+        el("div",{style:"display:flex;align-items:center;gap:8px;min-width:0;"},
+          el("div",{style:"font-size:12px;font-weight:700;color:var(--tx-hi);"},t.id||"task"),
+          isCurrent?el("span",{class:"mono",style:"font-size:9.5px;color:#fff;background:var(--acc);padding:2px 6px;border-radius:5px;font-weight:700;"},"current"):null),
+        el("div",{style:"min-width:0;display:flex;flex-direction:column;gap:4px;"},
+          el("div",{style:"font-size:12.5px;font-weight:600;line-height:1.4;"},t.title||"—"),
+          el("div",{style:"font-size:11px;color:var(--tx-lo);line-height:1.45;"},
+            t.branch?`branch ${t.branch}`:"",
+            t.pr?`${t.branch?" · ":""}pr ${t.pr}`:"",
+            t.priority?`${(t.branch||t.pr)?" · ":""}prio ${t.priority}`:""),
+          t.blockers&&t.blockers.length?el("div",{style:"font-size:11px;color:var(--warn);line-height:1.4;"},t.blockers[0]):null),
+        el("span",{class:"mono",style:"font-size:10px;color:"+tt.c+";background:"+tt.bg+";padding:3px 7px;border-radius:5px;font-weight:700;white-space:nowrap;"},tt.label)));
     });
   }
-
-  const log=el("div",{style:"margin-top:16px;display:grid;grid-template-columns:1.15fr .85fr;gap:12px;"});
-  wrap.appendChild(log);
-  const logCard=el("div",{class:"card",style:"padding:14px;"});
-  logCard.appendChild(el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;"},
-    el("div",{style:"font-size:14px;font-weight:600;"},"Night log"),
-    el("span",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);"},"docs/factory-railway-night-log.md")));
-  const topLines=((d.docs&&d.docs.log&&d.docs.log.lines)||[]).slice(0,14);
-  if(!topLines.length) logCard.appendChild(emptyBox("ночной лог пуст"));
-  else logCard.appendChild(el("div",{class:"mono",style:"font-size:10.5px;color:var(--tx-bd);line-height:1.65;white-space:pre-wrap;"},topLines.join("\n")));
-  log.appendChild(logCard);
-  const fileCard=el("div",{class:"card",style:"padding:14px;"});
-  fileCard.appendChild(el("div",{style:"font-size:14px;font-weight:600;margin-bottom:10px;"},"Источники"));
-  fileCard.appendChild(el("div",{style:"display:flex;flex-direction:column;gap:8px;font-size:11.5px;color:var(--tx-bd);line-height:1.5;"},
-    el("div",{},el("b",{style:"color:var(--tx-hi);"},"queue md")," · ",fmtWhen(d.docs&&d.docs.queue_file_mtime||null)),
-    el("div",{},el("b",{style:"color:var(--tx-hi);"},"night log")," · ",fmtWhen(d.docs&&d.docs.log_file_mtime||null)),
-    el("div",{},el("b",{style:"color:var(--tx-hi);"},"db")," · ",d.db_ready?"connected":"docs fallback"),
-    d.db_error?el("div",{style:"color:var(--warn);"},"DB warning: "+d.db_error):null,
-    el("div",{style:"color:var(--tx-lo);"},"Если worker умрёт, heartbeat застынет и верхняя карточка пометится stale/dead.")));
-  log.appendChild(fileCard);
 
   S.workerTimer=setTimeout(()=>{ if(S.screen==="worker")screenWorker(document.getElementById("screen")); },15000);
 }
@@ -694,22 +715,38 @@ async function render(){
 // force=true → принудительная пересборка (кнопка ↻ или жёсткая перезагрузка страницы сбрасывает S).
 // Иначе всё, что уже загружено, берётся из памяти — переключение экранов НЕ дёргает сеть/Claude.
 async function screenCenter(root, force){
-  if(force){ S.centerLoaded=false; S.briefCache={}; }
+  if(force){ S.centerLoaded=false; S.allProducts=null; S.productsLoading=false; S.prodCounts={}; S.briefCache={}; }
   if(force || !S.workerState){
-    const workerData=await api("/worker-state");
+    const workerData=await api("/ops");
     if(S.screen!=="center") return;
     S.workerState=workerData;
+    renderFactoryPulse();
   }
   const workerRow=S.workerState&&S.workerState.worker||null;
   const workerLive=workerRow&&workerRow.liveness?workerRow.liveness.state:"unknown";
+  const workerSource=workerRow&&workerRow.source||"unknown";
+  const workerDbError=S.workerState&&S.workerState.db_error||"";
+  const opsStatus=S.workerState&&S.workerState.ops_status||null;
+  const heartbeatDiag=S.workerState&&S.workerState.heartbeat_diagnostics||null;
+  const opsAlerts=Array.isArray(S.workerState&&S.workerState.alerts)?S.workerState.alerts:[];
+  const lowBalances=S.workerState&&S.workerState.balances&&Array.isArray(S.workerState.balances.low)?S.workerState.balances.low:[];
+  const failDiag=S.observability&&S.observability.failure_diagnostics||null;
+  const stabilitySnapshot=S.observability&&S.observability.stability_snapshot||null;
+  const latestStress=S.workerState&&S.workerState.latest_stress||null;
+  const stressHistory=S.workerState&&S.workerState.stress_history||null;
+  const opsTone=opsStatusTone(opsStatus&&opsStatus.level);
+  const workerShort=workerSource==="queue_fallback"?"fallback":workerLive==="alive"?"живой":workerLive==="stale"?"stale":workerLive==="dead"?"dead":"?";
   header("Командный центр","карта осознания", el("div",{class:"hdr-r"},
-    el("div",{class:"searchbox",title:"поиск — скоро",style:"width:240px;opacity:.5;cursor:not-allowed;"},el("span",{style:"font-size:13px;"},"⌕"),el("span",{},"Поиск ниши, товара…")),
+    el("div",{class:"searchbox",title:"поиск по товарам и нишам",style:"width:260px;"},
+      el("span",{style:"font-size:13px;flex:none;"},"⌕"),
+      el("input",{value:S.searchQuery,placeholder:"Поиск ниши, товара…",style:"flex:1;background:transparent;border:none;outline:none;color:var(--tx-hi);font:inherit;min-width:0;",oninput:(e)=>{ S.searchQuery=e.target.value; const p=document.getElementById("center-products"); if(p)loadProducts(p); }}),
+      S.searchQuery?el("button",{class:"btn sm",style:"padding:3px 6px;margin-left:auto;",title:"очистить поиск",onclick:()=>{ S.searchQuery=""; const p=document.getElementById("center-products"); if(p)loadProducts(p); render(); }},"×"):null),
     el("button",{class:"btn",title:"автопилот: заполнить черновики ИИ + сгенерить + ОТК + банк, прошедшее уйдёт в Telegram на ревью",onclick:()=>openNightRun()},"🌙 Ночной прогон"),
     el("button",{class:"btn",title:"фикс-айдентика брендов: голос/персона/шрифт/цвет/CTA/бан-слова/хэштеги — автозаполнение берёт как дефолты",onclick:()=>openBrandKit()},"🎨 Бренд-кит"),
-    el("button",{class:"btn",title:workerRow?`живой статус Railway worker · ${workerLive}${workerRow.current_task_id?` · ${workerRow.current_task_id}`:""}`:"живой статус Railway worker и очередь задач",onclick:()=>go("worker")},
-      "🛰 RW ",workerLive==="alive"?"живой":workerLive==="stale"?"stale":workerLive==="dead"?"dead":"?",workerRow&&workerRow.current_task_id?` · ${workerRow.current_task_id}`:""),
-    el("button",{class:"btn",title:"принудительно пересобрать данные и разбор ниши",onclick:()=>screenCenter(root,true)},"↻ Обновить"),
-    el("button",{class:"btn primary",onclick:()=>toast("Новая ниша — заведи товары в кабинете")},"+ Новая ниша")));
+    opsStatus?el("span",{class:"mono",title:opsStatus.summary||"",style:"font-size:10px;color:"+opsTone.c+";background:"+opsTone.bg+";padding:6px 8px;border-radius:7px;font-weight:700;"},"OPS "+opsTone.label):null,
+    el("button",{class:"btn",title:workerRow?`живой статус Railway worker · ${workerShort}${workerRow.current_task_id?` · ${workerRow.current_task_id}`:""}${workerDbError?` · ${workerDbError}`:""}`:"живой статус Railway worker и очередь задач",onclick:()=>go("worker")},
+      "🛰 RW ",workerShort,workerRow&&workerRow.current_task_id?` · ${workerRow.current_task_id}`:""),
+    el("button",{class:"btn",title:"принудительно пересобрать данные и разбор ниши",onclick:()=>screenCenter(root,true)},"↻ Обновить")));
   const left=el("div",{class:"scroll"}), aside=el("div",{class:"aside",style:"width:340px;padding:18px;"});
   root.appendChild(left); root.appendChild(aside);
   if(workerRow){
@@ -719,13 +756,16 @@ async function screenCenter(root, force){
         el("div",{style:"display:flex;align-items:center;gap:8px;flex-wrap:wrap;"},
           el("span",{class:"mono",style:"font-size:10px;color:"+tone.c+";background:"+tone.bg+";padding:3px 7px;border-radius:5px;font-weight:700;"},tone.label),
           el("span",{style:"font-size:12px;font-weight:700;"},"Railway worker"),
+          workerSource==="queue_fallback"?el("span",{class:"mono",style:"font-size:10px;color:var(--warn);background:var(--warn-bg);padding:3px 7px;border-radius:5px;font-weight:700;"},"queue fallback"):null,
           workerRow.current_task_id?el("span",{class:"mono",style:"font-size:10px;color:#fff;background:var(--acc);padding:3px 7px;border-radius:5px;font-weight:700;"},"task "+workerRow.current_task_id):null),
         el("div",{style:"font-size:11.5px;line-height:1.45;color:var(--tx-bd);"},
           "heartbeat: ",el("b",{style:"color:var(--tx-hi);"},workerRow.last_seen?fmtWhen(workerRow.last_seen):"—"),
           " · ",el("b",{style:"color:var(--tx-hi);"},workerRow.current_task_title||"нет активной задачи"),
-          workerRow.blocker?el("span",{}, " · blocker: ",el("b",{style:"color:var(--warn);"},workerRow.blocker)):"")),
+          workerRow.blocker?el("span",{}, " · blocker: ",el("b",{style:"color:var(--warn);"},workerRow.blocker)):"",
+          workerDbError?el("span",{}, " · db: ",el("b",{style:"color:var(--warn);"},trunc(workerDbError,72))):"")),
       el("button",{class:"btn sm",onclick:()=>go("worker")},"Открыть worker")));
   }
+  renderCenterOpsSummary(left,{opsStatus,heartbeatDiag,failDiag,opsAlerts,lowBalances,workerRow,stabilitySnapshot,latestStress,stressHistory});
   const nicheHead=el("div",{style:"display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;"},
     el("h2",{class:"sec-h"},"НИШИ ",el("span",{class:"cnt"},String(S.niches.length||""))),
     el("div",{style:"display:flex;gap:14px;"},
@@ -735,29 +775,30 @@ async function screenCenter(root, force){
   left.appendChild(nicheHead);
   const tiles=el("div",{style:"display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:26px;"}); left.appendChild(tiles);
 
-  if(!S.centerLoaded){
-    tiles.appendChild(loadingCard("ниши…"));
-    const data=await api("/studio"); // быстрый Supabase-запрос; товары (медленный WB API) — отдельно, не блокируем плитки
-    S.niches=data.niches||[]; S.generations=data.generations||[]; S.recipes=data.recipes||[];
-    S.centerLoaded=true;
-    if(S.screen!=="center")return; // ушли с экрана пока грузили
-  }
+	  if(!S.centerLoaded){
+	    tiles.appendChild(loadingCard("ниши…"));
+	    const data=await api("/studio"); // быстрый Supabase-запрос; товары (медленный WB API) — отдельно, не блокируем плитки
+	    S.niches=data.niches||[]; S.generations=data.generations||[]; S.recipes=data.recipes||[]; S.observability=data.observability||null;
+	    S.centerLoaded=true;
+	    if(S.screen!=="center")return; // ушли с экрана пока грузили
+	  }
   nicheHead.querySelector(".cnt").textContent=String(S.niches.length);
   tiles.innerHTML="";
   if(!S.niches.length)tiles.appendChild(emptyBox("нет данных — синкни орбиты"));
   S.niches.forEach(n=>tiles.appendChild(nicheTile(n)));
 
+  const productFilterBtn=(id,label)=>el("button",{class:"btn sm",style:S.productFilter===id?"background:var(--acc-soft);border-color:var(--bd-acc);color:var(--acc-lt);":"background:transparent;border-color:transparent;color:var(--tx-lo);",onclick:()=>{ S.productFilter=id; render(); }},label);
   const prodHead=el("div",{style:"display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;"},
     el("h2",{class:"sec-h"},"ТОВАРЫ · "+nicheLabel(S.activeNiche).toUpperCase()," ",el("span",{class:"cnt",id:"prod-cnt"},"")),
     el("div",{style:"display:flex;gap:4px;"},
-      el("span",{style:"font-size:11.5px;color:var(--tx-hi);background:var(--bg-input);border:1px solid var(--bd2);padding:5px 10px;border-radius:6px;"},"Все"),
-      el("span",{style:"font-size:11.5px;color:var(--tx-lo);padding:5px 10px;"},"С победителем"),
-      el("span",{style:"font-size:11.5px;color:var(--tx-lo);padding:5px 10px;"},"Есть пробелы")));
+      productFilterBtn("all","Все"),
+      productFilterBtn("winner","С победителем"),
+      productFilterBtn("gaps","Есть пробелы")));
   left.appendChild(prodHead);
-  const plist=el("div",{style:"display:flex;flex-direction:column;gap:9px;"}); left.appendChild(plist);
+  const plist=el("div",{id:"center-products",style:"display:flex;flex-direction:column;gap:9px;"}); left.appendChild(plist);
   plist.appendChild(loadingCard("товары…"));
   loadProducts(plist);
-  renderMarketer(aside);
+  renderMarketer(aside, force);
 }
 function nicheTile(n){
   const active=S.activeNiche===n.niche;
@@ -788,45 +829,266 @@ async function loadProducts(plist){
     return;
   }
   plist.innerHTML="";
-  const items=S.allProducts.filter(p=>(p.cniche||p.niche||"default")===S.activeNiche).slice(0,14);
+  const q=String(S.searchQuery||"").trim().toLowerCase();
+  let items=S.allProducts.filter(p=>{
+    const niche=String(p.cniche||p.niche||"default").toLowerCase();
+    const name=String(p.name||"").toLowerCase();
+    const art=String(p.article||"").toLowerCase();
+    const qhit=!q||niche.includes(q)||name.includes(q)||art.includes(q);
+    return qhit && niche===String(S.activeNiche||"").toLowerCase();
+  });
+  if(S.productFilter==="winner")items=items.filter(p=>!!p.hasWinner);
+  if(S.productFilter==="gaps")items=items.filter(p=>!p.hasWinner||!(p.realFrames>0)||!(p.gens>0));
+  items=items.slice(0,14);
   const c=document.getElementById("prod-cnt"); if(c)c.textContent=String(items.length);
-  if(!items.length){ plist.appendChild(emptyBox("нет товаров в нише «"+nicheLabel(S.activeNiche)+"»")); return; }
+  if(!items.length){
+    plist.appendChild(emptyBox(q?"ничего не найдено по запросу «"+S.searchQuery+"»":"нет товаров в нише «"+nicheLabel(S.activeNiche)+"»"));
+    return;
+  }
   items.forEach((p,i)=>plist.appendChild(productCard(p,i)));
 }
-function productCard(p,i){
-  const win=i===0; // первый в нише — демо-«победитель» (реальный winner-флаг придёт из данных позже)
-  const real=Math.max(0,(p.realFrames||0)), gens=(p.gens||0);
+function productCard(p){
+  const win=!!p.hasWinner;
+  const real=Math.max(0,(p.realFrames||0)), gens=Math.max(0,(p.gens||0));
+  const bestOtk=p.bestOtk==null?null:Number(p.bestOtk);
+  const hasOtk=bestOtk!=null&&Number.isFinite(bestOtk);
+  const understanding=win||hasOtk||gens>0||real>0;
   const nameRow=el("div",{style:"display:flex;align-items:center;gap:8px;"},el("span",{style:"font-size:13.5px;font-weight:600;"},p.name||p.article));
   if(win)nameRow.appendChild(el("span",{class:"mono tbadge",style:"background:var(--ok);"},"★ ПОБЕДИТЕЛЬ"));
   return el("div",{class:"card",style:"display:flex;gap:14px;padding:13px;align-items:center;border-radius:10px;"},
     el("div",{style:"width:54px;height:72px;flex:none;border-radius:7px;overflow:hidden;border:1px solid var(--bd2);"+(p.img?"":"background:repeating-linear-gradient(135deg,#22262e 0 7px,#1d2128 7px 14px);"),
       html:p.img?'<img src="'+esc(p.img)+'" style="width:100%;height:100%;object-fit:cover;" onerror="this.parentNode.style.background=\'repeating-linear-gradient(135deg,#22262e 0 7px,#1d2128 7px 14px)\'">':""}),
     el("div",{style:"flex:1;min-width:0;"}, nameRow,
-      el("div",{style:"font-size:11px;color:var(--tx-lo);margin-top:3px;"},"Понимание ниши: ",el("span",{style:"color:"+(win?"var(--ok)":"var(--warn)")+";"},win?"высокое":"среднее")," · арт "+p.article),
+      el("div",{style:"font-size:11px;color:var(--tx-lo);margin-top:3px;"},"Данные по товару: ",el("span",{style:"color:"+(understanding?"var(--ok)":"var(--tx-lo2)")+";"},understanding?"есть сигналы":"пусто")," · арт "+p.article),
       el("div",{style:"display:flex;gap:16px;margin-top:9px;"},
         metaStat(real?"var(--warn)":"var(--tx-lo2)",real?"◆":"◇",(real||0)+" реальных кадров"),
         metaStat("var(--acc)","▣",gens+" генераций"),
-        metaStat(win?"var(--ok)":"var(--tx-lo2)",win?"●":"○",win?"ОТК ср. 84":"нет победителя"))),
+        metaStat(win?"var(--ok)":hasOtk?"var(--warn)":"var(--tx-lo2)",win?"●":hasOtk?"◐":"○",win?(hasOtk?"ОТК "+Math.round(bestOtk*10):"есть winner"):(hasOtk?"ОТК "+Math.round(bestOtk*10):"нет победителя")))),
     el("button",{class:"btn "+(win?"primary":""),onclick:()=>openFormatFork(p)},"Собрать контент"));
 }
 function metaStat(c,glyph,txt){ return el("span",{class:"mono",style:"font-size:11px;color:var(--tx-mid2);"},el("span",{style:"color:"+c+";"},glyph)," "+txt); }
+function renderObservabilityCard(host){
+  const o=S.observability;
+  if(!host||!o)return;
+  const slow=Array.isArray(o.slowest_steps)?o.slowest_steps:[];
+  const failDiag=o.failure_diagnostics&&typeof o.failure_diagnostics==="object"?o.failure_diagnostics:null;
+  const stability=o.stability_snapshot&&typeof o.stability_snapshot==="object"?o.stability_snapshot:null;
+  const quality=o.quality_signal&&typeof o.quality_signal==="object"?o.quality_signal:null;
+  const errCats=Array.isArray(o.top_error_categories)?o.top_error_categories:[];
+  const errs=Array.isArray(o.top_errors)?o.top_errors:[];
+  const cats=Array.isArray(o.top_warning_categories)?o.top_warning_categories:[];
+  const warns=Array.isArray(o.top_warnings)?o.top_warnings:[];
+  const recent=Array.isArray(o.recent_runs)?o.recent_runs:[];
+  const incidents=Array.isArray(o.incident_runs)?o.incident_runs:[];
+  const series=Array.isArray(o.status_series)?o.status_series:[];
+  const stepSeries=Array.isArray(o.step_duration_series)?o.step_duration_series:[];
+  const card=el("div",{class:"card",style:"padding:13px;margin-top:14px;"});
+  card.appendChild(el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;"},
+    el("div",{style:"font-size:11px;font-weight:700;color:var(--tx-mid2);"},"Execution observability"),
+    el("span",{class:"mono",style:"font-size:9.5px;color:var(--tx-lo2);"},(o.sample_runs||0)+" runs")));
+  card.appendChild(el("div",{style:"display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;"},
+    el("span",{class:"mono",style:"font-size:9.5px;color:var(--acc-lt);background:var(--vio-bg);border:1px solid var(--bd-acc);padding:3px 7px;border-radius:5px;"},"running "+(o.running||0)),
+    el("span",{class:"mono",style:"font-size:9.5px;color:var(--warn);background:var(--warn-bg);border:1px solid rgba(245,158,11,.35);padding:3px 7px;border-radius:5px;"},"warning "+(o.warning_runs||0)),
+    el("span",{class:"mono",style:"font-size:9.5px;color:var(--err);background:var(--err-bg);border:1px solid var(--bd-err);padding:3px 7px;border-radius:5px;"},"failed "+(o.failed||0))));
+  if(stability){
+    const targetMet=!!stability.target_met;
+    card.appendChild(el("div",{style:"margin-bottom:10px;padding:10px 11px;border:1px solid "+(targetMet?"#1d3a2b":"rgba(245,158,11,.35)")+";background:"+(targetMet?"var(--ok-bg)":"var(--warn-bg)")+";border-radius:8px;display:flex;flex-direction:column;gap:6px;"},
+      el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:8px;"},
+        el("div",{style:"font-size:10.5px;font-weight:700;color:"+(targetMet?"#7fe0b3":"var(--warn)")+";"},"10-run stability"),
+        el("span",{class:"mono",style:"font-size:9.5px;color:"+(targetMet?"#7fe0b3":"var(--warn)")+";background:rgba(0,0,0,.08);padding:2px 6px;border-radius:5px;font-weight:700;"},
+          String(stability.successful_runs||0)+"/"+String(stability.window_size||10))),
+      el("div",{style:"display:flex;flex-wrap:wrap;gap:6px;"},
+        el("span",{class:"mono",style:"font-size:9.5px;color:var(--tx-hi);background:var(--bg-input);border:1px solid var(--bd2);padding:3px 7px;border-radius:5px;"},"streak "+String(stability.success_streak||0)),
+        el("span",{class:"mono",style:"font-size:9.5px;color:var(--warn);background:var(--warn-bg);border:1px solid rgba(245,158,11,.35);padding:3px 7px;border-radius:5px;"},"warnings "+String(stability.warning_runs||0)),
+        el("span",{class:"mono",style:"font-size:9.5px;color:var(--err);background:var(--err-bg);border:1px solid var(--bd-err);padding:3px 7px;border-radius:5px;"},"fails "+String(stability.failed_runs||0))),
+      el("div",{style:"font-size:10.5px;color:var(--tx-bd);line-height:1.45;"},
+        targetMet?"последние 10 прогонов завершились успешно":"до KPI не хватает подряд успешных прогонов")));
+  }
+  if(quality){
+    card.appendChild(el("div",{style:"margin-bottom:10px;padding:10px 11px;border:1px solid var(--bd);background:var(--bg-node);border-radius:8px;display:flex;flex-direction:column;gap:6px;"},
+      el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:8px;"},
+        el("div",{style:"font-size:10.5px;font-weight:700;color:var(--tx-mid2);"},"Quality signal"),
+        el("span",{class:"mono",style:"font-size:9.5px;color:var(--tx-lo2);background:rgba(0,0,0,.08);padding:2px 6px;border-radius:5px;font-weight:700;"},
+          String(quality.sample_size||0)+" runs")),
+      el("div",{style:"display:flex;flex-wrap:wrap;gap:6px;"},
+        el("span",{class:"mono",style:"font-size:9.5px;color:var(--ok);background:var(--ok-bg);padding:3px 7px;border-radius:5px;"},"model "+String(quality.model_runs||0)),
+        el("span",{class:"mono",style:"font-size:9.5px;color:var(--acc-lt);background:var(--vio-bg);padding:3px 7px;border-radius:5px;"},"text "+String(quality.text_runs||0)),
+        el("span",{class:"mono",style:"font-size:9.5px;color:var(--warn);background:var(--warn-bg);padding:3px 7px;border-radius:5px;"},"fallback "+String(quality.fallback_runs||0))),
+      el("div",{style:"font-size:10.5px;color:var(--tx-bd);line-height:1.45;"},
+        "dominant ",el("b",{style:"color:var(--tx-hi);"},String(quality.dominant_basis||"none")),
+        " · fallback ratio ",el("b",{style:"color:"+(Number(quality.fallback_ratio||0)>=0.5?"var(--warn)":"var(--tx-hi)")+";"},String(Math.round(Number(quality.fallback_ratio||0)*100))+"%"),
+        quality.top_basis_reason?el("span",{}," · reason ",el("b",{style:"color:var(--tx-hi);"},String(quality.top_basis_reason))):"")));
+  }
+  if(failDiag){
+    card.appendChild(el("div",{style:"margin-bottom:10px;padding:10px 11px;border:1px solid var(--bd-err);background:var(--err-bg);border-radius:8px;display:flex;flex-direction:column;gap:5px;"},
+      el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:8px;"},
+        el("div",{style:"font-size:10.5px;font-weight:700;color:var(--err);"},"Run fail diagnostics"),
+        failDiag.category?el("span",{class:"mono",style:"font-size:9.5px;color:var(--err);background:rgba(0,0,0,.08);padding:2px 6px;border-radius:5px;font-weight:700;"},String(failDiag.category)):null),
+      el("div",{style:"font-size:10.5px;color:var(--tx-bd);line-height:1.45;"},String(failDiag.issue||"")),
+      el("div",{class:"mono",style:"font-size:10px;color:var(--tx-hi);line-height:1.45;"},String(failDiag.action||"")),
+      el("div",{style:"font-size:10.5px;color:var(--tx-lo);line-height:1.45;"},String(failDiag.next_step||"")),
+      failDiag.sample_error?el("div",{class:"mono",style:"font-size:9.5px;color:var(--tx-mid);line-height:1.35;"},String(failDiag.sample_error).slice(0,110)):null));
+  }
+  if(slow.length){
+    card.appendChild(el("div",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);margin-bottom:6px;"},"slowest steps"));
+    slow.slice(0,4).forEach((s)=>card.appendChild(el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:10.5px;color:var(--tx-bd);margin-bottom:5px;"},
+      el("span",{class:"mono",style:"min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"},s.step||"step"),
+      el("span",{class:"mono",style:"color:var(--tx-lo2);flex:none;"},fmtMs(s.avg_ms)||"—"))));
+  }
+  if(errCats.length){
+    card.appendChild(el("div",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);margin:"+(slow.length?"10px":"4px")+" 0 6px;"},"error categories"));
+    errCats.slice(0,4).forEach((w)=>card.appendChild(el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:10.5px;color:var(--tx-bd);margin-bottom:5px;"},
+      el("span",{class:"mono",style:"min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"},w.category||"other"),
+      el("span",{class:"mono",style:"color:var(--tx-lo2);flex:none;"},String(w.count||0)))));
+  }
+  if(cats.length){
+    card.appendChild(el("div",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);margin:"+((slow.length||errCats.length)?"10px":"4px")+" 0 6px;"},"warning categories"));
+    cats.slice(0,4).forEach((w)=>card.appendChild(el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:10.5px;color:var(--tx-bd);margin-bottom:5px;"},
+      el("span",{class:"mono",style:"min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"},w.category||"other"),
+      el("span",{class:"mono",style:"color:var(--tx-lo2);flex:none;"},String(w.count||0)))));
+  }
+  if(errs.length){
+    card.appendChild(el("div",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);margin:"+((slow.length||errCats.length||cats.length)?"10px":"4px")+" 0 6px;"},"top errors"));
+    errs.slice(0,3).forEach((w)=>card.appendChild(el("div",{class:"mono",style:"font-size:10px;color:var(--tx-mid);line-height:1.35;margin-bottom:4px;"},(w.count||0)+"× "+String(w.reason||"").slice(0,90))));
+  }
+  if(warns.length){
+    card.appendChild(el("div",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);margin:"+((slow.length||errCats.length||cats.length||errs.length)?"10px":"4px")+" 0 6px;"},"top warnings"));
+    warns.slice(0,3).forEach((w)=>card.appendChild(el("div",{class:"mono",style:"font-size:10px;color:var(--tx-mid);line-height:1.35;margin-bottom:4px;"},(w.count||0)+"× "+String(w.reason||"").slice(0,90))));
+  }
+  if(recent.length){
+    card.appendChild(el("div",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);margin:"+((slow.length||errCats.length||cats.length||errs.length||warns.length)?"10px":"4px")+" 0 6px;"},"recent runs"));
+    recent.slice(0,6).forEach((r)=>card.appendChild(el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:10.5px;color:var(--tx-bd);margin-bottom:5px;"},
+      el("div",{style:"min-width:0;display:flex;align-items:center;gap:6px;overflow:hidden;"},
+        el("span",{class:"dot",style:"width:7px;height:7px;background:"+(r.status==="run_fail"?"var(--err)":r.status==="warning"?"var(--warn)":r.status==="running"?"var(--acc)":"var(--ok)")+";flex:none;"}),
+        el("span",{class:"mono",style:"white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"},(r.recipe_id?("#"+r.recipe_id+" "):"")+String(r.status||"")+(r.error_category?(" · "+r.error_category):"")+(r.warnings_count?(" · warn "+r.warnings_count):""))),
+      el("span",{class:"mono",style:"color:var(--tx-lo2);flex:none;"},r.total_ms!=null?(fmtMs(r.total_ms)+" · "+fmtWhen(r.created_at)):fmtWhen(r.created_at)))));
+  }
+  if(incidents.length){
+    card.appendChild(el("div",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);margin:"+((slow.length||errCats.length||cats.length||errs.length||warns.length||recent.length)?"10px":"4px")+" 0 6px;"},"incident runs"));
+    incidents.slice(0,4).forEach((r)=>card.appendChild(el("div",{style:"display:flex;flex-direction:column;gap:3px;margin-bottom:7px;padding:8px 9px;border:1px solid "+(r.status==="run_fail"?"var(--bd-err)":"rgba(245,158,11,.35)")+";background:"+(r.status==="run_fail"?"var(--err-bg)":"var(--warn-bg)")+";border-radius:7px;"},
+      el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:8px;"},
+        el("span",{class:"mono",style:"font-size:9.5px;color:"+(r.status==="run_fail"?"var(--err)":"var(--warn)")+";font-weight:700;"},(r.recipe_id?("#"+r.recipe_id+" · "):"")+String(r.status||"")),
+        el("span",{class:"mono",style:"font-size:9.5px;color:var(--tx-lo2);"},r.total_ms!=null?fmtMs(r.total_ms):fmtWhen(r.created_at))),
+      el("div",{class:"mono",style:"font-size:10px;color:var(--tx-bd);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"},
+        (r.last_step?("step "+r.last_step):"step ?")+(r.last_status?(" · "+r.last_status):"")+(r.error_category?(" · "+r.error_category):"")),
+      r.error?el("div",{class:"mono",style:"font-size:9.5px;color:var(--tx-mid);line-height:1.35;"},String(r.error).slice(0,110)):null)));
+  }
+  if(series.length){
+    card.appendChild(el("div",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);margin:"+((slow.length||errCats.length||cats.length||errs.length||warns.length||recent.length||incidents.length)?"10px":"4px")+" 0 6px;"},"hourly trend"));
+    series.slice(-6).forEach((p)=>card.appendChild(el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:10.5px;color:var(--tx-bd);margin-bottom:5px;"},
+      el("span",{class:"mono",style:"min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"},String(p.bucket||"").replace("T"," ").slice(5,16)),
+      el("span",{class:"mono",style:"color:var(--tx-lo2);flex:none;"},"all "+(p.total||0)+" · ok "+(p.passed||0)+" · warn "+(p.warning||0)+" · fail "+(p.failed||0)))));
+  }
+  if(stepSeries.length){
+    card.appendChild(el("div",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);margin:"+((slow.length||errCats.length||cats.length||errs.length||warns.length||recent.length||incidents.length||series.length)?"10px":"4px")+" 0 6px;"},"step duration trend"));
+    stepSeries.slice(-6).forEach((p)=>card.appendChild(el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:10.5px;color:var(--tx-bd);margin-bottom:5px;"},
+      el("span",{class:"mono",style:"min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"},String(p.bucket||"").replace("T"," ").slice(11,16)+" · "+String(p.step||"step")),
+      el("span",{class:"mono",style:"color:var(--tx-lo2);flex:none;"},(fmtMs(p.avg_ms)||"—")+" · n"+String(p.samples||0)))));
+  }
+  host.appendChild(card);
+}
 function openFormatFork(p){
   S.contentProduct=p;
   const ov=el("div",{style:"position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:50;",onclick:(e)=>{ if(e.target===ov)ov.remove(); }});
   const nk=p.cniche||p.niche||"default"; // КАНОНИЧЕСКАЯ ниша рубрики (как плитки/фильтр/корпус), НЕ WB-категория p.niche («blasters») — иначе лента конкурентов пустая
-  const pick=(fmt)=>{ ov.remove(); if(S.activeNiche!==nk){ S.activeNiche=nk; S.decompose=null; S.decomposeLoading=false; S.decomposeVideo=null; S.selectedVideo=null; } toast("Формат: "+fmt+" → анализ конкурентов"); go("compete"); };
+  const resetNiche=()=>{ if(S.activeNiche!==nk){ S.activeNiche=nk; S.decompose=null; S.decomposeLoading=false; S.decomposeVideo=null; S.selectedVideo=null; } };
+  const pickVideo=()=>{ ov.remove(); resetNiche(); toast("Видео → анализ конкурентов"); go("compete"); };
+  const pickStatic=()=>{ ov.remove(); resetNiche(); S.staticForm={...(S.staticForm||{}), article:p.article||"", headline:(p.name||"").split(/[,.]/)[0].slice(0,52), formats:["card_3x4","pin_2x3"], archetype:"auto", price:(S.staticForm&&S.staticForm.price)||"", objective:"reach"}; toast("Статик → экран пинов"); go("static"); };
+  const pickCarousel=()=>{ ov.remove(); const qs=new URLSearchParams(); if(p.article)qs.set("article",p.article); if(p.img)qs.set("img",p.img); window.open("/carousel?"+qs.toString(),"_blank"); toast("Карусель открыта в отдельной вкладке"); };
   ov.appendChild(el("div",{class:"card",style:"padding:22px;width:420px;"},
     el("div",{style:"font-size:16px;font-weight:600;margin-bottom:4px;"},"Собрать контент"),
     el("div",{class:"muted",style:"margin-bottom:16px;"},p.name||p.article),
     el("div",{class:"sec-cap",style:"margin-bottom:10px;"},"Выбери формат"),
     el("div",{style:"display:grid;grid-template-columns:repeat(3,1fr);gap:10px;"},
-      fmtCard("🎬","Видео","клон конкурента → граф",()=>pick("Видео")),
-      fmtCard("🖼","Карусель","слайды с хуком",()=>pick("Карусель")),
-      fmtCard("📌","Статик","один кадр",()=>pick("Статик")))));
+      fmtCard("🎬","Видео","клон конкурента → граф",pickVideo),
+      fmtCard("🖼","Карусель","открыть PNG-сборщик",pickCarousel),
+      fmtCard("📌","Статик","пины/карточки",pickStatic))));
   document.body.appendChild(ov);
 }
 function fmtCard(ic,t,sub,on){ return el("div",{class:"card",style:"padding:14px;text-align:center;cursor:pointer;background:var(--bg-node);",onclick:on},
   el("div",{style:"font-size:26px;"},ic),el("div",{style:"font-size:13px;font-weight:600;margin-top:6px;"},t),el("div",{class:"mono",style:"font-size:9.5px;color:var(--tx-lo2);margin-top:3px;"},sub)); }
+
+function renderCenterOpsSummary(host,input){
+  const opsStatus=input&&input.opsStatus||null;
+  const heartbeatDiag=input&&input.heartbeatDiag||null;
+  const failDiag=input&&input.failDiag||null;
+  const opsAlerts=Array.isArray(input&&input.opsAlerts)?input.opsAlerts:[];
+  const lowBalances=Array.isArray(input&&input.lowBalances)?input.lowBalances:[];
+  const workerRow=input&&input.workerRow||null;
+  const stability=input&&input.stabilitySnapshot||null;
+  const latestStress=input&&input.latestStress||null;
+  const stressHistory=input&&input.stressHistory||null;
+  if(!opsStatus && !heartbeatDiag && !failDiag && !opsAlerts.length && !lowBalances.length && !latestStress && !stressHistory)return;
+  const tone=opsStatusTone(opsStatus&&opsStatus.level);
+  const card=el("div",{class:"card",style:"padding:12px 14px;margin-bottom:16px;display:flex;flex-direction:column;gap:10px;"});
+  card.appendChild(el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;"},
+    el("div",{style:"display:flex;align-items:center;gap:8px;flex-wrap:wrap;"},
+      el("span",{class:"mono",style:"font-size:10px;color:"+tone.c+";background:"+tone.bg+";padding:4px 7px;border-radius:5px;font-weight:700;"},opsStatus?"OPS "+tone.label:"OPS"),
+      el("span",{style:"font-size:12px;font-weight:700;"},"Factory health"),
+      workerRow&&workerRow.current_task_id?el("span",{class:"mono",style:"font-size:10px;color:#fff;background:var(--acc);padding:4px 7px;border-radius:5px;font-weight:700;"},"task "+workerRow.current_task_id):null),
+    el("button",{class:"btn sm",onclick:()=>go("worker")},"Worker")));
+  if(opsStatus&&opsStatus.summary){
+    card.appendChild(el("div",{style:"font-size:11px;line-height:1.45;color:var(--tx-bd);"},opsStatus.summary));
+  }
+  if(heartbeatDiag){
+    card.appendChild(el("div",{style:"font-size:11px;line-height:1.45;color:var(--tx-bd);"},
+      "Heartbeat: ",el("b",{style:"color:heartbeatDiag.level==='critical'?'var(--err)':heartbeatDiag.level==='warning'?'var(--warn)':'var(--ok)';"},heartbeatDiag.title||heartbeatDiag.issue||"unknown"),
+      heartbeatDiag.summary?el("span",{}," · "+heartbeatDiag.summary):""));
+  }
+  if(failDiag){
+    card.appendChild(el("div",{style:"font-size:11px;line-height:1.45;color:var(--tx-bd);"},
+      "Run fails: ",el("b",{style:"color:var(--warn);"},failDiag.issue||failDiag.category||"unknown"),
+      failDiag.next_step?el("span",{}," · "+failDiag.next_step):"",
+      failDiag.sample_error?el("span",{}," · "+trunc(failDiag.sample_error,120)):""));
+  }
+  if(stability){
+    const ok=!!stability.target_met;
+    card.appendChild(el("div",{style:"font-size:11px;line-height:1.45;color:var(--tx-bd);"},
+      "10-run KPI: ",el("b",{style:"color:"+(ok?"var(--ok)":"var(--warn)")+";"},
+        String(stability.successful_runs||0)+"/"+String(stability.window_size||10)),
+      " · streak ",el("b",{style:"color:var(--tx-hi);"},String(stability.success_streak||0)),
+      ok?el("span",{}," · target met"):el("span",{}," · target not met yet")));
+  }
+  if(latestStress&&latestStress.summary){
+    const lsSummary=latestStress.summary||{};
+    const lsStability=latestStress.stability&&latestStress.stability.stability?latestStress.stability.stability:null;
+    const latestRow=el("div",{style:"display:flex;flex-wrap:wrap;gap:6px;"});
+    latestRow.appendChild(el("span",{class:"mono",style:"font-size:10px;color:var(--tx-hi);background:var(--bg-input);border:1px solid var(--bd2);padding:3px 7px;border-radius:5px;"},
+      "stress "+String(lsSummary.completed||0)+"/"+String(lsSummary.totalRuns||0)));
+    latestRow.appendChild(el("span",{class:"mono",style:"font-size:10px;color:var(--tx-hi);background:var(--bg-input);border:1px solid var(--bd2);padding:3px 7px;border-radius:5px;"},
+      "avg "+String(lsSummary.avgDurationSec||0)+"s"));
+    if(lsStability){
+      latestRow.appendChild(el("span",{class:"mono",style:"font-size:10px;color:"+(lsStability.target_met?"var(--ok)":"var(--warn)")+";background:"+(lsStability.target_met?"var(--ok-bg)":"var(--warn-bg)")+";padding:3px 7px;border-radius:5px;"},
+        "streak "+String(lsStability.success_streak||0)));
+    }
+    if(latestStress.generatedAt){
+      latestRow.appendChild(el("span",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);background:var(--bg-chip);border:1px solid var(--bd);padding:3px 7px;border-radius:5px;"},
+        fmtWhen(latestStress.generatedAt)));
+    }
+    card.appendChild(latestRow);
+  }
+  if(stressHistory&&stressHistory.total_reports){
+    const fails=(stressHistory.failed_runs||0)+(stressHistory.run_failures||0)+(stressHistory.timeouts||0);
+    const histRow=el("div",{style:"display:flex;flex-wrap:wrap;gap:6px;"});
+    histRow.appendChild(el("span",{class:"mono",style:"font-size:10px;color:var(--tx-hi);background:var(--bg-input);border:1px solid var(--bd2);padding:3px 7px;border-radius:5px;"},"history "+String(stressHistory.total_reports||0)+" reports"));
+    histRow.appendChild(el("span",{class:"mono",style:"font-size:10px;color:var(--ok);background:var(--ok-bg);padding:3px 7px;border-radius:5px;"},"done "+String(stressHistory.completed_runs||0)+"/"+String(stressHistory.total_runs||0)));
+    histRow.appendChild(el("span",{class:"mono",style:"font-size:10px;color:"+(fails?"var(--err)":"var(--tx-hi)")+";background:"+(fails?"var(--err-bg)":"var(--bg-input)")+";border:1px solid "+(fails?"rgba(239,68,68,.35)":"var(--bd2)")+";padding:3px 7px;border-radius:5px;"},"fail "+String(fails)));
+    histRow.appendChild(el("span",{class:"mono",style:"font-size:10px;color:var(--tx-hi);background:var(--bg-input);border:1px solid var(--bd2);padding:3px 7px;border-radius:5px;"},"target "+String(stressHistory.target_met_reports||0)+"/"+String(stressHistory.total_reports||0)));
+    card.appendChild(histRow);
+  }
+  if(opsAlerts.length){
+    const row=el("div",{style:"display:flex;flex-wrap:wrap;gap:6px;"});
+    opsAlerts.slice(0,4).forEach((a)=>row.appendChild(el("span",{class:"mono",style:"font-size:10px;color:var(--warn);background:var(--warn-bg);padding:4px 7px;border-radius:5px;"},a.code||a.level||"alert")));
+    card.appendChild(row);
+  }
+  if(lowBalances.length){
+    const row=el("div",{style:"display:flex;flex-wrap:wrap;gap:6px;"});
+    lowBalances.slice(0,4).forEach((b)=>row.appendChild(el("span",{class:"mono",style:"font-size:10px;color:var(--err);background:var(--err-bg);padding:4px 7px;border-radius:5px;"},
+      String(b.provider||"balance")+": "+(b.status||"low")+(b.remaining_pct!=null?(" · "+Math.round(Number(b.remaining_pct)||0)+"%"):""))));
+    card.appendChild(row);
+  }
+  host.appendChild(card);
+}
 
 // Бриф ниши кэшируется в S.briefCache[niche] — переключение экранов/ниш НЕ перезапускает Claude.
 // force=true (кнопка «↻ Повторить» / «↻ Обновить») рвёт и клиентский кэш, и серверный (refresh=1).
@@ -836,7 +1098,7 @@ async function renderMarketer(aside, force){
   aside.appendChild(el("div",{style:"display:flex;align-items:center;gap:9px;margin-bottom:14px;"},
     el("div",{style:"width:30px;height:30px;border-radius:8px;background:linear-gradient(135deg,#7c74ff,#5a52d8);display:flex;align-items:center;justify-content:center;font-size:15px;"},"🧠"),
     el("div",{style:"line-height:1.2;"},el("div",{style:"font-size:13.5px;font-weight:600;"},"Главный маркетолог"),el("div",{class:"mono",style:"font-size:10.5px;color:var(--tx-lo2);"},"ниша: "+nicheLabel(niche)))));
-  const body=el("div",{}); aside.appendChild(body);
+	  const body=el("div",{}); aside.appendChild(body);
   let b=S.briefCache[niche];
   if(!b||force){
     body.appendChild(loadingCard("маркетолог изучает нишу…"));
@@ -871,8 +1133,9 @@ async function renderMarketer(aside, force){
     br.distribution.slice(0,4).forEach(d=>c.appendChild(el("span",{style:"font-size:11px;color:var(--tx-lo);background:var(--bg-card);border:1px solid var(--bd);padding:5px 9px;border-radius:6px;"},"→ "+(d.platform||"")+" "+(d.cadence||""))));
     body.appendChild(c);
   }
-  if(b.cached)body.appendChild(el("div",{class:"mono",style:"font-size:9px;color:var(--tx-lo3);margin-top:14px;"},"кеш · обновляется еженедельно"));
-}
+	  if(b.cached)body.appendChild(el("div",{class:"mono",style:"font-size:9px;color:var(--tx-lo3);margin-top:14px;"},"кеш · обновляется еженедельно"));
+	  renderObservabilityCard(aside);
+	}
 
 //==================== 02 · COMPETE / DECOMPOSE ====================
 // обложки/эмбеды конкурентов через oEmbed (кэш в S.covers/S.embeds) — лента визуальная, видно ЧТО за ролик
@@ -922,7 +1185,7 @@ async function screenCompete(root){
   feed.forEach((v,i)=>{
     const sel=S.selectedVideo===v.id;
     feedList.appendChild(el("div",{style:"display:flex;gap:10px;padding:8px;border-radius:9px;cursor:pointer;"+(sel?"background:var(--bg-node);border:1.5px solid var(--acc);box-shadow:0 0 0 3px rgba(124,116,255,.08);":"background:var(--bg-card);border:1px solid var(--bd);"),
-      onclick:()=>{ S.selectedVideo=v.id; runDecompose(v); }},
+      onclick:()=>{ S.selectedVideo=v.id; if(S.screen==="compete")renderDecompose(); }},
       el("span",{class:"mono",style:"font-size:12px;color:"+(sel?"var(--acc)":"var(--tx-lo2)")+";width:16px;"},String(i+1)),
       el("div",{title:v.url?"смотреть оригинал":"",style:"width:34px;height:46px;border-radius:5px;flex:none;position:relative;overflow:hidden;cursor:"+(v.url?"pointer":"default")+";background:repeating-linear-gradient(135deg,"+(sel?"#2a2440 0 6px,#231f33":"#23272f 0 6px,#1d2128")+" 6px 12px);display:flex;align-items:center;justify-content:center;",onclick:v.url?(e)=>{ e.stopPropagation(); openMedia(v.url,{external:true,embed:S.embeds[v.id]}); }:null},
         S.covers[v.id]?el("img",{src:S.covers[v.id],loading:"lazy",style:"position:absolute;inset:0;width:100%;height:100%;object-fit:cover;"}):null,
@@ -933,7 +1196,7 @@ async function screenCompete(root){
   });
   const justRan=_decomposeJustRan; _decomposeJustRan=false;
   if(S.decompose&&S.decompose.error&&!justRan){ S.decompose=null; S.decomposeVideo=null; S.selectedVideo=null; } // стейл-ошибка разбора не висит при свежем входе на 02
-  if(S.decompose||S.decomposeLoading)renderDecompose();
+  if(S.decompose||S.decomposeLoading||S.selectedVideo)renderDecompose();
 }
 let _decomposeJustRan=false; // отличаем «ошибку разбора только что» от стейл-ошибки прошлого раза
 async function runDecompose(v){
@@ -949,7 +1212,30 @@ async function runDecompose(v){
 function renderDecompose(){
   const stage=document.getElementById("decompose-stage"); if(!stage)return; stage.innerHTML="";
   if(S.decomposeLoading){ stage.appendChild(el("div",{style:"flex:1;display:flex;align-items:center;justify-content:center;"},loadingCard("декомпозитор раскладывает видео на ноды…"))); return; }
-  if(!S.decompose){ stage.appendChild(emptyBox("выбери видео слева → разбор на ноды")); return; }
+  if(!S.decompose){
+    const d=(S.feedCache[S.activeNiche]&&S.feedCache[S.activeNiche].feed)||[];
+    const selId=String(S.selectedVideo||"");
+    const v=d.find(x=>String(x.id||"")===selId)||null;
+    if(!v){ stage.appendChild(emptyBox("выбери видео слева → сначала посмотри обложку и просмотры, потом разбор")); return; }
+    const card=el("div",{style:"display:flex;gap:18px;padding:18px 22px;border-bottom:1px solid var(--bd);align-items:flex-start;"},
+      el("div",{title:v.url?"смотреть оригинал конкурента":"",style:"width:108px;height:144px;flex:none;border-radius:9px;border:1px solid var(--bd2);overflow:hidden;cursor:"+(v.url?"pointer":"default")+";background:repeating-linear-gradient(135deg,#2a2440 0 8px,#231f33 8px 16px);display:flex;align-items:center;justify-content:center;position:relative;",onclick:v.url?()=>openMedia(v.url,{external:true,embed:S.embeds[v.id]}):null},
+        S.covers[v.id]?el("img",{src:S.covers[v.id],style:"position:absolute;inset:0;width:100%;height:100%;object-fit:cover;"}):null,
+        el("span",{style:"width:38px;height:38px;border-radius:50%;background:rgba(12,13,16,.6);border:1px solid #3a414d;display:flex;align-items:center;justify-content:center;font-size:15px;color:#fff;position:relative;z-index:1;"},"▶"),
+        el("span",{class:"mono",style:"position:absolute;bottom:7px;font-size:10px;color:var(--acc-lt);"},fmtViews(v.views))),
+      el("div",{style:"flex:1;min-width:0;"},
+        el("div",{style:"font-size:15px;font-weight:600;"},(v.caption||v.hook_text||"Видео конкурента").slice(0,90)),
+        el("div",{style:"font-size:12px;color:var(--tx-lo);margin-top:5px;line-height:1.5;"},"Формат: "+(v.format_detected||"?")+" · просмотры: "+fmtViews(v.views)+" · сначала смотри ролик, потом жми разбор."),
+        el("div",{style:"display:flex;gap:7px;margin-top:11px;flex-wrap:wrap;"},
+          dchip("var(--ok)","var(--ok-bg)","просмотры "+fmtViews(v.views)),
+          dchip("var(--warn)","var(--warn-bg)","score "+(v.virality_score?Number(v.virality_score).toFixed(0):"?")),
+          dchip("var(--acc-lt)","var(--vio-bg)",(v.platform||"TikTok")+" · "+(v.format_detected||"формат"))),
+        el("div",{style:"display:flex;gap:9px;margin-top:14px;"},
+          el("button",{class:"btn primary",onclick:()=>runDecompose(v)},"🔎 Разобрать это видео"),
+          el("button",{class:"btn",onclick:()=>{ if(v.url)openMedia(v.url,{external:true,embed:S.embeds[v.id]}); }},"▶ Открыть оригинал"))));
+    stage.appendChild(card);
+    stage.appendChild(el("div",{style:"padding:12px 22px;font-size:11.5px;color:var(--tx-lo2);line-height:1.5;"},"Разбор ещё не запущен. Сначала посмотри ролик, потом жми «Разобрать это видео» — так меньше шансов разбирать не тот клип."));
+    return;
+  }
   if(S.decompose.error){ stage.appendChild(emptyBox("ошибка разбора: "+S.decompose.error)); return; }
   const d=S.decompose, v=S.decomposeVideo||{};
   stage.appendChild(el("div",{style:"display:flex;gap:18px;padding:18px 22px;border-bottom:1px solid var(--bd);"},
@@ -987,7 +1273,7 @@ function decomposeNodeCard(n){
       el("div",{style:"font-size:11.5px;color:var(--tx-bd);line-height:1.35;"},trunc(n.visual_desc||n.onscreen_text,52)),
       n.onscreen_text||n.voiceover?el("div",{style:"font-size:10px;color:var(--tx-lo2);margin-top:7px;font-style:italic;border-left:2px solid var(--bd2);padding-left:7px;"},"«"+trunc(n.onscreen_text||n.voiceover,40)+"»"):null));
 }
-function toolIcon(t){ return ({seedance:"▦",kling:"◈",creatify:"◔",shotstack:"⧉",sound:"♪",disk_real:"🎞",higgsfield:"◇",gemini:"◐"})[t]||"●"; }
+function toolIcon(t){ return ({seedance:"▦",kling:"◈",creatify:"◔",shotstack:"⧉",sound:"♪",disk_real:"🎞",elevenlabs:"◎",higgsfield:"◇",gemini:"◐"})[t]||"●"; }
 async function transferRecipe(){
   const d=S.decompose; if(!d||!d.nodes){ toast("сначала разбери видео"); return; }
   const article=(S.contentProduct&&S.contentProduct.article)||prompt("Артикул товара, под который переносим:")||"";
@@ -1004,7 +1290,6 @@ async function transferRecipe(){
 async function openRecipe(id){ const r=await api("/recipes?recipe_id="+id); if(r.error){ toast("рецепт: "+r.error); return false; } S.recipe=r; S.selectedNode=(r.nodes&&r.nodes[0])||null; S.run=null; _runPolling=false; return true; } // сбрасываем прогон прошлого рецепта, иначе ОТК показывает стейл-спиннер/вердикт
 async function screenCanvas(root){
   header("Нод-канвас",S.recipe?("граф #"+S.recipe.recipe.id+" · клон конкурента"):"граф видео", el("div",{class:"hdr-r"},
-    el("div",{title:"зум/пан — скоро",style:"display:flex;align-items:center;background:var(--bg-chip);border:1px solid var(--bd);border-radius:7px;padding:3px;opacity:.45;cursor:not-allowed;"},el("span",{style:"font-size:11px;color:var(--tx-lo);padding:4px 8px;"},"−"),el("span",{class:"mono",style:"font-size:11px;color:var(--tx-hi);padding:4px 6px;"},"100%"),el("span",{style:"font-size:11px;color:var(--tx-lo);padding:4px 8px;"},"＋")),
     el("button",{class:"btn",title:"ИИ-режиссёр: выберет движок и заполнит настройки на КАЖДОЙ ноде графа",onclick:()=>runAutofillGraph(false)},"🪄 ИИ-заполнить граф"),
     el("button",{class:"btn primary",onclick:()=>{ if(S.recipe)go("assembly"); else toast("сначала открой/создай граф"); }},"▶ Сборка")));
   const palette=el("div",{class:"aside",style:"width:208px;border-left:none;border-right:1px solid var(--bd);display:flex;flex-direction:column;"});
@@ -1037,7 +1322,7 @@ async function screenCanvas(root){
   nodes.forEach((n,i)=>{ const c=NODE_TYPE_COLOR[n.node_type]||"#46c08f"; mmi.appendChild(el("span",{style:"position:absolute;left:"+(6+i*16)+"%;top:38%;width:12%;height:20%;background:"+c+";border-radius:2px;opacity:.85;"})); });
   canvas.appendChild(mm);
 }
-const NODE_TYPE_COLOR={hook_ugc:"#5b9cf2",hook:"#5b9cf2",talking_head:"#46c08f",ai_product_render:"#46c08f",before_after:"#b078ef",pov:"#46c08f",b_roll:"#46c08f",prank:"#46c08f",captions:"#ef6fa6",sound:"#46c08f",music:"#46c08f",carousel_slide:"#d6a94e",static_post:"#d6a94e"};
+const NODE_TYPE_COLOR={hook_ugc:"#5b9cf2",hook:"#5b9cf2",talking_head:"#46c08f",ai_product_render:"#46c08f",before_after:"#b078ef",pov:"#46c08f",b_roll:"#46c08f",prank:"#46c08f",captions:"#ef6fa6",voiceover:"#46c08f",narration:"#46c08f",sound:"#46c08f",music:"#46c08f",carousel_slide:"#d6a94e",static_post:"#d6a94e"};
 function canvasNode(n,p){
   const sug=n.agent_suggestion||{}; const c=NODE_TYPE_COLOR[n.node_type]||"#46c08f";
   const sel=S.selectedNode&&S.selectedNode.id===n.id;
@@ -1063,15 +1348,15 @@ function canvasNode(n,p){
 }
 
 //==================== 04 · INSPECTOR ====================
-const PRICE={claude:["≈$0.01","сценарий · токены","var(--p-script)","Claude (сценарист)"],seedance:["$0.42","Pro × 6с × 1080p","var(--p-video)","Seedance 1.0"],kling:["$0.38","Standard × 5с","var(--p-video)","Kling"],creatify:["$1.20","аватар × голос × 12с","var(--p-audio)","Creatify UGC"],shotstack:["$0.08","рендер × титры × 1080p","var(--p-caption)","Shotstack"],disk_real:["$0.00","реальный клип","var(--p-video)","Я.Диск"],sound:["$0.00","трек","var(--p-audio)","Звук"]};
-const TOOL_SUB={claude:"сценарист",seedance:"AI-видео",kling:"AI-видео",creatify:"UGC-актёр",shotstack:"монтаж/титры",disk_real:"реальная съёмка",sound:"звук/музыка"};
-const INSPECTOR_TABS=["claude","seedance","kling","creatify","shotstack","disk_real","sound"]; // движки, которые реально исполняются (claude = генерация сценария)
+const PRICE={claude:["≈$0.01","сценарий · токены","var(--p-script)","Claude (сценарист)"],seedance:["$0.42","Pro × 6с × 1080p","var(--p-video)","Seedance 1.0"],kling:["$0.38","Standard × 5с","var(--p-video)","Kling"],creatify:["$1.20","аватар × голос × 12с","var(--p-audio)","Creatify UGC"],elevenlabs:["$0.10","RU-закадр","var(--p-audio)","ElevenLabs"],shotstack:["$0.08","рендер × титры × 1080p","var(--p-caption)","Shotstack"],disk_real:["$0.00","реальный клип","var(--p-video)","Я.Диск"],sound:["$0.00","трек","var(--p-audio)","Звук"]};
+const TOOL_SUB={claude:"сценарист",seedance:"AI-видео",kling:"AI-видео",creatify:"UGC-актёр",elevenlabs:"RU-закадр",shotstack:"монтаж/титры",disk_real:"реальная съёмка",sound:"звук/музыка"};
+const INSPECTOR_TABS=["claude","seedance","kling","creatify","elevenlabs","shotstack","disk_real","sound"]; // движки, которые реально исполняются (claude = генерация сценария)
 async function screenInspector(root){
   root.innerHTML="";                       // таб-переключение зовёт screenInspector напрямую (минуя render) — чистим, иначе панели дублируются
   const n=S.selectedNode;
   header("Инспектор ноды","поля адаптируются под инструмент", el("div",{class:"hdr-r"},
     ...INSPECTOR_TABS.map(t=>{ const pr=PRICE[t]||["$0.00","","var(--acc)",t];
-      return el("button",{class:"btn sm",style:"flex-direction:row;gap:7px;"+(S.tool===t?"background:var(--acc-soft);border-color:var(--bd-acc);":""),onclick:()=>{ S.tool=t; screenInspector(root); }},
+      return el("button",{class:"btn sm",style:"flex-direction:row;gap:7px;"+(S.tool===t?"background:var(--acc-soft);border-color:var(--bd-acc);":""),onclick:()=>{ if(n&&S.tool!==t)clearForeignPreviewState(n,t); S.tool=t; screenInspector(root); }},
         el("span",{style:"width:8px;height:8px;border-radius:50%;background:"+pr[2]}),el("span",{style:"display:flex;flex-direction:column;align-items:flex-start;line-height:1.15;"},el("span",{style:"font-size:12px;font-weight:600;text-transform:capitalize;"},t),el("span",{class:"mono",style:"font-size:9px;color:var(--tx-lo2);"},TOOL_SUB[t]))); })));
   const ctx=el("div",{style:"flex:1;min-width:0;position:relative;background-color:var(--bg-deep);background-image:radial-gradient(circle,#15191f 1px,transparent 1px);background-size:22px 22px;display:flex;align-items:center;justify-content:center;"});
   ctx.appendChild(el("div",{style:"position:absolute;inset:0;background:rgba(8,9,11,.55);"}));
@@ -1110,9 +1395,6 @@ async function screenInspector(root){
   // §17 Ф3: заполнить ОДНУ ноду ИИ (движок+params+промпт) — для любой ноды в графе
   if(n.id)
     groups.appendChild(el("div",{style:"margin-top:12px;"},el("button",{class:"btn primary",style:"width:100%;justify-content:center;",onclick:()=>autofillSingleNode(n)},"🪄 Заполнить ноду ИИ")));
-  // V9: хук-турнир — только для hook-ноды (хук решает залёт)
-  if((function(){ const r=String((n.params&&n.params.role)||n.slot||"").toLowerCase(),t=String(n.node_type||"").toLowerCase(); return r==="hook"||t.indexOf("hook")===0; })())
-    groups.appendChild(el("div",{style:"margin-top:12px;"},el("button",{class:"btn",style:"width:100%;justify-content:center;border-color:var(--bd-acc);color:var(--acc-lt);",onclick:()=>runHookTournament(n)},"🏆 Хук-турнир — варианты на выбор")));
   aside.appendChild(el("div",{id:"preview-out",style:"padding:0 16px 16px;"}));
   renderPreviewOut(n);
 }
@@ -1265,40 +1547,6 @@ function renderPreviewOut(n){
         el("a",{href:p.url,target:"_blank",class:"mono",style:"font-size:10px;color:var(--tx-lo);"+(p.hash?"":"margin-left:auto;")},"открыть ↗")))); }
 }
 
-// V9 · хук-турнир: варианты хука (/variations) → ранжирование (/hook-judge) → выбор лучшего (хук = ось №1 залёта)
-async function runHookTournament(n){
-  const rec=S.recipe&&S.recipe.recipe;
-  const base=(n.params&&n.params.onscreen_text)||n.prompt||_hookText()||(rec&&rec.article)||"";
-  if(!base){ toast("нет базового хука для вариаций"); return; }
-  toast("генерю варианты хука…");
-  const vr=await api("/variations",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({hook:base,article:rec&&rec.article,product_name:rec&&rec.article,count:6})});
-  const variations=(vr&&(Array.isArray(vr)?vr:vr.variations))||[];
-  const hooks=variations.map(v=>v&&(v.hook||v.first_2s)).filter(Boolean);
-  if(!hooks.length){ toast("вариации не вышли: "+((vr&&vr.error)||"пусто")); return; }
-  toast("сужу варианты…");
-  const jr=await api("/hook-judge",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({hooks,article:rec&&rec.article,niche:rec&&rec.niche,winners:3})});
-  const ranked=(jr&&(jr.ranked||jr.winners))||hooks.map(h=>({hook:h}));
-  openHookPicker(n,ranked.length?ranked:hooks.map(h=>({hook:h})));
-}
-function openHookPicker(n,ranked){
-  const ov=el("div",{style:"position:fixed;inset:0;background:rgba(0,0,0,.65);display:flex;align-items:center;justify-content:center;z-index:60;padding:24px;",onclick:(e)=>{ if(e.target===ov)ov.remove(); }});
-  const box=el("div",{class:"card",style:"padding:20px;width:min(500px,94vw);max-height:84vh;overflow:auto;"});
-  box.appendChild(el("div",{style:"font-size:15px;font-weight:600;margin-bottom:3px;"},"🏆 Хук-турнир"));
-  box.appendChild(el("div",{class:"muted",style:"margin-bottom:14px;"},"выбери лучший — станет хуком ноды (отвергнутые → сигнал предпочтения)"));
-  ranked.slice(0,5).forEach((w,i)=>{
-    const txt=(w&&(w.hook||w.hook_text))||w; const sc=w&&w.score;
-    box.appendChild(el("div",{style:"display:flex;gap:10px;align-items:center;padding:11px;border-radius:9px;background:var(--bg-card);border:1px solid var(--bd);margin-bottom:8px;cursor:pointer;",
-      onclick:async()=>{ n.params=n.params||{}; n.params.onscreen_text=String(txt).slice(0,300); n.prompt=String(txt).slice(0,300); scheduleSave(n); ov.remove();
-        // сигнал предпочтения: выбранный + отвергнутые (для обучения)
-        try{ await api("/hook-pick",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({recipe_id:(S.recipe&&S.recipe.recipe&&S.recipe.recipe.id),node_id:n.id,chosen:String(txt).slice(0,300),rejected:ranked.filter(x=>x!==w).map(x=>String((x&&(x.hook||x.hook_text))||x).slice(0,120)).slice(0,8),niche:(S.recipe&&S.recipe.recipe&&S.recipe.recipe.niche)})}); }catch(e){}
-        screenInspector(document.getElementById("screen")); toast("хук закреплён ✓"); },
-      mouseenter:null},
-      el("span",{class:"mono",style:"color:var(--acc);font-size:13px;"},"#"+(i+1)),
-      el("div",{style:"flex:1;font-size:13px;line-height:1.4;"},txt),
-      (sc!=null?el("span",{class:"mono tbadge",style:"background:"+(sc>=8?"var(--ok)":sc>=6?"var(--warn)":"var(--err)")+";"},"score "+Math.round(sc)):null)));
-  });
-  ov.appendChild(box); document.body.appendChild(ov);
-}
 // §17 · ИИ-заполнить граф: один вызов — режиссёр выбирает движок + заполняет настройки на каждой ноде
 async function runAutofillGraph(force){
   const rec=S.recipe&&S.recipe.recipe; if(!rec){ toast("сначала открой/создай граф"); return; }
@@ -1363,11 +1611,13 @@ async function openNightRun(){
   const INP="background:var(--bg-input);border:1px solid var(--bd2);color:var(--tx-hi);border-radius:7px;padding:7px 9px;font-size:13px;font-family:inherit;width:120px;";
   // V21.2 · режим: из готовых черновиков ИЛИ собрать с нуля (декомпозит конкурентов на твои товары)
   let _zero=false;
-  const seg=(z,lbl,sub)=>el("button",{class:"btn"+(_zero===z?" prim":""),style:"flex:1;flex-direction:column;align-items:flex-start;padding:8px 11px;gap:1px;",onclick:()=>{ _zero=z; m0.className="btn"+(!z?" prim":"")+"";m1.className="btn"+(z?" prim":"")+""; m0.style.cssText=segCss(!z);m1.style.cssText=segCss(z); nicheRow.style.display=z?"":"none"; }},el("span",{style:"font-size:12.5px;font-weight:600;"},lbl),el("span",{style:"font-size:10px;color:var(--tx-lo2);"},sub));
-  const segCss=(on)=>"flex:1;flex-direction:column;align-items:flex-start;padding:8px 11px;gap:1px;"+(on?"border-color:var(--acc);":"");
+  const zeroBuildEnabled=false;
+  const seg=(z,lbl,sub)=>el("button",{class:"btn"+(_zero===z?" prim":""),disabled:z&&!zeroBuildEnabled,title:z&&!zeroBuildEnabled?"Отключено в Sprint 1: batch-build выведен из MVP execution path":"",style:"flex:1;flex-direction:column;align-items:flex-start;padding:8px 11px;gap:1px;"+(z&&!zeroBuildEnabled?"opacity:.55;cursor:not-allowed;":""),onclick:()=>{ if(z&&!zeroBuildEnabled){ toast("batch-build отключён: запускай прогон из готовых черновиков"); return; } _zero=z; m0.className="btn"+(!z?" prim":"")+"";m1.className="btn"+(z?" prim":"")+""; m0.style.cssText=segCss(!z,false);m1.style.cssText=segCss(z,true); nicheRow.style.display=z?"":"none"; }},el("span",{style:"font-size:12.5px;font-weight:600;"},lbl),el("span",{style:"font-size:10px;color:var(--tx-lo2);"},sub));
+  const segCss=(on,disabled)=>"flex:1;flex-direction:column;align-items:flex-start;padding:8px 11px;gap:1px;"+(on?"border-color:var(--acc);":"")+(disabled?"opacity:.55;cursor:not-allowed;":"");
   const m0=seg(false,"📁 Из черновиков","уже созданные рецепты"); const m1=seg(true,"🏗 С нуля","декомпоз конкурентов→товары");
-  m0.style.cssText=segCss(true);m1.style.cssText=segCss(false);
+  m0.style.cssText=segCss(true,false);m1.style.cssText=segCss(false,true);
   box.appendChild(el("div",{style:"display:flex;gap:8px;margin-bottom:12px;"},m0,m1));
+  box.appendChild(el("div",{style:"font-size:11px;color:var(--tx-lo2);line-height:1.45;margin:-4px 0 12px;"},"Режим «с нуля» временно отключён: batch-build убран из MVP-контура, чтобы не плодить второй оркестратор."));
   // ниша (для режима «с нуля»)
   const nicheSel=el("select",{style:INP+"width:100%;"},...(S.niches||[]).map(n=>el("option",{value:n.niche},(NICHE_EMOJI[n.niche]||"")+" "+nicheLabel(n.niche))));
   const nicheRow=el("div",{style:"display:none;margin-bottom:10px;"},el("div",{style:"font-size:11px;color:var(--tx-lo);margin-bottom:3px;"},"Ниша (откуда брать конкурентов и товары)"),nicheSel);
@@ -1388,25 +1638,11 @@ async function openNightRun(){
     out.innerHTML=""; out.appendChild(loadingCard(dry?"считаю…":(_zero?"собираю черновики…":"запускаю прогон…")));
     const cnt=Math.min(30,Math.max(1,Number(cntIn.value)||5)); if(Number(cntIn.value)>30)cntIn.value=30;
     const bud=Math.max(1,Number(budIn.value)||40);
-    const r=_zero
-      ? await api("/batch-build",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({niche:nicheSel.value,count:cnt,budget_usd:bud,dry_run:!!dry})})
-      : await api("/batch",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({budget_usd:bud,count:cnt,dry_run:!!dry})});
+    if(_zero){ _busy=false; btns.forEach(b=>b.disabled=false); out.innerHTML=""; out.appendChild(errBox("batch-build отключён в Sprint 1; выбери режим «из черновиков»")); return; }
+    const r=await api("/batch",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({budget_usd:bud,count:cnt,dry_run:!!dry})});
     _busy=false; btns.forEach(b=>b.disabled=false);
     out.innerHTML="";
     if(!r||r.ok!==true){ const bb=Array.isArray(r&&r.balance_block)?r.balance_block.join(", "):(r&&r.balance_block); out.appendChild(errBox((r&&(r.error||(bb&&("низкий баланс: "+bb))))||"не вышло (сеть/сервер)")); return; }
-    if(_zero){
-      if(dry||r.dry){ out.appendChild(el("div",{style:"font-size:13px;margin-bottom:6px;"},"📊 Соберётся ",el("b",{style:"color:var(--acc-lt);"},(r.pairs||0)+" черновиков"))); out.appendChild(el("div",{style:"font-size:11px;color:var(--tx-lo2);"},(r.competitors||0)+" конкурентов × "+(r.products||0)+" товаров · ничего не создано")); return; }
-      out.appendChild(el("div",{style:"font-size:13px;margin-bottom:6px;"},"🏗 Сборка запущена: ",el("b",{style:"color:var(--acc-lt);"},(r.pairs||0)+" черновиков")));
-      out.appendChild(el("div",{style:"font-size:11.5px;color:var(--tx-lo);line-height:1.5;margin-bottom:8px;"},"Декомпоз конкурентов → перенос на товары (в фоне). По готовности сам запустит генерацию в пределах $"+bud+" → Telegram-ревью."));
-      const prog=el("div",{class:"mono",style:"font-size:11px;color:var(--tx-lo2);"},"собрано 0/"+(r.pairs||0)+"…"); out.appendChild(prog);
-      const bid=r.build_id; let stop=false, _perr=0;
-      const poll=async()=>{ if(stop||!bid)return; const s=await api("/batch-build?build_id="+bid);
-        if(s&&s.ok){ _perr=0; prog.textContent=(s.status==="done"?"✓ собрано "+s.built+"/"+s.total+" → генерация пошла, смотри Telegram/базу (06)":"собрано "+(s.built||0)+"/"+(s.total||0)+"…"); if(s.status==="done"||s.status==="failed"){ stop=true; return; } setTimeout(poll,6000); }
-        else if(++_perr<5){ setTimeout(poll,8000); } // транзиент сети — пара ретраев
-        else { prog.textContent="⚠ опрос статуса не отвечает — сборка идёт в фоне, смотри базу видосов (06)"; stop=true; } };
-      setTimeout(poll,5000);
-      return;
-    }
     const enq=(r.enqueued||[]).length;
     out.appendChild(el("div",{style:"font-size:13px;margin-bottom:8px;"},
       (dry?"📊 Смета: ":"🚀 Запущено: "),
@@ -1435,7 +1671,7 @@ async function openBrandKit(){
   ov.appendChild(box); document.body.appendChild(ov);
   const d=await api("/brand-kit?list=1"); bodyEl.innerHTML="";
   const brands=(d&&d.brands)||[];
-  if(!brands.length){ bodyEl.appendChild(emptyBox("нет брендов (или миграция brand_kits не применена)")); return; }
+  if(!brands.length){ bodyEl.appendChild(emptyBox("пока нет брендов для бренд-кита")); return; }
   const INP="width:100%;background:var(--bg-input);border:1px solid var(--bd2);color:var(--tx-hi);border-radius:7px;padding:7px 9px;font-size:12px;font-family:inherit;box-sizing:border-box;";
   const refs={}; const FONTS=["","Montserrat","Poppins","Comfortaa","Quantico","Noto Sans"];
   bodyEl.appendChild(el("div",{style:"font-size:11px;color:var(--tx-lo);margin-bottom:3px;"},"Бренд"));
@@ -1539,20 +1775,58 @@ function renderOTK(otk){
   const run=S.run;
   if(!run){ otk.appendChild(el("div",{style:"display:flex;align-items:center;gap:9px;margin-bottom:14px;"},el("div",{style:"width:30px;height:30px;border-radius:8px;background:var(--bg-card);display:flex;align-items:center;justify-content:center;font-size:14px;color:var(--tx-lo);"},"○"),el("div",{},el("div",{style:"font-size:13.5px;font-weight:600;"},"ОТК · контроль качества"),el("div",{class:"mono",style:"font-size:10.5px;color:var(--tx-lo2);"},"5 осей · вердикт"))));
     otk.appendChild(el("div",{class:"card",style:"padding:22px;text-align:center;color:var(--tx-lo);font-size:12.5px;line-height:1.5;"},"нажми «Смонтировать» — запустится генерация нод → Shotstack → ОТК")); return; }
-  // прогон провален, если: шаг failed / статус run_fail|otk_fail / есть текст ошибки —
+  // прогон провален, если: шаг failed / статус run_fail / есть текст ошибки —
   // тогда НЕ держим спиннер (раньше status="running" + step="failed" из таймаут-веток pollRun
   // оставлял active=true навсегда → вечный «исполняю граф…», ошибку юзер не видел).
-  const failed=run.step==="failed"||run.status==="run_fail"||run.status==="otk_fail"||!!run.error;
+  const failed=run.step==="failed"||run.status==="run_fail"||!!run.error;
   const active=!failed&&(run.status==="running"||(run.step&&run.step!=="done"));
   const score=run.otk_score!=null?run.otk_score:(run.otk&&run.otk.score);
   const sc100=score==null?null:Math.round(score*10);
+  const warnings=(run.warnings||[]).filter(Boolean);
+  const summary=run.run_summary||null;
   otk.appendChild(el("div",{style:"display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;"},
     el("div",{style:"display:flex;align-items:center;gap:9px;"},el("div",{style:"width:30px;height:30px;border-radius:8px;background:"+(active?"var(--warn-bg)":sc100>=70?"var(--ok-bg)":"var(--err-bg)")+";display:flex;align-items:center;justify-content:center;font-size:14px;"},active?"…":sc100>=70?"✓":"✗"),el("div",{},el("div",{style:"font-size:13.5px;font-weight:600;"},"ОТК · контроль качества"),el("div",{class:"mono",style:"font-size:10.5px;color:var(--tx-lo2);"},active?("шаг: "+(run.step||"…")):"5 осей · вердикт"))),
     sc100!=null?el("div",{style:"text-align:right;"},el("div",{class:"mono",style:"font-size:22px;font-weight:700;color:"+(sc100>=70?"var(--ok)":sc100>=50?"var(--warn)":"var(--err)")+";line-height:1;"},String(sc100)),el("div",{style:"font-size:9px;color:var(--tx-lo2);"},"из 100")):null));
+  if(run.run_id||warnings.length){
+    otk.appendChild(el("div",{style:"display:flex;flex-direction:column;gap:6px;margin:-4px 0 14px;"},
+      run.run_id?el("div",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);"},"run "+run.run_id):null,
+      warnings.length?el("div",{style:"background:var(--warn-bg);border:1px solid rgba(245,158,11,.35);border-radius:8px;padding:8px 10px;"},
+        el("div",{style:"font-size:11.5px;font-weight:700;color:var(--warn);margin-bottom:5px;"},"warnings · выпуск не заблокирован"),
+        ...warnings.slice(0,3).map(w=>el("div",{class:"mono",style:"font-size:10px;color:var(--tx-mid);line-height:1.35;"},String(w).slice(0,150)))):null));
+  }
+  if(summary&&(summary.steps_total||summary.total_ms!=null||summary.active_step||summary.last_step)){
+    otk.appendChild(el("div",{style:"display:flex;flex-wrap:wrap;gap:6px;margin:-2px 0 14px;"},
+      summary.active_step?el("span",{class:"mono",style:"font-size:9.5px;color:var(--acc-lt);background:var(--vio-bg);border:1px solid var(--bd-acc);padding:3px 7px;border-radius:5px;"},"active "+summary.active_step):null,
+      summary.last_step?el("span",{class:"mono",style:"font-size:9.5px;color:var(--tx-mid);background:var(--bg-input);border:1px solid var(--bd2);padding:3px 7px;border-radius:5px;"},"last "+summary.last_step):null,
+      summary.steps_total?el("span",{class:"mono",style:"font-size:9.5px;color:var(--tx-mid);background:var(--bg-input);border:1px solid var(--bd2);padding:3px 7px;border-radius:5px;"},"steps "+summary.steps_total):null,
+      summary.total_ms!=null?el("span",{class:"mono",style:"font-size:9.5px;color:var(--tx-mid);background:var(--bg-input);border:1px solid var(--bd2);padding:3px 7px;border-radius:5px;"},"time "+fmtMs(summary.total_ms)):null));
+  }
+  const execLog=(run.execution_log||run.execution_log_tail||[]).filter(Boolean);
+  if(execLog.length){
+    const box=el("div",{style:"background:var(--bg-card);border:1px solid var(--bd);border-radius:9px;padding:10px 11px;margin-bottom:14px;"});
+    box.appendChild(el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;"},
+      el("div",{style:"font-size:11.5px;font-weight:700;color:var(--tx-bd);"},"execution log"),
+      el("span",{class:"mono",style:"font-size:9.5px;color:var(--tx-lo2);"},"last "+execLog.length)));
+    const list=el("div",{style:"display:flex;flex-direction:column;gap:6px;"});
+    execLog.slice(-5).forEach((e)=>{
+      const st=e.status||"running";
+      const col=st==="done"?"var(--ok)":st==="warning"?"var(--warn)":"var(--err)";
+      const inp=String(e.input_artifact||"").slice(0,34);
+      const out=String(e.output_artifact||"").slice(0,34);
+      list.appendChild(el("div",{style:"display:flex;align-items:flex-start;gap:8px;font-size:10.5px;line-height:1.35;"},
+        el("span",{class:"mono",style:"flex:none;font-size:9px;color:"+col+";background:"+ (st==="done"?"var(--ok-bg)":st==="warning"?"var(--warn-bg)":"var(--err-bg)") +";padding:2px 5px;border-radius:4px;font-weight:700;"},st),
+        el("div",{style:"min-width:0;flex:1;color:var(--tx-bd);"},
+          el("div",{class:"mono",style:"color:var(--tx-hi);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"},e.step||"step"),
+          el("div",{class:"mono",style:"color:var(--tx-lo2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"},(inp?("in "+inp):"")+(out?(" · out "+out):"")),
+          e.note?el("div",{class:"mono",style:"color:var(--tx-lo2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"},String(e.note).slice(0,120)):null)));
+    });
+    box.appendChild(list);
+    otk.appendChild(box);
+  }
   if(active){ otk.appendChild(el("div",{class:"card",style:"padding:16px;"},el("div",{style:"display:flex;align-items:center;gap:12px;margin-bottom:14px;"},el("div",{class:"spinner"}),el("div",{class:"muted"},"исполняю граф…")),
     el("div",{style:"display:flex;flex-direction:column;gap:6px;"},...(run.nodes||[]).map(nodeRunRow)))); return; }
   // прогон упал ДО ОТК (нет балла) → показываем ошибку + ноды + повтор, а не ложное «Годен»
-  if((run.step==="failed"||run.status==="run_fail"||run.status==="otk_fail"||run.error)&&sc100==null){
+  if((run.step==="failed"||run.status==="run_fail"||run.error)&&sc100==null){
     otk.appendChild(el("div",{style:"background:var(--err-bg);border:1px solid var(--bd-err);border-radius:9px;padding:11px 13px;margin-bottom:14px;"},
       el("div",{style:"font-size:12.5px;font-weight:600;color:var(--err);"},"✗ Сборка не удалась"),
       el("div",{style:"font-size:11px;color:var(--tx-mid);margin-top:3px;"},String(run.error||"одна или несколько нод упали — проверь image_url/инструменты/ключи").slice(0,140))));
@@ -1562,7 +1836,8 @@ function renderOTK(otk){
   }
   // verdict
   const pass=sc100==null||sc100>=70;
-  otk.appendChild(el("div",{style:"background:"+(pass?"var(--ok-bg)":"var(--err-bg)")+";border:1px solid "+(pass?"#1d3a2b":"var(--bd-err)")+";border-radius:9px;padding:11px 13px;margin-bottom:15px;display:flex;align-items:center;gap:9px;"},el("span",{style:"font-size:14px;"},pass?"✓":"✗"),el("div",{},el("div",{style:"font-size:12.5px;font-weight:600;color:"+(pass?"#7fe0b3":"var(--err)")+";"},pass?"Годен к публикации":"Доработать"),(run.otk&&run.otk.verdict)?el("div",{style:"font-size:11px;color:var(--tx-mid);margin-top:2px;"},String(run.otk.verdict).slice(0,90)):null)));
+  const warnDone=run.status==="warning"||warnings.length;
+  otk.appendChild(el("div",{style:"background:"+(pass?"var(--ok-bg)":warnDone?"var(--warn-bg)":"var(--err-bg)")+";border:1px solid "+(pass?"#1d3a2b":warnDone?"rgba(245,158,11,.35)":"var(--bd-err)")+";border-radius:9px;padding:11px 13px;margin-bottom:15px;display:flex;align-items:center;gap:9px;"},el("span",{style:"font-size:14px;"},pass?"✓":warnDone?"!":"✗"),el("div",{},el("div",{style:"font-size:12.5px;font-weight:600;color:"+(pass?"#7fe0b3":warnDone?"var(--warn)":"var(--err)")+";"},pass?(warnDone?"Готово с предупреждениями":"Годен к публикации"):(warnDone?"Сохранено, нужен ручной взгляд":"Доработать")),(run.otk&&run.otk.verdict)?el("div",{style:"font-size:11px;color:var(--tx-mid);margin-top:2px;"},String(run.otk.verdict).slice(0,90)):null)));
   const axes=(run.otk&&run.otk.axes)||{};
   if(axes&&Object.keys(axes).length){ const map=[["hook","Хук (первые 1.5с)"],["retention","Удержание"],["native","Нативность (не реклама)"],["brand","Бренд / товар виден"],["cta","CTA / действие"]];
     const ax=el("div",{style:"display:flex;flex-direction:column;gap:11px;margin-bottom:16px;"});
@@ -1619,7 +1894,7 @@ async function pollRun(id,c,errs){
     return pollRun(id,c+1,errs+1);
   }
   S.run=r; const panel=document.getElementById("otk-panel"); if(panel)renderOTK(panel);
-  if(r.step==="done"||r.step==="failed"||r.status==="otk_pass"||r.status==="otk_fail"||r.status==="run_fail"){ _runPolling=false; return; } pollRun(id,c+1,0);
+  if(r.step==="done"||r.step==="failed"||r.status==="otk_pass"||r.status==="warning"||r.status==="run_fail"){ _runPolling=false; return; } pollRun(id,c+1,0);
 }
 
 //==================== 06 · LIBRARY ====================
@@ -1668,7 +1943,7 @@ async function screenLibrary(root,useCache){
   rows.forEach(([t,c,cnt,$])=>
     aside.appendChild(el("div",{style:"margin-bottom:10px;"},el("div",{style:"display:flex;align-items:center;justify-content:space-between;font-size:11.5px;margin-bottom:3px;"},el("span",{},t+(cnt>1?" ×"+cnt:"")),el("span",{class:"mono",style:"color:var(--tx-mid);"},"$"+$.toFixed(2))),el("div",{class:"bar"},el("i",{style:"width:"+Math.round($/cMax*100)+"%;background:"+c})))));
   aside.appendChild(el("div",{class:"card",style:"padding:12px;margin-top:14px;display:flex;align-items:center;"},el("span",{style:"flex:1;font-size:12px;"},"Итого прогон"),el("span",{class:"mono",style:"font-weight:600;"},"≈$"+cTotal.toFixed(2))));
-  aside.appendChild(el("div",{style:"font-size:9px;color:var(--tx-lo2);margin-top:6px;line-height:1.3;"},"× ОТК-реген может поднять (до ×3 рендера). Батч ×3 варианта."));
+  aside.appendChild(el("div",{style:"font-size:9px;color:var(--tx-lo2);margin-top:6px;line-height:1.3;"},"× ОТК-реген может поднять стоимость прогона (до ×3 рендера). Variants path в Sprint 1 выключен."));
 }
 function genCard(g){ const a=g.analysis||{}; const isVid=g.kind==="video"; const win=a.otk&&a.otk>=8;
   const thumb=el("div",{class:"ph",style:"aspect-ratio:9/14;position:relative;display:flex;align-items:center;justify-content:center;overflow:hidden;background:#0c0d10;"},
@@ -1691,27 +1966,35 @@ function genCard(g){ const a=g.analysis||{}; const isVid=g.kind==="video"; const
         a.otk?el("span",{style:"font-size:9px;color:var(--ok);background:var(--ok-bg);padding:2px 6px;border-radius:4px;"},"ОТК "+a.otk):null)));
 }
 function recipeCard(r){ const needsRejudge=!!(r.needs_rejudge||(r.status==="otk_pass"&&r.output_url&&r.otk_score==null));
+  const warnings=(r.warnings||[]).filter(Boolean);
+  const summary=r.run_summary||null;
+  const sprintWarning=r.status==="warning"||(r.status==="otk_fail"&&r.step==="done"&&r.output_url);
   const hasErr=needsRejudge||r.catalog_error||(r.node_errors&&r.node_errors.length);
-  const stC=needsRejudge?"var(--warn)":({otk_pass:"var(--ok)",otk_fail:"var(--err)",run_fail:"var(--err)",draft:"var(--tx-lo2)",running:"var(--warn)",posted:"var(--acc)"}[r.status]||"var(--tx-lo2)");
+  const stC=needsRejudge?"var(--warn)":({otk_pass:"var(--ok)",warning:"var(--warn)",otk_fail:(sprintWarning?"var(--warn)":"var(--err)"),run_fail:"var(--err)",draft:"var(--tx-lo2)",running:"var(--warn)",posted:"var(--acc)"}[r.status]||"var(--tx-lo2)");
   const c=NODE_TYPE_COLOR[r.format_detected]||"#5b9cf2";
+  const errCat=r.error_category&&r.error_category!=="other"?String(r.error_category):"";
   const errText=needsRejudge?"нужен rejudge":(r.catalog_error?("catalog: "+String(r.catalog_error).slice(0,90)):((r.node_errors&&r.node_errors[0])?String(r.node_errors[0].error||"node error").slice(0,90):""));
+  const shownStatus=sprintWarning?"warning":r.status;
   return el("div",{class:"card",style:"padding:12px;cursor:pointer;"+(hasErr?"border-color:rgba(245,158,11,.55);":""),
     title:errText||"",onclick:()=>openRecipe(r.id).then(ok=>{ if(ok)go("canvas"); })},
     el("div",{style:"display:flex;align-items:center;gap:8px;margin-bottom:7px;"},el("span",{class:"sq",style:"width:8px;height:8px;background:"+c}),el("span",{class:"mono",style:"font-size:9px;color:var(--tx-lo);"},"граф #"+r.id),el("span",{class:"dot",style:"width:8px;height:8px;background:"+stC+";margin-left:auto;"}),
+      r.run_id?el("span",{class:"mono",style:"font-size:8.5px;color:var(--tx-lo2);background:var(--bg-input);border:1px solid var(--bd2);padding:2px 5px;border-radius:4px;",title:r.run_id},"run"):null,
+      r.execution_log_count?el("span",{class:"mono",style:"font-size:8.5px;color:var(--tx-lo2);background:var(--bg-input);border:1px solid var(--bd2);padding:2px 5px;border-radius:4px;",title:(r.execution_log_last&&r.execution_log_last.step)?("last: "+r.execution_log_last.step):"execution log"},"log "+r.execution_log_count):null,
+      warnings.length?el("span",{class:"mono",style:"font-size:9px;color:var(--warn);background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.35);padding:2px 5px;border-radius:4px;",title:warnings.join("\\n")},"warn "+warnings.length):null,
       needsRejudge?el("span",{class:"mono",style:"font-size:9px;color:var(--warn);background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.35);padding:2px 5px;border-radius:4px;"},"ОТК ?"):null,
-      needsRejudge?el("button",{class:"btn sm",style:"padding:3px 7px;margin-left:2px;",onclick:async(e)=>{ e.stopPropagation(); await selfHeal("rejudge",{apply:true,max_items:1,recipe_ids:[r.id]},"rejudge запущен"); }},"↻ rejudge"):null,
-      r.status==="running"&&r.step!=="done"&&r.step!=="failed"?el("button",{class:"btn sm",style:"padding:3px 7px;margin-left:2px;",onclick:async(e)=>{ e.stopPropagation(); await selfHeal("wake",{stale_ms:90000,max_wake:3},"будилка дернулась"); }},"⚡ wake"):null,
-      el("span",{style:"font-size:12px;color:var(--acc-lt);cursor:pointer;padding:0 2px;",title:"R4: 3 варианта с разными хуками (A/B на объёме)",onclick:async(e)=>{ e.stopPropagation(); toast("делаю варианты хука…"); const d=await api("/recipe-variants",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({recipe_id:r.id,n:3})}); if(d&&d.ok){ toast("✓ "+(d.variants||[]).length+" вариант(ов) → в базе, гоняй все"); if(S.screen==="library")screenLibrary(document.getElementById("screen")); } else toast("не вышло: "+((d&&d.error)||"?").toString().slice(0,45)); }},"🔀"),
       el("span",{style:"font-size:12px;color:var(--tx-lo2);cursor:pointer;padding:0 2px;",title:"удалить рецепт",onclick:async(e)=>{ e.stopPropagation(); if(!confirm("Удалить граф #"+r.id+"?"))return; const cardEl=e.currentTarget.closest(".card"); const d=await api("/recipes?recipe_id="+r.id,{method:"DELETE"}); if(d.ok){ toast("удалён"); if(cardEl)cardEl.remove(); S.recipes=(S.recipes||[]).filter(x=>x.id!==r.id); if(S.recipe&&S.recipe.recipe&&String(S.recipe.recipe.id)===String(r.id)){ S.recipe=null; S.selectedNode=null; if(["canvas","inspector","assembly"].includes(S.screen))render(); } } else toast(d.error||"ошибка"); }},"✕")),
     el("div",{style:"font-size:12.5px;font-weight:600;"},(r.article||"—")),
     el("div",{style:"font-size:10.5px;color:var(--tx-lo);margin-top:4px;"},(r.niche||"")+" · "+(r.format_detected||"")+" · "+(r.built_by||"")),
-    el("div",{class:"mono",style:"font-size:10px;color:"+(needsRejudge?"var(--warn)":"var(--tx-lo2)")+";margin-top:7px;"},r.status+(r.otk_score!=null?" · ОТК "+Math.round(r.otk_score*10):(needsRejudge?" · ОТК ?":""))+(r.step?" · "+r.step:"")),
+    el("div",{class:"mono",style:"font-size:10px;color:"+(needsRejudge||sprintWarning?"var(--warn)":"var(--tx-lo2)")+";margin-top:7px;"},shownStatus+(r.otk_score!=null?" · ОТК "+Math.round(r.otk_score*10):(needsRejudge?" · ОТК ?":""))+(r.step?" · "+r.step:"")),
+    errCat?el("div",{class:"mono",style:"font-size:9.5px;color:var(--err);margin-top:5px;"},"error "+errCat):null,
+    summary?(el("div",{class:"mono",style:"font-size:9.5px;color:var(--tx-lo2);margin-top:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"},
+      (summary.active_step?("active "+summary.active_step+" · "):"")+(summary.last_step?("last "+summary.last_step+" · "):"")+(summary.total_ms!=null?("time "+fmtMs(summary.total_ms)):""))):null,
     errText?el("div",{class:"mono",style:"font-size:9.5px;color:var(--warn);margin-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"},errText):null,
     // V5: метрики после поста → обучение на РЫНКЕ (а не только ОТК-робот)
     el("div",{style:"margin-top:8px;display:flex;gap:5px;align-items:center;",title:"впиши реальные просмотры после публикации → хук валидируется рынком",onclick:(e)=>e.stopPropagation()},
       el("input",{class:"input",type:"number",placeholder:"просмотры (48ч)",style:"flex:1;min-width:0;font-size:11px;padding:4px 7px;",id:"pm-v-"+r.id}),
       el("select",{style:"font-size:10px;background:var(--bg-input);border:1px solid var(--bd2);border-radius:6px;color:var(--tx-bd);padding:3px;",id:"pm-p-"+r.id},...["TikTok","Reels","Shorts","VK"].map(p=>el("option",{value:p},p))),
-      el("button",{class:"btn sm",style:"padding:4px 8px;",onclick:async(e)=>{ e.stopPropagation(); const vi=document.getElementById("pm-v-"+r.id); const v=Number(vi&&vi.value); if(!v){ toast("впиши просмотры"); return; } const pe=document.getElementById("pm-p-"+r.id); const d=await api("/post-metrics",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({recipe_id:r.id,platform:(pe&&pe.value)||"TikTok",views:v})}); toast(d&&d.ok?(d.forwarded?"✓ рынок → хук в winners":"✓ метрики записаны"):"не вышло"); if(vi)vi.value=""; }},"📊")));
+      el("button",{class:"btn sm",style:"padding:4px 8px;",onclick:async(e)=>{ e.stopPropagation(); const vi=document.getElementById("pm-v-"+r.id); const v=Number(vi&&vi.value); if(!v){ toast("впиши просмотры"); return; } const pe=document.getElementById("pm-p-"+r.id); const d=await api("/post-metrics",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({recipe_id:r.id,platform:(pe&&pe.value)||"TikTok",views:v})}); toast(d&&d.ok?(d.forwarded?"✓ рынок → хук в winners":(d.warnings&&d.warnings.length?"✓ метрики · warning":"✓ метрики записаны")):"не вышло"); if(vi)vi.value=""; }},"📊")));
 }
 
 //==================== 07 · БАЛАНСЫ СЕРВИСОВ ====================
@@ -1719,6 +2002,7 @@ function recipeCard(r){ const needsRejudge=!!(r.needs_rejudge||(r.status==="otk_
 // Живой опрос (virlo/creatify/fal) + ручной баланс (shotstack/claude). Работа вслепую недопустима → low громко.
 function fmtBal(b,cur){ if(b==null)return "—"; b=Number(b); return cur==="USD"?"$"+b.toFixed(2):(Math.round(b*100)/100)+" cr"; }
 function fmtWhen(iso){ if(!iso)return "—"; try{ return new Date(iso).toLocaleString("ru-RU",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}); }catch(e){ return String(iso); } }
+function fmtMs(ms){ const n=Number(ms); if(!isFinite(n)||n<0)return "—"; const sec=Math.round(n/1000); if(sec<60)return sec+"s"; const min=Math.floor(sec/60), rem=sec%60; return min+"m"+(rem?" "+rem+"s":""); }
 function sparkSvg(history,low){
   const pts=(history||[]).map(h=>h&&h.balance).filter(v=>v!=null&&isFinite(v));
   const W=132,H=36;
@@ -1732,33 +2016,59 @@ function sparkSvg(history,low){
     +'<circle cx="'+last[0]+'" cy="'+last[1]+'" r="2.4" fill="'+col+'"/></svg>';
 }
 async function screenBalances(root){
+  const renderBalances=(data,pending)=>{
+    const wrap=el("div",{class:"scroll",style:"padding:18px;"}); root.appendChild(wrap);
+    if(pending){
+      wrap.appendChild(el("div",{class:"mono",style:"font-size:11px;color:var(--tx-lo2);margin-bottom:14px;display:flex;align-items:center;gap:9px;"},el("div",{class:"spinner"}),S.balanceCache?"обновляю балансы…":"опрашиваю балансы сервисов…"));
+      if(!S.balanceCache){
+        const skel=el("div",{style:"display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:14px;"});
+        for(let i=0;i<6;i++)skel.appendChild(el("div",{class:"card",style:"padding:16px;display:flex;flex-direction:column;gap:12px;opacity:.45;animation:pulse 1.4s ease-in-out infinite;"},
+          el("div",{style:"height:15px;width:42%;border-radius:5px;background:var(--bg-input);"}),
+          el("div",{style:"height:28px;width:58%;border-radius:6px;background:var(--bg-input);"}),
+          el("div",{style:"height:34px;width:100%;border-radius:6px;background:var(--bg-input);"})));
+        wrap.appendChild(skel);
+        return wrap;
+      }
+      wrap.appendChild(el("div",{style:"font-size:11.5px;color:var(--tx-lo);margin-bottom:12px;"},"показываю последний снимок, пока подтягиваю свежие значения"));
+    }
+    const services=data.services||[];
+    const low=services.filter(s=>s.low);
+    if(low.length){
+      wrap.appendChild(el("div",{style:"background:var(--err-bg);border:1px solid var(--err);color:var(--err);border-radius:10px;padding:13px 16px;margin-bottom:16px;display:flex;align-items:center;gap:10px;font-size:13px;font-weight:600;"},
+        el("span",{style:"font-size:17px;"},"⚠"),
+        "Кончаются бабки: "+low.map(s=>s.label+" — "+fmtBal(s.balance,s.currency)).join(" · ")));
+    }
+    const grid=el("div",{style:"display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:14px;"}); wrap.appendChild(grid);
+    if(!services.length){ grid.appendChild(emptyBox("нет сервисов для показа балансов")); }
+    services.forEach(s=>grid.appendChild(balanceCard(s,root)));
+    wrap.appendChild(el("div",{class:"mono",style:"margin-top:16px;font-size:10.5px;color:var(--tx-lo2);"},
+      "live API — опрос сейчас · ручной — введён владельцем · оценка — по журналу событий"+(data.updated_at?" · обновлено "+fmtWhen(data.updated_at):"")));
+    return wrap;
+  };
   header("Балансы сервисов","сколько осталось $", el("div",{class:"hdr-r"},
     el("button",{class:"btn",title:"опросить балансы заново",onclick:()=>screenBalances(root)},"↻ Обновить")));
-  const wrap=el("div",{class:"scroll",style:"padding:18px;"}); root.appendChild(wrap);
-  // скелет-карточки на время живого опроса (до ~9с на сервис) — экран не выглядит мёртвым спиннером
-  wrap.appendChild(el("div",{class:"mono",style:"font-size:11px;color:var(--tx-lo2);margin-bottom:14px;display:flex;align-items:center;gap:9px;"},el("div",{class:"spinner"}),"опрашиваю балансы сервисов…"));
-  const skel=el("div",{style:"display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:14px;"});
-  for(let i=0;i<6;i++)skel.appendChild(el("div",{class:"card",style:"padding:16px;display:flex;flex-direction:column;gap:12px;opacity:.45;animation:pulse 1.4s ease-in-out infinite;"},
-    el("div",{style:"height:15px;width:42%;border-radius:5px;background:var(--bg-input);"}),
-    el("div",{style:"height:28px;width:58%;border-radius:6px;background:var(--bg-input);"}),
-    el("div",{style:"height:34px;width:100%;border-radius:6px;background:var(--bg-input);"})));
-  wrap.appendChild(skel);
+  if(S.balanceCache) renderBalances(S.balanceCache, true);
+  else renderBalances({services:[]}, true);
   const data=await api("/balances");
   if(S.screen!=="balances")return;
-  wrap.innerHTML="";
-  if(data.error){ wrap.appendChild(emptyBox("ошибка балансов: "+data.error)); return; }
-  const services=data.services||[];
-  const low=services.filter(s=>s.low);
-  if(low.length){
-    wrap.appendChild(el("div",{style:"background:var(--err-bg);border:1px solid var(--err);color:var(--err);border-radius:10px;padding:13px 16px;margin-bottom:16px;display:flex;align-items:center;gap:10px;font-size:13px;font-weight:600;"},
-      el("span",{style:"font-size:17px;"},"⚠"),
-      "Кончаются бабки: "+low.map(s=>s.label+" — "+fmtBal(s.balance,s.currency)).join(" · ")));
+  const prevBalanceCache=S.balanceCache;
+  root.innerHTML="";
+  if(data.error){
+    if(prevBalanceCache && prevBalanceCache.services){
+      S.balanceCache=prevBalanceCache;
+      renderBalances(prevBalanceCache,false);
+      const wrap=root.querySelector(".scroll");
+      if(wrap) wrap.insertBefore(el("div",{style:"background:var(--warn-bg);border:1px solid var(--warn);color:var(--warn);border-radius:10px;padding:12px 14px;margin-bottom:14px;font-size:12px;line-height:1.5;"},"ошибка балансов: "+data.error), wrap.firstChild);
+      return;
+    }
+    S.balanceCache=data;
+    const wrap=el("div",{class:"scroll",style:"padding:18px;"});
+    root.appendChild(wrap);
+    wrap.appendChild(emptyBox("ошибка балансов: "+data.error));
+    return;
   }
-  const grid=el("div",{style:"display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:14px;"}); wrap.appendChild(grid);
-  if(!services.length){ grid.appendChild(emptyBox("нет сервисов — проверь миграцию service_balances")); }
-  services.forEach(s=>grid.appendChild(balanceCard(s,root)));
-  wrap.appendChild(el("div",{class:"mono",style:"margin-top:16px;font-size:10.5px;color:var(--tx-lo2);"},
-    "live API — опрос сейчас · ручной — введён владельцем · оценка — по журналу событий"+(data.updated_at?" · обновлено "+fmtWhen(data.updated_at):"")));
+  S.balanceCache=data;
+  renderBalances(data,false);
 }
 function balanceCard(s,root){
   const cur=s.currency||s.unit, unit=(s.unit==="USD"||cur==="USD")?"$":"cr";
@@ -1880,7 +2190,7 @@ async function screenLearn(root){
   const rg=d.recent_generations||[];
   if(!rg.length){ wrap.appendChild(emptyBox("история пуста — после первых прогонов появятся записи")); }
   else{
-    const ST={otk_pass:["var(--ok)","ОТК ✓"],approved:["var(--ok)","одобрено"],otk_fail:["var(--err)","ОТК ✕"],rejected:["var(--err)","реджект"],artifact_fail:["var(--err)","артефакт"],regen:["var(--warn)","реген"],generated:["var(--tx-bd)","сгенерено"]};
+    const ST={otk_pass:["var(--ok)","ОТК ✓"],approved:["var(--ok)","одобрено"],otk_fail:["var(--warn)","warning"],rejected:["var(--warn)","warning"],artifact_fail:["var(--warn)","warning"],run_fail:["var(--err)","сбой"],regen:["var(--warn)","реген"],generated:["var(--tx-bd)","сгенерено"]};
     const list=el("div",{style:"display:flex;flex-direction:column;gap:6px;"}); wrap.appendChild(list);
     rg.forEach(r=>{
       const st=ST[r.status]||["var(--tx-lo2)",r.status||"?"];
@@ -1897,6 +2207,8 @@ async function screenLearn(root){
 //==================== DS ====================
 function screenDS(root){
   header("Дизайн-система","токены"); const s=el("div",{class:"scroll"}); root.appendChild(s);
+  s.appendChild(el("div",{class:"card",style:"padding:14px;margin-bottom:18px;border-color:var(--warn);background:var(--warn-bg);color:var(--tx-bd);font-size:12px;line-height:1.5;"},
+    "Этот экран оставлен как служебный fallback для разработки интерфейса и не входит в текущий MVP-флоу завода."));
   s.appendChild(el("div",{class:"sec-cap",style:"margin-bottom:12px;"},"01 · Палитра"));
   const pal=el("div",{style:"display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-bottom:26px;"});
   [["bg-deep","#0c0d10"],["bg-card","#15171c"],["bg-node","#181b21"],["acc","#7c74ff"],["ok","#46c08f"],["warn","#d6a94e"],["err","#e5604f"],["video","#5b9cf2"],["audio","#46c08f"],["image","#d6a94e"],["script","#b078ef"],["caption","#ef6fa6"]].forEach(([n,h])=>
@@ -1915,6 +2227,19 @@ function screenDS(root){
 const assistMsgs=[]; // история чата {role,content}
 const assistSeen=new Set(); // экраны, на которых проводник уже сам представился (за сессию)
 let assistBusy=false;
+function resetAssistantThread(nextScreen){
+  assistMsgs.length=0;
+  const thread=document.getElementById("assist-thread");
+  if(!thread)return;
+  thread.innerHTML="";
+  const screenName=(SCREENS.find(s=>s.id===nextScreen)||{}).tt||nextScreen;
+  thread.appendChild(el("div",{class:"mono",style:"font-size:10px;color:var(--tx-lo3);text-align:center;padding:8px 0;"},"— переход: "+screenName+" —"));
+}
+function clearForeignPreviewState(n,nextTool){
+  const p=S.preview[n.id];
+  if(!p||!p.tool||p.tool===nextTool)return;
+  if(p.status==="error"||p.status==="in_progress") delete S.preview[n.id];
+}
 
 // Компактный дайджест состояния S → «глаза» проводника (что у юзера прямо сейчас).
 function assistantContext(){
@@ -1964,7 +2289,7 @@ function coachNextStep(){
     case "balances":
       return {cap:"Балансы",t:"Следи за остатками по сервисам. Сервис на нуле — генерация по нему встанет.",why:"Seedance/Kling/Creatify/Shotstack/FAL платные. Пустой баланс = упавшая нода в сборке."};
     case "worker":
-      return {cap:"Railway worker",t:"Смотри на heartbeat, current task и очередь. Если станет stale/dead — воркер не шлёт пульс и его нужно будить или перезапускать.",why:"Это экран живого контроля: видно, что воркер делает сейчас, и видно, когда он перестал отвечать. Следующий шаг обычно либо исправить блокер, либо дождаться следующего heartbeat.",chips:["Как понять stale vs dead?","Где смотреть очередь задач?"]};
+      return {cap:"Railway worker",t:"Смотри на heartbeat, current task и очередь. Если станет stale/dead — воркер перестал слать пульс и нужно проверять sender, blocker или перезапуск.",why:"Это экран живого контроля: видно, что воркер делает сейчас, и видно, когда он перестал отвечать. Следующий шаг обычно либо исправить блокер, либо разбираться с heartbeat path, а не запускать скрытую самопочинку.",chips:["Как понять stale vs dead?","Где смотреть очередь задач?"]};
     case "learn":
       return {cap:"Обучение",t:"Смотри, что завод выучил: победившие хуки, тренд ОТК, пресеты-победители за период.",why:"Это память завода. Переноси удачные хуки и пресеты в новые ролики — повторяешь то, что уже заходило.",chips:["Как применить выученное?","Что показывает тренд ОТК?"]};
     case "ds":
@@ -2007,6 +2332,16 @@ function maybeIntroScreen(s){
   if(fresh){ thread.querySelectorAll(".intro-acts").forEach(e=>e.remove()); build(); pulseAssist(); } // диалог есть → новый экран = хлебная крошка
 }
 function pulseAssist(){ const h=document.querySelector("#assist .assist-head"); if(!h)return; h.classList.remove("ping"); void h.offsetWidth; h.classList.add("ping"); }
+function applyCompact(){
+  const a=document.querySelector(".app"); if(!a)return;
+  a.classList.toggle("compact",!!S.compact);
+}
+function toggleCompact(){
+  S.compact=!S.compact;
+  try{localStorage.setItem("noda_compact",S.compact?"1":"0");}catch(e){}
+  applyCompact();
+  render();
+}
 
 function assistBubble(role,text){
   const thread=document.getElementById("assist-thread");
@@ -2053,9 +2388,14 @@ function mountAssistant(){
     q.addEventListener("input",()=>{ q.style.height="auto"; q.style.height=Math.min(120,q.scrollHeight)+"px"; });
   }
   if(tg)tg.onclick=toggleAssist;
+  let compact=S.compact;
+  try{compact=localStorage.getItem("noda_compact")==="1";}catch(e){}
+  S.compact=compact;
+  applyCompact();
   let col=false; try{col=localStorage.getItem("noda_assist_col")==="1";}catch(e){}
   if(col){ document.getElementById("assist").classList.add("collapsed"); if(tg)tg.textContent="⟨"; }
   refreshAssistStep();
+  if(compact) render();
 }
 
 (async()=>{ await restoreSession(); renderNav(); render(); mountAssistant(); loadObserver().catch(()=>{}); setInterval(()=>loadObserver().catch(()=>{}),60000); })(); // восстановить сессию → отрисовать там, где был → поднять проводника

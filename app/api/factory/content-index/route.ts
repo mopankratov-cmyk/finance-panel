@@ -36,6 +36,7 @@ async function walk(diskId: string, key: string, path: string, depth: number, ac
 
 // Проиндексировать диски в content_assets (upsert по (disk,path)). POST { disk?: "norvia"|"design" }.
 export async function POST(req: NextRequest) {
+  try {
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 500 });
   const body = await req.json().catch(() => ({}));
@@ -70,13 +71,23 @@ export async function POST(req: NextRequest) {
     if (r.article) byArticle[r.article] = (byArticle[r.article] || 0) + 1;
   }
   return NextResponse.json({ ok: true, indexed: rows.length, by_niche: byNiche, by_article: byArticle });
+  } catch (e) {
+    return NextResponse.json({
+      ok: false,
+      indexed: 0,
+      by_niche: {},
+      by_article: {},
+      error: "content-index POST crash: " + String((e as Error)?.message || e).slice(0, 160),
+    }, { status: 500 });
+  }
 }
 
 // GET — текущее состояние каталога (агрегатные COUNT, не fetch строк: иначе лимит 1000).
 export async function GET() {
+  try {
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 500 });
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   const eqs = async (filters: [string, unknown][]): Promise<number> => {
     let q = db.from("content_assets").select("*", { count: "exact", head: true });
     for (const [c, v] of filters) q = q.eq(c, v);
@@ -100,5 +111,13 @@ export async function GET() {
     return NextResponse.json({ total, wb_photos: wbPhotos, by_niche: by });
   } catch (e) {
     return NextResponse.json({ error: String(e instanceof Error ? e.message : e) }, { status: 500 });
+  }
+  } catch (e) {
+    return NextResponse.json({
+      total: 0,
+      wb_photos: 0,
+      by_niche: {},
+      error: "content-index GET crash: " + String((e as Error)?.message || e).slice(0, 160),
+    }, { status: 500 });
   }
 }

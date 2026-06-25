@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClaudeClient } from "@/lib/agent/client";
 import { DEAI_FILTERS } from "@/lib/factory/standard";
+import { extractJsonArray } from "@/lib/factory/extractJson";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -17,6 +18,7 @@ const PLATFORM_RULES: Record<string, string> = {
 };
 
 export async function POST(req: NextRequest) {
+  try {
   const body = await req.json().catch(() => ({}));
   const idea: string = (body.idea || body.hook || body.concept || "").toString().trim();
   const script: string = (body.script || "").toString().trim();
@@ -41,13 +43,19 @@ ${rules}
 
   try {
     const res = await client.messages.create({ model: MODEL, max_tokens: 2500, system: sys, messages: [{ role: "user", content: user }] });
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     const txt = (res.content as any[]).filter((b) => b.type === "text").map((b) => b.text).join(" ");
-    const m = txt.match(/\[[\s\S]*\]/);
-    if (!m) return NextResponse.json({ error: "пустой ответ" }, { status: 502 });
-    const posts = JSON.parse(m[0]);
+    const posts = extractJsonArray(txt);
+    if (!posts?.length) return NextResponse.json({ error: "пустой ответ" }, { status: 502 });
     return NextResponse.json({ product, posts });
   } catch (e) {
     return NextResponse.json({ error: String(e).slice(0, 200) }, { status: 502 });
+  }
+  } catch (e) {
+    return NextResponse.json({
+      product: "",
+      posts: [],
+      error: "repurpose crash: " + String((e as Error)?.message || e).slice(0, 160),
+    }, { status: 500 });
   }
 }

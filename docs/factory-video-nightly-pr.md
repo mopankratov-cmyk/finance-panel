@@ -27,9 +27,9 @@
 BASE_URL=https://your-domain CRON_SECRET=... \
 node scripts/rejudge-video-batch.mjs --ids=39,38,14 --max-items=3 --apply
 ```
-3. Проверить в studio, что карточки с `ОТК ?` ушли в `otk_pass` / `otk_fail`.
+3. Проверить в studio, что карточки с `ОТК ?` ушли в `otk_pass` / `warning`.
 4. Проверить, что `content_assets` начал наполняться и `catalog_error` не растёт.
 
 ## Риски
-- `video-critic` может возвращать `502` в локальной среде без живого egress.
+- `video-critic` теперь деградирует в deterministic fallback при недоступном upstream; качество сигнала ниже, но выпуск не блокируется.
 - `rejudge` intentionally ограничен батчем `max_items` для безопасного recovery.

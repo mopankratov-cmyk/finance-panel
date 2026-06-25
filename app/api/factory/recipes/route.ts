@@ -13,7 +13,7 @@ export const maxDuration = 20;
 //   POST { template_id?|nodes?, article, product_name?, niche?, mode?, format? } → перенос
 // Всегда JSON (обработчик в try/catch).
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+
 function roleToSlot(n: any): string {
   const r = String(n?.role || "").toLowerCase();
   const t = String(n?.node_type || "").toLowerCase();
@@ -25,14 +25,14 @@ function roleToSlot(n: any): string {
   return "scene";
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+
 async function transfer(db: any, p: { template_id?: string | number; nodes?: any[]; article: string; product_name?: string; niche?: string; mode?: string; format?: string }) {
   const article = (p.article || "").toString().trim();
   if (!article) return { error: "нужен article (товар, под который переносим)", status: 400 };
   const productName = (p.product_name || "").toString().trim();
   const mode = p.mode === "sell" ? "sell" : "audience";
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   let tplNodes: any[] = Array.isArray(p.nodes) ? p.nodes : [];
   let format = (p.format || "").toString();
   let niche = (p.niche || "").toString().trim();

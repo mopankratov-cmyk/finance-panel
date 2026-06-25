@@ -17,6 +17,7 @@ export const maxDuration = 60;
 // }
 // Возвращает { video_url } готового гибридного ролика.
 export async function POST(req: NextRequest) {
+  try {
   const body = await req.json().catch(() => ({}));
   const actorUrl: string = (body.actor_video_url || "").toString().trim();
   const productImages: string[] = Array.isArray(body.product_images)
@@ -53,4 +54,9 @@ export async function POST(req: NextRequest) {
       product_images: productImages.length,
     });
   } catch (e) { return NextResponse.json({ error: String(e).slice(0, 200) }, { status: 502 }); }
+  } catch (e) {
+    return NextResponse.json({
+      error: "hybrid-compose crash: " + String((e as Error)?.message || e).slice(0, 160),
+    }, { status: 500 });
+  }
 }

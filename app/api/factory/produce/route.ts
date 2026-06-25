@@ -6,8 +6,23 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 const MODEL = "claude-sonnet-4-6";
 
+function fallbackDecision(input: { available: Record<string, unknown>; reason: string }) {
+  const route = input.available?.footage ? "repurpose_cut" : "slideshow";
+  return {
+    decision: {
+      route,
+      engine: "",
+      why: `producer fallback: ${input.reason}`,
+      needs: route === "repurpose_cut" ? "готовое видео товара" : "фото товара и сценарий",
+      alt_route: "slideshow",
+      cost: "low",
+    },
+  };
+}
+
 // Агент-Продюсер: по идее/сценарию + тренду + наличию материалов решает СПОСОБ производства.
 export async function POST(req: NextRequest) {
+  try {
   const body = await req.json().catch(() => ({}));
   const idea: string = (body.idea || body.hook || body.scenario || "").toString().trim();
   if (!idea) return NextResponse.json({ error: "Нужна идея/сценарий" }, { status: 400 });
@@ -24,7 +39,7 @@ export async function POST(req: NextRequest) {
   const availability = `есть фото товара: ${av.photos ? "да" : "нет/неизвестно"}; есть реальная видеосъёмка: ${av.footage ? "да" : "нет"}`;
 
   const client = await createClaudeClient();
-  if (!client) return NextResponse.json({ error: "ANTHROPIC_API_KEY не настроен" }, { status: 500 });
+  if (!client) return NextResponse.json(fallbackDecision({ available: av, reason: "ANTHROPIC_API_KEY не настроен" }));
 
   const sys = `Ты — Продюсер контент-завода. Решаешь, КАК произвести короткое видео под идею, чтобы получить максимум охвата и доверия при минимуме затрат.
 
@@ -54,12 +69,18 @@ export async function POST(req: NextRequest) {
 
   try {
     const res = await client.messages.create({ model: MODEL, max_tokens: 600, system: sys, messages: [{ role: "user", content: user }] });
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     const txt = (res.content as any[]).filter((b) => b.type === "text").map((b) => b.text).join(" ");
     const decision = extractJson(txt);
-    if (!decision) return NextResponse.json({ error: "пустое/нечитаемое решение продюсера" }, { status: 502 });
+    if (!decision) return NextResponse.json(fallbackDecision({ available: av, reason: "пустое/нечитаемое решение продюсера" }));
     return NextResponse.json({ decision });
   } catch (e) {
-    return NextResponse.json({ error: String(e).slice(0, 200) }, { status: 502 });
+    return NextResponse.json(fallbackDecision({ available: av, reason: String(e).slice(0, 160) }));
+  }
+  } catch (e) {
+    return NextResponse.json({
+      error: "produce crash: " + String((e as Error)?.message || e).slice(0, 160),
+      ...fallbackDecision({ available: {}, reason: "route-level crash" }),
+    }, { status: 500 });
   }
 }

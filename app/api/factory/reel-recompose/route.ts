@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { internalFetch } from "@/lib/internalFetch";
-import { buildReelProps, type RunPlan } from "@/lib/factory/graphRun";
+import { buildReelProps } from "@/lib/factory/graphRun";
+import type { RunPlan } from "@/lib/factory/graphTypes";
 import { remotionReady, remotionSubmit, remotionStatus } from "@/lib/factory/remotionRender";
 import { selectVisualNodes, cloneNodesWithHook, reorderVisual, patchVariantProps, sanitizeVariant, type ReelVariant } from "@/lib/factory/reelVariants";
 

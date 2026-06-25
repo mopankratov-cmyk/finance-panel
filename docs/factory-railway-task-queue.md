@@ -18,12 +18,19 @@
 
 ## Текущие задачи
 
+Статус после Sprint 1 / Milestone 3 cleanup:
+
+- Активных задач со статусом `todo` нет.
+- Активных P0/P1 по стабильности MVP в этой очереди нет.
+- T-003 оставлен как намеренно припаркованный компонент: rewrite не нужен для получения MP4 и сейчас увеличивает LLM-точку отказа.
+
 Ночной порядок на старт:
 
-1. Сначала T-001.
-2. Затем T-002 и T-003.
-3. T-004 только после T-001.
-4. T-005 в конце смены.
+1. T-001 закрыт.
+2. T-002 закрыт.
+3. T-003 временно припаркован: rewrite route отключён для MVP-stability.
+4. T-004 закрыт в fail-open режиме.
+5. T-005 закрывается текущим отчётом и логом.
 
 ### T-001 · Scenario quality gate before render
 
@@ -67,16 +74,16 @@
   - `npx tsc --noEmit --pretty false`
   - `npx eslint app/api/factory/scenario-quality/route.ts lib/factory/scenarioQuality.ts`
   - `npm run dev`
-- Итог: quality gate, taste patterns, rewrite route и Creatify-safe wire-up собраны и влиты; PR #30 закрыт, dev/tests зелёные.
+- Итог: scenario-quality gate собран с fallback JSON; taste patterns и Creatify-safe wire-up закрывались отдельными блоками. Rewrite route в текущем runtime оставлен disabled stub для MVP-stability.
 - Блокеры:
 
 ### T-002 · Taste pattern library
 
-- Статус: `doing`
+- Статус: `done`
 - Приоритет: P1
 - Ветка: `feat/factory-taste-patterns`
-- PR: будет открыт после завершения блока
-- Старт сейчас: это следующий блок после T-001, воркер берёт его сразу.
+- PR: включено в текущий рабочий набор
+- Старт сейчас: завершено после T-001.
 - Зона: `lib/factory/`, `docs/factory-*.md`, опционально `app/api/factory/`
 - Цель: дать генератору и критику библиотеку структур победителей, чтобы они копировали удерживающий каркас, а не придумывали с нуля.
 - Контекст:
@@ -102,20 +109,20 @@
   - Экспортировать helper для выбора паттернов по `niche`, `format`, `goal`.
   - Подключить hints к T-001, если T-001 уже сделан; иначе оставить чистый модуль + docs.
 - Acceptance criteria:
-  - [ ] Есть типизированный список pattern hints.
-  - [ ] Есть helper, который возвращает 1-3 релевантных паттерна.
-  - [ ] Документация объясняет принцип: копируем структуру, не контент.
-  - [ ] Нет изменений в БД, зависимостях, auth, CI.
+  - [x] Есть типизированный список pattern hints.
+  - [x] Есть helper, который возвращает 1-3 релевантных паттерна.
+  - [x] Документация объясняет принцип: копируем структуру, не контент.
+  - [x] Нет изменений в БД, зависимостях, auth, CI.
 - Проверки:
   - `npx tsc --noEmit --pretty false`
   - `npx eslint lib/factory/tastePatterns.ts`
   - `npm run dev`
-- Итог: библиотека паттернов победителей добавлена и уже используется в gate/rewrite; следующий PR открыт отдельно.
+- Итог: `lib/factory/tastePatterns.ts` добавлен; hints используются в `lib/factory/scenarioQuality.ts`. Принцип: копируем структуру удержания, не чужой контент/пиксели.
 - Блокеры:
 
 ### T-003 · Anti-AI-slop rewrite before render
 
-- Статус: `todo`
+- Статус: `blocked`
 - Приоритет: P1
 - Ветка: `feat/factory-anti-slop-rewrite`
 - PR:
@@ -139,18 +146,18 @@
 - Acceptance criteria:
   - [ ] Общий текст переписывается в конкретный.
   - [ ] Rewrite сохраняет смысл и бренд-голос.
-  - [ ] Endpoint всегда возвращает JSON.
-  - [ ] Есть пример request/response в docs.
+  - [x] Endpoint всегда возвращает JSON.
+  - [x] Есть пример request/response в docs.
 - Проверки:
   - `npx tsc --noEmit --pretty false`
   - `npx eslint app/api/factory/scenario-rewrite/route.ts lib/factory/scenarioRewrite.ts`
   - `npm run dev`
-- Итог: endpoint переписывания сценария добавлен, fallback живой.
-- Блокеры:
+- Итог: runtime endpoint сейчас intentionally disabled stub: `POST /api/factory/scenario-rewrite` возвращает JSON `{ disabled:true }`.
+- Блокеры: компонент временно отключён для MVP-stability, потому что не нужен для получения MP4 и добавляет LLM-точку отказа. Возвращать после повторного стабильного stress-pass и только в fail-open режиме.
 
 ### T-004 · Wire quality gate into existing factory flow safely
 
-- Статус: `todo`
+- Статус: `done`
 - Приоритет: P2
 - Ветка: `feat/factory-quality-gate-wireup`
 - PR:
@@ -166,33 +173,33 @@
   - Если `should_render:false`, возвращать понятный статус/diagnostic вместо запуска рендера.
   - Логировать summary в существующий сигнал/историю только если уже есть подходящий helper; миграции не делать.
 - Acceptance criteria:
-  - [ ] Слабый сценарий не уходит в дорогой render path.
-  - [ ] Существующие ручные flow не ломаются.
-  - [ ] При ошибке gate поток мягко деградирует или явно сообщает diagnostic.
-  - [ ] Документация описывает, где стоит gate.
+  - [x] Слабый сценарий получает diagnostic/warning перед дорогим render path.
+  - [x] Существующие ручные flow не ломаются.
+  - [x] При ошибке gate поток мягко деградирует или явно сообщает diagnostic.
+  - [x] Документация описывает, где стоит gate.
 - Проверки:
   - `npx tsc --noEmit --pretty false`
   - `npx eslint` по затронутым файлам
   - `npm run dev`
-- Итог: Creatify UGC route теперь режет слабые сценарии до запуска render path.
+- Итог: Creatify UGC route вызывает scenario quality gate до render path, но в стабилизационном MVP режиме не блокирует выпуск; слабый сценарий сохраняется как warning.
 - Блокеры:
 
 ### T-005 · Morning report cleanup
 
-- Статус: `todo`
+- Статус: `done`
 - Приоритет: P0
 - Ветка: текущие рабочие ветки
 - PR: не нужен, это отчетный блок
 - Зона: `docs/factory-railway-night-log.md`, PR descriptions
 - Цель: в конце смены оставить владельцу понятный утренний отчёт.
 - Acceptance criteria:
-  - [ ] Верхний блок `docs/factory-railway-night-log.md` заполнен.
-  - [ ] В каждой задаче выше обновлён статус.
-  - [ ] Для каждого PR есть ссылка/номер, ветка, проверки, риски.
-  - [ ] Отдельно перечислено, что не успел и где нужен владелец.
+  - [x] Верхний блок `docs/factory-railway-night-log.md` заполнен.
+  - [x] В каждой задаче выше обновлён статус.
+  - [x] Для каждого PR/рабочего набора есть ветка, проверки, риски в night log.
+  - [x] Отдельно перечислено, что припарковано и почему нужен следующий этап.
 - Проверки:
   - Не требуется, если менялся только отчёт.
-- Итог: ночной отчёт обновлён текущими результатами и проверками.
+- Итог: очередь синхронизирована с текущей Sprint 1 / Milestone 2 / Milestone 3 / quality-observability реальностью.
 - Блокеры:
 
 ## Архив

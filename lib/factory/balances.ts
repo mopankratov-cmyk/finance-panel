@@ -48,7 +48,7 @@ export interface ServiceState {
 // 1 событие журнала ≈ одна Claude-операция завода. Грубая оценка — владелец крутит CLAUDE_EVENT_COST_USD.
 const CLAUDE_EVENT_COST = Number(process.env.CLAUDE_EVENT_COST_USD) || 0.04;
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+
 function num(v: any): number | null {
   if (v == null) return null;
   const n = Number(v);

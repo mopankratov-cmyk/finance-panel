@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { buildObservability, buildRunSummary, classifyErrorReason, classifyWarningReason } from "@/lib/factory/observability";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 20;
@@ -17,7 +18,6 @@ const NICHE_META: Record<string, { emoji: string; label: string }> = {
   default: { emoji: "📦", label: "Прочее" },
 };
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function count(db: any, table: string, niche: string, extra?: (q: any) => any): Promise<number> {
   try {
     let q = db.from(table).select("id", { count: "exact", head: true }).eq("niche", niche);
@@ -30,6 +30,8 @@ async function count(db: any, table: string, niche: string, extra?: (q: any) => 
 function recipeSummary(r: Record<string, unknown>) {
   const plan = (r.run_plan && typeof r.run_plan === "object") ? r.run_plan as Record<string, unknown> : {};
   const nodes = Array.isArray(plan.nodes) ? plan.nodes as Record<string, unknown>[] : [];
+  const warnings = Array.isArray(plan.warnings) ? plan.warnings.map((w) => String(w)).filter(Boolean).slice(0, 5) : [];
+  const executionLog = Array.isArray(plan.execution_log) ? plan.execution_log.slice(-5) : [];
   const nodeErrors = nodes
     .filter((n) => n.status === "error" || n.error)
     .map((n) => ({
@@ -42,6 +44,15 @@ function recipeSummary(r: Record<string, unknown>) {
     ...r,
     run_plan: undefined,
     step: plan.step || null,
+    run_id: plan.run_id || null,
+    error: plan.error || null,
+    error_category: classifyErrorReason(String(plan.error || "")),
+    warnings,
+    warnings_count: warnings.length,
+    execution_log_count: Array.isArray(plan.execution_log) ? plan.execution_log.length : 0,
+    execution_log_tail: executionLog,
+    execution_log_last: executionLog.length ? executionLog[executionLog.length - 1] : null,
+    run_summary: buildRunSummary(plan),
     catalog_error: plan.catalog_error || null,
     needs_rejudge: r.status === "otk_pass" && !!r.output_url && r.otk_score == null,
     node_errors: nodeErrors,
@@ -93,12 +104,15 @@ export async function GET(req: NextRequest) {
     } catch { /* нет генераций */ }
 
     let recipes: unknown[] = [];
+    let observability: Record<string, unknown> = { sample_runs: 0, running: 0, warning_runs: 0, failed: 0, stability_snapshot: null, quality_signal: null, recent_runs: [], incident_runs: [], status_series: [], step_duration_series: [], slowest_steps: [], failure_diagnostics: null, top_error_categories: [], top_errors: [], top_warning_categories: [], top_warnings: [] };
     try {
       const { data } = await db.from("node_recipes").select("id,article,niche,mode,status,otk_score,output_url,format_detected,built_by,created_at,run_plan").order("created_at", { ascending: false }).limit(30);
-      recipes = (data || []).map(recipeSummary);
+      const rows = (data as Record<string, unknown>[] | null) || [];
+      recipes = rows.map(recipeSummary);
+      observability = buildObservability(rows);
     } catch { /* нет рецептов */ }
 
-    return NextResponse.json({ ok: true, niches, generations, recipes }, { headers: { "Cache-Control": "no-store" } });
+    return NextResponse.json({ ok: true, niches, generations, recipes, observability }, { headers: { "Cache-Control": "no-store" } });
   } catch (e) {
     return NextResponse.json({ error: "studio crash: " + String((e as Error)?.message || e).slice(0, 160) }, { status: 500 });
   }

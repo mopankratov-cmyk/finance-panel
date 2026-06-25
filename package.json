@@ -4,9 +4,11 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "next build --webpack",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:factory": "for f in lib/factory/*.test.mts; do node --import tsx \"$f\" || exit 1; done",
+    "check:factory": "npm run lint && npx tsc --noEmit && npm run test:factory && npm run build"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.104.1",

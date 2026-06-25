@@ -7,6 +7,7 @@ export const maxDuration = 10;
 // Топ вирусных видео из корпуса (viral_videos), отсортированных по virality_score.
 // GET ?niche=blasters&limit=20&min_score=25
 export async function GET(req: NextRequest) {
+  try {
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 500 });
 
@@ -42,5 +43,11 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ videos, total: videos.length });
   } catch (e) {
     return NextResponse.json({ error: String(e).slice(0, 200), videos: [] }, { status: 200 });
+  }
+  } catch (e) {
+    return NextResponse.json({
+      error: "top-videos crash: " + String((e as Error)?.message || e).slice(0, 160),
+      videos: [],
+    }, { status: 200 });
   }
 }

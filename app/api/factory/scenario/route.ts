@@ -11,8 +11,31 @@ export const maxDuration = 60;
 
 const MODEL = "claude-sonnet-4-6"; // быстрый, укладываемся в лимит
 
+function fallbackScenario(input: { hook: string; article: string; name: string; reason: string }) {
+  const product = input.name || input.article || "товар";
+  return {
+    article: input.article,
+    product,
+    scenario: {
+      title: input.hook.slice(0, 80) || `Короткий ролик про ${product}`,
+      duration_sec: 18,
+      shots: [
+        { t: "0-3с", visual: "Крупный план товара или первый живой кадр использования", voiceover: input.hook || `Смотри, что важно знать про ${product}`, onscreen: input.hook || "Вот что важно" },
+        { t: "3-10с", visual: "Показать 2-3 детали товара в движении", voiceover: "Коротко показать пользу и реальный сценарий использования", onscreen: "Польза без лишних слов" },
+        { t: "10-18с", visual: "Финальный кадр с товаром и понятным действием", voiceover: "Если актуально, ищи артикул на Wildberries", onscreen: input.article ? `Арт. ${input.article}` : "Ищи на WB" },
+      ],
+      caption: input.article ? `Ищи на WB: ${input.article}` : "Сохрани, чтобы не потерять",
+      hashtags: ["#wildberries", "#обзор", "#находка"],
+      cta: input.article ? `Ищи артикул ${input.article} на WB` : "Ищи товар на WB",
+      music: "спокойный трендовый звук без вокального конфликта",
+      warnings: [`scenario fallback: ${input.reason}`],
+    },
+  };
+}
+
 // Развернуть идею-хук в полный покадровый сценарий короткого видео (готов к съёмке/монтажу).
 export async function POST(req: NextRequest) {
+  try {
   const body = await req.json().catch(() => ({}));
   const hook: string = (body.hook || body.concept || "").toString().trim();
   if (!hook) return NextResponse.json({ error: "Нужен хук/идея" }, { status: 400 });
@@ -29,7 +52,7 @@ export async function POST(req: NextRequest) {
   // из плейбука ниши: проверенные хуки + покадровая структура лучшего формата + тренд-звук
   let pbHint = "";
   if (pb) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     const fmts: any[] = Array.isArray(pb.winning_formats) ? pb.winning_formats : [];
     const chosen = fmts.find((f) => format && String(f.name || "").toLowerCase().includes(format.toLowerCase())) || fmts[0];
     const snd = Array.isArray(pb.sounds) ? pb.sounds.find((s: Record<string, unknown>) => s.commerce_safe) || pb.sounds[0] : null;
@@ -88,7 +111,7 @@ export async function POST(req: NextRequest) {
   }
 
   const client = await createClaudeClient();
-  if (!client) return NextResponse.json({ error: "ANTHROPIC_API_KEY не настроен" }, { status: 500 });
+  if (!client) return NextResponse.json(fallbackScenario({ hook, article, name, reason: "ANTHROPIC_API_KEY не настроен" }));
 
   const sys = "Ты режиссёр коротких UGC-видео для WB/Ozon. Разворачиваешь идею в покадровый сценарий 15-30 сек, готовый к съёмке или AI-генерации. Живой UGC, не реклама. " +
     (profile ? "ПРОФИЛЬ БРЕНДА/АУДИТОРИИ (пиши в этом голосе): " + profile + " " : "") +
@@ -99,7 +122,7 @@ export async function POST(req: NextRequest) {
   const user = `Товар: ${name || article}${article ? ` (арт. ${article})` : ""}. Идея/хук: «${hook}».${format ? ` Формат: ${format}.` : ""}${isStack ? ` Разверни по структуре «3 проблемы»: ${PROBLEM_STACK}` : ""}${pbHint}${corpusHint} Сделай покадровый сценарий: первый кадр = хук в лоб, держит внимание, в конце мягкий CTA на поиск товара на WB.${hookBoost ? " ВАЖНО: предыдущий хук получился слабым — сделай ПЕРВУЮ ФРАЗУ и первый кадр заметно резче: паттерн-брейк/новизна/интрига/неожиданность, без общих слов и витрины." : ""}`;
 
   // сэмплинг из ноды Claude (инспектор) — раньше всё было захардкожено
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   const samp: Record<string, any> = { model: typeof body.model === "string" && body.model ? body.model : MODEL, max_tokens: Math.min(8192, Math.max(1800, Number(body.max_tokens) || 1800)), system: sys, messages: [{ role: "user", content: user }] };
   if (typeof body.system === "string" && body.system.trim()) samp.system = body.system.trim() + "\n\n" + sys; // доп. system-промпт владельца сверху
   if (typeof body.temperature === "number") samp.temperature = Math.min(1, Math.max(0, body.temperature));
@@ -111,14 +134,20 @@ export async function POST(req: NextRequest) {
   if (body.service_tier === "auto" || body.service_tier === "standard_only") samp.service_tier = body.service_tier;
   if (typeof body.thinking_budget === "number" && body.thinking_budget >= 1024) { samp.thinking = { type: "enabled", budget_tokens: Math.min(body.thinking_budget, (samp.max_tokens as number) - 1) }; delete samp.temperature; delete samp.top_p; delete samp.top_k; } // extended thinking запрещает temp/top_p/top_k
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     const res = await client.messages.create(samp as any);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     const txt = (res.content as any[]).filter((b) => b.type === "text").map((b) => b.text).join(" ");
     const scenario = extractJson(txt);
-    if (!scenario) return NextResponse.json({ error: "пустой/нечитаемый сценарий" }, { status: 502 });
+    if (!scenario) return NextResponse.json(fallbackScenario({ hook, article, name, reason: "пустой/нечитаемый сценарий" }));
     return NextResponse.json({ article, product: name || article, scenario });
   } catch (e) {
-    return NextResponse.json({ error: String(e).slice(0, 200) }, { status: 502 });
+    return NextResponse.json(fallbackScenario({ hook, article, name, reason: String(e).slice(0, 160) }));
+  }
+  } catch (e) {
+    return NextResponse.json({
+      error: "scenario crash: " + String((e as Error)?.message || e).slice(0, 160),
+      ...fallbackScenario({ hook: "", article: "", name: "", reason: "route-level crash" }),
+    }, { status: 500 });
   }
 }

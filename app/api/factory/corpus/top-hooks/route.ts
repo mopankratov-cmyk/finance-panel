@@ -10,6 +10,7 @@ export const maxDuration = 10;
 // Graceful при отсутствии таблицы.
 
 export async function GET(req: NextRequest) {
+  try {
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ hooks: [], note: "Supabase не настроен" });
 
@@ -35,5 +36,8 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ hooks });
   } catch (e) {
     return NextResponse.json({ hooks: [], note: String(e).slice(0, 100) });
+  }
+  } catch (e) {
+    return NextResponse.json({ hooks: [], note: "top-hooks crash: " + String((e as Error)?.message || e).slice(0, 160) });
   }
 }

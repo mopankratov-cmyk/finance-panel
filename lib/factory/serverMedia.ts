@@ -118,7 +118,7 @@ export async function extractFrames(videoUrl: string): Promise<string[]> {
         body: JSON.stringify({ video_url: videoUrl, frame_type }), signal: AbortSignal.timeout(30000),
       });
       if (!r?.ok) return null;
-      const j = (await r.json()) as { images?: { url?: string }[] };
+      const j = (await r.json().catch(() => ({}))) as { images?: { url?: string }[] };
       const u = j.images?.[0]?.url;
       if (!u) return null;
       const img = await fetchWithRetry(u, { signal: AbortSignal.timeout(20000) });
@@ -143,7 +143,7 @@ export async function extractPosterUrl(db: SupabaseClient, videoUrl: string, buc
       body: JSON.stringify({ video_url: videoUrl, frame_type: "first" }), signal: AbortSignal.timeout(25000),
     });
     if (!r?.ok) return null;
-    const j = (await r.json()) as { images?: { url?: string }[] };
+    const j = (await r.json().catch(() => ({}))) as { images?: { url?: string }[] };
     const u = j.images?.[0]?.url;
     if (!u) return null;
     const img = await fetchWithRetry(u, { signal: AbortSignal.timeout(15000) });

@@ -1,8 +1,7 @@
 // «1 генерация → N монтажей»: чистые трансформы вариантов поверх УЖЕ сгенерённых нод рецепта.
 // Переиспользуют клипы (node.url), НЕ генерят заново — дорогой слой (fal/creatify/eleven) амортизируется
 // по R рендерам. Рендер-пропсы собирает graphRun.buildReelProps; здесь только варьируем вход под него.
-// Без рантайм-импортов graphRun (type-only) → юнит-тестируемо (reelVariants.test.mts).
-import type { RunNode } from "./graphRun";
+import type { RunNode } from "./graphTypes";
 
 // Оси дифференциации (анти-дубль): хук + первый кадр решают охват; косметика (accent) — добор.
 export interface ReelVariant {

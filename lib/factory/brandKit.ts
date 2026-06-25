@@ -21,7 +21,7 @@ export interface BrandKit {
   notes?: string | null;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+
 function rowToKit(r: Record<string, any>): BrandKit {
   return {
     brand: String(r.brand || ""), niche: r.niche ?? null,

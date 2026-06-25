@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { createClaudeClient } from "@/lib/agent/client";
+import { extractJson } from "@/lib/factory/extractJson";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -10,6 +11,7 @@ const MODEL = "claude-sonnet-4-6";
 // → «визуальный рецепт» (как снято) → niche_visual_profiles. Этим грундятся промпт-инженер,
 // продюсер, сценарист и ОТК. POST { niche, sample?: number }.
 export async function POST(req: NextRequest) {
+  try {
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 500 });
   const body = await req.json().catch(() => ({}));
@@ -36,18 +38,16 @@ export async function POST(req: NextRequest) {
 Верни СТРОГО валидный JSON (с закрывающей скобкой):
 {"framing":"кратко как кадрируют","camera":"ракурс/дистанция/движение","lighting":"свет и фон","model_action":"что делает модель с товаром","palette":"доминирующие цвета","props":"реквизит/окружение","mood":"настроение","do":["до 3 пунктов"],"dont":["до 3 пунктов AI-брака"],"motion_prompt":"одна англ. фраза для image-to-video, preservation товара"}. Только JSON, ничего лишнего.`;
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   const content: any[] = [{ type: "text", text: `Ниша: ${niche}. Разбери эти ${assets.length} реальных кадра(ов) и выведи рецепт.` }];
   for (const a of assets) content.push({ type: "image", source: { type: "url", url: origin + a.url } });
 
   try {
     const res = await client.messages.create({ model: MODEL, max_tokens: 2048, system: sys, messages: [{ role: "user", content }] });
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     let txt = (res.content as any[]).filter((b) => b.type === "text").map((b) => b.text).join(" ").trim();
-    txt = txt.replace(/```json\s*/gi, "").replace(/```/g, "").trim();
-    const m = txt.match(/\{[\s\S]*\}/);
-    if (!m) return NextResponse.json({ error: "пустой ответ", raw: txt.slice(0, 150) }, { status: 502 });
-    const profile = JSON.parse(m[0]);
+    const profile = extractJson(txt);
+    if (!profile) return NextResponse.json({ error: "пустой ответ", raw: txt.slice(0, 150) }, { status: 502 });
     profile.refs = assets.map((a) => a.path);
 
     const { error: upErr } = await db.from("niche_visual_profiles").upsert(
@@ -63,10 +63,18 @@ export async function POST(req: NextRequest) {
   } catch (e) {
     return NextResponse.json({ error: String(e).slice(0, 200) }, { status: 502 });
   }
+  } catch (e) {
+    return NextResponse.json({
+      ok: false,
+      profile: null,
+      error: "content-learn POST crash: " + String((e as Error)?.message || e).slice(0, 160),
+    }, { status: 500 });
+  }
 }
 
 // GET ?niche= — текущий визуальный профиль (или все).
 export async function GET(req: NextRequest) {
+  try {
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 500 });
   const niche = new URL(req.url).searchParams.get("niche");
@@ -74,4 +82,10 @@ export async function GET(req: NextRequest) {
   const { data, error } = niche ? await q.eq("niche", niche).maybeSingle() : await q;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ profiles: data });
+  } catch (e) {
+    return NextResponse.json({
+      profiles: null,
+      error: "content-learn GET crash: " + String((e as Error)?.message || e).slice(0, 160),
+    }, { status: 500 });
+  }
 }

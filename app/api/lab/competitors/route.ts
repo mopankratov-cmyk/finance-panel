@@ -32,10 +32,10 @@ export async function POST(req: NextRequest) {
     const res = await client.messages.create({
       model: MODEL, max_tokens: 900,
       system: "Ты ведущий маркетолог по карточкам Wildberries. Анализируешь визуал конкурентов и даёшь практичный бриф для отстройки. Отвечай только JSON.",
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
       messages: [{ role: "user", content: parts as any }],
     });
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     const txt = (res.content as any[]).filter((b) => b.type === "text").map((b) => b.text).join(" ");
     const m = txt.match(/\{[\s\S]*\}/);
     const analysis = m ? JSON.parse(m[0]) : null;

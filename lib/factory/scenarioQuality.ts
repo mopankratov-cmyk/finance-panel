@@ -272,7 +272,7 @@ async function judgeWithClaude(input: { article: string; product_name: string; n
     messages: [{ role: "user", content: user }],
   });
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   const text = (res.content as any[]).filter((b) => b.type === "text").map((b) => b.text).join(" ");
   const parsed = extractJson(text);
   if (!parsed || !Array.isArray(parsed.ranked)) throw new Error("невалидный JSON quality-gate");

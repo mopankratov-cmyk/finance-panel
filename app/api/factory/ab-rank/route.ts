@@ -30,7 +30,15 @@ export async function GET(req: NextRequest) {
     let mq = db.from("post_metrics").select("recipe_id,views,watch_rate,ctr_card,saves,posted_at").order("posted_at", { ascending: false }).limit(limit);
     if (since) mq = mq.gte("posted_at", since);
     if (explicitIds.length) mq = mq.in("recipe_id", explicitIds);
-    const { data: pm } = await mq;
+    const { data: pm, error: pmError } = await mq;
+    if (pmError) {
+      return NextResponse.json({
+        ok: true,
+        ranked: [],
+        summary: { winners: 0, mid: 0, losers: 0, total: 0 },
+        note: "post_metrics недоступна: " + pmError.message.slice(0, 140),
+      });
+    }
     const rows = (pm as Record<string, unknown>[] | null) || [];
     if (!rows.length) return NextResponse.json({ ok: true, ranked: [], summary: { winners: 0, mid: 0, losers: 0, total: 0 }, note: "нет данных post_metrics (впиши реальные метрики через /post-metrics)" });
 
@@ -44,7 +52,15 @@ export async function GET(req: NextRequest) {
 
     // 2) рецепты (ниша/артикул/хук/output_url) для этих id
     const ids = [...best.keys()];
-    const { data: recs } = await db.from("node_recipes").select("id,niche,article,output_url,run_plan").in("id", ids);
+    const { data: recs, error: recError } = await db.from("node_recipes").select("id,niche,article,output_url,run_plan").in("id", ids);
+    if (recError) {
+      return NextResponse.json({
+        ok: true,
+        ranked: [],
+        summary: { winners: 0, mid: 0, losers: 0, total: 0 },
+        note: "node_recipes недоступна: " + recError.message.slice(0, 140),
+      });
+    }
     const recMap = new Map<number, Record<string, unknown>>();
     for (const r of ((recs as Record<string, unknown>[] | null) || [])) recMap.set(Number(r.id), r);
 

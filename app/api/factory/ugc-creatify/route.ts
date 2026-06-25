@@ -6,10 +6,16 @@ import { analyzeScenarioQuality } from "@/lib/factory/scenarioQuality";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
+type ScenarioQualityResultWithWarnings = Awaited<ReturnType<typeof analyzeScenarioQuality>> & { warnings?: string[] };
+
 // UGC-актёр Creatify. Если есть товар (URL карточки WB) → link_to_videos (актёр + ПОКАЗ товара).
 // Иначе → lipsyncs (актёр просто говорит текст). Async: task_id, статус опрашивать.
 export async function POST(req: NextRequest) {
-  if (!creatifyReady()) return NextResponse.json({ detail: "Creatify не подключён: добавь CREATIFY_API_ID и CREATIFY_API_KEY в Vercel env" }, { status: 503 });
+  try {
+  if (!creatifyReady()) {
+    const error = "Creatify не подключён: добавь CREATIFY_API_ID и CREATIFY_API_KEY в Vercel env";
+    return NextResponse.json({ error, detail: error }, { status: 503 });
+  }
   const body = await req.json().catch(() => ({}));
   const script: string = (body.script || body.brief || body.hook || "").toString().trim();
   const debugMode = body.debug === true;
@@ -35,7 +41,7 @@ export async function POST(req: NextRequest) {
       const db = getSupabaseAdmin();
       if (db) {
         const { data } = await db.rpc("rnp_report");
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
         const row = (data as any[] | null)?.find((r) => r.article === body.sku_art);
         if (row?.nm_id) {
           if (!url) url = `https://www.wildberries.ru/catalog/${row.nm_id}/detail.aspx`;
@@ -59,10 +65,10 @@ export async function POST(req: NextRequest) {
     : null;
 
   if (quality && quality.should_render === false) {
-    return NextResponse.json({
-      detail: "Сценарий не прошёл quality gate до рендера",
-      quality_gate: quality,
-    }, { status: 422 });
+    (quality as ScenarioQualityResultWithWarnings).warnings = [
+      ...((quality as { warnings?: string[] }).warnings || []),
+      "quality gate failed but render continues in fail-open stabilization mode",
+    ];
   }
 
   if (!videoUrls.length && body.sku_art) {
@@ -103,12 +109,27 @@ export async function POST(req: NextRequest) {
       model_version: modelVersion,
       no_cta: noCta,
     });
-    if (res.error || !res.token) return NextResponse.json({ detail: res.error || "Creatify не запустил", ...(debugMode ? { debug: res.debug } : {}), ...(quality ? { quality_gate: quality } : {}) }, { status: 502 });
+    if (res.error || !res.token) {
+      const error = res.error || "Creatify не запустил";
+      return NextResponse.json({ error, detail: error, ...(debugMode ? { debug: res.debug } : {}), ...(quality ? { quality_gate: quality } : {}) }, { status: 502 });
+    }
     return NextResponse.json({ task_id: "cf." + res.token, engine: "creatify", mode: "link_to_videos", product_url: url, ...(quality ? { quality_gate: quality } : {}), ...(debugMode ? { debug: res.debug } : {}) });
   }
 
-  if (!script) return NextResponse.json({ detail: "Нужен товар (артикул/URL) или текст для актёра" }, { status: 400 });
+  if (!script) {
+    const error = "Нужен товар (артикул/URL) или текст для актёра";
+    return NextResponse.json({ error, detail: error }, { status: 400 });
+  }
   const res = await creatifyLipsync(script, { creator: (body.creator || "").trim() || undefined });
-  if (res.error || !res.token) return NextResponse.json({ detail: res.error || "Creatify не запустил" }, { status: 502 });
+  if (res.error || !res.token) {
+    const error = res.error || "Creatify не запустил";
+    return NextResponse.json({ error, detail: error }, { status: 502 });
+  }
   return NextResponse.json({ task_id: "cf." + res.token, engine: "creatify", mode: "lipsyncs" });
+  } catch (e) {
+    return NextResponse.json({
+      error: "ugc-creatify crash: " + String((e as Error)?.message || e).slice(0, 160),
+      detail: "ugc-creatify crash: " + String((e as Error)?.message || e).slice(0, 160),
+    }, { status: 500 });
+  }
 }

@@ -17,10 +17,10 @@ export async function POST(req: NextRequest) {
     const res = await client.messages.create({
       model: MODEL, max_tokens: 300,
       system: "You define a consistent visual wardrobe/look for a marketplace funnel (palette, lighting, background, mood, props) so all slides match. Output ONE concise paragraph, no preamble.",
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
       messages: [{ role: "user", content: parts as any }],
     });
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     const wardrobe = (res.content as any[]).filter((b) => b.type === "text").map((b) => b.text).join(" ").trim();
     return wardrobe ? NextResponse.json({ ok: true, wardrobe }) : NextResponse.json({ ok: false, error: "пусто" });
   } catch (e) {

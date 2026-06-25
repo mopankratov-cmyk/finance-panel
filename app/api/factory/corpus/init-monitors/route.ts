@@ -20,6 +20,7 @@ const NICHE_KEYWORDS: Record<string, string[]> = {
 };
 
 export async function POST(req: NextRequest) {
+  try {
   if (!process.env.VIRLO_API_KEY) {
     return NextResponse.json({ error: "VIRLO_API_KEY не настроен" }, { status: 400 });
   }
@@ -89,4 +90,15 @@ export async function POST(req: NextRequest) {
     results,
     errors: errors.length ? errors : undefined,
   });
+  } catch (e) {
+    return NextResponse.json({
+      ok: false,
+      total: 0,
+      initialized: 0,
+      created: 0,
+      reused: 0,
+      results: [],
+      errors: ["corpus/init-monitors crash: " + String((e as Error)?.message || e).slice(0, 160)],
+    }, { status: 500 });
+  }
 }

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { createClaudeClient } from "@/lib/agent/client";
 import { nicheFromArticle } from "@/lib/factory/rubric";
+import { extractJson } from "@/lib/factory/extractJson";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -13,32 +14,6 @@ const FRESH_MS = 7 * 24 * 3600 * 1000; // бриф свеж 7 дней (как �
 //   → NicheBrief { summary, top_formats[], content_recommendations[], distribution[], viral_examples[], updated_at }
 // Агрегирует НАШ корпус (viral_videos/viral_hooks) + niche_playbooks → LLM сводит. Кеш в niche_briefs.
 // Всегда JSON (обработчик в try/catch). Веб-ресёрч — позже (сейчас сигнал = корпус, надёжнее).
-
-// толерантный парсер JSON (переживает обрезку/ограждение)
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function extractJson(raw: string): any | null {
-  let t = raw.replace(/```json\s*/gi, "").replace(/```/g, "").trim();
-  const a = t.indexOf("{");
-  if (a < 0) return null;
-  t = t.slice(a);
-  const tryParse = (x: string) => { try { return JSON.parse(x); } catch { return undefined; } };
-  let v = tryParse(t); if (v !== undefined) return v;
-  v = tryParse(t.replace(/,(\s*[}\]])/g, "$1")); if (v !== undefined) return v;
-  const stack: string[] = []; let inStr = false, esc = false;
-  for (let i = 0; i < t.length; i++) {
-    const c = t[i];
-    if (esc) { esc = false; continue; }
-    if (c === "\\") { esc = true; continue; }
-    if (c === '"') { inStr = !inStr; continue; }
-    if (inStr) continue;
-    if (c === "{" || c === "[") stack.push(c);
-    else if (c === "}" || c === "]") stack.pop();
-  }
-  let s = t; if (inStr) s += '"';
-  s = s.replace(/,\s*$/, "");
-  for (let i = stack.length - 1; i >= 0; i--) s += stack[i] === "{" ? "}" : "]";
-  return tryParse(s.replace(/,(\s*[}\]])/g, "$1")) ?? null;
-}
 
 async function buildBrief(niche: string) {
   const db = getSupabaseAdmin();
@@ -95,7 +70,7 @@ async function buildBrief(niche: string) {
 
   try {
     const res = await client.messages.create({ model: MODEL, max_tokens: 3000, system: sys, messages: [{ role: "user", content: user }] });
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     const txt = (res.content as any[]).filter((b) => b.type === "text").map((b) => b.text).join(" ").trim();
     const brief = extractJson(txt);
     if (!brief || !brief.summary) return { error: "маркетолог не вернул бриф", raw: txt.slice(0, 160), status: 502 };

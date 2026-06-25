@@ -29,6 +29,7 @@ function nicheOfOrbit(name: string): string {
 }
 
 export async function POST(req: NextRequest) {
+  try {
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 500 });
   const origin = req.nextUrl.origin;
@@ -89,4 +90,13 @@ export async function POST(req: NextRequest) {
 
   const ready = status.filter((s) => s.state === "ready").length;
   return NextResponse.json({ ok: true, ready, total: targets.length, status, log });
+  } catch (e) {
+    return NextResponse.json({
+      ok: false,
+      ready: 0,
+      total: 0,
+      status: [],
+      log: ["corpus/analyze-niches crash: " + String((e as Error)?.message || e).slice(0, 160)],
+    }, { status: 500 });
+  }
 }

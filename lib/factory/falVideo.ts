@@ -1,5 +1,7 @@
 // fal.ai видео-движки (image-to-video) через queue API. Крипто-шлюз, ключ FAL_KEY уже в env.
 // Премиум-маршрут: реальное фото товара → динамичное видео. Reference/preservation промпт держит товар.
+import { extractJson } from "@/lib/factory/extractJson";
+
 const QUEUE = "https://queue.fal.run/";
 
 // каталог моделей: добавление нового движка/версии = строка здесь. Семейство (seedance*/kling*/pika*)
@@ -51,8 +53,8 @@ export async function falBalance(): Promise<{ balance: number | null; currency: 
   try {
     const r = await fetch("https://api.fal.ai/v1/account/billing?expand=credits", { headers: { Authorization: `Key ${k}` }, cache: "no-store", signal: AbortSignal.timeout(15000) });
     const text = await r.text();
-    let j: Record<string, unknown> | null = null;
-    try { j = JSON.parse(text); } catch { /* not json */ }
+    const parsed = extractJson(text);
+    const j = parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : null;
     if (r.status === 401 || r.status === 403) return { balance: null, currency: "USD", error: "нужен admin-ключ (FAL_BILLING_KEY)", raw: j ?? text.slice(0, 200) };
     if (!r.ok || !j) return { balance: null, currency: "USD", error: `fal ${r.status}: ${text.slice(0, 140)}`, raw: j ?? text.slice(0, 200) };
     const credits = (j.credits && typeof j.credits === "object" ? j.credits : j) as Record<string, unknown>;
@@ -92,6 +94,25 @@ function falFailureReason(status: number): string {
     : "иная ошибка";
 }
 
+function extractFalVideoUrl(payload: unknown): string | null {
+  if (!payload || typeof payload !== "object") return null;
+  const record = payload as {
+    video?: { url?: unknown };
+    video_url?: unknown;
+    url?: unknown;
+    output?: { url?: unknown } | unknown;
+    result?: unknown;
+  };
+  const direct = typeof record.video?.url === "string" ? record.video.url
+    : typeof record.video_url === "string" ? record.video_url
+    : typeof record.url === "string" ? record.url
+    : typeof record.output === "string" ? record.output
+    : typeof record.output === "object" && record.output && typeof (record.output as { url?: unknown }).url === "string" ? (record.output as { url: string }).url
+    : null;
+  if (direct) return direct;
+  return record.result ? extractFalVideoUrl(record.result) : null;
+}
+
 // Сабмит image-to-video с диагностикой. Токен = base64url от response_url.
 export async function falVideoSubmitDetailed(model: FalVideoModel, imageUrl: string, prompt: string, opts?: FalVideoOpts): Promise<FalSubmitResult> {
   const k = key();
@@ -113,7 +134,7 @@ export async function falVideoSubmitDetailed(model: FalVideoModel, imageUrl: str
       console.warn(`[falVideoSubmit] ${model} → ${r.status} ${reason}: ${detail}`);
       return { token: null, status: r.status, reason, detail };
     }
-    const j = (await r.json()) as { response_url?: string };
+    const j = (await r.json().catch(() => ({}))) as { response_url?: string };
     return { token: j.response_url ? Buffer.from(j.response_url).toString("base64url") : null, reason: j.response_url ? undefined : "fal submit без response_url" };
   } catch (e) {
     const reason = "сеть/таймаут";
@@ -141,7 +162,7 @@ export async function falCompose(
   if (!k) return { error: "FAL_KEY не настроен" };
   const durMs = Math.max(1, Math.round(opts.durationSec || 5)) * 1000; // ⚠️ fal compose keyframes — в МИЛЛИСЕКУНДАХ (раньше слали секунды → клип 5мс = чёрный кадр)
   const auth = { Authorization: `Key ${k}` };
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   const tracks: any[] = [{ id: "v", type: "video", keyframes: [{ timestamp: 0, duration: durMs, url: videoUrl }] }];
   // image-трек кладём ПОСЛЕ видео — оверлей поверх (z-order по порядку треков)
   if (opts.overlayUrl) tracks.push({ id: "o", type: "image", keyframes: [{ timestamp: 0, duration: durMs, url: opts.overlayUrl }] });
@@ -161,8 +182,9 @@ export async function falCompose(
     }
     const res = await fetch(responseUrl, { headers: auth, cache: "no-store", signal: AbortSignal.timeout(15000) });
     if (!res.ok) return { error: `compose result ${res.status}` };
-    const rj = (await res.json()) as { video_url?: string };
-    return rj.video_url ? { videoUrl: rj.video_url } : { error: "compose без video_url" };
+    const rj = (await res.json()) as Record<string, unknown>;
+    const url = extractFalVideoUrl(rj);
+    return url ? { videoUrl: url } : { error: "compose без video_url" };
   } catch (e) { return { error: String(e).slice(0, 120) }; }
 }
 
@@ -200,7 +222,7 @@ export async function falTimeline(
   }
   const totalDur = t; // мс
   const auth = { Authorization: `Key ${k}` };
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   const tracks: any[] = [];
   if (videoKeyframes.length) tracks.push({ id: "v", type: "video", keyframes: videoKeyframes });
   // каждый image-слот → отдельный image-трек (чтобы не перекрывались)
@@ -220,8 +242,9 @@ export async function falTimeline(
     }
     const res = await fetch(responseUrl, { headers: auth, cache: "no-store", signal: AbortSignal.timeout(15000) });
     if (!res.ok) return { error: `timeline result ${res.status}` };
-    const rj = (await res.json()) as { video_url?: string };
-    return rj.video_url ? { videoUrl: rj.video_url } : { error: "timeline без video_url" };
+    const rj = (await res.json()) as Record<string, unknown>;
+    const url = extractFalVideoUrl(rj);
+    return url ? { videoUrl: url } : { error: "timeline без video_url" };
   } catch (e) { return { error: String(e).slice(0, 120) }; }
 }
 
@@ -259,7 +282,7 @@ export async function falMergeVideos(
   if (typeof opts?.targetFps === "number") body.target_fps = opts.targetFps;
   const r = await falQueueVideo("fal-ai/ffmpeg-api/merge-videos", body, opts?.maxWaitMs || 90000);
   if (r.error) return { error: r.error };
-  const url = (r.result?.video as { url?: string } | undefined)?.url;
+  const url = extractFalVideoUrl(r.result);
   return url ? { videoUrl: url } : { error: "merge без video.url" };
 }
 
@@ -283,7 +306,7 @@ export async function falAutoSubtitle(
   };
   const r = await falQueueVideo("fal-ai/workflow-utilities/auto-subtitle", body, opts?.maxWaitMs || 120000);
   if (r.error) return { error: r.error };
-  const url = (r.result?.video as { url?: string } | undefined)?.url;
+  const url = extractFalVideoUrl(r.result);
   return url ? { videoUrl: url, words: r.result?.words } : { error: "auto-subtitle без video.url" };
 }
 
@@ -316,8 +339,8 @@ export async function falVideoStatus(token: string): Promise<FalVideoStatus> {
     const res = await fetch(responseUrl, { headers: auth, cache: "no-store", signal: AbortSignal.timeout(15000) });
     if (!res.ok) return { status: "error", error: `fal result ${res.status}` };
     // разные fal-модели кладут URL в разные поля: seedance → video.url, другие → url/video_url/output.url
-    const rj = (await res.json()) as { video?: { url?: string }; url?: string; video_url?: string; output?: { url?: string } | string; detail?: string };
-    const url = rj.video?.url || rj.video_url || rj.url || (typeof rj.output === "string" ? rj.output : rj.output?.url);
+    const rj = (await res.json()) as { detail?: string } & Record<string, unknown>;
+    const url = extractFalVideoUrl(rj);
     return url ? { status: "done", videoUrl: url } : { status: "error", error: (rj.detail || "fal без видео").slice(0, 100) };
   } catch (e) { return { status: "error", error: String(e).slice(0, 100) }; }
 }

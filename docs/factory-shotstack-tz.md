@@ -26,7 +26,7 @@
 | 2 | **Инверсия дефолта** | Финал = AI-i2v целым роликом ИЛИ карусель из 1 фото («залупа»). Shotstack-сборка достижима только если `produce` вернёт `slideshow`/`repurpose_cut`, и при ЛЮБОМ сбое — откат на AI (`tick:215/228/234`). Браузерный `_genIdea` про assemble вообще не знает. | 🔴 BLOCKER |
 | 3 | **Таймлайн-конкатенация, а не node-граф** | `buildEdit()` строит Edit-JSON из плоского `AssemblyClip[]` — нет типа блока/слотов/EFFECTS. `factory_assemblies` хранит `edit_json` монолитом → «поменять только PAYOFF» нельзя без пересборки. Shotstack Templates+merge (штатный slot-механизм) НЕ используется. | 🔴 BLOCKER |
 | 4 | **produce = LLM-угадайка маршрута** | Решение «AI целым роликом или нет» отдано модели на КАЖДОМ вызове → недетерминированно, дрейфует. Браузер (`available.photos` захардкожен) и сервер (`disk-source`) решают по-разному на одних входах. | 🟠 HIGH |
-| 5 | **Два дрейфующих конвейера** | Браузерный `_genIdea/runFull` (while+setTimeout до 6 мин во вкладке, вкладка≠воркер) vs серверная очередь (`jobs/tick`, правильная, но НЕ дефолт). Две копии pipeline расходятся. | 🟠 HIGH |
+| 5 | **Два дрейфующих конвейера** | Браузерный `_genIdea/runFull` (while+setTimeout до 6 мин во вкладке, вкладка≠воркер) vs legacy queue (`jobs/tick`, исторический серверный путь). Runtime уже переведён на `graph-run`, а `jobs/*` сведён к stub-уровню, но старая модель всё ещё путает чтение системы. | 🟠 HIGH |
 | 6 | **Разрыв keyspace** | Кокпит кеширует playbook в `localStorage.cf_playbooks` по БРЕНДУ (`_pbKey=_brandOf`), а корпус/niche_playbooks/scripts — по НИШЕ (`nicheFromArticle`). Бренды одной ниши не делятся залетевшим. | 🟠 HIGH |
 | 7 | **Контур обучения разомкнут на уровне блоков** | `winners` пишет хук в viral_hooks, но НЕ какие block_ids/слоты/звук/переходы дали результат. Компаундинг (главная ценность модульности) не наступает. | 🟠 HIGH |
 | 8 | **🔴 НЕТ контура постинга→сигнала** (добавлено советом) | Цель «залетать», но нет: куда/когда постим, как ловим views/watch/CTR. Без сигнала вся петля обучения декоративна. | 🔴 BLOCKER (стратегический) |
@@ -91,7 +91,7 @@ Block {
 ## 4. Миграция (keep / rewrite / kill)
 
 **KEEP** (фундамент — не трогать):
-- self-chaining очередь `lib/factory/jobs.ts` + `jobs/tick` (lease, renderCount/composeCount≤3, гарды от двойной оплаты) — единственный конвейер после слияния.
+- Историческая self-chaining очередь `lib/factory/jobs.ts` + `jobs/tick` уже выведена из runtime surface: канон теперь `graph-run`, `jobs/*` сведён к disabled stub routes, а `lib/factory/jobs.ts` удалён.
 - Виральный корпус Virlo (`viral_videos.beat_structure/hook_text/virality_score`, `viral_hooks` viability 1-5, `orbit_searches`, `niche_monitors`, `niche_playbooks.structure_by_seconds/render_role`) + `hook-judge` + анти-слоп ОТК (`video-critic`/`rubric`).
 - `disk-source` (реальная съёмка по артикулу/цвету) + `content_assets` как библиотека блоков.
 - `factory_assemblies` + `gen-save` (Storage-банк, дедуп по url).
@@ -102,7 +102,7 @@ Block {
 - `produce/route.ts`: LLM-угадайка → детерминированный роутер по факту тегированной библиотеки. *(Фаза 2)*
 - `assemble/route.ts`: dumb-конкатенация `slice(4)` → ролевой граф-резолвер. *(Фаза 1 тонко → Фаза 2 полно)*
 - `lib/factory/shotstack.ts`: GAP-FREE раскладка (кумулятивный start из `duration_sec`); `quantizeToBeats` ТОЛЬКО при реальном audioUrl+bpm; нативный text-track как единственный путь субтитров; Templates+merge (`buildEdit`→fallback). *(text-track — Фаза 1; Templates — Фаза 2)*
-- `jobs/tick runStep`: финал ВСЕГДА через assemble (сборка=дефолт); одиночные генераторы пишут блок в библиотеку; откат assemble→scenario → wait/honest-fail; ОТК ДО Shotstack; `single=true` для исключений (talking-head UGC / 1 идеальный реальный клип / тест хука). *(Фаза 2; в Фазе 1 — узкий happy-path)*
+- Исторический `jobs/tick runStep`: финал ВСЕГДА через assemble (сборка=дефолт); одиночные генераторы пишут блок в библиотеку; откат assemble→scenario → wait/honest-fail; ОТК ДО Shotstack; `single=true` для исключений (talking-head UGC / 1 идеальный реальный клип / тест хука). В текущем runtime это уже должно жить в `graph-run`, а не в legacy queue. *(Фаза 2; в Фазе 1 — узкий happy-path)*
 - `winners/route.ts`: писать ВЫИГРАВШИЙ слот-рецепт (не только хук). *(Фаза 2)*
 - Кокпит `patrick.html`: ключ playbook по `nicheFromArticle` (не `_brandOf`); `_genIdea/runFull` → createJob + status. *(Фаза 2)*
 - Писатели тегов content_assets: бэкфилл asset_type/role/emotion/duration_sec/beat_suitable при индексации. *(Фаза 1 — предусловие)*

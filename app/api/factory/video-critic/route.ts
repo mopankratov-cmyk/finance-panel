@@ -4,11 +4,23 @@ import { rubricPrompt, scoreRubric, nicheFromArticle } from "@/lib/factory/rubri
 import type { ContentMode, RubricNiche, AxisScores } from "@/lib/factory/rubric";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { rejectAntiFor } from "@/lib/factory/learningHints";
+import { extractJson } from "@/lib/factory/extractJson";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 const AXIS_KEYS: (keyof AxisScores)[] = ["hook", "retention", "native", "brand", "cta"];
+
+function normalizeBasisReason(reason: string): string {
+  const s = String(reason || "").toLowerCase();
+  if (!s) return "unknown";
+  if (s.includes("empty text prefilter response")) return "text_empty_response";
+  if (s.includes("empty critic response")) return "model_empty_response";
+  if (s.includes("upstream critic unavailable")) return "upstream_unavailable";
+  if (s.includes("timeout")) return "timeout";
+  if (s.includes("unauthorized")) return "auth";
+  return "other";
+}
 
 // #17 Structured Outputs: критик ОБЯЗАН вернуть схема-валидный вердикт через forced tool_use →
 // нет обрезанного/кривого JSON (главная флаки ОТК-маховика). parseLooseJson остаётся фолбэком.
@@ -41,10 +53,9 @@ function num(txt: string, key: string): number | undefined {
   const m = txt.match(new RegExp(`"${key}"\\s*:\\s*(\\d(?:\\.\\d+)?)`));
   return m ? Number(m[1]) : undefined;
 }
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function parseLooseJson(txt: string): any | null {
-  const m = txt.match(/\{[\s\S]*\}/);
-  if (m) { try { return JSON.parse(m[0]); } catch { /* обрезан — ниже */ } }
+  const parsed = extractJson(txt);
+  if (parsed) return parsed;
   const arr = (key: string): string[] => {
     const block = txt.match(new RegExp(`"${key}"\\s*:\\s*\\[([\\s\\S]*?)(\\]|$)`));
     if (!block) return [];
@@ -58,8 +69,40 @@ function parseLooseJson(txt: string): any | null {
   return { axes, score, verdict: txt.match(/"verdict"\s*:\s*"([^"]+)"/)?.[1], issues: arr("issues"), fixes: arr("fixes"), regen_hint: txt.match(/"regen_hint"\s*:\s*"([^"]+)"/)?.[1] || "" };
 }
 
+function fallbackCritique(input: {
+  frames: string[];
+  hook: string;
+  scenarioText: string;
+  mode: ContentMode;
+  niche: RubricNiche;
+  kind: "avatar" | "product";
+  article: string;
+  name: string;
+  reason?: string;
+}) {
+  const hookText = String(input.hook || "").trim();
+  const hasArticle = !!String(input.article || input.name || "").trim();
+  const strongHook = /[?!]/.test(hookText) || /\b(как|почему|что|не|смотри|смотришь|ошибка|риск|правда|срочно|вау|секрет)\b/i.test(hookText) || hookText.length > 28;
+  const frameCount = input.frames.length;
+  const axes: AxisScores = {
+    hook: strongHook ? 4 : hookText ? 3 : 2,
+    retention: frameCount >= 4 ? 4 : frameCount >= 2 ? 3 : 2,
+    native: input.kind === "avatar" ? 2 : frameCount >= 2 ? 3 : 2,
+    brand: hasArticle ? 4 : 3,
+    cta: input.mode === "sell" ? (/(wb|артикул|куп|закаж|ссылка)/i.test(`${hookText} ${input.scenarioText}`) ? 4 : 3) : (/(подпиш|сохрани|см. проф|профил)/i.test(`${hookText} ${input.scenarioText}`) ? 4 : 3),
+  };
+  const { weighted, score, verdict, floorFail } = scoreRubric(axes, input.mode, input.niche);
+  const issues = [
+    input.reason ? `video-critic fallback: ${input.reason}` : "video-critic fallback: upstream unavailable, used deterministic rubric",
+    frameCount < 2 ? "мало кадров для точного ОТК; оценка по тексту и структуре" : "оценка без внешней модели, по эвристике",
+  ];
+  const fixes = [
+    input.mode === "sell" ? "усилить хук и сделать товар читаемым в первом кадре" : "усилить hook и темп без рекламы",
+  ];
+  return NextResponse.json({ score, weighted, verdict, axes, floor_fail: floorFail, mode: input.mode, niche: input.niche, basis: "fallback", basis_reason: normalizeBasisReason(input.reason || ""), issues, fixes, regen_hint: "" });
+}
+
 // Сжать сценарий в компактный текст для критика (хук/динамика/CTA читаются из текста, а не угадываются).
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function scenarioDigest(sc: any): string {
   if (!sc) return "";
   if (typeof sc === "string") return sc.slice(0, 1500);
@@ -85,13 +128,24 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
   const frames: string[] = Array.isArray(body.frames) ? body.frames.slice(0, 6) : [];
   const context: string = (body.context || "").toString().slice(0, 400);
-  const kind: string = body.kind === "avatar" ? "avatar" : "product";
+  const kind: "avatar" | "product" = body.kind === "avatar" ? "avatar" : "product";
   const mode: ContentMode = body.mode === "sell" ? "sell" : "audience";
   const hook: string = (body.hook || "").toString().slice(0, 300);
   const article: string = (body.article || "").toString().slice(0, 40);
   const name: string = (body.product_name || "").toString().slice(0, 120);
   const niche: RubricNiche = (["clothing", "toys", "cosmetics", "default"].includes(body.niche) ? body.niche : nicheFromArticle(article, name)) as RubricNiche;
   const scenarioText = scenarioDigest(body.scenario);
+  const fallback = () => fallbackCritique({
+    frames,
+    hook,
+    scenarioText,
+    mode,
+    niche,
+    kind,
+    article,
+    name,
+    reason: "upstream critic unavailable",
+  });
 
   // Топ хуков ниши из corpus (для калибровки критика — «не хуже чем»)
   let corpusHint = "";
@@ -109,7 +163,7 @@ export async function POST(req: NextRequest) {
   // Флор только по хуку (basis='text'); native/brand из текста не судятся; regen_hint пуст (не для ретрай-петли).
   if (body.storyboard === true && !frames.length && hook) {
     const tClient = await createClaudeClient();
-    if (!tClient) return NextResponse.json({ error: "ANTHROPIC_API_KEY не настроен" }, { status: 500 });
+    if (!tClient) return fallback();
     const tLabel = mode === "sell" ? "ПРОДАЖА (ведём на WB)" : "АУДИТОРИЯ (рост охвата/подписок)";
     const sysT = `Ты отсеиваешь слабый ХУК сценария короткого вертикального видео ДО дорогого рендера. На входе — ТЕКСТ (хук + покадровый сценарий), кадров нет. Режим: ${tLabel}. Ниша: ${niche}.
 По тексту честно читаются ось A (ХУК), частично E (CTA) и структура B; оси C (нативность) и D (товар в кадре) из текста НЕ оценить — ставь им 3 (нейтрально), решения по ним не принимаем. Суди СТРОГО ось A: сильный хук = паттерн-брейк/новизна/интрига в первой фразе, за 1 сек ясно «зачем смотреть»; слабый = общая витрина/«здравствуйте».${corpusHint}
@@ -117,24 +171,43 @@ ${rubricPrompt(mode)}
 Верни СТРОГО JSON: {"axes":{"hook":1-5,"retention":1-5,"native":3,"brand":3,"cta":1-5},"issues":["что слабо в хуке/структуре",...],"fixes":["как усилить хук",...]}. Только JSON.`;
     try {
       const resT = await tClient.messages.create({ model: MODEL, max_tokens: 700, temperature: 0.2, system: sysT, messages: [{ role: "user", content: `Хук: «${hook}».\nСценарий:\n${scenarioText || "—"}` }] });
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       let txtT = (resT.content as any[]).filter((b) => b.type === "text").map((b) => b.text).join(" ").trim();
       txtT = txtT.replace(/```json\s*/gi, "").replace(/```/g, "").trim();
       const jT = parseLooseJson(txtT);
-      if (!jT) return NextResponse.json({ error: "пустой ответ предфильтра", basis: "text" }, { status: 502 });
+      if (!jT) return fallbackCritique({
+        frames,
+        hook,
+        scenarioText,
+        mode,
+        niche,
+        kind,
+        article,
+        name,
+        reason: "empty text prefilter response",
+      });
       const rawT = (jT.axes && typeof jT.axes === "object") ? jT.axes : {};
       const axesT: AxisScores = { hook: axisOr3(rawT.hook), retention: axisOr3(rawT.retention), native: 3, brand: 3, cta: axisOr3(rawT.cta) };
       const rT = scoreRubric(axesT, mode, niche, "text");
-      return NextResponse.json({ score: rT.score, weighted: rT.weighted, verdict: rT.verdict, axes: axesT, floor_fail: rT.floorFail, mode, niche, basis: "text", issues: Array.isArray(jT.issues) ? jT.issues : [], fixes: jT.fixes || [], regen_hint: "" });
+      return NextResponse.json({ score: rT.score, weighted: rT.weighted, verdict: rT.verdict, axes: axesT, floor_fail: rT.floorFail, mode, niche, basis: "text", basis_reason: "text_model", issues: Array.isArray(jT.issues) ? jT.issues : [], fixes: jT.fixes || [], regen_hint: "" });
     } catch (e) {
-      return NextResponse.json({ error: String(e).slice(0, 200), basis: "text" }, { status: 502 });
+      return fallbackCritique({
+        frames,
+        hook,
+        scenarioText,
+        mode,
+        niche,
+        kind,
+        article,
+        name,
+        reason: String(e).slice(0, 200),
+      });
     }
   }
 
   if (!frames.length) return NextResponse.json({ error: "Нет кадров" }, { status: 400 });
 
   const client = await createClaudeClient();
-  if (!client) return NextResponse.json({ error: "ANTHROPIC_API_KEY не настроен" }, { status: 500 });
+  if (!client) return fallback();
 
   const modeLabel = mode === "sell" ? "ПРОДАЖА (ведём на WB)" : "АУДИТОРИЯ (рост охвата/подписок, без давления на WB)";
   const sys = `Ты — строгий ОТК коротких вертикальных видео (Reels/Shorts/VK Клипы) бренда-селлера WB/Ozon. Твоя задача — оценить, обойдёт ли этот ролик контент КОНКУРЕНТОВ в ленте, а не просто «нет ли брака».
@@ -149,7 +222,6 @@ ${rubricPrompt(mode)}
   const antiHint = dbAnti ? await rejectAntiFor(dbAnti, niche) : "";
   // #11 КАДРЫ-ПЕРВЫМИ: Anthropic — изображения ДО вопроса дают лучшее рассуждение по хуку/удержанию.
   // Каждый кадр подписан порядком (старт/финал) → критик точнее судит динамику от первого к последнему.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const content: any[] = [];
   frames.forEach((f, i) => {
     const label = i === 0 ? "Кадр 1 (старт / хук)" : i === frames.length - 1 ? `Кадр ${i + 1} (финал)` : `Кадр ${i + 1}`;
@@ -161,20 +233,29 @@ ${rubricPrompt(mode)}
   try {
     const res = await client.messages.create({
       model: MODEL, max_tokens: 1536, temperature: 0.2, system: sys,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       tools: [CRITIQUE_TOOL as any], tool_choice: { type: "tool", name: "submit_critique" },
       messages: [{ role: "user", content }],
     });
     // ПЕРВИЧНО: schema-валидный вердикт из tool_use. ФОЛБЭК: терпимый текст-парсер (если tool_use не пришёл).
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const blocks = res.content as any[];
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let j: any = blocks.find((b) => b.type === "tool_use" && b.name === "submit_critique")?.input || null;
+    const toolUseBlock = blocks.find((b) => b.type === "tool_use" && b.name === "submit_critique") || null;
+    let j: any = toolUseBlock?.input || null;
+    let basisReason = toolUseBlock ? "tool_use" : "text_parse";
     if (!j) {
       const txt = blocks.filter((b) => b.type === "text").map((b) => b.text).join(" ").trim().replace(/```json\s*/gi, "").replace(/```/g, "").trim();
       j = parseLooseJson(txt);
     }
-    if (!j) return NextResponse.json({ error: "пустой ответ критика" }, { status: 502 });
+    if (!j) return fallbackCritique({
+      frames,
+      hook,
+      scenarioText,
+      mode,
+      niche,
+      kind,
+      article,
+      name,
+      reason: "empty critic response",
+    });
 
     // оси: из ответа модели; фолбэк — равномерно из плоского score, если модель не дала оси.
     const raw = (j.axes && typeof j.axes === "object") ? j.axes : null;
@@ -193,8 +274,18 @@ ${rubricPrompt(mode)}
     const issues: string[] = Array.isArray(j.issues) ? j.issues : [];
     if (floorFail.length) issues.unshift(`Провал по флору (${floorFail.join(", ")}) — ниже минимума для режима «${mode}»`);
 
-    return NextResponse.json({ score, weighted, verdict, axes, floor_fail: floorFail, mode, niche, issues, fixes: j.fixes || [], regen_hint: j.regen_hint || "" });
+    return NextResponse.json({ score, weighted, verdict, axes, floor_fail: floorFail, mode, niche, basis: "model", basis_reason: basisReason, issues, fixes: j.fixes || [], regen_hint: j.regen_hint || "" });
   } catch (e) {
-    return NextResponse.json({ error: String(e).slice(0, 200) }, { status: 502 });
+    return fallbackCritique({
+      frames,
+      hook,
+      scenarioText,
+      mode,
+      niche,
+      kind,
+      article,
+      name,
+      reason: String(e).slice(0, 200),
+    });
   }
 }

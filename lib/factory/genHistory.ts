@@ -14,21 +14,26 @@ export interface GenHistoryRow {
   engine?: string | null;
   node_type?: string | null;
   prompt?: string | null;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   params?: any;
   input_url?: string | null;
   output_url?: string | null;
   otk_score?: number | null;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   otk_axes?: any;
   otk_verdict?: string | null;
   artifact_ok?: boolean | null;
-  status?: string;               // generated|artifact_fail|otk_pass|otk_fail|regen|approved|rejected
+  status?: string;               // generated|artifact_fail|warning|otk_pass|otk_fail(legacy read-only)|regen|approved|rejected
   source?: string;               // studio|graph_run|batch|node_preview|standalone|test
   cost_hint?: string | null;
   reason?: string | null;
   niche?: string | null;
   article?: string | null;
+}
+
+export interface GenHistoryResult {
+  history: GenHistoryRow[];
+  warning?: string;
 }
 
 // Записать попытку. Возвращает id строки (для parent_id следующей итерации) или null при мягкой деградации.
@@ -72,18 +77,23 @@ export async function logGeneration(row: GenHistoryRow): Promise<number | null> 
 }
 
 // История по рецепту (для кнопки «история» на карточке) — последние попытки, новые сверху.
-export async function getRecipeHistory(recipeId: number, limit = 50): Promise<GenHistoryRow[]> {
+export async function getRecipeHistoryResult(recipeId: number, limit = 50): Promise<GenHistoryResult> {
   const db = getSupabaseAdmin();
-  if (!db) return [];
+  if (!db) return { history: [], warning: "Supabase не настроен" };
   try {
-    const { data } = await db
+    const { data, error } = await db
       .from("generation_history")
       .select("*")
       .eq("recipe_id", recipeId)
       .order("created_at", { ascending: false })
       .limit(limit);
-    return (data as GenHistoryRow[]) || [];
-  } catch {
-    return [];
+    if (error) return { history: [], warning: error.message.slice(0, 160) };
+    return { history: (data as GenHistoryRow[]) || [] };
+  } catch (e) {
+    return { history: [], warning: String((e as Error)?.message || e).slice(0, 160) };
   }
+}
+
+export async function getRecipeHistory(recipeId: number, limit = 50): Promise<GenHistoryRow[]> {
+  return (await getRecipeHistoryResult(recipeId, limit)).history;
 }

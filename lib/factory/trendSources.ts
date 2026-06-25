@@ -26,7 +26,7 @@ async function fromApify(niche: string, limit: number): Promise<ViralVideo[]> {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input), signal: AbortSignal.timeout(55000),
     });
     if (!r.ok) return [];
-    const items = (await r.json()) as Record<string, unknown>[];
+    const items = (await r.json().catch(() => [])) as Record<string, unknown>[];
     return (Array.isArray(items) ? items : []).slice(0, limit).map((it) => ({
       url: (it.webVideoUrl || it.url || it.postPage || "") as string,
       caption: (it.text || it.caption || it.title || it.desc || "") as string,
@@ -195,9 +195,9 @@ export async function virloMonitorData(monitorId: string): Promise<Record<string
 export interface VirloVideoAnalysis {
   hook_text?: string;
   format_detected?: string;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   beat_structure?: any;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   viral_reason?: any;
   is_commerce_safe?: boolean;
 }

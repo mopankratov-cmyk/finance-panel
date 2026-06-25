@@ -9,6 +9,7 @@ export const maxDuration = 15;
 // GET ?niche=cosmetics&limit=10&safe_only=true
 
 export async function GET(req: NextRequest) {
+  try {
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ sounds: [] });
 
@@ -59,5 +60,8 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ sounds, niche: niche || "all", total: map.size });
   } catch {
     return NextResponse.json({ sounds: [], note: "orbit_searches не применена" });
+  }
+  } catch (e) {
+    return NextResponse.json({ sounds: [], note: "top-sounds crash: " + String((e as Error)?.message || e).slice(0, 160) });
   }
 }

@@ -1,5 +1,5 @@
 // Shotstack — managed render-API для модульной сборки видео (Factory v2). Async submit→poll, ложится
-// на нашу self-chaining очередь (контракт как falVideo). Ключ SHOTSTACK_API_KEY (+SHOTSTACK_ENV=v1|stage).
+// в graph-run runner так же, как falVideo. Ключ SHOTSTACK_API_KEY (+SHOTSTACK_ENV=v1|stage).
 // ⚠️ НЕ ВАЛИДИРОВАНО LIVE: JSON-схема Shotstack собрана по докам/ресёрчу — нужен 1 смоук-тест на ПРОДЕ
 // (sandbox=stage ставит watermark). Кириллица: Noto Sans из jsDelivr/Google Fonts CDN — дефолт, без загрузки.
 // Вся схема Edit изолирована в buildEdit() — миграция на ffmpeg/другой движок трогает ТОЛЬКО этот файл.
@@ -125,7 +125,7 @@ export async function shotstackSubmit(editJson: Record<string, unknown>): Promis
   try {
     const r = await fetch(`${BASE()}/render`, { method: "POST", headers: { "x-api-key": k, "Content-Type": "application/json" }, cache: "no-store", body: JSON.stringify(editJson), signal: AbortSignal.timeout(25000) });
     if (!r.ok) return null;
-    const j = (await r.json()) as { response?: { id?: string } };
+    const j = (await r.json().catch(() => ({}))) as { response?: { id?: string } };
     return j.response?.id || null;
   } catch { return null; }
 }
@@ -139,7 +139,7 @@ export async function shotstackStatus(id: string): Promise<ShotstackStatus> {
   try {
     const r = await fetch(`${BASE()}/render/${id}`, { headers: { "x-api-key": k }, cache: "no-store", signal: AbortSignal.timeout(15000) });
     if (!r.ok) return { status: "error", error: `shotstack ${r.status}`, retryable: true }; // non-2xx — транспорт, не отказ рендера
-    const j = (await r.json()) as { response?: { status?: string; url?: string; error?: string } };
+    const j = (await r.json().catch(() => ({}))) as { response?: { status?: string; url?: string; error?: string } };
     const st = j.response?.status;
     if (st === "done" && j.response?.url) return { status: "done", videoUrl: j.response.url };
     if (st === "failed") return { status: "error", error: (j.response?.error || "shotstack failed").slice(0, 120) }; // явный отказ — НЕ retryable

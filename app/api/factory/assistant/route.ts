@@ -48,6 +48,7 @@ function txt(body: string, status = 200): Response {
 }
 
 export async function POST(req: NextRequest) {
+  try {
   let body: { ctx?: unknown; messages?: unknown } = {};
   try { body = await req.json(); } catch { /* пустое тело — ниже отдадим подсказку */ }
 
@@ -68,7 +69,7 @@ export async function POST(req: NextRequest) {
       let emitted = false;
       try {
         const s = await client.messages.create({ model: MODEL, max_tokens: 700, system: sysPrompt(ctx), messages, stream: true });
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
         for await (const ev of s as any) {
           if (ev?.type === "content_block_delta" && ev.delta?.type === "text_delta" && ev.delta.text) {
             controller.enqueue(encoder.encode(ev.delta.text)); emitted = true;
@@ -80,7 +81,7 @@ export async function POST(req: NextRequest) {
         if (!emitted) {
           try {
             const r = await client.messages.create({ model: MODEL, max_tokens: 700, system: sysPrompt(ctx), messages });
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
             const t = (r.content as any[]).filter((b) => b.type === "text").map((b) => b.text).join("");
             if (t) { controller.enqueue(encoder.encode(t)); emitted = true; }
           } catch { /* и не-стрим не вышел — отдадим ошибку ниже */ }
@@ -94,4 +95,7 @@ export async function POST(req: NextRequest) {
   return new Response(stream, {
     headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store", "X-Accel-Buffering": "no" },
   });
+  } catch (e) {
+    return txt("⚠ assistant crash: " + String((e as Error)?.message || e).slice(0, 160), 500);
+  }
 }

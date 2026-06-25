@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { CLAUDE_MODEL as MODEL, createClaudeClient } from "@/lib/agent/client";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { extractJson } from "@/lib/factory/extractJson";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -8,6 +9,7 @@ export const maxDuration = 60;
 // Агент «Директор маркетинга» — оркестратор. Получает ТЗ от владельца, декомпозирует и
 // раздаёт задачи спец-агентам. Возвращает план «кому что делать» (на утверждение → потом исполнение).
 export async function POST(req: NextRequest) {
+  try {
   const body = await req.json().catch(() => ({}));
   const task: string = (body.task || "").toString().trim();
   const profile: string = (body.profile || "").toString().trim().slice(0, 2000);
@@ -59,15 +61,24 @@ ${profile ? `\nПРОФИЛЬ БРЕНДА/АУДИТОРИИ (учитывай 
 
   try {
     const res = await client.messages.create({ model: MODEL, max_tokens: 2500, system: sys, messages: [{ role: "user", content: task }] });
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     const txt = (res.content as any[]).filter((b) => b.type === "text").map((b) => b.text).join(" ");
-    const m = txt.match(/\{[\s\S]*\}/);
-    if (!m) return NextResponse.json({ error: "пустой план", raw: txt.slice(0, 200) }, { status: 502 });
-    const plan = JSON.parse(m[0]);
+    const plan = extractJson(txt);
+    if (!plan) return NextResponse.json({ error: "пустой план", raw: txt.slice(0, 200) }, { status: 502 });
     // явный артикул из задачи всегда побеждает догадку модели
     if (explicitArt) plan.target_article = explicitArt;
     return NextResponse.json(plan);
   } catch (e) {
     return NextResponse.json({ error: String(e).slice(0, 200) }, { status: 502 });
+  }
+  } catch (e) {
+    return NextResponse.json({
+      error: "director crash: " + String((e as Error)?.message || e).slice(0, 160),
+      goal: "",
+      target_article: "",
+      plan: [],
+      clarify: "director endpoint crashed; inspect backend logs",
+      summary: "",
+    }, { status: 500 });
   }
 }

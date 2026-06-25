@@ -15,7 +15,7 @@ export const maxDuration = 60;
 //   GET  ?hash=   → есть ли готовое превью в кэше
 // Всегда JSON (обработчик в try/catch). Хэш-кэш мягко деградирует, если таблица node_previews не применена.
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+
 async function logSignal(db: any, ev: string, extra: Record<string, unknown>) {
   if (!db) return;
   try { await db.from("cf_signals").insert({ event: ev, ...extra }); } catch { /* журнал best-effort */ }
@@ -39,7 +39,23 @@ export async function POST(req: NextRequest) {
       try {
         const { data } = await db.from("node_previews").select("*").eq("hash", hash).eq("status", "done").limit(1);
         const hit = (data as Record<string, unknown>[] | null)?.[0];
-        if (hit?.output_url) return NextResponse.json({ ok: true, cached: true, status: "done", url: hit.output_url, hash, engine: hit.engine, preview_id: hit.id });
+        if (hit?.output_url) {
+          await logGeneration({
+            recipe_id: body.recipe_id ?? null,
+            node_id: body.node_id ?? null,
+            tool: node.tool,
+            engine: (hit.engine as string) ?? null,
+            node_type: node.node_type,
+            prompt: node.prompt,
+            params: node.params,
+            output_url: String(hit.output_url),
+            cost_hint: (hit.cost_hint as string) ?? null,
+            status: "generated",
+            source: "node_preview",
+            reason: "cache_hit",
+          });
+          return NextResponse.json({ ok: true, cached: true, status: "done", url: hit.output_url, hash, engine: hit.engine, preview_id: hit.id });
+        }
       } catch { /* таблица не применена — без кэша */ }
     }
 
@@ -107,7 +123,7 @@ export async function GET(req: NextRequest) {
   }
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+
 async function pollAndPersist(db: any, token: string, previewId: number | null) {
   const s = await pollNode(token);
   if (db && (s.status === "done" || s.status === "error")) {

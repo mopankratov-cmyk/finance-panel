@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getRecipeHistory } from "@/lib/factory/genHistory";
+import { getRecipeHistoryResult } from "@/lib/factory/genHistory";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
@@ -11,8 +11,8 @@ export async function GET(req: NextRequest) {
   try {
     const recipeId = Number(req.nextUrl.searchParams.get("recipe_id"));
     if (!recipeId) return NextResponse.json({ ok: true, history: [], note: "нужен recipe_id" });
-    const history = await getRecipeHistory(recipeId, 100);
-    return NextResponse.json({ ok: true, history });
+    const result = await getRecipeHistoryResult(recipeId, 100);
+    return NextResponse.json({ ok: true, history: result.history, warning: result.warning || null });
   } catch (e) {
     return NextResponse.json({ ok: true, history: [], error: String((e as Error)?.message || e).slice(0, 160) });
   }

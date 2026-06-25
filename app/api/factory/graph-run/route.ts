@@ -1,6 +1,8 @@
-import { NextRequest, NextResponse, after } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
-import { buildRunPlan, type RunPlan } from "@/lib/factory/graphRun";
+import { buildRunPlan, makeRunId } from "@/lib/factory/graphRun";
+import type { RunPlan } from "@/lib/factory/graphTypes";
+import { buildRunSummary } from "@/lib/factory/observability";
 import { internalFetch } from "@/lib/internalFetch";
 
 export const dynamic = "force-dynamic";
@@ -33,15 +35,17 @@ export async function POST(req: NextRequest) {
       const rows = (nodes as Record<string, unknown>[] | null) || [];
       if (!rows.length) return NextResponse.json({ error: "у рецепта нет нод" }, { status: 400 });
       const plan = buildRunPlan(rows);
+      plan.run_id = makeRunId(recipeId);
+      const prevPlan = existing && typeof existing === "object" ? existing : null;
+      plan.execution_log = Array.isArray(prevPlan?.execution_log) ? prevPlan.execution_log : [];
+      plan.warnings = [];
       if (body.notify) plan.notify = true; // V21/R5: батч-прогон → слать прошедшее ОТК в Telegram
       if (body.autofill) plan.step = "autofill"; // V21: батч-черновик сам сконфигурируется (§17) перед генерацией
       await db.from("node_recipes").update({ run_plan: plan, status: "running", otk_verdict: null, otk_score: null, output_url: null, render_id: null, updated_at: new Date().toISOString() }).eq("id", recipeId);
     }
 
     const origin = req.nextUrl.origin;
-    // первый тик СИНХРОННО (не after): after() не исполняется надёжно при server-to-server (см. крон-фикс
-    // d9ccb5a) → рецепт зависал в running до крон-страховки (~90с). Дёргаем тик и ждём; таймаут бережёт POST,
-    // а тик-хендлер продолжит свой шаг сам, даже если мы отвалимся по таймауту. Сбой кика → подберёт крон.
+    // первый тик СИНХРОННО: сам chain живёт в graph-run/tick, крон — только страховка.
     try { await internalFetch(`${origin}/api/factory/graph-run/tick`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ recipe_id: recipeId }), signal: AbortSignal.timeout(20000) }); } catch { /* воскресит крон/ручной тик */ }
 
     return NextResponse.json({ ok: true, recipe_id: recipeId, started: true });
@@ -60,19 +64,10 @@ export async function GET(req: NextRequest) {
     const recipe = (data as Record<string, unknown>[] | null)?.[0];
     if (!recipe) return NextResponse.json({ error: "рецепт не найден" }, { status: 404 });
     const plan = recipe.run_plan as RunPlan | null;
+    // Sprint 1: read-path должен быть read-only. Оркестрация живёт в POST /graph-run,
+    // self-chain /graph-run/tick и cron-strategy, а не в status polling.
     const nodes = (plan?.nodes || []).map((n) => ({ ordinal: n.ordinal, slot: n.slot, node_type: n.node_type, tool: n.tool, status: n.status, url: n.url || null, error: n.error || null, engine: n.engine || null }));
-
-    // САМО-ВОСКРЕШЕНИЕ: цепочка тиков могла оборваться (Vercel убил after / транзиент). Если прогон активен,
-    // а лиз протух → дёргаем тик. Опрос статуса из кокпита заодно поддерживает цепочку живой (лиз бережёт от дубля).
-    if (recipe.status === "running" && plan && plan.step !== "done" && plan.step !== "failed") {
-      const leaseFree = !plan.lease_until || new Date(plan.lease_until).getTime() < Date.now();
-      if (leaseFree) {
-        const origin = req.nextUrl.origin;
-        after(async () => { try { await internalFetch(`${origin}/api/factory/graph-run/tick`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ recipe_id: recipeId }), signal: AbortSignal.timeout(15000) }); } catch { /* следующий опрос воскресит */ } });
-      }
-    }
-
-    return NextResponse.json({ ok: true, recipe_id: recipeId, status: recipe.status, step: plan?.step || null, nodes, otk: recipe.otk_verdict, otk_score: recipe.otk_score, output_url: recipe.output_url, error: plan?.error || null }, { headers: { "Cache-Control": "no-store" } });
+    return NextResponse.json({ ok: true, recipe_id: recipeId, run_id: plan?.run_id || null, status: recipe.status, step: plan?.step || null, nodes, otk: recipe.otk_verdict, otk_score: recipe.otk_score, output_url: recipe.output_url, error: plan?.error || null, warnings: plan?.warnings || null, execution_log: plan?.execution_log || [], run_summary: buildRunSummary(plan) }, { headers: { "Cache-Control": "no-store" } });
   } catch (e) {
     return NextResponse.json({ error: "graph-run crash: " + String((e as Error)?.message || e).slice(0, 160) }, { status: 500 });
   }

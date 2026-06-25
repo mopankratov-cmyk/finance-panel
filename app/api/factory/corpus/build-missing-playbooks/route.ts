@@ -11,6 +11,7 @@ export const maxDuration = 120;
 // Вызывается из cockpit-кнопки «🧠 Плейбуки» или из corpus-cron (шаг 3).
 
 export async function POST(req: NextRequest) {
+  try {
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 500 });
 
@@ -81,4 +82,12 @@ export async function POST(req: NextRequest) {
   }
 
   return NextResponse.json({ ok: true, built, skipped, log });
+  } catch (e) {
+    return NextResponse.json({
+      ok: false,
+      built: [],
+      skipped: [],
+      log: ["corpus/build-missing-playbooks crash: " + String((e as Error)?.message || e).slice(0, 160)],
+    }, { status: 500 });
+  }
 }

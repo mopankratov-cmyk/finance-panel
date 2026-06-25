@@ -9,6 +9,7 @@ const MODEL = "claude-sonnet-4-6";
 // Ветки: video (i2v) — английский motion-промпт; nano_edit (source-prep) — английский edit-промпт
 // (усиливаем Constraints, не трогая Lock); иначе — русский монолог/текст.
 export async function POST(req: NextRequest) {
+  try {
   const body = await req.json().catch(() => ({}));
   const original: string = (body.original || "").toString().trim();
   const defects: string[] = Array.isArray(body.defects) ? body.defects : [];
@@ -19,7 +20,8 @@ export async function POST(req: NextRequest) {
   if (!defects.length && !fixes.length) return NextResponse.json({ error: "нет дефектов" }, { status: 400 });
 
   const client = await createClaudeClient();
-  if (!client) return NextResponse.json({ error: "ANTHROPIC_API_KEY не настроен" }, { status: 500 });
+  const fallbackPrompt = [original, ...fixes, ...defects.map((d) => `avoid ${d}`)].filter(Boolean).join(". ").slice(0, 1200);
+  if (!client) return NextResponse.json({ prompt: fallbackPrompt || original, warning: "ANTHROPIC_API_KEY не настроен" });
 
   // nano_edit — реген ИСХОДНОГО кадра (source-prep), а не движения; engine nano/seedream тоже сюда
   const isNanoEdit = route === "nano_edit" || engine.includes("nano") || engine.includes("seedream");
@@ -40,11 +42,17 @@ export async function POST(req: NextRequest) {
 
   try {
     const res = await client.messages.create({ model: MODEL, max_tokens: 400, temperature: 0.3, system: sys, messages: [{ role: "user", content: user }] });
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     const txt = (res.content as any[]).filter((b) => b.type === "text").map((b) => b.text).join(" ").trim();
-    if (!txt) return NextResponse.json({ error: "пусто" }, { status: 502 });
+    if (!txt) return NextResponse.json({ prompt: fallbackPrompt || original, warning: "improve-prompt empty response" });
     return NextResponse.json({ prompt: txt.replace(/^["«]|["»]$/g, "").trim() });
   } catch (e) {
-    return NextResponse.json({ error: String(e).slice(0, 150) }, { status: 502 });
+    return NextResponse.json({ prompt: fallbackPrompt || original, warning: String(e).slice(0, 150) });
+  }
+  } catch (e) {
+    return NextResponse.json({
+      prompt: "",
+      warning: "improve-prompt crash: " + String((e as Error)?.message || e).slice(0, 160),
+    }, { status: 500 });
   }
 }
