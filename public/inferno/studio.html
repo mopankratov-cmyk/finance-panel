@@ -543,6 +543,23 @@ function fmtSecAgo(sec){
   return m + "m" + (r ? " " + r + "s" : "");
 }
 
+function heartbeatIssueLabel(issue){
+  const code=String(issue||"").trim();
+  if(!code) return "нет сигнала";
+  return {
+    table_missing:"таблица не поднята",
+    sender_missing:"sender не запущен",
+    permission_denied:"нет доступа",
+    db_unreachable:"база недоступна",
+  }[code] || code.replace(/_/g," ");
+}
+
+function errorCategoryLabel(category){
+  const code=String(category||"").trim();
+  if(!code || code==="other") return "без категории";
+  return code.replace(/_/g," ");
+}
+
 function isWorkerInfraAction(action){
   return new Set([
     "open_worker_screen",
@@ -558,7 +575,7 @@ function runQueueTone(status){
   return {
     running:{c:"var(--acc-lt)", bg:"var(--vio-bg)", label:"идёт"},
     stale_running:{c:"var(--warn)", bg:"var(--warn-bg)", label:"подвис"},
-    warning:{c:"var(--warn)", bg:"var(--warn-bg)", label:"warning"},
+    warning:{c:"var(--warn)", bg:"var(--warn-bg)", label:"предупр."},
     run_fail:{c:"var(--err)", bg:"var(--err-bg)", label:"сбой"},
     done:{c:"var(--ok)", bg:"var(--ok-bg)", label:"готово"},
     generated:{c:"var(--ok)", bg:"var(--ok-bg)", label:"mp4"},
@@ -571,10 +588,10 @@ async function screenWorker(root, force, renderToken){
   const isLiveRender=()=>S.screen==="worker"&&S.renderToken===token&&root&&root.isConnected;
   if(S.workerTimer){ clearTimeout(S.workerTimer); S.workerTimer=null; }
   root.innerHTML="";
-  header("Пульс завода","heartbeat · прогоны · наблюдаемость", el("div",{class:"hdr-r"},
+  header("Пульс завода","пульс · прогоны · контроль", el("div",{class:"hdr-r"},
     el("button",{class:"btn",onclick:()=>screenWorker(root)},"↻ Обновить")));
   const wrap=el("div",{class:"scroll",style:"padding:18px;"}); root.appendChild(wrap);
-  wrap.appendChild(loadingCard("смотрю heartbeat и живые прогоны…"));
+  wrap.appendChild(loadingCard("смотрю пульс и живые прогоны…"));
   const d=await api("/ops");
   if(!isLiveRender()) return;
   S.workerState=d;
@@ -620,8 +637,8 @@ async function screenWorker(root, force, renderToken){
         ? (focusRun.active_step?`идёт шаг ${focusRun.active_step}`:focusRun.last_step?`последний шаг ${focusRun.last_step}`:"прогон в работе")
         : String(focusRun.status||"")==="warning"
           ? `${Number(focusRun.warnings_count||0)} предупрежд., mp4 сохранён`
-          : String(focusRun.status||"")==="run_fail"
-            ? `ошибка ${String(focusRun.error_category||"other")}`
+        : String(focusRun.status||"")==="run_fail"
+            ? `сбой · ${errorCategoryLabel(focusRun.error_category)}`
             : "прогон завершён";
   const focusRunMeta=focusRun?[
     focusRun.run_id?String(focusRun.run_id).slice(0,18):"",
@@ -677,13 +694,13 @@ async function screenWorker(root, force, renderToken){
   if(heartbeatDiag&&!S.compact){
     const diagCard=el("div",{class:"card",style:"padding:14px;margin-bottom:14px;border-color:"+(heartbeatDiag.issue==="table_missing"?"var(--err)":"var(--warn)")+";background:"+(heartbeatDiag.issue==="table_missing"?"var(--err-bg)":"var(--warn-bg)")+";"});
     diagCard.appendChild(el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;"},
-      el("div",{style:"font-size:14px;font-weight:600;"},"Сигнал heartbeat"),
-      el("span",{class:"mono",style:"font-size:10px;color:"+(heartbeatDiag.issue==="table_missing"?"var(--err)":"var(--warn)")+";background:rgba(0,0,0,.08);padding:3px 7px;border-radius:5px;font-weight:700;"},String(heartbeatDiag.issue||"issue"))));
+      el("div",{style:"font-size:14px;font-weight:600;"},"Сигнал пульса"),
+      el("span",{class:"mono",style:"font-size:10px;color:"+(heartbeatDiag.issue==="table_missing"?"var(--err)":"var(--warn)")+";background:rgba(0,0,0,.08);padding:3px 7px;border-radius:5px;font-weight:700;"},heartbeatIssueLabel(heartbeatDiag.issue))));
     const heartbeatSummary=heartbeatDiag.issue==="table_missing"
-      ? "heartbeat-таблица ещё не поднята, поэтому экран читает фолбэк и не блокирует прогоны."
+      ? "таблица heartbeat ещё не поднята, поэтому экран читает фолбэк и не блокирует прогоны."
       : heartbeatDiag.detail
         ? String(heartbeatDiag.detail)
-        : "heartbeat нестабилен, но завод продолжает идти в fail-open режиме.";
+        : "пульс нестабилен, но завод продолжает идти в fail-open режиме.";
     diagCard.appendChild(el("div",{style:"font-size:12px;color:var(--tx-bd);line-height:1.55;"},heartbeatSummary));
     const nextHint=heartbeatDiag.next_step||heartbeatDiag.migration_path||heartbeatDiag.sender_script||"";
     if(nextHint){
@@ -700,11 +717,11 @@ async function screenWorker(root, force, renderToken){
     const latestCard=el("div",{class:"card",style:"padding:14px;margin-bottom:14px;"});
     latestCard.appendChild(el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;"},
       el("div",{style:"font-size:14px;font-weight:600;"},"Последний стресс-тест"),
-      el("span",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);"},latestStress.generatedAt?fmtWhen(latestStress.generatedAt):"artifact")));
+      el("span",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);"},latestStress.generatedAt?fmtWhen(latestStress.generatedAt):"отчёт")));
     latestCard.appendChild(el("div",{style:"display:flex;flex-wrap:wrap;gap:6px;"},
       el("span",{class:"mono",style:"font-size:10px;color:var(--tx-hi);background:var(--bg-input);border:1px solid var(--bd2);padding:3px 7px;border-radius:5px;"},"прогонов "+String(lsSummary.completed||0)+"/"+String(lsSummary.totalRuns||0)),
       el("span",{class:"mono",style:"font-size:10px;color:"+(lsSummary.failed?"var(--err)":"var(--ok)")+";background:"+(lsSummary.failed?"var(--err-bg)":"var(--ok-bg)")+";padding:3px 7px;border-radius:5px;"},"сбоев "+String(lsSummary.failed||0)),
-      el("span",{class:"mono",style:"font-size:10px;color:var(--warn);background:var(--warn-bg);padding:3px 7px;border-radius:5px;"},"warn "+String(lsSummary.warnings||0)),
+      el("span",{class:"mono",style:"font-size:10px;color:var(--warn);background:var(--warn-bg);padding:3px 7px;border-radius:5px;"},"warning "+String(lsSummary.warnings||0)),
       el("span",{class:"mono",style:"font-size:10px;color:var(--tx-hi);background:var(--bg-input);border:1px solid var(--bd2);padding:3px 7px;border-radius:5px;"},"среднее "+String(lsSummary.avgDurationSec||0)+"s")));
     if(lsStability){
       latestCard.appendChild(el("div",{style:"font-size:11px;color:var(--tx-bd);line-height:1.45;margin-top:8px;"},
@@ -722,14 +739,14 @@ async function screenWorker(root, force, renderToken){
     const histCard=el("div",{class:"card",style:"padding:14px;margin-bottom:14px;"});
     histCard.appendChild(el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;"},
       el("div",{style:"font-size:14px;font-weight:600;"},"История стресс-тестов"),
-      el("span",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);"},stressHistory.latest_generated_at?fmtWhen(stressHistory.latest_generated_at):"archive")));
+      el("span",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);"},stressHistory.latest_generated_at?fmtWhen(stressHistory.latest_generated_at):"архив")));
     const fails=(stressHistory.failed_runs||0)+(stressHistory.run_failures||0)+(stressHistory.timeouts||0);
     histCard.appendChild(el("div",{style:"display:flex;flex-wrap:wrap;gap:6px;"},
       el("span",{class:"mono",style:"font-size:10px;color:var(--tx-hi);background:var(--bg-input);border:1px solid var(--bd2);padding:3px 7px;border-radius:5px;"},"reports "+String(stressHistory.total_reports||0)),
       el("span",{class:"mono",style:"font-size:10px;color:var(--ok);background:var(--ok-bg);padding:3px 7px;border-radius:5px;"},"done "+String(stressHistory.completed_runs||0)+"/"+String(stressHistory.total_runs||0)),
-      el("span",{class:"mono",style:"font-size:10px;color:"+(fails?"var(--err)":"var(--tx-hi)")+";background:"+(fails?"var(--err-bg)":"var(--bg-input)")+";border:1px solid "+(fails?"rgba(239,68,68,.35)":"var(--bd2)")+";padding:3px 7px;border-radius:5px;"},"fail "+String(fails)),
-      el("span",{class:"mono",style:"font-size:10px;color:var(--warn);background:var(--warn-bg);padding:3px 7px;border-radius:5px;"},"warn "+String(stressHistory.warning_runs||0)),
-      el("span",{class:"mono",style:"font-size:10px;color:var(--tx-hi);background:var(--bg-input);border:1px solid var(--bd2);padding:3px 7px;border-radius:5px;"},"target "+String(stressHistory.target_met_reports||0)+"/"+String(stressHistory.total_reports||0))));
+      el("span",{class:"mono",style:"font-size:10px;color:"+(fails?"var(--err)":"var(--tx-hi)")+";background:"+(fails?"var(--err-bg)":"var(--bg-input)")+";border:1px solid "+(fails?"rgba(239,68,68,.35)":"var(--bd2)")+";padding:3px 7px;border-radius:5px;"},"сбоев "+String(fails)),
+      el("span",{class:"mono",style:"font-size:10px;color:var(--warn);background:var(--warn-bg);padding:3px 7px;border-radius:5px;"},"warning "+String(stressHistory.warning_runs||0)),
+      el("span",{class:"mono",style:"font-size:10px;color:var(--tx-hi);background:var(--bg-input);border:1px solid var(--bd2);padding:3px 7px;border-radius:5px;"},"цель "+String(stressHistory.target_met_reports||0)+"/"+String(stressHistory.total_reports||0))));
     wrap.appendChild(histCard);
   }
 
@@ -765,8 +782,8 @@ async function screenWorker(root, force, renderToken){
             : (r&&r.active_step?`шаг ${r.active_step}`:r&&r.last_step?`последний шаг ${r.last_step}`:"прогон в работе"))
         : String(r&&r.status||"")==="warning"
           ? `${Number(r&&r.warnings_count||0)} предупрежд.`
-          : String(r&&r.status||"")==="run_fail"
-            ? `${r&&r.legacy?"архивный ":""}error ${String(r&&r.error_category||"other")}`
+        : String(r&&r.status||"")==="run_fail"
+            ? `${r&&r.legacy?"архивный ":""}сбой · ${errorCategoryLabel(r&&r.error_category)}`
             : "завершён";
       list.appendChild(el("div",{style:"display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:start;padding:"+(idx? "10px 0 0":"0")+";border-top:"+(idx?"1px solid var(--bd)":"none")+";"},
         el("div",{style:"font-size:12px;font-weight:700;color:var(--tx-hi);"},`recipe #${recipeId}`),
@@ -1001,7 +1018,7 @@ function renderObservabilityCard(host){
     card.appendChild(el("div",{style:"margin:-2px 0 10px;font-size:10.5px;color:var(--tx-lo);line-height:1.45;"},
       "сейчас живых инцидентов нет, но в архивном окне ещё лежит ",
       el("b",{style:"color:var(--tx-hi);"},String(legacyFails+legacyWarnings)),
-      " старых warning/fail прогонов"));
+      " старых warning/сбой прогонов"));
   }
   if(stability){
     const targetMet=!!stability.target_met;
@@ -1024,8 +1041,8 @@ function renderObservabilityCard(host){
         el("span",{class:"mono",style:"font-size:9.5px;color:var(--tx-lo2);background:rgba(0,0,0,.08);padding:2px 6px;border-radius:5px;font-weight:700;"},
           String(quality.sample_size||0)+" прогонов")),
       el("div",{style:"display:flex;flex-wrap:wrap;gap:6px;"},
-        el("span",{class:"mono",style:"font-size:9.5px;color:var(--ok);background:var(--ok-bg);padding:3px 7px;border-radius:5px;"},"model "+String(quality.model_runs||0)),
-        el("span",{class:"mono",style:"font-size:9.5px;color:var(--acc-lt);background:var(--vio-bg);padding:3px 7px;border-radius:5px;"},"text "+String(quality.text_runs||0)),
+        el("span",{class:"mono",style:"font-size:9.5px;color:var(--ok);background:var(--ok-bg);padding:3px 7px;border-radius:5px;"},"модель "+String(quality.model_runs||0)),
+        el("span",{class:"mono",style:"font-size:9.5px;color:var(--acc-lt);background:var(--vio-bg);padding:3px 7px;border-radius:5px;"},"текст "+String(quality.text_runs||0)),
         el("span",{class:"mono",style:"font-size:9.5px;color:var(--warn);background:var(--warn-bg);padding:3px 7px;border-radius:5px;"},"фолбэк "+String(quality.fallback_runs||0))),
       el("div",{style:"font-size:10.5px;color:var(--tx-bd);line-height:1.45;"},
         "доминирует ",el("b",{style:"color:var(--tx-hi);"},String(quality.dominant_basis||"none")),
@@ -1036,10 +1053,10 @@ function renderObservabilityCard(host){
     card.appendChild(el("div",{style:"margin-bottom:10px;padding:10px 11px;border:1px solid var(--bd-err);background:var(--err-bg);border-radius:8px;display:flex;flex-direction:column;gap:5px;"},
       el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:8px;"},
         el("div",{style:"font-size:10.5px;font-weight:700;color:var(--err);"},"Разбор сбоев"),
-        failDiag.category?el("span",{class:"mono",style:"font-size:9.5px;color:var(--err);background:rgba(0,0,0,.08);padding:2px 6px;border-radius:5px;font-weight:700;"},String(failDiag.category)):null),
+        failDiag.category?el("span",{class:"mono",style:"font-size:9.5px;color:var(--err);background:rgba(0,0,0,.08);padding:2px 6px;border-radius:5px;font-weight:700;"},errorCategoryLabel(failDiag.category)):null),
       el("div",{style:"font-size:10.5px;color:var(--tx-bd);line-height:1.45;"},String(failDiag.issue||"")),
-      el("div",{class:"mono",style:"font-size:10px;color:var(--tx-hi);line-height:1.45;"},String(failDiag.action||"")),
-      el("div",{style:"font-size:10.5px;color:var(--tx-lo);line-height:1.45;"},String(failDiag.next_step||"")),
+      failDiag.action?el("div",{class:"mono",style:"font-size:10px;color:var(--tx-hi);line-height:1.45;"},"действие · "+String(failDiag.action)):null,
+      failDiag.next_step?el("div",{style:"font-size:10.5px;color:var(--tx-lo);line-height:1.45;"},"следом · "+String(failDiag.next_step)):null,
       failDiag.sample_error?el("div",{class:"mono",style:"font-size:9.5px;color:var(--tx-mid);line-height:1.35;"},String(failDiag.sample_error).slice(0,110)):null));
   }
   if(slow.length){
@@ -1051,13 +1068,13 @@ function renderObservabilityCard(host){
   if(errCats.length){
     card.appendChild(el("div",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);margin:"+(slow.length?"10px":"4px")+" 0 6px;"},"категории сбоев"));
     errCats.slice(0,4).forEach((w)=>card.appendChild(el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:10.5px;color:var(--tx-bd);margin-bottom:5px;"},
-      el("span",{class:"mono",style:"min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"},w.category||"other"),
+      el("span",{class:"mono",style:"min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"},errorCategoryLabel(w.category)),
       el("span",{class:"mono",style:"color:var(--tx-lo2);flex:none;"},String(w.count||0)))));
   }
   if(cats.length){
     card.appendChild(el("div",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);margin:"+((slow.length||errCats.length)?"10px":"4px")+" 0 6px;"},"категории warning"));
     cats.slice(0,4).forEach((w)=>card.appendChild(el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:10.5px;color:var(--tx-bd);margin-bottom:5px;"},
-      el("span",{class:"mono",style:"min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"},w.category||"other"),
+      el("span",{class:"mono",style:"min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"},errorCategoryLabel(w.category)),
       el("span",{class:"mono",style:"color:var(--tx-lo2);flex:none;"},String(w.count||0)))));
   }
   if(errs.length){
@@ -1073,17 +1090,17 @@ function renderObservabilityCard(host){
     recent.slice(0,6).forEach((r)=>card.appendChild(el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:10.5px;color:var(--tx-bd);margin-bottom:5px;"},
       el("div",{style:"min-width:0;display:flex;align-items:center;gap:6px;overflow:hidden;"},
         el("span",{class:"dot",style:"width:7px;height:7px;background:"+(r.status==="run_fail"?"var(--err)":r.status==="warning"?"var(--warn)":r.status==="running"?"var(--acc)":"var(--ok)")+";flex:none;"}),
-        el("span",{class:"mono",style:"white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"},(r.recipe_id?("#"+r.recipe_id+" "):"")+String(r.status||"")+(r.error_category?(" · "+r.error_category):"")+(r.warnings_count?(" · warning "+r.warnings_count):""))),
+        el("span",{class:"mono",style:"white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"},(r.recipe_id?("#"+r.recipe_id+" "):"")+runQueueTone(r&&r.stale?"stale_running":r.status).label+(r.error_category?(" · "+errorCategoryLabel(r.error_category)):"")+(r.warnings_count?(" · warning "+r.warnings_count):""))),
       el("span",{class:"mono",style:"color:var(--tx-lo2);flex:none;"},r.total_ms!=null?(fmtMs(r.total_ms)+" · "+fmtWhen(r.created_at)):fmtWhen(r.created_at)))));
   }
   if(incidents.length){
     card.appendChild(el("div",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);margin:"+((slow.length||errCats.length||cats.length||errs.length||warns.length||recent.length)?"10px":"4px")+" 0 6px;"},"живые инциденты"));
     incidents.slice(0,4).forEach((r)=>card.appendChild(el("div",{style:"display:flex;flex-direction:column;gap:3px;margin-bottom:7px;padding:8px 9px;border:1px solid "+(r.status==="run_fail"?"var(--bd-err)":"rgba(245,158,11,.35)")+";background:"+(r.status==="run_fail"?"var(--err-bg)":"var(--warn-bg)")+";border-radius:7px;"},
       el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:8px;"},
-        el("span",{class:"mono",style:"font-size:9.5px;color:"+(r.status==="run_fail"?"var(--err)":"var(--warn)")+";font-weight:700;"},(r.recipe_id?("#"+r.recipe_id+" · "):"")+String(r.status||"")),
+        el("span",{class:"mono",style:"font-size:9.5px;color:"+(r.status==="run_fail"?"var(--err)":"var(--warn)")+";font-weight:700;"},(r.recipe_id?("#"+r.recipe_id+" · "):"")+runQueueTone(r&&r.stale?"stale_running":r.status).label),
         el("span",{class:"mono",style:"font-size:9.5px;color:var(--tx-lo2);"},r.total_ms!=null?fmtMs(r.total_ms):fmtWhen(r.created_at))),
       el("div",{class:"mono",style:"font-size:10px;color:var(--tx-bd);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"},
-        (r.last_step?("шаг "+r.last_step):"шаг ?")+(r.last_status?(" · "+r.last_status):"")+(r.error_category?(" · "+r.error_category):"")),
+        (r.last_step?("шаг "+r.last_step):"шаг ?")+(r.last_status?(" · "+r.last_status):"")+(r.error_category?(" · "+errorCategoryLabel(r.error_category)):"")),
       r.error?el("div",{class:"mono",style:"font-size:9.5px;color:var(--tx-mid);line-height:1.35;"},String(r.error).slice(0,110)):null)));
   }
   if(series.length){
