@@ -1090,7 +1090,7 @@ function renderObservabilityCard(host){
     card.appendChild(el("div",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);margin:"+((slow.length||errCats.length||cats.length||errs.length||warns.length||recent.length||incidents.length)?"10px":"4px")+" 0 6px;"},"тренд по часам"));
     series.slice(-6).forEach((p)=>card.appendChild(el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:10.5px;color:var(--tx-bd);margin-bottom:5px;"},
       el("span",{class:"mono",style:"min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"},String(p.bucket||"").replace("T"," ").slice(5,16)),
-      el("span",{class:"mono",style:"color:var(--tx-lo2);flex:none;"},"всего "+(p.total||0)+" · ок "+(p.passed||0)+" · warn "+(p.warning||0)+" · fail "+(p.failed||0)))));
+      el("span",{class:"mono",style:"color:var(--tx-lo2);flex:none;"},"всего "+(p.total||0)+" · ок "+(p.passed||0)+" · warning "+(p.warning||0)+" · сбой "+(p.failed||0)))));
   }
   if(stepSeries.length){
     card.appendChild(el("div",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);margin:"+((slow.length||errCats.length||cats.length||errs.length||warns.length||recent.length||incidents.length||series.length)?"10px":"4px")+" 0 6px;"},"длительность шагов"));
@@ -1159,7 +1159,7 @@ function renderCenterOpsSummary(host,input){
     const lsSummary=latestStress.summary||{};
     detailItems.push(["стресс "+String(lsSummary.completed||0)+"/"+String(lsSummary.totalRuns||0), lsSummary.failed||lsSummary.runFail||lsSummary.timeouts?"err":"ok"]);
   }
-  if(heartbeatDiag)detailItems.push(["heartbeat "+String(heartbeatDiag.issue||heartbeatDiag.title||"unknown"), heartbeatDiag.issue==="table_missing"?"warn":"muted"]);
+  if(heartbeatDiag)detailItems.push(["пульс "+String(heartbeatDiag.issue||heartbeatDiag.title||"unknown"), heartbeatDiag.issue==="table_missing"?"warn":"muted"]);
   if(failDiag)detailItems.push(["сбои "+String(failDiag.issue||failDiag.category||"unknown"), "warn"]);
   if(opsAlerts.length){
     opsAlerts.slice(0,3).forEach((a)=>detailItems.push([a.code||a.level||"alert", a.level==="error"?"err":"warn"]));
@@ -2438,7 +2438,7 @@ function coachNextStep(){
     case "balances":
       return {cap:"Балансы",t:"Следи за остатками по сервисам. Сервис на нуле — генерация по нему встанет.",why:"Seedance/Kling/Creatify/Shotstack/FAL платные. Пустой баланс = упавшая нода в сборке."};
     case "worker":
-      return {cap:"Пульс завода",t:"Смотри на heartbeat и живые прогоны завода. Если станет stale/dead — воркер перестал слать пульс и нужно проверять sender, blocker или перезапуск.",why:"Это экран живого контроля: видно, идут ли реальные прогоны, где они застряли и когда воркер перестал отвечать. Следующий шаг обычно либо разобрать зависший run, либо чинить heartbeat path.",chips:["Как понять stale vs dead?","Где смотреть живые прогоны?"]};
+      return {cap:"Пульс завода",t:"Смотри на heartbeat и живые прогоны завода. Если пульс уйдёт в `молчит` или `потерян`, надо проверять sender, blocker или перезапуск.",why:"Это экран живого контроля: видно, идут ли реальные прогоны, где они застряли и когда воркер перестал отвечать. Следующий шаг обычно либо разобрать зависший прогон, либо чинить путь heartbeat.",chips:["Как читать статус пульса?","Где смотреть живые прогоны?"]};
     case "learn":
       return {cap:"Обучение",t:"Смотри, что завод выучил: победившие хуки, тренд ОТК, пресеты-победители за период.",why:"Это память завода. Переноси удачные хуки и пресеты в новые ролики — повторяешь то, что уже заходило.",chips:["Как применить выученное?","Что показывает тренд ОТК?"]};
     case "ds":
