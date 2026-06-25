@@ -598,7 +598,9 @@ function queueTaskTone(status){
   }[status] || {c:"var(--tx-lo2)", bg:"var(--bg-input)", label:status||"?"};
 }
 
-async function screenWorker(root){
+async function screenWorker(root, force, renderToken){
+  const token=renderToken||++S.renderToken;
+  const isLiveRender=()=>S.screen==="worker"&&S.renderToken===token&&root&&root.isConnected;
   if(S.workerTimer){ clearTimeout(S.workerTimer); S.workerTimer=null; }
   root.innerHTML="";
   header("Railway worker","статус · задача · очередь", el("div",{class:"hdr-r"},
@@ -606,7 +608,7 @@ async function screenWorker(root){
   const wrap=el("div",{class:"scroll",style:"padding:18px;"}); root.appendChild(wrap);
   wrap.appendChild(loadingCard("смотрю heartbeat и очередь…"));
   const d=await api("/ops");
-  if(S.screen!=="worker") return;
+  if(!isLiveRender()) return;
   S.workerState=d;
   wrap.innerHTML="";
   if(d.error){ wrap.appendChild(emptyBox("ошибка ops: "+d.error)); return; }
@@ -773,6 +775,7 @@ async function screenWorker(root){
     });
   }
 
+  if(!isLiveRender()) return;
   S.workerTimer=setTimeout(()=>{ if(S.screen==="worker")screenWorker(document.getElementById("screen")); },15000);
 }
 

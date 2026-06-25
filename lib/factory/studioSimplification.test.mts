@@ -23,6 +23,7 @@ ok(/function renderObservabilityCard\(host\)\{[\s\S]*if\(S\.compact\)return;/.te
 ok(/if\(heartbeatDiag&&!S\.compact\)/.test(studio), "heartbeat diagnostics are full-mode only");
 ok(/heartbeat не настроен/.test(studio), "queue fallback heartbeat copy avoids saying the worker is dead");
 ok(/renderToken:0/.test(studio) && /const token=\+\+S\.renderToken/.test(studio) && /const live=\(\)=>S\.screen==="center"&&S\.renderToken===token/.test(studio), "command center ignores stale async render passes");
+ok(/async function screenWorker\(root, force, renderToken\)\{[\s\S]*const isLiveRender=\(\)=>S\.screen==="worker"&&S\.renderToken===token/.test(studio), "worker screen ignores stale async render passes");
 ok(/ordered\.slice\(0,S\.compact\?1:6\)/.test(studio), "compact worker queue shows only the current queue item");
 ok(/t\.blockers&&t\.blockers\.length&&!S\.compact/.test(studio), "compact worker queue hides long blocker detail");
 ok(/if\(workerRow&&!S\.compact\)/.test(studio), "command center avoids duplicate worker card in compact mode");
