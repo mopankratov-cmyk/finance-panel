@@ -29,6 +29,7 @@ ok(/activeFactoryTask\?el\("div",\{style:"display:flex;flex-direction:column;gap
 ok(/const recentRuns=Array\.isArray\(runObservability&&runObservability\.recent_runs\)\?runObservability\.recent_runs:\[\];/.test(studio) && /"Очередь прогонов"/.test(studio), "worker screen shows real factory run queue from observability");
 ok(/const visibleRuns=\[\.\.\.recentRuns\][\s\S]*slice\(0,S\.compact\?4:8\)/.test(studio), "worker run queue stays compact while prioritizing live incidents");
 ok(/r&&r\.active_step\?`шаг \$\{r\.active_step\}`:r&&r\.last_step\?`последний шаг \$\{r\.last_step\}`:"прогон в работе"/.test(studio), "worker run queue explains live progress instead of raw backlog tasks");
+ok(/"stale", Number\(runObservability&&runObservability\.stale_running\|\|0\), "var\(--warn-bg\)"/.test(studio) && /r&&r\.stale\?"stale_running":r\.status/.test(studio), "worker run queue surfaces stale running runs separately");
 ok(!/if\(workerRow&&!S\.compact\)/.test(studio), "command center does not render a duplicate worker summary card");
 ok(/class:"system-pill"[\s\S]*onclick:\(\)=>go\("worker"\)/.test(studio), "command center uses one compact system pill for ops and worker status");
 ok(/hasCriticalSystemAlert=level==="critical"\|\|opsAlerts\.some/.test(studio) && /class:"card health-banner "/.test(studio), "factory health banner only surfaces critical system alerts in command center");

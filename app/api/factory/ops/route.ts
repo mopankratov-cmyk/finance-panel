@@ -18,6 +18,7 @@ function summarizeAlerts(input: {
   workerDbError: string | null;
   workerIssue: string | null;
   lowServices: string[];
+  staleRunning: number;
   failedRuns: number;
   warningRuns: number;
   criticFallbackRatio: number;
@@ -45,6 +46,7 @@ function summarizeAlerts(input: {
       detail: input.lowServices.join(", "),
     });
   }
+  if (input.staleRunning > 0) alerts.push({ level: "warn", code: "stale_running_runs", detail: `${input.staleRunning} running runs look stuck past the stale threshold` });
   if (input.failedRuns > 0) alerts.push({ level: "warn", code: "run_failures", detail: `${input.failedRuns} failed runs in sample` });
   if (input.warningRuns > 0) alerts.push({ level: "warn", code: "run_warnings", detail: `${input.warningRuns} warning runs in sample` });
   if (input.criticFallbackRatio >= 0.5) {
@@ -75,6 +77,7 @@ function buildSuggestedActions(input: {
   workerDbError: string | null;
   workerIssue: string | null;
   lowServices: string[];
+  staleRunning: number;
   failedRuns: number;
   warningRuns: number;
   topErrorCategory: string | null;
@@ -101,6 +104,9 @@ function buildSuggestedActions(input: {
   }
   if (input.lowServices.length) {
     actions.push({ priority: input.lowServices.length >= 2 ? "p0" : "p1", action: "top_up_balances", reason: `low service balances: ${input.lowServices.join(", ")}` });
+  }
+  if (input.staleRunning > 0) {
+    actions.push({ priority: "p1", action: "inspect_stuck_runs", reason: `${input.staleRunning} running runs look stuck past the stale threshold` });
   }
   if (input.failedRuns > 0) {
     actions.push({ priority: "p1", action: "triage_failed_runs", reason: `${input.failedRuns} failed runs in current sample` });
@@ -164,6 +170,7 @@ function buildOpsStatus(input: {
   workerSource: "heartbeat_db" | "queue_fallback" | "unknown";
   workerIssue: string | null;
   lowServices: string[];
+  staleRunning: number;
   failedRuns: number;
   warningRuns: number;
   topErrorCategory: string | null;
@@ -200,6 +207,10 @@ function buildOpsStatus(input: {
   } else if (input.lowServices.length === 1) {
     elevate("degraded");
     reasons.push(`low balance: ${input.lowServices[0]}`);
+  }
+  if (input.staleRunning > 0) {
+    elevate("degraded");
+    reasons.push(`${input.staleRunning} stuck running`);
   }
   if (input.topErrorCategory === "db") {
     elevate("critical");
@@ -287,6 +298,7 @@ export async function GET() {
       workerDbError: workerState.db_error,
       workerIssue,
       lowServices,
+      staleRunning: Number((observability as { stale_running?: unknown } | null)?.stale_running || 0),
       failedRuns: Number(observability.failed || 0),
       warningRuns: Number(observability.warning_runs || 0),
       criticFallbackRatio: Number((observability.quality_signal as { fallback_ratio?: unknown } | null)?.fallback_ratio || 0),
@@ -302,6 +314,7 @@ export async function GET() {
       workerDbError: workerState.db_error,
       workerIssue,
       lowServices,
+      staleRunning: Number((observability as { stale_running?: unknown } | null)?.stale_running || 0),
       failedRuns: Number(observability.failed || 0),
       warningRuns: Number(observability.warning_runs || 0),
       topErrorCategory,
@@ -314,6 +327,7 @@ export async function GET() {
       workerSource: workerState.worker?.source || "unknown",
       workerIssue,
       lowServices,
+      staleRunning: Number((observability as { stale_running?: unknown } | null)?.stale_running || 0),
       failedRuns: Number(observability.failed || 0),
       warningRuns: Number(observability.warning_runs || 0),
       topErrorCategory,

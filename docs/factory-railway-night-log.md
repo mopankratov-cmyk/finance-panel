@@ -2086,3 +2086,36 @@
 - Результат:
   - операторский экран больше не создаёт ложный P0 из optional telemetry
   - реальный выпуск роликов остаётся главным KPI, а heartbeat table можно подключить позже как P2-наблюдаемость
+
+### Rejudge fail-open + stale running triage
+
+- Ветка: текущая рабочая ветка контент-завода
+- Цель: добрать оставшийся operational хвост после UI-упрощения — убрать fail-closed поведение в `graph-run/rejudge` и отдельно подсветить застрявшие `running`
+- Root cause:
+  - основной `graphRun` уже банкует fail-open при пустом/недоступном `video-critic`, но `app/api/factory/graph-run/rejudge/route.ts` всё ещё оставлял item с `error` и без финального warning-state
+  - `/api/factory/ops` считал только `running/failed/warning`, поэтому застрявший прогон виделся как обычный `running`
+- Изменено:
+  - `app/api/factory/graph-run/rejudge/route.ts`: добавлен `persistWarningResult(...)`
+  - `rejudge` теперь деградирует в `status:"warning"` вместо жёсткого stop, если:
+    - `extractFrames` упал
+    - кадры не извлеклись
+    - `video-critic` недоступен
+    - `video-critic` вернул payload без `score`
+  - `lib/factory/observability.ts`: добавлен stale-running detector (`30m+` в `status:"running"`)
+  - stale run теперь:
+    - учитывается в `stale_running`
+    - попадает в `incident_runs` как `status:"stale_running"`
+    - получает timeout-like triage вместо “ещё один running”
+  - `app/api/factory/ops/route.ts`: добавлены alert/action/status-reason для `stale_running_runs`
+  - `public/inferno/studio.html`: Worker queue теперь показывает `stale` отдельно от обычного `running`
+- Тесты:
+  - `lib/factory/observabilityStaleRuns.test.mts`
+  - `lib/factory/rejudgeFailOpen.test.mts`
+  - обновлены `lib/factory/opsFailOpen.test.mts`, `lib/factory/studioSimplification.test.mts`
+- Проверки:
+  - `npm run test:factory`: pass
+  - `npm run lint`: pass
+  - `npm run build`: pass
+- Результат:
+  - rejudge больше не возвращает систему к скрытому fail-closed поведению
+  - оператор видит не просто “running 1”, а отдельно застрявший прогон, который надо тормошить

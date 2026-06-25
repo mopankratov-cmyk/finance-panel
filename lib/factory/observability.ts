@@ -21,6 +21,7 @@ export type RecentRunPoint = {
   warnings_count: number;
   active_step?: string | null;
   last_step?: string | null;
+  stale?: boolean;
 };
 
 export type StatusSeriesPoint = {
@@ -103,6 +104,8 @@ type RunPlanLike = {
   warnings?: unknown;
 };
 
+const STALE_RUNNING_MS = 30 * 60 * 1000;
+
 function msBetween(startedAt: unknown, finishedAt: unknown): number | null {
   const start = Date.parse(String(startedAt || ""));
   const finish = Date.parse(String(finishedAt || ""));
@@ -120,6 +123,10 @@ function isSuccessfulRun(status: string, summary: RunSummary): boolean {
   if (status === "running" || status === "run_fail") return false;
   if (summary.last_step === "failed" || summary.last_status === "error") return false;
   return !!summary.finished_at || summary.last_step === "done";
+}
+
+function isStaleRunning(status: string, summary: RunSummary): boolean {
+  return status === "running" && !summary.finished_at && typeof summary.total_ms === "number" && summary.total_ms >= STALE_RUNNING_MS;
 }
 
 export function buildRunSummary(plan: RunPlanLike | null | undefined): RunSummary {
@@ -183,6 +190,7 @@ export function buildObservability(rows: Record<string, unknown>[]) {
   const qualityBasisWindow: { basis: string; reason: string | null }[] = [];
   const statusSeriesMap = new Map<string, StatusSeriesPoint>();
   let running = 0;
+  let staleRunning = 0;
   let warningRuns = 0;
   let failed = 0;
 
@@ -216,6 +224,8 @@ export function buildObservability(rows: Record<string, unknown>[]) {
       warningCategoryMap.set(category, (warningCategoryMap.get(category) || 0) + 1);
     });
     const summary = buildRunSummary(plan);
+    const stale = isStaleRunning(status, summary);
+    if (stale) staleRunning++;
     stabilityWindow.push({
       status,
       success: isSuccessfulRun(status, summary),
@@ -230,18 +240,19 @@ export function buildObservability(rows: Record<string, unknown>[]) {
       warnings_count: warnings.length,
       active_step: summary.active_step,
       last_step: summary.last_step,
+      stale,
     });
-    if (status === "run_fail" || status === "warning") {
+    if (status === "run_fail" || status === "warning" || stale) {
       incidentRuns.push({
         recipe_id: Number(raw.id) || null,
         run_id: plan.run_id ? String(plan.run_id) : null,
         created_at: raw.created_at ? String(raw.created_at) : null,
-        status,
+        status: stale ? "stale_running" : status,
         last_step: summary.last_step,
         last_status: summary.last_status,
         total_ms: summary.total_ms,
-        error_category: planError ? classifyErrorReason(planError) : null,
-        error: planError || null,
+        error_category: stale ? "timeout" : (planError ? classifyErrorReason(planError) : null),
+        error: stale ? "run is still marked running beyond stale threshold" : (planError || null),
         warnings_count: warnings.length,
       });
     }
@@ -439,6 +450,7 @@ export function buildObservability(rows: Record<string, unknown>[]) {
   return {
     sample_runs: rows.length,
     running,
+    stale_running: staleRunning,
     warning_runs: warningRuns,
     failed,
     stability_snapshot,

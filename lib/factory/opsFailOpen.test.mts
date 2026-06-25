@@ -24,6 +24,8 @@ ok(/alerts\.push\(\{ level: "warn", code, detail: input\.workerDbError \|\| "wor
 ok(!/action: "apply_worker_state_table"/.test(ops), "ops no longer presents optional heartbeat table as a P0 action");
 ok(/action: "enable_optional_worker_heartbeat"/.test(ops), "ops recommends enabling optional heartbeat without blocking MVP execution");
 ok(/input\.workerIssue === "table_missing"[\s\S]*elevate\("degraded"\)[\s\S]*optional heartbeat table missing/.test(ops), "missing optional heartbeat table degrades ops status instead of making it critical");
+ok(/code: "stale_running_runs"/.test(ops) && /action: "inspect_stuck_runs"/.test(ops), "ops surfaces stale running runs as a separate operational issue");
+ok(/input\.staleRunning > 0[\s\S]*reasons\.push\(`\$\{input\.staleRunning\} stuck running`\)/.test(ops), "stale running runs degrade ops summary instead of hiding under generic running");
 
 if (failed) process.exit(1);
 console.log(`opsFailOpen: ${passed} passed, ${failed} failed`);

@@ -574,6 +574,7 @@ function isWorkerInfraAction(action){
 function runQueueTone(status){
   return {
     running:{c:"var(--acc-lt)", bg:"var(--vio-bg)", label:"running"},
+    stale_running:{c:"var(--warn)", bg:"var(--warn-bg)", label:"stale"},
     warning:{c:"var(--warn)", bg:"var(--warn-bg)", label:"warning"},
     run_fail:{c:"var(--err)", bg:"var(--err-bg)", label:"run_fail"},
     done:{c:"var(--ok)", bg:"var(--ok-bg)", label:"done"},
@@ -754,6 +755,7 @@ async function screenWorker(root, force, renderToken){
     const queueMeta=el("div",{style:"display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;"});
     [
       ["running", Number(runObservability&&runObservability.running||0), "var(--vio-bg)"],
+      ["stale", Number(runObservability&&runObservability.stale_running||0), "var(--warn-bg)"],
       ["warning", Number(runObservability&&runObservability.warning_runs||0), "var(--warn-bg)"],
       ["fail", Number(runObservability&&runObservability.failed||0), "var(--err-bg)"],
       ["sample", Number(runObservability&&runObservability.sample_runs||recentRuns.length||0), "var(--bg-input)"],
@@ -762,14 +764,16 @@ async function screenWorker(root, force, renderToken){
     ));
     list.appendChild(queueMeta);
     visibleRuns.forEach((r,idx)=>{
-      const tt=runQueueTone(r.status);
+      const tt=runQueueTone(r&&r.stale?"stale_running":r.status);
       const recipeId=r&&r.recipe_id!=null?String(r.recipe_id):"?";
       const metaBits=[
         r&&r.created_at?fmtWhen(r.created_at):"",
         r&&r.total_ms!=null?`${Math.round(Number(r.total_ms||0)/1000)}s`:"",
       ].filter(Boolean);
       const detail=String(r&&r.status||"")==="running"
-        ? (r&&r.active_step?`шаг ${r.active_step}`:r&&r.last_step?`последний шаг ${r.last_step}`:"прогон в работе")
+        ? (r&&r.stale
+            ? (r&&r.active_step?`застрял на шаге ${r.active_step}`:r&&r.last_step?`застрял после шага ${r.last_step}`:"прогон завис в running")
+            : (r&&r.active_step?`шаг ${r.active_step}`:r&&r.last_step?`последний шаг ${r.last_step}`:"прогон в работе"))
         : String(r&&r.status||"")==="warning"
           ? `${Number(r&&r.warnings_count||0)} warning`
           : String(r&&r.status||"")==="run_fail"
