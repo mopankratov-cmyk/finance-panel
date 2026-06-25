@@ -2065,3 +2065,24 @@
 - Результат:
   - первый экран стал ближе к операторскому cockpit: меньше debug-бейджей и меньше системных веток
   - full mode сохраняет расширенную диагностику без удаления инструментов
+
+### Optional worker heartbeat fail-open status
+
+- Ветка: текущая рабочая ветка контент-завода
+- Цель: не показывать optional heartbeat telemetry как P0/critical блокер MVP-выпуска
+- Root cause:
+  - `/api/factory/ops` повышал missing `railway_worker_states` до `critical`
+  - Studio Worker показывал `worker не отвечает`, хотя snapshot уже строился через queue fallback
+  - таблица heartbeat полезна для наблюдаемости, но не обязательна для получения MP4
+- Изменено:
+  - missing worker heartbeat table теперь `warn` + `degraded`, не `error` + `critical`
+  - suggested action заменён с `apply_worker_state_table` P0 на `enable_optional_worker_heartbeat` P2
+  - компактный Worker UI пишет `heartbeat не настроен`, а не `worker не отвечает`, когда активен queue fallback
+  - `lib/factory/opsFailOpen.test.mts` и `lib/factory/studioSimplification.test.mts`: добавлены guards
+- Проверки:
+  - inline `public/inferno/studio.html` script `node --check`: pass
+  - `npm run test:factory`: pass
+  - `npm run build`: pass
+- Результат:
+  - операторский экран больше не создаёт ложный P0 из optional telemetry
+  - реальный выпуск роликов остаётся главным KPI, а heartbeat table можно подключить позже как P2-наблюдаемость

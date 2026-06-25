@@ -538,7 +538,7 @@ async function screenWorker(root){
   const latestStress=d.latest_stress||null;
   const stressHistory=d.stress_history||null;
   const liveTone=workerStatusTone(live.state);
-  const aliveNote=live.state==="alive"?"heartbeat свежий":live.state==="stale"?"heartbeat молчит":"worker не отвечает";
+  const aliveNote=workerSource==="queue_fallback"&&live.state==="unknown"?"heartbeat не настроен":live.state==="alive"?"heartbeat свежий":live.state==="stale"?"heartbeat молчит":"worker не отвечает";
   const sourceLabel=workerSource==="heartbeat_db"?"heartbeat":"queue fallback";
   const currentId=worker&&worker.current_task_id?String(worker.current_task_id):"";
   const ordered=[...q].sort((a,b)=>{

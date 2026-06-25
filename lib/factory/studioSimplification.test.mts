@@ -20,6 +20,7 @@ ok(/visibleScreens\(\)\.forEach/.test(studio), "renderNav uses compact-aware scr
 ok(/if\(S\.compact\)\{\s*box\.appendChild[\s\S]*return;\s*\}\s*if\(gens\|\|otk\|\|signalBits/.test(studio), "factory pulse collapses details in compact mode");
 ok(/function renderObservabilityCard\(host\)\{[\s\S]*if\(S\.compact\)return;/.test(studio), "execution observability is hidden from compact command center");
 ok(/if\(heartbeatDiag&&!S\.compact\)/.test(studio), "heartbeat diagnostics are full-mode only");
+ok(/heartbeat не настроен/.test(studio), "queue fallback heartbeat copy avoids saying the worker is dead");
 ok(/if\(workerRow&&!S\.compact\)/.test(studio), "command center avoids duplicate worker card in compact mode");
 ok(/if\(S\.compact\)\{[\s\S]*localStorage\.setItem\("noda_compact","0"\)/.test(studio), "assistant entry point expands full mode when needed");
 

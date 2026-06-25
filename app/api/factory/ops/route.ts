@@ -35,7 +35,7 @@ function summarizeAlerts(input: {
         : input.workerIssue === "db_permissions"
           ? "worker_state_db_permissions"
           : "worker_queue_fallback";
-    alerts.push({ level: input.workerIssue === "table_missing" ? "error" : "warn", code, detail: input.workerDbError || "worker snapshot derived from queue fallback" });
+    alerts.push({ level: "warn", code, detail: input.workerDbError || "worker snapshot derived from queue fallback" });
   }
 
   if (input.lowServices.length) {
@@ -92,7 +92,7 @@ function buildSuggestedActions(input: {
     if (input.workerIssue === "sender_missing") {
       actions.push({ priority: "p1", action: "start_worker_heartbeat_sender", reason: "worker-state route has no live heartbeat sender; start lib/factory/workerHeartbeat.mjs on Railway worker" });
     } else if (input.workerIssue === "table_missing") {
-      actions.push({ priority: "p0", action: "apply_worker_state_table", reason: input.workerDbError || "railway_worker_states is missing in Supabase schema cache" });
+      actions.push({ priority: "p2", action: "enable_optional_worker_heartbeat", reason: input.workerDbError || "optional railway_worker_states heartbeat table is missing; queue fallback is active" });
     } else if (input.workerIssue === "db_permissions") {
       actions.push({ priority: "p1", action: "repair_worker_state_permissions", reason: input.workerDbError || "worker heartbeat storage is blocked by DB permissions" });
     } else {
@@ -187,8 +187,8 @@ function buildOpsStatus(input: {
   }
   if (input.workerSource === "queue_fallback") {
     if (input.workerIssue === "table_missing") {
-      elevate("critical");
-      reasons.push("worker table missing");
+      elevate("degraded");
+      reasons.push("optional heartbeat table missing");
     } else {
       elevate("degraded");
       reasons.push(input.workerIssue === "sender_missing" ? "heartbeat sender missing" : "heartbeat fallback");
