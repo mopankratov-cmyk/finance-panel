@@ -58,10 +58,84 @@ body{background:var(--bg-deep);font-family:var(--sans);color:var(--tx-hi);-webki
 .body{flex:1;min-height:0;display:flex;overflow:hidden;}
 .scroll{flex:1;min-width:0;overflow-y:auto;padding:22px;}
 .aside{flex:none;border-left:1px solid var(--bd);background:var(--bg-panel);overflow-y:auto;}
-.app.compact .assist{display:none;}
-.app.compact .scroll{padding:14px;}
-.app.compact .hdr{padding:0 16px;}
-/* ---- atoms ---- */
+	.app.compact .assist{display:none;}
+	.app.compact .scroll{padding:14px;}
+	.app.compact .hdr{padding:0 16px;}
+	button:focus-visible,input:focus-visible,summary:focus-visible{outline:2px solid var(--acc);outline-offset:2px;}
+	.hdr-l{flex:none;min-width:188px;}
+	.hdr-r{flex:1;justify-content:flex-end;min-width:0;}
+	.header-search{flex:1 1 330px;max-width:430px;min-width:220px;}
+	.header-action-row{display:flex;align-items:center;gap:8px;flex:none;}
+	.header-tools{display:flex;align-items:center;gap:6px;flex:none;}
+	.system-pill{min-height:34px;border-radius:8px;border:1px solid var(--bd2);background:var(--bg-chip);color:var(--tx-hi);padding:6px 10px;font-family:var(--sans);font-size:11.5px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:8px;max-width:230px;}
+	.system-pill:hover{background:var(--bg-hover);}
+	.system-pill .dot{width:8px;height:8px;border:none;}
+	.system-pill .label{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+	.health-banner{padding:12px 14px;margin-bottom:16px;display:flex;flex-direction:column;gap:10px;border-radius:10px;}
+	.health-banner.healthy{border-color:rgba(70,192,143,.22);background:rgba(70,192,143,.06);}
+	.health-banner.degraded{border-color:rgba(214,169,78,.36);background:rgba(214,169,78,.07);}
+	.health-banner.critical{border-color:rgba(229,96,79,.46);background:rgba(229,96,79,.08);}
+	.health-main{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;}
+	.health-title{font-size:13px;font-weight:700;line-height:1.3;}
+	.health-copy{font-size:11.5px;line-height:1.45;color:var(--tx-bd);margin-top:3px;}
+	.health-details{border-top:1px solid var(--bd);padding-top:8px;}
+	.health-details>summary{cursor:pointer;color:var(--tx-mid);font-size:11px;font-weight:600;list-style:none;}
+	.health-details>summary::-webkit-details-marker{display:none;}
+	.health-codes{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;}
+	.niche-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-bottom:24px;}
+	.nicheTile{text-align:left;cursor:pointer;font-family:inherit;color:var(--tx-hi);border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:11px;background:var(--bg-card);border:1px solid var(--bd);transition:border-color .14s,background .14s,box-shadow .14s;}
+	.nicheTile:hover{background:var(--bg-node);border-color:var(--bd3);}
+	.nicheTile.active{background:var(--bg-node);border-color:var(--acc);box-shadow:0 0 0 2px rgba(124,116,255,.12);}
+	.niche-arrow{font-size:14px;color:var(--tx-lo2);}
+	.nicheTile.active .niche-arrow{color:var(--acc-lt);}
+	.filter-row{display:flex;gap:4px;background:var(--bg-chip);border:1px solid var(--bd);border-radius:8px;padding:3px;}
+	.product-card{display:flex;gap:14px;padding:12px 13px;align-items:center;border-radius:10px;}
+	.product-gaps{display:flex;flex-wrap:wrap;gap:6px;margin-top:9px;}
+	.product-gap-chip{font-size:10.5px;color:var(--warn);background:var(--warn-bg);padding:3px 7px;border-radius:5px;font-family:var(--mono);}
+	.marketer-card{padding:13px;margin-bottom:14px;}
+	.marketer-lead{margin:0;font-size:12.5px;line-height:1.6;color:var(--tx-bd);}
+	.marketer-details{margin-top:9px;border-top:1px solid var(--bd);padding-top:8px;}
+	.marketer-details>summary{cursor:pointer;color:var(--acc-lt);font-size:11px;font-weight:600;list-style:none;}
+	.marketer-details>summary::-webkit-details-marker{display:none;}
+	.rec-list{display:flex;flex-direction:column;gap:8px;margin-bottom:10px;}
+	.rec-card{padding:10px 11px;background:var(--bg-node);border-color:var(--bd2);}
+	.rec-card .rec-title{font-size:10px;color:var(--acc-lt);font-family:var(--mono);margin-bottom:5px;}
+	.rec-card .rec-text{font-size:11.5px;color:var(--tx-bd);line-height:1.45;}
+	@media (min-width:1700px){.niche-grid{grid-template-columns:repeat(4,minmax(0,1fr));}}
+	@media (max-width:1100px){
+	  .body{display:block;overflow-y:auto;}
+	  .body>.scroll{height:auto;overflow:visible;}
+	  .aside{width:auto!important;border-left:none;border-top:1px solid var(--bd);max-height:none;}
+	  .hdr{height:auto;min-height:56px;align-items:flex-start;flex-wrap:wrap;padding:10px 14px;}
+	  .hdr-l{min-width:0;}
+	  .hdr-r{width:100%;justify-content:flex-start;flex-wrap:wrap;}
+	  .header-search{flex-basis:100%;max-width:none;}
+	}
+	@media (max-width:900px){
+	  .rail{width:68px;}
+	  .rail-head{justify-content:center;padding:0;}
+	  .rail-head>div:not(.logo),.nav-cap,.nav-tt,.nav-st,.rail-foot{display:none;}
+	  .nav{padding:8px;}
+	  .nav-item{justify-content:center;padding:8px;}
+	  .nav-chip{width:30px;height:30px;}
+	}
+	@media (max-width:700px){
+	  .hdr{display:grid;grid-template-columns:1fr;padding:10px;}
+	  .hdr-l{width:100%;}
+	  .hdr-r{display:grid;grid-template-columns:1fr;overflow:visible;}
+	  .header-search{width:100%;min-width:0;}
+	  .header-action-row{display:grid;grid-template-columns:1fr;gap:6px;width:100%;}
+	  .header-action-row .btn{justify-content:center;}
+	  .system-pill{width:100%;max-width:none;}
+	  .hdr-r>.btn.sm{width:100%;justify-content:center;}
+	  .header-tools{display:grid;grid-template-columns:1fr 1fr;width:100%;gap:6px;}
+	  .guide-btn{justify-content:center;margin-left:0;}
+	  .health-main{flex-direction:column;}
+	  .niche-grid{grid-template-columns:1fr;}
+	  .product-card{align-items:flex-start;}
+	  .product-card .btn{align-self:center;}
+	}
+	/* ---- atoms ---- */
 .btn{font-family:var(--sans);font-size:12.5px;font-weight:600;border-radius:7px;padding:8px 13px;cursor:pointer;border:1px solid var(--bd2);background:var(--bg-input);color:var(--tx-hi);transition:.12s;display:inline-flex;align-items:center;gap:7px;}
 .btn:hover{background:#252a33;}
 .btn:disabled{opacity:.45;cursor:not-allowed;}
@@ -220,6 +294,7 @@ const S={
   observerLoading:false, observerError:"", observerUpdatedAt:null,
   workerState:null, workerTimer:null,
   compact:true,
+  renderToken:0,
 };
 // ИА студии: главная ось — ВИД КОНТЕНТА (после общей разведки). Старт → тип контента (свой пайплайн) → Система.
 const SCREENS=[
@@ -341,7 +416,6 @@ function renderFactoryPulse(){
     el("span",{style:"font-size:12px;font-weight:600;color:var(--tx-hi);"},tone.label)));
   box.appendChild(el("div",{style:"font-size:10.5px;color:var(--tx-lo2);line-height:1.35;margin-top:3px;"},tone.hint));
   if(S.compact){
-    box.appendChild(el("button",{class:"btn sm",style:"margin-top:8px;width:100%;justify-content:center;",onclick:()=>go("worker")},"Worker"));
     if(S.observerError){
       box.appendChild(el("div",{style:"font-size:10.5px;color:var(--warn);line-height:1.35;margin-top:6px;"},S.observerError));
     }
@@ -419,10 +493,13 @@ async function restoreSession(){
 function header(title,meta,right){
   const h=document.getElementById("hdr"); h.innerHTML="";
   const l=el("div",{class:"hdr-l"},el("span",{class:"hdr-t"},title)); if(meta)l.appendChild(el("span",{class:"meta-chip"},meta));
-  // проводник: единая точка входа на КАЖДОМ экране — развернуть панель и попросить объяснить, что тут
-  l.appendChild(el("button",{class:"guide-btn",title:"Проводник объяснит этот экран и подскажет следующий шаг",onclick:explainScreen},"🧭 что тут?"));
-  l.appendChild(el("button",{class:"guide-btn",title:S.compact?"Показать расширенные экраны и диагностику":"Скрыть расширенные экраны и диагностику",onclick:toggleCompact},S.compact?"◧ кратко":"◫ полно"));
-  h.appendChild(l); h.appendChild(right||el("div",{class:"hdr-r"}));
+  const r=right||el("div",{class:"hdr-r"});
+  if(!r.classList.contains("hdr-r"))r.classList.add("hdr-r");
+  const tools=el("div",{class:"header-tools"},
+    el("button",{class:"guide-btn",title:"Проводник объяснит этот экран и подскажет следующий шаг",onclick:explainScreen},"🧭 Помощь"),
+    el("button",{class:"guide-btn",title:S.compact?"Показать расширенные экраны и диагностику":"Скрыть расширенные экраны и диагностику",onclick:toggleCompact},S.compact?"◧ Краткий вид":"◫ Полный вид"));
+  r.appendChild(tools);
+  h.appendChild(l); h.appendChild(r);
 }
 function loadingCard(t){ return el("div",{class:"card",style:"padding:18px;display:flex;align-items:center;gap:12px;"},el("div",{class:"spinner"}),el("span",{class:"muted"},t||"загрузка…")); }
 function emptyBox(t){ return el("div",{class:"empty"},el("div",{style:"font-size:26px;opacity:.4;"},"◇"),el("div",{style:"font-size:12.5px;max-width:300px;"},t)); }
@@ -581,7 +658,7 @@ async function screenWorker(root){
         worker.pr?el("span",{},el("b",{style:"color:var(--tx-hi);"},"PR "),worker.pr," · "):null,
         worker.progress?el("span",{},el("b",{style:"color:var(--tx-hi);"},"progress "),worker.progress):"")):
       el("div",{class:"muted",style:"font-size:12px;line-height:1.5;"},"worker ещё не прислал текущую задачу"),
-    worker&&worker.blocker?el("div",{style:"margin-top:10px;font-size:11.5px;color:var(--warn);background:var(--warn-bg);border:1px solid rgba(214,169,78,.55);padding:8px 10px;border-radius:8px;"},"Блокер: "+worker.blocker):null));
+    worker&&worker.blocker&&!S.compact?el("div",{style:"margin-top:10px;font-size:11.5px;color:var(--warn);background:var(--warn-bg);border:1px solid rgba(214,169,78,.55);padding:8px 10px;border-radius:8px;"},"Блокер: "+worker.blocker):null));
   wrap.appendChild(top);
 
   if(visibleSuggested.length){
@@ -652,9 +729,10 @@ async function screenWorker(root){
   }
 
   const list=el("div",{class:"card",style:"padding:14px;margin-bottom:14px;"}); wrap.appendChild(list);
+  const openQueueCount=q.filter(t=>t.status!=="done").length;
   list.appendChild(el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;"},
-    el("div",{style:"font-size:14px;font-weight:600;"},"Очередь задач"),
-    el("span",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);"},String(q.length||0)+" items")));
+    el("div",{style:"font-size:14px;font-weight:600;"},S.compact?"Текущая задача из очереди":"Очередь задач"),
+    el("span",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);"},S.compact?String(openQueueCount||0)+" open":String(q.length||0)+" items")));
   if(!q.length){
     list.appendChild(emptyBox("очередь пуста или worker ещё не прислал snapshot"));
   } else {
@@ -667,8 +745,8 @@ async function screenWorker(root){
     ].forEach(([label,count,bg])=>queueMeta.appendChild(
       el("span",{class:"mono",style:"font-size:10px;background:"+bg+";border:1px solid var(--bd2);padding:3px 7px;border-radius:5px;"},String(label)+" "+String(count||0))
     ));
-    list.appendChild(queueMeta);
-    ordered.slice(0,S.compact?4:6).forEach((t,idx)=>{
+    if(!S.compact) list.appendChild(queueMeta);
+    ordered.slice(0,S.compact?1:6).forEach((t,idx)=>{
       const tt=queueTaskTone(t.status);
       const isCurrent=String(t.id||"")===currentId;
       list.appendChild(el("div",{style:"display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:start;padding:"+(idx? "10px 0 0":"0")+";border-top:"+(idx?"1px solid var(--bd)":"none")+";"},
@@ -677,11 +755,11 @@ async function screenWorker(root){
           isCurrent?el("span",{class:"mono",style:"font-size:9.5px;color:#fff;background:var(--acc);padding:2px 6px;border-radius:5px;font-weight:700;"},"current"):null),
         el("div",{style:"min-width:0;display:flex;flex-direction:column;gap:4px;"},
           el("div",{style:"font-size:12.5px;font-weight:600;line-height:1.4;"},t.title||"—"),
-          el("div",{style:"font-size:11px;color:var(--tx-lo);line-height:1.45;"},
-            t.branch?`branch ${t.branch}`:"",
-            t.pr?`${t.branch?" · ":""}pr ${t.pr}`:"",
-            t.priority?`${(t.branch||t.pr)?" · ":""}prio ${t.priority}`:""),
-          t.blockers&&t.blockers.length?el("div",{style:"font-size:11px;color:var(--warn);line-height:1.4;"},t.blockers[0]):null),
+	          !S.compact?el("div",{style:"font-size:11px;color:var(--tx-lo);line-height:1.45;"},
+	            t.branch?`branch ${t.branch}`:"",
+	            t.pr?`${t.branch?" · ":""}pr ${t.pr}`:"",
+	            t.priority?`${(t.branch||t.pr)?" · ":""}prio ${t.priority}`:""):null,
+	          t.blockers&&t.blockers.length&&!S.compact?el("div",{style:"font-size:11px;color:var(--warn);line-height:1.4;"},t.blockers[0]):null),
         el("span",{class:"mono",style:"font-size:10px;color:"+tt.c+";background:"+tt.bg+";padding:3px 7px;border-radius:5px;font-weight:700;white-space:nowrap;"},tt.label)));
     });
   }
@@ -718,21 +796,25 @@ async function pollStatic(job){
 async function render(){
   saveSession(); // запоминаем текущий экран/нишу/рецепт для возврата после reload
   const root=document.getElementById("screen"); root.innerHTML="";
-  ({center:screenCenter,compete:screenCompete,canvas:screenCanvas,inspector:screenInspector,assembly:screenAssembly,library:screenLibrary,static:screenStatic,text:screenText,worker:screenWorker,balances:screenBalances,learn:screenLearn,ds:screenDS}[S.screen]||screenCenter)(root);
+  const token=++S.renderToken;
+  ({center:screenCenter,compete:screenCompete,canvas:screenCanvas,inspector:screenInspector,assembly:screenAssembly,library:screenLibrary,static:screenStatic,text:screenText,worker:screenWorker,balances:screenBalances,learn:screenLearn,ds:screenDS}[S.screen]||screenCenter)(root,false,token);
   refreshAssistStep(); // проводник: пересчитать «следующий шаг» под новый экран/состояние
 }
 
 //==================== 01 · COMMAND CENTER ====================
 // force=true → принудительная пересборка (кнопка ↻ или жёсткая перезагрузка страницы сбрасывает S).
 // Иначе всё, что уже загружено, берётся из памяти — переключение экранов НЕ дёргает сеть/Claude.
-async function screenCenter(root, force){
+async function screenCenter(root, force, renderToken){
+  const token=renderToken||++S.renderToken;
+  const live=()=>S.screen==="center"&&S.renderToken===token&&root&&root.isConnected;
   if(force){ S.centerLoaded=false; S.allProducts=null; S.productsLoading=false; S.prodCounts={}; S.briefCache={}; }
   if(force || !S.workerState){
     const workerData=await api("/ops");
-    if(S.screen!=="center") return;
+    if(!live()) return;
     S.workerState=workerData;
     renderFactoryPulse();
   }
+  if(!live()) return;
   const workerRow=S.workerState&&S.workerState.worker||null;
   const workerLive=workerRow&&workerRow.liveness?workerRow.liveness.state:"unknown";
   const workerSource=workerRow&&workerRow.source||"unknown";
@@ -747,17 +829,23 @@ async function screenCenter(root, force){
   const stressHistory=S.workerState&&S.workerState.stress_history||null;
   const opsTone=opsStatusTone(opsStatus&&opsStatus.level);
   const workerShort=workerSource==="queue_fallback"?"fallback":workerLive==="alive"?"живой":workerLive==="stale"?"stale":workerLive==="dead"?"dead":"?";
-  header("Командный центр","карта осознания", el("div",{class:"hdr-r"},
-    el("div",{class:"searchbox",title:"поиск по товарам и нишам",style:"width:260px;"},
+  const systemTitle=[
+    opsStatus&&opsStatus.summary?opsStatus.summary:"",
+    workerRow&&workerRow.current_task_id?`задача ${workerRow.current_task_id}`:"",
+    workerDbError?workerDbError:"",
+  ].filter(Boolean).join(" · ")||"Открыть системную диагностику";
+  header("Командный центр",null, el("div",{class:"hdr-r"},
+    el("div",{class:"searchbox header-search",title:"поиск по товарам и нишам"},
       el("span",{style:"font-size:13px;flex:none;"},"⌕"),
       el("input",{value:S.searchQuery,placeholder:"Поиск ниши, товара…",style:"flex:1;background:transparent;border:none;outline:none;color:var(--tx-hi);font:inherit;min-width:0;",oninput:(e)=>{ S.searchQuery=e.target.value; const p=document.getElementById("center-products"); if(p)loadProducts(p); }}),
       S.searchQuery?el("button",{class:"btn sm",style:"padding:3px 6px;margin-left:auto;",title:"очистить поиск",onclick:()=>{ S.searchQuery=""; const p=document.getElementById("center-products"); if(p)loadProducts(p); render(); }},"×"):null),
-    el("button",{class:"btn",title:"автопилот: заполнить черновики ИИ + сгенерить + ОТК + банк, прошедшее уйдёт в Telegram на ревью",onclick:()=>openNightRun()},"🌙 Ночной прогон"),
-    el("button",{class:"btn",title:"фикс-айдентика брендов: голос/персона/шрифт/цвет/CTA/бан-слова/хэштеги — автозаполнение берёт как дефолты",onclick:()=>openBrandKit()},"🎨 Бренд-кит"),
-    opsStatus?el("span",{class:"mono",title:opsStatus.summary||"",style:"font-size:10px;color:"+opsTone.c+";background:"+opsTone.bg+";padding:6px 8px;border-radius:7px;font-weight:700;"},"OPS "+opsTone.label):null,
-    el("button",{class:"btn",title:workerRow?`живой статус Railway worker · ${workerShort}${workerRow.current_task_id?` · ${workerRow.current_task_id}`:""}${workerDbError?` · ${workerDbError}`:""}`:"живой статус Railway worker и очередь задач",onclick:()=>go("worker")},
-      "🛰 RW ",workerShort,workerRow&&workerRow.current_task_id?` · ${workerRow.current_task_id}`:""),
-    el("button",{class:"btn",title:"принудительно пересобрать данные и разбор ниши",onclick:()=>screenCenter(root,true)},"↻ Обновить")));
+    el("div",{class:"header-action-row"},
+      el("button",{class:"btn primary",title:"автопилот: заполнить черновики ИИ + сгенерить + ОТК + банк, прошедшее уйдёт в Telegram на ревью",onclick:()=>openNightRun()},"🌙 Ночной прогон"),
+      el("button",{class:"btn",title:"фикс-айдентика брендов: голос/персона/шрифт/цвет/CTA/бан-слова/хэштеги — автозаполнение берёт как дефолты",onclick:()=>openBrandKit()},"🎨 Бренд-кит")),
+    opsStatus?el("button",{class:"system-pill",title:systemTitle,onclick:()=>go("worker"),"aria-label":"Открыть системный статус: "+systemTitle},
+      el("span",{class:"dot",style:"background:"+opsTone.c+";box-shadow:0 0 0 4px rgba(255,255,255,.035);"}),
+      el("span",{class:"label"},"Система: "+opsTone.label.toLowerCase()+(workerRow&&workerRow.current_task_id?" · "+workerRow.current_task_id:""))):null,
+    el("button",{class:"btn sm",title:"принудительно пересобрать данные и разбор ниши",onclick:()=>{ S.centerLoaded=false; S.allProducts=null; S.productsLoading=false; S.prodCounts={}; S.briefCache={}; render(); }},"↻ Обновить")));
   const left=el("div",{class:"scroll"}), aside=el("div",{class:"aside",style:"width:340px;padding:18px;"});
   root.appendChild(left); root.appendChild(aside);
   if(workerRow&&!S.compact){
@@ -779,29 +867,27 @@ async function screenCenter(root, force){
   renderCenterOpsSummary(left,{opsStatus,heartbeatDiag,failDiag,opsAlerts,lowBalances,workerRow,stabilitySnapshot,latestStress,stressHistory});
   const nicheHead=el("div",{style:"display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;"},
     el("h2",{class:"sec-h"},"НИШИ ",el("span",{class:"cnt"},String(S.niches.length||""))),
-    el("div",{style:"display:flex;gap:14px;"},
-      el("span",{class:"legend"},el("span",{class:"sq",style:"background:var(--ok)"}),"есть плейбук"),
-      el("span",{class:"legend"},el("span",{class:"sq",style:"background:var(--acc)"}),"виральные"),
-      el("span",{class:"legend"},el("span",{class:"sq",style:"background:var(--warn)"}),"есть съёмка")));
+    el("span",{class:"muted"},"выберите нишу для брифа и товаров"));
   left.appendChild(nicheHead);
-  const tiles=el("div",{style:"display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:26px;"}); left.appendChild(tiles);
+  const tiles=el("div",{class:"niche-grid",role:"listbox","aria-label":"Ниши контент-завода"}); left.appendChild(tiles);
 
 	  if(!S.centerLoaded){
 	    tiles.appendChild(loadingCard("ниши…"));
 	    const data=await api("/studio"); // быстрый Supabase-запрос; товары (медленный WB API) — отдельно, не блокируем плитки
+	    if(!live())return;
 	    S.niches=data.niches||[]; S.generations=data.generations||[]; S.recipes=data.recipes||[]; S.observability=data.observability||null;
 	    S.centerLoaded=true;
-	    if(S.screen!=="center")return; // ушли с экрана пока грузили
+	    if(!live())return; // ушли с экрана или начался новый render пока грузили
 	  }
   nicheHead.querySelector(".cnt").textContent=String(S.niches.length);
   tiles.innerHTML="";
   if(!S.niches.length)tiles.appendChild(emptyBox("нет данных — синкни орбиты"));
   S.niches.forEach(n=>tiles.appendChild(nicheTile(n)));
 
-  const productFilterBtn=(id,label)=>el("button",{class:"btn sm",style:S.productFilter===id?"background:var(--acc-soft);border-color:var(--bd-acc);color:var(--acc-lt);":"background:transparent;border-color:transparent;color:var(--tx-lo);",onclick:()=>{ S.productFilter=id; render(); }},label);
+  const productFilterBtn=(id,label)=>el("button",{class:"btn sm","aria-pressed":S.productFilter===id?"true":"false",style:S.productFilter===id?"background:var(--acc-soft);border-color:var(--bd-acc);color:var(--acc-lt);":"background:transparent;border-color:transparent;color:var(--tx-lo);",onclick:()=>{ S.productFilter=id; render(); }},label);
   const prodHead=el("div",{style:"display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;"},
     el("h2",{class:"sec-h"},"ТОВАРЫ · "+nicheLabel(S.activeNiche).toUpperCase()," ",el("span",{class:"cnt",id:"prod-cnt"},"")),
-    el("div",{style:"display:flex;gap:4px;"},
+    el("div",{class:"filter-row",role:"group","aria-label":"Фильтр товаров"},
       productFilterBtn("all","Все"),
       productFilterBtn("winner","С победителем"),
       productFilterBtn("gaps","Есть пробелы")));
@@ -818,11 +904,11 @@ function nicheTile(n){
   if(n.videos)chips.push(el("span",{class:"rchip",style:"background:var(--vio-bg);color:var(--acc-lt);"},el("span",{class:"sq",style:"width:6px;height:6px;background:var(--acc)"}),n.videos+" виральных"));
   if(n.templates)chips.push(el("span",{class:"rchip",style:"background:var(--warn-bg);color:var(--warn);"},el("span",{class:"sq",style:"width:6px;height:6px;background:var(--warn)"}),n.templates+" шабл."));
   if(!chips.length)chips.push(el("span",{class:"rchip",style:"background:var(--err-bg);color:var(--err);"},el("span",{class:"sq",style:"width:6px;height:6px;background:var(--err)"}),"нет плейбука"));
-  return el("button",{class:"nicheTile",style:"text-align:left;cursor:pointer;font-family:inherit;color:var(--tx-hi);border-radius:11px;padding:15px;display:flex;flex-direction:column;gap:12px;"+(active?"background:var(--bg-node);border:1.5px solid var(--acc);box-shadow:0 0 0 3px rgba(124,116,255,.10);":"background:var(--bg-card);border:1px solid var(--bd);"),
+  return el("button",{class:"nicheTile"+(active?" active":""),role:"option","aria-selected":active?"true":"false","aria-pressed":active?"true":"false",
     onclick:()=>{ if(S.activeNiche!==n.niche){ S.activeNiche=n.niche; S.decompose=null; S.decomposeLoading=false; S.decomposeVideo=null; S.selectedVideo=null; } render(); }},
     el("div",{style:"display:flex;align-items:center;justify-content:space-between;"},
       el("span",{style:"font-size:22px;"},n.emoji||NICHE_EMOJI[n.niche]||"📦"),
-      active?el("span",{class:"mono",style:"font-size:10px;color:var(--acc);background:var(--acc-soft);padding:3px 7px;border-radius:5px;font-weight:600;"},"АКТИВНА"):el("span",{style:"font-size:14px;color:var(--tx-lo2);"},"›")),
+      el("span",{class:"niche-arrow","aria-hidden":"true"},"›")),
     el("div",{},el("div",{style:"font-size:14.5px;font-weight:600;"},n.label||n.niche),
       el("div",{style:"font-size:11.5px;color:var(--tx-lo);margin-top:2px;"},((S.prodCounts&&S.prodCounts[n.niche])||0)+" товаров · "+(n.videos||0)+" видео")),
     el("div",{style:"display:flex;flex-wrap:wrap;gap:5px;"},...chips));
@@ -864,18 +950,27 @@ function productCard(p){
   const bestOtk=p.bestOtk==null?null:Number(p.bestOtk);
   const hasOtk=bestOtk!=null&&Number.isFinite(bestOtk);
   const understanding=win||hasOtk||gens>0||real>0;
+  const gaps=[];
+  if(!real)gaps.push("кадры");
+  if(!gens)gaps.push("генерации");
+  if(!win)gaps.push("победитель");
+  const statusTitle=`${real} реальных кадров · ${gens} генераций · ${win?(hasOtk?"ОТК "+Math.round(bestOtk*10):"есть winner"):(hasOtk?"ОТК "+Math.round(bestOtk*10):"нет победителя")}`;
   const nameRow=el("div",{style:"display:flex;align-items:center;gap:8px;"},el("span",{style:"font-size:13.5px;font-weight:600;"},p.name||p.article));
   if(win)nameRow.appendChild(el("span",{class:"mono tbadge",style:"background:var(--ok);"},"★ ПОБЕДИТЕЛЬ"));
-  return el("div",{class:"card",style:"display:flex;gap:14px;padding:13px;align-items:center;border-radius:10px;"},
+  const statusNode=gaps.length
+    ? el("div",{class:"product-gaps",title:statusTitle,"aria-label":statusTitle},
+        el("span",{class:"product-gap-chip"},"Пробелы: "+gaps.join(" · ")))
+    : el("div",{style:"display:flex;gap:16px;margin-top:9px;",title:statusTitle},
+        metaStat(real?"var(--warn)":"var(--tx-lo2)",real?"◆":"◇",(real||0)+" реальных кадров"),
+        metaStat("var(--acc)","▣",gens+" генераций"),
+        metaStat(win?"var(--ok)":hasOtk?"var(--warn)":"var(--tx-lo2)",win?"●":hasOtk?"◐":"○",win?(hasOtk?"ОТК "+Math.round(bestOtk*10):"есть winner"):(hasOtk?"ОТК "+Math.round(bestOtk*10):"нет победителя")));
+  return el("div",{class:"card product-card","data-real-frames":real,"data-generations":gens,"data-has-winner":win?"true":"false"},
     el("div",{style:"width:54px;height:72px;flex:none;border-radius:7px;overflow:hidden;border:1px solid var(--bd2);"+(p.img?"":"background:repeating-linear-gradient(135deg,#22262e 0 7px,#1d2128 7px 14px);"),
       html:p.img?'<img src="'+esc(p.img)+'" style="width:100%;height:100%;object-fit:cover;" onerror="this.parentNode.style.background=\'repeating-linear-gradient(135deg,#22262e 0 7px,#1d2128 7px 14px)\'">':""}),
     el("div",{style:"flex:1;min-width:0;"}, nameRow,
       el("div",{style:"font-size:11px;color:var(--tx-lo);margin-top:3px;"},"Данные по товару: ",el("span",{style:"color:"+(understanding?"var(--ok)":"var(--tx-lo2)")+";"},understanding?"есть сигналы":"пусто")," · арт "+p.article),
-      el("div",{style:"display:flex;gap:16px;margin-top:9px;"},
-        metaStat(real?"var(--warn)":"var(--tx-lo2)",real?"◆":"◇",(real||0)+" реальных кадров"),
-        metaStat("var(--acc)","▣",gens+" генераций"),
-        metaStat(win?"var(--ok)":hasOtk?"var(--warn)":"var(--tx-lo2)",win?"●":hasOtk?"◐":"○",win?(hasOtk?"ОТК "+Math.round(bestOtk*10):"есть winner"):(hasOtk?"ОТК "+Math.round(bestOtk*10):"нет победителя")))),
-    el("button",{class:"btn "+(win?"primary":""),onclick:()=>openFormatFork(p)},"Собрать контент"));
+      statusNode),
+    el("button",{class:"btn sm "+(win?"primary":""),onclick:()=>openFormatFork(p)},"Собрать контент"));
 }
 function metaStat(c,glyph,txt){ return el("span",{class:"mono",style:"font-size:11px;color:var(--tx-mid2);"},el("span",{style:"color:"+c+";"},glyph)," "+txt); }
 function renderObservabilityCard(host){
@@ -1001,21 +1096,26 @@ function renderObservabilityCard(host){
 }
 function openFormatFork(p){
   S.contentProduct=p;
-  const ov=el("div",{style:"position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:50;",onclick:(e)=>{ if(e.target===ov)ov.remove(); }});
+  let closeFork=()=>{};
+  const ov=el("div",{style:"position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:50;",onclick:(e)=>{ if(e.target===ov)closeFork(); }});
+  const onForkKey=(e)=>{ if(e.key==="Escape")closeFork(); };
+  closeFork=()=>{ ov.remove(); document.removeEventListener("keydown",onForkKey); };
   const nk=p.cniche||p.niche||"default"; // КАНОНИЧЕСКАЯ ниша рубрики (как плитки/фильтр/корпус), НЕ WB-категория p.niche («blasters») — иначе лента конкурентов пустая
   const resetNiche=()=>{ if(S.activeNiche!==nk){ S.activeNiche=nk; S.decompose=null; S.decomposeLoading=false; S.decomposeVideo=null; S.selectedVideo=null; } };
-  const pickVideo=()=>{ ov.remove(); resetNiche(); toast("Видео → анализ конкурентов"); go("compete"); };
-  const pickStatic=()=>{ ov.remove(); resetNiche(); S.staticForm={...(S.staticForm||{}), article:p.article||"", headline:(p.name||"").split(/[,.]/)[0].slice(0,52), formats:["card_3x4","pin_2x3"], archetype:"auto", price:(S.staticForm&&S.staticForm.price)||"", objective:"reach"}; toast("Статик → экран пинов"); go("static"); };
-  const pickCarousel=()=>{ ov.remove(); const qs=new URLSearchParams(); if(p.article)qs.set("article",p.article); if(p.img)qs.set("img",p.img); window.open("/carousel?"+qs.toString(),"_blank"); toast("Карусель открыта в отдельной вкладке"); };
+  const pickVideo=()=>{ closeFork(); resetNiche(); toast("Видео → анализ конкурентов"); go("compete"); };
+  const pickStatic=()=>{ closeFork(); resetNiche(); S.staticForm={...(S.staticForm||{}), article:p.article||"", headline:(p.name||"").split(/[,.]/)[0].slice(0,52), formats:["card_3x4","pin_2x3"], archetype:"auto", price:(S.staticForm&&S.staticForm.price)||"", objective:"reach"}; toast("Статик → экран пинов"); go("static"); };
+  const pickCarousel=()=>{ closeFork(); const qs=new URLSearchParams(); if(p.article)qs.set("article",p.article); if(p.img)qs.set("img",p.img); window.open("/carousel?"+qs.toString(),"_blank"); toast("Карусель открыта в отдельной вкладке"); };
   ov.appendChild(el("div",{class:"card",style:"padding:22px;width:420px;"},
-    el("div",{style:"font-size:16px;font-weight:600;margin-bottom:4px;"},"Собрать контент"),
+    el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:4px;"},
+      el("div",{style:"font-size:16px;font-weight:600;"},"Собрать контент"),
+      el("button",{class:"btn sm",onclick:()=>closeFork(),title:"закрыть"},"Закрыть")),
     el("div",{class:"muted",style:"margin-bottom:16px;"},p.name||p.article),
     el("div",{class:"sec-cap",style:"margin-bottom:10px;"},"Выбери формат"),
     el("div",{style:"display:grid;grid-template-columns:repeat(3,1fr);gap:10px;"},
       fmtCard("🎬","Видео","клон конкурента → граф",pickVideo),
       fmtCard("🖼","Карусель","открыть PNG-сборщик",pickCarousel),
       fmtCard("📌","Статик","пины/карточки",pickStatic))));
-  document.body.appendChild(ov);
+  document.body.appendChild(ov); document.addEventListener("keydown",onForkKey);
 }
 function fmtCard(ic,t,sub,on){ return el("div",{class:"card",style:"padding:14px;text-align:center;cursor:pointer;background:var(--bg-node);",onclick:on},
   el("div",{style:"font-size:26px;"},ic),el("div",{style:"font-size:13px;font-weight:600;margin-top:6px;"},t),el("div",{class:"mono",style:"font-size:9.5px;color:var(--tx-lo2);margin-top:3px;"},sub)); }
@@ -1032,96 +1132,85 @@ function renderCenterOpsSummary(host,input){
   const stressHistory=input&&input.stressHistory||null;
   if(!opsStatus && !heartbeatDiag && !failDiag && !opsAlerts.length && !lowBalances.length && !latestStress && !stressHistory)return;
   const tone=opsStatusTone(opsStatus&&opsStatus.level);
-  const card=el("div",{class:"card",style:"padding:12px 14px;margin-bottom:16px;display:flex;flex-direction:column;gap:10px;"});
-  card.appendChild(el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;"},
-    el("div",{style:"display:flex;align-items:center;gap:8px;flex-wrap:wrap;"},
-      el("span",{class:"mono",style:"font-size:10px;color:"+tone.c+";background:"+tone.bg+";padding:4px 7px;border-radius:5px;font-weight:700;"},opsStatus?"OPS "+tone.label:"OPS"),
-      el("span",{style:"font-size:12px;font-weight:700;"},"Factory health"),
-      workerRow&&workerRow.current_task_id?el("span",{class:"mono",style:"font-size:10px;color:#fff;background:var(--acc);padding:4px 7px;border-radius:5px;font-weight:700;"},"task "+workerRow.current_task_id):null),
-    el("button",{class:"btn sm",onclick:()=>go("worker")},"Worker")));
-  if(S.compact){
-    const chips=el("div",{style:"display:flex;flex-wrap:wrap;gap:6px;"});
-    if(latestStress&&latestStress.summary){
-      const ls=latestStress.summary||{};
-      chips.appendChild(el("span",{class:"mono",style:"font-size:10px;color:"+(ls.failed||ls.runFail||ls.timeouts?"var(--err)":"var(--ok)")+";background:"+(ls.failed||ls.runFail||ls.timeouts?"var(--err-bg)":"var(--ok-bg)")+";padding:3px 7px;border-radius:5px;"},
-        "stress "+String(ls.completed||0)+"/"+String(ls.totalRuns||0)));
-    }
-    opsAlerts.slice(0,2).forEach((a)=>chips.appendChild(el("span",{class:"mono",style:"font-size:10px;color:var(--warn);background:var(--warn-bg);padding:3px 7px;border-radius:5px;"},a.code||a.level||"alert")));
-    lowBalances.slice(0,2).forEach((b)=>chips.appendChild(el("span",{class:"mono",style:"font-size:10px;color:var(--err);background:var(--err-bg);padding:3px 7px;border-radius:5px;"},
-      String(b.provider||"balance")+": "+(b.status||"low"))));
-    if(opsStatus&&opsStatus.summary){
-      card.appendChild(el("div",{style:"font-size:11px;line-height:1.45;color:var(--tx-bd);"},trunc(opsStatus.summary,150)));
-    }
-    if(chips.childNodes.length)card.appendChild(chips);
-    host.appendChild(card);
-    return;
-  }
-  if(opsStatus&&opsStatus.summary){
-    card.appendChild(el("div",{style:"font-size:11px;line-height:1.45;color:var(--tx-bd);"},opsStatus.summary));
-  }
-  if(heartbeatDiag){
-    const hbColor=heartbeatDiag.level==="critical"?"var(--err)":heartbeatDiag.level==="warning"?"var(--warn)":"var(--ok)";
-    card.appendChild(el("div",{style:"font-size:11px;line-height:1.45;color:var(--tx-bd);"},
-      "Heartbeat: ",el("b",{style:"color:"+hbColor+";"},heartbeatDiag.title||heartbeatDiag.issue||"unknown"),
-      heartbeatDiag.summary?el("span",{}," · "+heartbeatDiag.summary):""));
-  }
-  if(failDiag){
-    card.appendChild(el("div",{style:"font-size:11px;line-height:1.45;color:var(--tx-bd);"},
-      "Run fails: ",el("b",{style:"color:var(--warn);"},failDiag.issue||failDiag.category||"unknown"),
-      failDiag.next_step?el("span",{}," · "+failDiag.next_step):"",
-      failDiag.sample_error?el("span",{}," · "+trunc(failDiag.sample_error,120)):""));
-  }
-  if(stability){
-    const ok=!!stability.target_met;
-    card.appendChild(el("div",{style:"font-size:11px;line-height:1.45;color:var(--tx-bd);"},
-      "10-run KPI: ",el("b",{style:"color:"+(ok?"var(--ok)":"var(--warn)")+";"},
-        String(stability.successful_runs||0)+"/"+String(stability.window_size||10)),
-      " · streak ",el("b",{style:"color:var(--tx-hi);"},String(stability.success_streak||0)),
-      ok?el("span",{}," · target met"):el("span",{}," · target not met yet")));
-  }
+  const level=(opsStatus&&opsStatus.level)||"unknown";
+  const statusTitle=level==="critical"?"Нужна проверка системы":level==="degraded"?"Есть предупреждения системы":level==="healthy"?"Система работает штатно":"Состояние системы неизвестно";
+  const summary=(opsStatus&&opsStatus.summary)||"нет активных системных сообщений";
+  const card=el("div",{class:"card health-banner "+(level||"unknown"),role:level==="critical"?"alert":"status","aria-label":statusTitle+". "+summary});
+  card.appendChild(el("div",{class:"health-main"},
+    el("div",{style:"min-width:0;"},
+      el("div",{style:"display:flex;align-items:center;gap:8px;flex-wrap:wrap;"},
+        el("span",{class:"mono",style:"font-size:10px;color:"+tone.c+";background:"+tone.bg+";padding:4px 7px;border-radius:5px;font-weight:700;"},tone.label),
+        workerRow&&workerRow.current_task_id?el("span",{class:"mono",style:"font-size:10px;color:var(--acc-lt);background:var(--vio-bg);padding:4px 7px;border-radius:5px;font-weight:700;"},"задача "+workerRow.current_task_id):null),
+      el("div",{class:"health-title"},statusTitle),
+      el("div",{class:"health-copy"},summary)),
+    el("button",{class:"btn sm",onclick:()=>go("worker"),title:"Открыть Railway worker и полную системную очередь"},"Открыть Worker")));
+  const detailItems=[];
   if(latestStress&&latestStress.summary){
     const lsSummary=latestStress.summary||{};
     const lsStability=latestStress.stability&&latestStress.stability.stability?latestStress.stability.stability:null;
-    const latestRow=el("div",{style:"display:flex;flex-wrap:wrap;gap:6px;"});
-    latestRow.appendChild(el("span",{class:"mono",style:"font-size:10px;color:var(--tx-hi);background:var(--bg-input);border:1px solid var(--bd2);padding:3px 7px;border-radius:5px;"},
-      "stress "+String(lsSummary.completed||0)+"/"+String(lsSummary.totalRuns||0)));
-    latestRow.appendChild(el("span",{class:"mono",style:"font-size:10px;color:var(--tx-hi);background:var(--bg-input);border:1px solid var(--bd2);padding:3px 7px;border-radius:5px;"},
-      "avg "+String(lsSummary.avgDurationSec||0)+"s"));
+    detailItems.push(["stress "+String(lsSummary.completed||0)+"/"+String(lsSummary.totalRuns||0), lsSummary.failed||lsSummary.runFail||lsSummary.timeouts?"err":"ok"]);
+    detailItems.push(["avg "+String(lsSummary.avgDurationSec||0)+"s", "muted"]);
     if(lsStability){
-      latestRow.appendChild(el("span",{class:"mono",style:"font-size:10px;color:"+(lsStability.target_met?"var(--ok)":"var(--warn)")+";background:"+(lsStability.target_met?"var(--ok-bg)":"var(--warn-bg)")+";padding:3px 7px;border-radius:5px;"},
-        "streak "+String(lsStability.success_streak||0)));
+      detailItems.push(["streak "+String(lsStability.success_streak||0), lsStability.target_met?"ok":"warn"]);
     }
     if(latestStress.generatedAt){
-      latestRow.appendChild(el("span",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);background:var(--bg-chip);border:1px solid var(--bd);padding:3px 7px;border-radius:5px;"},
-        fmtWhen(latestStress.generatedAt)));
+      detailItems.push([fmtWhen(latestStress.generatedAt), "muted"]);
     }
-    card.appendChild(latestRow);
   }
   if(stressHistory&&stressHistory.total_reports){
     const fails=(stressHistory.failed_runs||0)+(stressHistory.run_failures||0)+(stressHistory.timeouts||0);
-    const histRow=el("div",{style:"display:flex;flex-wrap:wrap;gap:6px;"});
-    histRow.appendChild(el("span",{class:"mono",style:"font-size:10px;color:var(--tx-hi);background:var(--bg-input);border:1px solid var(--bd2);padding:3px 7px;border-radius:5px;"},"history "+String(stressHistory.total_reports||0)+" reports"));
-    histRow.appendChild(el("span",{class:"mono",style:"font-size:10px;color:var(--ok);background:var(--ok-bg);padding:3px 7px;border-radius:5px;"},"done "+String(stressHistory.completed_runs||0)+"/"+String(stressHistory.total_runs||0)));
-    histRow.appendChild(el("span",{class:"mono",style:"font-size:10px;color:"+(fails?"var(--err)":"var(--tx-hi)")+";background:"+(fails?"var(--err-bg)":"var(--bg-input)")+";border:1px solid "+(fails?"rgba(239,68,68,.35)":"var(--bd2)")+";padding:3px 7px;border-radius:5px;"},"fail "+String(fails)));
-    histRow.appendChild(el("span",{class:"mono",style:"font-size:10px;color:var(--tx-hi);background:var(--bg-input);border:1px solid var(--bd2);padding:3px 7px;border-radius:5px;"},"target "+String(stressHistory.target_met_reports||0)+"/"+String(stressHistory.total_reports||0)));
-    card.appendChild(histRow);
+    detailItems.push(["history "+String(stressHistory.total_reports||0)+" reports", "muted"]);
+    detailItems.push(["done "+String(stressHistory.completed_runs||0)+"/"+String(stressHistory.total_runs||0), "ok"]);
+    detailItems.push(["fail "+String(fails), fails?"err":"muted"]);
+    detailItems.push(["target "+String(stressHistory.target_met_reports||0)+"/"+String(stressHistory.total_reports||0), "muted"]);
   }
+  if(stability){
+    const ok=!!stability.target_met;
+    detailItems.push(["10-run "+String(stability.successful_runs||0)+"/"+String(stability.window_size||10), ok?"ok":"warn"]);
+    detailItems.push(["stability streak "+String(stability.success_streak||0), "muted"]);
+  }
+  if(heartbeatDiag)detailItems.push(["heartbeat "+String(heartbeatDiag.issue||heartbeatDiag.title||"unknown"), heartbeatDiag.issue==="table_missing"?"warn":"muted"]);
+  if(failDiag)detailItems.push(["run fails "+String(failDiag.issue||failDiag.category||"unknown"), "warn"]);
   if(opsAlerts.length){
-    const row=el("div",{style:"display:flex;flex-wrap:wrap;gap:6px;"});
-    opsAlerts.slice(0,4).forEach((a)=>row.appendChild(el("span",{class:"mono",style:"font-size:10px;color:var(--warn);background:var(--warn-bg);padding:4px 7px;border-radius:5px;"},a.code||a.level||"alert")));
-    card.appendChild(row);
+    opsAlerts.slice(0,6).forEach((a)=>detailItems.push([a.code||a.level||"alert", a.level==="error"?"err":"warn"]));
   }
   if(lowBalances.length){
-    const row=el("div",{style:"display:flex;flex-wrap:wrap;gap:6px;"});
-    lowBalances.slice(0,4).forEach((b)=>row.appendChild(el("span",{class:"mono",style:"font-size:10px;color:var(--err);background:var(--err-bg);padding:4px 7px;border-radius:5px;"},
-      String(b.provider||"balance")+": "+(b.status||"low")+(b.remaining_pct!=null?(" · "+Math.round(Number(b.remaining_pct)||0)+"%"):""))));
-    card.appendChild(row);
+    lowBalances.slice(0,4).forEach((b)=>detailItems.push([String(b.provider||"balance")+": "+(b.status||"low")+(b.remaining_pct!=null?(" · "+Math.round(Number(b.remaining_pct)||0)+"%"):""), "err"]));
+  }
+  if(detailItems.length){
+    const colorFor=(t)=>t==="err"?["var(--err)","var(--err-bg)"]:t==="warn"?["var(--warn)","var(--warn-bg)"]:t==="ok"?["var(--ok)","var(--ok-bg)"]:["var(--tx-mid)","var(--bg-input)"];
+    const details=el("details",{class:"health-details"});
+    details.appendChild(el("summary",{},"Технические детали"));
+    const chips=el("div",{class:"health-codes"});
+    detailItems.forEach(([text,type])=>{
+      const [c,bg]=colorFor(type);
+      chips.appendChild(el("span",{class:"mono",style:"font-size:10px;color:"+c+";background:"+bg+";border:1px solid var(--bd2);padding:3px 7px;border-radius:5px;"},text));
+    });
+    details.appendChild(chips);
+    card.appendChild(details);
   }
   host.appendChild(card);
 }
 
 // Бриф ниши кэшируется в S.briefCache[niche] — переключение экранов/ниш НЕ перезапускает Claude.
 // force=true (кнопка «↻ Повторить» / «↻ Обновить») рвёт и клиентский кэш, и серверный (refresh=1).
+function splitBriefText(text){
+  const src=String(text||"").replace(/\s+/g," ").trim();
+  if(!src)return {lead:"—",rest:""};
+  const parts=src.match(/[^.!?]+[.!?]+|[^.!?]+$/g)||[src];
+  const lead=parts.slice(0,2).join(" ").trim();
+  const rest=parts.slice(2).join(" ").trim();
+  return {lead:lead||src,rest};
+}
+function recText(r){
+  if(typeof r==="string")return r;
+  if(!r||typeof r!=="object")return "";
+  return r.text||r.summary||r.description||r.idea||r.hook||r.recommendation||r.title||r.format||r.type||"";
+}
+function recTitle(r,i){
+  if(r&&typeof r==="object")return r.format||r.type||r.platform||("рекомендация "+(i+1));
+  return "рекомендация "+(i+1);
+}
 async function renderMarketer(aside, force){
   aside.innerHTML="";
   const niche=S.activeNiche;
@@ -1140,9 +1229,13 @@ async function renderMarketer(aside, force){
   if(b.error||!b.brief){ body.appendChild(emptyBox(b.error||"нет данных по нише — запусти разбор"));
     body.appendChild(el("button",{class:"btn sm",style:"margin-top:10px;",onclick:()=>renderMarketer(aside,true)},"↻ Повторить")); return; }
   const br=b.brief;
-  body.appendChild(el("div",{class:"card",style:"padding:13px;margin-bottom:14px;"},
+  const summaryParts=splitBriefText(br.summary||"");
+  body.appendChild(el("div",{class:"card marketer-card"},
     el("div",{style:"font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--acc);font-weight:600;margin-bottom:7px;"},"Что заходит"),
-    el("p",{style:"margin:0;font-size:12.5px;line-height:1.55;color:var(--tx-bd);"},br.summary||"—")));
+    el("p",{class:"marketer-lead"},summaryParts.lead),
+    summaryParts.rest?el("details",{class:"marketer-details"},
+      el("summary",{},"Подробности брифа"),
+      el("p",{style:"margin:8px 0 0;font-size:12px;line-height:1.55;color:var(--tx-bd);"},summaryParts.rest)):null));
   if(Array.isArray(br.viral_examples)&&br.viral_examples.length){
     body.appendChild(el("div",{style:"font-size:11px;font-weight:600;color:var(--tx-mid2);margin-bottom:9px;display:flex;align-items:center;justify-content:space-between;"},el("span",{},"Примеры конкурентов"),el("span",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);"},"по виральности")));
     const g=el("div",{style:"display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:16px;"});
@@ -1154,8 +1247,13 @@ async function renderMarketer(aside, force){
   }
   if(Array.isArray(br.content_recommendations)&&br.content_recommendations.length){
     body.appendChild(el("div",{style:"font-size:11px;font-weight:600;color:var(--tx-mid2);margin-bottom:9px;"},"Рекомендации"));
-    const c=el("div",{style:"display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;"});
-    br.content_recommendations.slice(0,5).forEach(r=>c.appendChild(el("span",{style:"font-size:11px;color:var(--acc-lt);background:rgba(124,116,255,.10);border:1px solid rgba(124,116,255,.25);padding:5px 9px;border-radius:6px;"},"＋ "+(r.format||r.type))));
+    const c=el("div",{class:"rec-list"});
+    br.content_recommendations.slice(0,5).forEach((r,i)=>{
+      const txt=recText(r);
+      c.appendChild(el("div",{class:"card rec-card"},
+        el("div",{class:"rec-title"},"＋ "+recTitle(r,i)),
+        el("div",{class:"rec-text"},txt?trunc(txt,180):"—")));
+    });
     body.appendChild(c);
   }
   if(Array.isArray(br.distribution)&&br.distribution.length){
@@ -1634,7 +1732,10 @@ async function autofillSingleNode(n){
 // V21 · автопилот: ночной прогон черновиков (бюджет-гард → §17 автозаполнение в очереди → генерация → ОТК → банк → Telegram-ревью)
 async function openNightRun(){
   if(!(S.niches&&S.niches.length)){ try{ const d=await api("/studio"); if(d&&d.niches)S.niches=d.niches; }catch(e){} } // ниши для режима «с нуля» (могли не загрузиться)
-  const ov=el("div",{style:"position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:60;padding:24px;",onclick:(e)=>{ if(e.target===ov)ov.remove(); }});
+  let closeNight=()=>{};
+  const ov=el("div",{style:"position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:60;padding:24px;",onclick:(e)=>{ if(e.target===ov)closeNight(); }});
+  const onNightKey=(e)=>{ if(e.key==="Escape")closeNight(); };
+  closeNight=()=>{ ov.remove(); document.removeEventListener("keydown",onNightKey); };
   const box=el("div",{class:"card",style:"padding:22px;width:min(520px,95vw);max-height:88vh;overflow:auto;"});
   box.appendChild(el("div",{style:"font-size:16px;font-weight:600;"},"🌙 Ночной прогон"));
   box.appendChild(el("div",{class:"muted",style:"margin-bottom:14px;"},"ИИ сам конфигурит ноды (§17 + бренд-кит) → генерит → ОТК → банк. Прошедшее ОТК придёт в Telegram на голос-ревью."));
@@ -1684,21 +1785,24 @@ async function openNightRun(){
     else out.appendChild(el("div",{style:"font-size:11px;color:var(--tx-lo2);"},"это только прикидка — ничего не запущено и не оплачено."));
   };
   const foot=el("div",{style:"display:flex;justify-content:flex-end;gap:9px;margin-top:18px;"});
-  foot.appendChild(el("button",{class:"btn sm",onclick:()=>ov.remove()},"Закрыть"));
+  foot.appendChild(el("button",{class:"btn sm",onclick:()=>closeNight()},"Закрыть"));
   foot.appendChild(el("button",{class:"btn sm",onclick:()=>run(true)},"📊 Прикинуть"));
   foot.appendChild(el("button",{class:"btn sm primary",onclick:()=>{ if(confirm("Запустить ночной прогон? Будут потрачены деньги на генерацию (в пределах бюджета).")) run(false); }},"🌙 Запустить"));
   box.appendChild(foot);
-  ov.appendChild(box); document.body.appendChild(ov);
+  ov.appendChild(box); document.body.appendChild(ov); document.addEventListener("keydown",onNightKey);
 }
 
 // V24 · редактор бренд-кита: фикс-айдентика бренда (голос/персона/шрифт/цвет/CTA/бан/хэштеги) → автозаполнение берёт дефолтами
 async function openBrandKit(){
-  const ov=el("div",{style:"position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:60;padding:24px;",onclick:(e)=>{ if(e.target===ov)ov.remove(); }});
+  let closeBrand=()=>{};
+  const ov=el("div",{style:"position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:60;padding:24px;",onclick:(e)=>{ if(e.target===ov)closeBrand(); }});
+  const onBrandKey=(e)=>{ if(e.key==="Escape")closeBrand(); };
+  closeBrand=()=>{ ov.remove(); document.removeEventListener("keydown",onBrandKey); };
   const box=el("div",{class:"card",style:"padding:22px;width:min(580px,95vw);max-height:88vh;overflow:auto;"});
   box.appendChild(el("div",{style:"font-size:16px;font-weight:600;"},"🎨 Бренд-кит"));
   box.appendChild(el("div",{class:"muted",style:"margin-bottom:16px;"},"фикс-айдентика бренда — автозаполнение (§17) и сборка берут как дефолты (голос/персона/шрифт/цвет всегда брендовые)"));
   const bodyEl=el("div"); box.appendChild(bodyEl); bodyEl.appendChild(loadingCard("гружу бренды…"));
-  ov.appendChild(box); document.body.appendChild(ov);
+  ov.appendChild(box); document.body.appendChild(ov); document.addEventListener("keydown",onBrandKey);
   const d=await api("/brand-kit?list=1"); bodyEl.innerHTML="";
   const brands=(d&&d.brands)||[];
   if(!brands.length){ bodyEl.appendChild(emptyBox("пока нет брендов для бренд-кита")); return; }
@@ -1732,7 +1836,7 @@ async function openBrandKit(){
     refs.cta.value=k.cta||""; refs.ban_words.value=(k.ban_words||[]).join(", "); refs.hashtags.value=(k.hashtags||[]).join(", "); refs.notes.value=k.notes||""; };
   sel.onchange=load; load();
   const foot=el("div",{style:"display:flex;justify-content:flex-end;gap:9px;margin-top:18px;"});
-  foot.appendChild(el("button",{class:"btn sm",onclick:()=>ov.remove()},"Закрыть"));
+  foot.appendChild(el("button",{class:"btn sm",onclick:()=>closeBrand()},"Закрыть"));
   foot.appendChild(el("button",{class:"btn sm primary",onclick:async(e)=>{
     const brand=sel.value;
     // client-side гард hex-цветов (пустое = ок «не задано», иначе строго #RRGGBB[AA])
