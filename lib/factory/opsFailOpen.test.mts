@@ -26,6 +26,7 @@ ok(/action: "enable_optional_worker_heartbeat"/.test(ops), "ops recommends enabl
 ok(/input\.workerIssue === "table_missing"[\s\S]*elevate\("degraded"\)[\s\S]*optional heartbeat table missing/.test(ops), "missing optional heartbeat table degrades ops status instead of making it critical");
 ok(/code: "stale_running_runs"/.test(ops) && /action: "inspect_stuck_runs"/.test(ops), "ops surfaces stale running runs as a separate operational issue");
 ok(/input\.staleRunning > 0[\s\S]*reasons\.push\(`\$\{input\.staleRunning\} stuck running`\)/.test(ops), "stale running runs degrade ops summary instead of hiding under generic running");
+ok(/loadObservabilitySnapshot\(db, 48\)\.then\(\(value\) => \(\{ \.\.\.value, warning: null as string \| null \}\)\)\.catch/.test(ops) && /code: "observability_partial"/.test(ops), "ops keeps worker view alive when observability snapshot degrades");
 
 if (failed) process.exit(1);
 console.log(`opsFailOpen: ${passed} passed, ${failed} failed`);

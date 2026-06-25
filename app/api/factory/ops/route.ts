@@ -11,6 +11,25 @@ export const runtime = "nodejs";
 export const maxDuration = 30;
 
 const BALANCE_THROTTLE_MS = 30 * 60 * 1000;
+const EMPTY_OBSERVABILITY: Record<string, unknown> = {
+  sample_runs: 0,
+  running: 0,
+  stale_running: 0,
+  warning_runs: 0,
+  failed: 0,
+  stability_snapshot: null,
+  quality_signal: null,
+  recent_runs: [],
+  incident_runs: [],
+  status_series: [],
+  step_duration_series: [],
+  slowest_steps: [],
+  failure_diagnostics: null,
+  top_error_categories: [],
+  top_errors: [],
+  top_warning_categories: [],
+  top_warnings: [],
+};
 
 function summarizeAlerts(input: {
   workerState: "unknown" | "alive" | "stale" | "dead";
@@ -24,6 +43,7 @@ function summarizeAlerts(input: {
   criticFallbackRatio: number;
   criticDominantBasis: string | null;
   criticTopBasisReason: string | null;
+  observabilityWarning: string | null;
 }) {
   const alerts: { level: "ok" | "warn" | "error"; code: string; detail: string }[] = [];
   if (input.workerState === "dead") alerts.push({ level: "error", code: "worker_dead", detail: "worker heartbeat is dead" });
@@ -67,6 +87,9 @@ function summarizeAlerts(input: {
   } else if (input.criticTopBasisReason === "text_empty_response") {
     alerts.push({ level: "warn", code: "critic_text_empty_response", detail: "text-only critic path often returns empty responses" });
   }
+  if (input.observabilityWarning) {
+    alerts.push({ level: "warn", code: "observability_partial", detail: input.observabilityWarning });
+  }
   if (!alerts.length) alerts.push({ level: "ok", code: "healthy", detail: "no active ops alerts" });
   return alerts;
 }
@@ -84,6 +107,7 @@ function buildSuggestedActions(input: {
   criticFallbackRatio: number;
   criticDominantBasis: string | null;
   criticTopBasisReason: string | null;
+  observabilityWarning: string | null;
 }) {
   const actions: { priority: "p0" | "p1" | "p2"; action: string; reason: string }[] = [];
   if (input.workerState === "dead") {
@@ -159,6 +183,13 @@ function buildSuggestedActions(input: {
       reason: "text-only critic path often returns empty responses; inspect fallback prompt path",
     });
   }
+  if (input.observabilityWarning) {
+    actions.push({
+      priority: "p2",
+      action: "inspect_observability_snapshot",
+      reason: input.observabilityWarning,
+    });
+  }
   if (!actions.length) {
     actions.push({ priority: "p2", action: "continue_monitoring", reason: "no active alerts, keep observing ops snapshot" });
   }
@@ -177,6 +208,7 @@ function buildOpsStatus(input: {
   criticFallbackRatio: number;
   criticDominantBasis: string | null;
   criticTopBasisReason: string | null;
+  observabilityWarning: string | null;
 }) {
   let level: "healthy" | "degraded" | "critical" = "healthy";
   const reasons: string[] = [];
@@ -241,6 +273,10 @@ function buildOpsStatus(input: {
     elevate("degraded");
     reasons.push("critic empty model responses");
   }
+  if (input.observabilityWarning) {
+    elevate("degraded");
+    reasons.push("observability partial");
+  }
 
   if (!reasons.length) reasons.push("no active ops issues");
   return {
@@ -275,12 +311,17 @@ export async function GET() {
     const [workerState, balances, observabilitySnapshot, observer, latestStress, stressHistory] = await Promise.all([
       loadWorkerSnapshot(db, docs.queue),
       collectBalances(db, { persist: true, throttleMs: BALANCE_THROTTLE_MS }),
-      loadObservabilitySnapshot(db, 48),
+      loadObservabilitySnapshot(db, 48).then((value) => ({ ...value, warning: null as string | null })).catch((e) => ({
+        rows: [],
+        observability: { ...EMPTY_OBSERVABILITY },
+        warning: `node_recipes snapshot degraded: ${String((e as Error)?.message || e).slice(0, 160)}`,
+      })),
       loadObserverPulse(db),
       latestStressPromise,
       stressHistoryPromise,
     ]);
     const observability = observabilitySnapshot.observability;
+    const observabilityWarning = observabilitySnapshot.warning;
     const lowServices = balances.filter((s) => s.low).map((s) => s.service);
     const workerIssue = classifyWorkerHeartbeatIssue(
       workerState.db_error,
@@ -304,6 +345,7 @@ export async function GET() {
       criticFallbackRatio: Number((observability.quality_signal as { fallback_ratio?: unknown } | null)?.fallback_ratio || 0),
       criticDominantBasis: String((observability.quality_signal as { dominant_basis?: unknown } | null)?.dominant_basis || "") || null,
       criticTopBasisReason: String((observability.quality_signal as { top_basis_reason?: unknown } | null)?.top_basis_reason || "") || null,
+      observabilityWarning,
     });
     const topErrorCategory = Array.isArray(observability.top_error_categories) && observability.top_error_categories[0]
       ? String((observability.top_error_categories[0] as { category?: unknown }).category || "")
@@ -321,6 +363,7 @@ export async function GET() {
       criticFallbackRatio: Number((observability.quality_signal as { fallback_ratio?: unknown } | null)?.fallback_ratio || 0),
       criticDominantBasis: String((observability.quality_signal as { dominant_basis?: unknown } | null)?.dominant_basis || "") || null,
       criticTopBasisReason: String((observability.quality_signal as { top_basis_reason?: unknown } | null)?.top_basis_reason || "") || null,
+      observabilityWarning,
     });
     const ops_status = buildOpsStatus({
       workerState: workerState.worker?.liveness?.state || "unknown",
@@ -334,6 +377,7 @@ export async function GET() {
       criticFallbackRatio: Number((observability.quality_signal as { fallback_ratio?: unknown } | null)?.fallback_ratio || 0),
       criticDominantBasis: String((observability.quality_signal as { dominant_basis?: unknown } | null)?.dominant_basis || "") || null,
       criticTopBasisReason: String((observability.quality_signal as { top_basis_reason?: unknown } | null)?.top_basis_reason || "") || null,
+      observabilityWarning,
     });
 
     return NextResponse.json({
@@ -350,6 +394,7 @@ export async function GET() {
       },
       observer,
       observability,
+      observability_warning: observabilityWarning,
       latest_stress: latestStress,
       stress_history: stressHistory,
       alerts,
