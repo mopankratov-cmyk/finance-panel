@@ -591,7 +591,7 @@ async function screenWorker(root, force, renderToken){
   header("Railway worker","статус · задача · очередь", el("div",{class:"hdr-r"},
     el("button",{class:"btn",onclick:()=>screenWorker(root)},"↻ Обновить")));
   const wrap=el("div",{class:"scroll",style:"padding:18px;"}); root.appendChild(wrap);
-  wrap.appendChild(loadingCard("смотрю heartbeat и очередь…"));
+  wrap.appendChild(loadingCard("смотрю heartbeat и живые прогоны…"));
   const d=await api("/ops");
   if(!isLiveRender()) return;
   S.workerState=d;
@@ -599,7 +599,6 @@ async function screenWorker(root, force, renderToken){
   if(d.error){ wrap.appendChild(emptyBox("ошибка ops: "+d.error)); return; }
 
   const worker=d.worker||null;
-  const q=(worker&&Array.isArray(worker.queue)&&worker.queue.length?worker.queue:(d.queue||[]))||[];
   const alerts=Array.isArray(d.alerts)?d.alerts:[];
   const suggested=Array.isArray(d.suggested_actions)?d.suggested_actions:[];
   const factorySuggested=suggested.filter((a)=>!isWorkerInfraAction(a&&a.action));
@@ -618,32 +617,34 @@ async function screenWorker(root, force, renderToken){
   const liveTone=workerStatusTone(live.state);
   const aliveNote=workerSource==="queue_fallback"&&live.state==="unknown"?"heartbeat не настроен":live.state==="alive"?"heartbeat свежий":live.state==="stale"?"heartbeat молчит":"worker не отвечает";
   const sourceLabel=workerSource==="heartbeat_db"?"heartbeat":"queue fallback";
-  const currentId=worker&&worker.current_task_id?String(worker.current_task_id):"";
-  const ordered=[...q].sort((a,b)=>{
-    const ac=String(a.id||"")===currentId;
-    const bc=String(b.id||"")===currentId;
-    if(ac!==bc) return ac?-1:1;
-    const aw=a.status==="doing"?0:a.status==="blocked"?1:a.status==="todo"?2:a.status==="done"?3:4;
-    const bw=b.status==="doing"?0:b.status==="blocked"?1:b.status==="todo"?2:b.status==="done"?3:4;
-    if(aw!==bw) return aw-bw;
-    return String(a.title||"").localeCompare(String(b.title||""));
-  });
-  const liveCurrentTask=ordered.find((t)=>String(t.id||"")===currentId)||null;
-  const activeFactoryTask=(workerSource==="heartbeat_db"&&worker&&worker.current_task_id&&live.state!=="dead")
-    ? { id:String(worker.current_task_id), title:worker.current_task_title||"—", progress:worker.progress||"", blocker:worker.blocker||"" }
-    : (liveCurrentTask&&liveCurrentTask.status==="doing")
-      ? { id:String(liveCurrentTask.id||""), title:liveCurrentTask.title||worker.current_task_title||"—", progress:worker&&worker.progress||"", blocker:liveCurrentTask.blockers&&liveCurrentTask.blockers[0]||worker&&worker.blocker||"" }
-      : null;
-  const nextFactoryTask=!activeFactoryTask ? ordered.find((t)=>t.status==="todo")||null : null;
-  const parkedFactoryTask=!activeFactoryTask&&!nextFactoryTask ? ordered.find((t)=>t.status==="blocked")||null : null;
-  const visibleRuns=[...queueRuns]
+  const orderedRuns=[...queueRuns]
     .sort((a,b)=>{
       const aw=(a&&a.stale)?0:(a&&a.active===false)?4:String(a&&a.status||"")==="running"?1:String(a&&a.status||"")==="warning"?2:String(a&&a.status||"")==="run_fail"?3:5;
       const bw=(b&&b.stale)?0:(b&&b.active===false)?4:String(b&&b.status||"")==="running"?1:String(b&&b.status||"")==="warning"?2:String(b&&b.status||"")==="run_fail"?3:5;
       if(aw!==bw) return aw-bw;
       return String(b&&b.created_at||"").localeCompare(String(a&&a.created_at||""));
     })
-    .slice(0,S.compact?4:8);
+  const visibleRuns=orderedRuns.slice(0,S.compact?4:8);
+  const focusRun=orderedRuns[0]||null;
+  const focusRunTone=focusRun?runQueueTone(focusRun.stale?"stale_running":focusRun.status):runQueueTone("");
+  const focusRunLabel=focusRun?(focusRun.stale||focusRun.status==="running"?"Текущий прогон":"Последний прогон"):"Прогон";
+  const focusRunTitle=focusRun?`recipe #${focusRun.recipe_id!=null?String(focusRun.recipe_id):"?"}`:"—";
+  const focusRunDetail=!focusRun
+    ? "живых и недавних прогонов пока нет"
+    : focusRun.stale
+      ? (focusRun.active_step?`застрял на шаге ${focusRun.active_step}`:focusRun.last_step?`застрял после шага ${focusRun.last_step}`:"прогон завис в running")
+      : String(focusRun.status||"")==="running"
+        ? (focusRun.active_step?`идёт шаг ${focusRun.active_step}`:focusRun.last_step?`последний шаг ${focusRun.last_step}`:"прогон в работе")
+        : String(focusRun.status||"")==="warning"
+          ? `${Number(focusRun.warnings_count||0)} warning, mp4 сохранён`
+          : String(focusRun.status||"")==="run_fail"
+            ? `ошибка ${String(focusRun.error_category||"other")}`
+            : "прогон завершён";
+  const focusRunMeta=focusRun?[
+    focusRun.run_id?String(focusRun.run_id).slice(0,18):"",
+    focusRun.created_at?fmtWhen(focusRun.created_at):"",
+    focusRun.total_ms!=null?`${Math.round(Number(focusRun.total_ms||0)/1000)}s`:"",
+  ].filter(Boolean):[];
   renderFactoryPulse();
 
   const top=el("div",{style:"display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin-bottom:14px;"});
@@ -666,18 +667,16 @@ async function screenWorker(root, force, renderToken){
       " · источник: ",el("b",{style:"color:var(--tx-hi);"},sourceLabel),
       worker&&worker.note?el("span",{}, " · ",worker.note):null)));
   top.appendChild(el("div",{class:"card",style:"padding:15px;"},
-    el("div",{style:"font-size:14px;font-weight:600;margin-bottom:10px;"},activeFactoryTask?"Текущая factory-задача":nextFactoryTask?"Следующая factory-задача":"Factory-задача"),
-    activeFactoryTask?el("div",{style:"display:flex;flex-direction:column;gap:6px;"},
-      el("div",{style:"font-size:19px;font-weight:700;"},activeFactoryTask.id),
-      el("div",{style:"font-size:13px;color:var(--tx-bd);line-height:1.45;"},activeFactoryTask.title||"—"),
-      activeFactoryTask.progress?el("div",{style:"font-size:11.5px;color:var(--tx-lo);line-height:1.45;"},el("b",{style:"color:var(--tx-hi);"},"progress "),activeFactoryTask.progress):null):
-    nextFactoryTask?el("div",{style:"display:flex;flex-direction:column;gap:6px;"},
-      el("div",{style:"font-size:19px;font-weight:700;"},String(nextFactoryTask.id||"task")),
-      el("div",{style:"font-size:13px;color:var(--tx-bd);line-height:1.45;"},nextFactoryTask.title||"—"),
-      el("div",{style:"font-size:11.5px;color:var(--tx-lo);line-height:1.45;"},"активного исполнения сейчас нет, это следующая задача в очереди")):
-      el("div",{class:"muted",style:"font-size:12px;line-height:1.6;"},
-        parkedFactoryTask?"активной factory-задачи сейчас нет. В очереди остались только припаркованные blocked-задачи.":"сейчас нет активной factory-задачи и нет очереди на запуск"),
-    activeFactoryTask&&activeFactoryTask.blocker&&!S.compact?el("div",{style:"margin-top:10px;font-size:11.5px;color:var(--warn);background:var(--warn-bg);border:1px solid rgba(214,169,78,.55);padding:8px 10px;border-radius:8px;"},"Блокер: "+activeFactoryTask.blocker):null));
+    el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;"},
+      el("div",{style:"font-size:14px;font-weight:600;"},focusRunLabel),
+      focusRun?el("span",{class:"mono",style:"font-size:10px;color:"+focusRunTone.c+";background:"+focusRunTone.bg+";padding:3px 7px;border-radius:5px;font-weight:700;"},focusRunTone.label):null),
+    el("div",{style:"display:flex;flex-direction:column;gap:6px;"},
+      el("div",{style:"font-size:19px;font-weight:700;"},focusRunTitle),
+      el("div",{style:"font-size:13px;color:var(--tx-bd);line-height:1.45;"},focusRunDetail),
+      focusRunMeta.length?el("div",{style:"font-size:11.5px;color:var(--tx-lo);line-height:1.45;"},focusRunMeta.join(" · ")):null,
+      !focusRun&&worker&&worker.current_task_title&&!S.compact
+        ? el("div",{style:"font-size:11px;color:var(--tx-lo);line-height:1.45;"},"infra note: ",String(worker.current_task_title))
+        : null)));
   wrap.appendChild(top);
 
   if(visibleSuggested.length){
