@@ -13,11 +13,14 @@ export type RunSummary = {
 
 export type RecentRunPoint = {
   recipe_id: number | null;
+  run_id?: string | null;
   created_at: string | null;
   status: string;
   total_ms: number | null;
   error_category: string | null;
   warnings_count: number;
+  active_step?: string | null;
+  last_step?: string | null;
 };
 
 export type StatusSeriesPoint = {
@@ -219,11 +222,14 @@ export function buildObservability(rows: Record<string, unknown>[]) {
     });
     recentRuns.push({
       recipe_id: Number(raw.id) || null,
+      run_id: plan.run_id ? String(plan.run_id) : null,
       created_at: raw.created_at ? String(raw.created_at) : null,
       status,
       total_ms: summary.total_ms,
       error_category: planError ? classifyErrorReason(planError) : null,
       warnings_count: warnings.length,
+      active_step: summary.active_step,
+      last_step: summary.last_step,
     });
     if (status === "run_fail" || status === "warning") {
       incidentRuns.push({

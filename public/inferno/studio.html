@@ -571,6 +571,16 @@ function isWorkerInfraAction(action){
     "inspect_db_connectivity",
   ]).has(String(action||""));
 }
+function runQueueTone(status){
+  return {
+    running:{c:"var(--acc-lt)", bg:"var(--vio-bg)", label:"running"},
+    warning:{c:"var(--warn)", bg:"var(--warn-bg)", label:"warning"},
+    run_fail:{c:"var(--err)", bg:"var(--err-bg)", label:"run_fail"},
+    done:{c:"var(--ok)", bg:"var(--ok-bg)", label:"done"},
+    generated:{c:"var(--ok)", bg:"var(--ok-bg)", label:"generated"},
+    otk_pass:{c:"var(--ok)", bg:"var(--ok-bg)", label:"otk_pass"},
+  }[String(status||"")] || {c:"var(--tx-lo2)", bg:"var(--bg-input)", label:String(status||"?")};
+}
 
 async function screenWorker(root, force, renderToken){
   const token=renderToken||++S.renderToken;
@@ -600,6 +610,8 @@ async function screenWorker(root, force, renderToken){
   const workerSource=worker&&worker.source||"unknown";
   const latestStress=d.latest_stress||null;
   const stressHistory=d.stress_history||null;
+  const runObservability=d.observability||null;
+  const recentRuns=Array.isArray(runObservability&&runObservability.recent_runs)?runObservability.recent_runs:[];
   const liveTone=workerStatusTone(live.state);
   const aliveNote=workerSource==="queue_fallback"&&live.state==="unknown"?"heartbeat не настроен":live.state==="alive"?"heartbeat свежий":live.state==="stale"?"heartbeat молчит":"worker не отвечает";
   const sourceLabel=workerSource==="heartbeat_db"?"heartbeat":"queue fallback";
@@ -621,6 +633,14 @@ async function screenWorker(root, force, renderToken){
       : null;
   const nextFactoryTask=!activeFactoryTask ? ordered.find((t)=>t.status==="todo")||null : null;
   const parkedFactoryTask=!activeFactoryTask&&!nextFactoryTask ? ordered.find((t)=>t.status==="blocked")||null : null;
+  const visibleRuns=[...recentRuns]
+    .sort((a,b)=>{
+      const aw=String(a&&a.status||"")==="running"?0:String(a&&a.status||"")==="warning"?1:String(a&&a.status||"")==="run_fail"?2:3;
+      const bw=String(b&&b.status||"")==="running"?0:String(b&&b.status||"")==="warning"?1:String(b&&b.status||"")==="run_fail"?2:3;
+      if(aw!==bw) return aw-bw;
+      return String(b&&b.created_at||"").localeCompare(String(a&&a.created_at||""));
+    })
+    .slice(0,S.compact?4:8);
   renderFactoryPulse();
 
   const top=el("div",{style:"display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin-bottom:14px;"});
@@ -725,37 +745,41 @@ async function screenWorker(root, force, renderToken){
   }
 
   const list=el("div",{class:"card",style:"padding:14px;margin-bottom:14px;"}); wrap.appendChild(list);
-  const openQueueCount=q.filter(t=>t.status!=="done").length;
   list.appendChild(el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;"},
-    el("div",{style:"font-size:14px;font-weight:600;"},S.compact?"Текущая задача из очереди":"Очередь задач"),
-    el("span",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);"},S.compact?String(openQueueCount||0)+" open":String(q.length||0)+" items")));
-  if(!q.length){
-    list.appendChild(emptyBox("очередь пуста или worker ещё не прислал snapshot"));
+    el("div",{style:"font-size:14px;font-weight:600;"},"Очередь прогонов"),
+    el("span",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);"},String(recentRuns.length||0)+" items")));
+  if(!recentRuns.length){
+    list.appendChild(emptyBox("прогоны ещё не появлялись или observability snapshot пуст"));
   } else {
     const queueMeta=el("div",{style:"display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;"});
     [
-      ["todo", q.filter(t=>t.status==="todo").length, "var(--bg-input)"],
-      ["doing", q.filter(t=>t.status==="doing").length, "var(--vio-bg)"],
-      ["blocked", q.filter(t=>t.status==="blocked").length, "var(--warn-bg)"],
-      ["done", q.filter(t=>t.status==="done").length, "var(--ok-bg)"],
+      ["running", Number(runObservability&&runObservability.running||0), "var(--vio-bg)"],
+      ["warning", Number(runObservability&&runObservability.warning_runs||0), "var(--warn-bg)"],
+      ["fail", Number(runObservability&&runObservability.failed||0), "var(--err-bg)"],
+      ["sample", Number(runObservability&&runObservability.sample_runs||recentRuns.length||0), "var(--bg-input)"],
     ].forEach(([label,count,bg])=>queueMeta.appendChild(
       el("span",{class:"mono",style:"font-size:10px;background:"+bg+";border:1px solid var(--bd2);padding:3px 7px;border-radius:5px;"},String(label)+" "+String(count||0))
     ));
-    if(!S.compact) list.appendChild(queueMeta);
-    ordered.slice(0,S.compact?1:6).forEach((t,idx)=>{
-      const tt=queueTaskTone(t.status);
-      const isCurrent=String(t.id||"")===currentId;
+    list.appendChild(queueMeta);
+    visibleRuns.forEach((r,idx)=>{
+      const tt=runQueueTone(r.status);
+      const recipeId=r&&r.recipe_id!=null?String(r.recipe_id):"?";
+      const metaBits=[
+        r&&r.created_at?fmtWhen(r.created_at):"",
+        r&&r.total_ms!=null?`${Math.round(Number(r.total_ms||0)/1000)}s`:"",
+      ].filter(Boolean);
+      const detail=String(r&&r.status||"")==="running"
+        ? (r&&r.active_step?`шаг ${r.active_step}`:r&&r.last_step?`последний шаг ${r.last_step}`:"прогон в работе")
+        : String(r&&r.status||"")==="warning"
+          ? `${Number(r&&r.warnings_count||0)} warning`
+          : String(r&&r.status||"")==="run_fail"
+            ? `error ${String(r&&r.error_category||"other")}`
+            : "завершён";
       list.appendChild(el("div",{style:"display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:start;padding:"+(idx? "10px 0 0":"0")+";border-top:"+(idx?"1px solid var(--bd)":"none")+";"},
-        el("div",{style:"display:flex;align-items:center;gap:8px;min-width:0;"},
-          el("div",{style:"font-size:12px;font-weight:700;color:var(--tx-hi);"},t.id||"task"),
-          isCurrent?el("span",{class:"mono",style:"font-size:9.5px;color:#fff;background:var(--acc);padding:2px 6px;border-radius:5px;font-weight:700;"},"current"):null),
+        el("div",{style:"font-size:12px;font-weight:700;color:var(--tx-hi);"},`recipe #${recipeId}`),
         el("div",{style:"min-width:0;display:flex;flex-direction:column;gap:4px;"},
-          el("div",{style:"font-size:12.5px;font-weight:600;line-height:1.4;"},t.title||"—"),
-	          !S.compact?el("div",{style:"font-size:11px;color:var(--tx-lo);line-height:1.45;"},
-	            t.branch?`branch ${t.branch}`:"",
-	            t.pr?`${t.branch?" · ":""}pr ${t.pr}`:"",
-	            t.priority?`${(t.branch||t.pr)?" · ":""}prio ${t.priority}`:""):null,
-	          t.blockers&&t.blockers.length&&!S.compact?el("div",{style:"font-size:11px;color:var(--warn);line-height:1.4;"},t.blockers[0]):null),
+          el("div",{style:"font-size:12.5px;font-weight:600;line-height:1.4;"},detail),
+          metaBits.length?el("div",{style:"font-size:11px;color:var(--tx-lo);line-height:1.45;"},metaBits.join(" · ")):null),
         el("span",{class:"mono",style:"font-size:10px;color:"+tt.c+";background:"+tt.bg+";padding:3px 7px;border-radius:5px;font-weight:700;white-space:nowrap;"},tt.label)));
     });
   }

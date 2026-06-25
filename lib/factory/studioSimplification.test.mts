@@ -26,8 +26,9 @@ ok(/renderToken:0/.test(studio) && /const token=\+\+S\.renderToken/.test(studio)
 ok(/async function screenWorker\(root, force, renderToken\)\{[\s\S]*const isLiveRender=\(\)=>S\.screen==="worker"&&S\.renderToken===token/.test(studio), "worker screen ignores stale async render passes");
 ok(/const factorySuggested=suggested\.filter\(\(a\)=>!isWorkerInfraAction\(a&&a\.action\)\)/.test(studio), "worker screen filters infra-only suggested actions out of factory todo list");
 ok(/activeFactoryTask\?el\("div",\{style:"display:flex;flex-direction:column;gap:6px;"\}/.test(studio) && /припаркованные blocked-задачи/.test(studio), "worker screen only surfaces active factory tasks and demotes parked blocked queue items");
-ok(/ordered\.slice\(0,S\.compact\?1:6\)/.test(studio), "compact worker queue shows only the current queue item");
-ok(/t\.blockers&&t\.blockers\.length&&!S\.compact/.test(studio), "compact worker queue hides long blocker detail");
+ok(/const recentRuns=Array\.isArray\(runObservability&&runObservability\.recent_runs\)\?runObservability\.recent_runs:\[\];/.test(studio) && /"Очередь прогонов"/.test(studio), "worker screen shows real factory run queue from observability");
+ok(/const visibleRuns=\[\.\.\.recentRuns\][\s\S]*slice\(0,S\.compact\?4:8\)/.test(studio), "worker run queue stays compact while prioritizing live incidents");
+ok(/r&&r\.active_step\?`шаг \$\{r\.active_step\}`:r&&r\.last_step\?`последний шаг \$\{r\.last_step\}`:"прогон в работе"/.test(studio), "worker run queue explains live progress instead of raw backlog tasks");
 ok(!/if\(workerRow&&!S\.compact\)/.test(studio), "command center does not render a duplicate worker summary card");
 ok(/class:"system-pill"[\s\S]*onclick:\(\)=>go\("worker"\)/.test(studio), "command center uses one compact system pill for ops and worker status");
 ok(/hasCriticalSystemAlert=level==="critical"\|\|opsAlerts\.some/.test(studio) && /class:"card health-banner "/.test(studio), "factory health banner only surfaces critical system alerts in command center");
