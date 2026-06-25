@@ -1935,15 +1935,15 @@ function renderOTK(otk){
     otk.appendChild(el("div",{style:"display:flex;flex-direction:column;gap:6px;margin:-4px 0 14px;"},
       run.run_id?el("div",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);"},"run "+run.run_id):null,
       warnings.length?el("div",{style:"background:var(--warn-bg);border:1px solid rgba(245,158,11,.35);border-radius:8px;padding:8px 10px;"},
-        el("div",{style:"font-size:11.5px;font-weight:700;color:var(--warn);margin-bottom:5px;"},"warnings · выпуск не заблокирован"),
+        el("div",{style:"font-size:11.5px;font-weight:700;color:var(--warn);margin-bottom:5px;"},"предупреждения · выпуск не заблокирован"),
         ...warnings.slice(0,3).map(w=>el("div",{class:"mono",style:"font-size:10px;color:var(--tx-mid);line-height:1.35;"},String(w).slice(0,150)))):null));
   }
   if(summary&&(summary.steps_total||summary.total_ms!=null||summary.active_step||summary.last_step)){
     otk.appendChild(el("div",{style:"display:flex;flex-wrap:wrap;gap:6px;margin:-2px 0 14px;"},
-      summary.active_step?el("span",{class:"mono",style:"font-size:9.5px;color:var(--acc-lt);background:var(--vio-bg);border:1px solid var(--bd-acc);padding:3px 7px;border-radius:5px;"},"active "+summary.active_step):null,
-      summary.last_step?el("span",{class:"mono",style:"font-size:9.5px;color:var(--tx-mid);background:var(--bg-input);border:1px solid var(--bd2);padding:3px 7px;border-radius:5px;"},"last "+summary.last_step):null,
-      summary.steps_total?el("span",{class:"mono",style:"font-size:9.5px;color:var(--tx-mid);background:var(--bg-input);border:1px solid var(--bd2);padding:3px 7px;border-radius:5px;"},"steps "+summary.steps_total):null,
-      summary.total_ms!=null?el("span",{class:"mono",style:"font-size:9.5px;color:var(--tx-mid);background:var(--bg-input);border:1px solid var(--bd2);padding:3px 7px;border-radius:5px;"},"time "+fmtMs(summary.total_ms)):null));
+      summary.active_step?el("span",{class:"mono",style:"font-size:9.5px;color:var(--acc-lt);background:var(--vio-bg);border:1px solid var(--bd-acc);padding:3px 7px;border-radius:5px;"},"идёт "+summary.active_step):null,
+      summary.last_step?el("span",{class:"mono",style:"font-size:9.5px;color:var(--tx-mid);background:var(--bg-input);border:1px solid var(--bd2);padding:3px 7px;border-radius:5px;"},"последний "+summary.last_step):null,
+      summary.steps_total?el("span",{class:"mono",style:"font-size:9.5px;color:var(--tx-mid);background:var(--bg-input);border:1px solid var(--bd2);padding:3px 7px;border-radius:5px;"},"шагов "+summary.steps_total):null,
+      summary.total_ms!=null?el("span",{class:"mono",style:"font-size:9.5px;color:var(--tx-mid);background:var(--bg-input);border:1px solid var(--bd2);padding:3px 7px;border-radius:5px;"},"время "+fmtMs(summary.total_ms)):null));
   }
   const execLog=(run.execution_log||run.execution_log_tail||[]).filter(Boolean);
   if(execLog.length){
@@ -1958,7 +1958,7 @@ function renderOTK(otk){
       const inp=String(e.input_artifact||"").slice(0,34);
       const out=String(e.output_artifact||"").slice(0,34);
       list.appendChild(el("div",{style:"display:flex;align-items:flex-start;gap:8px;font-size:10.5px;line-height:1.35;"},
-        el("span",{class:"mono",style:"flex:none;font-size:9px;color:"+col+";background:"+ (st==="done"?"var(--ok-bg)":st==="warning"?"var(--warn-bg)":"var(--err-bg)") +";padding:2px 5px;border-radius:4px;font-weight:700;"},st),
+        el("span",{class:"mono",style:"flex:none;font-size:9px;color:"+col+";background:"+ (st==="done"?"var(--ok-bg)":st==="warning"?"var(--warn-bg)":"var(--err-bg)") +";padding:2px 5px;border-radius:4px;font-weight:700;"},st==="done"?"готово":st==="warning"?"warning":"сбой"),
         el("div",{style:"min-width:0;flex:1;color:var(--tx-bd);"},
           el("div",{class:"mono",style:"color:var(--tx-hi);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"},e.step||"step"),
           el("div",{class:"mono",style:"color:var(--tx-lo2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"},(inp?("in "+inp):"")+(out?(" · out "+out):"")),
@@ -2251,7 +2251,7 @@ function balanceCard(s,root){
 //==================== ОБУЧЕНИЕ (V16) ====================
 // Дашборд «что завод выучил»: сигналы (winners/hook_chosen/rejected) + тренд ОТК + пресеты-победители
 // + корпус хуков по нишам + история генераций. Делает компаунд ВИДИМЫМ — оператор смотрит, как растёт.
-const EVENT_LABEL={hook_chosen:"🏆 выбран хук",approved:"✓ одобрено",rejected:"✕ не то",generated:"⚙ сгенерено",published:"📤 опубликовано",metrics:"📊 метрики",hook_passed:"· хук-пас"};
+const EVENT_LABEL={hook_chosen:"🏆 выбран хук",approved:"✓ одобрено",rejected:"✕ не то",generated:"⚙ собрано",published:"📤 опубликовано",metrics:"📊 метрики",hook_passed:"· хук-пас"};
 async function screenLearn(root){
   if(!S.learnDays)S.learnDays=7;
   const seg=(d,lbl)=>el("button",{class:"btn"+(S.learnDays===d?" prim":""),style:"padding:5px 11px;font-size:12px;",onclick:()=>{ S.learnDays=d; screenLearn(root); }},lbl);
@@ -2270,8 +2270,8 @@ async function screenLearn(root){
   if(learnWarnings.length){
     wrap.appendChild(el("div",{class:"card",style:"padding:14px;margin-bottom:16px;border-color:rgba(245,158,11,.35);background:var(--warn-bg);"},
       el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;"},
-        el("div",{style:"font-size:13px;font-weight:700;color:var(--warn);"},"read-path warnings"),
-        el("span",{class:"mono",style:"font-size:10px;color:var(--warn);background:rgba(245,158,11,.16);padding:3px 7px;border-radius:5px;"},"warn "+learnWarnings.length)),
+        el("div",{style:"font-size:13px;font-weight:700;color:var(--warn);"},"предупреждения чтения"),
+        el("span",{class:"mono",style:"font-size:10px;color:var(--warn);background:rgba(245,158,11,.16);padding:3px 7px;border-radius:5px;"},"warning "+learnWarnings.length)),
       ...learnWarnings.slice(0,4).map(w=>el("div",{class:"mono",style:"font-size:10px;color:var(--tx-mid);line-height:1.45;"},String(w).slice(0,160)))));
   }
 
@@ -2279,7 +2279,7 @@ async function screenLearn(root){
   cap("Сигналы за период");
   const sg=d.signals||{by_event:{},total:0,top_reject:[]};
   const ev=sg.by_event||{};
-  const tiles=[["winners",(d.winners||[]).length,"var(--ok)","🏆 победители"],["hook_chosen",ev.hook_chosen||0,"var(--acc-lt)","выбрано хуков"],["approved",ev.approved||0,"var(--ok)","одобрено"],["rejected",ev.rejected||0,"var(--err)","забраковано"],["generated",ev.generated||0,"var(--tx-bd)","сгенерено"]];
+  const tiles=[["winners",(d.winners||[]).length,"var(--ok)","🏆 победители"],["hook_chosen",ev.hook_chosen||0,"var(--acc-lt)","выбрано хуков"],["approved",ev.approved||0,"var(--ok)","одобрено"],["rejected",ev.rejected||0,"var(--err)","забраковано"],["generated",ev.generated||0,"var(--tx-bd)","собрано"]];
   const tg=el("div",{style:"display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;margin-bottom:8px;"}); wrap.appendChild(tg);
   tiles.forEach(([k,n,c,lbl])=>tg.appendChild(el("div",{class:"card",style:"padding:14px 16px;"},
     el("div",{style:"font-size:26px;font-weight:700;color:"+c+";"},String(n)),
@@ -2343,7 +2343,7 @@ async function screenLearn(root){
   const rg=d.recent_generations||[];
   if(!rg.length){ wrap.appendChild(emptyBox("история пуста — после первых прогонов появятся записи")); }
   else{
-    const ST={otk_pass:["var(--ok)","ОТК ✓"],approved:["var(--ok)","одобрено"],warning:["var(--warn)","warning"],otk_fail:["var(--warn)","низкий ОТК"],rejected:["var(--err)","reject"],artifact_fail:["var(--err)","артефакт"],run_fail:["var(--err)","сбой"],regen:["var(--acc-lt)","реген"],generated:["var(--tx-bd)","сгенерено"]};
+    const ST={otk_pass:["var(--ok)","ОТК ✓"],approved:["var(--ok)","одобрено"],warning:["var(--warn)","warning"],otk_fail:["var(--warn)","низкий ОТК"],rejected:["var(--err)","отклонено"],artifact_fail:["var(--err)","артефакт"],run_fail:["var(--err)","сбой"],regen:["var(--acc-lt)","реген"],generated:["var(--tx-bd)","собрано"]};
     const list=el("div",{style:"display:flex;flex-direction:column;gap:6px;"}); wrap.appendChild(list);
     rg.forEach(r=>{
       const st=ST[r.status]||["var(--tx-lo2)",r.status||"?"];
