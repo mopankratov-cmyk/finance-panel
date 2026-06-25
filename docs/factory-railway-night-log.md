@@ -2120,3 +2120,4 @@
   - rejudge больше не возвращает систему к скрытому fail-closed поведению
   - оператор видит не просто “running 1”, а отдельно застрявший прогон, который надо тормошить
   - `/api/factory/ops` теперь тоже fail-open по observability snapshot: деградация `node_recipes` больше не убивает весь worker/ops экран целиком
+  - `worker-state` приведён к тому же partial-mode: деградация snapshot больше не обнуляет весь endpoint наблюдаемости

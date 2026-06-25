@@ -8,6 +8,26 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 export const maxDuration = 20;
 
+const EMPTY_OBSERVABILITY: Record<string, unknown> = {
+  sample_runs: 0,
+  running: 0,
+  stale_running: 0,
+  warning_runs: 0,
+  failed: 0,
+  stability_snapshot: null,
+  quality_signal: null,
+  recent_runs: [],
+  incident_runs: [],
+  status_series: [],
+  step_duration_series: [],
+  slowest_steps: [],
+  failure_diagnostics: null,
+  top_error_categories: [],
+  top_errors: [],
+  top_warning_categories: [],
+  top_warnings: [],
+};
+
 function toText(v: unknown): string {
   return typeof v === "string" ? v.trim() : "";
 }
@@ -33,7 +53,11 @@ export async function GET() {
 
     const [workerState, observabilitySnapshot, latestStress, stressHistory] = await Promise.all([
       loadWorkerSnapshot(db, docs.queue),
-      loadObservabilitySnapshot(db, 30),
+      loadObservabilitySnapshot(db, 30).then((value) => ({ ...value, warning: null as string | null })).catch((e) => ({
+        rows: [],
+        observability: { ...EMPTY_OBSERVABILITY },
+        warning: `node_recipes snapshot degraded: ${String((e as Error)?.message || e).slice(0, 160)}`,
+      })),
       latestStressPromise,
       stressHistoryPromise,
     ]);
@@ -45,6 +69,7 @@ export async function GET() {
       queue: docs.queue,
       docs,
       observability: observabilitySnapshot.observability,
+      observability_warning: observabilitySnapshot.warning,
       latest_stress: latestStress,
       stress_history: stressHistory,
       db_error: workerState.db_error,
