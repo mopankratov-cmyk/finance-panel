@@ -10,7 +10,7 @@ interface AdRow { nm_id: number; date: string; views: number; clicks: number; sp
 
 const r2 = (v: number) => Math.round(v * 100) / 100;
 
-// Контракт inferno: {metrics: {nm: {iso: {ctr, cr, views, orders_sum, advert_sum, drr}}}} — посуточные дата-ячейки.
+// Контракт inferno: {metrics: {nm: {iso: {views, clicks, carts, orders_count, ctr, cr, orders_sum}}}} — посуточные дата-ячейки.
 export async function GET(req: NextRequest) {
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ metrics: {} });
@@ -32,6 +32,7 @@ export async function GET(req: NextRequest) {
     const iso = String(a.date).slice(0, 10);
     const c = cell(a.nm_id, iso);
     c.views = a.views || 0;
+    c.clicks = a.clicks || 0;
     c.advert_sum = Math.round(Number(a.spent || 0));
     c.ctr = a.views > 0 ? r2((a.clicks / a.views) * 100) : null;
     c._spent = Number(a.spent || 0);
@@ -39,6 +40,8 @@ export async function GET(req: NextRequest) {
   for (const f of (funnelRes.data ?? []) as FunnelRow[]) {
     const iso = String(f.date).slice(0, 10);
     const c = cell(f.nm_id, iso);
+    c.carts = f.add_to_cart || 0;
+    c.orders_count = f.orders || 0;
     c.orders_sum = Math.round(Number(f.orders_sum || 0));
     c.cr = f.add_to_cart > 0 ? r2((f.orders / f.add_to_cart) * 100) : null;
     const os = Number(f.orders_sum || 0);
