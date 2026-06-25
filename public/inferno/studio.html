@@ -2282,6 +2282,15 @@ async function screenLearn(root){
   wrap.innerHTML="";
   if(d.error){ wrap.appendChild(emptyBox("ошибка обучения: "+d.error)); return; }
   const cap=(t)=>wrap.appendChild(el("div",{class:"sec-cap",style:"margin:6px 0 11px;"},t));
+  const learnWarnings=Array.isArray(d.warnings)?d.warnings.filter(Boolean):[];
+
+  if(learnWarnings.length){
+    wrap.appendChild(el("div",{class:"card",style:"padding:14px;margin-bottom:16px;border-color:rgba(245,158,11,.35);background:var(--warn-bg);"},
+      el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;"},
+        el("div",{style:"font-size:13px;font-weight:700;color:var(--warn);"},"read-path warnings"),
+        el("span",{class:"mono",style:"font-size:10px;color:var(--warn);background:rgba(245,158,11,.16);padding:3px 7px;border-radius:5px;"},"warn "+learnWarnings.length)),
+      ...learnWarnings.slice(0,4).map(w=>el("div",{class:"mono",style:"font-size:10px;color:var(--tx-mid);line-height:1.45;"},String(w).slice(0,160)))));
+  }
 
   // ── 1) Сигналы: счётчики ───────────────────────────────────────────────
   cap("Сигналы за период");
@@ -2351,14 +2360,27 @@ async function screenLearn(root){
   const rg=d.recent_generations||[];
   if(!rg.length){ wrap.appendChild(emptyBox("история пуста — после первых прогонов появятся записи")); }
   else{
-    const ST={otk_pass:["var(--ok)","ОТК ✓"],approved:["var(--ok)","одобрено"],otk_fail:["var(--warn)","warning"],rejected:["var(--warn)","warning"],artifact_fail:["var(--warn)","warning"],run_fail:["var(--err)","сбой"],regen:["var(--warn)","реген"],generated:["var(--tx-bd)","сгенерено"]};
+    const ST={otk_pass:["var(--ok)","ОТК ✓"],approved:["var(--ok)","одобрено"],warning:["var(--warn)","warning"],otk_fail:["var(--warn)","низкий ОТК"],rejected:["var(--err)","reject"],artifact_fail:["var(--err)","артефакт"],run_fail:["var(--err)","сбой"],regen:["var(--acc-lt)","реген"],generated:["var(--tx-bd)","сгенерено"]};
     const list=el("div",{style:"display:flex;flex-direction:column;gap:6px;"}); wrap.appendChild(list);
     rg.forEach(r=>{
       const st=ST[r.status]||["var(--tx-lo2)",r.status||"?"];
+      const headline=((NICHE_EMOJI[r.niche]||"")+(r.article?(" "+String(r.article)):"")).trim()||"без артикула";
+      const lineageBits=[
+        r.recipe_id!=null?("#"+String(r.recipe_id)):null,
+        r.attempt!=null?("try "+String(r.attempt)):null,
+        r.variant_idx!=null?("var "+String(r.variant_idx)):null,
+        r.node_type?String(r.node_type):null,
+        r.source?String(r.source):null,
+      ].filter(Boolean);
+      const reasonText=r.reason?String(r.reason).slice(0,72):"";
       list.appendChild(el("div",{class:"card",style:"padding:9px 13px;display:flex;align-items:center;gap:11px;"+(r.output_url?"cursor:pointer;":""),onclick:r.output_url?()=>openMedia(r.output_url):null},
         el("span",{class:"mono",style:"font-size:9.5px;font-weight:700;color:"+st[0]+";background:var(--bg-input);border:1px solid var(--bd2);padding:2px 7px;border-radius:5px;min-width:62px;text-align:center;"},st[1]),
         el("span",{style:"font-size:13px;font-weight:700;color:"+(r.otk_score>=7?"var(--ok)":r.otk_score>=5?"var(--warn)":r.otk_score!=null?"var(--err)":"var(--tx-lo2)")+";min-width:30px;"},r.otk_score!=null?r.otk_score:"—"),
-        el("div",{style:"flex:1;font-size:11.5px;color:var(--tx-bd);min-width:0;"},(NICHE_EMOJI[r.niche]||"")+" "+(r.tool||r.engine||"—")+" ",el("span",{style:"color:var(--tx-lo2);"},"· "+(r.source||""))),
+        el("div",{style:"flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;"},
+          el("div",{style:"font-size:11.5px;color:var(--tx-bd);min-width:0;"},(r.tool||r.engine||"—")+" ",el("span",{style:"color:var(--tx-lo2);"},"· "+headline)),
+          el("div",{class:"mono",style:"font-size:9.5px;color:var(--tx-lo2);display:flex;gap:8px;flex-wrap:wrap;min-width:0;"},
+            ...lineageBits.map(bit=>el("span",{},bit)),
+            reasonText?el("span",{style:"color:var(--tx-mid);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:320px;"},reasonText):null)),
         r.output_url?el("span",{style:"font-size:12px;color:var(--acc-lt);"},"▶"):null,
         el("span",{class:"mono",style:"font-size:9.5px;color:var(--tx-lo2);white-space:nowrap;"},fmtWhen(r.created_at))));
     });

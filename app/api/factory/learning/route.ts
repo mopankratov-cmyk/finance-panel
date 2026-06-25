@@ -66,14 +66,27 @@ export async function GET(req: NextRequest) {
 
   // 3) История генераций + тренд качества (generation_history)
   const gh = await safe("generation_history", async () => {
-    let q = db.from("generation_history").select("status,otk_score,tool,engine,niche,output_url,source,created_at").gte("created_at", since).order("created_at", { ascending: false }).limit(300);
+    let q = db.from("generation_history").select("recipe_id,article,status,otk_score,tool,engine,node_type,attempt,variant_idx,reason,niche,output_url,source,created_at").gte("created_at", since).order("created_at", { ascending: false }).limit(300);
     if (nicheF) q = q.eq("niche", nicheF);
     const { data, error } = await q;
     if (error) throw error;
     return (data as Row[]) || [];
   }, []);
   const recent_generations = (gh as Row[]).slice(0, 24).map((r) => ({
-    status: r.status, otk_score: r.otk_score, tool: r.tool, engine: r.engine, niche: r.niche, output_url: r.output_url, source: r.source, created_at: r.created_at,
+    recipe_id: r.recipe_id,
+    article: r.article,
+    status: r.status,
+    otk_score: r.otk_score,
+    tool: r.tool,
+    engine: r.engine,
+    node_type: r.node_type,
+    attempt: r.attempt,
+    variant_idx: r.variant_idx,
+    reason: r.reason,
+    niche: r.niche,
+    output_url: r.output_url,
+    source: r.source,
+    created_at: r.created_at,
   }));
   // тренд по дням: средний балл + pass/fail/warning отдельно.
   // Sprint 1 fail-open: legacy quality/artifact statuses are warnings in analytics, not run blockers.
