@@ -599,7 +599,7 @@ async function screenWorker(root){
     wrap.appendChild(nextCard);
   }
 
-  if(heartbeatDiag&&(!S.compact||heartbeatDiag.issue==="table_missing"||heartbeatDiag.issue==="db_permissions")){
+  if(heartbeatDiag&&!S.compact){
     const diagCard=el("div",{class:"card",style:"padding:14px;margin-bottom:14px;border-color:"+(heartbeatDiag.issue==="table_missing"?"var(--err)":"var(--warn)")+";background:"+(heartbeatDiag.issue==="table_missing"?"var(--err-bg)":"var(--warn-bg)")+";"});
     diagCard.appendChild(el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;"},
       el("div",{style:"font-size:14px;font-weight:600;"},"Диагностика heartbeat"),
