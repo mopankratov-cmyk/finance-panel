@@ -10,10 +10,13 @@ export const maxDuration = 20;
 
 const EMPTY_OBSERVABILITY: Record<string, unknown> = {
   sample_runs: 0,
+  active_sample_runs: 0,
   running: 0,
   stale_running: 0,
   warning_runs: 0,
   failed: 0,
+  legacy_warning_runs: 0,
+  legacy_failed_runs: 0,
   stability_snapshot: null,
   quality_signal: null,
   recent_runs: [],

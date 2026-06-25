@@ -13,10 +13,13 @@ export const maxDuration = 30;
 const BALANCE_THROTTLE_MS = 30 * 60 * 1000;
 const EMPTY_OBSERVABILITY: Record<string, unknown> = {
   sample_runs: 0,
+  active_sample_runs: 0,
   running: 0,
   stale_running: 0,
   warning_runs: 0,
   failed: 0,
+  legacy_warning_runs: 0,
+  legacy_failed_runs: 0,
   stability_snapshot: null,
   quality_signal: null,
   recent_runs: [],
@@ -40,6 +43,8 @@ function summarizeAlerts(input: {
   staleRunning: number;
   failedRuns: number;
   warningRuns: number;
+  legacyFailedRuns: number;
+  legacyWarningRuns: number;
   criticFallbackRatio: number;
   criticDominantBasis: string | null;
   criticTopBasisReason: string | null;
@@ -69,6 +74,13 @@ function summarizeAlerts(input: {
   if (input.staleRunning > 0) alerts.push({ level: "warn", code: "stale_running_runs", detail: `${input.staleRunning} running runs look stuck past the stale threshold` });
   if (input.failedRuns > 0) alerts.push({ level: "warn", code: "run_failures", detail: `${input.failedRuns} failed runs in sample` });
   if (input.warningRuns > 0) alerts.push({ level: "warn", code: "run_warnings", detail: `${input.warningRuns} warning runs in sample` });
+  if (input.failedRuns === 0 && input.warningRuns === 0 && (input.legacyFailedRuns > 0 || input.legacyWarningRuns > 0)) {
+    alerts.push({
+      level: "ok",
+      code: "legacy_incidents_only",
+      detail: `${input.legacyFailedRuns} historical fails and ${input.legacyWarningRuns} historical warnings remain outside the active incident window`,
+    });
+  }
   if (input.criticFallbackRatio >= 0.5) {
     alerts.push({
       level: input.criticFallbackRatio >= 0.8 ? "error" : "warn",
@@ -103,6 +115,8 @@ function buildSuggestedActions(input: {
   staleRunning: number;
   failedRuns: number;
   warningRuns: number;
+  legacyFailedRuns: number;
+  legacyWarningRuns: number;
   topErrorCategory: string | null;
   criticFallbackRatio: number;
   criticDominantBasis: string | null;
@@ -134,6 +148,8 @@ function buildSuggestedActions(input: {
   }
   if (input.failedRuns > 0) {
     actions.push({ priority: "p1", action: "triage_failed_runs", reason: `${input.failedRuns} failed runs in current sample` });
+  } else if (input.legacyFailedRuns > 0) {
+    actions.push({ priority: "p2", action: "archive_legacy_failed_runs", reason: `${input.legacyFailedRuns} historical failed runs should be reviewed separately from live ops` });
   }
   if (input.topErrorCategory === "render") {
     actions.push({ priority: "p1", action: "inspect_render_path", reason: "render is the top error category in current sample" });
@@ -144,6 +160,8 @@ function buildSuggestedActions(input: {
   }
   if (input.warningRuns > 0) {
     actions.push({ priority: "p2", action: "review_warning_taxonomy", reason: `${input.warningRuns} warning runs may hide degradations before they become failures` });
+  } else if (input.legacyWarningRuns > 0) {
+    actions.push({ priority: "p2", action: "review_legacy_warning_history", reason: `${input.legacyWarningRuns} historical warnings remain in the sample but are outside the live incident window` });
   }
   if (input.criticFallbackRatio >= 0.5) {
     actions.push({
@@ -204,6 +222,8 @@ function buildOpsStatus(input: {
   staleRunning: number;
   failedRuns: number;
   warningRuns: number;
+  legacyFailedRuns: number;
+  legacyWarningRuns: number;
   topErrorCategory: string | null;
   criticFallbackRatio: number;
   criticDominantBasis: string | null;
@@ -255,6 +275,8 @@ function buildOpsStatus(input: {
   } else if (input.warningRuns > 0) {
     elevate("degraded");
     reasons.push(`${input.warningRuns} warning runs`);
+  } else if (input.legacyFailedRuns > 0 || input.legacyWarningRuns > 0) {
+    reasons.push("legacy run history present");
   }
   if (input.criticFallbackRatio >= 0.8) {
     elevate("degraded");
@@ -342,6 +364,8 @@ export async function GET() {
       staleRunning: Number((observability as { stale_running?: unknown } | null)?.stale_running || 0),
       failedRuns: Number(observability.failed || 0),
       warningRuns: Number(observability.warning_runs || 0),
+      legacyFailedRuns: Number((observability as { legacy_failed_runs?: unknown } | null)?.legacy_failed_runs || 0),
+      legacyWarningRuns: Number((observability as { legacy_warning_runs?: unknown } | null)?.legacy_warning_runs || 0),
       criticFallbackRatio: Number((observability.quality_signal as { fallback_ratio?: unknown } | null)?.fallback_ratio || 0),
       criticDominantBasis: String((observability.quality_signal as { dominant_basis?: unknown } | null)?.dominant_basis || "") || null,
       criticTopBasisReason: String((observability.quality_signal as { top_basis_reason?: unknown } | null)?.top_basis_reason || "") || null,
@@ -359,6 +383,8 @@ export async function GET() {
       staleRunning: Number((observability as { stale_running?: unknown } | null)?.stale_running || 0),
       failedRuns: Number(observability.failed || 0),
       warningRuns: Number(observability.warning_runs || 0),
+      legacyFailedRuns: Number((observability as { legacy_failed_runs?: unknown } | null)?.legacy_failed_runs || 0),
+      legacyWarningRuns: Number((observability as { legacy_warning_runs?: unknown } | null)?.legacy_warning_runs || 0),
       topErrorCategory,
       criticFallbackRatio: Number((observability.quality_signal as { fallback_ratio?: unknown } | null)?.fallback_ratio || 0),
       criticDominantBasis: String((observability.quality_signal as { dominant_basis?: unknown } | null)?.dominant_basis || "") || null,
@@ -373,6 +399,8 @@ export async function GET() {
       staleRunning: Number((observability as { stale_running?: unknown } | null)?.stale_running || 0),
       failedRuns: Number(observability.failed || 0),
       warningRuns: Number(observability.warning_runs || 0),
+      legacyFailedRuns: Number((observability as { legacy_failed_runs?: unknown } | null)?.legacy_failed_runs || 0),
+      legacyWarningRuns: Number((observability as { legacy_warning_runs?: unknown } | null)?.legacy_warning_runs || 0),
       topErrorCategory,
       criticFallbackRatio: Number((observability.quality_signal as { fallback_ratio?: unknown } | null)?.fallback_ratio || 0),
       criticDominantBasis: String((observability.quality_signal as { dominant_basis?: unknown } | null)?.dominant_basis || "") || null,

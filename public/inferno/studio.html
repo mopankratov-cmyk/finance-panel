@@ -613,6 +613,8 @@ async function screenWorker(root, force, renderToken){
   const stressHistory=d.stress_history||null;
   const runObservability=d.observability||null;
   const recentRuns=Array.isArray(runObservability&&runObservability.recent_runs)?runObservability.recent_runs:[];
+  const activeRuns=recentRuns.filter((r)=>r&&(r.active||r.status==="running"||r.stale));
+  const queueRuns=(activeRuns.length?activeRuns:recentRuns);
   const liveTone=workerStatusTone(live.state);
   const aliveNote=workerSource==="queue_fallback"&&live.state==="unknown"?"heartbeat не настроен":live.state==="alive"?"heartbeat свежий":live.state==="stale"?"heartbeat молчит":"worker не отвечает";
   const sourceLabel=workerSource==="heartbeat_db"?"heartbeat":"queue fallback";
@@ -634,10 +636,10 @@ async function screenWorker(root, force, renderToken){
       : null;
   const nextFactoryTask=!activeFactoryTask ? ordered.find((t)=>t.status==="todo")||null : null;
   const parkedFactoryTask=!activeFactoryTask&&!nextFactoryTask ? ordered.find((t)=>t.status==="blocked")||null : null;
-  const visibleRuns=[...recentRuns]
+  const visibleRuns=[...queueRuns]
     .sort((a,b)=>{
-      const aw=String(a&&a.status||"")==="running"?0:String(a&&a.status||"")==="warning"?1:String(a&&a.status||"")==="run_fail"?2:3;
-      const bw=String(b&&b.status||"")==="running"?0:String(b&&b.status||"")==="warning"?1:String(b&&b.status||"")==="run_fail"?2:3;
+      const aw=(a&&a.stale)?0:(a&&a.active===false)?4:String(a&&a.status||"")==="running"?1:String(a&&a.status||"")==="warning"?2:String(a&&a.status||"")==="run_fail"?3:5;
+      const bw=(b&&b.stale)?0:(b&&b.active===false)?4:String(b&&b.status||"")==="running"?1:String(b&&b.status||"")==="warning"?2:String(b&&b.status||"")==="run_fail"?3:5;
       if(aw!==bw) return aw-bw;
       return String(b&&b.created_at||"").localeCompare(String(a&&a.created_at||""));
     })
@@ -748,8 +750,8 @@ async function screenWorker(root, force, renderToken){
   const list=el("div",{class:"card",style:"padding:14px;margin-bottom:14px;"}); wrap.appendChild(list);
   list.appendChild(el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;"},
     el("div",{style:"font-size:14px;font-weight:600;"},"Очередь прогонов"),
-    el("span",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);"},String(recentRuns.length||0)+" items")));
-  if(!recentRuns.length){
+    el("span",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);"},String(queueRuns.length||0)+" items")));
+  if(!queueRuns.length){
     list.appendChild(emptyBox("прогоны ещё не появлялись или observability snapshot пуст"));
   } else {
     const queueMeta=el("div",{style:"display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;"});
@@ -758,7 +760,8 @@ async function screenWorker(root, force, renderToken){
       ["stale", Number(runObservability&&runObservability.stale_running||0), "var(--warn-bg)"],
       ["warning", Number(runObservability&&runObservability.warning_runs||0), "var(--warn-bg)"],
       ["fail", Number(runObservability&&runObservability.failed||0), "var(--err-bg)"],
-      ["sample", Number(runObservability&&runObservability.sample_runs||recentRuns.length||0), "var(--bg-input)"],
+      ["active", Number(runObservability&&runObservability.active_sample_runs||queueRuns.length||0), "var(--bg-input)"],
+      ["history", Number(runObservability&&((runObservability.legacy_failed_runs||0)+(runObservability.legacy_warning_runs||0))||0), "var(--bg-input)"],
     ].forEach(([label,count,bg])=>queueMeta.appendChild(
       el("span",{class:"mono",style:"font-size:10px;background:"+bg+";border:1px solid var(--bd2);padding:3px 7px;border-radius:5px;"},String(label)+" "+String(count||0))
     ));
@@ -777,7 +780,7 @@ async function screenWorker(root, force, renderToken){
         : String(r&&r.status||"")==="warning"
           ? `${Number(r&&r.warnings_count||0)} warning`
           : String(r&&r.status||"")==="run_fail"
-            ? `error ${String(r&&r.error_category||"other")}`
+            ? `${r&&r.legacy?"архивный ":""}error ${String(r&&r.error_category||"other")}`
             : "завершён";
       list.appendChild(el("div",{style:"display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:start;padding:"+(idx? "10px 0 0":"0")+";border-top:"+(idx?"1px solid var(--bd)":"none")+";"},
         el("div",{style:"font-size:12px;font-weight:700;color:var(--tx-hi);"},`recipe #${recipeId}`),
@@ -998,14 +1001,24 @@ function renderObservabilityCard(host){
   const incidents=Array.isArray(o.incident_runs)?o.incident_runs:[];
   const series=Array.isArray(o.status_series)?o.status_series:[];
   const stepSeries=Array.isArray(o.step_duration_series)?o.step_duration_series:[];
+  const legacyFails=Number(o.legacy_failed_runs||0);
+  const legacyWarnings=Number(o.legacy_warning_runs||0);
   const card=el("div",{class:"card",style:"padding:13px;margin-top:14px;"});
   card.appendChild(el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;"},
     el("div",{style:"font-size:11px;font-weight:700;color:var(--tx-mid2);"},"Execution observability"),
-    el("span",{class:"mono",style:"font-size:9.5px;color:var(--tx-lo2);"},(o.sample_runs||0)+" runs")));
+    el("span",{class:"mono",style:"font-size:9.5px;color:var(--tx-lo2);"},(o.active_sample_runs||o.sample_runs||0)+" active runs")));
   card.appendChild(el("div",{style:"display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;"},
     el("span",{class:"mono",style:"font-size:9.5px;color:var(--acc-lt);background:var(--vio-bg);border:1px solid var(--bd-acc);padding:3px 7px;border-radius:5px;"},"running "+(o.running||0)),
     el("span",{class:"mono",style:"font-size:9.5px;color:var(--warn);background:var(--warn-bg);border:1px solid rgba(245,158,11,.35);padding:3px 7px;border-radius:5px;"},"warning "+(o.warning_runs||0)),
-    el("span",{class:"mono",style:"font-size:9.5px;color:var(--err);background:var(--err-bg);border:1px solid var(--bd-err);padding:3px 7px;border-radius:5px;"},"failed "+(o.failed||0))));
+    el("span",{class:"mono",style:"font-size:9.5px;color:var(--err);background:var(--err-bg);border:1px solid var(--bd-err);padding:3px 7px;border-radius:5px;"},"failed "+(o.failed||0)),
+    (legacyFails||legacyWarnings)?el("span",{class:"mono",style:"font-size:9.5px;color:var(--tx-mid);background:var(--bg-input);border:1px solid var(--bd2);padding:3px 7px;border-radius:5px;"},
+      "history "+String(legacyFails+legacyWarnings)):null));
+  if((legacyFails||legacyWarnings) && !incidents.length){
+    card.appendChild(el("div",{style:"margin:-2px 0 10px;font-size:10.5px;color:var(--tx-lo);line-height:1.45;"},
+      "live ops quiet right now; historical sample still keeps ",
+      el("b",{style:"color:var(--tx-hi);"},String(legacyFails+legacyWarnings)),
+      " archived warnings/fails outside the active window"));
+  }
   if(stability){
     const targetMet=!!stability.target_met;
     card.appendChild(el("div",{style:"margin-bottom:10px;padding:10px 11px;border:1px solid "+(targetMet?"#1d3a2b":"rgba(245,158,11,.35)")+";background:"+(targetMet?"var(--ok-bg)":"var(--warn-bg)")+";border-radius:8px;display:flex;flex-direction:column;gap:6px;"},

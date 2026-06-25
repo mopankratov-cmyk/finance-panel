@@ -2121,3 +2121,39 @@
   - оператор видит не просто “running 1”, а отдельно застрявший прогон, который надо тормошить
   - `/api/factory/ops` теперь тоже fail-open по observability snapshot: деградация `node_recipes` больше не убивает весь worker/ops экран целиком
   - `worker-state` приведён к тому же partial-mode: деградация snapshot больше не обнуляет весь endpoint наблюдаемости
+
+### Active incidents vs legacy noise
+
+- Ветка: текущая рабочая ветка контент-завода
+- Цель: перестать показывать старые `run_fail`/`warning` как живую текущую аварию на worker/ops экранах
+- Root cause:
+  - observability считала любые последние строки `node_recipes` одинаково “живыми”, даже если это старые исторические прогоны вне текущего operational окна
+  - из-за этого Worker screen продолжал пугать `23 failed runs`, хотя это были не активные инциденты текущего окна
+- Изменено:
+  - `lib/factory/observability.ts`:
+    - добавлено active-incident окно `24h`
+    - live метрики `failed` / `warning_runs` теперь считают только активные инциденты
+    - добавлены поля `active_sample_runs`, `legacy_failed_runs`, `legacy_warning_runs`
+    - `recent_runs` помечаются флагами `active` / `legacy`
+    - `incident_runs` теперь держит только живые инциденты + stale-running
+  - `app/api/factory/ops/route.ts`:
+    - suggested actions и alerts больше не эскалируют legacy-only хвост как живую поломку
+    - при отсутствии live fail/warn добавляется спокойный `legacy_incidents_only`
+  - `public/inferno/studio.html`:
+    - Worker queue приоритетно показывает активные прогоны, а не старую историю
+    - queue meta теперь разделяет `active` и `history`
+    - full observability card объясняет, когда на экране остались только исторические шрамы
+  - `app/api/factory/worker-state/route.ts` и `app/api/factory/studio/route.ts`: расширены default contracts под новые поля observability
+- Тесты:
+  - добавлен `lib/factory/observabilityLegacyIncidents.test.mts`
+  - обновлены `lib/factory/studioSimplification.test.mts`, `lib/factory/workerStateFailOpen.test.mts`
+- Проверки:
+  - `node --import tsx lib/factory/observabilityLegacyIncidents.test.mts`: pass
+  - `npm run test:factory`: pass
+  - `npm run lint`: pass
+  - `npm run build`: pass
+- Ограничение:
+  - локальная GUI-проверка `http://127.0.0.1:3013/inferno/studio.html` уходит в общий login middleware, поэтому визуальную проверку полного worker UI надо добить уже после деплоя на живом домене
+- Результат:
+  - ops/worker экран стал ближе к живому состоянию фабрики, а не к архиву ошибок
+  - старые падения больше не давят на текущее triage-решение как будто они произошли “прямо сейчас”

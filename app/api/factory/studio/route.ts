@@ -104,7 +104,7 @@ export async function GET(req: NextRequest) {
     } catch { /* нет генераций */ }
 
     let recipes: unknown[] = [];
-    let observability: Record<string, unknown> = { sample_runs: 0, running: 0, stale_running: 0, warning_runs: 0, failed: 0, stability_snapshot: null, quality_signal: null, recent_runs: [], incident_runs: [], status_series: [], step_duration_series: [], slowest_steps: [], failure_diagnostics: null, top_error_categories: [], top_errors: [], top_warning_categories: [], top_warnings: [] };
+    let observability: Record<string, unknown> = { sample_runs: 0, active_sample_runs: 0, running: 0, stale_running: 0, warning_runs: 0, failed: 0, legacy_warning_runs: 0, legacy_failed_runs: 0, stability_snapshot: null, quality_signal: null, recent_runs: [], incident_runs: [], status_series: [], step_duration_series: [], slowest_steps: [], failure_diagnostics: null, top_error_categories: [], top_errors: [], top_warning_categories: [], top_warnings: [] };
     try {
       const { data } = await db.from("node_recipes").select("id,article,niche,mode,status,otk_score,output_url,format_detected,built_by,created_at,run_plan").order("created_at", { ascending: false }).limit(30);
       const rows = (data as Record<string, unknown>[] | null) || [];
