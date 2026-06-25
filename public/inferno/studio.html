@@ -858,7 +858,6 @@ async function screenCenter(root, force, renderToken){
   const workerShort=workerSource==="queue_fallback"?"fallback":workerLive==="alive"?"живой":workerLive==="stale"?"stale":workerLive==="dead"?"dead":"?";
   const systemTitle=[
     opsStatus&&opsStatus.summary?opsStatus.summary:"",
-    workerRow&&workerRow.current_task_id?`задача ${workerRow.current_task_id}`:"",
     workerDbError?workerDbError:"",
   ].filter(Boolean).join(" · ")||"Открыть системную диагностику";
   header("Командный центр",null, el("div",{class:"hdr-r"},
@@ -1162,8 +1161,7 @@ function renderCenterOpsSummary(host,input){
   card.appendChild(el("div",{class:"health-main"},
     el("div",{style:"min-width:0;"},
       el("div",{style:"display:flex;align-items:center;gap:8px;flex-wrap:wrap;"},
-        el("span",{class:"mono",style:"font-size:10px;color:"+tone.c+";background:"+tone.bg+";padding:4px 7px;border-radius:5px;font-weight:700;"},tone.label),
-        workerRow&&workerRow.current_task_id?el("span",{class:"mono",style:"font-size:10px;color:var(--acc-lt);background:var(--vio-bg);padding:4px 7px;border-radius:5px;font-weight:700;"},"задача "+workerRow.current_task_id):null),
+        el("span",{class:"mono",style:"font-size:10px;color:"+tone.c+";background:"+tone.bg+";padding:4px 7px;border-radius:5px;font-weight:700;"},tone.label)),
       el("div",{class:"health-title"},statusTitle),
       el("div",{class:"health-copy"},summary)),
     el("button",{class:"btn sm",onclick:()=>go("worker"),title:"Открыть Railway worker и живую очередь прогонов"},"Открыть Worker")));
@@ -1807,7 +1805,7 @@ async function openNightRun(){
       " · ≈ $"+(r.estimated_usd!=null?r.estimated_usd:"?")+(r.capped_by_budget?" (упёрлись в бюджет)":"")));
     if(r.balance_unknown&&r.balance_unknown.length)out.appendChild(el("div",{style:"font-size:11px;color:var(--warn);margin-bottom:6px;"},"⚠ баланс не проверен: "+r.balance_unknown.join(", ")));
     if(r.enqueued&&r.enqueued.length)out.appendChild(el("div",{class:"mono",style:"font-size:10.5px;color:var(--tx-lo2);margin-bottom:8px;"},"рецепты: #"+r.enqueued.join(" #")));
-    if(!dry)out.appendChild(el("div",{style:"font-size:11.5px;color:var(--tx-lo);line-height:1.5;"},"Идёт в фоне (самоподдерживающаяся очередь). Прошедшее ОТК → Telegram. Прогресс — в базе видосов (06)."));
+    if(!dry)out.appendChild(el("div",{style:"font-size:11.5px;color:var(--tx-lo);line-height:1.5;"},"Идёт в фоне как серия прогонов. Прошедшее ОТК → Telegram. Прогресс — в базе видосов (06)."));
     else out.appendChild(el("div",{style:"font-size:11px;color:var(--tx-lo2);"},"это только прикидка — ничего не запущено и не оплачено."));
   };
   const foot=el("div",{style:"display:flex;justify-content:flex-end;gap:9px;margin-top:18px;"});
