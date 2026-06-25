@@ -306,7 +306,7 @@ const SCREENS=[
   {id:"assembly",grp:"🎬 Видео",chip:"05",tt:"Сборка · ОТК",st:"таймлайн"},
   {id:"library",grp:"🎬 Видео",chip:"06",tt:"База видосов",st:"рецепты"},
   {id:"static",grp:"🖼 Статика",chip:"🖼",tt:"Пины и карточки",st:"форматы · архетипы"},
-  {id:"worker",grp:"⚙ Система",chip:"RW",tt:"Railway worker",st:"живой статус"},
+  {id:"worker",grp:"⚙ Система",chip:"RW",tt:"Пульс завода",st:"живые прогоны"},
   {id:"balances",grp:"⚙ Система",chip:"07",tt:"Балансы сервисов",st:"сколько осталось $"},
   {id:"learn",grp:"⚙ Система",chip:"🧠",tt:"Обучение",st:"что завод выучил"},
 ];
@@ -580,7 +580,7 @@ async function screenWorker(root, force, renderToken){
   const isLiveRender=()=>S.screen==="worker"&&S.renderToken===token&&root&&root.isConnected;
   if(S.workerTimer){ clearTimeout(S.workerTimer); S.workerTimer=null; }
   root.innerHTML="";
-  header("Railway worker","heartbeat · прогоны · наблюдаемость", el("div",{class:"hdr-r"},
+  header("Пульс завода","heartbeat · прогоны · наблюдаемость", el("div",{class:"hdr-r"},
     el("button",{class:"btn",onclick:()=>screenWorker(root)},"↻ Обновить")));
   const wrap=el("div",{class:"scroll",style:"padding:18px;"}); root.appendChild(wrap);
   wrap.appendChild(loadingCard("смотрю heartbeat и живые прогоны…"));
@@ -1156,39 +1156,22 @@ function renderCenterOpsSummary(host,input){
         el("span",{class:"mono",style:"font-size:10px;color:"+tone.c+";background:"+tone.bg+";padding:4px 7px;border-radius:5px;font-weight:700;"},tone.label)),
       el("div",{class:"health-title"},statusTitle),
       el("div",{class:"health-copy"},summary)),
-    el("button",{class:"btn sm",onclick:()=>go("worker"),title:"Открыть Railway worker и живую очередь прогонов"},"Открыть Worker")));
+    el("button",{class:"btn sm",onclick:()=>go("worker"),title:"Открыть пульс завода и живую очередь прогонов"},"Открыть пульс")));
   const detailItems=[];
-  if(latestStress&&latestStress.summary){
-    const lsSummary=latestStress.summary||{};
-    const lsStability=latestStress.stability&&latestStress.stability.stability?latestStress.stability.stability:null;
-    detailItems.push(["stress "+String(lsSummary.completed||0)+"/"+String(lsSummary.totalRuns||0), lsSummary.failed||lsSummary.runFail||lsSummary.timeouts?"err":"ok"]);
-    detailItems.push(["avg "+String(lsSummary.avgDurationSec||0)+"s", "muted"]);
-    if(lsStability){
-      detailItems.push(["streak "+String(lsStability.success_streak||0), lsStability.target_met?"ok":"warn"]);
-    }
-    if(latestStress.generatedAt){
-      detailItems.push([fmtWhen(latestStress.generatedAt), "muted"]);
-    }
-  }
-  if(stressHistory&&stressHistory.total_reports){
-    const fails=(stressHistory.failed_runs||0)+(stressHistory.run_failures||0)+(stressHistory.timeouts||0);
-    detailItems.push(["history "+String(stressHistory.total_reports||0)+" reports", "muted"]);
-    detailItems.push(["done "+String(stressHistory.completed_runs||0)+"/"+String(stressHistory.total_runs||0), "ok"]);
-    detailItems.push(["fail "+String(fails), fails?"err":"muted"]);
-    detailItems.push(["target "+String(stressHistory.target_met_reports||0)+"/"+String(stressHistory.total_reports||0), "muted"]);
-  }
   if(stability){
     const ok=!!stability.target_met;
     detailItems.push(["10-run "+String(stability.successful_runs||0)+"/"+String(stability.window_size||10), ok?"ok":"warn"]);
-    detailItems.push(["stability streak "+String(stability.success_streak||0), "muted"]);
+  } else if(latestStress&&latestStress.summary){
+    const lsSummary=latestStress.summary||{};
+    detailItems.push(["stress "+String(lsSummary.completed||0)+"/"+String(lsSummary.totalRuns||0), lsSummary.failed||lsSummary.runFail||lsSummary.timeouts?"err":"ok"]);
   }
   if(heartbeatDiag)detailItems.push(["heartbeat "+String(heartbeatDiag.issue||heartbeatDiag.title||"unknown"), heartbeatDiag.issue==="table_missing"?"warn":"muted"]);
   if(failDiag)detailItems.push(["run fails "+String(failDiag.issue||failDiag.category||"unknown"), "warn"]);
   if(opsAlerts.length){
-    opsAlerts.slice(0,6).forEach((a)=>detailItems.push([a.code||a.level||"alert", a.level==="error"?"err":"warn"]));
+    opsAlerts.slice(0,3).forEach((a)=>detailItems.push([a.code||a.level||"alert", a.level==="error"?"err":"warn"]));
   }
   if(lowBalances.length){
-    lowBalances.slice(0,4).forEach((b)=>detailItems.push([String(b.provider||"balance")+": "+(b.status||"low")+(b.remaining_pct!=null?(" · "+Math.round(Number(b.remaining_pct)||0)+"%"):""), "err"]));
+    lowBalances.slice(0,2).forEach((b)=>detailItems.push([String(b.provider||"balance")+": "+(b.status||"low")+(b.remaining_pct!=null?(" · "+Math.round(Number(b.remaining_pct)||0)+"%"):""), "err"]));
   }
   if(detailItems.length){
     const colorFor=(t)=>t==="err"?["var(--err)","var(--err-bg)"]:t==="warn"?["var(--warn)","var(--warn-bg)"]:t==="ok"?["var(--ok)","var(--ok-bg)"]:["var(--tx-mid)","var(--bg-input)"];
@@ -2461,7 +2444,7 @@ function coachNextStep(){
     case "balances":
       return {cap:"Балансы",t:"Следи за остатками по сервисам. Сервис на нуле — генерация по нему встанет.",why:"Seedance/Kling/Creatify/Shotstack/FAL платные. Пустой баланс = упавшая нода в сборке."};
     case "worker":
-      return {cap:"Railway worker",t:"Смотри на heartbeat и живые прогоны завода. Если станет stale/dead — воркер перестал слать пульс и нужно проверять sender, blocker или перезапуск.",why:"Это экран живого контроля: видно, идут ли реальные прогоны, где они застряли и когда воркер перестал отвечать. Следующий шаг обычно либо разобрать зависший run, либо чинить heartbeat path.",chips:["Как понять stale vs dead?","Где смотреть живые прогоны?"]};
+      return {cap:"Пульс завода",t:"Смотри на heartbeat и живые прогоны завода. Если станет stale/dead — воркер перестал слать пульс и нужно проверять sender, blocker или перезапуск.",why:"Это экран живого контроля: видно, идут ли реальные прогоны, где они застряли и когда воркер перестал отвечать. Следующий шаг обычно либо разобрать зависший run, либо чинить heartbeat path.",chips:["Как понять stale vs dead?","Где смотреть живые прогоны?"]};
     case "learn":
       return {cap:"Обучение",t:"Смотри, что завод выучил: победившие хуки, тренд ОТК, пресеты-победители за период.",why:"Это память завода. Переноси удачные хуки и пресеты в новые ролики — повторяешь то, что уже заходило.",chips:["Как применить выученное?","Что показывает тренд ОТК?"]};
     case "ds":

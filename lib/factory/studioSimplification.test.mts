@@ -37,6 +37,7 @@ ok(/class:"system-pill"[\s\S]*onclick:\(\)=>go\("worker"\)/.test(studio), "comma
 ok(/hasCriticalSystemAlert=level==="critical"\|\|opsAlerts\.some/.test(studio) && /class:"card health-banner "/.test(studio), "factory health banner only surfaces critical system alerts in command center");
 ok(!/задача "\+workerRow\.current_task_id/.test(studio) && /Идёт в фоне как серия прогонов\./.test(studio), "command center hides raw worker task ids and uses run-centric autopilot copy");
 ok(/label:"идут прогоны"/.test(studio) && /label:"есть сбои"/.test(studio) && !/самопочинка срабатывала/.test(studio), "factory pulse uses plain run-state language instead of self-heal jargon");
+ok(!/history "\+String\(stressHistory\.total_reports/.test(studio) && !/stability streak/.test(studio) && /opsAlerts\.slice\(0,3\)/.test(studio), "health banner avoids becoming a secondary observability dashboard");
 ok(/@media \(max-width:700px\)\{[\s\S]*\.hdr\{display:grid;grid-template-columns:1fr/.test(studio), "mobile command header stacks actions without horizontal overflow");
 ok(/@media \(max-width:900px\)\{[\s\S]*\.rail-head>\.logo\{display:flex!important;\}[\s\S]*\.rail-head>div:not\(\.logo\),\.nav-cap,.nav-tt,.nav-st,.rail-foot\{display:none!important;\}/.test(studio), "mobile rail keeps only compact navigation chrome visible");
 ok(/class:"niche-grid",role:"listbox"/.test(studio) && /grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/.test(studio), "niche selector uses stable 2x2 grid in normal desktop width");
