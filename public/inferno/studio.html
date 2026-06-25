@@ -113,8 +113,9 @@ body{background:var(--bg-deep);font-family:var(--sans);color:var(--tx-hi);-webki
 	}
 	@media (max-width:900px){
 	  .rail{width:68px;}
-	  .rail-head{justify-content:center;padding:0;}
-	  .rail-head>div:not(.logo),.nav-cap,.nav-tt,.nav-st,.rail-foot{display:none;}
+	  .rail-head{justify-content:center;padding:0;overflow:hidden;}
+	  .rail-head>.logo{display:flex!important;}
+	  .rail-head>div:not(.logo),.nav-cap,.nav-tt,.nav-st,.rail-foot{display:none!important;}
 	  .nav{padding:8px;}
 	  .nav-item{justify-content:center;padding:8px;}
 	  .nav-chip{width:30px;height:30px;}
@@ -339,16 +340,25 @@ function openMedia(url,opts){ opts=opts||{};
   if(!url){ toast("нет ссылки на медиа"); return; }
   // инлайн-плеер из oEmbed (tiktok/youtube) — смотреть конкурента ПРЯМО в продукте, не уходя
   if(opts.embed){
-    const ov=el("div",{style:"position:fixed;inset:0;background:rgba(0,0,0,.85);display:flex;align-items:center;justify-content:center;z-index:60;padding:24px;",onclick:(e)=>{ if(e.target===ov)ov.remove(); }});
+    let closeEmbed=()=>{};
+    const ov=el("div",{style:"position:fixed;inset:0;background:rgba(0,0,0,.85);display:flex;align-items:center;justify-content:center;z-index:60;padding:24px;",onclick:(e)=>{ if(e.target===ov)closeEmbed(); }});
+    const onEmbedKey=(e)=>{ if(e.key==="Escape")closeEmbed(); };
+    closeEmbed=()=>{ ov.remove(); document.removeEventListener("keydown",onEmbedKey); };
     const box=el("div",{style:"max-width:min(420px,92vw);max-height:86vh;overflow:auto;background:#000;border-radius:12px;"});
     box.innerHTML=opts.embed;
     box.querySelectorAll("script").forEach(o=>{ const s=document.createElement("script"); if(o.src)s.src=o.src; s.async=true; s.textContent=o.textContent; o.replaceWith(s); }); // innerHTML не запускает <script> → пересоздаём (TikTok embed.js)
-    ov.appendChild(el("div",{style:"display:flex;flex-direction:column;align-items:center;gap:10px;"},box,el("a",{href:url,target:"_blank",class:"btn sm"},"открыть оригинал ↗")));
-    document.body.appendChild(ov); return;
+    ov.appendChild(el("div",{style:"display:flex;flex-direction:column;align-items:center;gap:10px;"},box,
+      el("div",{style:"display:flex;gap:10px;"},
+        el("a",{href:url,target:"_blank",class:"btn sm"},"открыть оригинал ↗"),
+        el("button",{class:"btn sm",onclick:()=>closeEmbed()},"закрыть"))));
+    document.body.appendChild(ov); document.addEventListener("keydown",onEmbedKey); return;
   }
   if(opts.external||/^https?:\/\/(www\.)?(tiktok|instagram|youtube|youtu\.be|vk)\./i.test(url)){ window.open(url,"_blank"); return; }
   const isAudio=opts.audio||/\.(mp3|wav|m4a|ogg|aac)(\?|$)/i.test(url);
-  const ov=el("div",{style:"position:fixed;inset:0;background:rgba(0,0,0,.82);display:flex;align-items:center;justify-content:center;z-index:60;padding:24px;",onclick:(e)=>{ if(e.target===ov)ov.remove(); }});
+  let closeMedia=()=>{};
+  const ov=el("div",{style:"position:fixed;inset:0;background:rgba(0,0,0,.82);display:flex;align-items:center;justify-content:center;z-index:60;padding:24px;",onclick:(e)=>{ if(e.target===ov)closeMedia(); }});
+  const onMediaKey=(e)=>{ if(e.key==="Escape")closeMedia(); };
+  closeMedia=()=>{ ov.remove(); document.removeEventListener("keydown",onMediaKey); };
   const vid=opts.video!=null?opts.video:isVideoUrl(url);
   const media=isAudio?el("div",{style:"background:var(--bg-node);border:1px solid var(--bd2);border-radius:12px;padding:20px;display:flex;flex-direction:column;align-items:center;gap:12px;"},el("div",{style:"font-size:30px;"},"♪"),el("audio",{src:url,controls:"controls",autoplay:"autoplay",style:"width:320px;"}))
     :vid?el("video",{src:url,controls:"controls",autoplay:"autoplay",playsinline:"playsinline",style:"max-height:88vh;max-width:92vw;border-radius:12px;background:#000;box-shadow:0 18px 60px rgba(0,0,0,.6);"})
@@ -356,9 +366,8 @@ function openMedia(url,opts){ opts=opts||{};
   ov.appendChild(el("div",{style:"display:flex;flex-direction:column;align-items:center;gap:12px;"},media,
     el("div",{style:"display:flex;gap:10px;"},
       el("a",{href:url,target:"_blank",class:"btn sm"},"открыть ↗"),
-      el("button",{class:"btn sm",onclick:()=>ov.remove()},"закрыть"))));
-  document.addEventListener("keydown",function esc(e){ if(e.key==="Escape"){ ov.remove(); document.removeEventListener("keydown",esc); } });
-  document.body.appendChild(ov);
+      el("button",{class:"btn sm",onclick:()=>closeMedia()},"закрыть"))));
+  document.body.appendChild(ov); document.addEventListener("keydown",onMediaKey);
 }
 function nicheLabel(n){ const f=S.niches.find(x=>x.niche===n); return (f&&f.label)||({cosmetics:"Косметика",clothing:"Одежда",toys:"Игрушки",default:"Прочее"}[n])||n; }
 
@@ -1687,7 +1696,10 @@ async function runAutofillGraph(force){
   openAutofillResult(r);
 }
 function openAutofillResult(r){
-  const ov=el("div",{style:"position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:60;padding:24px;",onclick:(e)=>{ if(e.target===ov)ov.remove(); }});
+  let closeAuto=()=>{};
+  const ov=el("div",{style:"position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:60;padding:24px;",onclick:(e)=>{ if(e.target===ov)closeAuto(); }});
+  const onAutoKey=(e)=>{ if(e.key==="Escape")closeAuto(); };
+  closeAuto=()=>{ ov.remove(); document.removeEventListener("keydown",onAutoKey); };
   const box=el("div",{class:"card",style:"padding:20px;width:min(480px,94vw);max-height:84vh;overflow:auto;"});
   box.appendChild(el("div",{style:"font-size:15px;font-weight:600;margin-bottom:4px;"},"🪄 Граф заполнен"));
   const by=r.byTool||{}; const byStr=Object.keys(by).map(k=>k+"×"+by[k]).join(" · ")||"—";
@@ -1709,10 +1721,10 @@ function openAutofillResult(r){
     ws.slice(0,10).forEach(w=>box.appendChild(el("div",{style:"font-size:11px;color:var(--warn);padding:4px 0;border-top:1px solid var(--bd);line-height:1.4;"},w)));
   }
   const foot=el("div",{style:"display:flex;gap:9px;margin-top:16px;justify-content:flex-end;"});
-  if(r.skipped)foot.appendChild(el("button",{class:"btn sm",title:"перезаписать ноды, тронутые вручную",onclick:()=>{ ov.remove(); runAutofillGraph(true); }},"↻ Перезаписать ручные"));
-  foot.appendChild(el("button",{class:"btn sm primary",onclick:()=>{ ov.remove(); go("assembly"); }},"▶ К сборке"));
+  if(r.skipped)foot.appendChild(el("button",{class:"btn sm",title:"перезаписать ноды, тронутые вручную",onclick:()=>{ closeAuto(); runAutofillGraph(true); }},"↻ Перезаписать ручные"));
+  foot.appendChild(el("button",{class:"btn sm primary",onclick:()=>{ closeAuto(); go("assembly"); }},"▶ К сборке"));
   box.appendChild(foot);
-  ov.appendChild(box); document.body.appendChild(ov);
+  ov.appendChild(box); document.body.appendChild(ov); document.addEventListener("keydown",onAutoKey);
 }
 // §17 Ф3 · заполнить ОДНУ ноду ИИ (из инспектора) — force=true (перезаписать, оператор явно просит)
 async function autofillSingleNode(n){
