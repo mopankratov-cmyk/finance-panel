@@ -543,15 +543,6 @@ function fmtSecAgo(sec){
   return m + "m" + (r ? " " + r + "s" : "");
 }
 
-function queueTaskTone(status){
-  return {
-    todo:{c:"var(--tx-lo2)", bg:"var(--bg-input)", label:"todo"},
-    doing:{c:"var(--acc-lt)", bg:"var(--vio-bg)", label:"doing"},
-    blocked:{c:"var(--warn)", bg:"var(--warn-bg)", label:"blocked"},
-    pr_open:{c:"var(--ok)", bg:"var(--ok-bg)", label:"pr_open"},
-    done:{c:"var(--ok)", bg:"var(--ok-bg)", label:"done"},
-  }[status] || {c:"var(--tx-lo2)", bg:"var(--bg-input)", label:status||"?"};
-}
 function isWorkerInfraAction(action){
   return new Set([
     "open_worker_screen",
@@ -686,13 +677,20 @@ async function screenWorker(root, force, renderToken){
   if(heartbeatDiag&&!S.compact){
     const diagCard=el("div",{class:"card",style:"padding:14px;margin-bottom:14px;border-color:"+(heartbeatDiag.issue==="table_missing"?"var(--err)":"var(--warn)")+";background:"+(heartbeatDiag.issue==="table_missing"?"var(--err-bg)":"var(--warn-bg)")+";"});
     diagCard.appendChild(el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;"},
-      el("div",{style:"font-size:14px;font-weight:600;"},"Диагностика heartbeat"),
+      el("div",{style:"font-size:14px;font-weight:600;"},"Сигнал heartbeat"),
       el("span",{class:"mono",style:"font-size:10px;color:"+(heartbeatDiag.issue==="table_missing"?"var(--err)":"var(--warn)")+";background:rgba(0,0,0,.08);padding:3px 7px;border-radius:5px;font-weight:700;"},String(heartbeatDiag.issue||"issue"))));
-    diagCard.appendChild(el("div",{style:"font-size:11.5px;color:var(--tx-bd);line-height:1.55;display:flex;flex-direction:column;gap:6px;"},
-      heartbeatDiag.detail?el("div",{},el("b",{style:"color:var(--tx-hi);"},"detail: "),String(heartbeatDiag.detail)):null,
-      heartbeatDiag.migration_path?el("div",{},el("b",{style:"color:var(--tx-hi);"},"migration: "),String(heartbeatDiag.migration_path)):null,
-      heartbeatDiag.sender_script?el("div",{},el("b",{style:"color:var(--tx-hi);"},"sender: "),String(heartbeatDiag.sender_script)):null,
-      heartbeatDiag.next_step?el("div",{},el("b",{style:"color:var(--tx-hi);"},"next: "),String(heartbeatDiag.next_step)):null));
+    const heartbeatSummary=heartbeatDiag.issue==="table_missing"
+      ? "heartbeat-таблица ещё не поднята, поэтому экран читает фолбэк и не блокирует прогоны."
+      : heartbeatDiag.detail
+        ? String(heartbeatDiag.detail)
+        : "heartbeat нестабилен, но завод продолжает идти в fail-open режиме.";
+    diagCard.appendChild(el("div",{style:"font-size:12px;color:var(--tx-bd);line-height:1.55;"},heartbeatSummary));
+    const nextHint=heartbeatDiag.next_step||heartbeatDiag.migration_path||heartbeatDiag.sender_script||"";
+    if(nextHint){
+      diagCard.appendChild(el("div",{style:"font-size:11px;color:var(--tx-lo);line-height:1.45;margin-top:8px;"},
+        el("b",{style:"color:var(--tx-hi);"},"Следом: "),
+        String(nextHint)));
+    }
     wrap.appendChild(diagCard);
   }
 
@@ -737,19 +735,19 @@ async function screenWorker(root, force, renderToken){
 
   const list=el("div",{class:"card",style:"padding:14px;margin-bottom:14px;"}); wrap.appendChild(list);
   list.appendChild(el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;"},
-    el("div",{style:"font-size:14px;font-weight:600;"},"Очередь прогонов"),
-    el("span",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);"},String(queueRuns.length||0)+" items")));
+    el("div",{style:"font-size:14px;font-weight:600;"},"Живые прогоны"),
+    el("span",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);"},String(queueRuns.length||0)+" в выборке")));
   if(!queueRuns.length){
     list.appendChild(emptyBox("прогоны ещё не появлялись или observability snapshot пуст"));
   } else {
     const queueMeta=el("div",{style:"display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;"});
     [
-      ["running", Number(runObservability&&runObservability.running||0), "var(--vio-bg)"],
-      ["stale", Number(runObservability&&runObservability.stale_running||0), "var(--warn-bg)"],
+      ["идёт", Number(runObservability&&runObservability.running||0), "var(--vio-bg)"],
+      ["подвис", Number(runObservability&&runObservability.stale_running||0), "var(--warn-bg)"],
       ["warning", Number(runObservability&&runObservability.warning_runs||0), "var(--warn-bg)"],
-      ["fail", Number(runObservability&&runObservability.failed||0), "var(--err-bg)"],
-      ["active", Number(runObservability&&runObservability.active_sample_runs||queueRuns.length||0), "var(--bg-input)"],
-      ["history", Number(runObservability&&((runObservability.legacy_failed_runs||0)+(runObservability.legacy_warning_runs||0))||0), "var(--bg-input)"],
+      ["сбой", Number(runObservability&&runObservability.failed||0), "var(--err-bg)"],
+      ["в выборке", Number(runObservability&&runObservability.active_sample_runs||queueRuns.length||0), "var(--bg-input)"],
+      ["архив", Number(runObservability&&((runObservability.legacy_failed_runs||0)+(runObservability.legacy_warning_runs||0))||0), "var(--bg-input)"],
     ].forEach(([label,count,bg])=>queueMeta.appendChild(
       el("span",{class:"mono",style:"font-size:10px;background:"+bg+";border:1px solid var(--bd2);padding:3px 7px;border-radius:5px;"},String(label)+" "+String(count||0))
     ));
@@ -1227,12 +1225,12 @@ async function renderMarketer(aside, force){
     el("div",{style:"font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--acc);font-weight:600;margin-bottom:7px;"},"Что заходит"),
     el("p",{class:"marketer-lead"},summaryParts.lead),
     summaryParts.rest?el("details",{class:"marketer-details"},
-      el("summary",{},"Подробности брифа"),
+      el("summary",{},"Развернуть бриф"),
       el("p",{style:"margin:8px 0 0;font-size:12px;line-height:1.55;color:var(--tx-bd);"},summaryParts.rest)):null));
   if(Array.isArray(br.viral_examples)&&br.viral_examples.length){
     body.appendChild(el("div",{style:"font-size:11px;font-weight:600;color:var(--tx-mid2);margin-bottom:9px;display:flex;align-items:center;justify-content:space-between;"},el("span",{},"Примеры конкурентов"),el("span",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);"},"по виральности")));
     const g=el("div",{style:"display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:16px;"});
-    br.viral_examples.slice(0,4).forEach(v=>g.appendChild(el("a",{href:v.url||"#",target:"_blank",style:"border-radius:9px;overflow:hidden;border:1px solid var(--bd);background:var(--bg-card);text-decoration:none;color:inherit;"},
+    br.viral_examples.slice(0,2).forEach(v=>g.appendChild(el("a",{href:v.url||"#",target:"_blank",style:"border-radius:9px;overflow:hidden;border:1px solid var(--bd);background:var(--bg-card);text-decoration:none;color:inherit;"},
       el("div",{class:"ph",style:"aspect-ratio:9/13;position:relative;"},
         el("span",{class:"mono tbadge",style:"position:absolute;top:6px;left:6px;background:var(--ok);"},v.score?Number(v.score).toFixed(0):"viral")),
       el("div",{style:"padding:7px;"},el("div",{style:"font-size:10.5px;color:var(--tx-bd);line-height:1.3;"},trunc(v.why,52))))));
@@ -1241,7 +1239,7 @@ async function renderMarketer(aside, force){
   if(Array.isArray(br.content_recommendations)&&br.content_recommendations.length){
     body.appendChild(el("div",{style:"font-size:11px;font-weight:600;color:var(--tx-mid2);margin-bottom:9px;"},"Рекомендации"));
     const c=el("div",{class:"rec-list"});
-    br.content_recommendations.slice(0,5).forEach((r,i)=>{
+    br.content_recommendations.slice(0,3).forEach((r,i)=>{
       const txt=recText(r);
       c.appendChild(el("div",{class:"card rec-card"},
         el("div",{class:"rec-title"},"＋ "+recTitle(r,i)),
@@ -1251,7 +1249,7 @@ async function renderMarketer(aside, force){
   }
   if(Array.isArray(br.distribution)&&br.distribution.length){
     const c=el("div",{style:"display:flex;flex-wrap:wrap;gap:6px;"});
-    br.distribution.slice(0,4).forEach(d=>c.appendChild(el("span",{style:"font-size:11px;color:var(--tx-lo);background:var(--bg-card);border:1px solid var(--bd);padding:5px 9px;border-radius:6px;"},"→ "+(d.platform||"")+" "+(d.cadence||""))));
+    br.distribution.slice(0,3).forEach(d=>c.appendChild(el("span",{style:"font-size:11px;color:var(--tx-lo);background:var(--bg-card);border:1px solid var(--bd);padding:5px 9px;border-radius:6px;"},"→ "+(d.platform||"")+" "+(d.cadence||""))));
     body.appendChild(c);
   }
 	  if(b.cached)body.appendChild(el("div",{class:"mono",style:"font-size:9px;color:var(--tx-lo3);margin-top:14px;"},"кеш · обновляется еженедельно"));
