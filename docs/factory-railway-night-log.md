@@ -2157,3 +2157,4 @@
 - Результат:
   - ops/worker экран стал ближе к живому состоянию фабрики, а не к архиву ошибок
   - старые падения больше не давят на текущее triage-решение как будто они произошли “прямо сейчас”
+- 2026-06-26 00:48 MSK - normalized factory Creatify error contracts around canonical `error` field, updated legacy operator surface to prefer `error` over deprecated `detail`, and added a guard test so old dual-field payloads do not quietly creep back in.

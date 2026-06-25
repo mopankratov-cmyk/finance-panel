@@ -11,7 +11,7 @@ export async function GET(req: NextRequest) {
   try {
     if (!creatifyReady()) {
       const error = "Creatify не подключён: добавь CREATIFY_API_ID и CREATIFY_API_KEY в Vercel env";
-      return NextResponse.json({ ready: false, avatars: [], scenes: CREATIFY_SCENES, error, detail: error }, { status: 503 });
+      return NextResponse.json({ ready: false, avatars: [], scenes: CREATIFY_SCENES, error }, { status: 503 });
     }
     const sp = req.nextUrl.searchParams;
     const res = await creatifyListAvatars({
