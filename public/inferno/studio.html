@@ -219,7 +219,7 @@ const S={
   observability:null,
   observerLoading:false, observerError:"", observerUpdatedAt:null,
   workerState:null, workerTimer:null,
-  compact:false,
+  compact:true,
 };
 // ИА студии: главная ось — ВИД КОНТЕНТА (после общей разведки). Старт → тип контента (свой пайплайн) → Система.
 const SCREENS=[
@@ -234,6 +234,8 @@ const SCREENS=[
   {id:"balances",grp:"⚙ Система",chip:"07",tt:"Балансы сервисов",st:"сколько осталось $"},
   {id:"learn",grp:"⚙ Система",chip:"🧠",tt:"Обучение",st:"что завод выучил"},
 ];
+const COMPACT_HIDDEN_SCREENS=new Set(["inspector","static","balances","learn"]);
+function visibleScreens(){ return S.compact ? SCREENS.filter(s=>!COMPACT_HIDDEN_SCREENS.has(s.id)) : SCREENS; }
 const NICHE_EMOJI={cosmetics:"💄",clothing:"🧥",toys:"🔫",default:"📦"};
 // picker-поля, которые тянут точный список из ЖИВОГО Creatify API (не хардкод)
 const LIVE_PICKER={ override_voice:{type:"voices",route:"/creatify-options?type=voices",audio:true}, background_music_url:{type:"musics",route:"/creatify-options?type=musics",audio:true}, visual_style:{type:"templates",route:"/creatify-options?type=templates",builtin:true}, voice_id:{type:"voices",route:"/eleven-options?type=voices",audio:true} };
@@ -338,6 +340,13 @@ function renderFactoryPulse(){
     el("span",{class:"dot",style:"width:8px;height:8px;background:"+(tone.tone==="ok"?"var(--ok)":tone.tone==="warn"?"var(--warn)":"var(--err)")+";box-shadow:0 0 0 4px rgba(255,255,255,.03);"}),
     el("span",{style:"font-size:12px;font-weight:600;color:var(--tx-hi);"},tone.label)));
   box.appendChild(el("div",{style:"font-size:10.5px;color:var(--tx-lo2);line-height:1.35;margin-top:3px;"},tone.hint));
+  if(S.compact){
+    box.appendChild(el("button",{class:"btn sm",style:"margin-top:8px;width:100%;justify-content:center;",onclick:()=>go("worker")},"Worker"));
+    if(S.observerError){
+      box.appendChild(el("div",{style:"font-size:10.5px;color:var(--warn);line-height:1.35;margin-top:6px;"},S.observerError));
+    }
+    return;
+  }
   if(gens||otk||signalBits.length){
     const bits=[];
     if(gens) bits.push(`24h ${gens.last_24h??0}`);
@@ -376,7 +385,7 @@ async function loadObserver(){
 
 function renderNav(){
   const nav=document.getElementById("nav"); nav.innerHTML=""; let lastGrp=null;
-  SCREENS.forEach(s=>{
+  visibleScreens().forEach(s=>{
     if(s.grp&&s.grp!==lastGrp){ lastGrp=s.grp; nav.appendChild(el("div",{style:"font-size:10px;letter-spacing:1.2px;text-transform:uppercase;color:var(--tx-lo2);padding:13px 9px 5px;font-weight:600;"},s.grp)); }
     nav.appendChild(el("button",{class:"nav-item"+(S.screen===s.id?" active":""),onclick:()=>go(s.id)},
       el("span",{class:"nav-chip"},s.chip),
@@ -398,6 +407,7 @@ async function restoreSession(){
   if(s.niche)S.activeNiche=s.niche;
   if(s.screen==="text")s.screen="center"; // legacy placeholder screen выключен из MVP-навигации
   if(s.screen==="ds")s.screen="center";   // служебный дизайн-экран убран из MVP-навигации
+  if(S.compact && COMPACT_HIDDEN_SCREENS.has(s.screen))s.screen="center";
   const needsRecipe=["canvas","inspector","assembly"].includes(s.screen);
   if(needsRecipe){ // эти экраны без рецепта пусты → подгружаем сохранённый рецепт, иначе уводим в библиотеку
     if(!s.recipeId){ S.screen="library"; return; }
@@ -411,7 +421,7 @@ function header(title,meta,right){
   const l=el("div",{class:"hdr-l"},el("span",{class:"hdr-t"},title)); if(meta)l.appendChild(el("span",{class:"meta-chip"},meta));
   // проводник: единая точка входа на КАЖДОМ экране — развернуть панель и попросить объяснить, что тут
   l.appendChild(el("button",{class:"guide-btn",title:"Проводник объяснит этот экран и подскажет следующий шаг",onclick:explainScreen},"🧭 что тут?"));
-  l.appendChild(el("button",{class:"guide-btn",title:"Скрыть лишний шум в студии",onclick:toggleCompact},S.compact?"◧ compact":"◫ full"));
+  l.appendChild(el("button",{class:"guide-btn",title:S.compact?"Показать расширенные экраны и диагностику":"Скрыть расширенные экраны и диагностику",onclick:toggleCompact},S.compact?"◧ кратко":"◫ полно"));
   h.appendChild(l); h.appendChild(right||el("div",{class:"hdr-r"}));
 }
 function loadingCard(t){ return el("div",{class:"card",style:"padding:18px;display:flex;align-items:center;gap:12px;"},el("div",{class:"spinner"}),el("span",{class:"muted"},t||"загрузка…")); }
@@ -519,6 +529,7 @@ async function screenWorker(root){
   const q=(worker&&Array.isArray(worker.queue)&&worker.queue.length?worker.queue:(d.queue||[]))||[];
   const alerts=Array.isArray(d.alerts)?d.alerts:[];
   const suggested=Array.isArray(d.suggested_actions)?d.suggested_actions:[];
+  const visibleSuggested=S.compact?suggested.slice(0,2):suggested;
   const heartbeatDiag=d.heartbeat_diagnostics||null;
   const opsStatus=d.ops_status||null;
   const opsTone=opsStatusTone(opsStatus&&opsStatus.level);
@@ -573,12 +584,12 @@ async function screenWorker(root){
     worker&&worker.blocker?el("div",{style:"margin-top:10px;font-size:11.5px;color:var(--warn);background:var(--warn-bg);border:1px solid rgba(214,169,78,.55);padding:8px 10px;border-radius:8px;"},"Блокер: "+worker.blocker):null));
   wrap.appendChild(top);
 
-  if(suggested.length){
+  if(visibleSuggested.length){
     const nextCard=el("div",{class:"card",style:"padding:14px;margin-bottom:14px;"});
     nextCard.appendChild(el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;"},
       el("div",{style:"font-size:14px;font-weight:600;"},"Что сделать дальше"),
       el("span",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);"},String(suggested.length)+" items")));
-    suggested.forEach((a)=>nextCard.appendChild(el("div",{style:"display:flex;align-items:flex-start;justify-content:space-between;gap:10px;font-size:11.5px;color:var(--tx-bd);padding:7px 0;border-top:1px solid var(--bd);"},
+    visibleSuggested.forEach((a)=>nextCard.appendChild(el("div",{style:"display:flex;align-items:flex-start;justify-content:space-between;gap:10px;font-size:11.5px;color:var(--tx-bd);padding:7px 0;border-top:1px solid var(--bd);"},
       el("div",{style:"min-width:0;display:flex;flex-direction:column;gap:3px;"},
         el("div",{style:"display:flex;align-items:center;gap:8px;flex-wrap:wrap;"},
           el("span",{class:"mono",style:"font-size:9.5px;color:"+(a.priority==="p0"?"var(--err)":a.priority==="p1"?"var(--warn)":"var(--acc-lt)")+";background:"+(a.priority==="p0"?"var(--err-bg)":a.priority==="p1"?"var(--warn-bg)":"var(--vio-bg)")+";padding:2px 6px;border-radius:5px;font-weight:700;"},String(a.priority||"p2").toUpperCase()),
@@ -588,7 +599,7 @@ async function screenWorker(root){
     wrap.appendChild(nextCard);
   }
 
-  if(heartbeatDiag){
+  if(heartbeatDiag&&(!S.compact||heartbeatDiag.issue==="table_missing"||heartbeatDiag.issue==="db_permissions")){
     const diagCard=el("div",{class:"card",style:"padding:14px;margin-bottom:14px;border-color:"+(heartbeatDiag.issue==="table_missing"?"var(--err)":"var(--warn)")+";background:"+(heartbeatDiag.issue==="table_missing"?"var(--err-bg)":"var(--warn-bg)")+";"});
     diagCard.appendChild(el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;"},
       el("div",{style:"font-size:14px;font-weight:600;"},"Диагностика heartbeat"),
@@ -625,7 +636,7 @@ async function screenWorker(root){
     }
     wrap.appendChild(latestCard);
   }
-  if(stressHistory&&stressHistory.total_reports){
+  if(stressHistory&&stressHistory.total_reports&&!S.compact){
     const histCard=el("div",{class:"card",style:"padding:14px;margin-bottom:14px;"});
     histCard.appendChild(el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;"},
       el("div",{style:"font-size:14px;font-weight:600;"},"История стресс-тестов"),
@@ -657,7 +668,7 @@ async function screenWorker(root){
       el("span",{class:"mono",style:"font-size:10px;background:"+bg+";border:1px solid var(--bd2);padding:3px 7px;border-radius:5px;"},String(label)+" "+String(count||0))
     ));
     list.appendChild(queueMeta);
-    ordered.slice(0,6).forEach((t,idx)=>{
+    ordered.slice(0,S.compact?4:6).forEach((t,idx)=>{
       const tt=queueTaskTone(t.status);
       const isCurrent=String(t.id||"")===currentId;
       list.appendChild(el("div",{style:"display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:start;padding:"+(idx? "10px 0 0":"0")+";border-top:"+(idx?"1px solid var(--bd)":"none")+";"},
@@ -749,7 +760,7 @@ async function screenCenter(root, force){
     el("button",{class:"btn",title:"принудительно пересобрать данные и разбор ниши",onclick:()=>screenCenter(root,true)},"↻ Обновить")));
   const left=el("div",{class:"scroll"}), aside=el("div",{class:"aside",style:"width:340px;padding:18px;"});
   root.appendChild(left); root.appendChild(aside);
-  if(workerRow){
+  if(workerRow&&!S.compact){
     const tone=workerStatusTone(workerLive);
     left.appendChild(el("div",{class:"card",style:"padding:12px 14px;margin-bottom:14px;border-color:"+(workerLive==="dead"?"var(--err)":workerLive==="stale"?"var(--warn)":"var(--bd)")+";background:"+(workerLive==="dead"?"var(--err-bg)":workerLive==="stale"?"var(--warn-bg)":"var(--bg-card)")+";display:flex;align-items:flex-start;justify-content:space-between;gap:12px;"},
       el("div",{style:"min-width:0;display:flex;flex-direction:column;gap:4px;"},
@@ -870,6 +881,7 @@ function metaStat(c,glyph,txt){ return el("span",{class:"mono",style:"font-size:
 function renderObservabilityCard(host){
   const o=S.observability;
   if(!host||!o)return;
+  if(S.compact)return;
   const slow=Array.isArray(o.slowest_steps)?o.slowest_steps:[];
   const failDiag=o.failure_diagnostics&&typeof o.failure_diagnostics==="object"?o.failure_diagnostics:null;
   const stability=o.stability_snapshot&&typeof o.stability_snapshot==="object"?o.stability_snapshot:null;
@@ -1027,12 +1039,30 @@ function renderCenterOpsSummary(host,input){
       el("span",{style:"font-size:12px;font-weight:700;"},"Factory health"),
       workerRow&&workerRow.current_task_id?el("span",{class:"mono",style:"font-size:10px;color:#fff;background:var(--acc);padding:4px 7px;border-radius:5px;font-weight:700;"},"task "+workerRow.current_task_id):null),
     el("button",{class:"btn sm",onclick:()=>go("worker")},"Worker")));
+  if(S.compact){
+    const chips=el("div",{style:"display:flex;flex-wrap:wrap;gap:6px;"});
+    if(latestStress&&latestStress.summary){
+      const ls=latestStress.summary||{};
+      chips.appendChild(el("span",{class:"mono",style:"font-size:10px;color:"+(ls.failed||ls.runFail||ls.timeouts?"var(--err)":"var(--ok)")+";background:"+(ls.failed||ls.runFail||ls.timeouts?"var(--err-bg)":"var(--ok-bg)")+";padding:3px 7px;border-radius:5px;"},
+        "stress "+String(ls.completed||0)+"/"+String(ls.totalRuns||0)));
+    }
+    opsAlerts.slice(0,2).forEach((a)=>chips.appendChild(el("span",{class:"mono",style:"font-size:10px;color:var(--warn);background:var(--warn-bg);padding:3px 7px;border-radius:5px;"},a.code||a.level||"alert")));
+    lowBalances.slice(0,2).forEach((b)=>chips.appendChild(el("span",{class:"mono",style:"font-size:10px;color:var(--err);background:var(--err-bg);padding:3px 7px;border-radius:5px;"},
+      String(b.provider||"balance")+": "+(b.status||"low"))));
+    if(opsStatus&&opsStatus.summary){
+      card.appendChild(el("div",{style:"font-size:11px;line-height:1.45;color:var(--tx-bd);"},trunc(opsStatus.summary,150)));
+    }
+    if(chips.childNodes.length)card.appendChild(chips);
+    host.appendChild(card);
+    return;
+  }
   if(opsStatus&&opsStatus.summary){
     card.appendChild(el("div",{style:"font-size:11px;line-height:1.45;color:var(--tx-bd);"},opsStatus.summary));
   }
   if(heartbeatDiag){
+    const hbColor=heartbeatDiag.level==="critical"?"var(--err)":heartbeatDiag.level==="warning"?"var(--warn)":"var(--ok)";
     card.appendChild(el("div",{style:"font-size:11px;line-height:1.45;color:var(--tx-bd);"},
-      "Heartbeat: ",el("b",{style:"color:heartbeatDiag.level==='critical'?'var(--err)':heartbeatDiag.level==='warning'?'var(--warn)':'var(--ok)';"},heartbeatDiag.title||heartbeatDiag.issue||"unknown"),
+      "Heartbeat: ",el("b",{style:"color:"+hbColor+";"},heartbeatDiag.title||heartbeatDiag.issue||"unknown"),
       heartbeatDiag.summary?el("span",{}," · "+heartbeatDiag.summary):""));
   }
   if(failDiag){
@@ -2339,7 +2369,9 @@ function applyCompact(){
 function toggleCompact(){
   S.compact=!S.compact;
   try{localStorage.setItem("noda_compact",S.compact?"1":"0");}catch(e){}
+  if(S.compact && COMPACT_HIDDEN_SCREENS.has(S.screen))S.screen="center";
   applyCompact();
+  renderNav();
   render();
 }
 
@@ -2376,6 +2408,13 @@ function toggleAssist(){
 
 // клик по «🧭 что тут?» в шапке: развернуть панель (если свёрнута) и попросить объяснить текущий экран
 function explainScreen(){
+  if(S.compact){
+    S.compact=false;
+    try{localStorage.setItem("noda_compact","0");}catch(e){}
+    applyCompact();
+    renderNav();
+    render();
+  }
   const a=document.getElementById("assist"); if(a&&a.classList.contains("collapsed"))toggleAssist();
   askAssistant("Что тут происходит на этом экране? Коротко объясни, что я вижу и что делать дальше.");
 }
@@ -2389,7 +2428,7 @@ function mountAssistant(){
   }
   if(tg)tg.onclick=toggleAssist;
   let compact=S.compact;
-  try{compact=localStorage.getItem("noda_compact")==="1";}catch(e){}
+  try{ const saved=localStorage.getItem("noda_compact"); compact=saved==null?true:saved!=="0"; }catch(e){}
   S.compact=compact;
   applyCompact();
   let col=false; try{col=localStorage.getItem("noda_assist_col")==="1";}catch(e){}

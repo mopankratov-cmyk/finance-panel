@@ -2037,3 +2037,31 @@
 - Результат:
   - Sprint KPI по выпуску MP4 подтверждён live stress: `10/10 done`
   - отчёт больше не путает успешный текущий stress с историческими падениями в БД
+
+### Production stress runner progress diagnostics
+
+- Ветка: текущая рабочая ветка контент-завода
+- Цель: убрать “молчание” CLI во время production stress, когда первый запрос долго ретраится или ждёт удалённый endpoint
+- Изменено:
+  - `lib/factory/stressGraphRun.mjs`: перед каждым прогоном печатает `RUN_START ...`
+  - добавлен `FACTORY_STRESS_REQUEST_RETRIES` / `--request-retries` для короткой диагностики зависших remote-запросов
+  - `lib/factory/cliTimeouts.test.mts`: добавлен guard на progress output и retry controls
+- Результат:
+  - оператор сразу видит, что stress runner стартовал
+  - smoke-команду можно запускать с `--runs 1 --request-retries 1 --request-timeout-ms 10000`, не ожидая длинных retry windows
+
+### Studio compact operator mode
+
+- Ветка: текущая рабочая ветка контент-завода
+- Цель: убрать нагромождение на экранах Studio, не удаляя диагностические данные для инженера
+- Изменено:
+  - `public/inferno/studio.html`: краткий операторский режим включён по умолчанию
+  - в краткой навигации скрыты не-MVP экраны `inspector`, `static`, `balances`, `learn`
+  - sidebar-пульс в кратком режиме показывает только статус, обновление и переход в Worker
+  - командный центр больше не дублирует отдельную worker-карточку и скрывает `Execution observability`
+  - Worker screen в кратком режиме показывает меньше suggested actions, скрывает stress-history и подробный heartbeat-detail
+  - кнопка “что тут?” автоматически включает полный режим, чтобы проводник был видим
+  - `lib/factory/studioSimplification.test.mts`: добавлен guard на compact-mode contract
+- Результат:
+  - первый экран стал ближе к операторскому cockpit: меньше debug-бейджей и меньше системных веток
+  - full mode сохраняет расширенную диагностику без удаления инструментов
