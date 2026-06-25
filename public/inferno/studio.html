@@ -607,8 +607,8 @@ async function screenWorker(root, force, renderToken){
   const activeRuns=recentRuns.filter((r)=>r&&(r.active||r.status==="running"||r.stale));
   const queueRuns=(activeRuns.length?activeRuns:recentRuns);
   const liveTone=workerStatusTone(live.state);
-  const aliveNote=workerSource==="queue_fallback"&&live.state==="unknown"?"heartbeat не настроен":live.state==="alive"?"heartbeat свежий":live.state==="stale"?"heartbeat молчит":"worker не отвечает";
-  const sourceLabel=workerSource==="heartbeat_db"?"heartbeat":"queue fallback";
+  const aliveNote=workerSource==="queue_fallback"&&live.state==="unknown"?"heartbeat не настроен":live.state==="alive"?"heartbeat свежий":live.state==="stale"?"heartbeat молчит":"пульс потерян";
+  const sourceLabel=workerSource==="heartbeat_db"?"heartbeat":"фолбэк";
   const orderedRuns=[...queueRuns]
     .sort((a,b)=>{
       const aw=(a&&a.stale)?0:(a&&a.active===false)?4:String(a&&a.status||"")==="running"?1:String(a&&a.status||"")==="warning"?2:String(a&&a.status||"")==="run_fail"?3:5;
@@ -665,10 +665,7 @@ async function screenWorker(root, force, renderToken){
     el("div",{style:"display:flex;flex-direction:column;gap:6px;"},
       el("div",{style:"font-size:19px;font-weight:700;"},focusRunTitle),
       el("div",{style:"font-size:13px;color:var(--tx-bd);line-height:1.45;"},focusRunDetail),
-      focusRunMeta.length?el("div",{style:"font-size:11.5px;color:var(--tx-lo);line-height:1.45;"},focusRunMeta.join(" · ")):null,
-      !focusRun&&worker&&worker.current_task_title&&!S.compact
-        ? el("div",{style:"font-size:11px;color:var(--tx-lo);line-height:1.45;"},"infra note: ",String(worker.current_task_title))
-        : null)));
+      focusRunMeta.length?el("div",{style:"font-size:11.5px;color:var(--tx-lo);line-height:1.45;"},focusRunMeta.join(" · ")):null)));
   wrap.appendChild(top);
 
   if(visibleSuggested.length){
