@@ -13,11 +13,13 @@ function ok(cond: boolean, msg: string) {
 
 const ugcCreatify = readFileSync("app/api/factory/ugc-creatify/route.ts", "utf8");
 const creatifyAvatars = readFileSync("app/api/factory/creatify-avatars/route.ts", "utf8");
+const creatifyAdapter = readFileSync("lib/factory/creatify.ts", "utf8");
 const patrickLegacy = readFileSync("public/inferno/patrick-legacy.html", "utf8");
 
 ok(!/detail:\s*error/.test(ugcCreatify), "ugc-creatify route no longer duplicates errors into detail");
 ok(!/\{\s*error,\s*detail:\s*error/.test(ugcCreatify), "ugc-creatify keeps a single canonical error field");
 ok(!/detail:\s*error/.test(creatifyAvatars), "creatify-avatars route no longer emits duplicate detail field");
+ok(/\)\.error \|\| \(body as Record<string, unknown>\)\.detail \|\| r\.text/.test(creatifyAdapter), "creatify adapter prefers canonical error field before legacy detail");
 ok(/d\.error \|\| d\.detail \|\| 'Creatify не подключён'/.test(patrickLegacy), "legacy avatar picker prefers canonical error field");
 ok(/d\.error \|\| d\.detail \|\| 'не удалось запустить'/.test(patrickLegacy), "legacy UGC launcher prefers canonical error field");
 ok(/this\.utmMsg = 'ошибка: ' \+ \(d\.error \|\| d\.detail \|\| 'не удалось'\)/.test(patrickLegacy), "legacy utm launcher prefers canonical error field");
