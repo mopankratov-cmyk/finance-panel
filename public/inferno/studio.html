@@ -523,16 +523,16 @@ function renderStaticResults(c){
 }
 
 function workerStatusTone(state){
-  return state==="alive" ? {c:"var(--ok)", bg:"var(--ok-bg)", label:"ALIVE"}
-    : state==="stale" ? {c:"var(--warn)", bg:"var(--warn-bg)", label:"STALE"}
-    : state==="dead" ? {c:"var(--err)", bg:"var(--err-bg)", label:"DEAD"}
-    : {c:"var(--tx-lo2)", bg:"var(--bg-input)", label:"UNKNOWN"};
+  return state==="alive" ? {c:"var(--ok)", bg:"var(--ok-bg)", label:"на связи"}
+    : state==="stale" ? {c:"var(--warn)", bg:"var(--warn-bg)", label:"молчит"}
+    : state==="dead" ? {c:"var(--err)", bg:"var(--err-bg)", label:"потерян"}
+    : {c:"var(--tx-lo2)", bg:"var(--bg-input)", label:"неясно"};
 }
 function opsStatusTone(level){
-  return level==="healthy" ? {c:"var(--ok)", bg:"var(--ok-bg)", label:"HEALTHY"}
-    : level==="degraded" ? {c:"var(--warn)", bg:"var(--warn-bg)", label:"DEGRADED"}
-    : level==="critical" ? {c:"var(--err)", bg:"var(--err-bg)", label:"CRITICAL"}
-    : {c:"var(--tx-lo2)", bg:"var(--bg-input)", label:"UNKNOWN"};
+  return level==="healthy" ? {c:"var(--ok)", bg:"var(--ok-bg)", label:"штатно"}
+    : level==="degraded" ? {c:"var(--warn)", bg:"var(--warn-bg)", label:"есть риск"}
+    : level==="critical" ? {c:"var(--err)", bg:"var(--err-bg)", label:"сбой"}
+    : {c:"var(--tx-lo2)", bg:"var(--bg-input)", label:"неясно"};
 }
 
 function fmtSecAgo(sec){
@@ -556,13 +556,13 @@ function isWorkerInfraAction(action){
 }
 function runQueueTone(status){
   return {
-    running:{c:"var(--acc-lt)", bg:"var(--vio-bg)", label:"running"},
-    stale_running:{c:"var(--warn)", bg:"var(--warn-bg)", label:"stale"},
+    running:{c:"var(--acc-lt)", bg:"var(--vio-bg)", label:"идёт"},
+    stale_running:{c:"var(--warn)", bg:"var(--warn-bg)", label:"подвис"},
     warning:{c:"var(--warn)", bg:"var(--warn-bg)", label:"warning"},
-    run_fail:{c:"var(--err)", bg:"var(--err-bg)", label:"run_fail"},
-    done:{c:"var(--ok)", bg:"var(--ok-bg)", label:"done"},
-    generated:{c:"var(--ok)", bg:"var(--ok-bg)", label:"generated"},
-    otk_pass:{c:"var(--ok)", bg:"var(--ok-bg)", label:"otk_pass"},
+    run_fail:{c:"var(--err)", bg:"var(--err-bg)", label:"сбой"},
+    done:{c:"var(--ok)", bg:"var(--ok-bg)", label:"готово"},
+    generated:{c:"var(--ok)", bg:"var(--ok-bg)", label:"mp4"},
+    otk_pass:{c:"var(--ok)", bg:"var(--ok-bg)", label:"отк ок"},
   }[String(status||"")] || {c:"var(--tx-lo2)", bg:"var(--bg-input)", label:String(status||"?")};
 }
 
@@ -619,7 +619,7 @@ async function screenWorker(root, force, renderToken){
       : String(focusRun.status||"")==="running"
         ? (focusRun.active_step?`идёт шаг ${focusRun.active_step}`:focusRun.last_step?`последний шаг ${focusRun.last_step}`:"прогон в работе")
         : String(focusRun.status||"")==="warning"
-          ? `${Number(focusRun.warnings_count||0)} warning, mp4 сохранён`
+          ? `${Number(focusRun.warnings_count||0)} предупрежд., mp4 сохранён`
           : String(focusRun.status||"")==="run_fail"
             ? `ошибка ${String(focusRun.error_category||"other")}`
             : "прогон завершён";
@@ -764,7 +764,7 @@ async function screenWorker(root, force, renderToken){
             ? (r&&r.active_step?`застрял на шаге ${r.active_step}`:r&&r.last_step?`застрял после шага ${r.last_step}`:"прогон завис в running")
             : (r&&r.active_step?`шаг ${r.active_step}`:r&&r.last_step?`последний шаг ${r.last_step}`:"прогон в работе"))
         : String(r&&r.status||"")==="warning"
-          ? `${Number(r&&r.warnings_count||0)} warning`
+          ? `${Number(r&&r.warnings_count||0)} предупрежд.`
           : String(r&&r.status||"")==="run_fail"
             ? `${r&&r.legacy?"архивный ":""}error ${String(r&&r.error_category||"other")}`
             : "завершён";
@@ -989,53 +989,53 @@ function renderObservabilityCard(host){
   const legacyWarnings=Number(o.legacy_warning_runs||0);
   const card=el("div",{class:"card",style:"padding:13px;margin-top:14px;"});
   card.appendChild(el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;"},
-    el("div",{style:"font-size:11px;font-weight:700;color:var(--tx-mid2);"},"Execution observability"),
-    el("span",{class:"mono",style:"font-size:9.5px;color:var(--tx-lo2);"},(o.active_sample_runs||o.sample_runs||0)+" active runs")));
+    el("div",{style:"font-size:11px;font-weight:700;color:var(--tx-mid2);"},"Разбор прогонов"),
+    el("span",{class:"mono",style:"font-size:9.5px;color:var(--tx-lo2);"},(o.active_sample_runs||o.sample_runs||0)+" в окне")));
   card.appendChild(el("div",{style:"display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;"},
-    el("span",{class:"mono",style:"font-size:9.5px;color:var(--acc-lt);background:var(--vio-bg);border:1px solid var(--bd-acc);padding:3px 7px;border-radius:5px;"},"running "+(o.running||0)),
+    el("span",{class:"mono",style:"font-size:9.5px;color:var(--acc-lt);background:var(--vio-bg);border:1px solid var(--bd-acc);padding:3px 7px;border-radius:5px;"},"идут "+(o.running||0)),
     el("span",{class:"mono",style:"font-size:9.5px;color:var(--warn);background:var(--warn-bg);border:1px solid rgba(245,158,11,.35);padding:3px 7px;border-radius:5px;"},"warning "+(o.warning_runs||0)),
-    el("span",{class:"mono",style:"font-size:9.5px;color:var(--err);background:var(--err-bg);border:1px solid var(--bd-err);padding:3px 7px;border-radius:5px;"},"failed "+(o.failed||0)),
+    el("span",{class:"mono",style:"font-size:9.5px;color:var(--err);background:var(--err-bg);border:1px solid var(--bd-err);padding:3px 7px;border-radius:5px;"},"сбоев "+(o.failed||0)),
     (legacyFails||legacyWarnings)?el("span",{class:"mono",style:"font-size:9.5px;color:var(--tx-mid);background:var(--bg-input);border:1px solid var(--bd2);padding:3px 7px;border-radius:5px;"},
-      "history "+String(legacyFails+legacyWarnings)):null));
+      "архив "+String(legacyFails+legacyWarnings)):null));
   if((legacyFails||legacyWarnings) && !incidents.length){
     card.appendChild(el("div",{style:"margin:-2px 0 10px;font-size:10.5px;color:var(--tx-lo);line-height:1.45;"},
-      "live ops quiet right now; historical sample still keeps ",
+      "сейчас живых инцидентов нет, но в архивном окне ещё лежит ",
       el("b",{style:"color:var(--tx-hi);"},String(legacyFails+legacyWarnings)),
-      " archived warnings/fails outside the active window"));
+      " старых warning/fail прогонов"));
   }
   if(stability){
     const targetMet=!!stability.target_met;
     card.appendChild(el("div",{style:"margin-bottom:10px;padding:10px 11px;border:1px solid "+(targetMet?"#1d3a2b":"rgba(245,158,11,.35)")+";background:"+(targetMet?"var(--ok-bg)":"var(--warn-bg)")+";border-radius:8px;display:flex;flex-direction:column;gap:6px;"},
       el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:8px;"},
-        el("div",{style:"font-size:10.5px;font-weight:700;color:"+(targetMet?"#7fe0b3":"var(--warn)")+";"},"10-run stability"),
+        el("div",{style:"font-size:10.5px;font-weight:700;color:"+(targetMet?"#7fe0b3":"var(--warn)")+";"},"Стабильность 10/10"),
         el("span",{class:"mono",style:"font-size:9.5px;color:"+(targetMet?"#7fe0b3":"var(--warn)")+";background:rgba(0,0,0,.08);padding:2px 6px;border-radius:5px;font-weight:700;"},
           String(stability.successful_runs||0)+"/"+String(stability.window_size||10))),
       el("div",{style:"display:flex;flex-wrap:wrap;gap:6px;"},
-        el("span",{class:"mono",style:"font-size:9.5px;color:var(--tx-hi);background:var(--bg-input);border:1px solid var(--bd2);padding:3px 7px;border-radius:5px;"},"streak "+String(stability.success_streak||0)),
-        el("span",{class:"mono",style:"font-size:9.5px;color:var(--warn);background:var(--warn-bg);border:1px solid rgba(245,158,11,.35);padding:3px 7px;border-radius:5px;"},"warnings "+String(stability.warning_runs||0)),
-        el("span",{class:"mono",style:"font-size:9.5px;color:var(--err);background:var(--err-bg);border:1px solid var(--bd-err);padding:3px 7px;border-radius:5px;"},"fails "+String(stability.failed_runs||0))),
+        el("span",{class:"mono",style:"font-size:9.5px;color:var(--tx-hi);background:var(--bg-input);border:1px solid var(--bd2);padding:3px 7px;border-radius:5px;"},"подряд "+String(stability.success_streak||0)),
+        el("span",{class:"mono",style:"font-size:9.5px;color:var(--warn);background:var(--warn-bg);border:1px solid rgba(245,158,11,.35);padding:3px 7px;border-radius:5px;"},"warning "+String(stability.warning_runs||0)),
+        el("span",{class:"mono",style:"font-size:9.5px;color:var(--err);background:var(--err-bg);border:1px solid var(--bd-err);padding:3px 7px;border-radius:5px;"},"сбои "+String(stability.failed_runs||0))),
       el("div",{style:"font-size:10.5px;color:var(--tx-bd);line-height:1.45;"},
         targetMet?"последние 10 прогонов завершились успешно":"до KPI не хватает подряд успешных прогонов")));
   }
   if(quality){
     card.appendChild(el("div",{style:"margin-bottom:10px;padding:10px 11px;border:1px solid var(--bd);background:var(--bg-node);border-radius:8px;display:flex;flex-direction:column;gap:6px;"},
       el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:8px;"},
-        el("div",{style:"font-size:10.5px;font-weight:700;color:var(--tx-mid2);"},"Quality signal"),
+        el("div",{style:"font-size:10.5px;font-weight:700;color:var(--tx-mid2);"},"Сигнал качества"),
         el("span",{class:"mono",style:"font-size:9.5px;color:var(--tx-lo2);background:rgba(0,0,0,.08);padding:2px 6px;border-radius:5px;font-weight:700;"},
-          String(quality.sample_size||0)+" runs")),
+          String(quality.sample_size||0)+" прогонов")),
       el("div",{style:"display:flex;flex-wrap:wrap;gap:6px;"},
         el("span",{class:"mono",style:"font-size:9.5px;color:var(--ok);background:var(--ok-bg);padding:3px 7px;border-radius:5px;"},"model "+String(quality.model_runs||0)),
         el("span",{class:"mono",style:"font-size:9.5px;color:var(--acc-lt);background:var(--vio-bg);padding:3px 7px;border-radius:5px;"},"text "+String(quality.text_runs||0)),
-        el("span",{class:"mono",style:"font-size:9.5px;color:var(--warn);background:var(--warn-bg);padding:3px 7px;border-radius:5px;"},"fallback "+String(quality.fallback_runs||0))),
+        el("span",{class:"mono",style:"font-size:9.5px;color:var(--warn);background:var(--warn-bg);padding:3px 7px;border-radius:5px;"},"фолбэк "+String(quality.fallback_runs||0))),
       el("div",{style:"font-size:10.5px;color:var(--tx-bd);line-height:1.45;"},
-        "dominant ",el("b",{style:"color:var(--tx-hi);"},String(quality.dominant_basis||"none")),
-        " · fallback ratio ",el("b",{style:"color:"+(Number(quality.fallback_ratio||0)>=0.5?"var(--warn)":"var(--tx-hi)")+";"},String(Math.round(Number(quality.fallback_ratio||0)*100))+"%"),
-        quality.top_basis_reason?el("span",{}," · reason ",el("b",{style:"color:var(--tx-hi);"},String(quality.top_basis_reason))):"")));
+        "доминирует ",el("b",{style:"color:var(--tx-hi);"},String(quality.dominant_basis||"none")),
+        " · доля фолбэка ",el("b",{style:"color:"+(Number(quality.fallback_ratio||0)>=0.5?"var(--warn)":"var(--tx-hi)")+";"},String(Math.round(Number(quality.fallback_ratio||0)*100))+"%"),
+        quality.top_basis_reason?el("span",{}," · причина ",el("b",{style:"color:var(--tx-hi);"},String(quality.top_basis_reason))):"")));
   }
   if(failDiag){
     card.appendChild(el("div",{style:"margin-bottom:10px;padding:10px 11px;border:1px solid var(--bd-err);background:var(--err-bg);border-radius:8px;display:flex;flex-direction:column;gap:5px;"},
       el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:8px;"},
-        el("div",{style:"font-size:10.5px;font-weight:700;color:var(--err);"},"Run fail diagnostics"),
+        el("div",{style:"font-size:10.5px;font-weight:700;color:var(--err);"},"Разбор сбоев"),
         failDiag.category?el("span",{class:"mono",style:"font-size:9.5px;color:var(--err);background:rgba(0,0,0,.08);padding:2px 6px;border-radius:5px;font-weight:700;"},String(failDiag.category)):null),
       el("div",{style:"font-size:10.5px;color:var(--tx-bd);line-height:1.45;"},String(failDiag.issue||"")),
       el("div",{class:"mono",style:"font-size:10px;color:var(--tx-hi);line-height:1.45;"},String(failDiag.action||"")),
@@ -1043,59 +1043,59 @@ function renderObservabilityCard(host){
       failDiag.sample_error?el("div",{class:"mono",style:"font-size:9.5px;color:var(--tx-mid);line-height:1.35;"},String(failDiag.sample_error).slice(0,110)):null));
   }
   if(slow.length){
-    card.appendChild(el("div",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);margin-bottom:6px;"},"slowest steps"));
+    card.appendChild(el("div",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);margin-bottom:6px;"},"самые медленные шаги"));
     slow.slice(0,4).forEach((s)=>card.appendChild(el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:10.5px;color:var(--tx-bd);margin-bottom:5px;"},
-      el("span",{class:"mono",style:"min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"},s.step||"step"),
+      el("span",{class:"mono",style:"min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"},s.step||"шаг"),
       el("span",{class:"mono",style:"color:var(--tx-lo2);flex:none;"},fmtMs(s.avg_ms)||"—"))));
   }
   if(errCats.length){
-    card.appendChild(el("div",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);margin:"+(slow.length?"10px":"4px")+" 0 6px;"},"error categories"));
+    card.appendChild(el("div",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);margin:"+(slow.length?"10px":"4px")+" 0 6px;"},"категории сбоев"));
     errCats.slice(0,4).forEach((w)=>card.appendChild(el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:10.5px;color:var(--tx-bd);margin-bottom:5px;"},
       el("span",{class:"mono",style:"min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"},w.category||"other"),
       el("span",{class:"mono",style:"color:var(--tx-lo2);flex:none;"},String(w.count||0)))));
   }
   if(cats.length){
-    card.appendChild(el("div",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);margin:"+((slow.length||errCats.length)?"10px":"4px")+" 0 6px;"},"warning categories"));
+    card.appendChild(el("div",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);margin:"+((slow.length||errCats.length)?"10px":"4px")+" 0 6px;"},"категории warning"));
     cats.slice(0,4).forEach((w)=>card.appendChild(el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:10.5px;color:var(--tx-bd);margin-bottom:5px;"},
       el("span",{class:"mono",style:"min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"},w.category||"other"),
       el("span",{class:"mono",style:"color:var(--tx-lo2);flex:none;"},String(w.count||0)))));
   }
   if(errs.length){
-    card.appendChild(el("div",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);margin:"+((slow.length||errCats.length||cats.length)?"10px":"4px")+" 0 6px;"},"top errors"));
+    card.appendChild(el("div",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);margin:"+((slow.length||errCats.length||cats.length)?"10px":"4px")+" 0 6px;"},"верхние ошибки"));
     errs.slice(0,3).forEach((w)=>card.appendChild(el("div",{class:"mono",style:"font-size:10px;color:var(--tx-mid);line-height:1.35;margin-bottom:4px;"},(w.count||0)+"× "+String(w.reason||"").slice(0,90))));
   }
   if(warns.length){
-    card.appendChild(el("div",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);margin:"+((slow.length||errCats.length||cats.length||errs.length)?"10px":"4px")+" 0 6px;"},"top warnings"));
+    card.appendChild(el("div",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);margin:"+((slow.length||errCats.length||cats.length||errs.length)?"10px":"4px")+" 0 6px;"},"верхние warning"));
     warns.slice(0,3).forEach((w)=>card.appendChild(el("div",{class:"mono",style:"font-size:10px;color:var(--tx-mid);line-height:1.35;margin-bottom:4px;"},(w.count||0)+"× "+String(w.reason||"").slice(0,90))));
   }
   if(recent.length){
-    card.appendChild(el("div",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);margin:"+((slow.length||errCats.length||cats.length||errs.length||warns.length)?"10px":"4px")+" 0 6px;"},"recent runs"));
+    card.appendChild(el("div",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);margin:"+((slow.length||errCats.length||cats.length||errs.length||warns.length)?"10px":"4px")+" 0 6px;"},"последние прогоны"));
     recent.slice(0,6).forEach((r)=>card.appendChild(el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:10.5px;color:var(--tx-bd);margin-bottom:5px;"},
       el("div",{style:"min-width:0;display:flex;align-items:center;gap:6px;overflow:hidden;"},
         el("span",{class:"dot",style:"width:7px;height:7px;background:"+(r.status==="run_fail"?"var(--err)":r.status==="warning"?"var(--warn)":r.status==="running"?"var(--acc)":"var(--ok)")+";flex:none;"}),
-        el("span",{class:"mono",style:"white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"},(r.recipe_id?("#"+r.recipe_id+" "):"")+String(r.status||"")+(r.error_category?(" · "+r.error_category):"")+(r.warnings_count?(" · warn "+r.warnings_count):""))),
+        el("span",{class:"mono",style:"white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"},(r.recipe_id?("#"+r.recipe_id+" "):"")+String(r.status||"")+(r.error_category?(" · "+r.error_category):"")+(r.warnings_count?(" · warning "+r.warnings_count):""))),
       el("span",{class:"mono",style:"color:var(--tx-lo2);flex:none;"},r.total_ms!=null?(fmtMs(r.total_ms)+" · "+fmtWhen(r.created_at)):fmtWhen(r.created_at)))));
   }
   if(incidents.length){
-    card.appendChild(el("div",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);margin:"+((slow.length||errCats.length||cats.length||errs.length||warns.length||recent.length)?"10px":"4px")+" 0 6px;"},"incident runs"));
+    card.appendChild(el("div",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);margin:"+((slow.length||errCats.length||cats.length||errs.length||warns.length||recent.length)?"10px":"4px")+" 0 6px;"},"живые инциденты"));
     incidents.slice(0,4).forEach((r)=>card.appendChild(el("div",{style:"display:flex;flex-direction:column;gap:3px;margin-bottom:7px;padding:8px 9px;border:1px solid "+(r.status==="run_fail"?"var(--bd-err)":"rgba(245,158,11,.35)")+";background:"+(r.status==="run_fail"?"var(--err-bg)":"var(--warn-bg)")+";border-radius:7px;"},
       el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:8px;"},
         el("span",{class:"mono",style:"font-size:9.5px;color:"+(r.status==="run_fail"?"var(--err)":"var(--warn)")+";font-weight:700;"},(r.recipe_id?("#"+r.recipe_id+" · "):"")+String(r.status||"")),
         el("span",{class:"mono",style:"font-size:9.5px;color:var(--tx-lo2);"},r.total_ms!=null?fmtMs(r.total_ms):fmtWhen(r.created_at))),
       el("div",{class:"mono",style:"font-size:10px;color:var(--tx-bd);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"},
-        (r.last_step?("step "+r.last_step):"step ?")+(r.last_status?(" · "+r.last_status):"")+(r.error_category?(" · "+r.error_category):"")),
+        (r.last_step?("шаг "+r.last_step):"шаг ?")+(r.last_status?(" · "+r.last_status):"")+(r.error_category?(" · "+r.error_category):"")),
       r.error?el("div",{class:"mono",style:"font-size:9.5px;color:var(--tx-mid);line-height:1.35;"},String(r.error).slice(0,110)):null)));
   }
   if(series.length){
-    card.appendChild(el("div",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);margin:"+((slow.length||errCats.length||cats.length||errs.length||warns.length||recent.length||incidents.length)?"10px":"4px")+" 0 6px;"},"hourly trend"));
+    card.appendChild(el("div",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);margin:"+((slow.length||errCats.length||cats.length||errs.length||warns.length||recent.length||incidents.length)?"10px":"4px")+" 0 6px;"},"тренд по часам"));
     series.slice(-6).forEach((p)=>card.appendChild(el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:10.5px;color:var(--tx-bd);margin-bottom:5px;"},
       el("span",{class:"mono",style:"min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"},String(p.bucket||"").replace("T"," ").slice(5,16)),
-      el("span",{class:"mono",style:"color:var(--tx-lo2);flex:none;"},"all "+(p.total||0)+" · ok "+(p.passed||0)+" · warn "+(p.warning||0)+" · fail "+(p.failed||0)))));
+      el("span",{class:"mono",style:"color:var(--tx-lo2);flex:none;"},"всего "+(p.total||0)+" · ок "+(p.passed||0)+" · warn "+(p.warning||0)+" · fail "+(p.failed||0)))));
   }
   if(stepSeries.length){
-    card.appendChild(el("div",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);margin:"+((slow.length||errCats.length||cats.length||errs.length||warns.length||recent.length||incidents.length||series.length)?"10px":"4px")+" 0 6px;"},"step duration trend"));
+    card.appendChild(el("div",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);margin:"+((slow.length||errCats.length||cats.length||errs.length||warns.length||recent.length||incidents.length||series.length)?"10px":"4px")+" 0 6px;"},"длительность шагов"));
     stepSeries.slice(-6).forEach((p)=>card.appendChild(el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:10.5px;color:var(--tx-bd);margin-bottom:5px;"},
-      el("span",{class:"mono",style:"min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"},String(p.bucket||"").replace("T"," ").slice(11,16)+" · "+String(p.step||"step")),
+      el("span",{class:"mono",style:"min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"},String(p.bucket||"").replace("T"," ").slice(11,16)+" · "+String(p.step||"шаг")),
       el("span",{class:"mono",style:"color:var(--tx-lo2);flex:none;"},(fmtMs(p.avg_ms)||"—")+" · n"+String(p.samples||0)))));
   }
   host.appendChild(card);
@@ -1147,20 +1147,20 @@ function renderCenterOpsSummary(host,input){
   card.appendChild(el("div",{class:"health-main"},
     el("div",{style:"min-width:0;"},
       el("div",{style:"display:flex;align-items:center;gap:8px;flex-wrap:wrap;"},
-        el("span",{class:"mono",style:"font-size:10px;color:"+tone.c+";background:"+tone.bg+";padding:4px 7px;border-radius:5px;font-weight:700;"},tone.label)),
+    el("span",{class:"mono",style:"font-size:10px;color:"+tone.c+";background:"+tone.bg+";padding:4px 7px;border-radius:5px;font-weight:700;"},tone.label)),
       el("div",{class:"health-title"},statusTitle),
       el("div",{class:"health-copy"},summary)),
     el("button",{class:"btn sm",onclick:()=>go("worker"),title:"Открыть пульс завода и живую очередь прогонов"},"Открыть пульс")));
   const detailItems=[];
   if(stability){
     const ok=!!stability.target_met;
-    detailItems.push(["10-run "+String(stability.successful_runs||0)+"/"+String(stability.window_size||10), ok?"ok":"warn"]);
+    detailItems.push(["10/10 "+String(stability.successful_runs||0)+"/"+String(stability.window_size||10), ok?"ok":"warn"]);
   } else if(latestStress&&latestStress.summary){
     const lsSummary=latestStress.summary||{};
-    detailItems.push(["stress "+String(lsSummary.completed||0)+"/"+String(lsSummary.totalRuns||0), lsSummary.failed||lsSummary.runFail||lsSummary.timeouts?"err":"ok"]);
+    detailItems.push(["стресс "+String(lsSummary.completed||0)+"/"+String(lsSummary.totalRuns||0), lsSummary.failed||lsSummary.runFail||lsSummary.timeouts?"err":"ok"]);
   }
   if(heartbeatDiag)detailItems.push(["heartbeat "+String(heartbeatDiag.issue||heartbeatDiag.title||"unknown"), heartbeatDiag.issue==="table_missing"?"warn":"muted"]);
-  if(failDiag)detailItems.push(["run fails "+String(failDiag.issue||failDiag.category||"unknown"), "warn"]);
+  if(failDiag)detailItems.push(["сбои "+String(failDiag.issue||failDiag.category||"unknown"), "warn"]);
   if(opsAlerts.length){
     opsAlerts.slice(0,3).forEach((a)=>detailItems.push([a.code||a.level||"alert", a.level==="error"?"err":"warn"]));
   }
