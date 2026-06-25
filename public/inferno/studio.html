@@ -645,9 +645,9 @@ async function screenWorker(root, force, renderToken){
       el("span",{class:"mono",style:"font-size:10px;color:"+liveTone.c+";background:"+liveTone.bg+";padding:3px 7px;border-radius:5px;font-weight:700;"},liveTone.label)),
     el("div",{style:"font-size:22px;font-weight:700;color:"+liveTone.c+";"},aliveNote),
     el("div",{style:"font-size:11.5px;color:var(--tx-lo);margin-top:6px;line-height:1.5;"},
-      "last_seen: ",el("b",{style:"color:var(--tx-hi);"},worker&&worker.last_seen?fmtWhen(worker.last_seen):"—"),
-      " · age: ",el("b",{style:"color:var(--tx-hi);"},fmtSecAgo(live.age_sec)),
-      " · источник: ",el("b",{style:"color:var(--tx-hi);"},sourceLabel),
+      "сигнал: ",el("b",{style:"color:var(--tx-hi);"},worker&&worker.last_seen?fmtWhen(worker.last_seen):"—"),
+      " · тишина: ",el("b",{style:"color:var(--tx-hi);"},fmtSecAgo(live.age_sec)),
+      " · режим: ",el("b",{style:"color:var(--tx-hi);"},sourceLabel),
       worker&&worker.note?el("span",{}, " · ",worker.note):null)));
   top.appendChild(el("div",{class:"card",style:"padding:15px;"},
     el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;"},
@@ -702,15 +702,15 @@ async function screenWorker(root, force, renderToken){
       el("div",{style:"font-size:14px;font-weight:600;"},"Последний стресс-тест"),
       el("span",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);"},latestStress.generatedAt?fmtWhen(latestStress.generatedAt):"artifact")));
     latestCard.appendChild(el("div",{style:"display:flex;flex-wrap:wrap;gap:6px;"},
-      el("span",{class:"mono",style:"font-size:10px;color:var(--tx-hi);background:var(--bg-input);border:1px solid var(--bd2);padding:3px 7px;border-radius:5px;"},"runs "+String(lsSummary.completed||0)+"/"+String(lsSummary.totalRuns||0)),
-      el("span",{class:"mono",style:"font-size:10px;color:"+(lsSummary.failed?"var(--err)":"var(--ok)")+";background:"+(lsSummary.failed?"var(--err-bg)":"var(--ok-bg)")+";padding:3px 7px;border-radius:5px;"},"fails "+String(lsSummary.failed||0)),
+      el("span",{class:"mono",style:"font-size:10px;color:var(--tx-hi);background:var(--bg-input);border:1px solid var(--bd2);padding:3px 7px;border-radius:5px;"},"прогонов "+String(lsSummary.completed||0)+"/"+String(lsSummary.totalRuns||0)),
+      el("span",{class:"mono",style:"font-size:10px;color:"+(lsSummary.failed?"var(--err)":"var(--ok)")+";background:"+(lsSummary.failed?"var(--err-bg)":"var(--ok-bg)")+";padding:3px 7px;border-radius:5px;"},"сбоев "+String(lsSummary.failed||0)),
       el("span",{class:"mono",style:"font-size:10px;color:var(--warn);background:var(--warn-bg);padding:3px 7px;border-radius:5px;"},"warn "+String(lsSummary.warnings||0)),
-      el("span",{class:"mono",style:"font-size:10px;color:var(--tx-hi);background:var(--bg-input);border:1px solid var(--bd2);padding:3px 7px;border-radius:5px;"},"avg "+String(lsSummary.avgDurationSec||0)+"s")));
+      el("span",{class:"mono",style:"font-size:10px;color:var(--tx-hi);background:var(--bg-input);border:1px solid var(--bd2);padding:3px 7px;border-radius:5px;"},"среднее "+String(lsSummary.avgDurationSec||0)+"s")));
     if(lsStability){
-      latestCard.appendChild(el("div",{style:"display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;"},
-        el("span",{class:"mono",style:"font-size:10px;color:var(--tx-hi);background:var(--bg-input);border:1px solid var(--bd2);padding:3px 7px;border-radius:5px;"},"streak "+String(lsStability.success_streak||0)),
-        el("span",{class:"mono",style:"font-size:10px;color:"+(lsStability.target_met?"var(--ok)":"var(--warn)")+";background:"+(lsStability.target_met?"var(--ok-bg)":"var(--warn-bg)")+";padding:3px 7px;border-radius:5px;"},
-          lsStability.target_met?"target met":"target open")));
+      latestCard.appendChild(el("div",{style:"font-size:11px;color:var(--tx-bd);line-height:1.45;margin-top:8px;"},
+        lsStability.target_met
+          ? "10/10 закрыты, стресс-цель удержана."
+          : "10/10 ещё не закрыты, стресс-цель остаётся открытой."));
       if(lsStability.failure_diagnostics&&lsStability.failure_diagnostics.issue){
         latestCard.appendChild(el("div",{style:"font-size:11px;color:var(--tx-lo);line-height:1.45;margin-top:8px;"},
           String(lsStability.failure_diagnostics.issue)));
@@ -842,7 +842,6 @@ async function screenCenter(root, force, renderToken){
   const latestStress=S.workerState&&S.workerState.latest_stress||null;
   const stressHistory=S.workerState&&S.workerState.stress_history||null;
   const opsTone=opsStatusTone(opsStatus&&opsStatus.level);
-  const workerShort=workerSource==="queue_fallback"?"fallback":workerLive==="alive"?"живой":workerLive==="stale"?"stale":workerLive==="dead"?"dead":"?";
   const systemTitle=[
     opsStatus&&opsStatus.summary?opsStatus.summary:"",
     workerDbError?workerDbError:"",
