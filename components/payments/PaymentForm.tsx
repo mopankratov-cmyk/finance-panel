@@ -7,6 +7,7 @@ import type { Account } from "@/lib/types";
 interface PaymentFormProps {
   payment?: Payment;
   accounts: Account[];
+  counterparties?: string[];
   onSubmit: (data: Omit<Payment, "id">) => void;
   onCancel: () => void;
 }
@@ -14,6 +15,7 @@ interface PaymentFormProps {
 export function PaymentForm({
   payment,
   accounts,
+  counterparties = [],
   onSubmit,
   onCancel,
 }: PaymentFormProps) {
@@ -139,7 +141,7 @@ export function PaymentForm({
           </label>
           <select
             name="status"
-            defaultValue={payment?.status ?? "planned"}
+            defaultValue={payment?.status ?? "done"}
             className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
           >
             <option value="planned">Запланирован</option>
@@ -155,10 +157,19 @@ export function PaymentForm({
         </label>
         <input
           name="counterparty"
+          list="counterparty-options"
           defaultValue={payment?.counterparty}
           className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
-          placeholder="Название контрагента"
+          placeholder="Выберите из списка или впишите нового"
         />
+        <datalist id="counterparty-options">
+          {counterparties.map((c) => (
+            <option key={c} value={c} />
+          ))}
+        </datalist>
+        <p className="mt-1 text-xs text-slate-400">
+          Начните вводить — подскажем из ранее добавленных. Нового контрагента просто впишите.
+        </p>
       </div>
 
       <div className="flex justify-end gap-3 pt-2">

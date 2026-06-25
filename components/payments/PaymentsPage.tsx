@@ -1,45 +1,42 @@
 "use client";
 
-import { Check, Pencil, Plus, Trash2 } from "lucide-react";
+import { Pencil, Plus, Trash2, Upload } from "lucide-react";
 import { useMemo, useState } from "react";
+import { DdsReport } from "./DdsReport";
+import { cleanDemoData } from "./ddsImport";
+import { ImportDdsModal } from "./ImportDdsModal";
 import { PaymentForm } from "./PaymentForm";
 import { useFinance } from "@/components/providers/FinanceProvider";
 import { Card, CardContent } from "@/components/ui/Card";
 import { Modal } from "@/components/ui/Modal";
-import { PAYMENT_CATEGORIES, PAYMENT_STATUS_LABELS } from "@/lib/constants";
+import { PAYMENT_CATEGORIES } from "@/lib/constants";
 import { formatDate, formatMoney, generateId } from "@/lib/format";
-import type { Payment, PaymentStatus } from "@/lib/types";
+import type { Payment } from "@/lib/types";
 
 export function PaymentsPage() {
   const { state, dispatch } = useFinance();
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Payment | null>(null);
+  const [mode, setMode] = useState<"ledger" | "dds">("ledger");
+  const [importOpen, setImportOpen] = useState(false);
 
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [filterCategory, setFilterCategory] = useState("");
-  const [filterStatus, setFilterStatus] = useState("");
   const [filterAccount, setFilterAccount] = useState("");
 
   const filtered = useMemo(() => {
     return state.payments
       .filter((p) => {
+        if (p.status !== "done") return false; // реестр — только факт; план — в платёжном календаре
         if (dateFrom && p.date < dateFrom) return false;
         if (dateTo && p.date > dateTo) return false;
         if (filterCategory && p.category !== filterCategory) return false;
-        if (filterStatus && p.status !== filterStatus) return false;
         if (filterAccount && p.accountId !== filterAccount) return false;
         return true;
       })
       .sort((a, b) => b.date.localeCompare(a.date));
-  }, [
-    state.payments,
-    dateFrom,
-    dateTo,
-    filterCategory,
-    filterStatus,
-    filterAccount,
-  ]);
+  }, [state.payments, dateFrom, dateTo, filterCategory, filterAccount]);
 
   const getAccountName = (id: string) =>
     state.accounts.find((a) => a.id === id)?.name ?? "—";
@@ -73,24 +70,31 @@ export function PaymentsPage() {
     }
   };
 
-  const handleMarkDone = (id: string) => {
-    dispatch({ type: "MARK_PAYMENT_DONE", payload: id });
+  const handleCleanDemo = async () => {
+    if (
+      !confirm(
+        "Удалить стартовые демо-данные (счета «WB Счёт 1/2», «Ozon», «Банковский счёт», «Наличные» и их платежи)?\n\nЗагруженное из файла не тронется. Действие необратимо.",
+      )
+    )
+      return;
+    try {
+      const r = await cleanDemoData();
+      alert(`Удалено счетов: ${r.accountsDeleted}, платежей: ${r.paymentsDeleted}. Страница обновится.`);
+      window.location.reload();
+    } catch (e) {
+      alert(`Ошибка: ${e instanceof Error ? e.message : "не удалось удалить"}`);
+    }
   };
 
-  const statusBadge = (status: PaymentStatus) => {
-    const colors = {
-      planned: "bg-amber-100 text-amber-700",
-      done: "bg-emerald-100 text-emerald-700",
-      cancelled: "bg-slate-100 text-slate-500",
-    };
-    return (
-      <span
-        className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${colors[status]}`}
-      >
-        {PAYMENT_STATUS_LABELS[status]}
-      </span>
-    );
-  };
+  // уникальные контрагенты — для подсказок в форме
+  const counterparties = useMemo(
+    () =>
+      Array.from(new Set(state.payments.map((p) => p.counterparty).filter(Boolean))).sort((a, b) =>
+        a.localeCompare(b, "ru"),
+      ),
+    [state.payments],
+  );
+
 
   return (
     <div className="space-y-6">
@@ -98,21 +102,57 @@ export function PaymentsPage() {
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Платежи</h1>
           <p className="text-sm text-slate-400 mt-1">
-            Реестр платежей и поступлений
+            {mode === "ledger" ? "Реестр платежей и поступлений" : "Свод движения денежных средств"}
           </p>
         </div>
-        <button
-          onClick={openAdd}
-          className="inline-flex items-center gap-2 rounded-lg bg-violet-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-violet-700 transition-colors"
-        >
-          <Plus className="h-4 w-4" />
-          Новый платёж
-        </button>
+        <div className="flex items-center gap-2">
+          <div className="flex gap-0.5 rounded-lg bg-slate-100 p-0.5">
+            {(["ledger", "dds"] as const).map((m) => (
+              <button
+                key={m}
+                onClick={() => setMode(m)}
+                className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${
+                  mode === m ? "bg-white text-violet-700 shadow" : "text-slate-500"
+                }`}
+              >
+                {m === "ledger" ? "Реестр" : "Свод ДДС"}
+              </button>
+            ))}
+          </div>
+          <button
+            onClick={() => setImportOpen(true)}
+            className="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-3 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors"
+          >
+            <Upload className="h-4 w-4" />
+            Импорт ДДС
+          </button>
+          <button
+            onClick={handleCleanDemo}
+            title="Удалить стартовые демо-данные"
+            className="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-3 py-2.5 text-sm font-medium text-slate-500 hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-colors"
+          >
+            <Trash2 className="h-4 w-4" />
+            Удалить демо
+          </button>
+          {mode === "ledger" && (
+            <button
+              onClick={openAdd}
+              className="inline-flex items-center gap-2 rounded-lg bg-violet-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-violet-700 transition-colors"
+            >
+              <Plus className="h-4 w-4" />
+              Новый платёж
+            </button>
+          )}
+        </div>
       </div>
 
+      {mode === "dds" && <DdsReport payments={state.payments} />}
+
+      {mode === "ledger" && (
+        <>
       <Card>
         <CardContent className="pt-5">
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <div>
               <label className="block text-xs text-slate-500 mb-1">С даты</label>
               <input
@@ -133,7 +173,7 @@ export function PaymentsPage() {
             </div>
             <div>
               <label className="block text-xs text-slate-500 mb-1">
-                Категория
+                Статья
               </label>
               <select
                 value={filterCategory}
@@ -149,20 +189,7 @@ export function PaymentsPage() {
               </select>
             </div>
             <div>
-              <label className="block text-xs text-slate-500 mb-1">Статус</label>
-              <select
-                value={filterStatus}
-                onChange={(e) => setFilterStatus(e.target.value)}
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900"
-              >
-                <option value="">Все</option>
-                <option value="planned">Запланирован</option>
-                <option value="done">Выполнен</option>
-                <option value="cancelled">Отменён</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs text-slate-500 mb-1">Счёт</label>
+              <label className="block text-xs text-slate-500 mb-1">Кошелёк</label>
               <select
                 value={filterAccount}
                 onChange={(e) => setFilterAccount(e.target.value)}
@@ -186,18 +213,18 @@ export function PaymentsPage() {
             <thead>
               <tr className="border-b border-slate-100 text-left text-xs text-slate-500">
                 <th className="px-5 py-3 font-medium">Дата</th>
-                <th className="px-5 py-3 font-medium">Название</th>
                 <th className="px-5 py-3 font-medium text-right">Сумма</th>
-                <th className="px-5 py-3 font-medium hidden md:table-cell">
-                  Категория
+                <th className="px-5 py-3 font-medium">Кошелек</th>
+                <th className="px-5 py-3 font-medium hidden lg:table-cell">
+                  Направление бизнеса
                 </th>
                 <th className="px-5 py-3 font-medium hidden lg:table-cell">
-                  Счёт
-                </th>
-                <th className="px-5 py-3 font-medium">Статус</th>
-                <th className="px-5 py-3 font-medium hidden sm:table-cell">
                   Контрагент
                 </th>
+                <th className="px-5 py-3 font-medium hidden md:table-cell">
+                  Назначение платежа
+                </th>
+                <th className="px-5 py-3 font-medium">Название</th>
                 <th className="px-5 py-3 font-medium text-right">Действия</th>
               </tr>
             </thead>
@@ -208,7 +235,7 @@ export function PaymentsPage() {
                     colSpan={8}
                     className="px-5 py-8 text-center text-slate-400"
                   >
-                    Нет платежей по выбранным фильтрам
+                    Нет фактических платежей по выбранным фильтрам
                   </td>
                 </tr>
               ) : (
@@ -217,9 +244,6 @@ export function PaymentsPage() {
                     <td className="px-5 py-3 text-slate-600 whitespace-nowrap">
                       {formatDate(p.date)}
                     </td>
-                    <td className="px-5 py-3 font-medium text-slate-900">
-                      {p.name}
-                    </td>
                     <td
                       className={`px-5 py-3 text-right font-semibold whitespace-nowrap ${
                         p.amount >= 0 ? "text-emerald-600" : "text-red-600"
@@ -227,27 +251,23 @@ export function PaymentsPage() {
                     >
                       {formatMoney(p.amount)}
                     </td>
-                    <td className="px-5 py-3 text-slate-600 hidden md:table-cell">
-                      {p.category}
-                    </td>
-                    <td className="px-5 py-3 text-slate-600 hidden lg:table-cell">
+                    <td className="px-5 py-3 text-slate-600">
                       {getAccountName(p.accountId)}
                     </td>
-                    <td className="px-5 py-3">{statusBadge(p.status)}</td>
-                    <td className="px-5 py-3 text-slate-600 hidden sm:table-cell">
+                    <td className="px-5 py-3 hidden lg:table-cell">
+                      <span className="text-slate-300">—</span>
+                    </td>
+                    <td className="px-5 py-3 text-slate-600 hidden lg:table-cell">
                       {p.counterparty || "—"}
+                    </td>
+                    <td className="px-5 py-3 text-slate-500 hidden md:table-cell max-w-xs truncate">
+                      {p.name}
+                    </td>
+                    <td className="px-5 py-3 font-medium text-slate-900">
+                      {p.category}
                     </td>
                     <td className="px-5 py-3">
                       <div className="flex items-center justify-end gap-1">
-                        {p.status === "planned" && (
-                          <button
-                            onClick={() => handleMarkDone(p.id)}
-                            title="Отметить выполненным"
-                            className="rounded-lg p-1.5 text-violet-600 hover:bg-violet-50"
-                          >
-                            <Check className="h-4 w-4" />
-                          </button>
-                        )}
                         <button
                           onClick={() => openEdit(p)}
                           className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
@@ -269,6 +289,8 @@ export function PaymentsPage() {
           </table>
         </div>
       </Card>
+        </>
+      )}
 
       <Modal
         open={modalOpen}
@@ -281,6 +303,7 @@ export function PaymentsPage() {
         <PaymentForm
           payment={editing ?? undefined}
           accounts={state.accounts}
+          counterparties={counterparties}
           onSubmit={handleSubmit}
           onCancel={() => {
             setModalOpen(false);
@@ -288,6 +311,13 @@ export function PaymentsPage() {
           }}
         />
       </Modal>
+
+      <ImportDdsModal
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        existingAccounts={state.accounts}
+        existingPayments={state.payments}
+      />
     </div>
   );
 }
