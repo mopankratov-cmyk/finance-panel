@@ -3,22 +3,28 @@
 **Дата:** 2026-06-21 · **Источник:** «совет советов» (11 агентов: 3 генератора вариантов + синтез → 5 советов → 2 независимых мета-синтеза). Два мета сошлись.
 **Связано:** [factory-v3-tz.md](factory-v3-tz.md), [factory-viral-plan.md](factory-viral-plan.md), [factory-shotstack-tz.md](factory-shotstack-tz.md). Память: `factory-v3-node-studio`.
 
+> Историческая заметка на 2026-06-26: документ ниже полезен как roadmap и reasoning trail, но часть исходных дыр уже закрыта в текущем runtime.
+>
+> - V1 больше не “голый toast”: `public/inferno/studio.html` уже шлёт `POST /api/factory/winners` и `POST /api/factory/reject` из экрана сборки.
+> - V5 больше не “мёртвая таблица”: `public/inferno/studio.html` уже шлёт `POST /api/factory/post-metrics`, а route умеет fail-open forward в `winners`.
+> - V20 больше не “таблицы нет совсем”: `generation_history` уже пишется из `gen-save`, `node-preview`, `graph-run` clip persistence и `reject`; read-path и learn-screen тоже уже выдают warning/lineage-контекст. Открытый хвост V20 сейчас уже не в самом наличии истории, а в том, что standalone/local scripts по-прежнему обходят БД.
+
 ## Диагноз (единодушный, проверен по коду)
 
 Завод **технически почти замкнут** (self-chaining-машина graphRun работает), но **стратегически разомкнут в двух точках**:
 
-1. **Человеческое одобрение оборвано** — кнопки «✓ Беру / ✕ Не то» на экране сборки это голый `toast()` (`public/inferno/studio.html:798`), хотя `/api/factory/winners` **полностью построен** (его звал только patrick-legacy).
-2. **Рыночный сигнал не фиксируется** — таблица `post_metrics` мёртвая (0 ссылок в `app`/`lib`). Петля учится только на самооценке ОТК-робота → «робот хвалит робота».
+1. **Человеческое одобрение было оборвано** на момент исходного аудита, но в текущем repo-truth уже замкнуто через `sendWinner()` / `sendReject()` в `public/inferno/studio.html`.
+2. **Рыночный сигнал был не зафиксирован** на момент исходного аудита, но сейчас в студии и библиотеке уже есть ручной `post-metrics` вход. Открытый хвост здесь не “таблица мёртвая”, а “реальных метрик всё ещё мало и ввод пока в основном ручной”.
 
 Плюс деньги текут в 3 местах: двойная оплата fal (превью платит → сборка платит снова), банк-несмотря-на-ОТК (`graphRun.ts:310-312`), слепой старт без сметы/гарда баланса.
-Плюс **нет памяти итераций** (см. V20): тесты идут standalone мимо БД, дедуп/кэш стирают историю.
+Плюс **память итераций уже собрана частично** (см. V20), но standalone/local тестовые прогоны всё ещё могут уходить мимо БД.
 
 ## Вердикт по вариантам (now / next / later / reject)
 
 ### 🔥 СЕЙЧАС — «вернуть сигнал + закрыть течи» (готовый бэкенд, S/M, near-zero риск)
 | ID | Что | Усилие | Точка в коде |
 |----|-----|--------|--------------|
-| **V1** | Замкнуть «Беру/Не то» → `/winners` + причины реджекта в `cf_signals` (+понижать provenance ноды-виновника) | S | `studio.html:798`, `/api/factory/winners` готов |
+| **V1** | Замкнуть «Беру/Не то» → `/winners` + причины реджекта в `cf_signals` (+понижать provenance ноды-виновника) | S | Статус на 2026-06-26: **done in V3 studio** (`sendWinner()` / `sendReject()`) |
 | **V10** | Превью-url → `asset_url` (привязать к `nodeHash`); убрать двойную оплату fal | S | `nodeEngine.ts:76` free-path, `/node-save` |
 | **V8** | Reality-first дефолты в `decompose` (problem/solution/proof → disk_real хребет; seedance/creatify только hook-ревил/нет съёмки) | S | `decompose/route.ts:80-81` |
 | **V2** | Предзаполнить ноды при переносе из `agent_suggestion` как **черновик-скелет** (не финальный текст → риск клон-слопа) | S | `recipes/route.ts:67` |
@@ -27,12 +33,12 @@
 ### ➡️ СЛЕДУЮЩИМ
 | ID | Что | Усилие |
 |----|-----|--------|
-| **V5** | Контур постинг→метрики: статус `posted` + ОДНО поле на карточке Библиотеки → `/post-metrics` → `/winners`. **Тащить вплотную к NOW** (иначе V3/V9 учатся на роботе). Авто-вариант: Virlo-tracking просмотров (снимает ручной ввод) | M |
+| **V5** | Контур постинг→метрики: статус `posted` + ОДНО поле на карточке Библиотеки → `/post-metrics` → `/winners`. **Частично закрыто**: ручной ввод в библиотеке уже есть; открытый хвост — автоподтягивание платформенных метрик и больше реальных данных в learning loop. | M |
 | **V3** | ОТК-петля regen-on-fail в graph-run (до score≥7). `otk→submit` ТОЛЬКО провальной ноды, **обязан декрементить тот же `MAX_RENDERS=3`** | M |
 | **V4** | `/improve-prompt` перед регенерацией (исторически логика жила в `jobs/tick`; теперь должна сидеть в `graph-run`) — вердикт критика → действие. Связка с V3 | M |
 | **V7** | Читать сигнал обратно в `decompose`/критика. **Не с нуля — порт `winnersHint`/`rejHint` из `/scripts` + дочитать `cf_signals`-агрегаты** | M |
 | **V9** | Хук-турнир на hook-ноде: `/variations` → `/node-preview`×N → `/hook-judge` → выбор человеком. Брать варианты из реального Virlo-корпуса | M |
-| **V20** | **История генераций / память итераций** — см. блок ниже. Субстрат под петлю обучения (#6 плана) | M |
+| **V20** | **История генераций / память итераций** — базовый субстрат уже в коде; следующий шаг теперь не “создать историю”, а дотащить lineage до standalone/local render paths и richer comparison UX. | M |
 | **V18-1** | Спрятать ссылки на legacy из навигации (файлы не трогать) | S |
 
 ### 🕓 ПОЗЖЕ
@@ -50,15 +56,23 @@
 
 ## V20 — История генераций / память итераций (детально)
 
-**Проблема (проверено по коду):** тестовые видосы не попадают в базу с памятью «что менялось и исправлялось», потому что:
-- **Standalone мимо БД:** Remotion ReelV2–V5 → рендер локально в `~/Desktop`/`out/` (0 ссылок на Supabase); `scripts/creatify-*.mjs` → локальный `out/`. Вся ручная итерационная работа проходит мимо базы.
-- **Дедуп убивает историю:** `gen-save` дедупит по `source_url` (`route.ts:32-33`, возвращает `already:true`); `node-preview` `upsert onConflict:"hash"` (`route.ts:52`) — кэш-перезапись, не журнал.
-- **Нет lineage-таблицы** (миграций version/iteration/history нет).
-- **`cf_signals` write-only** — пишут 3 места, читает только `balances.ts` как счётчик; хранит события, не артефакт+дифф.
+**Статус на 2026-06-26:** базовая память итераций уже существует и работает в основном factory path.
 
-**Решение (M):** лёгкая таблица `generation_history` (`parent_id` — от какой версии; `recipe_id`/`node_id`; `params`-снапшот; `engine`; `otk_score`+`axes`; `video_url`; `source` = studio|standalone|test; `note`; `created_at`). Врезка в `gen-save`/`node-preview`/`graph-run` — писать **каждую попытку** (вкл. тестовые/провальные), без дедупа итераций. Standalone (Remotion/Creatify scripts) → `media-store` → та же таблица. Кнопка «история» на карточке рецепта/генерации.
+Что уже закрыто:
+- `generation_history` пишется из `gen-save` на success/dedupe/race/failure/carousel путях;
+- `node-preview` пишет cache-hit, instant done и async done;
+- `graph-run` пишет lineage для durable clip success/dedupe/failure;
+- `reject` оставляет history row с причиной;
+- `learning` и `/api/factory/generation-history` уже умеют fail-open warning contract, а learn-screen показывает lineage bits (`recipe_id`, `attempt`, `variant_idx`, `reason`, `article`).
 
-**Эффект:** «ролик → 3 итерации → на 2-й починили руки, ОТК 4→6 → финал». Это **субстрат под #6 петли обучения** (без него учить нечего) и конец «Desktop = кладбище версий».
+Что всё ещё открыто:
+- **Standalone мимо БД:** Remotion ReelV2–V5 и локальные `scripts/creatify-*.mjs` по-прежнему могут складывать артефакты в `~/Desktop`/`out/` без записи в БД.
+- **Richer lineage UX:** есть лента попыток, но ещё нет полноценного compare/fork view “что изменили между try 1 → try 2”.
+- **Source unification:** часть локальных/ручных render path ещё не проходит через единый `media-store` / history sink.
+
+**Следующий шаг (M):** довести standalone/локальные render path до общего history sink (`media-store` / `generation_history`) и затем уже решать compare/fork UX поверх существующего журнала.
+
+**Эффект:** основа для “ролик → 3 итерации → на 2-й починили руки, ОТК 4→6 → финал” уже есть. Оставшийся разрыв — не в таблице как таковой, а в консистентности записи всех ручных/standalone попыток.
 
 ## Ключевые конфликты и разрешения
 

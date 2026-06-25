@@ -2159,3 +2159,4 @@
   - старые падения больше не давят на текущее triage-решение как будто они произошли “прямо сейчас”
 - 2026-06-26 00:48 MSK - normalized factory Creatify error contracts around canonical `error` field across route handlers, legacy operator surface, and the internal Creatify adapter; added a guard test so old dual-field payloads do not quietly creep back in.
 - 2026-06-26 01:00 MSK - enriched learn-screen generation history with lineage context (`recipe_id`, `attempt`, `variant_idx`, `reason`, `article`) and surfaced `learning` read-path warnings in the UI, so degraded read models no longer flatten into a silent empty feed and recent attempts explain what actually happened.
+- 2026-06-26 01:04 MSK - synced `docs/factory-v3-roadmap.md` with current repo-truth: V1 is already wired in V3 studio, V5 manual `post-metrics` loop exists, and V20 is no longer “history absent” but “standalone/local paths still bypass shared lineage sink”.
