@@ -588,7 +588,7 @@ async function screenWorker(root, force, renderToken){
   const isLiveRender=()=>S.screen==="worker"&&S.renderToken===token&&root&&root.isConnected;
   if(S.workerTimer){ clearTimeout(S.workerTimer); S.workerTimer=null; }
   root.innerHTML="";
-  header("Railway worker","статус · задача · очередь", el("div",{class:"hdr-r"},
+  header("Railway worker","heartbeat · прогоны · наблюдаемость", el("div",{class:"hdr-r"},
     el("button",{class:"btn",onclick:()=>screenWorker(root)},"↻ Обновить")));
   const wrap=el("div",{class:"scroll",style:"padding:18px;"}); root.appendChild(wrap);
   wrap.appendChild(loadingCard("смотрю heartbeat и живые прогоны…"));
@@ -1166,7 +1166,7 @@ function renderCenterOpsSummary(host,input){
         workerRow&&workerRow.current_task_id?el("span",{class:"mono",style:"font-size:10px;color:var(--acc-lt);background:var(--vio-bg);padding:4px 7px;border-radius:5px;font-weight:700;"},"задача "+workerRow.current_task_id):null),
       el("div",{class:"health-title"},statusTitle),
       el("div",{class:"health-copy"},summary)),
-    el("button",{class:"btn sm",onclick:()=>go("worker"),title:"Открыть Railway worker и полную системную очередь"},"Открыть Worker")));
+    el("button",{class:"btn sm",onclick:()=>go("worker"),title:"Открыть Railway worker и живую очередь прогонов"},"Открыть Worker")));
   const detailItems=[];
   if(latestStress&&latestStress.summary){
     const lsSummary=latestStress.summary||{};
@@ -2471,7 +2471,7 @@ function coachNextStep(){
     case "balances":
       return {cap:"Балансы",t:"Следи за остатками по сервисам. Сервис на нуле — генерация по нему встанет.",why:"Seedance/Kling/Creatify/Shotstack/FAL платные. Пустой баланс = упавшая нода в сборке."};
     case "worker":
-      return {cap:"Railway worker",t:"Смотри на heartbeat, current task и очередь. Если станет stale/dead — воркер перестал слать пульс и нужно проверять sender, blocker или перезапуск.",why:"Это экран живого контроля: видно, что воркер делает сейчас, и видно, когда он перестал отвечать. Следующий шаг обычно либо исправить блокер, либо разбираться с heartbeat path, а не запускать скрытую самопочинку.",chips:["Как понять stale vs dead?","Где смотреть очередь задач?"]};
+      return {cap:"Railway worker",t:"Смотри на heartbeat и живые прогоны завода. Если станет stale/dead — воркер перестал слать пульс и нужно проверять sender, blocker или перезапуск.",why:"Это экран живого контроля: видно, идут ли реальные прогоны, где они застряли и когда воркер перестал отвечать. Следующий шаг обычно либо разобрать зависший run, либо чинить heartbeat path.",chips:["Как понять stale vs dead?","Где смотреть живые прогоны?"]};
     case "learn":
       return {cap:"Обучение",t:"Смотри, что завод выучил: победившие хуки, тренд ОТК, пресеты-победители за период.",why:"Это память завода. Переноси удачные хуки и пресеты в новые ролики — повторяешь то, что уже заходило.",chips:["Как применить выученное?","Что показывает тренд ОТК?"]};
     case "ds":
