@@ -560,6 +560,17 @@ function queueTaskTone(status){
     done:{c:"var(--ok)", bg:"var(--ok-bg)", label:"done"},
   }[status] || {c:"var(--tx-lo2)", bg:"var(--bg-input)", label:status||"?"};
 }
+function isWorkerInfraAction(action){
+  return new Set([
+    "open_worker_screen",
+    "inspect_worker_staleness",
+    "start_worker_heartbeat_sender",
+    "enable_optional_worker_heartbeat",
+    "repair_worker_state_permissions",
+    "repair_worker_heartbeat",
+    "inspect_db_connectivity",
+  ]).has(String(action||""));
+}
 
 async function screenWorker(root, force, renderToken){
   const token=renderToken||++S.renderToken;
@@ -580,7 +591,8 @@ async function screenWorker(root, force, renderToken){
   const q=(worker&&Array.isArray(worker.queue)&&worker.queue.length?worker.queue:(d.queue||[]))||[];
   const alerts=Array.isArray(d.alerts)?d.alerts:[];
   const suggested=Array.isArray(d.suggested_actions)?d.suggested_actions:[];
-  const visibleSuggested=S.compact?suggested.slice(0,2):suggested;
+  const factorySuggested=suggested.filter((a)=>!isWorkerInfraAction(a&&a.action));
+  const visibleSuggested=S.compact?factorySuggested.slice(0,2):factorySuggested;
   const heartbeatDiag=d.heartbeat_diagnostics||null;
   const opsStatus=d.ops_status||null;
   const opsTone=opsStatusTone(opsStatus&&opsStatus.level);
@@ -601,6 +613,14 @@ async function screenWorker(root, force, renderToken){
     if(aw!==bw) return aw-bw;
     return String(a.title||"").localeCompare(String(b.title||""));
   });
+  const liveCurrentTask=ordered.find((t)=>String(t.id||"")===currentId)||null;
+  const activeFactoryTask=(workerSource==="heartbeat_db"&&worker&&worker.current_task_id&&live.state!=="dead")
+    ? { id:String(worker.current_task_id), title:worker.current_task_title||"—", progress:worker.progress||"", blocker:worker.blocker||"" }
+    : (liveCurrentTask&&liveCurrentTask.status==="doing")
+      ? { id:String(liveCurrentTask.id||""), title:liveCurrentTask.title||worker.current_task_title||"—", progress:worker&&worker.progress||"", blocker:liveCurrentTask.blockers&&liveCurrentTask.blockers[0]||worker&&worker.blocker||"" }
+      : null;
+  const nextFactoryTask=!activeFactoryTask ? ordered.find((t)=>t.status==="todo")||null : null;
+  const parkedFactoryTask=!activeFactoryTask&&!nextFactoryTask ? ordered.find((t)=>t.status==="blocked")||null : null;
   renderFactoryPulse();
 
   const top=el("div",{style:"display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin-bottom:14px;"});
@@ -623,23 +643,25 @@ async function screenWorker(root, force, renderToken){
       " · источник: ",el("b",{style:"color:var(--tx-hi);"},sourceLabel),
       worker&&worker.note?el("span",{}, " · ",worker.note):null)));
   top.appendChild(el("div",{class:"card",style:"padding:15px;"},
-    el("div",{style:"font-size:14px;font-weight:600;margin-bottom:10px;"},"Текущая задача"),
-    worker&&worker.current_task_id?el("div",{style:"display:flex;flex-direction:column;gap:6px;"},
-      el("div",{style:"font-size:19px;font-weight:700;"},worker.current_task_id),
-      el("div",{style:"font-size:13px;color:var(--tx-bd);line-height:1.45;"},worker.current_task_title||"—"),
-      el("div",{style:"font-size:11.5px;color:var(--tx-lo);line-height:1.45;"},
-        worker.branch?el("span",{},el("b",{style:"color:var(--tx-hi);"},"branch "),worker.branch," · "):null,
-        worker.pr?el("span",{},el("b",{style:"color:var(--tx-hi);"},"PR "),worker.pr," · "):null,
-        worker.progress?el("span",{},el("b",{style:"color:var(--tx-hi);"},"progress "),worker.progress):"")):
-      el("div",{class:"muted",style:"font-size:12px;line-height:1.5;"},"worker ещё не прислал текущую задачу"),
-    worker&&worker.blocker&&!S.compact?el("div",{style:"margin-top:10px;font-size:11.5px;color:var(--warn);background:var(--warn-bg);border:1px solid rgba(214,169,78,.55);padding:8px 10px;border-radius:8px;"},"Блокер: "+worker.blocker):null));
+    el("div",{style:"font-size:14px;font-weight:600;margin-bottom:10px;"},activeFactoryTask?"Текущая factory-задача":nextFactoryTask?"Следующая factory-задача":"Factory-задача"),
+    activeFactoryTask?el("div",{style:"display:flex;flex-direction:column;gap:6px;"},
+      el("div",{style:"font-size:19px;font-weight:700;"},activeFactoryTask.id),
+      el("div",{style:"font-size:13px;color:var(--tx-bd);line-height:1.45;"},activeFactoryTask.title||"—"),
+      activeFactoryTask.progress?el("div",{style:"font-size:11.5px;color:var(--tx-lo);line-height:1.45;"},el("b",{style:"color:var(--tx-hi);"},"progress "),activeFactoryTask.progress):null):
+    nextFactoryTask?el("div",{style:"display:flex;flex-direction:column;gap:6px;"},
+      el("div",{style:"font-size:19px;font-weight:700;"},String(nextFactoryTask.id||"task")),
+      el("div",{style:"font-size:13px;color:var(--tx-bd);line-height:1.45;"},nextFactoryTask.title||"—"),
+      el("div",{style:"font-size:11.5px;color:var(--tx-lo);line-height:1.45;"},"активного исполнения сейчас нет, это следующая задача в очереди")):
+      el("div",{class:"muted",style:"font-size:12px;line-height:1.6;"},
+        parkedFactoryTask?"активной factory-задачи сейчас нет. В очереди остались только припаркованные blocked-задачи.":"сейчас нет активной factory-задачи и нет очереди на запуск"),
+    activeFactoryTask&&activeFactoryTask.blocker&&!S.compact?el("div",{style:"margin-top:10px;font-size:11.5px;color:var(--warn);background:var(--warn-bg);border:1px solid rgba(214,169,78,.55);padding:8px 10px;border-radius:8px;"},"Блокер: "+activeFactoryTask.blocker):null));
   wrap.appendChild(top);
 
   if(visibleSuggested.length){
     const nextCard=el("div",{class:"card",style:"padding:14px;margin-bottom:14px;"});
     nextCard.appendChild(el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;"},
-      el("div",{style:"font-size:14px;font-weight:600;"},"Что сделать дальше"),
-      el("span",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);"},String(suggested.length)+" items")));
+      el("div",{style:"font-size:14px;font-weight:600;"},"Что чинить в заводе"),
+      el("span",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);"},String(factorySuggested.length)+" items")));
     visibleSuggested.forEach((a)=>nextCard.appendChild(el("div",{style:"display:flex;align-items:flex-start;justify-content:space-between;gap:10px;font-size:11.5px;color:var(--tx-bd);padding:7px 0;border-top:1px solid var(--bd);"},
       el("div",{style:"min-width:0;display:flex;flex-direction:column;gap:3px;"},
         el("div",{style:"display:flex;align-items:center;gap:8px;flex-wrap:wrap;"},
