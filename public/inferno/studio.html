@@ -402,20 +402,6 @@ function renderFactoryPulse(){
   const pulseUpdated=(o&&o.updated_at)||S.observerUpdatedAt||null;
   const up=pulseUpdated?new Date(pulseUpdated):null;
   const updated=up?up.toLocaleTimeString("ru-RU",{hour:"2-digit",minute:"2-digit"}):"—";
-  const gens=o&&o.gens?o.gens:null;
-  const otk=o&&o.otk?o.otk:null;
-  const signals=o&&o.signals?o.signals:null;
-  const signalBits=signals?[
-    signals.resurrects_24h!=null?`воскр ${signals.resurrects_24h}`:null,
-    signals.rejects_24h!=null?`отк ${signals.rejects_24h}`:null,
-  ].filter(Boolean):[];
-  const recentSignals=(o&&o.signals&&Array.isArray(o.signals.recent))?o.signals.recent.slice(0,3):[];
-  const recentBits=recentSignals.map((s)=>{
-    const ev=String(s.event||"");
-    const chip=String(s.chip||"");
-    const label=ev==="graph_resurrect"?"самопочинка":ev==="rejected"?"отбраковано":ev==="approved"?"в банк":ev;
-    return chip ? `${label}: ${chip}` : label;
-  });
   box.innerHTML="";
   box.appendChild(el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:11px;color:var(--tx-lo);"},
     el("span",{class:"mono"},"Ночной пульс"),
@@ -424,29 +410,6 @@ function renderFactoryPulse(){
     el("span",{class:"dot",style:"width:8px;height:8px;background:"+(tone.tone==="ok"?"var(--ok)":tone.tone==="warn"?"var(--warn)":"var(--err)")+";box-shadow:0 0 0 4px rgba(255,255,255,.03);"}),
     el("span",{style:"font-size:12px;font-weight:600;color:var(--tx-hi);"},tone.label)));
   box.appendChild(el("div",{style:"font-size:10.5px;color:var(--tx-lo2);line-height:1.35;margin-top:3px;"},tone.hint));
-  if(S.compact){
-    if(S.observerError){
-      box.appendChild(el("div",{style:"font-size:10.5px;color:var(--warn);line-height:1.35;margin-top:6px;"},S.observerError));
-    }
-    return;
-  }
-  if(gens||otk||signalBits.length){
-    const bits=[];
-    if(gens) bits.push(`24h ${gens.last_24h??0}`);
-    if(otk) bits.push(`ОТК ${otk.avg_24h??"?"}${otk.pass_rate!=null?` · pass ${otk.pass_rate}%`:""}`);
-    if(signalBits.length) bits.push(signalBits.join(" · "));
-    box.appendChild(el("div",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);line-height:1.45;margin-top:6px;white-space:pre-wrap;"},bits.join(" · ")));
-  }
-  if(recentBits.length){
-    box.appendChild(el("div",{style:"display:flex;flex-wrap:wrap;gap:5px;margin-top:7px;"},
-      ...recentBits.map((t)=>el("span",{style:"font-size:9.5px;font-family:var(--mono);color:var(--tx-mid);background:var(--bg-chip);border:1px solid var(--bd);padding:2px 6px;border-radius:999px;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"},t))));
-  }
-  box.appendChild(el("div",{style:"display:flex;flex-wrap:wrap;gap:8px;margin-top:9px;"},
-    el("span",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);background:var(--bg-chip);border:1px solid var(--bd);padding:4px 7px;border-radius:5px;"},
-      "sprint 1 · fail-open")));
-  if(o&&o.partial){
-    box.appendChild(el("div",{style:"font-size:10.5px;color:var(--warn);line-height:1.35;margin-top:6px;"},"частичный ответ: часть метрик не успела прийти"));
-  }
   if(S.observerError){
     box.appendChild(el("div",{style:"font-size:10.5px;color:var(--warn);line-height:1.35;margin-top:6px;"},S.observerError));
   }
@@ -856,26 +819,10 @@ async function screenCenter(root, force, renderToken){
       el("button",{class:"btn",title:"фикс-айдентика брендов: голос/персона/шрифт/цвет/CTA/бан-слова/хэштеги — автозаполнение берёт как дефолты",onclick:()=>openBrandKit()},"🎨 Бренд-кит")),
     opsStatus?el("button",{class:"system-pill",title:systemTitle,onclick:()=>go("worker"),"aria-label":"Открыть системный статус: "+systemTitle},
       el("span",{class:"dot",style:"background:"+opsTone.c+";box-shadow:0 0 0 4px rgba(255,255,255,.035);"}),
-      el("span",{class:"label"},"Система: "+opsTone.label.toLowerCase()+(workerRow&&workerRow.current_task_id?" · "+workerRow.current_task_id:""))):null,
-    el("button",{class:"btn sm",title:"принудительно пересобрать данные и разбор ниши",onclick:()=>{ S.centerLoaded=false; S.allProducts=null; S.productsLoading=false; S.prodCounts={}; S.briefCache={}; render(); }},"↻ Обновить")));
+      el("span",{class:"label"},"Система: "+opsTone.label.toLowerCase())):null,
+    el("button",{class:"btn sm","aria-label":"Обновить данные",title:"принудительно пересобрать данные и разбор ниши",onclick:()=>{ S.centerLoaded=false; S.allProducts=null; S.productsLoading=false; S.prodCounts={}; S.briefCache={}; render(); }},"↻")));
   const left=el("div",{class:"scroll"}), aside=el("div",{class:"aside",style:"width:340px;padding:18px;"});
   root.appendChild(left); root.appendChild(aside);
-  if(workerRow&&!S.compact){
-    const tone=workerStatusTone(workerLive);
-    left.appendChild(el("div",{class:"card",style:"padding:12px 14px;margin-bottom:14px;border-color:"+(workerLive==="dead"?"var(--err)":workerLive==="stale"?"var(--warn)":"var(--bd)")+";background:"+(workerLive==="dead"?"var(--err-bg)":workerLive==="stale"?"var(--warn-bg)":"var(--bg-card)")+";display:flex;align-items:flex-start;justify-content:space-between;gap:12px;"},
-      el("div",{style:"min-width:0;display:flex;flex-direction:column;gap:4px;"},
-        el("div",{style:"display:flex;align-items:center;gap:8px;flex-wrap:wrap;"},
-          el("span",{class:"mono",style:"font-size:10px;color:"+tone.c+";background:"+tone.bg+";padding:3px 7px;border-radius:5px;font-weight:700;"},tone.label),
-          el("span",{style:"font-size:12px;font-weight:700;"},"Railway worker"),
-          workerSource==="queue_fallback"?el("span",{class:"mono",style:"font-size:10px;color:var(--warn);background:var(--warn-bg);padding:3px 7px;border-radius:5px;font-weight:700;"},"queue fallback"):null,
-          workerRow.current_task_id?el("span",{class:"mono",style:"font-size:10px;color:#fff;background:var(--acc);padding:3px 7px;border-radius:5px;font-weight:700;"},"task "+workerRow.current_task_id):null),
-        el("div",{style:"font-size:11.5px;line-height:1.45;color:var(--tx-bd);"},
-          "heartbeat: ",el("b",{style:"color:var(--tx-hi);"},workerRow.last_seen?fmtWhen(workerRow.last_seen):"—"),
-          " · ",el("b",{style:"color:var(--tx-hi);"},workerRow.current_task_title||"нет активной задачи"),
-          workerRow.blocker?el("span",{}, " · blocker: ",el("b",{style:"color:var(--warn);"},workerRow.blocker)):"",
-          workerDbError?el("span",{}, " · db: ",el("b",{style:"color:var(--warn);"},trunc(workerDbError,72))):"")),
-      el("button",{class:"btn sm",onclick:()=>go("worker")},"Открыть worker")));
-  }
   renderCenterOpsSummary(left,{opsStatus,heartbeatDiag,failDiag,opsAlerts,lowBalances,workerRow,stabilitySnapshot,latestStress,stressHistory});
   const nicheHead=el("div",{style:"display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;"},
     el("h2",{class:"sec-h"},"НИШИ ",el("span",{class:"cnt"},String(S.niches.length||""))),
@@ -1145,6 +1092,8 @@ function renderCenterOpsSummary(host,input){
   if(!opsStatus && !heartbeatDiag && !failDiag && !opsAlerts.length && !lowBalances.length && !latestStress && !stressHistory)return;
   const tone=opsStatusTone(opsStatus&&opsStatus.level);
   const level=(opsStatus&&opsStatus.level)||"unknown";
+  const hasCriticalSystemAlert=level==="critical"||opsAlerts.some((a)=>a&&a.level==="error")||lowBalances.length>0;
+  if(!hasCriticalSystemAlert)return;
   const statusTitle=level==="critical"?"Нужна проверка системы":level==="degraded"?"Есть предупреждения системы":level==="healthy"?"Система работает штатно":"Состояние системы неизвестно";
   const summary=(opsStatus&&opsStatus.summary)||"нет активных системных сообщений";
   const card=el("div",{class:"card health-banner "+(level||"unknown"),role:level==="critical"?"alert":"status","aria-label":statusTitle+". "+summary});
