@@ -14,6 +14,7 @@ function ok(cond: boolean, msg: string) {
 const learning = readFileSync("app/api/factory/learning/route.ts", "utf8");
 
 ok(/const warnings: string\[\] = \[\]/.test(learning), "learning API collects warning context");
+ok(/if \(!db\) \{[\s\S]*ok: true,[\s\S]*Supabase не настроен — обучение временно пустое[\s\S]*market_summary: emptyMarketSummary\(\)/.test(learning), "learning API missing-db path is fail-open with an empty read model");
 ok(/const safe = async \(label: string, fn: \(\) => Promise<any>, fallback: any\)/.test(learning), "learning safe helper is label-aware");
 ok(/warnings\.push\(`\$\{label\}: \$\{String/.test(learning), "learning safe helper records query degradation");
 ok(/safe\("cf_signals"/.test(learning), "cf_signals block is labeled");

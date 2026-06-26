@@ -11,12 +11,42 @@ export const maxDuration = 25;
 //   GET ?days=7&niche=
 type Row = Record<string, unknown>;
 
+function emptyMarketSummary() {
+  return {
+    snapshots: 0,
+    recipes_with_metrics: 0,
+    total_views: 0,
+    avg_watch_rate: null,
+    avg_ctr_card: null,
+    total_saves: 0,
+    strong_samples: 0,
+    win_rate: null,
+    otk_market_alignment: { samples: 0, avg_views_high_otk: null, avg_views_low_otk: null },
+    by_niche: [],
+    top: [],
+  };
+}
+
 export async function GET(req: NextRequest) {
   const db = getSupabaseAdmin();
-  if (!db) return NextResponse.json({ ok: false, error: "Supabase не настроен" }, { status: 500 });
   const sp = req.nextUrl.searchParams;
   const days = Math.min(90, Math.max(1, Number(sp.get("days")) || 7));
   const nicheF = (sp.get("niche") || "").trim();
+  if (!db) {
+    return NextResponse.json({
+      ok: true,
+      days,
+      niche: nicheF || null,
+      warnings: ["Supabase не настроен — обучение временно пустое"],
+      signals: { total: 0, by_event: {}, top_reject: [] },
+      hooks_by_niche: [],
+      recent_generations: [],
+      otk_trend: [],
+      winner_presets: [],
+      winners: [],
+      market_summary: emptyMarketSummary(),
+    }, { headers: { "Cache-Control": "no-store" } });
+  }
   const since = new Date(Date.now() - days * 24 * 3600 * 1000).toISOString();
   const warnings: string[] = [];
 
