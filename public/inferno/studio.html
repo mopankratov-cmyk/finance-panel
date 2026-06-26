@@ -483,7 +483,7 @@ async function loadObserver(){
     S.observerUpdatedAt=(r.observer&&r.observer.updated_at)||r.generated_at||new Date().toISOString();
     S.observerError="";
   }else{
-    S.observerError=(r&&r.error)||"снимок пульса недоступен";
+    S.observerError=apiErrorText(r,"снимок пульса недоступен");
   }
   renderFactoryPulse();
 }
@@ -1479,7 +1479,7 @@ async function screenCompete(root){
     btn.onclick=async()=>{ btn.disabled=true; btn.textContent="ищу конкурентов…";
       const r=await api("/seed-niche",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({niche:S.activeNiche,query:nicheLabel(S.activeNiche)})});
       if(r&&r.ok&&r.inserted>0){ toast("нашёл "+r.inserted+" видео → лента наполнена"); delete S.feedCache[S.activeNiche]; if(S.screen==="compete")screenCompete(document.getElementById("screen")); }
-      else { btn.disabled=false; btn.textContent="🔎 Найти конкурентов"; toast(r&&r.error?("не вышло: "+r.error):"источник не вернул видео — попробуй позже"); } };
+      else { btn.disabled=false; btn.textContent="🔎 Найти конкурентов"; toast(r&&r.error?("не вышло: "+apiErrorText(r,"поиск не сработал")):"источник не вернул видео — попробуй позже"); } };
     box.appendChild(btn);
     box.appendChild(el("div",{class:"mono",style:"font-size:9.5px;color:var(--tx-lo3);"},"тянем залетевшие TikTok-видео ниши"));
     feedList.appendChild(box);
@@ -1507,7 +1507,7 @@ async function runDecompose(v){
   renderDecompose();
   const d=await api("/decompose?viral_video_id="+v.id);
   S.decomposeLoading=false;
-  S.decompose=d.error?{error:d.error}:d;
+  S.decompose=d.error?{error:apiErrorText(d,"разбор не сработал")}:d;
   _decomposeJustRan=true; // ошибку покажем live, но не дадим залипнуть при следующем заходе
   await screenCompete(document.getElementById("screen")); // refresh header count + feed selection
 }
@@ -1583,13 +1583,13 @@ async function transferRecipe(){
   toast("переношу каркас…");
   const r=await api("/recipes",{method:"POST",headers:{"Content-Type":"application/json"},
     body:JSON.stringify({template_id:d.template_id,nodes:d.template_id?undefined:d.nodes,article,product_name:(S.contentProduct&&S.contentProduct.name)||"",mode:"audience",format:d.format})});
-  if(r.error){ toast("ошибка: "+r.error); return; }
+  if(r.error){ toast("ошибка: "+apiErrorText(r,"перенос не сработал")); return; }
   toast("граф создан · открываю канвас");
   if(await openRecipe(r.recipe_id)) go("canvas");
 }
 
 //==================== 03 · CANVAS ====================
-async function openRecipe(id){ const r=await api("/recipes?recipe_id="+id); if(r.error){ toast("рецепт: "+r.error); return false; } S.recipe=r; S.selectedNode=(r.nodes&&r.nodes[0])||null; S.run=null; _runPolling=false; return true; } // сбрасываем прогон прошлого рецепта, иначе ОТК показывает стейл-спиннер/вердикт
+async function openRecipe(id){ const r=await api("/recipes?recipe_id="+id); if(r.error){ toast("рецепт: "+apiErrorText(r,"не удалось открыть")); return false; } S.recipe=r; S.selectedNode=(r.nodes&&r.nodes[0])||null; S.run=null; _runPolling=false; return true; } // сбрасываем прогон прошлого рецепта, иначе ОТК показывает стейл-спиннер/вердикт
 async function screenCanvas(root){
   header("Нод-канвас",S.recipe?("граф #"+S.recipe.recipe.id+" · клон конкурента"):"граф видео", el("div",{class:"hdr-r"},
     el("button",{class:"btn",title:"ИИ-режиссёр: выберет движок и заполнит настройки на КАЖДОЙ ноде графа",onclick:()=>runAutofillGraph(false)},"🪄 ИИ-заполнить граф"),
@@ -1908,7 +1908,7 @@ async function runPreview(n){
   const body={tool:S.tool,node_type:n.node_type,prompt:n.prompt||"",params:n.params||{},image_url:n.asset_url||(n.params&&n.params.image_url)||null,recipe_id:S.recipe&&S.recipe.recipe.id,node_id:n.id};
   const r=await api("/node-preview",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
   if(btn){ btn.style.opacity="1"; btn.disabled=false; }
-  if(r.error){ _previewing[n.id]=false; S.preview[n.id]={status:"error",error:r.error,tool}; renderPreviewOut(n); return; }
+  if(r.error){ _previewing[n.id]=false; S.preview[n.id]={status:"error",error:apiErrorText(r,"ошибка превью"),tool}; renderPreviewOut(n); return; }
   if(r.status==="done"){ _previewing[n.id]=false; S.preview[n.id]={status:"done",url:r.url,cached:r.cached,hash:r.hash,tool}; renderPreviewOut(n); return; }
   S.preview[n.id]={status:"in_progress",token:r.token,hash:r.hash,tool}; renderPreviewOut(n); pollPreview(n,r.token,0);
 }
@@ -1917,7 +1917,7 @@ async function pollPreview(n,token,c){
   await new Promise(r=>setTimeout(r,4000)); if(S.selectedNode!==n){ _previewing[n.id]=false; return; }
   const r=await api("/node-preview?token="+encodeURIComponent(token));
   if(r.status==="done"){ _previewing[n.id]=false; S.preview[n.id]={status:"done",url:r.url,hash:(S.preview[n.id]||{}).hash,tool:(S.preview[n.id]||{}).tool}; renderPreviewOut(n); return; }
-  if(r.status==="error"){ _previewing[n.id]=false; S.preview[n.id]={status:"error",error:r.error,tool:(S.preview[n.id]||{}).tool}; renderPreviewOut(n); return; }
+  if(r.status==="error"){ _previewing[n.id]=false; S.preview[n.id]={status:"error",error:apiErrorText(r,"ошибка превью"),tool:(S.preview[n.id]||{}).tool}; renderPreviewOut(n); return; }
   pollPreview(n,token,c+1);
 }
 // V10: закрепить превью как финальный клип ноды → сборка не платит fal заново (привязка к hash инвалидирует при правке)
@@ -1951,7 +1951,7 @@ async function runAutofillGraph(force){
   const n=(S.recipe.nodes||[]).length;
   toast("🪄 ИИ заполняет "+n+" нод"+(force?" (перезапись ручных)":"")+"…");
   const r=await api("/autofill",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({recipe_id:rec.id,force:!!force})});
-  if(!r||!r.ok){ toast("не вышло: "+((r&&r.error)||"?").toString().slice(0,60)); return; }
+  if(!r||!r.ok){ toast("не вышло: "+apiErrorText(r,"автозаполнение не сработало").slice(0,80)); return; }
   await openRecipe(rec.id); // перетянуть ноды с новыми tool/params
   if(S.screen==="canvas")screenCanvas(document.getElementById("screen")); else render();
   openAutofillResult(r);
@@ -1993,7 +1993,7 @@ async function autofillSingleNode(n){
   if(!n||!n.id){ toast("нода ещё не в графе"); return; }
   toast("🪄 ИИ заполняет ноду…");
   const r=await api("/autofill",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({recipe_id:rec.id,node_ids:[n.id],force:true})});
-  if(!r||!r.ok){ toast("не вышло: "+((r&&r.error)||"?").toString().slice(0,60)); return; }
+  if(!r||!r.ok){ toast("не вышло: "+apiErrorText(r,"автозаполнение не сработало").slice(0,80)); return; }
   await openRecipe(rec.id);
   // вернуть выбор на ту же ноду (openRecipe ставит первую) → перерисовать инспектор
   const same=(S.recipe.nodes||[]).find(x=>String(x.id)===String(n.id)); if(same)S.selectedNode=same;
@@ -2046,7 +2046,7 @@ async function openNightRun(){
     const r=await api("/batch",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({budget_usd:bud,count:cnt,dry_run:!!dry})});
     _busy=false; btns.forEach(b=>b.disabled=false);
     out.innerHTML="";
-    if(!r||r.ok!==true){ const bb=Array.isArray(r&&r.balance_block)?r.balance_block.join(", "):(r&&r.balance_block); out.appendChild(errBox((r&&(r.error||(bb&&("низкий баланс: "+bb))))||"не вышло (сеть/сервер)")); return; }
+    if(!r||r.ok!==true){ const bb=Array.isArray(r&&r.balance_block)?r.balance_block.join(", "):(r&&r.balance_block); out.appendChild(errBox(bb?("низкий баланс: "+bb):apiErrorText(r,"не вышло"))); return; }
     const enq=(r.enqueued||[]).length;
     out.appendChild(el("div",{style:"font-size:13px;margin-bottom:8px;"},
       (dry?"📊 Смета: ":"🚀 Запущено: "),
@@ -2124,7 +2124,7 @@ async function openBrandKit(){
     const r=await api("/brand-kit",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
     e.target.textContent="Сохранить";
     if(r&&r.ok){ toast("бренд-кит «"+brand+"» сохранён ✓"); const b=brands.find(x=>x.brand===brand); if(b){ b.kit=payload; b.has_kit=true; } }
-    else toast("не вышло: "+((r&&r.error)||"?").toString().slice(0,50)); }},"Сохранить"));
+    else toast("не вышло: "+apiErrorText(r,"бренд-кит не сохранился").slice(0,80)); }},"Сохранить"));
   box.appendChild(foot);
 }
 
@@ -2284,7 +2284,7 @@ async function sendWinner(){
   if(!run||!run.output_url){ toast("нет готового видео"); return; }
   const score=run.otk_score!=null?run.otk_score:(run.otk&&run.otk.score);
   const r=await api("/winners",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({url:run.output_url,hook:_hookText(),note:"студия ОТК "+(score!=null?score:""),recipe_id:rec&&rec.id})});
-  toast(r&&r.ok?("в банк — победитель ✓ (хук в корпус"+(r.preset_id?" + пресет":"")+")"):("не вышло: "+((r&&r.error)||"?").toString().slice(0,40)));
+  toast(r&&r.ok?("в банк — победитель ✓ (хук в корпус"+(r.preset_id?" + пресет":"")+")"):("не вышло: "+apiErrorText(r,"банк не принял").slice(0,80)));
 }
 async function sendReject(reason){
   const run=S.run, rec=S.recipe&&S.recipe.recipe;
@@ -2403,7 +2403,7 @@ function recipeCard(r){ const needsRejudge=!!(r.needs_rejudge||(r.status==="otk_
       r.execution_log_count?el("span",{class:"mono",style:"font-size:8.5px;color:var(--tx-lo2);background:var(--bg-input);border:1px solid var(--bd2);padding:2px 5px;border-radius:4px;",title:(r.execution_log_last&&r.execution_log_last.step)?("последний: "+r.execution_log_last.step):"шаги прогона"},"шаги "+r.execution_log_count):null,
       warnings.length?el("span",{class:"mono",style:"font-size:9px;color:var(--warn);background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.35);padding:2px 5px;border-radius:4px;",title:warnings.join("\\n")},"предупр. "+warnings.length):null,
       needsRejudge?el("span",{class:"mono",style:"font-size:9px;color:var(--warn);background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.35);padding:2px 5px;border-radius:4px;"},"ОТК ?"):null,
-      el("span",{style:"font-size:12px;color:var(--tx-lo2);cursor:pointer;padding:0 2px;",title:"удалить рецепт",onclick:async(e)=>{ e.stopPropagation(); if(!confirm("Удалить граф #"+r.id+"?"))return; const cardEl=e.currentTarget.closest(".card"); const d=await api("/recipes?recipe_id="+r.id,{method:"DELETE"}); if(d.ok){ toast("удалён"); if(cardEl)cardEl.remove(); S.recipes=(S.recipes||[]).filter(x=>x.id!==r.id); if(S.recipe&&S.recipe.recipe&&String(S.recipe.recipe.id)===String(r.id)){ S.recipe=null; S.selectedNode=null; if(["canvas","inspector","assembly"].includes(S.screen))render(); } } else toast(d.error||"ошибка"); }},"✕")),
+      el("span",{style:"font-size:12px;color:var(--tx-lo2);cursor:pointer;padding:0 2px;",title:"удалить рецепт",onclick:async(e)=>{ e.stopPropagation(); if(!confirm("Удалить граф #"+r.id+"?"))return; const cardEl=e.currentTarget.closest(".card"); const d=await api("/recipes?recipe_id="+r.id,{method:"DELETE"}); if(d.ok){ toast("удалён"); if(cardEl)cardEl.remove(); S.recipes=(S.recipes||[]).filter(x=>x.id!==r.id); if(S.recipe&&S.recipe.recipe&&String(S.recipe.recipe.id)===String(r.id)){ S.recipe=null; S.selectedNode=null; if(["canvas","inspector","assembly"].includes(S.screen))render(); } } else toast(apiErrorText(d,"ошибка удаления")); }},"✕")),
     el("div",{style:"font-size:12.5px;font-weight:600;"},(r.article||"—")),
     el("div",{style:"font-size:10.5px;color:var(--tx-lo);margin-top:4px;"},recipeMeta),
     el("div",{class:"mono",style:"font-size:10px;color:"+(needsRejudge||sprintWarning?"var(--warn)":"var(--tx-lo2)")+";margin-top:7px;"},recipeStatusLabel(shownStatus)+(r.otk_score!=null?" · ОТК "+Math.round(r.otk_score*10):(needsRejudge?" · ОТК ?":""))+(r.step?" · "+runStepLabel(r.step):"")),
@@ -2520,13 +2520,13 @@ function balanceCard(s,root){
   const thIn=el("input",{type:"number",step:"any",value:s.threshold==null?"":s.threshold,placeholder:"порог "+unit,style:INP});
   card.appendChild(el("div",{style:"display:flex;gap:8px;align-items:center;flex-wrap:wrap;"},
     el("label",{style:"font-size:11px;color:var(--tx-lo);min-width:62px;"},"Порог "+unit),thIn,
-    el("button",{class:"btn sm",onclick:async()=>{ const r=await api("/balances",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({service:s.service,threshold:thIn.value===""?null:Number(thIn.value)})}); toast(r.ok?"порог сохранён":("ошибка: "+(r.error||"?"))); if(r.ok)screenBalances(root); }},"Сохранить")));
+    el("button",{class:"btn sm",onclick:async()=>{ const r=await api("/balances",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({service:s.service,threshold:thIn.value===""?null:Number(thIn.value)})}); toast(r.ok?"порог сохранён":("ошибка: "+apiErrorText(r,"порог не сохранился"))); if(r.ok)screenBalances(root); }},"Сохранить")));
   // ручной баланс — для сервисов без API баланса (shotstack/claude)
   if(s.capability!=="api"){
     const balIn=el("input",{type:"number",step:"any",placeholder:"баланс "+unit,style:INP});
     card.appendChild(el("div",{style:"display:flex;gap:8px;align-items:center;flex-wrap:wrap;"},
       el("label",{style:"font-size:11px;color:var(--tx-lo);min-width:62px;"},"Баланс "+unit),balIn,
-      el("button",{class:"btn sm",onclick:async()=>{ if(balIn.value===""){toast("введи баланс");return;} const r=await api("/balances",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({service:s.service,balance:Number(balIn.value),currency:s.unit})}); toast(r.ok?"баланс записан":("ошибка: "+(r.error||"?"))); if(r.ok)screenBalances(root); }},"Записать")));
+      el("button",{class:"btn sm",onclick:async()=>{ if(balIn.value===""){toast("введи баланс");return;} const r=await api("/balances",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({service:s.service,balance:Number(balIn.value),currency:s.unit})}); toast(r.ok?"баланс записан":("ошибка: "+apiErrorText(r,"баланс не записался"))); if(r.ok)screenBalances(root); }},"Записать")));
   }
   return card;
 }
@@ -2546,7 +2546,7 @@ async function screenLearn(root){
   const d=await api("/learning?days="+S.learnDays);
   if(S.screen!=="learn")return;
   wrap.innerHTML="";
-  if(d.error){ wrap.appendChild(emptyBox("ошибка обучения: "+d.error)); return; }
+  if(d.error){ wrap.appendChild(emptyBox("ошибка обучения: "+apiErrorText(d,"не удалось прочитать обучение"))); return; }
   const cap=(t)=>wrap.appendChild(el("div",{class:"sec-cap",style:"margin:6px 0 11px;"},t));
   const learnWarnings=Array.isArray(d.warnings)?d.warnings.filter(Boolean):[];
   const fmtRate=(v)=>v==null?"—":(Math.round(Number(v)*100)+"%");
@@ -2652,7 +2652,7 @@ async function screenLearn(root){
         el("span",{class:"mono",style:"font-size:9.5px;background:var(--ok);color:#062;padding:2px 6px;border-radius:5px;font-weight:700;"},"победитель")),
       el("div",{style:"font-size:11px;color:var(--tx-lo);line-height:1.4;"},p.win_note||""),
       el("div",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);"},p.nodes_count+" нод · "+nicheLabel(p.niche)+" · "+fmtWhen(p.created_at)),
-      el("button",{class:"btn sm",style:"justify-content:center;",onclick:async()=>{ const art=prompt("Артикул товара, под который переносим выигравшую формулу:"); if(!art)return; toast("переношу пресет…"); const r=await api("/recipes?template_id="+p.id+"&article="+encodeURIComponent(art.trim())); if(r&&r.recipe_id){ if(await openRecipe(r.recipe_id))go("canvas"); toast("пресет перенесён → правь под товар"); } else toast("не вышло: "+((r&&r.error)||"?")); }},"⇪ Перенести себе"))));
+      el("button",{class:"btn sm",style:"justify-content:center;",onclick:async()=>{ const art=prompt("Артикул товара, под который переносим выигравшую формулу:"); if(!art)return; toast("переношу пресет…"); const r=await api("/recipes?template_id="+p.id+"&article="+encodeURIComponent(art.trim())); if(r&&r.recipe_id){ if(await openRecipe(r.recipe_id))go("canvas"); toast("пресет перенесён → правь под товар"); } else toast("не вышло: "+apiErrorText(r,"пресет не перенёсся")); }},"⇪ Перенести себе"))));
   }
 
   // ── 4) Корпус хуков по нишам ───────────────────────────────────────────
