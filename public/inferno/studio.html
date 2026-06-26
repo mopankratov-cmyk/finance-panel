@@ -979,7 +979,7 @@ async function screenWorker(root, force, renderToken){
         : lsAuthFailures
           ? "Stress-run не проверил завод: нужна авторизация/CRON_SECRET."
           : "10/10 ещё не закрыты, stress-цель остаётся открытой."));
-    if(lsStability){
+    if(lsStability&&!lsTimeouts&&!lsAuthFailures){
       if(lsStability.failure_diagnostics&&lsStability.failure_diagnostics.issue){
         latestCard.appendChild(el("div",{style:"font-size:11px;color:var(--tx-lo);line-height:1.45;margin-top:8px;"},
           "По базе: "+failureIssueLabel(lsStability.failure_diagnostics.issue)));
