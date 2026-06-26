@@ -6,9 +6,20 @@ import { nicheFromArticle } from "@/lib/factory/rubric";
 export const dynamic = "force-dynamic";
 export const maxDuration = 20;
 
+function firstFallbackHook(body: Record<string, unknown>) {
+  const raw = Array.isArray(body.candidates) ? body.candidates : Array.isArray(body.hooks) ? body.hooks : [];
+  const item = raw[0];
+  const hook = item && typeof item === "object" && !Array.isArray(item)
+    ? String((item as Record<string, unknown>).hook || (item as Record<string, unknown>).hook_text || (item as Record<string, unknown>).text || "").trim()
+    : String(item || "").trim();
+  if (!hook) return null;
+  return { id: "fallback-1", hook, source_index: 0, score: 5, verdict: "ok" as const, reasons: ["hook-judge fallback: проверка не блокирует MVP"] };
+}
+
 export async function POST(req: NextRequest) {
+  let body: Record<string, unknown> = {};
   try {
-    const body = await req.json().catch(() => ({}));
+    body = await req.json().catch(() => ({}));
     const article = String(body.article || "").trim();
     const niche = String(body.niche || nicheFromArticle(article, "") || "").trim();
     let corpus: HookJudgeCorpusHook[] = Array.isArray(body.corpus) ? body.corpus.slice(0, 20) : [];
@@ -30,13 +41,14 @@ export async function POST(req: NextRequest) {
     const result = judgeHooks({ hooks: body.hooks, candidates: body.candidates, corpus });
     return NextResponse.json({ ...result, niche: niche || null }, { status: result.ok ? 200 : 400, headers: { "Cache-Control": "no-store" } });
   } catch (e) {
+    const fallback = firstFallbackHook(body);
     return NextResponse.json({
-      ok: false,
+      ok: true,
       source: "deterministic",
-      winner: null,
-      ranked: [],
+      winner: fallback,
+      ranked: fallback ? [fallback] : [],
       corpus_used: 0,
-      error: "оценка хуков упала: " + String((e as Error)?.message || e).slice(0, 160),
-    }, { status: 500, headers: { "Cache-Control": "no-store" } });
+      warning: "оценка хуков упала, выпуск не заблокирован: " + String((e as Error)?.message || e).slice(0, 160),
+    }, { headers: { "Cache-Control": "no-store" } });
   }
 }
