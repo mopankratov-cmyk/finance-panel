@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { nicheFromArticle } from "@/lib/factory/rubric";
 import { buildEdit, fixedBeatGrid, quantizeToBeats, type AssemblyClip } from "@/lib/factory/shotstack";
+import { defaultFactoryCaption } from "@/lib/factory/runCopy";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -61,7 +62,7 @@ export async function POST(req: NextRequest) {
     const clips = quantizeToBeats(rawClips, grid);
     const blockIds = ordered.map((a) => a.id);
 
-    const caption: string = (body.caption || (article ? "Ищи на WB: " + article : "")).toString().slice(0, 120);
+    const caption: string = (body.caption || defaultFactoryCaption(mode, article)).toString().slice(0, 120);
     const fontUrl: string | undefined = (process.env.SHOTSTACK_FONT_URL || "").trim() || undefined; // Cyrillic-TTF, иначе RU=tofu
     const fontFamily: string | undefined = (process.env.SHOTSTACK_FONT_FAMILY || "").trim() || undefined; // имя семейства внутри TTF (напр. "Roboto")
     const edit = buildEdit({ clips, hookText: hook || undefined, caption: caption || undefined, fontUrl, fontFamily, aspect: "9:16" });

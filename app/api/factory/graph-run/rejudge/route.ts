@@ -245,7 +245,7 @@ export async function POST(req: NextRequest) {
 
     try {
       await db.from("cf_signals").insert({
-        event: "approved",
+        event: status === "warning" ? "warning" : "approved",
         recipe_id: row.id,
         niche: row.niche,
         article: row.article,

@@ -10,6 +10,8 @@ import { learningHints } from "@/lib/factory/learningHints";
 import { resolveBrandKit, applyKitToParams, brandKitPromptBlock } from "@/lib/factory/brandKit";
 import { internalFetch } from "@/lib/internalFetch";
 import { extractJson } from "@/lib/factory/extractJson";
+import { nodeLooksPlaceholder } from "@/lib/factory/runCopy";
+import { buildAutofillFallbackAssignment } from "@/lib/factory/autofillFallback";
 
 // Ф2 · tool → сервис баланса (бесплатные disk_real/sound не блокируются) и tool → примерная $-цена (зеркало TOOL_COST)
 const TOOL_SERVICE: Record<string, string> = { seedance: "fal", seedance_fast: "fal", seedance_pro: "fal", kling: "fal", kling_pro: "fal", pika: "fal", creatify: "creatify" };
@@ -93,7 +95,7 @@ export async function POST(req: NextRequest) {
     // целевые ноды: выбранные (node_ids) либо все; пропускаем ручные (если не force)
     const targets = allNodes.filter((n) => {
       if (onlyIds.length && !onlyIds.includes(Number(n.id))) return false;
-      if (!force && n.human_edited === true) return false;
+      if (!force && n.human_edited === true && !nodeLooksPlaceholder(n)) return false;
       return true;
     });
     const skipped = (onlyIds.length ? onlyIds.length : allNodes.length) - targets.length;
@@ -180,15 +182,20 @@ ${digests}
 ${JSON.stringify(nodeLines, null, 1).slice(0, 6000)}`;
 
     let assignments: Record<string, unknown>[] = [];
+    const fallbackAssignments = targets.map((n) => buildAutofillFallbackAssignment(n, { available, article, niche, mode: rec.mode }));
     try {
       const res = await client.messages.create({ model: MODEL, max_tokens: 4000, temperature: 0.2, system: sys, messages: [{ role: "user", content: user }] });
 
       const txt = (res.content as any[]).filter((x) => x.type === "text").map((x) => x.text).join(" ");
       const j = extractJson(txt);
       assignments = Array.isArray(j?.assignments) ? j.assignments : [];
-      if (!assignments.length) return NextResponse.json({ ok: false, error: "Claude не вернул assignments", raw: txt.slice(0, 160) }, { status: 502 });
+      if (!assignments.length) {
+        warnings.push(`autofill fallback: Claude не вернул assignments (${txt.slice(0, 120) || "empty"})`);
+        assignments = fallbackAssignments;
+      }
     } catch (e) {
-      return NextResponse.json({ ok: false, error: "Claude: " + String((e as Error)?.message || e).slice(0, 160) }, { status: 502 });
+      warnings.push("autofill fallback: Claude " + String((e as Error)?.message || e).slice(0, 160));
+      assignments = fallbackAssignments;
     }
 
     // 4) пост-обработка + запись каждой ноды

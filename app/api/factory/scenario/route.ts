@@ -5,14 +5,16 @@ import { DEAI_FILTERS, PROBLEM_STACK } from "@/lib/factory/standard";
 import { brandProfile } from "@/lib/factory/brandProfiles";
 import { nicheFromArticle } from "@/lib/factory/rubric";
 import { extractJson } from "@/lib/factory/extractJson";
+import { defaultFactoryCaption, normalizeContentMode } from "@/lib/factory/runCopy";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 const MODEL = "claude-sonnet-4-6"; // быстрый, укладываемся в лимит
 
-function fallbackScenario(input: { hook: string; article: string; name: string; reason: string }) {
+function fallbackScenario(input: { hook: string; article: string; name: string; reason: string; mode: "audience" | "sell" }) {
   const product = input.name || input.article || "товар";
+  const audienceCta = "Сохрани, чтобы не потерять";
   return {
     article: input.article,
     product,
@@ -22,11 +24,11 @@ function fallbackScenario(input: { hook: string; article: string; name: string; 
       shots: [
         { t: "0-3с", visual: "Крупный план товара или первый живой кадр использования", voiceover: input.hook || `Смотри, что важно знать про ${product}`, onscreen: input.hook || "Вот что важно" },
         { t: "3-10с", visual: "Показать 2-3 детали товара в движении", voiceover: "Коротко показать пользу и реальный сценарий использования", onscreen: "Польза без лишних слов" },
-        { t: "10-18с", visual: "Финальный кадр с товаром и понятным действием", voiceover: "Если актуально, ищи артикул на Wildberries", onscreen: input.article ? `Арт. ${input.article}` : "Ищи на WB" },
+        { t: "10-18с", visual: "Финальный кадр с товаром и понятным действием", voiceover: input.mode === "sell" ? "Если актуально, ищи артикул на Wildberries" : audienceCta, onscreen: input.mode === "sell" ? (input.article ? `Арт. ${input.article}` : "Ищи на WB") : "Сохрани" },
       ],
-      caption: input.article ? `Ищи на WB: ${input.article}` : "Сохрани, чтобы не потерять",
+      caption: defaultFactoryCaption(input.mode, input.article),
       hashtags: ["#wildberries", "#обзор", "#находка"],
-      cta: input.article ? `Ищи артикул ${input.article} на WB` : "Ищи товар на WB",
+      cta: input.mode === "sell" ? (input.article ? `Ищи артикул ${input.article} на WB` : "Ищи товар на WB") : "Сохрани, чтобы не потерять",
       music: "спокойный трендовый звук без вокального конфликта",
       warnings: [`scenario fallback: ${input.reason}`],
     },
@@ -39,6 +41,7 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
   const hook: string = (body.hook || body.concept || "").toString().trim();
   if (!hook) return NextResponse.json({ error: "Нужен хук/идея" }, { status: 400 });
+  const mode = normalizeContentMode(body.mode);
   const article: string = (body.article || "").toString().trim();
   let name: string = (body.product_name || "").toString().trim();
   if (!name && article) {
@@ -111,7 +114,7 @@ export async function POST(req: NextRequest) {
   }
 
   const client = await createClaudeClient();
-  if (!client) return NextResponse.json(fallbackScenario({ hook, article, name, reason: "ANTHROPIC_API_KEY не настроен" }));
+  if (!client) return NextResponse.json(fallbackScenario({ hook, article, name, reason: "ANTHROPIC_API_KEY не настроен", mode }));
 
   const sys = "Ты режиссёр коротких UGC-видео для WB/Ozon. Разворачиваешь идею в покадровый сценарий 15-30 сек, готовый к съёмке или AI-генерации. Живой UGC, не реклама. " +
     (profile ? "ПРОФИЛЬ БРЕНДА/АУДИТОРИИ (пиши в этом голосе): " + profile + " " : "") +
@@ -119,7 +122,7 @@ export async function POST(req: NextRequest) {
     "Верни СТРОГО JSON: {\"title\":\"название\",\"duration_sec\":20,\"shots\":[{\"t\":\"0-3с\",\"visual\":\"что в кадре\",\"voiceover\":\"закадр/реплика\",\"onscreen\":\"текст на экране\"}],\"caption\":\"подпись под видео\",\"hashtags\":[\"...\"],\"cta\":\"призыв искать товар на WB\",\"music\":\"тип трендового звука\"}. Только JSON.";
   const isStack = /проблем|3 проблем|problem|стек/i.test(format);
   const hookBoost = body.hook_boost === true; // хук-гейт забраковал хук → просим резче
-  const user = `Товар: ${name || article}${article ? ` (арт. ${article})` : ""}. Идея/хук: «${hook}».${format ? ` Формат: ${format}.` : ""}${isStack ? ` Разверни по структуре «3 проблемы»: ${PROBLEM_STACK}` : ""}${pbHint}${corpusHint} Сделай покадровый сценарий: первый кадр = хук в лоб, держит внимание, в конце мягкий CTA на поиск товара на WB.${hookBoost ? " ВАЖНО: предыдущий хук получился слабым — сделай ПЕРВУЮ ФРАЗУ и первый кадр заметно резче: паттерн-брейк/новизна/интрига/неожиданность, без общих слов и витрины." : ""}`;
+  const user = `Товар: ${name || article}${article ? ` (арт. ${article})` : ""}. Идея/хук: «${hook}».${format ? ` Формат: ${format}.` : ""}${isStack ? ` Разверни по структуре «3 проблемы»: ${PROBLEM_STACK}` : ""}${pbHint}${corpusHint} Сделай покадровый сценарий: первый кадр = хук в лоб, держит внимание, в конце ${mode === "sell" ? "мягкий CTA на поиск товара на WB." : "мягкий CTA на сохранение/подписку без прямой продажи и без WB-CTA."}${hookBoost ? " ВАЖНО: предыдущий хук получился слабым — сделай ПЕРВУЮ ФРАЗУ и первый кадр заметно резче: паттерн-брейк/новизна/интрига/неожиданность, без общих слов и витрины." : ""}`;
 
   // сэмплинг из ноды Claude (инспектор) — раньше всё было захардкожено
 
@@ -139,15 +142,15 @@ export async function POST(req: NextRequest) {
 
     const txt = (res.content as any[]).filter((b) => b.type === "text").map((b) => b.text).join(" ");
     const scenario = extractJson(txt);
-    if (!scenario) return NextResponse.json(fallbackScenario({ hook, article, name, reason: "пустой/нечитаемый сценарий" }));
+    if (!scenario) return NextResponse.json(fallbackScenario({ hook, article, name, reason: "пустой/нечитаемый сценарий", mode }));
     return NextResponse.json({ article, product: name || article, scenario });
   } catch (e) {
-    return NextResponse.json(fallbackScenario({ hook, article, name, reason: String(e).slice(0, 160) }));
+    return NextResponse.json(fallbackScenario({ hook, article, name, reason: String(e).slice(0, 160), mode }));
   }
   } catch (e) {
     return NextResponse.json({
       error: "сценарий упал: " + String((e as Error)?.message || e).slice(0, 160),
-      ...fallbackScenario({ hook: "", article: "", name: "", reason: "сбой генератора сценария" }),
+      ...fallbackScenario({ hook: "", article: "", name: "", reason: "сбой генератора сценария", mode: "audience" }),
     }, { status: 500 });
   }
 }

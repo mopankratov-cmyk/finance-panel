@@ -6,6 +6,7 @@ import { buildRunSummary } from "@/lib/factory/observability";
 import { internalFetch } from "@/lib/internalFetch";
 import { estimateRunCost } from "@/lib/factory/costEstimate";
 import { resolveFactoryOrigin } from "@/lib/factory/runtimeOrigin";
+import { nodeLooksPlaceholder } from "@/lib/factory/runCopy";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
@@ -43,7 +44,7 @@ export async function POST(req: NextRequest) {
       plan.execution_log = Array.isArray(prevPlan?.execution_log) ? prevPlan.execution_log : [];
       plan.warnings = [];
       if (body.notify) plan.notify = true; // V21/R5: батч-прогон → слать прошедшее ОТК в Telegram
-      if (body.autofill) plan.step = "autofill"; // V21: батч-черновик сам сконфигурируется (§17) перед генерацией
+      if (body.autofill || rows.some((row) => nodeLooksPlaceholder(row))) plan.step = "autofill"; // placeholder/manual draft тоже прогоняем через авто-конфиг, иначе он стабильно рендерит мусор
       await db.from("node_recipes").update({ run_plan: plan, status: "running", otk_verdict: null, otk_score: null, output_url: null, render_id: null, updated_at: new Date().toISOString() }).eq("id", recipeId);
     }
 

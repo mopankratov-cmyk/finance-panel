@@ -14,6 +14,7 @@ import { createHash, randomUUID } from "node:crypto";
 import type { ExecutionLogEntry, RunNode, RunPlan, RunStep } from "./graphTypes";
 import { estimateRunCost } from "./costEstimate";
 import { nicheFromArticle, scoreRubric, type AxisScores, type ContentMode, type RubricNiche } from "./rubric";
+import { defaultFactoryCaption, defaultFactoryCtaButton, isPlaceholderNarrative, nodeLooksPlaceholder } from "./runCopy";
 
 export type { ExecutionLogEntry, RunNode, RunPlan, RunStep } from "./graphTypes";
 
@@ -179,15 +180,33 @@ export function buildReelProps(plan: RunPlan, visualNodes: RunNode[], article: s
   const soundNode = plan.nodes.find((n) => ["sound", "music"].includes(String(n.tool).toLowerCase()));
   const audioSrc = soundNode?.asset_url || (soundNode?.params?.url as string) || undefined;
   const ctaTitle = (textOfNode(hookNode) || article || "").toString().slice(0, 40) || undefined;
+  const mode = plan.mode === "sell" ? "sell" : "audience";
+  const ctaButton = defaultFactoryCtaButton(mode, article);
   const inputProps: Record<string, unknown> = {
     durationInFrames, actorEnd, overlays: renderOverlays,
     ...(actorSrc ? { actorSrc } : {}),
     ...(captions.length ? { captions } : { captions: [] }),
     ...(audioSrc ? { audioSrc } : {}),
     ...(ctaTitle ? { ctaTitle } : {}),
-    ...(article ? { ctaButton: "ищи на WB" } : {}),
+    ...(ctaButton ? { ctaButton } : {}),
   };
   return { inputProps, durationInFrames };
+}
+
+function isPlaceholderSingleClipRecipe(plan: RunPlan, visualNodes: RunNode[]): boolean {
+  if (visualNodes.length !== 1) return false;
+  const node = visualNodes[0];
+  const tool = String(node.tool || "").toLowerCase();
+  if (tool !== "disk_real" && tool !== "disk") return false;
+  const params = (node.params || {}) as Record<string, unknown>;
+  const copy = [node.prompt, node.onscreen_text, params["onscreen_text"], params["visual_desc"]]
+    .map((value) => String(value || "").trim())
+    .filter(Boolean);
+  const hasStoryNode = plan.nodes.some((candidate) => {
+    const role = roleOf(candidate);
+    return role === "hook" || role === "cta" || String(candidate.node_type || "").toLowerCase() === "captions";
+  });
+  return copy.length > 0 && copy.every((value) => isPlaceholderNarrative(value)) && !hasStoryNode;
 }
 
 // V3/V4: по слабейшей оси ОТК выбрать ноду-виновника для регена (только генеративную)
@@ -466,8 +485,8 @@ export async function runRecipeStep(
   if (plan.step === "autofill") {
     // ИДЕМПОТЕНТНОСТЬ (DB-state, переживает ретраи шага): зовём Claude ТОЛЬКО если рецепт ещё не сконфигурён.
     // Уже настроенный (ai_autofilled/human_chosen + tool) → пропускаем платный вызов, сразу в submit.
-    const { data: cur } = await db.from("node_recipe_nodes").select("tool,source").eq("recipe_id", id);
-    const needsFill = ((cur as any[]) || []).some((n) => !n.tool || (n.source !== "ai_autofilled" && n.source !== "human_chosen"));
+    const { data: cur } = await db.from("node_recipe_nodes").select("tool,source,prompt,params,agent_suggestion,human_edited,onscreen_text").eq("recipe_id", id);
+    const needsFill = ((cur as any[]) || []).some((n) => !n.tool || (n.source !== "ai_autofilled" && n.source !== "human_chosen") || nodeLooksPlaceholder(n));
     if (needsFill) {
       try {
         const r = await jpost(origin, "/api/factory/autofill", { recipe_id: id }, 90000);
@@ -618,7 +637,7 @@ export async function runRecipeStep(
     const hookNode = plan.nodes.find((n) => String(((n.params || {}) as Record<string, unknown>)["role"] || n.slot || "").toLowerCase() === "hook") || plan.nodes[0];
     const hookText = textOfNode(hookNode).slice(0, 120) || undefined;
     const captionNode = plan.nodes.find((n) => n.node_type === "captions");
-    const caption = (textOfNode(captionNode) || (article ? "Ищи на WB: " + article : "")).toString().slice(0, 120) || undefined;
+    const caption = (textOfNode(captionNode) || defaultFactoryCaption(mode, article)).toString().slice(0, 120) || undefined;
     const soundNode = plan.nodes.find((n) => String(n.tool).toLowerCase() === "sound" || String(n.tool).toLowerCase() === "music");
     const audioUrl = (soundNode?.asset_url || (soundNode?.params?.url as string) || "") || undefined;
     const audioVolume = typeof soundNode?.params?.volume === "number" ? (soundNode.params.volume as number) : 0.3;
@@ -638,9 +657,14 @@ export async function runRecipeStep(
     // ── V23 · движок REMOTION (премиум ReelV5) — опт-ин FACTORY_RENDER_ENGINE=remotion.
     // Shotstack edit_json всё равно сохраняем выше: если Remotion дорендерил, но не смог залить в storage,
     // render-poll может переключиться на Shotstack-сборку вместо деградации до raw clip.
+    if (isPlaceholderSingleClipRecipe(plan, visualNodes)) {
+      addWarning("recipe placeholder: single disk_real clip without a real hook/caption");
+    }
+
     if (remotionEngineSelected()) {
       if (remotionReady()) {
-        const { inputProps, durationInFrames } = buildReelProps(plan, visualNodes, article);
+        const planMode: "audience" | "sell" = mode === "sell" ? "sell" : "audience";
+        const { inputProps, durationInFrames } = buildReelProps({ ...plan, mode: planMode }, visualNodes, article);
         plan.reel_props = inputProps;
         plan.duration_frames = durationInFrames;
         plan.render_engine = "remotion";
@@ -928,7 +952,7 @@ export async function runRecipeStep(
         params: { source: "graph_run_bank", raw_url: url, error: catalogError },
       });
     }
-    await logSignal(db, finalStatus === "otk_pass" ? "approved" : "approved", {
+    await logSignal(db, finalStatus === "otk_pass" ? "approved" : "warning", {
       recipe_id: id, niche, article, mode, format: null, engine: plan.render_engine || "shotstack",
       axes: plan.otk?.axes ?? null, reason_chip: finalStatus === "warning" ? (plan.warnings?.[0] || "warning") : null,
     });

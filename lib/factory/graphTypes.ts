@@ -12,6 +12,7 @@ export interface RunNode {
 
 export interface RunPlan {
   run_id?: string | null;
+  mode?: "audience" | "sell" | null;
   step: RunStep;
   nodes: RunNode[];
   render_id?: string | null;

@@ -44,7 +44,7 @@ export async function POST(req: NextRequest) {
     }
 
     // рецепт + его сгенерённые ассеты из run_plan (НЕ переген — берём готовые url)
-    const { data: recRows } = await db.from("node_recipes").select("id,article,niche,run_plan").eq("id", recipeId).limit(1);
+    const { data: recRows } = await db.from("node_recipes").select("id,article,niche,mode,run_plan").eq("id", recipeId).limit(1);
     const rec = (recRows as Record<string, unknown>[] | null)?.[0];
     if (!rec) return NextResponse.json({ ok: false, error: "рецепт не найден" }, { status: 404 });
     const plan = (rec.run_plan as RunPlan) || null;
@@ -53,6 +53,7 @@ export async function POST(req: NextRequest) {
     if (!baseVisual.length) return NextResponse.json({ ok: false, error: "у рецепта нет готовых клипов в run_plan — сначала прогенери его (gen-poll → done)" }, { status: 400 });
     const article = String(rec.article || "");
     const niche = String(rec.niche || "");
+    const mode = rec.mode === "sell" ? "sell" : "audience";
 
     // строим пропсы каждого варианта из ОДНИХ клипов (reuse), затем сабмитим рендер
     const submitted: { variant_idx: number; render_id: string | null; hook?: string; status: string }[] = [];
@@ -61,7 +62,7 @@ export async function POST(req: NextRequest) {
       const v = variants[i] || {};
       const nodes2 = cloneNodesWithHook(baseNodes, v.hook);
       const visual = reorderVisual(selectVisualNodes(nodes2), v.overlayOrder);
-      const { inputProps, durationInFrames } = buildReelProps({ ...(plan as RunPlan), nodes: nodes2 }, visual, article);
+      const { inputProps, durationInFrames } = buildReelProps({ ...(plan as RunPlan), nodes: nodes2, mode }, visual, article);
       const props = patchVariantProps(inputProps, v);
       if (dryRun) { dryProps.push({ variant_idx: i, props }); continue; }
 
