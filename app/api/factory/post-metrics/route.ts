@@ -30,7 +30,25 @@ export async function POST(req: NextRequest) {
       return Number.isFinite(n) ? Math.max(0, n) : null;
     };
 
-  // 1) запись метрик в post_metrics (оживляем мёртвую таблицу)
+  // 1) сначала проверяем рецепт, чтобы не плодить orphan market-сигналы
+    let outputUrl: string | null = null;
+    let recipeStatus: string | null = null;
+    let recipePlan: Record<string, unknown> | null = null;
+    try {
+      const { data, error } = await db.from("node_recipes").select("output_url,status,run_plan").eq("id", recipeId).limit(1);
+      if (error) warnings.push("node_recipes lookup: " + error.message.slice(0, 140));
+      const rec = (data as Record<string, unknown>[] | null)?.[0];
+      if (!rec && !error) {
+        return NextResponse.json({ ok: false, error: "рецепт не найден", forwarded: false, metrics_saved: false, status_marked: false, warnings }, { status: 404 });
+      }
+      outputUrl = rec?.output_url ? String(rec.output_url) : null;
+      recipeStatus = rec?.status ? String(rec.status) : null;
+      recipePlan = rec?.run_plan && typeof rec.run_plan === "object" ? rec.run_plan as Record<string, unknown> : null;
+    } catch (e) {
+      warnings.push("node_recipes lookup exception: " + String((e as Error)?.message || e).slice(0, 120));
+    }
+
+  // 2) запись метрик в post_metrics (оживляем мёртвую таблицу)
     let metricsSaved = false;
     try {
       const { error } = await db.from("post_metrics").insert({
@@ -51,18 +69,11 @@ export async function POST(req: NextRequest) {
       console.error("[post-metrics] insert exception:", e);
     }
 
-  // 2) рынок → winners: тянем output_url рецепта + хук, апгрейдим хук реальными просмотрами
+  // 3) рынок → winners: тянем output_url рецепта + хук, апгрейдим хук реальными просмотрами
     let forwarded = false;
-    let outputUrl: string | null = null;
-    let recipeStatus: string | null = null;
     try {
-      const { data, error } = await db.from("node_recipes").select("output_url,status,run_plan").eq("id", recipeId).limit(1);
-      if (error) warnings.push("node_recipes lookup: " + error.message.slice(0, 140));
-      const rec = (data as Record<string, unknown>[] | null)?.[0];
-      outputUrl = rec?.output_url ? String(rec.output_url) : null;
-      recipeStatus = rec?.status ? String(rec.status) : null;
       if (outputUrl) {
-        const nodes = (((rec?.run_plan as Record<string, unknown>)?.nodes) as Record<string, unknown>[]) || [];
+        const nodes = (Array.isArray(recipePlan?.nodes) ? recipePlan.nodes as Record<string, unknown>[] : []);
         const h = nodes.find((n) => String((n.params as Record<string, unknown>)?.role || n.slot || "").toLowerCase() === "hook") || nodes[0];
         const hook = String((h?.onscreen_text as string) || (h?.prompt as string) || "").slice(0, 120);
         const res = await internalFetch(`${req.nextUrl.origin}/api/factory/winners`, {
