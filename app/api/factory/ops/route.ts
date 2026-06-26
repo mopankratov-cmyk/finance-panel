@@ -4,7 +4,7 @@ import { collectBalances } from "@/lib/factory/balances";
 import { loadObserverPulse } from "@/lib/factory/observerPulse";
 import { loadObservabilitySnapshot } from "@/lib/factory/runSnapshots";
 import { readLatestStressArtifact, readStressHistorySummary } from "@/lib/factory/stabilityArtifacts";
-import { buildWorkerHeartbeatDiagnostics, classifyWorkerHeartbeatIssue, loadWorkerDocs, loadWorkerSnapshot } from "@/lib/factory/workerState";
+import { buildWorkerHeartbeatDiagnostics, classifyWorkerHeartbeatIssue, liveness, loadWorkerDocs, loadWorkerSnapshot } from "@/lib/factory/workerState";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -33,6 +33,34 @@ const EMPTY_OBSERVABILITY: Record<string, unknown> = {
   top_warning_categories: [],
   top_warnings: [],
 };
+
+function enrichFallbackWorkerFromObserver(
+  workerState: Awaited<ReturnType<typeof loadWorkerSnapshot>>,
+  observer: Record<string, unknown> | null,
+) {
+  const worker = workerState.worker;
+  if (!worker || worker.source !== "queue_fallback" || worker.last_seen) return workerState;
+  const heartbeat = observer && typeof observer === "object"
+    ? ((observer as { heartbeat?: unknown }).heartbeat as { last_activity_at?: unknown } | undefined)
+    : undefined;
+  const lastSeen = typeof heartbeat?.last_activity_at === "string" ? heartbeat.last_activity_at : null;
+  if (!lastSeen) return workerState;
+  const enrichedWorker = {
+    ...worker,
+    last_seen: lastSeen,
+    updated_at: lastSeen,
+    note: "queue fallback with observer pulse",
+    liveness: liveness(lastSeen),
+  };
+  const workers = workerState.workers.length
+    ? [enrichedWorker, ...workerState.workers.slice(1)]
+    : [enrichedWorker];
+  return {
+    ...workerState,
+    worker: enrichedWorker,
+    workers,
+  };
+}
 
 function summarizeAlerts(input: {
   workerState: "unknown" | "alive" | "stale" | "dead";
@@ -341,23 +369,24 @@ export async function GET() {
       latestStressPromise,
       stressHistoryPromise,
     ]);
+    const effectiveWorkerState = enrichFallbackWorkerFromObserver(workerState, observer);
     const observability = observabilitySnapshot.observability;
     const observabilityWarning = observabilitySnapshot.warning;
     const lowServices = balances.filter((s) => s.low).map((s) => s.service);
     const workerIssue = classifyWorkerHeartbeatIssue(
-      workerState.db_error,
-      workerState.worker?.source || "unknown",
-      workerState.worker?.last_seen || null,
+      effectiveWorkerState.db_error,
+      effectiveWorkerState.worker?.source || "unknown",
+      effectiveWorkerState.worker?.last_seen || null,
     );
     const heartbeat_diagnostics = buildWorkerHeartbeatDiagnostics({
-      dbError: workerState.db_error,
-      workerSource: workerState.worker?.source || "unknown",
-      workerLastSeen: workerState.worker?.last_seen || null,
+      dbError: effectiveWorkerState.db_error,
+      workerSource: effectiveWorkerState.worker?.source || "unknown",
+      workerLastSeen: effectiveWorkerState.worker?.last_seen || null,
     });
     const alerts = summarizeAlerts({
-      workerState: workerState.worker?.liveness?.state || "unknown",
-      workerSource: workerState.worker?.source || "unknown",
-      workerDbError: workerState.db_error,
+      workerState: effectiveWorkerState.worker?.liveness?.state || "unknown",
+      workerSource: effectiveWorkerState.worker?.source || "unknown",
+      workerDbError: effectiveWorkerState.db_error,
       workerIssue,
       lowServices,
       staleRunning: Number((observability as { stale_running?: unknown } | null)?.stale_running || 0),
@@ -374,9 +403,9 @@ export async function GET() {
       ? String((observability.top_error_categories[0] as { category?: unknown }).category || "")
       : null;
     const suggested_actions = buildSuggestedActions({
-      workerState: workerState.worker?.liveness?.state || "unknown",
-      workerSource: workerState.worker?.source || "unknown",
-      workerDbError: workerState.db_error,
+      workerState: effectiveWorkerState.worker?.liveness?.state || "unknown",
+      workerSource: effectiveWorkerState.worker?.source || "unknown",
+      workerDbError: effectiveWorkerState.db_error,
       workerIssue,
       lowServices,
       staleRunning: Number((observability as { stale_running?: unknown } | null)?.stale_running || 0),
@@ -391,8 +420,8 @@ export async function GET() {
       observabilityWarning,
     });
     const ops_status = buildOpsStatus({
-      workerState: workerState.worker?.liveness?.state || "unknown",
-      workerSource: workerState.worker?.source || "unknown",
+      workerState: effectiveWorkerState.worker?.liveness?.state || "unknown",
+      workerSource: effectiveWorkerState.worker?.source || "unknown",
       workerIssue,
       lowServices,
       staleRunning: Number((observability as { stale_running?: unknown } | null)?.stale_running || 0),
@@ -410,8 +439,8 @@ export async function GET() {
     return NextResponse.json({
       ok: true,
       db_ready: true,
-      worker: workerState.worker,
-      workers: workerState.workers,
+      worker: effectiveWorkerState.worker,
+      workers: effectiveWorkerState.workers,
       queue: docs.queue,
       docs,
       balances: {
@@ -428,7 +457,7 @@ export async function GET() {
       suggested_actions,
       ops_status,
       heartbeat_diagnostics,
-      db_error: workerState.db_error,
+      db_error: effectiveWorkerState.db_error,
       generated_at: new Date().toISOString(),
     }, { headers: { "Cache-Control": "no-store" } });
   } catch (e) {
