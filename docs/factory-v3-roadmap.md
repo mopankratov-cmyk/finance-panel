@@ -10,6 +10,7 @@
 > - V8 закрыт не только промптом, но и guard-логикой: `decompose` после ответа модели принудительно переводит роли `problem|solution|proof` на `disk_real`, кроме явных AI-акцентов `talking_head|before_after|voiceover`.
 > - V2 закрыт как безопасный skeleton transfer: winner-пресеты сохраняют production prompt, а decompose-перенос получает черновик с product scope и запретом дословного копирования конкурента.
 > - V5 больше не “мёртвая таблица”: `public/inferno/studio.html` уже шлёт `POST /api/factory/post-metrics`, а route умеет fail-open forward в `winners`.
+> - V18-1 закрыт: Studio не показывает `patrick`/`text` legacy entry points в навигации; файлы оставлены для прямого URL до отдельного V18-2.
 > - V11 частично закрыт в Studio: запуск через библиотеку и экран сборки считает смету по нодам, показывает потолок ОТК-регенераций и не отправляет `graph-run`, если `/ops` явно вернул `balances.low`. Открытый хвост V11 — вынести `cost_hint` в backend/runtime contracts, а не только в UI.
 > - V20 больше не “таблицы нет совсем”: `generation_history` уже пишется из `gen-save`, `node-preview`, `graph-run` clip persistence и `reject`; read-path и learn-screen тоже уже выдают warning/lineage-контекст. Открытый хвост V20 сейчас уже не в самом наличии истории, а в том, что standalone/local scripts по-прежнему обходят БД.
 
@@ -43,7 +44,7 @@
 | **V7** | Читать сигнал обратно в `decompose`/критика. **Не с нуля — порт `winnersHint`/`rejHint` из `/scripts` + дочитать `cf_signals`-агрегаты** | M |
 | **V9** | Хук-турнир на hook-ноде: `/variations` → `/node-preview`×N → `/hook-judge` → выбор человеком. Брать варианты из реального Virlo-корпуса | M |
 | **V20** | **История генераций / память итераций** — базовый субстрат уже в коде; следующий шаг теперь не “создать историю”, а дотащить lineage до standalone/local render paths и richer comparison UX. | M |
-| **V18-1** | Спрятать ссылки на legacy из навигации (файлы не трогать) | S |
+| **V18-1** | Спрятать ссылки на legacy из Studio-навигации; файлы не трогать. | S · done |
 
 ### 🕓 ПОЗЖЕ
 - **V6** — реальные метрики авто-апгрейдят winner (рынок>робот; строго после V5, ручное подтверждение порога).

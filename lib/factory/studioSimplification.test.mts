@@ -17,6 +17,7 @@ ok(/compact:true/.test(studio), "Studio starts in compact operator mode");
 ok(/COMPACT_HIDDEN_SCREENS=new Set\(\["inspector","static","balances","learn"\]\)/.test(studio), "compact mode hides non-MVP screens from navigation");
 ok(/function visibleScreens\(\)\{ return S\.compact \? SCREENS\.filter/.test(studio), "navigation is derived from visible screens");
 ok(/visibleScreens\(\)\.forEach/.test(studio), "renderNav uses compact-aware screen list");
+ok(!/href=["'][^"']*patrick/.test(studio) && !/\{id:"text"/.test(studio) && /if\(s\.screen==="text"\)s\.screen="center";/.test(studio), "legacy patrick/text entry points stay hidden from Studio navigation without deleting files");
 ok(/\{id:"worker",grp:"⚙ Система",chip:"08",tt:"Пульс завода",st:"живые прогоны"\}/.test(studio), "system navigation names the worker screen as factory pulse instead of infra jargon");
 ok(/завод коротких роликов/.test(studio) && !/viral video graph/.test(studio), "rail branding stays in Russian operator language");
 ok(/\{id:"compete",grp:"Старт",chip:"02",tt:"Анализ конкурентов",st:"разведка · разбор"\}/.test(studio) && !/разведка · decompose/.test(studio), "competitor analysis navigation avoids raw decompose jargon");
