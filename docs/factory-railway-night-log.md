@@ -2224,3 +2224,4 @@
 - 2026-06-26 15:15 MSK - hardened V16 learning market enrichment against malformed market rows: if `post_metrics` has no valid `recipe_id`, `/api/factory/learning` now records a warning and skips the empty `node_recipes.in([])` lookup instead of risking a read-path degradation.
 - 2026-06-26 15:28 MSK - cleaned the remaining raw observability values in the full pulse view: slow-step names and incident `last_status` now pass through `runStepLabel()` / `runQueueTone()` instead of leaking backend step/status strings.
 - 2026-06-26 15:35 MSK - finished the same full-pulse translation pass for step-duration series: hourly duration rows now use `runStepLabel()` instead of raw backend step ids.
+- 2026-06-26 15:47 MSK - added a defensive translation layer for full-pulse failure diagnostics and balance chips: backend `issue/action/next_step/status` codes now render as operator tasks instead of English/raw enums.

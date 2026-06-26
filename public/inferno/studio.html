@@ -667,6 +667,44 @@ function suggestedActionLabel(action){
     continue_monitoring:"продолжать наблюдение",
   }[code] || code.replace(/_/g," ");
 }
+function failureIssueLabel(value){
+  const text=String(value||"").trim();
+  return {
+    "database failures dominate":"ошибки базы лидируют в выборке",
+    "render path is failing most often":"чаще всего падает путь рендера",
+    "generation nodes are failing before render":"ноды генерации падают до рендера",
+    "timeouts dominate the current sample":"в выборке лидируют таймауты",
+    "quality gates are rejecting or failing most often":"чаще всего срабатывает или падает ОТК",
+    "storage/save path is unstable":"нестабилен путь сохранения ролика",
+    "budget guardrails are stopping runs":"прогоны останавливаются бюджетными лимитами",
+    "input validation is breaking runs early":"входные данные ломают прогон на старте",
+    "uncategorized failures dominate the sample":"в выборке лидируют неразмеченные сбои",
+  }[text] || text.replace(/_/g," ");
+}
+function failureNextStepLabel(value){
+  const text=String(value||"").trim();
+  return {
+    "inspect Supabase connectivity, schema cache, and route auth before rerunning recipes":"проверь связь с Supabase, schema cache и доступ к маршрутам перед новым прогоном",
+    "check output_url/render provider path and retry the failing render stage first":"проверь output_url и провайдера рендера, затем повтори упавший шаг",
+    "inspect failing generation tools and provider responses before retrying full runs":"проверь ответы генераторов и провайдеров перед полным повтором",
+    "inspect the slowest steps and raise timeout or reduce fan-out before rerunning":"посмотри самые медленные шаги, увеличь таймаут или уменьши fan-out",
+    "inspect critic/artifact/OTK failures and confirm fail-open vs fail-closed behavior":"проверь критика, артефакты и режим ОТК: выпуск не должен закрываться лишний раз",
+    "inspect catalog/gen-save/output persistence before retrying downstream stages":"проверь каталог, gen-save и сохранение output_url перед повтором",
+    "inspect launch caps and provider balance before restarting queues":"проверь лимиты запуска и балансы провайдеров перед рестартом очереди",
+    "inspect recipe_id payload and required input artifacts before rerunning":"проверь recipe_id и обязательные входные артефакты перед повтором",
+    "inspect top error strings and the last failed runs before widening retries":"посмотри верхние ошибки и последние сбойные прогоны перед расширением ретраев",
+  }[text] || text.replace(/_/g," ");
+}
+function balanceStatusLabel(status){
+  const code=String(status||"").trim();
+  return {
+    low:"низкий",
+    critical:"критично",
+    empty:"пусто",
+    ok:"норма",
+    unknown:"неясно",
+  }[code] || code.replace(/_/g," ") || "низкий";
+}
 function runQueueTone(status){
   return {
     running:{c:"var(--acc-lt)", bg:"var(--vio-bg)", label:"идёт"},
@@ -889,7 +927,7 @@ async function screenWorker(root, force, renderToken){
     if(lsStability){
       if(lsStability.failure_diagnostics&&lsStability.failure_diagnostics.issue){
         latestCard.appendChild(el("div",{style:"font-size:11px;color:var(--tx-lo);line-height:1.45;margin-top:8px;"},
-          "По базе: "+String(lsStability.failure_diagnostics.issue)));
+          "По базе: "+failureIssueLabel(lsStability.failure_diagnostics.issue)));
       }
     }
     if(stressHistory&&stressHistory.total_reports&&!S.compact){
@@ -1218,9 +1256,9 @@ function renderObservabilityCard(host){
       el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:8px;"},
         el("div",{style:"font-size:10.5px;font-weight:700;color:var(--err);"},"Разбор сбоев"),
         failDiag.category?el("span",{class:"mono",style:"font-size:9.5px;color:var(--err);background:rgba(0,0,0,.08);padding:2px 6px;border-radius:5px;font-weight:700;"},errorCategoryLabel(failDiag.category)):null),
-      el("div",{style:"font-size:10.5px;color:var(--tx-bd);line-height:1.45;"},String(failDiag.issue||"")),
-      failDiag.action?el("div",{class:"mono",style:"font-size:10px;color:var(--tx-hi);line-height:1.45;"},"действие · "+String(failDiag.action)):null,
-      failDiag.next_step?el("div",{style:"font-size:10.5px;color:var(--tx-lo);line-height:1.45;"},"следом · "+String(failDiag.next_step)):null,
+      el("div",{style:"font-size:10.5px;color:var(--tx-bd);line-height:1.45;"},failureIssueLabel(failDiag.issue||"")),
+      failDiag.action?el("div",{class:"mono",style:"font-size:10px;color:var(--tx-hi);line-height:1.45;"},"действие · "+suggestedActionLabel(failDiag.action)):null,
+      failDiag.next_step?el("div",{style:"font-size:10.5px;color:var(--tx-lo);line-height:1.45;"},"следом · "+failureNextStepLabel(failDiag.next_step)):null,
       failDiag.sample_error?el("div",{class:"mono",style:"font-size:9.5px;color:var(--tx-mid);line-height:1.35;"},String(failDiag.sample_error).slice(0,110)):null));
   }
   if(slow.length){
@@ -1349,7 +1387,7 @@ function renderCenterOpsSummary(host,input){
     });
   }
   if(lowBalances.length){
-    lowBalances.slice(0,2).forEach((b)=>detailItems.push([String(b.provider||"баланс")+": "+(b.status||"низкий")+(b.remaining_pct!=null?(" · "+Math.round(Number(b.remaining_pct)||0)+"%"):""), "err"]));
+    lowBalances.slice(0,2).forEach((b)=>detailItems.push([String(b.provider||"баланс")+": "+balanceStatusLabel(b.status||"низкий")+(b.remaining_pct!=null?(" · "+Math.round(Number(b.remaining_pct)||0)+"%"):""), "err"]));
   }
   if(detailItems.length){
     const colorFor=(t)=>t==="err"?["var(--err)","var(--err-bg)"]:t==="warn"?["var(--warn)","var(--warn-bg)"]:t==="ok"?["var(--ok)","var(--ok-bg)"]:["var(--tx-mid)","var(--bg-input)"];
