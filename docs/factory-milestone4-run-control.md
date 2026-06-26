@@ -106,7 +106,7 @@ Auth smoke:
 - Studio сохраняет HTTP status/network metadata из `api()` и показывает понятные действия для 401/403/network failures: войти заново, проверить связь или деплой.
 - Ошибки общих действий Studio (открыть рецепт, перенос, превью ноды, автозаполнение, бренд-кит, банк победителей, балансы, обучение) проходят через общий `apiErrorText()`.
 - `/api/factory/ab-rank` остаётся read-only: новые поля `review` / `hold`, старые `scale` / `kill` только compatibility aliases.
-- `/api/factory/learning` показывает market summary, market-by-niche и `ОТК vs рынок`; malformed `post_metrics` без валидного `recipe_id` теперь дают warning вместо рискованного пустого lookup.
+- `/api/factory/learning` показывает market summary, market-by-niche, `win-rate 100+` и `ОТК vs рынок`; malformed `post_metrics` без валидного `recipe_id` теперь дают warning вместо рискованного пустого lookup.
 - `docs/factory-railway-task-queue.md` помечен как архив/backlog, а не как реальная очередь прогонов.
 
 ## Операторский контур после M4

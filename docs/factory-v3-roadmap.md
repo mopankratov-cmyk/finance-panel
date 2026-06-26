@@ -77,7 +77,7 @@
 - `node-preview` пишет cache-hit, instant done и async done;
 - `graph-run` пишет lineage для durable clip success/dedupe/failure;
 - `reject` оставляет history row с причиной;
-- `learning` и `/api/factory/generation-history` уже умеют fail-open warning contract, а learn-screen показывает lineage bits (`recipe_id`, `attempt`, `variant_idx`, `reason`, `article`).
+- `learning` и `/api/factory/generation-history` уже умеют fail-open warning contract, а learn-screen показывает lineage bits (`recipe_id`, `attempt`, `variant_idx`, `reason`, `article`) с операторскими labels для `node_type/source/status`.
 
 Что всё ещё открыто:
 - **Standalone мимо БД:** repo-local `scripts/render-local.mjs`, `scripts/stills.mjs` и `scripts/creatify-*.mjs` по-прежнему могут складывать артефакты в `out/` без записи в БД. Это вне текущего Railway worker мандата (`scripts/` не входит в разрешённую factory-зону), поэтому следующий шаг требует отдельного owner-approved scope.
