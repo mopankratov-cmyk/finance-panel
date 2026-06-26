@@ -659,6 +659,25 @@ function runQueueTone(status){
     otk_pass:{c:"var(--ok)", bg:"var(--ok-bg)", label:"отк ок"},
   }[String(status||"")] || {c:"var(--tx-lo2)", bg:"var(--bg-input)", label:String(status||"?")};
 }
+async function startProductionRun(recipeId, opts){
+  recipeId=Number(recipeId);
+  if(!recipeId){ toast("нет recipe_id"); return; }
+  const key="run-"+recipeId;
+  S.busyRun=S.busyRun||{};
+  if(S.busyRun[key]){ toast("прогон уже запускается"); return; }
+  S.busyRun[key]=true;
+  toast((opts&&opts.restart)?"перезапускаю прогон…":"запускаю прогон…");
+  const r=await api("/graph-run",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({recipe_id:recipeId,restart:!!(opts&&opts.restart)})});
+  delete S.busyRun[key];
+  if(r&&r.ok){
+    toast("прогон поставлен в работу");
+    S.workerState=null; _libCache=null;
+    if(S.screen==="worker")screenWorker(document.getElementById("screen"),true);
+    else if(S.screen==="library")screenLibrary(document.getElementById("screen"));
+  } else {
+    toast("не запустилось: "+((r&&r.error)||"ошибка"));
+  }
+}
 
 function renderOpsFetchFallback(host,errorText,stale){
   const card=el("div",{class:"card",style:"padding:15px;border-color:var(--warn);background:var(--warn-bg);"});
@@ -731,6 +750,7 @@ async function screenWorker(root, force, renderToken){
   const focusRunTone=focusRun?runQueueTone(focusRun.stale?"stale_running":focusRun.status):runQueueTone("");
   const focusRunLabel=focusRun?(focusRun.stale||focusRun.status==="running"?"Текущий прогон":"Последний прогон"):"Прогон";
   const focusRunTitle=focusRun?`рецепт #${focusRun.recipe_id!=null?String(focusRun.recipe_id):"?"}`:"—";
+  const focusRunArticle=focusRun&&focusRun.article?String(focusRun.article):"";
   const focusRunDetail=!focusRun
     ? "живых и недавних прогонов пока нет"
     : focusRun.stale
@@ -773,8 +793,13 @@ async function screenWorker(root, force, renderToken){
       focusRun?el("span",{class:"mono",style:"font-size:10px;color:"+focusRunTone.c+";background:"+focusRunTone.bg+";padding:3px 7px;border-radius:5px;font-weight:700;"},focusRunTone.label):null),
     el("div",{style:"display:flex;flex-direction:column;gap:6px;"},
       el("div",{style:"font-size:19px;font-weight:700;"},focusRunTitle),
+      focusRunArticle?el("div",{style:"font-size:12px;color:var(--tx-mid);line-height:1.35;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"},focusRunArticle):null,
       el("div",{style:"font-size:13px;color:var(--tx-bd);line-height:1.45;"},focusRunDetail),
-      focusRunMeta.length?el("div",{style:"font-size:11.5px;color:var(--tx-lo);line-height:1.45;"},focusRunMeta.join(" · ")):null)));
+      focusRunMeta.length?el("div",{style:"font-size:11.5px;color:var(--tx-lo);line-height:1.45;"},focusRunMeta.join(" · ")):null,
+      focusRun?el("div",{style:"display:flex;gap:6px;flex-wrap:wrap;margin-top:2px;"},
+        el("button",{class:"btn sm",onclick:()=>openRecipe(focusRun.recipe_id).then(ok=>{ if(ok)go("assembly"); })},"открыть граф"),
+        focusRun.output_url?el("button",{class:"btn sm",onclick:()=>openMedia(focusRun.output_url,{video:true})},"MP4"):null,
+        focusRun.status==="running"&&!focusRun.stale?null:el("button",{class:"btn sm",onclick:()=>startProductionRun(focusRun.recipe_id,{restart:true})},"запустить снова")):null)));
   wrap.appendChild(top);
 
   if(visibleSuggested.length){
@@ -850,7 +875,7 @@ async function screenWorker(root, force, renderToken){
 
   const list=el("div",{class:"card",style:"padding:14px;margin-bottom:14px;"}); wrap.appendChild(list);
   list.appendChild(el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;"},
-    el("div",{style:"font-size:14px;font-weight:600;"},"Живые прогоны"),
+    el("div",{style:"font-size:14px;font-weight:600;"},"Очередь прогонов"),
     el("span",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);"},String(queueRuns.length||0)+" в выборке")));
   if(!queueRuns.length){
     list.appendChild(emptyBox("прогоны ещё не появлялись или снимок пульса пока пуст"));
@@ -871,8 +896,10 @@ async function screenWorker(root, force, renderToken){
       const tt=runQueueTone(r&&r.stale?"stale_running":r.status);
       const recipeId=r&&r.recipe_id!=null?String(r.recipe_id):"?";
       const metaBits=[
+        r&&r.article?String(r.article):"",
         r&&r.created_at?fmtWhen(r.created_at):"",
         r&&r.total_ms!=null?`${Math.round(Number(r.total_ms||0)/1000)}с`:"",
+        r&&r.otk_score!=null?`ОТК ${Math.round(Number(r.otk_score)*10)}`:"",
       ].filter(Boolean);
       const detail=String(r&&r.status||"")==="running"
         ? (r&&r.stale
@@ -887,7 +914,11 @@ async function screenWorker(root, force, renderToken){
         el("div",{style:"font-size:12px;font-weight:700;color:var(--tx-hi);"},`рецепт #${recipeId}`),
         el("div",{style:"min-width:0;display:flex;flex-direction:column;gap:4px;"},
           el("div",{style:"font-size:12.5px;font-weight:600;line-height:1.4;"},detail),
-          metaBits.length?el("div",{style:"font-size:11px;color:var(--tx-lo);line-height:1.45;"},metaBits.join(" · ")):null),
+          metaBits.length?el("div",{style:"font-size:11px;color:var(--tx-lo);line-height:1.45;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"},metaBits.join(" · ")):null,
+          el("div",{style:"display:flex;gap:6px;flex-wrap:wrap;margin-top:2px;"},
+            el("button",{class:"btn sm",onclick:()=>openRecipe(recipeId).then(ok=>{ if(ok)go("assembly"); })},"граф"),
+            r&&r.output_url?el("button",{class:"btn sm",onclick:()=>openMedia(r.output_url,{video:true})},"MP4"):null,
+            r&&r.status==="running"&&!r.stale?null:el("button",{class:"btn sm",onclick:()=>startProductionRun(recipeId,{restart:true})},"старт"))),
         el("span",{class:"mono",style:"font-size:10px;color:"+tt.c+";background:"+tt.bg+";padding:3px 7px;border-radius:5px;font-weight:700;white-space:nowrap;"},tt.label)));
     });
   }

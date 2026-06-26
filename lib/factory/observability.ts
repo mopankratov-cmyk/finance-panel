@@ -14,6 +14,10 @@ export type RunSummary = {
 export type RecentRunPoint = {
   recipe_id: number | null;
   run_id?: string | null;
+  article?: string | null;
+  niche?: string | null;
+  output_url?: string | null;
+  otk_score?: number | null;
   created_at: string | null;
   status: string;
   total_ms: number | null;
@@ -264,6 +268,10 @@ export function buildObservability(rows: Record<string, unknown>[]) {
     recentRuns.push({
       recipe_id: Number(raw.id) || null,
       run_id: plan.run_id ? String(plan.run_id) : null,
+      article: raw.article ? String(raw.article) : null,
+      niche: raw.niche ? String(raw.niche) : null,
+      output_url: raw.output_url ? String(raw.output_url) : null,
+      otk_score: typeof raw.otk_score === "number" ? raw.otk_score : null,
       created_at: raw.created_at ? String(raw.created_at) : null,
       status,
       total_ms: summary.total_ms,
