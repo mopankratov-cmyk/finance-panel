@@ -53,18 +53,21 @@ export async function POST(req: NextRequest) {
 
   // 2) рынок → winners: тянем output_url рецепта + хук, апгрейдим хук реальными просмотрами
     let forwarded = false;
+    let outputUrl: string | null = null;
+    let recipeStatus: string | null = null;
     try {
-      const { data, error } = await db.from("node_recipes").select("output_url,run_plan").eq("id", recipeId).limit(1);
+      const { data, error } = await db.from("node_recipes").select("output_url,status,run_plan").eq("id", recipeId).limit(1);
       if (error) warnings.push("node_recipes lookup: " + error.message.slice(0, 140));
       const rec = (data as Record<string, unknown>[] | null)?.[0];
-      const url = rec?.output_url as string | undefined;
-      if (url) {
+      outputUrl = rec?.output_url ? String(rec.output_url) : null;
+      recipeStatus = rec?.status ? String(rec.status) : null;
+      if (outputUrl) {
         const nodes = (((rec?.run_plan as Record<string, unknown>)?.nodes) as Record<string, unknown>[]) || [];
         const h = nodes.find((n) => String((n.params as Record<string, unknown>)?.role || n.slot || "").toLowerCase() === "hook") || nodes[0];
         const hook = String((h?.onscreen_text as string) || (h?.prompt as string) || "").slice(0, 120);
         const res = await internalFetch(`${req.nextUrl.origin}/api/factory/winners`, {
           method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ url, hook, views, recipe_id: recipeId, note: `рынок: ${views} просм · ${b.platform || "TikTok"}` }),
+          body: JSON.stringify({ url: outputUrl, hook, views, recipe_id: recipeId, note: `рынок: ${views} просм · ${b.platform || "TikTok"}` }),
           signal: AbortSignal.timeout(20000),
         });
         const payload = await res.json().catch(() => null) as { ok?: boolean; error?: string } | null;
@@ -78,17 +81,23 @@ export async function POST(req: NextRequest) {
     }
 
     let statusMarked = false;
-    if (metricsSaved || forwarded) {
+    if ((metricsSaved || forwarded) && outputUrl && recipeStatus !== "running") {
       try {
-        const { error } = await db
+        const { data: markedRows, error } = await db
           .from("node_recipes")
           .update({ status: "posted", updated_at: new Date().toISOString() })
-          .eq("id", recipeId);
+          .eq("id", recipeId)
+          .neq("status", "running")
+          .select("id")
+          .limit(1);
         if (error) warnings.push("node_recipes status update: " + error.message.slice(0, 140));
-        else statusMarked = true;
+        else statusMarked = !!(markedRows && markedRows.length);
       } catch (e) {
         warnings.push("node_recipes status update exception: " + String((e as Error)?.message || e).slice(0, 120));
       }
+    } else if (metricsSaved || forwarded) {
+      if (!outputUrl) warnings.push("recipe status not marked posted: missing output_url");
+      if (recipeStatus === "running") warnings.push("recipe status not marked posted: recipe is still running");
     }
 
     return NextResponse.json({ ok: true, forwarded, metrics_saved: metricsSaved, status_marked: statusMarked, warnings });
