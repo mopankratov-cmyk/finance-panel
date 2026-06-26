@@ -13,6 +13,6 @@ export async function GET() {
     const musics = await creatifyListMusic();
     return NextResponse.json({ ok: true, count: musics.length, musics }, { headers: { "Cache-Control": "no-store" } });
   } catch (e) {
-    return NextResponse.json({ ok: false, error: "музыка Creatify упала: " + String((e as Error)?.message || e).slice(0, 180) }, { status: 500, headers: { "Cache-Control": "no-store" } });
+    return NextResponse.json({ ok: true, musics: [], warning: "музыка Creatify недоступна: " + String((e as Error)?.message || e).slice(0, 180) }, { headers: { "Cache-Control": "no-store" } });
   }
 }
