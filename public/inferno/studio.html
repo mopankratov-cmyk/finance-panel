@@ -337,6 +337,13 @@ function apiErrorText(r,fallback){
   if(status)return "сервер вернул "+status+": "+(raw||fallback||"ошибка").slice(0,80);
   return (raw||fallback||"ошибка").slice(0,100);
 }
+function isAuthErrorText(text){
+  return /сессия истекла|не авториз|unauthorized|forbidden/i.test(String(text||""));
+}
+function openStudioLogin(){
+  const from="/inferno/studio.html";
+  window.location.href="/login?from="+encodeURIComponent(from);
+}
 function el(tag,attrs,...kids){
   const e=document.createElement(tag);
   if(attrs)for(const k in attrs){
@@ -754,12 +761,17 @@ async function startProductionRun(recipeId, opts){
 }
 
 function renderOpsFetchFallback(host,errorText,stale){
+  const authBlocked=isAuthErrorText(errorText);
   const card=el("div",{class:"card",style:"padding:15px;border-color:var(--warn);background:var(--warn-bg);"});
   card.appendChild(el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:8px;"},
     el("div",{style:"font-size:14px;font-weight:600;color:var(--warn);"},"Пульс временно недоступен"),
-    el("button",{class:"btn sm",onclick:()=>screenWorker(document.getElementById("screen"))},"↻ Повторить")));
+    el("div",{style:"display:flex;gap:8px;flex-wrap:wrap;"},
+      authBlocked?el("button",{class:"btn sm prim",onclick:()=>openStudioLogin()},"Открыть вход"):null,
+      el("button",{class:"btn sm",onclick:()=>screenWorker(document.getElementById("screen"))},"↻ Повторить"))));
   card.appendChild(el("div",{style:"font-size:12px;color:var(--tx-bd);line-height:1.5;"},
-    stale
+    authBlocked
+      ? "сессия Studio истекла, поэтому сводка завода закрыта. Войди заново и обнови экран."
+      : stale
       ? "не удалось подтянуть свежий снимок, поэтому оставляю на экране последний удачный статус."
       : "не удалось подтянуть сводку завода, поэтому экран пока не может собрать статус."));
   if(errorText){

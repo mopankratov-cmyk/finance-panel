@@ -9,8 +9,8 @@
 - Last heartbeat: локально, в процессе работы
 - Ветки: `fix/factory-elevenlabs-optional`
 - Проверки: `npm run test:factory`; `npx tsc --noEmit`; `npm run lint`; `npm run build`
-- Что поправлено: очищен operator-facing error contract по всему `app/api/factory`; orchestration, render, media, content-prep, service, corpus/trends и legacy helper routes больше не возвращают сырые английские `crash:`-префиксы; CRON-protected endpoints объясняют auth block как `неверный CRON_SECRET`; contract tests теперь сканируют всё дерево factory API
-- Что осталось: дождаться deploy/alias refresh и сделать один production smoke прогон через Studio; generated stress artifacts остаются вне коммита как runtime output, не как кодовый долг
+- Что поправлено: очищен operator-facing error contract по всему `app/api/factory`; orchestration, render, media, content-prep, service, corpus/trends и legacy helper routes больше не возвращают сырые английские `crash:`-префиксы; CRON-protected endpoints объясняют auth block как `неверный CRON_SECRET`; contract tests теперь сканируют всё дерево factory API; worker ops snapshot теперь обогащает `queue_fallback` живым `observer heartbeat`, поэтому экран Railway worker не застревает в пустом `unknown`, когда heartbeat-table опционально отсутствует; при истёкшей Studio-сессии экран worker теперь сразу даёт кнопку повторного входа вместо немого warning-card
+- Что осталось: production alias уже обновлён; остаётся только добить git push этой последней локальной правки в Gitea и сделать короткий auth-backed smoke через Studio; generated stress artifacts остаются вне коммита как runtime output, не как кодовый долг
 
 - Дата: 2026-06-24
 - Worker: railway-content-factory
@@ -25,6 +25,49 @@
 - Следующие рекомендации: сразу брать T-002, затем T-003; PR #30 уже слит
 
 ## Записи
+
+### 2026-06-26 18:46
+
+- Ветка: `fix/factory-elevenlabs-optional`
+- Цель: дожать резервный worker pulse так, чтобы operator UI не выглядел сломанным при отсутствии heartbeat-таблицы
+- Изменено:
+  - `app/api/factory/ops/route.ts` теперь синтезирует `last_seen` и `liveness` для `queue_fallback` из `observer.heartbeat.last_activity_at`, если `railway_worker_states` недоступна или пуста
+  - `lib/factory/opsFailOpen.test.mts` получил отдельный контракт на это поведение
+  - production deploy на alias `finance-panel-two.vercel.app` выполнен после зелёного билда
+- Проверки:
+  - `node --import tsx lib/factory/opsFailOpen.test.mts`
+  - `node --import tsx lib/factory/studioSimplification.test.mts`
+  - `node --import tsx lib/factory/infernoHtmlParse.test.mts`
+  - `npm run build`
+  - `vercel --prod --yes`
+- Результат:
+  - worker screen должен показывать не пустой `unknown`, а реальную свежесть резервного пульса
+  - alias `https://finance-panel-two.vercel.app` обновлён и готов к smoke-проверке через авторизованную Studio-сессию
+  - локальный коммит `8ee5807 enrich fallback worker pulse from observer` создан
+- Блокеры:
+  - `git push` по HTTPS упирается в локальный `credential-osxkeychain`, это машинный auth хвост, а не проблема кода контент-завода
+- Следующий шаг:
+  - попробовать допушить ветку через `gitea-ssh`
+  - если SSH тоже закрыт, оставить владельцу одну точную команду на push после восстановления auth
+
+### 2026-06-26 19:02
+
+- Ветка: `fix/factory-elevenlabs-optional`
+- Цель: убрать тупик на worker screen, когда `/api/factory/ops` отвечает `401`
+- Изменено:
+  - `public/inferno/studio.html` теперь распознаёт auth-failure на fetch fallback и показывает оператору прямую кнопку `Открыть вход`
+  - worker warning-card в auth-сценарии объясняет, что закрыта именно сессия Studio, а не сам завод
+  - `lib/factory/studioSimplification.test.mts` закрепляет этот recovery path
+- Проверки:
+  - `node --import tsx lib/factory/studioSimplification.test.mts`
+  - `node --import tsx lib/factory/opsFailOpen.test.mts`
+  - `node --import tsx lib/factory/infernoHtmlParse.test.mts`
+  - `npm run build`
+- Результат:
+  - при `401/403` worker screen больше не выглядит как просто сломанный `/ops`
+  - у оператора есть один понятный следующий шаг прямо из интерфейса
+- Следующий шаг:
+  - закоммитить этот UX хвост и выкатить его на alias
 
 ### 2026-06-26 00:40
 
