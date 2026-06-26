@@ -14,6 +14,6 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
     if (s.status === "error") return NextResponse.json({ status: "failed", error: s.error });
     return NextResponse.json({ status: "rendering", progress: "рендер видео (FAL/Kling)…" });
   } catch (e) {
-    return NextResponse.json({ status: "error", error: "статус FAL-видео упал: " + String((e as Error)?.message || e).slice(0, 180) }, { status: 500 });
+    return NextResponse.json({ status: "error", error: "статус FAL-видео упал: " + String((e as Error)?.message || e).slice(0, 180) });
   }
 }

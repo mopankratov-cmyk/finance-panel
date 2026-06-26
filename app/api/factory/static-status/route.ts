@@ -44,6 +44,6 @@ export async function GET(req: NextRequest) {
     }
     return NextResponse.json(s);
   } catch (e) {
-    return NextResponse.json({ status: "error", error: "статус static-рендера упал: " + String((e as Error)?.message || e).slice(0, 180) }, { status: 500 });
+    return NextResponse.json({ status: "error", error: "статус static-рендера упал: " + String((e as Error)?.message || e).slice(0, 180) });
   }
 }
