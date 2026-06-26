@@ -1694,6 +1694,24 @@ function trackLabel(value){
     captions:"Титры",
   }[String(value||"")] || nodeTypeLabel(value);
 }
+function generationSourceLabel(value){
+  const code=String(value||"").trim();
+  return {
+    graph_run:"полный прогон",
+    graph:"полный прогон",
+    node_preview:"превью ноды",
+    preview:"превью",
+    static_render:"статика",
+    static_status:"статика",
+    static:"статика",
+    manual_upload:"ручная загрузка",
+    upload:"загрузка",
+    media_store:"медиа-банк",
+    gen_save:"сохранение",
+    winner_preset:"пресет победителя",
+    learning:"обучение",
+  }[code] || (code ? code.replace(/[_-]+/g," ") : "");
+}
 function canvasNode(n,p){
   const sug=n.agent_suggestion||{}; const c=NODE_TYPE_COLOR[n.node_type]||"#46c08f";
   const sel=S.selectedNode&&S.selectedNode.id===n.id;
@@ -2717,14 +2735,14 @@ async function screenLearn(root){
   const ST={otk_pass:["var(--ok)","ОТК ✓"],approved:["var(--ok)","одобрено"],warning:["var(--warn)","предупр."],otk_fail:["var(--warn)","низкий ОТК"],rejected:["var(--err)","отклонено"],artifact_fail:["var(--err)","артефакт"],run_fail:["var(--err)","сбой"],regen:["var(--acc-lt)","реген"],generated:["var(--tx-bd)","собрано"]};
     const list=el("div",{style:"display:flex;flex-direction:column;gap:6px;"}); wrap.appendChild(list);
     rg.forEach(r=>{
-      const st=ST[r.status]||["var(--tx-lo2)",r.status||"?"];
+      const st=ST[r.status]||["var(--tx-lo2)","неясно"];
       const headline=((NICHE_EMOJI[r.niche]||"")+(r.article?(" "+String(r.article)):"")).trim()||"без артикула";
       const lineageBits=[
         r.recipe_id!=null?("#"+String(r.recipe_id)):null,
         r.attempt!=null?("попытка "+String(r.attempt)):null,
         r.variant_idx!=null?("вариант "+String(r.variant_idx)):null,
-        r.node_type?String(r.node_type):null,
-        r.source?String(r.source):null,
+        r.node_type?nodeTypeLabel(r.node_type):null,
+        r.source?generationSourceLabel(r.source):null,
       ].filter(Boolean);
       const reasonText=r.reason?String(r.reason).slice(0,72):"";
       list.appendChild(el("div",{class:"card",style:"padding:9px 13px;display:flex;align-items:center;gap:11px;"+(r.output_url?"cursor:pointer;":""),onclick:r.output_url?()=>openMedia(r.output_url):null},

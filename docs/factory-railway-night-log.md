@@ -2225,3 +2225,4 @@
 - 2026-06-26 15:28 MSK - cleaned the remaining raw observability values in the full pulse view: slow-step names and incident `last_status` now pass through `runStepLabel()` / `runQueueTone()` instead of leaking backend step/status strings.
 - 2026-06-26 15:35 MSK - finished the same full-pulse translation pass for step-duration series: hourly duration rows now use `runStepLabel()` instead of raw backend step ids.
 - 2026-06-26 15:47 MSK - added a defensive translation layer for full-pulse failure diagnostics and balance chips: backend `issue/action/next_step/status` codes now render as operator tasks instead of English/raw enums.
+- 2026-06-26 15:58 MSK - cleaned learning generation history lineage: node types now use `nodeTypeLabel()`, source codes use a small operator dictionary, and unknown statuses fall back to `неясно` instead of leaking backend enums.
