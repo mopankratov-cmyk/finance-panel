@@ -593,6 +593,18 @@ export default function ReelsBrainPage() {
               Проверяем источники, сравниваем качество выдачи, пишем только осознанно и сразу видим,
               что попало в viral corpus. Это мост между scraper-слоем и Pattern Brain.
             </p>
+            <div className="mt-4 flex flex-wrap gap-3">
+              <a
+                href="/inferno/vendor/reels-brain-demo"
+                className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-white px-4 py-2 text-sm font-bold text-slate-950 shadow-lg shadow-slate-950/15 transition hover:bg-cyan-50"
+              >
+                <ExternalLink className="h-4 w-4" />
+                Public demo
+              </a>
+              <span className="inline-flex min-h-11 items-center rounded-xl border border-white/15 bg-white/10 px-3 py-2 text-xs font-semibold text-slate-200">
+                demo route read-only, live мутации остаются только в этом пульте
+              </span>
+            </div>
           </div>
           <div className="grid min-w-72 grid-cols-3 gap-2 rounded-2xl border border-white/10 bg-white/10 p-3 backdrop-blur">
             <Metric label="Доступно" value={availableProviders.length} />

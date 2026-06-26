@@ -26,6 +26,21 @@
 
 ## Записи
 
+### 2026-06-27 00:20
+
+- Ветка: `feat/reels-brain-operator-console`
+- Цель: не потерять public demo внутри ветки и дать быстрые entry points из live surface
+- Изменено:
+  - в `app/agent/page.tsx` добавлена отдельная карточка `Reels Brain Demo`
+  - в `app/agent/reels-brain/page.tsx` добавлена hero-ссылка на `/inferno/vendor/reels-brain-demo`
+  - в live-консоли добавлена явная пометка, что demo route read-only, а live мутации остаются только внутри защищённого пульта
+- Проверки:
+  - `npx tsc --noEmit`
+  - `curl -I http://127.0.0.1:3000/inferno/vendor/reels-brain-demo`
+- Результат:
+  - demo-поверхность стала discoverable из самого продукта
+  - оператору проще переключаться между боевым пультом и публичной витриной без ручного ввода URL
+
 ### 2026-06-27 00:31
 
 - Ветка: `feat/reels-brain-operator-console`
