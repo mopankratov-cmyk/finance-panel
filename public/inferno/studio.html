@@ -1888,7 +1888,15 @@ async function pollPreview(n,token,c){
   pollPreview(n,token,c+1);
 }
 // V10: закрепить превью как финальный клип ноды → сборка не платит fal заново (привязка к hash инвалидирует при правке)
-function takePreview(n,p){ if(!p||!p.hash){ toast("нет hash превью"); return; } n.params=n.params||{}; n.params.preview_url=p.url; n.params.preview_hash=p.hash; scheduleSave(n); renderPreviewOut(n); toast("клип закреплён — сборка не платит заново"); }
+async function takePreview(n,p){
+  if(!p||!p.hash){ toast("нет hash превью"); return; }
+  n.params=n.params||{};
+  n.params.preview_url=p.url;
+  n.params.preview_hash=p.hash;
+  renderPreviewOut(n);
+  await saveNode(n); // не ждём autosave: оператор может сразу нажать сборку, и graph-run должен увидеть hash в БД
+  toast("клип закреплён — сборка не платит заново");
+}
 function renderPreviewOut(n){
   const out=document.getElementById("preview-out"); if(!out)return; out.innerHTML="";
   const p=S.preview[n.id]; if(!p)return;
