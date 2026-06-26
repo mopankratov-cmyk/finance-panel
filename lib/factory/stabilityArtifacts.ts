@@ -13,6 +13,7 @@ export type LatestStressArtifact = {
     failed?: number;
     warnings?: number;
     runFail?: number;
+    authFailures?: number;
     timeouts?: number;
     avgDurationSec?: number;
     targetMet?: boolean;
@@ -73,11 +74,12 @@ function stressReportPoint(payload: LatestStressArtifact): StressHistorySummary[
   const completed = Number(summary.completed || 0);
   const failed = Number(summary.failed || 0);
   const runFail = Number(summary.runFail || 0);
+  const authFailures = Number(summary.authFailures || 0);
   const timeouts = Number(summary.timeouts || 0);
   const targetMet =
     typeof summary.targetMet === "boolean"
       ? summary.targetMet
-      : totalRuns > 0 && completed === totalRuns && failed === 0 && runFail === 0 && timeouts === 0;
+      : totalRuns > 0 && completed === totalRuns && failed === 0 && runFail === 0 && authFailures === 0 && timeouts === 0;
   return {
     generated_at: payload.generatedAt || null,
     recipe_id: typeof summary.recipeId === "number" ? summary.recipeId : null,

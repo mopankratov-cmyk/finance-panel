@@ -841,24 +841,36 @@ async function screenWorker(root, force, renderToken){
   if(latestStress&&latestStress.summary){
     const lsSummary=latestStress.summary||{};
     const lsStability=latestStress.stability&&latestStress.stability.stability?latestStress.stability.stability:null;
+    const lsCompleted=Number(lsSummary.completed||0);
+    const lsTotal=Number(lsSummary.totalRuns||0);
+    const lsFailed=Number(lsSummary.failed||0);
+    const lsRunFail=Number(lsSummary.runFail||0);
+    const lsTimeouts=Number(lsSummary.timeouts||0);
+    const lsAuthFailures=Number(lsSummary.authFailures||0);
+    const lsStressTarget=typeof lsSummary.targetMet==="boolean"
+      ? !!lsSummary.targetMet
+      : !!(lsTotal&&lsCompleted===lsTotal&&!lsFailed&&!lsRunFail&&!lsTimeouts&&!lsAuthFailures);
     const historyFails=Number(stressHistory&&((stressHistory.failed_runs||0)+(stressHistory.run_failures||0)+(stressHistory.timeouts||0))||0);
     const latestCard=el("div",{class:"card",style:"padding:14px;margin-bottom:14px;"});
     latestCard.appendChild(el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;"},
       el("div",{style:"font-size:14px;font-weight:600;"},"Стресс 10/10"),
       el("span",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);"},latestStress.generatedAt?fmtWhen(latestStress.generatedAt):"отчёт")));
     latestCard.appendChild(el("div",{style:"display:flex;flex-wrap:wrap;gap:6px;"},
-      el("span",{class:"mono",style:"font-size:10px;color:var(--tx-hi);background:var(--bg-input);border:1px solid var(--bd2);padding:3px 7px;border-radius:5px;"},"прогонов "+String(lsSummary.completed||0)+"/"+String(lsSummary.totalRuns||0)),
-      el("span",{class:"mono",style:"font-size:10px;color:"+(lsSummary.failed?"var(--err)":"var(--ok)")+";background:"+(lsSummary.failed?"var(--err-bg)":"var(--ok-bg)")+";padding:3px 7px;border-radius:5px;"},"сбоев "+String(lsSummary.failed||0)),
+      el("span",{class:"mono",style:"font-size:10px;color:var(--tx-hi);background:var(--bg-input);border:1px solid var(--bd2);padding:3px 7px;border-radius:5px;"},"прогонов "+String(lsCompleted)+"/"+String(lsTotal)),
+      el("span",{class:"mono",style:"font-size:10px;color:"+(lsFailed||lsRunFail?"var(--err)":"var(--ok)")+";background:"+(lsFailed||lsRunFail?"var(--err-bg)":"var(--ok-bg)")+";padding:3px 7px;border-radius:5px;"},"сбоев "+String(lsFailed+lsRunFail)),
+      lsAuthFailures?el("span",{class:"mono",style:"font-size:10px;color:var(--warn);background:var(--warn-bg);padding:3px 7px;border-radius:5px;"},"авторизация "+String(lsAuthFailures)):null,
       el("span",{class:"mono",style:"font-size:10px;color:var(--warn);background:var(--warn-bg);padding:3px 7px;border-radius:5px;"},"предупр. "+String(lsSummary.warnings||0)),
       el("span",{class:"mono",style:"font-size:10px;color:var(--tx-hi);background:var(--bg-input);border:1px solid var(--bd2);padding:3px 7px;border-radius:5px;"},"среднее "+String(lsSummary.avgDurationSec||0)+"с")));
+    latestCard.appendChild(el("div",{style:"font-size:11px;color:var(--tx-bd);line-height:1.45;margin-top:8px;"},
+      lsStressTarget
+        ? "Последний stress-run закрыл 10/10."
+        : lsAuthFailures
+          ? "Stress-run не проверил завод: нужна авторизация/CRON_SECRET."
+          : "10/10 ещё не закрыты, stress-цель остаётся открытой."));
     if(lsStability){
-      latestCard.appendChild(el("div",{style:"font-size:11px;color:var(--tx-bd);line-height:1.45;margin-top:8px;"},
-        lsStability.target_met
-          ? "10/10 закрыты, стресс-цель удержана."
-          : "10/10 ещё не закрыты, стресс-цель остаётся открытой."));
       if(lsStability.failure_diagnostics&&lsStability.failure_diagnostics.issue){
         latestCard.appendChild(el("div",{style:"font-size:11px;color:var(--tx-lo);line-height:1.45;margin-top:8px;"},
-          String(lsStability.failure_diagnostics.issue)));
+          "По базе: "+String(lsStability.failure_diagnostics.issue)));
       }
     }
     if(stressHistory&&stressHistory.total_reports&&!S.compact){
@@ -1306,7 +1318,8 @@ function renderCenterOpsSummary(host,input){
     detailItems.push(["10/10 "+String(stability.successful_runs||0)+"/"+String(stability.window_size||10), ok?"ok":"warn"]);
   } else if(latestStress&&latestStress.summary){
     const lsSummary=latestStress.summary||{};
-    detailItems.push(["стресс "+String(lsSummary.completed||0)+"/"+String(lsSummary.totalRuns||0), lsSummary.failed||lsSummary.runFail||lsSummary.timeouts?"err":"ok"]);
+    const hasStressAuth=Number(lsSummary.authFailures||0)>0;
+    detailItems.push(["стресс "+String(lsSummary.completed||0)+"/"+String(lsSummary.totalRuns||0), hasStressAuth?"warn":(lsSummary.failed||lsSummary.runFail||lsSummary.timeouts?"err":"ok")]);
   }
   if(heartbeatDiag)detailItems.push(["пульс "+heartbeatIssueLabel(heartbeatDiag.issue||heartbeatDiag.title||"unknown"), heartbeatDiag.issue==="table_missing"?"warn":"muted"]);
   if(failDiag)detailItems.push(["сбои "+errorCategoryLabel(failDiag.category||failDiag.issue||"unknown"), "warn"]);

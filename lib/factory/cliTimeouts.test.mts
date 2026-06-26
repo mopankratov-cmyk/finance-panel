@@ -19,7 +19,7 @@ ok(/FACTORY_STRESS_REQUEST_RETRIES/.test(stress) && /request-retries/.test(stres
 ok(/RUN_START/.test(stress), "stress runner prints progress before each run");
 ok(/Number\.isFinite\(requestTimeoutRaw\)[\s\S]*Math\.max\(5_000, requestTimeoutRaw\)[\s\S]*45_000/.test(stress), "stress runner clamps invalid request timeout config");
 ok(/controller\.abort\(\)/.test(stress) && /signal:\s*controller\.signal/.test(stress), "stress runner fetchJson uses AbortController signal");
-ok(/catch \(err\) \{[\s\S]*status:\s*"run_fail"[\s\S]*step:\s*"failed"/.test(stress), "stress runner records per-run request failures in report output");
+ok(/catch \(err\) \{[\s\S]*status:\s*authFailure \? "auth_fail" : "run_fail"[\s\S]*step:\s*authFailure \? "blocked" : "failed"/.test(stress), "stress runner records per-run request failures in report output");
 ok(/signal:\s*AbortSignal\.timeout\(15_000\)/.test(heartbeat), "worker heartbeat POST has a hard timeout");
 ok(/while \(true\) \{[\s\S]*try \{[\s\S]*await postHeartbeat\(\);/.test(heartbeat), "worker heartbeat daemon survives transient POST failures");
 
