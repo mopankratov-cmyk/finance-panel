@@ -52,7 +52,7 @@ export async function POST(req: NextRequest) {
   } catch (e) {
     return NextResponse.json({
       prompt: "",
-      warning: "improve-prompt crash: " + String((e as Error)?.message || e).slice(0, 160),
+      warning: "улучшение промпта упало: " + String((e as Error)?.message || e).slice(0, 160),
     }, { status: 500 });
   }
 }

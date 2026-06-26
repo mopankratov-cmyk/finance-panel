@@ -9,7 +9,7 @@ export const maxDuration = 10;
 export async function GET(req: NextRequest) {
   try {
   const db = getSupabaseAdmin();
-  if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 500 });
+  if (!db) return NextResponse.json({ videos: [], total: 0, warning: "Supabase не настроен — корпус видео временно пустой" }, { headers: { "Cache-Control": "no-store" } });
 
   const { searchParams } = req.nextUrl;
   const niche = searchParams.get("niche") || "";
@@ -27,7 +27,7 @@ export async function GET(req: NextRequest) {
     if (minScore > 0) q = q.gte("virality_score", minScore);
 
     const { data, error } = await q;
-    if (error) return NextResponse.json({ error: error.message, videos: [] }, { status: 200 }); // таблица может ещё не существовать
+    if (error) return NextResponse.json({ videos: [], total: 0, warning: error.message }, { headers: { "Cache-Control": "no-store" } }); // таблица может ещё не существовать
 
     const videos = (data || []).map((v) => ({
       id: v.id,
@@ -40,14 +40,15 @@ export async function GET(req: NextRequest) {
       created_at: v.created_at,
     }));
 
-    return NextResponse.json({ videos, total: videos.length });
+    return NextResponse.json({ videos, total: videos.length }, { headers: { "Cache-Control": "no-store" } });
   } catch (e) {
-    return NextResponse.json({ error: String(e).slice(0, 200), videos: [] }, { status: 200 });
+    return NextResponse.json({ videos: [], total: 0, warning: String(e).slice(0, 200) }, { headers: { "Cache-Control": "no-store" } });
   }
   } catch (e) {
     return NextResponse.json({
-      error: "top-videos crash: " + String((e as Error)?.message || e).slice(0, 160),
       videos: [],
-    }, { status: 200 });
+      total: 0,
+      warning: "топ видео упал: " + String((e as Error)?.message || e).slice(0, 160),
+    }, { headers: { "Cache-Control": "no-store" } });
   }
 }

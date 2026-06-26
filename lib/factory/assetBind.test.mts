@@ -10,13 +10,14 @@ function eq(a: unknown, b: unknown, m: string) { ok(JSON.stringify(a) === JSON.s
   const assets: DiskAsset[] = [
     { disk: "wb", kind: "image", url: "wb1" },
     { disk: "wb", kind: "image", url: "wb2" },
-    { disk: "models", kind: "video", url: "rv1" },   // реальное видео
+    { disk: "models", kind: "video", url: "rv1", duration_sec: 7 },   // реальное видео
     { disk: "models", kind: "image", url: "ri1" },   // реальное фото
     { disk: "gen", kind: "image", url: "gen1" },      // сгенерённое — игнор как источник
     { disk: "wb", kind: "image", url: "" },           // пустой url — пропуск
   ];
   const p = classifyAssets(assets);
   eq(p.realVideos, ["rv1"], "realVideos");
+  eq(p.realVideoDurations?.rv1, 7, "real video duration is preserved");
   eq(p.realImages, ["ri1"], "realImages (gen не считается real-фото)");
   eq(p.wbImages, ["wb1", "wb2"], "wbImages");
   eq(bestImage(p), "ri1", "bestImage: реальное фото приоритетнее WB");
@@ -45,8 +46,8 @@ function eq(a: unknown, b: unknown, m: string) { ok(JSON.stringify(a) === JSON.s
 
 // ── chooseBinding: disk_real ──
 {
-  const withVid = { realVideos: ["rv1"], realImages: [], wbImages: ["wb1"] };
-  eq(chooseBinding("disk_real", false, withVid), { asset_url: "rv1", reason: "disk_real ← реальное видео товара" }, "disk_real + видео → asset_url");
+  const withVid = { realVideos: ["rv1"], realImages: [], wbImages: ["wb1"], realVideoDurations: { rv1: 7 } };
+  eq(chooseBinding("disk_real", false, withVid), { asset_url: "rv1", duration_sec: 7, reason: "disk_real ← реальное видео товара" }, "disk_real + видео → asset_url + duration");
   const noVid = { realVideos: [], realImages: [], wbImages: ["wb1"] };
   eq(chooseBinding("disk_real", false, noVid)?.tool, "seedance", "disk_real без видео + есть фото → перевод на seedance");
   eq(chooseBinding("disk_real", false, noVid)?.image_url, "wb1", "disk_real→seedance берёт WB-фото");

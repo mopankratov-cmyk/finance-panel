@@ -1,3 +1,5 @@
+import type { RunCostHint } from "./costEstimate";
+
 export type RunStep = "autofill" | "submit" | "gen-poll" | "assemble" | "render-submit" | "render-poll" | "otk" | "bank" | "done" | "failed";
 
 export interface RunNode {
@@ -31,6 +33,7 @@ export interface RunPlan {
   backup_url?: string | null;
   warnings?: string[] | null;
   execution_log?: ExecutionLogEntry[] | null;
+  cost_hint?: RunCostHint | null;
 }
 
 export interface ExecutionLogEntry {

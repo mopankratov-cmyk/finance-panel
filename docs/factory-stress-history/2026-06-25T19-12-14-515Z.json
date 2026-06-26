@@ -1,0 +1,279 @@
+{
+  "generatedAt": "2026-06-25T19:12:14.515Z",
+  "summary": {
+    "base": "https://finance-panel-two.vercel.app",
+    "recipeId": 68,
+    "totalRuns": 1,
+    "completed": 0,
+    "failed": 0,
+    "warnings": 0,
+    "otkFail": 0,
+    "runFail": 0,
+    "timeouts": 1,
+    "avgDurationSec": 281,
+    "targetMet": false
+  },
+  "stability": {
+    "ok": true,
+    "stability": {
+      "window_size": 10,
+      "sample_size": 10,
+      "successful_runs": 0,
+      "warning_runs": 0,
+      "failed_runs": 9,
+      "running_runs": 1,
+      "success_streak": 0,
+      "target_successes": 10,
+      "target_met": false,
+      "generated_at": "2026-06-25T19:12:14.503Z",
+      "incident_runs": [
+        {
+          "recipe_id": 69,
+          "run_id": null,
+          "created_at": "2026-06-25T10:24:30.170824+00:00",
+          "status": "run_fail",
+          "last_step": null,
+          "last_status": null,
+          "total_ms": null,
+          "error_category": "quality",
+          "error": "video-critic не вернул score — не банкуем без ОТК",
+          "warnings_count": 0
+        },
+        {
+          "recipe_id": 67,
+          "run_id": "run_67_3a8a2752",
+          "created_at": "2026-06-24T21:17:22.073731+00:00",
+          "status": "run_fail",
+          "last_step": "gen-poll",
+          "last_status": "running",
+          "total_ms": 367883,
+          "error_category": "quality",
+          "error": "video-critic не вернул score — не банкуем без ОТК",
+          "warnings_count": 0
+        },
+        {
+          "recipe_id": 66,
+          "run_id": null,
+          "created_at": "2026-06-24T21:17:03.184269+00:00",
+          "status": "run_fail",
+          "last_step": null,
+          "last_status": null,
+          "total_ms": null,
+          "error_category": "quality",
+          "error": "video-critic не вернул score — не банкуем без ОТК",
+          "warnings_count": 0
+        },
+        {
+          "recipe_id": 65,
+          "run_id": null,
+          "created_at": "2026-06-24T21:16:53.8457+00:00",
+          "status": "run_fail",
+          "last_step": null,
+          "last_status": null,
+          "total_ms": null,
+          "error_category": "quality",
+          "error": "video-critic не вернул score — не банкуем без ОТК",
+          "warnings_count": 0
+        },
+        {
+          "recipe_id": 64,
+          "run_id": null,
+          "created_at": "2026-06-24T21:16:36.755507+00:00",
+          "status": "run_fail",
+          "last_step": null,
+          "last_status": null,
+          "total_ms": null,
+          "error_category": "quality",
+          "error": "video-critic не вернул score — не банкуем без ОТК",
+          "warnings_count": 0
+        },
+        {
+          "recipe_id": 63,
+          "run_id": null,
+          "created_at": "2026-06-24T21:16:28.390649+00:00",
+          "status": "run_fail",
+          "last_step": null,
+          "last_status": null,
+          "total_ms": null,
+          "error_category": "render",
+          "error": "Remotion error: upload (после 4 попыток): fetch failed",
+          "warnings_count": 0
+        },
+        {
+          "recipe_id": 62,
+          "run_id": null,
+          "created_at": "2026-06-24T21:16:15.647253+00:00",
+          "status": "run_fail",
+          "last_step": null,
+          "last_status": null,
+          "total_ms": null,
+          "error_category": "quality",
+          "error": "video-critic не вернул score — не банкуем без ОТК",
+          "warnings_count": 0
+        },
+        {
+          "recipe_id": 61,
+          "run_id": null,
+          "created_at": "2026-06-24T21:16:05.398254+00:00",
+          "status": "run_fail",
+          "last_step": null,
+          "last_status": null,
+          "total_ms": null,
+          "error_category": "quality",
+          "error": "video-critic не вернул score — не банкуем без ОТК",
+          "warnings_count": 0
+        }
+      ],
+      "recent_runs": [
+        {
+          "recipe_id": 69,
+          "created_at": "2026-06-25T10:24:30.170824+00:00",
+          "status": "run_fail",
+          "total_ms": null,
+          "error_category": "quality",
+          "warnings_count": 0
+        },
+        {
+          "recipe_id": 68,
+          "created_at": "2026-06-25T07:35:27.965664+00:00",
+          "status": "running",
+          "total_ms": 37466462,
+          "error_category": null,
+          "warnings_count": 0
+        },
+        {
+          "recipe_id": 67,
+          "created_at": "2026-06-24T21:17:22.073731+00:00",
+          "status": "run_fail",
+          "total_ms": 367883,
+          "error_category": "quality",
+          "warnings_count": 0
+        },
+        {
+          "recipe_id": 66,
+          "created_at": "2026-06-24T21:17:03.184269+00:00",
+          "status": "run_fail",
+          "total_ms": null,
+          "error_category": "quality",
+          "warnings_count": 0
+        },
+        {
+          "recipe_id": 65,
+          "created_at": "2026-06-24T21:16:53.8457+00:00",
+          "status": "run_fail",
+          "total_ms": null,
+          "error_category": "quality",
+          "warnings_count": 0
+        },
+        {
+          "recipe_id": 64,
+          "created_at": "2026-06-24T21:16:36.755507+00:00",
+          "status": "run_fail",
+          "total_ms": null,
+          "error_category": "quality",
+          "warnings_count": 0
+        },
+        {
+          "recipe_id": 63,
+          "created_at": "2026-06-24T21:16:28.390649+00:00",
+          "status": "run_fail",
+          "total_ms": null,
+          "error_category": "render",
+          "warnings_count": 0
+        },
+        {
+          "recipe_id": 62,
+          "created_at": "2026-06-24T21:16:15.647253+00:00",
+          "status": "run_fail",
+          "total_ms": null,
+          "error_category": "quality",
+          "warnings_count": 0
+        },
+        {
+          "recipe_id": 61,
+          "created_at": "2026-06-24T21:16:05.398254+00:00",
+          "status": "run_fail",
+          "total_ms": null,
+          "error_category": "quality",
+          "warnings_count": 0
+        },
+        {
+          "recipe_id": 60,
+          "created_at": "2026-06-24T21:15:52.046074+00:00",
+          "status": "run_fail",
+          "total_ms": null,
+          "error_category": "quality",
+          "warnings_count": 0
+        }
+      ],
+      "failure_diagnostics": {
+        "issue": "quality gates are rejecting or failing most often",
+        "category": "quality",
+        "sample_error": "video-critic не вернул score — не банкуем без ОТК",
+        "next_step": "inspect critic/artifact/OTK failures and confirm fail-open vs fail-closed behavior",
+        "action": "inspect_quality_gate_path"
+      }
+    },
+    "stress_history": {
+      "total_reports": 3,
+      "total_runs": 30,
+      "completed_runs": 13,
+      "failed_runs": 17,
+      "warning_runs": 13,
+      "run_failures": 17,
+      "timeouts": 0,
+      "target_met_reports": 0,
+      "avg_duration_sec": 54,
+      "latest_generated_at": "2026-06-25T18:49:05.437Z",
+      "recent_reports": [
+        {
+          "generated_at": "2026-06-25T18:49:05.437Z",
+          "recipe_id": 68,
+          "total_runs": 10,
+          "completed": 0,
+          "failed": 10,
+          "warnings": 0,
+          "run_fail": 10,
+          "timeouts": 0,
+          "target_met": null
+        },
+        {
+          "generated_at": "2026-06-25T18:27:31.820Z",
+          "recipe_id": 68,
+          "total_runs": 10,
+          "completed": 3,
+          "failed": 7,
+          "warnings": 3,
+          "run_fail": 7,
+          "timeouts": 0,
+          "target_met": null
+        },
+        {
+          "generated_at": "2026-06-25T18:22:12.469Z",
+          "recipe_id": 68,
+          "total_runs": 10,
+          "completed": 10,
+          "failed": 0,
+          "warnings": 10,
+          "run_fail": 0,
+          "timeouts": 0,
+          "target_met": false
+        }
+      ]
+    }
+  },
+  "results": [
+    {
+      "index": 1,
+      "durationSec": 281,
+      "status": "running",
+      "step": "render-submit",
+      "warningCount": 0,
+      "warnings": [],
+      "runId": "run_68_3767c882",
+      "executionLogCount": 3,
+      "outputUrl": null,
+      "error": "timeout waiting for completion"
+    }
+  ]
+}

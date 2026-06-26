@@ -77,7 +77,7 @@ export async function POST(req: NextRequest) {
       indexed: 0,
       by_niche: {},
       by_article: {},
-      error: "content-index POST crash: " + String((e as Error)?.message || e).slice(0, 160),
+      error: "сохранение индекса контента упало: " + String((e as Error)?.message || e).slice(0, 160),
     }, { status: 500 });
   }
 }
@@ -86,7 +86,7 @@ export async function POST(req: NextRequest) {
 export async function GET() {
   try {
   const db = getSupabaseAdmin();
-  if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 500 });
+  if (!db) return NextResponse.json({ total: 0, wb_photos: 0, by_niche: {}, warning: "Supabase не настроен — индекс контента временно пустой" }, { headers: { "Cache-Control": "no-store" } });
 
   const eqs = async (filters: [string, unknown][]): Promise<number> => {
     let q = db.from("content_assets").select("*", { count: "exact", head: true });
@@ -110,14 +110,19 @@ export async function GET() {
     const wbPhotos = await eqs([["disk", "wb"]]);
     return NextResponse.json({ total, wb_photos: wbPhotos, by_niche: by });
   } catch (e) {
-    return NextResponse.json({ error: String(e instanceof Error ? e.message : e) }, { status: 500 });
+    return NextResponse.json({
+      total: 0,
+      wb_photos: 0,
+      by_niche: {},
+      warning: "агрегаты индекса контента временно недоступны: " + String(e instanceof Error ? e.message : e).slice(0, 160),
+    }, { headers: { "Cache-Control": "no-store" } });
   }
   } catch (e) {
     return NextResponse.json({
       total: 0,
       wb_photos: 0,
       by_niche: {},
-      error: "content-index GET crash: " + String((e as Error)?.message || e).slice(0, 160),
-    }, { status: 500 });
+      warning: "чтение индекса контента упало: " + String((e as Error)?.message || e).slice(0, 160),
+    }, { headers: { "Cache-Control": "no-store" } });
   }
 }

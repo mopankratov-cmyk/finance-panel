@@ -2,10 +2,35 @@
 // Вызовы идут с нашего сервера; скрап выполняется у провайдера (гео-блок РФ не мешает).
 // Активируется ключом: APIFY_TOKEN (+APIFY_ACTOR) или VIRLO_API_KEY. Trendsee — позже, если дадут API.
 
-export interface ViralVideo { url?: string; caption?: string; title?: string; views?: number; likes?: number }
+export type TrendProvider = "apify" | "apify_tiktok" | "apify_instagram" | "apify_youtube" | "virlo";
+export interface ViralVideo {
+  url?: string;
+  caption?: string;
+  title?: string;
+  views?: number;
+  likes?: number;
+  comments?: number;
+  shares?: number;
+  followers?: number;
+  platform?: string;
+  sound_id?: string;
+  sound_title?: string;
+  published_at?: string;
+}
 
 export function hasTrendSource(): boolean {
   return !!(process.env.APIFY_TOKEN || process.env.VIRLO_API_KEY);
+}
+export function hasTrendProvider(provider: TrendProvider): boolean {
+  if (provider === "apify") return !!process.env.APIFY_TOKEN;
+  if (provider === "apify_tiktok") return !!(process.env.APIFY_TOKEN && (process.env.APIFY_TIKTOK_ACTOR || process.env.APIFY_ACTOR));
+  if (provider === "apify_instagram") return !!(process.env.APIFY_TOKEN && process.env.APIFY_INSTAGRAM_REELS_ACTOR);
+  if (provider === "apify_youtube") return !!(process.env.APIFY_TOKEN && process.env.APIFY_YOUTUBE_ACTOR);
+  if (provider === "virlo") return !!process.env.VIRLO_API_KEY;
+  return false;
+}
+export function availableTrendProviders(): TrendProvider[] {
+  return (["apify", "apify_tiktok", "apify_instagram", "apify_youtube", "virlo"] as TrendProvider[]).filter((p) => hasTrendProvider(p));
 }
 export function trendSourceName(): string {
   if (process.env.APIFY_TOKEN) return "apify";
@@ -14,24 +39,52 @@ export function trendSourceName(): string {
 }
 
 const num = (v: unknown) => (Number(v) || 0);
+const apifyActorPath = (actor: string) => actor.trim().replace(/\//g, "~");
 
 // Apify: запускаем актор синхронно и забираем dataset. Актор задаётся APIFY_ACTOR
 // (по умолч. TikTok trending scraper). Вход — общий, лишние поля актор игнорит.
-async function fromApify(niche: string, limit: number): Promise<ViralVideo[]> {
+async function fromApify(niche: string, limit: number, opts: { actor?: string; platform?: string } = {}): Promise<ViralVideo[]> {
   const token = process.env.APIFY_TOKEN!;
-  const actor = process.env.APIFY_ACTOR || "lexis-solutions~tiktok-trending-videos-scraper";
-  const input = { searchQueries: [niche], search: niche, keyword: niche, hashtags: [niche.replace(/\s+/g, "")], maxItems: limit, resultsPerPage: limit, countryCode: "RU" };
+  const actor = opts.actor || process.env.APIFY_ACTOR || "lexis-solutions~tiktok-trending-videos-scraper";
+  const actorPath = apifyActorPath(actor);
+  const platform = opts.platform || "tiktok";
+  const input = {
+    searchQueries: [niche],
+    queries: [niche],
+    search: niche,
+    keyword: niche,
+    keywords: [niche],
+    hashtags: [niche.replace(/\s+/g, "")],
+    maxItems: limit,
+    resultsPerPage: limit,
+    resultsLimit: limit,
+    maxResults: limit,
+    countryCode: "RU",
+    proxy: { useApifyProxy: true },
+  };
   try {
-    const r = await fetch(`https://api.apify.com/v2/acts/${actor}/run-sync-get-dataset-items?token=${token}&maxItems=${limit}`, {
+    const r = await fetch(`https://api.apify.com/v2/acts/${actorPath}/run-sync-get-dataset-items?token=${token}&maxItems=${limit}`, {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input), signal: AbortSignal.timeout(55000),
     });
     if (!r.ok) return [];
     const items = (await r.json().catch(() => [])) as Record<string, unknown>[];
     return (Array.isArray(items) ? items : []).slice(0, limit).map((it) => ({
-      url: (it.webVideoUrl || it.url || it.postPage || "") as string,
-      caption: (it.text || it.caption || it.title || it.desc || "") as string,
+      url: (it.webVideoUrl || it.url || it.postPage || it.shortUrl || it.videoUrl || "") as string,
+      caption: (it.text || it.caption || it.title || it.desc || it.description || "") as string,
       views: num(it.playCount ?? it.views ?? it.viewCount),
       likes: num(it.diggCount ?? it.likes ?? it.likeCount),
+      comments: num(it.commentCount ?? it.comments ?? it.commentsCount),
+      shares: num(it.shareCount ?? it.shares ?? it.sharesCount),
+      followers: num(
+        (it.authorMeta as Record<string, unknown> | undefined)?.fans ??
+        (it.authorMeta as Record<string, unknown> | undefined)?.followers ??
+        (it.authorStats as Record<string, unknown> | undefined)?.followerCount ??
+        it.followers,
+      ),
+      platform: String(it.platform || platform),
+      sound_id: String((it.musicMeta as Record<string, unknown> | undefined)?.musicId ?? it.musicId ?? it.sound_id ?? ""),
+      sound_title: String((it.musicMeta as Record<string, unknown> | undefined)?.musicName ?? it.musicName ?? it.sound_title ?? ""),
+      published_at: String(it.createTimeISO ?? it.createTime ?? it.date ?? ""),
     })).filter((v) => v.caption || v.url);
   } catch { return []; }
 }
@@ -62,6 +115,13 @@ async function fromVirlo(niche: string, limit: number): Promise<ViralVideo[]> {
       caption: (it.description || "") as string,
       views: num(it.views),
       likes: num(it.number_of_likes ?? it.likes),
+      comments: num(it.number_of_comments ?? it.comments ?? it.comment_count),
+      shares: num(it.number_of_shares ?? it.shares ?? it.share_count),
+      followers: num((it.author as Record<string, unknown> | undefined)?.followers ?? (it.author as Record<string, unknown> | undefined)?.follower_count ?? it.followers),
+      platform: String(it.platform || "tiktok"),
+      sound_id: String((it.sound as Record<string, unknown> | undefined)?.id ?? it.sound_id ?? ""),
+      sound_title: String((it.sound as Record<string, unknown> | undefined)?.title ?? it.sound_title ?? ""),
+      published_at: String(it.published_at ?? it.created_at ?? it.date ?? ""),
     })).filter((v) => v.caption || v.url);
   } catch { return []; }
 }
@@ -113,6 +173,15 @@ export async function virloSearchResult(id: string, dataType = "status", extraAr
 export async function fetchViral(niche: string, limit = 20): Promise<ViralVideo[]> {
   if (process.env.APIFY_TOKEN) return fromApify(niche, limit);
   if (process.env.VIRLO_API_KEY) return fromVirlo(niche, limit);
+  return [];
+}
+
+export async function fetchViralFromProvider(provider: TrendProvider, niche: string, limit = 20): Promise<ViralVideo[]> {
+  if (provider === "apify" && process.env.APIFY_TOKEN) return fromApify(niche, limit);
+  if (provider === "apify_tiktok" && process.env.APIFY_TOKEN) return fromApify(niche, limit, { actor: process.env.APIFY_TIKTOK_ACTOR || process.env.APIFY_ACTOR, platform: "tiktok" });
+  if (provider === "apify_instagram" && process.env.APIFY_TOKEN && process.env.APIFY_INSTAGRAM_REELS_ACTOR) return fromApify(niche, limit, { actor: process.env.APIFY_INSTAGRAM_REELS_ACTOR, platform: "instagram" });
+  if (provider === "apify_youtube" && process.env.APIFY_TOKEN && process.env.APIFY_YOUTUBE_ACTOR) return fromApify(niche, limit, { actor: process.env.APIFY_YOUTUBE_ACTOR, platform: "youtube" });
+  if (provider === "virlo" && process.env.VIRLO_API_KEY) return fromVirlo(niche, limit);
   return [];
 }
 

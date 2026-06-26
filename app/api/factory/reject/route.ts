@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       ok: false,
       reason: "",
-      error: "reject crash: " + String((e as Error)?.message || e).slice(0, 160),
+      error: "запись отклонения упала: " + String((e as Error)?.message || e).slice(0, 160),
     }, { status: 500 });
   }
 }

@@ -102,8 +102,11 @@ node lib/factory/stressGraphRun.mjs \
 - `completed = 10`
 - `failed = 0`
 - `runFail = 0`
+- `authFailures = 0`
 - `timeouts = 0`
 - `status=warning` допустим, если quality сервис недоступен
+
+Если в отчёте появился `auth_fail`, это не дефект генерации роликов. Это означает, что stress-runner не прошёл авторизацию к `/api/factory/graph-run`; проверь `CRON_SECRET`/заголовок перед повторным stress-run.
 
 ## Stress Test
 

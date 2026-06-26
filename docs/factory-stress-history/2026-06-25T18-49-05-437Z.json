@@ -1,0 +1,142 @@
+{
+  "generatedAt": "2026-06-25T18:49:05.437Z",
+  "summary": {
+    "base": "https://finance-panel-two.vercel.app",
+    "recipeId": 68,
+    "totalRuns": 10,
+    "completed": 0,
+    "failed": 10,
+    "warnings": 0,
+    "otkFail": 0,
+    "runFail": 10,
+    "timeouts": 0,
+    "avgDurationSec": 80,
+    "targetMet": false
+  },
+  "stability": {
+    "ok": false,
+    "error": "https://finance-panel-two.vercel.app/api/factory/stability 401: Не авторизовано"
+  },
+  "results": [
+    {
+      "index": 1,
+      "durationSec": 81,
+      "status": "run_fail",
+      "step": "failed",
+      "warningCount": 0,
+      "warnings": [],
+      "runId": null,
+      "executionLogCount": 0,
+      "outputUrl": null,
+      "error": "https://finance-panel-two.vercel.app/api/factory/graph-run 401: Не авторизовано"
+    },
+    {
+      "index": 2,
+      "durationSec": 80,
+      "status": "run_fail",
+      "step": "failed",
+      "warningCount": 0,
+      "warnings": [],
+      "runId": null,
+      "executionLogCount": 0,
+      "outputUrl": null,
+      "error": "fetch failed"
+    },
+    {
+      "index": 3,
+      "durationSec": 80,
+      "status": "run_fail",
+      "step": "failed",
+      "warningCount": 0,
+      "warnings": [],
+      "runId": null,
+      "executionLogCount": 0,
+      "outputUrl": null,
+      "error": "https://finance-panel-two.vercel.app/api/factory/graph-run 401: Не авторизовано"
+    },
+    {
+      "index": 4,
+      "durationSec": 80,
+      "status": "run_fail",
+      "step": "failed",
+      "warningCount": 0,
+      "warnings": [],
+      "runId": null,
+      "executionLogCount": 0,
+      "outputUrl": null,
+      "error": "https://finance-panel-two.vercel.app/api/factory/graph-run 401: Не авторизовано"
+    },
+    {
+      "index": 5,
+      "durationSec": 80,
+      "status": "run_fail",
+      "step": "failed",
+      "warningCount": 0,
+      "warnings": [],
+      "runId": null,
+      "executionLogCount": 0,
+      "outputUrl": null,
+      "error": "https://finance-panel-two.vercel.app/api/factory/graph-run 401: Не авторизовано"
+    },
+    {
+      "index": 6,
+      "durationSec": 80,
+      "status": "run_fail",
+      "step": "failed",
+      "warningCount": 0,
+      "warnings": [],
+      "runId": null,
+      "executionLogCount": 0,
+      "outputUrl": null,
+      "error": "https://finance-panel-two.vercel.app/api/factory/graph-run 401: Не авторизовано"
+    },
+    {
+      "index": 7,
+      "durationSec": 80,
+      "status": "run_fail",
+      "step": "failed",
+      "warningCount": 0,
+      "warnings": [],
+      "runId": null,
+      "executionLogCount": 0,
+      "outputUrl": null,
+      "error": "https://finance-panel-two.vercel.app/api/factory/graph-run 401: Не авторизовано"
+    },
+    {
+      "index": 8,
+      "durationSec": 80,
+      "status": "run_fail",
+      "step": "failed",
+      "warningCount": 0,
+      "warnings": [],
+      "runId": null,
+      "executionLogCount": 0,
+      "outputUrl": null,
+      "error": "https://finance-panel-two.vercel.app/api/factory/graph-run 401: Не авторизовано"
+    },
+    {
+      "index": 9,
+      "durationSec": 81,
+      "status": "run_fail",
+      "step": "failed",
+      "warningCount": 0,
+      "warnings": [],
+      "runId": null,
+      "executionLogCount": 0,
+      "outputUrl": null,
+      "error": "https://finance-panel-two.vercel.app/api/factory/graph-run 401: Не авторизовано"
+    },
+    {
+      "index": 10,
+      "durationSec": 80,
+      "status": "run_fail",
+      "step": "failed",
+      "warningCount": 0,
+      "warnings": [],
+      "runId": null,
+      "executionLogCount": 0,
+      "outputUrl": null,
+      "error": "fetch failed"
+    }
+  ]
+}

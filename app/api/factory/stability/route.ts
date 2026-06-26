@@ -13,11 +13,12 @@ export async function GET() {
     const stressHistoryPromise = readStressHistorySummary();
     if (!db) {
       return NextResponse.json({
-        ok: false,
-        error: "Supabase is not configured",
+        ok: true,
+        partial: true,
+        warning: "Supabase не настроен — DB-снимок стабильности временно пустой",
         stability: null,
         stress_history: await stressHistoryPromise,
-      }, { status: 500 });
+      }, { headers: { "Cache-Control": "no-store" } });
     }
 
     const [{ stability }, stressHistory] = await Promise.all([
@@ -32,10 +33,11 @@ export async function GET() {
   } catch (e) {
     const stressHistory = await readStressHistorySummary().catch(() => null);
     return NextResponse.json({
-      ok: false,
-      error: "stability crash: " + String((e as Error)?.message || e).slice(0, 160),
+      ok: true,
+      partial: true,
+      warning: "снимок стабильности упал: " + String((e as Error)?.message || e).slice(0, 160),
       stability: null,
       stress_history: stressHistory,
-    }, { status: 500 });
+    }, { headers: { "Cache-Control": "no-store" } });
   }
 }

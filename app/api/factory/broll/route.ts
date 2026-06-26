@@ -115,7 +115,7 @@ export async function POST(req: NextRequest) {
       render_ready: false,
       rendered: 0,
       brolls: [],
-      error: "broll crash: " + String((e as Error)?.message || e).slice(0, 160),
+      error: "подбор b-roll упал: " + String((e as Error)?.message || e).slice(0, 160),
     }, { status: 500 });
   }
 }

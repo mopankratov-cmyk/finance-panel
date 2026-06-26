@@ -14,7 +14,7 @@ export async function POST(req: NextRequest) {
   try {
   if (!creatifyReady()) {
     const error = "Creatify не подключён: добавь CREATIFY_API_ID и CREATIFY_API_KEY в Vercel env";
-    return NextResponse.json({ error, detail: error }, { status: 503 });
+    return NextResponse.json({ error }, { status: 503 });
   }
   const body = await req.json().catch(() => ({}));
   const script: string = (body.script || body.brief || body.hook || "").toString().trim();
@@ -111,25 +111,24 @@ export async function POST(req: NextRequest) {
     });
     if (res.error || !res.token) {
       const error = res.error || "Creatify не запустил";
-      return NextResponse.json({ error, detail: error, ...(debugMode ? { debug: res.debug } : {}), ...(quality ? { quality_gate: quality } : {}) }, { status: 502 });
+      return NextResponse.json({ error, ...(debugMode ? { debug: res.debug } : {}), ...(quality ? { quality_gate: quality } : {}) }, { status: 502 });
     }
     return NextResponse.json({ task_id: "cf." + res.token, engine: "creatify", mode: "link_to_videos", product_url: url, ...(quality ? { quality_gate: quality } : {}), ...(debugMode ? { debug: res.debug } : {}) });
   }
 
   if (!script) {
     const error = "Нужен товар (артикул/URL) или текст для актёра";
-    return NextResponse.json({ error, detail: error }, { status: 400 });
+    return NextResponse.json({ error }, { status: 400 });
   }
   const res = await creatifyLipsync(script, { creator: (body.creator || "").trim() || undefined });
   if (res.error || !res.token) {
     const error = res.error || "Creatify не запустил";
-    return NextResponse.json({ error, detail: error }, { status: 502 });
+    return NextResponse.json({ error }, { status: 502 });
   }
   return NextResponse.json({ task_id: "cf." + res.token, engine: "creatify", mode: "lipsyncs" });
   } catch (e) {
     return NextResponse.json({
-      error: "ugc-creatify crash: " + String((e as Error)?.message || e).slice(0, 160),
-      detail: "ugc-creatify crash: " + String((e as Error)?.message || e).slice(0, 160),
+      error: "запуск UGC Creatify упал: " + String((e as Error)?.message || e).slice(0, 160),
     }, { status: 500 });
   }
 }

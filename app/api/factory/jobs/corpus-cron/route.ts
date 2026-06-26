@@ -21,7 +21,7 @@ export async function GET(req: NextRequest) {
     const auth = req.headers.get("authorization") || "";
     const secret = process.env.CRON_SECRET || "";
     if (secret && auth !== `Bearer ${secret}`) {
-      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+      return NextResponse.json({ error: "неверный CRON_SECRET" }, { status: 401 });
     }
     const origin = req.nextUrl.origin;
 
@@ -57,6 +57,6 @@ export async function GET(req: NextRequest) {
       playbooks: playbooksResult,
     });
   } catch (e) {
-    return NextResponse.json({ error: "jobs/corpus-cron crash: " + String((e as Error)?.message || e).slice(0, 180) }, { status: 500 });
+    return NextResponse.json({ error: "cron корпуса упал: " + String((e as Error)?.message || e).slice(0, 180) }, { status: 500 });
   }
 }

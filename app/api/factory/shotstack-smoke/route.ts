@@ -59,6 +59,6 @@ export async function GET(req: NextRequest) {
       font_used: "Noto Sans (jsDelivr CDN, Cyrillic) — дефолт из shotstack.ts",
     });
   } catch (e) {
-    return NextResponse.json({ error: "shotstack-smoke crash: " + String((e as Error)?.message || e).slice(0, 180) }, { status: 500 });
+    return NextResponse.json({ error: "smoke-тест Shotstack упал: " + String((e as Error)?.message || e).slice(0, 180) }, { status: 500 });
   }
 }

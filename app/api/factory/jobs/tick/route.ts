@@ -5,7 +5,7 @@ export const maxDuration = 60;
 
 export async function POST(_req: NextRequest) {
   return NextResponse.json(
-    { ok: true, disabled: true, note: "jobs/tick disabled for Sprint 1 stability" },
+    { ok: true, disabled: true, note: "jobs/tick отключён: старая очередь выведена из MVP, tick живёт в graph-run" },
     { headers: { "Cache-Control": "no-store" } },
   );
 }

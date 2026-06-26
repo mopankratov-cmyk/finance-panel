@@ -18,6 +18,6 @@ export async function GET(req: NextRequest) {
     const [voices, musics, templates] = await Promise.all([creatifyListVoices(), creatifyListMusic(), creatifyListTemplates()]);
     return NextResponse.json({ ok: true, voices, musics, templates }, { headers: { "Cache-Control": "no-store" } });
   } catch (e) {
-    return NextResponse.json({ error: "creatify-options crash: " + String((e as Error)?.message || e).slice(0, 160) }, { status: 500 });
+    return NextResponse.json({ ok: true, options: [], voices: [], musics: [], templates: [], warning: "список Creatify недоступен: " + String((e as Error)?.message || e).slice(0, 160) }, { headers: { "Cache-Control": "no-store" } });
   }
 }

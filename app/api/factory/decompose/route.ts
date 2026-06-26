@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { createClaudeClient } from "@/lib/agent/client";
 import { learningHints } from "@/lib/factory/learningHints";
 import { extractJson } from "@/lib/factory/extractJson";
+import { applyRealityFirstRouting } from "@/lib/factory/decomposeRouting";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -86,6 +87,7 @@ async function decompose(params: { viral_video_id?: string; niche?: string; desc
     const txt = (res.content as Array<{ type: string; text?: string }>).filter((b) => b.type === "text").map((b) => b.text || "").join(" ");
     const parsed = extractJson(txt);
     if (!parsed || !Array.isArray(parsed.nodes) || !parsed.nodes.length) return { error: "декомпозитор не вернул ноды", raw: txt.slice(0, 200) };
+    const nodes = applyRealityFirstRouting(parsed.nodes);
     const format = parsed.format || fmt || "ugc_anim";
     const confidence = parsed.confidence || "med";
     // сохраняем каркас в node_templates → можно «перенести себе» по template_id
@@ -93,11 +95,11 @@ async function decompose(params: { viral_video_id?: string; niche?: string; desc
     if (db) {
       try {
         const svid = params.viral_video_id && /^\d+$/.test(params.viral_video_id) ? Number(params.viral_video_id) : null;
-        const { data: t } = await db.from("node_templates").insert({ source_video_url: url || null, source_viral_video_id: svid, format_type: format, niche, nodes: parsed.nodes, confidence }).select("id").limit(1);
+        const { data: t } = await db.from("node_templates").insert({ source_video_url: url || null, source_viral_video_id: svid, format_type: format, niche, nodes, confidence }).select("id").limit(1);
         template_id = (t as { id: number }[] | null)?.[0]?.id ?? null;
       } catch { /* node_templates не применена — каркас всё равно вернём */ }
     }
-    return { ok: true, format, nodes: parsed.nodes, confidence, source_url: url, niche, from: "description", template_id };
+    return { ok: true, format, nodes, confidence, source_url: url, niche, from: "description", template_id };
   } catch (e) {
     return { error: "claude decompose: " + String((e as Error)?.message || e).slice(0, 160) };
   }
@@ -109,7 +111,7 @@ export async function GET(req: NextRequest) {
     const r = await decompose({ viral_video_id: sp.get("viral_video_id") || undefined, niche: sp.get("niche") || undefined, description: sp.get("description") || undefined });
     return NextResponse.json(r, { status: (r as { error?: string }).error ? 400 : 200, headers: { "Cache-Control": "no-store" } });
   } catch (e) {
-    return NextResponse.json({ error: "decompose crash: " + String((e as Error)?.message || e).slice(0, 180) }, { status: 500 });
+    return NextResponse.json({ error: "разбор конкурента упал: " + String((e as Error)?.message || e).slice(0, 180) }, { status: 500 });
   }
 }
 
@@ -119,6 +121,6 @@ export async function POST(req: NextRequest) {
     const r = await decompose({ viral_video_id: body.viral_video_id, niche: body.niche, description: body.description, hook: body.hook, format: body.format });
     return NextResponse.json(r, { status: (r as { error?: string }).error ? 400 : 200 });
   } catch (e) {
-    return NextResponse.json({ error: "decompose crash: " + String((e as Error)?.message || e).slice(0, 180) }, { status: 500 });
+    return NextResponse.json({ error: "разбор конкурента упал: " + String((e as Error)?.message || e).slice(0, 180) }, { status: 500 });
   }
 }

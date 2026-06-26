@@ -11,7 +11,7 @@ export const maxDuration = 15;
 export async function GET(req: NextRequest) {
   try {
   const db = getSupabaseAdmin();
-  if (!db) return NextResponse.json({ sounds: [] });
+  if (!db) return NextResponse.json({ sounds: [], total: 0, warning: "Supabase не настроен — корпус звуков временно пустой" });
 
   const sp = req.nextUrl.searchParams;
   const niche = sp.get("niche") || "";
@@ -24,8 +24,8 @@ export async function GET(req: NextRequest) {
     if (niche) q.eq("niche", niche);
     const { data, error } = await q;
     if (error) {
-      if (error.code === "42P01") return NextResponse.json({ sounds: [], note: "orbit_searches не применена" });
-      return NextResponse.json({ sounds: [], error: error.message });
+      if (error.code === "42P01") return NextResponse.json({ sounds: [], total: 0, warning: "orbit_searches не применена" });
+      return NextResponse.json({ sounds: [], total: 0, warning: error.message });
     }
 
     // Агрегируем звуки по id — суммируем avg_views, считаем встречаемость
@@ -59,9 +59,9 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({ sounds, niche: niche || "all", total: map.size });
   } catch {
-    return NextResponse.json({ sounds: [], note: "orbit_searches не применена" });
+    return NextResponse.json({ sounds: [], total: 0, warning: "orbit_searches не применена" });
   }
   } catch (e) {
-    return NextResponse.json({ sounds: [], note: "top-sounds crash: " + String((e as Error)?.message || e).slice(0, 160) });
+    return NextResponse.json({ sounds: [], total: 0, warning: "топ звуков упал: " + String((e as Error)?.message || e).slice(0, 160) });
   }
 }

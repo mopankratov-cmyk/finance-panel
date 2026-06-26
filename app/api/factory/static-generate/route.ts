@@ -4,6 +4,7 @@ import { detectBrand } from "@/lib/factory/brandProfiles";
 import { specFor, accentFor, fitHeadline, DEFAULT_STATIC_FORMAT, type StaticFormat } from "@/lib/factory/staticCanon";
 import { remotionSubmit, remotionReady } from "@/lib/factory/remotionRender";
 import { classifyAssets, pickImage, type DiskAsset } from "@/lib/factory/assetBind";
+import { logGeneration } from "@/lib/factory/genHistory";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -70,8 +71,20 @@ export async function POST(req: NextRequest) {
     const id = await remotionSubmit("StaticV1", inputProps, 1, { still: true });
     if (!id) return NextResponse.json({ error: "render-service не принял задачу (URL/токен/недоступен)" }, { status: 502 });
     const spec = specFor(format);
+    await logGeneration({
+      tool: "remotion",
+      engine: "remotion",
+      node_type: "static_post",
+      prompt: headlineRaw,
+      params: { task_id: id, format, archetype, size: `${spec.w}x${spec.h}`, image_used: productImage || "placeholder" },
+      status: "submitted",
+      source: "static_generate",
+      reason: "static_render_submitted",
+      article: article || null,
+      niche: (body.niche || "").toString().trim() || null,
+    });
     return NextResponse.json({ ok: true, task_id: id, format, archetype, size: `${spec.w}x${spec.h}`, platform: spec.platform, image_used: productImage || "placeholder" });
   } catch (e) {
-    return NextResponse.json({ error: "static-generate crash: " + String((e as Error)?.message || e).slice(0, 180) }, { status: 500 });
+    return NextResponse.json({ error: "статика упала: " + String((e as Error)?.message || e).slice(0, 180) }, { status: 500 });
   }
 }

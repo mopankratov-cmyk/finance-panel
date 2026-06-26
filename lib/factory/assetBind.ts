@@ -4,27 +4,34 @@
 // Источник ассетов — content_assets по артикулу (real-съёмка / WB-карточка). Срабатывает ТОЛЬКО когда у ноды
 // НЕТ источника (она и так упала бы) → деградирует в текущее поведение, рабочие ноды не трогает.
 
-export interface DiskAsset { disk?: string | null; kind?: string | null; url?: string | null; }
-export interface AssetPool { preparedImages?: string[]; realVideos: string[]; realImages: string[]; wbImages: string[] }
+export interface DiskAsset { disk?: string | null; kind?: string | null; url?: string | null; duration_sec?: number | null; }
+export interface AssetPool { preparedImages?: string[]; realVideos: string[]; realImages: string[]; wbImages: string[]; realVideoDurations?: Record<string, number> }
 
 // классификация ассетов товара: подготовленные рендеры (disk='prepared' — source-prep: чистый/стейдж,
 // ЛУЧШИЙ источник под i2v) > реальная съёмка (disk != wb/gen/prepared) > фото карточки WB (сырая инфографика).
 export function classifyAssets(assets: DiskAsset[]): AssetPool {
   const preparedImages: string[] = [], realVideos: string[] = [], realImages: string[] = [], wbImages: string[] = [];
+  const realVideoDurations: Record<string, number> = {};
   for (const a of assets || []) {
     const url = String(a?.url || ""); if (!url) continue;
     const disk = String(a?.disk || "").toLowerCase();
     const kind = String(a?.kind || "").toLowerCase();
     if (disk === "prepared") { if (kind !== "video") preparedImages.push(url); continue; } // prep-рендер товара (приоритет)
     const isReal = disk !== "wb" && disk !== "gen" && disk !== "";
-    if (kind === "video") { if (isReal) realVideos.push(url); }
+    if (kind === "video") {
+      if (isReal) {
+        realVideos.push(url);
+        const dur = Number(a.duration_sec);
+        if (Number.isFinite(dur) && dur > 0) realVideoDurations[url] = dur;
+      }
+    }
     else if (kind === "image") {
       if (isReal) realImages.push(url);
       else if (disk === "wb") wbImages.push(url);
       // disk === "gen" (наш же вывод) или пустой/неизвестный — НЕ источник, пропускаем
     }
   }
-  return { preparedImages, realVideos, realImages, wbImages };
+  return { preparedImages, realVideos, realImages, wbImages, realVideoDurations };
 }
 
 // фото товара по индексу, циклично — чтобы РАЗНЫЕ i2v-ноды брали РАЗНЫЕ стартовые кадры (анти-сэйминес).
@@ -58,12 +65,16 @@ const I2V = new Set(["seedance", "seedance_fast", "seedance_pro", "kling", "klin
 //   i2v (seedance/kling/pika): нужен стартовый кадр → image_url из лучшего фото
 export function chooseBinding(
   tool: string, hasSource: boolean, pool: AssetPool, imageIdx = 0,
-): { image_url?: string; asset_url?: string; tool?: string; reason: string } | null {
+): { image_url?: string; asset_url?: string; duration_sec?: number; tool?: string; reason: string } | null {
   if (hasSource) return null; // нода уже с источником — не вмешиваемся
   const t = String(tool || "").toLowerCase();
   const img = pickImage(pool, imageIdx); // разный кадр на каждую i2v-ноду (анти-сэйминес)
   if (t === "disk_real" || t === "disk") {
-    if (pool.realVideos.length) return { asset_url: pool.realVideos[0], reason: "disk_real ← реальное видео товара" };
+    if (pool.realVideos.length) {
+      const asset_url = pool.realVideos[0];
+      const duration_sec = pool.realVideoDurations?.[asset_url];
+      return { asset_url, ...(duration_sec ? { duration_sec } : {}), reason: "disk_real ← реальное видео товара" };
+    }
     if (img) return { tool: "seedance", image_url: img, reason: "нет реального видео → seedance i2v из фото товара" };
     return null; // нечем — упадёт как и раньше
   }

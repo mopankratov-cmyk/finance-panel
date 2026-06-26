@@ -79,7 +79,7 @@ export async function POST(req: NextRequest) {
     if (dryRun) return NextResponse.json({ ok: true, dry: true, recipe_id: recipeId, count: variants.length, props: dryProps });
     return NextResponse.json({ ok: true, recipe_id: recipeId, submitted, note: `${submitted.filter((s) => s.render_id).length}/${variants.length} вариантов в рендере. Банк: GET ?recipe_id=${recipeId} (после готовности).`, niche });
   } catch (e) {
-    return NextResponse.json({ ok: false, error: "reel-recompose crash: " + String((e as Error)?.message || e).slice(0, 160) }, { status: 500 });
+    return NextResponse.json({ ok: false, error: "пересборка рила упала: " + String((e as Error)?.message || e).slice(0, 160) }, { status: 500 });
   }
 }
 
@@ -87,7 +87,7 @@ export async function POST(req: NextRequest) {
 export async function GET(req: NextRequest) {
   try {
     const db = getSupabaseAdmin();
-    if (!db) return NextResponse.json({ ok: false, error: "Supabase не настроен" }, { status: 500 });
+    if (!db) return NextResponse.json({ ok: true, recipe_id: 0, done: 0, total: 0, variants: [], warning: "Supabase не настроен — статусы пересборки временно пустые" }, { headers: { "Cache-Control": "no-store" } });
     const recipeId = Number(req.nextUrl.searchParams.get("recipe_id")) || 0;
     if (!recipeId) return NextResponse.json({ ok: false, error: "нужен ?recipe_id" }, { status: 400 });
 
@@ -124,8 +124,8 @@ export async function GET(req: NextRequest) {
       }
     }
     const done = variants.filter((r) => r.status === "done").length;
-    return NextResponse.json({ ok: true, recipe_id: recipeId, done, total: variants.length, variants });
+    return NextResponse.json({ ok: true, recipe_id: recipeId, done, total: variants.length, variants }, { headers: { "Cache-Control": "no-store" } });
   } catch (e) {
-    return NextResponse.json({ ok: false, error: "reel-recompose GET crash: " + String((e as Error)?.message || e).slice(0, 160) }, { status: 500 });
+    return NextResponse.json({ ok: true, recipe_id: 0, done: 0, total: 0, variants: [], warning: "чтение пересборки рила упало: " + String((e as Error)?.message || e).slice(0, 160) }, { headers: { "Cache-Control": "no-store" } });
   }
 }

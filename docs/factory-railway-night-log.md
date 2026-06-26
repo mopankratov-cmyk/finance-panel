@@ -4,13 +4,13 @@
 
 ## Итог ночи
 
-- Дата: 2026-06-25
-- Worker: codex / content-factory audit
+- Дата: 2026-06-26
+- Worker: codex / content-factory stabilization
 - Last heartbeat: локально, в процессе работы
-- Ветки: `fix/factory-...` текущая рабочая
-- Проверки: `npx tsc --noEmit --pretty false`; `npx eslint app/api/factory/products/route.ts app/api/factory/decompose/route.ts lib/factory/graphRun.ts`; парс `public/inferno/studio.html`; `npm run dev -- --port 3007`; `curl` на `/api/factory/products`
-- Что поправлено: честные метрики товаров в `products`, фильтры товаров, honest format fork, ElevenLabs в студии/графе, fallback текста для hook/caption/OTK, рабочий поиск в центре, кеш последнего снимка балансов
-- Что осталось: дождаться деплоя и заново проверить прод-студию в Chrome; потом добить UX на экране конкурентов и пустые состояния
+- Ветки: `fix/factory-elevenlabs-optional`
+- Проверки: `npm run test:factory`; `npx tsc --noEmit`; `npm run lint`; `npm run build`
+- Что поправлено: очищен operator-facing error contract по всему `app/api/factory`; orchestration, render, media, content-prep, service, corpus/trends и legacy helper routes больше не возвращают сырые английские `crash:`-префиксы; CRON-protected endpoints объясняют auth block как `неверный CRON_SECRET`; contract tests теперь сканируют всё дерево factory API; worker ops snapshot теперь обогащает `queue_fallback` живым `observer heartbeat`, поэтому экран Railway worker не застревает в пустом `unknown`, когда heartbeat-table опционально отсутствует; при истёкшей Studio-сессии экран worker теперь сразу даёт кнопку повторного входа вместо немого warning-card
+- Что осталось: production alias уже обновлён; остаётся только добить git push последних локальных правок в Gitea и сделать короткий auth-backed smoke через Studio; generated stress artifacts остаются вне коммита как runtime output, не как кодовый долг
 
 - Дата: 2026-06-24
 - Worker: railway-content-factory
@@ -25,6 +25,151 @@
 - Следующие рекомендации: сразу брать T-002, затем T-003; PR #30 уже слит
 
 ## Записи
+
+### 2026-06-26 18:46
+
+- Ветка: `fix/factory-elevenlabs-optional`
+- Цель: дожать резервный worker pulse так, чтобы operator UI не выглядел сломанным при отсутствии heartbeat-таблицы
+- Изменено:
+  - `app/api/factory/ops/route.ts` теперь синтезирует `last_seen` и `liveness` для `queue_fallback` из `observer.heartbeat.last_activity_at`, если `railway_worker_states` недоступна или пуста
+  - `lib/factory/opsFailOpen.test.mts` получил отдельный контракт на это поведение
+  - production deploy на alias `finance-panel-two.vercel.app` выполнен после зелёного билда
+- Проверки:
+  - `node --import tsx lib/factory/opsFailOpen.test.mts`
+  - `node --import tsx lib/factory/studioSimplification.test.mts`
+  - `node --import tsx lib/factory/infernoHtmlParse.test.mts`
+  - `npm run build`
+  - `vercel --prod --yes`
+- Результат:
+  - worker screen должен показывать не пустой `unknown`, а реальную свежесть резервного пульса
+  - alias `https://finance-panel-two.vercel.app` обновлён и готов к smoke-проверке через авторизованную Studio-сессию
+  - локальный коммит `8ee5807 enrich fallback worker pulse from observer` создан
+- Блокеры:
+  - `git push` по HTTPS упирается в локальный `credential-osxkeychain`, это машинный auth хвост, а не проблема кода контент-завода
+- Следующий шаг:
+  - попробовать допушить ветку через `gitea-ssh`
+  - если SSH тоже закрыт, оставить владельцу одну точную команду на push после восстановления auth
+
+### 2026-06-26 19:02
+
+- Ветка: `fix/factory-elevenlabs-optional`
+- Цель: убрать тупик на worker screen, когда `/api/factory/ops` отвечает `401`
+- Изменено:
+  - `public/inferno/studio.html` теперь распознаёт auth-failure на fetch fallback и показывает оператору прямую кнопку `Открыть вход`
+  - worker warning-card в auth-сценарии объясняет, что закрыта именно сессия Studio, а не сам завод
+  - `lib/factory/studioSimplification.test.mts` закрепляет этот recovery path
+- Проверки:
+  - `node --import tsx lib/factory/studioSimplification.test.mts`
+  - `node --import tsx lib/factory/opsFailOpen.test.mts`
+  - `node --import tsx lib/factory/infernoHtmlParse.test.mts`
+  - `npm run build`
+- Результат:
+  - при `401/403` worker screen больше не выглядит как просто сломанный `/ops`
+  - у оператора есть один понятный следующий шаг прямо из интерфейса
+- Следующий шаг:
+  - закоммитить этот UX хвост и выкатить его на alias
+
+### 2026-06-26 19:21
+
+- Ветка: `fix/factory-elevenlabs-optional`
+- Цель: дотянуть auth-recovery до всех основных входов Studio, а не только до worker screen
+- Изменено:
+  - `public/inferno/studio.html`: sidebar `Ночной пульс` теперь показывает кнопку `Открыть вход`, если `/api/factory/ops` недоступен из-за истёкшей сессии
+  - `public/inferno/studio.html`: системная кнопка в `Командном центре` больше не ведёт в тупик на мёртвый worker screen; при auth-block она сразу открывает `/login?from=/inferno/studio.html`
+  - `public/inferno/studio.html`: health banner в `Командном центре` тоже показывает auth-specific summary и CTA `Открыть вход`
+  - `lib/factory/studioSimplification.test.mts`: добавлены контракты на sidebar/system-pill/health-banner auth recovery
+- Проверки:
+  - `node --import tsx lib/factory/studioSimplification.test.mts`
+  - `node --import tsx lib/factory/opsFailOpen.test.mts`
+  - `node --import tsx lib/factory/infernoHtmlParse.test.mts`
+  - `npm run build`
+- Результат:
+  - auth-block больше не выглядит как разные несвязанные ошибки на разных экранах
+  - у оператора везде один и тот же следующий шаг: повторный вход
+- Следующий шаг:
+  - закоммитить и выкатить alias
+
+### 2026-06-26 19:33
+
+- Ветка: `fix/factory-elevenlabs-optional`
+- Цель: убрать последний технический англоязычный хвост с живого worker screen
+- Изменено:
+  - `public/inferno/studio.html`: фильтр `workerNote` теперь скрывает не только старый `derived from queue fallback`, но и новый synthetic note `queue fallback with observer pulse`
+  - `lib/factory/studioSimplification.test.mts`: контракт на human-facing worker status copy обновлён под это поведение
+- Проверки:
+  - `node --import tsx lib/factory/studioSimplification.test.mts`
+  - `node --import tsx lib/factory/opsFailOpen.test.mts`
+  - `npm run build`
+- Результат:
+  - карточка `Статус` на worker screen больше не должна показывать технический текст после `режим: резерв`
+- Следующий шаг:
+  - закоммитить и выкатить alias
+
+### 2026-06-26 19:45
+
+- Ветка: `fix/factory-elevenlabs-optional`
+- Цель: убрать ложный красный `пульс потерян`, когда резервный worker snapshot обогащался старой активностью генераций
+- Изменено:
+  - `app/api/factory/ops/route.ts`: `queue_fallback` теперь получает `last_seen` из `observer heartbeat` только если observer-пульс свежий; старый `generation_history` больше не превращается в `worker_dead`
+  - `lib/factory/opsFailOpen.test.mts`: контракт уточнён, чтобы enrichment работал только на свежем observer pulse
+- Проверки:
+  - `node --import tsx lib/factory/opsFailOpen.test.mts`
+  - `node --import tsx lib/factory/studioSimplification.test.mts`
+  - `npm run build`
+- Результат:
+  - экран `Пульс завода` не должен краснеть только потому, что давно не было новых генераций
+  - резервный режим остаётся честным: optional heartbeat-table всё ещё видна как резерв, но без ложного `worker_dead`
+- Следующий шаг:
+  - закоммитить, выкатить alias и проверить worker screen в браузере
+
+### 2026-06-26 19:57
+
+- Ветка: `fix/factory-elevenlabs-optional`
+- Цель: сделать карточку последней stress-проверки непротиворечивой для оператора
+- Изменено:
+  - `public/inferno/studio.html`: таймауты stress-run теперь выводятся отдельным чипом `таймаут N`
+  - `public/inferno/studio.html`: если последняя проверка упёрлась в timeout, карточка прямо говорит, что проверка не дождалась завершения и это не равно успешному прогону
+  - `lib/factory/studioSimplification.test.mts`: контракт worker stress surface обновлён под явный timeout state
+- Проверки:
+  - `node --import tsx lib/factory/studioSimplification.test.mts`
+  - `node --import tsx lib/factory/infernoHtmlParse.test.mts`
+  - `npm run build`
+- Результат:
+  - карточка `Последняя проверка` больше не выглядит как `0/1` при `сбоев 0`; timeout теперь виден как отдельная причина
+- Следующий шаг:
+  - закоммитить, выкатить alias и проверить worker screen в браузере
+
+### 2026-06-26 00:40
+
+- Ветка: `fix/factory-elevenlabs-optional`
+- Цель: добить второй слой стабилизации Studio/worker UI без новых функций и без расширения числа агентов
+- Изменено:
+  - `GET /api/factory/balances` переведён в fail-open: пустые балансы + warning вместо HTTP 500
+  - `GET /api/factory/stability`, `/status`, `/tool-schema` возвращают partial/warning-контракты для диагностических экранов
+  - `GET /api/factory/brand-kit` и `GET /api/factory/content-index` больше не валят UI при отсутствующей БД/миграции
+  - инспектор ноды в `public/inferno/studio.html` получил fallback на пустую схему инструмента
+  - `GET /api/factory/content-learn` переведён в read-only fail-open; POST обучения оставлен строгим
+  - добавлены contract tests на новые fail-open контракты
+- Проверки:
+  - `npm run test:factory`
+  - `npx tsc --noEmit`
+  - `npm run lint`
+  - `npm run build`
+- Результат:
+  - production build зелёный
+  - read-only/diagnostic слои Studio теперь деградируют в warnings, а не в красный экран/пустой UI
+  - write/render endpoints сознательно оставлены строгими, чтобы не выдавать ложный успех там, где ролик реально не создан
+- Следующий шаг:
+  - дождаться deploy/merge текущей ветки и сделать production smoke на `finance-panel-two.vercel.app/inferno/studio.html`
+  - после smoke перейти к quality-only Sprint 2, не возвращая отключённые компоненты до повторного стабильного stress-pass
+
+- Дополнение:
+  - `POST /api/factory/oembed` переведён в warning-only read-contract: отсутствие БД/миграции больше не выглядит как ошибка ленты конкурентов
+  - `GET /api/factory/corpus/top-hooks`, `top-sounds`, `top-videos` выровнены под fail-open read-model
+  - `GET /api/factory/static-status`, `video-fal-status/[id]`, `ugc-creatify-status/[id]` больше не возвращают HTTP 500 на probe-crash, а отдают JSON со `status:"error"`
+  - `GET /api/factory/niche-playbook/cached`, `/trends`, `/generation-history`, `/winners`, `/telegram` тоже переведены в warning-oriented read-contract, где это безопасно
+  - добавлены `oembedFailOpen`, `corpusReadFailOpen`, `statusProbeFailOpen` guards
+  - добавлены `playbookTrendsFailOpen` и `winnersTelegramReadFailOpen` guards
 
 ### 2026-06-25 08:30
 
@@ -2037,3 +2182,211 @@
 - Результат:
   - Sprint KPI по выпуску MP4 подтверждён live stress: `10/10 done`
   - отчёт больше не путает успешный текущий stress с историческими падениями в БД
+
+### Production stress runner progress diagnostics
+
+- Ветка: текущая рабочая ветка контент-завода
+- Цель: убрать “молчание” CLI во время production stress, когда первый запрос долго ретраится или ждёт удалённый endpoint
+- Изменено:
+  - `lib/factory/stressGraphRun.mjs`: перед каждым прогоном печатает `RUN_START ...`
+  - добавлен `FACTORY_STRESS_REQUEST_RETRIES` / `--request-retries` для короткой диагностики зависших remote-запросов
+  - `lib/factory/cliTimeouts.test.mts`: добавлен guard на progress output и retry controls
+- Результат:
+  - оператор сразу видит, что stress runner стартовал
+  - smoke-команду можно запускать с `--runs 1 --request-retries 1 --request-timeout-ms 10000`, не ожидая длинных retry windows
+
+### Studio compact operator mode
+
+- Ветка: текущая рабочая ветка контент-завода
+- Цель: убрать нагромождение на экранах Studio, не удаляя диагностические данные для инженера
+- Изменено:
+  - `public/inferno/studio.html`: краткий операторский режим включён по умолчанию
+  - в краткой навигации скрыты не-MVP экраны `inspector`, `static`, `balances`, `learn`
+  - sidebar-пульс в кратком режиме показывает только статус, обновление и переход в Worker
+  - командный центр больше не дублирует отдельную worker-карточку и скрывает `Execution observability`
+  - Worker screen в кратком режиме показывает меньше suggested actions, скрывает stress-history и подробный heartbeat-detail
+  - кнопка “что тут?” автоматически включает полный режим, чтобы проводник был видим
+  - `lib/factory/studioSimplification.test.mts`: добавлен guard на compact-mode contract
+- Результат:
+  - первый экран стал ближе к операторскому cockpit: меньше debug-бейджей и меньше системных веток
+  - full mode сохраняет расширенную диагностику без удаления инструментов
+
+### Optional worker heartbeat fail-open status
+
+- Ветка: текущая рабочая ветка контент-завода
+- Цель: не показывать optional heartbeat telemetry как P0/critical блокер MVP-выпуска
+- Root cause:
+  - `/api/factory/ops` повышал missing `railway_worker_states` до `critical`
+  - Studio Worker показывал `worker не отвечает`, хотя snapshot уже строился через queue fallback
+  - таблица heartbeat полезна для наблюдаемости, но не обязательна для получения MP4
+- Изменено:
+  - missing worker heartbeat table теперь `warn` + `degraded`, не `error` + `critical`
+  - suggested action заменён с `apply_worker_state_table` P0 на `enable_optional_worker_heartbeat` P2
+  - компактный Worker UI пишет `heartbeat не настроен`, а не `worker не отвечает`, когда активен queue fallback
+  - `lib/factory/opsFailOpen.test.mts` и `lib/factory/studioSimplification.test.mts`: добавлены guards
+- Проверки:
+  - inline `public/inferno/studio.html` script `node --check`: pass
+  - `npm run test:factory`: pass
+  - `npm run build`: pass
+- Результат:
+  - операторский экран больше не создаёт ложный P0 из optional telemetry
+  - реальный выпуск роликов остаётся главным KPI, а heartbeat table можно подключить позже как P2-наблюдаемость
+
+### Rejudge fail-open + stale running triage
+
+- Ветка: текущая рабочая ветка контент-завода
+- Цель: добрать оставшийся operational хвост после UI-упрощения — убрать fail-closed поведение в `graph-run/rejudge` и отдельно подсветить застрявшие `running`
+- Root cause:
+  - основной `graphRun` уже банкует fail-open при пустом/недоступном `video-critic`, но `app/api/factory/graph-run/rejudge/route.ts` всё ещё оставлял item с `error` и без финального warning-state
+  - `/api/factory/ops` считал только `running/failed/warning`, поэтому застрявший прогон виделся как обычный `running`
+- Изменено:
+  - `app/api/factory/graph-run/rejudge/route.ts`: добавлен `persistWarningResult(...)`
+  - `rejudge` теперь деградирует в `status:"warning"` вместо жёсткого stop, если:
+    - `extractFrames` упал
+    - кадры не извлеклись
+    - `video-critic` недоступен
+    - `video-critic` вернул payload без `score`
+  - `lib/factory/observability.ts`: добавлен stale-running detector (`30m+` в `status:"running"`)
+  - stale run теперь:
+    - учитывается в `stale_running`
+    - попадает в `incident_runs` как `status:"stale_running"`
+    - получает timeout-like triage вместо “ещё один running”
+  - `app/api/factory/ops/route.ts`: добавлены alert/action/status-reason для `stale_running_runs`
+  - `public/inferno/studio.html`: Worker queue теперь показывает `stale` отдельно от обычного `running`
+- Тесты:
+  - `lib/factory/observabilityStaleRuns.test.mts`
+  - `lib/factory/rejudgeFailOpen.test.mts`
+  - обновлены `lib/factory/opsFailOpen.test.mts`, `lib/factory/studioSimplification.test.mts`
+- Проверки:
+  - `npm run test:factory`: pass
+  - `npm run lint`: pass
+  - `npm run build`: pass
+- Результат:
+  - rejudge больше не возвращает систему к скрытому fail-closed поведению
+  - оператор видит не просто “running 1”, а отдельно застрявший прогон, который надо тормошить
+  - `/api/factory/ops` теперь тоже fail-open по observability snapshot: деградация `node_recipes` больше не убивает весь worker/ops экран целиком
+  - `worker-state` приведён к тому же partial-mode: деградация snapshot больше не обнуляет весь endpoint наблюдаемости
+
+### Active incidents vs legacy noise
+
+- Ветка: текущая рабочая ветка контент-завода
+- Цель: перестать показывать старые `run_fail`/`warning` как живую текущую аварию на worker/ops экранах
+- Root cause:
+  - observability считала любые последние строки `node_recipes` одинаково “живыми”, даже если это старые исторические прогоны вне текущего operational окна
+  - из-за этого Worker screen продолжал пугать `23 failed runs`, хотя это были не активные инциденты текущего окна
+- Изменено:
+  - `lib/factory/observability.ts`:
+    - добавлено active-incident окно `24h`
+    - live метрики `failed` / `warning_runs` теперь считают только активные инциденты
+    - добавлены поля `active_sample_runs`, `legacy_failed_runs`, `legacy_warning_runs`
+    - `recent_runs` помечаются флагами `active` / `legacy`
+    - `incident_runs` теперь держит только живые инциденты + stale-running
+  - `app/api/factory/ops/route.ts`:
+    - suggested actions и alerts больше не эскалируют legacy-only хвост как живую поломку
+    - при отсутствии live fail/warn добавляется спокойный `legacy_incidents_only`
+  - `public/inferno/studio.html`:
+    - Worker queue приоритетно показывает активные прогоны, а не старую историю
+    - queue meta теперь разделяет `active` и `history`
+    - full observability card объясняет, когда на экране остались только исторические шрамы
+  - `app/api/factory/worker-state/route.ts` и `app/api/factory/studio/route.ts`: расширены default contracts под новые поля observability
+- Тесты:
+  - добавлен `lib/factory/observabilityLegacyIncidents.test.mts`
+  - обновлены `lib/factory/studioSimplification.test.mts`, `lib/factory/workerStateFailOpen.test.mts`
+- Проверки:
+  - `node --import tsx lib/factory/observabilityLegacyIncidents.test.mts`: pass
+  - `npm run test:factory`: pass
+  - `npm run lint`: pass
+  - `npm run build`: pass
+- Ограничение:
+  - локальная GUI-проверка `http://127.0.0.1:3013/inferno/studio.html` уходит в общий login middleware, поэтому визуальную проверку полного worker UI надо добить уже после деплоя на живом домене
+- Результат:
+  - ops/worker экран стал ближе к живому состоянию фабрики, а не к архиву ошибок
+  - старые падения больше не давят на текущее triage-решение как будто они произошли “прямо сейчас”
+- 2026-06-26 00:48 MSK - normalized factory Creatify error contracts around canonical `error` field across route handlers, legacy operator surface, and the internal Creatify adapter; added a guard test so old dual-field payloads do not quietly creep back in.
+- 2026-06-26 01:00 MSK - enriched learn-screen generation history with lineage context (`recipe_id`, `attempt`, `variant_idx`, `reason`, `article`) and surfaced `learning` read-path warnings in the UI, so degraded read models no longer flatten into a silent empty feed and recent attempts explain what actually happened.
+- 2026-06-26 01:04 MSK - synced `docs/factory-v3-roadmap.md` with current repo-truth: V1 is already wired in V3 studio, V5 manual `post-metrics` loop exists, and V20 is no longer “history absent” but “standalone/local paths still bypass shared lineage sink”.
+- 2026-06-26 01:08 MSK - upgraded `media-store` from a pure upload shim into a shared history sink: standalone/manual uploads can now opt into `generation_history` with recipe/node/article/source metadata, and full upload failure is recorded as `artifact_fail` instead of disappearing as a silent storage-only event.
+- 2026-06-26 01:21 MSK - simplified the worker screen so the top status card is driven by real `graph-run` / `node_recipes` observability instead of the Railway markdown task queue; the operator now sees the current or latest `recipe` run first, while task-note noise stays out of the primary factory flow.
+- 2026-06-26 01:34 MSK - cleaned the remaining worker-screen copy to match the new runtime truth: header/help/CTA now talk about heartbeat and live factory runs instead of the old “task queue” language, so the UI no longer points operators back to deprecated Railway mental models.
+- 2026-06-26 01:38 MSK - removed more infra-noise from the compact operator UI: the command center no longer leaks raw worker task ids, the pulse card now uses plain run-state language (`идут прогоны`, `есть сбои`, `пульс пропал`) instead of self-heal jargon, and the worker entry point is renamed in the UI to `Пульс завода` so operators navigate by product meaning instead of Railway internals.
+- 2026-06-26 01:38 MSK - trimmed the command-center health banner back to a short alert surface: it keeps the active 10-run / heartbeat / fail / balance signals, but no longer expands into a second observability dashboard with stress-history and streak chatter.
+- 2026-06-26 02:06 MSK - collapsed the worker heartbeat diagnostics and run list into product language: the screen now says `Живые прогоны`, uses `идёт / подвис / сбой / архив` chips instead of task-board jargon, and compresses heartbeat troubleshooting into one short factory-impact explanation plus a single “Следом” hint.
+- 2026-06-26 02:06 MSK - compacted the marketer rail so the brief opens on demand (`Развернуть бриф`) and the side column no longer spills into a long wall of examples: viral examples are capped at 2 cards, recommendations at 3 items, and distribution hints at 3 chips.
+- 2026-06-26 02:14 MSK - removed the last mixed telemetry wording from the worker screen: `last_seen / age / avg / fails / streak` are now operator-facing labels (`сигнал / тишина / среднее / сбоев`) and the latest stress card explains the 10/10 goal in one sentence instead of stacking extra diagnostic chips.
+- 2026-06-26 02:24 MSK - translated the full observability surface into consistent product language: worker status chips now read `на связи / молчит / потерян`, run chips use `идёт / подвис / сбой`, and the deep-dive card now says `Разбор прогонов`, `Сигнал качества`, `живые инциденты`, `тренд по часам` instead of mixed English telemetry labels.
+- 2026-06-26 02:31 MSK - aligned the assistant hints and summary chips with the same operator vocabulary: guidance now talks about `молчит / потерян`, the health banner says `пульс`, and the hourly trend chips no longer mix English `fail` labels into otherwise Russian run summaries.
+- 2026-06-26 02:41 MSK - hid raw backend codes behind operator labels on the worker surface: `table_missing` now renders as `таблица не поднята`, `other` as `без категории`, latest-run failures no longer say `error other`, and the worker header/loading/state cards now consistently talk about `пульс`, not mixed `heartbeat/artifact/archive` internals.
+- 2026-06-26 02:48 MSK - cleaned the remaining user-facing English from OTK and learning surfaces: `warnings` became `предупреждения`, step/time pills now read `идёт / последний / шагов / время`, learn warnings are labeled `предупреждения чтения`, and generation history now says `собрано / отклонено` instead of raw `generated / reject`.
+- 2026-06-26 02:55 MSK - removed the duplicate stress-history slab from the worker screen: `Последний стресс-тест` and `История стресс-тестов` are now one compact `Стресс 10/10` card with a short archive line, so the operator keeps the KPI context without losing another full-width panel to repeated counters.
+- 2026-06-26 03:06 MSK - tightened the command-center system banner: the chip now says `Пульс`, the banner title is shorter (`Нужна проверка` / `Есть риск` / `Система в норме`), the details drawer is renamed to `Что проверить`, and heartbeat/fail/balance hints are humanized through the same operator vocabulary instead of raw internal labels.
+- 2026-06-26 03:19 MSK - reduced command-center card density in the niche and product area: niche tiles no longer duplicate video counts as a second virality chip, the templates chip is spelled out in product language, and product cards now say `арт … · сигналы есть/нет` plus `победитель есть` / `Не хватает` instead of backend-ish `Данные по товару` / `winner` copy.
+- 2026-06-26 04:05 MSK - hardened the worker screen into fail-open mode when `/api/factory/ops` flakes: the screen now keeps the last good snapshot instead of collapsing into `ошибка ops`, shows a short `Пульс временно недоступен` warning with a retry CTA, and only falls back to an empty error state when there has never been a successful ops read in the session.
+- 2026-06-26 04:11 MSK - removed the last navigation-level infra label from the system rail: the worker screen chip is now a neutral `08`, while the title/subtitle stay `Пульс завода` / `живые прогоны`, so the sidebar no longer leaks `RW` shorthand from the old Railway mental model.
+- 2026-06-26 04:18 MSK - cleaned another layer of operator copy across worker/observability/learn surfaces: `heartbeat` became `пульс` or `таблица`, stuck-run fallback no longer says `running`, warning counters now say `предупр.`, and the assistant/observability texts use the same `путь пульса` vocabulary instead of mixed English telemetry fragments.
+- 2026-06-26 04:29 MSK - translated another visible operator layer in OTK and the video library: `execution log` became `шаги прогона`, recipe cards now say `предупр.` / `сбой` / `идёт` with `последний` / `время`, winners toasts now speak about `победители`, market feedback no longer says `winners` / `warning`, and lineage bits in learning history now read `попытка` / `вариант`.
+- 2026-06-26 04:35 MSK - finished another micro-pass over status chrome: node rows in OTK no longer leak raw `submitted/pending/skip`, recipe badges say `прогон` and `шаги`, execution-log fallback says `шаг` instead of `step`, and the remaining tiny library labels now read like operator UI instead of internal trace markers.
+- 2026-06-26 04:53 MSK - stripped the last operator-facing infra scraps from the worker pulse screen: run cards now say `рецепт #…` and `ролик сохранён`, the fail-open fallback talks about a missing factory summary instead of raw `/ops`, the suggested-actions slab is translated into concrete operator tasks (`разобрать подвисшие прогоны`, `проверить путь рендера`, etc.), and the count pill now says `пунктов` instead of `items`.
+- 2026-06-26 05:05 MSK - finished one more terminology pass over the live pulse surfaces: `фолбэк` became `резерв`, helper text now says `передатчик пульса` instead of `sender`, action labels no longer leak `upstream / video-critic / structured output`, and the winner preset badge on the learning screen now reads `победитель`.
+- 2026-06-26 05:16 MSK - cleaned the remaining mixed locale crumbs across secondary factory screens: durations now render as `с/м` instead of `s/m`, OTK shows `прогон <id>` instead of `run <id>`, the static generator uses `Охват / Сохранения` plus a local-render note instead of `Reach / Saves / renderStill / fal`, and the balances screen now marks API-fed services as `авто` rather than `live API`.
+- 2026-06-26 05:31 MSK - did another operator-copy pass on the remaining visible content-factory chrome: the rail subtitle now says `завод коротких роликов`, competitor analysis uses `разбор` instead of `decompose`, virality badges say `индекс` / `топ` instead of `score` / `viral`, and recipe cards now render human labels for niche, format, and assembly mode (`ручной / с подсказкой / авто`) instead of leaking raw `built_by` enums.
+- 2026-06-26 05:47 MSK - translated the remaining run-step and helper jargon on active factory screens: `render-submit / render-poll / render-done` now render as readable step labels in the worker pulse, library, and OTK; the static screen now says `лента 4:5` instead of `IG`; the canvas legend is fully Russian (`Хук / Сцена / Ревил / Титры / Музыка / Эффекты`); and small helper labels now avoid `Vercel`/raw ID wording where the operator only needs the intent.
+- 2026-06-26 06:08 MSK - tightened another UI-runtime language layer: node types now pass through `nodeTypeLabel` before they reach canvas cards, mini-graph cards, timeline clips, OTK node rows, and assistant context; timeline track names use `Видео / UGC / Анимация / Звук / Музыка / Титры`; competitor format labels now use `formatLabel` instead of raw `format_detected`; and the assistant's active run hint uses the same translated step labels as OTK.
+- 2026-06-26 06:17 MSK - ran the full factory contract suite after the UI-runtime cleanup: `npm run test:factory` passed across all current `lib/factory/*.test.mts` files. The only red check was a stale market-feedback assertion that still expected English `warning`; it now matches the localized `предупр.` operator copy.
+- 2026-06-26 06:43 MSK - started Milestone 4 production run control: recent run snapshots now carry `article`, `niche`, `otk_score`, and `output_url`; the factory pulse screen shows `Очередь прогонов` with graph/MP4/restart actions wired to the existing `graph-run` endpoint; added `runControlSnapshot.test.mts` plus Studio guards. Checks: `npm run test:factory` pass, `npm run build` pass.
+- 2026-06-26 06:49 MSK - added `docs/factory-daily-runbook.md` for the operator loop: morning check, run launch, success/failure criteria, P0/P1/P2 triage, evening check, and deploy/auth smoke expectations.
+- 2026-06-26 06:58 MSK - added production controls directly to library recipe cards: `старт` uses the same `graph-run` path, running recipes show `пульс` instead of another start button, completed recipes expose `MP4`, and `ОТК` opens the assembly screen. Runbook updated with the shorter launch path.
+- 2026-06-26 07:02 MSK - closed Milestone 4 operator scope in `docs/factory-milestone4-run-control.md`: documented pulse controls, library run controls, backend snapshot fields, guard tests, prod deploy id, auth smoke expectations, and what remains outside M4.
+- 2026-06-26 07:13 MSK - tightened the manual market-feedback loop after M4: `POST /api/factory/post-metrics` now marks recipes as `posted` when metrics are saved or forwarded to winners, Studio reflects the posted state after entry, and the daily runbook now includes the evening metrics step.
+- 2026-06-26 07:21 MSK - hardened `post-metrics` posted-state marking: metrics can still save fail-open, but recipe status now changes to `posted` only when an `output_url` exists and the recipe is not `running`; Studio refreshes the library card after a successful posted mark.
+- 2026-06-26 07:27 MSK - tightened market metrics UX: recipe cards now show the views input only after a recipe has an MP4/output URL or is already marked `posted`, preventing accidental market-signal entry on drafts/running recipes.
+- 2026-06-26 07:34 MSK - hardened `/post-metrics` against orphan market signals: the route now verifies `node_recipes` first and returns `404` for a missing recipe before inserting metrics; the existing lookup also feeds winner-forward and posted-state marking.
+- 2026-06-26 08:02 MSK - started closing V11 budget guardrails in Studio: both library `старт` and assembly launch now check `/ops` before `graph-run`, block only on explicit `balances.low`, and show a per-recipe cost estimate plus `x3` OTK-regeneration ceiling. Backend `cost_hint` remains a follow-up, but the operator no longer starts paid runs fully blind.
+- 2026-06-26 08:12 MSK - closed the practical V10 preview-reuse gap: Studio now persists accepted `preview_url + preview_hash` immediately via `saveNode` instead of waiting for delayed autosave, so a fast click into assembly cannot race the database and cause a second paid FAL submit for the same node.
+- 2026-06-26 08:23 MSK - hardened V8 reality-first routing after `decompose`: even if Claude returns AI tools for `problem|solution|proof`, the route now forces those backbone roles to `disk_real` unless the node is an explicit AI accent (`talking_head`, `before_after`, or `voiceover`). Added a guard test to keep the factory from drifting back into all-AI-slop graphs.
+- 2026-06-26 08:34 MSK - closed V2 transfer safety: competitor decompose nodes now become product-scoped draft prompts via `recipeDraft`, keeping the reference meaning but explicitly forbidding literal copying; winner presets still keep their exact production prompt.
+- 2026-06-26 08:55 MSK - locked V18-1 as a Studio contract: legacy `patrick`/`text` entry points remain hidden from navigation while the files stay reachable by direct URL until a later V18-2 deletion decision.
+- 2026-06-26 09:08 MSK - closed the V11 backend contract: added shared `costEstimate` logic, persisted `run_plan.cost_hint`, returned `cost_hint` from `/api/factory/graph-run`, and switched batch budget guard to the same estimator so UI and unattended runs share one typical/worst-case cost model.
+- 2026-06-26 09:15 MSK - audited V7 read-back and found it already wired in the current runtime (`decompose`/`autofill` via `learningHints`, `video-critic` via `rejectAntiFor`); added a contract test so the winner/corpus/reject feedback loop does not silently regress.
+- 2026-06-26 09:24 MSK - advanced V20 history coverage inside the factory scope: StaticV1 Remotion submits now log `submitted` history rows, `static-status` logs completed PNGs or terminal failures, and Studio passes article/format/headline lineage into polling. Repo-local `scripts/*` remains the explicit V20 gap because it is outside the Railway worker file mandate.
+- 2026-06-26 09:32 MSK - prepared V3/V4 without destabilizing MVP: `graphRun` can now route low-OTK/artifact failures into single-node `regenCulprit` + `/improve-prompt`, but only behind `FACTORY_OTK_REGEN=1` and still bounded by `MAX_RENDERS=3`; default production remains fail-open warning→bank.
+- 2026-06-26 09:41 MSK - reopened V9 only as a safe judging primitive: `/hook-judge` is no longer a Sprint-1 disabled stub, but it is deterministic and cheap (ranks supplied hooks using heuristic signals plus `viral_hooks` corpus). `/variations` remains disabled, so no new LLM fan-out or paid preview loop is introduced.
+- 2026-06-26 12:43 MSK - strengthened V5 market feedback without adding UI complexity: `/post-metrics` now normalizes `platform/views/watch_rate/ctr/saves/posted_at` once and forwards that full snapshot into `/winners`, where it is persisted under `winner_learnings.market_signal` for the learning loop. The library card still keeps the MVP one-field workflow for the operator.
+- 2026-06-26 12:49 MSK - added a V6 market-noise guard to read-only `/ab-rank`: variants are still scored by views × retention/CTR, but a market `winner` now requires `min_winner_views` (default 100, query-overridable). This keeps future scale/recompose advice from treating tiny samples as proof.
+- 2026-06-26 12:56 MSK - hardened V14 winner presets: extracted `sanitizeWinnerPresetNodes()` from `/winners` and added a unit test proving winner presets preserve production prompt/settings while stripping volatile `preview_url`/`preview_hash`, so V10 preview reuse cannot leak old clips into transferred recipes.
+- 2026-06-26 13:05 MSK - advanced V17 without adding ffprobe/fal-extract infrastructure: `autoBindAssets` now selects `content_assets.duration_sec`, `assetBind` preserves known real-video durations, and `graphRun` copies them into run nodes when the recipe node has no explicit duration. This fixes silent fallback to 5s for cataloged real clips while leaving heavy duration backfill for later.
+- 2026-06-26 13:12 MSK - closed V12 at MVP level as a planning preview: Studio already renders the assembly timeline from recipe node durations before the paid `graph-run` starts. Added a guard test so this free timeline preview cannot disappear or be replaced by a misleading paid-render promise.
+- 2026-06-26 13:18 MSK - cleaned up a post-M4 stress-history false alarm: archive `target_met` is now computed from the stress run summary itself (`completed == totalRuns` and no failures/timeouts), not from the wider DB stability snapshot that can include older unrelated failures. Added a guard test so a real 10/10 run does not show as `target 0/n` in the operator stress history.
+- 2026-06-26 13:29 MSK - separated stress-run authorization problems from factory failures: `stressGraphRun` now marks 401/403 as `auth_fail`, the Markdown report exposes `auth_fail`, and Studio shows `нужна авторизация/CRON_SECRET` instead of counting this as a red content-factory run failure.
+- 2026-06-26 13:44 MSK - added a read-only V16-lite market feedback panel to the learning screen: `/api/factory/learning` now returns `market_summary` from `post_metrics` with best-per-recipe views, retention, CTR, saves, 100+ view sample count, and a simple `ОТК vs рынок` alignment check; Studio shows the totals and top recipes without enabling auto-scaling or changing generation policy.
+- 2026-06-26 13:58 MSK - expanded the same V16 read-only learning panel with market-by-niche aggregation: the API now groups real post metrics by niche, and Studio shows total views, average views, retention, and 100+ sample counts per niche without turning that into auto-upgrade logic.
+- 2026-06-26 14:10 MSK - softened `/api/factory/ab-rank` recommendation semantics: the read-only response now exposes `review` / `hold` buckets and keeps old `scale` / `kill` only as compatibility aliases, so market ranking cannot be mistaken for an auto-scale or auto-stop command.
+- 2026-06-26 14:22 MSK - localized `/api/factory/ops` alert and suggested-action reasons before they reach Studio: the worker pulse screen no longer depends on frontend-only label patches and does not leak `worker heartbeat`, `fallback ratio`, or `failed runs` text into the operator checklist.
+- 2026-06-26 14:31 MSK - cleaned remaining operator-facing factory fallback copy: route-level crash fallbacks in produce/scenario/playbook/status/stability/ops now explain the degraded state in Russian product language while preserving the same fail-open contracts.
+- 2026-06-26 14:39 MSK - synced roadmap/runbook with the new market-learning reality: V6 is explicitly `review/hold` read-only, V16 includes market-by-niche learning, and the daily operator loop now says how to read market signals without turning them into auto-scale commands.
+- 2026-06-26 14:48 MSK - improved Studio graph-run error handling: the shared `api()` helper now preserves HTTP status/network state, and run-start toasts translate 401/403 and network failures into clear operator actions instead of raw `Не авторизовано` / `fetch failed`.
+- 2026-06-26 14:54 MSK - extended the same readable error handling to static generation startup and graph-run polling failures, so auth/network issues no longer leak through secondary status panels after retries.
+- 2026-06-26 15:06 MSK - expanded Studio readable error handling across common operator actions: open recipe, competitor search/decompose, transfer skeleton, node preview, autofill, brand-kit save, winner save, delete recipe, balances, learning, and winner-preset transfer now use the shared `apiErrorText()` path.
+- 2026-06-26 15:15 MSK - hardened V16 learning market enrichment against malformed market rows: if `post_metrics` has no valid `recipe_id`, `/api/factory/learning` now records a warning and skips the empty `node_recipes.in([])` lookup instead of risking a read-path degradation.
+- 2026-06-26 15:28 MSK - cleaned the remaining raw observability values in the full pulse view: slow-step names and incident `last_status` now pass through `runStepLabel()` / `runQueueTone()` instead of leaking backend step/status strings.
+- 2026-06-26 15:35 MSK - finished the same full-pulse translation pass for step-duration series: hourly duration rows now use `runStepLabel()` instead of raw backend step ids.
+- 2026-06-26 15:47 MSK - added a defensive translation layer for full-pulse failure diagnostics and balance chips: backend `issue/action/next_step/status` codes now render as operator tasks instead of English/raw enums.
+- 2026-06-26 15:58 MSK - cleaned learning generation history lineage: node types now use `nodeTypeLabel()`, source codes use a small operator dictionary, and unknown statuses fall back to `неясно` instead of leaking backend enums.
+- 2026-06-26 16:12 MSK - advanced V16 read-only learning without enabling auto-scale: `market_summary` now carries overall and per-niche 100+ view win-rate, and Studio shows that signal beside market-by-niche totals.
+- 2026-06-26 16:18 MSK - synced operator docs after the V16 win-rate pass: daily runbook, M4 closeout, and roadmap now describe `win-rate 100+` as a read-only market signal, not an auto-scale command.
+- 2026-06-26 16:25 MSK - localized the visible `/api/factory/graph-run` crash fallback: start/poll failures now return `graph-run упал` instead of English `graph-run crash`, with a regression guard in the factory contract tests.
+- 2026-06-26 16:37 MSK - clarified stress-run timeout semantics: deadline exits now report `status: timeout`, preserve `lastStatus`, include `timeout_budget_sec`, and the runbook explains that timeout is not the same thing as factory `run_fail`.
+- 2026-06-26 16:48 MSK - localized crash fallbacks for the primary Studio routes (`decompose`, `node-preview`, `recipes`, `balances`, `studio`, `niche-brief`, `static-generate`, `creatify-options`, `node-save`) and added a contract guard against English crash prefixes on those live operator paths.
+- 2026-06-26 16:58 MSK - localized disabled stub responses for parked MVP components (`scenario-rewrite`, `variations`, `recipe-variants`, `batch-build`, `self-heal`, `watchdog`, legacy `jobs/*`) and extended the jobs migration guard so English `disabled for Sprint 1 stability` notes do not return.
+- 2026-06-26 17:08 MSK - localized ops/graph orchestration fallbacks: `/ops`, `/stability`, `/worker-state`, `graph-run/tick|cron|rejudge` now explain crashes and auth blocks in Russian operator language (`неверный CRON_SECRET`) with a regression guard.
+- 2026-06-26 17:18 MSK - cleaned the legacy factory cron edge cases: `jobs/balances-cron`, `jobs/corpus-cron`, and worker pulse GET now use the same Russian CRON_SECRET/crash language as the main graph orchestration routes.
+- 2026-06-26 17:31 MSK - localized render/media/market fallback copy across the MP4 path: assemble, static/FAL/UGC polling, media-store, artifact-check, post-metrics, winners, and A/B rank now return operator-facing Russian errors with a regression guard.
+- 2026-06-26 17:44 MSK - localized content-prep action fallbacks: products, brand-kit, autofill, scenario/quality, hooks, prompt improvement, b-roll, subtitles, overlays, and generation history now speak operator Russian instead of raw backend `crash` labels.
+- 2026-06-26 17:56 MSK - localized factory service fallbacks for status/observer/produce/disk-source/reject/batch/assistant/prepare-product/WB index, keeping degraded responses readable for the operator and covered by the error-contract test.
+- 2026-06-26 18:12 MSK - completed the low-priority factory API fallback sweep: corpus, trends, Creatify option helpers, Telegram, legacy utilities, and content-index endpoints no longer return raw English `crash:` prefixes; the contract test now scans the whole `app/api/factory` tree.
+- 2026-06-26 18:24 MSK - closed the last read-only analytics tail in this sweep: `GET /api/factory/ab-rank` and `GET /api/factory/reel-recompose` now stay warning-only with empty snapshots and `no-store` caching when Supabase or secondary reads are unavailable, while POST/action paths remain strict.
+- 2026-06-26 18:41 MSK - added a compact V20 iteration-chain summary to `Обучение`: the API now groups `generation_history` by recipe (`attempts`, best OTK, MP4 count, last status), and Studio shows the top retry chains with one-click jump back to the recipe graph. This stays read-only and does not touch the paid run path.
+- 2026-06-26 18:52 MSK - extended the same V20 summary contract to `GET /api/factory/generation-history`: recipe history now returns `summary` (`attempts`, outputs, best OTK, last status/time, variant count, attempt span) together with raw rows and `no-store` caching, so future history modals do not need to re-derive chain stats client-side.
+- 2026-06-26 17:05 UTC / 20:05 MSK - production smoke from the public alias confirms the current boundary is auth, not code regressions: `GET /inferno/studio.html` returns `307 -> /login?from=%2Finferno%2Fstudio.html`, and unauthenticated `GET /api/factory/ops` / `learning` both return `401 {"error":"Не авторизовано"}`. Local code/build/test state is green; the next meaningful step is an authenticated Studio smoke run.
+- 2026-06-26 20:15 MSK - tightened the Worker stress card after authenticated Studio smoke: timeout smoke checks now show a dedicated `таймаут N` chip and suppress stale DB failure diagnostics for that card, so the operator sees one current reason instead of mixing a timeout with old OTK/failure history.
+- 2026-06-26 20:24 MSK - simplified the Studio sidebar footer: the old `Балансы сервисов / экран 07` shortcut and fake progress bar were removed from the factory pulse area; the footer now points directly to `Пульс завода / экран 08`.
+- 2026-06-26 20:08 UTC / 23:08 MSK - production stress probe showed the old 6-minute run deadline was too short for the real Remotion + cron wake path: a healthy run reached `render-poll` but was marked timeout. `stressGraphRun` default deadline is now 15 minutes per run; short smoke checks should pass `--max-polls` explicitly instead of reusing the full stress default.

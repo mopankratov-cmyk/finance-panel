@@ -163,7 +163,7 @@ export async function POST(req: NextRequest) {
   } catch (e) {
     return NextResponse.json({
       ok: false,
-      error: "gen-save POST crash: " + String((e as Error)?.message || e).slice(0, 160),
+      error: "сохранение генерации упало: " + String((e as Error)?.message || e).slice(0, 160),
     }, { status: 500 });
   }
 }
@@ -188,7 +188,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       count: 0,
       generations: [],
-      error: "gen-save GET crash: " + String((e as Error)?.message || e).slice(0, 160),
+      error: "чтение генераций упало: " + String((e as Error)?.message || e).slice(0, 160),
     }, { status: 500 });
   }
 }
