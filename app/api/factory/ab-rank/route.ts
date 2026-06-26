@@ -19,7 +19,12 @@ function hookFromRunPlan(runPlan: unknown): string {
 export async function GET(req: NextRequest) {
   try {
     const db = getSupabaseAdmin();
-    if (!db) return NextResponse.json({ ok: false, error: "Supabase не настроен" }, { status: 500 });
+    if (!db) return NextResponse.json({
+      ok: true,
+      ranked: [],
+      summary: { winners: 0, mid: 0, losers: 0, total: 0 },
+      warning: "Supabase не настроен — A/B ранжирование временно пустое",
+    }, { headers: { "Cache-Control": "no-store" } });
     const sp = req.nextUrl.searchParams;
     const niche = (sp.get("niche") || "").trim();
     const since = (sp.get("since") || "").trim();
@@ -37,11 +42,11 @@ export async function GET(req: NextRequest) {
         ok: true,
         ranked: [],
         summary: { winners: 0, mid: 0, losers: 0, total: 0 },
-        note: "post_metrics недоступна: " + pmError.message.slice(0, 140),
-      });
+        warning: "post_metrics недоступна: " + pmError.message.slice(0, 140),
+      }, { headers: { "Cache-Control": "no-store" } });
     }
     const rows = (pm as Record<string, unknown>[] | null) || [];
-    if (!rows.length) return NextResponse.json({ ok: true, ranked: [], summary: { winners: 0, mid: 0, losers: 0, total: 0 }, note: "нет данных post_metrics (впиши реальные метрики через /post-metrics)" });
+    if (!rows.length) return NextResponse.json({ ok: true, ranked: [], summary: { winners: 0, mid: 0, losers: 0, total: 0 }, warning: "нет данных post_metrics (впиши реальные метрики через /post-metrics)" }, { headers: { "Cache-Control": "no-store" } });
 
     // агрегируем по recipe_id: лучший снапшот (max views)
     const best = new Map<number, Record<string, unknown>>();
@@ -59,8 +64,8 @@ export async function GET(req: NextRequest) {
         ok: true,
         ranked: [],
         summary: { winners: 0, mid: 0, losers: 0, total: 0 },
-        note: "node_recipes недоступна: " + recError.message.slice(0, 140),
-      });
+        warning: "node_recipes недоступна: " + recError.message.slice(0, 140),
+      }, { headers: { "Cache-Control": "no-store" } });
     }
     const recMap = new Map<number, Record<string, unknown>>();
     for (const r of ((recs as Record<string, unknown>[] | null) || [])) recMap.set(Number(r.id), r);
@@ -105,8 +110,13 @@ export async function GET(req: NextRequest) {
         kill: hold, // legacy alias for older clients; do not treat as an auto-stop command
         note: `Read-only: кандидаты после ${minWinnerViews}+ просмотров требуют ручного решения; слабые варианты держать на паузе. Авто-скейл выключен.`,
       },
-    });
+    }, { headers: { "Cache-Control": "no-store" } });
   } catch (e) {
-    return NextResponse.json({ ok: false, error: "ранжирование A/B упало: " + String((e as Error)?.message || e).slice(0, 160) }, { status: 500 });
+    return NextResponse.json({
+      ok: true,
+      ranked: [],
+      summary: { winners: 0, mid: 0, losers: 0, total: 0 },
+      warning: "ранжирование A/B упало: " + String((e as Error)?.message || e).slice(0, 160),
+    }, { headers: { "Cache-Control": "no-store" } });
   }
 }
