@@ -412,7 +412,17 @@ async function jpost(origin: string, path: string, body: unknown, ms = 90000): P
     ms,
     path,
   );
-  const j = await withTimeout(r.json().catch(() => ({})), Math.max(5000, Math.floor(ms / 2)), `${path} json`);
+  const text = await withTimeout(r.text(), Math.max(5000, Math.floor(ms / 2)), `${path} body`);
+  let j: any = {};
+  if (text.trim()) {
+    try {
+      j = JSON.parse(text);
+    } catch {
+      throw new Error(`${path} invalid JSON: ${text.slice(0, 160)}`);
+    }
+  } else if (r.ok) {
+    throw new Error(`${path} empty body`);
+  }
   if (!r.ok) throw new Error(`${path} ${r.status}: ${String(j?.error || j?.detail || r.statusText || "ошибка").slice(0, 180)}`);
   return j;
 }
