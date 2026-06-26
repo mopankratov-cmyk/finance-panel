@@ -15,6 +15,7 @@
 > - V7 закрыт в текущем read-back контуре: `learningHints` возвращает winners + corpus hooks + reject anti-patterns в `decompose`/`autofill`, а `video-critic` читает reject anti-patterns fail-open.
 > - V20 больше не “таблицы нет совсем”: `generation_history` уже пишется из `gen-save`, `node-preview`, `graph-run` clip persistence, `reject`, `media-store` и static Remotion path; read-path и learn-screen тоже уже выдают warning/lineage-контекст. Открытый хвост V20 сейчас уже не в самом наличии истории, а в том, что repo-local `scripts/*` по-прежнему обходят БД и находятся вне Railway worker мандата.
 > - V3/V4 подготовлены безопасно: OTK→culprit-regeneration и `/improve-prompt` wiring живут в `graphRun`, но включаются только через `FACTORY_OTK_REGEN=1`; default остаётся Sprint-1 fail-open, чтобы не вернуть бесконтрольные платные циклы.
+> - V9 частично возвращён без риска: `/hook-judge` теперь детерминированно ранжирует уже переданные hooks по эвристике + `viral_hooks` corpus, без LLM/рендера/авто-запуска. Генератор `/variations` остаётся disabled до отдельного стабильного этапа.
 
 ## Диагноз (единодушный, проверен по коду)
 
@@ -44,7 +45,7 @@
 | **V3** | ОТК-петля regen-on-fail в graph-run: включается только флагом `FACTORY_OTK_REGEN=1`, регенерирует одну culprit-ноду и уважает `MAX_RENDERS=3`; default fail-open. | M · gated |
 | **V4** | `/improve-prompt` перед регенерацией теперь сидит в `graphRun.regenCulprit`; активируется только вместе с V3-флагом. | M · gated |
 | **V7** | Читать сигнал обратно в `decompose`/критика: `learningHints` = winners + corpus hooks + reject anti-patterns; `video-critic` читает reject anti-patterns fail-open. | M · done |
-| **V9** | Хук-турнир на hook-ноде: `/variations` → `/node-preview`×N → `/hook-judge` → выбор человеком. Брать варианты из реального Virlo-корпуса | M |
+| **V9** | Хук-турнир: безопасный `/hook-judge` включён как deterministic ranker по переданным hooks + corpus; `/variations` и авто-превью остаются выключены до отдельного этапа. | M · partial |
 | **V20** | **История генераций / память итераций** — базовый субстрат уже в коде; `media-store` и static Remotion path пишут history. Открытый хвост: repo-local `scripts/*` и richer compare/fork UX. | M · partial |
 | **V18-1** | Спрятать ссылки на legacy из Studio-навигации; файлы не трогать. | S · done |
 
