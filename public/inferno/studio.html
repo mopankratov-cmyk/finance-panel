@@ -885,11 +885,15 @@ async function screenWorker(root, force, renderToken){
   }
 
   if(heartbeatDiag&&!S.compact){
-    const diagCard=el("div",{class:"card",style:"padding:14px;margin-bottom:14px;border-color:"+(heartbeatDiag.issue==="table_missing"?"var(--err)":"var(--warn)")+";background:"+(heartbeatDiag.issue==="table_missing"?"var(--err-bg)":"var(--warn-bg)")+";"});
+    const isOptionalPulseTable=heartbeatDiag.issue==="table_missing";
+    const diagTone=isOptionalPulseTable
+      ? {c:"var(--tx-lo)", bg:"var(--bg-input)", bd:"var(--bd2)"}
+      : {c:"var(--warn)", bg:"var(--warn-bg)", bd:"var(--warn)"};
+    const diagCard=el("div",{class:"card",style:"padding:14px;margin-bottom:14px;border-color:"+diagTone.bd+";background:"+diagTone.bg+";"});
     diagCard.appendChild(el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;"},
       el("div",{style:"font-size:14px;font-weight:600;"},"Сигнал пульса"),
-      el("span",{class:"mono",style:"font-size:10px;color:"+(heartbeatDiag.issue==="table_missing"?"var(--err)":"var(--warn)")+";background:rgba(0,0,0,.08);padding:3px 7px;border-radius:5px;font-weight:700;"},heartbeatIssueLabel(heartbeatDiag.issue))));
-    const heartbeatSummary=heartbeatDiag.issue==="table_missing"
+      el("span",{class:"mono",style:"font-size:10px;color:"+diagTone.c+";background:rgba(0,0,0,.08);padding:3px 7px;border-radius:5px;font-weight:700;"},heartbeatIssueLabel(heartbeatDiag.issue))));
+    const heartbeatSummary=isOptionalPulseTable
       ? "таблица пульса ещё не поднята, поэтому экран читает резервный снимок и не блокирует прогоны."
       : heartbeatDiag.detail
         ? String(heartbeatDiag.detail)
@@ -1401,7 +1405,7 @@ function renderCenterOpsSummary(host,input){
     const hasStressAuth=Number(lsSummary.authFailures||0)>0;
     detailItems.push(["стресс "+String(lsSummary.completed||0)+"/"+String(lsSummary.totalRuns||0), hasStressAuth?"warn":(lsSummary.failed||lsSummary.runFail||lsSummary.timeouts?"err":"ok")]);
   }
-  if(heartbeatDiag)detailItems.push(["пульс "+heartbeatIssueLabel(heartbeatDiag.issue||heartbeatDiag.title||"unknown"), heartbeatDiag.issue==="table_missing"?"warn":"muted"]);
+  if(heartbeatDiag)detailItems.push(["пульс "+heartbeatIssueLabel(heartbeatDiag.issue||heartbeatDiag.title||"unknown"), heartbeatDiag.issue==="table_missing"?"muted":"warn"]);
   if(failDiag)detailItems.push(["сбои "+errorCategoryLabel(failDiag.category||failDiag.issue||"unknown"), "warn"]);
   if(opsAlerts.length){
     opsAlerts.slice(0,3).forEach((a)=>{

@@ -246,8 +246,7 @@ function buildOpsStatus(input: {
   }
   if (input.workerSource === "queue_fallback") {
     if (input.workerIssue === "table_missing") {
-      elevate("degraded");
-      reasons.push("таблица пульса не поднята");
+      reasons.push("пульс через резерв");
     } else {
       elevate("degraded");
       reasons.push(input.workerIssue === "sender_missing" ? "нет передатчика пульса" : "резервный снимок пульса");
