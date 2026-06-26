@@ -1276,7 +1276,7 @@ function renderObservabilityCard(host){
   if(stepSeries.length){
     card.appendChild(el("div",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);margin:"+((slow.length||errCats.length||cats.length||errs.length||warns.length||recent.length||incidents.length||series.length)?"10px":"4px")+" 0 6px;"},"длительность шагов"));
     stepSeries.slice(-6).forEach((p)=>card.appendChild(el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:10.5px;color:var(--tx-bd);margin-bottom:5px;"},
-      el("span",{class:"mono",style:"min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"},String(p.bucket||"").replace("T"," ").slice(11,16)+" · "+String(p.step||"шаг")),
+      el("span",{class:"mono",style:"min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"},String(p.bucket||"").replace("T"," ").slice(11,16)+" · "+runStepLabel(p.step||"")),
       el("span",{class:"mono",style:"color:var(--tx-lo2);flex:none;"},(fmtMs(p.avg_ms)||"—")+" · n"+String(p.samples||0)))));
   }
   host.appendChild(card);
