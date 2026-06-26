@@ -1226,7 +1226,7 @@ function renderObservabilityCard(host){
   if(slow.length){
     card.appendChild(el("div",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);margin-bottom:6px;"},"самые медленные шаги"));
     slow.slice(0,4).forEach((s)=>card.appendChild(el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:10.5px;color:var(--tx-bd);margin-bottom:5px;"},
-      el("span",{class:"mono",style:"min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"},s.step||"шаг"),
+      el("span",{class:"mono",style:"min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"},runStepLabel(s.step||"")),
       el("span",{class:"mono",style:"color:var(--tx-lo2);flex:none;"},fmtMs(s.avg_ms)||"—"))));
   }
   if(errCats.length){
@@ -1264,7 +1264,7 @@ function renderObservabilityCard(host){
         el("span",{class:"mono",style:"font-size:9.5px;color:"+(r.status==="run_fail"?"var(--err)":"var(--warn)")+";font-weight:700;"},(r.recipe_id?("#"+r.recipe_id+" · "):"")+runQueueTone(r&&r.stale?"stale_running":r.status).label),
         el("span",{class:"mono",style:"font-size:9.5px;color:var(--tx-lo2);"},r.total_ms!=null?fmtMs(r.total_ms):fmtWhen(r.created_at))),
       el("div",{class:"mono",style:"font-size:10px;color:var(--tx-bd);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"},
-        (r.last_step?("шаг "+runStepLabel(r.last_step)):"шаг ?")+(r.last_status?(" · "+r.last_status):"")+(r.error_category?(" · "+errorCategoryLabel(r.error_category)):"")),
+        (r.last_step?("шаг "+runStepLabel(r.last_step)):"шаг ?")+(r.last_status?(" · "+runQueueTone(r.last_status).label):"")+(r.error_category?(" · "+errorCategoryLabel(r.error_category)):"")),
       r.error?el("div",{class:"mono",style:"font-size:9.5px;color:var(--tx-mid);line-height:1.35;"},String(r.error).slice(0,110)):null)));
   }
   if(series.length){
