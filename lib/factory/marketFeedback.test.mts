@@ -31,6 +31,9 @@ ok(/learnings\.market_signal = \{[\s\S]*platform:[\s\S]*views:[\s\S]*watch_rate:
 ok(/post_metrics недоступна/.test(abRank), "ab-rank fails open when post_metrics is unavailable");
 ok(/node_recipes недоступна/.test(abRank), "ab-rank fails open when node_recipes lookup is unavailable");
 ok(/const minWinnerViews = Math\.max\(0, Number\(sp\.get\("min_winner_views"\) \|\| 100\)/.test(abRank) && /rankVariants\(metrics, \{ minWinnerViews \}\)/.test(abRank) && /min_winner_views: minWinnerViews/.test(abRank), "ab-rank exposes a conservative market-winner threshold");
+ok(/const review = winners\.map\(\(w\) => w\.recipe_id\);/.test(abRank) && /const hold = losers\.map\(\(l\) => l\.recipe_id\);/.test(abRank), "ab-rank exposes manual review and hold buckets");
+ok(/scale: review,/.test(abRank) && /kill: hold,/.test(abRank), "ab-rank keeps legacy aliases without changing read-only semantics");
+ok(/Авто-скейл выключен/.test(abRank), "ab-rank recommendation copy is explicitly read-only");
 ok(/d\.warnings&&d\.warnings\.length\?"✓ метрики · предупр\."/.test(studio), "Studio shows warning when metrics saved but winner forward did not complete");
 ok(/d\.status_marked\?"✓ опубликован · метрики записаны"/.test(studio) && /r\.status="posted"; _libCache=null; if\(S\.screen==="library"\)screenLibrary\(document\.getElementById\("screen"\)\);/.test(studio), "Studio reflects posted status after post-metrics accepts a market signal");
 ok(/const canEnterMetrics=!!r\.output_url\|\|r\.status==="posted";/.test(studio) && /canEnterMetrics\?el\("div",\{style:"margin-top:8px;display:flex;gap:5px;align-items:center;"/.test(studio), "Studio only shows market metrics input after a recipe has an output video");

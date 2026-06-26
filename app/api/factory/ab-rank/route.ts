@@ -6,8 +6,8 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 30;
 
 // A/B-петля хит-рейта (read-only): ранжирует ролики портфеля по рыночным метрикам (post_metrics) →
-// винеры (множить через /reel-recompose|/recipe-variants) и лузеры (стоп/не лить). Операционализирует
-// вывод юнитки: «узкое место — хит-рейт, не деньги». НИЧЕГО не меняет — только читает и советует.
+// кандидаты на ручной разбор: сильные варианты можно рассмотреть для следующего рецепта,
+// слабые — временно держать на паузе. НИЧЕГО не меняет и не запускает авто-скейл.
 //   GET ?niche=&since=ISO&recipe_ids=1,2&limit=  → { ok, ranked:[…], summary, winners:[…], losers:[…] }
 
 function hookFromRunPlan(runPlan: unknown): string {
@@ -91,15 +91,19 @@ export async function GET(req: NextRequest) {
     });
     const winners = enrich(ranked.filter((r) => r.tier === "winner"));
     const losers = enrich(ranked.filter((r) => r.tier === "loser"));
+    const review = winners.map((w) => w.recipe_id);
+    const hold = losers.map((l) => l.recipe_id);
 
     return NextResponse.json({
       ok: true, median_score: Math.round(medianScore), min_winner_views: minWinnerViews, summary,
       ranked: enrich(ranked),
       winners, losers,
       recommend: {
-        scale: winners.map((w) => w.recipe_id),  // множить: /reel-recompose или /recipe-variants на этих хуках
-        kill: losers.map((l) => l.recipe_id),     // стоп: не лить, хуки в чёрный список
-        note: `Винеры → размножить только после порога ${minWinnerViews}+ просмотров. Лузеры → не лить. Хит-рейт = винеров/всего.`,
+        review,
+        hold,
+        scale: review, // legacy alias for older clients; do not treat as an auto-scale command
+        kill: hold, // legacy alias for older clients; do not treat as an auto-stop command
+        note: `Read-only: кандидаты после ${minWinnerViews}+ просмотров требуют ручного решения; слабые варианты держать на паузе. Авто-скейл выключен.`,
       },
     });
   } catch (e) {
