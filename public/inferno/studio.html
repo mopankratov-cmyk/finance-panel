@@ -819,8 +819,10 @@ async function screenWorker(root, force, renderToken){
   const activeRuns=recentRuns.filter((r)=>r&&(r.active||r.status==="running"||r.stale));
   const queueRuns=(activeRuns.length?activeRuns:recentRuns);
   const liveTone=workerStatusTone(live.state);
-  const aliveNote=workerSource==="queue_fallback"&&live.state==="unknown"?"пульс не настроен":live.state==="alive"?"пульс свежий":live.state==="stale"?"пульс молчит":"пульс потерян";
+  const displayedLiveTone=workerSource==="queue_fallback"&&live.state==="unknown"?{c:"var(--tx-lo)", bg:"var(--bg-input)", label:"резерв"}:liveTone;
+  const aliveNote=workerSource==="queue_fallback"&&live.state==="unknown"?"резервный пульс":live.state==="alive"?"пульс свежий":live.state==="stale"?"пульс молчит":"пульс потерян";
   const sourceLabel=workerSource==="heartbeat_db"?"таблица":"резерв";
+  const workerNote=worker&&worker.note&&!/derived from queue fallback/i.test(String(worker.note))?String(worker.note):"";
   const orderedRuns=[...queueRuns]
     .sort((a,b)=>{
       const aw=(a&&a.stale)?0:(a&&a.active===false)?4:String(a&&a.status||"")==="running"?1:String(a&&a.status||"")==="warning"?2:String(a&&a.status||"")==="run_fail"?3:5;
@@ -863,13 +865,13 @@ async function screenWorker(root, force, renderToken){
   top.appendChild(el("div",{class:"card",style:"padding:15px;"},
     el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;"},
       el("div",{style:"font-size:14px;font-weight:600;"},"Статус"),
-      el("span",{class:"mono",style:"font-size:10px;color:"+liveTone.c+";background:"+liveTone.bg+";padding:3px 7px;border-radius:5px;font-weight:700;"},liveTone.label)),
-    el("div",{style:"font-size:22px;font-weight:700;color:"+liveTone.c+";"},aliveNote),
+      el("span",{class:"mono",style:"font-size:10px;color:"+displayedLiveTone.c+";background:"+displayedLiveTone.bg+";padding:3px 7px;border-radius:5px;font-weight:700;"},displayedLiveTone.label)),
+    el("div",{style:"font-size:22px;font-weight:700;color:"+displayedLiveTone.c+";"},aliveNote),
     el("div",{style:"font-size:11.5px;color:var(--tx-lo);margin-top:6px;line-height:1.5;"},
       "сигнал: ",el("b",{style:"color:var(--tx-hi);"},worker&&worker.last_seen?fmtWhen(worker.last_seen):"—"),
       " · тишина: ",el("b",{style:"color:var(--tx-hi);"},fmtSecAgo(live.age_sec)),
       " · режим: ",el("b",{style:"color:var(--tx-hi);"},sourceLabel),
-      worker&&worker.note?el("span",{}, " · ",worker.note):null)));
+      workerNote?el("span",{}, " · ",workerNote):null)));
   top.appendChild(el("div",{class:"card",style:"padding:15px;"},
     el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;"},
       el("div",{style:"font-size:14px;font-weight:600;"},focusRunLabel),
