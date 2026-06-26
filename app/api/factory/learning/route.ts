@@ -133,12 +133,16 @@ export async function GET(req: NextRequest) {
   const marketRecipeMeta = new Map<number, Row>();
   if (marketRows.length) {
     const ids = [...new Set(marketRows.map((r) => Number(r.recipe_id)).filter((n) => n > 0))].slice(0, 1000);
-    const recs = await safe("node_recipes market", async () => {
-      const { data, error } = await db.from("node_recipes").select("id,niche,article,output_url,otk_score").in("id", ids);
-      if (error) throw error;
-      return (data as Row[]) || [];
-    }, []);
-    for (const r of recs as Row[]) marketRecipeMeta.set(Number(r.id), r);
+    if (ids.length) {
+      const recs = await safe("node_recipes market", async () => {
+        const { data, error } = await db.from("node_recipes").select("id,niche,article,output_url,otk_score").in("id", ids);
+        if (error) throw error;
+        return (data as Row[]) || [];
+      }, []);
+      for (const r of recs as Row[]) marketRecipeMeta.set(Number(r.id), r);
+    } else {
+      warnings.push("post_metrics: нет валидных recipe_id для обогащения рынка");
+    }
     if (nicheF) marketRows = marketRows.filter((r) => String(marketRecipeMeta.get(Number(r.recipe_id))?.niche || "").toLowerCase() === nicheF.toLowerCase());
   }
   const bestMarketByRecipe = new Map<number, Row>();
