@@ -22,6 +22,8 @@ ok(/catch \(e\) \{[\s\S]*readStressHistorySummary\(\)\.catch[\s\S]*stress_histor
 ok(/catch \(e\) \{[\s\S]*ok: true,[\s\S]*partial: true,[\s\S]*observability: EMPTY_OBSERVABILITY[\s\S]*ops_status: \{ level: "degraded"/.test(ops), "ops crash path stays HTTP-success with degraded fallback payload");
 ok(!/ops_crash[\s\S]*status:\s*500/.test(ops), "ops crash path no longer returns HTTP 500");
 ok(/catch \(e\) \{[\s\S]*readStressHistorySummary\(\)\.catch[\s\S]*stress_history:\s*stressHistory/.test(stability), "stability crash path preserves stress history");
+ok(/Supabase не настроен — DB-снимок стабильности временно пустой/.test(stability), "stability missing-db path is warning-only");
+ok(!/снимок стабильности упал[\s\S]*status:\s*500/.test(stability), "stability crash path no longer returns HTTP 500");
 ok(/alerts\.push\(\{ level: "warn", code, detail: input\.workerDbError \|\| "снимок завода собран из резервного источника" \}\)/.test(ops), "optional pulse table is warning-only");
 ok(!/action: "apply_worker_state_table"/.test(ops), "ops no longer presents optional heartbeat table as a P0 action");
 ok(/action: "enable_optional_worker_heartbeat"/.test(ops), "ops recommends enabling optional heartbeat without blocking MVP execution");
