@@ -29,6 +29,11 @@ export async function POST(req: NextRequest) {
       const n = Math.floor(Number(value));
       return Number.isFinite(n) ? Math.max(0, n) : null;
     };
+    const platform = (b.platform || "TikTok").toString().slice(0, 20);
+    const watchRate = rateOrNull(b.watch_rate);
+    const ctrCard = rateOrNull(b.ctr);
+    const saves = countOrNull(b.saves);
+    const postedAt = b.posted_at || new Date().toISOString();
 
   // 1) сначала проверяем рецепт, чтобы не плодить orphan market-сигналы
     let outputUrl: string | null = null;
@@ -53,12 +58,12 @@ export async function POST(req: NextRequest) {
     try {
       const { error } = await db.from("post_metrics").insert({
         recipe_id: recipeId,
-        platform: (b.platform || "TikTok").toString().slice(0, 20),
-        posted_at: b.posted_at || new Date().toISOString(),
+        platform,
+        posted_at: postedAt,
         views,
-        watch_rate: rateOrNull(b.watch_rate),
-        ctr_card: rateOrNull(b.ctr),
-        saves: countOrNull(b.saves),
+        watch_rate: watchRate,
+        ctr_card: ctrCard,
+        saves,
       });
       if (error) {
         warnings.push("post_metrics insert: " + error.message.slice(0, 140));
@@ -78,7 +83,18 @@ export async function POST(req: NextRequest) {
         const hook = String((h?.onscreen_text as string) || (h?.prompt as string) || "").slice(0, 120);
         const res = await internalFetch(`${req.nextUrl.origin}/api/factory/winners`, {
           method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ url: outputUrl, hook, views, recipe_id: recipeId, note: `рынок: ${views} просм · ${b.platform || "TikTok"}` }),
+          body: JSON.stringify({
+            url: outputUrl,
+            hook,
+            views,
+            recipe_id: recipeId,
+            platform,
+            watch_rate: watchRate,
+            ctr_card: ctrCard,
+            saves,
+            posted_at: postedAt,
+            note: `рынок: ${views} просм · ${platform}`,
+          }),
           signal: AbortSignal.timeout(20000),
         });
         const payload = await res.json().catch(() => null) as { ok?: boolean; error?: string } | null;

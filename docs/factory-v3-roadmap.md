@@ -16,6 +16,7 @@
 > - V20 больше не “таблицы нет совсем”: `generation_history` уже пишется из `gen-save`, `node-preview`, `graph-run` clip persistence, `reject`, `media-store` и static Remotion path; read-path и learn-screen тоже уже выдают warning/lineage-контекст. Открытый хвост V20 сейчас уже не в самом наличии истории, а в том, что repo-local `scripts/*` по-прежнему обходят БД и находятся вне Railway worker мандата.
 > - V3/V4 подготовлены безопасно: OTK→culprit-regeneration и `/improve-prompt` wiring живут в `graphRun`, но включаются только через `FACTORY_OTK_REGEN=1`; default остаётся Sprint-1 fail-open, чтобы не вернуть бесконтрольные платные циклы.
 > - V9 частично возвращён без риска: `/hook-judge` теперь детерминированно ранжирует уже переданные hooks по эвристике + `viral_hooks` corpus, без LLM/рендера/авто-запуска. Генератор `/variations` остаётся disabled до отдельного стабильного этапа.
+> - V5 усилен без утяжеления UI: `/post-metrics` по-прежнему принимает простой ручной market-input, но в `/winners` теперь уходит полный `market_signal` (`platform`, `views`, `watch_rate`, `ctr_card`, `saves`, `posted_at`), чтобы learning loop не терял retention/CTR/save context.
 
 ## Диагноз (единодушный, проверен по коду)
 
@@ -41,7 +42,7 @@
 ### ➡️ СЛЕДУЮЩИМ
 | ID | Что | Усилие |
 |----|-----|--------|
-| **V5** | Контур постинг→метрики: статус `posted` + ОДНО поле на карточке Библиотеки → `/post-metrics` → `/winners`. **Частично закрыто**: ручной ввод в библиотеке уже есть; открытый хвост — автоподтягивание платформенных метрик и больше реальных данных в learning loop. | M |
+| **V5** | Контур постинг→метрики: статус `posted` + ОДНО поле на карточке Библиотеки → `/post-metrics` → `/winners`. **Практический MVP закрыт**: ручной ввод уже есть, backend сохраняет/forward’ит полный market-snapshot; открытый хвост — только автоподтягивание платформенных метрик. | M · done-manual |
 | **V3** | ОТК-петля regen-on-fail в graph-run: включается только флагом `FACTORY_OTK_REGEN=1`, регенерирует одну culprit-ноду и уважает `MAX_RENDERS=3`; default fail-open. | M · gated |
 | **V4** | `/improve-prompt` перед регенерацией теперь сидит в `graphRun.regenCulprit`; активируется только вместе с V3-флагом. | M · gated |
 | **V7** | Читать сигнал обратно в `decompose`/критика: `learningHints` = winners + corpus hooks + reject anti-patterns; `video-critic` читает reject anti-patterns fail-open. | M · done |

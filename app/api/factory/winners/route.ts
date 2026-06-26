@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 15;
 
 // P2.1 Winners loop: пометить content_asset победителем + записать learnings для петли.
-// POST { asset_id?, url?, hook?, views?, followers?, note? }
+// POST { asset_id?, url?, hook?, views?, followers?, note?, platform?, watch_rate?, ctr_card?, saves?, posted_at? }
 //   asset_id — прямой id; url — поиск по url (из bank-карточки кокпита)
 // GET  ?niche=blasters&limit=5  → примеры-победители для инъекции в идеацию
 export async function POST(req: NextRequest) {
@@ -37,6 +37,16 @@ export async function POST(req: NextRequest) {
   if (body.views) learnings.views = Number(body.views);
   if (body.followers) learnings.followers = Number(body.followers);
   if (body.note) learnings.note = String(body.note).slice(0, 200);
+  if (body.platform || body.watch_rate != null || body.ctr_card != null || body.saves != null || body.posted_at) {
+    learnings.market_signal = {
+      platform: body.platform ? String(body.platform).slice(0, 20) : null,
+      views: body.views ? Number(body.views) : null,
+      watch_rate: body.watch_rate != null ? Number(body.watch_rate) : null,
+      ctr_card: body.ctr_card != null ? Number(body.ctr_card) : null,
+      saves: body.saves != null ? Number(body.saves) : null,
+      posted_at: body.posted_at ? String(body.posted_at).slice(0, 40) : null,
+    };
+  }
 
   const { error } = await db.from("content_assets").update({
     is_winner: true,

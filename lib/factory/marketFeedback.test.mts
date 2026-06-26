@@ -13,6 +13,7 @@ function ok(cond: boolean, msg: string) {
 
 const postMetrics = readFileSync("app/api/factory/post-metrics/route.ts", "utf8");
 const abRank = readFileSync("app/api/factory/ab-rank/route.ts", "utf8");
+const winners = readFileSync("app/api/factory/winners/route.ts", "utf8");
 const studio = readFileSync("public/inferno/studio.html", "utf8");
 
 ok(/warnings:\s*string\[\]\s*=\s*\[\]/.test(postMetrics), "post-metrics returns warning context");
@@ -24,6 +25,9 @@ ok(/winners forward:/.test(postMetrics), "post-metrics warns when winner forward
 ok(/let outputUrl: string \| null = null;/.test(postMetrics) && /select\("output_url,status,run_plan"\)/.test(postMetrics) && /recipePlan = rec\?\.run_plan/.test(postMetrics), "post-metrics reads output url, status, and run plan before marking posted");
 ok(/if \(\(metricsSaved \|\| forwarded\) && outputUrl && recipeStatus !== "running"\)/.test(postMetrics) && /\.neq\("status", "running"\)/.test(postMetrics) && /status_marked: statusMarked/.test(postMetrics), "post-metrics marks posted only for completed recipes with output_url");
 ok(/recipe status not marked posted: missing output_url/.test(postMetrics) && /recipe status not marked posted: recipe is still running/.test(postMetrics), "post-metrics warns when metrics are accepted but posted status is unsafe");
+ok(/const platform = \(b\.platform \|\| "TikTok"\)/.test(postMetrics) && /const watchRate = rateOrNull\(b\.watch_rate\)/.test(postMetrics) && /const ctrCard = rateOrNull\(b\.ctr\)/.test(postMetrics) && /const saves = countOrNull\(b\.saves\)/.test(postMetrics), "post-metrics normalizes the full market signal once");
+ok(/platform,[\s\S]*watch_rate: watchRate,[\s\S]*ctr_card: ctrCard,[\s\S]*saves,[\s\S]*posted_at: postedAt/.test(postMetrics), "post-metrics forwards the full market signal into winners");
+ok(/learnings\.market_signal = \{[\s\S]*platform:[\s\S]*views:[\s\S]*watch_rate:[\s\S]*ctr_card:[\s\S]*saves:[\s\S]*posted_at:/.test(winners), "winners persists market_signal in winner_learnings");
 ok(/post_metrics недоступна/.test(abRank), "ab-rank fails open when post_metrics is unavailable");
 ok(/node_recipes недоступна/.test(abRank), "ab-rank fails open when node_recipes lookup is unavailable");
 ok(/d\.warnings&&d\.warnings\.length\?"✓ метрики · предупр\."/.test(studio), "Studio shows warning when metrics saved but winner forward did not complete");
