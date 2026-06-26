@@ -12,6 +12,7 @@
 > - V5 больше не “мёртвая таблица”: `public/inferno/studio.html` уже шлёт `POST /api/factory/post-metrics`, а route умеет fail-open forward в `winners`.
 > - V18-1 закрыт: Studio не показывает `patrick`/`text` legacy entry points в навигации; файлы оставлены для прямого URL до отдельного V18-2.
 > - V11 закрыт на UI + backend contract: запуск через библиотеку и экран сборки считает смету по нодам, блокирует старт при явном `balances.low`, а `/graph-run` и `run_plan` теперь возвращают `cost_hint` с typical/worst-case USD.
+> - V7 закрыт в текущем read-back контуре: `learningHints` возвращает winners + corpus hooks + reject anti-patterns в `decompose`/`autofill`, а `video-critic` читает reject anti-patterns fail-open.
 > - V20 больше не “таблицы нет совсем”: `generation_history` уже пишется из `gen-save`, `node-preview`, `graph-run` clip persistence и `reject`; read-path и learn-screen тоже уже выдают warning/lineage-контекст. Открытый хвост V20 сейчас уже не в самом наличии истории, а в том, что standalone/local scripts по-прежнему обходят БД.
 
 ## Диагноз (единодушный, проверен по коду)
@@ -41,7 +42,7 @@
 | **V5** | Контур постинг→метрики: статус `posted` + ОДНО поле на карточке Библиотеки → `/post-metrics` → `/winners`. **Частично закрыто**: ручной ввод в библиотеке уже есть; открытый хвост — автоподтягивание платформенных метрик и больше реальных данных в learning loop. | M |
 | **V3** | ОТК-петля regen-on-fail в graph-run (до score≥7). `otk→submit` ТОЛЬКО провальной ноды, **обязан декрементить тот же `MAX_RENDERS=3`** | M |
 | **V4** | `/improve-prompt` перед регенерацией (исторически логика жила в `jobs/tick`; теперь должна сидеть в `graph-run`) — вердикт критика → действие. Связка с V3 | M |
-| **V7** | Читать сигнал обратно в `decompose`/критика. **Не с нуля — порт `winnersHint`/`rejHint` из `/scripts` + дочитать `cf_signals`-агрегаты** | M |
+| **V7** | Читать сигнал обратно в `decompose`/критика: `learningHints` = winners + corpus hooks + reject anti-patterns; `video-critic` читает reject anti-patterns fail-open. | M · done |
 | **V9** | Хук-турнир на hook-ноде: `/variations` → `/node-preview`×N → `/hook-judge` → выбор человеком. Брать варианты из реального Virlo-корпуса | M |
 | **V20** | **История генераций / память итераций** — базовый субстрат уже в коде; следующий шаг теперь не “создать историю”, а дотащить lineage до standalone/local render paths и richer comparison UX. | M |
 | **V18-1** | Спрятать ссылки на legacy из Studio-навигации; файлы не трогать. | S · done |
