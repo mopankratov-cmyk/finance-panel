@@ -12,7 +12,7 @@ export const maxDuration = 10;
 export async function GET(req: NextRequest) {
   try {
   const db = getSupabaseAdmin();
-  if (!db) return NextResponse.json({ hooks: [], note: "Supabase не настроен" });
+  if (!db) return NextResponse.json({ hooks: [], warning: "Supabase не настроен — корпус хуков временно пустой" });
 
   const sp = new URL(req.url).searchParams;
   const niche = sp.get("niche") || "";
@@ -23,8 +23,8 @@ export async function GET(req: NextRequest) {
     if (niche) q = q.eq("niche", niche);
 
     const { data, error } = await q;
-    if (error?.code === "42P01") return NextResponse.json({ hooks: [], note: "viral_hooks не применена — применить 20260620_viral_corpus.sql" });
-    if (error) return NextResponse.json({ hooks: [], note: error.message });
+    if (error?.code === "42P01") return NextResponse.json({ hooks: [], warning: "viral_hooks не применена — применить 20260620_viral_corpus.sql" });
+    if (error) return NextResponse.json({ hooks: [], warning: error.message });
 
     const hooks = (data ?? []).map((h: { hook_text: string; niche: string; viability_score: number; effectiveness_notes: string | null }) => ({
       text: h.hook_text,
@@ -35,9 +35,9 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({ hooks });
   } catch (e) {
-    return NextResponse.json({ hooks: [], note: String(e).slice(0, 100) });
+    return NextResponse.json({ hooks: [], warning: String(e).slice(0, 100) });
   }
   } catch (e) {
-    return NextResponse.json({ hooks: [], note: "топ хуков упал: " + String((e as Error)?.message || e).slice(0, 160) });
+    return NextResponse.json({ hooks: [], warning: "топ хуков упал: " + String((e as Error)?.message || e).slice(0, 160) });
   }
 }
