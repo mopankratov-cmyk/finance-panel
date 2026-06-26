@@ -20,6 +20,7 @@ ok(/await logGeneration\(\{ recipe_id: recipeId \?\? null[\s\S]*status: "artifac
 ok(/await logGeneration\(\{ recipe_id: recipeId \?\? null[\s\S]*status: "artifact_fail"[\s\S]*reason: `clip upload: \$\{error\.message\}`/.test(graphRun), "clip upload failures are logged as artifact_fail");
 ok(/await logGeneration\(\{ recipe_id: recipeId \?\? null[\s\S]*reason: "clip_library"/.test(graphRun), "clip durable successes are logged to generation_history");
 ok(/await persistClips\(db, visualNodes, article, niche, id\)/.test(graphRun), "graph-run passes recipe id into clip persistence");
+ok(/select\("disk,kind,url,duration_sec"\)/.test(graphRun) && /if \(b\.duration_sec && !n\.duration_sec\) n\.duration_sec = b\.duration_sec;/.test(graphRun), "auto-bound real clips preserve catalog duration in run nodes");
 
 if (failed) process.exit(1);
 console.log(`graphRunClipHistory: ${passed} passed, ${failed} failed`);

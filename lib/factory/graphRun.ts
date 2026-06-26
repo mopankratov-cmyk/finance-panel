@@ -263,7 +263,7 @@ async function autoBindAssets(db: SupabaseClient, plan: RunPlan, article: string
   if (!needs.length) return;
   let assets: DiskAsset[] = [];
   try {
-    const { data } = await db.from("content_assets").select("disk,kind,url").eq("article", article).not("url", "is", null).limit(60);
+    const { data } = await db.from("content_assets").select("disk,kind,url,duration_sec").eq("article", article).not("url", "is", null).limit(60);
     const raw = (data as DiskAsset[] | null) || [];
     // ГАРД от кросс-контаминации («пистолет в сумке»): даже если строка каталога мислейбл (article=CLR…, а путь
     // prepared/TT…), НЕ привязываем чужой кадр к рецепту. Источник распознаём по артикулу в пути prepared/i2v-src.
@@ -279,6 +279,7 @@ async function autoBindAssets(db: SupabaseClient, plan: RunPlan, article: string
     if (!b) { unbound++; continue; }
     if (b.tool) n.tool = b.tool;
     if (b.asset_url) n.asset_url = b.asset_url;
+    if (b.duration_sec && !n.duration_sec) n.duration_sec = b.duration_sec;
     if (b.image_url) { n.image_url = b.image_url; (n.params as Record<string, unknown>)["image_url"] = b.image_url; imgIdx++; }
   }
   // часть нод осталась без источника (нет реальной съёмки/WB-фото под товар) → они упадут в submit.
