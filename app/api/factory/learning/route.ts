@@ -172,6 +172,20 @@ export async function GET(req: NextRequest) {
   const otkSamples = bestMarket.filter((r) => r.otk_score != null);
   const highOtk = otkSamples.filter((r) => Number(r.otk_score) >= 7);
   const lowOtk = otkSamples.filter((r) => Number(r.otk_score) < 7);
+  const marketByNiche = new Map<string, typeof bestMarket>();
+  for (const r of bestMarket) {
+    const key = String(r.niche || "unknown");
+    marketByNiche.set(key, [...(marketByNiche.get(key) || []), r]);
+  }
+  const market_by_niche = [...marketByNiche.entries()].map(([niche, rows]) => ({
+    niche,
+    recipes: rows.length,
+    total_views: rows.reduce((acc, r) => acc + r.views, 0),
+    avg_views: avgViews(rows),
+    strong_samples: rows.filter((r) => r.views >= 100).length,
+    avg_watch_rate: avg(rows.map((r) => r.watch_rate)),
+    avg_ctr_card: avg(rows.map((r) => r.ctr_card)),
+  })).sort((a, b) => b.total_views - a.total_views).slice(0, 8);
   const market_summary = {
     snapshots: marketRows.length,
     recipes_with_metrics: bestMarket.length,
@@ -185,6 +199,7 @@ export async function GET(req: NextRequest) {
       avg_views_high_otk: avgViews(highOtk),
       avg_views_low_otk: avgViews(lowOtk),
     },
+    by_niche: market_by_niche,
     top: bestMarket.slice(0, 6),
   };
 

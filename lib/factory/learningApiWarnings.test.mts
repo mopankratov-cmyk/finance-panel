@@ -26,7 +26,8 @@ ok(/safe\("node_templates"/.test(learning), "node_templates block is labeled");
 ok(/safe\("content_assets winners"/.test(learning), "winners block is labeled");
 ok(/safe\("post_metrics"/.test(learning), "learning API reads real market metrics fail-open");
 ok(/safe\("node_recipes market"/.test(learning), "learning API enriches market metrics with recipe metadata fail-open");
-ok(/const market_summary = \{[\s\S]*recipes_with_metrics:[\s\S]*total_views:[\s\S]*avg_watch_rate:[\s\S]*avg_ctr_card:[\s\S]*strong_samples:[\s\S]*otk_market_alignment:[\s\S]*avg_views_high_otk:[\s\S]*avg_views_low_otk:[\s\S]*top: bestMarket\.slice\(0, 6\)/.test(learning), "learning API returns compact market summary for V16");
+ok(/const market_by_niche = \[\.\.\.marketByNiche\.entries\(\)\]\.map/.test(learning), "learning API aggregates real market signal by niche");
+ok(/const market_summary = \{[\s\S]*recipes_with_metrics:[\s\S]*total_views:[\s\S]*avg_watch_rate:[\s\S]*avg_ctr_card:[\s\S]*strong_samples:[\s\S]*otk_market_alignment:[\s\S]*avg_views_high_otk:[\s\S]*avg_views_low_otk:[\s\S]*by_niche: market_by_niche,[\s\S]*top: bestMarket\.slice\(0, 6\)/.test(learning), "learning API returns compact market summary for V16");
 ok(/const recent_generations = \(gh as Row\[\]\)\.slice\(0, 24\)\.map\(\(r\) => \(\{[\s\S]*recipe_id: r\.recipe_id,[\s\S]*attempt: r\.attempt,[\s\S]*variant_idx: r\.variant_idx,[\s\S]*reason: r\.reason/.test(learning), "learning recent_generations keeps lineage metadata for the studio");
 ok(/NextResponse\.json\(\{ ok: true,[\s\S]*warnings,[\s\S]*otk_trend[\s\S]*market_summary/.test(learning), "learning API returns warnings and market summary without failing the route");
 
