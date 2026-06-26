@@ -27,6 +27,26 @@ function emptyMarketSummary() {
   };
 }
 
+function emptyHistorySummary() {
+  return {
+    total_events: 0,
+    recipes: 0,
+    retried_recipes: 0,
+    outputs: 0,
+    best_otk: null as number | null,
+    longest_chain: 0,
+    chains: [] as Array<{
+      recipe_id: number;
+      article: string | null;
+      attempts: number;
+      outputs: number;
+      best_otk: number | null;
+      last_status: string | null;
+      last_at: string | null;
+    }>,
+  };
+}
+
 export async function GET(req: NextRequest) {
   const db = getSupabaseAdmin();
   const sp = req.nextUrl.searchParams;
@@ -41,6 +61,7 @@ export async function GET(req: NextRequest) {
       signals: { total: 0, by_event: {}, top_reject: [] },
       hooks_by_niche: [],
       recent_generations: [],
+      history_summary: emptyHistorySummary(),
       otk_trend: [],
       winner_presets: [],
       winners: [],
@@ -118,6 +139,53 @@ export async function GET(req: NextRequest) {
     source: r.source,
     created_at: r.created_at,
   }));
+  const historyChains = new Map<number, {
+    recipe_id: number;
+    article: string | null;
+    attempts: number;
+    outputs: number;
+    best_otk: number | null;
+    last_status: string | null;
+    last_at: string | null;
+  }>();
+  let bestHistoryOtk: number | null = null;
+  let historyOutputs = 0;
+  for (const r of gh as Row[]) {
+    const recipeId = Number(r.recipe_id) || 0;
+    const otk = r.otk_score != null ? Number(r.otk_score) : null;
+    if (otk != null && Number.isFinite(otk) && (bestHistoryOtk == null || otk > bestHistoryOtk)) bestHistoryOtk = otk;
+    if (r.output_url) historyOutputs++;
+    if (!recipeId) continue;
+    const existing = historyChains.get(recipeId);
+    if (!existing) {
+      historyChains.set(recipeId, {
+        recipe_id: recipeId,
+        article: r.article != null ? String(r.article) : null,
+        attempts: 1,
+        outputs: r.output_url ? 1 : 0,
+        best_otk: otk != null && Number.isFinite(otk) ? otk : null,
+        last_status: r.status != null ? String(r.status) : null,
+        last_at: r.created_at != null ? String(r.created_at) : null,
+      });
+      continue;
+    }
+    existing.attempts += 1;
+    if (r.output_url) existing.outputs += 1;
+    if (otk != null && Number.isFinite(otk) && (existing.best_otk == null || otk > existing.best_otk)) existing.best_otk = otk;
+    if (!existing.article && r.article != null) existing.article = String(r.article);
+  }
+  const historyChainRows = [...historyChains.values()]
+    .sort((a, b) => (b.attempts - a.attempts) || String(b.last_at || "").localeCompare(String(a.last_at || "")))
+    .slice(0, 5);
+  const history_summary = {
+    total_events: (gh as Row[]).length,
+    recipes: historyChains.size,
+    retried_recipes: [...historyChains.values()].filter((r) => r.attempts > 1).length,
+    outputs: historyOutputs,
+    best_otk: bestHistoryOtk,
+    longest_chain: historyChainRows.length ? historyChainRows[0].attempts : 0,
+    chains: historyChainRows,
+  };
   // тренд по дням: средний балл + pass/fail/warning отдельно.
   // Sprint 1 fail-open: legacy quality/artifact statuses are warnings in analytics, not run blockers.
   const byDay: Record<string, { sum: number; n: number; pass: number; fail: number; warn: number; gen: number }> = {};
@@ -242,5 +310,5 @@ export async function GET(req: NextRequest) {
     top: bestMarket.slice(0, 6),
   };
 
-  return NextResponse.json({ ok: true, days, niche: nicheF || null, warnings, signals, hooks_by_niche, recent_generations, otk_trend, winner_presets, winners, market_summary });
+  return NextResponse.json({ ok: true, days, niche: nicheF || null, warnings, signals, hooks_by_niche, recent_generations, history_summary, otk_trend, winner_presets, winners, market_summary });
 }

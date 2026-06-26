@@ -2745,10 +2745,39 @@ async function screenLearn(root){
 
   // ── 5) История генераций ───────────────────────────────────────────────
   cap("История генераций");
+  const ST={otk_pass:["var(--ok)","ОТК ✓"],approved:["var(--ok)","одобрено"],warning:["var(--warn)","предупр."],otk_fail:["var(--warn)","низкий ОТК"],rejected:["var(--err)","отклонено"],artifact_fail:["var(--err)","артефакт"],run_fail:["var(--err)","сбой"],regen:["var(--acc-lt)","реген"],generated:["var(--tx-bd)","собрано"]};
+  const hs=d.history_summary||null;
+  if(hs&&(hs.total_events||hs.recipes||hs.outputs||(hs.chains&&hs.chains.length))){
+    const sumCard=el("div",{class:"card",style:"padding:14px;margin-bottom:12px;display:flex;flex-direction:column;gap:10px;"});
+    wrap.appendChild(sumCard);
+    const sumChips=el("div",{style:"display:flex;gap:8px;flex-wrap:wrap;"});
+    [
+      ["событий",Number(hs.total_events||0),"var(--bg-input)"],
+      ["рецептов",Number(hs.recipes||0),"var(--bg-input)"],
+      ["с ретраями",Number(hs.retried_recipes||0),"var(--vio-bg)"],
+      ["MP4",Number(hs.outputs||0),"var(--ok-bg)"],
+      ["лучший ОТК",hs.best_otk!=null?String(hs.best_otk):"—","var(--warn-bg)"],
+      ["цепочка",Number(hs.longest_chain||0),"var(--bg-input)"],
+    ].forEach(([label,value,bg])=>sumChips.appendChild(el("div",{class:"mono",style:"font-size:10px;padding:4px 8px;border-radius:999px;background:"+bg+";color:var(--tx-mid);"},String(label)+" ",el("b",{style:"color:var(--tx-hi);"},String(value)))));
+    sumCard.appendChild(sumChips);
+    const chains=Array.isArray(hs.chains)?hs.chains:[];
+    if(chains.length){
+      const chainList=el("div",{style:"display:flex;flex-direction:column;gap:6px;"});
+      sumCard.appendChild(chainList);
+      chains.forEach((c,idx)=>chainList.appendChild(el("div",{style:"display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap;border-top:"+(idx?"1px solid var(--bd)":"0")+";padding-top:"+(idx?"6px":"0")+";"},
+        el("div",{style:"display:flex;flex-direction:column;gap:3px;min-width:0;flex:1;"},
+          el("div",{style:"font-size:12px;font-weight:600;color:var(--tx-bd);min-width:0;"},(c.article?("арт "+c.article):"без артикула")+" ",el("span",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);"},"#"+String(c.recipe_id))),
+          el("div",{class:"mono",style:"font-size:9.5px;color:var(--tx-lo2);display:flex;gap:8px;flex-wrap:wrap;"},
+            el("span",{},"попыток "+String(c.attempts||0)),
+            el("span",{},"MP4 "+String(c.outputs||0)),
+            el("span",{},"лучший ОТК "+(c.best_otk!=null?String(c.best_otk):"—")),
+            c.last_status?el("span",{},"последний "+String((ST[c.last_status]&&ST[c.last_status][1])||c.last_status)):null)),
+        c.recipe_id?el("button",{class:"btn sm",onclick:async(ev)=>{ ev.stopPropagation(); if(await openRecipe(c.recipe_id))go("canvas"); }},"открыть"):null)));
+    }
+  }
   const rg=d.recent_generations||[];
   if(!rg.length){ wrap.appendChild(emptyBox("история пуста — после первых прогонов появятся записи")); }
   else{
-  const ST={otk_pass:["var(--ok)","ОТК ✓"],approved:["var(--ok)","одобрено"],warning:["var(--warn)","предупр."],otk_fail:["var(--warn)","низкий ОТК"],rejected:["var(--err)","отклонено"],artifact_fail:["var(--err)","артефакт"],run_fail:["var(--err)","сбой"],regen:["var(--acc-lt)","реген"],generated:["var(--tx-bd)","собрано"]};
     const list=el("div",{style:"display:flex;flex-direction:column;gap:6px;"}); wrap.appendChild(list);
     rg.forEach(r=>{
       const st=ST[r.status]||["var(--tx-lo2)","неясно"];
