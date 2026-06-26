@@ -116,6 +116,6 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ ok: true, job_id: jobId, niche, videos: rows.length, upserted: inserted, sounds: sounds.length, analysis: !!analysis });
   } catch (e) {
-    return NextResponse.json({ error: "синхронизация orbit-поиска упала: " + String((e as Error)?.message || e).slice(0, 180) }, { status: 500 });
+    return NextResponse.json({ error: "corpus/sync-orbit crash: " + String((e as Error)?.message || e).slice(0, 180) }, { status: 500 });
   }
 }

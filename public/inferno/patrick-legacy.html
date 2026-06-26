@@ -1318,7 +1318,7 @@ function patrick() {
       try {
         const d = await (await fetch(ep, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })).json();
         if (d.ok) { this.setSchedStatus(si, 'опубликовано'); this.utmMsg = '✓ опубликовано' + (d.url ? ': ' + d.url : ''); }
-        else this.utmMsg = 'ошибка: ' + (d.error || d.detail || 'не удалось');
+        else this.utmMsg = 'ошибка: ' + (d.detail || 'не удалось');
       } catch (e) { this.utmMsg = String(e).slice(0, 100); }
       setTimeout(() => { if (this.utmMsg[0] === '✓' || this.utmMsg.startsWith('ошибка')) this.utmMsg = ''; }, 6000);
     },
@@ -1469,7 +1469,7 @@ function patrick() {
       const ep = '/api/lab/video-storyboard';
       try {
         const d = await (await fetch(ep, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sku_art: art, brief: (item.hook || '') + (hint ? ' [fix: ' + hint + ']' : ''), profile: this.profile }) })).json();
-        if (!d.task_id) { this.crit.step = 'ошибка: ' + (d.error || d.detail || 'не запустилось'); this.crit.busy = false; return; }
+        if (!d.task_id) { this.crit.step = 'ошибка: ' + (d.detail || 'не запустилось'); this.crit.busy = false; return; }
         const statusUrl = '/api/lab/video-storyboard-status/' + d.task_id;
         const res = await this._pollVideo(statusUrl, 5 * 60 * 1000);
         if (res.url) { const b = this.bank.find(x => x.ts === item.ts); if (b) { b.url = res.url; b.critScore = null; this._saveBank(); } this.crit.step = '✓ перегенерено — проверь заново'; this.crit.data = null; }
@@ -1655,7 +1655,7 @@ function patrick() {
         const d = await r.json();
         this.avatars.scenes = d.scenes || [];
         if (!this.avatars.scene && this.avatars.scenes.length) this.avatars.scene = this.avatars.scenes[0].id;
-        if (d.ready === false) { this.avatars.error = d.error || d.detail || 'Creatify не подключён'; }
+        if (d.ready === false) { this.avatars.error = d.detail || 'Creatify не подключён'; }
         else if (d.error) { this.avatars.error = 'API: ' + d.error; }
         this.avatars.list = d.avatars || [];
         this.avatars.loaded = true;
@@ -1724,7 +1724,7 @@ function patrick() {
         const script = (idea.scenario?.shots || []).map(x => x.voiceover).filter(Boolean).join(' ') || idea.hook || idea.concept || '';
         const r = await fetch('/api/factory/ugc-creatify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sku_art: art, brief: idea.hook || idea.concept, script, creator: this.avatars.pickedId || undefined, visual_style: this.avatars.scene || undefined, override_voice: this.ugc.voiceId || undefined, background_music_url: this.ugc.musicUrl || undefined, no_background_music: this.ugc.noBackgroundMusic, no_cta: true }) });
         const d = await r.json();
-        if (!d.task_id) { this.ugc.status = d.error || d.detail || 'не удалось запустить'; this.ugc.busy = false; return; }
+        if (!d.task_id) { this.ugc.status = d.detail || d.error || 'не удалось запустить'; this.ugc.busy = false; return; }
         this.ugc.taskId = d.task_id; this.ugc.status = 'рендер UGC-актёра (≈2-5 мин)…'; this.ugc.renderStarted = false;
         const deadline = Date.now() + 8 * 60 * 1000;
         while (Date.now() < deadline) {
@@ -1895,7 +1895,7 @@ function patrick() {
           s.gen.status = (realImg ? '📸 из реальной съёмки · ' : '') + engine + (this.learnedPrompts['ai_generation_ref'] ? ' (выученный промпт)…' : ' (ИИ пишет промпт под товар)…');
           const learned = (this.learnedPrompts['ai_generation_ref'] || {}).prompt || '';
           const d = await (await fetch('/api/factory/video-fal', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sku_art: art, image_url: realImg || undefined, model: engine, brief, prompt: learned, product_name: this._prodName(art) }) })).json();
-          if (!d.task_id) { s.gen.status = 'Kling: ' + (d.error || d.detail || 'не запустился'); }
+          if (!d.task_id) { s.gen.status = 'Kling: ' + (d.detail || d.error || 'не запустился'); }
           else { s.gen.promptUsed = d.prompt_used || learned; const res = await this._pollVideo('/api/factory/video-fal-status/' + d.task_id, 6 * 60 * 1000); if (res.url) { s.gen.url = res.url; s.gen.status = '✓ готово'; } else s.gen.status = 'ошибка: ' + res.error; }
         } else if (route === 'real_ugc') {
           s.gen.status = 'снять вручную (реальный UGC) — сценарий готов';
@@ -1903,7 +1903,7 @@ function patrick() {
           // ai_generation_ref (товар крупно) уже выше → fal.ai; ai_generation = кино-опенер/атмосфера = Higgsfield
           s.gen.status = 'Higgsfield: атмосферный ролик…';
           const d = await (await fetch('/api/lab/video-storyboard', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sku_art: art, brief }) })).json();
-          if (!d.task_id) { s.gen.status = 'Higgsfield: ' + (d.error || d.detail || 'не запустился'); }
+          if (!d.task_id) { s.gen.status = 'Higgsfield: ' + (d.detail || d.error || 'не запустился'); }
           else { const res = await this._pollVideo('/api/lab/video-storyboard-status/' + d.task_id, 4 * 60 * 1000); if (res.url) { s.gen.url = res.url; s.gen.status = '✓ атмосферный ролик готов'; } else s.gen.status = 'ошибка: ' + res.error; }
         }
       } catch (e) { s.gen.status = String(e).slice(0, 100); }

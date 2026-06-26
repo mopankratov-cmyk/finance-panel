@@ -18,24 +18,7 @@ async function tableExists(db: NonNullable<ReturnType<typeof getSupabaseAdmin>>,
 export async function GET() {
   try {
     const db = getSupabaseAdmin();
-    const keys = {
-      anthropic: !!process.env.ANTHROPIC_API_KEY,
-      virlo: !!process.env.VIRLO_API_KEY,
-      creatify: !!(process.env.CREATIFY_API_ID && process.env.CREATIFY_API_KEY),
-      shotstack: !!process.env.SHOTSTACK_API_KEY,
-      gemini: !!process.env.GEMINI_API_KEY,
-      fal: !!process.env.FAL_KEY,
-    };
-    if (!db) return NextResponse.json({
-      ok: true,
-      partial: true,
-      warning: "Supabase не настроен — проверка таблиц пропущена",
-      tables: {},
-      keys,
-      counts: {},
-      pending: ["Подключить Supabase env для проверки таблиц контент-завода"],
-      ready: false,
-    }, { headers: { "Cache-Control": "no-store" } });
+    if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 500 });
 
     const [
       hasViral,
@@ -107,6 +90,15 @@ export async function GET() {
       niche_playbooks: hasPlaybooks,
     };
 
+    const keys = {
+      anthropic: !!process.env.ANTHROPIC_API_KEY,
+      virlo: !!process.env.VIRLO_API_KEY,
+      creatify: !!(process.env.CREATIFY_API_ID && process.env.CREATIFY_API_KEY),
+      shotstack: !!process.env.SHOTSTACK_API_KEY,
+      gemini: !!process.env.GEMINI_API_KEY,
+      fal: !!process.env.FAL_KEY,
+    };
+
     // Что нужно сделать
     const pending: string[] = [];
     if (!hasViral || !hasOrbits || !hasMonitors || !hasHooks) pending.push("Применить 20260620_viral_corpus.sql в Supabase SQL Editor");
@@ -130,14 +122,13 @@ export async function GET() {
     });
   } catch (e) {
     return NextResponse.json({
-      ok: true,
-      partial: true,
-      warning: "статус завода упал: " + String((e as Error)?.message || e).slice(0, 160),
+      ok: false,
+      error: "status crash: " + String((e as Error)?.message || e).slice(0, 160),
       tables: {},
       keys: {},
       counts: {},
-      pending: ["Проверить /api/factory/status: роут статуса упал до сборки сводки"],
+      pending: ["Проверить /api/factory/status: endpoint вернул route-level crash contract"],
       ready: false,
-    }, { headers: { "Cache-Control": "no-store" } });
+    }, { status: 500 });
   }
 }

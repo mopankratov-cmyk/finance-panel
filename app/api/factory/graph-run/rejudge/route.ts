@@ -27,45 +27,6 @@ function addPlanWarning(plan: RunPlan, message: string): void {
   plan.warnings = Array.from(next).slice(0, 20);
 }
 
-async function persistWarningResult(input: {
-  apply: boolean;
-  db: ReturnType<typeof getSupabaseAdmin>;
-  row: RecipeRow;
-  plan: RunPlan;
-  outputUrl: string;
-  warning: string;
-  processed: Record<string, unknown>[];
-  verdict?: { verdict?: string; axes?: unknown; issues?: string[]; basis?: string; basis_reason?: string } | null;
-}) {
-  const payload: Record<string, unknown> = { id: input.row.id, apply: input.apply, status: "warning", warning: input.warning };
-  if (input.verdict) {
-    payload.issues = Array.isArray(input.verdict.issues) ? input.verdict.issues.slice(0, 3) : [];
-  }
-  input.processed.push(payload);
-  if (!input.apply || !input.db) return;
-
-  const nextPlan = input.plan || ({ step: "done", nodes: [] } as RunPlan);
-  addPlanWarning(nextPlan, input.warning);
-  nextPlan.error = null;
-  if (input.verdict) {
-    nextPlan.otk = {
-      score: null,
-      verdict: input.verdict.verdict,
-      axes: input.verdict.axes || null,
-      issues: Array.isArray(input.verdict.issues) ? input.verdict.issues : [],
-      basis: input.verdict.basis ? String(input.verdict.basis) : null,
-      basis_reason: input.verdict.basis_reason ? String(input.verdict.basis_reason) : null,
-    };
-  }
-  await input.db.from("node_recipes").update({
-    status: "warning",
-    output_url: input.outputUrl,
-    otk_verdict: nextPlan.otk ?? null,
-    run_plan: nextPlan,
-    updated_at: new Date().toISOString(),
-  }).eq("id", input.row.id);
-}
-
 async function critic(origin: string, body: Record<string, unknown>) {
   const r = await internalFetch(`${origin}/api/factory/video-critic`, {
     method: "POST",
@@ -92,7 +53,7 @@ async function genSave(origin: string, body: Record<string, unknown>) {
 
 export async function POST(req: NextRequest) {
   try {
-  if (!authOk(req)) return NextResponse.json({ error: "неверный CRON_SECRET" }, { status: 401 });
+  if (!authOk(req)) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 500 });
 
@@ -128,29 +89,10 @@ export async function POST(req: NextRequest) {
     try {
       frames = await extractFrames(url);
     } catch (e) {
-      await persistWarningResult({
-        apply,
-        db,
-        row,
-        plan,
-        outputUrl: url,
-        warning: `rejudge extractFrames warning: ${String((e as Error)?.message || e).slice(0, 180)}`,
-        processed,
-      });
+      processed.push({ id: row.id, error: `extractFrames: ${String((e as Error)?.message || e).slice(0, 180)}` });
       continue;
     }
-    if (!frames.length) {
-      await persistWarningResult({
-        apply,
-        db,
-        row,
-        plan,
-        outputUrl: url,
-        warning: "rejudge warning: не извлеклись кадры для повторного ОТК",
-        processed,
-      });
-      continue;
-    }
+    if (!frames.length) { processed.push({ id: row.id, error: "не извлеклись кадры" }); continue; }
     const hookNode = (plan.nodes || []).find((n) => String(((n.params || {}) as Record<string, unknown>)["role"] || n.slot || "").toLowerCase() === "hook") || (plan.nodes || [])[0];
     let verdict: { score?: number; verdict?: string; axes?: unknown; issues?: string[]; basis?: string; basis_reason?: string };
     try {
@@ -162,31 +104,11 @@ export async function POST(req: NextRequest) {
         niche: row.niche || "",
       });
     } catch (e) {
-      await persistWarningResult({
-        apply,
-        db,
-        row,
-        plan,
-        outputUrl: url,
-        warning: `rejudge critic warning: ${String((e as Error)?.message || e).slice(0, 220)}`,
-        processed,
-      });
+      processed.push({ id: row.id, error: String((e as Error)?.message || e).slice(0, 220) });
       continue;
     }
     const score = typeof verdict.score === "number" ? verdict.score : null;
-    if (score == null) {
-      await persistWarningResult({
-        apply,
-        db,
-        row,
-        plan,
-        outputUrl: url,
-        warning: "rejudge warning: video-critic не вернул score",
-        processed,
-        verdict,
-      });
-      continue;
-    }
+    if (score == null) { processed.push({ id: row.id, error: "video-critic без score" }); continue; }
     const status = score >= 7 ? "otk_pass" : "warning";
     const otk = {
       score,
@@ -264,7 +186,7 @@ export async function POST(req: NextRequest) {
       apply: false,
       max_items: 0,
       processed: [],
-      error: "повторный ОТК упал: " + String((e as Error)?.message || e).slice(0, 160),
+      error: "graph-run/rejudge crash: " + String((e as Error)?.message || e).slice(0, 160),
     }, { status: 500 });
   }
 }

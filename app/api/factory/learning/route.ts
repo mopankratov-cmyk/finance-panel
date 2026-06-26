@@ -11,63 +11,12 @@ export const maxDuration = 25;
 //   GET ?days=7&niche=
 type Row = Record<string, unknown>;
 
-function emptyMarketSummary() {
-  return {
-    snapshots: 0,
-    recipes_with_metrics: 0,
-    total_views: 0,
-    avg_watch_rate: null,
-    avg_ctr_card: null,
-    total_saves: 0,
-    strong_samples: 0,
-    win_rate: null,
-    otk_market_alignment: { samples: 0, avg_views_high_otk: null, avg_views_low_otk: null },
-    by_niche: [],
-    top: [],
-  };
-}
-
-function emptyHistorySummary() {
-  return {
-    total_events: 0,
-    recipes: 0,
-    retried_recipes: 0,
-    outputs: 0,
-    best_otk: null as number | null,
-    longest_chain: 0,
-    chains: [] as Array<{
-      recipe_id: number;
-      article: string | null;
-      attempts: number;
-      outputs: number;
-      best_otk: number | null;
-      last_status: string | null;
-      last_at: string | null;
-    }>,
-  };
-}
-
 export async function GET(req: NextRequest) {
   const db = getSupabaseAdmin();
+  if (!db) return NextResponse.json({ ok: false, error: "Supabase не настроен" }, { status: 500 });
   const sp = req.nextUrl.searchParams;
   const days = Math.min(90, Math.max(1, Number(sp.get("days")) || 7));
   const nicheF = (sp.get("niche") || "").trim();
-  if (!db) {
-    return NextResponse.json({
-      ok: true,
-      days,
-      niche: nicheF || null,
-      warnings: ["Supabase не настроен — обучение временно пустое"],
-      signals: { total: 0, by_event: {}, top_reject: [] },
-      hooks_by_niche: [],
-      recent_generations: [],
-      history_summary: emptyHistorySummary(),
-      otk_trend: [],
-      winner_presets: [],
-      winners: [],
-      market_summary: emptyMarketSummary(),
-    }, { headers: { "Cache-Control": "no-store" } });
-  }
   const since = new Date(Date.now() - days * 24 * 3600 * 1000).toISOString();
   const warnings: string[] = [];
 
@@ -117,75 +66,15 @@ export async function GET(req: NextRequest) {
 
   // 3) История генераций + тренд качества (generation_history)
   const gh = await safe("generation_history", async () => {
-    let q = db.from("generation_history").select("recipe_id,article,status,otk_score,tool,engine,node_type,attempt,variant_idx,reason,niche,output_url,source,created_at").gte("created_at", since).order("created_at", { ascending: false }).limit(300);
+    let q = db.from("generation_history").select("status,otk_score,tool,engine,niche,output_url,source,created_at").gte("created_at", since).order("created_at", { ascending: false }).limit(300);
     if (nicheF) q = q.eq("niche", nicheF);
     const { data, error } = await q;
     if (error) throw error;
     return (data as Row[]) || [];
   }, []);
   const recent_generations = (gh as Row[]).slice(0, 24).map((r) => ({
-    recipe_id: r.recipe_id,
-    article: r.article,
-    status: r.status,
-    otk_score: r.otk_score,
-    tool: r.tool,
-    engine: r.engine,
-    node_type: r.node_type,
-    attempt: r.attempt,
-    variant_idx: r.variant_idx,
-    reason: r.reason,
-    niche: r.niche,
-    output_url: r.output_url,
-    source: r.source,
-    created_at: r.created_at,
+    status: r.status, otk_score: r.otk_score, tool: r.tool, engine: r.engine, niche: r.niche, output_url: r.output_url, source: r.source, created_at: r.created_at,
   }));
-  const historyChains = new Map<number, {
-    recipe_id: number;
-    article: string | null;
-    attempts: number;
-    outputs: number;
-    best_otk: number | null;
-    last_status: string | null;
-    last_at: string | null;
-  }>();
-  let bestHistoryOtk: number | null = null;
-  let historyOutputs = 0;
-  for (const r of gh as Row[]) {
-    const recipeId = Number(r.recipe_id) || 0;
-    const otk = r.otk_score != null ? Number(r.otk_score) : null;
-    if (otk != null && Number.isFinite(otk) && (bestHistoryOtk == null || otk > bestHistoryOtk)) bestHistoryOtk = otk;
-    if (r.output_url) historyOutputs++;
-    if (!recipeId) continue;
-    const existing = historyChains.get(recipeId);
-    if (!existing) {
-      historyChains.set(recipeId, {
-        recipe_id: recipeId,
-        article: r.article != null ? String(r.article) : null,
-        attempts: 1,
-        outputs: r.output_url ? 1 : 0,
-        best_otk: otk != null && Number.isFinite(otk) ? otk : null,
-        last_status: r.status != null ? String(r.status) : null,
-        last_at: r.created_at != null ? String(r.created_at) : null,
-      });
-      continue;
-    }
-    existing.attempts += 1;
-    if (r.output_url) existing.outputs += 1;
-    if (otk != null && Number.isFinite(otk) && (existing.best_otk == null || otk > existing.best_otk)) existing.best_otk = otk;
-    if (!existing.article && r.article != null) existing.article = String(r.article);
-  }
-  const historyChainRows = [...historyChains.values()]
-    .sort((a, b) => (b.attempts - a.attempts) || String(b.last_at || "").localeCompare(String(a.last_at || "")))
-    .slice(0, 5);
-  const history_summary = {
-    total_events: (gh as Row[]).length,
-    recipes: historyChains.size,
-    retried_recipes: [...historyChains.values()].filter((r) => r.attempts > 1).length,
-    outputs: historyOutputs,
-    best_otk: bestHistoryOtk,
-    longest_chain: historyChainRows.length ? historyChainRows[0].attempts : 0,
-    chains: historyChainRows,
-  };
   // тренд по дням: средний балл + pass/fail/warning отдельно.
   // Sprint 1 fail-open: legacy quality/artifact statuses are warnings in analytics, not run blockers.
   const byDay: Record<string, { sum: number; n: number; pass: number; fail: number; warn: number; gen: number }> = {};
@@ -219,96 +108,5 @@ export async function GET(req: NextRequest) {
     return ((data as Row[]) || []).map((r) => ({ name: r.name, niche: r.niche, learnings: r.winner_learnings, winner_at: r.winner_at, url: r.url }));
   }, []);
 
-  // 6) Рыночный сигнал (post_metrics) — read-only V16-lite: видно, есть ли уже реальные просмотры,
-  // удержание, CTR и сохранения. Это не принимает авто-решений и не масштабирует победителей.
-  const marketRowsRaw = await safe("post_metrics", async () => {
-    let q = db.from("post_metrics").select("recipe_id,platform,views,watch_rate,ctr_card,saves,posted_at").gte("posted_at", since).order("posted_at", { ascending: false }).limit(1000);
-    const { data, error } = await q;
-    if (error) throw error;
-    return (data as Row[]) || [];
-  }, []);
-  let marketRows = marketRowsRaw as Row[];
-  const marketRecipeMeta = new Map<number, Row>();
-  if (marketRows.length) {
-    const ids = [...new Set(marketRows.map((r) => Number(r.recipe_id)).filter((n) => n > 0))].slice(0, 1000);
-    if (ids.length) {
-      const recs = await safe("node_recipes market", async () => {
-        const { data, error } = await db.from("node_recipes").select("id,niche,article,output_url,otk_score").in("id", ids);
-        if (error) throw error;
-        return (data as Row[]) || [];
-      }, []);
-      for (const r of recs as Row[]) marketRecipeMeta.set(Number(r.id), r);
-    } else {
-      warnings.push("post_metrics: нет валидных recipe_id для обогащения рынка");
-    }
-    if (nicheF) marketRows = marketRows.filter((r) => String(marketRecipeMeta.get(Number(r.recipe_id))?.niche || "").toLowerCase() === nicheF.toLowerCase());
-  }
-  const bestMarketByRecipe = new Map<number, Row>();
-  for (const r of marketRows) {
-    const id = Number(r.recipe_id);
-    if (!id) continue;
-    const prev = bestMarketByRecipe.get(id);
-    if (!prev || (Number(r.views) || 0) > (Number(prev.views) || 0)) bestMarketByRecipe.set(id, r);
-  }
-  const bestMarket = [...bestMarketByRecipe.entries()].map(([recipe_id, r]) => {
-    const meta = marketRecipeMeta.get(recipe_id) || {};
-    return {
-      recipe_id,
-      article: meta.article || null,
-      niche: meta.niche || null,
-      output_url: meta.output_url || null,
-      otk_score: meta.otk_score != null ? Number(meta.otk_score) : null,
-      platform: r.platform || null,
-      views: Number(r.views) || 0,
-      watch_rate: r.watch_rate != null ? Number(r.watch_rate) : null,
-      ctr_card: r.ctr_card != null ? Number(r.ctr_card) : null,
-      saves: r.saves != null ? Number(r.saves) : null,
-      posted_at: r.posted_at || null,
-    };
-  }).sort((a, b) => b.views - a.views);
-  const avg = (values: (number | null)[]) => {
-    const clean = values.filter((n): n is number => typeof n === "number" && Number.isFinite(n));
-    return clean.length ? Math.round((clean.reduce((acc, n) => acc + n, 0) / clean.length) * 1000) / 1000 : null;
-  };
-  const avgViews = (rows: typeof bestMarket) => rows.length ? Math.round(rows.reduce((acc, r) => acc + r.views, 0) / rows.length) : null;
-  const otkSamples = bestMarket.filter((r) => r.otk_score != null);
-  const highOtk = otkSamples.filter((r) => Number(r.otk_score) >= 7);
-  const lowOtk = otkSamples.filter((r) => Number(r.otk_score) < 7);
-  const marketByNiche = new Map<string, typeof bestMarket>();
-  for (const r of bestMarket) {
-    const key = String(r.niche || "unknown");
-    marketByNiche.set(key, [...(marketByNiche.get(key) || []), r]);
-  }
-  const market_by_niche = [...marketByNiche.entries()].map(([niche, rows]) => {
-    const strongSamples = rows.filter((r) => r.views >= 100).length;
-    return {
-      niche,
-      recipes: rows.length,
-      total_views: rows.reduce((acc, r) => acc + r.views, 0),
-      avg_views: avgViews(rows),
-      strong_samples: strongSamples,
-      win_rate: rows.length ? Math.round((strongSamples / rows.length) * 1000) / 1000 : null,
-      avg_watch_rate: avg(rows.map((r) => r.watch_rate)),
-      avg_ctr_card: avg(rows.map((r) => r.ctr_card)),
-    };
-  }).sort((a, b) => b.total_views - a.total_views).slice(0, 8);
-  const market_summary = {
-    snapshots: marketRows.length,
-    recipes_with_metrics: bestMarket.length,
-    total_views: bestMarket.reduce((acc, r) => acc + r.views, 0),
-    avg_watch_rate: avg(bestMarket.map((r) => r.watch_rate)),
-    avg_ctr_card: avg(bestMarket.map((r) => r.ctr_card)),
-    total_saves: bestMarket.reduce((acc, r) => acc + (r.saves || 0), 0),
-    strong_samples: bestMarket.filter((r) => r.views >= 100).length,
-    win_rate: bestMarket.length ? Math.round((bestMarket.filter((r) => r.views >= 100).length / bestMarket.length) * 1000) / 1000 : null,
-    otk_market_alignment: {
-      samples: otkSamples.length,
-      avg_views_high_otk: avgViews(highOtk),
-      avg_views_low_otk: avgViews(lowOtk),
-    },
-    by_niche: market_by_niche,
-    top: bestMarket.slice(0, 6),
-  };
-
-  return NextResponse.json({ ok: true, days, niche: nicheF || null, warnings, signals, hooks_by_niche, recent_generations, history_summary, otk_trend, winner_presets, winners, market_summary });
+  return NextResponse.json({ ok: true, days, niche: nicheF || null, warnings, signals, hooks_by_niche, recent_generations, otk_trend, winner_presets, winners });
 }

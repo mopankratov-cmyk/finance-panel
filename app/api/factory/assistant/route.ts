@@ -96,6 +96,6 @@ export async function POST(req: NextRequest) {
     headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store", "X-Accel-Buffering": "no" },
   });
   } catch (e) {
-    return txt("⚠ ассистент завода упал: " + String((e as Error)?.message || e).slice(0, 160), 500);
+    return txt("⚠ assistant crash: " + String((e as Error)?.message || e).slice(0, 160), 500);
   }
 }

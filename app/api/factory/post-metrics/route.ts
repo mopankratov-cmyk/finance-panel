@@ -29,41 +29,18 @@ export async function POST(req: NextRequest) {
       const n = Math.floor(Number(value));
       return Number.isFinite(n) ? Math.max(0, n) : null;
     };
-    const platform = (b.platform || "TikTok").toString().slice(0, 20);
-    const watchRate = rateOrNull(b.watch_rate);
-    const ctrCard = rateOrNull(b.ctr);
-    const saves = countOrNull(b.saves);
-    const postedAt = b.posted_at || new Date().toISOString();
 
-  // 1) сначала проверяем рецепт, чтобы не плодить orphan market-сигналы
-    let outputUrl: string | null = null;
-    let recipeStatus: string | null = null;
-    let recipePlan: Record<string, unknown> | null = null;
-    try {
-      const { data, error } = await db.from("node_recipes").select("output_url,status,run_plan").eq("id", recipeId).limit(1);
-      if (error) warnings.push("node_recipes lookup: " + error.message.slice(0, 140));
-      const rec = (data as Record<string, unknown>[] | null)?.[0];
-      if (!rec && !error) {
-        return NextResponse.json({ ok: false, error: "рецепт не найден", forwarded: false, metrics_saved: false, status_marked: false, warnings }, { status: 404 });
-      }
-      outputUrl = rec?.output_url ? String(rec.output_url) : null;
-      recipeStatus = rec?.status ? String(rec.status) : null;
-      recipePlan = rec?.run_plan && typeof rec.run_plan === "object" ? rec.run_plan as Record<string, unknown> : null;
-    } catch (e) {
-      warnings.push("node_recipes lookup exception: " + String((e as Error)?.message || e).slice(0, 120));
-    }
-
-  // 2) запись метрик в post_metrics (оживляем мёртвую таблицу)
+  // 1) запись метрик в post_metrics (оживляем мёртвую таблицу)
     let metricsSaved = false;
     try {
       const { error } = await db.from("post_metrics").insert({
         recipe_id: recipeId,
-        platform,
-        posted_at: postedAt,
+        platform: (b.platform || "TikTok").toString().slice(0, 20),
+        posted_at: b.posted_at || new Date().toISOString(),
         views,
-        watch_rate: watchRate,
-        ctr_card: ctrCard,
-        saves,
+        watch_rate: rateOrNull(b.watch_rate),
+        ctr_card: rateOrNull(b.ctr),
+        saves: countOrNull(b.saves),
       });
       if (error) {
         warnings.push("post_metrics insert: " + error.message.slice(0, 140));
@@ -74,27 +51,20 @@ export async function POST(req: NextRequest) {
       console.error("[post-metrics] insert exception:", e);
     }
 
-  // 3) рынок → winners: тянем output_url рецепта + хук, апгрейдим хук реальными просмотрами
+  // 2) рынок → winners: тянем output_url рецепта + хук, апгрейдим хук реальными просмотрами
     let forwarded = false;
     try {
-      if (outputUrl) {
-        const nodes = (Array.isArray(recipePlan?.nodes) ? recipePlan.nodes as Record<string, unknown>[] : []);
+      const { data, error } = await db.from("node_recipes").select("output_url,run_plan").eq("id", recipeId).limit(1);
+      if (error) warnings.push("node_recipes lookup: " + error.message.slice(0, 140));
+      const rec = (data as Record<string, unknown>[] | null)?.[0];
+      const url = rec?.output_url as string | undefined;
+      if (url) {
+        const nodes = (((rec?.run_plan as Record<string, unknown>)?.nodes) as Record<string, unknown>[]) || [];
         const h = nodes.find((n) => String((n.params as Record<string, unknown>)?.role || n.slot || "").toLowerCase() === "hook") || nodes[0];
         const hook = String((h?.onscreen_text as string) || (h?.prompt as string) || "").slice(0, 120);
         const res = await internalFetch(`${req.nextUrl.origin}/api/factory/winners`, {
           method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            url: outputUrl,
-            hook,
-            views,
-            recipe_id: recipeId,
-            platform,
-            watch_rate: watchRate,
-            ctr_card: ctrCard,
-            saves,
-            posted_at: postedAt,
-            note: `рынок: ${views} просм · ${platform}`,
-          }),
+          body: JSON.stringify({ url, hook, views, recipe_id: recipeId, note: `рынок: ${views} просм · ${b.platform || "TikTok"}` }),
           signal: AbortSignal.timeout(20000),
         });
         const payload = await res.json().catch(() => null) as { ok?: boolean; error?: string } | null;
@@ -107,34 +77,13 @@ export async function POST(req: NextRequest) {
       warnings.push("winners forward exception: " + String((e as Error)?.message || e).slice(0, 120));
     }
 
-    let statusMarked = false;
-    if ((metricsSaved || forwarded) && outputUrl && recipeStatus !== "running") {
-      try {
-        const { data: markedRows, error } = await db
-          .from("node_recipes")
-          .update({ status: "posted", updated_at: new Date().toISOString() })
-          .eq("id", recipeId)
-          .neq("status", "running")
-          .select("id")
-          .limit(1);
-        if (error) warnings.push("node_recipes status update: " + error.message.slice(0, 140));
-        else statusMarked = !!(markedRows && markedRows.length);
-      } catch (e) {
-        warnings.push("node_recipes status update exception: " + String((e as Error)?.message || e).slice(0, 120));
-      }
-    } else if (metricsSaved || forwarded) {
-      if (!outputUrl) warnings.push("recipe status not marked posted: missing output_url");
-      if (recipeStatus === "running") warnings.push("recipe status not marked posted: recipe is still running");
-    }
-
-    return NextResponse.json({ ok: true, forwarded, metrics_saved: metricsSaved, status_marked: statusMarked, warnings });
+    return NextResponse.json({ ok: true, forwarded, metrics_saved: metricsSaved, warnings });
   } catch (e) {
     return NextResponse.json({
       ok: false,
       forwarded: false,
       metrics_saved: false,
-      status_marked: false,
-      error: "сохранение метрик публикации упало: " + String((e as Error)?.message || e).slice(0, 160),
+      error: "post-metrics crash: " + String((e as Error)?.message || e).slice(0, 160),
     }, { status: 500 });
   }
 }

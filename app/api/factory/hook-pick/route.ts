@@ -54,7 +54,7 @@ export async function POST(req: NextRequest) {
       ok: false,
       seeded: false,
       passed: 0,
-      error: "выбор хука упал: " + String((e as Error)?.message || e).slice(0, 160),
+      error: "hook-pick crash: " + String((e as Error)?.message || e).slice(0, 160),
     }, { status: 500 });
   }
 }

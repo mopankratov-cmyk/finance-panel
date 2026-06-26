@@ -6,7 +6,7 @@ export const maxDuration = 60;
 // Historical compatibility stub.
 // Sprint 1: explicit watchdog path выключен, чтобы не держать duplicate wake source рядом с cron fallback.
 export async function GET(req: NextRequest) {
-  return NextResponse.json({ ok: true, disabled: true, note: "watchdog отключён для стабильного MVP: резервный wake-up живёт в cron/tick, без второго watchdog-оркестратора" }, { headers: { "Cache-Control": "no-store" } });
+  return NextResponse.json({ ok: true, disabled: true, note: "watchdog disabled for Sprint 1 stability" }, { headers: { "Cache-Control": "no-store" } });
 }
 
 export async function POST(req: NextRequest) {
@@ -16,8 +16,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       ok: true,
       disabled: true,
-      note: "watchdog отключён для стабильного MVP: резервный wake-up живёт в cron/tick, без второго watchdog-оркестратора",
-      warning: "watchdog POST упал: " + String((e as Error)?.message || e).slice(0, 160),
+      note: "watchdog disabled for Sprint 1 stability",
+      warning: "graph-run/watchdog POST crash: " + String((e as Error)?.message || e).slice(0, 160),
     }, { headers: { "Cache-Control": "no-store" } });
   }
 }

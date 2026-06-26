@@ -73,7 +73,7 @@ ${profile ? `\nПРОФИЛЬ БРЕНДА/АУДИТОРИИ (учитывай 
   }
   } catch (e) {
     return NextResponse.json({
-      error: "директор завода упал: " + String((e as Error)?.message || e).slice(0, 160),
+      error: "director crash: " + String((e as Error)?.message || e).slice(0, 160),
       goal: "",
       target_article: "",
       plan: [],

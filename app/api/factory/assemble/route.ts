@@ -76,6 +76,6 @@ export async function POST(req: NextRequest) {
       note: "edit_json готов к рендеру через lib/factory/shotstack.shotstackSubmit (нужен SHOTSTACK_API_KEY + смоук-тест)",
     });
   } catch (e) {
-    return NextResponse.json({ error: "сборка таймлайна упала: " + String((e as Error)?.message || e).slice(0, 180) }, { status: 500 });
+    return NextResponse.json({ error: "assemble crash: " + String((e as Error)?.message || e).slice(0, 180) }, { status: 500 });
   }
 }

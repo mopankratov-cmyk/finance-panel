@@ -38,6 +38,6 @@ export async function POST(req: NextRequest) {
     const fails = results.filter((r) => !r.ok).map((r) => r.error);
     return NextResponse.json({ ok: true, article, niche, requested: todo.length, prepared, fails });
   } catch (e) {
-    return NextResponse.json({ error: "подготовка товара упала: " + String((e as Error)?.message || e).slice(0, 180) }, { status: 500 });
+    return NextResponse.json({ error: "prepare-product crash: " + String((e as Error)?.message || e).slice(0, 180) }, { status: 500 });
   }
 }

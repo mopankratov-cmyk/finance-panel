@@ -94,7 +94,7 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({ task_id: "fv." + token, model, image_url: imageUrl, prompt_used: prompt, prompt_by: promptBy });
   } catch (e) {
     return NextResponse.json({
-      error: "запуск FAL-видео упал: " + String((e as Error)?.message || e).slice(0, 160),
+      error: "video-fal crash: " + String((e as Error)?.message || e).slice(0, 160),
     }, { status: 500 });
   }
 }

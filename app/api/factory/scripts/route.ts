@@ -131,6 +131,6 @@ ${PROBLEM_STACK}
   }
  } catch (outer) {
   // ВСЁ обёрнуто: любой сбой (DB/инициализация/таймаут-обработка) → JSON, а не платформенный «An error occurred»
-  return NextResponse.json({ error: "список скриптов упал: " + String((outer as Error)?.message || outer).slice(0, 180) }, { status: 500 });
-}
+  return NextResponse.json({ error: "scripts crash: " + String((outer as Error)?.message || outer).slice(0, 180) }, { status: 500 });
+ }
 }

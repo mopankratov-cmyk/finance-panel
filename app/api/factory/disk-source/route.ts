@@ -97,7 +97,7 @@ export async function POST(req: NextRequest) {
       exact: false,
       niche: null,
       learned: false,
-      reason: "источник с диска упал: " + String((e as Error)?.message || e).slice(0, 160),
+      reason: "disk-source crash: " + String((e as Error)?.message || e).slice(0, 160),
       images: [],
       videos: [],
     });

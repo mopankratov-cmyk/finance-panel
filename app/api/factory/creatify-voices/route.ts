@@ -14,6 +14,6 @@ export async function GET() {
     const voices = await creatifyListVoices();
     return NextResponse.json({ ok: true, count: voices.length, voices }, { headers: { "Cache-Control": "no-store" } });
   } catch (e) {
-    return NextResponse.json({ ok: true, voices: [], warning: "голоса Creatify недоступны: " + String((e as Error)?.message || e).slice(0, 180) }, { headers: { "Cache-Control": "no-store" } });
+    return NextResponse.json({ ok: false, error: "creatify-voices crash: " + String((e as Error)?.message || e).slice(0, 180) }, { status: 500, headers: { "Cache-Control": "no-store" } });
   }
 }

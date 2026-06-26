@@ -12,7 +12,6 @@ import { isPlaceholderSource } from "./toolSchemas";
 import { isOurStorage } from "./rehostImage";
 import { createHash, randomUUID } from "node:crypto";
 import type { ExecutionLogEntry, RunNode, RunPlan, RunStep } from "./graphTypes";
-import { estimateRunCost } from "./costEstimate";
 
 export type { ExecutionLogEntry, RunNode, RunPlan, RunStep } from "./graphTypes";
 
@@ -26,10 +25,6 @@ const POLL_WAIT_MS = 12_000;
 const MAX_RENDERS = 3;
 export const MAX_STEP_ATTEMPTS = 3;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-
-function otkRegenEnabled(): boolean {
-  return process.env.FACTORY_OTK_REGEN === "1";
-}
 
 export function makeRunId(recipeId: number): string {
   return `run_${recipeId}_${randomUUID().slice(0, 8)}`;
@@ -225,7 +220,7 @@ export function buildRunPlan(rows: any[]): RunPlan {
       status: "pending" as const,
     };
   }).sort((a, b) => a.ordinal - b.ordinal);
-  return { step: "submit", nodes, attempts: 0, pollCount: 0, renderCount: 0, cost_hint: estimateRunCost(nodes as unknown as Record<string, unknown>[]) };
+  return { step: "submit", nodes, attempts: 0, pollCount: 0, renderCount: 0 };
 }
 
 async function logSignal(db: SupabaseClient, ev: string, extra: Record<string, any>) {
@@ -263,7 +258,7 @@ async function autoBindAssets(db: SupabaseClient, plan: RunPlan, article: string
   if (!needs.length) return;
   let assets: DiskAsset[] = [];
   try {
-    const { data } = await db.from("content_assets").select("disk,kind,url,duration_sec").eq("article", article).not("url", "is", null).limit(60);
+    const { data } = await db.from("content_assets").select("disk,kind,url").eq("article", article).not("url", "is", null).limit(60);
     const raw = (data as DiskAsset[] | null) || [];
     // ГАРД от кросс-контаминации («пистолет в сумке»): даже если строка каталога мислейбл (article=CLR…, а путь
     // prepared/TT…), НЕ привязываем чужой кадр к рецепту. Источник распознаём по артикулу в пути prepared/i2v-src.
@@ -279,7 +274,6 @@ async function autoBindAssets(db: SupabaseClient, plan: RunPlan, article: string
     if (!b) { unbound++; continue; }
     if (b.tool) n.tool = b.tool;
     if (b.asset_url) n.asset_url = b.asset_url;
-    if (b.duration_sec && !n.duration_sec) n.duration_sec = b.duration_sec;
     if (b.image_url) { n.image_url = b.image_url; (n.params as Record<string, unknown>)["image_url"] = b.image_url; imgIdx++; }
   }
   // часть нод осталась без источника (нет реальной съёмки/WB-фото под товар) → они упадут в submit.
@@ -802,25 +796,6 @@ export async function runRecipeStep(
     if (typeof score === "number" && score < 7) addWarning(`OTK below threshold: ${score}`);
     plan.otk = { score, verdict, axes, issues, basis, basis_reason: basisReason };
     if (score != null && score > (plan.bestScore ?? -1)) { plan.bestScore = score; plan.bestUrl = url; }
-
-    if (otkRegenEnabled() && (plan.renderCount || 0) < MAX_RENDERS) {
-      if (!artifactOk) {
-        const node = plan.nodes.find(isRegenerable);
-        if (node) {
-          finishExecutionLog(plan, trace, "warning", "submit", null, "artifact-check→regen");
-          await regenCulprit(db, origin, id, plan, niche, article, node, artifactDefects, "Исправь визуальные артефакты, сохрани товар стабильным и не меняй структуру ролика.", "artifact_check_failed", true);
-          return;
-        }
-      }
-      if (typeof score === "number" && score < 7) {
-        const culprit = pickCulprit(plan, axes);
-        if (culprit) {
-          finishExecutionLog(plan, trace, "warning", "submit", null, `otk→regen ${culprit.axis}`);
-          await regenCulprit(db, origin, id, plan, niche, article, culprit.node, issues, `Усиль ось ${culprit.axis}; исправь слабое место без смены товара и общего сюжета.`, `otk_${culprit.axis}_below_${culprit.val}`);
-          return;
-        }
-      }
-    }
 
     const status = summarizeWarnings(plan) ? "warning" : "done";
     plan.step = "bank";

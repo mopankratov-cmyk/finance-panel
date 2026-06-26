@@ -87,7 +87,7 @@ export async function POST(req: NextRequest) {
       ok: false,
       built: [],
       skipped: [],
-      log: ["сборка недостающих плейбуков упала: " + String((e as Error)?.message || e).slice(0, 160)],
+      log: ["corpus/build-missing-playbooks crash: " + String((e as Error)?.message || e).slice(0, 160)],
     }, { status: 500 });
   }
 }

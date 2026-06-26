@@ -57,7 +57,7 @@ export async function POST(req: NextRequest) {
       ok: true,
       severity: "clean",
       defects: [],
-      warning: "проверка артефакта упала: " + String((e as Error)?.message || e).slice(0, 160),
+      warning: "artifact-check crash: " + String((e as Error)?.message || e).slice(0, 160),
     });
   }
 }

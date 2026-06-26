@@ -92,7 +92,7 @@ export async function POST(req: NextRequest) {
       already_synced: 0,
       synced: 0,
       skipped: 0,
-      log: ["синхронизация всех orbit-поисков упала: " + String((e as Error)?.message || e).slice(0, 160)],
+      log: ["corpus/sync-all-orbits crash: " + String((e as Error)?.message || e).slice(0, 160)],
     }, { status: 500 });
   }
 }

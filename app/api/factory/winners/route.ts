@@ -1,13 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { nicheFromArticle } from "@/lib/factory/rubric";
-import { sanitizeWinnerPresetNodes } from "@/lib/factory/winnerPreset";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 15;
 
 // P2.1 Winners loop: пометить content_asset победителем + записать learnings для петли.
-// POST { asset_id?, url?, hook?, views?, followers?, note?, platform?, watch_rate?, ctr_card?, saves?, posted_at? }
+// POST { asset_id?, url?, hook?, views?, followers?, note? }
 //   asset_id — прямой id; url — поиск по url (из bank-карточки кокпита)
 // GET  ?niche=blasters&limit=5  → примеры-победители для инъекции в идеацию
 export async function POST(req: NextRequest) {
@@ -38,16 +37,6 @@ export async function POST(req: NextRequest) {
   if (body.views) learnings.views = Number(body.views);
   if (body.followers) learnings.followers = Number(body.followers);
   if (body.note) learnings.note = String(body.note).slice(0, 200);
-  if (body.platform || body.watch_rate != null || body.ctr_card != null || body.saves != null || body.posted_at) {
-    learnings.market_signal = {
-      platform: body.platform ? String(body.platform).slice(0, 20) : null,
-      views: body.views ? Number(body.views) : null,
-      watch_rate: body.watch_rate != null ? Number(body.watch_rate) : null,
-      ctr_card: body.ctr_card != null ? Number(body.ctr_card) : null,
-      saves: body.saves != null ? Number(body.saves) : null,
-      posted_at: body.posted_at ? String(body.posted_at).slice(0, 40) : null,
-    };
-  }
 
   const { error } = await db.from("content_assets").update({
     is_winner: true,
@@ -92,7 +81,7 @@ export async function POST(req: NextRequest) {
       ok: false,
       learnings: null,
       preset_id: null,
-      error: "сохранение победителя упало: " + String((e as Error)?.message || e).slice(0, 160),
+      error: "winners POST crash: " + String((e as Error)?.message || e).slice(0, 160),
     }, { status: 500 });
   }
 }
@@ -108,7 +97,26 @@ async function snapshotWinnerPreset(db: any, recipeId: number, niche: string, fo
   const plan = (data.run_plan || {}) as Record<string, unknown>;
   const rawNodes = (Array.isArray(plan.nodes) ? plan.nodes : []) as Record<string, unknown>[];
   if (!rawNodes.length) return null;
-  const nodes = sanitizeWinnerPresetNodes(rawNodes);
+  const VOLATILE = new Set(["preview_url", "preview_hash"]);
+  const nodes = rawNodes
+    .filter((n) => String(n.status || "") !== "skip" && (n.tool || n.node_type))
+    .map((n, i) => {
+      const params = { ...((n.params as Record<string, unknown>) || {}) };
+      for (const k of VOLATILE) delete params[k];
+      const role = String((params.role as string) || (n.slot as string) || "").toLowerCase();
+      return {
+        ordinal: typeof n.ordinal === "number" ? n.ordinal : i + 1,
+        node_type: n.node_type || null,
+        tool: n.tool || null,
+        role,
+        prompt: String(n.prompt || "").slice(0, 1500),
+        onscreen_text: String((n.onscreen_text as string) || (params.onscreen_text as string) || "").slice(0, 300) || null,
+        emotion: (params.emotion as string) || null,
+        visual_desc: String((params.visual_desc as string) || "").slice(0, 300) || null,
+        params,
+        duration_sec: typeof n.duration_sec === "number" ? n.duration_sec : null,
+      };
+    });
   if (!nodes.length) return null;
   const fmt = format || String(data.format_detected || "") || "winner";
   const nch = niche || String(data.niche || "") || "default";
@@ -127,7 +135,7 @@ async function snapshotWinnerPreset(db: any, recipeId: number, niche: string, fo
 export async function GET(req: NextRequest) {
   try {
   const db = getSupabaseAdmin();
-  if (!db) return NextResponse.json({ winners: [], niche: "", warning: "Supabase не настроен — победители временно пустые" }, { headers: { "Cache-Control": "no-store" } });
+  if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 500 });
   const { searchParams } = req.nextUrl;
   const article = searchParams.get("article") || "";
   const niche = searchParams.get("niche") || (article ? nicheFromArticle(article, "") : "");
@@ -142,16 +150,16 @@ export async function GET(req: NextRequest) {
 
   try {
     const { data, error } = await q;
-    if (error) return NextResponse.json({ winners: [], niche, warning: error.message }, { headers: { "Cache-Control": "no-store" } });
-    return NextResponse.json({ winners: data || [], niche }, { headers: { "Cache-Control": "no-store" } });
+    if (error) return NextResponse.json({ winners: [], error: error.message });
+    return NextResponse.json({ winners: data || [], niche });
   } catch (e) {
-    return NextResponse.json({ winners: [], niche, warning: String(e).slice(0, 100) }, { headers: { "Cache-Control": "no-store" } });
+    return NextResponse.json({ winners: [], error: String(e).slice(0, 100) });
   }
   } catch (e) {
     return NextResponse.json({
       winners: [],
       niche: "",
-      warning: "чтение победителей упало: " + String((e as Error)?.message || e).slice(0, 160),
-    }, { headers: { "Cache-Control": "no-store" } });
+      error: "winners GET crash: " + String((e as Error)?.message || e).slice(0, 160),
+    }, { status: 500 });
   }
 }

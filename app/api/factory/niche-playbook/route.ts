@@ -178,8 +178,8 @@ export async function POST(req: NextRequest) {
   }
   } catch (e) {
     return NextResponse.json({
-      error: "плейбук ниши упал: " + String((e as Error)?.message || e).slice(0, 160),
-      ...fallbackPlaybook("", "сбой сборки плейбука"),
+      error: "niche-playbook crash: " + String((e as Error)?.message || e).slice(0, 160),
+      ...fallbackPlaybook("", "route-level crash"),
     }, { status: 500 });
   }
 }

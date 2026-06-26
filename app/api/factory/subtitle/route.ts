@@ -28,6 +28,6 @@ export async function POST(req: NextRequest) {
     if (r.error) return NextResponse.json({ error: r.error }, { status: 502 });
     return NextResponse.json({ ok: true, video_url: r.videoUrl, words: r.words });
   } catch (e) {
-    return NextResponse.json({ error: "субтитры упали: " + String((e as Error)?.message || e).slice(0, 180) }, { status: 500 });
+    return NextResponse.json({ error: "subtitle crash: " + String((e as Error)?.message || e).slice(0, 180) }, { status: 500 });
   }
 }

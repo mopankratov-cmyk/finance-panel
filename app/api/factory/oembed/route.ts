@@ -31,7 +31,7 @@ async function fetchOembed(url: string): Promise<{ thumbnail_url?: string; html?
 export async function POST(req: NextRequest) {
   try {
   const db = getSupabaseAdmin();
-  if (!db) return NextResponse.json({ ok: true, items: [], warning: "Supabase не настроен — обложки конкурентов временно пустые" });
+  if (!db) return NextResponse.json({ ok: false, items: [] });
   const b = await req.json().catch(() => ({}));
   const ids: number[] = Array.isArray(b.ids) ? b.ids.map((x: unknown) => Number(x)).filter(Boolean).slice(0, 30) : [];
   if (!ids.length) return NextResponse.json({ ok: true, items: [] });
@@ -41,7 +41,7 @@ export async function POST(req: NextRequest) {
     const { data } = await db.from("viral_videos").select("id,url,cover_url,embed_html,oembed_at").in("id", ids);
     rows = (data as typeof rows) || [];
   } catch {
-    return NextResponse.json({ ok: true, items: [], warning: "миграция 20260621_viral_covers не применена" });
+    return NextResponse.json({ ok: true, items: [], note: "миграция 20260621_viral_covers не применена" });
   }
 
   const dayAgo = Date.now() - 24 * 3600 * 1000;
@@ -64,10 +64,9 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({ ok: true, items: rows.map((r) => ({ id: r.id, cover_url: r.cover_url, embed_html: r.embed_html })) });
   } catch (e) {
     return NextResponse.json({
-      ok: true,
-      partial: true,
+      ok: false,
       items: [],
-      warning: "oEmbed упал: " + String((e as Error)?.message || e).slice(0, 160),
+      note: "oembed crash: " + String((e as Error)?.message || e).slice(0, 160),
     });
   }
 }

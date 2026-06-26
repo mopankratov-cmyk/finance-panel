@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
     const auth = req.headers.get("authorization") || "";
     const secret = process.env.CRON_SECRET || "";
     if (secret && auth !== `Bearer ${secret}`) {
-      return NextResponse.json({ error: "неверный CRON_SECRET" }, { status: 401 });
+      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
     }
     const origin = req.nextUrl.origin;
     const tick = await internalFetch(`${origin}/api/factory/jobs/balances-tick`, {
@@ -27,6 +27,6 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({ ok: true, balances_tick: tick });
   } catch (e) {
-    return NextResponse.json({ error: "cron балансов упал: " + String((e as Error)?.message || e).slice(0, 180) }, { status: 500 });
+    return NextResponse.json({ error: "jobs/balances-cron crash: " + String((e as Error)?.message || e).slice(0, 180) }, { status: 500 });
   }
 }

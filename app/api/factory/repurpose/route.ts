@@ -55,7 +55,7 @@ ${rules}
     return NextResponse.json({
       product: "",
       posts: [],
-      error: "перепаковка ролика упала: " + String((e as Error)?.message || e).slice(0, 160),
+      error: "repurpose crash: " + String((e as Error)?.message || e).slice(0, 160),
     }, { status: 500 });
   }
 }

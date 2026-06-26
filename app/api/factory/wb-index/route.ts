@@ -71,6 +71,6 @@ export async function POST(req: NextRequest) {
     const withPhotos = perProduct.filter((n) => n > 0).length;
     return NextResponse.json({ ok: true, products: uniq.length, products_with_photos: withPhotos, photos_indexed: saved, avg_per_card: Math.round((saved / Math.max(withPhotos, 1)) * 10) / 10 });
   } catch (e) {
-    return NextResponse.json({ error: "индекс WB упал: " + String((e as Error)?.message || e).slice(0, 180) }, { status: 500 });
+    return NextResponse.json({ error: "wb-index crash: " + String((e as Error)?.message || e).slice(0, 180) }, { status: 500 });
   }
 }

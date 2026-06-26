@@ -62,6 +62,6 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ ok: true, node });
   } catch (e) {
-    return NextResponse.json({ error: "сохранение ноды упало: " + String((e as Error)?.message || e).slice(0, 160) }, { status: 500 });
+    return NextResponse.json({ error: "node-save crash: " + String((e as Error)?.message || e).slice(0, 160) }, { status: 500 });
   }
 }

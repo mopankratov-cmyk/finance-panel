@@ -39,6 +39,6 @@ export async function POST(req: NextRequest) {
       continued: result.ok && !result.terminal,
     });
   } catch (e) {
-    return NextResponse.json({ error: "tick прогона упал: " + String((e as Error)?.message || e).slice(0, 180) }, { status: 500 });
+    return NextResponse.json({ error: "graph-run/tick crash: " + String((e as Error)?.message || e).slice(0, 180) }, { status: 500 });
   }
 }

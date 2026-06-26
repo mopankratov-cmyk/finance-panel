@@ -15,36 +15,9 @@ const FRESH_MS = 7 * 24 * 3600 * 1000; // бриф свеж 7 дней (как �
 // Агрегирует НАШ корпус (viral_videos/viral_hooks) + niche_playbooks → LLM сводит. Кеш в niche_briefs.
 // Всегда JSON (обработчик в try/catch). Веб-ресёрч — позже (сейчас сигнал = корпус, надёжнее).
 
-function fallbackBrief(niche: string, reason: string, sources: Record<string, unknown> = {}) {
-  return {
-    ok: true,
-    niche,
-    brief: {
-      summary: "Бриф временно собран без маркетолог-агента. Для MVP можно продолжать: выбери товар, собери один понятный сценарий и проверь выпуск MP4.",
-      top_formats: [
-        { name: "проблема → демонстрация → итог", why: "самый устойчивый короткий формат для проверки пайплайна", example_video_url: "" },
-        { name: "живой тест руками", why: "меньше AI-риска и понятнее польза товара", example_video_url: "" },
-      ],
-      content_recommendations: [
-        { type: "видео", format: "один товар, один хук, один визуальный proof", rationale: "сейчас важнее стабильный прогон, чем широкий fan-out" },
-        { type: "статик", format: "карточка с одним тезисом", rationale: "можно использовать как fallback-креатив без дорогого видео" },
-      ],
-      distribution: [
-        { platform: "Reels/TikTok/VK Клипы", cadence: "после успешного MP4", note: "сначала добейся стабильной сборки, потом сравнивай площадки" },
-      ],
-      viral_examples: [],
-      updated_at: new Date().toISOString(),
-    },
-    sources,
-    cached: false,
-    fallback: true,
-    warning: reason,
-  };
-}
-
 async function buildBrief(niche: string) {
   const db = getSupabaseAdmin();
-  if (!db) return fallbackBrief(niche, "Supabase не настроен — показан fallback-бриф");
+  if (!db) return { error: "Supabase не настроен", status: 500 };
 
   // 1) собрать сырьё из корпуса + плейбука
   const [vvR, vhR, pbR] = await Promise.all([
@@ -57,7 +30,7 @@ async function buildBrief(niche: string) {
   const playbook = (pbR.data as { playbook: unknown }[] | null)?.[0]?.playbook || null;
 
   if (!vids.length && !hooks.length && !playbook) {
-    return fallbackBrief(niche, "нет данных по нише — синкни орбиты или собери плейбук", { videos: 0, hooks: 0, playbook: false, sounds: 0 });
+    return { error: "нет данных по нише — синкни орбиты или собери плейбук", status: 404, niche };
   }
 
   // топ-звуки из корпуса (по частоте появления в залетевших видео)
@@ -73,7 +46,7 @@ async function buildBrief(niche: string) {
   const sources = { videos: vids.length, hooks: hooks.length, playbook: !!playbook, sounds: topSounds.length };
 
   const client = await createClaudeClient();
-  if (!client) return fallbackBrief(niche, "ANTHROPIC_API_KEY не настроен — показан fallback-бриф", sources);
+  if (!client) return { error: "ANTHROPIC_API_KEY не настроен", status: 500 };
 
   const sys = `Ты — главный маркетолог контент-завода для карточек WB/Ozon. На входе РЕАЛЬНЫЙ корпус ниши (залетевшие видео конкурентов с метрикой + проверенные хуки + при наличии скомпилированный плейбук). Сделай ПОЛНЫЙ РАЗБОР НИШИ для владельца: что реально заходит, какие форматы, какой контент делать и КУДА его дистрибутировать.
 ВАЖНО (honest): глянцевый AI-рендер товара целым роликом читается как реклама. Лучшие форматы — живые (распаковка/POV/проблема-решение/до-после/демо руками), AI = акцент/вставка. Рекомендации опирай на РЕАЛЬНЫЕ примеры из корпуса, не на теорию.
@@ -100,26 +73,26 @@ async function buildBrief(niche: string) {
 
     const txt = (res.content as any[]).filter((b) => b.type === "text").map((b) => b.text).join(" ").trim();
     const brief = extractJson(txt);
-    if (!brief || !brief.summary) return fallbackBrief(niche, "маркетолог не вернул бриф", sources);
+    if (!brief || !brief.summary) return { error: "маркетолог не вернул бриф", raw: txt.slice(0, 160), status: 502 };
     brief.updated_at = new Date().toISOString();
     // кеш
     try { await db.from("niche_briefs").upsert({ niche, brief, sources, updated_at: brief.updated_at }, { onConflict: "niche" }); } catch { /* таблица не применена — отдадим без кеша */ }
     return { ok: true, niche, brief, sources, cached: false };
   } catch (e) {
-    return fallbackBrief(niche, "claude niche-brief: " + String((e as Error)?.message || e).slice(0, 160), sources);
+    return { error: "claude niche-brief: " + String((e as Error)?.message || e).slice(0, 160), status: 502 };
   }
 }
 
 export async function GET(req: NextRequest) {
   try {
     const db = getSupabaseAdmin();
+    if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 500 });
     const sp = req.nextUrl.searchParams;
     const article = (sp.get("article") || "").trim();
     const productName = (sp.get("product_name") || "").trim();
     let niche = (sp.get("niche") || "").trim();
     if (!niche && article) niche = nicheFromArticle(article, productName);
     if (!niche) return NextResponse.json({ error: "нужен niche или article" }, { status: 400 });
-    if (!db) return NextResponse.json(fallbackBrief(niche, "Supabase не настроен — показан fallback-бриф"), { headers: { "Cache-Control": "no-store" } });
 
     // кеш-хит (если свежий и не refresh)
     if (sp.get("refresh") !== "1") {
@@ -136,6 +109,6 @@ export async function GET(req: NextRequest) {
     const status = (r as { status?: number }).status || ((r as { error?: string }).error ? 400 : 200);
     return NextResponse.json(r, { status, headers: { "Cache-Control": "no-store" } });
   } catch (e) {
-    return NextResponse.json(fallbackBrief("default", "бриф ниши упал: " + String((e as Error)?.message || e).slice(0, 180)), { headers: { "Cache-Control": "no-store" } });
+    return NextResponse.json({ error: "niche-brief crash: " + String((e as Error)?.message || e).slice(0, 180) }, { status: 500 });
   }
 }

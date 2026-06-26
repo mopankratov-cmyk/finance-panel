@@ -67,7 +67,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       ok: false,
       profile: null,
-      error: "сохранение обучения контента упало: " + String((e as Error)?.message || e).slice(0, 160),
+      error: "content-learn POST crash: " + String((e as Error)?.message || e).slice(0, 160),
     }, { status: 500 });
   }
 }
@@ -76,17 +76,16 @@ export async function POST(req: NextRequest) {
 export async function GET(req: NextRequest) {
   try {
   const db = getSupabaseAdmin();
-  if (!db) return NextResponse.json({ ok: true, profiles: [], warning: "Supabase не настроен — визуальное обучение временно пустое" }, { headers: { "Cache-Control": "no-store" } });
+  if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 500 });
   const niche = new URL(req.url).searchParams.get("niche");
   const q = db.from("niche_visual_profiles").select("niche,profile,sample_count,updated_at");
   const { data, error } = niche ? await q.eq("niche", niche).maybeSingle() : await q;
-  if (error) return NextResponse.json({ ok: true, profiles: niche ? null : [], warning: error.message }, { headers: { "Cache-Control": "no-store" } });
-  return NextResponse.json({ ok: true, profiles: data }, { headers: { "Cache-Control": "no-store" } });
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  return NextResponse.json({ profiles: data });
   } catch (e) {
     return NextResponse.json({
-      ok: true,
       profiles: null,
-      warning: "чтение обучения контента упало: " + String((e as Error)?.message || e).slice(0, 160),
-    }, { headers: { "Cache-Control": "no-store" } });
+      error: "content-learn GET crash: " + String((e as Error)?.message || e).slice(0, 160),
+    }, { status: 500 });
   }
 }

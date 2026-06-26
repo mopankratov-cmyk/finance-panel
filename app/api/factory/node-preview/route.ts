@@ -83,7 +83,7 @@ export async function POST(req: NextRequest) {
     await logSignal(db, "node_preview", { tool: node.tool, slot: node.node_type, recipe_id: body.recipe_id ?? null, params: node.params });
     return NextResponse.json({ ok: true, cached: false, status: "in_progress", token: r.token, engine: r.engine, hash, preview_id, cost_hint: r.cost_hint });
   } catch (e) {
-    return NextResponse.json({ error: "превью ноды упало: " + String((e as Error)?.message || e).slice(0, 160) }, { status: 500 });
+    return NextResponse.json({ error: "node-preview crash: " + String((e as Error)?.message || e).slice(0, 160) }, { status: 500 });
   }
 }
 
@@ -119,7 +119,7 @@ export async function GET(req: NextRequest) {
     }
     return NextResponse.json({ error: "нужен token, preview_id или hash" }, { status: 400 });
   } catch (e) {
-    return NextResponse.json({ error: "превью ноды упало: " + String((e as Error)?.message || e).slice(0, 160) }, { status: 500 });
+    return NextResponse.json({ error: "node-preview crash: " + String((e as Error)?.message || e).slice(0, 160) }, { status: 500 });
   }
 }
 

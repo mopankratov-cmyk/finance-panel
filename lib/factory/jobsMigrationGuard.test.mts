@@ -30,7 +30,6 @@ const liveFiles = files.filter((file) => !file.startsWith("app/api/factory/jobs/
 const oldRuntimeRefs: string[] = [];
 const disabledJobCallers: string[] = [];
 const staleComments: string[] = [];
-const englishDisabledNotes: string[] = [];
 
 for (const file of liveFiles) {
   const source = readFileSync(file, "utf8");
@@ -43,16 +42,12 @@ for (const file of liveFiles) {
   if (/self-chaining очередь|self-chaining queue|jobs\.ts|по образцу jobs\/tick|очередь воскресит/.test(source)) {
     staleComments.push(file);
   }
-  if (/disabled for Sprint 1 stability/.test(source)) {
-    englishDisabledNotes.push(file);
-  }
 }
 
 ok(!existsSync("lib/factory/jobs.ts"), "legacy lib/factory/jobs.ts is deleted");
 ok(oldRuntimeRefs.length === 0, `no runtime imports of legacy jobs module:\n${oldRuntimeRefs.join("\n")}`);
 ok(disabledJobCallers.length === 0, `no runtime callers of disabled jobs/enqueue|list|tick:\n${disabledJobCallers.join("\n")}`);
 ok(staleComments.length === 0, `no live runtime comments describe graph-run as legacy jobs queue:\n${staleComments.join("\n")}`);
-ok(englishDisabledNotes.length === 0, `disabled runtime notes are operator-facing Russian copy:\n${englishDisabledNotes.join("\n")}`);
 
 if (failed) process.exit(1);
 console.log(`jobsMigrationGuard: ${passed} passed, ${failed} failed`);

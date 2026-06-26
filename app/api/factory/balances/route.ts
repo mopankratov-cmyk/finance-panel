@@ -15,24 +15,11 @@ export const maxDuration = 30;
 
 const SERVICES = new Set(SERVICE_REGISTRY.map((s) => s.service));
 const THROTTLE_MS = 30 * 60 * 1000; // не чаще снимка раз в 30 мин на GET
-function emptyServices() {
-  return SERVICE_REGISTRY.map((s) => ({
-    ...s,
-    balance: null,
-    currency: s.unit,
-    source: s.capability === "api" ? "api" : s.capability,
-    threshold: null,
-    low: false,
-    updated_at: null,
-    history: [],
-    note: "баланс временно недоступен",
-  }));
-}
 
 export async function GET() {
   try {
     const db = getSupabaseAdmin();
-    if (!db) return NextResponse.json({ ok: true, services: emptyServices(), low: [], warning: "Supabase не настроен — балансы временно пустые", updated_at: new Date().toISOString() }, { headers: { "Cache-Control": "no-store" } });
+    if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 500 });
     const services = await collectBalances(db, { persist: true, throttleMs: THROTTLE_MS });
     const low = services.filter((s) => s.low).map((s) => s.service);
     return NextResponse.json(
@@ -40,7 +27,7 @@ export async function GET() {
       { headers: { "Cache-Control": "no-store" } },
     );
   } catch (e) {
-    return NextResponse.json({ ok: true, services: emptyServices(), low: [], warning: "балансы упали: " + String((e as Error)?.message || e).slice(0, 160), updated_at: new Date().toISOString() }, { headers: { "Cache-Control": "no-store" } });
+    return NextResponse.json({ error: "balances crash: " + String((e as Error)?.message || e).slice(0, 160) }, { status: 500 });
   }
 }
 
@@ -79,6 +66,6 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ ok: true, service });
   } catch (e) {
-    return NextResponse.json({ error: "сохранение баланса упало: " + String((e as Error)?.message || e).slice(0, 160) }, { status: 500 });
+    return NextResponse.json({ error: "balances POST crash: " + String((e as Error)?.message || e).slice(0, 160) }, { status: 500 });
   }
 }

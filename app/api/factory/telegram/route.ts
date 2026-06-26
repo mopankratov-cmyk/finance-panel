@@ -26,11 +26,10 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({ ok: true, ready: tgReady(), owner_set: !!tgOwnerChat() });
   } catch (e) {
     return NextResponse.json({
-      ok: true,
-      partial: true,
+      ok: false,
       ready: false,
       owner_set: false,
-      warning: "чтение Telegram упало: " + String((e as Error)?.message || e).slice(0, 160),
+      error: "telegram GET crash: " + String((e as Error)?.message || e).slice(0, 160),
     });
   }
 }
@@ -145,7 +144,7 @@ export async function POST(req: NextRequest) {
   } catch (e) {
     return NextResponse.json({
       ok: true,
-      warning: "отправка Telegram упала: " + String((e as Error)?.message || e).slice(0, 160),
+      warning: "telegram POST crash: " + String((e as Error)?.message || e).slice(0, 160),
     });
   }
 }

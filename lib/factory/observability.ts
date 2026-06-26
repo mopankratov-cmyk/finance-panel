@@ -13,22 +13,11 @@ export type RunSummary = {
 
 export type RecentRunPoint = {
   recipe_id: number | null;
-  run_id?: string | null;
-  article?: string | null;
-  niche?: string | null;
-  output_url?: string | null;
-  otk_score?: number | null;
   created_at: string | null;
   status: string;
   total_ms: number | null;
   error_category: string | null;
   warnings_count: number;
-  active_step?: string | null;
-  last_step?: string | null;
-  age_ms?: number | null;
-  active?: boolean;
-  legacy?: boolean;
-  stale?: boolean;
 };
 
 export type StatusSeriesPoint = {
@@ -111,9 +100,6 @@ type RunPlanLike = {
   warnings?: unknown;
 };
 
-const STALE_RUNNING_MS = 30 * 60 * 1000;
-const ACTIVE_INCIDENT_WINDOW_MS = 24 * 60 * 60 * 1000;
-
 function msBetween(startedAt: unknown, finishedAt: unknown): number | null {
   const start = Date.parse(String(startedAt || ""));
   const finish = Date.parse(String(finishedAt || ""));
@@ -127,29 +113,10 @@ function bucketHourKey(value: unknown): string | null {
   return new Date(ms).toISOString().slice(0, 13) + ":00";
 }
 
-function timeMs(value: unknown): number | null {
-  const ms = Date.parse(String(value || ""));
-  return Number.isFinite(ms) ? ms : null;
-}
-
 function isSuccessfulRun(status: string, summary: RunSummary): boolean {
   if (status === "running" || status === "run_fail") return false;
   if (summary.last_step === "failed" || summary.last_status === "error") return false;
   return !!summary.finished_at || summary.last_step === "done";
-}
-
-function isStaleRunning(status: string, summary: RunSummary): boolean {
-  return status === "running" && !summary.finished_at && typeof summary.total_ms === "number" && summary.total_ms >= STALE_RUNNING_MS;
-}
-
-function runAgeMs(createdAt: unknown, summary: RunSummary): number | null {
-  const ms = timeMs(createdAt) ?? timeMs(summary.started_at) ?? timeMs(summary.finished_at);
-  return ms == null ? null : Math.max(0, Date.now() - ms);
-}
-
-function isActiveIncident(ageMs: number | null, stale: boolean): boolean {
-  if (stale) return true;
-  return ageMs != null && ageMs <= ACTIVE_INCIDENT_WINDOW_MS;
 }
 
 export function buildRunSummary(plan: RunPlanLike | null | undefined): RunSummary {
@@ -213,18 +180,22 @@ export function buildObservability(rows: Record<string, unknown>[]) {
   const qualityBasisWindow: { basis: string; reason: string | null }[] = [];
   const statusSeriesMap = new Map<string, StatusSeriesPoint>();
   let running = 0;
-  let staleRunning = 0;
   let warningRuns = 0;
   let failed = 0;
-  let legacyWarningRuns = 0;
-  let legacyFailedRuns = 0;
 
   for (const raw of rows) {
     const status = String(raw.status || "");
     if (status === "running") running++;
+    if (status === "warning") warningRuns++;
+    if (status === "run_fail") failed++;
 
     const plan = (raw.run_plan && typeof raw.run_plan === "object") ? raw.run_plan as Record<string, unknown> : {};
     const planError = String(plan.error || "").trim().slice(0, 180);
+    if (planError) {
+      errorMap.set(planError, (errorMap.get(planError) || 0) + 1);
+      const category = classifyErrorReason(planError);
+      errorCategoryMap.set(category, (errorCategoryMap.get(category) || 0) + 1);
+    }
     const warnings = Array.isArray(plan.warnings) ? plan.warnings : [];
     const otk = (plan.otk && typeof plan.otk === "object") ? plan.otk as Record<string, unknown> : null;
     const otkBasis = otk?.basis ? String(otk.basis).trim() : "";
@@ -234,67 +205,37 @@ export function buildObservability(rows: Record<string, unknown>[]) {
         reason: otk?.basis_reason ? String(otk.basis_reason).trim() : null,
       });
     }
+    warnings.forEach((w) => {
+      const key = String(w).trim().slice(0, 120);
+      if (!key) return;
+      warningMap.set(key, (warningMap.get(key) || 0) + 1);
+      const category = classifyWarningReason(key);
+      warningCategoryMap.set(category, (warningCategoryMap.get(category) || 0) + 1);
+    });
     const summary = buildRunSummary(plan);
-    const stale = isStaleRunning(status, summary);
-    const ageMs = runAgeMs(raw.created_at, summary);
-    const activeIncident = isActiveIncident(ageMs, stale);
-    if (stale) staleRunning++;
-    if (status === "warning") {
-      if (activeIncident) warningRuns++;
-      else legacyWarningRuns++;
-    }
-    if (status === "run_fail") {
-      if (activeIncident) failed++;
-      else legacyFailedRuns++;
-    }
-    if (planError && activeIncident) {
-      errorMap.set(planError, (errorMap.get(planError) || 0) + 1);
-      const category = classifyErrorReason(planError);
-      errorCategoryMap.set(category, (errorCategoryMap.get(category) || 0) + 1);
-    }
-    if (activeIncident) {
-      warnings.forEach((w) => {
-        const key = String(w).trim().slice(0, 120);
-        if (!key) return;
-        warningMap.set(key, (warningMap.get(key) || 0) + 1);
-        const category = classifyWarningReason(key);
-        warningCategoryMap.set(category, (warningCategoryMap.get(category) || 0) + 1);
-      });
-    }
     stabilityWindow.push({
       status,
       success: isSuccessfulRun(status, summary),
     });
     recentRuns.push({
       recipe_id: Number(raw.id) || null,
-      run_id: plan.run_id ? String(plan.run_id) : null,
-      article: raw.article ? String(raw.article) : null,
-      niche: raw.niche ? String(raw.niche) : null,
-      output_url: raw.output_url ? String(raw.output_url) : null,
-      otk_score: typeof raw.otk_score === "number" ? raw.otk_score : null,
       created_at: raw.created_at ? String(raw.created_at) : null,
       status,
       total_ms: summary.total_ms,
       error_category: planError ? classifyErrorReason(planError) : null,
       warnings_count: warnings.length,
-      active_step: summary.active_step,
-      last_step: summary.last_step,
-      age_ms: ageMs,
-      active: activeIncident,
-      legacy: !activeIncident && (status === "warning" || status === "run_fail"),
-      stale,
     });
-    if ((status === "run_fail" || status === "warning" || stale) && activeIncident) {
+    if (status === "run_fail" || status === "warning") {
       incidentRuns.push({
         recipe_id: Number(raw.id) || null,
         run_id: plan.run_id ? String(plan.run_id) : null,
         created_at: raw.created_at ? String(raw.created_at) : null,
-        status: stale ? "stale_running" : status,
+        status,
         last_step: summary.last_step,
         last_status: summary.last_status,
         total_ms: summary.total_ms,
-        error_category: stale ? "timeout" : (planError ? classifyErrorReason(planError) : null),
-        error: stale ? "run is still marked running beyond stale threshold" : (planError || null),
+        error_category: planError ? classifyErrorReason(planError) : null,
+        error: planError || null,
         warnings_count: warnings.length,
       });
     }
@@ -491,13 +432,9 @@ export function buildObservability(rows: Record<string, unknown>[]) {
 
   return {
     sample_runs: rows.length,
-    active_sample_runs: recentRuns.filter((r) => r.active).length,
     running,
-    stale_running: staleRunning,
     warning_runs: warningRuns,
     failed,
-    legacy_warning_runs: legacyWarningRuns,
-    legacy_failed_runs: legacyFailedRuns,
     stability_snapshot,
     quality_signal,
     recent_runs: recentRuns.slice(0, 12),

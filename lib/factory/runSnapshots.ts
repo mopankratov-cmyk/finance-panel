@@ -12,7 +12,7 @@ export async function loadRecentRecipeRunRows(
 ): Promise<RecipeRunRow[]> {
   const { data, error } = await db
     .from("node_recipes")
-    .select("id,article,niche,status,otk_score,output_url,created_at,run_plan")
+    .select("id,status,created_at,run_plan")
     .order("created_at", { ascending: false })
     .limit(limit);
   if (error) {

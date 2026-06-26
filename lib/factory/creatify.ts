@@ -323,7 +323,7 @@ export async function creatifyStartRender(token: string): Promise<CreatifyStatus
     const r = await jpost(h, `/link_to_videos/${id}/render/`, {});
     const body = r.json || {};
     if (!r.ok) {
-      const msg = (body as Record<string, unknown>).error || (body as Record<string, unknown>).detail || r.text || `creatify ${r.status}`;
+      const msg = (body as Record<string, unknown>).detail || r.text || `creatify ${r.status}`;
       return { status: "error", error: String(msg).slice(0, 120), raw: r.text };
     }
     return { status: "in_progress", raw: "render_started" };

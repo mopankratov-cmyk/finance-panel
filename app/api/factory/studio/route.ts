@@ -17,32 +17,6 @@ const NICHE_META: Record<string, { emoji: string; label: string }> = {
   toys: { emoji: "🔫", label: "Игрушки" },
   default: { emoji: "📦", label: "Прочее" },
 };
-const EMPTY_OBSERVABILITY: Record<string, unknown> = {
-  sample_runs: 0,
-  active_sample_runs: 0,
-  running: 0,
-  stale_running: 0,
-  warning_runs: 0,
-  failed: 0,
-  legacy_warning_runs: 0,
-  legacy_failed_runs: 0,
-  stability_snapshot: null,
-  quality_signal: null,
-  recent_runs: [],
-  incident_runs: [],
-  status_series: [],
-  step_duration_series: [],
-  slowest_steps: [],
-  failure_diagnostics: null,
-  top_error_categories: [],
-  top_errors: [],
-  top_warning_categories: [],
-  top_warnings: [],
-};
-
-function fallbackNiches() {
-  return NICHES.map((n) => ({ niche: n, ...NICHE_META[n], videos: 0, hooks: 0, templates: 0, gens: 0, playbook: false }));
-}
 
 async function count(db: any, table: string, niche: string, extra?: (q: any) => any): Promise<number> {
   try {
@@ -88,12 +62,8 @@ function recipeSummary(r: Record<string, unknown>) {
 export async function GET(req: NextRequest) {
   try {
     const db = getSupabaseAdmin();
+    if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 500 });
     const niche = (req.nextUrl.searchParams.get("niche") || "").trim();
-    if (!db) {
-      const warning = "Supabase не настроен — Studio открыта в пустом read-only режиме";
-      if (niche) return NextResponse.json({ ok: true, niche, feed: [], templates: [], recipes: [], warning }, { headers: { "Cache-Control": "no-store" } });
-      return NextResponse.json({ ok: true, niches: fallbackNiches(), generations: [], recipes: [], observability: EMPTY_OBSERVABILITY, warning }, { headers: { "Cache-Control": "no-store" } });
-    }
 
     // ── режим одной ниши: лента виральных + шаблоны + рецепты ──
     if (niche) {
@@ -134,7 +104,7 @@ export async function GET(req: NextRequest) {
     } catch { /* нет генераций */ }
 
     let recipes: unknown[] = [];
-    let observability: Record<string, unknown> = { ...EMPTY_OBSERVABILITY };
+    let observability: Record<string, unknown> = { sample_runs: 0, running: 0, warning_runs: 0, failed: 0, stability_snapshot: null, quality_signal: null, recent_runs: [], incident_runs: [], status_series: [], step_duration_series: [], slowest_steps: [], failure_diagnostics: null, top_error_categories: [], top_errors: [], top_warning_categories: [], top_warnings: [] };
     try {
       const { data } = await db.from("node_recipes").select("id,article,niche,mode,status,otk_score,output_url,format_detected,built_by,created_at,run_plan").order("created_at", { ascending: false }).limit(30);
       const rows = (data as Record<string, unknown>[] | null) || [];
@@ -144,13 +114,6 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({ ok: true, niches, generations, recipes, observability }, { headers: { "Cache-Control": "no-store" } });
   } catch (e) {
-    return NextResponse.json({
-      ok: true,
-      niches: fallbackNiches(),
-      generations: [],
-      recipes: [],
-      observability: EMPTY_OBSERVABILITY,
-      warning: "сводка Studio упала: " + String((e as Error)?.message || e).slice(0, 160),
-    }, { headers: { "Cache-Control": "no-store" } });
+    return NextResponse.json({ error: "studio crash: " + String((e as Error)?.message || e).slice(0, 160) }, { status: 500 });
   }
 }

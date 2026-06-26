@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { nicheFromArticle } from "@/lib/factory/rubric";
-import { draftPromptFromTemplateNode } from "@/lib/factory/recipeDraft";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 20;
@@ -67,7 +66,7 @@ async function transfer(db: any, p: { template_id?: string | number; nodes?: any
     tool: n.tool_candidate || n.tool || null,
     // V2: предзаполняем ЧЕРНОВИК-СКЕЛЕТ из подсказки конкурента (владелец ПРАВИТ под товар, не копирует дословно — иначе клон-слоп)
     // V14: winner-пресет несёт готовый prompt → берём его первым
-    prompt: draftPromptFromTemplateNode(n, article, productName),
+    prompt: String(n.prompt || n.voiceover || n.visual_desc || "").slice(0, 1500),
     params: {
       // V14: winner-пресет несёт ПРОИЗВОДСТВЕННЫЕ params (движок/сабтайтры/музыка/визстиль) — наследуем их под низ,
       // контент-ключи ниже перекрывают. Для decompose-шаблонов n.params нет → это {} (поведение как раньше).
@@ -116,7 +115,7 @@ export async function GET(req: NextRequest) {
     }
     return NextResponse.json({ error: "нужен recipe_id (просмотр) или template_id+article (перенос)" }, { status: 400 });
   } catch (e) {
-    return NextResponse.json({ error: "рецепты упали: " + String((e as Error)?.message || e).slice(0, 160) }, { status: 500 });
+    return NextResponse.json({ error: "recipes crash: " + String((e as Error)?.message || e).slice(0, 160) }, { status: 500 });
   }
 }
 
@@ -128,7 +127,7 @@ export async function POST(req: NextRequest) {
     const r = await transfer(db, body);
     return NextResponse.json(r, { status: (r as { status?: number }).status || ((r as { error?: string }).error ? 400 : 200) });
   } catch (e) {
-    return NextResponse.json({ error: "рецепты упали: " + String((e as Error)?.message || e).slice(0, 160) }, { status: 500 });
+    return NextResponse.json({ error: "recipes crash: " + String((e as Error)?.message || e).slice(0, 160) }, { status: 500 });
   }
 }
 
@@ -143,6 +142,6 @@ export async function DELETE(req: NextRequest) {
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     return NextResponse.json({ ok: true, deleted: recipeId });
   } catch (e) {
-    return NextResponse.json({ error: "рецепты упали: " + String((e as Error)?.message || e).slice(0, 160) }, { status: 500 });
+    return NextResponse.json({ error: "recipes crash: " + String((e as Error)?.message || e).slice(0, 160) }, { status: 500 });
   }
 }

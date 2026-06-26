@@ -34,40 +34,6 @@ export interface GenHistoryRow {
 export interface GenHistoryResult {
   history: GenHistoryRow[];
   warning?: string;
-  summary?: {
-    attempts: number;
-    outputs: number;
-    best_otk: number | null;
-    last_status: string | null;
-    last_at: string | null;
-    variant_count: number;
-    attempt_span: number;
-  };
-}
-
-function summarizeHistory(history: GenHistoryRow[]) {
-  let outputs = 0;
-  let bestOtk: number | null = null;
-  let maxAttempt = 0;
-  const variants = new Set<number>();
-  for (const row of history) {
-    if (row.output_url) outputs += 1;
-    const otk = typeof row.otk_score === "number" ? row.otk_score : null;
-    if (otk != null && (bestOtk == null || otk > bestOtk)) bestOtk = otk;
-    const attempt = Number(row.attempt) || 0;
-    if (attempt > maxAttempt) maxAttempt = attempt;
-    const variant = Number(row.variant_idx);
-    if (variant > 0) variants.add(variant);
-  }
-  return {
-    attempts: history.length,
-    outputs,
-    best_otk: bestOtk,
-    last_status: history[0]?.status || null,
-    last_at: (history[0] as { created_at?: string } | undefined)?.created_at || null,
-    variant_count: variants.size,
-    attempt_span: maxAttempt,
-  };
 }
 
 // Записать попытку. Возвращает id строки (для parent_id следующей итерации) или null при мягкой деградации.
@@ -122,8 +88,7 @@ export async function getRecipeHistoryResult(recipeId: number, limit = 50): Prom
       .order("created_at", { ascending: false })
       .limit(limit);
     if (error) return { history: [], warning: error.message.slice(0, 160) };
-    const history = (data as GenHistoryRow[]) || [];
-    return { history, summary: summarizeHistory(history) };
+    return { history: (data as GenHistoryRow[]) || [] };
   } catch (e) {
     return { history: [], warning: String((e as Error)?.message || e).slice(0, 160) };
   }

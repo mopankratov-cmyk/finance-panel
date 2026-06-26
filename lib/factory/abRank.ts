@@ -41,11 +41,10 @@ export function variantScore(m: VariantMetric): number {
 // Лузеры = низ loserFrac (дефолт 0.6 — «режь нижние 60%» из перформанс-практики) И score < median.
 export function rankVariants(
   rows: VariantMetric[],
-  opts?: { winnerTopFrac?: number; loserFrac?: number; minWinnerViews?: number },
+  opts?: { winnerTopFrac?: number; loserFrac?: number },
 ): { ranked: RankedVariant[]; medianScore: number; summary: { winners: number; mid: number; losers: number; total: number } } {
   const winnerTopFrac = opts?.winnerTopFrac ?? 0.2;
   const loserFrac = opts?.loserFrac ?? 0.6;
-  const minWinnerViews = Math.max(0, Number(opts?.minWinnerViews ?? 100) || 0);
   const scored = (rows || []).map((m) => ({ ...m, score: variantScore(m) }));
   scored.sort((a, b) => b.score - a.score);
   const n = scored.length;
@@ -57,7 +56,7 @@ export function rankVariants(
     const rank = i + 1;
     let tier: Tier = "mid";
     if (n >= 2) {
-      if (i < winnerCut && s.score > med && s.score > 0 && (Number(s.views) || 0) >= minWinnerViews) tier = "winner";
+      if (i < winnerCut && s.score > med && s.score > 0) tier = "winner";
       else if (i >= loserStart && s.score < med) tier = "loser";
     }
     return { ...s, rank, tier };

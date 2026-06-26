@@ -6,8 +6,8 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 30;
 
 // A/B-петля хит-рейта (read-only): ранжирует ролики портфеля по рыночным метрикам (post_metrics) →
-// кандидаты на ручной разбор: сильные варианты можно рассмотреть для следующего рецепта,
-// слабые — временно держать на паузе. НИЧЕГО не меняет и не запускает авто-скейл.
+// винеры (множить через /reel-recompose|/recipe-variants) и лузеры (стоп/не лить). Операционализирует
+// вывод юнитки: «узкое место — хит-рейт, не деньги». НИЧЕГО не меняет — только читает и советует.
 //   GET ?niche=&since=ISO&recipe_ids=1,2&limit=  → { ok, ranked:[…], summary, winners:[…], losers:[…] }
 
 function hookFromRunPlan(runPlan: unknown): string {
@@ -19,17 +19,11 @@ function hookFromRunPlan(runPlan: unknown): string {
 export async function GET(req: NextRequest) {
   try {
     const db = getSupabaseAdmin();
-    if (!db) return NextResponse.json({
-      ok: true,
-      ranked: [],
-      summary: { winners: 0, mid: 0, losers: 0, total: 0 },
-      warning: "Supabase не настроен — A/B ранжирование временно пустое",
-    }, { headers: { "Cache-Control": "no-store" } });
+    if (!db) return NextResponse.json({ ok: false, error: "Supabase не настроен" }, { status: 500 });
     const sp = req.nextUrl.searchParams;
     const niche = (sp.get("niche") || "").trim();
     const since = (sp.get("since") || "").trim();
     const limit = Math.min(2000, Math.max(10, Number(sp.get("limit")) || 500));
-    const minWinnerViews = Math.max(0, Number(sp.get("min_winner_views") || 100) || 0);
     const explicitIds = (sp.get("recipe_ids") || "").split(",").slice(0, 1000).map((s) => Number(s.trim())).filter((n) => n > 0);
 
     // 1) метрики рынка (несколько снапшотов на ролик возможны → берём лучший по views)
@@ -42,11 +36,11 @@ export async function GET(req: NextRequest) {
         ok: true,
         ranked: [],
         summary: { winners: 0, mid: 0, losers: 0, total: 0 },
-        warning: "post_metrics недоступна: " + pmError.message.slice(0, 140),
-      }, { headers: { "Cache-Control": "no-store" } });
+        note: "post_metrics недоступна: " + pmError.message.slice(0, 140),
+      });
     }
     const rows = (pm as Record<string, unknown>[] | null) || [];
-    if (!rows.length) return NextResponse.json({ ok: true, ranked: [], summary: { winners: 0, mid: 0, losers: 0, total: 0 }, warning: "нет данных post_metrics (впиши реальные метрики через /post-metrics)" }, { headers: { "Cache-Control": "no-store" } });
+    if (!rows.length) return NextResponse.json({ ok: true, ranked: [], summary: { winners: 0, mid: 0, losers: 0, total: 0 }, note: "нет данных post_metrics (впиши реальные метрики через /post-metrics)" });
 
     // агрегируем по recipe_id: лучший снапшот (max views)
     const best = new Map<number, Record<string, unknown>>();
@@ -64,8 +58,8 @@ export async function GET(req: NextRequest) {
         ok: true,
         ranked: [],
         summary: { winners: 0, mid: 0, losers: 0, total: 0 },
-        warning: "node_recipes недоступна: " + recError.message.slice(0, 140),
-      }, { headers: { "Cache-Control": "no-store" } });
+        note: "node_recipes недоступна: " + recError.message.slice(0, 140),
+      });
     }
     const recMap = new Map<number, Record<string, unknown>>();
     for (const r of ((recs as Record<string, unknown>[] | null) || [])) recMap.set(Number(r.id), r);
@@ -88,7 +82,7 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    const { ranked, medianScore, summary } = rankVariants(metrics, { minWinnerViews });
+    const { ranked, medianScore, summary } = rankVariants(metrics);
     // обогащаем винеров/лузеров полями рецепта (для рекомендаций)
     const enrich = (rv: typeof ranked) => rv.map((x) => {
       const meta = metrics.find((m) => m.recipe_id === x.recipe_id);
@@ -96,27 +90,18 @@ export async function GET(req: NextRequest) {
     });
     const winners = enrich(ranked.filter((r) => r.tier === "winner"));
     const losers = enrich(ranked.filter((r) => r.tier === "loser"));
-    const review = winners.map((w) => w.recipe_id);
-    const hold = losers.map((l) => l.recipe_id);
 
     return NextResponse.json({
-      ok: true, median_score: Math.round(medianScore), min_winner_views: minWinnerViews, summary,
+      ok: true, median_score: Math.round(medianScore), summary,
       ranked: enrich(ranked),
       winners, losers,
       recommend: {
-        review,
-        hold,
-        scale: review, // legacy alias for older clients; do not treat as an auto-scale command
-        kill: hold, // legacy alias for older clients; do not treat as an auto-stop command
-        note: `Read-only: кандидаты после ${minWinnerViews}+ просмотров требуют ручного решения; слабые варианты держать на паузе. Авто-скейл выключен.`,
+        scale: winners.map((w) => w.recipe_id),  // множить: /reel-recompose или /recipe-variants на этих хуках
+        kill: losers.map((l) => l.recipe_id),     // стоп: не лить, хуки в чёрный список
+        note: "Винеры → размножить (reuse R вокруг их хука/футажа). Лузеры → не лить. Хит-рейт = винеров/всего.",
       },
-    }, { headers: { "Cache-Control": "no-store" } });
+    });
   } catch (e) {
-    return NextResponse.json({
-      ok: true,
-      ranked: [],
-      summary: { winners: 0, mid: 0, losers: 0, total: 0 },
-      warning: "ранжирование A/B упало: " + String((e as Error)?.message || e).slice(0, 160),
-    }, { headers: { "Cache-Control": "no-store" } });
+    return NextResponse.json({ ok: false, error: "ab-rank crash: " + String((e as Error)?.message || e).slice(0, 160) }, { status: 500 });
   }
 }

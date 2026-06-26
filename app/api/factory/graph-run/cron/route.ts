@@ -20,13 +20,13 @@ export async function GET(req: NextRequest) {
     const auth = req.headers.get("authorization") || "";
     const secret = process.env.CRON_SECRET || "";
     if (secret && auth !== `Bearer ${secret}`) {
-      return NextResponse.json({ error: "неверный CRON_SECRET" }, { status: 401 });
+      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
     }
     const db = getSupabaseAdmin();
     if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 500 });
     const result = await wakeStaleRecipes(db, req.nextUrl.origin, { trigger: "cron" });
     return NextResponse.json({ ok: true, ...result });
   } catch (e) {
-    return NextResponse.json({ error: "cron прогона упал: " + String((e as Error)?.message || e).slice(0, 180) }, { status: 500 });
+    return NextResponse.json({ error: "graph-run/cron crash: " + String((e as Error)?.message || e).slice(0, 180) }, { status: 500 });
   }
 }

@@ -96,7 +96,7 @@ export async function POST(req: NextRequest) {
       ready: 0,
       total: 0,
       status: [],
-      log: ["анализ ниш корпуса упал: " + String((e as Error)?.message || e).slice(0, 160)],
+      log: ["corpus/analyze-niches crash: " + String((e as Error)?.message || e).slice(0, 160)],
     }, { status: 500 });
   }
 }
