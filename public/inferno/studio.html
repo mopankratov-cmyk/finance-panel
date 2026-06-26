@@ -2296,6 +2296,7 @@ function recipeCard(r){ const needsRejudge=!!(r.needs_rejudge||(r.status==="otk_
   const errText=needsRejudge?"нужна перепроверка":(r.catalog_error?("каталог: "+String(r.catalog_error).slice(0,90)):((r.node_errors&&r.node_errors[0])?String(r.node_errors[0].error||"ошибка ноды").slice(0,90):""));
   const shownStatus=sprintWarning?"warning":r.status;
   const recipeMeta=[nicheLabel(r.niche), formatLabel(r.format_detected||r.format||r.mode), recipeBuiltByLabel(r.built_by)].filter(Boolean).join(" · ");
+  const isRunningRecipe=r.status==="running"&&r.step!=="done"&&r.step!=="failed";
   return el("div",{class:"card",style:"padding:12px;cursor:pointer;"+(hasErr?"border-color:rgba(245,158,11,.55);":""),
     title:errText||"",onclick:()=>openRecipe(r.id).then(ok=>{ if(ok)go("canvas"); })},
     el("div",{style:"display:flex;align-items:center;gap:8px;margin-bottom:7px;"},el("span",{class:"sq",style:"width:8px;height:8px;background:"+c}),el("span",{class:"mono",style:"font-size:9px;color:var(--tx-lo);"},"граф #"+r.id),el("span",{class:"dot",style:"width:8px;height:8px;background:"+stC+";margin-left:auto;"}),
@@ -2311,6 +2312,12 @@ function recipeCard(r){ const needsRejudge=!!(r.needs_rejudge||(r.status==="otk_
     summary?(el("div",{class:"mono",style:"font-size:9.5px;color:var(--tx-lo2);margin-top:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"},
       (summary.active_step?("идёт "+runStepLabel(summary.active_step)+" · "):"")+(summary.last_step?("последний "+runStepLabel(summary.last_step)+" · "):"")+(summary.total_ms!=null?("время "+fmtMs(summary.total_ms)):""))):null,
     errText?el("div",{class:"mono",style:"font-size:9.5px;color:var(--warn);margin-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"},errText):null,
+    el("div",{style:"margin-top:8px;display:flex;gap:6px;align-items:center;flex-wrap:wrap;",onclick:(e)=>e.stopPropagation()},
+      isRunningRecipe
+        ? el("button",{class:"btn sm",style:"padding:4px 8px;",onclick:()=>go("worker")},"пульс")
+        : el("button",{class:"btn sm",style:"padding:4px 8px;",onclick:()=>startProductionRun(r.id,{restart:r.status==="run_fail"||r.status==="warning"})},"старт"),
+      r.output_url?el("button",{class:"btn sm",style:"padding:4px 8px;",onclick:()=>openMedia(r.output_url,{video:true})},"MP4"):null,
+      el("button",{class:"btn sm",style:"padding:4px 8px;",onclick:()=>openRecipe(r.id).then(ok=>{ if(ok)go("assembly"); })},"ОТК")),
     // V5: метрики после поста → обучение на РЫНКЕ (а не только ОТК-робот)
     el("div",{style:"margin-top:8px;display:flex;gap:5px;align-items:center;",title:"впиши реальные просмотры после публикации → хук валидируется рынком",onclick:(e)=>e.stopPropagation()},
       el("input",{class:"input",type:"number",placeholder:"просмотры (48ч)",style:"flex:1;min-width:0;font-size:11px;padding:4px 7px;",id:"pm-v-"+r.id}),
