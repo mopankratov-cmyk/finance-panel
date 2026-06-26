@@ -22,7 +22,7 @@ ok(/forwarded\s*=\s*res\.ok\s*&&\s*payload\?\.ok\s*===\s*true/.test(postMetrics)
 ok(/winners forward:/.test(postMetrics), "post-metrics warns when winner forward fails");
 ok(/post_metrics недоступна/.test(abRank), "ab-rank fails open when post_metrics is unavailable");
 ok(/node_recipes недоступна/.test(abRank), "ab-rank fails open when node_recipes lookup is unavailable");
-ok(/d\.warnings&&d\.warnings\.length\?"✓ метрики · warning"/.test(studio), "Studio shows warning when metrics saved but winner forward did not complete");
+ok(/d\.warnings&&d\.warnings\.length\?"✓ метрики · предупр\."/.test(studio), "Studio shows warning when metrics saved but winner forward did not complete");
 
 if (failed) process.exit(1);
 console.log(`marketFeedback: ${passed} passed, ${failed} failed`);

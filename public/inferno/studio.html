@@ -232,7 +232,7 @@ body{background:var(--bg-deep);font-family:var(--sans);color:var(--tx-hi);-webki
       <div class="logo">N</div>
       <div style="display:flex;flex-direction:column;line-height:1.1;">
         <span style="font-size:13px;font-weight:600;letter-spacing:.2px;">NODA<span style="color:var(--acc);">/</span>studio</span>
-        <span class="mono" style="font-size:10px;color:var(--tx-lo2);margin-top:2px;">viral video graph</span>
+        <span class="mono" style="font-size:10px;color:var(--tx-lo2);margin-top:2px;">завод коротких роликов</span>
       </div>
     </div>
     <div class="nav-cap">Экраны</div>
@@ -300,7 +300,7 @@ const S={
 // ИА студии: главная ось — ВИД КОНТЕНТА (после общей разведки). Старт → тип контента (свой пайплайн) → Система.
 const SCREENS=[
   {id:"center",grp:"Старт",chip:"01",tt:"Командный центр",st:"карта осознания"},
-  {id:"compete",grp:"Старт",chip:"02",tt:"Анализ конкурентов",st:"разведка · decompose"},
+  {id:"compete",grp:"Старт",chip:"02",tt:"Анализ конкурентов",st:"разведка · разбор"},
   {id:"canvas",grp:"🎬 Видео",chip:"03",tt:"Нод-канвас",st:"граф видео"},
   {id:"inspector",grp:"🎬 Видео",chip:"04",tt:"Инспектор ноды",st:"настройки"},
   {id:"assembly",grp:"🎬 Видео",chip:"05",tt:"Сборка · ОТК",st:"таймлайн"},
@@ -370,6 +370,54 @@ function openMedia(url,opts){ opts=opts||{};
   document.body.appendChild(ov); document.addEventListener("keydown",onMediaKey);
 }
 function nicheLabel(n){ const f=S.niches.find(x=>x.niche===n); return (f&&f.label)||({cosmetics:"Косметика",clothing:"Одежда",toys:"Игрушки",default:"Прочее"}[n])||n; }
+function formatLabel(value){
+  const raw=String(value||"").trim();
+  const normalized=raw.toLowerCase();
+  if(!raw) return "формат не выбран";
+  if(/before[_ -]?after|до\/после/.test(normalized)) return "до / после";
+  if(/ugc|talking[_ -]?head/.test(normalized)) return "UGC";
+  if(/hook/.test(normalized)) return "хук";
+  if(/carousel|карусел|slide|слайд/.test(normalized)) return "карусель";
+  if(/static|статик|photo|image|card|pin/.test(normalized)) return "статика";
+  if(/pov/.test(normalized)) return "POV";
+  if(/narration|voiceover/.test(normalized)) return "озвучка";
+  return raw.replace(/[_-]+/g," ");
+}
+function recipeBuiltByLabel(value){
+  return {
+    manual:"ручной",
+    assisted:"с подсказкой",
+    auto:"авто",
+  }[String(value||"").trim()] || "сборка не отмечена";
+}
+function runStepLabel(value){
+  const raw=String(value||"").trim();
+  const normalized=raw.toLowerCase();
+  if(!raw) return "шаг";
+  return {
+    start:"старт",
+    prepare:"подготовка",
+    prepared:"подготовлено",
+    scenario:"сценарий",
+    script:"сценарий",
+    render_submit:"отправка в рендер",
+    "render-submit":"отправка в рендер",
+    render_poll:"ожидание рендера",
+    "render-poll":"ожидание рендера",
+    render_done:"рендер готов",
+    "render-done":"рендер готов",
+    assemble:"сборка",
+    montage:"сборка",
+    otk:"ОТК",
+    critic:"ОТК",
+    quality_gate:"ОТК",
+    upload:"загрузка",
+    save:"сохранение",
+    saved:"сохранено",
+    done:"готово",
+    failed:"сбой",
+  }[normalized] || raw.replace(/[_-]+/g," ");
+}
 
 function observerTone(o){
   if(S.observerLoading && !o) return { label:"читаю пульс", tone:"warn", hint:"обновляю состояние завода" };
@@ -476,10 +524,10 @@ function screenText(root){
 
 // ── ЭКРАН СТАТИКИ: новая линия завода (пины/карточки/IG) — код-рендер StaticV1 (renderStill, без fal). ──
 function screenStatic(root){
-  header("Статика","пины · карточки · IG");
+  header("Статика","пины · карточки · лента");
   S.staticForm=S.staticForm||{article:"",formats:["card_3x4","pin_2x3"],archetype:"auto",headline:"",price:"",objective:"reach"};
   const f=S.staticForm;
-  const FORMATS=[["card_3x4","Карточка WB 3:4"],["pin_2x3","Пин 2:3"],["ig_4x5","IG/VK 4:5"]];
+  const FORMATS=[["card_3x4","Карточка WB 3:4"],["pin_2x3","Пин 2:3"],["ig_4x5","Лента 4:5"]];
   const ARCH=[["auto","Авто"],["headline_hero","Хедлайн-герой"],["product_color","Продукт на цвете"],["social_proof","Соц-пруф"],["collage","Коллаж 2×2"],["card_benefits","Карточка-выгоды"]];
   const inp=(ph,val,on)=>el("input",{value:val||"",placeholder:ph,style:"width:100%;background:var(--bg-input);border:1px solid var(--bd2);border-radius:7px;padding:8px 10px;color:var(--tx-hi);font-family:inherit;font-size:13px;box-sizing:border-box;",oninput:e=>on(e.target.value)});
   const lab=t=>el("div",{class:"muted",style:"font-size:12px;margin-bottom:5px;"},t);
@@ -488,7 +536,7 @@ function screenStatic(root){
   FORMATS.forEach(([id,l])=>fmtRow.appendChild(chip((f.formats.includes(id)?"✓ ":"")+l,f.formats.includes(id),()=>{f.formats=f.formats.includes(id)?f.formats.filter(x=>x!==id):[...f.formats,id];render();})));
   const archSel=el("select",{style:"width:100%;background:var(--bg-input);border:1px solid var(--bd2);border-radius:7px;padding:8px 10px;color:var(--tx-hi);font-family:inherit;font-size:13px;",onchange:e=>{f.archetype=e.target.value;}});
   ARCH.forEach(([id,l])=>{const o=el("option",{value:id},l); if(f.archetype===id)o.setAttribute("selected","selected"); archSel.appendChild(o);});
-  const objRow=el("div",{style:"display:flex;gap:7px;"},chip("Reach",f.objective==="reach",()=>{f.objective="reach";render();}),chip("Saves",f.objective==="saves",()=>{f.objective="saves";render();}));
+  const objRow=el("div",{style:"display:flex;gap:7px;"},chip("Охват",f.objective==="reach",()=>{f.objective="reach";render();}),chip("Сохранения",f.objective==="saves",()=>{f.objective="saves";render();}));
   const form=el("div",{class:"card",style:"padding:16px;display:flex;flex-direction:column;gap:12px;max-width:640px;"},
     el("div",{},lab("Артикул товара"),inp("CLR00912",f.article,v=>f.article=v)),
     el("div",{},lab("Форматы (одно намерение → N экспортов)"),fmtRow),
@@ -498,7 +546,7 @@ function screenStatic(root){
     el("div",{},lab("Хук (≤7 слов, обрежется)"),inp("Сумка, в которую влезает рабочая неделя",f.headline,v=>f.headline=v)),
     el("div",{},lab("Цена"),inp("2 990 ₽",f.price,v=>f.price=v)),
     el("button",{class:"btn primary",style:"align-self:flex-start;",onclick:()=>genStatic()},"✨ Сгенерировать"),
-    el("div",{class:"muted",style:"font-size:11.5px;"},"Код-рендер (renderStill) — без fal. Канон: docs/factory-pin-canon.md"));
+    el("div",{class:"muted",style:"font-size:11.5px;"},"Локальный рендер статики. Канон: docs/factory-pin-canon.md"));
   root.appendChild(form);
   const res=el("div",{id:"static-res",style:"margin-top:16px;"}); root.appendChild(res); renderStaticResults(res);
 }
@@ -537,10 +585,10 @@ function opsStatusTone(level){
 
 function fmtSecAgo(sec){
   if(sec==null) return "—";
-  if(sec < 60) return sec + "s";
+  if(sec < 60) return sec + "с";
   const m = Math.floor(sec / 60);
   const r = sec % 60;
-  return m + "m" + (r ? " " + r + "s" : "");
+  return m + "м" + (r ? " " + r + "с" : "");
 }
 
 function heartbeatIssueLabel(issue){
@@ -548,7 +596,7 @@ function heartbeatIssueLabel(issue){
   if(!code) return "нет сигнала";
   return {
     table_missing:"таблица не поднята",
-    sender_missing:"sender не запущен",
+    sender_missing:"передатчик пульса не запущен",
     permission_denied:"нет доступа",
     db_unreachable:"база недоступна",
   }[code] || code.replace(/_/g," ");
@@ -571,6 +619,35 @@ function isWorkerInfraAction(action){
     "inspect_db_connectivity",
   ]).has(String(action||""));
 }
+function suggestedActionLabel(action){
+  const code=String(action||"").trim();
+  return {
+    top_up_balances:"пополнить сервисы",
+    inspect_stuck_runs:"разобрать подвисшие прогоны",
+    triage_failed_runs:"разобрать сбои прогонов",
+    archive_legacy_failed_runs:"разнести архивные сбои",
+    inspect_render_path:"проверить путь рендера",
+    inspect_generation_path:"проверить путь генерации",
+    inspect_db_connectivity:"проверить связь с базой",
+    review_warning_taxonomy:"разобрать предупреждения",
+    review_legacy_warning_history:"просмотреть архив предупреждений",
+    restore_video_critic_model_path:"вернуть путь видео-критика",
+    review_text_prefilter_dependency:"проверить текстовый префильтр",
+    inspect_claude_upstream:"проверить ответ Claude",
+    inspect_video_critic_timeout_budget:"проверить таймаут видео-критика",
+    inspect_video_critic_structured_output:"проверить формат ответа видео-критика",
+    inspect_text_critic_fallback:"проверить резерв текстового критика",
+    inspect_observability_snapshot:"проверить снимок пульса",
+    inspect_failed_runs:"посмотреть сбойные прогоны",
+    inspect_storage_path:"проверить путь сохранения",
+    inspect_timeout_path:"проверить таймауты",
+    inspect_quality_gate_path:"проверить путь ОТК",
+    inspect_input_path:"проверить входные артефакты",
+    inspect_budget_guardrails:"проверить лимиты бюджета",
+    inspect_ops_endpoint:"проверить сводку завода",
+    continue_monitoring:"продолжать наблюдение",
+  }[code] || code.replace(/_/g," ");
+}
 function runQueueTone(status){
   return {
     running:{c:"var(--acc-lt)", bg:"var(--vio-bg)", label:"идёт"},
@@ -578,7 +655,7 @@ function runQueueTone(status){
     warning:{c:"var(--warn)", bg:"var(--warn-bg)", label:"предупр."},
     run_fail:{c:"var(--err)", bg:"var(--err-bg)", label:"сбой"},
     done:{c:"var(--ok)", bg:"var(--ok-bg)", label:"готово"},
-    generated:{c:"var(--ok)", bg:"var(--ok-bg)", label:"mp4"},
+    generated:{c:"var(--ok)", bg:"var(--ok-bg)", label:"ролик"},
     otk_pass:{c:"var(--ok)", bg:"var(--ok-bg)", label:"отк ок"},
   }[String(status||"")] || {c:"var(--tx-lo2)", bg:"var(--bg-input)", label:String(status||"?")};
 }
@@ -591,7 +668,7 @@ function renderOpsFetchFallback(host,errorText,stale){
   card.appendChild(el("div",{style:"font-size:12px;color:var(--tx-bd);line-height:1.5;"},
     stale
       ? "не удалось подтянуть свежий снимок, поэтому оставляю на экране последний удачный статус."
-      : "не удалось прочитать `/ops`, поэтому экран пока не может собрать статус завода."));
+      : "не удалось подтянуть сводку завода, поэтому экран пока не может собрать статус."));
   if(errorText){
     card.appendChild(el("div",{class:"mono",style:"font-size:10.5px;color:var(--tx-lo);line-height:1.45;margin-top:8px;"},
       "деталь: ", String(errorText).slice(0,140)));
@@ -641,7 +718,7 @@ async function screenWorker(root, force, renderToken){
   const queueRuns=(activeRuns.length?activeRuns:recentRuns);
   const liveTone=workerStatusTone(live.state);
   const aliveNote=workerSource==="queue_fallback"&&live.state==="unknown"?"пульс не настроен":live.state==="alive"?"пульс свежий":live.state==="stale"?"пульс молчит":"пульс потерян";
-  const sourceLabel=workerSource==="heartbeat_db"?"таблица":"фолбэк";
+  const sourceLabel=workerSource==="heartbeat_db"?"таблица":"резерв";
   const orderedRuns=[...queueRuns]
     .sort((a,b)=>{
       const aw=(a&&a.stale)?0:(a&&a.active===false)?4:String(a&&a.status||"")==="running"?1:String(a&&a.status||"")==="warning"?2:String(a&&a.status||"")==="run_fail"?3:5;
@@ -653,22 +730,21 @@ async function screenWorker(root, force, renderToken){
   const focusRun=orderedRuns[0]||null;
   const focusRunTone=focusRun?runQueueTone(focusRun.stale?"stale_running":focusRun.status):runQueueTone("");
   const focusRunLabel=focusRun?(focusRun.stale||focusRun.status==="running"?"Текущий прогон":"Последний прогон"):"Прогон";
-  const focusRunTitle=focusRun?`recipe #${focusRun.recipe_id!=null?String(focusRun.recipe_id):"?"}`:"—";
+  const focusRunTitle=focusRun?`рецепт #${focusRun.recipe_id!=null?String(focusRun.recipe_id):"?"}`:"—";
   const focusRunDetail=!focusRun
     ? "живых и недавних прогонов пока нет"
     : focusRun.stale
-      ? (focusRun.active_step?`застрял на шаге ${focusRun.active_step}`:focusRun.last_step?`застрял после шага ${focusRun.last_step}`:"прогон завис в работе")
+      ? (focusRun.active_step?`застрял на шаге ${runStepLabel(focusRun.active_step)}`:focusRun.last_step?`застрял после шага ${runStepLabel(focusRun.last_step)}`:"прогон завис в работе")
       : String(focusRun.status||"")==="running"
-        ? (focusRun.active_step?`идёт шаг ${focusRun.active_step}`:focusRun.last_step?`последний шаг ${focusRun.last_step}`:"прогон в работе")
+        ? (focusRun.active_step?`идёт шаг ${runStepLabel(focusRun.active_step)}`:focusRun.last_step?`последний шаг ${runStepLabel(focusRun.last_step)}`:"прогон в работе")
         : String(focusRun.status||"")==="warning"
-          ? `${Number(focusRun.warnings_count||0)} предупрежд., mp4 сохранён`
+          ? `${Number(focusRun.warnings_count||0)} предупрежд., ролик сохранён`
         : String(focusRun.status||"")==="run_fail"
             ? `сбой · ${errorCategoryLabel(focusRun.error_category)}`
             : "прогон завершён";
   const focusRunMeta=focusRun?[
-    focusRun.run_id?String(focusRun.run_id).slice(0,18):"",
     focusRun.created_at?fmtWhen(focusRun.created_at):"",
-    focusRun.total_ms!=null?`${Math.round(Number(focusRun.total_ms||0)/1000)}s`:"",
+    focusRun.total_ms!=null?`${Math.round(Number(focusRun.total_ms||0)/1000)}с`:"",
   ].filter(Boolean):[];
   renderFactoryPulse();
 
@@ -704,13 +780,13 @@ async function screenWorker(root, force, renderToken){
   if(visibleSuggested.length){
     const nextCard=el("div",{class:"card",style:"padding:14px;margin-bottom:14px;"});
     nextCard.appendChild(el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;"},
-      el("div",{style:"font-size:14px;font-weight:600;"},"Что чинить в заводе"),
-      el("span",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);"},String(factorySuggested.length)+" items")));
+      el("div",{style:"font-size:14px;font-weight:600;"},"Что проверить сейчас"),
+      el("span",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);"},String(factorySuggested.length)+" пунктов")));
     visibleSuggested.forEach((a)=>nextCard.appendChild(el("div",{style:"display:flex;align-items:flex-start;justify-content:space-between;gap:10px;font-size:11.5px;color:var(--tx-bd);padding:7px 0;border-top:1px solid var(--bd);"},
       el("div",{style:"min-width:0;display:flex;flex-direction:column;gap:3px;"},
         el("div",{style:"display:flex;align-items:center;gap:8px;flex-wrap:wrap;"},
           el("span",{class:"mono",style:"font-size:9.5px;color:"+(a.priority==="p0"?"var(--err)":a.priority==="p1"?"var(--warn)":"var(--acc-lt)")+";background:"+(a.priority==="p0"?"var(--err-bg)":a.priority==="p1"?"var(--warn-bg)":"var(--vio-bg)")+";padding:2px 6px;border-radius:5px;font-weight:700;"},String(a.priority||"p2").toUpperCase()),
-          el("span",{class:"mono",style:"font-size:10px;color:var(--tx-hi);"},String(a.action||"action"))),
+          el("span",{style:"font-size:11px;font-weight:600;color:var(--tx-hi);"},suggestedActionLabel(a&&a.action))),
         el("div",{style:"line-height:1.45;color:var(--tx-lo);"},String(a.reason||""))),
       null)));
     wrap.appendChild(nextCard);
@@ -722,7 +798,7 @@ async function screenWorker(root, force, renderToken){
       el("div",{style:"font-size:14px;font-weight:600;"},"Сигнал пульса"),
       el("span",{class:"mono",style:"font-size:10px;color:"+(heartbeatDiag.issue==="table_missing"?"var(--err)":"var(--warn)")+";background:rgba(0,0,0,.08);padding:3px 7px;border-radius:5px;font-weight:700;"},heartbeatIssueLabel(heartbeatDiag.issue))));
     const heartbeatSummary=heartbeatDiag.issue==="table_missing"
-      ? "таблица пульса ещё не поднята, поэтому экран читает фолбэк и не блокирует прогоны."
+      ? "таблица пульса ещё не поднята, поэтому экран читает резервный снимок и не блокирует прогоны."
       : heartbeatDiag.detail
         ? String(heartbeatDiag.detail)
         : "пульс нестабилен, но завод продолжает идти в fail-open режиме.";
@@ -748,7 +824,7 @@ async function screenWorker(root, force, renderToken){
       el("span",{class:"mono",style:"font-size:10px;color:var(--tx-hi);background:var(--bg-input);border:1px solid var(--bd2);padding:3px 7px;border-radius:5px;"},"прогонов "+String(lsSummary.completed||0)+"/"+String(lsSummary.totalRuns||0)),
       el("span",{class:"mono",style:"font-size:10px;color:"+(lsSummary.failed?"var(--err)":"var(--ok)")+";background:"+(lsSummary.failed?"var(--err-bg)":"var(--ok-bg)")+";padding:3px 7px;border-radius:5px;"},"сбоев "+String(lsSummary.failed||0)),
       el("span",{class:"mono",style:"font-size:10px;color:var(--warn);background:var(--warn-bg);padding:3px 7px;border-radius:5px;"},"предупр. "+String(lsSummary.warnings||0)),
-      el("span",{class:"mono",style:"font-size:10px;color:var(--tx-hi);background:var(--bg-input);border:1px solid var(--bd2);padding:3px 7px;border-radius:5px;"},"среднее "+String(lsSummary.avgDurationSec||0)+"s")));
+      el("span",{class:"mono",style:"font-size:10px;color:var(--tx-hi);background:var(--bg-input);border:1px solid var(--bd2);padding:3px 7px;border-radius:5px;"},"среднее "+String(lsSummary.avgDurationSec||0)+"с")));
     if(lsStability){
       latestCard.appendChild(el("div",{style:"font-size:11px;color:var(--tx-bd);line-height:1.45;margin-top:8px;"},
         lsStability.target_met
@@ -777,7 +853,7 @@ async function screenWorker(root, force, renderToken){
     el("div",{style:"font-size:14px;font-weight:600;"},"Живые прогоны"),
     el("span",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);"},String(queueRuns.length||0)+" в выборке")));
   if(!queueRuns.length){
-    list.appendChild(emptyBox("прогоны ещё не появлялись или observability snapshot пуст"));
+    list.appendChild(emptyBox("прогоны ещё не появлялись или снимок пульса пока пуст"));
   } else {
     const queueMeta=el("div",{style:"display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;"});
     [
@@ -796,19 +872,19 @@ async function screenWorker(root, force, renderToken){
       const recipeId=r&&r.recipe_id!=null?String(r.recipe_id):"?";
       const metaBits=[
         r&&r.created_at?fmtWhen(r.created_at):"",
-        r&&r.total_ms!=null?`${Math.round(Number(r.total_ms||0)/1000)}s`:"",
+        r&&r.total_ms!=null?`${Math.round(Number(r.total_ms||0)/1000)}с`:"",
       ].filter(Boolean);
       const detail=String(r&&r.status||"")==="running"
         ? (r&&r.stale
-            ? (r&&r.active_step?`застрял на шаге ${r.active_step}`:r&&r.last_step?`застрял после шага ${r.last_step}`:"прогон завис в работе")
-            : (r&&r.active_step?`шаг ${r.active_step}`:r&&r.last_step?`последний шаг ${r.last_step}`:"прогон в работе"))
+            ? (r&&r.active_step?`застрял на шаге ${runStepLabel(r.active_step)}`:r&&r.last_step?`застрял после шага ${runStepLabel(r.last_step)}`:"прогон завис в работе")
+            : (r&&r.active_step?`шаг ${runStepLabel(r.active_step)}`:r&&r.last_step?`последний шаг ${runStepLabel(r.last_step)}`:"прогон в работе"))
         : String(r&&r.status||"")==="warning"
           ? `${Number(r&&r.warnings_count||0)} предупрежд.`
         : String(r&&r.status||"")==="run_fail"
             ? `${r&&r.legacy?"архивный ":""}сбой · ${errorCategoryLabel(r&&r.error_category)}`
             : "завершён";
       list.appendChild(el("div",{style:"display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:start;padding:"+(idx? "10px 0 0":"0")+";border-top:"+(idx?"1px solid var(--bd)":"none")+";"},
-        el("div",{style:"font-size:12px;font-weight:700;color:var(--tx-hi);"},`recipe #${recipeId}`),
+        el("div",{style:"font-size:12px;font-weight:700;color:var(--tx-hi);"},`рецепт #${recipeId}`),
         el("div",{style:"min-width:0;display:flex;flex-direction:column;gap:4px;"},
           el("div",{style:"font-size:12.5px;font-weight:600;line-height:1.4;"},detail),
           metaBits.length?el("div",{style:"font-size:11px;color:var(--tx-lo);line-height:1.45;"},metaBits.join(" · ")):null),
@@ -825,7 +901,7 @@ async function genStatic(){
   if(!f.headline.trim()){ toast("впиши хук"); return; }
   if(!f.formats.length){ toast("выбери формат"); return; }
   const autoArch={card_3x4:"card_benefits",pin_2x3:"headline_hero",ig_4x5:"product_color"};
-  const labels={card_3x4:"Карточка 3:4",pin_2x3:"Пин 2:3",ig_4x5:"IG 4:5"};
+  const labels={card_3x4:"Карточка 3:4",pin_2x3:"Пин 2:3",ig_4x5:"Лента 4:5"};
   S.staticJobs=[]; renderStaticResults();
   for(const fmt of f.formats){
     const arch=f.archetype==="auto"?(autoArch[fmt]||"headline_hero"):f.archetype;
@@ -1124,7 +1200,7 @@ function renderObservabilityCard(host){
         el("span",{class:"mono",style:"font-size:9.5px;color:"+(r.status==="run_fail"?"var(--err)":"var(--warn)")+";font-weight:700;"},(r.recipe_id?("#"+r.recipe_id+" · "):"")+runQueueTone(r&&r.stale?"stale_running":r.status).label),
         el("span",{class:"mono",style:"font-size:9.5px;color:var(--tx-lo2);"},r.total_ms!=null?fmtMs(r.total_ms):fmtWhen(r.created_at))),
       el("div",{class:"mono",style:"font-size:10px;color:var(--tx-bd);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"},
-        (r.last_step?("шаг "+r.last_step):"шаг ?")+(r.last_status?(" · "+r.last_status):"")+(r.error_category?(" · "+errorCategoryLabel(r.error_category)):"")),
+        (r.last_step?("шаг "+runStepLabel(r.last_step)):"шаг ?")+(r.last_status?(" · "+r.last_status):"")+(r.error_category?(" · "+errorCategoryLabel(r.error_category)):"")),
       r.error?el("div",{class:"mono",style:"font-size:9.5px;color:var(--tx-mid);line-height:1.35;"},String(r.error).slice(0,110)):null)));
   }
   if(series.length){
@@ -1274,7 +1350,7 @@ async function renderMarketer(aside, force){
     const g=el("div",{style:"display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:16px;"});
     br.viral_examples.slice(0,2).forEach(v=>g.appendChild(el("a",{href:v.url||"#",target:"_blank",style:"border-radius:9px;overflow:hidden;border:1px solid var(--bd);background:var(--bg-card);text-decoration:none;color:inherit;"},
       el("div",{class:"ph",style:"aspect-ratio:9/13;position:relative;"},
-        el("span",{class:"mono tbadge",style:"position:absolute;top:6px;left:6px;background:var(--ok);"},v.score?Number(v.score).toFixed(0):"viral")),
+        el("span",{class:"mono tbadge",style:"position:absolute;top:6px;left:6px;background:var(--ok);"},v.score?Number(v.score).toFixed(0):"топ")),
       el("div",{style:"padding:7px;"},el("div",{style:"font-size:10.5px;color:var(--tx-bd);line-height:1.3;"},trunc(v.why,52))))));
     body.appendChild(g);
   }
@@ -1315,7 +1391,7 @@ async function loadCovers(feed){
 async function screenCompete(root){
   root.innerHTML="";                       // runDecompose зовёт напрямую (минуя render) — чистим, иначе feed+stage дублируются
   const dn=S.decompose&&S.decompose.nodes?S.decompose.nodes.length:0;
-  header("Анализ конкурентов","decompose · "+nicheLabel(S.activeNiche), el("div",{class:"hdr-r"},
+  header("Анализ конкурентов","разбор · "+nicheLabel(S.activeNiche), el("div",{class:"hdr-r"},
     dn?el("span",{style:"font-size:12px;color:var(--tx-lo);"},"Разобрано на ",el("b",{style:"color:var(--tx-hi);"},dn+" нод")):null,
     el("button",{class:"btn primary",onclick:()=>transferRecipe(),disabled:dn?null:"disabled",style:dn?"":"opacity:.5;"},"⇪ Перенести ноды себе")));
   const aside=el("div",{class:"aside",style:"width:268px;border-left:none;border-right:1px solid var(--bd);padding:14px;"});
@@ -1352,8 +1428,8 @@ async function screenCompete(root){
         S.covers[v.id]?el("img",{src:S.covers[v.id],loading:"lazy",style:"position:absolute;inset:0;width:100%;height:100%;object-fit:cover;"}):null,
         v.url?el("span",{style:"font-size:11px;color:rgba(255,255,255,.9);position:relative;z-index:1;"+(S.covers[v.id]?"text-shadow:0 1px 5px #000;":"")},"▶"):null),
       el("div",{style:"min-width:0;"},
-        el("div",{style:"font-size:12px;font-weight:"+(sel?"600":"500")+";white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"},(v.caption||v.hook_text||(v.format_detected?v.format_detected+" · "+(v.platform||""):"клип "+fmtViews(v.views))).slice(0,28)),
-        el("div",{class:"mono",style:"font-size:10px;color:"+(sel?"var(--acc-lt)":"var(--tx-lo2)")+";margin-top:3px;"},fmtViews(v.views)+" · score "+(v.virality_score?Number(v.virality_score).toFixed(0):"?")))));
+        el("div",{style:"font-size:12px;font-weight:"+(sel?"600":"500")+";white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"},(v.caption||v.hook_text||(v.format_detected?formatLabel(v.format_detected)+" · "+(v.platform||""):"клип "+fmtViews(v.views))).slice(0,28)),
+        el("div",{class:"mono",style:"font-size:10px;color:"+(sel?"var(--acc-lt)":"var(--tx-lo2)")+";margin-top:3px;"},fmtViews(v.views)+" · индекс "+(v.virality_score?Number(v.virality_score).toFixed(0):"?")))));
   });
   const justRan=_decomposeJustRan; _decomposeJustRan=false;
   if(S.decompose&&S.decompose.error&&!justRan){ S.decompose=null; S.decomposeVideo=null; S.selectedVideo=null; } // стейл-ошибка разбора не висит при свежем входе на 02
@@ -1362,7 +1438,7 @@ async function screenCompete(root){
 let _decomposeJustRan=false; // отличаем «ошибку разбора только что» от стейл-ошибки прошлого раза
 async function runDecompose(v){
   S.decomposeLoading=true; S.decompose=null; S.decomposeVideo=v;
-  header("Анализ конкурентов","decompose · "+nicheLabel(S.activeNiche));
+  header("Анализ конкурентов","разбор · "+nicheLabel(S.activeNiche));
   renderDecompose();
   const d=await api("/decompose?viral_video_id="+v.id);
   S.decomposeLoading=false;
@@ -1385,11 +1461,11 @@ function renderDecompose(){
         el("span",{class:"mono",style:"position:absolute;bottom:7px;font-size:10px;color:var(--acc-lt);"},fmtViews(v.views))),
       el("div",{style:"flex:1;min-width:0;"},
         el("div",{style:"font-size:15px;font-weight:600;"},(v.caption||v.hook_text||"Видео конкурента").slice(0,90)),
-        el("div",{style:"font-size:12px;color:var(--tx-lo);margin-top:5px;line-height:1.5;"},"Формат: "+(v.format_detected||"?")+" · просмотры: "+fmtViews(v.views)+" · сначала смотри ролик, потом жми разбор."),
+        el("div",{style:"font-size:12px;color:var(--tx-lo);margin-top:5px;line-height:1.5;"},"Формат: "+formatLabel(v.format_detected)+" · просмотры: "+fmtViews(v.views)+" · сначала смотри ролик, потом жми разбор."),
         el("div",{style:"display:flex;gap:7px;margin-top:11px;flex-wrap:wrap;"},
           dchip("var(--ok)","var(--ok-bg)","просмотры "+fmtViews(v.views)),
-          dchip("var(--warn)","var(--warn-bg)","score "+(v.virality_score?Number(v.virality_score).toFixed(0):"?")),
-          dchip("var(--acc-lt)","var(--vio-bg)",(v.platform||"TikTok")+" · "+(v.format_detected||"формат"))),
+          dchip("var(--warn)","var(--warn-bg)","индекс "+(v.virality_score?Number(v.virality_score).toFixed(0):"?")),
+          dchip("var(--acc-lt)","var(--vio-bg)",(v.platform||"TikTok")+" · "+formatLabel(v.format_detected))),
         el("div",{style:"display:flex;gap:9px;margin-top:14px;"},
           el("button",{class:"btn primary",onclick:()=>runDecompose(v)},"🔎 Разобрать это видео"),
           el("button",{class:"btn",onclick:()=>{ if(v.url)openMedia(v.url,{external:true,embed:S.embeds[v.id]}); }},"▶ Открыть оригинал"))));
@@ -1406,7 +1482,7 @@ function renderDecompose(){
       el("span",{class:"mono",style:"position:absolute;bottom:7px;font-size:10px;color:var(--acc-lt);"},fmtViews(v.views))),
     el("div",{style:"flex:1;min-width:0;"},
       el("div",{style:"font-size:15px;font-weight:600;"},(v.caption||"Видео конкурента").slice(0,90)),
-      el("div",{style:"font-size:12px;color:var(--tx-lo);margin-top:5px;line-height:1.5;"},"Формат: "+(d.format||"?")+" · восстановлен каркас из "+((d.nodes||[]).length)+" нод. Меняй содержимое под свой товар."),
+      el("div",{style:"font-size:12px;color:var(--tx-lo);margin-top:5px;line-height:1.5;"},"Формат: "+formatLabel(d.format)+" · восстановлен каркас из "+((d.nodes||[]).length)+" нод. Меняй содержимое под свой товар."),
       el("div",{style:"display:flex;gap:7px;margin-top:11px;"},
         dchip("var(--ok)","var(--ok-bg)","уверенность "+(d.confidence||"?")),
         dchip("var(--warn)","var(--warn-bg)","нод: "+((d.nodes||[]).length)),
@@ -1458,7 +1534,7 @@ async function screenCanvas(root){
   root.appendChild(palette); root.appendChild(canvas);
   const pin=el("div",{style:"flex:1;overflow-y:auto;padding:12px;"}); palette.appendChild(pin);
   pin.appendChild(el("div",{class:"sec-cap",style:"margin-bottom:9px;"},"Типы нод (референс)"));   // drag-to-add — скоро; пока легенда, не источник нод
-  [["Hook · хук","#5b9cf2"],["Scene · сцена","#46c08f"],["Payoff · ревил","#b078ef"],["Captions · титры","#ef6fa6"],["Music · музыка","#46c08f"],["Effects · эффекты","#d6a94e"]].forEach(([t,c])=>
+  [["Хук","#5b9cf2"],["Сцена","#46c08f"],["Ревил","#b078ef"],["Титры","#ef6fa6"],["Музыка","#46c08f"],["Эффекты","#d6a94e"]].forEach(([t,c])=>
     pin.appendChild(el("div",{style:"display:flex;align-items:center;gap:9px;padding:8px 9px;border-radius:8px;background:var(--bg-card);border:1px solid var(--bd);cursor:default;margin-bottom:5px;"},el("span",{class:"sq",style:"width:8px;height:8px;background:"+c}),el("span",{style:"font-size:12px;flex:1;"},t))));
   pin.appendChild(el("div",{class:"sec-cap",style:"margin:16px 0 9px;"},"Типы портов"));
   [["video","--p-video"],["audio","--p-audio"],["image","--p-image"],["script","--p-script"],["caption","--p-caption"],["product","--p-product"]].forEach(([t,v])=>
@@ -1484,6 +1560,37 @@ async function screenCanvas(root){
   canvas.appendChild(mm);
 }
 const NODE_TYPE_COLOR={hook_ugc:"#5b9cf2",hook:"#5b9cf2",talking_head:"#46c08f",ai_product_render:"#46c08f",before_after:"#b078ef",pov:"#46c08f",b_roll:"#46c08f",prank:"#46c08f",captions:"#ef6fa6",voiceover:"#46c08f",narration:"#46c08f",sound:"#46c08f",music:"#46c08f",carousel_slide:"#d6a94e",static_post:"#d6a94e"};
+function nodeTypeLabel(value){
+  const raw=String(value||"").trim();
+  const normalized=raw.toLowerCase();
+  return {
+    hook_ugc:"UGC-хук",
+    hook:"Хук",
+    talking_head:"Говорящая голова",
+    ai_product_render:"AI-кадр товара",
+    before_after:"До/после",
+    pov:"POV",
+    b_roll:"B-roll",
+    prank:"Скетч",
+    captions:"Титры",
+    voiceover:"Озвучка",
+    narration:"Наррация",
+    sound:"Звук",
+    music:"Музыка",
+    carousel_slide:"Слайд",
+    static_post:"Статика",
+  }[normalized] || (raw ? raw.replace(/[_-]+/g," ") : "нода");
+}
+function trackLabel(value){
+  return {
+    video:"Видео",
+    ugc:"UGC",
+    animation:"Анимация",
+    sound:"Звук",
+    music:"Музыка",
+    captions:"Титры",
+  }[String(value||"")] || nodeTypeLabel(value);
+}
 function canvasNode(n,p){
   const sug=n.agent_suggestion||{}; const c=NODE_TYPE_COLOR[n.node_type]||"#46c08f";
   const sel=S.selectedNode&&S.selectedNode.id===n.id;
@@ -1499,7 +1606,7 @@ function canvasNode(n,p){
       return box; })(),
     el("div",{style:"padding:9px 11px 11px;"},
       el("div",{style:"display:flex;align-items:center;justify-content:space-between;"},
-        el("span",{class:"mono tbadge",style:"background:"+c+";"},(n.node_type||n.slot||"node").toUpperCase().slice(0,9)),
+        el("span",{class:"mono tbadge",style:"background:"+c+";"},nodeTypeLabel(n.node_type||n.slot).toUpperCase().slice(0,12)),
         draft?el("span",{class:"mono",style:"font-size:9.5px;color:var(--tx-lo);background:var(--bg-input);padding:2px 6px;border-radius:4px;"},"черновик"):el("span",{class:"mono",style:"font-size:9.5px;color:var(--tx-lo2);background:var(--bg-input);padding:2px 6px;border-radius:4px;"},"#"+n.ordinal)),
       el("div",{style:"font-size:12.5px;font-weight:600;margin-top:8px;"+(draft?"color:var(--tx-mid);":"")},trunc(sug.onscreen_text||sug.voiceover||n.slot||"нода",30)),
       el("div",{style:"display:flex;align-items:center;gap:6px;margin-top:9px;padding-top:9px;border-top:1px solid var(--bd);"},el("span",{style:"width:7px;height:7px;border-radius:50%;background:"+(n.tool?c:"var(--tx-lo2)")},""),el("span",{style:"font-size:10.5px;color:"+(n.tool?"var(--tx-mid)":"var(--tx-lo2)")+";"},n.tool?(toolIcon(n.tool)+" "+n.tool):"＋ выбрать инструмент"))));
@@ -1528,7 +1635,7 @@ async function screenInspector(root){
   const c=NODE_TYPE_COLOR[n.node_type]||"#46c08f";
   ctx.appendChild(el("div",{style:"position:relative;width:230px;background:var(--bg-node);border:1.5px solid var(--acc);border-radius:13px;box-shadow:0 0 0 4px rgba(124,116,255,.12),0 18px 50px rgba(0,0,0,.5);"},
     el("div",{class:"ph",style:"aspect-ratio:9/16;margin:10px 10px 0;border-radius:9px;display:flex;align-items:flex-end;padding:10px;"},el("span",{class:"mono",style:"font-size:10px;color:var(--tx-mid);"},"▶ превью 9:16")),
-    el("div",{style:"padding:11px 13px 13px;"},el("div",{style:"display:flex;justify-content:space-between;"},el("span",{class:"mono tbadge",style:"background:"+c+";"},(n.node_type||"node").toUpperCase().slice(0,9)),el("span",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);"},"#"+n.ordinal)),el("div",{style:"font-size:13.5px;font-weight:600;margin-top:9px;"},((n.agent_suggestion||{}).onscreen_text||n.slot||"нода").slice(0,28)))));
+    el("div",{style:"padding:11px 13px 13px;"},el("div",{style:"display:flex;justify-content:space-between;"},el("span",{class:"mono tbadge",style:"background:"+c+";"},nodeTypeLabel(n.node_type).toUpperCase().slice(0,12)),el("span",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);"},"#"+n.ordinal)),el("div",{style:"font-size:13.5px;font-weight:600;margin-top:9px;"},((n.agent_suggestion||{}).onscreen_text||n.slot||"нода").slice(0,28)))));
   // price + preview
   const pr=PRICE[S.tool]||["$0.00","","var(--acc)","—"];
   aside.appendChild(el("div",{style:"flex:none;padding:14px 16px;border-bottom:1px solid var(--bd);"},
@@ -1618,7 +1725,7 @@ function inspectorField(f,n){
       if(S.selectedNode!==n)return; sel.innerHTML=""; fillBuiltin();
       if(opts.length){ const sep=el("option",{value:"",disabled:"disabled"},src.builtin?"— кастомные (Creatify) —":"— выбрать —"); sel.appendChild(sep);
         opts.forEach(o=>sel.appendChild(el("option",{value:o.id,selected:String(cur)===String(o.id)?"selected":null},(o.name||o.id)+(o.meta?" · "+o.meta:"")))); }
-      else if(!src.builtin)sel.appendChild(el("option",{value:""},"нет данных (нужны ключи Creatify в Vercel)"));
+      else if(!src.builtin)sel.appendChild(el("option",{value:""},"нет данных (нужны ключи Creatify в окружении)"));
     })();
   } else if(f.ui==="picker"&&S.tool==="disk_real"){
     // #20: живой пикер реальной съёмки по артикулу рецепта — оператор ВЫБИРАЕТ кадр, а не печатает вслепую
@@ -1855,10 +1962,10 @@ async function openBrandKit(){
     else if(kind==="area")inp=el("textarea",{style:INP+"min-height:52px;resize:vertical;"});
     else inp=el("input",{type:"text",style:INP,placeholder:kind==="color"?"#RRGGBB":(hint||"")});
     w.appendChild(inp); refs[key]=inp; form.appendChild(w); };
-  mk("voice_id","Голос (override_voice id)","скопируй из пикера в инспекторе");
-  mk("persona_id","Персона (override_avatar id)");
-  mk("visual_style","Шаблон композиции (visual_style id)");
-  mk("music_url","Фоновая музыка (url/id)");
+  mk("voice_id","Голос (ID override_voice)","скопируй из пикера в инспекторе");
+  mk("persona_id","Персона (ID override_avatar)");
+  mk("visual_style","Шаблон композиции (ID visual_style)");
+  mk("music_url","Фоновая музыка (ссылка или ID)");
   mk("caption_font","Шрифт субтитров","кириллица-safe","font");
   mk("caption_color","Цвет субтитров","","color");
   mk("caption_highlight","Цвет подсветки (karaoke)","","color");
@@ -1907,8 +2014,8 @@ async function screenAssembly(root){
   (S.recipe.nodes||[]).filter(n=>n.tool).forEach((n,i)=>{ const c=NODE_TYPE_COLOR[n.node_type]||"#46c08f";
     if(i>0)mgrow.appendChild(el("div",{style:"flex:none;width:24px;height:2px;background:var(--p-video);"}));
     mgrow.appendChild(el("div",{style:"flex:none;width:120px;background:var(--bg-node);border:1px solid var(--bd2);border-radius:9px;padding:9px 11px;"},
-      el("div",{style:"display:flex;align-items:center;justify-content:space-between;"},el("span",{class:"mono tbadge",style:"background:"+c+";font-size:8.5px;"},(n.node_type||"").toUpperCase().slice(0,6)),el("span",{class:"mono",style:"font-size:9px;color:var(--tx-lo2);"},"")),
-      el("div",{style:"font-size:11px;font-weight:500;margin-top:6px;"},(n.node_type||n.slot||"нода").slice(0,12)))); });
+      el("div",{style:"display:flex;align-items:center;justify-content:space-between;"},el("span",{class:"mono tbadge",style:"background:"+c+";font-size:8.5px;"},nodeTypeLabel(n.node_type).toUpperCase().slice(0,8)),el("span",{class:"mono",style:"font-size:9px;color:var(--tx-lo2);"},"")),
+      el("div",{style:"font-size:11px;font-weight:500;margin-top:6px;"},nodeTypeLabel(n.node_type||n.slot).slice(0,18)))); });
   left.appendChild(mg);
   const tlWrap=el("div",{style:"flex:1;min-height:0;overflow-y:auto;padding:16px 22px;"});
   tlWrap.appendChild(el("div",{class:"sec-cap",style:"margin-bottom:12px;"},"Таймлайн · дорожки"));
@@ -1934,8 +2041,8 @@ function renderTimeline(tl){
   TRACKS.forEach(([name,c])=>{
     const track=el("div",{style:"flex:1;position:relative;height:34px;background:var(--bg-panel);border:1px solid #1c2027;border-radius:6px;"});
     laid.filter(o=>o.track===name).forEach(o=>{ const left=(name==="music"||name==="captions")?0:(o.start/total*100); const w=name==="music"?100:(name==="captions"?100:o.len/total*100);
-      track.appendChild(el("div",{style:"position:absolute;top:3px;bottom:3px;left:"+left+"%;width:"+Math.max(6,w)+"%;background:"+hexA(c,.2)+";border:1px solid "+c+";border-radius:4px;display:flex;align-items:center;padding-left:7px;overflow:hidden;"},el("span",{class:"mono",style:"font-size:9.5px;color:"+c+";white-space:nowrap;"},trunc(o.n.node_type||o.n.slot||"",16)))); });
-    tracks.appendChild(el("div",{style:"display:flex;align-items:center;"},el("div",{style:"width:88px;flex:none;font-size:11px;color:var(--tx-mid);display:flex;align-items:center;gap:6px;"},el("span",{class:"sq",style:"background:"+c}),name),track));
+      track.appendChild(el("div",{style:"position:absolute;top:3px;bottom:3px;left:"+left+"%;width:"+Math.max(6,w)+"%;background:"+hexA(c,.2)+";border:1px solid "+c+";border-radius:4px;display:flex;align-items:center;padding-left:7px;overflow:hidden;"},el("span",{class:"mono",style:"font-size:9.5px;color:"+c+";white-space:nowrap;"},trunc(nodeTypeLabel(o.n.node_type||o.n.slot),16)))); });
+    tracks.appendChild(el("div",{style:"display:flex;align-items:center;"},el("div",{style:"width:88px;flex:none;font-size:11px;color:var(--tx-mid);display:flex;align-items:center;gap:6px;"},el("span",{class:"sq",style:"background:"+c}),trackLabel(name)),track));
   });
   tl.appendChild(el("div",{class:"mono",style:"margin-top:14px;font-size:10.5px;color:var(--tx-lo2);"},"⟂ автораскладка по длительности нод · музыка и титры — весь клип"));
 }
@@ -1955,19 +2062,19 @@ function renderOTK(otk){
   const warnings=(run.warnings||[]).filter(Boolean);
   const summary=run.run_summary||null;
   otk.appendChild(el("div",{style:"display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;"},
-    el("div",{style:"display:flex;align-items:center;gap:9px;"},el("div",{style:"width:30px;height:30px;border-radius:8px;background:"+(active?"var(--warn-bg)":sc100>=70?"var(--ok-bg)":"var(--err-bg)")+";display:flex;align-items:center;justify-content:center;font-size:14px;"},active?"…":sc100>=70?"✓":"✗"),el("div",{},el("div",{style:"font-size:13.5px;font-weight:600;"},"ОТК · контроль качества"),el("div",{class:"mono",style:"font-size:10.5px;color:var(--tx-lo2);"},active?("шаг: "+(run.step||"…")):"5 осей · вердикт"))),
+    el("div",{style:"display:flex;align-items:center;gap:9px;"},el("div",{style:"width:30px;height:30px;border-radius:8px;background:"+(active?"var(--warn-bg)":sc100>=70?"var(--ok-bg)":"var(--err-bg)")+";display:flex;align-items:center;justify-content:center;font-size:14px;"},active?"…":sc100>=70?"✓":"✗"),el("div",{},el("div",{style:"font-size:13.5px;font-weight:600;"},"ОТК · контроль качества"),el("div",{class:"mono",style:"font-size:10.5px;color:var(--tx-lo2);"},active?("шаг: "+runStepLabel(run.step||"")):"5 осей · вердикт"))),
     sc100!=null?el("div",{style:"text-align:right;"},el("div",{class:"mono",style:"font-size:22px;font-weight:700;color:"+(sc100>=70?"var(--ok)":sc100>=50?"var(--warn)":"var(--err)")+";line-height:1;"},String(sc100)),el("div",{style:"font-size:9px;color:var(--tx-lo2);"},"из 100")):null));
   if(run.run_id||warnings.length){
     otk.appendChild(el("div",{style:"display:flex;flex-direction:column;gap:6px;margin:-4px 0 14px;"},
-      run.run_id?el("div",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);"},"run "+run.run_id):null,
+      run.run_id?el("div",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);"},"прогон "+run.run_id):null,
       warnings.length?el("div",{style:"background:var(--warn-bg);border:1px solid rgba(245,158,11,.35);border-radius:8px;padding:8px 10px;"},
         el("div",{style:"font-size:11.5px;font-weight:700;color:var(--warn);margin-bottom:5px;"},"предупреждения · выпуск не заблокирован"),
         ...warnings.slice(0,3).map(w=>el("div",{class:"mono",style:"font-size:10px;color:var(--tx-mid);line-height:1.35;"},String(w).slice(0,150)))):null));
   }
   if(summary&&(summary.steps_total||summary.total_ms!=null||summary.active_step||summary.last_step)){
     otk.appendChild(el("div",{style:"display:flex;flex-wrap:wrap;gap:6px;margin:-2px 0 14px;"},
-      summary.active_step?el("span",{class:"mono",style:"font-size:9.5px;color:var(--acc-lt);background:var(--vio-bg);border:1px solid var(--bd-acc);padding:3px 7px;border-radius:5px;"},"идёт "+summary.active_step):null,
-      summary.last_step?el("span",{class:"mono",style:"font-size:9.5px;color:var(--tx-mid);background:var(--bg-input);border:1px solid var(--bd2);padding:3px 7px;border-radius:5px;"},"последний "+summary.last_step):null,
+      summary.active_step?el("span",{class:"mono",style:"font-size:9.5px;color:var(--acc-lt);background:var(--vio-bg);border:1px solid var(--bd-acc);padding:3px 7px;border-radius:5px;"},"идёт "+runStepLabel(summary.active_step)):null,
+      summary.last_step?el("span",{class:"mono",style:"font-size:9.5px;color:var(--tx-mid);background:var(--bg-input);border:1px solid var(--bd2);padding:3px 7px;border-radius:5px;"},"последний "+runStepLabel(summary.last_step)):null,
       summary.steps_total?el("span",{class:"mono",style:"font-size:9.5px;color:var(--tx-mid);background:var(--bg-input);border:1px solid var(--bd2);padding:3px 7px;border-radius:5px;"},"шагов "+summary.steps_total):null,
       summary.total_ms!=null?el("span",{class:"mono",style:"font-size:9.5px;color:var(--tx-mid);background:var(--bg-input);border:1px solid var(--bd2);padding:3px 7px;border-radius:5px;"},"время "+fmtMs(summary.total_ms)):null));
   }
@@ -1986,7 +2093,7 @@ function renderOTK(otk){
       list.appendChild(el("div",{style:"display:flex;align-items:flex-start;gap:8px;font-size:10.5px;line-height:1.35;"},
         el("span",{class:"mono",style:"flex:none;font-size:9px;color:"+col+";background:"+ (st==="done"?"var(--ok-bg)":st==="warning"?"var(--warn-bg)":"var(--err-bg)") +";padding:2px 5px;border-radius:4px;font-weight:700;"},st==="done"?"готово":st==="warning"?"предупр.":"сбой"),
         el("div",{style:"min-width:0;flex:1;color:var(--tx-bd);"},
-          el("div",{class:"mono",style:"color:var(--tx-hi);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"},e.step||"шаг"),
+          el("div",{class:"mono",style:"color:var(--tx-hi);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"},runStepLabel(e.step||"")),
           el("div",{class:"mono",style:"color:var(--tx-lo2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"},(inp?("вход "+inp):"")+(out?(" · выход "+out):"")),
           e.note?el("div",{class:"mono",style:"color:var(--tx-lo2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"},String(e.note).slice(0,120)):null)));
     });
@@ -2027,7 +2134,7 @@ function renderOTK(otk){
 }
 function nodeRunRow(n){ const c={done:"var(--ok)",error:"var(--err)",submitted:"var(--warn)",pending:"var(--tx-lo2)",skip:"var(--tx-lo3)"}[n.status]||"var(--tx-lo2)";
   const label={done:"готово",error:"сбой",submitted:"отправлено",pending:"ожидает",skip:"пропуск"}[n.status]||String(n.status||"—");
-  return el("div",{style:"display:flex;align-items:center;gap:8px;font-size:11px;"},el("span",{class:"dot",style:"width:8px;height:8px;background:"+c}),el("span",{style:"flex:1;color:var(--tx-mid);"},n.node_type||n.slot||"нода"),el("span",{class:"mono",style:"font-size:9.5px;color:"+c+";"},label)); }
+  return el("div",{style:"display:flex;align-items:center;gap:8px;font-size:11px;"},el("span",{class:"dot",style:"width:8px;height:8px;background:"+c}),el("span",{style:"flex:1;color:var(--tx-mid);"},nodeTypeLabel(n.node_type||n.slot)),el("span",{class:"mono",style:"font-size:9.5px;color:"+c+";"},label)); }
 function recipeStatusLabel(status){
   return {
     warning:"предупр.",
@@ -2157,6 +2264,7 @@ function recipeCard(r){ const needsRejudge=!!(r.needs_rejudge||(r.status==="otk_
   const errCat=r.error_category&&r.error_category!=="other"?String(r.error_category):"";
   const errText=needsRejudge?"нужна перепроверка":(r.catalog_error?("каталог: "+String(r.catalog_error).slice(0,90)):((r.node_errors&&r.node_errors[0])?String(r.node_errors[0].error||"ошибка ноды").slice(0,90):""));
   const shownStatus=sprintWarning?"warning":r.status;
+  const recipeMeta=[nicheLabel(r.niche), formatLabel(r.format_detected||r.format||r.mode), recipeBuiltByLabel(r.built_by)].filter(Boolean).join(" · ");
   return el("div",{class:"card",style:"padding:12px;cursor:pointer;"+(hasErr?"border-color:rgba(245,158,11,.55);":""),
     title:errText||"",onclick:()=>openRecipe(r.id).then(ok=>{ if(ok)go("canvas"); })},
     el("div",{style:"display:flex;align-items:center;gap:8px;margin-bottom:7px;"},el("span",{class:"sq",style:"width:8px;height:8px;background:"+c}),el("span",{class:"mono",style:"font-size:9px;color:var(--tx-lo);"},"граф #"+r.id),el("span",{class:"dot",style:"width:8px;height:8px;background:"+stC+";margin-left:auto;"}),
@@ -2166,11 +2274,11 @@ function recipeCard(r){ const needsRejudge=!!(r.needs_rejudge||(r.status==="otk_
       needsRejudge?el("span",{class:"mono",style:"font-size:9px;color:var(--warn);background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.35);padding:2px 5px;border-radius:4px;"},"ОТК ?"):null,
       el("span",{style:"font-size:12px;color:var(--tx-lo2);cursor:pointer;padding:0 2px;",title:"удалить рецепт",onclick:async(e)=>{ e.stopPropagation(); if(!confirm("Удалить граф #"+r.id+"?"))return; const cardEl=e.currentTarget.closest(".card"); const d=await api("/recipes?recipe_id="+r.id,{method:"DELETE"}); if(d.ok){ toast("удалён"); if(cardEl)cardEl.remove(); S.recipes=(S.recipes||[]).filter(x=>x.id!==r.id); if(S.recipe&&S.recipe.recipe&&String(S.recipe.recipe.id)===String(r.id)){ S.recipe=null; S.selectedNode=null; if(["canvas","inspector","assembly"].includes(S.screen))render(); } } else toast(d.error||"ошибка"); }},"✕")),
     el("div",{style:"font-size:12.5px;font-weight:600;"},(r.article||"—")),
-    el("div",{style:"font-size:10.5px;color:var(--tx-lo);margin-top:4px;"},(r.niche||"")+" · "+(r.format_detected||"")+" · "+(r.built_by||"")),
-    el("div",{class:"mono",style:"font-size:10px;color:"+(needsRejudge||sprintWarning?"var(--warn)":"var(--tx-lo2)")+";margin-top:7px;"},recipeStatusLabel(shownStatus)+(r.otk_score!=null?" · ОТК "+Math.round(r.otk_score*10):(needsRejudge?" · ОТК ?":""))+(r.step?" · "+r.step:"")),
+    el("div",{style:"font-size:10.5px;color:var(--tx-lo);margin-top:4px;"},recipeMeta),
+    el("div",{class:"mono",style:"font-size:10px;color:"+(needsRejudge||sprintWarning?"var(--warn)":"var(--tx-lo2)")+";margin-top:7px;"},recipeStatusLabel(shownStatus)+(r.otk_score!=null?" · ОТК "+Math.round(r.otk_score*10):(needsRejudge?" · ОТК ?":""))+(r.step?" · "+runStepLabel(r.step):"")),
     errCat?el("div",{class:"mono",style:"font-size:9.5px;color:var(--err);margin-top:5px;"},"сбой "+errCat):null,
     summary?(el("div",{class:"mono",style:"font-size:9.5px;color:var(--tx-lo2);margin-top:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"},
-      (summary.active_step?("идёт "+summary.active_step+" · "):"")+(summary.last_step?("последний "+summary.last_step+" · "):"")+(summary.total_ms!=null?("время "+fmtMs(summary.total_ms)):""))):null,
+      (summary.active_step?("идёт "+runStepLabel(summary.active_step)+" · "):"")+(summary.last_step?("последний "+runStepLabel(summary.last_step)+" · "):"")+(summary.total_ms!=null?("время "+fmtMs(summary.total_ms)):""))):null,
     errText?el("div",{class:"mono",style:"font-size:9.5px;color:var(--warn);margin-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"},errText):null,
     // V5: метрики после поста → обучение на РЫНКЕ (а не только ОТК-робот)
     el("div",{style:"margin-top:8px;display:flex;gap:5px;align-items:center;",title:"впиши реальные просмотры после публикации → хук валидируется рынком",onclick:(e)=>e.stopPropagation()},
@@ -2184,7 +2292,7 @@ function recipeCard(r){ const needsRejudge=!!(r.needs_rejudge||(r.status==="otk_
 // Живой опрос (virlo/creatify/fal) + ручной баланс (shotstack/claude). Работа вслепую недопустима → low громко.
 function fmtBal(b,cur){ if(b==null)return "—"; b=Number(b); return cur==="USD"?"$"+b.toFixed(2):(Math.round(b*100)/100)+" cr"; }
 function fmtWhen(iso){ if(!iso)return "—"; try{ return new Date(iso).toLocaleString("ru-RU",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}); }catch(e){ return String(iso); } }
-function fmtMs(ms){ const n=Number(ms); if(!isFinite(n)||n<0)return "—"; const sec=Math.round(n/1000); if(sec<60)return sec+"s"; const min=Math.floor(sec/60), rem=sec%60; return min+"m"+(rem?" "+rem+"s":""); }
+function fmtMs(ms){ const n=Number(ms); if(!isFinite(n)||n<0)return "—"; const sec=Math.round(n/1000); if(sec<60)return sec+"с"; const min=Math.floor(sec/60), rem=sec%60; return min+"м"+(rem?" "+rem+"с":""); }
 function sparkSvg(history,low){
   const pts=(history||[]).map(h=>h&&h.balance).filter(v=>v!=null&&isFinite(v));
   const W=132,H=36;
@@ -2224,7 +2332,7 @@ async function screenBalances(root){
     if(!services.length){ grid.appendChild(emptyBox("нет сервисов для показа балансов")); }
     services.forEach(s=>grid.appendChild(balanceCard(s,root)));
     wrap.appendChild(el("div",{class:"mono",style:"margin-top:16px;font-size:10.5px;color:var(--tx-lo2);"},
-      "live API — опрос сейчас · ручной — введён владельцем · оценка — по журналу событий"+(data.updated_at?" · обновлено "+fmtWhen(data.updated_at):"")));
+      "авто — опрос сейчас · ручной — введён владельцем · оценка — по журналу событий"+(data.updated_at?" · обновлено "+fmtWhen(data.updated_at):"")));
     return wrap;
   };
   header("Балансы сервисов","сколько осталось $", el("div",{class:"hdr-r"},
@@ -2255,7 +2363,7 @@ async function screenBalances(root){
 function balanceCard(s,root){
   const cur=s.currency||s.unit, unit=(s.unit==="USD"||cur==="USD")?"$":"cr";
   const srcColor={api:"var(--ok)",manual:"var(--warn)",estimated:"var(--acc)"}[s.source]||"var(--tx-lo2)";
-  const srcLabel={api:"live API",manual:"ручной",estimated:"оценка"}[s.source]||s.source;
+  const srcLabel={api:"авто",manual:"ручной",estimated:"оценка"}[s.source]||s.source;
   const INP="flex:1;min-width:88px;background:var(--bg-input);border:1px solid var(--bd2);color:var(--tx-hi);border-radius:7px;padding:6px 9px;font-size:12px;font-family:inherit;";
   const card=el("div",{class:"card",style:"padding:16px;display:flex;flex-direction:column;gap:12px;"+(s.low?"border:1.5px solid var(--err);box-shadow:0 0 0 3px rgba(255,90,90,.08);":"")});
   card.appendChild(el("div",{style:"display:flex;align-items:flex-start;justify-content:space-between;gap:8px;"},
@@ -2354,7 +2462,7 @@ async function screenLearn(root){
     wp.forEach(p=>wg.appendChild(el("div",{class:"card",style:"padding:14px;display:flex;flex-direction:column;gap:8px;"},
       el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:8px;"},
         el("div",{style:"font-size:13.5px;font-weight:600;"},(NICHE_EMOJI[p.niche]||"📦")+" "+(p.format_type||"формат")),
-        el("span",{class:"mono",style:"font-size:9.5px;background:var(--ok);color:#062;padding:2px 6px;border-radius:5px;font-weight:700;"},"WINNER")),
+        el("span",{class:"mono",style:"font-size:9.5px;background:var(--ok);color:#062;padding:2px 6px;border-radius:5px;font-weight:700;"},"победитель")),
       el("div",{style:"font-size:11px;color:var(--tx-lo);line-height:1.4;"},p.win_note||""),
       el("div",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);"},p.nodes_count+" нод · "+nicheLabel(p.niche)+" · "+fmtWhen(p.created_at)),
       el("button",{class:"btn sm",style:"justify-content:center;",onclick:async()=>{ const art=prompt("Артикул товара, под который переносим выигравшую формулу:"); if(!art)return; toast("переношу пресет…"); const r=await api("/recipes?template_id="+p.id+"&article="+encodeURIComponent(art.trim())); if(r&&r.recipe_id){ if(await openRecipe(r.recipe_id))go("canvas"); toast("пресет перенесён → правь под товар"); } else toast("не вышло: "+((r&&r.error)||"?")); }},"⇪ Перенести себе"))));
@@ -2422,7 +2530,7 @@ function screenDS(root){
   s.appendChild(el("div",{class:"card",style:"padding:18px;margin-bottom:26px;"},el("div",{style:"font-size:22px;font-weight:600;"},"H1 · IBM Plex Sans 22/600"),el("div",{style:"font-size:15px;font-weight:600;margin-top:8px;"},"H2 · 15/600"),el("div",{style:"font-size:12.5px;color:var(--tx-bd);margin-top:8px;"},"Body · 12.5 — живой текст для карточек WB"),el("div",{class:"mono",style:"font-size:11px;color:var(--tx-mid);margin-top:8px;"},"Mono · цены $0.42 · тайминги 0:08 · seed 48213")));
   s.appendChild(el("div",{class:"sec-cap",style:"margin-bottom:12px;"},"03 · Состояния ноды"));
   s.appendChild(el("div",{style:"display:flex;gap:14px;flex-wrap:wrap;"},
-    loadingCard("generating…"),
+    loadingCard("собираю…"),
     el("div",{class:"card skel",style:"width:196px;height:120px;"}),
     el("div",{class:"card",style:"width:196px;padding:14px;border-color:var(--bd-err);color:var(--err);font-size:12px;"},"✕ ошибка генерации",el("div",{class:"btn sm",style:"margin-top:8px;display:inline-flex;"},"Повторить"))));
 }
@@ -2457,7 +2565,7 @@ function assistantContext(){
     briefReady:!!(S.briefCache&&S.briefCache[S.activeNiche]),
     decompose:d?(d.error?{error:String(d.error).slice(0,80)}:{format:d.format||null,nodes:(d.nodes||[]).length}):null,
     recipe:rec?{id:rec.id,title:rec.title||rec.article||null,nodesTotal:nodes.length,nodesWithTool:withTool,nodesWithPreview:withPrev}:null,
-    selectedNode:sel?{id:sel.id,type:sel.node_type||null,tool:sel.tool||null,hasPrompt:!!(sel.prompt&&sel.prompt.trim()),hasPreview:!!(S.preview[sel.id]&&S.preview[sel.id].url)}:null,
+    selectedNode:sel?{id:sel.id,type:nodeTypeLabel(sel.node_type||sel.slot),tool:sel.tool||null,hasPrompt:!!(sel.prompt&&sel.prompt.trim()),hasPreview:!!(S.preview[sel.id]&&S.preview[sel.id].url)}:null,
     run:run?{status:run.status||null,step:run.step||null,otk:(run.otk_score!=null?run.otk_score:(run.otk&&run.otk.score))??null}:null,
     product:S.contentProduct?{name:S.contentProduct.name||null,article:S.contentProduct.article||null}:null,
   };
@@ -2485,7 +2593,7 @@ function coachNextStep(){
       return {cap:"Шаг · дальше",t:"Превью готово. Настрой остальные ноды или иди на сборку (05).",why:"Когда у всех нод есть превью — таймлайн соберётся предсказуемо.",cta:{label:"К сборке (05) →",fn:()=>go("assembly")}};
     case "assembly":
       if(!c.recipe) return {cap:"Шаг · граф",t:"Нет графа — собери на канвасе (03).",why:"Сборка раскладывает ноды графа на таймлайн.",cta:{label:"На канвас (03) →",fn:()=>go("canvas")}};
-      if(c.run&&(c.run.status==="running"||c.run.step&&c.run.step!=="done"&&c.run.step!=="failed")) return {cap:"Шаг · идёт сборка",t:`Собираю… шаг: ${c.run.step||"…"}. Дождись ОТК.`,why:"Завод рендерит ноды и сшивает таймлайн. ОТК оценит результат по 5 осям."};
+      if(c.run&&(c.run.status==="running"||c.run.step&&c.run.step!=="done"&&c.run.step!=="failed")) return {cap:"Шаг · идёт сборка",t:`Собираю… шаг: ${runStepLabel(c.run.step||"")}. Дождись ОТК.`,why:"Завод рендерит ноды и сшивает таймлайн. ОТК оценит результат по 5 осям."};
       if(c.run&&c.run.otk!=null) return {cap:"Шаг · ОТК",t:c.run.otk>=7?`ОТК ${c.run.otk}/10 — годен. Опубликуй или сохрани в победители.`:`ОТК ${c.run.otk}/10 — доработай. Хук<7? Вернись на ноду хука (04).`,why:"5 осей: хук, удержание, нативность, бренд, CTA. Слабое звено — точка роста.",chips:["Как поднять балл хука?","Что чаще всего проседает?"]};
       return {cap:"Шаг · запуск",t:"Запусти сборку — кнопка на экране.",why:"Таймлайн авто-разложит ноды по длительности, потом ОТК вынесет вердикт.",chips:["Что проверяет ОТК?"]};
     case "library":
@@ -2493,7 +2601,7 @@ function coachNextStep(){
     case "balances":
       return {cap:"Балансы",t:"Следи за остатками по сервисам. Сервис на нуле — генерация по нему встанет.",why:"Seedance/Kling/Creatify/Shotstack/FAL платные. Пустой баланс = упавшая нода в сборке."};
     case "worker":
-      return {cap:"Пульс завода",t:"Смотри на пульс и живые прогоны завода. Если пульс уйдёт в `молчит` или `потерян`, надо проверять sender пульса или перезапуск воркера.",why:"Это экран живого контроля: видно, идут ли реальные прогоны, где они застряли и когда воркер перестал отвечать. Следующий шаг обычно либо разобрать зависший прогон, либо чинить путь пульса.",chips:["Как читать статус пульса?","Где смотреть живые прогоны?"]};
+      return {cap:"Пульс завода",t:"Смотри на пульс и живые прогоны завода. Если пульс уйдёт в `молчит` или `потерян`, надо проверять передатчик пульса или перезапуск воркера.",why:"Это экран живого контроля: видно, идут ли реальные прогоны, где они застряли и когда воркер перестал отвечать. Следующий шаг обычно либо разобрать зависший прогон, либо чинить путь пульса.",chips:["Как читать статус пульса?","Где смотреть живые прогоны?"]};
     case "learn":
       return {cap:"Обучение",t:"Смотри, что завод выучил: победившие хуки, тренд ОТК, пресеты-победители за период.",why:"Это память завода. Переноси удачные хуки и пресеты в новые ролики — повторяешь то, что уже заходило.",chips:["Как применить выученное?","Что показывает тренд ОТК?"]};
     case "ds":
