@@ -13,7 +13,7 @@
 > - V18-1 закрыт: Studio не показывает `patrick`/`text` legacy entry points в навигации; файлы оставлены для прямого URL до отдельного V18-2.
 > - V11 закрыт на UI + backend contract: запуск через библиотеку и экран сборки считает смету по нодам, блокирует старт при явном `balances.low`, а `/graph-run` и `run_plan` теперь возвращают `cost_hint` с typical/worst-case USD.
 > - V7 закрыт в текущем read-back контуре: `learningHints` возвращает winners + corpus hooks + reject anti-patterns в `decompose`/`autofill`, а `video-critic` читает reject anti-patterns fail-open.
-> - V20 больше не “таблицы нет совсем”: `generation_history` уже пишется из `gen-save`, `node-preview`, `graph-run` clip persistence, `reject`, `media-store` и static Remotion path; read-path и learn-screen тоже уже выдают warning/lineage-контекст. Открытый хвост V20 сейчас уже не в самом наличии истории, а в том, что repo-local `scripts/*` по-прежнему обходят БД и находятся вне Railway worker мандата.
+> - V20 больше не “таблицы нет совсем”: `generation_history` уже пишется из `gen-save`, `node-preview`, `graph-run` clip persistence, `reject`, `media-store` и static Remotion path; read-path и learn-screen тоже уже выдают warning/lineage-контекст. `Обучение` теперь ещё и группирует историю по recipe chain (`attempts`, best OTK, MP4 count, last status), а `GET /api/factory/generation-history` отдаёт тот же compact summary. Открытый хвост V20 сейчас уже не в самом наличии истории, а в том, что repo-local `scripts/*` по-прежнему обходят БД и richer compare/fork UX остаётся минимальным.
 > - V3/V4 подготовлены безопасно: OTK→culprit-regeneration и `/improve-prompt` wiring живут в `graphRun`, но включаются только через `FACTORY_OTK_REGEN=1`; default остаётся Sprint-1 fail-open, чтобы не вернуть бесконтрольные платные циклы.
 > - V9 частично возвращён без риска: `/hook-judge` теперь детерминированно ранжирует уже переданные hooks по эвристике + `viral_hooks` corpus, без LLM/рендера/авто-запуска. Генератор `/variations` остаётся disabled до отдельного стабильного этапа.
 > - V5 усилен без утяжеления UI: `/post-metrics` по-прежнему принимает простой ручной market-input, но в `/winners` теперь уходит полный `market_signal` (`platform`, `views`, `watch_rate`, `ctr_card`, `saves`, `posted_at`), чтобы learning loop не терял retention/CTR/save context.
@@ -52,7 +52,7 @@
 | **V4** | `/improve-prompt` перед регенерацией теперь сидит в `graphRun.regenCulprit`; активируется только вместе с V3-флагом. | M · gated |
 | **V7** | Читать сигнал обратно в `decompose`/критика: `learningHints` = winners + corpus hooks + reject anti-patterns; `video-critic` читает reject anti-patterns fail-open. | M · done |
 | **V9** | Хук-турнир: безопасный `/hook-judge` включён как deterministic ranker по переданным hooks + corpus; `/variations` и авто-превью остаются выключены до отдельного этапа. | M · partial |
-| **V20** | **История генераций / память итераций** — базовый субстрат уже в коде; `media-store` и static Remotion path пишут history. Открытый хвост: repo-local `scripts/*` и richer compare/fork UX. | M · partial |
+| **V20** | **История генераций / память итераций** — базовый субстрат уже в коде; `media-store` и static Remotion path пишут history, `Обучение` и `/generation-history` уже дают compact chain summary. Открытый хвост: repo-local `scripts/*` и richer compare/fork UX. | M · partial+ |
 | **V18-1** | Спрятать ссылки на legacy из Studio-навигации; файлы не трогать. | S · done |
 
 ### 🕓 ПОЗЖЕ
@@ -81,7 +81,7 @@
 
 Что всё ещё открыто:
 - **Standalone мимо БД:** repo-local `scripts/render-local.mjs`, `scripts/stills.mjs` и `scripts/creatify-*.mjs` по-прежнему могут складывать артефакты в `out/` без записи в БД. Это вне текущего Railway worker мандата (`scripts/` не входит в разрешённую factory-зону), поэтому следующий шаг требует отдельного owner-approved scope.
-- **Richer lineage UX:** есть лента попыток, но ещё нет полноценного compare/fork view “что изменили между try 1 → try 2”.
+- **Richer lineage UX:** поверх сырой ленты уже есть summary по цепочкам (`attempts`, best OTK, MP4, last status) в `Обучении` и `/generation-history`, но ещё нет полноценного compare/fork view “что изменили между try 1 → try 2”.
 - **Source unification:** часть локальных/ручных render path ещё не проходит через единый `media-store` / history sink.
 
 **Следующий шаг (M):** довести standalone/локальные render path до общего history sink (`media-store` / `generation_history`) и затем уже решать compare/fork UX поверх существующего журнала.
