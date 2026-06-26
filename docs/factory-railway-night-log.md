@@ -54,7 +54,9 @@
   - `POST /api/factory/oembed` переведён в warning-only read-contract: отсутствие БД/миграции больше не выглядит как ошибка ленты конкурентов
   - `GET /api/factory/corpus/top-hooks`, `top-sounds`, `top-videos` выровнены под fail-open read-model
   - `GET /api/factory/static-status`, `video-fal-status/[id]`, `ugc-creatify-status/[id]` больше не возвращают HTTP 500 на probe-crash, а отдают JSON со `status:"error"`
+  - `GET /api/factory/niche-playbook/cached`, `/trends`, `/generation-history`, `/winners`, `/telegram` тоже переведены в warning-oriented read-contract, где это безопасно
   - добавлены `oembedFailOpen`, `corpusReadFailOpen`, `statusProbeFailOpen` guards
+  - добавлены `playbookTrendsFailOpen` и `winnersTelegramReadFailOpen` guards
 
 ### 2026-06-25 08:30
 
