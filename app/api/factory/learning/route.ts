@@ -181,15 +181,19 @@ export async function GET(req: NextRequest) {
     const key = String(r.niche || "unknown");
     marketByNiche.set(key, [...(marketByNiche.get(key) || []), r]);
   }
-  const market_by_niche = [...marketByNiche.entries()].map(([niche, rows]) => ({
-    niche,
-    recipes: rows.length,
-    total_views: rows.reduce((acc, r) => acc + r.views, 0),
-    avg_views: avgViews(rows),
-    strong_samples: rows.filter((r) => r.views >= 100).length,
-    avg_watch_rate: avg(rows.map((r) => r.watch_rate)),
-    avg_ctr_card: avg(rows.map((r) => r.ctr_card)),
-  })).sort((a, b) => b.total_views - a.total_views).slice(0, 8);
+  const market_by_niche = [...marketByNiche.entries()].map(([niche, rows]) => {
+    const strongSamples = rows.filter((r) => r.views >= 100).length;
+    return {
+      niche,
+      recipes: rows.length,
+      total_views: rows.reduce((acc, r) => acc + r.views, 0),
+      avg_views: avgViews(rows),
+      strong_samples: strongSamples,
+      win_rate: rows.length ? Math.round((strongSamples / rows.length) * 1000) / 1000 : null,
+      avg_watch_rate: avg(rows.map((r) => r.watch_rate)),
+      avg_ctr_card: avg(rows.map((r) => r.ctr_card)),
+    };
+  }).sort((a, b) => b.total_views - a.total_views).slice(0, 8);
   const market_summary = {
     snapshots: marketRows.length,
     recipes_with_metrics: bestMarket.length,
@@ -198,6 +202,7 @@ export async function GET(req: NextRequest) {
     avg_ctr_card: avg(bestMarket.map((r) => r.ctr_card)),
     total_saves: bestMarket.reduce((acc, r) => acc + (r.saves || 0), 0),
     strong_samples: bestMarket.filter((r) => r.views >= 100).length,
+    win_rate: bestMarket.length ? Math.round((bestMarket.filter((r) => r.views >= 100).length / bestMarket.length) * 1000) / 1000 : null,
     otk_market_alignment: {
       samples: otkSamples.length,
       avg_views_high_otk: avgViews(highOtk),

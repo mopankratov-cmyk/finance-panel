@@ -2643,6 +2643,7 @@ async function screenLearn(root){
       [fmtRate(ms.avg_ctr_card),"CTR карточки","var(--tx-bd)"],
       [String(ms.total_saves||0),"сохранения","var(--ok)"],
       [String(ms.strong_samples||0),"100+ просмотров","var(--acc-lt)"],
+      [fmtRate(ms.win_rate),"win-rate 100+","var(--ok)"],
       [String(align.samples||0),"ОТК+рынок","var(--warn)"],
     ].forEach(([n,lbl,c])=>marketGrid.appendChild(el("div",{class:"card",style:"padding:14px 16px;"},
       el("div",{style:"font-size:22px;font-weight:700;color:"+c+";"},n),
@@ -2662,6 +2663,7 @@ async function screenLearn(root){
         el("span",{class:"mono",style:"font-size:10px;color:var(--acc-lt);background:var(--bg-input);border:1px solid var(--bd2);padding:2px 6px;border-radius:5px;"},"всего "+fmtViews(n.total_views||0)),
         el("span",{class:"mono",style:"font-size:10px;color:var(--tx-lo);background:var(--bg-input);border:1px solid var(--bd2);padding:2px 6px;border-radius:5px;"},"ср. "+(n.avg_views==null?"—":fmtViews(n.avg_views))),
         el("span",{class:"mono",style:"font-size:10px;color:var(--warn);background:var(--warn-bg);padding:2px 6px;border-radius:5px;"},"удерж. "+fmtRate(n.avg_watch_rate)),
+        el("span",{class:"mono",style:"font-size:10px;color:var(--ok);background:var(--ok-bg);padding:2px 6px;border-radius:5px;"},"win "+fmtRate(n.win_rate)),
         el("span",{class:"mono",style:"font-size:10px;color:var(--ok);background:var(--ok-bg);padding:2px 6px;border-radius:5px;"},"100+ "+String(n.strong_samples||0)))));
     }
     const topMarket=Array.isArray(ms.top)?ms.top:[];
