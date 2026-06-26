@@ -753,6 +753,15 @@ function renderOpsFetchFallback(host,errorText,stale){
   host.appendChild(card);
 }
 
+function apiTimeout(path, ms){
+  return new Promise((resolve)=>{
+    let done=false;
+    const finish=(value)=>{ if(done)return; done=true; resolve(value); };
+    const timer=setTimeout(()=>finish({error:`таймаут ${path} после ${Math.round(ms/1000)}с`, _timeout:true, _network:true}), ms);
+    api(path).then((value)=>{ clearTimeout(timer); finish(value); }).catch((e)=>{ clearTimeout(timer); finish({error:String(e||"fetch failed").slice(0,140), _network:true}); });
+  });
+}
+
 async function screenWorker(root, force, renderToken){
   const token=renderToken||++S.renderToken;
   const isLiveRender=()=>S.screen==="worker"&&S.renderToken===token&&root&&root.isConnected;
@@ -763,7 +772,7 @@ async function screenWorker(root, force, renderToken){
   const wrap=el("div",{class:"scroll",style:"padding:18px;"}); root.appendChild(wrap);
   wrap.appendChild(loadingCard("смотрю пульс и живые прогоны…"));
   const prevWorkerState=S.workerState&&!S.workerState.error?S.workerState:null;
-  const d=await api("/ops");
+  const d=await apiTimeout("/ops", 6500);
   if(!isLiveRender()) return;
   const state=d&&!d.error?d:prevWorkerState;
   if(d&&!d.error)S.workerState=d;
