@@ -741,7 +741,7 @@ function renderOpsFetchFallback(host,errorText,stale){
   const card=el("div",{class:"card",style:"padding:15px;border-color:var(--warn);background:var(--warn-bg);"});
   card.appendChild(el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:8px;"},
     el("div",{style:"font-size:14px;font-weight:600;color:var(--warn);"},"Пульс временно недоступен"),
-    el("button",{class:"btn sm",onclick:()=>screenWorker(document.getElementById(\"screen\"))},"↻ Повторить")));
+    el("button",{class:"btn sm",onclick:()=>screenWorker(document.getElementById("screen"))},"↻ Повторить")));
   card.appendChild(el("div",{style:"font-size:12px;color:var(--tx-bd);line-height:1.5;"},
     stale
       ? "не удалось подтянуть свежий снимок, поэтому оставляю на экране последний удачный статус."
@@ -1028,7 +1028,21 @@ async function render(){
   saveSession(); // запоминаем текущий экран/нишу/рецепт для возврата после reload
   const root=document.getElementById("screen"); root.innerHTML="";
   const token=++S.renderToken;
-  ({center:screenCenter,compete:screenCompete,canvas:screenCanvas,inspector:screenInspector,assembly:screenAssembly,library:screenLibrary,static:screenStatic,text:screenText,worker:screenWorker,balances:screenBalances,learn:screenLearn,ds:screenDS}[S.screen]||screenCenter)(root,false,token);
+  const screenFn=({center:screenCenter,compete:screenCompete,canvas:screenCanvas,inspector:screenInspector,assembly:screenAssembly,library:screenLibrary,static:screenStatic,text:screenText,worker:screenWorker,balances:screenBalances,learn:screenLearn,ds:screenDS}[S.screen]||screenCenter);
+  try{
+    await screenFn(root,false,token);
+  }catch(e){
+    if(S.renderToken!==token)return;
+    console.error("studio screen render failed",e);
+    S.screen="center"; renderNav();
+    header("Командный центр","экран восстановлен");
+    root.innerHTML="";
+    root.appendChild(el("div",{class:"card",style:"padding:18px;border-color:var(--warn);background:var(--warn-bg);"},
+      el("div",{style:"font-size:15px;font-weight:700;color:var(--warn);margin-bottom:8px;"},"Экран не отрисовался"),
+      el("div",{style:"font-size:12.5px;color:var(--tx-bd);line-height:1.5;"},"Studio поймала ошибку интерфейса и вернула тебя в командный центр. Выпуск роликов не блокируется."),
+      el("div",{class:"mono",style:"font-size:10.5px;color:var(--tx-lo);margin-top:10px;white-space:normal;overflow-wrap:anywhere;"},String(e&&e.message||e||"unknown").slice(0,180)),
+      el("button",{class:"btn sm primary",style:"margin-top:12px;",onclick:()=>render()},"Открыть командный центр")));
+  }
   refreshAssistStep(); // проводник: пересчитать «следующий шаг» под новый экран/состояние
 }
 

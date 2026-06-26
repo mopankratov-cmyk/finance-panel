@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { Script } from "node:vm";
 
 let passed = 0;
 let failed = 0;
@@ -12,6 +13,15 @@ function ok(cond: boolean, msg: string) {
 }
 
 const studio = readFileSync("public/inferno/studio.html", "utf8");
+const studioScripts = [...studio.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/gi)].map((m) => m[1]);
+
+try {
+  studioScripts.forEach((script, idx) => new Script(script, { filename: `studio-script-${idx + 1}.js` }));
+  ok(true, "Studio inline scripts parse before deploy");
+} catch (e) {
+  console.error(e);
+  ok(false, "Studio inline scripts parse before deploy");
+}
 
 ok(/compact:true/.test(studio), "Studio starts in compact operator mode");
 ok(/COMPACT_HIDDEN_SCREENS=new Set\(\["inspector","static","balances","learn"\]\)/.test(studio), "compact mode hides non-MVP screens from navigation");
@@ -85,6 +95,7 @@ ok(/function estimateRecipeCost\(nodes\)\{[\s\S]*toolPriceAmount\(tool\)[\s\S]*S
 ok(/function lowBalanceLabelsFromState\(state\)\{[\s\S]*balances&&balances\.services[\s\S]*balances&&balances\.low/.test(studio), "budget guard derives low-balance labels from the ops snapshot");
 ok(/async function canStartRunWithBudget\(recipeId\)\{[\s\S]*ensureOpsForBudget\(\)[\s\S]*openRecipe\(recipeId\)[\s\S]*запуск остановлен[\s\S]*смета прогона/.test(studio), "budget guard blocks graph-run only when ops reports low balances and otherwise shows a cost estimate");
 ok(/async function api\(path,opts\)\{[\s\S]*body\._status=r\.status; body\._ok=r\.ok;[\s\S]*return \{error:"fetch failed",detail:String\(e\)\.slice\(0,120\),_network:true\};/.test(studio) && /function apiErrorText\(r,fallback\)\{[\s\S]*сессия истекла — войди заново[\s\S]*нет связи с сервером — проверь интернет или деплой/.test(studio), "Studio preserves API status and turns auth/network failures into operator-facing text");
+ok(/try\{[\s\S]*await screenFn\(root,false,token\);[\s\S]*\}catch\(e\)\{[\s\S]*studio screen render failed[\s\S]*Экран не отрисовался[\s\S]*Открыть командный центр/.test(studio), "Studio renders a visible recovery card instead of a blank center when a screen throws");
 ok(/async function startProductionRun\(recipeId, opts\)[\s\S]*if\(!\(await canStartRunWithBudget\(recipeId\)\)\)\{ delete S\.busyRun\[key\]; return; \}[\s\S]*api\("\/graph-run"/.test(studio), "library production start checks budget before POSTing graph-run");
 ok(/async function startProductionRun\(recipeId, opts\)[\s\S]*toast\("не запустилось: "\+apiErrorText\(r,"ошибка запуска"\)\)/.test(studio) && /async function startRun\(\)[\s\S]*const id=S\.recipe\.recipe\.id;[\s\S]*if\(!\(await canStartRunWithBudget\(id\)\)\)return;[\s\S]*api\("\/graph-run"[\s\S]*toast\("ошибка: "\+apiErrorText\(r,"ошибка запуска"\)\)/.test(studio), "graph-run start failures use operator-facing auth/network copy");
 ok(/job\.error=apiErrorText\(r,"ошибка запуска"\)/.test(studio) && /S\.run\.error=apiErrorText\(r,"ошибка опроса"\)/.test(studio), "static launch and graph-run polling failures also use operator-facing error copy");
