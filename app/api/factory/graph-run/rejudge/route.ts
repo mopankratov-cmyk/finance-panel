@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { internalFetch } from "@/lib/internalFetch";
 import { extractFrames } from "@/lib/factory/serverMedia";
 import type { RunPlan } from "@/lib/factory/graphTypes";
+import { resolveFactoryOrigin } from "@/lib/factory/runtimeOrigin";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -118,7 +119,7 @@ export async function POST(req: NextRequest) {
   const rows = (data as RecipeRow[] | null) || [];
   if (!rows.length) return NextResponse.json({ ok: true, apply, processed: [], note: "нет otk_pass с пустым otk_score" });
 
-  const origin = req.nextUrl.origin;
+  const origin = resolveFactoryOrigin(req.nextUrl.origin);
   const processed = [];
   for (const row of rows) {
     const plan = row.run_plan || ({ step: "done", nodes: [] } as RunPlan);

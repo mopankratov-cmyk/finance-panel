@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { wakeStaleRecipes } from "@/lib/factory/graphWatchdog";
+import { resolveFactoryOrigin } from "@/lib/factory/runtimeOrigin";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -24,7 +25,7 @@ export async function GET(req: NextRequest) {
     }
     const db = getSupabaseAdmin();
     if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 500 });
-    const result = await wakeStaleRecipes(db, req.nextUrl.origin, { trigger: "cron" });
+    const result = await wakeStaleRecipes(db, resolveFactoryOrigin(req.nextUrl.origin), { trigger: "cron" });
     return NextResponse.json({ ok: true, ...result });
   } catch (e) {
     return NextResponse.json({ error: "cron прогона упал: " + String((e as Error)?.message || e).slice(0, 180) }, { status: 500 });

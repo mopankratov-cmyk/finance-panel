@@ -5,6 +5,7 @@ import type { RunPlan } from "@/lib/factory/graphTypes";
 import { buildRunSummary } from "@/lib/factory/observability";
 import { internalFetch } from "@/lib/internalFetch";
 import { estimateRunCost } from "@/lib/factory/costEstimate";
+import { resolveFactoryOrigin } from "@/lib/factory/runtimeOrigin";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
@@ -46,7 +47,7 @@ export async function POST(req: NextRequest) {
       await db.from("node_recipes").update({ run_plan: plan, status: "running", otk_verdict: null, otk_score: null, output_url: null, render_id: null, updated_at: new Date().toISOString() }).eq("id", recipeId);
     }
 
-    const origin = req.nextUrl.origin;
+    const origin = resolveFactoryOrigin(req.nextUrl.origin);
     // первый тик СИНХРОННО: сам chain живёт в graph-run/tick, крон — только страховка.
     try { await internalFetch(`${origin}/api/factory/graph-run/tick`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ recipe_id: recipeId }), signal: AbortSignal.timeout(20000) }); } catch { /* воскресит крон/ручной тик */ }
 

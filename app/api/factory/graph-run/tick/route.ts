@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { advanceClaimedRecipe, claimNextRecipe } from "@/lib/factory/graphRun";
 import { internalFetch } from "@/lib/internalFetch";
+import { resolveFactoryOrigin } from "@/lib/factory/runtimeOrigin";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -12,7 +13,7 @@ export async function POST(req: NextRequest) {
   try {
     const db = getSupabaseAdmin();
     if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 500 });
-    const origin = req.nextUrl.origin;
+    const origin = resolveFactoryOrigin(req.nextUrl.origin);
     const body = await req.json().catch(() => ({}));
     const recipeId = body.recipe_id ? Number(body.recipe_id) : undefined;
 
