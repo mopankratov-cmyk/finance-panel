@@ -53,7 +53,8 @@ ok(/@media \(max-width:900px\)\{[\s\S]*\.rail-head>\.logo\{display:flex!importan
 ok(/class:"niche-grid",role:"listbox"/.test(studio) && /grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/.test(studio), "niche selector uses stable 2x2 grid in normal desktop width");
 ok(/role:"option","aria-selected":active\?"true":"false"/.test(studio), "niche tiles expose selected state semantically");
 ok(/class:"filter-row",role:"group","aria-label":"Фильтр товаров"/.test(studio), "product filters are grouped and expose pressed state");
-ok(/class:"product-gap-chip"/.test(studio) && /data-real-frames/.test(studio), "product missing assets are compact while exact status data remains available");
+ok(!/n\.videos\+"\sвиральных"/.test(studio) && /шаблонов/.test(studio) && /товаров · "\+\(n\.videos\|\|0\)\+" роликов/.test(studio), "niche tiles keep only the useful counts and avoid duplicate virality chips");
+ok(/class:"product-gap-chip"/.test(studio) && /data-real-frames/.test(studio) && !/есть winner/.test(studio) && !/Данные по товару:/.test(studio) && /Не хватает: /.test(studio) && /сигналы есть/.test(studio), "product cards stay compact and avoid backend-English status copy");
 ok(/function splitBriefText/.test(studio) && /class:"rec-list"/.test(studio), "marketer panel uses scannable summary and recommendation cards");
 ok(/"Развернуть бриф"/.test(studio) && /viral_examples\.slice\(0,2\)/.test(studio) && /content_recommendations\.slice\(0,3\)/.test(studio), "marketer panel keeps the right rail compact instead of expanding into a wall of examples");
 ok(/const learnWarnings=Array\.isArray\(d\.warnings\)\?d\.warnings\.filter\(Boolean\):\[\];[\s\S]*"предупреждения чтения"/.test(studio), "learn screen surfaces warning metadata instead of silently flattening degraded reads");
