@@ -14,6 +14,6 @@ export async function GET(req: NextRequest) {
     const result = await getRecipeHistoryResult(recipeId, 100);
     return NextResponse.json({ ok: true, history: result.history, warning: result.warning || null });
   } catch (e) {
-    return NextResponse.json({ ok: true, history: [], error: String((e as Error)?.message || e).slice(0, 160) });
+    return NextResponse.json({ ok: true, history: [], warning: String((e as Error)?.message || e).slice(0, 160) });
   }
 }

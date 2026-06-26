@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
   const niche = nicheFromArticle(article, productName);
 
   const db = getSupabaseAdmin();
-  if (!db) return NextResponse.json({ niche, playbook: null, note: "Supabase не настроен" });
+  if (!db) return NextResponse.json({ niche, playbook: null, warning: "Supabase не настроен — кэш плейбука временно пустой" });
 
   try {
     const { data, error } = await db
@@ -25,8 +25,8 @@ export async function GET(req: NextRequest) {
       .eq("niche", niche)
       .order("updated_at", { ascending: false })
       .limit(1);
-    if (error?.code === "42P01") return NextResponse.json({ niche, playbook: null, note: "niche_playbooks не применена" });
-    if (error) return NextResponse.json({ niche, playbook: null, note: error.message });
+    if (error?.code === "42P01") return NextResponse.json({ niche, playbook: null, warning: "niche_playbooks не применена" });
+    if (error) return NextResponse.json({ niche, playbook: null, warning: error.message });
 
     const row = (data as { playbook: unknown; updated_at: string | null }[] | null)?.[0];
     if (!row || !row.playbook) return NextResponse.json({ niche, playbook: null });
@@ -36,13 +36,13 @@ export async function GET(req: NextRequest) {
     const stale = updatedAt ? (Date.now() - new Date(updatedAt).getTime() > 7 * 24 * 60 * 60 * 1000) : true;
     return NextResponse.json({ niche, playbook: row.playbook, updated_at: updatedAt, stale });
   } catch (e) {
-    return NextResponse.json({ niche, playbook: null, note: String(e).slice(0, 120) });
+    return NextResponse.json({ niche, playbook: null, warning: String(e).slice(0, 120) });
   }
   } catch (e) {
     return NextResponse.json({
       niche: "default",
       playbook: null,
-      note: "кэш плейбука ниши упал: " + String((e as Error)?.message || e).slice(0, 160),
+      warning: "кэш плейбука ниши упал: " + String((e as Error)?.message || e).slice(0, 160),
     });
   }
 }
