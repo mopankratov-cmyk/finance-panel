@@ -8,6 +8,7 @@
 > - V1 больше не “голый toast”: `public/inferno/studio.html` уже шлёт `POST /api/factory/winners` и `POST /api/factory/reject` из экрана сборки.
 > - V10 закрыт в текущем Studio/graph-run path: оператор закрепляет `preview_url + preview_hash`, Studio сохраняет это сразу через `node-save`, а `graph-run` сверяет `nodeHash` и берёт готовый клип без повторной оплаты FAL.
 > - V8 закрыт не только промптом, но и guard-логикой: `decompose` после ответа модели принудительно переводит роли `problem|solution|proof` на `disk_real`, кроме явных AI-акцентов `talking_head|before_after|voiceover`.
+> - V2 закрыт как безопасный skeleton transfer: winner-пресеты сохраняют production prompt, а decompose-перенос получает черновик с product scope и запретом дословного копирования конкурента.
 > - V5 больше не “мёртвая таблица”: `public/inferno/studio.html` уже шлёт `POST /api/factory/post-metrics`, а route умеет fail-open forward в `winners`.
 > - V11 частично закрыт в Studio: запуск через библиотеку и экран сборки считает смету по нодам, показывает потолок ОТК-регенераций и не отправляет `graph-run`, если `/ops` явно вернул `balances.low`. Открытый хвост V11 — вынести `cost_hint` в backend/runtime contracts, а не только в UI.
 > - V20 больше не “таблицы нет совсем”: `generation_history` уже пишется из `gen-save`, `node-preview`, `graph-run` clip persistence и `reject`; read-path и learn-screen тоже уже выдают warning/lineage-контекст. Открытый хвост V20 сейчас уже не в самом наличии истории, а в том, что standalone/local scripts по-прежнему обходят БД.
@@ -30,7 +31,7 @@
 | **V1** | Замкнуть «Беру/Не то» → `/winners` + причины реджекта в `cf_signals` (+понижать provenance ноды-виновника) | S | Статус на 2026-06-26: **done in V3 studio** (`sendWinner()` / `sendReject()`) |
 | **V10** | Превью-клип закрепляется через `preview_url + preview_hash`; `graph-run` сверяет `nodeHash` и не платит FAL повторно. | S | `public/inferno/studio.html`, `lib/factory/graphRun.ts`, `/node-save` |
 | **V8** | Reality-first дефолты в `decompose`: `problem|solution|proof` принудительно становятся `disk_real`, AI остаётся только явным акцентом. | S | `lib/factory/decomposeRouting.ts`, `app/api/factory/decompose/route.ts` |
-| **V2** | Предзаполнить ноды при переносе из `agent_suggestion` как **черновик-скелет** (не финальный текст → риск клон-слопа) | S | `recipes/route.ts:67` |
+| **V2** | Предзаполнить ноды при переносе как **черновик-скелет**: product scope + reference meaning + anti-copy guard; winner prompts не трогаются. | S | `lib/factory/recipeDraft.ts`, `app/api/factory/recipes/route.ts` |
 | **V11** | Смета + блок старта при `balances.low`; **демо-цифры у запуска убраны**. UI path закрыт, backend `cost_hint` ещё next. | M | `public/inferno/studio.html`, далее `nodeEngine` cost_hint |
 
 ### ➡️ СЛЕДУЮЩИМ

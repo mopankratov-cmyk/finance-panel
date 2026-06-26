@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { nicheFromArticle } from "@/lib/factory/rubric";
+import { draftPromptFromTemplateNode } from "@/lib/factory/recipeDraft";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 20;
@@ -66,7 +67,7 @@ async function transfer(db: any, p: { template_id?: string | number; nodes?: any
     tool: n.tool_candidate || n.tool || null,
     // V2: предзаполняем ЧЕРНОВИК-СКЕЛЕТ из подсказки конкурента (владелец ПРАВИТ под товар, не копирует дословно — иначе клон-слоп)
     // V14: winner-пресет несёт готовый prompt → берём его первым
-    prompt: String(n.prompt || n.voiceover || n.visual_desc || "").slice(0, 1500),
+    prompt: draftPromptFromTemplateNode(n, article, productName),
     params: {
       // V14: winner-пресет несёт ПРОИЗВОДСТВЕННЫЕ params (движок/сабтайтры/музыка/визстиль) — наследуем их под низ,
       // контент-ключи ниже перекрывают. Для decompose-шаблонов n.params нет → это {} (поведение как раньше).
