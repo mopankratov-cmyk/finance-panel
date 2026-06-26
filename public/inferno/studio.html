@@ -816,8 +816,9 @@ async function screenWorker(root, force, renderToken){
   const stressHistory=state.stress_history||null;
   const runObservability=state.observability||null;
   const recentRuns=Array.isArray(runObservability&&runObservability.recent_runs)?runObservability.recent_runs:[];
-  const activeRuns=recentRuns.filter((r)=>r&&(r.active||r.status==="running"||r.stale));
-  const queueRuns=(activeRuns.length?activeRuns:recentRuns);
+  const currentRuns=recentRuns.filter((r)=>r&&!r.legacy);
+  const activeRuns=currentRuns.filter((r)=>r&&(r.active||r.status==="running"||r.stale));
+  const queueRuns=(activeRuns.length?activeRuns:currentRuns);
   const liveTone=workerStatusTone(live.state);
   const displayedLiveTone=workerSource==="queue_fallback"&&live.state==="unknown"?{c:"var(--tx-lo)", bg:"var(--bg-input)", label:"резерв"}:liveTone;
   const aliveNote=workerSource==="queue_fallback"&&live.state==="unknown"?"резервный пульс":live.state==="alive"?"пульс свежий":live.state==="stale"?"пульс молчит":"пульс потерян";
@@ -983,7 +984,7 @@ async function screenWorker(root, force, renderToken){
     el("div",{style:"font-size:14px;font-weight:600;"},"Очередь прогонов"),
     el("span",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);"},String(queueRuns.length||0)+" в выборке")));
   if(!queueRuns.length){
-    list.appendChild(emptyBox("прогоны ещё не появлялись или снимок пульса пока пуст"));
+    list.appendChild(emptyBox("живых прогонов сейчас нет; архивные сбои вынесены в отдельный хвост"));
   } else {
     const queueMeta=el("div",{style:"display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;"});
     [
