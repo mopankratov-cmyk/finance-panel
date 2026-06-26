@@ -15,6 +15,7 @@ const ugcCreatify = readFileSync("app/api/factory/ugc-creatify/route.ts", "utf8"
 const creatifyAvatars = readFileSync("app/api/factory/creatify-avatars/route.ts", "utf8");
 const creatifyAdapter = readFileSync("lib/factory/creatify.ts", "utf8");
 const patrickLegacy = readFileSync("public/inferno/patrick-legacy.html", "utf8");
+const graphRun = readFileSync("app/api/factory/graph-run/route.ts", "utf8");
 
 ok(!/detail:\s*error/.test(ugcCreatify), "ugc-creatify route no longer duplicates errors into detail");
 ok(!/\{\s*error,\s*detail:\s*error/.test(ugcCreatify), "ugc-creatify keeps a single canonical error field");
@@ -26,6 +27,7 @@ ok(/this\.utmMsg = 'ошибка: ' \+ \(d\.error \|\| d\.detail \|\| 'не уд
 ok(/this\.crit\.step = 'ошибка: ' \+ \(d\.error \|\| d\.detail \|\| 'не запустилось'\)/.test(patrickLegacy), "legacy critic launcher prefers canonical error field");
 ok(/Kling: ' \+ \(d\.error \|\| d\.detail \|\| 'не запустился'\)/.test(patrickLegacy), "legacy Kling path prefers canonical error field");
 ok(/Higgsfield: ' \+ \(d\.error \|\| d\.detail \|\| 'не запустился'\)/.test(patrickLegacy), "legacy Higgsfield path prefers canonical error field");
+ok(!/graph-run crash:/.test(graphRun) && (graphRun.match(/graph-run упал:/g) || []).length >= 2, "graph-run route crash errors use operator-facing Russian copy");
 
 if (failed) process.exit(1);
 console.log(`errorContractNormalization: ${passed} passed, ${failed} failed`);

@@ -54,7 +54,7 @@ export async function POST(req: NextRequest) {
     const plan = ((after as Record<string, unknown>[] | null)?.[0]?.run_plan as RunPlan | null) || null;
     return NextResponse.json({ ok: true, recipe_id: recipeId, started: true, run_id: plan?.run_id || null, cost_hint: plan?.cost_hint || null });
   } catch (e) {
-    return NextResponse.json({ error: "graph-run crash: " + String((e as Error)?.message || e).slice(0, 160) }, { status: 500 });
+    return NextResponse.json({ error: "graph-run упал: " + String((e as Error)?.message || e).slice(0, 160) }, { status: 500 });
   }
 }
 
@@ -73,6 +73,6 @@ export async function GET(req: NextRequest) {
     const nodes = (plan?.nodes || []).map((n) => ({ ordinal: n.ordinal, slot: n.slot, node_type: n.node_type, tool: n.tool, status: n.status, url: n.url || null, error: n.error || null, engine: n.engine || null }));
     return NextResponse.json({ ok: true, recipe_id: recipeId, run_id: plan?.run_id || null, status: recipe.status, step: plan?.step || null, nodes, otk: recipe.otk_verdict, otk_score: recipe.otk_score, output_url: recipe.output_url, error: plan?.error || null, warnings: plan?.warnings || null, execution_log: plan?.execution_log || [], run_summary: buildRunSummary(plan), cost_hint: plan?.cost_hint || (plan?.nodes ? estimateRunCost(plan.nodes as unknown as Record<string, unknown>[]) : null) }, { headers: { "Cache-Control": "no-store" } });
   } catch (e) {
-    return NextResponse.json({ error: "graph-run crash: " + String((e as Error)?.message || e).slice(0, 160) }, { status: 500 });
+    return NextResponse.json({ error: "graph-run упал: " + String((e as Error)?.message || e).slice(0, 160) }, { status: 500 });
   }
 }

@@ -2228,3 +2228,4 @@
 - 2026-06-26 15:58 MSK - cleaned learning generation history lineage: node types now use `nodeTypeLabel()`, source codes use a small operator dictionary, and unknown statuses fall back to `неясно` instead of leaking backend enums.
 - 2026-06-26 16:12 MSK - advanced V16 read-only learning without enabling auto-scale: `market_summary` now carries overall and per-niche 100+ view win-rate, and Studio shows that signal beside market-by-niche totals.
 - 2026-06-26 16:18 MSK - synced operator docs after the V16 win-rate pass: daily runbook, M4 closeout, and roadmap now describe `win-rate 100+` as a read-only market signal, not an auto-scale command.
+- 2026-06-26 16:25 MSK - localized the visible `/api/factory/graph-run` crash fallback: start/poll failures now return `graph-run упал` instead of English `graph-run crash`, with a regression guard in the factory contract tests.
