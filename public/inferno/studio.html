@@ -583,6 +583,22 @@ function runQueueTone(status){
   }[String(status||"")] || {c:"var(--tx-lo2)", bg:"var(--bg-input)", label:String(status||"?")};
 }
 
+function renderOpsFetchFallback(host,errorText,stale){
+  const card=el("div",{class:"card",style:"padding:15px;border-color:var(--warn);background:var(--warn-bg);"});
+  card.appendChild(el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:8px;"},
+    el("div",{style:"font-size:14px;font-weight:600;color:var(--warn);"},"Пульс временно недоступен"),
+    el("button",{class:"btn sm",onclick:()=>screenWorker(document.getElementById(\"screen\"))},"↻ Повторить")));
+  card.appendChild(el("div",{style:"font-size:12px;color:var(--tx-bd);line-height:1.5;"},
+    stale
+      ? "не удалось подтянуть свежий снимок, поэтому оставляю на экране последний удачный статус."
+      : "не удалось прочитать `/ops`, поэтому экран пока не может собрать статус завода."));
+  if(errorText){
+    card.appendChild(el("div",{class:"mono",style:"font-size:10.5px;color:var(--tx-lo);line-height:1.45;margin-top:8px;"},
+      "деталь: ", String(errorText).slice(0,140)));
+  }
+  host.appendChild(card);
+}
+
 async function screenWorker(root, force, renderToken){
   const token=renderToken||++S.renderToken;
   const isLiveRender=()=>S.screen==="worker"&&S.renderToken===token&&root&&root.isConnected;
@@ -592,25 +608,34 @@ async function screenWorker(root, force, renderToken){
     el("button",{class:"btn",onclick:()=>screenWorker(root)},"↻ Обновить")));
   const wrap=el("div",{class:"scroll",style:"padding:18px;"}); root.appendChild(wrap);
   wrap.appendChild(loadingCard("смотрю пульс и живые прогоны…"));
+  const prevWorkerState=S.workerState&&!S.workerState.error?S.workerState:null;
   const d=await api("/ops");
   if(!isLiveRender()) return;
-  S.workerState=d;
+  const state=d&&!d.error?d:prevWorkerState;
+  if(d&&!d.error)S.workerState=d;
+  else if(!S.workerState)S.workerState=d;
   wrap.innerHTML="";
-  if(d.error){ wrap.appendChild(emptyBox("ошибка ops: "+d.error)); return; }
+  if(!state){
+    renderOpsFetchFallback(wrap,d&&d.error,false);
+    if(!isLiveRender()) return;
+    S.workerTimer=setTimeout(()=>{ if(S.screen==="worker")screenWorker(document.getElementById("screen")); },15000);
+    return;
+  }
+  if(d&&d.error)renderOpsFetchFallback(wrap,d.error,true);
 
-  const worker=d.worker||null;
-  const alerts=Array.isArray(d.alerts)?d.alerts:[];
-  const suggested=Array.isArray(d.suggested_actions)?d.suggested_actions:[];
+  const worker=state.worker||null;
+  const alerts=Array.isArray(state.alerts)?state.alerts:[];
+  const suggested=Array.isArray(state.suggested_actions)?state.suggested_actions:[];
   const factorySuggested=suggested.filter((a)=>!isWorkerInfraAction(a&&a.action));
   const visibleSuggested=S.compact?factorySuggested.slice(0,2):factorySuggested;
-  const heartbeatDiag=d.heartbeat_diagnostics||null;
-  const opsStatus=d.ops_status||null;
+  const heartbeatDiag=state.heartbeat_diagnostics||null;
+  const opsStatus=state.ops_status||null;
   const opsTone=opsStatusTone(opsStatus&&opsStatus.level);
   const live=worker&&worker.liveness?worker.liveness:{state:"unknown",age_sec:null};
   const workerSource=worker&&worker.source||"unknown";
-  const latestStress=d.latest_stress||null;
-  const stressHistory=d.stress_history||null;
-  const runObservability=d.observability||null;
+  const latestStress=state.latest_stress||null;
+  const stressHistory=state.stress_history||null;
+  const runObservability=state.observability||null;
   const recentRuns=Array.isArray(runObservability&&runObservability.recent_runs)?runObservability.recent_runs:[];
   const activeRuns=recentRuns.filter((r)=>r&&(r.active||r.status==="running"||r.stale));
   const queueRuns=(activeRuns.length?activeRuns:recentRuns);
@@ -839,7 +864,8 @@ async function screenCenter(root, force, renderToken){
   if(force || !S.workerState){
     const workerData=await api("/ops");
     if(!live()) return;
-    S.workerState=workerData;
+    if(workerData && !workerData.error)S.workerState=workerData;
+    else if(!S.workerState)S.workerState=workerData;
     renderFactoryPulse();
   }
   if(!live()) return;
