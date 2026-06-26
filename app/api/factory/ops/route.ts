@@ -43,6 +43,8 @@ function enrichFallbackWorkerFromObserver(
   const heartbeat = observer && typeof observer === "object"
     ? ((observer as { heartbeat?: unknown }).heartbeat as { last_activity_at?: unknown } | undefined)
     : undefined;
+  const staleMin = Number((heartbeat as { stale_min?: unknown } | undefined)?.stale_min);
+  if (Number.isFinite(staleMin) && staleMin >= 180) return workerState;
   const lastSeen = typeof heartbeat?.last_activity_at === "string" ? heartbeat.last_activity_at : null;
   if (!lastSeen) return workerState;
   const enrichedWorker = {

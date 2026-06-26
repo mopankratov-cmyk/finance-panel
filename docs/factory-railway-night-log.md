@@ -105,6 +105,23 @@
 - Следующий шаг:
   - закоммитить и выкатить alias
 
+### 2026-06-26 19:45
+
+- Ветка: `fix/factory-elevenlabs-optional`
+- Цель: убрать ложный красный `пульс потерян`, когда резервный worker snapshot обогащался старой активностью генераций
+- Изменено:
+  - `app/api/factory/ops/route.ts`: `queue_fallback` теперь получает `last_seen` из `observer heartbeat` только если observer-пульс свежий; старый `generation_history` больше не превращается в `worker_dead`
+  - `lib/factory/opsFailOpen.test.mts`: контракт уточнён, чтобы enrichment работал только на свежем observer pulse
+- Проверки:
+  - `node --import tsx lib/factory/opsFailOpen.test.mts`
+  - `node --import tsx lib/factory/studioSimplification.test.mts`
+  - `npm run build`
+- Результат:
+  - экран `Пульс завода` не должен краснеть только потому, что давно не было новых генераций
+  - резервный режим остаётся честным: optional heartbeat-table всё ещё видна как резерв, но без ложного `worker_dead`
+- Следующий шаг:
+  - закоммитить, выкатить alias и проверить worker screen в браузере
+
 ### 2026-06-26 00:40
 
 - Ветка: `fix/factory-elevenlabs-optional`
