@@ -666,6 +666,7 @@ async function startProductionRun(recipeId, opts){
   S.busyRun=S.busyRun||{};
   if(S.busyRun[key]){ toast("прогон уже запускается"); return; }
   S.busyRun[key]=true;
+  if(!(await canStartRunWithBudget(recipeId))){ delete S.busyRun[key]; return; }
   toast((opts&&opts.restart)?"перезапускаю прогон…":"запускаю прогон…");
   const r=await api("/graph-run",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({recipe_id:recipeId,restart:!!(opts&&opts.restart)})});
   delete S.busyRun[key];
@@ -1648,6 +1649,63 @@ function canvasNode(n,p){
 
 //==================== 04 · INSPECTOR ====================
 const PRICE={claude:["≈$0.01","сценарий · токены","var(--p-script)","Claude (сценарист)"],seedance:["$0.42","Pro × 6с × 1080p","var(--p-video)","Seedance 1.0"],kling:["$0.38","Standard × 5с","var(--p-video)","Kling"],creatify:["$1.20","аватар × голос × 12с","var(--p-audio)","Creatify UGC"],elevenlabs:["$0.10","RU-закадр","var(--p-audio)","ElevenLabs"],shotstack:["$0.08","рендер × титры × 1080p","var(--p-caption)","Shotstack"],disk_real:["$0.00","реальный клип","var(--p-video)","Я.Диск"],sound:["$0.00","трек","var(--p-audio)","Звук"]};
+function toolPriceAmount(tool){
+  const p=PRICE[String(tool||"").toLowerCase()];
+  if(!p)return 0;
+  const m=String(p[0]||"").match(/([\d.]+)/);
+  return m?Number(m[1]):0;
+}
+function estimateRecipeCost(nodes){
+  const skip=new Set(["","sound","music","captions","disk_real","disk"]);
+  const countByTool={};
+  (nodes||[]).forEach((n)=>{
+    const tool=String(n&&n.tool||"").toLowerCase();
+    if(skip.has(tool))return;
+    countByTool[tool]=(countByTool[tool]||0)+1;
+  });
+  const lines=Object.keys(countByTool).map((tool)=>{
+    const price=toolPriceAmount(tool);
+    return {tool,label:(PRICE[tool]&&PRICE[tool][3])||tool,color:(PRICE[tool]&&PRICE[tool][2])||"var(--acc)",count:countByTool[tool],amount:price*countByTool[tool]};
+  });
+  if((nodes||[]).length&&!lines.some((l)=>l.tool==="shotstack")){
+    lines.push({tool:"shotstack",label:"Shotstack (сборка)",color:"var(--p-caption)",count:1,amount:toolPriceAmount("shotstack")});
+  }
+  const total=lines.reduce((sum,line)=>sum+line.amount,0);
+  return {lines,total,worst:total*3};
+}
+function costLabel(cost){ return "≈$"+Number(cost||0).toFixed(2); }
+function lowBalanceLabelsFromState(state){
+  const balances=state&&state.balances||null;
+  const services=Array.isArray(balances&&balances.services)?balances.services:[];
+  const raw=Array.isArray(balances&&balances.low)?balances.low:[];
+  return raw.map((item)=>{
+    const key=typeof item==="string"?item:String((item&&item.service)||(item&&item.provider)||(item&&item.label)||"");
+    const service=services.find((s)=>String(s&&s.service)===key||String(s&&s.label)===key);
+    return (service&&String(service.label||service.service))||key;
+  }).filter(Boolean);
+}
+async function ensureOpsForBudget(){
+  if(S.workerState&&S.workerState.balances)return S.workerState;
+  const d=await api("/ops");
+  if(d&&!d.error)S.workerState=d;
+  else toast("балансы не проверены — запуск разрешён fail-open");
+  return S.workerState;
+}
+async function canStartRunWithBudget(recipeId){
+  await ensureOpsForBudget();
+  if(!S.recipe||!S.recipe.recipe||String(S.recipe.recipe.id)!==String(recipeId)){
+    const ok=await openRecipe(recipeId);
+    if(!ok)return false;
+  }
+  const low=lowBalanceLabelsFromState(S.workerState);
+  const cost=estimateRecipeCost((S.recipe&&S.recipe.nodes)||[]);
+  if(low.length){
+    toast("низкий баланс: "+low.join(", ")+" · запуск остановлен");
+    return false;
+  }
+  if(cost.total>0)toast("смета прогона "+costLabel(cost.total)+" · потолок ОТК "+costLabel(cost.worst));
+  return true;
+}
 const TOOL_SUB={claude:"сценарист",seedance:"AI-видео",kling:"AI-видео",creatify:"UGC-актёр",elevenlabs:"RU-закадр",shotstack:"монтаж/титры",disk_real:"реальная съёмка",sound:"звук/музыка"};
 const INSPECTOR_TABS=["claude","seedance","kling","creatify","elevenlabs","shotstack","disk_real","sound"]; // движки, которые реально исполняются (claude = генерация сценария)
 async function screenInspector(root){
@@ -2196,8 +2254,10 @@ let _runPolling=false;
 async function startRun(){
   if(!S.recipe){ toast("нет графа"); return; }
   if(_runPolling){ toast("сборка уже идёт…"); return; }   // защита от повторного клика → дубль платного прогона
+  const id=S.recipe.recipe.id;
+  if(!(await canStartRunWithBudget(id)))return;
   _runPolling=true;
-  const id=S.recipe.recipe.id; toast("запускаю исполнение графа…");
+  toast("запускаю исполнение графа…");
   S.run={status:"running",step:"старт",nodes:[]}; renderOTK(document.getElementById("otk-panel"));
   const r=await api("/graph-run",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({recipe_id:id})});
   if(r.error){ _runPolling=false; toast("ошибка: "+r.error); S.run=null; renderOTK(document.getElementById("otk-panel")); return; }
@@ -2252,17 +2312,14 @@ async function screenLibrary(root,useCache){
   recipes.slice(0,9).forEach(r=>recList.appendChild(recipeCard(r)));
 
   // V11: РЕАЛЬНАЯ смета прогона из нод рецепта × PRICE (была демо $182/250)
-  const costNum=(t)=>{ const p=PRICE[t]; if(!p)return 0; const m=String(p[0]).match(/([\d.]+)/); return m?parseFloat(m[1]):0; };
   const rnodes=(S.recipe&&S.recipe.nodes)||[];
-  const SKIP=new Set(["","shotstack","sound","music","captions","disk_real","disk"]); // $0 / сборочные
-  const byTool={}; rnodes.forEach(n=>{ const t=String(n.tool||"").toLowerCase(); if(SKIP.has(t))return; byTool[t]=(byTool[t]||0)+1; });
-  const rows=Object.keys(byTool).map(t=>[(PRICE[t]&&PRICE[t][3])||t,(PRICE[t]&&PRICE[t][2])||"var(--acc)",byTool[t],costNum(t)*byTool[t]]);
-  if(rnodes.length)rows.push(["Shotstack (сборка)","var(--p-caption)",1,costNum("shotstack")]);
-  const cTotal=rows.reduce((s,r)=>s+r[3],0), cMax=Math.max(0.01,...rows.map(r=>r[3]));
+  const cost=estimateRecipeCost(rnodes);
+  const rows=cost.lines.map((line)=>[line.label,line.color,line.count,line.amount]);
+  const cTotal=cost.total, cMax=Math.max(0.01,...rows.map(r=>r[3]));
   aside.appendChild(el("div",{style:"display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;"},el("span",{style:"font-size:11px;font-weight:600;color:var(--tx-mid2);"},"Смета прогона"),el("span",{style:"font-size:9px;color:var(--tx-lo2);"},rnodes.length?"по нодам":"нет графа")));
   rows.forEach(([t,c,cnt,$])=>
     aside.appendChild(el("div",{style:"margin-bottom:10px;"},el("div",{style:"display:flex;align-items:center;justify-content:space-between;font-size:11.5px;margin-bottom:3px;"},el("span",{},t+(cnt>1?" ×"+cnt:"")),el("span",{class:"mono",style:"color:var(--tx-mid);"},"$"+$.toFixed(2))),el("div",{class:"bar"},el("i",{style:"width:"+Math.round($/cMax*100)+"%;background:"+c})))));
-  aside.appendChild(el("div",{class:"card",style:"padding:12px;margin-top:14px;display:flex;align-items:center;"},el("span",{style:"flex:1;font-size:12px;"},"Итого прогон"),el("span",{class:"mono",style:"font-weight:600;"},"≈$"+cTotal.toFixed(2))));
+  aside.appendChild(el("div",{class:"card",style:"padding:12px;margin-top:14px;display:flex;align-items:center;"},el("span",{style:"flex:1;font-size:12px;"},"Итого прогон"),el("span",{class:"mono",style:"font-weight:600;"},costLabel(cTotal))));
   aside.appendChild(el("div",{style:"font-size:9px;color:var(--tx-lo2);margin-top:6px;line-height:1.3;"},"× ОТК-реген может поднять стоимость прогона (до ×3 рендера). Variants path в Sprint 1 выключен."));
 }
 function genCard(g){ const a=g.analysis||{}; const isVid=g.kind==="video"; const win=a.otk&&a.otk>=8;
