@@ -20,6 +20,7 @@
 > - V6 подготовлен как read-only market guard: `/ab-rank` уже ранжирует реальные `post_metrics`, но не называет “winner” до минимального порога просмотров (`min_winner_views`, default `100`), чтобы не масштабировать случайный шум.
 > - V14 имеет защищённый MVP-substrate: `/winners` снимает winner-рецепт в `node_templates`, а sanitization вынесена в `winnerPreset` и тестом запрещает перенос `preview_url/preview_hash` в новые рецепты.
 > - V17 частично закрыт без нового extract-сервиса: auto-bind теперь читает `content_assets.duration_sec` и переносит известную длительность real video в `RunNode.duration_sec`, чтобы сборка/trim не откатывались к дефолтным 5с там, где каталог уже знает правду.
+> - V12 закрыт как честный planning preview, а не WYSIWYG-обман: экран сборки до платного `graph-run` показывает бесплатную автораскладку таймлайна по длительностям нод; guard-тест запрещает потерять этот pre-render preview.
 
 ## Диагноз (единодушный, проверен по коду)
 
@@ -57,7 +58,7 @@
 - **V6** — реальные метрики авто-апгрейдят winner. Подготовлено read-only: `/ab-rank` ранжирует рынок с `min_winner_views`, но автоматический апгрейд оставлен на отдельный шаг с ручным подтверждением.
 - **V16** — дашборд петли обучения (win-rate по нише, корреляция ОТК vs реальные просмотры).
 - **V14** — winner-рецепт → пресет ниши. MVP-substrate закрыт: `/winners` создаёт `from_winner` preset, transfer читает production prompt/settings, volatile preview refs очищаются тестируемой sanitization.
-- **V12** — превью СБОРКИ до платного Shotstack-рендера (риск WYSIWYG-лжи у $0 proxy).
+- **V12** — превью СБОРКИ до платного Shotstack-рендера. Закрыто в MVP как planning preview: бесплатный таймлайн по нодам до `startRun()`, без обещания pixel-perfect финала.
 - **V17** — бэкфилл реальных длительностей disk_real. Частично закрыто: известный `content_assets.duration_sec` больше не теряется при auto-bind; полноценный ffprobe/fal-extract backfill остаётся later.
 - **V13** — Remotion ReelV5 как финал-движок (openreels Фаза 4). ⚠️ **НЕ «параметризовать пропсы»**: `@remotion/lambda` = отдельная AWS-инфра (Vercel без ffmpeg/chromium), base-rate переписки 60%+. Только после замкнутой петли, с флагом отката на Shotstack.
 - **V15** — openreels `<артикул>` один-клик (вершина пирамиды на V14+V2+V8+V3; раньше фундамента = масштабирование слопа).
