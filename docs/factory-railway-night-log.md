@@ -26,6 +26,30 @@
 
 ## Записи
 
+### 2026-06-26 23:49
+
+- Ветка: `feat/reels-brain-operator-console`
+- Цель: довести до отдельной feature-ветки полный операторский экран Reels Brain перед следующей preview/production проверкой
+- Изменено:
+  - от `gitea/main` поднята чистая ветка `feat/reels-brain-operator-console`
+  - перенесён коммит `93f9b90` с расширенной консолью Reels Brain
+  - в `app/agent/reels-brain/page.tsx` добавлены operator-блоки `source-run`, `manual-seed`, `analyze`, `patterns/build`, `loop`
+  - в `app/api/factory/reels-brain/bake-off/route.ts` добавлены `mapLimit`, timeout-guard и более честные warning-сообщения по partial runs
+- Проверки:
+  - `npm run dev`
+  - `curl -I http://127.0.0.1:3000/agent/reels-brain`
+  - `curl http://127.0.0.1:3000/api/factory/reels-brain/providers`
+  - `curl -X POST http://127.0.0.1:3000/api/factory/reels-brain/bake-off ...`
+  - `npx tsc --noEmit`
+- Результат:
+  - локально подтверждено, что ветка поднимает `next dev` без ошибок
+  - `providers` route отвечает валидным JSON
+  - `bake-off` route проходит end-to-end и возвращает новую summary-структуру
+  - операторский UI теперь живёт в отдельной чистой ветке, а не только в старой `feat/reels-brain-console`
+- Следующий шаг:
+  - открыть preview этой ветки и проверить полный экран уже в браузере с авторизацией
+  - после этого решать, льём ли ветку как есть или делаем ещё один полировочный проход по UX/empty states
+
 ### 2026-06-25 08:30
 
 - Ветка: `fix/factory-sprint1-stabilization`
