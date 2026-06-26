@@ -807,6 +807,7 @@ async function screenWorker(root, force, renderToken){
   const suggested=Array.isArray(state.suggested_actions)?state.suggested_actions:[];
   const factorySuggested=suggested.filter((a)=>!isWorkerInfraAction(a&&a.action));
   const visibleSuggested=S.compact?factorySuggested.slice(0,2):factorySuggested;
+  const archiveOnlySuggested=factorySuggested.length>0&&factorySuggested.every((a)=>["archive_legacy_failed_runs","review_legacy_warning_history"].includes(String(a&&a.action||"")));
   const heartbeatDiag=state.heartbeat_diagnostics||null;
   const opsStatus=state.ops_status||null;
   const opsTone=opsStatusTone(opsStatus&&opsStatus.level);
@@ -891,7 +892,7 @@ async function screenWorker(root, force, renderToken){
   if(visibleSuggested.length){
     const nextCard=el("div",{class:"card",style:"padding:14px;margin-bottom:14px;"});
     nextCard.appendChild(el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;"},
-      el("div",{style:"font-size:14px;font-weight:600;"},"Что проверить сейчас"),
+      el("div",{style:"font-size:14px;font-weight:600;"},archiveOnlySuggested?"Архивный хвост":"Что проверить сейчас"),
       el("span",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);"},String(factorySuggested.length)+" пунктов")));
     visibleSuggested.forEach((a)=>nextCard.appendChild(el("div",{style:"display:flex;align-items:flex-start;justify-content:space-between;gap:10px;font-size:11.5px;color:var(--tx-bd);padding:7px 0;border-top:1px solid var(--bd);"},
       el("div",{style:"min-width:0;display:flex;flex-direction:column;gap:3px;"},
