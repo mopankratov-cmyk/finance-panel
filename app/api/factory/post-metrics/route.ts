@@ -134,7 +134,7 @@ export async function POST(req: NextRequest) {
       forwarded: false,
       metrics_saved: false,
       status_marked: false,
-      error: "post-metrics crash: " + String((e as Error)?.message || e).slice(0, 160),
+      error: "сохранение метрик публикации упало: " + String((e as Error)?.message || e).slice(0, 160),
     }, { status: 500 });
   }
 }

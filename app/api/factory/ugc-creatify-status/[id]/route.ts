@@ -15,6 +15,6 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
     if (s.status === "preview_ready") return NextResponse.json({ status: "preview_ready", preview_url: s.previewUrl, progress: "превью готово — можно запускать render" });
     return NextResponse.json({ status: "rendering", progress: "рендер UGC-актёра (Creatify)…" });
   } catch (e) {
-    return NextResponse.json({ status: "error", error: "ugc-creatify-status crash: " + String((e as Error)?.message || e).slice(0, 180) }, { status: 500 });
+    return NextResponse.json({ status: "error", error: "статус UGC Creatify упал: " + String((e as Error)?.message || e).slice(0, 180) }, { status: 500 });
   }
 }

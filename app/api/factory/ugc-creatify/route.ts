@@ -128,7 +128,7 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({ task_id: "cf." + res.token, engine: "creatify", mode: "lipsyncs" });
   } catch (e) {
     return NextResponse.json({
-      error: "ugc-creatify crash: " + String((e as Error)?.message || e).slice(0, 160),
+      error: "запуск UGC Creatify упал: " + String((e as Error)?.message || e).slice(0, 160),
     }, { status: 500 });
   }
 }

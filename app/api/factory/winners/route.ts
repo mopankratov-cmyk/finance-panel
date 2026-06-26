@@ -92,7 +92,7 @@ export async function POST(req: NextRequest) {
       ok: false,
       learnings: null,
       preset_id: null,
-      error: "winners POST crash: " + String((e as Error)?.message || e).slice(0, 160),
+      error: "сохранение победителя упало: " + String((e as Error)?.message || e).slice(0, 160),
     }, { status: 500 });
   }
 }
@@ -151,7 +151,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       winners: [],
       niche: "",
-      error: "winners GET crash: " + String((e as Error)?.message || e).slice(0, 160),
+      error: "чтение победителей упало: " + String((e as Error)?.message || e).slice(0, 160),
     }, { status: 500 });
   }
 }

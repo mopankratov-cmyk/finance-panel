@@ -14,6 +14,6 @@ export async function POST(_req: Request, ctx: { params: Promise<{ id: string }>
     if (s.status === "error") return NextResponse.json({ status: "failed", error: s.error }, { status: 502 });
     return NextResponse.json({ status: "rendering", progress: "рендер UGC-актёра (Creatify)…" });
   } catch (e) {
-    return NextResponse.json({ status: "error", error: "ugc-creatify-render crash: " + String((e as Error)?.message || e).slice(0, 180) }, { status: 500 });
+    return NextResponse.json({ status: "error", error: "рендер UGC Creatify упал: " + String((e as Error)?.message || e).slice(0, 180) }, { status: 500 });
   }
 }

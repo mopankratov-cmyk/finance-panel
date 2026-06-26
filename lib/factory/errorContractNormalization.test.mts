@@ -37,6 +37,20 @@ const orchestrationRoutes = [
   "app/api/factory/jobs/balances-cron/route.ts",
   "app/api/factory/jobs/corpus-cron/route.ts",
 ].map((file) => readFileSync(file, "utf8")).join("\n");
+const renderRoutes = [
+  "app/api/factory/assemble/route.ts",
+  "app/api/factory/static-status/route.ts",
+  "app/api/factory/video-fal/route.ts",
+  "app/api/factory/artifact-check/route.ts",
+  "app/api/factory/media-store/route.ts",
+  "app/api/factory/post-metrics/route.ts",
+  "app/api/factory/ugc-creatify/route.ts",
+  "app/api/factory/video-fal-status/[id]/route.ts",
+  "app/api/factory/ugc-creatify-status/[id]/route.ts",
+  "app/api/factory/ugc-creatify-render/[id]/route.ts",
+  "app/api/factory/winners/route.ts",
+  "app/api/factory/ab-rank/route.ts",
+].map((file) => readFileSync(file, "utf8")).join("\n");
 
 ok(!/detail:\s*error/.test(ugcCreatify), "ugc-creatify route no longer duplicates errors into detail");
 ok(!/\{\s*error,\s*detail:\s*error/.test(ugcCreatify), "ugc-creatify keeps a single canonical error field");
@@ -53,6 +67,8 @@ ok(!/(decompose|node-preview|recipes|balances|studio|niche-brief|static-generate
 ok(/разбор конкурента упал:/.test(liveRoutes) && /превью ноды упало:/.test(liveRoutes) && /рецепты упали:/.test(liveRoutes) && /балансы упали:/.test(liveRoutes), "primary Studio route fallbacks use operator-facing Russian copy");
 ok(!/(ops|stability|worker-state (GET|POST)|graph-run\/tick|graph-run\/cron|graph-run\/rejudge|jobs\/balances-cron|jobs\/corpus-cron) crash:/.test(orchestrationRoutes), "ops and graph orchestration routes do not leak English crash prefixes");
 ok(!/error: "unauthorized"/.test(orchestrationRoutes) && /неверный CRON_SECRET/.test(orchestrationRoutes), "protected factory service routes explain auth failures as CRON_SECRET problems");
+ok(!/(assemble|static-status|video-fal|video-fal-status|artifact-check|media-store|post-metrics|ugc-creatify|ugc-creatify-status|ugc-creatify-render|winners (GET|POST)|ab-rank) crash:/.test(renderRoutes), "render and media routes do not leak English crash prefixes");
+ok(/сборка таймлайна упала:/.test(renderRoutes) && /сохранение медиа упало:/.test(renderRoutes) && /сохранение метрик публикации упало:/.test(renderRoutes), "render and media routes use operator-facing Russian copy");
 
 if (failed) process.exit(1);
 console.log(`errorContractNormalization: ${passed} passed, ${failed} failed`);

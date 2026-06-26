@@ -88,7 +88,7 @@ export async function POST(req: NextRequest) {
       uploaded: 0,
       skipped: 0,
       warnings: [],
-      error: "media-store crash: " + String((e as Error)?.message || e).slice(0, 160),
+      error: "сохранение медиа упало: " + String((e as Error)?.message || e).slice(0, 160),
     }, { status: 500 });
   }
 }
