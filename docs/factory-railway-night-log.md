@@ -89,6 +89,22 @@
 - Следующий шаг:
   - закоммитить и выкатить alias
 
+### 2026-06-26 19:33
+
+- Ветка: `fix/factory-elevenlabs-optional`
+- Цель: убрать последний технический англоязычный хвост с живого worker screen
+- Изменено:
+  - `public/inferno/studio.html`: фильтр `workerNote` теперь скрывает не только старый `derived from queue fallback`, но и новый synthetic note `queue fallback with observer pulse`
+  - `lib/factory/studioSimplification.test.mts`: контракт на human-facing worker status copy обновлён под это поведение
+- Проверки:
+  - `node --import tsx lib/factory/studioSimplification.test.mts`
+  - `node --import tsx lib/factory/opsFailOpen.test.mts`
+  - `npm run build`
+- Результат:
+  - карточка `Статус` на worker screen больше не должна показывать технический текст после `режим: резерв`
+- Следующий шаг:
+  - закоммитить и выкатить alias
+
 ### 2026-06-26 00:40
 
 - Ветка: `fix/factory-elevenlabs-optional`

@@ -839,7 +839,7 @@ async function screenWorker(root, force, renderToken){
   const displayedLiveTone=workerSource==="queue_fallback"&&live.state==="unknown"?{c:"var(--tx-lo)", bg:"var(--bg-input)", label:"резерв"}:liveTone;
   const aliveNote=workerSource==="queue_fallback"&&live.state==="unknown"?"резервный пульс":live.state==="alive"?"пульс свежий":live.state==="stale"?"пульс молчит":"пульс потерян";
   const sourceLabel=workerSource==="heartbeat_db"?"таблица":"резерв";
-  const workerNote=worker&&worker.note&&!/derived from queue fallback/i.test(String(worker.note))?String(worker.note):"";
+  const workerNote=worker&&worker.note&&!/derived from queue fallback|queue fallback with observer pulse/i.test(String(worker.note))?String(worker.note):"";
   const orderedRuns=[...queueRuns]
     .sort((a,b)=>{
       const aw=(a&&a.stale)?0:(a&&a.active===false)?4:String(a&&a.status||"")==="running"?1:String(a&&a.status||"")==="warning"?2:String(a&&a.status||"")==="run_fail"?3:5;
