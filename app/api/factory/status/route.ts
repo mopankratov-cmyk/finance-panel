@@ -123,7 +123,7 @@ export async function GET() {
   } catch (e) {
     return NextResponse.json({
       ok: false,
-      error: "status crash: " + String((e as Error)?.message || e).slice(0, 160),
+      error: "статус завода упал: " + String((e as Error)?.message || e).slice(0, 160),
       tables: {},
       keys: {},
       counts: {},

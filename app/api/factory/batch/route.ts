@@ -77,7 +77,7 @@ export async function POST(req: NextRequest) {
       budget_usd: 0,
       capped_by_budget: true,
       balance_unknown: [],
-      error: "batch crash: " + String((e as Error)?.message || e).slice(0, 160),
+      error: "пакетный запуск упал: " + String((e as Error)?.message || e).slice(0, 160),
     }, { status: 500 });
   }
 }

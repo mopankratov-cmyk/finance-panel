@@ -27,7 +27,7 @@ export async function GET() {
       ok: true,
       partial: true,
       updated_at: new Date().toISOString(),
-      error: "observer crash: " + String((e as Error)?.message || e).slice(0, 160),
+      error: "наблюдатель завода упал: " + String((e as Error)?.message || e).slice(0, 160),
     }, { headers: { "Cache-Control": "no-store" } });
   }
 }

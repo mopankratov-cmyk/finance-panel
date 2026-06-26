@@ -65,6 +65,17 @@ const contentActionRoutes = [
   "app/api/factory/overlay/route.ts",
   "app/api/factory/gen-save/route.ts",
 ].map((file) => readFileSync(file, "utf8")).join("\n");
+const serviceRoutes = [
+  "app/api/factory/status/route.ts",
+  "app/api/factory/observer/route.ts",
+  "app/api/factory/produce/route.ts",
+  "app/api/factory/disk-source/route.ts",
+  "app/api/factory/reject/route.ts",
+  "app/api/factory/batch/route.ts",
+  "app/api/factory/assistant/route.ts",
+  "app/api/factory/prepare-product/route.ts",
+  "app/api/factory/wb-index/route.ts",
+].map((file) => readFileSync(file, "utf8")).join("\n");
 
 ok(!/detail:\s*error/.test(ugcCreatify), "ugc-creatify route no longer duplicates errors into detail");
 ok(!/\{\s*error,\s*detail:\s*error/.test(ugcCreatify), "ugc-creatify keeps a single canonical error field");
@@ -85,6 +96,8 @@ ok(!/(assemble|static-status|video-fal|video-fal-status|artifact-check|media-sto
 ok(/сборка таймлайна упала:/.test(renderRoutes) && /сохранение медиа упало:/.test(renderRoutes) && /сохранение метрик публикации упало:/.test(renderRoutes), "render and media routes use operator-facing Russian copy");
 ok(!/(products|brand-kit (GET|POST)|autofill|scenario|scenario-quality|hook-judge|hook-pick|improve-prompt|broll|subtitle|overlay|gen-save (GET|POST)) crash:/.test(contentActionRoutes), "content action routes do not leak English crash prefixes");
 ok(/автозаполнение нод упало:/.test(contentActionRoutes) && /сценарий упал:/.test(contentActionRoutes) && /сохранение генерации упало:/.test(contentActionRoutes), "content action routes use operator-facing Russian copy");
+ok(!/(status|observer|produce|disk-source|reject|batch|assistant|prepare-product|wb-index) crash:/.test(serviceRoutes), "service routes do not leak English crash prefixes");
+ok(/статус завода упал:/.test(serviceRoutes) && /производство ролика упало:/.test(serviceRoutes) && /подготовка товара упала:/.test(serviceRoutes), "service routes use operator-facing Russian copy");
 
 if (failed) process.exit(1);
 console.log(`errorContractNormalization: ${passed} passed, ${failed} failed`);
