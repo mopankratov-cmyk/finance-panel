@@ -15,6 +15,7 @@ export type LatestStressArtifact = {
     runFail?: number;
     timeouts?: number;
     avgDurationSec?: number;
+    targetMet?: boolean;
   };
   stability?: {
     ok?: boolean;
@@ -68,17 +69,25 @@ export async function readLatestStressArtifact(): Promise<LatestStressArtifact |
 
 function stressReportPoint(payload: LatestStressArtifact): StressHistorySummary["recent_reports"][number] {
   const summary = payload.summary || {};
-  const targetMet = payload.stability?.stability?.target_met;
+  const totalRuns = Number(summary.totalRuns || 0);
+  const completed = Number(summary.completed || 0);
+  const failed = Number(summary.failed || 0);
+  const runFail = Number(summary.runFail || 0);
+  const timeouts = Number(summary.timeouts || 0);
+  const targetMet =
+    typeof summary.targetMet === "boolean"
+      ? summary.targetMet
+      : totalRuns > 0 && completed === totalRuns && failed === 0 && runFail === 0 && timeouts === 0;
   return {
     generated_at: payload.generatedAt || null,
     recipe_id: typeof summary.recipeId === "number" ? summary.recipeId : null,
-    total_runs: Number(summary.totalRuns || 0),
-    completed: Number(summary.completed || 0),
-    failed: Number(summary.failed || 0),
+    total_runs: totalRuns,
+    completed,
+    failed,
     warnings: Number(summary.warnings || 0),
-    run_fail: Number(summary.runFail || 0),
-    timeouts: Number(summary.timeouts || 0),
-    target_met: typeof targetMet === "boolean" ? targetMet : null,
+    run_fail: runFail,
+    timeouts,
+    target_met: targetMet,
   };
 }
 
