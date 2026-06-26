@@ -149,6 +149,17 @@ const roleOf = (n: RunNode) => String(((n.params || {}) as Record<string, unknow
 // Иначе строим связную montage-раскладку: клипы → overlays по таймлайну, capt/hook → капшены, sound → музыка, hook/арт → CTA.
 const REEL_FPS = 30;
 const REEL_CTA_FRAMES = 55;
+
+function renderEngineDiagnostic(): string {
+  const remotionSelected = remotionEngineSelected();
+  const remotionConfigured = remotionReady();
+  const shotstackConfigured = shotstackReady();
+  if (remotionSelected && remotionConfigured) return "render path: remotion";
+  if (shotstackConfigured) return remotionSelected ? "render path: shotstack fallback (remotion unavailable)" : "render path: shotstack";
+  if (remotionSelected && !remotionConfigured) return "render path degraded: FACTORY_RENDER_ENGINE=remotion set, but REMOTION_RENDER_URL missing and SHOTSTACK_API_KEY missing";
+  return "render path degraded: SHOTSTACK_API_KEY missing and remotion not configured";
+}
+
 function chunkCaptions(text: string, article: string): { text: string; accent?: boolean }[] {
   const parts = String(text || "").split(/(?<=[.!?…])\s+|,\s+|\s—\s/).map((s) => s.trim()).filter(Boolean).slice(0, 12);
   const art = String(article || "").toLowerCase();
@@ -699,16 +710,17 @@ export async function runRecipeStep(
 
     // одиночный клип без Shotstack → используем как есть (минуем рендер)
     if (visualNodes.length === 1 && !shotstackReady()) {
+      addWarning(renderEngineDiagnostic());
       plan.output_url = visualNodes[0].url!;
       plan.step = "otk";
-      finishExecutionLog(plan, trace, "warning", plan.output_url, null, "single clip fallback");
+      finishExecutionLog(plan, trace, "warning", plan.output_url, null, `single clip fallback | ${renderEngineDiagnostic()}`);
       await savePlan(db, id, plan, { output_url: plan.output_url });
       return;
     }
     if (!shotstackReady()) {
       // нет монтажника и клипов несколько — берём первый (деградация), отметим
       plan.output_url = visualNodes[0].url!;
-      plan.error = "SHOTSTACK_API_KEY не задан — взят первый клип без монтажа";
+      plan.error = renderEngineDiagnostic();
       plan.step = "otk";
       finishExecutionLog(plan, trace, "warning", plan.output_url, null, "shotstack missing");
       await savePlan(db, id, plan, { output_url: plan.output_url });

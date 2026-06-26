@@ -21,6 +21,7 @@ const autofill = readFileSync("app/api/factory/autofill/route.ts", "utf8");
 ok(/defaultFactoryCtaButton\(mode, article\)/.test(graphRun), "graph-run reel props use mode-aware CTA button");
 ok(/defaultFactoryCaption\(mode, article\)/.test(graphRun), "graph-run Shotstack caption fallback uses mode-aware copy");
 ok(/recipe placeholder: single disk_real clip without a real hook\/caption/.test(graphRun), "graph-run warns on placeholder single-clip recipes");
+ok(/render path degraded: SHOTSTACK_API_KEY missing and remotion not configured/.test(graphRun), "graph-run surfaces explicit render-path diagnostics when montage engines are unavailable");
 ok(/finalStatus === "otk_pass" \? "approved" : "warning"/.test(graphRun), "graph-run warning runs no longer emit approved signal");
 ok(/select\("id,article,niche,mode,run_plan"\)/.test(recompose) && /buildReelProps\([\s\S]*article\)/.test(recompose), "reel-recompose reads recipe mode and still rebuilds reel props");
 ok(/defaultFactoryCaption\(mode, article\)/.test(assemble), "assemble route uses mode-aware fallback caption");
