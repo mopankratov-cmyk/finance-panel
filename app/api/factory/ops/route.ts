@@ -437,7 +437,7 @@ export async function GET() {
     const stressHistory = await readStressHistorySummary().catch(() => null);
     return NextResponse.json({
       ok: false,
-      error: "ops crash: " + String((e as Error)?.message || e).slice(0, 160),
+      error: "сводка завода упала: " + String((e as Error)?.message || e).slice(0, 160),
       db_ready: false,
       worker: null,
       workers: [],

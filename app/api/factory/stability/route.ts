@@ -33,7 +33,7 @@ export async function GET() {
     const stressHistory = await readStressHistorySummary().catch(() => null);
     return NextResponse.json({
       ok: false,
-      error: "stability crash: " + String((e as Error)?.message || e).slice(0, 160),
+      error: "снимок стабильности упал: " + String((e as Error)?.message || e).slice(0, 160),
       stability: null,
       stress_history: stressHistory,
     }, { status: 500 });

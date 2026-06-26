@@ -27,6 +27,14 @@ const liveRoutes = [
   "app/api/factory/creatify-options/route.ts",
   "app/api/factory/node-save/route.ts",
 ].map((file) => readFileSync(file, "utf8")).join("\n");
+const orchestrationRoutes = [
+  "app/api/factory/ops/route.ts",
+  "app/api/factory/stability/route.ts",
+  "app/api/factory/worker-state/route.ts",
+  "app/api/factory/graph-run/tick/route.ts",
+  "app/api/factory/graph-run/cron/route.ts",
+  "app/api/factory/graph-run/rejudge/route.ts",
+].map((file) => readFileSync(file, "utf8")).join("\n");
 
 ok(!/detail:\s*error/.test(ugcCreatify), "ugc-creatify route no longer duplicates errors into detail");
 ok(!/\{\s*error,\s*detail:\s*error/.test(ugcCreatify), "ugc-creatify keeps a single canonical error field");
@@ -41,6 +49,8 @@ ok(/Higgsfield: ' \+ \(d\.error \|\| d\.detail \|\| 'не запустился'\
 ok(!/graph-run crash:/.test(graphRun) && (graphRun.match(/graph-run упал:/g) || []).length >= 2, "graph-run route crash errors use operator-facing Russian copy");
 ok(!/(decompose|node-preview|recipes|balances|studio|niche-brief|static-generate|creatify-options|node-save) crash:/.test(liveRoutes), "primary Studio routes do not leak English crash prefixes");
 ok(/разбор конкурента упал:/.test(liveRoutes) && /превью ноды упало:/.test(liveRoutes) && /рецепты упали:/.test(liveRoutes) && /балансы упали:/.test(liveRoutes), "primary Studio route fallbacks use operator-facing Russian copy");
+ok(!/(ops|stability|worker-state POST|graph-run\/tick|graph-run\/cron|graph-run\/rejudge) crash:/.test(orchestrationRoutes), "ops and graph orchestration routes do not leak English crash prefixes");
+ok(!/error: "unauthorized"/.test(orchestrationRoutes) && /неверный CRON_SECRET/.test(orchestrationRoutes), "protected factory service routes explain auth failures as CRON_SECRET problems");
 
 if (failed) process.exit(1);
 console.log(`errorContractNormalization: ${passed} passed, ${failed} failed`);

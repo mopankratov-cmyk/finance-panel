@@ -101,7 +101,7 @@ export async function POST(req: NextRequest) {
     const secret = process.env.CRON_SECRET || "";
     const auth = req.headers.get("authorization") || "";
     if (secret && auth !== `Bearer ${secret}`) {
-      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+      return NextResponse.json({ error: "неверный CRON_SECRET" }, { status: 401 });
     }
 
     const body = await req.json().catch(() => ({}));
@@ -141,6 +141,6 @@ export async function POST(req: NextRequest) {
     }
     return NextResponse.json({ ok: true, worker_id, last_seen: now });
   } catch (e) {
-    return NextResponse.json({ error: "worker-state POST crash: " + String((e as Error)?.message || e).slice(0, 180) }, { status: 500 });
+    return NextResponse.json({ error: "запись пульса worker упала: " + String((e as Error)?.message || e).slice(0, 180) }, { status: 500 });
   }
 }

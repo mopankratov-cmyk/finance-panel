@@ -92,7 +92,7 @@ async function genSave(origin: string, body: Record<string, unknown>) {
 
 export async function POST(req: NextRequest) {
   try {
-  if (!authOk(req)) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if (!authOk(req)) return NextResponse.json({ error: "неверный CRON_SECRET" }, { status: 401 });
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 500 });
 
@@ -264,7 +264,7 @@ export async function POST(req: NextRequest) {
       apply: false,
       max_items: 0,
       processed: [],
-      error: "graph-run/rejudge crash: " + String((e as Error)?.message || e).slice(0, 160),
+      error: "повторный ОТК упал: " + String((e as Error)?.message || e).slice(0, 160),
     }, { status: 500 });
   }
 }
