@@ -77,7 +77,7 @@ export async function POST(req: NextRequest) {
       indexed: 0,
       by_niche: {},
       by_article: {},
-      error: "content-index POST crash: " + String((e as Error)?.message || e).slice(0, 160),
+      error: "сохранение индекса контента упало: " + String((e as Error)?.message || e).slice(0, 160),
     }, { status: 500 });
   }
 }
@@ -117,7 +117,7 @@ export async function GET() {
       total: 0,
       wb_photos: 0,
       by_niche: {},
-      error: "content-index GET crash: " + String((e as Error)?.message || e).slice(0, 160),
+      error: "чтение индекса контента упало: " + String((e as Error)?.message || e).slice(0, 160),
     }, { status: 500 });
   }
 }

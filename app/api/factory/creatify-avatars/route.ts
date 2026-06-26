@@ -30,6 +30,6 @@ export async function GET(req: NextRequest) {
       ...(res.error ? { error: res.error, status: res.status } : {}),
     });
   } catch (e) {
-    return NextResponse.json({ ready: false, avatars: [], scenes: CREATIFY_SCENES, error: "creatify-avatars crash: " + String((e as Error)?.message || e).slice(0, 180) }, { status: 500 });
+    return NextResponse.json({ ready: false, avatars: [], scenes: CREATIFY_SCENES, error: "аватары Creatify упали: " + String((e as Error)?.message || e).slice(0, 180) }, { status: 500 });
   }
 }

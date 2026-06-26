@@ -14,6 +14,6 @@ export async function GET() {
     const balance = await creatifyBalance();
     return NextResponse.json({ ok: true, ...balance }, { headers: { "Cache-Control": "no-store" } });
   } catch (e) {
-    return NextResponse.json({ ok: false, error: "creatify-credits crash: " + String((e as Error)?.message || e).slice(0, 180) }, { status: 500, headers: { "Cache-Control": "no-store" } });
+    return NextResponse.json({ ok: false, error: "кредиты Creatify упали: " + String((e as Error)?.message || e).slice(0, 180) }, { status: 500, headers: { "Cache-Control": "no-store" } });
   }
 }

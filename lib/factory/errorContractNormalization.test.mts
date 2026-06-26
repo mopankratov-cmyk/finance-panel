@@ -1,4 +1,5 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
 
 let passed = 0;
 let failed = 0;
@@ -76,6 +77,15 @@ const serviceRoutes = [
   "app/api/factory/prepare-product/route.ts",
   "app/api/factory/wb-index/route.ts",
 ].map((file) => readFileSync(file, "utf8")).join("\n");
+function readTree(dir: string): string {
+  return readdirSync(dir, { withFileTypes: true }).map((entry) => {
+    const path = join(dir, entry.name);
+    if (entry.isDirectory()) return readTree(path);
+    if (!entry.isFile() || !path.endsWith(".ts")) return "";
+    return readFileSync(path, "utf8");
+  }).join("\n");
+}
+const factoryApiRoutes = readTree("app/api/factory");
 
 ok(!/detail:\s*error/.test(ugcCreatify), "ugc-creatify route no longer duplicates errors into detail");
 ok(!/\{\s*error,\s*detail:\s*error/.test(ugcCreatify), "ugc-creatify keeps a single canonical error field");
@@ -98,6 +108,7 @@ ok(!/(products|brand-kit (GET|POST)|autofill|scenario|scenario-quality|hook-judg
 ok(/автозаполнение нод упало:/.test(contentActionRoutes) && /сценарий упал:/.test(contentActionRoutes) && /сохранение генерации упало:/.test(contentActionRoutes), "content action routes use operator-facing Russian copy");
 ok(!/(status|observer|produce|disk-source|reject|batch|assistant|prepare-product|wb-index) crash:/.test(serviceRoutes), "service routes do not leak English crash prefixes");
 ok(/статус завода упал:/.test(serviceRoutes) && /производство ролика упало:/.test(serviceRoutes) && /подготовка товара упала:/.test(serviceRoutes), "service routes use operator-facing Russian copy");
+ok(!/crash:/.test(factoryApiRoutes), "factory API routes do not return raw English crash prefixes");
 
 if (failed) process.exit(1);
 console.log(`errorContractNormalization: ${passed} passed, ${failed} failed`);

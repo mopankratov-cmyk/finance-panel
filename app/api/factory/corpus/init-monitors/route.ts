@@ -98,7 +98,7 @@ export async function POST(req: NextRequest) {
       created: 0,
       reused: 0,
       results: [],
-      errors: ["corpus/init-monitors crash: " + String((e as Error)?.message || e).slice(0, 160)],
+      errors: ["инициализация corpus-мониторов упала: " + String((e as Error)?.message || e).slice(0, 160)],
     }, { status: 500 });
   }
 }

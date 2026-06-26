@@ -46,7 +46,7 @@ export async function GET(req: NextRequest) {
   }
   } catch (e) {
     return NextResponse.json({
-      error: "top-videos crash: " + String((e as Error)?.message || e).slice(0, 160),
+      error: "топ видео упал: " + String((e as Error)?.message || e).slice(0, 160),
       videos: [],
     }, { status: 200 });
   }

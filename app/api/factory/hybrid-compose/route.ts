@@ -56,7 +56,7 @@ export async function POST(req: NextRequest) {
   } catch (e) { return NextResponse.json({ error: String(e).slice(0, 200) }, { status: 502 }); }
   } catch (e) {
     return NextResponse.json({
-      error: "hybrid-compose crash: " + String((e as Error)?.message || e).slice(0, 160),
+      error: "гибридная сборка упала: " + String((e as Error)?.message || e).slice(0, 160),
     }, { status: 500 });
   }
 }

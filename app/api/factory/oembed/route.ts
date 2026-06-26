@@ -66,7 +66,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       ok: false,
       items: [],
-      note: "oembed crash: " + String((e as Error)?.message || e).slice(0, 160),
+      note: "oEmbed упал: " + String((e as Error)?.message || e).slice(0, 160),
     });
   }
 }

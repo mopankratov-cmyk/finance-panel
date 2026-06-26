@@ -67,7 +67,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       ok: false,
       profile: null,
-      error: "content-learn POST crash: " + String((e as Error)?.message || e).slice(0, 160),
+      error: "сохранение обучения контента упало: " + String((e as Error)?.message || e).slice(0, 160),
     }, { status: 500 });
   }
 }
@@ -85,7 +85,7 @@ export async function GET(req: NextRequest) {
   } catch (e) {
     return NextResponse.json({
       profiles: null,
-      error: "content-learn GET crash: " + String((e as Error)?.message || e).slice(0, 160),
+      error: "чтение обучения контента упало: " + String((e as Error)?.message || e).slice(0, 160),
     }, { status: 500 });
   }
 }

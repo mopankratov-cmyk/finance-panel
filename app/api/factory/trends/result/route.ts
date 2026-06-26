@@ -27,6 +27,6 @@ export async function POST(req: NextRequest) {
     const vids = ((videos?.data || videos?.videos || []) as any[]).slice(0, 20).map((v) => ({ url: v.url, caption: v.description || v.title, views: v.views, likes: v.number_of_likes }));
     return NextResponse.json({ finalized: true, status: status.status, analysis: analysis || null, videos: vids, counts: status.counts || null });
   } catch (e) {
-    return NextResponse.json({ error: "trends/result crash: " + String((e as Error)?.message || e).slice(0, 180) }, { status: 500 });
+    return NextResponse.json({ error: "результат трендов упал: " + String((e as Error)?.message || e).slice(0, 180) }, { status: 500 });
   }
 }

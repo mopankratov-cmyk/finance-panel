@@ -64,7 +64,7 @@ export async function POST(req: NextRequest) {
       analyzed: 0,
       source: "",
       patterns: null,
-      error: "trends crash: " + String((e as Error)?.message || e).slice(0, 160),
+      error: "тренды упали: " + String((e as Error)?.message || e).slice(0, 160),
     }, { status: 500 });
   }
 }

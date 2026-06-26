@@ -42,7 +42,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       niche: "default",
       playbook: null,
-      note: "niche-playbook/cached crash: " + String((e as Error)?.message || e).slice(0, 160),
+      note: "кэш плейбука ниши упал: " + String((e as Error)?.message || e).slice(0, 160),
     });
   }
 }

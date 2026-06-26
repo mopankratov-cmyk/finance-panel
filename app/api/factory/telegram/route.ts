@@ -29,7 +29,7 @@ export async function GET(req: NextRequest) {
       ok: false,
       ready: false,
       owner_set: false,
-      error: "telegram GET crash: " + String((e as Error)?.message || e).slice(0, 160),
+      error: "чтение Telegram упало: " + String((e as Error)?.message || e).slice(0, 160),
     });
   }
 }
@@ -144,7 +144,7 @@ export async function POST(req: NextRequest) {
   } catch (e) {
     return NextResponse.json({
       ok: true,
-      warning: "telegram POST crash: " + String((e as Error)?.message || e).slice(0, 160),
+      warning: "отправка Telegram упала: " + String((e as Error)?.message || e).slice(0, 160),
     });
   }
 }

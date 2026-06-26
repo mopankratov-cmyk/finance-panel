@@ -29,6 +29,6 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({ ok: true, tools: allToolKeys(), schemas: TOOL_SCHEMAS }, { headers: { "Cache-Control": "no-store" } });
   } catch (e) {
-    return NextResponse.json({ error: "tool-schema crash: " + String((e as Error)?.message || e).slice(0, 160) }, { status: 500 });
+    return NextResponse.json({ error: "схема инструментов упала: " + String((e as Error)?.message || e).slice(0, 160) }, { status: 500 });
   }
 }

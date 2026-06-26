@@ -62,6 +62,6 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ sounds: [], note: "orbit_searches не применена" });
   }
   } catch (e) {
-    return NextResponse.json({ sounds: [], note: "top-sounds crash: " + String((e as Error)?.message || e).slice(0, 160) });
+    return NextResponse.json({ sounds: [], note: "топ звуков упал: " + String((e as Error)?.message || e).slice(0, 160) });
   }
 }

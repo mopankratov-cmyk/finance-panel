@@ -38,6 +38,6 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ hooks: [], note: String(e).slice(0, 100) });
   }
   } catch (e) {
-    return NextResponse.json({ hooks: [], note: "top-hooks crash: " + String((e as Error)?.message || e).slice(0, 160) });
+    return NextResponse.json({ hooks: [], note: "топ хуков упал: " + String((e as Error)?.message || e).slice(0, 160) });
   }
 }

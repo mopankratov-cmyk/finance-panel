@@ -52,6 +52,6 @@ export async function POST(req: NextRequest) {
     }
     return NextResponse.json({ ok: true, niche, found, inserted, source: trendSourceName() });
   } catch (e) {
-    return NextResponse.json({ error: "seed-niche crash: " + String((e as Error)?.message || e).slice(0, 160) }, { status: 500 });
+    return NextResponse.json({ error: "инициализация ниши упала: " + String((e as Error)?.message || e).slice(0, 160) }, { status: 500 });
   }
 }
