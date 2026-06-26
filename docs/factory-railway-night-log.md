@@ -26,6 +26,30 @@
 
 ## Записи
 
+### 2026-06-26 00:40
+
+- Ветка: `fix/factory-elevenlabs-optional`
+- Цель: добить второй слой стабилизации Studio/worker UI без новых функций и без расширения числа агентов
+- Изменено:
+  - `GET /api/factory/balances` переведён в fail-open: пустые балансы + warning вместо HTTP 500
+  - `GET /api/factory/stability`, `/status`, `/tool-schema` возвращают partial/warning-контракты для диагностических экранов
+  - `GET /api/factory/brand-kit` и `GET /api/factory/content-index` больше не валят UI при отсутствующей БД/миграции
+  - инспектор ноды в `public/inferno/studio.html` получил fallback на пустую схему инструмента
+  - `GET /api/factory/content-learn` переведён в read-only fail-open; POST обучения оставлен строгим
+  - добавлены contract tests на новые fail-open контракты
+- Проверки:
+  - `npm run test:factory`
+  - `npx tsc --noEmit`
+  - `npm run lint`
+  - `npm run build`
+- Результат:
+  - production build зелёный
+  - read-only/diagnostic слои Studio теперь деградируют в warnings, а не в красный экран/пустой UI
+  - write/render endpoints сознательно оставлены строгими, чтобы не выдавать ложный успех там, где ролик реально не создан
+- Следующий шаг:
+  - дождаться deploy/merge текущей ветки и сделать production smoke на `finance-panel-two.vercel.app/inferno/studio.html`
+  - после smoke перейти к quality-only Sprint 2, не возвращая отключённые компоненты до повторного стабильного stress-pass
+
 ### 2026-06-25 08:30
 
 - Ветка: `fix/factory-sprint1-stabilization`
