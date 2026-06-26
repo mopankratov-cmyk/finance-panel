@@ -965,11 +965,14 @@ async function screenWorker(root, force, renderToken){
     latestCard.appendChild(el("div",{style:"display:flex;flex-wrap:wrap;gap:6px;"},
       el("span",{class:"mono",style:"font-size:10px;color:var(--tx-hi);background:var(--bg-input);border:1px solid var(--bd2);padding:3px 7px;border-radius:5px;"},"прогонов "+String(lsCompleted)+"/"+String(lsTotal)),
       el("span",{class:"mono",style:"font-size:10px;color:"+(lsFailed||lsRunFail?"var(--err)":"var(--ok)")+";background:"+(lsFailed||lsRunFail?"var(--err-bg)":"var(--ok-bg)")+";padding:3px 7px;border-radius:5px;"},"сбоев "+String(lsFailed+lsRunFail)),
+      lsTimeouts?el("span",{class:"mono",style:"font-size:10px;color:var(--warn);background:var(--warn-bg);padding:3px 7px;border-radius:5px;"},"таймаут "+String(lsTimeouts)):null,
       lsAuthFailures?el("span",{class:"mono",style:"font-size:10px;color:var(--warn);background:var(--warn-bg);padding:3px 7px;border-radius:5px;"},"авторизация "+String(lsAuthFailures)):null,
       el("span",{class:"mono",style:"font-size:10px;color:var(--warn);background:var(--warn-bg);padding:3px 7px;border-radius:5px;"},"предупр. "+String(lsSummary.warnings||0)),
       el("span",{class:"mono",style:"font-size:10px;color:var(--tx-hi);background:var(--bg-input);border:1px solid var(--bd2);padding:3px 7px;border-radius:5px;"},"среднее "+String(lsSummary.avgDurationSec||0)+"с")));
     latestCard.appendChild(el("div",{style:"font-size:11px;color:var(--tx-bd);line-height:1.45;margin-top:8px;"},
-      !isFullStress
+      lsTimeouts
+        ? "Проверка не дождалась завершения в лимит времени; это не равно успешному прогону."
+        : !isFullStress
         ? "Это короткая проверка, не полный stress 10/10."
         : lsStressTarget
         ? "Последний stress-run закрыл 10/10."

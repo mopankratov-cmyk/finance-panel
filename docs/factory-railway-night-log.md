@@ -122,6 +122,23 @@
 - Следующий шаг:
   - закоммитить, выкатить alias и проверить worker screen в браузере
 
+### 2026-06-26 19:57
+
+- Ветка: `fix/factory-elevenlabs-optional`
+- Цель: сделать карточку последней stress-проверки непротиворечивой для оператора
+- Изменено:
+  - `public/inferno/studio.html`: таймауты stress-run теперь выводятся отдельным чипом `таймаут N`
+  - `public/inferno/studio.html`: если последняя проверка упёрлась в timeout, карточка прямо говорит, что проверка не дождалась завершения и это не равно успешному прогону
+  - `lib/factory/studioSimplification.test.mts`: контракт worker stress surface обновлён под явный timeout state
+- Проверки:
+  - `node --import tsx lib/factory/studioSimplification.test.mts`
+  - `node --import tsx lib/factory/infernoHtmlParse.test.mts`
+  - `npm run build`
+- Результат:
+  - карточка `Последняя проверка` больше не выглядит как `0/1` при `сбоев 0`; timeout теперь виден как отдельная причина
+- Следующий шаг:
+  - закоммитить, выкатить alias и проверить worker screen в браузере
+
 ### 2026-06-26 00:40
 
 - Ветка: `fix/factory-elevenlabs-optional`
