@@ -970,7 +970,7 @@ async function genStatic(){
     const arch=f.archetype==="auto"?(autoArch[fmt]||"headline_hero"):f.archetype;
     const job={format:fmt,label:labels[fmt]||fmt,id:null,url:null,error:null,article:f.article||"",headline:f.headline||"",niche:S.activeNiche||""}; S.staticJobs.push(job); renderStaticResults();
     const r=await api("/static-generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({article:f.article,format:fmt,archetype:arch,headline:f.headline,price:f.price,objective:f.objective})});
-    if(r&&r.task_id){ job.id=r.task_id; pollStatic(job); } else { job.error=(r&&r.error)||"ошибка запуска"; }
+    if(r&&r.task_id){ job.id=r.task_id; pollStatic(job); } else { job.error=apiErrorText(r,"ошибка запуска"); }
     renderStaticResults();
   }
 }
@@ -2311,7 +2311,7 @@ async function pollRun(id,c,errs){
   if(!S.recipe||!S.recipe.recipe||S.recipe.recipe.id!==id){ _runPolling=false; return; } // рецепт сменили — старый опрос не должен затирать новую панель
   const r=await api("/graph-run?recipe_id="+id);
   if(r.error){ // транзиентная ошибка опроса — НЕ роняем спиннер навсегда: ретраим, после 6 подряд показываем фейл
-    if(errs>=6){ _runPolling=false; if(S.run){ S.run.status="run_fail"; S.run.step="failed"; S.run.error=r.error; const p=document.getElementById("otk-panel"); if(p)renderOTK(p); } return; }
+    if(errs>=6){ _runPolling=false; if(S.run){ S.run.status="run_fail"; S.run.step="failed"; S.run.error=apiErrorText(r,"ошибка опроса"); const p=document.getElementById("otk-panel"); if(p)renderOTK(p); } return; }
     return pollRun(id,c+1,errs+1);
   }
   S.run=r; const panel=document.getElementById("otk-panel"); if(panel)renderOTK(panel);
