@@ -61,5 +61,15 @@ const m = (recipe_id: number, views: number, watch_rate?: number, ctr_card?: num
   eq(ranked.filter((r) => r.tier === "winner").length, 0, "плоский набор: ложных винеров нет");
 }
 
+// ── малый объём рынка → не короновать слишком рано ──
+{
+  const tiny = [m(1, 60, 0.8), m(2, 20, 0.2), m(3, 10, 0.1)];
+  const { ranked } = rankVariants(tiny);
+  eq(ranked[0].recipe_id, 1, "малый объём всё ещё ранжируется");
+  eq(ranked[0].tier, "mid", "до 100 просмотров winner не ставится");
+  const relaxed = rankVariants(tiny, { minWinnerViews: 50 }).ranked;
+  eq(relaxed[0].tier, "winner", "порог можно ослабить параметром");
+}
+
 console.log(`\nabRank: ${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

@@ -24,6 +24,7 @@ export async function GET(req: NextRequest) {
     const niche = (sp.get("niche") || "").trim();
     const since = (sp.get("since") || "").trim();
     const limit = Math.min(2000, Math.max(10, Number(sp.get("limit")) || 500));
+    const minWinnerViews = Math.max(0, Number(sp.get("min_winner_views") || 100) || 0);
     const explicitIds = (sp.get("recipe_ids") || "").split(",").slice(0, 1000).map((s) => Number(s.trim())).filter((n) => n > 0);
 
     // 1) метрики рынка (несколько снапшотов на ролик возможны → берём лучший по views)
@@ -82,7 +83,7 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    const { ranked, medianScore, summary } = rankVariants(metrics);
+    const { ranked, medianScore, summary } = rankVariants(metrics, { minWinnerViews });
     // обогащаем винеров/лузеров полями рецепта (для рекомендаций)
     const enrich = (rv: typeof ranked) => rv.map((x) => {
       const meta = metrics.find((m) => m.recipe_id === x.recipe_id);
@@ -92,13 +93,13 @@ export async function GET(req: NextRequest) {
     const losers = enrich(ranked.filter((r) => r.tier === "loser"));
 
     return NextResponse.json({
-      ok: true, median_score: Math.round(medianScore), summary,
+      ok: true, median_score: Math.round(medianScore), min_winner_views: minWinnerViews, summary,
       ranked: enrich(ranked),
       winners, losers,
       recommend: {
         scale: winners.map((w) => w.recipe_id),  // множить: /reel-recompose или /recipe-variants на этих хуках
         kill: losers.map((l) => l.recipe_id),     // стоп: не лить, хуки в чёрный список
-        note: "Винеры → размножить (reuse R вокруг их хука/футажа). Лузеры → не лить. Хит-рейт = винеров/всего.",
+        note: `Винеры → размножить только после порога ${minWinnerViews}+ просмотров. Лузеры → не лить. Хит-рейт = винеров/всего.`,
       },
     });
   } catch (e) {
