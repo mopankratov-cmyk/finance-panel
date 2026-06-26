@@ -50,6 +50,12 @@
   - дождаться deploy/merge текущей ветки и сделать production smoke на `finance-panel-two.vercel.app/inferno/studio.html`
   - после smoke перейти к quality-only Sprint 2, не возвращая отключённые компоненты до повторного стабильного stress-pass
 
+- Дополнение:
+  - `POST /api/factory/oembed` переведён в warning-only read-contract: отсутствие БД/миграции больше не выглядит как ошибка ленты конкурентов
+  - `GET /api/factory/corpus/top-hooks`, `top-sounds`, `top-videos` выровнены под fail-open read-model
+  - `GET /api/factory/static-status`, `video-fal-status/[id]`, `ugc-creatify-status/[id]` больше не возвращают HTTP 500 на probe-crash, а отдают JSON со `status:"error"`
+  - добавлены `oembedFailOpen`, `corpusReadFailOpen`, `statusProbeFailOpen` guards
+
 ### 2026-06-25 08:30
 
 - Ветка: `fix/factory-sprint1-stabilization`
