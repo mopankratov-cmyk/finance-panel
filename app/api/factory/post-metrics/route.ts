@@ -77,12 +77,27 @@ export async function POST(req: NextRequest) {
       warnings.push("winners forward exception: " + String((e as Error)?.message || e).slice(0, 120));
     }
 
-    return NextResponse.json({ ok: true, forwarded, metrics_saved: metricsSaved, warnings });
+    let statusMarked = false;
+    if (metricsSaved || forwarded) {
+      try {
+        const { error } = await db
+          .from("node_recipes")
+          .update({ status: "posted", updated_at: new Date().toISOString() })
+          .eq("id", recipeId);
+        if (error) warnings.push("node_recipes status update: " + error.message.slice(0, 140));
+        else statusMarked = true;
+      } catch (e) {
+        warnings.push("node_recipes status update exception: " + String((e as Error)?.message || e).slice(0, 120));
+      }
+    }
+
+    return NextResponse.json({ ok: true, forwarded, metrics_saved: metricsSaved, status_marked: statusMarked, warnings });
   } catch (e) {
     return NextResponse.json({
       ok: false,
       forwarded: false,
       metrics_saved: false,
+      status_marked: false,
       error: "post-metrics crash: " + String((e as Error)?.message || e).slice(0, 160),
     }, { status: 500 });
   }
