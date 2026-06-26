@@ -13,6 +13,7 @@ import { isOurStorage } from "./rehostImage";
 import { createHash, randomUUID } from "node:crypto";
 import type { ExecutionLogEntry, RunNode, RunPlan, RunStep } from "./graphTypes";
 import { estimateRunCost } from "./costEstimate";
+import { nicheFromArticle, scoreRubric, type AxisScores, type ContentMode, type RubricNiche } from "./rubric";
 
 export type { ExecutionLogEntry, RunNode, RunPlan, RunStep } from "./graphTypes";
 
@@ -98,6 +99,29 @@ function textOfNode(n: RunNode | undefined | null): string {
   if (!n) return "";
   const p = (n.params || {}) as Record<string, unknown>;
   return String(n.onscreen_text || p["onscreen_text"] || p["script"] || p["override_script"] || n.prompt || "").trim();
+}
+
+function graphRunOtkFallback(input: { mode: string; niche: string; article: string; productName?: string; reason: string; framesCount: number }) {
+  const mode: ContentMode = input.mode === "sell" ? "sell" : "audience";
+  const allowedNiches = new Set<RubricNiche>(["clothing", "toys", "cosmetics", "default"]);
+  const niche = allowedNiches.has(input.niche as RubricNiche) ? input.niche as RubricNiche : nicheFromArticle(input.article, input.productName || "");
+  const axes: AxisScores = mode === "sell"
+    ? { hook: 3, retention: 3, native: input.framesCount ? 3 : 2, brand: 4, cta: 4 }
+    : { hook: 3, retention: 4, native: input.framesCount ? 3 : 2, brand: 3, cta: 4 };
+  const { weighted, score, verdict, floorFail } = scoreRubric(axes, mode, niche);
+  return {
+    score,
+    verdict,
+    axes,
+    issues: [
+      `graph-run OTK fallback: ${input.reason}`,
+      input.framesCount ? "критик не дал числовую оценку; использована детерминированная fail-open рубрика" : "кадры не извлечены; использована fail-open оценка без визуального ОТК",
+    ],
+    basis: "graph_fallback",
+    basisReason: input.framesCount ? "critic_missing_score" : "frames_missing",
+    weighted,
+    floorFail,
+  };
 }
 
 // нода РЕГЕНЕРИРУЕМА: сгенерирована движком (не реальный клип/сборка) — реген disk_real бессмыслен.
@@ -786,8 +810,10 @@ export async function runRecipeStep(
     let issues: string[] = [];
     let basis: string | null = null;
     let basisReason: string | null = null;
+    let criticResponse: unknown = null;
     try {
       const v = frames.length ? await jpost(origin, "/api/factory/video-critic", { frames, hook: textOfNode(hookNode), mode, article, niche }, 55000) : null;
+      criticResponse = v;
       score = typeof v?.score === "number" ? v.score : null;
       verdict = v?.verdict;
       axes = v?.axes || null;
@@ -798,7 +824,26 @@ export async function runRecipeStep(
       addWarning(`video-critic unavailable: ${String((e as Error)?.message || e).slice(0, 120)}`);
     }
 
-    if (score == null) addWarning("video-critic did not return score");
+    if (score == null) {
+      const responseShape = criticResponse && typeof criticResponse === "object"
+        ? Object.keys(criticResponse as Record<string, unknown>).slice(0, 8).join(",") || "empty_object"
+        : criticResponse === null ? "null" : typeof criticResponse;
+      const fallback = graphRunOtkFallback({
+        mode,
+        niche,
+        article,
+        productName: ctx.product_name,
+        framesCount: frames.length,
+        reason: frames.length ? `video-critic returned no numeric score (${responseShape})` : "extractFrames returned no frames",
+      });
+      score = fallback.score;
+      verdict = fallback.verdict;
+      axes = fallback.axes;
+      issues = [...issues, ...fallback.issues];
+      basis = fallback.basis;
+      basisReason = fallback.basisReason;
+      addWarning(`video-critic fallback score used: ${fallback.basisReason}`);
+    }
     if (typeof score === "number" && score < 7) addWarning(`OTK below threshold: ${score}`);
     plan.otk = { score, verdict, axes, issues, basis, basis_reason: basisReason };
     if (score != null && score > (plan.bestScore ?? -1)) { plan.bestScore = score; plan.bestUrl = url; }
