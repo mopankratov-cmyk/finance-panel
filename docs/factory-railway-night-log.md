@@ -4,13 +4,13 @@
 
 ## Итог ночи
 
-- Дата: 2026-06-25
-- Worker: codex / content-factory audit
+- Дата: 2026-06-26
+- Worker: codex / content-factory stabilization
 - Last heartbeat: локально, в процессе работы
-- Ветки: `fix/factory-...` текущая рабочая
-- Проверки: `npx tsc --noEmit --pretty false`; `npx eslint app/api/factory/products/route.ts app/api/factory/decompose/route.ts lib/factory/graphRun.ts`; парс `public/inferno/studio.html`; `npm run dev -- --port 3007`; `curl` на `/api/factory/products`
-- Что поправлено: честные метрики товаров в `products`, фильтры товаров, honest format fork, ElevenLabs в студии/графе, fallback текста для hook/caption/OTK, рабочий поиск в центре, кеш последнего снимка балансов
-- Что осталось: дождаться деплоя и заново проверить прод-студию в Chrome; потом добить UX на экране конкурентов и пустые состояния
+- Ветки: `fix/factory-elevenlabs-optional`
+- Проверки: `npm run test:factory`; `npx tsc --noEmit`; `npm run lint`; `npm run build`
+- Что поправлено: очищен operator-facing error contract по всему `app/api/factory`; orchestration, render, media, content-prep, service, corpus/trends и legacy helper routes больше не возвращают сырые английские `crash:`-префиксы; CRON-protected endpoints объясняют auth block как `неверный CRON_SECRET`; contract tests теперь сканируют всё дерево factory API
+- Что осталось: дождаться deploy/alias refresh и сделать один production smoke прогон через Studio; generated stress artifacts остаются вне коммита как runtime output, не как кодовый долг
 
 - Дата: 2026-06-24
 - Worker: railway-content-factory
