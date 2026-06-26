@@ -102,6 +102,17 @@ function textOfNode(n: RunNode | undefined | null): string {
   return String(n.onscreen_text || p["onscreen_text"] || p["script"] || p["override_script"] || n.prompt || "").trim();
 }
 
+function fallbackSingleClipHook(mode: ContentMode, article: string, visualHint: string): string {
+  if (mode === "sell") return article ? `Что видно по ${article} сразу` : "Что видно по товару сразу";
+  if (visualHint) return "Как это выглядит вживую";
+  return "Что видно вживую";
+}
+
+function fallbackSingleClipCaption(mode: ContentMode, article: string, visualHint: string): string {
+  const opener = visualHint || (mode === "sell" ? "Показываем товар без витрины и общих слов" : "Реальный вид без витрины и лишней рекламы");
+  return `${opener}. ${defaultFactoryCaption(mode, article)}`.slice(0, 160);
+}
+
 function graphRunOtkFallback(input: { mode: string; niche: string; article: string; productName?: string; reason: string; framesCount: number }) {
   const mode: ContentMode = input.mode === "sell" ? "sell" : "audience";
   const allowedNiches = new Set<RubricNiche>(["clothing", "toys", "cosmetics", "default"]);
@@ -157,6 +168,14 @@ export function buildReelProps(plan: RunPlan, visualNodes: RunNode[], article: s
   // актёр-спайн: creatify/lipsync/actor; иначе первый клип как база
   const actorNode = plan.nodes.find((n) => n.status === "done" && n.url && (["creatify", "lipsync"].includes(String(n.tool).toLowerCase()) || roleOf(n) === "actor"));
   const overlayNodes = visualNodes.filter((n) => n !== actorNode);
+  const mode = plan.mode === "sell" ? "sell" : "audience";
+  const needsStorySupport = isPlaceholderSingleClipRecipe(plan, visualNodes);
+  const visualHint = String(((visualNodes[0]?.params || {}) as Record<string, unknown>)["onscreen_text"]
+    || ((visualNodes[0]?.params || {}) as Record<string, unknown>)["visual_desc"]
+    || textOfNode(visualNodes[0])
+    || "")
+    .trim()
+    .slice(0, 80);
   let t = 0;
   const overlays = overlayNodes.map((n) => {
     const dur = Math.round(Math.min(8, Math.max(2, Number(n.duration_sec) || 5)) * REEL_FPS);
@@ -171,16 +190,17 @@ export function buildReelProps(plan: RunPlan, visualNodes: RunNode[], article: s
   // длина актёра: собственная длительность ноды-актёра, иначе суммарная длина врезок, минимум 3с
   // (не схлопывается в 3с, когда актёр есть, но врезок нет)
   const actorFrames = actorNode ? Math.round((Number(actorNode.duration_sec) || 18) * REEL_FPS) : 0;
-  const actorEnd = Math.max(t, actorFrames, REEL_FPS * 3);
+  const actorEnd = Math.max(t, actorFrames, REEL_FPS * (needsStorySupport ? 6 : 3));
   const durationInFrames = actorEnd + REEL_CTA_FRAMES;
   const hookNode = plan.nodes.find((n) => roleOf(n) === "hook") || plan.nodes[0];
   const captionNode = plan.nodes.find((n) => n.node_type === "captions");
-  const capText = [textOfNode(hookNode), textOfNode(captionNode)].filter(Boolean).join(". ");
+  const hookText = textOfNode(hookNode) || (needsStorySupport ? fallbackSingleClipHook(mode, article, visualHint) : "");
+  const fallbackCaption = needsStorySupport ? fallbackSingleClipCaption(mode, article, visualHint) : "";
+  const capText = [hookText, textOfNode(captionNode) || fallbackCaption].filter(Boolean).join(". ");
   const captions = chunkCaptions(capText, article);
   const soundNode = plan.nodes.find((n) => ["sound", "music"].includes(String(n.tool).toLowerCase()));
   const audioSrc = soundNode?.asset_url || (soundNode?.params?.url as string) || undefined;
-  const ctaTitle = (textOfNode(hookNode) || article || "").toString().slice(0, 40) || undefined;
-  const mode = plan.mode === "sell" ? "sell" : "audience";
+  const ctaTitle = (hookText || article || "").toString().slice(0, 40) || undefined;
   const ctaButton = defaultFactoryCtaButton(mode, article);
   const inputProps: Record<string, unknown> = {
     durationInFrames, actorEnd, overlays: renderOverlays,
@@ -198,15 +218,16 @@ function isPlaceholderSingleClipRecipe(plan: RunPlan, visualNodes: RunNode[]): b
   const node = visualNodes[0];
   const tool = String(node.tool || "").toLowerCase();
   if (tool !== "disk_real" && tool !== "disk") return false;
-  const params = (node.params || {}) as Record<string, unknown>;
-  const copy = [node.prompt, node.onscreen_text, params["onscreen_text"], params["visual_desc"]]
-    .map((value) => String(value || "").trim())
-    .filter(Boolean);
   const hasStoryNode = plan.nodes.some((candidate) => {
     const role = roleOf(candidate);
     return role === "hook" || role === "cta" || String(candidate.node_type || "").toLowerCase() === "captions";
   });
-  return copy.length > 0 && copy.every((value) => isPlaceholderNarrative(value)) && !hasStoryNode;
+  if (!hasStoryNode) return true;
+  const params = (node.params || {}) as Record<string, unknown>;
+  const copy = [node.prompt, node.onscreen_text, params["onscreen_text"], params["visual_desc"]]
+    .map((value) => String(value || "").trim())
+    .filter(Boolean);
+  return copy.length > 0 && copy.every((value) => isPlaceholderNarrative(value));
 }
 
 // V3/V4: по слабейшей оси ОТК выбрать ноду-виновника для регена (только генеративную)
