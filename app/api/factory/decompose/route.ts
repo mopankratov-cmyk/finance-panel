@@ -111,7 +111,7 @@ export async function GET(req: NextRequest) {
     const r = await decompose({ viral_video_id: sp.get("viral_video_id") || undefined, niche: sp.get("niche") || undefined, description: sp.get("description") || undefined });
     return NextResponse.json(r, { status: (r as { error?: string }).error ? 400 : 200, headers: { "Cache-Control": "no-store" } });
   } catch (e) {
-    return NextResponse.json({ error: "decompose crash: " + String((e as Error)?.message || e).slice(0, 180) }, { status: 500 });
+    return NextResponse.json({ error: "разбор конкурента упал: " + String((e as Error)?.message || e).slice(0, 180) }, { status: 500 });
   }
 }
 
@@ -121,6 +121,6 @@ export async function POST(req: NextRequest) {
     const r = await decompose({ viral_video_id: body.viral_video_id, niche: body.niche, description: body.description, hook: body.hook, format: body.format });
     return NextResponse.json(r, { status: (r as { error?: string }).error ? 400 : 200 });
   } catch (e) {
-    return NextResponse.json({ error: "decompose crash: " + String((e as Error)?.message || e).slice(0, 180) }, { status: 500 });
+    return NextResponse.json({ error: "разбор конкурента упал: " + String((e as Error)?.message || e).slice(0, 180) }, { status: 500 });
   }
 }

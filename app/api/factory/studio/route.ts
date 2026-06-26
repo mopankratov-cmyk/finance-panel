@@ -114,6 +114,6 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({ ok: true, niches, generations, recipes, observability }, { headers: { "Cache-Control": "no-store" } });
   } catch (e) {
-    return NextResponse.json({ error: "studio crash: " + String((e as Error)?.message || e).slice(0, 160) }, { status: 500 });
+    return NextResponse.json({ error: "сводка Studio упала: " + String((e as Error)?.message || e).slice(0, 160) }, { status: 500 });
   }
 }

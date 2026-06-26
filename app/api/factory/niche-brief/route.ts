@@ -109,6 +109,6 @@ export async function GET(req: NextRequest) {
     const status = (r as { status?: number }).status || ((r as { error?: string }).error ? 400 : 200);
     return NextResponse.json(r, { status, headers: { "Cache-Control": "no-store" } });
   } catch (e) {
-    return NextResponse.json({ error: "niche-brief crash: " + String((e as Error)?.message || e).slice(0, 180) }, { status: 500 });
+    return NextResponse.json({ error: "бриф ниши упал: " + String((e as Error)?.message || e).slice(0, 180) }, { status: 500 });
   }
 }

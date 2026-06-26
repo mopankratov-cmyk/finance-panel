@@ -116,7 +116,7 @@ export async function GET(req: NextRequest) {
     }
     return NextResponse.json({ error: "нужен recipe_id (просмотр) или template_id+article (перенос)" }, { status: 400 });
   } catch (e) {
-    return NextResponse.json({ error: "recipes crash: " + String((e as Error)?.message || e).slice(0, 160) }, { status: 500 });
+    return NextResponse.json({ error: "рецепты упали: " + String((e as Error)?.message || e).slice(0, 160) }, { status: 500 });
   }
 }
 
@@ -128,7 +128,7 @@ export async function POST(req: NextRequest) {
     const r = await transfer(db, body);
     return NextResponse.json(r, { status: (r as { status?: number }).status || ((r as { error?: string }).error ? 400 : 200) });
   } catch (e) {
-    return NextResponse.json({ error: "recipes crash: " + String((e as Error)?.message || e).slice(0, 160) }, { status: 500 });
+    return NextResponse.json({ error: "рецепты упали: " + String((e as Error)?.message || e).slice(0, 160) }, { status: 500 });
   }
 }
 
@@ -143,6 +143,6 @@ export async function DELETE(req: NextRequest) {
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     return NextResponse.json({ ok: true, deleted: recipeId });
   } catch (e) {
-    return NextResponse.json({ error: "recipes crash: " + String((e as Error)?.message || e).slice(0, 160) }, { status: 500 });
+    return NextResponse.json({ error: "рецепты упали: " + String((e as Error)?.message || e).slice(0, 160) }, { status: 500 });
   }
 }

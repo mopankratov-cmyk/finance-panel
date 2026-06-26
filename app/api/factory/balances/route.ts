@@ -27,7 +27,7 @@ export async function GET() {
       { headers: { "Cache-Control": "no-store" } },
     );
   } catch (e) {
-    return NextResponse.json({ error: "balances crash: " + String((e as Error)?.message || e).slice(0, 160) }, { status: 500 });
+    return NextResponse.json({ error: "балансы упали: " + String((e as Error)?.message || e).slice(0, 160) }, { status: 500 });
   }
 }
 
@@ -66,6 +66,6 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ ok: true, service });
   } catch (e) {
-    return NextResponse.json({ error: "balances POST crash: " + String((e as Error)?.message || e).slice(0, 160) }, { status: 500 });
+    return NextResponse.json({ error: "сохранение баланса упало: " + String((e as Error)?.message || e).slice(0, 160) }, { status: 500 });
   }
 }

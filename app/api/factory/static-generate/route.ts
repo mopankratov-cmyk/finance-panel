@@ -85,6 +85,6 @@ export async function POST(req: NextRequest) {
     });
     return NextResponse.json({ ok: true, task_id: id, format, archetype, size: `${spec.w}x${spec.h}`, platform: spec.platform, image_used: productImage || "placeholder" });
   } catch (e) {
-    return NextResponse.json({ error: "static-generate crash: " + String((e as Error)?.message || e).slice(0, 180) }, { status: 500 });
+    return NextResponse.json({ error: "статика упала: " + String((e as Error)?.message || e).slice(0, 180) }, { status: 500 });
   }
 }

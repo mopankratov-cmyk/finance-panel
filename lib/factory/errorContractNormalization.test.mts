@@ -16,6 +16,17 @@ const creatifyAvatars = readFileSync("app/api/factory/creatify-avatars/route.ts"
 const creatifyAdapter = readFileSync("lib/factory/creatify.ts", "utf8");
 const patrickLegacy = readFileSync("public/inferno/patrick-legacy.html", "utf8");
 const graphRun = readFileSync("app/api/factory/graph-run/route.ts", "utf8");
+const liveRoutes = [
+  "app/api/factory/decompose/route.ts",
+  "app/api/factory/node-preview/route.ts",
+  "app/api/factory/recipes/route.ts",
+  "app/api/factory/balances/route.ts",
+  "app/api/factory/studio/route.ts",
+  "app/api/factory/niche-brief/route.ts",
+  "app/api/factory/static-generate/route.ts",
+  "app/api/factory/creatify-options/route.ts",
+  "app/api/factory/node-save/route.ts",
+].map((file) => readFileSync(file, "utf8")).join("\n");
 
 ok(!/detail:\s*error/.test(ugcCreatify), "ugc-creatify route no longer duplicates errors into detail");
 ok(!/\{\s*error,\s*detail:\s*error/.test(ugcCreatify), "ugc-creatify keeps a single canonical error field");
@@ -28,6 +39,8 @@ ok(/this\.crit\.step = 'ошибка: ' \+ \(d\.error \|\| d\.detail \|\| 'не 
 ok(/Kling: ' \+ \(d\.error \|\| d\.detail \|\| 'не запустился'\)/.test(patrickLegacy), "legacy Kling path prefers canonical error field");
 ok(/Higgsfield: ' \+ \(d\.error \|\| d\.detail \|\| 'не запустился'\)/.test(patrickLegacy), "legacy Higgsfield path prefers canonical error field");
 ok(!/graph-run crash:/.test(graphRun) && (graphRun.match(/graph-run упал:/g) || []).length >= 2, "graph-run route crash errors use operator-facing Russian copy");
+ok(!/(decompose|node-preview|recipes|balances|studio|niche-brief|static-generate|creatify-options|node-save) crash:/.test(liveRoutes), "primary Studio routes do not leak English crash prefixes");
+ok(/разбор конкурента упал:/.test(liveRoutes) && /превью ноды упало:/.test(liveRoutes) && /рецепты упали:/.test(liveRoutes) && /балансы упали:/.test(liveRoutes), "primary Studio route fallbacks use operator-facing Russian copy");
 
 if (failed) process.exit(1);
 console.log(`errorContractNormalization: ${passed} passed, ${failed} failed`);
