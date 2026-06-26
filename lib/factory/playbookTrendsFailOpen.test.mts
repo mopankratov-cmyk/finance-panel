@@ -20,7 +20,7 @@ ok(/warning: "niche_playbooks не применена"/.test(cached), "cached pl
 ok(/warning: "кэш плейбука ниши упал: "/.test(cached), "cached playbook crash path is warning-only");
 ok(/warning: "тренды упали: "/.test(trends), "trends outer crash path is warning-only");
 ok(!/тренды упали[\s\S]*status:\s*500/.test(trends), "trends outer crash path no longer returns HTTP 500");
-ok(/history: \[\], warning: String/.test(history), "generation-history crash path uses warning field");
+ok(/history: \[\], summary: null, warning: String/.test(history), "generation-history crash path uses warning field");
 
 if (failed) process.exit(1);
 console.log(`playbookTrendsFailOpen: ${passed} passed, ${failed} failed`);
