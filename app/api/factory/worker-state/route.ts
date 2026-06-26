@@ -89,7 +89,7 @@ export async function GET() {
       observability: null,
       latest_stress: latestStress,
       stress_history: stressHistory,
-      error: "worker-state GET crash: " + String((e as Error)?.message || e).slice(0, 180),
+      error: "чтение пульса worker упало: " + String((e as Error)?.message || e).slice(0, 180),
     }, { headers: { "Cache-Control": "no-store" } });
   }
 }
