@@ -10,7 +10,7 @@
 - Ветки: `fix/factory-elevenlabs-optional`
 - Проверки: `npm run test:factory`; `npx tsc --noEmit`; `npm run lint`; `npm run build`
 - Что поправлено: очищен operator-facing error contract по всему `app/api/factory`; orchestration, render, media, content-prep, service, corpus/trends и legacy helper routes больше не возвращают сырые английские `crash:`-префиксы; CRON-protected endpoints объясняют auth block как `неверный CRON_SECRET`; contract tests теперь сканируют всё дерево factory API; worker ops snapshot теперь обогащает `queue_fallback` живым `observer heartbeat`, поэтому экран Railway worker не застревает в пустом `unknown`, когда heartbeat-table опционально отсутствует; при истёкшей Studio-сессии экран worker теперь сразу даёт кнопку повторного входа вместо немого warning-card
-- Что осталось: production alias уже обновлён; остаётся только добить git push этой последней локальной правки в Gitea и сделать короткий auth-backed smoke через Studio; generated stress artifacts остаются вне коммита как runtime output, не как кодовый долг
+- Что осталось: production alias уже обновлён; остаётся только добить git push последних локальных правок в Gitea и сделать короткий auth-backed smoke через Studio; generated stress artifacts остаются вне коммита как runtime output, не как кодовый долг
 
 - Дата: 2026-06-24
 - Worker: railway-content-factory
@@ -68,6 +68,26 @@
   - у оператора есть один понятный следующий шаг прямо из интерфейса
 - Следующий шаг:
   - закоммитить этот UX хвост и выкатить его на alias
+
+### 2026-06-26 19:21
+
+- Ветка: `fix/factory-elevenlabs-optional`
+- Цель: дотянуть auth-recovery до всех основных входов Studio, а не только до worker screen
+- Изменено:
+  - `public/inferno/studio.html`: sidebar `Ночной пульс` теперь показывает кнопку `Открыть вход`, если `/api/factory/ops` недоступен из-за истёкшей сессии
+  - `public/inferno/studio.html`: системная кнопка в `Командном центре` больше не ведёт в тупик на мёртвый worker screen; при auth-block она сразу открывает `/login?from=/inferno/studio.html`
+  - `public/inferno/studio.html`: health banner в `Командном центре` тоже показывает auth-specific summary и CTA `Открыть вход`
+  - `lib/factory/studioSimplification.test.mts`: добавлены контракты на sidebar/system-pill/health-banner auth recovery
+- Проверки:
+  - `node --import tsx lib/factory/studioSimplification.test.mts`
+  - `node --import tsx lib/factory/opsFailOpen.test.mts`
+  - `node --import tsx lib/factory/infernoHtmlParse.test.mts`
+  - `npm run build`
+- Результат:
+  - auth-block больше не выглядит как разные несвязанные ошибки на разных экранах
+  - у оператора везде один и тот же следующий шаг: повторный вход
+- Следующий шаг:
+  - закоммитить и выкатить alias
 
 ### 2026-06-26 00:40
 

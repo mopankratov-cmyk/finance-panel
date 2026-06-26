@@ -494,6 +494,9 @@ function renderFactoryPulse(){
   box.appendChild(el("div",{style:"font-size:10.5px;color:var(--tx-lo2);line-height:1.35;margin-top:3px;"},tone.hint));
   if(S.observerError){
     box.appendChild(el("div",{style:"font-size:10.5px;color:var(--warn);line-height:1.35;margin-top:6px;"},S.observerError));
+    if(isAuthErrorText(S.observerError)){
+      box.appendChild(el("button",{class:"btn sm prim",style:"margin-top:8px;width:100%;justify-content:center;",onclick:()=>openStudioLogin()},"Открыть вход"));
+    }
   }
 }
 
@@ -1114,6 +1117,7 @@ async function screenCenter(root, force, renderToken){
   const workerLive=workerRow&&workerRow.liveness?workerRow.liveness.state:"unknown";
   const workerSource=workerRow&&workerRow.source||"unknown";
   const workerDbError=S.workerState&&S.workerState.db_error||"";
+  const authBlocked=isAuthErrorText((S.workerState&&S.workerState.error)||S.observerError||"");
   const opsStatus=S.workerState&&S.workerState.ops_status||null;
   const heartbeatDiag=S.workerState&&S.workerState.heartbeat_diagnostics||null;
   const opsAlerts=Array.isArray(S.workerState&&S.workerState.alerts)?S.workerState.alerts:[];
@@ -1124,6 +1128,7 @@ async function screenCenter(root, force, renderToken){
   const stressHistory=S.workerState&&S.workerState.stress_history||null;
   const opsTone=opsStatusTone(opsStatus&&opsStatus.level);
   const systemTitle=[
+    authBlocked?"сессия Studio истекла — нужен повторный вход":"",
     opsStatus&&opsStatus.summary?opsStatus.summary:"",
     workerDbError?workerDbError:"",
   ].filter(Boolean).join(" · ")||"Открыть системную диагностику";
@@ -1135,13 +1140,13 @@ async function screenCenter(root, force, renderToken){
     el("div",{class:"header-action-row"},
       el("button",{class:"btn primary",title:"автопилот: заполнить черновики ИИ + сгенерить + ОТК + банк, прошедшее уйдёт в Telegram на ревью",onclick:()=>openNightRun()},"🌙 Ночной прогон"),
       el("button",{class:"btn",title:"фикс-айдентика брендов: голос/персона/шрифт/цвет/CTA/бан-слова/хэштеги — автозаполнение берёт как дефолты",onclick:()=>openBrandKit()},"🎨 Бренд-кит")),
-    opsStatus?el("button",{class:"system-pill",title:systemTitle,onclick:()=>go("worker"),"aria-label":"Открыть пульс завода: "+systemTitle},
-      el("span",{class:"dot",style:"background:"+opsTone.c+";box-shadow:0 0 0 4px rgba(255,255,255,.035);"}),
-      el("span",{class:"label"},"Пульс: "+opsTone.label.toLowerCase())):null,
+    (opsStatus||authBlocked)?el("button",{class:"system-pill",title:systemTitle,onclick:()=>authBlocked?openStudioLogin():go("worker"),"aria-label":"Открыть пульс завода: "+systemTitle},
+      el("span",{class:"dot",style:"background:"+(authBlocked?"var(--warn)":opsTone.c)+";box-shadow:0 0 0 4px rgba(255,255,255,.035);"}),
+      el("span",{class:"label"},authBlocked?"Пульс: нужен вход":"Пульс: "+opsTone.label.toLowerCase())):null,
     el("button",{class:"btn sm","aria-label":"Обновить данные",title:"принудительно пересобрать данные и разбор ниши",onclick:()=>{ S.centerLoaded=false; S.allProducts=null; S.productsLoading=false; S.prodCounts={}; S.briefCache={}; render(); }},"↻")));
   const left=el("div",{class:"scroll"}), aside=el("div",{class:"aside",style:"width:340px;padding:18px;"});
   root.appendChild(left); root.appendChild(aside);
-  renderCenterOpsSummary(left,{opsStatus,heartbeatDiag,failDiag,opsAlerts,lowBalances,workerRow,stabilitySnapshot,latestStress,stressHistory});
+  renderCenterOpsSummary(left,{opsStatus,heartbeatDiag,failDiag,opsAlerts,lowBalances,workerRow,stabilitySnapshot,latestStress,stressHistory,authBlocked});
   const nicheHead=el("div",{style:"display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;"},
     el("h2",{class:"sec-h"},"НИШИ ",el("span",{class:"cnt"},String(S.niches.length||""))),
     el("span",{class:"muted"},"выберите нишу для брифа и товаров"));
@@ -1417,13 +1422,16 @@ function renderCenterOpsSummary(host,input){
   const stability=input&&input.stabilitySnapshot||null;
   const latestStress=input&&input.latestStress||null;
   const stressHistory=input&&input.stressHistory||null;
-  if(!opsStatus && !heartbeatDiag && !failDiag && !opsAlerts.length && !lowBalances.length && !latestStress && !stressHistory)return;
+  const authBlocked=!!(input&&input.authBlocked);
+  if(!opsStatus && !heartbeatDiag && !failDiag && !opsAlerts.length && !lowBalances.length && !latestStress && !stressHistory && !authBlocked)return;
   const tone=opsStatusTone(opsStatus&&opsStatus.level);
-  const level=(opsStatus&&opsStatus.level)||"unknown";
-  const hasCriticalSystemAlert=level==="critical"||opsAlerts.some((a)=>a&&a.level==="error")||lowBalances.length>0;
+  const level=authBlocked?"degraded":((opsStatus&&opsStatus.level)||"unknown");
+  const hasCriticalSystemAlert=authBlocked||level==="critical"||opsAlerts.some((a)=>a&&a.level==="error")||lowBalances.length>0;
   if(!hasCriticalSystemAlert)return;
   const statusTitle=level==="critical"?"Нужна проверка":level==="degraded"?"Есть риск":level==="healthy"?"Система в норме":"Статус неясен";
-  const summary=(opsStatus&&opsStatus.summary)||"нет активных системных сообщений";
+  const summary=authBlocked
+    ? "Сессия Studio истекла, поэтому пульс и живая очередь сейчас закрыты."
+    : ((opsStatus&&opsStatus.summary)||"нет активных системных сообщений");
   const card=el("div",{class:"card health-banner "+(level||"unknown"),role:level==="critical"?"alert":"status","aria-label":statusTitle+". "+summary});
   card.appendChild(el("div",{class:"health-main"},
     el("div",{style:"min-width:0;"},
@@ -1431,8 +1439,11 @@ function renderCenterOpsSummary(host,input){
     el("span",{class:"mono",style:"font-size:10px;color:"+tone.c+";background:"+tone.bg+";padding:4px 7px;border-radius:5px;font-weight:700;"},tone.label)),
       el("div",{class:"health-title"},statusTitle),
       el("div",{class:"health-copy"},summary)),
-    el("button",{class:"btn sm",onclick:()=>go("worker"),title:"Открыть пульс завода и живую очередь прогонов"},"Открыть пульс")));
+    authBlocked
+      ? el("button",{class:"btn sm prim",onclick:()=>openStudioLogin(),title:"Открыть вход и вернуть доступ к пульсу завода"},"Открыть вход")
+      : el("button",{class:"btn sm",onclick:()=>go("worker"),title:"Открыть пульс завода и живую очередь прогонов"},"Открыть пульс")));
   const detailItems=[];
+  if(authBlocked) detailItems.push(["нужен вход", "warn"]);
   if(stability){
     const ok=!!stability.target_met;
     detailItems.push(["10/10 "+String(stability.successful_runs||0)+"/"+String(stability.window_size||10), ok?"ok":"warn"]);
