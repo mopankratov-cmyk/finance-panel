@@ -27,6 +27,10 @@ const MAX_RENDERS = 3;
 export const MAX_STEP_ATTEMPTS = 3;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+function otkRegenEnabled(): boolean {
+  return process.env.FACTORY_OTK_REGEN === "1";
+}
+
 export function makeRunId(recipeId: number): string {
   return `run_${recipeId}_${randomUUID().slice(0, 8)}`;
 }
@@ -797,6 +801,25 @@ export async function runRecipeStep(
     if (typeof score === "number" && score < 7) addWarning(`OTK below threshold: ${score}`);
     plan.otk = { score, verdict, axes, issues, basis, basis_reason: basisReason };
     if (score != null && score > (plan.bestScore ?? -1)) { plan.bestScore = score; plan.bestUrl = url; }
+
+    if (otkRegenEnabled() && (plan.renderCount || 0) < MAX_RENDERS) {
+      if (!artifactOk) {
+        const node = plan.nodes.find(isRegenerable);
+        if (node) {
+          finishExecutionLog(plan, trace, "warning", "submit", null, "artifact-check→regen");
+          await regenCulprit(db, origin, id, plan, niche, article, node, artifactDefects, "Исправь визуальные артефакты, сохрани товар стабильным и не меняй структуру ролика.", "artifact_check_failed", true);
+          return;
+        }
+      }
+      if (typeof score === "number" && score < 7) {
+        const culprit = pickCulprit(plan, axes);
+        if (culprit) {
+          finishExecutionLog(plan, trace, "warning", "submit", null, `otk→regen ${culprit.axis}`);
+          await regenCulprit(db, origin, id, plan, niche, article, culprit.node, issues, `Усиль ось ${culprit.axis}; исправь слабое место без смены товара и общего сюжета.`, `otk_${culprit.axis}_below_${culprit.val}`);
+          return;
+        }
+      }
+    }
 
     const status = summarizeWarnings(plan) ? "warning" : "done";
     plan.step = "bank";
