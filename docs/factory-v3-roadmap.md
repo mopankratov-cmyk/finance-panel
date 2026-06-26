@@ -18,6 +18,7 @@
 > - V9 частично возвращён без риска: `/hook-judge` теперь детерминированно ранжирует уже переданные hooks по эвристике + `viral_hooks` corpus, без LLM/рендера/авто-запуска. Генератор `/variations` остаётся disabled до отдельного стабильного этапа.
 > - V5 усилен без утяжеления UI: `/post-metrics` по-прежнему принимает простой ручной market-input, но в `/winners` теперь уходит полный `market_signal` (`platform`, `views`, `watch_rate`, `ctr_card`, `saves`, `posted_at`), чтобы learning loop не терял retention/CTR/save context.
 > - V6 подготовлен как read-only market guard: `/ab-rank` уже ранжирует реальные `post_metrics`, но не называет “winner” до минимального порога просмотров (`min_winner_views`, default `100`), чтобы не масштабировать случайный шум.
+> - V14 имеет защищённый MVP-substrate: `/winners` снимает winner-рецепт в `node_templates`, а sanitization вынесена в `winnerPreset` и тестом запрещает перенос `preview_url/preview_hash` в новые рецепты.
 
 ## Диагноз (единодушный, проверен по коду)
 
@@ -54,7 +55,7 @@
 ### 🕓 ПОЗЖЕ
 - **V6** — реальные метрики авто-апгрейдят winner. Подготовлено read-only: `/ab-rank` ранжирует рынок с `min_winner_views`, но автоматический апгрейд оставлен на отдельный шаг с ручным подтверждением.
 - **V16** — дашборд петли обучения (win-rate по нише, корреляция ОТК vs реальные просмотры).
-- **V14** — winner-рецепт → пресет ниши (множитель против ручного перебора; «winner» осмыслен только после V5/V6).
+- **V14** — winner-рецепт → пресет ниши. MVP-substrate закрыт: `/winners` создаёт `from_winner` preset, transfer читает production prompt/settings, volatile preview refs очищаются тестируемой sanitization.
 - **V12** — превью СБОРКИ до платного Shotstack-рендера (риск WYSIWYG-лжи у $0 proxy).
 - **V17** — бэкфилл реальных длительностей disk_real (fal-extract в edge).
 - **V13** — Remotion ReelV5 как финал-движок (openreels Фаза 4). ⚠️ **НЕ «параметризовать пропсы»**: `@remotion/lambda` = отдельная AWS-инфра (Vercel без ffmpeg/chromium), base-rate переписки 60%+. Только после замкнутой петли, с флагом отката на Shotstack.
