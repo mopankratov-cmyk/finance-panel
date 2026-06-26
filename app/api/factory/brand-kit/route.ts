@@ -18,13 +18,19 @@ const STR_FIELDS = ["niche", "voice_id", "persona_id", "visual_style", "music_ur
 export async function GET(req: NextRequest) {
   try {
   const db = getSupabaseAdmin();
-  if (!db) return NextResponse.json({ ok: false, error: "Supabase не настроен" }, { status: 500 });
   const sp = req.nextUrl.searchParams;
+  const emptyBrands = () => listBrands().map((b) => ({ brand: b, has_kit: false, kit: null }));
+  if (!db) {
+    if (sp.get("list")) return NextResponse.json({ ok: true, brands: emptyBrands(), warning: "Supabase не настроен — бренд-киты временно пустые" }, { headers: { "Cache-Control": "no-store" } });
+    const article = sp.get("article") || "";
+    const name = sp.get("name") || "";
+    return NextResponse.json({ ok: true, brand: detectBrand(article, name) || null, kit: null, warning: "Supabase не настроен — бренд-кит временно пустой" }, { headers: { "Cache-Control": "no-store" } });
+  }
 
   if (sp.get("list")) {
     let rows: Record<string, unknown>[] = [];
     try { const { data } = await db.from("brand_kits").select("*"); rows = (data as Record<string, unknown>[]) || []; }
-    catch { return NextResponse.json({ ok: true, brands: listBrands().map((b) => ({ brand: b, has_kit: false, kit: null })), note: "миграция brand_kits не применена" }); }
+    catch { return NextResponse.json({ ok: true, brands: emptyBrands(), warning: "миграция brand_kits не применена" }, { headers: { "Cache-Control": "no-store" } }); }
     const byBrand = new Map(rows.map((r) => [String(r.brand), r]));
     const brands = listBrands().map((b) => ({ brand: b, has_kit: byBrand.has(b), kit: byBrand.get(b) || null }));
     // + киты для брендов вне статичного списка (вдруг завели вручную)
@@ -39,11 +45,12 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({ ok: true, brand: brand || null, kit });
   } catch (e) {
     return NextResponse.json({
-      ok: false,
+      ok: true,
+      partial: true,
       brand: null,
       kit: null,
-      error: "чтение бренд-кита упало: " + String((e as Error)?.message || e).slice(0, 160),
-    }, { status: 500 });
+      warning: "чтение бренд-кита упало: " + String((e as Error)?.message || e).slice(0, 160),
+    }, { headers: { "Cache-Control": "no-store" } });
   }
 }
 
