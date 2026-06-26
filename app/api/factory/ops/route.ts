@@ -436,20 +436,23 @@ export async function GET() {
     const latestStress = await readLatestStressArtifact().catch(() => null);
     const stressHistory = await readStressHistorySummary().catch(() => null);
     return NextResponse.json({
-      ok: false,
-      error: "сводка завода упала: " + String((e as Error)?.message || e).slice(0, 160),
+      ok: true,
+      partial: true,
+      warning: "сводка завода временно недоступна: " + String((e as Error)?.message || e).slice(0, 160),
       db_ready: false,
       worker: null,
       workers: [],
       queue: null,
       docs: null,
       balances: null,
-      observability: null,
+      observability: EMPTY_OBSERVABILITY,
       latest_stress: latestStress,
       stress_history: stressHistory,
       alerts: [{ level: "error", code: "ops_crash", detail: String((e as Error)?.message || e).slice(0, 160) }],
       suggested_actions: [{ priority: "p1", action: "inspect_ops_endpoint", reason: "сводка завода упала до сборки статуса" }],
+      ops_status: { level: "degraded", summary: "пульс временно недоступен", reasons: ["сводка завода временно недоступна"] },
+      heartbeat_diagnostics: null,
       generated_at: new Date().toISOString(),
-    }, { status: 500 });
+    }, { headers: { "Cache-Control": "no-store" } });
   }
 }

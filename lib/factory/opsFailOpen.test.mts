@@ -19,6 +19,8 @@ ok(/catch \(e\) \{[\s\S]*readLatestStressArtifact\(\)\.catch[\s\S]*latest_stress
 ok(/catch \(e\) \{[\s\S]*readStressHistorySummary\(\)\.catch[\s\S]*stress_history:\s*stressHistory/.test(workerState), "worker-state crash path preserves stress history");
 ok(/catch \(e\) \{[\s\S]*readLatestStressArtifact\(\)\.catch[\s\S]*latest_stress:\s*latestStress/.test(ops), "ops crash path preserves latest stress artifact");
 ok(/catch \(e\) \{[\s\S]*readStressHistorySummary\(\)\.catch[\s\S]*stress_history:\s*stressHistory/.test(ops), "ops crash path preserves stress history");
+ok(/catch \(e\) \{[\s\S]*ok: true,[\s\S]*partial: true,[\s\S]*observability: EMPTY_OBSERVABILITY[\s\S]*ops_status: \{ level: "degraded"/.test(ops), "ops crash path stays HTTP-success with degraded fallback payload");
+ok(!/ops_crash[\s\S]*status:\s*500/.test(ops), "ops crash path no longer returns HTTP 500");
 ok(/catch \(e\) \{[\s\S]*readStressHistorySummary\(\)\.catch[\s\S]*stress_history:\s*stressHistory/.test(stability), "stability crash path preserves stress history");
 ok(/alerts\.push\(\{ level: "warn", code, detail: input\.workerDbError \|\| "снимок завода собран из резервного источника" \}\)/.test(ops), "optional pulse table is warning-only");
 ok(!/action: "apply_worker_state_table"/.test(ops), "ops no longer presents optional heartbeat table as a P0 action");
