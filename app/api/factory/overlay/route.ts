@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
   } catch (e) { return NextResponse.json({ error: String(e).slice(0, 200) }, { status: 502 }); }
   } catch (e) {
     return NextResponse.json({
-      error: "overlay crash: " + String((e as Error)?.message || e).slice(0, 160),
+      error: "оверлей упал: " + String((e as Error)?.message || e).slice(0, 160),
     }, { status: 500 });
   }
 }

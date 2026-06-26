@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
       winner: null,
       ranked: [],
       corpus_used: 0,
-      error: "hook-judge crash: " + String((e as Error)?.message || e).slice(0, 160),
+      error: "оценка хуков упала: " + String((e as Error)?.message || e).slice(0, 160),
     }, { status: 500, headers: { "Cache-Control": "no-store" } });
   }
 }

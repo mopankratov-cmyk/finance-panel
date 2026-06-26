@@ -97,6 +97,6 @@ export async function GET() {
     items.sort((a, b) => a.article.localeCompare(b.article));
     return NextResponse.json({ count: items.length, items });
   } catch (e) {
-    return NextResponse.json({ error: "products crash: " + String((e as Error)?.message || e).slice(0, 180), count: 0, items: [] }, { status: 500 });
+    return NextResponse.json({ error: "каталог товаров упал: " + String((e as Error)?.message || e).slice(0, 180), count: 0, items: [] }, { status: 500 });
   }
 }

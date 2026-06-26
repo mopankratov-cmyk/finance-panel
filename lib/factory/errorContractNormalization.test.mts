@@ -51,6 +51,20 @@ const renderRoutes = [
   "app/api/factory/winners/route.ts",
   "app/api/factory/ab-rank/route.ts",
 ].map((file) => readFileSync(file, "utf8")).join("\n");
+const contentActionRoutes = [
+  "app/api/factory/products/route.ts",
+  "app/api/factory/brand-kit/route.ts",
+  "app/api/factory/autofill/route.ts",
+  "app/api/factory/scenario/route.ts",
+  "app/api/factory/scenario-quality/route.ts",
+  "app/api/factory/hook-judge/route.ts",
+  "app/api/factory/hook-pick/route.ts",
+  "app/api/factory/improve-prompt/route.ts",
+  "app/api/factory/broll/route.ts",
+  "app/api/factory/subtitle/route.ts",
+  "app/api/factory/overlay/route.ts",
+  "app/api/factory/gen-save/route.ts",
+].map((file) => readFileSync(file, "utf8")).join("\n");
 
 ok(!/detail:\s*error/.test(ugcCreatify), "ugc-creatify route no longer duplicates errors into detail");
 ok(!/\{\s*error,\s*detail:\s*error/.test(ugcCreatify), "ugc-creatify keeps a single canonical error field");
@@ -69,6 +83,8 @@ ok(!/(ops|stability|worker-state (GET|POST)|graph-run\/tick|graph-run\/cron|grap
 ok(!/error: "unauthorized"/.test(orchestrationRoutes) && /неверный CRON_SECRET/.test(orchestrationRoutes), "protected factory service routes explain auth failures as CRON_SECRET problems");
 ok(!/(assemble|static-status|video-fal|video-fal-status|artifact-check|media-store|post-metrics|ugc-creatify|ugc-creatify-status|ugc-creatify-render|winners (GET|POST)|ab-rank) crash:/.test(renderRoutes), "render and media routes do not leak English crash prefixes");
 ok(/сборка таймлайна упала:/.test(renderRoutes) && /сохранение медиа упало:/.test(renderRoutes) && /сохранение метрик публикации упало:/.test(renderRoutes), "render and media routes use operator-facing Russian copy");
+ok(!/(products|brand-kit (GET|POST)|autofill|scenario|scenario-quality|hook-judge|hook-pick|improve-prompt|broll|subtitle|overlay|gen-save (GET|POST)) crash:/.test(contentActionRoutes), "content action routes do not leak English crash prefixes");
+ok(/автозаполнение нод упало:/.test(contentActionRoutes) && /сценарий упал:/.test(contentActionRoutes) && /сохранение генерации упало:/.test(contentActionRoutes), "content action routes use operator-facing Russian copy");
 
 if (failed) process.exit(1);
 console.log(`errorContractNormalization: ${passed} passed, ${failed} failed`);

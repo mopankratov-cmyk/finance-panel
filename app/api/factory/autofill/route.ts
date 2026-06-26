@@ -255,6 +255,6 @@ ${JSON.stringify(nodeLines, null, 1).slice(0, 6000)}`;
 
     return NextResponse.json({ ok: true, filled: written.length, skipped, byTool, cost_estimate, grounded, warnings, nodes: written });
   } catch (e) {
-    return NextResponse.json({ ok: false, error: "autofill crash: " + String((e as Error)?.message || e).slice(0, 160) }, { status: 500 });
+    return NextResponse.json({ ok: false, error: "автозаполнение нод упало: " + String((e as Error)?.message || e).slice(0, 160) }, { status: 500 });
   }
 }

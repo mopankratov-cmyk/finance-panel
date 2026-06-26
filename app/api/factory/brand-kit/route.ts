@@ -42,7 +42,7 @@ export async function GET(req: NextRequest) {
       ok: false,
       brand: null,
       kit: null,
-      error: "brand-kit GET crash: " + String((e as Error)?.message || e).slice(0, 160),
+      error: "чтение бренд-кита упало: " + String((e as Error)?.message || e).slice(0, 160),
     }, { status: 500 });
   }
 }
@@ -78,7 +78,7 @@ export async function POST(req: NextRequest) {
   } catch (e) {
     return NextResponse.json({
       ok: false,
-      error: "brand-kit POST crash: " + String((e as Error)?.message || e).slice(0, 160),
+      error: "сохранение бренд-кита упало: " + String((e as Error)?.message || e).slice(0, 160),
     }, { status: 500 });
   }
 }
