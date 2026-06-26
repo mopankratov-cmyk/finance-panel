@@ -568,39 +568,6 @@ export async function runRecipeStep(
     // ДО сборки пропсов: подменит node.url на наш, и render/shotstack пойдут уже с durable-URL. Best-effort.
     await persistClips(db, visualNodes, article, niche, id);
 
-    // ── V23 · движок REMOTION (премиум ReelV5) — опт-ин FACTORY_RENDER_ENGINE=remotion, минует Shotstack-схему ──
-    if (remotionEngineSelected()) {
-      if (remotionReady()) {
-        const { inputProps, durationInFrames } = buildReelProps(plan, visualNodes, article);
-        plan.reel_props = inputProps;
-        plan.duration_frames = durationInFrames;
-        plan.render_engine = "remotion";
-        plan.step = "render-submit";
-        finishExecutionLog(plan, trace, "done", "render-submit", null, "assemble→render-submit(remotion)");
-        await savePlan(db, id, plan);
-        return;
-      }
-      addWarning("remotion выбран, но сервис не готов; используем Shotstack");
-    }
-
-    // одиночный клип без Shotstack → используем как есть (минуем рендер)
-    if (visualNodes.length === 1 && !shotstackReady()) {
-      plan.output_url = visualNodes[0].url!;
-      plan.step = "otk";
-      finishExecutionLog(plan, trace, "warning", plan.output_url, null, "single clip fallback");
-      await savePlan(db, id, plan, { output_url: plan.output_url });
-      return;
-    }
-    if (!shotstackReady()) {
-      // нет монтажника и клипов несколько — берём первый (деградация), отметим
-      plan.output_url = visualNodes[0].url!;
-      plan.error = "SHOTSTACK_API_KEY не задан — взят первый клип без монтажа";
-      plan.step = "otk";
-      finishExecutionLog(plan, trace, "warning", plan.output_url, null, "shotstack missing");
-      await savePlan(db, id, plan, { output_url: plan.output_url });
-      return;
-    }
-
     // нода shotstack несёт настройки монтажа (плоские точечные ключи из инспектора) — раньше игнорились
     const ssNode = plan.nodes.find((n) => String(n.tool).toLowerCase() === "shotstack");
     const ssp = (ssNode?.params || {}) as Record<string, unknown>;
@@ -657,6 +624,42 @@ export async function runRecipeStep(
       outputFormat: ssOutFormat, fps: isNaN(ssFps) ? undefined : ssFps, quality: ssQuality, fit: ssFit, background: ssBg });
     // сохраним edit в run_plan для воспроизводимости
     (plan as any).edit_json = edit;
+
+    // ── V23 · движок REMOTION (премиум ReelV5) — опт-ин FACTORY_RENDER_ENGINE=remotion.
+    // Shotstack edit_json всё равно сохраняем выше: если Remotion дорендерил, но не смог залить в storage,
+    // render-poll может переключиться на Shotstack-сборку вместо деградации до raw clip.
+    if (remotionEngineSelected()) {
+      if (remotionReady()) {
+        const { inputProps, durationInFrames } = buildReelProps(plan, visualNodes, article);
+        plan.reel_props = inputProps;
+        plan.duration_frames = durationInFrames;
+        plan.render_engine = "remotion";
+        plan.step = "render-submit";
+        finishExecutionLog(plan, trace, "done", "render-submit", null, "assemble→render-submit(remotion)");
+        await savePlan(db, id, plan);
+        return;
+      }
+      addWarning("remotion выбран, но сервис не готов; используем Shotstack");
+    }
+
+    // одиночный клип без Shotstack → используем как есть (минуем рендер)
+    if (visualNodes.length === 1 && !shotstackReady()) {
+      plan.output_url = visualNodes[0].url!;
+      plan.step = "otk";
+      finishExecutionLog(plan, trace, "warning", plan.output_url, null, "single clip fallback");
+      await savePlan(db, id, plan, { output_url: plan.output_url });
+      return;
+    }
+    if (!shotstackReady()) {
+      // нет монтажника и клипов несколько — берём первый (деградация), отметим
+      plan.output_url = visualNodes[0].url!;
+      plan.error = "SHOTSTACK_API_KEY не задан — взят первый клип без монтажа";
+      plan.step = "otk";
+      finishExecutionLog(plan, trace, "warning", plan.output_url, null, "shotstack missing");
+      await savePlan(db, id, plan, { output_url: plan.output_url });
+      return;
+    }
+
     plan.step = "render-submit";
     finishExecutionLog(plan, trace, "done", "render-submit", null, summarizeWarnings(plan) || undefined);
     await savePlan(db, id, plan);
@@ -739,6 +742,17 @@ export async function runRecipeStep(
       finishExecutionLog(plan, trace, "done", s.videoUrl, null, "render complete");
       await savePlan(db, id, plan, { output_url: s.videoUrl });
     } else if (s.status === "error" && s.retryable !== true) {
+      if (plan.render_engine === "remotion" && (plan as any).edit_json && shotstackReady()) {
+        const warn = `${engineName} error: ${(s.error || "unknown").slice(0, 120)}; fallback Shotstack`;
+        addWarning(warn);
+        plan.render_engine = "shotstack";
+        plan.render_id = null;
+        plan.pollCount = 0;
+        plan.step = "render-submit";
+        finishExecutionLog(plan, trace, "warning", "render-submit", null, warn);
+        await savePlan(db, id, plan, { status: "running" });
+        return;
+      }
       // Если есть запасной клип, не рвём прогон: сохраняем raw fallback и идём дальше с warning.
       if (plan.backup_url) {
         const warn = `${engineName} error: ${(s.error || "unknown").slice(0, 120)}; fallback raw clip`;
