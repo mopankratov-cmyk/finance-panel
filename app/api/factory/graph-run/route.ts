@@ -4,6 +4,7 @@ import { buildRunPlan, makeRunId } from "@/lib/factory/graphRun";
 import type { RunPlan } from "@/lib/factory/graphTypes";
 import { buildRunSummary } from "@/lib/factory/observability";
 import { internalFetch } from "@/lib/internalFetch";
+import { estimateRunCost } from "@/lib/factory/costEstimate";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
@@ -35,6 +36,7 @@ export async function POST(req: NextRequest) {
       const rows = (nodes as Record<string, unknown>[] | null) || [];
       if (!rows.length) return NextResponse.json({ error: "у рецепта нет нод" }, { status: 400 });
       const plan = buildRunPlan(rows);
+      plan.cost_hint = estimateRunCost(rows);
       plan.run_id = makeRunId(recipeId);
       const prevPlan = existing && typeof existing === "object" ? existing : null;
       plan.execution_log = Array.isArray(prevPlan?.execution_log) ? prevPlan.execution_log : [];
@@ -48,7 +50,9 @@ export async function POST(req: NextRequest) {
     // первый тик СИНХРОННО: сам chain живёт в graph-run/tick, крон — только страховка.
     try { await internalFetch(`${origin}/api/factory/graph-run/tick`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ recipe_id: recipeId }), signal: AbortSignal.timeout(20000) }); } catch { /* воскресит крон/ручной тик */ }
 
-    return NextResponse.json({ ok: true, recipe_id: recipeId, started: true });
+    const { data: after } = await db.from("node_recipes").select("run_plan").eq("id", recipeId).limit(1);
+    const plan = ((after as Record<string, unknown>[] | null)?.[0]?.run_plan as RunPlan | null) || null;
+    return NextResponse.json({ ok: true, recipe_id: recipeId, started: true, run_id: plan?.run_id || null, cost_hint: plan?.cost_hint || null });
   } catch (e) {
     return NextResponse.json({ error: "graph-run crash: " + String((e as Error)?.message || e).slice(0, 160) }, { status: 500 });
   }
@@ -67,7 +71,7 @@ export async function GET(req: NextRequest) {
     // Sprint 1: read-path должен быть read-only. Оркестрация живёт в POST /graph-run,
     // self-chain /graph-run/tick и cron-strategy, а не в status polling.
     const nodes = (plan?.nodes || []).map((n) => ({ ordinal: n.ordinal, slot: n.slot, node_type: n.node_type, tool: n.tool, status: n.status, url: n.url || null, error: n.error || null, engine: n.engine || null }));
-    return NextResponse.json({ ok: true, recipe_id: recipeId, run_id: plan?.run_id || null, status: recipe.status, step: plan?.step || null, nodes, otk: recipe.otk_verdict, otk_score: recipe.otk_score, output_url: recipe.output_url, error: plan?.error || null, warnings: plan?.warnings || null, execution_log: plan?.execution_log || [], run_summary: buildRunSummary(plan) }, { headers: { "Cache-Control": "no-store" } });
+    return NextResponse.json({ ok: true, recipe_id: recipeId, run_id: plan?.run_id || null, status: recipe.status, step: plan?.step || null, nodes, otk: recipe.otk_verdict, otk_score: recipe.otk_score, output_url: recipe.output_url, error: plan?.error || null, warnings: plan?.warnings || null, execution_log: plan?.execution_log || [], run_summary: buildRunSummary(plan), cost_hint: plan?.cost_hint || (plan?.nodes ? estimateRunCost(plan.nodes as unknown as Record<string, unknown>[]) : null) }, { headers: { "Cache-Control": "no-store" } });
   } catch (e) {
     return NextResponse.json({ error: "graph-run crash: " + String((e as Error)?.message || e).slice(0, 160) }, { status: 500 });
   }

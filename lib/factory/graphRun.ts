@@ -12,6 +12,7 @@ import { isPlaceholderSource } from "./toolSchemas";
 import { isOurStorage } from "./rehostImage";
 import { createHash, randomUUID } from "node:crypto";
 import type { ExecutionLogEntry, RunNode, RunPlan, RunStep } from "./graphTypes";
+import { estimateRunCost } from "./costEstimate";
 
 export type { ExecutionLogEntry, RunNode, RunPlan, RunStep } from "./graphTypes";
 
@@ -220,7 +221,7 @@ export function buildRunPlan(rows: any[]): RunPlan {
       status: "pending" as const,
     };
   }).sort((a, b) => a.ordinal - b.ordinal);
-  return { step: "submit", nodes, attempts: 0, pollCount: 0, renderCount: 0 };
+  return { step: "submit", nodes, attempts: 0, pollCount: 0, renderCount: 0, cost_hint: estimateRunCost(nodes as unknown as Record<string, unknown>[]) };
 }
 
 async function logSignal(db: SupabaseClient, ev: string, extra: Record<string, any>) {

@@ -11,7 +11,9 @@ function ok(cond: boolean, msg: string) {
   }
 }
 
-const routed = applyRealityFirstRouting([
+type RoutingNode = { role: string; node_type: string; tool_candidate: string; routing_note?: string };
+
+const routed = applyRealityFirstRouting<RoutingNode>([
   { role: "problem", node_type: "b_roll", tool_candidate: "seedance" },
   { role: "solution", node_type: "ai_product_render", tool_candidate: "creatify" },
   { role: "proof", node_type: "pov", tool_candidate: "kling" },

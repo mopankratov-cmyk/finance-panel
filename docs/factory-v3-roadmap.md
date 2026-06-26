@@ -11,7 +11,7 @@
 > - V2 закрыт как безопасный skeleton transfer: winner-пресеты сохраняют production prompt, а decompose-перенос получает черновик с product scope и запретом дословного копирования конкурента.
 > - V5 больше не “мёртвая таблица”: `public/inferno/studio.html` уже шлёт `POST /api/factory/post-metrics`, а route умеет fail-open forward в `winners`.
 > - V18-1 закрыт: Studio не показывает `patrick`/`text` legacy entry points в навигации; файлы оставлены для прямого URL до отдельного V18-2.
-> - V11 частично закрыт в Studio: запуск через библиотеку и экран сборки считает смету по нодам, показывает потолок ОТК-регенераций и не отправляет `graph-run`, если `/ops` явно вернул `balances.low`. Открытый хвост V11 — вынести `cost_hint` в backend/runtime contracts, а не только в UI.
+> - V11 закрыт на UI + backend contract: запуск через библиотеку и экран сборки считает смету по нодам, блокирует старт при явном `balances.low`, а `/graph-run` и `run_plan` теперь возвращают `cost_hint` с typical/worst-case USD.
 > - V20 больше не “таблицы нет совсем”: `generation_history` уже пишется из `gen-save`, `node-preview`, `graph-run` clip persistence и `reject`; read-path и learn-screen тоже уже выдают warning/lineage-контекст. Открытый хвост V20 сейчас уже не в самом наличии истории, а в том, что standalone/local scripts по-прежнему обходят БД.
 
 ## Диагноз (единодушный, проверен по коду)
@@ -33,7 +33,7 @@
 | **V10** | Превью-клип закрепляется через `preview_url + preview_hash`; `graph-run` сверяет `nodeHash` и не платит FAL повторно. | S | `public/inferno/studio.html`, `lib/factory/graphRun.ts`, `/node-save` |
 | **V8** | Reality-first дефолты в `decompose`: `problem|solution|proof` принудительно становятся `disk_real`, AI остаётся только явным акцентом. | S | `lib/factory/decomposeRouting.ts`, `app/api/factory/decompose/route.ts` |
 | **V2** | Предзаполнить ноды при переносе как **черновик-скелет**: product scope + reference meaning + anti-copy guard; winner prompts не трогаются. | S | `lib/factory/recipeDraft.ts`, `app/api/factory/recipes/route.ts` |
-| **V11** | Смета + блок старта при `balances.low`; **демо-цифры у запуска убраны**. UI path закрыт, backend `cost_hint` ещё next. | M | `public/inferno/studio.html`, далее `nodeEngine` cost_hint |
+| **V11** | Смета + блок старта при `balances.low`; **демо-цифры у запуска убраны**; backend `cost_hint` возвращается из `/graph-run` и переиспользуется batch budget guard. | M · done | `public/inferno/studio.html`, `lib/factory/costEstimate.ts`, `/graph-run`, `/batch` |
 
 ### ➡️ СЛЕДУЮЩИМ
 | ID | Что | Усилие |
