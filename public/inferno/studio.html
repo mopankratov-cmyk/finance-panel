@@ -1842,9 +1842,9 @@ async function screenInspector(root){
   const groups=el("div",{style:"flex:1;overflow-y:auto;padding:14px 16px;"}); aside.appendChild(groups);
   groups.appendChild(loadingCard("настройки инструмента…"));
   let sch=S.toolSchemas[S.tool];
-  if(!sch){ const r=await api("/tool-schema?tool="+S.tool); sch=r.schema; S.toolSchemas[S.tool]=sch; }
+  if(!sch){ const r=await api("/tool-schema?tool="+S.tool); sch=(r&&r.schema)||{tool:S.tool,label:S.tool,available:false,groups:[]}; S.toolSchemas[S.tool]=sch; }
   groups.innerHTML="";
-  if(!sch){ groups.appendChild(emptyBox("нет схемы инструмента")); return; }
+  if(!sch||!Array.isArray(sch.groups)||!sch.groups.length){ groups.appendChild(emptyBox("нет схемы инструмента")); return; }
   if(sch.available===false){ groups.appendChild(el("div",{class:"mono",style:"background:var(--bg-card);border:1px solid var(--warn);border-radius:8px;padding:10px;font-size:11px;color:var(--warn);margin-bottom:10px;line-height:1.4;"},"⚠ "+sch.label+": движок ещё не подключён — настройки сохраняются, но в превью/сборке пока не применяются")); }
   n.params=n.params||{};
   sch.groups.forEach((g,gi)=>groups.appendChild(inspectorGroup(g,gi<3,n)));
