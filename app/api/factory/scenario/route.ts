@@ -147,7 +147,7 @@ export async function POST(req: NextRequest) {
   } catch (e) {
     return NextResponse.json({
       error: "scenario crash: " + String((e as Error)?.message || e).slice(0, 160),
-      ...fallbackScenario({ hook: "", article: "", name: "", reason: "route-level crash" }),
+      ...fallbackScenario({ hook: "", article: "", name: "", reason: "сбой генератора сценария" }),
     }, { status: 500 });
   }
 }

@@ -80,7 +80,7 @@ export async function POST(req: NextRequest) {
   } catch (e) {
     return NextResponse.json({
       error: "produce crash: " + String((e as Error)?.message || e).slice(0, 160),
-      ...fallbackDecision({ available: {}, reason: "route-level crash" }),
+      ...fallbackDecision({ available: {}, reason: "сбой роутера продюсера" }),
     }, { status: 500 });
   }
 }

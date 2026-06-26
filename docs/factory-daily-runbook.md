@@ -80,7 +80,7 @@ P1:
 P2:
 
 - старые архивные warning/fail;
-- optional worker heartbeat table;
+- опциональная таблица пульса Railway worker;
 - качество ОТК при сохранённом MP4;
 - улучшение текстов, фильтров и UX.
 

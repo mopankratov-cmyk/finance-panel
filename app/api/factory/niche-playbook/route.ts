@@ -179,7 +179,7 @@ export async function POST(req: NextRequest) {
   } catch (e) {
     return NextResponse.json({
       error: "niche-playbook crash: " + String((e as Error)?.message || e).slice(0, 160),
-      ...fallbackPlaybook("", "route-level crash"),
+      ...fallbackPlaybook("", "сбой сборки плейбука"),
     }, { status: 500 });
   }
 }

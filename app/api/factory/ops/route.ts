@@ -325,7 +325,7 @@ export async function GET() {
         observability: null,
         latest_stress: await latestStressPromise,
         stress_history: await stressHistoryPromise,
-        alerts: [{ level: "error", code: "db_missing", detail: "Supabase is not configured" }],
+        alerts: [{ level: "error", code: "db_missing", detail: "Supabase не настроен" }],
         generated_at: new Date().toISOString(),
       }, { headers: { "Cache-Control": "no-store" } });
     }
@@ -448,7 +448,7 @@ export async function GET() {
       latest_stress: latestStress,
       stress_history: stressHistory,
       alerts: [{ level: "error", code: "ops_crash", detail: String((e as Error)?.message || e).slice(0, 160) }],
-      suggested_actions: [{ priority: "p1", action: "inspect_ops_endpoint", reason: "ops endpoint returned route-level crash contract" }],
+      suggested_actions: [{ priority: "p1", action: "inspect_ops_endpoint", reason: "сводка завода упала до сборки статуса" }],
       generated_at: new Date().toISOString(),
     }, { status: 500 });
   }

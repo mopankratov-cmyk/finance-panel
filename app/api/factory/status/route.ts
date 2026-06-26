@@ -127,7 +127,7 @@ export async function GET() {
       tables: {},
       keys: {},
       counts: {},
-      pending: ["Проверить /api/factory/status: endpoint вернул route-level crash contract"],
+      pending: ["Проверить /api/factory/status: роут статуса упал до сборки сводки"],
       ready: false,
     }, { status: 500 });
   }

@@ -14,7 +14,7 @@ export async function GET() {
     if (!db) {
       return NextResponse.json({
         ok: false,
-        error: "Supabase is not configured",
+        error: "Supabase не настроен",
         stability: null,
         stress_history: await stressHistoryPromise,
       }, { status: 500 });
