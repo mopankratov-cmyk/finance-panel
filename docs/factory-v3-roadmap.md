@@ -17,11 +17,11 @@
 > - V3/V4 подготовлены безопасно: OTK→culprit-regeneration и `/improve-prompt` wiring живут в `graphRun`, но включаются только через `FACTORY_OTK_REGEN=1`; default остаётся Sprint-1 fail-open, чтобы не вернуть бесконтрольные платные циклы.
 > - V9 частично возвращён без риска: `/hook-judge` теперь детерминированно ранжирует уже переданные hooks по эвристике + `viral_hooks` corpus, без LLM/рендера/авто-запуска. Генератор `/variations` остаётся disabled до отдельного стабильного этапа.
 > - V5 усилен без утяжеления UI: `/post-metrics` по-прежнему принимает простой ручной market-input, но в `/winners` теперь уходит полный `market_signal` (`platform`, `views`, `watch_rate`, `ctr_card`, `saves`, `posted_at`), чтобы learning loop не терял retention/CTR/save context.
-> - V6 подготовлен как read-only market guard: `/ab-rank` уже ранжирует реальные `post_metrics`, но не называет “winner” до минимального порога просмотров (`min_winner_views`, default `100`), чтобы не масштабировать случайный шум.
+> - V6 подготовлен как read-only market guard: `/ab-rank` уже ранжирует реальные `post_metrics`, но не называет “winner” до минимального порога просмотров (`min_winner_views`, default `100`) и отдаёт безопасные `review` / `hold` buckets; старые `scale` / `kill` оставлены только как compatibility aliases, не как команда автоскейла.
 > - V14 имеет защищённый MVP-substrate: `/winners` снимает winner-рецепт в `node_templates`, а sanitization вынесена в `winnerPreset` и тестом запрещает перенос `preview_url/preview_hash` в новые рецепты.
 > - V17 частично закрыт без нового extract-сервиса: auto-bind теперь читает `content_assets.duration_sec` и переносит известную длительность real video в `RunNode.duration_sec`, чтобы сборка/trim не откатывались к дефолтным 5с там, где каталог уже знает правду.
 > - V12 закрыт как честный planning preview, а не WYSIWYG-обман: экран сборки до платного `graph-run` показывает бесплатную автораскладку таймлайна по длительностям нод; guard-тест запрещает потерять этот pre-render preview.
-> - V16 начат как read-only learning panel: `/api/factory/learning` отдаёт `market_summary` из `post_metrics`, Studio показывает реальные просмотры/retention/CTR/saves/top recipes и простой `ОТК vs рынок` alignment без авто-апгрейда winners.
+> - V16 начат как read-only learning panel: `/api/factory/learning` отдаёт `market_summary` из `post_metrics`, Studio показывает реальные просмотры/retention/CTR/saves/top recipes, агрегацию по нишам и простой `ОТК vs рынок` alignment без авто-апгрейда winners.
 
 ## Диагноз (единодушный, проверен по коду)
 
@@ -56,8 +56,8 @@
 | **V18-1** | Спрятать ссылки на legacy из Studio-навигации; файлы не трогать. | S · done |
 
 ### 🕓 ПОЗЖЕ
-- **V6** — реальные метрики авто-апгрейдят winner. Подготовлено read-only: `/ab-rank` ранжирует рынок с `min_winner_views`, но автоматический апгрейд оставлен на отдельный шаг с ручным подтверждением.
-- **V16** — дашборд петли обучения. Частично закрыто read-only: экран `Обучение` уже показывает market summary и `ОТК vs рынок`; полный win-rate по нише, cohort-корреляции и auto-advice остаются later.
+- **V6** — реальные метрики авто-апгрейдят winner. Подготовлено read-only: `/ab-rank` ранжирует рынок с `min_winner_views` и отдаёт `review/hold`; автоматический апгрейд оставлен на отдельный шаг с ручным подтверждением.
+- **V16** — дашборд петли обучения. Частично закрыто read-only: экран `Обучение` уже показывает market summary, market-by-niche и `ОТК vs рынок`; полный win-rate по нише, cohort-корреляции и auto-advice остаются later.
 - **V14** — winner-рецепт → пресет ниши. MVP-substrate закрыт: `/winners` создаёт `from_winner` preset, transfer читает production prompt/settings, volatile preview refs очищаются тестируемой sanitization.
 - **V12** — превью СБОРКИ до платного Shotstack-рендера. Закрыто в MVP как planning preview: бесплатный таймлайн по нодам до `startRun()`, без обещания pixel-perfect финала.
 - **V17** — бэкфилл реальных длительностей disk_real. Частично закрыто: известный `content_assets.duration_sec` больше не теряется при auto-bind; полноценный ffprobe/fal-extract backfill остаётся later.
