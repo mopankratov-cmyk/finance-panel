@@ -121,5 +121,72 @@ export async function GET(req: NextRequest) {
     return ((data as Row[]) || []).map((r) => ({ name: r.name, niche: r.niche, learnings: r.winner_learnings, winner_at: r.winner_at, url: r.url }));
   }, []);
 
-  return NextResponse.json({ ok: true, days, niche: nicheF || null, warnings, signals, hooks_by_niche, recent_generations, otk_trend, winner_presets, winners });
+  // 6) Рыночный сигнал (post_metrics) — read-only V16-lite: видно, есть ли уже реальные просмотры,
+  // удержание, CTR и сохранения. Это не принимает авто-решений и не масштабирует победителей.
+  const marketRowsRaw = await safe("post_metrics", async () => {
+    let q = db.from("post_metrics").select("recipe_id,platform,views,watch_rate,ctr_card,saves,posted_at").gte("posted_at", since).order("posted_at", { ascending: false }).limit(1000);
+    const { data, error } = await q;
+    if (error) throw error;
+    return (data as Row[]) || [];
+  }, []);
+  let marketRows = marketRowsRaw as Row[];
+  const marketRecipeMeta = new Map<number, Row>();
+  if (marketRows.length) {
+    const ids = [...new Set(marketRows.map((r) => Number(r.recipe_id)).filter((n) => n > 0))].slice(0, 1000);
+    const recs = await safe("node_recipes market", async () => {
+      const { data, error } = await db.from("node_recipes").select("id,niche,article,output_url,otk_score").in("id", ids);
+      if (error) throw error;
+      return (data as Row[]) || [];
+    }, []);
+    for (const r of recs as Row[]) marketRecipeMeta.set(Number(r.id), r);
+    if (nicheF) marketRows = marketRows.filter((r) => String(marketRecipeMeta.get(Number(r.recipe_id))?.niche || "").toLowerCase() === nicheF.toLowerCase());
+  }
+  const bestMarketByRecipe = new Map<number, Row>();
+  for (const r of marketRows) {
+    const id = Number(r.recipe_id);
+    if (!id) continue;
+    const prev = bestMarketByRecipe.get(id);
+    if (!prev || (Number(r.views) || 0) > (Number(prev.views) || 0)) bestMarketByRecipe.set(id, r);
+  }
+  const bestMarket = [...bestMarketByRecipe.entries()].map(([recipe_id, r]) => {
+    const meta = marketRecipeMeta.get(recipe_id) || {};
+    return {
+      recipe_id,
+      article: meta.article || null,
+      niche: meta.niche || null,
+      output_url: meta.output_url || null,
+      otk_score: meta.otk_score != null ? Number(meta.otk_score) : null,
+      platform: r.platform || null,
+      views: Number(r.views) || 0,
+      watch_rate: r.watch_rate != null ? Number(r.watch_rate) : null,
+      ctr_card: r.ctr_card != null ? Number(r.ctr_card) : null,
+      saves: r.saves != null ? Number(r.saves) : null,
+      posted_at: r.posted_at || null,
+    };
+  }).sort((a, b) => b.views - a.views);
+  const avg = (values: (number | null)[]) => {
+    const clean = values.filter((n): n is number => typeof n === "number" && Number.isFinite(n));
+    return clean.length ? Math.round((clean.reduce((acc, n) => acc + n, 0) / clean.length) * 1000) / 1000 : null;
+  };
+  const avgViews = (rows: typeof bestMarket) => rows.length ? Math.round(rows.reduce((acc, r) => acc + r.views, 0) / rows.length) : null;
+  const otkSamples = bestMarket.filter((r) => r.otk_score != null);
+  const highOtk = otkSamples.filter((r) => Number(r.otk_score) >= 7);
+  const lowOtk = otkSamples.filter((r) => Number(r.otk_score) < 7);
+  const market_summary = {
+    snapshots: marketRows.length,
+    recipes_with_metrics: bestMarket.length,
+    total_views: bestMarket.reduce((acc, r) => acc + r.views, 0),
+    avg_watch_rate: avg(bestMarket.map((r) => r.watch_rate)),
+    avg_ctr_card: avg(bestMarket.map((r) => r.ctr_card)),
+    total_saves: bestMarket.reduce((acc, r) => acc + (r.saves || 0), 0),
+    strong_samples: bestMarket.filter((r) => r.views >= 100).length,
+    otk_market_alignment: {
+      samples: otkSamples.length,
+      avg_views_high_otk: avgViews(highOtk),
+      avg_views_low_otk: avgViews(lowOtk),
+    },
+    top: bestMarket.slice(0, 6),
+  };
+
+  return NextResponse.json({ ok: true, days, niche: nicheF || null, warnings, signals, hooks_by_niche, recent_generations, otk_trend, winner_presets, winners, market_summary });
 }
