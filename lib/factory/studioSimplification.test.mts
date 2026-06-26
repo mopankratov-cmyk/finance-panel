@@ -17,6 +17,7 @@ ok(/compact:true/.test(studio), "Studio starts in compact operator mode");
 ok(/COMPACT_HIDDEN_SCREENS=new Set\(\["inspector","static","balances","learn"\]\)/.test(studio), "compact mode hides non-MVP screens from navigation");
 ok(/function visibleScreens\(\)\{ return S\.compact \? SCREENS\.filter/.test(studio), "navigation is derived from visible screens");
 ok(/visibleScreens\(\)\.forEach/.test(studio), "renderNav uses compact-aware screen list");
+ok(/\{id:"worker",grp:"⚙ Система",chip:"08",tt:"Пульс завода",st:"живые прогоны"\}/.test(studio), "system navigation names the worker screen as factory pulse instead of infra jargon");
 ok(!/if\(gens\|\|otk\|\|signalBits\.length\)/.test(studio) && !/"sprint 1 · fail-open"/.test(studio), "factory pulse stays compact in both command modes");
 ok(!/box\.appendChild\(el\("button",\{class:"btn sm",style:"margin-top:8px;width:100%;justify-content:center;",onclick:\(\)=>go\("worker"\)\},"Worker"\)\)/.test(studio), "compact sidebar pulse does not duplicate Worker entry point");
 ok(/function renderObservabilityCard\(host\)\{[\s\S]*if\(S\.compact\)return;/.test(studio), "execution observability is hidden from compact command center");
