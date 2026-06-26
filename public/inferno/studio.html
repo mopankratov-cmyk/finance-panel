@@ -937,7 +937,7 @@ async function genStatic(){
   S.staticJobs=[]; renderStaticResults();
   for(const fmt of f.formats){
     const arch=f.archetype==="auto"?(autoArch[fmt]||"headline_hero"):f.archetype;
-    const job={format:fmt,label:labels[fmt]||fmt,id:null,url:null,error:null}; S.staticJobs.push(job); renderStaticResults();
+    const job={format:fmt,label:labels[fmt]||fmt,id:null,url:null,error:null,article:f.article||"",headline:f.headline||"",niche:S.activeNiche||""}; S.staticJobs.push(job); renderStaticResults();
     const r=await api("/static-generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({article:f.article,format:fmt,archetype:arch,headline:f.headline,price:f.price,objective:f.objective})});
     if(r&&r.task_id){ job.id=r.task_id; pollStatic(job); } else { job.error=(r&&r.error)||"ошибка запуска"; }
     renderStaticResults();
@@ -947,7 +947,8 @@ async function pollStatic(job){
   for(let i=0;i<40;i++){
     await new Promise(s=>setTimeout(s,3000));
     if(S.screen!=="static")return;
-    const s=await api("/static-status?id="+encodeURIComponent(job.id));
+    const qs=new URLSearchParams({id:String(job.id),format:String(job.format||""),article:String(job.article||""),headline:String(job.headline||""),niche:String(job.niche||"")});
+    const s=await api("/static-status?"+qs.toString());
     if(s&&s.status==="done"&&s.videoUrl){ job.url=s.videoUrl; renderStaticResults(); return; }
     if(s&&s.status==="error"&&s.retryable===false){ job.error=s.error||"ошибка рендера"; renderStaticResults(); return; }
   }
