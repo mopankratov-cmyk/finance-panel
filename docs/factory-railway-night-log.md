@@ -26,6 +26,27 @@
 
 ## Записи
 
+### 2026-06-27 00:31
+
+- Ветка: `feat/reels-brain-operator-console`
+- Цель: дать публичную безлогинную витрину Reels Brain, не трогая общую авторизацию и не ломая live-пульт
+- Изменено:
+  - добавлен публичный route handler `app/inferno/vendor/reels-brain-demo/route.ts`
+  - маршрут `/inferno/vendor/reels-brain-demo` отдаёт статический HTML и не участвует в общем `AppLayout`
+  - на витрине показаны все 8 модулей: scraper, virality filter, raw corpus, intelligence agent, pattern memory, generator, critic, self-learning update
+  - добавлены демонстрационные блоки provider stack, bake-off snapshot, corpus monitor, pattern memory и roadmap по 3 вехам
+- Проверки:
+  - `npm run dev`
+  - `curl -I http://127.0.0.1:3000/inferno/vendor/reels-brain-demo`
+  - `curl http://127.0.0.1:3000/inferno/vendor/reels-brain-demo`
+- Результат:
+  - появился безопасный публичный URL для показа концепта без отключения auth
+  - live-консоль `/agent/reels-brain` остаётся под логином и не меняет свой рабочий контур
+  - решение уложено целиком в зону `app/inferno`, без правок `proxy`, auth и общих компонентов
+- Следующий шаг:
+  - прогнать preview-URL после пуша ветки и отдать пользователю прямую публичную ссылку на демо
+
+
 ### 2026-06-26 23:49
 
 - Ветка: `feat/reels-brain-operator-console`
