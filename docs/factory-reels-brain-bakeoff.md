@@ -122,15 +122,38 @@ cheap vs expensive test
 
 ## Команды
 
+Production endpoints под `/api/factory/*` закрыты. Для CLI smoke используй `CRON_SECRET` как Bearer-токен; браузерные вызовы из панели проходят через обычную `fp_session`.
+
+Быстрый smoke без записи в БД:
+
+```bash
+CRON_SECRET=... node lib/factory/reelsBrainSmoke.mjs \
+  --base-url https://finance-panel-two.vercel.app \
+  --query "water gun review" \
+  --limit 5
+```
+
+Report-only с явным списком источников:
+
+```bash
+CRON_SECRET=... node lib/factory/reelsBrainSmoke.mjs \
+  --base-url https://finance-panel-two.vercel.app \
+  --query "водяной пистолет обзор" \
+  --providers apify_tiktok,youtube,bright_tiktok,ensemble_tiktok \
+  --limit 10
+```
+
 Report-only:
 
 ```bash
-curl -sS "$BASE_URL/api/factory/reels-brain/providers"
+curl -sS "$BASE_URL/api/factory/reels-brain/providers" \
+  -H "Authorization: Bearer $CRON_SECRET"
 ```
 
 ```bash
 curl -sS -X POST "$BASE_URL/api/factory/reels-brain/bake-off" \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $CRON_SECRET" \
   -d '{
     "niche":"toys",
     "providers":["virlo","apify_tiktok","youtube","bright_tiktok","bright_youtube","ensemble_tiktok","ensemble_youtube"],
@@ -144,6 +167,7 @@ curl -sS -X POST "$BASE_URL/api/factory/reels-brain/bake-off" \
 ```bash
 curl -sS -X POST "$BASE_URL/api/factory/reels-brain/bake-off" \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $CRON_SECRET" \
   -d '{
     "niche":"toys",
     "providers":["virlo","apify_tiktok","youtube","bright_tiktok","bright_youtube","ensemble_tiktok","ensemble_youtube"],
@@ -158,6 +182,7 @@ Instagram проверяется отдельно, потому что у Bright
 ```bash
 curl -sS -X POST "$BASE_URL/api/factory/reels-brain/bake-off" \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $CRON_SECRET" \
   -d '{
     "niche":"toys",
     "providers":["apify_instagram","bright_instagram","ensemble_instagram"],
@@ -169,7 +194,8 @@ curl -sS -X POST "$BASE_URL/api/factory/reels-brain/bake-off" \
 После сохранения:
 
 ```bash
-curl -sS "$BASE_URL/api/factory/reels-brain/corpus?niche=toys&limit=50"
+curl -sS "$BASE_URL/api/factory/reels-brain/corpus?niche=toys&limit=50" \
+  -H "Authorization: Bearer $CRON_SECRET"
 ```
 
 Deep analysis топа:
@@ -177,6 +203,7 @@ Deep analysis топа:
 ```bash
 curl -sS -X POST "$BASE_URL/api/factory/reels-brain/analyze" \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $CRON_SECRET" \
   -d '{"niche":"toys","limit":10}'
 ```
 
@@ -185,6 +212,7 @@ Pattern Memory:
 ```bash
 curl -sS -X POST "$BASE_URL/api/factory/reels-brain/patterns/build" \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $CRON_SECRET" \
   -d '{"niche":"toys","limit":300,"persist":true}'
 ```
 
@@ -193,6 +221,7 @@ One-click loop:
 ```bash
 curl -sS -X POST "$BASE_URL/api/factory/reels-brain/loop" \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $CRON_SECRET" \
   -d '{
     "niche":"toys",
     "queries":["водяной пистолет обзор","детская игрушка распаковка","бластер тест"],
