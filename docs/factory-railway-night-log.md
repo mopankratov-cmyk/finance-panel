@@ -2229,3 +2229,4 @@
 - 2026-06-26 16:12 MSK - advanced V16 read-only learning without enabling auto-scale: `market_summary` now carries overall and per-niche 100+ view win-rate, and Studio shows that signal beside market-by-niche totals.
 - 2026-06-26 16:18 MSK - synced operator docs after the V16 win-rate pass: daily runbook, M4 closeout, and roadmap now describe `win-rate 100+` as a read-only market signal, not an auto-scale command.
 - 2026-06-26 16:25 MSK - localized the visible `/api/factory/graph-run` crash fallback: start/poll failures now return `graph-run упал` instead of English `graph-run crash`, with a regression guard in the factory contract tests.
+- 2026-06-26 16:37 MSK - clarified stress-run timeout semantics: deadline exits now report `status: timeout`, preserve `lastStatus`, include `timeout_budget_sec`, and the runbook explains that timeout is not the same thing as factory `run_fail`.
