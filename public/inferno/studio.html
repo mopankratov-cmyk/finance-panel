@@ -831,7 +831,7 @@ async function genStatic(){
     const arch=f.archetype==="auto"?(autoArch[fmt]||"headline_hero"):f.archetype;
     const job={format:fmt,label:labels[fmt]||fmt,id:null,url:null,error:null}; S.staticJobs.push(job); renderStaticResults();
     const r=await api("/static-generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({article:f.article,format:fmt,archetype:arch,headline:f.headline,price:f.price,objective:f.objective})});
-    if(r&&r.task_id){ job.id=r.task_id; pollStatic(job); } else { job.error=(r&&r.error)||"submit fail"; }
+    if(r&&r.task_id){ job.id=r.task_id; pollStatic(job); } else { job.error=(r&&r.error)||"ошибка запуска"; }
     renderStaticResults();
   }
 }
@@ -841,7 +841,7 @@ async function pollStatic(job){
     if(S.screen!=="static")return;
     const s=await api("/static-status?id="+encodeURIComponent(job.id));
     if(s&&s.status==="done"&&s.videoUrl){ job.url=s.videoUrl; renderStaticResults(); return; }
-    if(s&&s.status==="error"&&s.retryable===false){ job.error=s.error||"render error"; renderStaticResults(); return; }
+    if(s&&s.status==="error"&&s.retryable===false){ job.error=s.error||"ошибка рендера"; renderStaticResults(); return; }
   }
   job.error="таймаут рендера"; renderStaticResults();
 }
@@ -1975,8 +1975,8 @@ function renderOTK(otk){
   if(execLog.length){
     const box=el("div",{style:"background:var(--bg-card);border:1px solid var(--bd);border-radius:9px;padding:10px 11px;margin-bottom:14px;"});
     box.appendChild(el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;"},
-      el("div",{style:"font-size:11.5px;font-weight:700;color:var(--tx-bd);"},"execution log"),
-      el("span",{class:"mono",style:"font-size:9.5px;color:var(--tx-lo2);"},"last "+execLog.length)));
+      el("div",{style:"font-size:11.5px;font-weight:700;color:var(--tx-bd);"},"шаги прогона"),
+      el("span",{class:"mono",style:"font-size:9.5px;color:var(--tx-lo2);"},"хвост "+execLog.length)));
     const list=el("div",{style:"display:flex;flex-direction:column;gap:6px;"});
     execLog.slice(-5).forEach((e)=>{
       const st=e.status||"running";
@@ -1984,10 +1984,10 @@ function renderOTK(otk){
       const inp=String(e.input_artifact||"").slice(0,34);
       const out=String(e.output_artifact||"").slice(0,34);
       list.appendChild(el("div",{style:"display:flex;align-items:flex-start;gap:8px;font-size:10.5px;line-height:1.35;"},
-        el("span",{class:"mono",style:"flex:none;font-size:9px;color:"+col+";background:"+ (st==="done"?"var(--ok-bg)":st==="warning"?"var(--warn-bg)":"var(--err-bg)") +";padding:2px 5px;border-radius:4px;font-weight:700;"},st==="done"?"готово":st==="warning"?"warning":"сбой"),
+        el("span",{class:"mono",style:"flex:none;font-size:9px;color:"+col+";background:"+ (st==="done"?"var(--ok-bg)":st==="warning"?"var(--warn-bg)":"var(--err-bg)") +";padding:2px 5px;border-radius:4px;font-weight:700;"},st==="done"?"готово":st==="warning"?"предупр.":"сбой"),
         el("div",{style:"min-width:0;flex:1;color:var(--tx-bd);"},
           el("div",{class:"mono",style:"color:var(--tx-hi);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"},e.step||"step"),
-          el("div",{class:"mono",style:"color:var(--tx-lo2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"},(inp?("in "+inp):"")+(out?(" · out "+out):"")),
+          el("div",{class:"mono",style:"color:var(--tx-lo2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"},(inp?("вход "+inp):"")+(out?(" · выход "+out):"")),
           e.note?el("div",{class:"mono",style:"color:var(--tx-lo2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"},String(e.note).slice(0,120)):null)));
     });
     box.appendChild(list);
@@ -2027,6 +2027,17 @@ function renderOTK(otk){
 }
 function nodeRunRow(n){ const c={done:"var(--ok)",error:"var(--err)",submitted:"var(--warn)",pending:"var(--tx-lo2)",skip:"var(--tx-lo3)"}[n.status]||"var(--tx-lo2)";
   return el("div",{style:"display:flex;align-items:center;gap:8px;font-size:11px;"},el("span",{class:"dot",style:"width:8px;height:8px;background:"+c}),el("span",{style:"flex:1;color:var(--tx-mid);"},n.node_type||n.slot||"нода"),el("span",{class:"mono",style:"font-size:9.5px;color:"+c+";"},n.status)); }
+function recipeStatusLabel(status){
+  return {
+    warning:"предупр.",
+    otk_pass:"ОТК ✓",
+    otk_fail:"низкий ОТК",
+    run_fail:"сбой",
+    draft:"черновик",
+    running:"идёт",
+    posted:"опубликован",
+  }[String(status||"")] || String(status||"—");
+}
 // V1 · одобрение/реджект оператора замыкают петлю (раньше — голый toast)
 // текст ХУКА из hook-ноды графа (а НЕ артикул — иначе корпус хуков засоряется цифрами)
 function _hookText(){ const ns=(S.recipe&&S.recipe.nodes)||[]; const h=ns.find(n=>String(n.slot||"").toLowerCase()==="hook"||String(n.node_type||"").toLowerCase().indexOf("hook")===0); return (h&&(h.prompt||(h.agent_suggestion&&h.agent_suggestion.onscreen_text)))||""; }
@@ -2035,7 +2046,7 @@ async function sendWinner(){
   if(!run||!run.output_url){ toast("нет готового видео"); return; }
   const score=run.otk_score!=null?run.otk_score:(run.otk&&run.otk.score);
   const r=await api("/winners",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({url:run.output_url,hook:_hookText(),note:"студия ОТК "+(score!=null?score:""),recipe_id:rec&&rec.id})});
-  toast(r&&r.ok?("в банк — winner ✓ (хук в корпус"+(r.preset_id?" + пресет":"")+")"):("не вышло: "+((r&&r.error)||"?").toString().slice(0,40)));
+  toast(r&&r.ok?("в банк — победитель ✓ (хук в корпус"+(r.preset_id?" + пресет":"")+")"):("не вышло: "+((r&&r.error)||"?").toString().slice(0,40)));
 }
 async function sendReject(reason){
   const run=S.run, rec=S.recipe&&S.recipe.recipe;
@@ -2048,7 +2059,7 @@ async function startRun(){
   if(_runPolling){ toast("сборка уже идёт…"); return; }   // защита от повторного клика → дубль платного прогона
   _runPolling=true;
   const id=S.recipe.recipe.id; toast("запускаю исполнение графа…");
-  S.run={status:"running",step:"submit",nodes:[]}; renderOTK(document.getElementById("otk-panel"));
+  S.run={status:"running",step:"старт",nodes:[]}; renderOTK(document.getElementById("otk-panel"));
   const r=await api("/graph-run",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({recipe_id:id})});
   if(r.error){ _runPolling=false; toast("ошибка: "+r.error); S.run=null; renderOTK(document.getElementById("otk-panel")); return; }
   pollRun(id,0);
@@ -2143,28 +2154,28 @@ function recipeCard(r){ const needsRejudge=!!(r.needs_rejudge||(r.status==="otk_
   const stC=needsRejudge?"var(--warn)":({otk_pass:"var(--ok)",warning:"var(--warn)",otk_fail:(sprintWarning?"var(--warn)":"var(--err)"),run_fail:"var(--err)",draft:"var(--tx-lo2)",running:"var(--warn)",posted:"var(--acc)"}[r.status]||"var(--tx-lo2)");
   const c=NODE_TYPE_COLOR[r.format_detected]||"#5b9cf2";
   const errCat=r.error_category&&r.error_category!=="other"?String(r.error_category):"";
-  const errText=needsRejudge?"нужен rejudge":(r.catalog_error?("catalog: "+String(r.catalog_error).slice(0,90)):((r.node_errors&&r.node_errors[0])?String(r.node_errors[0].error||"node error").slice(0,90):""));
+  const errText=needsRejudge?"нужна перепроверка":(r.catalog_error?("каталог: "+String(r.catalog_error).slice(0,90)):((r.node_errors&&r.node_errors[0])?String(r.node_errors[0].error||"ошибка ноды").slice(0,90):""));
   const shownStatus=sprintWarning?"warning":r.status;
   return el("div",{class:"card",style:"padding:12px;cursor:pointer;"+(hasErr?"border-color:rgba(245,158,11,.55);":""),
     title:errText||"",onclick:()=>openRecipe(r.id).then(ok=>{ if(ok)go("canvas"); })},
     el("div",{style:"display:flex;align-items:center;gap:8px;margin-bottom:7px;"},el("span",{class:"sq",style:"width:8px;height:8px;background:"+c}),el("span",{class:"mono",style:"font-size:9px;color:var(--tx-lo);"},"граф #"+r.id),el("span",{class:"dot",style:"width:8px;height:8px;background:"+stC+";margin-left:auto;"}),
       r.run_id?el("span",{class:"mono",style:"font-size:8.5px;color:var(--tx-lo2);background:var(--bg-input);border:1px solid var(--bd2);padding:2px 5px;border-radius:4px;",title:r.run_id},"run"):null,
       r.execution_log_count?el("span",{class:"mono",style:"font-size:8.5px;color:var(--tx-lo2);background:var(--bg-input);border:1px solid var(--bd2);padding:2px 5px;border-radius:4px;",title:(r.execution_log_last&&r.execution_log_last.step)?("last: "+r.execution_log_last.step):"execution log"},"log "+r.execution_log_count):null,
-      warnings.length?el("span",{class:"mono",style:"font-size:9px;color:var(--warn);background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.35);padding:2px 5px;border-radius:4px;",title:warnings.join("\\n")},"warn "+warnings.length):null,
+      warnings.length?el("span",{class:"mono",style:"font-size:9px;color:var(--warn);background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.35);padding:2px 5px;border-radius:4px;",title:warnings.join("\\n")},"предупр. "+warnings.length):null,
       needsRejudge?el("span",{class:"mono",style:"font-size:9px;color:var(--warn);background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.35);padding:2px 5px;border-radius:4px;"},"ОТК ?"):null,
       el("span",{style:"font-size:12px;color:var(--tx-lo2);cursor:pointer;padding:0 2px;",title:"удалить рецепт",onclick:async(e)=>{ e.stopPropagation(); if(!confirm("Удалить граф #"+r.id+"?"))return; const cardEl=e.currentTarget.closest(".card"); const d=await api("/recipes?recipe_id="+r.id,{method:"DELETE"}); if(d.ok){ toast("удалён"); if(cardEl)cardEl.remove(); S.recipes=(S.recipes||[]).filter(x=>x.id!==r.id); if(S.recipe&&S.recipe.recipe&&String(S.recipe.recipe.id)===String(r.id)){ S.recipe=null; S.selectedNode=null; if(["canvas","inspector","assembly"].includes(S.screen))render(); } } else toast(d.error||"ошибка"); }},"✕")),
     el("div",{style:"font-size:12.5px;font-weight:600;"},(r.article||"—")),
     el("div",{style:"font-size:10.5px;color:var(--tx-lo);margin-top:4px;"},(r.niche||"")+" · "+(r.format_detected||"")+" · "+(r.built_by||"")),
-    el("div",{class:"mono",style:"font-size:10px;color:"+(needsRejudge||sprintWarning?"var(--warn)":"var(--tx-lo2)")+";margin-top:7px;"},shownStatus+(r.otk_score!=null?" · ОТК "+Math.round(r.otk_score*10):(needsRejudge?" · ОТК ?":""))+(r.step?" · "+r.step:"")),
-    errCat?el("div",{class:"mono",style:"font-size:9.5px;color:var(--err);margin-top:5px;"},"error "+errCat):null,
+    el("div",{class:"mono",style:"font-size:10px;color:"+(needsRejudge||sprintWarning?"var(--warn)":"var(--tx-lo2)")+";margin-top:7px;"},recipeStatusLabel(shownStatus)+(r.otk_score!=null?" · ОТК "+Math.round(r.otk_score*10):(needsRejudge?" · ОТК ?":""))+(r.step?" · "+r.step:"")),
+    errCat?el("div",{class:"mono",style:"font-size:9.5px;color:var(--err);margin-top:5px;"},"сбой "+errCat):null,
     summary?(el("div",{class:"mono",style:"font-size:9.5px;color:var(--tx-lo2);margin-top:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"},
-      (summary.active_step?("active "+summary.active_step+" · "):"")+(summary.last_step?("last "+summary.last_step+" · "):"")+(summary.total_ms!=null?("time "+fmtMs(summary.total_ms)):""))):null,
+      (summary.active_step?("идёт "+summary.active_step+" · "):"")+(summary.last_step?("последний "+summary.last_step+" · "):"")+(summary.total_ms!=null?("время "+fmtMs(summary.total_ms)):""))):null,
     errText?el("div",{class:"mono",style:"font-size:9.5px;color:var(--warn);margin-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"},errText):null,
     // V5: метрики после поста → обучение на РЫНКЕ (а не только ОТК-робот)
     el("div",{style:"margin-top:8px;display:flex;gap:5px;align-items:center;",title:"впиши реальные просмотры после публикации → хук валидируется рынком",onclick:(e)=>e.stopPropagation()},
       el("input",{class:"input",type:"number",placeholder:"просмотры (48ч)",style:"flex:1;min-width:0;font-size:11px;padding:4px 7px;",id:"pm-v-"+r.id}),
       el("select",{style:"font-size:10px;background:var(--bg-input);border:1px solid var(--bd2);border-radius:6px;color:var(--tx-bd);padding:3px;",id:"pm-p-"+r.id},...["TikTok","Reels","Shorts","VK"].map(p=>el("option",{value:p},p))),
-      el("button",{class:"btn sm",style:"padding:4px 8px;",onclick:async(e)=>{ e.stopPropagation(); const vi=document.getElementById("pm-v-"+r.id); const v=Number(vi&&vi.value); if(!v){ toast("впиши просмотры"); return; } const pe=document.getElementById("pm-p-"+r.id); const d=await api("/post-metrics",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({recipe_id:r.id,platform:(pe&&pe.value)||"TikTok",views:v})}); toast(d&&d.ok?(d.forwarded?"✓ рынок → хук в winners":(d.warnings&&d.warnings.length?"✓ метрики · warning":"✓ метрики записаны")):"не вышло"); if(vi)vi.value=""; }},"📊")));
+      el("button",{class:"btn sm",style:"padding:4px 8px;",onclick:async(e)=>{ e.stopPropagation(); const vi=document.getElementById("pm-v-"+r.id); const v=Number(vi&&vi.value); if(!v){ toast("впиши просмотры"); return; } const pe=document.getElementById("pm-p-"+r.id); const d=await api("/post-metrics",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({recipe_id:r.id,platform:(pe&&pe.value)||"TikTok",views:v})}); toast(d&&d.ok?(d.forwarded?"✓ рынок → хук в победители":(d.warnings&&d.warnings.length?"✓ метрики · предупр.":"✓ метрики записаны")):"не вышло"); if(vi)vi.value=""; }},"📊")));
 }
 
 //==================== 07 · БАЛАНСЫ СЕРВИСОВ ====================
@@ -2376,8 +2387,8 @@ async function screenLearn(root){
       const headline=((NICHE_EMOJI[r.niche]||"")+(r.article?(" "+String(r.article)):"")).trim()||"без артикула";
       const lineageBits=[
         r.recipe_id!=null?("#"+String(r.recipe_id)):null,
-        r.attempt!=null?("try "+String(r.attempt)):null,
-        r.variant_idx!=null?("var "+String(r.variant_idx)):null,
+        r.attempt!=null?("попытка "+String(r.attempt)):null,
+        r.variant_idx!=null?("вариант "+String(r.variant_idx)):null,
         r.node_type?String(r.node_type):null,
         r.source?String(r.source):null,
       ].filter(Boolean);
