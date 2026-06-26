@@ -2297,6 +2297,7 @@ function recipeCard(r){ const needsRejudge=!!(r.needs_rejudge||(r.status==="otk_
   const shownStatus=sprintWarning?"warning":r.status;
   const recipeMeta=[nicheLabel(r.niche), formatLabel(r.format_detected||r.format||r.mode), recipeBuiltByLabel(r.built_by)].filter(Boolean).join(" · ");
   const isRunningRecipe=r.status==="running"&&r.step!=="done"&&r.step!=="failed";
+  const canEnterMetrics=!!r.output_url||r.status==="posted";
   return el("div",{class:"card",style:"padding:12px;cursor:pointer;"+(hasErr?"border-color:rgba(245,158,11,.55);":""),
     title:errText||"",onclick:()=>openRecipe(r.id).then(ok=>{ if(ok)go("canvas"); })},
     el("div",{style:"display:flex;align-items:center;gap:8px;margin-bottom:7px;"},el("span",{class:"sq",style:"width:8px;height:8px;background:"+c}),el("span",{class:"mono",style:"font-size:9px;color:var(--tx-lo);"},"граф #"+r.id),el("span",{class:"dot",style:"width:8px;height:8px;background:"+stC+";margin-left:auto;"}),
@@ -2319,10 +2320,10 @@ function recipeCard(r){ const needsRejudge=!!(r.needs_rejudge||(r.status==="otk_
       r.output_url?el("button",{class:"btn sm",style:"padding:4px 8px;",onclick:()=>openMedia(r.output_url,{video:true})},"MP4"):null,
       el("button",{class:"btn sm",style:"padding:4px 8px;",onclick:()=>openRecipe(r.id).then(ok=>{ if(ok)go("assembly"); })},"ОТК")),
     // V5: метрики после поста → обучение на РЫНКЕ (а не только ОТК-робот)
-    el("div",{style:"margin-top:8px;display:flex;gap:5px;align-items:center;",title:"впиши реальные просмотры после публикации → хук валидируется рынком",onclick:(e)=>e.stopPropagation()},
+    canEnterMetrics?el("div",{style:"margin-top:8px;display:flex;gap:5px;align-items:center;",title:"впиши реальные просмотры после публикации → хук валидируется рынком",onclick:(e)=>e.stopPropagation()},
       el("input",{class:"input",type:"number",placeholder:"просмотры (48ч)",style:"flex:1;min-width:0;font-size:11px;padding:4px 7px;",id:"pm-v-"+r.id}),
       el("select",{style:"font-size:10px;background:var(--bg-input);border:1px solid var(--bd2);border-radius:6px;color:var(--tx-bd);padding:3px;",id:"pm-p-"+r.id},...["TikTok","Reels","Shorts","VK"].map(p=>el("option",{value:p},p))),
-      el("button",{class:"btn sm",style:"padding:4px 8px;",onclick:async(e)=>{ e.stopPropagation(); const vi=document.getElementById("pm-v-"+r.id); const v=Number(vi&&vi.value); if(!v){ toast("впиши просмотры"); return; } const pe=document.getElementById("pm-p-"+r.id); const d=await api("/post-metrics",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({recipe_id:r.id,platform:(pe&&pe.value)||"TikTok",views:v})}); toast(d&&d.ok?(d.forwarded?"✓ рынок → хук в победители":(d.status_marked?"✓ опубликован · метрики записаны":(d.warnings&&d.warnings.length?"✓ метрики · предупр.":"✓ метрики записаны"))):"не вышло"); if(d&&d.status_marked){ r.status="posted"; _libCache=null; if(S.screen==="library")screenLibrary(document.getElementById("screen")); } if(vi)vi.value=""; }},"📊")));
+      el("button",{class:"btn sm",style:"padding:4px 8px;",onclick:async(e)=>{ e.stopPropagation(); const vi=document.getElementById("pm-v-"+r.id); const v=Number(vi&&vi.value); if(!v){ toast("впиши просмотры"); return; } const pe=document.getElementById("pm-p-"+r.id); const d=await api("/post-metrics",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({recipe_id:r.id,platform:(pe&&pe.value)||"TikTok",views:v})}); toast(d&&d.ok?(d.forwarded?"✓ рынок → хук в победители":(d.status_marked?"✓ опубликован · метрики записаны":(d.warnings&&d.warnings.length?"✓ метрики · предупр.":"✓ метрики записаны"))):"не вышло"); if(d&&d.status_marked){ r.status="posted"; _libCache=null; if(S.screen==="library")screenLibrary(document.getElementById("screen")); } if(vi)vi.value=""; }},"📊")):null);
 }
 
 //==================== 07 · БАЛАНСЫ СЕРВИСОВ ====================

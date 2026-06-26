@@ -27,6 +27,7 @@ ok(/post_metrics недоступна/.test(abRank), "ab-rank fails open when po
 ok(/node_recipes недоступна/.test(abRank), "ab-rank fails open when node_recipes lookup is unavailable");
 ok(/d\.warnings&&d\.warnings\.length\?"✓ метрики · предупр\."/.test(studio), "Studio shows warning when metrics saved but winner forward did not complete");
 ok(/d\.status_marked\?"✓ опубликован · метрики записаны"/.test(studio) && /r\.status="posted"; _libCache=null; if\(S\.screen==="library"\)screenLibrary\(document\.getElementById\("screen"\)\);/.test(studio), "Studio reflects posted status after post-metrics accepts a market signal");
+ok(/const canEnterMetrics=!!r\.output_url\|\|r\.status==="posted";/.test(studio) && /canEnterMetrics\?el\("div",\{style:"margin-top:8px;display:flex;gap:5px;align-items:center;"/.test(studio), "Studio only shows market metrics input after a recipe has an output video");
 
 if (failed) process.exit(1);
 console.log(`marketFeedback: ${passed} passed, ${failed} failed`);
