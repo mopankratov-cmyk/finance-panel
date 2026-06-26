@@ -938,10 +938,12 @@ async function screenWorker(root, force, renderToken){
     const lsStressTarget=typeof lsSummary.targetMet==="boolean"
       ? !!lsSummary.targetMet
       : !!(lsTotal&&lsCompleted===lsTotal&&!lsFailed&&!lsRunFail&&!lsTimeouts&&!lsAuthFailures);
+    const isFullStress=lsTotal>=10;
+    const stressTitle=isFullStress?"Стресс 10/10":"Последняя проверка";
     const historyFails=Number(stressHistory&&((stressHistory.failed_runs||0)+(stressHistory.run_failures||0)+(stressHistory.timeouts||0))||0);
     const latestCard=el("div",{class:"card",style:"padding:14px;margin-bottom:14px;"});
     latestCard.appendChild(el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;"},
-      el("div",{style:"font-size:14px;font-weight:600;"},"Стресс 10/10"),
+      el("div",{style:"font-size:14px;font-weight:600;"},stressTitle),
       el("span",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);"},latestStress.generatedAt?fmtWhen(latestStress.generatedAt):"отчёт")));
     latestCard.appendChild(el("div",{style:"display:flex;flex-wrap:wrap;gap:6px;"},
       el("span",{class:"mono",style:"font-size:10px;color:var(--tx-hi);background:var(--bg-input);border:1px solid var(--bd2);padding:3px 7px;border-radius:5px;"},"прогонов "+String(lsCompleted)+"/"+String(lsTotal)),
@@ -950,7 +952,9 @@ async function screenWorker(root, force, renderToken){
       el("span",{class:"mono",style:"font-size:10px;color:var(--warn);background:var(--warn-bg);padding:3px 7px;border-radius:5px;"},"предупр. "+String(lsSummary.warnings||0)),
       el("span",{class:"mono",style:"font-size:10px;color:var(--tx-hi);background:var(--bg-input);border:1px solid var(--bd2);padding:3px 7px;border-radius:5px;"},"среднее "+String(lsSummary.avgDurationSec||0)+"с")));
     latestCard.appendChild(el("div",{style:"font-size:11px;color:var(--tx-bd);line-height:1.45;margin-top:8px;"},
-      lsStressTarget
+      !isFullStress
+        ? "Это короткая проверка, не полный stress 10/10."
+        : lsStressTarget
         ? "Последний stress-run закрыл 10/10."
         : lsAuthFailures
           ? "Stress-run не проверил завод: нужна авторизация/CRON_SECRET."
