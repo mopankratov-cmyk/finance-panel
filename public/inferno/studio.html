@@ -317,7 +317,26 @@ const NICHE_EMOJI={cosmetics:"💄",clothing:"🧥",toys:"🔫",default:"📦"};
 const LIVE_PICKER={ override_voice:{type:"voices",route:"/creatify-options?type=voices",audio:true}, background_music_url:{type:"musics",route:"/creatify-options?type=musics",audio:true}, visual_style:{type:"templates",route:"/creatify-options?type=templates",builtin:true}, voice_id:{type:"voices",route:"/eleven-options?type=voices",audio:true} };
 const _liveOpts={};
 
-async function api(path,opts){ try{ const r=await fetch(API+path,opts); return await r.json().catch(()=>({error:"не JSON"})); }catch(e){ return {error:String(e).slice(0,120)}; } }
+async function api(path,opts){
+  try{
+    const r=await fetch(API+path,opts);
+    const body=await r.json().catch(()=>({error:"не JSON"}));
+    if(body&&typeof body==="object"){ body._status=r.status; body._ok=r.ok; }
+    if(!r.ok&&body&&typeof body==="object"&&!body.error)body.error="HTTP "+r.status;
+    return body;
+  }catch(e){
+    return {error:"fetch failed",detail:String(e).slice(0,120),_network:true};
+  }
+}
+function apiErrorText(r,fallback){
+  const status=Number(r&&r._status||0);
+  const raw=String((r&&r.error)||"").trim();
+  if(status===401||status===403||/не авториз|unauthorized|forbidden/i.test(raw))return "сессия истекла — войди заново";
+  if((r&&r._network)||/fetch failed|failed to fetch|network/i.test(raw))return "нет связи с сервером — проверь интернет или деплой";
+  if(status>=500)return "сервер завода упал: "+(raw||("HTTP "+status)).slice(0,80);
+  if(status)return "сервер вернул "+status+": "+(raw||fallback||"ошибка").slice(0,80);
+  return (raw||fallback||"ошибка").slice(0,100);
+}
 function el(tag,attrs,...kids){
   const e=document.createElement(tag);
   if(attrs)for(const k in attrs){
@@ -676,7 +695,7 @@ async function startProductionRun(recipeId, opts){
     if(S.screen==="worker")screenWorker(document.getElementById("screen"),true);
     else if(S.screen==="library")screenLibrary(document.getElementById("screen"));
   } else {
-    toast("не запустилось: "+((r&&r.error)||"ошибка"));
+    toast("не запустилось: "+apiErrorText(r,"ошибка запуска"));
   }
 }
 
@@ -2282,7 +2301,7 @@ async function startRun(){
   toast("запускаю исполнение графа…");
   S.run={status:"running",step:"старт",nodes:[]}; renderOTK(document.getElementById("otk-panel"));
   const r=await api("/graph-run",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({recipe_id:id})});
-  if(r.error){ _runPolling=false; toast("ошибка: "+r.error); S.run=null; renderOTK(document.getElementById("otk-panel")); return; }
+  if(r.error){ _runPolling=false; toast("ошибка: "+apiErrorText(r,"ошибка запуска")); S.run=null; renderOTK(document.getElementById("otk-panel")); return; }
   pollRun(id,0);
 }
 async function pollRun(id,c,errs){
