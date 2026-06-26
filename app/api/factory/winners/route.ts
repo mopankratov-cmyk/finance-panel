@@ -127,7 +127,7 @@ async function snapshotWinnerPreset(db: any, recipeId: number, niche: string, fo
 export async function GET(req: NextRequest) {
   try {
   const db = getSupabaseAdmin();
-  if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 500 });
+  if (!db) return NextResponse.json({ winners: [], niche: "", warning: "Supabase не настроен — победители временно пустые" }, { headers: { "Cache-Control": "no-store" } });
   const { searchParams } = req.nextUrl;
   const article = searchParams.get("article") || "";
   const niche = searchParams.get("niche") || (article ? nicheFromArticle(article, "") : "");
@@ -142,16 +142,16 @@ export async function GET(req: NextRequest) {
 
   try {
     const { data, error } = await q;
-    if (error) return NextResponse.json({ winners: [], error: error.message });
-    return NextResponse.json({ winners: data || [], niche });
+    if (error) return NextResponse.json({ winners: [], niche, warning: error.message }, { headers: { "Cache-Control": "no-store" } });
+    return NextResponse.json({ winners: data || [], niche }, { headers: { "Cache-Control": "no-store" } });
   } catch (e) {
-    return NextResponse.json({ winners: [], error: String(e).slice(0, 100) });
+    return NextResponse.json({ winners: [], niche, warning: String(e).slice(0, 100) }, { headers: { "Cache-Control": "no-store" } });
   }
   } catch (e) {
     return NextResponse.json({
       winners: [],
       niche: "",
-      error: "чтение победителей упало: " + String((e as Error)?.message || e).slice(0, 160),
-    }, { status: 500 });
+      warning: "чтение победителей упало: " + String((e as Error)?.message || e).slice(0, 160),
+    }, { headers: { "Cache-Control": "no-store" } });
   }
 }

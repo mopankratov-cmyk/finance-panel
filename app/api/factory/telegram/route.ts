@@ -26,10 +26,11 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({ ok: true, ready: tgReady(), owner_set: !!tgOwnerChat() });
   } catch (e) {
     return NextResponse.json({
-      ok: false,
+      ok: true,
+      partial: true,
       ready: false,
       owner_set: false,
-      error: "чтение Telegram упало: " + String((e as Error)?.message || e).slice(0, 160),
+      warning: "чтение Telegram упало: " + String((e as Error)?.message || e).slice(0, 160),
     });
   }
 }
