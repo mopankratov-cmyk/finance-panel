@@ -457,8 +457,24 @@ function renderFactoryPulse(){
   const box=document.getElementById("factory-pulse");
   if(!box) return;
   const o=S.workerState&&S.workerState.observer||null;
-  const tone=observerTone(o);
-  const pulseUpdated=(o&&o.updated_at)||S.observerUpdatedAt||null;
+  const ops=S.workerState&&S.workerState.ops_status||null;
+  const runObservability=S.workerState&&S.workerState.observability||null;
+  let tone=observerTone(o);
+  if(ops){
+    const running=Number(runObservability&&runObservability.running||0);
+    const stale=Number(runObservability&&runObservability.stale_running||0);
+    const failed=Number(runObservability&&runObservability.failed||0);
+    const warnings=Number(runObservability&&runObservability.warning_runs||0);
+    const summary=String(ops.summary||"").trim();
+    if(running>0) tone={label:"идут прогоны",tone:"ok",hint:`активных ${running}`};
+    else if(stale>0) tone={label:"есть подвисшие",tone:"warn",hint:`подвисших ${stale}`};
+    else if(failed>0) tone={label:"есть сбои",tone:"warn",hint:`сбоев ${failed}`};
+    else if(warnings>0) tone={label:"есть предупреждения",tone:"warn",hint:`предупреждений ${warnings}`};
+    else if(ops.level==="critical") tone={label:"нужна проверка",tone:"err",hint:summary||"есть критичный сигнал"};
+    else if(ops.level==="degraded") tone={label:"есть риск",tone:"warn",hint:summary||"есть операционный риск"};
+    else if(ops.level==="healthy") tone={label:"завод штатно",tone:"ok",hint:summary||"активных проблем нет"};
+  }
+  const pulseUpdated=(S.workerState&&S.workerState.generated_at)||(o&&o.updated_at)||S.observerUpdatedAt||null;
   const up=pulseUpdated?new Date(pulseUpdated):null;
   const updated=up?up.toLocaleTimeString("ru-RU",{hour:"2-digit",minute:"2-digit"}):"—";
   box.innerHTML="";
@@ -466,7 +482,7 @@ function renderFactoryPulse(){
     el("span",{class:"mono"},"Ночной пульс"),
     el("span",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);"},"обновл. "+updated)));
   box.appendChild(el("div",{style:"display:flex;align-items:center;gap:8px;margin-top:5px;"},
-    el("span",{class:"dot",style:"width:8px;height:8px;background:"+(tone.tone==="ok"?"var(--ok)":tone.tone==="warn"?"var(--warn)":"var(--err)")+";box-shadow:0 0 0 4px rgba(255,255,255,.03);"}),
+    el("span",{class:"dot",style:"width:8px;height:8px;background:"+(tone.tone==="ok"?"var(--ok)":tone.tone==="warn"?"var(--warn)":tone.tone==="err"?"var(--err)":"var(--tx-lo2)")+";box-shadow:0 0 0 4px rgba(255,255,255,.03);"}),
     el("span",{style:"font-size:12px;font-weight:600;color:var(--tx-hi);"},tone.label)));
   box.appendChild(el("div",{style:"font-size:10.5px;color:var(--tx-lo2);line-height:1.35;margin-top:3px;"},tone.hint));
   if(S.observerError){
