@@ -29,6 +29,7 @@ ok(/function visibleScreens\(\)\{ return S\.compact \? SCREENS\.filter/.test(stu
 ok(/visibleScreens\(\)\.forEach/.test(studio), "renderNav uses compact-aware screen list");
 ok(!/href=["'][^"']*patrick/.test(studio) && !/\{id:"text"/.test(studio) && /if\(s\.screen==="text"\)s\.screen="center";/.test(studio), "legacy patrick/text entry points stay hidden from Studio navigation without deleting files");
 ok(/\{id:"worker",grp:"⚙ Система",chip:"08",tt:"Пульс завода",st:"живые прогоны"\}/.test(studio), "system navigation names the worker screen as factory pulse instead of infra jargon");
+ok(/<span class="mono">Пульс завода<\/span><span class="mono"[\s\S]*onclick="go\('worker'\)">экран 08 →<\/span>/.test(studio) && !/id="budget-val"|id="budget-bar"/.test(studio), "sidebar footer points to factory pulse instead of showing a stale service-balance shortcut");
 ok(/завод коротких роликов/.test(studio) && !/viral video graph/.test(studio), "rail branding stays in Russian operator language");
 ok(/\{id:"compete",grp:"Старт",chip:"02",tt:"Анализ конкурентов",st:"разведка · разбор"\}/.test(studio) && !/разведка · decompose/.test(studio), "competitor analysis navigation avoids raw decompose jargon");
 ok(!/if\(gens\|\|otk\|\|signalBits\.length\)/.test(studio) && !/"sprint 1 · fail-open"/.test(studio), "factory pulse stays compact in both command modes");
