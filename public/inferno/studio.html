@@ -416,7 +416,7 @@ async function loadObserver(){
     S.observerUpdatedAt=(r.observer&&r.observer.updated_at)||r.generated_at||new Date().toISOString();
     S.observerError="";
   }else{
-    S.observerError=(r&&r.error)||"ops snapshot недоступен";
+    S.observerError=(r&&r.error)||"снимок пульса недоступен";
   }
   renderFactoryPulse();
 }
@@ -640,8 +640,8 @@ async function screenWorker(root, force, renderToken){
   const activeRuns=recentRuns.filter((r)=>r&&(r.active||r.status==="running"||r.stale));
   const queueRuns=(activeRuns.length?activeRuns:recentRuns);
   const liveTone=workerStatusTone(live.state);
-  const aliveNote=workerSource==="queue_fallback"&&live.state==="unknown"?"heartbeat не настроен":live.state==="alive"?"heartbeat свежий":live.state==="stale"?"heartbeat молчит":"пульс потерян";
-  const sourceLabel=workerSource==="heartbeat_db"?"heartbeat":"фолбэк";
+  const aliveNote=workerSource==="queue_fallback"&&live.state==="unknown"?"пульс не настроен":live.state==="alive"?"пульс свежий":live.state==="stale"?"пульс молчит":"пульс потерян";
+  const sourceLabel=workerSource==="heartbeat_db"?"таблица":"фолбэк";
   const orderedRuns=[...queueRuns]
     .sort((a,b)=>{
       const aw=(a&&a.stale)?0:(a&&a.active===false)?4:String(a&&a.status||"")==="running"?1:String(a&&a.status||"")==="warning"?2:String(a&&a.status||"")==="run_fail"?3:5;
@@ -657,7 +657,7 @@ async function screenWorker(root, force, renderToken){
   const focusRunDetail=!focusRun
     ? "живых и недавних прогонов пока нет"
     : focusRun.stale
-      ? (focusRun.active_step?`застрял на шаге ${focusRun.active_step}`:focusRun.last_step?`застрял после шага ${focusRun.last_step}`:"прогон завис в running")
+      ? (focusRun.active_step?`застрял на шаге ${focusRun.active_step}`:focusRun.last_step?`застрял после шага ${focusRun.last_step}`:"прогон завис в работе")
       : String(focusRun.status||"")==="running"
         ? (focusRun.active_step?`идёт шаг ${focusRun.active_step}`:focusRun.last_step?`последний шаг ${focusRun.last_step}`:"прогон в работе")
         : String(focusRun.status||"")==="warning"
@@ -722,7 +722,7 @@ async function screenWorker(root, force, renderToken){
       el("div",{style:"font-size:14px;font-weight:600;"},"Сигнал пульса"),
       el("span",{class:"mono",style:"font-size:10px;color:"+(heartbeatDiag.issue==="table_missing"?"var(--err)":"var(--warn)")+";background:rgba(0,0,0,.08);padding:3px 7px;border-radius:5px;font-weight:700;"},heartbeatIssueLabel(heartbeatDiag.issue))));
     const heartbeatSummary=heartbeatDiag.issue==="table_missing"
-      ? "таблица heartbeat ещё не поднята, поэтому экран читает фолбэк и не блокирует прогоны."
+      ? "таблица пульса ещё не поднята, поэтому экран читает фолбэк и не блокирует прогоны."
       : heartbeatDiag.detail
         ? String(heartbeatDiag.detail)
         : "пульс нестабилен, но завод продолжает идти в fail-open режиме.";
@@ -747,7 +747,7 @@ async function screenWorker(root, force, renderToken){
     latestCard.appendChild(el("div",{style:"display:flex;flex-wrap:wrap;gap:6px;"},
       el("span",{class:"mono",style:"font-size:10px;color:var(--tx-hi);background:var(--bg-input);border:1px solid var(--bd2);padding:3px 7px;border-radius:5px;"},"прогонов "+String(lsSummary.completed||0)+"/"+String(lsSummary.totalRuns||0)),
       el("span",{class:"mono",style:"font-size:10px;color:"+(lsSummary.failed?"var(--err)":"var(--ok)")+";background:"+(lsSummary.failed?"var(--err-bg)":"var(--ok-bg)")+";padding:3px 7px;border-radius:5px;"},"сбоев "+String(lsSummary.failed||0)),
-      el("span",{class:"mono",style:"font-size:10px;color:var(--warn);background:var(--warn-bg);padding:3px 7px;border-radius:5px;"},"warning "+String(lsSummary.warnings||0)),
+      el("span",{class:"mono",style:"font-size:10px;color:var(--warn);background:var(--warn-bg);padding:3px 7px;border-radius:5px;"},"предупр. "+String(lsSummary.warnings||0)),
       el("span",{class:"mono",style:"font-size:10px;color:var(--tx-hi);background:var(--bg-input);border:1px solid var(--bd2);padding:3px 7px;border-radius:5px;"},"среднее "+String(lsSummary.avgDurationSec||0)+"s")));
     if(lsStability){
       latestCard.appendChild(el("div",{style:"font-size:11px;color:var(--tx-bd);line-height:1.45;margin-top:8px;"},
@@ -766,7 +766,7 @@ async function screenWorker(root, force, renderToken){
         " отчётов · цель ",
         el("b",{style:"color:var(--tx-hi);"},String(stressHistory.target_met_reports||0)+"/"+String(stressHistory.total_reports||0)),
         historyFails||stressHistory.warning_runs
-          ? " · хвост " + String(historyFails||0) + " сбоев / " + String(stressHistory.warning_runs||0) + " warning"
+          ? " · хвост " + String(historyFails||0) + " сбоев / " + String(stressHistory.warning_runs||0) + " предупр."
           : ""));
     }
     wrap.appendChild(latestCard);
@@ -783,7 +783,7 @@ async function screenWorker(root, force, renderToken){
     [
       ["идёт", Number(runObservability&&runObservability.running||0), "var(--vio-bg)"],
       ["подвис", Number(runObservability&&runObservability.stale_running||0), "var(--warn-bg)"],
-      ["warning", Number(runObservability&&runObservability.warning_runs||0), "var(--warn-bg)"],
+      ["предупр.", Number(runObservability&&runObservability.warning_runs||0), "var(--warn-bg)"],
       ["сбой", Number(runObservability&&runObservability.failed||0), "var(--err-bg)"],
       ["в выборке", Number(runObservability&&runObservability.active_sample_runs||queueRuns.length||0), "var(--bg-input)"],
       ["архив", Number(runObservability&&((runObservability.legacy_failed_runs||0)+(runObservability.legacy_warning_runs||0))||0), "var(--bg-input)"],
@@ -800,7 +800,7 @@ async function screenWorker(root, force, renderToken){
       ].filter(Boolean);
       const detail=String(r&&r.status||"")==="running"
         ? (r&&r.stale
-            ? (r&&r.active_step?`застрял на шаге ${r.active_step}`:r&&r.last_step?`застрял после шага ${r.last_step}`:"прогон завис в running")
+            ? (r&&r.active_step?`застрял на шаге ${r.active_step}`:r&&r.last_step?`застрял после шага ${r.last_step}`:"прогон завис в работе")
             : (r&&r.active_step?`шаг ${r.active_step}`:r&&r.last_step?`последний шаг ${r.last_step}`:"прогон в работе"))
         : String(r&&r.status||"")==="warning"
           ? `${Number(r&&r.warnings_count||0)} предупрежд.`
@@ -1034,7 +1034,7 @@ function renderObservabilityCard(host){
     el("span",{class:"mono",style:"font-size:9.5px;color:var(--tx-lo2);"},(o.active_sample_runs||o.sample_runs||0)+" в окне")));
   card.appendChild(el("div",{style:"display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;"},
     el("span",{class:"mono",style:"font-size:9.5px;color:var(--acc-lt);background:var(--vio-bg);border:1px solid var(--bd-acc);padding:3px 7px;border-radius:5px;"},"идут "+(o.running||0)),
-    el("span",{class:"mono",style:"font-size:9.5px;color:var(--warn);background:var(--warn-bg);border:1px solid rgba(245,158,11,.35);padding:3px 7px;border-radius:5px;"},"warning "+(o.warning_runs||0)),
+    el("span",{class:"mono",style:"font-size:9.5px;color:var(--warn);background:var(--warn-bg);border:1px solid rgba(245,158,11,.35);padding:3px 7px;border-radius:5px;"},"предупр. "+(o.warning_runs||0)),
     el("span",{class:"mono",style:"font-size:9.5px;color:var(--err);background:var(--err-bg);border:1px solid var(--bd-err);padding:3px 7px;border-radius:5px;"},"сбоев "+(o.failed||0)),
     (legacyFails||legacyWarnings)?el("span",{class:"mono",style:"font-size:9.5px;color:var(--tx-mid);background:var(--bg-input);border:1px solid var(--bd2);padding:3px 7px;border-radius:5px;"},
       "архив "+String(legacyFails+legacyWarnings)):null));
@@ -1042,7 +1042,7 @@ function renderObservabilityCard(host){
     card.appendChild(el("div",{style:"margin:-2px 0 10px;font-size:10.5px;color:var(--tx-lo);line-height:1.45;"},
       "сейчас живых инцидентов нет, но в архивном окне ещё лежит ",
       el("b",{style:"color:var(--tx-hi);"},String(legacyFails+legacyWarnings)),
-      " старых warning/сбой прогонов"));
+      " старых предупреждений и сбоев"));
   }
   if(stability){
     const targetMet=!!stability.target_met;
@@ -1053,7 +1053,7 @@ function renderObservabilityCard(host){
           String(stability.successful_runs||0)+"/"+String(stability.window_size||10))),
       el("div",{style:"display:flex;flex-wrap:wrap;gap:6px;"},
         el("span",{class:"mono",style:"font-size:9.5px;color:var(--tx-hi);background:var(--bg-input);border:1px solid var(--bd2);padding:3px 7px;border-radius:5px;"},"подряд "+String(stability.success_streak||0)),
-        el("span",{class:"mono",style:"font-size:9.5px;color:var(--warn);background:var(--warn-bg);border:1px solid rgba(245,158,11,.35);padding:3px 7px;border-radius:5px;"},"warning "+String(stability.warning_runs||0)),
+        el("span",{class:"mono",style:"font-size:9.5px;color:var(--warn);background:var(--warn-bg);border:1px solid rgba(245,158,11,.35);padding:3px 7px;border-radius:5px;"},"предупр. "+String(stability.warning_runs||0)),
         el("span",{class:"mono",style:"font-size:9.5px;color:var(--err);background:var(--err-bg);border:1px solid var(--bd-err);padding:3px 7px;border-radius:5px;"},"сбои "+String(stability.failed_runs||0))),
       el("div",{style:"font-size:10.5px;color:var(--tx-bd);line-height:1.45;"},
         targetMet?"последние 10 прогонов завершились успешно":"до KPI не хватает подряд успешных прогонов")));
@@ -1096,7 +1096,7 @@ function renderObservabilityCard(host){
       el("span",{class:"mono",style:"color:var(--tx-lo2);flex:none;"},String(w.count||0)))));
   }
   if(cats.length){
-    card.appendChild(el("div",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);margin:"+((slow.length||errCats.length)?"10px":"4px")+" 0 6px;"},"категории warning"));
+    card.appendChild(el("div",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);margin:"+((slow.length||errCats.length)?"10px":"4px")+" 0 6px;"},"категории предупреждений"));
     cats.slice(0,4).forEach((w)=>card.appendChild(el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:10.5px;color:var(--tx-bd);margin-bottom:5px;"},
       el("span",{class:"mono",style:"min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"},errorCategoryLabel(w.category)),
       el("span",{class:"mono",style:"color:var(--tx-lo2);flex:none;"},String(w.count||0)))));
@@ -1106,7 +1106,7 @@ function renderObservabilityCard(host){
     errs.slice(0,3).forEach((w)=>card.appendChild(el("div",{class:"mono",style:"font-size:10px;color:var(--tx-mid);line-height:1.35;margin-bottom:4px;"},(w.count||0)+"× "+String(w.reason||"").slice(0,90))));
   }
   if(warns.length){
-    card.appendChild(el("div",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);margin:"+((slow.length||errCats.length||cats.length||errs.length)?"10px":"4px")+" 0 6px;"},"верхние warning"));
+    card.appendChild(el("div",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);margin:"+((slow.length||errCats.length||cats.length||errs.length)?"10px":"4px")+" 0 6px;"},"верхние предупреждения"));
     warns.slice(0,3).forEach((w)=>card.appendChild(el("div",{class:"mono",style:"font-size:10px;color:var(--tx-mid);line-height:1.35;margin-bottom:4px;"},(w.count||0)+"× "+String(w.reason||"").slice(0,90))));
   }
   if(recent.length){
@@ -1114,7 +1114,7 @@ function renderObservabilityCard(host){
     recent.slice(0,6).forEach((r)=>card.appendChild(el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:10.5px;color:var(--tx-bd);margin-bottom:5px;"},
       el("div",{style:"min-width:0;display:flex;align-items:center;gap:6px;overflow:hidden;"},
         el("span",{class:"dot",style:"width:7px;height:7px;background:"+(r.status==="run_fail"?"var(--err)":r.status==="warning"?"var(--warn)":r.status==="running"?"var(--acc)":"var(--ok)")+";flex:none;"}),
-        el("span",{class:"mono",style:"white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"},(r.recipe_id?("#"+r.recipe_id+" "):"")+runQueueTone(r&&r.stale?"stale_running":r.status).label+(r.error_category?(" · "+errorCategoryLabel(r.error_category)):"")+(r.warnings_count?(" · warning "+r.warnings_count):""))),
+        el("span",{class:"mono",style:"white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"},(r.recipe_id?("#"+r.recipe_id+" "):"")+runQueueTone(r&&r.stale?"stale_running":r.status).label+(r.error_category?(" · "+errorCategoryLabel(r.error_category)):"")+(r.warnings_count?(" · предупр. "+r.warnings_count):""))),
       el("span",{class:"mono",style:"color:var(--tx-lo2);flex:none;"},r.total_ms!=null?(fmtMs(r.total_ms)+" · "+fmtWhen(r.created_at)):fmtWhen(r.created_at)))));
   }
   if(incidents.length){
@@ -1131,7 +1131,7 @@ function renderObservabilityCard(host){
     card.appendChild(el("div",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);margin:"+((slow.length||errCats.length||cats.length||errs.length||warns.length||recent.length||incidents.length)?"10px":"4px")+" 0 6px;"},"тренд по часам"));
     series.slice(-6).forEach((p)=>card.appendChild(el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:10.5px;color:var(--tx-bd);margin-bottom:5px;"},
       el("span",{class:"mono",style:"min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"},String(p.bucket||"").replace("T"," ").slice(5,16)),
-      el("span",{class:"mono",style:"color:var(--tx-lo2);flex:none;"},"всего "+(p.total||0)+" · ок "+(p.passed||0)+" · warning "+(p.warning||0)+" · сбой "+(p.failed||0)))));
+      el("span",{class:"mono",style:"color:var(--tx-lo2);flex:none;"},"всего "+(p.total||0)+" · ок "+(p.passed||0)+" · предупр. "+(p.warning||0)+" · сбой "+(p.failed||0)))));
   }
   if(stepSeries.length){
     card.appendChild(el("div",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);margin:"+((slow.length||errCats.length||cats.length||errs.length||warns.length||recent.length||incidents.length||series.length)?"10px":"4px")+" 0 6px;"},"длительность шагов"));
@@ -2297,7 +2297,7 @@ async function screenLearn(root){
     wrap.appendChild(el("div",{class:"card",style:"padding:14px;margin-bottom:16px;border-color:rgba(245,158,11,.35);background:var(--warn-bg);"},
       el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;"},
         el("div",{style:"font-size:13px;font-weight:700;color:var(--warn);"},"предупреждения чтения"),
-        el("span",{class:"mono",style:"font-size:10px;color:var(--warn);background:rgba(245,158,11,.16);padding:3px 7px;border-radius:5px;"},"warning "+learnWarnings.length)),
+        el("span",{class:"mono",style:"font-size:10px;color:var(--warn);background:rgba(245,158,11,.16);padding:3px 7px;border-radius:5px;"},"предупр. "+learnWarnings.length)),
       ...learnWarnings.slice(0,4).map(w=>el("div",{class:"mono",style:"font-size:10px;color:var(--tx-mid);line-height:1.45;"},String(w).slice(0,160)))));
   }
 
@@ -2369,7 +2369,7 @@ async function screenLearn(root){
   const rg=d.recent_generations||[];
   if(!rg.length){ wrap.appendChild(emptyBox("история пуста — после первых прогонов появятся записи")); }
   else{
-    const ST={otk_pass:["var(--ok)","ОТК ✓"],approved:["var(--ok)","одобрено"],warning:["var(--warn)","warning"],otk_fail:["var(--warn)","низкий ОТК"],rejected:["var(--err)","отклонено"],artifact_fail:["var(--err)","артефакт"],run_fail:["var(--err)","сбой"],regen:["var(--acc-lt)","реген"],generated:["var(--tx-bd)","собрано"]};
+  const ST={otk_pass:["var(--ok)","ОТК ✓"],approved:["var(--ok)","одобрено"],warning:["var(--warn)","предупр."],otk_fail:["var(--warn)","низкий ОТК"],rejected:["var(--err)","отклонено"],artifact_fail:["var(--err)","артефакт"],run_fail:["var(--err)","сбой"],regen:["var(--acc-lt)","реген"],generated:["var(--tx-bd)","собрано"]};
     const list=el("div",{style:"display:flex;flex-direction:column;gap:6px;"}); wrap.appendChild(list);
     rg.forEach(r=>{
       const st=ST[r.status]||["var(--tx-lo2)",r.status||"?"];
@@ -2481,7 +2481,7 @@ function coachNextStep(){
     case "balances":
       return {cap:"Балансы",t:"Следи за остатками по сервисам. Сервис на нуле — генерация по нему встанет.",why:"Seedance/Kling/Creatify/Shotstack/FAL платные. Пустой баланс = упавшая нода в сборке."};
     case "worker":
-      return {cap:"Пульс завода",t:"Смотри на heartbeat и живые прогоны завода. Если пульс уйдёт в `молчит` или `потерян`, надо проверять sender, blocker или перезапуск.",why:"Это экран живого контроля: видно, идут ли реальные прогоны, где они застряли и когда воркер перестал отвечать. Следующий шаг обычно либо разобрать зависший прогон, либо чинить путь heartbeat.",chips:["Как читать статус пульса?","Где смотреть живые прогоны?"]};
+      return {cap:"Пульс завода",t:"Смотри на пульс и живые прогоны завода. Если пульс уйдёт в `молчит` или `потерян`, надо проверять sender пульса или перезапуск воркера.",why:"Это экран живого контроля: видно, идут ли реальные прогоны, где они застряли и когда воркер перестал отвечать. Следующий шаг обычно либо разобрать зависший прогон, либо чинить путь пульса.",chips:["Как читать статус пульса?","Где смотреть живые прогоны?"]};
     case "learn":
       return {cap:"Обучение",t:"Смотри, что завод выучил: победившие хуки, тренд ОТК, пресеты-победители за период.",why:"Это память завода. Переноси удачные хуки и пресеты в новые ролики — повторяешь то, что уже заходило.",chips:["Как применить выученное?","Что показывает тренд ОТК?"]};
     case "ds":
