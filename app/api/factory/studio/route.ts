@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
-import { buildObservability, buildRunSummary, classifyErrorReason, classifyWarningReason } from "@/lib/factory/observability";
+import { buildObservability, buildRunSummary, classifyErrorReason, classifyWarningReason, currentRunLog } from "@/lib/factory/observability";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 20;
@@ -57,7 +57,8 @@ function recipeSummary(r: Record<string, unknown>) {
   const plan = (r.run_plan && typeof r.run_plan === "object") ? r.run_plan as Record<string, unknown> : {};
   const nodes = Array.isArray(plan.nodes) ? plan.nodes as Record<string, unknown>[] : [];
   const warnings = Array.isArray(plan.warnings) ? plan.warnings.map((w) => String(w)).filter(Boolean).slice(0, 5) : [];
-  const executionLog = Array.isArray(plan.execution_log) ? plan.execution_log.slice(-5) : [];
+  const currentLog = currentRunLog(plan);
+  const executionLog = currentLog.slice(-5);
   const nodeErrors = nodes
     .filter((n) => n.status === "error" || n.error)
     .map((n) => ({
@@ -75,7 +76,7 @@ function recipeSummary(r: Record<string, unknown>) {
     error_category: classifyErrorReason(String(plan.error || "")),
     warnings,
     warnings_count: warnings.length,
-    execution_log_count: Array.isArray(plan.execution_log) ? plan.execution_log.length : 0,
+    execution_log_count: currentLog.length,
     execution_log_tail: executionLog,
     execution_log_last: executionLog.length ? executionLog[executionLog.length - 1] : null,
     run_summary: buildRunSummary(plan),

@@ -26,6 +26,7 @@ const LEASE_MS = 90_000;
 const MAX_POLLS = 35;
 const POLL_WAIT_MS = 12_000;
 const MAX_RENDERS = 3;
+const MAX_REMOTION_UPLOAD_RETRIES = 1;
 export const MAX_STEP_ATTEMPTS = 3;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -160,6 +161,11 @@ function renderEngineDiagnostic(): string {
   return "render path degraded: SHOTSTACK_API_KEY missing and remotion not configured";
 }
 
+function isRemotionUploadTransportError(error: string | null | undefined): boolean {
+  const text = String(error || "").toLowerCase();
+  return text.includes("upload") && text.includes("fetch failed");
+}
+
 function chunkCaptions(text: string, article: string): { text: string; accent?: boolean }[] {
   const parts = String(text || "").split(/(?<=[.!?…])\s+|,\s+|\s—\s/).map((s) => s.trim()).filter(Boolean).slice(0, 12);
   const art = String(article || "").toLowerCase();
@@ -180,7 +186,7 @@ export function buildReelProps(plan: RunPlan, visualNodes: RunNode[], article: s
   const actorNode = plan.nodes.find((n) => n.status === "done" && n.url && (["creatify", "lipsync"].includes(String(n.tool).toLowerCase()) || roleOf(n) === "actor"));
   const overlayNodes = visualNodes.filter((n) => n !== actorNode);
   const mode = plan.mode === "sell" ? "sell" : "audience";
-  const needsStorySupport = isPlaceholderSingleClipRecipe(plan, visualNodes);
+  const needsStorySupport = needsSingleClipStorySupport(plan, visualNodes);
   const visualHint = String(((visualNodes[0]?.params || {}) as Record<string, unknown>)["onscreen_text"]
     || ((visualNodes[0]?.params || {}) as Record<string, unknown>)["visual_desc"]
     || textOfNode(visualNodes[0])
@@ -224,7 +230,7 @@ export function buildReelProps(plan: RunPlan, visualNodes: RunNode[], article: s
   return { inputProps, durationInFrames };
 }
 
-function isPlaceholderSingleClipRecipe(plan: RunPlan, visualNodes: RunNode[]): boolean {
+function needsSingleClipStorySupport(plan: RunPlan, visualNodes: RunNode[]): boolean {
   if (visualNodes.length !== 1) return false;
   const node = visualNodes[0];
   const tool = String(node.tool || "").toLowerCase();
@@ -239,6 +245,16 @@ function isPlaceholderSingleClipRecipe(plan: RunPlan, visualNodes: RunNode[]): b
     .map((value) => String(value || "").trim())
     .filter(Boolean);
   return copy.length > 0 && copy.every((value) => isPlaceholderNarrative(value));
+}
+
+function isPlaceholderSingleClipRecipe(plan: RunPlan, visualNodes: RunNode[]): boolean {
+  if (!needsSingleClipStorySupport(plan, visualNodes)) return false;
+  const node = visualNodes[0];
+  const params = (node?.params || {}) as Record<string, unknown>;
+  const copy = [node?.prompt, node?.onscreen_text, params["onscreen_text"], params["visual_desc"]]
+    .map((value) => String(value || "").trim())
+    .filter(Boolean);
+  return copy.length === 0 || copy.every((value) => isPlaceholderNarrative(value));
 }
 
 // V3/V4: по слабейшей оси ОТК выбрать ноду-виновника для регена (только генеративную)
@@ -809,6 +825,20 @@ export async function runRecipeStep(
       finishExecutionLog(plan, trace, "done", s.videoUrl, null, "render complete");
       await savePlan(db, id, plan, { output_url: s.videoUrl });
     } else if (s.status === "error" && s.retryable !== true) {
+      if (plan.render_engine === "remotion" && isRemotionUploadTransportError(s.error || "")) {
+        const renderRetryCount = Number(plan.render_retry_count || 0);
+        if (renderRetryCount < MAX_REMOTION_UPLOAD_RETRIES) {
+          const warn = `${engineName} upload transport error: ${(s.error || "unknown").slice(0, 120)}; retry Remotion`;
+          addWarning(warn);
+          plan.render_retry_count = renderRetryCount + 1;
+          plan.render_id = null;
+          plan.pollCount = 0;
+          plan.step = "render-submit";
+          finishExecutionLog(plan, trace, "warning", "render-submit", null, warn);
+          await savePlan(db, id, plan, { status: "running" });
+          return;
+        }
+      }
       if (plan.render_engine === "remotion" && (plan as any).edit_json && shotstackReady()) {
         const warn = `${engineName} error: ${(s.error || "unknown").slice(0, 120)}; fallback Shotstack`;
         addWarning(warn);

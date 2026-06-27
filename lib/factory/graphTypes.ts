@@ -16,6 +16,7 @@ export interface RunPlan {
   step: RunStep;
   nodes: RunNode[];
   render_id?: string | null;
+  render_retry_count?: number | null;
   output_url?: string | null;
   pollCount?: number;
   renderCount?: number;

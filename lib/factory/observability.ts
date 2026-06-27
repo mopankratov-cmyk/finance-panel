@@ -99,6 +99,7 @@ export type IncidentRunPoint = {
 };
 
 type LogEntry = {
+  run_id?: unknown;
   started_at?: unknown;
   finished_at?: unknown;
   step?: unknown;
@@ -106,6 +107,7 @@ type LogEntry = {
 };
 
 type RunPlanLike = {
+  run_id?: unknown;
   execution_log?: unknown;
   error?: unknown;
   warnings?: unknown;
@@ -132,6 +134,25 @@ function timeMs(value: unknown): number | null {
   return Number.isFinite(ms) ? ms : null;
 }
 
+export function currentRunLog(plan: RunPlanLike | null | undefined): LogEntry[] {
+  const log = Array.isArray(plan?.execution_log) ? plan.execution_log as LogEntry[] : [];
+  if (!log.length) return [];
+  const currentRunId = plan?.run_id ? String(plan.run_id) : "";
+  if (currentRunId) {
+    const scoped = log.filter((entry) => entry && String(entry.run_id || "") === currentRunId);
+    if (scoped.length) return scoped;
+  }
+  const tailRunId = log[log.length - 1]?.run_id ? String(log[log.length - 1]?.run_id || "") : "";
+  if (!tailRunId) return log;
+  const scopedTail: LogEntry[] = [];
+  for (let i = log.length - 1; i >= 0; i -= 1) {
+    const entry = log[i];
+    if (String(entry?.run_id || "") !== tailRunId) break;
+    scopedTail.push(entry);
+  }
+  return scopedTail.reverse();
+}
+
 function isSuccessfulRun(status: string, summary: RunSummary): boolean {
   if (status === "running" || status === "run_fail") return false;
   if (summary.last_step === "failed" || summary.last_status === "error") return false;
@@ -153,12 +174,12 @@ function isActiveIncident(ageMs: number | null, stale: boolean): boolean {
 }
 
 export function buildRunSummary(plan: RunPlanLike | null | undefined): RunSummary {
-  const log = Array.isArray(plan?.execution_log) ? plan.execution_log as LogEntry[] : [];
+  const log = currentRunLog(plan);
   const first = log[0] || null;
   const last = log.length ? log[log.length - 1] : null;
   const startedAt = first?.started_at || null;
   const finishedAt = last?.finished_at || null;
-  const active = log.find((e) => e && e.status === "running") || null;
+  const active = last && last.status === "running" ? last : null;
   const totalMs = startedAt ? ((finishedAt ? msBetween(startedAt, finishedAt) : (Date.now() - Date.parse(String(startedAt)))) || null) : null;
   return {
     started_at: startedAt,

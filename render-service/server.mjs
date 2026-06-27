@@ -49,6 +49,8 @@ const PORT = Number(process.env.PORT || 8080);
 const TOKEN = process.env.REMOTION_RENDER_TOKEN || "";
 const CONCURRENCY = Math.max(1, Number(process.env.RENDER_CONCURRENCY || 1));
 const BUCKET = "factory-media";
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 
 // ── тюнинг скорости одного рендера (резолвим один раз; см. лог [timing]) ──
 const CORES = os.cpus().length;
@@ -71,11 +73,55 @@ const log = (...a) => console.log(new Date().toISOString(), ...a);
 let _supa = null;
 function supa() {
   if (_supa) return _supa;
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const url = SUPABASE_URL;
+  const key = SUPABASE_SERVICE_KEY;
   if (!url || !key) return null;
   _supa = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
   return _supa;
+}
+
+function publicStorageUrl(bucket, objPath) {
+  return `${SUPABASE_URL.replace(/\/+$/, "")}/storage/v1/object/public/${bucket}/${objPath}`;
+}
+
+async function uploadViaStorageRest(bucket, objPath, buf, contentType) {
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) throw new Error("Supabase env не настроен для REST upload");
+  const url = `${SUPABASE_URL.replace(/\/+$/, "")}/storage/v1/object/${bucket}/${objPath}`;
+  const r = await fetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${SUPABASE_SERVICE_KEY}`,
+      apikey: SUPABASE_SERVICE_KEY,
+      "Content-Type": contentType,
+      "x-upsert": "true",
+      "cache-control": "31536000",
+    },
+    body: buf,
+    signal: AbortSignal.timeout(120000),
+  });
+  if (!r.ok) {
+    const text = await r.text().catch(() => "");
+    throw new Error(`storage REST ${r.status}: ${text.slice(0, 160) || r.statusText || "upload failed"}`);
+  }
+  return publicStorageUrl(bucket, objPath);
+}
+
+async function uploadRenderObject(db, bucket, objPath, buf, contentType, id) {
+  let lastError = null;
+  try {
+    const { error } = await db.storage.from(bucket).upload(objPath, buf, { contentType, upsert: true, cacheControl: "31536000" });
+    if (!error) return publicStorageUrl(bucket, objPath);
+    lastError = error.message || String(error);
+  } catch (e) {
+    lastError = String(e?.message || e);
+  }
+  log(`upload ${id} sdk path failed (${String(lastError).slice(0, 160)}); trying storage REST fallback`);
+  try {
+    return await uploadViaStorageRest(bucket, objPath, buf, contentType);
+  } catch (restError) {
+    const restText = String(restError?.message || restError);
+    throw new Error(`${String(lastError || "sdk upload failed").slice(0, 160)} | rest fallback: ${restText.slice(0, 160)}`);
+  }
 }
 
 // ── стор статуса джоб: in-memory (быстрый путь, та же инстанс) + Supabase (кросс-инстанс для ФЛОТА) ──
@@ -249,17 +295,17 @@ async function runRender(id, composition, inputProps, durationInFrames, still = 
     // upload бросает на сетевой ошибке И возвращает {error} на серверной — ловим оба, бэкофф 1.5с×попытка.
     const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     let upErr = null;
+    let videoUrl = null;
     for (let attempt = 1; attempt <= 4; attempt++) {
       try {
         if (attempt === 1) { try { await db.storage.createBucket(BUCKET, { public: true }); } catch { /* уже есть */ } }
-        const { error } = await db.storage.from(BUCKET).upload(objPath, buf, { contentType: still ? "image/png" : "video/mp4", upsert: true });
-        if (!error) { upErr = null; break; }
-        upErr = error.message || String(error);
+        videoUrl = await uploadRenderObject(db, BUCKET, objPath, buf, still ? "image/png" : "video/mp4", id);
+        upErr = null;
+        break;
       } catch (e) { upErr = String(e?.message || e); } // напр. "fetch failed" — сетевой транзиент
       if (attempt < 4) { log(`upload ${id} retry ${attempt}/3 (${upErr})`); await sleep(1500 * attempt); }
     }
     if (upErr) throw new Error(`upload (после 4 попыток): ${upErr}`);
-    const videoUrl = db.storage.from(BUCKET).getPublicUrl(objPath).data?.publicUrl;
     if (!videoUrl) throw new Error("getPublicUrl вернул пусто");
 
     const tDone = Date.now();

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { buildRunPlan, makeRunId } from "@/lib/factory/graphRun";
 import type { RunPlan } from "@/lib/factory/graphTypes";
-import { buildRunSummary } from "@/lib/factory/observability";
+import { buildRunSummary, currentRunLog } from "@/lib/factory/observability";
 import { internalFetch } from "@/lib/internalFetch";
 import { estimateRunCost } from "@/lib/factory/costEstimate";
 import { resolveFactoryOrigin } from "@/lib/factory/runtimeOrigin";
@@ -73,7 +73,8 @@ export async function GET(req: NextRequest) {
     // Sprint 1: read-path должен быть read-only. Оркестрация живёт в POST /graph-run,
     // self-chain /graph-run/tick и cron-strategy, а не в status polling.
     const nodes = (plan?.nodes || []).map((n) => ({ ordinal: n.ordinal, slot: n.slot, node_type: n.node_type, tool: n.tool, status: n.status, url: n.url || null, error: n.error || null, engine: n.engine || null }));
-    return NextResponse.json({ ok: true, recipe_id: recipeId, run_id: plan?.run_id || null, status: recipe.status, step: plan?.step || null, nodes, otk: recipe.otk_verdict, otk_score: recipe.otk_score, output_url: recipe.output_url, error: plan?.error || null, warnings: plan?.warnings || null, execution_log: plan?.execution_log || [], run_summary: buildRunSummary(plan), cost_hint: plan?.cost_hint || (plan?.nodes ? estimateRunCost(plan.nodes as unknown as Record<string, unknown>[]) : null) }, { headers: { "Cache-Control": "no-store" } });
+    const executionLog = currentRunLog(plan);
+    return NextResponse.json({ ok: true, recipe_id: recipeId, run_id: plan?.run_id || null, status: recipe.status, step: plan?.step || null, nodes, otk: recipe.otk_verdict, otk_score: recipe.otk_score, output_url: recipe.output_url, error: plan?.error || null, warnings: plan?.warnings || null, execution_log: executionLog, run_summary: buildRunSummary(plan), cost_hint: plan?.cost_hint || (plan?.nodes ? estimateRunCost(plan.nodes as unknown as Record<string, unknown>[]) : null) }, { headers: { "Cache-Control": "no-store" } });
   } catch (e) {
     return NextResponse.json({ error: "graph-run упал: " + String((e as Error)?.message || e).slice(0, 160) }, { status: 500 });
   }
