@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-06-28T12:54:38.432Z",
+  "generated_at": "2026-06-28T13:01:58.468Z",
   "base_url": "https://finance-panel-two.vercel.app",
   "niche": null,
   "hours": 72,
@@ -25,7 +25,7 @@
             "threshold": null,
             "low": false,
             "hint": "тренд-аналитика · get_credit_balance",
-            "updated_at": "2026-06-28T12:54:20.489Z",
+            "updated_at": "2026-06-28T13:01:43.734Z",
             "history": [
               {
                 "balance": 9.5,
@@ -240,7 +240,7 @@
             "threshold": null,
             "low": false,
             "hint": "AI UGC-актёры · remaining_credits",
-            "updated_at": "2026-06-28T12:54:19.438Z",
+            "updated_at": "2026-06-28T13:01:42.801Z",
             "history": [
               {
                 "balance": 368,
@@ -455,7 +455,7 @@
             "threshold": null,
             "low": true,
             "hint": "видео-движки · нужен FAL_BILLING_KEY (admin)",
-            "updated_at": "2026-06-28T12:54:21.120Z",
+            "updated_at": "2026-06-28T13:01:43.872Z",
             "history": [
               {
                 "balance": -0.18,
@@ -694,7 +694,7 @@
         "low": [
           "fal"
         ],
-        "updated_at": "2026-06-28T12:54:21.578Z"
+        "updated_at": "2026-06-28T13:01:44.328Z"
       }
     },
     "quality": {
@@ -708,7 +708,7 @@
         "denominator": "produced_videos",
         "quality": {
           "window_hours": 72,
-          "since": "2026-06-25T12:54:22.411Z",
+          "since": "2026-06-25T13:01:45.084Z",
           "produced_videos": 88,
           "otk_pass": 0,
           "warnings": 88,
@@ -758,7 +758,7 @@
         "headline": "factory_quality_diagnostics",
         "diagnostics": {
           "window_hours": 72,
-          "since": "2026-06-25T12:54:23.813Z",
+          "since": "2026-06-25T13:01:46.481Z",
           "totals": {
             "recipes": 112,
             "produced_videos": 88,

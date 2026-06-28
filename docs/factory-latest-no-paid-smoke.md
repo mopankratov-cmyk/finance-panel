@@ -1,6 +1,6 @@
 # Factory No-Paid Readiness Smoke
 
-- generated_at: 2026-06-28T12:54:38.432Z
+- generated_at: 2026-06-28T13:01:58.468Z
 - base_url: https://finance-panel-two.vercel.app
 - niche: 
 - ready_for_paid_batch: no
