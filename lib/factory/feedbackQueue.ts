@@ -151,7 +151,11 @@ export function decideAutoFeedback(row: Row): AutoFeedbackDecision {
   const status = text(analysis.status || analysis.result_status || analysis.source_status || analysis.verdict, 80).toLowerCase();
   const otk = num(analysis.otk ?? analysis.otk_score);
   const views = num(analysis.views ?? analysis.market_views ?? analysis.winner_views);
+  const saves = num(analysis.saves ?? analysis.market_saves);
   const basis = text(analysis.basis ?? analysis.otk_basis, 40).toLowerCase();
+  const artifactOk = analysis.artifact_ok !== false;
+  const framesGroundedOtkPass = otk != null && otk >= 7 && artifactOk && !["text", "fallback", "storyboard"].includes(basis);
+  const marketSignal = (views != null && views >= 2500) || (saves != null && saves >= 5);
 
   if (row.is_winner || row.winner_at || currentLabel === "winner") {
     return { asset_id: assetId, action: "keep", confidence: "high", label: "winner", score: 100, reason: "already explicit winner" };
@@ -165,14 +169,13 @@ export function decideAutoFeedback(row: Row): AutoFeedbackDecision {
   if (otk != null && otk < 6) {
     return { asset_id: assetId, action: "trash", confidence: "high", label: "trash", score: Math.max(0, Math.round(otk * 10)), reason: `OTK below usable threshold: ${otk}` };
   }
-  if (views != null && views >= 2500) {
-    return { asset_id: assetId, action: "winner", confidence: "high", label: "winner", score: 95, reason: `market views >= 2500: ${views}` };
-  }
-  if (otk != null && otk >= 8 && !["text", "fallback", "storyboard"].includes(basis)) {
-    return { asset_id: assetId, action: "winner", confidence: "medium", label: "winner", score: Math.min(92, Math.round(otk * 10)), reason: `strong frames-grounded OTK: ${otk}` };
+  if (framesGroundedOtkPass && marketSignal) {
+    const signal = views != null && views >= 2500 ? `market views >= 2500: ${views}` : `market saves >= 5: ${saves}`;
+    return { asset_id: assetId, action: "winner", confidence: "high", label: "winner", score: Math.min(98, Math.max(90, Math.round(otk * 10))), reason: `OTK pass + ${signal}` };
   }
   if (otk != null && otk >= 6) {
-    return { asset_id: assetId, action: "keep", confidence: "medium", label: "usable", score: Math.round(otk * 10), reason: `usable but not winner-safe: OTK ${otk}` };
+    const suffix = marketSignal ? "market signal present but OTK is not winner-safe" : `OTK ${otk}`;
+    return { asset_id: assetId, action: "keep", confidence: "medium", label: "usable", score: Math.round(otk * 10), reason: `usable but not auto-winner: ${suffix}` };
   }
   if (currentLabel === "trash") {
     return { asset_id: assetId, action: "keep", confidence: "medium", label: "trash", score: 0, reason: "already trash" };

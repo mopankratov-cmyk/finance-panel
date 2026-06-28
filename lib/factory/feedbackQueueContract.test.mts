@@ -50,7 +50,10 @@ equal(winner.memory_label, "winner", "winner marks memory winner");
 equal(winner.memory_score, 100, "winner gets max memory score");
 
 const { decideAutoFeedback } = await import("./feedbackQueue");
-equal(decideAutoFeedback({ id: 4, kind: "video", url: "https://e.com/a.mp4", analysis: { views: 3000 } }).action, "winner", "market views can auto-promote winner");
+equal(decideAutoFeedback({ id: 4, kind: "video", url: "https://e.com/a.mp4", analysis: { otk: 8, basis: "model", views: 3000 } }).action, "winner", "OTK pass plus market views can auto-promote winner");
 equal(decideAutoFeedback({ id: 5, kind: "video", url: "https://e.com/a.mp4", analysis: { otk: 4 } }).action, "trash", "low OTK auto-rejects trash");
 equal(decideAutoFeedback({ id: 6, kind: "video", url: "https://e.com/a.mp4", analysis: { otk: 6 } }).action, "keep", "weak OTK is kept usable but not promoted");
 equal(decideAutoFeedback({ id: 7, kind: "video", url: "https://e.com/a.mp4", analysis: { otk: 8, basis: "text" } }).action, "keep", "text-only OTK cannot auto-promote winner");
+equal(decideAutoFeedback({ id: 8, kind: "video", url: "https://e.com/a.mp4", analysis: { views: 9000 } }).action, "keep", "market views without OTK pass cannot auto-promote winner");
+equal(decideAutoFeedback({ id: 9, kind: "video", url: "https://e.com/a.mp4", analysis: { otk: 9, basis: "model" } }).action, "keep", "strong OTK without market signal stays usable");
+equal(decideAutoFeedback({ id: 10, kind: "video", url: "https://e.com/a.mp4", analysis: { otk: 8, basis: "model", saves: 6 } }).action, "winner", "OTK pass plus saves can auto-promote winner");
