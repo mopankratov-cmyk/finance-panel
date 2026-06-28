@@ -144,7 +144,7 @@ export async function POST(req: NextRequest) {
   try {
     const balances = await collectBalances(db, { throttleMs: 60000 });
     const low = balances.filter((s) => REQUIRED.includes(s.service) && s.low === true).map((s) => s.service);
-    if (low.length) return NextResponse.json({ ok: false, balance_block: low, error: `Низкий баланс: ${low.join(", ")} — пополни или подними порог. Батч не запущен.` });
+    if (low.length) return NextResponse.json({ ok: false, balance_block: low, error: `Низкий баланс: ${low.join(", ")} — пополни или подними порог. Батч не запущен.` }, { status: 409 });
     balanceUnknown = balances.filter((s) => REQUIRED.includes(s.service) && s.balance == null).map((s) => s.service);
   } catch { /* балансы не определились → не блокируем по неопределённости */ }
   providerBlock = await recentProviderBalanceBlocks(db, requestedNiche);

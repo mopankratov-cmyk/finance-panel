@@ -45,6 +45,7 @@ ok(/batchPlanHintFor/.test(scripts) && /batch_plan: batchPlan/.test(scripts), "s
 ok(/const requireFullBatch = b\.require_full_batch === true;/.test(batch), "batch can require full next-five launch");
 ok(/const requireLearningGate = b\.require_learning_gate === true;/.test(batch), "batch can require learning-gated next-five launch");
 ok(/const seriesAfter = String\(b\.series_after \|\| ""\)\.trim\(\) \|\| null;/.test(batch), "batch accepts active series window");
+ok(/balance_block: low[\s\S]*\{ status: 409 \}/.test(batch), "batch returns conflict status for low provider balances");
 ok(/if \(requireFullBatch && !dryRun && !preflight\.ready\)/.test(batch), "batch blocks partial guarded launches");
 ok(/async function recentProviderBalanceBlocks/.test(batch), "batch remembers recent provider balance/access stops");
 ok(/providerBlock = await recentProviderBalanceBlocks\(db, requestedNiche\)/.test(batch), "batch checks recent provider stops before launch");
