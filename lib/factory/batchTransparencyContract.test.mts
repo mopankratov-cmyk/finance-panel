@@ -18,6 +18,7 @@ ok(/const requestedNiche = String\(b\.niche \|\| ""\)\.trim\(\) \|\| null;/.test
 ok(/const batchRunId = `batch_\$\{Date\.now\(\)\}_\$\{randomUUID\(\)\.slice\(0, 8\)\}`;/.test(route), "batch route creates a batch run id");
 ok(/import \{ buildRunPlan, makeRunId \} from "@\/lib\/factory\/graphRun";/.test(route), "batch route can enqueue run plans directly");
 ok(/const requireFullBatch = b\.require_full_batch === true;/.test(route), "batch route supports full-batch requirement");
+ok(/const skipBalanceCheck = dryRun && b\.skip_balance_check === true;/.test(route), "batch route can skip balance checks for dry-run diagnostics only");
 ok(/const requireLearningGate = b\.require_learning_gate === true;/.test(route), "batch route supports learning-gate requirement");
 ok(/const requireStrongSource = b\.require_strong_source === true;/.test(route), "batch route supports quality-first strong source requirement");
 ok(/const seriesAfter = String\(b\.series_after \|\| ""\)\.trim\(\) \|\| null;/.test(route), "batch route supports active series window");
