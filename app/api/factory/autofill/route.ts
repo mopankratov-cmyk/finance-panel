@@ -10,14 +10,15 @@ import { learningHints } from "@/lib/factory/learningHints";
 import { resolveBrandKit, applyKitToParams, brandKitPromptBlock } from "@/lib/factory/brandKit";
 import { internalFetch } from "@/lib/internalFetch";
 import { extractJson } from "@/lib/factory/extractJson";
+import { buildPlatformBrainHint, normalizeTargetPlatform } from "@/lib/factory/reelsBrainPlaybook";
 
 // Ф2 · tool → сервис баланса (бесплатные disk_real/sound не блокируются) и tool → примерная $-цена (зеркало TOOL_COST)
 const TOOL_SERVICE: Record<string, string> = { seedance: "fal", seedance_fast: "fal", seedance_pro: "fal", kling: "fal", kling_pro: "fal", pika: "fal", creatify: "creatify" };
 const TOOL_COST: Record<string, number> = { seedance: 0.42, seedance_fast: 0.14, seedance_pro: 0.42, kling: 0.38, kling_pro: 0.50, pika: 0.30, creatify: 1.20, shotstack: 0.08, disk_real: 0, disk: 0, sound: 0, music: 0, elevenlabs: 0.1 };
 
 // Ф2 · грундинг-блок для system-промпта: обучение ниши + плейбук (render_role-роутинг) + наличие съёмки + баланс
-function buildGrounding(niche: string, lh: string, playbook: Record<string, unknown> | null, footage: "real" | "photo" | "none", lowServices: string[]): string {
-  const parts: string[] = [`ГРУНДИНГ НИШИ «${niche}» (реальные данные завода — учитывай в роутинге):`];
+function buildGrounding(niche: string, targetPlatform: string, lh: string, playbook: Record<string, unknown> | null, footage: "real" | "photo" | "none", lowServices: string[]): string {
+  const parts: string[] = [`ГРУНДИНГ НИШИ «${niche}» (реальные данные завода — учитывай в роутинге). ЦЕЛЕВАЯ ПЛАТФОРМА: ${targetPlatform}.`];
   if (lh && lh.trim()) parts.push(lh.trim());
 
   const fmts = (playbook && Array.isArray((playbook as any).winning_formats)) ? (playbook as any).winning_formats as Record<string, unknown>[] : [];
@@ -31,6 +32,8 @@ function buildGrounding(niche: string, lh: string, playbook: Record<string, unkn
 
     const anti = (playbook as any).anti_patterns; if (Array.isArray(anti) && anti.length) parts.push(`АНТИ-ПАТТЕРНЫ ниши (не делай): ${anti.slice(0, 5).join("; ")}`);
   }
+  const platformBrainHint = buildPlatformBrainHint(playbook, targetPlatform);
+  if (platformBrainHint) parts.push(platformBrainHint.trim());
   parts.push(footage === "real"
     ? "РЕАЛЬНАЯ СЪЁМКА ПОД ТОВАР: ЕСТЬ на Я.Диске → для ролей problem|solution|proof ставь disk_real (это база, не AI)."
     : footage === "photo"
@@ -88,6 +91,7 @@ export async function POST(req: NextRequest) {
 
     const article = String(rec.article || "");
     const niche = String(rec.niche || nicheFromArticle(article, ""));
+    const targetPlatform = normalizeTargetPlatform(b.target_platform || b.platform || rec.mode);
     const warnings: string[] = [];
 
     // целевые ноды: выбранные (node_ids) либо все; пропускаем ручные (если не force)
@@ -131,7 +135,7 @@ export async function POST(req: NextRequest) {
     // все движки выпали (баланс/оффлайн) — не шлём Claude пустой список (иначе галлюцинация инструмента), отдаём честно
     if (!available.length) return NextResponse.json({ ok: true, filled: 0, skipped: targets.length, byTool: {}, cost_estimate: "≈ $0.00", grounded: { footage, low_balance: lowServices, playbook: !!pbRow, learning: !!(lh && (lh as string).trim()) }, warnings: [...warnings, "нет доступных движков — все заблокированы балансом/отключены, пополни баланс"], nodes: [] });
     const digests = available.map(toolDigest).filter(Boolean).join("\n\n");
-    const grounding = buildGrounding(niche, lh as string, pbRow as Record<string, unknown> | null, footage, lowServices);
+    const grounding = buildGrounding(niche, targetPlatform, lh as string, pbRow as Record<string, unknown> | null, footage, lowServices);
 
     // 3) один batch-вызов Claude
     const client = await createClaudeClient();
@@ -251,7 +255,7 @@ ${JSON.stringify(nodeLines, null, 1).slice(0, 6000)}`;
     const nodeCost = Object.entries(byTool).reduce((s, [t, n]) => s + (TOOL_COST[t] ?? 0.4) * n, 0);
     const assembly = written.length && !byTool.shotstack ? TOOL_COST.shotstack : 0; // сборка-рендер раз, если не считали как ноду
     const cost_estimate = `≈ $${(nodeCost + assembly).toFixed(2)}`;
-    const grounded = { footage, low_balance: lowServices, playbook: !!pbRow, learning: !!(lh && (lh as string).trim()) };
+    const grounded = { footage, low_balance: lowServices, playbook: !!pbRow, learning: !!(lh && (lh as string).trim()), target_platform: targetPlatform };
 
     return NextResponse.json({ ok: true, filled: written.length, skipped, byTool, cost_estimate, grounded, warnings, nodes: written });
   } catch (e) {

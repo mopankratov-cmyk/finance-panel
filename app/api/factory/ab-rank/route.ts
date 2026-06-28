@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { rankVariants, type VariantMetric } from "@/lib/factory/abRank";
+import { normalizeTargetPlatform } from "@/lib/factory/reelsBrainPlaybook";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
@@ -22,12 +23,13 @@ export async function GET(req: NextRequest) {
     if (!db) return NextResponse.json({ ok: false, error: "Supabase не настроен" }, { status: 500 });
     const sp = req.nextUrl.searchParams;
     const niche = (sp.get("niche") || "").trim();
+    const targetPlatform = (sp.get("platform") || sp.get("target_platform") || "").trim();
     const since = (sp.get("since") || "").trim();
     const limit = Math.min(2000, Math.max(10, Number(sp.get("limit")) || 500));
     const explicitIds = (sp.get("recipe_ids") || "").split(",").slice(0, 1000).map((s) => Number(s.trim())).filter((n) => n > 0);
 
     // 1) метрики рынка (несколько снапшотов на ролик возможны → берём лучший по views)
-    let mq = db.from("post_metrics").select("recipe_id,views,watch_rate,ctr_card,saves,posted_at").order("posted_at", { ascending: false }).limit(limit);
+    let mq = db.from("post_metrics").select("recipe_id,views,watch_rate,ctr_card,saves,posted_at,platform").order("posted_at", { ascending: false }).limit(limit);
     if (since) mq = mq.gte("posted_at", since);
     if (explicitIds.length) mq = mq.in("recipe_id", explicitIds);
     const { data: pm, error: pmError } = await mq;
@@ -65,10 +67,12 @@ export async function GET(req: NextRequest) {
     for (const r of ((recs as Record<string, unknown>[] | null) || [])) recMap.set(Number(r.id), r);
 
     // 3) собираем метрики вариантов (фильтр по нише), ранжируем
-    const metrics: (VariantMetric & { niche?: string; article?: string; output_url?: string })[] = [];
+    const metrics: (VariantMetric & { niche?: string; article?: string; output_url?: string; target_platform?: string })[] = [];
     for (const [id, r] of best) {
       const rec = recMap.get(id);
       if (niche && String(rec?.niche || "").toLowerCase() !== niche.toLowerCase()) continue;
+      const platform = normalizeTargetPlatform((r.platform as string) || ((rec?.run_plan as Record<string, unknown> | undefined)?.target_platform));
+      if (targetPlatform && platform !== normalizeTargetPlatform(targetPlatform)) continue;
       metrics.push({
         recipe_id: id,
         hook: rec ? hookFromRunPlan(rec.run_plan) : undefined,
@@ -79,6 +83,7 @@ export async function GET(req: NextRequest) {
         niche: String(rec?.niche || "") || undefined,
         article: String(rec?.article || "") || undefined,
         output_url: (rec?.output_url as string) || undefined,
+        target_platform: platform,
       });
     }
 
@@ -86,13 +91,13 @@ export async function GET(req: NextRequest) {
     // обогащаем винеров/лузеров полями рецепта (для рекомендаций)
     const enrich = (rv: typeof ranked) => rv.map((x) => {
       const meta = metrics.find((m) => m.recipe_id === x.recipe_id);
-      return { ...x, niche: meta?.niche, article: meta?.article, output_url: meta?.output_url };
+      return { ...x, niche: meta?.niche, article: meta?.article, output_url: meta?.output_url, target_platform: meta?.target_platform };
     });
     const winners = enrich(ranked.filter((r) => r.tier === "winner"));
     const losers = enrich(ranked.filter((r) => r.tier === "loser"));
 
     return NextResponse.json({
-      ok: true, median_score: Math.round(medianScore), summary,
+      ok: true, median_score: Math.round(medianScore), summary, target_platform: targetPlatform ? normalizeTargetPlatform(targetPlatform) : null,
       ranked: enrich(ranked),
       winners, losers,
       recommend: {

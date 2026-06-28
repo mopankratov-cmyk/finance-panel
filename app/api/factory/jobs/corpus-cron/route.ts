@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { internalFetch } from "@/lib/internalFetch";
+import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { recommendSourceQueries } from "@/lib/factory/reelsBrainPlaybook";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -24,6 +26,8 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "unauthorized" }, { status: 401 });
     }
     const origin = req.nextUrl.origin;
+    const db = getSupabaseAdmin();
+    const runBakeOff = req.nextUrl.searchParams.get("run_bake_off") !== "false";
 
     // Запускаем orbit-sync и corpus-tick параллельно (независимы по данным в момент старта)
     const [orbitsResult, tickResult] = await Promise.allSettled([
@@ -50,11 +54,54 @@ export async function GET(req: NextRequest) {
       signal: AbortSignal.timeout(110000),
     }).then((r) => r.json()).catch((e) => ({ error: String(e).slice(0, 100) }));
 
+    let scheduledBakeOffs: unknown[] = [];
+    if (runBakeOff && db) {
+      try {
+        const { data: playbooks } = await db
+          .from("niche_playbooks")
+          .select("niche,playbook,updated_at")
+          .order("updated_at", { ascending: false })
+          .limit(2);
+        const rows = (playbooks as { niche?: string; playbook?: unknown }[] | null) || [];
+        for (const row of rows) {
+          const niche = String(row.niche || "").trim();
+          if (!niche) continue;
+          for (const platform of ["tiktok", "instagram", "youtube"] as const) {
+            const queries = recommendSourceQueries(row.playbook, niche, platform).slice(0, 2);
+            const bakeOff = await internalFetch(`${origin}/api/factory/reels-brain/bake-off`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                niche,
+                queries,
+                target_platform: platform,
+                limit: 12,
+                persist: false,
+                persist_memory: true,
+              }),
+              signal: AbortSignal.timeout(90000),
+            }).then((r) => r.json()).catch((e) => ({ error: String(e).slice(0, 100) }));
+            scheduledBakeOffs.push({
+              niche,
+              platform,
+              queries,
+              best_provider: (bakeOff as { best_provider_by_platform?: Record<string, { provider?: string }> }).best_provider_by_platform?.[platform]?.provider || null,
+              source_memory_updated: (bakeOff as { source_memory_updated?: boolean }).source_memory_updated === true,
+              error: (bakeOff as { error?: string }).error || null,
+            });
+          }
+        }
+      } catch (e) {
+        scheduledBakeOffs = [{ error: String((e as Error)?.message || e).slice(0, 120) }];
+      }
+    }
+
     return NextResponse.json({
       ok: true,
       sync_orbits: orbitsResult.status === "fulfilled" ? orbitsResult.value : { error: String(orbitsResult.reason).slice(0, 100) },
       corpus_tick: tickResult.status === "fulfilled" ? tickResult.value : { error: String(tickResult.reason).slice(0, 100) },
       playbooks: playbooksResult,
+      scheduled_bake_offs: scheduledBakeOffs,
     });
   } catch (e) {
     return NextResponse.json({ error: "jobs/corpus-cron crash: " + String((e as Error)?.message || e).slice(0, 180) }, { status: 500 });

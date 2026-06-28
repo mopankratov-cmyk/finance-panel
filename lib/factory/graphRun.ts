@@ -15,6 +15,7 @@ import { fetchCabinetCards } from "@/lib/wb/cards";
 import { wbCardImageUrl } from "@/lib/wb/cardImage";
 import { createHash, randomUUID } from "node:crypto";
 import type { ExecutionLogEntry, RunNode, RunPlan, RunStep } from "./graphTypes";
+import { normalizeTargetPlatform } from "./reelsBrainPlaybook";
 
 export type { ExecutionLogEntry, RunNode, RunPlan, RunStep } from "./graphTypes";
 
@@ -280,7 +281,16 @@ async function regenCulprit(
   await savePlan(db, id, plan, { otk_verdict: plan.otk ?? null, otk_score: plan.otk?.score ?? null });
 }
 
-export function buildRunPlan(rows: any[]): RunPlan {
+function inferRunTargetPlatform(rows: any[]): string {
+  for (const row of rows || []) {
+    const params = row?.params && typeof row.params === "object" ? row.params as Record<string, unknown> : {};
+    const fromParams = params.target_platform || params.platform;
+    if (fromParams) return normalizeTargetPlatform(fromParams);
+  }
+  return "tiktok";
+}
+
+export function buildRunPlan(rows: any[], targetPlatform?: unknown): RunPlan {
   const nodes: RunNode[] = (rows || []).map((r) => {
     const params = (r.params && typeof r.params === "object") ? r.params : {};
     const sug = (r.agent_suggestion && typeof r.agent_suggestion === "object") ? r.agent_suggestion : {};
@@ -298,7 +308,14 @@ export function buildRunPlan(rows: any[]): RunPlan {
       status: "pending" as const,
     };
   }).sort((a, b) => a.ordinal - b.ordinal);
-  return { step: "submit", nodes, attempts: 0, pollCount: 0, renderCount: 0 };
+  return {
+    step: "submit",
+    nodes,
+    target_platform: normalizeTargetPlatform(targetPlatform || inferRunTargetPlatform(rows)),
+    attempts: 0,
+    pollCount: 0,
+    renderCount: 0,
+  };
 }
 
 async function logSignal(db: SupabaseClient, ev: string, extra: Record<string, any>) {
@@ -1011,6 +1028,7 @@ export async function runRecipeStep(
         mode,
         article,
         niche,
+        target_platform: plan.target_platform || "tiktok",
         ...(frames.length ? {} : { storyboard: true, scenario: plan.nodes }),
       }, 55000);
       score = typeof v?.score === "number" ? v.score : null;
@@ -1066,12 +1084,12 @@ export async function runRecipeStep(
     if (url && !catalogUrl && catalogError) {
       await logSignal(db, "catalog_save_failed", {
         recipe_id: id, niche, article, mode, format: null, engine: plan.render_engine || "shotstack",
-        params: { source: "graph_run_bank", raw_url: url, error: catalogError },
+        params: { source: "graph_run_bank", raw_url: url, error: catalogError, target_platform: plan.target_platform || "tiktok" },
       });
     }
     await logSignal(db, finalStatus === "otk_pass" ? "approved" : "approved", {
       recipe_id: id, niche, article, mode, format: null, engine: plan.render_engine || "shotstack",
-      axes: plan.otk?.axes ?? null, reason_chip: finalStatus === "warning" ? (plan.warnings?.[0] || "warning") : null,
+      axes: plan.otk?.axes ?? null, reason_chip: finalStatus === "warning" ? (plan.warnings?.[0] || "warning") : null, params: { target_platform: plan.target_platform || "tiktok" },
     });
     // V21/R5: батч-прогон прошёл ОТК → шлём оператору в Telegram на ревью (студийные прогоны — нет, без спама)
     if (plan.notify && finalStatus === "otk_pass" && (catalogUrl || url) && tgReady()) {

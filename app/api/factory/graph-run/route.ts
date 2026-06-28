@@ -4,6 +4,7 @@ import { buildRunPlan, makeRunId } from "@/lib/factory/graphRun";
 import type { RunPlan } from "@/lib/factory/graphTypes";
 import { buildRunSummary } from "@/lib/factory/observability";
 import { internalFetch } from "@/lib/internalFetch";
+import { normalizeTargetPlatform } from "@/lib/factory/reelsBrainPlaybook";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
@@ -34,7 +35,8 @@ export async function POST(req: NextRequest) {
       const { data: nodes } = await db.from("node_recipe_nodes").select("ordinal,slot,node_type,tool,prompt,params,asset_url,duration_sec,agent_suggestion").eq("recipe_id", recipeId).order("ordinal");
       const rows = (nodes as Record<string, unknown>[] | null) || [];
       if (!rows.length) return NextResponse.json({ error: "у рецепта нет нод" }, { status: 400 });
-      const plan = buildRunPlan(rows);
+      const targetPlatform = normalizeTargetPlatform(body.target_platform || body.platform || existing?.target_platform);
+      const plan = buildRunPlan(rows, targetPlatform);
       plan.run_id = makeRunId(recipeId);
       if (body.batch_run_id) plan.batch_run_id = String(body.batch_run_id).slice(0, 80);
       if (["control", "experiment", "none"].includes(String(body.batch_role || ""))) plan.batch_role = String(body.batch_role) as RunPlan["batch_role"];
@@ -70,7 +72,7 @@ export async function GET(req: NextRequest) {
     // Sprint 1: read-path должен быть read-only. Оркестрация живёт в POST /graph-run,
     // self-chain /graph-run/tick и cron-strategy, а не в status polling.
     const nodes = (plan?.nodes || []).map((n) => ({ ordinal: n.ordinal, slot: n.slot, node_type: n.node_type, tool: n.tool, status: n.status, url: n.url || null, error: n.error || null, engine: n.engine || null }));
-    return NextResponse.json({ ok: true, recipe_id: recipeId, run_id: plan?.run_id || null, batch_run_id: plan?.batch_run_id || null, batch_role: plan?.batch_role || null, change_axis: plan?.change_axis || null, status: recipe.status, step: plan?.step || null, nodes, otk: recipe.otk_verdict, otk_score: recipe.otk_score, output_url: recipe.output_url, error: plan?.error || null, warnings: plan?.warnings || null, execution_log: plan?.execution_log || [], run_summary: buildRunSummary(plan) }, { headers: { "Cache-Control": "no-store" } });
+    return NextResponse.json({ ok: true, recipe_id: recipeId, run_id: plan?.run_id || null, target_platform: plan?.target_platform || "tiktok", batch_run_id: plan?.batch_run_id || null, batch_role: plan?.batch_role || null, change_axis: plan?.change_axis || null, status: recipe.status, step: plan?.step || null, nodes, otk: recipe.otk_verdict, otk_score: recipe.otk_score, output_url: recipe.output_url, error: plan?.error || null, warnings: plan?.warnings || null, execution_log: plan?.execution_log || [], run_summary: buildRunSummary(plan) }, { headers: { "Cache-Control": "no-store" } });
   } catch (e) {
     return NextResponse.json({ error: "graph-run crash: " + String((e as Error)?.message || e).slice(0, 160) }, { status: 500 });
   }

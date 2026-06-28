@@ -5,18 +5,34 @@
 // Всё best-effort (таблицы могут быть не применены) — пустая строка вместо падения.
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { normalizeTargetPlatform } from "./reelsBrainPlaybook";
 import { loadImprovementSnapshot, renderBatchPlanHint, renderImprovementHints } from "./improvementLoop";
 
 const snippet = (value: unknown, max = 120): string => String(value || "").replace(/\s+/g, " ").trim().slice(0, max);
 
+function platformMatches(value: unknown, targetPlatform?: string): boolean {
+  if (!targetPlatform) return true;
+  return normalizeTargetPlatform(value) === normalizeTargetPlatform(targetPlatform);
+}
+
 // Победители ниши (одобрено оператором / реально зашло) → бери дух/механику.
-export async function winnersHintFor(db: SupabaseClient, niche: string): Promise<string> {
+export async function winnersHintFor(db: SupabaseClient, niche: string, targetPlatform?: string): Promise<string> {
   try {
     const { data } = await db.from("content_assets").select("winner_learnings,name")
       .eq("niche", niche).eq("is_winner", true).order("winner_at", { ascending: false }).limit(5);
     const list = ((data || []) as { winner_learnings?: Record<string, unknown>; name?: string }[])
+      .filter((w) => platformMatches(w.winner_learnings?.target_platform, targetPlatform))
       .map((w) => snippet((w.winner_learnings?.hook as string) || w.name, 120)).filter(Boolean).slice(0, 5);
-    return list.length ? `\nНАШИ ПОБЕДИТЕЛИ В НИШЕ (реально зашло — бери дух/механику, не копируй дословно): ${list.map((h) => `«${h}»`).join(" | ")}` : "";
+    if (list.length) return `\nНАШИ ПОБЕДИТЕЛИ В НИШЕ${targetPlatform ? ` (${normalizeTargetPlatform(targetPlatform)})` : ""} (реально зашло — бери дух/механику, не копируй дословно): ${list.map((h) => `«${h}»`).join(" | ")}`;
+    const { data: seed } = await db.from("viral_videos").select("hook_text,caption,platform,virality_score,analyzed")
+      .eq("niche", niche).eq("analyzed", true).order("virality_score", { ascending: false }).limit(12);
+    const seedList = ((seed || []) as { hook_text?: string; caption?: string; platform?: string }[])
+      .filter((row) => platformMatches(row.platform, targetPlatform))
+      .map((row) => snippet(row.hook_text || row.caption, 120))
+      .filter(Boolean)
+      .filter((value, index, array) => array.indexOf(value) === index)
+      .slice(0, 4);
+    return seedList.length ? `\nКОРПУС-ПОБЕДИТЕЛИ${targetPlatform ? ` (${normalizeTargetPlatform(targetPlatform)})` : ""} (сильнейшие разобранные ролики из рынка — бери дух/механику, не копируй дословно): ${seedList.map((h) => `«${h}»`).join(" | ")}` : "";
   } catch { return ""; }
 }
 
@@ -62,8 +78,8 @@ export async function batchPlanHintFor(db: SupabaseClient, niche: string): Promi
 }
 
 // Полный грундинг ниши: победители + корпус + анти-паттерны. Для decompose/идей.
-export async function learningHints(db: SupabaseClient, niche: string): Promise<string> {
+export async function learningHints(db: SupabaseClient, niche: string, targetPlatform?: string): Promise<string> {
   if (!niche) return "";
-  const [w, c, r, i, b] = await Promise.all([winnersHintFor(db, niche), corpusHooksFor(db, niche), rejectAntiFor(db, niche), improvementHintFor(db, niche), batchPlanHintFor(db, niche)]);
+  const [w, c, r, i, b] = await Promise.all([winnersHintFor(db, niche, targetPlatform), corpusHooksFor(db, niche), rejectAntiFor(db, niche), improvementHintFor(db, niche), batchPlanHintFor(db, niche)]);
   return w + c + r + i + b;
 }

@@ -5,11 +5,20 @@ import type { ContentMode, RubricNiche, AxisScores } from "@/lib/factory/rubric"
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { rejectAntiFor } from "@/lib/factory/learningHints";
 import { extractJson } from "@/lib/factory/extractJson";
+import { buildPlatformBrainHint, normalizeTargetPlatform } from "@/lib/factory/reelsBrainPlaybook";
+import type { ReelsPlatform } from "@/lib/factory/reelsBrain";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 const AXIS_KEYS: (keyof AxisScores)[] = ["hook", "retention", "native", "brand", "cta"];
+
+function platformCriticGuidance(platform: ReelsPlatform): string {
+  if (platform === "tiktok") return "TikTok: первый кадр и первая фраза должны резко ломать паттерн; темп и разговорность важнее polished brand feel.";
+  if (platform === "instagram") return "Instagram Reels: visual polish, clean product presentation и commercial safety важнее грубой резкости; грязный raw-tone штрафуй.";
+  if (platform === "youtube") return "YouTube Shorts: оцени ясность обещания value, explainability hook and payoff continuity строже, чем просто эмоциональный шум.";
+  return "";
+}
 
 function normalizeBasisReason(reason: string): string {
   const s = String(reason || "").toLowerCase();
@@ -130,11 +139,13 @@ export async function POST(req: NextRequest) {
   const context: string = (body.context || "").toString().slice(0, 400);
   const kind: "avatar" | "product" = body.kind === "avatar" ? "avatar" : "product";
   const mode: ContentMode = body.mode === "sell" ? "sell" : "audience";
+  const targetPlatform = normalizeTargetPlatform(body.target_platform || body.platform);
   const hook: string = (body.hook || "").toString().slice(0, 300);
   const article: string = (body.article || "").toString().slice(0, 40);
   const name: string = (body.product_name || "").toString().slice(0, 120);
   const niche: RubricNiche = (["clothing", "toys", "cosmetics", "default"].includes(body.niche) ? body.niche : nicheFromArticle(article, name)) as RubricNiche;
   const scenarioText = scenarioDigest(body.scenario);
+  const platformBrainHint = buildPlatformBrainHint(body.playbook, targetPlatform);
   const fallback = () => fallbackCritique({
     frames,
     hook,
@@ -167,8 +178,9 @@ export async function POST(req: NextRequest) {
     const tClient = await createClaudeClient();
     if (!tClient) return fallback();
     const tLabel = mode === "sell" ? "ПРОДАЖА (ведём на WB)" : "АУДИТОРИЯ (рост охвата/подписок)";
-    const sysT = `Ты отсеиваешь слабый ХУК сценария короткого вертикального видео ДО дорогого рендера. На входе — ТЕКСТ (хук + покадровый сценарий), кадров нет. Режим: ${tLabel}. Ниша: ${niche}.
+    const sysT = `Ты отсеиваешь слабый ХУК сценария короткого вертикального видео ДО дорогого рендера. На входе — ТЕКСТ (хук + покадровый сценарий), кадров нет. Режим: ${tLabel}. Ниша: ${niche}. Целевая платформа: ${targetPlatform}. ${platformCriticGuidance(targetPlatform)}
 По тексту честно читаются ось A (ХУК), частично E (CTA) и структура B; оси C (нативность) и D (товар в кадре) из текста НЕ оценить — ставь им 3 (нейтрально), решения по ним не принимаем. Суди СТРОГО ось A: сильный хук = паттерн-брейк/новизна/интрига в первой фразе, за 1 сек ясно «зачем смотреть»; слабый = общая витрина/«здравствуйте».${corpusHint}
+${platformBrainHint}
 ${rubricPrompt(mode)}
 Верни СТРОГО JSON: {"axes":{"hook":1-5,"retention":1-5,"native":3,"brand":3,"cta":1-5},"issues":["что слабо в хуке/структуре",...],"fixes":["как усилить хук",...]}. Только JSON.`;
     try {
@@ -214,8 +226,10 @@ ${rubricPrompt(mode)}
   const modeLabel = mode === "sell" ? "ПРОДАЖА (ведём на WB)" : "АУДИТОРИЯ (рост охвата/подписок, без давления на WB)";
   const sys = `Ты — строгий ОТК коротких вертикальных видео (Reels/Shorts/VK Клипы) бренда-селлера WB/Ozon. Твоя задача — оценить, обойдёт ли этот ролик контент КОНКУРЕНТОВ в ленте, а не просто «нет ли брака».
 Режим ролика: ${modeLabel}. Ниша: ${niche}.${corpusHint}
+Целевая платформа: ${targetPlatform}. ${platformCriticGuidance(targetPlatform)}
 Тебе дают ПОДПИСАННЫЕ КАДРЫ ОДНОГО ролика В ХРОНОЛОГИЧЕСКОМ ПОРЯДКЕ (кадр 1 ≈ первая секунда/хук, последний ≈ финал), а ПОСЛЕ них — текст хука/сценария и вопрос. Суди: ось A (хук) — по первому кадру и тексту хука; ось B (удержание/темп) — по тому, как меняются кадры от первого к последнему и есть ли причина досмотреть; оси C/D/E — по кадрам вместе со сценарием.
 АНТИ-СЛОП (для ЛЮБОГО рендера, не только аватара): если на товаре/в кадре виден AI-артефакт — зеркальный/искажённый текст и лого, «плывущий»/парящий товар, оплавленные края, деформированная упаковка/форма, лишние/кривые пальцы, восковая кожа, морфинг — ставь ось НАТИВНОСТЬ ≤2 (это валит флор и отправляет на перегенер). Сомневаешься — снижай: для маркетплейса искажённый товар = брак (покупатель сверяет с карточкой). ${kind === "avatar" ? "Это AI-аватар — НАТИВНОСТЬ занижай при любом «AI-запахе» (восковая кожа, мёртвые/асимметричные глаза, кривой рот, синтетичность). " : ""}${rubricPrompt(mode)}
+${platformBrainHint}
 Не завышай баллы из вежливости — это для конкуренции в ленте. Верни СТРОГО JSON:
 {"axes":{"hook":1-5,"retention":1-5,"native":1-5,"brand":1-5,"cta":1-5},"issues":["конкретный изъян, мешающий обойти конкурентов",...],"fixes":["что поправить",...],"regen_hint":"одна короткая англ. фраза-добавка к промпту image-to-video, чтобы убрать главный ВИЗУАЛЬНЫЙ дефект"}. Только JSON, без преамбулы.`;
 

@@ -4,6 +4,7 @@ import {
   hasReelsBrainProvider,
   knownReelsBrainProviders,
 } from "@/lib/factory/reelsBrainSources";
+import { reelsBrainEnvStatus } from "@/lib/factory/reelsBrainEnv";
 import { hasTrendSource, trendSourceName } from "@/lib/factory/trendSources";
 
 export const dynamic = "force-dynamic";
@@ -13,6 +14,7 @@ const envFlag = (name: string) => Boolean(process.env[name]);
 // GET: provider/env health without exposing secret values.
 export async function GET() {
   const known = knownReelsBrainProviders();
+  const envStatus = reelsBrainEnvStatus();
   return NextResponse.json({
     ok: true,
     trend_source: {
@@ -24,6 +26,10 @@ export async function GET() {
       configured: hasReelsBrainProvider(provider),
     })),
     available: availableReelsBrainProviders(),
+    storage: envStatus.supabase,
+    scheduler: {
+      CRON_SECRET: envStatus.cron_secret,
+    },
     env: {
       APIFY_TOKEN: envFlag("APIFY_TOKEN"),
       APIFY_TIKTOK_ACTOR: envFlag("APIFY_TIKTOK_ACTOR"),
@@ -34,7 +40,7 @@ export async function GET() {
       BRIGHT_DATA_INSTAGRAM_PROFILE_URLS: envFlag("BRIGHT_DATA_INSTAGRAM_PROFILE_URLS"),
       ENSEMBLEDATA_API_KEY: envFlag("ENSEMBLEDATA_API_KEY") || envFlag("ENSEMBLE_DATA_API_KEY"),
       VIRLO_API_KEY: envFlag("VIRLO_API_KEY"),
-      SUPABASE_SERVICE_ROLE_KEY: envFlag("SUPABASE_SERVICE_ROLE_KEY"),
+      SUPABASE_SERVICE_ROLE_KEY: envStatus.supabase.service_role,
     },
   }, { headers: { "Cache-Control": "no-store" } });
 }

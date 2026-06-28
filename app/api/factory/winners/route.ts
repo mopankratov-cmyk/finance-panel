@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { nicheFromArticle } from "@/lib/factory/rubric";
+import { normalizeTargetPlatform } from "@/lib/factory/reelsBrainPlaybook";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 15;
@@ -27,11 +28,20 @@ export async function POST(req: NextRequest) {
   if (!asset) return NextResponse.json({ error: "контент не найден в БД (применить миграцию 20260622?)" }, { status: 404 });
 
   const analysis = (asset.analysis || {}) as Record<string, unknown>;
+  let targetPlatform = normalizeTargetPlatform(body.target_platform || analysis.target_platform);
+  if ((!body.target_platform && !analysis.target_platform) && Number(body.recipe_id)) {
+    try {
+      const { data: recipeData } = await db.from("node_recipes").select("run_plan").eq("id", Number(body.recipe_id)).limit(1);
+      const plan = ((recipeData as { run_plan?: Record<string, unknown> }[] | null)?.[0]?.run_plan || {}) as Record<string, unknown>;
+      targetPlatform = normalizeTargetPlatform(plan.target_platform);
+    } catch { /* best-effort */ }
+  }
   const learnings: Record<string, unknown> = {
     hook: String(body.hook || analysis.hook || asset.name || "").slice(0, 120),
     format: String(body.format || analysis.route || "").slice(0, 40),
     route: String(analysis.route || "").slice(0, 40),
     engine: String(analysis.engine || "").slice(0, 20),
+    target_platform: targetPlatform,
     otk_score: analysis.otk ?? null,
   };
   if (body.views) learnings.views = Number(body.views);
@@ -50,7 +60,7 @@ export async function POST(req: NextRequest) {
   // Так hook-judge автоматически поднимает наши проверенные хуки в следующем цикле генерации
   if (learnings.hook) {
     const niche = nicheFromArticle(asset.article || "", asset.name || "");
-    const note = `winner: ${learnings.format || "unknown"} | otk: ${learnings.otk_score ?? "?"} | ${learnings.note || ""}`.slice(0, 200);
+    const note = `winner: ${learnings.format || "unknown"} | platform: ${targetPlatform} | otk: ${learnings.otk_score ?? "?"} | ${learnings.note || ""}`.slice(0, 200);
     try {
       await db.from("viral_hooks").upsert(
         { niche, hook_text: String(learnings.hook), viability_score: 5, effectiveness_notes: note },
@@ -75,7 +85,7 @@ export async function POST(req: NextRequest) {
     } catch { /* пресет best-effort */ }
   }
 
-  return NextResponse.json({ ok: true, learnings, preset_id });
+  return NextResponse.json({ ok: true, learnings, target_platform: targetPlatform, preset_id });
   } catch (e) {
     return NextResponse.json({
       ok: false,
@@ -139,6 +149,7 @@ export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl;
   const article = searchParams.get("article") || "";
   const niche = searchParams.get("niche") || (article ? nicheFromArticle(article, "") : "");
+  const targetPlatform = searchParams.get("platform") || searchParams.get("target_platform") || "";
   const limit = Math.min(10, Math.max(1, Number(searchParams.get("limit") || 5)));
 
   let q = db.from("content_assets")
@@ -151,7 +162,12 @@ export async function GET(req: NextRequest) {
   try {
     const { data, error } = await q;
     if (error) return NextResponse.json({ winners: [], error: error.message });
-    return NextResponse.json({ winners: data || [], niche });
+    const winners = ((data as Record<string, unknown>[] | null) || []).filter((row) => {
+      if (!targetPlatform) return true;
+      const platform = normalizeTargetPlatform((row.winner_learnings as Record<string, unknown> | null)?.target_platform);
+      return platform === normalizeTargetPlatform(targetPlatform);
+    });
+    return NextResponse.json({ winners, niche, target_platform: targetPlatform ? normalizeTargetPlatform(targetPlatform) : null });
   } catch (e) {
     return NextResponse.json({ winners: [], error: String(e).slice(0, 100) });
   }

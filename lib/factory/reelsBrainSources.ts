@@ -41,7 +41,55 @@ export interface ProviderQualitySummary {
   withCaption: number;
   withSound: number;
   platforms: Record<string, number>;
+  platformStats: Record<string, {
+    found: number;
+    valid: number;
+    relevant: number;
+    avgScore: number;
+    withFollowers: number;
+    withSound: number;
+  }>;
   top: { url: string; platform: string; score: number; views: number | null; caption: string | null }[];
+}
+
+export interface ProviderBakeOffAggregate {
+  provider: ReelsBrainProvider;
+  configured: boolean;
+  runs: number;
+  found: number;
+  valid: number;
+  valid_rate: number;
+  relevant: number;
+  relevance_rate: number;
+  avg_score: number;
+  with_followers: number;
+  with_sound: number;
+  avg_elapsed_ms?: number;
+  timeout_runs?: number;
+  failed_runs?: number;
+  cost_tier?: "low" | "medium" | "high";
+}
+
+export interface RankedProvider extends ProviderBakeOffAggregate {
+  rank_score: number;
+  rank_reason: string;
+}
+
+export interface ProviderPlatformBakeOffAggregate extends ProviderBakeOffAggregate {
+  platform: "tiktok" | "instagram" | "youtube";
+}
+
+function providerCostTier(provider: ReelsBrainProvider): "low" | "medium" | "high" {
+  if (provider === "apify" || provider.startsWith("apify_") || provider === "youtube") return "low";
+  if (provider.startsWith("ensemble_")) return "medium";
+  if (provider === "virlo" || provider.startsWith("bright_")) return "high";
+  return "medium";
+}
+
+function providerCostPenalty(tier: "low" | "medium" | "high"): number {
+  if (tier === "low") return 0;
+  if (tier === "medium") return 20;
+  return 45;
 }
 
 const YOUTUBE_KEY = () => process.env.YOUTUBE_API_KEY || process.env.GOOGLE_YOUTUBE_API_KEY || "";
@@ -84,6 +132,7 @@ export function knownReelsBrainProviders(): ReelsBrainProvider[] {
 }
 
 export function hasReelsBrainProvider(provider: ReelsBrainProvider): boolean {
+  if (provider === "apify_instagram") return !!process.env.APIFY_TOKEN;
   if (provider === "youtube") return !!YOUTUBE_KEY();
   if (isBrightProvider(provider)) return !!BRIGHT_KEY();
   if (isEnsembleProvider(provider)) return !!ENSEMBLE_KEY();
@@ -92,6 +141,7 @@ export function hasReelsBrainProvider(provider: ReelsBrainProvider): boolean {
 
 export function availableReelsBrainProviders(): ReelsBrainProvider[] {
   const providers: ReelsBrainProvider[] = [...availableTrendProviders()];
+  if (process.env.APIFY_TOKEN && !providers.includes("apify_instagram")) providers.push("apify_instagram");
   if (YOUTUBE_KEY()) providers.push("youtube");
   if (BRIGHT_KEY()) providers.push(...BRIGHT_PROVIDERS);
   if (ENSEMBLE_KEY()) providers.push(...ENSEMBLE_PROVIDERS);
@@ -194,6 +244,10 @@ function recordsFromPayload(payload: unknown): Record<string, any>[] {
     root.posts,
     root.videos,
     root.reels,
+    root.users,
+    root.profiles,
+    root.accounts,
+    root.edges,
     root.aweme_list,
     root.data,
     data.data,
@@ -202,6 +256,10 @@ function recordsFromPayload(payload: unknown): Record<string, any>[] {
     data.posts,
     data.videos,
     data.reels,
+    data.users,
+    data.profiles,
+    data.accounts,
+    data.edges,
     data.aweme_list,
   ];
   for (const candidate of candidates) {
@@ -480,14 +538,106 @@ async function ensembleGet(path: string, params: Record<string, string | number 
   return parseJsonRecords(text);
 }
 
+async function ensembleGetRaw(path: string, params: Record<string, string | number | boolean>): Promise<{ status: number; ok: boolean; text: string; json: unknown }> {
+  const url = new URL(path.replace(/^\//, ""), ENSEMBLE_BASE_URL().replace(/\/?$/, "/"));
+  for (const [name, value] of Object.entries(params)) url.searchParams.set(name, String(value));
+  url.searchParams.set("token", ENSEMBLE_KEY());
+  const res = await fetch(url, { signal: AbortSignal.timeout(45000) });
+  const text = await res.text();
+  let json: unknown = null;
+  try { json = JSON.parse(text); } catch {}
+  return { status: res.status, ok: res.ok, text, json };
+}
+
 function instagramUserIdsFromSearch(rows: Record<string, any>[]): string[] {
   const ids: string[] = [];
+  const visit = (value: unknown, depth = 0) => {
+    if (depth > 3 || value == null) return;
+    if (Array.isArray(value)) {
+      for (const item of value) visit(item, depth + 1);
+      return;
+    }
+    const row = rec(value);
+    if (!Object.keys(row).length) return;
+    const user = rec(row.user || row.profile || row.account || row.owner || row.node || row);
+    const id = str(
+      user.pk,
+      user.pk_id,
+      user.id,
+      user.user_id,
+      user.instagram_id,
+      user.igid,
+      row.pk,
+      row.pk_id,
+      row.id,
+      row.user_id,
+      row.instagram_id,
+      row.igid,
+    );
+    if (id && /^\d+$/.test(id)) ids.push(id);
+    for (const key of ["users", "items", "results", "data", "profiles", "edges"]) {
+      if (row[key] != null) visit(row[key], depth + 1);
+    }
+  };
   for (const row of rows) {
-    const user = rec(row.user || row);
-    const id = str(user.pk, user.pk_id, user.id, user.user_id);
-    if (id) ids.push(id);
+    visit(row);
   }
   return Array.from(new Set(ids)).slice(0, 3);
+}
+
+function sampleShape(value: unknown, depth = 0): unknown {
+  if (depth > 2 || value == null) return null;
+  if (Array.isArray(value)) {
+    return {
+      type: "array",
+      length: value.length,
+      first: sampleShape(value[0], depth + 1),
+    };
+  }
+  if (typeof value !== "object") return typeof value;
+  const row = value as Record<string, unknown>;
+  const keys = Object.keys(row).slice(0, 20);
+  const out: Record<string, unknown> = { type: "object", keys };
+  for (const key of keys.slice(0, 8)) {
+    const item = row[key];
+    if (Array.isArray(item) || (item && typeof item === "object")) out[key] = sampleShape(item, depth + 1);
+    else out[key] = typeof item;
+  }
+  return out;
+}
+
+export async function debugEnsembleInstagramSearch(query: string): Promise<Record<string, unknown>> {
+  if (!ENSEMBLE_KEY()) return { configured: false, error: "ENSEMBLEDATA_API_KEY не настроен" };
+  const raw = await ensembleGetRaw("/instagram/search", { text: query });
+  const rows = recordsFromPayload(raw.json);
+  const root = rec(raw.json);
+  return {
+    configured: true,
+    status: raw.status,
+    ok: raw.ok,
+    detail: typeof root.detail === "string" ? root.detail.slice(0, 300) : undefined,
+    text_length: raw.text.length,
+    root_shape: sampleShape(raw.json),
+    parsed_records: rows.length,
+    parsed_sample_shape: sampleShape(rows[0]),
+    candidate_user_ids: instagramUserIdsFromSearch(rows),
+  };
+}
+
+function instagramSearchQueries(query: string): string[] {
+  const base = query.trim();
+  const cleaned = base
+    .replace(/\breels?\b/gi, "")
+    .replace(/\binstagram\b/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return Array.from(new Set([
+    base,
+    cleaned,
+    `${cleaned || base} shop`,
+    `${cleaned || base} review`,
+    `${cleaned || base} blogger`,
+  ].map((row) => row.trim()).filter(Boolean))).slice(0, 4);
 }
 
 async function fetchEnsembleData(provider: EnsembleDataProvider, query: string, limit: number): Promise<ReelsBrainInput[]> {
@@ -516,7 +666,14 @@ async function fetchEnsembleData(provider: EnsembleDataProvider, query: string, 
   }
 
   const directUserId = /^\d+$/.test(query.trim()) ? query.trim() : "";
-  const userIds = directUserId ? [directUserId] : instagramUserIdsFromSearch(await ensembleGet("/instagram/search", { text: query }));
+  let userIds = directUserId ? [directUserId] : [];
+  if (!userIds.length) {
+    for (const searchQuery of instagramSearchQueries(query)) {
+      const rows = await ensembleGet("/instagram/search", { text: searchQuery }).catch(() => []);
+      userIds = instagramUserIdsFromSearch(rows);
+      if (userIds.length) break;
+    }
+  }
   if (!userIds.length) return [];
   const batches = await Promise.all(userIds.map((userId) => ensembleGet("/instagram/user/reels", {
     user_id: userId,
@@ -576,7 +733,10 @@ export function summarizeProviderQuality(provider: ReelsBrainProvider, query: st
   const normalized: NormalizedReelsVideo[] = [];
   let duplicateCanonical = 0;
   const seen = new Set<string>();
+  const foundByPlatform: Record<string, number> = {};
   for (const input of videos) {
+    const rawPlatform = String(input.platform || "").trim().toLowerCase() || "unknown";
+    foundByPlatform[rawPlatform] = (foundByPlatform[rawPlatform] || 0) + 1;
     const video = normalizeReelsVideo(input);
     if (!video) continue;
     const key = video.canonicalUrl || video.url;
@@ -587,10 +747,39 @@ export function summarizeProviderQuality(provider: ReelsBrainProvider, query: st
 
   const platforms: Record<string, number> = {};
   for (const video of normalized) platforms[video.platform] = (platforms[video.platform] || 0) + 1;
+  const relevantByPlatform: Record<string, number> = {};
+  for (const video of videos) {
+    const platform = String(video.platform || "").trim().toLowerCase() || "unknown";
+    if (isRelevantToQuery(query, video)) relevantByPlatform[platform] = (relevantByPlatform[platform] || 0) + 1;
+  }
   const scored = normalized
     .map((video) => ({ video, score: scoreReelsVideo(video).total }))
     .sort((a, b) => b.score - a.score);
   const relevant = videos.filter((video) => isRelevantToQuery(query, video)).length;
+  const platformScoreSums: Record<string, number> = {};
+  const platformFollowers: Record<string, number> = {};
+  const platformSound: Record<string, number> = {};
+  for (const { video, score } of scored) {
+    platformScoreSums[video.platform] = (platformScoreSums[video.platform] || 0) + score;
+    if (video.followers != null) platformFollowers[video.platform] = (platformFollowers[video.platform] || 0) + 1;
+    if (video.soundId || video.soundTitle) platformSound[video.platform] = (platformSound[video.platform] || 0) + 1;
+  }
+  const platformStats: ProviderQualitySummary["platformStats"] = {};
+  for (const platform of new Set([
+    ...Object.keys(foundByPlatform),
+    ...Object.keys(platforms),
+    ...Object.keys(relevantByPlatform),
+  ])) {
+    const valid = platforms[platform] || 0;
+    platformStats[platform] = {
+      found: foundByPlatform[platform] || 0,
+      valid,
+      relevant: relevantByPlatform[platform] || 0,
+      avgScore: valid ? Math.round((platformScoreSums[platform] || 0) / valid * 10) / 10 : 0,
+      withFollowers: platformFollowers[platform] || 0,
+      withSound: platformSound[platform] || 0,
+    };
+  }
 
   const count = normalized.length || 1;
   return {
@@ -609,6 +798,7 @@ export function summarizeProviderQuality(provider: ReelsBrainProvider, query: st
     withCaption: normalized.filter((v) => !!v.caption).length,
     withSound: normalized.filter((v) => !!(v.soundId || v.soundTitle)).length,
     platforms,
+    platformStats,
     top: scored.slice(0, 5).map(({ video, score }) => ({
       url: video.canonicalUrl,
       platform: video.platform,
@@ -617,4 +807,65 @@ export function summarizeProviderQuality(provider: ReelsBrainProvider, query: st
       caption: video.caption ? video.caption.slice(0, 180) : null,
     })),
   };
+}
+
+function providerRankScore(row: ProviderBakeOffAggregate): number {
+  if (!row.configured) return Number.NEGATIVE_INFINITY;
+  const latencyPenalty = Math.min(120, Math.round((Number(row.avg_elapsed_ms || 0) / 1000) * 8));
+  const timeoutPenalty = Math.max(0, Number(row.timeout_runs || 0)) * 30;
+  const failurePenalty = Math.max(0, Number(row.failed_runs || 0)) * 18;
+  const costPenalty = providerCostPenalty(row.cost_tier || providerCostTier(row.provider));
+  return (
+    row.relevance_rate * 1000
+    + row.valid_rate * 500
+    + row.avg_score * 20
+    + row.relevant * 3
+    + row.valid * 2
+    + row.with_followers * 0.1
+    + row.with_sound * 0.05
+    - latencyPenalty
+    - timeoutPenalty
+    - failurePenalty
+    - costPenalty
+  );
+}
+
+function providerRankReason(row: ProviderBakeOffAggregate): string {
+  return [
+    `relevance ${Math.round(row.relevance_rate * 100)}%`,
+    `valid ${Math.round(row.valid_rate * 100)}%`,
+    `avg score ${row.avg_score}`,
+    `relevant ${row.relevant}`,
+    `latency ${Math.round(Number(row.avg_elapsed_ms || 0))}ms`,
+    `cost ${row.cost_tier || providerCostTier(row.provider)}`,
+  ].join(" · ");
+}
+
+export function rankBakeOffProviders(rows: ProviderBakeOffAggregate[]): RankedProvider[] {
+  return rows
+    .map((row) => ({
+      ...row,
+      rank_score: providerRankScore(row),
+      rank_reason: providerRankReason(row),
+    }))
+    .sort((a, b) =>
+      b.rank_score - a.rank_score
+      || b.relevant - a.relevant
+      || b.valid - a.valid
+      || b.avg_score - a.avg_score
+      || a.provider.localeCompare(b.provider)
+    );
+}
+
+export function pickBestBakeOffProvider(rows: ProviderBakeOffAggregate[]): RankedProvider | null {
+  return rankBakeOffProviders(rows).find((row) => row.configured && row.relevant > 0 && row.valid > 0) || null;
+}
+
+export function pickBestBakeOffProviderByPlatform(rows: ProviderPlatformBakeOffAggregate[]): Record<string, RankedProvider | null> {
+  const out: Record<string, RankedProvider | null> = {};
+  for (const platform of ["tiktok", "instagram", "youtube"] as const) {
+    const platformRows = rows.filter((row) => row.platform === platform);
+    out[platform] = pickBestBakeOffProvider(platformRows);
+  }
+  return out;
 }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClaudeClient } from "@/lib/agent/client";
 import { extractJson } from "@/lib/factory/extractJson";
+import { buildPlatformBrainHint, normalizeTargetPlatform } from "@/lib/factory/reelsBrainPlaybook";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -28,12 +29,14 @@ export async function POST(req: NextRequest) {
   if (!idea) return NextResponse.json({ error: "Нужна идея/сценарий" }, { status: 400 });
   const product: string = (body.product || body.article || "").toString().trim();
   const trend: string = (body.trend_format || "").toString().trim();
+  const targetPlatform = normalizeTargetPlatform(body.target_platform || body.platform);
   const pb = body.playbook && typeof body.playbook === "object" ? body.playbook : null;
   // выжимка плейбука ниши: какие форматы реально заходят + роль AI-рендера (обложка/вставка/нет)
   const pbHint = pb
     ? `\nПЛЕЙБУК НИШИ (выбери формат из РЕАЛЬНО залетающих):\n` +
       (Array.isArray(pb.winning_formats) ? pb.winning_formats.slice(0, 5).map((f: Record<string, unknown>) => `• ${f.name} [engagement: ${f.engagement || "?"}; нужен человек: ${f.needs_human ? "да" : "нет"}; роль рендера: ${f.render_role || "?"}]`).join("\n") : "") +
-      `\nПРАВИЛО: если у подходящего формата render_role = "нет" или начинается с "кадр-вставка"/"обложка" — НЕ делай AI-видео целым роликом (route ≠ ai_generation_ref), бери slideshow/repurpose_cut/real_ugc (рендер пойдёт обложкой/вставкой). ai_generation_ref только если render_role прямо допускает видео целиком.`
+      `\nПРАВИЛО: если у подходящего формата render_role = "нет" или начинается с "кадр-вставка"/"обложка" — НЕ делай AI-видео целым роликом (route ≠ ai_generation_ref), бери slideshow/repurpose_cut/real_ugc (рендер пойдёт обложкой/вставкой). ai_generation_ref только если render_role прямо допускает видео целиком.` +
+      buildPlatformBrainHint(pb, targetPlatform)
     : "";
   const av = body.available || {};
   const availability = `есть фото товара: ${av.photos ? "да" : "нет/неизвестно"}; есть реальная видеосъёмка: ${av.footage ? "да" : "нет"}`;
@@ -41,7 +44,7 @@ export async function POST(req: NextRequest) {
   const client = await createClaudeClient();
   if (!client) return NextResponse.json(fallbackDecision({ available: av, reason: "ANTHROPIC_API_KEY не настроен" }));
 
-  const sys = `Ты — Продюсер контент-завода. Решаешь, КАК произвести короткое видео под идею, чтобы получить максимум охвата и доверия при минимуме затрат.
+  const sys = `Ты — Продюсер контент-завода. Решаешь, КАК произвести короткое видео под идею, чтобы получить максимум охвата и доверия при минимуме затрат. ЦЕЛЕВАЯ ПЛАТФОРМА: ${targetPlatform}.
 
 ПРИНЦИП (важно): глянцевый AI-рендер товара ЦЕЛЫМ роликом читается как реклама и даёт AI-слоп — товар плывёт. Реальный материал = ХРЕБЕТ ролика; AI = только акцент/обложка/вставка. Лента любит движение, но «движущийся рекламный рендер» ≠ органика.
 
@@ -73,7 +76,7 @@ export async function POST(req: NextRequest) {
     const txt = (res.content as any[]).filter((b) => b.type === "text").map((b) => b.text).join(" ");
     const decision = extractJson(txt);
     if (!decision) return NextResponse.json(fallbackDecision({ available: av, reason: "пустое/нечитаемое решение продюсера" }));
-    return NextResponse.json({ decision });
+    return NextResponse.json({ target_platform: targetPlatform, decision });
   } catch (e) {
     return NextResponse.json(fallbackDecision({ available: av, reason: String(e).slice(0, 160) }));
   }

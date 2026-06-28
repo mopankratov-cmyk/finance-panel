@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
-import { virloAnalyzeVideo } from "@/lib/factory/trendSources";
+import { fallbackVirloAnalysis, hasUsableVirloAnalysis, virloAnalyzeVideo } from "@/lib/factory/trendSources";
 import { nicheFromArticle } from "@/lib/factory/rubric";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
+
+const SUPABASE_PAGE_SIZE = 1000;
+const MAX_ANALYZE_SCAN_ROWS = 50000;
 
 type VideoForAnalysis = {
   id: number;
@@ -12,7 +15,57 @@ type VideoForAnalysis = {
   niche: string | null;
   virality_score: number | null;
   caption: string | null;
+  platform?: string | null;
+  analyzed?: boolean | null;
 };
+
+async function markVideoAnalyzedFailure(
+  db: NonNullable<ReturnType<typeof getSupabaseAdmin>>,
+  video: VideoForAnalysis,
+  reason: string,
+) {
+  const failurePayload = {
+    analyzed: true,
+    analyzed_full: {
+      ok: false,
+      error: reason,
+      source: "reels-brain-analyze",
+      url: video.url,
+      caption: video.caption || null,
+    },
+    updated_at: new Date().toISOString(),
+  };
+  const { error } = await db.from("viral_videos").update(failurePayload).eq("id", video.id);
+  return error;
+}
+
+async function loadAnalysisCandidates(
+  db: NonNullable<ReturnType<typeof getSupabaseAdmin>>,
+  input: { niche: string; platform: string; limit: number },
+) {
+  const targetNiche = input.niche.trim();
+  const targetPlatform = input.platform === "tiktok" || input.platform === "instagram" || input.platform === "youtube"
+    ? input.platform
+    : "";
+  const candidates: VideoForAnalysis[] = [];
+  for (let from = 0; from < MAX_ANALYZE_SCAN_ROWS; from += SUPABASE_PAGE_SIZE) {
+    const to = Math.min(from + SUPABASE_PAGE_SIZE - 1, MAX_ANALYZE_SCAN_ROWS - 1);
+    let q = db
+      .from("viral_videos")
+      .select("id,url,niche,virality_score,caption,platform,analyzed")
+      .order("virality_score", { ascending: false, nullsFirst: false })
+      .range(from, to);
+    const { data, error } = await q;
+    if (error) throw new Error(error.message);
+    const page = (data || []) as VideoForAnalysis[];
+    candidates.push(...page
+      .filter((video) => video.analyzed !== true)
+      .filter((video) => !targetNiche || String(video.niche || "").trim() === targetNiche)
+      .filter((video) => !targetPlatform || String(video.platform || "").trim().toLowerCase() === targetPlatform));
+    if (candidates.length >= input.limit || page.length < SUPABASE_PAGE_SIZE) break;
+  }
+  return candidates.slice(0, input.limit);
+}
 
 // POST { niche?, limit?, dry_run? }
 // Deep-enrich top unanalysed videos through Virlo analyze_video and seed viral_hooks.
@@ -23,19 +76,11 @@ export async function POST(req: NextRequest) {
     if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 500 });
     const body = await req.json().catch(() => ({}));
     const niche = String(body.niche || "").trim();
+    const platform = String(body.platform || "").trim().toLowerCase();
     const limit = Math.min(25, Math.max(1, Number(body.limit || 10)));
     const dryRun = body.dry_run === true;
 
-    let q = db
-      .from("viral_videos")
-      .select("id,url,niche,virality_score,caption")
-      .eq("analyzed", false)
-      .order("virality_score", { ascending: false, nullsFirst: false })
-      .limit(limit);
-    if (niche) q = q.eq("niche", niche);
-    const { data, error } = await q;
-    if (error) return NextResponse.json({ error: "viral_videos: " + error.message }, { status: 500 });
-    const videos = ((data || []) as VideoForAnalysis[]);
+    const videos = await loadAnalysisCandidates(db, { niche, platform, limit });
     const results: {
       id: number;
       url: string;
@@ -52,18 +97,20 @@ export async function POST(req: NextRequest) {
           continue;
         }
         const analysis = await virloAnalyzeVideo(video.url);
-        if (!analysis) {
+        const resolvedAnalysis = hasUsableVirloAnalysis(analysis) ? analysis : fallbackVirloAnalysis(video);
+        if (!resolvedAnalysis) {
+          await markVideoAnalyzedFailure(db, video, "empty analysis");
           results.push({ id: video.id, url: video.url, ok: false, error: "empty analysis" });
           continue;
         }
         const update = {
           analyzed: true,
-          hook_text: analysis.hook_text || null,
-          format_detected: analysis.format_detected || null,
-          beat_structure: analysis.beat_structure || null,
-          viral_reason: analysis.viral_reason || null,
-          is_commerce_safe: typeof analysis.is_commerce_safe === "boolean" ? analysis.is_commerce_safe : true,
-          analyzed_full: analysis,
+          hook_text: resolvedAnalysis.hook_text || null,
+          format_detected: resolvedAnalysis.format_detected || null,
+          beat_structure: resolvedAnalysis.beat_structure || null,
+          viral_reason: resolvedAnalysis.viral_reason || null,
+          is_commerce_safe: typeof resolvedAnalysis.is_commerce_safe === "boolean" ? resolvedAnalysis.is_commerce_safe : true,
+          analyzed_full: resolvedAnalysis,
           updated_at: new Date().toISOString(),
         };
         const { error: updateErr } = await db.from("viral_videos").update(update).eq("id", video.id);
@@ -72,39 +119,42 @@ export async function POST(req: NextRequest) {
           continue;
         }
 
-        if (analysis.hook_text) {
+        if (resolvedAnalysis.hook_text) {
           const hookNiche = video.niche || niche || nicheFromArticle("", "");
           try {
             await db.from("viral_hooks").upsert(
               {
                 niche: hookNiche,
-                hook_text: analysis.hook_text,
+                hook_text: resolvedAnalysis.hook_text,
                 video_source_id: video.id,
                 structure: {
-                  format: analysis.format_detected || null,
-                  retention: analysis.viral_reason || null,
+                  format: resolvedAnalysis.format_detected || null,
+                  retention: resolvedAnalysis.viral_reason || null,
                 },
                 viability_score: 2,
                 effectiveness_notes: "from reels-brain analyze",
               },
               { onConflict: "niche,hook_text", ignoreDuplicates: true },
             );
-          } catch {
+            } catch {
             try {
-              const { count } = await db.from("viral_hooks").select("id", { count: "exact", head: true }).eq("niche", hookNiche).eq("hook_text", analysis.hook_text);
-              if (!count) await db.from("viral_hooks").insert({ niche: hookNiche, hook_text: analysis.hook_text, video_source_id: video.id, viability_score: 2, effectiveness_notes: "from reels-brain analyze" });
+              const { count } = await db.from("viral_hooks").select("id", { count: "exact", head: true }).eq("niche", hookNiche).eq("hook_text", resolvedAnalysis.hook_text);
+              if (!count) await db.from("viral_hooks").insert({ niche: hookNiche, hook_text: resolvedAnalysis.hook_text, video_source_id: video.id, viability_score: 2, effectiveness_notes: "from reels-brain analyze" });
             } catch { /* viral_hooks may be absent; corpus enrichment still succeeded */ }
           }
         }
-        results.push({ id: video.id, url: video.url, ok: true, hook: analysis.hook_text, format: analysis.format_detected });
+        results.push({ id: video.id, url: video.url, ok: true, hook: resolvedAnalysis.hook_text, format: resolvedAnalysis.format_detected });
       } catch (e) {
-        results.push({ id: video.id, url: video.url, ok: false, error: String((e as Error)?.message || e).slice(0, 120) });
+        const message = String((e as Error)?.message || e).slice(0, 120);
+        await markVideoAnalyzedFailure(db, video, message);
+        results.push({ id: video.id, url: video.url, ok: false, error: message });
       }
     }
 
     return NextResponse.json({
       ok: true,
       niche: niche || null,
+      platform: platform || null,
       dry_run: dryRun,
       selected: videos.length,
       analyzed: results.filter((r) => r.ok).length,

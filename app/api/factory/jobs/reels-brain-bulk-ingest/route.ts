@@ -1,0 +1,432 @@
+import { NextRequest, NextResponse } from "next/server";
+import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { makeViralVideoRows } from "@/lib/factory/reelsBrain";
+import {
+  availableReelsBrainProviders,
+  fetchReelsBrainProvider,
+  hasReelsBrainProvider,
+  type ReelsBrainProvider,
+} from "@/lib/factory/reelsBrainSources";
+import {
+  buildCorpusGrowthQueue,
+  parseAutomationNiches,
+  parseAutomationPlatforms,
+  type ReelsBrainCorpusGrowthLane,
+} from "@/lib/factory/reelsBrainAutomation";
+import { nextRecommendedSourceQueries } from "@/lib/factory/reelsBrainPlaybook";
+import { corpusProgress, corpusTargetByPlatform } from "@/lib/factory/reelsBrainCorpusTargets";
+import { reelsBrainEnvStatus } from "@/lib/factory/reelsBrainEnv";
+import { isAuthorizedReelsBrainJobRequest } from "@/lib/factory/reelsBrainJobAuth";
+import { buildReelsBrainBudgetPlan, reelsBrainBudgetLimits } from "@/lib/factory/reelsBrainBudget";
+import { persistReelsBrainAutomationRun, summarizeReelsBrainAutomationRuns } from "@/lib/factory/reelsBrainAutomationRuns";
+
+export const dynamic = "force-dynamic";
+export const maxDuration = 120;
+
+const SUPABASE_PAGE_SIZE = 1000;
+const MAX_CORPUS_CONTEXT_ROWS = 50000;
+
+const PLATFORM_PROVIDER_ORDER: Record<"tiktok" | "instagram" | "youtube", ReelsBrainProvider[]> = {
+  tiktok: ["ensemble_tiktok", "apify_tiktok", "virlo", "apify", "bright_tiktok"],
+  instagram: ["apify_instagram", "ensemble_instagram", "bright_instagram"],
+  youtube: ["youtube", "apify_youtube", "ensemble_youtube", "bright_youtube"],
+};
+
+function providersFor(platform: "tiktok" | "instagram" | "youtube", requested: unknown): ReelsBrainProvider[] {
+  if (Array.isArray(requested) && requested.length) {
+    return requested
+      .map((row) => String(row || "").trim().toLowerCase())
+      .filter((row): row is ReelsBrainProvider => hasReelsBrainProvider(row as ReelsBrainProvider));
+  }
+  const available = new Set(availableReelsBrainProviders());
+  return PLATFORM_PROVIDER_ORDER[platform].filter((provider) => available.has(provider));
+}
+
+function splitList(value: unknown): string[] {
+  if (Array.isArray(value)) return value.flatMap(splitList);
+  return String(value || "")
+    .split(/[\n,]/)
+    .map((row) => row.trim())
+    .filter(Boolean);
+}
+
+function instagramSeeds(body: Record<string, unknown>, req: NextRequest): string[] {
+  return Array.from(new Set([
+    ...splitList(body.instagram_seeds),
+    ...splitList(body.instagram_seed_urls),
+    ...splitList(req.nextUrl.searchParams.get("instagram_seeds")),
+    ...splitList(req.nextUrl.searchParams.get("instagram_seed_urls")),
+    ...splitList(process.env.BRIGHT_DATA_INSTAGRAM_PROFILE_URLS),
+  ].filter((url) => /instagram\.com|instagr\.am/i.test(url)))).slice(0, 24);
+}
+
+function stableIndex(value: string, length: number): number {
+  if (length <= 1) return 0;
+  let hash = 0;
+  for (const char of value) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
+  return hash % length;
+}
+
+function isInstagramUrlQuery(query: string): boolean {
+  return /instagram\.com|instagr\.am/i.test(query);
+}
+
+function normalizedQuery(value: string): string {
+  return value.toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+function genericInstagramQuery(niche: string): string {
+  return normalizedQuery(`${niche} reels`);
+}
+
+function isHashtagFriendlyInstagramQuery(query: string): boolean {
+  return !/[А-Яа-яЁё]/.test(query);
+}
+
+function isRussianSegmentNiche(niche: string): boolean {
+  return /^ru[_-]/i.test(niche) || /[А-Яа-яЁё]/.test(niche);
+}
+
+function isRussianQuery(query: string): boolean {
+  return /[А-Яа-яЁё]/.test(query);
+}
+
+function selectLaneQuery(input: {
+  lane: ReelsBrainCorpusGrowthLane;
+  recommendedQueries: string[];
+  queryOverride: string;
+  limit: number;
+  queryCounts?: Map<string, number>;
+}): string {
+  if (input.queryOverride) return input.queryOverride;
+  if (input.lane.platform !== "instagram") return input.recommendedQueries[0] || `${input.lane.niche} reels`;
+  const candidates = input.recommendedQueries.filter((query) => {
+    const normalized = normalizedQuery(query);
+    if (normalized === genericInstagramQuery(input.lane.niche)) return false;
+    if (input.lane.niche === "default" && normalized.startsWith("default ")) return false;
+    if (!isRussianSegmentNiche(input.lane.niche) && !isHashtagFriendlyInstagramQuery(query)) return false;
+    return true;
+  });
+  if (!candidates.length) return input.recommendedQueries[0] || `${input.lane.niche} reels`;
+  const bucket = Math.floor(Math.max(0, input.lane.current_videos) / Math.max(1, input.limit));
+  return candidates[bucket % candidates.length] || candidates[0];
+}
+
+function prioritizeProvidersForQuery(
+  platform: "tiktok" | "instagram" | "youtube",
+  query: string,
+  providers: ReelsBrainProvider[],
+): ReelsBrainProvider[] {
+  if (platform === "tiktok" && isRussianQuery(query)) {
+    const preferred: ReelsBrainProvider[] = ["virlo", "apify_tiktok", "apify", "ensemble_tiktok"];
+    const seen = new Set<ReelsBrainProvider>();
+    return [
+      ...preferred.filter((provider) => providers.includes(provider) && !seen.has(provider) && seen.add(provider)),
+      ...providers.filter((provider) => provider !== "bright_tiktok" && !seen.has(provider) && seen.add(provider)),
+      ...providers.filter((provider) => !seen.has(provider) && seen.add(provider)),
+    ];
+  }
+  if (platform !== "instagram") return providers;
+  if (!isInstagramUrlQuery(query)) {
+    const preferred: ReelsBrainProvider[] = ["apify_instagram", "ensemble_instagram"];
+    const seen = new Set<ReelsBrainProvider>();
+    return [
+      ...preferred.filter((provider) => providers.includes(provider) && !seen.has(provider) && seen.add(provider)),
+      ...providers.filter((provider) => provider !== "bright_instagram" && !seen.has(provider) && seen.add(provider)),
+      ...providers.filter((provider) => !seen.has(provider) && seen.add(provider)),
+    ];
+  }
+  const preferred: ReelsBrainProvider[] = ["bright_instagram", "ensemble_instagram", "apify_instagram"];
+  const seen = new Set<ReelsBrainProvider>();
+  return [
+    ...preferred.filter((provider) => providers.includes(provider) && !seen.has(provider) && seen.add(provider)),
+    ...providers.filter((provider) => !seen.has(provider) && seen.add(provider)),
+  ];
+}
+
+function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  return Promise.race([
+    promise.finally(() => { if (timer) clearTimeout(timer); }),
+    new Promise<T>((resolve) => { timer = setTimeout(() => resolve(fallback), ms); }),
+  ]);
+}
+
+function diversifiedGrowthQueue(input: {
+  lanes: ReelsBrainCorpusGrowthLane[];
+  maxLanes: number;
+  platforms: ("tiktok" | "instagram" | "youtube")[];
+}): ReelsBrainCorpusGrowthLane[] {
+  const ordered = buildCorpusGrowthQueue({ lanes: input.lanes, max_lanes: input.lanes.length });
+  if (input.platforms.length <= 1) return ordered.slice(0, input.maxLanes);
+
+  const maxPerPlatform = Math.max(1, Math.ceil(input.maxLanes / input.platforms.length));
+  const counts = new Map<string, number>();
+  const selected: ReelsBrainCorpusGrowthLane[] = [];
+  const deferred: ReelsBrainCorpusGrowthLane[] = [];
+
+  for (const lane of ordered) {
+    const count = counts.get(lane.platform) || 0;
+    if (count < maxPerPlatform && selected.length < input.maxLanes) {
+      selected.push(lane);
+      counts.set(lane.platform, count + 1);
+    } else {
+      deferred.push(lane);
+    }
+  }
+
+  for (const lane of deferred) {
+    if (selected.length >= input.maxLanes) break;
+    selected.push(lane);
+  }
+  return selected;
+}
+
+async function loadContext(db: NonNullable<ReturnType<typeof getSupabaseAdmin>>, niches: string[]) {
+  const [{ data: playbooks }, corpusRows] = await Promise.all([
+    db.from("niche_playbooks")
+      .select("niche,playbook,updated_at")
+      .in("niche", niches)
+      .order("updated_at", { ascending: false }),
+    loadCorpusContextRows(db, niches),
+  ]);
+
+  const playbookMap = new Map<string, unknown>();
+  for (const row of (playbooks as { niche?: string; playbook?: unknown }[] | null) || []) {
+    const niche = String(row.niche || "").trim();
+    if (niche && !playbookMap.has(niche)) playbookMap.set(niche, row.playbook);
+  }
+
+  const corpusMap = new Map<string, number>();
+  const queryCountMap = new Map<string, Map<string, number>>();
+  for (const row of (corpusRows as { niche?: string; platform?: string; source_orbit_id?: string | null }[] | null) || []) {
+    const niche = String(row.niche || "").trim();
+    const platform = String(row.platform || "").trim();
+    if (!niche || !platform) continue;
+    const key = `${niche}:${platform}`;
+    corpusMap.set(key, (corpusMap.get(key) || 0) + 1);
+
+    const source = String(row.source_orbit_id || "");
+    const separator = source.indexOf(":");
+    const query = separator >= 0 ? source.slice(separator + 1).trim() : "";
+    if (!query || query === "manual" || query === "provider") continue;
+    const queryKey = normalizedQuery(query);
+    if (!queryKey) continue;
+    const laneQueries = queryCountMap.get(key) || new Map<string, number>();
+    laneQueries.set(queryKey, (laneQueries.get(queryKey) || 0) + 1);
+    queryCountMap.set(key, laneQueries);
+  }
+
+  return { playbookMap, corpusMap, queryCountMap };
+}
+
+async function loadCorpusContextRows(db: NonNullable<ReturnType<typeof getSupabaseAdmin>>, niches: string[]) {
+  const rows: { niche?: string; platform?: string; source_orbit_id?: string | null }[] = [];
+  for (let from = 0; from < MAX_CORPUS_CONTEXT_ROWS; from += SUPABASE_PAGE_SIZE) {
+    const to = Math.min(from + SUPABASE_PAGE_SIZE - 1, MAX_CORPUS_CONTEXT_ROWS - 1);
+    const { data, error } = await db
+      .from("viral_videos")
+      .select("niche,platform,source_orbit_id")
+      .in("niche", niches)
+      .range(from, to);
+    if (error) throw new Error(error.message);
+    const page = (data || []) as { niche?: string; platform?: string; source_orbit_id?: string | null }[];
+    rows.push(...page);
+    if (page.length < SUPABASE_PAGE_SIZE) break;
+  }
+  return rows;
+}
+
+async function runBulk(req: NextRequest, body: Record<string, unknown>, execute: boolean) {
+  const db = getSupabaseAdmin();
+  if (!db) {
+    return NextResponse.json({ ok: true, warning: "Supabase не настроен", env: reelsBrainEnvStatus(), queue: [], runs: [] }, { headers: { "Cache-Control": "no-store" } });
+  }
+
+  const niches = parseAutomationNiches(
+    typeof body.niches === "string" ? body.niches : req.nextUrl.searchParams.get("niches"),
+    10,
+  );
+  const platforms = parseAutomationPlatforms(
+    typeof body.platforms === "string" ? body.platforms : req.nextUrl.searchParams.get("platforms"),
+  ).filter((platform): platform is "tiktok" | "instagram" | "youtube" => platform === "tiktok" || platform === "instagram" || platform === "youtube");
+  const maxLanes = Math.max(1, Math.min(6, Number(body.max_lanes || req.nextUrl.searchParams.get("max_lanes") || (execute ? 3 : 6))));
+  const limit = Math.max(5, Math.min(50, Number(body.limit || req.nextUrl.searchParams.get("limit") || 25)));
+  const providersPerLane = Math.max(1, Math.min(3, Number(body.providers_per_lane || req.nextUrl.searchParams.get("providers_per_lane") || 2)));
+  const timeoutMs = Math.max(5000, Math.min(30000, Number(body.provider_timeout_ms || req.nextUrl.searchParams.get("provider_timeout_ms") || 15000)));
+  const budgetLimits = reelsBrainBudgetLimits({
+    max_provider_calls: body.max_provider_calls || req.nextUrl.searchParams.get("max_provider_calls"),
+    max_cost_units: body.max_cost_units || req.nextUrl.searchParams.get("max_cost_units"),
+  });
+  const skipUnseededInstagram = body.skip_unseeded_instagram === true || req.nextUrl.searchParams.get("skip_unseeded_instagram") === "true";
+  const igSeeds = instagramSeeds(body, req);
+  const queryOverride = String(body.query || req.nextUrl.searchParams.get("query") || "").trim().slice(0, 160);
+
+  const { playbookMap, corpusMap, queryCountMap } = await loadContext(db, niches);
+  const platformTargets = corpusTargetByPlatform();
+  const laneTargets = Object.fromEntries(platforms.map((platform) => [
+    platform,
+    Math.max(1, Math.ceil(platformTargets[platform] / Math.max(1, niches.length))),
+  ])) as Record<"tiktok" | "instagram" | "youtube", number>;
+
+  const lanes: ReelsBrainCorpusGrowthLane[] = niches.flatMap((niche) =>
+    platforms.map((platform) => {
+      const current = corpusMap.get(`${niche}:${platform}`) || 0;
+      const progress = corpusProgress({ current, target: laneTargets[platform] });
+      return {
+        niche,
+        platform,
+        current_videos: current,
+        corpus_target: progress.target,
+        gap: progress.gap,
+        progress_pct: progress.progress_pct,
+      };
+    }),
+  );
+
+  const blockedLanes: unknown[] = [];
+  const availableLanes = lanes.filter((lane) => {
+    const blocked = execute && skipUnseededInstagram && lane.platform === "instagram" && !igSeeds.length;
+    if (blocked) {
+      blockedLanes.push({
+        ...lane,
+        reason: "instagram_seed_required",
+        fix: "Add BRIGHT_DATA_INSTAGRAM_PROFILE_URLS or pass instagram_seeds/instagram_seed_urls.",
+      });
+    }
+    return !blocked;
+  });
+
+  const queue = diversifiedGrowthQueue({ lanes: availableLanes, maxLanes, platforms }).map((lane) => {
+    const playbook = playbookMap.get(lane.niche);
+    const fallbackQuery = lane.platform === "instagram" ? null : `${lane.niche} reels`;
+    const recommendedQueries = nextRecommendedSourceQueries(playbook, lane.niche, lane.platform, fallbackQuery);
+    const recommendedQuery = selectLaneQuery({
+      lane,
+      recommendedQueries,
+      queryOverride,
+      limit,
+      queryCounts: queryCountMap.get(`${lane.niche}:${lane.platform}`),
+    });
+    const instagramSeed = lane.platform === "instagram" && igSeeds.length
+      ? igSeeds[stableIndex(lane.niche, igSeeds.length)]
+      : "";
+    const query = instagramSeed || recommendedQuery;
+    const providers = prioritizeProvidersForQuery(lane.platform, query, providersFor(lane.platform, body.providers));
+    return {
+      ...lane,
+      query,
+      query_origin: instagramSeed ? "instagram_seed" : "playbook",
+      providers: providers.slice(0, providersPerLane),
+      limit,
+      provider_timeout_ms: timeoutMs,
+    };
+  });
+
+  const plannedProviderCalls = queue.flatMap((lane) => lane.providers.map((provider) => provider));
+  const budgetPlan = buildReelsBrainBudgetPlan(plannedProviderCalls, budgetLimits);
+  const allowedBudgetQueue = [...budgetPlan.decisions];
+  const budgetSkipped: unknown[] = [];
+  const runs: unknown[] = [];
+  if (execute) {
+    for (const lane of queue) {
+      for (const provider of lane.providers) {
+        const budgetDecision = allowedBudgetQueue.shift();
+        if (!budgetDecision?.allowed) {
+          budgetSkipped.push({
+            niche: lane.niche,
+            platform: lane.platform,
+            provider,
+            query: lane.query,
+            reason: budgetDecision?.reason || "budget_decision_missing",
+            cost_units: budgetDecision?.cost_units || null,
+          });
+          continue;
+        }
+        const started = Date.now();
+        const result = await withTimeout(
+          fetchReelsBrainProvider(provider, lane.query, lane.limit),
+          lane.provider_timeout_ms,
+          { provider, query: lane.query, configured: true, elapsedMs: lane.provider_timeout_ms, videos: [], error: "provider timeout" },
+        );
+        const prepared = makeViralVideoRows(result.videos, {
+          niche: lane.niche,
+          sourceProvider: provider,
+          sourceQuery: lane.query,
+          sourceType: "provider",
+        });
+        let inserted = 0;
+        if (prepared.rows.length) {
+          const { count, error } = await db
+            .from("viral_videos")
+            .upsert(prepared.rows, { onConflict: "url", ignoreDuplicates: true, count: "exact" });
+          if (error) {
+            runs.push({ niche: lane.niche, platform: lane.platform, provider, ok: false, error: error.message });
+            continue;
+          }
+          inserted = count ?? prepared.rows.length;
+        }
+        runs.push({
+          niche: lane.niche,
+          platform: lane.platform,
+          provider,
+          query: lane.query,
+          cost_units: budgetDecision.cost_units,
+          ok: !result.error,
+          found: result.videos.length,
+          normalized: prepared.rows.length,
+          inserted,
+          rejected: prepared.rejected,
+          elapsed_ms: Date.now() - started,
+          error: result.error || null,
+        });
+      }
+    }
+  }
+  const automationSummary = summarizeReelsBrainAutomationRuns({
+    mode: "bulk",
+    strategy: "bulk_raw_ingest",
+    platforms,
+    runs: runs as Parameters<typeof summarizeReelsBrainAutomationRuns>[0]["runs"],
+    ok: true,
+  });
+  const automation_memory = execute
+    ? await persistReelsBrainAutomationRun({ db, niches, summary: automationSummary })
+    : { persisted: 0, errors: [] as string[] };
+
+  return NextResponse.json({
+    ok: true,
+    mode: "bulk_raw_ingest",
+    execute,
+    niches,
+    platforms,
+    max_lanes: maxLanes,
+    limit,
+    providers_per_lane: providersPerLane,
+    query_override: queryOverride || null,
+    skip_unseeded_instagram: skipUnseededInstagram,
+    instagram_seed_count: igSeeds.length,
+    queue,
+    blocked_lanes: blockedLanes,
+    runs,
+    budget: budgetPlan,
+    budget_skipped: budgetSkipped,
+    automation_summary: automationSummary,
+    automation_memory,
+  }, { headers: { "Cache-Control": "no-store" } });
+}
+
+export async function GET(req: NextRequest) {
+  if (!(await isAuthorizedReelsBrainJobRequest(req))) {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+  return runBulk(req, {}, false);
+}
+
+export async function POST(req: NextRequest) {
+  if (!(await isAuthorizedReelsBrainJobRequest(req))) {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+  const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
+  return runBulk(req, body, body.dry_run === true ? false : true);
+}

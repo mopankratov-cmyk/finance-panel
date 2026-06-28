@@ -5,6 +5,8 @@ import { DEAI_FILTERS, PROBLEM_STACK } from "@/lib/factory/standard";
 import { brandProfile } from "@/lib/factory/brandProfiles";
 import { nicheFromArticle } from "@/lib/factory/rubric";
 import { extractJson } from "@/lib/factory/extractJson";
+import { buildPlatformBrainHint, normalizeTargetPlatform } from "@/lib/factory/reelsBrainPlaybook";
+import { winnersHintFor } from "@/lib/factory/learningHints";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -46,6 +48,7 @@ export async function POST(req: NextRequest) {
     if (db) { const { data } = await db.from("product_costs").select("name").eq("article", article).maybeSingle(); name = (data?.name as string) || ""; }
   }
   const format: string = (body.format || "").toString().trim();
+  const targetPlatform = normalizeTargetPlatform(body.target_platform || body.platform);
   // профиль не задан вручную → подбираем по БРЕНДУ товара (1 бренд = 1 профиль)
   const profile: string = (body.profile || "").toString().trim().slice(0, 2000) || brandProfile(article, name);
   const pb = body.playbook && typeof body.playbook === "object" ? body.playbook : null;
@@ -70,25 +73,30 @@ export async function POST(req: NextRequest) {
         : "") +
       (Array.isArray(pb.anti_patterns) && pb.anti_patterns.length ? `\nНЕ делай: ${pb.anti_patterns.slice(0, 4).join("; ")}` : "") +
       (snd ? `\nТренд-звук под нишу: «${snd.title}»${snd.commerce_safe ? " (коммерч-безопасен)" : " (только органика, не для рекламы)"} — укажи его в поле music.` : "") +
+      buildPlatformBrainHint(pb, targetPlatform) +
       (pb.cta ? `\nCTA: ${pb.cta}` : "");
   }
 
   // Корпус вирального: грунтовка на реально залетевших видео/хуках/звуках ниши (таблицы могут не существовать).
   // Работает из фоновой очереди — не требует playbook (который только в браузере).
   let corpusHint = "";
+  let winnersHint = "";
   if (!pb && article) {
     try {
       const dbC = getSupabaseAdmin();
       const rn = nicheFromArticle(article, name);
       if (dbC && rn) {
+        winnersHint = await winnersHintFor(dbC, rn, targetPlatform);
         const [{ data: vids }, { data: hks }, { data: orbits }] = await Promise.all([
-          dbC.from("viral_videos").select("hook_text,format_detected,beat_structure").eq("niche", rn).order("virality_score", { ascending: false }).limit(3),
+          dbC.from("viral_videos").select("hook_text,format_detected,beat_structure,platform").eq("niche", rn).order("virality_score", { ascending: false }).limit(6),
           dbC.from("viral_hooks").select("hook_text").eq("niche", rn).order("viability_score", { ascending: false }).limit(6),
           dbC.from("orbit_searches").select("sounds").eq("niche", rn).not("sounds", "is", null).limit(3),
         ]);
-        const vidLines = ((vids || []) as { hook_text?: string; format_detected?: string; beat_structure?: unknown }[])
+        const vidLines = ((vids || []) as { hook_text?: string; format_detected?: string; beat_structure?: unknown; platform?: string }[])
+          .filter((v) => normalizeTargetPlatform(v.platform) === targetPlatform)
           .filter((v) => v.hook_text || v.beat_structure)
           .map((v) => `• «${v.hook_text || "?"}» [${v.format_detected || ""}${v.beat_structure ? " / " + JSON.stringify(v.beat_structure).slice(0, 80) : ""}]`)
+          .slice(0, 3)
           .join("\n");
         const hkLine = ((hks || []) as { hook_text: string }[]).map((h) => `«${h.hook_text}»`).join(" | ");
         // top commerce-safe звук из synced орбит этой ниши
@@ -113,13 +121,13 @@ export async function POST(req: NextRequest) {
   const client = await createClaudeClient();
   if (!client) return NextResponse.json(fallbackScenario({ hook, article, name, reason: "ANTHROPIC_API_KEY не настроен" }));
 
-  const sys = "Ты режиссёр коротких UGC-видео для WB/Ozon. Разворачиваешь идею в покадровый сценарий 15-30 сек, готовый к съёмке или AI-генерации. Живой UGC, не реклама. " +
+  const sys = `Ты режиссёр коротких UGC-видео для WB/Ozon. Разворачиваешь идею в покадровый сценарий 15-30 сек, готовый к съёмке или AI-генерации. Живой UGC, не реклама. ЦЕЛЕВАЯ ПЛАТФОРМА: ${targetPlatform}. Сценарий должен звучать как native-${targetPlatform}, а не как универсальный ролик для всех платформ. ` +
     (profile ? "ПРОФИЛЬ БРЕНДА/АУДИТОРИИ (пиши в этом голосе): " + profile + " " : "") +
     "Озвучка (voiceover) и текст на экране обязаны звучать как живой человек, без «запаха нейронки». " + DEAI_FILTERS + " " +
     "Верни СТРОГО JSON: {\"title\":\"название\",\"duration_sec\":20,\"shots\":[{\"t\":\"0-3с\",\"visual\":\"что в кадре\",\"voiceover\":\"закадр/реплика\",\"onscreen\":\"текст на экране\"}],\"caption\":\"подпись под видео\",\"hashtags\":[\"...\"],\"cta\":\"призыв искать товар на WB\",\"music\":\"тип трендового звука\"}. Только JSON.";
   const isStack = /проблем|3 проблем|problem|стек/i.test(format);
   const hookBoost = body.hook_boost === true; // хук-гейт забраковал хук → просим резче
-  const user = `Товар: ${name || article}${article ? ` (арт. ${article})` : ""}. Идея/хук: «${hook}».${format ? ` Формат: ${format}.` : ""}${isStack ? ` Разверни по структуре «3 проблемы»: ${PROBLEM_STACK}` : ""}${pbHint}${corpusHint} Сделай покадровый сценарий: первый кадр = хук в лоб, держит внимание, в конце мягкий CTA на поиск товара на WB.${hookBoost ? " ВАЖНО: предыдущий хук получился слабым — сделай ПЕРВУЮ ФРАЗУ и первый кадр заметно резче: паттерн-брейк/новизна/интрига/неожиданность, без общих слов и витрины." : ""}`;
+  const user = `Товар: ${name || article}${article ? ` (арт. ${article})` : ""}. Идея/хук: «${hook}».${format ? ` Формат: ${format}.` : ""}${isStack ? ` Разверни по структуре «3 проблемы»: ${PROBLEM_STACK}` : ""}${pbHint}${winnersHint}${corpusHint} Сделай покадровый сценарий: первый кадр = хук в лоб, держит внимание, в конце мягкий CTA на поиск товара на WB.${hookBoost ? " ВАЖНО: предыдущий хук получился слабым — сделай ПЕРВУЮ ФРАЗУ и первый кадр заметно резче: паттерн-брейк/новизна/интрига/неожиданность, без общих слов и витрины." : ""}`;
 
   // сэмплинг из ноды Claude (инспектор) — раньше всё было захардкожено
 

@@ -2,11 +2,16 @@ import { createClaudeClient } from "@/lib/agent/client";
 import { CONTENT_STANDARD, DEAI_FILTERS, QA_THRESHOLD } from "@/lib/factory/standard";
 import { extractJson } from "@/lib/factory/extractJson";
 import { tastePatternHints } from "@/lib/factory/tastePatterns";
+import { buildPlatformBrainHint, normalizeTargetPlatform } from "@/lib/factory/reelsBrainPlaybook";
+import type { ReelsPlatform } from "./reelsBrain";
 
 export type ScenarioQualityInput = {
   article?: string;
   product_name?: string;
   niche?: string;
+  target_platform?: unknown;
+  platform?: unknown;
+  playbook?: unknown;
   scenario?: unknown;
   hooks?: unknown;
   visual_beats?: unknown;
@@ -55,6 +60,7 @@ export type ScenarioQualityResult = {
   article: string;
   product_name: string;
   niche: string;
+  target_platform: ReelsPlatform;
   winner: ScenarioQualityRanked | null;
   ranked: ScenarioQualityRanked[];
   issues: string[];
@@ -63,6 +69,16 @@ export type ScenarioQualityResult = {
   should_render: boolean;
   source: "claude" | "fallback";
   error?: string;
+};
+
+export type ScenarioQualityNormalizedInput = {
+  article: string;
+  product_name: string;
+  niche: string;
+  threshold: number;
+  target_platform: ReelsPlatform;
+  playbook: unknown;
+  candidates: ScenarioQualityCandidate[];
 };
 
 const GENERIC_OPENERS = [
@@ -119,7 +135,7 @@ function makeCandidate(id: string, item: unknown, fallbackScenario: string, fall
   };
 }
 
-export function normalizeScenarioQualityInput(body: ScenarioQualityInput): { article: string; product_name: string; niche: string; threshold: number; candidates: ScenarioQualityCandidate[] } {
+export function normalizeScenarioQualityInput(body: ScenarioQualityInput): ScenarioQualityNormalizedInput {
   const article = str(body.article);
   const product_name = str(body.product_name);
   const niche = str(body.niche || "default") || "default";
@@ -148,7 +164,28 @@ export function normalizeScenarioQualityInput(body: ScenarioQualityInput): { art
   if (body.scenario && !candidates[0]?.scenario) candidates[0].scenario = fallbackScenario;
   if (hookList.length && candidates.length === 1 && !candidates[0].hook) candidates[0].hook = hookList[0];
 
-  return { article, product_name, niche, threshold, candidates: candidates.map((c, i) => ({ ...c, id: c.id || `candidate-${i + 1}` })) };
+  return {
+    article,
+    product_name,
+    niche,
+    threshold,
+    target_platform: normalizeTargetPlatform(body.target_platform || body.platform),
+    playbook: body.playbook ?? null,
+    candidates: candidates.map((c, i) => ({ ...c, id: c.id || `candidate-${i + 1}` })),
+  };
+}
+
+function platformQualityGuidance(platform: ReelsPlatform): string {
+  if (platform === "tiktok") {
+    return "TikTok: суди строже за pattern-break в первой фразе, скорость входа, разговорность и отсутствие polished-ad ощущения. Слабый conversational hook или медленный старт снижай сильнее.";
+  }
+  if (platform === "instagram") {
+    return "Instagram Reels: суди строже за visual polish, commercial safety, clean packaging кадра и понятность пользы без хаоса. Слишком raw/грязный TikTok-tone снижает publishability.";
+  }
+  if (platform === "youtube") {
+    return "YouTube Shorts: суди строже за ясность value promise, объяснимость хука, серийность/обещание payoff и способность удержать не только эмоцией, но и смыслом.";
+  }
+  return "";
 }
 
 function weightAxes(axes: ScenarioQualityAxes): number {
@@ -171,7 +208,7 @@ function hardIssues(text: string, visualBeats: string): string[] {
   return issues;
 }
 
-function fallbackAxes(text: string, visualBeats: string): ScenarioQualityAxes {
+function fallbackAxes(text: string, visualBeats: string, platform: ReelsPlatform): ScenarioQualityAxes {
   const lower = `${text} ${visualBeats}`.toLowerCase();
   const generic = GENERIC_OPENERS.filter((p) => lower.includes(p)).length;
   const digits = (lower.match(/[0-9]/g) || []).length;
@@ -179,21 +216,23 @@ function fallbackAxes(text: string, visualBeats: string): ScenarioQualityAxes {
   const concrete = /\b(рука|дома|ванна|шкаф|ремень|молния|кожа|тепло|ветер|пятно|сумка|деталь|упаковка|пляж|улица|ребёнок|ребенок)\b/.test(lower);
   const emotion = /\b(бесит|надоело|стыдно|страшно|удобно|спасает|обидно|радуюсь|радостно|наконец)\b/.test(lower);
   const novelty = /\b(неожидан|вдруг|никто|новый|другое|иначе|сразу)\b/.test(lower);
-  const publishability = /привет|сегодня расскажу|представляем|успей|купите/i.test(lower) ? 1 : 4;
+  let publishability = /привет|сегодня расскажу|представляем|успей|купите/i.test(lower) ? 1 : 4;
+  if (platform === "instagram" && /жесть|шок|жми|срочно|успей/i.test(lower)) publishability = Math.max(1, publishability - 1);
+  if (platform === "youtube" && !question && lower.length < 120) publishability = Math.max(1, publishability - 1);
   return {
-    hook: clamp(5 - generic, 1, 5),
-    retention: clamp(3 + (question ? 1 : 0) + (concrete ? 1 : 0) - (generic > 0 ? 1 : 0), 1, 5),
+    hook: clamp(5 - generic + (platform === "tiktok" && question ? 1 : 0) - (platform === "instagram" && generic > 0 ? 1 : 0), 1, 5),
+    retention: clamp(3 + (question ? 1 : 0) + (concrete ? 1 : 0) - (generic > 0 ? 1 : 0) + (platform === "youtube" && text.length > 140 ? 1 : 0), 1, 5),
     clarity: clamp(3 + (text.length > 120 ? 1 : 0) + (concrete ? 1 : 0), 1, 5),
-    emotion: clamp(2 + (emotion ? 2 : 0), 1, 5),
+    emotion: clamp(2 + (emotion ? 2 : 0) + (platform === "tiktok" && novelty ? 1 : 0), 1, 5),
     specificity: clamp(2 + Math.min(2, digits) + (concrete ? 1 : 0), 1, 5),
-    novelty: clamp(2 + (novelty ? 2 : 0) - (generic > 0 ? 1 : 0), 1, 5),
+    novelty: clamp(2 + (novelty ? 2 : 0) - (generic > 0 ? 1 : 0) + (platform === "tiktok" ? 1 : 0), 1, 5),
     publishability: publishability,
   };
 }
 
-function fallbackRank(candidate: ScenarioQualityCandidate, threshold: number): ScenarioQualityRanked {
+function fallbackRank(candidate: ScenarioQualityCandidate, threshold: number, platform: ReelsPlatform): ScenarioQualityRanked {
   const text = `${candidate.hook} ${candidate.scenario}`.trim();
-  const axes = fallbackAxes(text, candidate.visual_beats);
+  const axes = fallbackAxes(text, candidate.visual_beats, platform);
   const score = toScore10(axes);
   const issues = hardIssues(text, candidate.visual_beats);
   const rewrite_hints = [
@@ -234,19 +273,22 @@ function aggregateHints(ranked: ScenarioQualityRanked[], threshold: number): str
   return out;
 }
 
-async function judgeWithClaude(input: { article: string; product_name: string; niche: string; threshold: number; candidates: ScenarioQualityCandidate[] }): Promise<ScenarioQualityResult> {
+async function judgeWithClaude(input: { article: string; product_name: string; niche: string; threshold: number; target_platform: ReelsPlatform; playbook?: unknown; candidates: ScenarioQualityCandidate[] }): Promise<ScenarioQualityResult> {
   const client = await createClaudeClient();
   if (!client) throw new Error("ANTHROPIC_API_KEY не настроен");
 
   const hints = tastePatternHints({ niche: input.niche, goal: "sell", limit: 3 });
+  const brainHint = buildPlatformBrainHint(input.playbook, input.target_platform);
   const system = [
     "Ты строгий сценарный ОТК контент-завода. Твоя цель — не пропустить в дорогой render слабый текст.",
+    `ЦЕЛЕВАЯ ПЛАТФОРМА: ${input.target_platform}. ${platformQualityGuidance(input.target_platform)}`,
     CONTENT_STANDARD,
     DEAI_FILTERS,
     "Оценивай по осям: hook, retention, clarity, emotion, specificity, novelty, publishability. Каждая ось 1-5.",
     "Hook = первая фраза/первый кадр. Clarity = легко ли понять сцену без пояснений. Emotion = есть ли человеческое напряжение. Specificity = есть ли детали, цифры, бытовая конкретика. Novelty = есть ли свежий заход. Publishability = не пахнет ли рекламной простынёй.",
     "Если текст слабый, should_render обязано быть false.",
     hints.length ? `Паттерны-подсказки по структуре, не копируй дословно: ${hints.join(" || ")}` : "",
+    brainHint || "",
     "Верни СТРОГО JSON: {\"ranked\":[{\"id\":\"...\",\"label\":\"...\",\"score\":1-10,\"should_render\":true|false,\"axes\":{\"hook\":1-5,\"retention\":1-5,\"clarity\":1-5,\"emotion\":1-5,\"specificity\":1-5,\"novelty\":1-5,\"publishability\":1-5},\"issues\":[\"...\"],\"rewrite_hints\":[\"...\"]}]}. Только JSON.",
   ].filter(Boolean).join("\n");
 
@@ -254,6 +296,7 @@ async function judgeWithClaude(input: { article: string; product_name: string; n
     article: input.article,
     product_name: input.product_name,
     niche: input.niche,
+    target_platform: input.target_platform,
     threshold: input.threshold,
     candidates: input.candidates.map((c) => ({
       id: c.id,
@@ -315,6 +358,7 @@ async function judgeWithClaude(input: { article: string; product_name: string; n
     article: input.article,
     product_name: input.product_name,
     niche: input.niche,
+    target_platform: input.target_platform,
     winner,
     ranked,
     issues: winner?.issues || [],
@@ -327,7 +371,7 @@ async function judgeWithClaude(input: { article: string; product_name: string; n
 
 export async function analyzeScenarioQuality(body: ScenarioQualityInput): Promise<ScenarioQualityResult> {
   const normalized = normalizeScenarioQualityInput(body);
-  const fallbackRanked = normalized.candidates.map((candidate) => fallbackRank(candidate, normalized.threshold)).sort((a, b) => b.score - a.score);
+  const fallbackRanked = normalized.candidates.map((candidate) => fallbackRank(candidate, normalized.threshold, normalized.target_platform)).sort((a, b) => b.score - a.score);
 
   try {
     const judged = await judgeWithClaude({
@@ -335,6 +379,8 @@ export async function analyzeScenarioQuality(body: ScenarioQualityInput): Promis
       product_name: normalized.product_name,
       niche: normalized.niche,
       threshold: normalized.threshold,
+      target_platform: normalized.target_platform,
+      playbook: normalized.playbook,
       candidates: normalized.candidates,
     });
     if (!judged.ranked.length) {
@@ -344,6 +390,7 @@ export async function analyzeScenarioQuality(body: ScenarioQualityInput): Promis
         article: normalized.article,
         product_name: normalized.product_name,
         niche: normalized.niche,
+        target_platform: normalized.target_platform,
         winner: fallbackRanked[0] || null,
         ranked: fallbackRanked,
         issues: fallbackRanked[0]?.issues || [],
@@ -362,6 +409,7 @@ export async function analyzeScenarioQuality(body: ScenarioQualityInput): Promis
       article: normalized.article,
       product_name: normalized.product_name,
       niche: normalized.niche,
+      target_platform: normalized.target_platform,
       winner: fallbackRanked[0] || null,
       ranked: fallbackRanked,
       issues: fallbackRanked[0]?.issues || [],

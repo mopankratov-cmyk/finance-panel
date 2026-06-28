@@ -15,6 +15,7 @@ export interface RunPlan {
   change_axis?: "none" | "hook_angle" | "proof_density" | "cta_shape" | "format" | null;
   step: RunStep;
   nodes: RunNode[];
+  target_platform?: string | null;
   render_id?: string | null;
   output_url?: string | null;
   pollCount?: number;
