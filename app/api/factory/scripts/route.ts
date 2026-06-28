@@ -8,6 +8,7 @@ import { buildPlatformBrainHint, normalizeTargetPlatform } from "@/lib/factory/r
 import { winnersHintFor } from "@/lib/factory/learningHints";
 import { loadImprovementSnapshot, type ImprovementBatchPlan } from "@/lib/factory/improvementLoop";
 import { batchPlanHintFor, improvementHintFor } from "@/lib/factory/learningHints";
+import { selectRenderCandidates } from "@/lib/factory/candidateSelect";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -134,7 +135,26 @@ ${PROBLEM_STACK}
     });
     scripts.sort((a, b) => (Number(b.score) || 0) - (Number(a.score) || 0));
     const approved = scripts.filter((s) => s.verdict !== "rework").length;
-    return NextResponse.json({ article, product: subject, count: scripts.length, approved_count: approved, rework_count: scripts.length - approved, ensemble: "claude-sonnet (self-QA)", batch_plan: batchPlan, scripts });
+    const renderSelection = selectRenderCandidates(scripts, {
+      top_k: body.top_k ?? body.paid_top_k ?? 1,
+      threshold: QA_THRESHOLD,
+      max_paid: 2,
+    });
+    return NextResponse.json({
+      article,
+      product: subject,
+      count: scripts.length,
+      approved_count: approved,
+      rework_count: scripts.length - approved,
+      ensemble: "claude-sonnet (self-QA)",
+      batch_plan: batchPlan,
+      paid_candidate_count: renderSelection.paid_candidate_count,
+      selected_for_render: renderSelection.selected,
+      rejected_for_render: renderSelection.rejected,
+      selection_rationale: renderSelection.rationale,
+      render_selection: renderSelection,
+      scripts,
+    });
   } catch (e) {
     return NextResponse.json({ error: String(e).slice(0, 200) }, { status: 502 });
   }
