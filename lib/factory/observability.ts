@@ -125,7 +125,7 @@ export function buildRunSummary(plan: RunPlanLike | null | undefined): RunSummar
   const last = log.length ? log[log.length - 1] : null;
   const startedAt = first?.started_at || null;
   const finishedAt = last?.finished_at || null;
-  const active = [...log].reverse().find((e) => e && e.status === "running") || null;
+  const active = last?.status === "running" ? last : null;
   const totalMs = startedAt ? ((finishedAt ? msBetween(startedAt, finishedAt) : (Date.now() - Date.parse(String(startedAt)))) || null) : null;
   return {
     started_at: startedAt,
