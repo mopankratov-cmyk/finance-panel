@@ -9,7 +9,7 @@ export const maxDuration = 120;
 const DEFAULT_NICHES = "ru_toys,ru_clothing,ru_cosmetics";
 const DEFAULT_PLATFORMS = "tiktok,instagram,youtube";
 const DEFAULT_TARGET_TOTAL = 6000;
-const DEFAULT_MAX_BACKLOG_BEFORE_ANALYZE = 60;
+const DEFAULT_MAX_BACKLOG_BEFORE_ANALYZE = 120;
 const SUPABASE_PAGE_SIZE = 1000;
 const MAX_BACKLOG_ROWS = 50000;
 
@@ -109,12 +109,12 @@ export async function GET(req: NextRequest) {
         niches,
         platforms,
         strategy: "bulk",
-        max_lanes: 5,
-        limit: 30,
+        max_lanes: 8,
+        limit: 40,
         providers_per_lane: 2,
         provider_timeout_ms: 22000,
-        max_provider_calls: 10,
-        max_cost_units: 30,
+        max_provider_calls: 16,
+        max_cost_units: 48,
         hours: 72,
       }
       : {
@@ -147,7 +147,11 @@ export async function GET(req: NextRequest) {
       inserted: tickRecord.inserted ?? summaryRecord.inserted ?? null,
       analyzed: tickRecord.analyzed ?? summaryRecord.analyzed ?? null,
       errors: tickRecord.errors ?? summaryRecord.errors ?? null,
-      discovery_learning: Array.isArray(tickRecord.discovery_learning) ? tickRecord.discovery_learning.length : null,
+      discovery_learning: Array.isArray(tickRecord.discovery_learning)
+        ? tickRecord.discovery_learning.length
+        : Array.isArray(resultRecord.discovery_learning)
+          ? resultRecord.discovery_learning.length
+          : null,
     }));
 
     return NextResponse.json({

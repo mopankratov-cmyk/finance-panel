@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { internalFetch } from "@/lib/internalFetch";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
-import { reelsBrainTaskForCronTick } from "@/lib/factory/reelsBrainCronGate";
 import { wakeStaleRecipes } from "@/lib/factory/graphWatchdog";
 
 export const dynamic = "force-dynamic";
@@ -27,23 +26,20 @@ export async function GET(req: NextRequest) {
     }
     const db = getSupabaseAdmin();
     if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 500 });
-    const reelsBrainTask = reelsBrainTaskForCronTick();
     const result = await wakeStaleRecipes(db, req.nextUrl.origin, { trigger: "cron", maxWake: CRON_MAX_WAKE });
-    const reelsBrain = reelsBrainTask
-      ? await internalFetch(`${req.nextUrl.origin}/api/factory/jobs/reels-brain-cron?source=graph-run`, {
+    const reelsBrain = await internalFetch(`${req.nextUrl.origin}/api/factory/jobs/reels-brain-cron?source=graph-run`, {
         method: "GET",
         signal: AbortSignal.timeout(110000),
       }).then(async (res) => ({
         ok: res.ok,
         status: res.status,
-        trigger_slot: reelsBrainTask,
+        trigger_slot: "auto",
         result: await res.json().catch(() => ({})),
       })).catch((e) => ({
         ok: false,
-        trigger_slot: reelsBrainTask,
+        trigger_slot: "auto",
         error: String((e as Error)?.message || e).slice(0, 160),
-      }))
-      : { ok: true, skipped: true, reason: "not a reels-brain tick minute" };
+      }));
     return NextResponse.json({ ok: true, ...result, reels_brain: reelsBrain });
   } catch (e) {
     return NextResponse.json({ error: "graph-run/cron crash: " + String((e as Error)?.message || e).slice(0, 180) }, { status: 500 });
