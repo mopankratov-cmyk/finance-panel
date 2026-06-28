@@ -19,6 +19,7 @@ import { reelsBrainEnvStatus } from "@/lib/factory/reelsBrainEnv";
 import { isAuthorizedReelsBrainJobRequest } from "@/lib/factory/reelsBrainJobAuth";
 import { buildReelsBrainBudgetPlan, reelsBrainBudgetLimits } from "@/lib/factory/reelsBrainBudget";
 import { persistReelsBrainAutomationRun, summarizeReelsBrainAutomationRuns } from "@/lib/factory/reelsBrainAutomationRuns";
+import { rememberDiscoverySourceRun } from "@/lib/factory/reelsBrainDiscovery";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -30,6 +31,21 @@ const PLATFORM_PROVIDER_ORDER: Record<"tiktok" | "instagram" | "youtube", ReelsB
   tiktok: ["ensemble_tiktok", "apify_tiktok", "virlo", "apify", "bright_tiktok"],
   instagram: ["apify_instagram", "ensemble_instagram", "bright_instagram"],
   youtube: ["youtube", "apify_youtube", "ensemble_youtube", "bright_youtube"],
+};
+
+type BulkProviderRun = {
+  niche: string;
+  platform: "tiktok" | "instagram" | "youtube";
+  provider: ReelsBrainProvider;
+  query: string;
+  cost_units?: number;
+  ok: boolean;
+  found?: number;
+  normalized?: number;
+  inserted?: number;
+  rejected?: number;
+  elapsed_ms?: number;
+  error?: string | null;
 };
 
 function providersFor(platform: "tiktok" | "instagram" | "youtube", requested: unknown): ReelsBrainProvider[] {
@@ -220,6 +236,51 @@ async function loadContext(db: NonNullable<ReturnType<typeof getSupabaseAdmin>>,
   return { playbookMap, corpusMap, queryCountMap };
 }
 
+async function persistDiscoveryLearning(input: {
+  db: NonNullable<ReturnType<typeof getSupabaseAdmin>>;
+  playbookMap: Map<string, unknown>;
+  runs: BulkProviderRun[];
+}) {
+  const byNiche = new Map<string, BulkProviderRun[]>();
+  for (const run of input.runs) {
+    if (!run.niche || !run.platform || !run.query) continue;
+    const rows = byNiche.get(run.niche) || [];
+    rows.push(run);
+    byNiche.set(run.niche, rows);
+  }
+
+  const results: Array<{ niche: string; learned_sources: number; error?: string }> = [];
+  for (const [niche, runs] of byNiche.entries()) {
+    let playbook = (input.playbookMap.get(niche) || { niche }) as Record<string, unknown>;
+    let learnedSources = 0;
+    for (const run of runs) {
+      playbook = rememberDiscoverySourceRun(playbook, {
+        niche,
+        platform: run.platform,
+        type: "query",
+        value: run.query,
+        found: Number(run.found || 0),
+        relevant: Number(run.inserted || 0),
+        breakout: 0,
+        inserted: Number(run.inserted || 0),
+        cost_units: Number(run.cost_units || 1),
+        reason: `bulk ingest via ${run.provider}`,
+      });
+      learnedSources += 1;
+    }
+
+    const { error } = await input.db.from("niche_playbooks").upsert({
+      niche,
+      playbook: { ...playbook, niche },
+      updated_at: new Date().toISOString(),
+    }, { onConflict: "niche" });
+    results.push(error
+      ? { niche, learned_sources: learnedSources, error: error.message }
+      : { niche, learned_sources: learnedSources });
+  }
+  return results;
+}
+
 async function loadCorpusContextRows(db: NonNullable<ReturnType<typeof getSupabaseAdmin>>, niches: string[]) {
   const rows: { niche?: string; platform?: string; source_orbit_id?: string | null }[] = [];
   for (let from = 0; from < MAX_CORPUS_CONTEXT_ROWS; from += SUPABASE_PAGE_SIZE) {
@@ -327,7 +388,7 @@ async function runBulk(req: NextRequest, body: Record<string, unknown>, execute:
   const budgetPlan = buildReelsBrainBudgetPlan(plannedProviderCalls, budgetLimits);
   const allowedBudgetQueue = [...budgetPlan.decisions];
   const budgetSkipped: unknown[] = [];
-  const runs: unknown[] = [];
+  const runs: BulkProviderRun[] = [];
   if (execute) {
     for (const lane of queue) {
       for (const provider of lane.providers) {
@@ -361,7 +422,7 @@ async function runBulk(req: NextRequest, body: Record<string, unknown>, execute:
             .from("viral_videos")
             .upsert(prepared.rows, { onConflict: "url", ignoreDuplicates: true, count: "exact" });
           if (error) {
-            runs.push({ niche: lane.niche, platform: lane.platform, provider, ok: false, error: error.message });
+            runs.push({ niche: lane.niche, platform: lane.platform, provider, query: lane.query, ok: false, error: error.message });
             continue;
           }
           inserted = count ?? prepared.rows.length;
@@ -393,6 +454,9 @@ async function runBulk(req: NextRequest, body: Record<string, unknown>, execute:
   const automation_memory = execute
     ? await persistReelsBrainAutomationRun({ db, niches, summary: automationSummary })
     : { persisted: 0, errors: [] as string[] };
+  const discovery_learning = execute
+    ? await persistDiscoveryLearning({ db, playbookMap, runs })
+    : [];
 
   return NextResponse.json({
     ok: true,
@@ -413,6 +477,7 @@ async function runBulk(req: NextRequest, body: Record<string, unknown>, execute:
     budget_skipped: budgetSkipped,
     automation_summary: automationSummary,
     automation_memory,
+    discovery_learning,
   }, { headers: { "Cache-Control": "no-store" } });
 }
 
