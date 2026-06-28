@@ -14,7 +14,7 @@ async function build(req: NextRequest, body: Record<string, unknown>) {
   const sp = req.nextUrl.searchParams;
   const niche = String(body.niche || sp.get("niche") || "").trim();
   if (!niche) return NextResponse.json({ error: "нужна niche" }, { status: 400 });
-  const limit = Math.min(1000, Math.max(10, Number(body.limit || sp.get("limit") || 300)));
+  const limit = Math.min(3000, Math.max(10, Number(body.limit || sp.get("limit") || 300)));
   const persist = body.persist === true || sp.get("persist") === "true";
 
   const { data, error } = await db

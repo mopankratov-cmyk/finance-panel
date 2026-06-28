@@ -2830,9 +2830,9 @@ export default function ReelsBrainPage() {
                 <input
                   type="number"
                   min={10}
-                  max={1000}
+                  max={3000}
                   value={patternLimit}
-                  onChange={(e) => setPatternLimit(Math.min(1000, Math.max(10, Number(e.target.value) || 10)))}
+                  onChange={(e) => setPatternLimit(Math.min(3000, Math.max(10, Number(e.target.value) || 10)))}
                   className="mt-1 min-h-11 w-28 rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none focus:border-cyan-400"
                 />
               </label>
