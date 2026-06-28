@@ -20,7 +20,7 @@ export interface RunPlan {
   step_started_at?: string | null;
   pollCount?: number;
   renderCount?: number;
-  otk?: { score: number | null; verdict?: string; axes?: unknown; issues?: string[]; basis?: string | null; basis_reason?: string | null } | null;
+  otk?: { score: number | null; verdict?: string; axes?: unknown; issues?: string[]; basis?: string | null; basis_reason?: string | null; artifact_ok?: boolean | null; artifact_defects?: string[] } | null;
   attempts?: number;
   lease_until?: string | null;
   error?: string | null;

@@ -87,6 +87,17 @@ function summarizeWarnings(plan: RunPlan): string | null {
   return warnings.length ? warnings.join(" | ") : null;
 }
 
+function isFramesGroundedOtkPass(plan: RunPlan, artifactOk = true): boolean {
+  const score = plan.otk?.score ?? null;
+  const basis = String(plan.otk?.basis || "").toLowerCase();
+  const verdict = String(plan.otk?.verdict || "").toLowerCase();
+  if (score == null || score < 7) return false;
+  if (!artifactOk) return false;
+  if (basis === "text" || basis === "fallback" || basis === "storyboard") return false;
+  if (verdict === "trash" || verdict === "rework" || verdict === "fail") return false;
+  return true;
+}
+
 function firstStepStartedAt(plan: RunPlan, step: string): string | null {
   const logs = plan.execution_log || [];
   const hit = logs.find((entry) => entry.step === step && entry.started_at);
@@ -1138,8 +1149,30 @@ export async function runRecipeStep(
     }
     if (score == null) addWarning("video-critic did not return score");
     if (typeof score === "number" && score < 7) addWarning(`OTK below threshold: ${score}`);
-    plan.otk = { score, verdict, axes, issues, basis, basis_reason: basisReason };
+    plan.otk = { score, verdict, axes, issues, basis, basis_reason: basisReason, artifact_ok: artifactOk, artifact_defects: artifactDefects };
     if (score != null && score > (plan.bestScore ?? -1)) { plan.bestScore = score; plan.bestUrl = url; }
+
+    const otkPassed = isFramesGroundedOtkPass(plan, artifactOk);
+    if (!otkPassed && (plan.renderCount || 0) < MAX_RENDERS) {
+      const culprit = pickCulprit(plan, axes);
+      if (culprit) {
+        finishExecutionLog(plan, trace, "warning", url, null, `otk regen: ${artifactDefects[0] || issues[0] || culprit.axis}`);
+        await regenCulprit(
+          db,
+          origin,
+          id,
+          plan,
+          niche,
+          article,
+          culprit.node,
+          artifactDefects.length ? artifactDefects : issues,
+          String(artifactDefects[0] || issues[0] || "raise OTK score").slice(0, 160),
+          artifactOk ? `OTK below gate: ${score ?? "no_score"}` : `artifact gate failed: ${artifactDefects.join(", ") || "broken"}`,
+          !artifactOk,
+        );
+        return;
+      }
+    }
 
     const status = summarizeWarnings(plan) ? "warning" : "done";
     plan.step = "bank";
@@ -1155,10 +1188,12 @@ export async function runRecipeStep(
     const score = plan.bestScore != null ? plan.bestScore : (plan.otk?.score ?? null);
     const hookNode = plan.nodes.find((n) => String(((n.params || {}) as Record<string, unknown>)["role"] || n.slot || "").toLowerCase() === "hook") || plan.nodes[0];
     const hook = textOfNode(hookNode).slice(0, 200);
-    // в библиотеку контента (каталог кокпита)
+    const artifactOk = plan.otk?.artifact_ok !== false;
+    const qualityPassed = isFramesGroundedOtkPass(plan, artifactOk);
+    // в библиотеку контента (каталог кокпита) попадает только frames-grounded OTK pass.
     let catalogUrl: string | null = null;
     let catalogError: string | null = null;
-    if (url) {
+    if (url && qualityPassed) {
       try {
         const g = await jpost(origin, "/api/factory/gen-save", { video_url: url, article, niche, hook, route: "node_graph", engine: plan.render_engine || "shotstack", batch_role: plan.batch_role || null, change_axis: plan.change_axis || null, otk: score, otk_axes: plan.otk?.axes ?? null, recipe_id: id }, 40000, true); // ≤40с: влезть в maxDuration 60 тика (был 120с → Vercel убивал handler, catalogUrl терялся)
         catalogUrl = g?.url || null;
@@ -1185,7 +1220,7 @@ export async function runRecipeStep(
     if (url && !catalogUrl && catalogError) {
       addWarning(`gen-save warning: ${catalogError}`);
     }
-    const qualityStatus = score != null && score >= 7 ? "otk_pass" : "warning";
+    const qualityStatus = qualityPassed ? "otk_pass" : "warning";
     const finalStatus = summarizeWarnings(plan) ? "warning" : qualityStatus;
     plan.step = "done";
     plan.catalog_url = catalogUrl;
@@ -1196,9 +1231,11 @@ export async function runRecipeStep(
         params: { source: "graph_run_bank", raw_url: url, error: catalogError },
       });
     }
-    await logSignal(db, finalStatus === "otk_pass" ? "approved" : "approved", {
+    await logSignal(db, finalStatus === "otk_pass" ? "approved" : "rejected", {
       recipe_id: id, niche, article, mode, format: null, engine: plan.render_engine || "shotstack",
-      axes: plan.otk?.axes ?? null, reason_chip: finalStatus === "warning" ? (plan.warnings?.[0] || "warning") : null,
+      axes: plan.otk?.axes ?? null,
+      reason_chip: finalStatus === "warning" ? (plan.warnings?.[0] || "OTK gate failed") : null,
+      params: { source: "graph_run_otk_gate", score, basis: plan.otk?.basis || null, artifact_ok: artifactOk, catalog_url: catalogUrl },
     });
     // V21/R5: батч-прогон прошёл ОТК → шлём оператору в Telegram на ревью (студийные прогоны — нет, без спама)
     if (plan.notify && finalStatus === "otk_pass" && (catalogUrl || url) && tgReady()) {
