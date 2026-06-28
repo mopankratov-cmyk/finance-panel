@@ -55,6 +55,11 @@ function num(v: any): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+function isHardLowBalance(service: string, balance: number | null): boolean {
+  if (balance == null) return false;
+  return ["fal", "creatify", "virlo"].includes(service) && balance <= 0;
+}
+
 // Сетевые сбои к зарубежным API (гео/ISP-блок) → понятный текст вместо «TypeError: fetch failed».
 // Частый кейс: локалка в РФ не пускает к virlo/fal (ECONNRESET), а Vercel (US) пускает.
 function friendlyNetError(err?: string): string | undefined {
@@ -175,7 +180,7 @@ export async function collectBalances(db: SupabaseClient, opts: CollectOpts = {}
     }
 
     const history = await historyFor(db, m.service, 40);
-    const low = balance != null && threshold != null && balance <= threshold;
+    const low = isHardLowBalance(m.service, balance) || (balance != null && threshold != null && balance <= threshold);
     return {
       service: m.service, label: m.label, unit: m.unit, capability: m.capability,
       balance, currency, source, threshold, low, hint: m.hint, updated_at: updatedAt,
