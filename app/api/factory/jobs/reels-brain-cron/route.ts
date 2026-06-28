@@ -27,7 +27,7 @@ function summarizeBacklogPlan(plan: unknown) {
   const lanes = Array.isArray((plan as { lanes?: unknown[] })?.lanes)
     ? ((plan as { lanes: unknown[] }).lanes as Array<Record<string, unknown>>)
     : [];
-  return lanes.reduce((acc, lane) => {
+  return lanes.reduce<{ total: number; analyzed: number; unanalyzed: number }>((acc, lane) => {
     acc.total += Number(lane.total || 0);
     acc.analyzed += Number(lane.analyzed || 0);
     acc.unanalyzed += Number(lane.unanalyzed || 0);
