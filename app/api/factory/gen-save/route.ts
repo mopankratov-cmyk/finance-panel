@@ -9,6 +9,17 @@ export const maxDuration = 120;
 
 const BUCKET = "factory-media";
 
+function looksLikeVideoUrl(url: string): boolean {
+  return /\.(mp4|mov|webm|m4v)(\?|#|$)/i.test(url);
+}
+
+function isVideoResponse(url: string, contentType: string): boolean {
+  const ct = contentType.toLowerCase();
+  if (ct.startsWith("video/")) return true;
+  if (ct.includes("application/octet-stream") && looksLikeVideoUrl(url)) return true;
+  return looksLikeVideoUrl(url) && !ct.startsWith("image/");
+}
+
 // Сохранить ГЕНЕРАЦИЮ завода в Базу контента навсегда (disk='gen').
 // Видео качаем с временной fal-ссылки → Supabase Storage → постоянный URL.
 // POST { video_url?, slides?:[url...], article?, niche?, hook?, route?, engine?, otk? }
@@ -69,20 +80,27 @@ export async function POST(req: NextRequest) {
     }
     let stored = "";
     let diag = "";
+    let invalidMedia = false;
     try {
       const r = await fetch(videoUrl, { signal: AbortSignal.timeout(90000) });
       if (!r.ok) diag = `fetch ${r.status}`;
       else {
+        const contentType = r.headers.get("content-type") || "";
+        if (!isVideoResponse(videoUrl, contentType)) {
+          invalidMedia = true;
+          diag = `not video: ${contentType || "unknown content-type"}`;
+        } else {
         const buf = Buffer.from(await r.arrayBuffer());
         const path = `gen/${stamp}-${rand}.mp4`;
         const { error } = await db.storage.from(BUCKET).upload(path, buf, { contentType: "video/mp4", upsert: true });
         if (error) diag = `upload: ${error.message}`;
         else stored = db.storage.from(BUCKET).getPublicUrl(path).data?.publicUrl || "";
+        }
       }
     } catch (e) { diag = `fetch-exc: ${String(e instanceof Error ? e.message : e).slice(0, 80)}`; }
     if (!stored) {
       await logGenSaveHistory(videoUrl, null, "artifact_fail", diag || "storage failed");
-      return NextResponse.json({ ok: false, error: "не удалось скачать/залить видео", diag }, { status: 502 });
+      return NextResponse.json({ ok: false, error: invalidMedia ? "video_url не является видео" : "не удалось скачать/залить видео", diag }, { status: invalidMedia ? 415 : 502 });
     }
     // #14: повторная проверка дедупа ПРЯМО перед вставкой — параллельный gen-poll мог успеть сохранить
     // это же видео, пока мы качали (~до 90с). Сужает окно гонки; полную гарантию даёт уникальный индекс
@@ -181,10 +199,10 @@ export async function GET(req: NextRequest) {
     if (badIds.length) await db.from("content_assets").delete().in("id", badIds);
     return NextResponse.json({ cleaned: badIds.length });
   }
-  const { data, error } = await db.from("content_assets").select("name,kind,url,niche,article,analysis,created_at").eq("disk", "gen").order("created_at", { ascending: false }).limit(200);
+  const { data, error } = await db.from("content_assets").select("name,kind,url,niche,article,analysis,created_at").eq("disk", "gen").eq("kind", "video").order("created_at", { ascending: false }).limit(200);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   // на всякий — не отдаём в галерею битые (не-ссылка) url
-  const gens = (data || []).filter((r) => String(r.url || "").startsWith("http"));
+  const gens = (data || []).filter((r) => String(r.url || "").startsWith("http") && looksLikeVideoUrl(String(r.url || "")));
   return NextResponse.json({ count: gens.length, generations: gens });
   } catch (e) {
     return NextResponse.json({
