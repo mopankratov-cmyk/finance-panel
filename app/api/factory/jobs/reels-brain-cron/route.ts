@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { internalFetch } from "@/lib/internalFetch";
 import { isAuthorizedReelsBrainJobRequest } from "@/lib/factory/reelsBrainJobAuth";
+import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -9,6 +10,8 @@ const DEFAULT_NICHES = "ru_toys,ru_clothing,ru_cosmetics";
 const DEFAULT_PLATFORMS = "tiktok,instagram,youtube";
 const DEFAULT_TARGET_TOTAL = 6000;
 const DEFAULT_MAX_BACKLOG_BEFORE_ANALYZE = 60;
+const SUPABASE_PAGE_SIZE = 1000;
+const MAX_BACKLOG_ROWS = 50000;
 
 function forcedTask(req: NextRequest): "bulk" | "analyze" | null {
   const raw = String(req.nextUrl.searchParams.get("task") || req.nextUrl.searchParams.get("mode") || "").trim().toLowerCase();
@@ -23,16 +26,40 @@ function numberParam(req: NextRequest, name: string, fallback: number, min: numb
   return Math.max(min, Math.min(max, value));
 }
 
-function summarizeBacklogPlan(plan: unknown) {
-  const lanes = Array.isArray((plan as { lanes?: unknown[] })?.lanes)
-    ? ((plan as { lanes: unknown[] }).lanes as Array<Record<string, unknown>>)
-    : [];
-  return lanes.reduce<{ total: number; analyzed: number; unanalyzed: number }>((acc, lane) => {
-    acc.total += Number(lane.total || 0);
-    acc.analyzed += Number(lane.analyzed || 0);
-    acc.unanalyzed += Number(lane.unanalyzed || 0);
-    return acc;
-  }, { total: 0, analyzed: 0, unanalyzed: 0 });
+function splitParam(value: string): string[] {
+  return value
+    .split(",")
+    .map((row) => row.trim())
+    .filter(Boolean);
+}
+
+async function loadBacklogTotals(input: { niches: string; platforms: string }) {
+  const db = getSupabaseAdmin();
+  if (!db) return { total: 0, analyzed: 0, unanalyzed: 0, error: "Supabase не настроен" };
+  const niches = splitParam(input.niches);
+  const platforms = new Set(splitParam(input.platforms));
+  const summary = { total: 0, analyzed: 0, unanalyzed: 0 };
+
+  for (let from = 0; from < MAX_BACKLOG_ROWS; from += SUPABASE_PAGE_SIZE) {
+    const to = Math.min(from + SUPABASE_PAGE_SIZE - 1, MAX_BACKLOG_ROWS - 1);
+    const { data, error } = await db
+      .from("viral_videos")
+      .select("niche,platform,analyzed")
+      .in("niche", niches)
+      .range(from, to);
+    if (error) return { ...summary, error: error.message };
+    const page = (data || []) as Array<{ niche?: string | null; platform?: string | null; analyzed?: boolean | null }>;
+    for (const row of page) {
+      const platform = String(row.platform || "").trim();
+      if (!platforms.has(platform)) continue;
+      summary.total += 1;
+      if (row.analyzed === false) summary.unanalyzed += 1;
+      else summary.analyzed += 1;
+    }
+    if (page.length < SUPABASE_PAGE_SIZE) break;
+  }
+
+  return summary;
 }
 
 async function selectAutoTask(req: NextRequest, niches: string, platforms: string) {
@@ -50,18 +77,7 @@ async function selectAutoTask(req: NextRequest, niches: string, platforms: strin
     };
   }
 
-  const params = new URLSearchParams({
-    niches,
-    platforms,
-    max_lanes: "9",
-    limit: "18",
-  });
-  const response = await internalFetch(`${req.nextUrl.origin}/api/factory/jobs/reels-brain-analyze-backlog?${params}`, {
-    method: "GET",
-    signal: AbortSignal.timeout(30000),
-  });
-  const plan = await response.json().catch(() => ({}));
-  const backlog = summarizeBacklogPlan(plan);
+  const backlog = await loadBacklogTotals({ niches, platforms });
   const task = backlog.total >= targetTotal || backlog.unanalyzed > maxBacklogBeforeAnalyze ? "analyze" : "bulk";
 
   return {
