@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-06-28T13:16:46.292Z",
+  "generated_at": "2026-06-28T13:37:35.771Z",
   "base_url": "https://finance-panel-two.vercel.app",
   "niche": null,
   "hours": 72,
@@ -25,7 +25,7 @@
             "threshold": null,
             "low": false,
             "hint": "тренд-аналитика · get_credit_balance",
-            "updated_at": "2026-06-28T13:16:30.461Z",
+            "updated_at": "2026-06-28T13:37:21.463Z",
             "history": [
               {
                 "balance": 9.5,
@@ -240,7 +240,7 @@
             "threshold": null,
             "low": false,
             "hint": "AI UGC-актёры · remaining_credits",
-            "updated_at": "2026-06-28T13:16:29.413Z",
+            "updated_at": "2026-06-28T13:37:20.350Z",
             "history": [
               {
                 "balance": 358.5,
@@ -455,7 +455,7 @@
             "threshold": null,
             "low": true,
             "hint": "видео-движки · нужен FAL_BILLING_KEY (admin)",
-            "updated_at": "2026-06-28T13:16:30.721Z",
+            "updated_at": "2026-06-28T13:37:21.346Z",
             "history": [
               {
                 "balance": -0.44,
@@ -694,7 +694,7 @@
         "low": [
           "fal"
         ],
-        "updated_at": "2026-06-28T13:16:31.180Z"
+        "updated_at": "2026-06-28T13:37:21.918Z"
       }
     },
     "quality": {
@@ -708,7 +708,7 @@
         "denominator": "produced_videos",
         "quality": {
           "window_hours": 72,
-          "since": "2026-06-25T13:16:31.903Z",
+          "since": "2026-06-25T13:37:22.697Z",
           "produced_videos": 88,
           "otk_pass": 0,
           "warnings": 88,
@@ -758,7 +758,7 @@
         "headline": "factory_quality_diagnostics",
         "diagnostics": {
           "window_hours": 72,
-          "since": "2026-06-25T13:16:33.210Z",
+          "since": "2026-06-25T13:37:24.067Z",
           "totals": {
             "recipes": 112,
             "produced_videos": 88,
@@ -1649,14 +1649,69 @@
     "batch": {
       "name": "batch-dry-run",
       "url": "https://finance-panel-two.vercel.app/api/factory/batch",
-      "status": 409,
-      "ok": false,
+      "status": 200,
+      "ok": true,
       "body": {
-        "ok": false,
-        "balance_block": [
-          "fal"
+        "ok": true,
+        "batch_run_id": "batch_1782653852781_55e9346c",
+        "requested": {
+          "niche": null,
+          "count": 5,
+          "budget_usd": 20,
+          "series_after": null
+        },
+        "preflight": {
+          "ready": false,
+          "requested_count": 5,
+          "available_drafts": 5,
+          "missing_drafts": 0,
+          "source_ready_drafts": 5,
+          "missing_source_drafts": 0,
+          "strong_source_drafts": 0,
+          "wb_only_drafts": 1,
+          "source_tiers": {
+            "prepared": 0,
+            "real": 0,
+            "wb": 1,
+            "none": 0
+          },
+          "require_strong_source": true,
+          "budget_fit_count": 0,
+          "provider_ready": true
+        },
+        "learning_gate": {
+          "ready": false,
+          "reason": "50-run цель уже закрыта: перед новым циклом зафиксировать выводы",
+          "current_feedback": 5,
+          "required_feedback": 3
+        },
+        "batch_plan": {
+          "control_count": 2,
+          "experiment_count": 3,
+          "control_pattern": "direct_claim | ugc_anim | seedance",
+          "primary_change_axis": "proof_density",
+          "experiment_note": "Добавить больше demo/proof в opening и середину, не меняя базовый format."
+        },
+        "selected_recipes": [],
+        "dry_run": true,
+        "enqueued": [],
+        "estimated_usd": 0,
+        "worst_case_usd": 0,
+        "budget_usd": 20,
+        "capped_by_budget": false,
+        "balance_unknown": [],
+        "provider_block": [],
+        "next_action": {
+          "type": "prepare_product",
+          "route": "/api/factory/prepare-product",
+          "article": "2ndCOS0301",
+          "count": 1,
+          "reason": "batch has WB-only sources; prepared product frames should lift OTK pass-rate"
+        },
+        "warnings": [
+          "source-prep recommended: batch contains WB-only sources"
         ],
-        "error": "Низкий баланс: fal — пополни или подними порог. Батч не запущен."
+        "note": "Бюджет-гард по worst-case (реген до ×3): уложились в $20, типовая трата ≈ $0, потолок ≈ $0. Прошедшее ОТК → Telegram (notify)."
       }
     }
   },
@@ -1669,7 +1724,7 @@
       "source pool is dominated by raw WB assets",
       "19 recent run_fail recipes",
       "3 produced videos were judged by text/storyboard/fallback",
-      "batch balance_block: fal",
+      "batch preflight not ready",
       "memory has 0 winner videos"
     ],
     "warnings": [
