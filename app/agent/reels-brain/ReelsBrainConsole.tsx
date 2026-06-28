@@ -192,8 +192,11 @@ type AnalyzeResponse = {
 type PatternMemoryItem = {
   pattern_id: string;
   hook_type: string;
+  hook_label?: string;
   structure_type: string;
+  structure_label?: string;
   retention_mechanism: string;
+  retention_label?: string;
   strength_score: number;
   frequency: number;
   hooks?: string[];
@@ -658,6 +661,52 @@ function providerLabel(provider: string) {
 function compactNumber(value: number | null | undefined) {
   if (value == null || !Number.isFinite(Number(value))) return "—";
   return nf.format(Number(value));
+}
+
+const HOOK_LABELS: Record<string, string> = {
+  unknown: "хук не распознан",
+  curiosity_question: "вопрос-интрига",
+  warning_pattern_break: "предупреждение / слом ожидания",
+  list_promise: "обещание списка",
+  before_after: "до/после",
+  demo_review: "демо / обзор",
+  curiosity_gap: "интрига с пробелом",
+  direct_claim: "прямое заявление",
+};
+
+const STRUCTURE_LABELS: Record<string, string> = {
+  unknown_structure: "структура не определена",
+  unboxing: "распаковка",
+  before_after: "до/после",
+  review: "обзор",
+  life_hack: "лайфхак",
+  pov: "POV-сценка",
+  demo: "демонстрация",
+};
+
+const RETENTION_LABELS: Record<string, string> = {
+  proof_wait: "ожидание доказательства",
+  curiosity_gap: "удержание интригой",
+  delayed_payoff: "отложенная развязка",
+  surprise_hold: "удержание удивлением",
+  transformation_wait: "ожидание трансформации",
+  open_loop: "открытая петля",
+};
+
+function fallbackPatternLabel(value: string) {
+  return value.replace(/_/g, " ").replace(/\s+/g, " ").trim() || "не распознано";
+}
+
+function patternHookLabel(pattern: PatternMemoryItem) {
+  return pattern.hook_label || HOOK_LABELS[pattern.hook_type] || fallbackPatternLabel(pattern.hook_type);
+}
+
+function patternStructureLabel(pattern: PatternMemoryItem) {
+  return pattern.structure_label || STRUCTURE_LABELS[pattern.structure_type] || fallbackPatternLabel(pattern.structure_type);
+}
+
+function patternRetentionLabel(pattern: PatternMemoryItem) {
+  return pattern.retention_label || RETENTION_LABELS[pattern.retention_mechanism] || fallbackPatternLabel(pattern.retention_mechanism);
 }
 
 function percent(value: number | null | undefined) {
@@ -2815,13 +2864,13 @@ export default function ReelsBrainPage() {
                 {(patternResult.memory?.patterns || []).slice(0, 4).map((pattern) => (
                   <div key={pattern.pattern_id} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm">
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                      <span className="font-semibold text-slate-800">{`${pattern.hook_type} -> ${pattern.structure_type}`}</span>
+                      <span className="font-semibold text-slate-800">{`${patternHookLabel(pattern)} -> ${patternStructureLabel(pattern)}`}</span>
                       <span className={`rounded-full border px-2 py-1 font-mono text-xs ${scoreTone(pattern.strength_score)}`}>
                         {compactNumber(pattern.strength_score)}
                       </span>
                     </div>
                     <div className="mt-1 text-xs text-slate-400">
-                      freq {compactNumber(pattern.frequency)} · {pattern.retention_mechanism}
+                      частота {compactNumber(pattern.frequency)} · {patternRetentionLabel(pattern)}
                     </div>
                   </div>
                 ))}

@@ -1,5 +1,12 @@
 import type { ReelsPlatform } from "./reelsBrain";
-import type { CrossPlatformPattern, ReelsPatternMemory, ReelsPatternMemoryBundle } from "./reelsBrainPatterns";
+import {
+  type CrossPlatformPattern,
+  type ReelsPatternMemory,
+  type ReelsPatternMemoryBundle,
+  labelReelsHookType,
+  labelReelsRetentionMechanism,
+  labelReelsStructureType,
+} from "./reelsBrainPatterns";
 import type { ReelsBrainProvider } from "./reelsBrainSources";
 
 export interface SelectedReelsBrain {
@@ -782,12 +789,12 @@ export function buildPlatformBrainHint(playbook: unknown, targetPlatform: unknow
   if (topHooks.length) parts.push(`\nТоп хуки платформы: ${topHooks.join(" | ")}`);
   if (topPatterns.length) {
     parts.push(`\nТоп паттерны платформы: ${topPatterns.map((pattern) =>
-      `${pattern.hook_type} / ${pattern.structure_type} / ${pattern.retention_mechanism} / freq ${pattern.frequency}`
+      `${pattern.hook_label || labelReelsHookType(pattern.hook_type)} / ${pattern.structure_label || labelReelsStructureType(pattern.structure_type)} / ${pattern.retention_label || labelReelsRetentionMechanism(pattern.retention_mechanism)} / частота ${pattern.frequency}`
     ).join(" | ")}`);
   }
   if (cross.length) {
     parts.push(`\nПереносимые cross-platform идеи для этой платформы: ${cross.map((pattern) =>
-      `${pattern.hook_type} / ${pattern.structure_type} (${pattern.platforms.join("+")})`
+      `${pattern.hook_label || labelReelsHookType(pattern.hook_type)} / ${pattern.structure_label || labelReelsStructureType(pattern.structure_type)} (${pattern.platforms.join("+")})`
     ).join(" | ")}`);
   }
   return parts.join("");
