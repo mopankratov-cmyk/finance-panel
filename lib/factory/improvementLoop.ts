@@ -208,6 +208,29 @@ function batchRunIdFromPlan(runPlan: unknown): string | null {
   return toText((runPlan as Record<string, unknown>).batch_run_id, 80) || null;
 }
 
+function runStartedAtFromPlan(runPlan: unknown): string | null {
+  if (!runPlan || typeof runPlan !== "object") return null;
+  const plan = runPlan as Record<string, unknown>;
+  const log = Array.isArray(plan.execution_log) ? plan.execution_log as Row[] : [];
+  const first = log
+    .map((entry) => toText(entry.started_at, 40))
+    .filter(Boolean)
+    .sort((a, b) => a.localeCompare(b))[0];
+  return first || null;
+}
+
+function batchRoleFromPlan(runPlan: unknown): ImprovementRun["batch_role"] {
+  if (!runPlan || typeof runPlan !== "object") return "none";
+  const raw = toText((runPlan as Record<string, unknown>).batch_role, 20).toLowerCase();
+  return raw === "control" || raw === "experiment" ? raw : "none";
+}
+
+function changeAxisFromPlan(runPlan: unknown): ImprovementRun["change_axis"] {
+  if (!runPlan || typeof runPlan !== "object") return "none";
+  const raw = toText((runPlan as Record<string, unknown>).change_axis, 40).toLowerCase();
+  return ["none", "hook_angle", "proof_density", "cta_shape", "format"].includes(raw) ? raw as ImprovementRun["change_axis"] : "none";
+}
+
 function metricLookup(metrics: ImprovementMetricRow[]): Map<number, ImprovementMetricRow> {
   const best = new Map<number, ImprovementMetricRow>();
   for (const row of metrics) {
@@ -293,9 +316,10 @@ export function deriveImprovementRun(
   const signal = recipeId != null ? context?.signalsByRecipe?.get(recipeId) : undefined;
   const assetMeta = outputUrl ? context?.winnerByUrl?.get(outputUrl) : undefined;
   const feedbackStatus: ImprovementRun["feedback_status"] = assetMeta?.is_winner ? "winner" : (signal?.status || "none");
+  const runStartedAt = runStartedAtFromPlan(row.run_plan) || String(row.created_at || "");
   const base: ImprovementRun = {
     recipe_id: recipeId,
-    created_at: String(row.created_at || ""),
+    created_at: runStartedAt,
     niche: toText(row.niche || "default", 60) || "default",
     article: toText(row.article || "", 80),
     mode: toText(row.mode || "", 40),
@@ -315,8 +339,8 @@ export function deriveImprovementRun(
     feedback_status: feedbackStatus,
     reject_reason: signal?.reject_reason || "",
     batch_run_id: batchRunIdFromPlan(row.run_plan),
-    batch_role: assetMeta?.batch_role || "none",
-    change_axis: assetMeta?.change_axis || "none",
+    batch_role: assetMeta?.batch_role || batchRoleFromPlan(row.run_plan),
+    change_axis: assetMeta?.change_axis || changeAxisFromPlan(row.run_plan),
     verdict: "salvageable",
     pattern_key: "",
   };
@@ -649,7 +673,7 @@ export function summarizeImprovementRuns(
   const winnerByUrl = assetWinnerLookup(options?.winners || []);
   const filtered = rows
     .filter((row) => !niche || String(row.niche || "") === niche)
-    .filter((row) => !seriesStartAt || String(row.created_at || "") >= seriesStartAt)
+    .filter((row) => !seriesStartAt || String(runStartedAtFromPlan(row.run_plan) || row.created_at || "") >= seriesStartAt)
     .filter((row) => String(row.status || "").toLowerCase() !== "draft")
     .map((row) => deriveImprovementRun(row, { metricsByRecipe, signalsByRecipe, winnerByUrl }))
     .filter((run) => run.recipe_id != null)
@@ -736,11 +760,10 @@ export async function loadImprovementSnapshot(
   const seriesStartAt = toText(options?.series_after, 40) || null;
   let q = db
     .from("node_recipes")
-    .select("id,article,niche,mode,status,otk_score,output_url,format_detected,created_at,run_plan")
-    .order("created_at", { ascending: false })
+    .select("id,article,niche,mode,status,otk_score,output_url,format_detected,created_at,updated_at,run_plan")
+    .order(seriesStartAt ? "updated_at" : "created_at", { ascending: false })
     .limit(Math.max(targetRuns, 80));
   if (niche) q = q.eq("niche", niche);
-  if (seriesStartAt) q = q.gte("created_at", seriesStartAt);
   const { data, error } = await q;
   if (error) throw error;
   const recipeRows = (data as Row[]) || [];

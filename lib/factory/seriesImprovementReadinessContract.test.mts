@@ -33,6 +33,9 @@ ok(/series_state: seriesState/.test(improvement), "improvement loop exposes 50-r
 ok(/series_start_at: seriesStartAt/.test(improvement), "improvement loop exposes active series window");
 ok(/batch_run_id: string \| null;/.test(improvement), "improvement loop exposes actual batch ids");
 ok(/batch_run_id: dominant\(chunk, \(row\) => row\.batch_run_id\)/.test(improvement), "improvement loop maps latest batch to actual batch id");
+ok(/function runStartedAtFromPlan/.test(improvement), "improvement loop can filter active series by run start instead of draft creation time");
+ok(/batchRoleFromPlan\(row\.run_plan\)/.test(improvement), "improvement loop can learn control/experiment role directly from graph-run plan");
+ok(/changeAxisFromPlan\(row\.run_plan\)/.test(improvement), "improvement loop can learn experiment axis directly from graph-run plan");
 ok(/String\(row\.status \|\| ""\)\.toLowerCase\(\) !== "draft"/.test(improvement), "improvement loop does not treat prepared drafts as completed runs");
 
 ok(/const seriesAfter = \(sp\.get\("series_after"\) \|\| ""\)\.trim\(\) \|\| null;/.test(learning), "learning API reads active series window");

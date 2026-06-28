@@ -36,7 +36,12 @@ ok(/batch_run_id: string \| null;/.test(source), "improvement loop exposes batch
 ok(/batch_role: "control" \| "experiment" \| "none";/.test(source), "improvement loop tracks batch role");
 ok(/change_axis: "none" \| "hook_angle" \| "proof_density" \| "cta_shape" \| "format";/.test(source), "improvement loop tracks change axis");
 ok(/function batchRunIdFromPlan/.test(source), "improvement loop extracts batch id from run plan");
+ok(/function runStartedAtFromPlan/.test(source), "improvement loop extracts actual run start from execution log");
+ok(/function batchRoleFromPlan/.test(source), "improvement loop extracts batch role from run plan");
+ok(/function changeAxisFromPlan/.test(source), "improvement loop extracts experiment axis from run plan");
 ok(/batch_run_id: batchRunIdFromPlan\(row\.run_plan\)/.test(source), "improvement run carries batch id from graph-run plan");
+ok(/batch_role: assetMeta\?\.batch_role \|\| batchRoleFromPlan\(row\.run_plan\)/.test(source), "improvement run falls back to graph-run batch role");
+ok(/change_axis: assetMeta\?\.change_axis \|\| changeAxisFromPlan\(row\.run_plan\)/.test(source), "improvement run falls back to graph-run change axis");
 ok(/batch_run_id: dominant\(chunk, \(row\) => row\.batch_run_id\)/.test(source), "improvement batch aggregates dominant batch id");
 ok(/\.from\("post_metrics"\)/.test(source), "improvement loop reads post metrics");
 ok(/\.from\("cf_signals"\)/.test(source), "improvement loop reads cf_signals feedback");
@@ -63,9 +68,9 @@ ok(/Number\(hasExplicitFeedback\(a\)\) - Number\(hasExplicitFeedback\(b\)\)/.tes
 ok(/function buildSeriesState/.test(source), "improvement loop builds 50-run series state");
 ok(/remaining_batches: Math\.ceil\(remainingRuns \/ batchSize\)/.test(source), "series state tracks remaining batches");
 ok(/series_after\?: string \| null;/.test(source), "improvement loop accepts a series window filter");
-ok(/\.filter\(\(row\) => !seriesStartAt \|\| String\(row\.created_at \|\| ""\) >= seriesStartAt\)/.test(source), "improvement loop filters in-memory rows by series window");
+ok(/\.filter\(\(row\) => !seriesStartAt \|\| String\(runStartedAtFromPlan\(row\.run_plan\) \|\| row\.created_at \|\| ""\) >= seriesStartAt\)/.test(source), "improvement loop filters in-memory rows by actual run start window");
 ok(/\.filter\(\(row\) => String\(row\.status \|\| ""\)\.toLowerCase\(\) !== "draft"\)/.test(source), "improvement loop excludes unlaunched draft recipes");
-ok(/q = q\.gte\("created_at", seriesStartAt\)/.test(source), "improvement loop filters database rows by series window");
+ok(/\.order\(seriesStartAt \? "updated_at" : "created_at"/.test(source), "improvement loop fetches recently updated rows for active series windows");
 
 if (failed) process.exit(1);
 console.log(`improvementLoop: ${passed} passed, ${failed} failed`);
