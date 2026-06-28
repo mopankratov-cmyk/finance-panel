@@ -683,7 +683,7 @@ export async function runRecipeStep(
       for (const n of pending) {
         if (!n.token) { n.status = "error"; n.error = "нет токена"; continue; }
         const s = await pollNode(n.token);
-        if (s.status === "done" && s.url) { n.status = "done"; n.url = s.url; n.error = null; }
+        if (s.status === "done" && s.url) { n.status = "done"; n.url = s.url; n.error = undefined; }
         else if (s.status === "error") { n.status = "error"; n.error = s.error; }
       }
     }
