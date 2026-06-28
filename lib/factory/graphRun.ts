@@ -26,6 +26,7 @@ const LEASE_MS = 90_000;
 const MAX_POLLS = 35;
 const POLL_WAIT_MS = 12_000;
 const MAX_GEN_POLL_MS = MAX_POLLS * POLL_WAIT_MS + 60_000;
+const MAX_GEN_POLL_LOGS = 12;
 const MAX_RENDERS = 3;
 export const MAX_STEP_ATTEMPTS = 3;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -96,6 +97,10 @@ function stepAgeMs(plan: RunPlan, step: string, now = Date.now()): number {
   const started = plan.step_started_at || firstStepStartedAt(plan, step);
   const t = started ? Date.parse(started) : NaN;
   return Number.isFinite(t) ? Math.max(0, now - t) : 0;
+}
+
+function stepLogCount(plan: RunPlan, step: string): number {
+  return (plan.execution_log || []).filter((entry) => entry.step === step).length;
 }
 
 // «сборочные» инструменты не генерят отдельный клип — участвуют в монтаже/звуке
@@ -691,7 +696,7 @@ export async function runRecipeStep(
   // ── gen-poll: ждать готовности всех submitted-нод ──
   if (plan.step === "gen-poll") {
     if (!plan.step_started_at) plan.step_started_at = firstStepStartedAt(plan, "gen-poll") || new Date().toISOString();
-    const timedOutByWallClock = stepAgeMs(plan, "gen-poll") >= MAX_GEN_POLL_MS;
+    const timedOutByWallClock = stepAgeMs(plan, "gen-poll") >= MAX_GEN_POLL_MS || stepLogCount(plan, "gen-poll") >= MAX_GEN_POLL_LOGS;
     const pending = plan.nodes.filter((n) => n.status === "submitted");
     if (pending.length && !timedOutByWallClock) {
       await sleep(POLL_WAIT_MS);
