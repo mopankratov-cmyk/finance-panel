@@ -43,12 +43,7 @@ const DEFAULT_NEG = "mirrored text, warped label, deformed product, deformed pac
 function key(): string | null { return process.env.FAL_KEY || null; }
 function family(model: string): "seedance" | "kling" | "pika" { return model.startsWith("seedance") ? "seedance" : model.startsWith("pika") ? "pika" : "kling"; }
 
-// Остаток баланса аккаунта FAL (GET https://api.fal.ai/v1/account/billing?expand=credits).
-// ⚠️ Нужен ADMIN-ключ: обычный FAL_KEY → 403 authorization_error (проверено live). Владелец кладёт
-// admin-ключ в FAL_BILLING_KEY (Vercel); без него фолбэк на FAL_KEY и честная ошибка «нужен admin-ключ».
-// Ответ: { credits: { current_balance: number, currency: "USD" } } (поля при expand=credits).
-export async function falBalance(): Promise<{ balance: number | null; currency: string; raw?: unknown; error?: string }> {
-  const k = process.env.FAL_BILLING_KEY || process.env.FAL_KEY || null;
+async function fetchFalBilling(k: string): Promise<{ balance: number | null; currency: string; raw?: unknown; error?: string }> {
   if (!k) return { balance: null, currency: "USD", error: "FAL_KEY не настроен" };
   try {
     const r = await fetch("https://api.fal.ai/v1/account/billing?expand=credits", { headers: { Authorization: `Key ${k}` }, cache: "no-store", signal: AbortSignal.timeout(15000) });
@@ -64,6 +59,31 @@ export async function falBalance(): Promise<{ balance: number | null; currency: 
     if (!Number.isFinite(n)) return { balance: null, currency, error: "поле баланса не найдено", raw: j };
     return { balance: n, currency, raw: j };
   } catch (e) { return { balance: null, currency: "USD", error: String(e).slice(0, 140) }; }
+}
+
+// Остаток баланса аккаунта FAL (GET https://api.fal.ai/v1/account/billing?expand=credits).
+// ⚠️ Нужен ADMIN-ключ: обычный FAL_KEY → 403 authorization_error (проверено live). Владелец кладёт
+// admin-ключ в FAL_BILLING_KEY (Vercel); без него фолбэк на FAL_KEY и честная ошибка «нужен admin-ключ».
+// Ответ: { credits: { current_balance: number, currency: "USD" } } (поля при expand=credits).
+export async function falBalance(): Promise<{ balance: number | null; currency: string; raw?: unknown; error?: string }> {
+  const billingKey = process.env.FAL_BILLING_KEY || "";
+  const renderKey = process.env.FAL_KEY || "";
+  const primaryKey = billingKey || renderKey;
+  if (!primaryKey) return { balance: null, currency: "USD", error: "FAL_KEY не настроен" };
+  const primary = await fetchFalBilling(primaryKey);
+  if (
+    billingKey &&
+    renderKey &&
+    renderKey !== billingKey &&
+    typeof primary.balance === "number" &&
+    primary.balance <= 0
+  ) {
+    const renderAccount = await fetchFalBilling(renderKey);
+    if (typeof renderAccount.balance === "number" && renderAccount.balance > 0) {
+      return { ...renderAccount, raw: { source: "FAL_KEY", billing_key_balance: primary.balance, billing_key_raw: primary.raw, render_key_raw: renderAccount.raw } };
+    }
+  }
+  return primary;
 }
 
 // у каждого СЕМЕЙСТВА своя схема входа — лишние поля дают 422. Условно шлём только заданные опции.
