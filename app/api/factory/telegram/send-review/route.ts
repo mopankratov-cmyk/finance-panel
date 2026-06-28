@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { tgReady, tgSendReview } from "@/lib/factory/telegram";
+import { tgReady, tgSendMessage, tgSendReview } from "@/lib/factory/telegram";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -33,8 +33,13 @@ export async function POST(req: NextRequest) {
         results.push({ recipe_id: recipeId || null, ok: false, error: "bad recipe_id/url" });
         continue;
       }
-      const sent = await tgSendReview(url, caption, recipeId);
-      results.push({ recipe_id: recipeId, ok: !!sent?.ok, error: sent?.error || sent?.description || null, message_id: sent?.result?.message_id || null });
+      let sent = await tgSendReview(url, caption, recipeId);
+      let fallback = false;
+      if (!sent?.ok) {
+        fallback = true;
+        sent = await tgSendMessage(`${caption}\n\n${url}\n\n#r${recipeId} · если Telegram не показал видео, открой ссылку и ответь сюда голосом/текстом.`);
+      }
+      results.push({ recipe_id: recipeId, ok: !!sent?.ok, fallback, error: sent?.error || sent?.description || null, message_id: sent?.result?.message_id || null });
       await new Promise((r) => setTimeout(r, 700));
     }
     return NextResponse.json({ ok: results.every((r) => r.ok), results });
