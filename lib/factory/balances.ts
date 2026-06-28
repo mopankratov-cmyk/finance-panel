@@ -76,6 +76,10 @@ function withTimeout<T>(p: Promise<T>, ms: number, fallback: T): Promise<T> {
   return Promise.race([p, new Promise<T>((res) => setTimeout(() => res(fallback), ms))]);
 }
 
+function apiBalanceTimeoutMs(service: string): number {
+  return service === "fal" ? 20_000 : 9_000;
+}
+
 async function liveApiBalance(service: string): Promise<{ balance: number | null; currency: string; raw?: unknown; error?: string }> {
   if (service === "virlo") return virloBalance();
   if (service === "creatify") return creatifyBalance();
@@ -155,7 +159,8 @@ export async function collectBalances(db: SupabaseClient, opts: CollectOpts = {}
     let wroteFresh = false;
 
     if (m.capability === "api") {
-      const live = await withTimeout(liveApiBalance(m.service), 9000, { balance: null, currency: m.unit, error: "опрос завис >9с (сеть/гео) — заработает на Vercel" });
+      const timeoutMs = apiBalanceTimeoutMs(m.service);
+      const live = await withTimeout(liveApiBalance(m.service), timeoutMs, { balance: null, currency: m.unit, error: `опрос завис >${Math.round(timeoutMs / 1000)}с (сеть/гео) — заработает на Vercel` });
       if (live.balance != null) {
         balance = live.balance; currency = live.currency || currency; source = "api"; freshApiRaw = live.raw; updatedAt = new Date().toISOString(); wroteFresh = true;
       } else {
