@@ -25,6 +25,7 @@ export type { ExecutionLogEntry, RunNode, RunPlan, RunStep } from "./graphTypes"
 const LEASE_MS = 90_000;
 const MAX_POLLS = 35;
 const POLL_WAIT_MS = 12_000;
+const MAX_GEN_POLL_MS = MAX_POLLS * POLL_WAIT_MS + 60_000;
 const MAX_RENDERS = 3;
 export const MAX_STEP_ATTEMPTS = 3;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -83,6 +84,18 @@ function summarizeWarnings(plan: RunPlan): string | null {
   const warnings = Array.from(new Set((plan.warnings || []).map((s) => String(s).trim()).filter(Boolean)));
   plan.warnings = warnings.length ? warnings : null;
   return warnings.length ? warnings.join(" | ") : null;
+}
+
+function firstStepStartedAt(plan: RunPlan, step: string): string | null {
+  const logs = plan.execution_log || [];
+  const hit = logs.find((entry) => entry.step === step && entry.started_at);
+  return hit?.started_at || null;
+}
+
+function stepAgeMs(plan: RunPlan, step: string, now = Date.now()): number {
+  const started = plan.step_started_at || firstStepStartedAt(plan, step);
+  const t = started ? Date.parse(started) : NaN;
+  return Number.isFinite(t) ? Math.max(0, now - t) : 0;
 }
 
 // «сборочные» инструменты не генерят отдельный клип — участвуют в монтаже/звуке
@@ -668,7 +681,7 @@ export async function runRecipeStep(
       }
     }
     delete (plan as any).submit_started_at;
-    plan.step = "gen-poll"; plan.pollCount = 0;
+    plan.step = "gen-poll"; plan.pollCount = 0; plan.step_started_at = new Date().toISOString();
     plan.lease_until = null; // шаг завершён — освобождаем лиз для следующего тика (gen-poll)
     finishExecutionLog(plan, trace, "done", `submitted=${plan.nodes.filter((n) => n.status === "submitted").length}`, null, "submit→gen-poll");
     await savePlan(db, id, plan);
@@ -677,8 +690,10 @@ export async function runRecipeStep(
 
   // ── gen-poll: ждать готовности всех submitted-нод ──
   if (plan.step === "gen-poll") {
+    if (!plan.step_started_at) plan.step_started_at = firstStepStartedAt(plan, "gen-poll") || new Date().toISOString();
+    const timedOutByWallClock = stepAgeMs(plan, "gen-poll") >= MAX_GEN_POLL_MS;
     const pending = plan.nodes.filter((n) => n.status === "submitted");
-    if (pending.length) {
+    if (pending.length && !timedOutByWallClock) {
       await sleep(POLL_WAIT_MS);
       for (const n of pending) {
         if (!n.token) { n.status = "error"; n.error = "нет токена"; continue; }
@@ -689,19 +704,20 @@ export async function runRecipeStep(
     }
     const stillPending = plan.nodes.filter((n) => n.status === "submitted");
     const pollCount = (plan.pollCount || 0) + 1;
-    if (stillPending.length && pollCount < MAX_POLLS) {
+    if (stillPending.length && pollCount < MAX_POLLS && !timedOutByWallClock) {
       plan.pollCount = pollCount;
       finishExecutionLog(plan, trace, "running", `submitted=${stillPending.length}`, null, "gen-poll waiting");
       await savePlan(db, id, plan, { status: "running" });
       return;
     }
     // таймаут оставшихся → помечаем error, идём дальше с тем, что готово
-    for (const n of stillPending) { n.status = "error"; n.error = "render timeout"; }
+    for (const n of stillPending) { n.status = "error"; n.error = timedOutByWallClock ? "generation poll wall-clock timeout" : "render timeout"; }
     const anyDone = plan.nodes.some((n) => n.status === "done" && n.url);
     const rescuedAfterPoll = fallbackVisualNodes(plan.nodes).length;
     if (!anyDone && rescuedAfterPoll) {
       addWarning(`gen-poll source fallback rescued ${rescuedAfterPoll} visual asset(s)`);
       plan.step = "assemble";
+      plan.step_started_at = null;
       finishExecutionLog(plan, trace, "warning", `fallback=${rescuedAfterPoll}`, null, "gen-poll→assemble(source fallback)");
       await savePlan(db, id, plan);
       return;
@@ -718,6 +734,7 @@ export async function runRecipeStep(
       return;
     }
     plan.step = "assemble";
+    plan.step_started_at = null;
     finishExecutionLog(plan, trace, "done", `done=${plan.nodes.filter((n) => n.status === "done" && n.url).length}`, null, "gen-poll→assemble");
     await savePlan(db, id, plan);
     return;

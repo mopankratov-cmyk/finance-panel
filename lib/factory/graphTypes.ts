@@ -17,6 +17,7 @@ export interface RunPlan {
   nodes: RunNode[];
   render_id?: string | null;
   output_url?: string | null;
+  step_started_at?: string | null;
   pollCount?: number;
   renderCount?: number;
   otk?: { score: number | null; verdict?: string; axes?: unknown; issues?: string[]; basis?: string | null; basis_reason?: string | null } | null;
