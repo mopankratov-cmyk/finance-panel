@@ -1,20 +1,94 @@
 import { NextRequest, NextResponse } from "next/server";
 import { internalFetch } from "@/lib/internalFetch";
 import { isAuthorizedReelsBrainJobRequest } from "@/lib/factory/reelsBrainJobAuth";
+import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
 
 const DEFAULT_NICHES = "ru_toys,ru_clothing,ru_cosmetics";
 const DEFAULT_PLATFORMS = "tiktok,instagram,youtube";
+const DEFAULT_TARGET_TOTAL = 6000;
+const DEFAULT_MAX_BACKLOG_BEFORE_ANALYZE = 120;
+const SUPABASE_PAGE_SIZE = 1000;
+const MAX_BACKLOG_ROWS = 50000;
 
-function requestedTask(req: NextRequest): "bulk" | "analyze" {
+function forcedTask(req: NextRequest): "bulk" | "analyze" | null {
   const raw = String(req.nextUrl.searchParams.get("task") || req.nextUrl.searchParams.get("mode") || "").trim().toLowerCase();
   if (raw === "bulk" || raw === "ingest") return "bulk";
   if (raw === "analyze" || raw === "analysis") return "analyze";
+  return null;
+}
 
-  // Vercel cron runs every 5 minutes: one corpus-fill tick per hour, eleven analyze ticks per hour.
-  return new Date().getUTCMinutes() === 0 ? "bulk" : "analyze";
+function numberParam(req: NextRequest, name: string, fallback: number, min: number, max: number): number {
+  const value = Number(req.nextUrl.searchParams.get(name) || fallback);
+  if (!Number.isFinite(value)) return fallback;
+  return Math.max(min, Math.min(max, value));
+}
+
+function splitParam(value: string): string[] {
+  return value
+    .split(",")
+    .map((row) => row.trim())
+    .filter(Boolean);
+}
+
+async function loadBacklogTotals(input: { niches: string; platforms: string }) {
+  const db = getSupabaseAdmin();
+  if (!db) return { total: 0, analyzed: 0, unanalyzed: 0, error: "Supabase не настроен" };
+  const niches = splitParam(input.niches);
+  const platforms = new Set(splitParam(input.platforms));
+  const summary = { total: 0, analyzed: 0, unanalyzed: 0 };
+
+  for (let from = 0; from < MAX_BACKLOG_ROWS; from += SUPABASE_PAGE_SIZE) {
+    const to = Math.min(from + SUPABASE_PAGE_SIZE - 1, MAX_BACKLOG_ROWS - 1);
+    const { data, error } = await db
+      .from("viral_videos")
+      .select("niche,platform,analyzed")
+      .in("niche", niches)
+      .range(from, to);
+    if (error) return { ...summary, error: error.message };
+    const page = (data || []) as Array<{ niche?: string | null; platform?: string | null; analyzed?: boolean | null }>;
+    for (const row of page) {
+      const platform = String(row.platform || "").trim();
+      if (!platforms.has(platform)) continue;
+      summary.total += 1;
+      if (row.analyzed === false) summary.unanalyzed += 1;
+      else summary.analyzed += 1;
+    }
+    if (page.length < SUPABASE_PAGE_SIZE) break;
+  }
+
+  return summary;
+}
+
+async function selectAutoTask(req: NextRequest, niches: string, platforms: string) {
+  const forced = forcedTask(req);
+  const targetTotal = numberParam(req, "target", DEFAULT_TARGET_TOTAL, 1000, 10000);
+  const maxBacklogBeforeAnalyze = numberParam(req, "max_backlog_before_analyze", DEFAULT_MAX_BACKLOG_BEFORE_ANALYZE, 1, 1000);
+
+  if (forced) {
+    return {
+      task: forced,
+      targetTotal,
+      maxBacklogBeforeAnalyze,
+      backlog: null,
+      decision: `forced ${forced}`,
+    };
+  }
+
+  const backlog = await loadBacklogTotals({ niches, platforms });
+  const task = backlog.total >= targetTotal || backlog.unanalyzed > maxBacklogBeforeAnalyze ? "analyze" : "bulk";
+
+  return {
+    task,
+    targetTotal,
+    maxBacklogBeforeAnalyze,
+    backlog,
+    decision: task === "bulk"
+      ? `corpus ${backlog.total}/${targetTotal}, backlog ${backlog.unanalyzed} <= ${maxBacklogBeforeAnalyze}: grow corpus`
+      : `corpus ${backlog.total}/${targetTotal}, backlog ${backlog.unanalyzed}: analyze memory`,
+  };
 }
 
 export async function GET(req: NextRequest) {
@@ -23,23 +97,23 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "unauthorized" }, { status: 401 });
     }
 
-    const task = requestedTask(req);
     const niches = req.nextUrl.searchParams.get("niches") || DEFAULT_NICHES;
     const platforms = req.nextUrl.searchParams.get("platforms") || DEFAULT_PLATFORMS;
+    const auto = await selectAutoTask(req, niches, platforms);
+    const task = auto.task;
     const endpoint = task === "bulk"
-      ? "/api/factory/jobs/reels-brain-learning"
+      ? "/api/factory/jobs/reels-brain-bulk-ingest"
       : "/api/factory/jobs/reels-brain-analyze-backlog";
     const body = task === "bulk"
       ? {
         niches,
         platforms,
-        strategy: "bulk",
-        max_lanes: 2,
-        limit: 25,
-        providers_per_lane: 1,
-        provider_timeout_ms: 30000,
-        max_provider_calls: 4,
-        max_cost_units: 10,
+        max_lanes: 8,
+        limit: 40,
+        providers_per_lane: 2,
+        provider_timeout_ms: 22000,
+        max_provider_calls: 16,
+        max_cost_units: 48,
         hours: 72,
       }
       : {
@@ -57,13 +131,38 @@ export async function GET(req: NextRequest) {
       signal: AbortSignal.timeout(115000),
     });
     const result = await response.json().catch(() => ({}));
+    const resultRecord = (result || {}) as Record<string, unknown>;
+    const tickRecord = ((resultRecord.tick || resultRecord) || {}) as Record<string, unknown>;
+    const summaryRecord = ((tickRecord.automation_summary || resultRecord.automation_summary) || {}) as Record<string, unknown>;
+    console.info("reels_brain_cron_tick", JSON.stringify({
+      task,
+      decision: auto.decision,
+      target_total: auto.targetTotal,
+      backlog: auto.backlog,
+      endpoint,
+      status: response.status,
+      ok: response.ok && (result as { ok?: boolean }).ok !== false,
+      found: tickRecord.found ?? summaryRecord.found ?? null,
+      inserted: tickRecord.inserted ?? summaryRecord.inserted ?? null,
+      analyzed: tickRecord.analyzed ?? summaryRecord.analyzed ?? null,
+      errors: tickRecord.errors ?? summaryRecord.errors ?? null,
+      discovery_learning: Array.isArray(tickRecord.discovery_learning)
+        ? tickRecord.discovery_learning.length
+        : Array.isArray(resultRecord.discovery_learning)
+          ? resultRecord.discovery_learning.length
+          : null,
+    }));
 
     return NextResponse.json({
       ok: response.ok && (result as { ok?: boolean }).ok !== false,
       mode: "reels_brain_cron",
       task,
       cadence: "*/5 * * * *",
-      policy: "bulk at minute 00 UTC, analyze on the other 5-minute ticks",
+      policy: "auto until target: bulk while corpus is below target and backlog is small, otherwise analyze",
+      target_total: auto.targetTotal,
+      max_backlog_before_analyze: auto.maxBacklogBeforeAnalyze,
+      backlog: auto.backlog,
+      decision: auto.decision,
       endpoint,
       result,
     }, { status: response.ok ? 200 : 500, headers: { "Cache-Control": "no-store" } });

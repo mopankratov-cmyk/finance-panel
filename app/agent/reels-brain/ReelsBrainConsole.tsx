@@ -1009,8 +1009,10 @@ export default function ReelsBrainPage() {
   const analyzeBacklogProgress = analyzeBacklogTotals.total
     ? Math.round((analyzeBacklogTotals.analyzed / analyzeBacklogTotals.total) * 100)
     : 0;
-  const corpusProgress = portfolioCorpusTarget ? Math.min(100, Math.round((portfolioCorpusCurrent / portfolioCorpusTarget) * 100)) : 0;
-  const discoveryReady = portfolioCorpusCurrent >= 2500;
+  const cockpitCorpusCurrent = Math.max(portfolioCorpusCurrent, analyzeBacklogTotals.total);
+  const cockpitCorpusSource = analyzeBacklogTotals.total > portfolioCorpusCurrent ? "backlog" : "portfolio";
+  const corpusProgress = portfolioCorpusTarget ? Math.min(100, Math.round((cockpitCorpusCurrent / portfolioCorpusTarget) * 100)) : 0;
+  const discoveryReady = cockpitCorpusCurrent >= 2500;
   const analysisReady = analyzeBacklogTotals.total > 0 && analyzeBacklogTotals.unanalyzed === 0;
   const brainStage = analysisReady
     ? "Готов к регулярному дообучению"
@@ -1019,8 +1021,8 @@ export default function ReelsBrainPage() {
       : "Набираем насмотренность";
   const nextOperatorAction = analyzeBacklogTotals.unanalyzed > 0
     ? `разобрать ${compactNumber(analyzeBacklogTotals.unanalyzed)} видео в память`
-    : portfolioCorpusCurrent < portfolioCorpusTarget
-      ? `добрать ${compactNumber(Math.max(0, portfolioCorpusTarget - portfolioCorpusCurrent))} видео до цели`
+    : cockpitCorpusCurrent < portfolioCorpusTarget
+      ? `добрать ${compactNumber(Math.max(0, portfolioCorpusTarget - cockpitCorpusCurrent))} видео до цели`
       : "снять карту источников и сравнить качество";
   const serverAutomationHistory: AutomationHistoryItem[] = (brainSummary?.automation_history || []).map((item) => ({
     id: `server:${item.id}`,
@@ -1714,8 +1716,10 @@ export default function ReelsBrainPage() {
               <div className="mt-5 grid gap-3 sm:grid-cols-3">
                 <div className="rounded-2xl border border-white/10 bg-white/10 p-4">
                   <div className="text-xs font-bold uppercase tracking-wide text-slate-300">Corpus</div>
-                  <div className="mt-2 text-3xl font-black">{compactNumber(portfolioCorpusCurrent)}</div>
-                  <div className="mt-1 text-xs text-slate-300">из {compactNumber(portfolioCorpusTarget)} · {compactNumber(corpusProgress)}%</div>
+                  <div className="mt-2 text-3xl font-black">{compactNumber(cockpitCorpusCurrent)}</div>
+                  <div className="mt-1 text-xs text-slate-300">
+                    из {compactNumber(portfolioCorpusTarget)} · {compactNumber(corpusProgress)}% · источник {cockpitCorpusSource}
+                  </div>
                 </div>
                 <div className="rounded-2xl border border-white/10 bg-white/10 p-4">
                   <div className="text-xs font-bold uppercase tracking-wide text-slate-300">Memory backlog</div>
@@ -1876,7 +1880,7 @@ export default function ReelsBrainPage() {
                     analyzed {compactNumber(analyzeBacklogTotals.analyzed)} · progress {compactNumber(analyzeBacklogProgress)}% · queue lanes {compactNumber(analyzeBacklogQueue.length)}
                   </div>
                   <div className="mt-2 text-xs font-semibold text-emerald-900">
-                    Corpus сейчас: {compactNumber(portfolioCorpusCurrent)} / {compactNumber(portfolioCorpusTarget)}
+                    Corpus сейчас: {compactNumber(cockpitCorpusCurrent)} / {compactNumber(portfolioCorpusTarget)}
                     {portfolioStageTarget ? ` · milestone ${portfolioStageLabel}: ${compactNumber(portfolioStageTarget)}` : ""}
                   </div>
                 </div>
