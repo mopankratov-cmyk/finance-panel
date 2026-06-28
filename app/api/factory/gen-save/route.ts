@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
-import { nicheFromArticle } from "@/lib/factory/rubric";
+import { canonicalNiche, nicheFromArticle } from "@/lib/factory/rubric";
 import { logGeneration } from "@/lib/factory/genHistory";
 import { extractPosterUrl } from "@/lib/factory/serverMedia";
 
@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
   const videoUrl: string = (b.video_url || "").toString().trim();
   const slides: string[] = Array.isArray(b.slides) ? b.slides.filter((s: unknown) => typeof s === "string") : [];
   const article: string = (b.article || b.sku_art || "").toString().trim();
-  const niche: string = b.niche || nicheFromArticle(article, (b.product_name || b.hook || "").toString());
+  const niche: string = canonicalNiche(b.niche || nicheFromArticle(article, (b.product_name || b.hook || "").toString()), article, (b.product_name || b.hook || "").toString());
   if (!videoUrl && !slides.length) return NextResponse.json({ error: "нужен video_url или slides" }, { status: 400 });
 
   try { await db.storage.createBucket(BUCKET, { public: true }); } catch { /* есть */ }

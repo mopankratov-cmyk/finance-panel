@@ -52,6 +52,15 @@ export function nicheFromArticle(article = "", name = ""): RubricNiche {
   return "default";
 }
 
+export function canonicalNiche(input?: string | null, article = "", name = ""): RubricNiche {
+  const raw = String(input || "").trim().toLowerCase().replace(/^ru[_-]/, "");
+  if (raw === "clothing" || raw === "apparel" || raw === "jackets" || raw === "jacket" || raw === "outerwear") return "clothing";
+  if (raw === "toys" || raw === "toy" || raw === "blasters" || raw === "water_guns" || raw === "water-guns") return "toys";
+  if (raw === "cosmetics" || raw === "beauty" || raw === "cream" || raw === "skincare" || raw === "makeup") return "cosmetics";
+  if (raw === "default" || raw === "other" || raw === "misc") return "default";
+  return nicheFromArticle(article, name || raw);
+}
+
 // --- детерминированный вердикт по осям (считает сервер, не модель) ---
 export interface RubricResult { weighted: number; score: number; verdict: "ok" | "rework" | "trash"; floorFail: string[] }
 

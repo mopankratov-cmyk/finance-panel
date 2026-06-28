@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { canonicalNiche } from "./rubric";
 
 type Row = Record<string, unknown>;
 
@@ -59,7 +60,7 @@ export async function loadFactoryQualityStats(
 ): Promise<FactoryQualityStats> {
   const windowHours = Math.max(1, Math.min(24 * 30, Number(options?.hours) || 24));
   const since = new Date(Date.now() - windowHours * 3600_000).toISOString();
-  const niche = text(options?.niche, 80) || null;
+  const niche = options?.niche ? canonicalNiche(text(options.niche, 80)) : null;
 
   let q = db
     .from("node_recipes")
@@ -67,10 +68,9 @@ export async function loadFactoryQualityStats(
     .gte("updated_at", since)
     .order("updated_at", { ascending: false })
     .limit(2000);
-  if (niche) q = q.eq("niche", niche);
   const { data, error } = await q;
   if (error) throw error;
-  const rows = ((data || []) as Row[]);
+  const rows = ((data || []) as Row[]).filter((row) => !niche || canonicalNiche(text(row.niche, 80)) === niche);
   const produced = rows.filter(isProduced);
   const pass = produced.filter(isPass);
   const warnings = produced.filter((row) => text(row.status, 40) === "warning").length;
@@ -83,20 +83,20 @@ export async function loadFactoryQualityStats(
   try {
     let cq = db
       .from("content_assets")
-      .select("id", { count: "exact", head: true })
+      .select("id,niche")
       .eq("disk", "gen")
       .eq("kind", "video")
-      .gte("created_at", since);
-    if (niche) cq = cq.eq("niche", niche);
-    const { count } = await cq;
-    bankedVideos = count || 0;
+      .gte("created_at", since)
+      .limit(5000);
+    const { data: assetRows } = await cq;
+    bankedVideos = ((assetRows || []) as Row[]).filter((row) => !niche || canonicalNiche(text(row.niche, 80)) === niche).length;
   } catch {
     bankedVideos = 0;
   }
 
   const by = new Map<string, Row[]>();
   for (const row of rows) {
-    const key = text(row.niche, 80) || "default";
+    const key = canonicalNiche(text(row.niche, 80));
     by.set(key, [...(by.get(key) || []), row]);
   }
   const byNiche = Array.from(by.entries()).map(([key, nicheRows]) => {
