@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
       const { data: nodes } = await db.from("node_recipe_nodes").select("ordinal,slot,node_type,tool,prompt,params,asset_url,duration_sec,agent_suggestion").eq("recipe_id", recipeId).order("ordinal");
       const rows = (nodes as Record<string, unknown>[] | null) || [];
       if (!rows.length) return NextResponse.json({ error: "у рецепта нет нод" }, { status: 400 });
-      const plan = buildRunPlan(rows);
+      const plan = buildRunPlan(rows, recipeId);
       plan.run_id = makeRunId(recipeId);
       if (body.batch_run_id) plan.batch_run_id = String(body.batch_run_id).slice(0, 80);
       if (["control", "experiment", "none"].includes(String(body.batch_role || ""))) plan.batch_role = String(body.batch_role) as RunPlan["batch_role"];

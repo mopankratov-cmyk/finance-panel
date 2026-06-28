@@ -17,7 +17,8 @@ import { createHash, randomUUID } from "node:crypto";
 import type { ExecutionLogEntry, RunNode, RunOtkVerdict, RunPlan, RunStep } from "./graphTypes";
 import { LANE_BUDGET, routeNode, routeRecipeLane } from "./renderRouter";
 import { runArtifactCheck, runClipQa, runVideoCritic } from "./qaGates";
-import type { RubricNiche } from "./rubric";
+import { weakestRubricAxis, type RubricNiche } from "./rubric";
+import { buildRunIdempotencyKey } from "./factoryV2Runtime";
 
 export type { ExecutionLogEntry, RunNode, RunPlan, RunStep } from "./graphTypes";
 
@@ -296,17 +297,16 @@ export function buildReelProps(plan: RunPlan, visualNodes: RunNode[], article: s
 
 // V3/V4: по слабейшей оси ОТК выбрать ноду-виновника для регена (только генеративную)
 function pickCulprit(plan: RunPlan, axes: unknown): { node: RunNode; axis: string; val: number } | null {
-  const a = (axes && typeof axes === "object") ? (axes as Record<string, unknown>) : {};
-  let axis: string | null = null, val = 99;
-  for (const k of ["hook", "retention", "native", "brand", "cta"]) {
-    const v = Number(a[k]); if (!isNaN(v) && v < val) { val = v; axis = k; }
-  }
+  const weakest = weakestRubricAxis((axes && typeof axes === "object") ? (axes as Record<string, unknown>) : null);
+  const axis = weakest?.axis || null;
+  const val = weakest?.value ?? 99;
   if (!axis) return null;
   let node: RunNode | undefined;
   if (axis === "hook") node = plan.nodes.find((n) => isRegenerable(n) && roleOf(n) === "hook");
-  else if (axis === "cta") node = plan.nodes.find((n) => isRegenerable(n) && roleOf(n) === "cta");
-  else if (axis === "brand") node = plan.nodes.find((n) => isRegenerable(n) && (roleOf(n) === "proof" || roleOf(n) === "solution"));
-  // native/retention/фолбэк → первая генеративная нода (AI = источник слопа)
+  else if (axis === "conversion") node = plan.nodes.find((n) => isRegenerable(n) && roleOf(n) === "cta");
+  else if (axis === "productVisibility") node = plan.nodes.find((n) => isRegenerable(n) && (roleOf(n) === "proof" || roleOf(n) === "solution"));
+  else if (axis === "aiSlop") node = plan.nodes.find((n) => isRegenerable(n) && String(n.tool || "").toLowerCase() !== "disk_real");
+  // scrollStop/retention/фолбэк → первая генеративная нода (AI = источник слопа)
   if (!node) node = plan.nodes.find(isRegenerable);
   return node ? { node, axis, val } : null;
 }
@@ -335,7 +335,7 @@ async function regenCulprit(
   await savePlan(db, id, plan, { otk_verdict: plan.otk ?? null, otk_score: plan.otk?.score ?? null });
 }
 
-export function buildRunPlan(rows: any[]): RunPlan {
+export function buildRunPlan(rows: any[], recipeId: number | string = "draft"): RunPlan {
   const nodes: RunNode[] = (rows || []).map((r) => {
     const params = (r.params && typeof r.params === "object") ? r.params : {};
     const sug = (r.agent_suggestion && typeof r.agent_suggestion === "object") ? r.agent_suggestion : {};
@@ -362,7 +362,7 @@ export function buildRunPlan(rows: any[]): RunPlan {
     };
   }).sort((a, b) => a.ordinal - b.ordinal);
   const lane = routeRecipeLane(nodes);
-  return { step: "submit", nodes, attempts: 0, pollCount: 0, renderCount: 0, lane, lane_budget: LANE_BUDGET[lane] };
+  return { step: "submit", nodes, attempts: 0, pollCount: 0, renderCount: 0, lane, lane_budget: LANE_BUDGET[lane], idempotency_key: buildRunIdempotencyKey(recipeId, nodes) };
 }
 
 async function logSignal(db: SupabaseClient, ev: string, extra: Record<string, any>) {
@@ -724,7 +724,9 @@ export async function runRecipeStep(
     }
     // перечитываем ноды с заполненными tool/params/prompt и пересобираем СПИСОК нод (счётчики прогона не трогаем)
     const { data } = await db.from("node_recipe_nodes").select("ordinal,slot,node_type,tool,prompt,params,asset_url,duration_sec,agent_suggestion").eq("recipe_id", id).order("ordinal");
-    plan.nodes = buildRunPlan((data as any[]) || []).nodes;
+    const rebuilt = buildRunPlan((data as any[]) || [], id);
+    plan.nodes = rebuilt.nodes;
+    plan.idempotency_key = plan.idempotency_key || rebuilt.idempotency_key;
     plan.step = "submit";
     plan.lease_until = null;
     finishExecutionLog(plan, trace, needsFill ? "warning" : "done", "submit", null, needsFill ? "autofill checkpoint→submit fail-open" : "autofill not needed→submit");

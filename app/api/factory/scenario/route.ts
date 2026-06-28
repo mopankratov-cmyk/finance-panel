@@ -5,6 +5,7 @@ import { DEAI_FILTERS, PROBLEM_STACK } from "@/lib/factory/standard";
 import { brandProfile } from "@/lib/factory/brandProfiles";
 import { nicheFromArticle } from "@/lib/factory/rubric";
 import { extractJson } from "@/lib/factory/extractJson";
+import { buildProducerBlueprint } from "@/lib/factory/producerBlueprint";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -111,7 +112,21 @@ export async function POST(req: NextRequest) {
   }
 
   const client = await createClaudeClient();
-  if (!client) return NextResponse.json(fallbackScenario({ hook, article, name, reason: "ANTHROPIC_API_KEY не настроен" }));
+  if (!client) {
+    const fallback = fallbackScenario({ hook, article, name, reason: "ANTHROPIC_API_KEY не настроен" });
+    const blueprint = buildProducerBlueprint({
+      article,
+      product_name: name,
+      hook,
+      scenario: fallback.scenario,
+      lane: body.lane,
+      format,
+      canonical_frame_url: body.canonical_frame_url,
+      source_asset_url: body.source_asset_url,
+      hook_source: body.hook_source || "strong_prompt",
+    });
+    return NextResponse.json({ ...fallback, blueprint: blueprint.blueprint, blueprint_valid: blueprint.valid, blueprint_errors: blueprint.errors, hook_policy: blueprint.hook_policy });
+  }
 
   const sys = "Ты режиссёр коротких UGC-видео для WB/Ozon. Разворачиваешь идею в покадровый сценарий 15-30 сек, готовый к съёмке или AI-генерации. Живой UGC, не реклама. " +
     (profile ? "ПРОФИЛЬ БРЕНДА/АУДИТОРИИ (пиши в этом голосе): " + profile + " " : "") +
@@ -139,10 +154,47 @@ export async function POST(req: NextRequest) {
 
     const txt = (res.content as any[]).filter((b) => b.type === "text").map((b) => b.text).join(" ");
     const scenario = extractJson(txt);
-    if (!scenario) return NextResponse.json(fallbackScenario({ hook, article, name, reason: "пустой/нечитаемый сценарий" }));
-    return NextResponse.json({ article, product: name || article, scenario });
+    if (!scenario) {
+      const fallback = fallbackScenario({ hook, article, name, reason: "пустой/нечитаемый сценарий" });
+      const blueprint = buildProducerBlueprint({
+        article,
+        product_name: name,
+        hook,
+        scenario: fallback.scenario,
+        lane: body.lane,
+        format,
+        canonical_frame_url: body.canonical_frame_url,
+        source_asset_url: body.source_asset_url,
+        hook_source: body.hook_source || "strong_prompt",
+      });
+      return NextResponse.json({ ...fallback, blueprint: blueprint.blueprint, blueprint_valid: blueprint.valid, blueprint_errors: blueprint.errors, hook_policy: blueprint.hook_policy });
+    }
+    const blueprint = buildProducerBlueprint({
+      article,
+      product_name: name,
+      hook,
+      scenario,
+      lane: body.lane,
+      format,
+      canonical_frame_url: body.canonical_frame_url,
+      source_asset_url: body.source_asset_url,
+      hook_source: body.hook_source || "strong_prompt",
+    });
+    return NextResponse.json({ article, product: name || article, scenario, blueprint: blueprint.blueprint, blueprint_valid: blueprint.valid, blueprint_errors: blueprint.errors, hook_policy: blueprint.hook_policy });
   } catch (e) {
-    return NextResponse.json(fallbackScenario({ hook, article, name, reason: String(e).slice(0, 160) }));
+    const fallback = fallbackScenario({ hook, article, name, reason: String(e).slice(0, 160) });
+    const blueprint = buildProducerBlueprint({
+      article,
+      product_name: name,
+      hook,
+      scenario: fallback.scenario,
+      lane: body.lane,
+      format,
+      canonical_frame_url: body.canonical_frame_url,
+      source_asset_url: body.source_asset_url,
+      hook_source: body.hook_source || "strong_prompt",
+    });
+    return NextResponse.json({ ...fallback, blueprint: blueprint.blueprint, blueprint_valid: blueprint.valid, blueprint_errors: blueprint.errors, hook_policy: blueprint.hook_policy });
   }
   } catch (e) {
     return NextResponse.json({

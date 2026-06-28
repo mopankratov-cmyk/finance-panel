@@ -54,7 +54,7 @@ async function enqueueGraphRun(db: any, rid: number, meta: { batch_run_id: strin
     .order("ordinal");
   const rows = (nodes as Record<string, unknown>[] | null) || [];
   if (!rows.length) return { ok: false, error: "у рецепта нет нод" };
-  const plan = buildRunPlan(rows) as RunPlan;
+  const plan = buildRunPlan(rows, rid) as RunPlan;
   plan.run_id = makeRunId(rid);
   plan.batch_run_id = meta.batch_run_id;
   plan.batch_role = meta.batch_role === "control" || meta.batch_role === "experiment" ? meta.batch_role : "none";

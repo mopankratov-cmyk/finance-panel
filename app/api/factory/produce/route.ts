@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClaudeClient } from "@/lib/agent/client";
 import { extractJson } from "@/lib/factory/extractJson";
+import { buildProducerBlueprint } from "@/lib/factory/producerBlueprint";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -37,9 +38,20 @@ export async function POST(req: NextRequest) {
     : "";
   const av = body.available || {};
   const availability = `есть фото товара: ${av.photos ? "да" : "нет/неизвестно"}; есть реальная видеосъёмка: ${av.footage ? "да" : "нет"}`;
+  const blueprintResult = buildProducerBlueprint({
+    article: body.article || product,
+    product_name: body.product_name || body.product,
+    hook: body.hook || body.idea,
+    scenario: body.scenario,
+    lane: body.lane,
+    format: body.format || trend,
+    canonical_frame_url: body.canonical_frame_url,
+    source_asset_url: body.source_asset_url,
+    hook_source: body.hook_source || "strong_prompt",
+  });
 
   const client = await createClaudeClient();
-  if (!client) return NextResponse.json(fallbackDecision({ available: av, reason: "ANTHROPIC_API_KEY не настроен" }));
+  if (!client) return NextResponse.json({ ...fallbackDecision({ available: av, reason: "ANTHROPIC_API_KEY не настроен" }), blueprint: blueprintResult.blueprint, blueprint_valid: blueprintResult.valid, blueprint_errors: blueprintResult.errors, hook_policy: blueprintResult.hook_policy });
 
   const sys = `Ты — Продюсер контент-завода. Решаешь, КАК произвести короткое видео под идею, чтобы получить максимум охвата и доверия при минимуме затрат.
 
@@ -72,10 +84,10 @@ export async function POST(req: NextRequest) {
 
     const txt = (res.content as any[]).filter((b) => b.type === "text").map((b) => b.text).join(" ");
     const decision = extractJson(txt);
-    if (!decision) return NextResponse.json(fallbackDecision({ available: av, reason: "пустое/нечитаемое решение продюсера" }));
-    return NextResponse.json({ decision });
+    if (!decision) return NextResponse.json({ ...fallbackDecision({ available: av, reason: "пустое/нечитаемое решение продюсера" }), blueprint: blueprintResult.blueprint, blueprint_valid: blueprintResult.valid, blueprint_errors: blueprintResult.errors, hook_policy: blueprintResult.hook_policy });
+    return NextResponse.json({ decision, blueprint: blueprintResult.blueprint, blueprint_valid: blueprintResult.valid, blueprint_errors: blueprintResult.errors, hook_policy: blueprintResult.hook_policy });
   } catch (e) {
-    return NextResponse.json(fallbackDecision({ available: av, reason: String(e).slice(0, 160) }));
+    return NextResponse.json({ ...fallbackDecision({ available: av, reason: String(e).slice(0, 160) }), blueprint: blueprintResult.blueprint, blueprint_valid: blueprintResult.valid, blueprint_errors: blueprintResult.errors, hook_policy: blueprintResult.hook_policy });
   }
   } catch (e) {
     return NextResponse.json({
