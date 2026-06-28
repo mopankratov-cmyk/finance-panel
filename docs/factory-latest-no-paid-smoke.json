@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-06-28T12:36:46.167Z",
+  "generated_at": "2026-06-28T12:43:16.465Z",
   "base_url": "https://finance-panel-two.vercel.app",
   "niche": null,
   "hours": 72,
@@ -25,13 +25,8 @@
             "threshold": null,
             "low": false,
             "hint": "тренд-аналитика · get_credit_balance",
-            "updated_at": "2026-06-28T12:36:30.819Z",
+            "updated_at": "2026-06-28T12:43:02.676Z",
             "history": [
-              {
-                "balance": 9.5,
-                "at": "2026-06-27T15:27:26.8095+00:00",
-                "source": "api"
-              },
               {
                 "balance": 9.5,
                 "at": "2026-06-27T15:57:40.852793+00:00",
@@ -226,6 +221,11 @@
                 "balance": 5.75,
                 "at": "2026-06-28T12:12:17.961402+00:00",
                 "source": "api"
+              },
+              {
+                "balance": 5.75,
+                "at": "2026-06-28T12:42:49.129057+00:00",
+                "source": "api"
               }
             ]
           },
@@ -240,13 +240,8 @@
             "threshold": null,
             "low": false,
             "hint": "AI UGC-актёры · remaining_credits",
-            "updated_at": "2026-06-28T12:36:29.835Z",
+            "updated_at": "2026-06-28T12:43:01.254Z",
             "history": [
-              {
-                "balance": 382.5,
-                "at": "2026-06-27T14:56:29.067349+00:00",
-                "source": "api"
-              },
               {
                 "balance": 368,
                 "at": "2026-06-27T15:27:25.386935+00:00",
@@ -441,6 +436,11 @@
                 "balance": 80.5,
                 "at": "2026-06-28T12:12:16.021477+00:00",
                 "source": "api"
+              },
+              {
+                "balance": 80.5,
+                "at": "2026-06-28T12:42:48.366528+00:00",
+                "source": "api"
               }
             ]
           },
@@ -455,13 +455,8 @@
             "threshold": null,
             "low": true,
             "hint": "видео-движки · нужен FAL_BILLING_KEY (admin)",
-            "updated_at": "2026-06-28T12:36:32.315Z",
+            "updated_at": "2026-06-28T12:43:02.641Z",
             "history": [
-              {
-                "balance": 2.16,
-                "at": "2026-06-27T15:25:39.06362+00:00",
-                "source": "api"
-              },
               {
                 "balance": -0.18,
                 "at": "2026-06-27T15:55:49.661314+00:00",
@@ -656,6 +651,11 @@
                 "balance": -1.61,
                 "at": "2026-06-28T12:12:17.696396+00:00",
                 "source": "api"
+              },
+              {
+                "balance": -1.61,
+                "at": "2026-06-28T12:42:49.808522+00:00",
+                "source": "api"
               }
             ]
           },
@@ -694,7 +694,7 @@
         "low": [
           "fal"
         ],
-        "updated_at": "2026-06-28T12:36:32.766Z"
+        "updated_at": "2026-06-28T12:43:03.134Z"
       }
     },
     "quality": {
@@ -708,7 +708,7 @@
         "denominator": "produced_videos",
         "quality": {
           "window_hours": 72,
-          "since": "2026-06-25T12:36:33.507Z",
+          "since": "2026-06-25T12:43:03.983Z",
           "produced_videos": 88,
           "otk_pass": 0,
           "warnings": 88,
@@ -758,7 +758,7 @@
         "headline": "factory_quality_diagnostics",
         "diagnostics": {
           "window_hours": 72,
-          "since": "2026-06-25T12:36:34.941Z",
+          "since": "2026-06-25T12:43:05.293Z",
           "totals": {
             "recipes": 112,
             "produced_videos": 88,
@@ -773,10 +773,6 @@
             "draft": 5
           },
           "warning_counts": [
-            {
-              "reason": "runtime autofill skipped fail-open",
-              "count": 60
-            },
             {
               "reason": "OTK below threshold",
               "count": 45
@@ -810,16 +806,20 @@
               "count": 3
             },
             {
-              "reason": "assemble source fallback rescued",
-              "count": 3
-            },
-            {
               "reason": "remotion skipped: source fallback includes image assets",
               "count": 3
             },
             {
               "reason": "video-critic unavailable",
               "count": 3
+            },
+            {
+              "reason": "ОТК no frames; score via storyboard fallback",
+              "count": 2
+            },
+            {
+              "reason": "remotionSubmit вернул null; fallback raw clip",
+              "count": 1
             }
           ],
           "otk_basis_counts": {
@@ -846,7 +846,7 @@
               "produced_videos": 87,
               "otk_pass": 0,
               "run_fail": 19,
-              "top_warning": "runtime autofill skipped fail-open"
+              "top_warning": "OTK below threshold"
             },
             {
               "niche": "clothing",
@@ -873,7 +873,7 @@
           "next_actions": [
             "prepare_product for WB-only articles before paid batch",
             "exclude trash memory from pattern selection and review top trash reasons",
-            "fix dominant warning: runtime autofill skipped fail-open",
+            "fix dominant warning: OTK below threshold",
             "manually mark at least 3 operator winners or import market metrics before broad learning"
           ]
         }

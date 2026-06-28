@@ -1,6 +1,6 @@
 # Factory No-Paid Readiness Smoke
 
-- generated_at: 2026-06-28T12:36:46.167Z
+- generated_at: 2026-06-28T12:43:16.465Z
 - base_url: https://finance-panel-two.vercel.app
 - niche: 
 - ready_for_paid_batch: no
@@ -13,7 +13,7 @@
 - otk_pass: 0
 - pass_rate: 0
 - bank_rate: 61.4
-- top_warning: runtime autofill skipped fail-open (60)
+- top_warning: OTK below threshold (45)
 
 ## Memory
 
@@ -32,5 +32,5 @@
 
 - prepare_product for WB-only articles before paid batch
 - exclude trash memory from pattern selection and review top trash reasons
-- fix dominant warning: runtime autofill skipped fail-open
+- fix dominant warning: OTK below threshold
 - manually mark at least 3 operator winners or import market metrics before broad learning
