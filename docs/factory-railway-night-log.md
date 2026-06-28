@@ -12,6 +12,123 @@
 - Что поправлено: честные метрики товаров в `products`, фильтры товаров, honest format fork, ElevenLabs в студии/графе, fallback текста для hook/caption/OTK, рабочий поиск в центре, кеш последнего снимка балансов
 - Что осталось: дождаться деплоя и заново проверить прод-студию в Chrome; потом добить UX на экране конкурентов и пустые состояния
 
+### 2026-06-27 11:05
+
+- Ветка: `codex/factory-worker-runtime-cleanup`
+- Цель: закрыть Week 1 `Production Truth` repeatable smoke вместо ручного обхода четырёх endpoints
+- Изменено:
+  - добавлен `lib/factory/prodSmoke.mjs`
+  - smoke проходит по `/api/factory/ops`, `/api/factory/worker-state`, `/api/factory/stability`, `GET /api/factory/graph-run`
+  - `POST /api/factory/graph-run` вынесен в явный флаг `--trigger-run`, чтобы read-only smoke не мутировал production случайно
+  - smoke раскладывает сбои по классам: `auth`, `runtime`, `worker_infra`, `observability`, `provider`
+  - smoke пишет latest artifacts в `docs/factory-latest-prod-smoke.{md,json}` и timestamped history в `docs/factory-prod-smoke-history/`
+  - добавлен guard `lib/factory/prodSmokeContract.test.mts`
+  - `docs/PROD_GAP_REPORT.md` обновлён командой запуска и ссылками на latest artifacts
+- Проверки:
+  - `node --check lib/factory/prodSmoke.mjs`
+  - `node lib/factory/prodSmokeContract.test.mts`
+  - `git diff --check`
+- Результат:
+  - Week 1 получил repeatable production-truth runner, который отделяет auth/runtime truth от worker-infra шума
+  - оператору больше не нужно вручную собирать картину из отдельных browser tabs и ad hoc fetch-команд
+
+### 2026-06-27 12:10
+
+- Ветка: `codex/factory-worker-runtime-cleanup`
+- Цель: дожать Week 2 `Worker and Heartbeat Hardening` и связанный read-layer contract без ожидания live secret
+- Изменено:
+  - `app/api/factory/worker-state/route.ts`: route теперь возвращает `worker_issue`, `heartbeat_diagnostics`, `warnings`
+  - `app/api/factory/worker-state/route.ts`: observability readback переведён в fail-open, worker snapshot больше не исчезает из-за read-side деградации
+  - `lib/factory/workerState.ts`: добавлен shared `normalizeWorkerStatus(...)`
+  - `lib/factory/workerState.ts`: queue fallback и DB rows нормализуют статусы к одному словарю (`working|blocked|idle|done|error|pr_open`)
+  - `lib/factory/workerHeartbeat.mjs`: sender теперь использует ту же семантику статусов
+  - `app/api/factory/ops/route.ts`: balances / observability / observer pulse переведены в partial fail-open с `warnings[]`
+  - `app/api/factory/studio/route.ts`: feed/templates/recipes/generations/observability теперь дают `warnings[]` вместо немого обнуления
+  - `public/inferno/studio.html`: worker screen показывает `Read-layer warnings`
+  - `public/inferno/studio.html`: center summary показывает и `ops` read-layer warnings, и `studio` best-effort warnings
+- Добавлены guards:
+  - `lib/factory/workerStateContract.test.mts`
+  - `lib/factory/workerStateFailOpenObservability.test.mts`
+  - `lib/factory/workerHeartbeatStatusContract.test.mts`
+  - `lib/factory/opsPartialContract.test.mts`
+  - `lib/factory/studioWarningsContract.test.mts`
+- Проверки:
+  - `node lib/factory/workerStateContract.test.mts`
+  - `node lib/factory/workerStateFailOpenObservability.test.mts`
+  - `node lib/factory/workerHeartbeatStatusContract.test.mts`
+  - `node lib/factory/opsPartialContract.test.mts`
+  - `node lib/factory/studioWarningsContract.test.mts`
+  - `node --check lib/factory/workerHeartbeat.mjs`
+  - inline-parse `public/inferno/studio.html`
+  - `git diff --check`
+- Результат:
+  - read-only operator surfaces стали честнее: degraded readback больше не маскируется под пустые данные и не рушит целиком `ops/worker/studio`
+  - heartbeat semantics теперь менее хрупкие и не зависят от случайного несоответствия `todo/doing/working`
+  - кодовая часть Week 2 заметно продвинута; главный оставшийся блокер теперь live env truth: sender + table + permissions + production smoke
+
+### 2026-06-27 13:45
+
+- Ветка: `codex/factory-worker-runtime-cleanup`
+- Цель: снять live production truth через logged-in browser session
+- Что удалось подтвердить:
+  - direct shell requests на production без session cookie возвращают `401 Не авторизовано` для `/api/factory/ops`, `/api/factory/worker-state`, `/api/factory/stability`, `/api/factory/graph-run`
+  - это подтверждает: production smoke надо читать через browser session или через explicit bearer path, а не через анонимный `curl`
+- Что не удалось дожать в этой сессии:
+  - in-app browser runtime после логина не дал стабильный DOM/runtime context и сорвался в `about:blank`
+  - direct API navigation из browser runtime упиралась в `ERR_BLOCKED_BY_CLIENT`
+  - Chrome extension bridge не поднялся вообще
+- Следующий шаг:
+  - повторить live smoke из реально доступного browser/control канала
+  - либо запускать `prodSmoke.mjs` там, где есть актуальный `CRON_SECRET`
+
+### 2026-06-27 13:54
+
+- Ветка: `codex/factory-worker-runtime-cleanup`
+- Цель: добить live verification уже по самому production UI, а не только по shell/API попыткам
+- Что подтверждено через logged-in in-app browser:
+  - `https://finance-panel-two.vercel.app/inferno/studio.html` открывается и рендерит production Studio без console errors
+  - `Пульс завода` показывает `штатно`
+  - карточка статуса больше не окрашивает завод в `degraded` только из-за heartbeat/service-инфры
+  - `Очередь прогонов` показывает реальные прогоны (`recipe #59`, `recipe #58`), а не legacy queue из `jobs/*`
+  - архивные инциденты вынесены в отдельный `Архивный хвост`, то есть historical noise не смешан с live execution path
+- Нюанс:
+  - первый screenshot поймал transient loading-state, но повторный DOM read уже дал нормальное содержимое страницы
+  - direct click в nav на `08` в этой browser-сессии не дал надёжного перехода на отдельный экран `Пульс завода`, так что этот live-check остаётся частично открытым
+- Следующий шаг:
+  - закрыть отдельный live-pass по `Пульс завода`, когда browser bridge даст стабильную навигацию
+  - до этого считать Week 1/Week 2 production truth по `center + recent_runs + prodSmoke` уже подтверждённым
+
+### 2026-06-28 04:55
+
+- Ветка: `codex/factory-worker-runtime-cleanup`
+- Цель: добить reliability/observability по живым находкам из production Studio перед новым серийным прогоном
+- Что подтверждено через logged-in in-app browser:
+  - `graph #130` в production показывал противоречивую карточку: статус `running · assemble`, но summary ещё держал `active gen-poll`
+  - та же карточка тащила warning `fal result 422`, хотя это выглядело как transient poll/result race, а не финальный fail
+  - на экране `Анализ конкурентов` после успешного decompose кнопка `Перенести ноды себе` могла снова дизейблиться при повторном рендере
+- Изменено:
+  - `lib/factory/falVideo.ts`: `result 404/409/422` после `COMPLETED` переведены в transient `in_progress`, чтобы `gen-poll` не убивал живой fal-run раньше времени
+  - `public/inferno/studio.html`: добавлен `decomposeCache`, чтобы успешный decompose переживал повторные рендеры и не терял transfer CTA
+  - `public/inferno/studio.html`: карточка running-рецепта показывает более честный текущий шаг и кнопку `↻ tick` для ручного nudge следующего graph-run шага
+  - `app/api/factory/studio/route.ts`: `node_errors` теперь собираются только из реальных `status=error`, без stale noise от промежуточных/успешных нод
+  - `lib/factory/graphRun.ts`: после успешного poll у ноды очищается `error`, чтобы прошлый transient не жил в карточке дольше шага
+  - `lib/factory/observability.ts`: `buildRunSummary(...)` теперь берёт последний активный `running` step, а не первый исторический
+- Добавлены guards:
+  - `lib/factory/falStatusTransient422Contract.test.mts`
+  - `lib/factory/studioRunningErrorNoiseContract.test.mts`
+  - `lib/factory/runSummaryLatestActiveContract.test.mts`
+  - `lib/factory/studioDecomposeCacheContract.test.mts`
+- Проверки:
+  - `node lib/factory/falStatusTransient422Contract.test.mts`
+  - `node lib/factory/studioRunningErrorNoiseContract.test.mts`
+  - `node lib/factory/runSummaryLatestActiveContract.test.mts`
+  - `git diff --check`
+- Нюанс:
+  - push в Gitea этой ночью несколько раз упёрся в `LibreSSL SSL_connect: SSL_ERROR_SYSCALL`, так что часть последних коммитов пока подтверждена локально, но ещё не ушла на remote
+- Следующий шаг:
+  - допушить ветку при восстановлении сети до Gitea
+  - после деплоя повторить live-check `graph #130`/следующего running recipe и убедиться, что summary/error noise больше не врут оператору
+
 - Дата: 2026-06-24
 - Worker: railway-content-factory
 - Last heartbeat: локально, в процессе работы
@@ -25,123 +142,6 @@
 - Следующие рекомендации: сразу брать T-002, затем T-003; PR #30 уже слит
 
 ## Записи
-
-### 2026-06-27 21:03 — Консолидирующая сводка ветки `feat/reels-brain-operator-console`
-
-- Ветка: `feat/reels-brain-operator-console`
-- Цель: одной записью зафиксировать весь объём работы по Reels Brain, накопленный за длинную сессию, включая блоки, которых ещё не было в журнале (`reelsBrainEnv`, `reels-brain/corpus`, `reels-brain/score`, `reels-brain/provider-debug`, `10k` corpus targets).
-- Что в ветке уже собрано (полный контур из 8 модулей: scraper → virality filter → raw corpus → intelligence agent → pattern memory → generator → critic → self-learning update):
-  - **Operator console** `app/agent/reels-brain/page.tsx`: блоки `source-run`, `manual-seed`, `analyze`, `patterns/build`, `loop`, health-карточки по `tiktok/instagram/youtube`, mini bake-off, query leaderboard, incident feed.
-  - **Платформенные мозги**: раздельная pattern memory + meta-brain + cross-platform паттерны (`lib/factory/reelsBrainPatterns.ts`, `reelsBrainPlaybook.ts` — выбор бренда платформы и предпочтительного провайдера из `niche_playbooks.playbook.reels_brain_*`).
-  - **Provider intake**: `reelsBrainSources.ts` (ensemble-провайдеры), `bake-off` с `mapLimit`/timeout-guard/честными partial-warning, `source-run` с памятью предпочтительного провайдера, anti-flap при слабой марже.
-  - **Self-learning**: `loop` с авто-переобучением слабого intake, `reelsBrainSourceLearning.ts` (retry-план + pin-провайдера + health-репорт по found/relevant/inserted), `reelsBrainAutomation.ts` (safe automation plan + агрегация loop-метрик).
-  - **Corpus growth**: `reelsBrainCorpusTargets.ts` — цель `10 000` видео, веса платформ `tiktok 0.4 / instagram 0.35 / youtube 0.25`, стадии `300 / 1500 / 4000 / 10000`; прогресс и per-platform split проброшены в `digest-all` и `ops`.
-  - **Automation routes (cron-ready, Bearer `$CRON_SECRET`)**: `jobs/reels-brain-daily` (лёгкий ежедневный pass), `jobs/reels-brain-weekly` (bake-off → глубокий loop → persist memory), `jobs/reels-brain-growth` (GET = приоритетная очередь слабых `niche×platform`, POST = выполнение с `dry_run`), `jobs/reels-brain-learning` (тик-профиль расписания), `jobs/reels-brain-bulk-ingest` (массовый набор корпуса по очереди роста).
-  - **Read-models и ops-интеграция**: `summary`, `digest`, `digest-all`, `alerts`, `score`, `corpus`; `ops/route.ts` и `studio/route.ts` отдают `reels_brain` snapshot (portfolio verdict, слабейшие ниши, retry_queue, corpus_goal) как часть общей operational truth — без отдельного экрана.
-  - **Диагностика и безопасность операций**: `reelsBrainEnv.ts` + `provider-debug` (проверка supabase/cron_secret и сырого ответа провайдера), `reset` route с обязательным confirm `RESET_REELS_BRAIN` (чистит только `reels_brain_*` ключи плейбука).
-  - **Owner-safe read-only витрины**: `/inferno/vendor/reels-brain-demo`, `/inferno/vendor/reels-brain-report?niche=...`, `/inferno/vendor/reels-brain-portfolio` (очередь с приоритетами, lane-shift и retry-хинтами) + entry-points из `/agent` и `/agent/reels-brain`.
-  - **Документация**: `docs/factory-reels-brain-roadmap.md` (месячный план: runtime → intake → learning quality → ops productization + corpus 10k), `docs/factory-reels-brain-ops-runbook.md`, `docs/factory-reels-brain-release-checklist.md`.
-  - **Тесты/smoke**: добавлены `*.test.mts` для automation/corpus-targets/digest/env/playbook/source-learning/summary/patterns/sources/scenarioQuality/trendSources; `reelsBrainSmoke.mjs` расширен флагами `--platform`, `--check-ops`, проверкой `summary/digest-all/ops`.
-- Проверки за сессию (повторяемые): `npx tsc --noEmit`, точечный `npx eslint` по тронутым route/lib, `npx tsx lib/factory/*.test.mts`, локальный API-smoke через `npx next dev --webpack` (см. блокер ниже), preview browser QA `/login → /agent/reels-brain`.
-- Текущий hard-blocker (зафиксирован в roadmap/runbook): локальный `next dev` на Turbopack отдаёт ложный `404` на `app/api/factory/*`; honest runtime-smoke делается только через `npx next dev --webpack --port 3008`. Пока root cause не закрыт, это первая задача Week 1.
-- Состояние гита: большой объём (modified + 32 untracked) ещё **не закоммичен** на ветке. Следующий протокольный шаг — разбить на маленькие логические коммиты по завершённым блокам и оформить PR с чеклистом результата (по `docs/factory-railway-worker.md`). Жду явного запроса владельца на коммит/PR.
-- Следующий шаг (критический путь): (1) закрыть Turbopack-404 или зафиксировать точный root cause → зелёный runtime-smoke ключевых route; (2) per-platform provider shortlist по реальным нишам; (3) commit + PR накопленного.
-
-### 2026-06-27 01:52
-
-- Ветка: `feat/reels-brain-operator-console`
-- Цель: перевести обсуждение “месячного прогона” из чата в рабочий artifact рядом с кодом
-- Изменено:
-  - `docs/factory-reels-brain-roadmap.md` перестроен из короткого списка в месячный execution plan
-  - план теперь разбит на 4 недели: runtime/control plane, provider reliability, learning quality, ops productization
-  - добавлены critical path, exit criteria, deliverables и список задач вне текущего мандата
-  - в roadmap явно зафиксирован текущий blocker: `next dev` сейчас возвращает `404` на `app/api/factory/*`, поэтому runtime validation отделена как первая задача месяца
-- Результат:
-  - месячный план теперь живёт в репозитории, а не только в переписке
-  - можно привязывать следующие правки и smoke-проверки к конкретной неделе и критерию выхода
-- Дополнение:
-  - найден точный runtime split: `next dev` на Turbopack даёт ложный `404` для `app/api/*`, а `npx next dev --webpack` отдаёт те же route корректно
-  - это зафиксировано в runbook/checklist как временный local smoke workaround
-  - `lib/factory/reelsBrainSmoke.mjs` расширен: теперь он умеет проверять не только bake-off, но и `summary`, `digest-all`, `ops` через флаг `--check-ops`
-
-### 2026-06-27 01:34
-
-- Ветка: `feat/reels-brain-operator-console`
-- Цель: встроить self-learning контур Reels Brain в общий operational snapshot, а не держать его только в отдельном UI
-- Изменено:
-  - добавлен shared loader `lib/factory/reelsBrainDigest.ts`
-  - `digest-all` переведён на shared digest helper, чтобы portfolio logic не дублировалась в нескольких route
-  - `app/api/factory/ops/route.ts` теперь возвращает `reels_brain` snapshot с portfolio verdict, weakest niches и ссылками на daily/weekly automation routes
-  - в `ops` alerts / suggested_actions / ops_status добавлены сигналы по Reels Brain readiness и incident pressure
-- Проверки:
-  - `npx eslint app/api/factory/ops/route.ts app/api/factory/reels-brain/digest-all/route.ts lib/factory/reelsBrainDigest.ts`
-  - `npx tsc --noEmit`
-- Результат:
-  - owner-level ops API теперь видит контур насмотренности как часть общей operational truth
-  - слабые ниши и критические инциденты Reels Brain можно triage-ить из общего snapshot без открытия отдельного экрана
-  - логика digest-а больше не дублируется между route handlers
-
-- Дополнение:
-  - `app/api/factory/studio/route.ts` теперь в overview-режиме тоже отдаёт `reels_brain_portfolio`
-  - это даёт ещё один read-model для owner/observer экранов без отдельного запроса в `digest-all`
-
-### 2026-06-27 01:12
-
-- Ветка: `feat/reels-brain-operator-console`
-- Цель: собрать настоящий daily/weekly self-learning loop поверх уже готового platform brain
-- Изменено:
-  - добавлен shared helper `lib/factory/reelsBrainAutomation.ts`
-  - helper умеет нормализовать список ниш/платформ, строить safe automation plan и агрегировать метрики loop-ответов
-  - добавлен тест `lib/factory/reelsBrainAutomation.test.mts`
-  - добавлен `GET/POST /api/factory/jobs/reels-brain-daily`
-  - daily route гоняет lightweight learning pass по нескольким нишам и платформам и возвращает свежий digest
-  - добавлен `GET/POST /api/factory/jobs/reels-brain-weekly`
-  - weekly route сначала делает platform bake-off, потом deep learning loop и post-run digest
-  - обновлён `docs/factory-reels-brain-ops-runbook.md` с новыми cron entry points и safe defaults
-- Проверки:
-  - `npx tsx lib/factory/reelsBrainAutomation.test.mts`
-  - `npx eslint app/api/factory/jobs/reels-brain-daily/route.ts app/api/factory/jobs/reels-brain-weekly/route.ts lib/factory/reelsBrainAutomation.ts`
-  - `npx tsc --noEmit`
-- Результат:
-  - у Reels Brain появился настоящий автономный учебный контур: лёгкий ежедневный intake loop и более глубокий недельный retrain
-  - orchestration остаётся в зоне контент-завода и не требует новых таблиц или миграций
-  - оператор может запускать это вручную, а потом безопасно повесить на cron без переделки маршрутов
-
-### 2026-06-27 00:20
-
-- Ветка: `feat/reels-brain-operator-console`
-- Цель: не потерять public demo внутри ветки и дать быстрые entry points из live surface
-- Изменено:
-  - в `app/agent/page.tsx` добавлена отдельная карточка `Reels Brain Demo`
-  - в `app/agent/reels-brain/page.tsx` добавлена hero-ссылка на `/inferno/vendor/reels-brain-demo`
-  - в live-консоли добавлена явная пометка, что demo route read-only, а live мутации остаются только внутри защищённого пульта
-- Проверки:
-  - `npx tsc --noEmit`
-  - `curl -I http://127.0.0.1:3000/inferno/vendor/reels-brain-demo`
-- Результат:
-  - demo-поверхность стала discoverable из самого продукта
-  - оператору проще переключаться между боевым пультом и публичной витриной без ручного ввода URL
-
-### 2026-06-27 00:31
-
-- Ветка: `feat/reels-brain-operator-console`
-- Цель: дать публичную безлогинную витрину Reels Brain, не трогая общую авторизацию и не ломая live-пульт
-- Изменено:
-  - добавлен публичный route handler `app/inferno/vendor/reels-brain-demo/route.ts`
-  - маршрут `/inferno/vendor/reels-brain-demo` отдаёт статический HTML и не участвует в общем `AppLayout`
-  - на витрине показаны все 8 модулей: scraper, virality filter, raw corpus, intelligence agent, pattern memory, generator, critic, self-learning update
-  - добавлены демонстрационные блоки provider stack, bake-off snapshot, corpus monitor, pattern memory и roadmap по 3 вехам
-- Проверки:
-  - `npm run dev`
-  - `curl -I http://127.0.0.1:3000/inferno/vendor/reels-brain-demo`
-  - `curl http://127.0.0.1:3000/inferno/vendor/reels-brain-demo`
-- Результат:
-  - появился безопасный публичный URL для показа концепта без отключения auth
-  - live-консоль `/agent/reels-brain` остаётся под логином и не меняет свой рабочий контур
-  - решение уложено целиком в зону `app/inferno`, без правок `proxy`, auth и общих компонентов
-- Следующий шаг:
-  - прогнать preview-URL после пуша ветки и отдать пользователю прямую публичную ссылку на демо
-
 
 ### 2026-06-26 23:49
 
@@ -337,7 +337,7 @@
   - `npm run build`
 - Результат:
   - подтверждено, что в репозитории был `POST /api/factory/worker-state`, но не было ни одного отправителя heartbeat
-  - теперь Railway worker можно реально подключить к Studio без нового сервиса и без зависимостей
+  - теперь экран `Пульс завода` можно реально подключить к Studio без нового сервиса и без зависимостей
   - сегодняшняя деградация heartbeat объясняется не только UI/storage, но и отсутствием sender path как такового
 
 ### 2026-06-25 16:09
@@ -618,7 +618,7 @@
 ### 2026-06-25 18:19
 
 - Ветка: текущая рабочая ветка контент-завода
-- Цель: убрать лишний шум с экрана `Railway worker`
+- Цель: убрать лишний шум с экрана `Пульс завода`
 - Изменено:
   - `public/inferno/studio.html` убран дублирующий верхний блок `Очередь`
   - те же queue counters перенесены в `Queue snapshot`, рядом с реальным списком задач
@@ -958,14 +958,14 @@
 - Ветка: текущая рабочая ветка контент-завода
 - Цель: убрать лишний UI-шум из живого `V3 studio`, чтобы оператор видел execution path, а не декоративные хвосты
 - Изменено:
-  - `public/inferno/studio.html`: экран `Railway worker` упрощён до `heartbeat · current task · queue`
+  - `public/inferno/studio.html`: экран `Пульс завода` упрощён до `heartbeat · current task · queue`
   - убрана кнопка `🧠 Обучение` из header worker-экрана
   - убраны вторичные блоки `Factory pulse` и `Service balances` с dedicated worker-screen
   - из command center удалена disabled-кнопка `+ Новая ниша`, которая не была подключена и только создавала ложное ожидание
 - Проверки:
   - `npm run build`
   - `npx tsc --noEmit --pretty false`
-  - `rg -n "\\+ Новая ниша|Factory pulse|Service balances|header\\(\\\"Railway worker\\\",\\\"heartbeat · current task · queue\\\"" public/inferno/studio.html`
+  - `rg -n "\\+ Новая ниша|Factory pulse|Service balances|header\\(\\\"Пульс завода\\\",\\\"пульс · прогоны · контроль\\\"" public/inferno/studio.html`
 - Результат:
   - worker-screen стал более операционным: меньше отвлекающего health-noise, больше фокуса на heartbeat, current task и очереди
   - command center стал честнее и компактнее
@@ -2179,98 +2179,154 @@
   - Sprint KPI по выпуску MP4 подтверждён live stress: `10/10 done`
   - отчёт больше не путает успешный текущий stress с историческими падениями в БД
 
-### Reels Brain preview loop auth fan-out fix
+### Series window reset for next 50-run loop
 
-- Ветка: `feat/reels-brain-operator-console`
-- Цель: починить `reels-brain` loop в preview, где внутренние шаги `source-run -> analyze -> patterns/build` возвращали пустые `{}` несмотря на живую UI-сессию
+- Дата: 2026-06-27
+- Ветка: `codex/factory-worker-runtime-cleanup`
+- Цель: не блокировать новый цикл генерации старым закрытым 50-run окном, сохранив learning gate.
 - Root cause:
-  - `app/api/factory/reels-brain/loop/route.ts` вызывал свои же `/api/factory/reels-brain/*` route handlers через `internalFetch`
-  - во внутренний fan-out не пробрасывались входящие cookies
-  - в preview это отрезало и `fp_session`, и `_vercel_jwt`, поэтому подшаги теряли доступ за Vercel Deployment Protection и loop видел пустые ответы
+  - `improvementLoop` считал последние 50 рецептов как одно окно.
+  - Production readiness показывал `hold`, потому что историческое окно уже было `50/50`.
+  - Для следующего цикла не было явного `series_after`, поэтому кнопка следующей пятёрки упиралась в старую историю.
 - Изменено:
-  - `app/api/factory/reels-brain/loop/route.ts`: добавлен проброс входящего `cookie` header во все внутренние вызовы `source-run`, `analyze`, `patterns/build`
-  - бизнес-логика loop не менялась; остался прежний CRON fallback через `internalFetch`
-- Живая диагностика перед фиксом:
-  - `providers`: ok, active trend source = `apify`
-  - `corpus`: ok, `toys` корпус читался
-  - `source-run`: ok, но для `water gun review` вернул `0/0`
-  - `analyze`: честно возвращал `503` с `VIRLO_API_KEY не настроен: deep analyze недоступен`
-  - `patterns/build`: ok, `source_videos=52`, `patterns=6`
-  - `loop`: `200 ok`, но внутри `source_runs:[{}]`, `analyze:{}`, `patterns:{}` и лог `source ... 0/0`, `analyze: 0`, `patterns: 0`
+  - `lib/factory/improvementLoop.ts`: добавлен `series_after` / `series_start_at`, DB и in-memory фильтр по `created_at`.
+  - `/api/factory/{learning,improvement,series-readiness,batch}` прокидывают активное окно серии.
+  - Studio learning screen получил кнопку `новый цикл`; readiness и `следующая пятёрка` отправляют тот же `series_after`.
+  - `lib/factory/seriesReadinessSmoke.mjs` получил `--series-after`.
+  - `docs/factory-50-run-improvement-loop.md` обновлён под новый цикл.
 - Проверки:
-  - `npx eslint app/api/factory/reels-brain/loop/route.ts`: pass
-  - `npx tsc --noEmit`: pass
+  - `node lib/factory/improvementLoop.test.mts`
+  - `node lib/factory/batchTransparencyContract.test.mts`
+  - `node lib/factory/graphRunBatchIdContract.test.mts`
+  - `node lib/factory/genSaveBatchMetaContract.test.mts`
+  - `node lib/factory/studioImprovementLoopContract.test.mts`
+  - `node lib/factory/seriesImprovementReadinessContract.test.mts`
+  - `node lib/factory/seriesReadinessContract.test.mts`
+  - `node lib/factory/seriesReadinessSmokeContract.test.mts`
+  - `node lib/factory/learningApiWarnings.test.mts`
+  - `node lib/factory/seriesRunbookContract.test.mts`
+  - `node --check lib/factory/seriesReadinessSmoke.mjs`
+  - inline-parse `public/inferno/studio.html`
+  - Vercel production build/deploy: `dpl_AH3sXqfySJ7uDRLnSiuXSyJzbAGg`, alias `https://finance-panel-two.vercel.app`
 - Результат:
-  - loop больше не должен терять preview-session на внутреннем fan-out
-  - следующий шаг после redeploy: повторно прогнать preview `loop` и проверить, что ошибки/результаты подшагов видны честно, без пустых payload'ов
-- 2026-06-27: Reels Brain bake-off now ranks providers with explicit `best_provider` output, and trend intake no longer defaults to generic `apify` just because `APIFY_TOKEN` exists. We now prefer specialized actors (`apify_tiktok` / `apify_instagram` / `apify_youtube`) before falling back to `virlo`, which should improve first-pass reel intake quality for the self-learning loop.
-- 2026-06-27: `source-run` now walks a real provider fallback chain instead of hitting a single source. It tries the preferred trend providers in order, dedupes by URL across runs, stops once enough relevant videos are collected, and returns `provider_runs` so we can see which source actually filled the intake.
-- 2026-06-27: Pattern Memory is now split into platform-specific brains. `patterns/build` returns a `meta_brain`, per-platform `platform_brains` for TikTok / Instagram / YouTube, and `cross_platform_patterns` for ideas that repeat across at least two platforms. This gives us a real path to platform-native generation instead of one mixed reels memory.
-- 2026-06-27: `scenario`, `scripts`, `autofill`, `video-critic`, and `scenario-quality` now accept/use `target_platform` and read the selected `platform_brain` from `playbook.reels_brain_patterns`. Generation and quality checks now judge TikTok / Instagram / YouTube by different expectations instead of one shared short-form rubric.
-- 2026-06-27: `graph-run` now stores `target_platform` in `run_plan`, passes it into `video-critic` during OTK, returns it from status/read routes, and reuses it in `graph-run/rejudge`. `produce` is also platform-aware now, so the producer, runtime OTK, and post-run rejudge are all evaluating the same target platform instead of silently falling back to a generic short-form path.
-- 2026-06-27: Added a platform-aware Brain Lab summary layer. New `/api/factory/reels-brain/summary?niche=...` returns per-platform corpus/winner/provider/pattern stats, and `studio?niche=...` now includes `platform_summary` so TikTok / Instagram / YouTube brains can be inspected side by side from one API surface.
-- 2026-06-27: Provider bake-off is now platform-aware end to end. `summarizeProviderQuality()` stores per-platform found/valid/relevant/score/coverage stats, `/api/factory/reels-brain/bake-off` returns `summary_by_provider_platform`, `ranked_by_platform`, and `best_provider_by_platform`, and we can now choose the best intake source separately for TikTok, Instagram, and YouTube instead of forcing one universal winner.
-- 2026-06-27: `source-run` now honors `target_platform` / `platform` when building its provider fallback chain. Specialized providers for the requested network are tried first, generic `apify` is pushed to the tail, and the response now returns `target_platform` so corpus intake can be traced back to the intended brain lane.
-- 2026-06-27: `source-run` is now self-learning at the provider layer. It reads remembered preferred providers from `niche_playbooks.playbook.reels_brain_sources`, moves the remembered winner to the front of the fallback chain, re-ranks provider performance for the current target platform after each run, and writes the new winner back into playbook memory. Brain Lab summary/studio now expose `preferred_source_providers`, so the current TikTok / Instagram / YouTube intake champion is visible from the API.
-- 2026-06-27: Added automatic provider re-learning on top of that memory layer. `reels-brain/loop` now evaluates each `source-run`, triggers a mini `bake-off` when intake is empty/weak or the winner shifts, persists the new platform winner back into playbook memory, and retries `source-run` once with the refreshed source order. Legacy `jobs/corpus-tick` also got a soft fallback: when Comet intake returns nothing, it runs a small `source-run`/`bake-off` cycle for recent niches so provider memory can recover without manual intervention.
-- 2026-06-27: Added the operator policy/observability layer for Reels Brain source learning. `reelsBrainPlaybook` now stores per-platform relearn thresholds, corpus quality gates, recommended source queries, and provider champion history. `source-run` reads those policies, auto-picks query sets when none are passed, and returns policy/history metadata. `summary` and `studio` now expose training readiness, provider history, recommended queries, and policy snapshots per platform. `corpus-cron` also runs scheduled mini bake-offs for recent niches, and `reelsBrainSmoke.mjs` now supports `--platform` to verify platform-specific provider winners.
-- 2026-06-27: Built the first operator-grade Reels Brain health console in `/agent/reels-brain`. The live console now shows platform-specific readiness, provider drift, stale champion alerts, recommended queries, quality gates, and champion history, with one-click `mini bake-off` and `source refresh` actions per platform. Bake-off ranking is now cost/latency-aware in addition to relevance/quality, so cheaper and faster providers can win close contests instead of blindly preferring the highest raw recall.
-- 2026-06-27: Pulled a “weekly pack” into the current branch without touching SQL migrations. Playbook memory now tracks query performance leaderboards and incident history (`empty_intake`, `low_yield`, `provider_drift`, etc.), `source-run` writes those signals back after each intake, `/api/factory/reels-brain/summary` and new `/api/factory/reels-brain/alerts` expose incidents/query leaderboards, and the live `/agent/reels-brain` console now renders those feeds. Bake-off also gained anti-flap/stable winner selection with confidence and current-preferred fallback when the margin is too small. Dedicated DB tables for history/incidents are still intentionally deferred because migrations are outside the current worker mandate.
-- 2026-06-27: Extended that into a “month-pack” productization layer without leaving the allowed content-factory zone. Added `/api/factory/reels-brain/digest` for compact operational snapshots, a live read-only public report at `/inferno/vendor/reels-brain-report?niche=...`, plus explicit ops docs (`factory-reels-brain-ops-runbook.md`, `factory-reels-brain-release-checklist.md`). This means Reels Brain now has not only internal memory, alerts, drift handling and operator actions, but also shareable read-only reporting and release/runbook artifacts for a softer path toward product rollout.
-- 2026-06-27: Tightened the monthly layer with query rotation and incident cooldowns. `nextRecommendedSourceQueries()` now avoids repeating the last-used query first, `source-run` uses that rotated set automatically, and repeated identical incidents are suppressed for a cooldown window instead of polluting the playbook-backed history every run. `/api/factory/reels-brain/alerts` also now returns an alert summary so operators can read severity totals without client-side aggregation.
-- 2026-06-27: Added owner-level multi-niche visibility. New `/api/factory/reels-brain/digest-all` aggregates readiness / incidents / drift across multiple niches at once, and `/inferno/vendor/reels-brain-portfolio` exposes that as a read-only portfolio report. This gives a top-down view of which niches are healthy, which are watch-level, and where operator attention should go first without opening each niche separately.
-- 2026-06-27: Closed the remaining week 2-4 operator layer gaps. Query recommendation now guarantees format-derived seeds are not crowded out by platform defaults, `loadReelsBrainPortfolioDigest()` now computes explicit next-action metadata plus a portfolio-level action queue, and `/inferno/vendor/reels-brain-portfolio` now renders owner-facing priority, platform, query, and reason fields instead of only aggregate counts.
-- 2026-06-27: Added dedicated `lib/factory/reelsBrainDigest.test.mts` coverage for multi-niche digest/action-queue behavior and re-ran targeted checks: `npx tsx lib/factory/reelsBrainPlaybook.test.mts` pass, `npx tsx lib/factory/reelsBrainDigest.test.mts` pass, `npx tsc --noEmit` pass, `node lib/factory/reelsBrainSmoke.mjs --help` pass.
-- 2026-06-27: Live webpack validation for week 4 now confirms:
-  - `GET /api/factory/reels-brain/digest-all?niches=toys,clothing` returns `200` with live `next_action_*` fields
-  - `GET /api/factory/ops` returns `200` with `reels_brain.portfolio`
-  - `GET /inferno/vendor/reels-brain-portfolio` returns `200` and renders queue/reason HTML
-  - `GET /inferno/vendor/reels-brain-report?niche=toys` returns `200`
-- 2026-06-27: Browser/operator QA still has one external blocker outside this worker mandate: `/agent/reels-brain` redirects to `/login?from=%2Fagent%2Freels-brain`, and local `/login` currently ends in `500`. Auth/middleware/login fixes remain explicitly out of scope for the Railway content-factory worker, so rollout is ready on the read-only and API side but operator-console browser QA still needs owner-side auth follow-up.
-- 2026-06-27: Follow-up auth verification closed that blocker. Root cause of the earlier local `500` was empty `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` in local `.env.local`; after refreshing `development` env and re-pulling, local `/login` returned `200` and `/agent/reels-brain` resolved correctly after auth redirect.
-- 2026-06-27: Live preview browser QA is now confirmed end-to-end. Preview `/login` opened normally, `/agent/reels-brain` redirected to login as expected, and after owner login the preview opened the live `Self-learning Reels Intelligence Brain` operator console. This closes the week-4 operator access/readiness check.
-- 2026-06-27: Started the next month-pack learning loop hardening pass. Query memory now tracks `low_yield_runs`, `empty_runs`, and `suppressed_until`; repeated weak or empty query lanes are temporarily removed from source rotation, exposed via `source-run` / `summary`, covered by playbook tests, and now visible in the `/agent/reels-brain` operator console as suppressed queries with cooldown timing and failure counts.
-- 2026-06-27: Added automatic query recovery on top of that suppression layer. Expired suppressions now flow into a `recovery queue` instead of silently falling back into the general pool, `nextRecommendedSourceQueries()` re-injects one cooled-down query at a time for a soft re-check, successful reruns clear the suppression state automatically, and `summary` / `source-run` / `/agent/reels-brain` now expose those recovery candidates to the operator.
-- 2026-06-27: Added provider-lane auto-relearn on top of the query loop. `source-run` now accepts `provider_hint` so retry traffic can be pinned to a chosen intake lane instead of blindly trusting old memory order, `reelsBrainSourceLearning` now builds an explicit retry-provider plan from the current run plus mini bake-off winner, and `reels-brain/loop` records `provider_shifts` while routing retry attempts through the selected alternate provider. This makes provider recovery explicit and inspectable instead of implicit through playbook persistence alone.
-- 2026-06-27: Lifted those provider-lane relearn signals into the owner digest layer. `reelsBrainDigest` and `reels-brain/digest` now expose structured `provider_shift` and `retry_signal` data per platform, the portfolio action queue carries those fields for the currently selected lane, and the read-only `/inferno/vendor/reels-brain-portfolio` report now renders shift/retry hints inline. This means owner-facing views can now distinguish “drift exists” from “brain already shifted lane and should retry on the new provider”.
-- 2026-06-27: Closed the next owner-level gap by wiring those same signals into the unified ops snapshot. `/api/factory/ops` now exposes `reels_brain.retry_queue`, counts active shifted-provider lanes, and upgrades `suggested_actions` toward `retry_reels_brain_shifted_provider` when the brain has already switched intake lane and only needs verification. This brings daily ownership closer to one control plane instead of separate brain-specific dashboards.
-- 2026-06-27: Started the explicit `10k` corpus growth track. Added a shared `reelsBrainCorpusTargets` helper with default platform split (`TikTok 4k / Instagram 3.5k / YouTube 2.5k`), stage gates (`300 / 1.5k / 4k / 10k`), and growth-pressure presets for automation. Daily/weekly automation plans now get more aggressive while a platform is far below target, and `digest-all` / portfolio report now expose `corpus_goal` progress so owner/operator views can measure nasmotrennost build-up instead of only current health.
-- 2026-06-27: Extended that into an execution planner. The shared corpus-target helper now computes a `42-day` ramp with daily/weekly intake quotas by platform and niche, `digest-all` exposes that plan in `corpus_goal.execution_plan`, the read-only portfolio shows required pace to hit `10k`, and `/api/factory/ops` now escalates explicit corpus-gap pressure when the brain is too far from target volume.
-- 2026-06-27: Added the executable corpus growth job. New `GET/POST /api/factory/jobs/reels-brain-growth` builds a prioritized weakest-lane queue across `niche x platform`, uses `GET` as a dry planning surface, and executes selected lanes on `POST` through the existing Reels Brain loop. `/api/factory/ops` now advertises the growth route alongside daily/weekly automation, and the runbook documents how to run focused corpus growth toward the `10k` target.
-- 2026-06-27: Converted `10k` corpus growth into a safe tick-based learning mode after live preview showed that one long multi-lane batch can hit Vercel runtime timeouts. `reels-brain/loop` can now skip pattern rebuilding for intake-only ticks, `/api/factory/jobs/reels-brain-growth` defaults live execution to one short lane, and new `/api/factory/jobs/reels-brain-learning` wraps that as a 72-hour background-learning contract with a recommended next-run cadence. The operator UI now triggers a bounded learning tick instead of a heavy batch, and a Codex heartbeat was scheduled to keep returning to the same `10k` objective every 30 minutes.
-- 2026-06-27: Switched the `10k` objective to a faster raw-corpus-first strategy. New `/api/factory/jobs/reels-brain-bulk-ingest` fills the weakest `niche x platform` lanes directly from configured providers, dedupes into `viral_videos`, and leaves heavier analyze/pattern rebuild work for later passes. `/api/factory/jobs/reels-brain-learning` now defaults to that bulk strategy, the operator button is labeled `Run bulk ingest`, `/api/factory/ops` exposes the bulk route, and smoke checks can verify the bulk planning queue with `--check-bulk`.
-- 2026-06-27: Live preview QA confirmed the accelerated learning path. The first raw TikTok bulk control inserted `50/50` videos across `toys` and `clothing`; the full `/api/factory/jobs/reels-brain-learning` bulk path then inserted another `27` videos (`15` YouTube + `12` TikTok) with `200` responses in Vercel logs. Corpus total for the tracked niches is now `381`. Instagram keyword lanes currently return empty/URL-required responses, so the bulk planner now diversifies queue selection by platform instead of spending all ticks on the weakest Instagram lanes.
-- 2026-06-27: Hardened the Instagram bottleneck in bulk mode. `reels-brain-bulk-ingest` now accepts `instagram_seeds` / `instagram_seed_urls`, reads `BRIGHT_DATA_INSTAGRAM_PROFILE_URLS`, routes URL-based Instagram queries through `bright_instagram` first, and skips unseeded Instagram lanes during execute by default so 10k learning ticks keep filling productive TikTok/YouTube lanes instead of burning time on empty generic Instagram keyword pulls. Skipped lanes are returned as `blocked_lanes` with the exact env/body fix.
-- 2026-06-27: Live QA of the hardened bulk path inserted another `+26` videos while returning all unseeded Instagram lanes as `blocked_lanes`. TikTok showed occasional actor latency around the old `12s` cutoff, so the default learning tick now uses `providers_per_lane=1` and `provider_timeout_ms=18000` to reduce false timeouts while staying inside Vercel's 120s route limit.
-- 2026-06-27: Re-ranked TikTok bulk providers from live evidence. `ensemble_tiktok` returned `10/10` normalized and inserted in ~5.8s, while `apify_tiktok` was slower with heavy dedupe and `bright_tiktok` timed out at 15s, so the TikTok bulk order is now `ensemble_tiktok -> apify_tiktok -> virlo/apify -> bright_tiktok`.
-- 2026-06-27: Final live default learning tick on the stable preview inserted `+31` videos and confirmed the fixed path: TikTok used `ensemble_tiktok` successfully (`19` inserted, no timeout), YouTube inserted `12`, and unseeded Instagram lanes remained safely blocked until profile/reel URL seeds are configured. Vercel logs show `200` for both `/api/factory/jobs/reels-brain-learning` and `/api/factory/jobs/reels-brain-bulk-ingest`.
-- 2026-06-27: Started API-level Instagram repair instead of relying only on manual seeds. `ensemble_instagram` user-search parsing now recursively handles multiple response shapes (`user/profile/account/owner/node`, nested `items/results/data/profiles/edges`) and retries several Instagram search query variants. Bulk ingest now prefers `ensemble_instagram` for keyword Instagram lanes and only uses Bright URL mode when actual Instagram profile/reel URL seeds are present; explicit blocking remains available via `skip_unseeded_instagram=true`.
-- 2026-06-27: Continued Instagram API repair after live Ensemble still returned zero. The shared provider payload parser now also extracts `users`, `profiles`, `accounts`, and `edges` from both root and `data`, which is required for Instagram search APIs that return accounts instead of media. Bulk ingest also accepts a `query` override for targeted provider tests and operator-directed Instagram pulls.
-- 2026-06-27: Provider debug showed the real Ensemble Instagram blocker: HTTP `495` (`All daily units used`). To keep the API-only Instagram repair moving, Apify Instagram input now sends common Instagram actor fields (`directUrls` built from hashtag pages, `resultsType=posts`, `searchType=hashtag`, `resultsLimit`, `onlyPostsNewerThan`) instead of generic keyword-only input, and learning ticks use two providers per lane so Instagram can fall through from exhausted Ensemble to Apify.
-- 2026-06-27: Added Apify official-actor fallback for Instagram API repair. If the configured `APIFY_INSTAGRAM_REELS_ACTOR` returns empty, `fromApify` now tries `apify/instagram-scraper` and `apify/instagram-hashtag-scraper` with the same hashtag/direct URL input. Instagram normalization now also reads common Apify fields such as `shortCode`, `videoViewCount`, `videoPlayCount`, `likesCount`, `ownerUsername`, and `timestamp`.
-- 2026-06-27: Live Instagram API repair confirmed: a focused Instagram bulk call for `skincare routine` inserted `8` Instagram videos through the Apify fallback after Ensemble returned empty/exhausted. General learning timeout was tuned to `30s` with `providers_per_lane=2` so UI/default ticks can reach Apify fallback without using the unsafe `55s` timeout that can push a full multi-lane tick into Vercel HTML timeout responses.
-- 2026-06-27: Finished the Instagram API hardening pass for automatic bulk lanes. Reels Brain now treats `apify_instagram` as available from `APIFY_TOKEN` via official Apify actor fallback, demotes exhausted Ensemble behind Apify for keyword Instagram pulls, gives providers a real `30s` ceiling, and generates hashtag-friendly Instagram queries by niche (`fashion haul`, `makeup tutorial`, `toy review`) instead of generic `niche reels`. Live stable-preview QA confirmed `clothing / instagram` dry-run now chooses `fashion haul`, and the real tick inserted `10/10` Instagram videos through `apify_instagram` in ~12.3s.
-- 2026-06-27: Added a dedicated Instagram catch-up mode to `/api/factory/jobs/reels-brain-learning`: `strategy=instagram` now routes only Instagram lanes through `apify_instagram`, with `max_lanes=4`, `limit=25`, one provider per lane, and a `30s` provider timeout. Local validation passed (`npx tsc --noEmit`, `reelsBrainPlaybook`, `reelsBrainSources`), but deployment is temporarily blocked from this machine by TLS disconnects to Vercel (`Client network socket disconnected before secure TLS connection was established`). Earlier stable preview remains live with the core Instagram API fix.
-- 2026-06-27: Deployed and live-tested Instagram catch-up mode after Vercel TLS recovered. `GET /api/factory/jobs/reels-brain-learning?strategy=instagram` now dry-runs an Instagram-only queue, and `POST` executed successfully on the stable preview. First catch-up tick inserted `81` Instagram videos (`cosmetics +25`, `toys +24`, `clothing +17`, `default +15`). A second same-query tick inserted `34` more but exposed dedupe saturation on `toys`/`clothing`.
-- 2026-06-27: Added count-based Instagram query rotation to bulk ingest so catch-up lanes move through alternate seeds after each ~25 videos instead of repeating one saturated query. Live dry-run confirmed rotation from `toy review/fashion haul/makeup tutorial` to `toy unboxing/outfit ideas/skincare routine`; a third tick inserted another `73` Instagram videos (`toys +23`, `cosmetics +25`, `clothing +25`, `default +0`). Net live Instagram gain in this continuation: `+188` videos.
-- 2026-06-27: Fixed follow-up Instagram catch-up execution issues. The stable alias was still effectively serving an old deployment until the old alias was explicitly removed and recreated; after that, focused `strategy=instagram` dry-runs returned the fresh `dpl_4KL.../dpl_CVt...` code path. Learning now forwards `niches` into bulk ingest as a comma string instead of an array, so focused runs no longer accidentally expand back to all default niches. Instagram rotation also filters Cyrillic/playbook prose queries for Apify hashtag intake.
-- 2026-06-27: Expanded Instagram seed pools for the commerce niches and live-tested focused catch-up after the fix. `toys` moved from saturated `toy unboxing` to `kids toys` and inserted `25/25`; `cosmetics` used `beauty hacks` and inserted `24/25`; `clothing` still used `fashion haul` and inserted `11/25`. Net additional Instagram gain in this continuation: `+60` videos. Next improvement is to make rotation learn from recent dedupe/insert rate, not just current video count.
-- 2026-06-27: Switched the learning objective to a Russian-first Reels Brain. Added `strategy=instagram_ru`, which maps learning lanes into separate `ru_toys`, `ru_clothing`, and `ru_cosmetics` niches so Russian cultural patterns do not mix with the earlier English corpus. Russian Instagram seeds now include category-native queries such as `обзор одежды`, `обзор косметики`, `обзор игрушек`, `примерка одежды`, `уход за кожей`, and `находки для детей`.
-- 2026-06-27: Added a protected Reels Brain reset endpoint at `/api/factory/reels-brain/reset`. Dry-run reported `791` existing `viral_videos` and Reels Brain memory in `2` playbooks; confirmed reset deleted all `791` Reels Brain videos and cleared `reels_brain_*` memory from playbooks while leaving the rest of the product untouched. After reset, the first Russian retrain tick inserted `34` Instagram videos: `ru_clothing +18`, `ru_cosmetics +15`, `ru_toys +1`.
-- 2026-06-27: Extended Russian corpus intake beyond Instagram. Live provider check confirmed all main keys are configured on Vercel. YouTube official provider is currently the fastest reliable RU source: two focused batches inserted `+183` YouTube videos in seconds. TikTok is partially working through `virlo`; `ensemble_tiktok` hit daily limit, `bright_tiktok` timed out, and `apify_tiktok` returned empty, so Russian TikTok query priority now moves `virlo` ahead of the exhausted/slow lanes. Current RU corpus after the run: `580` raw videos (`Instagram 345`, `YouTube 225`, `TikTok 10`), with analysis/pattern build still intentionally deferred until the raw layer is larger.
-- 2026-06-28: Fixed the production operator-console outage on `finance-panel-two.vercel.app`. Root cause was the global `proxy` matcher still intercepting internal `/_next/*` requests, which broke App Router navigation for `/agent/reels-brain` and left `/agent` partially stale in the browser. The fix now excludes all `/_next/` paths in `proxy.ts`, keeps `/agent` and `/agent/reels-brain` dynamic, and adds `lib/auth/proxyMatcher.test.mts` as a regression guard for Next internals vs protected app routes.
-- 2026-06-27: Apify free monthly platform usage is now exhausted, so all Apify-backed actors are blocked until billing/plan is upgraded. Russian intake was switched to a non-Apify mode: official YouTube API continues to work and inserted another `+565` videos across focused RU queries, while Instagram via Apify is paused. Current RU raw corpus is `1169` videos: `ru_toys 386` (`TikTok 10 / Instagram 163 / YouTube 213`), `ru_clothing 470` (`Instagram 163 / YouTube 307`), `ru_cosmetics 313` (`Instagram 43 / YouTube 270`). Analysis/pattern build remains deferred.
-- 2026-06-27: Apify billing/top-up was restored and the Instagram smoke test passed (`ru_cosmetics / бьюти находки` inserted `10/10`). Two focused Apify Instagram batches then inserted another `+208` RU Instagram videos. Productive queries right now: `бьюти находки`, `уход за кожей`, `скинкеа рутина`, `уходовая косметика`, `распаковка игрушек`, `стильные образы`, `лукбук`, `капсула гардероба`, `что надеть`. Saturated/low-yield queries include `обзор косметики`, `косметика вайлдберриз`, `игрушки маркетплейс`, `популярные игрушки`, `находки для детей`, `примерка одежды`, and `одежда вайлдберриз`. Current RU raw corpus is `1387` videos: `ru_toys 419`, `ru_clothing 551`, `ru_cosmetics 417`.
-- 2026-06-27: Fixed Apify TikTok intake. Root cause was invalid actor input: `maxProfilesPerQuery` was sent as `0`, while the active Clockworks actors require `>= 1`. After the fix and live debug deploy, `clockworks/tiktok-scraper` started returning normal datasets and TikTok became the strongest unique-intake lane.
-- 2026-06-27: Switched to a controlled `3k` push with Apify usage already at `75%`. Strategy was `TikTok-first`, `Instagram` only for a few productive queries, and `YouTube` only as a cheap helper. The final push closed the milestone at roughly `3002` RU raw videos, with TikTok becoming the main growth driver in the last batches.
-- 2026-06-28: Closed the next Reels Brain training gap after the full RU corpus analyze pass. `reelsBrainSummary` now synthesizes a small per-platform `seed winner` layer directly from top analyzed `viral_videos` when real `content_assets.is_winner` examples do not exist yet, and `learningHints.winnersHintFor()` now falls back to those strongest analyzed market videos for scenario/critic grounding. This keeps real product winners as the highest-priority source of truth, but removes the artificial `winners = 0` readiness ceiling while the production generation loop is still catching up.
-- 2026-06-28: Validation for that pass is green in code and deploy layers. Local targeted tests passed (`reelsBrainSummary`, `learningHints`, `reelsBrainDigest`, `tsc --noEmit`), and a fresh preview deploy was built successfully as `https://finance-panel-7klftohtw-pankman-100-s-projects.vercel.app` (`dpl_6DJWGv4Kjo9E8D3xwykCxgyhn9Yd`, preview status `Ready`).
-- 2026-06-28: Live API verification of the new readiness numbers is still blocked by platform access, not by build health. Direct CLI `curl` to the preview now hits Vercel SSO / Deployment Protection, local `next dev` resolves but cannot compute brain summaries because the local env lacks a usable `SUPABASE_SERVICE_ROLE_KEY`, and the Chrome-extension runtime is not available in this Codex session (only the in-app browser backend is exposed). The remaining check is therefore browser-session access to the protected preview API, not another code change.
-- 2026-06-28: Fixed the follow-up production auth gap in the Reels Brain operator console. After `/agent/reels-brain` itself recovered, live owner-button smoke still showed `unauthorized` on bulk ingest because the job routes only accepted `Bearer CRON_SECRET`. Added a shared `reelsBrainJobAuth` helper that authorizes either cron bearer or a valid `fp_session`, applied it consistently across `learning`, `bulk-ingest`, `growth`, `daily`, and `weekly` job routes, and added `lib/factory/reelsBrainJobAuth.test.mts` as regression coverage before redeploy/smoke.
-- 2026-06-28: Started the first 2-month Reels Brain infrastructure batch. Added server-side automation run memory inside `niche_playbooks.playbook.reels_brain_automation` without a new migration, persisted bulk/growth/daily/weekly job summaries into that memory, exposed automation history through summary/digest surfaces, and added a provider budget guard for bulk ingest (`REELS_BRAIN_MAX_PROVIDER_CALLS_PER_TICK`, `REELS_BRAIN_MAX_COST_UNITS_PER_TICK`) so expensive provider fan-out can be capped before execution.
-- 2026-06-28: Added a scheduler contract for the same batch. New `/api/factory/jobs/reels-brain-scheduler` returns a canonical bulk/daily/weekly plan on `GET` and executes one selected tick on `POST`, reusing the same cron/session auth and forwarding browser cookies to downstream job routes. This gives Vercel Cron/Railway/operator UI one stable route for scheduled corpus growth, daily refresh, and weekly retrain.
-- 2026-06-28: Added the analyze-backlog layer for the same scheduler path. New `/api/factory/jobs/reels-brain-analyze-backlog` ranks `niche x platform` lanes by unanalyzed backlog, executes bounded Virlo analyze batches through the existing analyze API, can optionally rebuild patterns, persists automation summaries into Reels Brain memory, and is now included in the scheduler plan as the `analyze` task.
-- 2026-06-28: Wired the new scheduler/analyze layer into the live operator console. `/agent/reels-brain` now has `Scheduler plan` visibility and a direct `Analyze backlog` action that executes through `/api/factory/jobs/reels-brain-scheduler`, normalizes analyze-backlog results into the existing automation metrics/history UI, and keeps daily/weekly/bulk controls intact. Validation passed locally (`npx tsc --noEmit --pretty false`, scheduler/playbook/job-auth/proxy tests), and production deploy `dpl_FXztGNMSjHPkm9LUm2eVCFsTY9pq` is aliased to `https://finance-panel-two.vercel.app`.
-- 2026-06-28: Fixed the operator `Analyze backlog` browser `Load failed` path. Vercel logs showed the backend jobs were returning `200`, but the browser-facing response was too heavy because the job returned full analyze/pattern payloads. The analyze-backlog job now returns compact per-lane summaries, and the UI button runs a direct bounded tick (`1` lane, `8` videos, no pattern rebuild) instead of a heavier scheduler-hop. Validation passed (`tsc`, scheduler/job-auth/playbook tests) and production deploy `dpl_Ao4MqAWhgoYdCGHJpYUhiLeEWJhX` is aliased to `https://finance-panel-two.vercel.app`.
-- 2026-06-28: Switched Reels Brain learning from manual clicks to product automation. Added `/api/factory/jobs/reels-brain-cron` and registered it in `vercel.json` every 15 minutes. The cron route runs `bulk` at minute `00` UTC to keep filling the RU corpus, and `analyze` at `15/30/45` UTC to convert raw backlog into analyzed memory without browser interaction. Manual UI analyze was also lifted to `3 lanes x 12 videos` (`Analyze backlog x36`) for emergency/operator runs. Validation passed (`tsc`, job-auth/scheduler/playbook tests), and production deploy `dpl_FvZv9ErHxF35FniUnkKzc3R3p3pM` is live on `https://finance-panel-two.vercel.app`.
-- 2026-06-28: Upgraded Reels Brain automation to turbo analyze mode and verified it live. Cron cadence is now every `5` minutes; minute `00` still runs bounded bulk ingest, while the other 5-minute ticks run analyze. Analyze-backlog now executes up to `6 lanes x 18 videos` in parallel (`Analyze backlog x108`) with pattern rebuild disabled for route stability. During live verification, `CRON_SECRET` was found present but empty in Production, so it was regenerated, redeployed, and validated with a Bearer call. The live `/api/factory/jobs/reels-brain-cron?task=analyze` check returned `200`, selected up to `59` backlog videos, and Vercel logs confirmed parallel `/api/factory/reels-brain/analyze` `200` calls. Active production deploy: `dpl_3jcwHMrZU8aC316LVznF1WtQuJjQ`.
+  - Старое 50-run окно остаётся историей обучения.
+  - Новый цикл можно начать без отключения quality/feedback gate.
+  - Следующая генерация должна идти как первая пятёрка нового активного окна.
+
+### Persist active series window in Studio
+
+- Дата: 2026-06-27
+- Ветка: `codex/factory-worker-runtime-cleanup`
+- Цель: не терять активный `series_after` при reload страницы Studio.
+- Изменено:
+  - `public/inferno/studio.html`: `seriesAfter` восстанавливается из `localStorage.factory_series_after`.
+  - добавлен `setSeriesAfter(...)`, который сохраняет/очищает активное окно серии централизованно.
+  - кнопки `новый цикл` и `общее окно` теперь меняют и runtime state, и persisted state.
+  - `lib/factory/studioImprovementLoopContract.test.mts`: contract на restore/persist/clear.
+- Проверки:
+  - `node lib/factory/improvementLoop.test.mts`
+  - `node lib/factory/batchTransparencyContract.test.mts`
+  - `node lib/factory/graphRunBatchIdContract.test.mts`
+  - `node lib/factory/genSaveBatchMetaContract.test.mts`
+  - `node lib/factory/studioImprovementLoopContract.test.mts`
+  - `node lib/factory/seriesImprovementReadinessContract.test.mts`
+  - `node lib/factory/seriesReadinessContract.test.mts`
+  - `node lib/factory/seriesReadinessSmokeContract.test.mts`
+  - `node lib/factory/learningApiWarnings.test.mts`
+  - `node lib/factory/seriesRunbookContract.test.mts`
+  - `node --check lib/factory/seriesReadinessSmoke.mjs`
+  - inline-parse `public/inferno/studio.html`
+  - Vercel production build/deploy: `dpl_EgsmWrBSmfdTCThZh4Fns43nS41z`, alias `https://finance-panel-two.vercel.app`
+- Результат:
+  - Активная новая серия переживает reload.
+  - Оператор может стартовать первую пятёрку нового окна без повторного ручного выставления timestamp.
+
+### New-cycle dry-run preflight CLI
+
+- Дата: 2026-06-27
+- Ветка: `codex/factory-worker-runtime-cleanup`
+- Цель: дать безопасный terminal-run путь перед первой пятёркой нового 50-run окна без запуска генерации.
+- Изменено:
+  - `lib/factory/seriesNewCyclePreflight.mjs`: создаёт/принимает `series_after`, вызывает `/api/factory/series-readiness`, затем `/api/factory/batch` только с `dry_run:true`.
+  - Артефакты: `docs/factory-latest-series-new-cycle-preflight.json/md`.
+  - `lib/factory/seriesNewCyclePreflightContract.test.mts`: guard, что скрипт не имеет trigger/restart mode и требует `require_full_batch + require_learning_gate`.
+  - `docs/factory-50-run-improvement-loop.md`: добавлен safe-runbook перед реальным запуском новой пятёрки.
+- Проверки:
+  - `node lib/factory/seriesNewCyclePreflightContract.test.mts`
+  - `node --check lib/factory/seriesNewCyclePreflight.mjs`
+- Результат:
+  - Перед тратой денег можно одной командой получить verdict: readiness + selected 5 + learning gate + budget dry-run.
+
+### Studio new-cycle preflight action
+
+- Дата: 2026-06-27
+- Ветка: `codex/factory-worker-runtime-cleanup`
+- Цель: дать тот же safe preflight через залогиненную Studio, если CLI не знает production `CRON_SECRET`.
+- Изменено:
+  - `public/inferno/studio.html`: добавлена кнопка `preflight нового цикла`.
+  - Кнопка выставляет новый `series_after`, сохраняет его и открывает `openNightRun(...)` с `auto_preflight:true`.
+  - Генерация не запускается: открывается только dry-run первой пятёрки нового окна.
+  - `lib/factory/studioImprovementLoopContract.test.mts`: guard на кнопку и передачу `series_after: startedAt`.
+- Проверки:
+  - `node lib/factory/studioImprovementLoopContract.test.mts`
+  - inline-parse `public/inferno/studio.html`
+  - `node lib/factory/improvementLoop.test.mts`
+  - `node lib/factory/batchTransparencyContract.test.mts`
+  - `node lib/factory/seriesImprovementReadinessContract.test.mts`
+  - `node lib/factory/seriesNewCyclePreflightContract.test.mts`
+  - `node lib/factory/seriesRunbookContract.test.mts`
+  - Vercel production build/deploy: `dpl_7cai4QxbLqFtBgJhcN4KNzWANQjT`, alias `https://finance-panel-two.vercel.app`
+- Результат:
+  - Реальный следующий шаг в UI: `Обучение` -> `preflight нового цикла`.
+  - Это должно показать, хватает ли draft-рецептов/бюджета/learning gate для первой пятёрки без запуска генерации.
+
+### Trace batch ids in improvement loop
+
+- Дата: 2026-06-27
+- Ветка: `codex/factory-worker-runtime-cleanup`
+- Цель: перед реальной серийной генерацией связать learning snapshot с конкретным `/api/factory/batch` launch.
+- Изменено:
+  - `lib/factory/improvementLoop.ts`: `batch_run_id` читается из `run_plan`, сохраняется на уровне `ImprovementRun` и агрегируется в `ImprovementBatch`.
+  - `public/inferno/studio.html`: блок последней серии показывает реальный `batch_run_id`, если он есть.
+  - contract tests усилены на batch traceability.
+- Результат:
+  - Следующую пятёрку можно сравнивать с предыдущей по реальному batch id, а не только по порядку в истории.
+  - Это последний технический хвост перед запуском первой production-пятёрки нового цикла.
+
+### Prepare drafts for first five
+
+- Дата: 2026-06-27
+- Ветка: `codex/factory-worker-runtime-cleanup`
+- Production finding:
+  - Studio `preflight нового цикла` дошёл до `/api/factory/batch`, но вернул `нет рецептов-черновиков для батча`.
+  - Это блокирует первую пятёрку без ручного переноса рецептов.
+- Изменено:
+  - `lib/factory/recipeTransfer.ts`: общий helper переноса template -> draft recipe.
+  - `app/api/factory/recipes/route.ts`: старый ручной перенос использует общий helper.
+  - `app/api/factory/prepare-drafts/route.ts`: создаёт недостающие `status=draft` рецепты из существующих `node_templates` и прошлых articles; не запускает `graph-run` и не вызывает `/batch`.
+  - `app/api/factory/batch/route.ts`: при пустой очереди возвращает `next_action: prepare_drafts`.
+  - `public/inferno/studio.html`: batch modal показывает кнопку `подготовить черновики`, после успеха автоматически повторяет dry-run preflight.
+- Результат:
+  - Путь к первой production-пятёрке стал: `preflight нового цикла` -> при пустой очереди `подготовить черновики` -> повторный preflight -> `Запустить`.
+  - `batch-build` остаётся отключённым; новый recovery не добавляет второй оркестратор.
+
+### Unstick cron backstop from a single stale recipe
+
+- Дата: 2026-06-27
+- Ветка: `codex/factory-worker-runtime-cleanup`
+- Production finding:
+  - После запуска пятёрки `125–129` cron-backstop продолжал будить только старый рецепт `124`.
+  - При `maxWake: 1` один stale run мог съедать весь recovery slot, а свежий batch фактически ждал, пока старый хвост сам рассосётся.
+- Изменено:
+  - `app/api/factory/graph-run/cron/route.ts`: backstop wake cap поднят до `5` рецептов за cron-pass.
+  - `lib/factory/graphWatchdog.ts`: dedupe теперь сохраняет самый старый `updated_at` по рецепту, а wake-кандидаты сортируются детерминированно (`autofill` first, затем freshest running first) до применения `maxWake`.
+  - `lib/factory/graphCronBackstopFairness.test.mts`: новый contract на fairness backstop-а.
+  - `lib/factory/autofillTickTimeout.test.mts`: обновлён под batch-sized cron burst.
+- Результат:
+  - Один проблемный run больше не монополизирует весь cron recovery.
+  - Backstop может за один проход подхватить целую production-пятёрку и сначала продвигать свежий активный batch, а не закапываться в самый старый хвост.
+- 2026-06-28: батч и prepare-drafts теперь фильтруют `source-ready` артикулы до запуска. Смысл простой: не пихать в пятёрку рецепты без реальных исходников/WB fallback, из-за которых прогон гарантированно умирал ещё до полезной генерации.
+- 2026-06-28: `assemble` теперь умеет rescue-path из usable source asset, если генеративные ноды умерли, но у рецепта уже есть безопасный preview/source URL. Для image-only fallback честно требуем Shotstack, вместо того чтобы молча подсовывать картинку как будто это готовый MP4.
+- 2026-06-28: `graph-run` больше не глотает тихие сбои `gen-save`: внутренний `jpost(..., true)` теперь умеет считать `{ ok:false }` бизнес-ошибкой, а сам `gen-save` отвечает не-2xx на storage/DB fail. Это убирает класс silent-success, когда банковка фактически не сохранила ролик, но раннер не видел причины.
+- 2026-06-28: `falCompose` / `falTimeline` больше не теряют оплаченный compose-job на локальном дедлайне функции. На таймауте они возвращают `pending_url`, а `/api/factory/overlay` и `/api/factory/hybrid-compose` отдают `202 processing` вместо ложного финального фейла.
+- 2026-06-28: warning-memory завода нормализована. `observability` и `improvementLoop` теперь агрегируют канонические warning reasons (`OTK below threshold`, `gen-save warning`, `video-critic unavailable`, `source fallback rescued` и т.д.), а не десятки строк с разными числами/хвостами ошибки. Это делает батчи по 5 и серию на 50 роликов реально сравнимыми по причинам деградации.

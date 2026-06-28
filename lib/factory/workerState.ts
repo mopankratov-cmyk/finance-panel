@@ -53,6 +53,18 @@ function toText(v: unknown): string {
   return wrapped ? wrapped[1].trim() : text;
 }
 
+export function normalizeWorkerStatus(value: unknown): string {
+  const text = toText(value).toLowerCase();
+  if (!text) return "working";
+  if (text === "doing" || text === "working" || text === "running") return "working";
+  if (text === "blocked") return "blocked";
+  if (text === "done") return "done";
+  if (text === "error" || text === "failed") return "error";
+  if (text === "pr_open") return "pr_open";
+  if (text === "todo" || text === "idle" || text === "queued") return "idle";
+  return text;
+}
+
 function parseQueue(md: string): QueueTask[] {
   const tasks: QueueTask[] = [];
   const blocks = md.split(/^### /m).slice(1);
@@ -173,8 +185,8 @@ function deriveWorkerFromQueue(queue: QueueTask[]): WorkerRow | null {
   if (!active) return null;
   return {
     worker_id: WORKER_ID,
-    label: "Railway worker",
-    status: active.status || "unknown",
+    label: "Пульс завода",
+    status: normalizeWorkerStatus(active.status || "unknown"),
     branch: active.branch || null,
     pr: active.pr || null,
     current_task_id: active.id || null,
@@ -191,6 +203,7 @@ export async function loadWorkerSnapshot(db: SupabaseClient, fallbackQueue: Queu
   const { data, error } = await db.from(TABLE).select("*").order("updated_at", { ascending: false }).limit(10);
   let workers: Array<WorkerRow & { liveness: ReturnType<typeof liveness> }> = ((data as WorkerRow[] | null) || []).map((w) => ({
     ...w,
+    status: normalizeWorkerStatus(w.status),
     source: "heartbeat_db" as const,
     liveness: liveness(w.last_seen),
   }));

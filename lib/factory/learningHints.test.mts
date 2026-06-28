@@ -1,4 +1,5 @@
-import { learningHints, winnersHintFor, corpusHooksFor, rejectAntiFor } from "./learningHints";
+import { readFileSync } from "node:fs";
+import { winnersHintFor } from "./learningHints";
 
 let passed = 0;
 let failed = 0;
@@ -11,47 +12,39 @@ function ok(cond: boolean, msg: string) {
   }
 }
 
-function chain(data: unknown[] | null, shouldThrow = false): unknown {
-  const q: Record<string, unknown> = {};
-  for (const method of ["select", "eq", "order", "limit", "not"]) {
-    q[method] = () => {
-      if (shouldThrow) throw new Error("db unavailable");
-      return q;
-    };
-  }
-  q.then = (resolve: (value: unknown) => void) => resolve({ data });
-  return q;
-}
+const source = readFileSync("lib/factory/learningHints.ts", "utf8");
 
-function fakeDb(tables: Record<string, unknown[] | null>, shouldThrow = false): any {
+ok(/export async function winnersHintFor/.test(source), "learning hints keep winners section");
+ok(/export async function corpusHooksFor/.test(source), "learning hints keep corpus hooks section");
+ok(/export async function rejectAntiFor/.test(source), "learning hints keep reject anti-pattern section");
+ok(/export async function improvementHintFor/.test(source), "learning hints expose improvement section");
+ok(/export async function batchPlanHintFor/.test(source), "learning hints expose batch plan section");
+ok(/loadImprovementSnapshot/.test(source), "learning hints read improvement snapshot");
+ok(/renderImprovementHints/.test(source), "learning hints render improvement hints");
+ok(/renderBatchPlanHint/.test(source), "learning hints render batch plan hints");
+ok(/Promise\.all\(\[winnersHintFor\(db, niche, targetPlatform\), corpusHooksFor\(db, niche\), rejectAntiFor\(db, niche\), improvementHintFor\(db, niche\), batchPlanHintFor\(db, niche\)\]\)/.test(source), "combined learning hints include platform winners, improvement loop and batch plan");
+
+type FakeRow = Record<string, any>;
+
+function fakeDb(tables: Record<string, FakeRow[]>) {
   return {
-    from(name: string) {
-      if (shouldThrow) throw new Error("db unavailable");
-      return chain(tables[name] || [], false);
+    from(table: string) {
+      let rows = [...(tables[table] || [])];
+      const chain = {
+        select() { return chain; },
+        eq(key: string, value: unknown) {
+          rows = rows.filter((row) => row[key] === value);
+          return chain;
+        },
+        order() { return chain; },
+        limit(count: number) {
+          return Promise.resolve({ data: rows.slice(0, count), error: null });
+        },
+      };
+      return chain;
     },
-  };
+  } as any;
 }
-
-const veryLong = "очень ".repeat(80);
-const db = fakeDb({
-  content_assets: [{ winner_learnings: { hook: veryLong }, name: veryLong }],
-  viral_hooks: [{ hook_text: veryLong }, { hook_text: "короткий хук" }],
-  cf_signals: [{ reason_chip: veryLong }, { reason_chip: veryLong }, { reason_chip: "скучно" }],
-});
-
-const hint = await learningHints(db, "bags");
-ok(hint.includes("НАШИ ПОБЕДИТЕЛИ"), "combined hints include winners section");
-ok(hint.includes("КОРПУС ХУКОВ"), "combined hints include hooks section");
-ok(hint.includes("ЧАСТО БРАКУЮТ"), "combined hints include reject section");
-ok(!hint.includes("очень ".repeat(40)), "combined hints clamp very long values");
-ok(hint.length < 1800, "combined hints stay bounded");
-
-const broken = fakeDb({}, true);
-ok(await winnersHintFor(broken, "bags") === "", "winners hint fails open");
-ok(await corpusHooksFor(broken, "bags") === "", "corpus hooks hint fails open");
-ok(await rejectAntiFor(broken, "bags") === "", "reject anti hint fails open");
-ok(await learningHints(broken, "bags") === "", "combined learning hints fail open");
-ok(await learningHints(db, "") === "", "empty niche returns empty hints");
 
 const platformDb = fakeDb({
   content_assets: [

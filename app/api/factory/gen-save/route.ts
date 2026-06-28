@@ -32,6 +32,8 @@ export async function POST(req: NextRequest) {
     hook: b.hook || "",
     route: b.route || "",
     engine: b.engine || "",
+    batch_role: b.batch_role || null,
+    change_axis: b.change_axis || null,
     otk: b.otk ?? null,
     otk_axes: b.otk_axes ?? null,
     recipe_id: recipeId,
@@ -80,7 +82,7 @@ export async function POST(req: NextRequest) {
     } catch (e) { diag = `fetch-exc: ${String(e instanceof Error ? e.message : e).slice(0, 80)}`; }
     if (!stored) {
       await logGenSaveHistory(videoUrl, null, "artifact_fail", diag || "storage failed");
-      return NextResponse.json({ ok: false, error: "не удалось скачать/залить видео", diag });
+      return NextResponse.json({ ok: false, error: "не удалось скачать/залить видео", diag }, { status: 502 });
     }
     // #14: повторная проверка дедупа ПРЯМО перед вставкой — параллельный gen-poll мог успеть сохранить
     // это же видео, пока мы качали (~до 90с). Сужает окно гонки; полную гарантию даёт уникальный индекс
@@ -107,7 +109,7 @@ export async function POST(req: NextRequest) {
         }
       }
       await logGenSaveHistory(videoUrl, null, "artifact_fail", insErr.message);
-      return NextResponse.json({ ok: false, error: insErr.message });
+      return NextResponse.json({ ok: false, error: insErr.message }, { status: 500 });
     }
 
     // V20 · память итераций: пишем каждую попытку gen-save (success/dedupe/failure), best-effort.
@@ -147,7 +149,7 @@ export async function POST(req: NextRequest) {
   const clean = slideUrls.filter(Boolean);
   if (!clean.length) {
     await logGenSaveHistory(slides[0] || null, null, "artifact_fail", "не удалось залить слайды карусели");
-    return NextResponse.json({ ok: false, error: "не удалось залить слайды карусели" });
+    return NextResponse.json({ ok: false, error: "не удалось залить слайды карусели" }, { status: 502 });
   }
   const { error: insErr } = await db.from("content_assets").insert({
     disk: "gen", path: `gen/${stamp}-${rand}`, name: (b.hook || article || "карусель").toString().slice(0, 120),
@@ -156,7 +158,7 @@ export async function POST(req: NextRequest) {
   });
   if (insErr) {
     await logGenSaveHistory(slides[0] || null, null, "artifact_fail", insErr.message);
-    return NextResponse.json({ ok: false, error: insErr.message });
+    return NextResponse.json({ ok: false, error: insErr.message }, { status: 500 });
   }
   await logGenSaveHistory(slides[0] || null, clean[0]);
   return NextResponse.json({ ok: true, url: clean[0], slides: clean.length });

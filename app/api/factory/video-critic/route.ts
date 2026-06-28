@@ -169,10 +169,12 @@ export async function POST(req: NextRequest) {
     }
   } catch { /* corpus optional — не валим критика */ }
 
-  // ── ТЕКСТОВЫЙ ПРЕДФИЛЬТР (storyboard): отсев слабого ХУКА по ТЕКСТУ хука+сценария ДО дорогого рендера.
-  // Строго за флагом body.storyboard===true + пустые frames + есть hook — иначе путь по кадрам байт-в-байт прежний.
+  // ── ТЕКСТОВЫЙ ПРЕДФИЛЬТР (storyboard): отсев слабого ХУКА/структуры по ТЕКСТУ хука+сценария ДО дорогого рендера.
+  // Строго за флагом body.storyboard===true + пустые frames + есть hook ИЛИ сценарий — иначе путь по кадрам
+  // байт-в-байт прежний. Это спасает ОТК, когда extractFrames недоступен, но у нас есть текстовая структура ролика.
   // Флор только по хуку (basis='text'); native/brand из текста не судятся; regen_hint пуст (не для ретрай-петли).
-  if (body.storyboard === true && !frames.length && hook) {
+  const storyboardFallback = body.storyboard === true && !frames.length && !!(hook || scenarioText);
+  if (storyboardFallback) {
     const tClient = await createClaudeClient();
     if (!tClient) return fallback();
     const tLabel = mode === "sell" ? "ПРОДАЖА (ведём на WB)" : "АУДИТОРИЯ (рост охвата/подписок)";
@@ -182,7 +184,7 @@ ${platformBrainHint}
 ${rubricPrompt(mode)}
 Верни СТРОГО JSON: {"axes":{"hook":1-5,"retention":1-5,"native":3,"brand":3,"cta":1-5},"issues":["что слабо в хуке/структуре",...],"fixes":["как усилить хук",...]}. Только JSON.`;
     try {
-      const resT = await tClient.messages.create({ model: MODEL, max_tokens: 700, temperature: 0.2, system: sysT, messages: [{ role: "user", content: `Хук: «${hook}».\nСценарий:\n${scenarioText || "—"}` }] });
+      const resT = await tClient.messages.create({ model: MODEL, max_tokens: 700, temperature: 0.2, system: sysT, messages: [{ role: "user", content: `Хук: «${hook || "—"}».\nСценарий:\n${scenarioText || "—"}` }] });
       let txtT = (resT.content as any[]).filter((b) => b.type === "text").map((b) => b.text).join(" ").trim();
       txtT = txtT.replace(/```json\s*/gi, "").replace(/```/g, "").trim();
       const jT = parseLooseJson(txtT);
@@ -216,7 +218,7 @@ ${rubricPrompt(mode)}
     }
   }
 
-  if (!frames.length) return NextResponse.json({ error: "Нет кадров" }, { status: 400 });
+  if (!frames.length) return NextResponse.json({ error: "Нет кадров и нет storyboard-сигнала" }, { status: 400 });
 
   const client = await createClaudeClient();
   if (!client) return fallback();

@@ -2,15 +2,21 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { collectBalances } from "@/lib/factory/balances";
 import { internalFetch } from "@/lib/internalFetch";
+import { loadImprovementSnapshot, type ImprovementBatchPlan } from "@/lib/factory/improvementLoop";
+import { buildRunPlan, makeRunId } from "@/lib/factory/graphRun";
+import type { RunPlan } from "@/lib/factory/graphTypes";
+import { resolveSourceReadyArticles } from "@/lib/factory/sourceReadiness";
+import { randomUUID } from "node:crypto";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
+const DRAFT_LOOKUP_LIMIT = 50;
 
 // V21 · Оркестратор батча автопилота: бюджет-гард + смета → запускает рецепты через graph-run runner
 // с notify=true (прошедшее ОТК уйдёт оператору в Telegram на голос-ревью). R4-варианты (×3) и полная
 // openreels-цепочка (ElevenLabs→Creatify→Seedance→Remotion) — ждут V2/V9/V22/V23 (заполнение нод/ассеты).
 //   POST { recipe_ids?:[], niche?, count?, budget_usd?, dry_run? }
-//   → { enqueued:[], estimated_usd, capped_by_budget, balance_block?, note }
+//   → { requested, selected_recipes, enqueued:[], estimated_usd, capped_by_budget, balance_block?, note }
 // ⚠️ Без заполнения нод (V2) и openreels-ассетов (V22/V23) рецепты могут падать на сборке — это скелет.
 
 const TOOL_COST: Record<string, number> = { seedance: 0.42, seedance_fast: 0.14, kling: 0.38, kling_pro: 0.5, pika: 0.3, creatify: 1.2, shotstack: 0.08, higgsfield: 0.5, gemini: 0.4, elevenlabs: 0.1 };
@@ -18,6 +24,7 @@ const REQUIRED = ["fal", "creatify", "shotstack"]; // движки батча
 
 const DEFAULT_RECIPE_COST = 3.2; // CONSERVATIVE: autofill может выбрать дороже (creatify+seedance×4) + реген ×3 → бюджет-гард не должен недооценивать черновики
 const REGEN_FACTOR = 3;          // = MAX_RENDERS: бюджет-гард по АБСОЛЮТНОМУ потолку (даже если КАЖДЫЙ рецепт реген-нётся ×3) → сумма ≤ budget = ЖЁСТКИЙ кап, автопилот физически не перерасходует; типовую смету показываем отдельно
+const OPEN_LEARNING_GATE = { ready: true, reason: "learning gate not requested", current_feedback: 0, required_feedback: 0 };
 
 // смета одного рецепта по нодам (×реген до 3 не учитываем — это потолок, не ожидание).
 // V21: рецепт-черновик конфигурируется §17 уже В ОЧЕРЕДИ → tool может ещё не стоять. Если по нодам цены нет
@@ -32,6 +39,36 @@ function estimateRecipe(nodes: any[]): number {
   return Math.round(sum * 100) / 100;
 }
 
+async function enqueueGraphRun(db: any, rid: number, meta: { batch_run_id: string; batch_role: string; change_axis: string }) {
+  const { data: nodes } = await db
+    .from("node_recipe_nodes")
+    .select("ordinal,slot,node_type,tool,prompt,params,asset_url,duration_sec,agent_suggestion")
+    .eq("recipe_id", rid)
+    .order("ordinal");
+  const rows = (nodes as Record<string, unknown>[] | null) || [];
+  if (!rows.length) return { ok: false, error: "у рецепта нет нод" };
+  const plan = buildRunPlan(rows) as RunPlan;
+  plan.run_id = makeRunId(rid);
+  plan.batch_run_id = meta.batch_run_id;
+  plan.batch_role = meta.batch_role === "control" || meta.batch_role === "experiment" ? meta.batch_role : "none";
+  plan.change_axis = ["none", "hook_angle", "proof_density", "cta_shape", "format"].includes(meta.change_axis) ? meta.change_axis as RunPlan["change_axis"] : "none";
+  plan.execution_log = [];
+  plan.warnings = [];
+  plan.notify = true;
+  plan.step = "autofill";
+  const { error } = await db.from("node_recipes").update({
+    run_plan: plan,
+    status: "running",
+    otk_verdict: null,
+    otk_score: null,
+    output_url: null,
+    render_id: null,
+    updated_at: new Date().toISOString(),
+  }).eq("id", rid);
+  if (error) return { ok: false, error: error.message };
+  return { ok: true, run_id: plan.run_id };
+}
+
 export async function POST(req: NextRequest) {
   try {
   const db = getSupabaseAdmin();
@@ -41,6 +78,25 @@ export async function POST(req: NextRequest) {
   const cap = Math.max(1, Number(b.budget_usd) || 40);
   const count = Math.min(30, Math.max(1, Number(b.count) || 5));
   const dryRun = b.dry_run === true;
+  const requireFullBatch = b.require_full_batch === true;
+  const requireLearningGate = b.require_learning_gate === true;
+  const requestedNiche = String(b.niche || "").trim() || null;
+  const seriesAfter = String(b.series_after || "").trim() || null;
+  const batchRunId = `batch_${Date.now()}_${randomUUID().slice(0, 8)}`;
+  let learningGate = OPEN_LEARNING_GATE;
+  let learningGateWarning = "";
+  let batchPlan: ImprovementBatchPlan | null = null;
+
+  if (requireLearningGate) {
+    try {
+      const snapshot = await loadImprovementSnapshot(db, { niche: requestedNiche, target_runs: 50, batch_size: Math.max(2, Math.min(10, count)), series_after: seriesAfter });
+      learningGate = snapshot.next_batch_gate || { ready: true, reason: "learning gate unavailable in snapshot; fail-open", current_feedback: 0, required_feedback: 0 };
+      batchPlan = snapshot.batch_plan || null;
+    } catch (e) {
+      learningGate = { ready: true, reason: "learning gate unavailable; fail-open", current_feedback: 0, required_feedback: 0 };
+      learningGateWarning = String((e as Error)?.message || e).slice(0, 120);
+    }
+  }
 
   // 1) бюджет-гард по балансам (раз на батч; collectBalances живой ~9с — ОК для одного вызова)
   let balanceUnknown: string[] = []; // баланс null (нет FAL admin-ключа / гео) → гард не смог проверить
@@ -53,39 +109,172 @@ export async function POST(req: NextRequest) {
 
   // 2) резолв рецептов: явные id ИЛИ черновики ниши
   let recipeIds: number[] = Array.isArray(b.recipe_ids) ? b.recipe_ids.map((x: unknown) => Number(x)).filter(Boolean) : [];
+  let selectedRecipes: { id: number; niche: string | null; article: string | null }[] = [];
   if (!recipeIds.length) {
-    let q = db.from("node_recipes").select("id,niche").eq("status", "draft").order("id", { ascending: false }).limit(count);
-    if (b.niche) q = q.eq("niche", b.niche);
+    let q = db.from("node_recipes").select("id,niche,article").eq("status", "draft").order("id", { ascending: false }).limit(Math.max(count * 5, DRAFT_LOOKUP_LIMIT));
+    if (requestedNiche) q = q.eq("niche", requestedNiche);
     const { data } = await q;
-    recipeIds = ((data as { id: number }[] | null) || []).map((r) => r.id);
+    const draftPool = ((data as { id: number; niche?: string | null; article?: string | null }[] | null) || [])
+      .map((r) => ({ id: r.id, niche: r.niche || null, article: r.article || null }));
+    const sourceReadyPool = await resolveSourceReadyArticles(db, draftPool.map((row) => row.article || ""));
+    selectedRecipes = draftPool.filter((row) => !!row.article && sourceReadyPool.has(String(row.article))).slice(0, count);
+    recipeIds = selectedRecipes.map((r) => r.id);
   }
   recipeIds = recipeIds.slice(0, count);
-  if (!recipeIds.length) return NextResponse.json({ ok: false, error: "нет рецептов-черновиков для батча (создай в студии или передай recipe_ids)" });
+  if (!selectedRecipes.length && recipeIds.length) {
+    const { data } = await db.from("node_recipes").select("id,niche,article").in("id", recipeIds);
+    const byId = new Map(((data as { id: number; niche?: string | null; article?: string | null }[] | null) || [])
+      .map((r) => [r.id, { id: r.id, niche: r.niche || null, article: r.article || null }]));
+    selectedRecipes = recipeIds.map((id) => byId.get(id) || { id, niche: null, article: null });
+  } else {
+    selectedRecipes = selectedRecipes.filter((r) => recipeIds.includes(r.id));
+  }
+  const availableDrafts = selectedRecipes.length;
+  const missingDrafts = Math.max(0, count - availableDrafts);
+  const sourceReadyArticles = await resolveSourceReadyArticles(db, selectedRecipes.map((row) => row.article || ""));
+  const sourceReadyRecipeIds = selectedRecipes
+    .filter((row) => !!row.article && sourceReadyArticles.has(String(row.article)))
+    .map((row) => row.id);
+  const sourceReadyDrafts = sourceReadyRecipeIds.length;
+  const missingSourceDrafts = Math.max(0, count - sourceReadyDrafts);
+  if (!recipeIds.length) return NextResponse.json({
+    ok: false,
+    batch_run_id: null,
+    requested: { niche: requestedNiche, count, budget_usd: cap, series_after: seriesAfter },
+    preflight: {
+      ready: false,
+      requested_count: count,
+      available_drafts: 0,
+      missing_drafts: count,
+      source_ready_drafts: 0,
+      missing_source_drafts: count,
+      budget_fit_count: 0,
+    },
+    learning_gate: learningGate,
+    batch_plan: batchPlan,
+    selected_recipes: [],
+    dry_run: true,
+    enqueued: [],
+    estimated_usd: 0,
+    worst_case_usd: 0,
+    budget_usd: cap,
+    capped_by_budget: false,
+    balance_unknown: balanceUnknown,
+    next_action: { type: "prepare_drafts", route: "/api/factory/prepare-drafts", count, niche: requestedNiche },
+    error: "нет рецептов-черновиков для батча (создай в студии или передай recipe_ids)",
+  }, { status: 409 });
 
   // 3) смета по нодам + отсечка по бюджету. Гард по WORST-CASE (est×REGEN_FACTOR) — иначе реген-петля
   // (до ×3 рендеров) перерасходует на unattended-автопилоте. spent — типовая смета для показа.
-  const enqueued: number[] = []; let spent = 0; let spentWorst = 0; let cappedByBudget = false;
-  for (const rid of recipeIds) {
+  const plannedRecipeIds: number[] = []; let spent = 0; let spentWorst = 0; let cappedByBudget = false;
+  for (const rid of recipeIds.filter((id) => sourceReadyRecipeIds.includes(id))) {
     const { data: nodes } = await db.from("node_recipe_nodes").select("tool,node_type,slot").eq("recipe_id", rid);
     const est = estimateRecipe((nodes as Record<string, unknown>[] | null) || []);
     if (spentWorst + est * REGEN_FACTOR > cap) { cappedByBudget = true; break; }
     spentWorst = Math.round((spentWorst + est * REGEN_FACTOR) * 100) / 100;
     spent = Math.round((spent + est) * 100) / 100;
-    if (!dryRun) {
-      // autofill:true → рецепт сам сконфигурируется (§17 + бренд-кит) первым graph-run шагом, затем генерация→ОТК→банк→Telegram
-      try { await internalFetch(`${origin}/api/factory/graph-run`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ recipe_id: rid, notify: true, restart: true, autofill: true }), signal: AbortSignal.timeout(20000) }); } catch { /* tick/cron fallback подхватит */ }
-    }
-    enqueued.push(rid);
+    plannedRecipeIds.push(rid);
   }
+  const preflight = {
+    ready: plannedRecipeIds.length >= count && !cappedByBudget && sourceReadyDrafts >= count && (!requireLearningGate || learningGate.ready),
+    requested_count: count,
+    available_drafts: availableDrafts,
+    missing_drafts: missingDrafts,
+    source_ready_drafts: sourceReadyDrafts,
+    missing_source_drafts: missingSourceDrafts,
+    budget_fit_count: plannedRecipeIds.length,
+  };
+  const controlCount = Math.max(1, Math.min(count, Number(batchPlan?.control_count) || Math.min(2, count)));
+  const primaryAxis = ["hook_angle", "proof_density", "cta_shape", "format"].includes(String(batchPlan?.primary_change_axis || ""))
+    ? String(batchPlan?.primary_change_axis)
+    : "hook_angle";
+  const batchMetaFor = (rid: number, idx: number) => {
+    const role = idx < controlCount ? "control" : "experiment";
+    return { id: rid, batch_role: role, change_axis: role === "control" ? "none" : primaryAxis };
+  };
+  const selectedById = new Map(selectedRecipes.map((r) => [r.id, r]));
+  const selectedWithBatchMeta = (ids: number[]) => ids
+    .map((id, idx) => {
+      const r = selectedById.get(id) || { id, niche: null, article: null };
+      return { ...r, ...batchMetaFor(id, idx) };
+    });
+  if (requireLearningGate && !dryRun && !learningGate.ready) {
+    return NextResponse.json({
+      ok: false,
+      batch_run_id: null,
+      requested: { niche: requestedNiche, count, budget_usd: cap, series_after: seriesAfter },
+      preflight,
+      learning_gate: learningGate,
+      batch_plan: batchPlan,
+      selected_recipes: selectedWithBatchMeta(plannedRecipeIds),
+      dry_run: true,
+      enqueued: [],
+      estimated_usd: spent,
+      worst_case_usd: spentWorst,
+      budget_usd: cap,
+      capped_by_budget: cappedByBudget,
+      balance_unknown: balanceUnknown,
+      error: learningGate.reason || "Пятёрка не запущена: learning gate не готов.",
+    }, { status: 409 });
+  }
+  if (requireFullBatch && !dryRun && !preflight.ready) {
+    return NextResponse.json({
+      ok: false,
+      batch_run_id: null,
+      requested: { niche: requestedNiche, count, budget_usd: cap, series_after: seriesAfter },
+      preflight,
+      learning_gate: learningGate,
+      batch_plan: batchPlan,
+      selected_recipes: selectedWithBatchMeta(plannedRecipeIds),
+      dry_run: true,
+      enqueued: [],
+      estimated_usd: spent,
+      worst_case_usd: spentWorst,
+      budget_usd: cap,
+      capped_by_budget: cappedByBudget,
+      balance_unknown: balanceUnknown,
+      next_action: preflight.missing_drafts > 0 || preflight.missing_source_drafts > 0 ? { type: "prepare_drafts", route: "/api/factory/prepare-drafts", count, niche: requestedNiche } : null,
+      error: preflight.missing_drafts > 0
+        ? `Пятёрка не запущена: не хватает ${preflight.missing_drafts} draft-рецептов.`
+        : preflight.missing_source_drafts > 0
+          ? `Пятёрка не запущена: не хватает ${preflight.missing_source_drafts} source-ready draft-рецептов.`
+        : "Пятёрка не запущена: бюджет не покрывает полный batch.",
+    }, { status: 409 });
+  }
+  const enqueued: number[] = [];
+  const enqueueErrors: string[] = [];
+  if (!dryRun) {
+    for (const [idx, rid] of plannedRecipeIds.entries()) {
+      // Быстрый enqueue: не ждём первый /graph-run/tick внутри batch request, иначе 5 рецептов легко дают platform timeout.
+      const batchMeta = batchMetaFor(rid, idx);
+      const enq = await enqueueGraphRun(db, rid, { batch_run_id: batchRunId, batch_role: batchMeta.batch_role, change_axis: batchMeta.change_axis });
+      if (enq.ok) enqueued.push(rid);
+      else enqueueErrors.push(`#${rid}: ${String(enq.error || "enqueue failed").slice(0, 100)}`);
+    }
+    try { await internalFetch(`${origin}/api/factory/graph-run/tick`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}), signal: AbortSignal.timeout(2500) }); } catch { /* cron/watchdog продолжит */ }
+  } else enqueued.push(...plannedRecipeIds);
 
   return NextResponse.json({
-    ok: true, dry_run: dryRun, enqueued, estimated_usd: spent, worst_case_usd: spentWorst, budget_usd: cap, capped_by_budget: cappedByBudget,
+    ok: dryRun || enqueued.length > 0,
+    batch_run_id: batchRunId,
+    requested: { niche: requestedNiche, count, budget_usd: cap, series_after: seriesAfter },
+    preflight,
+    learning_gate: learningGate,
+    batch_plan: batchPlan,
+    selected_recipes: selectedWithBatchMeta(enqueued),
+    dry_run: dryRun, enqueued, estimated_usd: spent, worst_case_usd: spentWorst, budget_usd: cap, capped_by_budget: cappedByBudget,
     balance_unknown: balanceUnknown, // ⚠ по этим сервисам баланс не проверен (нет ключа/гео) — гард не гарантирует
+    warnings: [...(learningGateWarning ? [`learning gate fail-open: ${learningGateWarning}`] : []), ...enqueueErrors],
     note: `Бюджет-гард по worst-case (реген до ×3): уложились в $${cap}, типовая трата ≈ $${spent}, потолок ≈ $${spentWorst}. Прошедшее ОТК → Telegram (notify).` + (balanceUnknown.length ? ` ⚠ Баланс не проверен: ${balanceUnknown.join(", ")}.` : ""),
   });
   } catch (e) {
     return NextResponse.json({
       ok: false,
+      batch_run_id: null,
+      requested: { niche: null, count: 0, budget_usd: 0 },
+      preflight: { ready: false, requested_count: 0, available_drafts: 0, missing_drafts: 0, budget_fit_count: 0 },
+      learning_gate: { ready: true, reason: "batch crashed before learning gate", current_feedback: 0, required_feedback: 0 },
+      selected_recipes: [],
       dry_run: true,
       enqueued: [],
       estimated_usd: 0,

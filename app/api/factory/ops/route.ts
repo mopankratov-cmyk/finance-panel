@@ -13,6 +13,26 @@ export const maxDuration = 30;
 
 const BALANCE_THROTTLE_MS = 30 * 60 * 1000;
 
+function isWorkerInfraIssue(issue: string | null) {
+  return issue === "sender_missing" || issue === "fallback_active" || issue === "table_missing" || issue === "db_permissions";
+}
+
+function isWorkerInfraAlertCode(code: string | null) {
+  return code === "worker_sender_missing"
+    || code === "worker_state_table_missing"
+    || code === "worker_state_db_permissions"
+    || code === "worker_queue_fallback";
+}
+
+function isWorkerInfraAction(action: string | null) {
+  return action === "start_worker_heartbeat_sender"
+    || action === "apply_worker_state_table"
+    || action === "repair_worker_state_permissions"
+    || action === "repair_worker_heartbeat"
+    || action === "open_worker_screen"
+    || action === "inspect_worker_staleness";
+}
+
 function summarizeAlerts(input: {
   workerState: "unknown" | "alive" | "stale" | "dead";
   workerSource: "heartbeat_db" | "queue_fallback" | "unknown";
@@ -145,7 +165,7 @@ function buildSuggestedActions(input: {
   }
   if (input.workerSource === "queue_fallback") {
     if (input.workerIssue === "sender_missing") {
-      actions.push({ priority: "p1", action: "start_worker_heartbeat_sender", reason: "worker-state route has no live heartbeat sender; start lib/factory/workerHeartbeat.mjs on Railway worker" });
+      actions.push({ priority: "p1", action: "start_worker_heartbeat_sender", reason: "worker-state route has no live heartbeat sender; start lib/factory/workerHeartbeat.mjs for pulse/worker runtime" });
     } else if (input.workerIssue === "table_missing") {
       actions.push({ priority: "p0", action: "apply_worker_state_table", reason: input.workerDbError || "railway_worker_states is missing in Supabase schema cache" });
     } else if (input.workerIssue === "db_permissions") {
@@ -284,14 +304,9 @@ function buildOpsStatus(input: {
     elevate("degraded");
     reasons.push("worker stale");
   }
-  if (input.workerSource === "queue_fallback") {
-    if (input.workerIssue === "table_missing") {
-      elevate("critical");
-      reasons.push("worker table missing");
-    } else {
-      elevate("degraded");
-      reasons.push(input.workerIssue === "sender_missing" ? "heartbeat sender missing" : "heartbeat fallback");
-    }
+  if (input.workerSource === "queue_fallback" && !isWorkerInfraIssue(input.workerIssue)) {
+    elevate("degraded");
+    reasons.push("worker heartbeat fallback");
   }
   if (input.lowServices.length >= 2) {
     elevate("critical");
@@ -387,16 +402,36 @@ export async function GET() {
       }, { headers: { "Cache-Control": "no-store" } });
     }
 
-    const [workerState, balances, observabilitySnapshot, observer, latestStress, stressHistory, reelsBrainDigest] = await Promise.all([
+    const warnings: string[] = [];
+    const [workerState, balancesResult, observabilitySnapshotResult, observer, latestStress, stressHistory, reelsBrainDigest] = await Promise.all([
       loadWorkerSnapshot(db, docs.queue),
-      collectBalances(db, { persist: true, throttleMs: BALANCE_THROTTLE_MS }),
-      loadObservabilitySnapshot(db, 48),
-      loadObserverPulse(db),
+      collectBalances(db, { persist: true, throttleMs: BALANCE_THROTTLE_MS }).catch((error) => {
+        warnings.push("balances unavailable: " + String((error as Error)?.message || error).slice(0, 160));
+        return [];
+      }),
+      loadObservabilitySnapshot(db, 48).catch((error) => {
+        warnings.push("observability unavailable: " + String((error as Error)?.message || error).slice(0, 160));
+        return { observability: null };
+      }),
+      loadObserverPulse(db).catch((error) => {
+        warnings.push("observer pulse unavailable: " + String((error as Error)?.message || error).slice(0, 160));
+        return { ok: true, partial: true, updated_at: new Date().toISOString(), error: String((error as Error)?.message || error).slice(0, 160) };
+      }),
       latestStressPromise,
       stressHistoryPromise,
       loadReelsBrainPortfolioDigest(db, DEFAULT_REELS_BRAIN_NICHES),
     ]);
-    const observability = observabilitySnapshot.observability;
+    const balances = balancesResult;
+    const observability = observabilitySnapshotResult.observability || {
+      total: 0,
+      running: 0,
+      done: 0,
+      failed: 0,
+      warning_runs: 0,
+      top_error_categories: [],
+      quality_signal: null,
+      recent_runs: [],
+    };
     const lowServices = balances.filter((s) => s.low).map((s) => s.service);
     const reelsBrainPortfolio = reelsBrainDigest.portfolio;
     const corpusGoal = (reelsBrainPortfolio as { corpus_goal?: Record<string, any> }).corpus_goal || {};
@@ -504,6 +539,11 @@ export async function GET() {
       reelsBrainCorpusProgressPct: Number(corpusTotalProgress.progress_pct || 0),
     });
 
+    const worker_infra_alerts = alerts.filter((alert) => isWorkerInfraAlertCode(alert.code || null));
+    const factory_alerts = alerts.filter((alert) => !isWorkerInfraAlertCode(alert.code || null));
+    const worker_infra_actions = suggested_actions.filter((action) => isWorkerInfraAction(action.action || null));
+    const factory_actions = suggested_actions.filter((action) => !isWorkerInfraAction(action.action || null));
+
     return NextResponse.json({
       ok: true,
       db_ready: true,
@@ -534,8 +574,13 @@ export async function GET() {
       },
       latest_stress: latestStress,
       stress_history: stressHistory,
+      warnings,
       alerts,
+      factory_alerts,
+      worker_infra_alerts,
       suggested_actions,
+      factory_actions,
+      worker_infra_actions,
       ops_status,
       heartbeat_diagnostics,
       db_error: workerState.db_error,

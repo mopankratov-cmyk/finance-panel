@@ -6,6 +6,7 @@ import { wakeStaleRecipes } from "@/lib/factory/graphWatchdog";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
+const CRON_MAX_WAKE = 5;
 
 // Vercel Cron · СТРАХОВКА надёжности графа-исполнителя. self-chain тиков (graph-run/tick) делает работу в
 // Vercel after() — а after() НЕ исполняется надёжно при server-to-server вызове (крон→internalFetch→tick):
@@ -27,7 +28,7 @@ export async function GET(req: NextRequest) {
     const db = getSupabaseAdmin();
     if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 500 });
     const reelsBrainTask = reelsBrainTaskForCronTick();
-    const result = await wakeStaleRecipes(db, req.nextUrl.origin, { trigger: "cron" });
+    const result = await wakeStaleRecipes(db, req.nextUrl.origin, { trigger: "cron", maxWake: CRON_MAX_WAKE });
     const reelsBrain = reelsBrainTask
       ? await internalFetch(`${req.nextUrl.origin}/api/factory/jobs/reels-brain-cron?task=${reelsBrainTask}`, {
         method: "GET",

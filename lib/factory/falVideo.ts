@@ -157,7 +157,7 @@ export async function falVideoSubmit(model: FalVideoModel, imageUrl: string, pro
 export async function falCompose(
   videoUrl: string,
   opts: { overlayUrl?: string; audioUrl?: string; durationSec: number; maxWaitMs?: number },
-): Promise<{ videoUrl?: string; error?: string }> {
+): Promise<{ videoUrl?: string; responseUrl?: string; pending?: boolean; error?: string }> {
   const k = key();
   if (!k) return { error: "FAL_KEY не настроен" };
   const durMs = Math.max(1, Math.round(opts.durationSec || 5)) * 1000; // ⚠️ fal compose keyframes — в МИЛЛИСЕКУНДАХ (раньше слали секунды → клип 5мс = чёрный кадр)
@@ -178,13 +178,14 @@ export async function falCompose(
     while (Date.now() < deadline) {
       const st = await fetch(`${responseUrl}/status`, { headers: auth, cache: "no-store", signal: AbortSignal.timeout(15000) });
       if (st.ok) { const s = (await st.json()) as { status?: string }; if (s.status === "COMPLETED") break; }
-      await new Promise((r) => setTimeout(r, 3000));
+      await new Promise((r) => setTimeout(r, 3000 + Math.floor(Math.random() * 700)));
     }
+    if (Date.now() >= deadline) return { pending: true, responseUrl, error: "compose still processing" };
     const res = await fetch(responseUrl, { headers: auth, cache: "no-store", signal: AbortSignal.timeout(15000) });
     if (!res.ok) return { error: `compose result ${res.status}` };
     const rj = (await res.json()) as Record<string, unknown>;
     const url = extractFalVideoUrl(rj);
-    return url ? { videoUrl: url } : { error: "compose без video_url" };
+    return url ? { videoUrl: url } : { responseUrl, error: "compose без video_url" };
   } catch (e) { return { error: String(e).slice(0, 120) }; }
 }
 
@@ -201,7 +202,7 @@ export interface FalTimelineClip { url: string; type: "video" | "image"; duratio
 export async function falTimeline(
   clips: FalTimelineClip[],
   opts?: { audioUrl?: string; maxWaitMs?: number },
-): Promise<{ videoUrl?: string; error?: string }> {
+): Promise<{ videoUrl?: string; responseUrl?: string; pending?: boolean; error?: string }> {
   const k = key();
   if (!k) return { error: "FAL_KEY не настроен" };
   if (!clips.length) return { error: "пустой список клипов" };
@@ -238,18 +239,19 @@ export async function falTimeline(
     while (Date.now() < deadline) {
       const st = await fetch(`${responseUrl}/status`, { headers: auth, cache: "no-store", signal: AbortSignal.timeout(15000) });
       if (st.ok) { const s = (await st.json()) as { status?: string }; if (s.status === "COMPLETED") break; }
-      await new Promise((r) => setTimeout(r, 3000));
+      await new Promise((r) => setTimeout(r, 3000 + Math.floor(Math.random() * 700)));
     }
+    if (Date.now() >= deadline) return { pending: true, responseUrl, error: "timeline compose still processing" };
     const res = await fetch(responseUrl, { headers: auth, cache: "no-store", signal: AbortSignal.timeout(15000) });
     if (!res.ok) return { error: `timeline result ${res.status}` };
     const rj = (await res.json()) as Record<string, unknown>;
     const url = extractFalVideoUrl(rj);
-    return url ? { videoUrl: url } : { error: "timeline без video_url" };
+    return url ? { videoUrl: url } : { responseUrl, error: "timeline без video_url" };
   } catch (e) { return { error: String(e).slice(0, 120) }; }
 }
 
 // общий poll очереди fal для utility-моделей (merge/subtitle): submit → status → result.video.url. Best-effort.
-async function falQueueVideo(endpoint: string, body: Record<string, unknown>, maxWaitMs: number): Promise<{ result?: Record<string, unknown>; error?: string }> {
+async function falQueueVideo(endpoint: string, body: Record<string, unknown>, maxWaitMs: number): Promise<{ result?: Record<string, unknown>; responseUrl?: string; pending?: boolean; error?: string }> {
   const k = key();
   if (!k) return { error: "FAL_KEY не настроен" };
   const auth = { Authorization: `Key ${k}` };
@@ -263,11 +265,12 @@ async function falQueueVideo(endpoint: string, body: Record<string, unknown>, ma
     while (Date.now() < deadline) {
       const st = await fetch(`${responseUrl}/status`, { headers: auth, cache: "no-store", signal: AbortSignal.timeout(15000) }).catch(() => null);
       if (st?.ok) { const s = (await st.json()) as { status?: string }; if (s.status === "COMPLETED") break; }
-      await new Promise((r) => setTimeout(r, 3000));
+      await new Promise((r) => setTimeout(r, 3000 + Math.floor(Math.random() * 700)));
     }
+    if (Date.now() >= deadline) return { pending: true, responseUrl, error: `${endpoint.split("/").pop() || "queue"} still processing` };
     const res = await fetch(responseUrl, { headers: auth, cache: "no-store", signal: AbortSignal.timeout(15000) });
     if (!res.ok) return { error: `result ${res.status}` };
-    return { result: (await res.json()) as Record<string, unknown> };
+    return { result: (await res.json()) as Record<string, unknown>, responseUrl };
   } catch (e) { return { error: String(e).slice(0, 120) }; }
 }
 
@@ -292,7 +295,7 @@ export async function falMergeVideos(
 export async function falAutoSubtitle(
   videoUrl: string,
   opts?: { language?: string; fontName?: string; fontSize?: number; fontColor?: string; highlightColor?: string; position?: "top" | "center" | "bottom"; animation?: boolean; maxWaitMs?: number },
-): Promise<{ videoUrl?: string; words?: unknown; error?: string }> {
+): Promise<{ videoUrl?: string; words?: unknown; responseUrl?: string; pending?: boolean; error?: string }> {
   if (!videoUrl) return { error: "нет video_url" };
   const body: Record<string, unknown> = {
     video_url: videoUrl,
@@ -305,9 +308,10 @@ export async function falAutoSubtitle(
     enable_animation: opts?.animation ?? true,
   };
   const r = await falQueueVideo("fal-ai/workflow-utilities/auto-subtitle", body, opts?.maxWaitMs || 120000);
+  if (r.pending || !r.result) return { pending: r.pending, responseUrl: r.responseUrl, error: r.error };
   if (r.error) return { error: r.error };
   const url = extractFalVideoUrl(r.result);
-  return url ? { videoUrl: url, words: r.result?.words } : { error: "auto-subtitle без video.url" };
+  return url ? { videoUrl: url, words: r.result?.words, responseUrl: r.responseUrl } : { responseUrl: r.responseUrl, error: "auto-subtitle без video.url" };
 }
 
 // диагностика: сырой ответ FAL на сабмит (статус+тело) — понять 401(ключ)/402-403(баланс)/422(модель)
@@ -337,7 +341,16 @@ export async function falVideoStatus(token: string): Promise<FalVideoStatus> {
     const sj = (await st.json()) as { status?: string };
     if (sj.status !== "COMPLETED") return { status: "in_progress" };
     const res = await fetch(responseUrl, { headers: auth, cache: "no-store", signal: AbortSignal.timeout(15000) });
-    if (!res.ok) return { status: "error", error: `fal result ${res.status}` };
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      const detail = body.slice(0, 140);
+      // queue.fal иногда отдаёт COMPLETED на /status чуть раньше, чем result-ресурс реально созреет.
+      // В этом окне /result может вернуть 404/409/422; трактуем как транзиент и даём graph-run дополлить.
+      if (res.status === 404 || res.status === 409 || res.status === 422) {
+        return { status: "in_progress", error: detail ? `fal result ${res.status}: ${detail}` : `fal result ${res.status}` };
+      }
+      return { status: "error", error: detail ? `fal result ${res.status}: ${detail}` : `fal result ${res.status}` };
+    }
     // разные fal-модели кладут URL в разные поля: seedance → video.url, другие → url/video_url/output.url
     const rj = (await res.json()) as { detail?: string } & Record<string, unknown>;
     const url = extractFalVideoUrl(rj);
