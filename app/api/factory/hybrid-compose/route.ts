@@ -43,6 +43,15 @@ export async function POST(req: NextRequest) {
 
     const totalDur = actorDur + productImages.length * productSecPerImage;
     const r = await falTimeline(clips, { maxWaitMs: 55000 });
+    if (r.pending && r.responseUrl) {
+      return NextResponse.json({
+        status: "processing",
+        pending_url: r.responseUrl,
+        error: r.error || "timeline compose still processing",
+        duration_sec: totalDur,
+        clips: clips.length,
+      }, { status: 202 });
+    }
     if (r.error || !r.videoUrl) {
       return NextResponse.json({ error: r.error || "compose без видео" }, { status: 502 });
     }

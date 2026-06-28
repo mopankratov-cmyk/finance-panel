@@ -5,6 +5,7 @@
 // Всё best-effort (таблицы могут быть не применены) — пустая строка вместо падения.
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { loadImprovementSnapshot, renderBatchPlanHint, renderImprovementHints } from "./improvementLoop";
 
 const snippet = (value: unknown, max = 120): string => String(value || "").replace(/\s+/g, " ").trim().slice(0, max);
 
@@ -42,9 +43,27 @@ export async function rejectAntiFor(db: SupabaseClient, niche: string): Promise<
   } catch { return ""; }
 }
 
+export async function improvementHintFor(db: SupabaseClient, niche: string): Promise<string> {
+  try {
+    const snapshot = await loadImprovementSnapshot(db, { niche, target_runs: 50, batch_size: 5 });
+    return renderImprovementHints(snapshot);
+  } catch {
+    return "";
+  }
+}
+
+export async function batchPlanHintFor(db: SupabaseClient, niche: string): Promise<string> {
+  try {
+    const snapshot = await loadImprovementSnapshot(db, { niche, target_runs: 50, batch_size: 5 });
+    return renderBatchPlanHint(snapshot);
+  } catch {
+    return "";
+  }
+}
+
 // Полный грундинг ниши: победители + корпус + анти-паттерны. Для decompose/идей.
 export async function learningHints(db: SupabaseClient, niche: string): Promise<string> {
   if (!niche) return "";
-  const [w, c, r] = await Promise.all([winnersHintFor(db, niche), corpusHooksFor(db, niche), rejectAntiFor(db, niche)]);
-  return w + c + r;
+  const [w, c, r, i, b] = await Promise.all([winnersHintFor(db, niche), corpusHooksFor(db, niche), rejectAntiFor(db, niche), improvementHintFor(db, niche), batchPlanHintFor(db, niche)]);
+  return w + c + r + i + b;
 }

@@ -4,6 +4,8 @@ import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { CONTENT_STANDARD, HOOK_FORMULAS, HOOK_ANTIPATTERNS, DEAI_FILTERS, PROBLEM_STACK, QA_THRESHOLD } from "@/lib/factory/standard";
 import { brandProfile } from "@/lib/factory/brandProfiles";
 import { extractJsonArray } from "@/lib/factory/extractJson";
+import { loadImprovementSnapshot, type ImprovementBatchPlan } from "@/lib/factory/improvementLoop";
+import { batchPlanHintFor, improvementHintFor } from "@/lib/factory/learningHints";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -60,11 +62,18 @@ export async function POST(req: NextRequest) {
 
   // P2.1 Winners loop: подтягиваем наши зашедшие ролики по нише → копирайтер строит вариации
   let winnersHint = "";
+  let batchImprovementHint = "";
+  let batchPlanHint = "";
+  let batchPlan: ImprovementBatchPlan | null = null;
   if (db && article) {
     try {
       const { nicheFromArticle } = await import("@/lib/factory/rubric");
       const niche = nicheFromArticle(article, name);
       if (niche) {
+        const snapshot = await loadImprovementSnapshot(db, { niche, target_runs: 50, batch_size: 5 });
+        batchPlan = snapshot.batch_plan || null;
+        batchImprovementHint = await improvementHintFor(db, niche);
+        batchPlanHint = await batchPlanHintFor(db, niche);
         const { data: wins } = await db.from("content_assets")
           .select("winner_learnings,name")
           .eq("niche", niche).eq("is_winner", true)
@@ -110,10 +119,11 @@ ${HOOK_ANTIPATTERNS}
 ${DEAI_FILTERS}
 ${PROBLEM_STACK}
 Сделай разные хуки/форматы/углы — КАЖДЫЙ хук по своей формуле, не повторяй структуру. Хотя бы 1-2 идеи из набора сделай в формате «3 проблемы» (format: "проблема-стек"). Это БЫСТРАЯ идеация — НЕ пиши покадровый сценарий, только идею. Полный сценарий развернём отдельно для выбранных. Оценивай СТРОГО как придирчивый редактор: для КАЖДОГО честно поставь score 1-10 по стандарту, анти-паттернам И фильтрам анти-ИИ; если < ${QA_THRESHOLD} или текст пахнет нейронкой — verdict "rework" и в fix конкретно что исправить (не общими словами).
-Верни СТРОГО JSON-массив (кратко): [{"hook":"первая фраза-зацепка ≤12 слов","angle":"какое возражение","concept":"идея ролика 1-2 предложения","retention":"0-2 хук→2-5 конфликт→5-10 решение→payoff","caption":"подпись","format":"unboxing|POV|обзор|до/после|лайфхак|проблема-решение|reveal|реакция","cta":"кратко","score":8,"verdict":"approved|rework","fix":""}]. Только JSON, без преамбулы. РАЗНООБРАЗИЕ: минимум 4 разных format и 4 разных hook_type в наборе.`;
+Если в контексте есть BATCH PLAN, соблюдай его буквально: control-идеи должны держать найденный паттерн, experiment-идеи могут менять только одну axis.
+Верни СТРОГО JSON-массив (кратко): [{"hook":"первая фраза-зацепка ≤12 слов","angle":"какое возражение","concept":"идея ролика 1-2 предложения","retention":"0-2 хук→2-5 конфликт→5-10 решение→payoff","caption":"подпись","format":"unboxing|POV|обзор|до/после|лайфхак|проблема-решение|reveal|реакция","cta":"кратко","batch_role":"control|experiment","change_axis":"none|hook_angle|proof_density|cta_shape|format","score":8,"verdict":"approved|rework","fix":""}]. Только JSON, без преамбулы. РАЗНООБРАЗИЕ: минимум 4 разных format и 4 разных hook_type в наборе.`;
 
   const user = `Товар: ${subject}${article ? ` (артикул ${article})` : ""}. Сделай ${count} сценариев.` +
-    (brief ? ` Бриф: ${brief}.` : "") + (competitorBrief ? ` Разведка конкурентов: ${competitorBrief}.` : "") + pbHint + winnersHint + corpusHookHint + rejHint;
+    (brief ? ` Бриф: ${brief}.` : "") + (competitorBrief ? ` Разведка конкурентов: ${competitorBrief}.` : "") + pbHint + winnersHint + corpusHookHint + rejHint + batchImprovementHint + batchPlanHint;
 
   try {
     const res = await client.messages.create({ model: MODEL, max_tokens: 8000, system: sys, messages: [{ role: "user", content: user }] });
@@ -122,10 +132,19 @@ ${PROBLEM_STACK}
     let scripts = (extractJsonArray(txt) as Record<string, unknown>[] | null) || [];
     if (!scripts.length) return NextResponse.json({ error: "копирайтер не вернул сценариев", raw: txt.slice(0, 200) }, { status: 502 });
     // нормализация verdict по порогу
-    scripts = scripts.map((s) => { const sc = Number(s.score) || 6; return { ...s, score: sc, verdict: sc >= QA_THRESHOLD ? "approved" : "rework", fix: sc >= QA_THRESHOLD ? "" : (s.fix || "усилить хук/аутентичность") }; });
+    scripts = scripts.map((s, idx) => {
+      const sc = Number(s.score) || 6;
+      const rawRole = String(s.batch_role || "").toLowerCase();
+      const defaultControlCount = Math.max(1, Math.min(2, Number(batchPlan?.control_count) || Math.min(2, Math.max(1, Math.floor(count / 3)))));
+      const batchRole = rawRole === "control" || rawRole === "experiment" ? rawRole : (idx < defaultControlCount ? "control" : "experiment");
+      const rawAxis = String(s.change_axis || "").toLowerCase();
+      const defaultAxis = String(batchPlan?.primary_change_axis || "hook_angle");
+      const changeAxis = ["none", "hook_angle", "proof_density", "cta_shape", "format"].includes(rawAxis) ? rawAxis : (batchRole === "control" ? "none" : defaultAxis);
+      return { ...s, batch_role: batchRole, change_axis: changeAxis, score: sc, verdict: sc >= QA_THRESHOLD ? "approved" : "rework", fix: sc >= QA_THRESHOLD ? "" : (s.fix || "усилить хук/аутентичность") };
+    });
     scripts.sort((a, b) => (Number(b.score) || 0) - (Number(a.score) || 0));
     const approved = scripts.filter((s) => s.verdict !== "rework").length;
-    return NextResponse.json({ article, product: subject, count: scripts.length, approved_count: approved, rework_count: scripts.length - approved, ensemble: "claude-sonnet (self-QA)", scripts });
+    return NextResponse.json({ article, product: subject, count: scripts.length, approved_count: approved, rework_count: scripts.length - approved, ensemble: "claude-sonnet (self-QA)", batch_plan: batchPlan, scripts });
   } catch (e) {
     return NextResponse.json({ error: String(e).slice(0, 200) }, { status: 502 });
   }

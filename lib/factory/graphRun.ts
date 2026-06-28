@@ -8,8 +8,11 @@ import { logGeneration } from "./genHistory";
 import { tgReady, tgSendReview } from "./telegram";
 import { speechReady } from "./elevenlabs";
 import { classifyAssets, chooseBinding, assetMatchesArticle, type DiskAsset } from "./assetBind";
+import { isPrivateOrLocalUrl } from "./reelVariants";
 import { isPlaceholderSource } from "./toolSchemas";
 import { isOurStorage } from "./rehostImage";
+import { fetchCabinetCards } from "@/lib/wb/cards";
+import { wbCardImageUrl } from "@/lib/wb/cardImage";
 import { createHash, randomUUID } from "node:crypto";
 import type { ExecutionLogEntry, RunNode, RunPlan, RunStep } from "./graphTypes";
 
@@ -113,6 +116,80 @@ function chunkCaptions(text: string, article: string): { text: string; accent?: 
   const art = String(article || "").toLowerCase();
   return parts.map((p) => ({ text: p, accent: /\d/.test(p) || (!!art && p.toLowerCase().includes(art)) || /wb|wildberries|купи|беги/i.test(p) }));
 }
+
+function hasUnsafeRenderUrl(value: unknown): boolean {
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed || isBundledRenderAsset(trimmed)) return false;
+    if (/^https?:\/\//i.test(trimmed)) return isPrivateOrLocalUrl(trimmed);
+    return /^\/|^public\/|^[^\s]+\.(mp4|mov|webm|m4v|png|jpe?g|webp|gif|mp3|wav)([?#].*)?$/i.test(trimmed);
+  }
+  if (Array.isArray(value)) return value.some(hasUnsafeRenderUrl);
+  if (value && typeof value === "object") return Object.values(value as Record<string, unknown>).some(hasUnsafeRenderUrl);
+  return false;
+}
+
+function isBundledRenderAsset(value: string): boolean {
+  const trimmed = value.trim();
+  return /^reel-assets\//i.test(trimmed) || /^fonts\//i.test(trimmed);
+}
+
+function isRenderableUrl(value: unknown): boolean {
+  const u = String(value || "").trim();
+  if (!u) return false;
+  if (isBundledRenderAsset(u)) return true;
+  if (!/^https?:\/\//i.test(u)) return false;
+  return !isPrivateOrLocalUrl(u);
+}
+
+function inferRenderableMediaType(value: unknown): "image" | "video" | null {
+  const u = String(value || "").trim().toLowerCase();
+  if (!isRenderableUrl(u)) return null;
+  if (/\.(png|jpe?g|webp|gif)(\?|$)/i.test(u)) return "image";
+  if (/\.(mp4|webm|mov|m4v)(\?|$)/i.test(u)) return "video";
+  if (/(fal|shotstack|creatify|renders|gen\/)/i.test(u) && !/\.(png|jpe?g|webp|gif)(\?|$)/i.test(u)) return "video";
+  return "image";
+}
+
+function nodeRenderableMediaType(n: RunNode): "image" | "video" {
+  const p = (n.params || {}) as Record<string, unknown>;
+  return (p["__fallback_type"] === "image" || p["__fallback_type"] === "video")
+    ? (p["__fallback_type"] as "image" | "video")
+    : (inferRenderableMediaType(n.url) || "video");
+}
+
+function fallbackVisualNodes(nodes: RunNode[]): RunNode[] {
+  const out: RunNode[] = [];
+  for (const n of nodes) {
+    const p = (n.params || {}) as Record<string, unknown>;
+    const candidates = [
+      p["preview_url"],
+      n.asset_url,
+      p["url"],
+      n.image_url,
+      p["image_url"],
+    ];
+    for (const candidate of candidates) {
+      const mediaType = inferRenderableMediaType(candidate);
+      if (!mediaType) continue;
+      out.push({
+        ...n,
+        status: "done",
+        url: String(candidate),
+        params: { ...p, __fallback_type: mediaType },
+        engine: n.engine || "source_fallback",
+        error: n.error,
+      });
+      break;
+    }
+  }
+  return out;
+}
+
+function hasVideoBackup(url: unknown): boolean {
+  return inferRenderableMediaType(url) === "video";
+}
+
 export function buildReelProps(plan: RunPlan, visualNodes: RunNode[], article: string): { inputProps: Record<string, unknown>; durationInFrames: number } {
   // явный override (точные пропсы из брифа) — высший приоритет (именно объект, не массив)
   const explicitNode = plan.nodes.find((n) => {
@@ -120,12 +197,12 @@ export function buildReelProps(plan: RunPlan, visualNodes: RunNode[], article: s
     return !!rp && typeof rp === "object" && !Array.isArray(rp);
   });
   const explicit = explicitNode ? ((explicitNode.params as Record<string, unknown>)["reel_props"] as Record<string, unknown>) : null;
-  if (explicit) {
+  if (explicit && !hasUnsafeRenderUrl(explicit)) {
     const dur = Number(explicit["durationInFrames"]) || 614;
     return { inputProps: explicit, durationInFrames: dur };
   }
   // актёр-спайн: creatify/lipsync/actor; иначе первый клип как база
-  const actorNode = plan.nodes.find((n) => n.status === "done" && n.url && (["creatify", "lipsync"].includes(String(n.tool).toLowerCase()) || roleOf(n) === "actor"));
+  const actorNode = visualNodes.find((n) => n.status === "done" && n.url && isRenderableUrl(n.url) && (["creatify", "lipsync"].includes(String(n.tool).toLowerCase()) || roleOf(n) === "actor"));
   const overlayNodes = visualNodes.filter((n) => n !== actorNode);
   let t = 0;
   const overlays = overlayNodes.map((n) => {
@@ -148,7 +225,8 @@ export function buildReelProps(plan: RunPlan, visualNodes: RunNode[], article: s
   const capText = [textOfNode(hookNode), textOfNode(captionNode)].filter(Boolean).join(". ");
   const captions = chunkCaptions(capText, article);
   const soundNode = plan.nodes.find((n) => ["sound", "music"].includes(String(n.tool).toLowerCase()));
-  const audioSrc = soundNode?.asset_url || (soundNode?.params?.url as string) || undefined;
+  const rawAudioSrc = soundNode?.asset_url || (soundNode?.params?.url as string) || undefined;
+  const audioSrc = isRenderableUrl(rawAudioSrc) ? rawAudioSrc : undefined;
   const ctaTitle = (textOfNode(hookNode) || article || "").toString().slice(0, 40) || undefined;
   const inputProps: Record<string, unknown> = {
     durationInFrames, actorEnd, overlays: renderOverlays,
@@ -262,11 +340,24 @@ async function autoBindAssets(db: SupabaseClient, plan: RunPlan, article: string
     const raw = (data as DiskAsset[] | null) || [];
     // ГАРД от кросс-контаминации («пистолет в сумке»): даже если строка каталога мислейбл (article=CLR…, а путь
     // prepared/TT…), НЕ привязываем чужой кадр к рецепту. Источник распознаём по артикулу в пути prepared/i2v-src.
-    assets = raw.filter((a) => assetMatchesArticle(a.url, article));
+    assets = raw.filter((a) => assetMatchesArticle(a.url, article) && isRenderableUrl(a.url));
     const dropped = raw.length - assets.length;
     if (dropped) { try { await logSignal(db, "asset_article_mismatch", { niche, article, params: { dropped, kept: assets.length } }); } catch { /* сигнал best-effort */ } }
   } catch { return; } // каталог недоступен — ноды упадут штатно, как раньше
   const pool = classifyAssets(assets);
+  if (!(pool.preparedImages || []).length && !pool.realImages.length && !pool.wbImages.length) {
+    try {
+      const cards = await fetchCabinetCards(null);
+      const card = cards.find((c) => String(c.article || "").trim() === article);
+      const fallback = card ? wbCardImageUrl(card.nm_id, "big") : "";
+      if (fallback) {
+        pool.wbImages.push(fallback);
+        try { await logSignal(db, "asset_bind_wb_runtime_fallback", { niche, article, params: { nm_id: card?.nm_id || null } }); } catch { /* best-effort */ }
+      }
+    } catch {
+      /* WB content fallback best-effort */
+    }
+  }
   let imgIdx = 0; // разные стартовые фото на разные i2v-ноды (анти-сэйминес: не 5 клипов с одного кадра)
   let unbound = 0;
   for (const n of needs) {
@@ -281,6 +372,47 @@ async function autoBindAssets(db: SupabaseClient, plan: RunPlan, article: string
   if (unbound) { try { await logSignal(db, "asset_bind_empty", { niche, article, params: { unbound, needs: needs.length, assets: assets.length } }); } catch { /* сигнал best-effort */ } }
 }
 
+function missingSourceReason(n: RunNode): string | null {
+  const t = String(n.tool || "").toLowerCase();
+  if (!t || ASSEMBLY_TOOLS.has(t) || t === "captions" || t === "elevenlabs" || t === "creatify") return null;
+  const p = (n.params || {}) as Record<string, unknown>;
+  const hasSource = [n.image_url, n.asset_url, p["url"], p["image_url"], p["preview_url"]].some((v) => !isPlaceholderSource(v));
+  if (hasSource) return null;
+  if (t === "disk_real" || t === "disk") return "нет реального видео и нет фото товара для i2v-фолбэка";
+  return `нет source asset для ${t} (image_url/asset_url)`;
+}
+
+function isProviderBalanceStop(error: string | null | undefined): boolean {
+  const s = String(error || "").toLowerCase();
+  if (!s) return false;
+  return s.includes("exhausted balance")
+    || s.includes("user is locked")
+    || s.includes("top up your balance")
+    || s.includes("fal.ai/dashboard/billing")
+    || s.includes("пополни fal")
+    || s.includes("баланс/доступ");
+}
+
+function sameSubmitFamily(node: RunNode, engine: string): boolean {
+  const tool = String(node.tool || "").toLowerCase();
+  if (engine === "fal") return ["seedance", "seedance_fast", "seedance_pro", "kling", "kling_pro", "pika"].includes(tool);
+  if (engine === "creatify") return tool === "creatify";
+  return false;
+}
+
+function collapsePendingProviderNodes(plan: RunPlan, engine: string, reason: string): number {
+  let collapsed = 0;
+  for (const node of plan.nodes) {
+    if (node.status === "done" || node.status === "submitted" || node.status === "skip" || node.status === "error") continue;
+    if (!sameSubmitFamily(node, engine)) continue;
+    node.engine = engine;
+    node.status = "error";
+    node.error = reason;
+    collapsed++;
+  }
+  return collapsed;
+}
+
 // Durable-персист сгенерённых клипов в наш бакет + каталог (content_assets). КОРЕНЬ: i2v-клипы (seedance/kling/
 // pika) живут на fal.media — эфемерное CDN fal → reel-recompose/ре-кат «потом» не из чего делать, когда URL
 // протухнет. Здесь скачиваем каждый внешний клип в factory-media/clips/<sha1>.mp4, ПОДМЕНЯЕМ node.url на наш
@@ -291,7 +423,7 @@ const CLIP_BUCKET = "factory-media";
 export async function persistClips(db: SupabaseClient, nodes: RunNode[], article: string, niche: string, recipeId?: number): Promise<void> {
   await Promise.all(nodes.map(async (n) => {
     const src = n.url;
-    if (!src || !/^https?:\/\//i.test(src) || isOurStorage(src)) return; // пусто/не-http/уже у нас
+    if (!src || !/^https?:\/\//i.test(src) || isOurStorage(src) || nodeRenderableMediaType(n) !== "video") return; // пусто/не-http/уже у нас/не видеоклип
     try {
       const { data: dup } = await db.from("content_assets").select("url").eq("disk", "gen").contains("analysis", { source_url: src }).maybeSingle();
       if (dup && (dup as { url?: string }).url) {
@@ -371,7 +503,7 @@ export async function claimNextRecipe(db: SupabaseClient, recipeId?: number): Pr
   return null;
 }
 
-async function jpost(origin: string, path: string, body: unknown, ms = 90000): Promise<any> {
+async function jpost(origin: string, path: string, body: unknown, ms = 90000, failOnBodyFalse = false): Promise<any> {
   const r = await withTimeout(
     internalFetch(`${origin}${path}`, {
       method: "POST",
@@ -383,7 +515,11 @@ async function jpost(origin: string, path: string, body: unknown, ms = 90000): P
     path,
   );
   const j = await withTimeout(r.json().catch(() => ({})), Math.max(5000, Math.floor(ms / 2)), `${path} json`);
-  if (!r.ok) throw new Error(`${path} ${r.status}: ${String(j?.error || j?.detail || r.statusText || "ошибка").slice(0, 180)}`);
+  const bodyError = String(j?.error || j?.detail || j?.warning || "").trim();
+  if (!r.ok || (failOnBodyFalse && j?.ok === false)) {
+    const code = r.ok ? "body_fail" : String(r.status);
+    throw new Error(`${path} ${code}: ${String(bodyError || r.statusText || "ошибка").slice(0, 180)}`);
+  }
   return j;
 }
 
@@ -420,40 +556,78 @@ export async function runRecipeStep(
     plan.warnings = Array.from(next).slice(0, 20);
   };
 
-  // ── autofill (V21): черновик-рецепт из батча сам конфигурируется (§17 ИИ-режиссёр) ПЕРЕД генерацией ──
-  // Один тик = autofill (~45с Claude, влезает в 60с), затем перечитываем заполненные ноды и идём в submit.
-  // human_edited-ноды autofill не трогает (force=false) → ручная настройка сохраняется. Best-effort: фейл → submit как есть.
+  // ── autofill (V21): fail-open checkpoint ──
+  // Sprint/series mode: не держим cron/tick на дорогом LLM-autofill. Черновики уже готовятся через
+  // prepare-drafts; если конфигурация неполная, submit покажет конкретную ошибку ноды, но batch не зависнет.
   if (plan.step === "autofill") {
-    // ИДЕМПОТЕНТНОСТЬ (DB-state, переживает ретраи шага): зовём Claude ТОЛЬКО если рецепт ещё не сконфигурён.
-    // Уже настроенный (ai_autofilled/human_chosen + tool) → пропускаем платный вызов, сразу в submit.
+    // ИДЕМПОТЕНТНОСТЬ (DB-state, переживает ретраи шага): если рецепт не сконфигурён, не зависаем
+    // на LLM-autofill, а идём дальше с warning. Ошибку конкретной ноды покажет submit.
     const { data: cur } = await db.from("node_recipe_nodes").select("tool,source").eq("recipe_id", id);
     const needsFill = ((cur as any[]) || []).some((n) => !n.tool || (n.source !== "ai_autofilled" && n.source !== "human_chosen"));
+    // Recovery checkpoint ДО любых дорогих действий: batch endpoint будит tick с коротким timeout, а Vercel может
+    // оборвать request до финального savePlan. Поэтому этот шаг только переводит рецепт в submit.
+    plan.step = "submit";
     if (needsFill) {
-      try {
-        const r = await jpost(origin, "/api/factory/autofill", { recipe_id: id }, 90000);
-        await logSignal(db, "batch_autofill", { recipe_id: id, niche, article: article || null, params: { filled: r?.filled ?? null, byTool: r?.byTool ?? null } });
-      } catch { /* автозаполнение best-effort — пойдём с тем, что есть */ }
+      addWarning("runtime autofill skipped fail-open; using prepared draft nodes");
     }
     // перечитываем ноды с заполненными tool/params/prompt и пересобираем СПИСОК нод (счётчики прогона не трогаем)
     const { data } = await db.from("node_recipe_nodes").select("ordinal,slot,node_type,tool,prompt,params,asset_url,duration_sec,agent_suggestion").eq("recipe_id", id).order("ordinal");
     plan.nodes = buildRunPlan((data as any[]) || []).nodes;
     plan.step = "submit";
-    finishExecutionLog(plan, trace, "done", "submit", null, "autofill→submit");
+    plan.lease_until = null;
+    finishExecutionLog(plan, trace, needsFill ? "warning" : "done", "submit", null, needsFill ? "autofill checkpoint→submit fail-open" : "autofill not needed→submit");
     await savePlan(db, id, plan, { status: "running" });
     return;
   }
 
   // ── submit: разослать генеративные ноды на их движки ──
   if (plan.step === "submit") {
-    const renderCount = (plan.renderCount || 0) + 1;
-    if (renderCount > MAX_RENDERS) throw new Error("превышен лимит запусков генерации графа — стоп для бюджета");
+    const submitAlreadyStarted = Boolean((plan as any).submit_started_at);
+    const renderCount = submitAlreadyStarted ? (plan.renderCount || 1) : (plan.renderCount || 0) + 1;
+    if (!submitAlreadyStarted && renderCount > MAX_RENDERS) throw new Error("превышен лимит запусков генерации графа — стоп для бюджета");
     // авто-привязка ассетов товара к нодам без источника (фикс пустого автопилота, см. assetBind.ts)
     await autoBindAssets(db, plan, article, niche);
+    for (const n of plan.nodes) {
+      const reason = missingSourceReason(n);
+      if (reason && n.status !== "done" && n.status !== "submitted" && n.status !== "error") {
+        n.status = "error";
+        n.error = reason;
+      }
+    }
+    const hasLiveVisualWork = plan.nodes.some((n) => {
+      const t = String(n.tool || "").toLowerCase();
+      if (!t || ASSEMBLY_TOOLS.has(t) || t === "captions" || t === "elevenlabs" || t === "creatify") return false;
+      return n.status === "done" || n.status === "submitted" || n.status === "pending";
+    });
+    const hasReadyVisual = plan.nodes.some((n) => n.status === "done" && !!n.url);
+    if (!hasLiveVisualWork && !hasReadyVisual) {
+      const missing = plan.nodes
+        .map((n) => ({ n, reason: missingSourceReason(n) || n.error }))
+        .filter((row) => row.reason)
+        .map((row) => `${row.n.node_type || row.n.slot || "нода"}: ${String(row.reason)}`)
+        .slice(0, 6)
+        .join("; ");
+      plan.step = "failed";
+      plan.error = "рецепт остановлен до генерации: нет исходников товара — " + (missing || "нет image/video assets");
+      plan.lease_until = null;
+      finishExecutionLog(plan, trace, "error", null, plan.error, "submit blocked by missing source assets");
+      await savePlan(db, id, plan, { status: "run_fail" });
+      return;
+    }
     plan.renderCount = renderCount; // фиксируем счётчик рендеров СРАЗУ (вместе с токенами), а не после цикла
+    if (!submitAlreadyStarted) (plan as any).submit_started_at = new Date().toISOString();
     // держим лиз ВО ВРЕМЯ серийного сабмита: мид-луп savePlan персистит токены fal/creatify по каждой ноде
     // сразу после получения. Если хендлер убьют/лиз протухнет в середине — повторный заход видит ноду уже
     // submitted+token (guard ниже) и НЕ пересабмитит = нет двойной оплаты. Лиз future блокирует конкурентный claim.
     plan.lease_until = new Date(Date.now() + LEASE_MS).toISOString();
+    const needsSubmit = (m: RunNode) => {
+      const mt = String(m.tool || "").toLowerCase();
+      if (!mt || ASSEMBLY_TOOLS.has(mt) || mt === "captions") return false;
+      if (mt === "elevenlabs" && !speechReady()) return false;
+      if (m.status === "done" || m.status === "submitted" || m.status === "skip" || m.status === "error") return false;
+      return true;
+    };
+    let submittedThisTick = 0;
     for (const n of plan.nodes) {
       const tool = String(n.tool || "").toLowerCase();
       if (!tool || ASSEMBLY_TOOLS.has(tool) || tool === "captions") { n.status = "skip"; continue; }
@@ -463,19 +637,37 @@ export async function runRecipeStep(
         n.error = undefined;
         continue;
       }
-      if (n.status === "done" || n.status === "submitted") continue; // идемпотентность: уже отправлено (токен в БД) — не платим повторно
+      // submit error terminal для текущего прохода: иначе тик бесконечно пересабмитит одну и ту же ноду
+      // и весь batch залипает на submit, хотя остальные ноды уже могут идти дальше.
+      if (n.status === "done" || n.status === "submitted" || n.status === "error") continue; // идемпотентность: уже отправлено/зафейлено — не платим повторно
       // V10: владелец принял превью этой ноды (hash совпадает с текущими prompt/params/вход) → берём готовый
       // клип, НЕ платим fal повторно. Привязка к nodeHash инвалидирует при любой правке ноды.
       const pv = (n.params || {})["preview_url"]; const ph = (n.params || {})["preview_hash"];
       if (pv && ph && nodeHash(asNode(n)) === ph) { n.status = "done"; n.url = String(pv); n.engine = "preview"; continue; }
       const r = await submitNode(asNode(n));
       n.engine = r.engine;
-      if (r.error) { n.status = "error"; n.error = r.error; }
+      if (r.error) {
+        n.status = "error";
+        n.error = r.error;
+        if (isProviderBalanceStop(r.error)) {
+          const collapsed = collapsePendingProviderNodes(plan, r.engine, r.error);
+          if (collapsed) addWarning(`${r.engine} balance stop collapsed ${collapsed} sibling nodes`);
+        }
+      }
       else if (r.done && r.url) { n.status = "done"; n.url = r.url; }
       else if (r.token) { n.status = "submitted"; n.token = r.token; }
       else { n.status = "error"; n.error = "движок без токена"; }
+      submittedThisTick++;
       await savePlan(db, id, plan); // ПЕРСИСТ ТОКЕНА сразу после сабмита ноды → защита от двойного сабмита при убийстве хендлера
+      const shouldYieldSubmitPass = n.status === "submitted" && plan.nodes.some(needsSubmit);
+      if (shouldYieldSubmitPass) {
+        plan.lease_until = null;
+        finishExecutionLog(plan, trace, "running", `submitted_partial=${submittedThisTick}`, null, "submit partial→submit");
+        await savePlan(db, id, plan, { status: "running" });
+        return;
+      }
     }
+    delete (plan as any).submit_started_at;
     plan.step = "gen-poll"; plan.pollCount = 0;
     plan.lease_until = null; // шаг завершён — освобождаем лиз для следующего тика (gen-poll)
     finishExecutionLog(plan, trace, "done", `submitted=${plan.nodes.filter((n) => n.status === "submitted").length}`, null, "submit→gen-poll");
@@ -491,7 +683,7 @@ export async function runRecipeStep(
       for (const n of pending) {
         if (!n.token) { n.status = "error"; n.error = "нет токена"; continue; }
         const s = await pollNode(n.token);
-        if (s.status === "done" && s.url) { n.status = "done"; n.url = s.url; }
+        if (s.status === "done" && s.url) { n.status = "done"; n.url = s.url; n.error = null; }
         else if (s.status === "error") { n.status = "error"; n.error = s.error; }
       }
     }
@@ -505,9 +697,17 @@ export async function runRecipeStep(
     }
     // таймаут оставшихся → помечаем error, идём дальше с тем, что готово
     for (const n of stillPending) { n.status = "error"; n.error = "render timeout"; }
+    const anyDone = plan.nodes.some((n) => n.status === "done" && n.url);
+    const rescuedAfterPoll = fallbackVisualNodes(plan.nodes).length;
+    if (!anyDone && rescuedAfterPoll) {
+      addWarning(`gen-poll source fallback rescued ${rescuedAfterPoll} visual asset(s)`);
+      plan.step = "assemble";
+      finishExecutionLog(plan, trace, "warning", `fallback=${rescuedAfterPoll}`, null, "gen-poll→assemble(source fallback)");
+      await savePlan(db, id, plan);
+      return;
+    }
     // ни одна нода не готова → фейлим СРАЗУ с причинами нод (раньше шли в assemble → throw «нет клипов»
     // → 3 ретрая шага → run_fail без деталей; теперь оператор видит, КАКИЕ ноды и ПОЧЕМУ упали)
-    const anyDone = plan.nodes.some((n) => n.status === "done" && n.url);
     if (!anyDone) {
       const errs = plan.nodes.filter((n) => n.status === "error")
         .map((n) => `${n.node_type || n.slot || "нода"}: ${n.error || "?"}`).slice(0, 6).join("; ");
@@ -526,7 +726,19 @@ export async function runRecipeStep(
   // ── assemble: смонтировать готовые клипы через Shotstack ──
   if (plan.step === "assemble") {
     // role="skip" (инспектор disk_real) → выкинуть клип из сборки; elevenlabs — это АУДИО (закадр), не визуал
-    const visualNodes = plan.nodes.filter((n) => n.status === "done" && n.url && n.node_type !== "captions" && String(n.tool).toLowerCase() !== "elevenlabs" && String(((n.params || {}) as Record<string, unknown>)["role"] || "").toLowerCase() !== "skip");
+    let visualNodes = plan.nodes.filter((n) => n.status === "done" && n.url && n.node_type !== "captions" && String(n.tool).toLowerCase() !== "elevenlabs" && String(((n.params || {}) as Record<string, unknown>)["role"] || "").toLowerCase() !== "skip");
+    const unsafeVisualCount = visualNodes.filter((n) => !isRenderableUrl(n.url)).length;
+    if (unsafeVisualCount) {
+      visualNodes = visualNodes.filter((n) => isRenderableUrl(n.url));
+      addWarning(`unsafe local/private render asset skipped: ${unsafeVisualCount}`);
+    }
+    if (!visualNodes.length) {
+      const rescued = fallbackVisualNodes(plan.nodes).filter((n) => n.node_type !== "captions" && String(n.tool).toLowerCase() !== "elevenlabs" && String(((n.params || {}) as Record<string, unknown>)["role"] || "").toLowerCase() !== "skip");
+      if (rescued.length) {
+        visualNodes = rescued;
+        addWarning(`assemble source fallback rescued ${rescued.length} visual asset(s)`);
+      }
+    }
     plan.backup_url = visualNodes[0]?.url || null;
     if (!visualNodes.length) {
       const msg = "нет готовых клипов для сборки (все ноды упали — проверь image_url/ключи)";
@@ -540,7 +752,11 @@ export async function runRecipeStep(
 
     // ── V23 · движок REMOTION (премиум ReelV5) — опт-ин FACTORY_RENDER_ENGINE=remotion, минует Shotstack-схему ──
     if (remotionEngineSelected()) {
-      if (remotionReady()) {
+      const remotionUnsafe = visualNodes.some((n) => nodeRenderableMediaType(n) !== "video");
+      if (remotionUnsafe) {
+        addWarning("remotion skipped: source fallback includes image assets; using Shotstack");
+      }
+      else if (remotionReady()) {
         const { inputProps, durationInFrames } = buildReelProps(plan, visualNodes, article);
         plan.reel_props = inputProps;
         plan.duration_frames = durationInFrames;
@@ -550,11 +766,13 @@ export async function runRecipeStep(
         await savePlan(db, id, plan);
         return;
       }
-      addWarning("remotion выбран, но сервис не готов; используем Shotstack");
+      else {
+        addWarning("remotion выбран, но сервис не готов; используем Shotstack");
+      }
     }
 
     // одиночный клип без Shotstack → используем как есть (минуем рендер)
-    if (visualNodes.length === 1 && !shotstackReady()) {
+    if (visualNodes.length === 1 && !shotstackReady() && hasVideoBackup(visualNodes[0].url)) {
       plan.output_url = visualNodes[0].url!;
       plan.step = "otk";
       finishExecutionLog(plan, trace, "warning", plan.output_url, null, "single clip fallback");
@@ -562,6 +780,11 @@ export async function runRecipeStep(
       return;
     }
     if (!shotstackReady()) {
+      if (!hasVideoBackup(plan.backup_url)) {
+        const msg = "shotstack недоступен, а source fallback дал только изображения — нужен монтажник для сборки видео";
+        finishExecutionLog(plan, trace, "error", null, msg, "assemble");
+        throw new Error(msg);
+      }
       // нет монтажника и клипов несколько — берём первый (деградация), отметим
       plan.output_url = visualNodes[0].url!;
       plan.error = "SHOTSTACK_API_KEY не задан — взят первый клип без монтажа";
@@ -597,7 +820,7 @@ export async function runRecipeStep(
       const baseLen = !isNaN(trimEnd) && trimEnd > 0 && !isNaN(trimStart) ? Math.max(1, trimEnd - trimStart)
         : (!isNaN(trimEnd) && trimEnd > 0 ? trimEnd : (Number(n.duration_sec) || 5));
       const len = Math.min(8, Math.max(2, baseLen));
-      const clip: AssemblyClip = { url: n.url!, type: "video", start: t, length: len };
+      const clip: AssemblyClip = { url: n.url!, type: nodeRenderableMediaType(n), start: t, length: len };
       if (!isNaN(trimStart) && trimStart > 0) clip.trim = trimStart;
       const cv = Number(p["asset.volume"]); if (!isNaN(cv)) clip.volume = cv;
       if (typeof p["asset.fit"] === "string") clip.fit = p["asset.fit"] as string;
@@ -613,7 +836,8 @@ export async function runRecipeStep(
     const captionNode = plan.nodes.find((n) => n.node_type === "captions");
     const caption = (textOfNode(captionNode) || (article ? "Ищи на WB: " + article : "")).toString().slice(0, 120) || undefined;
     const soundNode = plan.nodes.find((n) => String(n.tool).toLowerCase() === "sound" || String(n.tool).toLowerCase() === "music");
-    const audioUrl = (soundNode?.asset_url || (soundNode?.params?.url as string) || "") || undefined;
+    const rawShotstackAudioUrl = (soundNode?.asset_url || (soundNode?.params?.url as string) || "") || undefined;
+    const audioUrl = isRenderableUrl(rawShotstackAudioUrl) ? rawShotstackAudioUrl : undefined;
     const audioVolume = typeof soundNode?.params?.volume === "number" ? (soundNode.params.volume as number) : 0.3;
     // V22 · закадр ElevenLabs (отдельная дорожка, поверх музыки; музыка дакается дефолтом 0.3)
     const voiceNode = plan.nodes.find((n) => String(n.tool).toLowerCase() === "elevenlabs" && n.status === "done" && n.url);
@@ -757,7 +981,7 @@ export async function runRecipeStep(
     } catch (e) {
       addWarning(`extractFrames failed: ${String((e as Error)?.message || e).slice(0, 120)}`);
     }
-    if (!frames.length) addWarning("ОТК не извлёк кадры; сохраняем ролик без оценки");
+    const missingFrames = !frames.length;
 
     let artifactOk = true;
     let artifactDefects: string[] = [];
@@ -781,7 +1005,14 @@ export async function runRecipeStep(
     let basis: string | null = null;
     let basisReason: string | null = null;
     try {
-      const v = frames.length ? await jpost(origin, "/api/factory/video-critic", { frames, hook: textOfNode(hookNode), mode, article, niche }, 55000) : null;
+      const v = await jpost(origin, "/api/factory/video-critic", {
+        frames,
+        hook: textOfNode(hookNode),
+        mode,
+        article,
+        niche,
+        ...(frames.length ? {} : { storyboard: true, scenario: plan.nodes }),
+      }, 55000);
       score = typeof v?.score === "number" ? v.score : null;
       verdict = v?.verdict;
       axes = v?.axes || null;
@@ -792,6 +1023,10 @@ export async function runRecipeStep(
       addWarning(`video-critic unavailable: ${String((e as Error)?.message || e).slice(0, 120)}`);
     }
 
+    if (missingFrames) {
+      if (typeof score === "number") addWarning(`ОТК не извлёк кадры; score рассчитан по ${basis || "storyboard"} fallback`);
+      else addWarning("ОТК не извлёк кадры; сохраняем ролик без оценки");
+    }
     if (score == null) addWarning("video-critic did not return score");
     if (typeof score === "number" && score < 7) addWarning(`OTK below threshold: ${score}`);
     plan.otk = { score, verdict, axes, issues, basis, basis_reason: basisReason };
@@ -816,7 +1051,7 @@ export async function runRecipeStep(
     let catalogError: string | null = null;
     if (url) {
       try {
-        const g = await jpost(origin, "/api/factory/gen-save", { video_url: url, article, niche, hook, route: "node_graph", engine: plan.render_engine || "shotstack", otk: score, otk_axes: plan.otk?.axes ?? null, recipe_id: id }, 40000); // ≤40с: влезть в maxDuration 60 тика (был 120с → Vercel убивал handler, catalogUrl терялся)
+        const g = await jpost(origin, "/api/factory/gen-save", { video_url: url, article, niche, hook, route: "node_graph", engine: plan.render_engine || "shotstack", batch_role: plan.batch_role || null, change_axis: plan.change_axis || null, otk: score, otk_axes: plan.otk?.axes ?? null, recipe_id: id }, 40000, true); // ≤40с: влезть в maxDuration 60 тика (был 120с → Vercel убивал handler, catalogUrl терялся)
         catalogUrl = g?.url || null;
       } catch (e) { catalogError = String((e as Error)?.message || e).slice(0, 220); }
     }

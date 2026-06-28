@@ -10,6 +10,9 @@ export interface RunNode {
 
 export interface RunPlan {
   run_id?: string | null;
+  batch_run_id?: string | null;
+  batch_role?: "control" | "experiment" | "none" | null;
+  change_axis?: "none" | "hook_angle" | "proof_density" | "cta_shape" | "format" | null;
   step: RunStep;
   nodes: RunNode[];
   render_id?: string | null;

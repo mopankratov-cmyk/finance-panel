@@ -19,6 +19,9 @@ export async function POST(req: NextRequest) {
 
   try {
     const r = await falCompose(videoUrl, { overlayUrl: overlayUrl || undefined, audioUrl: audioUrl || undefined, durationSec: duration });
+    if (r.pending && r.responseUrl) {
+      return NextResponse.json({ status: "processing", pending_url: r.responseUrl, error: r.error || "compose still processing" }, { status: 202 });
+    }
     if (r.error || !r.videoUrl) return NextResponse.json({ error: r.error || "compose без видео" }, { status: 502 });
     return NextResponse.json({ video_url: r.videoUrl });
   } catch (e) { return NextResponse.json({ error: String(e).slice(0, 200) }, { status: 502 }); }

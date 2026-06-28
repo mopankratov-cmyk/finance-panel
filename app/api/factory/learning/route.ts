@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { loadImprovementSnapshot } from "@/lib/factory/improvementLoop";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 25;
@@ -17,6 +18,7 @@ export async function GET(req: NextRequest) {
   const sp = req.nextUrl.searchParams;
   const days = Math.min(90, Math.max(1, Number(sp.get("days")) || 7));
   const nicheF = (sp.get("niche") || "").trim();
+  const seriesAfter = (sp.get("series_after") || "").trim() || null;
   const since = new Date(Date.now() - days * 24 * 3600 * 1000).toISOString();
   const warnings: string[] = [];
 
@@ -108,5 +110,9 @@ export async function GET(req: NextRequest) {
     return ((data as Row[]) || []).map((r) => ({ name: r.name, niche: r.niche, learnings: r.winner_learnings, winner_at: r.winner_at, url: r.url }));
   }, []);
 
-  return NextResponse.json({ ok: true, days, niche: nicheF || null, warnings, signals, hooks_by_niche, recent_generations, otk_trend, winner_presets, winners });
+  const improvement = await safe("improvement loop", async () => {
+    return await loadImprovementSnapshot(db, { niche: nicheF || null, target_runs: 50, batch_size: 5, series_after: seriesAfter });
+  }, { niche: nicheF || null, target_runs: 50, batch_size: 5, series_start_at: seriesAfter, total_runs: 0, analyzed_runs: [], feedback_queue: [], batches: [], top_patterns: [], axis_insights: [], latest_batch: null, previous_batch: null, series_state: { target_batches: 10, completed_batches: 0, current_batch_index: 1, next_batch_index: 1, remaining_runs: 50, remaining_batches: 10, current_batch_complete: false, target_met: false }, progress: { runs_completed: 0, batches_completed: 0, target_runs_met: false, latest_batch_improved: null }, next_batch_gate: { ready: false, reason: "improvement loop unavailable", current_feedback: 0, required_feedback: 0 }, batch_plan: null, next_actions: [], warnings: ["improvement loop unavailable"] });
+
+  return NextResponse.json({ ok: true, days, niche: nicheF || null, series_after: seriesAfter, warnings, signals, hooks_by_niche, recent_generations, otk_trend, winner_presets, winners, improvement });
 }

@@ -12,6 +12,123 @@
 - Что поправлено: честные метрики товаров в `products`, фильтры товаров, honest format fork, ElevenLabs в студии/графе, fallback текста для hook/caption/OTK, рабочий поиск в центре, кеш последнего снимка балансов
 - Что осталось: дождаться деплоя и заново проверить прод-студию в Chrome; потом добить UX на экране конкурентов и пустые состояния
 
+### 2026-06-27 11:05
+
+- Ветка: `codex/factory-worker-runtime-cleanup`
+- Цель: закрыть Week 1 `Production Truth` repeatable smoke вместо ручного обхода четырёх endpoints
+- Изменено:
+  - добавлен `lib/factory/prodSmoke.mjs`
+  - smoke проходит по `/api/factory/ops`, `/api/factory/worker-state`, `/api/factory/stability`, `GET /api/factory/graph-run`
+  - `POST /api/factory/graph-run` вынесен в явный флаг `--trigger-run`, чтобы read-only smoke не мутировал production случайно
+  - smoke раскладывает сбои по классам: `auth`, `runtime`, `worker_infra`, `observability`, `provider`
+  - smoke пишет latest artifacts в `docs/factory-latest-prod-smoke.{md,json}` и timestamped history в `docs/factory-prod-smoke-history/`
+  - добавлен guard `lib/factory/prodSmokeContract.test.mts`
+  - `docs/PROD_GAP_REPORT.md` обновлён командой запуска и ссылками на latest artifacts
+- Проверки:
+  - `node --check lib/factory/prodSmoke.mjs`
+  - `node lib/factory/prodSmokeContract.test.mts`
+  - `git diff --check`
+- Результат:
+  - Week 1 получил repeatable production-truth runner, который отделяет auth/runtime truth от worker-infra шума
+  - оператору больше не нужно вручную собирать картину из отдельных browser tabs и ad hoc fetch-команд
+
+### 2026-06-27 12:10
+
+- Ветка: `codex/factory-worker-runtime-cleanup`
+- Цель: дожать Week 2 `Worker and Heartbeat Hardening` и связанный read-layer contract без ожидания live secret
+- Изменено:
+  - `app/api/factory/worker-state/route.ts`: route теперь возвращает `worker_issue`, `heartbeat_diagnostics`, `warnings`
+  - `app/api/factory/worker-state/route.ts`: observability readback переведён в fail-open, worker snapshot больше не исчезает из-за read-side деградации
+  - `lib/factory/workerState.ts`: добавлен shared `normalizeWorkerStatus(...)`
+  - `lib/factory/workerState.ts`: queue fallback и DB rows нормализуют статусы к одному словарю (`working|blocked|idle|done|error|pr_open`)
+  - `lib/factory/workerHeartbeat.mjs`: sender теперь использует ту же семантику статусов
+  - `app/api/factory/ops/route.ts`: balances / observability / observer pulse переведены в partial fail-open с `warnings[]`
+  - `app/api/factory/studio/route.ts`: feed/templates/recipes/generations/observability теперь дают `warnings[]` вместо немого обнуления
+  - `public/inferno/studio.html`: worker screen показывает `Read-layer warnings`
+  - `public/inferno/studio.html`: center summary показывает и `ops` read-layer warnings, и `studio` best-effort warnings
+- Добавлены guards:
+  - `lib/factory/workerStateContract.test.mts`
+  - `lib/factory/workerStateFailOpenObservability.test.mts`
+  - `lib/factory/workerHeartbeatStatusContract.test.mts`
+  - `lib/factory/opsPartialContract.test.mts`
+  - `lib/factory/studioWarningsContract.test.mts`
+- Проверки:
+  - `node lib/factory/workerStateContract.test.mts`
+  - `node lib/factory/workerStateFailOpenObservability.test.mts`
+  - `node lib/factory/workerHeartbeatStatusContract.test.mts`
+  - `node lib/factory/opsPartialContract.test.mts`
+  - `node lib/factory/studioWarningsContract.test.mts`
+  - `node --check lib/factory/workerHeartbeat.mjs`
+  - inline-parse `public/inferno/studio.html`
+  - `git diff --check`
+- Результат:
+  - read-only operator surfaces стали честнее: degraded readback больше не маскируется под пустые данные и не рушит целиком `ops/worker/studio`
+  - heartbeat semantics теперь менее хрупкие и не зависят от случайного несоответствия `todo/doing/working`
+  - кодовая часть Week 2 заметно продвинута; главный оставшийся блокер теперь live env truth: sender + table + permissions + production smoke
+
+### 2026-06-27 13:45
+
+- Ветка: `codex/factory-worker-runtime-cleanup`
+- Цель: снять live production truth через logged-in browser session
+- Что удалось подтвердить:
+  - direct shell requests на production без session cookie возвращают `401 Не авторизовано` для `/api/factory/ops`, `/api/factory/worker-state`, `/api/factory/stability`, `/api/factory/graph-run`
+  - это подтверждает: production smoke надо читать через browser session или через explicit bearer path, а не через анонимный `curl`
+- Что не удалось дожать в этой сессии:
+  - in-app browser runtime после логина не дал стабильный DOM/runtime context и сорвался в `about:blank`
+  - direct API navigation из browser runtime упиралась в `ERR_BLOCKED_BY_CLIENT`
+  - Chrome extension bridge не поднялся вообще
+- Следующий шаг:
+  - повторить live smoke из реально доступного browser/control канала
+  - либо запускать `prodSmoke.mjs` там, где есть актуальный `CRON_SECRET`
+
+### 2026-06-27 13:54
+
+- Ветка: `codex/factory-worker-runtime-cleanup`
+- Цель: добить live verification уже по самому production UI, а не только по shell/API попыткам
+- Что подтверждено через logged-in in-app browser:
+  - `https://finance-panel-two.vercel.app/inferno/studio.html` открывается и рендерит production Studio без console errors
+  - `Пульс завода` показывает `штатно`
+  - карточка статуса больше не окрашивает завод в `degraded` только из-за heartbeat/service-инфры
+  - `Очередь прогонов` показывает реальные прогоны (`recipe #59`, `recipe #58`), а не legacy queue из `jobs/*`
+  - архивные инциденты вынесены в отдельный `Архивный хвост`, то есть historical noise не смешан с live execution path
+- Нюанс:
+  - первый screenshot поймал transient loading-state, но повторный DOM read уже дал нормальное содержимое страницы
+  - direct click в nav на `08` в этой browser-сессии не дал надёжного перехода на отдельный экран `Пульс завода`, так что этот live-check остаётся частично открытым
+- Следующий шаг:
+  - закрыть отдельный live-pass по `Пульс завода`, когда browser bridge даст стабильную навигацию
+  - до этого считать Week 1/Week 2 production truth по `center + recent_runs + prodSmoke` уже подтверждённым
+
+### 2026-06-28 04:55
+
+- Ветка: `codex/factory-worker-runtime-cleanup`
+- Цель: добить reliability/observability по живым находкам из production Studio перед новым серийным прогоном
+- Что подтверждено через logged-in in-app browser:
+  - `graph #130` в production показывал противоречивую карточку: статус `running · assemble`, но summary ещё держал `active gen-poll`
+  - та же карточка тащила warning `fal result 422`, хотя это выглядело как transient poll/result race, а не финальный fail
+  - на экране `Анализ конкурентов` после успешного decompose кнопка `Перенести ноды себе` могла снова дизейблиться при повторном рендере
+- Изменено:
+  - `lib/factory/falVideo.ts`: `result 404/409/422` после `COMPLETED` переведены в transient `in_progress`, чтобы `gen-poll` не убивал живой fal-run раньше времени
+  - `public/inferno/studio.html`: добавлен `decomposeCache`, чтобы успешный decompose переживал повторные рендеры и не терял transfer CTA
+  - `public/inferno/studio.html`: карточка running-рецепта показывает более честный текущий шаг и кнопку `↻ tick` для ручного nudge следующего graph-run шага
+  - `app/api/factory/studio/route.ts`: `node_errors` теперь собираются только из реальных `status=error`, без stale noise от промежуточных/успешных нод
+  - `lib/factory/graphRun.ts`: после успешного poll у ноды очищается `error`, чтобы прошлый transient не жил в карточке дольше шага
+  - `lib/factory/observability.ts`: `buildRunSummary(...)` теперь берёт последний активный `running` step, а не первый исторический
+- Добавлены guards:
+  - `lib/factory/falStatusTransient422Contract.test.mts`
+  - `lib/factory/studioRunningErrorNoiseContract.test.mts`
+  - `lib/factory/runSummaryLatestActiveContract.test.mts`
+  - `lib/factory/studioDecomposeCacheContract.test.mts`
+- Проверки:
+  - `node lib/factory/falStatusTransient422Contract.test.mts`
+  - `node lib/factory/studioRunningErrorNoiseContract.test.mts`
+  - `node lib/factory/runSummaryLatestActiveContract.test.mts`
+  - `git diff --check`
+- Нюанс:
+  - push в Gitea этой ночью несколько раз упёрся в `LibreSSL SSL_connect: SSL_ERROR_SYSCALL`, так что часть последних коммитов пока подтверждена локально, но ещё не ушла на remote
+- Следующий шаг:
+  - допушить ветку при восстановлении сети до Gitea
+  - после деплоя повторить live-check `graph #130`/следующего running recipe и убедиться, что summary/error noise больше не врут оператору
+
 - Дата: 2026-06-24
 - Worker: railway-content-factory
 - Last heartbeat: локально, в процессе работы
@@ -220,7 +337,7 @@
   - `npm run build`
 - Результат:
   - подтверждено, что в репозитории был `POST /api/factory/worker-state`, но не было ни одного отправителя heartbeat
-  - теперь Railway worker можно реально подключить к Studio без нового сервиса и без зависимостей
+  - теперь экран `Пульс завода` можно реально подключить к Studio без нового сервиса и без зависимостей
   - сегодняшняя деградация heartbeat объясняется не только UI/storage, но и отсутствием sender path как такового
 
 ### 2026-06-25 16:09
@@ -501,7 +618,7 @@
 ### 2026-06-25 18:19
 
 - Ветка: текущая рабочая ветка контент-завода
-- Цель: убрать лишний шум с экрана `Railway worker`
+- Цель: убрать лишний шум с экрана `Пульс завода`
 - Изменено:
   - `public/inferno/studio.html` убран дублирующий верхний блок `Очередь`
   - те же queue counters перенесены в `Queue snapshot`, рядом с реальным списком задач
@@ -841,14 +958,14 @@
 - Ветка: текущая рабочая ветка контент-завода
 - Цель: убрать лишний UI-шум из живого `V3 studio`, чтобы оператор видел execution path, а не декоративные хвосты
 - Изменено:
-  - `public/inferno/studio.html`: экран `Railway worker` упрощён до `heartbeat · current task · queue`
+  - `public/inferno/studio.html`: экран `Пульс завода` упрощён до `heartbeat · current task · queue`
   - убрана кнопка `🧠 Обучение` из header worker-экрана
   - убраны вторичные блоки `Factory pulse` и `Service balances` с dedicated worker-screen
   - из command center удалена disabled-кнопка `+ Новая ниша`, которая не была подключена и только создавала ложное ожидание
 - Проверки:
   - `npm run build`
   - `npx tsc --noEmit --pretty false`
-  - `rg -n "\\+ Новая ниша|Factory pulse|Service balances|header\\(\\\"Railway worker\\\",\\\"heartbeat · current task · queue\\\"" public/inferno/studio.html`
+  - `rg -n "\\+ Новая ниша|Factory pulse|Service balances|header\\(\\\"Пульс завода\\\",\\\"пульс · прогоны · контроль\\\"" public/inferno/studio.html`
 - Результат:
   - worker-screen стал более операционным: меньше отвлекающего health-noise, больше фокуса на heartbeat, current task и очереди
   - command center стал честнее и компактнее
@@ -2061,3 +2178,155 @@
 - Результат:
   - Sprint KPI по выпуску MP4 подтверждён live stress: `10/10 done`
   - отчёт больше не путает успешный текущий stress с историческими падениями в БД
+
+### Series window reset for next 50-run loop
+
+- Дата: 2026-06-27
+- Ветка: `codex/factory-worker-runtime-cleanup`
+- Цель: не блокировать новый цикл генерации старым закрытым 50-run окном, сохранив learning gate.
+- Root cause:
+  - `improvementLoop` считал последние 50 рецептов как одно окно.
+  - Production readiness показывал `hold`, потому что историческое окно уже было `50/50`.
+  - Для следующего цикла не было явного `series_after`, поэтому кнопка следующей пятёрки упиралась в старую историю.
+- Изменено:
+  - `lib/factory/improvementLoop.ts`: добавлен `series_after` / `series_start_at`, DB и in-memory фильтр по `created_at`.
+  - `/api/factory/{learning,improvement,series-readiness,batch}` прокидывают активное окно серии.
+  - Studio learning screen получил кнопку `новый цикл`; readiness и `следующая пятёрка` отправляют тот же `series_after`.
+  - `lib/factory/seriesReadinessSmoke.mjs` получил `--series-after`.
+  - `docs/factory-50-run-improvement-loop.md` обновлён под новый цикл.
+- Проверки:
+  - `node lib/factory/improvementLoop.test.mts`
+  - `node lib/factory/batchTransparencyContract.test.mts`
+  - `node lib/factory/graphRunBatchIdContract.test.mts`
+  - `node lib/factory/genSaveBatchMetaContract.test.mts`
+  - `node lib/factory/studioImprovementLoopContract.test.mts`
+  - `node lib/factory/seriesImprovementReadinessContract.test.mts`
+  - `node lib/factory/seriesReadinessContract.test.mts`
+  - `node lib/factory/seriesReadinessSmokeContract.test.mts`
+  - `node lib/factory/learningApiWarnings.test.mts`
+  - `node lib/factory/seriesRunbookContract.test.mts`
+  - `node --check lib/factory/seriesReadinessSmoke.mjs`
+  - inline-parse `public/inferno/studio.html`
+  - Vercel production build/deploy: `dpl_AH3sXqfySJ7uDRLnSiuXSyJzbAGg`, alias `https://finance-panel-two.vercel.app`
+- Результат:
+  - Старое 50-run окно остаётся историей обучения.
+  - Новый цикл можно начать без отключения quality/feedback gate.
+  - Следующая генерация должна идти как первая пятёрка нового активного окна.
+
+### Persist active series window in Studio
+
+- Дата: 2026-06-27
+- Ветка: `codex/factory-worker-runtime-cleanup`
+- Цель: не терять активный `series_after` при reload страницы Studio.
+- Изменено:
+  - `public/inferno/studio.html`: `seriesAfter` восстанавливается из `localStorage.factory_series_after`.
+  - добавлен `setSeriesAfter(...)`, который сохраняет/очищает активное окно серии централизованно.
+  - кнопки `новый цикл` и `общее окно` теперь меняют и runtime state, и persisted state.
+  - `lib/factory/studioImprovementLoopContract.test.mts`: contract на restore/persist/clear.
+- Проверки:
+  - `node lib/factory/improvementLoop.test.mts`
+  - `node lib/factory/batchTransparencyContract.test.mts`
+  - `node lib/factory/graphRunBatchIdContract.test.mts`
+  - `node lib/factory/genSaveBatchMetaContract.test.mts`
+  - `node lib/factory/studioImprovementLoopContract.test.mts`
+  - `node lib/factory/seriesImprovementReadinessContract.test.mts`
+  - `node lib/factory/seriesReadinessContract.test.mts`
+  - `node lib/factory/seriesReadinessSmokeContract.test.mts`
+  - `node lib/factory/learningApiWarnings.test.mts`
+  - `node lib/factory/seriesRunbookContract.test.mts`
+  - `node --check lib/factory/seriesReadinessSmoke.mjs`
+  - inline-parse `public/inferno/studio.html`
+  - Vercel production build/deploy: `dpl_EgsmWrBSmfdTCThZh4Fns43nS41z`, alias `https://finance-panel-two.vercel.app`
+- Результат:
+  - Активная новая серия переживает reload.
+  - Оператор может стартовать первую пятёрку нового окна без повторного ручного выставления timestamp.
+
+### New-cycle dry-run preflight CLI
+
+- Дата: 2026-06-27
+- Ветка: `codex/factory-worker-runtime-cleanup`
+- Цель: дать безопасный terminal-run путь перед первой пятёркой нового 50-run окна без запуска генерации.
+- Изменено:
+  - `lib/factory/seriesNewCyclePreflight.mjs`: создаёт/принимает `series_after`, вызывает `/api/factory/series-readiness`, затем `/api/factory/batch` только с `dry_run:true`.
+  - Артефакты: `docs/factory-latest-series-new-cycle-preflight.json/md`.
+  - `lib/factory/seriesNewCyclePreflightContract.test.mts`: guard, что скрипт не имеет trigger/restart mode и требует `require_full_batch + require_learning_gate`.
+  - `docs/factory-50-run-improvement-loop.md`: добавлен safe-runbook перед реальным запуском новой пятёрки.
+- Проверки:
+  - `node lib/factory/seriesNewCyclePreflightContract.test.mts`
+  - `node --check lib/factory/seriesNewCyclePreflight.mjs`
+- Результат:
+  - Перед тратой денег можно одной командой получить verdict: readiness + selected 5 + learning gate + budget dry-run.
+
+### Studio new-cycle preflight action
+
+- Дата: 2026-06-27
+- Ветка: `codex/factory-worker-runtime-cleanup`
+- Цель: дать тот же safe preflight через залогиненную Studio, если CLI не знает production `CRON_SECRET`.
+- Изменено:
+  - `public/inferno/studio.html`: добавлена кнопка `preflight нового цикла`.
+  - Кнопка выставляет новый `series_after`, сохраняет его и открывает `openNightRun(...)` с `auto_preflight:true`.
+  - Генерация не запускается: открывается только dry-run первой пятёрки нового окна.
+  - `lib/factory/studioImprovementLoopContract.test.mts`: guard на кнопку и передачу `series_after: startedAt`.
+- Проверки:
+  - `node lib/factory/studioImprovementLoopContract.test.mts`
+  - inline-parse `public/inferno/studio.html`
+  - `node lib/factory/improvementLoop.test.mts`
+  - `node lib/factory/batchTransparencyContract.test.mts`
+  - `node lib/factory/seriesImprovementReadinessContract.test.mts`
+  - `node lib/factory/seriesNewCyclePreflightContract.test.mts`
+  - `node lib/factory/seriesRunbookContract.test.mts`
+  - Vercel production build/deploy: `dpl_7cai4QxbLqFtBgJhcN4KNzWANQjT`, alias `https://finance-panel-two.vercel.app`
+- Результат:
+  - Реальный следующий шаг в UI: `Обучение` -> `preflight нового цикла`.
+  - Это должно показать, хватает ли draft-рецептов/бюджета/learning gate для первой пятёрки без запуска генерации.
+
+### Trace batch ids in improvement loop
+
+- Дата: 2026-06-27
+- Ветка: `codex/factory-worker-runtime-cleanup`
+- Цель: перед реальной серийной генерацией связать learning snapshot с конкретным `/api/factory/batch` launch.
+- Изменено:
+  - `lib/factory/improvementLoop.ts`: `batch_run_id` читается из `run_plan`, сохраняется на уровне `ImprovementRun` и агрегируется в `ImprovementBatch`.
+  - `public/inferno/studio.html`: блок последней серии показывает реальный `batch_run_id`, если он есть.
+  - contract tests усилены на batch traceability.
+- Результат:
+  - Следующую пятёрку можно сравнивать с предыдущей по реальному batch id, а не только по порядку в истории.
+  - Это последний технический хвост перед запуском первой production-пятёрки нового цикла.
+
+### Prepare drafts for first five
+
+- Дата: 2026-06-27
+- Ветка: `codex/factory-worker-runtime-cleanup`
+- Production finding:
+  - Studio `preflight нового цикла` дошёл до `/api/factory/batch`, но вернул `нет рецептов-черновиков для батча`.
+  - Это блокирует первую пятёрку без ручного переноса рецептов.
+- Изменено:
+  - `lib/factory/recipeTransfer.ts`: общий helper переноса template -> draft recipe.
+  - `app/api/factory/recipes/route.ts`: старый ручной перенос использует общий helper.
+  - `app/api/factory/prepare-drafts/route.ts`: создаёт недостающие `status=draft` рецепты из существующих `node_templates` и прошлых articles; не запускает `graph-run` и не вызывает `/batch`.
+  - `app/api/factory/batch/route.ts`: при пустой очереди возвращает `next_action: prepare_drafts`.
+  - `public/inferno/studio.html`: batch modal показывает кнопку `подготовить черновики`, после успеха автоматически повторяет dry-run preflight.
+- Результат:
+  - Путь к первой production-пятёрке стал: `preflight нового цикла` -> при пустой очереди `подготовить черновики` -> повторный preflight -> `Запустить`.
+  - `batch-build` остаётся отключённым; новый recovery не добавляет второй оркестратор.
+
+### Unstick cron backstop from a single stale recipe
+
+- Дата: 2026-06-27
+- Ветка: `codex/factory-worker-runtime-cleanup`
+- Production finding:
+  - После запуска пятёрки `125–129` cron-backstop продолжал будить только старый рецепт `124`.
+  - При `maxWake: 1` один stale run мог съедать весь recovery slot, а свежий batch фактически ждал, пока старый хвост сам рассосётся.
+- Изменено:
+  - `app/api/factory/graph-run/cron/route.ts`: backstop wake cap поднят до `5` рецептов за cron-pass.
+  - `lib/factory/graphWatchdog.ts`: dedupe теперь сохраняет самый старый `updated_at` по рецепту, а wake-кандидаты сортируются детерминированно (`autofill` first, затем freshest running first) до применения `maxWake`.
+  - `lib/factory/graphCronBackstopFairness.test.mts`: новый contract на fairness backstop-а.
+  - `lib/factory/autofillTickTimeout.test.mts`: обновлён под batch-sized cron burst.
+- Результат:
+  - Один проблемный run больше не монополизирует весь cron recovery.
+  - Backstop может за один проход подхватить целую production-пятёрку и сначала продвигать свежий активный batch, а не закапываться в самый старый хвост.
+- 2026-06-28: батч и prepare-drafts теперь фильтруют `source-ready` артикулы до запуска. Смысл простой: не пихать в пятёрку рецепты без реальных исходников/WB fallback, из-за которых прогон гарантированно умирал ещё до полезной генерации.
+- 2026-06-28: `assemble` теперь умеет rescue-path из usable source asset, если генеративные ноды умерли, но у рецепта уже есть безопасный preview/source URL. Для image-only fallback честно требуем Shotstack, вместо того чтобы молча подсовывать картинку как будто это готовый MP4.
+- 2026-06-28: `graph-run` больше не глотает тихие сбои `gen-save`: внутренний `jpost(..., true)` теперь умеет считать `{ ok:false }` бизнес-ошибкой, а сам `gen-save` отвечает не-2xx на storage/DB fail. Это убирает класс silent-success, когда банковка фактически не сохранила ролик, но раннер не видел причины.
+- 2026-06-28: `falCompose` / `falTimeline` больше не теряют оплаченный compose-job на локальном дедлайне функции. На таймауте они возвращают `pending_url`, а `/api/factory/overlay` и `/api/factory/hybrid-compose` отдают `202 processing` вместо ложного финального фейла.
+- 2026-06-28: warning-memory завода нормализована. `observability` и `improvementLoop` теперь агрегируют канонические warning reasons (`OTK below threshold`, `gen-save warning`, `video-critic unavailable`, `source fallback rescued` и т.д.), а не десятки строк с разными числами/хвостами ошибки. Это делает батчи по 5 и серию на 50 роликов реально сравнимыми по причинам деградации.

@@ -25,6 +25,9 @@ export async function POST(req: NextRequest) {
       position: ["top", "center", "bottom"].includes(body.position) ? body.position : undefined,
       animation: typeof body.animation === "boolean" ? body.animation : undefined,
     });
+    if (r.pending && r.responseUrl) {
+      return NextResponse.json({ status: "processing", pending_url: r.responseUrl, error: r.error || "auto-subtitle still processing" }, { status: 202 });
+    }
     if (r.error) return NextResponse.json({ error: r.error }, { status: 502 });
     return NextResponse.json({ ok: true, video_url: r.videoUrl, words: r.words });
   } catch (e) {

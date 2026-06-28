@@ -3,7 +3,7 @@ import { advanceClaimedRecipe, claimNextRecipe } from "./graphRun";
 import type { RunPlan } from "./graphTypes";
 
 const DEFAULT_STALE_MS = 90_000;
-const DEFAULT_MAX_WAKE = 3;
+const DEFAULT_MAX_WAKE = 10;
 
 type WakeResult = { id: number; from: string };
 
@@ -39,7 +39,46 @@ export async function wakeStaleRecipes(
     .order("updated_at", { ascending: true })
     .limit(maxWake);
 
-  const rows = (data as { id: number; run_plan: RunPlan | null }[] | null) || [];
+  const { data: autofillData } = await db.from("node_recipes")
+    .select("id,run_plan,updated_at")
+    .eq("status", "running")
+    .contains("run_plan", { step: "autofill" })
+    .order("updated_at", { ascending: true })
+    .limit(maxWake);
+
+  const { data: recentData } = await db.from("node_recipes")
+    .select("id,run_plan,updated_at")
+    .eq("status", "running")
+    .order("updated_at", { ascending: false })
+    .limit(maxWake);
+
+  const byId = new Map<number, { id: number; run_plan: RunPlan | null; updated_at?: string | null }>();
+  for (const row of [
+    ...((autofillData as { id: number; run_plan: RunPlan | null; updated_at?: string | null }[] | null) || []),
+    ...((recentData as { id: number; run_plan: RunPlan | null; updated_at?: string | null }[] | null) || []),
+    ...((data as { id: number; run_plan: RunPlan | null; updated_at?: string | null }[] | null) || []),
+  ]) {
+    const prev = byId.get(row.id);
+    if (!prev) {
+      byId.set(row.id, row);
+      continue;
+    }
+    const prevTs = prev.updated_at ? new Date(prev.updated_at).getTime() : Number.POSITIVE_INFINITY;
+    const nextTs = row.updated_at ? new Date(row.updated_at).getTime() : Number.POSITIVE_INFINITY;
+    if (nextTs < prevTs) byId.set(row.id, row);
+  }
+  const rows = Array.from(byId.values())
+    .sort((a, b) => {
+      const stepA = String(a.run_plan?.step || "");
+      const stepB = String(b.run_plan?.step || "");
+      const autoA = stepA === "autofill" ? 0 : 1;
+      const autoB = stepB === "autofill" ? 0 : 1;
+      if (autoA !== autoB) return autoA - autoB;
+      const aTs = a.updated_at ? new Date(a.updated_at).getTime() : Number.POSITIVE_INFINITY;
+      const bTs = b.updated_at ? new Date(b.updated_at).getTime() : Number.POSITIVE_INFINITY;
+      return bTs - aTs;
+    })
+    .slice(0, maxWake);
   const stuck = rows.filter((r) => {
     const p = r.run_plan;
     return p && p.step !== "done" && p.step !== "failed" && leaseFree(p);

@@ -33,7 +33,7 @@ function recipeSummary(r: Record<string, unknown>) {
   const warnings = Array.isArray(plan.warnings) ? plan.warnings.map((w) => String(w)).filter(Boolean).slice(0, 5) : [];
   const executionLog = Array.isArray(plan.execution_log) ? plan.execution_log.slice(-5) : [];
   const nodeErrors = nodes
-    .filter((n) => n.status === "error" || n.error)
+    .filter((n) => n.status === "error")
     .map((n) => ({
       tool: n.tool || n.engine || null,
       slot: n.slot || n.node_type || null,
@@ -64,6 +64,7 @@ export async function GET(req: NextRequest) {
     const db = getSupabaseAdmin();
     if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 500 });
     const niche = (req.nextUrl.searchParams.get("niche") || "").trim();
+    const warnings: string[] = [];
 
     // ── режим одной ниши: лента виральных + шаблоны + рецепты ──
     if (niche) {
@@ -73,16 +74,16 @@ export async function GET(req: NextRequest) {
       try {
         const { data } = await db.from("viral_videos").select("id,url,caption,views,likes,virality_score,hook_text,format_detected,sound_title,platform").eq("niche", niche).order("virality_score", { ascending: false, nullsFirst: false }).limit(24);
         feed = data || [];
-      } catch { /* нет корпуса */ }
+      } catch (e) { warnings.push("viral feed unavailable: " + String((e as Error)?.message || e).slice(0, 140)); }
       try {
         const { data } = await db.from("node_templates").select("id,format_type,niche,confidence,nodes,source_video_url,created_at").eq("niche", niche).order("created_at", { ascending: false }).limit(20);
         templates = (data || []).map((t: Record<string, unknown>) => ({ ...t, nodes_count: Array.isArray(t.nodes) ? t.nodes.length : 0, nodes: undefined }));
-      } catch { /* нет шаблонов */ }
+      } catch (e) { warnings.push("templates unavailable: " + String((e as Error)?.message || e).slice(0, 140)); }
       try {
         const { data } = await db.from("node_recipes").select("id,article,niche,mode,status,otk_score,output_url,format_detected,created_at,run_plan").eq("niche", niche).order("created_at", { ascending: false }).limit(20);
         recipes = (data || []).map(recipeSummary);
-      } catch { /* нет рецептов */ }
-      return NextResponse.json({ ok: true, niche, feed, templates, recipes }, { headers: { "Cache-Control": "no-store" } });
+      } catch (e) { warnings.push("recipes unavailable: " + String((e as Error)?.message || e).slice(0, 140)); }
+      return NextResponse.json({ ok: true, niche, feed, templates, recipes, warnings }, { headers: { "Cache-Control": "no-store" } });
     }
 
     // ── обзор всех ниш ──
@@ -101,7 +102,7 @@ export async function GET(req: NextRequest) {
     try {
       const { data } = await db.from("content_assets").select("name,kind,url,niche,article,analysis,created_at").eq("disk", "gen").order("created_at", { ascending: false }).limit(40);
       generations = (data || []).filter((r: Record<string, unknown>) => String(r.url || "").startsWith("http"));
-    } catch { /* нет генераций */ }
+    } catch (e) { warnings.push("generations unavailable: " + String((e as Error)?.message || e).slice(0, 140)); }
 
     let recipes: unknown[] = [];
     let observability: Record<string, unknown> = { sample_runs: 0, running: 0, warning_runs: 0, failed: 0, stability_snapshot: null, quality_signal: null, recent_runs: [], incident_runs: [], status_series: [], step_duration_series: [], slowest_steps: [], failure_diagnostics: null, top_error_categories: [], top_errors: [], top_warning_categories: [], top_warnings: [] };
@@ -110,9 +111,9 @@ export async function GET(req: NextRequest) {
       const rows = (data as Record<string, unknown>[] | null) || [];
       recipes = rows.map(recipeSummary);
       observability = buildObservability(rows);
-    } catch { /* нет рецептов */ }
+    } catch (e) { warnings.push("recipes/observability unavailable: " + String((e as Error)?.message || e).slice(0, 140)); }
 
-    return NextResponse.json({ ok: true, niches, generations, recipes, observability }, { headers: { "Cache-Control": "no-store" } });
+    return NextResponse.json({ ok: true, niches, generations, recipes, observability, warnings }, { headers: { "Cache-Control": "no-store" } });
   } catch (e) {
     return NextResponse.json({ error: "studio crash: " + String((e as Error)?.message || e).slice(0, 160) }, { status: 500 });
   }

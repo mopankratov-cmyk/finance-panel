@@ -23,6 +23,13 @@ ok(/safe\("viral_hooks"/.test(learning), "viral_hooks block is labeled");
 ok(/safe\("generation_history"/.test(learning), "generation_history block is labeled");
 ok(/safe\("node_templates"/.test(learning), "node_templates block is labeled");
 ok(/safe\("content_assets winners"/.test(learning), "winners block is labeled");
+ok(/safe\("improvement loop"/.test(learning), "improvement loop block is labeled");
+ok(/winners,\s*improvement/.test(learning), "learning API returns improvement snapshot");
+ok(/batch_plan: null/.test(learning), "learning API improvement fallback includes batch plan");
+ok(/axis_insights: \[\]/.test(learning), "learning API improvement fallback includes axis insights");
+ok(/feedback_queue: \[\]/.test(learning), "learning API improvement fallback includes feedback queue");
+ok(/series_state: \{ target_batches: 10/.test(learning), "learning API improvement fallback includes series state");
+ok(/next_batch_gate: \{ ready: false/.test(learning), "learning API improvement fallback includes next-batch gate");
 ok(/NextResponse\.json\(\{ ok: true,[\s\S]*warnings,[\s\S]*otk_trend/.test(learning), "learning API returns warnings without failing the route");
 
 if (failed) process.exit(1);

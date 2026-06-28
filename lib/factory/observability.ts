@@ -125,7 +125,7 @@ export function buildRunSummary(plan: RunPlanLike | null | undefined): RunSummar
   const last = log.length ? log[log.length - 1] : null;
   const startedAt = first?.started_at || null;
   const finishedAt = last?.finished_at || null;
-  const active = log.find((e) => e && e.status === "running") || null;
+  const active = [...log].reverse().find((e) => e && e.status === "running") || null;
   const totalMs = startedAt ? ((finishedAt ? msBetween(startedAt, finishedAt) : (Date.now() - Date.parse(String(startedAt)))) || null) : null;
   return {
     started_at: startedAt,
@@ -142,7 +142,7 @@ export function buildRunSummary(plan: RunPlanLike | null | undefined): RunSummar
 }
 
 export function classifyWarningReason(reason: string): string {
-  const s = reason.toLowerCase();
+  const s = normalizeWarningReason(reason).toLowerCase();
   if (s.includes("video-critic")) return "critic";
   if (s.includes("artifact-check")) return "artifact";
   if (s.includes("gen-save") || s.includes("catalog")) return "catalog";
@@ -151,6 +151,35 @@ export function classifyWarningReason(reason: string): string {
   if (s.includes("timeout")) return "timeout";
   if (s.includes("otk")) return "quality";
   return "other";
+}
+
+export function normalizeWarningReason(reason: string): string {
+  const s = String(reason || "").trim();
+  if (!s) return "";
+  const lower = s.toLowerCase();
+  if (lower.startsWith("otk below threshold:")) return "OTK below threshold";
+  if (lower.startsWith("rejudge otk below threshold:")) return "rejudge OTK below threshold";
+  if (lower.startsWith("video-critic unavailable:")) return "video-critic unavailable";
+  if (lower === "video-critic did not return score") return "video-critic did not return score";
+  if (lower.startsWith("artifact-check unavailable:")) return "artifact-check unavailable";
+  if (lower.startsWith("artifact-check warning:")) return "artifact-check warning";
+  if (lower.startsWith("extractframes failed:")) return "extractFrames failed";
+  if (lower.startsWith("gen-save warning:")) return "gen-save warning";
+  if (lower.startsWith("rejudge gen-save warning:")) return "rejudge gen-save warning";
+  if (lower.startsWith("gen-poll source fallback rescued")) return "gen-poll source fallback rescued";
+  if (lower.startsWith("assemble source fallback rescued")) return "assemble source fallback rescued";
+  if (lower.startsWith("remotion skipped: source fallback includes image assets")) return "remotion skipped: source fallback includes image assets";
+  if (lower.startsWith("remotion выбран, но сервис не готов")) return "remotion unavailable fallback";
+  if (lower.startsWith("runtime autofill skipped fail-open")) return "runtime autofill skipped fail-open";
+  if (lower.startsWith("unsafe local/private render asset skipped:")) return "unsafe local/private render asset skipped";
+  if (lower.startsWith("shotstack error:")) return "shotstack error fallback raw clip";
+  if (lower.startsWith("shotstack render timeout")) return "shotstack render timeout fallback raw clip";
+  if (lower.startsWith("remotion error:")) return "remotion error fallback raw clip";
+  if (lower.startsWith("remotion render timeout")) return "remotion render timeout fallback raw clip";
+  if (lower.startsWith("баланс/доступ") || lower.includes("balance stop collapsed")) return "provider balance stop collapsed sibling nodes";
+  if (lower.startsWith("отк не извлёк кадры; score рассчитан по")) return "ОТК no frames; score via storyboard fallback";
+  if (lower === "отк не извлёк кадры; сохраняем ролик без оценки") return "ОТК no frames; saved without score";
+  return s.slice(0, 120);
 }
 
 export function classifyErrorReason(reason: string): string {
@@ -206,7 +235,7 @@ export function buildObservability(rows: Record<string, unknown>[]) {
       });
     }
     warnings.forEach((w) => {
-      const key = String(w).trim().slice(0, 120);
+      const key = normalizeWarningReason(String(w));
       if (!key) return;
       warningMap.set(key, (warningMap.get(key) || 0) + 1);
       const category = classifyWarningReason(key);

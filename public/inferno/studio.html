@@ -212,13 +212,16 @@ const S={
   balanceCache:null,
   productFilter:"all",
   feedCache:{}, briefCache:{}, covers:{}, embeds:{},
+  decomposeCache:{},
   decompose:null, decomposeLoading:false, decomposeVideo:null, selectedVideo:null,
   recipe:null, selectedNode:null,
   tool:"seedance", toolSchemas:{},
   run:null, preview:{}, contentProduct:null,
   observability:null,
+  studioWarnings:[],
   observerLoading:false, observerError:"", observerUpdatedAt:null,
   workerState:null, workerTimer:null,
+  seriesAfter:(()=>{try{return localStorage.getItem("factory_series_after")||null;}catch{return null;}})(),
   compact:false,
 };
 // ИА студии: главная ось — ВИД КОНТЕНТА (после общей разведки). Старт → тип контента (свой пайплайн) → Система.
@@ -230,7 +233,7 @@ const SCREENS=[
   {id:"assembly",grp:"🎬 Видео",chip:"05",tt:"Сборка · ОТК",st:"таймлайн"},
   {id:"library",grp:"🎬 Видео",chip:"06",tt:"База видосов",st:"рецепты"},
   {id:"static",grp:"🖼 Статика",chip:"🖼",tt:"Пины и карточки",st:"форматы · архетипы"},
-  {id:"worker",grp:"⚙ Система",chip:"RW",tt:"Railway worker",st:"живой статус"},
+  {id:"worker",grp:"⚙ Система",chip:"08",tt:"Пульс завода",st:"живые прогоны"},
   {id:"balances",grp:"⚙ Система",chip:"07",tt:"Балансы сервисов",st:"сколько осталось $"},
   {id:"learn",grp:"⚙ Система",chip:"🧠",tt:"Обучение",st:"что завод выучил"},
 ];
@@ -240,6 +243,13 @@ const LIVE_PICKER={ override_voice:{type:"voices",route:"/creatify-options?type=
 const _liveOpts={};
 
 async function api(path,opts){ try{ const r=await fetch(API+path,opts); return await r.json().catch(()=>({error:"не JSON"})); }catch(e){ return {error:String(e).slice(0,120)}; } }
+function setSeriesAfter(value){
+  S.seriesAfter=value||null;
+  try{
+    if(S.seriesAfter)localStorage.setItem("factory_series_after",S.seriesAfter);
+    else localStorage.removeItem("factory_series_after");
+  }catch{}
+}
 function el(tag,attrs,...kids){
   const e=document.createElement(tag);
   if(attrs)for(const k in attrs){
@@ -247,6 +257,7 @@ function el(tag,attrs,...kids){
     else if(k==="style")e.style.cssText=attrs[k];
     else if(k==="html")e.innerHTML=attrs[k];
     else if(k.startsWith("on")&&typeof attrs[k]==="function")e.addEventListener(k.slice(2),attrs[k]);
+    else if(attrs[k]===false) continue;
     else if(attrs[k]!=null)e.setAttribute(k,attrs[k]);
   }
   for(const k of kids){ if(k==null||k===false)continue; e.appendChild(typeof k==="string"||typeof k==="number"?document.createTextNode(String(k)):k); }
@@ -342,10 +353,9 @@ function renderFactoryPulse(){
     const bits=[];
     if(gens) bits.push(`24h ${gens.last_24h??0}`);
     if(otk) bits.push(`ОТК ${otk.avg_24h??"?"}${otk.pass_rate!=null?` · pass ${otk.pass_rate}%`:""}`);
-    if(signalBits.length) bits.push(signalBits.join(" · "));
     box.appendChild(el("div",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);line-height:1.45;margin-top:6px;white-space:pre-wrap;"},bits.join(" · ")));
   }
-  if(recentBits.length){
+  if(recentBits.length && !S.compact){
     box.appendChild(el("div",{style:"display:flex;flex-wrap:wrap;gap:5px;margin-top:7px;"},
       ...recentBits.map((t)=>el("span",{style:"font-size:9.5px;font-family:var(--mono);color:var(--tx-mid);background:var(--bg-chip);border:1px solid var(--bd);padding:2px 6px;border-radius:999px;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"},t))));
   }
@@ -501,11 +511,34 @@ function queueTaskTone(status){
     done:{c:"var(--ok)", bg:"var(--ok-bg)", label:"done"},
   }[status] || {c:"var(--tx-lo2)", bg:"var(--bg-input)", label:status||"?"};
 }
+function runStatusTone(status){
+  return status==="running" ? {c:"var(--acc-lt)", bg:"var(--vio-bg)", label:"RUNNING"}
+    : status==="warning" ? {c:"var(--warn)", bg:"var(--warn-bg)", label:"WARNING"}
+    : status==="run_fail" ? {c:"var(--err)", bg:"var(--err-bg)", label:"FAILED"}
+    : {c:"var(--ok)", bg:"var(--ok-bg)", label:"DONE"};
+}
+function fmtRunDuration(ms){
+  if(ms==null) return "—";
+  const sec=Math.max(0,Math.round(Number(ms||0)/1000));
+  if(sec < 60) return sec+"s";
+  const min=Math.floor(sec/60);
+  const rest=sec%60;
+  return min+"m"+(rest?" "+rest+"s":"");
+}
+function isWorkerInfraNoise(issue){
+  return issue==="sender_missing" || issue==="fallback_active" || issue==="table_missing" || issue==="db_permissions";
+}
+function isWorkerInfraAlertCode(code){
+  return code==="worker_sender_missing"
+    || code==="worker_state_table_missing"
+    || code==="worker_state_db_permissions"
+    || code==="worker_queue_fallback";
+}
 
 async function screenWorker(root){
   if(S.workerTimer){ clearTimeout(S.workerTimer); S.workerTimer=null; }
   root.innerHTML="";
-  header("Railway worker","статус · задача · очередь", el("div",{class:"hdr-r"},
+  header("Пульс завода","пульс · прогоны · контроль", el("div",{class:"hdr-r"},
     el("button",{class:"btn",onclick:()=>screenWorker(root)},"↻ Обновить")));
   const wrap=el("div",{class:"scroll",style:"padding:18px;"}); root.appendChild(wrap);
   wrap.appendChild(loadingCard("смотрю heartbeat и очередь…"));
@@ -518,7 +551,12 @@ async function screenWorker(root){
   const worker=d.worker||null;
   const q=(worker&&Array.isArray(worker.queue)&&worker.queue.length?worker.queue:(d.queue||[]))||[];
   const alerts=Array.isArray(d.alerts)?d.alerts:[];
+  const factoryAlerts=Array.isArray(d.factory_alerts)?d.factory_alerts:[];
+  const workerInfraAlerts=Array.isArray(d.worker_infra_alerts)?d.worker_infra_alerts:[];
+  const routeWarnings=Array.isArray(d.warnings)?d.warnings.filter(Boolean):[];
   const suggested=Array.isArray(d.suggested_actions)?d.suggested_actions:[];
+  const factoryActions=Array.isArray(d.factory_actions)?d.factory_actions:[];
+  const workerInfraActions=Array.isArray(d.worker_infra_actions)?d.worker_infra_actions:[];
   const heartbeatDiag=d.heartbeat_diagnostics||null;
   const opsStatus=d.ops_status||null;
   const opsTone=opsStatusTone(opsStatus&&opsStatus.level);
@@ -526,9 +564,13 @@ async function screenWorker(root){
   const workerSource=worker&&worker.source||"unknown";
   const latestStress=d.latest_stress||null;
   const stressHistory=d.stress_history||null;
+  const observability=d.observability&&typeof d.observability==="object"?d.observability:null;
+  const recentRuns=Array.isArray(observability&&observability.recent_runs)?observability.recent_runs:[];
+  const runningRuns=recentRuns.filter((r)=>String(r.status||"")==="running");
+  const focusRun=runningRuns[0] || recentRuns[0] || null;
   const liveTone=workerStatusTone(live.state);
-  const aliveNote=live.state==="alive"?"heartbeat свежий":live.state==="stale"?"heartbeat молчит":"worker не отвечает";
-  const sourceLabel=workerSource==="heartbeat_db"?"heartbeat":"queue fallback";
+  const aliveNote=live.state==="alive"?"пульс свежий":live.state==="stale"?"пульс молчит":"контур не отвечает";
+  const sourceLabel=workerSource==="heartbeat_db"?"heartbeat":"резервный снимок";
   const currentId=worker&&worker.current_task_id?String(worker.current_task_id):"";
   const ordered=[...q].sort((a,b)=>{
     const ac=String(a.id||"")===currentId;
@@ -561,24 +603,43 @@ async function screenWorker(root){
       " · источник: ",el("b",{style:"color:var(--tx-hi);"},sourceLabel),
       worker&&worker.note?el("span",{}, " · ",worker.note):null)));
   top.appendChild(el("div",{class:"card",style:"padding:15px;"},
-    el("div",{style:"font-size:14px;font-weight:600;margin-bottom:10px;"},"Текущая задача"),
-    worker&&worker.current_task_id?el("div",{style:"display:flex;flex-direction:column;gap:6px;"},
-      el("div",{style:"font-size:19px;font-weight:700;"},worker.current_task_id),
-      el("div",{style:"font-size:13px;color:var(--tx-bd);line-height:1.45;"},worker.current_task_title||"—"),
+    el("div",{style:"font-size:14px;font-weight:600;margin-bottom:10px;"},focusRun?"Текущий прогон":"Текущий контур"),
+    focusRun?el("div",{style:"display:flex;flex-direction:column;gap:6px;"},
+      el("div",{style:"display:flex;align-items:center;gap:8px;flex-wrap:wrap;"},
+        el("div",{style:"font-size:19px;font-weight:700;"},focusRun.recipe_id!=null?"#"+focusRun.recipe_id:"run"),
+        el("span",{class:"mono",style:"font-size:10px;color:"+runStatusTone(String(focusRun.status||"")).c+";background:"+runStatusTone(String(focusRun.status||"")).bg+";padding:3px 7px;border-radius:5px;font-weight:700;"},
+          runStatusTone(String(focusRun.status||"")).label)),
+      el("div",{style:"font-size:13px;color:var(--tx-bd);line-height:1.45;"},
+        String(focusRun.status||"")==="running"?"идёт живой прогон графа":"последний зафиксированный прогон"),
       el("div",{style:"font-size:11.5px;color:var(--tx-lo);line-height:1.45;"},
-        worker.branch?el("span",{},el("b",{style:"color:var(--tx-hi);"},"branch "),worker.branch," · "):null,
-        worker.pr?el("span",{},el("b",{style:"color:var(--tx-hi);"},"PR "),worker.pr," · "):null,
-        worker.progress?el("span",{},el("b",{style:"color:var(--tx-hi);"},"progress "),worker.progress):"")):
-      el("div",{class:"muted",style:"font-size:12px;line-height:1.5;"},"worker ещё не прислал текущую задачу"),
-    worker&&worker.blocker?el("div",{style:"margin-top:10px;font-size:11.5px;color:var(--warn);background:var(--warn-bg);border:1px solid rgba(214,169,78,.55);padding:8px 10px;border-radius:8px;"},"Блокер: "+worker.blocker):null));
+        "длительность ",el("b",{style:"color:var(--tx-hi);"},fmtRunDuration(focusRun.total_ms)),
+        focusRun.warnings_count?el("span",{}," · предупреждения ",el("b",{style:"color:var(--warn);"},String(focusRun.warnings_count))):"",
+        focusRun.error_category?el("span",{}," · ",el("b",{style:"color:var(--err);"},String(focusRun.error_category))):"",
+        focusRun.created_at?el("span",{}," · ",fmtWhen(focusRun.created_at)):"")):
+      (worker&&worker.current_task_id?el("div",{style:"display:flex;flex-direction:column;gap:6px;"},
+        el("div",{style:"font-size:19px;font-weight:700;"},worker.current_task_id),
+        el("div",{style:"font-size:13px;color:var(--tx-bd);line-height:1.45;"},
+          /^T-\d+$/i.test(String(worker.current_task_id||"")) ? "служебный контур пульса" : (worker.current_task_title||"—")),
+        el("div",{style:"font-size:11.5px;color:var(--tx-lo);line-height:1.45;"},
+          worker.branch?el("span",{},el("b",{style:"color:var(--tx-hi);"},"branch "),worker.branch," · "):null,
+          worker.pr?el("span",{},el("b",{style:"color:var(--tx-hi);"},"PR "),worker.pr," · "):null,
+          worker.progress?el("span",{},el("b",{style:"color:var(--tx-hi);"},"progress "),worker.progress):"")):
+        el("div",{class:"muted",style:"font-size:12px;line-height:1.5;"},"контур ещё не прислал живой статус")),
+    worker&&worker.blocker&&!focusRun?el("div",{style:"margin-top:10px;font-size:11.5px;color:var(--warn);background:var(--warn-bg);border:1px solid rgba(214,169,78,.55);padding:8px 10px;border-radius:8px;"},"Блокер: "+worker.blocker):null));
   wrap.appendChild(top);
 
-  if(suggested.length){
+  const operatorActions=factoryActions.length ? factoryActions : suggested.filter((a)=>![
+    "start_worker_heartbeat_sender",
+    "apply_worker_state_table",
+    "repair_worker_state_permissions",
+    "repair_worker_heartbeat",
+  ].includes(String(a.action||"")));
+  if(operatorActions.length){
     const nextCard=el("div",{class:"card",style:"padding:14px;margin-bottom:14px;"});
     nextCard.appendChild(el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;"},
       el("div",{style:"font-size:14px;font-weight:600;"},"Что сделать дальше"),
-      el("span",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);"},String(suggested.length)+" items")));
-    suggested.forEach((a)=>nextCard.appendChild(el("div",{style:"display:flex;align-items:flex-start;justify-content:space-between;gap:10px;font-size:11.5px;color:var(--tx-bd);padding:7px 0;border-top:1px solid var(--bd);"},
+      el("span",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);"},String(operatorActions.length)+" items")));
+    operatorActions.forEach((a)=>nextCard.appendChild(el("div",{style:"display:flex;align-items:flex-start;justify-content:space-between;gap:10px;font-size:11.5px;color:var(--tx-bd);padding:7px 0;border-top:1px solid var(--bd);"},
       el("div",{style:"min-width:0;display:flex;flex-direction:column;gap:3px;"},
         el("div",{style:"display:flex;align-items:center;gap:8px;flex-wrap:wrap;"},
           el("span",{class:"mono",style:"font-size:9.5px;color:"+(a.priority==="p0"?"var(--err)":a.priority==="p1"?"var(--warn)":"var(--acc-lt)")+";background:"+(a.priority==="p0"?"var(--err-bg)":a.priority==="p1"?"var(--warn-bg)":"var(--vio-bg)")+";padding:2px 6px;border-radius:5px;font-weight:700;"},String(a.priority||"p2").toUpperCase()),
@@ -588,7 +649,50 @@ async function screenWorker(root){
     wrap.appendChild(nextCard);
   }
 
-  if(heartbeatDiag){
+  if(factoryAlerts.length){
+    const factCard=el("div",{class:"card",style:"padding:14px;margin-bottom:14px;"});
+    factCard.appendChild(el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;"},
+      el("div",{style:"font-size:14px;font-weight:600;"},"Factory alerts"),
+      el("span",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);"},String(factoryAlerts.length)+" items")));
+    factoryAlerts.slice(0,4).forEach((a,idx)=>factCard.appendChild(el("div",{style:"display:flex;align-items:flex-start;justify-content:space-between;gap:10px;font-size:11.5px;color:var(--tx-bd);padding:"+(idx?"8px 0 0":"0")+";border-top:"+(idx?"1px solid var(--bd)":"none")+";"},
+      el("div",{style:"min-width:0;display:flex;flex-direction:column;gap:3px;"},
+        el("div",{style:"display:flex;align-items:center;gap:8px;flex-wrap:wrap;"},
+          el("span",{class:"mono",style:"font-size:9.5px;color:"+(a.level==="error"?"var(--err)":a.level==="warn"?"var(--warn)":"var(--ok)")+";background:"+(a.level==="error"?"var(--err-bg)":a.level==="warn"?"var(--warn-bg)":"var(--ok-bg)")+";padding:2px 6px;border-radius:5px;font-weight:700;"},String(a.level||"warn").toUpperCase()),
+          el("span",{class:"mono",style:"font-size:10px;color:var(--tx-hi);"},String(a.code||"alert"))),
+        el("div",{style:"line-height:1.45;color:var(--tx-lo);"},String(a.detail||""))),
+      null)));
+    wrap.appendChild(factCard);
+  }
+
+  if(workerInfraAlerts.length || workerInfraActions.length){
+    const infraCard=el("div",{class:"card",style:"padding:14px;margin-bottom:14px;"});
+    infraCard.appendChild(el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;"},
+      el("div",{style:"font-size:14px;font-weight:600;"},"Служебный контур"),
+      el("span",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);"},String(workerInfraAlerts.length||workerInfraActions.length)+" items")));
+    workerInfraAlerts.slice(0,3).forEach((a,idx)=>infraCard.appendChild(el("div",{style:"display:flex;align-items:flex-start;justify-content:space-between;gap:10px;font-size:11.5px;color:var(--tx-bd);padding:"+(idx?"8px 0 0":"0")+";border-top:"+(idx?"1px solid var(--bd)":"none")+";"},
+      el("div",{style:"min-width:0;display:flex;flex-direction:column;gap:3px;"},
+        el("div",{style:"display:flex;align-items:center;gap:8px;flex-wrap:wrap;"},
+          el("span",{class:"mono",style:"font-size:9.5px;color:"+(a.level==="error"?"var(--err)":a.level==="warn"?"var(--warn)":"var(--ok)")+";background:"+(a.level==="error"?"var(--err-bg)":a.level==="warn"?"var(--warn-bg)":"var(--ok-bg)")+";padding:2px 6px;border-radius:5px;font-weight:700;"},String(a.level||"warn").toUpperCase()),
+          el("span",{class:"mono",style:"font-size:10px;color:var(--tx-hi);"},String(a.code||"infra"))),
+        el("div",{style:"line-height:1.45;color:var(--tx-lo);"},String(a.detail||""))),
+      null)));
+    workerInfraActions.slice(0,2).forEach((a)=>infraCard.appendChild(el("div",{style:"font-size:11px;color:var(--tx-lo);line-height:1.45;padding-top:8px;border-top:1px solid var(--bd);"},
+      el("span",{class:"mono",style:"font-size:9.5px;color:"+(a.priority==="p0"?"var(--err)":a.priority==="p1"?"var(--warn)":"var(--acc-lt)")+";background:"+(a.priority==="p0"?"var(--err-bg)":a.priority==="p1"?"var(--warn-bg)":"var(--vio-bg)")+";padding:2px 6px;border-radius:5px;font-weight:700;margin-right:8px;"},String(a.priority||"p2").toUpperCase()),
+      String(a.reason||""))));
+    wrap.appendChild(infraCard);
+  }
+
+  if(routeWarnings.length){
+    const warnCard=el("div",{class:"card",style:"padding:14px;margin-bottom:14px;"});
+    warnCard.appendChild(el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;"},
+      el("div",{style:"font-size:14px;font-weight:600;"},"Предупреждения чтения"),
+      el("span",{class:"mono",style:"font-size:10px;color:var(--warn);background:var(--warn-bg);padding:3px 7px;border-radius:5px;"},String(routeWarnings.length)+" items")));
+    routeWarnings.slice(0,3).forEach((warning,idx)=>warnCard.appendChild(el("div",{style:"font-size:11px;color:var(--tx-lo);line-height:1.45;padding:"+(idx?"8px 0 0":"0")+";border-top:"+(idx?"1px solid var(--bd)":"none")+";"},
+      String(warning))));
+    wrap.appendChild(warnCard);
+  }
+
+  if(heartbeatDiag && !isWorkerInfraNoise(String(heartbeatDiag.issue||""))){
     const diagCard=el("div",{class:"card",style:"padding:14px;margin-bottom:14px;border-color:"+(heartbeatDiag.issue==="table_missing"?"var(--err)":"var(--warn)")+";background:"+(heartbeatDiag.issue==="table_missing"?"var(--err-bg)":"var(--warn-bg)")+";"});
     diagCard.appendChild(el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;"},
       el("div",{style:"font-size:14px;font-weight:600;"},"Диагностика heartbeat"),
@@ -642,25 +746,49 @@ async function screenWorker(root){
 
   const list=el("div",{class:"card",style:"padding:14px;margin-bottom:14px;"}); wrap.appendChild(list);
   list.appendChild(el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;"},
-    el("div",{style:"font-size:14px;font-weight:600;"},"Очередь задач"),
-    el("span",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);"},String(q.length||0)+" items")));
-  if(!q.length){
-    list.appendChild(emptyBox("очередь пуста или worker ещё не прислал snapshot"));
+    el("div",{style:"font-size:14px;font-weight:600;"},"Очередь прогонов"),
+    el("span",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);"},String(recentRuns.length||0)+" runs")));
+  if(!recentRuns.length){
+    list.appendChild(emptyBox("пока нет живого snapshot последних прогонов"));
   } else {
     const queueMeta=el("div",{style:"display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;"});
     [
-      ["todo", q.filter(t=>t.status==="todo").length, "var(--bg-input)"],
-      ["doing", q.filter(t=>t.status==="doing").length, "var(--vio-bg)"],
-      ["blocked", q.filter(t=>t.status==="blocked").length, "var(--warn-bg)"],
-      ["done", q.filter(t=>t.status==="done").length, "var(--ok-bg)"],
+      ["running", recentRuns.filter((r)=>String(r.status||"")==="running").length, "var(--vio-bg)"],
+      ["warning", recentRuns.filter((r)=>String(r.status||"")==="warning").length, "var(--warn-bg)"],
+      ["failed", recentRuns.filter((r)=>String(r.status||"")==="run_fail").length, "var(--err-bg)"],
+      ["done", recentRuns.filter((r)=>!["running","warning","run_fail"].includes(String(r.status||""))).length, "var(--ok-bg)"],
     ].forEach(([label,count,bg])=>queueMeta.appendChild(
       el("span",{class:"mono",style:"font-size:10px;background:"+bg+";border:1px solid var(--bd2);padding:3px 7px;border-radius:5px;"},String(label)+" "+String(count||0))
     ));
     list.appendChild(queueMeta);
-    ordered.slice(0,6).forEach((t,idx)=>{
+    recentRuns.slice(0,8).forEach((run,idx)=>{
+      const tone=runStatusTone(String(run.status||""));
+      const isCurrent=focusRun && String(run.recipe_id||"")===String(focusRun.recipe_id||"") && String(run.created_at||"")===String(focusRun.created_at||"");
+      list.appendChild(el("div",{style:"display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:start;padding:"+(idx? "10px 0 0":"0")+";border-top:"+(idx?"1px solid var(--bd)":"none")+";"},
+        el("div",{style:"display:flex;align-items:center;gap:8px;min-width:0;"},
+          el("div",{style:"font-size:12px;font-weight:700;color:var(--tx-hi);"},run.recipe_id!=null?"#"+run.recipe_id:"run"),
+          isCurrent?el("span",{class:"mono",style:"font-size:9.5px;color:#fff;background:var(--acc);padding:2px 6px;border-radius:5px;font-weight:700;"},"current"):null),
+        el("div",{style:"min-width:0;display:flex;flex-direction:column;gap:4px;"},
+          el("div",{style:"font-size:12.5px;font-weight:600;line-height:1.4;"},
+            String(run.status||"")==="running"?"идёт сборка / рендер":"последний прогон"),
+          el("div",{style:"font-size:11px;color:var(--tx-lo);line-height:1.45;"},
+            run.created_at?fmtWhen(run.created_at):"",
+            run.total_ms!=null?` · ${fmtRunDuration(run.total_ms)}`:"",
+            run.warnings_count?` · warnings ${run.warnings_count}`:"",
+            run.error_category?` · ${run.error_category}`:"")),
+        el("span",{class:"mono",style:"font-size:10px;color:"+tone.c+";background:"+tone.bg+";padding:3px 7px;border-radius:5px;font-weight:700;white-space:nowrap;"},tone.label)));
+    });
+  }
+
+  if(q.length && q.some((t)=>t.status!=="done")){
+    const serviceCard=el("div",{class:"card",style:"padding:14px;margin-bottom:14px;"}); wrap.appendChild(serviceCard);
+    serviceCard.appendChild(el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;"},
+      el("div",{style:"font-size:14px;font-weight:600;"},"Служебная очередь"),
+      el("span",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);"},String(q.length||0)+" items")));
+    ordered.slice(0,4).forEach((t,idx)=>{
       const tt=queueTaskTone(t.status);
       const isCurrent=String(t.id||"")===currentId;
-      list.appendChild(el("div",{style:"display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:start;padding:"+(idx? "10px 0 0":"0")+";border-top:"+(idx?"1px solid var(--bd)":"none")+";"},
+      serviceCard.appendChild(el("div",{style:"display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:start;padding:"+(idx? "10px 0 0":"0")+";border-top:"+(idx?"1px solid var(--bd)":"none")+";"},
         el("div",{style:"display:flex;align-items:center;gap:8px;min-width:0;"},
           el("div",{style:"font-size:12px;font-weight:700;color:var(--tx-hi);"},t.id||"task"),
           isCurrent?el("span",{class:"mono",style:"font-size:9.5px;color:#fff;background:var(--acc);padding:2px 6px;border-radius:5px;font-weight:700;"},"current"):null),
@@ -728,7 +856,9 @@ async function screenCenter(root, force){
   const workerDbError=S.workerState&&S.workerState.db_error||"";
   const opsStatus=S.workerState&&S.workerState.ops_status||null;
   const heartbeatDiag=S.workerState&&S.workerState.heartbeat_diagnostics||null;
+  const routeWarnings=Array.isArray(S.workerState&&S.workerState.warnings)?S.workerState.warnings.filter(Boolean):[];
   const opsAlerts=Array.isArray(S.workerState&&S.workerState.alerts)?S.workerState.alerts:[];
+  const workerInfraAlerts=Array.isArray(S.workerState&&S.workerState.worker_infra_alerts)?S.workerState.worker_infra_alerts:[];
   const lowBalances=S.workerState&&S.workerState.balances&&Array.isArray(S.workerState.balances.low)?S.workerState.balances.low:[];
   const failDiag=S.observability&&S.observability.failure_diagnostics||null;
   const stabilitySnapshot=S.observability&&S.observability.stability_snapshot||null;
@@ -744,8 +874,8 @@ async function screenCenter(root, force){
     el("button",{class:"btn",title:"автопилот: заполнить черновики ИИ + сгенерить + ОТК + банк, прошедшее уйдёт в Telegram на ревью",onclick:()=>openNightRun()},"🌙 Ночной прогон"),
     el("button",{class:"btn",title:"фикс-айдентика брендов: голос/персона/шрифт/цвет/CTA/бан-слова/хэштеги — автозаполнение берёт как дефолты",onclick:()=>openBrandKit()},"🎨 Бренд-кит"),
     opsStatus?el("span",{class:"mono",title:opsStatus.summary||"",style:"font-size:10px;color:"+opsTone.c+";background:"+opsTone.bg+";padding:6px 8px;border-radius:7px;font-weight:700;"},"OPS "+opsTone.label):null,
-    el("button",{class:"btn",title:workerRow?`живой статус Railway worker · ${workerShort}${workerRow.current_task_id?` · ${workerRow.current_task_id}`:""}${workerDbError?` · ${workerDbError}`:""}`:"живой статус Railway worker и очередь задач",onclick:()=>go("worker")},
-      "🛰 RW ",workerShort,workerRow&&workerRow.current_task_id?` · ${workerRow.current_task_id}`:""),
+    el("button",{class:"btn",title:workerRow?`пульс завода · ${workerShort}${workerDbError?` · ${workerDbError}`:""}`:"пульс завода и последние прогоны",onclick:()=>go("worker")},
+      "🛰 Пульс ",workerShort),
     el("button",{class:"btn",title:"принудительно пересобрать данные и разбор ниши",onclick:()=>screenCenter(root,true)},"↻ Обновить")));
   const left=el("div",{class:"scroll"}), aside=el("div",{class:"aside",style:"width:340px;padding:18px;"});
   root.appendChild(left); root.appendChild(aside);
@@ -755,17 +885,16 @@ async function screenCenter(root, force){
       el("div",{style:"min-width:0;display:flex;flex-direction:column;gap:4px;"},
         el("div",{style:"display:flex;align-items:center;gap:8px;flex-wrap:wrap;"},
           el("span",{class:"mono",style:"font-size:10px;color:"+tone.c+";background:"+tone.bg+";padding:3px 7px;border-radius:5px;font-weight:700;"},tone.label),
-          el("span",{style:"font-size:12px;font-weight:700;"},"Railway worker"),
-          workerSource==="queue_fallback"?el("span",{class:"mono",style:"font-size:10px;color:var(--warn);background:var(--warn-bg);padding:3px 7px;border-radius:5px;font-weight:700;"},"queue fallback"):null,
-          workerRow.current_task_id?el("span",{class:"mono",style:"font-size:10px;color:#fff;background:var(--acc);padding:3px 7px;border-radius:5px;font-weight:700;"},"task "+workerRow.current_task_id):null),
+          el("span",{style:"font-size:12px;font-weight:700;"},"Пульс завода"),
+          workerRow.current_task_id && !/^T-\d+$/i.test(String(workerRow.current_task_id||""))?el("span",{class:"mono",style:"font-size:10px;color:#fff;background:var(--acc);padding:3px 7px;border-radius:5px;font-weight:700;"},"задача "+workerRow.current_task_id):null),
         el("div",{style:"font-size:11.5px;line-height:1.45;color:var(--tx-bd);"},
           "heartbeat: ",el("b",{style:"color:var(--tx-hi);"},workerRow.last_seen?fmtWhen(workerRow.last_seen):"—"),
-          " · ",el("b",{style:"color:var(--tx-hi);"},workerRow.current_task_title||"нет активной задачи"),
-          workerRow.blocker?el("span",{}, " · blocker: ",el("b",{style:"color:var(--warn);"},workerRow.blocker)):"",
-          workerDbError?el("span",{}, " · db: ",el("b",{style:"color:var(--warn);"},trunc(workerDbError,72))):"")),
-      el("button",{class:"btn sm",onclick:()=>go("worker")},"Открыть worker")));
+          " · ",el("b",{style:"color:var(--tx-hi);"},workerRow.current_task_id && /^T-\d+$/i.test(String(workerRow.current_task_id||"")) ? "служебный heartbeat воркера" : (workerRow.current_task_title||"нет активной задачи")),
+          workerRow.blocker?el("span",{}, " · блокер: ",el("b",{style:"color:var(--warn);"},workerRow.blocker)):"",
+          workerDbError?el("span",{}, " · база: ",el("b",{style:"color:var(--warn);"},trunc(workerDbError,72))):"")),
+      el("button",{class:"btn sm",onclick:()=>go("worker")},"Открыть пульс")));
   }
-  renderCenterOpsSummary(left,{opsStatus,heartbeatDiag,failDiag,opsAlerts,lowBalances,workerRow,stabilitySnapshot,latestStress,stressHistory});
+  renderCenterOpsSummary(left,{opsStatus,heartbeatDiag,routeWarnings,studioWarnings:S.studioWarnings||[],failDiag,opsAlerts,workerInfraAlerts,lowBalances,workerRow,stabilitySnapshot,latestStress,stressHistory});
   const nicheHead=el("div",{style:"display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;"},
     el("h2",{class:"sec-h"},"НИШИ ",el("span",{class:"cnt"},String(S.niches.length||""))),
     el("div",{style:"display:flex;gap:14px;"},
@@ -778,7 +907,7 @@ async function screenCenter(root, force){
 	  if(!S.centerLoaded){
 	    tiles.appendChild(loadingCard("ниши…"));
 	    const data=await api("/studio"); // быстрый Supabase-запрос; товары (медленный WB API) — отдельно, не блокируем плитки
-	    S.niches=data.niches||[]; S.generations=data.generations||[]; S.recipes=data.recipes||[]; S.observability=data.observability||null;
+	    S.niches=data.niches||[]; S.generations=data.generations||[]; S.recipes=data.recipes||[]; S.observability=data.observability||null; S.studioWarnings=Array.isArray(data.warnings)?data.warnings.filter(Boolean):[];
 	    S.centerLoaded=true;
 	    if(S.screen!=="center")return; // ушли с экрана пока грузили
 	  }
@@ -867,6 +996,36 @@ function productCard(p){
     el("button",{class:"btn "+(win?"primary":""),onclick:()=>openFormatFork(p)},"Собрать контент"));
 }
 function metaStat(c,glyph,txt){ return el("span",{class:"mono",style:"font-size:11px;color:var(--tx-mid2);"},el("span",{style:"color:"+c+";"},glyph)," "+txt); }
+function warningCategoryMeta(cat){
+  const key=String(cat||"other");
+  return ({
+    critic:{label:"критик",color:"var(--acc-lt)",bg:"var(--vio-bg)"},
+    artifact:{label:"артефакты",color:"var(--warn)",bg:"var(--warn-bg)"},
+    catalog:{label:"каталог",color:"var(--tx-hi)",bg:"var(--bg-input)"},
+    render:{label:"рендер",color:"var(--err)",bg:"var(--err-bg)"},
+    frames:{label:"кадры",color:"var(--warn)",bg:"var(--warn-bg)"},
+    timeout:{label:"таймауты",color:"var(--err)",bg:"var(--err-bg)"},
+    quality:{label:"ОТК",color:"var(--warn)",bg:"var(--warn-bg)"},
+    other:{label:"прочее",color:"var(--tx-lo)",bg:"var(--bg-input)"}
+  })[key]||{label:key,color:"var(--tx-lo)",bg:"var(--bg-input)"};
+}
+function warningReasonHint(reason){
+  const s=String(reason||"").toLowerCase();
+  if(!s) return "";
+  if(s==="otk below threshold") return "ролики доходят до финиша, но не дотягивают по качеству";
+  if(s==="video-critic unavailable") return "оценщик деградирует и не дает нормальный вердикт";
+  if(s==="video-critic did not return score") return "оценщик отвечает без score";
+  if(s==="gen-save warning") return "ролик собран, но сохранение в каталог нестабильно";
+  if(s==="extractframes failed") return "ОТК не может снять кадры с готового видео";
+  if(s==="artifact-check unavailable") return "проверка артефактов не отвечает";
+  if(s==="artifact-check warning") return "детектор визуального брака находит дефекты";
+  if(s==="assemble source fallback rescued") return "генерация умерла, но прогон спасли исходниками";
+  if(s==="gen-poll source fallback rescued") return "генерация не завершилась, прогон спасен на poll-этапе";
+  if(s==="runtime autofill skipped fail-open") return "черновик пошел дальше без runtime LLM-autofill";
+  if(s==="otk no frames; saved without score") return "ОТК не видит кадры и сохраняет без оценки";
+  if(s==="otk no frames; score via storyboard fallback") return "ОТК оценивает по storyboard вместо кадров";
+  return "";
+}
 function renderObservabilityCard(host){
   const o=S.observability;
   if(!host||!o)return;
@@ -942,18 +1101,32 @@ function renderObservabilityCard(host){
       el("span",{class:"mono",style:"color:var(--tx-lo2);flex:none;"},String(w.count||0)))));
   }
   if(cats.length){
-    card.appendChild(el("div",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);margin:"+((slow.length||errCats.length)?"10px":"4px")+" 0 6px;"},"warning categories"));
-    cats.slice(0,4).forEach((w)=>card.appendChild(el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:10.5px;color:var(--tx-bd);margin-bottom:5px;"},
-      el("span",{class:"mono",style:"min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"},w.category||"other"),
-      el("span",{class:"mono",style:"color:var(--tx-lo2);flex:none;"},String(w.count||0)))));
+    const sum=cats.slice(0,4).reduce((a,w)=>a+Number(w.count||0),0)||1;
+    card.appendChild(el("div",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);margin:"+((slow.length||errCats.length)?"10px":"4px")+" 0 6px;"},"warning groups"));
+    const row=el("div",{style:"display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px;"}); card.appendChild(row);
+    cats.slice(0,4).forEach((w)=>{ const m=warningCategoryMeta(w.category); row.appendChild(el("span",{class:"mono",style:"font-size:9.5px;color:"+m.color+";background:"+m.bg+";padding:3px 7px;border-radius:5px;"},m.label+" "+String(w.count||0))); });
+    cats.slice(0,4).forEach((w)=>{
+      const m=warningCategoryMeta(w.category);
+      const pct=Math.max(8,Math.round((Number(w.count||0)/sum)*100));
+      card.appendChild(el("div",{style:"display:grid;grid-template-columns:84px minmax(0,1fr) 28px;gap:8px;align-items:center;font-size:10.5px;color:var(--tx-bd);margin-bottom:5px;"},
+        el("span",{class:"mono",style:"color:"+m.color+";"},m.label),
+        el("div",{style:"height:7px;background:rgba(255,255,255,.05);border-radius:999px;overflow:hidden;"},
+          el("div",{style:"width:"+pct+"%;height:100%;background:"+m.color+";border-radius:999px;"})),
+        el("span",{class:"mono",style:"color:var(--tx-lo2);text-align:right;"},String(w.count||0))));
+    });
   }
   if(errs.length){
     card.appendChild(el("div",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);margin:"+((slow.length||errCats.length||cats.length)?"10px":"4px")+" 0 6px;"},"top errors"));
     errs.slice(0,3).forEach((w)=>card.appendChild(el("div",{class:"mono",style:"font-size:10px;color:var(--tx-mid);line-height:1.35;margin-bottom:4px;"},(w.count||0)+"× "+String(w.reason||"").slice(0,90))));
   }
   if(warns.length){
-    card.appendChild(el("div",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);margin:"+((slow.length||errCats.length||cats.length||errs.length)?"10px":"4px")+" 0 6px;"},"top warnings"));
-    warns.slice(0,3).forEach((w)=>card.appendChild(el("div",{class:"mono",style:"font-size:10px;color:var(--tx-mid);line-height:1.35;margin-bottom:4px;"},(w.count||0)+"× "+String(w.reason||"").slice(0,90))));
+    card.appendChild(el("div",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);margin:"+((slow.length||errCats.length||cats.length||errs.length)?"10px":"4px")+" 0 6px;"},"repeating warning reasons"));
+    warns.slice(0,3).forEach((w)=>{
+      const hint=warningReasonHint(w.reason);
+      card.appendChild(el("div",{style:"display:flex;flex-direction:column;gap:2px;margin-bottom:6px;"},
+        el("div",{class:"mono",style:"font-size:10px;color:var(--tx-mid);line-height:1.35;"},(w.count||0)+"× "+String(w.reason||"").slice(0,90)),
+        hint?el("div",{style:"font-size:10px;color:var(--tx-lo);line-height:1.35;padding-left:2px;"},hint):null));
+    });
   }
   if(recent.length){
     card.appendChild(el("div",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);margin:"+((slow.length||errCats.length||cats.length||errs.length||warns.length)?"10px":"4px")+" 0 6px;"},"recent runs"));
@@ -1011,43 +1184,57 @@ function fmtCard(ic,t,sub,on){ return el("div",{class:"card",style:"padding:14px
 function renderCenterOpsSummary(host,input){
   const opsStatus=input&&input.opsStatus||null;
   const heartbeatDiag=input&&input.heartbeatDiag||null;
+  const routeWarnings=Array.isArray(input&&input.routeWarnings)?input.routeWarnings:[];
+  const studioWarnings=Array.isArray(input&&input.studioWarnings)?input.studioWarnings:[];
   const failDiag=input&&input.failDiag||null;
   const opsAlerts=Array.isArray(input&&input.opsAlerts)?input.opsAlerts:[];
+  const visibleOpsAlerts=opsAlerts.filter((a)=>!isWorkerInfraAlertCode(String(a&&a.code||"")));
+  const workerInfraAlerts=Array.isArray(input&&input.workerInfraAlerts)?input.workerInfraAlerts:[];
   const lowBalances=Array.isArray(input&&input.lowBalances)?input.lowBalances:[];
   const workerRow=input&&input.workerRow||null;
   const stability=input&&input.stabilitySnapshot||null;
   const latestStress=input&&input.latestStress||null;
   const stressHistory=input&&input.stressHistory||null;
-  if(!opsStatus && !heartbeatDiag && !failDiag && !opsAlerts.length && !lowBalances.length && !latestStress && !stressHistory)return;
+  if(!opsStatus && !heartbeatDiag && !failDiag && !visibleOpsAlerts.length && !workerInfraAlerts.length && !routeWarnings.length && !studioWarnings.length && !lowBalances.length && !latestStress && !stressHistory)return;
   const tone=opsStatusTone(opsStatus&&opsStatus.level);
   const card=el("div",{class:"card",style:"padding:12px 14px;margin-bottom:16px;display:flex;flex-direction:column;gap:10px;"});
   card.appendChild(el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;"},
     el("div",{style:"display:flex;align-items:center;gap:8px;flex-wrap:wrap;"},
       el("span",{class:"mono",style:"font-size:10px;color:"+tone.c+";background:"+tone.bg+";padding:4px 7px;border-radius:5px;font-weight:700;"},opsStatus?"OPS "+tone.label:"OPS"),
-      el("span",{style:"font-size:12px;font-weight:700;"},"Factory health"),
-      workerRow&&workerRow.current_task_id?el("span",{class:"mono",style:"font-size:10px;color:#fff;background:var(--acc);padding:4px 7px;border-radius:5px;font-weight:700;"},"task "+workerRow.current_task_id):null),
-    el("button",{class:"btn sm",onclick:()=>go("worker")},"Worker")));
+      el("span",{style:"font-size:12px;font-weight:700;"},"Состояние завода"),
+      workerRow&&workerRow.current_task_id?el("span",{class:"mono",style:"font-size:10px;color:#fff;background:var(--acc);padding:4px 7px;border-radius:5px;font-weight:700;"},"задача "+workerRow.current_task_id):null),
+    el("button",{class:"btn sm",onclick:()=>go("worker")},"Пульс")));
   if(opsStatus&&opsStatus.summary){
     card.appendChild(el("div",{style:"font-size:11px;line-height:1.45;color:var(--tx-bd);"},opsStatus.summary));
   }
-  if(heartbeatDiag){
+  if(heartbeatDiag && !isWorkerInfraNoise(String(heartbeatDiag.issue||""))){
     card.appendChild(el("div",{style:"font-size:11px;line-height:1.45;color:var(--tx-bd);"},
-      "Heartbeat: ",el("b",{style:"color:heartbeatDiag.level==='critical'?'var(--err)':heartbeatDiag.level==='warning'?'var(--warn)':'var(--ok)';"},heartbeatDiag.title||heartbeatDiag.issue||"unknown"),
+      "Пульс: ",el("b",{style:"color:heartbeatDiag.level==='critical'?'var(--err)':heartbeatDiag.level==='warning'?'var(--warn)':'var(--ok)';"},heartbeatDiag.title||heartbeatDiag.issue||"unknown"),
       heartbeatDiag.summary?el("span",{}," · "+heartbeatDiag.summary):""));
   }
   if(failDiag){
     card.appendChild(el("div",{style:"font-size:11px;line-height:1.45;color:var(--tx-bd);"},
-      "Run fails: ",el("b",{style:"color:var(--warn);"},failDiag.issue||failDiag.category||"unknown"),
+      "Падения прогонов: ",el("b",{style:"color:var(--warn);"},failDiag.issue||failDiag.category||"unknown"),
       failDiag.next_step?el("span",{}," · "+failDiag.next_step):"",
       failDiag.sample_error?el("span",{}," · "+trunc(failDiag.sample_error,120)):""));
+  }
+  if(routeWarnings.length){
+    card.appendChild(el("div",{style:"font-size:11px;line-height:1.45;color:var(--tx-bd);"},
+      "Предупреждения чтения: ",el("b",{style:"color:var(--warn);"},String(routeWarnings.length)),
+      " · деградация наблюдаемости, не автоматом авария выпуска"));
+  }
+  if(studioWarnings.length){
+    card.appendChild(el("div",{style:"font-size:11px;line-height:1.45;color:var(--tx-bd);"},
+      "Предупреждения студии: ",el("b",{style:"color:var(--warn);"},String(studioWarnings.length)),
+      " · часть витринных данных сейчас best-effort"));
   }
   if(stability){
     const ok=!!stability.target_met;
     card.appendChild(el("div",{style:"font-size:11px;line-height:1.45;color:var(--tx-bd);"},
-      "10-run KPI: ",el("b",{style:"color:"+(ok?"var(--ok)":"var(--warn)")+";"},
+      "KPI 10 прогонов: ",el("b",{style:"color:"+(ok?"var(--ok)":"var(--warn)")+";"},
         String(stability.successful_runs||0)+"/"+String(stability.window_size||10)),
-      " · streak ",el("b",{style:"color:var(--tx-hi);"},String(stability.success_streak||0)),
-      ok?el("span",{}," · target met"):el("span",{}," · target not met yet")));
+      " · серия ",el("b",{style:"color:var(--tx-hi);"},String(stability.success_streak||0)),
+      ok?el("span",{}," · цель достигнута"):el("span",{}," · цель ещё не достигнута")));
   }
   if(latestStress&&latestStress.summary){
     const lsSummary=latestStress.summary||{};
@@ -1070,15 +1257,15 @@ function renderCenterOpsSummary(host,input){
   if(stressHistory&&stressHistory.total_reports){
     const fails=(stressHistory.failed_runs||0)+(stressHistory.run_failures||0)+(stressHistory.timeouts||0);
     const histRow=el("div",{style:"display:flex;flex-wrap:wrap;gap:6px;"});
-    histRow.appendChild(el("span",{class:"mono",style:"font-size:10px;color:var(--tx-hi);background:var(--bg-input);border:1px solid var(--bd2);padding:3px 7px;border-radius:5px;"},"history "+String(stressHistory.total_reports||0)+" reports"));
-    histRow.appendChild(el("span",{class:"mono",style:"font-size:10px;color:var(--ok);background:var(--ok-bg);padding:3px 7px;border-radius:5px;"},"done "+String(stressHistory.completed_runs||0)+"/"+String(stressHistory.total_runs||0)));
-    histRow.appendChild(el("span",{class:"mono",style:"font-size:10px;color:"+(fails?"var(--err)":"var(--tx-hi)")+";background:"+(fails?"var(--err-bg)":"var(--bg-input)")+";border:1px solid "+(fails?"rgba(239,68,68,.35)":"var(--bd2)")+";padding:3px 7px;border-radius:5px;"},"fail "+String(fails)));
-    histRow.appendChild(el("span",{class:"mono",style:"font-size:10px;color:var(--tx-hi);background:var(--bg-input);border:1px solid var(--bd2);padding:3px 7px;border-radius:5px;"},"target "+String(stressHistory.target_met_reports||0)+"/"+String(stressHistory.total_reports||0)));
+    histRow.appendChild(el("span",{class:"mono",style:"font-size:10px;color:var(--tx-hi);background:var(--bg-input);border:1px solid var(--bd2);padding:3px 7px;border-radius:5px;"},"история "+String(stressHistory.total_reports||0)+" отчётов"));
+    histRow.appendChild(el("span",{class:"mono",style:"font-size:10px;color:var(--ok);background:var(--ok-bg);padding:3px 7px;border-radius:5px;"},"успех "+String(stressHistory.completed_runs||0)+"/"+String(stressHistory.total_runs||0)));
+    histRow.appendChild(el("span",{class:"mono",style:"font-size:10px;color:"+(fails?"var(--err)":"var(--tx-hi)")+";background:"+(fails?"var(--err-bg)":"var(--bg-input)")+";border:1px solid "+(fails?"rgba(239,68,68,.35)":"var(--bd2)")+";padding:3px 7px;border-radius:5px;"},"сбои "+String(fails)));
+    histRow.appendChild(el("span",{class:"mono",style:"font-size:10px;color:var(--tx-hi);background:var(--bg-input);border:1px solid var(--bd2);padding:3px 7px;border-radius:5px;"},"цель "+String(stressHistory.target_met_reports||0)+"/"+String(stressHistory.total_reports||0)));
     card.appendChild(histRow);
   }
-  if(opsAlerts.length){
+  if(visibleOpsAlerts.length){
     const row=el("div",{style:"display:flex;flex-wrap:wrap;gap:6px;"});
-    opsAlerts.slice(0,4).forEach((a)=>row.appendChild(el("span",{class:"mono",style:"font-size:10px;color:var(--warn);background:var(--warn-bg);padding:4px 7px;border-radius:5px;"},a.code||a.level||"alert")));
+    visibleOpsAlerts.slice(0,4).forEach((a)=>row.appendChild(el("span",{class:"mono",style:"font-size:10px;color:var(--warn);background:var(--warn-bg);padding:4px 7px;border-radius:5px;"},a.code||a.level||"alert")));
     card.appendChild(row);
   }
   if(lowBalances.length){
@@ -1086,6 +1273,11 @@ function renderCenterOpsSummary(host,input){
     lowBalances.slice(0,4).forEach((b)=>row.appendChild(el("span",{class:"mono",style:"font-size:10px;color:var(--err);background:var(--err-bg);padding:4px 7px;border-radius:5px;"},
       String(b.provider||"balance")+": "+(b.status||"low")+(b.remaining_pct!=null?(" · "+Math.round(Number(b.remaining_pct)||0)+"%"):""))));
     card.appendChild(row);
+  }
+  if(workerInfraAlerts.length){
+    card.appendChild(el("div",{style:"font-size:10.5px;line-height:1.45;color:var(--tx-lo);"},
+      "Служебный контур отдельно: ",el("b",{style:"color:var(--warn);"},String(workerInfraAlerts.length)),
+      " сигнал(ов) · это не равно поломке основного контура выпуска"));
   }
   host.appendChild(card);
 }
@@ -1185,7 +1377,7 @@ async function screenCompete(root){
   feed.forEach((v,i)=>{
     const sel=S.selectedVideo===v.id;
     feedList.appendChild(el("div",{style:"display:flex;gap:10px;padding:8px;border-radius:9px;cursor:pointer;"+(sel?"background:var(--bg-node);border:1.5px solid var(--acc);box-shadow:0 0 0 3px rgba(124,116,255,.08);":"background:var(--bg-card);border:1px solid var(--bd);"),
-      onclick:()=>{ S.selectedVideo=v.id; if(S.screen==="compete")renderDecompose(); }},
+      onclick:()=>{ S.selectedVideo=v.id; const cached=S.decomposeCache[String(v.id||"")]; S.decompose=cached||null; S.decomposeVideo=cached?v:S.decomposeVideo; if(S.screen==="compete")renderDecompose(); }},
       el("span",{class:"mono",style:"font-size:12px;color:"+(sel?"var(--acc)":"var(--tx-lo2)")+";width:16px;"},String(i+1)),
       el("div",{title:v.url?"смотреть оригинал":"",style:"width:34px;height:46px;border-radius:5px;flex:none;position:relative;overflow:hidden;cursor:"+(v.url?"pointer":"default")+";background:repeating-linear-gradient(135deg,"+(sel?"#2a2440 0 6px,#231f33":"#23272f 0 6px,#1d2128")+" 6px 12px);display:flex;align-items:center;justify-content:center;",onclick:v.url?(e)=>{ e.stopPropagation(); openMedia(v.url,{external:true,embed:S.embeds[v.id]}); }:null},
         S.covers[v.id]?el("img",{src:S.covers[v.id],loading:"lazy",style:"position:absolute;inset:0;width:100%;height:100%;object-fit:cover;"}):null,
@@ -1195,6 +1387,11 @@ async function screenCompete(root){
         el("div",{class:"mono",style:"font-size:10px;color:"+(sel?"var(--acc-lt)":"var(--tx-lo2)")+";margin-top:3px;"},fmtViews(v.views)+" · score "+(v.virality_score?Number(v.virality_score).toFixed(0):"?")))));
   });
   const justRan=_decomposeJustRan; _decomposeJustRan=false;
+  if(!S.decompose && S.selectedVideo && S.decomposeCache[String(S.selectedVideo)]) {
+    S.decompose=S.decomposeCache[String(S.selectedVideo)];
+    const d=(S.feedCache[S.activeNiche]&&S.feedCache[S.activeNiche].feed)||[];
+    S.decomposeVideo=d.find(x=>String(x.id||"")===String(S.selectedVideo))||S.decomposeVideo;
+  }
   if(S.decompose&&S.decompose.error&&!justRan){ S.decompose=null; S.decomposeVideo=null; S.selectedVideo=null; } // стейл-ошибка разбора не висит при свежем входе на 02
   if(S.decompose||S.decomposeLoading||S.selectedVideo)renderDecompose();
 }
@@ -1206,6 +1403,7 @@ async function runDecompose(v){
   const d=await api("/decompose?viral_video_id="+v.id);
   S.decomposeLoading=false;
   S.decompose=d.error?{error:d.error}:d;
+  if(!d.error && d && d.nodes) S.decomposeCache[String(v.id||"")]=d;
   _decomposeJustRan=true; // ошибку покажем live, но не дадим залипнуть при следующем заходе
   await screenCompete(document.getElementById("screen")); // refresh header count + feed selection
 }
@@ -1602,8 +1800,11 @@ async function autofillSingleNode(n){
 }
 
 // V21 · автопилот: ночной прогон черновиков (бюджет-гард → §17 автозаполнение в очереди → генерация → ОТК → банк → Telegram-ревью)
-async function openNightRun(){
-  if(!(S.niches&&S.niches.length)){ try{ const d=await api("/studio"); if(d&&d.niches)S.niches=d.niches; }catch(e){} } // ниши для режима «с нуля» (могли не загрузиться)
+async function openNightRun(opts={}){
+  if(!(S.niches&&S.niches.length)){ try{ const d=await api("/studio"); if(d&&d.niches)S.niches=d.niches; if(d)S.studioWarnings=Array.isArray(d.warnings)?d.warnings.filter(Boolean):S.studioWarnings; }catch(e){} } // ниши для режима «с нуля» (могли не загрузиться)
+  const presetCount=Math.min(30,Math.max(1,Number(opts.count)||5));
+  const presetBudget=Math.max(1,Number(opts.budget_usd)||40);
+  const presetNiche=String(opts.niche||S.activeNiche||"").trim();
   const ov=el("div",{style:"position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:60;padding:24px;",onclick:(e)=>{ if(e.target===ov)ov.remove(); }});
   const box=el("div",{class:"card",style:"padding:22px;width:min(520px,95vw);max-height:88vh;overflow:auto;"});
   box.appendChild(el("div",{style:"font-size:16px;font-weight:600;"},"🌙 Ночной прогон"));
@@ -1620,16 +1821,51 @@ async function openNightRun(){
   box.appendChild(el("div",{style:"font-size:11px;color:var(--tx-lo2);line-height:1.45;margin:-4px 0 12px;"},"Режим «с нуля» временно отключён: batch-build убран из MVP-контура, чтобы не плодить второй оркестратор."));
   // ниша (для режима «с нуля»)
   const nicheSel=el("select",{style:INP+"width:100%;"},...(S.niches||[]).map(n=>el("option",{value:n.niche},(NICHE_EMOJI[n.niche]||"")+" "+nicheLabel(n.niche))));
+  if(presetNiche&&[...nicheSel.options].some(o=>o.value===presetNiche))nicheSel.value=presetNiche;
   const nicheRow=el("div",{style:"display:none;margin-bottom:10px;"},el("div",{style:"font-size:11px;color:var(--tx-lo);margin-bottom:3px;"},"Ниша (откуда брать конкурентов и товары)"),nicheSel);
   box.appendChild(nicheRow);
-  const budIn=el("input",{type:"number",step:"1",min:"1",value:"40",style:INP});
-  const cntIn=el("input",{type:"number",step:"1",min:"1",max:"30",value:"5",style:INP});
+  const budIn=el("input",{type:"number",step:"1",min:"1",value:String(presetBudget),style:INP});
+  const cntIn=el("input",{type:"number",step:"1",min:"1",max:"30",value:String(presetCount),style:INP});
   box.appendChild(el("div",{style:"display:flex;gap:18px;margin-bottom:8px;"},
     el("div",{},el("div",{style:"font-size:11px;color:var(--tx-lo);margin-bottom:3px;"},"Бюджет, $"),budIn),
     el("div",{},el("div",{style:"font-size:11px;color:var(--tx-lo);margin-bottom:3px;"},"Сколько видео (макс 30)"),cntIn)));
   const out=el("div",{style:"margin-top:14px;"}); box.appendChild(out);
   let _busy=false;
   const errBox=(t)=>el("div",{style:"font-size:12.5px;color:var(--err);padding:10px;background:var(--err-bg);border:1px solid var(--err);border-radius:8px;"},t);
+  const renderBatchProgress=async(ids,target)=>{
+    target.innerHTML=""; target.appendChild(loadingCard("проверяю batch…"));
+    await Promise.all(ids.map(async(id)=>{
+      const ctl=new AbortController(); const tm=setTimeout(()=>ctl.abort(),25000);
+      try{
+        await fetch(API+"/graph-run/tick",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({recipe_id:id}),signal:ctl.signal});
+      }catch(e){ /* nudge best-effort: status polling ниже покажет текущее состояние */ }
+      finally{ clearTimeout(tm); }
+    }));
+    const rows=await Promise.all(ids.map(async(id)=>{
+      try{
+        const r=await api("/graph-run?recipe_id="+id);
+        return r&&typeof r==="object"?r:{recipe_id:id,status:"unknown",step:"unknown",error:"empty status response"};
+      }catch(e){
+        return {recipe_id:id,status:"status_check_failed",step:"status_check_failed",error:String(e&&e.message||e||"status fetch failed").slice(0,160)};
+      }
+    }));
+    const done=rows.filter(x=>x&&x.step==="done").length;
+    const running=rows.filter(x=>x&&x.status==="running").length;
+    const failed=rows.filter(x=>x&&((x.step==="failed")||(x.status==="run_fail"))).length;
+    const statusFailed=rows.filter(x=>x&&x.step==="status_check_failed").length;
+    const warn=rows.filter(x=>x&&((x.warnings&&x.warnings.length)||x.otk==="warning")).length;
+    target.innerHTML="";
+    target.appendChild(el("div",{class:"card",style:"padding:12px;margin-top:8px;display:flex;flex-direction:column;gap:7px;"},
+      el("div",{style:"font-size:12.5px;font-weight:600;"},"Прогресс batch"),
+      el("div",{style:"display:flex;gap:6px;flex-wrap:wrap;"},
+        el("span",{class:"mono",style:"font-size:10px;background:var(--ok-bg);color:var(--ok);padding:3px 7px;border-radius:5px;"},"done "+done+"/"+ids.length),
+        el("span",{class:"mono",style:"font-size:10px;background:var(--bg-input);border:1px solid var(--bd2);padding:3px 7px;border-radius:5px;"},"running "+running),
+        el("span",{class:"mono",style:"font-size:10px;background:var(--warn-bg);color:var(--warn);padding:3px 7px;border-radius:5px;"},"warn "+warn),
+        statusFailed?el("span",{class:"mono",style:"font-size:10px;background:var(--warn-bg);color:var(--warn);padding:3px 7px;border-radius:5px;"},"status read "+statusFailed):null,
+        el("span",{class:"mono",style:"font-size:10px;background:var(--err-bg);color:var(--err);padding:3px 7px;border-radius:5px;"},"failed "+failed)),
+      ...rows.map(x=>el("div",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"},
+        "#"+(x.recipe_id||"?")+" · "+(x.batch_role||"role?")+" · axis "+(x.change_axis||"none")+" · "+(x.step||x.status||"?")+" · "+(x.output_url||x.error||"")))));
+  };
   const run=async(dry)=>{
     if(_busy)return;
     if(_zero&&!nicheSel.value){ out.innerHTML=""; out.appendChild(errBox("выбери нишу (список ниш не загрузился — обнови центр)")); return; }
@@ -1639,26 +1875,89 @@ async function openNightRun(){
     const cnt=Math.min(30,Math.max(1,Number(cntIn.value)||5)); if(Number(cntIn.value)>30)cntIn.value=30;
     const bud=Math.max(1,Number(budIn.value)||40);
     if(_zero){ _busy=false; btns.forEach(b=>b.disabled=false); out.innerHTML=""; out.appendChild(errBox("batch-build отключён в Sprint 1; выбери режим «из черновиков»")); return; }
-    const r=await api("/batch",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({budget_usd:bud,count:cnt,dry_run:!!dry})});
+    const payload={budget_usd:bud,count:cnt,dry_run:!!dry};
+    if(presetNiche)payload.niche=presetNiche;
+    if(opts.require_full_batch)payload.require_full_batch=true;
+    if(opts.require_learning_gate)payload.require_learning_gate=true;
+    if(opts.series_after)payload.series_after=opts.series_after;
+    const r=await api("/batch",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
     _busy=false; btns.forEach(b=>b.disabled=false);
     out.innerHTML="";
-    if(!r||r.ok!==true){ const bb=Array.isArray(r&&r.balance_block)?r.balance_block.join(", "):(r&&r.balance_block); out.appendChild(errBox((r&&(r.error||(bb&&("низкий баланс: "+bb))))||"не вышло (сеть/сервер)")); return; }
+    if(!r||r.ok!==true){
+      const bb=Array.isArray(r&&r.balance_block)?r.balance_block.join(", "):(r&&r.balance_block);
+      out.appendChild(errBox((r&&(r.error||(bb&&("низкий баланс: "+bb))))||"не вышло (сеть/сервер)"));
+      if(r&&r.next_action&&r.next_action.type==="prepare_drafts"){
+        const prep=el("button",{class:"btn sm primary",style:"margin-top:10px;",onclick:async()=>{
+          prep.disabled=true; prep.textContent="готовлю черновики…";
+          const pr=await api("/prepare-drafts",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({count:cnt,niche:presetNiche||null})});
+          prep.disabled=false; prep.textContent="подготовить черновики";
+          if(!pr||pr.ok!==true){ toast("черновики: "+((pr&&pr.error)||"ошибка").toString().slice(0,80)); return; }
+          toast("готово draft "+String((pr.draft_ids||[]).length)+"/"+cnt);
+          run(true);
+        }},"подготовить черновики");
+        out.appendChild(el("div",{style:"font-size:11px;color:var(--tx-lo2);line-height:1.45;margin-top:8px;"},"Создаст недостающие draft-рецепты из существующих шаблонов и прошлых товаров. Видео не запускает."));
+        out.appendChild(prep);
+      }
+      return;
+    }
     const enq=(r.enqueued||[]).length;
+    const requested=r.requested||{};
+    const preflight=r.preflight||{};
+    const learningGate=r.learning_gate||null;
+    const selected=r.selected_recipes||[];
     out.appendChild(el("div",{style:"font-size:13px;margin-bottom:8px;"},
       (dry?"📊 Смета: ":"🚀 Запущено: "),
       el("b",{style:"color:var(--acc-lt);"},enq+" рецептов"),
       " · ≈ $"+(r.estimated_usd!=null?r.estimated_usd:"?")+(r.capped_by_budget?" (упёрлись в бюджет)":"")));
+    out.appendChild(el("div",{style:"font-size:11px;color:var(--tx-lo);line-height:1.45;margin-bottom:6px;"},
+      "серия: ",el("b",{style:"color:var(--tx-hi);"},String(requested.count||enq||5)),
+      " · ниша: ",el("b",{style:"color:var(--tx-hi);"},requested.niche?nicheLabel(requested.niche):"любая"),
+      ...(r.batch_run_id?[" · batch ",el("span",{class:"mono",style:"color:var(--tx-hi);"},r.batch_run_id)]:[])));
+    out.appendChild(el("div",{style:"font-size:11px;color:"+(preflight.ready?"var(--ok)":"var(--warn)")+";line-height:1.45;margin-bottom:6px;"},
+      preflight.ready?"готово к полной пятёрке":"пятёрка неполная",
+      " · draft ",String(preflight.available_drafts??selected.length),"/",String(preflight.requested_count||requested.count||5),
+      preflight.missing_drafts?(" · не хватает "+preflight.missing_drafts):"",
+      preflight.source_ready_drafts!=null?(" · source-ready "+preflight.source_ready_drafts):"",
+      preflight.missing_source_drafts?(" · без исходников "+preflight.missing_source_drafts):"",
+      preflight.budget_fit_count!=null?(" · по бюджету "+preflight.budget_fit_count):""));
+    if(learningGate)out.appendChild(el("div",{style:"font-size:11px;color:"+(learningGate.ready?"var(--ok)":"var(--warn)")+";line-height:1.45;margin-bottom:6px;"},
+      (learningGate.ready?"learning gate ready":"learning gate hold"),
+      " · "+String(learningGate.reason||""),
+      learningGate.required_feedback?(" · feedback "+String(learningGate.current_feedback||0)+"/"+String(learningGate.required_feedback||0)):""));
+    if(dry&&(preflight.missing_drafts>0||preflight.missing_source_drafts>0)){
+      const prep=el("button",{class:"btn sm primary",style:"margin:2px 0 8px;",onclick:async()=>{
+        prep.disabled=true; prep.textContent="готовлю черновики…";
+        const pr=await api("/prepare-drafts",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({count:cnt,niche:presetNiche||requested.niche||null})});
+        prep.disabled=false; prep.textContent="подготовить недостающие черновики";
+        if(!pr||pr.ok!==true){ toast("черновики: "+((pr&&pr.error)||"ошибка").toString().slice(0,80)); return; }
+        toast("готово draft "+String((pr.draft_ids||[]).length)+"/"+cnt);
+        run(true);
+      }},"подготовить недостающие черновики");
+      out.appendChild(el("div",{style:"font-size:11px;color:var(--tx-lo2);line-height:1.45;margin-bottom:6px;"},
+        preflight.missing_source_drafts>0
+          ?"Не хватает source-ready draft-рецептов: подготовим новые черновики только по товарам, у которых есть исходники/WB fallback."
+          :"Не хватает draft-рецептов для полной пятёрки. Можно подготовить недостающие без запуска видео."));
+      out.appendChild(prep);
+    }
     if(r.balance_unknown&&r.balance_unknown.length)out.appendChild(el("div",{style:"font-size:11px;color:var(--warn);margin-bottom:6px;"},"⚠ баланс не проверен: "+r.balance_unknown.join(", ")));
     if(r.enqueued&&r.enqueued.length)out.appendChild(el("div",{class:"mono",style:"font-size:10.5px;color:var(--tx-lo2);margin-bottom:8px;"},"рецепты: #"+r.enqueued.join(" #")));
-    if(!dry)out.appendChild(el("div",{style:"font-size:11.5px;color:var(--tx-lo);line-height:1.5;"},"Идёт в фоне (самоподдерживающаяся очередь). Прошедшее ОТК → Telegram. Прогресс — в базе видосов (06)."));
+    if(selected.length)out.appendChild(el("div",{style:"display:flex;flex-direction:column;gap:4px;margin-bottom:8px;"},
+      ...selected.slice(0,5).map(x=>el("div",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"},"#"+x.id+" · "+(x.batch_role||"role?")+" · axis "+(x.change_axis||"none")+" · "+(x.niche||"—")+" · "+(x.article||"—")))));
+    if(!dry){
+      const progressBox=el("div",{style:"margin-top:8px;"});
+      out.appendChild(el("div",{style:"font-size:11.5px;color:var(--tx-lo);line-height:1.5;margin-bottom:8px;"},"Идёт в фоне (самоподдерживающаяся очередь). Прошедшее ОТК → Telegram. Прогресс — в базе видосов (06)."));
+      out.appendChild(el("button",{class:"btn sm",style:"margin-bottom:4px;",onclick:()=>renderBatchProgress(r.enqueued||[],progressBox)},"Проверить прогресс batch"));
+      out.appendChild(progressBox);
+    }
     else out.appendChild(el("div",{style:"font-size:11px;color:var(--tx-lo2);"},"это только прикидка — ничего не запущено и не оплачено."));
   };
   const foot=el("div",{style:"display:flex;justify-content:flex-end;gap:9px;margin-top:18px;"});
   foot.appendChild(el("button",{class:"btn sm",onclick:()=>ov.remove()},"Закрыть"));
   foot.appendChild(el("button",{class:"btn sm",onclick:()=>run(true)},"📊 Прикинуть"));
-  foot.appendChild(el("button",{class:"btn sm primary",onclick:()=>{ if(confirm("Запустить ночной прогон? Будут потрачены деньги на генерацию (в пределах бюджета).")) run(false); }},"🌙 Запустить"));
+  foot.appendChild(el("button",{class:"btn sm primary",onclick:()=>{ if(opts.skip_confirm||confirm("Запустить ночной прогон? Будут потрачены деньги на генерацию (в пределах бюджета).")) run(false); }},"🌙 Запустить"));
   box.appendChild(foot);
   ov.appendChild(box); document.body.appendChild(ov);
+  if(opts.auto_preflight)setTimeout(()=>run(true),0);
 }
 
 // V24 · редактор бренд-кита: фикс-айдентика бренда (голос/персона/шрифт/цвет/CTA/бан/хэштеги) → автозаполнение берёт дефолтами
@@ -1915,7 +2214,7 @@ async function screenLibrary(root,useCache){
   left.appendChild(el("h2",{class:"sec-h",style:"margin:0 0 12px;"},"БИБЛИОТЕКА ПРЕСЕТ-НОД ",el("span",{class:"cnt"},"переиспользуемые")));
   const recList=el("div",{style:"display:grid;grid-template-columns:repeat(3,1fr);gap:11px;"}); left.appendChild(recList);
 
-  const d=(useCache&&_libCache)?_libCache:await api("/studio"); _libCache=d;
+  const d=(useCache&&_libCache)?_libCache:await api("/studio"); _libCache=d; S.studioWarnings=Array.isArray(d&&d.warnings)?d.warnings.filter(Boolean):S.studioWarnings;
   const fm=S.libFmt, sortViral=S.librarySort!=="date";
   const byDate=(a,b)=>new Date(b.created_at||0)-new Date(a.created_at||0);
   let gens=(d.generations||[]).slice();
@@ -1970,6 +2269,8 @@ function recipeCard(r){ const needsRejudge=!!(r.needs_rejudge||(r.status==="otk_
   const summary=r.run_summary||null;
   const sprintWarning=r.status==="warning"||(r.status==="otk_fail"&&r.step==="done"&&r.output_url);
   const hasErr=needsRejudge||r.catalog_error||(r.node_errors&&r.node_errors.length);
+  const isRunning=r.status==="running";
+  const currentStep=(r.step||summary.active_step||summary.last_step||"").toString();
   const stC=needsRejudge?"var(--warn)":({otk_pass:"var(--ok)",warning:"var(--warn)",otk_fail:(sprintWarning?"var(--warn)":"var(--err)"),run_fail:"var(--err)",draft:"var(--tx-lo2)",running:"var(--warn)",posted:"var(--acc)"}[r.status]||"var(--tx-lo2)");
   const c=NODE_TYPE_COLOR[r.format_detected]||"#5b9cf2";
   const errCat=r.error_category&&r.error_category!=="other"?String(r.error_category):"";
@@ -1982,13 +2283,14 @@ function recipeCard(r){ const needsRejudge=!!(r.needs_rejudge||(r.status==="otk_
       r.execution_log_count?el("span",{class:"mono",style:"font-size:8.5px;color:var(--tx-lo2);background:var(--bg-input);border:1px solid var(--bd2);padding:2px 5px;border-radius:4px;",title:(r.execution_log_last&&r.execution_log_last.step)?("last: "+r.execution_log_last.step):"execution log"},"log "+r.execution_log_count):null,
       warnings.length?el("span",{class:"mono",style:"font-size:9px;color:var(--warn);background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.35);padding:2px 5px;border-radius:4px;",title:warnings.join("\\n")},"warn "+warnings.length):null,
       needsRejudge?el("span",{class:"mono",style:"font-size:9px;color:var(--warn);background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.35);padding:2px 5px;border-radius:4px;"},"ОТК ?"):null,
+      isRunning?el("button",{class:"btn sm",style:"padding:2px 6px;font-size:9px;",title:"разбудить следующий шаг graph-run",onclick:async(e)=>{ e.stopPropagation(); const ctl=new AbortController(); const tm=setTimeout(()=>ctl.abort(),25000); try{ await fetch(API+"/graph-run/tick",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({recipe_id:r.id}),signal:ctl.signal}); toast("тик отправлен для графа #"+r.id); }catch(err){ toast("тик не отправился"); } finally{ clearTimeout(tm); } }},"↻ tick"):null,
       el("span",{style:"font-size:12px;color:var(--tx-lo2);cursor:pointer;padding:0 2px;",title:"удалить рецепт",onclick:async(e)=>{ e.stopPropagation(); if(!confirm("Удалить граф #"+r.id+"?"))return; const cardEl=e.currentTarget.closest(".card"); const d=await api("/recipes?recipe_id="+r.id,{method:"DELETE"}); if(d.ok){ toast("удалён"); if(cardEl)cardEl.remove(); S.recipes=(S.recipes||[]).filter(x=>x.id!==r.id); if(S.recipe&&S.recipe.recipe&&String(S.recipe.recipe.id)===String(r.id)){ S.recipe=null; S.selectedNode=null; if(["canvas","inspector","assembly"].includes(S.screen))render(); } } else toast(d.error||"ошибка"); }},"✕")),
     el("div",{style:"font-size:12.5px;font-weight:600;"},(r.article||"—")),
     el("div",{style:"font-size:10.5px;color:var(--tx-lo);margin-top:4px;"},(r.niche||"")+" · "+(r.format_detected||"")+" · "+(r.built_by||"")),
-    el("div",{class:"mono",style:"font-size:10px;color:"+(needsRejudge||sprintWarning?"var(--warn)":"var(--tx-lo2)")+";margin-top:7px;"},shownStatus+(r.otk_score!=null?" · ОТК "+Math.round(r.otk_score*10):(needsRejudge?" · ОТК ?":""))+(r.step?" · "+r.step:"")),
+    el("div",{class:"mono",style:"font-size:10px;color:"+(needsRejudge||sprintWarning?"var(--warn)":"var(--tx-lo2)")+";margin-top:7px;"},shownStatus+(r.otk_score!=null?" · ОТК "+Math.round(r.otk_score*10):(needsRejudge?" · ОТК ?":""))+(currentStep?" · "+currentStep:"")),
     errCat?el("div",{class:"mono",style:"font-size:9.5px;color:var(--err);margin-top:5px;"},"error "+errCat):null,
     summary?(el("div",{class:"mono",style:"font-size:9.5px;color:var(--tx-lo2);margin-top:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"},
-      (summary.active_step?("active "+summary.active_step+" · "):"")+(summary.last_step?("last "+summary.last_step+" · "):"")+(summary.total_ms!=null?("time "+fmtMs(summary.total_ms)):""))):null,
+      (summary.active_step&&summary.active_step!==currentStep?("prev "+summary.active_step+" · "):"")+(summary.last_step&&summary.last_step!==currentStep?("last "+summary.last_step+" · "):"")+(summary.total_ms!=null?("time "+fmtMs(summary.total_ms)):""))):null,
     errText?el("div",{class:"mono",style:"font-size:9.5px;color:var(--warn);margin-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"},errText):null,
     // V5: метрики после поста → обучение на РЫНКЕ (а не только ОТК-робот)
     el("div",{style:"margin-top:8px;display:flex;gap:5px;align-items:center;",title:"впиши реальные просмотры после публикации → хук валидируется рынком",onclick:(e)=>e.stopPropagation()},
@@ -2116,7 +2418,8 @@ async function screenLearn(root){
     el("button",{class:"btn",title:"обновить",onclick:()=>screenLearn(root)},"↻")));
   const wrap=el("div",{class:"scroll",style:"padding:18px;"}); root.appendChild(wrap);
   wrap.appendChild(loadingCard("собираю, что выучил завод…"));
-  const d=await api("/learning?days="+S.learnDays);
+  const learnQuery="?days="+S.learnDays+(S.seriesAfter?("&series_after="+encodeURIComponent(S.seriesAfter)):"");
+  const d=await api("/learning"+learnQuery);
   if(S.screen!=="learn")return;
   wrap.innerHTML="";
   if(d.error){ wrap.appendChild(emptyBox("ошибка обучения: "+d.error)); return; }
@@ -2136,6 +2439,185 @@ async function screenLearn(root){
       el("span",{style:"font-size:11.5px;color:var(--tx-lo);"},"анти-паттерны (почему браковали):"),
       ...sg.top_reject.map(r=>el("span",{class:"mono",style:"font-size:10.5px;background:var(--err-bg);color:var(--err);border:1px solid var(--err);padding:3px 8px;border-radius:6px;"},r.reason+" ×"+r.n))));
   } else wrap.appendChild(el("div",{style:"height:10px;"}));
+
+  // ── 1.5) Improvement loop по сериям ───────────────────────────────────
+  const imp=d.improvement||null;
+  if(imp){
+    cap("Серия улучшения — батчи по 5 роликов");
+    const prog=imp.progress||{};
+    const series=imp.series_state||{target_batches:Math.ceil((imp.target_runs||50)/(imp.batch_size||5)),completed_batches:prog.batches_completed||0,current_batch_index:(prog.batches_completed||0)+1,next_batch_index:(prog.batches_completed||0)+1,remaining_runs:Math.max(0,(imp.target_runs||50)-(prog.runs_completed||0)),remaining_batches:0,current_batch_complete:false,target_met:false};
+    const seriesStart=imp.series_start_at||S.seriesAfter||null;
+    const latest=imp.latest_batch||null;
+    const prev=imp.previous_batch||null;
+    const pats=imp.top_patterns||[];
+    const axes=imp.axis_insights||[];
+    const acts=imp.next_actions||[];
+    const brief=imp.batch_plan||null;
+    const nextGate=imp.next_batch_gate||{ready:true,reason:"",current_feedback:0,required_feedback:0};
+    const completeCurrentCount=latest&&latest.total_runs>0&&latest.total_runs<(imp.batch_size||5)?Math.max(1,(imp.batch_size||5)-latest.total_runs):0;
+    const feedbackRuns=(imp.feedback_queue&&imp.feedback_queue.length?imp.feedback_queue:(imp.analyzed_runs||[]).slice().reverse()).filter(r=>r&&r.recipe_id).slice(0,8);
+    const primaryAction=acts[0]||"Продолжить следующую пятёрку после внесения market feedback";
+    if(seriesStart)wrap.appendChild(el("div",{class:"card",style:"padding:10px 12px;margin-bottom:12px;border-color:rgba(124,92,255,.35);background:rgba(124,92,255,.08);display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;"},
+      el("div",{class:"mono",style:"font-size:10.5px;color:var(--acc-lt);line-height:1.45;"},"активное окно серии · после "+String(seriesStart).slice(0,16).replace("T"," ")),
+      el("button",{class:"btn sm",onclick:()=>{ setSeriesAfter(null); toast("показываю общее окно 50"); screenLearn(root); }},"общее окно")));
+    const g=el("div",{style:"display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;margin-bottom:12px;"}); wrap.appendChild(g);
+    const tiles=[
+      ["роликов в окне",(prog.runs_completed||0)+"/"+(imp.target_runs||50),"var(--acc-lt)","сколько уже попало в improvement loop"],
+      ["батчей",String(series.completed_batches||0)+"/"+String(series.target_batches||10),"var(--tx-bd)","следующий batch #"+String(series.next_batch_index||"—")],
+      ["последний батч",latest&&latest.avg_otk!=null?String(latest.avg_otk):"—",latest&&latest.improved_vs_prev===false?"var(--warn)":latest&&latest.improved_vs_prev===true?"var(--ok)":"var(--tx-bd)","avg OTK последней пятёрки"],
+      ["осталось",String(series.remaining_runs||0),"var(--tx-bd)","роликов до цели · batches "+String(series.remaining_batches||0)],
+      ["прогресс",prog.latest_batch_improved===true?"лучше":prog.latest_batch_improved===false?"без роста":"собираем","prog.latest_batch_improved===true?var(--ok):prog.latest_batch_improved===false?var(--warn):var(--tx-bd)","сравнение с предыдущей пятёркой"],
+      ["рынок",latest?String(latest.market_wins||0)+"/"+String(latest.total_runs||0):"—","var(--ok)","сколько роликов в пятёрке уже имеют market win"],
+    ];
+    tiles.forEach(([lbl,val,col,hint])=>g.appendChild(el("div",{class:"card",style:"padding:14px 16px;"},
+      el("div",{style:"font-size:24px;font-weight:700;color:"+col+";"},String(val)),
+      el("div",{style:"font-size:11.5px;color:var(--tx-lo);margin-top:2px;"},String(lbl)),
+      el("div",{style:"font-size:10px;color:var(--tx-lo2);margin-top:6px;line-height:1.4;"},String(hint)))));
+
+    if(latest){
+      const row=el("div",{class:"card",style:"padding:14px;margin-bottom:12px;display:flex;flex-direction:column;gap:8px;"}); wrap.appendChild(row);
+      row.appendChild(el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;"},
+        el("div",{style:"font-size:13px;font-weight:600;"},"Последняя серия #"+latest.index+(latest.batch_run_id?" · "+latest.batch_run_id:"")),
+        el("span",{class:"mono",style:"font-size:10px;color:"+(latest.improved_vs_prev===true?"var(--ok)":latest.improved_vs_prev===false?"var(--warn)":"var(--tx-lo2)")+";background:"+(latest.improved_vs_prev===true?"var(--ok-bg)":latest.improved_vs_prev===false?"var(--warn-bg)":"var(--bg-input)")+";padding:3px 8px;border-radius:6px;font-weight:700;"},
+          latest.improved_vs_prev===true?"рост против прошлой":latest.improved_vs_prev===false?"роста нет":"база")));
+      row.appendChild(el("div",{style:"display:flex;gap:8px;flex-wrap:wrap;"},
+        el("span",{class:"mono",style:"font-size:10px;background:var(--bg-input);border:1px solid var(--bd2);padding:3px 7px;border-radius:5px;"},"winner "+String(latest.winners||0)+"/"+String(latest.total_runs||0)),
+        el("span",{class:"mono",style:"font-size:10px;background:var(--ok-bg);color:var(--ok);padding:3px 7px;border-radius:5px;"},"market win "+String(latest.market_wins||0)),
+        el("span",{class:"mono",style:"font-size:10px;background:var(--bg-input);border:1px solid var(--bd2);padding:3px 7px;border-radius:5px;"},"quality "+String(latest.quality_wins||0)),
+        el("span",{class:"mono",style:"font-size:10px;background:var(--bg-input);border:1px solid var(--bd2);padding:3px 7px;border-radius:5px;"},"feedback "+String(latest.explicit_feedback||0)+"/"+String(latest.total_runs||0)),
+        el("span",{class:"mono",style:"font-size:10px;background:var(--warn-bg);color:var(--warn);padding:3px 7px;border-radius:5px;"},"salvage "+String(latest.salvageable||0)),
+        el("span",{class:"mono",style:"font-size:10px;background:var(--err-bg);color:var(--err);padding:3px 7px;border-radius:5px;"},"loser "+String(latest.losers||0)),
+        el("span",{class:"mono",style:"font-size:10px;background:var(--bg-input);border:1px solid var(--bd2);padding:3px 7px;border-radius:5px;"},"success "+String(latest.success_rate||0)+"%")));
+      row.appendChild(el("div",{style:"font-size:11px;color:var(--tx-lo);line-height:1.45;"},
+        "доминирующий hook-type: ",el("b",{style:"color:var(--tx-hi);"},latest.dominant_hook_type||"—"),
+        " · pattern: ",el("span",{class:"mono",style:"color:var(--tx-hi);"},latest.dominant_pattern_key||"—")));
+      if(latest.avg_market_views!=null){
+        row.appendChild(el("div",{style:"font-size:11px;color:var(--tx-lo);line-height:1.45;"},
+          "средние просмотры по обратной связи: ",el("b",{style:"color:var(--tx-hi);"},fmtViews(latest.avg_market_views))));
+      }
+      if(latest.dominant_warning_reason){
+        row.appendChild(el("div",{style:"font-size:11px;color:var(--warn);line-height:1.45;"},
+          "повторяющийся warning: ",el("span",{class:"mono",style:"color:var(--warn);"},latest.dominant_warning_reason)));
+      }
+      if(prev&&prev.avg_otk!=null&&latest.avg_otk!=null){
+        row.appendChild(el("div",{style:"font-size:11px;color:var(--tx-lo);line-height:1.45;"},
+          "было ",el("b",{style:"color:var(--tx-hi);"},String(prev.avg_otk)),
+          " → стало ",el("b",{style:"color:"+(latest.avg_otk>prev.avg_otk?"var(--ok)":latest.avg_otk<prev.avg_otk?"var(--warn)":"var(--tx-hi)")+";"},String(latest.avg_otk))));
+      }
+    }
+
+    const readinessBox=el("div",{style:"margin:-4px 0 12px;"});
+    wrap.appendChild(el("div",{class:"card",style:"padding:14px;margin-bottom:12px;border-color:"+(nextGate.ready?"rgba(124,92,255,.45)":"rgba(245,158,11,.45)")+";background:linear-gradient(180deg,"+(nextGate.ready?"rgba(124,92,255,.10)":"rgba(245,158,11,.10)")+",rgba(18,20,27,.72));display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:center;"},
+      el("div",{style:"min-width:0;"},
+        el("div",{style:"font-size:11px;color:var(--acc-lt);font-weight:700;text-transform:uppercase;letter-spacing:0;margin-bottom:5px;"},"главный следующий шаг"),
+        el("div",{style:"font-size:13px;color:var(--tx-hi);line-height:1.45;"},String(primaryAction)),
+        completeCurrentCount?el("div",{style:"font-size:11px;color:var(--warn);line-height:1.45;margin-top:6px;"},"Текущая пятёрка неполная: осталось добить "+String(completeCurrentCount)+" ролик(ов)."):null,
+        el("div",{class:"mono",style:"font-size:10.5px;color:"+(nextGate.ready?"var(--ok)":"var(--warn)")+";margin-top:7px;line-height:1.4;"},
+          (nextGate.ready?"gate ready":"gate hold")+" · "+String(nextGate.reason||""),
+          nextGate.required_feedback?(" · feedback "+String(nextGate.current_feedback||0)+"/"+String(nextGate.required_feedback||0)):"")),
+      el("div",{style:"display:flex;gap:7px;flex-wrap:wrap;justify-content:flex-end;"},
+        el("button",{class:"btn sm",style:"white-space:nowrap;",title:"начать новую 50-run серию с текущего момента",onclick:()=>{ setSeriesAfter(new Date().toISOString()); toast("новое окно серии начато"); screenLearn(root); }},"новый цикл"),
+        el("button",{class:"btn sm",style:"white-space:nowrap;",title:"начать новое окно и сразу открыть dry-run первой пятёрки",onclick:()=>{ const startedAt=new Date().toISOString(); setSeriesAfter(startedAt); toast("preflight нового цикла"); openNightRun({count:5,niche:imp.niche||S.activeNiche,require_full_batch:true,require_learning_gate:true,auto_preflight:true,series_after:startedAt}); }},"preflight нового цикла"),
+        el("button",{class:"btn sm",style:"white-space:nowrap;",onclick:async()=>{
+          readinessBox.innerHTML="";
+          readinessBox.appendChild(loadingCard("проверяю readiness…"));
+          const q=imp.niche||S.activeNiche||"";
+          const params=[];
+          if(q)params.push("niche="+encodeURIComponent(q));
+          if(seriesStart)params.push("series_after="+encodeURIComponent(seriesStart));
+          const r=await api("/series-readiness"+(params.length?("?"+params.join("&")):""));
+          readinessBox.innerHTML="";
+          readinessBox.appendChild(el("div",{class:"card",style:"padding:10px 12px;border-color:"+(r&&r.ready_to_launch_next?"rgba(34,197,94,.45)":"rgba(245,158,11,.45)")+";background:"+(r&&r.ready_to_launch_next?"var(--ok-bg)":"var(--warn-bg)")+";"},
+            el("div",{class:"mono",style:"font-size:10.5px;color:"+(r&&r.ready_to_launch_next?"var(--ok)":"var(--warn)")+";line-height:1.45;"},
+              (r&&r.ready_to_launch_next?"series readiness: ready":"series readiness: hold"),
+              " · batch ",String((r&&r.series_state&&r.series_state.next_batch_index)||"—"),
+              " · feedback queue ",String((r&&r.feedback_queue_count)||0),
+              (r&&r.blockers&&r.blockers.length)?(" · blockers: "+r.blockers.join(" | ")):"")));
+        }},"readiness"),
+        completeCurrentCount?el("button",{class:"btn sm",style:"white-space:nowrap;",title:"запустить только недостающие ролики текущей неполной пятёрки",onclick:()=>openNightRun({count:completeCurrentCount,niche:imp.niche||S.activeNiche,auto_preflight:true,series_after:seriesStart,skip_confirm:true})},"добить пятёрку"):null,
+        el("button",{class:"btn sm primary",disabled:!nextGate.ready,style:"white-space:nowrap;"+(!nextGate.ready?"opacity:.55;cursor:not-allowed;":""),title:nextGate.ready?"запустить preflight следующей пятёрки":String(nextGate.reason||"нужен feedback"),onclick:()=>{ if(!nextGate.ready){ toast(nextGate.reason||"сначала закрой feedback предыдущей пятёрки"); return; } openNightRun({count:5,niche:imp.niche||S.activeNiche,require_full_batch:true,require_learning_gate:true,auto_preflight:true,series_after:seriesStart,skip_confirm:true}); }},"следующая пятёрка"))));
+    wrap.appendChild(readinessBox);
+
+    if(feedbackRuns.length){
+      const box=el("div",{class:"card",style:"padding:14px;margin-bottom:12px;"}); wrap.appendChild(box);
+      box.appendChild(el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;"},
+        el("div",{style:"font-size:13px;font-weight:600;"},"Очередь обратной связи"),
+        el("span",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);"},"последние "+feedbackRuns.length)));
+      feedbackRuns.forEach((r,idx)=>{
+        const id="lf-"+r.recipe_id;
+        const hasSignal=(r.feedback_status&&r.feedback_status!=="none")||(Number(r.market_views||0)>0);
+        box.appendChild(el("div",{style:"display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;align-items:center;padding:"+(idx?"9px 0 0":"0")+";border-top:"+(idx?"1px solid var(--bd)":"none")+";"},
+          el("div",{style:"min-width:0;display:flex;flex-direction:column;gap:4px;"},
+            el("div",{style:"font-size:11.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"},String(r.article||"ролик #"+r.recipe_id)),
+            el("div",{style:"font-size:10.5px;color:var(--tx-lo);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"},String(r.hook_text||r.pattern_key||"нет хука")),
+            el("div",{style:"display:flex;gap:6px;flex-wrap:wrap;"},
+              el("span",{class:"mono",style:"font-size:9.5px;color:var(--tx-lo2);background:var(--bg-input);border:1px solid var(--bd2);padding:2px 6px;border-radius:5px;"},"#"+r.recipe_id),
+              el("span",{class:"mono",style:"font-size:9.5px;color:"+(hasSignal?"var(--ok)":"var(--warn)")+";background:"+(hasSignal?"var(--ok-bg)":"var(--warn-bg)")+";padding:2px 6px;border-radius:5px;"},
+                hasSignal?(r.feedback_status&&r.feedback_status!=="none"?r.feedback_status:fmtViews(r.market_views)+" views"):"нужен сигнал"))),
+          el("div",{style:"display:flex;gap:5px;align-items:center;justify-content:flex-end;"},
+            el("input",{class:"input",type:"number",placeholder:"views",id:id+"-views",style:"width:72px;font-size:10.5px;padding:4px 6px;"}),
+            el("select",{id:id+"-platform",style:"font-size:10px;background:var(--bg-input);border:1px solid var(--bd2);border-radius:6px;color:var(--tx-bd);padding:3px;max-width:64px;"},
+              ...["TikTok","Reels","Shorts"].map(p=>el("option",{value:p},p))),
+            el("button",{class:"btn sm",style:"padding:4px 7px;",title:"записать просмотры",onclick:async()=>{ const vi=document.getElementById(id+"-views"); const pe=document.getElementById(id+"-platform"); const v=Number(vi&&vi.value); if(!v){ toast("впиши просмотры"); return; } const d=await api("/post-metrics",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({recipe_id:r.recipe_id,platform:(pe&&pe.value)||"TikTok",views:v})}); toast(d&&d.ok?(d.forwarded?"рынок записан → winner":"метрики записаны"):"не вышло"); if(vi)vi.value=""; if(d&&d.ok)screenLearn(root); }},"market"),
+            el("button",{class:"btn sm",style:"padding:4px 7px;color:var(--ok);",title:"принять как quality feedback без winner",onclick:async()=>{ const d=await api("/approve",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({recipe_id:r.recipe_id,url:r.output_url,hook:r.hook_text,niche:r.niche,article:r.article,note:"learning quality ok"})}); toast(d&&d.ok?"quality ok записан":"не вышло"); if(d&&d.ok)screenLearn(root); }},"ok"),
+            el("button",{class:"btn sm",style:"padding:4px 7px;color:var(--ok);",title:"пометить победителем",onclick:async()=>{ if(!r.output_url){ toast("у ролика нет output_url"); return; } const d=await api("/winners",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({url:r.output_url,hook:r.hook_text,note:"learning queue winner",recipe_id:r.recipe_id})}); toast(d&&d.ok?"winner записан":"не вышло"); if(d&&d.ok)screenLearn(root); }},"win"),
+            el("button",{class:"btn sm",style:"padding:4px 7px;color:var(--warn);",title:"забраковать",onclick:async()=>{ const reason=prompt("Почему не берём?", "не зацепил хук"); if(!reason)return; const d=await api("/reject",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({recipe_id:r.recipe_id,url:r.output_url,hook:r.hook_text,reason,niche:r.niche,article:r.article})}); toast(d&&d.ok?"reject записан":"не вышло"); if(d&&d.ok)screenLearn(root); }},"reject"))));
+      });
+    }
+
+    if(pats.length){
+      const box=el("div",{class:"card",style:"padding:14px;margin-bottom:12px;"}); wrap.appendChild(box);
+      box.appendChild(el("div",{style:"font-size:13px;font-weight:600;margin-bottom:8px;"},"Control-patterns сейчас"));
+      pats.slice(0,4).forEach((p,idx)=>box.appendChild(el("div",{style:"display:flex;align-items:flex-start;justify-content:space-between;gap:10px;padding:"+(idx?"8px 0 0":"0")+";border-top:"+(idx?"1px solid var(--bd)":"none")+";"},
+        el("div",{style:"min-width:0;display:flex;flex-direction:column;gap:4px;"},
+          el("div",{class:"mono",style:"font-size:10px;color:var(--tx-hi);"},p.pattern_key||"pattern"),
+          el("div",{style:"font-size:11px;color:var(--tx-lo);line-height:1.45;"},
+            "hook ",el("b",{style:"color:var(--tx-hi);"},p.hook_type||"—"),
+            " · format ",el("b",{style:"color:var(--tx-hi);"},p.format||"—"),
+            " · visual ",el("b",{style:"color:var(--tx-hi);"},p.visual_tool||"—")),
+          p.dominant_warning_reason?el("div",{class:"mono",style:"font-size:10px;color:var(--warn);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"},"warning: "+p.dominant_warning_reason):null),
+        el("div",{style:"display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex:none;"},
+          el("span",{class:"mono",style:"font-size:10px;background:var(--ok-bg);color:var(--ok);padding:3px 7px;border-radius:5px;"},String(p.winner_rate||0)+"% win"),
+          el("span",{class:"mono",style:"font-size:10px;background:var(--bg-input);border:1px solid var(--bd2);padding:3px 7px;border-radius:5px;"},String(p.market_wins||0)+" market"),
+          el("span",{class:"mono",style:"font-size:10px;background:var(--bg-input);border:1px solid var(--bd2);padding:3px 7px;border-radius:5px;"},String(p.quality_wins||0)+" quality"),
+          el("span",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);"},p.avg_market_views!=null?fmtViews(p.avg_market_views):"нет views"),
+          el("span",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);"},String(p.runs||0)+" runs")))));
+    }
+
+    if(axes.length){
+      const box=el("div",{class:"card",style:"padding:14px;margin-bottom:12px;"}); wrap.appendChild(box);
+      box.appendChild(el("div",{style:"font-size:13px;font-weight:600;margin-bottom:8px;"},"Оси экспериментов"));
+      axes.slice(0,4).forEach((a,idx)=>box.appendChild(el("div",{style:"display:flex;align-items:flex-start;justify-content:space-between;gap:10px;padding:"+(idx?"8px 0 0":"0")+";border-top:"+(idx?"1px solid var(--bd)":"none")+";"},
+        el("div",{style:"min-width:0;display:flex;flex-direction:column;gap:4px;"},
+          el("div",{class:"mono",style:"font-size:10px;color:var(--tx-hi);"},a.change_axis||"axis"),
+          el("div",{style:"font-size:11px;color:var(--tx-lo);line-height:1.45;"},
+            "control ",el("b",{style:"color:var(--tx-hi);"},String(a.control_runs||0)),
+            " · experiment ",el("b",{style:"color:var(--tx-hi);"},String(a.experiment_runs||0)),
+            " · success ",el("b",{style:"color:var(--tx-hi);"},String(a.success_rate||0)+"%"))),
+        el("div",{style:"display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex:none;"},
+          el("span",{class:"mono",style:"font-size:10px;background:var(--ok-bg);color:var(--ok);padding:3px 7px;border-radius:5px;"},String(a.winner_rate||0)+"% win"),
+          el("span",{class:"mono",style:"font-size:10px;background:var(--bg-input);border:1px solid var(--bd2);padding:3px 7px;border-radius:5px;"},String(a.market_wins||0)+" market"),
+          el("span",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);"},a.avg_market_views!=null?fmtViews(a.avg_market_views):"нет views"),
+          el("span",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);"},String(a.runs||0)+" runs")))));
+    }
+
+    if(acts.length){
+      wrap.appendChild(el("div",{class:"card",style:"padding:14px;margin-bottom:18px;display:flex;flex-direction:column;gap:8px;"},
+        el("div",{style:"font-size:13px;font-weight:600;"},"Что делать в следующей пятёрке"),
+        ...acts.slice(0,4).map((a,idx)=>el("div",{style:"font-size:11.5px;color:var(--tx-bd);line-height:1.45;padding:"+(idx?"8px 0 0":"0")+";border-top:"+(idx?"1px solid var(--bd)":"none")+";"},String(a)))));
+    }
+
+    if(brief){
+      wrap.appendChild(el("div",{class:"card",style:"padding:14px;margin-bottom:18px;display:flex;flex-direction:column;gap:8px;"},
+        el("div",{style:"font-size:13px;font-weight:600;"},"План следующей пятёрки"),
+        el("div",{style:"display:flex;gap:8px;flex-wrap:wrap;"},
+          el("span",{class:"mono",style:"font-size:10px;background:var(--bg-input);border:1px solid var(--bd2);padding:3px 7px;border-radius:5px;"},`control ${brief.control_count||0}`),
+          el("span",{class:"mono",style:"font-size:10px;background:var(--vio-bg);color:var(--acc-lt);padding:3px 7px;border-radius:5px;"},`experiment ${brief.experiment_count||0}`),
+          el("span",{class:"mono",style:"font-size:10px;background:var(--bg-input);border:1px solid var(--bd2);padding:3px 7px;border-radius:5px;"},`axis ${brief.primary_change_axis||"none"}`)),
+        el("div",{style:"font-size:11px;color:var(--tx-lo);line-height:1.45;"},"control-pattern: ",el("span",{class:"mono",style:"color:var(--tx-hi);"},brief.control_pattern||"ещё не найден")),
+        el("div",{style:"font-size:11px;color:var(--tx-lo);line-height:1.45;"},String(brief.experiment_note||""))));
+    }
+  }
 
   // ── 2) Тренд ОТК по дням ───────────────────────────────────────────────
   const tr=d.otk_trend||[];
@@ -2289,7 +2771,7 @@ function coachNextStep(){
     case "balances":
       return {cap:"Балансы",t:"Следи за остатками по сервисам. Сервис на нуле — генерация по нему встанет.",why:"Seedance/Kling/Creatify/Shotstack/FAL платные. Пустой баланс = упавшая нода в сборке."};
     case "worker":
-      return {cap:"Railway worker",t:"Смотри на heartbeat, current task и очередь. Если станет stale/dead — воркер перестал слать пульс и нужно проверять sender, blocker или перезапуск.",why:"Это экран живого контроля: видно, что воркер делает сейчас, и видно, когда он перестал отвечать. Следующий шаг обычно либо исправить блокер, либо разбираться с heartbeat path, а не запускать скрытую самопочинку.",chips:["Как понять stale vs dead?","Где смотреть очередь задач?"]};
+      return {cap:"Пульс завода",t:"Смотри на heartbeat, current task и очередь прогонов. Если пульс станет stale/dead — надо проверять sender, blocker или перезапуск worker.",why:"Это экран живого контроля: видно, идут ли реальные прогоны, где они застряли и когда worker перестал отвечать. Следующий шаг обычно либо разобрать зависший прогон, либо чинить heartbeat path.",chips:["Как понять stale vs dead?","Где смотреть очередь прогонов?"]};
     case "learn":
       return {cap:"Обучение",t:"Смотри, что завод выучил: победившие хуки, тренд ОТК, пресеты-победители за период.",why:"Это память завода. Переноси удачные хуки и пресеты в новые ролики — повторяешь то, что уже заходило.",chips:["Как применить выученное?","Что показывает тренд ОТК?"]};
     case "ds":

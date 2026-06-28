@@ -4,6 +4,7 @@ import { wakeStaleRecipes } from "@/lib/factory/graphWatchdog";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
+const CRON_MAX_WAKE = 5;
 
 // Vercel Cron · СТРАХОВКА надёжности графа-исполнителя. self-chain тиков (graph-run/tick) делает работу в
 // Vercel after() — а after() НЕ исполняется надёжно при server-to-server вызове (крон→internalFetch→tick):
@@ -24,7 +25,7 @@ export async function GET(req: NextRequest) {
     }
     const db = getSupabaseAdmin();
     if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 500 });
-    const result = await wakeStaleRecipes(db, req.nextUrl.origin, { trigger: "cron" });
+    const result = await wakeStaleRecipes(db, req.nextUrl.origin, { trigger: "cron", maxWake: CRON_MAX_WAKE });
     return NextResponse.json({ ok: true, ...result });
   } catch (e) {
     return NextResponse.json({ error: "graph-run/cron crash: " + String((e as Error)?.message || e).slice(0, 180) }, { status: 500 });
