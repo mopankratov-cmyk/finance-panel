@@ -102,13 +102,12 @@ export async function GET(req: NextRequest) {
     const auto = await selectAutoTask(req, niches, platforms);
     const task = auto.task;
     const endpoint = task === "bulk"
-      ? "/api/factory/jobs/reels-brain-learning"
+      ? "/api/factory/jobs/reels-brain-bulk-ingest"
       : "/api/factory/jobs/reels-brain-analyze-backlog";
     const body = task === "bulk"
       ? {
         niches,
         platforms,
-        strategy: "bulk",
         max_lanes: 8,
         limit: 40,
         providers_per_lane: 2,
