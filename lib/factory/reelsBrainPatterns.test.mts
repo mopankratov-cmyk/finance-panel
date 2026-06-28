@@ -58,11 +58,52 @@ function eq(a: unknown, b: unknown, m: string) { ok(JSON.stringify(a) === JSON.s
   eq(memory.patterns[0].structure_label, "демонстрация", "memory: Russian structure label");
   eq(memory.patterns[0].retention_label, "ожидание доказательства", "memory: Russian retention label");
   eq(memory.patterns[0].sounds, ["summer"], "memory: sounds deduped");
+  eq(memory.patterns[0].quality_label, "generator_ready", "memory: repeated relevant RU pattern is generator-ready");
+  eq(memory.generator_ready_patterns[0]?.pattern_id, memory.patterns[0].pattern_id, "memory: exposes safe generator-ready bank");
+  ok(memory.quality_summary.generator_ready >= 1, "memory: quality summary counts ready patterns");
   ok(memory.patterns[0].strength_score > memory.patterns[1].strength_score, "memory: stronger repeated pattern first");
   eq(memory.meta_brain.platform, "all", "memory: meta brain present");
   eq(memory.platform_brains.tiktok?.platform, "tiktok", "memory: tiktok brain built");
   eq(memory.platform_brains.instagram?.platform, "instagram", "memory: instagram brain built");
   eq(memory.generated_at, "2026-06-26T00:00:00.000Z", "memory: deterministic timestamp");
+}
+
+{
+  const memory = buildReelsPatternMemory("ru_cosmetics", [
+    {
+      id: 1,
+      platform: "tiktok",
+      caption: "котик",
+      hook_text: "котик",
+      virality_score: 99,
+      views: 1000000,
+    },
+    {
+      id: 2,
+      platform: "tiktok",
+      caption: "До и после: тест тонального крема на коже",
+      hook_text: "До и после: тест тонального крема на коже",
+      format_detected: "before_after",
+      viral_reason: { why: "proof transformation" },
+      virality_score: 45,
+      views: 500000,
+    },
+    {
+      id: 3,
+      platform: "instagram",
+      caption: "До и после: тест тонального крема на коже",
+      hook_text: "До и после: тест тонального крема на коже",
+      format_detected: "before_after",
+      viral_reason: { why: "proof transformation" },
+      virality_score: 42,
+      views: 300000,
+    },
+  ], new Date("2026-06-26T00:00:00Z"));
+
+  const noisy = memory.patterns.find((pattern) => pattern.hooks.includes("котик"));
+  eq(noisy?.quality_label, "noise", "quality: short off-niche singleton is noise");
+  ok(memory.generator_ready_patterns.some((pattern) => pattern.structure_type === "before_after"), "quality: repeated RU cosmetics proof pattern is generator-ready");
+  ok(memory.top_hooks.every((hook) => hook !== "котик"), "quality: top hooks prefer generator-ready bank");
 }
 
 {

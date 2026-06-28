@@ -199,6 +199,9 @@ type PatternMemoryItem = {
   retention_label?: string;
   strength_score: number;
   frequency: number;
+  quality_label?: "generator_ready" | "needs_cleanup" | "noise";
+  quality_score?: number;
+  relevance_score?: number;
   hooks?: string[];
 };
 
@@ -214,6 +217,13 @@ type PatternBuildResponse = {
     analyzed_videos?: number;
     top_hooks?: string[];
     patterns?: PatternMemoryItem[];
+    generator_ready_patterns?: PatternMemoryItem[];
+    quality_summary?: {
+      generator_ready: number;
+      needs_cleanup: number;
+      noise: number;
+      avg_relevance_score: number;
+    };
   };
   error?: string;
 };
@@ -2856,21 +2866,34 @@ export default function ReelsBrainPage() {
             {patternResult?.warning && <Alert tone="amber" text={patternResult.warning} />}
             {patternResult && (
               <div className="mt-4 space-y-3">
-                <div className="grid gap-2 sm:grid-cols-3">
+                <div className="grid gap-2 sm:grid-cols-4">
                   <MetricCard label="Videos" value={patternResult.memory?.total_videos || patternResult.source_videos || 0} />
                   <MetricCard label="Analyzed" value={patternResult.memory?.analyzed_videos || 0} />
                   <MetricCard label="Patterns" value={patternResult.memory?.patterns?.length || 0} />
+                  <MetricCard label="Ready" value={patternResult.memory?.generator_ready_patterns?.length || patternResult.memory?.quality_summary?.generator_ready || 0} />
                 </div>
-                {(patternResult.memory?.patterns || []).slice(0, 4).map((pattern) => (
+                {(patternResult.memory?.generator_ready_patterns?.length ? patternResult.memory.generator_ready_patterns : patternResult.memory?.patterns || []).slice(0, 4).map((pattern) => (
                   <div key={pattern.pattern_id} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <span className="font-semibold text-slate-800">{`${patternHookLabel(pattern)} -> ${patternStructureLabel(pattern)}`}</span>
-                      <span className={`rounded-full border px-2 py-1 font-mono text-xs ${scoreTone(pattern.strength_score)}`}>
-                        {compactNumber(pattern.strength_score)}
-                      </span>
+                      <div className="flex flex-wrap items-center gap-2">
+                        {pattern.quality_label && (
+                          <span className={`rounded-full border px-2 py-1 text-xs font-bold ${
+                            pattern.quality_label === "generator_ready" ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                              : pattern.quality_label === "noise" ? "border-rose-200 bg-rose-50 text-rose-700"
+                                : "border-amber-200 bg-amber-50 text-amber-700"
+                          }`}>
+                            {pattern.quality_label.replace(/_/g, " ")}
+                          </span>
+                        )}
+                        <span className={`rounded-full border px-2 py-1 font-mono text-xs ${scoreTone(pattern.strength_score)}`}>
+                          {compactNumber(pattern.strength_score)}
+                        </span>
+                      </div>
                     </div>
                     <div className="mt-1 text-xs text-slate-400">
                       частота {compactNumber(pattern.frequency)} · {patternRetentionLabel(pattern)}
+                      {typeof pattern.quality_score === "number" ? ` · quality ${compactNumber(pattern.quality_score)}` : ""}
                     </div>
                   </div>
                 ))}

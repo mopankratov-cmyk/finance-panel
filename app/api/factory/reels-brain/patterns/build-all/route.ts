@@ -86,6 +86,8 @@ async function buildAll(req: NextRequest, body: Record<string, unknown>) {
       source_videos: rows.length,
       analyzed_videos: memory.analyzed_videos,
       meta_patterns: memory.meta_brain.patterns.length,
+      generator_ready_patterns: memory.meta_brain.generator_ready_patterns.length,
+      quality_summary: memory.meta_brain.quality_summary,
       cross_platform_patterns: memory.cross_platform_patterns.length,
       platform_brains: Object.fromEntries(
         Object.entries(memory.platform_brains).map(([platform, brain]) => [
@@ -94,6 +96,8 @@ async function buildAll(req: NextRequest, body: Record<string, unknown>) {
             total_videos: brain?.total_videos || 0,
             analyzed_videos: brain?.analyzed_videos || 0,
             patterns: brain?.patterns.length || 0,
+            generator_ready_patterns: brain?.generator_ready_patterns.length || 0,
+            quality_summary: brain?.quality_summary || null,
           },
         ]),
       ),
