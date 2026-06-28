@@ -8,6 +8,7 @@
 // как «recreate clean product photo» + safety_tolerance=6.
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { createHash } from "node:crypto";
+import sharp from "sharp";
 import { rehostImageForFal } from "./rehostImage";
 import { buildEditPrompt, categoryFor, defaultSceneFor } from "./editPrompts";
 
@@ -68,6 +69,73 @@ async function edit(imageUrls: string[], prompt: string, op: "clean" | "stage", 
 // и docs/factory-prompting-canon.md. Раньше тут было 2 хардкода без вариаций по нише — главная дыра качества.
 
 export interface PrepResult { ok: boolean; cleanUrl?: string; stagedUrl?: string; error?: string }
+
+async function uploadPreparedImage(buf: Buffer, path: string): Promise<string | null> {
+  const db = getSupabaseAdmin();
+  if (!db || !buf.length) return null;
+  const { error } = await db.storage.from(BUCKET).upload(path, buf, { contentType: "image/png", upsert: true, cacheControl: "31536000" });
+  if (error) return null;
+  return db.storage.from(BUCKET).getPublicUrl(path).data?.publicUrl || null;
+}
+
+export async function prepareProductImageFallback(
+  srcUrl: string,
+  opts: { article: string; niche?: string; product?: string; scene?: string },
+): Promise<PrepResult> {
+  if (!srcUrl) return { ok: false, error: "нет srcUrl" };
+  const db = getSupabaseAdmin();
+  if (!db) return { ok: false, error: "нет supabase-admin" };
+  try {
+    const source = await rehostImageForFal(srcUrl);
+    const r = await fetch(source, { cache: "no-store", signal: AbortSignal.timeout(30_000) });
+    if (!r.ok) return { ok: false, error: `fallback download ${r.status}` };
+    const input = Buffer.from(await r.arrayBuffer());
+    if (!input.length) return { ok: false, error: "fallback empty image" };
+
+    const bg = await sharp(input)
+      .resize(1080, 1920, { fit: "cover" })
+      .blur(24)
+      .modulate({ brightness: 0.82, saturation: 0.88 })
+      .png()
+      .toBuffer();
+    const fg = await sharp(input)
+      .resize(920, 1280, { fit: "inside", withoutEnlargement: true })
+      .png()
+      .toBuffer();
+    const staged = await sharp(bg)
+      .composite([{ input: fg, gravity: "center" }])
+      .png()
+      .toBuffer();
+    const path = `prepared/${opts.article}/${createHash("sha1").update(`${srcUrl}:fallback:v1`).digest("hex").slice(0, 12)}-fallback-staged.png`;
+    const stagedUrl = await uploadPreparedImage(staged, path);
+    if (!stagedUrl) return { ok: false, error: "fallback persist failed" };
+    const category = categoryFor(opts.article || "", opts.product || "");
+    const scene = (opts.scene || defaultSceneFor(category)).slice(0, 240);
+    await db.from("content_assets").insert({
+      disk: "prepared",
+      path,
+      name: `${opts.article} · prepared fallback`.slice(0, 120),
+      kind: "image",
+      niche: opts.niche || null,
+      article: opts.article || null,
+      color: null,
+      url: stagedUrl,
+      analyzed: true,
+      analysis: {
+        source_url: srcUrl,
+        stage: "fallback_staged",
+        scene,
+        category,
+        engine: "source-copy-fallback",
+        product: (opts.product || "product").slice(0, 120),
+        prompt_used: "No-FAL deterministic source prep: vertical blurred product background with centered product frame.",
+      },
+    });
+    return { ok: true, stagedUrl };
+  } catch (e) {
+    return { ok: false, error: "fallback prepare failed: " + String((e as Error)?.message || e).slice(0, 140) };
+  }
+}
 
 // Подготовить ОДИН товарный кадр: clean → stage → durable в бакет + строка content_assets(disk='prepared').
 // srcUrl — сырое WB-фото (инфографика). Возвращает durable-URL стейджа (или чистого, если стейдж не вышел).

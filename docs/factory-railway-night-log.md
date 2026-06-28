@@ -25,9 +25,13 @@
   - несколько `vercel deploy --prod --yes --force` завершились `READY`
 - Текущий блокер:
   - платный прогон 5/50 роликов нельзя запускать до пополнения FAL: guard видит live отрицательный баланс
+- Добавлено после strong source preflight:
+  - `lib/factory/sourcePrep.ts`: no-FAL `prepareProductImageFallback(...)` через `sharp` собирает вертикальный prepared-кадр из WB-источника, сохраняет `disk='prepared'`, пишет `analysis.engine='source-copy-fallback'`
+  - `app/api/factory/prepare-product`: `POST { article, count, fallback_only:true }` готовит prepared-source без FAL и без расхода баланса
+  - fallback нужен не как финальный quality enhancer, а как безопасный разблокиратор strict source gate: batch получает не сырой WB-only источник и может дойти до controlled paid launch после пополнения
 - Следующий безопасный шаг после пополнения:
   - `POST /api/factory/batch` с `dry_run:true, require_full_batch:true, require_learning_gate:true`, проверить `preflight.source_tiers`
-  - если `wb_only_drafts > 0`, сначала `/api/factory/prepare-product` для выбранных артикулов
+  - если `wb_only_drafts > 0`, сначала `/api/factory/prepare-product` для выбранных артикулов; при низком FAL использовать `fallback_only:true`
   - затем запускать следующую пятёрку и сравнивать `frames_grounded_otk_pass_rate`
 
 ## Итог ночи
