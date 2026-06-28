@@ -16,18 +16,6 @@ type TransferInput = {
   force_niche?: boolean;
 };
 
-function specializeText(value: unknown, p: { article: string; productName: string }): string {
-  const source = String(value || "");
-  if (!source) return "";
-  const product = p.productName || p.article;
-  return source
-    .replace(/\{\{\s*article\s*\}\}|\{\s*article\s*\}|\[\s*article\s*\]/gi, p.article)
-    .replace(/\{\{\s*product(?:_name)?\s*\}\}|\{\s*product(?:_name)?\}|\[\s*product(?:_name)?\]/gi, product)
-    .replace(/\{\{\s*товар\s*\}\}|\{\s*товар\s*\}|\[\s*товар\s*\]/gi, product)
-    .replace(/\{\{\s*артикул\s*\}\}|\{\s*артикул\s*\}|\[\s*артикул\s*\]/gi, p.article)
-    .slice(0, 1500);
-}
-
 function roleToSlot(n: Record<string, unknown>): string {
   const r = String(n?.role || "").toLowerCase();
   const t = String(n?.node_type || "").toLowerCase();
@@ -37,6 +25,28 @@ function roleToSlot(n: Record<string, unknown>): string {
   if (r === "hook") return "hook";
   if (r === "cta") return "payoff";
   return "scene";
+}
+
+function originalOnscreenText(n: Record<string, unknown>, p: { article: string; productName: string; mode: string }): string {
+  const product = p.productName || `артикул ${p.article}`;
+  const role = String(n.role || "").toLowerCase();
+  if (role === "hook") return `${product}: проверка вживую`;
+  if (role === "cta") return p.mode === "sell" ? `Ищи на WB: ${p.article}` : `Сохрани артикул: ${p.article}`;
+  return `${product} без рекламной инфографики`;
+}
+
+function originalPrompt(n: Record<string, unknown>, p: { article: string; productName: string; mode: string }): string {
+  const product = p.productName || `товар ${p.article}`;
+  const role = String(n.role || roleToSlot(n)).toLowerCase();
+  const nodeType = String(n.node_type || "product_motion").toLowerCase();
+  const emotion = String(n.emotion || "").trim();
+  return [
+    `Create an original vertical product-video beat for ${product}, article ${p.article}.`,
+    `Role in story: ${role}. Node type: ${nodeType}.`,
+    emotion ? `Emotional tone: ${emotion}.` : "",
+    "Use the bound product source as the visual truth. Do not copy competitor wording, captions, layout, props, or scene text.",
+    "Keep product geometry and packaging stable. Avoid readable fake label text.",
+  ].filter(Boolean).join(" ");
 }
 
 export async function transferRecipeTemplate(db: DbClient, p: TransferInput) {
@@ -78,31 +88,28 @@ export async function transferRecipeTemplate(db: DbClient, p: TransferInput) {
 
   const rows = tplNodes.map((n, i) => {
     const params = n.params && typeof n.params === "object" && !Array.isArray(n.params) ? n.params as Record<string, unknown> : {};
-    const specialized = { article, productName };
-    const onscreenText = specializeText(n.onscreen_text, specialized).slice(0, 300);
-    const visualDesc = specializeText(n.visual_desc, specialized).slice(0, 300);
-    const voiceover = specializeText(n.voiceover, specialized).slice(0, 700);
+    const onscreenText = originalOnscreenText(n, { article, productName, mode }).slice(0, 300);
     return {
       recipe_id: recipeId,
       ordinal: typeof n.ordinal === "number" ? n.ordinal : i + 1,
       slot: roleToSlot(n),
       node_type: n.node_type || null,
       tool: n.tool_candidate || n.tool || null,
-      prompt: specializeText(n.prompt || voiceover || visualDesc || "", specialized),
+      prompt: originalPrompt(n, { article, productName, mode }).slice(0, 1500),
       params: {
         ...params,
         product_article: article,
         product_name: productName || null,
-        ...(onscreenText ? { onscreen_text: onscreenText } : {}),
+        onscreen_text: onscreenText,
         ...(n.role ? { role: String(n.role).toLowerCase() } : {}),
         ...(n.emotion ? { emotion: String(n.emotion) } : {}),
-        ...(visualDesc ? { visual_desc: visualDesc } : {}),
+        template_skeleton_only: true,
       },
       asset_url: "",
       duration_sec: typeof n.duration_sec === "number" ? n.duration_sec : null,
-      source: "transferred_from_corpus",
+      source: "pattern_skeleton",
       human_edited: false,
-      agent_suggestion: { role: n.role, hook_type: n.hook_type, onscreen_text: onscreenText || n.onscreen_text, voiceover: voiceover || n.voiceover, emotion: n.emotion, visual_desc: visualDesc || n.visual_desc, product_article: article, product_name: productName || null },
+      agent_suggestion: { role: n.role, hook_type: n.hook_type, onscreen_text: onscreenText, emotion: n.emotion, product_article: article, product_name: productName || null, template_skeleton_only: true },
     };
   });
   const { error: nErr } = await db.from("node_recipe_nodes").insert(rows);

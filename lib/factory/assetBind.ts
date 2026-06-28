@@ -4,18 +4,25 @@
 // Источник ассетов — content_assets по артикулу (real-съёмка / WB-карточка). Срабатывает ТОЛЬКО когда у ноды
 // НЕТ источника (она и так упала бы) → деградирует в текущее поведение, рабочие ноды не трогает.
 
-export interface DiskAsset { disk?: string | null; kind?: string | null; url?: string | null; }
-export interface AssetPool { preparedImages?: string[]; realVideos: string[]; realImages: string[]; wbImages: string[] }
+export interface DiskAsset { disk?: string | null; kind?: string | null; url?: string | null; analysis?: Record<string, unknown> | null; }
+export interface AssetPool { canonicalImages?: string[]; preparedImages?: string[]; realVideos: string[]; realImages: string[]; wbImages: string[] }
 
 // классификация ассетов товара: подготовленные рендеры (disk='prepared' — source-prep: чистый/стейдж,
 // ЛУЧШИЙ источник под i2v) > реальная съёмка (disk != wb/gen/prepared) > фото карточки WB (сырая инфографика).
 export function classifyAssets(assets: DiskAsset[]): AssetPool {
-  const preparedImages: string[] = [], realVideos: string[] = [], realImages: string[] = [], wbImages: string[] = [];
+  const canonicalImages: string[] = [], preparedImages: string[] = [], realVideos: string[] = [], realImages: string[] = [], wbImages: string[] = [];
   for (const a of assets || []) {
     const url = String(a?.url || ""); if (!url) continue;
     const disk = String(a?.disk || "").toLowerCase();
     const kind = String(a?.kind || "").toLowerCase();
-    if (disk === "prepared") { if (kind !== "video") preparedImages.push(url); continue; } // prep-рендер товара (приоритет)
+    const analysis = a?.analysis && typeof a.analysis === "object" ? a.analysis : {};
+    if (disk === "prepared") {
+      if (kind !== "video") {
+        if (analysis.canonical === true) canonicalImages.push(url);
+        else preparedImages.push(url);
+      }
+      continue;
+    } // prep-рендер товара (приоритет)
     const isReal = disk !== "wb" && disk !== "gen" && disk !== "";
     if (kind === "video") { if (isReal) realVideos.push(url); }
     else if (kind === "image") {
@@ -24,13 +31,15 @@ export function classifyAssets(assets: DiskAsset[]): AssetPool {
       // disk === "gen" (наш же вывод) или пустой/неизвестный — НЕ источник, пропускаем
     }
   }
-  return { preparedImages, realVideos, realImages, wbImages };
+  return { canonicalImages, preparedImages, realVideos, realImages, wbImages };
 }
 
 // фото товара по индексу, циклично — чтобы РАЗНЫЕ i2v-ноды брали РАЗНЫЕ стартовые кадры (анти-сэйминес).
 // ПРИОРИТЕТ: prepared (чистый/стейдж от source-prep) → реальная съёмка → сырое WB-фото (фолбэк).
 export function pickImage(p: AssetPool, idx = 0): string | undefined {
-  const imgs = [...(p.preparedImages || []), ...p.realImages, ...p.wbImages];
+  const stable = [...(p.canonicalImages || []), ...(p.preparedImages || [])];
+  if (stable.length) return stable[0];
+  const imgs = [...p.realImages, ...p.wbImages];
   return imgs.length ? imgs[((idx % imgs.length) + imgs.length) % imgs.length] : undefined;
 }
 // лучшее (первое) фото — для обратной совместимости/простых случаев

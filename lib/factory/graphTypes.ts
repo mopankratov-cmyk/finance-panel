@@ -1,4 +1,6 @@
-export type RunStep = "autofill" | "submit" | "gen-poll" | "assemble" | "render-submit" | "render-poll" | "otk" | "bank" | "done" | "failed";
+import type { FactoryLane } from "./renderRouter";
+
+export type RunStep = "autofill" | "submit" | "gen-poll" | "clip-qa" | "assemble" | "render-submit" | "render-poll" | "otk" | "bank" | "done" | "failed";
 
 export interface RunNode {
   ordinal: number; slot: string | null; node_type: string | null; tool: string | null;
@@ -6,6 +8,8 @@ export interface RunNode {
   duration_sec: number | null; onscreen_text: string | null;
   status: "pending" | "submitted" | "done" | "error" | "skip";
   token?: string; url?: string; error?: string; engine?: string;
+  lane?: FactoryLane | null;
+  qa?: { passed: boolean; defects: string[]; score: number | null; attempts: number; regen_hint?: string | null };
 }
 
 export interface RunOtkVerdict {
@@ -49,6 +53,9 @@ export interface RunPlan {
   bestOtk?: RunOtkVerdict | null;
   notify?: boolean;
   render_engine?: string | null;
+  lane?: FactoryLane | null;
+  lane_budget?: number | null;
+  idempotency_key?: string | null;
   reel_props?: Record<string, unknown> | null;
   duration_frames?: number | null;
   catalog_url?: string | null;

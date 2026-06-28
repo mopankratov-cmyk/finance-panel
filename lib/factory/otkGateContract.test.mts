@@ -8,10 +8,10 @@ ok(/function isFramesGroundedOtkPass/.test(graphRun), "graph-run has a single fr
 ok(/basis === "text" \|\| basis === "fallback" \|\| basis === "storyboard"/.test(graphRun), "text/storyboard/fallback basis cannot pass OTK");
 ok(/score == null \|\| score < 7/.test(graphRun), "OTK pass predicate enforces score >= 7");
 ok(/artifact_ok\?: boolean/.test(graphTypes), "RunPlan stores artifact gate result inside OTK verdict");
-ok(/if \(!otkPassed && \(plan\.renderCount \|\| 0\) < MAX_RENDERS\)/.test(graphRun), "failed OTK attempts enter bounded regen before bank");
+ok(/const laneBudget = Math\.max[\s\S]*if \(!otkPassed && \(plan\.renderCount \|\| 0\) < laneBudget\)/.test(graphRun), "failed OTK attempts enter lane-bounded regen before bank");
 ok(/await regenCulprit/.test(graphRun), "OTK failure uses existing culprit regen loop");
 ok(/if \(url && qualityPassed\)/.test(graphRun), "gen-save catalog banking only happens after quality pass");
 ok(/finalStatus === "otk_pass" \? "approved" : "rejected"/.test(graphRun), "cf_signals records rejected for non-pass outcomes");
-ok(/source: "graph_run_otk_gate"/.test(graphRun), "OTK gate signal is traceable");
+ok(/logSignal\(db, "qa_reject"/.test(graphRun), "blocking OTK gate emits qa_reject signal");
 
 console.log("otkGateContract: passed");

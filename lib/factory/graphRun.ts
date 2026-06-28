@@ -15,6 +15,9 @@ import { fetchCabinetCards } from "@/lib/wb/cards";
 import { wbCardImageUrl } from "@/lib/wb/cardImage";
 import { createHash, randomUUID } from "node:crypto";
 import type { ExecutionLogEntry, RunNode, RunOtkVerdict, RunPlan, RunStep } from "./graphTypes";
+import { LANE_BUDGET, routeNode, routeRecipeLane } from "./renderRouter";
+import { runArtifactCheck, runClipQa, runVideoCritic } from "./qaGates";
+import type { RubricNiche } from "./rubric";
 
 export type { ExecutionLogEntry, RunNode, RunPlan, RunStep } from "./graphTypes";
 
@@ -30,6 +33,7 @@ const MAX_GEN_POLL_LOGS = 12;
 const MAX_RENDERS = 3;
 export const MAX_STEP_ATTEMPTS = 3;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+type OtkGateMode = "shadow" | "block_broken" | "strict";
 
 export function makeRunId(recipeId: number): string {
   return `run_${recipeId}_${randomUUID().slice(0, 8)}`;
@@ -102,6 +106,20 @@ function isFramesGroundedOtkPass(plan: RunPlan, artifactOk = true): boolean {
   return isFramesGroundedOtkVerdictPass(plan.otk, artifactOk);
 }
 
+function otkGateMode(): OtkGateMode {
+  if (process.env.FACTORY_OTK_FAIL_OPEN === "true") return "shadow";
+  const raw = String(process.env.FACTORY_OTK_GATE_MODE || "block_broken").toLowerCase();
+  return raw === "strict" || raw === "shadow" || raw === "block_broken" ? raw : "block_broken";
+}
+
+function shouldBlockOtk(plan: RunPlan, artifactOk: boolean): { block: boolean; reason: string; mode: OtkGateMode } {
+  const mode = otkGateMode();
+  if (mode === "shadow") return { block: false, reason: "shadow", mode };
+  if (!artifactOk) return { block: true, reason: "broken artifact", mode };
+  if (mode === "strict" && !isFramesGroundedOtkPass(plan, artifactOk)) return { block: true, reason: `OTK below strict gate: ${plan.otk?.score ?? "no_score"}`, mode };
+  return { block: false, reason: "pass or warning allowed", mode };
+}
+
 function firstStepStartedAt(plan: RunPlan, step: string): string | null {
   const logs = plan.execution_log || [];
   const hit = logs.find((entry) => entry.step === step && entry.started_at);
@@ -129,6 +147,10 @@ function textOfNode(n: RunNode | undefined | null): string {
   if (!n) return "";
   const p = (n.params || {}) as Record<string, unknown>;
   return String(n.onscreen_text || p["onscreen_text"] || p["script"] || p["override_script"] || n.prompt || "").trim();
+}
+
+function asRubricNiche(value: string): RubricNiche | undefined {
+  return ["clothing", "toys", "cosmetics", "default"].includes(value) ? value as RubricNiche : undefined;
 }
 
 // нода РЕГЕНЕРИРУЕМА: сгенерирована движком (не реальный клип/сборка) — реген disk_real бессмыслен.
@@ -317,11 +339,18 @@ export function buildRunPlan(rows: any[]): RunPlan {
   const nodes: RunNode[] = (rows || []).map((r) => {
     const params = (r.params && typeof r.params === "object") ? r.params : {};
     const sug = (r.agent_suggestion && typeof r.agent_suggestion === "object") ? r.agent_suggestion : {};
+    const routed = routeNode({
+      node_type: r.node_type ?? null,
+      tool_candidate: r.tool ?? null,
+      render_role: params.render_role ?? null,
+      footage: params.footage ?? null,
+      target_platform: params.target_platform ?? null,
+    });
     return {
       ordinal: typeof r.ordinal === "number" ? r.ordinal : 0,
-      slot: r.slot ?? null, node_type: r.node_type ?? null, tool: r.tool ?? null,
+      slot: r.slot ?? null, node_type: r.node_type ?? null, tool: r.tool || routed.tool,
       prompt: String(r.prompt || sug.voiceover || ""),
-      params,
+      params: { ...params, __router_reason: routed.reason },
       image_url: r.asset_url || params.image_url || null,
       asset_url: r.asset_url || null,
       // колонка duration_sec ИЛИ инспекторский params.duration_sec (disk_real пишет только в params)
@@ -329,9 +358,11 @@ export function buildRunPlan(rows: any[]): RunPlan {
         : (params.duration_sec != null && !isNaN(Number(params.duration_sec)) ? Number(params.duration_sec) : null),
       onscreen_text: params.onscreen_text || sug.onscreen_text || null,
       status: "pending" as const,
+      lane: routed.lane,
     };
   }).sort((a, b) => a.ordinal - b.ordinal);
-  return { step: "submit", nodes, attempts: 0, pollCount: 0, renderCount: 0 };
+  const lane = routeRecipeLane(nodes);
+  return { step: "submit", nodes, attempts: 0, pollCount: 0, renderCount: 0, lane, lane_budget: LANE_BUDGET[lane] };
 }
 
 async function logSignal(db: SupabaseClient, ev: string, extra: Record<string, any>) {
@@ -369,7 +400,7 @@ async function autoBindAssets(db: SupabaseClient, plan: RunPlan, article: string
   if (!needs.length) return;
   let assets: DiskAsset[] = [];
   try {
-    const { data } = await db.from("content_assets").select("disk,kind,url").eq("article", article).not("url", "is", null).limit(60);
+    const { data } = await db.from("content_assets").select("disk,kind,url,analysis").eq("article", article).not("url", "is", null).limit(60);
     const raw = (data as DiskAsset[] | null) || [];
     // ГАРД от кросс-контаминации («пистолет в сумке»): даже если строка каталога мислейбл (article=CLR…, а путь
     // prepared/TT…), НЕ привязываем чужой кадр к рецепту. Источник распознаём по артикулу в пути prepared/i2v-src.
@@ -662,6 +693,7 @@ export async function runRecipeStep(
       const done = nodes.filter((n) => n.status === "done").length;
       return `submitted=${submitted};done=${done}`;
     }
+    if (step === "clip-qa") return `clips=${nodes.filter((n) => n.status === "done" && n.url).length}`;
     if (step === "assemble") return `visual=${nodes.filter((n) => n.status === "done" && n.url).length};engine=${plan.render_engine || "shotstack"}`;
     if (step === "render-submit") return `engine=${plan.render_engine || "shotstack"};render=${plan.render_id || "new"}`;
     if (step === "render-poll") return `render=${plan.render_id || "none"}`;
@@ -704,7 +736,8 @@ export async function runRecipeStep(
   if (plan.step === "submit") {
     const submitAlreadyStarted = Boolean((plan as any).submit_started_at);
     const renderCount = submitAlreadyStarted ? (plan.renderCount || 1) : (plan.renderCount || 0) + 1;
-    if (!submitAlreadyStarted && renderCount > MAX_RENDERS) throw new Error("превышен лимит запусков генерации графа — стоп для бюджета");
+    const laneBudget = Math.max(1, Number(plan.lane_budget || LANE_BUDGET[plan.lane || "product"] || MAX_RENDERS));
+    if (!submitAlreadyStarted && renderCount > laneBudget) throw new Error("превышен лимит запусков генерации графа — стоп для бюджета");
     // авто-привязка ассетов товара к нодам без источника (фикс пустого автопилота, см. assetBind.ts)
     await autoBindAssets(db, plan, article, niche);
     for (const n of plan.nodes) {
@@ -840,10 +873,51 @@ export async function runRecipeStep(
       await savePlan(db, id, plan, { status: "run_fail" });
       return;
     }
+    plan.step = "clip-qa";
+    plan.step_started_at = null;
+    finishExecutionLog(plan, trace, "done", `done=${plan.nodes.filter((n) => n.status === "done" && n.url).length}`, null, "gen-poll→clip-qa");
+    await savePlan(db, id, plan);
+    return;
+  }
+
+  // ── clip-qa: проверить готовые клипы ДО склейки ──
+  if (plan.step === "clip-qa") {
+    const visualNodes = plan.nodes.filter((n) => n.status === "done" && n.url && n.node_type !== "captions" && String(n.tool).toLowerCase() !== "elevenlabs" && String(((n.params || {}) as Record<string, unknown>)["role"] || "").toLowerCase() !== "skip");
+    const laneBudget = Math.max(1, Number(plan.lane_budget || LANE_BUDGET[plan.lane || "product"] || MAX_RENDERS));
+    for (const n of visualNodes.slice(0, 6)) {
+      if (n.qa?.passed === true) continue;
+      const qa = await withTimeout(runClipQa(String(n.url)), 60_000, "clip-qa");
+      n.qa = {
+        passed: qa.ok,
+        defects: qa.defects || [],
+        score: qa.score ?? null,
+        attempts: (n.qa?.attempts || 0) + 1,
+        regen_hint: qa.defects?.[0] || null,
+      };
+      if (!qa.ok) {
+        const reason = qa.defects?.join(", ") || qa.severity || "broken clip";
+        addWarning(`clip-qa reject: ${reason}`);
+        if ((plan.renderCount || 0) < laneBudget && isRegenerable(n)) {
+          finishExecutionLog(plan, trace, "warning", n.url || null, null, `clip-qa regen: ${reason}`);
+          await regenCulprit(db, origin, id, plan, niche, article, n, qa.defects || [reason], String(reason).slice(0, 160), `clip-qa failed: ${reason}`, true);
+          return;
+        }
+        n.status = "error";
+        n.error = `clip-qa failed: ${reason}`;
+      }
+    }
+    const usable = plan.nodes.filter((n) => n.status === "done" && n.url && n.node_type !== "captions" && String(n.tool).toLowerCase() !== "elevenlabs" && String(((n.params || {}) as Record<string, unknown>)["role"] || "").toLowerCase() !== "skip");
+    if (!usable.length) {
+      plan.step = "failed";
+      plan.error = "clip-qa rejected all visual clips";
+      finishExecutionLog(plan, trace, "error", null, plan.error, "clip-qa failed");
+      await savePlan(db, id, plan, { status: "run_fail" });
+      return;
+    }
     plan.step = "assemble";
     plan.step_started_at = null;
-    finishExecutionLog(plan, trace, "done", `done=${plan.nodes.filter((n) => n.status === "done" && n.url).length}`, null, "gen-poll→assemble");
-    await savePlan(db, id, plan);
+    finishExecutionLog(plan, trace, summarizeWarnings(plan) ? "warning" : "done", `passed=${usable.length}`, null, "clip-qa→assemble");
+    await savePlan(db, id, plan, { status: "running" });
     return;
   }
 
@@ -1111,7 +1185,7 @@ export async function runRecipeStep(
     let artifactDefects: string[] = [];
     if (frames.length) {
       try {
-        const art = await jpost(origin, "/api/factory/artifact-check", { frames }, 45000);
+        const art = await withTimeout(runArtifactCheck(frames), 45_000, "artifact-check");
         artifactOk = art?.ok !== false;
         artifactDefects = Array.isArray(art?.defects) ? art.defects.map((d: unknown) => String(d).slice(0, 120)).slice(0, 5) : [];
         if (!artifactOk) addWarning(`artifact-check warning: ${artifactDefects.join(", ") || "broken"}`);
@@ -1129,14 +1203,14 @@ export async function runRecipeStep(
     let basis: string | null = null;
     let basisReason: string | null = null;
     try {
-      const v = await jpost(origin, "/api/factory/video-critic", {
+      const v = await withTimeout(runVideoCritic({
         frames,
         hook: textOfNode(hookNode),
-        mode,
+        mode: mode === "sell" ? "sell" : "audience",
         article,
-        niche,
-        ...(frames.length ? {} : { storyboard: true, scenario: plan.nodes }),
-      }, 55000);
+        niche: asRubricNiche(String(niche)),
+        scenario: plan.nodes,
+      }), 55_000, "video-critic");
       score = typeof v?.score === "number" ? v.score : null;
       verdict = v?.verdict;
       axes = v?.axes || null;
@@ -1161,7 +1235,8 @@ export async function runRecipeStep(
     }
 
     const otkPassed = isFramesGroundedOtkPass(plan, artifactOk);
-    if (!otkPassed && (plan.renderCount || 0) < MAX_RENDERS) {
+    const laneBudget = Math.max(1, Number(plan.lane_budget || LANE_BUDGET[plan.lane || "product"] || MAX_RENDERS));
+    if (!otkPassed && (plan.renderCount || 0) < laneBudget) {
       const culprit = pickCulprit(plan, axes);
       if (culprit) {
         finishExecutionLog(plan, trace, "warning", url, null, `otk regen: ${artifactDefects[0] || issues[0] || culprit.axis}`);
@@ -1180,6 +1255,16 @@ export async function runRecipeStep(
         );
         return;
       }
+    }
+
+    const gate = shouldBlockOtk(plan, artifactOk);
+    if (gate.block) {
+      plan.step = "failed";
+      plan.error = `OTK gate ${gate.mode}: ${gate.reason}`;
+      finishExecutionLog(plan, trace, "error", url, plan.error, "otk gate blocked");
+      await savePlan(db, id, plan, { otk_verdict: plan.otk, otk_score: score, status: "run_fail" });
+      try { await logSignal(db, "qa_reject", { niche, article, params: { recipe_id: id, run_id: plan.run_id || null, mode: gate.mode, reason: gate.reason, score } }); } catch { /* best-effort */ }
+      return;
     }
 
     const status = summarizeWarnings(plan) ? "warning" : "done";

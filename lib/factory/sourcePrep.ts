@@ -11,6 +11,7 @@ import { createHash } from "node:crypto";
 import sharp from "sharp";
 import { rehostImageForFal } from "./rehostImage";
 import { buildEditPrompt, categoryFor, defaultSceneFor } from "./editPrompts";
+import { canonicalFrameMeta, normalizeToOutputRes, shouldMarkCanonical } from "./canonicalFrame";
 
 const QUEUE = "https://queue.fal.run/";
 const NANO = "fal-ai/nano-banana/edit";
@@ -102,15 +103,17 @@ export async function prepareProductImageFallback(
       .resize(920, 1280, { fit: "inside", withoutEnlargement: true })
       .png()
       .toBuffer();
-    const staged = await sharp(bg)
+    const stagedRaw = await sharp(bg)
       .composite([{ input: fg, gravity: "center" }])
       .png()
       .toBuffer();
+    const staged = await normalizeToOutputRes(stagedRaw);
     const path = `prepared/${opts.article}/${createHash("sha1").update(`${srcUrl}:fallback:v1`).digest("hex").slice(0, 12)}-fallback-staged.png`;
     const stagedUrl = await uploadPreparedImage(staged, path);
     if (!stagedUrl) return { ok: false, error: "fallback persist failed" };
     const category = categoryFor(opts.article || "", opts.product || "");
     const scene = (opts.scene || defaultSceneFor(category)).slice(0, 240);
+    const markCanonical = await shouldMarkCanonical(db, opts.article);
     await db.from("content_assets").insert({
       disk: "prepared",
       path,
@@ -121,7 +124,7 @@ export async function prepareProductImageFallback(
       color: null,
       url: stagedUrl,
       analyzed: true,
-      analysis: {
+      analysis: markCanonical ? canonicalFrameMeta({
         source_url: srcUrl,
         stage: "fallback_staged",
         scene,
@@ -129,6 +132,18 @@ export async function prepareProductImageFallback(
         engine: "source-copy-fallback",
         product: (opts.product || "product").slice(0, 120),
         prompt_used: "No-FAL deterministic source prep: vertical blurred product background with centered product frame.",
+      }) : {
+        source_url: srcUrl,
+        stage: "fallback_staged",
+        scene,
+        category,
+        engine: "source-copy-fallback",
+        product: (opts.product || "product").slice(0, 120),
+        prompt_used: "No-FAL deterministic source prep: vertical blurred product background with centered product frame.",
+        output_w: 720,
+        output_h: 1280,
+        aspect: "9:16",
+        letterboxed: true,
       },
     });
     return { ok: true, stagedUrl };
@@ -161,24 +176,52 @@ export async function prepareProductImage(
   const stagedFal = await edit([cleanFal, src], stageP, "stage");
 
   // персист в наш бакет (fal.media эфемерна) + каталог
-  const persist = async (falUrl: string, tag: "clean" | "staged", promptUsed: string): Promise<string | null> => {
+  const persist = async (falUrl: string, tag: "clean" | "staged", promptUsed: string, markCanonical: boolean): Promise<string | null> => {
     try {
       const r = await fetch(falUrl, { cache: "no-store", signal: AbortSignal.timeout(30_000) });
       if (!r.ok) return null;
-      const buf = Buffer.from(await r.arrayBuffer());
-      if (!buf.length) return null;
+      const raw = Buffer.from(await r.arrayBuffer());
+      if (!raw.length) return null;
+      const buf = await normalizeToOutputRes(raw);
       const path = `prepared/${opts.article}/${createHash("sha1").update(falUrl).digest("hex").slice(0, 12)}-${tag}.png`;
       const { error } = await db.storage.from(BUCKET).upload(path, buf, { contentType: "image/png", upsert: true, cacheControl: "31536000" });
       if (error) return null;
       const pub = db.storage.from(BUCKET).getPublicUrl(path).data?.publicUrl || null;
       // analysis.category + prompt_used → winners-петля: выигравшие prepared-кадры возвращают «золотые» промпты в шаблон
-      if (pub) await db.from("content_assets").insert({ disk: "prepared", path, name: `${opts.article} · prepared ${tag}`.slice(0, 120), kind: "image", niche: opts.niche || null, article: opts.article || null, color: null, url: pub, analyzed: true, analysis: { source_url: srcUrl, stage: tag, scene, category, engine: "nano-banana", product, prompt_used: promptUsed } });
+      if (pub) {
+        const baseAnalysis = {
+          source_url: srcUrl,
+          stage: tag,
+          scene,
+          category,
+          engine: "nano-banana",
+          product,
+          prompt_used: promptUsed,
+          output_w: 720,
+          output_h: 1280,
+          aspect: "9:16",
+          letterboxed: true,
+        };
+        await db.from("content_assets").insert({
+          disk: "prepared",
+          path,
+          name: `${opts.article} · prepared ${tag}`.slice(0, 120),
+          kind: "image",
+          niche: opts.niche || null,
+          article: opts.article || null,
+          color: null,
+          url: pub,
+          analyzed: true,
+          analysis: markCanonical ? canonicalFrameMeta(baseAnalysis) : baseAnalysis,
+        });
+      }
       return pub;
     } catch { return null; }
   };
 
-  const stagedUrl = stagedFal ? (await persist(stagedFal, "staged", stageP)) || undefined : undefined;
-  const cleanUrl = (await persist(cleanFal, "clean", cleanP)) || undefined;
+  const mayMarkCanonical = await shouldMarkCanonical(db, opts.article);
+  const stagedUrl = stagedFal ? (await persist(stagedFal, "staged", stageP, mayMarkCanonical)) || undefined : undefined;
+  const cleanUrl = (await persist(cleanFal, "clean", cleanP, mayMarkCanonical && !stagedUrl)) || undefined;
   if (!stagedUrl && !cleanUrl) return { ok: false, error: "персист в бакет не удался" };
   return { ok: true, cleanUrl, stagedUrl };
 }

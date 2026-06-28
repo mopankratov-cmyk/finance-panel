@@ -9,6 +9,7 @@ export interface SourceReadinessInfo {
   article: string;
   ready: boolean;
   tier: SourceReadinessTier;
+  canonical_images: number;
   prepared_images: number;
   real_videos: number;
   real_images: number;
@@ -24,15 +25,18 @@ function isRenderableSourceUrl(value: unknown): boolean {
 
 function summarizeArticle(article: string, assets: DiskAsset[]): SourceReadinessInfo {
   const pool = classifyAssets(assets);
+  const canonical = (pool.canonicalImages || []).length;
   const prepared = (pool.preparedImages || []).length;
   const realVideos = pool.realVideos.length;
   const realImages = pool.realImages.length;
   const wbImages = pool.wbImages.length;
-  const tier: SourceReadinessTier = prepared ? "prepared" : (realVideos || realImages) ? "real" : wbImages ? "wb" : "none";
+  const tier: SourceReadinessTier = (canonical || prepared) ? "prepared" : (realVideos || realImages) ? "real" : wbImages ? "wb" : "none";
   return {
     article,
-    ready: tier !== "none",
+    // WB-only is a weak source: useful as prep input, not render-ready for quality-first i2v.
+    ready: tier === "prepared" || tier === "real",
     tier,
+    canonical_images: canonical,
     prepared_images: prepared,
     real_videos: realVideos,
     real_images: realImages,
@@ -49,7 +53,7 @@ export async function loadSourceReadiness(db: SupabaseClient, articles: string[]
   try {
     const { data } = await db
       .from("content_assets")
-      .select("article,disk,kind,url")
+      .select("article,disk,kind,url,analysis")
       .in("article", normalized)
       .not("url", "is", null)
       .limit(Math.max(100, normalized.length * 20));
@@ -81,8 +85,9 @@ export async function loadSourceReadiness(db: SupabaseClient, articles: string[]
       if (withCards.has(article)) {
         out.set(article, {
           article,
-          ready: true,
+          ready: false,
           tier: "wb",
+          canonical_images: 0,
           prepared_images: 0,
           real_videos: 0,
           real_images: 0,

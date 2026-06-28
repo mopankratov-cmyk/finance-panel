@@ -180,7 +180,11 @@ export async function POST(req: NextRequest) {
       .map((r) => ({ id: r.id, niche: r.niche || null, article: r.article || null }));
     const sourceInfoPool = await loadSourceReadiness(db, draftPool.map((row) => row.article || ""));
     selectedRecipes = draftPool
-      .filter((row) => !!row.article && sourceInfoPool.get(String(row.article))?.ready)
+      .filter((row) => {
+        if (!row.article) return false;
+        const tier = sourceInfoPool.get(String(row.article))?.tier || "none";
+        return tier !== "none";
+      })
       .sort((a, b) => sourceTierRank(sourceInfoPool.get(String(b.article || ""))?.tier) - sourceTierRank(sourceInfoPool.get(String(a.article || ""))?.tier))
       .slice(0, count);
     recipeIds = selectedRecipes.map((r) => r.id);
