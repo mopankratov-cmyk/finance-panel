@@ -4,6 +4,8 @@ import { extractJson } from "@/lib/factory/extractJson";
 import { tastePatternHints } from "@/lib/factory/tastePatterns";
 import { buildPlatformBrainHint, normalizeTargetPlatform } from "@/lib/factory/reelsBrainPlaybook";
 import type { ReelsPlatform } from "./reelsBrain";
+import { evaluateHookPolicy, type HookPolicyResult } from "./hookPolicy";
+import { validateBlueprint, type BlueprintValidation } from "./blueprint/schema";
 
 export type ScenarioQualityInput = {
   article?: string;
@@ -19,6 +21,8 @@ export type ScenarioQualityInput = {
   scenarios?: unknown;
   brand?: string;
   format?: string;
+  blueprint?: unknown;
+  hook_source?: unknown;
 };
 
 export type ScenarioQualityCandidate = {
@@ -68,6 +72,8 @@ export type ScenarioQualityResult = {
   score: number;
   should_render: boolean;
   source: "claude" | "fallback";
+  blueprint_validation?: BlueprintValidation;
+  hook_policy?: HookPolicyResult;
   error?: string;
 };
 
@@ -372,6 +378,36 @@ async function judgeWithClaude(input: { article: string; product_name: string; n
 export async function analyzeScenarioQuality(body: ScenarioQualityInput): Promise<ScenarioQualityResult> {
   const normalized = normalizeScenarioQualityInput(body);
   const fallbackRanked = normalized.candidates.map((candidate) => fallbackRank(candidate, normalized.threshold, normalized.target_platform)).sort((a, b) => b.score - a.score);
+  const blueprintValidation = body.blueprint == null ? undefined : validateBlueprint(body.blueprint);
+  const candidateHook = normalized.candidates[0]?.hook || ((body.blueprint && typeof body.blueprint === "object") ? String(((body.blueprint as Record<string, unknown>).hook as Record<string, unknown> | undefined)?.text || "") : "");
+  const hookPolicy = candidateHook
+    ? evaluateHookPolicy({ text: candidateHook, source: body.hook_source || ((body.blueprint && typeof body.blueprint === "object") ? ((body.blueprint as Record<string, unknown>).hook as Record<string, unknown> | undefined)?.source : undefined), locked: body.blueprint && typeof body.blueprint === "object" ? ((body.blueprint as Record<string, unknown>).hook as Record<string, unknown> | undefined)?.locked : true })
+    : undefined;
+  if ((blueprintValidation && !blueprintValidation.ok) || hookPolicy?.action === "reject") {
+    const issues = [
+      ...(blueprintValidation && !blueprintValidation.ok ? blueprintValidation.errors.map((e) => `blueprint:${e}`) : []),
+      ...(hookPolicy?.action === "reject" ? hookPolicy.issues.map((e) => `hook_policy:${e}`) : []),
+    ];
+    const winner = fallbackRanked[0] ? { ...fallbackRanked[0], should_render: false, issues: [...fallbackRanked[0].issues, ...issues], rewrite_hints: [...fallbackRanked[0].rewrite_hints, "исправь Blueprint/hook до платного рендера"] } : null;
+    return {
+      ok: false,
+      threshold: normalized.threshold,
+      article: normalized.article,
+      product_name: normalized.product_name,
+      niche: normalized.niche,
+      target_platform: normalized.target_platform,
+      winner,
+      ranked: winner ? [winner, ...fallbackRanked.slice(1)] : fallbackRanked,
+      issues,
+      rewrite_hints: ["исправь Blueprint/hook до paid render"],
+      score: winner?.score || 0,
+      should_render: false,
+      source: "fallback",
+      blueprint_validation: blueprintValidation,
+      hook_policy: hookPolicy,
+      error: "pre_render_gate_reject",
+    };
+  }
 
   try {
     const judged = await judgeWithClaude({
@@ -401,7 +437,7 @@ export async function analyzeScenarioQuality(body: ScenarioQualityInput): Promis
         error: "пустой ответ модели",
       };
     }
-    return judged;
+    return { ...judged, blueprint_validation: blueprintValidation, hook_policy: hookPolicy };
   } catch (error) {
     return {
       ok: false,
@@ -417,6 +453,8 @@ export async function analyzeScenarioQuality(body: ScenarioQualityInput): Promis
       score: fallbackRanked[0]?.score || 0,
       should_render: fallbackRanked[0]?.should_render || false,
       source: "fallback",
+      blueprint_validation: blueprintValidation,
+      hook_policy: hookPolicy,
       error: String(error).slice(0, 200),
     };
   }

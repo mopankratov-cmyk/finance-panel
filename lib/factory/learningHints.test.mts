@@ -48,8 +48,8 @@ function fakeDb(tables: Record<string, FakeRow[]>) {
 
 const platformDb = fakeDb({
   content_assets: [
-    { winner_learnings: { hook: "тикток хук", target_platform: "tiktok" }, name: "тикток хук" },
-    { winner_learnings: { hook: "инста хук", target_platform: "instagram" }, name: "инста хук" },
+    { niche: "bags", is_winner: true, winner_learnings: { hook: "тикток хук", target_platform: "tiktok" }, name: "тикток хук" },
+    { niche: "bags", is_winner: true, winner_learnings: { hook: "инста хук", target_platform: "instagram" }, name: "инста хук" },
   ],
 });
 const platformHint = await winnersHintFor(platformDb, "bags", "Instagram");
@@ -59,8 +59,8 @@ ok(!platformHint.includes("тикток хук"), "winners hint excludes other p
 const seedFallbackDb = fakeDb({
   content_assets: [],
   viral_videos: [
-    { hook_text: "рыночный тикток хук", platform: "tiktok", virality_score: 40, analyzed: true },
-    { hook_text: "рыночный инста хук", platform: "instagram", virality_score: 39, analyzed: true },
+    { niche: "bags", hook_text: "рыночный тикток хук", platform: "tiktok", virality_score: 40, analyzed: true },
+    { niche: "bags", hook_text: "рыночный инста хук", platform: "instagram", virality_score: 39, analyzed: true },
   ],
 });
 const seedHint = await winnersHintFor(seedFallbackDb, "bags", "tiktok");

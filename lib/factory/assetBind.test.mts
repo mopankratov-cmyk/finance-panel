@@ -28,19 +28,20 @@ function eq(a: unknown, b: unknown, m: string) { ok(JSON.stringify(a) === JSON.s
   const assets: DiskAsset[] = [
     { disk: "wb", kind: "image", url: "wb1" },
     { disk: "models", kind: "image", url: "ri1" },     // реальное фото
-    { disk: "prepared", kind: "image", url: "prep1" },  // подготовленный рендер (приоритет)
+    { disk: "prepared", kind: "image", url: "prep1", analysis: { canonical: true } },  // канонический рендер (стабильный якорь)
     { disk: "prepared", kind: "image", url: "prep2" },
   ];
   const p = classifyAssets(assets);
-  eq(p.preparedImages, ["prep1", "prep2"], "preparedImages собраны");
+  eq(p.canonicalImages, ["prep1"], "canonicalImages собраны");
+  eq(p.preparedImages, ["prep2"], "preparedImages собраны");
   eq(p.realImages, ["ri1"], "real остаётся отдельно");
-  eq(bestImage(p), "prep1", "bestImage: prepared важнее real/wb");
-  eq(pickImage(p, 0), "prep1", "pickImage idx0 → prepared");
-  eq(pickImage(p, 1), "prep2", "pickImage idx1 → второй prepared");
-  eq(pickImage(p, 2), "ri1", "pickImage idx2 → real (после prepared)");
-  eq(pickImage(p, 3), "wb1", "pickImage idx3 → wb (последним)");
+  eq(bestImage(p), "prep1", "bestImage: canonical важнее prepared/real/wb");
+  eq(pickImage(p, 0), "prep1", "pickImage idx0 → canonical");
+  eq(pickImage(p, 1), "prep1", "pickImage idx1 → тот же canonical, без ротации");
+  eq(pickImage(p, 2), "prep1", "pickImage idx2 → тот же canonical, без ротации");
+  eq(pickImage(p, 3), "prep1", "pickImage idx3 → тот же canonical, без ротации");
   // i2v-нода без источника берёт prepared
-  eq(chooseBinding("seedance", false, p, 0)?.image_url, "prep1", "seedance ← prepared рендер");
+  eq(chooseBinding("seedance", false, p, 0)?.image_url, "prep1", "seedance ← canonical рендер");
 }
 
 // ── chooseBinding: disk_real ──

@@ -1,7 +1,6 @@
 // Авто-источники залетевших видео для Трендоскопа. Провайдер-абстракция: Apify / Virlo.
 // Вызовы идут с нашего сервера; скрап выполняется у провайдера (гео-блок РФ не мешает).
 // Активируется ключом: APIFY_TOKEN (+APIFY_ACTOR) или VIRLO_API_KEY. Trendsee — позже, если дадут API.
-import { normalizeTargetPlatform } from "./reelsBrainPlaybook";
 
 export type TrendProvider = "apify" | "apify_tiktok" | "apify_instagram" | "apify_youtube" | "virlo";
 type TrendPlatform = "tiktok" | "instagram" | "youtube";
@@ -54,9 +53,15 @@ export function providerPlatforms(provider: TrendProvider): TrendPlatform[] {
   return [];
 }
 
+function normalizeTrendPlatform(value: unknown): TrendPlatform {
+  const raw = String(value || "").trim().toLowerCase();
+  if (/insta|instagram|reels/.test(raw)) return "instagram";
+  if (/youtube|shorts|yt/.test(raw)) return "youtube";
+  return "tiktok";
+}
+
 export function prioritizeTrendProviders(targetPlatform: unknown, providers = availableTrendProviders()): TrendProvider[] {
-  const normalized = normalizeTargetPlatform(targetPlatform);
-  const platform: TrendPlatform = normalized === "instagram" || normalized === "youtube" ? normalized : "tiktok";
+  const platform = normalizeTrendPlatform(targetPlatform);
   const unique = Array.from(new Set(providers)).filter((provider) => hasTrendProvider(provider));
   return unique
     .slice()

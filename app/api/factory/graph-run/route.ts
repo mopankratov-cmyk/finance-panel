@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
       const rows = (nodes as Record<string, unknown>[] | null) || [];
       if (!rows.length) return NextResponse.json({ error: "у рецепта нет нод" }, { status: 400 });
       const targetPlatform = normalizeTargetPlatform(body.target_platform || body.platform || existing?.target_platform);
-      const plan = buildRunPlan(rows, targetPlatform);
+      const plan = buildRunPlan(rows, recipeId, targetPlatform);
       plan.run_id = makeRunId(recipeId);
       if (body.batch_run_id) plan.batch_run_id = String(body.batch_run_id).slice(0, 80);
       if (["control", "experiment", "none"].includes(String(body.batch_role || ""))) plan.batch_role = String(body.batch_role) as RunPlan["batch_role"];

@@ -14,8 +14,12 @@ import { isOurStorage } from "./rehostImage";
 import { fetchCabinetCards } from "@/lib/wb/cards";
 import { wbCardImageUrl } from "@/lib/wb/cardImage";
 import { createHash, randomUUID } from "node:crypto";
-import type { ExecutionLogEntry, RunNode, RunPlan, RunStep } from "./graphTypes";
+import type { ExecutionLogEntry, RunNode, RunOtkVerdict, RunPlan, RunStep } from "./graphTypes";
+import { LANE_BUDGET, routeNode, routeRecipeLane } from "./renderRouter";
+import { runArtifactCheck, runClipQa, runVideoCritic } from "./qaGates";
+import { weakestRubricAxis, type RubricNiche } from "./rubric";
 import { normalizeTargetPlatform } from "./reelsBrainPlaybook";
+import { buildRunIdempotencyKey } from "./factoryV2Runtime";
 
 export type { ExecutionLogEntry, RunNode, RunPlan, RunStep } from "./graphTypes";
 
@@ -26,9 +30,12 @@ export type { ExecutionLogEntry, RunNode, RunPlan, RunStep } from "./graphTypes"
 const LEASE_MS = 90_000;
 const MAX_POLLS = 35;
 const POLL_WAIT_MS = 12_000;
+const MAX_GEN_POLL_MS = MAX_POLLS * POLL_WAIT_MS + 60_000;
+const MAX_GEN_POLL_LOGS = 12;
 const MAX_RENDERS = 3;
 export const MAX_STEP_ATTEMPTS = 3;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+type OtkGateMode = "shadow" | "block_broken" | "strict";
 
 export function makeRunId(recipeId: number): string {
   return `run_${recipeId}_${randomUUID().slice(0, 8)}`;
@@ -86,6 +93,51 @@ function summarizeWarnings(plan: RunPlan): string | null {
   return warnings.length ? warnings.join(" | ") : null;
 }
 
+function isFramesGroundedOtkVerdictPass(otk: RunOtkVerdict | null | undefined, artifactOk = true): boolean {
+  const score = otk?.score ?? null;
+  const basis = String(otk?.basis || "").toLowerCase();
+  const verdict = String(otk?.verdict || "").toLowerCase();
+  if (score == null || score < 7) return false;
+  if (!artifactOk) return false;
+  if (basis === "text" || basis === "fallback" || basis === "storyboard") return false;
+  if (verdict === "trash" || verdict === "rework" || verdict === "fail") return false;
+  return true;
+}
+
+function isFramesGroundedOtkPass(plan: RunPlan, artifactOk = true): boolean {
+  return isFramesGroundedOtkVerdictPass(plan.otk, artifactOk);
+}
+
+function otkGateMode(): OtkGateMode {
+  if (process.env.FACTORY_OTK_FAIL_OPEN === "true") return "shadow";
+  const raw = String(process.env.FACTORY_OTK_GATE_MODE || "block_broken").toLowerCase();
+  return raw === "strict" || raw === "shadow" || raw === "block_broken" ? raw : "block_broken";
+}
+
+function shouldBlockOtk(plan: RunPlan, artifactOk: boolean): { block: boolean; reason: string; mode: OtkGateMode } {
+  const mode = otkGateMode();
+  if (mode === "shadow") return { block: false, reason: "shadow", mode };
+  if (!artifactOk) return { block: true, reason: "broken artifact", mode };
+  if (mode === "strict" && !isFramesGroundedOtkPass(plan, artifactOk)) return { block: true, reason: `OTK below strict gate: ${plan.otk?.score ?? "no_score"}`, mode };
+  return { block: false, reason: "pass or warning allowed", mode };
+}
+
+function firstStepStartedAt(plan: RunPlan, step: string): string | null {
+  const logs = plan.execution_log || [];
+  const hit = logs.find((entry) => entry.step === step && entry.started_at);
+  return hit?.started_at || null;
+}
+
+function stepAgeMs(plan: RunPlan, step: string, now = Date.now()): number {
+  const started = plan.step_started_at || firstStepStartedAt(plan, step);
+  const t = started ? Date.parse(started) : NaN;
+  return Number.isFinite(t) ? Math.max(0, now - t) : 0;
+}
+
+function stepLogCount(plan: RunPlan, step: string): number {
+  return (plan.execution_log || []).filter((entry) => entry.step === step).length;
+}
+
 // «сборочные» инструменты не генерят отдельный клип — участвуют в монтаже/звуке
 const ASSEMBLY_TOOLS = new Set(["shotstack", "sound", "music", "sharp"]);
 
@@ -97,6 +149,10 @@ function textOfNode(n: RunNode | undefined | null): string {
   if (!n) return "";
   const p = (n.params || {}) as Record<string, unknown>;
   return String(n.onscreen_text || p["onscreen_text"] || p["script"] || p["override_script"] || n.prompt || "").trim();
+}
+
+function asRubricNiche(value: string): RubricNiche | undefined {
+  return ["clothing", "toys", "cosmetics", "default"].includes(value) ? value as RubricNiche : undefined;
 }
 
 // нода РЕГЕНЕРИРУЕМА: сгенерирована движком (не реальный клип/сборка) — реген disk_real бессмыслен.
@@ -242,17 +298,16 @@ export function buildReelProps(plan: RunPlan, visualNodes: RunNode[], article: s
 
 // V3/V4: по слабейшей оси ОТК выбрать ноду-виновника для регена (только генеративную)
 function pickCulprit(plan: RunPlan, axes: unknown): { node: RunNode; axis: string; val: number } | null {
-  const a = (axes && typeof axes === "object") ? (axes as Record<string, unknown>) : {};
-  let axis: string | null = null, val = 99;
-  for (const k of ["hook", "retention", "native", "brand", "cta"]) {
-    const v = Number(a[k]); if (!isNaN(v) && v < val) { val = v; axis = k; }
-  }
+  const weakest = weakestRubricAxis((axes && typeof axes === "object") ? (axes as Record<string, unknown>) : null);
+  const axis = weakest?.axis || null;
+  const val = weakest?.value ?? 99;
   if (!axis) return null;
   let node: RunNode | undefined;
   if (axis === "hook") node = plan.nodes.find((n) => isRegenerable(n) && roleOf(n) === "hook");
-  else if (axis === "cta") node = plan.nodes.find((n) => isRegenerable(n) && roleOf(n) === "cta");
-  else if (axis === "brand") node = plan.nodes.find((n) => isRegenerable(n) && (roleOf(n) === "proof" || roleOf(n) === "solution"));
-  // native/retention/фолбэк → первая генеративная нода (AI = источник слопа)
+  else if (axis === "conversion") node = plan.nodes.find((n) => isRegenerable(n) && roleOf(n) === "cta");
+  else if (axis === "productVisibility") node = plan.nodes.find((n) => isRegenerable(n) && (roleOf(n) === "proof" || roleOf(n) === "solution"));
+  else if (axis === "aiSlop") node = plan.nodes.find((n) => isRegenerable(n) && String(n.tool || "").toLowerCase() !== "disk_real");
+  // scrollStop/retention/фолбэк → первая генеративная нода (AI = источник слопа)
   if (!node) node = plan.nodes.find(isRegenerable);
   return node ? { node, axis, val } : null;
 }
@@ -290,15 +345,22 @@ function inferRunTargetPlatform(rows: any[]): string {
   return "tiktok";
 }
 
-export function buildRunPlan(rows: any[], targetPlatform?: unknown): RunPlan {
+export function buildRunPlan(rows: any[], recipeId: number | string = "draft", targetPlatform?: unknown): RunPlan {
   const nodes: RunNode[] = (rows || []).map((r) => {
     const params = (r.params && typeof r.params === "object") ? r.params : {};
     const sug = (r.agent_suggestion && typeof r.agent_suggestion === "object") ? r.agent_suggestion : {};
+    const routed = routeNode({
+      node_type: r.node_type ?? null,
+      tool_candidate: r.tool ?? null,
+      render_role: params.render_role ?? null,
+      footage: params.footage ?? null,
+      target_platform: params.target_platform ?? null,
+    });
     return {
       ordinal: typeof r.ordinal === "number" ? r.ordinal : 0,
-      slot: r.slot ?? null, node_type: r.node_type ?? null, tool: r.tool ?? null,
+      slot: r.slot ?? null, node_type: r.node_type ?? null, tool: r.tool || routed.tool,
       prompt: String(r.prompt || sug.voiceover || ""),
-      params,
+      params: { ...params, __router_reason: routed.reason },
       image_url: r.asset_url || params.image_url || null,
       asset_url: r.asset_url || null,
       // колонка duration_sec ИЛИ инспекторский params.duration_sec (disk_real пишет только в params)
@@ -306,8 +368,10 @@ export function buildRunPlan(rows: any[], targetPlatform?: unknown): RunPlan {
         : (params.duration_sec != null && !isNaN(Number(params.duration_sec)) ? Number(params.duration_sec) : null),
       onscreen_text: params.onscreen_text || sug.onscreen_text || null,
       status: "pending" as const,
+      lane: routed.lane,
     };
   }).sort((a, b) => a.ordinal - b.ordinal);
+  const lane = routeRecipeLane(nodes);
   return {
     step: "submit",
     nodes,
@@ -315,6 +379,9 @@ export function buildRunPlan(rows: any[], targetPlatform?: unknown): RunPlan {
     attempts: 0,
     pollCount: 0,
     renderCount: 0,
+    lane,
+    lane_budget: LANE_BUDGET[lane],
+    idempotency_key: buildRunIdempotencyKey(recipeId, nodes),
   };
 }
 
@@ -353,7 +420,7 @@ async function autoBindAssets(db: SupabaseClient, plan: RunPlan, article: string
   if (!needs.length) return;
   let assets: DiskAsset[] = [];
   try {
-    const { data } = await db.from("content_assets").select("disk,kind,url").eq("article", article).not("url", "is", null).limit(60);
+    const { data } = await db.from("content_assets").select("disk,kind,url,analysis").eq("article", article).not("url", "is", null).limit(60);
     const raw = (data as DiskAsset[] | null) || [];
     // ГАРД от кросс-контаминации («пистолет в сумке»): даже если строка каталога мислейбл (article=CLR…, а путь
     // prepared/TT…), НЕ привязываем чужой кадр к рецепту. Источник распознаём по артикулу в пути prepared/i2v-src.
@@ -540,6 +607,93 @@ async function jpost(origin: string, path: string, body: unknown, ms = 90000, fa
   return j;
 }
 
+async function saveOurStorageVideoToCatalog(
+  db: SupabaseClient,
+  opts: {
+    url: string;
+    article: string;
+    niche: string;
+    hook: string;
+    engine: string | null | undefined;
+    recipeId: number;
+    batchRole?: RunPlan["batch_role"];
+    changeAxis?: RunPlan["change_axis"];
+    otkScore: number | null;
+    otkAxes?: unknown;
+  },
+): Promise<string | null> {
+  const url = String(opts.url || "").trim();
+  if (!url || !isOurStorage(url)) return null;
+  const sourceMeta = { source_url: url };
+  try {
+    const { data: dup } = await db.from("content_assets").select("url").eq("disk", "gen").contains("analysis", sourceMeta).maybeSingle();
+    if (dup?.url) {
+      await logGeneration({
+        recipe_id: opts.recipeId,
+        engine: opts.engine || null,
+        prompt: opts.hook || null,
+        input_url: url,
+        output_url: dup.url,
+        otk_score: opts.otkScore,
+        otk_axes: opts.otkAxes ?? null,
+        status: opts.otkScore != null && opts.otkScore < 7 ? "warning" : "generated",
+        source: "graph_run",
+        reason: "catalog_direct_dedupe",
+        niche: opts.niche,
+        article: opts.article || null,
+      });
+      return String(dup.url);
+    }
+    const path = `gen/direct-${createHash("sha1").update(url).digest("hex")}`;
+    const { error } = await db.from("content_assets").insert({
+      disk: "gen",
+      path,
+      name: (opts.hook || opts.article || "генерация").toString().slice(0, 120),
+      kind: "video",
+      niche: opts.niche,
+      article: opts.article || null,
+      color: null,
+      url,
+      analyzed: true,
+      analysis: {
+        source_url: url,
+        route: "node_graph",
+        engine: opts.engine || "",
+        batch_role: opts.batchRole || null,
+        change_axis: opts.changeAxis || null,
+        otk: opts.otkScore,
+        otk_axes: opts.otkAxes ?? null,
+        recipe_id: opts.recipeId,
+        catalog_fallback: "direct_our_storage",
+      },
+    });
+    if (error) {
+      if ((error as { code?: string }).code === "23505") {
+        const { data: ex } = await db.from("content_assets").select("url").eq("disk", "gen").contains("analysis", sourceMeta).maybeSingle();
+        if (ex?.url) return String(ex.url);
+      }
+      return null;
+    }
+    await logGeneration({
+      recipe_id: opts.recipeId,
+      engine: opts.engine || null,
+      prompt: opts.hook || null,
+      input_url: url,
+      output_url: url,
+      otk_score: opts.otkScore,
+      otk_axes: opts.otkAxes ?? null,
+      status: opts.otkScore != null && opts.otkScore < 7 ? "warning" : "generated",
+      source: "graph_run",
+      reason: "catalog_direct_our_storage",
+      niche: opts.niche,
+      article: opts.article || null,
+    });
+    return url;
+  } catch {
+    return null;
+  }
+}
+
 // ОДИН шаг исполнения графа.
 export async function runRecipeStep(
   db: SupabaseClient, origin: string,
@@ -559,6 +713,7 @@ export async function runRecipeStep(
       const done = nodes.filter((n) => n.status === "done").length;
       return `submitted=${submitted};done=${done}`;
     }
+    if (step === "clip-qa") return `clips=${nodes.filter((n) => n.status === "done" && n.url).length}`;
     if (step === "assemble") return `visual=${nodes.filter((n) => n.status === "done" && n.url).length};engine=${plan.render_engine || "shotstack"}`;
     if (step === "render-submit") return `engine=${plan.render_engine || "shotstack"};render=${plan.render_id || "new"}`;
     if (step === "render-poll") return `render=${plan.render_id || "none"}`;
@@ -589,7 +744,9 @@ export async function runRecipeStep(
     }
     // перечитываем ноды с заполненными tool/params/prompt и пересобираем СПИСОК нод (счётчики прогона не трогаем)
     const { data } = await db.from("node_recipe_nodes").select("ordinal,slot,node_type,tool,prompt,params,asset_url,duration_sec,agent_suggestion").eq("recipe_id", id).order("ordinal");
-    plan.nodes = buildRunPlan((data as any[]) || []).nodes;
+    const rebuilt = buildRunPlan((data as any[]) || [], id, plan.target_platform);
+    plan.nodes = rebuilt.nodes;
+    plan.idempotency_key = plan.idempotency_key || rebuilt.idempotency_key;
     plan.step = "submit";
     plan.lease_until = null;
     finishExecutionLog(plan, trace, needsFill ? "warning" : "done", "submit", null, needsFill ? "autofill checkpoint→submit fail-open" : "autofill not needed→submit");
@@ -601,7 +758,8 @@ export async function runRecipeStep(
   if (plan.step === "submit") {
     const submitAlreadyStarted = Boolean((plan as any).submit_started_at);
     const renderCount = submitAlreadyStarted ? (plan.renderCount || 1) : (plan.renderCount || 0) + 1;
-    if (!submitAlreadyStarted && renderCount > MAX_RENDERS) throw new Error("превышен лимит запусков генерации графа — стоп для бюджета");
+    const laneBudget = Math.max(1, Number(plan.lane_budget || LANE_BUDGET[plan.lane || "product"] || MAX_RENDERS));
+    if (!submitAlreadyStarted && renderCount > laneBudget) throw new Error("превышен лимит запусков генерации графа — стоп для бюджета");
     // авто-привязка ассетов товара к нодам без источника (фикс пустого автопилота, см. assetBind.ts)
     await autoBindAssets(db, plan, article, niche);
     for (const n of plan.nodes) {
@@ -685,7 +843,7 @@ export async function runRecipeStep(
       }
     }
     delete (plan as any).submit_started_at;
-    plan.step = "gen-poll"; plan.pollCount = 0;
+    plan.step = "gen-poll"; plan.pollCount = 0; plan.step_started_at = new Date().toISOString();
     plan.lease_until = null; // шаг завершён — освобождаем лиз для следующего тика (gen-poll)
     finishExecutionLog(plan, trace, "done", `submitted=${plan.nodes.filter((n) => n.status === "submitted").length}`, null, "submit→gen-poll");
     await savePlan(db, id, plan);
@@ -694,8 +852,10 @@ export async function runRecipeStep(
 
   // ── gen-poll: ждать готовности всех submitted-нод ──
   if (plan.step === "gen-poll") {
+    if (!plan.step_started_at) plan.step_started_at = firstStepStartedAt(plan, "gen-poll") || new Date().toISOString();
+    const timedOutByWallClock = stepAgeMs(plan, "gen-poll") >= MAX_GEN_POLL_MS || stepLogCount(plan, "gen-poll") >= MAX_GEN_POLL_LOGS;
     const pending = plan.nodes.filter((n) => n.status === "submitted");
-    if (pending.length) {
+    if (pending.length && !timedOutByWallClock) {
       await sleep(POLL_WAIT_MS);
       for (const n of pending) {
         if (!n.token) { n.status = "error"; n.error = "нет токена"; continue; }
@@ -706,19 +866,20 @@ export async function runRecipeStep(
     }
     const stillPending = plan.nodes.filter((n) => n.status === "submitted");
     const pollCount = (plan.pollCount || 0) + 1;
-    if (stillPending.length && pollCount < MAX_POLLS) {
+    if (stillPending.length && pollCount < MAX_POLLS && !timedOutByWallClock) {
       plan.pollCount = pollCount;
       finishExecutionLog(plan, trace, "running", `submitted=${stillPending.length}`, null, "gen-poll waiting");
       await savePlan(db, id, plan, { status: "running" });
       return;
     }
     // таймаут оставшихся → помечаем error, идём дальше с тем, что готово
-    for (const n of stillPending) { n.status = "error"; n.error = "render timeout"; }
+    for (const n of stillPending) { n.status = "error"; n.error = timedOutByWallClock ? "generation poll wall-clock timeout" : "render timeout"; }
     const anyDone = plan.nodes.some((n) => n.status === "done" && n.url);
     const rescuedAfterPoll = fallbackVisualNodes(plan.nodes).length;
     if (!anyDone && rescuedAfterPoll) {
       addWarning(`gen-poll source fallback rescued ${rescuedAfterPoll} visual asset(s)`);
       plan.step = "assemble";
+      plan.step_started_at = null;
       finishExecutionLog(plan, trace, "warning", `fallback=${rescuedAfterPoll}`, null, "gen-poll→assemble(source fallback)");
       await savePlan(db, id, plan);
       return;
@@ -734,9 +895,51 @@ export async function runRecipeStep(
       await savePlan(db, id, plan, { status: "run_fail" });
       return;
     }
-    plan.step = "assemble";
-    finishExecutionLog(plan, trace, "done", `done=${plan.nodes.filter((n) => n.status === "done" && n.url).length}`, null, "gen-poll→assemble");
+    plan.step = "clip-qa";
+    plan.step_started_at = null;
+    finishExecutionLog(plan, trace, "done", `done=${plan.nodes.filter((n) => n.status === "done" && n.url).length}`, null, "gen-poll→clip-qa");
     await savePlan(db, id, plan);
+    return;
+  }
+
+  // ── clip-qa: проверить готовые клипы ДО склейки ──
+  if (plan.step === "clip-qa") {
+    const visualNodes = plan.nodes.filter((n) => n.status === "done" && n.url && n.node_type !== "captions" && String(n.tool).toLowerCase() !== "elevenlabs" && String(((n.params || {}) as Record<string, unknown>)["role"] || "").toLowerCase() !== "skip");
+    const laneBudget = Math.max(1, Number(plan.lane_budget || LANE_BUDGET[plan.lane || "product"] || MAX_RENDERS));
+    for (const n of visualNodes.slice(0, 6)) {
+      if (n.qa?.passed === true) continue;
+      const qa = await withTimeout(runClipQa(String(n.url)), 60_000, "clip-qa");
+      n.qa = {
+        passed: qa.ok,
+        defects: qa.defects || [],
+        score: qa.score ?? null,
+        attempts: (n.qa?.attempts || 0) + 1,
+        regen_hint: qa.defects?.[0] || null,
+      };
+      if (!qa.ok) {
+        const reason = qa.defects?.join(", ") || qa.severity || "broken clip";
+        addWarning(`clip-qa reject: ${reason}`);
+        if ((plan.renderCount || 0) < laneBudget && isRegenerable(n)) {
+          finishExecutionLog(plan, trace, "warning", n.url || null, null, `clip-qa regen: ${reason}`);
+          await regenCulprit(db, origin, id, plan, niche, article, n, qa.defects || [reason], String(reason).slice(0, 160), `clip-qa failed: ${reason}`, true);
+          return;
+        }
+        n.status = "error";
+        n.error = `clip-qa failed: ${reason}`;
+      }
+    }
+    const usable = plan.nodes.filter((n) => n.status === "done" && n.url && n.node_type !== "captions" && String(n.tool).toLowerCase() !== "elevenlabs" && String(((n.params || {}) as Record<string, unknown>)["role"] || "").toLowerCase() !== "skip");
+    if (!usable.length) {
+      plan.step = "failed";
+      plan.error = "clip-qa rejected all visual clips";
+      finishExecutionLog(plan, trace, "error", null, plan.error, "clip-qa failed");
+      await savePlan(db, id, plan, { status: "run_fail" });
+      return;
+    }
+    plan.step = "assemble";
+    plan.step_started_at = null;
+    finishExecutionLog(plan, trace, summarizeWarnings(plan) ? "warning" : "done", `passed=${usable.length}`, null, "clip-qa→assemble");
+    await savePlan(db, id, plan, { status: "running" });
     return;
   }
 
@@ -1004,7 +1207,7 @@ export async function runRecipeStep(
     let artifactDefects: string[] = [];
     if (frames.length) {
       try {
-        const art = await jpost(origin, "/api/factory/artifact-check", { frames }, 45000);
+        const art = await withTimeout(runArtifactCheck(frames), 45_000, "artifact-check");
         artifactOk = art?.ok !== false;
         artifactDefects = Array.isArray(art?.defects) ? art.defects.map((d: unknown) => String(d).slice(0, 120)).slice(0, 5) : [];
         if (!artifactOk) addWarning(`artifact-check warning: ${artifactDefects.join(", ") || "broken"}`);
@@ -1022,15 +1225,14 @@ export async function runRecipeStep(
     let basis: string | null = null;
     let basisReason: string | null = null;
     try {
-      const v = await jpost(origin, "/api/factory/video-critic", {
+      const v = await withTimeout(runVideoCritic({
         frames,
         hook: textOfNode(hookNode),
-        mode,
+        mode: mode === "sell" ? "sell" : "audience",
         article,
-        niche,
-        target_platform: plan.target_platform || "tiktok",
-        ...(frames.length ? {} : { storyboard: true, scenario: plan.nodes }),
-      }, 55000);
+        niche: asRubricNiche(String(niche)),
+        scenario: plan.nodes,
+      }), 55_000, "video-critic");
       score = typeof v?.score === "number" ? v.score : null;
       verdict = v?.verdict;
       axes = v?.axes || null;
@@ -1047,8 +1249,45 @@ export async function runRecipeStep(
     }
     if (score == null) addWarning("video-critic did not return score");
     if (typeof score === "number" && score < 7) addWarning(`OTK below threshold: ${score}`);
-    plan.otk = { score, verdict, axes, issues, basis, basis_reason: basisReason };
-    if (score != null && score > (plan.bestScore ?? -1)) { plan.bestScore = score; plan.bestUrl = url; }
+    plan.otk = { score, verdict, axes, issues, basis, basis_reason: basisReason, artifact_ok: artifactOk, artifact_defects: artifactDefects };
+    if (score != null && score > (plan.bestScore ?? -1)) {
+      plan.bestScore = score;
+      plan.bestUrl = url;
+      plan.bestOtk = plan.otk;
+    }
+
+    const otkPassed = isFramesGroundedOtkPass(plan, artifactOk);
+    const laneBudget = Math.max(1, Number(plan.lane_budget || LANE_BUDGET[plan.lane || "product"] || MAX_RENDERS));
+    if (!otkPassed && (plan.renderCount || 0) < laneBudget) {
+      const culprit = pickCulprit(plan, axes);
+      if (culprit) {
+        finishExecutionLog(plan, trace, "warning", url, null, `otk regen: ${artifactDefects[0] || issues[0] || culprit.axis}`);
+        await regenCulprit(
+          db,
+          origin,
+          id,
+          plan,
+          niche,
+          article,
+          culprit.node,
+          artifactDefects.length ? artifactDefects : issues,
+          String(artifactDefects[0] || issues[0] || "raise OTK score").slice(0, 160),
+          artifactOk ? `OTK below gate: ${score ?? "no_score"}` : `artifact gate failed: ${artifactDefects.join(", ") || "broken"}`,
+          !artifactOk,
+        );
+        return;
+      }
+    }
+
+    const gate = shouldBlockOtk(plan, artifactOk);
+    if (gate.block) {
+      plan.step = "failed";
+      plan.error = `OTK gate ${gate.mode}: ${gate.reason}`;
+      finishExecutionLog(plan, trace, "error", url, plan.error, "otk gate blocked");
+      await savePlan(db, id, plan, { otk_verdict: plan.otk, otk_score: score, status: "run_fail" });
+      try { await logSignal(db, "qa_reject", { niche, article, params: { recipe_id: id, run_id: plan.run_id || null, mode: gate.mode, reason: gate.reason, score } }); } catch { /* best-effort */ }
+      return;
+    }
 
     const status = summarizeWarnings(plan) ? "warning" : "done";
     plan.step = "bank";
@@ -1064,19 +1303,40 @@ export async function runRecipeStep(
     const score = plan.bestScore != null ? plan.bestScore : (plan.otk?.score ?? null);
     const hookNode = plan.nodes.find((n) => String(((n.params || {}) as Record<string, unknown>)["role"] || n.slot || "").toLowerCase() === "hook") || plan.nodes[0];
     const hook = textOfNode(hookNode).slice(0, 200);
-    // в библиотеку контента (каталог кокпита)
+    const otkForBank = plan.bestOtk || plan.otk || null;
+    const artifactOk = otkForBank?.artifact_ok !== false;
+    const qualityPassed = isFramesGroundedOtkVerdictPass(otkForBank, artifactOk);
+    // в библиотеку контента (каталог кокпита) попадает только frames-grounded OTK pass.
     let catalogUrl: string | null = null;
     let catalogError: string | null = null;
-    if (url) {
+    if (url && qualityPassed) {
       try {
-        const g = await jpost(origin, "/api/factory/gen-save", { video_url: url, article, niche, hook, route: "node_graph", engine: plan.render_engine || "shotstack", batch_role: plan.batch_role || null, change_axis: plan.change_axis || null, otk: score, otk_axes: plan.otk?.axes ?? null, recipe_id: id }, 40000, true); // ≤40с: влезть в maxDuration 60 тика (был 120с → Vercel убивал handler, catalogUrl терялся)
+        const g = await jpost(origin, "/api/factory/gen-save", { video_url: url, article, niche, hook, route: "node_graph", engine: plan.render_engine || "shotstack", batch_role: plan.batch_role || null, change_axis: plan.change_axis || null, otk: score, otk_axes: otkForBank?.axes ?? null, recipe_id: id }, 40000, true); // ≤40с: влезть в maxDuration 60 тика (был 120с → Vercel убивал handler, catalogUrl терялся)
         catalogUrl = g?.url || null;
       } catch (e) { catalogError = String((e as Error)?.message || e).slice(0, 220); }
+      if (!catalogUrl && catalogError && isOurStorage(url)) {
+        const directUrl = await saveOurStorageVideoToCatalog(db, {
+          url,
+          article,
+          niche,
+          hook,
+          engine: plan.render_engine || "shotstack",
+          recipeId: id,
+          batchRole: plan.batch_role || null,
+          changeAxis: plan.change_axis || null,
+          otkScore: score,
+          otkAxes: otkForBank?.axes ?? null,
+        });
+        if (directUrl) {
+          catalogUrl = directUrl;
+          catalogError = null;
+        }
+      }
     }
     if (url && !catalogUrl && catalogError) {
       addWarning(`gen-save warning: ${catalogError}`);
     }
-    const qualityStatus = score != null && score >= 7 ? "otk_pass" : "warning";
+    const qualityStatus = qualityPassed ? "otk_pass" : "warning";
     const finalStatus = summarizeWarnings(plan) ? "warning" : qualityStatus;
     plan.step = "done";
     plan.catalog_url = catalogUrl;
@@ -1087,9 +1347,11 @@ export async function runRecipeStep(
         params: { source: "graph_run_bank", raw_url: url, error: catalogError, target_platform: plan.target_platform || "tiktok" },
       });
     }
-    await logSignal(db, finalStatus === "otk_pass" ? "approved" : "approved", {
+    await logSignal(db, finalStatus === "otk_pass" ? "approved" : "rejected", {
       recipe_id: id, niche, article, mode, format: null, engine: plan.render_engine || "shotstack",
-      axes: plan.otk?.axes ?? null, reason_chip: finalStatus === "warning" ? (plan.warnings?.[0] || "warning") : null, params: { target_platform: plan.target_platform || "tiktok" },
+      axes: otkForBank?.axes ?? null,
+      reason_chip: finalStatus === "warning" ? (plan.warnings?.[0] || "OTK gate failed") : null,
+      params: { source: "graph_run_otk_gate", score, basis: otkForBank?.basis || null, artifact_ok: artifactOk, catalog_url: catalogUrl, target_platform: plan.target_platform || "tiktok" },
     });
     // V21/R5: батч-прогон прошёл ОТК → шлём оператору в Telegram на ревью (студийные прогоны — нет, без спама)
     if (plan.notify && finalStatus === "otk_pass" && (catalogUrl || url) && tgReady()) {
@@ -1099,7 +1361,7 @@ export async function runRecipeStep(
     await savePlan(db, id, plan, {
       status: finalStatus,
       output_url: catalogUrl || url || null,
-      otk_verdict: plan.otk ?? null,
+      otk_verdict: otkForBank,
       otk_score: score,
     });
     return;

@@ -19,8 +19,8 @@ ok(/warnings\.push\(\"templates unavailable: /.test(studioRoute), "studio route 
 ok(/warnings\.push\(\"recipes unavailable: /.test(studioRoute), "studio route records niche recipes degradation");
 ok(/warnings\.push\(\"generations unavailable: /.test(studioRoute), "studio route records generations degradation");
 ok(/warnings\.push\(\"recipes\/observability unavailable: /.test(studioRoute), "studio route records overview observability degradation");
-ok(/ok: true, niche, feed, templates, recipes, warnings/.test(studioRoute), "studio niche response exposes warnings");
-ok(/ok: true, niches, generations, recipes, observability, warnings/.test(studioRoute), "studio overview response exposes warnings");
+ok(/NextResponse\.json\(\{ ok: true, niche,[\s\S]*warnings \}/.test(studioRoute), "studio niche response exposes warnings");
+ok(/NextResponse\.json\(\{ ok: true, niches,[\s\S]*warnings \}/.test(studioRoute), "studio overview response exposes warnings");
 
 if (failed) process.exit(1);
 console.log(`studioWarningsContract: ${passed} passed, ${failed} failed`);

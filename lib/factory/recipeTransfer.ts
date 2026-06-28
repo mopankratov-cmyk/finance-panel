@@ -27,6 +27,28 @@ function roleToSlot(n: Record<string, unknown>): string {
   return "scene";
 }
 
+function originalOnscreenText(n: Record<string, unknown>, p: { article: string; productName: string; mode: string }): string {
+  const product = p.productName || `артикул ${p.article}`;
+  const role = String(n.role || "").toLowerCase();
+  if (role === "hook") return `${product}: проверка вживую`;
+  if (role === "cta") return p.mode === "sell" ? `Ищи на WB: ${p.article}` : `Сохрани артикул: ${p.article}`;
+  return `${product} без рекламной инфографики`;
+}
+
+function originalPrompt(n: Record<string, unknown>, p: { article: string; productName: string; mode: string }): string {
+  const product = p.productName || `товар ${p.article}`;
+  const role = String(n.role || roleToSlot(n)).toLowerCase();
+  const nodeType = String(n.node_type || "product_motion").toLowerCase();
+  const emotion = String(n.emotion || "").trim();
+  return [
+    `Create an original vertical product-video beat for ${product}, article ${p.article}.`,
+    `Role in story: ${role}. Node type: ${nodeType}.`,
+    emotion ? `Emotional tone: ${emotion}.` : "",
+    "Use the bound product source as the visual truth. Do not copy competitor wording, captions, layout, props, or scene text.",
+    "Keep product geometry and packaging stable. Avoid readable fake label text.",
+  ].filter(Boolean).join(" ");
+}
+
 export async function transferRecipeTemplate(db: DbClient, p: TransferInput) {
   const article = (p.article || "").toString().trim();
   if (!article) return { error: "нужен article (товар, под который переносим)", status: 400 };
@@ -66,25 +88,28 @@ export async function transferRecipeTemplate(db: DbClient, p: TransferInput) {
 
   const rows = tplNodes.map((n, i) => {
     const params = n.params && typeof n.params === "object" && !Array.isArray(n.params) ? n.params as Record<string, unknown> : {};
+    const onscreenText = originalOnscreenText(n, { article, productName, mode }).slice(0, 300);
     return {
       recipe_id: recipeId,
       ordinal: typeof n.ordinal === "number" ? n.ordinal : i + 1,
       slot: roleToSlot(n),
       node_type: n.node_type || null,
       tool: n.tool_candidate || n.tool || null,
-      prompt: String(n.prompt || n.voiceover || n.visual_desc || "").slice(0, 1500),
+      prompt: originalPrompt(n, { article, productName, mode }).slice(0, 1500),
       params: {
         ...params,
-        ...(n.onscreen_text ? { onscreen_text: String(n.onscreen_text).slice(0, 300) } : {}),
+        product_article: article,
+        product_name: productName || null,
+        onscreen_text: onscreenText,
         ...(n.role ? { role: String(n.role).toLowerCase() } : {}),
         ...(n.emotion ? { emotion: String(n.emotion) } : {}),
-        ...(n.visual_desc ? { visual_desc: String(n.visual_desc).slice(0, 300) } : {}),
+        template_skeleton_only: true,
       },
       asset_url: "",
       duration_sec: typeof n.duration_sec === "number" ? n.duration_sec : null,
-      source: "transferred_from_corpus",
+      source: "pattern_skeleton",
       human_edited: false,
-      agent_suggestion: { role: n.role, hook_type: n.hook_type, onscreen_text: n.onscreen_text, voiceover: n.voiceover, emotion: n.emotion, visual_desc: n.visual_desc },
+      agent_suggestion: { role: n.role, hook_type: n.hook_type, onscreen_text: onscreenText, emotion: n.emotion, product_article: article, product_name: productName || null, template_skeleton_only: true },
     };
   });
   const { error: nErr } = await db.from("node_recipe_nodes").insert(rows);

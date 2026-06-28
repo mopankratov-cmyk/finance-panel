@@ -6,6 +6,8 @@
 export type ContentMode = "audience" | "sell";
 export type RubricNiche = "clothing" | "toys" | "cosmetics" | "default";
 export interface AxisScores { hook: number; retention: number; native: number; brand: number; cta: number }
+export type RubricAxisV2 = "hook" | "scrollStop" | "retention" | "aiSlop" | "productVisibility" | "conversion";
+export type RubricAxesAny = Partial<Record<RubricAxisV2 | keyof AxisScores, unknown>>;
 
 export const QA_PASS = 7; // score(1-10) ≥ → ok (совпадает с QA_THRESHOLD в standard.ts)
 
@@ -58,10 +60,7 @@ export interface RubricResult { weighted: number; score: number; verdict: "ok" |
 export function scoreRubric(axes: AxisScores, mode: ContentMode, niche: RubricNiche, basis: RubricBasis = "frames"): RubricResult {
   const w = weightsFor(mode, niche);
   const clamp = (n: number) => Math.max(1, Math.min(5, Math.round(Number(n) || 1)));
-  const a: AxisScores = {
-    hook: clamp(axes.hook), retention: clamp(axes.retention), native: clamp(axes.native),
-    brand: clamp(axes.brand), cta: clamp(axes.cta),
-  };
+  const a = normalizeRubricAxes(axes);
   // 5 баллов × сумма весов(=1) = 5 → ×20 = 100
   const weighted = Math.round((a.hook * w.hook + a.retention * w.retention + a.native * w.native + a.brand * w.brand + a.cta * w.cta) * 20);
   const score = Math.max(1, Math.min(10, Math.round(weighted / 10)));
@@ -74,8 +73,45 @@ export function scoreRubric(axes: AxisScores, mode: ContentMode, niche: RubricNi
   return { weighted, score, verdict, floorFail };
 }
 
+export function normalizeRubricAxes(axes: RubricAxesAny | null | undefined): AxisScores {
+  const raw = axes || {};
+  const clamp = (n: unknown, fallback = 3) => Math.max(1, Math.min(5, Math.round(Number(n) || fallback)));
+  const aiSlop = raw.aiSlop == null ? null : clamp(raw.aiSlop);
+  return {
+    hook: clamp(raw.hook),
+    retention: clamp(raw.retention ?? raw.scrollStop),
+    native: aiSlop == null ? clamp(raw.native) : Math.max(1, Math.min(5, 6 - aiSlop)),
+    brand: clamp(raw.brand ?? raw.productVisibility),
+    cta: clamp(raw.cta ?? raw.conversion),
+  };
+}
+
+export function rubricAxesV2(axes: RubricAxesAny | null | undefined): Record<RubricAxisV2, number> {
+  const a = normalizeRubricAxes(axes);
+  return {
+    hook: a.hook,
+    scrollStop: a.retention,
+    retention: a.retention,
+    aiSlop: Math.max(1, Math.min(5, 6 - a.native)),
+    productVisibility: a.brand,
+    conversion: a.cta,
+  };
+}
+
+export function weakestRubricAxis(axes: RubricAxesAny | null | undefined): { axis: RubricAxisV2; value: number } | null {
+  const a = rubricAxesV2(axes);
+  const positiveAxes: RubricAxisV2[] = ["hook", "scrollStop", "retention", "productVisibility", "conversion"];
+  let best: { axis: RubricAxisV2; value: number } | null = null;
+  for (const axis of positiveAxes) {
+    const value = a[axis];
+    if (!best || value < best.value) best = { axis, value };
+  }
+  if (a.aiSlop >= 4 && (!best || (6 - a.aiSlop) < best.value)) return { axis: "aiSlop", value: 6 - a.aiSlop };
+  return best;
+}
+
 // --- текст рубрики для промпта (оси A–D общие, E зависит от режима) ---
-export const RUBRIC_AXES_AD = `ОСИ ОЦЕНКИ (каждую ставь целым баллом 1–5 строго по якорям):
+export const RUBRIC_AXES_AD = `ОСИ ОЦЕНКИ V2 (каждую ставь целым баллом 1–5 строго по якорям; старые alias совместимы: scrollStop/retention, aiSlop/native inverse, productVisibility/brand, conversion/cta):
 A. ХУК (0–3 сек): 5 — первый кадр паттерн-брейк (неожиданный визуал/эмоция/результат), за 1 сек ясно «зачем смотреть», есть текст-хук на экране; 3 — понятно про товар, но без интриги/эмоции, «обычный обзор»; 1 — статичный товар/лого/«здравствуйте», скролл не останавливает.
 B. УДЕРЖАНИЕ/ТЕМП: 5 — кадр/ракурс меняется каждые 1.5–3 сек ИЛИ есть сильный фактор новизны/WTF (необычный формат/продукт сам держит просмотр — напр. «тон в баллончике», цвето-меняющий стик, тест на UV-камере), петля любопытства (обещание/новизна раскрывается к финалу), субтитры, ни одной мёртвой секунды; 3 — динамика есть, но провисает в середине или хук закрылся слишком рано; 1 — один статичный план/говорящая голова на весь ролик, без субтитров.
 C. НАТИВНОСТЬ/DE-AI: 5 — выглядит как органик-съёмка живого человека (особенно если грунтовано на реальном кадре модели), копирайт живой, нет AI-артефактов, трендовый/живой звук; 3 — чуть «рекламно» или чуть «ИИ» (шаблонные фразы, стоковый звук), терпимо; 1 — явная реклама-карточка или AI-слоп (кривые руки/искажение товара, голос-робот, канцелярит).
