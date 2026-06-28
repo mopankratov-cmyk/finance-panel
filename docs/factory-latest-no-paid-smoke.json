@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-06-28T13:01:58.468Z",
+  "generated_at": "2026-06-28T13:16:46.292Z",
   "base_url": "https://finance-panel-two.vercel.app",
   "niche": null,
   "hours": 72,
@@ -25,13 +25,8 @@
             "threshold": null,
             "low": false,
             "hint": "тренд-аналитика · get_credit_balance",
-            "updated_at": "2026-06-28T13:01:43.734Z",
+            "updated_at": "2026-06-28T13:16:30.461Z",
             "history": [
-              {
-                "balance": 9.5,
-                "at": "2026-06-27T15:57:40.852793+00:00",
-                "source": "api"
-              },
               {
                 "balance": 9.5,
                 "at": "2026-06-27T16:27:47.185031+00:00",
@@ -226,6 +221,11 @@
                 "balance": 5.75,
                 "at": "2026-06-28T12:42:49.129057+00:00",
                 "source": "api"
+              },
+              {
+                "balance": 5.75,
+                "at": "2026-06-28T13:13:17.1453+00:00",
+                "source": "api"
               }
             ]
           },
@@ -240,13 +240,8 @@
             "threshold": null,
             "low": false,
             "hint": "AI UGC-актёры · remaining_credits",
-            "updated_at": "2026-06-28T13:01:42.801Z",
+            "updated_at": "2026-06-28T13:16:29.413Z",
             "history": [
-              {
-                "balance": 368,
-                "at": "2026-06-27T15:27:25.386935+00:00",
-                "source": "api"
-              },
               {
                 "balance": 358.5,
                 "at": "2026-06-27T15:57:39.575586+00:00",
@@ -441,6 +436,11 @@
                 "balance": 80.5,
                 "at": "2026-06-28T12:42:48.366528+00:00",
                 "source": "api"
+              },
+              {
+                "balance": 80.5,
+                "at": "2026-06-28T13:13:15.885188+00:00",
+                "source": "api"
               }
             ]
           },
@@ -455,13 +455,8 @@
             "threshold": null,
             "low": true,
             "hint": "видео-движки · нужен FAL_BILLING_KEY (admin)",
-            "updated_at": "2026-06-28T13:01:43.872Z",
+            "updated_at": "2026-06-28T13:16:30.721Z",
             "history": [
-              {
-                "balance": -0.18,
-                "at": "2026-06-27T15:55:49.661314+00:00",
-                "source": "api"
-              },
               {
                 "balance": -0.44,
                 "at": "2026-06-27T16:26:00.844072+00:00",
@@ -656,6 +651,11 @@
                 "balance": -1.61,
                 "at": "2026-06-28T12:42:49.808522+00:00",
                 "source": "api"
+              },
+              {
+                "balance": -1.61,
+                "at": "2026-06-28T13:13:16.731431+00:00",
+                "source": "api"
               }
             ]
           },
@@ -687,14 +687,14 @@
             "hint": "мозг завода · нет API баланса → ручной + оценка",
             "updated_at": null,
             "note": "нет API баланса — задай вручную; ниже оценка трат",
-            "estimated_spend_30d": 43.84,
+            "estimated_spend_30d": 45.64,
             "history": []
           }
         ],
         "low": [
           "fal"
         ],
-        "updated_at": "2026-06-28T13:01:44.328Z"
+        "updated_at": "2026-06-28T13:16:31.180Z"
       }
     },
     "quality": {
@@ -708,7 +708,7 @@
         "denominator": "produced_videos",
         "quality": {
           "window_hours": 72,
-          "since": "2026-06-25T13:01:45.084Z",
+          "since": "2026-06-25T13:16:31.903Z",
           "produced_videos": 88,
           "otk_pass": 0,
           "warnings": 88,
@@ -758,7 +758,7 @@
         "headline": "factory_quality_diagnostics",
         "diagnostics": {
           "window_hours": 72,
-          "since": "2026-06-25T13:01:46.481Z",
+          "since": "2026-06-25T13:16:33.210Z",
           "totals": {
             "recipes": 112,
             "produced_videos": 88,
@@ -1494,6 +1494,96 @@
         ]
       }
     },
+    "autoFeedback": {
+      "name": "feedback-queue-auto",
+      "url": "https://finance-panel-two.vercel.app/api/factory/feedback-queue/auto",
+      "status": 200,
+      "ok": true,
+      "body": {
+        "ok": true,
+        "apply": false,
+        "scanned": 145,
+        "actionable": 45,
+        "updated": 0,
+        "winner_seeded": 0,
+        "reject_seeded": 0,
+        "by_action": {
+          "winner": 0,
+          "trash": 45,
+          "keep": 100
+        },
+        "by_label": {
+          "winner": 0,
+          "usable": 100,
+          "trash": 45
+        },
+        "sample_winner": [],
+        "sample_trash": [
+          {
+            "id": 16345,
+            "name": "factory reconciliation recipe 177",
+            "url": "https://jwjobmdihddytqfgymus.supabase.co/storage/v1/object/public/factory-media/gen/1782638598502-9z3g19.mp4",
+            "reason": "OTK below usable threshold: 3"
+          },
+          {
+            "id": 16344,
+            "name": "factory reconciliation recipe 169",
+            "url": "https://jwjobmdihddytqfgymus.supabase.co/storage/v1/object/public/factory-media/gen/1782638589263-zav31t.mp4",
+            "reason": "OTK below usable threshold: 4"
+          },
+          {
+            "id": 16343,
+            "name": "factory reconciliation recipe 163",
+            "url": "https://jwjobmdihddytqfgymus.supabase.co/storage/v1/object/public/factory-media/gen/1782638580507-2h3i23.mp4",
+            "reason": "OTK below usable threshold: 3"
+          },
+          {
+            "id": 16342,
+            "name": "factory reconciliation recipe 153",
+            "url": "https://jwjobmdihddytqfgymus.supabase.co/storage/v1/object/public/factory-media/gen/1782638570680-43j8on.mp4",
+            "reason": "OTK below usable threshold: 4"
+          },
+          {
+            "id": 16341,
+            "name": "factory reconciliation recipe 152",
+            "url": "https://jwjobmdihddytqfgymus.supabase.co/storage/v1/object/public/factory-media/gen/1782638564858-2d8j1a.mp4",
+            "reason": "OTK below usable threshold: 3"
+          },
+          {
+            "id": 16340,
+            "name": "factory reconciliation recipe 147",
+            "url": "https://jwjobmdihddytqfgymus.supabase.co/storage/v1/object/public/factory-media/gen/1782638557697-5nj3vs.mp4",
+            "reason": "OTK below usable threshold: 4"
+          },
+          {
+            "id": 16339,
+            "name": "factory reconciliation recipe 143",
+            "url": "https://jwjobmdihddytqfgymus.supabase.co/storage/v1/object/public/factory-media/gen/1782638550665-22t2b5.mp4",
+            "reason": "OTK below usable threshold: 3"
+          },
+          {
+            "id": 16338,
+            "name": "factory reconciliation recipe 142",
+            "url": "https://jwjobmdihddytqfgymus.supabase.co/storage/v1/object/public/factory-media/gen/1782638537955-s1j24z.mp4",
+            "reason": "OTK below usable threshold: 4"
+          },
+          {
+            "id": 16337,
+            "name": "factory reconciliation recipe 134",
+            "url": "https://jwjobmdihddytqfgymus.supabase.co/storage/v1/object/public/factory-media/gen/1782638531329-0x2imq.mp4",
+            "reason": "OTK below usable threshold: 3"
+          },
+          {
+            "id": 16329,
+            "name": "Моё любимое корейское средство 🤍",
+            "url": "https://jwjobmdihddytqfgymus.supabase.co/storage/v1/object/public/factory-media/gen/1782637275305-qg98vi.mp4",
+            "reason": "OTK below usable threshold: 4"
+          }
+        ],
+        "note": "no objective winner signal found; auto-feedback will not invent winners from weak OTK",
+        "errors": []
+      }
+    },
     "series": {
       "name": "series-readiness",
       "url": "https://finance-panel-two.vercel.app/api/factory/series-readiness?target_runs=50&batch_size=5",
@@ -1584,7 +1674,8 @@
     ],
     "warnings": [
       "series hold: 50-run цель уже закрыта | 50-run цель уже закрыта: перед новым циклом зафиксировать выводы",
-      "12 videos await operator winner/reject feedback"
+      "12 videos await operator winner/reject feedback",
+      "auto-feedback dry-run: winner 0, trash 45"
     ]
   }
 }
