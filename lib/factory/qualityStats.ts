@@ -72,6 +72,7 @@ export async function loadFactoryQualityStats(
   if (error) throw error;
   const rows = ((data || []) as Row[]).filter((row) => !niche || canonicalNiche(text(row.niche, 80)) === niche);
   const produced = rows.filter(isProduced);
+  const producedRecipeIds = new Set(produced.map((row) => Number(row.id)).filter((id) => Number.isFinite(id) && id > 0));
   const pass = produced.filter(isPass);
   const warnings = produced.filter((row) => text(row.status, 40) === "warning").length;
   const runFail = rows.filter((row) => text(row.status, 40) === "run_fail").length;
@@ -83,13 +84,16 @@ export async function loadFactoryQualityStats(
   try {
     let cq = db
       .from("content_assets")
-      .select("id,niche")
+      .select("id,niche,analysis")
       .eq("disk", "gen")
       .eq("kind", "video")
-      .gte("created_at", since)
       .limit(5000);
     const { data: assetRows } = await cq;
-    bankedVideos = ((assetRows || []) as Row[]).filter((row) => !niche || canonicalNiche(text(row.niche, 80)) === niche).length;
+    bankedVideos = ((assetRows || []) as Row[]).filter((row) => {
+      const analysis = row.analysis && typeof row.analysis === "object" ? row.analysis as Row : {};
+      const recipeId = Number(analysis.recipe_id);
+      return producedRecipeIds.has(recipeId) && (!niche || canonicalNiche(text(row.niche, 80)) === niche);
+    }).length;
   } catch {
     bankedVideos = 0;
   }

@@ -6,6 +6,7 @@ const route = readFileSync("app/api/factory/quality/route.ts", "utf8");
 
 ok(/export interface FactoryQualityStats/.test(stats), "quality stats exposes a stable contract");
 ok(/produced_videos: produced\.length/.test(stats), "quality denominator is produced videos");
+ok(/producedRecipeIds/.test(stats), "banked video count is tied to produced recipe ids, not asset row timestamps");
 ok(/text_or_fallback_judged/.test(stats), "quality stats tracks text/fallback judged outputs separately");
 ok(/status", "otk_pass"/.test(stats) || /text\(row\.status, 40\) === "otk_pass"/.test(stats), "quality pass requires otk_pass status");
 ok(/num\(row\.otk_score\).*>= 7/.test(stats), "quality pass requires score >= 7");
