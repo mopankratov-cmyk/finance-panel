@@ -11,6 +11,7 @@ ok(/\/api\/factory\/memory-quality/.test(source), "no-paid smoke calls memory qu
 ok(/\/api\/factory\/feedback-queue/.test(source), "no-paid smoke surfaces operator feedback queue");
 ok(/\/api\/factory\/feedback-queue\/auto/.test(source) && /apply: false/.test(source), "no-paid smoke dry-runs automatic feedback without writes");
 ok(/\/api\/factory\/batch/.test(source) && /dry_run: true/.test(source), "no-paid smoke only dry-runs batch");
+ok(/require_strong_source: true/.test(source), "no-paid smoke checks quality-first strong source gate");
 ok(!/\/api\/factory\/graph-run"/.test(source), "no-paid smoke never starts graph-run");
 ok(!/\/api\/factory\/prepare-product/.test(source), "no-paid smoke never calls source-prep/FAL");
 ok(/ready_for_paid_batch/.test(source), "no-paid smoke summarizes paid launch readiness");

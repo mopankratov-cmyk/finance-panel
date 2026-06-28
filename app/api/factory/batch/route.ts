@@ -136,6 +136,7 @@ export async function POST(req: NextRequest) {
   const dryRun = b.dry_run === true;
   const requireFullBatch = b.require_full_batch === true;
   const requireLearningGate = b.require_learning_gate === true;
+  const requireStrongSource = b.require_strong_source === true;
   const requestedNiche = String(b.niche || "").trim() || null;
   const seriesAfter = String(b.series_after || "").trim() || null;
   const batchRunId = `batch_${Date.now()}_${randomUUID().slice(0, 8)}`;
@@ -246,7 +247,15 @@ export async function POST(req: NextRequest) {
   // 3) смета по нодам + отсечка по бюджету. Гард по WORST-CASE (est×REGEN_FACTOR) — иначе реген-петля
   // (до ×3 рендеров) перерасходует на unattended-автопилоте. spent — типовая смета для показа.
   const plannedRecipeIds: number[] = []; let spent = 0; let spentWorst = 0; let cappedByBudget = false;
-  for (const rid of recipeIds.filter((id) => sourceReadyRecipeIds.includes(id))) {
+  const qualitySourceRecipeIds = requireStrongSource
+    ? selectedRecipes
+      .filter((row) => {
+        const tier = sourceReadiness.get(String(row.article || ""))?.tier || "none";
+        return tier === "prepared" || tier === "real";
+      })
+      .map((row) => row.id)
+    : sourceReadyRecipeIds;
+  for (const rid of recipeIds.filter((id) => qualitySourceRecipeIds.includes(id))) {
     const { data: nodes } = await db.from("node_recipe_nodes").select("tool,node_type,slot").eq("recipe_id", rid);
     const est = estimateRecipe((nodes as Record<string, unknown>[] | null) || []);
     if (spentWorst + est * REGEN_FACTOR > cap) { cappedByBudget = true; break; }
@@ -255,7 +264,7 @@ export async function POST(req: NextRequest) {
     plannedRecipeIds.push(rid);
   }
   const preflight = {
-    ready: plannedRecipeIds.length >= count && !cappedByBudget && sourceReadyDrafts >= count && providerReady && (!requireLearningGate || learningGate.ready),
+    ready: plannedRecipeIds.length >= count && !cappedByBudget && sourceReadyDrafts >= count && (!requireStrongSource || strongSourceDrafts >= count) && providerReady && (!requireLearningGate || learningGate.ready),
     requested_count: count,
     available_drafts: availableDrafts,
     missing_drafts: missingDrafts,
@@ -264,6 +273,7 @@ export async function POST(req: NextRequest) {
     strong_source_drafts: strongSourceDrafts,
     wb_only_drafts: wbOnlyDrafts,
     source_tiers: sourceTierCounts,
+    require_strong_source: requireStrongSource,
     budget_fit_count: plannedRecipeIds.length,
     provider_ready: providerReady,
   };
@@ -342,9 +352,13 @@ export async function POST(req: NextRequest) {
       capped_by_budget: cappedByBudget,
       balance_unknown: balanceUnknown,
       provider_block: providerBlock,
-      next_action: preflight.missing_drafts > 0 || preflight.missing_source_drafts > 0 ? { type: "prepare_drafts", route: "/api/factory/prepare-drafts", count, niche: requestedNiche } : sourcePrepNextAction,
+      next_action: requireStrongSource && strongSourceDrafts < count && sourcePrepNextAction
+        ? sourcePrepNextAction
+        : preflight.missing_drafts > 0 || preflight.missing_source_drafts > 0 ? { type: "prepare_drafts", route: "/api/factory/prepare-drafts", count, niche: requestedNiche } : sourcePrepNextAction,
       error: preflight.missing_drafts > 0
         ? `Пятёрка не запущена: не хватает ${preflight.missing_drafts} draft-рецептов.`
+        : requireStrongSource && strongSourceDrafts < count
+          ? `Пятёрка не запущена: quality-first требует prepared/real source, сейчас ${strongSourceDrafts}/${count}.`
         : preflight.missing_source_drafts > 0
           ? `Пятёрка не запущена: не хватает ${preflight.missing_source_drafts} source-ready draft-рецептов.`
         : "Пятёрка не запущена: бюджет не покрывает полный batch.",

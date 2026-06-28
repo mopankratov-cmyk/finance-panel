@@ -19,6 +19,7 @@ ok(/const batchRunId = `batch_\$\{Date\.now\(\)\}_\$\{randomUUID\(\)\.slice\(0, 
 ok(/import \{ buildRunPlan, makeRunId \} from "@\/lib\/factory\/graphRun";/.test(route), "batch route can enqueue run plans directly");
 ok(/const requireFullBatch = b\.require_full_batch === true;/.test(route), "batch route supports full-batch requirement");
 ok(/const requireLearningGate = b\.require_learning_gate === true;/.test(route), "batch route supports learning-gate requirement");
+ok(/const requireStrongSource = b\.require_strong_source === true;/.test(route), "batch route supports quality-first strong source requirement");
 ok(/const seriesAfter = String\(b\.series_after \|\| ""\)\.trim\(\) \|\| null;/.test(route), "batch route supports active series window");
 ok(/loadImprovementSnapshot\(db, \{ niche: requestedNiche, target_runs: 50/.test(route), "batch route reads learning gate snapshot");
 ok(/series_after: seriesAfter/.test(route), "batch route applies active series window to learning gate");
@@ -32,12 +33,13 @@ ok(/const sourceReadyDrafts = sourceReadyRecipeIds\.length;/.test(route), "batch
 ok(/missing_source_drafts: missingSourceDrafts/.test(route), "batch route reports missing source-ready drafts in preflight");
 ok(/source_tiers: sourceTierCounts/.test(route), "batch route reports source tiers in preflight");
 ok(/strong_source_drafts: strongSourceDrafts/.test(route), "batch route reports prepared/real source draft count");
+ok(/requireStrongSource && strongSourceDrafts < count/.test(route), "batch route blocks quality-first launch when strong sources are missing");
 ok(/wb_only_drafts: wbOnlyDrafts/.test(route), "batch route reports WB-only source draft count");
 ok(/next_action: providerReady \? \{ type: "prepare_drafts", route: "\/api\/factory\/prepare-drafts", count, niche: requestedNiche \} : null/.test(route), "batch route suggests draft preparation when queue is empty and providers are ready");
 ok(/sourcePrepNextAction/.test(route), "batch route suggests source-prep when only weak WB sources are available");
-ok(/next_action: preflight\.missing_drafts > 0 \|\| preflight\.missing_source_drafts > 0 \? \{ type: "prepare_drafts", route: "\/api\/factory\/prepare-drafts", count, niche: requestedNiche \} : sourcePrepNextAction/.test(route), "batch route suggests draft preparation before source-prep when guarded launch is missing drafts");
+ok(/next_action: requireStrongSource && strongSourceDrafts < count && sourcePrepNextAction[\s\S]*\? sourcePrepNextAction[\s\S]*: preflight\.missing_drafts > 0 \|\| preflight\.missing_source_drafts > 0 \? \{ type: "prepare_drafts", route: "\/api\/factory\/prepare-drafts", count, niche: requestedNiche \} : sourcePrepNextAction/.test(route), "batch route can suggest source-prep for quality-first strong-source gaps");
 ok(/requested: \{ niche: requestedNiche, count, budget_usd: cap, series_after: seriesAfter \}/.test(route), "batch route returns requested batch shape");
-ok(/const preflight = \{[\s\S]*ready: plannedRecipeIds\.length >= count && !cappedByBudget && sourceReadyDrafts >= count && providerReady && \(!requireLearningGate \|\| learningGate\.ready\)/.test(route), "batch route returns launch readiness before enqueue");
+ok(/const preflight = \{[\s\S]*ready: plannedRecipeIds\.length >= count && !cappedByBudget && sourceReadyDrafts >= count && \(!requireStrongSource \|\| strongSourceDrafts >= count\) && providerReady && \(!requireLearningGate \|\| learningGate\.ready\)/.test(route), "batch route returns quality-first launch readiness before enqueue");
 ok(/if \(requireLearningGate && !dryRun && !learningGate\.ready\)/.test(route), "batch route blocks learning-gated launches before enqueue");
 ok(/if \(requireFullBatch && !dryRun && !preflight\.ready\)/.test(route), "batch route blocks incomplete required batches before launch");
 ok(/batch_run_id: batchRunId/.test(route), "batch route returns batch run id");
