@@ -50,7 +50,10 @@ export async function GET(req: NextRequest) {
     const platform = String(sp.get("platform") || sp.get("target_platform") || "").trim().toLowerCase();
     const limit = Math.min(5000, Math.max(10, Number(sp.get("limit") || 3000)));
     const persist = sp.get("persist") === "true";
-    const maxPersistSources = Math.min(30, Math.max(1, Number(sp.get("max_persist_sources") || 12)));
+    const maxPersistParam = Number(sp.get("max_persist_sources") || 0);
+    const maxPersistSources = Number.isFinite(maxPersistParam) && maxPersistParam > 0
+      ? Math.floor(maxPersistParam)
+      : null;
     const minCandidateScore = Math.min(100, Math.max(0, Number(sp.get("min_candidate_score") || 45)));
     const { rows, error } = await loadCorpusRows({ niche, platform, limit });
     if (error) return NextResponse.json({ error: "viral_videos: " + error }, { status: 500 });
@@ -68,7 +71,8 @@ export async function GET(req: NextRequest) {
     if (persist && replay.sources.length) {
       try {
         let playbook = await loadPlaybook(niche);
-        for (const source of replay.sources.slice(0, maxPersistSources)) {
+        const sourcesToPersist = maxPersistSources ? replay.sources.slice(0, maxPersistSources) : replay.sources;
+        for (const source of sourcesToPersist) {
           playbook = rememberDiscoverySourceRun(playbook, {
             niche,
             platform: replay.platform,
@@ -106,7 +110,7 @@ export async function GET(req: NextRequest) {
       warning,
       replay: {
         ...replay,
-        sources: replay.sources.slice(0, 50),
+        sources: replay.sources,
       },
     }, { headers: { "Cache-Control": "no-store" } });
   } catch (e) {
