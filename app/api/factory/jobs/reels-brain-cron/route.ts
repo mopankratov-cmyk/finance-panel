@@ -116,6 +116,22 @@ export async function GET(req: NextRequest) {
       signal: AbortSignal.timeout(115000),
     });
     const result = await response.json().catch(() => ({}));
+    const resultRecord = (result || {}) as Record<string, unknown>;
+    const tickRecord = ((resultRecord.tick || resultRecord) || {}) as Record<string, unknown>;
+    console.info("reels_brain_cron_tick", JSON.stringify({
+      task,
+      decision: auto.decision,
+      target_total: auto.targetTotal,
+      backlog: auto.backlog,
+      endpoint,
+      status: response.status,
+      ok: response.ok && (result as { ok?: boolean }).ok !== false,
+      found: tickRecord.found ?? null,
+      inserted: tickRecord.inserted ?? null,
+      analyzed: tickRecord.analyzed ?? null,
+      errors: tickRecord.errors ?? null,
+      discovery_learning: Array.isArray(tickRecord.discovery_learning) ? tickRecord.discovery_learning.length : null,
+    }));
 
     return NextResponse.json({
       ok: response.ok && (result as { ok?: boolean }).ok !== false,

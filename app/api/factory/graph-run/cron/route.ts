@@ -30,17 +30,17 @@ export async function GET(req: NextRequest) {
     const reelsBrainTask = reelsBrainTaskForCronTick();
     const result = await wakeStaleRecipes(db, req.nextUrl.origin, { trigger: "cron", maxWake: CRON_MAX_WAKE });
     const reelsBrain = reelsBrainTask
-      ? await internalFetch(`${req.nextUrl.origin}/api/factory/jobs/reels-brain-cron?task=${reelsBrainTask}`, {
+      ? await internalFetch(`${req.nextUrl.origin}/api/factory/jobs/reels-brain-cron?source=graph-run`, {
         method: "GET",
         signal: AbortSignal.timeout(110000),
       }).then(async (res) => ({
         ok: res.ok,
         status: res.status,
-        task: reelsBrainTask,
+        trigger_slot: reelsBrainTask,
         result: await res.json().catch(() => ({})),
       })).catch((e) => ({
         ok: false,
-        task: reelsBrainTask,
+        trigger_slot: reelsBrainTask,
         error: String((e as Error)?.message || e).slice(0, 160),
       }))
       : { ok: true, skipped: true, reason: "not a reels-brain tick minute" };
