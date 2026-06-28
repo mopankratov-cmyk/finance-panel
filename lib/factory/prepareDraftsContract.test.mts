@@ -38,6 +38,10 @@ ok(/export async function transferRecipeTemplate/.test(helper), "shared transfer
 ok(/status: "draft"/.test(helper), "transfer helper creates draft recipes");
 ok(/built_by: p\.built_by \|\| "manual"/.test(helper), "transfer helper preserves existing manual behavior by default");
 ok(/p\.force_niche \? \(niche \|\| nicheFromArticle\(article, productName\)\) : \(nicheFromArticle\(article, productName\) \|\| niche\)/.test(helper), "transfer helper can preserve niche for series preparation");
+ok(/function specializeText/.test(helper), "transfer helper specializes template text deterministically");
+ok(/product_article: article/.test(helper), "transfer helper writes product article into node params");
+ok(/product_name: productName \|\| null/.test(helper), "transfer helper writes product name into node params");
+ok(/agent_suggestion:[\s\S]*product_article: article/.test(helper), "transfer helper carries product context into agent suggestion");
 ok(/transferRecipeTemplate/.test(recipes), "recipes route uses shared transfer helper");
 
 if (failed) process.exit(1);

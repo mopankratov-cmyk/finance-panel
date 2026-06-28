@@ -16,6 +16,18 @@ type TransferInput = {
   force_niche?: boolean;
 };
 
+function specializeText(value: unknown, p: { article: string; productName: string }): string {
+  const source = String(value || "");
+  if (!source) return "";
+  const product = p.productName || p.article;
+  return source
+    .replace(/\{\{\s*article\s*\}\}|\{\s*article\s*\}|\[\s*article\s*\]/gi, p.article)
+    .replace(/\{\{\s*product(?:_name)?\s*\}\}|\{\s*product(?:_name)?\}|\[\s*product(?:_name)?\]/gi, product)
+    .replace(/\{\{\s*товар\s*\}\}|\{\s*товар\s*\}|\[\s*товар\s*\]/gi, product)
+    .replace(/\{\{\s*артикул\s*\}\}|\{\s*артикул\s*\}|\[\s*артикул\s*\]/gi, p.article)
+    .slice(0, 1500);
+}
+
 function roleToSlot(n: Record<string, unknown>): string {
   const r = String(n?.role || "").toLowerCase();
   const t = String(n?.node_type || "").toLowerCase();
@@ -66,25 +78,31 @@ export async function transferRecipeTemplate(db: DbClient, p: TransferInput) {
 
   const rows = tplNodes.map((n, i) => {
     const params = n.params && typeof n.params === "object" && !Array.isArray(n.params) ? n.params as Record<string, unknown> : {};
+    const specialized = { article, productName };
+    const onscreenText = specializeText(n.onscreen_text, specialized).slice(0, 300);
+    const visualDesc = specializeText(n.visual_desc, specialized).slice(0, 300);
+    const voiceover = specializeText(n.voiceover, specialized).slice(0, 700);
     return {
       recipe_id: recipeId,
       ordinal: typeof n.ordinal === "number" ? n.ordinal : i + 1,
       slot: roleToSlot(n),
       node_type: n.node_type || null,
       tool: n.tool_candidate || n.tool || null,
-      prompt: String(n.prompt || n.voiceover || n.visual_desc || "").slice(0, 1500),
+      prompt: specializeText(n.prompt || voiceover || visualDesc || "", specialized),
       params: {
         ...params,
-        ...(n.onscreen_text ? { onscreen_text: String(n.onscreen_text).slice(0, 300) } : {}),
+        product_article: article,
+        product_name: productName || null,
+        ...(onscreenText ? { onscreen_text: onscreenText } : {}),
         ...(n.role ? { role: String(n.role).toLowerCase() } : {}),
         ...(n.emotion ? { emotion: String(n.emotion) } : {}),
-        ...(n.visual_desc ? { visual_desc: String(n.visual_desc).slice(0, 300) } : {}),
+        ...(visualDesc ? { visual_desc: visualDesc } : {}),
       },
       asset_url: "",
       duration_sec: typeof n.duration_sec === "number" ? n.duration_sec : null,
       source: "transferred_from_corpus",
       human_edited: false,
-      agent_suggestion: { role: n.role, hook_type: n.hook_type, onscreen_text: n.onscreen_text, voiceover: n.voiceover, emotion: n.emotion, visual_desc: n.visual_desc },
+      agent_suggestion: { role: n.role, hook_type: n.hook_type, onscreen_text: onscreenText || n.onscreen_text, voiceover: voiceover || n.voiceover, emotion: n.emotion, visual_desc: visualDesc || n.visual_desc, product_article: article, product_name: productName || null },
     };
   });
   const { error: nErr } = await db.from("node_recipe_nodes").insert(rows);
