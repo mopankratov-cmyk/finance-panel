@@ -180,7 +180,28 @@ function roundInt(value: number | null): number | null {
 function runWarnings(runPlan: unknown): string[] {
   if (!runPlan || typeof runPlan !== "object") return [];
   const warnings = (runPlan as Record<string, unknown>).warnings;
-  return Array.isArray(warnings) ? warnings.map((v) => normalizeWarningReason(toText(v, 120))).filter(Boolean) : [];
+  if (!Array.isArray(warnings)) return [];
+  return warnings
+    .map((v) => normalizeWarningReason(toText(v, 120)))
+    .filter((warning) => warning && !isLearningNoiseWarning(warning))
+    .sort((a, b) => warningLearningPriority(a) - warningLearningPriority(b));
+}
+
+function isLearningNoiseWarning(warning: string): boolean {
+  const s = warning.toLowerCase();
+  return s === "runtime autofill skipped fail-open"
+    || s.startsWith("gen-poll source fallback rescued")
+    || s.startsWith("assemble source fallback rescued");
+}
+
+function warningLearningPriority(warning: string): number {
+  const s = warning.toLowerCase();
+  if (s.startsWith("artifact-check warning")) return 0;
+  if (s.startsWith("otk below threshold")) return 1;
+  if (s.includes("video-critic did not return score")) return 2;
+  if (s.includes("timeout")) return 3;
+  if (s.includes("gen-save") || s.includes("catalog")) return 4;
+  return 5;
 }
 
 function hookTextFromPlan(runPlan: unknown): string {

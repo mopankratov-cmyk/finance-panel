@@ -30,7 +30,11 @@ ok(/quality_wins: number;/.test(source), "improvement loop separates internal qu
 ok(/warning_reason: string;/.test(source), "improvement loop tracks warning reason per run");
 ok(/dominant_warning_reason: string \| null;/.test(source), "improvement loop exposes dominant warning reason on aggregates");
 ok(/import \{ normalizeWarningReason \} from "\.\/observability";/.test(source), "improvement loop reuses shared warning normalization");
-ok(/warnings\.map\(\(v\) => normalizeWarningReason\(toText\(v, 120\)\)\)/.test(source), "improvement loop normalizes warning reasons before learning aggregation");
+ok(/\.map\(\(v\) => normalizeWarningReason\(toText\(v, 120\)\)\)/.test(source), "improvement loop normalizes warning reasons before learning aggregation");
+ok(/function isLearningNoiseWarning/.test(source), "improvement loop filters operational warning noise out of learning");
+ok(/runtime autofill skipped fail-open/.test(source), "improvement loop treats runtime autofill fail-open as learning noise");
+ok(/function warningLearningPriority/.test(source), "improvement loop prioritizes content-quality warnings before infrastructure warnings");
+ok(/artifact-check warning/.test(source) && /otk below threshold/.test(source), "improvement loop prioritizes artifact and OTK warnings");
 ok(/feedback_status: "winner" \| "approved" \| "rejected" \| "none";/.test(source), "improvement loop tracks explicit feedback status");
 ok(/batch_run_id: string \| null;/.test(source), "improvement loop exposes batch run ids");
 ok(/batch_role: "control" \| "experiment" \| "none";/.test(source), "improvement loop tracks batch role");
