@@ -779,11 +779,12 @@ export async function loadImprovementSnapshot(
   const targetRuns = Math.max(5, Math.min(200, Number(options?.target_runs) || 50));
   const niche = options?.niche || null;
   const seriesStartAt = toText(options?.series_after, 40) || null;
+  const queryLimit = seriesStartAt ? Math.max(targetRuns * 4, 240) : Math.max(targetRuns, 80);
   let q = db
     .from("node_recipes")
     .select("id,article,niche,mode,status,otk_score,output_url,format_detected,created_at,updated_at,run_plan")
     .order(seriesStartAt ? "updated_at" : "created_at", { ascending: false })
-    .limit(Math.max(targetRuns, 80));
+    .limit(queryLimit);
   if (niche) q = q.eq("niche", niche);
   const { data, error } = await q;
   if (error) throw error;
