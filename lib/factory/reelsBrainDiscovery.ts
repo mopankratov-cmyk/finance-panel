@@ -121,6 +121,81 @@ function clean(value: unknown, max = 160): string {
   return String(value || "").replace(/\s+/g, " ").trim().slice(0, max);
 }
 
+const CP1251_SPECIAL_BYTES: Record<string, number> = {
+  "Ђ": 0x80, "Ѓ": 0x81, "‚": 0x82, "ѓ": 0x83, "„": 0x84, "…": 0x85, "†": 0x86, "‡": 0x87,
+  "€": 0x88, "‰": 0x89, "Љ": 0x8a, "‹": 0x8b, "Њ": 0x8c, "Ќ": 0x8d, "Ћ": 0x8e, "Џ": 0x8f,
+  "ђ": 0x90, "‘": 0x91, "’": 0x92, "“": 0x93, "”": 0x94, "•": 0x95, "–": 0x96, "—": 0x97,
+  "™": 0x99, "љ": 0x9a, "›": 0x9b, "њ": 0x9c, "ќ": 0x9d, "ћ": 0x9e, "џ": 0x9f,
+  "Ў": 0x9f, "ў": 0xa1, "Ј": 0xa2, "ј": 0xa3, "Ґ": 0xa5, "¦": 0xa6, "Ё": 0xa8, "Є": 0xaa,
+  "«": 0xab, "¬": 0xac, "®": 0xae, "Ї": 0xaf, "°": 0xb0, "±": 0xb1, "І": 0xb2, "і": 0xb3,
+  "ґ": 0xb4, "µ": 0xb5, "¶": 0xb6, "·": 0xb7, "ё": 0xb8, "№": 0xb9, "є": 0xba, "»": 0xbb,
+  "Ѕ": 0xbd, "ѕ": 0xbe, "ї": 0xbf,
+};
+
+function cyrillicCount(value: string): number {
+  return (value.match(/[а-яё]/giu) || []).length;
+}
+
+function likelyBrokenText(value: string): boolean {
+  return /[ÐÑЃЋЌЊЉЂЃђѓњљџ]/.test(value)
+    || /[РС][ґµ‚ЃєёїѕЂ]/.test(value)
+    || /[—–]{2,}/.test(value);
+}
+
+function sourceTextQuality(value: string): number {
+  const brokenPenalty = likelyBrokenText(value) ? 100 : 0;
+  return cyrillicCount(value) * 3 - brokenPenalty - Math.abs(value.length - 32) / 20;
+}
+
+function tryDecodeURIComponent(value: string): string {
+  if (!/%[0-9a-f]{2}/i.test(value)) return value;
+  try { return decodeURIComponent(value); } catch { return value; }
+}
+
+function tryUtf8FromLatin1(value: string): string {
+  try {
+    const decoded = Buffer.from(value, "latin1").toString("utf8");
+    return decoded.includes("\uFFFD") ? value : decoded;
+  } catch {
+    return value;
+  }
+}
+
+function cp1251Byte(value: string): number | null {
+  const code = value.codePointAt(0);
+  if (code == null) return null;
+  if (code <= 0x7f) return code;
+  if (code >= 0x0410 && code <= 0x044f) return code - 0x0350;
+  return CP1251_SPECIAL_BYTES[value] ?? null;
+}
+
+function tryUtf8FromCp1251Mojibake(value: string): string {
+  const bytes: number[] = [];
+  for (const char of value) {
+    const byte = cp1251Byte(char);
+    if (byte == null) return value;
+    bytes.push(byte);
+  }
+  try {
+    const decoded = Buffer.from(bytes).toString("utf8");
+    return decoded.includes("\uFFFD") ? value : decoded;
+  } catch {
+    return value;
+  }
+}
+
+function normalizeStoredSourceValue(value: string): string {
+  const decoded = value.startsWith("q:") ? tryDecodeURIComponent(value.slice(2)) : tryDecodeURIComponent(value);
+  const candidates = [decoded];
+  if (likelyBrokenText(decoded)) {
+    candidates.push(tryUtf8FromLatin1(decoded));
+    candidates.push(tryUtf8FromCp1251Mojibake(decoded));
+  }
+  return candidates
+    .map((candidate) => clean(candidate, 180))
+    .sort((a, b) => sourceTextQuality(b) - sourceTextQuality(a) || a.length - b.length)[0] || clean(decoded, 180);
+}
+
 function sourceId(input: { type: ReelsDiscoverySourceType; platform: string; niche: string; value: string }): string {
   return [
     input.platform,
@@ -137,7 +212,7 @@ function splitSourceOrbit(value: string | null | undefined): { provider: string 
   if (idx < 0) return { provider: null, query: source };
   return {
     provider: clean(source.slice(0, idx), 80) || null,
-    query: clean(source.slice(idx + 1), 160) || null,
+    query: normalizeStoredSourceValue(source.slice(idx + 1)) || null,
   };
 }
 

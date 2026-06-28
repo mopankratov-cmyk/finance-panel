@@ -76,6 +76,12 @@ export interface ViralVideoInsertRow {
 
 const TRACKING_PARAMS = new Set(["utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content", "fbclid", "gclid", "igsh", "si"]);
 
+function sourceOrbitId(provider: string, source: string | undefined): string {
+  const cleanProvider = String(provider || "unknown").trim().slice(0, 80) || "unknown";
+  const cleanSource = String(source || "manual").replace(/\s+/g, " ").trim().slice(0, 160) || "manual";
+  return `${cleanProvider}:q:${encodeURIComponent(cleanSource)}`;
+}
+
 export function toFiniteNumber(value: unknown): number | null {
   if (value == null || value === "") return null;
   if (typeof value === "number") return Number.isFinite(value) ? value : null;
@@ -267,7 +273,7 @@ export function makeViralVideoRows(
       caption: video.caption,
       sound_id: video.soundId,
       sound_title: video.soundTitle,
-      source_orbit_id: `${opts.sourceProvider}:${(opts.sourceQuery || opts.sourceType || "manual").slice(0, 80)}`,
+      source_orbit_id: sourceOrbitId(opts.sourceProvider, opts.sourceQuery || opts.sourceType || "manual"),
       analyzed: false,
     });
   }

@@ -68,8 +68,15 @@ function eq(a: unknown, b: unknown, m: string) { ok(JSON.stringify(a) === JSON.s
   eq(prepared.rows.length, 2, "rows: dedups canonical urls and rejects no-url");
   eq(prepared.rejected, 1, "rows: rejected count");
   eq(prepared.rows[0].niche, "toys", "rows: niche set");
-  eq(prepared.rows[0].source_orbit_id, "manual:seed", "rows: source marker set");
+  eq(prepared.rows[0].source_orbit_id, "manual:q:seed", "rows: source marker set");
   eq(prepared.rows[1].platform, "youtube", "rows: youtube platform");
+}
+
+{
+  const prepared = makeViralVideoRows([
+    { url: "https://www.tiktok.com/@a/video/2", views: 1000 },
+  ], { niche: "cosmetics", sourceProvider: "apify_tiktok", sourceQuery: "детские подарки" });
+  eq(prepared.rows[0].source_orbit_id, "apify_tiktok:q:%D0%B4%D0%B5%D1%82%D1%81%D0%BA%D0%B8%D0%B5%20%D0%BF%D0%BE%D0%B4%D0%B0%D1%80%D0%BA%D0%B8", "rows: source query is url-encoded");
 }
 
 console.log(`\nreelsBrain: ${pass} passed, ${fail} failed`);

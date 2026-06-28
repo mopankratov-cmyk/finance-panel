@@ -95,6 +95,39 @@ import {
 }
 
 {
+  const replay = buildDiscoveryReplay({
+    niche: "ru_toys",
+    platform: "tiktok",
+    rows: [
+      {
+        url: "https://www.tiktok.com/@a/video/4",
+        platform: "tiktok",
+        niche: "ru_toys",
+        caption: "Детские подарки и развивающие игрушки",
+        views: 120000,
+        likes: 7000,
+        followers_creator: 1900,
+        source_orbit_id: "apify_tiktok:q:%D0%B4%D0%B5%D1%82%D1%81%D0%BA%D0%B8%D0%B5%20%D0%BF%D0%BE%D0%B4%D0%B0%D1%80%D0%BA%D0%B8",
+      },
+      {
+        url: "https://www.tiktok.com/@b/video/5",
+        platform: "tiktok",
+        niche: "ru_toys",
+        caption: "Детские подарки и игрушки на маркетплейсе",
+        views: 90000,
+        likes: 5000,
+        followers_creator: 1600,
+        source_orbit_id: "apify_tiktok:РґРµС‚СЃРєРёРµ РїРѕРґР°СЂРєРё",
+      },
+    ],
+  });
+
+  assert.equal(replay.sources.length, 1);
+  assert.equal(replay.sources[0].value, "детские подарки");
+  assert.equal(replay.sources[0].found, 2);
+}
+
+{
   let playbook: Record<string, unknown> = { niche: "ru_toys" };
   playbook = rememberDiscoverySourceRun(playbook, {
     niche: "ru_toys",
