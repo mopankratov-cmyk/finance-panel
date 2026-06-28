@@ -179,6 +179,7 @@ export async function POST(req: NextRequest) {
     .map((row) => row.id);
   const sourceReadyDrafts = sourceReadyRecipeIds.length;
   const missingSourceDrafts = Math.max(0, count - sourceReadyDrafts);
+  const providerReady = providerBlock.length === 0;
   if (!recipeIds.length) return NextResponse.json({
     ok: false,
     batch_run_id: null,
@@ -191,6 +192,7 @@ export async function POST(req: NextRequest) {
       source_ready_drafts: 0,
       missing_source_drafts: count,
       budget_fit_count: 0,
+      provider_ready: providerReady,
     },
     learning_gate: learningGate,
     batch_plan: batchPlan,
@@ -202,8 +204,11 @@ export async function POST(req: NextRequest) {
     budget_usd: cap,
     capped_by_budget: false,
     balance_unknown: balanceUnknown,
-    next_action: { type: "prepare_drafts", route: "/api/factory/prepare-drafts", count, niche: requestedNiche },
-    error: "нет рецептов-черновиков для батча (создай в студии или передай recipe_ids)",
+    provider_block: providerBlock,
+    next_action: providerReady ? { type: "prepare_drafts", route: "/api/factory/prepare-drafts", count, niche: requestedNiche } : null,
+    error: providerReady
+      ? "нет рецептов-черновиков для батча (создай в студии или передай recipe_ids)"
+      : `Пятёрка не запущена: ${providerBlock.join(", ")} недавно вернул balance/access stop. Пополни провайдера и повтори preflight.`,
   }, { status: 409 });
 
   // 3) смета по нодам + отсечка по бюджету. Гард по WORST-CASE (est×REGEN_FACTOR) — иначе реген-петля
@@ -218,14 +223,14 @@ export async function POST(req: NextRequest) {
     plannedRecipeIds.push(rid);
   }
   const preflight = {
-    ready: plannedRecipeIds.length >= count && !cappedByBudget && sourceReadyDrafts >= count && providerBlock.length === 0 && (!requireLearningGate || learningGate.ready),
+    ready: plannedRecipeIds.length >= count && !cappedByBudget && sourceReadyDrafts >= count && providerReady && (!requireLearningGate || learningGate.ready),
     requested_count: count,
     available_drafts: availableDrafts,
     missing_drafts: missingDrafts,
     source_ready_drafts: sourceReadyDrafts,
     missing_source_drafts: missingSourceDrafts,
     budget_fit_count: plannedRecipeIds.length,
-    provider_ready: providerBlock.length === 0,
+    provider_ready: providerReady,
   };
   const controlCount = Math.max(1, Math.min(count, Number(batchPlan?.control_count) || Math.min(2, count)));
   const primaryAxis = ["hook_angle", "proof_density", "cta_shape", "format"].includes(String(batchPlan?.primary_change_axis || ""))

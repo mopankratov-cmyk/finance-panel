@@ -48,7 +48,7 @@ ok(/const seriesAfter = String\(b\.series_after \|\| ""\)\.trim\(\) \|\| null;/.
 ok(/if \(requireFullBatch && !dryRun && !preflight\.ready\)/.test(batch), "batch blocks partial guarded launches");
 ok(/async function recentProviderBalanceBlocks/.test(batch), "batch remembers recent provider balance/access stops");
 ok(/providerBlock = await recentProviderBalanceBlocks\(db, requestedNiche\)/.test(batch), "batch checks recent provider stops before launch");
-ok(/provider_ready: providerBlock\.length === 0/.test(batch), "batch preflight exposes provider readiness");
+ok(/provider_ready: providerReady/.test(batch), "batch preflight exposes provider readiness");
 ok(/if \(requireFullBatch && !dryRun && providerBlock\.length\)/.test(batch), "batch blocks guarded launch after recent provider stop");
 ok(/provider_block: providerBlock/.test(batch), "batch returns provider stop details");
 ok(/if \(requireLearningGate && !dryRun && !learningGate\.ready\)/.test(batch), "batch blocks next-five launches without enough feedback");
