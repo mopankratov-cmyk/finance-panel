@@ -8,6 +8,7 @@ ok(/DEFAULT_JSON_OUT = "docs\/factory-latest-no-paid-smoke\.json"/.test(source),
 ok(/DEFAULT_MD_OUT = "docs\/factory-latest-no-paid-smoke\.md"/.test(source), "no-paid smoke writes latest markdown artifact");
 ok(/\/api\/factory\/quality-diagnostics/.test(source), "no-paid smoke calls quality diagnostics");
 ok(/\/api\/factory\/memory-quality/.test(source), "no-paid smoke calls memory quality");
+ok(/\/api\/factory\/feedback-queue/.test(source), "no-paid smoke surfaces operator feedback queue");
 ok(/\/api\/factory\/batch/.test(source) && /dry_run: true/.test(source), "no-paid smoke only dry-runs batch");
 ok(!/\/api\/factory\/graph-run"/.test(source), "no-paid smoke never starts graph-run");
 ok(!/\/api\/factory\/prepare-product/.test(source), "no-paid smoke never calls source-prep/FAL");
