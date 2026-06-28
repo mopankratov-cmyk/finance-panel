@@ -46,6 +46,11 @@ ok(/const requireFullBatch = b\.require_full_batch === true;/.test(batch), "batc
 ok(/const requireLearningGate = b\.require_learning_gate === true;/.test(batch), "batch can require learning-gated next-five launch");
 ok(/const seriesAfter = String\(b\.series_after \|\| ""\)\.trim\(\) \|\| null;/.test(batch), "batch accepts active series window");
 ok(/if \(requireFullBatch && !dryRun && !preflight\.ready\)/.test(batch), "batch blocks partial guarded launches");
+ok(/async function recentProviderBalanceBlocks/.test(batch), "batch remembers recent provider balance/access stops");
+ok(/providerBlock = await recentProviderBalanceBlocks\(db, requestedNiche\)/.test(batch), "batch checks recent provider stops before launch");
+ok(/provider_ready: providerBlock\.length === 0/.test(batch), "batch preflight exposes provider readiness");
+ok(/if \(requireFullBatch && !dryRun && providerBlock\.length\)/.test(batch), "batch blocks guarded launch after recent provider stop");
+ok(/provider_block: providerBlock/.test(batch), "batch returns provider stop details");
 ok(/if \(requireLearningGate && !dryRun && !learningGate\.ready\)/.test(batch), "batch blocks next-five launches without enough feedback");
 ok(/batch_run_id: batchRunId/.test(batch), "batch returns a traceable batch id");
 ok(/selected_recipes: selectedWithBatchMeta\(enqueued\)/.test(batch), "batch returns selected recipe metadata");

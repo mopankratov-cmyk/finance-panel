@@ -25,6 +25,7 @@ const REQUIRED = ["fal", "creatify", "shotstack"]; // движки батча
 const DEFAULT_RECIPE_COST = 3.2; // CONSERVATIVE: autofill может выбрать дороже (creatify+seedance×4) + реген ×3 → бюджет-гард не должен недооценивать черновики
 const REGEN_FACTOR = 3;          // = MAX_RENDERS: бюджет-гард по АБСОЛЮТНОМУ потолку (даже если КАЖДЫЙ рецепт реген-нётся ×3) → сумма ≤ budget = ЖЁСТКИЙ кап, автопилот физически не перерасходует; типовую смету показываем отдельно
 const OPEN_LEARNING_GATE = { ready: true, reason: "learning gate not requested", current_feedback: 0, required_feedback: 0 };
+const PROVIDER_BLOCK_LOOKBACK_MS = 6 * 60 * 60 * 1000;
 
 // смета одного рецепта по нодам (×реген до 3 не учитываем — это потолок, не ожидание).
 // V21: рецепт-черновик конфигурируется §17 уже В ОЧЕРЕДИ → tool может ещё не стоять. Если по нодам цены нет
@@ -69,6 +70,45 @@ async function enqueueGraphRun(db: any, rid: number, meta: { batch_run_id: strin
   return { ok: true, run_id: plan.run_id };
 }
 
+function textFromUnknown(value: unknown): string {
+  try {
+    return typeof value === "string" ? value : JSON.stringify(value || {});
+  } catch {
+    return String(value || "");
+  }
+}
+
+function providerBlockFromText(raw: string): string | null {
+  const text = raw.toLowerCase();
+  if (!/balance|exhausted|user is locked|provider balance stop|пополни|баланс/.test(text)) return null;
+  if (/fal|seedance|kling|pika/.test(text)) return "fal";
+  if (/creatify/.test(text)) return "creatify";
+  if (/shotstack/.test(text)) return "shotstack";
+  return "provider";
+}
+
+async function recentProviderBalanceBlocks(db: any, niche: string | null): Promise<string[]> {
+  try {
+    const since = new Date(Date.now() - PROVIDER_BLOCK_LOOKBACK_MS).toISOString();
+    let q = db
+      .from("node_recipes")
+      .select("id,niche,status,run_plan,otk_notes,updated_at")
+      .gte("updated_at", since)
+      .order("updated_at", { ascending: false })
+      .limit(80);
+    if (niche) q = q.eq("niche", niche);
+    const { data } = await q;
+    const found = new Set<string>();
+    for (const row of (data || []) as Record<string, unknown>[]) {
+      const service = providerBlockFromText(textFromUnknown(row));
+      if (service) found.add(service);
+    }
+    return [...found].filter((service) => REQUIRED.includes(service));
+  } catch {
+    return [];
+  }
+}
+
 export async function POST(req: NextRequest) {
   try {
   const db = getSupabaseAdmin();
@@ -100,12 +140,14 @@ export async function POST(req: NextRequest) {
 
   // 1) бюджет-гард по балансам (раз на батч; collectBalances живой ~9с — ОК для одного вызова)
   let balanceUnknown: string[] = []; // баланс null (нет FAL admin-ключа / гео) → гард не смог проверить
+  let providerBlock: string[] = [];
   try {
     const balances = await collectBalances(db, { throttleMs: 60000 });
     const low = balances.filter((s) => REQUIRED.includes(s.service) && s.low === true).map((s) => s.service);
     if (low.length) return NextResponse.json({ ok: false, balance_block: low, error: `Низкий баланс: ${low.join(", ")} — пополни или подними порог. Батч не запущен.` });
     balanceUnknown = balances.filter((s) => REQUIRED.includes(s.service) && s.balance == null).map((s) => s.service);
   } catch { /* балансы не определились → не блокируем по неопределённости */ }
+  providerBlock = await recentProviderBalanceBlocks(db, requestedNiche);
 
   // 2) резолв рецептов: явные id ИЛИ черновики ниши
   let recipeIds: number[] = Array.isArray(b.recipe_ids) ? b.recipe_ids.map((x: unknown) => Number(x)).filter(Boolean) : [];
@@ -176,13 +218,14 @@ export async function POST(req: NextRequest) {
     plannedRecipeIds.push(rid);
   }
   const preflight = {
-    ready: plannedRecipeIds.length >= count && !cappedByBudget && sourceReadyDrafts >= count && (!requireLearningGate || learningGate.ready),
+    ready: plannedRecipeIds.length >= count && !cappedByBudget && sourceReadyDrafts >= count && providerBlock.length === 0 && (!requireLearningGate || learningGate.ready),
     requested_count: count,
     available_drafts: availableDrafts,
     missing_drafts: missingDrafts,
     source_ready_drafts: sourceReadyDrafts,
     missing_source_drafts: missingSourceDrafts,
     budget_fit_count: plannedRecipeIds.length,
+    provider_ready: providerBlock.length === 0,
   };
   const controlCount = Math.max(1, Math.min(count, Number(batchPlan?.control_count) || Math.min(2, count)));
   const primaryAxis = ["hook_angle", "proof_density", "cta_shape", "format"].includes(String(batchPlan?.primary_change_axis || ""))
@@ -214,7 +257,28 @@ export async function POST(req: NextRequest) {
       budget_usd: cap,
       capped_by_budget: cappedByBudget,
       balance_unknown: balanceUnknown,
+      provider_block: providerBlock,
       error: learningGate.reason || "Пятёрка не запущена: learning gate не готов.",
+    }, { status: 409 });
+  }
+  if (requireFullBatch && !dryRun && providerBlock.length) {
+    return NextResponse.json({
+      ok: false,
+      batch_run_id: null,
+      requested: { niche: requestedNiche, count, budget_usd: cap, series_after: seriesAfter },
+      preflight,
+      learning_gate: learningGate,
+      batch_plan: batchPlan,
+      selected_recipes: selectedWithBatchMeta(plannedRecipeIds),
+      dry_run: true,
+      enqueued: [],
+      estimated_usd: spent,
+      worst_case_usd: spentWorst,
+      budget_usd: cap,
+      capped_by_budget: cappedByBudget,
+      balance_unknown: balanceUnknown,
+      provider_block: providerBlock,
+      error: `Пятёрка не запущена: ${providerBlock.join(", ")} недавно вернул balance/access stop. Пополни провайдера и повтори preflight.`,
     }, { status: 409 });
   }
   if (requireFullBatch && !dryRun && !preflight.ready) {
@@ -233,6 +297,7 @@ export async function POST(req: NextRequest) {
       budget_usd: cap,
       capped_by_budget: cappedByBudget,
       balance_unknown: balanceUnknown,
+      provider_block: providerBlock,
       next_action: preflight.missing_drafts > 0 || preflight.missing_source_drafts > 0 ? { type: "prepare_drafts", route: "/api/factory/prepare-drafts", count, niche: requestedNiche } : null,
       error: preflight.missing_drafts > 0
         ? `Пятёрка не запущена: не хватает ${preflight.missing_drafts} draft-рецептов.`
@@ -264,6 +329,7 @@ export async function POST(req: NextRequest) {
     selected_recipes: selectedWithBatchMeta(enqueued),
     dry_run: dryRun, enqueued, estimated_usd: spent, worst_case_usd: spentWorst, budget_usd: cap, capped_by_budget: cappedByBudget,
     balance_unknown: balanceUnknown, // ⚠ по этим сервисам баланс не проверен (нет ключа/гео) — гард не гарантирует
+    provider_block: providerBlock,
     warnings: [...(learningGateWarning ? [`learning gate fail-open: ${learningGateWarning}`] : []), ...enqueueErrors],
     note: `Бюджет-гард по worst-case (реген до ×3): уложились в $${cap}, типовая трата ≈ $${spent}, потолок ≈ $${spentWorst}. Прошедшее ОТК → Telegram (notify).` + (balanceUnknown.length ? ` ⚠ Баланс не проверен: ${balanceUnknown.join(", ")}.` : ""),
   });
