@@ -25,23 +25,33 @@ async function buildAll(req: NextRequest, body: Record<string, unknown>) {
   const maxCorpusRows = Math.min(20000, Math.max(limitPerNiche, Number(body.max_corpus_rows || sp.get("max_corpus_rows") || 20000)));
   const requestedNiches = parseRequestedNiches(body.niches || sp.get("niches"));
 
-  let query = db
-    .from("viral_videos")
-    .select("id,url,platform,niche,caption,hook_text,format_detected,beat_structure,viral_reason,virality_score,views,sound_title")
-    .order("virality_score", { ascending: false, nullsFirst: false })
-    .limit(maxCorpusRows);
-  if (requestedNiches.length) query = query.in("niche", requestedNiches);
-
-  const { data, error } = await query;
-  if (error) return NextResponse.json({ error: "viral_videos: " + error.message }, { status: 500 });
-
   const byNiche = new Map<string, ViralVideoRow[]>();
-  for (const row of ((data || []) as ViralVideoRow[])) {
-    const niche = String(row.niche || "").trim();
-    if (!niche) continue;
-    if (!byNiche.has(niche)) byNiche.set(niche, []);
-    const rows = byNiche.get(niche);
-    if (rows && rows.length < limitPerNiche) rows.push(row);
+  const pageSize = 1000;
+  let scannedRows = 0;
+
+  while (scannedRows < maxCorpusRows) {
+    const from = scannedRows;
+    const to = Math.min(maxCorpusRows - 1, from + pageSize - 1);
+    let query = db
+      .from("viral_videos")
+      .select("id,url,platform,niche,caption,hook_text,format_detected,beat_structure,viral_reason,virality_score,views,sound_title")
+      .order("virality_score", { ascending: false, nullsFirst: false })
+      .range(from, to);
+    if (requestedNiches.length) query = query.in("niche", requestedNiches);
+
+    const { data, error } = await query;
+    if (error) return NextResponse.json({ error: "viral_videos: " + error.message }, { status: 500 });
+
+    const page = ((data || []) as ViralVideoRow[]);
+    scannedRows += page.length;
+    for (const row of page) {
+      const niche = String(row.niche || "").trim();
+      if (!niche) continue;
+      if (!byNiche.has(niche)) byNiche.set(niche, []);
+      const rows = byNiche.get(niche);
+      if (rows && rows.length < limitPerNiche) rows.push(row);
+    }
+    if (page.length < pageSize) break;
   }
 
   const results = [];
@@ -95,7 +105,7 @@ async function buildAll(req: NextRequest, body: Record<string, unknown>) {
   return NextResponse.json({
     ok: results.every((row) => row.ok),
     limit_per_niche: limitPerNiche,
-    scanned_rows: (data || []).length,
+    scanned_rows: scannedRows,
     niches: results.length,
     total_source_videos: results.reduce((sum, row) => sum + row.source_videos, 0),
     results,
