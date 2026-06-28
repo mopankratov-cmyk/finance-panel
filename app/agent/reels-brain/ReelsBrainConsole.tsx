@@ -1009,6 +1009,19 @@ export default function ReelsBrainPage() {
   const analyzeBacklogProgress = analyzeBacklogTotals.total
     ? Math.round((analyzeBacklogTotals.analyzed / analyzeBacklogTotals.total) * 100)
     : 0;
+  const corpusProgress = portfolioCorpusTarget ? Math.min(100, Math.round((portfolioCorpusCurrent / portfolioCorpusTarget) * 100)) : 0;
+  const discoveryReady = portfolioCorpusCurrent >= 2500;
+  const analysisReady = analyzeBacklogTotals.total > 0 && analyzeBacklogTotals.unanalyzed === 0;
+  const brainStage = analysisReady
+    ? "Готов к регулярному дообучению"
+    : discoveryReady
+      ? "Идет превращение корпуса в память"
+      : "Набираем насмотренность";
+  const nextOperatorAction = analyzeBacklogTotals.unanalyzed > 0
+    ? `разобрать ${compactNumber(analyzeBacklogTotals.unanalyzed)} видео в память`
+    : portfolioCorpusCurrent < portfolioCorpusTarget
+      ? `добрать ${compactNumber(Math.max(0, portfolioCorpusTarget - portfolioCorpusCurrent))} видео до цели`
+      : "снять карту источников и сравнить качество";
   const serverAutomationHistory: AutomationHistoryItem[] = (brainSummary?.automation_history || []).map((item) => ({
     id: `server:${item.id}`,
     title: automationTitle(item.mode),
@@ -1676,101 +1689,161 @@ export default function ReelsBrainPage() {
             </div>
             <h2 className="mt-1 text-2xl font-black tracking-tight">Ежедневный и недельный self-learning прогон</h2>
           </div>
-          <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-500">
-            owner-level orchestration по нескольким нишам сразу
+          <div className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700">
+            chat-first: настройки через диалог, экран только для контроля
           </div>
         </div>
 
         <div className="mt-4 grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
           <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-            <label className="block">
-              <span className="text-xs font-bold uppercase tracking-wide text-slate-400">Niches через запятую</span>
-              <input
-                value={automationNiches}
-                onChange={(e) => setAutomationNiches(e.target.value)}
-                className="mt-1 min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none focus:border-cyan-400"
-              />
-            </label>
+            <div className="rounded-[1.75rem] border border-slate-900 bg-slate-950 p-5 text-white shadow-xl shadow-slate-200">
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-[0.22em] text-cyan-200">Brain cockpit</p>
+                  <h3 className="mt-2 text-2xl font-black tracking-tight">{brainStage}</h3>
+                  <p className="mt-2 max-w-xl text-sm leading-6 text-slate-300">
+                    Экран больше не требует крутить параметры руками. Команды на сбор, анализ и replay даются через чат,
+                    а здесь виден статус системы и следующий безопасный шаг.
+                  </p>
+                </div>
+                <span className="rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-bold text-cyan-100">
+                  {automationNiches}
+                </span>
+              </div>
 
-            <div className="mt-4 grid gap-3 lg:grid-cols-4">
-              <button
-                type="button"
-                onClick={() => runAutomation("daily")}
-                disabled={automationRunning !== null}
-                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-slate-950 px-4 py-2 text-sm font-bold text-white shadow-lg shadow-slate-200 hover:bg-slate-800 disabled:bg-slate-300"
-              >
-                {automationRunning === "daily" ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-                Run daily loop
-              </button>
-              <button
-                type="button"
-                onClick={() => runAutomation("weekly")}
-                disabled={automationRunning !== null}
-                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-800 shadow-sm hover:border-cyan-300 disabled:opacity-50"
-              >
-                {automationRunning === "weekly" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Radar className="h-4 w-4" />}
-                Run weekly retrain
-              </button>
-              <button
-                type="button"
-                onClick={() => runAutomation("growth")}
-                disabled={automationRunning !== null}
-                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-cyan-200 bg-cyan-50 px-4 py-2 text-sm font-bold text-cyan-900 shadow-sm hover:border-cyan-300 hover:bg-cyan-100 disabled:opacity-50"
-              >
-                {automationRunning === "growth" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Zap className="h-4 w-4" />}
-                Run bulk ingest
-              </button>
-              <button
-                type="button"
-                onClick={() => runAutomation("analyze")}
-                disabled={automationRunning !== null}
-                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-bold text-emerald-900 shadow-sm hover:border-emerald-300 hover:bg-emerald-100 disabled:opacity-50"
-              >
-                {automationRunning === "analyze" ? <Loader2 className="h-4 w-4 animate-spin" /> : <BrainCircuit className="h-4 w-4" />}
-                Analyze backlog x108
-              </button>
+              <div className="mt-5 grid gap-3 sm:grid-cols-3">
+                <div className="rounded-2xl border border-white/10 bg-white/10 p-4">
+                  <div className="text-xs font-bold uppercase tracking-wide text-slate-300">Corpus</div>
+                  <div className="mt-2 text-3xl font-black">{compactNumber(portfolioCorpusCurrent)}</div>
+                  <div className="mt-1 text-xs text-slate-300">из {compactNumber(portfolioCorpusTarget)} · {compactNumber(corpusProgress)}%</div>
+                </div>
+                <div className="rounded-2xl border border-white/10 bg-white/10 p-4">
+                  <div className="text-xs font-bold uppercase tracking-wide text-slate-300">Memory backlog</div>
+                  <div className="mt-2 text-3xl font-black">{compactNumber(analyzeBacklogTotals.unanalyzed)}</div>
+                  <div className="mt-1 text-xs text-slate-300">не разобрано · progress {compactNumber(analyzeBacklogProgress)}%</div>
+                </div>
+                <div className="rounded-2xl border border-white/10 bg-white/10 p-4">
+                  <div className="text-xs font-bold uppercase tracking-wide text-slate-300">Providers</div>
+                  <div className="mt-2 text-3xl font-black">{compactNumber(configuredCount)}</div>
+                  <div className="mt-1 text-xs text-slate-300">настроено из {compactNumber(availableProviders.length)}</div>
+                </div>
+              </div>
+
+              <div className="mt-4 rounded-2xl border border-amber-300/20 bg-amber-300/10 p-4">
+                <div className="text-xs font-bold uppercase tracking-wide text-amber-100">Следующее действие</div>
+                <div className="mt-1 text-lg font-black text-white">{nextOperatorAction}</div>
+                <div className="mt-2 text-xs text-amber-50/80">
+                  Если нужно изменить бюджет, платформы, нишу или лимит Apify, пиши это в чат. UI остается пультом наблюдения.
+                </div>
+              </div>
             </div>
 
             <div className="mt-4 flex flex-wrap gap-2">
               <button
                 type="button"
-                onClick={() => loadSchedulerPlan()}
-                disabled={schedulerLoading}
-                className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:border-cyan-300 disabled:opacity-50"
+                onClick={() => {
+                  void loadPortfolio();
+                  void loadAnalyzeBacklogPlan();
+                  void loadSummary(activeNiche());
+                }}
+                disabled={loadingPortfolio || analyzeBacklogLoading || loadingSummary}
+                className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-slate-950 px-4 py-2 text-sm font-bold text-white shadow-lg shadow-slate-200 hover:bg-slate-800 disabled:bg-slate-300"
               >
-                {schedulerLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <SlidersHorizontal className="h-4 w-4" />}
-                Scheduler plan
-              </button>
-              <button
-                type="button"
-                onClick={() => loadAnalyzeBacklogPlan()}
-                disabled={analyzeBacklogLoading}
-                className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:border-emerald-300 disabled:opacity-50"
-              >
-                {analyzeBacklogLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Database className="h-4 w-4" />}
-                Backlog status
-              </button>
-              <button
-                type="button"
-                onClick={() => loadPortfolio()}
-                disabled={loadingPortfolio}
-                className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-white disabled:opacity-50"
-              >
-                {loadingPortfolio ? <Loader2 className="h-4 w-4 animate-spin" /> : <Activity className="h-4 w-4" />}
-                Обновить portfolio
+                {loadingPortfolio || analyzeBacklogLoading || loadingSummary ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                Обновить статус
               </button>
               <a
                 href={`/inferno/vendor/reels-brain-portfolio?niches=${encodeURIComponent(automationNiches.trim() || DEFAULT_AUTOMATION_NICHES)}`}
                 className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:border-cyan-300"
               >
                 <ExternalLink className="h-4 w-4" />
-                Open read-only report
+                Открыть отчет
+              </a>
+              <a
+                href="/inferno/vendor/reels-brain-demo"
+                className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:border-cyan-300"
+              >
+                <ExternalLink className="h-4 w-4" />
+                Public demo
               </a>
             </div>
 
-            <div className="mt-4 rounded-2xl border border-cyan-100 bg-cyan-50 p-4 text-sm text-cyan-950">
-              Daily loop делает лёгкий intake + analyze + patterns, weekly retrain проводит bake-off, bulk ingest добирает сырой корпус, а analyze backlog превращает уже собранные видео в Pattern Brain.
-            </div>
+            <details className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
+              <summary className="cursor-pointer text-sm font-black text-slate-900">
+                Advanced operator tools
+                <span className="ml-2 text-xs font-semibold text-slate-400">ручной запуск, если чат недоступен</span>
+              </summary>
+              <div className="mt-4">
+                <label className="block">
+                  <span className="text-xs font-bold uppercase tracking-wide text-slate-400">Niches через запятую</span>
+                  <input
+                    value={automationNiches}
+                    onChange={(e) => setAutomationNiches(e.target.value)}
+                    className="mt-1 min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none focus:border-cyan-400"
+                  />
+                </label>
+
+                <div className="mt-4 grid gap-3 lg:grid-cols-4">
+                  <button
+                    type="button"
+                    onClick={() => runAutomation("daily")}
+                    disabled={automationRunning !== null}
+                    className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-slate-950 px-4 py-2 text-sm font-bold text-white shadow-lg shadow-slate-200 hover:bg-slate-800 disabled:bg-slate-300"
+                  >
+                    {automationRunning === "daily" ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                    Run daily loop
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => runAutomation("weekly")}
+                    disabled={automationRunning !== null}
+                    className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-800 shadow-sm hover:border-cyan-300 disabled:opacity-50"
+                  >
+                    {automationRunning === "weekly" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Radar className="h-4 w-4" />}
+                    Run weekly retrain
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => runAutomation("growth")}
+                    disabled={automationRunning !== null}
+                    className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-cyan-200 bg-cyan-50 px-4 py-2 text-sm font-bold text-cyan-900 shadow-sm hover:border-cyan-300 hover:bg-cyan-100 disabled:opacity-50"
+                  >
+                    {automationRunning === "growth" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Zap className="h-4 w-4" />}
+                    Run bulk ingest
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => runAutomation("analyze")}
+                    disabled={automationRunning !== null}
+                    className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-bold text-emerald-900 shadow-sm hover:border-emerald-300 hover:bg-emerald-100 disabled:opacity-50"
+                  >
+                    {automationRunning === "analyze" ? <Loader2 className="h-4 w-4 animate-spin" /> : <BrainCircuit className="h-4 w-4" />}
+                    Analyze backlog x108
+                  </button>
+                </div>
+
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => loadSchedulerPlan()}
+                    disabled={schedulerLoading}
+                    className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:border-cyan-300 disabled:opacity-50"
+                  >
+                    {schedulerLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <SlidersHorizontal className="h-4 w-4" />}
+                    Scheduler plan
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => loadAnalyzeBacklogPlan()}
+                    disabled={analyzeBacklogLoading}
+                    className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:border-emerald-300 disabled:opacity-50"
+                  >
+                    {analyzeBacklogLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Database className="h-4 w-4" />}
+                    Backlog status
+                  </button>
+                </div>
+              </div>
+            </details>
 
             {schedulerPlan?.tasks?.length ? (
               <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
