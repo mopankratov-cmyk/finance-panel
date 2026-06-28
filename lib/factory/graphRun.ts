@@ -14,7 +14,7 @@ import { isOurStorage } from "./rehostImage";
 import { fetchCabinetCards } from "@/lib/wb/cards";
 import { wbCardImageUrl } from "@/lib/wb/cardImage";
 import { createHash, randomUUID } from "node:crypto";
-import type { ExecutionLogEntry, RunNode, RunPlan, RunStep } from "./graphTypes";
+import type { ExecutionLogEntry, RunNode, RunOtkVerdict, RunPlan, RunStep } from "./graphTypes";
 
 export type { ExecutionLogEntry, RunNode, RunPlan, RunStep } from "./graphTypes";
 
@@ -87,15 +87,19 @@ function summarizeWarnings(plan: RunPlan): string | null {
   return warnings.length ? warnings.join(" | ") : null;
 }
 
-function isFramesGroundedOtkPass(plan: RunPlan, artifactOk = true): boolean {
-  const score = plan.otk?.score ?? null;
-  const basis = String(plan.otk?.basis || "").toLowerCase();
-  const verdict = String(plan.otk?.verdict || "").toLowerCase();
+function isFramesGroundedOtkVerdictPass(otk: RunOtkVerdict | null | undefined, artifactOk = true): boolean {
+  const score = otk?.score ?? null;
+  const basis = String(otk?.basis || "").toLowerCase();
+  const verdict = String(otk?.verdict || "").toLowerCase();
   if (score == null || score < 7) return false;
   if (!artifactOk) return false;
   if (basis === "text" || basis === "fallback" || basis === "storyboard") return false;
   if (verdict === "trash" || verdict === "rework" || verdict === "fail") return false;
   return true;
+}
+
+function isFramesGroundedOtkPass(plan: RunPlan, artifactOk = true): boolean {
+  return isFramesGroundedOtkVerdictPass(plan.otk, artifactOk);
 }
 
 function firstStepStartedAt(plan: RunPlan, step: string): string | null {
@@ -1150,7 +1154,11 @@ export async function runRecipeStep(
     if (score == null) addWarning("video-critic did not return score");
     if (typeof score === "number" && score < 7) addWarning(`OTK below threshold: ${score}`);
     plan.otk = { score, verdict, axes, issues, basis, basis_reason: basisReason, artifact_ok: artifactOk, artifact_defects: artifactDefects };
-    if (score != null && score > (plan.bestScore ?? -1)) { plan.bestScore = score; plan.bestUrl = url; }
+    if (score != null && score > (plan.bestScore ?? -1)) {
+      plan.bestScore = score;
+      plan.bestUrl = url;
+      plan.bestOtk = plan.otk;
+    }
 
     const otkPassed = isFramesGroundedOtkPass(plan, artifactOk);
     if (!otkPassed && (plan.renderCount || 0) < MAX_RENDERS) {
@@ -1188,14 +1196,15 @@ export async function runRecipeStep(
     const score = plan.bestScore != null ? plan.bestScore : (plan.otk?.score ?? null);
     const hookNode = plan.nodes.find((n) => String(((n.params || {}) as Record<string, unknown>)["role"] || n.slot || "").toLowerCase() === "hook") || plan.nodes[0];
     const hook = textOfNode(hookNode).slice(0, 200);
-    const artifactOk = plan.otk?.artifact_ok !== false;
-    const qualityPassed = isFramesGroundedOtkPass(plan, artifactOk);
+    const otkForBank = plan.bestOtk || plan.otk || null;
+    const artifactOk = otkForBank?.artifact_ok !== false;
+    const qualityPassed = isFramesGroundedOtkVerdictPass(otkForBank, artifactOk);
     // в библиотеку контента (каталог кокпита) попадает только frames-grounded OTK pass.
     let catalogUrl: string | null = null;
     let catalogError: string | null = null;
     if (url && qualityPassed) {
       try {
-        const g = await jpost(origin, "/api/factory/gen-save", { video_url: url, article, niche, hook, route: "node_graph", engine: plan.render_engine || "shotstack", batch_role: plan.batch_role || null, change_axis: plan.change_axis || null, otk: score, otk_axes: plan.otk?.axes ?? null, recipe_id: id }, 40000, true); // ≤40с: влезть в maxDuration 60 тика (был 120с → Vercel убивал handler, catalogUrl терялся)
+        const g = await jpost(origin, "/api/factory/gen-save", { video_url: url, article, niche, hook, route: "node_graph", engine: plan.render_engine || "shotstack", batch_role: plan.batch_role || null, change_axis: plan.change_axis || null, otk: score, otk_axes: otkForBank?.axes ?? null, recipe_id: id }, 40000, true); // ≤40с: влезть в maxDuration 60 тика (был 120с → Vercel убивал handler, catalogUrl терялся)
         catalogUrl = g?.url || null;
       } catch (e) { catalogError = String((e as Error)?.message || e).slice(0, 220); }
       if (!catalogUrl && catalogError && isOurStorage(url)) {
@@ -1209,7 +1218,7 @@ export async function runRecipeStep(
           batchRole: plan.batch_role || null,
           changeAxis: plan.change_axis || null,
           otkScore: score,
-          otkAxes: plan.otk?.axes ?? null,
+          otkAxes: otkForBank?.axes ?? null,
         });
         if (directUrl) {
           catalogUrl = directUrl;
@@ -1233,9 +1242,9 @@ export async function runRecipeStep(
     }
     await logSignal(db, finalStatus === "otk_pass" ? "approved" : "rejected", {
       recipe_id: id, niche, article, mode, format: null, engine: plan.render_engine || "shotstack",
-      axes: plan.otk?.axes ?? null,
+      axes: otkForBank?.axes ?? null,
       reason_chip: finalStatus === "warning" ? (plan.warnings?.[0] || "OTK gate failed") : null,
-      params: { source: "graph_run_otk_gate", score, basis: plan.otk?.basis || null, artifact_ok: artifactOk, catalog_url: catalogUrl },
+      params: { source: "graph_run_otk_gate", score, basis: otkForBank?.basis || null, artifact_ok: artifactOk, catalog_url: catalogUrl },
     });
     // V21/R5: батч-прогон прошёл ОТК → шлём оператору в Telegram на ревью (студийные прогоны — нет, без спама)
     if (plan.notify && finalStatus === "otk_pass" && (catalogUrl || url) && tgReady()) {
@@ -1245,7 +1254,7 @@ export async function runRecipeStep(
     await savePlan(db, id, plan, {
       status: finalStatus,
       output_url: catalogUrl || url || null,
-      otk_verdict: plan.otk ?? null,
+      otk_verdict: otkForBank,
       otk_score: score,
     });
     return;

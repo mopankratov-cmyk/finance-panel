@@ -8,6 +8,17 @@ export interface RunNode {
   token?: string; url?: string; error?: string; engine?: string;
 }
 
+export interface RunOtkVerdict {
+  score: number | null;
+  verdict?: string;
+  axes?: unknown;
+  issues?: string[];
+  basis?: string | null;
+  basis_reason?: string | null;
+  artifact_ok?: boolean | null;
+  artifact_defects?: string[];
+}
+
 export interface RunPlan {
   run_id?: string | null;
   batch_run_id?: string | null;
@@ -20,12 +31,13 @@ export interface RunPlan {
   step_started_at?: string | null;
   pollCount?: number;
   renderCount?: number;
-  otk?: { score: number | null; verdict?: string; axes?: unknown; issues?: string[]; basis?: string | null; basis_reason?: string | null; artifact_ok?: boolean | null; artifact_defects?: string[] } | null;
+  otk?: RunOtkVerdict | null;
   attempts?: number;
   lease_until?: string | null;
   error?: string | null;
   bestScore?: number | null;
   bestUrl?: string | null;
+  bestOtk?: RunOtkVerdict | null;
   notify?: boolean;
   render_engine?: string | null;
   reel_props?: Record<string, unknown> | null;
