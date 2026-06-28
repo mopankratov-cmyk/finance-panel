@@ -167,13 +167,16 @@ async function run(apply: boolean) {
       }
     }
 
+    const summary = summarize(classified);
     return NextResponse.json({
       ok: errors.length === 0,
       apply,
       total: classified.length,
+      scanned: classified.length,
       changed: changed.length,
       updated,
-      ...summarize(classified),
+      ...summary,
+      summary,
       errors,
       sample_trash: classified.filter((row) => row.label === "trash").slice(0, 12),
       sample_winner: classified.filter((row) => row.label === "winner").slice(0, 12),
@@ -184,10 +187,12 @@ async function run(apply: boolean) {
       ok: false,
       apply,
       total: 0,
+      scanned: 0,
       changed: 0,
       updated: 0,
       by_label: { winner: 0, usable: 0, trash: 0 },
       by_confidence: {},
+      summary: { by_label: { winner: 0, usable: 0, trash: 0 }, by_confidence: {} },
       errors: [`memory-quality crash: ${String((e as Error)?.message || e).slice(0, 180)}`],
       sample_trash: [],
       sample_winner: [],

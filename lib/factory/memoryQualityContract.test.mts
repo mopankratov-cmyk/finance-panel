@@ -10,6 +10,8 @@ ok(/\"winner\" \| \"usable\" \| \"trash\"/.test(route), "memory-quality has the 
 ok(/OTK below usable threshold/.test(route), "memory-quality marks low OTK videos as trash");
 ok(/restored from storage; needs human\/OTK review/.test(route), "storage-restored videos stay usable but low-confidence");
 ok(/body\.apply === true/.test(route), "memory-quality requires explicit apply=true before updates");
+ok(/scanned: classified\.length/.test(route), "memory-quality response exposes scanned alias for operators");
+ok(/summary/.test(route) && /by_label/.test(route), "memory-quality response exposes summary counts");
 
 ok(/memory_label: "winner" \| "usable" \| "trash" \| "unlabeled";/.test(improvement), "improvement run carries memory label");
 ok(/run\.memory_label === "trash"\) return "loser"/.test(improvement), "trash memory is excluded from successful learning");
