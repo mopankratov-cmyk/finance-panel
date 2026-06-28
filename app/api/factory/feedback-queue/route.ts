@@ -6,11 +6,6 @@ import { nicheFromArticle } from "@/lib/factory/rubric";
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
 
-function authOk(req: NextRequest): boolean {
-  const secret = process.env.CRON_SECRET || "";
-  return !!secret && req.headers.get("authorization") === `Bearer ${secret}`;
-}
-
 function text(value: unknown, max = 180): string {
   return String(value || "").replace(/\s+/g, " ").trim().slice(0, max);
 }
@@ -22,7 +17,6 @@ function positiveInt(value: unknown, fallback: number, max: number): number {
 }
 
 export async function GET(req: NextRequest) {
-  if (!authOk(req)) return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
   try {
     const db = getSupabaseAdmin();
     if (!db) return NextResponse.json({ ok: false, error: "Supabase не настроен" }, { status: 500 });
@@ -63,7 +57,6 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  if (!authOk(req)) return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
   try {
     const db = getSupabaseAdmin();
     if (!db) return NextResponse.json({ ok: false, error: "Supabase не настроен" }, { status: 500 });

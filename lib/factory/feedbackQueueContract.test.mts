@@ -4,7 +4,7 @@ import { buildFeedbackQueue, nextAnalysisForFeedback } from "./feedbackQueue";
 
 const route = readFileSync("app/api/factory/feedback-queue/route.ts", "utf8");
 
-ok(/function authOk/.test(route) && /CRON_SECRET/.test(route), "feedback queue is operator-authenticated");
+ok(!/function authOk/.test(route), "feedback queue relies on the global API proxy so Studio session and cron both work");
 ok(/buildFeedbackQueue/.test(route), "feedback queue uses shared ranking helper");
 ok(/action !== "winner" && action !== "reject"/.test(route), "feedback queue only accepts winner/reject actions");
 ok(/viral_hooks/.test(route) && /viability_score: 5/.test(route), "winner feedback seeds learning hooks");

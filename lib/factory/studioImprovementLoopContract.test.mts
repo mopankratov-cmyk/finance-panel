@@ -62,6 +62,9 @@ ok(/imp\.feedback_queue&&imp\.feedback_queue\.length/.test(html), "learning scre
 ok(/api\("\/post-metrics"/.test(html), "learning feedback queue can record market views");
 ok(/api\("\/winners"/.test(html), "learning feedback queue can mark winners");
 ok(/api\("\/reject"/.test(html), "learning feedback queue can record rejects");
+ok(/api\("\/feedback-queue\?limit=8"/.test(html), "learning screen loads video-memory feedback queue");
+ok(/Очередь памяти видосов/.test(html), "learning screen renders video-memory queue");
+ok(/action:"winner"/.test(html) && /action:"reject"/.test(html), "video-memory queue can mark winner or trash without FAL");
 ok(/status_check_failed/.test(html), "batch progress keeps per-recipe status fetch failures separate from real recipe failures");
 ok(/const failed=rows\.filter\(x=>x&&\(\(x\.step==="failed"\)\|\|\(x\.status==="run_fail"\)\)\)\.length;/.test(html), "batch progress counts only real failed recipe states as failed");
 ok(/\/graph-run\/tick/.test(html) && /nudge best-effort/.test(html), "batch progress can nudge graph-run ticks without requiring cron secrets");

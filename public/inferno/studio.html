@@ -2420,6 +2420,7 @@ async function screenLearn(root){
   wrap.appendChild(loadingCard("собираю, что выучил завод…"));
   const learnQuery="?days="+S.learnDays+(S.seriesAfter?("&series_after="+encodeURIComponent(S.seriesAfter)):"");
   const d=await api("/learning"+learnQuery);
+  const memFb=await api("/feedback-queue?limit=8");
   if(S.screen!=="learn")return;
   wrap.innerHTML="";
   if(d.error){ wrap.appendChild(emptyBox("ошибка обучения: "+d.error)); return; }
@@ -2562,6 +2563,28 @@ async function screenLearn(root){
             el("button",{class:"btn sm",style:"padding:4px 7px;color:var(--ok);",title:"принять как quality feedback без winner",onclick:async()=>{ const d=await api("/approve",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({recipe_id:r.recipe_id,url:r.output_url,hook:r.hook_text,niche:r.niche,article:r.article,note:"learning quality ok"})}); toast(d&&d.ok?"quality ok записан":"не вышло"); if(d&&d.ok)screenLearn(root); }},"ok"),
             el("button",{class:"btn sm",style:"padding:4px 7px;color:var(--ok);",title:"пометить победителем",onclick:async()=>{ if(!r.output_url){ toast("у ролика нет output_url"); return; } const d=await api("/winners",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({url:r.output_url,hook:r.hook_text,note:"learning queue winner",recipe_id:r.recipe_id})}); toast(d&&d.ok?"winner записан":"не вышло"); if(d&&d.ok)screenLearn(root); }},"win"),
             el("button",{class:"btn sm",style:"padding:4px 7px;color:var(--warn);",title:"забраковать",onclick:async()=>{ const reason=prompt("Почему не берём?", "не зацепил хук"); if(!reason)return; const d=await api("/reject",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({recipe_id:r.recipe_id,url:r.output_url,hook:r.hook_text,reason,niche:r.niche,article:r.article})}); toast(d&&d.ok?"reject записан":"не вышло"); if(d&&d.ok)screenLearn(root); }},"reject"))));
+      });
+    }
+
+    if(memFb&&memFb.ok&&Array.isArray(memFb.queue)&&memFb.queue.length){
+      const box=el("div",{class:"card",style:"padding:14px;margin-bottom:12px;border-color:rgba(124,92,255,.30);"}); wrap.appendChild(box);
+      box.appendChild(el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;"},
+        el("div",{style:"font-size:13px;font-weight:600;"},"Очередь памяти видосов"),
+        el("span",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);"},"no-FAL · "+memFb.queue.length)));
+      box.appendChild(el("div",{style:"font-size:11px;color:var(--tx-lo);line-height:1.45;margin-bottom:8px;"},"Разметь хотя бы 3 настоящих winner перед новым широким батчем. Это не запускает генерацию."));
+      memFb.queue.forEach((r,idx)=>{
+        box.appendChild(el("div",{style:"display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;padding:"+(idx?"9px 0 0":"0")+";border-top:"+(idx?"1px solid var(--bd)":"none")+";"},
+          el("div",{style:"min-width:0;display:flex;flex-direction:column;gap:4px;"},
+            el("div",{style:"font-size:11.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"},String(r.name||"video memory #"+r.asset_id)),
+            el("div",{style:"font-size:10.5px;color:var(--tx-lo);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"},[r.niche,r.article].filter(Boolean).join(" · ")||"без ниши"),
+            el("div",{style:"display:flex;gap:6px;flex-wrap:wrap;"},
+              el("span",{class:"mono",style:"font-size:9.5px;color:var(--tx-lo2);background:var(--bg-input);border:1px solid var(--bd2);padding:2px 6px;border-radius:5px;"},"asset "+r.asset_id),
+              el("span",{class:"mono",style:"font-size:9.5px;color:var(--acc-lt);background:rgba(124,92,255,.12);padding:2px 6px;border-radius:5px;"},"prio "+String(r.priority_score||0)),
+              el("span",{class:"mono",style:"font-size:9.5px;color:var(--tx-lo2);background:var(--bg-input);border:1px solid var(--bd2);padding:2px 6px;border-radius:5px;"},String(r.memory_label||"unlabeled")+(r.otk_score!=null?" · ОТК "+r.otk_score:"")))),
+          el("div",{style:"display:flex;gap:5px;align-items:center;justify-content:flex-end;flex-wrap:wrap;"},
+            el("button",{class:"btn sm",style:"padding:4px 7px;",onclick:()=>openMedia(r.url,{video:true})},"open"),
+            el("button",{class:"btn sm",style:"padding:4px 7px;color:var(--ok);",title:"пометить video-memory победителем",onclick:async()=>{ const d=await api("/feedback-queue",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({asset_id:r.asset_id,action:"winner",reason:"operator memory winner"})}); toast(d&&d.ok?"memory winner записан":"не вышло"); if(d&&d.ok)screenLearn(root); }},"win"),
+            el("button",{class:"btn sm",style:"padding:4px 7px;color:var(--warn);",title:"убрать из обучения как мусор",onclick:async()=>{ const reason=prompt("Почему в trash?", "слабый ролик / клон / не зацепил"); if(!reason)return; const d=await api("/feedback-queue",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({asset_id:r.asset_id,action:"reject",reason})}); toast(d&&d.ok?"memory trash записан":"не вышло"); if(d&&d.ok)screenLearn(root); }},"trash"))));
       });
     }
 
