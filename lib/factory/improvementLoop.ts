@@ -19,6 +19,7 @@ interface ImprovementSignalSummary {
 
 interface ImprovementAssetMeta {
   is_winner: boolean;
+  memory_label: "winner" | "usable" | "trash" | "unlabeled";
   batch_role: "control" | "experiment" | "none";
   change_axis: "none" | "hook_angle" | "proof_density" | "cta_shape" | "format";
 }
@@ -43,6 +44,7 @@ export interface ImprovementRun {
   ctr_card: number | null;
   saves: number | null;
   feedback_status: "winner" | "approved" | "rejected" | "none";
+  memory_label: "winner" | "usable" | "trash" | "unlabeled";
   reject_reason: string;
   batch_run_id: string | null;
   batch_role: "control" | "experiment" | "none";
@@ -246,8 +248,10 @@ function assetWinnerLookup(rows: Row[]): Map<string, ImprovementAssetMeta> {
     const analysis = row.analysis && typeof row.analysis === "object" ? row.analysis as Record<string, unknown> : {};
     const rawRole = toText(analysis.batch_role, 20).toLowerCase();
     const rawAxis = toText(analysis.change_axis, 40).toLowerCase();
+    const rawMemory = toText(analysis.memory_label, 20).toLowerCase();
     map.set(url, {
       is_winner: Boolean(row.is_winner),
+      memory_label: rawMemory === "winner" || rawMemory === "usable" || rawMemory === "trash" ? rawMemory : "unlabeled",
       batch_role: rawRole === "control" || rawRole === "experiment" ? rawRole : "none",
       change_axis: ["none", "hook_angle", "proof_density", "cta_shape", "format"].includes(rawAxis) ? rawAxis as ImprovementRun["change_axis"] : "none",
     });
@@ -255,8 +259,10 @@ function assetWinnerLookup(rows: Row[]): Map<string, ImprovementAssetMeta> {
   return map;
 }
 
-function classifyVerdict(run: Pick<ImprovementRun, "status" | "otk_score" | "output_url" | "warnings_count" | "market_views" | "watch_rate" | "feedback_status">): ImprovementRun["verdict"] {
+function classifyVerdict(run: Pick<ImprovementRun, "status" | "otk_score" | "output_url" | "warnings_count" | "market_views" | "watch_rate" | "feedback_status" | "memory_label">): ImprovementRun["verdict"] {
   const s = String(run.status || "").toLowerCase();
+  if (run.memory_label === "trash") return "loser";
+  if (run.memory_label === "winner") return "winner";
   if (run.feedback_status === "rejected") return "loser";
   if (s === "run_fail" || s === "rejected" || s === "failed") return "loser";
   if (!run.output_url) return "loser";
@@ -293,6 +299,7 @@ export function deriveImprovementRun(
   const signal = recipeId != null ? context?.signalsByRecipe?.get(recipeId) : undefined;
   const assetMeta = outputUrl ? context?.winnerByUrl?.get(outputUrl) : undefined;
   const feedbackStatus: ImprovementRun["feedback_status"] = assetMeta?.is_winner ? "winner" : (signal?.status || "none");
+  const memoryLabel = assetMeta?.memory_label || "unlabeled";
   const base: ImprovementRun = {
     recipe_id: recipeId,
     created_at: String(row.created_at || ""),
@@ -313,6 +320,7 @@ export function deriveImprovementRun(
     ctr_card: metric?.ctr_card ?? null,
     saves: metric?.saves ?? null,
     feedback_status: feedbackStatus,
+    memory_label: memoryLabel,
     reject_reason: signal?.reject_reason || "",
     batch_run_id: batchRunIdFromPlan(row.run_plan),
     batch_role: assetMeta?.batch_role || "none",
