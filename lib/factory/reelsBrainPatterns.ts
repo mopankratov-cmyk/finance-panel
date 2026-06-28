@@ -17,10 +17,15 @@ export interface ReelsPatternSourceVideo {
 export interface ReelsPatternMemoryItem {
   pattern_id: string;
   hook_type: string;
+  hook_label?: string;
   structure_type: string;
+  structure_label?: string;
   retention_mechanism: string;
+  retention_label?: string;
   emotion: string;
+  emotion_label?: string;
   viral_logic: string;
+  viral_logic_label?: string;
   frequency: number;
   strength_score: number;
   avg_views: number;
@@ -42,10 +47,15 @@ export interface ReelsPatternMemory {
 export interface CrossPlatformPattern {
   pattern_id: string;
   hook_type: string;
+  hook_label?: string;
   structure_type: string;
+  structure_label?: string;
   retention_mechanism: string;
+  retention_label?: string;
   emotion: string;
+  emotion_label?: string;
   viral_logic: string;
+  viral_logic_label?: string;
   platforms: ReelsPlatform[];
   platform_count: number;
   total_frequency: number;
@@ -65,6 +75,73 @@ function num(value: unknown): number {
 
 function slugPart(value: string): string {
   return value.toLowerCase().replace(/[^a-zа-я0-9]+/gi, "-").replace(/^-+|-+$/g, "").slice(0, 50) || "unknown";
+}
+
+const HOOK_LABELS: Record<string, string> = {
+  unknown: "хук не распознан",
+  curiosity_question: "вопрос-интрига",
+  warning_pattern_break: "предупреждение / слом ожидания",
+  list_promise: "обещание списка",
+  before_after: "до/после",
+  demo_review: "демо / обзор",
+  curiosity_gap: "интрига с пробелом",
+  direct_claim: "прямое заявление",
+};
+
+const STRUCTURE_LABELS: Record<string, string> = {
+  unknown_structure: "структура не определена",
+  unboxing: "распаковка",
+  before_after: "до/после",
+  review: "обзор",
+  life_hack: "лайфхак",
+  pov: "POV-сценка",
+  demo: "демонстрация",
+};
+
+const RETENTION_LABELS: Record<string, string> = {
+  proof_wait: "ожидание доказательства",
+  curiosity_gap: "удержание интригой",
+  delayed_payoff: "отложенная развязка",
+  surprise_hold: "удержание удивлением",
+  transformation_wait: "ожидание трансформации",
+  open_loop: "открытая петля",
+};
+
+const EMOTION_LABELS: Record<string, string> = {
+  fear: "страх ошибки",
+  status: "статус / желание обладать",
+  surprise: "удивление",
+  relatable: "узнавание себя",
+  curiosity: "любопытство",
+  interest: "интерес",
+};
+
+function fallbackLabel(value: string): string {
+  return value.replace(/_/g, " ").replace(/\s+/g, " ").trim() || "не распознано";
+}
+
+export function labelReelsHookType(value?: string | null): string {
+  const key = String(value || "unknown");
+  return HOOK_LABELS[key] || fallbackLabel(key);
+}
+
+export function labelReelsStructureType(value?: string | null): string {
+  const key = String(value || "unknown_structure");
+  return STRUCTURE_LABELS[key] || fallbackLabel(key);
+}
+
+export function labelReelsRetentionMechanism(value?: string | null): string {
+  const key = String(value || "open_loop");
+  return RETENTION_LABELS[key] || fallbackLabel(key);
+}
+
+export function labelReelsEmotion(value?: string | null): string {
+  const key = String(value || "interest");
+  return EMOTION_LABELS[key] || fallbackLabel(key);
+}
+
+export function buildRussianViralLogicLabel(hookType: string, structureType: string, retention: string, beats = 0): string {
+  return `${labelReelsHookType(hookType)} -> ${labelReelsStructureType(structureType)} -> ${labelReelsRetentionMechanism(retention)}${beats ? ` (${beats} битов)` : ""}`;
 }
 
 export function inferHookType(text?: string | null): string {
@@ -147,14 +224,20 @@ function buildScopedPatternMemory(
     const score = num(row.virality_score);
     const views = num(row.views);
     const viralLogic = `${hookType} -> ${structureType} -> ${retention}${beats ? ` (${beats} beats)` : ""}`;
+    const viralLogicLabel = buildRussianViralLogicLabel(hookType, structureType, retention, beats);
     const existing = groups.get(key);
     const item = existing || {
       pattern_id: slugPart(key),
       hook_type: hookType,
+      hook_label: labelReelsHookType(hookType),
       structure_type: structureType,
+      structure_label: labelReelsStructureType(structureType),
       retention_mechanism: retention,
+      retention_label: labelReelsRetentionMechanism(retention),
       emotion,
+      emotion_label: labelReelsEmotion(emotion),
       viral_logic: viralLogic,
+      viral_logic_label: viralLogicLabel,
       frequency: 0,
       strength_score: 0,
       avg_views: 0,
@@ -214,10 +297,15 @@ function buildCrossPlatformPatterns(platformBrains: Partial<Record<ReelsPlatform
       grouped.set(pattern.pattern_id, {
         pattern_id: pattern.pattern_id,
         hook_type: pattern.hook_type,
+        hook_label: pattern.hook_label || labelReelsHookType(pattern.hook_type),
         structure_type: pattern.structure_type,
+        structure_label: pattern.structure_label || labelReelsStructureType(pattern.structure_type),
         retention_mechanism: pattern.retention_mechanism,
+        retention_label: pattern.retention_label || labelReelsRetentionMechanism(pattern.retention_mechanism),
         emotion: pattern.emotion,
+        emotion_label: pattern.emotion_label || labelReelsEmotion(pattern.emotion),
         viral_logic: pattern.viral_logic,
+        viral_logic_label: pattern.viral_logic_label || buildRussianViralLogicLabel(pattern.hook_type, pattern.structure_type, pattern.retention_mechanism),
         platforms: [platformKey],
         platform_count: 1,
         total_frequency: pattern.frequency,

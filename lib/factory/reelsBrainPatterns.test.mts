@@ -54,6 +54,9 @@ function eq(a: unknown, b: unknown, m: string) { ok(JSON.stringify(a) === JSON.s
   eq(memory.total_videos, 3, "memory: total");
   eq(memory.patterns[0].frequency, 2, "memory: merges similar warning demo pattern");
   eq(memory.patterns[0].hook_type, "warning_pattern_break", "memory: top hook type");
+  eq(memory.patterns[0].hook_label, "предупреждение / слом ожидания", "memory: Russian hook label");
+  eq(memory.patterns[0].structure_label, "демонстрация", "memory: Russian structure label");
+  eq(memory.patterns[0].retention_label, "ожидание доказательства", "memory: Russian retention label");
   eq(memory.patterns[0].sounds, ["summer"], "memory: sounds deduped");
   ok(memory.patterns[0].strength_score > memory.patterns[1].strength_score, "memory: stronger repeated pattern first");
   eq(memory.meta_brain.platform, "all", "memory: meta brain present");
