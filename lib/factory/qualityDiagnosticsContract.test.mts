@@ -9,6 +9,7 @@ ok(/warning_counts/.test(diagnostics), "quality diagnostics groups warning reaso
 ok(/artifact_defects/.test(diagnostics), "quality diagnostics groups artifact defects");
 ok(/memory_counts/.test(diagnostics), "quality diagnostics reports memory labels");
 ok(/source_tiers/.test(diagnostics), "quality diagnostics reports source readiness tiers");
+ok(/isOperationalNoiseWarning/.test(diagnostics), "quality diagnostics filters known operational warning noise");
 ok(/frames-grounded OTK pass-rate is 0/.test(diagnostics), "quality diagnostics flags zero pass-rate");
 ok(/prepare_product for WB-only articles/.test(diagnostics), "quality diagnostics recommends source-prep for weak sources");
 ok(/loadFactoryQualityDiagnostics/.test(route), "quality diagnostics route uses shared loader");

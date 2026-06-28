@@ -1,0 +1,1352 @@
+{
+  "generated_at": "2026-06-28T12:36:46.167Z",
+  "base_url": "https://finance-panel-two.vercel.app",
+  "niche": null,
+  "hours": 72,
+  "count": 5,
+  "budget_usd": 20,
+  "checks": {
+    "balances": {
+      "name": "balances",
+      "url": "https://finance-panel-two.vercel.app/api/factory/balances",
+      "status": 200,
+      "ok": true,
+      "body": {
+        "ok": true,
+        "services": [
+          {
+            "service": "virlo",
+            "label": "Virlo",
+            "unit": "USD",
+            "capability": "api",
+            "balance": 5.75,
+            "currency": "USD",
+            "source": "api",
+            "threshold": null,
+            "low": false,
+            "hint": "тренд-аналитика · get_credit_balance",
+            "updated_at": "2026-06-28T12:36:30.819Z",
+            "history": [
+              {
+                "balance": 9.5,
+                "at": "2026-06-27T15:27:26.8095+00:00",
+                "source": "api"
+              },
+              {
+                "balance": 9.5,
+                "at": "2026-06-27T15:57:40.852793+00:00",
+                "source": "api"
+              },
+              {
+                "balance": 9.5,
+                "at": "2026-06-27T16:27:47.185031+00:00",
+                "source": "api"
+              },
+              {
+                "balance": 7.75,
+                "at": "2026-06-27T16:57:54.866064+00:00",
+                "source": "api"
+              },
+              {
+                "balance": 7.75,
+                "at": "2026-06-27T17:28:02.148303+00:00",
+                "source": "api"
+              },
+              {
+                "balance": 7.75,
+                "at": "2026-06-27T17:58:04.229344+00:00",
+                "source": "api"
+              },
+              {
+                "balance": 7.75,
+                "at": "2026-06-27T18:32:35.874604+00:00",
+                "source": "api"
+              },
+              {
+                "balance": 7.75,
+                "at": "2026-06-27T18:32:36.12172+00:00",
+                "source": "api"
+              },
+              {
+                "balance": 7.75,
+                "at": "2026-06-27T19:02:39.688451+00:00",
+                "source": "api"
+              },
+              {
+                "balance": 7.75,
+                "at": "2026-06-27T19:32:57.276302+00:00",
+                "source": "api"
+              },
+              {
+                "balance": 7.75,
+                "at": "2026-06-27T20:03:04.860361+00:00",
+                "source": "api"
+              },
+              {
+                "balance": 7.75,
+                "at": "2026-06-27T20:33:20.815792+00:00",
+                "source": "api"
+              },
+              {
+                "balance": 7.75,
+                "at": "2026-06-27T21:03:21.430182+00:00",
+                "source": "api"
+              },
+              {
+                "balance": 7.75,
+                "at": "2026-06-27T21:33:23.348441+00:00",
+                "source": "api"
+              },
+              {
+                "balance": 6.75,
+                "at": "2026-06-27T22:03:24.129423+00:00",
+                "source": "api"
+              },
+              {
+                "balance": 5.75,
+                "at": "2026-06-27T22:33:24.435306+00:00",
+                "source": "api"
+              },
+              {
+                "balance": 5.75,
+                "at": "2026-06-27T23:03:26.403396+00:00",
+                "source": "api"
+              },
+              {
+                "balance": 5.75,
+                "at": "2026-06-27T23:33:26.759125+00:00",
+                "source": "api"
+              },
+              {
+                "balance": 5.75,
+                "at": "2026-06-28T01:30:00.619859+00:00",
+                "source": "api"
+              },
+              {
+                "balance": 5.75,
+                "at": "2026-06-28T02:00:06.806885+00:00",
+                "source": "api"
+              },
+              {
+                "balance": 5.75,
+                "at": "2026-06-28T02:30:15.739926+00:00",
+                "source": "api"
+              },
+              {
+                "balance": 5.75,
+                "at": "2026-06-28T03:00:23.406885+00:00",
+                "source": "api"
+              },
+              {
+                "balance": 5.75,
+                "at": "2026-06-28T03:30:33.185766+00:00",
+                "source": "api"
+              },
+              {
+                "balance": 5.75,
+                "at": "2026-06-28T04:00:51.346781+00:00",
+                "source": "api"
+              },
+              {
+                "balance": 5.75,
+                "at": "2026-06-28T04:31:00.553093+00:00",
+                "source": "api"
+              },
+              {
+                "balance": 5.75,
+                "at": "2026-06-28T05:01:10.874698+00:00",
+                "source": "api"
+              },
+              {
+                "balance": 5.75,
+                "at": "2026-06-28T05:31:16.424236+00:00",
+                "source": "api"
+              },
+              {
+                "balance": 5.75,
+                "at": "2026-06-28T06:01:21.576011+00:00",
+                "source": "api"
+              },
+              {
+                "balance": 5.75,
+                "at": "2026-06-28T06:31:44.132377+00:00",
+                "source": "api"
+              },
+              {
+                "balance": 5.75,
+                "at": "2026-06-28T07:02:13.66065+00:00",
+                "source": "api"
+              },
+              {
+                "balance": 5.75,
+                "at": "2026-06-28T07:32:47.437875+00:00",
+                "source": "api"
+              },
+              {
+                "balance": 5.75,
+                "at": "2026-06-28T08:07:55.534727+00:00",
+                "source": "api"
+              },
+              {
+                "balance": 5.75,
+                "at": "2026-06-28T08:38:27.046362+00:00",
+                "source": "api"
+              },
+              {
+                "balance": 5.75,
+                "at": "2026-06-28T09:08:56.864805+00:00",
+                "source": "api"
+              },
+              {
+                "balance": 5.75,
+                "at": "2026-06-28T09:39:18.622463+00:00",
+                "source": "api"
+              },
+              {
+                "balance": 5.75,
+                "at": "2026-06-28T10:09:26.293064+00:00",
+                "source": "api"
+              },
+              {
+                "balance": 5.75,
+                "at": "2026-06-28T10:39:29.462936+00:00",
+                "source": "api"
+              },
+              {
+                "balance": 5.75,
+                "at": "2026-06-28T11:10:01.307385+00:00",
+                "source": "api"
+              },
+              {
+                "balance": 5.75,
+                "at": "2026-06-28T11:41:48.993178+00:00",
+                "source": "api"
+              },
+              {
+                "balance": 5.75,
+                "at": "2026-06-28T12:12:17.961402+00:00",
+                "source": "api"
+              }
+            ]
+          },
+          {
+            "service": "creatify",
+            "label": "Creatify",
+            "unit": "credits",
+            "capability": "api",
+            "balance": 80.5,
+            "currency": "credits",
+            "source": "api",
+            "threshold": null,
+            "low": false,
+            "hint": "AI UGC-актёры · remaining_credits",
+            "updated_at": "2026-06-28T12:36:29.835Z",
+            "history": [
+              {
+                "balance": 382.5,
+                "at": "2026-06-27T14:56:29.067349+00:00",
+                "source": "api"
+              },
+              {
+                "balance": 368,
+                "at": "2026-06-27T15:27:25.386935+00:00",
+                "source": "api"
+              },
+              {
+                "balance": 358.5,
+                "at": "2026-06-27T15:57:39.575586+00:00",
+                "source": "api"
+              },
+              {
+                "balance": 345.5,
+                "at": "2026-06-27T16:27:46.421421+00:00",
+                "source": "api"
+              },
+              {
+                "balance": 332.5,
+                "at": "2026-06-27T16:57:53.544874+00:00",
+                "source": "api"
+              },
+              {
+                "balance": 306.5,
+                "at": "2026-06-27T17:28:01.358104+00:00",
+                "source": "api"
+              },
+              {
+                "balance": 293.5,
+                "at": "2026-06-27T17:58:03.187929+00:00",
+                "source": "api"
+              },
+              {
+                "balance": 280.5,
+                "at": "2026-06-27T18:32:34.250519+00:00",
+                "source": "api"
+              },
+              {
+                "balance": 280.5,
+                "at": "2026-06-27T19:02:38.918023+00:00",
+                "source": "api"
+              },
+              {
+                "balance": 280.5,
+                "at": "2026-06-27T19:32:56.397115+00:00",
+                "source": "api"
+              },
+              {
+                "balance": 277,
+                "at": "2026-06-27T20:03:03.792454+00:00",
+                "source": "api"
+              },
+              {
+                "balance": 277,
+                "at": "2026-06-27T20:33:19.504864+00:00",
+                "source": "api"
+              },
+              {
+                "balance": 251,
+                "at": "2026-06-27T21:03:20.617657+00:00",
+                "source": "api"
+              },
+              {
+                "balance": 241.5,
+                "at": "2026-06-27T21:33:21.973641+00:00",
+                "source": "api"
+              },
+              {
+                "balance": 241.5,
+                "at": "2026-06-27T22:03:23.369239+00:00",
+                "source": "api"
+              },
+              {
+                "balance": 241.5,
+                "at": "2026-06-27T22:33:23.617656+00:00",
+                "source": "api"
+              },
+              {
+                "balance": 237,
+                "at": "2026-06-27T23:03:25.593191+00:00",
+                "source": "api"
+              },
+              {
+                "balance": 237,
+                "at": "2026-06-27T23:33:25.693197+00:00",
+                "source": "api"
+              },
+              {
+                "balance": 237,
+                "at": "2026-06-28T01:29:58.967015+00:00",
+                "source": "api"
+              },
+              {
+                "balance": 237,
+                "at": "2026-06-28T02:00:05.765495+00:00",
+                "source": "api"
+              },
+              {
+                "balance": 237,
+                "at": "2026-06-28T02:30:13.940181+00:00",
+                "source": "api"
+              },
+              {
+                "balance": 228,
+                "at": "2026-06-28T03:00:21.20262+00:00",
+                "source": "api"
+              },
+              {
+                "balance": 215,
+                "at": "2026-06-28T03:30:32.325668+00:00",
+                "source": "api"
+              },
+              {
+                "balance": 189,
+                "at": "2026-06-28T04:00:50.733635+00:00",
+                "source": "api"
+              },
+              {
+                "balance": 189,
+                "at": "2026-06-28T04:30:59.369226+00:00",
+                "source": "api"
+              },
+              {
+                "balance": 189,
+                "at": "2026-06-28T05:01:09.303753+00:00",
+                "source": "api"
+              },
+              {
+                "balance": 189,
+                "at": "2026-06-28T05:31:15.601378+00:00",
+                "source": "api"
+              },
+              {
+                "balance": 189,
+                "at": "2026-06-28T06:01:20.371635+00:00",
+                "source": "api"
+              },
+              {
+                "balance": 145.5,
+                "at": "2026-06-28T06:31:42.586515+00:00",
+                "source": "api"
+              },
+              {
+                "balance": 132.5,
+                "at": "2026-06-28T07:02:12.422386+00:00",
+                "source": "api"
+              },
+              {
+                "balance": 132.5,
+                "at": "2026-06-28T07:32:45.882659+00:00",
+                "source": "api"
+              },
+              {
+                "balance": 119.5,
+                "at": "2026-06-28T08:07:54.119595+00:00",
+                "source": "api"
+              },
+              {
+                "balance": 106.5,
+                "at": "2026-06-28T08:38:25.681788+00:00",
+                "source": "api"
+              },
+              {
+                "balance": 80.5,
+                "at": "2026-06-28T09:08:55.608102+00:00",
+                "source": "api"
+              },
+              {
+                "balance": 80.5,
+                "at": "2026-06-28T09:39:17.826926+00:00",
+                "source": "api"
+              },
+              {
+                "balance": 80.5,
+                "at": "2026-06-28T10:09:25.485232+00:00",
+                "source": "api"
+              },
+              {
+                "balance": 80.5,
+                "at": "2026-06-28T10:39:28.476233+00:00",
+                "source": "api"
+              },
+              {
+                "balance": 80.5,
+                "at": "2026-06-28T11:09:59.806939+00:00",
+                "source": "api"
+              },
+              {
+                "balance": 80.5,
+                "at": "2026-06-28T11:41:47.652397+00:00",
+                "source": "api"
+              },
+              {
+                "balance": 80.5,
+                "at": "2026-06-28T12:12:16.021477+00:00",
+                "source": "api"
+              }
+            ]
+          },
+          {
+            "service": "fal",
+            "label": "FAL",
+            "unit": "USD",
+            "capability": "api",
+            "balance": -1.61,
+            "currency": "USD",
+            "source": "api",
+            "threshold": null,
+            "low": true,
+            "hint": "видео-движки · нужен FAL_BILLING_KEY (admin)",
+            "updated_at": "2026-06-28T12:36:32.315Z",
+            "history": [
+              {
+                "balance": 2.16,
+                "at": "2026-06-27T15:25:39.06362+00:00",
+                "source": "api"
+              },
+              {
+                "balance": -0.18,
+                "at": "2026-06-27T15:55:49.661314+00:00",
+                "source": "api"
+              },
+              {
+                "balance": -0.44,
+                "at": "2026-06-27T16:26:00.844072+00:00",
+                "source": "api"
+              },
+              {
+                "balance": -0.44,
+                "at": "2026-06-27T16:56:01.786483+00:00",
+                "source": "api"
+              },
+              {
+                "balance": -0.44,
+                "at": "2026-06-27T17:26:03.935017+00:00",
+                "source": "api"
+              },
+              {
+                "balance": -0.44,
+                "at": "2026-06-27T17:56:08.645205+00:00",
+                "source": "api"
+              },
+              {
+                "balance": -0.44,
+                "at": "2026-06-27T18:32:36.298793+00:00",
+                "source": "api"
+              },
+              {
+                "balance": -0.44,
+                "at": "2026-06-27T18:32:36.468372+00:00",
+                "source": "api"
+              },
+              {
+                "balance": -0.44,
+                "at": "2026-06-27T19:02:39.764978+00:00",
+                "source": "api"
+              },
+              {
+                "balance": -0.44,
+                "at": "2026-06-27T19:32:57.464447+00:00",
+                "source": "api"
+              },
+              {
+                "balance": 19.04,
+                "at": "2026-06-27T20:03:04.971211+00:00",
+                "source": "api"
+              },
+              {
+                "balance": 19.04,
+                "at": "2026-06-27T20:33:20.848555+00:00",
+                "source": "api"
+              },
+              {
+                "balance": 15.67,
+                "at": "2026-06-27T21:03:22.18333+00:00",
+                "source": "api"
+              },
+              {
+                "balance": 13.07,
+                "at": "2026-06-27T21:33:23.029781+00:00",
+                "source": "api"
+              },
+              {
+                "balance": 12.03,
+                "at": "2026-06-27T22:03:24.891518+00:00",
+                "source": "api"
+              },
+              {
+                "balance": 12.03,
+                "at": "2026-06-27T22:33:25.056805+00:00",
+                "source": "api"
+              },
+              {
+                "balance": 11.51,
+                "at": "2026-06-27T23:03:26.99919+00:00",
+                "source": "api"
+              },
+              {
+                "balance": 11.51,
+                "at": "2026-06-27T23:33:38.759504+00:00",
+                "source": "api"
+              },
+              {
+                "balance": 11.51,
+                "at": "2026-06-28T01:30:00.245458+00:00",
+                "source": "api"
+              },
+              {
+                "balance": 11.51,
+                "at": "2026-06-28T02:00:06.616829+00:00",
+                "source": "api"
+              },
+              {
+                "balance": 11.51,
+                "at": "2026-06-28T02:30:15.39116+00:00",
+                "source": "api"
+              },
+              {
+                "balance": 6.05,
+                "at": "2026-06-28T03:00:24.571431+00:00",
+                "source": "api"
+              },
+              {
+                "balance": 0.34,
+                "at": "2026-06-28T03:30:33.984207+00:00",
+                "source": "api"
+              },
+              {
+                "balance": -5.37,
+                "at": "2026-06-28T04:00:52.115156+00:00",
+                "source": "api"
+              },
+              {
+                "balance": -5.38,
+                "at": "2026-06-28T04:31:00.696092+00:00",
+                "source": "api"
+              },
+              {
+                "balance": -5.38,
+                "at": "2026-06-28T05:01:16.105102+00:00",
+                "source": "api"
+              },
+              {
+                "balance": -5.38,
+                "at": "2026-06-28T05:31:16.861741+00:00",
+                "source": "api"
+              },
+              {
+                "balance": -5.38,
+                "at": "2026-06-28T06:01:21.59467+00:00",
+                "source": "api"
+              },
+              {
+                "balance": 24.1,
+                "at": "2026-06-28T06:31:43.912204+00:00",
+                "source": "api"
+              },
+              {
+                "balance": 24.1,
+                "at": "2026-06-28T07:02:13.922896+00:00",
+                "source": "api"
+              },
+              {
+                "balance": 19.95,
+                "at": "2026-06-28T07:32:47.341273+00:00",
+                "source": "api"
+              },
+              {
+                "balance": 14.75,
+                "at": "2026-06-28T08:07:55.813224+00:00",
+                "source": "api"
+              },
+              {
+                "balance": 10.07,
+                "at": "2026-06-28T08:38:27.253641+00:00",
+                "source": "api"
+              },
+              {
+                "balance": -1.61,
+                "at": "2026-06-28T09:08:57.740979+00:00",
+                "source": "api"
+              },
+              {
+                "balance": -1.61,
+                "at": "2026-06-28T09:39:20.077386+00:00",
+                "source": "api"
+              },
+              {
+                "balance": -1.61,
+                "at": "2026-06-28T10:09:26.923478+00:00",
+                "source": "api"
+              },
+              {
+                "balance": -1.61,
+                "at": "2026-06-28T10:39:30.021141+00:00",
+                "source": "api"
+              },
+              {
+                "balance": -1.61,
+                "at": "2026-06-28T11:10:01.427034+00:00",
+                "source": "api"
+              },
+              {
+                "balance": -1.61,
+                "at": "2026-06-28T11:41:48.720036+00:00",
+                "source": "api"
+              },
+              {
+                "balance": -1.61,
+                "at": "2026-06-28T12:12:17.696396+00:00",
+                "source": "api"
+              }
+            ]
+          },
+          {
+            "service": "shotstack",
+            "label": "Shotstack",
+            "unit": "credits",
+            "capability": "manual",
+            "balance": null,
+            "currency": "credits",
+            "source": "manual",
+            "threshold": null,
+            "low": false,
+            "hint": "сборка видео · нет API баланса → ручной ввод",
+            "updated_at": null,
+            "note": "нет API баланса — задай вручную ниже",
+            "history": []
+          },
+          {
+            "service": "anthropic",
+            "label": "Claude",
+            "unit": "USD",
+            "capability": "estimated",
+            "balance": null,
+            "currency": "USD",
+            "source": "estimated",
+            "threshold": null,
+            "low": false,
+            "hint": "мозг завода · нет API баланса → ручной + оценка",
+            "updated_at": null,
+            "note": "нет API баланса — задай вручную; ниже оценка трат",
+            "estimated_spend_30d": 43.84,
+            "history": []
+          }
+        ],
+        "low": [
+          "fal"
+        ],
+        "updated_at": "2026-06-28T12:36:32.766Z"
+      }
+    },
+    "quality": {
+      "name": "quality",
+      "url": "https://finance-panel-two.vercel.app/api/factory/quality?hours=72",
+      "status": 200,
+      "ok": true,
+      "body": {
+        "ok": true,
+        "headline_metric": "frames_grounded_otk_pass_rate",
+        "denominator": "produced_videos",
+        "quality": {
+          "window_hours": 72,
+          "since": "2026-06-25T12:36:33.507Z",
+          "produced_videos": 88,
+          "otk_pass": 0,
+          "warnings": 88,
+          "run_fail": 19,
+          "banked_videos": 54,
+          "frames_grounded_pass": 0,
+          "text_or_fallback_judged": 3,
+          "no_score": 0,
+          "pass_rate": 0,
+          "bank_rate": 61.4,
+          "by_niche": [
+            {
+              "niche": "cosmetics",
+              "produced_videos": 87,
+              "otk_pass": 0,
+              "warnings": 87,
+              "run_fail": 19,
+              "pass_rate": 0
+            },
+            {
+              "niche": "clothing",
+              "produced_videos": 1,
+              "otk_pass": 0,
+              "warnings": 1,
+              "run_fail": 0,
+              "pass_rate": 0
+            },
+            {
+              "niche": "default",
+              "produced_videos": 0,
+              "otk_pass": 0,
+              "warnings": 0,
+              "run_fail": 0,
+              "pass_rate": 0
+            }
+          ]
+        }
+      }
+    },
+    "diagnostics": {
+      "name": "quality-diagnostics",
+      "url": "https://finance-panel-two.vercel.app/api/factory/quality-diagnostics?hours=72",
+      "status": 200,
+      "ok": true,
+      "body": {
+        "ok": true,
+        "headline": "factory_quality_diagnostics",
+        "diagnostics": {
+          "window_hours": 72,
+          "since": "2026-06-25T12:36:34.941Z",
+          "totals": {
+            "recipes": 112,
+            "produced_videos": 88,
+            "otk_pass": 0,
+            "run_fail": 19,
+            "no_score": 0,
+            "text_or_fallback_judged": 3
+          },
+          "status_counts": {
+            "warning": 88,
+            "run_fail": 19,
+            "draft": 5
+          },
+          "warning_counts": [
+            {
+              "reason": "runtime autofill skipped fail-open",
+              "count": 60
+            },
+            {
+              "reason": "OTK below threshold",
+              "count": 45
+            },
+            {
+              "reason": "video-critic did not return score",
+              "count": 43
+            },
+            {
+              "reason": "provider balance stop collapsed sibling nodes",
+              "count": 18
+            },
+            {
+              "reason": "artifact-check warning",
+              "count": 14
+            },
+            {
+              "reason": "ОТК no frames; saved without score",
+              "count": 12
+            },
+            {
+              "reason": "remotion error fallback raw clip",
+              "count": 9
+            },
+            {
+              "reason": "gen-save warning",
+              "count": 7
+            },
+            {
+              "reason": "artifact-check unavailable",
+              "count": 3
+            },
+            {
+              "reason": "assemble source fallback rescued",
+              "count": 3
+            },
+            {
+              "reason": "remotion skipped: source fallback includes image assets",
+              "count": 3
+            },
+            {
+              "reason": "video-critic unavailable",
+              "count": 3
+            }
+          ],
+          "otk_basis_counts": {
+            "text": 3,
+            "model": 41,
+            "graph_fallback": 1
+          },
+          "artifact_defects": [],
+          "memory_counts": {
+            "winner": 0,
+            "usable": 100,
+            "trash": 45,
+            "unlabeled": 0
+          },
+          "source_tiers": {
+            "prepared": 0,
+            "real": 0,
+            "wb": 2,
+            "none": 0
+          },
+          "by_niche": [
+            {
+              "niche": "cosmetics",
+              "produced_videos": 87,
+              "otk_pass": 0,
+              "run_fail": 19,
+              "top_warning": "runtime autofill skipped fail-open"
+            },
+            {
+              "niche": "clothing",
+              "produced_videos": 1,
+              "otk_pass": 0,
+              "run_fail": 0,
+              "top_warning": "OTK below threshold"
+            },
+            {
+              "niche": "default",
+              "produced_videos": 0,
+              "otk_pass": 0,
+              "run_fail": 0,
+              "top_warning": null
+            }
+          ],
+          "blockers": [
+            "frames-grounded OTK pass-rate is 0",
+            "video memory has no winner examples",
+            "source pool is dominated by raw WB assets",
+            "19 recent run_fail recipes",
+            "3 produced videos were judged by text/storyboard/fallback"
+          ],
+          "next_actions": [
+            "prepare_product for WB-only articles before paid batch",
+            "exclude trash memory from pattern selection and review top trash reasons",
+            "fix dominant warning: runtime autofill skipped fail-open",
+            "manually mark at least 3 operator winners or import market metrics before broad learning"
+          ]
+        }
+      }
+    },
+    "memory": {
+      "name": "memory-quality",
+      "url": "https://finance-panel-two.vercel.app/api/factory/memory-quality",
+      "status": 200,
+      "ok": true,
+      "body": {
+        "ok": true,
+        "apply": false,
+        "total": 145,
+        "scanned": 145,
+        "changed": 0,
+        "updated": 0,
+        "by_label": {
+          "winner": 0,
+          "usable": 100,
+          "trash": 45
+        },
+        "by_confidence": {
+          "low": 95,
+          "medium": 5,
+          "high": 45
+        },
+        "summary": {
+          "by_label": {
+            "winner": 0,
+            "usable": 100,
+            "trash": 45
+          },
+          "by_confidence": {
+            "low": 95,
+            "medium": 5,
+            "high": 45
+          }
+        },
+        "errors": [],
+        "sample_trash": [
+          {
+            "id": 15818,
+            "name": "ПРОВЕРКА VM-РЕНДЕРА ✅",
+            "url": "https://jwjobmdihddytqfgymus.supabase.co/storage/v1/object/public/factory-media/gen/1782141180291-s0a7c8.mp4",
+            "niche": "test",
+            "article": "E2E-VM-RENDER",
+            "previous_label": "trash",
+            "label": "trash",
+            "score": 20,
+            "confidence": "high",
+            "reasons": [
+              "OTK below usable threshold: 2"
+            ]
+          },
+          {
+            "id": 16011,
+            "name": "WB куртка vs известный бренд — реально?",
+            "url": "https://jwjobmdihddytqfgymus.supabase.co/storage/v1/object/public/factory-media/gen/1782340797630-fvxl20.mp4",
+            "niche": "clothing",
+            "article": "HT-42-01",
+            "previous_label": "trash",
+            "label": "trash",
+            "score": 50,
+            "confidence": "high",
+            "reasons": [
+              "OTK below usable threshold: 5"
+            ]
+          },
+          {
+            "id": 16024,
+            "name": "Control clip",
+            "url": "https://jwjobmdihddytqfgymus.supabase.co/storage/v1/object/public/factory-media/gen/1782509801000-33a6mo.mp4",
+            "niche": "clothing",
+            "article": "HT-42-01",
+            "previous_label": "trash",
+            "label": "trash",
+            "score": 40,
+            "confidence": "high",
+            "reasons": [
+              "OTK below usable threshold: 4"
+            ]
+          },
+          {
+            "id": 16025,
+            "name": "Как это выглядит вживую",
+            "url": "https://jwjobmdihddytqfgymus.supabase.co/storage/v1/object/public/factory-media/gen/1782515049712-x2yni7.mp4",
+            "niche": "clothing",
+            "article": "HT-42-01",
+            "previous_label": "trash",
+            "label": "trash",
+            "score": 40,
+            "confidence": "high",
+            "reasons": [
+              "OTK below usable threshold: 4"
+            ]
+          },
+          {
+            "id": 16124,
+            "name": "Моё любимое корейское средство 🤍",
+            "url": "https://jwjobmdihddytqfgymus.supabase.co/storage/v1/object/public/factory-media/gen/1782614632831-3ntqyx.mp4",
+            "niche": "cosmetics",
+            "article": "2ndCOS0301",
+            "previous_label": "trash",
+            "label": "trash",
+            "score": 30,
+            "confidence": "high",
+            "reasons": [
+              "OTK below usable threshold: 3"
+            ]
+          },
+          {
+            "id": 16126,
+            "name": "Моё любимое корейское средство 🤍",
+            "url": "https://jwjobmdihddytqfgymus.supabase.co/storage/v1/object/public/factory-media/gen/1782614857411-ly0z55.mp4",
+            "niche": "cosmetics",
+            "article": "2ndCOS0301",
+            "previous_label": "trash",
+            "label": "trash",
+            "score": 40,
+            "confidence": "high",
+            "reasons": [
+              "OTK below usable threshold: 4"
+            ]
+          },
+          {
+            "id": 16135,
+            "name": "Тональный, который меняет цвет прямо на коже 😱",
+            "url": "https://jwjobmdihddytqfgymus.supabase.co/storage/v1/object/public/factory-media/gen/1782616065012-eha23w.mp4",
+            "niche": "cosmetics",
+            "article": "2ndCOS0301",
+            "previous_label": "trash",
+            "label": "trash",
+            "score": 40,
+            "confidence": "high",
+            "reasons": [
+              "OTK below usable threshold: 4"
+            ]
+          },
+          {
+            "id": 16152,
+            "name": "Тональный, который меняет цвет прямо на коже 😱",
+            "url": "https://jwjobmdihddytqfgymus.supabase.co/storage/v1/object/public/factory-media/gen/1782617219027-5oqh5j.mp4",
+            "niche": "cosmetics",
+            "article": "2ndCOS0301",
+            "previous_label": "trash",
+            "label": "trash",
+            "score": 40,
+            "confidence": "high",
+            "reasons": [
+              "OTK below usable threshold: 4"
+            ]
+          },
+          {
+            "id": 16154,
+            "name": "Корейское средство, которое я покупаю снова и снова 🤍",
+            "url": "https://jwjobmdihddytqfgymus.supabase.co/storage/v1/object/public/factory-media/gen/1782617432661-it2b55.mp4",
+            "niche": "cosmetics",
+            "article": "2ndCOS0301",
+            "previous_label": "trash",
+            "label": "trash",
+            "score": 40,
+            "confidence": "high",
+            "reasons": [
+              "OTK below usable threshold: 4"
+            ]
+          },
+          {
+            "id": 16164,
+            "name": "Моё любимое корейское средство 🤍",
+            "url": "https://jwjobmdihddytqfgymus.supabase.co/storage/v1/object/public/factory-media/gen/1782617589820-6a29ke.mp4",
+            "niche": "cosmetics",
+            "article": "2ndCOS0301",
+            "previous_label": "trash",
+            "label": "trash",
+            "score": 40,
+            "confidence": "high",
+            "reasons": [
+              "OTK below usable threshold: 4"
+            ]
+          },
+          {
+            "id": 16180,
+            "name": "Корейское средство, которое я покупаю снова и снова 🤍",
+            "url": "https://jwjobmdihddytqfgymus.supabase.co/storage/v1/object/public/factory-media/gen/1782618511267-q73uvq.mp4",
+            "niche": "cosmetics",
+            "article": "2ndCOS0301",
+            "previous_label": "trash",
+            "label": "trash",
+            "score": 40,
+            "confidence": "high",
+            "reasons": [
+              "OTK below usable threshold: 4"
+            ]
+          },
+          {
+            "id": 16189,
+            "name": "Тональный, который меняет цвет прямо на коже 😱",
+            "url": "https://jwjobmdihddytqfgymus.supabase.co/storage/v1/object/public/factory-media/gen/1782618707477-pl1109.mp4",
+            "niche": "cosmetics",
+            "article": "2ndCOS0301",
+            "previous_label": "trash",
+            "label": "trash",
+            "score": 50,
+            "confidence": "high",
+            "reasons": [
+              "OTK below usable threshold: 5"
+            ]
+          }
+        ],
+        "sample_winner": [],
+        "sample_low_confidence": [
+          {
+            "id": 6200,
+            "name": "бластер лайфстайл",
+            "url": "https://jwjobmdihddytqfgymus.supabase.co/storage/v1/object/public/factory-media/gen/1781872187101-t82xkf.mp4",
+            "niche": "blasters",
+            "article": "TT04101",
+            "previous_label": "usable",
+            "label": "usable",
+            "score": 55,
+            "confidence": "low",
+            "reasons": [
+              "playable video but no quality signal yet"
+            ]
+          },
+          {
+            "id": 6201,
+            "name": "NORVIA из реальной съёмки",
+            "url": "https://jwjobmdihddytqfgymus.supabase.co/storage/v1/object/public/factory-media/gen/1781872292536-iexpok.mp4",
+            "niche": "jackets",
+            "article": "NV-836-11",
+            "previous_label": "usable",
+            "label": "usable",
+            "score": 55,
+            "confidence": "low",
+            "reasons": [
+              "playable video but no quality signal yet"
+            ]
+          },
+          {
+            "id": 16017,
+            "name": "Control clip",
+            "url": "https://jwjobmdihddytqfgymus.supabase.co/storage/v1/object/public/factory-media/gen/1782375613796-i82lr7.mp4",
+            "niche": "clothing",
+            "article": "HT-42-01",
+            "previous_label": "usable",
+            "label": "usable",
+            "score": 55,
+            "confidence": "low",
+            "reasons": [
+              "playable video but no quality signal yet"
+            ]
+          },
+          {
+            "id": 16077,
+            "name": "Моё любимое корейское средство 🤍",
+            "url": "https://jwjobmdihddytqfgymus.supabase.co/storage/v1/object/public/factory-media/gen/1782594506431-ng2d0b.mp4",
+            "niche": "cosmetics",
+            "article": "2ndCOS0301",
+            "previous_label": "usable",
+            "label": "usable",
+            "score": 55,
+            "confidence": "low",
+            "reasons": [
+              "playable video but no quality signal yet"
+            ]
+          },
+          {
+            "id": 16125,
+            "name": "Корейское средство, которое я покупаю снова и снова 🤍",
+            "url": "https://jwjobmdihddytqfgymus.supabase.co/storage/v1/object/public/factory-media/gen/1782614707649-a6te1b.mp4",
+            "niche": "cosmetics",
+            "article": "2ndCOS0301",
+            "previous_label": "usable",
+            "label": "usable",
+            "score": 55,
+            "confidence": "low",
+            "reasons": [
+              "playable video but no quality signal yet"
+            ]
+          },
+          {
+            "id": 16153,
+            "name": "Моё любимое корейское средство 🤍",
+            "url": "https://jwjobmdihddytqfgymus.supabase.co/storage/v1/object/public/factory-media/gen/1782617263121-4att9w.mp4",
+            "niche": "cosmetics",
+            "article": "2ndCOS0301",
+            "previous_label": "usable",
+            "label": "usable",
+            "score": 55,
+            "confidence": "low",
+            "reasons": [
+              "playable video but no quality signal yet"
+            ]
+          },
+          {
+            "id": 16163,
+            "name": "Моё любимое корейское средство 🤍",
+            "url": "https://jwjobmdihddytqfgymus.supabase.co/storage/v1/object/public/factory-media/gen/1782617577285-7lzv8r.mp4",
+            "niche": "cosmetics",
+            "article": "2ndCOS0301",
+            "previous_label": "usable",
+            "label": "usable",
+            "score": 55,
+            "confidence": "low",
+            "reasons": [
+              "playable video but no quality signal yet"
+            ]
+          },
+          {
+            "id": 16220,
+            "name": "Тональный, который меняет цвет прямо на коже 😱",
+            "url": "https://jwjobmdihddytqfgymus.supabase.co/storage/v1/object/public/factory-media/gen/1782630974039-l8lng8.mp4",
+            "niche": "cosmetics",
+            "article": "2ndCOS0301",
+            "previous_label": "usable",
+            "label": "usable",
+            "score": 55,
+            "confidence": "low",
+            "reasons": [
+              "playable video but no quality signal yet"
+            ]
+          },
+          {
+            "id": 16307,
+            "name": "Тональный, который меняет цвет прямо на коже 😱",
+            "url": "https://jwjobmdihddytqfgymus.supabase.co/storage/v1/object/public/factory-media/gen/1782636681123-kfupyc.mp4",
+            "niche": "cosmetics",
+            "article": "2ndCOS0301",
+            "previous_label": "usable",
+            "label": "usable",
+            "score": 55,
+            "confidence": "low",
+            "reasons": [
+              "playable video but no quality signal yet"
+            ]
+          },
+          {
+            "id": 16330,
+            "name": "Моё любимое корейское средство 🤍",
+            "url": "https://jwjobmdihddytqfgymus.supabase.co/storage/v1/object/public/factory-media/gen/1782637565769-fmsi3w.mp4",
+            "niche": "cosmetics",
+            "article": "2ndCOS0301",
+            "previous_label": "usable",
+            "label": "usable",
+            "score": 55,
+            "confidence": "low",
+            "reasons": [
+              "playable video but no quality signal yet"
+            ]
+          },
+          {
+            "id": 15839,
+            "name": "CLR00912 · рилс",
+            "url": "https://jwjobmdihddytqfgymus.supabase.co/storage/v1/object/public/factory-media/renders/mqpoep19-7.mp4",
+            "niche": "bags",
+            "article": "CLR00912",
+            "previous_label": "usable",
+            "label": "usable",
+            "score": 55,
+            "confidence": "low",
+            "reasons": [
+              "playable video but no quality signal yet"
+            ]
+          },
+          {
+            "id": 15838,
+            "name": "CLR01012 · рилс",
+            "url": "https://jwjobmdihddytqfgymus.supabase.co/storage/v1/object/public/factory-media/renders/mqpoyyqp-8.mp4",
+            "niche": "bags",
+            "article": "CLR01012",
+            "previous_label": "usable",
+            "label": "usable",
+            "score": 55,
+            "confidence": "low",
+            "reasons": [
+              "playable video but no quality signal yet"
+            ]
+          }
+        ]
+      }
+    },
+    "series": {
+      "name": "series-readiness",
+      "url": "https://finance-panel-two.vercel.app/api/factory/series-readiness?target_runs=50&batch_size=5",
+      "status": 200,
+      "ok": true,
+      "body": {
+        "ok": true,
+        "niche": null,
+        "ready_to_launch_next": false,
+        "blockers": [
+          "50-run цель уже закрыта",
+          "50-run цель уже закрыта: перед новым циклом зафиксировать выводы"
+        ],
+        "next_batch_request": null,
+        "series_start_at": null,
+        "series_state": {
+          "target_batches": 10,
+          "completed_batches": 10,
+          "current_batch_index": 10,
+          "next_batch_index": null,
+          "remaining_runs": 0,
+          "remaining_batches": 0,
+          "current_batch_complete": true,
+          "target_met": true
+        },
+        "next_batch_gate": {
+          "ready": false,
+          "reason": "50-run цель уже закрыта: перед новым циклом зафиксировать выводы",
+          "current_feedback": 5,
+          "required_feedback": 3
+        },
+        "batch_plan": {
+          "control_count": 2,
+          "experiment_count": 3,
+          "control_pattern": "direct_claim | ugc_anim | seedance",
+          "primary_change_axis": "proof_density",
+          "experiment_note": "Добавить больше demo/proof в opening и середину, не меняя базовый format."
+        },
+        "feedback_queue_count": 5,
+        "latest_batch": {
+          "index": 10,
+          "batch_run_id": "batch_1782636839779_10ba1da4",
+          "from_run": 46,
+          "to_run": 50,
+          "total_runs": 5,
+          "winners": 1,
+          "quality_wins": 1,
+          "salvageable": 2,
+          "losers": 2,
+          "avg_otk": 3.2,
+          "avg_market_views": null,
+          "market_wins": 0,
+          "explicit_feedback": 5,
+          "dominant_warning_reason": "artifact-check warning",
+          "success_rate": 60,
+          "improved_vs_prev": true,
+          "dominant_hook_type": "direct_claim",
+          "dominant_pattern_key": "direct_claim|ugc_anim|seedance"
+        },
+        "warnings": []
+      }
+    },
+    "batch": {
+      "name": "batch-dry-run",
+      "url": "https://finance-panel-two.vercel.app/api/factory/batch",
+      "status": 409,
+      "ok": false,
+      "body": {
+        "ok": false,
+        "balance_block": [
+          "fal"
+        ],
+        "error": "Низкий баланс: fal — пополни или подними порог. Батч не запущен."
+      }
+    }
+  },
+  "summary": {
+    "ready_for_paid_batch": false,
+    "blockers": [
+      "fal balance low: -1.61 USD",
+      "frames-grounded OTK pass-rate is 0",
+      "video memory has no winner examples",
+      "source pool is dominated by raw WB assets",
+      "19 recent run_fail recipes",
+      "3 produced videos were judged by text/storyboard/fallback",
+      "batch balance_block: fal",
+      "memory has 0 winner videos"
+    ],
+    "warnings": [
+      "series hold: 50-run цель уже закрыта | 50-run цель уже закрыта: перед новым циклом зафиксировать выводы"
+    ]
+  }
+}

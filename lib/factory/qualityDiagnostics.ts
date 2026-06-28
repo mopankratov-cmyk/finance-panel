@@ -57,7 +57,16 @@ function topCounts(map: Record<string, number>, limit = 12): Array<{ reason: str
 function runWarnings(row: Row): string[] {
   const plan = row.run_plan && typeof row.run_plan === "object" ? row.run_plan as Row : {};
   const warnings = Array.isArray(plan.warnings) ? plan.warnings : [];
-  return warnings.map((warning) => normalizeWarningReason(text(warning, 180))).filter(Boolean);
+  return warnings
+    .map((warning) => normalizeWarningReason(text(warning, 180)))
+    .filter((warning) => warning && !isOperationalNoiseWarning(warning));
+}
+
+function isOperationalNoiseWarning(warning: string): boolean {
+  const s = warning.toLowerCase();
+  return s === "runtime autofill skipped fail-open"
+    || s.startsWith("gen-poll source fallback rescued")
+    || s.startsWith("assemble source fallback rescued");
 }
 
 function otk(row: Row): Row {
