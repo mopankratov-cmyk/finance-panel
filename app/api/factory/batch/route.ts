@@ -5,7 +5,7 @@ import { internalFetch } from "@/lib/internalFetch";
 import { loadImprovementSnapshot, type ImprovementBatchPlan } from "@/lib/factory/improvementLoop";
 import { buildRunPlan, makeRunId } from "@/lib/factory/graphRun";
 import type { RunPlan } from "@/lib/factory/graphTypes";
-import { resolveSourceReadyArticles } from "@/lib/factory/sourceReadiness";
+import { loadSourceReadiness, type SourceReadinessTier } from "@/lib/factory/sourceReadiness";
 import { randomUUID } from "node:crypto";
 
 export const dynamic = "force-dynamic";
@@ -26,6 +26,7 @@ const DEFAULT_RECIPE_COST = 3.2; // CONSERVATIVE: autofill может выбра
 const REGEN_FACTOR = 3;          // = MAX_RENDERS: бюджет-гард по АБСОЛЮТНОМУ потолку (даже если КАЖДЫЙ рецепт реген-нётся ×3) → сумма ≤ budget = ЖЁСТКИЙ кап, автопилот физически не перерасходует; типовую смету показываем отдельно
 const OPEN_LEARNING_GATE = { ready: true, reason: "learning gate not requested", current_feedback: 0, required_feedback: 0 };
 const PROVIDER_BLOCK_LOOKBACK_MS = 6 * 60 * 60 * 1000;
+const SOURCE_TIER_RANK: Record<SourceReadinessTier, number> = { prepared: 3, real: 2, wb: 1, none: 0 };
 
 // смета одного рецепта по нодам (×реген до 3 не учитываем — это потолок, не ожидание).
 // V21: рецепт-черновик конфигурируется §17 уже В ОЧЕРЕДИ → tool может ещё не стоять. Если по нодам цены нет
@@ -38,6 +39,10 @@ function estimateRecipe(nodes: any[]): number {
   if (hasVisual) sum += TOOL_COST.shotstack; // сборка
   if (!priced && gen) return Math.min(DEFAULT_RECIPE_COST, gen * 0.5); // черновик без движков → оценка по нодам
   return Math.round(sum * 100) / 100;
+}
+
+function sourceTierRank(tier: SourceReadinessTier | null | undefined): number {
+  return SOURCE_TIER_RANK[tier || "none"] || 0;
 }
 
 async function enqueueGraphRun(db: any, rid: number, meta: { batch_run_id: string; batch_role: string; change_axis: string }) {
@@ -158,8 +163,11 @@ export async function POST(req: NextRequest) {
     const { data } = await q;
     const draftPool = ((data as { id: number; niche?: string | null; article?: string | null }[] | null) || [])
       .map((r) => ({ id: r.id, niche: r.niche || null, article: r.article || null }));
-    const sourceReadyPool = await resolveSourceReadyArticles(db, draftPool.map((row) => row.article || ""));
-    selectedRecipes = draftPool.filter((row) => !!row.article && sourceReadyPool.has(String(row.article))).slice(0, count);
+    const sourceInfoPool = await loadSourceReadiness(db, draftPool.map((row) => row.article || ""));
+    selectedRecipes = draftPool
+      .filter((row) => !!row.article && sourceInfoPool.get(String(row.article))?.ready)
+      .sort((a, b) => sourceTierRank(sourceInfoPool.get(String(b.article || ""))?.tier) - sourceTierRank(sourceInfoPool.get(String(a.article || ""))?.tier))
+      .slice(0, count);
     recipeIds = selectedRecipes.map((r) => r.id);
   }
   recipeIds = recipeIds.slice(0, count);
@@ -173,11 +181,21 @@ export async function POST(req: NextRequest) {
   }
   const availableDrafts = selectedRecipes.length;
   const missingDrafts = Math.max(0, count - availableDrafts);
-  const sourceReadyArticles = await resolveSourceReadyArticles(db, selectedRecipes.map((row) => row.article || ""));
+  const sourceReadiness = await loadSourceReadiness(db, selectedRecipes.map((row) => row.article || ""));
+  const sourceReadyArticles = new Set(Array.from(sourceReadiness.entries()).filter(([, item]) => item.ready).map(([article]) => article));
   const sourceReadyRecipeIds = selectedRecipes
     .filter((row) => !!row.article && sourceReadyArticles.has(String(row.article)))
     .map((row) => row.id);
   const sourceReadyDrafts = sourceReadyRecipeIds.length;
+  const sourceTierCounts = Array.from(sourceReadiness.values()).reduce<Record<SourceReadinessTier, number>>((acc, item) => {
+    acc[item.tier] = (acc[item.tier] || 0) + 1;
+    return acc;
+  }, { prepared: 0, real: 0, wb: 0, none: 0 });
+  const strongSourceDrafts = selectedRecipes.filter((row) => {
+    const tier = sourceReadiness.get(String(row.article || ""))?.tier || "none";
+    return tier === "prepared" || tier === "real";
+  }).length;
+  const wbOnlyDrafts = sourceTierCounts.wb || 0;
   const missingSourceDrafts = Math.max(0, count - sourceReadyDrafts);
   const providerReady = providerBlock.length === 0;
   if (!recipeIds.length) return NextResponse.json({
@@ -191,6 +209,9 @@ export async function POST(req: NextRequest) {
       missing_drafts: count,
       source_ready_drafts: 0,
       missing_source_drafts: count,
+      strong_source_drafts: 0,
+      wb_only_drafts: 0,
+      source_tiers: { prepared: 0, real: 0, wb: 0, none: 0 },
       budget_fit_count: 0,
       provider_ready: providerReady,
     },
@@ -229,9 +250,16 @@ export async function POST(req: NextRequest) {
     missing_drafts: missingDrafts,
     source_ready_drafts: sourceReadyDrafts,
     missing_source_drafts: missingSourceDrafts,
+    strong_source_drafts: strongSourceDrafts,
+    wb_only_drafts: wbOnlyDrafts,
+    source_tiers: sourceTierCounts,
     budget_fit_count: plannedRecipeIds.length,
     provider_ready: providerReady,
   };
+  const wbOnlyArticle = selectedRecipes.find((row) => (sourceReadiness.get(String(row.article || ""))?.tier || "none") === "wb")?.article || null;
+  const sourcePrepNextAction = wbOnlyDrafts > 0 && strongSourceDrafts < count
+    ? { type: "prepare_product", route: "/api/factory/prepare-product", article: wbOnlyArticle, count: Math.min(2, wbOnlyDrafts), reason: "batch has WB-only sources; prepared product frames should lift OTK pass-rate" }
+    : null;
   const controlCount = Math.max(1, Math.min(count, Number(batchPlan?.control_count) || Math.min(2, count)));
   const primaryAxis = ["hook_angle", "proof_density", "cta_shape", "format"].includes(String(batchPlan?.primary_change_axis || ""))
     ? String(batchPlan?.primary_change_axis)
@@ -303,7 +331,7 @@ export async function POST(req: NextRequest) {
       capped_by_budget: cappedByBudget,
       balance_unknown: balanceUnknown,
       provider_block: providerBlock,
-      next_action: preflight.missing_drafts > 0 || preflight.missing_source_drafts > 0 ? { type: "prepare_drafts", route: "/api/factory/prepare-drafts", count, niche: requestedNiche } : null,
+      next_action: preflight.missing_drafts > 0 || preflight.missing_source_drafts > 0 ? { type: "prepare_drafts", route: "/api/factory/prepare-drafts", count, niche: requestedNiche } : sourcePrepNextAction,
       error: preflight.missing_drafts > 0
         ? `Пятёрка не запущена: не хватает ${preflight.missing_drafts} draft-рецептов.`
         : preflight.missing_source_drafts > 0
@@ -335,7 +363,8 @@ export async function POST(req: NextRequest) {
     dry_run: dryRun, enqueued, estimated_usd: spent, worst_case_usd: spentWorst, budget_usd: cap, capped_by_budget: cappedByBudget,
     balance_unknown: balanceUnknown, // ⚠ по этим сервисам баланс не проверен (нет ключа/гео) — гард не гарантирует
     provider_block: providerBlock,
-    warnings: [...(learningGateWarning ? [`learning gate fail-open: ${learningGateWarning}`] : []), ...enqueueErrors],
+    next_action: sourcePrepNextAction,
+    warnings: [...(learningGateWarning ? [`learning gate fail-open: ${learningGateWarning}`] : []), ...(sourcePrepNextAction ? ["source-prep recommended: batch contains WB-only sources"] : []), ...enqueueErrors],
     note: `Бюджет-гард по worst-case (реген до ×3): уложились в $${cap}, типовая трата ≈ $${spent}, потолок ≈ $${spentWorst}. Прошедшее ОТК → Telegram (notify).` + (balanceUnknown.length ? ` ⚠ Баланс не проверен: ${balanceUnknown.join(", ")}.` : ""),
   });
   } catch (e) {
