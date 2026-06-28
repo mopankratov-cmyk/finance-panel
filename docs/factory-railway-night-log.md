@@ -2,6 +2,34 @@
 
 Этот журнал ведёт отдельный AI-worker на Railway во время ночных задач по контент-заводу.
 
+### 2026-06-28 15:30
+
+- Ветка: `codex/factory-runtime-fixes-small`
+- Цель: продвинуть M1/M2 quality-first контур для серии 50 роликов без запуска платного батча на низком FAL-балансе
+- Изменено:
+  - `app/api/factory/gen-save/route.ts`: gen-save больше не принимает image/JPG как `video_url`, GET памяти считает только video rows
+  - `lib/factory/qualityStats.ts` + `/api/factory/quality`: добавлена честная метрика `frames_grounded_otk_pass_rate` с denominator `produced_videos`
+  - `lib/factory/graphRun.ts`: banking в каталог теперь только после frames-grounded OTK pass; failure идёт в bounded regen loop; best attempt сохраняет связку `bestUrl + bestOtk`
+  - `lib/factory/sourceReadiness.ts` + `/api/factory/batch`: batch preflight различает `prepared/real/wb/none`, выбирает prepared/real источники первыми и предлагает `/prepare-product` для WB-only сырья
+  - `lib/factory/reelsBrainPicker.ts`: Reels Brain pattern picker подключён к batch enqueue, pattern пишется в `run_plan` и hook-ноду; `improvementLoop` группирует серии по выбранному pattern id
+  - `lib/factory/recipeTransfer.ts`: draft-рецепты детерминированно специализируются под `article/product_name` без runtime LLM autofill
+  - `/api/factory/memory-quality`: production memory размечена `winner/usable/trash`; ответ route теперь отдаёт `scanned` и `summary`
+- Production smoke:
+  - deploy READY: `https://finance-panel-two.vercel.app`
+  - `/api/factory/quality?hours=72` с bearer: `produced=88`, `otk_pass=0`, `pass_rate=0`, `banked=54`, `bank_rate=61.4`
+  - `/api/factory/memory-quality` dry-run после apply: `total=145`, `usable=100`, `trash=45`, `winner=0`, `changed=0`
+  - `/api/factory/balances`: live `fal=-1.61 USD`, `low=true`; batch dry-run возвращает `balance_block:["fal"]`
+- Проверки:
+  - `node --import tsx` guards: `memoryQualityContract`, `qualityStatsContract`, `reelsBrainPickerContract`, `sourceReadinessTierContract`, `graphRunBestOtkContract`, `prepareDraftsContract`, `batchTransparencyContract`, `autofillTickTimeout`
+  - `npm run build` локально с `.env.vercel*`
+  - несколько `vercel deploy --prod --yes --force` завершились `READY`
+- Текущий блокер:
+  - платный прогон 5/50 роликов нельзя запускать до пополнения FAL: guard видит live отрицательный баланс
+- Следующий безопасный шаг после пополнения:
+  - `POST /api/factory/batch` с `dry_run:true, require_full_batch:true, require_learning_gate:true`, проверить `preflight.source_tiers`
+  - если `wb_only_drafts > 0`, сначала `/api/factory/prepare-product` для выбранных артикулов
+  - затем запускать следующую пятёрку и сравнивать `frames_grounded_otk_pass_rate`
+
 ## Итог ночи
 
 - Дата: 2026-06-25
