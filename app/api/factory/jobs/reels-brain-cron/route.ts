@@ -109,12 +109,12 @@ export async function GET(req: NextRequest) {
         niches,
         platforms,
         strategy: "bulk",
-        max_lanes: 3,
-        limit: 25,
+        max_lanes: 5,
+        limit: 30,
         providers_per_lane: 2,
-        provider_timeout_ms: 30000,
-        max_provider_calls: 6,
-        max_cost_units: 18,
+        provider_timeout_ms: 22000,
+        max_provider_calls: 10,
+        max_cost_units: 30,
         hours: 72,
       }
       : {
@@ -134,6 +134,7 @@ export async function GET(req: NextRequest) {
     const result = await response.json().catch(() => ({}));
     const resultRecord = (result || {}) as Record<string, unknown>;
     const tickRecord = ((resultRecord.tick || resultRecord) || {}) as Record<string, unknown>;
+    const summaryRecord = ((tickRecord.automation_summary || resultRecord.automation_summary) || {}) as Record<string, unknown>;
     console.info("reels_brain_cron_tick", JSON.stringify({
       task,
       decision: auto.decision,
@@ -142,10 +143,10 @@ export async function GET(req: NextRequest) {
       endpoint,
       status: response.status,
       ok: response.ok && (result as { ok?: boolean }).ok !== false,
-      found: tickRecord.found ?? null,
-      inserted: tickRecord.inserted ?? null,
-      analyzed: tickRecord.analyzed ?? null,
-      errors: tickRecord.errors ?? null,
+      found: tickRecord.found ?? summaryRecord.found ?? null,
+      inserted: tickRecord.inserted ?? summaryRecord.inserted ?? null,
+      analyzed: tickRecord.analyzed ?? summaryRecord.analyzed ?? null,
+      errors: tickRecord.errors ?? summaryRecord.errors ?? null,
       discovery_learning: Array.isArray(tickRecord.discovery_learning) ? tickRecord.discovery_learning.length : null,
     }));
 

@@ -390,8 +390,8 @@ async function runBulk(req: NextRequest, body: Record<string, unknown>, execute:
   const budgetSkipped: unknown[] = [];
   const runs: BulkProviderRun[] = [];
   if (execute) {
-    for (const lane of queue) {
-      for (const provider of lane.providers) {
+    const callQueue = queue.flatMap((lane) =>
+      lane.providers.map((provider) => {
         const budgetDecision = allowedBudgetQueue.shift();
         if (!budgetDecision?.allowed) {
           budgetSkipped.push({
@@ -402,8 +402,13 @@ async function runBulk(req: NextRequest, body: Record<string, unknown>, execute:
             reason: budgetDecision?.reason || "budget_decision_missing",
             cost_units: budgetDecision?.cost_units || null,
           });
-          continue;
+          return null;
         }
+        return { lane, provider, budgetDecision };
+      }),
+    ).filter((row): row is NonNullable<typeof row> => row !== null);
+
+    const providerRuns = await Promise.all(callQueue.map(async ({ lane, provider, budgetDecision }) => {
         const started = Date.now();
         const result = await withTimeout(
           fetchReelsBrainProvider(provider, lane.query, lane.limit),
@@ -422,12 +427,11 @@ async function runBulk(req: NextRequest, body: Record<string, unknown>, execute:
             .from("viral_videos")
             .upsert(prepared.rows, { onConflict: "url", ignoreDuplicates: true, count: "exact" });
           if (error) {
-            runs.push({ niche: lane.niche, platform: lane.platform, provider, query: lane.query, ok: false, error: error.message });
-            continue;
+            return { niche: lane.niche, platform: lane.platform, provider, query: lane.query, ok: false, error: error.message };
           }
           inserted = count ?? prepared.rows.length;
         }
-        runs.push({
+        return {
           niche: lane.niche,
           platform: lane.platform,
           provider,
@@ -440,9 +444,9 @@ async function runBulk(req: NextRequest, body: Record<string, unknown>, execute:
           rejected: prepared.rejected,
           elapsed_ms: Date.now() - started,
           error: result.error || null,
-        });
-      }
-    }
+        };
+      }));
+    runs.push(...providerRuns);
   }
   const automationSummary = summarizeReelsBrainAutomationRuns({
     mode: "bulk",
