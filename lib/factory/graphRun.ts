@@ -541,6 +541,93 @@ async function jpost(origin: string, path: string, body: unknown, ms = 90000, fa
   return j;
 }
 
+async function saveOurStorageVideoToCatalog(
+  db: SupabaseClient,
+  opts: {
+    url: string;
+    article: string;
+    niche: string;
+    hook: string;
+    engine: string | null | undefined;
+    recipeId: number;
+    batchRole?: RunPlan["batch_role"];
+    changeAxis?: RunPlan["change_axis"];
+    otkScore: number | null;
+    otkAxes?: unknown;
+  },
+): Promise<string | null> {
+  const url = String(opts.url || "").trim();
+  if (!url || !isOurStorage(url)) return null;
+  const sourceMeta = { source_url: url };
+  try {
+    const { data: dup } = await db.from("content_assets").select("url").eq("disk", "gen").contains("analysis", sourceMeta).maybeSingle();
+    if (dup?.url) {
+      await logGeneration({
+        recipe_id: opts.recipeId,
+        engine: opts.engine || null,
+        prompt: opts.hook || null,
+        input_url: url,
+        output_url: dup.url,
+        otk_score: opts.otkScore,
+        otk_axes: opts.otkAxes ?? null,
+        status: opts.otkScore != null && opts.otkScore < 7 ? "warning" : "generated",
+        source: "graph_run",
+        reason: "catalog_direct_dedupe",
+        niche: opts.niche,
+        article: opts.article || null,
+      });
+      return String(dup.url);
+    }
+    const path = `gen/direct-${createHash("sha1").update(url).digest("hex")}`;
+    const { error } = await db.from("content_assets").insert({
+      disk: "gen",
+      path,
+      name: (opts.hook || opts.article || "генерация").toString().slice(0, 120),
+      kind: "video",
+      niche: opts.niche,
+      article: opts.article || null,
+      color: null,
+      url,
+      analyzed: true,
+      analysis: {
+        source_url: url,
+        route: "node_graph",
+        engine: opts.engine || "",
+        batch_role: opts.batchRole || null,
+        change_axis: opts.changeAxis || null,
+        otk: opts.otkScore,
+        otk_axes: opts.otkAxes ?? null,
+        recipe_id: opts.recipeId,
+        catalog_fallback: "direct_our_storage",
+      },
+    });
+    if (error) {
+      if ((error as { code?: string }).code === "23505") {
+        const { data: ex } = await db.from("content_assets").select("url").eq("disk", "gen").contains("analysis", sourceMeta).maybeSingle();
+        if (ex?.url) return String(ex.url);
+      }
+      return null;
+    }
+    await logGeneration({
+      recipe_id: opts.recipeId,
+      engine: opts.engine || null,
+      prompt: opts.hook || null,
+      input_url: url,
+      output_url: url,
+      otk_score: opts.otkScore,
+      otk_axes: opts.otkAxes ?? null,
+      status: opts.otkScore != null && opts.otkScore < 7 ? "warning" : "generated",
+      source: "graph_run",
+      reason: "catalog_direct_our_storage",
+      niche: opts.niche,
+      article: opts.article || null,
+    });
+    return url;
+  } catch {
+    return null;
+  }
+}
+
 // ОДИН шаг исполнения графа.
 export async function runRecipeStep(
   db: SupabaseClient, origin: string,
@@ -1076,6 +1163,24 @@ export async function runRecipeStep(
         const g = await jpost(origin, "/api/factory/gen-save", { video_url: url, article, niche, hook, route: "node_graph", engine: plan.render_engine || "shotstack", batch_role: plan.batch_role || null, change_axis: plan.change_axis || null, otk: score, otk_axes: plan.otk?.axes ?? null, recipe_id: id }, 40000, true); // ≤40с: влезть в maxDuration 60 тика (был 120с → Vercel убивал handler, catalogUrl терялся)
         catalogUrl = g?.url || null;
       } catch (e) { catalogError = String((e as Error)?.message || e).slice(0, 220); }
+      if (!catalogUrl && catalogError && isOurStorage(url)) {
+        const directUrl = await saveOurStorageVideoToCatalog(db, {
+          url,
+          article,
+          niche,
+          hook,
+          engine: plan.render_engine || "shotstack",
+          recipeId: id,
+          batchRole: plan.batch_role || null,
+          changeAxis: plan.change_axis || null,
+          otkScore: score,
+          otkAxes: plan.otk?.axes ?? null,
+        });
+        if (directUrl) {
+          catalogUrl = directUrl;
+          catalogError = null;
+        }
+      }
     }
     if (url && !catalogUrl && catalogError) {
       addWarning(`gen-save warning: ${catalogError}`);
