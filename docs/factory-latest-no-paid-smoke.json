@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-06-28T14:04:00.615Z",
+  "generated_at": "2026-06-28T14:16:13.281Z",
   "base_url": "https://finance-panel-two.vercel.app",
   "niche": null,
   "hours": 72,
@@ -25,13 +25,8 @@
             "threshold": null,
             "low": false,
             "hint": "тренд-аналитика · get_credit_balance",
-            "updated_at": "2026-06-28T14:03:47.067Z",
+            "updated_at": "2026-06-28T14:15:55.057Z",
             "history": [
-              {
-                "balance": 7.75,
-                "at": "2026-06-27T16:57:54.866064+00:00",
-                "source": "api"
-              },
               {
                 "balance": 7.75,
                 "at": "2026-06-27T17:28:02.148303+00:00",
@@ -226,6 +221,11 @@
                 "balance": 5.75,
                 "at": "2026-06-28T13:43:50.438861+00:00",
                 "source": "api"
+              },
+              {
+                "balance": 5.75,
+                "at": "2026-06-28T14:14:16.806032+00:00",
+                "source": "api"
               }
             ]
           },
@@ -240,13 +240,8 @@
             "threshold": null,
             "low": false,
             "hint": "AI UGC-актёры · remaining_credits",
-            "updated_at": "2026-06-28T14:03:45.632Z",
+            "updated_at": "2026-06-28T14:15:54.015Z",
             "history": [
-              {
-                "balance": 345.5,
-                "at": "2026-06-27T16:27:46.421421+00:00",
-                "source": "api"
-              },
               {
                 "balance": 332.5,
                 "at": "2026-06-27T16:57:53.544874+00:00",
@@ -441,6 +436,11 @@
                 "balance": 80.5,
                 "at": "2026-06-28T13:43:49.604548+00:00",
                 "source": "api"
+              },
+              {
+                "balance": 80.5,
+                "at": "2026-06-28T14:14:15.726846+00:00",
+                "source": "api"
               }
             ]
           },
@@ -455,13 +455,8 @@
             "threshold": null,
             "low": true,
             "hint": "видео-движки · нужен FAL_BILLING_KEY (admin)",
-            "updated_at": "2026-06-28T14:03:47.719Z",
+            "updated_at": "2026-06-28T14:15:55.420Z",
             "history": [
-              {
-                "balance": -0.44,
-                "at": "2026-06-27T16:56:01.786483+00:00",
-                "source": "api"
-              },
               {
                 "balance": -0.44,
                 "at": "2026-06-27T17:26:03.935017+00:00",
@@ -656,6 +651,11 @@
                 "balance": -1.61,
                 "at": "2026-06-28T13:43:52.168732+00:00",
                 "source": "api"
+              },
+              {
+                "balance": -1.61,
+                "at": "2026-06-28T14:14:16.902303+00:00",
+                "source": "api"
               }
             ]
           },
@@ -694,7 +694,7 @@
         "low": [
           "fal"
         ],
-        "updated_at": "2026-06-28T14:03:48.185Z"
+        "updated_at": "2026-06-28T14:15:56.319Z"
       }
     },
     "quality": {
@@ -708,7 +708,7 @@
         "denominator": "produced_videos",
         "quality": {
           "window_hours": 72,
-          "since": "2026-06-25T14:03:48.611Z",
+          "since": "2026-06-25T14:15:57.094Z",
           "produced_videos": 88,
           "otk_pass": 0,
           "warnings": 88,
@@ -758,7 +758,7 @@
         "headline": "factory_quality_diagnostics",
         "diagnostics": {
           "window_hours": 72,
-          "since": "2026-06-25T14:03:49.739Z",
+          "since": "2026-06-25T14:15:58.648Z",
           "totals": {
             "recipes": 112,
             "produced_videos": 88,
@@ -1652,7 +1652,7 @@
       "ok": true,
       "body": {
         "ok": true,
-        "batch_run_id": "batch_1782655436488_4db34a6b",
+        "batch_run_id": "batch_1782656168239_9e5c2a41",
         "requested": {
           "niche": null,
           "count": 5,
