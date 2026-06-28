@@ -6,6 +6,7 @@ import { loadImprovementSnapshot, type ImprovementBatchPlan } from "@/lib/factor
 import { buildRunPlan, makeRunId } from "@/lib/factory/graphRun";
 import type { RunPlan } from "@/lib/factory/graphTypes";
 import { loadSourceReadiness, type SourceReadinessTier } from "@/lib/factory/sourceReadiness";
+import { applyReelsBrainPatternToPlan, pickReelsBrainPattern } from "@/lib/factory/reelsBrainPicker";
 import { randomUUID } from "node:crypto";
 
 export const dynamic = "force-dynamic";
@@ -62,6 +63,16 @@ async function enqueueGraphRun(db: any, rid: number, meta: { batch_run_id: strin
   plan.warnings = [];
   plan.notify = true;
   plan.step = "autofill";
+  try {
+    const { data: recipeRows } = await db.from("node_recipes").select("niche").eq("id", rid).limit(1);
+    const recipeNiche = String((recipeRows as { niche?: string | null }[] | null)?.[0]?.niche || "").trim();
+    const pattern = await pickReelsBrainPattern(db, recipeNiche, `${meta.batch_run_id}:${rid}:${meta.change_axis}`);
+    if (applyReelsBrainPatternToPlan(plan, pattern)) {
+      plan.warnings = (plan.warnings || []).filter((warning) => !String(warning).startsWith("reels-brain"));
+    }
+  } catch {
+    plan.warnings = [...(plan.warnings || []), "reels-brain pattern picker unavailable; enqueue continues fail-open"];
+  }
   const { error } = await db.from("node_recipes").update({
     run_plan: plan,
     status: "running",

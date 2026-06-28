@@ -24,6 +24,15 @@ export interface RunPlan {
   batch_run_id?: string | null;
   batch_role?: "control" | "experiment" | "none" | null;
   change_axis?: "none" | "hook_angle" | "proof_density" | "cta_shape" | "format" | null;
+  reels_brain_pattern?: {
+    pattern_id: string;
+    hook_type: string;
+    structure_type: string;
+    retention_mechanism: string;
+    emotion?: string | null;
+    viral_logic?: string | null;
+    example_hooks?: string[];
+  } | null;
   step: RunStep;
   nodes: RunNode[];
   render_id?: string | null;

@@ -254,6 +254,12 @@ function changeAxisFromPlan(runPlan: unknown): ImprovementRun["change_axis"] {
   return ["none", "hook_angle", "proof_density", "cta_shape", "format"].includes(raw) ? raw as ImprovementRun["change_axis"] : "none";
 }
 
+function reelsBrainPatternFromPlan(runPlan: unknown): Row | null {
+  if (!runPlan || typeof runPlan !== "object") return null;
+  const raw = (runPlan as Row).reels_brain_pattern;
+  return raw && typeof raw === "object" ? raw as Row : null;
+}
+
 function metricLookup(metrics: ImprovementMetricRow[]): Map<number, ImprovementMetricRow> {
   const best = new Map<number, ImprovementMetricRow>();
   for (const row of metrics) {
@@ -334,9 +340,11 @@ export function deriveImprovementRun(
   const warnings = runWarnings(row.run_plan);
   const warningReason = warnings[0] || "";
   const hookText = hookTextFromPlan(row.run_plan);
-  const hookType = inferHookType(hookText);
+  const reelsPattern = reelsBrainPatternFromPlan(row.run_plan);
+  const reelsPatternId = toText(reelsPattern?.pattern_id, 80);
+  const hookType = toText(reelsPattern?.hook_type, 80) || inferHookType(hookText);
   const visualTool = visualToolFromPlan(row.run_plan);
-  const format = toText(row.format_detected || row.mode || "unknown", 40).toLowerCase() || "unknown";
+  const format = (toText(reelsPattern?.structure_type, 40) || toText(row.format_detected || row.mode || "unknown", 40)).toLowerCase() || "unknown";
   const recipeId = num(row.id);
   const outputUrl = row.output_url ? String(row.output_url) : null;
   const metric = recipeId != null ? context?.metricsByRecipe?.get(recipeId) : undefined;
@@ -372,7 +380,7 @@ export function deriveImprovementRun(
     verdict: "salvageable",
     pattern_key: "",
   };
-  const patternKey = [hookType, format, visualTool].join("|");
+  const patternKey = [reelsPatternId || hookType, format, visualTool].join("|");
   return {
     ...base,
     verdict: classifyVerdict(base),
