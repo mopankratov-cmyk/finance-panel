@@ -13,6 +13,9 @@ ok(/\/api\/factory\/feedback-queue\/auto/.test(source) && /apply: false/.test(so
 ok(/\/api\/factory\/batch/.test(source) && /dry_run: true/.test(source), "no-paid smoke only dry-runs batch");
 ok(/skip_balance_check: true/.test(source), "no-paid smoke can inspect source quality even when paid balance is low");
 ok(/require_strong_source: true/.test(source), "no-paid smoke checks quality-first strong source gate");
+ok(/learning gate hold:/.test(source), "no-paid smoke explains learning-gate batch holds");
+ok(/function actionableNextActions/.test(source), "no-paid smoke filters stale next actions");
+ok(/wbOnly > 0 \|\| batch\?\.next_action\?\.type === "prepare_product"/.test(source), "no-paid smoke suggests source-prep only while WB-only sources remain");
 ok(!/\/api\/factory\/graph-run"/.test(source), "no-paid smoke never starts graph-run");
 ok(!/\/api\/factory\/prepare-product/.test(source), "no-paid smoke never calls source-prep/FAL");
 ok(/ready_for_paid_batch/.test(source), "no-paid smoke summarizes paid launch readiness");

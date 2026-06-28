@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-06-28T13:37:35.771Z",
+  "generated_at": "2026-06-28T14:04:00.615Z",
   "base_url": "https://finance-panel-two.vercel.app",
   "niche": null,
   "hours": 72,
@@ -25,13 +25,8 @@
             "threshold": null,
             "low": false,
             "hint": "тренд-аналитика · get_credit_balance",
-            "updated_at": "2026-06-28T13:37:21.463Z",
+            "updated_at": "2026-06-28T14:03:47.067Z",
             "history": [
-              {
-                "balance": 9.5,
-                "at": "2026-06-27T16:27:47.185031+00:00",
-                "source": "api"
-              },
               {
                 "balance": 7.75,
                 "at": "2026-06-27T16:57:54.866064+00:00",
@@ -226,6 +221,11 @@
                 "balance": 5.75,
                 "at": "2026-06-28T13:13:17.1453+00:00",
                 "source": "api"
+              },
+              {
+                "balance": 5.75,
+                "at": "2026-06-28T13:43:50.438861+00:00",
+                "source": "api"
               }
             ]
           },
@@ -240,13 +240,8 @@
             "threshold": null,
             "low": false,
             "hint": "AI UGC-актёры · remaining_credits",
-            "updated_at": "2026-06-28T13:37:20.350Z",
+            "updated_at": "2026-06-28T14:03:45.632Z",
             "history": [
-              {
-                "balance": 358.5,
-                "at": "2026-06-27T15:57:39.575586+00:00",
-                "source": "api"
-              },
               {
                 "balance": 345.5,
                 "at": "2026-06-27T16:27:46.421421+00:00",
@@ -441,6 +436,11 @@
                 "balance": 80.5,
                 "at": "2026-06-28T13:13:15.885188+00:00",
                 "source": "api"
+              },
+              {
+                "balance": 80.5,
+                "at": "2026-06-28T13:43:49.604548+00:00",
+                "source": "api"
               }
             ]
           },
@@ -455,13 +455,8 @@
             "threshold": null,
             "low": true,
             "hint": "видео-движки · нужен FAL_BILLING_KEY (admin)",
-            "updated_at": "2026-06-28T13:37:21.346Z",
+            "updated_at": "2026-06-28T14:03:47.719Z",
             "history": [
-              {
-                "balance": -0.44,
-                "at": "2026-06-27T16:26:00.844072+00:00",
-                "source": "api"
-              },
               {
                 "balance": -0.44,
                 "at": "2026-06-27T16:56:01.786483+00:00",
@@ -656,6 +651,11 @@
                 "balance": -1.61,
                 "at": "2026-06-28T13:13:16.731431+00:00",
                 "source": "api"
+              },
+              {
+                "balance": -1.61,
+                "at": "2026-06-28T13:43:52.168732+00:00",
+                "source": "api"
               }
             ]
           },
@@ -694,7 +694,7 @@
         "low": [
           "fal"
         ],
-        "updated_at": "2026-06-28T13:37:21.918Z"
+        "updated_at": "2026-06-28T14:03:48.185Z"
       }
     },
     "quality": {
@@ -708,7 +708,7 @@
         "denominator": "produced_videos",
         "quality": {
           "window_hours": 72,
-          "since": "2026-06-25T13:37:22.697Z",
+          "since": "2026-06-25T14:03:48.611Z",
           "produced_videos": 88,
           "otk_pass": 0,
           "warnings": 88,
@@ -758,7 +758,7 @@
         "headline": "factory_quality_diagnostics",
         "diagnostics": {
           "window_hours": 72,
-          "since": "2026-06-25T13:37:24.067Z",
+          "since": "2026-06-25T14:03:49.739Z",
           "totals": {
             "recipes": 112,
             "produced_videos": 88,
@@ -835,9 +835,9 @@
             "unlabeled": 0
           },
           "source_tiers": {
-            "prepared": 0,
+            "prepared": 1,
             "real": 0,
-            "wb": 2,
+            "wb": 1,
             "none": 0
           },
           "by_niche": [
@@ -866,7 +866,6 @@
           "blockers": [
             "frames-grounded OTK pass-rate is 0",
             "video memory has no winner examples",
-            "source pool is dominated by raw WB assets",
             "19 recent run_fail recipes",
             "3 produced videos were judged by text/storyboard/fallback"
           ],
@@ -1653,7 +1652,7 @@
       "ok": true,
       "body": {
         "ok": true,
-        "batch_run_id": "batch_1782653852781_55e9346c",
+        "batch_run_id": "batch_1782655436488_4db34a6b",
         "requested": {
           "niche": null,
           "count": 5,
@@ -1667,16 +1666,16 @@
           "missing_drafts": 0,
           "source_ready_drafts": 5,
           "missing_source_drafts": 0,
-          "strong_source_drafts": 0,
-          "wb_only_drafts": 1,
+          "strong_source_drafts": 5,
+          "wb_only_drafts": 0,
           "source_tiers": {
-            "prepared": 0,
+            "prepared": 1,
             "real": 0,
-            "wb": 1,
+            "wb": 0,
             "none": 0
           },
           "require_strong_source": true,
-          "budget_fit_count": 0,
+          "budget_fit_count": 5,
           "provider_ready": true
         },
         "learning_gate": {
@@ -1692,26 +1691,60 @@
           "primary_change_axis": "proof_density",
           "experiment_note": "Добавить больше demo/proof в opening и середину, не меняя базовый format."
         },
-        "selected_recipes": [],
+        "selected_recipes": [
+          {
+            "id": 74,
+            "niche": "default",
+            "article": "2ndCOS0301",
+            "batch_role": "control",
+            "change_axis": "none"
+          },
+          {
+            "id": 73,
+            "niche": "default",
+            "article": "2ndCOS0301",
+            "batch_role": "control",
+            "change_axis": "none"
+          },
+          {
+            "id": 72,
+            "niche": "default",
+            "article": "2ndCOS0301",
+            "batch_role": "experiment",
+            "change_axis": "proof_density"
+          },
+          {
+            "id": 71,
+            "niche": "default",
+            "article": "2ndCOS0301",
+            "batch_role": "experiment",
+            "change_axis": "proof_density"
+          },
+          {
+            "id": 70,
+            "niche": "default",
+            "article": "2ndCOS0301",
+            "batch_role": "experiment",
+            "change_axis": "proof_density"
+          }
+        ],
         "dry_run": true,
-        "enqueued": [],
-        "estimated_usd": 0,
-        "worst_case_usd": 0,
+        "enqueued": [
+          74,
+          73,
+          72,
+          71,
+          70
+        ],
+        "estimated_usd": 5.9,
+        "worst_case_usd": 17.7,
         "budget_usd": 20,
         "capped_by_budget": false,
         "balance_unknown": [],
         "provider_block": [],
-        "next_action": {
-          "type": "prepare_product",
-          "route": "/api/factory/prepare-product",
-          "article": "2ndCOS0301",
-          "count": 1,
-          "reason": "batch has WB-only sources; prepared product frames should lift OTK pass-rate"
-        },
-        "warnings": [
-          "source-prep recommended: batch contains WB-only sources"
-        ],
-        "note": "Бюджет-гард по worst-case (реген до ×3): уложились в $20, типовая трата ≈ $0, потолок ≈ $0. Прошедшее ОТК → Telegram (notify)."
+        "next_action": null,
+        "warnings": [],
+        "note": "Бюджет-гард по worst-case (реген до ×3): уложились в $20, типовая трата ≈ $5.9, потолок ≈ $17.7. Прошедшее ОТК → Telegram (notify)."
       }
     }
   },
@@ -1721,10 +1754,9 @@
       "fal balance low: -1.61 USD",
       "frames-grounded OTK pass-rate is 0",
       "video memory has no winner examples",
-      "source pool is dominated by raw WB assets",
       "19 recent run_fail recipes",
       "3 produced videos were judged by text/storyboard/fallback",
-      "batch preflight not ready",
+      "learning gate hold: 50-run цель уже закрыта: перед новым циклом зафиксировать выводы",
       "memory has 0 winner videos"
     ],
     "warnings": [
