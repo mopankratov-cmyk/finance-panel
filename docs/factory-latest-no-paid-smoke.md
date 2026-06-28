@@ -1,11 +1,11 @@
 # Factory No-Paid Readiness Smoke
 
-- generated_at: 2026-06-28T12:43:16.465Z
+- generated_at: 2026-06-28T12:54:38.432Z
 - base_url: https://finance-panel-two.vercel.app
 - niche: 
 - ready_for_paid_batch: no
 - blockers: fal balance low: -1.61 USD | frames-grounded OTK pass-rate is 0 | video memory has no winner examples | source pool is dominated by raw WB assets | 19 recent run_fail recipes | 3 produced videos were judged by text/storyboard/fallback | batch balance_block: fal | memory has 0 winner videos
-- warnings: series hold: 50-run цель уже закрыта | 50-run цель уже закрыта: перед новым циклом зафиксировать выводы
+- warnings: series hold: 50-run цель уже закрыта | 50-run цель уже закрыта: перед новым циклом зафиксировать выводы | 12 videos await operator winner/reject feedback
 
 ## Quality
 
@@ -19,6 +19,8 @@
 
 - total: 145
 - labels: {"winner":0,"usable":100,"trash":45}
+- feedback_queue: 12
+- top_feedback_candidate: 16336 · usable · priority 79
 
 ## Readiness
 
