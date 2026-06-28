@@ -3,12 +3,16 @@ import { readFileSync } from "node:fs";
 import { buildFeedbackQueue, nextAnalysisForFeedback } from "./feedbackQueue";
 
 const route = readFileSync("app/api/factory/feedback-queue/route.ts", "utf8");
+const autoRoute = readFileSync("app/api/factory/feedback-queue/auto/route.ts", "utf8");
 
 ok(!/function authOk/.test(route), "feedback queue relies on the global API proxy so Studio session and cron both work");
 ok(/buildFeedbackQueue/.test(route), "feedback queue uses shared ranking helper");
 ok(/action !== "winner" && action !== "reject"/.test(route), "feedback queue only accepts winner/reject actions");
 ok(/viral_hooks/.test(route) && /viability_score: 5/.test(route), "winner feedback seeds learning hooks");
 ok(/cf_signals/.test(route) && /event: "rejected"/.test(route), "reject feedback records anti-signal best-effort");
+ok(/decideAutoFeedback/.test(autoRoute), "auto feedback endpoint uses deterministic decision helper");
+ok(/body\.apply === true/.test(autoRoute), "auto feedback requires explicit apply=true before writes");
+ok(/no objective winner signal found/.test(autoRoute), "auto feedback refuses to invent winners without objective signal");
 
 const queue = buildFeedbackQueue([
   {
@@ -44,3 +48,9 @@ equal(rejected.operator_feedback, "reject", "reject source is recorded");
 const winner = nextAnalysisForFeedback({}, "winner", "strong proof");
 equal(winner.memory_label, "winner", "winner marks memory winner");
 equal(winner.memory_score, 100, "winner gets max memory score");
+
+const { decideAutoFeedback } = await import("./feedbackQueue");
+equal(decideAutoFeedback({ id: 4, kind: "video", url: "https://e.com/a.mp4", analysis: { views: 3000 } }).action, "winner", "market views can auto-promote winner");
+equal(decideAutoFeedback({ id: 5, kind: "video", url: "https://e.com/a.mp4", analysis: { otk: 4 } }).action, "trash", "low OTK auto-rejects trash");
+equal(decideAutoFeedback({ id: 6, kind: "video", url: "https://e.com/a.mp4", analysis: { otk: 6 } }).action, "keep", "weak OTK is kept usable but not promoted");
+equal(decideAutoFeedback({ id: 7, kind: "video", url: "https://e.com/a.mp4", analysis: { otk: 8, basis: "text" } }).action, "keep", "text-only OTK cannot auto-promote winner");

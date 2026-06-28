@@ -9,6 +9,7 @@ ok(/DEFAULT_MD_OUT = "docs\/factory-latest-no-paid-smoke\.md"/.test(source), "no
 ok(/\/api\/factory\/quality-diagnostics/.test(source), "no-paid smoke calls quality diagnostics");
 ok(/\/api\/factory\/memory-quality/.test(source), "no-paid smoke calls memory quality");
 ok(/\/api\/factory\/feedback-queue/.test(source), "no-paid smoke surfaces operator feedback queue");
+ok(/\/api\/factory\/feedback-queue\/auto/.test(source) && /apply: false/.test(source), "no-paid smoke dry-runs automatic feedback without writes");
 ok(/\/api\/factory\/batch/.test(source) && /dry_run: true/.test(source), "no-paid smoke only dry-runs batch");
 ok(!/\/api\/factory\/graph-run"/.test(source), "no-paid smoke never starts graph-run");
 ok(!/\/api\/factory\/prepare-product/.test(source), "no-paid smoke never calls source-prep/FAL");

@@ -1,6 +1,7 @@
 type Row = Record<string, unknown>;
 
 export type FeedbackQueueAction = "winner" | "reject";
+export type AutoFeedbackAction = "winner" | "trash" | "keep";
 
 export interface FeedbackCandidate {
   asset_id: number;
@@ -18,6 +19,15 @@ export interface FeedbackCandidate {
   suggested_action: "review_for_winner" | "review_for_reject" | "skip";
 }
 
+export interface AutoFeedbackDecision {
+  asset_id: number;
+  action: AutoFeedbackAction;
+  confidence: "high" | "medium" | "low";
+  label: "winner" | "usable" | "trash";
+  score: number;
+  reason: string;
+}
+
 function text(value: unknown, max = 180): string {
   return String(value || "").replace(/\s+/g, " ").trim().slice(0, max);
 }
@@ -25,6 +35,10 @@ function text(value: unknown, max = 180): string {
 function num(value: unknown): number | null {
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
+}
+
+function isPlayableVideoUrl(url: string): boolean {
+  return /^https?:\/\//i.test(url) && /\.(mp4|mov|webm|m4v)(\?|$)/i.test(url);
 }
 
 function labelFromAnalysis(analysis: Row): FeedbackCandidate["memory_label"] {
@@ -126,4 +140,42 @@ export function nextAnalysisForFeedback(
     operator_feedback_reason: reason || null,
     operator_feedback_at: now,
   };
+}
+
+export function decideAutoFeedback(row: Row): AutoFeedbackDecision {
+  const analysis = row.analysis && typeof row.analysis === "object" ? row.analysis as Row : {};
+  const assetId = Number(row.id) || 0;
+  const url = text(row.url, 600);
+  const kind = text(row.kind, 40).toLowerCase();
+  const currentLabel = labelFromAnalysis(analysis);
+  const status = text(analysis.status || analysis.result_status || analysis.source_status || analysis.verdict, 80).toLowerCase();
+  const otk = num(analysis.otk ?? analysis.otk_score);
+  const views = num(analysis.views ?? analysis.market_views ?? analysis.winner_views);
+  const basis = text(analysis.basis ?? analysis.otk_basis, 40).toLowerCase();
+
+  if (row.is_winner || row.winner_at || currentLabel === "winner") {
+    return { asset_id: assetId, action: "keep", confidence: "high", label: "winner", score: 100, reason: "already explicit winner" };
+  }
+  if (!url || !isPlayableVideoUrl(url) || (kind && kind !== "video")) {
+    return { asset_id: assetId, action: "trash", confidence: "high", label: "trash", score: 0, reason: "not a playable video" };
+  }
+  if (status === "rejected" || status === "artifact_fail" || status === "run_fail") {
+    return { asset_id: assetId, action: "trash", confidence: "high", label: "trash", score: 5, reason: `bad status: ${status}` };
+  }
+  if (otk != null && otk < 6) {
+    return { asset_id: assetId, action: "trash", confidence: "high", label: "trash", score: Math.max(0, Math.round(otk * 10)), reason: `OTK below usable threshold: ${otk}` };
+  }
+  if (views != null && views >= 2500) {
+    return { asset_id: assetId, action: "winner", confidence: "high", label: "winner", score: 95, reason: `market views >= 2500: ${views}` };
+  }
+  if (otk != null && otk >= 8 && !["text", "fallback", "storyboard"].includes(basis)) {
+    return { asset_id: assetId, action: "winner", confidence: "medium", label: "winner", score: Math.min(92, Math.round(otk * 10)), reason: `strong frames-grounded OTK: ${otk}` };
+  }
+  if (otk != null && otk >= 6) {
+    return { asset_id: assetId, action: "keep", confidence: "medium", label: "usable", score: Math.round(otk * 10), reason: `usable but not winner-safe: OTK ${otk}` };
+  }
+  if (currentLabel === "trash") {
+    return { asset_id: assetId, action: "keep", confidence: "medium", label: "trash", score: 0, reason: "already trash" };
+  }
+  return { asset_id: assetId, action: "keep", confidence: "low", label: "usable", score: 55, reason: "playable video without reliable winner signal" };
 }
