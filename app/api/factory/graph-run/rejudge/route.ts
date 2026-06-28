@@ -102,6 +102,7 @@ export async function POST(req: NextRequest) {
         mode: row.mode || "audience",
         article: row.article || "",
         niche: row.niche || "",
+        target_platform: plan.target_platform || "tiktok",
       });
     } catch (e) {
       processed.push({ id: row.id, error: String((e as Error)?.message || e).slice(0, 220) });
@@ -119,6 +120,7 @@ export async function POST(req: NextRequest) {
       basis_reason: verdict.basis_reason ? String(verdict.basis_reason) : null,
     };
     const result: Record<string, unknown> = { id: row.id, apply, status, score, issues: otk.issues.slice(0, 3) };
+    result.target_platform = plan.target_platform || "tiktok";
     if (status === "warning") result.warning = `OTK below threshold: ${score}`;
     processed.push(result);
     if (!apply) continue;

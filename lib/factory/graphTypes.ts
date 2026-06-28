@@ -12,6 +12,7 @@ export interface RunPlan {
   run_id?: string | null;
   step: RunStep;
   nodes: RunNode[];
+  target_platform?: string | null;
   render_id?: string | null;
   output_url?: string | null;
   pollCount?: number;

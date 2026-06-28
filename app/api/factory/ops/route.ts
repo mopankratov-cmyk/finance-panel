@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { collectBalances } from "@/lib/factory/balances";
 import { loadObserverPulse } from "@/lib/factory/observerPulse";
+import { DEFAULT_REELS_BRAIN_NICHES, loadReelsBrainPortfolioDigest } from "@/lib/factory/reelsBrainDigest";
 import { loadObservabilitySnapshot } from "@/lib/factory/runSnapshots";
 import { readLatestStressArtifact, readStressHistorySummary } from "@/lib/factory/stabilityArtifacts";
 import { buildWorkerHeartbeatDiagnostics, classifyWorkerHeartbeatIssue, loadWorkerDocs, loadWorkerSnapshot } from "@/lib/factory/workerState";
@@ -23,6 +24,14 @@ function summarizeAlerts(input: {
   criticFallbackRatio: number;
   criticDominantBasis: string | null;
   criticTopBasisReason: string | null;
+  reelsBrainReadyNiches: number;
+  reelsBrainWatchNiches: number;
+  reelsBrainCriticalIncidents: number;
+  reelsBrainAvgReadiness: number;
+  reelsBrainRetrySignals: number;
+  reelsBrainProviderShifts: number;
+  reelsBrainCorpusProgressPct: number;
+  reelsBrainCorpusDailyNeed: number;
 }) {
   const alerts: { level: "ok" | "warn" | "error"; code: string; detail: string }[] = [];
   if (input.workerState === "dead") alerts.push({ level: "error", code: "worker_dead", detail: "worker heartbeat is dead" });
@@ -65,6 +74,41 @@ function summarizeAlerts(input: {
   } else if (input.criticTopBasisReason === "text_empty_response") {
     alerts.push({ level: "warn", code: "critic_text_empty_response", detail: "text-only critic path often returns empty responses" });
   }
+  if (input.reelsBrainCriticalIncidents > 0) {
+    alerts.push({
+      level: input.reelsBrainCriticalIncidents >= 3 ? "error" : "warn",
+      code: "reels_brain_critical_incidents",
+      detail: `${input.reelsBrainCriticalIncidents} critical Reels Brain incidents across the portfolio`,
+    });
+  }
+  if (input.reelsBrainReadyNiches === 0 && input.reelsBrainWatchNiches > 0) {
+    alerts.push({ level: "error", code: "reels_brain_no_ready_niches", detail: "no Reels Brain niches are currently ready" });
+  } else if (input.reelsBrainWatchNiches > 0) {
+    alerts.push({ level: "warn", code: "reels_brain_watch_niches", detail: `${input.reelsBrainWatchNiches} Reels Brain niches need attention` });
+  }
+  if (input.reelsBrainAvgReadiness > 0 && input.reelsBrainAvgReadiness < 60) {
+    alerts.push({ level: "warn", code: "reels_brain_readiness_low", detail: `Reels Brain average readiness is ${input.reelsBrainAvgReadiness}%` });
+  }
+  if (input.reelsBrainProviderShifts > 0) {
+    alerts.push({
+      level: input.reelsBrainProviderShifts >= 3 ? "warn" : "ok",
+      code: "reels_brain_provider_shifts",
+      detail: `${input.reelsBrainProviderShifts} platform lanes already shifted provider and need retry verification`,
+    });
+  } else if (input.reelsBrainRetrySignals > 0) {
+    alerts.push({
+      level: "warn",
+      code: "reels_brain_retry_pressure",
+      detail: `${input.reelsBrainRetrySignals} Reels Brain retry signals are active across the portfolio`,
+    });
+  }
+  if (input.reelsBrainCorpusProgressPct < 25 && input.reelsBrainCorpusDailyNeed > 0) {
+    alerts.push({
+      level: "warn",
+      code: "reels_brain_corpus_gap_large",
+      detail: `Reels Brain corpus is only ${input.reelsBrainCorpusProgressPct}% of the 10k goal; intake needs about ${input.reelsBrainCorpusDailyNeed} videos/day`,
+    });
+  }
   if (!alerts.length) alerts.push({ level: "ok", code: "healthy", detail: "no active ops alerts" });
   return alerts;
 }
@@ -81,6 +125,17 @@ function buildSuggestedActions(input: {
   criticFallbackRatio: number;
   criticDominantBasis: string | null;
   criticTopBasisReason: string | null;
+  reelsBrainReadyNiches: number;
+  reelsBrainWatchNiches: number;
+  reelsBrainCriticalIncidents: number;
+  reelsBrainAvgReadiness: number;
+  reelsBrainRetrySignals: number;
+  reelsBrainProviderShifts: number;
+  reelsBrainTopRetryNiche: string | null;
+  reelsBrainTopRetryPlatform: string | null;
+  reelsBrainTopRetryAction: string | null;
+  reelsBrainCorpusProgressPct: number;
+  reelsBrainCorpusDailyNeed: number;
 }) {
   const actions: { priority: "p0" | "p1" | "p2"; action: string; reason: string }[] = [];
   if (input.workerState === "dead") {
@@ -153,6 +208,43 @@ function buildSuggestedActions(input: {
       reason: "text-only critic path often returns empty responses; inspect fallback prompt path",
     });
   }
+  if (input.reelsBrainReadyNiches === 0 && input.reelsBrainWatchNiches > 0) {
+    actions.push({
+      priority: "p1",
+      action: "run_reels_brain_weekly_retrain",
+      reason: "no niches are ready; run weekly bake-off + retrain to refresh provider memory and pattern depth",
+    });
+  } else if (input.reelsBrainCriticalIncidents > 0) {
+    actions.push({
+      priority: "p1",
+      action: "inspect_reels_brain_incidents",
+      reason: `${input.reelsBrainCriticalIncidents} critical Reels Brain incidents need niche/platform triage`,
+    });
+  } else if (input.reelsBrainProviderShifts > 0 && input.reelsBrainTopRetryAction === "retry_shifted_provider") {
+    actions.push({
+      priority: "p1",
+      action: "retry_reels_brain_shifted_provider",
+      reason: `${input.reelsBrainTopRetryNiche || "reels brain"} ${input.reelsBrainTopRetryPlatform || "lane"} already shifted provider and should be rechecked on the new source`,
+    });
+  } else if (input.reelsBrainRetrySignals > 0) {
+    actions.push({
+      priority: "p2",
+      action: "review_reels_brain_retry_queue",
+      reason: `${input.reelsBrainRetrySignals} Reels Brain retry signals are active across the portfolio`,
+    });
+  } else if (input.reelsBrainCorpusProgressPct < 25 && input.reelsBrainCorpusDailyNeed > 0) {
+    actions.push({
+      priority: "p1",
+      action: "increase_reels_brain_corpus_intake",
+      reason: `corpus is only ${input.reelsBrainCorpusProgressPct}% of target; sustain about ${input.reelsBrainCorpusDailyNeed} new videos/day`,
+    });
+  } else if (input.reelsBrainWatchNiches > 0 || (input.reelsBrainAvgReadiness > 0 && input.reelsBrainAvgReadiness < 75)) {
+    actions.push({
+      priority: "p2",
+      action: "run_reels_brain_daily_loop",
+      reason: "some Reels Brain niches are weak or trending below target readiness",
+    });
+  }
   if (!actions.length) {
     actions.push({ priority: "p2", action: "continue_monitoring", reason: "no active alerts, keep observing ops snapshot" });
   }
@@ -170,6 +262,13 @@ function buildOpsStatus(input: {
   criticFallbackRatio: number;
   criticDominantBasis: string | null;
   criticTopBasisReason: string | null;
+  reelsBrainReadyNiches: number;
+  reelsBrainWatchNiches: number;
+  reelsBrainCriticalIncidents: number;
+  reelsBrainAvgReadiness: number;
+  reelsBrainRetrySignals: number;
+  reelsBrainProviderShifts: number;
+  reelsBrainCorpusProgressPct: number;
 }) {
   let level: "healthy" | "degraded" | "critical" = "healthy";
   const reasons: string[] = [];
@@ -230,6 +329,32 @@ function buildOpsStatus(input: {
     elevate("degraded");
     reasons.push("critic empty model responses");
   }
+  if (input.reelsBrainReadyNiches === 0 && input.reelsBrainWatchNiches > 0) {
+    elevate("critical");
+    reasons.push("reels brain has no ready niches");
+  } else if (input.reelsBrainWatchNiches > 0) {
+    elevate("degraded");
+    reasons.push(`${input.reelsBrainWatchNiches} reels brain niches on watch`);
+  }
+  if (input.reelsBrainCriticalIncidents > 0) {
+    elevate(input.reelsBrainCriticalIncidents >= 3 ? "critical" : "degraded");
+    reasons.push(`${input.reelsBrainCriticalIncidents} reels brain critical incidents`);
+  }
+  if (input.reelsBrainAvgReadiness > 0 && input.reelsBrainAvgReadiness < 60) {
+    elevate("degraded");
+    reasons.push(`reels brain readiness ${input.reelsBrainAvgReadiness}%`);
+  }
+  if (input.reelsBrainProviderShifts > 0) {
+    elevate("degraded");
+    reasons.push(`${input.reelsBrainProviderShifts} reels brain provider shifts awaiting retry verification`);
+  } else if (input.reelsBrainRetrySignals > 0) {
+    elevate("degraded");
+    reasons.push(`${input.reelsBrainRetrySignals} reels brain retry signals active`);
+  }
+  if (input.reelsBrainCorpusProgressPct < 25) {
+    elevate("degraded");
+    reasons.push(`reels brain corpus only ${input.reelsBrainCorpusProgressPct}% of 10k goal`);
+  }
 
   if (!reasons.length) reasons.push("no active ops issues");
   return {
@@ -254,6 +379,7 @@ export async function GET() {
         docs,
         balances: null,
         observability: null,
+        reels_brain: null,
         latest_stress: await latestStressPromise,
         stress_history: await stressHistoryPromise,
         alerts: [{ level: "error", code: "db_missing", detail: "Supabase is not configured" }],
@@ -261,16 +387,46 @@ export async function GET() {
       }, { headers: { "Cache-Control": "no-store" } });
     }
 
-    const [workerState, balances, observabilitySnapshot, observer, latestStress, stressHistory] = await Promise.all([
+    const [workerState, balances, observabilitySnapshot, observer, latestStress, stressHistory, reelsBrainDigest] = await Promise.all([
       loadWorkerSnapshot(db, docs.queue),
       collectBalances(db, { persist: true, throttleMs: BALANCE_THROTTLE_MS }),
       loadObservabilitySnapshot(db, 48),
       loadObserverPulse(db),
       latestStressPromise,
       stressHistoryPromise,
+      loadReelsBrainPortfolioDigest(db, DEFAULT_REELS_BRAIN_NICHES),
     ]);
     const observability = observabilitySnapshot.observability;
     const lowServices = balances.filter((s) => s.low).map((s) => s.service);
+    const reelsBrainPortfolio = reelsBrainDigest.portfolio;
+    const corpusGoal = (reelsBrainPortfolio as { corpus_goal?: Record<string, any> }).corpus_goal || {};
+    const corpusTotalProgress = corpusGoal.total_progress || {};
+    const corpusExecutionPlan = corpusGoal.execution_plan || {};
+    const weakestReelsBrainNiches = reelsBrainDigest.niches
+      .filter((row) => row.status !== "ready" || row.critical_incidents > 0)
+      .sort((a, b) =>
+        b.critical_incidents - a.critical_incidents
+        || a.readiness_avg - b.readiness_avg
+        || a.niche.localeCompare(b.niche),
+      )
+      .slice(0, 3);
+    const retryQueue = reelsBrainDigest.niches
+      .flatMap((row) =>
+        (Array.isArray(row.platforms) ? row.platforms : []).map((platform) => ({
+          niche: row.niche,
+          platform: String((platform as { platform?: unknown }).platform || ""),
+          retry_signal: (platform as { retry_signal?: { recommended?: boolean; action?: string; reason?: string } }).retry_signal || null,
+          provider_shift: (platform as { provider_shift?: { active?: boolean } }).provider_shift || null,
+          query: (platform as { top_query?: unknown }).top_query || null,
+        })),
+      )
+      .filter((row) => row.retry_signal?.recommended);
+    const providerShiftCount = retryQueue.filter((row) => row.provider_shift?.active).length;
+    const topRetry = retryQueue.sort((a, b) =>
+      Number(Boolean(b.provider_shift?.active)) - Number(Boolean(a.provider_shift?.active))
+      || String(a.niche).localeCompare(String(b.niche))
+      || String(a.platform).localeCompare(String(b.platform)),
+    )[0] || null;
     const workerIssue = classifyWorkerHeartbeatIssue(
       workerState.db_error,
       workerState.worker?.source || "unknown",
@@ -292,6 +448,14 @@ export async function GET() {
       criticFallbackRatio: Number((observability.quality_signal as { fallback_ratio?: unknown } | null)?.fallback_ratio || 0),
       criticDominantBasis: String((observability.quality_signal as { dominant_basis?: unknown } | null)?.dominant_basis || "") || null,
       criticTopBasisReason: String((observability.quality_signal as { top_basis_reason?: unknown } | null)?.top_basis_reason || "") || null,
+      reelsBrainReadyNiches: Number(reelsBrainPortfolio.ready_niches || 0),
+      reelsBrainWatchNiches: Number(reelsBrainPortfolio.watch_niches || 0),
+      reelsBrainCriticalIncidents: Number(reelsBrainPortfolio.critical_incidents || 0),
+      reelsBrainAvgReadiness: Number(reelsBrainPortfolio.avg_readiness || 0),
+      reelsBrainRetrySignals: retryQueue.length,
+      reelsBrainProviderShifts: providerShiftCount,
+      reelsBrainCorpusProgressPct: Number(corpusTotalProgress.progress_pct || 0),
+      reelsBrainCorpusDailyNeed: Number(corpusExecutionPlan.daily_required || 0),
     });
     const topErrorCategory = Array.isArray(observability.top_error_categories) && observability.top_error_categories[0]
       ? String((observability.top_error_categories[0] as { category?: unknown }).category || "")
@@ -308,6 +472,17 @@ export async function GET() {
       criticFallbackRatio: Number((observability.quality_signal as { fallback_ratio?: unknown } | null)?.fallback_ratio || 0),
       criticDominantBasis: String((observability.quality_signal as { dominant_basis?: unknown } | null)?.dominant_basis || "") || null,
       criticTopBasisReason: String((observability.quality_signal as { top_basis_reason?: unknown } | null)?.top_basis_reason || "") || null,
+      reelsBrainReadyNiches: Number(reelsBrainPortfolio.ready_niches || 0),
+      reelsBrainWatchNiches: Number(reelsBrainPortfolio.watch_niches || 0),
+      reelsBrainCriticalIncidents: Number(reelsBrainPortfolio.critical_incidents || 0),
+      reelsBrainAvgReadiness: Number(reelsBrainPortfolio.avg_readiness || 0),
+      reelsBrainRetrySignals: retryQueue.length,
+      reelsBrainProviderShifts: providerShiftCount,
+      reelsBrainTopRetryNiche: topRetry?.niche || null,
+      reelsBrainTopRetryPlatform: topRetry?.platform || null,
+      reelsBrainTopRetryAction: topRetry?.retry_signal?.action || null,
+      reelsBrainCorpusProgressPct: Number(corpusTotalProgress.progress_pct || 0),
+      reelsBrainCorpusDailyNeed: Number(corpusExecutionPlan.daily_required || 0),
     });
     const ops_status = buildOpsStatus({
       workerState: workerState.worker?.liveness?.state || "unknown",
@@ -320,6 +495,13 @@ export async function GET() {
       criticFallbackRatio: Number((observability.quality_signal as { fallback_ratio?: unknown } | null)?.fallback_ratio || 0),
       criticDominantBasis: String((observability.quality_signal as { dominant_basis?: unknown } | null)?.dominant_basis || "") || null,
       criticTopBasisReason: String((observability.quality_signal as { top_basis_reason?: unknown } | null)?.top_basis_reason || "") || null,
+      reelsBrainReadyNiches: Number(reelsBrainPortfolio.ready_niches || 0),
+      reelsBrainWatchNiches: Number(reelsBrainPortfolio.watch_niches || 0),
+      reelsBrainCriticalIncidents: Number(reelsBrainPortfolio.critical_incidents || 0),
+      reelsBrainAvgReadiness: Number(reelsBrainPortfolio.avg_readiness || 0),
+      reelsBrainRetrySignals: retryQueue.length,
+      reelsBrainProviderShifts: providerShiftCount,
+      reelsBrainCorpusProgressPct: Number(corpusTotalProgress.progress_pct || 0),
     });
 
     return NextResponse.json({
@@ -336,6 +518,20 @@ export async function GET() {
       },
       observer,
       observability,
+      reels_brain: {
+        portfolio: reelsBrainPortfolio,
+        weakest_niches: weakestReelsBrainNiches,
+        retry_queue: retryQueue.slice(0, 8),
+        provider_shift_count: providerShiftCount,
+        corpus_goal: corpusGoal,
+        automation: {
+          bulk_ingest_route: "/api/factory/jobs/reels-brain-bulk-ingest",
+          growth_route: "/api/factory/jobs/reels-brain-growth",
+          daily_route: "/api/factory/jobs/reels-brain-daily",
+          weekly_route: "/api/factory/jobs/reels-brain-weekly",
+          default_niches: DEFAULT_REELS_BRAIN_NICHES,
+        },
+      },
       latest_stress: latestStress,
       stress_history: stressHistory,
       alerts,
@@ -358,6 +554,7 @@ export async function GET() {
       docs: null,
       balances: null,
       observability: null,
+      reels_brain: null,
       latest_stress: latestStress,
       stress_history: stressHistory,
       alerts: [{ level: "error", code: "ops_crash", detail: String((e as Error)?.message || e).slice(0, 160) }],

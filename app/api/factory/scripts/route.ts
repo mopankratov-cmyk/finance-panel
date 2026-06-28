@@ -4,6 +4,8 @@ import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { CONTENT_STANDARD, HOOK_FORMULAS, HOOK_ANTIPATTERNS, DEAI_FILTERS, PROBLEM_STACK, QA_THRESHOLD } from "@/lib/factory/standard";
 import { brandProfile } from "@/lib/factory/brandProfiles";
 import { extractJsonArray } from "@/lib/factory/extractJson";
+import { buildPlatformBrainHint, normalizeTargetPlatform } from "@/lib/factory/reelsBrainPlaybook";
+import { winnersHintFor } from "@/lib/factory/learningHints";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -20,6 +22,7 @@ export async function POST(req: NextRequest) {
   const count = Math.min(15, Math.max(2, Number(body.count) || 10));
   const brief: string = (body.brief || "").toString().trim();
   const competitorBrief: string = (body.competitor_brief || "").toString().trim();
+  const targetPlatform = normalizeTargetPlatform(body.target_platform || body.platform);
   let profile: string = (body.profile || "").toString().trim().slice(0, 2000);
   // отклонённое оператором — обучение «что НЕ выпускать» (петля обратной связи с человеком)
   const rejects: string[] = Array.isArray(body.rejects) ? body.rejects.slice(0, 20).map((x: unknown) => String(x)).filter(Boolean) : [];
@@ -42,7 +45,8 @@ export async function POST(req: NextRequest) {
           ).join(" | ")
         : "") +
       (Array.isArray(pb.hooks) && pb.hooks.length ? `\nРабочие хуки ниши (адаптируй, не копируй дословно): ${pb.hooks.slice(0, 7).join(" | ")}` : "") +
-      (Array.isArray(pb.anti_patterns) && pb.anti_patterns.length ? `\nНЕ делай (анти-паттерны ниши): ${pb.anti_patterns.slice(0, 4).join("; ")}` : "")
+      (Array.isArray(pb.anti_patterns) && pb.anti_patterns.length ? `\nНЕ делай (анти-паттерны ниши): ${pb.anti_patterns.slice(0, 4).join("; ")}` : "") +
+      buildPlatformBrainHint(pb, targetPlatform)
     : "";
 
   const db = getSupabaseAdmin();
@@ -65,22 +69,7 @@ export async function POST(req: NextRequest) {
       const { nicheFromArticle } = await import("@/lib/factory/rubric");
       const niche = nicheFromArticle(article, name);
       if (niche) {
-        const { data: wins } = await db.from("content_assets")
-          .select("winner_learnings,name")
-          .eq("niche", niche).eq("is_winner", true)
-          .order("winner_at", { ascending: false }).limit(5);
-        const list = (wins || [])
-          .map((w) => {
-            const l = (w.winner_learnings || {}) as Record<string, unknown>;
-            const hook = String(l.hook || w.name || "").slice(0, 80);
-            const fmt = String(l.format || l.route || "").slice(0, 30);
-            const views = l.views ? ` (${Number(l.views).toLocaleString("ru")} просмотров)` : "";
-            return hook ? `«${hook}» [${fmt || "неизв"}]${views}` : null;
-          })
-          .filter(Boolean);
-        if (list.length) {
-          winnersHint = `\n\nНАШИ ПОБЕДИТЕЛИ В НИШЕ (реально залетело у этого бренда — бери дух/механику, меняй по одному рычагу, не копируй дословно): ${list.join(" | ")}`;
-        }
+        winnersHint = await winnersHintFor(db, niche, targetPlatform);
       }
     } catch { /* winners-таблица может ещё не существовать */ }
   }
@@ -103,7 +92,7 @@ export async function POST(req: NextRequest) {
   const client = await createClaudeClient();
   if (!client) return NextResponse.json({ error: "ANTHROPIC_API_KEY не настроен" }, { status: 500 });
 
-  const sys = `Ты топ-маркетолог UGC-видео для Wildberries/Ozon И строгий QA-директор. Пишешь сценарии коротких вертикальных видео (Reels/Shorts/TikTok) под охват И переходы на карточку, потом сам оцениваешь каждый по стандарту.
+  const sys = `Ты топ-маркетолог UGC-видео для Wildberries/Ozon И строгий QA-директор. Пишешь сценарии коротких вертикальных видео под охват и переходы на карточку. ЦЕЛЕВАЯ ПЛАТФОРМА: ${targetPlatform}. Все идеи должны быть native именно для этой платформы, а не усреднёнными между TikTok / Instagram / YouTube. Потом сам оцениваешь каждый по стандарту.
 ${profile ? `ПРОФИЛЬ БРЕНДА/АУДИТОРИИ (пиши в этом голосе, под эту ЦА):\n${profile}\n` : ""}СТАНДАРТ: ${CONTENT_STANDARD}
 ${HOOK_FORMULAS}
 ${HOOK_ANTIPATTERNS}

@@ -16,7 +16,8 @@ function eq(a: unknown, b: unknown, m: string) { ok(JSON.stringify(a) === JSON.s
   const memory = buildReelsPatternMemory("toys", [
     {
       id: 1,
-      url: "u1",
+      url: "https://www.tiktok.com/@toy/video/1",
+      platform: "tiktok",
       caption: "Не покупай водный пистолет пока не увидишь тест",
       hook_text: "Не покупай водный пистолет пока не увидишь тест",
       format_detected: "demo",
@@ -27,7 +28,8 @@ function eq(a: unknown, b: unknown, m: string) { ok(JSON.stringify(a) === JSON.s
     },
     {
       id: 2,
-      url: "u2",
+      url: "https://www.tiktok.com/@toy/video/2",
+      platform: "tiktok",
       caption: "Не покупай бластер пока не увидишь тест",
       hook_text: "Не покупай бластер пока не увидишь тест",
       format_detected: "demo",
@@ -38,7 +40,8 @@ function eq(a: unknown, b: unknown, m: string) { ok(JSON.stringify(a) === JSON.s
     },
     {
       id: 3,
-      url: "u3",
+      url: "https://www.instagram.com/reel/CLEAN123/",
+      platform: "instagram",
       caption: "До и после уборки",
       format_detected: "before_after",
       virality_score: 20,
@@ -47,12 +50,46 @@ function eq(a: unknown, b: unknown, m: string) { ok(JSON.stringify(a) === JSON.s
   ], new Date("2026-06-26T00:00:00Z"));
 
   eq(memory.niche, "toys", "memory: niche");
+  eq(memory.platform, "all", "memory: top-level bundle uses meta scope");
   eq(memory.total_videos, 3, "memory: total");
   eq(memory.patterns[0].frequency, 2, "memory: merges similar warning demo pattern");
   eq(memory.patterns[0].hook_type, "warning_pattern_break", "memory: top hook type");
   eq(memory.patterns[0].sounds, ["summer"], "memory: sounds deduped");
   ok(memory.patterns[0].strength_score > memory.patterns[1].strength_score, "memory: stronger repeated pattern first");
+  eq(memory.meta_brain.platform, "all", "memory: meta brain present");
+  eq(memory.platform_brains.tiktok?.platform, "tiktok", "memory: tiktok brain built");
+  eq(memory.platform_brains.instagram?.platform, "instagram", "memory: instagram brain built");
   eq(memory.generated_at, "2026-06-26T00:00:00.000Z", "memory: deterministic timestamp");
+}
+
+{
+  const memory = buildReelsPatternMemory("gadgets", [
+    {
+      id: 1,
+      url: "https://www.tiktok.com/@x/video/1",
+      platform: "tiktok",
+      caption: "Не покупай это пока не увидишь тест",
+      hook_text: "Не покупай это пока не увидишь тест",
+      format_detected: "demo",
+      viral_reason: { why: "proof" },
+      virality_score: 40,
+      views: 800000,
+    },
+    {
+      id: 2,
+      url: "https://www.instagram.com/reel/ABC123/",
+      platform: "instagram",
+      caption: "Не покупай это пока не увидишь тест",
+      hook_text: "Не покупай это пока не увидишь тест",
+      format_detected: "demo",
+      viral_reason: { why: "proof" },
+      virality_score: 36,
+      views: 300000,
+    },
+  ], new Date("2026-06-26T00:00:00Z"));
+
+  eq(memory.cross_platform_patterns[0]?.platform_count, 2, "cross-platform: detects shared pattern");
+  eq(memory.cross_platform_patterns[0]?.platforms, ["instagram", "tiktok"], "cross-platform: preserves participating platforms");
 }
 
 console.log(`\nreelsBrainPatterns: ${pass} passed, ${fail} failed`);

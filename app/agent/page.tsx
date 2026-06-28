@@ -2,6 +2,8 @@ import { AgentPage } from "@/components/agent/AgentPage";
 import { BrainCircuit, ExternalLink } from "lucide-react";
 import Link from "next/link";
 
+export const dynamic = "force-dynamic";
+
 export default function Page() {
   return (
     <div className="space-y-5">

@@ -64,6 +64,20 @@ async function build(req: NextRequest, body: Record<string, unknown>) {
     persisted,
     warning,
     memory,
+    summary: {
+      meta_patterns: memory.meta_brain.patterns.length,
+      cross_platform_patterns: memory.cross_platform_patterns.length,
+      platform_brains: Object.fromEntries(
+        Object.entries(memory.platform_brains).map(([platform, brain]) => [
+          platform,
+          {
+            total_videos: brain?.total_videos || 0,
+            analyzed_videos: brain?.analyzed_videos || 0,
+            patterns: brain?.patterns.length || 0,
+          },
+        ]),
+      ),
+    },
   }, { headers: { "Cache-Control": "no-store" } });
 }
 

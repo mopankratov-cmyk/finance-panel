@@ -53,5 +53,27 @@ ok(await rejectAntiFor(broken, "bags") === "", "reject anti hint fails open");
 ok(await learningHints(broken, "bags") === "", "combined learning hints fail open");
 ok(await learningHints(db, "") === "", "empty niche returns empty hints");
 
+const platformDb = fakeDb({
+  content_assets: [
+    { winner_learnings: { hook: "тикток хук", target_platform: "tiktok" }, name: "тикток хук" },
+    { winner_learnings: { hook: "инста хук", target_platform: "instagram" }, name: "инста хук" },
+  ],
+});
+const platformHint = await winnersHintFor(platformDb, "bags", "Instagram");
+ok(platformHint.includes("инста хук"), "winners hint filters by target platform");
+ok(!platformHint.includes("тикток хук"), "winners hint excludes other platform winners");
+
+const seedFallbackDb = fakeDb({
+  content_assets: [],
+  viral_videos: [
+    { hook_text: "рыночный тикток хук", platform: "tiktok", virality_score: 40, analyzed: true },
+    { hook_text: "рыночный инста хук", platform: "instagram", virality_score: 39, analyzed: true },
+  ],
+});
+const seedHint = await winnersHintFor(seedFallbackDb, "bags", "tiktok");
+ok(seedHint.includes("КОРПУС-ПОБЕДИТЕЛИ"), "winners hint falls back to viral corpus when no product winners");
+ok(seedHint.includes("рыночный тикток хук"), "winners hint uses analyzed viral corpus as fallback");
+ok(!seedHint.includes("рыночный инста хук"), "winners hint fallback respects target platform");
+
 if (failed) process.exit(1);
 console.log(`learningHints: ${passed} passed, ${failed} failed`);

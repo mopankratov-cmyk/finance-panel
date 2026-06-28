@@ -5,6 +5,7 @@
     { "path": "/api/signals?persist=1", "schedule": "40 6 * * *" },
     { "path": "/api/factory/jobs/corpus-cron", "schedule": "0 3 * * 1" },
     { "path": "/api/factory/jobs/balances-cron", "schedule": "0 7 * * *" },
-    { "path": "/api/factory/graph-run/cron", "schedule": "*/2 * * * *" }
+    { "path": "/api/factory/graph-run/cron", "schedule": "*/2 * * * *" },
+    { "path": "/api/factory/jobs/reels-brain-cron", "schedule": "*/5 * * * *" }
   ]
 }

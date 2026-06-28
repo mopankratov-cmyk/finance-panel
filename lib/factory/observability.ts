@@ -14,6 +14,7 @@ export type RunSummary = {
 export type RecentRunPoint = {
   recipe_id: number | null;
   created_at: string | null;
+  target_platform: string | null;
   status: string;
   total_ms: number | null;
   error_category: string | null;
@@ -78,6 +79,7 @@ export type IncidentRunPoint = {
   recipe_id: number | null;
   run_id: string | null;
   created_at: string | null;
+  target_platform: string | null;
   status: string;
   last_step: string | null;
   last_status: string | null;
@@ -220,6 +222,7 @@ export function buildObservability(rows: Record<string, unknown>[]) {
     recentRuns.push({
       recipe_id: Number(raw.id) || null,
       created_at: raw.created_at ? String(raw.created_at) : null,
+      target_platform: plan.target_platform ? String(plan.target_platform) : null,
       status,
       total_ms: summary.total_ms,
       error_category: planError ? classifyErrorReason(planError) : null,
@@ -230,6 +233,7 @@ export function buildObservability(rows: Record<string, unknown>[]) {
         recipe_id: Number(raw.id) || null,
         run_id: plan.run_id ? String(plan.run_id) : null,
         created_at: raw.created_at ? String(raw.created_at) : null,
+        target_platform: plan.target_platform ? String(plan.target_platform) : null,
         status,
         last_step: summary.last_step,
         last_status: summary.last_status,

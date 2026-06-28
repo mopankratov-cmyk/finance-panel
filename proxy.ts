@@ -4,7 +4,7 @@ import { canAccess, ROLE_HOME } from "@/lib/auth/roles";
 
 // Защищаем всё, кроме /login, /api/auth/*, статики и публичных шар-доков (/share/*).
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|login|api/auth|inferno/vendor|share).*)"],
+  matcher: ["/((?!_next/|favicon.ico|login|api/auth|inferno/vendor|share).*)"],
 };
 
 // /api/*-эндпоинты, доступные БЕЗ сессии и БЕЗ cron-секрета (явный allowlist).
