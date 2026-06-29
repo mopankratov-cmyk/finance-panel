@@ -1,3 +1,5 @@
+import { archivePublicUrlToYandex, yandexFactoryArchiveRootPath } from "./yandexArchive";
+
 type DbClient = {
   from: (table: string) => any;
   storage?: {
@@ -38,6 +40,26 @@ function safeError(error: unknown): string {
 
 function normalizeUrl(url: unknown): string {
   return String(url || "").trim().replace(/[),.;]+$/g, "");
+}
+
+function storagePublicUrl(path: string): string {
+  const base = String(process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || "").replace(/\/+$/, "");
+  const encoded = path.split("/").map(encodeURIComponent).join("/");
+  return `${base}/storage/v1/object/public/${BUCKET}/${encoded}`;
+}
+
+function slugPathPart(value: unknown, fallback: string): string {
+  const text = String(value || "").trim().toLowerCase()
+    .replace(/[^a-z0-9а-яё._-]+/gi, "-")
+    .replace(/^-+|-+$/g, "");
+  return text || fallback;
+}
+
+function storageOnlyArchivePath(item: { path?: string | null; prefix?: string | null; name?: string | null; created_at?: string | null }): string {
+  const day = String(item.created_at || new Date().toISOString()).slice(0, 10);
+  const prefix = slugPathPart(item.prefix, "storage");
+  const name = slugPathPart(item.name || item.path, "file");
+  return `${yandexFactoryArchiveRootPath()}/${day}/storage-only/${prefix}/${name}`;
 }
 
 function storagePathFromUrl(url: string): string | null {
@@ -422,5 +444,86 @@ export async function releaseYandexArchivedFactoryStorage(db: DbClient | null | 
       status: error ? "failed" : "deleted",
       error: error ? safeError(error) : null,
     })),
+  };
+}
+
+export async function archiveAndReleaseStorageOnlyOrphans(db: DbClient | null | undefined, input?: {
+  limit?: number;
+  storageLimit?: number;
+}) {
+  const limit = Math.min(Math.max(Number(input?.limit || 10), 1), 25);
+  const dryRun = await buildFactoryStorageCleanupDryRun(db, {
+    limit: 2000,
+    storageLimit: input?.storageLimit || 5000,
+  });
+  const candidates = ((dryRun.candidates || []) as Array<{
+    path?: string | null;
+    prefix?: string | null;
+    name?: string | null;
+    created_at?: string | null;
+    size_bytes?: number | null;
+    mimetype?: string | null;
+  }>)
+    .filter((item) => item.path && item.name && item.prefix)
+    .slice(0, limit);
+
+  if (!db?.storage) {
+    return {
+      ok: false,
+      destructive: true,
+      apply: true,
+      archived: 0,
+      deleted: 0,
+      failed: 0,
+      error: "Supabase storage client is unavailable",
+      items: [],
+    };
+  }
+
+  const bucket = db.storage.from(BUCKET);
+  if (typeof bucket.remove !== "function") {
+    return {
+      ok: false,
+      destructive: true,
+      apply: true,
+      archived: 0,
+      deleted: 0,
+      failed: 0,
+      error: "Supabase storage remove is unavailable",
+      items: [],
+    };
+  }
+
+  const items: Array<{
+    storage_path: string;
+    yandex_path: string;
+    source_url: string;
+    status: "deleted" | "failed";
+    error: string | null;
+  }> = [];
+
+  for (const item of candidates) {
+    const storagePath = String(item.path || "");
+    const yandexPath = storageOnlyArchivePath(item);
+    const sourceUrl = storagePublicUrl(storagePath);
+    try {
+      await archivePublicUrlToYandex(yandexPath, sourceUrl, { wait: true });
+      const { error } = await bucket.remove([storagePath]);
+      if (error) throw new Error(error.message || "storage remove failed");
+      items.push({ storage_path: storagePath, yandex_path: yandexPath, source_url: sourceUrl, status: "deleted", error: null });
+    } catch (error) {
+      items.push({ storage_path: storagePath, yandex_path: yandexPath, source_url: sourceUrl, status: "failed", error: safeError(error) });
+    }
+  }
+
+  return {
+    ok: items.every((item) => item.status === "deleted"),
+    destructive: true,
+    apply: true,
+    archived: items.filter((item) => item.status === "deleted").length,
+    deleted: items.filter((item) => item.status === "deleted").length,
+    failed: items.filter((item) => item.status === "failed").length,
+    candidates: candidates.length,
+    items,
   };
 }

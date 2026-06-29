@@ -9,6 +9,8 @@ ok(/YANDEX_DISK_OAUTH_TOKEN/.test(helper), "Yandex archive uses a dedicated disk
 ok(/YANDEX_DISK_FACTORY_ARCHIVE_PATH/.test(helper), "Yandex archive supports configurable archive root");
 ok(/function yandexClientUrl/.test(helper), "Yandex archive exposes a browser-openable Disk client URL");
 ok(/client_url: yandexClientUrl\(\)/.test(helper), "Yandex archive reports the target folder client URL");
+ok(/export async function archivePublicUrlToYandex/.test(helper), "Yandex archive exposes URL import for storage-only files");
+ok(/waitYandexOperation/.test(helper), "Yandex archive can wait for async URL imports before cleanup");
 ok(/content_assets/.test(helper) && /\.eq\("disk", "gen"\)/.test(helper), "Yandex archive reads generated assets");
 ok(/ARCHIVE_KINDS = \["video", "clip", "image"\]/.test(helper), "Yandex archive targets final videos, intermediate clips, and generated images");
 ok(/\.in\("kind", ARCHIVE_KINDS\)/.test(helper), "Yandex archive scans all generated media kinds");

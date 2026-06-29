@@ -219,6 +219,49 @@ function publicYandexHint(path: string): string {
   return `yandex-disk:${path}`;
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitYandexOperation(href: string, timeoutMs = 90000) {
+  if (!href) return { ok: true, status: "unknown" };
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const r = await fetch(href, {
+      headers: bearerHeaders(),
+      signal: AbortSignal.timeout(15000),
+    });
+    const body = await r.json().catch(() => ({}));
+    const status = String((body as { status?: unknown }).status || "").toLowerCase();
+    if (r.ok && ["success", "done", "completed"].includes(status)) return { ok: true, status };
+    if (["failed", "error"].includes(status)) {
+      throw new Error(`operation ${status}: ${safeError(body)}`);
+    }
+    await sleep(2500);
+  }
+  throw new Error("operation timeout");
+}
+
+export function yandexFactoryArchiveRootPath(): string {
+  return rootPath();
+}
+
+export function yandexFactoryArchiveClientUrl(path = rootPath()): string {
+  return yandexClientUrl(path);
+}
+
+export async function archivePublicUrlToYandex(path: string, sourceUrl: string, input?: { wait?: boolean }) {
+  const access = await verifyYandexAccess();
+  if (!access.ready) throw new Error(access.error || "Yandex Disk is not ready");
+  const operationHref = await importUrlToYandex(path, sourceUrl);
+  if (input?.wait !== false) await waitYandexOperation(operationHref);
+  return {
+    operation_href: operationHref,
+    yandex_url: publicYandexHint(path),
+    yandex_path: path,
+  };
+}
+
 export async function archiveFactoryVideosToYandex(db: DbClient | null | undefined, input?: {
   apply?: boolean;
   limit?: number;

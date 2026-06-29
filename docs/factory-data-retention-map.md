@@ -373,6 +373,23 @@ POST /api/factory/storage-cleanup/release { "apply": true, "confirm": "release-y
 - строки `content_assets`, `generation_history`, `node_recipes` не удаляются;
 - в `content_assets.analysis` ставится `supabase_storage_released_at`.
 
+## Storage-only orphan archive/release
+
+Для файлов, которые есть в Supabase Storage, но не найдены в reference graph и не имеют строки `content_assets`, добавлен отдельный более осторожный режим:
+
+```text
+GET /api/factory/storage-cleanup/orphans?apply=1&confirm=archive-release-storage-orphans&limit=5
+POST /api/factory/storage-cleanup/orphans { "apply": true, "confirm": "archive-release-storage-orphans", "limit": 5 }
+```
+
+Правила:
+
+- берутся только `orphan_candidate` из dry-run;
+- файл сначала импортируется в Яндекс.Диск под `/content-factory/archive/<day>/storage-only/<prefix>/...`;
+- backend ждёт завершения Yandex operation;
+- только после успешного импорта удаляется объект из Supabase Storage;
+- строки БД не удаляются, потому что у storage-only orphan их нет.
+
 ## Long-running Yandex archive worker
 
 Для массовой выгрузки можно использовать долгоживущий worker/CLI. Он тоже ставит URL-import задачи в Яндекс.Диске, поэтому не тащит MP4 через память процесса:

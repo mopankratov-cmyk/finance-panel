@@ -4,6 +4,7 @@ import { ok } from "node:assert/strict";
 const helper = readFileSync("lib/factory/storageCleanup.ts", "utf8");
 const route = readFileSync("app/api/factory/storage-cleanup/dry-run/route.ts", "utf8");
 const releaseRoute = readFileSync("app/api/factory/storage-cleanup/release/route.ts", "utf8");
+const orphanRoute = readFileSync("app/api/factory/storage-cleanup/orphans/route.ts", "utf8");
 const studio = readFileSync("public/inferno/studio.html", "utf8");
 
 ok(/export async function buildFactoryStorageCleanupDryRun/.test(helper), "storage cleanup dry-run helper exists");
@@ -25,6 +26,9 @@ ok(/bucket\.remove/.test(helper), "release removes storage objects");
 ok(/supabase_storage_released_at/.test(helper), "release records storage release metadata");
 ok(/ready: !!archivedAt && !!archivePath && !releasedAt/.test(helper), "already released assets are not released again");
 ok(/ready_for_storage_release: !!storagePath && !!item && archive\.ready/.test(helper), "release requires a live storage object");
+ok(/archiveAndReleaseStorageOnlyOrphans/.test(helper), "storage cleanup can archive and release storage-only orphans");
+ok(/archivePublicUrlToYandex\(yandexPath, sourceUrl, \{ wait: true \}\)/.test(helper), "storage-only cleanup waits for Yandex import before delete");
+ok(/storageOnlyArchivePath/.test(helper), "storage-only cleanup puts orphans under a dedicated archive path");
 ok(!/from\("content_assets"\)\.delete/.test(helper), "storage cleanup helper never deletes content asset rows");
 
 ok(/export async function GET/.test(route), "storage cleanup route exposes GET");
@@ -35,6 +39,9 @@ ok(/Cache-Control/.test(route) && /no-store/.test(route), "storage cleanup respo
 ok(/confirm"\) === "release-yandex-archived"/.test(releaseRoute), "release route requires explicit GET confirmation");
 ok(/body\.confirm !== "release-yandex-archived"/.test(releaseRoute), "release route requires explicit POST confirmation");
 ok(/releaseYandexArchivedFactoryStorage/.test(releaseRoute), "release route uses the safe archived release helper");
+ok(/confirm"\) === "archive-release-storage-orphans"/.test(orphanRoute), "orphan route requires explicit GET confirmation");
+ok(/body\.confirm !== "archive-release-storage-orphans"/.test(orphanRoute), "orphan route requires explicit POST confirmation");
+ok(/archiveAndReleaseStorageOnlyOrphans/.test(orphanRoute), "orphan route uses archive-before-delete helper");
 
 ok(/storageCleanup:null/.test(studio), "Studio tracks storage cleanup dry-run");
 ok(/function refreshStorageCleanup\(box\)/.test(studio), "Studio can refresh storage cleanup dry-run");
