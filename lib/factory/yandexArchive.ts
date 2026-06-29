@@ -193,6 +193,58 @@ function archivePath(row: AssetRow): string {
   return `${rootPath()}/${day}/${niche}/${kind}/${article}-${row.id}-${name}.${mediaExt(row)}`;
 }
 
+export function yandexArchivePathForContentAsset(row: AssetRow): string {
+  return archivePath(row);
+}
+
+export async function archiveContentAssetToYandex(db: DbClient | null | undefined, row: AssetRow, input?: {
+  wait?: boolean;
+  source?: string;
+}) {
+  const source = input?.source || "factory_auto_yandex_v1";
+  const yandexPath = archivePath(row);
+  const sourceUrl = row.url || "";
+
+  if (!db) return { ok: false, status: "skipped" as ArchiveStatus, error: "Supabase is not configured", yandex_path: yandexPath };
+  if (!isGeneratedMediaUrl(row)) return { ok: true, status: "skipped" as ArchiveStatus, error: null, yandex_path: yandexPath };
+  if (archivedUrl(row)) return { ok: true, status: "skipped" as ArchiveStatus, error: null, yandex_path: yandexPath };
+
+  try {
+    const archived = await archivePublicUrlToYandex(yandexPath, sourceUrl, { wait: input?.wait === true });
+    const analysis = {
+      ...(row.analysis || {}),
+      yandex_archive_url: archived.yandex_url,
+      yandex_archive_path: archived.yandex_path,
+      yandex_archived_at: new Date().toISOString(),
+      yandex_archive_operation_href: archived.operation_href,
+      yandex_archive_source: source,
+    };
+    const { error } = await db.from("content_assets").update({ analysis }).eq("id", row.id);
+    if (error) throw new Error(`db update: ${error.message}`);
+    return {
+      ok: true,
+      status: "uploaded" as ArchiveStatus,
+      error: null,
+      yandex_path: archived.yandex_path,
+      yandex_url: archived.yandex_url,
+    };
+  } catch (error) {
+    const message = safeError(error);
+    try {
+      const analysis = {
+        ...(row.analysis || {}),
+        yandex_archive_auto_error: message,
+        yandex_archive_auto_failed_at: new Date().toISOString(),
+        yandex_archive_auto_source: source,
+      };
+      await db.from("content_assets").update({ analysis }).eq("id", row.id);
+    } catch {
+      // best-effort: archive metadata must never break generation persistence.
+    }
+    return { ok: false, status: "failed" as ArchiveStatus, error: message, yandex_path: yandexPath };
+  }
+}
+
 async function loadCandidateRows(db: DbClient, limit: number, includeArchived: boolean): Promise<AssetRow[]> {
   const out: AssetRow[] = [];
   for (let from = 0; out.length < limit && from < 5000; from += 1000) {

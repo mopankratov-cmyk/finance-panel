@@ -22,6 +22,7 @@ import { normalizeTargetPlatform } from "./reelsBrainPlaybook";
 import { buildRunIdempotencyKey } from "./factoryV2Runtime";
 import { recordFactoryPublication } from "./publications";
 import { checkPersonaConsent, isCreatifyPackedToken, recordUgcJob } from "./ugcJobs";
+import { archiveContentAssetToYandex } from "./yandexArchive";
 
 export type { ExecutionLogEntry, RunNode, RunPlan, RunStep } from "./graphTypes";
 
@@ -685,7 +686,22 @@ export async function persistClips(db: SupabaseClient, nodes: RunNode[], article
         return;
       }
       n.url = pub; // рендерим из durable-URL — ставим ДО insert: если каталожная вставка упадёт, клип уже в нашем бакете и рендер не вернётся на эфемерный fal-URL
-      await db.from("content_assets").insert({ disk: "gen", path, name: `${article || "clip"} · clip ${roleOf(n) || ""}`.slice(0, 120), kind: "clip", niche: niche || null, article: article || null, color: null, url: pub, analyzed: true, analysis: { source_url: src, role: roleOf(n), tool: n.tool || null, source: "clip_library" } });
+      const clipAnalysis = { source_url: src, role: roleOf(n), tool: n.tool || null, source: "clip_library" };
+      const { data: insertedClip } = await db.from("content_assets").insert({
+        disk: "gen",
+        path,
+        name: `${article || "clip"} · clip ${roleOf(n) || ""}`.slice(0, 120),
+        kind: "clip",
+        niche: niche || null,
+        article: article || null,
+        color: null,
+        url: pub,
+        analyzed: true,
+        analysis: clipAnalysis,
+      }).select("id,name,kind,url,niche,article,path,analysis,created_at").maybeSingle();
+      if (insertedClip) {
+        await archiveContentAssetToYandex(db, insertedClip, { wait: false, source: "factory_clip_library_auto_yandex_v1" });
+      }
       await logGeneration({ recipe_id: recipeId ?? null, tool: n.tool, engine: n.engine, node_type: n.node_type, prompt: n.prompt, input_url: src, output_url: pub, status: "generated", source: "graph_run", reason: "clip_library", niche, article });
     } catch { /* best-effort — теряем клип на fal, но пайплайн жив */ }
   }));
@@ -792,7 +808,18 @@ async function saveOurStorageVideoToCatalog(
       return String(dup.url);
     }
     const path = `gen/direct-${createHash("sha1").update(url).digest("hex")}`;
-    const { error } = await db.from("content_assets").insert({
+    const directAnalysis = {
+      source_url: url,
+      route: "node_graph",
+      engine: opts.engine || "",
+      batch_role: opts.batchRole || null,
+      change_axis: opts.changeAxis || null,
+      otk: opts.otkScore,
+      otk_axes: opts.otkAxes ?? null,
+      recipe_id: opts.recipeId,
+      catalog_fallback: "direct_our_storage",
+    };
+    const { data: insertedVideo, error } = await db.from("content_assets").insert({
       disk: "gen",
       path,
       name: (opts.hook || opts.article || "генерация").toString().slice(0, 120),
@@ -802,24 +829,17 @@ async function saveOurStorageVideoToCatalog(
       color: null,
       url,
       analyzed: true,
-      analysis: {
-        source_url: url,
-        route: "node_graph",
-        engine: opts.engine || "",
-        batch_role: opts.batchRole || null,
-        change_axis: opts.changeAxis || null,
-        otk: opts.otkScore,
-        otk_axes: opts.otkAxes ?? null,
-        recipe_id: opts.recipeId,
-        catalog_fallback: "direct_our_storage",
-      },
-    });
+      analysis: directAnalysis,
+    }).select("id,name,kind,url,niche,article,path,analysis,created_at").maybeSingle();
     if (error) {
       if ((error as { code?: string }).code === "23505") {
         const { data: ex } = await db.from("content_assets").select("url").eq("disk", "gen").contains("analysis", sourceMeta).maybeSingle();
         if (ex?.url) return String(ex.url);
       }
       return null;
+    }
+    if (insertedVideo) {
+      await archiveContentAssetToYandex(db, insertedVideo, { wait: false, source: "factory_direct_catalog_auto_yandex_v1" });
     }
     await logGeneration({
       recipe_id: opts.recipeId,

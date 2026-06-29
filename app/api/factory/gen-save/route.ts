@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { nicheFromArticle } from "@/lib/factory/rubric";
 import { logGeneration } from "@/lib/factory/genHistory";
 import { extractPosterUrl } from "@/lib/factory/serverMedia";
+import { archiveContentAssetToYandex } from "@/lib/factory/yandexArchive";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -58,14 +59,28 @@ export async function POST(req: NextRequest) {
       article: article || null,
     });
   };
+  const autoArchiveAsset = async (row: {
+    id: number;
+    name?: string | null;
+    kind?: string | null;
+    url?: string | null;
+    niche?: string | null;
+    article?: string | null;
+    path?: string | null;
+    analysis?: Record<string, unknown> | null;
+    created_at?: string | null;
+  }, source: string) => {
+    return archiveContentAssetToYandex(db, row, { wait: false, source });
+  };
 
   // 1) ВИДЕО: качаем с fal (временная ссылка) → Storage → постоянный URL
   if (videoUrl) {
     // дедуп: если эта же исходная ссылка уже сохранена — не дублируем
-    const { data: dup } = await db.from("content_assets").select("id,url").eq("disk", "gen").contains("analysis", { source_url: videoUrl }).maybeSingle();
+    const { data: dup } = await db.from("content_assets").select("id,name,kind,url,niche,article,path,analysis,created_at").eq("disk", "gen").contains("analysis", { source_url: videoUrl }).maybeSingle();
     if (dup?.url) {
       await logGenSaveHistory(videoUrl, dup.url);
-      return NextResponse.json({ ok: true, already: true, url: dup.url });
+      const yandexArchive = await autoArchiveAsset(dup, "factory_gen_save_dedupe_auto_yandex_v1");
+      return NextResponse.json({ ok: true, already: true, url: dup.url, yandex_archive: yandexArchive.status });
     }
     let stored = "";
     let diag = "";
@@ -87,25 +102,28 @@ export async function POST(req: NextRequest) {
     // #14: повторная проверка дедупа ПРЯМО перед вставкой — параллельный gen-poll мог успеть сохранить
     // это же видео, пока мы качали (~до 90с). Сужает окно гонки; полную гарантию даёт уникальный индекс
     // (миграция 20260627) — конфликт обработан ниже.
-    const { data: dup2 } = await db.from("content_assets").select("url").eq("disk", "gen").contains("analysis", { source_url: videoUrl }).maybeSingle();
+    const { data: dup2 } = await db.from("content_assets").select("id,name,kind,url,niche,article,path,analysis,created_at").eq("disk", "gen").contains("analysis", { source_url: videoUrl }).maybeSingle();
     if (dup2?.url) {
       await logGenSaveHistory(videoUrl, dup2.url);
-      return NextResponse.json({ ok: true, already: true, url: dup2.url });
+      const yandexArchive = await autoArchiveAsset(dup2, "factory_gen_save_dedupe_auto_yandex_v1");
+      return NextResponse.json({ ok: true, already: true, url: dup2.url, yandex_archive: yandexArchive.status });
     }
     // #21 постер-кадр для галереи (best-effort): чинит пустые квадраты в Базе видосов
     const poster = await extractPosterUrl(db, stored, BUCKET, `gen/${stamp}-${rand}-poster`);
-    const { error: insErr } = await db.from("content_assets").insert({
+    const insertedAnalysis = poster ? { ...meta, poster } : meta;
+    const { data: insertedVideo, error: insErr } = await db.from("content_assets").insert({
       disk: "gen", path: `gen/${stamp}-${rand}`, name: (b.hook || article || "генерация").toString().slice(0, 120),
       kind: "video", niche, article: article || null, color: null, url: stored, analyzed: true,
-      analysis: poster ? { ...meta, poster } : meta,
-    });
+      analysis: insertedAnalysis,
+    }).select("id,name,kind,url,niche,article,path,analysis,created_at").maybeSingle();
     if (insErr) {
       // гонка проиграна: уникальный индекс (миграция 20260627) отбил дубль → вернём уже сохранённую строку
       if ((insErr as { code?: string }).code === "23505") {
-        const { data: ex } = await db.from("content_assets").select("url").eq("disk", "gen").contains("analysis", { source_url: videoUrl }).maybeSingle();
+        const { data: ex } = await db.from("content_assets").select("id,name,kind,url,niche,article,path,analysis,created_at").eq("disk", "gen").contains("analysis", { source_url: videoUrl }).maybeSingle();
         if (ex?.url) {
           await logGenSaveHistory(videoUrl, ex.url);
-          return NextResponse.json({ ok: true, already: true, url: ex.url });
+          const yandexArchive = await autoArchiveAsset(ex, "factory_gen_save_dedupe_auto_yandex_v1");
+          return NextResponse.json({ ok: true, already: true, url: ex.url, yandex_archive: yandexArchive.status });
         }
       }
       await logGenSaveHistory(videoUrl, null, "artifact_fail", insErr.message);
@@ -114,6 +132,9 @@ export async function POST(req: NextRequest) {
 
     // V20 · память итераций: пишем каждую попытку gen-save (success/dedupe/failure), best-effort.
     await logGenSaveHistory(videoUrl, stored);
+    const yandexArchive = insertedVideo
+      ? await autoArchiveAsset(insertedVideo, "factory_gen_save_auto_yandex_v1")
+      : { status: "skipped" };
 
     // Авто-сид корпуса: OTK ≥ 8 → viral_hooks viability=4 (AI+OTК verified, ниже explicit winner=5)
     const otkScore = typeof b.otk === "number" ? b.otk : null;
@@ -130,7 +151,7 @@ export async function POST(req: NextRequest) {
       } catch { /* corpus optional */ }
     }
 
-    return NextResponse.json({ ok: true, url: stored });
+    return NextResponse.json({ ok: true, url: stored, yandex_archive: yandexArchive.status });
   }
 
   // 2) КАРУСЕЛЬ: слайды могут прийти как base64 — заливаем в Storage, в каталог пишем ССЫЛКИ (не base64)
@@ -151,17 +172,21 @@ export async function POST(req: NextRequest) {
     await logGenSaveHistory(slides[0] || null, null, "artifact_fail", "не удалось залить слайды карусели");
     return NextResponse.json({ ok: false, error: "не удалось залить слайды карусели" }, { status: 502 });
   }
-  const { error: insErr } = await db.from("content_assets").insert({
+  const carouselAnalysis = { ...meta, slides: clean };
+  const { data: insertedCarousel, error: insErr } = await db.from("content_assets").insert({
     disk: "gen", path: `gen/${stamp}-${rand}`, name: (b.hook || article || "карусель").toString().slice(0, 120),
     kind: "image", niche, article: article || null, color: null, url: clean[0], analyzed: true,
-    analysis: { ...meta, slides: clean },
-  });
+    analysis: carouselAnalysis,
+  }).select("id,name,kind,url,niche,article,path,analysis,created_at").maybeSingle();
   if (insErr) {
     await logGenSaveHistory(slides[0] || null, null, "artifact_fail", insErr.message);
     return NextResponse.json({ ok: false, error: insErr.message }, { status: 500 });
   }
   await logGenSaveHistory(slides[0] || null, clean[0]);
-  return NextResponse.json({ ok: true, url: clean[0], slides: clean.length });
+  const yandexArchive = insertedCarousel
+    ? await autoArchiveAsset(insertedCarousel, "factory_gen_save_carousel_auto_yandex_v1")
+    : { status: "skipped" };
+  return NextResponse.json({ ok: true, url: clean[0], slides: clean.length, yandex_archive: yandexArchive.status });
   } catch (e) {
     return NextResponse.json({
       ok: false,
