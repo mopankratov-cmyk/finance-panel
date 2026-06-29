@@ -288,6 +288,20 @@ YANDEX_DISK_FACTORY_ARCHIVE_PATH=/content-factory/archive
 YANDEX_DISK_ARCHIVE_MAX_BYTES=262144000
 ```
 
+Минимальная проверка подключения:
+
+```bash
+node --import tsx lib/factory/yandexArchiveWorker.mjs --apply false --limit 3 --env-file /path/to/.env.local
+```
+
+Worker сам пробует загрузить `.env.local`, `.env.production.local`, `.env.vercel.local`, `.env.vercel.production.local` и основные env-файлы проекта. Для записи отчёта и обновления `content_assets.analysis` нужны одновременно:
+
+- `NEXT_PUBLIC_SUPABASE_URL` или `SUPABASE_URL`;
+- `SUPABASE_SERVICE_ROLE_KEY`;
+- `YANDEX_DISK_OAUTH_TOKEN`.
+
+В UI кнопка `Яндекс.Диск` ведёт в папку `https://disk.yandex.ru/client/disk/content-factory/archive`, соответствующую дефолтному `YANDEX_DISK_FACTORY_ARCHIVE_PATH`.
+
 Поведение:
 
 - если токена нет, endpoint возвращает `status: "missing_token"` и ничего не делает;

@@ -35,6 +35,11 @@ function rootPath(): string {
   return raw.startsWith("/") ? raw : `/${raw}`;
 }
 
+function yandexClientUrl(path = rootPath()): string {
+  const clean = path.startsWith("/") ? path.slice(1) : path;
+  return `https://disk.yandex.ru/client/disk/${clean.split("/").map(encodeURIComponent).join("/")}`;
+}
+
 function maxBytes(): number {
   const value = Number(process.env.YANDEX_DISK_ARCHIVE_MAX_BYTES || DEFAULT_MAX_BYTES);
   return Number.isFinite(value) && value > 0 ? value : DEFAULT_MAX_BYTES;
@@ -256,6 +261,7 @@ export async function archiveFactoryVideosToYandex(db: DbClient | null | undefin
       error: access.error,
       token_env: "YANDEX_DISK_OAUTH_TOKEN",
       root_path: rootPath(),
+      client_url: yandexClientUrl(),
       max_bytes: maxBytes(),
       candidates: rows.length,
       items: rows.map((row) => {
@@ -314,6 +320,7 @@ export async function archiveFactoryVideosToYandex(db: DbClient | null | undefin
     status: items.some((item) => item.status === "failed") ? "failed" as ArchiveStatus : "uploaded" as ArchiveStatus,
     token_env: "YANDEX_DISK_OAUTH_TOKEN",
     root_path: rootPath(),
+    client_url: yandexClientUrl(),
     max_bytes: maxBytes(),
     candidates: rows.length,
     uploaded: items.filter((item) => item.status === "uploaded").length,

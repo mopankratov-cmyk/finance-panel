@@ -4,6 +4,8 @@ import type { RunPlan } from "./graphTypes";
 
 const DEFAULT_STALE_MS = 90_000;
 const DEFAULT_MAX_WAKE = 10;
+const RENDER_POLL_FORCE_RELEASE_MS = 240_000;
+const GEN_POLL_FORCE_RELEASE_MS = 540_000;
 
 type WakeResult = { id: number; from: string };
 
@@ -12,6 +14,13 @@ function leaseFree(plan: RunPlan | null): boolean {
   if (!plan.lease_until) return true;
   const t = new Date(plan.lease_until as string).getTime();
   return !Number.isFinite(t) || t < Date.now();
+}
+
+function pollStepOverdue(plan: RunPlan | null): boolean {
+  if (!plan || (plan.step !== "render-poll" && plan.step !== "gen-poll")) return false;
+  const started = plan.step_started_at ? new Date(plan.step_started_at as string).getTime() : NaN;
+  const maxAge = plan.step === "render-poll" ? RENDER_POLL_FORCE_RELEASE_MS : GEN_POLL_FORCE_RELEASE_MS;
+  return Number.isFinite(started) && Date.now() - started >= maxAge;
 }
 
 export type WatchdogResult = {
@@ -79,6 +88,18 @@ export async function wakeStaleRecipes(
       return bTs - aTs;
     })
     .slice(0, maxWake);
+
+  for (const row of rows) {
+    const p = row.run_plan;
+    if (!p || leaseFree(p) || !pollStepOverdue(p)) continue;
+    p.lease_until = null;
+    try {
+      await db.from("node_recipes").update({ run_plan: p, updated_at: new Date().toISOString() }).eq("id", row.id);
+    } catch {
+      /* best-effort: обычный lease timeout/cron подхватит следующий такт */
+    }
+  }
+
   const stuck = rows.filter((r) => {
     const p = r.run_plan;
     return p && p.step !== "done" && p.step !== "failed" && leaseFree(p);
