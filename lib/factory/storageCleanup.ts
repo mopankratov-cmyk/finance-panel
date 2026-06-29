@@ -248,6 +248,10 @@ function classifyStorageItem(item: StorageItem & { prefix?: string }, refs: Refe
   };
 }
 
+function isFileLikeStorageItem(item: ReturnType<typeof classifyStorageItem>) {
+  return Number(item.size_bytes || 0) > 0 || !!item.mimetype;
+}
+
 function buildYandexArchivedReleaseCandidates(
   rows: Record<string, unknown>[],
   storageByPath: Map<string, ReturnType<typeof classifyStorageItem>>,
@@ -304,8 +308,9 @@ export async function buildFactoryStorageCleanupDryRun(db: DbClient | null | und
   const classified = storageItems
     .filter((item) => item.name && item.name !== ".emptyFolderPlaceholder")
     .map((item) => classifyStorageItem(item, graph.byPath.get(`${item.prefix}/${item.name}`) || []));
-  const storageByPath = new Map(classified.map((item) => [item.path, item]));
-  const orphanCandidates = classified.filter((item) => item.status === "orphan_candidate");
+  const fileLikeClassified = classified.filter(isFileLikeStorageItem);
+  const storageByPath = new Map(fileLikeClassified.map((item) => [item.path, item]));
+  const orphanCandidates = fileLikeClassified.filter((item) => item.status === "orphan_candidate");
   const protectedItems = classified.filter((item) => item.status === "protected");
   const reviewItems = classified.filter((item) => item.status === "referenced_review");
   const assetRows = ((await safeSelect(db, "content_assets", "id,url,path,kind,disk,analysis,created_at", limit)).rows || [])
@@ -328,6 +333,7 @@ export async function buildFactoryStorageCleanupDryRun(db: DbClient | null | und
     },
     storage: {
       scanned: classified.length,
+      files_scanned: fileLikeClassified.length,
       protected: protectedItems.length,
       referenced_review: reviewItems.length,
       orphan_candidates: orphanCandidates.length,
@@ -464,7 +470,7 @@ export async function archiveAndReleaseStorageOnlyOrphans(db: DbClient | null | 
     size_bytes?: number | null;
     mimetype?: string | null;
   }>)
-    .filter((item) => item.path && item.name && item.prefix)
+    .filter((item) => item.path && item.name && item.prefix && (Number(item.size_bytes || 0) > 0 || !!item.mimetype))
     .slice(0, limit);
 
   if (!db?.storage) {

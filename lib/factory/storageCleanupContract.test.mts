@@ -17,6 +17,8 @@ ok(/factory_publications/.test(helper), "storage cleanup reads publication refer
 ok(/factory_ugc_jobs/.test(helper), "storage cleanup reads UGC job references");
 ok(/"renders"/.test(helper), "storage cleanup scans render outputs");
 ok(/orphan_candidate/.test(helper), "storage cleanup classifies orphan candidates");
+ok(/isFileLikeStorageItem/.test(helper), "storage cleanup ignores storage pseudo-directories");
+ok(/files_scanned/.test(helper), "storage cleanup reports real scanned files separately");
 ok(/protected/.test(helper), "storage cleanup classifies protected references");
 ok(/yandex_archived_release/.test(helper), "storage cleanup reports Yandex-archived files that can later release Supabase storage");
 ok(/ready_for_storage_release/.test(helper), "storage cleanup marks release candidates only after Yandex archive metadata exists");
