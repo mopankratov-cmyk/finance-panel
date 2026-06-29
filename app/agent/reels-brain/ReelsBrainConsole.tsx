@@ -624,6 +624,63 @@ type PortfolioDigestResponse = {
   error?: string;
 };
 
+type LearningEconomicsResponse = {
+  ok?: boolean;
+  niches?: {
+    niche: string;
+    updated_at?: string | null;
+    total_videos: number;
+    analyzed_videos: number;
+    patterns: number;
+    generator_ready_patterns: number;
+    cross_platform_patterns: number;
+    avg_relevance_score: number;
+    understanding_score: number;
+    platform_brains?: Record<string, {
+      total_videos: number;
+      analyzed_videos: number;
+      patterns: number;
+      generator_ready_patterns: number;
+    }>;
+  }[];
+  totals?: {
+    total_videos: number;
+    analyzed_videos: number;
+    patterns: number;
+    generator_ready_patterns: number;
+    cross_platform_patterns: number;
+    avg_understanding_score: number;
+    cost_units_per_inserted_recent: number | null;
+    cost_units_per_inserted_previous: number | null;
+    cost_trend: "cheaper" | "more_expensive" | "flat" | "not_enough_data";
+  };
+  timeline?: {
+    id: string;
+    mode: AutomationHistoryItem["mode"];
+    strategy?: string | null;
+    created_at: string;
+    niches: string[];
+    ok: boolean;
+    found: number;
+    inserted: number;
+    analyzed: number;
+    relevant: number;
+    retries: number;
+    errors: number;
+    best_provider?: string | null;
+    cost_units: number;
+    inserted_per_100_cost_units: number;
+    analyzed_per_100_cost_units: number;
+    cost_units_per_inserted: number | null;
+    cost_units_per_analyzed: number | null;
+    cumulative_inserted: number;
+    cumulative_analyzed: number;
+    cumulative_cost_units: number;
+  }[];
+  warning?: string;
+  error?: string;
+};
+
 const DEFAULT_NICHE = "ru_toys";
 const DEFAULT_AUTOMATION_NICHES = "ru_toys,ru_clothing,ru_cosmetics";
 const DEFAULT_QUERIES = [
@@ -796,6 +853,13 @@ function formatDelta(value: number, invert = false) {
   return `${sign}${compactNumber(value)}|${good ? "good" : "bad"}`;
 }
 
+function costTrendCopy(trend: LearningEconomicsResponse["totals"] extends infer T ? T extends { cost_trend: infer U } ? U : never : never) {
+  if (trend === "cheaper") return { label: "дешевеет", tone: "border-emerald-200 bg-emerald-50 text-emerald-700", text: "стоимость нового видео падает" };
+  if (trend === "more_expensive") return { label: "дорожает", tone: "border-amber-200 bg-amber-50 text-amber-800", text: "новые видео добываются тяжелее" };
+  if (trend === "flat") return { label: "ровно", tone: "border-slate-200 bg-slate-50 text-slate-700", text: "эффективность примерно стабильна" };
+  return { label: "мало данных", tone: "border-slate-200 bg-slate-50 text-slate-500", text: "нужно больше сохраненных прогонов" };
+}
+
 async function readJson<T>(res: Response): Promise<T> {
   const json = await res.json().catch(() => ({}));
   if (!res.ok) {
@@ -864,6 +928,9 @@ export default function ReelsBrainPage() {
   const [portfolioDigest, setPortfolioDigest] = useState<PortfolioDigestResponse | null>(null);
   const [loadingPortfolio, setLoadingPortfolio] = useState(false);
   const [portfolioError, setPortfolioError] = useState("");
+  const [learningEconomics, setLearningEconomics] = useState<LearningEconomicsResponse | null>(null);
+  const [loadingLearningEconomics, setLoadingLearningEconomics] = useState(false);
+  const [learningEconomicsError, setLearningEconomicsError] = useState("");
   const [automationResult, setAutomationResult] = useState<AutomationRunResponse | null>(null);
   const [automationError, setAutomationError] = useState("");
   const [automationRunning, setAutomationRunning] = useState<null | "daily" | "weekly" | "growth" | "analyze">(null);
@@ -962,6 +1029,23 @@ export default function ReelsBrainPage() {
 
   useEffect(() => {
     let alive = true;
+    async function loadInitialLearningEconomics() {
+      setLoadingLearningEconomics(true);
+      try {
+        const data = await readJson<LearningEconomicsResponse>(await fetch(`/api/factory/reels-brain/learning-economics?niches=${encodeURIComponent(DEFAULT_AUTOMATION_NICHES)}`, { cache: "no-store" }));
+        if (alive) setLearningEconomics(data);
+      } catch {
+        if (alive) setLearningEconomics(null);
+      } finally {
+        if (alive) setLoadingLearningEconomics(false);
+      }
+    }
+    void loadInitialLearningEconomics();
+    return () => { alive = false; };
+  }, []);
+
+  useEffect(() => {
+    let alive = true;
     async function loadInitialAnalyzeBacklog() {
       setAnalyzeBacklogLoading(true);
       try {
@@ -998,6 +1082,11 @@ export default function ReelsBrainPage() {
   const portfolioCorpusTarget = Number(portfolioDigest?.portfolio?.corpus_goal?.total_target || 10000);
   const portfolioStageTarget = Number(portfolioDigest?.portfolio?.corpus_goal?.stage?.stage_target || 0);
   const portfolioStageLabel = portfolioDigest?.portfolio?.corpus_goal?.stage?.stage_label || "Corpus target";
+  const learningTotals = learningEconomics?.totals;
+  const learningTrend = costTrendCopy(learningTotals?.cost_trend || "not_enough_data");
+  const learningTimeline = learningEconomics?.timeline || [];
+  const learningNiches = learningEconomics?.niches || [];
+  const maxTimelineInserted = Math.max(1, ...learningTimeline.map((row) => row.inserted));
   const analyzeBacklogLanes = analyzeBacklog?.lanes || [];
   const analyzeBacklogQueue = analyzeBacklog?.queue || [];
   const analyzeBacklogTotals = analyzeBacklogLanes.reduce((acc, lane) => {
@@ -1218,6 +1307,19 @@ export default function ReelsBrainPage() {
     }
   }
 
+  async function loadLearningEconomics(currentNiches = automationNiches) {
+    setLoadingLearningEconomics(true);
+    setLearningEconomicsError("");
+    try {
+      const data = await readJson<LearningEconomicsResponse>(await fetch(`/api/factory/reels-brain/learning-economics?niches=${encodeURIComponent(currentNiches.trim() || DEFAULT_AUTOMATION_NICHES)}`, { cache: "no-store" }));
+      setLearningEconomics(data);
+    } catch (e) {
+      setLearningEconomicsError(String((e as Error)?.message || e));
+    } finally {
+      setLoadingLearningEconomics(false);
+    }
+  }
+
   async function refreshAutomationSurfaces(currentNiches = automationNiches, currentNiche = activeNiche()) {
     setAutomationSyncing(true);
     try {
@@ -1228,6 +1330,7 @@ export default function ReelsBrainPage() {
           loadSummary(currentNiche),
           loadCorpus(currentNiche),
           loadAnalyzeBacklogPlan(currentNiches),
+          loadLearningEconomics(currentNiches),
         ]);
       }
     } finally {
@@ -2118,6 +2221,122 @@ export default function ReelsBrainPage() {
             </div>
           </div>
         )}
+
+        <div className="mt-4 rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-950 via-slate-900 to-cyan-950 p-4 text-white">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.18em] text-cyan-200/80">Learning economics</p>
+              <h3 className="mt-1 text-xl font-black tracking-tight">Рост понимания и цена насмотренности</h3>
+              <p className="mt-1 max-w-2xl text-sm text-slate-300">
+                Показывает, умнеет ли мозг от прогона к прогону: сколько видео превратилось в память, сколько появилось generator-ready паттернов и дешевле ли добывается новое полезное видео.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => loadLearningEconomics(automationNiches)}
+              disabled={loadingLearningEconomics}
+              className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-white/15 bg-white/10 px-3 py-2 text-sm font-bold text-white hover:bg-white/15 disabled:opacity-50"
+            >
+              {loadingLearningEconomics ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+              Обновить economics
+            </button>
+          </div>
+
+          {learningEconomicsError && <div className="mt-3 rounded-xl border border-red-300/30 bg-red-500/10 px-3 py-2 text-sm text-red-100">{learningEconomicsError}</div>}
+
+          <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+            <div className="rounded-2xl border border-white/10 bg-white/10 p-4">
+              <p className="text-xs font-bold uppercase tracking-wide text-cyan-100/70">Понимание ниш</p>
+              <div className="mt-2 text-3xl font-black">{compactNumber(learningTotals?.avg_understanding_score || 0)}%</div>
+              <p className="mt-1 text-xs text-slate-300">средний score по pattern brain</p>
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-white/10 p-4">
+              <p className="text-xs font-bold uppercase tracking-wide text-cyan-100/70">В памяти</p>
+              <div className="mt-2 text-3xl font-black">{compactNumber(learningTotals?.analyzed_videos || 0)}</div>
+              <p className="mt-1 text-xs text-slate-300">из {compactNumber(learningTotals?.total_videos || 0)} видео</p>
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-white/10 p-4">
+              <p className="text-xs font-bold uppercase tracking-wide text-cyan-100/70">Generator-ready</p>
+              <div className="mt-2 text-3xl font-black">{compactNumber(learningTotals?.generator_ready_patterns || 0)}</div>
+              <p className="mt-1 text-xs text-slate-300">паттернов для генератора</p>
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-white/10 p-4">
+              <p className="text-xs font-bold uppercase tracking-wide text-cyan-100/70">Cross-platform</p>
+              <div className="mt-2 text-3xl font-black">{compactNumber(learningTotals?.cross_platform_patterns || 0)}</div>
+              <p className="mt-1 text-xs text-slate-300">паттернов между платформами</p>
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-white/10 p-4">
+              <p className="text-xs font-bold uppercase tracking-wide text-cyan-100/70">Цена нового видео</p>
+              <div className="mt-2 flex items-center gap-2">
+                <span className="text-3xl font-black">{learningTotals?.cost_units_per_inserted_recent == null ? "—" : compactNumber(learningTotals.cost_units_per_inserted_recent)}</span>
+                <span className={`rounded-full border px-2.5 py-1 text-xs font-bold ${learningTrend.tone}`}>{learningTrend.label}</span>
+              </div>
+              <p className="mt-1 text-xs text-slate-300">{learningTrend.text}</p>
+            </div>
+          </div>
+
+          <div className="mt-4 grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
+            <div className="rounded-2xl border border-white/10 bg-white/10 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-[0.18em] text-cyan-100/70">Run timeline</p>
+                  <h4 className="mt-1 text-lg font-black">От прогона к прогону</h4>
+                </div>
+                <span className="rounded-full border border-white/10 bg-white/10 px-3 py-1 text-xs font-semibold text-slate-200">
+                  {compactNumber(learningTimeline.length)} точек
+                </span>
+              </div>
+              <div className="mt-4 space-y-2">
+                {learningTimeline.length ? learningTimeline.slice(-10).map((run) => {
+                  const width = Math.max(4, Math.min(100, Math.round((run.inserted / maxTimelineInserted) * 100)));
+                  return (
+                    <div key={`${run.id}:${run.created_at}`} className="rounded-xl border border-white/10 bg-slate-950/35 p-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                        <span className="font-bold text-white">{automationTitle(run.mode)}</span>
+                        <span className="text-slate-300">{new Date(run.created_at).toLocaleString("ru-RU")}</span>
+                      </div>
+                      <div className="mt-2 h-2 overflow-hidden rounded-full bg-white/10">
+                        <div className="h-full rounded-full bg-cyan-300" style={{ width: `${width}%` }} />
+                      </div>
+                      <div className="mt-2 flex flex-wrap gap-2 text-xs text-slate-200">
+                        <span>+{compactNumber(run.inserted)} video</span>
+                        <span>+{compactNumber(run.analyzed)} memory</span>
+                        <span>{run.cost_units_per_inserted == null ? "cost/video —" : `${compactNumber(run.cost_units_per_inserted)} cost/video`}</span>
+                        {run.best_provider ? <span>{providerLabel(run.best_provider)}</span> : null}
+                      </div>
+                    </div>
+                  );
+                }) : <div className="rounded-xl border border-white/10 bg-white/10 px-3 py-4 text-sm text-slate-300">Истории прогонов пока нет.</div>}
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-white/10 bg-white/10 p-4">
+              <p className="text-xs font-bold uppercase tracking-[0.18em] text-cyan-100/70">Niche understanding</p>
+              <h4 className="mt-1 text-lg font-black">Где мозг сильнее</h4>
+              <div className="mt-4 space-y-3">
+                {learningNiches.length ? learningNiches.map((row) => (
+                  <div key={row.niche} className="rounded-xl border border-white/10 bg-slate-950/35 p-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="font-black">{row.niche}</div>
+                      <span className="rounded-full border border-cyan-200/30 bg-cyan-300/10 px-2.5 py-1 text-xs font-bold text-cyan-100">
+                        {compactNumber(row.understanding_score)}%
+                      </span>
+                    </div>
+                    <div className="mt-2 h-2 overflow-hidden rounded-full bg-white/10">
+                      <div className="h-full rounded-full bg-emerald-300" style={{ width: `${Math.max(4, Math.min(100, row.understanding_score))}%` }} />
+                    </div>
+                    <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-slate-300">
+                      <span>videos {compactNumber(row.total_videos)}</span>
+                      <span>analyzed {compactNumber(row.analyzed_videos)}</span>
+                      <span>patterns {compactNumber(row.patterns)}</span>
+                      <span>ready {compactNumber(row.generator_ready_patterns)}</span>
+                    </div>
+                  </div>
+                )) : <div className="rounded-xl border border-white/10 bg-white/10 px-3 py-4 text-sm text-slate-300">Pattern Brain пока не найден.</div>}
+              </div>
+            </div>
+          </div>
+        </div>
 
         <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
