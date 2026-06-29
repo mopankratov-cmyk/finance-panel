@@ -9,6 +9,8 @@ ok(/export async function recordFactoryPublication/.test(helper), "factory publi
 ok(/factory_publications/.test(helper), "publication helper writes factory_publications");
 ok(/latest_publication_id/.test(helper) && /distribution_status/.test(helper), "publication helper updates recipe pointer fail-open");
 ok(/catch \{\s*\/\/ node_recipes migration columns are optional/.test(helper), "recipe pointer update is fail-open");
+ok(/function isMissingOptionalPublicationTable/.test(helper), "publication helper detects missing optional publication table");
+ok(/return \{ id: null, status, warning: null \}/.test(helper), "missing publication table is silent fail-open");
 
 ok(/import \{ recordFactoryPublication \} from "\.\/publications"/.test(graphRun), "graph-run imports publication helper");
 ok(/recordFactoryPublication\(db, \{[\s\S]*sourceUrl: catalogUrl \|\| url \|\| null[\s\S]*status: "draft"/.test(graphRun), "graph-run records final artifacts as draft publications");

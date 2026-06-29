@@ -61,6 +61,13 @@ function safeError(error: unknown): string {
   return message.slice(0, 180);
 }
 
+function isMissingOptionalPublicationTable(error: unknown): boolean {
+  const e = error as { code?: unknown; message?: unknown; details?: unknown } | null;
+  const text = `${String(e?.code || "")} ${String(e?.message || "")} ${String(e?.details || "")}`.toLowerCase();
+  return text.includes("factory_publications")
+    && (text.includes("schema cache") || text.includes("does not exist") || text.includes("pgrst205") || text.includes("42p01"));
+}
+
 async function updateRecipePublicationPointer(
   db: DbClient,
   recipeId: number,
@@ -112,6 +119,7 @@ export async function recordFactoryPublication(db: DbClient | null | undefined, 
     if (sourceUrl) q = q.eq("source_url", sourceUrl);
     else if (externalPostId) q = q.eq("external_post_id", externalPostId);
     const found = await q;
+    if (found?.error && isMissingOptionalPublicationTable(found.error)) return { id: null, status, warning: null };
     if (!found?.error) existing = (found.data as { id?: string; metadata?: Record<string, unknown> | null }[] | null)?.[0] || null;
 
     const row = {
@@ -135,10 +143,12 @@ export async function recordFactoryPublication(db: DbClient | null | undefined, 
     let id = existing?.id || null;
     if (id) {
       const updated = await db.from("factory_publications").update(row).eq("id", id).select("id").limit(1);
+      if (updated?.error && isMissingOptionalPublicationTable(updated.error)) return { id: null, status, warning: null };
       if (updated?.error) return { id: null, status, warning: `factory_publications update: ${safeError(updated.error)}` };
       id = (updated.data as { id?: string }[] | null)?.[0]?.id || id;
     } else {
       const inserted = await db.from("factory_publications").insert({ ...row, created_at: now }).select("id").limit(1);
+      if (inserted?.error && isMissingOptionalPublicationTable(inserted.error)) return { id: null, status, warning: null };
       if (inserted?.error) return { id: null, status, warning: `factory_publications insert: ${safeError(inserted.error)}` };
       id = (inserted.data as { id?: string }[] | null)?.[0]?.id || null;
     }

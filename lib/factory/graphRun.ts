@@ -205,6 +205,11 @@ function hasComparisonVisual(plan: RunPlan): boolean {
 function reinforceStoryboardGuards(plan: RunPlan, mode: string, addWarning?: (msg: string) => void): void {
   const hookNode = plan.nodes.find((n) => roleOf(n) === "hook") || plan.nodes[0];
   const hook = compactHookText(textOfNode(hookNode));
+  const productLockRule = [
+    "Product identity lock: keep the exact same item from the bound source image/video in every scene.",
+    "Do not change garment type, color, fabric, silhouette, or hardware between frames.",
+    "No unrelated props, sci-fi/mechanical objects, mannequin parts, ad-card layouts, or abstract b-roll.",
+  ].join(" ");
   if (hook) {
     if (hookNode) {
       hookNode.onscreen_text = hook;
@@ -222,7 +227,17 @@ function reinforceStoryboardGuards(plan: RunPlan, mode: string, addWarning?: (ms
       }
     });
   }
+  plan.nodes.forEach((n) => {
+    if (n.status === "done" || n.status === "submitted" || n.status === "skip" || n.status === "error") return;
+    const tool = String(n.tool || "").toLowerCase();
+    if (!tool || ASSEMBLY_TOOLS.has(tool) || tool === "captions" || tool === "elevenlabs") return;
+    if (!String(n.prompt || "").includes("Product identity lock:")) {
+      n.prompt = `${n.prompt || ""}\n${productLockRule}`.trim().slice(0, 2000);
+    }
+    n.params = { ...(n.params || {}), product_identity_lock: true, no_unrelated_objects: true };
+  });
   if (isAudienceMode(mode)) {
+    const nativeCta = "сохрани идею";
     plan.nodes.forEach((n) => {
       if (n.status === "done" || n.status === "submitted" || n.status === "skip" || n.status === "error") return;
       const role = roleOf(n);
@@ -231,6 +246,8 @@ function reinforceStoryboardGuards(plan: RunPlan, mode: string, addWarning?: (ms
         if (!String(n.prompt || "").includes("Audience mode: no direct WB buy button")) {
           n.prompt = `${n.prompt || ""}\n${rule}`.trim().slice(0, 2000);
         }
+        n.onscreen_text = compactHookText(n.onscreen_text || nativeCta) || nativeCta;
+        n.params = { ...(n.params || {}), onscreen_text: n.onscreen_text, cta_text: nativeCta };
       }
     });
   }
@@ -424,6 +441,7 @@ async function regenCulprit(
 function structuralOtkProblem(issues: string[], mode: string): string | null {
   const joined = (issues || []).join(" ").toLowerCase();
   if (/перв(ом|ый|ого).{0,40}(кадр|frame)|hook.{0,40}first|хук.{0,60}(экран|кадр|не считы)/i.test(joined)) return "first_frame_hook";
+  if (/несоответств|разные изделия|разные товары|друг(ая|ой|ие).{0,30}(куртк|товар|издел)|inconsistent.{0,40}(product|item|garment)|product.{0,40}drift/i.test(joined)) return "product_identity_drift";
   if (/сравн|side.by.side|split.screen|wb vs|дорог(ой|ая|ие|ого)|promise|обещан/i.test(joined)) return "comparison_not_delivered";
   if (isAudienceMode(mode) && /(wb|wildberries|маркетплейс|куп|ищи).{0,40}(cta|кноп|карточ|баннер)|рекламн.{0,40}(карточ|баннер)/i.test(joined)) return "audience_ad_card";
   if (/статичн.{0,40}(заглуш|карточ)|мёртв|мертв|темп провис|3 кадр/i.test(joined)) return "dead_end_card";
@@ -441,6 +459,7 @@ async function regenStructuralOtk(
     const text = `${role} ${n.node_type || ""} ${n.prompt || ""}`.toLowerCase();
     const relevant =
       reason === "first_frame_hook" ? (role === "hook" || n.ordinal === 1) :
+      reason === "product_identity_drift" ? (/hook|problem|solution|proof|demo|try|wear|product|before_after|compare|сравн|куртк|товар/.test(text) || touched.length < 4) :
       reason === "comparison_not_delivered" ? (/hook|proof|solution|before_after|compare|comparison|сравн|дорог/.test(text) || touched.length < 3) :
       reason === "audience_ad_card" ? (/cta|final|end|card|hook|proof/.test(text) || touched.length < 2) :
       reason === "dead_end_card" ? (/cta|final|end|card|proof|solution/.test(text) || touched.length < 2) :
@@ -453,8 +472,9 @@ async function regenStructuralOtk(
     n.qa = undefined;
     const hint = `Structural OTK fix (${reason}): ${String(issues[0] || "make the promise visible in-frame").slice(0, 180)}`;
     if (!String(n.prompt || "").includes("Structural OTK fix")) n.prompt = `${n.prompt || ""}\n${hint}`.trim().slice(0, 2000);
+    n.params = { ...(n.params || {}), product_identity_lock: true, no_unrelated_objects: true };
     touched.push(n);
-    if (touched.length >= 3) break;
+    if (touched.length >= (reason === "product_identity_drift" ? 4 : 3)) break;
   }
   if (!touched.length) return false;
   plan.render_id = null;

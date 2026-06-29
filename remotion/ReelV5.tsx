@@ -147,6 +147,20 @@ const Captions = ({captions, actorEnd, accent}: {captions: Caption[]; actorEnd: 
   );
 };
 
+const FirstFrameHook = ({captions, accent}: {captions: Caption[]; accent: string}) => {
+  const frame = useCurrentFrame();
+  const hook = captions[0]?.text?.trim();
+  if (!hook || frame > 42) return null;
+  return (
+    <AbsoluteFill style={{alignItems: "center", justifyContent: "flex-end", padding: "0 34px 18%"}}>
+      <div style={{maxWidth: "96%", fontFamily: "Montserrat", fontWeight: 900, fontSize: 94, lineHeight: 1.04,
+        textAlign: "center", color: accent, textTransform: "uppercase", ...OUTLINE}}>
+        {hook}
+      </div>
+    </AbsoluteFill>
+  );
+};
+
 const CtaCard = ({actorEnd, accent, title, button, brand}: {actorEnd: number; accent: string; title: string; button: string; brand: string}) => {
   const frame = useCurrentFrame();
   const {fps} = useVideoConfig();
@@ -204,6 +218,7 @@ export const ReelV5: React.FC<Partial<ReelV5Props>> = (props) => {
 
       <Audio src={resolveSrc(p.audioSrc)} volume={p.audioVolume} />
       <Grade />
+      <FirstFrameHook captions={p.captions} accent={p.accent} />
       <Captions captions={p.captions} actorEnd={safeActorEnd} accent={p.accent} />
       <CtaCard actorEnd={safeActorEnd} accent={p.accent} title={p.ctaTitle} button={p.ctaButton} brand={p.ctaBrand} />
       <Vignette />
