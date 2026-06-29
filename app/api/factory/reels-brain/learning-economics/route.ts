@@ -139,6 +139,62 @@ function statusFromScore(score: number) {
   return "watch" as const;
 }
 
+function templateForPattern(pattern: InsightPattern) {
+  const hookType = pattern.hook_type || "unknown";
+  const structure = pattern.structure_label || pattern.structure_type || "демо";
+  const retention = pattern.retention_label || pattern.retention_mechanism || "интерес";
+  const templates: Record<string, string[]> = {
+    curiosity_question: [
+      "А ты знал, что [товар/прием] может решить [боль] вот так?",
+      "Почему все делают [действие] неправильно, если есть [решение]?",
+      "Что будет, если попробовать [товар] в ситуации [контекст]?",
+    ],
+    warning_pattern_break: [
+      "Не покупай [товар], пока не увидишь этот тест.",
+      "Ты тоже делаешь [действие] неправильно? Вот почему результат хуже.",
+      "Главная ошибка при выборе [товара], из-за которой все разочаровываются.",
+    ],
+    list_promise: [
+      "Три причины, почему [товар] стоит попробовать для [ситуация].",
+      "Топ-3 способа использовать [товар], о которых мало кто знает.",
+      "Что проверить перед покупкой [товара]: короткий список.",
+    ],
+    before_after: [
+      "Было [проблема], стало [результат]: показываю без фильтров.",
+      "До/после с [товаром]: смотри на результат в конце.",
+      "Проверяю, правда ли [товар] дает заметную разницу.",
+    ],
+    demo_review: [
+      "Проверяю [товар] на камеру: выдержит ли реальный тест?",
+      "Распаковка и честный тест [товара] за 15 секунд.",
+      "Показываю, как [товар] работает в обычной жизни.",
+    ],
+    curiosity_gap: [
+      "Я не ожидал, что [товар] сработает именно так.",
+      "Сначала кажется странным, но результат в конце объясняет все.",
+      "Досмотри до момента, где [товар] показывает главный эффект.",
+    ],
+    direct_claim: [
+      "[Товар] решает [боль] быстрее, чем кажется.",
+      "Вот почему [товар] забирают для [ситуация].",
+      "Если нужен [результат], начни с этого простого решения.",
+    ],
+    unknown: [
+      `Хук через ${structure}: показать проблему, доказательство и результат.`,
+      `Сценарий с удержанием "${retention}": открыть вопрос и закрыть его в конце.`,
+      "Покажи [проблему] в первом кадре, затем докажи [решение] через демонстрацию.",
+    ],
+  };
+  return templates[hookType] || templates.unknown;
+}
+
+function recipeTitle(pattern: InsightPattern) {
+  const hook = pattern.hook_label || "хук";
+  const structure = pattern.structure_label || "формат";
+  const retention = pattern.retention_label || "удержание";
+  return `${hook}: ${structure} -> ${retention}`;
+}
+
 function buildInsights(rows: { niche?: string; playbook?: unknown }[]) {
   const hookMap = new Map<string, {
     hook_type: string;
@@ -197,9 +253,7 @@ function buildInsights(rows: { niche?: string; playbook?: unknown }[]) {
       for (const example of pattern.examples || []) {
         if (hook.examples.length < 5) hook.examples.push(example);
       }
-      for (const template of pattern.hooks || []) {
-        if (template.trim()) hook.templates.add(template.trim().slice(0, 180));
-      }
+      for (const template of templateForPattern(pattern)) hook.templates.add(template);
       hookMap.set(hookKey, hook);
 
       const formatKey = pattern.structure_type || "unknown_structure";
@@ -220,7 +274,7 @@ function buildInsights(rows: { niche?: string; playbook?: unknown }[]) {
 
       recipes.push({
         id: pattern.pattern_id || `${hookKey}:${formatKey}:${retentionKey}`,
-        title: pattern.viral_logic_label || `${pattern.hook_label || hookKey} -> ${pattern.structure_label || formatKey}`,
+        title: recipeTitle(pattern),
         hook: pattern.hook_label || hookKey,
         format: pattern.structure_label || formatKey,
         retention: pattern.retention_label || retentionKey,
