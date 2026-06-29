@@ -640,7 +640,7 @@ type LearningEconomicsResponse = {
       niches: string[];
       platforms: string[];
       templates: string[];
-      examples?: { url?: string | null; hook?: string | null; score?: number; views?: number }[];
+      examples?: LearningReferenceExample[];
     }[];
     winning_formats?: { label: string; frequency: number; avg_score: number; niches: string[] }[];
     retention_mechanics?: { label: string; frequency: number; avg_score: number; hooks: string[] }[];
@@ -652,7 +652,8 @@ type LearningEconomicsResponse = {
       retention: string;
       op_score: number;
       niches: string[];
-      examples?: { url?: string | null; hook?: string | null; score?: number; views?: number }[];
+      creative_brief?: LearningCreativeBrief;
+      examples?: LearningReferenceExample[];
     }[];
   };
   niches?: {
@@ -721,6 +722,24 @@ type LearningEconomicsResponse = {
   };
   warning?: string;
   error?: string;
+};
+
+type LearningCreativeBrief = {
+  hook: string;
+  retention_mechanic: string;
+  second_by_second: string[];
+  visual_recipe: string[];
+  product_fit: string[];
+  copy_as_mechanic: string[];
+  do_not_copy: string[];
+};
+
+type LearningReferenceExample = {
+  url?: string | null;
+  hook?: string | null;
+  score?: number;
+  views?: number;
+  creative_brief?: LearningCreativeBrief;
 };
 
 type LearningEconomicsDailyCost = {
@@ -2453,10 +2472,39 @@ export default function ReelsBrainPage() {
                     </span>
                   </div>
                   <div className="mt-3 space-y-1 text-xs text-slate-600">
-                    <p><span className="font-bold text-slate-900">Hook:</span> {recipe.hook}</p>
-                    <p><span className="font-bold text-slate-900">Format:</span> {recipe.format}</p>
-                    <p><span className="font-bold text-slate-900">Retention:</span> {recipe.retention}</p>
+                    <p><span className="font-bold text-slate-900">Hook:</span> {recipe.creative_brief?.hook || recipe.hook}</p>
+                    <p><span className="font-bold text-slate-900">Retention:</span> {recipe.creative_brief?.retention_mechanic || recipe.retention}</p>
+                    <p><span className="font-bold text-slate-900">Fit:</span> {(recipe.creative_brief?.product_fit || recipe.niches).slice(0, 2).join(" · ")}</p>
                   </div>
+                  {recipe.creative_brief ? (
+                    <details className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                      <summary className="cursor-pointer text-xs font-black uppercase tracking-[0.14em] text-slate-500">
+                        Creative brief
+                      </summary>
+                      <div className="mt-3 space-y-3 text-xs leading-5 text-slate-600">
+                        <div>
+                          <p className="font-black text-slate-900">Структура по секундам</p>
+                          <ol className="mt-1 list-decimal space-y-1 pl-4">
+                            {recipe.creative_brief.second_by_second.slice(0, 5).map((step) => <li key={step}>{step}</li>)}
+                          </ol>
+                        </div>
+                        <div>
+                          <p className="font-black text-slate-900">Visual recipe</p>
+                          <ul className="mt-1 list-disc space-y-1 pl-4">
+                            {recipe.creative_brief.visual_recipe.slice(0, 4).map((step) => <li key={step}>{step}</li>)}
+                          </ul>
+                        </div>
+                        <div>
+                          <p className="font-black text-slate-900">Копируем механику</p>
+                          <p className="mt-1">{recipe.creative_brief.copy_as_mechanic.slice(0, 2).join(" · ")}</p>
+                        </div>
+                        <div className="rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-red-700">
+                          <p className="font-black">Запрещено копировать</p>
+                          <p className="mt-1">{recipe.creative_brief.do_not_copy.slice(0, 2).join(" · ")}</p>
+                        </div>
+                      </div>
+                    </details>
+                  ) : null}
                   <p className="mt-3 text-xs font-semibold text-slate-400">{recipe.niches.join(", ")}</p>
                 </div>
               )) : <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-500">Рецепты появятся после сборки Pattern Brain.</div>}

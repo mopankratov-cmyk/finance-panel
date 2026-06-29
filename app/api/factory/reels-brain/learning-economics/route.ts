@@ -46,6 +46,24 @@ type InsightPattern = {
   examples?: { url?: string | null; hook?: string | null; score?: number; views?: number }[];
 };
 
+type ReferenceCreativeBrief = {
+  hook: string;
+  retention_mechanic: string;
+  second_by_second: string[];
+  visual_recipe: string[];
+  product_fit: string[];
+  copy_as_mechanic: string[];
+  do_not_copy: string[];
+};
+
+type InsightExample = {
+  url?: string | null;
+  hook?: string | null;
+  score?: number;
+  views?: number;
+  creative_brief?: ReferenceCreativeBrief;
+};
+
 function splitList(value: unknown): string[] {
   return Array.from(new Set(String(value || "")
     .split(",")
@@ -195,6 +213,110 @@ function recipeTitle(pattern: InsightPattern) {
   return `${hook}: ${structure} -> ${retention}`;
 }
 
+function secondsForPattern(pattern: InsightPattern) {
+  const hook = pattern.hook_label || "хук";
+  const structure = pattern.structure_label || "демо";
+  const retention = pattern.retention_label || "удержание";
+  if (pattern.structure_type === "before_after") {
+    return [
+      "0-2с: показать проблему/исходное состояние крупно, без долгого вступления.",
+      `2-5с: дать ${hook} и обещать видимый результат.`,
+      "5-10с: показать процесс применения/переход без лишних деталей.",
+      "10-14с: раскрыть after-кадр и доказательство результата.",
+      "14-18с: короткий вывод + мягкий CTA сохранить/сравнить.",
+    ];
+  }
+  if (pattern.structure_type === "unboxing") {
+    return [
+      "0-2с: быстрый первый кадр с упаковкой/товаром и причиной смотреть дальше.",
+      "2-5с: распаковка в 2-3 быстрых склейки, без пауз.",
+      "5-9с: показать ключевую деталь товара крупно.",
+      "9-14с: мини-тест в реальной ситуации.",
+      "14-18с: финальный кадр с результатом и понятным выводом.",
+    ];
+  }
+  if (pattern.structure_type === "life_hack") {
+    return [
+      "0-2с: назвать боль или ошибку, которую зритель узнает.",
+      "2-5с: показать неожиданный способ решения.",
+      "5-10с: пошагово доказать механику на камеру.",
+      "10-15с: показать результат до/после или close-up.",
+      "15-20с: закрепить вывод и дать сценарий применения.",
+    ];
+  }
+  return [
+    `0-2с: открыть ролик через ${hook}.`,
+    `2-5с: быстро объяснить контекст, не раскрывая весь payoff.`,
+    `5-10с: показать ${structure} как доказательство, а не рассказ.`,
+    `10-15с: удерживать через "${retention}" и закрыть главный вопрос.`,
+    "15-20с: финальный результат + короткий CTA без копирования оригинала.",
+  ];
+}
+
+function visualRecipeForPattern(pattern: InsightPattern) {
+  const structureType = pattern.structure_type || "demo";
+  const base = [
+    "Вертикальный 9:16, первый кадр должен читаться без звука.",
+    "Крупные планы товара/результата, минимум пустого фона.",
+    "Субтитр или экранный текст только для смысла хука, не как декор.",
+  ];
+  if (structureType === "before_after") {
+    return [...base, "Split/transition before-after: одинаковый ракурс, чтобы разница была честной.", "Финальный кадр держать на 1-2 секунды дольше остальных."];
+  }
+  if (structureType === "unboxing") {
+    return [...base, "Быстрые jump-cuts рук, упаковки, фактуры и ключевой детали.", "Один кадр с товаром в использовании, не только на столе."];
+  }
+  if (structureType === "pov") {
+    return [...base, "Камера от лица пользователя или бытовая сцена, где проблема узнается сразу.", "Добавить реакцию/микро-драму, но не копировать персонажа оригинала."];
+  }
+  return [...base, "Демонстрация должна доказывать тезис хука в кадре.", "Избегать длинного говорящего вступления."];
+}
+
+function productFitForPattern(pattern: InsightPattern, niche: string) {
+  const byNiche: Record<string, string[]> = {
+    ru_toys: ["игрушки с демонстрируемым эффектом", "товары, где важна реакция ребенка/родителя", "подарочные товары с быстрым wow-моментом"],
+    ru_cosmetics: ["косметика с видимым before/after", "уходовые товары с proof-кадром", "макияж/аксессуары, где важна трансформация"],
+    ru_clothing: ["одежда с проблемой посадки/размера", "образы до/после", "вещи, где важны фактура, цвет и посадка на теле"],
+  };
+  const fit = byNiche[niche] || ["товары с визуально доказуемым результатом", "темы, где можно быстро показать проблему и решение"];
+  if (pattern.hook_type === "warning_pattern_break") return [...fit, "товары, где покупатель боится ошибиться"];
+  if (pattern.hook_type === "list_promise") return [...fit, "товары, где есть 3-5 понятных преимуществ"];
+  return fit;
+}
+
+function creativeBriefForPattern(pattern: InsightPattern, niche: string, example?: { hook?: string | null }): ReferenceCreativeBrief {
+  const template = templateForPattern(pattern)[0] || "Покажи проблему, механику и результат без копирования оригинала.";
+  const exampleHook = String(example?.hook || "").trim();
+  const safeExample = exampleHook && !/#\w|https?:\/\//i.test(exampleHook) && exampleHook.length < 140 ? exampleHook : "";
+  return {
+    hook: safeExample || template,
+    retention_mechanic: pattern.retention_label || pattern.retention_mechanism || "открытая петля / ожидание доказательства",
+    second_by_second: secondsForPattern(pattern),
+    visual_recipe: visualRecipeForPattern(pattern),
+    product_fit: productFitForPattern(pattern, niche),
+    copy_as_mechanic: [
+      "Темп раскрытия: быстрый хук -> доказательство -> payoff.",
+      `Механику удержания: ${pattern.retention_label || "ожидание результата"}.`,
+      `Структуру: ${pattern.structure_label || "демонстрация"} как скелет, адаптируя под наш товар.`,
+    ],
+    do_not_copy: [
+      "Не копировать чужой монтаж покадрово.",
+      "Не копировать текст, озвучку, музыку, персонажей, визуальные образы и брендовые элементы.",
+      "Не использовать чужое видео как ассет; только как референс механики.",
+      "Не повторять claim, если его нельзя доказать нашим товаром.",
+    ],
+  };
+}
+
+function enrichExamples(pattern: InsightPattern, niche: string): InsightExample[] {
+  return ((pattern.examples || []) as InsightExample[])
+    .slice(0, 3)
+    .map((example) => ({
+      ...example,
+      creative_brief: creativeBriefForPattern(pattern, niche, example),
+    }));
+}
+
 function buildInsights(rows: { niche?: string; playbook?: unknown }[]) {
   const hookMap = new Map<string, {
     hook_type: string;
@@ -206,7 +328,7 @@ function buildInsights(rows: { niche?: string; playbook?: unknown }[]) {
     count: number;
     niches: Set<string>;
     platforms: Set<string>;
-    examples: { url?: string | null; hook?: string | null; score?: number; views?: number }[];
+    examples: InsightExample[];
     templates: Set<string>;
   }>();
   const formatMap = new Map<string, { label: string; frequency: number; score_sum: number; count: number; niches: Set<string> }>();
@@ -219,7 +341,8 @@ function buildInsights(rows: { niche?: string; playbook?: unknown }[]) {
     retention: string;
     op_score: number;
     niches: string[];
-    examples: { url?: string | null; hook?: string | null; score?: number; views?: number }[];
+    creative_brief: ReferenceCreativeBrief;
+    examples: InsightExample[];
   }> = [];
 
   for (const row of rows) {
@@ -250,7 +373,7 @@ function buildInsights(rows: { niche?: string; playbook?: unknown }[]) {
         const platformPatterns = Array.isArray(platformBrain?.generator_ready_patterns) ? platformBrain.generator_ready_patterns : [];
         if (platformPatterns.some((item) => (item as InsightPattern).hook_type === hookKey)) hook.platforms.add(platform);
       }
-      for (const example of pattern.examples || []) {
+      for (const example of enrichExamples(pattern, niche)) {
         if (hook.examples.length < 5) hook.examples.push(example);
       }
       for (const template of templateForPattern(pattern)) hook.templates.add(template);
@@ -280,7 +403,8 @@ function buildInsights(rows: { niche?: string; playbook?: unknown }[]) {
         retention: pattern.retention_label || retentionKey,
         op_score: insightScore(pattern, 1, 1),
         niches: [niche],
-        examples: (pattern.examples || []).slice(0, 3),
+        creative_brief: creativeBriefForPattern(pattern, niche),
+        examples: enrichExamples(pattern, niche),
       });
     }
   }
