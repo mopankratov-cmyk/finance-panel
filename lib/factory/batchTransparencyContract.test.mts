@@ -76,7 +76,7 @@ ok(/r\.batch_run_id/.test(studio), "Studio renders batch run id");
 ok(/r\.next_action&&r\.next_action\.type==="prepare_drafts"/.test(studio), "Studio can recover from empty draft queue");
 ok(/api\("\/prepare-drafts"/.test(studio), "Studio can prepare draft recipes before batch launch");
 ok(/dry&&\(preflight\.missing_drafts>0\|\|preflight\.missing_source_drafts>0\)/.test(studio), "Studio offers draft preparation on incomplete or source-starved dry preflight");
-ok(/подготовить недостающие черновики/.test(studio), "Studio labels incomplete preflight draft recovery");
+ok(/подготовить недостающие задачи/.test(studio), "Studio labels incomplete preflight task recovery");
 ok(/Проверить прогресс batch/.test(studio), "Studio renders batch progress action");
 
 if (failed) process.exit(1);

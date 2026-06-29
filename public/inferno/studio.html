@@ -205,6 +205,7 @@ body{background:var(--bg-deep);font-family:var(--sans);color:var(--tx-hi);-webki
 <script>
 //==================== CORE ====================
 const API="/api/factory";
+const YANDEX_FACTORY_ARCHIVE_URL="https://disk.yandex.ru/client/disk/Apps/Factory%20Media%20Archive";
 const S={
   screen:"center", niches:[], generations:[], recipes:[], allProducts:null, prodCounts:{}, centerLoaded:false,
   activeNiche:"cosmetics", activeNicheLabel:"",
@@ -219,6 +220,9 @@ const S={
   run:null, preview:{}, contentProduct:null,
   observability:null,
   studioWarnings:[],
+  dataFootprint:null, dataFootprintLoading:false, dataFootprintError:"",
+  yandexArchive:null, yandexArchiveLoading:false, yandexArchiveError:"",
+  storageCleanup:null, storageCleanupLoading:false, storageCleanupError:"",
   observerLoading:false, observerError:"", observerUpdatedAt:null,
   workerState:null, workerTimer:null,
   seriesAfter:(()=>{try{return localStorage.getItem("factory_series_after")||null;}catch{return null;}})(),
@@ -578,6 +582,22 @@ function isWorkerInfraAlertCode(code){
     || code==="worker_state_db_permissions"
     || code==="worker_queue_fallback";
 }
+async function tickGraphRun(recipeId, btn){
+  const id=Number(recipeId);
+  if(!id){ toast("нет recipe_id для tick"); return; }
+  if(btn)btn.disabled=true;
+  try{
+    const ctl=new AbortController(); const tm=setTimeout(()=>ctl.abort(),30000);
+    const r=await api("/graph-run/tick",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({recipe_id:id}),signal:ctl.signal});
+    clearTimeout(tm);
+    if(!r||r.error){ toast("tick #"+id+": "+String((r&&r.error)||"ошибка").slice(0,80)); return; }
+    toast("tick #"+id+": "+String(r.step||"sent"));
+  }catch(e){
+    toast("tick #"+id+" не отправился");
+  }finally{
+    if(btn)btn.disabled=false;
+  }
+}
 
 async function screenWorker(root){
   if(S.workerTimer){ clearTimeout(S.workerTimer); S.workerTimer=null; }
@@ -655,7 +675,8 @@ async function screenWorker(root){
         el("span",{class:"mono",style:"font-size:10px;color:"+runStatusTone(String(focusRun.status||"")).c+";background:"+runStatusTone(String(focusRun.status||"")).bg+";padding:3px 7px;border-radius:5px;font-weight:700;"},
           runStatusTone(String(focusRun.status||"")).label)),
       el("div",{style:"font-size:13px;color:var(--tx-bd);line-height:1.45;"},
-        String(focusRun.status||"")==="running"?"идёт живой прогон графа":"последний зафиксированный прогон"),
+        String(focusRun.status||"")==="running"?"идёт живой прогон графа":"последний зафиксированный прогон",
+        focusRun.step?el("span",{}," · step ",el("b",{style:"color:var(--tx-hi);"},String(focusRun.step))):null),
       el("div",{style:"font-size:11.5px;color:var(--tx-lo);line-height:1.45;"},
         "длительность ",el("b",{style:"color:var(--tx-hi);"},fmtRunDuration(focusRun.total_ms)),
         focusRun.warnings_count?el("span",{}," · предупреждения ",el("b",{style:"color:var(--warn);"},String(focusRun.warnings_count))):"",
@@ -830,13 +851,18 @@ async function screenWorker(root){
           isCurrent?el("span",{class:"mono",style:"font-size:9.5px;color:#fff;background:var(--acc);padding:2px 6px;border-radius:5px;font-weight:700;"},"current"):null),
         el("div",{style:"min-width:0;display:flex;flex-direction:column;gap:4px;"},
           el("div",{style:"font-size:12.5px;font-weight:600;line-height:1.4;"},
-            String(run.status||"")==="running"?"идёт сборка / рендер":"последний прогон"),
+            String(run.status||"")==="running"?"идёт сборка / рендер":"последний прогон",
+            run.step?el("span",{class:"mono",style:"font-size:10px;color:var(--tx-lo);margin-left:8px;"},"step "+String(run.step)):null),
           el("div",{style:"font-size:11px;color:var(--tx-lo);line-height:1.45;"},
             run.created_at?fmtWhen(run.created_at):"",
             run.total_ms!=null?` · ${fmtRunDuration(run.total_ms)}`:"",
             run.warnings_count?` · warnings ${run.warnings_count}`:"",
             run.error_category?` · ${run.error_category}`:"")),
-        el("span",{class:"mono",style:"font-size:10px;color:"+tone.c+";background:"+tone.bg+";padding:3px 7px;border-radius:5px;font-weight:700;white-space:nowrap;"},tone.label)));
+        el("div",{style:"display:flex;align-items:center;gap:6px;justify-content:flex-end;"},
+          String(run.status||"")==="running"&&run.recipe_id!=null
+            ?el("button",{class:"btn sm",style:"padding:3px 7px;font-size:10px;",title:"безопасно разбудить следующий шаг graph-run",onclick:(e)=>{ e.stopPropagation(); tickGraphRun(run.recipe_id,e.currentTarget); }},"↻ tick")
+            :null,
+          el("span",{class:"mono",style:"font-size:10px;color:"+tone.c+";background:"+tone.bg+";padding:3px 7px;border-radius:5px;font-weight:700;white-space:nowrap;"},tone.label))));
     });
   }
 
@@ -932,7 +958,7 @@ async function screenCenter(root, force){
       el("span",{style:"font-size:13px;flex:none;"},"⌕"),
       el("input",{value:S.searchQuery,placeholder:"Поиск ниши, товара…",style:"flex:1;background:transparent;border:none;outline:none;color:var(--tx-hi);font:inherit;min-width:0;",oninput:(e)=>{ S.searchQuery=e.target.value; const p=document.getElementById("center-products"); if(p)loadProducts(p); }}),
       S.searchQuery?el("button",{class:"btn sm",style:"padding:3px 6px;margin-left:auto;",title:"очистить поиск",onclick:()=>{ S.searchQuery=""; const p=document.getElementById("center-products"); if(p)loadProducts(p); render(); }},"×"):null),
-    el("button",{class:"btn",title:"автопилот: заполнить черновики ИИ + сгенерить + ОТК + банк, прошедшее уйдёт в Telegram на ревью",onclick:()=>openNightRun()},"🌙 Ночной прогон"),
+    el("button",{class:"btn",title:"автопилот: подготовить задачи + сгенерить + ОТК + банк, прошедшее уйдёт в Telegram на ревью",onclick:()=>openNightRun()},"🌙 Ночной прогон"),
     el("button",{class:"btn",title:"фикс-айдентика брендов: голос/персона/шрифт/цвет/CTA/бан-слова/хэштеги — автозаполнение берёт как дефолты",onclick:()=>openBrandKit()},"🎨 Бренд-кит"),
     opsStatus?el("span",{class:"mono",title:opsStatus.summary||"",style:"font-size:10px;color:"+opsTone.c+";background:"+opsTone.bg+";padding:6px 8px;border-radius:7px;font-weight:700;"},"OPS "+opsTone.label):null,
     el("button",{class:"btn",title:workerRow?`пульс завода · ${workerShort}${workerDbError?` · ${workerDbError}`:""}`:"пульс завода и последние прогоны",onclick:()=>go("worker")},
@@ -1869,7 +1895,7 @@ async function autofillSingleNode(n){
   toast(r.filled?("✨ нода заполнена"+(w.length?" · ⚠ "+w[0]:"")):"нода не заполнилась");
 }
 
-// V21 · автопилот: ночной прогон черновиков (бюджет-гард → §17 автозаполнение в очереди → генерация → ОТК → банк → Telegram-ревью)
+// V21 · автопилот: ночной прогон подготовленных задач (бюджет-гард → §17 автозаполнение в очереди → генерация → ОТК → банк → Telegram-ревью)
 async function openNightRun(opts={}){
   if(!(S.niches&&S.niches.length)){ try{ const d=await api("/studio"); if(d&&d.niches)S.niches=d.niches; if(d)S.studioWarnings=Array.isArray(d.warnings)?d.warnings.filter(Boolean):S.studioWarnings; }catch(e){} } // ниши для режима «с нуля» (могли не загрузиться)
   const presetCount=Math.min(30,Math.max(1,Number(opts.count)||5));
@@ -1880,12 +1906,12 @@ async function openNightRun(opts={}){
   box.appendChild(el("div",{style:"font-size:16px;font-weight:600;"},"🌙 Ночной прогон"));
   box.appendChild(el("div",{class:"muted",style:"margin-bottom:14px;"},"ИИ сам конфигурит ноды (§17 + бренд-кит) → генерит → ОТК → банк. Прошедшее ОТК придёт в Telegram на голос-ревью."));
   const INP="background:var(--bg-input);border:1px solid var(--bd2);color:var(--tx-hi);border-radius:7px;padding:7px 9px;font-size:13px;font-family:inherit;width:120px;";
-  // V21.2 · режим: из готовых черновиков ИЛИ собрать с нуля (декомпозит конкурентов на твои товары)
+  // V21.2 · режим: из подготовленных задач ИЛИ собрать с нуля (декомпозит конкурентов на твои товары)
   let _zero=false;
   const zeroBuildEnabled=false;
-  const seg=(z,lbl,sub)=>el("button",{class:"btn"+(_zero===z?" prim":""),disabled:z&&!zeroBuildEnabled,title:z&&!zeroBuildEnabled?"Отключено в Sprint 1: batch-build выведен из MVP execution path":"",style:"flex:1;flex-direction:column;align-items:flex-start;padding:8px 11px;gap:1px;"+(z&&!zeroBuildEnabled?"opacity:.55;cursor:not-allowed;":""),onclick:()=>{ if(z&&!zeroBuildEnabled){ toast("batch-build отключён: запускай прогон из готовых черновиков"); return; } _zero=z; m0.className="btn"+(!z?" prim":"")+"";m1.className="btn"+(z?" prim":"")+""; m0.style.cssText=segCss(!z,false);m1.style.cssText=segCss(z,true); nicheRow.style.display=z?"":"none"; }},el("span",{style:"font-size:12.5px;font-weight:600;"},lbl),el("span",{style:"font-size:10px;color:var(--tx-lo2);"},sub));
+  const seg=(z,lbl,sub)=>el("button",{class:"btn"+(_zero===z?" prim":""),disabled:z&&!zeroBuildEnabled,title:z&&!zeroBuildEnabled?"Отключено в Sprint 1: batch-build выведен из MVP execution path":"",style:"flex:1;flex-direction:column;align-items:flex-start;padding:8px 11px;gap:1px;"+(z&&!zeroBuildEnabled?"opacity:.55;cursor:not-allowed;":""),onclick:()=>{ if(z&&!zeroBuildEnabled){ toast("batch-build отключён: запускай прогон из подготовленных задач"); return; } _zero=z; m0.className="btn"+(!z?" prim":"")+"";m1.className="btn"+(z?" prim":"")+""; m0.style.cssText=segCss(!z,false);m1.style.cssText=segCss(z,true); nicheRow.style.display=z?"":"none"; }},el("span",{style:"font-size:12.5px;font-weight:600;"},lbl),el("span",{style:"font-size:10px;color:var(--tx-lo2);"},sub));
   const segCss=(on,disabled)=>"flex:1;flex-direction:column;align-items:flex-start;padding:8px 11px;gap:1px;"+(on?"border-color:var(--acc);":"")+(disabled?"opacity:.55;cursor:not-allowed;":"");
-  const m0=seg(false,"📁 Из черновиков","уже созданные рецепты"); const m1=seg(true,"🏗 С нуля","декомпоз конкурентов→товары");
+  const m0=seg(false,"📁 Подготовленные задачи","готовая пятёрка рецептов"); const m1=seg(true,"🏗 С нуля","декомпоз конкурентов→товары");
   m0.style.cssText=segCss(true,false);m1.style.cssText=segCss(false,true);
   box.appendChild(el("div",{style:"display:flex;gap:8px;margin-bottom:12px;"},m0,m1));
   box.appendChild(el("div",{style:"font-size:11px;color:var(--tx-lo2);line-height:1.45;margin:-4px 0 12px;"},"Режим «с нуля» временно отключён: batch-build убран из MVP-контура, чтобы не плодить второй оркестратор."));
@@ -1941,10 +1967,10 @@ async function openNightRun(opts={}){
     if(_zero&&!nicheSel.value){ out.innerHTML=""; out.appendChild(errBox("выбери нишу (список ниш не загрузился — обнови центр)")); return; }
     _busy=true; // гард от двойного клика (не идемпотентно → дубль-enqueue/трата)
     const btns=foot.querySelectorAll("button"); btns.forEach(b=>b.disabled=true);
-    out.innerHTML=""; out.appendChild(loadingCard(dry?"считаю…":(_zero?"собираю черновики…":"запускаю прогон…")));
+    out.innerHTML=""; out.appendChild(loadingCard(dry?"считаю…":(_zero?"собираю задачи…":"запускаю прогон…")));
     const cnt=Math.min(30,Math.max(1,Number(cntIn.value)||5)); if(Number(cntIn.value)>30)cntIn.value=30;
     const bud=Math.max(1,Number(budIn.value)||40);
-    if(_zero){ _busy=false; btns.forEach(b=>b.disabled=false); out.innerHTML=""; out.appendChild(errBox("batch-build отключён в Sprint 1; выбери режим «из черновиков»")); return; }
+    if(_zero){ _busy=false; btns.forEach(b=>b.disabled=false); out.innerHTML=""; out.appendChild(errBox("batch-build отключён в Sprint 1; выбери режим «подготовленные задачи»")); return; }
     const payload={budget_usd:bud,count:cnt,dry_run:!!dry};
     if(presetNiche)payload.niche=presetNiche;
     if(opts.require_full_batch)payload.require_full_batch=true;
@@ -1958,14 +1984,14 @@ async function openNightRun(opts={}){
       out.appendChild(errBox((r&&(r.error||(bb&&("низкий баланс: "+bb))))||"не вышло (сеть/сервер)"));
       if(r&&r.next_action&&r.next_action.type==="prepare_drafts"){
         const prep=el("button",{class:"btn sm primary",style:"margin-top:10px;",onclick:async()=>{
-          prep.disabled=true; prep.textContent="готовлю черновики…";
+          prep.disabled=true; prep.textContent="готовлю задачи…";
           const pr=await api("/prepare-drafts",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({count:cnt,niche:presetNiche||null})});
-          prep.disabled=false; prep.textContent="подготовить черновики";
-          if(!pr||pr.ok!==true){ toast("черновики: "+((pr&&pr.error)||"ошибка").toString().slice(0,80)); return; }
-          toast("готово draft "+String((pr.draft_ids||[]).length)+"/"+cnt);
+          prep.disabled=false; prep.textContent="подготовить задачи";
+          if(!pr||pr.ok!==true){ toast("задаки: "+((pr&&pr.error)||"ошибка").toString().slice(0,80)); return; }
+          toast("готово задач "+String((pr.draft_ids||[]).length)+"/"+cnt);
           run(true);
-        }},"подготовить черновики");
-        out.appendChild(el("div",{style:"font-size:11px;color:var(--tx-lo2);line-height:1.45;margin-top:8px;"},"Создаст недостающие draft-рецепты из существующих шаблонов и прошлых товаров. Видео не запускает."));
+        }},"подготовить задачи");
+        out.appendChild(el("div",{style:"font-size:11px;color:var(--tx-lo2);line-height:1.45;margin-top:8px;"},"Соберёт недостающие задачи из существующих шаблонов и прошлых товаров. Видео не запускает."));
         out.appendChild(prep);
       }
       return;
@@ -1985,7 +2011,7 @@ async function openNightRun(opts={}){
       ...(r.batch_run_id?[" · batch ",el("span",{class:"mono",style:"color:var(--tx-hi);"},r.batch_run_id)]:[])));
     out.appendChild(el("div",{style:"font-size:11px;color:"+(preflight.ready?"var(--ok)":"var(--warn)")+";line-height:1.45;margin-bottom:6px;"},
       preflight.ready?"готово к полной пятёрке":"пятёрка неполная",
-      " · draft ",String(preflight.available_drafts??selected.length),"/",String(preflight.requested_count||requested.count||5),
+      " · задачи ",String(preflight.available_drafts??selected.length),"/",String(preflight.requested_count||requested.count||5),
       preflight.missing_drafts?(" · не хватает "+preflight.missing_drafts):"",
       preflight.source_ready_drafts!=null?(" · source-ready "+preflight.source_ready_drafts):"",
       preflight.missing_source_drafts?(" · без исходников "+preflight.missing_source_drafts):"",
@@ -1996,17 +2022,17 @@ async function openNightRun(opts={}){
       learningGate.required_feedback?(" · feedback "+String(learningGate.current_feedback||0)+"/"+String(learningGate.required_feedback||0)):""));
     if(dry&&(preflight.missing_drafts>0||preflight.missing_source_drafts>0)){
       const prep=el("button",{class:"btn sm primary",style:"margin:2px 0 8px;",onclick:async()=>{
-        prep.disabled=true; prep.textContent="готовлю черновики…";
+        prep.disabled=true; prep.textContent="готовлю задачи…";
         const pr=await api("/prepare-drafts",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({count:cnt,niche:presetNiche||requested.niche||null})});
-        prep.disabled=false; prep.textContent="подготовить недостающие черновики";
-        if(!pr||pr.ok!==true){ toast("черновики: "+((pr&&pr.error)||"ошибка").toString().slice(0,80)); return; }
-        toast("готово draft "+String((pr.draft_ids||[]).length)+"/"+cnt);
+        prep.disabled=false; prep.textContent="подготовить недостающие задачи";
+        if(!pr||pr.ok!==true){ toast("задаки: "+((pr&&pr.error)||"ошибка").toString().slice(0,80)); return; }
+        toast("готово задач "+String((pr.draft_ids||[]).length)+"/"+cnt);
         run(true);
-      }},"подготовить недостающие черновики");
+      }},"подготовить недостающие задачи");
       out.appendChild(el("div",{style:"font-size:11px;color:var(--tx-lo2);line-height:1.45;margin-bottom:6px;"},
         preflight.missing_source_drafts>0
-          ?"Не хватает source-ready draft-рецептов: подготовим новые черновики только по товарам, у которых есть исходники/WB fallback."
-          :"Не хватает draft-рецептов для полной пятёрки. Можно подготовить недостающие без запуска видео."));
+          ?"Не хватает source-ready задач: подготовим новые только по товарам, у которых есть исходники/WB fallback."
+          :"Не хватает задач для полной пятёрки. Можно подготовить недостающие без запуска видео."));
       out.appendChild(prep);
     }
     if(r.balance_unknown&&r.balance_unknown.length)out.appendChild(el("div",{style:"font-size:11px;color:var(--warn);margin-bottom:6px;"},"⚠ баланс не проверен: "+r.balance_unknown.join(", ")));
@@ -2270,11 +2296,106 @@ async function pollRun(id,c,errs){
 let _libCache=null; // кэш /studio, чтобы клик по фильтру/сортировке не дёргал бэкенд заново
 function classifyFmt(s,kind){ s=String(s||"").toLowerCase(); if(kind==="image")return "static"; if(/carousel|карусел|slide|слайд/.test(s))return "carousel"; if(/static|статик|photo|кадр|image/.test(s))return "static"; return "video"; }
 function genVScore(g){ const a=g.analysis||{}; return Number(a.otk||a.virality||a.views||g.views||0); }
+function footprintCatLabel(k){ return ({video_bank:"видео-банк",execution:"прогоны",reels_brain:"мозг",publication:"публикации",configuration:"настройки"}[k]||k); }
+function formatRows(n){ n=Number(n)||0; return n>=1000000?(n/1000000).toFixed(1)+"M":n>=1000?Math.round(n/100)/10+"K":String(n); }
+async function refreshDataFootprint(box){
+  S.dataFootprintLoading=true; S.dataFootprintError=""; renderDataArchivePanel(box);
+  const d=await api("/data-footprint");
+  S.dataFootprintLoading=false;
+  if(d&&d.ok!==false&&!d.error){ S.dataFootprint=d; S.dataFootprintError=""; }
+  else S.dataFootprintError=(d&&d.error)||"footprint недоступен";
+  renderDataArchivePanel(box);
+}
+async function refreshYandexArchive(box){
+  S.yandexArchiveLoading=true; S.yandexArchiveError=""; renderDataArchivePanel(box);
+  const d=await api("/yandex-archive?limit=10");
+  S.yandexArchiveLoading=false;
+  if(d&&d.ok!==false&&!d.error){ S.yandexArchive=d; S.yandexArchiveError=""; }
+  else {
+    if(d) S.yandexArchive=d;
+    S.yandexArchiveError=(d&&d.error)||"архив недоступен";
+  }
+  renderDataArchivePanel(box);
+}
+async function refreshStorageCleanup(box){
+  S.storageCleanupLoading=true; S.storageCleanupError=""; renderDataArchivePanel(box);
+  const d=await api("/storage-cleanup/dry-run?limit=500&storage_limit=1000");
+  S.storageCleanupLoading=false;
+  if(d&&d.ok!==false&&!d.error){ S.storageCleanup=d; S.storageCleanupError=""; }
+  else S.storageCleanupError=(d&&d.error)||"cleanup dry-run недоступен";
+  renderDataArchivePanel(box);
+}
+async function runYandexArchive(box){
+  if(!confirm("Скопировать до 5 последних неархивированных MP4 на Яндекс.Диск? Supabase не удаляется."))return;
+  S.yandexArchiveLoading=true; S.yandexArchiveError=""; renderDataArchivePanel(box);
+  const d=await api("/yandex-archive",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({apply:true,limit:5})});
+  S.yandexArchiveLoading=false;
+  if(d&&d.ok!==false&&!d.error){ S.yandexArchive=d; S.yandexArchiveError=""; toast("архив: "+(d.uploaded||0)+" загружено"); }
+  else {
+    if(d) S.yandexArchive=d;
+    const firstFail=d&&Array.isArray(d.items)?d.items.find(x=>x&&x.error):null;
+    S.yandexArchiveError=(d&&d.error)||("архив не запустился"+(d&&d.failed!=null?" · failed "+d.failed:"")+(firstFail&&firstFail.error?" · "+firstFail.error:""));
+  }
+  renderDataArchivePanel(box);
+}
+function renderDataArchivePanel(box){
+  if(!box)return;
+  box.innerHTML="";
+  const fp=S.dataFootprint||null;
+  const ya=S.yandexArchive||null;
+  const cl=S.storageCleanup||null;
+  const cats=fp&&fp.by_category?Object.entries(fp.by_category):[];
+  const totalKnown=cats.reduce((s,[,v])=>s+Number(v&&v.known_rows||0),0);
+  const fpWarnings=Array.isArray(fp&&fp.warnings)?fp.warnings:[];
+  const yaItems=Array.isArray(ya&&ya.items)?ya.items:[];
+  const yaReady=!!(ya&&ya.ready);
+  const yaMissing=ya&&ya.status==="missing_token";
+  const yaFailed=ya&&ya.status==="failed";
+  box.appendChild(el("div",{class:"card",style:"padding:13px;display:flex;flex-direction:column;gap:11px;"},
+    el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:10px;"},
+      el("div",{},el("div",{style:"font-size:12px;font-weight:700;"},"Хранилище и архив"),
+        el("div",{style:"font-size:10.5px;color:var(--tx-lo);margin-top:2px;"},"Supabase как индекс · Яндекс.Диск как холодная копия")),
+      el("button",{class:"btn sm",title:"обновить footprint и dry-run архива",onclick:()=>{ refreshDataFootprint(box); refreshYandexArchive(box); }},"↻")),
+    S.dataFootprintLoading||S.yandexArchiveLoading||S.storageCleanupLoading?el("div",{class:"mono",style:"font-size:10.5px;color:var(--tx-lo);display:flex;gap:7px;align-items:center;"},el("div",{class:"spinner"}),"читаю данные…"):null,
+    fp?el("div",{style:"display:grid;grid-template-columns:repeat(2,1fr);gap:7px;"},
+      el("div",{style:"background:var(--bg-input);border:1px solid var(--bd);border-radius:8px;padding:8px;"},
+        el("div",{class:"mono",style:"font-size:9.5px;color:var(--tx-lo2);"},"известных строк"),
+        el("div",{class:"mono",style:"font-size:18px;color:var(--tx-hi);margin-top:2px;"},formatRows(totalKnown))),
+      el("div",{style:"background:"+(fp.ready?"var(--ok-bg)":"var(--warn-bg)")+";border:1px solid "+(fp.ready?"rgba(52,211,153,.35)":"rgba(245,158,11,.35)")+";border-radius:8px;padding:8px;"},
+        el("div",{class:"mono",style:"font-size:9.5px;color:var(--tx-lo2);"},"audit"),
+        el("div",{class:"mono",style:"font-size:12px;color:"+(fp.ready?"var(--ok)":"var(--warn)")+";margin-top:5px;"},fp.ready?"ready":"partial"))):el("div",{style:"font-size:11px;color:var(--tx-lo);"},"footprint ещё не загружен"),
+    cats.length?el("div",{style:"display:flex;flex-wrap:wrap;gap:5px;"},
+      ...cats.map(([k,v])=>el("span",{class:"mono",style:"font-size:9.5px;color:var(--tx-mid);background:var(--bg-chip);border:1px solid var(--bd);padding:3px 6px;border-radius:999px;"},footprintCatLabel(k)+" "+formatRows(v&&v.known_rows)))):null,
+    fpWarnings.length?el("div",{class:"mono",style:"font-size:9.5px;color:var(--warn);line-height:1.35;"},trunc(fpWarnings.join(" · "),180)):null,
+    ya?el("div",{style:"background:var(--bg-input);border:1px solid var(--bd);border-radius:8px;padding:9px;"},
+      el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:8px;"},
+        el("span",{class:"mono",style:"font-size:10.5px;color:"+(yaReady?"var(--ok)":yaMissing?"var(--warn)":yaFailed?"var(--err)":"var(--tx-lo)")+";"},yaMissing?"нет Yandex token":yaReady?"Yandex готов":yaFailed?"Yandex 401":"Yandex dry-run"),
+        el("span",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);"},(ya.candidates||0)+" кандид.")),
+      yaItems.length?el("div",{class:"mono",style:"font-size:9.5px;color:var(--tx-lo2);margin-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"},trunc((yaItems[0].yandex_path||""),120)):null):el("div",{style:"font-size:11px;color:var(--tx-lo);"},"dry-run Яндекс-архива ещё не загружен"),
+    cl?el("div",{style:"background:var(--bg-input);border:1px solid var(--bd);border-radius:8px;padding:9px;"},
+      el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:8px;"},
+        el("span",{class:"mono",style:"font-size:10.5px;color:var(--tx-hi);"},"cleanup dry-run"),
+        el("span",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);"},(cl.storage&&cl.storage.scanned||0)+" файлов")),
+      el("div",{style:"display:flex;flex-wrap:wrap;gap:5px;margin-top:7px;"},
+        el("span",{class:"mono",style:"font-size:9.5px;color:var(--warn);background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.35);padding:3px 6px;border-radius:999px;"},"orphan "+(cl.storage&&cl.storage.orphan_candidates||0)),
+        el("span",{class:"mono",style:"font-size:9.5px;color:var(--ok);background:var(--ok-bg);border:1px solid rgba(52,211,153,.35);padding:3px 6px;border-radius:999px;"},"protected "+(cl.storage&&cl.storage.protected||0)),
+        el("span",{class:"mono",style:"font-size:9.5px;color:var(--tx-lo);background:var(--bg-chip);border:1px solid var(--bd);padding:3px 6px;border-radius:999px;"},"~"+formatRows(cl.storage&&cl.storage.estimated_orphan_bytes||0)+"B")),
+      Array.isArray(cl.candidates)&&cl.candidates.length?el("div",{class:"mono",style:"font-size:9.5px;color:var(--tx-lo2);margin-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"},trunc(cl.candidates[0].path||"",120)):null):el("div",{style:"font-size:11px;color:var(--tx-lo);"},"cleanup dry-run ещё не загружен"),
+    S.dataFootprintError?el("div",{class:"mono",style:"font-size:10px;color:var(--err);"},S.dataFootprintError):null,
+    S.yandexArchiveError?el("div",{class:"mono",style:"font-size:10px;color:var(--err);"},S.yandexArchiveError):null,
+    S.storageCleanupError?el("div",{class:"mono",style:"font-size:10px;color:var(--err);"},S.storageCleanupError):null,
+    el("div",{style:"display:flex;gap:7px;flex-wrap:wrap;"},
+      el("button",{class:"btn sm",onclick:()=>refreshDataFootprint(box)},"Footprint"),
+      el("button",{class:"btn sm",onclick:()=>refreshYandexArchive(box)},"Yandex dry-run"),
+      el("button",{class:"btn sm",onclick:()=>refreshStorageCleanup(box)},"Cleanup dry-run"),
+      el("button",{class:"btn sm",disabled:!yaReady,style:!yaReady?"opacity:.45;cursor:not-allowed;":"",title:yaReady?"скопировать 5 MP4":(S.yandexArchiveError||"сначала нужен рабочий YANDEX_DISK_OAUTH_TOKEN"),onclick:()=>yaReady&&runYandexArchive(box)},"Скопировать 5"))));
+}
 async function screenLibrary(root,useCache){
   root.innerHTML="";                       // фильтр/сортировка зовут screenLibrary напрямую (минуя render) — чистим, иначе секции дублируются
   S.libFmt=S.libFmt||"all"; S.librarySort=S.librarySort||"viral";
   const FMTS=[["all","Все"],["video","Видео"],["carousel","Карусель"],["static","Статик"]];
   header("База видосов","библиотека рецептов", el("div",{class:"hdr-r"},
+    el("button",{class:"btn sm",title:"открыть архив генераций на Яндекс.Диске",onclick:()=>window.open(YANDEX_FACTORY_ARCHIVE_URL,"_blank","noopener")},"Яндекс.Диск"),
     ...FMTS.map(([k,l])=>el("span",{style:"font-size:11.5px;cursor:pointer;border-radius:7px;padding:6px 11px;"+(S.libFmt===k?"color:var(--tx-hi);background:var(--bg-input);border:1px solid var(--bd2);":"color:var(--tx-lo);"),onclick:()=>{ S.libFmt=k; screenLibrary(root,true); }},l))));
   const left=el("div",{class:"scroll"}), aside=el("div",{class:"aside",style:"width:328px;padding:18px;"});
   root.appendChild(left); root.appendChild(aside);

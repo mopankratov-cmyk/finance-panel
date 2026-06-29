@@ -16,6 +16,8 @@ export type RecentRunPoint = {
   created_at: string | null;
   target_platform: string | null;
   status: string;
+  step: string | null;
+  active_step: string | null;
   total_ms: number | null;
   error_category: string | null;
   warnings_count: number;
@@ -253,6 +255,8 @@ export function buildObservability(rows: Record<string, unknown>[]) {
       created_at: raw.created_at ? String(raw.created_at) : null,
       target_platform: plan.target_platform ? String(plan.target_platform) : null,
       status,
+      step: plan.step ? String(plan.step) : null,
+      active_step: summary.active_step,
       total_ms: summary.total_ms,
       error_category: planError ? classifyErrorReason(planError) : null,
       warnings_count: warnings.length,

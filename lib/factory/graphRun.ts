@@ -33,6 +33,7 @@ const LEASE_MS = 90_000;
 const MAX_POLLS = 35;
 const POLL_WAIT_MS = 12_000;
 const MAX_GEN_POLL_MS = MAX_POLLS * POLL_WAIT_MS + 60_000;
+const MAX_RENDER_POLL_MS = 180_000;
 const MAX_GEN_POLL_LOGS = 12;
 const MAX_RENDERS = 3;
 export const MAX_STEP_ATTEMPTS = 3;
@@ -170,10 +171,88 @@ const roleOf = (n: RunNode) => String(((n.params || {}) as Record<string, unknow
 // Иначе строим связную montage-раскладку: клипы → overlays по таймлайну, capt/hook → капшены, sound → музыка, hook/арт → CTA.
 const REEL_FPS = 30;
 const REEL_CTA_FRAMES = 55;
+const FIRST_FRAME_HOOK_MAX = 86;
 function chunkCaptions(text: string, article: string): { text: string; accent?: boolean }[] {
   const parts = String(text || "").split(/(?<=[.!?…])\s+|,\s+|\s—\s/).map((s) => s.trim()).filter(Boolean).slice(0, 12);
   const art = String(article || "").toLowerCase();
   return parts.map((p) => ({ text: p, accent: /\d/.test(p) || (!!art && p.toLowerCase().includes(art)) || /wb|wildberries|купи|беги/i.test(p) }));
+}
+
+function compactHookText(value: unknown): string {
+  return String(value || "")
+    .replace(/\s+/g, " ")
+    .replace(/^["'«]+|["'»]+$/g, "")
+    .trim()
+    .slice(0, FIRST_FRAME_HOOK_MAX);
+}
+
+function isAudienceMode(mode?: string | null): boolean {
+  return String(mode || "audience").toLowerCase() !== "sell";
+}
+
+function comparisonPromise(text: string): boolean {
+  return /\bvs\b|против|сравн|дорог(ой|ая|ие|ого|им)|люкс|аналог|дешев/i.test(text);
+}
+
+function hasComparisonVisual(plan: RunPlan): boolean {
+  return (plan.nodes || []).some((n) => {
+    const role = roleOf(n);
+    const text = `${role} ${n.node_type || ""} ${n.prompt || ""}`.toLowerCase();
+    return /compare|comparison|side.by.side|split.screen|рядом|сравн|до\/после|before_after/.test(text);
+  });
+}
+
+function reinforceStoryboardGuards(plan: RunPlan, mode: string, addWarning?: (msg: string) => void): void {
+  const hookNode = plan.nodes.find((n) => roleOf(n) === "hook") || plan.nodes[0];
+  const hook = compactHookText(textOfNode(hookNode));
+  if (hook) {
+    if (hookNode) {
+      hookNode.onscreen_text = hook;
+      hookNode.params = { ...(hookNode.params || {}), onscreen_text: hook, first_frame_hook_required: true };
+    }
+    plan.nodes.forEach((n) => {
+      if (n.status === "done" || n.status === "submitted" || n.status === "skip" || n.status === "error") return;
+      const role = roleOf(n);
+      if (role === "hook" || n.ordinal === 1) {
+        const rule = `First frame must show readable Russian hook text: "${hook}".`;
+        if (!String(n.prompt || "").includes("First frame must show readable Russian hook text")) {
+          n.prompt = `${n.prompt || ""}\n${rule}`.trim().slice(0, 2000);
+        }
+        n.params = { ...(n.params || {}), onscreen_text: hook, first_frame_hook_required: true };
+      }
+    });
+  }
+  if (isAudienceMode(mode)) {
+    plan.nodes.forEach((n) => {
+      if (n.status === "done" || n.status === "submitted" || n.status === "skip" || n.status === "error") return;
+      const role = roleOf(n);
+      if (role === "cta" || /cta|end|final/i.test(String(n.node_type || ""))) {
+        const rule = "Audience mode: no direct WB buy button, no marketplace ad card; end with native save/share reason.";
+        if (!String(n.prompt || "").includes("Audience mode: no direct WB buy button")) {
+          n.prompt = `${n.prompt || ""}\n${rule}`.trim().slice(0, 2000);
+        }
+      }
+    });
+  }
+  if (comparisonPromise(hook) && !hasComparisonVisual(plan)) {
+    addWarning?.("comparison hook guarded: forcing side-by-side visual proof");
+    const candidates = plan.nodes
+      .filter((n) => {
+        const role = roleOf(n);
+        const tool = String(n.tool || "").toLowerCase();
+        return n.status !== "done" && n.status !== "submitted" && !ASSEMBLY_TOOLS.has(tool) && tool !== "elevenlabs" && role !== "skip";
+      })
+      .slice(0, 3);
+    candidates.forEach((n, idx) => {
+      const rule = idx === 0
+        ? "Show two jackets side-by-side in the same shot: WB item versus expensive-brand reference, fast zoom into visible differences."
+        : "Keep the comparison promise visible: split-screen or side-by-side product proof, no unrelated objects, no ad-card layout.";
+      if (!String(n.prompt || "").includes("comparison promise")) {
+        n.prompt = `${n.prompt || ""}\nComparison promise: ${rule}`.trim().slice(0, 2000);
+      }
+      n.params = { ...(n.params || {}), comparison_required: true };
+    });
+  }
 }
 
 function hasUnsafeRenderUrl(value: unknown): boolean {
@@ -249,7 +328,7 @@ function hasVideoBackup(url: unknown): boolean {
   return inferRenderableMediaType(url) === "video";
 }
 
-export function buildReelProps(plan: RunPlan, visualNodes: RunNode[], article: string): { inputProps: Record<string, unknown>; durationInFrames: number } {
+export function buildReelProps(plan: RunPlan, visualNodes: RunNode[], article: string, mode = "audience"): { inputProps: Record<string, unknown>; durationInFrames: number } {
   // явный override (точные пропсы из брифа) — высший приоритет (именно объект, не массив)
   const explicitNode = plan.nodes.find((n) => {
     const rp = n.params && (n.params as Record<string, unknown>)["reel_props"];
@@ -281,19 +360,23 @@ export function buildReelProps(plan: RunPlan, visualNodes: RunNode[], article: s
   const durationInFrames = actorEnd + REEL_CTA_FRAMES;
   const hookNode = plan.nodes.find((n) => roleOf(n) === "hook") || plan.nodes[0];
   const captionNode = plan.nodes.find((n) => n.node_type === "captions");
-  const capText = [textOfNode(hookNode), textOfNode(captionNode)].filter(Boolean).join(". ");
-  const captions = chunkCaptions(capText, article);
+  const hookText = compactHookText(textOfNode(hookNode));
+  const captions = [
+    ...(hookText ? [{ text: hookText, accent: true }] : []),
+    ...chunkCaptions(textOfNode(captionNode), article),
+  ].slice(0, 12);
   const soundNode = plan.nodes.find((n) => ["sound", "music"].includes(String(n.tool).toLowerCase()));
   const rawAudioSrc = soundNode?.asset_url || (soundNode?.params?.url as string) || undefined;
   const audioSrc = isRenderableUrl(rawAudioSrc) ? rawAudioSrc : undefined;
-  const ctaTitle = (textOfNode(hookNode) || article || "").toString().slice(0, 40) || undefined;
+  const ctaTitle = (hookText || article || "").toString().slice(0, 40) || undefined;
+  const ctaButton = isAudienceMode(mode) ? "сохрани идею" : "ищи на WB";
   const inputProps: Record<string, unknown> = {
     durationInFrames, actorEnd, overlays: renderOverlays,
     ...(actorSrc ? { actorSrc } : {}),
     ...(captions.length ? { captions } : { captions: [] }),
     ...(audioSrc ? { audioSrc } : {}),
     ...(ctaTitle ? { ctaTitle } : {}),
-    ...(article ? { ctaButton: "ищи на WB" } : {}),
+    ...(article ? { ctaButton } : {}),
   };
   return { inputProps, durationInFrames };
 }
@@ -336,6 +419,48 @@ async function regenCulprit(
   plan.render_id = null;
   plan.step = "submit"; // renderCount инкрементнётся в submit → жёстко ограничен MAX_RENDERS
   await savePlan(db, id, plan, { otk_verdict: plan.otk ?? null, otk_score: plan.otk?.score ?? null });
+}
+
+function structuralOtkProblem(issues: string[], mode: string): string | null {
+  const joined = (issues || []).join(" ").toLowerCase();
+  if (/перв(ом|ый|ого).{0,40}(кадр|frame)|hook.{0,40}first|хук.{0,60}(экран|кадр|не считы)/i.test(joined)) return "first_frame_hook";
+  if (/сравн|side.by.side|split.screen|wb vs|дорог(ой|ая|ие|ого)|promise|обещан/i.test(joined)) return "comparison_not_delivered";
+  if (isAudienceMode(mode) && /(wb|wildberries|маркетплейс|куп|ищи).{0,40}(cta|кноп|карточ|баннер)|рекламн.{0,40}(карточ|баннер)/i.test(joined)) return "audience_ad_card";
+  if (/статичн.{0,40}(заглуш|карточ)|мёртв|мертв|темп провис|3 кадр/i.test(joined)) return "dead_end_card";
+  return null;
+}
+
+async function regenStructuralOtk(
+  db: SupabaseClient, id: number, plan: RunPlan, mode: string, reason: string, issues: string[],
+): Promise<boolean> {
+  reinforceStoryboardGuards(plan, mode);
+  const touched: RunNode[] = [];
+  for (const n of plan.nodes) {
+    if (!isRegenerable(n)) continue;
+    const role = roleOf(n);
+    const text = `${role} ${n.node_type || ""} ${n.prompt || ""}`.toLowerCase();
+    const relevant =
+      reason === "first_frame_hook" ? (role === "hook" || n.ordinal === 1) :
+      reason === "comparison_not_delivered" ? (/hook|proof|solution|before_after|compare|comparison|сравн|дорог/.test(text) || touched.length < 3) :
+      reason === "audience_ad_card" ? (/cta|final|end|card|hook|proof/.test(text) || touched.length < 2) :
+      reason === "dead_end_card" ? (/cta|final|end|card|proof|solution/.test(text) || touched.length < 2) :
+      false;
+    if (!relevant) continue;
+    n.status = "pending";
+    n.url = undefined;
+    n.token = undefined;
+    n.error = undefined;
+    n.qa = undefined;
+    const hint = `Structural OTK fix (${reason}): ${String(issues[0] || "make the promise visible in-frame").slice(0, 180)}`;
+    if (!String(n.prompt || "").includes("Structural OTK fix")) n.prompt = `${n.prompt || ""}\n${hint}`.trim().slice(0, 2000);
+    touched.push(n);
+    if (touched.length >= 3) break;
+  }
+  if (!touched.length) return false;
+  plan.render_id = null;
+  plan.step = "submit";
+  await savePlan(db, id, plan, { otk_verdict: plan.otk ?? null, otk_score: plan.otk?.score ?? null });
+  return true;
 }
 
 function inferRunTargetPlatform(rows: any[]): string {
@@ -762,6 +887,7 @@ export async function runRecipeStep(
     const renderCount = submitAlreadyStarted ? (plan.renderCount || 1) : (plan.renderCount || 0) + 1;
     const laneBudget = Math.max(1, Number(plan.lane_budget || LANE_BUDGET[plan.lane || "product"] || MAX_RENDERS));
     if (!submitAlreadyStarted && renderCount > laneBudget) throw new Error("превышен лимит запусков генерации графа — стоп для бюджета");
+    reinforceStoryboardGuards(plan, mode, addWarning);
     // авто-привязка ассетов товара к нодам без источника (фикс пустого автопилота, см. assetBind.ts)
     await autoBindAssets(db, plan, article, niche);
     for (const n of plan.nodes) {
@@ -825,8 +951,10 @@ export async function runRecipeStep(
         const personaGate = await checkPersonaConsent(db, (n.params || {}).override_avatar || (n.params || {}).avatar || null, { requireGranted: true });
         if (personaGate.warning) addWarning(personaGate.warning);
         if (!personaGate.allowed) {
-          n.status = "error";
-          n.error = personaGate.error || "persona consent blocked";
+          n.status = "skip";
+          n.engine = "creatify";
+          n.error = personaGate.error || "creatify skipped: persona consent missing";
+          addWarning(n.error);
           await recordUgcJob(db, {
             recipeId: id,
             provider: "creatify",
@@ -942,6 +1070,9 @@ export async function runRecipeStep(
       await savePlan(db, id, plan, { status: "run_fail" });
       return;
     }
+    // Сохраняем оплаченные промежуточные генерации ДО clip-qa/assemble: даже если QA потом отбракует клип
+    // или прогон не дойдёт до финальной склейки, исходный материал останется в памяти и уйдёт в Yandex archive.
+    await persistClips(db, plan.nodes.filter((n) => n.status === "done" && n.url), article, niche, id);
     plan.step = "clip-qa";
     plan.step_started_at = null;
     finishExecutionLog(plan, trace, "done", `done=${plan.nodes.filter((n) => n.status === "done" && n.url).length}`, null, "gen-poll→clip-qa");
@@ -1024,7 +1155,7 @@ export async function runRecipeStep(
         addWarning("remotion skipped: source fallback includes image assets; using Shotstack");
       }
       else if (remotionReady()) {
-        const { inputProps, durationInFrames } = buildReelProps(plan, visualNodes, article);
+        const { inputProps, durationInFrames } = buildReelProps(plan, visualNodes, article, mode);
         plan.reel_props = inputProps;
         plan.duration_frames = durationInFrames;
         plan.render_engine = "remotion";
@@ -1127,7 +1258,7 @@ export async function runRecipeStep(
   // ── render-submit: запустить рендер (Remotion VM или Shotstack) ──
   if (plan.step === "render-submit") {
     if (plan.render_id) {
-      plan.step = "render-poll"; plan.pollCount = 0;
+      plan.step = "render-poll"; plan.pollCount = 0; plan.step_started_at = plan.step_started_at || new Date().toISOString();
       finishExecutionLog(plan, trace, "running", `render=${plan.render_id}`, null, "render already started");
       await savePlan(db, id, plan, { status: "running" });
       return;
@@ -1148,7 +1279,7 @@ export async function runRecipeStep(
         finishExecutionLog(plan, trace, "error", null, msg, "render-submit");
         throw new Error(msg);
       }
-      plan.render_id = renderId; plan.step = "render-poll"; plan.pollCount = 0;
+      plan.render_id = renderId; plan.step = "render-poll"; plan.pollCount = 0; plan.step_started_at = new Date().toISOString();
       finishExecutionLog(plan, trace, "done", `render=${renderId}`, null, "render-submit→render-poll");
       await savePlan(db, id, plan, { render_id: renderId, status: "running" });
       return;
@@ -1183,7 +1314,7 @@ export async function runRecipeStep(
       finishExecutionLog(plan, trace, "error", null, msg, "render-submit");
       throw new Error(msg);
     }
-    plan.render_id = renderId; plan.step = "render-poll"; plan.pollCount = 0;
+    plan.render_id = renderId; plan.step = "render-poll"; plan.pollCount = 0; plan.step_started_at = new Date().toISOString();
     finishExecutionLog(plan, trace, "done", `render=${renderId}`, null, "render-submit→render-poll");
     await savePlan(db, id, plan, { render_id: renderId, status: "running" });
     return;
@@ -1191,12 +1322,15 @@ export async function runRecipeStep(
 
   // ── render-poll: ждать рендер (Remotion VM или Shotstack) ──
   if (plan.step === "render-poll") {
+    if (!plan.step_started_at) plan.step_started_at = firstStepStartedAt(plan, "render-poll") || new Date().toISOString();
     await sleep(POLL_WAIT_MS);
     const pollCount = (plan.pollCount || 0) + 1;
     const engineName = plan.render_engine === "remotion" ? "Remotion" : "Shotstack";
     const s = plan.render_engine === "remotion" ? await remotionStatus(String(plan.render_id)) : await shotstackStatus(String(plan.render_id));
+    const timedOutByWallClock = stepAgeMs(plan, "render-poll") >= MAX_RENDER_POLL_MS;
     if (s.status === "done" && s.videoUrl) {
       plan.output_url = s.videoUrl; plan.step = "otk";
+      plan.step_started_at = null;
       finishExecutionLog(plan, trace, "done", s.videoUrl, null, "render complete");
       await savePlan(db, id, plan, { output_url: s.videoUrl });
     } else if (s.status === "error" && s.retryable !== true) {
@@ -1206,6 +1340,7 @@ export async function runRecipeStep(
         addWarning(warn);
         plan.output_url = plan.backup_url;
         plan.step = "otk";
+        plan.step_started_at = null;
         finishExecutionLog(plan, trace, "warning", plan.backup_url, null, warn);
         await savePlan(db, id, plan, { output_url: plan.backup_url, status: "running" });
       } else {
@@ -1213,16 +1348,17 @@ export async function runRecipeStep(
         finishExecutionLog(plan, trace, "error", null, msg, "render-poll");
         throw new Error(msg);
       }
-    } else if (pollCount >= MAX_POLLS) {
+    } else if (pollCount >= MAX_POLLS || timedOutByWallClock) {
       if (plan.backup_url) {
-        const warn = `${engineName} render timeout` + (s.status === "error" ? ` (последний опрос: ${s.error})` : "") + "; fallback raw clip";
+        const warn = `${engineName} render timeout` + (timedOutByWallClock ? " (wall-clock)" : "") + (s.status === "error" ? ` (последний опрос: ${s.error})` : "") + "; fallback raw clip";
         addWarning(warn);
         plan.output_url = plan.backup_url;
         plan.step = "otk";
+        plan.step_started_at = null;
         finishExecutionLog(plan, trace, "warning", plan.backup_url, null, warn);
         await savePlan(db, id, plan, { output_url: plan.backup_url, status: "running" });
       } else {
-        const msg = `${engineName} render timeout` + (s.status === "error" ? ` (последний опрос: ${s.error})` : "");
+        const msg = `${engineName} render timeout` + (timedOutByWallClock ? " (wall-clock)" : "") + (s.status === "error" ? ` (последний опрос: ${s.error})` : "");
         finishExecutionLog(plan, trace, "error", null, msg, "render-poll");
         throw new Error(msg);
       }
@@ -1306,6 +1442,11 @@ export async function runRecipeStep(
     const otkPassed = isFramesGroundedOtkPass(plan, artifactOk);
     const laneBudget = Math.max(1, Number(plan.lane_budget || LANE_BUDGET[plan.lane || "product"] || MAX_RENDERS));
     if (!otkPassed && (plan.renderCount || 0) < laneBudget) {
+      const structuralReason = structuralOtkProblem(artifactDefects.length ? artifactDefects : issues, mode);
+      if (structuralReason && artifactOk) {
+        finishExecutionLog(plan, trace, "warning", url, null, `otk structural regen: ${structuralReason}`);
+        if (await regenStructuralOtk(db, id, plan, mode, structuralReason, issues)) return;
+      }
       const culprit = pickCulprit(plan, axes);
       if (culprit) {
         finishExecutionLog(plan, trace, "warning", url, null, `otk regen: ${artifactDefects[0] || issues[0] || culprit.axis}`);

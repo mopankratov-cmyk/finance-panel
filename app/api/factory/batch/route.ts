@@ -126,7 +126,7 @@ export async function POST(req: NextRequest) {
   const skipBalanceCheck = dryRun && b.skip_balance_check === true;
   const requireFullBatch = b.require_full_batch === true;
   const requireLearningGate = b.require_learning_gate === true;
-  const requireStrongSource = b.require_strong_source === true;
+  const requireStrongSource = b.require_strong_source !== false;
   const requestedNiche = String(b.niche || "").trim() || null;
   const seriesAfter = String(b.series_after || "").trim() || null;
   const batchRunId = `batch_${Date.now()}_${randomUUID().slice(0, 8)}`;
