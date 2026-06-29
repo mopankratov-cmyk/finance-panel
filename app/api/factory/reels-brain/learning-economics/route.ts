@@ -40,9 +40,33 @@ function num(value: unknown): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function unitCost(row: { mode?: string; found?: number; analyzed?: number; retries?: number; errors?: number }) {
+function estimatedUsdFromCostUnits(costUnits: number): number {
+  const usdPerUnit = Number(process.env.REELS_BRAIN_COST_UNIT_USD || 0.035);
+  const safeUsdPerUnit = Number.isFinite(usdPerUnit) && usdPerUnit > 0 ? usdPerUnit : 0.035;
+  return Math.round(costUnits * safeUsdPerUnit * 10000) / 10000;
+}
+
+function unitCost(row: { mode?: string; found?: number; analyzed?: number; retries?: number; errors?: number; cost_units?: number }) {
+  if (num(row.cost_units) > 0) return num(row.cost_units);
   if (row.mode === "analyze") return Math.max(1, num(row.analyzed));
   return Math.max(1, num(row.found) + num(row.retries) * 5 + num(row.errors) * 10);
+}
+
+function spendUsd(row: {
+  mode?: string;
+  found?: number;
+  analyzed?: number;
+  retries?: number;
+  errors?: number;
+  actual_spend_usd?: number | null;
+  estimated_spend_usd?: number;
+  cost_units?: number;
+}) {
+  const actual = num(row.actual_spend_usd);
+  if (actual > 0) return { value: actual, source: "actual" as const };
+  const estimated = num(row.estimated_spend_usd);
+  if (estimated > 0) return { value: estimated, source: "estimated" as const };
+  return { value: estimatedUsdFromCostUnits(unitCost(row)), source: "estimated" as const };
 }
 
 function trendLabel(current: number | null, previous: number | null) {
@@ -51,6 +75,17 @@ function trendLabel(current: number | null, previous: number | null) {
   if (delta <= -0.08) return "cheaper" as const;
   if (delta >= 0.08) return "more_expensive" as const;
   return "flat" as const;
+}
+
+function dayKey(value: string, offsetDays = 0) {
+  const date = value ? new Date(value) : new Date();
+  if (Number.isNaN(date.getTime())) return "";
+  date.setUTCDate(date.getUTCDate() + offsetDays);
+  return date.toISOString().slice(0, 10);
+}
+
+function perUnit(total: number, count: number) {
+  return count > 0 ? Math.round((total / count) * 10000) / 10000 : null;
 }
 
 function patternBrain(playbook: unknown): PatternBrain {
@@ -87,7 +122,7 @@ export async function GET(req: NextRequest) {
     }
 
     const niches = splitList(req.nextUrl.searchParams.get("niches") || "ru_toys,ru_clothing,ru_cosmetics");
-    const limit = Math.max(4, Math.min(40, Number(req.nextUrl.searchParams.get("limit") || 18)));
+    const limit = Math.max(4, Math.min(80, Number(req.nextUrl.searchParams.get("limit") || 50)));
     const { data, error } = await db
       .from("niche_playbooks")
       .select("niche,playbook,updated_at")
@@ -155,10 +190,15 @@ export async function GET(req: NextRequest) {
           errors: run.errors,
           best_provider: run.best_provider || null,
           cost_units: costUnits,
+          spend_usd: spendUsd(run).value,
+          spend_source: spendUsd(run).source,
           inserted_per_100_cost_units: Math.round((run.inserted / costUnits) * 1000) / 10,
           analyzed_per_100_cost_units: Math.round((run.analyzed / costUnits) * 1000) / 10,
           cost_units_per_inserted: run.inserted > 0 ? Math.round((costUnits / run.inserted) * 10) / 10 : null,
           cost_units_per_analyzed: run.analyzed > 0 ? Math.round((costUnits / run.analyzed) * 10) / 10 : null,
+          usd_per_inserted: run.inserted > 0 ? perUnit(spendUsd(run).value, run.inserted) : null,
+          usd_per_analyzed: run.analyzed > 0 ? perUnit(spendUsd(run).value, run.analyzed) : null,
+          usd_per_relevant: run.relevant > 0 ? perUnit(spendUsd(run).value, run.relevant) : null,
         };
       });
 
@@ -178,6 +218,63 @@ export async function GET(req: NextRequest) {
     });
 
     const intakeRuns = timeline.filter((row) => row.inserted > 0);
+    const todayKey = dayKey(new Date().toISOString());
+    const yesterdayKey = dayKey(new Date().toISOString(), -1);
+    const dailyRows = Array.from(timeline.reduce((map, row) => {
+      const key = dayKey(row.created_at);
+      if (!key) return map;
+      const current = map.get(key) || {
+        date: key,
+        runs: 0,
+        found: 0,
+        inserted: 0,
+        analyzed: 0,
+        relevant: 0,
+        retries: 0,
+        errors: 0,
+        cost_units: 0,
+        spend_usd: 0,
+        spend_source: "estimated" as "estimated" | "actual" | "mixed",
+      };
+      current.runs += 1;
+      current.found += row.found;
+      current.inserted += row.inserted;
+      current.analyzed += row.analyzed;
+      current.relevant += row.relevant;
+      current.retries += row.retries;
+      current.errors += row.errors;
+      current.cost_units += row.cost_units;
+      current.spend_usd += row.spend_usd;
+      if (current.spend_source !== row.spend_source) current.spend_source = current.runs > 1 ? "mixed" : row.spend_source;
+      map.set(key, current);
+      return map;
+    }, new Map<string, {
+      date: string;
+      runs: number;
+      found: number;
+      inserted: number;
+      analyzed: number;
+      relevant: number;
+      retries: number;
+      errors: number;
+      cost_units: number;
+      spend_usd: number;
+      spend_source: "estimated" | "actual" | "mixed";
+    }>()).values())
+      .sort((a, b) => a.date.localeCompare(b.date))
+      .map((row) => ({
+        ...row,
+        spend_usd: Math.round(row.spend_usd * 10000) / 10000,
+        usd_per_found: perUnit(row.spend_usd, row.found),
+        usd_per_inserted: perUnit(row.spend_usd, row.inserted),
+        usd_per_analyzed: perUnit(row.spend_usd, row.analyzed),
+        usd_per_relevant: perUnit(row.spend_usd, row.relevant),
+        cost_units_per_inserted: perUnit(row.cost_units, row.inserted),
+      }));
+    const today = dailyRows.find((row) => row.date === todayKey) || null;
+    const yesterday = dailyRows.find((row) => row.date === yesterdayKey) || null;
+    const todayUseful = today?.usd_per_relevant ?? today?.usd_per_analyzed ?? today?.usd_per_inserted ?? null;
+    const yesterdayUseful = yesterday?.usd_per_relevant ?? yesterday?.usd_per_analyzed ?? yesterday?.usd_per_inserted ?? null;
     const recentIntake = intakeRuns.slice(-5);
     const previousIntake = intakeRuns.slice(-10, -5);
     const avgRecentCost = recentIntake.length
@@ -198,6 +295,9 @@ export async function GET(req: NextRequest) {
       cost_units_per_inserted_recent: avgRecentCost == null ? null : Math.round(avgRecentCost * 10) / 10,
       cost_units_per_inserted_previous: avgPreviousCost == null ? null : Math.round(avgPreviousCost * 10) / 10,
       cost_trend: trendLabel(avgRecentCost, avgPreviousCost),
+      today_usd_per_useful_video: todayUseful,
+      yesterday_usd_per_useful_video: yesterdayUseful,
+      day_cost_trend: trendLabel(todayUseful, yesterdayUseful),
     };
 
     return NextResponse.json({
@@ -205,6 +305,11 @@ export async function GET(req: NextRequest) {
       niches: nicheSummaries,
       totals,
       timeline,
+      daily_costs: {
+        today,
+        yesterday,
+        rows: dailyRows.slice(-14),
+      },
     }, { headers: { "Cache-Control": "no-store" } });
   } catch (e) {
     return NextResponse.json({ error: "learning-economics reels-brain упал: " + String((e as Error)?.message || e).slice(0, 180) }, { status: 500 });

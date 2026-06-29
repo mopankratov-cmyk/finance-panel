@@ -653,6 +653,9 @@ type LearningEconomicsResponse = {
     cost_units_per_inserted_recent: number | null;
     cost_units_per_inserted_previous: number | null;
     cost_trend: "cheaper" | "more_expensive" | "flat" | "not_enough_data";
+    today_usd_per_useful_video?: number | null;
+    yesterday_usd_per_useful_video?: number | null;
+    day_cost_trend?: "cheaper" | "more_expensive" | "flat" | "not_enough_data";
   };
   timeline?: {
     id: string;
@@ -673,12 +676,41 @@ type LearningEconomicsResponse = {
     analyzed_per_100_cost_units: number;
     cost_units_per_inserted: number | null;
     cost_units_per_analyzed: number | null;
+    spend_usd?: number;
+    spend_source?: "estimated" | "actual";
+    usd_per_inserted?: number | null;
+    usd_per_analyzed?: number | null;
+    usd_per_relevant?: number | null;
     cumulative_inserted: number;
     cumulative_analyzed: number;
     cumulative_cost_units: number;
   }[];
+  daily_costs?: {
+    today?: LearningEconomicsDailyCost | null;
+    yesterday?: LearningEconomicsDailyCost | null;
+    rows?: LearningEconomicsDailyCost[];
+  };
   warning?: string;
   error?: string;
+};
+
+type LearningEconomicsDailyCost = {
+  date: string;
+  runs: number;
+  found: number;
+  inserted: number;
+  analyzed: number;
+  relevant: number;
+  retries: number;
+  errors: number;
+  cost_units: number;
+  spend_usd: number;
+  spend_source: "estimated" | "actual" | "mixed";
+  usd_per_found: number | null;
+  usd_per_inserted: number | null;
+  usd_per_analyzed: number | null;
+  usd_per_relevant: number | null;
+  cost_units_per_inserted: number | null;
 };
 
 const DEFAULT_NICHE = "ru_toys";
@@ -728,6 +760,23 @@ function providerLabel(provider: string) {
 function compactNumber(value: number | null | undefined) {
   if (value == null || !Number.isFinite(Number(value))) return "—";
   return nf.format(Number(value));
+}
+
+function formatUsd(value: number | null | undefined) {
+  if (value == null || !Number.isFinite(Number(value))) return "—";
+  const number = Number(value);
+  if (number > 0 && number < 0.01) return `$${number.toFixed(4)}`;
+  return `$${number.toFixed(2)}`;
+}
+
+function usefulVideoCost(row: LearningEconomicsDailyCost | null | undefined) {
+  return row?.usd_per_relevant ?? row?.usd_per_analyzed ?? row?.usd_per_inserted ?? null;
+}
+
+function spendSourceLabel(source: LearningEconomicsDailyCost["spend_source"] | "estimated" | "actual" | "mixed" | undefined) {
+  if (source === "actual") return "actual billing";
+  if (source === "mixed") return "mixed";
+  return "estimated";
 }
 
 const HOOK_LABELS: Record<string, string> = {
@@ -1084,6 +1133,14 @@ export default function ReelsBrainPage() {
   const portfolioStageLabel = portfolioDigest?.portfolio?.corpus_goal?.stage?.stage_label || "Corpus target";
   const learningTotals = learningEconomics?.totals;
   const learningTrend = costTrendCopy(learningTotals?.cost_trend || "not_enough_data");
+  const dayLearningTrend = costTrendCopy(learningTotals?.day_cost_trend || "not_enough_data");
+  const todayCost = learningEconomics?.daily_costs?.today || null;
+  const yesterdayCost = learningEconomics?.daily_costs?.yesterday || null;
+  const todayUsefulCost = usefulVideoCost(todayCost);
+  const yesterdayUsefulCost = usefulVideoCost(yesterdayCost);
+  const usefulCostDeltaPct = todayUsefulCost != null && yesterdayUsefulCost != null && yesterdayUsefulCost > 0
+    ? Math.round(((todayUsefulCost - yesterdayUsefulCost) / yesterdayUsefulCost) * 100)
+    : null;
   const learningTimeline = learningEconomics?.timeline || [];
   const learningNiches = learningEconomics?.niches || [];
   const maxTimelineInserted = Math.max(1, ...learningTimeline.map((row) => row.inserted));
@@ -2275,6 +2332,58 @@ export default function ReelsBrainPage() {
             </div>
           </div>
 
+          <div className="mt-3 grid gap-3 lg:grid-cols-3">
+            <div className="rounded-2xl border border-cyan-200/20 bg-cyan-300/10 p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-wide text-cyan-100/70">Сегодня $ / полезное видео</p>
+                  <div className="mt-2 text-3xl font-black">{formatUsd(todayUsefulCost)}</div>
+                  <p className="mt-1 text-xs text-slate-300">
+                    {todayCost
+                      ? `${compactNumber(todayCost.inserted)} saved · ${compactNumber(todayCost.analyzed)} memory · ${compactNumber(todayCost.relevant)} useful`
+                      : "сегодня intake-прогонов пока нет"}
+                  </p>
+                </div>
+                <span className={`shrink-0 rounded-full border px-2.5 py-1 text-xs font-bold ${dayLearningTrend.tone}`}>{dayLearningTrend.label}</span>
+              </div>
+              <div className="mt-3 grid grid-cols-3 gap-2 text-xs text-slate-200">
+                <span className="rounded-xl bg-white/10 px-2 py-1">spend {formatUsd(todayCost?.spend_usd)}</span>
+                <span className="rounded-xl bg-white/10 px-2 py-1">runs {compactNumber(todayCost?.runs || 0)}</span>
+                <span className="rounded-xl bg-white/10 px-2 py-1">{spendSourceLabel(todayCost?.spend_source)}</span>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-white/10 bg-white/10 p-4">
+              <p className="text-xs font-bold uppercase tracking-wide text-cyan-100/70">Вчера $ / полезное видео</p>
+              <div className="mt-2 text-3xl font-black">{formatUsd(yesterdayUsefulCost)}</div>
+              <p className="mt-1 text-xs text-slate-300">
+                {yesterdayCost
+                  ? `${compactNumber(yesterdayCost.inserted)} saved · ${compactNumber(yesterdayCost.analyzed)} memory · ${compactNumber(yesterdayCost.relevant)} useful`
+                  : "за вчера нет сохраненных cost-событий"}
+              </p>
+              <div className="mt-3 grid grid-cols-3 gap-2 text-xs text-slate-200">
+                <span className="rounded-xl bg-white/10 px-2 py-1">spend {formatUsd(yesterdayCost?.spend_usd)}</span>
+                <span className="rounded-xl bg-white/10 px-2 py-1">runs {compactNumber(yesterdayCost?.runs || 0)}</span>
+                <span className="rounded-xl bg-white/10 px-2 py-1">{spendSourceLabel(yesterdayCost?.spend_source)}</span>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-white/10 bg-slate-950/35 p-4">
+              <p className="text-xs font-bold uppercase tracking-wide text-cyan-100/70">Дельта день ко дню</p>
+              <div className="mt-2 text-3xl font-black">
+                {usefulCostDeltaPct == null ? "—" : `${usefulCostDeltaPct > 0 ? "+" : ""}${compactNumber(usefulCostDeltaPct)}%`}
+              </div>
+              <p className="mt-1 text-xs text-slate-300">
+                Считаем по полезной насмотренности: relevant, если есть; иначе analyzed; иначе inserted.
+              </p>
+              <div className="mt-3 grid grid-cols-3 gap-2 text-xs text-slate-200">
+                <span className="rounded-xl bg-white/10 px-2 py-1">found {compactNumber(todayCost?.found || 0)}</span>
+                <span className="rounded-xl bg-white/10 px-2 py-1">errors {compactNumber(todayCost?.errors || 0)}</span>
+                <span className="rounded-xl bg-white/10 px-2 py-1">unit {compactNumber(todayCost?.cost_units_per_inserted || 0)}</span>
+              </div>
+            </div>
+          </div>
+
           <div className="mt-4 grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
             <div className="rounded-2xl border border-white/10 bg-white/10 p-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
@@ -2301,7 +2410,8 @@ export default function ReelsBrainPage() {
                       <div className="mt-2 flex flex-wrap gap-2 text-xs text-slate-200">
                         <span>+{compactNumber(run.inserted)} video</span>
                         <span>+{compactNumber(run.analyzed)} memory</span>
-                        <span>{run.cost_units_per_inserted == null ? "cost/video —" : `${compactNumber(run.cost_units_per_inserted)} cost/video`}</span>
+                        <span>{run.usd_per_inserted == null ? "$/video —" : `${formatUsd(run.usd_per_inserted)} / video`}</span>
+                        <span>{run.cost_units_per_inserted == null ? "cost/video —" : `${compactNumber(run.cost_units_per_inserted)} units/video`}</span>
                         {run.best_provider ? <span>{providerLabel(run.best_provider)}</span> : null}
                       </div>
                     </div>
