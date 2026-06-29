@@ -14,6 +14,7 @@ ok(/generation_history/.test(helper), "storage cleanup reads generation history 
 ok(/node_recipes/.test(helper), "storage cleanup reads recipe/run-plan references");
 ok(/factory_publications/.test(helper), "storage cleanup reads publication references");
 ok(/factory_ugc_jobs/.test(helper), "storage cleanup reads UGC job references");
+ok(/"renders"/.test(helper), "storage cleanup scans render outputs");
 ok(/orphan_candidate/.test(helper), "storage cleanup classifies orphan candidates");
 ok(/protected/.test(helper), "storage cleanup classifies protected references");
 ok(/yandex_archived_release/.test(helper), "storage cleanup reports Yandex-archived files that can later release Supabase storage");
@@ -22,6 +23,8 @@ ok(/releaseYandexArchivedFactoryStorage/.test(helper), "storage cleanup can rele
 ok(/dryRun\.yandex_archived_release\?\.candidates/.test(helper), "release source is the safe Yandex-archived dry-run block");
 ok(/bucket\.remove/.test(helper), "release removes storage objects");
 ok(/supabase_storage_released_at/.test(helper), "release records storage release metadata");
+ok(/ready: !!archivedAt && !!archivePath && !releasedAt/.test(helper), "already released assets are not released again");
+ok(/ready_for_storage_release: !!storagePath && !!item && archive\.ready/.test(helper), "release requires a live storage object");
 ok(!/from\("content_assets"\)\.delete/.test(helper), "storage cleanup helper never deletes content asset rows");
 
 ok(/export async function GET/.test(route), "storage cleanup route exposes GET");

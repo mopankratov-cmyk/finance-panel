@@ -27,7 +27,7 @@ type Reference = {
 };
 
 const BUCKET = "factory-media";
-const STORAGE_PREFIXES = ["gen", "clips", "prepared", "covers", "voiceover"];
+const STORAGE_PREFIXES = ["gen", "renders", "clips", "prepared", "covers", "voiceover"];
 const DEFAULT_LIMIT = 500;
 const DEFAULT_STORAGE_LIMIT = 1000;
 const URL_RE = /https?:\/\/[^\s"'<>\\)]+/gi;
@@ -192,7 +192,8 @@ function yandexArchiveInfo(row: Record<string, unknown>) {
   const archivedAt = String(analysis.yandex_archived_at || "").trim();
   const archivePath = String(analysis.yandex_archive_path || "").trim();
   const archiveUrl = String(analysis.yandex_archive_url || "").trim();
-  return { archivedAt, archivePath, archiveUrl, ready: !!archivedAt && !!archivePath };
+  const releasedAt = String(analysis.supabase_storage_released_at || "").trim();
+  return { archivedAt, archivePath, archiveUrl, releasedAt, ready: !!archivedAt && !!archivePath && !releasedAt };
 }
 
 function classifyStorageItem(item: StorageItem & { prefix?: string }, refs: Reference[]) {
@@ -244,7 +245,8 @@ function buildYandexArchivedReleaseCandidates(
         yandex_archive_path: archive.archivePath,
         yandex_archive_url: archive.archiveUrl || null,
         yandex_archived_at: archive.archivedAt,
-        ready_for_storage_release: !!storagePath && archive.ready,
+        supabase_storage_released_at: archive.releasedAt || null,
+        ready_for_storage_release: !!storagePath && !!item && archive.ready,
       };
     })
     .filter((row) => row.ready_for_storage_release)

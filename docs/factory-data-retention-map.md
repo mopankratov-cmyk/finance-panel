@@ -367,6 +367,8 @@ POST /api/factory/storage-cleanup/release { "apply": true, "confirm": "release-y
 
 - endpoint берёт только `yandex_archived_release.candidates` из dry-run;
 - у кандидата должны быть `analysis.yandex_archive_path` и `analysis.yandex_archived_at`;
+- кандидат должен существовать в Supabase Storage listing;
+- строки с `analysis.supabase_storage_released_at` повторно не берутся;
 - удаляется только объект из bucket `factory-media`;
 - строки `content_assets`, `generation_history`, `node_recipes` не удаляются;
 - в `content_assets.analysis` ставится `supabase_storage_released_at`.
