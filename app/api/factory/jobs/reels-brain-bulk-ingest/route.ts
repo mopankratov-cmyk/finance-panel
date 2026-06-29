@@ -523,7 +523,8 @@ export async function GET(req: NextRequest) {
   if (!(await isAuthorizedReelsBrainJobRequest(req))) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
-  return runBulk(req, {}, false);
+  const execute = req.nextUrl.searchParams.get("execute") === "true";
+  return runBulk(req, {}, execute);
 }
 
 export async function POST(req: NextRequest) {
