@@ -330,6 +330,7 @@ function renderFactoryPulse(){
   const gens=o&&o.gens?o.gens:null;
   const otk=o&&o.otk?o.otk:null;
   const signals=o&&o.signals?o.signals:null;
+  const m6Status=m6StatusSummary(S.workerState&&S.workerState.m6);
   const signalBits=signals?[
     signals.resurrects_24h!=null?`воскр ${signals.resurrects_24h}`:null,
     signals.rejects_24h!=null?`отк ${signals.rejects_24h}`:null,
@@ -354,6 +355,12 @@ function renderFactoryPulse(){
     if(gens) bits.push(`24h ${gens.last_24h??0}`);
     if(otk) bits.push(`ОТК ${otk.avg_24h??"?"}${otk.pass_rate!=null?` · pass ${otk.pass_rate}%`:""}`);
     box.appendChild(el("div",{class:"mono",style:"font-size:10px;color:var(--tx-lo2);line-height:1.45;margin-top:6px;white-space:pre-wrap;"},bits.join(" · ")));
+  }
+  if(m6Status){
+    box.appendChild(el("div",{style:"display:flex;flex-wrap:wrap;gap:5px;margin-top:7px;"},
+      m6Chip("M6 "+(m6Status.ready?"ready":"warn"),m6Status.ready?"ok":"warn",m6Status.warnings.join(" · ")),
+      m6Chip("pub "+m6Status.pubPublished+"/"+m6Status.pubTotal,m6Status.pubFailed?"err":"neutral","публикации: опубликовано / всего"),
+      m6Chip("ugc "+m6Status.ugcDone+"/"+m6Status.ugcTotal,m6Status.dlqTotal||m6Status.ugcFailed?"err":m6Status.ugcActive?"warn":"neutral","UGC jobs: готово / всего")));
   }
   if(recentBits.length && !S.compact){
     box.appendChild(el("div",{style:"display:flex;flex-wrap:wrap;gap:5px;margin-top:7px;"},
@@ -426,6 +433,43 @@ function header(title,meta,right){
 }
 function loadingCard(t){ return el("div",{class:"card",style:"padding:18px;display:flex;align-items:center;gap:12px;"},el("div",{class:"spinner"}),el("span",{class:"muted"},t||"загрузка…")); }
 function emptyBox(t){ return el("div",{class:"empty"},el("div",{style:"font-size:26px;opacity:.4;"},"◇"),el("div",{style:"font-size:12.5px;max-width:300px;"},t)); }
+function countKeys(map,keys){
+  if(!map||typeof map!=="object") return 0;
+  return keys.reduce((sum,k)=>sum+(Number(map[k])||0),0);
+}
+function m6StatusSummary(m6){
+  if(!m6||typeof m6!=="object") return null;
+  const pubs=m6.publications&&typeof m6.publications==="object"?m6.publications:{};
+  const jobs=m6.ugc_jobs&&typeof m6.ugc_jobs==="object"?m6.ugc_jobs:{};
+  const pubStatus=pubs.by_status&&typeof pubs.by_status==="object"?pubs.by_status:{};
+  const jobStatus=jobs.by_status&&typeof jobs.by_status==="object"?jobs.by_status:{};
+  const dlq=jobs.by_dlq_category&&typeof jobs.by_dlq_category==="object"?jobs.by_dlq_category:{};
+  const pubDraft=countKeys(pubStatus,["draft"]);
+  const pubPublished=countKeys(pubStatus,["published","posted","sent"]);
+  const pubFailed=countKeys(pubStatus,["failed","error","dlq"]);
+  const ugcActive=countKeys(jobStatus,["submitted","queued","rendering","running","polling"]);
+  const ugcDone=countKeys(jobStatus,["done","completed","success"]);
+  const ugcFailed=countKeys(jobStatus,["failed","error","dlq"]);
+  const dlqTotal=Object.keys(dlq).reduce((sum,k)=>sum+(Number(dlq[k])||0),0);
+  const warnings=Array.isArray(m6.warnings)?m6.warnings.filter(Boolean):[];
+  return {
+    ready:m6.ready!==false&&!warnings.length,
+    warnings,
+    pubTotal:Number(pubs.total_sample)||0,
+    pubDraft,
+    pubPublished,
+    pubFailed,
+    ugcTotal:Number(jobs.total_sample)||0,
+    ugcActive,
+    ugcDone,
+    ugcFailed,
+    dlqTotal
+  };
+}
+function m6Chip(label,tone,title){
+  const meta=tone==="ok"?["var(--ok)","var(--ok-bg)"]:tone==="warn"?["var(--warn)","var(--warn-bg)"]:tone==="err"?["var(--err)","var(--err-bg)"]:["var(--tx-hi)","var(--bg-input)"];
+  return el("span",{class:"mono",title:title||"",style:"font-size:10px;color:"+meta[0]+";background:"+meta[1]+";border:1px solid var(--bd2);padding:3px 7px;border-radius:5px;white-space:nowrap;"},label);
+}
 
 // ── ЭКРАН ТЕКСТА: третий вид контента (заглушка — следующая линия завода). ──
 function screenText(root){
@@ -565,6 +609,7 @@ async function screenWorker(root){
   const latestStress=d.latest_stress||null;
   const stressHistory=d.stress_history||null;
   const observability=d.observability&&typeof d.observability==="object"?d.observability:null;
+  const m6Status=m6StatusSummary(d.m6);
   const recentRuns=Array.isArray(observability&&observability.recent_runs)?observability.recent_runs:[];
   const runningRuns=recentRuns.filter((r)=>String(r.status||"")==="running");
   const focusRun=runningRuns[0] || recentRuns[0] || null;
@@ -626,6 +671,21 @@ async function screenWorker(root){
           worker.progress?el("span",{},el("b",{style:"color:var(--tx-hi);"},"progress "),worker.progress):"")):
         el("div",{class:"muted",style:"font-size:12px;line-height:1.5;"},"контур ещё не прислал живой статус")),
     worker&&worker.blocker&&!focusRun?el("div",{style:"margin-top:10px;font-size:11.5px;color:var(--warn);background:var(--warn-bg);border:1px solid rgba(214,169,78,.55);padding:8px 10px;border-radius:8px;"},"Блокер: "+worker.blocker):null));
+  if(m6Status){
+    top.appendChild(el("div",{class:"card",style:"padding:15px;"},
+      el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;"},
+        el("div",{style:"font-size:14px;font-weight:600;"},"M6: публикации · UGC"),
+        m6Chip(m6Status.ready?"ready":"warning",m6Status.ready?"ok":"warn",m6Status.warnings.join(" · "))),
+      el("div",{style:"display:flex;flex-wrap:wrap;gap:6px;"},
+        m6Chip("pub draft "+m6Status.pubDraft,"neutral","публикации в черновике"),
+        m6Chip("published "+m6Status.pubPublished,m6Status.pubFailed?"err":"ok","опубликованные/отправленные ролики"),
+        m6Chip("ugc active "+m6Status.ugcActive,m6Status.ugcActive?"warn":"neutral","активные UGC jobs"),
+        m6Chip("ugc done "+m6Status.ugcDone,m6Status.ugcDone?"ok":"neutral","готовые UGC jobs"),
+        (m6Status.dlqTotal||m6Status.ugcFailed)?m6Chip("dlq "+(m6Status.dlqTotal||m6Status.ugcFailed),"err","dead-letter / failed UGC jobs"):null),
+      m6Status.warnings.length?el("div",{style:"font-size:11px;color:var(--warn);line-height:1.45;margin-top:8px;"},
+        trunc(m6Status.warnings[0],130)):el("div",{style:"font-size:11px;color:var(--tx-lo);line-height:1.45;margin-top:8px;"},
+        "контур после сборки видит draft-публикации и ledger UGC jobs")));
+  }
   wrap.appendChild(top);
 
   const operatorActions=factoryActions.length ? factoryActions : suggested.filter((a)=>![
@@ -864,6 +924,7 @@ async function screenCenter(root, force){
   const stabilitySnapshot=S.observability&&S.observability.stability_snapshot||null;
   const latestStress=S.workerState&&S.workerState.latest_stress||null;
   const stressHistory=S.workerState&&S.workerState.stress_history||null;
+  const m6Status=m6StatusSummary(S.workerState&&S.workerState.m6);
   const opsTone=opsStatusTone(opsStatus&&opsStatus.level);
   const workerShort=workerSource==="queue_fallback"?"fallback":workerLive==="alive"?"живой":workerLive==="stale"?"stale":workerLive==="dead"?"dead":"?";
   header("Командный центр","карта осознания", el("div",{class:"hdr-r"},
@@ -894,7 +955,7 @@ async function screenCenter(root, force){
           workerDbError?el("span",{}, " · база: ",el("b",{style:"color:var(--warn);"},trunc(workerDbError,72))):"")),
       el("button",{class:"btn sm",onclick:()=>go("worker")},"Открыть пульс")));
   }
-  renderCenterOpsSummary(left,{opsStatus,heartbeatDiag,routeWarnings,studioWarnings:S.studioWarnings||[],failDiag,opsAlerts,workerInfraAlerts,lowBalances,workerRow,stabilitySnapshot,latestStress,stressHistory});
+  renderCenterOpsSummary(left,{opsStatus,heartbeatDiag,routeWarnings,studioWarnings:S.studioWarnings||[],failDiag,opsAlerts,workerInfraAlerts,lowBalances,workerRow,stabilitySnapshot,latestStress,stressHistory,m6Status});
   const nicheHead=el("div",{style:"display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;"},
     el("h2",{class:"sec-h"},"НИШИ ",el("span",{class:"cnt"},String(S.niches.length||""))),
     el("div",{style:"display:flex;gap:14px;"},
@@ -1195,7 +1256,8 @@ function renderCenterOpsSummary(host,input){
   const stability=input&&input.stabilitySnapshot||null;
   const latestStress=input&&input.latestStress||null;
   const stressHistory=input&&input.stressHistory||null;
-  if(!opsStatus && !heartbeatDiag && !failDiag && !visibleOpsAlerts.length && !workerInfraAlerts.length && !routeWarnings.length && !studioWarnings.length && !lowBalances.length && !latestStress && !stressHistory)return;
+  const m6Status=input&&input.m6Status||null;
+  if(!opsStatus && !heartbeatDiag && !failDiag && !visibleOpsAlerts.length && !workerInfraAlerts.length && !routeWarnings.length && !studioWarnings.length && !lowBalances.length && !latestStress && !stressHistory && !m6Status)return;
   const tone=opsStatusTone(opsStatus&&opsStatus.level);
   const card=el("div",{class:"card",style:"padding:12px 14px;margin-bottom:16px;display:flex;flex-direction:column;gap:10px;"});
   card.appendChild(el("div",{style:"display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;"},
@@ -1235,6 +1297,14 @@ function renderCenterOpsSummary(host,input){
         String(stability.successful_runs||0)+"/"+String(stability.window_size||10)),
       " · серия ",el("b",{style:"color:var(--tx-hi);"},String(stability.success_streak||0)),
       ok?el("span",{}," · цель достигнута"):el("span",{}," · цель ещё не достигнута")));
+  }
+  if(m6Status){
+    const m6Row=el("div",{style:"display:flex;flex-wrap:wrap;gap:6px;"});
+    m6Row.appendChild(m6Chip("M6 "+(m6Status.ready?"ready":"warn"),m6Status.ready?"ok":"warn",m6Status.warnings.join(" · ")));
+    m6Row.appendChild(m6Chip("pub "+m6Status.pubPublished+"/"+m6Status.pubTotal,m6Status.pubFailed?"err":"neutral","публикации: опубликовано / всего"));
+    m6Row.appendChild(m6Chip("ugc "+m6Status.ugcDone+"/"+m6Status.ugcTotal,m6Status.dlqTotal||m6Status.ugcFailed?"err":m6Status.ugcActive?"warn":"neutral","UGC jobs: готово / всего"));
+    if(m6Status.ugcActive)m6Row.appendChild(m6Chip("active "+m6Status.ugcActive,"warn","UGC jobs в работе"));
+    card.appendChild(m6Row);
   }
   if(latestStress&&latestStress.summary){
     const lsSummary=latestStress.summary||{};
