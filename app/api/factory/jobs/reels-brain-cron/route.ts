@@ -108,13 +108,13 @@ export async function GET(req: NextRequest) {
       ? {
         niches,
         platforms,
-        max_lanes: 8,
+        max_lanes: 4,
         limit: 40,
-        providers_per_lane: 2,
+        providers_per_lane: 1,
         query_variants_per_lane: 2,
-        provider_timeout_ms: 22000,
-        max_provider_calls: 16,
-        max_cost_units: 48,
+        provider_timeout_ms: 18000,
+        max_provider_calls: 8,
+        max_cost_units: 24,
         hours: 72,
       }
       : {
