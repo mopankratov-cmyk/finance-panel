@@ -32,11 +32,25 @@ function editBody(model: string, imageUrls: string[], prompt: string, op: "clean
   return { ...base, aspect_ratio: op === "stage" ? "9:16" : "1:1", safety_tolerance: "6", output_format: "png" };
 }
 
-// один edit-вызов (Nano → при провале Seedream) → URL результата на fal.media или null. Best-effort.
-async function edit(imageUrls: string[], prompt: string, op: "clean" | "stage", maxWaitMs = 110_000): Promise<string | null> {
+type EditResult = { ok: true; url: string; model: string } | { ok: false; error: string };
+
+function shortError(value: unknown, max = 220): string {
+  return String(value || "").replace(/\s+/g, " ").trim().slice(0, max);
+}
+
+function queueUrls(model: string, submitted: { request_id?: string; response_url?: string; status_url?: string }) {
+  const base = `${QUEUE}${model}`;
+  const responseUrl = submitted.response_url || (submitted.request_id ? `${base}/requests/${submitted.request_id}` : "");
+  const statusUrl = submitted.status_url || (responseUrl ? `${responseUrl}/status` : "");
+  return { responseUrl, statusUrl };
+}
+
+// один edit-вызов (Nano → при провале Seedream) → URL результата на fal.media. Best-effort, но с диагностикой.
+async function edit(imageUrls: string[], prompt: string, op: "clean" | "stage", maxWaitMs = 110_000): Promise<EditResult> {
   const k = falKey();
-  if (!k || !imageUrls.length) return null;
+  if (!k || !imageUrls.length) return { ok: false, error: !k ? "FAL_KEY missing" : "empty image_urls" };
   const auth = { Authorization: `Key ${k}`, "Content-Type": "application/json" };
+  const failures: string[] = [];
   for (const model of [NANO, SEEDREAM]) {
     try {
       const sub = await fetch(`${QUEUE}${model}`, {
@@ -44,26 +58,48 @@ async function edit(imageUrls: string[], prompt: string, op: "clean" | "stage", 
         body: JSON.stringify(editBody(model, imageUrls, prompt, op)),
         signal: AbortSignal.timeout(25_000),
       });
-      if (!sub.ok) continue;
-      const sj = (await sub.json()) as { response_url?: string };
-      const responseUrl = sj.response_url;
-      if (!responseUrl) continue;
+      const sj = (await sub.json().catch(async () => ({ raw: await sub.text().catch(() => "") }))) as { request_id?: string; response_url?: string; status_url?: string; detail?: unknown; error?: unknown; raw?: unknown };
+      if (!sub.ok) {
+        failures.push(`${model} submit ${sub.status}: ${shortError(sj.detail || sj.error || sj.raw)}`);
+        continue;
+      }
+      const { responseUrl, statusUrl } = queueUrls(model, sj);
+      if (!responseUrl || !statusUrl) {
+        failures.push(`${model} submit: no request url`);
+        continue;
+      }
       const deadline = Date.now() + maxWaitMs;
       let done = false;
       while (Date.now() < deadline) {
         await sleep(4000);
-        const st = await fetch(`${responseUrl}/status`, { headers: { Authorization: `Key ${k}` }, cache: "no-store", signal: AbortSignal.timeout(15_000) }).catch(() => null);
-        if (st?.ok) { const s = (await st.json()) as { status?: string }; if (s.status === "COMPLETED") { done = true; break; } }
+        const st = await fetch(statusUrl, { headers: { Authorization: `Key ${k}` }, cache: "no-store", signal: AbortSignal.timeout(15_000) }).catch(() => null);
+        if (!st?.ok) continue;
+        const s = (await st.json().catch(() => ({}))) as { status?: string; error?: unknown; detail?: unknown };
+        const status = String(s.status || "").toUpperCase();
+        if (status === "COMPLETED") { done = true; break; }
+        if (status === "FAILED" || status === "ERROR") {
+          failures.push(`${model} ${status.toLowerCase()}: ${shortError(s.error || s.detail)}`);
+          break;
+        }
       }
-      if (!done) continue;
+      if (!done) {
+        failures.push(`${model} timeout`);
+        continue;
+      }
       const res = await fetch(responseUrl, { headers: { Authorization: `Key ${k}` }, cache: "no-store", signal: AbortSignal.timeout(15_000) });
-      if (!res.ok) continue;
-      const rj = (await res.json()) as { images?: { url?: string }[] };
+      const rj = (await res.json().catch(async () => ({ raw: await res.text().catch(() => "") }))) as { images?: { url?: string }[]; error?: unknown; detail?: unknown; raw?: unknown };
+      if (!res.ok) {
+        failures.push(`${model} result ${res.status}: ${shortError(rj.error || rj.detail || rj.raw)}`);
+        continue;
+      }
       const url = rj?.images?.[0]?.url;
-      if (url) return url;                  // успех на этом движке
-    } catch { /* следующий движок */ }
+      if (url) return { ok: true, url, model }; // успех на этом движке
+      failures.push(`${model} result: no image url`);
+    } catch (e) {
+      failures.push(`${model} crash: ${shortError((e as Error)?.message || e)}`);
+    }
   }
-  return null;
+  return { ok: false, error: failures.join(" | ").slice(0, 500) || "all edit engines failed" };
 }
 
 // промпты — детерминированный сборщик по категории (Lock/Change/Amount/Constraints), см. lib/factory/editPrompts.ts
@@ -170,10 +206,10 @@ export async function prepareProductImage(
   // WB-CDN флапает на серверной загрузке fal → рехостим исходник в наш бакет (как в i2v). Best-effort.
   const src = await rehostImageForFal(srcUrl);
   const cleanFal = await edit([src], cleanP, "clean");
-  if (!cleanFal) return { ok: false, error: "clean-шаг не дал результата (контент-фильтр/доступ/сеть)" };
+  if (!cleanFal.ok) return { ok: false, error: `clean-шаг не дал результата: ${cleanFal.error}` };
   // стейдж: clean + рехостнутый оригинал как identity-якорь (Nano иногда дрейфит лого при смене фона).
   // null = стейдж не вышел → НЕ персистим staged (иначе prompt_used врал бы про несостоявшийся стейдж); останется чистый кадр.
-  const stagedFal = await edit([cleanFal, src], stageP, "stage");
+  const stagedFal = await edit([cleanFal.url, src], stageP, "stage");
 
   // персист в наш бакет (fal.media эфемерна) + каталог
   const persist = async (falUrl: string, tag: "clean" | "staged", promptUsed: string, markCanonical: boolean): Promise<string | null> => {
@@ -194,7 +230,7 @@ export async function prepareProductImage(
           stage: tag,
           scene,
           category,
-          engine: "nano-banana",
+          engine: tag === "clean" ? cleanFal.model : stagedFal.ok ? stagedFal.model : cleanFal.model,
           product,
           prompt_used: promptUsed,
           output_w: 720,
@@ -220,8 +256,8 @@ export async function prepareProductImage(
   };
 
   const mayMarkCanonical = await shouldMarkCanonical(db, opts.article);
-  const stagedUrl = stagedFal ? (await persist(stagedFal, "staged", stageP, mayMarkCanonical)) || undefined : undefined;
-  const cleanUrl = (await persist(cleanFal, "clean", cleanP, mayMarkCanonical && !stagedUrl)) || undefined;
+  const stagedUrl = stagedFal.ok ? (await persist(stagedFal.url, "staged", stageP, mayMarkCanonical)) || undefined : undefined;
+  const cleanUrl = (await persist(cleanFal.url, "clean", cleanP, mayMarkCanonical && !stagedUrl)) || undefined;
   if (!stagedUrl && !cleanUrl) return { ok: false, error: "персист в бакет не удался" };
   return { ok: true, cleanUrl, stagedUrl };
 }
