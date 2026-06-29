@@ -20,6 +20,7 @@ import { runArtifactCheck, runClipQa, runVideoCritic } from "./qaGates";
 import { weakestRubricAxis, type RubricNiche } from "./rubric";
 import { normalizeTargetPlatform } from "./reelsBrainPlaybook";
 import { buildRunIdempotencyKey } from "./factoryV2Runtime";
+import { recordFactoryPublication } from "./publications";
 
 export type { ExecutionLogEntry, RunNode, RunPlan, RunStep } from "./graphTypes";
 
@@ -1353,6 +1354,21 @@ export async function runRecipeStep(
       reason_chip: finalStatus === "warning" ? (plan.warnings?.[0] || "OTK gate failed") : null,
       params: { source: "graph_run_otk_gate", score, basis: otkForBank?.basis || null, artifact_ok: artifactOk, catalog_url: catalogUrl, target_platform: plan.target_platform || "tiktok" },
     });
+    const publication = await recordFactoryPublication(db, {
+      recipeId: id,
+      sourceUrl: catalogUrl || url || null,
+      platform: plan.target_platform || "tiktok",
+      status: "draft",
+      metadata: {
+        source: "graph_run_bank",
+        run_id: plan.run_id || null,
+        quality_status: finalStatus,
+        otk_score: score,
+        catalog_url: catalogUrl,
+        render_engine: plan.render_engine || "shotstack",
+      },
+    });
+    if (publication.warning) addWarning(publication.warning);
     // V21/R5: батч-прогон прошёл ОТК → шлём оператору в Telegram на ревью (студийные прогоны — нет, без спама)
     if (plan.notify && finalStatus === "otk_pass" && (catalogUrl || url) && tgReady()) {
       try { await tgSendReview((catalogUrl || url)!, `${hook || article || "генерация"}\nОТК ${score != null ? Math.round(score * 10) : "—"}/100 · ниша ${niche}`, id); } catch { /* telegram опционален */ }

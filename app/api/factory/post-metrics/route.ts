@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { internalFetch } from "@/lib/internalFetch";
 import { normalizeTargetPlatform } from "@/lib/factory/reelsBrainPlaybook";
+import { recordFactoryPublication } from "@/lib/factory/publications";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
@@ -40,22 +41,74 @@ export async function POST(req: NextRequest) {
 
   // 1) запись метрик в post_metrics (оживляем мёртвую таблицу)
     let metricsSaved = false;
-    const { data: recipeRows } = await db.from("node_recipes").select("run_plan").eq("id", recipeId).limit(1);
-    const recipePlan = ((recipeRows as { run_plan?: Record<string, unknown> }[] | null)?.[0]?.run_plan || {}) as Record<string, unknown>;
+    let publicationId: string | null = typeof b.publication_id === "string" ? b.publication_id : null;
+    const { data: recipeRows } = await db.from("node_recipes").select("run_plan,output_url").eq("id", recipeId).limit(1);
+    const recipeRow = (recipeRows as { run_plan?: Record<string, unknown>; output_url?: string | null }[] | null)?.[0] || null;
+    const recipePlan = (recipeRow?.run_plan || {}) as Record<string, unknown>;
     const targetPlatform = normalizeTargetPlatform(b.platform || b.target_platform || recipePlan.target_platform);
+    const outputUrl = String(b.source_url || b.url || recipeRow?.output_url || "").trim();
+    const externalPostId = String(b.external_post_id || b.post_id || "").trim();
+    const publishedUrl = String(b.published_url || b.post_url || "").trim();
+
+    if (!publicationId) {
+      const publication = await recordFactoryPublication(db, {
+        recipeId,
+        sourceUrl: outputUrl || publishedUrl || null,
+        platform: targetPlatform,
+        status: "published",
+        publishedUrl: publishedUrl || null,
+        externalPostId: externalPostId || null,
+        metadata: {
+          source: "post_metrics",
+          views,
+          watch_rate: rateOrNull(b.watch_rate),
+          ctr: rateOrNull(b.ctr),
+          saves: countOrNull(b.saves),
+        },
+      });
+      publicationId = publication.id;
+      if (publication.warning) warnings.push(publication.warning);
+    }
+
     try {
       const { error } = await db.from("post_metrics").insert({
         recipe_id: recipeId,
+        publication_id: publicationId,
+        external_post_id: externalPostId || null,
         platform: metricPlatformLabel(targetPlatform).slice(0, 20),
         posted_at: b.posted_at || new Date().toISOString(),
         views,
         watch_rate: rateOrNull(b.watch_rate),
+        hook_rate: rateOrNull(b.hook_rate),
+        hold_rate: rateOrNull(b.hold_rate),
+        completion_rate: rateOrNull(b.completion_rate),
         ctr_card: rateOrNull(b.ctr),
         saves: countOrNull(b.saves),
+        engagement_count: countOrNull(b.engagement_count ?? b.engagement),
+        marketplace_orders: countOrNull(b.marketplace_orders ?? b.orders),
+        revenue: b.revenue == null || b.revenue === "" ? null : Math.max(0, Number(b.revenue) || 0),
+        pulled_at: new Date().toISOString(),
+        source: String(b.source || "manual").slice(0, 40),
+        raw_metrics: b.raw_metrics && typeof b.raw_metrics === "object" ? b.raw_metrics : {},
       });
       if (error) {
         warnings.push("post_metrics insert: " + error.message.slice(0, 140));
         console.error("[post-metrics] insert error:", error.message); // напр. миграция 20260620 не применена
+        try {
+          const legacy = await db.from("post_metrics").insert({
+            recipe_id: recipeId,
+            platform: metricPlatformLabel(targetPlatform).slice(0, 20),
+            posted_at: b.posted_at || new Date().toISOString(),
+            views,
+            watch_rate: rateOrNull(b.watch_rate),
+            ctr_card: rateOrNull(b.ctr),
+            saves: countOrNull(b.saves),
+          });
+          if (legacy?.error) warnings.push("post_metrics legacy insert: " + legacy.error.message.slice(0, 140));
+          else metricsSaved = true;
+        } catch (legacyError) {
+          warnings.push("post_metrics legacy exception: " + String((legacyError as Error)?.message || legacyError).slice(0, 120));
+        }
       } else metricsSaved = true;
     } catch (e) {
       warnings.push("post_metrics insert exception: " + String((e as Error)?.message || e).slice(0, 120));
@@ -88,7 +141,7 @@ export async function POST(req: NextRequest) {
       warnings.push("winners forward exception: " + String((e as Error)?.message || e).slice(0, 120));
     }
 
-    return NextResponse.json({ ok: true, forwarded, metrics_saved: metricsSaved, target_platform: metricPlatformLabel(targetPlatform), warnings });
+    return NextResponse.json({ ok: true, forwarded, metrics_saved: metricsSaved, publication_id: publicationId, target_platform: metricPlatformLabel(targetPlatform), warnings });
   } catch (e) {
     return NextResponse.json({
       ok: false,
