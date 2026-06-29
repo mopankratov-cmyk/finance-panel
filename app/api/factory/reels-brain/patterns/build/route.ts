@@ -5,6 +5,30 @@ import { buildReelsPatternMemory, type ReelsPatternSourceVideo } from "@/lib/fac
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
+const SUPABASE_PAGE_SIZE = 1000;
+
+async function loadPatternSourceVideos(
+  db: NonNullable<ReturnType<typeof getSupabaseAdmin>>,
+  niche: string,
+  limit: number,
+): Promise<{ rows: ReelsPatternSourceVideo[]; error: string | null }> {
+  const rows: ReelsPatternSourceVideo[] = [];
+  for (let from = 0; from < limit; from += SUPABASE_PAGE_SIZE) {
+    const to = Math.min(from + SUPABASE_PAGE_SIZE - 1, limit - 1);
+    const { data, error } = await db
+      .from("viral_videos")
+      .select("id,url,platform,caption,hook_text,format_detected,beat_structure,viral_reason,virality_score,views,sound_title")
+      .eq("niche", niche)
+      .order("virality_score", { ascending: false, nullsFirst: false })
+      .range(from, to);
+    if (error) return { rows, error: error.message };
+    const page = ((data || []) as ReelsPatternSourceVideo[]);
+    rows.push(...page);
+    if (page.length < to - from + 1) break;
+  }
+  return { rows, error: null };
+}
+
 // POST { niche, limit?, persist? } or GET ?niche=&limit=&persist=true
 // Builds deterministic Pattern Memory from viral_videos. persist=true embeds it into niche_playbooks.playbook.
 async function build(req: NextRequest, body: Record<string, unknown>) {
@@ -17,15 +41,9 @@ async function build(req: NextRequest, body: Record<string, unknown>) {
   const limit = Math.min(3000, Math.max(10, Number(body.limit || sp.get("limit") || 300)));
   const persist = body.persist === true || sp.get("persist") === "true";
 
-  const { data, error } = await db
-    .from("viral_videos")
-    .select("id,url,platform,caption,hook_text,format_detected,beat_structure,viral_reason,virality_score,views,sound_title")
-    .eq("niche", niche)
-    .order("virality_score", { ascending: false, nullsFirst: false })
-    .limit(limit);
-  if (error) return NextResponse.json({ error: "viral_videos: " + error.message }, { status: 500 });
+  const { rows, error } = await loadPatternSourceVideos(db, niche, limit);
+  if (error) return NextResponse.json({ error: "viral_videos: " + error }, { status: 500 });
 
-  const rows = ((data || []) as ReelsPatternSourceVideo[]);
   const memory = buildReelsPatternMemory(niche, rows);
   let persisted = false;
   let warning: string | null = null;
