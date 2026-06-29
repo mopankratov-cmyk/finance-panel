@@ -46,11 +46,16 @@ async function run(req: NextRequest, body: Record<string, unknown>) {
   const { data, error } = await q;
   if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
 
-  const rows = ((data || []) as WbAsset[]).filter((row) => {
+  const rawRows = ((data || []) as WbAsset[]).filter((row) => {
     if (!text(row.article, 80) || !/^https?:\/\//i.test(text(row.url, 1000))) return false;
-    const analysis = row.analysis && typeof row.analysis === "object" ? row.analysis : {};
-    return retryFailed || !analysis.source_prep_failed_at;
+    return true;
   });
+  const failedArticles = new Set<string>();
+  for (const row of rawRows) {
+    const analysis = row.analysis && typeof row.analysis === "object" ? row.analysis : {};
+    if (analysis.source_prep_failed_at) failedArticles.add(text(row.article, 80));
+  }
+  const rows = rawRows.filter((row) => retryFailed || !failedArticles.has(text(row.article, 80)));
   const byArticle = new Map<string, WbAsset[]>();
   for (const row of rows) {
     const article = text(row.article, 80);
@@ -97,13 +102,15 @@ async function run(req: NextRequest, body: Record<string, unknown>) {
     const results = await Promise.all(urls.map((url) => prepareProductImage(url, { article: item.article, niche: niche || undefined, product })));
     const prepared = results.filter((r) => r.ok).map((r) => ({ staged: r.stagedUrl, clean: r.cleanUrl }));
     const errors = results.filter((r) => !r.ok).map((r) => text(r.error, 220));
-    await Promise.all(sourceRows.map(async (asset, idx) => {
+    const failedAt = prepared.length ? null : new Date().toISOString();
+    const rowsToMark = prepared.length ? sourceRows : item.assets;
+    await Promise.all(rowsToMark.map(async (asset, idx) => {
       if (!asset.id) return;
-      const result = results[idx];
+      const result = sourceRows.includes(asset) ? results[idx] : results[0];
       const analysis = asset.analysis && typeof asset.analysis === "object" ? asset.analysis : {};
       const next = result?.ok
         ? { ...analysis, source_prep_prepared_at: new Date().toISOString(), source_prep_error: null, source_prep_failed_at: null }
-        : { ...analysis, source_prep_failed_at: new Date().toISOString(), source_prep_error: text(result?.error, 220) };
+        : { ...analysis, source_prep_failed_at: failedAt, source_prep_error: text(result?.error, 220) };
       await db.from("content_assets").update({ analysis: next }).eq("id", asset.id);
     }));
     items.push({
