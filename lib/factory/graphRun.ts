@@ -21,6 +21,7 @@ import { weakestRubricAxis, type RubricNiche } from "./rubric";
 import { normalizeTargetPlatform } from "./reelsBrainPlaybook";
 import { buildRunIdempotencyKey } from "./factoryV2Runtime";
 import { recordFactoryPublication } from "./publications";
+import { checkPersonaConsent, isCreatifyPackedToken, recordUgcJob } from "./ugcJobs";
 
 export type { ExecutionLogEntry, RunNode, RunPlan, RunStep } from "./graphTypes";
 
@@ -820,6 +821,25 @@ export async function runRecipeStep(
       // клип, НЕ платим fal повторно. Привязка к nodeHash инвалидирует при любой правке ноды.
       const pv = (n.params || {})["preview_url"]; const ph = (n.params || {})["preview_hash"];
       if (pv && ph && nodeHash(asNode(n)) === ph) { n.status = "done"; n.url = String(pv); n.engine = "preview"; continue; }
+      if (tool === "creatify") {
+        const personaGate = await checkPersonaConsent(db, (n.params || {}).override_avatar || (n.params || {}).avatar || null);
+        if (personaGate.warning) addWarning(personaGate.warning);
+        if (!personaGate.allowed) {
+          n.status = "error";
+          n.error = personaGate.error || "persona consent blocked";
+          await recordUgcJob(db, {
+            recipeId: id,
+            provider: "creatify",
+            idempotencyKey: `recipe:${id}:node:${n.ordinal}:consent`,
+            status: "dlq",
+            dlqCategory: "consent",
+            error: n.error,
+            inputPayload: { source: "graph_run_submit", ordinal: n.ordinal, slot: n.slot, persona_id: personaGate.personaId, consent_status: personaGate.consentStatus },
+          });
+          await savePlan(db, id, plan);
+          continue;
+        }
+      }
       const r = await submitNode(asNode(n));
       n.engine = r.engine;
       if (r.error) {
@@ -833,6 +853,19 @@ export async function runRecipeStep(
       else if (r.done && r.url) { n.status = "done"; n.url = r.url; }
       else if (r.token) { n.status = "submitted"; n.token = r.token; }
       else { n.status = "error"; n.error = "движок без токена"; }
+      if (r.engine === "creatify") {
+        const ugcJob = await recordUgcJob(db, {
+          recipeId: id,
+          provider: "creatify",
+          token: r.token || null,
+          idempotencyKey: r.token ? null : `recipe:${id}:node:${n.ordinal}:submit-error`,
+          status: n.status === "submitted" ? "submitted" : "failed",
+          dlqCategory: n.status === "error" ? "provider" : null,
+          error: n.error || null,
+          inputPayload: { source: "graph_run_submit", ordinal: n.ordinal, slot: n.slot, node_type: n.node_type },
+        });
+        if (ugcJob.warning) addWarning(ugcJob.warning);
+      }
       submittedThisTick++;
       await savePlan(db, id, plan); // ПЕРСИСТ ТОКЕНА сразу после сабмита ноды → защита от двойного сабмита при убийстве хендлера
       const shouldYieldSubmitPass = n.status === "submitted" && plan.nodes.some(needsSubmit);
@@ -863,6 +896,19 @@ export async function runRecipeStep(
         const s = await pollNode(n.token);
         if (s.status === "done" && s.url) { n.status = "done"; n.url = s.url; n.error = undefined; }
         else if (s.status === "error") { n.status = "error"; n.error = s.error; }
+        if (isCreatifyPackedToken(n.token)) {
+          const ugcJob = await recordUgcJob(db, {
+            recipeId: id,
+            provider: "creatify",
+            token: n.token,
+            status: s.status === "done" ? "done" : s.status === "error" ? "failed" : "rendering",
+            dlqCategory: s.status === "error" ? "provider" : null,
+            outputUrl: s.url || null,
+            error: s.error || null,
+            inputPayload: { source: "graph_run_poll", ordinal: n.ordinal, slot: n.slot, node_type: n.node_type },
+          });
+          if (ugcJob.warning) addWarning(ugcJob.warning);
+        }
       }
     }
     const stillPending = plan.nodes.filter((n) => n.status === "submitted");

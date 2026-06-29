@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { creatifyLinkVideo, creatifyLipsync, creatifyReady } from "@/lib/factory/creatify";
 import { internalFetch } from "@/lib/internalFetch";
 import { analyzeScenarioQuality } from "@/lib/factory/scenarioQuality";
+import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { checkPersonaConsent, recordUgcJob } from "@/lib/factory/ugcJobs";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -17,6 +19,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error, detail: error }, { status: 503 });
   }
   const body = await req.json().catch(() => ({}));
+  const db = getSupabaseAdmin();
+  const warnings: string[] = [];
   const script: string = (body.script || body.brief || body.hook || "").toString().trim();
   const debugMode = body.debug === true;
   let url: string = (body.product_url || "").toString().trim();
@@ -31,7 +35,22 @@ export async function POST(req: NextRequest) {
   const voiceoverVolume = typeof body.voiceover_volume === "number" ? body.voiceover_volume : undefined;
   const modelVersion = (body.model_version || "").toString().trim() || undefined;
   const noCta = typeof body.no_cta === "boolean" ? body.no_cta : undefined;
+  const avatar = (body.creator || body.avatar || "").toString().trim();
   let title = "";
+
+  const personaGate = await checkPersonaConsent(db, avatar || null);
+  if (personaGate.warning) warnings.push(personaGate.warning);
+  if (!personaGate.allowed) {
+    await recordUgcJob(db, {
+      provider: "creatify",
+      idempotencyKey: `manual:${Date.now()}:consent`,
+      status: "dlq",
+      dlqCategory: "consent",
+      error: personaGate.error || "persona consent blocked",
+      inputPayload: { source: "ugc_creatify", persona_id: personaGate.personaId, consent_status: personaGate.consentStatus },
+    });
+    return NextResponse.json({ error: personaGate.error || "persona consent blocked", detail: "persona consent revoked", warnings }, { status: 409 });
+  }
 
   // резолв фото+названия+URL карточки WB по артикулу (nm_id из rnp_report). Фото отдаём Creatify напрямую.
   if ((!images.length || !url) && body.sku_art) {
@@ -97,7 +116,7 @@ export async function POST(req: NextRequest) {
       title: title || (body.brief || "").toString(),
       description: script || (body.brief || "").toString(),
       script: script || undefined,
-      avatar: (body.creator || body.avatar || "").trim() || undefined,
+      avatar: avatar || undefined,
       visual_style: (body.visual_style || "").toString().trim() || undefined,
       override_voice: overrideVoice || undefined,
       background_music_url: backgroundMusicUrl || undefined,
@@ -113,19 +132,33 @@ export async function POST(req: NextRequest) {
       const error = res.error || "Creatify не запустил";
       return NextResponse.json({ error, detail: error, ...(debugMode ? { debug: res.debug } : {}), ...(quality ? { quality_gate: quality } : {}) }, { status: 502 });
     }
-    return NextResponse.json({ task_id: "cf." + res.token, engine: "creatify", mode: "link_to_videos", product_url: url, ...(quality ? { quality_gate: quality } : {}), ...(debugMode ? { debug: res.debug } : {}) });
+    const ugcJob = await recordUgcJob(db, {
+      provider: "creatify",
+      token: res.token,
+      status: "submitted",
+      inputPayload: { source: "ugc_creatify", mode: "link_to_videos", product_url: url || null, avatar: avatar || null },
+    });
+    if (ugcJob.warning) warnings.push(ugcJob.warning);
+    return NextResponse.json({ task_id: "cf." + res.token, ugc_job_id: ugcJob.id, engine: "creatify", mode: "link_to_videos", product_url: url, warnings, ...(quality ? { quality_gate: quality } : {}), ...(debugMode ? { debug: res.debug } : {}) });
   }
 
   if (!script) {
     const error = "Нужен товар (артикул/URL) или текст для актёра";
     return NextResponse.json({ error, detail: error }, { status: 400 });
   }
-  const res = await creatifyLipsync(script, { creator: (body.creator || "").trim() || undefined });
+  const res = await creatifyLipsync(script, { creator: avatar || undefined });
   if (res.error || !res.token) {
     const error = res.error || "Creatify не запустил";
     return NextResponse.json({ error, detail: error }, { status: 502 });
   }
-  return NextResponse.json({ task_id: "cf." + res.token, engine: "creatify", mode: "lipsyncs" });
+  const ugcJob = await recordUgcJob(db, {
+    provider: "creatify",
+    token: res.token,
+    status: "submitted",
+    inputPayload: { source: "ugc_creatify", mode: "lipsyncs", avatar: avatar || null },
+  });
+  if (ugcJob.warning) warnings.push(ugcJob.warning);
+  return NextResponse.json({ task_id: "cf." + res.token, ugc_job_id: ugcJob.id, engine: "creatify", mode: "lipsyncs", warnings });
   } catch (e) {
     return NextResponse.json({
       error: "ugc-creatify crash: " + String((e as Error)?.message || e).slice(0, 160),
