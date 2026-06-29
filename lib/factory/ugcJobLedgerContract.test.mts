@@ -15,7 +15,8 @@ ok(/consent_status"\)[\s\S]*revoked/.test(helper), "persona consent blocks revok
 ok(/persona consent unknown; render allowed fail-open/.test(helper), "unknown persona consent is fail-open");
 ok(/requireGranted\?: boolean/.test(helper), "persona consent helper supports strict render mode");
 ok(/persona consent missing/.test(helper) && /persona consent not found/.test(helper), "strict mode blocks missing/unregistered personas");
-ok(/options\.requireGranted && status !== "granted"/.test(helper), "strict mode requires granted consent");
+ok(/RENDER_CONSENT_STATUSES/.test(helper) && /"stock"/.test(helper) && /"consented"/.test(helper), "strict mode accepts migrated stock/consented personas");
+ok(/options\.requireGranted && !isRenderConsentGranted\(status\)/.test(helper), "strict mode requires render-approved consent");
 
 ok(/checkPersonaConsent\(db,[\s\S]*\{ requireGranted: true \}/.test(graphRun), "graph-run requires granted persona consent before Creatify submit");
 ok(/dlqCategory: "consent"/.test(graphRun), "graph-run records consent blocks in UGC DLQ");

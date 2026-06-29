@@ -35,6 +35,11 @@ export type PersonaConsentGate = {
 
 const STATUSES = new Set<UgcJobStatus>(["queued", "submitted", "rendering", "qa", "done", "failed", "dlq", "cancelled"]);
 const DLQ = new Set<DlqCategory>(["consent", "policy", "lipsync", "face_drift", "provider", "timeout", "budget", "artifact", "unknown"]);
+const RENDER_CONSENT_STATUSES = new Set(["granted", "consented", "stock", "not_required"]);
+
+export function isRenderConsentGranted(status: unknown): boolean {
+  return RENDER_CONSENT_STATUSES.has(String(status || "").trim().toLowerCase());
+}
 
 function cleanText(value: unknown, max = 500): string | null {
   const text = String(value || "").trim();
@@ -110,7 +115,7 @@ export async function checkPersonaConsent(db: DbClient | null | undefined, provi
     if (status === "revoked") {
       return { allowed: false, personaId: row.id || null, consentStatus: status, warning: null, error: "persona consent revoked" };
     }
-    if (options.requireGranted && status !== "granted") {
+    if (options.requireGranted && !isRenderConsentGranted(status)) {
       return { allowed: false, personaId: row.id || null, consentStatus: status, warning: null, error: `persona consent ${status}` };
     }
     if (status === "unknown") {

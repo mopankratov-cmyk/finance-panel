@@ -28,6 +28,7 @@ export interface UgcScriptValidation {
 }
 
 const DELIVERIES = new Set<UgcDelivery>(["confessional", "demo", "whisper", "matter_of_fact", "excited"]);
+const RENDER_CONSENT_STATUSES = new Set(["granted", "consented", "stock", "not_required"]);
 
 function clean(value: unknown, max = 1000): string {
   return String(value || "").replace(/\s+/g, " ").trim().slice(0, max);
@@ -54,7 +55,7 @@ function blockersForRender(input: {
 }): string[] {
   const blockers: string[] = [];
   if (!input.personaId) blockers.push("persona_id missing");
-  if (input.consentStatus !== "granted") blockers.push(`persona consent ${input.consentStatus || "unknown"}`);
+  if (!RENDER_CONSENT_STATUSES.has(String(input.consentStatus || "").trim().toLowerCase())) blockers.push(`persona consent ${input.consentStatus || "unknown"}`);
   return [...blockers, ...(input.extra || [])].filter(Boolean);
 }
 

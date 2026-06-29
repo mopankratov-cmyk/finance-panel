@@ -12,7 +12,7 @@ ok(/render_allowed/.test(route) && /render_blockers/.test(route), "UGC script re
 ok(/hook\.text и spoken_lines\[0\]\.text должны дословно совпадать/.test(route), "Prompt locks hook text");
 ok(/normalizeUgcScript/.test(route), "Route normalizes Claude JSON through strict helper");
 ok(/function blockersForRender/.test(helper), "Helper centralizes render blockers");
-ok(/consentStatus !== "granted"/.test(helper), "Render is blocked unless persona consent is granted");
+ok(/RENDER_CONSENT_STATUSES/.test(helper) && /"stock"/.test(helper), "Render gate accepts stock platform personas");
 
 const valid = normalizeUgcScript({
   hook: { text: "Я не ожидала, что крем так ляжет", locked: true },
@@ -29,6 +29,18 @@ const valid = normalizeUgcScript({
 ok(valid.valid, "Valid UGC script passes");
 ok(valid.script.render_allowed, "Granted persona allows render");
 equal(valid.script.spoken_lines[0].text, valid.script.hook.text, "First spoken line equals locked hook");
+
+const stock = normalizeUgcScript({
+  hook: { text: "Исходный хук", locked: true },
+  duration_sec: 12,
+  spoken_lines: [
+    { t: 0, text: "Исходный хук", emotion: "curious", delivery: "confessional", pause_after_ms: 200 },
+    { t: 3, text: "Показываю товар без фильтра.", emotion: "honest", delivery: "demo", pause_after_ms: 100 },
+  ],
+  onscreen: [{ t: 0, text: "без фильтра" }],
+}, { expectedHook: "Исходный хук", product: "товар", personaId: "stock_persona", consentStatus: "stock" });
+
+ok(stock.script.render_allowed, "Stock Creatify persona allows render after backfill");
 
 const blocked = normalizeUgcScript({
   hook: { text: "Другой хук", locked: true },
