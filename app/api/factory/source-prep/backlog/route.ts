@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
-type WbAsset = { article?: string | null; url?: string | null; niche?: string | null; name?: string | null };
+type WbAsset = { id?: number | null; article?: string | null; url?: string | null; niche?: string | null; name?: string | null; analysis?: Record<string, unknown> | null };
 
 function clampInt(value: unknown, fallback: number, min: number, max: number): number {
   const n = Number(value || fallback);
@@ -28,13 +28,14 @@ async function run(req: NextRequest, body: Record<string, unknown>) {
   if (!process.env.FAL_KEY) return NextResponse.json({ ok: false, error: "FAL_KEY не настроен" }, { status: 500 });
 
   const dryRun = body.dry_run === true || new URL(req.url).searchParams.get("dry_run") === "1";
+  const retryFailed = body.retry_failed === true || new URL(req.url).searchParams.get("retry_failed") === "1";
   const limit = clampInt(body.limit ?? new URL(req.url).searchParams.get("limit"), 1, 1, 3);
   const imagesPerArticle = clampInt(body.images_per_article ?? new URL(req.url).searchParams.get("images_per_article"), 1, 1, 2);
   const requestedNiche = text(body.niche ?? new URL(req.url).searchParams.get("niche"), 80) || null;
 
   let q = db
     .from("content_assets")
-    .select("article,url,niche,name")
+    .select("id,article,url,niche,name,analysis")
     .eq("disk", "wb")
     .eq("kind", "image")
     .not("url", "is", null)
@@ -45,7 +46,11 @@ async function run(req: NextRequest, body: Record<string, unknown>) {
   const { data, error } = await q;
   if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
 
-  const rows = ((data || []) as WbAsset[]).filter((row) => text(row.article, 80) && /^https?:\/\//i.test(text(row.url, 1000)));
+  const rows = ((data || []) as WbAsset[]).filter((row) => {
+    if (!text(row.article, 80) || !/^https?:\/\//i.test(text(row.url, 1000))) return false;
+    const analysis = row.analysis && typeof row.analysis === "object" ? row.analysis : {};
+    return retryFailed || !analysis.source_prep_failed_at;
+  });
   const byArticle = new Map<string, WbAsset[]>();
   for (const row of rows) {
     const article = text(row.article, 80);
@@ -64,7 +69,7 @@ async function run(req: NextRequest, body: Record<string, unknown>) {
     return NextResponse.json({
       ok: true,
       dry_run: true,
-      requested: { limit, images_per_article: imagesPerArticle, niche: requestedNiche },
+      requested: { limit, images_per_article: imagesPerArticle, niche: requestedNiche, retry_failed: retryFailed },
       candidates: candidates.map((item) => ({
         article: item.article,
         niche: item.assets[0]?.niche || null,
@@ -88,9 +93,19 @@ async function run(req: NextRequest, body: Record<string, unknown>) {
     const niche = text(item.assets[0]?.niche, 80) || null;
     const product = text(item.assets[0]?.name || item.article, 120);
     const urls = item.assets.map((asset) => text(asset.url, 1000)).filter(Boolean).slice(0, imagesPerArticle);
+    const sourceRows = item.assets.filter((asset) => urls.includes(text(asset.url, 1000)));
     const results = await Promise.all(urls.map((url) => prepareProductImage(url, { article: item.article, niche: niche || undefined, product })));
     const prepared = results.filter((r) => r.ok).map((r) => ({ staged: r.stagedUrl, clean: r.cleanUrl }));
     const errors = results.filter((r) => !r.ok).map((r) => text(r.error, 220));
+    await Promise.all(sourceRows.map(async (asset, idx) => {
+      if (!asset.id) return;
+      const result = results[idx];
+      const analysis = asset.analysis && typeof asset.analysis === "object" ? asset.analysis : {};
+      const next = result?.ok
+        ? { ...analysis, source_prep_prepared_at: new Date().toISOString(), source_prep_error: null, source_prep_failed_at: null }
+        : { ...analysis, source_prep_failed_at: new Date().toISOString(), source_prep_error: text(result?.error, 220) };
+      await db.from("content_assets").update({ analysis: next }).eq("id", asset.id);
+    }));
     items.push({
       article: item.article,
       niche,
@@ -103,7 +118,7 @@ async function run(req: NextRequest, body: Record<string, unknown>) {
   return NextResponse.json({
     ok: items.every((item) => item.status === "prepared"),
     dry_run: false,
-    requested: { limit, images_per_article: imagesPerArticle, niche: requestedNiche },
+    requested: { limit, images_per_article: imagesPerArticle, niche: requestedNiche, retry_failed: retryFailed },
     candidates: candidates.length,
     prepared_articles: items.filter((item) => item.status === "prepared").length,
     failed_articles: items.filter((item) => item.status === "failed").length,
