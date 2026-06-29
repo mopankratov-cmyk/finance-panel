@@ -6,6 +6,7 @@ import { DEFAULT_REELS_BRAIN_NICHES, loadReelsBrainPortfolioDigest } from "@/lib
 import { loadObservabilitySnapshot } from "@/lib/factory/runSnapshots";
 import { readLatestStressArtifact, readStressHistorySummary } from "@/lib/factory/stabilityArtifacts";
 import { buildWorkerHeartbeatDiagnostics, classifyWorkerHeartbeatIssue, loadWorkerDocs, loadWorkerSnapshot } from "@/lib/factory/workerState";
+import { loadM6OpsSnapshot } from "@/lib/factory/m6Ops";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -395,6 +396,7 @@ export async function GET() {
         balances: null,
         observability: null,
         reels_brain: null,
+        m6: null,
         latest_stress: await latestStressPromise,
         stress_history: await stressHistoryPromise,
         alerts: [{ level: "error", code: "db_missing", detail: "Supabase is not configured" }],
@@ -403,7 +405,7 @@ export async function GET() {
     }
 
     const warnings: string[] = [];
-    const [workerState, balancesResult, observabilitySnapshotResult, observer, latestStress, stressHistory, reelsBrainDigest] = await Promise.all([
+    const [workerState, balancesResult, observabilitySnapshotResult, observer, latestStress, stressHistory, reelsBrainDigest, m6] = await Promise.all([
       loadWorkerSnapshot(db, docs.queue),
       collectBalances(db, { persist: true, throttleMs: BALANCE_THROTTLE_MS }).catch((error) => {
         warnings.push("balances unavailable: " + String((error as Error)?.message || error).slice(0, 160));
@@ -420,7 +422,12 @@ export async function GET() {
       latestStressPromise,
       stressHistoryPromise,
       loadReelsBrainPortfolioDigest(db, DEFAULT_REELS_BRAIN_NICHES),
+      loadM6OpsSnapshot(db).catch((error) => {
+        warnings.push("m6 ops unavailable: " + String((error as Error)?.message || error).slice(0, 160));
+        return { ok: true, ready: false, publications: { total_sample: 0, by_status: {}, latest: [] }, ugc_jobs: { total_sample: 0, by_status: {}, by_dlq_category: {}, latest: [] }, warnings: ["m6 ops unavailable"] };
+      }),
     ]);
+    if (Array.isArray(m6.warnings)) warnings.push(...m6.warnings.map((warning) => `m6: ${warning}`).slice(0, 4));
     const balances = balancesResult;
     const observability = observabilitySnapshotResult.observability || {
       total: 0,
@@ -572,6 +579,7 @@ export async function GET() {
           default_niches: DEFAULT_REELS_BRAIN_NICHES,
         },
       },
+      m6,
       latest_stress: latestStress,
       stress_history: stressHistory,
       warnings,
@@ -600,6 +608,7 @@ export async function GET() {
       balances: null,
       observability: null,
       reels_brain: null,
+      m6: null,
       latest_stress: latestStress,
       stress_history: stressHistory,
       alerts: [{ level: "error", code: "ops_crash", detail: String((e as Error)?.message || e).slice(0, 160) }],
