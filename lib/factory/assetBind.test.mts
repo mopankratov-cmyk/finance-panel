@@ -20,7 +20,7 @@ function eq(a: unknown, b: unknown, m: string) { ok(JSON.stringify(a) === JSON.s
   eq(p.realImages, ["ri1"], "realImages (gen не считается real-фото)");
   eq(p.wbImages, ["wb1", "wb2"], "wbImages");
   eq(bestImage(p), "ri1", "bestImage: реальное фото приоритетнее WB");
-  eq(bestImage({ realVideos: [], realImages: [], wbImages: ["wb1"] }), "wb1", "bestImage: WB когда нет реального");
+  eq(bestImage({ realVideos: [], realImages: [], wbImages: ["wb1"] }), undefined, "bestImage: WB-only не render-ready");
 }
 
 // ── classifyAssets + pickImage: prepared (source-prep) приоритетнее real и WB ──
@@ -49,8 +49,7 @@ function eq(a: unknown, b: unknown, m: string) { ok(JSON.stringify(a) === JSON.s
   const withVid = { realVideos: ["rv1"], realImages: [], wbImages: ["wb1"] };
   eq(chooseBinding("disk_real", false, withVid), { asset_url: "rv1", reason: "disk_real ← реальное видео товара" }, "disk_real + видео → asset_url");
   const noVid = { realVideos: [], realImages: [], wbImages: ["wb1"] };
-  eq(chooseBinding("disk_real", false, noVid)?.tool, "seedance", "disk_real без видео + есть фото → перевод на seedance");
-  eq(chooseBinding("disk_real", false, noVid)?.image_url, "wb1", "disk_real→seedance берёт WB-фото");
+  eq(chooseBinding("disk_real", false, noVid), null, "disk_real без видео + только WB → null до prepare-product");
   eq(chooseBinding("disk_real", false, { realVideos: [], realImages: [], wbImages: [] }), null, "disk_real без видео и без фото → null (нечем)");
 }
 
@@ -70,22 +69,22 @@ function eq(a: unknown, b: unknown, m: string) { ok(JSON.stringify(a) === JSON.s
   eq(chooseBinding("sound", false, pool), null, "sound → null");
 }
 
-// ── pickImage: ротация по индексу (real → wb), циклично ──
+// ── pickImage: ротация по индексу только по render-ready real/prepared, WB исключён ──
 {
   const p = { realVideos: [], realImages: ["ri1"], wbImages: ["wb1", "wb2"] };
   eq(pickImage(p, 0), "ri1", "idx0 → первое (real)");
-  eq(pickImage(p, 1), "wb1", "idx1 → wb1");
-  eq(pickImage(p, 2), "wb2", "idx2 → wb2");
-  eq(pickImage(p, 3), "ri1", "idx3 → цикл к началу");
+  eq(pickImage(p, 1), "ri1", "idx1 → real, WB пропущен");
+  eq(pickImage(p, 2), "ri1", "idx2 → real, WB пропущен");
+  eq(pickImage(p, 3), "ri1", "idx3 → цикл по render-ready source");
   eq(pickImage({ realVideos: [], realImages: [], wbImages: [] }, 0), undefined, "пусто → undefined");
 }
 
-// ── chooseBinding с imageIdx: разные i2v-ноды берут разные фото ──
+// ── chooseBinding с imageIdx: WB-only не кормит платную i2v-генерацию ──
 {
   const pool = { realVideos: [], realImages: [], wbImages: ["wb1", "wb2", "wb3"] };
-  eq(chooseBinding("seedance", false, pool, 0)?.image_url, "wb1", "i2v idx0 → wb1");
-  eq(chooseBinding("seedance", false, pool, 1)?.image_url, "wb2", "i2v idx1 → wb2");
-  eq(chooseBinding("disk_real", false, pool, 2)?.image_url, "wb3", "disk_real→seedance idx2 → wb3");
+  eq(chooseBinding("seedance", false, pool, 0), null, "i2v idx0 → null до prepare-product");
+  eq(chooseBinding("seedance", false, pool, 1), null, "i2v idx1 → null до prepare-product");
+  eq(chooseBinding("disk_real", false, pool, 2), null, "disk_real→seedance из WB запрещён");
 }
 
 // ── ГАРД кросс-контаминации: артикул из URL + сверка с рецептом ──

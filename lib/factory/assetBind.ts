@@ -34,12 +34,13 @@ export function classifyAssets(assets: DiskAsset[]): AssetPool {
   return { canonicalImages, preparedImages, realVideos, realImages, wbImages };
 }
 
-// фото товара по индексу, циклично — чтобы РАЗНЫЕ i2v-ноды брали РАЗНЫЕ стартовые кадры (анти-сэйминес).
-// ПРИОРИТЕТ: prepared (чистый/стейдж от source-prep) → реальная съёмка → сырое WB-фото (фолбэк).
+// Фото товара для платной генерации. WB-инфографика намеренно НЕ участвует: это только сырье для
+// prepare-product, но не render-ready source. Иначе i2v повторно ест карточки с плашками/текстом.
+// ПРИОРИТЕТ: prepared/canonical (чистый/стейдж от source-prep) → реальная съёмка.
 export function pickImage(p: AssetPool, idx = 0): string | undefined {
   const stable = [...(p.canonicalImages || []), ...(p.preparedImages || [])];
   if (stable.length) return stable[0];
-  const imgs = [...p.realImages, ...p.wbImages];
+  const imgs = [...p.realImages];
   return imgs.length ? imgs[((idx % imgs.length) + imgs.length) % imgs.length] : undefined;
 }
 // лучшее (первое) фото — для обратной совместимости/простых случаев
@@ -64,7 +65,7 @@ const I2V = new Set(["seedance", "seedance_fast", "seedance_pro", "kling", "klin
 
 // Решение по ноде БЕЗ источника: чем её накормить (или null — не трогаем/нечем).
 //   disk_real: есть реальное видео → asset_url; иначе фото есть → ПЕРЕВОДИМ на seedance i2v (нет съёмки → AI из фото)
-//   i2v (seedance/kling/pika): нужен стартовый кадр → image_url из лучшего фото
+//   i2v (seedance/kling/pika): нужен стартовый кадр → image_url из prepared/real фото
 export function chooseBinding(
   tool: string, hasSource: boolean, pool: AssetPool, imageIdx = 0,
 ): { image_url?: string; asset_url?: string; tool?: string; reason: string } | null {
@@ -73,7 +74,7 @@ export function chooseBinding(
   const img = pickImage(pool, imageIdx); // разный кадр на каждую i2v-ноду (анти-сэйминес)
   if (t === "disk_real" || t === "disk") {
     if (pool.realVideos.length) return { asset_url: pool.realVideos[0], reason: "disk_real ← реальное видео товара" };
-    if (img) return { tool: "seedance", image_url: img, reason: "нет реального видео → seedance i2v из фото товара" };
+    if (img) return { tool: "seedance", image_url: img, reason: "нет реального видео → seedance i2v из prepared/real фото товара" };
     return null; // нечем — упадёт как и раньше
   }
   if (I2V.has(t)) {

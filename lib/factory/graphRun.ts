@@ -11,8 +11,6 @@ import { classifyAssets, chooseBinding, assetMatchesArticle, type DiskAsset } fr
 import { isPrivateOrLocalUrl } from "./reelVariants";
 import { isPlaceholderSource } from "./toolSchemas";
 import { isOurStorage } from "./rehostImage";
-import { fetchCabinetCards } from "@/lib/wb/cards";
-import { wbCardImageUrl } from "@/lib/wb/cardImage";
 import { createHash, randomUUID } from "node:crypto";
 import type { ExecutionLogEntry, RunNode, RunOtkVerdict, RunPlan, RunStep } from "./graphTypes";
 import { LANE_BUDGET, routeNode, routeRecipeLane } from "./renderRouter";
@@ -541,10 +539,26 @@ async function savePlan(db: SupabaseClient, recipeId: number, plan: RunPlan, ext
   await db.from("node_recipes").update({ run_plan: plan, updated_at: new Date().toISOString(), ...extra }).eq("id", recipeId);
 }
 
+function isRawWbSourceUrl(value: unknown): boolean {
+  const url = String(value || "").trim();
+  if (!/^https?:\/\//i.test(url)) return false;
+  try {
+    const host = new URL(url).hostname.toLowerCase();
+    return host.endsWith("wbbasket.ru") || host.endsWith("wbstatic.net") || host.includes("basket-");
+  } catch {
+    return /wbbasket\.ru|wbstatic\.net|basket-\d+/i.test(url);
+  }
+}
+
+function isRenderReadySource(value: unknown): boolean {
+  return !isPlaceholderSource(value) && !isRawWbSourceUrl(value);
+}
+
 // Авто-привязка ассетов товара к визуальным нодам БЕЗ источника (фикс пустого автопилота: autofill выбирает
 // инструмент, но клип/фото привязывал только оператор в кокпите → в батче ноды падали «нет url/image_url»).
 // Тянем content_assets по артикулу ОДИН раз и только если есть незаполненные ноды. Срабатывает лишь на нодах,
-// которые и так упали бы → рабочие не трогает. disk_real без видео → перевод на seedance i2v из фото (нет съёмки → AI).
+// которые и так упали бы → рабочие не трогает. disk_real без видео → перевод на seedance i2v только из
+// prepared/real фото. Raw WB-карточка запрещена как render-source; она должна сначала пройти prepare-product.
 // ⚠️ ДЕНЬГИ: перевод disk_real($0)→seedance($0.42) рантайм-эскалирует стоимость, которую смета batch/route.ts
 // (estimateRecipe, disk_real не в TOOL_COST) НЕ видит. В обычном случае запас REGEN_FACTOR=3 это поглощает
 // (факт ≤ est×1.9 < est×3). Для UNATTENDED-масштаба правильный фикс — пост-autofill $-чек против бюджета батча
@@ -557,7 +571,7 @@ async function autoBindAssets(db: SupabaseClient, plan: RunPlan, article: string
     // если её тронуть (дописать image_url), hash сменится → кэш-чек упадёт → лишний оплаченный ререндер.
     // isPlaceholderSource: «picker»/пустое НЕ источник → нода с url="picker" попадёт в авто-байнд и получит
     // реальный ассет (иначе заглушка ехала в Remotion → 404). Источник есть, если ХОТЯ БЫ одно поле реальное.
-    return [n.image_url, n.asset_url, p["url"], p["image_url"], p["preview_url"]].some((v) => !isPlaceholderSource(v));
+    return [n.image_url, n.asset_url, p["url"], p["image_url"], p["preview_url"]].some(isRenderReadySource);
   };
   const needs = plan.nodes.filter((n) => {
     const t = String(n.tool || "").toLowerCase();
@@ -577,18 +591,8 @@ async function autoBindAssets(db: SupabaseClient, plan: RunPlan, article: string
     if (dropped) { try { await logSignal(db, "asset_article_mismatch", { niche, article, params: { dropped, kept: assets.length } }); } catch { /* сигнал best-effort */ } }
   } catch { return; } // каталог недоступен — ноды упадут штатно, как раньше
   const pool = classifyAssets(assets);
-  if (!(pool.preparedImages || []).length && !pool.realImages.length && !pool.wbImages.length) {
-    try {
-      const cards = await fetchCabinetCards(null);
-      const card = cards.find((c) => String(c.article || "").trim() === article);
-      const fallback = card ? wbCardImageUrl(card.nm_id, "big") : "";
-      if (fallback) {
-        pool.wbImages.push(fallback);
-        try { await logSignal(db, "asset_bind_wb_runtime_fallback", { niche, article, params: { nm_id: card?.nm_id || null } }); } catch { /* best-effort */ }
-      }
-    } catch {
-      /* WB content fallback best-effort */
-    }
+  if (!(pool.preparedImages || []).length && !pool.realImages.length && !pool.realVideos.length) {
+    try { await logSignal(db, "asset_bind_needs_prepare_product", { niche, article, params: { wb_images: pool.wbImages.length, assets: assets.length } }); } catch { /* best-effort */ }
   }
   let imgIdx = 0; // разные стартовые фото на разные i2v-ноды (анти-сэйминес: не 5 клипов с одного кадра)
   let unbound = 0;
@@ -599,7 +603,7 @@ async function autoBindAssets(db: SupabaseClient, plan: RunPlan, article: string
     if (b.asset_url) n.asset_url = b.asset_url;
     if (b.image_url) { n.image_url = b.image_url; (n.params as Record<string, unknown>)["image_url"] = b.image_url; imgIdx++; }
   }
-  // часть нод осталась без источника (нет реальной съёмки/WB-фото под товар) → они упадут в submit.
+  // часть нод осталась без источника (нет prepared/real source под товар) → они упадут в submit.
   // Раньше тихо → автопилот «пустой» без причины; теперь сигнал, чтобы оператор видел почему.
   if (unbound) { try { await logSignal(db, "asset_bind_empty", { niche, article, params: { unbound, needs: needs.length, assets: assets.length } }); } catch { /* сигнал best-effort */ } }
 }
@@ -608,9 +612,9 @@ function missingSourceReason(n: RunNode): string | null {
   const t = String(n.tool || "").toLowerCase();
   if (!t || ASSEMBLY_TOOLS.has(t) || t === "captions" || t === "elevenlabs" || t === "creatify") return null;
   const p = (n.params || {}) as Record<string, unknown>;
-  const hasSource = [n.image_url, n.asset_url, p["url"], p["image_url"], p["preview_url"]].some((v) => !isPlaceholderSource(v));
+  const hasSource = [n.image_url, n.asset_url, p["url"], p["image_url"], p["preview_url"]].some(isRenderReadySource);
   if (hasSource) return null;
-  if (t === "disk_real" || t === "disk") return "нет реального видео и нет фото товара для i2v-фолбэка";
+  if (t === "disk_real" || t === "disk") return "нет prepared/real источника товара; сначала запусти prepare-product";
   return `нет source asset для ${t} (image_url/asset_url)`;
 }
 

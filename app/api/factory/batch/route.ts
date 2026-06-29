@@ -126,7 +126,9 @@ export async function POST(req: NextRequest) {
   const skipBalanceCheck = dryRun && b.skip_balance_check === true;
   const requireFullBatch = b.require_full_batch === true;
   const requireLearningGate = b.require_learning_gate === true;
-  const requireStrongSource = b.require_strong_source !== false;
+  // Quality-first: raw WB is never render-ready. Legacy require_strong_source=false is ignored so
+  // unattended/prod runs cannot bypass product prep and spend fal on infographics.
+  const requireStrongSource = true;
   const requestedNiche = String(b.niche || "").trim() || null;
   const seriesAfter = String(b.series_after || "").trim() || null;
   const batchRunId = `batch_${Date.now()}_${randomUUID().slice(0, 8)}`;
@@ -275,7 +277,7 @@ export async function POST(req: NextRequest) {
   };
   const wbOnlyArticle = selectedRecipes.find((row) => (sourceReadiness.get(String(row.article || ""))?.tier || "none") === "wb")?.article || null;
   const sourcePrepNextAction = wbOnlyDrafts > 0 && strongSourceDrafts < count
-    ? { type: "prepare_product", route: "/api/factory/prepare-product", article: wbOnlyArticle, count: Math.min(2, wbOnlyDrafts), reason: "batch has WB-only sources; prepared product frames should lift OTK pass-rate" }
+    ? { type: "prepare_product_backlog", route: "/api/factory/source-prep/backlog", article: wbOnlyArticle, count: Math.min(2, wbOnlyDrafts), reason: "batch has WB-only sources; prepare product frames before paid generation" }
     : null;
   const controlCount = Math.max(1, Math.min(count, Number(batchPlan?.control_count) || Math.min(2, count)));
   const primaryAxis = ["hook_angle", "proof_density", "cta_shape", "format"].includes(String(batchPlan?.primary_change_axis || ""))
