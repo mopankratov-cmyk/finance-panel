@@ -626,6 +626,35 @@ type PortfolioDigestResponse = {
 
 type LearningEconomicsResponse = {
   ok?: boolean;
+  insights?: {
+    summary?: string[];
+    top_hooks?: {
+      hook_type: string;
+      hook_label: string;
+      frequency: number;
+      avg_score: number;
+      quality_score: number;
+      relevance_score: number;
+      op_score: number;
+      status: "op_hook" | "strong" | "stable" | "watch";
+      niches: string[];
+      platforms: string[];
+      templates: string[];
+      examples?: { url?: string | null; hook?: string | null; score?: number; views?: number }[];
+    }[];
+    winning_formats?: { label: string; frequency: number; avg_score: number; niches: string[] }[];
+    retention_mechanics?: { label: string; frequency: number; avg_score: number; hooks: string[] }[];
+    recipes?: {
+      id: string;
+      title: string;
+      hook: string;
+      format: string;
+      retention: string;
+      op_score: number;
+      niches: string[];
+      examples?: { url?: string | null; hook?: string | null; score?: number; views?: number }[];
+    }[];
+  };
   niches?: {
     niche: string;
     updated_at?: string | null;
@@ -917,6 +946,13 @@ function costTrendCopy(trend: LearningEconomicsResponse["totals"] extends infer 
   return { label: "мало данных", tone: "border-slate-200 bg-slate-50 text-slate-500", text: "нужно больше сохраненных прогонов" };
 }
 
+function hookStatusCopy(status: "op_hook" | "strong" | "stable" | "watch" | undefined) {
+  if (status === "op_hook") return { label: "OP hook", tone: "border-emerald-200 bg-emerald-50 text-emerald-700" };
+  if (status === "strong") return { label: "strong", tone: "border-cyan-200 bg-cyan-50 text-cyan-800" };
+  if (status === "stable") return { label: "stable", tone: "border-slate-200 bg-slate-50 text-slate-700" };
+  return { label: "watch", tone: "border-amber-200 bg-amber-50 text-amber-800" };
+}
+
 async function readJson<T>(res: Response): Promise<T> {
   const json = await res.json().catch(() => ({}));
   if (!res.ok) {
@@ -1153,6 +1189,11 @@ export default function ReelsBrainPage() {
     : null;
   const learningTimeline = learningEconomics?.timeline || [];
   const learningNiches = learningEconomics?.niches || [];
+  const insightSummary = learningEconomics?.insights?.summary || [];
+  const topHooks = learningEconomics?.insights?.top_hooks || [];
+  const winningFormats = learningEconomics?.insights?.winning_formats || [];
+  const retentionMechanics = learningEconomics?.insights?.retention_mechanics || [];
+  const generatorRecipes = learningEconomics?.insights?.recipes || [];
   const maxTimelineInserted = Math.max(1, ...learningTimeline.map((row) => row.inserted));
   const analyzeBacklogLanes = analyzeBacklog?.lanes || [];
   const analyzeBacklogQueue = analyzeBacklog?.queue || [];
@@ -2289,6 +2330,140 @@ export default function ReelsBrainPage() {
           </div>
         )}
 
+        <div className="mt-4 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.22em] text-cyan-700">Analyzed intelligence</p>
+              <h3 className="mt-1 text-2xl font-black tracking-tight text-slate-950">Витрина инсайтов из разобранных видео</h3>
+              <p className="mt-1 max-w-3xl text-sm text-slate-500">
+                Не логи и не настройки. Здесь только то, что можно понять как пользователь: какие хуки выигрывают, какие форматы держат внимание и что уже можно отдать в генератор.
+              </p>
+            </div>
+            <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-black text-emerald-700">
+              {compactNumber(learningTotals?.generator_ready_patterns || 0)} generator-ready
+            </span>
+          </div>
+
+          <div className="mt-4 grid gap-3 lg:grid-cols-3">
+            {(insightSummary.length ? insightSummary : [
+              "Мозг еще собирает витрину инсайтов: нужен Pattern Brain по выбранным нишам.",
+            ]).slice(0, 3).map((line, index) => (
+              <div key={`${line}:${index}`} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">Вывод {index + 1}</p>
+                <p className="mt-2 text-sm font-semibold leading-6 text-slate-800">{line}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-5 grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
+            <div className="rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-950 via-slate-900 to-cyan-950 p-4 text-white">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <p className="text-xs font-black uppercase tracking-[0.2em] text-cyan-100/70">Winning hooks</p>
+                  <h4 className="mt-1 text-xl font-black">OP hooks, которые чаще всего побеждают</h4>
+                </div>
+                <span className="rounded-full border border-white/10 bg-white/10 px-3 py-1 text-xs font-bold text-slate-200">
+                  top {compactNumber(topHooks.length)}
+                </span>
+              </div>
+              <div className="mt-4 grid gap-3 md:grid-cols-2">
+                {topHooks.length ? topHooks.slice(0, 4).map((hook, index) => {
+                  const status = hookStatusCopy(hook.status);
+                  return (
+                    <div key={hook.hook_type} className="rounded-2xl border border-white/10 bg-white/10 p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-xs font-black uppercase tracking-[0.18em] text-cyan-100/70">#{index + 1}</p>
+                          <h5 className="mt-1 text-lg font-black">{hook.hook_label}</h5>
+                        </div>
+                        <span className={`shrink-0 rounded-full border px-2.5 py-1 text-xs font-black ${status.tone}`}>{status.label}</span>
+                      </div>
+                      <div className="mt-3 flex items-end gap-2">
+                        <span className="text-4xl font-black">{compactNumber(hook.op_score)}</span>
+                        <span className="pb-1 text-xs font-bold uppercase tracking-wide text-slate-300">OP score</span>
+                      </div>
+                      <div className="mt-3 grid grid-cols-3 gap-2 text-xs text-slate-200">
+                        <span className="rounded-xl bg-white/10 px-2 py-1">freq {compactNumber(hook.frequency)}</span>
+                        <span className="rounded-xl bg-white/10 px-2 py-1">avg {compactNumber(hook.avg_score)}</span>
+                        <span className="rounded-xl bg-white/10 px-2 py-1">niches {compactNumber(hook.niches.length)}</span>
+                      </div>
+                      {hook.templates?.[0] ? (
+                        <p className="mt-3 rounded-xl bg-slate-950/40 px-3 py-2 text-xs leading-5 text-slate-200">
+                          Шаблон: {hook.templates[0]}
+                        </p>
+                      ) : null}
+                    </div>
+                  );
+                }) : <div className="rounded-2xl border border-white/10 bg-white/10 p-4 text-sm text-slate-300">OP hooks пока не собраны.</div>}
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">Winning formats</p>
+                <h4 className="mt-1 text-lg font-black text-slate-950">Какие форматы работают</h4>
+                <div className="mt-3 space-y-2">
+                  {winningFormats.length ? winningFormats.slice(0, 4).map((format) => (
+                    <div key={format.label} className="rounded-xl border border-slate-200 bg-white px-3 py-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-bold text-slate-900">{format.label}</span>
+                        <span className="text-xs font-black text-cyan-700">{compactNumber(format.avg_score)}</span>
+                      </div>
+                      <p className="mt-1 text-xs text-slate-500">freq {compactNumber(format.frequency)} · {format.niches.join(", ") || "all niches"}</p>
+                    </div>
+                  )) : <p className="text-sm text-slate-500">Форматы пока не найдены.</p>}
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">Retention mechanics</p>
+                <h4 className="mt-1 text-lg font-black text-slate-950">Почему досматривают</h4>
+                <div className="mt-3 space-y-2">
+                  {retentionMechanics.length ? retentionMechanics.slice(0, 4).map((retention) => (
+                    <div key={retention.label} className="rounded-xl border border-slate-200 bg-white px-3 py-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-bold text-slate-900">{retention.label}</span>
+                        <span className="text-xs font-black text-emerald-700">{compactNumber(retention.avg_score)}</span>
+                      </div>
+                      <p className="mt-1 text-xs text-slate-500">{retention.hooks.slice(0, 2).join(" · ") || "hook mix"}</p>
+                    </div>
+                  )) : <p className="text-sm text-slate-500">Механики удержания пока не найдены.</p>}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">Generator-ready recipes</p>
+                <h4 className="mt-1 text-lg font-black text-slate-950">Что можно сразу отдавать контент-заводу</h4>
+              </div>
+              <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-bold text-slate-500">
+                {compactNumber(generatorRecipes.length)} recipes
+              </span>
+            </div>
+            <div className="mt-3 grid gap-3 lg:grid-cols-3">
+              {generatorRecipes.length ? generatorRecipes.slice(0, 3).map((recipe) => (
+                <div key={recipe.id} className="rounded-2xl border border-slate-200 bg-white p-4">
+                  <div className="flex items-start justify-between gap-2">
+                    <h5 className="text-sm font-black leading-5 text-slate-950">{recipe.title}</h5>
+                    <span className="shrink-0 rounded-full border border-cyan-200 bg-cyan-50 px-2 py-1 text-xs font-black text-cyan-800">
+                      {compactNumber(recipe.op_score)}
+                    </span>
+                  </div>
+                  <div className="mt-3 space-y-1 text-xs text-slate-600">
+                    <p><span className="font-bold text-slate-900">Hook:</span> {recipe.hook}</p>
+                    <p><span className="font-bold text-slate-900">Format:</span> {recipe.format}</p>
+                    <p><span className="font-bold text-slate-900">Retention:</span> {recipe.retention}</p>
+                  </div>
+                  <p className="mt-3 text-xs font-semibold text-slate-400">{recipe.niches.join(", ")}</p>
+                </div>
+              )) : <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-500">Рецепты появятся после сборки Pattern Brain.</div>}
+            </div>
+          </div>
+        </div>
+
         <div className="mt-4 rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-950 via-slate-900 to-cyan-950 p-4 text-white">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
@@ -2394,6 +2569,10 @@ export default function ReelsBrainPage() {
             </div>
           </div>
 
+          <details className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-3">
+            <summary className="cursor-pointer text-sm font-black text-cyan-100">
+              Technical learning trail: timeline и детальная сила ниш
+            </summary>
           <div className="mt-4 grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
             <div className="rounded-2xl border border-white/10 bg-white/10 p-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
@@ -2456,9 +2635,13 @@ export default function ReelsBrainPage() {
               </div>
             </div>
           </div>
+          </details>
         </div>
 
-        <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+        <details className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+          <summary className="cursor-pointer text-sm font-black uppercase tracking-[0.18em] text-slate-500">
+            Technical details: automation history
+          </summary>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Automation history</p>
@@ -2530,7 +2713,7 @@ export default function ReelsBrainPage() {
               </div>
             )) : <EmptyState title="История пока пустая" text="Запусти daily, weekly или bulk ingest и сохрани snapshot." />}
           </div>
-        </div>
+        </details>
       </section>
 
       <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">

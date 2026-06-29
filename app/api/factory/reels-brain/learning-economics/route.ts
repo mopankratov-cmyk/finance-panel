@@ -27,6 +27,25 @@ type PatternBrain = {
   }>;
 };
 
+type InsightPattern = {
+  pattern_id?: string;
+  hook_type?: string;
+  hook_label?: string;
+  structure_type?: string;
+  structure_label?: string;
+  retention_mechanism?: string;
+  retention_label?: string;
+  viral_logic_label?: string;
+  frequency?: number;
+  strength_score?: number;
+  avg_views?: number;
+  quality_label?: string;
+  quality_score?: number;
+  relevance_score?: number;
+  hooks?: string[];
+  examples?: { url?: string | null; hook?: string | null; score?: number; views?: number }[];
+};
+
 function splitList(value: unknown): string[] {
   return Array.from(new Set(String(value || "")
     .split(",")
@@ -93,6 +112,167 @@ function patternBrain(playbook: unknown): PatternBrain {
   return pb.reels_brain_patterns && typeof pb.reels_brain_patterns === "object"
     ? pb.reels_brain_patterns as PatternBrain
     : {};
+}
+
+function patternList(brain: PatternBrain): InsightPattern[] {
+  const meta = brain.meta_brain || {};
+  const ready = Array.isArray(meta.generator_ready_patterns) ? meta.generator_ready_patterns : [];
+  const all = Array.isArray(meta.patterns) ? meta.patterns : [];
+  return (ready.length ? ready : all).filter((row) => row && typeof row === "object") as InsightPattern[];
+}
+
+function insightScore(pattern: InsightPattern, nicheCount: number, platformCount: number) {
+  return Math.round(Math.min(100,
+    num(pattern.strength_score)
+    + Math.min(20, Math.log(num(pattern.frequency) + 1) * 6)
+    + Math.min(12, nicheCount * 4)
+    + Math.min(12, platformCount * 4)
+    + (pattern.quality_label === "generator_ready" ? 10 : 0)
+    + Math.min(10, num(pattern.relevance_score) / 10)
+  ));
+}
+
+function statusFromScore(score: number) {
+  if (score >= 90) return "op_hook" as const;
+  if (score >= 75) return "strong" as const;
+  if (score >= 60) return "stable" as const;
+  return "watch" as const;
+}
+
+function buildInsights(rows: { niche?: string; playbook?: unknown }[]) {
+  const hookMap = new Map<string, {
+    hook_type: string;
+    hook_label: string;
+    frequency: number;
+    avg_score_sum: number;
+    quality_score_sum: number;
+    relevance_score_sum: number;
+    count: number;
+    niches: Set<string>;
+    platforms: Set<string>;
+    examples: { url?: string | null; hook?: string | null; score?: number; views?: number }[];
+    templates: Set<string>;
+  }>();
+  const formatMap = new Map<string, { label: string; frequency: number; score_sum: number; count: number; niches: Set<string> }>();
+  const retentionMap = new Map<string, { label: string; frequency: number; score_sum: number; count: number; hooks: Set<string> }>();
+  const recipes: Array<{
+    id: string;
+    title: string;
+    hook: string;
+    format: string;
+    retention: string;
+    op_score: number;
+    niches: string[];
+    examples: { url?: string | null; hook?: string | null; score?: number; views?: number }[];
+  }> = [];
+
+  for (const row of rows) {
+    const niche = row.niche || "default";
+    const brain = patternBrain(row.playbook);
+    for (const pattern of patternList(brain)) {
+      const hookKey = pattern.hook_type || "unknown";
+      const hook = hookMap.get(hookKey) || {
+        hook_type: hookKey,
+        hook_label: pattern.hook_label || hookKey,
+        frequency: 0,
+        avg_score_sum: 0,
+        quality_score_sum: 0,
+        relevance_score_sum: 0,
+        count: 0,
+        niches: new Set<string>(),
+        platforms: new Set<string>(),
+        examples: [],
+        templates: new Set<string>(),
+      };
+      hook.frequency += num(pattern.frequency);
+      hook.avg_score_sum += num(pattern.strength_score);
+      hook.quality_score_sum += num(pattern.quality_score);
+      hook.relevance_score_sum += num(pattern.relevance_score);
+      hook.count += 1;
+      hook.niches.add(niche);
+      for (const [platform, platformBrain] of Object.entries(brain.platform_brains || {})) {
+        const platformPatterns = Array.isArray(platformBrain?.generator_ready_patterns) ? platformBrain.generator_ready_patterns : [];
+        if (platformPatterns.some((item) => (item as InsightPattern).hook_type === hookKey)) hook.platforms.add(platform);
+      }
+      for (const example of pattern.examples || []) {
+        if (hook.examples.length < 5) hook.examples.push(example);
+      }
+      for (const template of pattern.hooks || []) {
+        if (template.trim()) hook.templates.add(template.trim().slice(0, 180));
+      }
+      hookMap.set(hookKey, hook);
+
+      const formatKey = pattern.structure_type || "unknown_structure";
+      const format = formatMap.get(formatKey) || { label: pattern.structure_label || formatKey, frequency: 0, score_sum: 0, count: 0, niches: new Set<string>() };
+      format.frequency += num(pattern.frequency);
+      format.score_sum += num(pattern.strength_score);
+      format.count += 1;
+      format.niches.add(niche);
+      formatMap.set(formatKey, format);
+
+      const retentionKey = pattern.retention_mechanism || "unknown";
+      const retention = retentionMap.get(retentionKey) || { label: pattern.retention_label || retentionKey, frequency: 0, score_sum: 0, count: 0, hooks: new Set<string>() };
+      retention.frequency += num(pattern.frequency);
+      retention.score_sum += num(pattern.strength_score);
+      retention.count += 1;
+      retention.hooks.add(pattern.hook_label || hookKey);
+      retentionMap.set(retentionKey, retention);
+
+      recipes.push({
+        id: pattern.pattern_id || `${hookKey}:${formatKey}:${retentionKey}`,
+        title: pattern.viral_logic_label || `${pattern.hook_label || hookKey} -> ${pattern.structure_label || formatKey}`,
+        hook: pattern.hook_label || hookKey,
+        format: pattern.structure_label || formatKey,
+        retention: pattern.retention_label || retentionKey,
+        op_score: insightScore(pattern, 1, 1),
+        niches: [niche],
+        examples: (pattern.examples || []).slice(0, 3),
+      });
+    }
+  }
+
+  const top_hooks = Array.from(hookMap.values()).map((row) => {
+    const avg_score = row.count ? Math.round(row.avg_score_sum / row.count) : 0;
+    const quality_score = row.count ? Math.round(row.quality_score_sum / row.count) : 0;
+    const relevance_score = row.count ? Math.round(row.relevance_score_sum / row.count) : 0;
+    const op_score = insightScore({ strength_score: avg_score, frequency: row.frequency, quality_score, relevance_score, quality_label: quality_score >= 70 ? "generator_ready" : "needs_cleanup" }, row.niches.size, row.platforms.size);
+    return {
+      hook_type: row.hook_type,
+      hook_label: row.hook_label,
+      frequency: row.frequency,
+      avg_score,
+      quality_score,
+      relevance_score,
+      op_score,
+      status: statusFromScore(op_score),
+      niches: Array.from(row.niches).sort(),
+      platforms: Array.from(row.platforms).sort(),
+      templates: Array.from(row.templates).slice(0, 3),
+      examples: row.examples.sort((a, b) => num(b.score) - num(a.score) || num(b.views) - num(a.views)).slice(0, 3),
+    };
+  }).sort((a, b) => b.op_score - a.op_score || b.frequency - a.frequency).slice(0, 8);
+
+  return {
+    summary: [
+      top_hooks[0] ? `Самый сильный вход: ${top_hooks[0].hook_label} (${top_hooks[0].op_score}/100).` : "Паттерны хуков пока не найдены.",
+      `Generator-ready паттерны уже можно отдавать в контент-завод как рецепты, но примеры исходников лучше держать рядом.`,
+      `Технические логи спрятаны ниже: витрина показывает только выводы, уверенность и применение.`,
+    ],
+    top_hooks,
+    winning_formats: Array.from(formatMap.values()).map((row) => ({
+      label: row.label,
+      frequency: row.frequency,
+      avg_score: row.count ? Math.round(row.score_sum / row.count) : 0,
+      niches: Array.from(row.niches).sort(),
+    })).sort((a, b) => b.avg_score - a.avg_score || b.frequency - a.frequency).slice(0, 6),
+    retention_mechanics: Array.from(retentionMap.values()).map((row) => ({
+      label: row.label,
+      frequency: row.frequency,
+      avg_score: row.count ? Math.round(row.score_sum / row.count) : 0,
+      hooks: Array.from(row.hooks).slice(0, 4),
+    })).sort((a, b) => b.avg_score - a.avg_score || b.frequency - a.frequency).slice(0, 6),
+    recipes: recipes.sort((a, b) => b.op_score - a.op_score).slice(0, 6),
+  };
 }
 
 function understandingScore(brain: PatternBrain) {
@@ -304,6 +484,7 @@ export async function GET(req: NextRequest) {
       ok: true,
       niches: nicheSummaries,
       totals,
+      insights: buildInsights(rows),
       timeline,
       daily_costs: {
         today,
