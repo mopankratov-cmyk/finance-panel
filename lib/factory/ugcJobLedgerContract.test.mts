@@ -13,13 +13,16 @@ ok(/onConflict: "idempotency_key"/.test(helper), "UGC job helper is idempotent")
 ok(/export async function checkPersonaConsent/.test(helper), "persona consent helper exists");
 ok(/consent_status"\)[\s\S]*revoked/.test(helper), "persona consent blocks revoked personas");
 ok(/persona consent unknown; render allowed fail-open/.test(helper), "unknown persona consent is fail-open");
+ok(/requireGranted\?: boolean/.test(helper), "persona consent helper supports strict render mode");
+ok(/persona consent missing/.test(helper) && /persona consent not found/.test(helper), "strict mode blocks missing/unregistered personas");
+ok(/options\.requireGranted && status !== "granted"/.test(helper), "strict mode requires granted consent");
 
-ok(/checkPersonaConsent\(db/.test(graphRun), "graph-run checks creatify persona consent before submit");
+ok(/checkPersonaConsent\(db,[\s\S]*\{ requireGranted: true \}/.test(graphRun), "graph-run requires granted persona consent before Creatify submit");
 ok(/dlqCategory: "consent"/.test(graphRun), "graph-run records consent blocks in UGC DLQ");
 ok(/recordUgcJob\(db, \{[\s\S]*source: "graph_run_submit"/.test(graphRun), "graph-run records creatify submits");
 ok(/recordUgcJob\(db, \{[\s\S]*source: "graph_run_poll"/.test(graphRun), "graph-run records creatify poll outcomes");
 
-ok(/checkPersonaConsent\(db, avatar/.test(submitRoute), "manual UGC submit checks persona consent");
+ok(/checkPersonaConsent\(db, avatar \|\| null, \{ requireGranted: true \}\)/.test(submitRoute), "manual UGC submit requires granted persona consent");
 ok(/ugc_job_id/.test(submitRoute), "manual UGC submit returns ugc_job_id");
 ok(/recordUgcJob\(getSupabaseAdmin\(\)/.test(renderRoute), "render route records UGC render status");
 ok(/recordUgcJob\(getSupabaseAdmin\(\)/.test(statusRoute), "status route records UGC provider status");

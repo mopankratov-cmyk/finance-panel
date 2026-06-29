@@ -83,8 +83,10 @@ export function isCreatifyPackedToken(token: unknown): boolean {
   return !!outer?.startsWith("creatify::");
 }
 
-export async function checkPersonaConsent(db: DbClient | null | undefined, providerPersonaId: unknown): Promise<PersonaConsentGate> {
+export async function checkPersonaConsent(db: DbClient | null | undefined, providerPersonaId: unknown, options: { requireGranted?: boolean } = {}): Promise<PersonaConsentGate> {
   const persona = cleanText(providerPersonaId, 240);
+  if (!persona && options.requireGranted) return { allowed: false, personaId: null, consentStatus: null, warning: null, error: "persona consent missing" };
+  if (!db && options.requireGranted) return { allowed: false, personaId: null, consentStatus: null, warning: null, error: "persona consent db unavailable" };
   if (!db || !persona) return { allowed: true, personaId: null, consentStatus: null, warning: null, error: null };
 
   try {
@@ -93,20 +95,30 @@ export async function checkPersonaConsent(db: DbClient | null | undefined, provi
       .eq("provider", "creatify")
       .eq("provider_persona_id", persona)
       .limit(1);
-    if (found?.error) return { allowed: true, personaId: null, consentStatus: null, warning: `persona consent lookup: ${safeError(found.error)}`, error: null };
+    if (found?.error) {
+      if (options.requireGranted) return { allowed: false, personaId: null, consentStatus: null, warning: null, error: `persona consent lookup: ${safeError(found.error)}` };
+      return { allowed: true, personaId: null, consentStatus: null, warning: `persona consent lookup: ${safeError(found.error)}`, error: null };
+    }
 
     const row = (found.data as { id?: string; consent_status?: string }[] | null)?.[0] || null;
-    if (!row) return { allowed: true, personaId: null, consentStatus: null, warning: null, error: null };
+    if (!row) {
+      if (options.requireGranted) return { allowed: false, personaId: null, consentStatus: null, warning: null, error: "persona consent not found" };
+      return { allowed: true, personaId: null, consentStatus: null, warning: null, error: null };
+    }
 
     const status = String(row.consent_status || "unknown");
     if (status === "revoked") {
       return { allowed: false, personaId: row.id || null, consentStatus: status, warning: null, error: "persona consent revoked" };
+    }
+    if (options.requireGranted && status !== "granted") {
+      return { allowed: false, personaId: row.id || null, consentStatus: status, warning: null, error: `persona consent ${status}` };
     }
     if (status === "unknown") {
       return { allowed: true, personaId: row.id || null, consentStatus: status, warning: "persona consent unknown; render allowed fail-open", error: null };
     }
     return { allowed: true, personaId: row.id || null, consentStatus: status, warning: null, error: null };
   } catch (error) {
+    if (options.requireGranted) return { allowed: false, personaId: null, consentStatus: null, warning: null, error: `persona consent exception: ${safeError(error)}` };
     return { allowed: true, personaId: null, consentStatus: null, warning: `persona consent exception: ${safeError(error)}`, error: null };
   }
 }

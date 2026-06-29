@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
   const avatar = (body.creator || body.avatar || "").toString().trim();
   let title = "";
 
-  const personaGate = await checkPersonaConsent(db, avatar || null);
+  const personaGate = await checkPersonaConsent(db, avatar || null, { requireGranted: true });
   if (personaGate.warning) warnings.push(personaGate.warning);
   if (!personaGate.allowed) {
     await recordUgcJob(db, {
@@ -49,7 +49,7 @@ export async function POST(req: NextRequest) {
       error: personaGate.error || "persona consent blocked",
       inputPayload: { source: "ugc_creatify", persona_id: personaGate.personaId, consent_status: personaGate.consentStatus },
     });
-    return NextResponse.json({ error: personaGate.error || "persona consent blocked", detail: "persona consent revoked", warnings }, { status: 409 });
+    return NextResponse.json({ error: personaGate.error || "persona consent blocked", detail: "persona consent required before paid UGC render", warnings }, { status: 409 });
   }
 
   // резолв фото+названия+URL карточки WB по артикулу (nm_id из rnp_report). Фото отдаём Creatify напрямую.

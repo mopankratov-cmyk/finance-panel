@@ -822,7 +822,7 @@ export async function runRecipeStep(
       const pv = (n.params || {})["preview_url"]; const ph = (n.params || {})["preview_hash"];
       if (pv && ph && nodeHash(asNode(n)) === ph) { n.status = "done"; n.url = String(pv); n.engine = "preview"; continue; }
       if (tool === "creatify") {
-        const personaGate = await checkPersonaConsent(db, (n.params || {}).override_avatar || (n.params || {}).avatar || null);
+        const personaGate = await checkPersonaConsent(db, (n.params || {}).override_avatar || (n.params || {}).avatar || null, { requireGranted: true });
         if (personaGate.warning) addWarning(personaGate.warning);
         if (!personaGate.allowed) {
           n.status = "error";
