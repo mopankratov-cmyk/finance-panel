@@ -27,16 +27,21 @@ create table if not exists factory_personas (
 create index if not exists factory_personas_consent_idx on factory_personas(consent_status, provider);
 create index if not exists factory_personas_provider_idx on factory_personas(provider, provider_persona_id);
 
-alter table brand_kits
-  add column if not exists persona_ref_id uuid references factory_personas(id) on delete set null,
-  add column if not exists persona_consent_required boolean not null default true;
-create index if not exists brand_kits_persona_ref_idx on brand_kits(persona_ref_id);
+do $$
+begin
+  if to_regclass('public.brand_kits') is not null then
+    alter table brand_kits
+      add column if not exists persona_ref_id uuid references factory_personas(id) on delete set null,
+      add column if not exists persona_consent_required boolean not null default true;
+    create index if not exists brand_kits_persona_ref_idx on brand_kits(persona_ref_id);
+  end if;
+end $$;
 
 -- ── UGC render jobs: idempotency, retry and DLQ categories ───────────────────
 create table if not exists factory_ugc_jobs (
   id                 uuid primary key default gen_random_uuid(),
-  recipe_id          bigint references node_recipes(id) on delete set null,
-  node_id            bigint references node_recipe_nodes(id) on delete set null,
+  recipe_id          bigint,
+  node_id            bigint,
   persona_id         uuid references factory_personas(id) on delete restrict,
   provider           text not null default 'creatify',
   provider_job_id    text,
@@ -60,6 +65,25 @@ create index if not exists factory_ugc_jobs_recipe_idx on factory_ugc_jobs(recip
 create index if not exists factory_ugc_jobs_status_idx on factory_ugc_jobs(status, lease_until, created_at);
 create index if not exists factory_ugc_jobs_provider_idx on factory_ugc_jobs(provider, provider_job_id);
 
+do $$
+begin
+  if to_regclass('public.node_recipes') is not null and not exists (
+    select 1 from pg_constraint where conname = 'factory_ugc_jobs_recipe_fk'
+  ) then
+    alter table factory_ugc_jobs
+      add constraint factory_ugc_jobs_recipe_fk
+      foreign key (recipe_id) references node_recipes(id) on delete set null;
+  end if;
+
+  if to_regclass('public.node_recipe_nodes') is not null and not exists (
+    select 1 from pg_constraint where conname = 'factory_ugc_jobs_node_fk'
+  ) then
+    alter table factory_ugc_jobs
+      add constraint factory_ugc_jobs_node_fk
+      foreign key (node_id) references node_recipe_nodes(id) on delete set null;
+  end if;
+end $$;
+
 -- ── Distribution targets and publication rows ───────────────────────────────
 create table if not exists factory_distribution_targets (
   id                  uuid primary key default gen_random_uuid(),
@@ -79,7 +103,7 @@ create index if not exists factory_distribution_targets_enabled_idx on factory_d
 
 create table if not exists factory_publications (
   id                    uuid primary key default gen_random_uuid(),
-  recipe_id             bigint references node_recipes(id) on delete set null,
+  recipe_id             bigint,
   ugc_job_id            uuid references factory_ugc_jobs(id) on delete set null,
   target_id             uuid references factory_distribution_targets(id) on delete set null,
   platform              text not null,
@@ -104,6 +128,17 @@ create index if not exists factory_publications_recipe_idx on factory_publicatio
 create index if not exists factory_publications_status_idx on factory_publications(status, next_metrics_pull_at);
 create index if not exists factory_publications_external_idx on factory_publications(platform, external_post_id);
 
+do $$
+begin
+  if to_regclass('public.node_recipes') is not null and not exists (
+    select 1 from pg_constraint where conname = 'factory_publications_recipe_fk'
+  ) then
+    alter table factory_publications
+      add constraint factory_publications_recipe_fk
+      foreign key (recipe_id) references node_recipes(id) on delete set null;
+  end if;
+end $$;
+
 -- Paid publication safety: paid rows must explicitly carry an ad token marker.
 do $$
 begin
@@ -116,43 +151,56 @@ begin
   end if;
 end $$;
 
-alter table node_recipes
-  add column if not exists latest_publication_id uuid,
-  add column if not exists published_url text,
-  add column if not exists distribution_status text;
+do $$
+begin
+  if to_regclass('public.node_recipes') is not null then
+    alter table node_recipes
+      add column if not exists latest_publication_id uuid,
+      add column if not exists published_url text,
+      add column if not exists distribution_status text;
+
+    if not exists (
+      select 1 from pg_constraint where conname = 'node_recipes_latest_publication_fk'
+    ) then
+      alter table node_recipes
+        add constraint node_recipes_latest_publication_fk
+        foreign key (latest_publication_id) references factory_publications(id) on delete set null;
+    end if;
+
+    create index if not exists node_recipes_latest_publication_idx on node_recipes(latest_publication_id);
+  end if;
+end $$;
 
 do $$
 begin
-  if not exists (
-    select 1 from pg_constraint where conname = 'node_recipes_latest_publication_fk'
-  ) then
-    alter table node_recipes
-      add constraint node_recipes_latest_publication_fk
-      foreign key (latest_publication_id) references factory_publications(id) on delete set null;
+  if to_regclass('public.cf_signals') is not null then
+    alter table cf_signals
+      add column if not exists publication_id uuid references factory_publications(id) on delete set null;
+    create index if not exists cf_signals_publication_idx on cf_signals(publication_id);
   end if;
 end $$;
-create index if not exists node_recipes_latest_publication_idx on node_recipes(latest_publication_id);
-
-alter table cf_signals
-  add column if not exists publication_id uuid references factory_publications(id) on delete set null;
-create index if not exists cf_signals_publication_idx on cf_signals(publication_id);
 
 -- ── Metrics extension: keep recipe_id, add publication/external dimensions ──
-alter table post_metrics
-  add column if not exists publication_id uuid references factory_publications(id) on delete set null,
-  add column if not exists external_post_id text,
-  add column if not exists hook_rate numeric,
-  add column if not exists hold_rate numeric,
-  add column if not exists completion_rate numeric,
-  add column if not exists engagement_count bigint,
-  add column if not exists marketplace_orders bigint,
-  add column if not exists revenue numeric,
-  add column if not exists pulled_at timestamptz,
-  add column if not exists source text,
-  add column if not exists raw_metrics jsonb not null default '{}';
+do $$
+begin
+  if to_regclass('public.post_metrics') is not null then
+    alter table post_metrics
+      add column if not exists publication_id uuid references factory_publications(id) on delete set null,
+      add column if not exists external_post_id text,
+      add column if not exists hook_rate numeric,
+      add column if not exists hold_rate numeric,
+      add column if not exists completion_rate numeric,
+      add column if not exists engagement_count bigint,
+      add column if not exists marketplace_orders bigint,
+      add column if not exists revenue numeric,
+      add column if not exists pulled_at timestamptz,
+      add column if not exists source text,
+      add column if not exists raw_metrics jsonb not null default '{}';
 
-create index if not exists post_metrics_publication_idx on post_metrics(publication_id, posted_at desc);
-create index if not exists post_metrics_external_idx on post_metrics(platform, external_post_id);
-create index if not exists post_metrics_pulled_idx on post_metrics(pulled_at desc);
+    create index if not exists post_metrics_publication_idx on post_metrics(publication_id, posted_at desc);
+    create index if not exists post_metrics_external_idx on post_metrics(platform, external_post_id);
+    create index if not exists post_metrics_pulled_idx on post_metrics(pulled_at desc);
+  end if;
+end $$;
 
 notify pgrst, 'reload schema';
