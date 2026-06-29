@@ -7,12 +7,17 @@ type PublicationMode = "organic" | "paid" | "manual";
 
 type PublicationInput = {
   recipeId: number;
+  ugcJobId?: string | null;
+  targetId?: string | null;
   sourceUrl?: string | null;
   platform?: string | null;
   mode?: PublicationMode | string | null;
   status?: PublicationStatus | string | null;
   publishedUrl?: string | null;
   externalPostId?: string | null;
+  adTokenPresent?: boolean;
+  scheduledAt?: string | null;
+  error?: string | null;
   metadata?: Record<string, unknown> | null;
 };
 
@@ -81,11 +86,15 @@ export async function recordFactoryPublication(db: DbClient | null | undefined, 
 
   const recipeId = Math.floor(Number(input.recipeId) || 0);
   const sourceUrl = cleanText(input.sourceUrl, 1200);
+  const ugcJobId = cleanText(input.ugcJobId, 120);
+  const targetId = cleanText(input.targetId, 120);
   const platform = normalizePlatform(input.platform);
   const status = normalizeStatus(input.status);
   const mode = normalizeMode(input.mode);
   const publishedUrl = cleanText(input.publishedUrl, 1200);
   const externalPostId = cleanText(input.externalPostId, 240);
+  const scheduledAt = cleanText(input.scheduledAt, 80);
+  const errorText = cleanText(input.error, 500);
   const metadata = { ...(input.metadata || {}) };
   const now = new Date().toISOString();
 
@@ -107,12 +116,17 @@ export async function recordFactoryPublication(db: DbClient | null | undefined, 
 
     const row = {
       recipe_id: recipeId,
+      ugc_job_id: ugcJobId,
+      target_id: targetId,
       platform,
       mode,
       status,
       source_url: sourceUrl,
       published_url: publishedUrl,
       external_post_id: externalPostId,
+      ad_token_present: input.adTokenPresent === true,
+      scheduled_at: scheduledAt,
+      error: errorText,
       metadata: { ...(existing?.metadata || {}), ...metadata },
       updated_at: now,
       ...(status === "published" ? { published_at: now, last_metrics_pull_at: now } : {}),
