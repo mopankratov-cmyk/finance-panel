@@ -362,7 +362,7 @@ export async function releaseYandexArchivedFactoryStorage(db: DbClient | null | 
 }) {
   const limit = Math.min(Math.max(Number(input?.limit || 25), 1), 100);
   const dryRun = await buildFactoryStorageCleanupDryRun(db, {
-    limit: Math.max(limit, 50),
+    limit: 2000,
     storageLimit: input?.storageLimit || 5000,
   });
   const candidates = ((dryRun.yandex_archived_release?.candidates || []) as Array<{

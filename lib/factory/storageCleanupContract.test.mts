@@ -24,6 +24,7 @@ ok(/yandex_archived_release/.test(helper), "storage cleanup reports Yandex-archi
 ok(/ready_for_storage_release/.test(helper), "storage cleanup marks release candidates only after Yandex archive metadata exists");
 ok(/releaseYandexArchivedFactoryStorage/.test(helper), "storage cleanup can release only Yandex-archived storage files");
 ok(/dryRun\.yandex_archived_release\?\.candidates/.test(helper), "release source is the safe Yandex-archived dry-run block");
+ok(/limit: 2000/.test(helper), "release scans a broad asset window before applying batch limit");
 ok(/bucket\.remove/.test(helper), "release removes storage objects");
 ok(/supabase_storage_released_at/.test(helper), "release records storage release metadata");
 ok(/ready: !!archivedAt && !!archivePath && !releasedAt/.test(helper), "already released assets are not released again");
