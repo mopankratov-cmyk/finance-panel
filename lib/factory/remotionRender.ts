@@ -65,3 +65,53 @@ export async function remotionStatus(id: string): Promise<RemotionStatus> {
     return { status: "in_progress", progress: j.progress };
   } catch (e) { return { status: "error", error: String(e).slice(0, 120), retryable: true }; } // сеть/таймаут — транзиент
 }
+
+export type RemotionServiceHealth = {
+  ok: boolean;
+  configured: boolean;
+  status?: number;
+  bundled?: boolean;
+  busy?: number;
+  queued?: number;
+  store?: string;
+  error?: string;
+};
+
+export async function remotionHealth(): Promise<RemotionServiceHealth> {
+  const base = URL();
+  if (!base) return { ok: false, configured: false, error: "REMOTION_RENDER_URL не настроен" };
+  try {
+    const r = await fetch(`${base}/health`, { cache: "no-store", signal: AbortSignal.timeout(15_000) });
+    const j = (await r.json().catch(() => ({}))) as Record<string, unknown>;
+    return {
+      ok: r.ok && j.ok !== false,
+      configured: true,
+      status: r.status,
+      bundled: typeof j.bundled === "boolean" ? j.bundled : undefined,
+      busy: typeof j.busy === "number" ? j.busy : undefined,
+      queued: typeof j.queued === "number" ? j.queued : undefined,
+      store: typeof j.store === "string" ? j.store : undefined,
+      error: r.ok ? undefined : String(j.error || r.statusText || "health failed").slice(0, 180),
+    };
+  } catch (e) {
+    return { ok: false, configured: true, error: String((e as Error)?.message || e).slice(0, 180) };
+  }
+}
+
+export async function remotionReload(): Promise<RemotionServiceHealth & { rebundling?: boolean }> {
+  const base = URL();
+  if (!base) return { ok: false, configured: false, error: "REMOTION_RENDER_URL не настроен" };
+  try {
+    const r = await fetch(`${base}/reload`, { method: "POST", headers: HEADERS(), cache: "no-store", signal: AbortSignal.timeout(20_000) });
+    const j = (await r.json().catch(() => ({}))) as Record<string, unknown>;
+    return {
+      ok: r.ok && j.ok !== false,
+      configured: true,
+      status: r.status,
+      rebundling: j.rebundling === true,
+      error: r.ok ? undefined : String(j.error || r.statusText || "reload failed").slice(0, 180),
+    };
+  } catch (e) {
+    return { ok: false, configured: true, error: String((e as Error)?.message || e).slice(0, 180) };
+  }
+}
