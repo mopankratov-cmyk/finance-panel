@@ -773,6 +773,14 @@ function usefulVideoCost(row: LearningEconomicsDailyCost | null | undefined) {
   return row?.usd_per_relevant ?? row?.usd_per_analyzed ?? row?.usd_per_inserted ?? null;
 }
 
+function usefulCostBasis(row: LearningEconomicsDailyCost | null | undefined) {
+  if (!row) return { label: "no data", count: 0 };
+  if (row.usd_per_relevant != null) return { label: "useful", count: row.relevant };
+  if (row.usd_per_analyzed != null) return { label: "memory", count: row.analyzed };
+  if (row.usd_per_inserted != null) return { label: "saved", count: row.inserted };
+  return { label: "no data", count: 0 };
+}
+
 function spendSourceLabel(source: LearningEconomicsDailyCost["spend_source"] | "estimated" | "actual" | "mixed" | undefined) {
   if (source === "actual") return "actual billing";
   if (source === "mixed") return "mixed";
@@ -1138,6 +1146,8 @@ export default function ReelsBrainPage() {
   const yesterdayCost = learningEconomics?.daily_costs?.yesterday || null;
   const todayUsefulCost = usefulVideoCost(todayCost);
   const yesterdayUsefulCost = usefulVideoCost(yesterdayCost);
+  const todayCostBasis = usefulCostBasis(todayCost);
+  const yesterdayCostBasis = usefulCostBasis(yesterdayCost);
   const usefulCostDeltaPct = todayUsefulCost != null && yesterdayUsefulCost != null && yesterdayUsefulCost > 0
     ? Math.round(((todayUsefulCost - yesterdayUsefulCost) / yesterdayUsefulCost) * 100)
     : null;
@@ -2340,7 +2350,7 @@ export default function ReelsBrainPage() {
                   <div className="mt-2 text-3xl font-black">{formatUsd(todayUsefulCost)}</div>
                   <p className="mt-1 text-xs text-slate-300">
                     {todayCost
-                      ? `${compactNumber(todayCost.inserted)} saved · ${compactNumber(todayCost.analyzed)} memory · ${compactNumber(todayCost.relevant)} useful`
+                      ? `${compactNumber(todayCost.inserted)} saved · ${compactNumber(todayCost.analyzed)} memory · ${compactNumber(todayCost.relevant)} relevant · basis ${todayCostBasis.label} ${compactNumber(todayCostBasis.count)}`
                       : "сегодня intake-прогонов пока нет"}
                   </p>
                 </div>
@@ -2358,7 +2368,7 @@ export default function ReelsBrainPage() {
               <div className="mt-2 text-3xl font-black">{formatUsd(yesterdayUsefulCost)}</div>
               <p className="mt-1 text-xs text-slate-300">
                 {yesterdayCost
-                  ? `${compactNumber(yesterdayCost.inserted)} saved · ${compactNumber(yesterdayCost.analyzed)} memory · ${compactNumber(yesterdayCost.relevant)} useful`
+                  ? `${compactNumber(yesterdayCost.inserted)} saved · ${compactNumber(yesterdayCost.analyzed)} memory · ${compactNumber(yesterdayCost.relevant)} relevant · basis ${yesterdayCostBasis.label} ${compactNumber(yesterdayCostBasis.count)}`
                   : "за вчера нет сохраненных cost-событий"}
               </p>
               <div className="mt-3 grid grid-cols-3 gap-2 text-xs text-slate-200">
