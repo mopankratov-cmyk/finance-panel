@@ -132,8 +132,9 @@ export async function GET(req: NextRequest) {
     });
     const result = await response.json().catch(() => ({}));
     const resultRecord = (result || {}) as Record<string, unknown>;
-    const tickRecord = ((resultRecord.tick || resultRecord) || {}) as Record<string, unknown>;
-    const summaryRecord = ((tickRecord.automation_summary || resultRecord.automation_summary) || {}) as Record<string, unknown>;
+    const nestedResultRecord = ((resultRecord.result || {}) || {}) as Record<string, unknown>;
+    const tickRecord = ((resultRecord.tick || nestedResultRecord.tick || nestedResultRecord || resultRecord) || {}) as Record<string, unknown>;
+    const summaryRecord = ((tickRecord.automation_summary || nestedResultRecord.automation_summary || resultRecord.automation_summary) || {}) as Record<string, unknown>;
     console.info("reels_brain_cron_tick", JSON.stringify({
       task,
       decision: auto.decision,
@@ -148,6 +149,8 @@ export async function GET(req: NextRequest) {
       errors: tickRecord.errors ?? summaryRecord.errors ?? null,
       discovery_learning: Array.isArray(tickRecord.discovery_learning)
         ? tickRecord.discovery_learning.length
+        : Array.isArray(nestedResultRecord.discovery_learning)
+          ? nestedResultRecord.discovery_learning.length
         : Array.isArray(resultRecord.discovery_learning)
           ? resultRecord.discovery_learning.length
           : null,
