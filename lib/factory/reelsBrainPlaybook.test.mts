@@ -146,6 +146,8 @@ function eq(a: unknown, b: unknown, m: string) { ok(JSON.stringify(a) === JSON.s
   eq(nextRecommendedSourceQueries({}, "ru_toys", "instagram")[0], "обзор игрушек", "queries: ru instagram toys starts from Russian seed");
   eq(nextRecommendedSourceQueries({}, "ru_cosmetics", "instagram")[0], "обзор косметики", "queries: ru instagram cosmetics starts from Russian seed");
   eq(nextRecommendedSourceQueries({}, "ru_clothing", "instagram")[0], "обзор одежды", "queries: ru instagram clothing starts from Russian seed");
+  eq(nextRecommendedSourceQueries({}, "ru_toys", "tiktok")[0], "обзор игрушек", "queries: ru tiktok toys starts from Russian seed");
+  eq(nextRecommendedSourceQueries({}, "ru_cosmetics", "youtube")[0], "обзор косметики shorts", "queries: ru youtube cosmetics starts from Russian shorts seed");
 }
 
 {
@@ -183,6 +185,27 @@ function eq(a: unknown, b: unknown, m: string) { ok(JSON.stringify(a) === JSON.s
   ok(suppressedSourceQueries(playbook, "tiktok").some((row) => row.query === "water gun weak query"), "queries: repeated weak query gets suppressed");
   ok(!nextRecommendedSourceQueries(playbook, "water gun", "tiktok").includes("water gun dead query"), "queries: suppressed empty query removed from rotation");
   ok(!nextRecommendedSourceQueries(playbook, "water gun", "tiktok").includes("water gun weak query"), "queries: suppressed weak query removed from rotation");
+}
+
+{
+  let playbook = rememberQueryPerformance({}, {
+    query: "duplicate rich query",
+    platform: "tiktok",
+    found: 20,
+    relevant: 0,
+    inserted: 0,
+    updated_at: "2026-12-27T00:00:00.000Z",
+  });
+  playbook = rememberQueryPerformance(playbook, {
+    query: "duplicate rich query",
+    platform: "tiktok",
+    found: 12,
+    relevant: 0,
+    inserted: 0,
+    updated_at: "2026-12-27T01:00:00.000Z",
+  });
+  ok(suppressedSourceQueries(playbook, "tiktok").some((row) => row.query === "duplicate rich query"), "queries: duplicate-only query gets suppressed");
+  ok(!nextRecommendedSourceQueries(playbook, "water gun", "tiktok").includes("duplicate rich query"), "queries: duplicate-only query removed from rotation");
 }
 
 {

@@ -111,6 +111,7 @@ export async function GET(req: NextRequest) {
         max_lanes: 8,
         limit: 40,
         providers_per_lane: 2,
+        query_variants_per_lane: 2,
         provider_timeout_ms: 22000,
         max_provider_calls: 16,
         max_cost_units: 48,

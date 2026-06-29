@@ -13,7 +13,7 @@ import {
   parseAutomationPlatforms,
   type ReelsBrainCorpusGrowthLane,
 } from "@/lib/factory/reelsBrainAutomation";
-import { nextRecommendedSourceQueries } from "@/lib/factory/reelsBrainPlaybook";
+import { nextRecommendedSourceQueries, queryLeaderboard, rememberQueryPerformance } from "@/lib/factory/reelsBrainPlaybook";
 import { corpusProgress, corpusTargetByPlatform } from "@/lib/factory/reelsBrainCorpusTargets";
 import { reelsBrainEnvStatus } from "@/lib/factory/reelsBrainEnv";
 import { isAuthorizedReelsBrainJobRequest } from "@/lib/factory/reelsBrainJobAuth";
@@ -107,25 +107,41 @@ function isRussianQuery(query: string): boolean {
   return /[А-Яа-яЁё]/.test(query);
 }
 
-function selectLaneQuery(input: {
+function selectLaneQueries(input: {
   lane: ReelsBrainCorpusGrowthLane;
   recommendedQueries: string[];
   queryOverride: string;
   limit: number;
+  playbook?: unknown;
   queryCounts?: Map<string, number>;
-}): string {
-  if (input.queryOverride) return input.queryOverride;
-  if (input.lane.platform !== "instagram") return input.recommendedQueries[0] || `${input.lane.niche} reels`;
-  const candidates = input.recommendedQueries.filter((query) => {
+}, variants: number): string[] {
+  if (input.queryOverride) return [input.queryOverride];
+  const baseCandidates = input.lane.platform === "instagram" ? input.recommendedQueries.filter((query) => {
     const normalized = normalizedQuery(query);
     if (normalized === genericInstagramQuery(input.lane.niche)) return false;
     if (input.lane.niche === "default" && normalized.startsWith("default ")) return false;
     if (!isRussianSegmentNiche(input.lane.niche) && !isHashtagFriendlyInstagramQuery(query)) return false;
     return true;
-  });
-  if (!candidates.length) return input.recommendedQueries[0] || `${input.lane.niche} reels`;
+  }) : input.recommendedQueries;
+  const candidates = baseCandidates.length ? baseCandidates : input.recommendedQueries;
+  if (!candidates.length) return [`${input.lane.niche} reels`].slice(0, variants);
   const bucket = Math.floor(Math.max(0, input.lane.current_videos) / Math.max(1, input.limit));
-  return candidates[bucket % candidates.length] || candidates[0];
+  const stats = new Map(queryLeaderboard(input.playbook, input.lane.platform).map((row) => [normalizedQuery(row.query), row]));
+  const scored = candidates.map((query, index) => {
+    const key = normalizedQuery(query);
+    const stat = stats.get(key);
+    const corpusUses = input.queryCounts?.get(key) || 0;
+    const saturationPenalty = Math.min(80, corpusUses / Math.max(1, input.limit) * 18);
+    const staleBonus = stat?.updated_at ? Math.min(12, Math.max(0, (Date.now() - new Date(stat.updated_at).getTime()) / (24 * 60 * 60 * 1000))) : 8;
+    const learnedScore = stat ? stat.score + stat.inserted * 3 - (stat.low_yield_runs || 0) * 25 - (stat.empty_runs || 0) * 30 : 10;
+    const rotationBonus = index === bucket % candidates.length ? 6 : 0;
+    return {
+      query,
+      score: learnedScore + staleBonus + rotationBonus - saturationPenalty,
+      index,
+    };
+  }).sort((a, b) => b.score - a.score || a.index - b.index);
+  return Array.from(new Set(scored.map((row) => row.query))).slice(0, Math.max(1, variants));
 }
 
 function prioritizeProvidersForQuery(
@@ -266,6 +282,18 @@ async function persistDiscoveryLearning(input: {
         cost_units: Number(run.cost_units || 1),
         reason: `bulk ingest via ${run.provider}`,
       });
+      const found = Number(run.found || 0);
+      const inserted = Number(run.inserted || 0);
+      playbook = rememberQueryPerformance(playbook, {
+        query: run.query,
+        platform: run.platform,
+        found,
+        relevant: inserted,
+        inserted,
+        low_yield: found > 0 && inserted === 0,
+        empty_result: found === 0,
+        suppression_hours: run.error ? 12 : found > 0 && inserted === 0 ? 18 : 36,
+      });
       learnedSources += 1;
     }
 
@@ -314,6 +342,7 @@ async function runBulk(req: NextRequest, body: Record<string, unknown>, execute:
   const maxLanes = Math.max(1, Math.min(6, Number(body.max_lanes || req.nextUrl.searchParams.get("max_lanes") || (execute ? 3 : 6))));
   const limit = Math.max(5, Math.min(50, Number(body.limit || req.nextUrl.searchParams.get("limit") || 25)));
   const providersPerLane = Math.max(1, Math.min(3, Number(body.providers_per_lane || req.nextUrl.searchParams.get("providers_per_lane") || 2)));
+  const queryVariantsPerLane = Math.max(1, Math.min(3, Number(body.query_variants_per_lane || req.nextUrl.searchParams.get("query_variants_per_lane") || 1)));
   const timeoutMs = Math.max(5000, Math.min(30000, Number(body.provider_timeout_ms || req.nextUrl.searchParams.get("provider_timeout_ms") || 15000)));
   const budgetLimits = reelsBrainBudgetLimits({
     max_provider_calls: body.max_provider_calls || req.nextUrl.searchParams.get("max_provider_calls"),
@@ -358,30 +387,34 @@ async function runBulk(req: NextRequest, body: Record<string, unknown>, execute:
     return !blocked;
   });
 
-  const queue = diversifiedGrowthQueue({ lanes: availableLanes, maxLanes, platforms }).map((lane) => {
+  const queue = diversifiedGrowthQueue({ lanes: availableLanes, maxLanes, platforms }).flatMap((lane) => {
     const playbook = playbookMap.get(lane.niche);
     const fallbackQuery = lane.platform === "instagram" ? null : `${lane.niche} reels`;
     const recommendedQueries = nextRecommendedSourceQueries(playbook, lane.niche, lane.platform, fallbackQuery);
-    const recommendedQuery = selectLaneQuery({
+    const recommendedQueriesForLane = selectLaneQueries({
       lane,
       recommendedQueries,
       queryOverride,
       limit,
+      playbook,
       queryCounts: queryCountMap.get(`${lane.niche}:${lane.platform}`),
-    });
+    }, queryVariantsPerLane);
     const instagramSeed = lane.platform === "instagram" && igSeeds.length
       ? igSeeds[stableIndex(lane.niche, igSeeds.length)]
       : "";
-    const query = instagramSeed || recommendedQuery;
-    const providers = prioritizeProvidersForQuery(lane.platform, query, providersFor(lane.platform, body.providers));
-    return {
-      ...lane,
-      query,
-      query_origin: instagramSeed ? "instagram_seed" : "playbook",
-      providers: providers.slice(0, providersPerLane),
-      limit,
-      provider_timeout_ms: timeoutMs,
-    };
+    const queries = instagramSeed ? [instagramSeed] : recommendedQueriesForLane;
+    return queries.map((query, index) => {
+      const providers = prioritizeProvidersForQuery(lane.platform, query, providersFor(lane.platform, body.providers));
+      return {
+        ...lane,
+        query,
+        query_variant: index + 1,
+        query_origin: instagramSeed ? "instagram_seed" : "playbook",
+        providers: providers.slice(0, providersPerLane),
+        limit,
+        provider_timeout_ms: timeoutMs,
+      };
+    });
   });
 
   const plannedProviderCalls = queue.flatMap((lane) => lane.providers.map((provider) => provider));
@@ -471,6 +504,7 @@ async function runBulk(req: NextRequest, body: Record<string, unknown>, execute:
     max_lanes: maxLanes,
     limit,
     providers_per_lane: providersPerLane,
+    query_variants_per_lane: queryVariantsPerLane,
     query_override: queryOverride || null,
     skip_unseeded_instagram: skipUnseededInstagram,
     instagram_seed_count: igSeeds.length,
