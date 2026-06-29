@@ -352,7 +352,24 @@ Authorization: Bearer $CRON_SECRET
 
 Отдельный блок `yandex_archived_release` показывает не сироты, а файлы, которые всё ещё лежат в Supabase Storage, но у строки `content_assets` уже есть `analysis.yandex_archive_path` и `analysis.yandex_archived_at`. Именно этот блок должен быть источником для будущего apply-cleanup, если цель - освободить Supabase после подтверждённой выгрузки в Яндекс.Диск.
 
-Endpoint не имеет `POST`, не удаляет DB rows и не удаляет Storage files. Его цель - дать список кандидатов. Следующий шаг после dry-run: сначала архивировать в Яндекс.Диск, потом вручную решить, нужен ли отдельный destructive cleanup endpoint с подтверждением.
+Endpoint не имеет `POST`, не удаляет DB rows и не удаляет Storage files. Его цель - дать список кандидатов.
+
+## Supabase Storage release после Яндекс-архива
+
+После успешной выгрузки в Яндекс.Диск можно освобождать Supabase Storage, не удаляя строки БД:
+
+```text
+GET /api/factory/storage-cleanup/release?apply=1&confirm=release-yandex-archived&limit=25
+POST /api/factory/storage-cleanup/release { "apply": true, "confirm": "release-yandex-archived", "limit": 25 }
+```
+
+Правила безопасности:
+
+- endpoint берёт только `yandex_archived_release.candidates` из dry-run;
+- у кандидата должны быть `analysis.yandex_archive_path` и `analysis.yandex_archived_at`;
+- удаляется только объект из bucket `factory-media`;
+- строки `content_assets`, `generation_history`, `node_recipes` не удаляются;
+- в `content_assets.analysis` ставится `supabase_storage_released_at`.
 
 ## Long-running Yandex archive worker
 

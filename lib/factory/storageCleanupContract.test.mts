@@ -3,6 +3,7 @@ import { ok } from "node:assert/strict";
 
 const helper = readFileSync("lib/factory/storageCleanup.ts", "utf8");
 const route = readFileSync("app/api/factory/storage-cleanup/dry-run/route.ts", "utf8");
+const releaseRoute = readFileSync("app/api/factory/storage-cleanup/release/route.ts", "utf8");
 const studio = readFileSync("public/inferno/studio.html", "utf8");
 
 ok(/export async function buildFactoryStorageCleanupDryRun/.test(helper), "storage cleanup dry-run helper exists");
@@ -17,13 +18,20 @@ ok(/orphan_candidate/.test(helper), "storage cleanup classifies orphan candidate
 ok(/protected/.test(helper), "storage cleanup classifies protected references");
 ok(/yandex_archived_release/.test(helper), "storage cleanup reports Yandex-archived files that can later release Supabase storage");
 ok(/ready_for_storage_release/.test(helper), "storage cleanup marks release candidates only after Yandex archive metadata exists");
-ok(!/\.delete\(/.test(helper), "storage cleanup helper never deletes DB rows");
-ok(!/\.remove\(/.test(helper), "storage cleanup helper never removes storage files");
+ok(/releaseYandexArchivedFactoryStorage/.test(helper), "storage cleanup can release only Yandex-archived storage files");
+ok(/dryRun\.yandex_archived_release\?\.candidates/.test(helper), "release source is the safe Yandex-archived dry-run block");
+ok(/bucket\.remove/.test(helper), "release removes storage objects");
+ok(/supabase_storage_released_at/.test(helper), "release records storage release metadata");
+ok(!/from\("content_assets"\)\.delete/.test(helper), "storage cleanup helper never deletes content asset rows");
 
 ok(/export async function GET/.test(route), "storage cleanup route exposes GET");
 ok(!/export async function POST/.test(route), "storage cleanup route has no POST apply path");
 ok(/isAuthorizedReelsBrainJobRequest/.test(route), "storage cleanup route allows cron bearer and Studio session auth");
 ok(/Cache-Control/.test(route) && /no-store/.test(route), "storage cleanup response is not cached");
+
+ok(/confirm"\) === "release-yandex-archived"/.test(releaseRoute), "release route requires explicit GET confirmation");
+ok(/body\.confirm !== "release-yandex-archived"/.test(releaseRoute), "release route requires explicit POST confirmation");
+ok(/releaseYandexArchivedFactoryStorage/.test(releaseRoute), "release route uses the safe archived release helper");
 
 ok(/storageCleanup:null/.test(studio), "Studio tracks storage cleanup dry-run");
 ok(/function refreshStorageCleanup\(box\)/.test(studio), "Studio can refresh storage cleanup dry-run");

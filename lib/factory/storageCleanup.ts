@@ -3,6 +3,7 @@ type DbClient = {
   storage?: {
     from: (bucket: string) => {
       list: (path?: string, options?: Record<string, unknown>) => PromiseLike<{ data?: StorageItem[] | null; error?: { message?: string } | null }>;
+      remove?: (paths: string[]) => PromiseLike<{ data?: unknown; error?: { message?: string } | null }>;
     };
   };
 };
@@ -322,5 +323,102 @@ export async function buildFactoryStorageCleanupDryRun(db: DbClient | null | und
       "Use yandex_archived_release as the only safe source for a future storage release apply endpoint.",
       "Never delete protected_sample rows, DB rows, or unarchived storage files.",
     ],
+  };
+}
+
+export async function releaseYandexArchivedFactoryStorage(db: DbClient | null | undefined, input?: {
+  limit?: number;
+  storageLimit?: number;
+}) {
+  const limit = Math.min(Math.max(Number(input?.limit || 25), 1), 100);
+  const dryRun = await buildFactoryStorageCleanupDryRun(db, {
+    limit: Math.max(limit, 50),
+    storageLimit: input?.storageLimit || 5000,
+  });
+  const candidates = ((dryRun.yandex_archived_release?.candidates || []) as Array<{
+    id?: string | number | null;
+    storage_path?: string | null;
+    yandex_archive_path?: string | null;
+  }>)
+    .filter((item) => item.storage_path && item.yandex_archive_path)
+    .slice(0, limit);
+
+  if (!db?.storage) {
+    return {
+      ok: false,
+      destructive: true,
+      apply: true,
+      deleted: 0,
+      failed: 0,
+      error: "Supabase storage client is unavailable",
+      items: [],
+    };
+  }
+
+  const bucket = db.storage.from(BUCKET);
+  if (typeof bucket.remove !== "function") {
+    return {
+      ok: false,
+      destructive: true,
+      apply: true,
+      deleted: 0,
+      failed: 0,
+      error: "Supabase storage remove is unavailable",
+      items: [],
+    };
+  }
+
+  if (!candidates.length) {
+    return {
+      ok: true,
+      destructive: true,
+      apply: true,
+      deleted: 0,
+      failed: 0,
+      candidates: 0,
+      items: [],
+    };
+  }
+
+  const { error } = await bucket.remove(candidates.map((item) => String(item.storage_path)));
+  const failed = error ? candidates.length : 0;
+  const deleted = error ? 0 : candidates.length;
+
+  if (!error) {
+    const releasedAt = new Date().toISOString();
+    for (const item of candidates) {
+      try {
+        const { data } = await db.from("content_assets").select("analysis").eq("id", item.id).limit(1);
+        const row = ((data as Record<string, unknown>[] | null) || [])[0] || {};
+        const analysis = row.analysis && typeof row.analysis === "object" ? row.analysis as Record<string, unknown> : {};
+        await db.from("content_assets").update({
+          analysis: {
+            ...analysis,
+            supabase_storage_released_at: releasedAt,
+            supabase_storage_released_path: item.storage_path,
+            supabase_storage_release_source: "factory_yandex_release_v1",
+          },
+        }).eq("id", item.id);
+      } catch {
+        // Storage was already released; metadata update is best-effort.
+      }
+    }
+  }
+
+  return {
+    ok: !error,
+    destructive: true,
+    apply: true,
+    deleted,
+    failed,
+    candidates: candidates.length,
+    error: error ? safeError(error) : null,
+    items: candidates.map((item) => ({
+      id: item.id ?? null,
+      storage_path: item.storage_path,
+      yandex_archive_path: item.yandex_archive_path,
+      status: error ? "failed" : "deleted",
+      error: error ? safeError(error) : null,
+    })),
   };
 }
