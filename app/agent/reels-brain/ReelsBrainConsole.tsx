@@ -1332,11 +1332,40 @@ type ReelsBrainGeneratorHandoffResponse = {
         recommended_iteration: string;
       } | null;
       generator_payload?: {
+        source?: string;
         metrics_to_watch?: string[];
         safety_guardrails?: string[];
       };
     }[];
     handoff_rules?: string[];
+  };
+  notes?: string[];
+  error?: string;
+};
+
+type ReelsBrainOperatingPlanResponse = {
+  ok?: boolean;
+  scope?: "reels_brain_only";
+  corpus?: { current?: number; target?: number };
+  summary?: {
+    capabilities?: number;
+    live?: number;
+    foundation?: number;
+    needs_worker?: number;
+    needs_data?: number;
+    avg_progress?: number;
+  };
+  operating_plan?: {
+    capabilities?: {
+      id: string;
+      label: string;
+      status: "live" | "foundation" | "needs_worker" | "needs_data";
+      progress: number;
+      evidence: string[];
+      next_task: string;
+    }[];
+    pipeline?: string[];
+    guardrails?: string[];
   };
   notes?: string[];
   error?: string;
@@ -1694,6 +1723,9 @@ export default function ReelsBrainPage() {
   const [generatorHandoff, setGeneratorHandoff] = useState<ReelsBrainGeneratorHandoffResponse | null>(null);
   const [generatorHandoffLoading, setGeneratorHandoffLoading] = useState(false);
   const [generatorHandoffError, setGeneratorHandoffError] = useState("");
+  const [operatingPlan, setOperatingPlan] = useState<ReelsBrainOperatingPlanResponse | null>(null);
+  const [operatingPlanLoading, setOperatingPlanLoading] = useState(false);
+  const [operatingPlanError, setOperatingPlanError] = useState("");
   const [insightNicheFilter, setInsightNicheFilter] = useState("all");
   const [insightConfidenceFilter, setInsightConfidenceFilter] = useState<"all" | "high" | "medium" | "low">("all");
   const [insightSegmentFilter, setInsightSegmentFilter] = useState<"all" | "op_hooks" | "frequent_hooks" | "experimental_hooks">("all");
@@ -1844,8 +1876,9 @@ export default function ReelsBrainPage() {
       setPortfolioManagerLoading(true);
       setHumanizationBrainLoading(true);
       setGeneratorHandoffLoading(true);
+      setOperatingPlanLoading(true);
       try {
-        const [memory, audio, visual, simulation, experiment, manager, humanization, handoff] = await Promise.allSettled([
+        const [memory, audio, visual, simulation, experiment, manager, humanization, handoff, operating] = await Promise.allSettled([
           readJson<ReelsBrainCreativeMemoryResponse>(await fetch(`/api/factory/reels-brain/creative-memory?niches=${encodeURIComponent(DEFAULT_AUTOMATION_NICHES)}&limit=80`, { cache: "no-store" })),
           readJson<ReelsBrainAudioIntelligenceResponse>(await fetch(`/api/factory/reels-brain/audio-intelligence?niches=${encodeURIComponent(DEFAULT_AUTOMATION_NICHES)}&limit=80`, { cache: "no-store" })),
           readJson<ReelsBrainVisualIntelligenceResponse>(await fetch(`/api/factory/reels-brain/visual-intelligence?niches=${encodeURIComponent(DEFAULT_AUTOMATION_NICHES)}&limit=80`, { cache: "no-store" })),
@@ -1854,6 +1887,7 @@ export default function ReelsBrainPage() {
           readJson<ReelsBrainPortfolioManagerResponse>(await fetch(`/api/factory/reels-brain/portfolio-manager?niches=${encodeURIComponent(DEFAULT_AUTOMATION_NICHES)}&limit=50`, { cache: "no-store" })),
           readJson<ReelsBrainHumanizationResponse>(await fetch(`/api/factory/reels-brain/humanization?niches=${encodeURIComponent(DEFAULT_AUTOMATION_NICHES)}&limit=50`, { cache: "no-store" })),
           readJson<ReelsBrainGeneratorHandoffResponse>(await fetch(`/api/factory/reels-brain/generator-handoff?niches=${encodeURIComponent(DEFAULT_AUTOMATION_NICHES)}&limit=20`, { cache: "no-store" })),
+          readJson<ReelsBrainOperatingPlanResponse>(await fetch(`/api/factory/reels-brain/operating-plan?niches=${encodeURIComponent(DEFAULT_AUTOMATION_NICHES)}&corpus_target=10000`, { cache: "no-store" })),
         ]);
         if (!alive) return;
         setCreativeMemory(memory.status === "fulfilled" ? memory.value : null);
@@ -1864,6 +1898,7 @@ export default function ReelsBrainPage() {
         setPortfolioManager(manager.status === "fulfilled" ? manager.value : null);
         setHumanizationBrain(humanization.status === "fulfilled" ? humanization.value : null);
         setGeneratorHandoff(handoff.status === "fulfilled" ? handoff.value : null);
+        setOperatingPlan(operating.status === "fulfilled" ? operating.value : null);
       } catch {
         if (alive) {
           setCreativeMemory(null);
@@ -1874,6 +1909,7 @@ export default function ReelsBrainPage() {
           setPortfolioManager(null);
           setHumanizationBrain(null);
           setGeneratorHandoff(null);
+          setOperatingPlan(null);
         }
       } finally {
         if (alive) {
@@ -1885,6 +1921,7 @@ export default function ReelsBrainPage() {
           setPortfolioManagerLoading(false);
           setHumanizationBrainLoading(false);
           setGeneratorHandoffLoading(false);
+          setOperatingPlanLoading(false);
         }
       }
     }
@@ -1991,6 +2028,9 @@ export default function ReelsBrainPage() {
   const generatorHandoffSummary = generatorHandoff?.summary || {};
   const generatorHandoffPayloads = generatorHandoff?.handoff?.payloads || [];
   const generatorHandoffRules = generatorHandoff?.handoff?.handoff_rules || [];
+  const operatingPlanSummary = operatingPlan?.summary || {};
+  const operatingCapabilities = operatingPlan?.operating_plan?.capabilities || [];
+  const operatingGuardrails = operatingPlan?.operating_plan?.guardrails || [];
   const maxTimelineInserted = Math.max(1, ...learningTimeline.map((row) => row.inserted));
   const analyzeBacklogLanes = analyzeBacklog?.lanes || [];
   const analyzeBacklogQueue = analyzeBacklog?.queue || [];
@@ -2400,6 +2440,23 @@ export default function ReelsBrainPage() {
     }
   }
 
+  async function loadOperatingPlan(currentNiches = automationNiches) {
+    setOperatingPlanLoading(true);
+    setOperatingPlanError("");
+    try {
+      const params = new URLSearchParams({
+        niches: currentNiches.trim() || DEFAULT_AUTOMATION_NICHES,
+        corpus_target: "10000",
+      });
+      const data = await readJson<ReelsBrainOperatingPlanResponse>(await fetch(`/api/factory/reels-brain/operating-plan?${params.toString()}`, { cache: "no-store" }));
+      setOperatingPlan(data);
+    } catch (e) {
+      setOperatingPlanError(String((e as Error)?.message || e));
+    } finally {
+      setOperatingPlanLoading(false);
+    }
+  }
+
   async function refreshAutomationSurfaces(currentNiches = automationNiches, currentNiche = activeNiche()) {
     setAutomationSyncing(true);
     try {
@@ -2419,6 +2476,7 @@ export default function ReelsBrainPage() {
           loadPortfolioManager(currentNiches),
           loadHumanizationBrain(currentNiches),
           loadGeneratorHandoff(currentNiches),
+          loadOperatingPlan(currentNiches),
         ]);
       }
     } finally {
@@ -3316,7 +3374,7 @@ export default function ReelsBrainPage() {
               <p className="text-xs font-black uppercase tracking-[0.22em] text-cyan-700">Analyzed intelligence</p>
               <h3 className="mt-1 text-2xl font-black tracking-tight text-slate-950">Витрина инсайтов из разобранных видео</h3>
               <p className="mt-1 max-w-3xl text-sm text-slate-500">
-                Не логи и не настройки. Здесь только то, что можно понять как пользователь: какие хуки выигрывают, какие форматы держат внимание и что уже можно отдать в генератор.
+                Не логи и не настройки. Здесь только то, что можно понять как пользователь: какие хуки выигрывают, какие форматы держат внимание и какие механики уже готовы для внутренней памяти Reels Brain.
               </p>
             </div>
             <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-black text-emerald-700">
@@ -3458,13 +3516,22 @@ export default function ReelsBrainPage() {
                   className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-cyan-200 bg-white px-3 py-2 text-sm font-black text-cyan-900 hover:border-cyan-400 disabled:opacity-50"
                 >
                   {generatorHandoffLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
-                  Refresh handoff
+                  Refresh packets
+                </button>
+                <button
+                  type="button"
+                  onClick={() => loadOperatingPlan(automationNiches)}
+                  disabled={operatingPlanLoading}
+                  className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-cyan-200 bg-white px-3 py-2 text-sm font-black text-cyan-900 hover:border-cyan-400 disabled:opacity-50"
+                >
+                  {operatingPlanLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Radar className="h-4 w-4" />}
+                  Refresh 10 tracks
                 </button>
               </div>
             </div>
-            {(actionPlanError || creativeBriefsError || creativeMemoryError || audioIntelligenceError || visualIntelligenceError || simulationBrainError || experimentBrainError || portfolioManagerError || humanizationBrainError || generatorHandoffError) ? (
+            {(actionPlanError || creativeBriefsError || creativeMemoryError || audioIntelligenceError || visualIntelligenceError || simulationBrainError || experimentBrainError || portfolioManagerError || humanizationBrainError || generatorHandoffError || operatingPlanError) ? (
               <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">
-                {actionPlanError || creativeBriefsError || creativeMemoryError || audioIntelligenceError || visualIntelligenceError || simulationBrainError || experimentBrainError || portfolioManagerError || humanizationBrainError || generatorHandoffError}
+                {actionPlanError || creativeBriefsError || creativeMemoryError || audioIntelligenceError || visualIntelligenceError || simulationBrainError || experimentBrainError || portfolioManagerError || humanizationBrainError || generatorHandoffError || operatingPlanError}
               </div>
             ) : null}
             {(actionPlan || creativeBriefs) ? (
@@ -3552,13 +3619,82 @@ export default function ReelsBrainPage() {
             ) : null}
           </div>
 
+          <div className="mt-4 rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-950 via-slate-900 to-violet-950 p-4 text-white">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-violet-200">10-track Reels Brain Operating Plan</p>
+                <h4 className="mt-1 text-lg font-black">Все 10 направлений, только внутри слоя интеллекта</h4>
+                <p className="mt-1 max-w-2xl text-sm font-medium text-slate-300">
+                  Это карта зрелости Reels Brain: корпус, audio/visual worker, discovery economics, product/anti-pattern, feedback и daily loop. Без вызовов контент-завода.
+                </p>
+              </div>
+              <span className="rounded-full border border-white/10 bg-white/10 px-3 py-1 text-xs font-black text-violet-100">
+                {operatingPlanLoading ? "loading" : `${compactNumber(operatingPlanSummary.avg_progress || 0)}% avg`}
+              </span>
+            </div>
+
+            <div className="mt-4 grid gap-2 sm:grid-cols-5">
+              <div className="rounded-2xl border border-white/10 bg-white/10 p-3">
+                <p className="text-xs font-bold uppercase tracking-wide text-slate-300">Tracks</p>
+                <p className="mt-1 text-2xl font-black">{compactNumber(operatingPlanSummary.capabilities || 0)}</p>
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-white/10 p-3">
+                <p className="text-xs font-bold uppercase tracking-wide text-slate-300">Live</p>
+                <p className="mt-1 text-2xl font-black text-emerald-200">{compactNumber(operatingPlanSummary.live || 0)}</p>
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-white/10 p-3">
+                <p className="text-xs font-bold uppercase tracking-wide text-slate-300">Foundation</p>
+                <p className="mt-1 text-2xl font-black text-cyan-200">{compactNumber(operatingPlanSummary.foundation || 0)}</p>
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-white/10 p-3">
+                <p className="text-xs font-bold uppercase tracking-wide text-slate-300">Needs worker</p>
+                <p className="mt-1 text-2xl font-black text-amber-200">{compactNumber(operatingPlanSummary.needs_worker || 0)}</p>
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-white/10 p-3">
+                <p className="text-xs font-bold uppercase tracking-wide text-slate-300">Needs data</p>
+                <p className="mt-1 text-2xl font-black text-red-200">{compactNumber(operatingPlanSummary.needs_data || 0)}</p>
+              </div>
+            </div>
+
+            <div className="mt-4 grid gap-2 lg:grid-cols-2">
+              {operatingCapabilities.length ? operatingCapabilities.map((capability) => (
+                <div key={capability.id} className="rounded-2xl border border-white/10 bg-white/10 px-3 py-3 text-xs">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="font-black text-white">{capability.label}</span>
+                    <span className={`rounded-full border px-2 py-1 font-black ${
+                      capability.status === "live"
+                        ? "border-emerald-200/30 bg-emerald-300/10 text-emerald-100"
+                        : capability.status === "needs_worker"
+                          ? "border-amber-200/30 bg-amber-300/10 text-amber-100"
+                          : capability.status === "needs_data"
+                            ? "border-red-200/30 bg-red-300/10 text-red-100"
+                            : "border-cyan-200/30 bg-cyan-300/10 text-cyan-100"
+                    }`}>
+                      {capability.status} · {compactNumber(capability.progress)}%
+                    </span>
+                  </div>
+                  <p className="mt-2 text-slate-300">{capability.evidence.slice(0, 2).join(" · ")}</p>
+                  <p className="mt-1 text-violet-100">next: {capability.next_task}</p>
+                </div>
+              )) : <p className="text-sm text-slate-300">Operating plan появится после загрузки playbooks.</p>}
+            </div>
+
+            {operatingGuardrails.length ? (
+              <div className="mt-3 grid gap-2 lg:grid-cols-3">
+                {operatingGuardrails.slice(0, 3).map((rule) => (
+                  <p key={rule} className="rounded-xl border border-red-200/20 bg-red-300/10 px-3 py-2 text-xs font-semibold text-red-100">{rule}</p>
+                ))}
+              </div>
+            ) : null}
+          </div>
+
           <div className="mt-4 rounded-2xl border border-amber-100 bg-amber-50 p-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <p className="text-xs font-black uppercase tracking-[0.18em] text-amber-700">Creative Memory / DNA</p>
                 <h4 className="mt-1 text-lg font-black text-slate-950">Из чего мозг собирает новые ролики</h4>
                 <p className="mt-1 max-w-2xl text-sm font-medium text-amber-900">
-                  Это слой между трендами и генератором: лучшие хуки, эмоции, камера, монтаж, B-roll, CTA, продукт, аудитория и запреты на копирование.
+                  Это слой между трендами и памятью: лучшие хуки, эмоции, камера, монтаж, B-roll, CTA, продукт, аудитория и запреты на копирование.
                 </p>
               </div>
               <span className="rounded-full border border-amber-200 bg-white px-3 py-1 text-xs font-black text-amber-800">
@@ -4119,7 +4255,7 @@ export default function ReelsBrainPage() {
                 </div>
 
                 <details className="rounded-2xl border border-rose-200 bg-white p-4">
-                  <summary className="cursor-pointer text-xs font-black uppercase tracking-[0.18em] text-slate-500">Prompt patch для генератора</summary>
+                  <summary className="cursor-pointer text-xs font-black uppercase tracking-[0.18em] text-slate-500">Internal prompt patch</summary>
                   <div className="mt-3 space-y-2">
                     {humanizationPatches.slice(0, 2).map((patch) => (
                       <div key={patch.id} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs">
@@ -4139,10 +4275,10 @@ export default function ReelsBrainPage() {
           <div className="mt-4 rounded-2xl border border-violet-100 bg-gradient-to-br from-violet-50 via-white to-cyan-50 p-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <p className="text-xs font-black uppercase tracking-[0.18em] text-violet-700">Generator Handoff</p>
-                <h4 className="mt-1 text-lg font-black text-slate-950">Готовые пакеты для сценариста и режиссера</h4>
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-violet-700">Creative Intelligence Packets</p>
+                <h4 className="mt-1 text-lg font-black text-slate-950">Внутренние пакеты понимания Reels Brain</h4>
                 <p className="mt-1 max-w-2xl text-sm font-medium text-violet-950">
-                  Склеивает Creative Brief, Humanization, Simulation, Experiment и Portfolio в один payload: что снять, как очеловечить, что тестировать, какие метрики смотреть и что запрещено копировать.
+                  Склеивает Creative Brief, Humanization, Simulation, Experiment и Portfolio в один аналитический пакет: какая механика сильная, где риск, что проверять и что запрещено копировать. Ничего не отправляет в контент-завод.
                 </p>
               </div>
               <span className="rounded-full border border-violet-200 bg-white px-3 py-1 text-xs font-black text-violet-800">
@@ -4159,7 +4295,7 @@ export default function ReelsBrainPage() {
 
             <div className="mt-4 grid gap-3 xl:grid-cols-[1.2fr_0.8fr]">
               <div className="rounded-2xl border border-violet-200 bg-white p-4">
-                <p className="font-black text-slate-950">Next generator payloads</p>
+                <p className="font-black text-slate-950">Next intelligence packets</p>
                 <div className="mt-3 grid gap-2 lg:grid-cols-2">
                   {generatorHandoffPayloads.length ? generatorHandoffPayloads.slice(0, 4).map((payload) => (
                     <div key={payload.id} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs">
@@ -4183,13 +4319,13 @@ export default function ReelsBrainPage() {
                       <p className="mt-1 text-slate-600">test: {payload.experiment ? `${payload.experiment.axis} -> ${payload.experiment.variant}` : "control creative"}</p>
                       <p className="mt-1 text-violet-700">metrics: {(payload.generator_payload?.metrics_to_watch || []).join(" · ") || "watch_rate"}</p>
                     </div>
-                  )) : <p className="text-sm text-slate-500">Generator handoff появится после Creative Briefs + Humanization.</p>}
+                  )) : <p className="text-sm text-slate-500">Creative packets появятся после Creative Briefs + Humanization.</p>}
                 </div>
               </div>
 
               <div className="space-y-3">
                 <details className="rounded-2xl border border-violet-200 bg-white p-4" open>
-                  <summary className="cursor-pointer text-xs font-black uppercase tracking-[0.18em] text-slate-500">Payload details</summary>
+                  <summary className="cursor-pointer text-xs font-black uppercase tracking-[0.18em] text-slate-500">Packet details</summary>
                   <div className="mt-3 space-y-2">
                     {generatorHandoffPayloads[0] ? (
                       <>
@@ -4206,12 +4342,12 @@ export default function ReelsBrainPage() {
                           <p key={rule} className="rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-xs font-semibold text-red-900">{rule}</p>
                         ))}
                       </>
-                    ) : <p className="text-sm text-slate-500">Payload details пока пусты.</p>}
+                    ) : <p className="text-sm text-slate-500">Packet details пока пусты.</p>}
                   </div>
                 </details>
 
                 <div className="rounded-2xl border border-violet-200 bg-white p-4">
-                  <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">Handoff rules</p>
+                  <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">Packet rules</p>
                   <div className="mt-3 space-y-2">
                     {generatorHandoffRules.slice(0, 4).map((rule) => (
                       <p key={rule} className="rounded-xl border border-violet-100 bg-violet-50 px-3 py-2 text-xs font-semibold text-violet-900">{rule}</p>
@@ -4322,8 +4458,8 @@ export default function ReelsBrainPage() {
           <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
-                <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">Generator-ready recipes</p>
-                <h4 className="mt-1 text-lg font-black text-slate-950">Что можно сразу отдавать контент-заводу</h4>
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">Packet-ready recipes</p>
+                <h4 className="mt-1 text-lg font-black text-slate-950">Что готово для внутренней памяти Reels Brain</h4>
               </div>
               <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-bold text-slate-500">
                 {compactNumber(filteredRecipes.length)} recipes
@@ -4374,8 +4510,8 @@ export default function ReelsBrainPage() {
                         </div>
                         {recipe.generator_payload ? (
                           <div className="rounded-lg border border-cyan-100 bg-cyan-50 px-3 py-2 text-cyan-800">
-                            <p className="font-black">Use in generator payload</p>
-                            <p className="mt-1">hook + retention + structure + visual_recipe + do_not_copy готовы для генератора.</p>
+                            <p className="font-black">Use in internal packet</p>
+                            <p className="mt-1">hook + retention + structure + visual_recipe + do_not_copy готовы для аналитического пакета.</p>
                           </div>
                         ) : null}
                         {recipe.examples?.length ? (
@@ -4558,9 +4694,9 @@ export default function ReelsBrainPage() {
               <p className="mt-1 text-xs text-slate-300">из {compactNumber(learningTotals?.total_videos || 0)} видео</p>
             </div>
             <div className="rounded-2xl border border-white/10 bg-white/10 p-4">
-              <p className="text-xs font-bold uppercase tracking-wide text-cyan-100/70">Generator-ready</p>
+              <p className="text-xs font-bold uppercase tracking-wide text-cyan-100/70">Packet-ready</p>
               <div className="mt-2 text-3xl font-black">{compactNumber(learningTotals?.generator_ready_patterns || 0)}</div>
-              <p className="mt-1 text-xs text-slate-300">паттернов для генератора</p>
+              <p className="mt-1 text-xs text-slate-300">паттернов для памяти</p>
             </div>
             <div className="rounded-2xl border border-white/10 bg-white/10 p-4">
               <p className="text-xs font-bold uppercase tracking-wide text-cyan-100/70">Cross-platform</p>

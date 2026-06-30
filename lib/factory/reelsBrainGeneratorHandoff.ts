@@ -38,7 +38,7 @@ export type GeneratorHandoffPayload = {
     recommended_iteration: string;
   } | null;
   generator_payload: {
-    source: "reels_brain_generator_handoff";
+    source: "reels_brain_internal_creative_packet";
     niche: string;
     hook: string;
     retention: string;
@@ -184,7 +184,7 @@ export function buildGeneratorHandoffFromPlaybooks(rows: { niche?: string; playb
         recommended_iteration: sim.recommended_iteration,
       } : null,
       generator_payload: {
-        source: "reels_brain_generator_handoff",
+        source: "reels_brain_internal_creative_packet",
         niche: brief.niche,
         hook: brief.hook,
         retention: brief.retention_mechanic,
@@ -211,10 +211,10 @@ export function buildGeneratorHandoffFromPlaybooks(rows: { niche?: string; playb
     hold: payloads.filter((payload) => payload.readiness === "hold").length,
     payloads,
     handoff_rules: [
-      "Generator Handoff отдаёт только механику и guardrails, не исходное видео.",
-      "ready_to_generate можно отправлять в сценарист/режиссер слой без ручной расшифровки.",
-      "needs_revision сначала правим risk из Simulation/Humanization, потом генерируем.",
-      "hold не запускать, пока не снижен AI-slop или trust risk.",
+      "Internal Creative Packet отдаёт только механику и guardrails, не исходное видео.",
+      "Это внутренний слой Reels Brain: он ничего не отправляет в контент-завод и не запускает генерацию.",
+      "ready_to_generate означает готовность аналитического пакета, а не автоматический запуск производства.",
+      "needs_revision сначала правим risk из Simulation/Humanization; hold не использовать, пока не снижен AI-slop или trust risk.",
     ],
   };
 }

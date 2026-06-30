@@ -38,7 +38,7 @@ export async function GET(req: NextRequest) {
     const handoff = buildGeneratorHandoffFromPlaybooks(rows, limit);
     return NextResponse.json({
       ok: true,
-      mode: "generator_handoff",
+      mode: "internal_creative_packet",
       niches,
       summary: {
         payloads: handoff.total_payloads,
@@ -47,11 +47,12 @@ export async function GET(req: NextRequest) {
         hold: handoff.hold,
       },
       handoff,
-      generator_payloads: handoff.payloads.map((payload) => payload.generator_payload),
+      creative_packets: handoff.payloads.map((payload) => payload.generator_payload),
       notes: [
-        "Generator Handoff собирает brief + humanization + simulation + experiment + safety в один payload.",
-        "ready_to_generate можно отдавать в сценарист/режиссер слой; hold не запускать без правки риска.",
-        "Это deterministic MVP без LLM-вызовов и без дополнительных расходов.",
+        "Internal Creative Packet собирает brief + humanization + simulation + experiment + safety в один аналитический пакет.",
+        "Это только слой Reels Brain: route ничего не отправляет в контент-завод и не запускает генерацию.",
+        "ready_to_generate означает готовность пакета к ручному просмотру/следующему решению; hold не использовать без правки риска.",
+        "Deterministic MVP без LLM-вызовов и без дополнительных расходов.",
       ],
     }, { headers: { "Cache-Control": "no-store" } });
   } catch (e) {
