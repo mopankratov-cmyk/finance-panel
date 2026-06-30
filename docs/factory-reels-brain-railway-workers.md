@@ -22,6 +22,7 @@ Railway config:
 
 ```text
 railway.json
+Dockerfile
 ```
 
 One-shot smoke перед постоянным запуском:
@@ -96,6 +97,8 @@ Audio/visual heavy runtime подключается следующим слое�
 node --check lib/factory/reelsBrainRailwayWorker.mjs
 node --import tsx lib/factory/reelsBrainRailwayWorkerContract.test.mts
 ```
+
+Railway deploy uses the root `Dockerfile` so the service starts the worker process directly instead of falling back to `npm start`.
 
 Production smoke:
 
