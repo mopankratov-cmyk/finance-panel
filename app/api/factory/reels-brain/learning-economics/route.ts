@@ -322,7 +322,7 @@ function productFitForPattern(pattern: InsightPattern, niche: string) {
 function creativeBriefForPattern(pattern: InsightPattern, niche: string, example?: { hook?: string | null }): ReferenceCreativeBrief {
   const template = templateForPattern(pattern)[0] || "Покажи проблему, механику и результат без копирования оригинала.";
   const exampleHook = String(example?.hook || "").trim();
-  const safeExample = exampleHook && !/#\w|https?:\/\//i.test(exampleHook) && exampleHook.length < 140 ? exampleHook : "";
+  const safeExample = exampleHook && !/#[\p{L}\p{N}_]+|https?:\/\//iu.test(exampleHook) && exampleHook.length < 140 ? exampleHook : "";
   return {
     hook: safeExample || template,
     retention_mechanic: pattern.retention_label || pattern.retention_mechanism || "открытая петля / ожидание доказательства",
@@ -361,7 +361,7 @@ function generatorPayload(pattern: InsightPattern, niche: string): GeneratorPayl
 function safetyFlags(pattern: InsightPattern, example?: { hook?: string | null }) {
   const flags: string[] = [];
   const hook = String(example?.hook || "").trim();
-  if (/#\w/.test(hook)) flags.push("raw_hashtags");
+  if (/#[\p{L}\p{N}_]+/u.test(hook)) flags.push("raw_hashtags");
   if (/https?:\/\//i.test(hook)) flags.push("raw_url_in_hook");
   if (pattern.quality_label !== "generator_ready") flags.push("not_generator_ready");
   if (num(pattern.relevance_score) < 55) flags.push("low_relevance");

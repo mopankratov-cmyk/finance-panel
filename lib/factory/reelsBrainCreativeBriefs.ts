@@ -131,11 +131,13 @@ function productFit(niche: string, pattern: ReelsPatternMemoryItem): string[] {
 }
 
 function safeHook(pattern: ReelsPatternMemoryItem): string {
+  const hasRawTagOrUrl = (value: string) => /#[\p{L}\p{N}_]+|https?:\/\//iu.test(value);
   const example = (pattern.examples || [])
     .map((row) => String(row.hook || "").trim())
-    .find((hook) => hook && hook.length <= 140 && !/#\w|https?:\/\//i.test(hook));
+    .find((hook) => hook && hook.length <= 140 && !hasRawTagOrUrl(hook));
   if (example) return example;
-  if (pattern.hooks?.[0]) return pattern.hooks[0];
+  const hook = (pattern.hooks || []).map((row) => String(row || "").trim()).find((row) => row && row.length <= 140 && !hasRawTagOrUrl(row));
+  if (hook) return hook;
   return `${pattern.hook_label || "Хук"}: показать проблему, доказательство и результат.`;
 }
 
@@ -191,4 +193,3 @@ export function buildCreativeBriefsFromPlaybooks(rows: { niche?: string; playboo
     .sort((a, b) => b.op_score - a.op_score || a.niche.localeCompare(b.niche))
     .slice(0, Math.max(1, Math.min(50, limit)));
 }
-
