@@ -339,6 +339,10 @@ function tiktokInput(row: Record<string, any>): ReelsBrainInput {
   };
 }
 
+export function apifyTikTokItemToReelsBrainInput(row: Record<string, any>): ReelsBrainInput {
+  return tiktokInput(row);
+}
+
 function instagramInput(row: Record<string, any>): ReelsBrainInput {
   const media = rec(row.media || row.reel || row.post || row);
   const user = rec(media.user || row.user);
