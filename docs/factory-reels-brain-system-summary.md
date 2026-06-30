@@ -1,398 +1,399 @@
-# Reels Brain System Summary
+# Reels Brain: системное summary
 
-## What This System Is
+## Что это за система
 
-Reels Brain is the intelligence layer for the content factory.
+Reels Brain - это интеллектуальный слой контент-завода.
 
-Its job is not just to collect short-form videos. Its job is to build nasmotrennost: a structured memory of what works in TikTok, Instagram Reels, and YouTube Shorts, then turn that memory into usable creative briefs for future content generation.
+Его задача не просто собрать много коротких видео. Его задача - накопить насмотренность: структурированную память о том, что работает в TikTok, Instagram Reels и YouTube Shorts, а потом превращать эту память в понятные creative brief для генерации нового контента.
 
-The system is designed as a self-learning loop:
+Система устроена как самообучающийся цикл:
 
 ```text
 Discovery Intelligence
-  -> provider/source plan
-  -> viral video collection
-  -> raw video corpus
-  -> analyze backlog
+  -> план источников и провайдеров
+  -> сбор вирусных видео
+  -> сырой корпус видео
+  -> анализ backlog
   -> Pattern Brain
-  -> insight dashboard
-  -> generator-ready creative briefs
-  -> feedback and relearning
+  -> витрина инсайтов
+  -> creative briefs для генератора
+  -> обратная связь и дообучение
 ```
 
-## Core Principle
+## Главный принцип
 
-The goal is not "more scraped videos".
+Цель не в том, чтобы "насобирать побольше видео".
 
-The goal is cheaper and smarter discovery of relevant breakout videos:
+Цель - дешевле и умнее находить релевантные залетные видео:
 
-- fewer random videos
-- more videos from high-yield queries, accounts, sounds, hashtags, and manual seeds
-- lower cost per useful analyzed reference
-- clearer separation between platform-specific brains
-- creative briefs that can be safely reused without copying original videos directly
+- меньше случайного мусора;
+- больше видео из сильных запросов, аккаунтов, звуков, хештегов и ручных сидов;
+- ниже цена за полезный разобранный референс;
+- отдельная память по платформам, а не один общий усредненный short-form мозг;
+- creative briefs, которые можно безопасно использовать без прямого копирования чужих роликов.
 
-## Main Layers
+## Основные слои системы
 
 ### 1. Discovery Intelligence
 
-Discovery Intelligence decides where the system should search next.
+Discovery Intelligence решает, где системе искать дальше.
 
-It works before expensive analysis and before Pattern Brain rebuilds. This is the layer that should eventually make Apify/provider usage cheaper because the system learns which sources produce useful references.
+Этот слой работает до дорогого анализа и до пересборки Pattern Brain. Именно он должен со временем удешевлять Apify и другие провайдеры, потому что система учится понимать, какие источники дают полезные референсы, а какие просто сжигают бюджет.
 
-Source types:
+Типы источников:
 
-- `query`: search phrase
-- `hashtag`: platform hashtag
-- `account`: creator/profile to monitor
-- `sound`: audio/sound cluster
-- `manual_url`: operator seed
+- `query`: поисковый запрос;
+- `hashtag`: хештег платформы;
+- `account`: аккаунт или автор, за которым стоит следить;
+- `sound`: звук или аудио-кластер;
+- `manual_url`: ручной референс, который дал оператор.
 
-Main learning metrics:
+Метрики обучения:
 
-- `relevance_rate`: useful videos / found videos
-- `breakout_rate`: breakout videos / useful videos
-- `cost_per_relevant`: provider cost / useful videos
-- `yield_score`: combined source ranking score
+- `relevance_rate`: сколько полезных видео среди найденных;
+- `breakout_rate`: сколько залетных видео среди полезных;
+- `cost_per_relevant`: стоимость одного полезного видео;
+- `yield_score`: общий рейтинг источника.
 
-Budget lanes:
+Бюджетные режимы:
 
-- `explore`: test new sources
-- `exploit`: reuse proven sources
-- `refresh`: retest old sources so the map does not rot
+- `explore`: пробуем новые источники;
+- `exploit`: активно используем уже доказавшие себя источники;
+- `refresh`: перепроверяем старые источники, чтобы карта не протухала.
 
-Current default split: `20 / 70 / 10`.
+Текущий базовый сплит: `20 / 70 / 10`.
 
-### 2. Provider And Source Runner
+### 2. Провайдеры и сборщик
 
-The provider layer collects videos through external providers such as Apify and other API providers.
+Слой провайдеров собирает видео через внешние сервисы, например Apify и другие API-провайдеры.
 
-The system can compare providers by:
+Система может сравнивать провайдеров по:
 
-- volume found
-- inserted videos
-- relevance
-- errors
-- latency
-- cost tier
-- provider drift
+- найденному объему;
+- количеству вставленных видео;
+- релевантности;
+- ошибкам;
+- скорости;
+- примерной стоимости;
+- стабильности результата.
 
-Preferred provider memory is stored per platform/niche so TikTok, Instagram, and YouTube do not collapse into one generic short-video brain.
+Предпочтительный провайдер хранится отдельно по нише и платформе. Это важно, чтобы TikTok, Instagram и YouTube Shorts не смешались в одну среднюю кашу.
 
-### 3. Raw Corpus
+### 3. Сырой корпус видео
 
-Collected videos are stored as raw references with metadata.
+Собранные видео попадают в сырой корпус вместе с метаданными.
 
-The corpus target currently discussed:
+Целевые уровни насмотренности:
 
-- first strong milestone: `6,000` videos
-- full nasmotrennost milestone: `10,000` videos
-- future serious scale: `100,000` videos, but only after Discovery Intelligence reduces waste
+- первый сильный рубеж: `6 000` видео;
+- полноценный стартовый мозг: `10 000` видео;
+- будущий серьезный масштаб: `100 000` видео, но только после удешевления Discovery Intelligence.
 
-Default 10k allocation:
+Базовое распределение на 10 000 видео:
 
-- TikTok: `4,000`
-- Instagram: `3,500`
-- YouTube Shorts: `2,500`
+- TikTok: `4 000`;
+- Instagram Reels: `3 500`;
+- YouTube Shorts: `2 500`.
 
 ### 4. Analyze Backlog
 
-Analyze backlog processes stored videos and extracts useful intelligence from them.
+Analyze Backlog берет уже собранные видео и превращает их в структурированные наблюдения.
 
-The backlog turns raw videos into structured observations:
+Он вытаскивает:
 
-- hook
-- format
-- retention mechanic
-- topic/theme
-- visual pattern
-- likely niche fit
-- virality signals
-- platform signal
+- хук;
+- формат;
+- механику удержания;
+- тему;
+- визуальный паттерн;
+- подходящую нишу;
+- сигналы вирусности;
+- платформенный контекст.
 
-This layer is where "we collected video" becomes "we learned something from video".
+Это слой, где "мы собрали видео" превращается в "мы чему-то научились".
 
 ### 5. Pattern Brain
 
-Pattern Brain compresses analyzed videos into reusable patterns.
+Pattern Brain сжимает разобранные видео в повторяемые паттерны.
 
-It learns:
+Он запоминает:
 
-- winning hooks
-- repeated content structures
-- retention mechanics
-- visual recipes
-- platform-specific differences
-- cross-platform reusable ideas
-- weak or noisy patterns that should not drive generation
+- выигрышные хуки;
+- повторяющиеся структуры роликов;
+- механики удержания;
+- visual recipes;
+- различия между платформами;
+- идеи, которые можно переносить между платформами;
+- слабые или шумные паттерны, которые не стоит давать генератору.
 
-Pattern Brain is not meant to store every detail forever. It stores compressed structures that are useful for future content decisions.
+Pattern Brain не должен хранить каждую мелочь навсегда. Его задача - хранить сжатые структуры, которые помогают принимать контентные решения.
 
-### 6. Insight Showcase
+### 6. Витрина инсайтов
 
-The Reels Brain dashboard is being simplified into an insight showcase instead of an operator control panel.
+Дашборд Reels Brain мы упрощаем в сторону витрины инсайтов, а не технической панели с настройками.
 
-The user-facing goal:
+Пользователь должен понимать:
 
-- show what the brain understands
-- show which hooks are winning
-- show why the system trusts a pattern
-- show what can be generated from a reference
-- hide internal debugging unless needed
+- что мозг уже понял;
+- какие хуки выигрывают;
+- почему система доверяет паттерну;
+- какие референсы можно превратить в контент;
+- становится ли сбор дешевле;
+- какой следующий этап.
 
-Current insight blocks:
+Текущие блоки витрины:
 
-- Brain status
-- Learning economics
-- Winning hooks
-- Generator recipes
-- Source references
-- Source map
-- Legal/safety guard
-- 15-layer roadmap status
+- статус мозга;
+- Learning Economics;
+- Winning Hooks;
+- Generator Recipes;
+- Source References;
+- Source Map;
+- Legal / Safety Guard;
+- статус 15 слоев развития.
 
-### 7. Creative Brief Conversion
+### 7. Превращение референса в creative brief
 
-Every strong reference should become a normal creative brief.
+Каждый сильный референс должен превращаться в нормальный creative brief.
 
-Creative brief fields:
+Поля creative brief:
 
-- hook
-- retention mechanic
-- structure by seconds
-- visual recipe
-- what product/theme fits
-- what we copy as a mechanic
-- what is forbidden to copy
+- хук;
+- механика удержания;
+- структура по секундам;
+- visual recipe;
+- какой товар или тема подходит;
+- что копируем как механику;
+- что запрещено копировать.
 
-This is the bridge between Reels Brain and the future content generator.
+Это мост между Reels Brain и будущим генератором контента.
 
-The key rule: copy mechanics, not the original creative asset.
+Главное правило: копируем механику, а не чужой креатив.
 
 ### 8. Generator Payload
 
-The system now prepares generator-ready payloads from patterns.
+Система уже готовит payload, который потом можно передавать генератору.
 
-Payload includes:
+Payload содержит:
 
-- source: `reels_brain_pattern`
-- hook
-- retention
-- structure
-- second-by-second plan
-- visual recipe
-- product fit
-- copy-as-mechanic rules
-- do-not-copy restrictions
+- source: `reels_brain_pattern`;
+- хук;
+- удержание;
+- структуру;
+- план по секундам;
+- visual recipe;
+- product fit;
+- правила "что можно брать как механику";
+- ограничения "что нельзя копировать".
 
-This means the intelligence layer can later connect to the content factory without the generator needing to understand the whole scraping/analyze pipeline.
+Это значит, что генератору не нужно будет понимать весь scraping/analyze pipeline. Он получит уже очищенное задание от интеллектуального слоя.
 
 ### 9. Learning Economics
 
-Learning Economics explains whether the system is getting cheaper and smarter.
+Learning Economics объясняет, становится ли система умнее и дешевле.
 
-It should answer:
+Блок должен отвечать:
 
-- how many videos were found
-- how many were inserted
-- how many were analyzed
-- how many became useful patterns
-- estimated spend
-- estimated cost per analyzed video
-- estimated cost per useful reference
-- whether today is better than yesterday
+- сколько видео нашли;
+- сколько вставили;
+- сколько разобрали;
+- сколько стало полезными паттернами;
+- сколько примерно потратили;
+- какая примерная цена за разобранное видео;
+- какая примерная цена за полезный референс;
+- сегодня лучше или хуже, чем вчера.
 
-Important limitation:
+Важное ограничение:
 
-- current cost numbers are estimates unless provider billing API is connected
-- true Apify spend per video needs provider billing data
+- сейчас часть cost-метрик оценочная;
+- для точной цены Apify за видео нужно подключить billing API провайдера.
 
-### 10. Legal And Safety Guard
+### 10. Legal / Safety Guard
 
-The legal/safety layer exists so references can be used safely.
+Этот слой нужен, чтобы использовать референсы безопасно.
 
-It separates:
+Он разделяет:
 
-- reusable mechanics
-- generic structure
-- visual direction
-- forbidden direct copying
-- creator identity
-- exact captions/scripts
-- watermarked assets
-- protected brand or face reuse
+- механику, которую можно переиспользовать;
+- общую структуру;
+- визуальное направление;
+- прямое копирование, которое нельзя делать;
+- лицо автора;
+- точный текст;
+- водяные знаки;
+- чужой бренд или узнаваемую айдентику.
 
-The target behavior: "inspired by pattern" instead of "copied from video".
+Целевое поведение: "вдохновились паттерном", а не "скопировали ролик".
 
-## Current Storage Model
+## Где хранится память
 
-Current memory is mostly stored in existing content-factory data structures to avoid risky migrations.
+Сейчас память в основном хранится в уже существующих структурах контент-завода, чтобы не делать рискованные миграции раньше времени.
 
-Known memory areas:
+Ключевые зоны памяти:
 
-- `viral_videos`: raw collected references and metadata
-- analyzed video fields: extracted intelligence from backlog processing
-- Pattern Brain structures: compressed patterns built from analyzed videos
-- `niche_playbooks.playbook.reels_brain_sources`: preferred provider/source memory
-- `niche_playbooks.playbook.reels_brain_discovery`: source yield and discovery learning memory
-- automation history: recent runs and diagnostics
+- `viral_videos`: сырые собранные референсы и метаданные;
+- поля анализа видео: извлеченные хуки, форматы, темы и сигналы;
+- структуры Pattern Brain: сжатые паттерны из разобранных видео;
+- `niche_playbooks.playbook.reels_brain_sources`: память по провайдерам и источникам;
+- `niche_playbooks.playbook.reels_brain_discovery`: память Discovery Intelligence;
+- automation history: последние прогоны и диагностика.
 
-This is intentionally migration-light.
+Это специально сделано migration-light.
 
-Future persistent tables may be useful when:
+Отдельные таблицы могут понадобиться позже, если:
 
-- source history becomes too deep for playbook JSON
-- economics need exact long-term reporting
-- feedback loops need publication outcomes
-- graph-style exploration becomes important
+- история источников станет слишком большой для JSON/playbook;
+- понадобятся точные долгосрочные отчеты по экономике;
+- появится feedback loop от опубликованного контента;
+- понадобится графовая карта источников и паттернов.
 
-## How The Daily Loop Should Work
+## Как должен работать дневной цикл
 
-Daily loop:
-
-```text
-1. Read current brain state.
-2. Find weakest niche/platform lanes.
-3. Ask Discovery Intelligence where to search next.
-4. Run provider/source collection.
-5. Insert useful raw videos.
-6. Analyze backlog.
-7. Rebuild or refresh Pattern Brain.
-8. Update source memory and provider memory.
-9. Show owner what improved.
-```
-
-If Apify balance is low:
+Дневной loop:
 
 ```text
-1. Stop expensive collection.
-2. Replay Discovery Intelligence on already collected videos.
-3. Improve source map without provider spend.
-4. Resume paid collection only on higher-yield lanes.
+1. Прочитать текущее состояние мозга.
+2. Найти слабые связки niche x platform.
+3. Спросить Discovery Intelligence, где искать дальше.
+4. Запустить сбор через провайдера.
+5. Сохранить полезные видео в корпус.
+6. Прогнать analyze backlog.
+7. Обновить Pattern Brain.
+8. Обновить память источников и провайдеров.
+9. Показать владельцу, что улучшилось.
 ```
 
-## Platform Separation
+Если баланс Apify низкий:
 
-TikTok, Instagram Reels, and YouTube Shorts should not share one flat brain.
+```text
+1. Остановить дорогой сбор.
+2. Прогнать Discovery replay по уже собранным видео.
+3. Улучшить карту источников без внешних расходов.
+4. Возобновить платный сбор только по более сильным направлениям.
+```
 
-Each platform can differ by:
+## Почему платформы надо разделять
 
-- hook style
-- pacing
-- visual grammar
-- caption density
-- creator/account dynamics
-- trend velocity
-- search/query behavior
-- retention mechanics
+TikTok, Instagram Reels и YouTube Shorts не должны жить в одном плоском мозге.
 
-The system should maintain:
+Они могут отличаться по:
 
-- TikTok brain
-- Instagram brain
-- YouTube Shorts brain
-- cross-platform meta brain
+- стилю хуков;
+- темпу;
+- визуальной грамматике;
+- плотности текста;
+- роли автора;
+- скорости трендов;
+- логике поиска;
+- механикам удержания.
 
-Cross-platform ideas are useful, but they should be marked as transferable rather than blindly merged.
+Поэтому системе нужны:
 
-## Russian-Segment Focus
+- TikTok Brain;
+- Instagram Brain;
+- YouTube Shorts Brain;
+- Cross-platform Meta Brain.
 
-For Russian-language content, the brain should prefer Russian-language references and Russian-market patterns.
+Кросс-платформенные идеи полезны, но их нужно помечать как переносимые, а не смешивать вслепую.
 
-Reason:
+## Почему важен русский сегмент
 
-- hooks differ by language
-- humor differs
-- trust signals differ
-- marketplace/product expectations differ
-- creator formats differ
+Для русскоязычного контента мозг должен предпочитать русские референсы и паттерны российского/русскоязычного рынка.
 
-Russian training should not be treated as a translation of global patterns. It needs its own source map and pattern memory.
+Причины:
 
-## Dashboard UX Direction
+- хуки отличаются по языку;
+- юмор отличается;
+- сигналы доверия отличаются;
+- ожидания по товарам отличаются;
+- авторские форматы отличаются.
 
-The dashboard should become a clear insight room, not a settings room.
+Русский мозг нельзя строить как перевод глобальных паттернов. Ему нужна своя карта источников и своя память паттернов.
 
-The owner should understand:
+## UX-направление дашборда
 
-- how much the brain has learned
-- which niches/platforms are strong or weak
-- which hooks are winning
-- why the system trusts them
-- what references can become content
-- whether collection is getting cheaper
-- what stage comes next
+Дашборд должен стать понятной комнатой инсайтов, а не панелью настроек.
 
-The owner should not need to tune low-level settings manually in the UI. Most controls can stay internal or chat-driven.
+Владелец должен быстро видеть:
 
-## Current Status
+- сколько мозг уже изучил;
+- какие ниши и платформы сильные или слабые;
+- какие хуки выигрывают;
+- почему система им доверяет;
+- какие референсы можно превратить в контент;
+- становится ли сбор дешевле;
+- какой следующий шаг.
 
-Live or implemented foundation:
+Низкоуровневые настройки лучше держать внутри системы или управлять ими через чат.
 
-- platform-specific brain concepts
-- raw corpus collection pipeline
-- analyze backlog
-- Pattern Brain generation
-- Discovery Intelligence plan/learn/replay
-- provider memory
-- source map concept
-- dashboard insight showcase
-- creative brief structures
-- generator-ready payloads
-- learning economics estimates
-- legal/safety guard
-- 15-layer capability status
+## Текущий статус
 
-Still partial or planned:
+Уже реализовано или заложено как foundation:
 
-- exact provider billing integration
-- true cost per video from Apify billing
-- publication feedback loop
-- generator outcome scoring
-- full source graph UI
-- full account/sound discovery automation
-- exact second-by-second extraction from video content
-- long-term dedicated memory tables
+- концепция отдельных platform brains;
+- сбор сырого корпуса;
+- analyze backlog;
+- Pattern Brain;
+- Discovery Intelligence plan/learn/replay;
+- память по провайдерам;
+- концепция source map;
+- витрина инсайтов на дашборде;
+- структуры creative brief;
+- generator-ready payload;
+- оценочная Learning Economics;
+- Legal / Safety Guard;
+- статус 15 слоев развития.
 
-## The 15 Active Improvement Layers
+Пока частично или planned:
 
-1. Reference-to-creative-brief conversion.
-2. Hook confidence and evidence scoring.
-3. OP / frequent / experimental hook segmentation.
-4. Generator-ready payloads.
-5. Dashboard insight filters.
-6. Actual provider billing and cost-per-video truth.
-7. Product/theme fit recommendations.
-8. Source map and discovery economics.
-9. Noise cleanup and low-quality pattern suppression.
-10. Weekly owner report.
-11. Publication feedback loop.
-12. Generator integration.
+- точная интеграция billing API провайдера;
+- реальная цена Apify за одно видео;
+- feedback loop от опубликованного контента;
+- оценка результата генератора;
+- полноценный UI графа источников;
+- автоматическое обучение по аккаунтам и звукам;
+- точное извлечение структуры ролика из видео;
+- долгосрочные отдельные таблицы памяти.
+
+## 15 активных слоев улучшения
+
+1. Превращение референса в creative brief.
+2. Confidence и evidence scoring для хуков.
+3. Разделение хуков на OP / frequent / experimental.
+4. Generator-ready payload.
+5. Фильтры витрины инсайтов.
+6. Реальный billing и честная цена за видео.
+7. Рекомендации product/theme fit.
+8. Source map и discovery economics.
+9. Очистка шума и подавление слабых паттернов.
+10. Недельный отчет владельцу.
+11. Feedback loop от публикаций.
+12. Интеграция с генератором.
 13. Discovery autopilot.
-14. Better video structure extraction.
-15. Legal/safety guard v2.
+14. Более точное извлечение структуры ролика.
+15. Legal / Safety Guard v2.
 
-## Best Next Steps
+## Лучшие следующие шаги
 
-Short term:
+Ближайшие:
 
-- keep analyzing the existing corpus
-- keep Russian-segment focus
-- connect true Apify billing if possible
-- improve insight dashboard readability
-- make source map more visible
+- продолжать анализировать уже собранный корпус;
+- держать фокус на русском сегменте;
+- подключить точный billing Apify, если возможно;
+- упростить витрину инсайтов;
+- сделать source map более видимой.
 
-Medium term:
+Средний горизонт:
 
-- connect Discovery Intelligence into daily jobs more aggressively
-- add account and sound source learning
-- start scoring generated content outcomes
-- show which patterns produce better briefs
+- сильнее встроить Discovery Intelligence в daily jobs;
+- добавить обучение по аккаунтам и звукам;
+- начать учитывать результаты сгенерированного и опубликованного контента;
+- показывать, какие паттерны дают лучшие creative briefs.
 
-Long term:
+Дальний горизонт:
 
-- move from JSON/playbook memory to dedicated memory tables
-- build a graph-style source and pattern explorer
-- connect publication metrics back into learning
-- scale toward `100,000` videos only after cost per useful reference is controlled
+- вынести память из JSON/playbook в отдельные таблицы;
+- построить графовый explorer источников и паттернов;
+- замкнуть публикационные метрики обратно в обучение;
+- масштабироваться к `100 000` видео только после контроля стоимости полезного референса.
 
