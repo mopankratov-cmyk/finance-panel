@@ -1214,6 +1214,38 @@ type ReelsBrainExperimentResponse = {
   error?: string;
 };
 
+type ReelsBrainPortfolioManagerResponse = {
+  ok?: boolean;
+  summary?: {
+    slots?: number;
+    outcomes?: number;
+    winners?: number;
+    launch_experiments?: number;
+    ship_candidates?: number;
+  };
+  portfolio?: {
+    slots?: {
+      id: string;
+      niche: string;
+      slot_type: string;
+      priority_score: number;
+      recommended_format: string;
+      reason: string;
+      metrics_to_watch: string[];
+      guardrails: string[];
+    }[];
+    weekly_mix?: {
+      slot_type: string;
+      count: number;
+      rationale: string;
+    }[];
+    learning_loop?: string[];
+    escalation?: string[];
+  };
+  notes?: string[];
+  error?: string;
+};
+
 type LearningEconomicsDailyCost = {
   date: string;
   runs: number;
@@ -1557,6 +1589,9 @@ export default function ReelsBrainPage() {
   const [experimentBrain, setExperimentBrain] = useState<ReelsBrainExperimentResponse | null>(null);
   const [experimentBrainLoading, setExperimentBrainLoading] = useState(false);
   const [experimentBrainError, setExperimentBrainError] = useState("");
+  const [portfolioManager, setPortfolioManager] = useState<ReelsBrainPortfolioManagerResponse | null>(null);
+  const [portfolioManagerLoading, setPortfolioManagerLoading] = useState(false);
+  const [portfolioManagerError, setPortfolioManagerError] = useState("");
   const [insightNicheFilter, setInsightNicheFilter] = useState("all");
   const [insightConfidenceFilter, setInsightConfidenceFilter] = useState<"all" | "high" | "medium" | "low">("all");
   const [insightSegmentFilter, setInsightSegmentFilter] = useState<"all" | "op_hooks" | "frequent_hooks" | "experimental_hooks">("all");
@@ -1704,13 +1739,15 @@ export default function ReelsBrainPage() {
       setVisualIntelligenceLoading(true);
       setSimulationBrainLoading(true);
       setExperimentBrainLoading(true);
+      setPortfolioManagerLoading(true);
       try {
-        const [memory, audio, visual, simulation, experiment] = await Promise.allSettled([
+        const [memory, audio, visual, simulation, experiment, manager] = await Promise.allSettled([
           readJson<ReelsBrainCreativeMemoryResponse>(await fetch(`/api/factory/reels-brain/creative-memory?niches=${encodeURIComponent(DEFAULT_AUTOMATION_NICHES)}&limit=80`, { cache: "no-store" })),
           readJson<ReelsBrainAudioIntelligenceResponse>(await fetch(`/api/factory/reels-brain/audio-intelligence?niches=${encodeURIComponent(DEFAULT_AUTOMATION_NICHES)}&limit=80`, { cache: "no-store" })),
           readJson<ReelsBrainVisualIntelligenceResponse>(await fetch(`/api/factory/reels-brain/visual-intelligence?niches=${encodeURIComponent(DEFAULT_AUTOMATION_NICHES)}&limit=80`, { cache: "no-store" })),
           readJson<ReelsBrainSimulationResponse>(await fetch(`/api/factory/reels-brain/simulation?niches=${encodeURIComponent(DEFAULT_AUTOMATION_NICHES)}&limit=50`, { cache: "no-store" })),
           readJson<ReelsBrainExperimentResponse>(await fetch(`/api/factory/reels-brain/experiment-brain?niches=${encodeURIComponent(DEFAULT_AUTOMATION_NICHES)}&limit=50`, { cache: "no-store" })),
+          readJson<ReelsBrainPortfolioManagerResponse>(await fetch(`/api/factory/reels-brain/portfolio-manager?niches=${encodeURIComponent(DEFAULT_AUTOMATION_NICHES)}&limit=50`, { cache: "no-store" })),
         ]);
         if (!alive) return;
         setCreativeMemory(memory.status === "fulfilled" ? memory.value : null);
@@ -1718,6 +1755,7 @@ export default function ReelsBrainPage() {
         setVisualIntelligence(visual.status === "fulfilled" ? visual.value : null);
         setSimulationBrain(simulation.status === "fulfilled" ? simulation.value : null);
         setExperimentBrain(experiment.status === "fulfilled" ? experiment.value : null);
+        setPortfolioManager(manager.status === "fulfilled" ? manager.value : null);
       } catch {
         if (alive) {
           setCreativeMemory(null);
@@ -1725,6 +1763,7 @@ export default function ReelsBrainPage() {
           setVisualIntelligence(null);
           setSimulationBrain(null);
           setExperimentBrain(null);
+          setPortfolioManager(null);
         }
       } finally {
         if (alive) {
@@ -1733,6 +1772,7 @@ export default function ReelsBrainPage() {
           setVisualIntelligenceLoading(false);
           setSimulationBrainLoading(false);
           setExperimentBrainLoading(false);
+          setPortfolioManagerLoading(false);
         }
       }
     }
@@ -1826,6 +1866,11 @@ export default function ReelsBrainPage() {
   const holdExperiments = experimentBrain?.experiment?.hold_queue || [];
   const experimentAxes = experimentBrain?.experiment?.by_axis || [];
   const experimentRules = experimentBrain?.experiment?.experiment_rules || [];
+  const portfolioManagerSummary = portfolioManager?.summary || {};
+  const portfolioSlots = portfolioManager?.portfolio?.slots || [];
+  const portfolioWeeklyMix = portfolioManager?.portfolio?.weekly_mix || [];
+  const portfolioLearningLoop = portfolioManager?.portfolio?.learning_loop || [];
+  const portfolioEscalation = portfolioManager?.portfolio?.escalation || [];
   const maxTimelineInserted = Math.max(1, ...learningTimeline.map((row) => row.inserted));
   const analyzeBacklogLanes = analyzeBacklog?.lanes || [];
   const analyzeBacklogQueue = analyzeBacklog?.queue || [];
@@ -2184,6 +2229,23 @@ export default function ReelsBrainPage() {
     }
   }
 
+  async function loadPortfolioManager(currentNiches = automationNiches) {
+    setPortfolioManagerLoading(true);
+    setPortfolioManagerError("");
+    try {
+      const params = new URLSearchParams({
+        niches: currentNiches.trim() || DEFAULT_AUTOMATION_NICHES,
+        limit: "50",
+      });
+      const data = await readJson<ReelsBrainPortfolioManagerResponse>(await fetch(`/api/factory/reels-brain/portfolio-manager?${params.toString()}`, { cache: "no-store" }));
+      setPortfolioManager(data);
+    } catch (e) {
+      setPortfolioManagerError(String((e as Error)?.message || e));
+    } finally {
+      setPortfolioManagerLoading(false);
+    }
+  }
+
   async function refreshAutomationSurfaces(currentNiches = automationNiches, currentNiche = activeNiche()) {
     setAutomationSyncing(true);
     try {
@@ -2200,6 +2262,7 @@ export default function ReelsBrainPage() {
           loadVisualIntelligence(currentNiches),
           loadSimulationBrain(currentNiches),
           loadExperimentBrain(currentNiches),
+          loadPortfolioManager(currentNiches),
         ]);
       }
     } finally {
@@ -3214,11 +3277,20 @@ export default function ReelsBrainPage() {
                   {experimentBrainLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <SlidersHorizontal className="h-4 w-4" />}
                   Refresh experiments
                 </button>
+                <button
+                  type="button"
+                  onClick={() => loadPortfolioManager(automationNiches)}
+                  disabled={portfolioManagerLoading}
+                  className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-cyan-200 bg-white px-3 py-2 text-sm font-black text-cyan-900 hover:border-cyan-400 disabled:opacity-50"
+                >
+                  {portfolioManagerLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                  Refresh portfolio
+                </button>
               </div>
             </div>
-            {(actionPlanError || creativeBriefsError || creativeMemoryError || audioIntelligenceError || visualIntelligenceError || simulationBrainError || experimentBrainError) ? (
+            {(actionPlanError || creativeBriefsError || creativeMemoryError || audioIntelligenceError || visualIntelligenceError || simulationBrainError || experimentBrainError || portfolioManagerError) ? (
               <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">
-                {actionPlanError || creativeBriefsError || creativeMemoryError || audioIntelligenceError || visualIntelligenceError || simulationBrainError || experimentBrainError}
+                {actionPlanError || creativeBriefsError || creativeMemoryError || audioIntelligenceError || visualIntelligenceError || simulationBrainError || experimentBrainError || portfolioManagerError}
               </div>
             ) : null}
             {(actionPlan || creativeBriefs) ? (
@@ -3696,6 +3768,76 @@ export default function ReelsBrainPage() {
                     ))}
                     {experimentRules.slice(0, 4).map((rule) => (
                       <p key={rule} className="rounded-xl border border-indigo-100 bg-indigo-50 px-3 py-2 text-xs font-semibold text-indigo-900">{rule}</p>
+                    ))}
+                  </div>
+                </details>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-4 rounded-2xl border border-teal-100 bg-teal-50 p-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-teal-700">Content Portfolio Manager</p>
+                <h4 className="mt-1 text-lg font-black text-slate-950">Что публиковать дальше</h4>
+                <p className="mt-1 max-w-2xl text-sm font-medium text-teal-900">
+                  Связывает outcomes, Simulation и Experiment Brain в очередь публикаций: scale winners, A/B tests, fix-and-retry и discovery refresh.
+                </p>
+              </div>
+              <span className="rounded-full border border-teal-200 bg-white px-3 py-1 text-xs font-black text-teal-800">
+                {portfolioManagerLoading ? "loading" : `${compactNumber(portfolioManagerSummary.slots || 0)} slots`}
+              </span>
+            </div>
+
+            <div className="mt-4 grid gap-2 sm:grid-cols-5">
+              <MetricCard label="Slots" value={portfolioManagerSummary.slots || 0} />
+              <MetricCard label="Outcomes" value={portfolioManagerSummary.outcomes || 0} />
+              <MetricCard label="Winners" value={portfolioManagerSummary.winners || 0} />
+              <MetricCard label="A/B launch" value={portfolioManagerSummary.launch_experiments || 0} />
+              <MetricCard label="Ship candidates" value={portfolioManagerSummary.ship_candidates || 0} />
+            </div>
+
+            <div className="mt-4 grid gap-3 xl:grid-cols-[1.15fr_0.85fr]">
+              <div className="rounded-2xl border border-teal-200 bg-white p-4">
+                <p className="font-black text-slate-950">Next publishing slots</p>
+                <div className="mt-3 grid gap-2 lg:grid-cols-2">
+                  {portfolioSlots.length ? portfolioSlots.slice(0, 4).map((slot) => (
+                    <div key={slot.id} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="font-black text-slate-900">{slot.niche} · {slot.slot_type}</span>
+                        <span className="rounded-full border border-teal-200 bg-white px-2 py-1 font-black text-teal-800">
+                          {compactNumber(slot.priority_score)}
+                        </span>
+                      </div>
+                      <p className="mt-2 font-semibold text-slate-700">{slot.recommended_format}</p>
+                      <p className="mt-1 text-slate-500">{slot.reason}</p>
+                      <p className="mt-1 text-teal-700">metrics: {slot.metrics_to_watch.join(" · ")}</p>
+                    </div>
+                  )) : <p className="text-sm text-slate-500">Portfolio slots появятся после Simulation/Experiment/outcomes.</p>}
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <div className="rounded-2xl border border-teal-200 bg-white p-4">
+                  <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">Weekly mix</p>
+                  <div className="mt-3 space-y-2">
+                    {portfolioWeeklyMix.map((item) => (
+                      <div key={item.slot_type} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs">
+                        <span className="font-black text-slate-900">{item.count}x {item.slot_type}</span>
+                        <p className="mt-1 text-slate-500">{item.rationale}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <details className="rounded-2xl border border-teal-200 bg-white p-4">
+                  <summary className="cursor-pointer text-xs font-black uppercase tracking-[0.18em] text-slate-500">Learning loop + escalation</summary>
+                  <div className="mt-3 space-y-2">
+                    {portfolioEscalation.map((line) => (
+                      <p key={line} className="rounded-xl border border-amber-100 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-900">{line}</p>
+                    ))}
+                    {portfolioLearningLoop.slice(0, 4).map((line) => (
+                      <p key={line} className="rounded-xl border border-teal-100 bg-teal-50 px-3 py-2 text-xs font-semibold text-teal-900">{line}</p>
                     ))}
                   </div>
                 </details>
