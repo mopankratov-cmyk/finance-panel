@@ -628,20 +628,12 @@ type LearningEconomicsResponse = {
   ok?: boolean;
   insights?: {
     summary?: string[];
-    top_hooks?: {
-      hook_type: string;
-      hook_label: string;
-      frequency: number;
-      avg_score: number;
-      quality_score: number;
-      relevance_score: number;
-      op_score: number;
-      status: "op_hook" | "strong" | "stable" | "watch";
-      niches: string[];
-      platforms: string[];
-      templates: string[];
-      examples?: LearningReferenceExample[];
-    }[];
+    top_hooks?: LearningHookInsight[];
+    hook_groups?: {
+      op_hooks?: LearningHookInsight[];
+      frequent_hooks?: LearningHookInsight[];
+      experimental_hooks?: LearningHookInsight[];
+    };
     winning_formats?: { label: string; frequency: number; avg_score: number; niches: string[] }[];
     retention_mechanics?: { label: string; frequency: number; avg_score: number; hooks: string[] }[];
     recipes?: {
@@ -651,10 +643,36 @@ type LearningEconomicsResponse = {
       format: string;
       retention: string;
       op_score: number;
+      confidence?: "high" | "medium" | "low";
       niches: string[];
       creative_brief?: LearningCreativeBrief;
+      generator_payload?: LearningGeneratorPayload;
       examples?: LearningReferenceExample[];
     }[];
+    source_references?: (LearningReferenceExample & {
+      hook_type?: string;
+      hook_label?: string;
+      op_score?: number;
+      confidence?: "high" | "medium" | "low";
+    })[];
+    source_map?: {
+      provider: string;
+      runs: number;
+      found: number;
+      inserted: number;
+      analyzed: number;
+      errors: number;
+      estimated_spend_usd: number;
+      cost_per_inserted: number | null;
+      cost_per_analyzed: number | null;
+      niches: string[];
+    }[];
+    legal_guard?: {
+      principle: string;
+      allowed: string[];
+      forbidden: string[];
+    };
+    capability_status?: { key: string; label: string; status: string }[];
   };
   niches?: {
     niche: string;
@@ -724,6 +742,29 @@ type LearningEconomicsResponse = {
   error?: string;
 };
 
+type LearningHookInsight = {
+  hook_type: string;
+  hook_label: string;
+  frequency: number;
+  avg_score: number;
+  quality_score: number;
+  relevance_score: number;
+  op_score: number;
+  confidence?: "high" | "medium" | "low";
+  status: "op_hook" | "strong" | "stable" | "watch";
+  segment?: "op_hooks" | "frequent_hooks" | "experimental_hooks";
+  evidence?: {
+    based_on_videos: number;
+    niche_count: number;
+    platform_count: number;
+    reference_count: number;
+  };
+  niches: string[];
+  platforms: string[];
+  templates: string[];
+  examples?: LearningReferenceExample[];
+};
+
 type LearningCreativeBrief = {
   hook: string;
   retention_mechanic: string;
@@ -735,11 +776,27 @@ type LearningCreativeBrief = {
 };
 
 type LearningReferenceExample = {
+  reference_id?: string;
   url?: string | null;
   hook?: string | null;
   score?: number;
   views?: number;
+  why_selected?: string;
+  confidence?: "high" | "medium" | "low";
+  safety_flags?: string[];
   creative_brief?: LearningCreativeBrief;
+};
+
+type LearningGeneratorPayload = {
+  source: "reels_brain_pattern";
+  hook: string;
+  retention: string;
+  structure: string;
+  second_by_second: string[];
+  visual_recipe: string[];
+  product_fit: string[];
+  copy_as_mechanic: string[];
+  do_not_copy: string[];
 };
 
 type LearningEconomicsDailyCost = {
@@ -972,6 +1029,19 @@ function hookStatusCopy(status: "op_hook" | "strong" | "stable" | "watch" | unde
   return { label: "watch", tone: "border-amber-200 bg-amber-50 text-amber-800" };
 }
 
+function confidenceCopy(confidence: "high" | "medium" | "low" | undefined) {
+  if (confidence === "high") return { label: "high confidence", tone: "border-emerald-200 bg-emerald-50 text-emerald-700" };
+  if (confidence === "medium") return { label: "medium confidence", tone: "border-cyan-200 bg-cyan-50 text-cyan-800" };
+  return { label: "low confidence", tone: "border-amber-200 bg-amber-50 text-amber-800" };
+}
+
+function capabilityTone(status: string) {
+  if (status === "live") return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  if (status === "payload_ready" || status === "ui_ready") return "border-cyan-200 bg-cyan-50 text-cyan-800";
+  if (status === "planned") return "border-slate-200 bg-slate-50 text-slate-600";
+  return "border-amber-200 bg-amber-50 text-amber-800";
+}
+
 async function readJson<T>(res: Response): Promise<T> {
   const json = await res.json().catch(() => ({}));
   if (!res.ok) {
@@ -1043,6 +1113,9 @@ export default function ReelsBrainPage() {
   const [learningEconomics, setLearningEconomics] = useState<LearningEconomicsResponse | null>(null);
   const [loadingLearningEconomics, setLoadingLearningEconomics] = useState(false);
   const [learningEconomicsError, setLearningEconomicsError] = useState("");
+  const [insightNicheFilter, setInsightNicheFilter] = useState("all");
+  const [insightConfidenceFilter, setInsightConfidenceFilter] = useState<"all" | "high" | "medium" | "low">("all");
+  const [insightSegmentFilter, setInsightSegmentFilter] = useState<"all" | "op_hooks" | "frequent_hooks" | "experimental_hooks">("all");
   const [automationResult, setAutomationResult] = useState<AutomationRunResponse | null>(null);
   const [automationError, setAutomationError] = useState("");
   const [automationRunning, setAutomationRunning] = useState<null | "daily" | "weekly" | "growth" | "analyze">(null);
@@ -1210,9 +1283,27 @@ export default function ReelsBrainPage() {
   const learningNiches = learningEconomics?.niches || [];
   const insightSummary = learningEconomics?.insights?.summary || [];
   const topHooks = learningEconomics?.insights?.top_hooks || [];
+  const hookGroups = learningEconomics?.insights?.hook_groups || {};
   const winningFormats = learningEconomics?.insights?.winning_formats || [];
   const retentionMechanics = learningEconomics?.insights?.retention_mechanics || [];
   const generatorRecipes = learningEconomics?.insights?.recipes || [];
+  const sourceReferences = learningEconomics?.insights?.source_references || [];
+  const sourceMap = learningEconomics?.insights?.source_map || [];
+  const legalGuard = learningEconomics?.insights?.legal_guard || null;
+  const capabilityStatus = learningEconomics?.insights?.capability_status || [];
+  const insightNicheOptions = Array.from(new Set([
+    ...topHooks.flatMap((hook) => hook.niches || []),
+    ...generatorRecipes.flatMap((recipe) => recipe.niches || []),
+  ])).sort();
+  const filteredTopHooks = topHooks.filter((hook) =>
+    (insightNicheFilter === "all" || hook.niches.includes(insightNicheFilter))
+    && (insightConfidenceFilter === "all" || hook.confidence === insightConfidenceFilter)
+    && (insightSegmentFilter === "all" || hook.segment === insightSegmentFilter)
+  );
+  const filteredRecipes = generatorRecipes.filter((recipe) =>
+    (insightNicheFilter === "all" || recipe.niches.includes(insightNicheFilter))
+    && (insightConfidenceFilter === "all" || recipe.confidence === insightConfidenceFilter)
+  );
   const maxTimelineInserted = Math.max(1, ...learningTimeline.map((row) => row.inserted));
   const analyzeBacklogLanes = analyzeBacklog?.lanes || [];
   const analyzeBacklogQueue = analyzeBacklog?.queue || [];
@@ -2374,6 +2465,31 @@ export default function ReelsBrainPage() {
             ))}
           </div>
 
+          <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">Filters</span>
+              <select value={insightNicheFilter} onChange={(event) => setInsightNicheFilter(event.target.value)} className="min-h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-700">
+                <option value="all">all niches</option>
+                {insightNicheOptions.map((option) => <option key={option} value={option}>{option}</option>)}
+              </select>
+              <select value={insightConfidenceFilter} onChange={(event) => setInsightConfidenceFilter(event.target.value as typeof insightConfidenceFilter)} className="min-h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-700">
+                <option value="all">all confidence</option>
+                <option value="high">high</option>
+                <option value="medium">medium</option>
+                <option value="low">low</option>
+              </select>
+              <select value={insightSegmentFilter} onChange={(event) => setInsightSegmentFilter(event.target.value as typeof insightSegmentFilter)} className="min-h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-700">
+                <option value="all">all hook types</option>
+                <option value="op_hooks">OP hooks</option>
+                <option value="frequent_hooks">frequent</option>
+                <option value="experimental_hooks">experimental</option>
+              </select>
+              <span className="rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-500">
+                {compactNumber(filteredTopHooks.length)} hooks · {compactNumber(filteredRecipes.length)} recipes
+              </span>
+            </div>
+          </div>
+
           <div className="mt-5 grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
             <div className="rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-950 via-slate-900 to-cyan-950 p-4 text-white">
               <div className="flex flex-wrap items-center justify-between gap-2">
@@ -2382,12 +2498,13 @@ export default function ReelsBrainPage() {
                   <h4 className="mt-1 text-xl font-black">OP hooks, которые чаще всего побеждают</h4>
                 </div>
                 <span className="rounded-full border border-white/10 bg-white/10 px-3 py-1 text-xs font-bold text-slate-200">
-                  top {compactNumber(topHooks.length)}
+                  top {compactNumber(filteredTopHooks.length)}
                 </span>
               </div>
               <div className="mt-4 grid gap-3 md:grid-cols-2">
-                {topHooks.length ? topHooks.slice(0, 4).map((hook, index) => {
+                {filteredTopHooks.length ? filteredTopHooks.slice(0, 4).map((hook, index) => {
                   const status = hookStatusCopy(hook.status);
+                  const confidence = confidenceCopy(hook.confidence);
                   return (
                     <div key={hook.hook_type} className="rounded-2xl border border-white/10 bg-white/10 p-4">
                       <div className="flex items-start justify-between gap-3">
@@ -2397,6 +2514,7 @@ export default function ReelsBrainPage() {
                         </div>
                         <span className={`shrink-0 rounded-full border px-2.5 py-1 text-xs font-black ${status.tone}`}>{status.label}</span>
                       </div>
+                      <span className={`mt-2 inline-flex rounded-full border px-2.5 py-1 text-xs font-black ${confidence.tone}`}>{confidence.label}</span>
                       <div className="mt-3 flex items-end gap-2">
                         <span className="text-4xl font-black">{compactNumber(hook.op_score)}</span>
                         <span className="pb-1 text-xs font-bold uppercase tracking-wide text-slate-300">OP score</span>
@@ -2406,6 +2524,11 @@ export default function ReelsBrainPage() {
                         <span className="rounded-xl bg-white/10 px-2 py-1">avg {compactNumber(hook.avg_score)}</span>
                         <span className="rounded-xl bg-white/10 px-2 py-1">niches {compactNumber(hook.niches.length)}</span>
                       </div>
+                      {hook.evidence ? (
+                        <p className="mt-2 text-xs text-slate-300">
+                          evidence: {compactNumber(hook.evidence.based_on_videos)} videos · {compactNumber(hook.evidence.platform_count)} platforms · {compactNumber(hook.evidence.reference_count)} refs
+                        </p>
+                      ) : null}
                       {hook.templates?.[0] ? (
                         <p className="mt-3 rounded-xl bg-slate-950/40 px-3 py-2 text-xs leading-5 text-slate-200">
                           Шаблон: {hook.templates[0]}
@@ -2414,6 +2537,18 @@ export default function ReelsBrainPage() {
                     </div>
                   );
                 }) : <div className="rounded-2xl border border-white/10 bg-white/10 p-4 text-sm text-slate-300">OP hooks пока не собраны.</div>}
+              </div>
+              <div className="mt-4 grid gap-2 md:grid-cols-3">
+                {[
+                  ["OP", hookGroups.op_hooks?.length || 0],
+                  ["Frequent", hookGroups.frequent_hooks?.length || 0],
+                  ["Experimental", hookGroups.experimental_hooks?.length || 0],
+                ].map(([label, count]) => (
+                  <div key={label} className="rounded-xl border border-white/10 bg-white/10 px-3 py-2">
+                    <p className="text-xs font-black uppercase tracking-[0.16em] text-cyan-100/70">{label}</p>
+                    <p className="mt-1 text-2xl font-black">{compactNumber(Number(count))}</p>
+                  </div>
+                ))}
               </div>
             </div>
 
@@ -2459,11 +2594,11 @@ export default function ReelsBrainPage() {
                 <h4 className="mt-1 text-lg font-black text-slate-950">Что можно сразу отдавать контент-заводу</h4>
               </div>
               <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-bold text-slate-500">
-                {compactNumber(generatorRecipes.length)} recipes
+                {compactNumber(filteredRecipes.length)} recipes
               </span>
             </div>
             <div className="mt-3 grid gap-3 lg:grid-cols-3">
-              {generatorRecipes.length ? generatorRecipes.slice(0, 3).map((recipe) => (
+              {filteredRecipes.length ? filteredRecipes.slice(0, 3).map((recipe) => (
                 <div key={recipe.id} className="rounded-2xl border border-slate-200 bg-white p-4">
                   <div className="flex items-start justify-between gap-2">
                     <h5 className="text-sm font-black leading-5 text-slate-950">{recipe.title}</h5>
@@ -2476,6 +2611,9 @@ export default function ReelsBrainPage() {
                     <p><span className="font-bold text-slate-900">Retention:</span> {recipe.creative_brief?.retention_mechanic || recipe.retention}</p>
                     <p><span className="font-bold text-slate-900">Fit:</span> {(recipe.creative_brief?.product_fit || recipe.niches).slice(0, 2).join(" · ")}</p>
                   </div>
+                  <span className={`mt-3 inline-flex rounded-full border px-2.5 py-1 text-xs font-black ${confidenceCopy(recipe.confidence).tone}`}>
+                    {confidenceCopy(recipe.confidence).label}
+                  </span>
                   {recipe.creative_brief ? (
                     <details className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
                       <summary className="cursor-pointer text-xs font-black uppercase tracking-[0.14em] text-slate-500">
@@ -2502,6 +2640,26 @@ export default function ReelsBrainPage() {
                           <p className="font-black">Запрещено копировать</p>
                           <p className="mt-1">{recipe.creative_brief.do_not_copy.slice(0, 2).join(" · ")}</p>
                         </div>
+                        {recipe.generator_payload ? (
+                          <div className="rounded-lg border border-cyan-100 bg-cyan-50 px-3 py-2 text-cyan-800">
+                            <p className="font-black">Use in generator payload</p>
+                            <p className="mt-1">hook + retention + structure + visual_recipe + do_not_copy готовы для генератора.</p>
+                          </div>
+                        ) : null}
+                        {recipe.examples?.length ? (
+                          <div>
+                            <p className="font-black text-slate-900">Source references</p>
+                            <div className="mt-1 space-y-2">
+                              {recipe.examples.slice(0, 2).map((example) => (
+                                <div key={example.reference_id || example.url || example.hook || "ref"} className="rounded-lg border border-slate-200 bg-white px-2 py-2">
+                                  <p className="font-semibold text-slate-700">{example.why_selected || "Референс механики"}</p>
+                                  <p className="mt-1 text-slate-500">score {compactNumber(example.score || 0)} · views {compactNumber(example.views || 0)}</p>
+                                  {example.url ? <p className="mt-1 truncate text-cyan-700">{example.url}</p> : null}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ) : null}
                       </div>
                     </details>
                   ) : null}
@@ -2510,6 +2668,64 @@ export default function ReelsBrainPage() {
               )) : <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-500">Рецепты появятся после сборки Pattern Brain.</div>}
             </div>
           </div>
+
+          <div className="mt-4 grid gap-4 xl:grid-cols-2">
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">Source references</p>
+              <h4 className="mt-1 text-lg font-black text-slate-950">На чем основаны выводы</h4>
+              <div className="mt-3 space-y-2">
+                {sourceReferences.length ? sourceReferences.slice(0, 4).map((reference) => (
+                  <div key={reference.reference_id || reference.url || reference.hook || reference.hook_type} className="rounded-xl border border-slate-200 bg-white px-3 py-2">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="font-bold text-slate-900">{reference.hook_label || reference.hook_type || "reference"}</span>
+                      <span className={`rounded-full border px-2 py-1 text-xs font-black ${confidenceCopy(reference.confidence).tone}`}>{confidenceCopy(reference.confidence).label}</span>
+                    </div>
+                    <p className="mt-1 text-xs text-slate-500">{reference.why_selected || "Референс механики"}</p>
+                    <p className="mt-1 text-xs text-slate-400">score {compactNumber(reference.score || 0)} · views {compactNumber(reference.views || 0)}</p>
+                  </div>
+                )) : <p className="text-sm text-slate-500">Референсы появятся после пересборки Pattern Brain.</p>}
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">Source map / discovery economics</p>
+              <h4 className="mt-1 text-lg font-black text-slate-950">Какие источники дают насмотренность</h4>
+              <div className="mt-3 space-y-2">
+                {sourceMap.length ? sourceMap.slice(0, 4).map((source) => (
+                  <div key={source.provider} className="rounded-xl border border-slate-200 bg-white px-3 py-2">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="font-bold text-slate-900">{providerLabel(source.provider)}</span>
+                      <span className="text-xs font-black text-cyan-700">{formatUsd(source.cost_per_analyzed)}</span>
+                    </div>
+                    <p className="mt-1 text-xs text-slate-500">runs {compactNumber(source.runs)} · analyzed {compactNumber(source.analyzed)} · errors {compactNumber(source.errors)}</p>
+                  </div>
+                )) : <p className="text-sm text-slate-500">Source map появится после новых cost-aware прогонов.</p>}
+              </div>
+            </div>
+          </div>
+
+          {legalGuard ? (
+            <div className="mt-4 rounded-2xl border border-red-100 bg-red-50 p-4 text-red-800">
+              <p className="text-xs font-black uppercase tracking-[0.18em]">Legal / safety guard</p>
+              <p className="mt-1 text-sm font-semibold">{legalGuard.principle}</p>
+              <p className="mt-2 text-xs"><span className="font-black">Можно:</span> {legalGuard.allowed.slice(0, 5).join(" · ")}</p>
+              <p className="mt-1 text-xs"><span className="font-black">Нельзя:</span> {legalGuard.forbidden.slice(0, 5).join(" · ")}</p>
+            </div>
+          ) : null}
+
+          <details className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
+            <summary className="cursor-pointer text-sm font-black uppercase tracking-[0.18em] text-slate-500">
+              15-layer roadmap status
+            </summary>
+            <div className="mt-3 grid gap-2 md:grid-cols-3">
+              {capabilityStatus.map((capability) => (
+                <div key={capability.key} className={`rounded-xl border px-3 py-2 text-xs font-bold ${capabilityTone(capability.status)}`}>
+                  <p>{capability.label}</p>
+                  <p className="mt-1 opacity-75">{capability.status}</p>
+                </div>
+              ))}
+            </div>
+          </details>
         </div>
 
         <div className="mt-4 rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-950 via-slate-900 to-cyan-950 p-4 text-white">

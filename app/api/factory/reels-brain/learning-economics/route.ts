@@ -57,11 +57,27 @@ type ReferenceCreativeBrief = {
 };
 
 type InsightExample = {
+  reference_id?: string;
   url?: string | null;
   hook?: string | null;
   score?: number;
   views?: number;
+  why_selected?: string;
+  confidence?: "high" | "medium" | "low";
+  safety_flags?: string[];
   creative_brief?: ReferenceCreativeBrief;
+};
+
+type GeneratorPayload = {
+  source: "reels_brain_pattern";
+  hook: string;
+  retention: string;
+  structure: string;
+  second_by_second: string[];
+  visual_recipe: string[];
+  product_fit: string[];
+  copy_as_mechanic: string[];
+  do_not_copy: string[];
 };
 
 function splitList(value: unknown): string[] {
@@ -155,6 +171,24 @@ function statusFromScore(score: number) {
   if (score >= 75) return "strong" as const;
   if (score >= 60) return "stable" as const;
   return "watch" as const;
+}
+
+function confidenceLevel(input: { frequency?: number; niches?: number; platforms?: number; score?: number; examples?: number }) {
+  const points =
+    Math.min(30, Math.log(num(input.frequency) + 1) * 8)
+    + Math.min(25, num(input.score) / 4)
+    + Math.min(20, num(input.niches) * 7)
+    + Math.min(15, num(input.platforms) * 5)
+    + Math.min(10, num(input.examples) * 3);
+  if (points >= 72) return "high" as const;
+  if (points >= 48) return "medium" as const;
+  return "low" as const;
+}
+
+function hookSegment(row: { op_score: number; frequency: number; confidence?: "high" | "medium" | "low" }) {
+  if (row.op_score >= 85 && row.confidence !== "low") return "op_hooks" as const;
+  if (row.frequency >= 100) return "frequent_hooks" as const;
+  return "experimental_hooks" as const;
 }
 
 function templateForPattern(pattern: InsightPattern) {
@@ -308,13 +342,96 @@ function creativeBriefForPattern(pattern: InsightPattern, niche: string, example
   };
 }
 
+function generatorPayload(pattern: InsightPattern, niche: string): GeneratorPayload {
+  const brief = creativeBriefForPattern(pattern, niche);
+  return {
+    source: "reels_brain_pattern",
+    hook: brief.hook,
+    retention: brief.retention_mechanic,
+    structure: pattern.structure_label || pattern.structure_type || "демонстрация",
+    second_by_second: brief.second_by_second,
+    visual_recipe: brief.visual_recipe,
+    product_fit: brief.product_fit,
+    copy_as_mechanic: brief.copy_as_mechanic,
+    do_not_copy: brief.do_not_copy,
+  };
+}
+
+function safetyFlags(pattern: InsightPattern, example?: { hook?: string | null }) {
+  const flags: string[] = [];
+  const hook = String(example?.hook || "").trim();
+  if (/#\w/.test(hook)) flags.push("raw_hashtags");
+  if (/https?:\/\//i.test(hook)) flags.push("raw_url_in_hook");
+  if (pattern.quality_label !== "generator_ready") flags.push("not_generator_ready");
+  if (num(pattern.relevance_score) < 55) flags.push("low_relevance");
+  return flags;
+}
+
 function enrichExamples(pattern: InsightPattern, niche: string): InsightExample[] {
   return ((pattern.examples || []) as InsightExample[])
     .slice(0, 3)
-    .map((example) => ({
+    .map((example, index) => ({
       ...example,
+      reference_id: `${pattern.pattern_id || pattern.hook_type || "pattern"}:${index}`,
+      why_selected: `Высокий score/просмотры для паттерна "${pattern.hook_label || pattern.hook_type || "hook"}"; используем как референс механики, не как ассет.`,
+      confidence: confidenceLevel({
+        frequency: pattern.frequency,
+        score: pattern.strength_score,
+        niches: 1,
+        platforms: 1,
+        examples: pattern.examples?.length || 0,
+      }),
+      safety_flags: safetyFlags(pattern, example),
       creative_brief: creativeBriefForPattern(pattern, niche, example),
     }));
+}
+
+function buildSourceMap(rows: { niche?: string; playbook?: unknown }[]) {
+  const map = new Map<string, {
+    provider: string;
+    runs: number;
+    found: number;
+    inserted: number;
+    analyzed: number;
+    errors: number;
+    estimated_spend_usd: number;
+    niches: Set<string>;
+  }>();
+  for (const row of rows) {
+    for (const run of automationRunHistory(row.playbook)) {
+      const provider = run.best_provider || "unknown";
+      const current = map.get(provider) || {
+        provider,
+        runs: 0,
+        found: 0,
+        inserted: 0,
+        analyzed: 0,
+        errors: 0,
+        estimated_spend_usd: 0,
+        niches: new Set<string>(),
+      };
+      current.runs += 1;
+      current.found += num(run.found);
+      current.inserted += num(run.inserted);
+      current.analyzed += num(run.analyzed);
+      current.errors += num(run.errors);
+      current.estimated_spend_usd += spendUsd(run).value;
+      if (row.niche) current.niches.add(row.niche);
+      map.set(provider, current);
+    }
+  }
+  return Array.from(map.values()).map((row) => ({
+    provider: row.provider,
+    runs: row.runs,
+    found: row.found,
+    inserted: row.inserted,
+    analyzed: row.analyzed,
+    errors: row.errors,
+    estimated_spend_usd: Math.round(row.estimated_spend_usd * 10000) / 10000,
+    cost_per_inserted: perUnit(row.estimated_spend_usd, row.inserted),
+    cost_per_analyzed: perUnit(row.estimated_spend_usd, row.analyzed),
+    niches: Array.from(row.niches).sort(),
+  })).sort((a, b) => (a.cost_per_analyzed ?? 999) - (b.cost_per_analyzed ?? 999) || b.analyzed - a.analyzed).slice(0, 8);
 }
 
 function buildInsights(rows: { niche?: string; playbook?: unknown }[]) {
@@ -340,8 +457,10 @@ function buildInsights(rows: { niche?: string; playbook?: unknown }[]) {
     format: string;
     retention: string;
     op_score: number;
+    confidence: "high" | "medium" | "low";
     niches: string[];
     creative_brief: ReferenceCreativeBrief;
+    generator_payload: GeneratorPayload;
     examples: InsightExample[];
   }> = [];
 
@@ -402,8 +521,10 @@ function buildInsights(rows: { niche?: string; playbook?: unknown }[]) {
         format: pattern.structure_label || formatKey,
         retention: pattern.retention_label || retentionKey,
         op_score: insightScore(pattern, 1, 1),
+        confidence: confidenceLevel({ frequency: pattern.frequency, score: pattern.strength_score, niches: 1, platforms: 1, examples: pattern.examples?.length || 0 }),
         niches: [niche],
         creative_brief: creativeBriefForPattern(pattern, niche),
+        generator_payload: generatorPayload(pattern, niche),
         examples: enrichExamples(pattern, niche),
       });
     }
@@ -414,6 +535,7 @@ function buildInsights(rows: { niche?: string; playbook?: unknown }[]) {
     const quality_score = row.count ? Math.round(row.quality_score_sum / row.count) : 0;
     const relevance_score = row.count ? Math.round(row.relevance_score_sum / row.count) : 0;
     const op_score = insightScore({ strength_score: avg_score, frequency: row.frequency, quality_score, relevance_score, quality_label: quality_score >= 70 ? "generator_ready" : "needs_cleanup" }, row.niches.size, row.platforms.size);
+    const confidence = confidenceLevel({ frequency: row.frequency, score: op_score, niches: row.niches.size, platforms: row.platforms.size, examples: row.examples.length });
     return {
       hook_type: row.hook_type,
       hook_label: row.hook_label,
@@ -422,13 +544,26 @@ function buildInsights(rows: { niche?: string; playbook?: unknown }[]) {
       quality_score,
       relevance_score,
       op_score,
+      confidence,
       status: statusFromScore(op_score),
+      segment: hookSegment({ op_score, frequency: row.frequency, confidence }),
+      evidence: {
+        based_on_videos: row.frequency,
+        niche_count: row.niches.size,
+        platform_count: row.platforms.size,
+        reference_count: row.examples.length,
+      },
       niches: Array.from(row.niches).sort(),
       platforms: Array.from(row.platforms).sort(),
       templates: Array.from(row.templates).slice(0, 3),
       examples: row.examples.sort((a, b) => num(b.score) - num(a.score) || num(b.views) - num(a.views)).slice(0, 3),
     };
   }).sort((a, b) => b.op_score - a.op_score || b.frequency - a.frequency).slice(0, 8);
+  const hook_groups = {
+    op_hooks: top_hooks.filter((row) => row.segment === "op_hooks").slice(0, 4),
+    frequent_hooks: top_hooks.filter((row) => row.segment === "frequent_hooks").slice(0, 4),
+    experimental_hooks: top_hooks.filter((row) => row.segment === "experimental_hooks").slice(0, 4),
+  };
 
   return {
     summary: [
@@ -437,6 +572,7 @@ function buildInsights(rows: { niche?: string; playbook?: unknown }[]) {
       `Технические логи спрятаны ниже: витрина показывает только выводы, уверенность и применение.`,
     ],
     top_hooks,
+    hook_groups,
     winning_formats: Array.from(formatMap.values()).map((row) => ({
       label: row.label,
       frequency: row.frequency,
@@ -450,6 +586,36 @@ function buildInsights(rows: { niche?: string; playbook?: unknown }[]) {
       hooks: Array.from(row.hooks).slice(0, 4),
     })).sort((a, b) => b.avg_score - a.avg_score || b.frequency - a.frequency).slice(0, 6),
     recipes: recipes.sort((a, b) => b.op_score - a.op_score).slice(0, 6),
+    source_references: top_hooks.flatMap((hook) => hook.examples.map((example) => ({
+      hook_type: hook.hook_type,
+      hook_label: hook.hook_label,
+      op_score: hook.op_score,
+      confidence: hook.confidence,
+      ...example,
+    }))).slice(0, 8),
+    source_map: buildSourceMap(rows),
+    legal_guard: {
+      principle: "Копируем только механику: темп, структуру, удержание и тип доказательства. Не копируем сам контент.",
+      allowed: ["структура по секундам", "ритм раскрытия", "тип хука", "механика удержания", "тип proof-кадра"],
+      forbidden: ["чужой монтаж покадрово", "текст/озвучка", "музыка", "персонажи", "визуальная айдентика", "недоказуемые claims"],
+    },
+    capability_status: [
+      { key: "source_references", label: "Source references", status: "live" },
+      { key: "confidence", label: "Confidence / доказательность", status: "live" },
+      { key: "hook_segments", label: "OP / Frequent / Experimental", status: "live" },
+      { key: "generator_payload", label: "Use in generator payload", status: "payload_ready" },
+      { key: "filters", label: "Фильтры витрины", status: "ui_ready" },
+      { key: "actual_billing", label: "Реальный Apify billing", status: "needs_provider_api" },
+      { key: "product_fit", label: "Product fit", status: "rule_based" },
+      { key: "source_map", label: "Source map discovery", status: "estimated" },
+      { key: "noise_cleanup", label: "Noise cleanup", status: "rule_based" },
+      { key: "weekly_report", label: "Weekly intelligence report", status: "planned" },
+      { key: "feedback_loop", label: "Feedback loop публикаций", status: "planned" },
+      { key: "generator_integration", label: "Generator integration", status: "payload_ready" },
+      { key: "discovery_autopilot", label: "Discovery autopilot", status: "planned" },
+      { key: "video_structure_extraction", label: "Actual video structure extraction", status: "pattern_based" },
+      { key: "legal_guard_v2", label: "Legal / safety guard v2", status: "rule_based" },
+    ],
   };
 }
 
