@@ -80,10 +80,6 @@ export interface ViralVideoInsertRow {
   sound_id: string | null;
   sound_title: string | null;
   source_orbit_id: string | null;
-  video_url?: string | null;
-  download_url?: string | null;
-  media_url?: string | null;
-  audio_url?: string | null;
   analyzed_full?: unknown;
   analyzed: false;
 }
@@ -326,10 +322,6 @@ export function makeViralVideoRows(
       sound_id: video.soundId,
       sound_title: video.soundTitle,
       source_orbit_id: sourceOrbitId(opts.sourceProvider, opts.sourceQuery || opts.sourceType || "manual"),
-      video_url: video.videoUrl,
-      download_url: video.downloadUrl,
-      media_url: video.mediaUrl,
-      audio_url: video.audioUrl,
       analyzed_full: mediaAssetEnvelope(input, video, opts),
       analyzed: false,
     });

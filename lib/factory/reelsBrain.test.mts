@@ -89,9 +89,10 @@ function eq(a: unknown, b: unknown, m: string) { ok(JSON.stringify(a) === JSON.s
       views: 1000,
     },
   ], { niche: "toys", sourceProvider: "apify_tiktok", sourceQuery: "игрушки" });
-  eq(prepared.rows[0].video_url, "https://cdn.example.com/signed-video-token", "rows: persists provider video_url");
-  eq(prepared.rows[0].download_url, "https://cdn.example.com/video.mp4", "rows: persists provider download_url");
   ok(!!prepared.rows[0].analyzed_full, "rows: stores compact media asset envelope");
+  const assets = (prepared.rows[0].analyzed_full as { assets?: { url?: string }[] }).assets || [];
+  eq(assets[0]?.url, "https://cdn.example.com/signed-video-token", "rows: stores provider video_url in media envelope");
+  eq(assets[1]?.url, "https://cdn.example.com/video.mp4", "rows: stores provider download_url in media envelope");
 }
 
 console.log(`\nreelsBrain: ${pass} passed, ${fail} failed`);

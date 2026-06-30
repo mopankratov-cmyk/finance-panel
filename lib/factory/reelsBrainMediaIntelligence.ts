@@ -90,6 +90,17 @@ function collectCandidateUrls(value: unknown, depth = 0): string[] {
   return Array.from(new Set(out)).slice(0, 50);
 }
 
+function envelopeAssetCandidate(value: unknown): string | null {
+  const root = rec(value);
+  const assets = Array.isArray(root.assets) ? root.assets : [];
+  for (const asset of assets) {
+    const row = rec(asset);
+    const url = String(row.url || "").trim();
+    if (/^https?:\/\//i.test(url) && !isSocialPageUrl(url)) return url;
+  }
+  return null;
+}
+
 function directAssetCandidate(video: ReelsMediaSourceVideo): string | null {
   const directFields = [
     video.video_url,
@@ -99,6 +110,8 @@ function directAssetCandidate(video: ReelsMediaSourceVideo): string | null {
   ].map((row) => String(row || "").trim()).filter(Boolean);
   const likelyDirectField = directFields.find((candidate) => /^https?:\/\//i.test(candidate) && !isSocialPageUrl(candidate));
   if (likelyDirectField) return likelyDirectField;
+  const envelopeDirect = envelopeAssetCandidate(video.analyzed_full);
+  if (envelopeDirect) return envelopeDirect;
   const analyzedCandidates = collectCandidateUrls(video.analyzed_full);
   return [...directFields, video.url || "", ...analyzedCandidates].find((candidate) => isDirectMedia(candidate)) || null;
 }
