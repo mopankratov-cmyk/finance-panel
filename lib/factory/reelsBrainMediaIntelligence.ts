@@ -89,7 +89,7 @@ function collectCandidateUrls(value: unknown, depth = 0): string[] {
   const out: string[] = [];
   for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
     const normalizedKey = key.toLowerCase();
-    const likelyMediaKey = /video|download|media|play|audio|url|src/.test(normalizedKey);
+    const likelyMediaKey = /video|download|media|asset|play|audio|url|src/.test(normalizedKey);
     if (likelyMediaKey) out.push(...collectCandidateUrls(child, depth + 1));
   }
   return Array.from(new Set(out)).slice(0, 50);
@@ -97,7 +97,12 @@ function collectCandidateUrls(value: unknown, depth = 0): string[] {
 
 function envelopeAssetCandidate(value: unknown): string | null {
   const root = rec(value);
-  const assets = Array.isArray(root.assets) ? root.assets : [];
+  const mediaRoot = rec(root.media_assets);
+  const assets = Array.isArray(root.assets)
+    ? root.assets
+    : Array.isArray(mediaRoot.assets)
+      ? mediaRoot.assets
+      : [];
   for (const asset of assets) {
     const row = rec(asset);
     const url = String(row.url || "").trim();
