@@ -15,6 +15,8 @@ Discovery Intelligence
   -> relevance / breakout scoring
   -> source learning
   -> viral_videos
+  -> Viewing Intelligence
+  -> mp4 priority queue
   -> analyze backlog
   -> Pattern Brain
 ```
@@ -95,3 +97,82 @@ Use it while provider balance is empty to prepare the source map before the next
 - Extract account candidates from good videos and learn them as `account` sources.
 - Add author baseline collection for true `views / author_median_views` breakout scoring.
 - Add UI block in `/agent/reels-brain` for source yield and planned next runs.
+
+## Viewing Intelligence Upgrade
+
+This is the layer that improves "насмотренность" without blindly buying more provider runs.
+
+It answers one question:
+
+> Which already found videos deserve expensive `.mp4`, audio, visual, and creative-brief analysis first?
+
+Main files:
+
+- `lib/factory/reelsBrainViewingIntelligence.ts`
+- `app/api/factory/reels-brain/viewing-intelligence/route.ts`
+- `lib/factory/reelsBrainViewingIntelligence.test.mts`
+
+API:
+
+`GET /api/factory/reels-brain/viewing-intelligence?niches=ru_toys,ru_clothing,ru_cosmetics&platforms=tiktok,instagram,youtube&limit_per_niche=500`
+
+It is read-only. It does not call Apify. It does not download files. It ranks stored `viral_videos` rows and returns:
+
+- `top_candidates`: best videos for media resolving and deeper analysis.
+- `summary.resolve_mp4`: candidates worth trying through Apify media resolver.
+- `summary.analyze_media`: candidates where direct media is already available.
+- `summary.build_brief`: candidates ready for creative brief.
+- `source_quality.best_sources`: queries/accounts/sounds that produce useful candidates.
+- `source_quality.weak_sources`: sources to pause or reduce.
+
+### The 8 Signals
+
+1. `Relevance Scoring`
+
+Checks whether the video belongs to the target Russian niche instead of being generic viral noise.
+
+2. `Small Account Breakout`
+
+Raises priority for videos where views are large relative to creator followers. These are valuable because the mechanic likely carried the video, not just the account size.
+
+3. `Source Quality Memory`
+
+Groups candidates by `source_orbit_id` so the system can learn which queries/accounts/sounds buy useful examples for less money.
+
+4. `Creative DNA`
+
+Extracts a lightweight atom set for every candidate: hook, emotion, camera, speech, B-roll, editing, and CTA.
+
+5. `Anti-Pattern Brain`
+
+Marks weak signals such as generic intros, missing views, very low virality, weak text signal, and possible AI slop.
+
+6. `Per-Niche Brain`
+
+Scores niche fit separately for toys, clothing, cosmetics, and future `ru_*` niches.
+
+7. `Freshness / Growth Loop`
+
+Gives extra weight to fresh candidates so the system does not learn only old viral history.
+
+8. `Creative Brief Generator`
+
+Creates a first draft for each useful reference: hook, retention mechanic, structure by seconds, visual recipe, product/theme fit, what to copy as mechanic, and what must not be copied.
+
+### Operating Rule
+
+Do not resolve every video.
+
+The intended paid flow is:
+
+```text
+stored corpus
+  -> viewing-intelligence
+  -> high/medium candidates only
+  -> Apify media resolver
+  -> audio/visual analysis
+  -> creative brief
+  -> Pattern Brain / Anti-Pattern Brain
+```
+
+This reduces spend because metadata-only rows can be filtered before buying `.mp4`.
