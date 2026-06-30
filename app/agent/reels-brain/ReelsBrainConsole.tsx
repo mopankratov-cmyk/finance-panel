@@ -1371,6 +1371,31 @@ type ReelsBrainOperatingPlanResponse = {
   error?: string;
 };
 
+type ReelsBrainClosureResponse = {
+  ok?: boolean;
+  scope?: "reels_brain_only";
+  summary?: {
+    tracks?: number;
+    live?: number;
+    foundation?: number;
+    needs_worker?: number;
+  };
+  closure?: {
+    tracks?: {
+      id: string;
+      label: string;
+      status: "closed_foundation" | "closed_live" | "closed_needs_worker";
+      owner_layer: string;
+      deliverables: string[];
+      internal_next_tick: string;
+      guardrails: string[];
+    }[];
+    global_guardrails?: string[];
+  };
+  notes?: string[];
+  error?: string;
+};
+
 type LearningEconomicsDailyCost = {
   date: string;
   runs: number;
@@ -1726,6 +1751,9 @@ export default function ReelsBrainPage() {
   const [operatingPlan, setOperatingPlan] = useState<ReelsBrainOperatingPlanResponse | null>(null);
   const [operatingPlanLoading, setOperatingPlanLoading] = useState(false);
   const [operatingPlanError, setOperatingPlanError] = useState("");
+  const [closurePlan, setClosurePlan] = useState<ReelsBrainClosureResponse | null>(null);
+  const [closurePlanLoading, setClosurePlanLoading] = useState(false);
+  const [closurePlanError, setClosurePlanError] = useState("");
   const [insightNicheFilter, setInsightNicheFilter] = useState("all");
   const [insightConfidenceFilter, setInsightConfidenceFilter] = useState<"all" | "high" | "medium" | "low">("all");
   const [insightSegmentFilter, setInsightSegmentFilter] = useState<"all" | "op_hooks" | "frequent_hooks" | "experimental_hooks">("all");
@@ -1877,8 +1905,9 @@ export default function ReelsBrainPage() {
       setHumanizationBrainLoading(true);
       setGeneratorHandoffLoading(true);
       setOperatingPlanLoading(true);
+      setClosurePlanLoading(true);
       try {
-        const [memory, audio, visual, simulation, experiment, manager, humanization, handoff, operating] = await Promise.allSettled([
+        const [memory, audio, visual, simulation, experiment, manager, humanization, handoff, operating, closure] = await Promise.allSettled([
           readJson<ReelsBrainCreativeMemoryResponse>(await fetch(`/api/factory/reels-brain/creative-memory?niches=${encodeURIComponent(DEFAULT_AUTOMATION_NICHES)}&limit=80`, { cache: "no-store" })),
           readJson<ReelsBrainAudioIntelligenceResponse>(await fetch(`/api/factory/reels-brain/audio-intelligence?niches=${encodeURIComponent(DEFAULT_AUTOMATION_NICHES)}&limit=80`, { cache: "no-store" })),
           readJson<ReelsBrainVisualIntelligenceResponse>(await fetch(`/api/factory/reels-brain/visual-intelligence?niches=${encodeURIComponent(DEFAULT_AUTOMATION_NICHES)}&limit=80`, { cache: "no-store" })),
@@ -1888,6 +1917,7 @@ export default function ReelsBrainPage() {
           readJson<ReelsBrainHumanizationResponse>(await fetch(`/api/factory/reels-brain/humanization?niches=${encodeURIComponent(DEFAULT_AUTOMATION_NICHES)}&limit=50`, { cache: "no-store" })),
           readJson<ReelsBrainGeneratorHandoffResponse>(await fetch(`/api/factory/reels-brain/generator-handoff?niches=${encodeURIComponent(DEFAULT_AUTOMATION_NICHES)}&limit=20`, { cache: "no-store" })),
           readJson<ReelsBrainOperatingPlanResponse>(await fetch(`/api/factory/reels-brain/operating-plan?niches=${encodeURIComponent(DEFAULT_AUTOMATION_NICHES)}&corpus_target=10000`, { cache: "no-store" })),
+          readJson<ReelsBrainClosureResponse>(await fetch(`/api/factory/reels-brain/closure?niches=${encodeURIComponent(DEFAULT_AUTOMATION_NICHES)}&corpus_target=10000`, { cache: "no-store" })),
         ]);
         if (!alive) return;
         setCreativeMemory(memory.status === "fulfilled" ? memory.value : null);
@@ -1899,6 +1929,7 @@ export default function ReelsBrainPage() {
         setHumanizationBrain(humanization.status === "fulfilled" ? humanization.value : null);
         setGeneratorHandoff(handoff.status === "fulfilled" ? handoff.value : null);
         setOperatingPlan(operating.status === "fulfilled" ? operating.value : null);
+        setClosurePlan(closure.status === "fulfilled" ? closure.value : null);
       } catch {
         if (alive) {
           setCreativeMemory(null);
@@ -1910,6 +1941,7 @@ export default function ReelsBrainPage() {
           setHumanizationBrain(null);
           setGeneratorHandoff(null);
           setOperatingPlan(null);
+          setClosurePlan(null);
         }
       } finally {
         if (alive) {
@@ -1922,6 +1954,7 @@ export default function ReelsBrainPage() {
           setHumanizationBrainLoading(false);
           setGeneratorHandoffLoading(false);
           setOperatingPlanLoading(false);
+          setClosurePlanLoading(false);
         }
       }
     }
@@ -2031,6 +2064,9 @@ export default function ReelsBrainPage() {
   const operatingPlanSummary = operatingPlan?.summary || {};
   const operatingCapabilities = operatingPlan?.operating_plan?.capabilities || [];
   const operatingGuardrails = operatingPlan?.operating_plan?.guardrails || [];
+  const closureSummary = closurePlan?.summary || {};
+  const closureTracks = closurePlan?.closure?.tracks || [];
+  const closureGuardrails = closurePlan?.closure?.global_guardrails || [];
   const maxTimelineInserted = Math.max(1, ...learningTimeline.map((row) => row.inserted));
   const analyzeBacklogLanes = analyzeBacklog?.lanes || [];
   const analyzeBacklogQueue = analyzeBacklog?.queue || [];
@@ -2457,6 +2493,23 @@ export default function ReelsBrainPage() {
     }
   }
 
+  async function loadClosurePlan(currentNiches = automationNiches) {
+    setClosurePlanLoading(true);
+    setClosurePlanError("");
+    try {
+      const params = new URLSearchParams({
+        niches: currentNiches.trim() || DEFAULT_AUTOMATION_NICHES,
+        corpus_target: "10000",
+      });
+      const data = await readJson<ReelsBrainClosureResponse>(await fetch(`/api/factory/reels-brain/closure?${params.toString()}`, { cache: "no-store" }));
+      setClosurePlan(data);
+    } catch (e) {
+      setClosurePlanError(String((e as Error)?.message || e));
+    } finally {
+      setClosurePlanLoading(false);
+    }
+  }
+
   async function refreshAutomationSurfaces(currentNiches = automationNiches, currentNiche = activeNiche()) {
     setAutomationSyncing(true);
     try {
@@ -2477,6 +2530,7 @@ export default function ReelsBrainPage() {
           loadHumanizationBrain(currentNiches),
           loadGeneratorHandoff(currentNiches),
           loadOperatingPlan(currentNiches),
+          loadClosurePlan(currentNiches),
         ]);
       }
     } finally {
@@ -3527,11 +3581,20 @@ export default function ReelsBrainPage() {
                   {operatingPlanLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Radar className="h-4 w-4" />}
                   Refresh 10 tracks
                 </button>
+                <button
+                  type="button"
+                  onClick={() => loadClosurePlan(automationNiches)}
+                  disabled={closurePlanLoading}
+                  className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-cyan-200 bg-white px-3 py-2 text-sm font-black text-cyan-900 hover:border-cyan-400 disabled:opacity-50"
+                >
+                  {closurePlanLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                  Refresh 2-10
+                </button>
               </div>
             </div>
-            {(actionPlanError || creativeBriefsError || creativeMemoryError || audioIntelligenceError || visualIntelligenceError || simulationBrainError || experimentBrainError || portfolioManagerError || humanizationBrainError || generatorHandoffError || operatingPlanError) ? (
+            {(actionPlanError || creativeBriefsError || creativeMemoryError || audioIntelligenceError || visualIntelligenceError || simulationBrainError || experimentBrainError || portfolioManagerError || humanizationBrainError || generatorHandoffError || operatingPlanError || closurePlanError) ? (
               <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">
-                {actionPlanError || creativeBriefsError || creativeMemoryError || audioIntelligenceError || visualIntelligenceError || simulationBrainError || experimentBrainError || portfolioManagerError || humanizationBrainError || generatorHandoffError || operatingPlanError}
+                {actionPlanError || creativeBriefsError || creativeMemoryError || audioIntelligenceError || visualIntelligenceError || simulationBrainError || experimentBrainError || portfolioManagerError || humanizationBrainError || generatorHandoffError || operatingPlanError || closurePlanError}
               </div>
             ) : null}
             {(actionPlan || creativeBriefs) ? (
@@ -3683,6 +3746,58 @@ export default function ReelsBrainPage() {
               <div className="mt-3 grid gap-2 lg:grid-cols-3">
                 {operatingGuardrails.slice(0, 3).map((rule) => (
                   <p key={rule} className="rounded-xl border border-red-200/20 bg-red-300/10 px-3 py-2 text-xs font-semibold text-red-100">{rule}</p>
+                ))}
+              </div>
+            ) : null}
+          </div>
+
+          <div className="mt-4 rounded-2xl border border-emerald-100 bg-gradient-to-br from-emerald-50 via-white to-lime-50 p-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-700">2-10 Closure Pass</p>
+                <h4 className="mt-1 text-lg font-black text-slate-950">Закрытие всех направлений без добора видео</h4>
+                <p className="mt-1 max-w-2xl text-sm font-medium text-emerald-950">
+                  Фиксирует Audio/Visual worker specs, Outcome Feedback, Discovery Economics, Product Brain, Anti-pattern, Insight Showcase и Daily Loop как внутренние слои Reels Brain.
+                </p>
+              </div>
+              <span className="rounded-full border border-emerald-200 bg-white px-3 py-1 text-xs font-black text-emerald-800">
+                {closurePlanLoading ? "loading" : `${compactNumber(closureSummary.tracks || 0)} tracks`}
+              </span>
+            </div>
+
+            <div className="mt-4 grid gap-2 sm:grid-cols-4">
+              <MetricCard label="Tracks 2-10" value={closureSummary.tracks || 0} />
+              <MetricCard label="Live" value={closureSummary.live || 0} />
+              <MetricCard label="Foundation" value={closureSummary.foundation || 0} />
+              <MetricCard label="Needs worker" value={closureSummary.needs_worker || 0} />
+            </div>
+
+            <div className="mt-4 grid gap-2 lg:grid-cols-3">
+              {closureTracks.length ? closureTracks.map((track) => (
+                <div key={track.id} className="rounded-2xl border border-emerald-200 bg-white px-3 py-3 text-xs">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="font-black text-slate-900">{track.label}</span>
+                    <span className={`rounded-full border px-2 py-1 font-black ${
+                      track.status === "closed_live"
+                        ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                        : track.status === "closed_needs_worker"
+                          ? "border-amber-200 bg-amber-50 text-amber-800"
+                          : "border-cyan-200 bg-cyan-50 text-cyan-800"
+                    }`}>
+                      {track.status}
+                    </span>
+                  </div>
+                  <p className="mt-2 font-semibold text-slate-700">{track.owner_layer}</p>
+                  <p className="mt-1 text-slate-500">{track.deliverables.slice(0, 2).join(" · ")}</p>
+                  <p className="mt-1 text-emerald-700">next: {track.internal_next_tick}</p>
+                </div>
+              )) : <p className="text-sm text-slate-500">Closure план появится после загрузки playbooks.</p>}
+            </div>
+
+            {closureGuardrails.length ? (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {closureGuardrails.map((rule) => (
+                  <span key={rule} className="rounded-full border border-red-100 bg-red-50 px-2.5 py-1 text-xs font-bold text-red-800">{rule}</span>
                 ))}
               </div>
             ) : null}
