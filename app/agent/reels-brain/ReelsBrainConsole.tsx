@@ -1289,6 +1289,59 @@ type ReelsBrainHumanizationResponse = {
   error?: string;
 };
 
+type ReelsBrainGeneratorHandoffResponse = {
+  ok?: boolean;
+  summary?: {
+    payloads?: number;
+    ready?: number;
+    needs_revision?: number;
+    hold?: number;
+  };
+  handoff?: {
+    payloads?: {
+      id: string;
+      niche: string;
+      readiness: "ready_to_generate" | "needs_revision" | "hold";
+      priority_score: number;
+      brief: {
+        title: string;
+        hook: string;
+        retention_mechanic: string;
+        structure: string;
+        second_by_second: string[];
+        visual_recipe: string[];
+        product_fit: string[];
+        copy_as_mechanic: string[];
+        do_not_copy: string[];
+      };
+      humanization?: {
+        ai_slop_risk: "low" | "medium" | "high";
+        moves: string[];
+        prompt_patch: string;
+      } | null;
+      experiment?: {
+        axis: string;
+        hypothesis: string;
+        variant: string;
+        success_metrics: string[];
+        stop_rule: string;
+      } | null;
+      simulation?: {
+        readiness: "ship" | "revise" | "hold";
+        biggest_risk: string;
+        recommended_iteration: string;
+      } | null;
+      generator_payload?: {
+        metrics_to_watch?: string[];
+        safety_guardrails?: string[];
+      };
+    }[];
+    handoff_rules?: string[];
+  };
+  notes?: string[];
+  error?: string;
+};
+
 type LearningEconomicsDailyCost = {
   date: string;
   runs: number;
@@ -1638,6 +1691,9 @@ export default function ReelsBrainPage() {
   const [humanizationBrain, setHumanizationBrain] = useState<ReelsBrainHumanizationResponse | null>(null);
   const [humanizationBrainLoading, setHumanizationBrainLoading] = useState(false);
   const [humanizationBrainError, setHumanizationBrainError] = useState("");
+  const [generatorHandoff, setGeneratorHandoff] = useState<ReelsBrainGeneratorHandoffResponse | null>(null);
+  const [generatorHandoffLoading, setGeneratorHandoffLoading] = useState(false);
+  const [generatorHandoffError, setGeneratorHandoffError] = useState("");
   const [insightNicheFilter, setInsightNicheFilter] = useState("all");
   const [insightConfidenceFilter, setInsightConfidenceFilter] = useState<"all" | "high" | "medium" | "low">("all");
   const [insightSegmentFilter, setInsightSegmentFilter] = useState<"all" | "op_hooks" | "frequent_hooks" | "experimental_hooks">("all");
@@ -1787,8 +1843,9 @@ export default function ReelsBrainPage() {
       setExperimentBrainLoading(true);
       setPortfolioManagerLoading(true);
       setHumanizationBrainLoading(true);
+      setGeneratorHandoffLoading(true);
       try {
-        const [memory, audio, visual, simulation, experiment, manager, humanization] = await Promise.allSettled([
+        const [memory, audio, visual, simulation, experiment, manager, humanization, handoff] = await Promise.allSettled([
           readJson<ReelsBrainCreativeMemoryResponse>(await fetch(`/api/factory/reels-brain/creative-memory?niches=${encodeURIComponent(DEFAULT_AUTOMATION_NICHES)}&limit=80`, { cache: "no-store" })),
           readJson<ReelsBrainAudioIntelligenceResponse>(await fetch(`/api/factory/reels-brain/audio-intelligence?niches=${encodeURIComponent(DEFAULT_AUTOMATION_NICHES)}&limit=80`, { cache: "no-store" })),
           readJson<ReelsBrainVisualIntelligenceResponse>(await fetch(`/api/factory/reels-brain/visual-intelligence?niches=${encodeURIComponent(DEFAULT_AUTOMATION_NICHES)}&limit=80`, { cache: "no-store" })),
@@ -1796,6 +1853,7 @@ export default function ReelsBrainPage() {
           readJson<ReelsBrainExperimentResponse>(await fetch(`/api/factory/reels-brain/experiment-brain?niches=${encodeURIComponent(DEFAULT_AUTOMATION_NICHES)}&limit=50`, { cache: "no-store" })),
           readJson<ReelsBrainPortfolioManagerResponse>(await fetch(`/api/factory/reels-brain/portfolio-manager?niches=${encodeURIComponent(DEFAULT_AUTOMATION_NICHES)}&limit=50`, { cache: "no-store" })),
           readJson<ReelsBrainHumanizationResponse>(await fetch(`/api/factory/reels-brain/humanization?niches=${encodeURIComponent(DEFAULT_AUTOMATION_NICHES)}&limit=50`, { cache: "no-store" })),
+          readJson<ReelsBrainGeneratorHandoffResponse>(await fetch(`/api/factory/reels-brain/generator-handoff?niches=${encodeURIComponent(DEFAULT_AUTOMATION_NICHES)}&limit=20`, { cache: "no-store" })),
         ]);
         if (!alive) return;
         setCreativeMemory(memory.status === "fulfilled" ? memory.value : null);
@@ -1805,6 +1863,7 @@ export default function ReelsBrainPage() {
         setExperimentBrain(experiment.status === "fulfilled" ? experiment.value : null);
         setPortfolioManager(manager.status === "fulfilled" ? manager.value : null);
         setHumanizationBrain(humanization.status === "fulfilled" ? humanization.value : null);
+        setGeneratorHandoff(handoff.status === "fulfilled" ? handoff.value : null);
       } catch {
         if (alive) {
           setCreativeMemory(null);
@@ -1814,6 +1873,7 @@ export default function ReelsBrainPage() {
           setExperimentBrain(null);
           setPortfolioManager(null);
           setHumanizationBrain(null);
+          setGeneratorHandoff(null);
         }
       } finally {
         if (alive) {
@@ -1824,6 +1884,7 @@ export default function ReelsBrainPage() {
           setExperimentBrainLoading(false);
           setPortfolioManagerLoading(false);
           setHumanizationBrainLoading(false);
+          setGeneratorHandoffLoading(false);
         }
       }
     }
@@ -1927,6 +1988,9 @@ export default function ReelsBrainPage() {
   const humanizationMoveMix = humanizationBrain?.humanization?.move_mix || [];
   const humanizationPatches = humanizationBrain?.humanization?.prompt_patches || [];
   const humanizationRules = humanizationBrain?.humanization?.global_rules || [];
+  const generatorHandoffSummary = generatorHandoff?.summary || {};
+  const generatorHandoffPayloads = generatorHandoff?.handoff?.payloads || [];
+  const generatorHandoffRules = generatorHandoff?.handoff?.handoff_rules || [];
   const maxTimelineInserted = Math.max(1, ...learningTimeline.map((row) => row.inserted));
   const analyzeBacklogLanes = analyzeBacklog?.lanes || [];
   const analyzeBacklogQueue = analyzeBacklog?.queue || [];
@@ -2319,6 +2383,23 @@ export default function ReelsBrainPage() {
     }
   }
 
+  async function loadGeneratorHandoff(currentNiches = automationNiches) {
+    setGeneratorHandoffLoading(true);
+    setGeneratorHandoffError("");
+    try {
+      const params = new URLSearchParams({
+        niches: currentNiches.trim() || DEFAULT_AUTOMATION_NICHES,
+        limit: "20",
+      });
+      const data = await readJson<ReelsBrainGeneratorHandoffResponse>(await fetch(`/api/factory/reels-brain/generator-handoff?${params.toString()}`, { cache: "no-store" }));
+      setGeneratorHandoff(data);
+    } catch (e) {
+      setGeneratorHandoffError(String((e as Error)?.message || e));
+    } finally {
+      setGeneratorHandoffLoading(false);
+    }
+  }
+
   async function refreshAutomationSurfaces(currentNiches = automationNiches, currentNiche = activeNiche()) {
     setAutomationSyncing(true);
     try {
@@ -2337,6 +2418,7 @@ export default function ReelsBrainPage() {
           loadExperimentBrain(currentNiches),
           loadPortfolioManager(currentNiches),
           loadHumanizationBrain(currentNiches),
+          loadGeneratorHandoff(currentNiches),
         ]);
       }
     } finally {
@@ -3369,11 +3451,20 @@ export default function ReelsBrainPage() {
                   {humanizationBrainLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
                   Refresh human
                 </button>
+                <button
+                  type="button"
+                  onClick={() => loadGeneratorHandoff(automationNiches)}
+                  disabled={generatorHandoffLoading}
+                  className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-cyan-200 bg-white px-3 py-2 text-sm font-black text-cyan-900 hover:border-cyan-400 disabled:opacity-50"
+                >
+                  {generatorHandoffLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+                  Refresh handoff
+                </button>
               </div>
             </div>
-            {(actionPlanError || creativeBriefsError || creativeMemoryError || audioIntelligenceError || visualIntelligenceError || simulationBrainError || experimentBrainError || portfolioManagerError || humanizationBrainError) ? (
+            {(actionPlanError || creativeBriefsError || creativeMemoryError || audioIntelligenceError || visualIntelligenceError || simulationBrainError || experimentBrainError || portfolioManagerError || humanizationBrainError || generatorHandoffError) ? (
               <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">
-                {actionPlanError || creativeBriefsError || creativeMemoryError || audioIntelligenceError || visualIntelligenceError || simulationBrainError || experimentBrainError || portfolioManagerError || humanizationBrainError}
+                {actionPlanError || creativeBriefsError || creativeMemoryError || audioIntelligenceError || visualIntelligenceError || simulationBrainError || experimentBrainError || portfolioManagerError || humanizationBrainError || generatorHandoffError}
               </div>
             ) : null}
             {(actionPlan || creativeBriefs) ? (
@@ -4041,6 +4132,92 @@ export default function ReelsBrainPage() {
                     ))}
                   </div>
                 </details>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-4 rounded-2xl border border-violet-100 bg-gradient-to-br from-violet-50 via-white to-cyan-50 p-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-violet-700">Generator Handoff</p>
+                <h4 className="mt-1 text-lg font-black text-slate-950">Готовые пакеты для сценариста и режиссера</h4>
+                <p className="mt-1 max-w-2xl text-sm font-medium text-violet-950">
+                  Склеивает Creative Brief, Humanization, Simulation, Experiment и Portfolio в один payload: что снять, как очеловечить, что тестировать, какие метрики смотреть и что запрещено копировать.
+                </p>
+              </div>
+              <span className="rounded-full border border-violet-200 bg-white px-3 py-1 text-xs font-black text-violet-800">
+                {generatorHandoffLoading ? "loading" : `${compactNumber(generatorHandoffSummary.payloads || 0)} payloads`}
+              </span>
+            </div>
+
+            <div className="mt-4 grid gap-2 sm:grid-cols-4">
+              <MetricCard label="Payloads" value={generatorHandoffSummary.payloads || 0} />
+              <MetricCard label="Ready" value={generatorHandoffSummary.ready || 0} />
+              <MetricCard label="Revise" value={generatorHandoffSummary.needs_revision || 0} />
+              <MetricCard label="Hold" value={generatorHandoffSummary.hold || 0} />
+            </div>
+
+            <div className="mt-4 grid gap-3 xl:grid-cols-[1.2fr_0.8fr]">
+              <div className="rounded-2xl border border-violet-200 bg-white p-4">
+                <p className="font-black text-slate-950">Next generator payloads</p>
+                <div className="mt-3 grid gap-2 lg:grid-cols-2">
+                  {generatorHandoffPayloads.length ? generatorHandoffPayloads.slice(0, 4).map((payload) => (
+                    <div key={payload.id} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs">
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div>
+                          <span className="font-black text-slate-900">{payload.niche}</span>
+                          <p className="mt-1 text-slate-500">{payload.brief.structure} · {payload.brief.retention_mechanic}</p>
+                        </div>
+                        <span className={`rounded-full border px-2 py-1 font-black ${
+                          payload.readiness === "ready_to_generate"
+                            ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                            : payload.readiness === "needs_revision"
+                              ? "border-amber-200 bg-amber-50 text-amber-800"
+                              : "border-red-200 bg-red-50 text-red-700"
+                        }`}>
+                          {payload.readiness} · {compactNumber(payload.priority_score)}
+                        </span>
+                      </div>
+                      <p className="mt-2 rounded-lg border border-violet-100 bg-white px-2 py-2 font-semibold text-slate-800">hook: {payload.brief.hook}</p>
+                      <p className="mt-2 text-slate-600">human: {payload.humanization?.moves?.slice(0, 3).join(" · ") || "—"}</p>
+                      <p className="mt-1 text-slate-600">test: {payload.experiment ? `${payload.experiment.axis} -> ${payload.experiment.variant}` : "control creative"}</p>
+                      <p className="mt-1 text-violet-700">metrics: {(payload.generator_payload?.metrics_to_watch || []).join(" · ") || "watch_rate"}</p>
+                    </div>
+                  )) : <p className="text-sm text-slate-500">Generator handoff появится после Creative Briefs + Humanization.</p>}
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <details className="rounded-2xl border border-violet-200 bg-white p-4" open>
+                  <summary className="cursor-pointer text-xs font-black uppercase tracking-[0.18em] text-slate-500">Payload details</summary>
+                  <div className="mt-3 space-y-2">
+                    {generatorHandoffPayloads[0] ? (
+                      <>
+                        <p className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-700">
+                          first shot: {generatorHandoffPayloads[0].brief.second_by_second?.[0] || "открыть с proof/hook"}
+                        </p>
+                        <p className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-700">
+                          visual: {generatorHandoffPayloads[0].brief.visual_recipe?.[0] || "вертикальный UGC proof"}
+                        </p>
+                        <p className="rounded-xl border border-amber-100 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-900">
+                          risk: {generatorHandoffPayloads[0].simulation?.biggest_risk || generatorHandoffPayloads[0].humanization?.ai_slop_risk || "без явного риска"}
+                        </p>
+                        {(generatorHandoffPayloads[0].generator_payload?.safety_guardrails || []).slice(0, 3).map((rule) => (
+                          <p key={rule} className="rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-xs font-semibold text-red-900">{rule}</p>
+                        ))}
+                      </>
+                    ) : <p className="text-sm text-slate-500">Payload details пока пусты.</p>}
+                  </div>
+                </details>
+
+                <div className="rounded-2xl border border-violet-200 bg-white p-4">
+                  <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">Handoff rules</p>
+                  <div className="mt-3 space-y-2">
+                    {generatorHandoffRules.slice(0, 4).map((rule) => (
+                      <p key={rule} className="rounded-xl border border-violet-100 bg-violet-50 px-3 py-2 text-xs font-semibold text-violet-900">{rule}</p>
+                    ))}
+                  </div>
+                </div>
               </div>
             </div>
           </div>
