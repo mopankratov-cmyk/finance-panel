@@ -5,6 +5,8 @@ import { buildProductTwin } from "@/lib/factory/productTwinBuild";
 import { getBestProductTwinAsset, getLatestProductTwinByArticle } from "@/lib/factory/productTwinStore";
 import { buildProductBrollPlan, type ProductBrollRecipe } from "@/lib/factory/productBrollBatch";
 import { archiveFactoryVideosToYandex } from "@/lib/factory/yandexArchive";
+import { rehostImageForFal } from "@/lib/factory/rehostImage";
+import { falVideoSubmitDetailed } from "@/lib/factory/falVideo";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -35,7 +37,8 @@ export async function GET(req: NextRequest) {
     const sp = req.nextUrl.searchParams;
     const apply = sp.get("apply") === "1";
     const build = sp.get("build") === "1";
-    const count = Math.max(1, Math.min(5, Number(sp.get("count") || 2)));
+    const submit = sp.get("submit") === "1";
+    const count = Math.max(1, Math.min(submit ? 2 : 5, Number(sp.get("count") || 2)));
 
     const cases = [];
     for (const item of P0_CASES) {
@@ -44,6 +47,21 @@ export async function GET(req: NextRequest) {
       const twin = built?.ok ? built.twin : existing;
       const picked = twin ? await getBestProductTwinAsset(db, { twinId: twin.twinId, useCase: "broll" }) : null;
       const variants = twin ? buildProductBrollPlan({ article: item.article, product: item.product, recipe: item.recipe, count, model: "kling" }) : [];
+      const falImage = submit && picked ? await rehostImageForFal(picked.asset.url) : "";
+      const jobs = submit && picked ? await Promise.all(variants.map(async (variant) => {
+        const res = await falVideoSubmitDetailed(variant.model, falImage, variant.prompt, { duration: variant.duration });
+        return {
+          id: variant.id,
+          label: variant.label,
+          model: variant.model,
+          twin_id: twin?.twinId || null,
+          asset_id: picked.asset.assetId,
+          task_id: res.token ? `fv.${res.token}` : null,
+          ok: Boolean(res.token),
+          error: res.token ? null : res.reason || "fal submit failed",
+          detail: res.detail || null,
+        };
+      })) : [];
       cases.push({
         article: item.article,
         product: item.product,
@@ -57,13 +75,16 @@ export async function GET(req: NextRequest) {
         asset_quality: picked?.asset.qualityScore ?? null,
         asset_risk: picked?.asset.risk || null,
         broll_dry_run: variants.map((v) => ({ id: v.id, label: v.label, model: v.model, duration: v.duration })),
+        submitted_jobs: jobs,
       });
     }
 
     const archive = await archiveFactoryVideosToYandex(db, { apply, limit: 10, includeArchived: false });
     return NextResponse.json({
       ok: cases.every((c) => c.twin_id && c.asset_id),
-      mode: build ? "build_and_check" : "check_existing",
+      mode: submit ? "submit_broll_smoke" : build ? "build_and_check" : "check_existing",
+      submit_broll: submit,
+      status_route: "/api/factory/video-fal-status/{task_id}",
       apply_archive: apply,
       cases,
       yandex_archive: archive,
@@ -75,4 +96,3 @@ export async function GET(req: NextRequest) {
     }, { status: 500, headers: { "Cache-Control": "no-store" } });
   }
 }
-

@@ -143,6 +143,22 @@ Do not weaken app auth globally. Add a narrow internal smoke mechanism only if a
 
 ## 5. Next tasks
 
+## 5.1 Internal smoke route
+
+После backend-добавок live smoke можно запускать без UI через защищённый route:
+
+```text
+GET /api/factory/product-twin/smoke
+```
+
+Режимы:
+
+- `?build=1` — собрать/пересобрать P0 twins в БД.
+- `?submit=1&count=1` — сделать платный b-roll submit через `twin_id` и вернуть `task_id`.
+- `?apply=1` — применить Yandex archive batch для найденных generated/product-twin/prepared assets.
+
+Smoke route защищён через существующий `CRON_SECRET`/Studio session auth. Внешний `vercel curl` без сессии ожидаемо получает `Не авторизовано`.
+
 0. Store generated media in Yandex Disk by default:
    - `falImageEdit` archives generated clean images;
    - `video-fal-status` archives completed FAL mp4;

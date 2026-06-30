@@ -12,9 +12,13 @@ ok(/buildProductTwin/.test(route), "smoke route can run live Product Twin build"
 ok(/getLatestProductTwinByArticle/.test(route), "smoke route checks DB by article");
 ok(/getBestProductTwinAsset/.test(route), "smoke route checks broll_ready twin asset");
 ok(/buildProductBrollPlan/.test(route), "smoke route produces b-roll dry run");
+ok(/sp\.get\("submit"\) === "1"/.test(route), "smoke route requires explicit submit=1 for paid b-roll submit");
+ok(/Math\.min\(submit \? 2 : 5/.test(route), "smoke route caps paid submit count lower than dry-run");
+ok(/falVideoSubmitDetailed/.test(route), "smoke route can submit b-roll through Product Twin asset");
+ok(/rehostImageForFal/.test(route), "smoke route rehosts selected twin asset before FAL submit");
+ok(/status_route: "\/api\/factory\/video-fal-status\/\{task_id\}"/.test(route), "smoke route returns status route for archive-on-complete");
 ok(/archiveFactoryVideosToYandex/.test(route), "smoke route includes Yandex archive report");
 ok(/buildProductTwin/.test(buildRoute), "public build route delegates to shared builder");
 ok(/resolveInputImage/.test(builder), "shared builder resolves source image");
 
 console.log("productTwinSmokeRouteContract: passed");
-
