@@ -1158,6 +1158,62 @@ type ReelsBrainSimulationResponse = {
   error?: string;
 };
 
+type ReelsBrainExperimentResponse = {
+  ok?: boolean;
+  summary?: {
+    experiments?: number;
+    launch?: number;
+    hold?: number;
+    axes?: number;
+  };
+  experiment?: {
+    experiments?: {
+      id: string;
+      niche: string;
+      readiness: "ship" | "revise" | "hold";
+      priority_score: number;
+      hypothesis: string;
+      axis: string;
+      keep_fixed: string[];
+      variant: {
+        change_to: string;
+        reason: string;
+      };
+      success_metrics: string[];
+      stop_rule: string;
+      risk: string;
+      expected_learning: string;
+    }[];
+    by_axis?: {
+      axis: string;
+      count: number;
+      avg_priority: number;
+    }[];
+    launch_queue?: {
+      id: string;
+      niche: string;
+      readiness: "ship" | "revise" | "hold";
+      priority_score: number;
+      hypothesis: string;
+      axis: string;
+      variant: { change_to: string; reason: string };
+      success_metrics: string[];
+      stop_rule: string;
+      risk: string;
+    }[];
+    hold_queue?: {
+      id: string;
+      niche: string;
+      priority_score: number;
+      axis: string;
+      risk: string;
+    }[];
+    experiment_rules?: string[];
+  };
+  notes?: string[];
+  error?: string;
+};
+
 type LearningEconomicsDailyCost = {
   date: string;
   runs: number;
@@ -1498,6 +1554,9 @@ export default function ReelsBrainPage() {
   const [simulationBrain, setSimulationBrain] = useState<ReelsBrainSimulationResponse | null>(null);
   const [simulationBrainLoading, setSimulationBrainLoading] = useState(false);
   const [simulationBrainError, setSimulationBrainError] = useState("");
+  const [experimentBrain, setExperimentBrain] = useState<ReelsBrainExperimentResponse | null>(null);
+  const [experimentBrainLoading, setExperimentBrainLoading] = useState(false);
+  const [experimentBrainError, setExperimentBrainError] = useState("");
   const [insightNicheFilter, setInsightNicheFilter] = useState("all");
   const [insightConfidenceFilter, setInsightConfidenceFilter] = useState<"all" | "high" | "medium" | "low">("all");
   const [insightSegmentFilter, setInsightSegmentFilter] = useState<"all" | "op_hooks" | "frequent_hooks" | "experimental_hooks">("all");
@@ -1644,24 +1703,28 @@ export default function ReelsBrainPage() {
       setAudioIntelligenceLoading(true);
       setVisualIntelligenceLoading(true);
       setSimulationBrainLoading(true);
+      setExperimentBrainLoading(true);
       try {
-        const [memory, audio, visual, simulation] = await Promise.allSettled([
+        const [memory, audio, visual, simulation, experiment] = await Promise.allSettled([
           readJson<ReelsBrainCreativeMemoryResponse>(await fetch(`/api/factory/reels-brain/creative-memory?niches=${encodeURIComponent(DEFAULT_AUTOMATION_NICHES)}&limit=80`, { cache: "no-store" })),
           readJson<ReelsBrainAudioIntelligenceResponse>(await fetch(`/api/factory/reels-brain/audio-intelligence?niches=${encodeURIComponent(DEFAULT_AUTOMATION_NICHES)}&limit=80`, { cache: "no-store" })),
           readJson<ReelsBrainVisualIntelligenceResponse>(await fetch(`/api/factory/reels-brain/visual-intelligence?niches=${encodeURIComponent(DEFAULT_AUTOMATION_NICHES)}&limit=80`, { cache: "no-store" })),
           readJson<ReelsBrainSimulationResponse>(await fetch(`/api/factory/reels-brain/simulation?niches=${encodeURIComponent(DEFAULT_AUTOMATION_NICHES)}&limit=50`, { cache: "no-store" })),
+          readJson<ReelsBrainExperimentResponse>(await fetch(`/api/factory/reels-brain/experiment-brain?niches=${encodeURIComponent(DEFAULT_AUTOMATION_NICHES)}&limit=50`, { cache: "no-store" })),
         ]);
         if (!alive) return;
         setCreativeMemory(memory.status === "fulfilled" ? memory.value : null);
         setAudioIntelligence(audio.status === "fulfilled" ? audio.value : null);
         setVisualIntelligence(visual.status === "fulfilled" ? visual.value : null);
         setSimulationBrain(simulation.status === "fulfilled" ? simulation.value : null);
+        setExperimentBrain(experiment.status === "fulfilled" ? experiment.value : null);
       } catch {
         if (alive) {
           setCreativeMemory(null);
           setAudioIntelligence(null);
           setVisualIntelligence(null);
           setSimulationBrain(null);
+          setExperimentBrain(null);
         }
       } finally {
         if (alive) {
@@ -1669,6 +1732,7 @@ export default function ReelsBrainPage() {
           setAudioIntelligenceLoading(false);
           setVisualIntelligenceLoading(false);
           setSimulationBrainLoading(false);
+          setExperimentBrainLoading(false);
         }
       }
     }
@@ -1757,6 +1821,11 @@ export default function ReelsBrainPage() {
   const reviseQueue = simulationBrain?.simulation?.revise_queue || [];
   const personaSummary = simulationBrain?.simulation?.persona_summary || [];
   const simulationGuardrails = simulationBrain?.simulation?.global_guardrails || [];
+  const experimentSummary = experimentBrain?.summary || {};
+  const launchExperiments = experimentBrain?.experiment?.launch_queue || [];
+  const holdExperiments = experimentBrain?.experiment?.hold_queue || [];
+  const experimentAxes = experimentBrain?.experiment?.by_axis || [];
+  const experimentRules = experimentBrain?.experiment?.experiment_rules || [];
   const maxTimelineInserted = Math.max(1, ...learningTimeline.map((row) => row.inserted));
   const analyzeBacklogLanes = analyzeBacklog?.lanes || [];
   const analyzeBacklogQueue = analyzeBacklog?.queue || [];
@@ -2098,6 +2167,23 @@ export default function ReelsBrainPage() {
     }
   }
 
+  async function loadExperimentBrain(currentNiches = automationNiches) {
+    setExperimentBrainLoading(true);
+    setExperimentBrainError("");
+    try {
+      const params = new URLSearchParams({
+        niches: currentNiches.trim() || DEFAULT_AUTOMATION_NICHES,
+        limit: "50",
+      });
+      const data = await readJson<ReelsBrainExperimentResponse>(await fetch(`/api/factory/reels-brain/experiment-brain?${params.toString()}`, { cache: "no-store" }));
+      setExperimentBrain(data);
+    } catch (e) {
+      setExperimentBrainError(String((e as Error)?.message || e));
+    } finally {
+      setExperimentBrainLoading(false);
+    }
+  }
+
   async function refreshAutomationSurfaces(currentNiches = automationNiches, currentNiche = activeNiche()) {
     setAutomationSyncing(true);
     try {
@@ -2113,6 +2199,7 @@ export default function ReelsBrainPage() {
           loadAudioIntelligence(currentNiches),
           loadVisualIntelligence(currentNiches),
           loadSimulationBrain(currentNiches),
+          loadExperimentBrain(currentNiches),
         ]);
       }
     } finally {
@@ -3118,11 +3205,20 @@ export default function ReelsBrainPage() {
                   {simulationBrainLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
                   Refresh simulation
                 </button>
+                <button
+                  type="button"
+                  onClick={() => loadExperimentBrain(automationNiches)}
+                  disabled={experimentBrainLoading}
+                  className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-cyan-200 bg-white px-3 py-2 text-sm font-black text-cyan-900 hover:border-cyan-400 disabled:opacity-50"
+                >
+                  {experimentBrainLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <SlidersHorizontal className="h-4 w-4" />}
+                  Refresh experiments
+                </button>
               </div>
             </div>
-            {(actionPlanError || creativeBriefsError || creativeMemoryError || audioIntelligenceError || visualIntelligenceError || simulationBrainError) ? (
+            {(actionPlanError || creativeBriefsError || creativeMemoryError || audioIntelligenceError || visualIntelligenceError || simulationBrainError || experimentBrainError) ? (
               <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">
-                {actionPlanError || creativeBriefsError || creativeMemoryError || audioIntelligenceError || visualIntelligenceError || simulationBrainError}
+                {actionPlanError || creativeBriefsError || creativeMemoryError || audioIntelligenceError || visualIntelligenceError || simulationBrainError || experimentBrainError}
               </div>
             ) : null}
             {(actionPlan || creativeBriefs) ? (
@@ -3528,6 +3624,78 @@ export default function ReelsBrainPage() {
                     ))}
                     {simulationGuardrails.slice(0, 3).map((rule) => (
                       <p key={rule} className="rounded-xl border border-cyan-200/20 bg-cyan-300/10 px-3 py-2 text-xs font-semibold text-cyan-100">{rule}</p>
+                    ))}
+                  </div>
+                </details>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-4 rounded-2xl border border-indigo-100 bg-indigo-50 p-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-indigo-700">Experiment Brain</p>
+                <h4 className="mt-1 text-lg font-black text-slate-950">A/B-план без хаотичных вариантов</h4>
+                <p className="mt-1 max-w-2xl text-sm font-medium text-indigo-900">
+                  Берём Creative DNA и Simulation risks, меняем только одну переменную и заранее задаём метрики успеха.
+                </p>
+              </div>
+              <span className="rounded-full border border-indigo-200 bg-white px-3 py-1 text-xs font-black text-indigo-800">
+                {experimentBrainLoading ? "loading" : `${compactNumber(experimentSummary.experiments || 0)} experiments`}
+              </span>
+            </div>
+
+            <div className="mt-4 grid gap-2 sm:grid-cols-4">
+              <MetricCard label="Launch queue" value={experimentSummary.launch || 0} />
+              <MetricCard label="Hold queue" value={experimentSummary.hold || 0} />
+              <MetricCard label="Axes" value={experimentSummary.axes || 0} />
+              <MetricCard label="Total tests" value={experimentSummary.experiments || 0} />
+            </div>
+
+            <div className="mt-4 grid gap-3 xl:grid-cols-[1.1fr_0.9fr]">
+              <div className="rounded-2xl border border-indigo-200 bg-white p-4">
+                <p className="font-black text-slate-950">Что запускать первым</p>
+                <div className="mt-3 grid gap-2 lg:grid-cols-2">
+                  {launchExperiments.length ? launchExperiments.slice(0, 4).map((exp) => (
+                    <div key={exp.id} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="font-black text-slate-900">{exp.niche} · {exp.axis}</span>
+                        <span className="rounded-full border border-indigo-200 bg-white px-2 py-1 font-black text-indigo-800">
+                          {compactNumber(exp.priority_score)}
+                        </span>
+                      </div>
+                      <p className="mt-2 font-semibold text-slate-700">{exp.hypothesis}</p>
+                      <p className="mt-1 text-slate-500">variant: {exp.variant.change_to}</p>
+                      <p className="mt-1 text-slate-500">metrics: {exp.success_metrics.join(" · ")}</p>
+                      <p className="mt-1 text-amber-700">stop: {exp.stop_rule}</p>
+                    </div>
+                  )) : <p className="text-sm text-slate-500">Launch queue появится после Simulation + Creative DNA.</p>}
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <div className="rounded-2xl border border-indigo-200 bg-white p-4">
+                  <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">Axes</p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {experimentAxes.length ? experimentAxes.map((axis) => (
+                      <span key={axis.axis} className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-bold text-slate-700">
+                        {axis.axis}: {compactNumber(axis.count)} · {compactNumber(axis.avg_priority)}
+                      </span>
+                    )) : <span className="text-sm text-slate-500">Axes пока пусты.</span>}
+                  </div>
+                </div>
+
+                <details className="rounded-2xl border border-indigo-200 bg-white p-4">
+                  <summary className="cursor-pointer text-xs font-black uppercase tracking-[0.18em] text-slate-500">Rules + hold queue</summary>
+                  <div className="mt-3 space-y-2">
+                    {holdExperiments.slice(0, 3).map((exp) => (
+                      <div key={exp.id} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs">
+                        <span className="font-black text-amber-700">hold · {exp.axis} · {compactNumber(exp.priority_score)}</span>
+                        <p className="mt-1 text-slate-500">{exp.risk}</p>
+                      </div>
+                    ))}
+                    {experimentRules.slice(0, 4).map((rule) => (
+                      <p key={rule} className="rounded-xl border border-indigo-100 bg-indigo-50 px-3 py-2 text-xs font-semibold text-indigo-900">{rule}</p>
                     ))}
                   </div>
                 </details>
