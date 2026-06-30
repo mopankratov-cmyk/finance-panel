@@ -5,6 +5,7 @@
 Этот worker не связан с контент-заводом и не запускает генерацию роликов. Он только обслуживает слой интеллекта Reels Brain:
 
 - анализирует уже собранный backlog `viral_videos`;
+- классифицирует media asset readiness: direct asset / social page / unsupported;
 - пересобирает `Pattern Brain` в `niche_playbooks`;
 - обновляет digest/readiness surfaces;
 - шлёт heartbeat в `/api/factory/worker-state`;
@@ -51,6 +52,7 @@ node lib/factory/reelsBrainRailwayWorker.mjs --once
 - `REELS_BRAIN_MAX_LANES=9`
 - `REELS_BRAIN_ANALYZE_LIMIT=25`
 - `REELS_BRAIN_PATTERN_LIMIT=3000`
+- `REELS_BRAIN_MEDIA_RESOLVE_LIMIT=60`
 - `REELS_BRAIN_BUILD_PATTERNS=true`
 - `REELS_BRAIN_ENABLE_BULK=false`
 
@@ -74,12 +76,20 @@ REELS_BRAIN_ENABLE_BULK=true
 
 Сейчас Railway worker закрывает operational offline loop:
 
-1. `analyze stored backlog`
-2. `rebuild pattern memory`
-3. `refresh portfolio digest`
-4. `heartbeat/status`
+1. `resolve media assets`
+2. `analyze stored backlog`
+3. `rebuild pattern memory`
+4. `refresh portfolio digest`
+5. `heartbeat/status`
 
 Audio/visual heavy runtime подключается следующим слоем, когда появится стабильное хранение видеофайлов или signed download URL. Его нельзя честно делать только по URL карточки Reels, потому что для FFmpeg/Demucs/Librosa нужен доступ к media asset, а не только metadata.
+
+Первый resolver уже работает в cost-safe режиме:
+
+- `ready`: URL выглядит как прямой `mp4/mov/webm/audio` asset, можно отправлять в будущий FFmpeg/Whisper/visual worker;
+- `metadata_only`: TikTok/Reels/Shorts page URL, оставляем в Pattern Brain до появления legal/signed media URL;
+- `unknown`: host не распознан, нужен manual/provider resolver review;
+- `blocked`: битый URL.
 
 ## Guardrails
 
