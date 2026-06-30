@@ -343,7 +343,7 @@ async function runBulk(req: NextRequest, body: Record<string, unknown>, execute:
   const limit = Math.max(5, Math.min(50, Number(body.limit || req.nextUrl.searchParams.get("limit") || 25)));
   const providersPerLane = Math.max(1, Math.min(3, Number(body.providers_per_lane || req.nextUrl.searchParams.get("providers_per_lane") || 2)));
   const queryVariantsPerLane = Math.max(1, Math.min(3, Number(body.query_variants_per_lane || req.nextUrl.searchParams.get("query_variants_per_lane") || 1)));
-  const timeoutMs = Math.max(5000, Math.min(30000, Number(body.provider_timeout_ms || req.nextUrl.searchParams.get("provider_timeout_ms") || 15000)));
+  const timeoutMs = Math.max(5000, Math.min(60000, Number(body.provider_timeout_ms || req.nextUrl.searchParams.get("provider_timeout_ms") || 15000)));
   const budgetLimits = reelsBrainBudgetLimits({
     max_provider_calls: body.max_provider_calls || req.nextUrl.searchParams.get("max_provider_calls"),
     max_cost_units: body.max_cost_units || req.nextUrl.searchParams.get("max_cost_units"),

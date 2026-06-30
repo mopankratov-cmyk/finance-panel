@@ -307,7 +307,8 @@ function tiktokInput(row: Record<string, any>): ReelsBrainInput {
   const aweme = rec(row.aweme_info || row.aweme || row);
   const author = rec(aweme.author || row.author || row.authorMeta);
   const stats = rec(aweme.statistics || aweme.stats || row.statistics || row.stats);
-  const video = rec(aweme.video || row.video);
+  const video = rec(aweme.video || row.video || row.videoMeta);
+  const videoMeta = rec(row.videoMeta);
   const music = rec(aweme.music || row.music || row.musicMeta);
   const postId = str(aweme.aweme_id, aweme.id, row.post_id, row.aweme_id);
   const username = str(author.unique_id, author.username, row.profile_username, row.username);
@@ -316,11 +317,11 @@ function tiktokInput(row: Record<string, any>): ReelsBrainInput {
   const durationMs = num(video.duration ?? aweme.duration);
   return {
     url,
-    video_url: firstMediaUrl(video.play_addr, video.download_addr, row.video_url, row.videoUrl, row.playUrl, row.play_url),
-    download_url: firstMediaUrl(video.download_addr, row.download_url, row.downloadUrl, row.videoDownloadUrl),
-    media_url: firstMediaUrl(row.media_url, row.mediaUrl, row.displayUrl, row.thumbnailUrl, video.cover),
+    video_url: firstMediaUrl(video.play_addr, video.download_addr, video.playAddr, video.downloadAddr, videoMeta.playAddr, videoMeta.downloadAddr, row.video_url, row.videoUrl, row.playUrl, row.play_url),
+    download_url: firstMediaUrl(video.download_addr, video.downloadAddr, videoMeta.downloadAddr, row.download_url, row.downloadUrl, row.videoDownloadUrl),
+    media_url: firstMediaUrl(row.media_url, row.mediaUrl, row.displayUrl, row.thumbnailUrl, video.cover, videoMeta.coverUrl, videoMeta.originalCoverUrl),
     audio_url: firstMediaUrl(row.audio_url, row.audioUrl, row.musicUrl, music.play_url, music.url),
-    thumbnail_url: firstMediaUrl(row.thumbnail_url, row.thumbnailUrl, row.coverUrl, video.cover),
+    thumbnail_url: firstMediaUrl(row.thumbnail_url, row.thumbnailUrl, row.coverUrl, video.cover, videoMeta.coverUrl, videoMeta.originalCoverUrl),
     platform: "tiktok",
     caption: str(aweme.desc, aweme.description, row.description, row.caption, row.text, row.title),
     author: str(author.nickname, author.unique_id, author.username, row.profile_username),

@@ -258,7 +258,10 @@ async function fromApify(niche: string, limit: number, opts: { actor?: string; p
     });
     if (!r.ok) return [];
     const items = (await r.json().catch(() => [])) as Record<string, unknown>[];
-    return (Array.isArray(items) ? items : []).slice(0, limit).map((it) => ({
+    return (Array.isArray(items) ? items : []).slice(0, limit).map((it) => {
+      const videoMeta = rec(it.videoMeta);
+      const video = rec(it.video);
+      return {
       url: (it.webVideoUrl || it.url || it.postPage || it.shortUrl || it.videoUrl || (it.shortCode ? `https://www.instagram.com/reel/${it.shortCode}/` : "")) as string,
       video_url: firstUrl(
         it.videoUrl,
@@ -267,14 +270,17 @@ async function fromApify(niche: string, limit: number, opts: { actor?: string; p
         it.videoPlayUrl,
         it.playUrl,
         it.play_url,
-        rec(it.video).url,
-        rec(it.video).playAddr,
-        rec(it.video).downloadAddr,
+        video.url,
+        video.playAddr,
+        video.downloadAddr,
+        videoMeta.downloadAddr,
+        videoMeta.playAddr,
+        videoMeta.url,
       ),
-      download_url: firstUrl(it.downloadUrl, it.download_url, it.videoDownloadUrl, rec(it.video).downloadAddr),
-      media_url: firstUrl(it.mediaUrl, it.media_url, it.displayUrl, it.thumbnailUrl),
+      download_url: firstUrl(it.downloadUrl, it.download_url, it.videoDownloadUrl, video.downloadAddr, videoMeta.downloadAddr),
+      media_url: firstUrl(it.mediaUrl, it.media_url, it.displayUrl, it.thumbnailUrl, videoMeta.coverUrl, videoMeta.originalCoverUrl),
       audio_url: firstUrl(it.audioUrl, it.audio_url, it.musicUrl, rec(it.musicMeta).musicOriginalUrl),
-      thumbnail_url: firstUrl(it.thumbnailUrl, it.coverUrl, it.displayUrl, rec(it.video).cover),
+      thumbnail_url: firstUrl(it.thumbnailUrl, it.coverUrl, it.displayUrl, video.cover, videoMeta.coverUrl, videoMeta.originalCoverUrl),
       caption: (it.text || it.caption || it.title || it.desc || it.description || it.alt || "") as string,
       views: num(it.playCount ?? it.views ?? it.viewCount ?? it.videoViewCount ?? it.videoPlayCount),
       likes: num(it.diggCount ?? it.likes ?? it.likeCount ?? it.likesCount),
@@ -290,7 +296,8 @@ async function fromApify(niche: string, limit: number, opts: { actor?: string; p
       sound_id: String((it.musicMeta as Record<string, unknown> | undefined)?.musicId ?? it.musicId ?? it.sound_id ?? ""),
       sound_title: String((it.musicMeta as Record<string, unknown> | undefined)?.musicName ?? it.musicName ?? it.sound_title ?? ""),
       published_at: String(it.createTimeISO ?? it.createTime ?? it.date ?? it.timestamp ?? ""),
-    })).filter((v) => v.caption || v.url);
+    };
+    }).filter((v) => v.caption || v.url);
   };
   try {
     const actorCandidates = platform === "instagram"
