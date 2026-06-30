@@ -924,9 +924,14 @@ type ReelsBrainCreativeBriefsResponse = {
     hook: string;
     retention_mechanic: string;
     structure: string;
+    second_by_second?: string[];
+    visual_recipe?: string[];
     product_fit: string[];
+    copy_as_mechanic?: string[];
+    do_not_copy?: string[];
     confidence: "high" | "medium" | "low";
     op_score: number;
+    source_examples?: { id?: string | number; url?: string | null; hook?: string | null; score?: number; views?: number }[];
   }[];
   notes?: string[];
   error?: string;
@@ -3403,11 +3408,50 @@ export default function ReelsBrainPage() {
                         {compactNumber(creativeBriefs.count || 0)} briefs
                       </span>
                     </div>
-                    <div className="mt-2 space-y-1">
-                      {(creativeBriefs.briefs || []).slice(0, 3).map((brief) => (
-                        <div key={brief.id} className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-2 text-xs">
-                          <div className="font-black text-slate-800">{brief.title}</div>
-                          <div className="mt-1 text-slate-500">{brief.hook}</div>
+                    <div className="mt-2 space-y-2">
+                      {(creativeBriefs.briefs || []).slice(0, 2).map((brief) => (
+                        <div key={brief.id} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs">
+                          <div className="flex flex-wrap items-start justify-between gap-2">
+                            <div>
+                              <div className="font-black text-slate-800">{brief.title}</div>
+                              <div className="mt-1 text-slate-500">{brief.niche} · {brief.structure} · {brief.retention_mechanic}</div>
+                            </div>
+                            <span className={`rounded-full border px-2 py-1 font-black ${confidenceCopy(brief.confidence).tone}`}>
+                              {compactNumber(brief.op_score)}
+                            </span>
+                          </div>
+                          <p className="mt-2 rounded-lg border border-cyan-100 bg-white px-2 py-2 font-semibold text-slate-800">hook: {brief.hook}</p>
+                          <div className="mt-2 grid gap-2 md:grid-cols-2">
+                            <div className="rounded-lg border border-slate-200 bg-white px-2 py-2">
+                              <p className="font-black uppercase tracking-wide text-slate-400">seconds</p>
+                              {(brief.second_by_second || []).slice(0, 3).map((line) => (
+                                <p key={line} className="mt-1 text-slate-600">{line}</p>
+                              ))}
+                            </div>
+                            <div className="rounded-lg border border-slate-200 bg-white px-2 py-2">
+                              <p className="font-black uppercase tracking-wide text-slate-400">visual recipe</p>
+                              {(brief.visual_recipe || []).slice(0, 3).map((line) => (
+                                <p key={line} className="mt-1 text-slate-600">{line}</p>
+                              ))}
+                            </div>
+                          </div>
+                          <details className="mt-2 rounded-lg border border-slate-200 bg-white px-2 py-2">
+                            <summary className="cursor-pointer font-black text-slate-700">Product fit + copy rules</summary>
+                            <div className="mt-2 grid gap-2 md:grid-cols-3">
+                              <div>
+                                <p className="font-black text-emerald-700">Подходит для</p>
+                                {(brief.product_fit || []).slice(0, 3).map((line) => <p key={line} className="mt-1 text-slate-600">{line}</p>)}
+                              </div>
+                              <div>
+                                <p className="font-black text-cyan-700">Копируем механику</p>
+                                {(brief.copy_as_mechanic || []).slice(0, 3).map((line) => <p key={line} className="mt-1 text-slate-600">{line}</p>)}
+                              </div>
+                              <div>
+                                <p className="font-black text-red-700">Не копируем</p>
+                                {(brief.do_not_copy || []).slice(0, 3).map((line) => <p key={line} className="mt-1 text-slate-600">{line}</p>)}
+                              </div>
+                            </div>
+                          </details>
                         </div>
                       ))}
                     </div>
