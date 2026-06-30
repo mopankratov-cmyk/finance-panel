@@ -113,6 +113,10 @@ export interface ReelsBrainAutomationRunHistoryEntry {
   retries: number;
   errors: number;
   best_provider?: string | null;
+  cost_units?: number;
+  estimated_spend_usd?: number;
+  actual_spend_usd?: number | null;
+  spend_source?: "estimated" | "actual";
 }
 
 const SHORT_PLATFORMS = ["tiktok", "instagram", "youtube"] as const;
@@ -635,6 +639,10 @@ export function automationRunHistory(playbook: unknown): ReelsBrainAutomationRun
       retries: Math.max(0, num(row.retries, 0)),
       errors: Math.max(0, num(row.errors, 0)),
       best_provider: row.best_provider ? String(row.best_provider) : null,
+      cost_units: Math.max(0, num(row.cost_units, 0)) || undefined,
+      estimated_spend_usd: Math.max(0, num(row.estimated_spend_usd, 0)) || undefined,
+      actual_spend_usd: row.actual_spend_usd == null ? null : Math.max(0, num(row.actual_spend_usd, 0)),
+      spend_source: row.spend_source === "actual" ? "actual" : row.spend_source === "estimated" ? "estimated" : undefined,
     });
   }
   return out.sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
@@ -663,6 +671,10 @@ export function rememberAutomationRun(
     retries: Math.max(0, num(input.retries, 0)),
     errors: Math.max(0, num(input.errors, 0)),
     best_provider: input.best_provider || null,
+    cost_units: Math.max(0, num(input.cost_units, 0)) || undefined,
+    estimated_spend_usd: Math.max(0, num(input.estimated_spend_usd, 0)) || undefined,
+    actual_spend_usd: input.actual_spend_usd == null ? null : Math.max(0, num(input.actual_spend_usd, 0)),
+    spend_source: input.spend_source === "actual" ? "actual" : input.spend_source === "estimated" ? "estimated" : undefined,
   };
   const history = automationRunHistory(pb).filter((row) => row.id !== entry.id);
   return {

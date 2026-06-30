@@ -624,6 +624,200 @@ type PortfolioDigestResponse = {
   error?: string;
 };
 
+type LearningEconomicsResponse = {
+  ok?: boolean;
+  insights?: {
+    summary?: string[];
+    top_hooks?: LearningHookInsight[];
+    hook_groups?: {
+      op_hooks?: LearningHookInsight[];
+      frequent_hooks?: LearningHookInsight[];
+      experimental_hooks?: LearningHookInsight[];
+    };
+    winning_formats?: { label: string; frequency: number; avg_score: number; niches: string[] }[];
+    retention_mechanics?: { label: string; frequency: number; avg_score: number; hooks: string[] }[];
+    recipes?: {
+      id: string;
+      title: string;
+      hook: string;
+      format: string;
+      retention: string;
+      op_score: number;
+      confidence?: "high" | "medium" | "low";
+      niches: string[];
+      creative_brief?: LearningCreativeBrief;
+      generator_payload?: LearningGeneratorPayload;
+      examples?: LearningReferenceExample[];
+    }[];
+    source_references?: (LearningReferenceExample & {
+      hook_type?: string;
+      hook_label?: string;
+      op_score?: number;
+      confidence?: "high" | "medium" | "low";
+    })[];
+    source_map?: {
+      provider: string;
+      runs: number;
+      found: number;
+      inserted: number;
+      analyzed: number;
+      errors: number;
+      estimated_spend_usd: number;
+      cost_per_inserted: number | null;
+      cost_per_analyzed: number | null;
+      niches: string[];
+    }[];
+    legal_guard?: {
+      principle: string;
+      allowed: string[];
+      forbidden: string[];
+    };
+    capability_status?: { key: string; label: string; status: string }[];
+  };
+  niches?: {
+    niche: string;
+    updated_at?: string | null;
+    total_videos: number;
+    analyzed_videos: number;
+    patterns: number;
+    generator_ready_patterns: number;
+    cross_platform_patterns: number;
+    avg_relevance_score: number;
+    understanding_score: number;
+    platform_brains?: Record<string, {
+      total_videos: number;
+      analyzed_videos: number;
+      patterns: number;
+      generator_ready_patterns: number;
+    }>;
+  }[];
+  totals?: {
+    total_videos: number;
+    analyzed_videos: number;
+    patterns: number;
+    generator_ready_patterns: number;
+    cross_platform_patterns: number;
+    avg_understanding_score: number;
+    cost_units_per_inserted_recent: number | null;
+    cost_units_per_inserted_previous: number | null;
+    cost_trend: "cheaper" | "more_expensive" | "flat" | "not_enough_data";
+    today_usd_per_useful_video?: number | null;
+    yesterday_usd_per_useful_video?: number | null;
+    day_cost_trend?: "cheaper" | "more_expensive" | "flat" | "not_enough_data";
+  };
+  timeline?: {
+    id: string;
+    mode: AutomationHistoryItem["mode"];
+    strategy?: string | null;
+    created_at: string;
+    niches: string[];
+    ok: boolean;
+    found: number;
+    inserted: number;
+    analyzed: number;
+    relevant: number;
+    retries: number;
+    errors: number;
+    best_provider?: string | null;
+    cost_units: number;
+    inserted_per_100_cost_units: number;
+    analyzed_per_100_cost_units: number;
+    cost_units_per_inserted: number | null;
+    cost_units_per_analyzed: number | null;
+    spend_usd?: number;
+    spend_source?: "estimated" | "actual";
+    usd_per_inserted?: number | null;
+    usd_per_analyzed?: number | null;
+    usd_per_relevant?: number | null;
+    cumulative_inserted: number;
+    cumulative_analyzed: number;
+    cumulative_cost_units: number;
+  }[];
+  daily_costs?: {
+    today?: LearningEconomicsDailyCost | null;
+    yesterday?: LearningEconomicsDailyCost | null;
+    rows?: LearningEconomicsDailyCost[];
+  };
+  warning?: string;
+  error?: string;
+};
+
+type LearningHookInsight = {
+  hook_type: string;
+  hook_label: string;
+  frequency: number;
+  avg_score: number;
+  quality_score: number;
+  relevance_score: number;
+  op_score: number;
+  confidence?: "high" | "medium" | "low";
+  status: "op_hook" | "strong" | "stable" | "watch";
+  segment?: "op_hooks" | "frequent_hooks" | "experimental_hooks";
+  evidence?: {
+    based_on_videos: number;
+    niche_count: number;
+    platform_count: number;
+    reference_count: number;
+  };
+  niches: string[];
+  platforms: string[];
+  templates: string[];
+  examples?: LearningReferenceExample[];
+};
+
+type LearningCreativeBrief = {
+  hook: string;
+  retention_mechanic: string;
+  second_by_second: string[];
+  visual_recipe: string[];
+  product_fit: string[];
+  copy_as_mechanic: string[];
+  do_not_copy: string[];
+};
+
+type LearningReferenceExample = {
+  reference_id?: string;
+  url?: string | null;
+  hook?: string | null;
+  score?: number;
+  views?: number;
+  why_selected?: string;
+  confidence?: "high" | "medium" | "low";
+  safety_flags?: string[];
+  creative_brief?: LearningCreativeBrief;
+};
+
+type LearningGeneratorPayload = {
+  source: "reels_brain_pattern";
+  hook: string;
+  retention: string;
+  structure: string;
+  second_by_second: string[];
+  visual_recipe: string[];
+  product_fit: string[];
+  copy_as_mechanic: string[];
+  do_not_copy: string[];
+};
+
+type LearningEconomicsDailyCost = {
+  date: string;
+  runs: number;
+  found: number;
+  inserted: number;
+  analyzed: number;
+  relevant: number;
+  retries: number;
+  errors: number;
+  cost_units: number;
+  spend_usd: number;
+  spend_source: "estimated" | "actual" | "mixed";
+  usd_per_found: number | null;
+  usd_per_inserted: number | null;
+  usd_per_analyzed: number | null;
+  usd_per_relevant: number | null;
+  cost_units_per_inserted: number | null;
+};
+
 const DEFAULT_NICHE = "ru_toys";
 const DEFAULT_AUTOMATION_NICHES = "ru_toys,ru_clothing,ru_cosmetics";
 const DEFAULT_QUERIES = [
@@ -671,6 +865,31 @@ function providerLabel(provider: string) {
 function compactNumber(value: number | null | undefined) {
   if (value == null || !Number.isFinite(Number(value))) return "—";
   return nf.format(Number(value));
+}
+
+function formatUsd(value: number | null | undefined) {
+  if (value == null || !Number.isFinite(Number(value))) return "—";
+  const number = Number(value);
+  if (number > 0 && number < 0.01) return `$${number.toFixed(4)}`;
+  return `$${number.toFixed(2)}`;
+}
+
+function usefulVideoCost(row: LearningEconomicsDailyCost | null | undefined) {
+  return row?.usd_per_relevant ?? row?.usd_per_analyzed ?? row?.usd_per_inserted ?? null;
+}
+
+function usefulCostBasis(row: LearningEconomicsDailyCost | null | undefined) {
+  if (!row) return { label: "no data", count: 0 };
+  if (row.usd_per_relevant != null) return { label: "useful", count: row.relevant };
+  if (row.usd_per_analyzed != null) return { label: "memory", count: row.analyzed };
+  if (row.usd_per_inserted != null) return { label: "saved", count: row.inserted };
+  return { label: "no data", count: 0 };
+}
+
+function spendSourceLabel(source: LearningEconomicsDailyCost["spend_source"] | "estimated" | "actual" | "mixed" | undefined) {
+  if (source === "actual") return "actual billing";
+  if (source === "mixed") return "mixed";
+  return "estimated";
 }
 
 const HOOK_LABELS: Record<string, string> = {
@@ -796,6 +1015,33 @@ function formatDelta(value: number, invert = false) {
   return `${sign}${compactNumber(value)}|${good ? "good" : "bad"}`;
 }
 
+function costTrendCopy(trend: LearningEconomicsResponse["totals"] extends infer T ? T extends { cost_trend: infer U } ? U : never : never) {
+  if (trend === "cheaper") return { label: "дешевеет", tone: "border-emerald-200 bg-emerald-50 text-emerald-700", text: "стоимость нового видео падает" };
+  if (trend === "more_expensive") return { label: "дорожает", tone: "border-amber-200 bg-amber-50 text-amber-800", text: "новые видео добываются тяжелее" };
+  if (trend === "flat") return { label: "ровно", tone: "border-slate-200 bg-slate-50 text-slate-700", text: "эффективность примерно стабильна" };
+  return { label: "мало данных", tone: "border-slate-200 bg-slate-50 text-slate-500", text: "нужно больше сохраненных прогонов" };
+}
+
+function hookStatusCopy(status: "op_hook" | "strong" | "stable" | "watch" | undefined) {
+  if (status === "op_hook") return { label: "OP hook", tone: "border-emerald-200 bg-emerald-50 text-emerald-700" };
+  if (status === "strong") return { label: "strong", tone: "border-cyan-200 bg-cyan-50 text-cyan-800" };
+  if (status === "stable") return { label: "stable", tone: "border-slate-200 bg-slate-50 text-slate-700" };
+  return { label: "watch", tone: "border-amber-200 bg-amber-50 text-amber-800" };
+}
+
+function confidenceCopy(confidence: "high" | "medium" | "low" | undefined) {
+  if (confidence === "high") return { label: "high confidence", tone: "border-emerald-200 bg-emerald-50 text-emerald-700" };
+  if (confidence === "medium") return { label: "medium confidence", tone: "border-cyan-200 bg-cyan-50 text-cyan-800" };
+  return { label: "low confidence", tone: "border-amber-200 bg-amber-50 text-amber-800" };
+}
+
+function capabilityTone(status: string) {
+  if (status === "live") return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  if (status === "payload_ready" || status === "ui_ready") return "border-cyan-200 bg-cyan-50 text-cyan-800";
+  if (status === "planned") return "border-slate-200 bg-slate-50 text-slate-600";
+  return "border-amber-200 bg-amber-50 text-amber-800";
+}
+
 async function readJson<T>(res: Response): Promise<T> {
   const json = await res.json().catch(() => ({}));
   if (!res.ok) {
@@ -864,6 +1110,12 @@ export default function ReelsBrainPage() {
   const [portfolioDigest, setPortfolioDigest] = useState<PortfolioDigestResponse | null>(null);
   const [loadingPortfolio, setLoadingPortfolio] = useState(false);
   const [portfolioError, setPortfolioError] = useState("");
+  const [learningEconomics, setLearningEconomics] = useState<LearningEconomicsResponse | null>(null);
+  const [loadingLearningEconomics, setLoadingLearningEconomics] = useState(false);
+  const [learningEconomicsError, setLearningEconomicsError] = useState("");
+  const [insightNicheFilter, setInsightNicheFilter] = useState("all");
+  const [insightConfidenceFilter, setInsightConfidenceFilter] = useState<"all" | "high" | "medium" | "low">("all");
+  const [insightSegmentFilter, setInsightSegmentFilter] = useState<"all" | "op_hooks" | "frequent_hooks" | "experimental_hooks">("all");
   const [automationResult, setAutomationResult] = useState<AutomationRunResponse | null>(null);
   const [automationError, setAutomationError] = useState("");
   const [automationRunning, setAutomationRunning] = useState<null | "daily" | "weekly" | "growth" | "analyze">(null);
@@ -962,6 +1214,23 @@ export default function ReelsBrainPage() {
 
   useEffect(() => {
     let alive = true;
+    async function loadInitialLearningEconomics() {
+      setLoadingLearningEconomics(true);
+      try {
+        const data = await readJson<LearningEconomicsResponse>(await fetch(`/api/factory/reels-brain/learning-economics?niches=${encodeURIComponent(DEFAULT_AUTOMATION_NICHES)}`, { cache: "no-store" }));
+        if (alive) setLearningEconomics(data);
+      } catch {
+        if (alive) setLearningEconomics(null);
+      } finally {
+        if (alive) setLoadingLearningEconomics(false);
+      }
+    }
+    void loadInitialLearningEconomics();
+    return () => { alive = false; };
+  }, []);
+
+  useEffect(() => {
+    let alive = true;
     async function loadInitialAnalyzeBacklog() {
       setAnalyzeBacklogLoading(true);
       try {
@@ -998,6 +1267,44 @@ export default function ReelsBrainPage() {
   const portfolioCorpusTarget = Number(portfolioDigest?.portfolio?.corpus_goal?.total_target || 10000);
   const portfolioStageTarget = Number(portfolioDigest?.portfolio?.corpus_goal?.stage?.stage_target || 0);
   const portfolioStageLabel = portfolioDigest?.portfolio?.corpus_goal?.stage?.stage_label || "Corpus target";
+  const learningTotals = learningEconomics?.totals;
+  const learningTrend = costTrendCopy(learningTotals?.cost_trend || "not_enough_data");
+  const dayLearningTrend = costTrendCopy(learningTotals?.day_cost_trend || "not_enough_data");
+  const todayCost = learningEconomics?.daily_costs?.today || null;
+  const yesterdayCost = learningEconomics?.daily_costs?.yesterday || null;
+  const todayUsefulCost = usefulVideoCost(todayCost);
+  const yesterdayUsefulCost = usefulVideoCost(yesterdayCost);
+  const todayCostBasis = usefulCostBasis(todayCost);
+  const yesterdayCostBasis = usefulCostBasis(yesterdayCost);
+  const usefulCostDeltaPct = todayUsefulCost != null && yesterdayUsefulCost != null && yesterdayUsefulCost > 0
+    ? Math.round(((todayUsefulCost - yesterdayUsefulCost) / yesterdayUsefulCost) * 100)
+    : null;
+  const learningTimeline = learningEconomics?.timeline || [];
+  const learningNiches = learningEconomics?.niches || [];
+  const insightSummary = learningEconomics?.insights?.summary || [];
+  const topHooks = learningEconomics?.insights?.top_hooks || [];
+  const hookGroups = learningEconomics?.insights?.hook_groups || {};
+  const winningFormats = learningEconomics?.insights?.winning_formats || [];
+  const retentionMechanics = learningEconomics?.insights?.retention_mechanics || [];
+  const generatorRecipes = learningEconomics?.insights?.recipes || [];
+  const sourceReferences = learningEconomics?.insights?.source_references || [];
+  const sourceMap = learningEconomics?.insights?.source_map || [];
+  const legalGuard = learningEconomics?.insights?.legal_guard || null;
+  const capabilityStatus = learningEconomics?.insights?.capability_status || [];
+  const insightNicheOptions = Array.from(new Set([
+    ...topHooks.flatMap((hook) => hook.niches || []),
+    ...generatorRecipes.flatMap((recipe) => recipe.niches || []),
+  ])).sort();
+  const filteredTopHooks = topHooks.filter((hook) =>
+    (insightNicheFilter === "all" || hook.niches.includes(insightNicheFilter))
+    && (insightConfidenceFilter === "all" || hook.confidence === insightConfidenceFilter)
+    && (insightSegmentFilter === "all" || hook.segment === insightSegmentFilter)
+  );
+  const filteredRecipes = generatorRecipes.filter((recipe) =>
+    (insightNicheFilter === "all" || recipe.niches.includes(insightNicheFilter))
+    && (insightConfidenceFilter === "all" || recipe.confidence === insightConfidenceFilter)
+  );
+  const maxTimelineInserted = Math.max(1, ...learningTimeline.map((row) => row.inserted));
   const analyzeBacklogLanes = analyzeBacklog?.lanes || [];
   const analyzeBacklogQueue = analyzeBacklog?.queue || [];
   const analyzeBacklogTotals = analyzeBacklogLanes.reduce((acc, lane) => {
@@ -1218,6 +1525,19 @@ export default function ReelsBrainPage() {
     }
   }
 
+  async function loadLearningEconomics(currentNiches = automationNiches) {
+    setLoadingLearningEconomics(true);
+    setLearningEconomicsError("");
+    try {
+      const data = await readJson<LearningEconomicsResponse>(await fetch(`/api/factory/reels-brain/learning-economics?niches=${encodeURIComponent(currentNiches.trim() || DEFAULT_AUTOMATION_NICHES)}`, { cache: "no-store" }));
+      setLearningEconomics(data);
+    } catch (e) {
+      setLearningEconomicsError(String((e as Error)?.message || e));
+    } finally {
+      setLoadingLearningEconomics(false);
+    }
+  }
+
   async function refreshAutomationSurfaces(currentNiches = automationNiches, currentNiche = activeNiche()) {
     setAutomationSyncing(true);
     try {
@@ -1228,6 +1548,7 @@ export default function ReelsBrainPage() {
           loadSummary(currentNiche),
           loadCorpus(currentNiche),
           loadAnalyzeBacklogPlan(currentNiches),
+          loadLearningEconomics(currentNiches),
         ]);
       }
     } finally {
@@ -2119,7 +2440,472 @@ export default function ReelsBrainPage() {
           </div>
         )}
 
-        <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+        <div className="mt-4 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.22em] text-cyan-700">Analyzed intelligence</p>
+              <h3 className="mt-1 text-2xl font-black tracking-tight text-slate-950">Витрина инсайтов из разобранных видео</h3>
+              <p className="mt-1 max-w-3xl text-sm text-slate-500">
+                Не логи и не настройки. Здесь только то, что можно понять как пользователь: какие хуки выигрывают, какие форматы держат внимание и что уже можно отдать в генератор.
+              </p>
+            </div>
+            <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-black text-emerald-700">
+              {compactNumber(learningTotals?.generator_ready_patterns || 0)} generator-ready
+            </span>
+          </div>
+
+          <div className="mt-4 grid gap-3 lg:grid-cols-3">
+            {(insightSummary.length ? insightSummary : [
+              "Мозг еще собирает витрину инсайтов: нужен Pattern Brain по выбранным нишам.",
+            ]).slice(0, 3).map((line, index) => (
+              <div key={`${line}:${index}`} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">Вывод {index + 1}</p>
+                <p className="mt-2 text-sm font-semibold leading-6 text-slate-800">{line}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">Filters</span>
+              <select value={insightNicheFilter} onChange={(event) => setInsightNicheFilter(event.target.value)} className="min-h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-700">
+                <option value="all">all niches</option>
+                {insightNicheOptions.map((option) => <option key={option} value={option}>{option}</option>)}
+              </select>
+              <select value={insightConfidenceFilter} onChange={(event) => setInsightConfidenceFilter(event.target.value as typeof insightConfidenceFilter)} className="min-h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-700">
+                <option value="all">all confidence</option>
+                <option value="high">high</option>
+                <option value="medium">medium</option>
+                <option value="low">low</option>
+              </select>
+              <select value={insightSegmentFilter} onChange={(event) => setInsightSegmentFilter(event.target.value as typeof insightSegmentFilter)} className="min-h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-700">
+                <option value="all">all hook types</option>
+                <option value="op_hooks">OP hooks</option>
+                <option value="frequent_hooks">frequent</option>
+                <option value="experimental_hooks">experimental</option>
+              </select>
+              <span className="rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-500">
+                {compactNumber(filteredTopHooks.length)} hooks · {compactNumber(filteredRecipes.length)} recipes
+              </span>
+            </div>
+          </div>
+
+          <div className="mt-5 grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
+            <div className="rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-950 via-slate-900 to-cyan-950 p-4 text-white">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <p className="text-xs font-black uppercase tracking-[0.2em] text-cyan-100/70">Winning hooks</p>
+                  <h4 className="mt-1 text-xl font-black">OP hooks, которые чаще всего побеждают</h4>
+                </div>
+                <span className="rounded-full border border-white/10 bg-white/10 px-3 py-1 text-xs font-bold text-slate-200">
+                  top {compactNumber(filteredTopHooks.length)}
+                </span>
+              </div>
+              <div className="mt-4 grid gap-3 md:grid-cols-2">
+                {filteredTopHooks.length ? filteredTopHooks.slice(0, 4).map((hook, index) => {
+                  const status = hookStatusCopy(hook.status);
+                  const confidence = confidenceCopy(hook.confidence);
+                  return (
+                    <div key={hook.hook_type} className="rounded-2xl border border-white/10 bg-white/10 p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-xs font-black uppercase tracking-[0.18em] text-cyan-100/70">#{index + 1}</p>
+                          <h5 className="mt-1 text-lg font-black">{hook.hook_label}</h5>
+                        </div>
+                        <span className={`shrink-0 rounded-full border px-2.5 py-1 text-xs font-black ${status.tone}`}>{status.label}</span>
+                      </div>
+                      <span className={`mt-2 inline-flex rounded-full border px-2.5 py-1 text-xs font-black ${confidence.tone}`}>{confidence.label}</span>
+                      <div className="mt-3 flex items-end gap-2">
+                        <span className="text-4xl font-black">{compactNumber(hook.op_score)}</span>
+                        <span className="pb-1 text-xs font-bold uppercase tracking-wide text-slate-300">OP score</span>
+                      </div>
+                      <div className="mt-3 grid grid-cols-3 gap-2 text-xs text-slate-200">
+                        <span className="rounded-xl bg-white/10 px-2 py-1">freq {compactNumber(hook.frequency)}</span>
+                        <span className="rounded-xl bg-white/10 px-2 py-1">avg {compactNumber(hook.avg_score)}</span>
+                        <span className="rounded-xl bg-white/10 px-2 py-1">niches {compactNumber(hook.niches.length)}</span>
+                      </div>
+                      {hook.evidence ? (
+                        <p className="mt-2 text-xs text-slate-300">
+                          evidence: {compactNumber(hook.evidence.based_on_videos)} videos · {compactNumber(hook.evidence.platform_count)} platforms · {compactNumber(hook.evidence.reference_count)} refs
+                        </p>
+                      ) : null}
+                      {hook.templates?.[0] ? (
+                        <p className="mt-3 rounded-xl bg-slate-950/40 px-3 py-2 text-xs leading-5 text-slate-200">
+                          Шаблон: {hook.templates[0]}
+                        </p>
+                      ) : null}
+                    </div>
+                  );
+                }) : <div className="rounded-2xl border border-white/10 bg-white/10 p-4 text-sm text-slate-300">OP hooks пока не собраны.</div>}
+              </div>
+              <div className="mt-4 grid gap-2 md:grid-cols-3">
+                {[
+                  ["OP", hookGroups.op_hooks?.length || 0],
+                  ["Frequent", hookGroups.frequent_hooks?.length || 0],
+                  ["Experimental", hookGroups.experimental_hooks?.length || 0],
+                ].map(([label, count]) => (
+                  <div key={label} className="rounded-xl border border-white/10 bg-white/10 px-3 py-2">
+                    <p className="text-xs font-black uppercase tracking-[0.16em] text-cyan-100/70">{label}</p>
+                    <p className="mt-1 text-2xl font-black">{compactNumber(Number(count))}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">Winning formats</p>
+                <h4 className="mt-1 text-lg font-black text-slate-950">Какие форматы работают</h4>
+                <div className="mt-3 space-y-2">
+                  {winningFormats.length ? winningFormats.slice(0, 4).map((format) => (
+                    <div key={format.label} className="rounded-xl border border-slate-200 bg-white px-3 py-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-bold text-slate-900">{format.label}</span>
+                        <span className="text-xs font-black text-cyan-700">{compactNumber(format.avg_score)}</span>
+                      </div>
+                      <p className="mt-1 text-xs text-slate-500">freq {compactNumber(format.frequency)} · {format.niches.join(", ") || "all niches"}</p>
+                    </div>
+                  )) : <p className="text-sm text-slate-500">Форматы пока не найдены.</p>}
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">Retention mechanics</p>
+                <h4 className="mt-1 text-lg font-black text-slate-950">Почему досматривают</h4>
+                <div className="mt-3 space-y-2">
+                  {retentionMechanics.length ? retentionMechanics.slice(0, 4).map((retention) => (
+                    <div key={retention.label} className="rounded-xl border border-slate-200 bg-white px-3 py-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-bold text-slate-900">{retention.label}</span>
+                        <span className="text-xs font-black text-emerald-700">{compactNumber(retention.avg_score)}</span>
+                      </div>
+                      <p className="mt-1 text-xs text-slate-500">{retention.hooks.slice(0, 2).join(" · ") || "hook mix"}</p>
+                    </div>
+                  )) : <p className="text-sm text-slate-500">Механики удержания пока не найдены.</p>}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">Generator-ready recipes</p>
+                <h4 className="mt-1 text-lg font-black text-slate-950">Что можно сразу отдавать контент-заводу</h4>
+              </div>
+              <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-bold text-slate-500">
+                {compactNumber(filteredRecipes.length)} recipes
+              </span>
+            </div>
+            <div className="mt-3 grid gap-3 lg:grid-cols-3">
+              {filteredRecipes.length ? filteredRecipes.slice(0, 3).map((recipe) => (
+                <div key={recipe.id} className="rounded-2xl border border-slate-200 bg-white p-4">
+                  <div className="flex items-start justify-between gap-2">
+                    <h5 className="text-sm font-black leading-5 text-slate-950">{recipe.title}</h5>
+                    <span className="shrink-0 rounded-full border border-cyan-200 bg-cyan-50 px-2 py-1 text-xs font-black text-cyan-800">
+                      {compactNumber(recipe.op_score)}
+                    </span>
+                  </div>
+                  <div className="mt-3 space-y-1 text-xs text-slate-600">
+                    <p><span className="font-bold text-slate-900">Hook:</span> {recipe.creative_brief?.hook || recipe.hook}</p>
+                    <p><span className="font-bold text-slate-900">Retention:</span> {recipe.creative_brief?.retention_mechanic || recipe.retention}</p>
+                    <p><span className="font-bold text-slate-900">Fit:</span> {(recipe.creative_brief?.product_fit || recipe.niches).slice(0, 2).join(" · ")}</p>
+                  </div>
+                  <span className={`mt-3 inline-flex rounded-full border px-2.5 py-1 text-xs font-black ${confidenceCopy(recipe.confidence).tone}`}>
+                    {confidenceCopy(recipe.confidence).label}
+                  </span>
+                  {recipe.creative_brief ? (
+                    <details className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                      <summary className="cursor-pointer text-xs font-black uppercase tracking-[0.14em] text-slate-500">
+                        Creative brief
+                      </summary>
+                      <div className="mt-3 space-y-3 text-xs leading-5 text-slate-600">
+                        <div>
+                          <p className="font-black text-slate-900">Структура по секундам</p>
+                          <ol className="mt-1 list-decimal space-y-1 pl-4">
+                            {recipe.creative_brief.second_by_second.slice(0, 5).map((step) => <li key={step}>{step}</li>)}
+                          </ol>
+                        </div>
+                        <div>
+                          <p className="font-black text-slate-900">Visual recipe</p>
+                          <ul className="mt-1 list-disc space-y-1 pl-4">
+                            {recipe.creative_brief.visual_recipe.slice(0, 4).map((step) => <li key={step}>{step}</li>)}
+                          </ul>
+                        </div>
+                        <div>
+                          <p className="font-black text-slate-900">Копируем механику</p>
+                          <p className="mt-1">{recipe.creative_brief.copy_as_mechanic.slice(0, 2).join(" · ")}</p>
+                        </div>
+                        <div className="rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-red-700">
+                          <p className="font-black">Запрещено копировать</p>
+                          <p className="mt-1">{recipe.creative_brief.do_not_copy.slice(0, 2).join(" · ")}</p>
+                        </div>
+                        {recipe.generator_payload ? (
+                          <div className="rounded-lg border border-cyan-100 bg-cyan-50 px-3 py-2 text-cyan-800">
+                            <p className="font-black">Use in generator payload</p>
+                            <p className="mt-1">hook + retention + structure + visual_recipe + do_not_copy готовы для генератора.</p>
+                          </div>
+                        ) : null}
+                        {recipe.examples?.length ? (
+                          <div>
+                            <p className="font-black text-slate-900">Source references</p>
+                            <div className="mt-1 space-y-2">
+                              {recipe.examples.slice(0, 2).map((example) => (
+                                <div key={example.reference_id || example.url || example.hook || "ref"} className="rounded-lg border border-slate-200 bg-white px-2 py-2">
+                                  <p className="font-semibold text-slate-700">{example.why_selected || "Референс механики"}</p>
+                                  <p className="mt-1 text-slate-500">score {compactNumber(example.score || 0)} · views {compactNumber(example.views || 0)}</p>
+                                  {example.url ? <p className="mt-1 truncate text-cyan-700">{example.url}</p> : null}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
+                    </details>
+                  ) : null}
+                  <p className="mt-3 text-xs font-semibold text-slate-400">{recipe.niches.join(", ")}</p>
+                </div>
+              )) : <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-500">Рецепты появятся после сборки Pattern Brain.</div>}
+            </div>
+          </div>
+
+          <div className="mt-4 grid gap-4 xl:grid-cols-2">
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">Source references</p>
+              <h4 className="mt-1 text-lg font-black text-slate-950">На чем основаны выводы</h4>
+              <div className="mt-3 space-y-2">
+                {sourceReferences.length ? sourceReferences.slice(0, 4).map((reference) => (
+                  <div key={reference.reference_id || reference.url || reference.hook || reference.hook_type} className="rounded-xl border border-slate-200 bg-white px-3 py-2">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="font-bold text-slate-900">{reference.hook_label || reference.hook_type || "reference"}</span>
+                      <span className={`rounded-full border px-2 py-1 text-xs font-black ${confidenceCopy(reference.confidence).tone}`}>{confidenceCopy(reference.confidence).label}</span>
+                    </div>
+                    <p className="mt-1 text-xs text-slate-500">{reference.why_selected || "Референс механики"}</p>
+                    <p className="mt-1 text-xs text-slate-400">score {compactNumber(reference.score || 0)} · views {compactNumber(reference.views || 0)}</p>
+                  </div>
+                )) : <p className="text-sm text-slate-500">Референсы появятся после пересборки Pattern Brain.</p>}
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">Source map / discovery economics</p>
+              <h4 className="mt-1 text-lg font-black text-slate-950">Какие источники дают насмотренность</h4>
+              <div className="mt-3 space-y-2">
+                {sourceMap.length ? sourceMap.slice(0, 4).map((source) => (
+                  <div key={source.provider} className="rounded-xl border border-slate-200 bg-white px-3 py-2">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="font-bold text-slate-900">{providerLabel(source.provider)}</span>
+                      <span className="text-xs font-black text-cyan-700">{formatUsd(source.cost_per_analyzed)}</span>
+                    </div>
+                    <p className="mt-1 text-xs text-slate-500">runs {compactNumber(source.runs)} · analyzed {compactNumber(source.analyzed)} · errors {compactNumber(source.errors)}</p>
+                  </div>
+                )) : <p className="text-sm text-slate-500">Source map появится после новых cost-aware прогонов.</p>}
+              </div>
+            </div>
+          </div>
+
+          {legalGuard ? (
+            <div className="mt-4 rounded-2xl border border-red-100 bg-red-50 p-4 text-red-800">
+              <p className="text-xs font-black uppercase tracking-[0.18em]">Legal / safety guard</p>
+              <p className="mt-1 text-sm font-semibold">{legalGuard.principle}</p>
+              <p className="mt-2 text-xs"><span className="font-black">Можно:</span> {legalGuard.allowed.slice(0, 5).join(" · ")}</p>
+              <p className="mt-1 text-xs"><span className="font-black">Нельзя:</span> {legalGuard.forbidden.slice(0, 5).join(" · ")}</p>
+            </div>
+          ) : null}
+
+          <details className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
+            <summary className="cursor-pointer text-sm font-black uppercase tracking-[0.18em] text-slate-500">
+              15-layer roadmap status
+            </summary>
+            <div className="mt-3 grid gap-2 md:grid-cols-3">
+              {capabilityStatus.map((capability) => (
+                <div key={capability.key} className={`rounded-xl border px-3 py-2 text-xs font-bold ${capabilityTone(capability.status)}`}>
+                  <p>{capability.label}</p>
+                  <p className="mt-1 opacity-75">{capability.status}</p>
+                </div>
+              ))}
+            </div>
+          </details>
+        </div>
+
+        <div className="mt-4 rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-950 via-slate-900 to-cyan-950 p-4 text-white">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.18em] text-cyan-200/80">Learning economics</p>
+              <h3 className="mt-1 text-xl font-black tracking-tight">Рост понимания и цена насмотренности</h3>
+              <p className="mt-1 max-w-2xl text-sm text-slate-300">
+                Показывает, умнеет ли мозг от прогона к прогону: сколько видео превратилось в память, сколько появилось generator-ready паттернов и дешевле ли добывается новое полезное видео.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => loadLearningEconomics(automationNiches)}
+              disabled={loadingLearningEconomics}
+              className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-white/15 bg-white/10 px-3 py-2 text-sm font-bold text-white hover:bg-white/15 disabled:opacity-50"
+            >
+              {loadingLearningEconomics ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+              Обновить economics
+            </button>
+          </div>
+
+          {learningEconomicsError && <div className="mt-3 rounded-xl border border-red-300/30 bg-red-500/10 px-3 py-2 text-sm text-red-100">{learningEconomicsError}</div>}
+
+          <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+            <div className="rounded-2xl border border-white/10 bg-white/10 p-4">
+              <p className="text-xs font-bold uppercase tracking-wide text-cyan-100/70">Понимание ниш</p>
+              <div className="mt-2 text-3xl font-black">{compactNumber(learningTotals?.avg_understanding_score || 0)}%</div>
+              <p className="mt-1 text-xs text-slate-300">средний score по pattern brain</p>
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-white/10 p-4">
+              <p className="text-xs font-bold uppercase tracking-wide text-cyan-100/70">В памяти</p>
+              <div className="mt-2 text-3xl font-black">{compactNumber(learningTotals?.analyzed_videos || 0)}</div>
+              <p className="mt-1 text-xs text-slate-300">из {compactNumber(learningTotals?.total_videos || 0)} видео</p>
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-white/10 p-4">
+              <p className="text-xs font-bold uppercase tracking-wide text-cyan-100/70">Generator-ready</p>
+              <div className="mt-2 text-3xl font-black">{compactNumber(learningTotals?.generator_ready_patterns || 0)}</div>
+              <p className="mt-1 text-xs text-slate-300">паттернов для генератора</p>
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-white/10 p-4">
+              <p className="text-xs font-bold uppercase tracking-wide text-cyan-100/70">Cross-platform</p>
+              <div className="mt-2 text-3xl font-black">{compactNumber(learningTotals?.cross_platform_patterns || 0)}</div>
+              <p className="mt-1 text-xs text-slate-300">паттернов между платформами</p>
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-white/10 p-4">
+              <p className="text-xs font-bold uppercase tracking-wide text-cyan-100/70">Цена нового видео</p>
+              <div className="mt-2 flex items-center gap-2">
+                <span className="text-3xl font-black">{learningTotals?.cost_units_per_inserted_recent == null ? "—" : compactNumber(learningTotals.cost_units_per_inserted_recent)}</span>
+                <span className={`rounded-full border px-2.5 py-1 text-xs font-bold ${learningTrend.tone}`}>{learningTrend.label}</span>
+              </div>
+              <p className="mt-1 text-xs text-slate-300">{learningTrend.text}</p>
+            </div>
+          </div>
+
+          <div className="mt-3 grid gap-3 lg:grid-cols-3">
+            <div className="rounded-2xl border border-cyan-200/20 bg-cyan-300/10 p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-wide text-cyan-100/70">Сегодня $ / полезное видео</p>
+                  <div className="mt-2 text-3xl font-black">{formatUsd(todayUsefulCost)}</div>
+                  <p className="mt-1 text-xs text-slate-300">
+                    {todayCost
+                      ? `${compactNumber(todayCost.inserted)} saved · ${compactNumber(todayCost.analyzed)} memory · ${compactNumber(todayCost.relevant)} relevant · basis ${todayCostBasis.label} ${compactNumber(todayCostBasis.count)}`
+                      : "сегодня intake-прогонов пока нет"}
+                  </p>
+                </div>
+                <span className={`shrink-0 rounded-full border px-2.5 py-1 text-xs font-bold ${dayLearningTrend.tone}`}>{dayLearningTrend.label}</span>
+              </div>
+              <div className="mt-3 grid grid-cols-3 gap-2 text-xs text-slate-200">
+                <span className="rounded-xl bg-white/10 px-2 py-1">spend {formatUsd(todayCost?.spend_usd)}</span>
+                <span className="rounded-xl bg-white/10 px-2 py-1">runs {compactNumber(todayCost?.runs || 0)}</span>
+                <span className="rounded-xl bg-white/10 px-2 py-1">{spendSourceLabel(todayCost?.spend_source)}</span>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-white/10 bg-white/10 p-4">
+              <p className="text-xs font-bold uppercase tracking-wide text-cyan-100/70">Вчера $ / полезное видео</p>
+              <div className="mt-2 text-3xl font-black">{formatUsd(yesterdayUsefulCost)}</div>
+              <p className="mt-1 text-xs text-slate-300">
+                {yesterdayCost
+                  ? `${compactNumber(yesterdayCost.inserted)} saved · ${compactNumber(yesterdayCost.analyzed)} memory · ${compactNumber(yesterdayCost.relevant)} relevant · basis ${yesterdayCostBasis.label} ${compactNumber(yesterdayCostBasis.count)}`
+                  : "за вчера нет сохраненных cost-событий"}
+              </p>
+              <div className="mt-3 grid grid-cols-3 gap-2 text-xs text-slate-200">
+                <span className="rounded-xl bg-white/10 px-2 py-1">spend {formatUsd(yesterdayCost?.spend_usd)}</span>
+                <span className="rounded-xl bg-white/10 px-2 py-1">runs {compactNumber(yesterdayCost?.runs || 0)}</span>
+                <span className="rounded-xl bg-white/10 px-2 py-1">{spendSourceLabel(yesterdayCost?.spend_source)}</span>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-white/10 bg-slate-950/35 p-4">
+              <p className="text-xs font-bold uppercase tracking-wide text-cyan-100/70">Дельта день ко дню</p>
+              <div className="mt-2 text-3xl font-black">
+                {usefulCostDeltaPct == null ? "—" : `${usefulCostDeltaPct > 0 ? "+" : ""}${compactNumber(usefulCostDeltaPct)}%`}
+              </div>
+              <p className="mt-1 text-xs text-slate-300">
+                Считаем по полезной насмотренности: relevant, если есть; иначе analyzed; иначе inserted.
+              </p>
+              <div className="mt-3 grid grid-cols-3 gap-2 text-xs text-slate-200">
+                <span className="rounded-xl bg-white/10 px-2 py-1">found {compactNumber(todayCost?.found || 0)}</span>
+                <span className="rounded-xl bg-white/10 px-2 py-1">errors {compactNumber(todayCost?.errors || 0)}</span>
+                <span className="rounded-xl bg-white/10 px-2 py-1">unit {compactNumber(todayCost?.cost_units_per_inserted || 0)}</span>
+              </div>
+            </div>
+          </div>
+
+          <details className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-3">
+            <summary className="cursor-pointer text-sm font-black text-cyan-100">
+              Technical learning trail: timeline и детальная сила ниш
+            </summary>
+          <div className="mt-4 grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
+            <div className="rounded-2xl border border-white/10 bg-white/10 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-[0.18em] text-cyan-100/70">Run timeline</p>
+                  <h4 className="mt-1 text-lg font-black">От прогона к прогону</h4>
+                </div>
+                <span className="rounded-full border border-white/10 bg-white/10 px-3 py-1 text-xs font-semibold text-slate-200">
+                  {compactNumber(learningTimeline.length)} точек
+                </span>
+              </div>
+              <div className="mt-4 space-y-2">
+                {learningTimeline.length ? learningTimeline.slice(-10).map((run) => {
+                  const width = Math.max(4, Math.min(100, Math.round((run.inserted / maxTimelineInserted) * 100)));
+                  return (
+                    <div key={`${run.id}:${run.created_at}`} className="rounded-xl border border-white/10 bg-slate-950/35 p-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                        <span className="font-bold text-white">{automationTitle(run.mode)}</span>
+                        <span className="text-slate-300">{new Date(run.created_at).toLocaleString("ru-RU")}</span>
+                      </div>
+                      <div className="mt-2 h-2 overflow-hidden rounded-full bg-white/10">
+                        <div className="h-full rounded-full bg-cyan-300" style={{ width: `${width}%` }} />
+                      </div>
+                      <div className="mt-2 flex flex-wrap gap-2 text-xs text-slate-200">
+                        <span>+{compactNumber(run.inserted)} video</span>
+                        <span>+{compactNumber(run.analyzed)} memory</span>
+                        <span>{run.usd_per_inserted == null ? "$/video —" : `${formatUsd(run.usd_per_inserted)} / video`}</span>
+                        <span>{run.cost_units_per_inserted == null ? "cost/video —" : `${compactNumber(run.cost_units_per_inserted)} units/video`}</span>
+                        {run.best_provider ? <span>{providerLabel(run.best_provider)}</span> : null}
+                      </div>
+                    </div>
+                  );
+                }) : <div className="rounded-xl border border-white/10 bg-white/10 px-3 py-4 text-sm text-slate-300">Истории прогонов пока нет.</div>}
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-white/10 bg-white/10 p-4">
+              <p className="text-xs font-bold uppercase tracking-[0.18em] text-cyan-100/70">Niche understanding</p>
+              <h4 className="mt-1 text-lg font-black">Где мозг сильнее</h4>
+              <div className="mt-4 space-y-3">
+                {learningNiches.length ? learningNiches.map((row) => (
+                  <div key={row.niche} className="rounded-xl border border-white/10 bg-slate-950/35 p-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="font-black">{row.niche}</div>
+                      <span className="rounded-full border border-cyan-200/30 bg-cyan-300/10 px-2.5 py-1 text-xs font-bold text-cyan-100">
+                        {compactNumber(row.understanding_score)}%
+                      </span>
+                    </div>
+                    <div className="mt-2 h-2 overflow-hidden rounded-full bg-white/10">
+                      <div className="h-full rounded-full bg-emerald-300" style={{ width: `${Math.max(4, Math.min(100, row.understanding_score))}%` }} />
+                    </div>
+                    <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-slate-300">
+                      <span>videos {compactNumber(row.total_videos)}</span>
+                      <span>analyzed {compactNumber(row.analyzed_videos)}</span>
+                      <span>patterns {compactNumber(row.patterns)}</span>
+                      <span>ready {compactNumber(row.generator_ready_patterns)}</span>
+                    </div>
+                  </div>
+                )) : <div className="rounded-xl border border-white/10 bg-white/10 px-3 py-4 text-sm text-slate-300">Pattern Brain пока не найден.</div>}
+              </div>
+            </div>
+          </div>
+          </details>
+        </div>
+
+        <details className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+          <summary className="cursor-pointer text-sm font-black uppercase tracking-[0.18em] text-slate-500">
+            Technical details: automation history
+          </summary>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Automation history</p>
@@ -2191,7 +2977,7 @@ export default function ReelsBrainPage() {
               </div>
             )) : <EmptyState title="История пока пустая" text="Запусти daily, weekly или bulk ingest и сохрани snapshot." />}
           </div>
-        </div>
+        </details>
       </section>
 
       <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">

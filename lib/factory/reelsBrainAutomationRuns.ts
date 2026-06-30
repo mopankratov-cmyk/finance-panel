@@ -10,6 +10,10 @@ type AutomationRunLike = {
   relevant?: number;
   analyzed?: number;
   provider?: string;
+  cost_units?: number;
+  estimated_spend_usd?: number;
+  actual_spend_usd?: number | null;
+  spend_source?: "estimated" | "actual";
   error?: string | null;
   metrics?: {
     found?: number;
@@ -41,6 +45,12 @@ function num(value: unknown): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function estimatedUsdFromCostUnits(costUnits: number): number {
+  const usdPerUnit = Number(process.env.REELS_BRAIN_COST_UNIT_USD || 0.035);
+  const safeUsdPerUnit = Number.isFinite(usdPerUnit) && usdPerUnit > 0 ? usdPerUnit : 0.035;
+  return Math.round(costUnits * safeUsdPerUnit * 10000) / 10000;
+}
+
 export function summarizeReelsBrainAutomationRuns(input: {
   mode: ReelsBrainAutomationRunHistoryEntry["mode"];
   strategy?: string;
@@ -58,6 +68,10 @@ export function summarizeReelsBrainAutomationRuns(input: {
   let relevant = 0;
   let retries = 0;
   let errors = 0;
+  let costUnits = 0;
+  let estimatedSpendUsd = 0;
+  let actualSpendUsd = 0;
+  let hasActualSpend = false;
 
   for (const platform of input.platforms || []) {
     if (platform === "tiktok" || platform === "instagram" || platform === "youtube") platforms.add(platform);
@@ -71,6 +85,13 @@ export function summarizeReelsBrainAutomationRuns(input: {
     analyzed += num(metrics?.analyzed ?? run.analyzed ?? run.normalized);
     relevant += num(metrics?.relevant ?? run.relevant);
     retries += num(metrics?.retries);
+    const runCostUnits = num(run.cost_units);
+    costUnits += runCostUnits;
+    estimatedSpendUsd += num(run.estimated_spend_usd) || estimatedUsdFromCostUnits(runCostUnits);
+    if (run.actual_spend_usd != null) {
+      actualSpendUsd += num(run.actual_spend_usd);
+      hasActualSpend = true;
+    }
     if (run.error || run.loop?.error || run.bake_off?.error || run.ok === false || run.loop?.ok === false) errors += 1;
     const provider = run.bake_off?.stable_provider || run.bake_off?.best_provider || run.provider;
     if (provider) providerCounts.set(provider, (providerCounts.get(provider) || 0) + 1);
@@ -92,6 +113,10 @@ export function summarizeReelsBrainAutomationRuns(input: {
     retries,
     errors,
     best_provider: bestProvider,
+    cost_units: costUnits || undefined,
+    estimated_spend_usd: estimatedSpendUsd ? Math.round(estimatedSpendUsd * 10000) / 10000 : undefined,
+    actual_spend_usd: hasActualSpend ? Math.round(actualSpendUsd * 10000) / 10000 : null,
+    spend_source: hasActualSpend ? "actual" : costUnits > 0 ? "estimated" : undefined,
   };
 }
 
