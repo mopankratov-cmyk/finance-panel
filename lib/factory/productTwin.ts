@@ -145,9 +145,20 @@ export function pickBestTwinAsset(assets: ProductTwinAsset[], useCase: ProductTw
     : useCase === "marketplace" ? "marketplaceSafe"
     : "adsSafe";
   const candidates = assets.filter((a) => Boolean(a[flag]));
-  candidates.sort((a, b) => {
+  const serviceKinds = new Set<ProductTwinAssetKind>(["object_mask", "alpha", "depth_map", "segmentation"]);
+  const fallbackPriority: ProductTwinAssetKind[] = useCase === "broll"
+    ? ["shadow_bg", "clean_png", "upscaled", "white_bg", "gray_bg", "broll_source", "original"]
+    : useCase === "hero"
+      ? ["shadow_bg", "white_bg", "clean_png", "upscaled", "gray_bg", "original"]
+      : ["clean_png", "shadow_bg", "upscaled", "white_bg", "gray_bg", "original"];
+  const pool = candidates.length ? candidates : assets.filter((a) => !serviceKinds.has(a.kind));
+  const priority = (kind: ProductTwinAssetKind) => {
+    const index = fallbackPriority.indexOf(kind);
+    return index === -1 ? 999 : index;
+  };
+  pool.sort((a, b) => {
     const riskScore = (v: ProductTwinAsset) => v.risk === "low" ? 0 : v.risk === "medium" ? 1 : 2;
-    return riskScore(a) - riskScore(b) || b.qualityScore - a.qualityScore;
+    return priority(a.kind) - priority(b.kind) || riskScore(a) - riskScore(b) || b.qualityScore - a.qualityScore;
   });
-  return candidates[0] || null;
+  return pool[0] || null;
 }
