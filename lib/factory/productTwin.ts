@@ -27,6 +27,7 @@ export interface ProductTwinAssetDraft {
   adsSafe?: boolean;
   risk?: "low" | "medium" | "high";
   sourceKind?: string;
+  qualityDetails?: Record<string, unknown>;
 }
 
 export interface ProductTwinAsset extends ProductTwinAssetDraft {

@@ -11,6 +11,8 @@ import {
   type ProductTwinCategory,
   type ProductTwinUseCase,
 } from "./productTwin";
+import { archiveExternalMediaToYandex } from "./yandexArchive";
+import { assessProductTwinImage, type ProductTwinQualityResult } from "./productTwinQuality";
 
 const BUCKET = "factory-media";
 const DISK = "product_twin";
@@ -42,7 +44,8 @@ export async function buildTwinImageVariants(input: {
   cleanBuffer: Buffer;
   article: string;
   twinId: string;
-}): Promise<{ kind: ProductTwinAssetDraft["kind"]; buffer: Buffer; contentType: string; qualityScore: number }[]> {
+  category?: ProductTwinCategory;
+}): Promise<{ kind: ProductTwinAssetDraft["kind"]; buffer: Buffer; contentType: string; quality: ProductTwinQualityResult }[]> {
   const normalized = await sharp(input.cleanBuffer)
     .resize(1400, 1400, { fit: "inside", withoutEnlargement: false, background: { r: 255, g: 255, b: 255, alpha: 0 } })
     .png()
@@ -64,13 +67,17 @@ export async function buildTwinImageVariants(input: {
 
   const upscaled = await sharp(input.cleanBuffer).resize(2200, 2200, { fit: "inside", withoutEnlargement: false }).sharpen().png().toBuffer();
 
-  return [
-    { kind: "clean_png", buffer: normalized, contentType: "image/png", qualityScore: 0.86 },
-    { kind: "white_bg", buffer: white, contentType: "image/png", qualityScore: 0.84 },
-    { kind: "gray_bg", buffer: gray, contentType: "image/png", qualityScore: 0.82 },
-    { kind: "shadow_bg", buffer: shadow, contentType: "image/png", qualityScore: 0.86 },
-    { kind: "upscaled", buffer: upscaled, contentType: "image/png", qualityScore: 0.84 },
+  const raw = [
+    { kind: "clean_png" as const, buffer: normalized, contentType: "image/png" },
+    { kind: "white_bg" as const, buffer: white, contentType: "image/png" },
+    { kind: "gray_bg" as const, buffer: gray, contentType: "image/png" },
+    { kind: "shadow_bg" as const, buffer: shadow, contentType: "image/png" },
+    { kind: "upscaled" as const, buffer: upscaled, contentType: "image/png" },
   ];
+  return Promise.all(raw.map(async (item) => ({
+    ...item,
+    quality: await assessProductTwinImage({ buffer: item.buffer, kind: item.kind, category: input.category || "other" }),
+  })));
 }
 
 export async function uploadTwinAsset(db: SupabaseClient, input: {
@@ -89,7 +96,15 @@ export async function uploadTwinAsset(db: SupabaseClient, input: {
   });
   if (error) return { error: error.message };
   const url = db.storage.from(BUCKET).getPublicUrl(path).data?.publicUrl || "";
-  return url ? { url, path } : { error: "publicUrl missing" };
+  if (!url) return { error: "publicUrl missing" };
+  await archiveExternalMediaToYandex({
+    sourceUrl: url,
+    kind: "image",
+    article: input.article,
+    name: `${input.twinId}-${input.kind}`,
+    subdir: "product-twin",
+  }).catch(() => null);
+  return { url, path };
 }
 
 export async function persistProductTwin(db: SupabaseClient, input: {
@@ -151,6 +166,7 @@ export async function persistProductTwin(db: SupabaseClient, input: {
         kind: asset.kind,
         truth_level: asset.truthLevel,
         quality_score: asset.qualityScore,
+        quality_details: asset.qualityDetails || null,
         hero_ready: asset.heroReady,
         broll_ready: asset.brollReady,
         ugc_ready: asset.ugcReady,
@@ -183,6 +199,7 @@ function rowToAsset(row: ContentAssetRow): ProductTwinAsset | null {
     path: row.path || undefined,
     truthLevel: String(a?.truth_level || "derived") as ProductTwinAsset["truthLevel"],
     qualityScore: Number(a?.quality_score) || 0,
+    qualityDetails: (a?.quality_details && typeof a.quality_details === "object" ? a.quality_details : undefined) as Record<string, unknown> | undefined,
     heroReady: Boolean(a?.hero_ready),
     brollReady: Boolean(a?.broll_ready),
     ugcReady: Boolean(a?.ugc_ready),

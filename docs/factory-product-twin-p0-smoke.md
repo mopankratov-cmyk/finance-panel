@@ -143,6 +143,13 @@ Do not weaken app auth globally. Add a narrow internal smoke mechanism only if a
 
 ## 5. Next tasks
 
+0. Store generated media in Yandex Disk by default:
+   - `falImageEdit` archives generated clean images;
+   - `video-fal-status` archives completed FAL mp4;
+   - `productTwinStore.uploadTwinAsset` archives generated twin variants;
+   - batch archive now scans `content_assets` disks `gen`, `product_twin`, `prepared`;
+   - if `YANDEX_DISK_OAUTH_TOKEN` is missing, generation stays fail-open and reports archive status instead of crashing.
+
 1. Add Product Twin quality critic:
    - identity preservation;
    - label detail preservation;
@@ -160,4 +167,3 @@ Do not weaken app auth globally. Add a narrow internal smoke mechanism only if a
 4. Once DB smoke is possible:
    - build real `content_assets(disk='product_twin')` rows for `TT04102` and `YYS0101`;
    - run `/api/factory/product-broll-batch` with `twin_id`, not `image_url`.
-

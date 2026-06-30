@@ -11,13 +11,14 @@ function ok(c: boolean, m: string) { if (c) pass++; else { fail++; console.error
 
 ok(/runNanoBananaEdit/.test(buildRoute), "build route creates clean source via FAL image edit");
 ok(/buildTwinImageVariants/.test(buildRoute), "build route creates local asset variants");
+ok(/qualityDetails/.test(buildRoute), "build route stores quality critic details on assets");
 ok(/persistProductTwin/.test(buildRoute), "build route persists Product Twin");
 ok(/disk_path/.test(buildRoute) && /image_data_url/.test(buildRoute) && /image_url/.test(buildRoute), "build route accepts disk/data-url/image-url inputs");
 ok(/disk: DISK/.test(store) && /product_twin/.test(store), "store writes product_twin rows into content_assets");
 ok(/product_twin_asset/.test(store), "store writes per-asset metadata");
+ok(/quality_details/.test(store), "store persists per-asset quality details");
 ok(/getProductTwinById/.test(byIdRoute), "by-id route reads a twin");
 ok(/getLatestProductTwinByArticle/.test(byArticleRoute), "by-article route reads latest twin");
 
 console.log(`\nproductTwinRouteContract: ${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
-

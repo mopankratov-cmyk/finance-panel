@@ -28,10 +28,11 @@ export function buildProductCleanPrompt(input: ProductCleanSourceInput): string 
   if (category === "cosmetics") {
     return [
       `Extract only the ${product} from this ecommerce/lifestyle source and recreate it as a clean professional product packshot.`,
-      "Preserve the exact bottle/jar shape, cap, pump if present, white material, printed SPF/shade text, brand logo, label placement and proportions.",
+      "Preserve the exact bottle/jar shape, cap, pump if present, cap-body seam, white material warmth, printed SPF/shade text, brand logo, label placement, label scale, package proportions and all visible packaging details.",
+      "Do not simplify the packaging into a generic blank bottle. Do not remove real product markings that are printed on the packaging.",
       "Remove all surrounding infographic text, skin photos, claims, plus icons, badges, panels, hands, faces, props and background graphics.",
       "Place the product centered on a seamless light warm-grey studio background with a soft natural contact shadow.",
-      "No extra text, no extra objects, no hands, no face, no before-after image.",
+      "No extra text outside the product, no extra objects, no hands, no face, no before-after image.",
       "Vertical 9:16 composition, photorealistic, sharp product edges.",
     ].join(" ");
   }
@@ -49,4 +50,3 @@ export function buildProductCleanPrompt(input: ProductCleanSourceInput): string 
 export function imageBufferToDataUrl(buf: Buffer, contentType = "image/png"): string {
   return `data:${contentType};base64,${buf.toString("base64")}`;
 }
-

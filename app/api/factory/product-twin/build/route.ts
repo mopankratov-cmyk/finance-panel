@@ -74,7 +74,7 @@ export async function POST(req: NextRequest) {
 
     const downloaded = await downloadImageBuffer(clean.imageUrl);
     if (!downloaded.ok) return NextResponse.json({ ok: false, error: `clean download failed: ${downloaded.error}` }, { status: 502 });
-    const variants = await buildTwinImageVariants({ cleanBuffer: downloaded.buffer, article, twinId });
+    const variants = await buildTwinImageVariants({ cleanBuffer: downloaded.buffer, article, twinId, category });
 
     const assets: ProductTwinAsset[] = [];
     for (const variant of variants) {
@@ -87,13 +87,21 @@ export async function POST(req: NextRequest) {
         url: uploaded.url,
         path: uploaded.path,
         truthLevel: variant.kind === "clean_png" || variant.kind === "upscaled" ? "truthful" : "derived",
-        qualityScore: variant.qualityScore,
+        qualityScore: variant.quality.qualityScore,
+        qualityDetails: {
+          sharpness_score: variant.quality.sharpnessScore,
+          exposure_score: variant.quality.exposureScore,
+          composition_score: variant.quality.compositionScore,
+          identity_risk: variant.quality.identityRisk,
+          reject_reasons: variant.quality.rejectReasons,
+        },
+        risk: variant.quality.identityRisk,
         sourceKind: variant.kind === "clean_png" ? "fal_clean" : "sharp_derived",
-        brollReady: ["clean_png", "shadow_bg", "white_bg", "upscaled"].includes(variant.kind),
-        heroReady: ["shadow_bg", "white_bg", "gray_bg", "upscaled"].includes(variant.kind),
-        ugcReady: ["shadow_bg", "clean_png"].includes(variant.kind),
-        marketplaceSafe: true,
-        adsSafe: true,
+        brollReady: variant.quality.brollReady,
+        heroReady: variant.quality.heroReady,
+        ugcReady: variant.quality.brollReady && ["shadow_bg", "clean_png"].includes(variant.kind),
+        marketplaceSafe: variant.quality.marketplaceSafe,
+        adsSafe: variant.quality.adsSafe,
       }));
     }
 
@@ -127,6 +135,7 @@ export async function POST(req: NextRequest) {
         kind: a.kind,
         url: a.url,
         quality_score: a.qualityScore,
+        quality_details: a.qualityDetails || null,
         broll_ready: a.brollReady,
         hero_ready: a.heroReady,
         marketplace_safe: a.marketplaceSafe,
