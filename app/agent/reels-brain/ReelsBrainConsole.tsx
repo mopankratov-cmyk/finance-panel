@@ -1100,6 +1100,64 @@ type ReelsBrainVisualIntelligenceResponse = {
   error?: string;
 };
 
+type ReelsBrainSimulationResponse = {
+  ok?: boolean;
+  summary?: {
+    simulations?: number;
+    ship?: number;
+    revise?: number;
+    hold?: number;
+    personas?: number;
+  };
+  simulation?: {
+    simulations?: {
+      id: string;
+      niche: string;
+      score: number;
+      readiness: "ship" | "revise" | "hold";
+      creative_score: number;
+      audio_score: number;
+      visual_score: number;
+      strongest_reason: string;
+      biggest_risk: string;
+      recommended_iteration: string;
+      persona_scores?: {
+        persona: string;
+        score: number;
+        likely_reaction: string;
+        suggested_fix: string;
+      }[];
+      generator_guardrails?: string[];
+    }[];
+    persona_summary?: {
+      persona: string;
+      avg_score: number;
+      likely_reactions?: Record<string, number>;
+      top_concerns?: string[];
+    }[];
+    top_ship_candidates?: {
+      id: string;
+      niche: string;
+      score: number;
+      readiness: "ship" | "revise" | "hold";
+      strongest_reason: string;
+      biggest_risk: string;
+      recommended_iteration: string;
+    }[];
+    revise_queue?: {
+      id: string;
+      niche: string;
+      score: number;
+      readiness: "ship" | "revise" | "hold";
+      biggest_risk: string;
+      recommended_iteration: string;
+    }[];
+    global_guardrails?: string[];
+  };
+  notes?: string[];
+  error?: string;
+};
+
 type LearningEconomicsDailyCost = {
   date: string;
   runs: number;
@@ -1437,6 +1495,9 @@ export default function ReelsBrainPage() {
   const [visualIntelligence, setVisualIntelligence] = useState<ReelsBrainVisualIntelligenceResponse | null>(null);
   const [visualIntelligenceLoading, setVisualIntelligenceLoading] = useState(false);
   const [visualIntelligenceError, setVisualIntelligenceError] = useState("");
+  const [simulationBrain, setSimulationBrain] = useState<ReelsBrainSimulationResponse | null>(null);
+  const [simulationBrainLoading, setSimulationBrainLoading] = useState(false);
+  const [simulationBrainError, setSimulationBrainError] = useState("");
   const [insightNicheFilter, setInsightNicheFilter] = useState("all");
   const [insightConfidenceFilter, setInsightConfidenceFilter] = useState<"all" | "high" | "medium" | "low">("all");
   const [insightSegmentFilter, setInsightSegmentFilter] = useState<"all" | "op_hooks" | "frequent_hooks" | "experimental_hooks">("all");
@@ -1582,27 +1643,32 @@ export default function ReelsBrainPage() {
       setCreativeMemoryLoading(true);
       setAudioIntelligenceLoading(true);
       setVisualIntelligenceLoading(true);
+      setSimulationBrainLoading(true);
       try {
-        const [memory, audio, visual] = await Promise.allSettled([
+        const [memory, audio, visual, simulation] = await Promise.allSettled([
           readJson<ReelsBrainCreativeMemoryResponse>(await fetch(`/api/factory/reels-brain/creative-memory?niches=${encodeURIComponent(DEFAULT_AUTOMATION_NICHES)}&limit=80`, { cache: "no-store" })),
           readJson<ReelsBrainAudioIntelligenceResponse>(await fetch(`/api/factory/reels-brain/audio-intelligence?niches=${encodeURIComponent(DEFAULT_AUTOMATION_NICHES)}&limit=80`, { cache: "no-store" })),
           readJson<ReelsBrainVisualIntelligenceResponse>(await fetch(`/api/factory/reels-brain/visual-intelligence?niches=${encodeURIComponent(DEFAULT_AUTOMATION_NICHES)}&limit=80`, { cache: "no-store" })),
+          readJson<ReelsBrainSimulationResponse>(await fetch(`/api/factory/reels-brain/simulation?niches=${encodeURIComponent(DEFAULT_AUTOMATION_NICHES)}&limit=50`, { cache: "no-store" })),
         ]);
         if (!alive) return;
         setCreativeMemory(memory.status === "fulfilled" ? memory.value : null);
         setAudioIntelligence(audio.status === "fulfilled" ? audio.value : null);
         setVisualIntelligence(visual.status === "fulfilled" ? visual.value : null);
+        setSimulationBrain(simulation.status === "fulfilled" ? simulation.value : null);
       } catch {
         if (alive) {
           setCreativeMemory(null);
           setAudioIntelligence(null);
           setVisualIntelligence(null);
+          setSimulationBrain(null);
         }
       } finally {
         if (alive) {
           setCreativeMemoryLoading(false);
           setAudioIntelligenceLoading(false);
           setVisualIntelligenceLoading(false);
+          setSimulationBrainLoading(false);
         }
       }
     }
@@ -1685,6 +1751,12 @@ export default function ReelsBrainPage() {
   const editingMix = visualIntelligence?.visual?.editing_mix || [];
   const editorPayloads = visualIntelligence?.visual?.editor_payloads || [];
   const directorRules = visualIntelligence?.visual?.director_rules || [];
+  const simulationSummary = simulationBrain?.summary || {};
+  const simulations = simulationBrain?.simulation?.simulations || [];
+  const topShipCandidates = simulationBrain?.simulation?.top_ship_candidates || [];
+  const reviseQueue = simulationBrain?.simulation?.revise_queue || [];
+  const personaSummary = simulationBrain?.simulation?.persona_summary || [];
+  const simulationGuardrails = simulationBrain?.simulation?.global_guardrails || [];
   const maxTimelineInserted = Math.max(1, ...learningTimeline.map((row) => row.inserted));
   const analyzeBacklogLanes = analyzeBacklog?.lanes || [];
   const analyzeBacklogQueue = analyzeBacklog?.queue || [];
@@ -2009,6 +2081,23 @@ export default function ReelsBrainPage() {
     }
   }
 
+  async function loadSimulationBrain(currentNiches = automationNiches) {
+    setSimulationBrainLoading(true);
+    setSimulationBrainError("");
+    try {
+      const params = new URLSearchParams({
+        niches: currentNiches.trim() || DEFAULT_AUTOMATION_NICHES,
+        limit: "50",
+      });
+      const data = await readJson<ReelsBrainSimulationResponse>(await fetch(`/api/factory/reels-brain/simulation?${params.toString()}`, { cache: "no-store" }));
+      setSimulationBrain(data);
+    } catch (e) {
+      setSimulationBrainError(String((e as Error)?.message || e));
+    } finally {
+      setSimulationBrainLoading(false);
+    }
+  }
+
   async function refreshAutomationSurfaces(currentNiches = automationNiches, currentNiche = activeNiche()) {
     setAutomationSyncing(true);
     try {
@@ -2023,6 +2112,7 @@ export default function ReelsBrainPage() {
           loadCreativeMemory(currentNiches),
           loadAudioIntelligence(currentNiches),
           loadVisualIntelligence(currentNiches),
+          loadSimulationBrain(currentNiches),
         ]);
       }
     } finally {
@@ -3019,11 +3109,20 @@ export default function ReelsBrainPage() {
                   {visualIntelligenceLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Zap className="h-4 w-4" />}
                   Refresh visual
                 </button>
+                <button
+                  type="button"
+                  onClick={() => loadSimulationBrain(automationNiches)}
+                  disabled={simulationBrainLoading}
+                  className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-cyan-200 bg-white px-3 py-2 text-sm font-black text-cyan-900 hover:border-cyan-400 disabled:opacity-50"
+                >
+                  {simulationBrainLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
+                  Refresh simulation
+                </button>
               </div>
             </div>
-            {(actionPlanError || creativeBriefsError || creativeMemoryError || audioIntelligenceError || visualIntelligenceError) ? (
+            {(actionPlanError || creativeBriefsError || creativeMemoryError || audioIntelligenceError || visualIntelligenceError || simulationBrainError) ? (
               <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">
-                {actionPlanError || creativeBriefsError || creativeMemoryError || audioIntelligenceError || visualIntelligenceError}
+                {actionPlanError || creativeBriefsError || creativeMemoryError || audioIntelligenceError || visualIntelligenceError || simulationBrainError}
               </div>
             ) : null}
             {(actionPlan || creativeBriefs) ? (
@@ -3330,6 +3429,105 @@ export default function ReelsBrainPage() {
                     )) : <p className="text-sm text-slate-500">Payload появится после visual patterns.</p>}
                     {directorRules.slice(0, 3).map((rule) => (
                       <p key={rule} className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-900">{rule}</p>
+                    ))}
+                  </div>
+                </details>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-950 p-4 text-white">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-cyan-200">Simulation / Critic Brain</p>
+                <h4 className="mt-1 text-lg font-black">Виртуальная фокус-группа до генерации</h4>
+                <p className="mt-1 max-w-2xl text-sm font-medium text-slate-300">
+                  Проверяет Creative DNA + Audio + Visual глазами разных покупателей: родитель, импульсный покупатель, скептик, native-зритель и покупатель деталей.
+                </p>
+              </div>
+              <span className="rounded-full border border-white/10 bg-white/10 px-3 py-1 text-xs font-black text-cyan-100">
+                {simulationBrainLoading ? "loading" : `${compactNumber(simulationSummary.simulations || 0)} simulations`}
+              </span>
+            </div>
+
+            <div className="mt-4 grid gap-2 sm:grid-cols-5">
+              <div className="rounded-2xl border border-white/10 bg-white/10 p-3">
+                <p className="text-xs font-bold uppercase tracking-wide text-slate-300">Ship</p>
+                <p className="mt-1 text-2xl font-black text-emerald-200">{compactNumber(simulationSummary.ship || 0)}</p>
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-white/10 p-3">
+                <p className="text-xs font-bold uppercase tracking-wide text-slate-300">Revise</p>
+                <p className="mt-1 text-2xl font-black text-amber-200">{compactNumber(simulationSummary.revise || 0)}</p>
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-white/10 p-3">
+                <p className="text-xs font-bold uppercase tracking-wide text-slate-300">Hold</p>
+                <p className="mt-1 text-2xl font-black text-red-200">{compactNumber(simulationSummary.hold || 0)}</p>
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-white/10 p-3">
+                <p className="text-xs font-bold uppercase tracking-wide text-slate-300">Personas</p>
+                <p className="mt-1 text-2xl font-black">{compactNumber(simulationSummary.personas || 0)}</p>
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-white/10 p-3">
+                <p className="text-xs font-bold uppercase tracking-wide text-slate-300">Total</p>
+                <p className="mt-1 text-2xl font-black">{compactNumber(simulations.length)}</p>
+              </div>
+            </div>
+
+            <div className="mt-4 grid gap-3 xl:grid-cols-[1.1fr_0.9fr]">
+              <div className="rounded-2xl border border-white/10 bg-white/10 p-4">
+                <p className="font-black text-white">Лучшие кандидаты на генерацию</p>
+                <div className="mt-3 grid gap-2 lg:grid-cols-2">
+                  {(topShipCandidates.length ? topShipCandidates : simulations).slice(0, 4).map((sim) => (
+                    <div key={sim.id} className="rounded-xl border border-white/10 bg-slate-950/50 px-3 py-3 text-xs">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="font-black text-white">{sim.niche}</span>
+                        <span className={`rounded-full border px-2 py-1 font-black ${
+                          sim.readiness === "ship"
+                            ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                            : sim.readiness === "revise"
+                              ? "border-amber-200 bg-amber-50 text-amber-800"
+                              : "border-red-200 bg-red-50 text-red-700"
+                        }`}>
+                          {sim.readiness} · {compactNumber(sim.score)}
+                        </span>
+                      </div>
+                      <p className="mt-2 text-slate-200">{sim.strongest_reason}</p>
+                      <p className="mt-1 text-amber-100">risk: {sim.biggest_risk}</p>
+                      <p className="mt-1 text-cyan-100">fix: {sim.recommended_iteration}</p>
+                    </div>
+                  ))}
+                  {!simulations.length ? <p className="text-sm text-slate-300">Simulation появится после Creative DNA.</p> : null}
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <div className="rounded-2xl border border-white/10 bg-white/10 p-4">
+                  <p className="text-xs font-black uppercase tracking-[0.18em] text-cyan-100/70">Persona scores</p>
+                  <div className="mt-3 space-y-2">
+                    {personaSummary.length ? personaSummary.map((persona) => (
+                      <div key={persona.persona} className="rounded-xl border border-white/10 bg-slate-950/50 px-3 py-2 text-xs">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <span className="font-black text-white">{persona.persona}</span>
+                          <span className="rounded-full border border-white/10 bg-white/10 px-2 py-1 text-cyan-100">{compactNumber(persona.avg_score)}</span>
+                        </div>
+                        <p className="mt-1 text-slate-300">{persona.top_concerns?.[0] || "без явного риска"}</p>
+                      </div>
+                    )) : <p className="text-sm text-slate-300">Persona scores пока пусты.</p>}
+                  </div>
+                </div>
+
+                <details className="rounded-2xl border border-white/10 bg-white/10 p-4">
+                  <summary className="cursor-pointer text-xs font-black uppercase tracking-[0.18em] text-cyan-100/70">Revise queue + guardrails</summary>
+                  <div className="mt-3 space-y-2">
+                    {reviseQueue.slice(0, 3).map((sim) => (
+                      <div key={sim.id} className="rounded-xl border border-white/10 bg-slate-950/50 px-3 py-2 text-xs">
+                        <span className="font-black text-amber-100">{sim.readiness} · {compactNumber(sim.score)}</span>
+                        <p className="mt-1 text-slate-300">{sim.biggest_risk}</p>
+                        <p className="mt-1 text-cyan-100">{sim.recommended_iteration}</p>
+                      </div>
+                    ))}
+                    {simulationGuardrails.slice(0, 3).map((rule) => (
+                      <p key={rule} className="rounded-xl border border-cyan-200/20 bg-cyan-300/10 px-3 py-2 text-xs font-semibold text-cyan-100">{rule}</p>
                     ))}
                   </div>
                 </details>
