@@ -5,15 +5,17 @@ const buildRoute = readFileSync("app/api/factory/product-twin/build/route.ts", "
 const byIdRoute = readFileSync("app/api/factory/product-twin/[twin_id]/route.ts", "utf8");
 const byArticleRoute = readFileSync("app/api/factory/product-twin/by-article/[article]/route.ts", "utf8");
 const store = readFileSync("lib/factory/productTwinStore.ts", "utf8");
+const builder = readFileSync("lib/factory/productTwinBuild.ts", "utf8");
 
 let pass = 0, fail = 0;
 function ok(c: boolean, m: string) { if (c) pass++; else { fail++; console.error("✗ " + m); } }
 
-ok(/runNanoBananaEdit/.test(buildRoute), "build route creates clean source via FAL image edit");
-ok(/buildTwinImageVariants/.test(buildRoute), "build route creates local asset variants");
-ok(/qualityDetails/.test(buildRoute), "build route stores quality critic details on assets");
-ok(/persistProductTwin/.test(buildRoute), "build route persists Product Twin");
-ok(/disk_path/.test(buildRoute) && /image_data_url/.test(buildRoute) && /image_url/.test(buildRoute), "build route accepts disk/data-url/image-url inputs");
+ok(/buildProductTwin/.test(buildRoute), "build route delegates to shared Product Twin builder");
+ok(/runNanoBananaEdit/.test(builder), "builder creates clean source via FAL image edit");
+ok(/buildTwinImageVariants/.test(builder), "builder creates local asset variants");
+ok(/qualityDetails/.test(builder), "builder stores quality critic details on assets");
+ok(/persistProductTwin/.test(builder), "builder persists Product Twin");
+ok(/disk_path/.test(builder) && /image_data_url/.test(builder) && /image_url/.test(builder), "builder accepts disk/data-url/image-url inputs");
 ok(/disk: DISK/.test(store) && /product_twin/.test(store), "store writes product_twin rows into content_assets");
 ok(/product_twin_asset/.test(store), "store writes per-asset metadata");
 ok(/quality_details/.test(store), "store persists per-asset quality details");
