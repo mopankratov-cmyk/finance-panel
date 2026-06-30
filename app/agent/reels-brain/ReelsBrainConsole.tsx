@@ -988,6 +988,63 @@ type ReelsBrainCreativeMemoryResponse = {
   error?: string;
 };
 
+type ReelsBrainAudioIntelligenceResponse = {
+  ok?: boolean;
+  summary?: {
+    patterns?: number;
+    sound_titles?: number;
+    strategies?: number;
+    worker_stages?: number;
+  };
+  audio?: {
+    patterns?: {
+      id: string;
+      niche: string;
+      score: number;
+      confidence: "high" | "medium" | "low";
+      strategy: string;
+      speech: {
+        starts_immediately: boolean;
+        suggested_speed: string;
+        first_phrase_rule: string;
+        pause_rules?: string[];
+      };
+      music: {
+        role: string;
+        bpm_range: string;
+        energy: string;
+        sound_examples?: string[];
+      };
+      edit_sync: {
+        first_sound_event: string;
+        cut_rhythm: string;
+        beat_map_hint?: string[];
+      };
+      best_for?: string[];
+      avoid?: string[];
+    }[];
+    top_sound_titles?: {
+      title: string;
+      evidence_count: number;
+      niches: string[];
+    }[];
+    strategy_mix?: {
+      strategy: string;
+      count: number;
+      avg_score: number;
+    }[];
+    editor_rules?: string[];
+    next_pipeline?: {
+      stage: string;
+      status: "ready_now" | "needs_worker" | "planned";
+      tool: string;
+      output: string;
+    }[];
+  };
+  notes?: string[];
+  error?: string;
+};
+
 type LearningEconomicsDailyCost = {
   date: string;
   runs: number;
@@ -1319,6 +1376,9 @@ export default function ReelsBrainPage() {
   const [creativeMemory, setCreativeMemory] = useState<ReelsBrainCreativeMemoryResponse | null>(null);
   const [creativeMemoryLoading, setCreativeMemoryLoading] = useState(false);
   const [creativeMemoryError, setCreativeMemoryError] = useState("");
+  const [audioIntelligence, setAudioIntelligence] = useState<ReelsBrainAudioIntelligenceResponse | null>(null);
+  const [audioIntelligenceLoading, setAudioIntelligenceLoading] = useState(false);
+  const [audioIntelligenceError, setAudioIntelligenceError] = useState("");
   const [insightNicheFilter, setInsightNicheFilter] = useState("all");
   const [insightConfidenceFilter, setInsightConfidenceFilter] = useState<"all" | "high" | "medium" | "low">("all");
   const [insightSegmentFilter, setInsightSegmentFilter] = useState<"all" | "op_hooks" | "frequent_hooks" | "experimental_hooks">("all");
@@ -1460,18 +1520,30 @@ export default function ReelsBrainPage() {
 
   useEffect(() => {
     let alive = true;
-    async function loadInitialCreativeMemory() {
+    async function loadInitialCreativeLayers() {
       setCreativeMemoryLoading(true);
+      setAudioIntelligenceLoading(true);
       try {
-        const data = await readJson<ReelsBrainCreativeMemoryResponse>(await fetch(`/api/factory/reels-brain/creative-memory?niches=${encodeURIComponent(DEFAULT_AUTOMATION_NICHES)}&limit=80`, { cache: "no-store" }));
-        if (alive) setCreativeMemory(data);
+        const [memory, audio] = await Promise.allSettled([
+          readJson<ReelsBrainCreativeMemoryResponse>(await fetch(`/api/factory/reels-brain/creative-memory?niches=${encodeURIComponent(DEFAULT_AUTOMATION_NICHES)}&limit=80`, { cache: "no-store" })),
+          readJson<ReelsBrainAudioIntelligenceResponse>(await fetch(`/api/factory/reels-brain/audio-intelligence?niches=${encodeURIComponent(DEFAULT_AUTOMATION_NICHES)}&limit=80`, { cache: "no-store" })),
+        ]);
+        if (!alive) return;
+        setCreativeMemory(memory.status === "fulfilled" ? memory.value : null);
+        setAudioIntelligence(audio.status === "fulfilled" ? audio.value : null);
       } catch {
-        if (alive) setCreativeMemory(null);
+        if (alive) {
+          setCreativeMemory(null);
+          setAudioIntelligence(null);
+        }
       } finally {
-        if (alive) setCreativeMemoryLoading(false);
+        if (alive) {
+          setCreativeMemoryLoading(false);
+          setAudioIntelligenceLoading(false);
+        }
       }
     }
-    void loadInitialCreativeMemory();
+    void loadInitialCreativeLayers();
     return () => { alive = false; };
   }, []);
 
@@ -1538,6 +1610,12 @@ export default function ReelsBrainPage() {
   const topCreativeAtoms = creativeMemory?.memory?.atoms || [];
   const topAntiPatterns = creativeMemory?.memory?.anti_patterns || [];
   const creativeExperiments = creativeMemory?.memory?.experiment_skeletons || [];
+  const audioSummary = audioIntelligence?.summary || {};
+  const audioPatterns = audioIntelligence?.audio?.patterns || [];
+  const audioStrategyMix = audioIntelligence?.audio?.strategy_mix || [];
+  const topSoundTitles = audioIntelligence?.audio?.top_sound_titles || [];
+  const audioEditorRules = audioIntelligence?.audio?.editor_rules || [];
+  const audioNextPipeline = audioIntelligence?.audio?.next_pipeline || [];
   const maxTimelineInserted = Math.max(1, ...learningTimeline.map((row) => row.inserted));
   const analyzeBacklogLanes = analyzeBacklog?.lanes || [];
   const analyzeBacklogQueue = analyzeBacklog?.queue || [];
@@ -1828,6 +1906,23 @@ export default function ReelsBrainPage() {
     }
   }
 
+  async function loadAudioIntelligence(currentNiches = automationNiches) {
+    setAudioIntelligenceLoading(true);
+    setAudioIntelligenceError("");
+    try {
+      const params = new URLSearchParams({
+        niches: currentNiches.trim() || DEFAULT_AUTOMATION_NICHES,
+        limit: "80",
+      });
+      const data = await readJson<ReelsBrainAudioIntelligenceResponse>(await fetch(`/api/factory/reels-brain/audio-intelligence?${params.toString()}`, { cache: "no-store" }));
+      setAudioIntelligence(data);
+    } catch (e) {
+      setAudioIntelligenceError(String((e as Error)?.message || e));
+    } finally {
+      setAudioIntelligenceLoading(false);
+    }
+  }
+
   async function refreshAutomationSurfaces(currentNiches = automationNiches, currentNiche = activeNiche()) {
     setAutomationSyncing(true);
     try {
@@ -1840,6 +1935,7 @@ export default function ReelsBrainPage() {
           loadAnalyzeBacklogPlan(currentNiches),
           loadLearningEconomics(currentNiches),
           loadCreativeMemory(currentNiches),
+          loadAudioIntelligence(currentNiches),
         ]);
       }
     } finally {
@@ -2818,11 +2914,20 @@ export default function ReelsBrainPage() {
                   {creativeMemoryLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <BrainCircuit className="h-4 w-4" />}
                   Refresh memory
                 </button>
+                <button
+                  type="button"
+                  onClick={() => loadAudioIntelligence(automationNiches)}
+                  disabled={audioIntelligenceLoading}
+                  className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-cyan-200 bg-white px-3 py-2 text-sm font-black text-cyan-900 hover:border-cyan-400 disabled:opacity-50"
+                >
+                  {audioIntelligenceLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Activity className="h-4 w-4" />}
+                  Refresh audio
+                </button>
               </div>
             </div>
-            {(actionPlanError || creativeBriefsError || creativeMemoryError) ? (
+            {(actionPlanError || creativeBriefsError || creativeMemoryError || audioIntelligenceError) ? (
               <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">
-                {actionPlanError || creativeBriefsError || creativeMemoryError}
+                {actionPlanError || creativeBriefsError || creativeMemoryError || audioIntelligenceError}
               </div>
             ) : null}
             {(actionPlan || creativeBriefs) ? (
@@ -2960,6 +3065,91 @@ export default function ReelsBrainPage() {
                     </p>
                   ) : null}
                 </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-4 rounded-2xl border border-cyan-100 bg-cyan-50 p-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-cyan-700">Audio Intelligence</p>
+                <h4 className="mt-1 text-lg font-black text-slate-950">Как должен звучать viral-ролик</h4>
+                <p className="mt-1 max-w-2xl text-sm font-medium text-cyan-900">
+                  MVP без скачивания видео: строим speech/music/edit-sync правила из Pattern Brain и sound titles. Следующий слой — FFmpeg, WhisperX, Librosa и beat map.
+                </p>
+              </div>
+              <span className="rounded-full border border-cyan-200 bg-white px-3 py-1 text-xs font-black text-cyan-800">
+                {audioIntelligenceLoading ? "loading" : `${compactNumber(audioSummary.patterns || 0)} audio patterns`}
+              </span>
+            </div>
+
+            <div className="mt-4 grid gap-2 sm:grid-cols-4">
+              <MetricCard label="Audio patterns" value={audioSummary.patterns || 0} />
+              <MetricCard label="Sound titles" value={audioSummary.sound_titles || 0} />
+              <MetricCard label="Strategies" value={audioSummary.strategies || 0} />
+              <MetricCard label="Worker stages" value={audioSummary.worker_stages || 0} />
+            </div>
+
+            <div className="mt-4 grid gap-3 xl:grid-cols-[1fr_1fr]">
+              <div className="rounded-2xl border border-cyan-200 bg-white p-4">
+                <p className="font-black text-slate-950">Топ аудио-стратегии</p>
+                <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                  {audioPatterns.length ? audioPatterns.slice(0, 4).map((pattern) => (
+                    <div key={pattern.id} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="font-black text-slate-900">{pattern.strategy}</span>
+                        <span className={`rounded-full border px-2 py-1 font-black ${confidenceCopy(pattern.confidence).tone}`}>
+                          {compactNumber(pattern.score)}
+                        </span>
+                      </div>
+                      <p className="mt-2 font-semibold text-slate-700">{pattern.speech.first_phrase_rule}</p>
+                      <p className="mt-1 text-slate-500">speed: {pattern.speech.suggested_speed} · music: {pattern.music.role} · BPM {pattern.music.bpm_range}</p>
+                      <p className="mt-1 text-slate-500">edit: {pattern.edit_sync.cut_rhythm}</p>
+                    </div>
+                  )) : <p className="text-sm text-slate-500">Audio patterns появятся после Pattern Brain.</p>}
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <div className="rounded-2xl border border-cyan-200 bg-white p-4">
+                  <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">Strategy mix</p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {audioStrategyMix.length ? audioStrategyMix.map((row) => (
+                      <span key={row.strategy} className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-bold text-slate-700">
+                        {row.strategy}: {compactNumber(row.count)} · {compactNumber(row.avg_score)}
+                      </span>
+                    )) : <span className="text-sm text-slate-500">Микс стратегий пока пуст.</span>}
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-cyan-200 bg-white p-4">
+                  <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">Sound memory</p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {topSoundTitles.length ? topSoundTitles.slice(0, 8).map((sound) => (
+                      <span key={sound.title} className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-bold text-slate-700">
+                        {sound.title} · {compactNumber(sound.evidence_count)}
+                      </span>
+                    )) : <span className="text-sm text-slate-500">Sound titles пока не накоплены.</span>}
+                  </div>
+                </div>
+
+                <details className="rounded-2xl border border-cyan-200 bg-white p-4">
+                  <summary className="cursor-pointer text-xs font-black uppercase tracking-[0.18em] text-slate-500">Audio worker roadmap</summary>
+                  <div className="mt-3 space-y-2">
+                    {audioNextPipeline.map((stage) => (
+                      <div key={stage.stage} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <span className="font-black text-slate-900">{stage.stage}</span>
+                          <span className="rounded-full border border-slate-200 bg-white px-2 py-1 font-bold text-slate-600">{stage.status}</span>
+                        </div>
+                        <p className="mt-1 text-slate-500">{stage.tool} → {stage.output}</p>
+                      </div>
+                    ))}
+                    {audioEditorRules.slice(0, 3).map((rule) => (
+                      <p key={rule} className="rounded-xl border border-cyan-100 bg-cyan-50 px-3 py-2 text-xs font-semibold text-cyan-900">{rule}</p>
+                    ))}
+                  </div>
+                </details>
               </div>
             </div>
           </div>
