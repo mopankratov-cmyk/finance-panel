@@ -40,7 +40,23 @@ export async function GET(req: NextRequest) {
         warnings.push(`${niche}: ${error.message}`);
         continue;
       }
-      rows.push(...((data || []) as ReelsMediaSourceVideo[]));
+      const byId = new Map<number, ReelsMediaSourceVideo>();
+      for (const row of ((data || []) as ReelsMediaSourceVideo[])) {
+        if (row.id != null) byId.set(Number(row.id), row);
+      }
+
+      const { data: latestData, error: latestError } = await db
+        .from("viral_videos")
+        .select("id,url,platform,niche,caption,views,virality_score,analyzed,sound_title,analyzed_full")
+        .eq("niche", niche)
+        .order("created_at", { ascending: false, nullsFirst: false })
+        .limit(Math.min(250, limitPerNiche));
+      if (latestError) warnings.push(`${niche}: latest ${latestError.message}`);
+      for (const row of ((latestData || []) as ReelsMediaSourceVideo[])) {
+        if (row.id != null) byId.set(Number(row.id), row);
+      }
+
+      rows.push(...byId.values());
     }
 
     const report = buildReelsMediaIntelligenceReport(rows);
