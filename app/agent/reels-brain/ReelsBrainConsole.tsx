@@ -932,6 +932,62 @@ type ReelsBrainCreativeBriefsResponse = {
   error?: string;
 };
 
+type ReelsBrainCreativeMemoryResponse = {
+  ok?: boolean;
+  summary?: {
+    atoms?: number;
+    dna?: number;
+    anti_patterns?: number;
+    experiment_skeletons?: number;
+    product_brains?: number;
+    audience_brains?: number;
+  };
+  memory?: {
+    atoms?: {
+      id: string;
+      type: string;
+      label: string;
+      value: string;
+      score: number;
+      evidence_count: number;
+      niches: string[];
+    }[];
+    dna?: {
+      id: string;
+      niche: string;
+      score: number;
+      confidence: "high" | "medium" | "low";
+      atoms: Record<string, string>;
+      anti_patterns?: string[];
+    }[];
+    anti_patterns?: {
+      id: string;
+      label: string;
+      severity: "watch" | "avoid";
+      evidence_count: number;
+    }[];
+    product_brain?: {
+      product_type: string;
+      recommended_formats?: string[];
+    }[];
+    audience_brain?: {
+      audience: string;
+      tone_rules?: string[];
+    }[];
+    experiment_skeletons?: {
+      id: string;
+      niche: string;
+      variants?: {
+        axis: string;
+        change_to: string;
+        reason: string;
+      }[];
+    }[];
+  };
+  notes?: string[];
+  error?: string;
+};
+
 type LearningEconomicsDailyCost = {
   date: string;
   runs: number;
@@ -1260,6 +1316,9 @@ export default function ReelsBrainPage() {
   const [creativeBriefs, setCreativeBriefs] = useState<ReelsBrainCreativeBriefsResponse | null>(null);
   const [creativeBriefsLoading, setCreativeBriefsLoading] = useState(false);
   const [creativeBriefsError, setCreativeBriefsError] = useState("");
+  const [creativeMemory, setCreativeMemory] = useState<ReelsBrainCreativeMemoryResponse | null>(null);
+  const [creativeMemoryLoading, setCreativeMemoryLoading] = useState(false);
+  const [creativeMemoryError, setCreativeMemoryError] = useState("");
   const [insightNicheFilter, setInsightNicheFilter] = useState("all");
   const [insightConfidenceFilter, setInsightConfidenceFilter] = useState<"all" | "high" | "medium" | "low">("all");
   const [insightSegmentFilter, setInsightSegmentFilter] = useState<"all" | "op_hooks" | "frequent_hooks" | "experimental_hooks">("all");
@@ -1399,6 +1458,23 @@ export default function ReelsBrainPage() {
     return () => { alive = false; };
   }, []);
 
+  useEffect(() => {
+    let alive = true;
+    async function loadInitialCreativeMemory() {
+      setCreativeMemoryLoading(true);
+      try {
+        const data = await readJson<ReelsBrainCreativeMemoryResponse>(await fetch(`/api/factory/reels-brain/creative-memory?niches=${encodeURIComponent(DEFAULT_AUTOMATION_NICHES)}&limit=80`, { cache: "no-store" }));
+        if (alive) setCreativeMemory(data);
+      } catch {
+        if (alive) setCreativeMemory(null);
+      } finally {
+        if (alive) setCreativeMemoryLoading(false);
+      }
+    }
+    void loadInitialCreativeMemory();
+    return () => { alive = false; };
+  }, []);
+
   const availableProviders = Array.isArray(health?.available) ? health.available : [];
   const configuredCount = health?.providers?.filter((provider) => provider.configured).length || 0;
   const queries = queriesFromText(queriesText);
@@ -1457,6 +1533,11 @@ export default function ReelsBrainPage() {
     (insightNicheFilter === "all" || recipe.niches.includes(insightNicheFilter))
     && (insightConfidenceFilter === "all" || recipe.confidence === insightConfidenceFilter)
   );
+  const creativeMemorySummary = creativeMemory?.summary || {};
+  const topCreativeDna = creativeMemory?.memory?.dna || [];
+  const topCreativeAtoms = creativeMemory?.memory?.atoms || [];
+  const topAntiPatterns = creativeMemory?.memory?.anti_patterns || [];
+  const creativeExperiments = creativeMemory?.memory?.experiment_skeletons || [];
   const maxTimelineInserted = Math.max(1, ...learningTimeline.map((row) => row.inserted));
   const analyzeBacklogLanes = analyzeBacklog?.lanes || [];
   const analyzeBacklogQueue = analyzeBacklog?.queue || [];
@@ -1730,6 +1811,23 @@ export default function ReelsBrainPage() {
     }
   }
 
+  async function loadCreativeMemory(currentNiches = automationNiches) {
+    setCreativeMemoryLoading(true);
+    setCreativeMemoryError("");
+    try {
+      const params = new URLSearchParams({
+        niches: currentNiches.trim() || DEFAULT_AUTOMATION_NICHES,
+        limit: "80",
+      });
+      const data = await readJson<ReelsBrainCreativeMemoryResponse>(await fetch(`/api/factory/reels-brain/creative-memory?${params.toString()}`, { cache: "no-store" }));
+      setCreativeMemory(data);
+    } catch (e) {
+      setCreativeMemoryError(String((e as Error)?.message || e));
+    } finally {
+      setCreativeMemoryLoading(false);
+    }
+  }
+
   async function refreshAutomationSurfaces(currentNiches = automationNiches, currentNiche = activeNiche()) {
     setAutomationSyncing(true);
     try {
@@ -1741,6 +1839,7 @@ export default function ReelsBrainPage() {
           loadCorpus(currentNiche),
           loadAnalyzeBacklogPlan(currentNiches),
           loadLearningEconomics(currentNiches),
+          loadCreativeMemory(currentNiches),
         ]);
       }
     } finally {
@@ -2710,11 +2809,20 @@ export default function ReelsBrainPage() {
                   {creativeBriefsLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
                   Export 10 briefs
                 </button>
+                <button
+                  type="button"
+                  onClick={() => loadCreativeMemory(automationNiches)}
+                  disabled={creativeMemoryLoading}
+                  className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-cyan-200 bg-white px-3 py-2 text-sm font-black text-cyan-900 hover:border-cyan-400 disabled:opacity-50"
+                >
+                  {creativeMemoryLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <BrainCircuit className="h-4 w-4" />}
+                  Refresh memory
+                </button>
               </div>
             </div>
-            {(actionPlanError || creativeBriefsError) ? (
+            {(actionPlanError || creativeBriefsError || creativeMemoryError) ? (
               <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">
-                {actionPlanError || creativeBriefsError}
+                {actionPlanError || creativeBriefsError || creativeMemoryError}
               </div>
             ) : null}
             {(actionPlan || creativeBriefs) ? (
@@ -2761,6 +2869,99 @@ export default function ReelsBrainPage() {
                 ) : null}
               </div>
             ) : null}
+          </div>
+
+          <div className="mt-4 rounded-2xl border border-amber-100 bg-amber-50 p-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-amber-700">Creative Memory / DNA</p>
+                <h4 className="mt-1 text-lg font-black text-slate-950">Из чего мозг собирает новые ролики</h4>
+                <p className="mt-1 max-w-2xl text-sm font-medium text-amber-900">
+                  Это слой между трендами и генератором: лучшие хуки, эмоции, камера, монтаж, B-roll, CTA, продукт, аудитория и запреты на копирование.
+                </p>
+              </div>
+              <span className="rounded-full border border-amber-200 bg-white px-3 py-1 text-xs font-black text-amber-800">
+                {creativeMemoryLoading ? "loading" : `${compactNumber(creativeMemorySummary.dna || 0)} DNA`}
+              </span>
+            </div>
+
+            <div className="mt-4 grid gap-2 sm:grid-cols-3 xl:grid-cols-6">
+              <MetricCard label="Atoms" value={creativeMemorySummary.atoms || 0} />
+              <MetricCard label="DNA combos" value={creativeMemorySummary.dna || 0} />
+              <MetricCard label="Anti-patterns" value={creativeMemorySummary.anti_patterns || 0} />
+              <MetricCard label="Experiments" value={creativeMemorySummary.experiment_skeletons || 0} />
+              <MetricCard label="Product brains" value={creativeMemorySummary.product_brains || 0} />
+              <MetricCard label="Audience brains" value={creativeMemorySummary.audience_brains || 0} />
+            </div>
+
+            <div className="mt-4 grid gap-3 xl:grid-cols-[1.2fr_0.8fr]">
+              <div className="rounded-2xl border border-amber-200 bg-white p-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="font-black text-slate-950">Топ Creative DNA</p>
+                  <span className="rounded-full border border-amber-100 bg-amber-50 px-2.5 py-1 text-xs font-black text-amber-800">
+                    combinations
+                  </span>
+                </div>
+                <div className="mt-3 grid gap-2 lg:grid-cols-2">
+                  {topCreativeDna.length ? topCreativeDna.slice(0, 4).map((dna) => (
+                    <div key={dna.id} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="font-black text-slate-900">{dna.niche}</span>
+                        <span className={`rounded-full border px-2 py-1 font-black ${confidenceCopy(dna.confidence).tone}`}>
+                          {compactNumber(dna.score)}
+                        </span>
+                      </div>
+                      <p className="mt-2 font-semibold text-slate-700">{dna.atoms.hook || "hook"} · {dna.atoms.structure || "structure"}</p>
+                      <p className="mt-1 text-slate-500">camera: {dna.atoms.camera || "—"}</p>
+                      <p className="mt-1 text-slate-500">audio: {dna.atoms.audio || "—"}</p>
+                      <p className="mt-1 text-slate-500">cta: {dna.atoms.cta || "—"}</p>
+                    </div>
+                  )) : (
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-500">
+                      Creative DNA появится после Pattern Brain по выбранным нишам.
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <div className="rounded-2xl border border-amber-200 bg-white p-4">
+                  <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">Лучшие атомы</p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {topCreativeAtoms.length ? topCreativeAtoms.slice(0, 10).map((atom) => (
+                      <span key={atom.id} className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-bold text-slate-700">
+                        {atom.type}: {atom.label} · {compactNumber(atom.score)}
+                      </span>
+                    )) : <span className="text-sm text-slate-500">Атомы пока не собраны.</span>}
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-red-100 bg-red-50 p-4">
+                  <p className="text-xs font-black uppercase tracking-[0.18em] text-red-700">Anti Pattern Brain</p>
+                  <div className="mt-3 space-y-2">
+                    {topAntiPatterns.length ? topAntiPatterns.slice(0, 3).map((anti) => (
+                      <div key={anti.id} className="rounded-xl border border-red-100 bg-white px-3 py-2 text-xs text-red-800">
+                        <span className="font-black">{anti.severity === "avoid" ? "avoid" : "watch"}:</span> {anti.label}
+                      </div>
+                    )) : <p className="text-sm text-red-800">Запреты появятся после оценки слабых/шумных паттернов.</p>}
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-cyan-100 bg-cyan-50 p-4">
+                  <p className="text-xs font-black uppercase tracking-[0.18em] text-cyan-700">Experiment Brain</p>
+                  <p className="mt-2 text-sm font-semibold text-cyan-950">
+                    {creativeExperiments.length
+                      ? `${compactNumber(creativeExperiments.length)} A/B скелетов: менять hook, CTA, camera или audio при фиксированной структуре.`
+                      : "Эксперименты появятся после генерации Creative DNA."}
+                  </p>
+                  {creativeExperiments[0]?.variants?.[0] ? (
+                    <p className="mt-2 rounded-xl border border-cyan-100 bg-white px-3 py-2 text-xs text-cyan-800">
+                      first test: {creativeExperiments[0].variants[0].axis} → {creativeExperiments[0].variants[0].change_to}
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+            </div>
           </div>
 
           <div className="mt-5 grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
