@@ -615,6 +615,73 @@ type WorkerStateResponse = {
   error?: string;
 };
 
+type MediaAssetClassification = {
+  video_id?: number | null;
+  niche?: string;
+  platform?: string;
+  status?: "ready" | "metadata_only" | "blocked" | "unknown";
+  reason?: string;
+  asset_url?: string | null;
+  page_url?: string | null;
+  asset_kind?: "video" | "audio" | "unknown" | null;
+  next_worker?: string;
+  score?: number | null;
+};
+
+type MediaIntelligenceResponse = {
+  ok?: boolean;
+  mode?: "reels_brain_media_intelligence";
+  policy?: string;
+  niches?: string[];
+  limit_per_niche?: number;
+  summary?: {
+    total?: number;
+    ready?: number;
+    metadata_only?: number;
+    blocked?: number;
+    unknown?: number;
+    video_assets?: number;
+    audio_assets?: number;
+    media_ready_pct?: number;
+    by_platform?: Record<string, { total: number; ready: number; metadata_only: number; blocked: number; unknown: number }>;
+    by_niche?: Record<string, { total: number; ready: number; metadata_only: number; blocked: number; unknown: number }>;
+    reasons?: Record<string, number>;
+  };
+  direct_asset_store?: {
+    status?: string;
+    storage_mode?: string;
+    candidates?: MediaAssetClassification[];
+    proposed_fields?: string[];
+    note?: string;
+  };
+  audio_worker_mvp?: {
+    status?: string;
+    candidate_count?: number;
+    sample?: MediaAssetClassification[];
+    contract?: { input?: string; output?: string[]; runtime?: string };
+  };
+  transcript_layer?: {
+    status?: string;
+    candidate_count?: number;
+    sample?: MediaAssetClassification[];
+    contract?: { input?: string; output?: string[]; runtime?: string };
+  };
+  visual_worker_mvp?: {
+    status?: string;
+    candidate_count?: number;
+    sample?: MediaAssetClassification[];
+    contract?: { input?: string; output?: string[]; runtime?: string };
+  };
+  blocked?: {
+    metadata_only?: MediaAssetClassification[];
+    unknown?: MediaAssetClassification[];
+    blocked?: MediaAssetClassification[];
+  };
+  warnings?: string[];
+  warning?: string;
+  error?: string;
+};
+
 type PortfolioDigestResponse = {
   ok?: boolean;
   niches?: {
@@ -1003,6 +1070,12 @@ function workerLivenessTone(state: string | undefined) {
   return "border-red-200 bg-red-50 text-red-700";
 }
 
+function mediaReadinessTone(status: string | undefined) {
+  if (status === "ready_for_runtime" || status === "ready_for_storage" || status === "ready_for_asr_provider") return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  if (status === "waiting_for_provider_assets" || status?.startsWith("blocked")) return "border-amber-200 bg-amber-50 text-amber-800";
+  return "border-slate-200 bg-slate-50 text-slate-600";
+}
+
 function formatRelativeTime(value: string | null | undefined) {
   if (!value) return "нет heartbeat";
   const ts = Date.parse(value);
@@ -1187,6 +1260,9 @@ export default function ReelsBrainPage() {
   const [workerState, setWorkerState] = useState<WorkerStateResponse | null>(null);
   const [workerStateLoading, setWorkerStateLoading] = useState(false);
   const [workerStateError, setWorkerStateError] = useState("");
+  const [mediaIntelligence, setMediaIntelligence] = useState<MediaIntelligenceResponse | null>(null);
+  const [mediaIntelligenceLoading, setMediaIntelligenceLoading] = useState(false);
+  const [mediaIntelligenceError, setMediaIntelligenceError] = useState("");
 
   useEffect(() => {
     try {
@@ -1329,6 +1405,23 @@ export default function ReelsBrainPage() {
     return () => { alive = false; };
   }, []);
 
+  useEffect(() => {
+    let alive = true;
+    async function loadInitialMediaIntelligence() {
+      setMediaIntelligenceLoading(true);
+      try {
+        const data = await readJson<MediaIntelligenceResponse>(await fetch(`/api/factory/reels-brain/media-intelligence?niches=${encodeURIComponent(DEFAULT_AUTOMATION_NICHES)}&limit_per_niche=500`, { cache: "no-store" }));
+        if (alive) setMediaIntelligence(data);
+      } catch (e) {
+        if (alive) setMediaIntelligenceError(String((e as Error)?.message || e));
+      } finally {
+        if (alive) setMediaIntelligenceLoading(false);
+      }
+    }
+    void loadInitialMediaIntelligence();
+    return () => { alive = false; };
+  }, []);
+
   const availableProviders = Array.isArray(health?.available) ? health.available : [];
   const configuredCount = health?.providers?.filter((provider) => provider.configured).length || 0;
   const queries = queriesFromText(queriesText);
@@ -1400,6 +1493,44 @@ export default function ReelsBrainPage() {
   const workerLiveness = reelsWorker?.liveness?.state || (reelsWorker?.last_seen ? "alive" : "unknown");
   const workerAgeSec = Number(reelsWorker?.liveness?.age_sec ?? 0);
   const workerLastSeenLabel = formatRelativeTime(reelsWorker?.last_seen);
+  const mediaSummary = mediaIntelligence?.summary || {};
+  const mediaPipelineSteps = [
+    {
+      key: "resolver",
+      title: "1. Media Resolver Report",
+      status: mediaSummary.total ? "live" : "waiting_for_corpus",
+      value: `${compactNumber(mediaSummary.ready || 0)} ready / ${compactNumber(mediaSummary.total || 0)} total`,
+      text: "Честно разделяет прямые asset URL и обычные страницы соцсетей.",
+    },
+    {
+      key: "store",
+      title: "2. Direct Asset Store",
+      status: mediaIntelligence?.direct_asset_store?.status || "waiting_for_provider_assets",
+      value: `${compactNumber(mediaIntelligence?.direct_asset_store?.candidates?.length || 0)} candidates`,
+      text: mediaIntelligence?.direct_asset_store?.note || "Готовит отдельное хранение direct asset без замены page URL.",
+    },
+    {
+      key: "audio",
+      title: "3. Audio Worker MVP",
+      status: mediaIntelligence?.audio_worker_mvp?.status || "blocked_waiting_for_direct_assets",
+      value: `${compactNumber(mediaIntelligence?.audio_worker_mvp?.candidate_count || 0)} candidates`,
+      text: mediaIntelligence?.audio_worker_mvp?.contract?.runtime || "FFmpeg/audio features включаются только после direct asset.",
+    },
+    {
+      key: "transcript",
+      title: "4. Transcript Layer",
+      status: mediaIntelligence?.transcript_layer?.status || "blocked_waiting_for_audio_assets",
+      value: `${compactNumber(mediaIntelligence?.transcript_layer?.candidate_count || 0)} candidates`,
+      text: mediaIntelligence?.transcript_layer?.contract?.runtime || "Whisper/ASR только после легального audio asset.",
+    },
+    {
+      key: "visual",
+      title: "5. Visual Worker MVP",
+      status: mediaIntelligence?.visual_worker_mvp?.status || "blocked_waiting_for_video_assets",
+      value: `${compactNumber(mediaIntelligence?.visual_worker_mvp?.candidate_count || 0)} candidates`,
+      text: mediaIntelligence?.visual_worker_mvp?.contract?.runtime || "Frame sampling + vision classifier после direct video asset.",
+    },
+  ];
   const cockpitCorpusCurrent = Math.max(portfolioCorpusCurrent, analyzeBacklogTotals.total);
   const cockpitCorpusSource = analyzeBacklogTotals.total > portfolioCorpusCurrent ? "backlog" : "portfolio";
   const corpusProgress = portfolioCorpusTarget ? Math.min(100, Math.round((cockpitCorpusCurrent / portfolioCorpusTarget) * 100)) : 0;
@@ -1634,6 +1765,7 @@ export default function ReelsBrainPage() {
           loadAnalyzeBacklogPlan(currentNiches),
           loadLearningEconomics(currentNiches),
           loadWorkerState(),
+          loadMediaIntelligence(currentNiches),
         ]);
       }
     } finally {
@@ -1651,6 +1783,19 @@ export default function ReelsBrainPage() {
       setWorkerStateError(String((e as Error)?.message || e));
     } finally {
       setWorkerStateLoading(false);
+    }
+  }
+
+  async function loadMediaIntelligence(currentNiches = automationNiches) {
+    setMediaIntelligenceLoading(true);
+    setMediaIntelligenceError("");
+    try {
+      const data = await readJson<MediaIntelligenceResponse>(await fetch(`/api/factory/reels-brain/media-intelligence?niches=${encodeURIComponent(currentNiches.trim() || DEFAULT_AUTOMATION_NICHES)}&limit_per_niche=500`, { cache: "no-store" }));
+      setMediaIntelligence(data);
+    } catch (e) {
+      setMediaIntelligenceError(String((e as Error)?.message || e));
+    } finally {
+      setMediaIntelligenceLoading(false);
     }
   }
 
@@ -2306,6 +2451,88 @@ export default function ReelsBrainPage() {
                   {workerStateError || workerState?.db_error || workerState?.worker_issue}
                 </div>
               ) : null}
+            </div>
+
+            <div className="mt-4 overflow-hidden rounded-[1.75rem] border border-cyan-100 bg-cyan-50 shadow-sm">
+              <div className="flex flex-wrap items-start justify-between gap-3 border-b border-cyan-100 bg-white p-4">
+                <div>
+                  <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.2em] text-cyan-700">
+                    <Radar className="h-4 w-4" />
+                    Media Intelligence Readiness
+                  </div>
+                  <h3 className="mt-1 text-xl font-black tracking-tight text-slate-950">
+                    1-5: от URL поста до audio / transcript / visual контракта
+                  </h3>
+                  <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-600">
+                    Этот слой пока ничего не скачивает и не запускает платные модели. Он показывает, сколько видео реально
+                    готовы к расшифровке, а сколько пока остаются metadata-only для Pattern Brain.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => { void loadMediaIntelligence(); }}
+                  disabled={mediaIntelligenceLoading}
+                  className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-cyan-200 bg-cyan-50 px-3 py-2 text-xs font-bold text-cyan-900 hover:bg-cyan-100 disabled:opacity-50"
+                >
+                  {mediaIntelligenceLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                  Refresh media
+                </button>
+              </div>
+
+              <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-4">
+                <MetricCard label="Scanned" value={mediaSummary.total || 0} />
+                <MetricCard label="Direct assets" value={mediaSummary.ready || 0} />
+                <MetricCard label="Metadata only" value={mediaSummary.metadata_only || 0} />
+                <MetricCard label="Ready %" value={mediaSummary.media_ready_pct || 0} />
+              </div>
+
+              <div className="grid gap-3 px-4 pb-4 lg:grid-cols-[1fr_1fr]">
+                <div className="space-y-2">
+                  {mediaPipelineSteps.map((step) => (
+                    <div key={step.key} className="rounded-2xl border border-cyan-100 bg-white p-3">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <div className="text-sm font-black text-slate-950">{step.title}</div>
+                          <div className="mt-1 text-xs leading-5 text-slate-500">{step.text}</div>
+                        </div>
+                        <span className={`rounded-full border px-2.5 py-1 text-xs font-bold ${mediaReadinessTone(step.status)}`}>
+                          {step.status}
+                        </span>
+                      </div>
+                      <div className="mt-2 font-mono text-sm font-black text-cyan-950">{step.value}</div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="rounded-2xl border border-cyan-100 bg-white p-4">
+                  <div className="text-sm font-black text-slate-950">Platform readiness</div>
+                  <div className="mt-1 text-xs text-slate-500">Где есть прямые assets, а где только URL страницы</div>
+                  <div className="mt-3 space-y-2">
+                    {Object.entries(mediaSummary.by_platform || {}).length ? Object.entries(mediaSummary.by_platform || {}).map(([platform, row]) => (
+                      <div key={platform} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-bold text-slate-900">{titlePlatform(platform)}</span>
+                          <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 font-bold text-slate-600">
+                            {compactNumber(row.ready)} / {compactNumber(row.total)}
+                          </span>
+                        </div>
+                        <div className="mt-1 text-slate-500">
+                          metadata-only {compactNumber(row.metadata_only)} · unknown {compactNumber(row.unknown)} · blocked {compactNumber(row.blocked)}
+                        </div>
+                      </div>
+                    )) : (
+                      <div className="rounded-xl border border-dashed border-cyan-200 bg-cyan-50 px-3 py-8 text-center text-xs font-semibold text-cyan-800">
+                        {mediaIntelligenceLoading ? "Сканирую media readiness..." : "Media report пока пуст."}
+                      </div>
+                    )}
+                  </div>
+                  {mediaIntelligenceError || mediaIntelligence?.error || mediaIntelligence?.warning ? (
+                    <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs font-semibold text-amber-900">
+                      {mediaIntelligenceError || mediaIntelligence?.error || mediaIntelligence?.warning}
+                    </div>
+                  ) : null}
+                </div>
+              </div>
             </div>
 
             <details className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
