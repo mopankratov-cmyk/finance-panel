@@ -247,7 +247,7 @@ export async function POST(req: NextRequest) {
       }, { headers: { "Cache-Control": "no-store" } });
     }
 
-    if (!process.env.FAL_KEY) return NextResponse.json({ ok: false, error: "FAL_KEY не настроен" }, { status: 500 });
+    if (!process.env.FAL_KEY && !process.env.FAL_BILLING_KEY) return NextResponse.json({ ok: false, error: "FAL_KEY не настроен" }, { status: 500 });
     const falImage = await rehostImageForFal(source.imageUrl);
     const jobs = await Promise.all(variants.map(async (variant) => {
       const res = await falVideoSubmitDetailed(variant.model, falImage, variant.prompt, { duration: variant.duration });

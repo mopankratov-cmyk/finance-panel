@@ -40,7 +40,7 @@ export interface FalSubmitResult {
 // важнейшие термины первыми (модель сильнее весит ранние). Маркеры AI-слопа из ресёрча 2026.
 const DEFAULT_NEG = "mirrored text, warped label, deformed product, deformed packaging, melted edges, floating product, changed shape, morphing, distortion, blurry, low quality";
 
-function key(): string | null { return process.env.FAL_KEY || null; }
+function key(): string | null { return process.env.FAL_KEY || process.env.FAL_BILLING_KEY || null; }
 function family(model: string): "seedance" | "kling" | "pika" { return model.startsWith("seedance") ? "seedance" : model.startsWith("pika") ? "pika" : "kling"; }
 
 // Остаток баланса аккаунта FAL (GET https://api.fal.ai/v1/account/billing?expand=credits).

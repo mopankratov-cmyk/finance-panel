@@ -17,6 +17,7 @@ ok(/asset_id/.test(route), "route returns Product Twin asset provenance");
 ok(/image_data_url\/disk_path требуют clean_first:true/.test(route), "disk/data-url inputs are gated through clean_first");
 ok(/clean_source: cleanFirst/.test(route), "route returns clean_source metadata");
 ok(/falVideoSubmitDetailed/.test(route), "route uses detailed FAL submit diagnostics");
+ok(/process\.env\.FAL_KEY && !process\.env\.FAL_BILLING_KEY/.test(route), "route accepts FAL_BILLING_KEY fallback for preview smoke submit");
 ok(/status_route: "\/api\/factory\/video-fal-status\/\{task_id\}"/.test(route), "route returns existing status route hint");
 
 console.log(`\nproductBrollBatchRouteContract: ${pass} passed, ${fail} failed`);

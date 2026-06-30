@@ -6,6 +6,8 @@ import { ok } from "node:assert/strict";
 const route = readFileSync("app/api/factory/product-twin/smoke/route.ts", "utf8");
 const buildRoute = readFileSync("app/api/factory/product-twin/build/route.ts", "utf8");
 const builder = readFileSync("lib/factory/productTwinBuild.ts", "utf8");
+const falImageEdit = readFileSync("lib/factory/falImageEdit.ts", "utf8");
+const falVideo = readFileSync("lib/factory/falVideo.ts", "utf8");
 
 ok(/isAuthorizedReelsBrainJobRequest/.test(route), "smoke route uses existing cron/session auth");
 ok(/buildProductTwin/.test(route), "smoke route can run live Product Twin build");
@@ -20,5 +22,8 @@ ok(/status_route: "\/api\/factory\/video-fal-status\/\{task_id\}"/.test(route), 
 ok(/archiveFactoryVideosToYandex/.test(route), "smoke route includes Yandex archive report");
 ok(/buildProductTwin/.test(buildRoute), "public build route delegates to shared builder");
 ok(/resolveInputImage/.test(builder), "shared builder resolves source image");
+ok(/process\.env\.FAL_KEY && !process\.env\.FAL_BILLING_KEY/.test(builder), "Product Twin builder accepts FAL_BILLING_KEY fallback in preview");
+ok(/process\.env\.FAL_KEY \|\| process\.env\.FAL_BILLING_KEY/.test(falImageEdit), "FAL image edit accepts FAL_BILLING_KEY fallback");
+ok(/process\.env\.FAL_KEY \|\| process\.env\.FAL_BILLING_KEY/.test(falVideo), "FAL video submit accepts FAL_BILLING_KEY fallback");
 
 console.log("productTwinSmokeRouteContract: passed");

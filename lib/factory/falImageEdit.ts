@@ -21,7 +21,7 @@ export async function runNanoBananaEdit(input: {
   prompt: string;
   maxWaitMs?: number;
 }): Promise<{ ok: true; imageUrl: string; responseUrl: string } | { ok: false; error: string; responseUrl?: string }> {
-  const key = process.env.FAL_KEY || "";
+  const key = process.env.FAL_KEY || process.env.FAL_BILLING_KEY || "";
   if (!key) return { ok: false, error: "FAL_KEY не настроен" };
   const sub = await fetchWithRetry(`${QUEUE}${NANO_EDIT}`, {
     method: "POST",

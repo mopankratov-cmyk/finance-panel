@@ -89,7 +89,7 @@ export async function buildProductTwin(input: ProductTwinBuildInput, db: Supabas
 } | { ok: false; error: string; status?: number; responseUrl?: string }> {
   const article = cleanText(input.article, 80);
   if (!article) return { ok: false, error: "нужен article", status: 400 };
-  if (!process.env.FAL_KEY) return { ok: false, error: "FAL_KEY не настроен", status: 500 };
+  if (!process.env.FAL_KEY && !process.env.FAL_BILLING_KEY) return { ok: false, error: "FAL_KEY не настроен", status: 500 };
 
   const product = cleanText(input.product || article, 160);
   const category = normalizeTwinCategory(input.category, article, product);
