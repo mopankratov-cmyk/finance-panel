@@ -4,6 +4,15 @@
 
 ## Итог ночи
 
+- Дата: 2026-06-30
+- Worker: codex / reels-brain railway offline workers
+- Ветка: `feat/reels-brain-railway-offline-workers`
+- Что сделано: добавлен Railway entrypoint для Reels Brain offline loop, cost guard для paid bulk, heartbeat в worker-state, runbook и contract test
+- Проверки: в процессе текущего прогона
+- Что осталось: поставить env в Railway и запустить one-shot smoke с реальным `CRON_SECRET`
+
+## Архив прошлых смен
+
 - Дата: 2026-06-25
 - Worker: codex / content-factory audit
 - Last heartbeat: локально, в процессе работы
