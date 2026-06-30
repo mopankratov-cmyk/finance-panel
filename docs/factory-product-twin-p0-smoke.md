@@ -159,6 +159,15 @@ GET /api/factory/product-twin/smoke
 
 Smoke route защищён через существующий `CRON_SECRET`/Studio session auth. Внешний `vercel curl` без сессии ожидаемо получает `Не авторизовано`.
 
+Автоматическая классификация Product Digital Twin:
+
+```text
+GET /api/factory/product-twin/classify?article=YYS0101
+GET /api/factory/product-twin/classify?twin_id=pt_...
+```
+
+Ответ содержит `classification`: canonical asset по use-case (`hero`, `broll`, `ugc`, `marketplace`, `ads`), quality bucket, тип ассета, dominant color, object size, признаки packaging/hands и reject reasons. Это первый контракт этапа 6: downstream-агенты выбирают уже классифицированный twin, а не случайную картинку.
+
 0. Store generated media in Yandex Disk by default:
    - `falImageEdit` archives generated clean images;
    - `video-fal-status` archives completed FAL mp4;
