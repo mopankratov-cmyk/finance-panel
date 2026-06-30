@@ -17,6 +17,10 @@ ok(/apply = input\?\.apply === true/.test(helper), "Yandex archive requires expl
 ok(/missing_token/.test(helper), "Yandex archive is fail-open when token is missing");
 ok(/importUrlToYandex/.test(helper) && /url=/.test(helper), "Yandex archive asks Yandex Disk to import from Supabase URL");
 ok(/archiveExternalMediaToYandex/.test(helper), "Yandex archive exposes direct generated media archive helper");
+ok(/export function hasYandexDiskToken/.test(helper), "Yandex helper exposes token availability for Yandex-first writers");
+ok(/uploadFactoryBufferToYandex/.test(helper), "Yandex helper supports direct buffer uploads for freshly generated assets");
+ok(/getYandexDiskDownloadHref/.test(helper) && /\/download\?path=/.test(helper), "Yandex helper can resolve private disk paths to temporary download URLs");
+ok(/uploadBufferToYandex/.test(helper) && /method: "PUT"/.test(helper), "Yandex helper uploads generated buffers through Disk upload hrefs");
 ok(/AbortSignal\.timeout\(30000\)/.test(helper), "Yandex archive fails fast on broken source downloads");
 ok(/JSON\.stringify\(part\)/.test(helper), "Yandex archive serializes object-shaped errors");
 ok(/yandex_archive_url/.test(helper) && /yandex_archived_at/.test(helper), "Yandex archive records result in content_assets analysis");

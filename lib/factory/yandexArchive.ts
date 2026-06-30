@@ -112,6 +112,10 @@ function bearerHeaders() {
   return { Authorization: `OAuth ${token()}` };
 }
 
+export function hasYandexDiskToken(): boolean {
+  return Boolean(token());
+}
+
 async function verifyYandexAccess() {
   if (!token()) {
     return { ready: false, error: "YANDEX_DISK_OAUTH_TOKEN is missing" };
@@ -156,6 +160,15 @@ async function getUploadHref(path: string) {
     throw new Error(`upload href: ${res.status} ${safeError((res.body as { message?: unknown })?.message || JSON.stringify(res.body))}`);
   }
   return href;
+}
+
+export async function getYandexDiskDownloadHref(path: string): Promise<string | null> {
+  if (!token()) return null;
+  const cleanPath = String(path || "").replace(/^yandex-disk:/, "");
+  if (!cleanPath.startsWith("/")) return null;
+  const res = await yandexJson(`/download?path=${encodeURIComponent(cleanPath)}`, { method: "GET" });
+  const href = (res.body as { href?: string }).href;
+  return res.ok && href ? href : null;
 }
 
 async function importUrlToYandex(path: string, sourceUrl: string) {
@@ -208,6 +221,41 @@ async function uploadBufferToYandex(path: string, buf: Buffer, contentType: stri
     signal: AbortSignal.timeout(120000),
   });
   if (!put.ok) throw new Error(`upload put: ${put.status}`);
+}
+
+export async function uploadFactoryBufferToYandex(input: {
+  buffer: Buffer;
+  contentType: string;
+  kind: "video" | "clip" | "image";
+  article?: string | null;
+  niche?: string | null;
+  name?: string | null;
+  subdir?: string;
+  ext?: string;
+}): Promise<{ status: ArchiveStatus; yandex_path: string | null; yandex_url: string | null; download_url: string | null; error?: string; client_url: string }> {
+  const client_url = yandexClientUrl();
+  if (!token()) return { status: "missing_token", yandex_path: null, yandex_url: null, download_url: null, error: "YANDEX_DISK_OAUTH_TOKEN is missing", client_url };
+  const day = new Date().toISOString().slice(0, 10);
+  const niche = slug(input.niche, "unknown-niche");
+  const article = slug(input.article, "unknown-article");
+  const name = slug(input.name, "generated");
+  const subdir = slug(input.subdir || "direct", "direct");
+  const hash = createHash("sha1").update(input.buffer).digest("hex").slice(0, 12);
+  const ext = (input.ext || (input.kind === "image" ? "png" : "mp4")).replace(/^\./, "").toLowerCase();
+  const path = `${rootPath()}/${day}/${niche}/${subdir}/${article}-${name}-${hash}.${ext}`;
+  try {
+    await uploadBufferToYandex(path, input.buffer, input.contentType);
+    const download_url = await getYandexDiskDownloadHref(path);
+    return {
+      status: "uploaded",
+      yandex_path: path,
+      yandex_url: publicYandexHint(path),
+      download_url,
+      client_url: yandexClientUrl(path.split("/").slice(0, -1).join("/")),
+    };
+  } catch (error) {
+    return { status: "failed", yandex_path: path, yandex_url: null, download_url: null, error: safeError(error), client_url };
+  }
 }
 
 async function downloadVideo(url: string) {

@@ -187,11 +187,14 @@ Asset pack v0 теперь включает служебные слои `object_
 - получают `quality_details.object_coverage`, `alpha_coverage`, `depth_strategy` и список segments;
 - не считаются `hero_ready`/`broll_ready`, но используются как служебный слой для будущего video/compositing pipeline.
 
-0. Store generated media in Yandex Disk by default:
+0. Store big generated media in Yandex Disk by default:
+   - Product Twin image variants are uploaded to Yandex Disk first;
+   - `content_assets` keeps metadata, quality, classification, and the `yandex-disk:` path;
+   - Supabase Storage remains a fallback only when `YANDEX_DISK_OAUTH_TOKEN` is missing or the Disk upload fails;
+   - FAL submit resolves `yandex-disk:` paths into temporary Disk download URLs before image-to-video;
    - `falImageEdit` archives generated clean images;
    - `video-fal-status` archives completed FAL mp4;
-   - `productTwinStore.uploadTwinAsset` archives generated twin variants;
-   - batch archive now scans `content_assets` disks `gen`, `product_twin`, `prepared`;
+   - batch archive scans `content_assets` disks `gen`, `product_twin`, `prepared`;
    - if `YANDEX_DISK_OAUTH_TOKEN` is missing, generation stays fail-open and reports archive status instead of crashing.
 
 1. Add Product Twin quality critic:

@@ -23,6 +23,8 @@ ok(/getLatestProductTwinByArticle/.test(builder) && /reused_product_twin/.test(b
 ok(/force/.test(builder) && /rebuild/.test(builder), "builder supports explicit force/rebuild policy");
 ok(/disk_path/.test(builder) && /image_data_url/.test(builder) && /image_url/.test(builder), "builder accepts disk/data-url/image-url inputs");
 ok(/disk: DISK/.test(store) && /product_twin/.test(store), "store writes product_twin rows into content_assets");
+ok(/hasYandexDiskToken/.test(store) && /uploadFactoryBufferToYandex/.test(store), "store uploads Product Twin buffers to Yandex Disk first");
+ok(/storage: "yandex_disk"/.test(store) && /falling back to Supabase storage/.test(store), "store records Yandex-first storage and keeps Supabase as fallback");
 ok(/product_twin_asset/.test(store), "store writes per-asset metadata");
 ok(/quality_details/.test(store), "store persists per-asset quality details");
 ok(/getProductTwinById/.test(byIdRoute), "by-id route reads a twin");

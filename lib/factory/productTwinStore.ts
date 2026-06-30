@@ -11,7 +11,7 @@ import {
   type ProductTwinCategory,
   type ProductTwinUseCase,
 } from "./productTwin";
-import { archiveExternalMediaToYandex } from "./yandexArchive";
+import { hasYandexDiskToken, uploadFactoryBufferToYandex } from "./yandexArchive";
 import { assessProductTwinImage, type ProductTwinQualityResult } from "./productTwinQuality";
 
 const BUCKET = "factory-media";
@@ -184,8 +184,23 @@ export async function uploadTwinAsset(db: SupabaseClient, input: {
   kind: ProductTwinAssetDraft["kind"];
   buffer: Buffer;
   contentType?: string;
-}): Promise<{ url: string; path: string } | { error: string }> {
+}): Promise<{ url: string; path: string; storage: "yandex_disk" | "supabase" } | { error: string }> {
   const hash = createHash("sha1").update(input.buffer).digest("hex").slice(0, 16);
+  if (hasYandexDiskToken()) {
+    const yandex = await uploadFactoryBufferToYandex({
+      buffer: input.buffer,
+      contentType: input.contentType || "image/png",
+      kind: "image",
+      article: input.article,
+      name: `${input.twinId}-${input.kind}`,
+      subdir: "product-twin",
+      ext: "png",
+    });
+    if (yandex.status === "uploaded" && yandex.yandex_path) {
+      return { url: yandex.yandex_url || `yandex-disk:${yandex.yandex_path}`, path: yandex.yandex_path, storage: "yandex_disk" };
+    }
+    console.warn(`[productTwinStore] Yandex upload failed for ${input.article}/${input.kind}: ${yandex.error || yandex.status}; falling back to Supabase storage`);
+  }
   const path = `product-twins/${input.article}/${input.twinId}/${input.kind}-${hash}.png`;
   const { error } = await db.storage.from(BUCKET).upload(path, input.buffer, {
     contentType: input.contentType || "image/png",
@@ -195,14 +210,7 @@ export async function uploadTwinAsset(db: SupabaseClient, input: {
   if (error) return { error: error.message };
   const url = db.storage.from(BUCKET).getPublicUrl(path).data?.publicUrl || "";
   if (!url) return { error: "publicUrl missing" };
-  await archiveExternalMediaToYandex({
-    sourceUrl: url,
-    kind: "image",
-    article: input.article,
-    name: `${input.twinId}-${input.kind}`,
-    subdir: "product-twin",
-  }).catch(() => null);
-  return { url, path };
+  return { url, path, storage: "supabase" };
 }
 
 export async function persistProductTwin(db: SupabaseClient, input: {
