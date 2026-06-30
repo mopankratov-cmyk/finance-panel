@@ -661,12 +661,55 @@ type LearningEconomicsResponse = {
       found: number;
       inserted: number;
       analyzed: number;
+      relevant?: number;
       errors: number;
       estimated_spend_usd: number;
+      actual_spend_usd?: number;
+      spend_source?: "estimated" | "actual" | "mixed";
       cost_per_inserted: number | null;
       cost_per_analyzed: number | null;
+      cost_per_useful?: number | null;
+      waste_score?: number;
       niches: string[];
     }[];
+    source_rankings?: LearningSourceRanking[];
+    recommended_spend_plan?: {
+      split?: {
+        exploit_pct?: number;
+        explore_pct?: number;
+        refresh_pct?: number;
+      };
+      next_actions?: string[];
+      scale_sources?: LearningSourceRanking[];
+      explore_sources?: LearningSourceRanking[];
+      refresh_sources?: LearningSourceRanking[];
+      avoid_sources?: LearningSourceRanking[];
+      best_provider?: {
+        provider: string;
+        runs: number;
+        analyzed: number;
+        inserted: number;
+        cost_per_useful?: number | null;
+        spend_source?: "estimated" | "actual" | "mixed";
+      } | null;
+    };
+    economics_summary?: {
+      source_memory_count: number;
+      scalable_sources: number;
+      avoid_sources: number;
+      best_source?: {
+        label: string;
+        yield_score: number;
+        estimated_cost_per_relevant_usd: number;
+      } | null;
+      cheapest_provider?: {
+        provider: string;
+        cost_per_useful?: number | null;
+        spend_source?: "estimated" | "actual" | "mixed";
+      } | null;
+      billing_truth?: "estimated_only" | "mixed_or_actual";
+      note?: string;
+    };
     legal_guard?: {
       principle: string;
       allowed: string[];
@@ -785,6 +828,29 @@ type LearningReferenceExample = {
   confidence?: "high" | "medium" | "low";
   safety_flags?: string[];
   creative_brief?: LearningCreativeBrief;
+};
+
+type LearningSourceRanking = {
+  id: string;
+  niche: string;
+  platform: "tiktok" | "instagram" | "youtube";
+  type: "query" | "hashtag" | "account" | "sound" | "manual_url";
+  value: string;
+  status: "active" | "paused" | "banned";
+  yield_score: number;
+  relevance_rate: number;
+  breakout_rate: number;
+  cost_per_relevant_units: number;
+  estimated_cost_per_relevant_usd: number;
+  runs: number;
+  found: number;
+  relevant: number;
+  breakout: number;
+  inserted: number;
+  waste_score: number;
+  lane: "exploit" | "explore" | "refresh" | "hold";
+  recommendation: "scale" | "explore_more" | "keep_testing" | "avoid" | "skip";
+  reason?: string;
 };
 
 type LearningGeneratorPayload = {
@@ -1033,6 +1099,14 @@ function confidenceCopy(confidence: "high" | "medium" | "low" | undefined) {
   if (confidence === "high") return { label: "high confidence", tone: "border-emerald-200 bg-emerald-50 text-emerald-700" };
   if (confidence === "medium") return { label: "medium confidence", tone: "border-cyan-200 bg-cyan-50 text-cyan-800" };
   return { label: "low confidence", tone: "border-amber-200 bg-amber-50 text-amber-800" };
+}
+
+function sourceRecommendationCopy(recommendation: LearningSourceRanking["recommendation"] | undefined) {
+  if (recommendation === "scale") return { label: "лить бюджет", tone: "border-emerald-200 bg-emerald-50 text-emerald-700" };
+  if (recommendation === "explore_more") return { label: "дотестить", tone: "border-cyan-200 bg-cyan-50 text-cyan-800" };
+  if (recommendation === "keep_testing") return { label: "освежить", tone: "border-amber-200 bg-amber-50 text-amber-800" };
+  if (recommendation === "avoid") return { label: "стоп", tone: "border-red-200 bg-red-50 text-red-700" };
+  return { label: "пропустить", tone: "border-slate-200 bg-slate-50 text-slate-600" };
 }
 
 function capabilityTone(status: string) {
@@ -1289,6 +1363,12 @@ export default function ReelsBrainPage() {
   const generatorRecipes = learningEconomics?.insights?.recipes || [];
   const sourceReferences = learningEconomics?.insights?.source_references || [];
   const sourceMap = learningEconomics?.insights?.source_map || [];
+  const sourceRankings = learningEconomics?.insights?.source_rankings || [];
+  const recommendedSpendPlan = learningEconomics?.insights?.recommended_spend_plan || null;
+  const economicsSummary = learningEconomics?.insights?.economics_summary || null;
+  const scalableSources = recommendedSpendPlan?.scale_sources || sourceRankings.filter((source) => source.recommendation === "scale");
+  const exploreSources = recommendedSpendPlan?.explore_sources || sourceRankings.filter((source) => source.recommendation === "explore_more");
+  const avoidSources = recommendedSpendPlan?.avoid_sources || sourceRankings.filter((source) => source.recommendation === "avoid");
   const legalGuard = learningEconomics?.insights?.legal_guard || null;
   const capabilityStatus = learningEconomics?.insights?.capability_status || [];
   const insightNicheOptions = Array.from(new Set([
@@ -2689,18 +2769,82 @@ export default function ReelsBrainPage() {
 
             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
               <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">Source map / discovery economics</p>
-              <h4 className="mt-1 text-lg font-black text-slate-950">Какие источники дают насмотренность</h4>
-              <div className="mt-3 space-y-2">
-                {sourceMap.length ? sourceMap.slice(0, 4).map((source) => (
-                  <div key={source.provider} className="rounded-xl border border-slate-200 bg-white px-3 py-2">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <span className="font-bold text-slate-900">{providerLabel(source.provider)}</span>
-                      <span className="text-xs font-black text-cyan-700">{formatUsd(source.cost_per_analyzed)}</span>
-                    </div>
-                    <p className="mt-1 text-xs text-slate-500">runs {compactNumber(source.runs)} · analyzed {compactNumber(source.analyzed)} · errors {compactNumber(source.errors)}</p>
+              <h4 className="mt-1 text-lg font-black text-slate-950">Куда тратить следующий Apify-бюджет</h4>
+              {economicsSummary ? (
+                <div className="mt-3 rounded-xl border border-cyan-100 bg-cyan-50 px-3 py-2 text-xs text-cyan-900">
+                  <div className="font-black">
+                    Источников в памяти: {compactNumber(economicsSummary.source_memory_count)} · scale {compactNumber(economicsSummary.scalable_sources)} · stop {compactNumber(economicsSummary.avoid_sources)}
                   </div>
-                )) : <p className="text-sm text-slate-500">Source map появится после новых cost-aware прогонов.</p>}
+                  <div className="mt-1 font-semibold">
+                    {economicsSummary.best_source?.label ? `Лучший источник: ${economicsSummary.best_source.label} (${compactNumber(economicsSummary.best_source.yield_score)}/100)` : "Лучший источник пока не доказан."}
+                  </div>
+                  <div className="mt-1 text-cyan-800">{economicsSummary.note}</div>
+                </div>
+              ) : null}
+
+              {recommendedSpendPlan?.split ? (
+                <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                  <div className="rounded-xl border border-emerald-100 bg-white px-3 py-2">
+                    <p className="text-xs font-black uppercase tracking-wide text-emerald-700">Exploit</p>
+                    <p className="mt-1 text-2xl font-black text-slate-950">{compactNumber(recommendedSpendPlan.split.exploit_pct)}%</p>
+                  </div>
+                  <div className="rounded-xl border border-cyan-100 bg-white px-3 py-2">
+                    <p className="text-xs font-black uppercase tracking-wide text-cyan-700">Explore</p>
+                    <p className="mt-1 text-2xl font-black text-slate-950">{compactNumber(recommendedSpendPlan.split.explore_pct)}%</p>
+                  </div>
+                  <div className="rounded-xl border border-amber-100 bg-white px-3 py-2">
+                    <p className="text-xs font-black uppercase tracking-wide text-amber-700">Refresh</p>
+                    <p className="mt-1 text-2xl font-black text-slate-950">{compactNumber(recommendedSpendPlan.split.refresh_pct)}%</p>
+                  </div>
+                </div>
+              ) : null}
+
+              {recommendedSpendPlan?.next_actions?.length ? (
+                <div className="mt-3 space-y-1">
+                  {recommendedSpendPlan.next_actions.slice(0, 3).map((action) => (
+                    <p key={action} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700">{action}</p>
+                  ))}
+                </div>
+              ) : null}
+
+              <div className="mt-3 grid gap-2">
+                {[...scalableSources.slice(0, 2), ...exploreSources.slice(0, 1), ...avoidSources.slice(0, 1)].length ? (
+                  [...scalableSources.slice(0, 2), ...exploreSources.slice(0, 1), ...avoidSources.slice(0, 1)].map((source) => {
+                    const recommendation = sourceRecommendationCopy(source.recommendation);
+                    return (
+                      <div key={source.id} className="rounded-xl border border-slate-200 bg-white px-3 py-2">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <span className="font-bold text-slate-900">{titlePlatform(source.platform)} · {source.type}: {source.value}</span>
+                          <span className={`rounded-full border px-2 py-1 text-xs font-black ${recommendation.tone}`}>{recommendation.label}</span>
+                        </div>
+                        <p className="mt-1 text-xs text-slate-500">
+                          yield {compactNumber(source.yield_score)} · relevant {compactNumber(Math.round(source.relevance_rate * 100))}% · breakout {compactNumber(Math.round(source.breakout_rate * 100))}% · cost/useful {formatUsd(source.estimated_cost_per_relevant_usd)}
+                        </p>
+                        <p className="mt-1 text-xs text-slate-400">{source.reason}</p>
+                      </div>
+                    );
+                  })
+                ) : (
+                  <p className="text-sm text-slate-500">Source rankings появятся после Discovery replay или новых source-aware прогонов.</p>
+                )}
               </div>
+
+              <details className="mt-3 rounded-xl border border-slate-200 bg-white p-3">
+                <summary className="cursor-pointer text-xs font-black uppercase tracking-[0.16em] text-slate-500">Provider economics</summary>
+                <div className="mt-3 space-y-2">
+                  {sourceMap.length ? sourceMap.slice(0, 5).map((source) => (
+                    <div key={source.provider} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="font-bold text-slate-900">{providerLabel(source.provider)}</span>
+                        <span className="text-xs font-black text-cyan-700">{formatUsd(source.cost_per_useful ?? source.cost_per_analyzed)}</span>
+                      </div>
+                      <p className="mt-1 text-xs text-slate-500">
+                        runs {compactNumber(source.runs)} · analyzed {compactNumber(source.analyzed)} · relevant {compactNumber(source.relevant || 0)} · waste {compactNumber(source.waste_score || 0)} · {spendSourceLabel(source.spend_source)}
+                      </p>
+                    </div>
+                  )) : <p className="text-sm text-slate-500">Provider economics появится после cost-aware прогонов.</p>}
+                </div>
+              </details>
             </div>
           </div>
 

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { automationRunHistory } from "@/lib/factory/reelsBrainPlaybook";
+import { discoverySources } from "@/lib/factory/reelsBrainDiscovery";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 20;
@@ -393,8 +394,12 @@ function buildSourceMap(rows: { niche?: string; playbook?: unknown }[]) {
     found: number;
     inserted: number;
     analyzed: number;
+    relevant: number;
     errors: number;
     estimated_spend_usd: number;
+    actual_spend_usd: number;
+    estimated_runs: number;
+    actual_runs: number;
     niches: Set<string>;
   }>();
   for (const row of rows) {
@@ -406,16 +411,28 @@ function buildSourceMap(rows: { niche?: string; playbook?: unknown }[]) {
         found: 0,
         inserted: 0,
         analyzed: 0,
+        relevant: 0,
         errors: 0,
         estimated_spend_usd: 0,
+        actual_spend_usd: 0,
+        estimated_runs: 0,
+        actual_runs: 0,
         niches: new Set<string>(),
       };
+      const spend = spendUsd(run);
       current.runs += 1;
       current.found += num(run.found);
       current.inserted += num(run.inserted);
       current.analyzed += num(run.analyzed);
+      current.relevant += num(run.relevant);
       current.errors += num(run.errors);
-      current.estimated_spend_usd += spendUsd(run).value;
+      current.estimated_spend_usd += spend.value;
+      if (spend.source === "actual") {
+        current.actual_spend_usd += spend.value;
+        current.actual_runs += 1;
+      } else {
+        current.estimated_runs += 1;
+      }
       if (row.niche) current.niches.add(row.niche);
       map.set(provider, current);
     }
@@ -426,12 +443,152 @@ function buildSourceMap(rows: { niche?: string; playbook?: unknown }[]) {
     found: row.found,
     inserted: row.inserted,
     analyzed: row.analyzed,
+    relevant: row.relevant,
     errors: row.errors,
     estimated_spend_usd: Math.round(row.estimated_spend_usd * 10000) / 10000,
+    actual_spend_usd: Math.round(row.actual_spend_usd * 10000) / 10000,
+    spend_source: row.actual_runs > 0 && row.estimated_runs > 0 ? "mixed" : row.actual_runs > 0 ? "actual" : "estimated",
     cost_per_inserted: perUnit(row.estimated_spend_usd, row.inserted),
     cost_per_analyzed: perUnit(row.estimated_spend_usd, row.analyzed),
+    cost_per_useful: perUnit(row.estimated_spend_usd, row.relevant || row.analyzed || row.inserted),
+    waste_score: Math.round(Math.min(100,
+      (row.found > 0 && row.inserted === 0 ? 45 : 0)
+      + (row.errors / Math.max(1, row.runs)) * 35
+      + (row.relevant > 0 ? 0 : 20)
+    )),
     niches: Array.from(row.niches).sort(),
   })).sort((a, b) => (a.cost_per_analyzed ?? 999) - (b.cost_per_analyzed ?? 999) || b.analyzed - a.analyzed).slice(0, 8);
+}
+
+function sourceRecommendation(source: ReturnType<typeof discoverySources>[number]) {
+  if (source.status !== "active") return "skip" as const;
+  if (source.runs < 2) return "explore_more" as const;
+  if (source.yield_score >= 65 && source.cost_per_relevant <= 2.5) return "scale" as const;
+  if (source.yield_score >= 45) return "keep_testing" as const;
+  return "avoid" as const;
+}
+
+function sourceLane(source: ReturnType<typeof discoverySources>[number]) {
+  const recommendation = sourceRecommendation(source);
+  if (recommendation === "scale") return "exploit" as const;
+  if (recommendation === "explore_more") return "explore" as const;
+  if (recommendation === "keep_testing") return "refresh" as const;
+  return "hold" as const;
+}
+
+function buildSourceRankings(rows: { niche?: string; playbook?: unknown }[]) {
+  const sources = rows.flatMap((row) => discoverySources(row.playbook, { includePaused: true }).map((source) => {
+    const recommendation = sourceRecommendation(source);
+    const lane = sourceLane(source);
+    const estimatedCostPerRelevantUsd = estimatedUsdFromCostUnits(source.cost_per_relevant);
+    const wasteScore = Math.round(Math.min(100,
+      (source.status !== "active" ? 25 : 0)
+      + (source.found > 0 && source.relevant === 0 ? 35 : 0)
+      + Math.max(0, 45 - source.yield_score)
+      + Math.max(0, source.cost_per_relevant - 3) * 8
+    ));
+    return {
+      id: source.id,
+      niche: source.niche || row.niche || "default",
+      platform: source.platform,
+      type: source.type,
+      value: source.value,
+      status: source.status,
+      yield_score: source.yield_score,
+      relevance_rate: source.relevance_rate,
+      breakout_rate: source.breakout_rate,
+      cost_per_relevant_units: source.cost_per_relevant,
+      estimated_cost_per_relevant_usd: estimatedCostPerRelevantUsd,
+      runs: source.runs,
+      found: source.found,
+      relevant: source.relevant,
+      breakout: source.breakout,
+      inserted: source.inserted,
+      waste_score: wasteScore,
+      lane,
+      recommendation,
+      reason: source.reason || (
+        recommendation === "scale"
+          ? "Высокий yield и нормальная цена за полезный референс."
+          : recommendation === "explore_more"
+            ? "Источник перспективный, но пока мало прогонов для уверенности."
+            : recommendation === "avoid"
+              ? "Источник дорогой или дает мало релевантных видео."
+              : "Источник стоит перепроверять малыми лимитами."
+      ),
+    };
+  }));
+
+  return sources
+    .sort((a, b) =>
+      b.yield_score - a.yield_score
+      || a.cost_per_relevant_units - b.cost_per_relevant_units
+      || b.relevant - a.relevant
+    )
+    .slice(0, 24);
+}
+
+function buildRecommendedSpendPlan(sourceRankings: ReturnType<typeof buildSourceRankings>, sourceMap: ReturnType<typeof buildSourceMap>) {
+  const scalable = sourceRankings.filter((source) => source.recommendation === "scale").slice(0, 5);
+  const explore = sourceRankings.filter((source) => source.recommendation === "explore_more").slice(0, 5);
+  const refresh = sourceRankings.filter((source) => source.recommendation === "keep_testing").slice(0, 5);
+  const avoid = sourceRankings.filter((source) => source.recommendation === "avoid").slice(0, 5);
+  const bestProvider = sourceMap
+    .filter((source) => source.analyzed > 0 || source.inserted > 0)
+    .sort((a, b) => (a.cost_per_useful ?? 999) - (b.cost_per_useful ?? 999) || b.analyzed - a.analyzed)[0] || null;
+
+  return {
+    split: {
+      exploit_pct: scalable.length ? 70 : 45,
+      explore_pct: explore.length ? 20 : 40,
+      refresh_pct: 10,
+    },
+    next_actions: [
+      scalable[0] ? `Увеличить лимит на ${scalable[0].platform}/${scalable[0].type}: ${scalable[0].value}.` : "Нет доказанного источника для масштабирования: сначала explore малыми лимитами.",
+      explore[0] ? `Добрать статистику по новому источнику: ${explore[0].value}.` : "Новых перспективных источников мало: replay старого корпуса может подсказать новые account/sound.",
+      avoid[0] ? `Не тратить бюджет на слабый источник: ${avoid[0].value}.` : "Явных источников для стоп-листа пока нет.",
+    ],
+    scale_sources: scalable,
+    explore_sources: explore,
+    refresh_sources: refresh,
+    avoid_sources: avoid,
+    best_provider: bestProvider,
+  };
+}
+
+function buildEconomicsSummary(input: {
+  sourceRankings: ReturnType<typeof buildSourceRankings>;
+  sourceMap: ReturnType<typeof buildSourceMap>;
+}) {
+  const strongSources = input.sourceRankings.filter((source) => source.recommendation === "scale");
+  const avoidSources = input.sourceRankings.filter((source) => source.recommendation === "avoid");
+  const bestSource = strongSources[0] || input.sourceRankings[0] || null;
+  const cheapestProvider = input.sourceMap
+    .filter((source) => source.cost_per_useful != null)
+    .sort((a, b) => (a.cost_per_useful ?? 999) - (b.cost_per_useful ?? 999))[0] || null;
+  const billingSources = new Set(input.sourceMap.map((source) => source.spend_source));
+
+  return {
+    source_memory_count: input.sourceRankings.length,
+    scalable_sources: strongSources.length,
+    avoid_sources: avoidSources.length,
+    best_source: bestSource ? {
+      label: `${bestSource.platform}/${bestSource.type}: ${bestSource.value}`,
+      yield_score: bestSource.yield_score,
+      estimated_cost_per_relevant_usd: bestSource.estimated_cost_per_relevant_usd,
+    } : null,
+    cheapest_provider: cheapestProvider ? {
+      provider: cheapestProvider.provider,
+      cost_per_useful: cheapestProvider.cost_per_useful,
+      spend_source: cheapestProvider.spend_source,
+    } : null,
+    billing_truth: billingSources.has("actual") || billingSources.has("mixed")
+      ? "mixed_or_actual"
+      : "estimated_only",
+    note: billingSources.has("actual") || billingSources.has("mixed")
+      ? "В экономике есть реальные billing-значения, но часть строк может быть оценочной."
+      : "Экономика пока оценочная: для честной цены за видео нужен billing API провайдера.",
+  };
 }
 
 function buildInsights(rows: { niche?: string; playbook?: unknown }[]) {
@@ -565,6 +722,11 @@ function buildInsights(rows: { niche?: string; playbook?: unknown }[]) {
     experimental_hooks: top_hooks.filter((row) => row.segment === "experimental_hooks").slice(0, 4),
   };
 
+  const source_map = buildSourceMap(rows);
+  const source_rankings = buildSourceRankings(rows);
+  const recommended_spend_plan = buildRecommendedSpendPlan(source_rankings, source_map);
+  const economics_summary = buildEconomicsSummary({ sourceRankings: source_rankings, sourceMap: source_map });
+
   return {
     summary: [
       top_hooks[0] ? `Самый сильный вход: ${top_hooks[0].hook_label} (${top_hooks[0].op_score}/100).` : "Паттерны хуков пока не найдены.",
@@ -593,7 +755,10 @@ function buildInsights(rows: { niche?: string; playbook?: unknown }[]) {
       confidence: hook.confidence,
       ...example,
     }))).slice(0, 8),
-    source_map: buildSourceMap(rows),
+    source_map,
+    source_rankings,
+    recommended_spend_plan,
+    economics_summary,
     legal_guard: {
       principle: "Копируем только механику: темп, структуру, удержание и тип доказательства. Не копируем сам контент.",
       allowed: ["структура по секундам", "ритм раскрытия", "тип хука", "механика удержания", "тип proof-кадра"],
