@@ -1045,6 +1045,61 @@ type ReelsBrainAudioIntelligenceResponse = {
   error?: string;
 };
 
+type ReelsBrainVisualIntelligenceResponse = {
+  ok?: boolean;
+  summary?: {
+    patterns?: number;
+    camera_styles?: number;
+    editing_moves?: number;
+    editor_payloads?: number;
+  };
+  visual?: {
+    patterns?: {
+      id: string;
+      niche: string;
+      score: number;
+      confidence: "high" | "medium" | "low";
+      camera: {
+        primary: string;
+        secondary?: string[];
+        framing: string;
+        movement: string;
+        proof_shot: string;
+      };
+      editing: {
+        rhythm: string;
+        moves?: string[];
+        first_3_seconds?: string[];
+        timeline?: { t: string; action: string }[];
+      };
+      visual_recipe?: string[];
+      product_fit?: string[];
+      avoid?: string[];
+    }[];
+    camera_mix?: {
+      camera: string;
+      count: number;
+      avg_score: number;
+    }[];
+    editing_mix?: {
+      move: string;
+      count: number;
+      avg_score: number;
+    }[];
+    editor_payloads?: {
+      id: string;
+      niche: string;
+      score: number;
+      camera: string;
+      moves: string[];
+      timeline: { t: string; action: string }[];
+    }[];
+    director_rules?: string[];
+  };
+  notes?: string[];
+  error?: string;
+};
+
 type LearningEconomicsDailyCost = {
   date: string;
   runs: number;
@@ -1379,6 +1434,9 @@ export default function ReelsBrainPage() {
   const [audioIntelligence, setAudioIntelligence] = useState<ReelsBrainAudioIntelligenceResponse | null>(null);
   const [audioIntelligenceLoading, setAudioIntelligenceLoading] = useState(false);
   const [audioIntelligenceError, setAudioIntelligenceError] = useState("");
+  const [visualIntelligence, setVisualIntelligence] = useState<ReelsBrainVisualIntelligenceResponse | null>(null);
+  const [visualIntelligenceLoading, setVisualIntelligenceLoading] = useState(false);
+  const [visualIntelligenceError, setVisualIntelligenceError] = useState("");
   const [insightNicheFilter, setInsightNicheFilter] = useState("all");
   const [insightConfidenceFilter, setInsightConfidenceFilter] = useState<"all" | "high" | "medium" | "low">("all");
   const [insightSegmentFilter, setInsightSegmentFilter] = useState<"all" | "op_hooks" | "frequent_hooks" | "experimental_hooks">("all");
@@ -1523,23 +1581,28 @@ export default function ReelsBrainPage() {
     async function loadInitialCreativeLayers() {
       setCreativeMemoryLoading(true);
       setAudioIntelligenceLoading(true);
+      setVisualIntelligenceLoading(true);
       try {
-        const [memory, audio] = await Promise.allSettled([
+        const [memory, audio, visual] = await Promise.allSettled([
           readJson<ReelsBrainCreativeMemoryResponse>(await fetch(`/api/factory/reels-brain/creative-memory?niches=${encodeURIComponent(DEFAULT_AUTOMATION_NICHES)}&limit=80`, { cache: "no-store" })),
           readJson<ReelsBrainAudioIntelligenceResponse>(await fetch(`/api/factory/reels-brain/audio-intelligence?niches=${encodeURIComponent(DEFAULT_AUTOMATION_NICHES)}&limit=80`, { cache: "no-store" })),
+          readJson<ReelsBrainVisualIntelligenceResponse>(await fetch(`/api/factory/reels-brain/visual-intelligence?niches=${encodeURIComponent(DEFAULT_AUTOMATION_NICHES)}&limit=80`, { cache: "no-store" })),
         ]);
         if (!alive) return;
         setCreativeMemory(memory.status === "fulfilled" ? memory.value : null);
         setAudioIntelligence(audio.status === "fulfilled" ? audio.value : null);
+        setVisualIntelligence(visual.status === "fulfilled" ? visual.value : null);
       } catch {
         if (alive) {
           setCreativeMemory(null);
           setAudioIntelligence(null);
+          setVisualIntelligence(null);
         }
       } finally {
         if (alive) {
           setCreativeMemoryLoading(false);
           setAudioIntelligenceLoading(false);
+          setVisualIntelligenceLoading(false);
         }
       }
     }
@@ -1616,6 +1679,12 @@ export default function ReelsBrainPage() {
   const topSoundTitles = audioIntelligence?.audio?.top_sound_titles || [];
   const audioEditorRules = audioIntelligence?.audio?.editor_rules || [];
   const audioNextPipeline = audioIntelligence?.audio?.next_pipeline || [];
+  const visualSummary = visualIntelligence?.summary || {};
+  const visualPatterns = visualIntelligence?.visual?.patterns || [];
+  const cameraMix = visualIntelligence?.visual?.camera_mix || [];
+  const editingMix = visualIntelligence?.visual?.editing_mix || [];
+  const editorPayloads = visualIntelligence?.visual?.editor_payloads || [];
+  const directorRules = visualIntelligence?.visual?.director_rules || [];
   const maxTimelineInserted = Math.max(1, ...learningTimeline.map((row) => row.inserted));
   const analyzeBacklogLanes = analyzeBacklog?.lanes || [];
   const analyzeBacklogQueue = analyzeBacklog?.queue || [];
@@ -1923,6 +1992,23 @@ export default function ReelsBrainPage() {
     }
   }
 
+  async function loadVisualIntelligence(currentNiches = automationNiches) {
+    setVisualIntelligenceLoading(true);
+    setVisualIntelligenceError("");
+    try {
+      const params = new URLSearchParams({
+        niches: currentNiches.trim() || DEFAULT_AUTOMATION_NICHES,
+        limit: "80",
+      });
+      const data = await readJson<ReelsBrainVisualIntelligenceResponse>(await fetch(`/api/factory/reels-brain/visual-intelligence?${params.toString()}`, { cache: "no-store" }));
+      setVisualIntelligence(data);
+    } catch (e) {
+      setVisualIntelligenceError(String((e as Error)?.message || e));
+    } finally {
+      setVisualIntelligenceLoading(false);
+    }
+  }
+
   async function refreshAutomationSurfaces(currentNiches = automationNiches, currentNiche = activeNiche()) {
     setAutomationSyncing(true);
     try {
@@ -1936,6 +2022,7 @@ export default function ReelsBrainPage() {
           loadLearningEconomics(currentNiches),
           loadCreativeMemory(currentNiches),
           loadAudioIntelligence(currentNiches),
+          loadVisualIntelligence(currentNiches),
         ]);
       }
     } finally {
@@ -2923,11 +3010,20 @@ export default function ReelsBrainPage() {
                   {audioIntelligenceLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Activity className="h-4 w-4" />}
                   Refresh audio
                 </button>
+                <button
+                  type="button"
+                  onClick={() => loadVisualIntelligence(automationNiches)}
+                  disabled={visualIntelligenceLoading}
+                  className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-cyan-200 bg-white px-3 py-2 text-sm font-black text-cyan-900 hover:border-cyan-400 disabled:opacity-50"
+                >
+                  {visualIntelligenceLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Zap className="h-4 w-4" />}
+                  Refresh visual
+                </button>
               </div>
             </div>
-            {(actionPlanError || creativeBriefsError || creativeMemoryError || audioIntelligenceError) ? (
+            {(actionPlanError || creativeBriefsError || creativeMemoryError || audioIntelligenceError || visualIntelligenceError) ? (
               <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">
-                {actionPlanError || creativeBriefsError || creativeMemoryError || audioIntelligenceError}
+                {actionPlanError || creativeBriefsError || creativeMemoryError || audioIntelligenceError || visualIntelligenceError}
               </div>
             ) : null}
             {(actionPlan || creativeBriefs) ? (
@@ -3147,6 +3243,93 @@ export default function ReelsBrainPage() {
                     ))}
                     {audioEditorRules.slice(0, 3).map((rule) => (
                       <p key={rule} className="rounded-xl border border-cyan-100 bg-cyan-50 px-3 py-2 text-xs font-semibold text-cyan-900">{rule}</p>
+                    ))}
+                  </div>
+                </details>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-4 rounded-2xl border border-emerald-100 bg-emerald-50 p-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-700">Camera / Editing Brain</p>
+                <h4 className="mt-1 text-lg font-black text-slate-950">Как снимать и где резать кадр</h4>
+                <p className="mt-1 max-w-2xl text-sm font-medium text-emerald-900">
+                  Этот слой превращает паттерны в режиссёрский payload: ракурс, движение камеры, proof shot, склейки, zoom/pop/freeze и структуру по секундам.
+                </p>
+              </div>
+              <span className="rounded-full border border-emerald-200 bg-white px-3 py-1 text-xs font-black text-emerald-800">
+                {visualIntelligenceLoading ? "loading" : `${compactNumber(visualSummary.patterns || 0)} visual patterns`}
+              </span>
+            </div>
+
+            <div className="mt-4 grid gap-2 sm:grid-cols-4">
+              <MetricCard label="Visual patterns" value={visualSummary.patterns || 0} />
+              <MetricCard label="Camera styles" value={visualSummary.camera_styles || 0} />
+              <MetricCard label="Editing moves" value={visualSummary.editing_moves || 0} />
+              <MetricCard label="Editor payloads" value={visualSummary.editor_payloads || 0} />
+            </div>
+
+            <div className="mt-4 grid gap-3 xl:grid-cols-[1.1fr_0.9fr]">
+              <div className="rounded-2xl border border-emerald-200 bg-white p-4">
+                <p className="font-black text-slate-950">Топ режиссёрские рецепты</p>
+                <div className="mt-3 grid gap-2 lg:grid-cols-2">
+                  {visualPatterns.length ? visualPatterns.slice(0, 4).map((pattern) => (
+                    <div key={pattern.id} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="font-black text-slate-900">{pattern.camera.primary}</span>
+                        <span className={`rounded-full border px-2 py-1 font-black ${confidenceCopy(pattern.confidence).tone}`}>
+                          {compactNumber(pattern.score)}
+                        </span>
+                      </div>
+                      <p className="mt-2 font-semibold text-slate-700">{pattern.camera.proof_shot}</p>
+                      <p className="mt-1 text-slate-500">movement: {pattern.camera.movement}</p>
+                      <p className="mt-1 text-slate-500">rhythm: {pattern.editing.rhythm}</p>
+                      <div className="mt-2 flex flex-wrap gap-1">
+                        {(pattern.editing.moves || []).slice(0, 4).map((move) => (
+                          <span key={move} className="rounded-full border border-slate-200 bg-white px-2 py-0.5 font-bold text-slate-600">{move}</span>
+                        ))}
+                      </div>
+                    </div>
+                  )) : <p className="text-sm text-slate-500">Visual patterns появятся после Pattern Brain.</p>}
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <div className="rounded-2xl border border-emerald-200 bg-white p-4">
+                  <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">Camera mix</p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {cameraMix.length ? cameraMix.map((row) => (
+                      <span key={row.camera} className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-bold text-slate-700">
+                        {row.camera}: {compactNumber(row.count)} · {compactNumber(row.avg_score)}
+                      </span>
+                    )) : <span className="text-sm text-slate-500">Camera mix пока пуст.</span>}
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-emerald-200 bg-white p-4">
+                  <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">Editing moves</p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {editingMix.length ? editingMix.slice(0, 10).map((row) => (
+                      <span key={row.move} className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-bold text-slate-700">
+                        {row.move}: {compactNumber(row.count)} · {compactNumber(row.avg_score)}
+                      </span>
+                    )) : <span className="text-sm text-slate-500">Editing moves пока пусты.</span>}
+                  </div>
+                </div>
+
+                <details className="rounded-2xl border border-emerald-200 bg-white p-4">
+                  <summary className="cursor-pointer text-xs font-black uppercase tracking-[0.18em] text-slate-500">Editor payload example</summary>
+                  <div className="mt-3 space-y-2">
+                    {editorPayloads[0]?.timeline?.length ? editorPayloads[0].timeline.map((step) => (
+                      <div key={`${editorPayloads[0].id}:${step.t}`} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs">
+                        <span className="font-black text-slate-900">{step.t}</span>
+                        <span className="text-slate-500"> · {step.action}</span>
+                      </div>
+                    )) : <p className="text-sm text-slate-500">Payload появится после visual patterns.</p>}
+                    {directorRules.slice(0, 3).map((rule) => (
+                      <p key={rule} className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-900">{rule}</p>
                     ))}
                   </div>
                 </details>
