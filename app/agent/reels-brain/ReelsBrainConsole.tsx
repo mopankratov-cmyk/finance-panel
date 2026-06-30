@@ -577,6 +577,44 @@ type SchedulerTickResponse = {
   error?: string;
 };
 
+type WorkerQueueItem = {
+  id?: string;
+  title?: string;
+  status?: string;
+  priority?: string;
+  blockers?: string[];
+};
+
+type WorkerStateRow = {
+  worker_id?: string;
+  label?: string | null;
+  status?: string | null;
+  branch?: string | null;
+  current_task_id?: string | null;
+  current_task_title?: string | null;
+  progress?: string | null;
+  blocker?: string | null;
+  note?: string | null;
+  queue?: WorkerQueueItem[] | null;
+  last_seen?: string | null;
+  source?: "heartbeat_db" | "queue_fallback" | string;
+  liveness?: {
+    state?: "unknown" | "alive" | "stale" | "dead";
+    age_sec?: number | null;
+  };
+};
+
+type WorkerStateResponse = {
+  ok?: boolean;
+  db_ready?: boolean;
+  worker?: WorkerStateRow | null;
+  workers?: WorkerStateRow[];
+  worker_issue?: string | null;
+  db_error?: string | null;
+  warnings?: string[];
+  error?: string;
+};
+
 type PortfolioDigestResponse = {
   ok?: boolean;
   niches?: {
@@ -959,6 +997,25 @@ function statusTone(status: string | undefined) {
   return "border-red-200 bg-red-50 text-red-700";
 }
 
+function workerLivenessTone(state: string | undefined) {
+  if (state === "alive") return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  if (state === "stale" || state === "unknown") return "border-amber-200 bg-amber-50 text-amber-800";
+  return "border-red-200 bg-red-50 text-red-700";
+}
+
+function formatRelativeTime(value: string | null | undefined) {
+  if (!value) return "нет heartbeat";
+  const ts = Date.parse(value);
+  if (!Number.isFinite(ts)) return value;
+  const sec = Math.max(0, Math.round((Date.now() - ts) / 1000));
+  if (sec < 60) return `${sec} sec ago`;
+  const min = Math.round(sec / 60);
+  if (min < 60) return `${min} min ago`;
+  const hours = Math.round(min / 60);
+  if (hours < 24) return `${hours} h ago`;
+  return `${Math.round(hours / 24)} d ago`;
+}
+
 function manualSeedItemsFromText(value: string): Array<string | Record<string, unknown>> {
   return value
     .split("\n")
@@ -1127,6 +1184,9 @@ export default function ReelsBrainPage() {
   const [analyzeBacklog, setAnalyzeBacklog] = useState<AnalyzeBacklogResponse | null>(null);
   const [analyzeBacklogLoading, setAnalyzeBacklogLoading] = useState(false);
   const [analyzeBacklogError, setAnalyzeBacklogError] = useState("");
+  const [workerState, setWorkerState] = useState<WorkerStateResponse | null>(null);
+  const [workerStateLoading, setWorkerStateLoading] = useState(false);
+  const [workerStateError, setWorkerStateError] = useState("");
 
   useEffect(() => {
     try {
@@ -1252,6 +1312,23 @@ export default function ReelsBrainPage() {
     return () => { alive = false; };
   }, []);
 
+  useEffect(() => {
+    let alive = true;
+    async function loadInitialWorkerState() {
+      setWorkerStateLoading(true);
+      try {
+        const data = await readJson<WorkerStateResponse>(await fetch("/api/factory/worker-state", { cache: "no-store" }));
+        if (alive) setWorkerState(data);
+      } catch (e) {
+        if (alive) setWorkerStateError(String((e as Error)?.message || e));
+      } finally {
+        if (alive) setWorkerStateLoading(false);
+      }
+    }
+    void loadInitialWorkerState();
+    return () => { alive = false; };
+  }, []);
+
   const availableProviders = Array.isArray(health?.available) ? health.available : [];
   const configuredCount = health?.providers?.filter((provider) => provider.configured).length || 0;
   const queries = queriesFromText(queriesText);
@@ -1316,6 +1393,13 @@ export default function ReelsBrainPage() {
   const analyzeBacklogProgress = analyzeBacklogTotals.total
     ? Math.round((analyzeBacklogTotals.analyzed / analyzeBacklogTotals.total) * 100)
     : 0;
+  const reelsWorker = (workerState?.workers || []).find((worker) => worker.worker_id === "railway-reels-brain-offline")
+    || workerState?.worker
+    || null;
+  const workerQueue = Array.isArray(reelsWorker?.queue) ? reelsWorker.queue : [];
+  const workerLiveness = reelsWorker?.liveness?.state || (reelsWorker?.last_seen ? "alive" : "unknown");
+  const workerAgeSec = Number(reelsWorker?.liveness?.age_sec ?? 0);
+  const workerLastSeenLabel = formatRelativeTime(reelsWorker?.last_seen);
   const cockpitCorpusCurrent = Math.max(portfolioCorpusCurrent, analyzeBacklogTotals.total);
   const cockpitCorpusSource = analyzeBacklogTotals.total > portfolioCorpusCurrent ? "backlog" : "portfolio";
   const corpusProgress = portfolioCorpusTarget ? Math.min(100, Math.round((cockpitCorpusCurrent / portfolioCorpusTarget) * 100)) : 0;
@@ -1549,10 +1633,24 @@ export default function ReelsBrainPage() {
           loadCorpus(currentNiche),
           loadAnalyzeBacklogPlan(currentNiches),
           loadLearningEconomics(currentNiches),
+          loadWorkerState(),
         ]);
       }
     } finally {
       setAutomationSyncing(false);
+    }
+  }
+
+  async function loadWorkerState() {
+    setWorkerStateLoading(true);
+    setWorkerStateError("");
+    try {
+      const data = await readJson<WorkerStateResponse>(await fetch("/api/factory/worker-state", { cache: "no-store" }));
+      setWorkerState(data);
+    } catch (e) {
+      setWorkerStateError(String((e as Error)?.message || e));
+    } finally {
+      setWorkerStateLoading(false);
     }
   }
 
@@ -2070,11 +2168,12 @@ export default function ReelsBrainPage() {
                   void loadPortfolio();
                   void loadAnalyzeBacklogPlan();
                   void loadSummary(activeNiche());
+                  void loadWorkerState();
                 }}
-                disabled={loadingPortfolio || analyzeBacklogLoading || loadingSummary}
+                disabled={loadingPortfolio || analyzeBacklogLoading || loadingSummary || workerStateLoading}
                 className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-slate-950 px-4 py-2 text-sm font-bold text-white shadow-lg shadow-slate-200 hover:bg-slate-800 disabled:bg-slate-300"
               >
-                {loadingPortfolio || analyzeBacklogLoading || loadingSummary ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                {loadingPortfolio || analyzeBacklogLoading || loadingSummary || workerStateLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
                 Обновить статус
               </button>
               <a
@@ -2091,6 +2190,122 @@ export default function ReelsBrainPage() {
                 <ExternalLink className="h-4 w-4" />
                 Public demo
               </a>
+            </div>
+
+            <div className="mt-4 overflow-hidden rounded-[1.75rem] border border-slate-200 bg-white shadow-sm">
+              <div className="border-b border-slate-100 bg-slate-950 p-4 text-white">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.2em] text-cyan-200">
+                      <Activity className="h-4 w-4" />
+                      Offline Worker Status
+                    </div>
+                    <h3 className="mt-1 text-xl font-black tracking-tight">
+                      Railway worker учит мозг в фоне
+                    </h3>
+                    <p className="mt-1 max-w-xl text-sm leading-6 text-slate-300">
+                      Это отдельный долгий процесс: resolver медиа, анализ backlog, пересборка Pattern Brain и digest.
+                      Добор новых видео выключен, поэтому Apify сейчас не тратится.
+                    </p>
+                  </div>
+                  <span className={`rounded-full border px-3 py-1 text-xs font-bold ${workerLivenessTone(workerLiveness)}`}>
+                    {workerLiveness}
+                  </span>
+                </div>
+              </div>
+
+              <div className="grid gap-3 p-4 lg:grid-cols-[0.95fr_1.05fr]">
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <div className="text-sm font-black text-slate-900">
+                        {reelsWorker?.label || "Reels Brain Offline Workers"}
+                      </div>
+                      <div className="mt-1 text-xs font-semibold text-slate-500">
+                        {reelsWorker?.worker_id || "railway-reels-brain-offline"}
+                      </div>
+                    </div>
+                    <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-bold text-slate-600">
+                      {reelsWorker?.source || "loading"}
+                    </span>
+                  </div>
+
+                  <div className="mt-4 grid gap-2 sm:grid-cols-3">
+                    <div className="rounded-xl bg-white px-2 py-1">
+                      <div className="font-mono font-bold text-slate-800">{reelsWorker?.status || "—"}</div>
+                      <div className="text-[10px] uppercase tracking-wide text-slate-400">worker</div>
+                    </div>
+                    <div className="rounded-xl bg-white px-2 py-1">
+                      <div className="font-mono font-bold text-slate-800">{workerLastSeenLabel}</div>
+                      <div className="text-[10px] uppercase tracking-wide text-slate-400">last seen</div>
+                    </div>
+                    <div className="rounded-xl bg-white px-2 py-1">
+                      <div className="font-mono font-bold text-slate-800">{compactNumber(workerAgeSec)}</div>
+                      <div className="text-[10px] uppercase tracking-wide text-slate-400">age sec</div>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 rounded-2xl border border-cyan-100 bg-cyan-50 p-3">
+                    <div className="text-xs font-bold uppercase tracking-wide text-cyan-800">Текущий шаг</div>
+                    <div className="mt-1 text-sm font-black text-cyan-950">
+                      {reelsWorker?.progress || (workerStateLoading ? "загружаю worker state..." : "нет активного heartbeat")}
+                    </div>
+                    {reelsWorker?.note ? (
+                      <div className="mt-2 text-xs font-medium text-cyan-800">{reelsWorker.note}</div>
+                    ) : null}
+                  </div>
+
+                  {reelsWorker?.blocker ? (
+                    <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-xs font-semibold text-amber-900">
+                      {reelsWorker.blocker}
+                    </div>
+                  ) : null}
+                </div>
+
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-sm font-black text-slate-900">Worker queue</div>
+                      <div className="mt-1 text-xs text-slate-500">Что делает фоновый контур по шагам</div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => { void loadWorkerState(); }}
+                      disabled={workerStateLoading}
+                      className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:border-cyan-300 disabled:opacity-50"
+                    >
+                      {workerStateLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                      Refresh
+                    </button>
+                  </div>
+
+                  <div className="mt-3 space-y-2">
+                    {workerQueue.length ? workerQueue.slice(0, 6).map((task) => (
+                      <div key={`${task.id || task.title}`} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <span className="font-bold text-slate-900">{task.id || "RB"} · {task.title || "Worker step"}</span>
+                          <span className={`rounded-full border px-2.5 py-1 font-bold ${task.status === "doing" || task.status === "working" ? "border-emerald-200 bg-emerald-50 text-emerald-700" : task.status === "blocked" ? "border-amber-200 bg-amber-50 text-amber-800" : "border-slate-200 bg-slate-50 text-slate-600"}`}>
+                            {task.status || "todo"}
+                          </span>
+                        </div>
+                        {task.blockers?.length ? (
+                          <div className="mt-1 text-amber-700">{task.blockers[0]}</div>
+                        ) : null}
+                      </div>
+                    )) : (
+                      <div className="rounded-xl border border-dashed border-slate-300 bg-white px-3 py-6 text-center text-xs font-semibold text-slate-500">
+                        {workerStateLoading ? "Загружаю очередь worker-а..." : "Очередь пока не пришла. Проверь CRON_SECRET / heartbeat."}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {(workerStateError || workerState?.db_error || workerState?.worker_issue) ? (
+                <div className="border-t border-slate-100 bg-amber-50 px-4 py-3 text-xs font-semibold text-amber-900">
+                  {workerStateError || workerState?.db_error || workerState?.worker_issue}
+                </div>
+              ) : null}
             </div>
 
             <details className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
