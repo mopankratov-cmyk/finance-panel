@@ -15,6 +15,8 @@ function ok(c: boolean, m: string) { if (c) pass++; else { fail++; console.error
 ok(/buildProductTwin/.test(buildRoute), "build route delegates to shared Product Twin builder");
 ok(/runNanoBananaEdit/.test(builder), "builder creates clean source via FAL image edit");
 ok(/buildTwinImageVariants/.test(builder), "builder creates local asset variants");
+ok(/object_mask/.test(store), "store creates object_mask asset for Product Twin pack");
+ok(/object_coverage/.test(store) && /variant\.metrics/.test(builder), "builder stores mask coverage metrics");
 ok(/qualityDetails/.test(builder), "builder stores quality critic details on assets");
 ok(/persistProductTwin/.test(builder), "builder persists Product Twin");
 ok(/disk_path/.test(builder) && /image_data_url/.test(builder) && /image_url/.test(builder), "builder accepts disk/data-url/image-url inputs");

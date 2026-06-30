@@ -168,6 +168,13 @@ GET /api/factory/product-twin/classify?twin_id=pt_...
 
 Ответ содержит `classification`: canonical asset по use-case (`hero`, `broll`, `ugc`, `marketplace`, `ads`), quality bucket, тип ассета, dominant color, object size, признаки packaging/hands и reject reasons. Это первый контракт этапа 6: downstream-агенты выбирают уже классифицированный twin, а не случайную картинку.
 
+Asset pack v0 теперь включает `object_mask`:
+
+- строится локально из clean asset;
+- сохраняется в `content_assets` как отдельный `product_twin_asset`;
+- получает `quality_details.object_coverage`;
+- не считается `hero_ready`/`broll_ready`, но используется как служебный слой для будущего video/compositing pipeline.
+
 0. Store generated media in Yandex Disk by default:
    - `falImageEdit` archives generated clean images;
    - `video-fal-status` archives completed FAL mp4;

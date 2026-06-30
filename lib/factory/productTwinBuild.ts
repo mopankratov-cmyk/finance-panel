@@ -121,6 +121,7 @@ export async function buildProductTwin(input: ProductTwinBuildInput, db: Supabas
         composition_score: variant.quality.compositionScore,
         identity_risk: variant.quality.identityRisk,
         reject_reasons: variant.quality.rejectReasons,
+        ...(variant.metrics || {}),
       },
       risk: variant.quality.identityRisk,
       sourceKind: variant.kind === "clean_png" ? "fal_clean" : "sharp_derived",

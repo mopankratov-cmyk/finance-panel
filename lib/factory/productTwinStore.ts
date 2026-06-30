@@ -45,7 +45,7 @@ export async function buildTwinImageVariants(input: {
   article: string;
   twinId: string;
   category?: ProductTwinCategory;
-}): Promise<{ kind: ProductTwinAssetDraft["kind"]; buffer: Buffer; contentType: string; quality: ProductTwinQualityResult }[]> {
+}): Promise<{ kind: ProductTwinAssetDraft["kind"]; buffer: Buffer; contentType: string; quality: ProductTwinQualityResult; metrics?: Record<string, unknown> }[]> {
   const normalized = await sharp(input.cleanBuffer)
     .resize(1400, 1400, { fit: "inside", withoutEnlargement: false, background: { r: 255, g: 255, b: 255, alpha: 0 } })
     .png()
@@ -66,6 +66,7 @@ export async function buildTwinImageVariants(input: {
   }).composite([{ input: shadowSvg }, { input: resized, gravity: "center" }]).png().toBuffer();
 
   const upscaled = await sharp(input.cleanBuffer).resize(2200, 2200, { fit: "inside", withoutEnlargement: false }).sharpen().png().toBuffer();
+  const mask = await buildObjectMask(normalized);
 
   const raw = [
     { kind: "clean_png" as const, buffer: normalized, contentType: "image/png" },
@@ -73,11 +74,50 @@ export async function buildTwinImageVariants(input: {
     { kind: "gray_bg" as const, buffer: gray, contentType: "image/png" },
     { kind: "shadow_bg" as const, buffer: shadow, contentType: "image/png" },
     { kind: "upscaled" as const, buffer: upscaled, contentType: "image/png" },
+    { kind: "object_mask" as const, buffer: mask.buffer, contentType: "image/png", metrics: { object_coverage: mask.coverage } },
   ];
   return Promise.all(raw.map(async (item) => ({
     ...item,
     quality: await assessProductTwinImage({ buffer: item.buffer, kind: item.kind, category: input.category || "other" }),
   })));
+}
+
+async function buildObjectMask(input: Buffer): Promise<{ buffer: Buffer; coverage: number }> {
+  const rgba = await sharp(input)
+    .resize(1400, 1400, { fit: "inside", withoutEnlargement: true })
+    .ensureAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  const data = rgba.data as Buffer;
+  const { width, height } = rgba.info;
+  const corner = (x: number, y: number) => {
+    const i = (y * width + x) * 4;
+    return [data[i] || 255, data[i + 1] || 255, data[i + 2] || 255];
+  };
+  const samples = [
+    corner(0, 0),
+    corner(Math.max(0, width - 1), 0),
+    corner(0, Math.max(0, height - 1)),
+    corner(Math.max(0, width - 1), Math.max(0, height - 1)),
+  ];
+  const bg = [0, 1, 2].map((ch) => Math.round(samples.reduce((sum, sample) => sum + sample[ch], 0) / samples.length));
+  const mask = Buffer.alloc(width * height);
+  let foreground = 0;
+  let alphaForeground = 0;
+  for (let p = 0, m = 0; p < data.length; p += 4, m++) {
+    const alpha = data[p + 3] || 0;
+    if (alpha > 24) alphaForeground++;
+    const dist = Math.abs((data[p] || 0) - bg[0]) + Math.abs((data[p + 1] || 0) - bg[1]) + Math.abs((data[p + 2] || 0) - bg[2]);
+    const isForeground = alpha > 24 && (alpha < 245 || dist > 42);
+    mask[m] = isForeground ? 255 : 0;
+    if (isForeground) foreground++;
+  }
+  if (alphaForeground / Math.max(1, width * height) < 0.96 && foreground < alphaForeground * 0.2) {
+    for (let p = 0, m = 0; p < data.length; p += 4, m++) mask[m] = (data[p + 3] || 0) > 24 ? 255 : 0;
+    foreground = alphaForeground;
+  }
+  const buffer = await sharp(mask, { raw: { width, height, channels: 1 } }).png().toBuffer();
+  return { buffer, coverage: Math.round((foreground / Math.max(1, width * height)) * 1000) / 1000 };
 }
 
 export async function uploadTwinAsset(db: SupabaseClient, input: {
