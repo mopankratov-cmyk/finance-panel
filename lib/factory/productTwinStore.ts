@@ -1,0 +1,247 @@
+import { createHash } from "node:crypto";
+import sharp from "sharp";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import {
+  createTwinAsset,
+  pickBestTwinAsset,
+  type ProductPromptLibrary,
+  type ProductTwin,
+  type ProductTwinAsset,
+  type ProductTwinAssetDraft,
+  type ProductTwinCategory,
+  type ProductTwinUseCase,
+} from "./productTwin";
+
+const BUCKET = "factory-media";
+const DISK = "product_twin";
+
+interface ContentAssetRow {
+  id?: string;
+  url?: string | null;
+  path?: string | null;
+  kind?: string | null;
+  article?: string | null;
+  niche?: string | null;
+  analysis?: Record<string, unknown> | null;
+  created_at?: string | null;
+}
+
+export async function downloadImageBuffer(url: string): Promise<{ ok: true; buffer: Buffer; contentType: string } | { ok: false; error: string }> {
+  try {
+    const res = await fetch(url, { cache: "no-store", signal: AbortSignal.timeout(30_000) });
+    if (!res.ok) return { ok: false, error: `download ${res.status}` };
+    const buffer = Buffer.from(await res.arrayBuffer());
+    if (!buffer.length) return { ok: false, error: "empty image buffer" };
+    return { ok: true, buffer, contentType: res.headers.get("content-type") || "image/png" };
+  } catch (e) {
+    return { ok: false, error: String((e as Error)?.message || e).slice(0, 160) };
+  }
+}
+
+export async function buildTwinImageVariants(input: {
+  cleanBuffer: Buffer;
+  article: string;
+  twinId: string;
+}): Promise<{ kind: ProductTwinAssetDraft["kind"]; buffer: Buffer; contentType: string; qualityScore: number }[]> {
+  const normalized = await sharp(input.cleanBuffer)
+    .resize(1400, 1400, { fit: "inside", withoutEnlargement: false, background: { r: 255, g: 255, b: 255, alpha: 0 } })
+    .png()
+    .toBuffer();
+
+  const white = await sharp({
+    create: { width: 1600, height: 1600, channels: 4, background: { r: 255, g: 255, b: 255, alpha: 1 } },
+  }).composite([{ input: normalized, gravity: "center" }]).png().toBuffer();
+
+  const gray = await sharp({
+    create: { width: 1600, height: 1600, channels: 4, background: { r: 238, g: 240, b: 242, alpha: 1 } },
+  }).composite([{ input: normalized, gravity: "center" }]).png().toBuffer();
+
+  const resized = await sharp(normalized).resize(1120, 1120, { fit: "inside", withoutEnlargement: true }).png().toBuffer();
+  const shadowSvg = Buffer.from(`<svg width="1600" height="1600" xmlns="http://www.w3.org/2000/svg"><ellipse cx="800" cy="1288" rx="360" ry="52" fill="rgba(15,23,42,0.20)"/></svg>`);
+  const shadow = await sharp({
+    create: { width: 1600, height: 1600, channels: 4, background: { r: 247, g: 248, b: 250, alpha: 1 } },
+  }).composite([{ input: shadowSvg }, { input: resized, gravity: "center" }]).png().toBuffer();
+
+  const upscaled = await sharp(input.cleanBuffer).resize(2200, 2200, { fit: "inside", withoutEnlargement: false }).sharpen().png().toBuffer();
+
+  return [
+    { kind: "clean_png", buffer: normalized, contentType: "image/png", qualityScore: 0.86 },
+    { kind: "white_bg", buffer: white, contentType: "image/png", qualityScore: 0.84 },
+    { kind: "gray_bg", buffer: gray, contentType: "image/png", qualityScore: 0.82 },
+    { kind: "shadow_bg", buffer: shadow, contentType: "image/png", qualityScore: 0.86 },
+    { kind: "upscaled", buffer: upscaled, contentType: "image/png", qualityScore: 0.84 },
+  ];
+}
+
+export async function uploadTwinAsset(db: SupabaseClient, input: {
+  article: string;
+  twinId: string;
+  kind: ProductTwinAssetDraft["kind"];
+  buffer: Buffer;
+  contentType?: string;
+}): Promise<{ url: string; path: string } | { error: string }> {
+  const hash = createHash("sha1").update(input.buffer).digest("hex").slice(0, 16);
+  const path = `product-twins/${input.article}/${input.twinId}/${input.kind}-${hash}.png`;
+  const { error } = await db.storage.from(BUCKET).upload(path, input.buffer, {
+    contentType: input.contentType || "image/png",
+    upsert: true,
+    cacheControl: "31536000",
+  });
+  if (error) return { error: error.message };
+  const url = db.storage.from(BUCKET).getPublicUrl(path).data?.publicUrl || "";
+  return url ? { url, path } : { error: "publicUrl missing" };
+}
+
+export async function persistProductTwin(db: SupabaseClient, input: {
+  twinId: string;
+  article: string;
+  productName: string;
+  category: ProductTwinCategory;
+  sourceKind: string;
+  sourcePath?: string;
+  sourceUrl?: string;
+  promptLibrary: ProductPromptLibrary;
+  assets: ProductTwinAsset[];
+}): Promise<{ ok: true; twin: ProductTwin } | { ok: false; error: string }> {
+  const createdAt = new Date().toISOString();
+  const canonical = pickBestTwinAsset(input.assets, "broll") || input.assets[0];
+  if (!canonical) return { ok: false, error: "нет assets для twin" };
+
+  const twin: ProductTwin = {
+    twinId: input.twinId,
+    article: input.article,
+    productName: input.productName,
+    category: input.category,
+    status: "ready",
+    qualityScore: Math.max(...input.assets.map((a) => a.qualityScore)),
+    canonicalAssetId: canonical.assetId,
+    sourceKind: input.sourceKind,
+    sourcePath: input.sourcePath,
+    promptLibrary: input.promptLibrary,
+    assets: input.assets,
+    createdAt,
+  };
+
+  const rows = input.assets.map((asset) => ({
+    disk: DISK,
+    path: asset.path || `product-twins/${input.article}/${input.twinId}/${asset.kind}.png`,
+    name: `${input.article} · twin · ${asset.kind}`.slice(0, 120),
+    kind: "image",
+    niche: input.category,
+    article: input.article,
+    color: null,
+    url: asset.url,
+    analyzed: true,
+    analysis: {
+      product_twin: {
+        twin_id: input.twinId,
+        article: input.article,
+        product_name: input.productName,
+        category: input.category,
+        source_kind: input.sourceKind,
+        source_path: input.sourcePath || null,
+        source_url: input.sourceUrl || null,
+        status: "ready",
+        canonical_asset_id: twin.canonicalAssetId,
+        quality_score: twin.qualityScore,
+        prompt_library: input.promptLibrary,
+      },
+      product_twin_asset: {
+        asset_id: asset.assetId,
+        kind: asset.kind,
+        truth_level: asset.truthLevel,
+        quality_score: asset.qualityScore,
+        hero_ready: asset.heroReady,
+        broll_ready: asset.brollReady,
+        ugc_ready: asset.ugcReady,
+        marketplace_safe: asset.marketplaceSafe,
+        ads_safe: asset.adsSafe,
+        risk: asset.risk,
+        source_kind: asset.sourceKind || null,
+      },
+    },
+  }));
+
+  const { error } = await db.from("content_assets").insert(rows);
+  if (error) return { ok: false, error: error.message };
+  return { ok: true, twin };
+}
+
+function rowToAsset(row: ContentAssetRow): ProductTwinAsset | null {
+  const tw = row.analysis?.product_twin as Record<string, unknown> | undefined;
+  const a = row.analysis?.product_twin_asset as Record<string, unknown> | undefined;
+  const twinId = String(tw?.twin_id || "");
+  const article = String(tw?.article || row.article || "");
+  const kind = String(a?.kind || "") as ProductTwinAssetDraft["kind"];
+  const url = String(row.url || "");
+  if (!twinId || !article || !kind || !url) return null;
+  return createTwinAsset({
+    twinId,
+    article,
+    kind,
+    url,
+    path: row.path || undefined,
+    truthLevel: String(a?.truth_level || "derived") as ProductTwinAsset["truthLevel"],
+    qualityScore: Number(a?.quality_score) || 0,
+    heroReady: Boolean(a?.hero_ready),
+    brollReady: Boolean(a?.broll_ready),
+    ugcReady: Boolean(a?.ugc_ready),
+    marketplaceSafe: Boolean(a?.marketplace_safe),
+    adsSafe: Boolean(a?.ads_safe),
+    risk: String(a?.risk || "low") as ProductTwinAsset["risk"],
+    sourceKind: String(a?.source_kind || "") || undefined,
+  });
+}
+
+function rowsToTwin(rows: ContentAssetRow[]): ProductTwin | null {
+  const assets = rows.map(rowToAsset).filter(Boolean) as ProductTwinAsset[];
+  if (!assets.length) return null;
+  const first = rows.find((r) => r.analysis?.product_twin)?.analysis?.product_twin as Record<string, unknown>;
+  const twinId = String(first?.twin_id || assets[0].twinId);
+  const promptLibrary = (first?.prompt_library || {}) as ProductPromptLibrary;
+  return {
+    twinId,
+    article: String(first?.article || assets[0].article),
+    productName: String(first?.product_name || assets[0].article),
+    category: String(first?.category || "other") as ProductTwinCategory,
+    status: String(first?.status || "ready") as ProductTwin["status"],
+    qualityScore: Number(first?.quality_score) || Math.max(...assets.map((a) => a.qualityScore)),
+    canonicalAssetId: String(first?.canonical_asset_id || assets[0].assetId),
+    sourceKind: String(first?.source_kind || ""),
+    sourcePath: String(first?.source_path || "") || undefined,
+    promptLibrary,
+    assets,
+    createdAt: String(rows[0]?.created_at || ""),
+  };
+}
+
+export async function getProductTwinById(db: SupabaseClient, twinId: string): Promise<ProductTwin | null> {
+  const { data } = await db.from("content_assets")
+    .select("id,url,path,kind,article,niche,analysis,created_at")
+    .eq("disk", DISK)
+    .contains("analysis", { product_twin: { twin_id: twinId } })
+    .not("url", "is", null)
+    .order("created_at", { ascending: false })
+    .limit(80);
+  return rowsToTwin((data as ContentAssetRow[] | null) || []);
+}
+
+export async function getLatestProductTwinByArticle(db: SupabaseClient, article: string): Promise<ProductTwin | null> {
+  const { data } = await db.from("content_assets")
+    .select("id,url,path,kind,article,niche,analysis,created_at")
+    .eq("disk", DISK)
+    .eq("article", article)
+    .not("url", "is", null)
+    .order("created_at", { ascending: false })
+    .limit(80);
+  const rows = ((data as ContentAssetRow[] | null) || []);
+  const latestId = rows.map((r) => (r.analysis?.product_twin as Record<string, unknown> | undefined)?.twin_id).find(Boolean);
+  return latestId ? rowsToTwin(rows.filter((r) => (r.analysis?.product_twin as Record<string, unknown> | undefined)?.twin_id === latestId)) : null;
+}
+
+export async function getBestProductTwinAsset(db: SupabaseClient, input: { twinId?: string; article?: string; useCase: ProductTwinUseCase }): Promise<{ twin: ProductTwin; asset: ProductTwinAsset } | null> {
+  const twin = input.twinId ? await getProductTwinById(db, input.twinId) : input.article ? await getLatestProductTwinByArticle(db, input.article) : null;
+  if (!twin) return null;
+  const asset = pickBestTwinAsset(twin.assets, input.useCase);
+  return asset ? { twin, asset } : null;
+}

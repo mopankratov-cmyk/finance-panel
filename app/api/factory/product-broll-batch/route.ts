@@ -6,6 +6,7 @@ import { buildProductBrollPlan, type ProductBrollRecipe } from "@/lib/factory/pr
 import { buildProductCleanPrompt, imageBufferToDataUrl } from "@/lib/factory/productCleanSource";
 import { diskById } from "@/lib/factory/contentDisks";
 import { fetchWithRetry, runNanoBananaEdit } from "@/lib/factory/falImageEdit";
+import { getBestProductTwinAsset } from "@/lib/factory/productTwinStore";
 import { falVideoSubmitDetailed, FAL_VIDEO_MODELS, type FalVideoModel } from "@/lib/factory/falVideo";
 import { yaDownloadHref } from "@/lib/yandex/disk";
 import { type ProductCategory } from "@/lib/factory/editPrompts";
@@ -136,6 +137,7 @@ export async function POST(req: NextRequest) {
     const prepare = body.prepare === true;
     const cleanFirst = body.clean_first === true || body.cleanFirst === true;
     const imageUrl = cleanText(body.image_url || body.imageUrl, 1200) || undefined;
+    const twinId = cleanText(body.twin_id || body.twinId, 140) || undefined;
     const imageDataUrl = cleanLongText(body.image_data_url || body.imageDataUrl);
     const diskPath = cleanText(body.disk_path || body.diskPath, 1200) || undefined;
     const disk = cleanText(body.disk || "design", 80) || "design";
@@ -143,7 +145,7 @@ export async function POST(req: NextRequest) {
     const niche = cleanText(body.niche, 80) || undefined;
     const category = (cleanText(body.category, 40) || undefined) as ProductCategory | undefined;
     const cleanPrompt = cleanText(body.clean_prompt || body.cleanPrompt, 8000);
-    const directSourceProvided = Boolean(imageUrl || imageDataUrl || diskPath);
+    const directSourceProvided = Boolean(twinId || imageUrl || imageDataUrl || diskPath);
     if (!directSourceProvided && !getSupabaseAdmin()) return NextResponse.json({ ok: false, error: "Supabase не настроен" }, { status: 500 });
     if (!cleanFirst && (imageDataUrl || diskPath)) return NextResponse.json({ ok: false, error: "image_data_url/disk_path требуют clean_first:true, чтобы получить публичный clean_url для video API" }, { status: 400 });
 
@@ -156,8 +158,22 @@ export async function POST(req: NextRequest) {
       originalPath?: string;
       cleanPromptUsed?: string;
       cleanResponseUrl?: string;
+      twinId?: string;
+      assetId?: string;
     };
-    if (cleanFirst) {
+    const db = getSupabaseAdmin();
+    if (twinId) {
+      if (!db) return NextResponse.json({ ok: false, error: "Supabase не настроен" }, { status: 500 });
+      const picked = await getBestProductTwinAsset(db, { twinId, useCase: "broll" });
+      if (!picked) return NextResponse.json({ ok: false, error: `twin ${twinId} не найден или нет broll_ready asset` }, { status: 404 });
+      source = {
+        imageUrl: picked.asset.url,
+        imageKind: "product_twin",
+        niche: picked.twin.category,
+        twinId: picked.twin.twinId,
+        assetId: picked.asset.assetId,
+      };
+    } else if (cleanFirst) {
       const raw = await resolveCleanInput({ article, product, scene, niche, prepare, imageUrl, imageDataUrl, diskPath, disk });
       if ("error" in raw) return NextResponse.json({ ok: false, error: raw.error }, { status: 400 });
       const prompt = cleanPrompt || buildProductCleanPrompt({ article, product, category });
@@ -195,6 +211,8 @@ export async function POST(req: NextRequest) {
         model,
         source_image: source.imageUrl,
         source_kind: source.imageKind,
+        twin_id: source.twinId || null,
+        asset_id: source.assetId || null,
         original_source_kind: source.originalKind || null,
         original_source_path: source.originalPath || null,
         clean_source: cleanFirst ? {
@@ -216,6 +234,8 @@ export async function POST(req: NextRequest) {
         label: variant.label,
         model: variant.model,
         prompt_used: variant.prompt,
+        twin_id: source.twinId || null,
+        asset_id: source.assetId || null,
         task_id: res.token ? `fv.${res.token}` : null,
         ok: Boolean(res.token),
         error: res.token ? null : res.reason || "fal submit failed",
@@ -231,6 +251,8 @@ export async function POST(req: NextRequest) {
       recipe,
       source_image: source.imageUrl,
       source_kind: source.imageKind,
+      twin_id: source.twinId || null,
+      asset_id: source.assetId || null,
       original_source_kind: source.originalKind || null,
       original_source_path: source.originalPath || null,
       clean_source: cleanFirst ? {
