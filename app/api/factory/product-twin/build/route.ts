@@ -23,6 +23,7 @@ export async function POST(req: NextRequest) {
       quality_score: built.twin.qualityScore,
       canonical_asset_id: built.twin.canonicalAssetId,
       source_kind: built.sourceKind,
+      reused: built.sourceKind === "reused_product_twin",
       source_path: built.sourcePath || null,
       clean_url: built.cleanUrl,
       assets: built.twin.assets.map((a) => ({

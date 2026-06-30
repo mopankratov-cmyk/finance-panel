@@ -68,6 +68,7 @@ export async function buildTwinImageVariants(input: {
   const upscaled = await sharp(input.cleanBuffer).resize(2200, 2200, { fit: "inside", withoutEnlargement: false }).sharpen().png().toBuffer();
   const mask = await buildObjectMask(normalized);
   const alpha = await buildAlphaMap(normalized);
+  const depth = await buildDepthMap(mask.buffer);
   const segmentation = await buildSegmentationMap(mask.buffer);
 
   const raw = [
@@ -78,6 +79,7 @@ export async function buildTwinImageVariants(input: {
     { kind: "upscaled" as const, buffer: upscaled, contentType: "image/png" },
     { kind: "object_mask" as const, buffer: mask.buffer, contentType: "image/png", metrics: { object_coverage: mask.coverage } },
     { kind: "alpha" as const, buffer: alpha.buffer, contentType: "image/png", metrics: { alpha_coverage: alpha.coverage } },
+    { kind: "depth_map" as const, buffer: depth.buffer, contentType: "image/png", metrics: { depth_strategy: depth.strategy, object_coverage: mask.coverage } },
     { kind: "segmentation" as const, buffer: segmentation.buffer, contentType: "image/png", metrics: { segments: segmentation.segments, object_coverage: mask.coverage } },
   ];
   return Promise.all(raw.map(async (item) => ({
@@ -151,6 +153,29 @@ async function buildSegmentationMap(maskPng: Buffer): Promise<{ buffer: Buffer; 
   }
   const buffer = await sharp(rgb, { raw: { width, height, channels: 3 } }).png().toBuffer();
   return { buffer, segments: ["background", "product"] };
+}
+
+async function buildDepthMap(maskPng: Buffer): Promise<{ buffer: Buffer; strategy: string }> {
+  const mask = await sharp(maskPng).greyscale().raw().toBuffer({ resolveWithObject: true });
+  const data = mask.data as Buffer;
+  const { width, height } = mask.info;
+  const depth = Buffer.alloc(width * height);
+  const cx = (width - 1) / 2;
+  const cy = (height - 1) / 2;
+  const maxDist = Math.sqrt(cx * cx + cy * cy) || 1;
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const i = y * width + x;
+      if ((data[i] || 0) <= 127) {
+        depth[i] = 12;
+        continue;
+      }
+      const dist = Math.sqrt(Math.pow(x - cx, 2) + Math.pow(y - cy, 2)) / maxDist;
+      depth[i] = Math.max(32, Math.min(230, Math.round(230 - dist * 128)));
+    }
+  }
+  const buffer = await sharp(depth, { raw: { width, height, channels: 1 } }).blur(5).png().toBuffer();
+  return { buffer, strategy: "mask_radial_v0" };
 }
 
 export async function uploadTwinAsset(db: SupabaseClient, input: {

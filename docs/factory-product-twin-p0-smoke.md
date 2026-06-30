@@ -159,6 +159,18 @@ GET /api/factory/product-twin/smoke
 
 Smoke route защищён через существующий `CRON_SECRET`/Studio session auth. Внешний `vercel curl` без сессии ожидаемо получает `Не авторизовано`.
 
+`POST /api/factory/product-twin/build` теперь имеет rebuild policy:
+
+- по умолчанию переиспользует последний `ready` twin по `article`, если есть b-roll asset и служебный pack `object_mask`/`alpha`/`depth_map`/`segmentation`;
+- `force:true` или `rebuild:true` явно запускает новую FAL clean/build цепочку;
+- `min_quality`/`minQuality` задаёт нижний порог reuse.
+
+`POST /api/factory/product-broll-batch` теперь закрепляет Product Twin как основной happy path:
+
+- явный `twin_id` остаётся самым сильным source override;
+- если передан только `article`, route сначала ищет latest ready Product Twin и берёт `broll_ready` asset;
+- fallback на prepared/WB остаётся, но возвращает warning `product_twin not found`.
+
 Автоматическая классификация Product Digital Twin:
 
 ```text
@@ -168,11 +180,11 @@ GET /api/factory/product-twin/classify?twin_id=pt_...
 
 Ответ содержит `classification`: canonical asset по use-case (`hero`, `broll`, `ugc`, `marketplace`, `ads`), quality bucket, тип ассета, dominant color, object size, признаки packaging/hands и reject reasons. Это первый контракт этапа 6: downstream-агенты выбирают уже классифицированный twin, а не случайную картинку.
 
-Asset pack v0 теперь включает служебные слои `object_mask`, `alpha`, `segmentation`:
+Asset pack v0 теперь включает служебные слои `object_mask`, `alpha`, `depth_map`, `segmentation`:
 
 - строятся локально из clean asset;
 - сохраняется в `content_assets` как отдельный `product_twin_asset`;
-- получают `quality_details.object_coverage`, `alpha_coverage` и список segments;
+- получают `quality_details.object_coverage`, `alpha_coverage`, `depth_strategy` и список segments;
 - не считаются `hero_ready`/`broll_ready`, но используются как служебный слой для будущего video/compositing pipeline.
 
 0. Store generated media in Yandex Disk by default:

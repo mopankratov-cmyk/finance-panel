@@ -11,6 +11,7 @@ export type ProductTwinAssetKind =
   | "upscaled"
   | "object_mask"
   | "alpha"
+  | "depth_map"
   | "segmentation"
   | "broll_source";
 export type ProductTwinTruthLevel = "truthful" | "derived" | "synthetic";

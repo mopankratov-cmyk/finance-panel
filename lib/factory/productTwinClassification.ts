@@ -49,7 +49,7 @@ function classifyKind(asset: ProductTwinAsset): ProductTwinAssetType {
   if (asset.kind === "white_bg" || asset.kind === "gray_bg") return "packshot";
   if (asset.kind === "shadow_bg") return "studio_shadow";
   if (asset.kind === "upscaled") return "upscaled_detail";
-  if (asset.kind === "object_mask" || asset.kind === "alpha" || asset.kind === "segmentation") return "mask";
+  if (asset.kind === "object_mask" || asset.kind === "alpha" || asset.kind === "depth_map" || asset.kind === "segmentation") return "mask";
   if (asset.kind === "broll_source") return "broll_source";
   return "other";
 }

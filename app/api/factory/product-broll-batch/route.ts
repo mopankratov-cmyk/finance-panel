@@ -6,7 +6,7 @@ import { buildProductBrollPlan, type ProductBrollRecipe } from "@/lib/factory/pr
 import { buildProductCleanPrompt, imageBufferToDataUrl } from "@/lib/factory/productCleanSource";
 import { diskById } from "@/lib/factory/contentDisks";
 import { fetchWithRetry, runNanoBananaEdit } from "@/lib/factory/falImageEdit";
-import { getBestProductTwinAsset } from "@/lib/factory/productTwinStore";
+import { getBestProductTwinAsset, getLatestProductTwinByArticle } from "@/lib/factory/productTwinStore";
 import { falVideoSubmitDetailed, FAL_VIDEO_MODELS, type FalVideoModel } from "@/lib/factory/falVideo";
 import { yaDownloadHref } from "@/lib/yandex/disk";
 import { type ProductCategory } from "@/lib/factory/editPrompts";
@@ -173,6 +173,28 @@ export async function POST(req: NextRequest) {
         twinId: picked.twin.twinId,
         assetId: picked.asset.assetId,
       };
+    } else if (!imageUrl && !imageDataUrl && !diskPath && !cleanFirst) {
+      if (!db) return NextResponse.json({ ok: false, error: "Supabase не настроен" }, { status: 500 });
+      const existingTwin = await getLatestProductTwinByArticle(db, article);
+      const picked = existingTwin ? await getBestProductTwinAsset(db, { twinId: existingTwin.twinId, useCase: "broll" }) : null;
+      if (picked) {
+        source = {
+          imageUrl: picked.asset.url,
+          imageKind: "product_twin_latest",
+          niche: picked.twin.category,
+          twinId: picked.twin.twinId,
+          assetId: picked.asset.assetId,
+        };
+      } else {
+        const resolved = await resolveSourceImage({ article, product, scene, niche, prepare, imageUrl });
+        if (resolved.error || !resolved.imageUrl) return NextResponse.json({ ok: false, error: resolved.error || "нет image_url" }, { status: 400 });
+        source = {
+          imageUrl: resolved.imageUrl,
+          imageKind: resolved.imageKind,
+          niche: resolved.niche,
+          warning: resolved.warning || "product_twin not found; fell back to prepared/WB source",
+        };
+      }
     } else if (cleanFirst) {
       const raw = await resolveCleanInput({ article, product, scene, niche, prepare, imageUrl, imageDataUrl, diskPath, disk });
       if ("error" in raw) return NextResponse.json({ ok: false, error: raw.error }, { status: 400 });

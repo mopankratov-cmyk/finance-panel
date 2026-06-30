@@ -15,10 +15,12 @@ function ok(c: boolean, m: string) { if (c) pass++; else { fail++; console.error
 ok(/buildProductTwin/.test(buildRoute), "build route delegates to shared Product Twin builder");
 ok(/runNanoBananaEdit/.test(builder), "builder creates clean source via FAL image edit");
 ok(/buildTwinImageVariants/.test(builder), "builder creates local asset variants");
-ok(/object_mask/.test(store) && /alpha/.test(store) && /segmentation/.test(store), "store creates mask/alpha/segmentation assets for Product Twin pack");
+ok(/object_mask/.test(store) && /alpha/.test(store) && /depth_map/.test(store) && /segmentation/.test(store), "store creates mask/alpha/depth/segmentation assets for Product Twin pack");
 ok(/object_coverage/.test(store) && /variant\.metrics/.test(builder), "builder stores mask coverage metrics");
 ok(/qualityDetails/.test(builder), "builder stores quality critic details on assets");
 ok(/persistProductTwin/.test(builder), "builder persists Product Twin");
+ok(/getLatestProductTwinByArticle/.test(builder) && /reused_product_twin/.test(builder), "builder reuses ready Product Twin unless force rebuild is requested");
+ok(/force/.test(builder) && /rebuild/.test(builder), "builder supports explicit force/rebuild policy");
 ok(/disk_path/.test(builder) && /image_data_url/.test(builder) && /image_url/.test(builder), "builder accepts disk/data-url/image-url inputs");
 ok(/disk: DISK/.test(store) && /product_twin/.test(store), "store writes product_twin rows into content_assets");
 ok(/product_twin_asset/.test(store), "store writes per-asset metadata");

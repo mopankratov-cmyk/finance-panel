@@ -29,6 +29,7 @@ assert.ok(kinds.includes("clean_png"));
 assert.ok(kinds.includes("shadow_bg"));
 assert.ok(kinds.includes("object_mask"));
 assert.ok(kinds.includes("alpha"));
+assert.ok(kinds.includes("depth_map"));
 assert.ok(kinds.includes("segmentation"));
 
 const mask = variants.find((variant) => variant.kind === "object_mask");
@@ -50,5 +51,10 @@ const segmentation = variants.find((variant) => variant.kind === "segmentation")
 assert.ok(segmentation);
 assert.deepEqual(segmentation.metrics?.segments, ["background", "product"]);
 assert.equal(segmentation.quality.heroReady, false);
+
+const depth = variants.find((variant) => variant.kind === "depth_map");
+assert.ok(depth);
+assert.equal(depth.metrics?.depth_strategy, "mask_radial_v0");
+assert.equal(depth.quality.brollReady, false);
 
 console.log("productTwinMaskPack: ok");

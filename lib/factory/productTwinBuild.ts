@@ -12,6 +12,7 @@ import {
 import {
   buildTwinImageVariants,
   downloadImageBuffer,
+  getLatestProductTwinByArticle,
   persistProductTwin,
   uploadTwinAsset,
 } from "@/lib/factory/productTwinStore";
@@ -34,6 +35,10 @@ export interface ProductTwinBuildInput {
   cleanPrompt?: string;
   twin_id?: string;
   twinId?: string;
+  force?: boolean;
+  rebuild?: boolean;
+  min_quality?: number;
+  minQuality?: number;
 }
 
 function cleanText(value: unknown, max = 1200): string {
@@ -88,6 +93,22 @@ export async function buildProductTwin(input: ProductTwinBuildInput, db: Supabas
 
   const product = cleanText(input.product || article, 160);
   const category = normalizeTwinCategory(input.category, article, product);
+  const force = input.force === true || input.rebuild === true;
+  const minQuality = Math.max(0, Math.min(1, Number(input.min_quality ?? input.minQuality ?? 0.68) || 0.68));
+  if (!force && !input.twin_id && !input.twinId) {
+    const existing = await getLatestProductTwinByArticle(db, article);
+    const hasServicePack = existing ? ["object_mask", "alpha", "depth_map", "segmentation"].every((kind) => existing.assets.some((asset) => asset.kind === kind)) : false;
+    const hasBroll = existing ? existing.assets.some((asset) => asset.brollReady) : false;
+    if (existing && existing.status === "ready" && existing.qualityScore >= minQuality && hasBroll && hasServicePack) {
+      return {
+        ok: true,
+        twin: existing,
+        cleanUrl: existing.assets.find((asset) => asset.kind === "clean_png")?.url || existing.assets[0]?.url || "",
+        sourceKind: "reused_product_twin",
+        sourcePath: existing.sourcePath,
+      };
+    }
+  }
   const resolved = await resolveInputImage(input);
   if ("error" in resolved) return { ok: false, error: resolved.error, status: 400 };
 
@@ -107,6 +128,7 @@ export async function buildProductTwin(input: ProductTwinBuildInput, db: Supabas
   for (const variant of variants) {
     const uploaded = await uploadTwinAsset(db, { article, twinId, kind: variant.kind, buffer: variant.buffer, contentType: variant.contentType });
     if ("error" in uploaded) return { ok: false, error: `upload ${variant.kind}: ${uploaded.error}`, status: 502 };
+    const serviceAsset = ["object_mask", "alpha", "depth_map", "segmentation"].includes(variant.kind);
     assets.push(createTwinAsset({
       twinId,
       article,
@@ -125,11 +147,11 @@ export async function buildProductTwin(input: ProductTwinBuildInput, db: Supabas
       },
       risk: variant.quality.identityRisk,
       sourceKind: variant.kind === "clean_png" ? "fal_clean" : "sharp_derived",
-      brollReady: variant.quality.brollReady,
-      heroReady: variant.quality.heroReady,
-      ugcReady: variant.quality.brollReady && ["shadow_bg", "clean_png"].includes(variant.kind),
-      marketplaceSafe: variant.quality.marketplaceSafe,
-      adsSafe: variant.quality.adsSafe,
+      brollReady: serviceAsset ? false : variant.quality.brollReady,
+      heroReady: serviceAsset ? false : variant.quality.heroReady,
+      ugcReady: serviceAsset ? false : variant.quality.brollReady && ["shadow_bg", "clean_png"].includes(variant.kind),
+      marketplaceSafe: serviceAsset ? false : variant.quality.marketplaceSafe,
+      adsSafe: serviceAsset ? false : variant.quality.adsSafe,
     }));
   }
 
