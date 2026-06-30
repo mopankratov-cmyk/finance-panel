@@ -13,6 +13,7 @@ import {
   RefreshCw,
   ShieldCheck,
   SlidersHorizontal,
+  Sparkles,
   TriangleAlert,
   Zap,
 } from "lucide-react";
@@ -865,6 +866,72 @@ type LearningGeneratorPayload = {
   do_not_copy: string[];
 };
 
+type ReelsBrainActionPlanResponse = {
+  ok?: boolean;
+  summary?: {
+    lanes: number;
+    known_sources: number;
+    scale_sources: number;
+    explore_sources: number;
+    stop_sources: number;
+    estimated_cost_units_per_useful: number | null;
+  };
+  next_collection_plan?: {
+    instruction?: string;
+    payloads?: {
+      lane: string;
+      provider_hint?: string | null;
+      source_run_payload?: {
+        niche: string;
+        target_platform: string;
+        query: string;
+        limit: number;
+        provider_hint?: string | null;
+        discovery_source_id: string;
+        discovery_source_type: string;
+      };
+    }[];
+  };
+  scale_sources?: LearningSourceRanking[];
+  explore_sources?: LearningSourceRanking[];
+  stop_list?: {
+    id: string;
+    niche: string;
+    platform: string;
+    type: string;
+    value: string;
+    yield_score: number;
+    relevance_rate: number;
+    cost_per_relevant: number;
+    reason: string;
+  }[];
+  replay?: {
+    enabled?: boolean;
+    persisted?: boolean;
+    results?: unknown[];
+    warnings?: string[];
+  };
+  error?: string;
+};
+
+type ReelsBrainCreativeBriefsResponse = {
+  ok?: boolean;
+  count?: number;
+  briefs?: {
+    id: string;
+    niche: string;
+    title: string;
+    hook: string;
+    retention_mechanic: string;
+    structure: string;
+    product_fit: string[];
+    confidence: "high" | "medium" | "low";
+    op_score: number;
+  }[];
+  notes?: string[];
+  error?: string;
+};
+
 type LearningEconomicsDailyCost = {
   date: string;
   runs: number;
@@ -1187,6 +1254,12 @@ export default function ReelsBrainPage() {
   const [learningEconomics, setLearningEconomics] = useState<LearningEconomicsResponse | null>(null);
   const [loadingLearningEconomics, setLoadingLearningEconomics] = useState(false);
   const [learningEconomicsError, setLearningEconomicsError] = useState("");
+  const [actionPlan, setActionPlan] = useState<ReelsBrainActionPlanResponse | null>(null);
+  const [actionPlanLoading, setActionPlanLoading] = useState(false);
+  const [actionPlanError, setActionPlanError] = useState("");
+  const [creativeBriefs, setCreativeBriefs] = useState<ReelsBrainCreativeBriefsResponse | null>(null);
+  const [creativeBriefsLoading, setCreativeBriefsLoading] = useState(false);
+  const [creativeBriefsError, setCreativeBriefsError] = useState("");
   const [insightNicheFilter, setInsightNicheFilter] = useState("all");
   const [insightConfidenceFilter, setInsightConfidenceFilter] = useState<"all" | "high" | "medium" | "low">("all");
   const [insightSegmentFilter, setInsightSegmentFilter] = useState<"all" | "op_hooks" | "frequent_hooks" | "experimental_hooks">("all");
@@ -1615,6 +1688,45 @@ export default function ReelsBrainPage() {
       setLearningEconomicsError(String((e as Error)?.message || e));
     } finally {
       setLoadingLearningEconomics(false);
+    }
+  }
+
+  async function loadActionPlan(currentNiches = automationNiches) {
+    setActionPlanLoading(true);
+    setActionPlanError("");
+    try {
+      const params = new URLSearchParams({
+        niches: currentNiches.trim() || DEFAULT_AUTOMATION_NICHES,
+        platforms: PLATFORM_OPTIONS.join(","),
+        replay: "true",
+        persist_replay: "true",
+        replay_limit: "1500",
+        max_items: "8",
+      });
+      const data = await readJson<ReelsBrainActionPlanResponse>(await fetch(`/api/factory/reels-brain/discovery/action-plan?${params.toString()}`, { cache: "no-store" }));
+      setActionPlan(data);
+      await loadLearningEconomics(currentNiches);
+    } catch (e) {
+      setActionPlanError(String((e as Error)?.message || e));
+    } finally {
+      setActionPlanLoading(false);
+    }
+  }
+
+  async function loadCreativeBriefs(currentNiches = automationNiches) {
+    setCreativeBriefsLoading(true);
+    setCreativeBriefsError("");
+    try {
+      const params = new URLSearchParams({
+        niches: currentNiches.trim() || DEFAULT_AUTOMATION_NICHES,
+        limit: "10",
+      });
+      const data = await readJson<ReelsBrainCreativeBriefsResponse>(await fetch(`/api/factory/reels-brain/creative-briefs?${params.toString()}`, { cache: "no-store" }));
+      setCreativeBriefs(data);
+    } catch (e) {
+      setCreativeBriefsError(String((e as Error)?.message || e));
+    } finally {
+      setCreativeBriefsLoading(false);
     }
   }
 
@@ -2568,6 +2680,87 @@ export default function ReelsBrainPage() {
                 {compactNumber(filteredTopHooks.length)} hooks · {compactNumber(filteredRecipes.length)} recipes
               </span>
             </div>
+          </div>
+
+          <div className="mt-4 rounded-2xl border border-cyan-100 bg-cyan-50 p-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-cyan-700">Action loop</p>
+                <h4 className="mt-1 text-lg font-black text-slate-950">Следующий сбор и briefs без ручной аналитики</h4>
+                <p className="mt-1 max-w-2xl text-sm font-medium text-cyan-900">
+                  Replay бесплатно пересматривает уже собранный корпус, обновляет карту источников и готовит payloads для следующего платного сбора.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => loadActionPlan(automationNiches)}
+                  disabled={actionPlanLoading}
+                  className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-cyan-900 px-3 py-2 text-sm font-black text-white hover:bg-cyan-800 disabled:opacity-50"
+                >
+                  {actionPlanLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Radar className="h-4 w-4" />}
+                  Next collection plan
+                </button>
+                <button
+                  type="button"
+                  onClick={() => loadCreativeBriefs(automationNiches)}
+                  disabled={creativeBriefsLoading}
+                  className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-cyan-200 bg-white px-3 py-2 text-sm font-black text-cyan-900 hover:border-cyan-400 disabled:opacity-50"
+                >
+                  {creativeBriefsLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                  Export 10 briefs
+                </button>
+              </div>
+            </div>
+            {(actionPlanError || creativeBriefsError) ? (
+              <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">
+                {actionPlanError || creativeBriefsError}
+              </div>
+            ) : null}
+            {(actionPlan || creativeBriefs) ? (
+              <div className="mt-3 grid gap-3 lg:grid-cols-2">
+                {actionPlan ? (
+                  <div className="rounded-xl border border-cyan-200 bg-white p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="font-black text-slate-950">Next collection plan</p>
+                      <span className="rounded-full border border-cyan-100 bg-cyan-50 px-2.5 py-1 text-xs font-black text-cyan-700">
+                        {compactNumber(actionPlan.summary?.known_sources || 0)} sources
+                      </span>
+                    </div>
+                    <p className="mt-2 text-xs font-semibold text-slate-600">
+                      scale {compactNumber(actionPlan.summary?.scale_sources || 0)} · explore {compactNumber(actionPlan.summary?.explore_sources || 0)} · stop {compactNumber(actionPlan.summary?.stop_sources || 0)}
+                    </p>
+                    <p className="mt-2 text-xs text-slate-500">{actionPlan.next_collection_plan?.instruction}</p>
+                    <div className="mt-2 space-y-1">
+                      {(actionPlan.next_collection_plan?.payloads || []).slice(0, 3).map((payload, index) => (
+                        <div key={`${payload.source_run_payload?.discovery_source_id || index}`} className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-2 text-xs">
+                          <span className="font-black text-slate-800">{payload.lane}</span>
+                          <span className="text-slate-500"> · {payload.source_run_payload?.target_platform} · {payload.source_run_payload?.query}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+                {creativeBriefs ? (
+                  <div className="rounded-xl border border-cyan-200 bg-white p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="font-black text-slate-950">Creative briefs export</p>
+                      <span className="rounded-full border border-emerald-100 bg-emerald-50 px-2.5 py-1 text-xs font-black text-emerald-700">
+                        {compactNumber(creativeBriefs.count || 0)} briefs
+                      </span>
+                    </div>
+                    <div className="mt-2 space-y-1">
+                      {(creativeBriefs.briefs || []).slice(0, 3).map((brief) => (
+                        <div key={brief.id} className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-2 text-xs">
+                          <div className="font-black text-slate-800">{brief.title}</div>
+                          <div className="mt-1 text-slate-500">{brief.hook}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
           </div>
 
           <div className="mt-5 grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
