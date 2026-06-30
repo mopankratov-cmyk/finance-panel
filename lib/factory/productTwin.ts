@@ -10,6 +10,8 @@ export type ProductTwinAssetKind =
   | "shadow_bg"
   | "upscaled"
   | "object_mask"
+  | "alpha"
+  | "segmentation"
   | "broll_source";
 export type ProductTwinTruthLevel = "truthful" | "derived" | "synthetic";
 export type ProductTwinUseCase = "hero" | "broll" | "ugc" | "marketplace" | "ads";

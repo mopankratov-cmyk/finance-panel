@@ -67,6 +67,8 @@ export async function buildTwinImageVariants(input: {
 
   const upscaled = await sharp(input.cleanBuffer).resize(2200, 2200, { fit: "inside", withoutEnlargement: false }).sharpen().png().toBuffer();
   const mask = await buildObjectMask(normalized);
+  const alpha = await buildAlphaMap(normalized);
+  const segmentation = await buildSegmentationMap(mask.buffer);
 
   const raw = [
     { kind: "clean_png" as const, buffer: normalized, contentType: "image/png" },
@@ -75,6 +77,8 @@ export async function buildTwinImageVariants(input: {
     { kind: "shadow_bg" as const, buffer: shadow, contentType: "image/png" },
     { kind: "upscaled" as const, buffer: upscaled, contentType: "image/png" },
     { kind: "object_mask" as const, buffer: mask.buffer, contentType: "image/png", metrics: { object_coverage: mask.coverage } },
+    { kind: "alpha" as const, buffer: alpha.buffer, contentType: "image/png", metrics: { alpha_coverage: alpha.coverage } },
+    { kind: "segmentation" as const, buffer: segmentation.buffer, contentType: "image/png", metrics: { segments: segmentation.segments, object_coverage: mask.coverage } },
   ];
   return Promise.all(raw.map(async (item) => ({
     ...item,
@@ -118,6 +122,35 @@ async function buildObjectMask(input: Buffer): Promise<{ buffer: Buffer; coverag
   }
   const buffer = await sharp(mask, { raw: { width, height, channels: 1 } }).png().toBuffer();
   return { buffer, coverage: Math.round((foreground / Math.max(1, width * height)) * 1000) / 1000 };
+}
+
+async function buildAlphaMap(input: Buffer): Promise<{ buffer: Buffer; coverage: number }> {
+  const rgba = await sharp(input).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  const data = rgba.data as Buffer;
+  const { width, height } = rgba.info;
+  const alpha = Buffer.alloc(width * height);
+  let foreground = 0;
+  for (let p = 0, a = 0; p < data.length; p += 4, a++) {
+    alpha[a] = data[p + 3] || 0;
+    if (alpha[a] > 24) foreground++;
+  }
+  const buffer = await sharp(alpha, { raw: { width, height, channels: 1 } }).png().toBuffer();
+  return { buffer, coverage: Math.round((foreground / Math.max(1, width * height)) * 1000) / 1000 };
+}
+
+async function buildSegmentationMap(maskPng: Buffer): Promise<{ buffer: Buffer; segments: string[] }> {
+  const mask = await sharp(maskPng).greyscale().raw().toBuffer({ resolveWithObject: true });
+  const data = mask.data as Buffer;
+  const { width, height } = mask.info;
+  const rgb = Buffer.alloc(width * height * 3);
+  for (let m = 0, p = 0; m < data.length; m++, p += 3) {
+    const foreground = (data[m] || 0) > 127;
+    rgb[p] = foreground ? 34 : 15;
+    rgb[p + 1] = foreground ? 197 : 23;
+    rgb[p + 2] = foreground ? 94 : 42;
+  }
+  const buffer = await sharp(rgb, { raw: { width, height, channels: 3 } }).png().toBuffer();
+  return { buffer, segments: ["background", "product"] };
 }
 
 export async function uploadTwinAsset(db: SupabaseClient, input: {

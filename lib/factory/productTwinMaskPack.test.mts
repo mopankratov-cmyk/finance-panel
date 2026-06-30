@@ -28,6 +28,8 @@ const kinds = variants.map((variant) => variant.kind);
 assert.ok(kinds.includes("clean_png"));
 assert.ok(kinds.includes("shadow_bg"));
 assert.ok(kinds.includes("object_mask"));
+assert.ok(kinds.includes("alpha"));
+assert.ok(kinds.includes("segmentation"));
 
 const mask = variants.find((variant) => variant.kind === "object_mask");
 assert.ok(mask);
@@ -37,5 +39,16 @@ assert.ok(Number(mask.metrics?.object_coverage) > 0.05);
 assert.ok(Number(mask.metrics?.object_coverage) < 0.75);
 assert.equal(mask.quality.brollReady, false);
 assert.equal(mask.quality.heroReady, false);
+
+const alpha = variants.find((variant) => variant.kind === "alpha");
+assert.ok(alpha);
+assert.equal(typeof alpha.metrics?.alpha_coverage, "number");
+assert.ok(Number(alpha.metrics?.alpha_coverage) > 0.05);
+assert.equal(alpha.quality.brollReady, false);
+
+const segmentation = variants.find((variant) => variant.kind === "segmentation");
+assert.ok(segmentation);
+assert.deepEqual(segmentation.metrics?.segments, ["background", "product"]);
+assert.equal(segmentation.quality.heroReady, false);
 
 console.log("productTwinMaskPack: ok");
