@@ -1396,6 +1396,39 @@ type ReelsBrainClosureResponse = {
   error?: string;
 };
 
+type ReelsBrainOpsReadinessResponse = {
+  ok?: boolean;
+  scope?: "reels_brain_only";
+  summary?: {
+    tracks?: number;
+    closed_live?: number;
+    closed_foundation?: number;
+    closed_needs_external_runtime?: number;
+    avg_readiness?: number;
+  };
+  readiness?: {
+    tracks?: {
+      id: string;
+      label: string;
+      status: "closed_live" | "closed_foundation" | "closed_needs_external_runtime";
+      readiness_score: number;
+      evidence: string[];
+      deliverables: string[];
+      next_internal_tick: string;
+      no_factory_guardrail: string;
+    }[];
+    daily_report_template?: string[];
+    dashboard_qa?: {
+      must_show_first?: string[];
+      hide_or_collapse?: string[];
+      success_criteria?: string[];
+    };
+    global_guardrails?: string[];
+  };
+  notes?: string[];
+  error?: string;
+};
+
 type LearningEconomicsDailyCost = {
   date: string;
   runs: number;
@@ -1754,6 +1787,9 @@ export default function ReelsBrainPage() {
   const [closurePlan, setClosurePlan] = useState<ReelsBrainClosureResponse | null>(null);
   const [closurePlanLoading, setClosurePlanLoading] = useState(false);
   const [closurePlanError, setClosurePlanError] = useState("");
+  const [opsReadiness, setOpsReadiness] = useState<ReelsBrainOpsReadinessResponse | null>(null);
+  const [opsReadinessLoading, setOpsReadinessLoading] = useState(false);
+  const [opsReadinessError, setOpsReadinessError] = useState("");
   const [insightNicheFilter, setInsightNicheFilter] = useState("all");
   const [insightConfidenceFilter, setInsightConfidenceFilter] = useState<"all" | "high" | "medium" | "low">("all");
   const [insightSegmentFilter, setInsightSegmentFilter] = useState<"all" | "op_hooks" | "frequent_hooks" | "experimental_hooks">("all");
@@ -1906,8 +1942,9 @@ export default function ReelsBrainPage() {
       setGeneratorHandoffLoading(true);
       setOperatingPlanLoading(true);
       setClosurePlanLoading(true);
+      setOpsReadinessLoading(true);
       try {
-        const [memory, audio, visual, simulation, experiment, manager, humanization, handoff, operating, closure] = await Promise.allSettled([
+        const [memory, audio, visual, simulation, experiment, manager, humanization, handoff, operating, closure, readiness] = await Promise.allSettled([
           readJson<ReelsBrainCreativeMemoryResponse>(await fetch(`/api/factory/reels-brain/creative-memory?niches=${encodeURIComponent(DEFAULT_AUTOMATION_NICHES)}&limit=80`, { cache: "no-store" })),
           readJson<ReelsBrainAudioIntelligenceResponse>(await fetch(`/api/factory/reels-brain/audio-intelligence?niches=${encodeURIComponent(DEFAULT_AUTOMATION_NICHES)}&limit=80`, { cache: "no-store" })),
           readJson<ReelsBrainVisualIntelligenceResponse>(await fetch(`/api/factory/reels-brain/visual-intelligence?niches=${encodeURIComponent(DEFAULT_AUTOMATION_NICHES)}&limit=80`, { cache: "no-store" })),
@@ -1918,6 +1955,7 @@ export default function ReelsBrainPage() {
           readJson<ReelsBrainGeneratorHandoffResponse>(await fetch(`/api/factory/reels-brain/generator-handoff?niches=${encodeURIComponent(DEFAULT_AUTOMATION_NICHES)}&limit=20`, { cache: "no-store" })),
           readJson<ReelsBrainOperatingPlanResponse>(await fetch(`/api/factory/reels-brain/operating-plan?niches=${encodeURIComponent(DEFAULT_AUTOMATION_NICHES)}&corpus_target=10000`, { cache: "no-store" })),
           readJson<ReelsBrainClosureResponse>(await fetch(`/api/factory/reels-brain/closure?niches=${encodeURIComponent(DEFAULT_AUTOMATION_NICHES)}&corpus_target=10000`, { cache: "no-store" })),
+          readJson<ReelsBrainOpsReadinessResponse>(await fetch(`/api/factory/reels-brain/ops-readiness?niches=${encodeURIComponent(DEFAULT_AUTOMATION_NICHES)}&corpus_target=10000`, { cache: "no-store" })),
         ]);
         if (!alive) return;
         setCreativeMemory(memory.status === "fulfilled" ? memory.value : null);
@@ -1930,6 +1968,7 @@ export default function ReelsBrainPage() {
         setGeneratorHandoff(handoff.status === "fulfilled" ? handoff.value : null);
         setOperatingPlan(operating.status === "fulfilled" ? operating.value : null);
         setClosurePlan(closure.status === "fulfilled" ? closure.value : null);
+        setOpsReadiness(readiness.status === "fulfilled" ? readiness.value : null);
       } catch {
         if (alive) {
           setCreativeMemory(null);
@@ -1942,6 +1981,7 @@ export default function ReelsBrainPage() {
           setGeneratorHandoff(null);
           setOperatingPlan(null);
           setClosurePlan(null);
+          setOpsReadiness(null);
         }
       } finally {
         if (alive) {
@@ -1955,6 +1995,7 @@ export default function ReelsBrainPage() {
           setGeneratorHandoffLoading(false);
           setOperatingPlanLoading(false);
           setClosurePlanLoading(false);
+          setOpsReadinessLoading(false);
         }
       }
     }
@@ -2067,6 +2108,10 @@ export default function ReelsBrainPage() {
   const closureSummary = closurePlan?.summary || {};
   const closureTracks = closurePlan?.closure?.tracks || [];
   const closureGuardrails = closurePlan?.closure?.global_guardrails || [];
+  const opsReadinessSummary = opsReadiness?.summary || {};
+  const opsReadinessTracks = opsReadiness?.readiness?.tracks || [];
+  const opsDailyReport = opsReadiness?.readiness?.daily_report_template || [];
+  const opsDashboardQa = opsReadiness?.readiness?.dashboard_qa || {};
   const maxTimelineInserted = Math.max(1, ...learningTimeline.map((row) => row.inserted));
   const analyzeBacklogLanes = analyzeBacklog?.lanes || [];
   const analyzeBacklogQueue = analyzeBacklog?.queue || [];
@@ -2510,6 +2555,23 @@ export default function ReelsBrainPage() {
     }
   }
 
+  async function loadOpsReadiness(currentNiches = automationNiches) {
+    setOpsReadinessLoading(true);
+    setOpsReadinessError("");
+    try {
+      const params = new URLSearchParams({
+        niches: currentNiches.trim() || DEFAULT_AUTOMATION_NICHES,
+        corpus_target: "10000",
+      });
+      const data = await readJson<ReelsBrainOpsReadinessResponse>(await fetch(`/api/factory/reels-brain/ops-readiness?${params.toString()}`, { cache: "no-store" }));
+      setOpsReadiness(data);
+    } catch (e) {
+      setOpsReadinessError(String((e as Error)?.message || e));
+    } finally {
+      setOpsReadinessLoading(false);
+    }
+  }
+
   async function refreshAutomationSurfaces(currentNiches = automationNiches, currentNiche = activeNiche()) {
     setAutomationSyncing(true);
     try {
@@ -2531,6 +2593,7 @@ export default function ReelsBrainPage() {
           loadGeneratorHandoff(currentNiches),
           loadOperatingPlan(currentNiches),
           loadClosurePlan(currentNiches),
+          loadOpsReadiness(currentNiches),
         ]);
       }
     } finally {
@@ -3590,11 +3653,20 @@ export default function ReelsBrainPage() {
                   {closurePlanLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
                   Refresh 2-10
                 </button>
+                <button
+                  type="button"
+                  onClick={() => loadOpsReadiness(automationNiches)}
+                  disabled={opsReadinessLoading}
+                  className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-cyan-200 bg-white px-3 py-2 text-sm font-black text-cyan-900 hover:border-cyan-400 disabled:opacity-50"
+                >
+                  {opsReadinessLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
+                  Refresh 1-5
+                </button>
               </div>
             </div>
-            {(actionPlanError || creativeBriefsError || creativeMemoryError || audioIntelligenceError || visualIntelligenceError || simulationBrainError || experimentBrainError || portfolioManagerError || humanizationBrainError || generatorHandoffError || operatingPlanError || closurePlanError) ? (
+            {(actionPlanError || creativeBriefsError || creativeMemoryError || audioIntelligenceError || visualIntelligenceError || simulationBrainError || experimentBrainError || portfolioManagerError || humanizationBrainError || generatorHandoffError || operatingPlanError || closurePlanError || opsReadinessError) ? (
               <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">
-                {actionPlanError || creativeBriefsError || creativeMemoryError || audioIntelligenceError || visualIntelligenceError || simulationBrainError || experimentBrainError || portfolioManagerError || humanizationBrainError || generatorHandoffError || operatingPlanError || closurePlanError}
+                {actionPlanError || creativeBriefsError || creativeMemoryError || audioIntelligenceError || visualIntelligenceError || simulationBrainError || experimentBrainError || portfolioManagerError || humanizationBrainError || generatorHandoffError || operatingPlanError || closurePlanError || opsReadinessError}
               </div>
             ) : null}
             {(actionPlan || creativeBriefs) ? (
@@ -3749,6 +3821,72 @@ export default function ReelsBrainPage() {
                 ))}
               </div>
             ) : null}
+          </div>
+
+          <div className="mt-4 rounded-2xl border border-blue-100 bg-gradient-to-br from-blue-50 via-white to-sky-50 p-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-blue-700">1-5 Ops Readiness</p>
+                <h4 className="mt-1 text-lg font-black text-slate-950">Боевой foundation без добора видео</h4>
+                <p className="mt-1 max-w-2xl text-sm font-medium text-blue-950">
+                  Закрывает offline worker contracts, outcome metrics, cheap discovery, daily report и QA витрины как внутреннюю эксплуатационную готовность Reels Brain.
+                </p>
+              </div>
+              <span className="rounded-full border border-blue-200 bg-white px-3 py-1 text-xs font-black text-blue-800">
+                {opsReadinessLoading ? "loading" : `${compactNumber(opsReadinessSummary.avg_readiness || 0)}% ready`}
+              </span>
+            </div>
+
+            <div className="mt-4 grid gap-2 sm:grid-cols-4">
+              <MetricCard label="Tracks 1-5" value={opsReadinessSummary.tracks || 0} />
+              <MetricCard label="Live" value={opsReadinessSummary.closed_live || 0} />
+              <MetricCard label="Foundation" value={opsReadinessSummary.closed_foundation || 0} />
+              <MetricCard label="Needs runtime" value={opsReadinessSummary.closed_needs_external_runtime || 0} />
+            </div>
+
+            <div className="mt-4 grid gap-2 lg:grid-cols-2">
+              {opsReadinessTracks.length ? opsReadinessTracks.map((track) => (
+                <div key={track.id} className="rounded-2xl border border-blue-200 bg-white px-3 py-3 text-xs">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="font-black text-slate-900">{track.label}</span>
+                    <span className={`rounded-full border px-2 py-1 font-black ${
+                      track.status === "closed_live"
+                        ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                        : track.status === "closed_needs_external_runtime"
+                          ? "border-amber-200 bg-amber-50 text-amber-800"
+                          : "border-blue-200 bg-blue-50 text-blue-800"
+                    }`}>
+                      {track.status} · {compactNumber(track.readiness_score)}
+                    </span>
+                  </div>
+                  <p className="mt-2 text-slate-600">{track.evidence.slice(0, 2).join(" · ")}</p>
+                  <p className="mt-1 font-semibold text-blue-700">next: {track.next_internal_tick}</p>
+                  <p className="mt-1 text-red-700">{track.no_factory_guardrail}</p>
+                </div>
+              )) : <p className="text-sm text-slate-500">Ops readiness появится после загрузки playbooks.</p>}
+            </div>
+
+            <div className="mt-4 grid gap-3 lg:grid-cols-2">
+              <details className="rounded-2xl border border-blue-200 bg-white p-4">
+                <summary className="cursor-pointer text-xs font-black uppercase tracking-[0.18em] text-slate-500">Daily report template</summary>
+                <div className="mt-3 space-y-2">
+                  {opsDailyReport.slice(0, 5).map((line) => (
+                    <p key={line} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-700">{line}</p>
+                  ))}
+                </div>
+              </details>
+              <details className="rounded-2xl border border-blue-200 bg-white p-4">
+                <summary className="cursor-pointer text-xs font-black uppercase tracking-[0.18em] text-slate-500">Dashboard QA checklist</summary>
+                <div className="mt-3 space-y-2 text-xs">
+                  {(opsDashboardQa.must_show_first || []).slice(0, 4).map((line) => (
+                    <p key={line} className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 font-semibold text-emerald-800">show: {line}</p>
+                  ))}
+                  {(opsDashboardQa.hide_or_collapse || []).slice(0, 3).map((line) => (
+                    <p key={line} className="rounded-xl border border-amber-100 bg-amber-50 px-3 py-2 font-semibold text-amber-800">collapse: {line}</p>
+                  ))}
+                </div>
+              </details>
+            </div>
           </div>
 
           <div className="mt-4 rounded-2xl border border-emerald-100 bg-gradient-to-br from-emerald-50 via-white to-lime-50 p-4">
