@@ -18,5 +18,6 @@ ok(source.includes("heartbeat_failed_non_blocking"), "heartbeat failures are fai
 ok(!/\/api\/factory\/(produce|scenario|director|publish)\b/.test(source), "worker does not call content factory generation/publish routes");
 ok(!/\b(produce|scenario|director|publish)\s*\(/.test(source), "worker does not call forbidden generation functions");
 ok(dockerfile.includes('CMD ["node", "lib/factory/reelsBrainRailwayWorker.mjs"]'), "Dockerfile starts the offline worker directly");
+ok(dockerfile.includes("reelsBrainMediaAssetResolver.mjs"), "Dockerfile includes media resolver module");
 
 console.log("reelsBrainRailwayWorkerContract ok");
