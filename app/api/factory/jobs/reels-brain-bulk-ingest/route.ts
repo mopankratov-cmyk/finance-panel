@@ -349,6 +349,7 @@ async function runBulk(req: NextRequest, body: Record<string, unknown>, execute:
     max_cost_units: body.max_cost_units || req.nextUrl.searchParams.get("max_cost_units"),
   });
   const skipUnseededInstagram = body.skip_unseeded_instagram === true || req.nextUrl.searchParams.get("skip_unseeded_instagram") === "true";
+  const downloadVideos = body.download_videos === true || req.nextUrl.searchParams.get("download_videos") === "true";
   const igSeeds = instagramSeeds(body, req);
   const queryOverride = String(body.query || req.nextUrl.searchParams.get("query") || "").trim().slice(0, 160);
 
@@ -444,7 +445,7 @@ async function runBulk(req: NextRequest, body: Record<string, unknown>, execute:
     const providerRuns = await Promise.all(callQueue.map(async ({ lane, provider, budgetDecision }) => {
         const started = Date.now();
         const result = await withTimeout(
-          fetchReelsBrainProvider(provider, lane.query, lane.limit),
+          fetchReelsBrainProvider(provider, lane.query, lane.limit, { downloadVideos }),
           lane.provider_timeout_ms,
           { provider, query: lane.query, configured: true, elapsedMs: lane.provider_timeout_ms, videos: [], error: "provider timeout" },
         );
@@ -507,6 +508,7 @@ async function runBulk(req: NextRequest, body: Record<string, unknown>, execute:
     query_variants_per_lane: queryVariantsPerLane,
     query_override: queryOverride || null,
     skip_unseeded_instagram: skipUnseededInstagram,
+    download_videos: downloadVideos,
     instagram_seed_count: igSeeds.length,
     queue,
     blocked_lanes: blockedLanes,

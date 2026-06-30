@@ -4,6 +4,7 @@ type NextWorker = "audio_visual" | "metadata_only_pattern_brain" | "manual_resol
 const DIRECT_MEDIA_EXTENSIONS = /\.(mp4|mov|m4v|webm|mp3|wav|m4a|aac)(\?|#|$)/i;
 const VIDEO_EXTENSIONS = /\.(mp4|mov|m4v|webm)(\?|#|$)/i;
 const AUDIO_EXTENSIONS = /\.(mp3|wav|m4a|aac)(\?|#|$)/i;
+const IMAGE_HINT = /\.(jpg|jpeg|png|webp|gif|image)(\?|#|$)|\/image(?:\?|$)|tplv-[^/?#]*\.image/i;
 const SOCIAL_PAGE_HOSTS = [
   "tiktok.com",
   "instagram.com",
@@ -71,6 +72,10 @@ function assetKind(value: string | null): "video" | "audio" | "unknown" | null {
   return "unknown";
 }
 
+function isProbablyImage(value: string | null | undefined): boolean {
+  return !!value && IMAGE_HINT.test(value);
+}
+
 function rec(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 }
@@ -96,7 +101,10 @@ function envelopeAssetCandidate(value: unknown): string | null {
   for (const asset of assets) {
     const row = rec(asset);
     const url = String(row.url || "").trim();
-    if (/^https?:\/\//i.test(url) && !isSocialPageUrl(url)) return url;
+    const field = String(row.field || "").toLowerCase();
+    const kind = String(row.kind || "").toLowerCase();
+    const usableKind = kind === "video" || kind === "audio" || field === "video_url" || field === "download_url" || field === "audio_url";
+    if (usableKind && /^https?:\/\//i.test(url) && !isSocialPageUrl(url) && !isProbablyImage(url)) return url;
   }
   return null;
 }
@@ -108,7 +116,7 @@ function directAssetCandidate(video: ReelsMediaSourceVideo): string | null {
     video.media_url,
     video.audio_url,
   ].map((row) => String(row || "").trim()).filter(Boolean);
-  const likelyDirectField = directFields.find((candidate) => /^https?:\/\//i.test(candidate) && !isSocialPageUrl(candidate));
+  const likelyDirectField = directFields.find((candidate) => /^https?:\/\//i.test(candidate) && !isSocialPageUrl(candidate) && !isProbablyImage(candidate));
   if (likelyDirectField) return likelyDirectField;
   const envelopeDirect = envelopeAssetCandidate(video.analyzed_full);
   if (envelopeDirect) return envelopeDirect;

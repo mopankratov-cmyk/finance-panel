@@ -715,7 +715,7 @@ async function fetchEnsembleData(provider: EnsembleDataProvider, query: string, 
   return batches.flat().map((row) => apiRowToInput("instagram", row)).filter((input) => input.url && shortFormOnly(input)).slice(0, limit);
 }
 
-export async function fetchReelsBrainProvider(provider: ReelsBrainProvider, query: string, limit: number): Promise<ReelsBrainFetchResult> {
+export async function fetchReelsBrainProvider(provider: ReelsBrainProvider, query: string, limit: number, opts: { downloadVideos?: boolean } = {}): Promise<ReelsBrainFetchResult> {
   const started = Date.now();
   if (!hasReelsBrainProvider(provider)) {
     return { provider, query, configured: false, elapsedMs: 0, videos: [], error: `${provider} не настроен` };
@@ -734,7 +734,7 @@ export async function fetchReelsBrainProvider(provider: ReelsBrainProvider, quer
       return { provider, query, configured: true, elapsedMs: Date.now() - started, videos };
     }
 
-    const videos = await fetchViralFromProvider(provider, query, limit);
+    const videos = await fetchViralFromProvider(provider, query, limit, { downloadVideos: opts.downloadVideos });
     return {
       provider,
       query,

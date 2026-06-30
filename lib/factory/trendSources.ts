@@ -138,7 +138,8 @@ function instagramDirectUrls(niche: string): string[] {
   return Array.from(new Set([...direct, ...hashtags])).slice(0, 8);
 }
 
-function tiktokActorInput(niche: string, limit: number) {
+function tiktokActorInput(niche: string, limit: number, opts: { downloadVideos?: boolean } = {}) {
+  const downloadVideos = opts.downloadVideos === true;
   return {
     searchQueries: [niche],
     queries: [niche],
@@ -159,7 +160,8 @@ function tiktokActorInput(niche: string, limit: number) {
     shouldDownloadMusicCovers: false,
     shouldDownloadSlideshowImages: false,
     shouldDownloadSubtitles: false,
-    shouldDownloadVideos: false,
+    shouldDownloadVideos: downloadVideos,
+    downloadVideos,
     proxyCountryCode: "None",
     proxy: { useApifyProxy: true },
   };
@@ -173,11 +175,11 @@ function tiktokActorCandidates(actor?: string): string[] {
   ].filter(Boolean) as string[]));
 }
 
-export async function debugApifyTiktokSearch(query: string, limit = 3) {
+export async function debugApifyTiktokSearch(query: string, limit = 3, opts: { downloadVideos?: boolean } = {}) {
   const token = process.env.APIFY_TOKEN || "";
   const actor = process.env.APIFY_TIKTOK_ACTOR || process.env.APIFY_ACTOR || "lexis-solutions~tiktok-trending-videos-scraper";
   if (!token) return { configured: false, error: "APIFY_TOKEN missing", actors: [] };
-  const input = tiktokActorInput(query, Math.max(1, Math.min(10, limit)));
+  const input = tiktokActorInput(query, Math.max(1, Math.min(10, limit)), { downloadVideos: opts.downloadVideos });
   const actors = [];
   for (const actorName of tiktokActorCandidates(actor)) {
     const actorPath = apifyActorPath(actorName);
@@ -219,7 +221,7 @@ export async function debugApifyTiktokSearch(query: string, limit = 3) {
 
 // Apify: запускаем актор синхронно и забираем dataset. Актор задаётся APIFY_ACTOR
 // (по умолч. TikTok trending scraper). Вход — общий, лишние поля актор игнорит.
-async function fromApify(niche: string, limit: number, opts: { actor?: string; platform?: string } = {}): Promise<ViralVideo[]> {
+async function fromApify(niche: string, limit: number, opts: { actor?: string; platform?: string; downloadVideos?: boolean } = {}): Promise<ViralVideo[]> {
   const token = process.env.APIFY_TOKEN!;
   const actor = opts.actor || process.env.APIFY_ACTOR || "lexis-solutions~tiktok-trending-videos-scraper";
   const platform = opts.platform || "tiktok";
@@ -249,7 +251,7 @@ async function fromApify(niche: string, limit: number, opts: { actor?: string; p
       onlyPostsNewerThan: "30 days",
     }
     : platform === "tiktok"
-      ? tiktokActorInput(niche, limit)
+      ? tiktokActorInput(niche, limit, { downloadVideos: opts.downloadVideos })
     : input;
   const runActor = async (actorName: string) => {
     const actorPath = apifyActorPath(actorName);
@@ -404,9 +406,9 @@ export async function fetchViral(niche: string, limit = 20): Promise<ViralVideo[
   return provider ? fetchViralFromProvider(provider, niche, limit) : [];
 }
 
-export async function fetchViralFromProvider(provider: TrendProvider, niche: string, limit = 20): Promise<ViralVideo[]> {
-  if (provider === "apify" && process.env.APIFY_TOKEN) return fromApify(niche, limit);
-  if (provider === "apify_tiktok" && process.env.APIFY_TOKEN) return fromApify(niche, limit, { actor: process.env.APIFY_TIKTOK_ACTOR || process.env.APIFY_ACTOR, platform: "tiktok" });
+export async function fetchViralFromProvider(provider: TrendProvider, niche: string, limit = 20, opts: { downloadVideos?: boolean } = {}): Promise<ViralVideo[]> {
+  if (provider === "apify" && process.env.APIFY_TOKEN) return fromApify(niche, limit, { downloadVideos: opts.downloadVideos });
+  if (provider === "apify_tiktok" && process.env.APIFY_TOKEN) return fromApify(niche, limit, { actor: process.env.APIFY_TIKTOK_ACTOR || process.env.APIFY_ACTOR, platform: "tiktok", downloadVideos: opts.downloadVideos });
   if (provider === "apify_instagram" && process.env.APIFY_TOKEN) return fromApify(niche, limit, { actor: process.env.APIFY_INSTAGRAM_REELS_ACTOR || "apify/instagram-scraper", platform: "instagram" });
   if (provider === "apify_youtube" && process.env.APIFY_TOKEN && process.env.APIFY_YOUTUBE_ACTOR) return fromApify(niche, limit, { actor: process.env.APIFY_YOUTUBE_ACTOR, platform: "youtube" });
   if (provider === "virlo" && process.env.VIRLO_API_KEY) return fromVirlo(niche, limit);
