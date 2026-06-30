@@ -27,6 +27,7 @@ type AnalyzeLaneRow = {
   niche?: string | null;
   platform?: string | null;
   analyzed?: boolean | null;
+  analyzed_full?: unknown;
 };
 
 const SUPABASE_PAGE_SIZE = 1000;
@@ -36,6 +37,16 @@ function parseBool(value: unknown, fallback = false): boolean {
   if (value == null || value === "") return fallback;
   if (typeof value === "boolean") return value;
   return ["1", "true", "yes", "on"].includes(String(value).trim().toLowerCase());
+}
+
+function mergeAnalyzedFull(existing: unknown, next: Record<string, unknown>) {
+  const root = existing && typeof existing === "object" && !Array.isArray(existing) ? existing as Record<string, unknown> : {};
+  return {
+    ...root,
+    ...next,
+    media_assets: root.media_assets || null,
+    media_assets_updated_at: root.media_assets_updated_at || null,
+  };
 }
 
 async function loadAnalyzeLanes(
@@ -103,7 +114,7 @@ async function cleanupUnselectableTail(
     const to = Math.min(from + SUPABASE_PAGE_SIZE - 1, MAX_ANALYZE_LANE_ROWS - 1);
     const { data, error } = await db
       .from("viral_videos")
-      .select("id,url,niche,platform,analyzed")
+      .select("id,url,niche,platform,analyzed,analyzed_full")
       .range(from, to);
     if (error) return { cleaned: 0, ids: [] as number[], error: error.message };
     const page = (data || []) as AnalyzeLaneRow[];
@@ -116,20 +127,22 @@ async function cleanupUnselectableTail(
   const ids = tail.map((row) => Number(row.id)).filter((id) => Number.isFinite(id));
   if (!ids.length) return { cleaned: 0, ids };
 
-  const { error: updateError } = await db
-    .from("viral_videos")
-    .update({
-      analyzed: true,
-      analyzed_full: {
+  for (const row of tail) {
+    const { error: updateError } = await db
+      .from("viral_videos")
+      .update({
+        analyzed: true,
+        analyzed_full: mergeAnalyzedFull(row.analyzed_full, {
         ok: false,
         source: "reels-brain-analyze-backlog",
         error: "tail cleanup: analyzer selected 0 candidates for this lane",
         cleaned_at: new Date().toISOString(),
-      },
-      updated_at: new Date().toISOString(),
-    })
-    .in("id", ids);
-  if (updateError) return { cleaned: 0, ids, error: updateError.message };
+        }),
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", row.id);
+    if (updateError) return { cleaned: 0, ids, error: updateError.message };
+  }
   return { cleaned: ids.length, ids };
 }
 

@@ -17,7 +17,18 @@ type VideoForAnalysis = {
   caption: string | null;
   platform?: string | null;
   analyzed?: boolean | null;
+  analyzed_full?: unknown;
 };
+
+function mergeAnalyzedFull(existing: unknown, next: Record<string, unknown>) {
+  const root = existing && typeof existing === "object" && !Array.isArray(existing) ? existing as Record<string, unknown> : {};
+  return {
+    ...root,
+    ...next,
+    media_assets: root.media_assets || null,
+    media_assets_updated_at: root.media_assets_updated_at || null,
+  };
+}
 
 async function markVideoAnalyzedFailure(
   db: NonNullable<ReturnType<typeof getSupabaseAdmin>>,
@@ -27,11 +38,13 @@ async function markVideoAnalyzedFailure(
   const failurePayload = {
     analyzed: true,
     analyzed_full: {
-      ok: false,
-      error: reason,
-      source: "reels-brain-analyze",
-      url: video.url,
-      caption: video.caption || null,
+      ...mergeAnalyzedFull(video.analyzed_full, {
+        ok: false,
+        error: reason,
+        source: "reels-brain-analyze",
+        url: video.url,
+        caption: video.caption || null,
+      }),
     },
     updated_at: new Date().toISOString(),
   };
@@ -52,7 +65,7 @@ async function loadAnalysisCandidates(
     const to = Math.min(from + SUPABASE_PAGE_SIZE - 1, MAX_ANALYZE_SCAN_ROWS - 1);
     let q = db
       .from("viral_videos")
-      .select("id,url,niche,virality_score,caption,platform,analyzed")
+      .select("id,url,niche,virality_score,caption,platform,analyzed,analyzed_full")
       .order("virality_score", { ascending: false, nullsFirst: false })
       .range(from, to);
     const { data, error } = await q;
@@ -110,7 +123,7 @@ export async function POST(req: NextRequest) {
           beat_structure: resolvedAnalysis.beat_structure || null,
           viral_reason: resolvedAnalysis.viral_reason || null,
           is_commerce_safe: typeof resolvedAnalysis.is_commerce_safe === "boolean" ? resolvedAnalysis.is_commerce_safe : true,
-          analyzed_full: resolvedAnalysis,
+          analyzed_full: mergeAnalyzedFull(video.analyzed_full, resolvedAnalysis as Record<string, unknown>),
           updated_at: new Date().toISOString(),
         };
         const { error: updateErr } = await db.from("viral_videos").update(update).eq("id", video.id);
