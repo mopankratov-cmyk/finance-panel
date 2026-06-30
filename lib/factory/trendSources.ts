@@ -6,6 +6,11 @@ export type TrendProvider = "apify" | "apify_tiktok" | "apify_instagram" | "apif
 type TrendPlatform = "tiktok" | "instagram" | "youtube";
 export interface ViralVideo {
   url?: string;
+  video_url?: string;
+  download_url?: string;
+  media_url?: string;
+  audio_url?: string;
+  thumbnail_url?: string;
   caption?: string;
   title?: string;
   views?: number;
@@ -84,6 +89,34 @@ export function trendSourceName(): string {
 
 const num = (v: unknown) => (Number(v) || 0);
 const apifyActorPath = (actor: string) => actor.trim().replace(/\//g, "~");
+
+function rec(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function firstString(...values: unknown[]): string | undefined {
+  for (const value of values) {
+    if (Array.isArray(value)) {
+      const nested = firstString(...value);
+      if (nested) return nested;
+      continue;
+    }
+    if (value && typeof value === "object") {
+      const row = value as Record<string, unknown>;
+      const nested = firstString(row.url, row.src, row.href, row.downloadUrl, row.playUrl, row.videoUrl);
+      if (nested) return nested;
+      continue;
+    }
+    const text = String(value || "").trim();
+    if (text) return text;
+  }
+  return undefined;
+}
+
+function firstUrl(...values: unknown[]): string | undefined {
+  const candidate = firstString(...values);
+  return candidate && /^https?:\/\//i.test(candidate) ? candidate : undefined;
+}
 
 function hashtagSeeds(niche: string): string[] {
   const tokens = niche
@@ -227,6 +260,21 @@ async function fromApify(niche: string, limit: number, opts: { actor?: string; p
     const items = (await r.json().catch(() => [])) as Record<string, unknown>[];
     return (Array.isArray(items) ? items : []).slice(0, limit).map((it) => ({
       url: (it.webVideoUrl || it.url || it.postPage || it.shortUrl || it.videoUrl || (it.shortCode ? `https://www.instagram.com/reel/${it.shortCode}/` : "")) as string,
+      video_url: firstUrl(
+        it.videoUrl,
+        it.video_url,
+        it.videoDownloadUrl,
+        it.videoPlayUrl,
+        it.playUrl,
+        it.play_url,
+        rec(it.video).url,
+        rec(it.video).playAddr,
+        rec(it.video).downloadAddr,
+      ),
+      download_url: firstUrl(it.downloadUrl, it.download_url, it.videoDownloadUrl, rec(it.video).downloadAddr),
+      media_url: firstUrl(it.mediaUrl, it.media_url, it.displayUrl, it.thumbnailUrl),
+      audio_url: firstUrl(it.audioUrl, it.audio_url, it.musicUrl, rec(it.musicMeta).musicOriginalUrl),
+      thumbnail_url: firstUrl(it.thumbnailUrl, it.coverUrl, it.displayUrl, rec(it.video).cover),
       caption: (it.text || it.caption || it.title || it.desc || it.description || it.alt || "") as string,
       views: num(it.playCount ?? it.views ?? it.viewCount ?? it.videoViewCount ?? it.videoPlayCount),
       likes: num(it.diggCount ?? it.likes ?? it.likeCount ?? it.likesCount),
@@ -281,6 +329,11 @@ async function fromVirlo(niche: string, limit: number): Promise<ViralVideo[]> {
     const data = (JSON.parse(textBlock) as { data?: Record<string, unknown>[] }).data || [];
     return data.slice(0, limit).map((it) => ({
       url: (it.url || "") as string,
+      video_url: firstUrl(it.video_url, it.videoUrl, it.download_url, it.media_url),
+      download_url: firstUrl(it.download_url, it.downloadUrl),
+      media_url: firstUrl(it.media_url, it.mediaUrl, it.thumbnail_url),
+      audio_url: firstUrl(it.audio_url, it.audioUrl, (it.sound as Record<string, unknown> | undefined)?.url),
+      thumbnail_url: firstUrl(it.thumbnail_url, it.thumbnailUrl, it.cover_url),
       caption: (it.description || "") as string,
       views: num(it.views),
       likes: num(it.number_of_likes ?? it.likes),

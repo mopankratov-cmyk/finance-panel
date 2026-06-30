@@ -4,6 +4,10 @@ export type ReelsSourceType = "manual" | "keyword" | "hashtag" | "creator" | "so
 export interface ReelsBrainInput {
   url?: string;
   video_url?: string;
+  download_url?: string;
+  media_url?: string;
+  audio_url?: string;
+  thumbnail_url?: string;
   canonical_url?: string;
   platform?: string;
   caption?: string;
@@ -34,6 +38,11 @@ export interface NormalizedReelsVideo {
   url: string;
   canonicalUrl: string;
   videoId: string | null;
+  videoUrl: string | null;
+  downloadUrl: string | null;
+  mediaUrl: string | null;
+  audioUrl: string | null;
+  thumbnailUrl: string | null;
   caption: string | null;
   transcript: string | null;
   author: string | null;
@@ -71,6 +80,11 @@ export interface ViralVideoInsertRow {
   sound_id: string | null;
   sound_title: string | null;
   source_orbit_id: string | null;
+  video_url?: string | null;
+  download_url?: string | null;
+  media_url?: string | null;
+  audio_url?: string | null;
+  analyzed_full?: unknown;
   analyzed: false;
 }
 
@@ -109,6 +123,39 @@ function cleanText(value: unknown, max = 2000): string | null {
   if (typeof value !== "string") return null;
   const s = value.replace(/\s+/g, " ").trim();
   return s ? s.slice(0, max) : null;
+}
+
+function cleanUrl(value: unknown, max = 1600): string | null {
+  const text = cleanText(value, max);
+  if (!text || !/^https?:\/\//i.test(text)) return null;
+  return text;
+}
+
+function mediaAssetEnvelope(input: ReelsBrainInput, video: NormalizedReelsVideo, opts: { sourceProvider: string; sourceQuery?: string; sourceType?: ReelsSourceType }) {
+  const assets = [
+    { kind: "video", field: "video_url", url: video.videoUrl },
+    { kind: "video", field: "download_url", url: video.downloadUrl },
+    { kind: "media", field: "media_url", url: video.mediaUrl },
+    { kind: "audio", field: "audio_url", url: video.audioUrl },
+    { kind: "thumbnail", field: "thumbnail_url", url: video.thumbnailUrl },
+  ].filter((asset) => !!asset.url);
+
+  if (!assets.length) return null;
+  return {
+    source: "reels_brain_ingest",
+    provider: opts.sourceProvider,
+    query: opts.sourceQuery || opts.sourceType || "manual",
+    resolved_at: new Date().toISOString(),
+    page_url: video.canonicalUrl || video.url,
+    assets,
+    raw_fields_present: {
+      video_url: !!input.video_url,
+      download_url: !!input.download_url,
+      media_url: !!input.media_url,
+      audio_url: !!input.audio_url,
+      thumbnail_url: !!input.thumbnail_url,
+    },
+  };
 }
 
 export function inferPlatform(urlOrPlatform?: string): ReelsPlatform {
@@ -183,6 +230,11 @@ export function normalizeReelsVideo(input: ReelsBrainInput): NormalizedReelsVide
     url: rawUrl,
     canonicalUrl: canonical.canonicalUrl,
     videoId: canonical.videoId,
+    videoUrl: cleanUrl(input.video_url),
+    downloadUrl: cleanUrl(input.download_url),
+    mediaUrl: cleanUrl(input.media_url),
+    audioUrl: cleanUrl(input.audio_url),
+    thumbnailUrl: cleanUrl(input.thumbnail_url),
     caption,
     transcript: cleanText(input.transcript, 6000),
     author: cleanText(input.author || input.username, 180),
@@ -274,6 +326,11 @@ export function makeViralVideoRows(
       sound_id: video.soundId,
       sound_title: video.soundTitle,
       source_orbit_id: sourceOrbitId(opts.sourceProvider, opts.sourceQuery || opts.sourceType || "manual"),
+      video_url: video.videoUrl,
+      download_url: video.downloadUrl,
+      media_url: video.mediaUrl,
+      audio_url: video.audioUrl,
+      analyzed_full: mediaAssetEnvelope(input, video, opts),
       analyzed: false,
     });
   }

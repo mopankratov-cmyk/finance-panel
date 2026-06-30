@@ -19,6 +19,11 @@ type CorpusRow = {
   format_detected: string | null;
   sound_title: string | null;
   source_orbit_id: string | null;
+  video_url?: string | null;
+  download_url?: string | null;
+  media_url?: string | null;
+  audio_url?: string | null;
+  analyzed_full?: unknown;
   created_at: string;
 };
 
@@ -34,7 +39,7 @@ export async function GET(req: NextRequest) {
 
     let q = db
       .from("viral_videos")
-      .select("id,url,platform,niche,caption,views,likes,followers_creator,virality_score,analyzed,hook_text,format_detected,sound_title,source_orbit_id,created_at")
+      .select("id,url,platform,niche,caption,views,likes,followers_creator,virality_score,analyzed,hook_text,format_detected,sound_title,source_orbit_id,video_url,download_url,media_url,audio_url,analyzed_full,created_at")
       .order("virality_score", { ascending: false, nullsFirst: false })
       .limit(limit);
     if (niche) q = q.eq("niche", niche);
@@ -75,6 +80,11 @@ export async function GET(req: NextRequest) {
         format: r.format_detected,
         sound: r.sound_title,
         source: r.source_orbit_id,
+        video_url: r.video_url || null,
+        download_url: r.download_url || null,
+        media_url: r.media_url || null,
+        audio_url: r.audio_url || null,
+        analyzed_full: r.analyzed_full || null,
         caption: r.caption ? r.caption.slice(0, 220) : null,
         created_at: r.created_at,
       })),

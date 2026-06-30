@@ -57,6 +57,13 @@ function isDirectMedia(value: string | null | undefined): boolean {
   return DIRECT_MEDIA_EXTENSIONS.test(value);
 }
 
+function isSocialPageUrl(value: string | null | undefined): boolean {
+  const url = asUrl(value);
+  if (!url) return false;
+  const host = url.hostname.replace(/^www\./, "").toLowerCase();
+  return SOCIAL_PAGE_HOSTS.some((domain) => host === domain || host.endsWith(`.${domain}`));
+}
+
 function assetKind(value: string | null): "video" | "audio" | "unknown" | null {
   if (!value) return null;
   if (VIDEO_EXTENSIONS.test(value)) return "video";
@@ -89,10 +96,11 @@ function directAssetCandidate(video: ReelsMediaSourceVideo): string | null {
     video.download_url,
     video.media_url,
     video.audio_url,
-    video.url,
   ].map((row) => String(row || "").trim()).filter(Boolean);
+  const likelyDirectField = directFields.find((candidate) => /^https?:\/\//i.test(candidate) && !isSocialPageUrl(candidate));
+  if (likelyDirectField) return likelyDirectField;
   const analyzedCandidates = collectCandidateUrls(video.analyzed_full);
-  return [...directFields, ...analyzedCandidates].find((candidate) => isDirectMedia(candidate)) || null;
+  return [...directFields, video.url || "", ...analyzedCandidates].find((candidate) => isDirectMedia(candidate)) || null;
 }
 
 export function classifyReelsMediaAsset(video: ReelsMediaSourceVideo): ReelsMediaAssetClassification {

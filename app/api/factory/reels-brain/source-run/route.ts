@@ -73,6 +73,11 @@ function providerList(body: Record<string, unknown>): TrendProvider[] {
 function toInputs(provider: TrendProvider, videos: Awaited<ReturnType<typeof fetchViralFromProvider>>): ReelsBrainInput[] {
   return videos.map((v): ReelsBrainInput => ({
     url: v.url,
+    video_url: v.video_url,
+    download_url: v.download_url,
+    media_url: v.media_url,
+    audio_url: v.audio_url,
+    thumbnail_url: v.thumbnail_url,
     platform: v.platform || (provider === "virlo" ? "tiktok" : undefined),
     caption: v.caption || v.title,
     title: v.title,

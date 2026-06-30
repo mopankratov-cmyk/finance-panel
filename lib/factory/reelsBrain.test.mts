@@ -79,5 +79,20 @@ function eq(a: unknown, b: unknown, m: string) { ok(JSON.stringify(a) === JSON.s
   eq(prepared.rows[0].source_orbit_id, "apify_tiktok:q:%D0%B4%D0%B5%D1%82%D1%81%D0%BA%D0%B8%D0%B5%20%D0%BF%D0%BE%D0%B4%D0%B0%D1%80%D0%BA%D0%B8", "rows: source query is url-encoded");
 }
 
+{
+  const prepared = makeViralVideoRows([
+    {
+      url: "https://www.tiktok.com/@a/video/3",
+      video_url: "https://cdn.example.com/signed-video-token",
+      download_url: "https://cdn.example.com/video.mp4",
+      audio_url: "https://cdn.example.com/audio.m4a",
+      views: 1000,
+    },
+  ], { niche: "toys", sourceProvider: "apify_tiktok", sourceQuery: "игрушки" });
+  eq(prepared.rows[0].video_url, "https://cdn.example.com/signed-video-token", "rows: persists provider video_url");
+  eq(prepared.rows[0].download_url, "https://cdn.example.com/video.mp4", "rows: persists provider download_url");
+  ok(!!prepared.rows[0].analyzed_full, "rows: stores compact media asset envelope");
+}
+
 console.log(`\nreelsBrain: ${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

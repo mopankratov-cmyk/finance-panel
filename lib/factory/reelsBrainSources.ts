@@ -198,7 +198,25 @@ function arrayValue(value: unknown): unknown[] {
 
 function firstUrlList(value: unknown): string | undefined {
   const r = rec(value);
-  return str(arrayValue(r.url_list)[0], r.url);
+  return str(arrayValue(r.url_list)[0], r.url, r.url_list);
+}
+
+function firstMediaUrl(...values: unknown[]): string | undefined {
+  for (const value of values) {
+    if (Array.isArray(value)) {
+      const nested = firstMediaUrl(...value);
+      if (nested) return nested;
+      continue;
+    }
+    const direct = str(value);
+    if (direct && /^https?:\/\//i.test(direct)) return direct;
+    const row = rec(value);
+    if (Object.keys(row).length) {
+      const nested = firstMediaUrl(row.url, row.src, row.href, row.play_url, row.download_url, row.video_url, row.url_list);
+      if (nested) return nested;
+    }
+  }
+  return undefined;
 }
 
 function textRuns(value: unknown): string | undefined {
@@ -298,7 +316,11 @@ function tiktokInput(row: Record<string, any>): ReelsBrainInput {
   const durationMs = num(video.duration ?? aweme.duration);
   return {
     url,
-    video_url: str(firstUrlList(rec(video.play_addr)), firstUrlList(rec(video.download_addr)), row.video_url),
+    video_url: firstMediaUrl(video.play_addr, video.download_addr, row.video_url, row.videoUrl, row.playUrl, row.play_url),
+    download_url: firstMediaUrl(video.download_addr, row.download_url, row.downloadUrl, row.videoDownloadUrl),
+    media_url: firstMediaUrl(row.media_url, row.mediaUrl, row.displayUrl, row.thumbnailUrl, video.cover),
+    audio_url: firstMediaUrl(row.audio_url, row.audioUrl, row.musicUrl, music.play_url, music.url),
+    thumbnail_url: firstMediaUrl(row.thumbnail_url, row.thumbnailUrl, row.coverUrl, video.cover),
     platform: "tiktok",
     caption: str(aweme.desc, aweme.description, row.description, row.caption, row.text, row.title),
     author: str(author.nickname, author.unique_id, author.username, row.profile_username),
@@ -324,7 +346,11 @@ function instagramInput(row: Record<string, any>): ReelsBrainInput {
   const url = str(media.url, row.url) || (code ? `https://www.instagram.com/reel/${code}/` : undefined);
   return {
     url,
-    video_url: str(media.video_url, row.video_url),
+    video_url: firstMediaUrl(media.video_url, row.video_url, row.videoUrl, media.video_versions, row.video_versions),
+    download_url: firstMediaUrl(media.download_url, row.download_url, row.downloadUrl),
+    media_url: firstMediaUrl(media.media_url, row.media_url, media.display_url, row.display_url),
+    audio_url: firstMediaUrl(media.audio_url, row.audio_url, media.clips_metadata?.music_info?.music_asset_info?.audio_cluster_id),
+    thumbnail_url: firstMediaUrl(media.thumbnail_url, media.display_url, row.thumbnail_url, row.display_url),
     platform: "instagram",
     caption: str(caption, media.description, row.description, row.caption),
     author: str(user.username, row.user_posted, row.username),
@@ -352,7 +378,11 @@ function youtubeInput(row: Record<string, any>): ReelsBrainInput {
   const durationText = textRuns(video.lengthText);
   return {
     url,
-    video_url: str(row.video_url),
+    video_url: firstMediaUrl(row.video_url, row.videoUrl, row.download_url),
+    download_url: firstMediaUrl(row.download_url, row.downloadUrl),
+    media_url: firstMediaUrl(row.media_url, row.mediaUrl, row.thumbnail_url),
+    audio_url: firstMediaUrl(row.audio_url, row.audioUrl),
+    thumbnail_url: firstMediaUrl(row.thumbnail_url, row.thumbnailUrl, row.thumbnails),
     platform: "youtube",
     caption: str(row.description, textRuns(video.title), row.title),
     title: str(row.title, textRuns(video.title)),
@@ -711,6 +741,11 @@ export async function fetchReelsBrainProvider(provider: ReelsBrainProvider, quer
       elapsedMs: Date.now() - started,
       videos: videos.map((v): ReelsBrainInput => ({
         url: v.url,
+        video_url: v.video_url,
+        download_url: v.download_url,
+        media_url: v.media_url,
+        audio_url: v.audio_url,
+        thumbnail_url: v.thumbnail_url,
         platform: v.platform,
         caption: v.caption || v.title,
         title: v.title,
