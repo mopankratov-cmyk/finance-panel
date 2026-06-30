@@ -9,6 +9,7 @@
 - обновляет digest/readiness surfaces;
 - шлёт heartbeat в `/api/factory/worker-state`;
 - по умолчанию не добирает новые видео и не тратит Apify.
+- продолжает learning loop даже если heartbeat table ещё не применена в Supabase.
 
 ## Что запускается
 
@@ -115,3 +116,11 @@ https://finance-panel-two.vercel.app/api/factory/worker-state
 ```
 
 В UI должен появиться worker `railway-reels-brain-offline`.
+
+Если `/api/factory/worker-state` отвечает `table_missing`, применить миграцию:
+
+```text
+supabase/migrations/20260624_factory_railway_worker_state.sql
+```
+
+До применения этой миграции worker всё равно продолжит анализ backlog и пересборку Pattern Brain; не будет работать только красивый heartbeat в UI.
