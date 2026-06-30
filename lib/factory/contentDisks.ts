@@ -69,7 +69,7 @@ export interface GroupSource { niche: string; match: RegExp; disk: string; paths
 export const GROUP_SOURCES: GroupSource[] = [
   { niche: "jackets", match: /норви|norvia|куртк|ветровк|пухов|\bNV|\bHT/i, disk: "norvia", paths: ["/"], note: "Модель в куртках/ветровках NORVIA, студия" },
   { niche: "bags", match: /сумк|cl[eé]rin|\bbag/i, disk: "design", paths: ["/МАША/Сумки"], note: "Модель с сумками" },
-  { niche: "blasters", match: /бластер|во[дs]ный|узи|винтовк|water|пистолет|tim ?tin/i, disk: "design", paths: ["/МАША/Винтовка белая", "/МАША/Винтовка песочная", "/МАША/УЗИ зеленый", "/МАША/УЗИ черный"], note: "Модель с водными бластерами (УЗИ/Винтовка)" },
+  { niche: "blasters", match: /бластер|во[дs]ный|узи|винтовк|water|пистолет|tim ?tin/i, disk: "design", paths: ["/МАША/Винтовка белая", "/МАША/Винтовка песочная", "/МАША/УЗИ зеленый", "/МАША/УЗИ черный"], note: "Модель с водными бластерами (УЗИ/Винтовка)" },
   { niche: "cream", match: /крем|молочк|yoyo|санскрин|\bspf|солнцезащ/i, disk: "design", paths: ["/МАША/Крем-молочко YOYO"], note: "Модель с кремом YOYO" },
 ];
 
@@ -98,7 +98,7 @@ export interface ArticleFolder { disk: string; prefix: string; article: string }
 export const ARTICLE_FOLDERS: ArticleFolder[] = [
   // водные бластеры (МАША)
   { disk: "design", prefix: "/МАША/УЗИ черный", article: "TT04101" },        // УЗИ 207мл черный
-  { disk: "design", prefix: "/МАША/УЗИ зеленый", article: "TT04102" },       // УЗИ 210мл зеленый
+  { disk: "design", prefix: "/МАША/УЗИ зеленый", article: "TT04102" },       // УЗИ 210мл зеленый
   { disk: "design", prefix: "/МАША/Винтовка белая", article: "TT05101" },    // винтовка M416 белая
   { disk: "design", prefix: "/МАША/Винтовка песочная", article: "TT05102" }, // винтовка M416 беж
   // крем YOYO (МАША)
