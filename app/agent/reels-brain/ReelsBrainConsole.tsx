@@ -1246,6 +1246,44 @@ type ReelsBrainPortfolioManagerResponse = {
   error?: string;
 };
 
+type ReelsBrainHumanizationResponse = {
+  ok?: boolean;
+  summary?: {
+    recipes?: number;
+    moves?: number;
+    prompt_patches?: number;
+    high_risk?: number;
+  };
+  humanization?: {
+    recipes?: {
+      id: string;
+      niche: string;
+      score: number;
+      ai_slop_risk: "low" | "medium" | "high";
+      moves: string[];
+      voice_direction: string[];
+      camera_direction: string[];
+      performance_notes: string[];
+      keep_human: string[];
+      avoid_ai_slop: string[];
+      generator_prompt_patch: string;
+    }[];
+    move_mix?: {
+      move: string;
+      count: number;
+      avg_score: number;
+    }[];
+    prompt_patches?: {
+      id: string;
+      niche: string;
+      patch: string;
+    }[];
+    global_rules?: string[];
+  };
+  notes?: string[];
+  error?: string;
+};
+
 type LearningEconomicsDailyCost = {
   date: string;
   runs: number;
@@ -1592,6 +1630,9 @@ export default function ReelsBrainPage() {
   const [portfolioManager, setPortfolioManager] = useState<ReelsBrainPortfolioManagerResponse | null>(null);
   const [portfolioManagerLoading, setPortfolioManagerLoading] = useState(false);
   const [portfolioManagerError, setPortfolioManagerError] = useState("");
+  const [humanizationBrain, setHumanizationBrain] = useState<ReelsBrainHumanizationResponse | null>(null);
+  const [humanizationBrainLoading, setHumanizationBrainLoading] = useState(false);
+  const [humanizationBrainError, setHumanizationBrainError] = useState("");
   const [insightNicheFilter, setInsightNicheFilter] = useState("all");
   const [insightConfidenceFilter, setInsightConfidenceFilter] = useState<"all" | "high" | "medium" | "low">("all");
   const [insightSegmentFilter, setInsightSegmentFilter] = useState<"all" | "op_hooks" | "frequent_hooks" | "experimental_hooks">("all");
@@ -1740,14 +1781,16 @@ export default function ReelsBrainPage() {
       setSimulationBrainLoading(true);
       setExperimentBrainLoading(true);
       setPortfolioManagerLoading(true);
+      setHumanizationBrainLoading(true);
       try {
-        const [memory, audio, visual, simulation, experiment, manager] = await Promise.allSettled([
+        const [memory, audio, visual, simulation, experiment, manager, humanization] = await Promise.allSettled([
           readJson<ReelsBrainCreativeMemoryResponse>(await fetch(`/api/factory/reels-brain/creative-memory?niches=${encodeURIComponent(DEFAULT_AUTOMATION_NICHES)}&limit=80`, { cache: "no-store" })),
           readJson<ReelsBrainAudioIntelligenceResponse>(await fetch(`/api/factory/reels-brain/audio-intelligence?niches=${encodeURIComponent(DEFAULT_AUTOMATION_NICHES)}&limit=80`, { cache: "no-store" })),
           readJson<ReelsBrainVisualIntelligenceResponse>(await fetch(`/api/factory/reels-brain/visual-intelligence?niches=${encodeURIComponent(DEFAULT_AUTOMATION_NICHES)}&limit=80`, { cache: "no-store" })),
           readJson<ReelsBrainSimulationResponse>(await fetch(`/api/factory/reels-brain/simulation?niches=${encodeURIComponent(DEFAULT_AUTOMATION_NICHES)}&limit=50`, { cache: "no-store" })),
           readJson<ReelsBrainExperimentResponse>(await fetch(`/api/factory/reels-brain/experiment-brain?niches=${encodeURIComponent(DEFAULT_AUTOMATION_NICHES)}&limit=50`, { cache: "no-store" })),
           readJson<ReelsBrainPortfolioManagerResponse>(await fetch(`/api/factory/reels-brain/portfolio-manager?niches=${encodeURIComponent(DEFAULT_AUTOMATION_NICHES)}&limit=50`, { cache: "no-store" })),
+          readJson<ReelsBrainHumanizationResponse>(await fetch(`/api/factory/reels-brain/humanization?niches=${encodeURIComponent(DEFAULT_AUTOMATION_NICHES)}&limit=50`, { cache: "no-store" })),
         ]);
         if (!alive) return;
         setCreativeMemory(memory.status === "fulfilled" ? memory.value : null);
@@ -1756,6 +1799,7 @@ export default function ReelsBrainPage() {
         setSimulationBrain(simulation.status === "fulfilled" ? simulation.value : null);
         setExperimentBrain(experiment.status === "fulfilled" ? experiment.value : null);
         setPortfolioManager(manager.status === "fulfilled" ? manager.value : null);
+        setHumanizationBrain(humanization.status === "fulfilled" ? humanization.value : null);
       } catch {
         if (alive) {
           setCreativeMemory(null);
@@ -1764,6 +1808,7 @@ export default function ReelsBrainPage() {
           setSimulationBrain(null);
           setExperimentBrain(null);
           setPortfolioManager(null);
+          setHumanizationBrain(null);
         }
       } finally {
         if (alive) {
@@ -1773,6 +1818,7 @@ export default function ReelsBrainPage() {
           setSimulationBrainLoading(false);
           setExperimentBrainLoading(false);
           setPortfolioManagerLoading(false);
+          setHumanizationBrainLoading(false);
         }
       }
     }
@@ -1871,6 +1917,11 @@ export default function ReelsBrainPage() {
   const portfolioWeeklyMix = portfolioManager?.portfolio?.weekly_mix || [];
   const portfolioLearningLoop = portfolioManager?.portfolio?.learning_loop || [];
   const portfolioEscalation = portfolioManager?.portfolio?.escalation || [];
+  const humanizationSummary = humanizationBrain?.summary || {};
+  const humanizedRecipes = humanizationBrain?.humanization?.recipes || [];
+  const humanizationMoveMix = humanizationBrain?.humanization?.move_mix || [];
+  const humanizationPatches = humanizationBrain?.humanization?.prompt_patches || [];
+  const humanizationRules = humanizationBrain?.humanization?.global_rules || [];
   const maxTimelineInserted = Math.max(1, ...learningTimeline.map((row) => row.inserted));
   const analyzeBacklogLanes = analyzeBacklog?.lanes || [];
   const analyzeBacklogQueue = analyzeBacklog?.queue || [];
@@ -2246,6 +2297,23 @@ export default function ReelsBrainPage() {
     }
   }
 
+  async function loadHumanizationBrain(currentNiches = automationNiches) {
+    setHumanizationBrainLoading(true);
+    setHumanizationBrainError("");
+    try {
+      const params = new URLSearchParams({
+        niches: currentNiches.trim() || DEFAULT_AUTOMATION_NICHES,
+        limit: "50",
+      });
+      const data = await readJson<ReelsBrainHumanizationResponse>(await fetch(`/api/factory/reels-brain/humanization?${params.toString()}`, { cache: "no-store" }));
+      setHumanizationBrain(data);
+    } catch (e) {
+      setHumanizationBrainError(String((e as Error)?.message || e));
+    } finally {
+      setHumanizationBrainLoading(false);
+    }
+  }
+
   async function refreshAutomationSurfaces(currentNiches = automationNiches, currentNiche = activeNiche()) {
     setAutomationSyncing(true);
     try {
@@ -2263,6 +2331,7 @@ export default function ReelsBrainPage() {
           loadSimulationBrain(currentNiches),
           loadExperimentBrain(currentNiches),
           loadPortfolioManager(currentNiches),
+          loadHumanizationBrain(currentNiches),
         ]);
       }
     } finally {
@@ -3286,11 +3355,20 @@ export default function ReelsBrainPage() {
                   {portfolioManagerLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
                   Refresh portfolio
                 </button>
+                <button
+                  type="button"
+                  onClick={() => loadHumanizationBrain(automationNiches)}
+                  disabled={humanizationBrainLoading}
+                  className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-cyan-200 bg-white px-3 py-2 text-sm font-black text-cyan-900 hover:border-cyan-400 disabled:opacity-50"
+                >
+                  {humanizationBrainLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                  Refresh human
+                </button>
               </div>
             </div>
-            {(actionPlanError || creativeBriefsError || creativeMemoryError || audioIntelligenceError || visualIntelligenceError || simulationBrainError || experimentBrainError || portfolioManagerError) ? (
+            {(actionPlanError || creativeBriefsError || creativeMemoryError || audioIntelligenceError || visualIntelligenceError || simulationBrainError || experimentBrainError || portfolioManagerError || humanizationBrainError) ? (
               <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">
-                {actionPlanError || creativeBriefsError || creativeMemoryError || audioIntelligenceError || visualIntelligenceError || simulationBrainError || experimentBrainError || portfolioManagerError}
+                {actionPlanError || creativeBriefsError || creativeMemoryError || audioIntelligenceError || visualIntelligenceError || simulationBrainError || experimentBrainError || portfolioManagerError || humanizationBrainError}
               </div>
             ) : null}
             {(actionPlan || creativeBriefs) ? (
@@ -3838,6 +3916,84 @@ export default function ReelsBrainPage() {
                     ))}
                     {portfolioLearningLoop.slice(0, 4).map((line) => (
                       <p key={line} className="rounded-xl border border-teal-100 bg-teal-50 px-3 py-2 text-xs font-semibold text-teal-900">{line}</p>
+                    ))}
+                  </div>
+                </details>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-4 rounded-2xl border border-rose-100 bg-gradient-to-br from-rose-50 via-orange-50 to-amber-50 p-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-rose-700">Humanization Brain</p>
+                <h4 className="mt-1 text-lg font-black text-slate-950">Как сделать ролик живым, а не AI-рекламой</h4>
+                <p className="mt-1 max-w-2xl text-sm font-medium text-rose-950">
+                  Берём Creative DNA, Audio, Camera/Editing и Simulation, затем добавляем UGC-шероховатости: паузы, дыхание, руки, бытовой контекст, proof до красоты и запреты на стерильный AI-slop.
+                </p>
+              </div>
+              <span className="rounded-full border border-rose-200 bg-white px-3 py-1 text-xs font-black text-rose-800">
+                {humanizationBrainLoading ? "loading" : `${compactNumber(humanizationSummary.recipes || 0)} human recipes`}
+              </span>
+            </div>
+
+            <div className="mt-4 grid gap-2 sm:grid-cols-4">
+              <MetricCard label="Recipes" value={humanizationSummary.recipes || 0} />
+              <MetricCard label="Human moves" value={humanizationSummary.moves || 0} />
+              <MetricCard label="Prompt patches" value={humanizationSummary.prompt_patches || 0} />
+              <MetricCard label="High AI risk" value={humanizationSummary.high_risk || 0} />
+            </div>
+
+            <div className="mt-4 grid gap-3 xl:grid-cols-[1.2fr_0.8fr]">
+              <div className="rounded-2xl border border-rose-200 bg-white p-4">
+                <p className="font-black text-slate-950">Лучшие humanized recipes</p>
+                <div className="mt-3 grid gap-2 lg:grid-cols-2">
+                  {humanizedRecipes.length ? humanizedRecipes.slice(0, 4).map((recipe) => (
+                    <div key={recipe.id} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="font-black text-slate-900">{recipe.niche}</span>
+                        <span className={`rounded-full border px-2 py-1 font-black ${
+                          recipe.ai_slop_risk === "high"
+                            ? "border-red-200 bg-red-50 text-red-700"
+                            : recipe.ai_slop_risk === "medium"
+                              ? "border-amber-200 bg-amber-50 text-amber-800"
+                              : "border-emerald-200 bg-emerald-50 text-emerald-700"
+                        }`}>
+                          {recipe.ai_slop_risk} risk · {compactNumber(recipe.score)}
+                        </span>
+                      </div>
+                      <p className="mt-2 font-semibold text-slate-700">moves: {recipe.moves.slice(0, 4).join(" · ")}</p>
+                      <p className="mt-1 text-slate-500">voice: {recipe.voice_direction[0] || "—"}</p>
+                      <p className="mt-1 text-slate-500">camera: {recipe.camera_direction[0] || "—"}</p>
+                      <p className="mt-1 text-rose-700">avoid: {recipe.avoid_ai_slop[0] || "—"}</p>
+                    </div>
+                  )) : <p className="text-sm text-slate-500">Humanization появится после Creative DNA + Simulation.</p>}
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <div className="rounded-2xl border border-rose-200 bg-white p-4">
+                  <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">Move mix</p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {humanizationMoveMix.length ? humanizationMoveMix.slice(0, 10).map((row) => (
+                      <span key={row.move} className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-bold text-slate-700">
+                        {row.move}: {compactNumber(row.count)} · {compactNumber(row.avg_score)}
+                      </span>
+                    )) : <span className="text-sm text-slate-500">Move mix пока пуст.</span>}
+                  </div>
+                </div>
+
+                <details className="rounded-2xl border border-rose-200 bg-white p-4">
+                  <summary className="cursor-pointer text-xs font-black uppercase tracking-[0.18em] text-slate-500">Prompt patch для генератора</summary>
+                  <div className="mt-3 space-y-2">
+                    {humanizationPatches.slice(0, 2).map((patch) => (
+                      <div key={patch.id} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs">
+                        <span className="font-black text-slate-900">{patch.niche}</span>
+                        <p className="mt-1 text-slate-600">{patch.patch}</p>
+                      </div>
+                    ))}
+                    {humanizationRules.slice(0, 4).map((rule) => (
+                      <p key={rule} className="rounded-xl border border-rose-100 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-900">{rule}</p>
                     ))}
                   </div>
                 </details>
