@@ -748,6 +748,62 @@ type MediaIntelligenceResponse = {
   error?: string;
 };
 
+type ContentDirectorResponse = {
+  ok?: boolean;
+  mode?: "reels_brain_content_director";
+  layers?: {
+    key: string;
+    title: string;
+    score: number;
+    status: string;
+    next: string;
+  }[];
+  daily_report?: string[];
+  export_briefs?: {
+    id: string;
+    priority: "high" | "medium" | "low";
+    platform: string;
+    niche: string;
+    hook: string;
+    audience: string;
+    product_fit: string[];
+    retention_mechanic: string;
+    second_by_second: string[];
+    visual_recipe: string[];
+    experiment_axis: string;
+    copy_as_mechanic: string[];
+    do_not_copy: string[];
+    anti_patterns: string[];
+    source_url?: string | null;
+    score: number;
+  }[];
+  platform_coverage?: {
+    platform: string;
+    total: number;
+    high_priority: number;
+    avg_score: number;
+    confidence: number;
+    action: string;
+  }[];
+  source_efficiency?: {
+    best_sources?: { source: string; total: number; avg_score: number; high_priority: number }[];
+    weak_sources?: { source: string; total: number; avg_score: number; high_priority: number }[];
+  };
+  quality_monitor?: {
+    total: number;
+    avg_score: number;
+    high_priority: number;
+    medium_priority: number;
+    low_priority: number;
+    build_brief: number;
+    media_candidates: number;
+    confidence: number;
+  };
+  warnings?: string[];
+  warning?: string;
+  error?: string;
+};
+
 type PortfolioDigestResponse = {
   ok?: boolean;
   niches?: {
@@ -1329,6 +1385,9 @@ export default function ReelsBrainPage() {
   const [mediaIntelligence, setMediaIntelligence] = useState<MediaIntelligenceResponse | null>(null);
   const [mediaIntelligenceLoading, setMediaIntelligenceLoading] = useState(false);
   const [mediaIntelligenceError, setMediaIntelligenceError] = useState("");
+  const [contentDirector, setContentDirector] = useState<ContentDirectorResponse | null>(null);
+  const [contentDirectorLoading, setContentDirectorLoading] = useState(false);
+  const [contentDirectorError, setContentDirectorError] = useState("");
 
   useEffect(() => {
     try {
@@ -1485,6 +1544,23 @@ export default function ReelsBrainPage() {
       }
     }
     void loadInitialMediaIntelligence();
+    return () => { alive = false; };
+  }, []);
+
+  useEffect(() => {
+    let alive = true;
+    async function loadInitialContentDirector() {
+      setContentDirectorLoading(true);
+      try {
+        const data = await readJson<ContentDirectorResponse>(await fetch(`/api/factory/reels-brain/content-director?niches=${encodeURIComponent(DEFAULT_AUTOMATION_NICHES)}&limit_per_niche=500`, { cache: "no-store" }));
+        if (alive) setContentDirector(data);
+      } catch (e) {
+        if (alive) setContentDirectorError(String((e as Error)?.message || e));
+      } finally {
+        if (alive) setContentDirectorLoading(false);
+      }
+    }
+    void loadInitialContentDirector();
     return () => { alive = false; };
   }, []);
 
@@ -1781,6 +1857,51 @@ export default function ReelsBrainPage() {
       why: "нужен отрицательный пример, чтобы Anti Pattern Brain учился не только победителям.",
     },
   ];
+  const directorLayers = contentDirector?.layers || [
+    { key: "asr_transcript", title: "ASR / Transcript", score: transcriptReadyPct, status: transcriptReadyPct ? "training" : "blocked", next: "подключить runtime ASR к direct audio/mp4" },
+    { key: "audience_brain", title: "Audience Brain", score: topHooks.length ? 45 : 15, status: topHooks.length ? "prototype" : "blocked", next: "учить сегменты аудитории на high-priority референсах" },
+    { key: "product_brain", title: "Product Brain", score: filteredRecipes.length ? 55 : 15, status: filteredRecipes.length ? "training" : "blocked", next: "связать product_fit с типами товаров" },
+    { key: "anti_pattern_brain", title: "Anti Pattern Brain", score: 35, status: "prototype", next: "копить negative examples и запрещенные механики" },
+    { key: "experiment_brain", title: "Experiment Brain", score: 60, status: "training", next: "A/B пакеты: hook/audio/editing/CTA" },
+    { key: "discovery_brain_v2", title: "Discovery Brain v2", score: sourceEfficiency.length ? 55 : 25, status: sourceEfficiency.length ? "training" : "prototype", next: "искать маленькие аккаунты с залетами" },
+    { key: "platform_coverage", title: "Instagram / YouTube Coverage", score: Math.round(platformCoverage.reduce((sum, row) => sum + row.score, 0) / Math.max(1, platformCoverage.length)), status: "prototype", next: "добирать слабые платформы отдельно" },
+    { key: "creative_brief_export", title: "Creative Brief Export", score: filteredRecipes.length ? 80 : 20, status: filteredRecipes.length ? "live" : "prototype", next: "отдавать briefs в контент-завод или дизайнеру" },
+    { key: "daily_learning_report", title: "Daily Learning Report", score: cockpitCorpusCurrent ? 70 : 15, status: cockpitCorpusCurrent ? "training" : "blocked", next: "ежедневное резюме роста/цены/решений" },
+    { key: "quality_monitor", title: "Brain Quality Monitor", score: brainUnderstandingScore, status: confidenceLevel === "high" ? "live" : "training", next: "предупреждать о низкой уверенности" },
+  ];
+  const directorDailyReport = contentDirector?.daily_report?.length ? contentDirector.daily_report : [
+    `Корпус: ${compactNumber(cockpitCorpusCurrent)} видео, в памяти ${compactNumber(analyzeBacklogTotals.analyzed)}.`,
+    `Creative DNA: ${compactNumber(featureProbed)} роликов, AV: ${compactNumber(avProbed)}.`,
+    `Следующий пакет: ${contentDirectorBriefs.reduce((sum, brief) => sum + brief.count, 0)} роликов по ${contentDirectorBriefs.length} экспериментам.`,
+  ];
+  const directorExportBriefs = contentDirector?.export_briefs || contentDirectorBriefs.map((brief, index) => ({
+    id: `local-brief-${index + 1}`,
+    priority: index < 2 ? "high" as const : "medium" as const,
+    platform: "TikTok",
+    niche: automationNiches.split(",")[0]?.trim() || "ru_toys",
+    hook: brief.hook,
+    audience: "русскоязычная импульсная аудитория",
+    product_fit: ["маркетплейс-товары"],
+    retention_mechanic: brief.mechanic,
+    second_by_second: ["0-2с: хук", "2-6с: доказательство", "6-12с: демонстрация", "12-16с: CTA"],
+    visual_recipe: [brief.recipe],
+    experiment_axis: brief.title.toLowerCase().replace(/\s+/g, "_"),
+    copy_as_mechanic: ["структуру", "темп", "тип доказательства"],
+    do_not_copy: ["чужое видео", "лицо/голос автора", "музыку", "брендовые элементы"],
+    anti_patterns: brief.title === "Anti-pattern control" ? ["slow_intro"] : [],
+    source_url: null,
+    score: 60 + index * 4,
+  }));
+  const directorQuality = contentDirector?.quality_monitor || {
+    total: cockpitCorpusCurrent,
+    avg_score: brainUnderstandingScore,
+    high_priority: directorExportBriefs.filter((brief) => brief.priority === "high").length,
+    medium_priority: directorExportBriefs.filter((brief) => brief.priority === "medium").length,
+    low_priority: directorExportBriefs.filter((brief) => brief.priority === "low").length,
+    build_brief: directorExportBriefs.length,
+    media_candidates: avProbed,
+    confidence: brainUnderstandingScore,
+  };
   const serverAutomationHistory: AutomationHistoryItem[] = (brainSummary?.automation_history || []).map((item) => ({
     id: `server:${item.id}`,
     title: automationTitle(item.mode),
@@ -2001,6 +2122,7 @@ export default function ReelsBrainPage() {
           loadLearningEconomics(currentNiches),
           loadWorkerState(),
           loadMediaIntelligence(currentNiches),
+          loadContentDirector(currentNiches),
         ]);
       }
     } finally {
@@ -2031,6 +2153,19 @@ export default function ReelsBrainPage() {
       setMediaIntelligenceError(String((e as Error)?.message || e));
     } finally {
       setMediaIntelligenceLoading(false);
+    }
+  }
+
+  async function loadContentDirector(currentNiches = automationNiches) {
+    setContentDirectorLoading(true);
+    setContentDirectorError("");
+    try {
+      const data = await readJson<ContentDirectorResponse>(await fetch(`/api/factory/reels-brain/content-director?niches=${encodeURIComponent(currentNiches.trim() || DEFAULT_AUTOMATION_NICHES)}&limit_per_niche=500`, { cache: "no-store" }));
+      setContentDirector(data);
+    } catch (e) {
+      setContentDirectorError(String((e as Error)?.message || e));
+    } finally {
+      setContentDirectorLoading(false);
     }
   }
 
@@ -2745,6 +2880,124 @@ export default function ReelsBrainPage() {
               </div>
             </div>
           </div>
+        </div>
+
+        <div className="mt-5 rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">10-layer execution board</p>
+              <h3 className="mt-1 text-xl font-black text-slate-950">Что из следующих 10 задач уже живое</h3>
+              <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-500">
+                Этот блок приходит из `/api/factory/reels-brain/content-director`: ASR, audience, product, anti-pattern,
+                experiments, discovery v2, platform coverage, export briefs, daily report и quality monitor.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => { void loadContentDirector(); }}
+              disabled={contentDirectorLoading}
+              className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-700 hover:border-cyan-300 disabled:opacity-50"
+            >
+              {contentDirectorLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+              Refresh director
+            </button>
+          </div>
+
+          {(contentDirectorError || contentDirector?.error || contentDirector?.warning) ? (
+            <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-900">
+              {contentDirectorError || contentDirector?.error || contentDirector?.warning}
+            </div>
+          ) : null}
+
+          <div className="mt-4 grid gap-3 lg:grid-cols-[1.25fr_0.75fr]">
+            <div className="grid gap-2 md:grid-cols-2">
+              {directorLayers.map((layer) => (
+                <div key={layer.key} className="rounded-2xl border border-slate-200 bg-white p-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <h4 className="text-sm font-black text-slate-950">{layer.title}</h4>
+                      <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">{layer.next}</p>
+                    </div>
+                    <span className={`rounded-full border px-2.5 py-1 text-xs font-black ${capabilityTone(layer.status)}`}>
+                      {layer.status}
+                    </span>
+                  </div>
+                  <div className="mt-3 flex items-center gap-3">
+                    <div className="h-2 flex-1 overflow-hidden rounded-full bg-slate-100">
+                      <div className="h-full rounded-full bg-cyan-500" style={{ width: `${Math.max(3, Math.min(100, Number(layer.score || 0)))}%` }} />
+                    </div>
+                    <span className="font-mono text-sm font-black text-slate-900">{compactNumber(layer.score)}%</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="space-y-3">
+              <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">Daily report</p>
+                <div className="mt-3 space-y-2">
+                  {directorDailyReport.map((line) => (
+                    <div key={line} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-bold leading-5 text-slate-700">
+                      {line}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-slate-200 bg-slate-950 p-4 text-white">
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-cyan-100/70">Quality monitor</p>
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  <div className="rounded-xl bg-white/10 px-3 py-2">
+                    <div className="font-mono text-2xl font-black">{compactNumber(directorQuality.confidence)}</div>
+                    <div className="text-[10px] font-bold uppercase tracking-wide text-cyan-100/70">confidence</div>
+                  </div>
+                  <div className="rounded-xl bg-white/10 px-3 py-2">
+                    <div className="font-mono text-2xl font-black">{compactNumber(directorQuality.build_brief)}</div>
+                    <div className="text-[10px] font-bold uppercase tracking-wide text-cyan-100/70">briefs</div>
+                  </div>
+                  <div className="rounded-xl bg-white/10 px-3 py-2">
+                    <div className="font-mono text-2xl font-black">{compactNumber(directorQuality.high_priority)}</div>
+                    <div className="text-[10px] font-bold uppercase tracking-wide text-cyan-100/70">high priority</div>
+                  </div>
+                  <div className="rounded-xl bg-white/10 px-3 py-2">
+                    <div className="font-mono text-2xl font-black">{compactNumber(directorQuality.media_candidates)}</div>
+                    <div className="text-[10px] font-bold uppercase tracking-wide text-cyan-100/70">media candidates</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <details className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
+            <summary className="cursor-pointer text-sm font-black text-slate-900">
+              Creative Brief Export
+              <span className="ml-2 text-xs font-semibold text-slate-400">{compactNumber(directorExportBriefs.length)} briefs from director API</span>
+            </summary>
+            <div className="mt-3 grid gap-3 lg:grid-cols-2">
+              {directorExportBriefs.slice(0, 6).map((brief) => (
+                <div key={brief.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div>
+                      <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">{brief.platform} · {brief.niche}</p>
+                      <h4 className="mt-1 text-sm font-black text-slate-950">{brief.hook}</h4>
+                    </div>
+                    <span className={`rounded-full border px-2.5 py-1 text-xs font-black ${confidenceCopy(brief.priority === "high" ? "high" : brief.priority === "medium" ? "medium" : "low").tone}`}>
+                      {brief.priority}
+                    </span>
+                  </div>
+                  <div className="mt-3 space-y-1 text-xs leading-5 text-slate-600">
+                    <p><span className="font-black text-slate-950">Audience:</span> {brief.audience}</p>
+                    <p><span className="font-black text-slate-950">Product:</span> {brief.product_fit.slice(0, 3).join(" · ")}</p>
+                    <p><span className="font-black text-slate-950">Retention:</span> {brief.retention_mechanic}</p>
+                    <p><span className="font-black text-slate-950">Experiment:</span> {brief.experiment_axis}</p>
+                  </div>
+                  <div className="mt-3 rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-xs font-bold leading-5 text-red-700">
+                    Не копировать: {brief.do_not_copy.slice(0, 4).join(" · ")}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </details>
         </div>
       </section>
 
