@@ -2,16 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { internalFetch } from "@/lib/internalFetch";
 import { metricsPostBody, summarizeMetricsPoll, type MetricsPollSource } from "@/lib/factory/metricsPoll";
+import { isAuthorizedReelsBrainJobRequest } from "@/lib/factory/reelsBrainJobAuth";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
-
-function authOk(req: NextRequest, body?: Record<string, unknown>): boolean {
-  const secret = process.env.CRON_SECRET || "";
-  if (!secret) return true;
-  if (req.headers.get("authorization") === `Bearer ${secret}`) return true;
-  return String(body?.secret || "") === secret;
-}
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
@@ -72,7 +66,7 @@ async function loadRunPlanMetrics(limit: number): Promise<{ sources: MetricsPoll
 }
 
 async function handle(req: NextRequest, body: Record<string, unknown>) {
-  if (!authOk(req, body)) return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
+  if (!(await isAuthorizedReelsBrainJobRequest(req))) return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
 
   const limit = Math.max(1, Math.min(100, Number(body.limit || req.nextUrl.searchParams.get("limit") || 30) || 30));
   let sources = bodySources(body);

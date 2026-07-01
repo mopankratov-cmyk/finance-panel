@@ -4,7 +4,7 @@ import { ok } from "node:assert/strict";
 const route = readFileSync("app/api/factory/memory-quality/route.ts", "utf8");
 const improvement = readFileSync("lib/factory/improvementLoop.ts", "utf8");
 
-ok(/function authOk/.test(route) && /CRON_SECRET/.test(route), "memory-quality endpoint is operator-authenticated");
+ok(/await isAuthorizedReelsBrainJobRequest\(req\)/.test(route), "memory-quality endpoint is operator-authenticated via the shared fail-closed helper");
 ok(/memory_label/.test(route) && /memory_score/.test(route), "memory-quality writes label and score into content_assets analysis");
 ok(/\"winner\" \| \"usable\" \| \"trash\"/.test(route), "memory-quality has the three MVP memory labels");
 ok(/OTK below usable threshold/.test(route), "memory-quality marks low OTK videos as trash");
