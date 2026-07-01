@@ -35,8 +35,8 @@ function firstPositive(...values: unknown[]): number {
   return 0;
 }
 
-async function getJson(path: string): Promise<JsonRecord> {
-  const response = await fetch(path, { cache: "no-store" });
+async function getJson(path: string, init: RequestInit = {}): Promise<JsonRecord> {
+  const response = await fetch(path, { cache: "no-store", ...init });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(data?.error || data?.warning || response.statusText);
   return data;
@@ -111,6 +111,8 @@ export default function ReelsBrainPixelCockpit() {
   const [learningPlan, setLearningPlan] = useState<JsonRecord | null>(null);
   const [summaries, setSummaries] = useState<JsonRecord[]>([]);
   const [selectedPattern, setSelectedPattern] = useState<JsonRecord | null>(null);
+  const [liveRun, setLiveRun] = useState<JsonRecord | null>(null);
+  const [liveRunState, setLiveRunState] = useState<"idle" | "running" | "done" | "error">("idle");
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
   const [error, setError] = useState("");
 
@@ -145,6 +147,22 @@ export default function ReelsBrainPixelCockpit() {
       window.clearInterval(timer);
     };
   }, []);
+
+  async function runAutopilotTick() {
+    try {
+      setLiveRunState("running");
+      setLiveRun(null);
+      const nicheParam = NICHES.join(",");
+      const data = await getJson(`/api/factory/jobs/reels-brain-autopilot?niches=${encodeURIComponent(nicheParam)}&platforms=tiktok,instagram,youtube&target=10000&max_backlog_before_analyze=180&limit=80&hours=72`, {
+        method: "POST",
+      });
+      setLiveRun(data);
+      setLiveRunState("done");
+    } catch (e) {
+      setLiveRun({ error: String((e as Error)?.message || e) });
+      setLiveRunState("error");
+    }
+  }
 
   const vm = useMemo(() => {
     const totals = learning?.totals || {};
@@ -363,6 +381,7 @@ export default function ReelsBrainPixelCockpit() {
         .rb-road{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}.rb-road-card{padding:18px;border-radius:18px;border:1px solid #dbeafe;background:linear-gradient(180deg,#fff,#eff6ff)}.rb-road-card h3{font:700 18px/1.2 'Space Grotesk';margin:0}.rb-road-card p{color:#475569;font-size:13px;line-height:1.5;margin:10px 0 0}.rb-road-card span{display:inline-flex;margin-top:14px;border-radius:999px;padding:5px 10px;background:#dbeafe;color:#1e40af;font:700 11px/1 'JetBrains Mono';text-transform:uppercase}
         .rb-detail-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:16px}.rb-detail{position:relative;overflow:hidden}.rb-detail:before{content:"";position:absolute;right:-60px;top:-70px;width:180px;height:180px;border-radius:50%;background:radial-gradient(circle,rgba(14,165,233,.16),transparent 70%)}.rb-detail>*{position:relative}.rb-gate{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.rb-gate-card{padding:16px;border-radius:16px;background:#fff;border:1px solid #e2e8f0}.rb-gate-card strong{display:block;font:700 30px/1 'Space Grotesk';margin-top:8px}.rb-gate-card p{font-size:13px;line-height:1.45;color:#64748b;margin:8px 0 0}.rb-daily{background:linear-gradient(135deg,#f8fafc,#ecfeff);border-color:#bae6fd}
         .rb-click{cursor:pointer;text-align:left;width:100%;font:inherit;color:inherit;transition:transform .16s ease,box-shadow .16s ease,border-color .16s ease}.rb-click:hover{transform:translateY(-2px);box-shadow:0 14px 34px rgba(15,23,42,.09);border-color:#67e8f9}.rb-drawer-backdrop{position:fixed;inset:0;z-index:80;background:rgba(2,6,23,.48);backdrop-filter:blur(5px);display:flex;justify-content:flex-end}.rb-drawer{width:min(620px,100%);height:100%;overflow:auto;background:#f8fafc;border-left:1px solid #cbd5e1;box-shadow:-24px 0 80px rgba(2,6,23,.28);padding:28px}.rb-drawer h2{font:700 34px/1.05 'Space Grotesk';margin:14px 0;color:#0f172a}.rb-drawer-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.rb-close{min-width:44px;min-height:44px;border-radius:999px;border:1px solid #cbd5e1;background:#fff;color:#0f172a;font:700 18px/1 'Space Grotesk';cursor:pointer}.rb-layer-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.rb-layer{padding:15px;border-radius:16px;background:#fff;border:1px solid #e2e8f0}.rb-layer h3{font:700 16px/1.2 'Space Grotesk';margin:8px 0 0}.rb-layer p{font-size:13px;line-height:1.45;color:#64748b;margin:8px 0 0}
+        .rb-live-run{width:100%;min-height:46px;margin-top:14px;border:1px solid rgba(94,234,212,.5);border-radius:12px;background:linear-gradient(135deg,#22d3ee,#34d399);color:#04121c;font:800 13px/1 'JetBrains Mono';letter-spacing:.04em;text-transform:uppercase;cursor:pointer;box-shadow:0 14px 28px rgba(20,184,166,.16)}.rb-live-run:disabled{cursor:progress;opacity:.68}
         .rb-mini-icon{width:34px;height:34px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:#ecfeff;border:1px solid #bae6fd;color:#0891b2;font:700 16px/1 'Space Grotesk'}
         .rb-question{padding:18px;border-radius:16px;background:#fff;border:1px solid #e2e8f0}.rb-question div{font:600 11px/1 'JetBrains Mono';letter-spacing:.14em;color:#0891b2;text-transform:uppercase}.rb-question p{font:600 18px/1.35 'Space Grotesk';margin:10px 0 0;color:#0f172a}
         @keyframes rbPulseGlow{0%,100%{opacity:.55;transform:scale(1)}50%{opacity:.9;transform:scale(1.06)}}@keyframes rbFloatOrb{0%,100%{transform:translateY(0)}50%{transform:translateY(-9px)}}@keyframes rbBlink{0%,100%{opacity:1}50%{opacity:.25}}
@@ -839,6 +858,29 @@ export default function ReelsBrainPixelCockpit() {
                   Endpoint: {vm.mission.next_tick?.endpoint || "/api/factory/reels-brain/learning-plan"}
                 </p>
               </div>
+              <button
+                type="button"
+                className="rb-live-run"
+                disabled={liveRunState === "running"}
+                onClick={runAutopilotTick}
+              >
+                {liveRunState === "running" ? "Запускаю живой тик..." : "Запустить живой тик обучения"}
+              </button>
+              {liveRun ? (
+                <div className="rb-dark-card" style={{ marginTop: 12 }}>
+                  <div className="rb-pill">{liveRunState} · {liveRun.execution?.task || liveRun.learning_plan?.next_tick?.task || "autopilot"}</div>
+                  <p style={{ marginTop: 10 }}>
+                    {liveRun.error
+                      || liveRun.execution?.reason
+                      || `executed ${liveRun.execution?.executed ? "yes" : "no"} · ${liveRun.execution?.endpoint || "waiting"}`}
+                  </p>
+                  <p style={{ marginTop: 8 }}>
+                    found {compact(liveRun.execution?.result?.found || liveRun.execution?.result?.tick?.found || liveRun.execution?.result?.result?.found || 0)}
+                    {" · "}inserted {compact(liveRun.execution?.result?.inserted || liveRun.execution?.result?.tick?.inserted || liveRun.execution?.result?.result?.inserted || 0)}
+                    {" · "}analyzed {compact(liveRun.execution?.result?.analyzed || liveRun.execution?.result?.tick?.analyzed || liveRun.execution?.result?.result?.analyzed || 0)}
+                  </p>
+                </div>
+              ) : null}
               <div className="rb-three" style={{ marginTop: 16 }}>
                 <div className="rb-dark-card"><div className="rb-overline rb-cyan">Сбор / тик</div><h3>{compact(vm.mission.eta?.inserted_per_tick || 0)}</h3><p>новых видео</p></div>
                 <div className="rb-dark-card"><div className="rb-overline rb-cyan">Анализ / тик</div><h3>{compact(vm.mission.eta?.analyzed_per_tick || 0)}</h3><p>в память</p></div>
