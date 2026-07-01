@@ -179,7 +179,7 @@ async function insertGeneratedVideo(input: {
   const db = getSupabaseAdmin();
   if (!db) return { ok: false, error: "Supabase не настроен" };
   const path = `product-broll/${input.article}/${input.taskId}`;
-  const { error } = await db.from("content_assets").insert({
+  const row = {
     disk: "gen",
     path,
     name: `${input.article} product b-roll quality loop`,
@@ -196,8 +196,9 @@ async function insertGeneratedVideo(input: {
       product_broll_quality: input.verdict,
       yandex_archive: input.yandexArchive,
     },
-  });
-  return error ? { ok: false, error: error.message } : { ok: true, path };
+  };
+  const { error } = await db.from("content_assets").upsert(row, { onConflict: "disk,path", ignoreDuplicates: false });
+  return error ? { ok: false, error: error.message } : { ok: true, path, mode: "upsert" };
 }
 
 async function handle(req: NextRequest, body: Record<string, unknown>) {

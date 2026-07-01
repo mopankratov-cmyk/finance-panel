@@ -14,6 +14,7 @@ ok(/LoopAction = "plan" \| "submit_one" \| "judge" \| "mark_reject"/.test(route)
 ok(/isAuthorizedReelsBrainJobRequest/.test(route), "loop route uses existing operator/session auth");
 ok(/falVideoStatus/.test(route) && /extractFrames/.test(route) && /runArtifactCheck/.test(route), "judge polls FAL, extracts frames and runs artifact check");
 ok(/archiveExternalMediaToYandex/.test(route) && /content_assets/.test(route), "judge archives and catalogs generated videos");
+ok(/upsert\(row, \{ onConflict: "disk,path", ignoreDuplicates: false \}\)/.test(route), "judge saves generated videos idempotently by disk/path");
 ok(/mark_reject/.test(route) && /identity_drift/.test(route), "loop can correct prior false-positive b-roll labels");
 ok(/getBestProductTwinAsset/.test(route) && /assetQuality: view \? null : pickedAsset\?\.asset\.qualityScore/.test(route), "loop plan uses the same latest twin asset quality gate as paid submit");
 
