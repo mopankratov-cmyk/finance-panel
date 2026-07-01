@@ -2,6 +2,26 @@
 
 Этот журнал ведёт отдельный AI-worker на Railway во время ночных задач по контент-заводу.
 
+### 2026-07-01  Blogger rubric and registry
+
+- Ветка: `feat/product-broll-operator-get-clean`
+- Цель: начать M1 `Living Blogger` roadmap не с новых smoke, а с памяти и общей шкалы оценки.
+- Изменено:
+  - `lib/factory/bloggerEvaluation.ts`: rubric `living_blogger_v1`
+  - `lib/factory/bloggerRegistry.ts`: static variant registry для Кати, Алины, Сергея
+  - `app/api/factory/blogger-evaluation/route.ts`: dry-run scoring endpoint
+  - `app/api/factory/blogger-registry/route.ts`: dry-run registry endpoint
+  - `lib/factory/bloggerRegistryContract.test.mts`: контракт на rubric/registry
+  - `docs/factory-ugc-blogger-rubric-registry-2026-07-01.md`: runbook
+- Проверки:
+  - `npx tsx lib/factory/bloggerRegistryContract.test.mts`
+  - `npx tsx lib/factory/ugcStoryboardContract.test.mts`
+  - `npx tsx lib/factory/ugcScriptContract.test.mts`
+  - `npx tsc --noEmit --pretty false`
+- Результат:
+  - следующие blogger smoke можно оценивать единым scorecard
+  - у sidecar появился первый variant memory layer без подключения БД
+
 ### 2026-07-01  UGC living blogger 6-month roadmap
 
 - Ветка: `feat/product-broll-operator-get-clean`
