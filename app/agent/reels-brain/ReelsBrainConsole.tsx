@@ -1715,6 +1715,72 @@ export default function ReelsBrainPage() {
       : "Накопить edit pace buckets для решений по монтажу.",
     todayUsefulCost != null ? `Следить за ценой полезного видео: сегодня ${formatUsd(todayUsefulCost)}.` : "Сохранить cost snapshot после следующего сбора.",
   ];
+  const transcriptCandidates = Number(mediaIntelligence?.transcript_layer?.candidate_count || 0);
+  const transcriptProbed = Number(mediaIntelligence?.transcript_layer?.probed_count || 0);
+  const transcriptReadyPct = transcriptCandidates ? Math.round((transcriptProbed / transcriptCandidates) * 100) : 0;
+  const sourceEfficiency = sourceMap
+    .map((source) => ({
+      provider: source.provider,
+      runs: Number(source.runs || 0),
+      analyzed: Number(source.analyzed || 0),
+      errors: Number(source.errors || 0),
+      cost: Number(source.cost_per_analyzed || 0),
+      score: Number(source.analyzed || 0) / Math.max(1, Number(source.cost_per_analyzed || 1) + Number(source.errors || 0)),
+    }))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 4);
+  const platformNextActions = platformCoverage.map((row) => {
+    if (row.score >= 55) return `${titlePlatform(row.platform)}: можно принимать решения по текущей выборке.`;
+    if (row.total > 0 && row.ready === 0) return `${titlePlatform(row.platform)}: есть metadata, но нет direct mp4. Нужен resolver/media-provider.`;
+    if (row.total === 0) return `${titlePlatform(row.platform)}: пустая зона, добирать источники после лимита Apify.`;
+    return `${titlePlatform(row.platform)}: увеличить выборку и прогнать AV/Creative DNA.`;
+  });
+  const contentDirectorBriefs = [
+    {
+      title: "UGC proof",
+      count: 2,
+      hook: topHooks[0]?.hook_label || "прямое заявление",
+      mechanic: retentionMechanics[0]?.label || "быстрый payoff",
+      recipe: generatorRecipes[0]?.title || "hook + demo + proof + soft CTA",
+      why: "базовый формат для проверки самого сильного хука на товарах.",
+    },
+    {
+      title: "Demo close-up",
+      count: 2,
+      hook: topHooks[1]?.hook_label || topHooks[0]?.hook_label || "обещание результата",
+      mechanic: winningFormats[0]?.label || "крупный план + действие руками",
+      recipe: generatorRecipes[1]?.title || "problem -> product interaction -> result",
+      why: "закрывает визуальное доказательство и товарную применимость.",
+    },
+    {
+      title: "Fast edit test",
+      count: 2,
+      hook: "визуальный контраст в первый кадр",
+      mechanic: Number(creativeDnaInsights.fast_edit_share_pct || 0) > 0
+        ? `fast edit ${compactNumber(creativeDnaInsights.fast_edit_share_pct)}%`
+        : "нарезка 0.4-0.8 сек",
+      recipe: "тот же оффер, меняется только темп монтажа",
+      why: "проверяет влияние editing brain без смешивания с новым хуком.",
+    },
+    {
+      title: "Audio start test",
+      count: 2,
+      hook: "речь или звук сразу",
+      mechanic: Number(creativeDnaInsights.immediate_sound_share_pct || 0) > 0
+        ? `sound-first ${compactNumber(creativeDnaInsights.immediate_sound_share_pct)}%`
+        : "voice starts immediately",
+      recipe: "без интро: фраза/звук -> демонстрация -> CTA",
+      why: "готовит ASR/audio гипотезу до полноценной расшифровки.",
+    },
+    {
+      title: "Anti-pattern control",
+      count: 1,
+      hook: "медленный старт как контроль",
+      mechanic: "один осознанно слабый вариант",
+      recipe: "длиннее вступление, без копирования чужого креатива",
+      why: "нужен отрицательный пример, чтобы Anti Pattern Brain учился не только победителям.",
+    },
+  ];
   const serverAutomationHistory: AutomationHistoryItem[] = (brainSummary?.automation_history || []).map((item) => ({
     id: `server:${item.id}`,
     title: automationTitle(item.mode),
@@ -2582,7 +2648,121 @@ export default function ReelsBrainPage() {
         </div>
       </section>
 
-      <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+      <section className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-lg shadow-slate-200/60">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.22em] text-cyan-700">Content Director</p>
+            <h2 className="mt-1 text-2xl font-black tracking-tight text-slate-950">Что снимать следующим пакетом</h2>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
+              Это не генератор и не настройки. Это операционный слой мозга: берет текущие хуки, retention, audio/visual DNA,
+              экономику источников и превращает в понятный пакет экспериментов.
+            </p>
+          </div>
+          <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-black text-slate-600">
+            {contentDirectorBriefs.reduce((sum, brief) => sum + brief.count, 0)} роликов в следующем пакете
+          </span>
+        </div>
+
+        <div className="mt-5 grid gap-4 xl:grid-cols-[1.25fr_0.75fr]">
+          <div className="grid gap-3 md:grid-cols-2">
+            {contentDirectorBriefs.map((brief, index) => (
+              <div key={brief.title} className="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">Experiment {index + 1}</p>
+                    <h3 className="mt-1 text-lg font-black text-slate-950">{brief.title}</h3>
+                  </div>
+                  <span className="rounded-full border border-cyan-200 bg-cyan-50 px-2.5 py-1 text-xs font-black text-cyan-800">
+                    x{brief.count}
+                  </span>
+                </div>
+                <div className="mt-3 space-y-2 text-xs leading-5 text-slate-600">
+                  <p><span className="font-black text-slate-950">Hook:</span> {brief.hook}</p>
+                  <p><span className="font-black text-slate-950">Retention:</span> {brief.mechanic}</p>
+                  <p><span className="font-black text-slate-950">Structure:</span> {brief.recipe}</p>
+                </div>
+                <div className="mt-3 rounded-xl border border-white bg-white px-3 py-2 text-xs font-bold leading-5 text-slate-700">
+                  Почему: {brief.why}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="space-y-4">
+            <div className="rounded-[1.5rem] border border-cyan-100 bg-cyan-50 p-4">
+              <p className="text-xs font-black uppercase tracking-[0.18em] text-cyan-800">Transcript / ASR readiness</p>
+              <h3 className="mt-1 text-lg font-black text-cyan-950">Готовность понимать речь</h3>
+              <div className="mt-4 grid grid-cols-3 gap-2">
+                <div className="rounded-xl bg-white px-3 py-2">
+                  <div className="font-mono text-xl font-black text-cyan-950">{compactNumber(transcriptCandidates)}</div>
+                  <div className="text-[10px] font-bold uppercase tracking-wide text-cyan-700">candidates</div>
+                </div>
+                <div className="rounded-xl bg-white px-3 py-2">
+                  <div className="font-mono text-xl font-black text-cyan-950">{compactNumber(transcriptProbed)}</div>
+                  <div className="text-[10px] font-bold uppercase tracking-wide text-cyan-700">probed</div>
+                </div>
+                <div className="rounded-xl bg-white px-3 py-2">
+                  <div className="font-mono text-xl font-black text-cyan-950">{compactNumber(transcriptReadyPct)}%</div>
+                  <div className="text-[10px] font-bold uppercase tracking-wide text-cyan-700">ready</div>
+                </div>
+              </div>
+              <div className="mt-3 h-2 overflow-hidden rounded-full bg-white">
+                <div className="h-full rounded-full bg-cyan-500" style={{ width: `${Math.max(3, Math.min(100, transcriptReadyPct))}%` }} />
+              </div>
+              <p className="mt-3 text-xs font-semibold leading-5 text-cyan-900">
+                Следующий прирост качества: первые фразы, скорость речи, паузы, эмоциональный тон и UGC-формулировки.
+              </p>
+            </div>
+
+            <div className="rounded-[1.5rem] border border-slate-200 bg-slate-950 p-4 text-white">
+              <p className="text-xs font-black uppercase tracking-[0.18em] text-cyan-100/70">Source efficiency</p>
+              <h3 className="mt-1 text-lg font-black">Где дешевле учиться</h3>
+              <div className="mt-3 space-y-2">
+                {sourceEfficiency.length ? sourceEfficiency.map((source) => (
+                  <div key={source.provider} className="rounded-xl border border-white/10 bg-white/10 px-3 py-2 text-xs">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-black">{providerLabel(source.provider)}</span>
+                      <span className="font-mono font-black text-cyan-100">{formatUsd(source.cost)}</span>
+                    </div>
+                    <p className="mt-1 text-slate-300">runs {compactNumber(source.runs)} · analyzed {compactNumber(source.analyzed)} · errors {compactNumber(source.errors)}</p>
+                  </div>
+                )) : (
+                  <div className="rounded-xl border border-white/10 bg-white/10 px-3 py-6 text-center text-xs font-semibold text-slate-300">
+                    Нужны cost-aware прогоны, чтобы сравнивать источники.
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="rounded-[1.5rem] border border-amber-200 bg-amber-50 p-4">
+              <p className="text-xs font-black uppercase tracking-[0.18em] text-amber-800">Platform actions</p>
+              <div className="mt-3 space-y-2">
+                {platformNextActions.map((action) => (
+                  <div key={action} className="rounded-xl bg-white px-3 py-2 text-xs font-bold leading-5 text-amber-900">
+                    {action}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <details className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+        <summary className="cursor-pointer list-none">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">Advanced</p>
+              <h2 className="mt-1 text-xl font-black tracking-tight text-slate-950">Операторские инструменты и история прогонов</h2>
+              <p className="mt-1 text-sm text-slate-500">Свернуто по умолчанию: основной экран выше показывает смысл, прогресс, цену и решения.</p>
+            </div>
+            <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-black text-slate-600">
+              открыть debug / controls
+            </span>
+          </div>
+        </summary>
+
+      <section className="mt-5 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <div className="flex items-center gap-2 text-sm font-bold uppercase tracking-[0.18em] text-slate-400">
@@ -3854,6 +4034,7 @@ export default function ReelsBrainPage() {
           </div>
         </details>
       </section>
+      </details>
 
       <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-3">
