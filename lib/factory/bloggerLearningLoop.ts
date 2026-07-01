@@ -62,6 +62,7 @@ export interface KatyaLearningRun {
   blogger_id: string;
   variant_id: string;
   avatar_look_id: string | null;
+  avatar_look_label: string | null;
   voice_id: string | null;
   script: string;
   scene_id: KatyaSceneId;
@@ -90,10 +91,22 @@ export interface KatyaLearningLoopPlan {
   warnings: string[];
 }
 
+interface WinnerBias {
+  sceneIds: KatyaSceneId[];
+  angleIds: KatyaCameraAngleId[];
+  motionIds: BloggerMotionPresetId[];
+}
+
 interface AxisOption<T extends string> {
   id: T;
   prompt: string;
   risk?: string;
+}
+
+interface KatyaLookSpec {
+  lookId: string;
+  label: string;
+  scenes: KatyaSceneId[];
 }
 
 const SCENES: readonly AxisOption<KatyaSceneId>[] = [
@@ -135,6 +148,29 @@ const EXPRESSIONS: readonly AxisOption<KatyaExpressionId>[] = [
   { id: "tired_honest", prompt: "slightly tired but honest, everyday human energy" },
   { id: "friend_warning", prompt: "friend-warning face, not dramatic, a little conspiratorial" },
 ];
+
+const KATYA_LOOK_SPECS: readonly KatyaLookSpec[] = [
+  {
+    lookId: "f9e4ecf1b902451aaa17e8c2430a5c1b",
+    label: "hallway_hoodie",
+    scenes: ["home_hallway", "entryway_jacket"],
+  },
+  {
+    lookId: "8dd0451ca8af4d25b5222014d3f0657f",
+    label: "kitchen_cardigan",
+    scenes: ["small_kitchen"],
+  },
+  {
+    lookId: "fa4d7d0f63874e4499cb95754b75ef94",
+    label: "soft_window_cardigan",
+    scenes: ["window_room", "plain_wall", "sofa_evening", "messy_desk"],
+  },
+  {
+    lookId: "78503a862d8140c2b0c389e6b6cf101d",
+    label: "skeptical_kitchen_selfie",
+    scenes: ["mirror_selfie"],
+  },
+] as const;
 
 const SCRIPTS = [
   "Я сначала подумала: ну нет, опять какая-то штука из рекламы. А потом поймала себя на том, что смотрю дальше.",
@@ -190,9 +226,53 @@ function axisSeed(input: KatyaLearningLoopInput, prior: BloggerEvaluationResult[
   return seeds;
 }
 
+function parseRunId(runId: string): Partial<{ sceneId: KatyaSceneId; angleId: KatyaCameraAngleId; motionId: BloggerMotionPresetId }> {
+  const parts = clean(runId, 220).split("__");
+  if (parts.length < 6) return {};
+  const sceneId = SCENES.find((item) => item.id === parts[3])?.id;
+  const angleId = ANGLES.find((item) => item.id === parts[4])?.id;
+  const motionId = BLOGGER_MOTION_PRESETS.find((item) => item.id === parts[5])?.id;
+  return { sceneId, angleId, motionId };
+}
+
+function deriveWinnerBias(prior: BloggerEvaluationResult[]): WinnerBias {
+  const promoted = prior
+    .filter((item) => item.summary_label === "promote" || runScore(item) >= 76)
+    .slice(0, 4);
+  const scenes = new Set<KatyaSceneId>();
+  const angles = new Set<KatyaCameraAngleId>();
+  const motions = new Set<BloggerMotionPresetId>();
+  for (const winner of promoted) {
+    const parsed = parseRunId(String(winner.run_id || ""));
+    if (parsed.sceneId) scenes.add(parsed.sceneId);
+    if (parsed.angleId) angles.add(parsed.angleId);
+    if (parsed.motionId) motions.add(parsed.motionId);
+  }
+  return {
+    sceneIds: [...scenes],
+    angleIds: [...angles],
+    motionIds: [...motions],
+  };
+}
+
 function pick<T extends string>(items: readonly AxisOption<T>[], index: number, generation: number, winnerBias: number): AxisOption<T> {
   const offset = winnerBias > 0 ? generation : generation * 2;
   return items[(index + offset) % items.length];
+}
+
+function pickWithBias<T extends string>(
+  items: readonly AxisOption<T>[],
+  preferredIds: readonly T[],
+  index: number,
+  generation: number,
+  winnerBiasCount: number,
+): AxisOption<T> {
+  if (preferredIds.length) {
+    const preferred = items.filter((item) => preferredIds.includes(item.id));
+    const preferredIndex = Math.floor(index / 2) + generation;
+    if (preferred.length && index % 2 === 0) return preferred[preferredIndex % preferred.length];
+  }
+  return pick(items, index, generation, winnerBiasCount);
 }
 
 function pickMotion(index: number, generation: number, winnerBias: number): BloggerMotionPresetId {
@@ -201,6 +281,12 @@ function pickMotion(index: number, generation: number, winnerBias: number): Blog
     .map((preset) => preset.id);
   const offset = winnerBias > 0 ? generation : generation * 3;
   return base[(index + offset) % base.length] || "skeptical_pause";
+}
+
+function pickMotionWithBias(preferredIds: readonly BloggerMotionPresetId[], index: number, generation: number, winnerBiasCount: number): BloggerMotionPresetId {
+  const preferredIndex = Math.floor(index / 2) + generation;
+  if (preferredIds.length && index % 2 === 0) return preferredIds[preferredIndex % preferredIds.length] || "skeptical_pause";
+  return pickMotion(index, generation, winnerBiasCount);
 }
 
 function expressivenessFor(motion: BloggerMotionPresetId, index: number): "low" | "medium" | "high" {
@@ -218,6 +304,12 @@ function visualPrompt(scene: AxisOption<KatyaSceneId>, angle: AxisOption<KatyaCa
     expression.prompt,
     "small imperfections, ordinary skin texture, no glossy ad styling, no product, no b-roll",
   ].join("; ");
+}
+
+function katyaLookForScene(sceneId: KatyaSceneId, fallbackLookId: string | null): { lookId: string | null; label: string | null } {
+  const found = KATYA_LOOK_SPECS.find((item) => item.scenes.includes(sceneId));
+  if (found) return { lookId: found.lookId, label: found.label };
+  return { lookId: fallbackLookId, label: fallbackLookId ? "base" : null };
 }
 
 function motionPrompt(motionId: BloggerMotionPresetId, angle: AxisOption<KatyaCameraAngleId>, pose: AxisOption<KatyaPoseId>, expression: AxisOption<KatyaExpressionId>): string {
@@ -240,6 +332,7 @@ export function buildKatyaLearningLoop(input: KatyaLearningLoopInput = {}): Katy
   const generationCount = Math.ceil(targetRuns / generationSize);
   const priorEvaluations = evaluatePrior(input, variant);
   const winners = axisSeed(input, priorEvaluations);
+  const bias = deriveWinnerBias(priorEvaluations);
   const winnerBias = winners.size;
 
   if (targetRuns > 40) warnings.push("large paid render target: execute in generations and stop after each review checkpoint");
@@ -250,13 +343,14 @@ export function buildKatyaLearningLoop(input: KatyaLearningLoopInput = {}): Katy
   for (let i = 0; i < targetRuns; i++) {
     const generation = startGeneration + Math.floor(i / generationSize);
     const sequence = (i % generationSize) + 1;
-    const scene = pick(SCENES, i, generation, winnerBias);
-    const angle = pick(ANGLES, i * 2, generation, winnerBias);
+    const scene = pickWithBias(SCENES, bias.sceneIds, i, generation, winnerBias);
+    const angle = pickWithBias(ANGLES, bias.angleIds, i * 2, generation, winnerBias);
     const pose = pick(POSES, i * 3, generation, winnerBias);
     const expression = pick(EXPRESSIONS, i * 5, generation, winnerBias);
-    const motion = pickMotion(i, generation, winnerBias);
+    const motion = pickMotionWithBias(bias.motionIds, i, generation, winnerBias);
     const expressiveness = expressivenessFor(motion, i);
     const script = SCRIPTS[(i + generation) % SCRIPTS.length];
+    const selectedLook = katyaLookForScene(scene.id, variant.avatar_look_id || null);
     const runId = [
       "katya_lab",
       `g${String(generation).padStart(2, "0")}`,
@@ -272,7 +366,8 @@ export function buildKatyaLearningLoop(input: KatyaLearningLoopInput = {}): Katy
       sequence,
       blogger_id: variant.blogger_id,
       variant_id: variant.variant_id,
-      avatar_look_id: variant.avatar_look_id || null,
+      avatar_look_id: selectedLook.lookId,
+      avatar_look_label: selectedLook.label,
       voice_id: variant.voice_id || null,
       script,
       scene_id: scene.id,

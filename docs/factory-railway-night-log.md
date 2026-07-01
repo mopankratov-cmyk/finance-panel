@@ -2847,6 +2847,24 @@
     - `/tmp/ugc-factory-katya-learning-loop-2026-07-01-retry/generation-01/katya_lab__g01__05__entryway_jacket__three_quarter_left__skeptical_pause.mp4`
   - Contact sheet: `/tmp/ugc-factory-katya-learning-loop-2026-07-01-retry/generation-01/contact-sheet.jpg`.
   - Preliminary frame read: #2 and #5 look like strongest candidates; final choice must be by mp4 motion.
+- Generation 2 bias + look-matrix fix:
+  - Added winner-biased planning from `prior_results` so next generation reuses strong scene/angle/motion signals instead of random exploration.
+  - Added Katya look matrix with multiple female looks:
+    - `hallway_hoodie`
+    - `kitchen_cardigan`
+    - `soft_window_cardigan`
+    - `skeptical_kitchen_selfie`
+  - Caught and removed an invalid non-Katya private look from the matrix before locking the next batch.
+- Valid generation 2b:
+  - Prior file: `docs/factory-katya-generation2-prior-results.json`.
+  - 5/5 completed:
+    - `/tmp/ugc-factory-katya-learning-loop-2026-07-01-generation2b/generation-02/katya_lab__g02__01__sofa_evening__three_quarter_left__tired_honest.mp4`
+    - `/tmp/ugc-factory-katya-learning-loop-2026-07-01-generation2b/generation-02/katya_lab__g02__02__sofa_evening__three_quarter_right__half_smile.mp4`
+    - `/tmp/ugc-factory-katya-learning-loop-2026-07-01-generation2b/generation-02/katya_lab__g02__03__entryway_jacket__three_quarter_left__skeptical_pause.mp4`
+    - `/tmp/ugc-factory-katya-learning-loop-2026-07-01-generation2b/generation-02/katya_lab__g02__04__mirror_selfie__three_quarter_right__friend_advice.mp4`
+    - `/tmp/ugc-factory-katya-learning-loop-2026-07-01-generation2b/generation-02/katya_lab__g02__05__sofa_evening__three_quarter_left__tired_honest.mp4`
+  - Contact sheet: `/tmp/ugc-factory-katya-learning-loop-2026-07-01-generation2b/generation-02/contact-sheet.jpg`.
+  - Preliminary read: `tired_honest` and `skeptical_pause` remain strongest directions.
 - Проверки:
   - `npx tsx lib/factory/bloggerLearningLoopContract.test.mts`
   - `npx tsx lib/factory/bloggerMotionContract.test.mts`

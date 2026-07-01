@@ -16,6 +16,8 @@ import { buildKatyaLearningLoop } from "./bloggerLearningLoop";
   equal(plan.planned_runs.length, 100, "100 dry-run render candidates are planned");
   ok(plan.planned_runs.every((run) => run.blogger_id === "katya_russian_creator_v3b"), "all runs stay on Katya");
   ok(plan.planned_runs.every((run) => run.avatar_look_id), "all runs carry avatar look id");
+  ok(new Set(plan.planned_runs.map((run) => run.avatar_look_id)).size > 1, "scene planning can switch between multiple Katya source looks");
+  ok(!plan.planned_runs.some((run) => run.avatar_look_label === "casual_home_reviewer"), "Katya loop excludes the known non-Katya reviewer look");
   ok(plan.planned_runs.every((run) => run.voice_id), "all runs carry voice id");
   ok(plan.planned_runs.every((run) => /no product, no b-roll/i.test(run.heygen_visual_prompt)), "visual prompts explicitly block product and b-roll");
   ok(plan.planned_runs.some((run) => run.scene_id !== plan.planned_runs[0].scene_id), "scene varies");
@@ -59,6 +61,43 @@ import { buildKatyaLearningLoop } from "./bloggerLearningLoop";
   ok(plan.promote.includes("winner-medium-skeptic"), "strong prior result is promoted");
   ok(plan.demote.includes("bad-high-smile"), "weak prior result is demoted");
   equal(plan.prior_evaluations.length, 2, "prior results are converted to scorecards");
+}
+
+{
+  const plan = buildKatyaLearningLoop({
+    target_runs: 5,
+    generation_size: 5,
+    start_generation: 2,
+    prior_results: [
+      {
+        run_id: "katya_lab__g01__02__sofa_evening__three_quarter_right__tired_honest",
+        scores: {
+          face_realism: 8,
+          motion_realism: 8,
+          lip_sync: 7,
+          voice_naturalness: 7,
+          room_authenticity: 8,
+          anti_ai_first_2s: 8,
+          repeatability_penalty: 2,
+        },
+      },
+      {
+        run_id: "katya_lab__g01__05__entryway_jacket__three_quarter_left__skeptical_pause",
+        scores: {
+          face_realism: 8,
+          motion_realism: 8,
+          lip_sync: 7,
+          voice_naturalness: 7,
+          room_authenticity: 8,
+          anti_ai_first_2s: 8,
+          repeatability_penalty: 2,
+        },
+      },
+    ],
+  });
+  ok(plan.planned_runs.some((run) => run.scene_id === "sofa_evening" || run.scene_id === "entryway_jacket"), "generation 2 keeps some winning scenes");
+  ok(plan.planned_runs.some((run) => run.camera_angle_id === "three_quarter_right" || run.camera_angle_id === "three_quarter_left"), "generation 2 keeps some winning angles");
+  ok(plan.planned_runs.some((run) => run.motion_preset === "tired_honest" || run.motion_preset === "skeptical_pause"), "generation 2 keeps some winning motion presets");
 }
 
 {

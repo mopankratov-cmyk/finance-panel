@@ -313,3 +313,69 @@ Contact sheet:
 1. пользователь выбирает 1-2 номера winners;
 2. внести winners как `prior_results`;
 3. generation 2 делать не как retry, а как улучшение вокруг winners.
+
+## Generation 2
+
+Первый generation 2 прогон оказался частично невалидным для оценки, потому что в look matrix случайно попал не-Katya private look. Этот прогон не использовать для выбора winners.
+
+После этого planner был исправлен:
+
+- generation 2 теперь biased вокруг winner-кандидатов generation 1;
+- planner использует только Katya-like female looks;
+- для разных scenes переключаются разные `avatar_look_id`.
+
+Рабочий prior file:
+
+```text
+docs/factory-katya-generation2-prior-results.json
+```
+
+## Generation 2b valid batch
+
+Дата: 2026-07-01
+
+Команда:
+
+```text
+node --import tsx lib/factory/bloggerLearningLoopRunner.mjs --generation 2 --limit 5 --generation-size 5 --prior-results-file docs/factory-katya-generation2-prior-results.json --confirm-paid true --out-dir /tmp/ugc-factory-katya-learning-loop-2026-07-01-generation2b
+```
+
+Результат:
+
+- 5/5 completed;
+- batch уже biased вокруг generation 1 winners:
+  - `tired_honest`
+  - `skeptical_pause`
+- используются только женские Katya-like looks:
+  - `soft_window_cardigan`
+  - `hallway_hoodie`
+  - `skeptical_kitchen_selfie`
+
+Успешные mp4:
+
+- `/tmp/ugc-factory-katya-learning-loop-2026-07-01-generation2b/generation-02/katya_lab__g02__01__sofa_evening__three_quarter_left__tired_honest.mp4`
+- `/tmp/ugc-factory-katya-learning-loop-2026-07-01-generation2b/generation-02/katya_lab__g02__02__sofa_evening__three_quarter_right__half_smile.mp4`
+- `/tmp/ugc-factory-katya-learning-loop-2026-07-01-generation2b/generation-02/katya_lab__g02__03__entryway_jacket__three_quarter_left__skeptical_pause.mp4`
+- `/tmp/ugc-factory-katya-learning-loop-2026-07-01-generation2b/generation-02/katya_lab__g02__04__mirror_selfie__three_quarter_right__friend_advice.mp4`
+- `/tmp/ugc-factory-katya-learning-loop-2026-07-01-generation2b/generation-02/katya_lab__g02__05__sofa_evening__three_quarter_left__tired_honest.mp4`
+
+Contact sheet:
+
+```text
+/tmp/ugc-factory-katya-learning-loop-2026-07-01-generation2b/generation-02/contact-sheet.jpg
+```
+
+Предварительный визуальный вывод по кадрам:
+
+- `1 tired_honest medium` и `5 tired_honest low` выглядят как сильные natural candidates;
+- `3 skeptical_pause hallway` остаётся хорошим skeptical hook;
+- `2 half_smile` и `4 friend_advice` полезны как контрастные варианты, но требуют проверки по движению, чтобы не уйти в presenter.
+
+Следующий шаг:
+
+1. выбрать 2-3 winners из generation 2b;
+2. generation 3 делать уже как tighter batch:
+   - один лучший skeptical;
+   - один лучший tired honest;
+   - один контрастный expressive variant;
+3. менять по одной оси, а не всё сразу.
