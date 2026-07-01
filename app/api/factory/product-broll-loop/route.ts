@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { isAuthorizedReelsBrainJobRequest } from "@/lib/factory/reelsBrainJobAuth";
-import { getLatestProductTwinByArticle, getProductTwinViewAssets } from "@/lib/factory/productTwinStore";
+import { getBestProductTwinAsset, getLatestProductTwinByArticle, getProductTwinViewAssets } from "@/lib/factory/productTwinStore";
 import { buildProductBrollPlan, type ProductBrollRecipe } from "@/lib/factory/productBrollBatch";
 import { extractFrames } from "@/lib/factory/serverMedia";
 import { runArtifactCheck } from "@/lib/factory/qaGates";
@@ -62,9 +62,20 @@ async function candidate(input: { articles: string[]; article?: string }) {
     }
     const views = await getProductTwinViewAssets(db, { article, twinId: twin.twinId, limit: 80 });
     const view = preferredBrollView(views);
+    const pickedAsset = view ? null : await getBestProductTwinAsset(db, { twinId: twin.twinId, useCase: "broll" });
     const simple = twin.category === "cosmetics" || twin.category === "toy";
-    inspected.push({ article, category: twin.category, twin_id: twin.twinId, views: views.length, selected_view: view?.viewId || null, simple });
-    if (input.article || simple) return { twin, views, view, inspected };
+    inspected.push({
+      article,
+      category: twin.category,
+      twin_id: twin.twinId,
+      views: views.length,
+      selected_view: view?.viewId || null,
+      selected_asset_kind: pickedAsset?.asset.kind || null,
+      selected_asset_quality: pickedAsset?.asset.qualityScore ?? null,
+      selected_asset_risk: pickedAsset?.asset.risk || null,
+      simple,
+    });
+    if (input.article || simple) return { twin, views, view, pickedAsset, inspected };
   }
   return { inspected, error: "нет простого cosmetics/toy twin; autonomous paid loop is held" };
 }
@@ -201,6 +212,7 @@ async function handle(req: NextRequest, body: Record<string, unknown>) {
   }
   const twin = picked.twin!;
   const view = picked.view;
+  const pickedAsset = picked.pickedAsset || null;
   const recipe = (text(body.recipe || sp.get("recipe"), 40) || (twin.category === "toy" ? "toy_action" : "skincare_ritual")) as ProductBrollRecipe;
   const variants = buildProductBrollPlan({ article: twin.article, product: twin.productName, recipe, count: 1, model: "kling" });
   const plan = buildProductBrollExperimentPlan({
@@ -211,7 +223,9 @@ async function handle(req: NextRequest, body: Record<string, unknown>) {
     model: "kling",
     variants,
     sourceKind: view ? "product_twin_view" : "product_twin_latest",
-    assetKind: view ? "product_twin_view" : null,
+    assetKind: view ? "product_twin_view" : pickedAsset?.asset.kind || null,
+    assetQuality: view ? null : pickedAsset?.asset.qualityScore ?? null,
+    assetRisk: view ? "low" : pickedAsset?.asset.risk || null,
     viewId: view?.viewId || null,
     autonomous: true,
   });
@@ -224,7 +238,7 @@ async function handle(req: NextRequest, body: Record<string, unknown>) {
     const feedback = await recordFeedback({
       article: twin.article,
       twinId: text(body.twin_id || body.twinId || sp.get("twin_id") || sp.get("twinId"), 140) || twin.twinId,
-      assetId: text(body.asset_id || body.assetId || sp.get("asset_id") || sp.get("assetId"), 180) || view?.sourceAssetId || null,
+      assetId: text(body.asset_id || body.assetId || sp.get("asset_id") || sp.get("assetId"), 180) || view?.sourceAssetId || pickedAsset?.asset.assetId || null,
       viewId: text(body.view_id || body.viewId || sp.get("view_id") || sp.get("viewId"), 80) || view?.viewId || null,
       taskId: text(body.task_id || body.taskId || sp.get("task_id") || sp.get("taskId"), 180) || null,
       verdict: "reject",
@@ -279,7 +293,7 @@ async function handle(req: NextRequest, body: Record<string, unknown>) {
   const feedback = await recordFeedback({
     article: twin.article,
     twinId: twin.twinId,
-    assetId: view?.sourceAssetId || null,
+    assetId: view?.sourceAssetId || pickedAsset?.asset.assetId || null,
     viewId: view?.viewId || null,
     taskId,
     verdict: verdict.verdict,
