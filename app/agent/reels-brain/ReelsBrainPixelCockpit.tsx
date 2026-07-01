@@ -48,6 +48,17 @@ function liveExecutionCount(execution: JsonRecord | undefined, key: "found" | "i
   return read(execution?.result) + read(execution?.fallback?.result);
 }
 
+function liveProviderRuns(execution: JsonRecord | undefined): JsonRecord[] {
+  const readRuns = (result: JsonRecord | undefined) => {
+    const runs = result?.runs || result?.tick?.runs || result?.result?.runs || result?.result?.tick?.runs;
+    return Array.isArray(runs) ? runs as JsonRecord[] : [];
+  };
+  return [
+    ...readRuns(execution?.result).map((run) => ({ ...run, phase: "primary" })),
+    ...readRuns(execution?.fallback?.result).map((run) => ({ ...run, phase: "fallback" })),
+  ].slice(0, 8);
+}
+
 async function getJson(path: string, init: RequestInit = {}): Promise<JsonRecord> {
   const response = await fetch(path, { cache: "no-store", ...init });
   const data = await response.json().catch(() => ({}));
@@ -896,6 +907,19 @@ export default function ReelsBrainPixelCockpit() {
                     <p style={{ marginTop: 6, color: "#bae6fd" }}>
                       fallback: {liveRun.execution.fallback.reason || "recovery"} · {liveRun.execution.fallback.params?.platforms || "mixed"}
                     </p>
+                  ) : null}
+                  {liveProviderRuns(liveRun.execution).length ? (
+                    <div style={{ display: "grid", gap: 6, marginTop: 10 }}>
+                      {liveProviderRuns(liveRun.execution).map((run, index) => (
+                        <p key={`${run.phase}-${run.provider}-${run.query}-${index}`} style={{ margin: 0, color: "#dbeafe", fontSize: 12 }}>
+                          {run.phase} · {run.platform || "?"} · {run.provider || "provider"}:
+                          {" "}found {compact(run.found)}
+                          {" · "}norm {compact(run.normalized)}
+                          {" · "}inserted {compact(run.inserted)}
+                          {run.error ? ` · error ${String(run.error).slice(0, 90)}` : ""}
+                        </p>
+                      ))}
+                    </div>
                   ) : null}
                 </div>
               ) : null}

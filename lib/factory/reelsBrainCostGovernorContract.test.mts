@@ -65,6 +65,7 @@ ok(/learningPlan/.test(cockpit) && /Learning Mission/.test(cockpit), "cockpit ex
 ok(/worker_loop/.test(cockpit) && /Цена обучения/.test(cockpit), "cockpit shows unattended loop and cost trend inside the mission");
 ok(/Фокус платформы/.test(cockpit) && /focus_platform/.test(cockpit), "cockpit shows which platform the autopilot is healing now");
 ok(/liveExecutionCount/.test(cockpit) && /fallback:/.test(cockpit), "cockpit exposes live fallback training progress");
+ok(/liveProviderRuns/.test(cockpit) && /norm/.test(cockpit), "cockpit exposes live provider run diagnostics");
 ok(/nextLayers/.test(cockpit), "cockpit reads next intelligence layers");
 ok(/selectedPattern/.test(cockpit) && /rb-drawer/.test(cockpit), "cockpit exposes pattern creative brief drawer");
 ok(/rb-click/.test(cockpit) && /setSelectedPattern/.test(cockpit), "cockpit pattern cards are inspectable");
