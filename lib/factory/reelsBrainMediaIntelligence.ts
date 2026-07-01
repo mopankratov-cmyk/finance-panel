@@ -83,6 +83,8 @@ export type ReelsMediaAssetClassification = {
   } | null;
 };
 
+type MediaProbe = NonNullable<ReelsMediaAssetClassification["media_probe"]>;
+
 function asUrl(value: unknown): URL | null {
   try {
     const text = String(value || "").trim();
@@ -187,9 +189,9 @@ function mediaProbe(value: unknown): ReelsMediaAssetClassification["media_probe"
     audio_codec: probe.audio_codec == null ? null : String(probe.audio_codec),
     audio_channels: probe.audio_channels == null ? null : Number(probe.audio_channels),
     audio_sample_rate: probe.audio_sample_rate == null ? null : Number(probe.audio_sample_rate),
-    audio_features: Object.keys(rec(probe.audio_features)).length ? rec(probe.audio_features) as ReelsMediaAssetClassification["media_probe"]["audio_features"] : null,
-    visual_features: Object.keys(rec(probe.visual_features)).length ? rec(probe.visual_features) as ReelsMediaAssetClassification["media_probe"]["visual_features"] : null,
-    feature_probe: Object.keys(rec(probe.feature_probe)).length ? rec(probe.feature_probe) as ReelsMediaAssetClassification["media_probe"]["feature_probe"] : null,
+    audio_features: Object.keys(rec(probe.audio_features)).length ? rec(probe.audio_features) as MediaProbe["audio_features"] : null,
+    visual_features: Object.keys(rec(probe.visual_features)).length ? rec(probe.visual_features) as MediaProbe["visual_features"] : null,
+    feature_probe: Object.keys(rec(probe.feature_probe)).length ? rec(probe.feature_probe) as MediaProbe["feature_probe"] : null,
   };
 }
 
