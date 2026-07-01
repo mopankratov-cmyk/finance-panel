@@ -2,6 +2,20 @@
 
 Этот журнал ведёт отдельный AI-worker на Railway во время ночных задач по контент-заводу.
 
+### 2026-07-01  HeyGen Russian blogger candidates
+
+- Ветка: `feat/product-twin-autopilot-canon`
+- Цель: сделать лица блогеров более русскими и менее stock/AI-looking для русской аудитории.
+- Изменено:
+  - добавлен отчёт `docs/factory-ugc-heygen-russian-blogger-candidates-2026-07-01.md`
+- Live HeyGen result:
+  - `alina_russian_mom_v3b`: completed, look `8dd0451ca8af4d25b5222014d3f0657f`, group `3455f070b3d2404083b9114dce1555ba`
+  - `katya_russian_creator_v3b`: completed, look `f9e4ecf1b902451aaa17e8c2430a5c1b`, group `f0ca9e763ce24aa3abcfad494977a5c0`
+  - `sergey_russian_dad_v3b`: completed, look `a5e9b0c485a749518e577ce392318366`, group `490f1bfefaec43f7a816a69a1b7b44de`
+- Результат:
+  - Алина и Катя готовы к первому короткому visual/talking-head smoke без товара
+  - Сергей сохранён как папский кандидат, но требует более мягкого дубля
+
 ### 2026-07-01  Reels Brain operating system and paid guard
 
 - Ветка: `fix/reels-brain-paid-cost-guard`
