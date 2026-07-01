@@ -15,6 +15,8 @@ ok(/twin_id/.test(route) && /getBestProductTwinAsset/.test(route), "route can us
 ok(/getLatestProductTwinByArticle/.test(route) && /product_twin_latest/.test(route), "route prefers latest Product Twin by article before prepared/WB fallback");
 ok(/asset_id/.test(route), "route returns Product Twin asset provenance");
 ok(/source_preview_url/.test(route) && /productTwinAssetPreviewUrl/.test(route), "route returns preview URL for Yandex-backed Product Twin source");
+ok(/source_gate/.test(route) && /experiment_plan/.test(route), "route returns source gate and b-roll experiment plan");
+ok(/assessProductBrollSource/.test(route) && /status: 409/.test(route), "route blocks unsafe paid b-roll sources before FAL submit");
 ok(/image_data_url\/disk_path требуют clean_first:true/.test(route), "disk/data-url inputs are gated through clean_first");
 ok(/clean_source: cleanFirst/.test(route), "route returns clean_source metadata");
 ok(/falVideoSubmitDetailed/.test(route), "route uses detailed FAL submit diagnostics");

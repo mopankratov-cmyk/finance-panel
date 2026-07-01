@@ -10,6 +10,9 @@ import {
   RefreshCw,
   ShieldAlert,
   Sparkles,
+  ThumbsDown,
+  ThumbsUp,
+  XCircle,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
@@ -42,6 +45,7 @@ type TwinAsset = {
   preview_url?: string;
   previewUrl?: string;
   qualityScore?: number;
+  risk?: string;
   brollReady?: boolean;
   heroReady?: boolean;
   marketplaceSafe?: boolean;
@@ -65,12 +69,15 @@ type TwinViewAsset = {
   label: string;
   purpose: string;
   truth: string;
+  sourceAssetId?: string;
   url: string;
   preview_url?: string;
   previewUrl?: string;
   path?: string;
   createdAt?: string;
 };
+
+type BrollVerdict = "winner" | "usable" | "weak" | "reject";
 
 type RunLog = {
   at: string;
@@ -265,6 +272,36 @@ export default function ProductTwinStudio() {
     setViews(Object.fromEntries(entries));
   }
 
+  async function sendBrollFeedback(input: {
+    asset?: TwinAsset;
+    view?: TwinViewAsset;
+    verdict: BrollVerdict;
+    reasons?: string[];
+  }) {
+    if (!selected) return;
+    setBusy("feedback");
+    try {
+      const payload = {
+        article: selected,
+        twin_id: selectedTwin?.twinId || input.view?.twinId || null,
+        asset_id: input.asset?.assetId || input.view?.sourceAssetId || null,
+        view_id: input.view?.viewId || null,
+        verdict: input.verdict,
+        reasons: input.reasons || [],
+      };
+      const data = await jsonFetch("/api/factory/product-broll-feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      pushLog("b-roll qa", true, `${data.feedback?.verdict || input.verdict} saved`);
+    } catch (e) {
+      pushLog("b-roll qa", false, String((e as Error).message || e));
+    } finally {
+      setBusy(null);
+    }
+  }
+
   useEffect(() => {
     loadInventory();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -430,11 +467,39 @@ export default function ProductTwinStudio() {
                   </div>
                   <div className="grid grid-cols-2 gap-2">
                     {selectedTwin.assets?.filter((asset) => ["clean_png", "shadow_bg", "white_bg", "upscaled"].includes(asset.kind)).slice(0, 4).map((asset) => (
-                      <a key={`${asset.kind}-${asset.url}`} href={assetPreviewUrl(asset)} target="_blank" className="overflow-hidden rounded-md border border-slate-200 bg-slate-100" rel="noreferrer">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={assetPreviewUrl(asset)} alt={asset.kind} className="aspect-square w-full object-contain" />
+                      <div key={`${asset.kind}-${asset.url}`} className="overflow-hidden rounded-md border border-slate-200 bg-slate-100">
+                        <a href={assetPreviewUrl(asset)} target="_blank" rel="noreferrer">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={assetPreviewUrl(asset)} alt={asset.kind} className="aspect-square w-full object-contain" />
+                        </a>
                         <div className="truncate px-2 py-1 text-xs font-bold text-slate-700">{asset.kind}</div>
-                      </a>
+                        <div className="grid grid-cols-3 gap-1 border-t border-slate-200 bg-white p-1">
+                          <button
+                            title="B-roll usable"
+                            onClick={() => sendBrollFeedback({ asset, verdict: "usable" })}
+                            disabled={Boolean(busy)}
+                            className="inline-flex h-7 items-center justify-center rounded border border-emerald-200 text-emerald-700 hover:bg-emerald-50 disabled:opacity-50"
+                          >
+                            <ThumbsUp className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            title="Weak b-roll"
+                            onClick={() => sendBrollFeedback({ asset, verdict: "weak", reasons: ["boring_motion"] })}
+                            disabled={Boolean(busy)}
+                            className="inline-flex h-7 items-center justify-center rounded border border-amber-200 text-amber-700 hover:bg-amber-50 disabled:opacity-50"
+                          >
+                            <ThumbsDown className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            title="Reject for b-roll"
+                            onClick={() => sendBrollFeedback({ asset, verdict: "reject", reasons: ["packshot_only"] })}
+                            disabled={Boolean(busy)}
+                            className="inline-flex h-7 items-center justify-center rounded border border-rose-200 text-rose-700 hover:bg-rose-50 disabled:opacity-50"
+                          >
+                            <XCircle className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </div>
                     ))}
                   </div>
                 </div>
@@ -456,20 +521,45 @@ export default function ProductTwinStudio() {
               {selectedViews.length ? (
                 <div className="mt-3 grid grid-cols-2 gap-2">
                   {selectedViews.slice(0, 8).map((view) => (
-                    <a
+                    <div
                       key={`${view.viewId}-${view.url}-${view.createdAt || ""}`}
-                      href={viewPreviewUrl(view)}
-                      target="_blank"
                       className="overflow-hidden rounded-md border border-slate-200 bg-slate-100"
-                      rel="noreferrer"
                     >
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={viewPreviewUrl(view)} alt={view.label || view.viewId} className="aspect-square w-full object-contain" />
+                      <a href={viewPreviewUrl(view)} target="_blank" rel="noreferrer">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={viewPreviewUrl(view)} alt={view.label || view.viewId} className="aspect-square w-full object-contain" />
+                      </a>
                       <div className="px-2 py-1">
                         <div className="truncate text-xs font-black text-slate-800">{view.viewId}</div>
                         <div className="truncate text-[11px] font-medium text-slate-500">{view.purpose} · {view.truth}</div>
                       </div>
-                    </a>
+                      <div className="grid grid-cols-3 gap-1 border-t border-slate-200 bg-white p-1">
+                        <button
+                          title="B-roll usable"
+                          onClick={() => sendBrollFeedback({ view, verdict: "usable" })}
+                          disabled={Boolean(busy)}
+                          className="inline-flex h-7 items-center justify-center rounded border border-emerald-200 text-emerald-700 hover:bg-emerald-50 disabled:opacity-50"
+                        >
+                          <ThumbsUp className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          title="Weak b-roll"
+                          onClick={() => sendBrollFeedback({ view, verdict: "weak", reasons: ["boring_motion"] })}
+                          disabled={Boolean(busy)}
+                          className="inline-flex h-7 items-center justify-center rounded border border-amber-200 text-amber-700 hover:bg-amber-50 disabled:opacity-50"
+                        >
+                          <ThumbsDown className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          title="Reject for b-roll"
+                          onClick={() => sendBrollFeedback({ view, verdict: "reject", reasons: ["not_ad_ready"] })}
+                          disabled={Boolean(busy)}
+                          className="inline-flex h-7 items-center justify-center rounded border border-rose-200 text-rose-700 hover:bg-rose-50 disabled:opacity-50"
+                        >
+                          <XCircle className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </div>
                   ))}
                 </div>
               ) : (

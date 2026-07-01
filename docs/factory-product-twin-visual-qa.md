@@ -13,6 +13,8 @@
 - `shadow_bg` или `clean_png` выглядит лучше исходника;
 - сервисные карты (`mask`, `alpha`, `depth`, `segmentation`) не выбираются как визуальный source.
 
+Отдельно для b-roll: чистый packshot на фоне (`shadow_bg`, `white_bg`, `gray_bg`) сам по себе не проходит производственный paid submit. Он годится для hero/card QA и технического smoke, но не должен масштабироваться как b-roll источник.
+
 ## Решение по слабым twin
 
 - `needs_review`: не запускать paid b-roll, пока не выбран новый исходник или не пересобран source-pack.
@@ -37,6 +39,10 @@
 1. Открыть Product Twin Studio.
 2. `Load Twins`.
 3. Смотреть `Derived Views` и `Asset Readiness`.
-4. Пометить слабые SKU в журнале.
-5. Для passed SKU запускать product b-roll dry-run.
+4. Отметить ассеты/ракурсы кнопками b-roll QA: usable, weak, reject.
+5. Для passed SKU запускать product b-roll dry-run и проверить `source_gate`.
 6. Для failed SKU запускать rebuild только после выбора лучшего source-pack.
+
+## Вывод из первого smoke
+
+TT04102 и YYS0101 были полезны как проверка транспорта: FAL submit/status/Yandex archive работают. Как b-roll результат они не годятся, потому что источником был `shadow_bg` packshot с качеством около 0.54-0.57 и риском medium/high. Следующий производственный прогон должен начинаться с derived view или clean in-context source, а не с фоновой карточки.

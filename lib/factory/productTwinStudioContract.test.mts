@@ -12,6 +12,7 @@ ok(/\/api\/factory\/product-twin\/inventory/.test(studio), "studio loads product
 ok(/\/api\/factory\/product-twin\/source-pack/.test(studio), "studio can apply source packs");
 ok(/\/api\/factory\/product-twin\/batch-build/.test(studio), "studio can rebuild twins");
 ok(/\/api\/factory\/product-twin\/by-article/.test(studio), "studio can load latest twin by article");
+ok(/\/api\/factory\/product-broll-feedback/.test(studio), "studio can send b-roll QA feedback");
 ok(/NV-08,NV-836,NV-816,NV-01,CLR00716/.test(studio), "studio includes apparel and bag default articles");
 ok(/href="\/inferno\/product-twins"/.test(agent), "agent page links to Product Twin Studio");
 
