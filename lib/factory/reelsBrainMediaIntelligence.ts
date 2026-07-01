@@ -43,12 +43,19 @@ export type ReelsMediaAssetClassification = {
   score: number | null;
   media_probe?: {
     ok?: boolean;
+    error?: string | null;
     duration_sec?: number | null;
+    size_mb?: number | null;
+    format?: string | null;
     width?: number | null;
     height?: number | null;
     has_audio?: boolean;
     has_video?: boolean;
     fps?: number | null;
+    video_codec?: string | null;
+    audio_codec?: string | null;
+    audio_channels?: number | null;
+    audio_sample_rate?: number | null;
   } | null;
 };
 
@@ -143,12 +150,115 @@ function mediaProbe(value: unknown): ReelsMediaAssetClassification["media_probe"
   if (!Object.keys(probe).length) return null;
   return {
     ok: probe.ok === true,
+    error: probe.error == null ? null : String(probe.error),
     duration_sec: probe.duration_sec == null ? null : Number(probe.duration_sec),
+    size_mb: probe.size_mb == null ? null : Number(probe.size_mb),
+    format: probe.format == null ? null : String(probe.format),
     width: probe.width == null ? null : Number(probe.width),
     height: probe.height == null ? null : Number(probe.height),
     has_audio: probe.has_audio === true,
     has_video: probe.has_video === true,
     fps: probe.fps == null ? null : Number(probe.fps),
+    video_codec: probe.video_codec == null ? null : String(probe.video_codec),
+    audio_codec: probe.audio_codec == null ? null : String(probe.audio_codec),
+    audio_channels: probe.audio_channels == null ? null : Number(probe.audio_channels),
+    audio_sample_rate: probe.audio_sample_rate == null ? null : Number(probe.audio_sample_rate),
+  };
+}
+
+function durationBucket(seconds: number | null | undefined): "short" | "standard" | "long" | "unknown" {
+  if (!seconds || !Number.isFinite(seconds)) return "unknown";
+  if (seconds <= 20) return "short";
+  if (seconds <= 60) return "standard";
+  return "long";
+}
+
+function increment(bucket: Record<string, number>, key: string) {
+  bucket[key] = (bucket[key] || 0) + 1;
+}
+
+function share(part: number, total: number) {
+  return total > 0 ? Math.round((part / total) * 100) : 0;
+}
+
+function buildCreativeDnaInsights(rows: ReelsMediaAssetClassification[]) {
+  const probed = rows.filter((row) => row.media_probe?.ok);
+  const readyVideo = rows.filter((row) => row.status === "ready" && row.asset_kind === "video");
+  const byDuration: Record<string, number> = {};
+  const byFps: Record<string, number> = {};
+  const byFormat: Record<string, number> = {};
+  const byNiche: Record<string, { ready: number; probed: number; vertical: number; audio: number; avg_duration_sec: number }> = {};
+  let durationTotal = 0;
+
+  for (const row of readyVideo) {
+    byNiche[row.niche] = byNiche[row.niche] || { ready: 0, probed: 0, vertical: 0, audio: 0, avg_duration_sec: 0 };
+    byNiche[row.niche].ready += 1;
+  }
+
+  for (const row of probed) {
+    const probe = row.media_probe;
+    const duration = probe?.duration_sec || 0;
+    const fps = probe?.fps || 0;
+    const vertical = (probe?.height || 0) > (probe?.width || 0);
+    durationTotal += duration;
+    increment(byDuration, durationBucket(duration));
+    increment(byFps, fps >= 55 ? "55+ fps" : fps >= 28 ? "28-54 fps" : fps > 0 ? "under 28 fps" : "unknown");
+    increment(byFormat, probe?.format?.split(",")[0] || "unknown");
+
+    byNiche[row.niche] = byNiche[row.niche] || { ready: 0, probed: 0, vertical: 0, audio: 0, avg_duration_sec: 0 };
+    byNiche[row.niche].probed += 1;
+    if (vertical) byNiche[row.niche].vertical += 1;
+    if (probe?.has_audio) byNiche[row.niche].audio += 1;
+    byNiche[row.niche].avg_duration_sec += duration;
+  }
+
+  for (const niche of Object.keys(byNiche)) {
+    const row = byNiche[niche];
+    row.avg_duration_sec = row.probed ? Math.round((row.avg_duration_sec / row.probed) * 10) / 10 : 0;
+  }
+
+  const verticalCount = probed.filter((row) => (row.media_probe?.height || 0) > (row.media_probe?.width || 0)).length;
+  const audioCount = probed.filter((row) => row.media_probe?.has_audio).length;
+  const shortCount = byDuration.short || 0;
+  const standardCount = byDuration.standard || 0;
+  const longCount = byDuration.long || 0;
+  const bottleneck = readyVideo.length > probed.length
+    ? "av_probe_backlog"
+    : rows.some((row) => row.status === "metadata_only")
+      ? "direct_asset_resolution"
+      : "creative_classification";
+
+  const insights = [
+    probed.length
+      ? `${share(verticalCount, probed.length)}% разобранных mp4 вертикальные: это хороший сигнал для Reels/TikTok/Shorts.`
+      : "AV-слой еще не накопил успешных mp4-проб.",
+    probed.length
+      ? `${share(audioCount, probed.length)}% разобранных mp4 имеют аудио: их можно вести в Speech/Audio Intelligence.`
+      : "Audio readiness появится после первых успешных ffprobe.",
+    probed.length
+      ? `По длине: short ${shortCount}, standard ${standardCount}, long ${longCount}; средняя длина ${Math.round((durationTotal / probed.length) * 10) / 10} сек.`
+      : "Duration-кластеры пока пустые.",
+  ];
+
+  return {
+    status: probed.length ? "learning_from_real_mp4" : readyVideo.length ? "waiting_for_av_probe" : "waiting_for_direct_assets",
+    bottleneck,
+    probed_videos: probed.length,
+    unprobed_ready_videos: Math.max(0, readyVideo.length - probed.length),
+    vertical_share_pct: share(verticalCount, probed.length),
+    audio_share_pct: share(audioCount, probed.length),
+    avg_duration_sec: probed.length ? Math.round((durationTotal / probed.length) * 10) / 10 : 0,
+    duration_buckets: byDuration,
+    fps_buckets: byFps,
+    format_buckets: byFormat,
+    by_niche: byNiche,
+    next_actions: [
+      readyVideo.length > probed.length ? `Догнать AV-probe еще ${Math.max(0, readyVideo.length - probed.length)} ready mp4.` : "AV-probe backlog закрыт для текущих ready mp4.",
+      audioCount ? "Запустить ASR/речь: первая фраза, скорость речи, паузы, наличие голоса в первые 0.5с." : "Сначала накопить mp4 с audio stream.",
+      verticalCount ? "Запустить visual sampling: первый кадр, крупность товара, текст на экране, частота смены кадров." : "Сначала накопить вертикальные mp4.",
+      "Склеить AV-сигналы с Pattern Brain: hook + duration + audio + visual recipe = Creative DNA.",
+    ],
+    user_insights: insights,
   };
 }
 
@@ -267,6 +377,7 @@ export function buildReelsMediaIntelligenceReport(videos: ReelsMediaSourceVideo[
   const audioAssets = directAssets.filter((row) => row.asset_kind === "audio");
   const mediaReadyPct = summary.total ? Math.round((summary.ready / summary.total) * 100) : 0;
   summary.avg_duration_sec = summary.media_probe_ok ? Math.round(durationTotal / summary.media_probe_ok * 10) / 10 : 0;
+  const creativeDnaInsights = buildCreativeDnaInsights(rows);
 
   return {
     ok: true,
@@ -280,11 +391,12 @@ export function buildReelsMediaIntelligenceReport(videos: ReelsMediaSourceVideo[
       status: directAssets.length ? "ready_for_storage" : "waiting_for_provider_assets",
       storage_mode: "report_only_no_schema_migration",
       candidates: directAssets
-        .sort((a, b) => Number(!!a.media_probe?.ok) - Number(!!b.media_probe?.ok) || Number(b.score || 0) - Number(a.score || 0))
+        .sort((a, b) => Number(!!a.media_probe) - Number(!!b.media_probe) || Number(!!a.media_probe?.ok) - Number(!!b.media_probe?.ok) || Number(b.score || 0) - Number(a.score || 0))
         .slice(0, 50),
       proposed_fields: ["video_id", "niche", "platform", "asset_url", "asset_kind", "source", "resolved_at", "legal_basis"],
       note: "Next DB step: create a dedicated media asset table or persist provider video_url/download_url without replacing the social page URL.",
     },
+    creative_dna_insights: creativeDnaInsights,
     audio_worker_mvp: {
       status: directAssets.length ? "ready_for_runtime" : "blocked_waiting_for_direct_assets",
       candidate_count: directAssets.length,

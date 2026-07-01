@@ -13,6 +13,7 @@ import {
   RefreshCw,
   ShieldCheck,
   SlidersHorizontal,
+  Sparkles,
   TriangleAlert,
   Zap,
 } from "lucide-react";
@@ -628,12 +629,19 @@ type MediaAssetClassification = {
   score?: number | null;
   media_probe?: {
     ok?: boolean;
+    error?: string | null;
     duration_sec?: number | null;
+    size_mb?: number | null;
+    format?: string | null;
     width?: number | null;
     height?: number | null;
     has_audio?: boolean;
     has_video?: boolean;
     fps?: number | null;
+    video_codec?: string | null;
+    audio_codec?: string | null;
+    audio_channels?: number | null;
+    audio_sample_rate?: number | null;
   } | null;
 };
 
@@ -668,6 +676,21 @@ type MediaIntelligenceResponse = {
     candidates?: MediaAssetClassification[];
     proposed_fields?: string[];
     note?: string;
+  };
+  creative_dna_insights?: {
+    status?: string;
+    bottleneck?: string;
+    probed_videos?: number;
+    unprobed_ready_videos?: number;
+    vertical_share_pct?: number;
+    audio_share_pct?: number;
+    avg_duration_sec?: number;
+    duration_buckets?: Record<string, number>;
+    fps_buckets?: Record<string, number>;
+    format_buckets?: Record<string, number>;
+    by_niche?: Record<string, { ready: number; probed: number; vertical: number; audio: number; avg_duration_sec: number }>;
+    next_actions?: string[];
+    user_insights?: string[];
   };
   audio_worker_mvp?: {
     status?: string;
@@ -1512,6 +1535,7 @@ export default function ReelsBrainPage() {
   const workerAgeSec = Number(reelsWorker?.liveness?.age_sec ?? 0);
   const workerLastSeenLabel = formatRelativeTime(reelsWorker?.last_seen);
   const mediaSummary = mediaIntelligence?.summary || {};
+  const creativeDnaInsights = mediaIntelligence?.creative_dna_insights || {};
   const mediaPipelineSteps = [
     {
       key: "resolver",
@@ -2508,6 +2532,89 @@ export default function ReelsBrainPage() {
                 <MetricCard label="Has audio" value={mediaSummary.with_audio_stream || 0} />
                 <MetricCard label="Vertical" value={mediaSummary.vertical_video_assets || 0} />
                 <MetricCard label="Avg duration sec" value={mediaSummary.avg_duration_sec || 0} />
+              </div>
+
+              <div className="px-4 pb-4">
+                <div className="rounded-[1.5rem] border border-cyan-100 bg-white p-4 shadow-sm">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <div className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.2em] text-cyan-700">
+                        <Sparkles className="h-4 w-4" />
+                        Creative DNA from real mp4
+                      </div>
+                      <h4 className="mt-1 text-lg font-black text-slate-950">Что мозг уже понял из аудио/визуала</h4>
+                      <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-500">
+                        Это не генератор и не копирование роликов. Это слой насмотренности: длительность, вертикальность,
+                        наличие аудио и готовность к следующим worker-ам.
+                      </p>
+                    </div>
+                    <span className={`rounded-full border px-3 py-1 text-xs font-black ${mediaReadinessTone(creativeDnaInsights.status)}`}>
+                      {creativeDnaInsights.status || "waiting_for_data"}
+                    </span>
+                  </div>
+
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+                    <MetricCard label="Probed mp4" value={creativeDnaInsights.probed_videos || 0} />
+                    <MetricCard label="AV backlog" value={creativeDnaInsights.unprobed_ready_videos || 0} />
+                    <MetricCard label="Vertical share %" value={creativeDnaInsights.vertical_share_pct || 0} />
+                    <MetricCard label="Audio share %" value={creativeDnaInsights.audio_share_pct || 0} />
+                    <MetricCard label="Avg sec" value={creativeDnaInsights.avg_duration_sec || 0} />
+                  </div>
+
+                  <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_0.9fr]">
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                      <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">Понятные выводы</p>
+                      <div className="mt-3 grid gap-2">
+                        {(creativeDnaInsights.user_insights?.length ? creativeDnaInsights.user_insights : [
+                          "Creative DNA появится после первых успешных mp4-проб.",
+                        ]).slice(0, 4).map((line, index) => (
+                          <div key={`${line}:${index}`} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold leading-6 text-slate-700">
+                            {line}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                      <div className="flex items-center justify-between gap-2">
+                        <div>
+                          <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">Следующие действия</p>
+                          <h5 className="mt-1 text-sm font-black text-slate-950">Bottleneck: {creativeDnaInsights.bottleneck || "unknown"}</h5>
+                        </div>
+                      </div>
+                      <div className="mt-3 space-y-2">
+                        {(creativeDnaInsights.next_actions || []).slice(0, 4).map((action) => (
+                          <div key={action} className="rounded-xl border border-cyan-100 bg-cyan-50 px-3 py-2 text-xs font-bold leading-5 text-cyan-900">
+                            {action}
+                          </div>
+                        ))}
+                        {!(creativeDnaInsights.next_actions || []).length ? (
+                          <p className="text-sm text-slate-500">Ждем накопления direct mp4.</p>
+                        ) : null}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 grid gap-3 lg:grid-cols-3">
+                    {[
+                      ["Duration", creativeDnaInsights.duration_buckets || {}],
+                      ["FPS", creativeDnaInsights.fps_buckets || {}],
+                      ["Format", creativeDnaInsights.format_buckets || {}],
+                    ].map(([label, bucket]) => (
+                      <div key={String(label)} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                        <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">{String(label)} buckets</p>
+                        <div className="mt-3 space-y-2">
+                          {Object.entries(bucket as Record<string, number>).length ? Object.entries(bucket as Record<string, number>).slice(0, 4).map(([name, count]) => (
+                            <div key={name} className="flex items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2">
+                              <span className="text-xs font-bold text-slate-700">{name}</span>
+                              <span className="text-sm font-black text-slate-950">{compactNumber(count)}</span>
+                            </div>
+                          )) : <p className="text-sm text-slate-500">Пока пусто.</p>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               </div>
 
               <div className="grid gap-3 px-4 pb-4 lg:grid-cols-[1fr_1fr]">
