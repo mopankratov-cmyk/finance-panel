@@ -6,6 +6,9 @@ export type ProductBrollRejectReason =
   | "risk_high"
   | "low_quality"
   | "identity_drift"
+  | "category_too_complex"
+  | "artifact_detected"
+  | "frames_unavailable"
   | "boring_motion"
   | "bad_background"
   | "morphing"
@@ -31,9 +34,28 @@ export interface ProductBrollSourceGate {
 export interface ProductBrollExperimentPlanInput extends ProductBrollSourceGateInput {
   article: string;
   product?: string;
+  category?: string | null;
   recipe?: string;
   model?: string;
   variants?: { id: string; label: string }[];
+  autonomous?: boolean;
+}
+
+export interface ProductBrollQualityInput {
+  article: string;
+  product?: string | null;
+  category?: string | null;
+  sourceKind?: string | null;
+  viewId?: string | null;
+  frameCount?: number;
+  artifact?: {
+    ok?: boolean;
+    severity?: "clean" | "minor" | "broken" | string;
+    defects?: string[];
+    note?: string;
+    error?: string;
+  } | null;
+  manualOverride?: boolean;
 }
 
 const PACKSHOT_KINDS = new Set(["shadow_bg", "white_bg", "gray_bg"]);
@@ -88,8 +110,10 @@ export function assessProductBrollSource(input: ProductBrollSourceGateInput): Pr
 
 export function buildProductBrollExperimentPlan(input: ProductBrollExperimentPlanInput) {
   const gate = assessProductBrollSource(input);
+  const category = normalized(input.category);
+  const autonomousBlocked = input.autonomous === true && (category === "apparel" || category === "bag");
   const labels = (input.variants || []).slice(0, 6).map((variant) => variant.label);
-  const mode = gate.ok ? (input.submit ? "ready_to_submit" : "dry_run") : "blocked";
+  const mode = !gate.ok || autonomousBlocked ? "blocked" : (input.submit ? "ready_to_submit" : "dry_run");
   return {
     mode,
     article: input.article,
@@ -102,17 +126,66 @@ export function buildProductBrollExperimentPlan(input: ProductBrollExperimentPla
       view_id: input.viewId || null,
     },
     gate,
+    autonomous_gate: autonomousBlocked ? {
+      ok: false,
+      reason: "category_too_complex",
+      recommendation: "use real-photo crop/pan/zoom montage for apparel and bags before paid generative b-roll",
+    } : { ok: true },
     explore: labels,
-    next_actions: gate.ok
+    next_actions: !gate.ok
       ? [
-          "submit 1-2 variants only",
-          "archive completed jobs to Yandex Disk",
-          "mark each result as winner, usable, weak, or reject before the next batch",
-        ]
-      : [
           "derive product views from the clean source instead of using a packshot background",
           "use a source with risk low/medium and quality >= 0.60",
           "re-run dry-run and check source_gate before paid submit",
+        ]
+      : autonomousBlocked
+        ? [
+            "hold autonomous paid generation for apparel/bag",
+            "build real-photo motion montage from photoshoot frames",
+            "run simple SKU lab on cosmetics or toy first",
+          ]
+        : [
+            "submit 1 variant only",
+            "archive completed job to Yandex Disk",
+            "auto-judge frames before any next paid batch",
+          ],
+  };
+}
+
+export function assessProductBrollQuality(input: ProductBrollQualityInput) {
+  const category = normalized(input.category);
+  const severity = normalized(input.artifact?.severity);
+  const defects = Array.isArray(input.artifact?.defects) ? input.artifact.defects : [];
+  const frameCount = Number(input.frameCount || 0);
+  const reasons: ProductBrollRejectReason[] = [];
+
+  if (!input.manualOverride && (category === "apparel" || category === "bag")) reasons.push("category_too_complex");
+  if (frameCount < 2) reasons.push("frames_unavailable");
+  if (input.artifact?.ok === false || severity === "broken") reasons.push("artifact_detected");
+  if (defects.some((defect) => /identity|changed|extra|invent|logo|label|morph|deform|искаж|лишн|артефакт|логотип|товар/i.test(defect))) {
+    reasons.push("identity_drift");
+  }
+
+  const verdict: ProductBrollHumanVerdict = reasons.length
+    ? "reject"
+    : severity === "minor"
+      ? "weak"
+      : "usable";
+  const score = verdict === "usable" ? 0.7 : verdict === "weak" ? 0.3 : 0;
+  return {
+    ok: verdict === "usable",
+    verdict,
+    score,
+    reasons,
+    defects,
+    recommendation: verdict === "usable"
+      ? [
+          "keep this source/view/prompt family for one more small experiment",
+          "do not scale until 3 clean usable clips in a row",
+        ]
+      : [
+          "do not reuse this source/view/prompt for autonomous paid generation",
+          category === "apparel" || category === "bag" ? "switch apparel/bag to real-photo motion montage" : "tighten identity prompt and retry on simple SKU",
         ],
   };
 }

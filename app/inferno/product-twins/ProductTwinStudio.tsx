@@ -215,6 +215,7 @@ export default function ProductTwinStudio() {
   const selectedBrollView = pickBrollView(selectedViews);
   const selectedReadiness = getTwinReadiness(selectedTwin, selectedViews);
   const selectedItem = items.find((item) => item.article === selected) || null;
+  const selectedComplexCategory = selectedTwin?.category === "apparel" || selectedTwin?.category === "bag";
   const articleList = useMemo(() => splitArticles(articles), [articles]);
   const readyCount = items.filter((item) => (item.source_pack_readiness || item.sourcePackReadiness)?.ok).length;
 
@@ -530,7 +531,7 @@ export default function ProductTwinStudio() {
               <div className="mt-3 grid gap-2 text-xs">
                 <div className="rounded-md border border-slate-200 bg-slate-50 p-2">
                   <div className="font-black text-slate-800">{selectedBrollView?.viewId || "latest asset"}</div>
-                  <div className="mt-1 text-slate-500">{selectedBrollView ? `${selectedBrollView.purpose} · ${selectedBrollView.truth}` : "no derived view selected"}</div>
+                  <div className="mt-1 text-slate-500">{selectedComplexCategory ? "manual only · use real-photo motion montage" : selectedBrollView ? `${selectedBrollView.purpose} · ${selectedBrollView.truth}` : "no derived view selected"}</div>
                 </div>
                 <div className="grid grid-cols-2 gap-2">
                   <button
@@ -543,7 +544,7 @@ export default function ProductTwinStudio() {
                   </button>
                   <button
                     onClick={submitBrollOne}
-                    disabled={Boolean(busy) || !brollRun?.source_gate?.ok}
+                    disabled={Boolean(busy) || !brollRun?.source_gate?.ok || selectedComplexCategory}
                     className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-emerald-700 bg-emerald-700 px-2 text-xs font-black text-white hover:bg-emerald-800 disabled:opacity-50"
                   >
                     {busy === "broll-submit" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}

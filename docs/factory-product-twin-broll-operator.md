@@ -74,6 +74,19 @@ Product Twin Studio пишет сигналы через `/api/factory/product-b
 
 Сигнал сохраняется в `content_assets.analysis.product_broll_feedback` и best-effort дублируется в `cf_signals`. Следующий batch должен идти только после разметки предыдущих 1-2 результатов.
 
+## Quality loop v1
+
+Автономная петля `/api/factory/product-broll-loop` делает четыре безопасных шага:
+
+1. `action=plan` выбирает простой SKU (`cosmetics`/`toy`) и проверяет source gate.
+2. `action=submit_one` отправляет ровно один paid FAL job, только если gate не заблокирован.
+3. `action=judge&task_id=...` ждёт результат, архивирует видео в Yandex Disk, вытаскивает кадры и прогоняет artifact check.
+4. `action=mark_reject` исправляет ложные positive-оценки и пишет feedback в Product Twin asset.
+
+Автономный paid b-roll для `apparel` и `bag` заблокирован. Для одежды/сумок текущий генеративный i2v слишком легко дорисовывает несуществующие швы, фурнитуру, форму и логотипы. Их следующий путь — не “ещё больше FAL”, а real-photo motion montage из чистых кадров фотосессии: pan/zoom/crop/detail cuts без перерисовки товара.
+
+NV-08 smoke от 2026-07-01 считается reject, даже если первый операторский клик поставил `usable`: пользователь увидел придуманные артефакты товара. Эту оценку нужно исправлять через `mark_reject` с причинами `identity_drift,artifact_detected,category_too_complex`.
+
 ## Yandex Disk
 
 Большие ассеты должны оставаться в Yandex Disk. Если `source_image` возвращается как `yandex-disk:/...`, route перед submit вызывает `rehostImageForFal`, поэтому FAL получает временный fetchable URL. UI и отчёты должны показывать `preview_url`, а не raw pseudo-url.
@@ -83,5 +96,7 @@ Product Twin Studio пишет сигналы через `/api/factory/product-b
 - Dry-run выбирает Product Twin перед prepared/WB.
 - Submit требует явный `submit: true`.
 - Unsafe source возвращает `409 mode=blocked` до FAL submit.
+- Autonomous quality loop не тратит FAL на `apparel`/`bag` без ручного override.
+- Каждый paid result проходит `judge` до следующего batch.
 - `FAL_KEY` или `FAL_BILLING_KEY` обязателен только для paid submit.
 - Результаты после approve/archive уходят в Yandex Disk, а не раздувают Supabase Storage.
