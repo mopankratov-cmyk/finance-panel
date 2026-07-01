@@ -50,3 +50,5 @@
 TT04102 и YYS0101 были полезны как проверка транспорта: FAL submit/status/Yandex archive работают. Как b-roll результат они не годятся, потому что источником был `shadow_bg` packshot с качеством около 0.54-0.57 и риском medium/high. Следующий производственный прогон должен начинаться с derived view или clean in-context source, а не с фоновой карточки.
 
 NV-08 был полезен как проверка derived-view транспорта: submit/status/archive/frame extraction работают. Как производственный b-roll результат он не годится: пользователь увидел придуманные артефакты товара. Следующий autonomous paid loop должен идти только на простом SKU (`cosmetics`/`toy`) и после каждого ролика проходить auto-judge; одежда и сумки уходят в real-photo montage lane.
+
+Real-photo montage lane для одежды и сумок использует только `derived_from_source` views. Если в карточке есть `synthetic_candidate`, такой ракурс не должен попадать в montage sequence, даже если визуально выглядит неплохо.

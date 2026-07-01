@@ -85,6 +85,17 @@ Product Twin Studio пишет сигналы через `/api/factory/product-b
 
 Автономный paid b-roll для `apparel` и `bag` заблокирован. Для одежды/сумок текущий генеративный i2v слишком легко дорисовывает несуществующие швы, фурнитуру, форму и логотипы. Их следующий путь — не “ещё больше FAL”, а real-photo motion montage из чистых кадров фотосессии: pan/zoom/crop/detail cuts без перерисовки товара.
 
+## Real-photo montage lane
+
+Для `apparel` и `bag` Product Twin Studio должен вести оператора в `/api/factory/product-broll-montage`, а не в generative submit:
+
+1. `Plan Montage` выбирает только `derived_from_source` views из последнего twin.
+2. Порядок кадров для одежды: `clean_front`/`on_model_front` → `closure_detail` → `fabric_macro`/`hood_detail` → `back`/`side`.
+3. `Render Montage` собирает timeline только из реальных still-кадров товара, без synthetic_candidate image-to-video.
+4. Готовый mp4 архивируется в Yandex Disk и каталогизируется в `content_assets.disk = gen`.
+
+Если в latest twin нет real-photo views, оператор не должен рендерить montage. Сначала нужно пересобрать source-pack/derived views из чистой фотосессии.
+
 NV-08 smoke от 2026-07-01 считается reject, даже если первый операторский клик поставил `usable`: пользователь увидел придуманные артефакты товара. Эту оценку нужно исправлять через `mark_reject` с причинами `identity_drift,artifact_detected,category_too_complex`.
 
 ## Yandex Disk

@@ -102,6 +102,28 @@ type ProductBrollRun = {
   status_route?: string;
 };
 
+type ProductMontageRun = {
+  ok?: boolean;
+  action?: string;
+  status?: string;
+  error?: string;
+  pending_url?: string;
+  video_url?: string;
+  yandex_archive?: { status?: string; yandex_path?: string | null; client_url?: string } | null;
+  saved?: { ok?: boolean; path?: string; error?: string } | null;
+  plan?: {
+    lane?: string;
+    category?: string;
+    recommendation?: string;
+    clips?: {
+      view_id: string;
+      purpose: string;
+      truth: string;
+      duration_sec: number;
+    }[];
+  };
+};
+
 type RunLog = {
   at: string;
   action: string;
@@ -209,6 +231,7 @@ export default function ProductTwinStudio() {
   const [busy, setBusy] = useState<string | null>(null);
   const [logs, setLogs] = useState<RunLog[]>([]);
   const [brollRun, setBrollRun] = useState<ProductBrollRun | null>(null);
+  const [montageRun, setMontageRun] = useState<ProductMontageRun | null>(null);
 
   const selectedTwin = twins[selected] || null;
   const selectedViews = views[selected] || [];
@@ -392,10 +415,40 @@ export default function ProductTwinStudio() {
     }
   }
 
+  async function runMontage(action: "plan" | "render") {
+    if (!selected) return;
+    setBusy(action === "plan" ? "montage-plan" : "montage-render");
+    try {
+      const data = await jsonFetch("/api/factory/product-broll-montage", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ article: selected, action }),
+      }) as ProductMontageRun;
+      setMontageRun(data);
+      const clipCount = data.plan?.clips?.length || 0;
+      const message = data.video_url
+        ? `${clipCount} clips · rendered`
+        : data.pending_url
+          ? `${clipCount} clips · processing`
+          : `${clipCount} clips · ${data.status || action}`;
+      pushLog(action === "plan" ? "montage plan" : "montage render", true, message);
+    } catch (e) {
+      setMontageRun({ ok: false, action, error: String((e as Error).message || e) });
+      pushLog(action === "plan" ? "montage plan" : "montage render", false, String((e as Error).message || e));
+    } finally {
+      setBusy(null);
+    }
+  }
+
   useEffect(() => {
     loadInventory();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    setBrollRun(null);
+    setMontageRun(null);
+  }, [selected]);
 
   return (
     <main className="min-h-screen bg-slate-50 px-4 py-5 text-slate-950 sm:px-6 lg:px-8">
@@ -533,24 +586,45 @@ export default function ProductTwinStudio() {
                   <div className="font-black text-slate-800">{selectedBrollView?.viewId || "latest asset"}</div>
                   <div className="mt-1 text-slate-500">{selectedComplexCategory ? "manual only · use real-photo motion montage" : selectedBrollView ? `${selectedBrollView.purpose} · ${selectedBrollView.truth}` : "no derived view selected"}</div>
                 </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    onClick={runBrollDryRun}
-                    disabled={Boolean(busy) || !selectedTwin}
-                    className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-slate-300 bg-white px-2 text-xs font-black text-slate-800 hover:bg-slate-50 disabled:opacity-50"
-                  >
-                    {busy === "broll-dry" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />}
-                    Dry Run
-                  </button>
-                  <button
-                    onClick={submitBrollOne}
-                    disabled={Boolean(busy) || !brollRun?.source_gate?.ok || selectedComplexCategory}
-                    className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-emerald-700 bg-emerald-700 px-2 text-xs font-black text-white hover:bg-emerald-800 disabled:opacity-50"
-                  >
-                    {busy === "broll-submit" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
-                    Submit 1
-                  </button>
-                </div>
+                {selectedComplexCategory ? (
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      onClick={() => runMontage("plan")}
+                      disabled={Boolean(busy) || !selectedTwin}
+                      className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-slate-300 bg-white px-2 text-xs font-black text-slate-800 hover:bg-slate-50 disabled:opacity-50"
+                    >
+                      {busy === "montage-plan" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />}
+                      Plan Montage
+                    </button>
+                    <button
+                      onClick={() => runMontage("render")}
+                      disabled={Boolean(busy) || !selectedTwin}
+                      className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-cyan-700 bg-cyan-700 px-2 text-xs font-black text-white hover:bg-cyan-800 disabled:opacity-50"
+                    >
+                      {busy === "montage-render" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+                      Render Montage
+                    </button>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      onClick={runBrollDryRun}
+                      disabled={Boolean(busy) || !selectedTwin}
+                      className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-slate-300 bg-white px-2 text-xs font-black text-slate-800 hover:bg-slate-50 disabled:opacity-50"
+                    >
+                      {busy === "broll-dry" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />}
+                      Dry Run
+                    </button>
+                    <button
+                      onClick={submitBrollOne}
+                      disabled={Boolean(busy) || !brollRun?.source_gate?.ok || selectedComplexCategory}
+                      className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-emerald-700 bg-emerald-700 px-2 text-xs font-black text-white hover:bg-emerald-800 disabled:opacity-50"
+                    >
+                      {busy === "broll-submit" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+                      Submit 1
+                    </button>
+                  </div>
+                )}
                 {brollRun ? (
                   <div className="rounded-md border border-slate-200 bg-slate-50 p-2">
                     <div className="font-black text-slate-800">{brollRun.error || brollRun.mode || "result"}</div>
@@ -568,6 +642,32 @@ export default function ProductTwinStudio() {
                     ) : null}
                     {brollRun.status_route ? (
                       <div className="mt-2 truncate font-mono text-[11px] text-slate-500">{brollRun.status_route}</div>
+                    ) : null}
+                  </div>
+                ) : null}
+                {montageRun ? (
+                  <div className="rounded-md border border-slate-200 bg-slate-50 p-2">
+                    <div className="font-black text-slate-800">{montageRun.error || montageRun.status || montageRun.action || "montage"}</div>
+                    <div className="mt-1 text-slate-600">
+                      {montageRun.plan?.recommendation || montageRun.plan?.lane || "real-photo montage"}
+                    </div>
+                    {montageRun.plan?.clips?.length ? (
+                      <div className="mt-2 grid gap-1">
+                        {montageRun.plan.clips.map((clip) => (
+                          <div key={`${clip.view_id}-${clip.duration_sec}`} className="rounded bg-white px-2 py-1 text-[11px] text-slate-700">
+                            {clip.view_id} · {clip.purpose} · {clip.duration_sec}s
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                    {montageRun.video_url ? (
+                      <div className="mt-2 truncate font-mono text-[11px] text-slate-500">{montageRun.video_url}</div>
+                    ) : null}
+                    {montageRun.pending_url ? (
+                      <div className="mt-2 truncate font-mono text-[11px] text-slate-500">{montageRun.pending_url}</div>
+                    ) : null}
+                    {montageRun.yandex_archive?.yandex_path ? (
+                      <div className="mt-2 truncate font-mono text-[11px] text-slate-500">{montageRun.yandex_archive.yandex_path}</div>
                     ) : null}
                   </div>
                 ) : null}
