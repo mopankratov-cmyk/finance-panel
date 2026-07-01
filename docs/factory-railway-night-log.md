@@ -2,6 +2,24 @@
 
 Этот журнал ведёт отдельный AI-worker на Railway во время ночных задач по контент-заводу.
 
+### 2026-07-01  UGC storyboard sidecar
+
+- Ветка: `codex/reels-brain-learning-mission`
+- Цель: отделить первые 2-4 секунды HeyGen talking-head от proof B-roll, чтобы тестировать блогеров без подключения к основному заводу.
+- Изменено:
+  - `lib/factory/ugcStoryboard.ts`: dry-run storyboard builder с `hook_talking_head` и `proof_broll`
+  - `app/api/factory/ugc-storyboard/route.ts`: dry-run endpoint без paid provider calls
+  - `lib/factory/ugcStoryboardContract.test.mts`: контракт на face clamp, proof cue и текущие HeyGen blogger IDs
+  - `docs/factory-ugc-storyboard-sidecar-2026-07-01.md`: runbook
+- Проверки:
+  - `npx tsx lib/factory/ugcStoryboardContract.test.mts`
+  - `npx tsx lib/factory/brollSpec.test.mts`
+  - `npx tsx lib/factory/ugcScriptContract.test.mts`
+  - `npx tsc --noEmit --pretty false`
+- Результат:
+  - Катя/Алина теперь могут идти в detached storyboard mini-tests
+  - правило "любое утверждение подтверждается кадром" стало машинным контрактом
+
 ### 2026-07-01  Reels Brain operating system and paid guard
 
 - Ветка: `fix/reels-brain-paid-cost-guard`
