@@ -73,6 +73,7 @@ equal(report.creative_dna_insights.unprobed_ready_videos, 1);
 equal(report.creative_dna_insights.vertical_share_pct, 100);
 equal(report.creative_dna_insights.audio_share_pct, 100);
 equal(report.creative_dna_insights.feature_probed_videos, 1);
+equal(report.creative_dna_insights.feature_backlog_videos, 0);
 equal(report.creative_dna_insights.immediate_sound_share_pct, 100);
 equal(report.creative_dna_insights.fast_edit_share_pct, 100);
 equal(report.creative_dna_insights.duration_buckets.short, 1);

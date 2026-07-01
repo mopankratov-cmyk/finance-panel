@@ -281,6 +281,7 @@ function buildCreativeDnaInsights(rows: ReelsMediaAssetClassification[]) {
     bottleneck,
     probed_videos: probed.length,
     feature_probed_videos: featureCount,
+    feature_backlog_videos: Math.max(0, probed.length - featureCount),
     unprobed_ready_videos: Math.max(0, readyVideo.length - probed.length),
     vertical_share_pct: share(verticalCount, probed.length),
     audio_share_pct: share(audioCount, probed.length),
@@ -433,7 +434,12 @@ export function buildReelsMediaIntelligenceReport(videos: ReelsMediaSourceVideo[
       status: directAssets.length ? "ready_for_storage" : "waiting_for_provider_assets",
       storage_mode: "report_only_no_schema_migration",
       candidates: directAssets
-        .sort((a, b) => Number(!!a.media_probe) - Number(!!b.media_probe) || Number(!!a.media_probe?.ok) - Number(!!b.media_probe?.ok) || Number(b.score || 0) - Number(a.score || 0))
+        .sort((a, b) =>
+          Number(!!a.media_probe) - Number(!!b.media_probe)
+          || Number(!!(b.media_probe?.ok && !b.media_probe?.feature_probe)) - Number(!!(a.media_probe?.ok && !a.media_probe?.feature_probe))
+          || Number(!!a.media_probe?.ok) - Number(!!b.media_probe?.ok)
+          || Number(b.score || 0) - Number(a.score || 0)
+        )
         .slice(0, 50),
       proposed_fields: ["video_id", "niche", "platform", "asset_url", "asset_kind", "source", "resolved_at", "legal_basis"],
       note: "Next DB step: create a dedicated media asset table or persist provider video_url/download_url without replacing the social page URL.",

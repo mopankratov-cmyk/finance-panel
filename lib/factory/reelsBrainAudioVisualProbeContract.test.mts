@@ -22,6 +22,7 @@ ok(worker.includes("process.env.APIFY_TOKEN"), "worker uses APIFY_TOKEN only at 
 ok(worker.includes("mediaResolverQueryForNiche"), "worker chooses media resolver queries per niche");
 ok(worker.includes("apify_async_media_resolver_balanced"), "worker balances Apify media resolving across niches");
 ok(worker.includes("!row?.media_probe"), "worker avoids repeatedly probing already probed assets");
+ok(worker.includes("!row.media_probe.feature_probe"), "worker backfills lightweight features for old successful probes");
 ok(worker.includes("/api/factory/reels-brain/audio-visual/probe"), "worker persists probe results through protected API");
 ok(route.includes("isAuthorizedReelsBrainJobRequest"), "probe route requires job authorization");
 ok(route.includes("media_probe"), "probe route stores media_probe in analyzed_full");

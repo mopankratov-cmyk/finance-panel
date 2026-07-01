@@ -701,6 +701,7 @@ type MediaIntelligenceResponse = {
     bottleneck?: string;
     probed_videos?: number;
     feature_probed_videos?: number;
+    feature_backlog_videos?: number;
     unprobed_ready_videos?: number;
     vertical_share_pct?: number;
     audio_share_pct?: number;
@@ -2580,11 +2581,12 @@ export default function ReelsBrainPage() {
                   <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
                     <MetricCard label="Probed mp4" value={creativeDnaInsights.probed_videos || 0} />
                     <MetricCard label="Feature probed" value={creativeDnaInsights.feature_probed_videos || 0} />
+                    <MetricCard label="Feature backlog" value={creativeDnaInsights.feature_backlog_videos || 0} />
                     <MetricCard label="AV backlog" value={creativeDnaInsights.unprobed_ready_videos || 0} />
                     <MetricCard label="Vertical share %" value={creativeDnaInsights.vertical_share_pct || 0} />
-                    <MetricCard label="Audio share %" value={creativeDnaInsights.audio_share_pct || 0} />
                   </div>
                   <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                    <MetricCard label="Audio share %" value={creativeDnaInsights.audio_share_pct || 0} />
                     <MetricCard label="Immediate sound %" value={creativeDnaInsights.immediate_sound_share_pct || 0} />
                     <MetricCard label="Fast edit %" value={creativeDnaInsights.fast_edit_share_pct || 0} />
                     <MetricCard label="Avg sec" value={creativeDnaInsights.avg_duration_sec || 0} />
