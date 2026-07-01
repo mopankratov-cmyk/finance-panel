@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { automationRunHistory } from "@/lib/factory/reelsBrainPlaybook";
+import { buildReelsBrainOperatingSystem, type ReelsBrainMetricRow } from "@/lib/factory/reelsBrainOperatingSystem";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 20;
@@ -91,6 +92,19 @@ type CorpusAuditRow = {
   virality_score?: number | null;
   views?: number | null;
 };
+
+async function loadFeedbackRows(db: NonNullable<ReturnType<typeof getSupabaseAdmin>>): Promise<{ rows: ReelsBrainMetricRow[]; warning: string | null }> {
+  try {
+    const { data, error } = await db
+      .from("post_metrics")
+      .select("recipe_id,platform,views,watch_rate,hook_rate,hold_rate,completion_rate,ctr_card,saves,marketplace_orders,revenue,posted_at,pulled_at")
+      .limit(300);
+    if (error) return { rows: [], warning: `post_metrics: ${error.message}` };
+    return { rows: ((data || []) as ReelsBrainMetricRow[]), warning: null };
+  } catch (error) {
+    return { rows: [], warning: `post_metrics exception: ${String((error as Error)?.message || error).slice(0, 140)}` };
+  }
+}
 
 function splitList(value: unknown): string[] {
   return Array.from(new Set(String(value || "")
@@ -1096,6 +1110,7 @@ export async function GET(req: NextRequest) {
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     if (corpusError) return NextResponse.json({ error: corpusError.message }, { status: 500 });
 
+    const feedbackRows = await loadFeedbackRows(db);
     const rows = ((data || []) as { niche?: string; playbook?: unknown; updated_at?: string }[]);
     const corpusAudit = buildCorpusAudit((corpusRows || []) as CorpusAuditRow[]);
     const runMap = new Map<string, ReturnType<typeof automationRunHistory>[number] & { niches: Set<string> }>();
@@ -1283,7 +1298,19 @@ export async function GET(req: NextRequest) {
     });
     const costGovernor = buildCostGovernor({ totals, corpusAudit, discoveryBrain, today });
     const autopilotActions = buildAutopilotActions({ niches: nicheSummaries, discoveryBrain, antiPatternBrain, costGovernor });
-    const nextIntelligenceLayers = buildNextIntelligenceLayers({ insightPayload, patternDecisionLayer, corpusAudit });
+    const operatingSystem = buildReelsBrainOperatingSystem({
+      patterns: patternDecisionLayer.pattern_details,
+      insights: insightPayload,
+      feedbackRows: feedbackRows.rows,
+    });
+    const nextIntelligenceLayers = {
+      ...buildNextIntelligenceLayers({ insightPayload, patternDecisionLayer, corpusAudit }),
+      ...operatingSystem,
+      data_quality: {
+        status: corpusAudit.verdict,
+        next_step: corpusAudit.ru_likely_rate < 80 ? "Усилить RU discovery." : "Держать RU-фокус и снижать low-signal.",
+      },
+    };
 
     return NextResponse.json({
       ok: true,
@@ -1295,6 +1322,13 @@ export async function GET(req: NextRequest) {
       quality_gate: patternDecisionLayer.quality_gate,
       niche_comparison: nicheComparison,
       daily_report: dailyReport,
+      feedback_loop: operatingSystem.feedback_loop,
+      audio_visual_intelligence: operatingSystem.audio_visual_intelligence,
+      product_brain: operatingSystem.product_brain,
+      audience_brain: operatingSystem.audience_brain,
+      experiment_brain: operatingSystem.experiment_brain,
+      portfolio_manager: operatingSystem.portfolio_manager,
+      feedback_warning: feedbackRows.warning,
       cost_governor: costGovernor,
       autopilot_actions: autopilotActions,
       next_intelligence_layers: nextIntelligenceLayers,
