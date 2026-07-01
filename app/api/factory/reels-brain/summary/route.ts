@@ -19,6 +19,8 @@ import type { ReelsPlatform } from "@/lib/factory/reelsBrain";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 20;
+const SUMMARY_PAGE_SIZE = 1000;
+const MAX_SUMMARY_ROWS = 10000;
 
 function patternCountsFromPlaybook(playbook: unknown): Partial<Record<ReelsPlatform, number>> {
   const pb = playbook && typeof playbook === "object" ? playbook as Record<string, unknown> : {};
@@ -39,6 +41,25 @@ function daysSince(value: string | undefined): number | null {
   return Math.max(0, Math.floor((Date.now() - time) / (24 * 60 * 60 * 1000)));
 }
 
+type SummaryVideoRow = Parameters<typeof buildReelsBrainPlatformSummary>[0]["videos"][number];
+
+async function loadAllNicheVideos(db: NonNullable<ReturnType<typeof getSupabaseAdmin>>, niche: string): Promise<SummaryVideoRow[]> {
+  const rows: SummaryVideoRow[] = [];
+  for (let from = 0; from < MAX_SUMMARY_ROWS; from += SUMMARY_PAGE_SIZE) {
+    const to = Math.min(from + SUMMARY_PAGE_SIZE - 1, MAX_SUMMARY_ROWS - 1);
+    const { data, error } = await db.from("viral_videos")
+      .select("platform,virality_score,analyzed,hook_text,format_detected,sound_title,source_orbit_id")
+      .eq("niche", niche)
+      .order("virality_score", { ascending: false, nullsFirst: false })
+      .range(from, to);
+    if (error) throw new Error(error.message);
+    const page = (data || []) as SummaryVideoRow[];
+    rows.push(...page);
+    if (page.length < SUMMARY_PAGE_SIZE) break;
+  }
+  return rows;
+}
+
 // GET ?niche= — platform-aware brain lab summary: corpus, patterns, winners, providers.
 export async function GET(req: NextRequest) {
   try {
@@ -47,12 +68,7 @@ export async function GET(req: NextRequest) {
     const niche = String(req.nextUrl.searchParams.get("niche") || "").trim();
     if (!niche) return NextResponse.json({ error: "нужна niche" }, { status: 400 });
 
-    const [{ data: videos, error: videosError }, { data: winners, error: winnersError }, { data: playbookRows, error: playbookError }] = await Promise.all([
-      db.from("viral_videos")
-        .select("platform,virality_score,analyzed,hook_text,format_detected,sound_title,source_orbit_id")
-        .eq("niche", niche)
-        .order("virality_score", { ascending: false, nullsFirst: false })
-        .limit(1000),
+    const [{ data: winners, error: winnersError }, { data: playbookRows, error: playbookError }] = await Promise.all([
       db.from("content_assets")
         .select("winner_learnings")
         .eq("niche", niche)
@@ -65,8 +81,7 @@ export async function GET(req: NextRequest) {
         .order("updated_at", { ascending: false })
         .limit(1),
     ]);
-
-    if (videosError) return NextResponse.json({ error: videosError.message }, { status: 500 });
+    const videos = await loadAllNicheVideos(db, niche);
     const playbook = (playbookRows as { playbook?: unknown }[] | null)?.[0]?.playbook;
     const patternCounts = playbookError ? {} : patternCountsFromPlaybook(playbook);
     const platforms = buildReelsBrainPlatformSummary({

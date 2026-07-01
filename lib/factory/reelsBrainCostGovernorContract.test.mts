@@ -9,6 +9,7 @@ const governor = readFileSync("app/api/factory/reels-brain/cost-governor/route.t
 const report = readFileSync("app/api/factory/reels-brain/report/route.ts", "utf8");
 const learningPlan = readFileSync("app/api/factory/reels-brain/learning-plan/route.ts", "utf8");
 const providerDebug = readFileSync("app/api/factory/reels-brain/provider-debug/route.ts", "utf8");
+const summaryRoute = readFileSync("app/api/factory/reels-brain/summary/route.ts", "utf8");
 const autopilotJob = readFileSync("app/api/factory/jobs/reels-brain-autopilot/route.ts", "utf8");
 const bulkIngest = readFileSync("app/api/factory/jobs/reels-brain-bulk-ingest/route.ts", "utf8");
 const cockpit = readFileSync("app/agent/reels-brain/ReelsBrainPixelCockpit.tsx", "utf8");
@@ -49,6 +50,7 @@ ok(/providers_per_lane: "2"/.test(learningPlan), "learning-plan tests a second Y
 ok(!/POST\s*\(/.test(learningPlan), "learning-plan route is read-only");
 
 ok(/debugYouTubeProviders/.test(providerDebug) && /apify_youtube/.test(providerDebug), "provider-debug can inspect YouTube provider quality");
+ok(/loadAllNicheVideos/.test(summaryRoute) && /MAX_SUMMARY_ROWS/.test(summaryRoute), "summary route paginates the full niche corpus instead of truncating at 1000");
 
 ok(/fetchLearningPlan/.test(autopilotJob) && /executeNextTick/.test(autopilotJob), "autopilot job supervises the next training tick");
 ok(/reels_brain_autopilot/.test(autopilotJob) && /isAuthorizedReelsBrainJobRequest/.test(autopilotJob), "autopilot job is protected and reports its mode");
