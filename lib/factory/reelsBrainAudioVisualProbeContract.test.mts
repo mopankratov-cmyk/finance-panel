@@ -8,6 +8,8 @@ const route = readFileSync("app/api/factory/reels-brain/audio-visual/probe/route
 ok(dockerfile.includes("apk add --no-cache ffmpeg"), "Railway image installs ffmpeg for ffprobe");
 ok(worker.includes("ffprobe"), "worker runs ffprobe");
 ok(worker.includes("REELS_BRAIN_AV_PROBE_LIMIT"), "worker exposes a safe AV probe limit");
+ok(worker.includes("signedAssetUrl"), "worker signs private Apify asset downloads for ffprobe");
+ok(worker.includes("process.env.APIFY_TOKEN"), "worker uses APIFY_TOKEN only at download time");
 ok(worker.includes("mediaResolverQueryForNiche"), "worker chooses media resolver queries per niche");
 ok(worker.includes("apify_async_media_resolver_balanced"), "worker balances Apify media resolving across niches");
 ok(worker.includes("row?.media_probe?.ok !== true"), "worker avoids repeatedly probing already probed assets");
