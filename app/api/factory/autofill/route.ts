@@ -8,6 +8,7 @@ import { nicheFromArticle } from "@/lib/factory/rubric";
 import { collectBalances } from "@/lib/factory/balances";
 import { learningHints } from "@/lib/factory/learningHints";
 import { resolveBrandKit, applyKitToParams, brandKitPromptBlock } from "@/lib/factory/brandKit";
+import { playbookFromRow } from "@/lib/factory/nichePlaybook";
 import { internalFetch } from "@/lib/internalFetch";
 
 // Ф2 · tool → сервис баланса (бесплатные disk_real/sound не блокируются) и tool → примерная $-цена (зеркало TOOL_COST)
@@ -119,6 +120,8 @@ export async function POST(req: NextRequest) {
       resolveBrandKit(db, article, "").catch(() => null), // V24 · фикс-айдентика бренда (голос/персона/шрифт/цвет/CTA/бан/хэштеги)
     ]);
     const lowServices = (balances as Record<string, unknown>[]).filter((s) => s && s.low === true).map((s) => String(s.service));
+    // строка niche_playbooks = {playbook, updated_at}; в грундинг идёт САМ плейбук (иначе winning_formats пусты)
+    const playbook = playbookFromRow(pbRow);
     // наличие материала под товар: real = реальная съёмка (catalog/диск, не WB) → disk_real база; photo = только WB-фото → i2v-стартовый кадр
     const diskFound = !!(diskRes && diskRes.found);
     const diskKind = String(diskRes?.source?.disk || "");
@@ -138,9 +141,9 @@ export async function POST(req: NextRequest) {
     // shotstack нагружен (сборка+титры, без альтернативы) → не блокируем, но предупреждаем при низком балансе
     if (lowServices.includes("shotstack")) warnings.push("низкий баланс shotstack — пополни, иначе сборка/титры встанут (движок не исключён: замены нет)");
     // все движки выпали (баланс/оффлайн) — не шлём Claude пустой список (иначе галлюцинация инструмента), отдаём честно
-    if (!available.length) return NextResponse.json({ ok: true, filled: 0, skipped: targets.length, byTool: {}, cost_estimate: "≈ $0.00", grounded: { footage, low_balance: lowServices, playbook: !!pbRow, learning: !!(lh && (lh as string).trim()) }, warnings: [...warnings, "нет доступных движков — все заблокированы балансом/отключены, пополни баланс"], nodes: [] });
+    if (!available.length) return NextResponse.json({ ok: true, filled: 0, skipped: targets.length, byTool: {}, cost_estimate: "≈ $0.00", grounded: { footage, low_balance: lowServices, playbook: !!playbook, learning: !!(lh && (lh as string).trim()) }, warnings: [...warnings, "нет доступных движков — все заблокированы балансом/отключены, пополни баланс"], nodes: [] });
     const digests = available.map(toolDigest).filter(Boolean).join("\n\n");
-    const grounding = buildGrounding(niche, lh as string, pbRow as Record<string, unknown> | null, footage, lowServices);
+    const grounding = buildGrounding(niche, lh as string, playbook, footage, lowServices);
 
     // 3) один batch-вызов Claude
     const client = await createClaudeClient();
@@ -260,7 +263,7 @@ ${JSON.stringify(nodeLines, null, 1).slice(0, 6000)}`;
     const nodeCost = Object.entries(byTool).reduce((s, [t, n]) => s + (TOOL_COST[t] ?? 0.4) * n, 0);
     const assembly = written.length && !byTool.shotstack ? TOOL_COST.shotstack : 0; // сборка-рендер раз, если не считали как ноду
     const cost_estimate = `≈ $${(nodeCost + assembly).toFixed(2)}`;
-    const grounded = { footage, low_balance: lowServices, playbook: !!pbRow, learning: !!(lh && (lh as string).trim()) };
+    const grounded = { footage, low_balance: lowServices, playbook: !!playbook, learning: !!(lh && (lh as string).trim()) };
 
     return NextResponse.json({ ok: true, filled: written.length, skipped, byTool, cost_estimate, grounded, warnings, nodes: written });
   } catch (e) {
