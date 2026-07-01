@@ -33,6 +33,8 @@ Reels Brain - отдельный слой интеллекта поиска и �
 - `GET /api/factory/reels-brain/autopilot-actions` - операторские действия для discovery/autopilot слоя.
 - `GET /api/factory/reels-brain/cost-governor` - бюджетные guardrails и лимиты по источникам.
 - `GET /api/factory/reels-brain/report` - короткий отчет для дашборда или ежедневного дайджеста.
+- `GET /api/factory/reels-brain/feedback` - текущая обратная связь от опубликованных роликов.
+- `POST /api/factory/reels-brain/feedback` - запись outcome опубликованного ролика через `post_metrics`.
 
 ## Как работает петля
 
@@ -67,3 +69,17 @@ flowchart TD
 ## Что дальше
 
 Следующий безопасный слой - feedback loop от наших опубликованных роликов. После публикации нужно возвращать в Reels Brain фактические `views`, `saves`, `CTR`, `retention`, `orders`. Тогда мозг будет отличать не только чужие вирусные паттерны, но и то, что реально сработало для наших товаров и аудиторий.
+
+## Пакет 1-9 без связки с контент-заводом
+
+Этот слой намеренно не запускает генерацию. Он только показывает, что Reels Brain знает и что стоит делать оператору.
+
+1. Метрики публикаций принимаются через `/api/factory/reels-brain/feedback`.
+2. Feedback UI показывает outcomes, winners, losers и learning actions.
+3. Audio/Visual блок показывает текущие rule-based признаки и следующие extractors: speech speed, first sound, beat/drop, cut density, first frame.
+4. Product Brain показывает типы товаров, best hooks и visual proof.
+5. Audience Brain показывает сегменты аудитории и стиль подачи.
+6. Experiment Brain показывает A/B варианты с одним изменяемым axis.
+7. Portfolio Manager показывает weekly mix и guardrail против однотипных продажных роликов.
+8. Corpus growth остается через smart RU discovery и cost guard.
+9. Cockpit стал витриной понимания, а не панелью настроек.

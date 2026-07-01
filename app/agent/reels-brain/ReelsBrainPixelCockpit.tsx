@@ -810,11 +810,121 @@ export default function ReelsBrainPixelCockpit() {
           </div>
         </section>
 
+        <section>
+          <SectionTitle k="11 · Feedback Loop" title="Что реально сработало у нас" />
+          <div className="rb-two">
+            <div className="rb-card">
+              <div className="rb-three">
+                <div className="rb-kpi"><div className="label">outcomes</div><strong>{compact(vm.nextLayers.feedback_loop?.total_posts)}</strong><p>опубликованных роликов с метриками</p></div>
+                <div className="rb-kpi"><div className="label">winners</div><strong>{compact(vm.nextLayers.feedback_loop?.winners)}</strong><p>усиливаем в Pattern Brain</p></div>
+                <div className="rb-kpi"><div className="label">losers</div><strong>{compact(vm.nextLayers.feedback_loop?.losers)}</strong><p>пишем в Anti-Pattern Brain</p></div>
+              </div>
+              <div style={{ marginTop: 14 }}>
+                {((vm.nextLayers.feedback_loop?.learning_actions || []) as string[]).slice(0, 3).map((action, index) => (
+                  <div className="rb-pattern" key={action} style={{ marginTop: index ? 10 : 0 }}>
+                    <div className="rb-pill">learning action</div>
+                    <p style={{ fontWeight: 700, color: "#0f172a" }}>{action}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="rb-card">
+              <div className="rb-overline" style={{ color: "#0891b2" }}>Top outcomes</div>
+              {((vm.nextLayers.feedback_loop?.top_outcomes || []) as JsonRecord[]).length ? ((vm.nextLayers.feedback_loop?.top_outcomes || []) as JsonRecord[]).slice(0, 5).map((outcome) => (
+                <div className="rb-pattern" key={`${outcome.recipe_id}:${outcome.platform}:${outcome.views}`} style={{ marginTop: 10 }}>
+                  <div className="rb-pill">{outcome.verdict} · {outcome.platform}</div>
+                  <h3 style={{ marginTop: 10 }}>recipe {outcome.recipe_id || "unknown"} · {compact(outcome.views)} views</h3>
+                  <p>saves {compact(outcome.saves)} · completion {compact(Number(outcome.completion_rate || 0) * 100)}% · orders {compact(outcome.orders)}</p>
+                  <p>{outcome.why}</p>
+                </div>
+              )) : (
+                <div className="rb-pattern" style={{ marginTop: 10 }}>
+                  <h3>Ждём первые outcomes</h3>
+                  <p>После публикации отправляем views/saves/retention/orders в `/api/factory/reels-brain/feedback`.</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </section>
+
+        <section>
+          <SectionTitle k="12 · Product / Audience / Experiment" title="Как мозг превращает насмотренность в решения" />
+          <div className="rb-three">
+            <div className="rb-card">
+              <MiniIcon>P</MiniIcon>
+              <h3 style={{ font: "600 24px/1.15 'Space Grotesk'", margin: "14px 0 12px" }}>Product Brain</h3>
+              {((vm.nextLayers.product_brain?.product_types || []) as JsonRecord[]).slice(0, 4).map((product) => (
+                <div className="rb-pattern" key={product.product_type}>
+                  <div className="rb-pill">{compact(product.patterns)} patterns</div>
+                  <h3 style={{ marginTop: 10 }}>{product.product_type}</h3>
+                  <p>{(product.visual_proof || []).slice(0, 2).join(" · ") || "proof появится после доразметки"}</p>
+                </div>
+              ))}
+              <p style={{ color: "#64748b", lineHeight: 1.5 }}>{vm.nextLayers.product_brain?.routing_rule || "тип товара выбирает механику до сценария"}</p>
+            </div>
+            <div className="rb-card">
+              <MiniIcon>A</MiniIcon>
+              <h3 style={{ font: "600 24px/1.15 'Space Grotesk'", margin: "14px 0 12px" }}>Audience Brain</h3>
+              {((vm.nextLayers.audience_brain?.segments || []) as JsonRecord[]).slice(0, 4).map((segment) => (
+                <div className="rb-pattern" key={segment.audience}>
+                  <div className="rb-pill">{compact(segment.patterns)} patterns</div>
+                  <h3 style={{ marginTop: 10 }}>{segment.audience}</h3>
+                  <p>{segment.content_style}</p>
+                </div>
+              ))}
+              <p style={{ color: "#64748b", lineHeight: 1.5 }}>{vm.nextLayers.audience_brain?.decision_rule || "аудитория выбирает эмоцию, темп и CTA"}</p>
+            </div>
+            <div className="rb-card">
+              <MiniIcon>E</MiniIcon>
+              <h3 style={{ font: "600 24px/1.15 'Space Grotesk'", margin: "14px 0 12px" }}>Experiment Brain</h3>
+              {((vm.nextLayers.experiment_brain?.variants || []) as JsonRecord[]).slice(0, 4).map((variant) => (
+                <div className="rb-pattern" key={variant.id}>
+                  <div className="rb-pill">axis · {variant.variable}</div>
+                  <h3 style={{ marginTop: 10 }}>{variant.hook}</h3>
+                  <p>{variant.format} · {variant.retention} · metric: {variant.success_metric}</p>
+                </div>
+              ))}
+              <p style={{ color: "#64748b", lineHeight: 1.5 }}>{vm.nextLayers.experiment_brain?.cadence || "меняем один axis за раз"}</p>
+            </div>
+          </div>
+        </section>
+
+        <section>
+          <SectionTitle k="13 · Audio / Visual / Portfolio" title="Что ещё понимаем без связки с заводом" />
+          <div className="rb-two">
+            <div className="rb-card">
+              <div className="rb-pill">{vm.nextLayers.audio_visual_intelligence?.status || "planned"}</div>
+              <h3 style={{ font: "700 26px/1.1 'Space Grotesk'", margin: "14px 0" }}>Audio / Visual Intelligence</h3>
+              <div className="rb-three">
+                {((vm.nextLayers.audio_visual_intelligence?.next_extractors || []) as string[]).slice(0, 6).map((item) => (
+                  <div className="rb-brief-block" key={item}><b>extractor</b><p>{item}</p></div>
+                ))}
+              </div>
+              <div style={{ marginTop: 12 }}>
+                {((vm.nextLayers.audio_visual_intelligence?.dashboard_questions || []) as string[]).slice(0, 4).map((question) => (
+                  <div className="rb-pattern" key={question} style={{ marginTop: 8 }}><p style={{ fontWeight: 700, color: "#0f172a" }}>{question}</p></div>
+                ))}
+              </div>
+            </div>
+            <div className="rb-card rb-dark">
+              <div className="rb-overline rb-cyan">Portfolio Manager</div>
+              <h3 style={{ font: "700 30px/1.08 'Space Grotesk'", margin: "12px 0" }}>{vm.nextLayers.portfolio_manager?.status || "planned"}</h3>
+              <p>{vm.nextLayers.portfolio_manager?.guardrail || "держим микс форматов, а не только продажи"}</p>
+              <div className="rb-three" style={{ marginTop: 16 }}>
+                {((vm.nextLayers.portfolio_manager?.weekly_mix || []) as string[]).slice(0, 6).map((item) => (
+                  <div className="rb-dark-card" key={item}><div className="rb-overline rb-cyan">mix</div><h3>{item}</h3></div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </section>
+
         <section className="rb-three">
           {[
             ["Что он знает?", `${compact(vm.readyPatterns)} generator-ready паттернов и ${compact(vm.patterns)} общих структур.`],
             ["Можно ли доверять?", `Сейчас уверенность ${vm.tone.label}, score ${vm.score}%.`],
             ["Сколько стоит?", `${usd(vm.usefulCost)} за полезное видео в последнем срезе.`],
+            ["Наши публикации?", `${compact(vm.nextLayers.feedback_loop?.total_posts)} outcomes · winners ${compact(vm.nextLayers.feedback_loop?.winners)} · losers ${compact(vm.nextLayers.feedback_loop?.losers)}.`],
           ].map(([label, text]) => (
             <div className="rb-question" key={label}>
               <div>{label}</div>

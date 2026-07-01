@@ -46,5 +46,8 @@ ok(/costGovernor/.test(cockpit) && /autopilotActions/.test(cockpit), "cockpit re
 ok(/nextLayers/.test(cockpit), "cockpit reads next intelligence layers");
 ok(/selectedPattern/.test(cockpit) && /rb-drawer/.test(cockpit), "cockpit exposes pattern creative brief drawer");
 ok(/rb-click/.test(cockpit) && /setSelectedPattern/.test(cockpit), "cockpit pattern cards are inspectable");
+ok(/Что реально сработало у нас/.test(cockpit), "cockpit exposes feedback loop outcomes");
+ok(/Product Brain/.test(cockpit) && /Audience Brain/.test(cockpit) && /Experiment Brain/.test(cockpit), "cockpit exposes product audience and experiment layers");
+ok(/Audio \/ Visual Intelligence/.test(cockpit) && /Portfolio Manager/.test(cockpit), "cockpit exposes audio visual and portfolio layers");
 
 console.log("reelsBrainCostGovernorContract: passed");

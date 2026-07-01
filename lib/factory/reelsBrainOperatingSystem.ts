@@ -1,5 +1,7 @@
 export type ReelsBrainMetricRow = {
   recipe_id?: number | null;
+  publication_id?: string | null;
+  external_post_id?: string | null;
   platform?: string | null;
   views?: number | null;
   watch_rate?: number | null;
@@ -12,6 +14,7 @@ export type ReelsBrainMetricRow = {
   revenue?: number | null;
   posted_at?: string | null;
   pulled_at?: string | null;
+  source?: string | null;
 };
 
 type PatternLike = {
@@ -109,6 +112,32 @@ export function buildReelsBrainFeedbackLoop(metrics: ReelsBrainMetricRow[]) {
     return map;
   }, new Map<string, { platform: string; posts: number; views: number; orders: number; revenue: number }>()).values())
     .sort((a, b) => b.views - a.views);
+  const outcomeScore = (row: typeof rows[number]) =>
+    row.views / 1000
+    + row.saves * 0.35
+    + row.marketplace_orders * 20
+    + row.revenue / 100
+    + row.completion_rate * 100
+    + row.ctr_card * 120;
+  const topOutcomes = [...rows]
+    .sort((a, b) => outcomeScore(b) - outcomeScore(a))
+    .slice(0, 8)
+    .map((row) => ({
+      recipe_id: row.recipe_id || null,
+      platform: row.platform,
+      views: row.views,
+      saves: row.saves,
+      completion_rate: row.completion_rate || null,
+      ctr: row.ctr_card || null,
+      orders: row.marketplace_orders,
+      revenue: row.revenue,
+      verdict: winners.includes(row) ? "winner" : losers.includes(row) ? "loser" : "watch",
+      why: winners.includes(row)
+        ? "есть рыночный сигнал: просмотры/saves/orders/retention выше guard"
+        : losers.includes(row)
+          ? "низкий reach и слабое удержание/CTR"
+          : "сигнал пока средний, держим как watch",
+    }));
 
   return {
     status: rows.length ? "live" : "ready_for_metrics",
@@ -121,6 +150,12 @@ export function buildReelsBrainFeedbackLoop(metrics: ReelsBrainMetricRow[]) {
     total_orders: rows.reduce((sum, row) => sum + row.marketplace_orders, 0),
     total_revenue: Math.round(rows.reduce((sum, row) => sum + row.revenue, 0) * 100) / 100,
     by_platform: byPlatform,
+    top_outcomes: topOutcomes,
+    learning_actions: [
+      winners.length ? "усилить механики winner-роликов в Pattern Brain" : "накопить первые winner outcomes",
+      losers.length ? "записать loser-сигналы в Anti-Pattern Brain" : "пока не блокировать паттерны без loser-факта",
+      rows.length ? "сравнивать следующий batch с этими outcome baseline" : "после публикации отправлять views/saves/retention/orders",
+    ],
     next_step: rows.length
       ? "Писать winner/loser outcomes в Pattern Brain и Anti-Pattern Brain после каждого опубликованного ролика."
       : "Начать отправлять метрики через /api/factory/reels-brain/feedback или /api/factory/post-metrics.",
@@ -142,6 +177,12 @@ export function buildReelsBrainAudioVisualSeed(patterns: PatternLike[], insights
       "proof frame must appear before the first third of the reel",
     ],
     retention_inputs: retention,
+    dashboard_questions: [
+      "голос начинается в первые 0.5 секунды?",
+      "есть ли proof-frame до 30% ролика?",
+      "какая плотность склеек держит retention?",
+      "где нужен beat/drop для смены кадра?",
+    ],
   };
 }
 
@@ -168,6 +209,11 @@ export function buildReelsBrainProductBrain(patterns: PatternLike[]) {
     status: byType.size ? "seeded" : "needs_patterns",
     product_types: Array.from(byType.values()).sort((a, b) => b.patterns - a.patterns),
     routing_rule: "тип товара выбирает hook/form/visual proof до генерации сценария, а не после",
+    operator_questions: [
+      "какой тип товара сейчас снимаем?",
+      "какой proof обязан быть в кадре?",
+      "какой риск покупки надо снять первым?",
+    ],
   };
 }
 
@@ -190,6 +236,7 @@ export function buildReelsBrainAudienceBrain(patterns: PatternLike[]) {
     status: byAudience.size ? "seeded" : "rule_based_seed",
     segments: Array.from(byAudience.values()).sort((a, b) => b.patterns - a.patterns),
     next_step: "После feedback loop привязать аудиторию к фактическим saves/orders/retention.",
+    decision_rule: "аудитория выбирает эмоцию, скорость речи, визуальный язык и CTA до оценки сценария",
   };
 }
 
@@ -210,6 +257,7 @@ export function buildReelsBrainExperimentMatrix(patterns: PatternLike[], insight
   return {
     status: variants.length ? "ready_to_plan" : "needs_hooks",
     principle: "меняем один axis за раз: hook, proof frame, CTA, pacing или first frame",
+    cadence: "минимум 3 варианта на один axis, затем winner/loser возвращается в feedback loop",
     variants: variants.length ? variants.slice(0, 8) : patterns.slice(0, 3).map((pattern, index) => ({
       id: `pattern_${index + 1}`,
       variable: "hook",
@@ -231,6 +279,11 @@ export function buildReelsBrainPortfolioManager(feedback: ReturnType<typeof buil
       : ["2 продажи", "1 proof/test", "1 UGC", "1 meme/native", "2 discovery experiments"],
     guardrail: "портфель не должен состоять только из продажных роликов: мозг держит mix, чтобы не выжечь аудиторию",
     learning_input: feedback.status,
+    review_questions: [
+      "какой формат недопредставлен на этой неделе?",
+      "какой winner стоит масштабировать?",
+      "какой loser надо временно запретить?",
+    ],
   };
 }
 
