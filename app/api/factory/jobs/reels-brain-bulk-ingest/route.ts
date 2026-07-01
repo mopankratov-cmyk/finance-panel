@@ -30,7 +30,7 @@ const MAX_CORPUS_CONTEXT_ROWS = 50000;
 const PLATFORM_PROVIDER_ORDER: Record<"tiktok" | "instagram" | "youtube", ReelsBrainProvider[]> = {
   tiktok: ["ensemble_tiktok", "apify_tiktok", "virlo", "apify", "bright_tiktok"],
   instagram: ["apify_instagram", "ensemble_instagram", "bright_instagram"],
-  youtube: ["youtube", "apify_youtube", "ensemble_youtube", "bright_youtube"],
+  youtube: ["youtube", "ensemble_youtube", "apify_youtube", "bright_youtube"],
 };
 
 type BulkProviderRun = {

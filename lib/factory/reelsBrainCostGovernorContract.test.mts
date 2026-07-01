@@ -10,6 +10,7 @@ const report = readFileSync("app/api/factory/reels-brain/report/route.ts", "utf8
 const learningPlan = readFileSync("app/api/factory/reels-brain/learning-plan/route.ts", "utf8");
 const providerDebug = readFileSync("app/api/factory/reels-brain/provider-debug/route.ts", "utf8");
 const autopilotJob = readFileSync("app/api/factory/jobs/reels-brain-autopilot/route.ts", "utf8");
+const bulkIngest = readFileSync("app/api/factory/jobs/reels-brain-bulk-ingest/route.ts", "utf8");
 const cockpit = readFileSync("app/agent/reels-brain/ReelsBrainPixelCockpit.tsx", "utf8");
 const feedback = readFileSync("app/api/factory/reels-brain/feedback/route.ts", "utf8");
 const cron = readFileSync("app/api/factory/jobs/reels-brain-cron/route.ts", "utf8");
@@ -53,6 +54,7 @@ ok(/fetchLearningPlan/.test(autopilotJob) && /executeNextTick/.test(autopilotJob
 ok(/reels_brain_autopilot/.test(autopilotJob) && /isAuthorizedReelsBrainJobRequest/.test(autopilotJob), "autopilot job is protected and reports its mode");
 ok(/params\.platforms/.test(autopilotJob) && /params\.niches/.test(autopilotJob), "autopilot job preserves platform-specific catch-up params");
 ok(/youtube_zero_results/.test(autopilotJob) && /strategy: "instagram_ru"/.test(autopilotJob), "autopilot recovers platform catch-up when YouTube returns zero");
+ok(/youtube: \["youtube", "ensemble_youtube", "apify_youtube"/.test(bulkIngest), "bulk ingest tries Ensemble before timeout-prone Apify for YouTube");
 
 ok(/buildReelsBrainFeedbackLoop/.test(feedback), "feedback route summarizes publication metrics");
 ok(/\/api\/factory\/post-metrics/.test(feedback), "feedback route writes through post-metrics");
