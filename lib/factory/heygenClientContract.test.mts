@@ -14,10 +14,14 @@ import {
     voiceId: "37832e32d4f7475ab7a1cb0db8e5dd66",
     script: "I did not plan to buy this, but it looked useful.",
     aspectRatio: "9:16",
+    motionPrompt: "Tiny skeptical pause, relaxed shoulders, one small nod near the end; no broad presenter gestures.",
+    expressiveness: "medium",
   });
   equal(dry.endpoint, "/v3/videos", "video generation uses the verified v3 video endpoint");
   equal(dry.paid, true, "video generation is marked as paid");
   equal(dry.body.avatar_id, "f20cdc89e0ec4b61bbe453d73019a997", "video uses avatar look id as avatar_id");
+  equal(dry.body.motion_prompt, "Tiny skeptical pause, relaxed shoulders, one small nod near the end; no broad presenter gestures.", "motion prompt is preserved for Avatar IV movement control");
+  equal(dry.body.expressiveness, "medium", "expressiveness is preserved for controlled motion batches");
   ok(!dry.warnings.some((warning) => /group id/i.test(warning)), "valid look id does not get a group warning");
 }
 
@@ -74,6 +78,8 @@ import {
   ok(client.includes("/v3/avatars/looks"), "client has avatar looks endpoint");
   ok(client.includes("/v3/voices"), "client has voices endpoint");
   ok(client.includes("/v3/videos"), "client has v3 video endpoint");
+  ok(client.includes("motion_prompt"), "client supports Avatar IV motion prompt controls");
+  ok(client.includes("expressiveness"), "client supports Avatar IV expressiveness controls");
   ok(!/graph-run/.test(client), "HeyGen sidecar does not call main factory graph-run");
 }
 

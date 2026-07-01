@@ -2777,3 +2777,33 @@
 - Remaining manual/visual QA:
   - Product Twin Studio on current production still showed broken images before preview-proxy deploy. After PR #92 deploy, run `Load Twins` and inspect preview cards.
   - Quality `0.60` on `NV-836`, `NV-816`, `NV-01` should be visually reviewed before using as hero assets; they are structurally complete but below the preferred `0.68` threshold.
+
+### UGC Katya controlled motion batch
+
+- Дата: 2026-07-01
+- Ветка: `feat/product-broll-operator-get-clean`
+- Цель:
+  - Начать 6-месячную петлю "живого блогера" с контролируемого HeyGen batch без товара и без подключения к основному заводу.
+  - Проверить не только внешний вид блогера, а управляемость движения через `motion_prompt` и `expressiveness`.
+- Изменено:
+  - `lib/factory/heygen.ts`: добавлены `motionPrompt` и `expressiveness` в `HeyGenCreateVideoInput`.
+  - `lib/factory/heygenVideo.ts`: smoke-plan теперь прокидывает motion controls отдельно от spoken script.
+  - `lib/factory/heygenClientContract.test.mts` и `lib/factory/heygenVideoContract.test.mts`: покрытие motion controls.
+  - `docs/factory-ugc-blogger-motion-loop-2026-07-01.md`: roadmap обновлён фактом live batch.
+  - `docs/factory-ugc-katya-motion-batch-2026-07-01.md`: отдельный report по платному батчу.
+- Paid HeyGen results:
+  - 4/4 renders completed.
+  - Files:
+    - `/tmp/ugc-factory-heygen-katya-motion-batch-2026-07-01/katya-calm-direct-low.mp4`
+    - `/tmp/ugc-factory-heygen-katya-motion-batch-2026-07-01/katya-skeptical-pause-medium.mp4`
+    - `/tmp/ugc-factory-heygen-katya-motion-batch-2026-07-01/katya-small-nod-medium.mp4`
+    - `/tmp/ugc-factory-heygen-katya-motion-batch-2026-07-01/katya-friend-advice-high.mp4`
+    - `/tmp/ugc-factory-heygen-katya-motion-batch-2026-07-01/contact-sheet.jpg`
+- Предварительный вывод:
+  - `high` даёт больше эмоции, но риск presenter/рекламности выше.
+  - `medium` выглядит главным кандидатом для следующего controlled batch.
+  - Winner нужно выбирать по mp4, потому что ключевая проблема — движение, а не один кадр.
+- Проверки:
+  - `npx tsx lib/factory/heygenClientContract.test.mts`
+  - `npx tsx lib/factory/heygenVideoContract.test.mts`
+  - `npx tsx lib/factory/bloggerMotionContract.test.mts`

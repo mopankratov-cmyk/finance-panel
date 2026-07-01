@@ -1,4 +1,8 @@
-import { buildHeyGenCreateVideoDryRun, type HeyGenDryRun } from "@/lib/factory/heygen";
+import {
+  buildHeyGenCreateVideoDryRun,
+  type HeyGenDryRun,
+  type HeyGenExpressiveness,
+} from "@/lib/factory/heygen";
 import {
   buildHeyGenIdentityPlan,
   heygenIdentityHash,
@@ -16,6 +20,8 @@ export interface HeyGenSmokeVideoInput {
   realismMode?: HeyGenRealismMode;
   emotionalBeat?: "curious" | "skeptical" | "surprised" | "warm_recommendation";
   speechSpeed?: "slow" | "normal" | "fast";
+  motionPrompt?: string;
+  expressiveness?: HeyGenExpressiveness;
 }
 
 export interface HeyGenSmokeVideoPlan {
@@ -113,6 +119,8 @@ export function buildHeyGenSmokeVideoPlan(input: HeyGenSmokeVideoInput): HeyGenS
       script: `${script}\n\nDelivery notes: ${directives.join("; ")}.`,
       aspectRatio: input.identity.defaultAspectRatio || "9:16",
       engine: "avatar_iv",
+      motionPrompt: input.motionPrompt,
+      expressiveness: input.expressiveness,
     })
     : canBuildWithAudio
       ? {

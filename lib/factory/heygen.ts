@@ -7,6 +7,7 @@ export type HeyGenOwnership = "public" | "private";
 export type HeyGenAvatarType = "photo_avatar" | "studio_avatar" | "digital_twin";
 export type HeyGenAspectRatio = "16:9" | "9:16" | "1:1";
 export type HeyGenVideoEngine = "avatar_iv" | "avatar_v" | "avatar_iii";
+export type HeyGenExpressiveness = "low" | "medium" | "high";
 
 export interface HeyGenApiResult<T> {
   ok: boolean;
@@ -69,6 +70,8 @@ export interface HeyGenCreateVideoInput {
   script: string;
   aspectRatio?: HeyGenAspectRatio;
   engine?: HeyGenVideoEngine;
+  motionPrompt?: string;
+  expressiveness?: HeyGenExpressiveness;
   background?: { value?: string; url?: string; asset_id?: string };
   removeBackground?: boolean;
   callbackUrl?: string;
@@ -282,6 +285,7 @@ export function buildHeyGenCreateVideoDryRun(input: HeyGenCreateVideoInput): Hey
   if (!input.voiceId) warnings.push("voiceId is required");
   if (!input.script || input.script.trim().length < 2) warnings.push("script is empty");
   if (/group/i.test(input.avatarLookId)) warnings.push("avatarLookId looks like a group id; video generation requires a look id");
+  if (input.motionPrompt && input.motionPrompt.length > 1200) warnings.push("motionPrompt is long; keep movement direction short and specific");
 
   const body: Record<string, unknown> = {
     type: "avatar",
@@ -295,6 +299,8 @@ export function buildHeyGenCreateVideoDryRun(input: HeyGenCreateVideoInput): Hey
       voice_id: input.voiceId,
     },
   };
+  if (input.motionPrompt) body.motion_prompt = input.motionPrompt;
+  if (input.expressiveness) body.expressiveness = input.expressiveness;
   if (input.background) body.background = input.background;
   if (typeof input.removeBackground === "boolean") body.remove_background = input.removeBackground;
   if (input.callbackUrl) body.callback_url = input.callbackUrl;
