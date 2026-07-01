@@ -544,6 +544,136 @@ function buildDailyReport(input: {
   };
 }
 
+function buildCostGovernor(input: {
+  totals: Record<string, unknown>;
+  corpusAudit: ReturnType<typeof buildCorpusAudit>;
+  discoveryBrain: ReturnType<typeof buildDiscoveryBrain>;
+  today: Record<string, unknown> | null;
+}) {
+  const usefulCost = firstPositive(input.today?.usd_per_relevant, input.today?.usd_per_analyzed, input.today?.usd_per_inserted, input.totals.today_usd_per_useful_video);
+  const dailySpend = num(input.today?.spend_usd);
+  const maxDailySpend = Number(process.env.REELS_BRAIN_MAX_DAILY_SPEND_USD || 12);
+  const maxUsefulCost = Number(process.env.REELS_BRAIN_MAX_USEFUL_VIDEO_USD || 0.08);
+  const shouldPause = dailySpend > maxDailySpend || usefulCost > maxUsefulCost || input.corpusAudit.low_signal_rate > 20;
+  const providerLimits = (input.discoveryBrain.providers || []).map((provider) => ({
+    provider: provider.provider,
+    decision: provider.decision,
+    max_next_runs: provider.decision === "scale" ? 3 : provider.decision === "watch" ? 1 : 0,
+    reason: provider.reason,
+  }));
+  return {
+    status: shouldPause ? "pause_or_review" : "ok_to_continue",
+    max_daily_spend_usd: maxDailySpend,
+    max_useful_video_usd: maxUsefulCost,
+    today_spend_usd: dailySpend || null,
+    current_useful_video_usd: usefulCost || null,
+    rules: [
+      "stop if daily spend exceeds max_daily_spend_usd",
+      "stop if useful video cost exceeds max_useful_video_usd",
+      "stop/inspect if low_signal corpus rate exceeds 20%",
+      "scale only providers with discovery decision=scale",
+    ],
+    provider_limits: providerLimits,
+  };
+}
+
+function buildAutopilotActions(input: {
+  niches: { niche: string; understanding_score: number; generator_ready_patterns: number; analyzed_videos: number }[];
+  discoveryBrain: ReturnType<typeof buildDiscoveryBrain>;
+  antiPatternBrain: ReturnType<typeof buildAntiPatternBrain>;
+  costGovernor: ReturnType<typeof buildCostGovernor>;
+}) {
+  const weakNiches = input.niches
+    .filter((niche) => niche.understanding_score < 85 || niche.generator_ready_patterns < 12)
+    .sort((a, b) => a.understanding_score - b.understanding_score)
+    .slice(0, 3);
+  const providers = input.discoveryBrain.providers || [];
+  const actions = [
+    ...weakNiches.map((niche) => ({
+      type: "collect_more",
+      priority: niche.understanding_score < 70 ? "high" : "medium",
+      niche: niche.niche,
+      platform: "mixed",
+      action: `Добрать RU-залётные ролики для ${niche.niche}`,
+      reason: `understanding ${niche.understanding_score}%, ready patterns ${niche.generator_ready_patterns}`,
+    })),
+    ...providers.filter((provider) => provider.decision === "scale").slice(0, 3).map((provider) => ({
+      type: "scale_source",
+      priority: "high",
+      provider: provider.provider,
+      action: `Запустить ещё 1-3 прогона через ${provider.provider}`,
+      reason: provider.reason,
+    })),
+    ...providers.filter((provider) => provider.decision === "limit").slice(0, 3).map((provider) => ({
+      type: "suppress_source",
+      priority: "medium",
+      provider: provider.provider,
+      action: `Ограничить ${provider.provider}`,
+      reason: provider.reason,
+    })),
+    ...(input.antiPatternBrain.items || []).filter((item): item is NonNullable<typeof item> => Boolean(item)).slice(0, 2).map((item) => ({
+      type: "avoid_pattern",
+      priority: item.severity === "high" ? "high" : "medium",
+      action: `Не масштабировать: ${item.label}`,
+      reason: item.evidence,
+    })),
+  ];
+  return {
+    mode: input.costGovernor.status === "ok_to_continue" ? "autopilot_ready" : "budget_guarded",
+    can_run_paid_collection: input.costGovernor.status === "ok_to_continue",
+    actions: actions.slice(0, 10),
+  };
+}
+
+function buildNextIntelligenceLayers(input: {
+  insightPayload: ReturnType<typeof buildInsights>;
+  patternDecisionLayer: ReturnType<typeof buildPatternDecisionLayer>;
+  corpusAudit: ReturnType<typeof buildCorpusAudit>;
+}) {
+  const strongRecipes = input.patternDecisionLayer.pattern_details.filter((row) => row.quality_gate === "high_confidence");
+  const topHooks = input.insightPayload.top_hooks || [];
+  return {
+    feedback_loop: {
+      status: "ready_for_metrics",
+      next_step: "Подключить наши опубликованные ролики: views, saves, CTR, retention, orders.",
+      memory_write: "winner/loser outcomes должны дополнять pattern_details и anti_pattern_brain.",
+    },
+    audio_visual_intelligence: {
+      status: "spec_ready",
+      next_step: "Добавить extraction: speech speed, first sound, beat/drop, cut density, first-frame type.",
+      useful_now: "Текущий visual recipe rule-based; следующий слой сделает его video-based.",
+    },
+    product_brain: {
+      status: strongRecipes.length ? "seeded" : "needs_more_patterns",
+      best_product_fit: strongRecipes.flatMap((row) => row.creative_brief?.product_fit || []).slice(0, 8),
+      next_step: "Маппить тип товара -> hooks/formats/visual proof.",
+    },
+    audience_brain: {
+      status: "rule_based_seed",
+      segments: ["мамы", "папы", "дети", "подарки", "импульсные покупатели"],
+      next_step: "Привязать аудиторию к hook emotion, voice, colors, pacing.",
+    },
+    experiment_brain: {
+      status: topHooks.length >= 3 ? "ready_to_plan" : "needs_hooks",
+      variants: [
+        "A/B: меняем только hook",
+        "A/B: меняем только proof frame",
+        "A/B: меняем только CTA",
+      ],
+      next_step: "Генерировать experiment matrix, но не подключать контент-завод автоматически.",
+    },
+    portfolio_manager: {
+      status: "planned",
+      mix: ["2 продажи", "1 мем", "1 UGC", "1 экспертный", "2 развлекательных"],
+      next_step: "После feedback loop распределять контент по бренду, а не по одному ролику.",
+    },
+    data_quality: {
+      status: input.corpusAudit.verdict,
+      next_step: input.corpusAudit.ru_likely_rate < 80 ? "Усилить RU discovery." : "Держать RU-фокус и снижать low-signal.",
+    },
+  };
+}
+
 function recipeTitle(pattern: InsightPattern) {
   const hook = pattern.hook_label || "хук";
   const structure = pattern.structure_label || "формат";
@@ -1151,6 +1281,9 @@ export async function GET(req: NextRequest) {
       antiPatternBrain,
       discoveryBrain,
     });
+    const costGovernor = buildCostGovernor({ totals, corpusAudit, discoveryBrain, today });
+    const autopilotActions = buildAutopilotActions({ niches: nicheSummaries, discoveryBrain, antiPatternBrain, costGovernor });
+    const nextIntelligenceLayers = buildNextIntelligenceLayers({ insightPayload, patternDecisionLayer, corpusAudit });
 
     return NextResponse.json({
       ok: true,
@@ -1162,6 +1295,9 @@ export async function GET(req: NextRequest) {
       quality_gate: patternDecisionLayer.quality_gate,
       niche_comparison: nicheComparison,
       daily_report: dailyReport,
+      cost_governor: costGovernor,
+      autopilot_actions: autopilotActions,
+      next_intelligence_layers: nextIntelligenceLayers,
       anti_pattern_brain: antiPatternBrain,
       discovery_brain: discoveryBrain,
       timeline,
