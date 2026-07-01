@@ -8,10 +8,18 @@ const route = readFileSync("app/api/factory/reels-brain/audio-visual/probe/route
 ok(dockerfile.includes("apk add --no-cache ffmpeg"), "Railway image installs ffmpeg for ffprobe");
 ok(worker.includes("ffprobe"), "worker runs ffprobe");
 ok(worker.includes("REELS_BRAIN_AV_PROBE_LIMIT"), "worker exposes a safe AV probe limit");
+ok(worker.includes("mediaResolverQueryForNiche"), "worker chooses media resolver queries per niche");
+ok(worker.includes("apify_async_media_resolver_balanced"), "worker balances Apify media resolving across niches");
+ok(worker.includes("row?.media_probe?.ok !== true"), "worker avoids repeatedly probing already probed assets");
 ok(worker.includes("/api/factory/reels-brain/audio-visual/probe"), "worker persists probe results through protected API");
 ok(route.includes("isAuthorizedReelsBrainJobRequest"), "probe route requires job authorization");
 ok(route.includes("media_probe"), "probe route stores media_probe in analyzed_full");
 ok(route.includes("media_assets: root.media_assets"), "probe route preserves media_assets");
 ok(!route.includes("from(\"content_assets\")"), "probe route stays inside Reels Brain corpus");
+
+const mediaIntelligence = readFileSync("lib/factory/reelsBrainMediaIntelligence.ts", "utf8");
+ok(mediaIntelligence.includes("media_probe_ok"), "media intelligence reports successful AV probes");
+ok(mediaIntelligence.includes("with_audio_stream"), "media intelligence reports audio-stream coverage");
+ok(mediaIntelligence.includes("vertical_video_assets"), "media intelligence reports vertical video coverage");
 
 console.log("reelsBrainAudioVisualProbeContract ok");

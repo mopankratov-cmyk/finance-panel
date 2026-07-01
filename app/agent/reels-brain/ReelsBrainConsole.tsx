@@ -626,6 +626,15 @@ type MediaAssetClassification = {
   asset_kind?: "video" | "audio" | "unknown" | null;
   next_worker?: string;
   score?: number | null;
+  media_probe?: {
+    ok?: boolean;
+    duration_sec?: number | null;
+    width?: number | null;
+    height?: number | null;
+    has_audio?: boolean;
+    has_video?: boolean;
+    fps?: number | null;
+  } | null;
 };
 
 type MediaIntelligenceResponse = {
@@ -642,6 +651,12 @@ type MediaIntelligenceResponse = {
     unknown?: number;
     video_assets?: number;
     audio_assets?: number;
+    media_probed?: number;
+    media_probe_ok?: number;
+    media_probe_failed?: number;
+    with_audio_stream?: number;
+    vertical_video_assets?: number;
+    avg_duration_sec?: number;
     media_ready_pct?: number;
     by_platform?: Record<string, { total: number; ready: number; metadata_only: number; blocked: number; unknown: number }>;
     by_niche?: Record<string, { total: number; ready: number; metadata_only: number; blocked: number; unknown: number }>;
@@ -657,18 +672,21 @@ type MediaIntelligenceResponse = {
   audio_worker_mvp?: {
     status?: string;
     candidate_count?: number;
+    probed_count?: number;
     sample?: MediaAssetClassification[];
     contract?: { input?: string; output?: string[]; runtime?: string };
   };
   transcript_layer?: {
     status?: string;
     candidate_count?: number;
+    probed_count?: number;
     sample?: MediaAssetClassification[];
     contract?: { input?: string; output?: string[]; runtime?: string };
   };
   visual_worker_mvp?: {
     status?: string;
     candidate_count?: number;
+    probed_count?: number;
     sample?: MediaAssetClassification[];
     contract?: { input?: string; output?: string[]; runtime?: string };
   };
@@ -2484,6 +2502,12 @@ export default function ReelsBrainPage() {
                 <MetricCard label="Direct assets" value={mediaSummary.ready || 0} />
                 <MetricCard label="Metadata only" value={mediaSummary.metadata_only || 0} />
                 <MetricCard label="Ready %" value={mediaSummary.media_ready_pct || 0} />
+              </div>
+              <div className="grid gap-3 px-4 pb-4 sm:grid-cols-2 xl:grid-cols-4">
+                <MetricCard label="AV probed" value={mediaSummary.media_probe_ok || 0} />
+                <MetricCard label="Has audio" value={mediaSummary.with_audio_stream || 0} />
+                <MetricCard label="Vertical" value={mediaSummary.vertical_video_assets || 0} />
+                <MetricCard label="Avg duration sec" value={mediaSummary.avg_duration_sec || 0} />
               </div>
 
               <div className="grid gap-3 px-4 pb-4 lg:grid-cols-[1fr_1fr]">

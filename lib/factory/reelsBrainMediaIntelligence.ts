@@ -41,6 +41,15 @@ export type ReelsMediaAssetClassification = {
   asset_kind: "video" | "audio" | "unknown" | null;
   next_worker: NextWorker;
   score: number | null;
+  media_probe?: {
+    ok?: boolean;
+    duration_sec?: number | null;
+    width?: number | null;
+    height?: number | null;
+    has_audio?: boolean;
+    has_video?: boolean;
+    fps?: number | null;
+  } | null;
 };
 
 function asUrl(value: unknown): URL | null {
@@ -129,6 +138,20 @@ function directAssetCandidate(video: ReelsMediaSourceVideo): string | null {
   return [...directFields, video.url || "", ...analyzedCandidates].find((candidate) => isDirectMedia(candidate)) || null;
 }
 
+function mediaProbe(value: unknown): ReelsMediaAssetClassification["media_probe"] {
+  const probe = rec(rec(value).media_probe);
+  if (!Object.keys(probe).length) return null;
+  return {
+    ok: probe.ok === true,
+    duration_sec: probe.duration_sec == null ? null : Number(probe.duration_sec),
+    width: probe.width == null ? null : Number(probe.width),
+    height: probe.height == null ? null : Number(probe.height),
+    has_audio: probe.has_audio === true,
+    has_video: probe.has_video === true,
+    fps: probe.fps == null ? null : Number(probe.fps),
+  };
+}
+
 export function classifyReelsMediaAsset(video: ReelsMediaSourceVideo): ReelsMediaAssetClassification {
   const direct = directAssetCandidate(video);
   if (direct) {
@@ -143,6 +166,7 @@ export function classifyReelsMediaAsset(video: ReelsMediaSourceVideo): ReelsMedi
       asset_kind: assetKind(direct),
       next_worker: "audio_visual",
       score: video.virality_score == null ? null : Number(video.virality_score),
+      media_probe: mediaProbe(video.analyzed_full),
     };
   }
 
@@ -159,6 +183,7 @@ export function classifyReelsMediaAsset(video: ReelsMediaSourceVideo): ReelsMedi
       asset_kind: null,
       next_worker: "skip",
       score: video.virality_score == null ? null : Number(video.virality_score),
+      media_probe: mediaProbe(video.analyzed_full),
     };
   }
 
@@ -176,6 +201,7 @@ export function classifyReelsMediaAsset(video: ReelsMediaSourceVideo): ReelsMedi
       asset_kind: null,
       next_worker: "metadata_only_pattern_brain",
       score: video.virality_score == null ? null : Number(video.virality_score),
+      media_probe: mediaProbe(video.analyzed_full),
     };
   }
 
@@ -190,6 +216,7 @@ export function classifyReelsMediaAsset(video: ReelsMediaSourceVideo): ReelsMedi
     asset_kind: null,
     next_worker: "manual_resolver_review",
     score: video.virality_score == null ? null : Number(video.virality_score),
+    media_probe: mediaProbe(video.analyzed_full),
   };
 }
 
@@ -203,15 +230,30 @@ export function buildReelsMediaIntelligenceReport(videos: ReelsMediaSourceVideo[
     unknown: 0,
     video_assets: 0,
     audio_assets: 0,
+    media_probed: 0,
+    media_probe_ok: 0,
+    media_probe_failed: 0,
+    with_audio_stream: 0,
+    vertical_video_assets: 0,
+    avg_duration_sec: 0,
     by_platform: {} as Record<string, { total: number; ready: number; metadata_only: number; blocked: number; unknown: number }>,
     by_niche: {} as Record<string, { total: number; ready: number; metadata_only: number; blocked: number; unknown: number }>,
     reasons: {} as Record<string, number>,
   };
+  let durationTotal = 0;
 
   for (const row of rows) {
     summary[row.status] += 1;
     if (row.asset_kind === "video") summary.video_assets += 1;
     if (row.asset_kind === "audio") summary.audio_assets += 1;
+    if (row.media_probe) {
+      summary.media_probed += 1;
+      if (row.media_probe.ok) summary.media_probe_ok += 1;
+      else summary.media_probe_failed += 1;
+      if (row.media_probe.has_audio) summary.with_audio_stream += 1;
+      if ((row.media_probe.height || 0) > (row.media_probe.width || 0)) summary.vertical_video_assets += 1;
+      if (row.media_probe.duration_sec && Number.isFinite(row.media_probe.duration_sec)) durationTotal += row.media_probe.duration_sec;
+    }
     summary.reasons[row.reason] = (summary.reasons[row.reason] || 0) + 1;
     for (const [bucket, key] of [[summary.by_platform, row.platform], [summary.by_niche, row.niche]] as const) {
       bucket[key] = bucket[key] || { total: 0, ready: 0, metadata_only: 0, blocked: 0, unknown: 0 };
@@ -224,6 +266,7 @@ export function buildReelsMediaIntelligenceReport(videos: ReelsMediaSourceVideo[
   const videoAssets = directAssets.filter((row) => row.asset_kind === "video");
   const audioAssets = directAssets.filter((row) => row.asset_kind === "audio");
   const mediaReadyPct = summary.total ? Math.round((summary.ready / summary.total) * 100) : 0;
+  summary.avg_duration_sec = summary.media_probe_ok ? Math.round(durationTotal / summary.media_probe_ok * 10) / 10 : 0;
 
   return {
     ok: true,
@@ -236,13 +279,16 @@ export function buildReelsMediaIntelligenceReport(videos: ReelsMediaSourceVideo[
     direct_asset_store: {
       status: directAssets.length ? "ready_for_storage" : "waiting_for_provider_assets",
       storage_mode: "report_only_no_schema_migration",
-      candidates: directAssets.slice(0, 50),
+      candidates: directAssets
+        .sort((a, b) => Number(!!a.media_probe?.ok) - Number(!!b.media_probe?.ok) || Number(b.score || 0) - Number(a.score || 0))
+        .slice(0, 50),
       proposed_fields: ["video_id", "niche", "platform", "asset_url", "asset_kind", "source", "resolved_at", "legal_basis"],
       note: "Next DB step: create a dedicated media asset table or persist provider video_url/download_url without replacing the social page URL.",
     },
     audio_worker_mvp: {
       status: directAssets.length ? "ready_for_runtime" : "blocked_waiting_for_direct_assets",
       candidate_count: directAssets.length,
+      probed_count: summary.media_probe_ok,
       contract: {
         input: "direct video/audio asset URL",
         output: ["duration_sec", "has_voice", "speech_start_sec", "rough_tempo_bpm", "loudness_bucket", "pause_map"],
@@ -253,6 +299,7 @@ export function buildReelsMediaIntelligenceReport(videos: ReelsMediaSourceVideo[
     transcript_layer: {
       status: directAssets.length ? "ready_for_asr_provider" : "blocked_waiting_for_audio_assets",
       candidate_count: directAssets.length,
+      probed_count: summary.media_probe_ok,
       contract: {
         input: "audio extracted from direct asset",
         output: ["language", "transcript", "first_phrase", "speech_speed_wps", "pause_points", "confidence"],
@@ -263,6 +310,7 @@ export function buildReelsMediaIntelligenceReport(videos: ReelsMediaSourceVideo[
     visual_worker_mvp: {
       status: videoAssets.length ? "ready_for_runtime" : "blocked_waiting_for_video_assets",
       candidate_count: videoAssets.length,
+      probed_count: summary.media_probe_ok,
       contract: {
         input: "direct video asset URL",
         output: ["first_frame_type", "text_overlay_density", "cut_density", "camera_style", "visual_recipe_hints"],
