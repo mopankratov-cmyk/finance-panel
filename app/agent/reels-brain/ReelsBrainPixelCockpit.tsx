@@ -815,6 +815,7 @@ export default function ReelsBrainPixelCockpit() {
             ["Что он знает?", `${compact(vm.readyPatterns)} generator-ready паттернов и ${compact(vm.patterns)} общих структур.`],
             ["Можно ли доверять?", `Сейчас уверенность ${vm.tone.label}, score ${vm.score}%.`],
             ["Сколько стоит?", `${usd(vm.usefulCost)} за полезное видео в последнем срезе.`],
+            ["Наши публикации?", `${compact(vm.nextLayers.feedback_loop?.total_posts)} outcomes · winners ${compact(vm.nextLayers.feedback_loop?.winners)} · losers ${compact(vm.nextLayers.feedback_loop?.losers)}.`],
           ].map(([label, text]) => (
             <div className="rb-question" key={label}>
               <div>{label}</div>

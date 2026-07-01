@@ -33,6 +33,8 @@ Reels Brain - отдельный слой интеллекта поиска и �
 - `GET /api/factory/reels-brain/autopilot-actions` - операторские действия для discovery/autopilot слоя.
 - `GET /api/factory/reels-brain/cost-governor` - бюджетные guardrails и лимиты по источникам.
 - `GET /api/factory/reels-brain/report` - короткий отчет для дашборда или ежедневного дайджеста.
+- `GET /api/factory/reels-brain/feedback` - текущая обратная связь от опубликованных роликов.
+- `POST /api/factory/reels-brain/feedback` - запись outcome опубликованного ролика через `post_metrics`.
 
 ## Как работает петля
 
@@ -67,3 +69,16 @@ flowchart TD
 ## Что дальше
 
 Следующий безопасный слой - feedback loop от наших опубликованных роликов. После публикации нужно возвращать в Reels Brain фактические `views`, `saves`, `CTR`, `retention`, `orders`. Тогда мозг будет отличать не только чужие вирусные паттерны, но и то, что реально сработало для наших товаров и аудиторий.
+
+## Пакет 1-10 после дошлифовки
+
+1. PR/ветка: Reels Brain cockpit вынесен в отдельную feature-ветку и может сливаться без прямой записи в `main`.
+2. Feedback loop: добавлен read/write endpoint `/api/factory/reels-brain/feedback`, который использует существующий `post_metrics`.
+3. Audio / Visual Intelligence: `learning-economics` возвращает `audio_visual_intelligence` с текущими rule-based сигналами и списком следующих extractors.
+4. Product Brain: `product_brain` группирует паттерны по типам товаров и visual proof.
+5. Audience Brain: `audience_brain` группирует паттерны по аудиториям и стилю подачи.
+6. Experiment Brain: `experiment_brain` строит A/B matrix, где меняется один axis.
+7. Portfolio Manager: `portfolio_manager` предлагает weekly content mix на основе паттернов и feedback.
+8. Smart RU collection: discovery/autopilot продолжает работать через `autopilot_actions`, но с бюджетными ограничениями.
+9. Design QA surface: cockpit показывает эти слои без настроек, через витрину прогресса, бюджета и инсайтов.
+10. Worker enforcement: `reels-brain-cron` перед платным bulk проверяет autopilot/cost guard и при паузе переключается на analyze.
