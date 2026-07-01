@@ -1613,6 +1613,108 @@ export default function ReelsBrainPage() {
     : cockpitCorpusCurrent < portfolioCorpusTarget
       ? `добрать ${compactNumber(Math.max(0, portfolioCorpusTarget - cockpitCorpusCurrent))} видео до цели`
       : "снять карту источников и сравнить качество";
+  const readyMp4 = Number(mediaSummary.ready || 0);
+  const avProbed = Number(mediaSummary.media_probe_ok || 0);
+  const featureProbed = Number(creativeDnaInsights.feature_probed_videos || 0);
+  const generatorReadyPatterns = Number(learningTotals?.generator_ready_patterns || 0);
+  const readySharePct = readyMp4 && cockpitCorpusCurrent ? Math.round((readyMp4 / cockpitCorpusCurrent) * 100) : 0;
+  const avSharePct = readyMp4 ? Math.round((avProbed / readyMp4) * 100) : 0;
+  const featureSharePct = readyMp4 ? Math.round((featureProbed / readyMp4) * 100) : 0;
+  const brainUnderstandingScore = Math.min(100, Math.round(
+    (corpusProgress * 0.22)
+    + (Math.min(100, analyzeBacklogProgress) * 0.2)
+    + (Math.min(100, readySharePct) * 0.16)
+    + (Math.min(100, avSharePct) * 0.18)
+    + (Math.min(100, featureSharePct) * 0.16)
+    + (Math.min(20, generatorReadyPatterns) * 0.4),
+  ));
+  const confidenceLevel = brainUnderstandingScore >= 70
+    ? "high"
+    : brainUnderstandingScore >= 42
+      ? "medium"
+      : "low";
+  const confidence = confidenceCopy(confidenceLevel);
+  const cockpitFunnel = [
+    { label: "Собрано", value: cockpitCorpusCurrent, pct: corpusProgress, note: `цель ${compactNumber(portfolioCorpusTarget)}` },
+    { label: "В памяти", value: analyzeBacklogTotals.analyzed || Number(learningTotals?.analyzed_videos || 0), pct: analyzeBacklogProgress, note: `${compactNumber(analyzeBacklogTotals.unanalyzed)} backlog` },
+    { label: "Direct mp4", value: readyMp4, pct: readySharePct, note: "можно учить audio/visual" },
+    { label: "AV разобрано", value: avProbed, pct: avSharePct, note: `${compactNumber(mediaSummary.media_probe_failed || 0)} failed` },
+    { label: "Creative DNA", value: featureProbed, pct: featureSharePct, note: `${compactNumber(creativeDnaInsights.feature_backlog_videos || 0)} backlog` },
+  ];
+  const platformCoverage = PLATFORM_OPTIONS.map((platform) => {
+    const row = mediaSummary.by_platform?.[platform];
+    const total = Number(row?.total || 0);
+    const ready = Number(row?.ready || 0);
+    const analyzed = platform === "tiktok" ? avProbed : 0;
+    const score = total ? Math.round(((ready / total) * 50) + (analyzed ? 35 : 0) + (platform === "tiktok" && topHooks.length ? 15 : 0)) : 0;
+    return {
+      platform,
+      total,
+      ready,
+      analyzed,
+      score,
+      tone: score >= 70 ? "ready" : score >= 25 ? "watch" : "weak",
+    };
+  });
+  const cockpitNicheRows = (creativeDnaInsights.by_niche || mediaSummary.by_niche || {}) as Record<string, {
+    ready?: number;
+    probed?: number;
+    total?: number;
+    avg_duration_sec?: number | null;
+  }>;
+  const strongestNiches = Object.entries(cockpitNicheRows)
+    .map(([name, row]) => ({
+      name,
+      ready: Number(row.ready || 0),
+      probed: Number(row.probed || 0),
+      total: Number(row.total || row.ready || 0),
+      avgDuration: Number(row.avg_duration_sec || 0),
+    }))
+    .sort((a, b) => (b.probed + b.ready + b.total) - (a.probed + a.ready + a.total))
+    .slice(0, 4);
+  const brainKnowledgeCards = [
+    {
+      title: "Хуки",
+      value: compactNumber(topHooks.length),
+      text: topHooks[0]?.hook_label
+        ? `Лидер сейчас: ${topHooks[0].hook_label}`
+        : "Ждем больше Pattern Brain данных.",
+    },
+    {
+      title: "Удержание",
+      value: compactNumber(retentionMechanics.length),
+      text: retentionMechanics[0]?.label
+        ? `Сильная механика: ${retentionMechanics[0].label}`
+        : "Retention-механики еще копятся.",
+    },
+    {
+      title: "Audio/Visual",
+      value: compactNumber(featureProbed),
+      text: creativeDnaInsights.user_insights?.[0] || "ДНК появится после AV-проб.",
+    },
+    {
+      title: "Creative briefs",
+      value: compactNumber(filteredRecipes.length),
+      text: filteredRecipes[0]?.title || "Готовим рецепты: hook, retention, visual recipe, do-not-copy.",
+    },
+  ];
+  const blindSpots = [
+    featureProbed < readyMp4 ? `${compactNumber(Math.max(0, readyMp4 - featureProbed))} mp4 еще не прошли Creative DNA.` : null,
+    avProbed < readyMp4 ? `${compactNumber(Math.max(0, readyMp4 - avProbed))} direct mp4 еще ждут AV-пробу.` : null,
+    !mediaIntelligence?.transcript_layer?.probed_count ? "Нет ASR/transcript слоя: мозг пока не знает точные первые фразы и скорость речи." : null,
+    platformCoverage.some((row) => row.platform !== "tiktok" && row.score < 25) ? "Instagram/YouTube покрыты слабее TikTok, решения по ним пока осторожные." : null,
+    !todayCost ? "Нет свежей cost-точки за сегодня: экономика обучения будет точнее после сохраненного прогона." : null,
+  ].filter(Boolean) as string[];
+  const nextDecisions = [
+    topHooks[0]?.hook_label ? `Проверить OP-хук "${topHooks[0].hook_label}" на 3 товарах.` : "Добрать hook evidence после следующей сборки Pattern Brain.",
+    Number(creativeDnaInsights.immediate_sound_share_pct || 0) > 0
+      ? `Тестировать старт со звуком в первые 0.5 сек: сейчас ${compactNumber(creativeDnaInsights.immediate_sound_share_pct || 0)}%.`
+      : "Дождаться аудио-проб и проверить правило первого звука.",
+    Number(creativeDnaInsights.fast_edit_share_pct || 0) > 0
+      ? `Собрать creative brief с быстрым монтажом: fast edit ${compactNumber(creativeDnaInsights.fast_edit_share_pct || 0)}%.`
+      : "Накопить edit pace buckets для решений по монтажу.",
+    todayUsefulCost != null ? `Следить за ценой полезного видео: сегодня ${formatUsd(todayUsefulCost)}.` : "Сохранить cost snapshot после следующего сбора.",
+  ];
   const serverAutomationHistory: AutomationHistoryItem[] = (brainSummary?.automation_history || []).map((item) => ({
     id: `server:${item.id}`,
     title: automationTitle(item.mode),
@@ -2309,6 +2411,173 @@ export default function ReelsBrainPage() {
             <Metric label="Доступно" value={availableProviders.length} />
             <Metric label="Настроено" value={configuredCount} />
             <Metric label="В корпусе" value={corpus?.total || 0} />
+          </div>
+        </div>
+      </section>
+
+      <section className="overflow-hidden rounded-[2rem] border border-slate-200 bg-[#eef1f6] shadow-xl shadow-slate-200/70">
+        <div className="grid gap-0 xl:grid-cols-[1.05fr_0.95fr]">
+          <div className="relative overflow-hidden bg-slate-950 p-6 text-white">
+            <div className="absolute -right-24 -top-24 h-72 w-72 rounded-full bg-cyan-300/25 blur-3xl" />
+            <div className="absolute bottom-8 left-8 h-40 w-40 rounded-full bg-emerald-300/10 blur-2xl" />
+            <div className="relative">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="inline-flex items-center gap-2 rounded-full border border-cyan-200/20 bg-cyan-200/10 px-3 py-1 text-xs font-black uppercase tracking-[0.22em] text-cyan-100">
+                  <Radar className="h-4 w-4" />
+                  Reels Brain Cockpit
+                </div>
+                <span className={`rounded-full border px-3 py-1 text-xs font-black ${confidence.tone}`}>
+                  {confidence.label}
+                </span>
+              </div>
+
+              <div className="mt-7 grid gap-6 lg:grid-cols-[0.72fr_1fr] lg:items-center">
+                <div
+                  className="mx-auto flex h-48 w-48 items-center justify-center rounded-full border border-white/10 p-3 shadow-2xl shadow-cyan-950/40"
+                  style={{ background: `conic-gradient(#22d3ee ${brainUnderstandingScore}%, rgba(255,255,255,0.08) 0)` }}
+                >
+                  <div className="flex h-full w-full flex-col items-center justify-center rounded-full bg-slate-950 text-center">
+                    <div className="font-mono text-5xl font-black">{compactNumber(brainUnderstandingScore)}%</div>
+                    <div className="mt-1 text-[10px] font-black uppercase tracking-[0.2em] text-cyan-100/70">understanding</div>
+                  </div>
+                </div>
+
+                <div>
+                  <p className="text-xs font-black uppercase tracking-[0.22em] text-cyan-100/70">Текущий этап</p>
+                  <h2 className="mt-2 text-3xl font-black tracking-tight sm:text-4xl">{brainStage}</h2>
+                  <p className="mt-3 max-w-xl text-sm leading-6 text-slate-300">
+                    Это read-only витрина: показывает, насколько мозг обучен, где уверенность высокая, где слепые зоны,
+                    сколько стоит насмотренность и какие решения можно принимать сейчас.
+                  </p>
+                  <div className="mt-4 rounded-2xl border border-amber-200/20 bg-amber-200/10 p-4">
+                    <div className="text-xs font-black uppercase tracking-[0.18em] text-amber-100/80">Next best action</div>
+                    <div className="mt-1 text-lg font-black">{nextOperatorAction}</div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+                {cockpitFunnel.map((step) => (
+                  <div key={step.label} className="rounded-2xl border border-white/10 bg-white/10 p-3 backdrop-blur">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-[10px] font-black uppercase tracking-[0.16em] text-cyan-100/70">{step.label}</p>
+                      <span className="font-mono text-xs font-black text-cyan-100">{compactNumber(step.pct)}%</span>
+                    </div>
+                    <div className="mt-2 font-mono text-2xl font-black">{compactNumber(step.value)}</div>
+                    <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/10">
+                      <div className="h-full rounded-full bg-cyan-300" style={{ width: `${Math.max(3, Math.min(100, step.pct))}%` }} />
+                    </div>
+                    <div className="mt-2 text-[11px] font-semibold text-slate-300">{step.note}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="grid gap-4 p-5 lg:grid-cols-2">
+            <div className="rounded-[1.5rem] border border-slate-200 bg-white p-4 shadow-sm">
+              <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">Learning economics</p>
+              <h3 className="mt-1 text-xl font-black text-slate-950">Цена обучения</h3>
+              <div className="mt-4 grid gap-3">
+                <div className="rounded-2xl border border-cyan-100 bg-cyan-50 p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-xs font-bold uppercase tracking-wide text-cyan-800">Сегодня / полезное видео</div>
+                      <div className="mt-1 font-mono text-3xl font-black text-cyan-950">{formatUsd(todayUsefulCost)}</div>
+                    </div>
+                    <span className={`rounded-full border px-2.5 py-1 text-xs font-black ${dayLearningTrend.tone}`}>{dayLearningTrend.label}</span>
+                  </div>
+                  <p className="mt-2 text-xs font-semibold text-cyan-900">
+                    {todayCost ? `${compactNumber(todayCost.analyzed)} memory · ${compactNumber(todayCost.relevant)} relevant · ${spendSourceLabel(todayCost.spend_source)}` : "сегодня еще нет cost snapshot"}
+                  </p>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                    <div className="text-xs font-bold uppercase tracking-wide text-slate-400">Вчера</div>
+                    <div className="mt-1 font-mono text-2xl font-black text-slate-950">{formatUsd(yesterdayUsefulCost)}</div>
+                  </div>
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                    <div className="text-xs font-bold uppercase tracking-wide text-slate-400">Дельта</div>
+                    <div className="mt-1 font-mono text-2xl font-black text-slate-950">
+                      {usefulCostDeltaPct == null ? "—" : `${usefulCostDeltaPct > 0 ? "+" : ""}${compactNumber(usefulCostDeltaPct)}%`}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-[1.5rem] border border-slate-200 bg-white p-4 shadow-sm">
+              <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">Coverage map</p>
+              <h3 className="mt-1 text-xl font-black text-slate-950">Где мозг уверен</h3>
+              <div className="mt-4 space-y-2">
+                {platformCoverage.map((row) => (
+                  <div key={row.platform} className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="font-black text-slate-900">{titlePlatform(row.platform)}</span>
+                      <span className={`rounded-full border px-2.5 py-1 text-xs font-black ${statusTone(row.tone)}`}>
+                        {compactNumber(row.score)}%
+                      </span>
+                    </div>
+                    <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-200">
+                      <div className="h-full rounded-full bg-cyan-500" style={{ width: `${Math.max(3, Math.min(100, row.score))}%` }} />
+                    </div>
+                    <p className="mt-2 text-xs font-semibold text-slate-500">
+                      total {compactNumber(row.total)} · mp4 {compactNumber(row.ready)} · av {compactNumber(row.analyzed)}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="rounded-[1.5rem] border border-slate-200 bg-white p-4 shadow-sm lg:col-span-2">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">What brain understands now</p>
+                  <h3 className="mt-1 text-xl font-black text-slate-950">Что мозг реально знает</h3>
+                </div>
+                <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-black text-emerald-700">
+                  {compactNumber(generatorReadyPatterns)} generator-ready
+                </span>
+              </div>
+              <div className="mt-4 grid gap-3 md:grid-cols-4">
+                {brainKnowledgeCards.map((card) => (
+                  <div key={card.title} className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                    <div className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">{card.title}</div>
+                    <div className="mt-2 font-mono text-2xl font-black text-slate-950">{card.value}</div>
+                    <p className="mt-2 text-xs font-semibold leading-5 text-slate-600">{card.text}</p>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-4 grid gap-3 lg:grid-cols-3">
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                  <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">Сильные ниши</p>
+                  <div className="mt-2 space-y-2">
+                    {strongestNiches.length ? strongestNiches.map((row) => (
+                      <div key={row.name} className="flex items-center justify-between gap-2 rounded-xl bg-white px-3 py-2 text-xs">
+                        <span className="font-black text-slate-900">{row.name}</span>
+                        <span className="font-mono font-black text-cyan-700">{compactNumber(row.probed || row.ready || row.total)}</span>
+                      </div>
+                    )) : <p className="text-sm text-slate-500">Ждем media/niche карту.</p>}
+                  </div>
+                </div>
+                <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3">
+                  <p className="text-xs font-black uppercase tracking-[0.16em] text-amber-800">Blind spots</p>
+                  <div className="mt-2 space-y-2">
+                    {(blindSpots.length ? blindSpots : ["Критичных слепых зон сейчас не видно."]).slice(0, 4).map((spot) => (
+                      <div key={spot} className="rounded-xl bg-white px-3 py-2 text-xs font-bold leading-5 text-amber-900">{spot}</div>
+                    ))}
+                  </div>
+                </div>
+                <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-3">
+                  <p className="text-xs font-black uppercase tracking-[0.16em] text-emerald-800">Next decisions</p>
+                  <div className="mt-2 space-y-2">
+                    {nextDecisions.slice(0, 4).map((decision) => (
+                      <div key={decision} className="rounded-xl bg-white px-3 py-2 text-xs font-bold leading-5 text-emerald-900">{decision}</div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </section>
