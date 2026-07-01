@@ -7,6 +7,7 @@ const economics = readFileSync("app/api/factory/reels-brain/learning-economics/r
 const actions = readFileSync("app/api/factory/reels-brain/autopilot-actions/route.ts", "utf8");
 const governor = readFileSync("app/api/factory/reels-brain/cost-governor/route.ts", "utf8");
 const report = readFileSync("app/api/factory/reels-brain/report/route.ts", "utf8");
+const learningPlan = readFileSync("app/api/factory/reels-brain/learning-plan/route.ts", "utf8");
 const cockpit = readFileSync("app/agent/reels-brain/ReelsBrainPixelCockpit.tsx", "utf8");
 const feedback = readFileSync("app/api/factory/reels-brain/feedback/route.ts", "utf8");
 const cron = readFileSync("app/api/factory/jobs/reels-brain-cron/route.ts", "utf8");
@@ -36,6 +37,11 @@ ok(/anti_pattern_brain/.test(report) && /discovery_brain/.test(report), "report 
 ok(/feedback_loop/.test(report) && /portfolio_manager/.test(report), "report route exposes operating-system intelligence");
 ok(!/POST\s*\(/.test(report), "report route is read-only");
 
+ok(/corpusProgress/.test(learningPlan) && /corpusExecutionPlan/.test(learningPlan), "learning-plan computes 10k corpus progress");
+ok(/next_tick/.test(learningPlan) && /max_backlog_before_analyze/.test(learningPlan), "learning-plan chooses the next safe training tick");
+ok(/can_run_paid_collection/.test(learningPlan) && /cost_governor/.test(learningPlan), "learning-plan respects paid collection guard");
+ok(!/POST\s*\(/.test(learningPlan), "learning-plan route is read-only");
+
 ok(/buildReelsBrainFeedbackLoop/.test(feedback), "feedback route summarizes publication metrics");
 ok(/\/api\/factory\/post-metrics/.test(feedback), "feedback route writes through post-metrics");
 ok(/function loadAutopilotGuard/.test(cron), "cron has an autopilot guard");
@@ -43,6 +49,7 @@ ok(/original_task/.test(cron) && /can_run_paid_collection/.test(cron), "cron rep
 ok(/use_autopilot_guard/.test(scheduler), "scheduler marks paid collection as guarded");
 
 ok(/costGovernor/.test(cockpit) && /autopilotActions/.test(cockpit), "cockpit reads cost governor and autopilot actions");
+ok(/learningPlan/.test(cockpit) && /Learning Mission/.test(cockpit), "cockpit exposes the standalone learning mission");
 ok(/nextLayers/.test(cockpit), "cockpit reads next intelligence layers");
 ok(/selectedPattern/.test(cockpit) && /rb-drawer/.test(cockpit), "cockpit exposes pattern creative brief drawer");
 ok(/rb-click/.test(cockpit) && /setSelectedPattern/.test(cockpit), "cockpit pattern cards are inspectable");

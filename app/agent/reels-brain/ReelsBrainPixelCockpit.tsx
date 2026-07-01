@@ -108,6 +108,7 @@ function Gauge({ score, tone }: { score: number; tone: ReturnType<typeof statusT
 export default function ReelsBrainPixelCockpit() {
   const [learning, setLearning] = useState<JsonRecord | null>(null);
   const [corpus, setCorpus] = useState<JsonRecord | null>(null);
+  const [learningPlan, setLearningPlan] = useState<JsonRecord | null>(null);
   const [summaries, setSummaries] = useState<JsonRecord[]>([]);
   const [selectedPattern, setSelectedPattern] = useState<JsonRecord | null>(null);
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
@@ -119,14 +120,16 @@ export default function ReelsBrainPixelCockpit() {
       try {
         setState("loading");
         const nicheParam = NICHES.join(",");
-        const [learningData, corpusData, ...summaryData] = await Promise.all([
+        const [learningData, corpusData, learningPlanData, ...summaryData] = await Promise.all([
           getJson(`/api/factory/reels-brain/learning-economics?niches=${encodeURIComponent(nicheParam)}&limit=80`),
           getJson("/api/factory/reels-brain/corpus?limit=200&min_score=0"),
+          getJson(`/api/factory/reels-brain/learning-plan?niches=${encodeURIComponent(nicheParam)}&platforms=tiktok,instagram,youtube&target=10000&max_backlog_before_analyze=180`),
           ...NICHES.map((niche) => getJson(`/api/factory/reels-brain/summary?niche=${encodeURIComponent(niche)}`)),
         ]);
         if (!alive) return;
         setLearning(learningData);
         setCorpus(corpusData);
+        setLearningPlan(learningPlanData);
         setSummaries(summaryData);
         setState("ready");
       } catch (e) {
@@ -154,6 +157,7 @@ export default function ReelsBrainPixelCockpit() {
     const qualityGate = learning?.quality_gate || {};
     const costGovernor = learning?.cost_governor || {};
     const autopilotActions = learning?.autopilot_actions || {};
+    const mission = learningPlan?.learning_plan || {};
     const nextLayers = learning?.next_intelligence_layers || {};
     const patternDetails = (learning?.pattern_details || []) as JsonRecord[];
     const nicheComparison = (learning?.niche_comparison || []) as JsonRecord[];
@@ -271,6 +275,7 @@ export default function ReelsBrainPixelCockpit() {
       qualityGate,
       costGovernor,
       autopilotActions,
+      mission,
       nextLayers,
       patternDetails,
       nicheComparison,
@@ -308,7 +313,7 @@ export default function ReelsBrainPixelCockpit() {
         readyPatterns < 12 ? "Generator-ready рецептов мало: лучше не генерировать слишком однотипно." : "Рецептов уже хватает для первых стабильных креативных экспериментов.",
       ],
     };
-  }, [learning, corpus, summaries]);
+  }, [learning, corpus, learningPlan, summaries]);
 
   return (
     <main className="rb-page">
@@ -770,6 +775,92 @@ export default function ReelsBrainPixelCockpit() {
                   </div>
                 ))}
               </div>
+            </div>
+          </div>
+        </section>
+
+        <section>
+          <SectionTitle k="08.9 · Learning Mission" title="Как добираем насмотренность до 10k" />
+          <div className="rb-two">
+            <div className="rb-card">
+              <div className="rb-two" style={{ gridTemplateColumns: "1fr auto", gap: 16 }}>
+                <div>
+                  <div className="rb-overline" style={{ color: "#0891b2" }}>Standalone обучение</div>
+                  <h3 style={{ font: "700 30px/1.08 'Space Grotesk'", margin: "10px 0" }}>
+                    {compact(vm.mission.progress?.current || vm.totalVideos)} / {compact(vm.mission.progress?.target || 10000)} видео
+                  </h3>
+                  <p style={{ color: "#64748b", lineHeight: 1.5 }}>
+                    Завод пока не трогаем: мозг учится отдельно, копит русскоязычную насмотренность и сам решает, когда анализировать backlog, а когда покупать новый сбор.
+                  </p>
+                </div>
+                <div style={{ textAlign: "right" }}>
+                  <div className="rb-pill">{vm.mission.stage?.stage_label || "learning corpus"}</div>
+                  <div style={{ font: "700 36px/1 'Space Grotesk'", marginTop: 12 }}>{compact(vm.mission.progress?.progress_pct || 0)}%</div>
+                </div>
+              </div>
+              <div className="rb-bar" style={{ marginTop: 18 }}>
+                <i style={{ width: `${Math.max(3, Math.min(100, num(vm.mission.progress?.progress_pct)))}%` }} />
+              </div>
+              <div className="rb-three" style={{ marginTop: 16 }}>
+                <div className="rb-kpi">
+                  <div className="label">Backlog</div>
+                  <strong>{compact(vm.mission.backlog?.total || Math.max(0, vm.totalVideos - vm.analyzed))}</strong>
+                  <p>{vm.mission.backlog?.status === "analyze_first" ? "сначала анализируем" : "здоровый уровень"}</p>
+                </div>
+                <div className="rb-kpi">
+                  <div className="label">ETA до 10k</div>
+                  <strong>{compact(vm.mission.eta?.ticks_to_target || 0)}</strong>
+                  <p>тиков при текущей скорости</p>
+                </div>
+                <div className="rb-kpi">
+                  <div className="label">Guard</div>
+                  <strong>{vm.mission.guard?.can_run_paid_collection ? "ON" : "WAIT"}</strong>
+                  <p>{vm.mission.guard?.status || "watch"} · платный сбор {vm.mission.guard?.can_run_paid_collection ? "можно" : "пауза"}</p>
+                </div>
+              </div>
+            </div>
+            <div className="rb-card rb-dark">
+              <div className="rb-overline rb-cyan">Следующий безопасный тик</div>
+              <h3 style={{ font: "700 30px/1.08 'Space Grotesk'", margin: "12px 0" }}>{vm.mission.next_tick?.label || "Ждём свежий learning-plan"}</h3>
+              <p>{vm.mission.next_tick?.reason || "Как только экономика и backlog обновятся, мозг выберет: analyze, smart bulk или rebuild patterns."}</p>
+              <div className="rb-dark-card" style={{ marginTop: 16 }}>
+                <div className="rb-pill">{vm.mission.next_tick?.task || "watch"} · paid {vm.mission.next_tick?.paid_collection ? "yes" : "no"}</div>
+                <p style={{ marginTop: 10 }}>
+                  Endpoint: {vm.mission.next_tick?.endpoint || "/api/factory/reels-brain/learning-plan"}
+                </p>
+              </div>
+              <div className="rb-three" style={{ marginTop: 16 }}>
+                <div className="rb-dark-card"><div className="rb-overline rb-cyan">Сбор / тик</div><h3>{compact(vm.mission.eta?.inserted_per_tick || 0)}</h3><p>новых видео</p></div>
+                <div className="rb-dark-card"><div className="rb-overline rb-cyan">Анализ / тик</div><h3>{compact(vm.mission.eta?.analyzed_per_tick || 0)}</h3><p>в память</p></div>
+                <div className="rb-dark-card"><div className="rb-overline rb-cyan">До чистого backlog</div><h3>{compact(vm.mission.eta?.ticks_to_clear_backlog || 0)}</h3><p>тиков</p></div>
+              </div>
+            </div>
+          </div>
+          <div className="rb-card" style={{ marginTop: 16 }}>
+            <div className="rb-matrix">
+              <div className="rb-matrix-head">Срез</div>
+              <div className="rb-matrix-head">текущее</div>
+              <div className="rb-matrix-head">цель</div>
+              <div className="rb-matrix-head">осталось</div>
+              <div className="rb-matrix-head">день</div>
+              {((vm.mission.execution_plan?.by_platform || []) as JsonRecord[]).slice(0, 3).map((row) => (
+                <div className="rb-matrix-row" key={`mission:${row.platform}`}>
+                  <strong>{row.platform}</strong>
+                  <span>{compact(row.current)}</span>
+                  <span>{compact(row.target)}</span>
+                  <span>{compact(row.gap)}</span>
+                  <span>{compact(row.daily_required)}</span>
+                </div>
+              ))}
+              {((vm.mission.execution_plan?.by_niche || []) as JsonRecord[]).slice(0, 3).map((row) => (
+                <div className="rb-matrix-row" key={`mission:${row.niche}`}>
+                  <strong>{NICHE_LABELS[row.niche] || row.niche}</strong>
+                  <span>{compact(row.current)}</span>
+                  <span>{compact(row.target)}</span>
+                  <span>{compact(row.gap)}</span>
+                  <span>{compact(row.daily_required)}</span>
+                </div>
+              ))}
             </div>
           </div>
         </section>
