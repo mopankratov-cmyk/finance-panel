@@ -1,0 +1,16 @@
+{
+  "data": [
+    {
+      "voice_id": "1bd001e7e50f421d891986aad5c8bbd2",
+      "name": "Sara",
+      "language": "en-US",
+      "gender": "female",
+      "support_pause": true,
+      "support_locale": true,
+      "preview_audio_url": "https://files.heygen.ai/voice/preview_sara.mp3?Signature=fake"
+    }
+  ],
+  "has_more": false,
+  "next_token": null
+}
+

@@ -1,0 +1,13 @@
+{
+  "data": {
+    "id": "video_ugc_factory_smoke",
+    "status": "completed",
+    "title": "ugc-factory-heygen-test",
+    "duration": 4.2,
+    "video_url": "https://files.heygen.ai/video/final.mp4?Expires=9999999999&Signature=fake&Key-Pair-Id=fake",
+    "thumbnail_url": "https://files.heygen.ai/video/thumb.jpg?Expires=9999999999&Signature=fake",
+    "gif_url": "https://files.heygen.ai/video/preview.gif?Signature=fake",
+    "failure_message": null
+  }
+}
+

@@ -1,6 +1,7 @@
 // Юнит-тест чистых хелперов рехоста. Запуск: npx tsx lib/factory/rehostImage.test.mts
 // Сетевая часть (download+upload) проверена вживую (WB-фото→бакет→fal 2/2). Здесь — детерминированная логика.
 process.env.NEXT_PUBLIC_SUPABASE_URL = "https://jwjobmdihddytqfgymus.supabase.co";
+import { readFileSync } from "node:fs";
 import { isOurStorage, extOf, contentTypeOf, rehostPath } from "./rehostImage";
 
 let pass = 0, fail = 0;
@@ -35,6 +36,11 @@ ok(/^i2v-src\/[0-9a-f]{40}\.webp$/.test(p1), "формат sha1+ext");
 ok(isOurStorage("https://jwjobmdihddytqfgymus.supabase.co/storage/v1/object/public/factory-media/x.mp4"), "наш Supabase-хост");
 ok(!isOurStorage("https://basket-39.wbbasket.ru/x.webp"), "WB-CDN — НЕ наш");
 ok(!isOurStorage("не-урл"), "мусор → не наш (без краша)");
+
+// ── Yandex Disk private paths: FAL needs a temporary direct download URL, not a client hint ──
+const source = readFileSync("lib/factory/rehostImage.ts", "utf8");
+ok(source.includes('u.startsWith("yandex-disk:")'), "rehost detects yandex-disk hints");
+ok(source.includes("getYandexDiskDownloadHref"), "rehost resolves Yandex Disk hints to download hrefs for FAL");
 
 console.log(`\nrehostImage: ${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

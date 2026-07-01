@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 type DbClient = {
   from: (table: string) => any;
 };
@@ -21,6 +23,7 @@ const DEFAULT_ROOT = "/content-factory/archive";
 const DEFAULT_LIMIT = 10;
 const DEFAULT_MAX_BYTES = 250 * 1024 * 1024;
 const ARCHIVE_KINDS = ["video", "clip", "image"] as const;
+const ARCHIVE_DISKS = ["gen", "product_twin", "prepared"] as const;
 
 function token(): string {
   return (process.env.YANDEX_DISK_OAUTH_TOKEN || process.env.YANDEX_DISK_TOKEN || "")
@@ -73,12 +76,23 @@ function slug(value: unknown, fallback: string): string {
   return s || fallback;
 }
 
+function safePathSegment(value: unknown, fallback: string): string {
+  return slug(value, fallback).replace(/\//g, "-");
+}
+
 function mediaExt(row: Pick<AssetRow, "url" | "kind">): string {
   const url = String(row.url || "");
   const match = url.match(/\.([a-z0-9]{2,5})(?:\?|$)/i);
   const ext = (match?.[1] || "").toLowerCase();
   if (["mp4", "mov", "m4v", "webm", "jpg", "jpeg", "png", "webp"].includes(ext)) return ext === "jpeg" ? "jpg" : ext;
   return row.kind === "image" ? "jpg" : "mp4";
+}
+
+function mediaExtFromUrl(url: string, fallbackKind: string): string {
+  const match = String(url || "").match(/\.([a-z0-9]{2,5})(?:\?|$)/i);
+  const ext = (match?.[1] || "").toLowerCase();
+  if (["mp4", "mov", "m4v", "webm", "jpg", "jpeg", "png", "webp"].includes(ext)) return ext === "jpeg" ? "jpg" : ext;
+  return fallbackKind === "image" ? "png" : "mp4";
 }
 
 function isGeneratedMediaUrl(row: AssetRow): row is AssetRow & { url: string } {
@@ -100,6 +114,10 @@ function archiveFailed(row: AssetRow): string {
 
 function bearerHeaders() {
   return { Authorization: `OAuth ${token()}` };
+}
+
+export function hasYandexDiskToken(): boolean {
+  return Boolean(token());
 }
 
 async function verifyYandexAccess() {
@@ -148,6 +166,15 @@ async function getUploadHref(path: string) {
   return href;
 }
 
+export async function getYandexDiskDownloadHref(path: string): Promise<string | null> {
+  if (!token()) return null;
+  const cleanPath = String(path || "").replace(/^yandex-disk:/, "");
+  if (!cleanPath.startsWith("/")) return null;
+  const res = await yandexJson(`/download?path=${encodeURIComponent(cleanPath)}`, { method: "GET" });
+  const href = (res.body as { href?: string }).href;
+  return res.ok && href ? href : null;
+}
+
 async function importUrlToYandex(path: string, sourceUrl: string) {
   await ensureFolder(path.split("/").slice(0, -1).join("/"));
   const res = await yandexJson(
@@ -161,6 +188,39 @@ async function importUrlToYandex(path: string, sourceUrl: string) {
   return href;
 }
 
+export async function archiveExternalMediaToYandex(input: {
+  sourceUrl: string;
+  kind: "video" | "clip" | "image";
+  article?: string | null;
+  niche?: string | null;
+  name?: string | null;
+  subdir?: string;
+  folderSegments?: (string | null | undefined)[];
+}): Promise<{ status: ArchiveStatus; yandex_path: string | null; yandex_url: string | null; operation_href?: string; error?: string; client_url: string }> {
+  const sourceUrl = text(input.sourceUrl, 4000);
+  const client_url = yandexClientUrl();
+  if (!sourceUrl || !/^https?:\/\//i.test(sourceUrl)) return { status: "skipped", yandex_path: null, yandex_url: null, error: "invalid source url", client_url };
+  if (!token()) return { status: "missing_token", yandex_path: null, yandex_url: null, error: "YANDEX_DISK_OAUTH_TOKEN is missing", client_url };
+  const day = new Date().toISOString().slice(0, 10);
+  const niche = slug(input.niche, "unknown-niche");
+  const article = slug(input.article, "unknown-article");
+  const name = slug(input.name, "generated");
+  const subdir = slug(input.subdir || "direct", "direct");
+  const nested = (input.folderSegments || [])
+    .map((segment, index) => safePathSegment(segment, `folder-${index + 1}`))
+    .filter(Boolean)
+    .join("/");
+  const hash = createHash("sha1").update(sourceUrl).digest("hex").slice(0, 12);
+  const folder = nested ? `${subdir}/${nested}` : subdir;
+  const path = `${rootPath()}/${day}/${niche}/${folder}/${article}-${name}-${hash}.${mediaExtFromUrl(sourceUrl, input.kind)}`;
+  try {
+    const operation_href = await importUrlToYandex(path, sourceUrl);
+    return { status: "uploaded", yandex_path: path, yandex_url: publicYandexHint(path), operation_href, client_url: yandexClientUrl(path.split("/").slice(0, -1).join("/")) };
+  } catch (error) {
+    return { status: "failed", yandex_path: path, yandex_url: null, error: safeError(error), client_url };
+  }
+}
+
 async function uploadBufferToYandex(path: string, buf: Buffer, contentType: string) {
   await ensureFolder(path.split("/").slice(0, -1).join("/"));
   const href = await getUploadHref(path);
@@ -171,6 +231,47 @@ async function uploadBufferToYandex(path: string, buf: Buffer, contentType: stri
     signal: AbortSignal.timeout(120000),
   });
   if (!put.ok) throw new Error(`upload put: ${put.status}`);
+}
+
+export async function uploadFactoryBufferToYandex(input: {
+  buffer: Buffer;
+  contentType: string;
+  kind: "video" | "clip" | "image";
+  article?: string | null;
+  niche?: string | null;
+  name?: string | null;
+  subdir?: string;
+  folderSegments?: (string | null | undefined)[];
+  ext?: string;
+}): Promise<{ status: ArchiveStatus; yandex_path: string | null; yandex_url: string | null; download_url: string | null; error?: string; client_url: string }> {
+  const client_url = yandexClientUrl();
+  if (!token()) return { status: "missing_token", yandex_path: null, yandex_url: null, download_url: null, error: "YANDEX_DISK_OAUTH_TOKEN is missing", client_url };
+  const day = new Date().toISOString().slice(0, 10);
+  const niche = slug(input.niche, "unknown-niche");
+  const article = slug(input.article, "unknown-article");
+  const name = slug(input.name, "generated");
+  const subdir = slug(input.subdir || "direct", "direct");
+  const nested = (input.folderSegments || [])
+    .map((segment, index) => safePathSegment(segment, `folder-${index + 1}`))
+    .filter(Boolean)
+    .join("/");
+  const hash = createHash("sha1").update(input.buffer).digest("hex").slice(0, 12);
+  const ext = (input.ext || (input.kind === "image" ? "png" : "mp4")).replace(/^\./, "").toLowerCase();
+  const folder = nested ? `${subdir}/${nested}` : subdir;
+  const path = `${rootPath()}/${day}/${niche}/${folder}/${article}-${name}-${hash}.${ext}`;
+  try {
+    await uploadBufferToYandex(path, input.buffer, input.contentType);
+    const download_url = await getYandexDiskDownloadHref(path);
+    return {
+      status: "uploaded",
+      yandex_path: path,
+      yandex_url: publicYandexHint(path),
+      download_url,
+      client_url: yandexClientUrl(path.split("/").slice(0, -1).join("/")),
+    };
+  } catch (error) {
+    return { status: "failed", yandex_path: path, yandex_url: null, download_url: null, error: safeError(error), client_url };
+  }
 }
 
 async function downloadVideo(url: string) {
@@ -199,7 +300,7 @@ async function loadCandidateRows(db: DbClient, limit: number, includeArchived: b
     const { data, error } = await db
       .from("content_assets")
       .select("id,name,kind,url,niche,article,path,analysis,created_at")
-      .eq("disk", "gen")
+      .in("disk", ARCHIVE_DISKS)
       .in("kind", ARCHIVE_KINDS)
       .order("created_at", { ascending: false })
       .range(from, from + 999);

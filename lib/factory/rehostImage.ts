@@ -10,6 +10,7 @@
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { createHash } from "node:crypto";
 import { isPrivateOrLocalUrl } from "./reelVariants";
+import { getYandexDiskDownloadHref } from "./yandexArchive";
 
 const BUCKET = "factory-media";
 const PREFIX = "i2v-src";
@@ -38,6 +39,10 @@ export function rehostPath(url: string): string {
 
 export async function rehostImageForFal(url: string | null | undefined): Promise<string> {
   const u = String(url || "").trim();
+  if (u.startsWith("yandex-disk:")) {
+    const href = await getYandexDiskDownloadHref(u).catch(() => null);
+    return href || u;
+  }
   if (!u || !/^https?:\/\//i.test(u)) return u;   // пусто/не-http (staticFile и пр.) — как есть
   if (isOurStorage(u)) return u;                  // уже у нас — надёжно
   if (isPrivateOrLocalUrl(u)) return u;           // SSRF-гард: приватное/loopback/metadata не тянем

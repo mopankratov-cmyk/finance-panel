@@ -2330,3 +2330,109 @@
 - 2026-06-28: `graph-run` больше не глотает тихие сбои `gen-save`: внутренний `jpost(..., true)` теперь умеет считать `{ ok:false }` бизнес-ошибкой, а сам `gen-save` отвечает не-2xx на storage/DB fail. Это убирает класс silent-success, когда банковка фактически не сохранила ролик, но раннер не видел причины.
 - 2026-06-28: `falCompose` / `falTimeline` больше не теряют оплаченный compose-job на локальном дедлайне функции. На таймауте они возвращают `pending_url`, а `/api/factory/overlay` и `/api/factory/hybrid-compose` отдают `202 processing` вместо ложного финального фейла.
 - 2026-06-28: warning-memory завода нормализована. `observability` и `improvementLoop` теперь агрегируют канонические warning reasons (`OTK below threshold`, `gen-save warning`, `video-critic unavailable`, `source fallback rescued` и т.д.), а не десятки строк с разными числами/хвостами ошибки. Это делает батчи по 5 и серию на 50 роликов реально сравнимыми по причинам деградации.
+
+### Apparel product source packs
+
+- Дата: 2026-07-01
+- Ветка: `feat/factory-v2-product-broll`
+- Цель: перестать строить одежду из постеров/инфографики и дать Product Digital Twin правдивый source-pack из исходников фотосессии.
+- Изменено:
+  - `lib/factory/apparelSourcePack.ts`: сбор NORVIA apparel source-pack по ролям `clean_front`, `on_model_front`, `back`, `side`, `fabric_macro`, `closure_detail`, `hood_detail`, `lining_detail`.
+  - `app/api/factory/product-twin/source-pack/route.ts`: dry-run/apply endpoint, который пишет source-pack как `content_assets.disk=product_truth` с lineage metadata.
+  - `lib/factory/productSourcePicker.ts`: picker теперь подмешивает apparel source-pack кандидатов и ставит `clean_front` первым для сборки twins.
+  - Contract tests: `apparelSourcePackContract`, усиленный `productSourcePicker`.
+- Проверки:
+  - `npx tsx lib/factory/apparelSourcePackContract.test.mts`
+  - `npx tsx lib/factory/productSourcePicker.test.mts`
+  - `npx tsx lib/factory/productTwinBatchContract.test.mts`
+  - `npx tsc --noEmit --pretty false`
+  - Реальный ranking NV-08: первым стал `/КУЛИСА/темно-зелен/IMG_7070.JPG`, score `108`, reason `source_pack_role:clean_front`.
+- Результат:
+  - Для NORVIA NV-08 система нашла полный truth-pack без пропусков: front `IMG_7070`, on-model `IMG_7069`, side `IMG_7072`, back `IMG_7075`, fabric `IMG_7047`, closure `IMG_7046`, lining `IMG_7058`, hood `IMG_7078`.
+  - Preview deploy `finance-panel-g0425ezk4-pankman-100-s-projects.vercel.app` собрался, но API apply упёрся во внешнюю Vercel SSO-защиту до Next route. Код готов; live apply надо запускать из production/Railway worker с доступными env или с Vercel protection bypass.
+
+### Apparel source-pack worker
+
+- Дата: 2026-07-01
+- Ветка: `feat/factory-v2-product-broll`
+- Цель: убрать зависимость от preview HTTP/SSO и дать Railway/production прямой способ записывать product truth packs.
+- Изменено:
+  - `lib/factory/apparelSourcePackWorker.mjs`: CLI worker для `dry-run/apply` без HTTP: `node --import tsx lib/factory/apparelSourcePackWorker.mjs --articles NV-08,NV-836,NV-816,NV-01 --apply false`.
+  - `lib/factory/apparelSourcePack.ts`: article-only запуск больше не требует цветового hint; роли выбирают разные source paths, если есть близкие по score кадры.
+  - `lib/factory/apparelSourcePackWorkerContract.test.mts`: contract для worker mode.
+- Проверки:
+  - `node --import tsx lib/factory/apparelSourcePackWorker.mjs --article NV-08 --out-dir tmp/source-pack-test`
+  - `node --import tsx lib/factory/apparelSourcePackWorker.mjs --articles NV-08,NV-836,NV-816,NV-01 --out-dir tmp/source-pack-bulk-test-2`
+  - `npx tsx lib/factory/productSourcePicker.test.mts`
+  - `npx tsx lib/factory/productTwinBatchContract.test.mts`
+  - `npx tsx lib/factory/apparelSourcePackWorkerContract.test.mts`
+  - `npx tsc --noEmit --pretty false`
+- Результат:
+  - Dry-run собрал полные packs без missing roles для `NV-08`, `NV-836`, `NV-816`, `NV-01`.
+  - Для линий без hand-tuned frame hints detail-роли теперь расходятся по разным ранним raw-кадрам, вместо дублирования одного файла.
+  - Следующий production шаг: запустить worker с `--apply true` в окружении, где есть `NEXT_PUBLIC_SUPABASE_URL/SUPABASE_URL` и `SUPABASE_SERVICE_ROLE_KEY`.
+
+### Bulk source-pack endpoint
+
+- Дата: 2026-07-01
+- Ветка: `feat/factory-v2-product-broll`
+- Цель: дать production/Railway один HTTP-вызов для подготовки нескольких apparel source packs.
+- Изменено:
+  - `app/api/factory/product-twin/source-pack/route.ts`: поддержаны `articles` и `items`; одиночный `article` остаётся совместимым и возвращает `pack`.
+  - `apply` теперь пишет общий набор rows одним upsert и защищён от пустой записи.
+- Проверки:
+  - `npx tsx lib/factory/apparelSourcePackContract.test.mts`
+  - `npx tsx lib/factory/apparelSourcePackWorkerContract.test.mts`
+  - `npx tsx lib/factory/productSourcePicker.test.mts`
+  - `npx tsc --noEmit --pretty false`
+  - Dry-run worker по `NV-08,NV-836` подтвердил, что bulk path собирает строки для нескольких линий.
+
+### Source-pack readiness and bags
+
+- Дата: 2026-07-01
+- Ветка: `feat/factory-v2-product-broll`
+- Цель: закрыть следующий слой после apparel source-pack: видимая readiness в inventory/API и поддержка сумок.
+- Изменено:
+  - `lib/factory/bagSourcePack.ts`: source-pack для сумок CLERIN по явным папкам `ARTICLE_FOLDERS`, роли `front`, `three_quarter`, `side`, `back`, `hardware_macro`, `strap_detail`, `in_hand`, `on_shoulder`.
+  - `lib/factory/productSourcePicker.ts`: picker подмешивает bag source-pack кандидатов и предпочитает `front`.
+  - `lib/factory/productTwinInventory.ts`: добавлен `sourcePackReadiness` для apparel/bag; dry-run inventory теперь показывает supported/ok/roles/missing/primarySourcePath.
+  - `app/api/factory/product-twin/batch-build/route.ts`: dry-run response возвращает `source_pack_readiness`.
+  - `app/api/factory/product-twin/source-pack/route.ts` и worker: один apply path теперь поддерживает и apparel, и bags.
+  - `lib/factory/productTwin.ts`: `NV-*` классифицируется как apparel, `CLR*` как bag даже без product name.
+- Проверки:
+  - Bag dry-run: `CLR00716`, `CLR00715`, `CLR001101`, `CLR001102` собраны без missing roles.
+  - Mixed worker dry-run: `NV-08,CLR00716` собраны одним запуском.
+  - Inventory dry-run: `NV-08` теперь category `apparel`, primary `/КУЛИСА/темно-зелен/IMG_7070.JPG`; `CLR00716` category `bag`, primary `/МАША/Сумки/Кросс-боди капучино/2.png`.
+  - `npx tsx lib/factory/productTwin.test.mts`
+  - `npx tsx lib/factory/apparelSourcePackContract.test.mts`
+  - `npx tsx lib/factory/apparelSourcePackWorkerContract.test.mts`
+  - `npx tsx lib/factory/bagSourcePackContract.test.mts`
+  - `npx tsx lib/factory/productSourcePicker.test.mts`
+  - `npx tsx lib/factory/productTwinBatchContract.test.mts`
+  - `npx tsc --noEmit --pretty false`
+- Blocker:
+  - Локальный `.env.production.local` содержит имена `SUPABASE_SERVICE_ROLE_KEY`, `FAL_KEY`, `FAL_BILLING_KEY`, `NEXT_PUBLIC_SUPABASE_URL`, но значения пустые. Поэтому реальные apply/build/visual review из локальной сессии не выполнены.
+  - Production/Railway команда после установки env: `node --import tsx lib/factory/apparelSourcePackWorker.mjs --articles NV-08,NV-836,NV-816,NV-01,CLR00716,CLR00715,CLR001101,CLR001102 --apply true`.
+
+### Product Twin Studio
+
+- Дата: 2026-07-01
+- Ветка: `feat/factory-v2-product-broll`
+- Цель: сделать source-pack/readiness/build/review видимыми в UI, чтобы production apply/build не были ручной CLI-магией.
+- Изменено:
+  - `app/inferno/product-twins/page.tsx`: новый динамический пульт Product Twin Studio.
+  - `app/inferno/product-twins/ProductTwinStudio.tsx`: таблица readiness, default articles для NORVIA/CLERIN, кнопки `Refresh`, `Apply Packs`, `Rebuild`, `Load Twins`, просмотр latest twin assets.
+  - `app/agent/page.tsx`: добавлена ссылка на Product Twin Studio.
+  - `lib/factory/productTwinStudioContract.test.mts`: contract на route, API wiring и ссылку из agent page.
+- Проверки:
+  - `npx tsx lib/factory/productTwinStudioContract.test.mts`
+  - `npx tsx lib/factory/productTwin.test.mts`
+  - `npx tsx lib/factory/apparelSourcePackContract.test.mts`
+  - `npx tsx lib/factory/apparelSourcePackWorkerContract.test.mts`
+  - `npx tsx lib/factory/bagSourcePackContract.test.mts`
+  - `npx tsx lib/factory/productSourcePicker.test.mts`
+  - `npx tsx lib/factory/productTwinBatchContract.test.mts`
+  - `npx tsc --noEmit --pretty false`
+  - `npx eslint app/inferno/product-twins/ProductTwinStudio.tsx app/inferno/product-twins/page.tsx app/agent/page.tsx`
+- Note:
+  - Browser QA в локальной среде упирается в auth redirect на `/login`; это ожидаемо без сессионной cookie. UI использует существующие protected factory API и не раскрывает секреты клиенту.

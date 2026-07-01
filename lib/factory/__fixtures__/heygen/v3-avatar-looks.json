@@ -1,0 +1,20 @@
+{
+  "data": [
+    {
+      "id": "f20cdc89e0ec4b61bbe453d73019a997",
+      "group_id": "831259b0a4994475b1175ce9a17b463a",
+      "name": "Madison portrait",
+      "avatar_type": "studio_avatar",
+      "status": "completed",
+      "preferred_orientation": "portrait",
+      "preview_image_url": "https://files.heygen.ai/avatar/madison_preview.jpg?Signature=fake",
+      "preview_video_url": "https://files.heygen.ai/avatar/madison_preview.mp4?Signature=fake",
+      "supported_api_engines": ["avatar_v", "avatar_iv"],
+      "default_voice_id": "37832e32d4f7475ab7a1cb0db8e5dd66",
+      "image_width": 1080,
+      "image_height": 1920
+    }
+  ],
+  "has_more": false,
+  "next_token": null
+}

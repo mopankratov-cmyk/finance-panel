@@ -1,3 +1,5 @@
+import { archiveExternalMediaToYandex } from "./yandexArchive";
+
 const QUEUE = "https://queue.fal.run/";
 const NANO_EDIT = "fal-ai/nano-banana/edit";
 
@@ -19,7 +21,7 @@ export async function runNanoBananaEdit(input: {
   prompt: string;
   maxWaitMs?: number;
 }): Promise<{ ok: true; imageUrl: string; responseUrl: string } | { ok: false; error: string; responseUrl?: string }> {
-  const key = process.env.FAL_KEY || "";
+  const key = process.env.FAL_KEY || process.env.FAL_BILLING_KEY || "";
   if (!key) return { ok: false, error: "FAL_KEY не настроен" };
   const sub = await fetchWithRetry(`${QUEUE}${NANO_EDIT}`, {
     method: "POST",
@@ -55,10 +57,17 @@ export async function runNanoBananaEdit(input: {
     if (res.ok) {
       const rj = JSON.parse(text) as { images?: { url?: string }[] };
       const imageUrl = rj.images?.[0]?.url || "";
-      if (imageUrl) return { ok: true, imageUrl, responseUrl };
+      if (imageUrl) {
+        await archiveExternalMediaToYandex({
+          sourceUrl: imageUrl,
+          kind: "image",
+          name: "fal-image-edit",
+          subdir: "fal-image-edit",
+        }).catch(() => null);
+        return { ok: true, imageUrl, responseUrl };
+      }
     }
     await new Promise((r) => setTimeout(r, 4000));
   }
   return { ok: false, error: "clean result не созрел", responseUrl };
 }
-
