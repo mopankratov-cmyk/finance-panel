@@ -25,10 +25,7 @@ export function buildReelsBrainSchedulerPlan(input?: {
   const platforms = parseAutomationPlatforms(input?.platforms).filter((platform) => platform !== "unknown");
   const platformParam = platforms.join(",");
   const nicheParam = niches.join(",");
-  const maxLanes = Math.max(1, Math.min(6, Number(input?.max_lanes || 3)));
   const limit = Math.max(5, Math.min(50, Number(input?.limit || 25)));
-  const maxProviderCalls = Math.max(1, Math.min(50, Number(input?.max_provider_calls || 6)));
-  const maxCostUnits = Math.max(1, Math.min(200, Number(input?.max_cost_units || 12)));
 
   return {
     niches,
@@ -37,20 +34,15 @@ export function buildReelsBrainSchedulerPlan(input?: {
       {
         task: "bulk",
         cadence_minutes: 15,
-        endpoint: "/api/factory/jobs/reels-brain-learning",
+        endpoint: "/api/factory/jobs/reels-brain-autopilot",
         method: "POST",
-        reason: "raw corpus growth toward the 10k target",
+        reason: "autopilot supervisor picks collect vs analyze on the road to 10k",
         payload: {
-          strategy: "bulk",
           niches: nicheParam,
           platforms: platformParam,
-          max_lanes: maxLanes,
           limit,
-          providers_per_lane: 2,
-          provider_timeout_ms: 30000,
-          max_provider_calls: maxProviderCalls,
-          max_cost_units: maxCostUnits,
-          use_autopilot_guard: true,
+          target: 10000,
+          max_backlog_before_analyze: 180,
           hours: 72,
         },
       },

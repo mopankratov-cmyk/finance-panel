@@ -65,6 +65,40 @@ function learningVelocity(timeline: JsonRecord[]) {
   };
 }
 
+function cadenceForTask(task: string) {
+  if (task === "analyze_backlog") return 10;
+  if (task === "collect_smart_batch") return 15;
+  if (task === "build_patterns") return 30;
+  return 30;
+}
+
+function usefulVideoUsd(learning: JsonRecord, autopilot: JsonRecord) {
+  const dailyRows = ((learning.daily_costs?.rows || learning.daily_costs?.daily || []) as JsonRecord[]).slice(-2);
+  const currentRow = dailyRows[dailyRows.length - 1] || {};
+  const prevRow = dailyRows.length > 1 ? dailyRows[dailyRows.length - 2] : {};
+  const current = firstPositive(
+    currentRow.usd_per_relevant,
+    currentRow.usd_per_analyzed,
+    currentRow.usd_per_inserted,
+    learning.totals?.usd_per_relevant_recent,
+    learning.totals?.usd_per_analyzed_recent,
+    learning.totals?.usd_per_inserted_recent,
+    autopilot.cost_governor?.current_useful_video_usd,
+  );
+  const previous = firstPositive(
+    prevRow.usd_per_relevant,
+    prevRow.usd_per_analyzed,
+    prevRow.usd_per_inserted,
+  );
+  const deltaPct = current > 0 && previous > 0 ? Math.round(((current - previous) / previous) * 1000) / 10 : null;
+  return {
+    current_usd: current,
+    previous_usd: previous,
+    delta_pct: deltaPct,
+    trend: deltaPct == null ? "not_enough_data" : deltaPct <= -5 ? "cheaper" : deltaPct >= 5 ? "more_expensive" : "flat",
+  };
+}
+
 function nextTick(input: {
   target: number;
   totalVideos: number;
@@ -165,9 +199,21 @@ export async function GET(req: NextRequest) {
     const canRunPaidCollection = Boolean(autopilotActions.can_run_paid_collection ?? true)
       && !["pause_or_review", "paused", "blocked"].includes(String(costGovernor.status || ""));
     const velocity = learningVelocity((learning.timeline || []) as JsonRecord[]);
+    const next = nextTick({
+      target,
+      totalVideos,
+      analyzedVideos,
+      backlogLimit,
+      canRunPaidCollection,
+      guardStatus: String(costGovernor.status || ""),
+    });
+    const cadenceMinutes = cadenceForTask(next.task);
     const relevantSpeed = firstPositive(velocity.inserted_per_tick, velocity.analyzed_per_tick, 25);
     const etaTicksToTarget = progress.gap > 0 ? Math.ceil(progress.gap / Math.max(1, relevantSpeed)) : 0;
     const etaTicksToAnalyzed = backlog > 0 ? Math.ceil(backlog / Math.max(1, firstPositive(velocity.analyzed_per_tick, 40))) : 0;
+    const usefulUsd = usefulVideoUsd(learning, autopilot);
+    const estimatedHoursToTarget = etaTicksToTarget > 0 ? Math.round((etaTicksToTarget * cadenceMinutes) / 6) / 10 : 0;
+    const estimatedHoursToBacklog = etaTicksToAnalyzed > 0 ? Math.round((etaTicksToAnalyzed * cadenceMinutes) / 6) / 10 : 0;
 
     return NextResponse.json({
       ok: true,
@@ -183,21 +229,22 @@ export async function GET(req: NextRequest) {
           limit_before_paid_collection: backlogLimit,
           status: backlog >= backlogLimit ? "analyze_first" : "healthy",
         },
-        next_tick: nextTick({
-          target,
-          totalVideos,
-          analyzedVideos,
-          backlogLimit,
-          canRunPaidCollection,
-          guardStatus: String(costGovernor.status || ""),
-        }),
+        next_tick: next,
         execution_plan: executionPlan,
         eta: {
           ticks_to_target: etaTicksToTarget,
           ticks_to_clear_backlog: etaTicksToAnalyzed,
+          hours_to_target: estimatedHoursToTarget,
+          hours_to_clear_backlog: estimatedHoursToBacklog,
           inserted_per_tick: velocity.inserted_per_tick,
           analyzed_per_tick: velocity.analyzed_per_tick,
           sample_runs: velocity.sample_runs,
+        },
+        economics: {
+          useful_video_usd: usefulUsd.current_usd,
+          previous_useful_video_usd: usefulUsd.previous_usd,
+          useful_video_delta_pct: usefulUsd.delta_pct,
+          useful_video_trend: usefulUsd.trend,
         },
         guard: {
           can_run_paid_collection: canRunPaidCollection,
@@ -206,6 +253,14 @@ export async function GET(req: NextRequest) {
           max_daily_spend_usd: num(costGovernor.max_daily_spend_usd),
           current_useful_video_usd: num(costGovernor.current_useful_video_usd),
           max_useful_video_usd: num(costGovernor.max_useful_video_usd),
+        },
+        worker_loop: {
+          endpoint: "/api/factory/jobs/reels-brain-autopilot",
+          next_run_after_minutes: cadenceMinutes,
+          ticks_per_day: Math.max(1, Math.floor((24 * 60) / cadenceMinutes)),
+          unattended_ready: next.task !== "wait_or_repair_sources",
+          estimated_hours_to_target: estimatedHoursToTarget,
+          estimated_hours_to_clear_backlog: estimatedHoursToBacklog,
         },
       },
     }, { headers: { "Cache-Control": "no-store" } });

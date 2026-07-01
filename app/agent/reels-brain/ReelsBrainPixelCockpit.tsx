@@ -817,6 +817,11 @@ export default function ReelsBrainPixelCockpit() {
                   <strong>{vm.mission.guard?.can_run_paid_collection ? "ON" : "WAIT"}</strong>
                   <p>{vm.mission.guard?.status || "watch"} · платный сбор {vm.mission.guard?.can_run_paid_collection ? "можно" : "пауза"}</p>
                 </div>
+                <div className="rb-kpi">
+                  <div className="label">Цена обучения</div>
+                  <strong>{usd(vm.mission.economics?.useful_video_usd || vm.usefulCost)}</strong>
+                  <p>{vm.mission.economics?.useful_video_delta_pct == null ? "ждём сравнение" : `${vm.mission.economics?.useful_video_delta_pct > 0 ? "+" : ""}${compact(vm.mission.economics?.useful_video_delta_pct)}% к прошлому срезу`}</p>
+                </div>
               </div>
             </div>
             <div className="rb-card rb-dark">
@@ -833,6 +838,13 @@ export default function ReelsBrainPixelCockpit() {
                 <div className="rb-dark-card"><div className="rb-overline rb-cyan">Сбор / тик</div><h3>{compact(vm.mission.eta?.inserted_per_tick || 0)}</h3><p>новых видео</p></div>
                 <div className="rb-dark-card"><div className="rb-overline rb-cyan">Анализ / тик</div><h3>{compact(vm.mission.eta?.analyzed_per_tick || 0)}</h3><p>в память</p></div>
                 <div className="rb-dark-card"><div className="rb-overline rb-cyan">До чистого backlog</div><h3>{compact(vm.mission.eta?.ticks_to_clear_backlog || 0)}</h3><p>тиков</p></div>
+              </div>
+              <div className="rb-dark-card" style={{ marginTop: 16 }}>
+                <div className="rb-pill">{vm.mission.worker_loop?.unattended_ready ? "unattended" : "watch"} · every {compact(vm.mission.worker_loop?.next_run_after_minutes || 15)} min</div>
+                <p style={{ marginTop: 10 }}>
+                  Supervisor endpoint: {vm.mission.worker_loop?.endpoint || "/api/factory/jobs/reels-brain-autopilot"}.
+                  ETA до цели: {compact(vm.mission.eta?.hours_to_target || 0)} ч · до чистого backlog: {compact(vm.mission.eta?.hours_to_clear_backlog || 0)} ч.
+                </p>
               </div>
             </div>
           </div>

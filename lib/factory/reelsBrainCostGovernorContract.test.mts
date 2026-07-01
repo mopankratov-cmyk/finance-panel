@@ -8,6 +8,7 @@ const actions = readFileSync("app/api/factory/reels-brain/autopilot-actions/rout
 const governor = readFileSync("app/api/factory/reels-brain/cost-governor/route.ts", "utf8");
 const report = readFileSync("app/api/factory/reels-brain/report/route.ts", "utf8");
 const learningPlan = readFileSync("app/api/factory/reels-brain/learning-plan/route.ts", "utf8");
+const autopilotJob = readFileSync("app/api/factory/jobs/reels-brain-autopilot/route.ts", "utf8");
 const cockpit = readFileSync("app/agent/reels-brain/ReelsBrainPixelCockpit.tsx", "utf8");
 const feedback = readFileSync("app/api/factory/reels-brain/feedback/route.ts", "utf8");
 const cron = readFileSync("app/api/factory/jobs/reels-brain-cron/route.ts", "utf8");
@@ -40,16 +41,21 @@ ok(!/POST\s*\(/.test(report), "report route is read-only");
 ok(/corpusProgress/.test(learningPlan) && /corpusExecutionPlan/.test(learningPlan), "learning-plan computes 10k corpus progress");
 ok(/next_tick/.test(learningPlan) && /max_backlog_before_analyze/.test(learningPlan), "learning-plan chooses the next safe training tick");
 ok(/can_run_paid_collection/.test(learningPlan) && /cost_governor/.test(learningPlan), "learning-plan respects paid collection guard");
+ok(/worker_loop/.test(learningPlan) && /economics/.test(learningPlan), "learning-plan exposes unattended loop and cost trend");
 ok(!/POST\s*\(/.test(learningPlan), "learning-plan route is read-only");
+
+ok(/fetchLearningPlan/.test(autopilotJob) && /executeNextTick/.test(autopilotJob), "autopilot job supervises the next training tick");
+ok(/reels_brain_autopilot/.test(autopilotJob) && /isAuthorizedReelsBrainJobRequest/.test(autopilotJob), "autopilot job is protected and reports its mode");
 
 ok(/buildReelsBrainFeedbackLoop/.test(feedback), "feedback route summarizes publication metrics");
 ok(/\/api\/factory\/post-metrics/.test(feedback), "feedback route writes through post-metrics");
 ok(/function loadAutopilotGuard/.test(cron), "cron has an autopilot guard");
 ok(/original_task/.test(cron) && /can_run_paid_collection/.test(cron), "cron reports guard enforcement");
-ok(/use_autopilot_guard/.test(scheduler), "scheduler marks paid collection as guarded");
+ok(/\/api\/factory\/jobs\/reels-brain-autopilot/.test(scheduler), "scheduler routes bulk growth through the supervisor");
 
 ok(/costGovernor/.test(cockpit) && /autopilotActions/.test(cockpit), "cockpit reads cost governor and autopilot actions");
 ok(/learningPlan/.test(cockpit) && /Learning Mission/.test(cockpit), "cockpit exposes the standalone learning mission");
+ok(/worker_loop/.test(cockpit) && /Цена обучения/.test(cockpit), "cockpit shows unattended loop and cost trend inside the mission");
 ok(/nextLayers/.test(cockpit), "cockpit reads next intelligence layers");
 ok(/selectedPattern/.test(cockpit) && /rb-drawer/.test(cockpit), "cockpit exposes pattern creative brief drawer");
 ok(/rb-click/.test(cockpit) && /setSelectedPattern/.test(cockpit), "cockpit pattern cards are inspectable");
