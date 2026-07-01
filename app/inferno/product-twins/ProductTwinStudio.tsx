@@ -79,6 +79,29 @@ type TwinViewAsset = {
 
 type BrollVerdict = "winner" | "usable" | "weak" | "reject";
 
+type ProductBrollRun = {
+  mode?: string;
+  ok?: boolean;
+  error?: string;
+  source_kind?: string;
+  asset_kind?: string;
+  asset_quality?: number | null;
+  asset_risk?: string | null;
+  view_id?: string | null;
+  source_gate?: {
+    ok?: boolean;
+    severity?: string;
+    reasons?: string[];
+    recommendation?: string;
+  };
+  experiment_plan?: {
+    mode?: string;
+    next_actions?: string[];
+  };
+  jobs?: { task_id?: string | null; ok?: boolean; error?: string | null; label?: string }[];
+  status_route?: string;
+};
+
 type RunLog = {
   at: string;
   action: string;
@@ -162,6 +185,14 @@ function readinessClass(status: TwinReadiness["status"]): string {
   return "border-rose-200 bg-rose-50 text-rose-800";
 }
 
+function pickBrollView(views: TwinViewAsset[]): TwinViewAsset | null {
+  return views.find((view) => view.purpose === "lifestyle")
+    || views.find((view) => /hand|use|table|front/i.test(view.viewId))
+    || views.find((view) => view.truth === "derived_from_source")
+    || views[0]
+    || null;
+}
+
 async function jsonFetch(url: string, init?: RequestInit) {
   const res = await fetch(url, { ...init, cache: "no-store" });
   const json = await res.json().catch(() => ({}));
@@ -177,9 +208,11 @@ export default function ProductTwinStudio() {
   const [selected, setSelected] = useState<string>("NV-08");
   const [busy, setBusy] = useState<string | null>(null);
   const [logs, setLogs] = useState<RunLog[]>([]);
+  const [brollRun, setBrollRun] = useState<ProductBrollRun | null>(null);
 
   const selectedTwin = twins[selected] || null;
   const selectedViews = views[selected] || [];
+  const selectedBrollView = pickBrollView(selectedViews);
   const selectedReadiness = getTwinReadiness(selectedTwin, selectedViews);
   const selectedItem = items.find((item) => item.article === selected) || null;
   const articleList = useMemo(() => splitArticles(articles), [articles]);
@@ -297,6 +330,62 @@ export default function ProductTwinStudio() {
       pushLog("b-roll qa", true, `${data.feedback?.verdict || input.verdict} saved`);
     } catch (e) {
       pushLog("b-roll qa", false, String((e as Error).message || e));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function runBrollDryRun() {
+    if (!selected) return;
+    setBusy("broll-dry");
+    try {
+      const qs = new URLSearchParams({
+        article: selected,
+        product: selectedTwin?.productName || selectedItem?.product || selected,
+        count: "1",
+        model: "kling",
+      });
+      if (selectedBrollView?.viewId) {
+        qs.set("use_derived_view", "1");
+        qs.set("view_id", selectedBrollView.viewId);
+      }
+      const data = await jsonFetch(`/api/factory/product-broll-batch?${qs.toString()}`) as ProductBrollRun;
+      setBrollRun(data);
+      pushLog("b-roll dry", Boolean(data.source_gate?.ok), `${data.source_gate?.severity || data.mode || "dry"} · ${data.view_id || data.asset_kind || data.source_kind || "source"}`);
+    } catch (e) {
+      setBrollRun({ ok: false, error: String((e as Error).message || e) });
+      pushLog("b-roll dry", false, String((e as Error).message || e));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function submitBrollOne() {
+    if (!selected) return;
+    setBusy("broll-submit");
+    try {
+      const body: Record<string, unknown> = {
+        article: selected,
+        product: selectedTwin?.productName || selectedItem?.product || selected,
+        count: 1,
+        model: "kling",
+        submit: true,
+      };
+      if (selectedBrollView?.viewId) {
+        body.use_derived_view = true;
+        body.view_id = selectedBrollView.viewId;
+      }
+      const data = await jsonFetch("/api/factory/product-broll-batch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      }) as ProductBrollRun;
+      setBrollRun(data);
+      const submitted = (data.jobs || []).filter((job) => job.ok).length;
+      pushLog("b-roll paid", submitted > 0, `${submitted} submitted · ${data.view_id || selectedBrollView?.viewId || "source"}`);
+    } catch (e) {
+      setBrollRun({ ok: false, error: String((e as Error).message || e) });
+      pushLog("b-roll paid", false, String((e as Error).message || e));
     } finally {
       setBusy(null);
     }
@@ -425,6 +514,62 @@ export default function ProductTwinStudio() {
                     <span className="text-xs font-bold text-amber-700">missing</span>
                   </div>
                 ))}
+              </div>
+            </section>
+
+            <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 text-sm font-black">
+                  <Play className="h-5 w-5 text-emerald-700" />
+                  B-roll Run
+                </div>
+                <span className={`rounded-md border px-2 py-1 text-xs font-black ${brollRun?.source_gate?.ok ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-slate-200 bg-slate-100 text-slate-700"}`}>
+                  {brollRun?.source_gate?.severity || "idle"}
+                </span>
+              </div>
+              <div className="mt-3 grid gap-2 text-xs">
+                <div className="rounded-md border border-slate-200 bg-slate-50 p-2">
+                  <div className="font-black text-slate-800">{selectedBrollView?.viewId || "latest asset"}</div>
+                  <div className="mt-1 text-slate-500">{selectedBrollView ? `${selectedBrollView.purpose} · ${selectedBrollView.truth}` : "no derived view selected"}</div>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    onClick={runBrollDryRun}
+                    disabled={Boolean(busy) || !selectedTwin}
+                    className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-slate-300 bg-white px-2 text-xs font-black text-slate-800 hover:bg-slate-50 disabled:opacity-50"
+                  >
+                    {busy === "broll-dry" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />}
+                    Dry Run
+                  </button>
+                  <button
+                    onClick={submitBrollOne}
+                    disabled={Boolean(busy) || !brollRun?.source_gate?.ok}
+                    className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-emerald-700 bg-emerald-700 px-2 text-xs font-black text-white hover:bg-emerald-800 disabled:opacity-50"
+                  >
+                    {busy === "broll-submit" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+                    Submit 1
+                  </button>
+                </div>
+                {brollRun ? (
+                  <div className="rounded-md border border-slate-200 bg-slate-50 p-2">
+                    <div className="font-black text-slate-800">{brollRun.error || brollRun.mode || "result"}</div>
+                    <div className="mt-1 text-slate-600">
+                      {brollRun.source_kind || "-"} · {brollRun.asset_kind || brollRun.view_id || "-"} · {brollRun.source_gate?.reasons?.join(", ") || brollRun.source_gate?.recommendation || "-"}
+                    </div>
+                    {brollRun.jobs?.length ? (
+                      <div className="mt-2 grid gap-1">
+                        {brollRun.jobs.map((job) => (
+                          <div key={`${job.label}-${job.task_id || job.error}`} className="rounded bg-white px-2 py-1 font-mono text-[11px] text-slate-700">
+                            {job.ok ? job.task_id : job.error}
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                    {brollRun.status_route ? (
+                      <div className="mt-2 truncate font-mono text-[11px] text-slate-500">{brollRun.status_route}</div>
+                    ) : null}
+                  </div>
+                ) : null}
               </div>
             </section>
 
