@@ -2,6 +2,20 @@
 
 Этот журнал ведёт отдельный AI-worker на Railway во время ночных задач по контент-заводу.
 
+### 2026-07-01  Reels Brain cost governor
+
+- Ветка: `feat/reels-brain-cost-governor`
+- Цель: дать оператору read-only решение, можно ли продолжать платный сбор Reels Brain или нужно остановиться по стоимости/сигналу.
+- Изменено:
+  - `app/api/factory/reels-brain/learning-economics/route.ts`: добавлены `cost_governor`, `autopilot_actions`, `next_intelligence_layers`.
+  - `app/api/factory/reels-brain/{autopilot-actions,cost-governor,report}/route.ts`: отдельные лёгкие endpoints для операторских действий, бюджета и отчёта без запуска платных задач.
+  - `app/agent/reels-brain/ReelsBrainPixelCockpit.tsx`: cockpit читает новые cost/autopilot/intelligence поля.
+  - `lib/factory/reelsBrainCostGovernorContract.test.mts`: контракт на budget guards и read-only surface.
+- Проверки:
+  - `npx tsx lib/factory/reelsBrainCostGovernorContract.test.mts`
+  - `npx tsc --noEmit --pretty false`
+  - `npx eslint app/api/factory/reels-brain/learning-economics/route.ts app/api/factory/reels-brain/autopilot-actions/route.ts app/api/factory/reels-brain/cost-governor/route.ts app/api/factory/reels-brain/report/route.ts app/agent/reels-brain/ReelsBrainPixelCockpit.tsx lib/factory/reelsBrainCostGovernorContract.test.mts`
+
 ### 2026-07-01  Yandex SpeechKit smoke harness
 
 - Ветка: `feat/factory-v2-product-broll`
