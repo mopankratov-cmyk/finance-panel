@@ -32,6 +32,53 @@ function mergeAnalyzedFull(existing: unknown, nextProbe: Record<string, unknown>
   };
 }
 
+function withoutMediaProbe(existing: unknown) {
+  const rest = { ...rec(existing) };
+  delete rest.media_probe;
+  return rest;
+}
+
+async function clearTransientProbeErrors(
+  db: NonNullable<ReturnType<typeof getSupabaseAdmin>>,
+  input: { niches?: unknown; error_prefix?: unknown; limit?: unknown },
+) {
+  const niches = Array.from(new Set(String(input.niches || "ru_toys,ru_clothing,ru_cosmetics")
+    .split(",")
+    .map((row) => row.trim())
+    .filter(Boolean)))
+    .slice(0, 12);
+  const errorPrefix = String(input.error_prefix || "spawn ffprobe ENOENT").trim();
+  const limit = Math.min(1000, Math.max(1, Number(input.limit || 500)));
+  const rows: { id: number; analyzed_full?: unknown }[] = [];
+
+  for (const niche of niches) {
+    const { data, error } = await db
+      .from("viral_videos")
+      .select("id,analyzed_full")
+      .eq("niche", niche)
+      .order("updated_at", { ascending: false, nullsFirst: false })
+      .limit(limit);
+    if (error) throw new Error(`${niche}: ${error.message}`);
+    rows.push(...((data || []) as { id: number; analyzed_full?: unknown }[]));
+  }
+
+  let cleared = 0;
+  const errors: string[] = [];
+  for (const row of rows) {
+    const probe = rec(rec(row.analyzed_full).media_probe);
+    const probeError = String(probe.error || "");
+    if (!probeError.startsWith(errorPrefix)) continue;
+    const { error } = await db
+      .from("viral_videos")
+      .update({ analyzed_full: withoutMediaProbe(row.analyzed_full), updated_at: new Date().toISOString() })
+      .eq("id", row.id);
+    if (error) errors.push(`${row.id}: ${error.message}`);
+    else cleared += 1;
+  }
+
+  return { ok: errors.length === 0, mode: "reels_brain_audio_visual_probe_cleanup", scanned: rows.length, cleared, errors: errors.slice(0, 20) };
+}
+
 export async function POST(req: NextRequest) {
   if (!(await isAuthorizedReelsBrainJobRequest(req))) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
@@ -40,7 +87,12 @@ export async function POST(req: NextRequest) {
   try {
     const db = getSupabaseAdmin();
     if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 500 });
-    const body = (await req.json().catch(() => ({}))) as { results?: ProbeResult[] };
+    const body = (await req.json().catch(() => ({}))) as { results?: ProbeResult[]; action?: string; niches?: unknown; error_prefix?: unknown; limit?: unknown };
+    if (body.action === "clear_transient_errors") {
+      const cleanup = await clearTransientProbeErrors(db, body);
+      return NextResponse.json(cleanup, { headers: { "Cache-Control": "no-store" } });
+    }
+
     const results = Array.isArray(body.results) ? body.results.slice(0, 50) : [];
     if (!results.length) return NextResponse.json({ error: "results пустой" }, { status: 400 });
 
