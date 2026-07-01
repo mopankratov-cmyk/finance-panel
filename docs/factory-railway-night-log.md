@@ -2,6 +2,97 @@
 
 Этот журнал ведёт отдельный AI-worker на Railway во время ночных задач по контент-заводу.
 
+### 2026-07-01  Yandex SpeechKit smoke harness
+
+- Ветка: `feat/factory-v2-product-broll`
+- Цель: подготовить быстрый detached-test русского Yandex SpeechKit без подключения к основному заводу
+- Изменено:
+  - добавлен `lib/factory/yandexSpeechkitSmoke.mjs`
+  - добавлен отчёт `docs/factory-ugc-yandex-speechkit-smoke-2026-07-01.md`
+- Проверка:
+  - локальные `.env.production.local` и Vercel pull имеют пустые SpeechKit значения
+  - рабочий SpeechKit ключ найден в local Codex state и использован только через временный `/tmp` dotenv
+  - Yandex v1 успешно сгенерировал mp3 для `marina`, `alena`, `jane`, `omazh`, `ermil`, `zahar`, `filipp`
+  - `dasha`, `masha`, `lera` текущим аккаунтом через v1 отклонены как unsupported
+- Результат:
+  - live bakeoff выполнен
+  - runner теперь использует поддержанные v1-голоса и генерирует mp3 в `/tmp/ugc-factory-voice-bakeoff-2026-07-01/yandex`
+
+### 2026-07-01  Yandex SpeechKit naturalize batch
+
+- Ветка: `feat/factory-v2-product-broll`
+- Цель: снизить синтетичность Yandex SpeechKit на русском UGC-скрипте
+- Изменено:
+  - добавлен отчёт `docs/factory-ugc-yandex-naturalize-batch-2026-07-01.md`
+- Проверка:
+  - сгенерированы 7 mp3 в `/tmp/ugc-factory-voice-bakeoff-2026-07-01/yandex-naturalize`
+  - протестированы `alena`, `marina`, `jane`
+  - протестированы plain rewrite и SSML micro-pauses
+- Результат:
+  - следующий выбор вручную на слух: лучший naturalized Yandex против MiniMax tuned batch
+
+### 2026-07-01  UGC voice learning loop
+
+- Ветка: `feat/factory-v2-product-broll`
+- Цель: превратить подбор голоса из ручного перебора в маленькую петлю обучения
+- Изменено:
+  - добавлен `lib/factory/voiceLearningLoop.ts`
+  - добавлен `lib/factory/voiceLearningLoopContract.test.mts`
+  - добавлен отчёт `docs/factory-ugc-voice-learning-loop-2026-07-01.md`
+- Результат:
+  - оценки голоса теперь можно ранжировать по naturalness/pronunciation/emotion/UGC/synthetic penalty
+  - следующий batch строится вокруг лучшего anchor, а не случайно
+
+### 2026-07-01  Yandex 0.88 segment batch
+
+- Ветка: `feat/factory-v2-product-broll`
+- Цель: развить выбранную пользователем скорость `0.88` через segmented synthesis
+- Изменено:
+  - добавлен отчёт `docs/factory-ugc-yandex-088-segments-2026-07-01.md`
+- Проверка:
+  - сгенерированы phrase parts для `alena`, `marina`, `jane`
+  - собраны full concat mp3 для прослушки
+  - сгенерированы `jane_088_ssml_breath` и `alena_088_ssml_breath`
+- Результат:
+  - следующий шаг: пользователь выбирает anchor, затем voice learning loop предлагает batch вокруг победителя
+
+### 2026-07-01  Voice Telegram review loop
+
+- Ветка: `feat/factory-v2-product-broll`
+- Цель: не заставлять владельца слушать все варианты, а слать в Telegram только shortlist лучших голосов
+- Изменено:
+  - `lib/factory/telegram.ts`: добавлена отправка audio-review item/batch
+  - `app/api/factory/telegram/route.ts`: ответы цифрами и кнопка `vwin` пишут `voice_review_selected` в `cf_signals`
+  - `lib/factory/voiceLearningLoop.ts`: добавлен парсер выбора из Telegram
+  - `lib/factory/voiceTelegramReviewSend.mjs`: локальный sender текущего shortlist в Telegram
+  - `docs/factory-ugc-voice-telegram-review-2026-07-01.md`: описан UX
+- Результат:
+  - владелец может отвечать `1` или `1,3`
+  - выбор сохраняется как learning signal для следующего voice batch
+  - live-send заблокирован: `FACTORY_TG_BOT_TOKEN` и `FACTORY_TG_CHAT_ID` найдены как имена env, но значения pulled/local пустые
+
+### 2026-07-01  Voice review observability endpoint
+
+- Ветка: `feat/factory-v2-product-broll`
+- Цель: видеть, записался ли Telegram-выбор голоса, и иметь ручной repair path
+- Изменено:
+  - добавлен `app/api/factory/voice-review/route.ts`
+  - добавлен `lib/factory/voiceReviewRouteContract.test.mts`
+  - обновлён `docs/factory-ugc-voice-telegram-review-2026-07-01.md`
+- Результат:
+  - `GET /api/factory/voice-review?batch_id=...` читает последние `voice_review_selected`
+  - `POST /api/factory/voice-review` может вручную записать выбор, если Telegram callback потерян
+
+### 2026-07-01  Voice realism research
+
+- Ветка: `feat/factory-v2-product-broll`
+- Цель: понять, почему Yandex/обычный TTS всё ещё звучит синтетически и какой контур нужен для максимально живого UGC-звука
+- Изменено:
+  - добавлен research-док `docs/factory-ugc-voice-realism-research-2026-07-01.md`
+- Результат:
+  - Yandex зафиксирован как fallback/baseline, а не основной "living blogger" lane
+  - основной путь к живости: ElevenLabs speech-to-speech / Cartesia clone / MiniMax clone + segmented synthesis + post-processing + HeyGen context check
+
 ## Итог ночи
 
 - Дата: 2026-06-25
@@ -2436,3 +2527,105 @@
   - `npx eslint app/inferno/product-twins/ProductTwinStudio.tsx app/inferno/product-twins/page.tsx app/agent/page.tsx`
 - Note:
   - Browser QA в локальной среде упирается в auth redirect на `/login`; это ожидаемо без сессионной cookie. UI использует существующие protected factory API и не раскрывает секреты клиенту.
+
+### Product Twin Yandex preview proxy
+
+- Дата: 2026-07-01
+- Ветка: `feat/factory-v2-product-broll`
+- Production finding:
+  - Product Twin assets после rebuild сохраняются в `content_assets.url` как `yandex-disk:/...`.
+  - Studio не могла визуально показать эти картинки, потому что `<img>` не умеет открывать внутренний hint.
+- Изменено:
+  - `app/api/factory/product-twin/asset-preview/route.ts`: protected proxy для `yandex-disk:` assets через `getYandexDiskDownloadHref`.
+  - `lib/factory/productTwinPreview.ts`: helper добавляет `preview_url/previewUrl` к twin assets без изменения DB.
+  - `app/api/factory/product-twin/by-article/[article]/route.ts` и `[twin_id]/route.ts`: latest twin API теперь возвращает preview URLs.
+  - `app/inferno/product-twins/ProductTwinStudio.tsx`: asset cards используют `preview_url`, fallback остаётся для обычных HTTP URLs.
+- Проверки:
+  - `npx tsx lib/factory/productTwinPreviewContract.test.mts`
+  - `npx tsx lib/factory/productTwinStudioContract.test.mts`
+  - `npx tsx lib/factory/productTwin.test.mts`
+  - `npx tsx lib/factory/productTwinBatchContract.test.mts`
+  - `npx tsc --noEmit --pretty false`
+  - `npx eslint app/api/factory/product-twin/asset-preview/route.ts app/api/factory/product-twin/by-article/[article]/route.ts app/api/factory/product-twin/[twin_id]/route.ts app/inferno/product-twins/ProductTwinStudio.tsx lib/factory/productTwinPreview.ts`
+
+### Product Twin rebuild worker
+
+- Дата: 2026-07-01
+- Ветка: `feat/factory-v2-product-broll`
+- Production finding:
+  - Rebuild из Studio на всех 8 товарах упирается в Vercel timeout (~270s/504).
+  - Нужен операторский/Railway путь, который собирает товары маленькими батчами и не зависит от serverless request lifetime.
+- Изменено:
+  - `lib/factory/productTwinRebuildWorker.mjs`: CLI-worker для sequential rebuild Product Twins.
+  - Worker поддерживает `--articles`, `--items`, `--batch-size`, `--limit`, `--min-quality`, `--delay-ms`, `--build true`, `--apply-source-packs true`, `FACTORY_TWIN_REBUILD_ENV_FILE`.
+  - По умолчанию worker безопасный: не тратит FAL и не пишет source-packs без явных флагов.
+  - `lib/factory/productTwinInventory.ts`: `inferProductName` экспортирован, чтобы CLI и Studio одинаково матчали `NV-*` и `CLR*` источники.
+  - `lib/factory/productTwinRebuildWorkerContract.test.mts`: contract на batch-mode, source-pack refresh, preview URLs и report.
+- Production command для оставшихся/пересобираемых товаров:
+  - `node --import tsx lib/factory/productTwinRebuildWorker.mjs --articles NV-816,NV-01,CLR00716,CLR00715,CLR001101,CLR001102 --build true --apply-source-packs true --batch-size 2`
+- Проверки:
+  - Smoke dry-run: `node --import tsx lib/factory/productTwinRebuildWorker.mjs --articles NV-816,CLR00716 --batch-size 2 --out-dir /tmp/factory-product-twin-worker-smoke`
+  - `npx tsx lib/factory/productTwinRebuildWorkerContract.test.mts`
+  - `npx tsx lib/factory/productTwinBatchContract.test.mts`
+  - `npx tsx lib/factory/productTwinPreviewContract.test.mts`
+  - `npx tsx lib/factory/apparelSourcePackWorkerContract.test.mts`
+  - `npx tsc --noEmit --pretty false`
+  - `npx eslint lib/factory/productTwinRebuildWorker.mjs lib/factory/productTwinRebuildWorkerContract.test.mts lib/factory/productTwinInventory.ts`
+
+### Product Twin derived views worker
+
+- Дата: 2026-07-01
+- Ветка: `feat/factory-v2-product-broll`
+- Цель:
+  - После сборки clean twins догонять ракурсы/детали/lifestyle assets не через Vercel route, а отдельным sequential worker.
+- Изменено:
+  - `lib/factory/productTwinDeriveViewsWorker.mjs`: CLI-worker для generation of canonical Product Twin views from latest article twin or explicit twin id.
+  - Worker поддерживает `--articles`, `--twin-ids`, `--items`, `--view-ids`, `--allow-synthetic true`, `--per-twin-limit`, `--batch-size`, `--generate true`, `FACTORY_TWIN_DERIVE_ENV_FILE`.
+  - Генерация явная: без `--generate true` worker только планирует views и не тратит FAL.
+  - Generated view assets архивируются в Yandex Disk и пишутся в `content_assets` как `product_twin_view_asset`.
+  - `lib/factory/productTwinDeriveViewsWorkerContract.test.mts`: contract на latest/explicit twin source, FAL generation, Yandex archive, report.
+- Production command после rebuild:
+  - `node --import tsx lib/factory/productTwinDeriveViewsWorker.mjs --articles NV-816,NV-01,CLR00716,CLR00715,CLR001101,CLR001102 --generate true --allow-synthetic true --per-twin-limit 5 --batch-size 1`
+- Проверки:
+  - `npx tsx lib/factory/productTwinDeriveViewsWorkerContract.test.mts`
+  - `npx tsx lib/factory/productTwinRebuildWorkerContract.test.mts`
+  - `npx tsc --noEmit --pretty false`
+  - `npx eslint lib/factory/productTwinDeriveViewsWorker.mjs lib/factory/productTwinDeriveViewsWorkerContract.test.mts lib/factory/productTwinRebuildWorker.mjs lib/factory/productTwinRebuildWorkerContract.test.mts lib/factory/productTwinInventory.ts`
+
+### Product Twin production build pass
+
+- Дата: 2026-07-01
+- Ветка: `feat/factory-v2-product-broll`
+- Цель:
+  - Дожать Product Digital Twin батч без локальных секретов и без Vercel all-8 timeout.
+- Найденный рабочий канал:
+  - Railway CLI залогинен в проект `finance-panel-reels-brain-worker`, service `reels-brain-offline-worker`.
+  - Сам Railway service не содержит Supabase/FAL/Yandex env, но содержит `CRON_SECRET`.
+  - Через `railway run -- node ...` production API `https://finance-panel-two.vercel.app/api/factory/product-twin/*` успешно авторизуется по Bearer `CRON_SECRET` и использует Vercel production env.
+- Rebuild production results:
+  - `NV-08`: existing latest `pt_NV-08_f8d6edfe8532`, quality `0.77`, 9 assets, service/visual packs complete.
+  - `NV-836`: existing latest `pt_NV-836_e4f4e8750e0d`, quality `0.60`, 9 assets, service/visual packs complete.
+  - `NV-816`: rebuilt `pt_NV-816_8289cfebf2ad`, quality `0.60`, source `/ПОЯС/ св беж/IMG_7257.JPG`, 9 assets.
+  - `NV-01`: rebuilt `pt_NV-01_f5209d13545f`, quality `0.60`, source `/ОЛЬГА МАНЖЕТ/бежевый/IMG_7156.JPG`, 9 assets.
+  - `CLR00716`: rebuilt `pt_CLR00716_fba666d426a4`, quality `0.79`, source `/МАША/Сумки/Кросс-боди капучино/2.png`, 9 assets.
+  - `CLR00715`: rebuilt `pt_CLR00715_4d00f0d8a979`, quality `0.68`, source `/МАША/Сумки/Кросс-боди шоколад/2 (1).png`, 9 assets.
+  - `CLR001101`: rebuilt `pt_CLR001101_dce071f9bc5b`, quality `0.77`, source `/МАША/Сумки/Трапеция черная/2.png`, 9 assets.
+  - `CLR001102`: rebuilt `pt_CLR001102_6e94a39e9ac9`, quality `0.76`, source `/МАША/Сумки/Трапеция коричневая/2.png`, 9 assets.
+- Derived views production results:
+  - 8/8 articles processed with `generate:true`, `allow_synthetic:true`, `limit:5`.
+  - Apparel views generated/uploaded for each `NV-*`: `back_flat`, `left_45`, `right_45`, `fabric_macro`, `closure_detail`.
+  - Bag views generated/uploaded for each `CLR*`: `back`, `side`, `three_quarter`, `inside_open`, `hardware_macro`.
+  - Initial run had transient Yandex Disk `423 resource locked` on 3 view uploads:
+    - `CLR00715 inside_open`
+    - `CLR001101 three_quarter`
+    - `CLR001102 inside_open`
+  - Repair pass regenerated those 3 view IDs one-by-one; all 3 finished with `archive_status: uploaded`.
+- Final production state:
+  - 8/8 latest Product Twins exist.
+  - 8/8 have 9 base assets.
+  - 8/8 have service assets: `object_mask`, `alpha`, `depth_map`, `segmentation`.
+  - 8/8 have visual assets: `clean_png`, `white_bg`, `gray_bg`, `shadow_bg`, `upscaled`.
+  - 40/40 intended derived view uploads completed after repair.
+- Remaining manual/visual QA:
+  - Product Twin Studio on current production still showed broken images before preview-proxy deploy. After PR #92 deploy, run `Load Twins` and inspect preview cards.
+  - Quality `0.60` on `NV-836`, `NV-816`, `NV-01` should be visually reviewed before using as hero assets; they are structurally complete but below the preferred `0.68` threshold.

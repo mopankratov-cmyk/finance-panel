@@ -80,6 +80,18 @@ type GeneratorPayload = {
   do_not_copy: string[];
 };
 
+type CorpusAuditRow = {
+  url?: string | null;
+  platform?: string | null;
+  niche?: string | null;
+  caption?: string | null;
+  hook_text?: string | null;
+  analyzed?: boolean | null;
+  source_orbit_id?: string | null;
+  virality_score?: number | null;
+  views?: number | null;
+};
+
 function splitList(value: unknown): string[] {
   return Array.from(new Set(String(value || "")
     .split(",")
@@ -91,6 +103,14 @@ function splitList(value: unknown): string[] {
 function num(value: unknown): number {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function firstPositive(...values: unknown[]): number {
+  for (const value of values) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed) && parsed > 0) return parsed;
+  }
+  return 0;
 }
 
 function estimatedUsdFromCostUnits(costUnits: number): number {
@@ -238,6 +258,290 @@ function templateForPattern(pattern: InsightPattern) {
     ],
   };
   return templates[hookType] || templates.unknown;
+}
+
+function pct(part: number, total: number) {
+  return total > 0 ? Math.round((part / total) * 1000) / 10 : 0;
+}
+
+function buildCorpusAudit(rows: CorpusAuditRow[]) {
+  const total = rows.length;
+  const urlMap = new Map<string, number>();
+  const byPlatform: Record<string, { total: number; analyzed: number; ru: number; avg_score_sum: number; avg_score_count: number }> = {};
+  const byNiche: Record<string, { total: number; analyzed: number; ru: number; avg_score_sum: number; avg_score_count: number }> = {};
+  let analyzed = 0;
+  let ruLikely = 0;
+  let withHook = 0;
+  let withSource = 0;
+  let lowSignal = 0;
+  let missingCaption = 0;
+
+  for (const row of rows) {
+    const url = String(row.url || "").trim();
+    if (url) urlMap.set(url, (urlMap.get(url) || 0) + 1);
+    const platform = String(row.platform || "unknown");
+    const niche = String(row.niche || "unknown");
+    byPlatform[platform] ||= { total: 0, analyzed: 0, ru: 0, avg_score_sum: 0, avg_score_count: 0 };
+    byNiche[niche] ||= { total: 0, analyzed: 0, ru: 0, avg_score_sum: 0, avg_score_count: 0 };
+    const text = [row.caption, row.hook_text].filter(Boolean).join(" ");
+    const isRu = /[а-яё]/i.test(text);
+    const score = num(row.virality_score);
+    const hasHook = String(row.hook_text || "").trim().length > 4;
+    const hasCaption = String(row.caption || "").trim().length > 8;
+    if (row.analyzed) analyzed += 1;
+    if (isRu) ruLikely += 1;
+    if (hasHook) withHook += 1;
+    if (row.source_orbit_id) withSource += 1;
+    if (!hasHook && !hasCaption) lowSignal += 1;
+    if (!hasCaption) missingCaption += 1;
+    for (const bucket of [byPlatform[platform], byNiche[niche]]) {
+      bucket.total += 1;
+      if (row.analyzed) bucket.analyzed += 1;
+      if (isRu) bucket.ru += 1;
+      if (score > 0) {
+        bucket.avg_score_sum += score;
+        bucket.avg_score_count += 1;
+      }
+    }
+  }
+
+  const duplicateUrls = Array.from(urlMap.values()).filter((count) => count > 1).reduce((sum, count) => sum + count - 1, 0);
+  const normalizeBuckets = (input: typeof byPlatform) => Object.fromEntries(Object.entries(input).map(([key, value]) => [
+    key,
+    {
+      total: value.total,
+      analyzed: value.analyzed,
+      analyzed_rate: pct(value.analyzed, value.total),
+      ru_likely: value.ru,
+      ru_likely_rate: pct(value.ru, value.total),
+      avg_score: value.avg_score_count ? Math.round((value.avg_score_sum / value.avg_score_count) * 10) / 10 : 0,
+    },
+  ]));
+
+  const qualityScore = Math.max(0, Math.min(100, Math.round(
+    pct(analyzed, total) * 0.35
+    + pct(ruLikely, total) * 0.25
+    + pct(withHook, total) * 0.2
+    + pct(withSource, total) * 0.1
+    + Math.max(0, 100 - pct(duplicateUrls, total)) * 0.1
+  )));
+
+  return {
+    sampled_rows: total,
+    analyzed,
+    analyzed_rate: pct(analyzed, total),
+    ru_likely: ruLikely,
+    ru_likely_rate: pct(ruLikely, total),
+    with_hook: withHook,
+    with_hook_rate: pct(withHook, total),
+    with_source: withSource,
+    with_source_rate: pct(withSource, total),
+    duplicate_urls: duplicateUrls,
+    duplicate_rate: pct(duplicateUrls, total),
+    low_signal_rows: lowSignal,
+    low_signal_rate: pct(lowSignal, total),
+    missing_caption: missingCaption,
+    missing_caption_rate: pct(missingCaption, total),
+    quality_score: qualityScore,
+    by_platform: normalizeBuckets(byPlatform),
+    by_niche: normalizeBuckets(byNiche),
+    verdict: qualityScore >= 78 ? "good" : qualityScore >= 55 ? "watch" : "needs_cleanup",
+  };
+}
+
+function buildAntiPatternBrain(audit: ReturnType<typeof buildCorpusAudit>, insightPayload: ReturnType<typeof buildInsights>) {
+  const weakHooks = (insightPayload.top_hooks || []).filter((hook) => hook.confidence === "low" || hook.op_score < 60).slice(0, 4);
+  const weakFormats = (insightPayload.winning_formats || []).filter((format) => num(format.avg_score) < 55).slice(0, 4);
+  const rows = [
+    audit.duplicate_rate > 2 ? {
+      code: "duplicate_source_waste",
+      label: "Дубли в корпусе",
+      evidence: `${audit.duplicate_rate}% дублей в sampled corpus`,
+      action: "Перед покупкой новых видео усиливать dedupe по URL/source id.",
+      severity: audit.duplicate_rate > 8 ? "high" : "medium",
+    } : null,
+    audit.ru_likely_rate < 80 ? {
+      code: "not_ru_enough",
+      label: "Недостаточно русского сегмента",
+      evidence: `${audit.ru_likely_rate}% строк выглядят русскоязычными`,
+      action: "Discovery должен повышать вес RU-запросов, русских аккаунтов и кириллических captions.",
+      severity: audit.ru_likely_rate < 60 ? "high" : "medium",
+    } : null,
+    audit.low_signal_rate > 8 ? {
+      code: "low_signal_rows",
+      label: "Мало текста/хука для анализа",
+      evidence: `${audit.low_signal_rate}% строк без нормального caption/hook`,
+      action: "Не покупать похожие источники без caption/meta, либо помечать как video-only анализ.",
+      severity: audit.low_signal_rate > 18 ? "high" : "medium",
+    } : null,
+    ...weakHooks.map((hook) => ({
+      code: `weak_hook_${hook.hook_type}`,
+      label: `Слабый/сырой хук: ${hook.hook_label}`,
+      evidence: `OP ${hook.op_score}, confidence ${hook.confidence}, freq ${hook.frequency}`,
+      action: "Не использовать как базовый сценарий; держать только как эксперимент.",
+      severity: hook.op_score < 45 ? "high" : "medium",
+    })),
+    ...weakFormats.map((format) => ({
+      code: `weak_format_${format.label}`,
+      label: `Слабый формат: ${format.label}`,
+      evidence: `avg score ${format.avg_score}, freq ${format.frequency}`,
+      action: "Не масштабировать формат без A/B теста и сильного hook rewrite.",
+      severity: num(format.avg_score) < 40 ? "high" : "medium",
+    })),
+  ].filter(Boolean);
+  return {
+    count: rows.length,
+    items: rows.slice(0, 10),
+    summary: rows.length
+      ? "Anti-pattern слой уже видит, где мозг тратит насмотренность или рискует генерировать слабые механики."
+      : "Критичных anti-pattern сигналов в текущем срезе не найдено.",
+  };
+}
+
+function buildDiscoveryBrain(sourceMap: ReturnType<typeof buildInsights>["source_map"], audit: ReturnType<typeof buildCorpusAudit>) {
+  const ranked = (sourceMap || []).map((source) => {
+    const analyzed = num(source.analyzed);
+    const inserted = num(source.inserted);
+    const errors = num(source.errors);
+    const cost = firstPositive(source.cost_per_analyzed, source.cost_per_inserted, source.estimated_spend_usd);
+    const yieldScore = Math.max(0, Math.round(
+      Math.min(45, analyzed / 20)
+      + Math.min(25, inserted / 20)
+      + Math.max(0, 20 - errors * 2)
+      + Math.max(0, 10 - cost * 100)
+    ));
+    return {
+      ...source,
+      discovery_score: yieldScore,
+      decision: yieldScore >= 65 ? "scale" : yieldScore >= 38 ? "watch" : "limit",
+      reason: yieldScore >= 65
+        ? "даёт полезную насмотренность дешевле среднего"
+        : yieldScore >= 38
+          ? "можно тестировать, но не масштабировать без bake-off"
+          : "ограничить, пока не появится доказанный yield",
+    };
+  }).sort((a, b) => b.discovery_score - a.discovery_score);
+  return {
+    ru_focus: audit.ru_likely_rate >= 80 ? "healthy" : "increase_ru_weight",
+    next_policy: audit.ru_likely_rate >= 80
+      ? "Сохранять RU-фокус и добирать маленькие залётные аккаунты в сильных нишах."
+      : "Повысить вес русскоязычных queries/accounts и резать источники без кириллицы.",
+    providers: ranked.slice(0, 8),
+    suppress_rules: [
+      "резать источник, если 2 прогона подряд дают low_signal > 20%",
+      "понижать запрос, если relevant/inserted ниже 15%",
+      "не масштабировать платформу без хотя бы medium confidence паттернов",
+    ],
+  };
+}
+
+function qualityGateForRecipe(recipe: {
+  id: string;
+  op_score: number;
+  confidence: "high" | "medium" | "low";
+  examples: InsightExample[];
+  niches: string[];
+}) {
+  const evidence = recipe.examples?.length || 0;
+  const nicheCount = recipe.niches?.length || 0;
+  if (recipe.op_score >= 85 && recipe.confidence === "high" && evidence >= 1) return "high_confidence" as const;
+  if (recipe.op_score >= 70 && recipe.confidence !== "low") return "medium_confidence" as const;
+  if (recipe.op_score >= 55) return "experimental" as const;
+  if (evidence === 0 || nicheCount === 0) return "noise" as const;
+  return "banned" as const;
+}
+
+function buildPatternDecisionLayer(insightPayload: ReturnType<typeof buildInsights>) {
+  const pattern_details = (insightPayload.recipes || []).map((recipe) => {
+    const gate = qualityGateForRecipe(recipe);
+    return {
+      id: recipe.id,
+      title: recipe.title,
+      hook: recipe.hook,
+      format: recipe.format,
+      retention: recipe.retention,
+      op_score: recipe.op_score,
+      confidence: recipe.confidence,
+      quality_gate: gate,
+      niches: recipe.niches,
+      examples_count: recipe.examples?.length || 0,
+      creative_brief: recipe.creative_brief,
+      generator_payload: recipe.generator_payload,
+      warnings: [
+        gate === "experimental" ? "Только A/B тест, не масштабировать без факта." : "",
+        gate === "noise" ? "Мало доказательности: не отдавать в генератор." : "",
+        recipe.confidence === "low" ? "Низкая уверенность по данным." : "",
+      ].filter(Boolean),
+      source_references: (recipe.examples || []).slice(0, 3),
+    };
+  });
+  const quality_gate = {
+    high_confidence: pattern_details.filter((row) => row.quality_gate === "high_confidence").length,
+    medium_confidence: pattern_details.filter((row) => row.quality_gate === "medium_confidence").length,
+    experimental: pattern_details.filter((row) => row.quality_gate === "experimental").length,
+    noise: pattern_details.filter((row) => row.quality_gate === "noise").length,
+    banned: pattern_details.filter((row) => row.quality_gate === "banned").length,
+    rules: [
+      "high: OP >= 85 + high confidence + есть source reference",
+      "medium: OP >= 70 и confidence не low",
+      "experimental: можно тестировать, но не масштабировать",
+      "noise/banned: не отдавать в генератор",
+    ],
+  };
+  return { pattern_details, quality_gate };
+}
+
+function buildNicheComparison(niches: {
+  niche: string;
+  total_videos: number;
+  analyzed_videos: number;
+  patterns: number;
+  generator_ready_patterns: number;
+  cross_platform_patterns: number;
+  understanding_score: number;
+}[], insightPayload: ReturnType<typeof buildInsights>) {
+  return niches.map((niche) => {
+    const hooks = (insightPayload.top_hooks || []).filter((hook) => hook.niches?.includes(niche.niche)).slice(0, 3);
+    const formats = (insightPayload.winning_formats || []).filter((format) => format.niches?.includes(niche.niche)).slice(0, 3);
+    return {
+      niche: niche.niche,
+      total_videos: niche.total_videos,
+      analyzed_videos: niche.analyzed_videos,
+      understanding_score: niche.understanding_score,
+      generator_ready_patterns: niche.generator_ready_patterns,
+      top_hooks: hooks.map((hook) => ({ label: hook.hook_label, op_score: hook.op_score, confidence: hook.confidence })),
+      top_formats: formats.map((format) => ({ label: format.label, avg_score: format.avg_score })),
+      transfer_note: niche.cross_platform_patterns > 5
+        ? "Есть переносимые механики между платформами."
+        : "Переносимость пока слабая: тестировать отдельно.",
+    };
+  }).sort((a, b) => b.understanding_score - a.understanding_score);
+}
+
+function buildDailyReport(input: {
+  totals: Record<string, unknown>;
+  today: Record<string, unknown> | null;
+  yesterday: Record<string, unknown> | null;
+  insightPayload: ReturnType<typeof buildInsights>;
+  antiPatternBrain: ReturnType<typeof buildAntiPatternBrain>;
+  discoveryBrain: ReturnType<typeof buildDiscoveryBrain>;
+}) {
+  const todayUseful = firstPositive(input.today?.usd_per_relevant, input.today?.usd_per_analyzed, input.today?.usd_per_inserted);
+  const yesterdayUseful = firstPositive(input.yesterday?.usd_per_relevant, input.yesterday?.usd_per_analyzed, input.yesterday?.usd_per_inserted);
+  const delta = todayUseful && yesterdayUseful ? Math.round((todayUseful - yesterdayUseful) / yesterdayUseful * 100) : null;
+  return {
+    title: "Что мозг понял за сутки",
+    bullets: [
+      `В памяти ${num(input.totals.analyzed_videos)} разобранных видео и ${num(input.totals.generator_ready_patterns)} generator-ready паттернов.`,
+      input.insightPayload.top_hooks?.[0] ? `Сильнейший хук: ${input.insightPayload.top_hooks[0].hook_label} (${input.insightPayload.top_hooks[0].op_score}/100).` : "Сильный хук пока не определён.",
+      delta == null ? "Сравнение стоимости ждёт новых cost-событий." : `Стоимость полезной насмотренности ${delta <= 0 ? "снизилась" : "выросла"} на ${Math.abs(delta)}%.`,
+      input.discoveryBrain.next_policy,
+      input.antiPatternBrain.summary,
+    ],
+    today_cost_usd: todayUseful || null,
+    yesterday_cost_usd: yesterdayUseful || null,
+    cost_delta_pct: delta,
+  };
 }
 
 function recipeTitle(pattern: InsightPattern) {
@@ -647,13 +951,23 @@ export async function GET(req: NextRequest) {
 
     const niches = splitList(req.nextUrl.searchParams.get("niches") || "ru_toys,ru_clothing,ru_cosmetics");
     const limit = Math.max(4, Math.min(80, Number(req.nextUrl.searchParams.get("limit") || 50)));
-    const { data, error } = await db
-      .from("niche_playbooks")
-      .select("niche,playbook,updated_at")
-      .in("niche", niches);
+    const [{ data, error }, { data: corpusRows, error: corpusError }] = await Promise.all([
+      db
+        .from("niche_playbooks")
+        .select("niche,playbook,updated_at")
+        .in("niche", niches),
+      db
+        .from("viral_videos")
+        .select("url,platform,niche,caption,hook_text,analyzed,source_orbit_id,virality_score,views")
+        .in("niche", niches)
+        .order("virality_score", { ascending: false, nullsFirst: false })
+        .limit(10000),
+    ]);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (corpusError) return NextResponse.json({ error: corpusError.message }, { status: 500 });
 
     const rows = ((data || []) as { niche?: string; playbook?: unknown; updated_at?: string }[]);
+    const corpusAudit = buildCorpusAudit((corpusRows || []) as CorpusAuditRow[]);
     const runMap = new Map<string, ReturnType<typeof automationRunHistory>[number] & { niches: Set<string> }>();
     const nicheSummaries = rows.map((row) => {
       const brain = patternBrain(row.playbook);
@@ -824,11 +1138,32 @@ export async function GET(req: NextRequest) {
       day_cost_trend: trendLabel(todayUseful, yesterdayUseful),
     };
 
+    const insightPayload = buildInsights(rows);
+    const antiPatternBrain = buildAntiPatternBrain(corpusAudit, insightPayload);
+    const discoveryBrain = buildDiscoveryBrain(insightPayload.source_map, corpusAudit);
+    const patternDecisionLayer = buildPatternDecisionLayer(insightPayload);
+    const nicheComparison = buildNicheComparison(nicheSummaries, insightPayload);
+    const dailyReport = buildDailyReport({
+      totals,
+      today,
+      yesterday,
+      insightPayload,
+      antiPatternBrain,
+      discoveryBrain,
+    });
+
     return NextResponse.json({
       ok: true,
       niches: nicheSummaries,
       totals,
-      insights: buildInsights(rows),
+      corpus_audit: corpusAudit,
+      insights: insightPayload,
+      pattern_details: patternDecisionLayer.pattern_details,
+      quality_gate: patternDecisionLayer.quality_gate,
+      niche_comparison: nicheComparison,
+      daily_report: dailyReport,
+      anti_pattern_brain: antiPatternBrain,
+      discovery_brain: discoveryBrain,
       timeline,
       daily_costs: {
         today,

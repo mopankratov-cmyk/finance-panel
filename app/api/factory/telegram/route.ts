@@ -5,6 +5,7 @@ import { internalFetch } from "@/lib/internalFetch";
 import { transcribeFal } from "@/lib/factory/asr";
 import { tgReady, tgOwnerChat, tgWebhookSecret, tgSetWebhook, tgFileUrl, tgAnswerCallback, tgSendMessage } from "@/lib/factory/telegram";
 import { extractJson } from "@/lib/factory/extractJson";
+import { parseVoiceTelegramSelection } from "@/lib/factory/voiceLearningLoop";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -83,6 +84,22 @@ async function parseIntent(text: string): Promise<{ verdict: string; reason: str
 
 const recipeFromCaption = (cap?: string): number | null => { const m = (cap || "").match(/#r(\d+)/); return m ? Number(m[1]) : null; };
 
+async function recordVoiceSelection(db: any, selection: ReturnType<typeof parseVoiceTelegramSelection>, source: "text" | "button") {
+  if (!db || !selection.selectedIndexes.length) return;
+  try {
+    await db.from("cf_signals").insert({
+      event: "voice_review_selected",
+      reason_chip: selection.selectedCandidateIds.join(", ").slice(0, 80) || selection.selectedIndexes.join(", "),
+      params: {
+        source: `telegram_voice_review_${source}`,
+        batch_id: selection.batchId,
+        selected_indexes: selection.selectedIndexes,
+        selected_candidate_ids: selection.selectedCandidateIds,
+      },
+    });
+  } catch { /* best-effort voice learning signal */ }
+}
+
 export async function POST(req: NextRequest) {
   try {
   // верификация FAIL-CLOSED: без токена ИЛИ при неверном секрете — молча игнорим (не пускаем дальше).
@@ -100,6 +117,14 @@ export async function POST(req: NextRequest) {
       const chatId = String(cq.message?.chat?.id || "");
       if (!owner || chatId !== owner) { await tgAnswerCallback(cq.id, owner ? "не твой чат" : "сначала задай FACTORY_TG_CHAT_ID в Vercel"); return NextResponse.json({ ok: true }); }
       const [act, idStr] = String(cq.data || "").split(":");
+      if (act === "vwin") {
+        const [, batchId, indexRaw, candidateId] = String(cq.data || "").split(":");
+        const selection = { batchId: batchId || null, selectedIndexes: [Number(indexRaw)].filter(Boolean), selectedCandidateIds: candidateId ? [candidateId] : [] };
+        await recordVoiceSelection(db, selection, "button");
+        await tgAnswerCallback(cq.id, `Принял №${indexRaw} как лучший голос.`);
+        await tgSendMessage(`Запомнил голос №${indexRaw}: ${candidateId || "без id"}.\nСледующий batch соберём вокруг него.`, chatId);
+        return NextResponse.json({ ok: true });
+      }
       const recipeId = Number(idStr);
       let msg = "не понял кнопку";
       if (recipeId && db) msg = await applyVerdict(origin, db, recipeId, act === "win" ? "approve" : "reject", "");
@@ -130,6 +155,18 @@ export async function POST(req: NextRequest) {
         const res = await applyVerdict(origin, db, recipeId, verdict, reason);
         await tgSendMessage(`🎙 «${tr.text.slice(0, 100)}»\n${res}`, chatId);
         return NextResponse.json({ ok: true });
+      }
+
+      // текст-отзыв как ответ на ролик
+      if (typeof m.text === "string" && /(^|[\s,;])#?v?\d{1,2}(?=$|[\s,;])/i.test(m.text)) {
+        const context = `${m.reply_to_message?.text || ""}\n${m.reply_to_message?.caption || ""}`;
+        const selection = parseVoiceTelegramSelection(m.text, context);
+        if (selection.selectedIndexes.length) {
+          await recordVoiceSelection(db, selection, "text");
+          const picked = selection.selectedCandidateIds.length ? `: ${selection.selectedCandidateIds.join(", ")}` : "";
+          await tgSendMessage(`Принял голос${selection.selectedIndexes.length > 1 ? "а" : ""} №${selection.selectedIndexes.join(", ")}${picked}.\nСледующий batch соберём вокруг выбранного.`, chatId);
+          return NextResponse.json({ ok: true });
+        }
       }
 
       // текст-отзыв как ответ на ролик

@@ -6,7 +6,7 @@ import { buildProductBrollPlan, type ProductBrollRecipe } from "@/lib/factory/pr
 import { buildProductCleanPrompt, imageBufferToDataUrl } from "@/lib/factory/productCleanSource";
 import { diskById } from "@/lib/factory/contentDisks";
 import { fetchWithRetry, runNanoBananaEdit } from "@/lib/factory/falImageEdit";
-import { getBestProductTwinAsset, getLatestProductTwinByArticle } from "@/lib/factory/productTwinStore";
+import { getBestProductTwinAsset, getLatestProductTwinByArticle, getProductTwinViewAssets } from "@/lib/factory/productTwinStore";
 import { falVideoSubmitDetailed, FAL_VIDEO_MODELS, type FalVideoModel } from "@/lib/factory/falVideo";
 import { yaDownloadHref } from "@/lib/yandex/disk";
 import { type ProductCategory } from "@/lib/factory/editPrompts";
@@ -160,9 +160,32 @@ export async function POST(req: NextRequest) {
       cleanResponseUrl?: string;
       twinId?: string;
       assetId?: string;
+      viewId?: string;
+      viewPurpose?: string;
     };
     const db = getSupabaseAdmin();
-    if (twinId) {
+    const sourceViewId = cleanText(body.view_id || body.viewId || body.source_view_id || body.sourceViewId, 80);
+    const useDerivedView = sourceViewId || body.use_derived_view === true || body.useDerivedView === true;
+    if (useDerivedView) {
+      if (!db) return NextResponse.json({ ok: false, error: "Supabase не настроен" }, { status: 500 });
+      const viewAssets = await getProductTwinViewAssets(db, {
+        article,
+        twinId,
+        viewId: sourceViewId || undefined,
+        limit: 80,
+      });
+      const pickedView = viewAssets[0] || null;
+      if (!pickedView) return NextResponse.json({ ok: false, error: sourceViewId ? `derived view ${sourceViewId} не найден` : "derived view для article/twin не найден" }, { status: 404 });
+      source = {
+        imageUrl: pickedView.url,
+        imageKind: "product_twin_view",
+        niche: pickedView.category,
+        twinId: pickedView.twinId,
+        assetId: pickedView.sourceAssetId,
+        viewId: pickedView.viewId,
+        viewPurpose: pickedView.purpose,
+      };
+    } else if (twinId) {
       if (!db) return NextResponse.json({ ok: false, error: "Supabase не настроен" }, { status: 500 });
       const picked = await getBestProductTwinAsset(db, { twinId, useCase: "broll" });
       if (!picked) return NextResponse.json({ ok: false, error: `twin ${twinId} не найден или нет broll_ready asset` }, { status: 404 });
@@ -235,6 +258,8 @@ export async function POST(req: NextRequest) {
         source_kind: source.imageKind,
         twin_id: source.twinId || null,
         asset_id: source.assetId || null,
+        view_id: source.viewId || null,
+        view_purpose: source.viewPurpose || null,
         original_source_kind: source.originalKind || null,
         original_source_path: source.originalPath || null,
         clean_source: cleanFirst ? {
@@ -258,6 +283,7 @@ export async function POST(req: NextRequest) {
         prompt_used: variant.prompt,
         twin_id: source.twinId || null,
         asset_id: source.assetId || null,
+        view_id: source.viewId || null,
         task_id: res.token ? `fv.${res.token}` : null,
         ok: Boolean(res.token),
         error: res.token ? null : res.reason || "fal submit failed",
@@ -275,6 +301,8 @@ export async function POST(req: NextRequest) {
       source_kind: source.imageKind,
       twin_id: source.twinId || null,
       asset_id: source.assetId || null,
+      view_id: source.viewId || null,
+      view_purpose: source.viewPurpose || null,
       original_source_kind: source.originalKind || null,
       original_source_path: source.originalPath || null,
       clean_source: cleanFirst ? {

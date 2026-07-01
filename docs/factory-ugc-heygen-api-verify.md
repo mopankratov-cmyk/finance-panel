@@ -59,3 +59,32 @@ Scope: UGC Factory sidecar only. No main factory wiring and no paid renders in t
 - Result saved in `docs/factory-ugc-heygen-smoke-madison-anya-2026-07-01.md`.
 - HeyGen video id: `30b3d56545d64b1aa8a4941d8968126e`.
 - Local mp4: `/tmp/ugc-factory-heygen/madison-anya-smoke-2026-07-01.mp4`.
+
+## Seed Audio Lip-Sync Smoke Added
+
+- One paid Seed Audio generation was run with `bytedance/seed-audio-1.0`.
+- One paid HeyGen lip-sync smoke was run using the Seed Audio `audio_url`, without HeyGen TTS/Anya.
+- Result saved in `docs/factory-ugc-heygen-smoke-madison-seed-audio-2026-07-01.md`.
+- HeyGen video id: `81d9fc8cb27741bba983293c7c59d121`.
+- Local mp4: `/tmp/ugc-factory-heygen/madison-seed-audio-smoke-2026-07-01.mp4`.
+
+## Seed Audio Repair Batch Added
+
+- Four short Seed Audio repair variants were generated, with exact-script prompts.
+- No HeyGen render was run for the repair batch.
+- Result saved in `docs/factory-ugc-seed-audio-repair-batch-2026-07-01.md`.
+- Local folder: `/tmp/ugc-factory-heygen/seed-audio-repair-2026-07-01/`.
+
+## Russian Voice Provider Bake-Off Added
+
+- MiniMax Speech-02 HD was tested via fal as the next likely Russian voice provider.
+- Four MiniMax voices were generated: `Wise_Woman`, `Calm_Woman`, `Lovely_Girl`, `Lively_Girl`.
+- Result saved in `docs/factory-ugc-russian-voice-provider-bakeoff-2026-07-01.md`.
+- Local folder: `/tmp/ugc-factory-voice-bakeoff-2026-07-01/minimax/`.
+
+## MiniMax Voice Tuning Added
+
+- Six MiniMax tuning variants were generated to reduce synthetic sound.
+- Tuned dimensions: speed, pitch, pauses, emotion, and slightly more conversational wording.
+- Result saved in `docs/factory-ugc-minimax-voice-tuning-2026-07-01.md`.
+- Local folder: `/tmp/ugc-factory-voice-bakeoff-2026-07-01/minimax-tune/`.

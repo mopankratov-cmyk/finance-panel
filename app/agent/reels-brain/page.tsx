@@ -1,8 +1,8 @@
 import { connection } from "next/server";
 
-import ReelsBrainConsole from "./ReelsBrainConsole";
+import ReelsBrainPixelCockpit from "./ReelsBrainPixelCockpit";
 
 export default async function Page() {
   await connection();
-  return <ReelsBrainConsole />;
+  return <ReelsBrainPixelCockpit />;
 }

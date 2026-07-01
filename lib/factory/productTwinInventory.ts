@@ -74,7 +74,7 @@ async function buildSourcePackReadiness(input: {
   return { supported: false, category: input.category, ok: false, presentRoles: [], missingRoles: [] };
 }
 
-function inferProductName(article: string): string {
+export function inferProductName(article: string): string {
   const mapped = ARTICLE_FOLDERS.find((item) => item.article === article);
   const folder = mapped?.prefix.split("/").filter(Boolean).pop();
   if (/^NV[-\w]*/i.test(article)) return `NORVIA куртка ${article}`;

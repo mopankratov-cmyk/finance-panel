@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { getProductTwinById } from "@/lib/factory/productTwinStore";
+import { withProductTwinPreviewUrls } from "@/lib/factory/productTwinPreview";
 
 export const dynamic = "force-dynamic";
 
@@ -11,7 +12,7 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ twin_id: s
     const { twin_id: twinId } = await ctx.params;
     const twin = await getProductTwinById(db, twinId);
     if (!twin) return NextResponse.json({ ok: false, error: "twin не найден" }, { status: 404 });
-    return NextResponse.json({ ok: true, twin }, { headers: { "Cache-Control": "no-store" } });
+    return NextResponse.json({ ok: true, twin: withProductTwinPreviewUrls(twin) }, { headers: { "Cache-Control": "no-store" } });
   } catch (e) {
     return NextResponse.json({
       ok: false,

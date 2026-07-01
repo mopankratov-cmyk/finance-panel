@@ -39,6 +39,8 @@ type TwinAsset = {
   assetId?: string;
   kind: string;
   url: string;
+  preview_url?: string;
+  previewUrl?: string;
   qualityScore?: number;
   brollReady?: boolean;
   heroReady?: boolean;
@@ -56,6 +58,20 @@ type Twin = {
   assets: TwinAsset[];
 };
 
+type TwinViewAsset = {
+  article: string;
+  twinId: string;
+  viewId: string;
+  label: string;
+  purpose: string;
+  truth: string;
+  url: string;
+  preview_url?: string;
+  previewUrl?: string;
+  path?: string;
+  createdAt?: string;
+};
+
 type RunLog = {
   at: string;
   action: string;
@@ -64,6 +80,17 @@ type RunLog = {
 };
 
 const DEFAULT_ARTICLES = "NV-08,NV-836,NV-816,NV-01,CLR00716,CLR00715,CLR001101,CLR001102";
+const REQUIRED_BASE_ASSETS = ["clean_png", "white_bg", "gray_bg", "shadow_bg", "upscaled"];
+const REQUIRED_SERVICE_ASSETS = ["object_mask", "alpha", "depth_map", "segmentation"];
+
+type TwinReadiness = {
+  status: "ready" | "review" | "missing";
+  baseReady: number;
+  serviceReady: number;
+  derivedReady: number;
+  missing: string[];
+  warnings: string[];
+};
 
 function splitArticles(value: string): string[] {
   return value.split(",").map((item) => item.trim()).filter(Boolean).slice(0, 50);
@@ -80,6 +107,54 @@ function statusClass(ok?: boolean): string {
   return "border-amber-200 bg-amber-50 text-amber-800";
 }
 
+function assetPreviewUrl(asset: TwinAsset): string {
+  if (asset.preview_url || asset.previewUrl) return asset.preview_url || asset.previewUrl || "";
+  if (asset.url?.startsWith("yandex-disk:")) return `/api/factory/product-twin/asset-preview?url=${encodeURIComponent(asset.url)}`;
+  return asset.url;
+}
+
+function viewPreviewUrl(view: TwinViewAsset): string {
+  if (view.preview_url || view.previewUrl) return view.preview_url || view.previewUrl || "";
+  if (view.url?.startsWith("yandex-disk:")) return `/api/factory/product-twin/asset-preview?url=${encodeURIComponent(view.url)}`;
+  return view.url;
+}
+
+function requiredDerivedViewCount(category?: string): number {
+  if (category === "apparel" || category === "bag") return 5;
+  if (category === "cosmetics" || category === "toy") return 4;
+  return 3;
+}
+
+function getTwinReadiness(twin: Twin | null, viewAssets: TwinViewAsset[]): TwinReadiness {
+  if (!twin) {
+    return { status: "missing", baseReady: 0, serviceReady: 0, derivedReady: viewAssets.length, missing: ["twin"], warnings: [] };
+  }
+  const kinds = new Set((twin.assets || []).map((asset) => asset.kind));
+  const missingBase = REQUIRED_BASE_ASSETS.filter((kind) => !kinds.has(kind));
+  const missingService = REQUIRED_SERVICE_ASSETS.filter((kind) => !kinds.has(kind));
+  const derivedTarget = requiredDerivedViewCount(twin.category);
+  const missingDerived = Math.max(0, derivedTarget - viewAssets.length);
+  const warnings: string[] = [];
+  if (Number(twin.qualityScore || 0) < 0.7) warnings.push("quality below 0.70");
+  if (!(twin.assets || []).some((asset) => asset.brollReady)) warnings.push("no b-roll ready asset");
+  const missing = [...missingBase, ...missingService, ...(missingDerived ? [`${missingDerived} derived views`] : [])];
+  const status = missing.length ? "missing" : warnings.length ? "review" : "ready";
+  return {
+    status,
+    baseReady: REQUIRED_BASE_ASSETS.length - missingBase.length,
+    serviceReady: REQUIRED_SERVICE_ASSETS.length - missingService.length,
+    derivedReady: viewAssets.length,
+    missing,
+    warnings,
+  };
+}
+
+function readinessClass(status: TwinReadiness["status"]): string {
+  if (status === "ready") return "border-emerald-200 bg-emerald-50 text-emerald-800";
+  if (status === "review") return "border-amber-200 bg-amber-50 text-amber-800";
+  return "border-rose-200 bg-rose-50 text-rose-800";
+}
+
 async function jsonFetch(url: string, init?: RequestInit) {
   const res = await fetch(url, { ...init, cache: "no-store" });
   const json = await res.json().catch(() => ({}));
@@ -91,11 +166,14 @@ export default function ProductTwinStudio() {
   const [articles, setArticles] = useState(DEFAULT_ARTICLES);
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [twins, setTwins] = useState<Record<string, Twin | null>>({});
+  const [views, setViews] = useState<Record<string, TwinViewAsset[]>>({});
   const [selected, setSelected] = useState<string>("NV-08");
   const [busy, setBusy] = useState<string | null>(null);
   const [logs, setLogs] = useState<RunLog[]>([]);
 
   const selectedTwin = twins[selected] || null;
+  const selectedViews = views[selected] || [];
+  const selectedReadiness = getTwinReadiness(selectedTwin, selectedViews);
   const selectedItem = items.find((item) => item.article === selected) || null;
   const articleList = useMemo(() => splitArticles(articles), [articles]);
   const readyCount = items.filter((item) => (item.source_pack_readiness || item.sourcePackReadiness)?.ok).length;
@@ -166,12 +244,25 @@ export default function ProductTwinStudio() {
         }
       }));
       setTwins(Object.fromEntries(entries));
+      await loadDerivedViews();
       pushLog("twins", true, "latest twins refreshed");
     } catch (e) {
       pushLog("twins", false, String((e as Error).message || e));
     } finally {
       setBusy(null);
     }
+  }
+
+  async function loadDerivedViews() {
+    const entries = await Promise.all(articleList.map(async (article) => {
+      try {
+        const data = await jsonFetch(`/api/factory/product-twin/views?article=${encodeURIComponent(article)}&limit=80`);
+        return [article, (data.views || []) as TwinViewAsset[]] as const;
+      } catch {
+        return [article, []] as const;
+      }
+    }));
+    setViews(Object.fromEntries(entries));
   }
 
   useEffect(() => {
@@ -311,11 +402,37 @@ export default function ProductTwinStudio() {
                     <div className="rounded-md bg-slate-100 p-2"><b>quality</b><br />{selectedTwin.qualityScore}</div>
                     <div className="rounded-md bg-slate-100 p-2"><b>status</b><br />{selectedTwin.status}</div>
                   </div>
+                  <div className={`rounded-md border p-3 text-xs ${readinessClass(selectedReadiness.status)}`}>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-black uppercase tracking-[0.12em]">Asset Readiness</span>
+                      <span className="font-black">{selectedReadiness.status}</span>
+                    </div>
+                    <div className="mt-2 grid grid-cols-3 gap-2 text-center">
+                      <div className="rounded bg-white/70 px-2 py-1">
+                        <b>{selectedReadiness.baseReady}/{REQUIRED_BASE_ASSETS.length}</b>
+                        <br />base
+                      </div>
+                      <div className="rounded bg-white/70 px-2 py-1">
+                        <b>{selectedReadiness.serviceReady}/{REQUIRED_SERVICE_ASSETS.length}</b>
+                        <br />service
+                      </div>
+                      <div className="rounded bg-white/70 px-2 py-1">
+                        <b>{selectedReadiness.derivedReady}/{requiredDerivedViewCount(selectedTwin.category)}</b>
+                        <br />views
+                      </div>
+                    </div>
+                    {(selectedReadiness.missing.length || selectedReadiness.warnings.length) ? (
+                      <div className="mt-2 space-y-1 font-medium">
+                        {selectedReadiness.missing.length ? <div>Missing: {selectedReadiness.missing.join(", ")}</div> : null}
+                        {selectedReadiness.warnings.length ? <div>Review: {selectedReadiness.warnings.join(", ")}</div> : null}
+                      </div>
+                    ) : null}
+                  </div>
                   <div className="grid grid-cols-2 gap-2">
                     {selectedTwin.assets?.filter((asset) => ["clean_png", "shadow_bg", "white_bg", "upscaled"].includes(asset.kind)).slice(0, 4).map((asset) => (
-                      <a key={`${asset.kind}-${asset.url}`} href={asset.url} target="_blank" className="overflow-hidden rounded-md border border-slate-200 bg-slate-100" rel="noreferrer">
+                      <a key={`${asset.kind}-${asset.url}`} href={assetPreviewUrl(asset)} target="_blank" className="overflow-hidden rounded-md border border-slate-200 bg-slate-100" rel="noreferrer">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={asset.url} alt={asset.kind} className="aspect-square w-full object-contain" />
+                        <img src={assetPreviewUrl(asset)} alt={asset.kind} className="aspect-square w-full object-contain" />
                         <div className="truncate px-2 py-1 text-xs font-bold text-slate-700">{asset.kind}</div>
                       </a>
                     ))}
@@ -324,6 +441,40 @@ export default function ProductTwinStudio() {
               ) : (
                 <div className="mt-3 rounded-md border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
                   Twin not loaded
+                </div>
+              )}
+            </section>
+
+            <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 text-sm font-black">
+                  <Eye className="h-5 w-5 text-violet-700" />
+                  Derived Views
+                </div>
+                <span className="rounded-md bg-slate-100 px-2 py-1 text-xs font-black text-slate-700">{selectedViews.length}</span>
+              </div>
+              {selectedViews.length ? (
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  {selectedViews.slice(0, 8).map((view) => (
+                    <a
+                      key={`${view.viewId}-${view.url}-${view.createdAt || ""}`}
+                      href={viewPreviewUrl(view)}
+                      target="_blank"
+                      className="overflow-hidden rounded-md border border-slate-200 bg-slate-100"
+                      rel="noreferrer"
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={viewPreviewUrl(view)} alt={view.label || view.viewId} className="aspect-square w-full object-contain" />
+                      <div className="px-2 py-1">
+                        <div className="truncate text-xs font-black text-slate-800">{view.viewId}</div>
+                        <div className="truncate text-[11px] font-medium text-slate-500">{view.purpose} · {view.truth}</div>
+                      </div>
+                    </a>
+                  ))}
+                </div>
+              ) : (
+                <div className="mt-3 rounded-md border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
+                  Views not loaded
                 </div>
               )}
             </section>

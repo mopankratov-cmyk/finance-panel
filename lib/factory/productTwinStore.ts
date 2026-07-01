@@ -29,6 +29,23 @@ interface ContentAssetRow {
   created_at?: string | null;
 }
 
+export interface ProductTwinViewAsset {
+  id?: string;
+  article: string;
+  twinId: string;
+  productName?: string;
+  category?: ProductTwinCategory;
+  viewId: string;
+  label: string;
+  purpose: string;
+  truth: string;
+  sourceAssetId?: string;
+  promptUsed?: string;
+  url: string;
+  path?: string;
+  createdAt?: string;
+}
+
 export async function downloadImageBuffer(url: string): Promise<{ ok: true; buffer: Buffer; contentType: string } | { ok: false; error: string }> {
   try {
     const res = await fetch(url, { cache: "no-store", signal: AbortSignal.timeout(30_000) });
@@ -374,4 +391,53 @@ export async function getBestProductTwinAsset(db: SupabaseClient, input: { twinI
   if (!twin) return null;
   const asset = pickBestTwinAsset(twin.assets, input.useCase);
   return asset ? { twin, asset } : null;
+}
+
+function rowToViewAsset(row: ContentAssetRow): ProductTwinViewAsset | null {
+  const tw = row.analysis?.product_twin as Record<string, unknown> | undefined;
+  const view = row.analysis?.product_twin_view_asset as Record<string, unknown> | undefined;
+  const url = String(row.url || "");
+  const twinId = String(tw?.twin_id || "");
+  const article = String(tw?.article || row.article || "");
+  const viewId = String(view?.view_id || "");
+  if (!url || !twinId || !article || !viewId) return null;
+  return {
+    id: row.id,
+    article,
+    twinId,
+    productName: String(tw?.product_name || "") || undefined,
+    category: String(tw?.category || row.niche || "") as ProductTwinCategory || undefined,
+    viewId,
+    label: String(view?.label || viewId),
+    purpose: String(view?.purpose || ""),
+    truth: String(view?.truth || ""),
+    sourceAssetId: String(view?.source_asset_id || "") || undefined,
+    promptUsed: String(view?.prompt_used || "") || undefined,
+    url,
+    path: row.path || undefined,
+    createdAt: row.created_at || undefined,
+  };
+}
+
+export async function getProductTwinViewAssets(db: SupabaseClient, input: {
+  article?: string;
+  twinId?: string;
+  viewId?: string;
+  limit?: number;
+}): Promise<ProductTwinViewAsset[]> {
+  const limit = Math.max(1, Math.min(300, input.limit || 120));
+  let query = db.from("content_assets")
+    .select("id,url,path,kind,article,niche,analysis,created_at")
+    .eq("disk", DISK)
+    .not("url", "is", null)
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  if (input.article) query = query.eq("article", input.article);
+  const { data } = await query;
+  let rows = ((data as ContentAssetRow[] | null) || [])
+    .map(rowToViewAsset)
+    .filter(Boolean) as ProductTwinViewAsset[];
+  if (input.twinId) rows = rows.filter((row) => row.twinId === input.twinId);
+  if (input.viewId) rows = rows.filter((row) => row.viewId === input.viewId);
+  return rows;
 }

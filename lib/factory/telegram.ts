@@ -2,6 +2,9 @@
 // Шлёт оператору видео на ревью с кнопками ✓Беру/✕Не то; принимает голос-ревью (см. webhook).
 // Ключи: FACTORY_TG_BOT_TOKEN + FACTORY_TG_CHAT_ID (владелец в Vercel). Мягкая деградация без них.
 
+import { readFile } from "node:fs/promises";
+import path from "node:path";
+
 const token = (): string | null => process.env.FACTORY_TG_BOT_TOKEN || null;
 export const tgOwnerChat = (): string | null => process.env.FACTORY_TG_CHAT_ID || null;
 export const tgReady = (): boolean => !!token();
@@ -13,6 +16,14 @@ async function tgApi(method: string, body: Record<string, unknown>): Promise<any
   if (!token()) return { ok: false, error: "FACTORY_TG_BOT_TOKEN не настроен" };
   try {
     const r = await fetch(API(method), { method: "POST", headers: { "Content-Type": "application/json" }, cache: "no-store", body: JSON.stringify(body), signal: AbortSignal.timeout(25000) });
+    return await r.json().catch(() => ({ ok: false, error: `telegram ${r.status}: не JSON` }));
+  } catch (e) { return { ok: false, error: String((e as Error)?.message || e).slice(0, 120) }; }
+}
+
+async function tgMultipart(method: string, form: FormData): Promise<any> {
+  if (!token()) return { ok: false, error: "FACTORY_TG_BOT_TOKEN не настроен" };
+  try {
+    const r = await fetch(API(method), { method: "POST", body: form, cache: "no-store", signal: AbortSignal.timeout(45000) });
     return await r.json().catch(() => ({ ok: false, error: `telegram ${r.status}: не JSON` }));
   } catch (e) { return { ok: false, error: String((e as Error)?.message || e).slice(0, 120) }; }
 }
@@ -37,6 +48,78 @@ export async function tgSendMessage(text: string, chatId?: string) {
   const chat = chatId || tgOwnerChat();
   if (!chat) return { ok: false, error: "нет chat_id" };
   return tgApi("sendMessage", { chat_id: chat, text: text.slice(0, 4000) });
+}
+
+function voiceReviewKeyboard(batchId: string, candidateId: string, index: number) {
+  return { inline_keyboard: [[
+    { text: `✓ №${index} лучший`, callback_data: `vwin:${batchId}:${index}:${candidateId}` },
+  ]] };
+}
+
+export async function tgSendAudioReviewItem(input: {
+  batchId: string;
+  index: number;
+  candidateId: string;
+  caption?: string;
+  audioUrl?: string;
+  filePath?: string;
+  chatId?: string;
+}) {
+  const chat = input.chatId || tgOwnerChat();
+  if (!chat) return { ok: false, error: "нет chat_id" };
+  const caption = [
+    `№${input.index} · ${input.candidateId}`,
+    `#voicebatch_${input.batchId} #v${input.index}`,
+    input.caption || "",
+    "Ответь цифрой на список или нажми кнопку.",
+  ].filter(Boolean).join("\n").slice(0, 1024);
+  const reply_markup = voiceReviewKeyboard(input.batchId, input.candidateId, input.index);
+
+  if (input.audioUrl) {
+    return tgApi("sendAudio", { chat_id: chat, audio: input.audioUrl, caption, reply_markup });
+  }
+  if (!input.filePath) return { ok: false, error: "нужен audioUrl или filePath" };
+
+  const buffer = await readFile(input.filePath);
+  const form = new FormData();
+  form.set("chat_id", chat);
+  form.set("caption", caption);
+  form.set("reply_markup", JSON.stringify(reply_markup));
+  form.set("audio", new Blob([buffer], { type: "audio/mpeg" }), path.basename(input.filePath));
+  return tgMultipart("sendAudio", form);
+}
+
+export async function tgSendVoiceReviewBatch(input: {
+  batchId: string;
+  title: string;
+  items: Array<{ candidateId: string; caption?: string; audioUrl?: string; filePath?: string }>;
+  chatId?: string;
+}) {
+  const chat = input.chatId || tgOwnerChat();
+  if (!chat) return { ok: false, error: "нет chat_id" };
+  const list = input.items.map((item, index) => `${index + 1}. ${item.candidateId}${item.caption ? ` — ${item.caption}` : ""}`).join("\n");
+  const intro = [
+    `Голосовой shortlist: ${input.title}`,
+    `#voicebatch_${input.batchId}`,
+    "",
+    list,
+    "",
+    "Ответь на это сообщение номером лучшего: например 1 или 1,3.",
+  ].join("\n").slice(0, 4000);
+  const introResult = await tgSendMessage(intro, chat);
+  const sent = [];
+  for (let i = 0; i < input.items.length; i++) {
+    sent.push(await tgSendAudioReviewItem({
+      batchId: input.batchId,
+      index: i + 1,
+      candidateId: input.items[i].candidateId,
+      caption: input.items[i].caption,
+      audioUrl: input.items[i].audioUrl,
+      filePath: input.items[i].filePath,
+      chatId: chat,
+    }));
+  }
+  return { ok: sent.every((result) => result?.ok), intro: introResult, sent };
 }
 
 export async function tgAnswerCallback(callbackQueryId: string, text: string) {
