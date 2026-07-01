@@ -119,6 +119,14 @@ import { buildKatyaLearningLoop } from "./bloggerLearningLoop";
 }
 
 {
+  const autopilot = readFileSync("lib/factory/bloggerLearningLoopAutopilot.mjs", "utf8");
+  ok(/--start-generation/.test(autopilot), "autopilot accepts start generation");
+  ok(/--count/.test(autopilot), "autopilot can run multiple generations");
+  ok(/repo_prior_dir|repo-prior-dir/.test(autopilot), "autopilot can persist next prior files");
+  ok(/auto-prior-results\.json/.test(autopilot), "autopilot writes auto selection artifacts");
+}
+
+{
   const source = readFileSync("lib/factory/bloggerLearningLoop.ts", "utf8");
   ok(/target_runs/.test(source), "loop exposes target run count");
   ok(/generation_size/.test(source), "loop exposes generation size");
@@ -180,6 +188,60 @@ import { buildKatyaLearningLoop } from "./bloggerLearningLoop";
   ok(auto.winners.includes("katya_lab__g04__01__entryway_jacket__three_quarter_left__skeptical_pause"), "auto selector keeps the strongest skeptical variant");
   ok(auto.winners.includes("katya_lab__g04__04__mirror_selfie__three_quarter_left__friend_advice"), "auto selector keeps the strongest friend-advice variant");
   ok(auto.prior_results.length >= 5, "auto selector produces next-generation memory payload");
+}
+
+{
+  const plan = buildKatyaLearningLoop({
+    target_runs: 5,
+    generation_size: 5,
+    start_generation: 7,
+    prior_results: [
+      {
+        run_id: "katya_lab__g06__04__mirror_selfie__three_quarter_left__friend_advice",
+        scores: {
+          face_realism: 8,
+          motion_realism: 9,
+          lip_sync: 7,
+          voice_naturalness: 7,
+          room_authenticity: 8,
+          anti_ai_first_2s: 9,
+          repeatability_penalty: 2,
+        },
+      },
+      {
+        run_id: "katya_lab__g06__01__mirror_selfie__three_quarter_left__friend_advice",
+        scores: {
+          face_realism: 8,
+          motion_realism: 9,
+          lip_sync: 7,
+          voice_naturalness: 7,
+          room_authenticity: 8,
+          anti_ai_first_2s: 9,
+          repeatability_penalty: 2,
+        },
+      },
+    ],
+  });
+  const generationRuns = plan.planned_runs.filter((run) => run.generation === 7);
+  const auto = autoSelectKatyaGeneration({
+    plan,
+    generation: 7,
+    top_k: 2,
+    results: generationRuns.map((run) => ({
+      ok: true,
+      run_id: run.run_id,
+      generation: run.generation,
+      sequence: run.sequence,
+      scene_id: run.scene_id,
+      camera_angle_id: run.camera_angle_id,
+      pose_id: run.pose_id,
+      expression_id: run.expression_id,
+      motion_preset: run.motion_preset,
+      expressiveness: run.expressiveness,
+    })),
+  });
+  ok(auto.winners.includes("katya_lab__g07__04__mirror_selfie__three_quarter_left__friend_advice"), "auto selector keeps the best main winner");
+  ok(auto.winners.includes("katya_lab__g07__05__mirror_selfie__three_quarter_left__skeptical_pause"), "auto selector preserves a near-best diverse family");
 }
 
 console.log("bloggerLearningLoopContract: passed");

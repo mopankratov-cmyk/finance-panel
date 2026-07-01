@@ -170,6 +170,38 @@ function selectionConfidence(ranked: BloggerEvaluationResult[], topK: number): B
   return "low";
 }
 
+function familyKeyForRun(run: KatyaLearningRun): string {
+  return `${run.scene_id}__${run.motion_preset}`;
+}
+
+function enforceWinnerDiversity(input: {
+  ranked: BloggerEvaluationResult[];
+  runById: Map<string, KatyaLearningRun>;
+  topK: number;
+}): string[] {
+  const initial = input.ranked
+    .slice(0, input.topK)
+    .map((item) => String(item.run_id || ""))
+    .filter(Boolean);
+  if (initial.length < 2) return initial;
+
+  const firstRun = input.runById.get(initial[0]);
+  const secondRun = input.runById.get(initial[1]);
+  if (!firstRun || !secondRun) return initial;
+  if (familyKeyForRun(firstRun) !== familyKeyForRun(secondRun)) return initial;
+
+  const firstScore = runScore(input.ranked[0]);
+  const replacement = input.ranked.slice(input.topK).find((candidate) => {
+    const run = input.runById.get(String(candidate.run_id || ""));
+    if (!run) return false;
+    const delta = firstScore - runScore(candidate);
+    return familyKeyForRun(run) !== familyKeyForRun(firstRun) && delta <= 3;
+  });
+
+  if (!replacement?.run_id) return initial;
+  return [initial[0], String(replacement.run_id)];
+}
+
 export function autoSelectKatyaGeneration(input: {
   plan: KatyaLearningLoopPlan;
   results: BloggerLearningRenderResult[];
@@ -179,6 +211,7 @@ export function autoSelectKatyaGeneration(input: {
   const topK = Math.max(1, Math.min(5, Math.floor(input.top_k || 2)));
   const generation = input.generation;
   const runs = input.plan.planned_runs.filter((run) => run.generation === generation);
+  const runById = new Map(runs.map((run) => [run.run_id, run]));
   const okResults = input.results.filter((result) => result.ok);
   const familyCounts = countBy(runs, (run) => `${run.scene_id}__${run.camera_angle_id}__${run.motion_preset}`);
 
@@ -204,7 +237,11 @@ export function autoSelectKatyaGeneration(input: {
     })
     .sort((a, b) => runScore(b) - runScore(a));
 
-  const winners = rankedEvaluations.slice(0, topK).map((item) => String(item.run_id || "")).filter(Boolean);
+  const winners = enforceWinnerDiversity({
+    ranked: rankedEvaluations,
+    runById,
+    topK,
+  });
   const confidence = selectionConfidence(rankedEvaluations, topK);
   const prior_results = rankedEvaluations.map((evaluation, index) => {
     const scores = Object.fromEntries(

@@ -407,11 +407,20 @@ function buildTightenedRuns(input: {
   const primary = input.anchors[0] || {};
   const secondary = input.anchors[1] || {};
   const primaryScene = SCENES.find((item) => item.id === primary.sceneId) || SCENES.find((item) => item.id === "sofa_evening")!;
-  const secondaryScene = SCENES.find((item) => item.id === secondary.sceneId) || SCENES.find((item) => item.id === "entryway_jacket")!;
+  const sameScene = primary.sceneId && secondary.sceneId && primary.sceneId === secondary.sceneId;
+  const sameMotion = primary.motionId && secondary.motionId && primary.motionId === secondary.motionId;
+  const forceContrast = !!(sameScene && sameMotion);
+  const secondarySceneFallback = forceContrast
+    ? (primaryScene.id === "mirror_selfie" ? "entryway_jacket" : "mirror_selfie")
+    : "entryway_jacket";
+  const secondaryScene = SCENES.find((item) => item.id === secondary.sceneId)
+    || SCENES.find((item) => item.id === secondarySceneFallback)!;
   const primaryAngle = ANGLES.find((item) => item.id === primary.angleId) || ANGLES.find((item) => item.id === "three_quarter_left")!;
   const secondaryAngle = ANGLES.find((item) => item.id === secondary.angleId) || ANGLES.find((item) => item.id === "three_quarter_right")!;
   const primaryMotion = primary.motionId || "tired_honest";
-  const secondaryMotion = secondary.motionId || "skeptical_pause";
+  const secondaryMotion = forceContrast
+    ? (primaryMotion === "friend_advice" ? "skeptical_pause" : "friend_advice")
+    : (secondary.motionId || "skeptical_pause");
   const poseA = POSES.find((item) => item.id === "leaning_on_table")!;
   const poseB = POSES.find((item) => item.id === "standing_relaxed")!;
   const poseC = POSES.find((item) => item.id === "phone_in_hand")!;

@@ -46,6 +46,32 @@
     - `katya_lab__g06__01__mirror_selfie__three_quarter_left__friend_advice`
   - loop сам начал стягиваться в `mirror_selfie + friend_advice` как текущий strongest basin
 
+### 2026-07-01  Katya autopilot and diversity guard
+
+- Ветка: `feat/product-broll-operator-get-clean`
+- Цель: перевести Katya loop из "generation-by-generation вручную" в настоящий multi-generation autopilot и не дать ему схлопнуться в один шаблон.
+- Изменено:
+  - `lib/factory/bloggerLearningLoopAutopilot.mjs`: generation chaining с auto-prior handoff между поколениями
+  - `lib/factory/bloggerLearningAutoSelect.ts`: diversity guard при выборе winners
+  - `lib/factory/bloggerLearningLoop.ts`: contrast guard в tightened planner, если прошлые winners принадлежат одной семье
+  - `lib/factory/bloggerLearningLoopContract.test.mts`: контракт на autopilot и anti-collapse behavior
+  - `docs/factory-ugc-katya-actor-learning-loop-2026-07-01.md`: задокументирован autopilot + anti-collapse upgrade
+- Проверки:
+  - `npx tsx lib/factory/bloggerLearningLoopContract.test.mts`
+  - `npx tsc --noEmit --pretty false`
+  - live autopilot run `generation 7 -> generation 8`
+  - repeat live autopilot run `generation 7 -> generation 8` после diversity upgrade
+- Результат:
+  - без guard-а autopilot быстро схлопывался в `mirror_selfie + friend_advice`
+  - после guard-а winners стали:
+    - generation 7:
+      - `katya_lab__g07__04__mirror_selfie__three_quarter_left__friend_advice`
+      - `katya_lab__g07__05__mirror_selfie__three_quarter_left__skeptical_pause`
+    - generation 8:
+      - `katya_lab__g08__04__mirror_selfie__three_quarter_left__friend_advice`
+      - `katya_lab__g08__05__mirror_selfie__three_quarter_left__skeptical_pause`
+  - loop теперь сохраняет двухветочную конкуренцию вместо монокультуры
+
 ### 2026-07-01  Blogger motion loop
 
 - Ветка: `feat/product-broll-operator-get-clean`

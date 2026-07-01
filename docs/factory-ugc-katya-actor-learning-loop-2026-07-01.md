@@ -600,3 +600,50 @@ node --import tsx lib/factory/bloggerLearningLoopRunner.mjs --generation 6 --lim
   - `three_quarter_left`
   - `friend_advice`
 - следующая инженерная задача уже не "можем ли мы учиться без человека", а "как не схлопнуться в один шаблон и когда расширять wardrobe/environment matrix".
+
+## Autopilot and anti-collapse upgrade
+
+После generation 6 был запущен настоящий autopilot:
+
+- `lib/factory/bloggerLearningLoopAutopilot.mjs`
+- он сам делает generation -> auto-select -> next prior file -> next generation
+
+Первый прогон autopilot (`generation 7 -> generation 8`) показал важную проблему:
+
+- петля действительно учится;
+- но без дополнительной защиты она слишком быстро схлопывается в одну семью:
+  - `mirror_selfie`
+  - `friend_advice`
+
+Это полезный failure mode: значит контур уже достаточно сильный, чтобы залипать в локальный максимум.
+
+### Что было улучшено
+
+Добавлены два слоя защиты:
+
+1. `autoSelect` diversity guard  
+   Если top-2 слишком похожи, а рядом есть почти такой же по score кандидат из другой семьи, в winners сохраняется и этот альтернативный кандидат.
+
+2. `tightened planner` contrast guard  
+   Если два последних winners принадлежат одной и той же семье, следующий batch обязан сохранить contrast branch вместо полного копирования одной линии.
+
+### Повторный autopilot run после улучшения
+
+Повторный прогон `generation 7 -> generation 8` после diversity upgrade показал уже более здоровое поведение:
+
+- generation 7 winners:
+  - `katya_lab__g07__04__mirror_selfie__three_quarter_left__friend_advice`
+  - `katya_lab__g07__05__mirror_selfie__three_quarter_left__skeptical_pause`
+- generation 8 winners:
+  - `katya_lab__g08__04__mirror_selfie__three_quarter_left__friend_advice`
+  - `katya_lab__g08__05__mirror_selfie__three_quarter_left__skeptical_pause`
+
+Ключевой вывод:
+
+- петля не потеряла лучший basin;
+- но перестала превращаться в монокультуру;
+- теперь она держит в живых две конкурентные семьи:
+  - `mirror_selfie + friend_advice`
+  - `mirror_selfie + skeptical_pause`
+
+То есть да: learning loop уже не просто повторяет старое, а улучшает собственную стратегию поиска.
