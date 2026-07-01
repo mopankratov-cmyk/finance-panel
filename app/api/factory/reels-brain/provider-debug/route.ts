@@ -1,18 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { debugEnsembleInstagramSearch } from "@/lib/factory/reelsBrainSources";
 import { debugApifyTiktokSearch } from "@/lib/factory/trendSources";
+import { isAuthorizedReelsBrainJobRequest } from "@/lib/factory/reelsBrainJobAuth";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-function authOk(req: NextRequest): boolean {
-  const secret = process.env.CRON_SECRET || "";
-  if (!secret) return true;
-  return req.headers.get("authorization") === `Bearer ${secret}`;
-}
-
 export async function GET(req: NextRequest) {
-  if (!authOk(req)) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if (!(await isAuthorizedReelsBrainJobRequest(req))) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const query = String(req.nextUrl.searchParams.get("query") || "skincare routine").trim().slice(0, 120);
   const provider = String(req.nextUrl.searchParams.get("provider") || "ensemble_instagram").trim().toLowerCase();
   if (provider === "apify_tiktok") {

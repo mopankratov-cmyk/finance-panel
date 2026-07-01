@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { isAuthorizedReelsBrainJobRequest } from "@/lib/factory/reelsBrainJobAuth";
+import { parseReelsBrainNiches } from "@/lib/factory/reelsBrainDigest";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -13,12 +15,6 @@ const REELS_BRAIN_PLAYBOOK_KEYS = [
   "reels_brain_incidents",
   "reels_brain_top_hooks",
 ];
-
-function authOk(req: NextRequest): boolean {
-  const secret = process.env.CRON_SECRET || "";
-  if (!secret) return true;
-  return req.headers.get("authorization") === `Bearer ${secret}`;
-}
 
 function rec(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
@@ -36,9 +32,9 @@ function cleanPlaybook(value: unknown): { playbook: Record<string, unknown>; cha
   return { playbook, changed };
 }
 
-async function snapshot(db: NonNullable<ReturnType<typeof getSupabaseAdmin>>) {
+async function snapshot(db: NonNullable<ReturnType<typeof getSupabaseAdmin>>, niches: string[]) {
   const [{ count: videos }, { data: playbooks }] = await Promise.all([
-    db.from("viral_videos").select("id", { count: "exact", head: true }),
+    db.from("viral_videos").select("id", { count: "exact", head: true }).in("niche", niches),
     db.from("niche_playbooks").select("niche,playbook").limit(5000),
   ]);
   const rows = (playbooks as { niche?: string; playbook?: unknown }[] | null) || [];
@@ -52,17 +48,19 @@ async function snapshot(db: NonNullable<ReturnType<typeof getSupabaseAdmin>>) {
 }
 
 async function reset(req: NextRequest, execute: boolean) {
-  if (!authOk(req)) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if (!(await isAuthorizedReelsBrainJobRequest(req))) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ ok: false, error: "Supabase не настроен" }, { status: 500 });
 
-  const before = await snapshot(db);
+  const niches = parseReelsBrainNiches(req.nextUrl.searchParams.get("niches"));
+  const before = await snapshot(db, niches);
   if (!execute) {
     return NextResponse.json({
       ok: true,
       execute: false,
       required_confirm: CONFIRM,
-      scope: "Reels Brain only: viral_videos + reels_brain_* fields in niche_playbooks",
+      scope: `Reels Brain only: viral_videos (niches: ${niches.join(", ")}) + reels_brain_* fields in niche_playbooks`,
+      niches,
       before,
     }, { headers: { "Cache-Control": "no-store" } });
   }
@@ -79,7 +77,7 @@ async function reset(req: NextRequest, execute: boolean) {
   const { error: videosError } = await db
     .from("viral_videos")
     .delete()
-    .neq("url", "__never__");
+    .in("niche", niches);
   if (videosError) return NextResponse.json({ ok: false, step: "viral_videos", error: videosError.message }, { status: 500 });
 
   const { data: playbooks, error: playbooksError } = await db
@@ -102,11 +100,12 @@ async function reset(req: NextRequest, execute: boolean) {
     playbooksCleared++;
   }
 
-  const after = await snapshot(db);
+  const after = await snapshot(db, niches);
   return NextResponse.json({
     ok: true,
     execute: true,
-    scope: "Reels Brain only",
+    scope: `Reels Brain only (niches: ${niches.join(", ")})`,
+    niches,
     before,
     reset: {
       viral_videos_deleted: before.viral_videos,
