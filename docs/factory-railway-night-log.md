@@ -2,6 +2,16 @@
 
 Этот журнал ведёт отдельный AI-worker на Railway во время ночных задач по контент-заводу.
 
+### 2026-07-01  UGC living blogger 6-month roadmap
+
+- Ветка: `feat/product-broll-operator-get-clean`
+- Цель: превратить удачные HeyGen blogger smoke в долгий план по "оживлению" блогеров и learning loop, а не в разовые тесты.
+- Изменено:
+  - добавлен roadmap `docs/factory-ugc-living-blogger-6mo-roadmap-2026-07-01.md`
+- Результат:
+  - зафиксирован 6-месячный план по blogger realism, motion variation, voice+face pairing, storyboard learning и market feedback brain
+  - ближайший execution lane: rubric -> variant registry -> controlled batch -> repeatability penalty
+
 ### 2026-07-01  UGC storyboard sidecar
 
 - Ветка: `codex/reels-brain-learning-mission`
