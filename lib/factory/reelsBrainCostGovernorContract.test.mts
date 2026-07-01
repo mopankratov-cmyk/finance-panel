@@ -32,5 +32,7 @@ ok(!/POST\s*\(/.test(report), "report route is read-only");
 
 ok(/costGovernor/.test(cockpit) && /autopilotActions/.test(cockpit), "cockpit reads cost governor and autopilot actions");
 ok(/nextLayers/.test(cockpit), "cockpit reads next intelligence layers");
+ok(/selectedPattern/.test(cockpit) && /rb-drawer/.test(cockpit), "cockpit exposes pattern creative brief drawer");
+ok(/rb-click/.test(cockpit) && /setSelectedPattern/.test(cockpit), "cockpit pattern cards are inspectable");
 
 console.log("reelsBrainCostGovernorContract: passed");
