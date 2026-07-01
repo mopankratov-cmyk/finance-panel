@@ -207,11 +207,9 @@ export async function falTimeline(
   if (!k) return { error: "FAL_KEY не настроен" };
   if (!clips.length) return { error: "пустой список клипов" };
 
-  // Строим треки: видео-клипы → один video-трек с keyframes по таймлайну;
-  // image-клипы выставляем как полноэкранные image-треки в нужный временной слот.
-  // Полное наложение не то — FAL compose суммирует треки по z-order, а НЕ конкатенирует.
-  // Поэтому используем один video-трек: video-клипы последовательно, image-клипы — отдельные image-треки
-  // (видео-трек прерывается, image-трек «заполняет» паузу).
+  // Строим по одному таймлайн-треку на media type.
+  // Для slideshow из статичных кадров FAL ожидает один image-track с несколькими keyframes,
+  // а не отдельный track на каждый кадр. Иначе queue submit может пройти, но result вернёт 400.
   const videoKeyframes: { timestamp: number; duration: number; url: string }[] = [];
   const imageKeyframes: { timestamp: number; duration: number; url: string }[] = [];
   let t = 0; // мс (fal compose keyframes — в МИЛЛИСЕКУНДАХ, не секундах)
@@ -226,24 +224,35 @@ export async function falTimeline(
 
   const tracks: any[] = [];
   if (videoKeyframes.length) tracks.push({ id: "v", type: "video", keyframes: videoKeyframes });
-  // каждый image-слот → отдельный image-трек (чтобы не перекрывались)
-  imageKeyframes.forEach((kf, i) => tracks.push({ id: `img${i}`, type: "image", keyframes: [kf] }));
+  if (imageKeyframes.length) tracks.push({ id: "img", type: "image", keyframes: imageKeyframes });
   if (opts?.audioUrl) tracks.push({ id: "a", type: "audio", keyframes: [{ timestamp: 0, duration: totalDur, url: opts.audioUrl }] });
   const deadline = Date.now() + (opts?.maxWaitMs || 55000);
   try {
     const sub = await fetch(`${QUEUE}fal-ai/ffmpeg-api/compose`, { method: "POST", headers: { ...auth, "Content-Type": "application/json" }, cache: "no-store", body: JSON.stringify({ tracks }), signal: AbortSignal.timeout(25000) });
-    if (!sub.ok) return { error: `fal timeline compose ${sub.status}` };
+    if (!sub.ok) {
+      const text = await sub.text().catch(() => "");
+      return { error: `fal timeline compose ${sub.status}: ${text.slice(0, 180)}` };
+    }
     const sj = (await sub.json()) as { response_url?: string };
     const responseUrl = sj.response_url;
     if (!responseUrl) return { error: "timeline compose без response_url" };
     while (Date.now() < deadline) {
       const st = await fetch(`${responseUrl}/status`, { headers: auth, cache: "no-store", signal: AbortSignal.timeout(15000) });
-      if (st.ok) { const s = (await st.json()) as { status?: string }; if (s.status === "COMPLETED") break; }
+      if (st.ok) {
+        const s = (await st.json()) as { status?: string };
+        if (s.status === "COMPLETED") break;
+      } else if (st.status >= 400) {
+        const text = await st.text().catch(() => "");
+        return { responseUrl, error: `timeline status ${st.status}: ${text.slice(0, 180)}` };
+      }
       await new Promise((r) => setTimeout(r, 3000 + Math.floor(Math.random() * 700)));
     }
     if (Date.now() >= deadline) return { pending: true, responseUrl, error: "timeline compose still processing" };
     const res = await fetch(responseUrl, { headers: auth, cache: "no-store", signal: AbortSignal.timeout(15000) });
-    if (!res.ok) return { error: `timeline result ${res.status}` };
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      return { responseUrl, error: `timeline result ${res.status}: ${text.slice(0, 180)}` };
+    }
     const rj = (await res.json()) as Record<string, unknown>;
     const url = extractFalVideoUrl(rj);
     return url ? { videoUrl: url } : { responseUrl, error: "timeline без video_url" };
