@@ -2,6 +2,24 @@
 
 Этот журнал ведёт отдельный AI-worker на Railway во время ночных задач по контент-заводу.
 
+### 2026-07-01  Blogger motion loop
+
+- Ветка: `feat/product-broll-operator-get-clean`
+- Цель: убрать однотипные повороты головы/мимику через motion taxonomy и repeatability detector.
+- Изменено:
+  - `lib/factory/bloggerMotion.ts`: motion presets, controlled batch planner, repeatability detector
+  - `app/api/factory/blogger-motion/route.ts`: dry-run endpoint для batch/repeatability
+  - `lib/factory/bloggerMotionContract.test.mts`: контракт на taxonomy, batch и detector
+  - `docs/factory-ugc-blogger-motion-loop-2026-07-01.md`: runbook
+- Проверки:
+  - `npx tsx lib/factory/bloggerMotionContract.test.mts`
+  - `npx tsx lib/factory/bloggerRegistryContract.test.mts`
+  - `npx tsx lib/factory/ugcStoryboardContract.test.mts`
+  - `npx tsc --noEmit --pretty false`
+- Результат:
+  - следующие HeyGen samples можно планировать как controlled motion batch
+  - повторяемость стала измеримой до и после платного прогона
+
 ### 2026-07-01  Blogger rubric and registry
 
 - Ветка: `feat/product-broll-operator-get-clean`
