@@ -2807,3 +2807,27 @@
   - `npx tsx lib/factory/heygenClientContract.test.mts`
   - `npx tsx lib/factory/heygenVideoContract.test.mts`
   - `npx tsx lib/factory/bloggerMotionContract.test.mts`
+
+### UGC Katya actor learning loop
+
+- Дата: 2026-07-01
+- Ветка: `feat/product-broll-operator-get-clean`
+- Решение:
+  - Временно не добавляем B-roll и товар.
+  - Фокус только на доработке одного блогера: Катя в разных обстановках, ракурсах, позах, expression и motion.
+  - 100 прогонов делаем поколениями, а не одной пачкой.
+- Изменено:
+  - `lib/factory/bloggerLearningLoop.ts`: dry-run planner для 100 Katya actor runs.
+  - `app/api/factory/blogger-learning-loop/route.ts`: API для плана поколений, без paid render.
+  - `lib/factory/bloggerLearningLoopContract.test.mts`: контракт на 100 runs, вариативность и запрет B-roll/product.
+  - `docs/factory-ugc-katya-actor-learning-loop-2026-07-01.md`: операционный план обучения.
+- Архитектура loop:
+  - `target_runs`: 100.
+  - `generation_size`: 12.
+  - `generation_count`: 9.
+  - Оси: scene, camera angle, pose, expression, motion preset, expressiveness.
+  - Runner пока не тратит деньги: следующий шаг — paid runner только для одного поколения.
+- Проверки:
+  - `npx tsx lib/factory/bloggerLearningLoopContract.test.mts`
+  - `npx tsx lib/factory/bloggerMotionContract.test.mts`
+  - `npx tsc --noEmit --pretty false`
