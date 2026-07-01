@@ -91,10 +91,10 @@ async function executeNextTick(req: NextRequest, plan: JsonRecord, execute: bool
       ...params,
     };
     const primary = await runLearningEndpoint(req, body);
+    const primaryInserted = resultCount(primary.result as JsonRecord, "inserted");
     const shouldRecoverInstagram = task === "collect_platform_catchup"
       && String(body.platforms || "") === "youtube"
-      && resultCount(primary.result as JsonRecord, "found") === 0
-      && resultCount(primary.result as JsonRecord, "inserted") === 0;
+      && primaryInserted === 0;
     if (!shouldRecoverInstagram) {
       return { executed: true, task, endpoint, params: body, result: primary.result, ok: primary.ok };
     }
@@ -118,7 +118,7 @@ async function executeNextTick(req: NextRequest, plan: JsonRecord, execute: bool
       result: primary.result,
       ok: primary.ok || fallback.ok,
       fallback: {
-        reason: "youtube_zero_results",
+        reason: resultCount(primary.result as JsonRecord, "found") > 0 ? "youtube_no_new_inserts" : "youtube_zero_results",
         task: "collect_platform_catchup",
         endpoint,
         params: fallbackBody,
