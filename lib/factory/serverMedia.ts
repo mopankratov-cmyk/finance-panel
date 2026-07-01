@@ -34,6 +34,10 @@ async function fetchWithRetry(url: string, init: RequestInit, attempts = 2): Pro
   return null;
 }
 
+function falMediaKey(): string {
+  return process.env.FAL_KEY || process.env.FAL_BILLING_KEY || "";
+}
+
 // 720×1280 прозрачный PNG: хук-плашка сверху, субтитры снизу (центр чист — товар виден).
 export async function overlayPngBase64(hook: string, subs: string[]): Promise<string | null> {
   try {
@@ -109,7 +113,7 @@ export async function buildCarouselSlides(imageUrl: string, texts: string[]): Pr
 // середине шага → крон захватывал тот же рецепт и гонял otk повторно (повторный платный video-critic).
 // Promise.all сохраняет порядок [first, middle, last], который ждёт video-critic.
 export async function extractFrames(videoUrl: string): Promise<string[]> {
-  const k = process.env.FAL_KEY;
+  const k = falMediaKey();
   if (!k || !videoUrl) return [];
   const results = await Promise.all((["first", "middle", "last"] as const).map(async (frame_type) => {
     try {
@@ -135,7 +139,7 @@ export async function extractFrames(videoUrl: string): Promise<string[]> {
 // (range-requests). Один fal-вызов (дешевле extractFrames с 3). Best-effort: любой сбой → null (галерея
 // откатывается на попытку кадра из <video>, как раньше).
 export async function extractPosterUrl(db: SupabaseClient, videoUrl: string, bucket: string, pathBase: string): Promise<string | null> {
-  const k = process.env.FAL_KEY;
+  const k = falMediaKey();
   if (!k || !videoUrl) return null;
   try {
     const r = await fetchWithRetry("https://fal.run/fal-ai/ffmpeg-api/extract-frame", {

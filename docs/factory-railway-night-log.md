@@ -2,6 +2,21 @@
 
 Этот журнал ведёт отдельный AI-worker на Railway во время ночных задач по контент-заводу.
 
+### 2026-07-01  FAL media key fallback for OTK frames
+
+- Ветка: `fix/factory-fal-billing-key-frames`
+- Цель: убрать starvation ОТК-кадров, когда в окружении есть `FAL_BILLING_KEY`, но нет `FAL_KEY`.
+- Изменено:
+  - `lib/factory/serverMedia.ts`: `extractFrames` и `extractPosterUrl` используют общий fallback `FAL_KEY || FAL_BILLING_KEY`.
+  - `lib/factory/falMediaKeyContract.test.mts`: контракт на fallback, чтобы кадры снова не стали зависеть только от `FAL_KEY`.
+- Проверки:
+  - `npx tsx lib/factory/falMediaKeyContract.test.mts`
+  - `npx tsx lib/factory/otkGateContract.test.mts`
+  - `npx tsx lib/factory/otkGateRampContract.test.mts`
+  - `npx tsx lib/factory/otkStoryboardFallback.test.mts`
+  - `npx tsc --noEmit --pretty false`
+  - `npx eslint lib/factory/serverMedia.ts lib/factory/falMediaKeyContract.test.mts`
+
 ### 2026-07-01  Reels Brain cost governor
 
 - Ветка: `feat/reels-brain-cost-governor`
