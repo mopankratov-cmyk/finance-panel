@@ -1,5 +1,6 @@
 import { equal, ok } from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { autoSelectKatyaGeneration } from "./bloggerLearningAutoSelect";
 import { buildKatyaLearningLoop } from "./bloggerLearningLoop";
 
 {
@@ -113,6 +114,8 @@ import { buildKatyaLearningLoop } from "./bloggerLearningLoop";
   ok(/HEYGEN_API_KEY/.test(runner), "runner requires HeyGen key from env");
   ok(/--generation-size/.test(runner) && /, 5, 4, 20/.test(runner), "runner defaults to five-run generations");
   ok(runner.includes("Different room/angle/pose require separate Katya source looks"), "runner documents fixed-look limitation");
+  ok(/--auto-select/.test(runner), "runner can auto-select winners for the next generation");
+  ok(/auto-prior-results\.json/.test(runner), "runner persists auto-selection memory");
 }
 
 {
@@ -120,6 +123,63 @@ import { buildKatyaLearningLoop } from "./bloggerLearningLoop";
   ok(/target_runs/.test(source), "loop exposes target run count");
   ok(/generation_size/.test(source), "loop exposes generation size");
   ok(/no product, no b-roll/.test(source), "loop explicitly excludes product and b-roll");
+}
+
+{
+  const plan = buildKatyaLearningLoop({
+    target_runs: 5,
+    generation_size: 5,
+    start_generation: 4,
+    prior_results: [
+      {
+        run_id: "katya_lab__g03__03__entryway_jacket__three_quarter_left__skeptical_pause",
+        scores: {
+          face_realism: 8,
+          motion_realism: 8,
+          lip_sync: 7,
+          voice_naturalness: 7,
+          room_authenticity: 8,
+          anti_ai_first_2s: 8,
+          repeatability_penalty: 2,
+        },
+      },
+      {
+        run_id: "katya_lab__g03__04__mirror_selfie__three_quarter_left__friend_advice",
+        scores: {
+          face_realism: 8,
+          motion_realism: 8,
+          lip_sync: 7,
+          voice_naturalness: 7,
+          room_authenticity: 8,
+          anti_ai_first_2s: 8,
+          repeatability_penalty: 2,
+        },
+      },
+    ],
+  });
+  const generationRuns = plan.planned_runs.filter((run) => run.generation === 4);
+  const auto = autoSelectKatyaGeneration({
+    plan,
+    generation: 4,
+    top_k: 2,
+    results: generationRuns.map((run) => ({
+      ok: true,
+      run_id: run.run_id,
+      generation: run.generation,
+      sequence: run.sequence,
+      scene_id: run.scene_id,
+      camera_angle_id: run.camera_angle_id,
+      pose_id: run.pose_id,
+      expression_id: run.expression_id,
+      motion_preset: run.motion_preset,
+      expressiveness: run.expressiveness,
+    })),
+  });
+  equal(auto.ok, true, "auto selector returns a result");
+  equal(auto.winners.length, 2, "auto selector chooses top k winners");
+  ok(auto.winners.includes("katya_lab__g04__01__entryway_jacket__three_quarter_left__skeptical_pause"), "auto selector keeps the strongest skeptical variant");
+  ok(auto.winners.includes("katya_lab__g04__04__mirror_selfie__three_quarter_left__friend_advice"), "auto selector keeps the strongest friend-advice variant");
+  ok(auto.prior_results.length >= 5, "auto selector produces next-generation memory payload");
 }
 
 console.log("bloggerLearningLoopContract: passed");

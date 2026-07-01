@@ -17,8 +17,34 @@
   - `tired_honest` демотирован как не лучший UGC-anchor
   - активные рабочие линии сейчас:
     - `skeptical_pause` / `entryway_jacket`
-    - `friend_advice` / `mirror_selfie`
+  - `friend_advice` / `mirror_selfie`
   - следующий цикл должен идти уже от winners generation 4 и добивать micro-variation, а не расширять матрицу
+
+### 2026-07-01  Katya autonomous selection loop
+
+- Ветка: `feat/product-broll-operator-get-clean`
+- Цель: убрать владельца из ручного выбора winners после каждого batch и перевести Katya loop в автономный режим.
+- Изменено:
+  - `lib/factory/bloggerLearningAutoSelect.ts`: heuristic auto-ranker для completed Katya runs
+  - `lib/factory/bloggerLearningLoopRunner.mjs`: добавлены `--auto-select` и `--auto-top-k`, runner сам пишет `auto-prior-results.json`
+  - `lib/factory/bloggerLearningLoopContract.test.mts`: контракт на auto-selection winners и runner persistence
+  - `docs/factory-katya-generation5-prior-results.json`: ручной победители generation 4 как вход в auto loop
+  - `docs/factory-katya-generation6-prior-results.json`: память, автоматически полученная из generation 5
+  - `docs/factory-ugc-katya-actor-learning-loop-2026-07-01.md`: задокументированы generation 5/6 и автономный режим
+- Проверки:
+  - `npx tsx lib/factory/bloggerLearningLoopContract.test.mts`
+  - `npx tsc --noEmit --pretty false`
+  - dry-run generation 5 в auto-select mode
+  - paid generation 5 completed 5/5
+  - paid generation 6 completed 5/5
+- Результат:
+  - generation 5 auto winners:
+    - `katya_lab__g05__04__mirror_selfie__three_quarter_left__friend_advice`
+    - `katya_lab__g05__01__entryway_jacket__three_quarter_left__skeptical_pause`
+  - generation 6 auto winners:
+    - `katya_lab__g06__04__mirror_selfie__three_quarter_left__friend_advice`
+    - `katya_lab__g06__01__mirror_selfie__three_quarter_left__friend_advice`
+  - loop сам начал стягиваться в `mirror_selfie + friend_advice` как текущий strongest basin
 
 ### 2026-07-01  Blogger motion loop
 

@@ -45,6 +45,19 @@ node --import tsx lib/factory/bloggerLearningLoopRunner.mjs --generation 1 --lim
 
 Без `--confirm-paid true` runner только сохраняет план.
 
+Автономный режим:
+
+```text
+node --import tsx lib/factory/bloggerLearningLoopRunner.mjs --generation 5 --limit 5 --generation-size 5 --prior-results-file docs/factory-katya-generation5-prior-results.json --confirm-paid true --auto-select true --auto-top-k 2
+```
+
+В этом режиме после paid render runner сам создаёт:
+
+- `results-sanitized.json`
+- `auto-prior-results.json`
+
+`auto-prior-results.json` становится памятью для следующего поколения. То есть человек не обязан каждый раз руками называть winners; ручная проверка нужна только если confidence низкий или батч визуально слишком близкий.
+
 ## Базовая стратегия 100 прогонов
 
 Не запускать 100 сразу.
@@ -489,3 +502,101 @@ Contact sheet:
   - skeptical skeptical hook;
   - conversational friend-advice hook;
 - следующий цикл должен уже учиться на user-picked winners generation 4, а не заново исследовать всю матрицу.
+
+## Переход в auto-select loop
+
+Чтобы владелец не участвовал в каждом поколении, контур переводится в полуавтономный режим:
+
+1. generation рендерится пятёркой;
+2. auto selector сам ранжирует completed runs;
+3. top-2 попадают в `auto-prior-results.json`;
+4. следующий generation строится уже от этого файла;
+5. ручное вмешательство нужно только если `needs_human_review = true`.
+
+Текущая логика автоотбора пока heuristic-based:
+
+- предпочитает `skeptical_pause` и `friend_advice`;
+- повышает score за `mirror_selfie`, `entryway_jacket`, `phone_in_hand`, `leaning_on_table`;
+- штрафует `high expressiveness`, `half_smile`, `calm_direct`, повторяющиеся семейства кадров;
+- повышает anti-AI score у low/medium expressiveness и friend-like posture.
+
+Это не финальный vision critic, но уже убирает владельца из ручного цикла для большинства батчей.
+
+## Generation 5 autonomous loop
+
+Дата: 2026-07-01
+
+Режим:
+
+- prior file: `docs/factory-katya-generation5-prior-results.json`
+- paid render + `--auto-select true --auto-top-k 2`
+- человек больше не выбирает winners вручную после каждого батча
+
+Команда:
+
+```text
+node --import tsx lib/factory/bloggerLearningLoopRunner.mjs --generation 5 --limit 5 --generation-size 5 --prior-results-file docs/factory-katya-generation5-prior-results.json --confirm-paid true --auto-select true --auto-top-k 2 --out-dir /tmp/ugc-factory-katya-learning-loop-2026-07-01-generation5
+```
+
+Результат:
+
+- 5/5 completed;
+- auto selector сам выпустил `auto-prior-results.json`;
+- top-2 winners:
+  - `katya_lab__g05__04__mirror_selfie__three_quarter_left__friend_advice`
+  - `katya_lab__g05__01__entryway_jacket__three_quarter_left__skeptical_pause`
+
+Смысл generation 5:
+
+- контур подтвердил, что user-picked линии действительно остаются strongest anchors;
+- `phone_in_hand + friend_warning + mirror_selfie` стала сильнейшей веткой;
+- `leaning_on_table + skeptical_pause + entryway` осталась второй сильной веткой.
+
+Автоуверенность:
+
+- `confidence = low`
+- причина не в поломке, а в том, что весь batch оказался плотным по score и разрыв между `#2` и `#3` небольшой.
+
+Следствие:
+
+- even with low confidence, next generation можно строить автоматически;
+- low confidence просто значит: если понадобится, человек может потом разово откалибровать вкусовой сдвиг.
+
+## Generation 6 autonomous continuation
+
+Дата: 2026-07-01
+
+Режим:
+
+- prior file: `docs/factory-katya-generation6-prior-results.json`
+- этот файл уже создан автоматически из `generation 5 auto-prior-results`
+- paid render + `--auto-select true --auto-top-k 2`
+
+Команда:
+
+```text
+node --import tsx lib/factory/bloggerLearningLoopRunner.mjs --generation 6 --limit 5 --generation-size 5 --prior-results-file docs/factory-katya-generation6-prior-results.json --confirm-paid true --auto-select true --auto-top-k 2 --out-dir /tmp/ugc-factory-katya-learning-loop-2026-07-01-generation6
+```
+
+Результат:
+
+- 5/5 completed;
+- loop уже не ждал ручного решения и сам продолжил от generation 5;
+- auto winners:
+  - `katya_lab__g06__04__mirror_selfie__three_quarter_left__friend_advice`
+  - `katya_lab__g06__01__mirror_selfie__three_quarter_left__friend_advice`
+
+Что изменилось по поведению поиска:
+
+- generation 5 ещё держал баланс между `friend_advice/mirror_selfie` и `skeptical_pause/entryway`;
+- generation 6 уже сам сместился в сторону `mirror_selfie + friend_advice`;
+- при этом `mirror_selfie + skeptical_pause` тоже показал высокий score как exploration branch, но не обогнал two best friend-advice runs.
+
+Текущий вывод:
+
+- автономная петля обучения работает end-to-end;
+- strongest current basin:
+  - `mirror_selfie`
+  - `three_quarter_left`
+  - `friend_advice`
+- следующая инженерная задача уже не "можем ли мы учиться без человека", а "как не схлопнуться в один шаблон и когда расширять wardrobe/environment matrix".
