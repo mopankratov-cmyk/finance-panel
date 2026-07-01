@@ -419,22 +419,73 @@ Contact sheet:
 /tmp/ugc-factory-katya-learning-loop-2026-07-01-generation3/generation-03/contact-sheet.jpg
 ```
 
-Предварительный визуальный вывод по кадрам:
+User feedback после просмотра generation 3:
 
-- `1 tired_honest low` выглядит очень сильным natural baseline;
-- `3 skeptical_pause hallway` остаётся хорошим skeptical candidate;
-- `5 skeptical_pause sofa` важен как сравнение той же подачи в другой сцене/look;
-- `2 tired_honest medium` полезен, но может оказаться чуть более постановочным, чем `1`;
-- `4 friend_advice` полезен как контрольный expressive run, но не выглядит главным кандидатом на core persona.
+- `1`, `2` и `5` не понравились;
+- `3` и `4` выглядят "норм в стиле UGC".
+
+Это важный поворот: вручную подтверждено, что более "натуральный" по моей предварительной оценке `tired_honest` не обязательно выигрывает как UGC-подача. Значит, контур самообучения должен оптимизироваться не просто под natural baseline, а под human-picked UGC realism.
 
 Следующий шаг:
 
-1. generation 4 делать уже как near-final bakeoff;
-2. взять только 3 линии:
-   - `tired_honest low`
+1. generation 4 делать как targeted bakeoff только вокруг user-approved линий;
+2. оставить две активные ветки:
    - `skeptical_pause hallway`
-   - `skeptical_pause sofa`
-3. внутри них сравнить только:
+   - `friend_advice mirror`
+3. проверить внутри них:
    - micro-pause;
-   - lip-sync feel;
-   - first-2s realism.
+   - pose feel;
+   - first-2s realism;
+   - не уходит ли `friend_advice` в presenter.
+
+## Generation 4 targeted UGC bakeoff
+
+Дата: 2026-07-01
+
+Режим:
+
+- generation построен уже не от моей визуальной гипотезы, а от user label;
+- prior file: `docs/factory-katya-generation4-prior-results.json`;
+- в batch оставлены только направления, которые пользователь признал "в стиле UGC".
+
+Команда:
+
+```text
+node --import tsx lib/factory/bloggerLearningLoopRunner.mjs --generation 4 --limit 5 --generation-size 5 --prior-results-file docs/factory-katya-generation4-prior-results.json --confirm-paid true --out-dir /tmp/ugc-factory-katya-learning-loop-2026-07-01-generation4
+```
+
+Результат:
+
+- 5/5 completed;
+- batch сфокусирован на сравнении двух рабочих линий:
+  - `skeptical_pause` в `entryway_jacket`;
+  - `friend_advice` в `mirror_selfie` и `entryway_jacket`;
+- planner сравнивает уже не broad exploration, а controlled UGC micro-variation.
+
+Успешные mp4:
+
+- `/tmp/ugc-factory-katya-learning-loop-2026-07-01-generation4/generation-04/katya_lab__g04__01__entryway_jacket__three_quarter_left__skeptical_pause.mp4`
+- `/tmp/ugc-factory-katya-learning-loop-2026-07-01-generation4/generation-04/katya_lab__g04__02__entryway_jacket__three_quarter_left__skeptical_pause.mp4`
+- `/tmp/ugc-factory-katya-learning-loop-2026-07-01-generation4/generation-04/katya_lab__g04__03__mirror_selfie__three_quarter_left__friend_advice.mp4`
+- `/tmp/ugc-factory-katya-learning-loop-2026-07-01-generation4/generation-04/katya_lab__g04__04__mirror_selfie__three_quarter_left__friend_advice.mp4`
+- `/tmp/ugc-factory-katya-learning-loop-2026-07-01-generation4/generation-04/katya_lab__g04__05__entryway_jacket__three_quarter_left__friend_advice.mp4`
+
+Contact sheet:
+
+```text
+/tmp/ugc-factory-katya-learning-loop-2026-07-01-generation4/generation-04/contact-sheet.jpg
+```
+
+Что именно сравнивается внутри generation 4:
+
+- `01` vs `02`: один и тот же `skeptical_pause`, но разный pose/expression/expressiveness;
+- `03` vs `04`: один и тот же `friend_advice` в mirror/selfie линии, но разная рука/поза/выражение;
+- `05`: перенос `friend_advice` из mirror в entryway, чтобы проверить, что именно даёт UGC-ощущение: motion или scene.
+
+Текущий вывод контура:
+
+- `tired_honest` временно демотирован как не самый удачный именно для UGC;
+- рабочие линии для дальнейшего добивания живости:
+  - skeptical skeptical hook;
+  - conversational friend-advice hook;
+- следующий цикл должен уже учиться на user-picked winners generation 4, а не заново исследовать всю матрицу.

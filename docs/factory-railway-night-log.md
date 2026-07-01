@@ -2,6 +2,24 @@
 
 Этот журнал ведёт отдельный AI-worker на Railway во время ночных задач по контент-заводу.
 
+### 2026-07-01  Katya targeted UGC bakeoff
+
+- Ветка: `feat/product-broll-operator-get-clean`
+- Цель: перестроить Katya learning loop вокруг user-picked UGC winners, а не вокруг моей предварительной naturalness-оценки.
+- Изменено:
+  - `lib/factory/bloggerLearningLoop.ts`: tightened selection теперь поддерживает более жёсткий winner-bias для user-approved lines
+  - `docs/factory-katya-generation4-prior-results.json`: user feedback для generation 3 зафиксирован как prior-results память
+  - `docs/factory-ugc-katya-actor-learning-loop-2026-07-01.md`: добавлен generation 4 targeted bakeoff
+- Проверки:
+  - generation 4 rendered 5/5 через HeyGen
+  - результаты и mp4 сохранены в `/tmp/ugc-factory-katya-learning-loop-2026-07-01-generation4/generation-04`
+- Результат:
+  - `tired_honest` демотирован как не лучший UGC-anchor
+  - активные рабочие линии сейчас:
+    - `skeptical_pause` / `entryway_jacket`
+    - `friend_advice` / `mirror_selfie`
+  - следующий цикл должен идти уже от winners generation 4 и добивать micro-variation, а не расширять матрицу
+
 ### 2026-07-01  Blogger motion loop
 
 - Ветка: `feat/product-broll-operator-get-clean`
