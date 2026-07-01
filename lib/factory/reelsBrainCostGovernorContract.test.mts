@@ -42,10 +42,12 @@ ok(/corpusProgress/.test(learningPlan) && /corpusExecutionPlan/.test(learningPla
 ok(/next_tick/.test(learningPlan) && /max_backlog_before_analyze/.test(learningPlan), "learning-plan chooses the next safe training tick");
 ok(/can_run_paid_collection/.test(learningPlan) && /cost_governor/.test(learningPlan), "learning-plan respects paid collection guard");
 ok(/worker_loop/.test(learningPlan) && /economics/.test(learningPlan), "learning-plan exposes unattended loop and cost trend");
+ok(/weakestPlatform/.test(learningPlan) && /focus_platform/.test(learningPlan), "learning-plan tracks the weakest platform and exposes focus");
 ok(!/POST\s*\(/.test(learningPlan), "learning-plan route is read-only");
 
 ok(/fetchLearningPlan/.test(autopilotJob) && /executeNextTick/.test(autopilotJob), "autopilot job supervises the next training tick");
 ok(/reels_brain_autopilot/.test(autopilotJob) && /isAuthorizedReelsBrainJobRequest/.test(autopilotJob), "autopilot job is protected and reports its mode");
+ok(/params\.platforms/.test(autopilotJob) && /params\.niches/.test(autopilotJob), "autopilot job preserves platform-specific catch-up params");
 
 ok(/buildReelsBrainFeedbackLoop/.test(feedback), "feedback route summarizes publication metrics");
 ok(/\/api\/factory\/post-metrics/.test(feedback), "feedback route writes through post-metrics");
@@ -56,6 +58,7 @@ ok(/\/api\/factory\/jobs\/reels-brain-autopilot/.test(scheduler), "scheduler rou
 ok(/costGovernor/.test(cockpit) && /autopilotActions/.test(cockpit), "cockpit reads cost governor and autopilot actions");
 ok(/learningPlan/.test(cockpit) && /Learning Mission/.test(cockpit), "cockpit exposes the standalone learning mission");
 ok(/worker_loop/.test(cockpit) && /Цена обучения/.test(cockpit), "cockpit shows unattended loop and cost trend inside the mission");
+ok(/Фокус платформы/.test(cockpit) && /focus_platform/.test(cockpit), "cockpit shows which platform the autopilot is healing now");
 ok(/nextLayers/.test(cockpit), "cockpit reads next intelligence layers");
 ok(/selectedPattern/.test(cockpit) && /rb-drawer/.test(cockpit), "cockpit exposes pattern creative brief drawer");
 ok(/rb-click/.test(cockpit) && /setSelectedPattern/.test(cockpit), "cockpit pattern cards are inspectable");

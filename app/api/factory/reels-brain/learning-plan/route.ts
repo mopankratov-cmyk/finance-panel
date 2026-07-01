@@ -99,6 +99,27 @@ function usefulVideoUsd(learning: JsonRecord, autopilot: JsonRecord) {
   };
 }
 
+function isRussianNiche(niche: string) {
+  return /^ru[_-]/i.test(niche) || /[А-Яа-яЁё]/.test(niche);
+}
+
+function weakestPlatform(rows: Array<{ platform: "tiktok" | "instagram" | "youtube"; current: number; target: number }>) {
+  const normalized = rows
+    .filter((row) => row.target > 0)
+    .map((row) => ({
+      ...row,
+      gap: Math.max(0, row.target - row.current),
+      progress_pct: Math.round((Math.max(0, row.current) / Math.max(1, row.target)) * 1000) / 10,
+    }))
+    .sort((a, b) =>
+      a.progress_pct - b.progress_pct
+      || b.gap - a.gap
+      || Number(a.platform === "tiktok") - Number(b.platform === "tiktok")
+      || a.platform.localeCompare(b.platform),
+    );
+  return normalized[0] || null;
+}
+
 function nextTick(input: {
   target: number;
   totalVideos: number;
@@ -106,6 +127,8 @@ function nextTick(input: {
   backlogLimit: number;
   canRunPaidCollection: boolean;
   guardStatus?: string;
+  niches: string[];
+  weakestPlatform: { platform: "tiktok" | "instagram" | "youtube"; gap: number; progress_pct: number } | null;
 }) {
   const backlog = Math.max(0, input.totalVideos - input.analyzedVideos);
   if (backlog >= input.backlogLimit) {
@@ -131,6 +154,44 @@ function nextTick(input: {
   }
 
   if (input.totalVideos < input.target) {
+    const focusPlatform = input.weakestPlatform?.platform || null;
+    const russianSegment = input.niches.some(isRussianNiche);
+    if (focusPlatform === "instagram") {
+      return {
+        task: "collect_platform_catchup",
+        label: "Добрать Instagram до рабочего минимума",
+        reason: `Instagram отстаёт сильнее всех: прогресс ${input.weakestPlatform?.progress_pct || 0}% и gap ${input.weakestPlatform?.gap || 0} видео.`,
+        endpoint: "/api/factory/jobs/reels-brain-learning",
+        params: {
+          strategy: russianSegment ? "instagram_ru" : "instagram",
+          platforms: "instagram",
+          limit: "25",
+          max_lanes: "4",
+          providers_per_lane: "1",
+          provider_timeout_ms: "30000",
+        },
+        paid_collection: true,
+        focus_platform: focusPlatform,
+      };
+    }
+    if (focusPlatform === "youtube") {
+      return {
+        task: "collect_platform_catchup",
+        label: "Добрать YouTube Shorts до рабочего минимума",
+        reason: `YouTube отстаёт сильнее всех: прогресс ${input.weakestPlatform?.progress_pct || 0}% и gap ${input.weakestPlatform?.gap || 0} видео.`,
+        endpoint: "/api/factory/jobs/reels-brain-learning",
+        params: {
+          strategy: "bulk",
+          platforms: "youtube",
+          limit: "25",
+          max_lanes: "3",
+          providers_per_lane: "1",
+          provider_timeout_ms: "30000",
+        },
+        paid_collection: true,
+        focus_platform: focusPlatform,
+      };
+    }
     return {
       task: "collect_smart_batch",
       label: "Добрать новую умную пачку",
@@ -138,6 +199,7 @@ function nextTick(input: {
       endpoint: "/api/factory/jobs/reels-brain-cron",
       params: { task: "bulk", target: String(input.target), max_backlog_before_analyze: String(input.backlogLimit) },
       paid_collection: true,
+      focus_platform: focusPlatform,
     };
   }
 
@@ -199,6 +261,9 @@ export async function GET(req: NextRequest) {
     const canRunPaidCollection = Boolean(autopilotActions.can_run_paid_collection ?? true)
       && !["pause_or_review", "paused", "blocked"].includes(String(costGovernor.status || ""));
     const velocity = learningVelocity((learning.timeline || []) as JsonRecord[]);
+    const weakest = weakestPlatform(platformRows.length ? platformRows : (Object.entries(platformTargets) as Array<["tiktok" | "instagram" | "youtube", number]>)
+      .filter(([platform]) => platforms.includes(platform))
+      .map(([platform, platformTarget]) => ({ platform, current: 0, target: platformTarget })));
     const next = nextTick({
       target,
       totalVideos,
@@ -206,6 +271,8 @@ export async function GET(req: NextRequest) {
       backlogLimit,
       canRunPaidCollection,
       guardStatus: String(costGovernor.status || ""),
+      niches,
+      weakestPlatform: weakest,
     });
     const cadenceMinutes = cadenceForTask(next.task);
     const relevantSpeed = firstPositive(velocity.inserted_per_tick, velocity.analyzed_per_tick, 25);
@@ -246,6 +313,7 @@ export async function GET(req: NextRequest) {
           useful_video_delta_pct: usefulUsd.delta_pct,
           useful_video_trend: usefulUsd.trend,
         },
+        focus_platform: weakest,
         guard: {
           can_run_paid_collection: canRunPaidCollection,
           status: costGovernor.status || "watch",

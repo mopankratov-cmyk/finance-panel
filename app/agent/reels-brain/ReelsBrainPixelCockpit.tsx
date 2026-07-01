@@ -822,6 +822,11 @@ export default function ReelsBrainPixelCockpit() {
                   <strong>{usd(vm.mission.economics?.useful_video_usd || vm.usefulCost)}</strong>
                   <p>{vm.mission.economics?.useful_video_delta_pct == null ? "ждём сравнение" : `${vm.mission.economics?.useful_video_delta_pct > 0 ? "+" : ""}${compact(vm.mission.economics?.useful_video_delta_pct)}% к прошлому срезу`}</p>
                 </div>
+                <div className="rb-kpi">
+                  <div className="label">Фокус платформы</div>
+                  <strong>{vm.mission.focus_platform?.platform || "mixed"}</strong>
+                  <p>{vm.mission.focus_platform ? `прогресс ${compact(vm.mission.focus_platform.progress_pct)}% · gap ${compact(vm.mission.focus_platform.gap)}` : "балансируем все платформы"}</p>
+                </div>
               </div>
             </div>
             <div className="rb-card rb-dark">

@@ -52,8 +52,8 @@ async function executeNextTick(req: NextRequest, plan: JsonRecord, execute: bool
   if (endpoint === "/api/factory/jobs/reels-brain-cron") {
     const url = new URL(endpoint, req.nextUrl.origin);
     for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value);
-    url.searchParams.set("niches", readString(req, "niches", "ru_toys,ru_clothing,ru_cosmetics"));
-    url.searchParams.set("platforms", readString(req, "platforms", "tiktok,instagram,youtube"));
+    url.searchParams.set("niches", String(params.niches || readString(req, "niches", "ru_toys,ru_clothing,ru_cosmetics")));
+    url.searchParams.set("platforms", String(params.platforms || readString(req, "platforms", "tiktok,instagram,youtube")));
     const response = await internalFetch(url);
     const result = await response.json().catch(() => ({}));
     return { executed: true, task, endpoint, params, result, ok: response.ok };
@@ -61,10 +61,10 @@ async function executeNextTick(req: NextRequest, plan: JsonRecord, execute: bool
 
   if (endpoint === "/api/factory/jobs/reels-brain-learning") {
     const body: Record<string, unknown> = {
-      ...params,
-      niches: readString(req, "niches", "ru_toys,ru_clothing,ru_cosmetics"),
-      platforms: readString(req, "platforms", "tiktok,instagram,youtube"),
+      niches: String(params.niches || readString(req, "niches", "ru_toys,ru_clothing,ru_cosmetics")),
+      platforms: String(params.platforms || readString(req, "platforms", "tiktok,instagram,youtube")),
       hours: readNumber(req, "hours", 72, 1, 168),
+      ...params,
     };
     const response = await internalFetch(`${req.nextUrl.origin}${endpoint}`, {
       method: "POST",
