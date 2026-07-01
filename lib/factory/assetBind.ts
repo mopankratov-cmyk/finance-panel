@@ -7,8 +7,23 @@
 export interface DiskAsset { disk?: string | null; kind?: string | null; url?: string | null; analysis?: Record<string, unknown> | null; }
 export interface AssetPool { canonicalImages?: string[]; preparedImages?: string[]; realVideos: string[]; realImages: string[]; wbImages: string[] }
 
-// классификация ассетов товара: подготовленные рендеры (disk='prepared' — source-prep: чистый/стейдж,
-// ЛУЧШИЙ источник под i2v) > реальная съёмка (disk != wb/gen/prepared) > фото карточки WB (сырая инфографика).
+function productTwinAssetInfo(analysis: Record<string, unknown>): Record<string, unknown> {
+  const asset = analysis.product_twin_asset;
+  return asset && typeof asset === "object" ? asset as Record<string, unknown> : {};
+}
+
+function isProductTwinCanonical(analysis: Record<string, unknown>): boolean {
+  const asset = productTwinAssetInfo(analysis);
+  return asset.broll_ready === true || asset.hero_ready === true;
+}
+
+function isProductTwinServiceAsset(analysis: Record<string, unknown>): boolean {
+  const kind = String(productTwinAssetInfo(analysis).kind || "").toLowerCase();
+  return kind === "object_mask" || kind === "alpha" || kind === "depth_map" || kind === "segmentation";
+}
+
+// классификация ассетов товара: Product Twin / prepared (цифровой двойник или source-prep: чистый/стейдж,
+// ЛУЧШИЙ источник под i2v) > реальная съёмка (disk != wb/gen/prepared/product_twin) > фото карточки WB.
 export function classifyAssets(assets: DiskAsset[]): AssetPool {
   const canonicalImages: string[] = [], preparedImages: string[] = [], realVideos: string[] = [], realImages: string[] = [], wbImages: string[] = [];
   for (const a of assets || []) {
@@ -23,6 +38,13 @@ export function classifyAssets(assets: DiskAsset[]): AssetPool {
       }
       continue;
     } // prep-рендер товара (приоритет)
+    if (disk === "product_twin") {
+      if (kind === "image" && !isProductTwinServiceAsset(analysis)) {
+        if (isProductTwinCanonical(analysis)) canonicalImages.push(url);
+        else preparedImages.push(url);
+      }
+      continue;
+    }
     const isReal = disk !== "wb" && disk !== "gen" && disk !== "";
     if (kind === "video") { if (isReal) realVideos.push(url); }
     else if (kind === "image") {

@@ -44,6 +44,23 @@ function eq(a: unknown, b: unknown, m: string) { ok(JSON.stringify(a) === JSON.s
   eq(chooseBinding("seedance", false, p, 0)?.image_url, "prep1", "seedance ← canonical рендер");
 }
 
+// ── Product Twin: broll/hero-ready assets считаются prepared/canonical, service assets не кормят i2v ──
+{
+  const assets: DiskAsset[] = [
+    { disk: "wb", kind: "image", url: "wb1" },
+    { disk: "models", kind: "image", url: "ri1" },
+    { disk: "product_twin", kind: "image", url: "mask1", analysis: { product_twin_asset: { kind: "object_mask", broll_ready: true } } },
+    { disk: "product_twin", kind: "image", url: "twin_lo", analysis: { product_twin_asset: { kind: "gray_bg", broll_ready: false, hero_ready: false } } },
+    { disk: "product_twin", kind: "image", url: "twin_hi", analysis: { product_twin_asset: { kind: "shadow_bg", broll_ready: true, hero_ready: true } } },
+  ];
+  const p = classifyAssets(assets);
+  eq(p.canonicalImages, ["twin_hi"], "Product Twin broll/hero-ready asset → canonicalImages");
+  eq(p.preparedImages, ["twin_lo"], "Product Twin non-service image → preparedImages");
+  eq(p.realImages, ["ri1"], "Product Twin не падает в generic realImages");
+  eq(bestImage(p), "twin_hi", "bestImage: Product Twin важнее real/WB");
+  eq(chooseBinding("seedance", false, p, 0)?.image_url, "twin_hi", "seedance ← Product Twin canonical");
+}
+
 // ── chooseBinding: disk_real ──
 {
   const withVid = { realVideos: ["rv1"], realImages: [], wbImages: ["wb1"] };

@@ -7,6 +7,7 @@ const batch = readFileSync("app/api/factory/batch/route.ts", "utf8");
 ok(/export type SourceReadinessTier = "prepared" \| "real" \| "wb" \| "none"/.test(readiness), "source readiness exposes source quality tiers");
 ok(/tier: SourceReadinessTier = \(canonical \|\| prepared\) \? "prepared" : \(realVideos \|\| realImages\) \? "real" : wbImages \? "wb" : "none"/.test(readiness), "canonical/prepared and real sources outrank raw WB");
 ok(/ready: tier === "prepared" \|\| tier === "real"/.test(readiness), "WB-only sources are weak prep inputs, not render-ready sources");
+ok(/disk === "product_twin"/.test(readFileSync("lib/factory/assetBind.ts", "utf8")), "Product Twin assets participate in prepared-tier source binding");
 ok(/loadSourceReadiness/.test(batch), "batch preflight loads source readiness detail");
 ok(/sourceTierRank/.test(batch), "batch selection sorts source-ready drafts by source tier");
 ok(/const requireStrongSource = b\.require_strong_source !== false;/.test(batch), "batch requires prepared/real sources by default");
