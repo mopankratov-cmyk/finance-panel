@@ -1,4 +1,5 @@
 import { QA_THRESHOLD } from "./standard";
+import { hasGenericOpener } from "./genericOpeners";
 
 export type CandidateBatchRole = "control" | "experiment" | "none";
 export type CandidateChangeAxis = "none" | "hook_angle" | "proof_density" | "cta_shape" | "format";
@@ -56,20 +57,6 @@ export interface CandidateSelectResult {
   rationale: string[];
 }
 
-const GENERIC_HOOK_PATTERNS = [
-  "привет",
-  "сегодня расскажу",
-  "хочу показать",
-  "давайте разбер",
-  "в современном мире",
-  "это не просто",
-  "идеальное решение",
-  "представляем",
-  "успей купить",
-  "купите",
-  "рекомендую",
-];
-
 function clamp(n: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, n));
 }
@@ -115,11 +102,10 @@ function hookOf(candidate: RenderCandidateInput): string {
 }
 
 function hookRejectReasons(hook: string): string[] {
-  const lower = hook.toLowerCase();
   const reasons: string[] = [];
   if (!hook) reasons.push("missing_hook");
   if (hook && hook.split(/\s+/).filter(Boolean).length < 4) reasons.push("hook_too_short");
-  if (GENERIC_HOOK_PATTERNS.some((pattern) => lower.includes(pattern))) reasons.push("generic_or_ad_hook");
+  if (hasGenericOpener(hook)) reasons.push("generic_or_ad_hook");
   if (hook.length > 140) reasons.push("hook_too_long");
   return reasons;
 }

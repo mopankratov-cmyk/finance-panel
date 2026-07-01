@@ -15,6 +15,15 @@ import { selectRenderCandidates } from "./candidateSelect";
 
 {
   const result = selectRenderCandidates([
+    { id: "recommend", hook: "Рекомендую эту куртку всем", concept: "generic recommendation", score: 9, verdict: "approved" },
+  ]);
+
+  equal(result.ok, false, "shared generic opener canon blocks recommendation hooks");
+  ok(result.rejected[0]?.reject_reasons.includes("generic_or_ad_hook"), "shared canon reason is surfaced");
+}
+
+{
+  const result = selectRenderCandidates([
     { id: "a", hook: "Проверь SPF после восьми часов на коже", concept: "wear test", score: 9, verdict: "approved" },
     { id: "b", hook: "Почему крем скатывается через час", concept: "problem proof", score: 8, verdict: "approved" },
     { id: "c", hook: "Как понять, что средство не для тебя", concept: "checklist", score: 7, verdict: "approved" },

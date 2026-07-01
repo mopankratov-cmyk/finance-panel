@@ -6,6 +6,7 @@ import { buildPlatformBrainHint, normalizeTargetPlatform } from "@/lib/factory/r
 import type { ReelsPlatform } from "./reelsBrain";
 import { evaluateHookPolicy, type HookPolicyResult } from "./hookPolicy";
 import { validateBlueprint, type BlueprintValidation } from "./blueprint/schema";
+import { countGenericOpeners, hasGenericOpener } from "./genericOpeners";
 
 export type ScenarioQualityInput = {
   article?: string;
@@ -86,19 +87,6 @@ export type ScenarioQualityNormalizedInput = {
   playbook: unknown;
   candidates: ScenarioQualityCandidate[];
 };
-
-const GENERIC_OPENERS = [
-  "привет",
-  "сегодня расскажу",
-  "хочу показать",
-  "давайте разберемся",
-  "в современном мире",
-  "это не просто",
-  "идеальное решение",
-  "купите",
-  "успей",
-  "представляем",
-];
 
 function clamp(n: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, n));
@@ -205,18 +193,18 @@ function toScore10(axes: ScenarioQualityAxes): number {
 function hardIssues(text: string, visualBeats: string): string[] {
   const lower = `${text} ${visualBeats}`.toLowerCase();
   const issues: string[] = [];
-  if (GENERIC_OPENERS.some((p) => lower.includes(p))) issues.push("слишком общий старт");
+  if (hasGenericOpener(lower)) issues.push("слишком общий старт");
   if (lower.length < 90) issues.push("слишком мало содержания для удержания");
   if (!/[0-9]/.test(lower)) issues.push("нет чисел или измеримой конкретики");
   if (!/[?]/.test(lower) && !/\bпочему\b|\bкак\b|\bзачем\b/.test(lower)) issues.push("нет открытого вопроса или интриги");
   if (!visualBeats.trim()) issues.push("нет visual beats");
-  if (/привет|сегодня расскажу|хочу показать|представляем|идеальное решение|купите|успей/i.test(lower)) issues.push("запах рекламной простыни");
+  if (hasGenericOpener(lower)) issues.push("запах рекламной простыни");
   return issues;
 }
 
 function fallbackAxes(text: string, visualBeats: string, platform: ReelsPlatform): ScenarioQualityAxes {
   const lower = `${text} ${visualBeats}`.toLowerCase();
-  const generic = GENERIC_OPENERS.filter((p) => lower.includes(p)).length;
+  const generic = countGenericOpeners(lower);
   const digits = (lower.match(/[0-9]/g) || []).length;
   const question = /[?]/.test(lower) || /\bпочему\b|\bкак\b|\bзачем\b/.test(lower);
   const concrete = /\b(рука|дома|ванна|шкаф|ремень|молния|кожа|тепло|ветер|пятно|сумка|деталь|упаковка|пляж|улица|ребёнок|ребенок)\b/.test(lower);

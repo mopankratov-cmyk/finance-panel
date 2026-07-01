@@ -1,3 +1,5 @@
+import { hasGenericOpener } from "./genericOpeners";
+
 export type HookSource = "human" | "strong_prompt" | "generated" | "unknown";
 
 export interface HookPolicyInput {
@@ -15,17 +17,6 @@ export interface HookPolicyResult {
   action: "pass" | "warn" | "reject";
   issues: string[];
 }
-
-const GENERIC = [
-  "привет",
-  "сегодня расскажу",
-  "хочу показать",
-  "представляем",
-  "идеальное решение",
-  "лучший товар",
-  "купите",
-  "успей",
-];
 
 function clean(value: unknown, max = 300): string {
   return String(value || "").replace(/\s+/g, " ").trim().slice(0, max);
@@ -51,7 +42,7 @@ export function evaluateHookPolicy(input: HookPolicyInput): HookPolicyResult {
     issues.push("too_long");
     score -= 1;
   }
-  if (GENERIC.some((phrase) => lower.includes(phrase))) {
+  if (hasGenericOpener(lower)) {
     issues.push("generic_ad_opening");
     score -= 2;
   }

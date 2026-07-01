@@ -31,7 +31,7 @@
 
 ## Next consolidation targets
 
-- Move generic opener blocklists into one shared module.
-- Make route-level artifact-check import the same `runArtifactCheck` used by graph-run.
+- Expand the shared generic opener module with metrics from rejected drafts.
+- Keep route-level artifact-check as a thin shell over the same `runArtifactCheck` used by graph-run.
 - Wire pre-submit scenario quality into graph-run before paid submit.
 - Decide whether Product Twin failing every visual threshold returns `null` or remains advisory with `needs_review`.

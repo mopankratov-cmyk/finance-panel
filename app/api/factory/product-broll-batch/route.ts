@@ -7,6 +7,7 @@ import { buildProductCleanPrompt, imageBufferToDataUrl } from "@/lib/factory/pro
 import { diskById } from "@/lib/factory/contentDisks";
 import { fetchWithRetry, runNanoBananaEdit } from "@/lib/factory/falImageEdit";
 import { getBestProductTwinAsset, getLatestProductTwinByArticle, getProductTwinViewAssets } from "@/lib/factory/productTwinStore";
+import { productTwinAssetPreviewUrl } from "@/lib/factory/productTwinPreview";
 import { falVideoSubmitDetailed, FAL_VIDEO_MODELS, type FalVideoModel } from "@/lib/factory/falVideo";
 import { yaDownloadHref } from "@/lib/yandex/disk";
 import { type ProductCategory } from "@/lib/factory/editPrompts";
@@ -255,6 +256,7 @@ export async function POST(req: NextRequest) {
         recipe,
         model,
         source_image: source.imageUrl,
+        source_preview_url: productTwinAssetPreviewUrl(source.imageUrl),
         source_kind: source.imageKind,
         twin_id: source.twinId || null,
         asset_id: source.assetId || null,
@@ -298,6 +300,7 @@ export async function POST(req: NextRequest) {
       product,
       recipe,
       source_image: source.imageUrl,
+      source_preview_url: productTwinAssetPreviewUrl(source.imageUrl),
       source_kind: source.imageKind,
       twin_id: source.twinId || null,
       asset_id: source.assetId || null,
