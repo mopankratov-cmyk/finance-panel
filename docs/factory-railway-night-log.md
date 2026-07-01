@@ -2835,6 +2835,18 @@
   - 3/5 failed with HeyGen `MOVIO_PAYMENT_INSUFFICIENT_CREDIT`.
   - Repair attempts also failed with insufficient API credits.
   - Contact sheet: `/tmp/ugc-factory-katya-learning-loop-2026-07-01/generation-01/contact-sheet.jpg`.
+- First paid generation retry after top-up:
+  - API wallet checked via `GET /v3/users/me`: `$30.13` before retry.
+  - Retry generation 1 completed 5/5.
+  - API wallet after retry: `$28.58`.
+  - Files:
+    - `/tmp/ugc-factory-katya-learning-loop-2026-07-01-retry/generation-01/katya_lab__g01__01__window_room__slightly_below__half_smile.mp4`
+    - `/tmp/ugc-factory-katya-learning-loop-2026-07-01-retry/generation-01/katya_lab__g01__02__sofa_evening__three_quarter_right__tired_honest.mp4`
+    - `/tmp/ugc-factory-katya-learning-loop-2026-07-01-retry/generation-01/katya_lab__g01__03__messy_desk__upper_body__friend_advice.mp4`
+    - `/tmp/ugc-factory-katya-learning-loop-2026-07-01-retry/generation-01/katya_lab__g01__04__mirror_selfie__slightly_above__calm_direct.mp4`
+    - `/tmp/ugc-factory-katya-learning-loop-2026-07-01-retry/generation-01/katya_lab__g01__05__entryway_jacket__three_quarter_left__skeptical_pause.mp4`
+  - Contact sheet: `/tmp/ugc-factory-katya-learning-loop-2026-07-01-retry/generation-01/contact-sheet.jpg`.
+  - Preliminary frame read: #2 and #5 look like strongest candidates; final choice must be by mp4 motion.
 - Проверки:
   - `npx tsx lib/factory/bloggerLearningLoopContract.test.mts`
   - `npx tsx lib/factory/bloggerMotionContract.test.mts`

@@ -269,3 +269,47 @@ node --import tsx lib/factory/bloggerLearningLoopRunner.mjs --generation 1 --lim
 ```
 
 Но лучше перед retry выбрать из двух успешных: если один явно сильнее, generation 2 строить вокруг него, а не добивать старую пятёрку.
+
+## Generation 1 retry after API wallet top-up
+
+Дата: 2026-07-01
+
+Команда:
+
+```text
+node --import tsx lib/factory/bloggerLearningLoopRunner.mjs --generation 1 --limit 5 --generation-size 5 --confirm-paid true --out-dir /tmp/ugc-factory-katya-learning-loop-2026-07-01-retry
+```
+
+Результат:
+
+- 5/5 completed;
+- причина прошлых падений подтверждена: не prompt, а нехватка API wallet credits;
+- API wallet после batch: `$28.58`;
+- ориентировочная стоимость generation из 5 коротких Avatar IV видео: около `$1.55`.
+
+Успешные mp4:
+
+- `/tmp/ugc-factory-katya-learning-loop-2026-07-01-retry/generation-01/katya_lab__g01__01__window_room__slightly_below__half_smile.mp4`
+- `/tmp/ugc-factory-katya-learning-loop-2026-07-01-retry/generation-01/katya_lab__g01__02__sofa_evening__three_quarter_right__tired_honest.mp4`
+- `/tmp/ugc-factory-katya-learning-loop-2026-07-01-retry/generation-01/katya_lab__g01__03__messy_desk__upper_body__friend_advice.mp4`
+- `/tmp/ugc-factory-katya-learning-loop-2026-07-01-retry/generation-01/katya_lab__g01__04__mirror_selfie__slightly_above__calm_direct.mp4`
+- `/tmp/ugc-factory-katya-learning-loop-2026-07-01-retry/generation-01/katya_lab__g01__05__entryway_jacket__three_quarter_left__skeptical_pause.mp4`
+
+Contact sheet:
+
+```text
+/tmp/ugc-factory-katya-learning-loop-2026-07-01-retry/generation-01/contact-sheet.jpg
+```
+
+Предварительный визуальный вывод по кадрам:
+
+- `2 tired_honest low` выглядит самым естественным и наименее рекламным;
+- `5 skeptical_pause medium` выглядит хорошим кандидатом на живой skeptical hook;
+- `3 friend_advice medium` даёт больше энергии, но может уйти в presenter;
+- `1 half_smile high` и `4 calm_direct medium` требуют проверки по видео, есть риск пластичности/странной артикуляции.
+
+Следующий шаг:
+
+1. пользователь выбирает 1-2 номера winners;
+2. внести winners как `prior_results`;
+3. generation 2 делать не как retry, а как улучшение вокруг winners.
