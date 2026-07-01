@@ -8,6 +8,11 @@ const signRoute = readFileSync("app/api/factory/reels-brain/media-assets/sign/ro
 
 ok(dockerfile.includes("apk add --no-cache ffmpeg"), "Railway image installs ffmpeg for ffprobe");
 ok(worker.includes("ffprobe"), "worker runs ffprobe");
+ok(worker.includes("volumedetect"), "worker extracts lightweight audio loudness features");
+ok(worker.includes("silencedetect"), "worker extracts lightweight silence/pause features");
+ok(worker.includes("select=gt(scene"), "worker extracts lightweight scene-change visual features");
+ok(worker.includes("audio_features"), "worker persists audio feature summary");
+ok(worker.includes("visual_features"), "worker persists visual feature summary");
 ok(worker.includes("ffprobe_missing"), "worker does not persist transient failures when ffprobe is missing");
 ok(worker.includes("REELS_BRAIN_AV_PROBE_LIMIT"), "worker exposes a safe AV probe limit");
 ok(worker.includes("signedAssetUrl"), "worker signs private Apify asset downloads for ffprobe");
@@ -32,5 +37,7 @@ const mediaIntelligence = readFileSync("lib/factory/reelsBrainMediaIntelligence.
 ok(mediaIntelligence.includes("media_probe_ok"), "media intelligence reports successful AV probes");
 ok(mediaIntelligence.includes("with_audio_stream"), "media intelligence reports audio-stream coverage");
 ok(mediaIntelligence.includes("vertical_video_assets"), "media intelligence reports vertical video coverage");
+ok(mediaIntelligence.includes("loudness_buckets"), "media intelligence reports audio loudness buckets");
+ok(mediaIntelligence.includes("edit_pace_buckets"), "media intelligence reports edit pace buckets");
 
 console.log("reelsBrainAudioVisualProbeContract ok");

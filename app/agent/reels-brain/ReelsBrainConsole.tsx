@@ -642,6 +642,25 @@ type MediaAssetClassification = {
     audio_codec?: string | null;
     audio_channels?: number | null;
     audio_sample_rate?: number | null;
+    audio_features?: {
+      mean_volume_db?: number | null;
+      max_volume_db?: number | null;
+      loudness_bucket?: string | null;
+      silence_events?: number | null;
+      total_silence_sec?: number | null;
+      silence_share_pct?: number | null;
+      first_silence_start_sec?: number | null;
+      sound_starts_immediately?: boolean;
+    } | null;
+    visual_features?: {
+      orientation?: string | null;
+      fps_bucket?: string | null;
+      scene_change_count?: number | null;
+      cut_density_per_10s?: number | null;
+      edit_pace?: string | null;
+      black_segments?: number | null;
+      starts_with_black?: boolean;
+    } | null;
   } | null;
 };
 
@@ -681,13 +700,18 @@ type MediaIntelligenceResponse = {
     status?: string;
     bottleneck?: string;
     probed_videos?: number;
+    feature_probed_videos?: number;
     unprobed_ready_videos?: number;
     vertical_share_pct?: number;
     audio_share_pct?: number;
+    immediate_sound_share_pct?: number;
+    fast_edit_share_pct?: number;
     avg_duration_sec?: number;
     duration_buckets?: Record<string, number>;
     fps_buckets?: Record<string, number>;
     format_buckets?: Record<string, number>;
+    loudness_buckets?: Record<string, number>;
+    edit_pace_buckets?: Record<string, number>;
     by_niche?: Record<string, { ready: number; probed: number; vertical: number; audio: number; avg_duration_sec: number }>;
     next_actions?: string[];
     user_insights?: string[];
@@ -2555,9 +2579,14 @@ export default function ReelsBrainPage() {
 
                   <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
                     <MetricCard label="Probed mp4" value={creativeDnaInsights.probed_videos || 0} />
+                    <MetricCard label="Feature probed" value={creativeDnaInsights.feature_probed_videos || 0} />
                     <MetricCard label="AV backlog" value={creativeDnaInsights.unprobed_ready_videos || 0} />
                     <MetricCard label="Vertical share %" value={creativeDnaInsights.vertical_share_pct || 0} />
                     <MetricCard label="Audio share %" value={creativeDnaInsights.audio_share_pct || 0} />
+                  </div>
+                  <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                    <MetricCard label="Immediate sound %" value={creativeDnaInsights.immediate_sound_share_pct || 0} />
+                    <MetricCard label="Fast edit %" value={creativeDnaInsights.fast_edit_share_pct || 0} />
                     <MetricCard label="Avg sec" value={creativeDnaInsights.avg_duration_sec || 0} />
                   </div>
 
@@ -2599,6 +2628,8 @@ export default function ReelsBrainPage() {
                     {[
                       ["Duration", creativeDnaInsights.duration_buckets || {}],
                       ["FPS", creativeDnaInsights.fps_buckets || {}],
+                      ["Loudness", creativeDnaInsights.loudness_buckets || {}],
+                      ["Edit pace", creativeDnaInsights.edit_pace_buckets || {}],
                       ["Format", creativeDnaInsights.format_buckets || {}],
                     ].map(([label, bucket]) => (
                       <div key={String(label)} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">

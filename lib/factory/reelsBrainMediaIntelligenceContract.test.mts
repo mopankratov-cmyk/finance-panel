@@ -43,6 +43,14 @@ const report = buildReelsMediaIntelligenceReport([
         has_video: true,
         fps: 30,
         format: "mov,mp4,m4a,3gp,3g2,mj2",
+        audio_features: {
+          loudness_bucket: "balanced",
+          sound_starts_immediately: true,
+        },
+        visual_features: {
+          edit_pace: "fast",
+          scene_change_count: 12,
+        },
       },
     },
   },
@@ -64,7 +72,12 @@ equal(report.creative_dna_insights.probed_videos, 1);
 equal(report.creative_dna_insights.unprobed_ready_videos, 1);
 equal(report.creative_dna_insights.vertical_share_pct, 100);
 equal(report.creative_dna_insights.audio_share_pct, 100);
+equal(report.creative_dna_insights.feature_probed_videos, 1);
+equal(report.creative_dna_insights.immediate_sound_share_pct, 100);
+equal(report.creative_dna_insights.fast_edit_share_pct, 100);
 equal(report.creative_dna_insights.duration_buckets.short, 1);
+equal(report.creative_dna_insights.loudness_buckets.balanced, 1);
+equal(report.creative_dna_insights.edit_pace_buckets.fast, 1);
 ok(report.creative_dna_insights.next_actions.some((action) => action.includes("Догнать AV-probe")));
 
 console.log("reelsBrainMediaIntelligenceContract ok");

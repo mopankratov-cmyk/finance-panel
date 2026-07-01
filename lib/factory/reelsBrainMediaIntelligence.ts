@@ -56,6 +56,30 @@ export type ReelsMediaAssetClassification = {
     audio_codec?: string | null;
     audio_channels?: number | null;
     audio_sample_rate?: number | null;
+    audio_features?: {
+      mean_volume_db?: number | null;
+      max_volume_db?: number | null;
+      loudness_bucket?: string | null;
+      silence_events?: number | null;
+      total_silence_sec?: number | null;
+      silence_share_pct?: number | null;
+      first_silence_start_sec?: number | null;
+      sound_starts_immediately?: boolean;
+    } | null;
+    visual_features?: {
+      orientation?: string | null;
+      fps_bucket?: string | null;
+      scene_change_count?: number | null;
+      cut_density_per_10s?: number | null;
+      edit_pace?: string | null;
+      black_segments?: number | null;
+      starts_with_black?: boolean;
+    } | null;
+    feature_probe?: {
+      source?: string | null;
+      analyzed_sec?: number | null;
+      error?: string | null;
+    } | null;
   } | null;
 };
 
@@ -163,6 +187,9 @@ function mediaProbe(value: unknown): ReelsMediaAssetClassification["media_probe"
     audio_codec: probe.audio_codec == null ? null : String(probe.audio_codec),
     audio_channels: probe.audio_channels == null ? null : Number(probe.audio_channels),
     audio_sample_rate: probe.audio_sample_rate == null ? null : Number(probe.audio_sample_rate),
+    audio_features: Object.keys(rec(probe.audio_features)).length ? rec(probe.audio_features) as ReelsMediaAssetClassification["media_probe"]["audio_features"] : null,
+    visual_features: Object.keys(rec(probe.visual_features)).length ? rec(probe.visual_features) as ReelsMediaAssetClassification["media_probe"]["visual_features"] : null,
+    feature_probe: Object.keys(rec(probe.feature_probe)).length ? rec(probe.feature_probe) as ReelsMediaAssetClassification["media_probe"]["feature_probe"] : null,
   };
 }
 
@@ -187,6 +214,8 @@ function buildCreativeDnaInsights(rows: ReelsMediaAssetClassification[]) {
   const byDuration: Record<string, number> = {};
   const byFps: Record<string, number> = {};
   const byFormat: Record<string, number> = {};
+  const byLoudness: Record<string, number> = {};
+  const byEditPace: Record<string, number> = {};
   const byNiche: Record<string, { ready: number; probed: number; vertical: number; audio: number; avg_duration_sec: number }> = {};
   let durationTotal = 0;
 
@@ -204,6 +233,8 @@ function buildCreativeDnaInsights(rows: ReelsMediaAssetClassification[]) {
     increment(byDuration, durationBucket(duration));
     increment(byFps, fps >= 55 ? "55+ fps" : fps >= 28 ? "28-54 fps" : fps > 0 ? "under 28 fps" : "unknown");
     increment(byFormat, probe?.format?.split(",")[0] || "unknown");
+    increment(byLoudness, probe?.audio_features?.loudness_bucket || "unknown");
+    increment(byEditPace, probe?.visual_features?.edit_pace || "unknown");
 
     byNiche[row.niche] = byNiche[row.niche] || { ready: 0, probed: 0, vertical: 0, audio: 0, avg_duration_sec: 0 };
     byNiche[row.niche].probed += 1;
@@ -219,6 +250,9 @@ function buildCreativeDnaInsights(rows: ReelsMediaAssetClassification[]) {
 
   const verticalCount = probed.filter((row) => (row.media_probe?.height || 0) > (row.media_probe?.width || 0)).length;
   const audioCount = probed.filter((row) => row.media_probe?.has_audio).length;
+  const featureCount = probed.filter((row) => row.media_probe?.audio_features || row.media_probe?.visual_features).length;
+  const immediateSoundCount = probed.filter((row) => row.media_probe?.audio_features?.sound_starts_immediately).length;
+  const fastEditCount = probed.filter((row) => row.media_probe?.visual_features?.edit_pace === "fast").length;
   const shortCount = byDuration.short || 0;
   const standardCount = byDuration.standard || 0;
   const longCount = byDuration.long || 0;
@@ -244,18 +278,24 @@ function buildCreativeDnaInsights(rows: ReelsMediaAssetClassification[]) {
     status: probed.length ? "learning_from_real_mp4" : readyVideo.length ? "waiting_for_av_probe" : "waiting_for_direct_assets",
     bottleneck,
     probed_videos: probed.length,
+    feature_probed_videos: featureCount,
     unprobed_ready_videos: Math.max(0, readyVideo.length - probed.length),
     vertical_share_pct: share(verticalCount, probed.length),
     audio_share_pct: share(audioCount, probed.length),
+    immediate_sound_share_pct: share(immediateSoundCount, probed.length),
+    fast_edit_share_pct: share(fastEditCount, probed.length),
     avg_duration_sec: probed.length ? Math.round((durationTotal / probed.length) * 10) / 10 : 0,
     duration_buckets: byDuration,
     fps_buckets: byFps,
     format_buckets: byFormat,
+    loudness_buckets: byLoudness,
+    edit_pace_buckets: byEditPace,
     by_niche: byNiche,
     next_actions: [
       readyVideo.length > probed.length ? `Догнать AV-probe еще ${Math.max(0, readyVideo.length - probed.length)} ready mp4.` : "AV-probe backlog закрыт для текущих ready mp4.",
-      audioCount ? "Запустить ASR/речь: первая фраза, скорость речи, паузы, наличие голоса в первые 0.5с." : "Сначала накопить mp4 с audio stream.",
-      verticalCount ? "Запустить visual sampling: первый кадр, крупность товара, текст на экране, частота смены кадров." : "Сначала накопить вертикальные mp4.",
+      featureCount ? "На основе ffmpeg features можно ранжировать: loudness, паузы, sound start, cut density, edit pace." : "Накопить lightweight audio/visual features поверх ffprobe.",
+      audioCount ? "Следующий платный/тяжелый слой: ASR первая фраза, скорость речи, паузы, наличие голоса в первые 0.5с." : "Сначала накопить mp4 с audio stream.",
+      verticalCount ? "Следующий тяжелый visual слой: первый кадр, крупность товара, текст на экране, объект/товар." : "Сначала накопить вертикальные mp4.",
       "Склеить AV-сигналы с Pattern Brain: hook + duration + audio + visual recipe = Creative DNA.",
     ],
     user_insights: insights,
