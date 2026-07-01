@@ -255,11 +255,11 @@ export async function heygenListVoices(opts: { limit?: number; token?: string; l
 export function buildHeyGenCreateAvatarDryRun(input: HeyGenCreateAvatarInput): HeyGenDryRun {
   const body: Record<string, unknown> = {
     name: input.name,
-    avatar_type: input.avatarType,
+    type: input.avatarType,
   };
-  if (input.groupName) body.group_name = input.groupName;
-  if (input.imageUrl) body.image = { type: "url", url: input.imageUrl };
-  if (input.videoUrl) body.video = { type: "url", url: input.videoUrl };
+  if (input.groupName) body.avatar_group_id = input.groupName;
+  if (input.imageUrl) body.file = { type: "url", url: input.imageUrl };
+  if (input.videoUrl) body.file = { type: "url", url: input.videoUrl };
   if (input.prompt) body.prompt = input.prompt;
   const warnings: string[] = [];
   if (input.avatarType === "photo" && !input.imageUrl) warnings.push("photo avatar requires imageUrl");
@@ -329,4 +329,3 @@ export async function heygenGetVideoStatus(videoId: string): Promise<HeyGenApiRe
   const res = await heygenRequest<unknown>(`/v3/videos/${safeVideoId}`);
   return { ...res, data: res.data ? sanitizeHeyGenVideoStatus(res.data) : null };
 }
-

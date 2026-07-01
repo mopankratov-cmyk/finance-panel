@@ -21,6 +21,12 @@ export async function GET(req: NextRequest) {
       niche_comparison: body.niche_comparison || [],
       anti_pattern_brain: body.anti_pattern_brain || null,
       discovery_brain: body.discovery_brain || null,
+      feedback_loop: body.feedback_loop || body.next_intelligence_layers?.feedback_loop || null,
+      audio_visual_intelligence: body.audio_visual_intelligence || body.next_intelligence_layers?.audio_visual_intelligence || null,
+      product_brain: body.product_brain || body.next_intelligence_layers?.product_brain || null,
+      audience_brain: body.audience_brain || body.next_intelligence_layers?.audience_brain || null,
+      experiment_brain: body.experiment_brain || body.next_intelligence_layers?.experiment_brain || null,
+      portfolio_manager: body.portfolio_manager || body.next_intelligence_layers?.portfolio_manager || null,
       cost_governor: body.cost_governor || null,
       autopilot_actions: body.autopilot_actions || null,
     }, { headers: { "Cache-Control": "no-store" } });

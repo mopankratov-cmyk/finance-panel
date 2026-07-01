@@ -2,6 +2,24 @@
 
 Этот журнал ведёт отдельный AI-worker на Railway во время ночных задач по контент-заводу.
 
+### 2026-07-01  Reels Brain operating system and paid guard
+
+- Ветка: `fix/reels-brain-paid-cost-guard`
+- Цель: перевести cost governor из read-only панели в реальный guard для платного Reels Brain сбора и добавить слой feedback/operating system.
+- Изменено:
+  - `app/api/factory/jobs/reels-brain-cron/route.ts`: bulk-сбор переключается на analyze, если autopilot/cost governor ставит pause.
+  - `lib/factory/reelsBrainScheduler.ts`: scheduler payload явно включает `use_autopilot_guard`.
+  - `lib/factory/reelsBrainOperatingSystem.ts`: feedback loop, audio/visual seed, product/audience/experiment/portfolio layers.
+  - `app/api/factory/reels-brain/feedback/route.ts`: read/write контур feedback метрик через `post_metrics`.
+  - `learning-economics` и `report`: возвращают operating-system слои.
+  - HeyGen client dry-run приведён к актуальному v3 avatar payload contract.
+- Проверки:
+  - `npx tsx lib/factory/reelsBrainCostGovernorContract.test.mts`
+  - `npx tsx lib/factory/reelsBrainOperatingSystem.test.mts`
+  - `npx tsx lib/factory/heygenClientContract.test.mts`
+  - `npx tsc --noEmit --pretty false`
+  - `npx eslint ...`
+
 ### 2026-07-01  OTK frames unavailable soft signal
 
 - Ветка: `fix/factory-otk-frames-unavailable`

@@ -50,6 +50,7 @@ export function buildReelsBrainSchedulerPlan(input?: {
           provider_timeout_ms: 30000,
           max_provider_calls: maxProviderCalls,
           max_cost_units: maxCostUnits,
+          use_autopilot_guard: true,
           hours: 72,
         },
       },

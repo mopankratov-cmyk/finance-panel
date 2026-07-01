@@ -37,7 +37,8 @@ import {
     prompt: "Natural phone selfie creator, imperfect lighting, casual tone.",
   });
   equal(dry.endpoint, "/v3/avatars", "avatar creation uses v3 avatars endpoint");
-  equal(dry.body.avatar_type, "prompt", "avatar type is preserved");
+  equal(dry.body.type, "prompt", "avatar type is preserved in v3 type field");
+  ok(!("avatar_type" in dry.body), "avatar creation does not use legacy avatar_type field");
 }
 
 {

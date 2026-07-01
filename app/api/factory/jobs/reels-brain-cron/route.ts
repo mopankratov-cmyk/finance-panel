@@ -91,6 +91,31 @@ async function selectAutoTask(req: NextRequest, niches: string, platforms: strin
   };
 }
 
+async function loadAutopilotGuard(req: NextRequest, niches: string) {
+  try {
+    const url = new URL("/api/factory/reels-brain/autopilot-actions", req.nextUrl.origin);
+    url.searchParams.set("niches", niches);
+    const response = await internalFetch(url);
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) return { ok: false, can_run_paid_collection: false, reason: data?.error || response.statusText, data };
+    const canRun = data?.autopilot_actions?.can_run_paid_collection !== false
+      && data?.cost_governor?.status !== "pause_or_review";
+    return {
+      ok: true,
+      can_run_paid_collection: canRun,
+      reason: canRun ? "autopilot_guard_ok" : "cost_governor_or_autopilot_paused",
+      data,
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      can_run_paid_collection: false,
+      reason: "autopilot_guard_error: " + String((error as Error)?.message || error).slice(0, 120),
+      data: null,
+    };
+  }
+}
+
 export async function GET(req: NextRequest) {
   try {
     if (!(await isAuthorizedReelsBrainJobRequest(req))) {
@@ -100,7 +125,8 @@ export async function GET(req: NextRequest) {
     const niches = req.nextUrl.searchParams.get("niches") || DEFAULT_NICHES;
     const platforms = req.nextUrl.searchParams.get("platforms") || DEFAULT_PLATFORMS;
     const auto = await selectAutoTask(req, niches, platforms);
-    const task = auto.task;
+    const guard = auto.task === "bulk" ? await loadAutopilotGuard(req, niches) : null;
+    const task = auto.task === "bulk" && guard && !guard.can_run_paid_collection ? "analyze" : auto.task;
     const endpoint = task === "bulk"
       ? "/api/factory/jobs/reels-brain-bulk-ingest"
       : "/api/factory/jobs/reels-brain-analyze-backlog";
@@ -139,6 +165,7 @@ export async function GET(req: NextRequest) {
     console.info("reels_brain_cron_tick", JSON.stringify({
       task,
       decision: auto.decision,
+      guard: guard ? { ok: guard.ok, can_run_paid_collection: guard.can_run_paid_collection, reason: guard.reason } : null,
       target_total: auto.targetTotal,
       backlog: auto.backlog,
       endpoint,
@@ -163,6 +190,8 @@ export async function GET(req: NextRequest) {
       task,
       cadence: "*/5 * * * *",
       policy: "auto until target: bulk while corpus is below target and backlog is small, otherwise analyze",
+      guard: guard ? { ok: guard.ok, can_run_paid_collection: guard.can_run_paid_collection, reason: guard.reason } : null,
+      original_task: auto.task,
       target_total: auto.targetTotal,
       max_backlog_before_analyze: auto.maxBacklogBeforeAnalyze,
       backlog: auto.backlog,
