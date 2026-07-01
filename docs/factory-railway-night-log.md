@@ -2,6 +2,22 @@
 
 Этот журнал ведёт отдельный AI-worker на Railway во время ночных задач по контент-заводу.
 
+### 2026-07-01  OTK frames unavailable soft signal
+
+- Ветка: `fix/factory-otk-frames-unavailable`
+- Цель: не смешивать хорошие text/fallback ОТК без кадров с обычным `warning`.
+- Изменено:
+  - `lib/factory/graphRun.ts`: добавлен `frames_unavailable` soft-signal для score >= 7, artifact-ok, но non-frame-grounded basis.
+  - `cf_signals.params` и publication metadata получают `frames_unavailable`.
+  - `quality_status` может быть `frames_unavailable`, не только `otk_pass`/`warning`.
+  - `lib/factory/otkGateContract.test.mts`: контракт на отдельный статус.
+- Проверки:
+  - `npx tsx lib/factory/otkGateContract.test.mts`
+  - `npx tsx lib/factory/otkGateRampContract.test.mts`
+  - `npx tsx lib/factory/otkStoryboardFallback.test.mts`
+  - `npx tsc --noEmit --pretty false`
+  - `npx eslint lib/factory/graphRun.ts lib/factory/otkGateContract.test.mts`
+
 ### 2026-07-01  FAL media key fallback for OTK frames
 
 - Ветка: `fix/factory-fal-billing-key-frames`

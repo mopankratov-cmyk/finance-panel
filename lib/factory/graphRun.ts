@@ -111,6 +111,18 @@ function isFramesGroundedOtkPass(plan: RunPlan, artifactOk = true): boolean {
   return isFramesGroundedOtkVerdictPass(plan.otk, artifactOk);
 }
 
+function isFramesUnavailableSoftSignal(otk: RunOtkVerdict | null | undefined, artifactOk = true): boolean {
+  const score = otk?.score ?? null;
+  const basis = String(otk?.basis || "").toLowerCase();
+  const basisReason = String(otk?.basis_reason || "").toLowerCase();
+  const verdict = String(otk?.verdict || "").toLowerCase();
+  if (score == null || score < 7) return false;
+  if (!artifactOk) return false;
+  if (basis === "model" || basis === "frames") return false;
+  if (verdict === "trash" || verdict === "rework" || verdict === "fail") return false;
+  return basisReason === "frames_unavailable" || basis === "text" || basis === "fallback" || basis === "storyboard";
+}
+
 function otkGateMode(): OtkGateMode {
   if (process.env.FACTORY_OTK_FAIL_OPEN === "true") return "shadow";
   const raw = String(process.env.FACTORY_OTK_GATE_MODE || "block_broken").toLowerCase();
@@ -1449,6 +1461,7 @@ export async function runRecipeStep(
     if (missingFrames) {
       if (typeof score === "number") addWarning(`ОТК не извлёк кадры; score рассчитан по ${basis || "storyboard"} fallback`);
       else addWarning("ОТК не извлёк кадры; сохраняем ролик без оценки");
+      basisReason = "frames_unavailable";
     }
     if (score == null) addWarning("video-critic did not return score");
     if (typeof score === "number" && score < 7) addWarning(`OTK below threshold: ${score}`);
@@ -1514,6 +1527,7 @@ export async function runRecipeStep(
     const otkForBank = plan.bestOtk || plan.otk || null;
     const artifactOk = otkForBank?.artifact_ok !== false;
     const qualityPassed = isFramesGroundedOtkVerdictPass(otkForBank, artifactOk);
+    const framesUnavailable = isFramesUnavailableSoftSignal(otkForBank, artifactOk);
     // в библиотеку контента (каталог кокпита) попадает только frames-grounded OTK pass.
     let catalogUrl: string | null = null;
     let catalogError: string | null = null;
@@ -1544,8 +1558,9 @@ export async function runRecipeStep(
     if (url && !catalogUrl && catalogError) {
       addWarning(`gen-save warning: ${catalogError}`);
     }
-    const qualityStatus = qualityPassed ? "otk_pass" : "warning";
-    const finalStatus = summarizeWarnings(plan) ? "warning" : qualityStatus;
+    const qualityStatus = qualityPassed ? "otk_pass" : framesUnavailable ? "frames_unavailable" : "warning";
+    const warningSummary = summarizeWarnings(plan);
+    const finalStatus = qualityPassed && warningSummary ? "warning" : qualityStatus;
     plan.step = "done";
     plan.catalog_url = catalogUrl;
     plan.catalog_error = catalogError;
@@ -1559,7 +1574,7 @@ export async function runRecipeStep(
       recipe_id: id, niche, article, mode, format: null, engine: plan.render_engine || "shotstack",
       axes: otkForBank?.axes ?? null,
       reason_chip: finalStatus === "warning" ? (plan.warnings?.[0] || "OTK gate failed") : null,
-      params: { source: "graph_run_otk_gate", score, basis: otkForBank?.basis || null, artifact_ok: artifactOk, catalog_url: catalogUrl, target_platform: plan.target_platform || "tiktok" },
+      params: { source: "graph_run_otk_gate", score, basis: otkForBank?.basis || null, basis_reason: otkForBank?.basis_reason || null, frames_unavailable: framesUnavailable, artifact_ok: artifactOk, catalog_url: catalogUrl, target_platform: plan.target_platform || "tiktok" },
     });
     const publication = await recordFactoryPublication(db, {
       recipeId: id,
@@ -1571,6 +1586,7 @@ export async function runRecipeStep(
         run_id: plan.run_id || null,
         quality_status: finalStatus,
         otk_score: score,
+        frames_unavailable: framesUnavailable,
         catalog_url: catalogUrl,
         render_engine: plan.render_engine || "shotstack",
       },
