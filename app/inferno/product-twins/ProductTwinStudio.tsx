@@ -14,7 +14,7 @@ import {
   ThumbsUp,
   XCircle,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 type SourcePackReadiness = {
   supported: boolean;
@@ -80,6 +80,7 @@ type TwinViewAsset = {
 type BrollVerdict = "winner" | "usable" | "weak" | "reject";
 
 type ProductBrollRun = {
+  action?: string;
   mode?: string;
   ok?: boolean;
   error?: string;
@@ -98,6 +99,75 @@ type ProductBrollRun = {
     mode?: string;
     next_actions?: string[];
   };
+  candidate?: {
+    article?: string;
+    product?: string;
+    category?: string;
+    twin_id?: string;
+    view_id?: string | null;
+    inspected?: {
+      article: string;
+      category?: string;
+      twin_id?: string;
+      views?: number;
+      selected_view?: string | null;
+      simple?: boolean;
+      status?: string;
+    }[];
+  };
+  plan?: {
+    mode?: string;
+    next_actions?: string[];
+    explore?: string[];
+    source?: {
+      kind?: string | null;
+      asset_kind?: string | null;
+      quality?: number | null;
+      risk?: string | null;
+      view_id?: string | null;
+    };
+    gate?: {
+      ok?: boolean;
+      severity?: string;
+      reasons?: string[];
+      recommendation?: string;
+    };
+    autonomous_gate?: {
+      ok?: boolean;
+      reason?: string;
+      recommendation?: string;
+    };
+  };
+  submit?: {
+    jobs?: { task_id?: string | null; ok?: boolean; error?: string | null; label?: string }[];
+    status_route?: string;
+    source_gate?: {
+      ok?: boolean;
+      severity?: string;
+      reasons?: string[];
+      recommendation?: string;
+    };
+  };
+  status?: {
+    status?: string;
+    videoUrl?: string;
+    error?: string;
+  };
+  archive?: { status?: string; yandex_path?: string | null; client_url?: string } | null;
+  verdict?: {
+    verdict?: string;
+    reasons?: string[];
+    recommendation?: string[];
+  };
+  feedback?: {
+    ok?: boolean;
+    feedback?: {
+      verdict?: string;
+      next_action?: string;
+      reasons?: string[];
+    };
+  };
+  saved?: { ok?: boolean; path?: string; error?: string } | null;
   jobs?: { task_id?: string | null; ok?: boolean; error?: string | null; label?: string }[];
   status_route?: string;
 };
@@ -109,17 +179,28 @@ type ProductMontageRun = {
   error?: string;
   pending_url?: string;
   video_url?: string;
+  row_id?: string | null;
   yandex_archive?: { status?: string; yandex_path?: string | null; client_url?: string } | null;
   saved?: { ok?: boolean; path?: string; error?: string } | null;
+  feedback?: {
+    ok?: boolean;
+    feedback?: {
+      verdict?: string;
+      next_action?: string;
+      reasons?: string[];
+    };
+  };
   plan?: {
     lane?: string;
     category?: string;
     recommendation?: string;
     clips?: {
       view_id: string;
+      label?: string;
       purpose: string;
       truth: string;
       duration_sec: number;
+      slot?: string;
     }[];
   };
 };
@@ -215,6 +296,13 @@ function pickBrollView(views: TwinViewAsset[]): TwinViewAsset | null {
     || null;
 }
 
+function extractLoopTaskId(run: ProductBrollRun | null): string {
+  const direct = run?.submit?.jobs?.find((job) => job.ok && job.task_id)?.task_id
+    || run?.jobs?.find((job) => job.ok && job.task_id)?.task_id
+    || "";
+  return direct;
+}
+
 async function jsonFetch(url: string, init?: RequestInit) {
   const res = await fetch(url, { ...init, cache: "no-store" });
   const json = await res.json().catch(() => ({}));
@@ -232,6 +320,7 @@ export default function ProductTwinStudio() {
   const [logs, setLogs] = useState<RunLog[]>([]);
   const [brollRun, setBrollRun] = useState<ProductBrollRun | null>(null);
   const [montageRun, setMontageRun] = useState<ProductMontageRun | null>(null);
+  const [brollTaskId, setBrollTaskId] = useState<string>("");
 
   const selectedTwin = twins[selected] || null;
   const selectedViews = views[selected] || [];
@@ -363,22 +452,18 @@ export default function ProductTwinStudio() {
     if (!selected) return;
     setBusy("broll-dry");
     try {
-      const qs = new URLSearchParams({
-        article: selected,
-        product: selectedTwin?.productName || selectedItem?.product || selected,
-        count: "1",
-        model: "kling",
-      });
-      if (selectedBrollView?.viewId) {
-        qs.set("use_derived_view", "1");
-        qs.set("view_id", selectedBrollView.viewId);
-      }
-      const data = await jsonFetch(`/api/factory/product-broll-batch?${qs.toString()}`) as ProductBrollRun;
+      const data = await jsonFetch("/api/factory/product-broll-loop", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ article: selected, action: "plan" }),
+      }) as ProductBrollRun;
       setBrollRun(data);
-      pushLog("b-roll dry", Boolean(data.source_gate?.ok), `${data.source_gate?.severity || data.mode || "dry"} · ${data.view_id || data.asset_kind || data.source_kind || "source"}`);
+      const severity = data.plan?.gate?.severity || data.plan?.autonomous_gate?.reason || data.plan?.mode || data.mode || "plan";
+      const source = data.candidate?.view_id || data.plan?.source?.view_id || data.candidate?.category || "candidate";
+      pushLog("b-roll plan", data.ok !== false, `${severity} · ${source}`);
     } catch (e) {
       setBrollRun({ ok: false, error: String((e as Error).message || e) });
-      pushLog("b-roll dry", false, String((e as Error).message || e));
+      pushLog("b-roll plan", false, String((e as Error).message || e));
     } finally {
       setBusy(null);
     }
@@ -390,26 +475,64 @@ export default function ProductTwinStudio() {
     try {
       const body: Record<string, unknown> = {
         article: selected,
-        product: selectedTwin?.productName || selectedItem?.product || selected,
-        count: 1,
-        model: "kling",
-        submit: true,
-      };
-      if (selectedBrollView?.viewId) {
-        body.use_derived_view = true;
-        body.view_id = selectedBrollView.viewId;
+        action: "submit_one",
       }
-      const data = await jsonFetch("/api/factory/product-broll-batch", {
+      const data = await jsonFetch("/api/factory/product-broll-loop", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       }) as ProductBrollRun;
       setBrollRun(data);
-      const submitted = (data.jobs || []).filter((job) => job.ok).length;
-      pushLog("b-roll paid", submitted > 0, `${submitted} submitted · ${data.view_id || selectedBrollView?.viewId || "source"}`);
+      const submitted = (data.submit?.jobs || []).filter((job) => job.ok).length;
+      const taskId = extractLoopTaskId(data);
+      if (taskId) setBrollTaskId(taskId);
+      pushLog("b-roll submit", submitted > 0, `${submitted} submitted · ${taskId || data.candidate?.view_id || "candidate"}`);
     } catch (e) {
       setBrollRun({ ok: false, error: String((e as Error).message || e) });
-      pushLog("b-roll paid", false, String((e as Error).message || e));
+      pushLog("b-roll submit", false, String((e as Error).message || e));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function judgeBrollTask() {
+    if (!selected) return;
+    const taskId = brollTaskId || extractLoopTaskId(brollRun);
+    if (!taskId) {
+      pushLog("b-roll judge", false, "нет task_id");
+      return;
+    }
+    setBusy("broll-judge");
+    try {
+      const data = await jsonFetch("/api/factory/product-broll-loop", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ article: selected, action: "judge", task_id: taskId }),
+      }) as ProductBrollRun;
+      setBrollRun(data);
+      pushLog("b-roll judge", data.ok !== false, `${data.verdict?.verdict || data.status?.status || "done"} · ${data.archive?.yandex_path || taskId}`);
+    } catch (e) {
+      setBrollRun({ ok: false, error: String((e as Error).message || e) });
+      pushLog("b-roll judge", false, String((e as Error).message || e));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function rejectBrollLoop() {
+    if (!selected) return;
+    setBusy("broll-reject");
+    try {
+      const data = await jsonFetch("/api/factory/product-broll-loop", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ article: selected, action: "mark_reject" }),
+      }) as ProductBrollRun;
+      setBrollRun(data);
+      pushLog("b-roll reject", data.ok !== false, data.feedback?.feedback?.verdict || "reject saved");
+    } catch (e) {
+      setBrollRun({ ok: false, error: String((e as Error).message || e) });
+      pushLog("b-roll reject", false, String((e as Error).message || e));
     } finally {
       setBusy(null);
     }
@@ -440,6 +563,54 @@ export default function ProductTwinStudio() {
     }
   }
 
+  const checkMontageStatus = useCallback(async () => {
+    if (!selected || !montageRun?.pending_url) return;
+    setBusy("montage-status");
+    try {
+      const data = await jsonFetch("/api/factory/product-broll-montage", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ article: selected, action: "status", pending_url: montageRun.pending_url, row_id: montageRun.row_id || null }),
+      }) as ProductMontageRun;
+      setMontageRun((prev) => ({ ...prev, ...data }));
+      pushLog("montage status", data.ok !== false, data.video_url ? "rendered and archived" : (data.status || "processing"));
+    } catch (e) {
+      pushLog("montage status", false, String((e as Error).message || e));
+    } finally {
+      setBusy(null);
+    }
+  }, [montageRun?.pending_url, montageRun?.row_id, selected]);
+
+  async function sendMontageFeedback(nextVerdict: BrollVerdict) {
+    if (!selected || !montageRun) return;
+    setBusy("montage-feedback");
+    const reasonsMap: Record<BrollVerdict, string[]> = {
+      winner: [],
+      usable: [],
+      weak: ["boring_motion"],
+      reject: ["artifact_detected"],
+    };
+    try {
+      const data = await jsonFetch("/api/factory/product-broll-montage", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          article: selected,
+          action: "feedback",
+          row_id: montageRun.row_id || null,
+          verdict: nextVerdict,
+          reasons: reasonsMap[nextVerdict],
+        }),
+      }) as ProductMontageRun;
+      setMontageRun((prev) => ({ ...prev, feedback: data.feedback }));
+      pushLog("montage qa", true, `${data.feedback?.feedback?.verdict || nextVerdict} saved`);
+    } catch (e) {
+      pushLog("montage qa", false, String((e as Error).message || e));
+    } finally {
+      setBusy(null);
+    }
+  }
+
   useEffect(() => {
     loadInventory();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -448,7 +619,21 @@ export default function ProductTwinStudio() {
   useEffect(() => {
     setBrollRun(null);
     setMontageRun(null);
+    setBrollTaskId("");
   }, [selected]);
+
+  useEffect(() => {
+    const taskId = extractLoopTaskId(brollRun);
+    if (taskId) setBrollTaskId(taskId);
+  }, [brollRun]);
+
+  useEffect(() => {
+    if (!montageRun?.pending_url || montageRun.video_url) return;
+    const timer = window.setTimeout(() => {
+      checkMontageStatus();
+    }, 15000);
+    return () => window.clearTimeout(timer);
+  }, [checkMontageStatus, montageRun?.pending_url, montageRun?.video_url]);
 
   return (
     <main className="min-h-screen bg-slate-50 px-4 py-5 text-slate-950 sm:px-6 lg:px-8">
@@ -578,7 +763,7 @@ export default function ProductTwinStudio() {
                   B-roll Run
                 </div>
                 <span className={`rounded-md border px-2 py-1 text-xs font-black ${brollRun?.source_gate?.ok ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-slate-200 bg-slate-100 text-slate-700"}`}>
-                  {brollRun?.source_gate?.severity || "idle"}
+                  {brollRun?.plan?.gate?.severity || brollRun?.source_gate?.severity || brollRun?.plan?.mode || "idle"}
                 </span>
               </div>
               <div className="mt-3 grid gap-2 text-xs">
@@ -613,11 +798,11 @@ export default function ProductTwinStudio() {
                       className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-slate-300 bg-white px-2 text-xs font-black text-slate-800 hover:bg-slate-50 disabled:opacity-50"
                     >
                       {busy === "broll-dry" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />}
-                      Dry Run
+                      Loop Plan
                     </button>
                     <button
                       onClick={submitBrollOne}
-                      disabled={Boolean(busy) || !brollRun?.source_gate?.ok || selectedComplexCategory}
+                      disabled={Boolean(busy) || brollRun?.plan?.mode === "blocked" || selectedComplexCategory}
                       className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-emerald-700 bg-emerald-700 px-2 text-xs font-black text-white hover:bg-emerald-800 disabled:opacity-50"
                     >
                       {busy === "broll-submit" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
@@ -625,23 +810,64 @@ export default function ProductTwinStudio() {
                     </button>
                   </div>
                 )}
+                {!selectedComplexCategory ? (
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      onClick={judgeBrollTask}
+                      disabled={Boolean(busy) || !(brollTaskId || extractLoopTaskId(brollRun))}
+                      className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-cyan-700 bg-white px-2 text-xs font-black text-cyan-800 hover:bg-cyan-50 disabled:opacity-50"
+                    >
+                      {busy === "broll-judge" ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                      Judge Last
+                    </button>
+                    <button
+                      onClick={rejectBrollLoop}
+                      disabled={Boolean(busy)}
+                      className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-rose-300 bg-white px-2 text-xs font-black text-rose-700 hover:bg-rose-50 disabled:opacity-50"
+                    >
+                      {busy === "broll-reject" ? <Loader2 className="h-4 w-4 animate-spin" /> : <XCircle className="h-4 w-4" />}
+                      Reject Source
+                    </button>
+                  </div>
+                ) : null}
                 {brollRun ? (
                   <div className="rounded-md border border-slate-200 bg-slate-50 p-2">
-                    <div className="font-black text-slate-800">{brollRun.error || brollRun.mode || "result"}</div>
+                    <div className="font-black text-slate-800">{brollRun.error || brollRun.verdict?.verdict || brollRun.plan?.mode || brollRun.mode || "result"}</div>
                     <div className="mt-1 text-slate-600">
-                      {brollRun.source_kind || "-"} · {brollRun.asset_kind || brollRun.view_id || "-"} · {brollRun.source_gate?.reasons?.join(", ") || brollRun.source_gate?.recommendation || "-"}
+                      {brollRun.plan?.source?.kind || brollRun.source_kind || "-"} · {brollRun.candidate?.view_id || brollRun.plan?.source?.view_id || brollRun.asset_kind || brollRun.view_id || "-"} · {(brollRun.plan?.gate?.reasons || brollRun.source_gate?.reasons || []).join(", ") || brollRun.plan?.gate?.recommendation || brollRun.plan?.autonomous_gate?.recommendation || brollRun.source_gate?.recommendation || "-"}
                     </div>
-                    {brollRun.jobs?.length ? (
+                    {brollRun.plan?.next_actions?.length ? (
                       <div className="mt-2 grid gap-1">
-                        {brollRun.jobs.map((job) => (
+                        {brollRun.plan.next_actions.slice(0, 3).map((step) => (
+                          <div key={step} className="rounded bg-white px-2 py-1 text-[11px] text-slate-700">
+                            {step}
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                    {(brollRun.submit?.jobs || brollRun.jobs)?.length ? (
+                      <div className="mt-2 grid gap-1">
+                        {(brollRun.submit?.jobs || brollRun.jobs || []).map((job) => (
                           <div key={`${job.label}-${job.task_id || job.error}`} className="rounded bg-white px-2 py-1 font-mono text-[11px] text-slate-700">
                             {job.ok ? job.task_id : job.error}
                           </div>
                         ))}
                       </div>
                     ) : null}
-                    {brollRun.status_route ? (
-                      <div className="mt-2 truncate font-mono text-[11px] text-slate-500">{brollRun.status_route}</div>
+                    {brollTaskId ? (
+                      <div className="mt-2 truncate font-mono text-[11px] text-slate-500">{brollTaskId}</div>
+                    ) : null}
+                    {brollRun.archive?.yandex_path ? (
+                      <div className="mt-2 truncate font-mono text-[11px] text-slate-500">{brollRun.archive.yandex_path}</div>
+                    ) : null}
+                    {brollRun.feedback?.feedback?.next_action ? (
+                      <div className="mt-2 text-[11px] text-slate-500">{brollRun.feedback.feedback.next_action}</div>
+                    ) : null}
+                    {brollRun.saved?.path ? (
+                      <div className="mt-2 truncate font-mono text-[11px] text-slate-500">{brollRun.saved.path}</div>
+                    ) : null}
+                    {(brollRun.submit?.status_route || brollRun.status_route) ? (
+                      <div className="mt-2 truncate font-mono text-[11px] text-slate-500">{brollRun.submit?.status_route || brollRun.status_route}</div>
                     ) : null}
                   </div>
                 ) : null}
@@ -655,10 +881,20 @@ export default function ProductTwinStudio() {
                       <div className="mt-2 grid gap-1">
                         {montageRun.plan.clips.map((clip) => (
                           <div key={`${clip.view_id}-${clip.duration_sec}`} className="rounded bg-white px-2 py-1 text-[11px] text-slate-700">
-                            {clip.view_id} · {clip.purpose} · {clip.duration_sec}s
+                            {clip.view_id} · {clip.slot || clip.purpose} · {clip.duration_sec}s
                           </div>
                         ))}
                       </div>
+                    ) : null}
+                    {montageRun.pending_url && !montageRun.video_url ? (
+                      <button
+                        onClick={checkMontageStatus}
+                        disabled={Boolean(busy)}
+                        className="mt-2 inline-flex h-8 items-center justify-center gap-2 rounded-md border border-cyan-300 bg-white px-2 text-[11px] font-black text-cyan-800 hover:bg-cyan-50 disabled:opacity-50"
+                      >
+                        {busy === "montage-status" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                        Check Status
+                      </button>
                     ) : null}
                     {montageRun.video_url ? (
                       <div className="mt-2 truncate font-mono text-[11px] text-slate-500">{montageRun.video_url}</div>
@@ -668,6 +904,37 @@ export default function ProductTwinStudio() {
                     ) : null}
                     {montageRun.yandex_archive?.yandex_path ? (
                       <div className="mt-2 truncate font-mono text-[11px] text-slate-500">{montageRun.yandex_archive.yandex_path}</div>
+                    ) : null}
+                    {(montageRun.video_url || montageRun.yandex_archive?.yandex_path) ? (
+                      <div className="mt-2 grid grid-cols-3 gap-1">
+                        <button
+                          title="Montage usable"
+                          onClick={() => sendMontageFeedback("usable")}
+                          disabled={Boolean(busy)}
+                          className="inline-flex h-7 items-center justify-center rounded border border-emerald-200 text-emerald-700 hover:bg-emerald-50 disabled:opacity-50"
+                        >
+                          <ThumbsUp className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          title="Montage weak"
+                          onClick={() => sendMontageFeedback("weak")}
+                          disabled={Boolean(busy)}
+                          className="inline-flex h-7 items-center justify-center rounded border border-amber-200 text-amber-700 hover:bg-amber-50 disabled:opacity-50"
+                        >
+                          <ThumbsDown className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          title="Montage reject"
+                          onClick={() => sendMontageFeedback("reject")}
+                          disabled={Boolean(busy)}
+                          className="inline-flex h-7 items-center justify-center rounded border border-rose-200 text-rose-700 hover:bg-rose-50 disabled:opacity-50"
+                        >
+                          <XCircle className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    ) : null}
+                    {montageRun.feedback?.feedback?.next_action ? (
+                      <div className="mt-2 text-[11px] text-slate-500">{montageRun.feedback.feedback.next_action}</div>
                     ) : null}
                   </div>
                 ) : null}

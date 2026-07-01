@@ -42,8 +42,10 @@
 2. `Load Twins`.
 3. Смотреть `Derived Views` и `Asset Readiness`.
 4. Отметить ассеты/ракурсы кнопками b-roll QA: usable, weak, reject.
-5. Для passed SKU запускать product b-roll dry-run и проверить `source_gate`.
-6. Для failed SKU запускать rebuild только после выбора лучшего source-pack.
+5. Для простых SKU запускать `Loop Plan`, затем `Submit 1`, затем `Judge Last`.
+6. Для одежды и сумок сначала запускать `Plan Montage` и только потом `Render Montage`.
+7. Если montage ушёл в `processing`, дожать его через `Check Status`, а после архивации поставить feedback.
+8. Для failed SKU запускать rebuild только после выбора лучшего source-pack.
 
 ## Вывод из первого smoke
 
@@ -51,4 +53,4 @@ TT04102 и YYS0101 были полезны как проверка трансп�
 
 NV-08 был полезен как проверка derived-view транспорта: submit/status/archive/frame extraction работают. Как производственный b-roll результат он не годится: пользователь увидел придуманные артефакты товара. Следующий autonomous paid loop должен идти только на простом SKU (`cosmetics`/`toy`) и после каждого ролика проходить auto-judge; одежда и сумки уходят в real-photo montage lane.
 
-Real-photo montage lane для одежды и сумок использует только `derived_from_source` views. Если в карточке есть `synthetic_candidate`, такой ракурс не должен попадать в montage sequence, даже если визуально выглядит неплохо.
+Real-photo montage lane для одежды и сумок использует только `derived_from_source` views. Если в карточке есть `synthetic_candidate`, такой ракурс не должен попадать в montage sequence, даже если визуально выглядит неплохо. Новый порядок montage-клипов должен стремиться к полному продуктному рассказу: hero/front, конструктивная деталь, материал, дополнительный ракурс, внутренность/спинка.

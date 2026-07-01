@@ -9,7 +9,9 @@ ok(/isAuthorizedReelsBrainJobRequest/.test(route), "montage route uses existing 
 ok(/derived_from_source/.test(route) && /real-photo/i.test(route), "montage route only selects real-photo derived views");
 ok(/falTimeline/.test(route) && /rehostImageForFal/.test(route), "montage route renders a still-image timeline through existing compose helpers");
 ok(/archiveExternalMediaToYandex/.test(route) && /disk: "gen"/.test(route), "montage route archives completed renders and catalogs them");
+ok(/"status" \| "feedback"/.test(route) && /resolveTimelineStatus/.test(route), "montage route supports pending-status polling and operator feedback");
+ok(/hero_front/.test(route) && /hardware_detail|closure_detail/.test(route), "montage route uses slot-based ordering for apparel and bag views");
 ok(/Plan Montage/.test(studio) && /Render Montage/.test(studio), "studio exposes montage actions");
-ok(/manual only · use real-photo motion montage/.test(studio), "studio sends apparel and bags into the montage lane");
+ok(/manual only · use real-photo motion montage/.test(studio) && /Check Status/.test(studio), "studio sends apparel and bags into the montage lane with status polling");
 
 console.log("productBrollMontageContract: passed");

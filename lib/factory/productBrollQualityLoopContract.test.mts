@@ -17,5 +17,6 @@ ok(/archiveExternalMediaToYandex/.test(route) && /content_assets/.test(route), "
 ok(/mark_reject/.test(route) && /identity_drift/.test(route), "loop can correct prior false-positive b-roll labels");
 
 ok(/selectedComplexCategory/.test(studio) && /manual only/.test(studio), "Studio disables autonomous paid submit for apparel/bag");
+ok(/\/api\/factory\/product-broll-loop/.test(studio) && /Loop Plan/.test(studio) && /Judge Last/.test(studio), "Studio runs the simple-SKU loop through plan, submit, and judge controls");
 
 console.log("productBrollQualityLoopContract: passed");

@@ -2711,3 +2711,27 @@
 - Remaining manual/visual QA:
   - Product Twin Studio on current production still showed broken images before preview-proxy deploy. After PR #92 deploy, run `Load Twins` and inspect preview cards.
   - Quality `0.60` on `NV-836`, `NV-816`, `NV-01` should be visually reviewed before using as hero assets; they are structurally complete but below the preferred `0.68` threshold.
+
+### Product Twin loop pack pass
+
+- Дата: 2026-07-01
+- Ветка: `feat/product-broll-lane-pack`
+- Цель:
+  - Дособрать операторский контур вокруг Product Twin Studio: real-photo montage status/feedback, richer apparel/bag shot ordering, и живой simple-SKU learning loop в UI.
+- Что сделано:
+  - `/api/factory/product-broll-montage` расширен до `plan | render | status | feedback`.
+  - Для montage добавлен pending flow: если FAL timeline не успел завершиться в одном запросе, route сохраняет `pending_url` в `content_assets` и умеет дожимать job через `status`.
+  - Для montage добавлен feedback loop (`usable` / `weak` / `reject`) c записью в `content_assets.analysis.product_broll_feedback` и best-effort сигналом в `cf_signals`.
+  - Порядок real-photo montage для `apparel` и `bag` переведён на slot-based scoring (`hero_front`, `closure_detail` / `hardware_detail`, `fabric_macro` / `handle_or_strap`, `side/back`, `inside_detail`) вместо жёсткой привязки только к нескольким `view_id`.
+  - Product Twin Studio для простых SKU теперь использует `/api/factory/product-broll-loop`: `Loop Plan` → `Submit 1` → `Judge Last` → `Reject Source`.
+  - Product Twin Studio для `apparel` / `bag` теперь умеет `Check Status` для montage и принимает montage feedback без выхода из экрана.
+  - Обновлены runbook и visual QA docs под новую операторскую процедуру.
+- Проверки:
+  - `npx tsx lib/factory/productBrollMontageContract.test.mts`
+  - `npx tsx lib/factory/productBrollQualityLoopContract.test.mts`
+  - `npx tsx lib/factory/productTwinStudioContract.test.mts`
+  - `npx eslint app/api/factory/product-broll-montage/route.ts app/inferno/product-twins/ProductTwinStudio.tsx lib/factory/productBrollMontageContract.test.mts lib/factory/productBrollQualityLoopContract.test.mts lib/factory/productTwinStudioContract.test.mts`
+  - `npx tsc --noEmit --pretty false`
+  - `npm run dev` → Next.js 16.2.7 поднялся локально на `http://localhost:3000`
+- Следующий продовый шаг:
+  - Запушить ветку, открыть PR, дождаться deploy и на production Studio проверить `Plan Montage`/`Render Montage`/`Check Status` на `NV-08` и `Loop Plan`/`Submit 1`/`Judge Last` на первом доступном simple SKU.
