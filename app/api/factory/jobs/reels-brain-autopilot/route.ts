@@ -17,6 +17,30 @@ function readNumber(req: NextRequest, key: string, fallback: number, min: number
   return Math.max(min, Math.min(max, parsed));
 }
 
+function resultCount(result: JsonRecord, key: "found" | "inserted" | "analyzed" | "errors") {
+  return Number(
+    result?.[key]
+    ?? result?.tick?.[key]
+    ?? result?.result?.[key]
+    ?? result?.result?.tick?.[key]
+    ?? result?.automation_summary?.[key]
+    ?? result?.tick?.automation_summary?.[key]
+    ?? result?.result?.automation_summary?.[key]
+    ?? 0,
+  ) || 0;
+}
+
+async function runLearningEndpoint(req: NextRequest, body: Record<string, unknown>) {
+  const response = await internalFetch(`${req.nextUrl.origin}/api/factory/jobs/reels-brain-learning`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(115000),
+  });
+  const result = await response.json().catch(() => ({}));
+  return { result, ok: response.ok };
+}
+
 async function fetchLearningPlan(req: NextRequest) {
   const url = new URL("/api/factory/reels-brain/learning-plan", req.nextUrl.origin);
   url.searchParams.set("niches", readString(req, "niches", "ru_toys,ru_clothing,ru_cosmetics"));
@@ -66,14 +90,42 @@ async function executeNextTick(req: NextRequest, plan: JsonRecord, execute: bool
       hours: readNumber(req, "hours", 72, 1, 168),
       ...params,
     };
-    const response = await internalFetch(`${req.nextUrl.origin}${endpoint}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(115000),
-    });
-    const result = await response.json().catch(() => ({}));
-    return { executed: true, task, endpoint, params: body, result, ok: response.ok };
+    const primary = await runLearningEndpoint(req, body);
+    const shouldRecoverInstagram = task === "collect_platform_catchup"
+      && String(body.platforms || "") === "youtube"
+      && resultCount(primary.result as JsonRecord, "found") === 0
+      && resultCount(primary.result as JsonRecord, "inserted") === 0;
+    if (!shouldRecoverInstagram) {
+      return { executed: true, task, endpoint, params: body, result: primary.result, ok: primary.ok };
+    }
+
+    const fallbackBody = {
+      niches: body.niches,
+      platforms: "instagram",
+      strategy: "instagram_ru",
+      limit: body.limit || "25",
+      max_lanes: "4",
+      providers_per_lane: "1",
+      provider_timeout_ms: "30000",
+      hours: body.hours,
+    };
+    const fallback = await runLearningEndpoint(req, fallbackBody);
+    return {
+      executed: true,
+      task,
+      endpoint,
+      params: body,
+      result: primary.result,
+      ok: primary.ok || fallback.ok,
+      fallback: {
+        reason: "youtube_zero_results",
+        task: "collect_platform_catchup",
+        endpoint,
+        params: fallbackBody,
+        result: fallback.result,
+        ok: fallback.ok,
+      },
+    };
   }
 
   return {

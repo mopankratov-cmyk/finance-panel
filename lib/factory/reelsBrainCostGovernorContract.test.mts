@@ -48,6 +48,7 @@ ok(!/POST\s*\(/.test(learningPlan), "learning-plan route is read-only");
 ok(/fetchLearningPlan/.test(autopilotJob) && /executeNextTick/.test(autopilotJob), "autopilot job supervises the next training tick");
 ok(/reels_brain_autopilot/.test(autopilotJob) && /isAuthorizedReelsBrainJobRequest/.test(autopilotJob), "autopilot job is protected and reports its mode");
 ok(/params\.platforms/.test(autopilotJob) && /params\.niches/.test(autopilotJob), "autopilot job preserves platform-specific catch-up params");
+ok(/youtube_zero_results/.test(autopilotJob) && /strategy: "instagram_ru"/.test(autopilotJob), "autopilot recovers platform catch-up when YouTube returns zero");
 
 ok(/buildReelsBrainFeedbackLoop/.test(feedback), "feedback route summarizes publication metrics");
 ok(/\/api\/factory\/post-metrics/.test(feedback), "feedback route writes through post-metrics");
@@ -59,6 +60,7 @@ ok(/costGovernor/.test(cockpit) && /autopilotActions/.test(cockpit), "cockpit re
 ok(/learningPlan/.test(cockpit) && /Learning Mission/.test(cockpit), "cockpit exposes the standalone learning mission");
 ok(/worker_loop/.test(cockpit) && /Цена обучения/.test(cockpit), "cockpit shows unattended loop and cost trend inside the mission");
 ok(/Фокус платформы/.test(cockpit) && /focus_platform/.test(cockpit), "cockpit shows which platform the autopilot is healing now");
+ok(/liveExecutionCount/.test(cockpit) && /fallback:/.test(cockpit), "cockpit exposes live fallback training progress");
 ok(/nextLayers/.test(cockpit), "cockpit reads next intelligence layers");
 ok(/selectedPattern/.test(cockpit) && /rb-drawer/.test(cockpit), "cockpit exposes pattern creative brief drawer");
 ok(/rb-click/.test(cockpit) && /setSelectedPattern/.test(cockpit), "cockpit pattern cards are inspectable");

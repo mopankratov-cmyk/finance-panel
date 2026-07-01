@@ -35,6 +35,19 @@ function firstPositive(...values: unknown[]): number {
   return 0;
 }
 
+function liveExecutionCount(execution: JsonRecord | undefined, key: "found" | "inserted" | "analyzed") {
+  const read = (result: JsonRecord | undefined) => num(
+    result?.[key]
+    || result?.tick?.[key]
+    || result?.result?.[key]
+    || result?.result?.tick?.[key]
+    || result?.automation_summary?.[key]
+    || result?.tick?.automation_summary?.[key]
+    || result?.result?.automation_summary?.[key],
+  );
+  return read(execution?.result) + read(execution?.fallback?.result);
+}
+
 async function getJson(path: string, init: RequestInit = {}): Promise<JsonRecord> {
   const response = await fetch(path, { cache: "no-store", ...init });
   const data = await response.json().catch(() => ({}));
@@ -875,10 +888,15 @@ export default function ReelsBrainPixelCockpit() {
                       || `executed ${liveRun.execution?.executed ? "yes" : "no"} · ${liveRun.execution?.endpoint || "waiting"}`}
                   </p>
                   <p style={{ marginTop: 8 }}>
-                    found {compact(liveRun.execution?.result?.found || liveRun.execution?.result?.tick?.found || liveRun.execution?.result?.result?.found || 0)}
-                    {" · "}inserted {compact(liveRun.execution?.result?.inserted || liveRun.execution?.result?.tick?.inserted || liveRun.execution?.result?.result?.inserted || 0)}
-                    {" · "}analyzed {compact(liveRun.execution?.result?.analyzed || liveRun.execution?.result?.tick?.analyzed || liveRun.execution?.result?.result?.analyzed || 0)}
+                    found {compact(liveExecutionCount(liveRun.execution, "found"))}
+                    {" · "}inserted {compact(liveExecutionCount(liveRun.execution, "inserted"))}
+                    {" · "}analyzed {compact(liveExecutionCount(liveRun.execution, "analyzed"))}
                   </p>
+                  {liveRun.execution?.fallback ? (
+                    <p style={{ marginTop: 6, color: "#bae6fd" }}>
+                      fallback: {liveRun.execution.fallback.reason || "recovery"} · {liveRun.execution.fallback.params?.platforms || "mixed"}
+                    </p>
+                  ) : null}
                 </div>
               ) : null}
               <div className="rb-three" style={{ marginTop: 16 }}>
