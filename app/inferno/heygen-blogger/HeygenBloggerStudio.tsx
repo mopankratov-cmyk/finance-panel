@@ -63,7 +63,9 @@ export default function HeygenBloggerStudio() {
     source: config.identity.source,
     avatarGroupId: config.identity.avatarGroupId || undefined,
     avatarLookId: config.identity.avatarLookId || undefined,
-    voiceId: config.voice.voiceId || undefined,
+    voiceId: config.voice.mode === "heygen_tts" ? config.voice.voiceId || undefined : undefined,
+    voiceMode: config.voice.mode,
+    audioUrl: config.voice.mode === "external_audio" ? config.voice.audioUrl || undefined : undefined,
     language: config.voice.language,
     prompt: config.identity.appearance,
     faceImageUrls: config.identity.faceImageKeys,
@@ -142,9 +144,9 @@ export default function HeygenBloggerStudio() {
                 type="button"
                 className="inline-flex items-center gap-1 rounded border border-cyan-700 bg-cyan-700 px-3 py-1.5 text-sm font-semibold text-white hover:bg-cyan-800 disabled:opacity-50"
                 disabled={!!apiBusy}
-                onClick={() => callApi("smoke", "/api/factory/heygen-smoke", { identity: identityCard, script: smokeScript, realismMode: "phone_selfie", emotionalBeat: "skeptical" })}
+                onClick={() => callApi("smoke", "/api/factory/heygen-smoke", { identity: identityCard, script: smokeScript, voiceMode: config.voice.mode, audioUrl: config.voice.audioUrl || undefined, realismMode: "phone_selfie", emotionalBeat: "skeptical" })}
               >
-                <PlayCircle className="h-4 w-4" /> Smoke dry-run
+                <PlayCircle className="h-4 w-4" /> Visual smoke
               </button>
             </div>
           </div>

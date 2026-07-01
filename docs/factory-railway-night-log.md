@@ -122,6 +122,25 @@
   - Yandex зафиксирован как fallback/baseline, а не основной "living blogger" lane
   - основной путь к живости: ElevenLabs speech-to-speech / Cartesia clone / MiniMax clone + segmented synthesis + post-processing + HeyGen context check
 
+### 2026-07-01  Blogger visual-first mode
+
+- Ветка: `feat/factory-v2-product-broll`
+- Цель: продолжить создание блогеров без блокировки на финальном голосе
+- Изменено:
+  - `lib/factory/heygenBlogger.ts`: добавлен `voice.mode = visual_only | heygen_tts | external_audio`, `voice.audioUrl`
+  - `lib/factory/heygenAgentTool.ts`: payload preview различает visual placeholder, HeyGen TTS и external audio
+  - `lib/factory/heygenVideo.ts`: smoke planner разрешает visual-only планы без `voiceId`
+  - `app/inferno/heygen-blogger/HeygenBloggerStudio.tsx`: visual smoke отправляет `voiceMode`
+  - добавлен `docs/factory-ugc-blogger-visual-first-2026-07-01.md`
+- Проверки:
+  - `npx tsx lib/factory/heygenBloggerContract.test.mts`
+  - `npx tsx lib/factory/heygenVideoContract.test.mts`
+  - `npx tsx lib/factory/heygenIdentityContract.test.mts`
+  - `npx tsx lib/factory/heygenClientContract.test.mts`
+  - `npx tsc --noEmit --pretty false`
+- Результат:
+  - можно заводить и валидировать блогеров визуально, а финальный voice lane подключать позже
+
 ## Итог ночи
 
 - Дата: 2026-06-25

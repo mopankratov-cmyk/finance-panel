@@ -1,7 +1,6 @@
 import { buildHeyGenCreateVideoDryRun, type HeyGenDryRun } from "@/lib/factory/heygen";
 import {
   buildHeyGenIdentityPlan,
-  canUseHeyGenIdentityForVideo,
   heygenIdentityHash,
   type HeyGenBloggerIdentityCard,
 } from "@/lib/factory/heygenIdentity";
@@ -11,6 +10,8 @@ export type HeyGenRealismMode = "phone_selfie" | "casual_room" | "clean_studio";
 export interface HeyGenSmokeVideoInput {
   identity: HeyGenBloggerIdentityCard;
   script: string;
+  voiceMode?: "visual_only" | "heygen_tts" | "external_audio";
+  audioUrl?: string;
   title?: string;
   realismMode?: HeyGenRealismMode;
   emotionalBeat?: "curious" | "skeptical" | "surprised" | "warm_recommendation";
@@ -23,6 +24,7 @@ export interface HeyGenSmokeVideoPlan {
   mode: "manual-smoke-plan-only";
   paidBlocked: true;
   dryRun?: HeyGenDryRun;
+  visualOnly: boolean;
   script: string;
   realismDirectives: string[];
   errors: string[];
@@ -78,7 +80,7 @@ function realismDirectives(mode: HeyGenRealismMode, beat: HeyGenSmokeVideoInput[
 
 export function buildHeyGenSmokeVideoPlan(input: HeyGenSmokeVideoInput): HeyGenSmokeVideoPlan {
   const identityPlan = buildHeyGenIdentityPlan(input.identity);
-  const readiness = canUseHeyGenIdentityForVideo(input.identity);
+  const readiness = { ok: identityPlan.ok && !!input.identity.avatarLookId, reason: identityPlan.errors[0] || (!input.identity.avatarLookId ? "avatarLookId is required" : undefined) };
   const warnings = [...identityPlan.warnings];
   const errors = [...identityPlan.errors];
   if (!readiness.ok && readiness.reason) errors.push(readiness.reason);
@@ -87,8 +89,12 @@ export function buildHeyGenSmokeVideoPlan(input: HeyGenSmokeVideoInput): HeyGenS
   if (adMatches.length) warnings.push("script has ad-style markers; softened script should be reviewed");
 
   const script = softenAdStyle(input.script);
+  const voiceMode = input.voiceMode || (input.audioUrl ? "external_audio" : input.identity.voiceId ? "heygen_tts" : "visual_only");
+  const visualOnly = voiceMode === "visual_only";
   if (!script || script.length < 8) errors.push("script is too short for a useful smoke render");
   if (script.length > 420) warnings.push("smoke script is long; keep first-face test near 3-4 seconds");
+  if (visualOnly) warnings.push("visual_only mode: audio is intentionally skipped; use this to review face, look, framing, and motion before final voice");
+  if (voiceMode === "external_audio" && !input.audioUrl) errors.push("audioUrl is required when voiceMode=external_audio");
 
   const identityHash = heygenIdentityHash(input.identity);
   const directives = realismDirectives(
@@ -97,15 +103,38 @@ export function buildHeyGenSmokeVideoPlan(input: HeyGenSmokeVideoInput): HeyGenS
     input.speechSpeed || "normal",
   );
 
-  const dryRun = readiness.ok && input.identity.avatarLookId && input.identity.voiceId
+  const canBuildWithTts = readiness.ok && input.identity.avatarLookId && input.identity.voiceId && voiceMode === "heygen_tts";
+  const canBuildWithAudio = readiness.ok && input.identity.avatarLookId && input.audioUrl && voiceMode === "external_audio";
+  const dryRun = canBuildWithTts
     ? buildHeyGenCreateVideoDryRun({
       title: input.title || `ugc-smoke-${identityHash}`,
-      avatarLookId: input.identity.avatarLookId,
-      voiceId: input.identity.voiceId,
+      avatarLookId: input.identity.avatarLookId || "",
+      voiceId: input.identity.voiceId || "",
       script: `${script}\n\nDelivery notes: ${directives.join("; ")}.`,
       aspectRatio: input.identity.defaultAspectRatio || "9:16",
       engine: "avatar_iv",
     })
+    : canBuildWithAudio
+      ? {
+          ok: true as const,
+          endpoint: "/v3/videos",
+          method: "POST" as const,
+          paid: true,
+          body: {
+            type: "avatar",
+            avatar_id: input.identity.avatarLookId || "",
+            title: input.title || `ugc-smoke-${identityHash}`,
+            aspect_ratio: input.identity.defaultAspectRatio || "9:16",
+            engine: "avatar_iv",
+            audio_url: input.audioUrl || "",
+            metadata: {
+              realism_directives: directives,
+              original_script: script,
+              voice_mode: voiceMode,
+            },
+          },
+          warnings: [],
+        }
     : undefined;
 
   return {
@@ -114,10 +143,10 @@ export function buildHeyGenSmokeVideoPlan(input: HeyGenSmokeVideoInput): HeyGenS
     mode: "manual-smoke-plan-only",
     paidBlocked: true,
     dryRun,
+    visualOnly,
     script,
     realismDirectives: directives,
     errors,
     warnings,
   };
 }
-

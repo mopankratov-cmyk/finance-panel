@@ -16,7 +16,7 @@ const registry = readFileSync("lib/factory/heygenBlogger.ts", "utf8");
 ok(/export const METRIC_REGISTRY/.test(registry), "registry exports METRIC_REGISTRY");
 ok(/validateBloggerConfig/.test(registry) && /describeMetrics/.test(registry), "registry exports validator + describeMetrics");
 ok(/DEFAULT_BLOGGER_CONFIG/.test(registry) && /DEFAULT_LOOKS/.test(registry), "registry exports defaults + looks");
-ok(/"existing_look"/.test(registry) && /"Young Adult"/.test(registry) && /"Woman"/.test(registry) && /"9:16"/.test(registry) && /"avatar_iv"/.test(registry) && /"Friendly"/.test(registry), "registry enums cover key UGC values");
+ok(/"existing_look"/.test(registry) && /"Young Adult"/.test(registry) && /"Woman"/.test(registry) && /"9:16"/.test(registry) && /"avatar_iv"/.test(registry) && /"visual_only"/.test(registry) && /"Friendly"/.test(registry), "registry enums cover key UGC values");
 
 // ── 2. Agent-tool (тот же источник) ──
 const tool = readFileSync("lib/factory/heygenAgentTool.ts", "utf8");
@@ -40,17 +40,21 @@ ok(/Control Plane/.test(spec) && /Metric Registry/.test(spec), "spec documents t
 // ── 5. Runtime: валидация управляется реестром ──
 ok(describeMetrics().length >= 25, "registry exposes the full metric set");
 
-// default requires existing look + voice selection → invalid intentionally until operator picks blogger.
+// default requires existing look selection; voice can stay visual_only while we build the blogger.
 const dflt = validateBloggerConfig(DEFAULT_BLOGGER_CONFIG);
 ok(!dflt.ok, "default config is intentionally incomplete (needs look + voice)");
-ok(dflt.errors.some((e) => /avatarLookId/.test(e)) && dflt.errors.some((e) => /voiceId/.test(e)), "validator flags look + voice requirements");
+ok(dflt.errors.some((e) => /avatarLookId/.test(e)) && !dflt.errors.some((e) => /voiceId/.test(e)), "validator flags look requirement but allows visual_only without voice");
 
 // «готовый» конфиг проходит
 const ready: BloggerConfig = applyBloggerPatch(DEFAULT_BLOGGER_CONFIG, {
   "identity.avatarLookId": "f20cdc89e0ec4b61bbe453d73019a997",
+}).config;
+ok(validateBloggerConfig(ready).ok, "ready visual-only config validates with a look and no voice");
+const readyTts: BloggerConfig = applyBloggerPatch(ready, {
+  "voice.mode": "heygen_tts",
   "voice.voiceId": "37832e32d4f7475ab7a1cb0db8e5dd66",
 }).config;
-ok(validateBloggerConfig(ready).ok, "ready config (look + voice) validates");
+ok(validateBloggerConfig(readyTts).ok, "ready tts config validates with voice");
 
 // patch enum + отклонение мусора
 const bad = applyBloggerPatch(DEFAULT_BLOGGER_CONFIG, { "identity.age": "Nope", "foo.bar": 1 });
@@ -64,9 +68,10 @@ ok(patched.config.render.aspectRatio === "16:9" && patched.config.voice.speed ==
 // dimension + mapping
 const dim = dimensionFor("9:16", "720p");
 ok(dim.width === 720 && dim.height === 1280, "9:16 720p → 720x1280");
-const payloads = configToHeygenPayloads(ready);
+const payloads = configToHeygenPayloads(readyTts);
 ok(payloads.identity.kind === "existing_look", "existing_look → bind existing look payload");
 ok(payloads.video.endpoint.length > 0 && JSON.stringify(payloads.video.body).includes("dimension"), "video payload carries dimension");
+ok(JSON.stringify(configToHeygenPayloads(ready).video.body).includes("visual_placeholder"), "visual-only payload is explicit");
 ok(HEYGEN_BLOGGER_TOOL.name === "configure_heygen_blogger", "agent tool has stable name");
 
 console.log("heygenBloggerContract: passed");

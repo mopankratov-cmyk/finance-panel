@@ -18,6 +18,7 @@ const identity = {
   const plan = buildHeyGenSmokeVideoPlan({
     identity,
     script: "Я вообще не собиралась это брать, но мне стало интересно.",
+    voiceMode: "heygen_tts",
     realismMode: "phone_selfie",
     emotionalBeat: "skeptical",
   });
@@ -41,8 +42,19 @@ const identity = {
     identity: { name: "Draft", source: "existing_look", avatarLookId: "look-only" },
     script: "Short test.",
   });
-  equal(plan.ok, false, "missing voice blocks smoke render");
-  ok(plan.errors.some((error) => /voiceId/.test(error)), "missing voice error is explicit");
+  equal(plan.ok, true, "missing voice is allowed in visual-only planning");
+  equal(plan.visualOnly, true, "missing voice switches to visual-only planning");
+  ok(plan.warnings.some((warning) => /visual_only/.test(warning)), "visual-only warning is explicit");
+}
+
+{
+  const plan = buildHeyGenSmokeVideoPlan({
+    identity: { name: "Draft", source: "existing_look", avatarLookId: "look-only" },
+    script: "Short test.",
+    voiceMode: "external_audio",
+  });
+  equal(plan.ok, false, "external audio mode requires audioUrl");
+  ok(plan.errors.some((error) => /audioUrl/.test(error)), "missing audioUrl error is explicit");
 }
 
 {

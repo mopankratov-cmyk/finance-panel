@@ -156,6 +156,25 @@ export function configToHeygenPayloads(config: BloggerConfig): HeygenPayloads {
       ? { type: "transparent" }
       : { type: render.backgroundType, value: "" };
 
+  const scriptPayload = voice.mode === "external_audio"
+    ? { audio_url: voice.audioUrl || "<audio_url>" }
+    : voice.mode === "heygen_tts"
+      ? { script: { type: "text", input: "<script>", voice_id: voice.voiceId } }
+      : { visual_placeholder: true, script: { type: "text", input: "<silent visual placeholder / replace later>", voice_id: "" } };
+
+  const presenterVoice = voice.mode === "external_audio"
+    ? { type: "audio", audio_url: voice.audioUrl || "<audio_url>" }
+    : voice.mode === "heygen_tts"
+      ? {
+          type: "text",
+          input_text: "<script>",
+          voice_id: voice.voiceId,
+          speed: voice.speed,
+          pitch: voice.pitch,
+          emotion: voice.emotion,
+        }
+      : { type: "visual_only", note: "No final audio yet; use for avatar/look/motion review before voice lane is ready." };
+
   const videoBody: Record<string, unknown> =
     render.engine === "presenter_v"
       ? {
@@ -167,14 +186,7 @@ export function configToHeygenPayloads(config: BloggerConfig): HeygenPayloads {
           video_inputs: [
             {
               character: { type: "avatar", avatar_id: identity.avatarLookId || "<look_id>", avatar_style: "normal" },
-              voice: {
-                type: "text",
-                input_text: "<script>",
-                voice_id: voice.voiceId,
-                speed: voice.speed,
-                pitch: voice.pitch,
-                emotion: voice.emotion,
-              },
+              voice: presenterVoice,
               background,
             },
           ],
@@ -187,8 +199,9 @@ export function configToHeygenPayloads(config: BloggerConfig): HeygenPayloads {
           title: identity.name,
           aspect_ratio: render.aspectRatio,
           engine: "avatar_iv",
-          script: { type: "text", input: "<script>", voice_id: voice.voiceId },
+          ...scriptPayload,
           metadata: {
+            voice_mode: voice.mode,
             custom_motion_prompt: motion.customMotionPrompt,
             enhance_custom_motion_prompt: motion.enhanceMotionPrompt,
             dimension,

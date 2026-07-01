@@ -14,6 +14,7 @@ export const AVATAR_STYLE = ["Realistic", "Pixar", "Cinematic", "Vintage", "Noir
 export const ASPECT_RATIO = ["9:16", "16:9", "4:5", "1:1", "auto"] as const;
 export const RESOLUTION = ["720p", "1080p", "4k"] as const;
 export const VIDEO_ENGINE = ["avatar_iv", "presenter_v", "cinematic_seedance"] as const;
+export const VOICE_MODE = ["visual_only", "heygen_tts", "external_audio"] as const;
 export const VOICE_EMOTION = ["Excited", "Friendly", "Serious", "Soothing", "Broadcaster", "Default"] as const;
 export const BACKGROUND_TYPE = ["transparent", "color", "image", "video"] as const;
 export const DURATION_MODE = ["auto", "custom"] as const;
@@ -29,6 +30,7 @@ export type AvatarStyle = typeof AVATAR_STYLE[number];
 export type AspectRatio = typeof ASPECT_RATIO[number];
 export type Resolution = typeof RESOLUTION[number];
 export type VideoEngine = typeof VIDEO_ENGINE[number];
+export type VoiceMode = typeof VOICE_MODE[number];
 export type VoiceEmotion = typeof VOICE_EMOTION[number];
 export type BackgroundType = typeof BACKGROUND_TYPE[number];
 export type DurationMode = typeof DURATION_MODE[number];
@@ -80,7 +82,9 @@ export const METRIC_REGISTRY: readonly MetricDef[] = [
   { id: "identity.faceImageKeys", group: "identity", label: "Фото лица (image_keys)", type: "image_keys", default: [], stage: "S1", api: true, help: "5–8 ракурсов при source=upload/mixed" },
 
   // voice (S3)
+  { id: "voice.mode", group: "voice", label: "Режим звука", type: "enum", options: VOICE_MODE, default: "visual_only", stage: "S3", api: true, help: "visual_only = добиваем лицо/жесты без голоса; heygen_tts = временный синтез; external_audio = позже липсинк по mp3" },
   { id: "voice.voiceId", group: "voice", label: "Voice ID", type: "text", default: "", stage: "S3", api: true, help: "из GET /v2/voices" },
+  { id: "voice.audioUrl", group: "voice", label: "External audio URL", type: "text", default: "", stage: "S3", api: true, help: "для external_audio; mp3/wav из Unitool/Voicebox/Yandex/etc" },
   { id: "voice.language", group: "voice", label: "Язык", type: "text", default: "ru", stage: "S3", api: true },
   { id: "voice.speed", group: "voice", label: "Скорость", type: "number", default: 1.0, min: 0.5, max: 1.5, step: 0.05, stage: "S3", api: true },
   { id: "voice.pitch", group: "voice", label: "Тон (pitch)", type: "number", default: 0, min: -50, max: 50, step: 1, stage: "S3", api: true },
@@ -145,7 +149,7 @@ export interface BloggerConfig {
     faceImageKeys: string[];
   };
   looks: LookSpec[];
-  voice: { voiceId: string; language: string; speed: number; pitch: number; emotion: VoiceEmotion };
+  voice: { mode: VoiceMode; voiceId: string; audioUrl: string; language: string; speed: number; pitch: number; emotion: VoiceEmotion };
   render: {
     engine: VideoEngine;
     aspectRatio: AspectRatio;
@@ -196,7 +200,7 @@ export const DEFAULT_BLOGGER_CONFIG: BloggerConfig = {
     faceImageKeys: [],
   },
   looks: DEFAULT_LOOKS.map((l) => ({ ...l })),
-  voice: { voiceId: "", language: "ru", speed: 1.0, pitch: 0, emotion: "Friendly" },
+  voice: { mode: "visual_only", voiceId: "", audioUrl: "", language: "ru", speed: 1.0, pitch: 0, emotion: "Friendly" },
   render: {
     engine: "avatar_iv",
     aspectRatio: "9:16",
@@ -300,8 +304,11 @@ export function validateBloggerConfig(config: BloggerConfig): ValidationResult {
   if (config.identity.source === "existing_look" && !config.identity.avatarLookId.trim()) {
     errors.push("identity.avatarLookId: при source=existing_look нужен look id из /v3/avatars/looks");
   }
-  if (!config.voice.voiceId.trim()) {
-    errors.push("voice.voiceId: нужен voice id перед smoke/video");
+  if (config.voice.mode === "heygen_tts" && !config.voice.voiceId.trim()) {
+    errors.push("voice.voiceId: нужен voice id при voice.mode=heygen_tts");
+  }
+  if (config.voice.mode === "external_audio" && !config.voice.audioUrl.trim()) {
+    errors.push("voice.audioUrl: нужен audio URL при voice.mode=external_audio");
   }
   const needsFace = config.identity.source === "upload_own_face" || config.identity.source === "mixed";
   if (needsFace && !config.identity.consentConfirmed) {
