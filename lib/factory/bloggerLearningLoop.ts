@@ -97,6 +97,12 @@ interface WinnerBias {
   motionIds: BloggerMotionPresetId[];
 }
 
+interface WinnerAnchor {
+  sceneId: KatyaSceneId | null;
+  angleId: KatyaCameraAngleId | null;
+  motionId: BloggerMotionPresetId | null;
+}
+
 interface AxisOption<T extends string> {
   id: T;
   prompt: string;
@@ -255,6 +261,20 @@ function deriveWinnerBias(prior: BloggerEvaluationResult[]): WinnerBias {
   };
 }
 
+function deriveWinnerAnchors(prior: BloggerEvaluationResult[]): WinnerAnchor[] {
+  return prior
+    .filter((item) => item.summary_label !== "rework")
+    .slice(0, 3)
+    .map((item) => {
+      const parsed = parseRunId(String(item.run_id || ""));
+      return {
+        sceneId: parsed.sceneId || null,
+        angleId: parsed.angleId || null,
+        motionId: parsed.motionId || null,
+      };
+    });
+}
+
 function pick<T extends string>(items: readonly AxisOption<T>[], index: number, generation: number, winnerBias: number): AxisOption<T> {
   const offset = winnerBias > 0 ? generation : generation * 2;
   return items[(index + offset) % items.length];
@@ -323,6 +343,104 @@ function motionPrompt(motionId: BloggerMotionPresetId, angle: AxisOption<KatyaCa
   ].join("; ");
 }
 
+function makeRun(input: {
+  variant: BloggerVariantRecord;
+  generation: number;
+  sequence: number;
+  scene: AxisOption<KatyaSceneId>;
+  angle: AxisOption<KatyaCameraAngleId>;
+  pose: AxisOption<KatyaPoseId>;
+  expression: AxisOption<KatyaExpressionId>;
+  motion: BloggerMotionPresetId;
+  expressiveness: "low" | "medium" | "high";
+  script: string;
+}): KatyaLearningRun {
+  const selectedLook = katyaLookForScene(input.scene.id, input.variant.avatar_look_id || null);
+  const runId = [
+    "katya_lab",
+    `g${String(input.generation).padStart(2, "0")}`,
+    String(input.sequence).padStart(2, "0"),
+    slug(input.scene.id),
+    slug(input.angle.id),
+    slug(input.motion),
+  ].join("__");
+
+  return {
+    run_id: runId,
+    generation: input.generation,
+    sequence: input.sequence,
+    blogger_id: input.variant.blogger_id,
+    variant_id: input.variant.variant_id,
+    avatar_look_id: selectedLook.lookId,
+    avatar_look_label: selectedLook.label,
+    voice_id: input.variant.voice_id || null,
+    script: input.script,
+    scene_id: input.scene.id,
+    camera_angle_id: input.angle.id,
+    pose_id: input.pose.id,
+    expression_id: input.expression.id,
+    motion_preset: input.motion,
+    expressiveness: input.expressiveness,
+    heygen_motion_prompt: motionPrompt(input.motion, input.angle, input.pose, input.expression),
+    heygen_visual_prompt: visualPrompt(input.scene, input.angle, input.pose, input.expression),
+    hypothesis: `Test whether ${input.scene.id} + ${input.angle.id} + ${input.pose.id} + ${input.motion} lowers the first-2s AI read without losing attention.`,
+    evaluation_seed: {
+      blogger_id: input.variant.blogger_id,
+      variant_id: input.variant.variant_id,
+      run_id: runId,
+      hook_type: "blogger_actor_lab",
+      frame_type: input.angle.id,
+      motion_preset: input.motion,
+      delivery_type: input.expression.id,
+      face_duration_sec: 4,
+      scores: {},
+    },
+  };
+}
+
+function buildTightenedRuns(input: {
+  variant: BloggerVariantRecord;
+  generation: number;
+  count: number;
+  anchors: WinnerAnchor[];
+}): KatyaLearningRun[] {
+  const primary = input.anchors[0] || {};
+  const secondary = input.anchors[1] || {};
+  const primaryScene = SCENES.find((item) => item.id === primary.sceneId) || SCENES.find((item) => item.id === "sofa_evening")!;
+  const secondaryScene = SCENES.find((item) => item.id === secondary.sceneId) || SCENES.find((item) => item.id === "entryway_jacket")!;
+  const primaryAngle = ANGLES.find((item) => item.id === primary.angleId) || ANGLES.find((item) => item.id === "three_quarter_left")!;
+  const secondaryAngle = ANGLES.find((item) => item.id === secondary.angleId) || ANGLES.find((item) => item.id === "three_quarter_right")!;
+  const primaryMotion = primary.motionId || "tired_honest";
+  const secondaryMotion = secondary.motionId || "skeptical_pause";
+  const poseA = POSES.find((item) => item.id === "leaning_on_table")!;
+  const poseB = POSES.find((item) => item.id === "standing_relaxed")!;
+  const poseC = POSES.find((item) => item.id === "phone_in_hand")!;
+  const poseD = POSES.find((item) => item.id === "sitting_close")!;
+  const exprA = EXPRESSIONS.find((item) => item.id === "thinking")!;
+  const exprB = EXPRESSIONS.find((item) => item.id === "skeptical_soft")!;
+  const exprC = EXPRESSIONS.find((item) => item.id === "neutral_curious")!;
+  const exprD = EXPRESSIONS.find((item) => item.id === "friend_warning")!;
+  const rows = [
+    { scene: primaryScene, angle: primaryAngle, pose: poseA, expression: exprA, motion: primaryMotion, expressiveness: "low" as const, script: SCRIPTS[2] },
+    { scene: primaryScene, angle: secondaryAngle, pose: poseB, expression: exprB, motion: primaryMotion, expressiveness: "medium" as const, script: SCRIPTS[0] },
+    { scene: secondaryScene, angle: secondaryAngle, pose: poseD, expression: exprC, motion: secondaryMotion, expressiveness: "medium" as const, script: SCRIPTS[4] },
+    { scene: secondaryScene.id === "mirror_selfie" ? secondaryScene : SCENES.find((item) => item.id === "mirror_selfie")!, angle: secondaryAngle, pose: poseC, expression: exprD, motion: "friend_advice" as const, expressiveness: "medium" as const, script: SCRIPTS[5] },
+    { scene: primaryScene, angle: primaryAngle, pose: poseD, expression: exprC, motion: secondaryMotion, expressiveness: "low" as const, script: SCRIPTS[1] },
+  ].slice(0, input.count);
+  return rows.map((row, idx) => makeRun({
+    variant: input.variant,
+    generation: input.generation,
+    sequence: idx + 1,
+    scene: row.scene,
+    angle: row.angle,
+    pose: row.pose,
+    expression: row.expression,
+    motion: row.motion,
+    expressiveness: row.expressiveness,
+    script: row.script,
+  }));
+}
+
 export function buildKatyaLearningLoop(input: KatyaLearningLoopInput = {}): KatyaLearningLoopPlan {
   const warnings: string[] = [];
   const variant = findKatyaVariant(input);
@@ -333,13 +451,46 @@ export function buildKatyaLearningLoop(input: KatyaLearningLoopInput = {}): Katy
   const priorEvaluations = evaluatePrior(input, variant);
   const winners = axisSeed(input, priorEvaluations);
   const bias = deriveWinnerBias(priorEvaluations);
+  const anchors = deriveWinnerAnchors(priorEvaluations);
   const winnerBias = winners.size;
 
   if (targetRuns > 40) warnings.push("large paid render target: execute in generations and stop after each review checkpoint");
   if (!priorEvaluations.length) warnings.push("no prior_results supplied; generation 1 is exploratory and should not render all 100 at once");
   if (!variant.avatar_look_id) warnings.push("selected Katya variant has no avatar look id");
 
+  const tightened = startGeneration >= 3 && priorEvaluations.length >= 2 && generationSize <= 5;
   const plannedRuns: KatyaLearningRun[] = [];
+  if (tightened) {
+    const count = Math.min(targetRuns, generationSize);
+    const promote = priorEvaluations
+      .filter((item) => item.summary_label === "promote" || runScore(item) >= 76)
+      .slice(0, 12)
+      .map((item) => String(item.run_id || ""))
+      .filter(Boolean);
+    const demote = priorEvaluations
+      .filter((item) => item.summary_label === "rework" || item.anti_ai_score_100 < 55)
+      .slice(0, 12)
+      .map((item) => String(item.run_id || ""))
+      .filter(Boolean);
+    return {
+      ok: true,
+      mode: "katya-blogger-learning-loop",
+      target_runs: targetRuns,
+      generation_size: generationSize,
+      generation_count: generationCount,
+      planned_runs: buildTightenedRuns({ variant, generation: startGeneration, count, anchors }),
+      prior_evaluations: priorEvaluations,
+      promote,
+      demote,
+      warnings: [...warnings, "tightened generation mode: changing one axis at a time around current winners"],
+      next_actions: [
+        "Render only this tightened generation and compare it against generation 2 winners.",
+        "Pick the strongest tired_honest and skeptical_pause variant before widening again.",
+        "Only keep one expressive contrast run in tightened mode.",
+      ],
+    };
+  }
+
   for (let i = 0; i < targetRuns; i++) {
     const generation = startGeneration + Math.floor(i / generationSize);
     const sequence = (i % generationSize) + 1;
@@ -360,37 +511,18 @@ export function buildKatyaLearningLoop(input: KatyaLearningLoopInput = {}): Katy
       slug(motion),
     ].join("__");
 
-    plannedRuns.push({
-      run_id: runId,
+    plannedRuns.push(makeRun({
+      variant,
       generation,
       sequence,
-      blogger_id: variant.blogger_id,
-      variant_id: variant.variant_id,
-      avatar_look_id: selectedLook.lookId,
-      avatar_look_label: selectedLook.label,
-      voice_id: variant.voice_id || null,
-      script,
-      scene_id: scene.id,
-      camera_angle_id: angle.id,
-      pose_id: pose.id,
-      expression_id: expression.id,
-      motion_preset: motion,
+      scene,
+      angle,
+      pose,
+      expression,
+      motion,
       expressiveness,
-      heygen_motion_prompt: motionPrompt(motion, angle, pose, expression),
-      heygen_visual_prompt: visualPrompt(scene, angle, pose, expression),
-      hypothesis: `Test whether ${scene.id} + ${angle.id} + ${pose.id} + ${motion} lowers the first-2s AI read without losing attention.`,
-      evaluation_seed: {
-        blogger_id: variant.blogger_id,
-        variant_id: variant.variant_id,
-        run_id: runId,
-        hook_type: "blogger_actor_lab",
-        frame_type: angle.id,
-        motion_preset: motion,
-        delivery_type: expression.id,
-        face_duration_sec: 4,
-        scores: {},
-      },
-    });
+      script,
+    }));
   }
 
   const promote = priorEvaluations

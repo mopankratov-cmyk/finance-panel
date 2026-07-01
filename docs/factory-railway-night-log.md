@@ -2865,6 +2865,20 @@
     - `/tmp/ugc-factory-katya-learning-loop-2026-07-01-generation2b/generation-02/katya_lab__g02__05__sofa_evening__three_quarter_left__tired_honest.mp4`
   - Contact sheet: `/tmp/ugc-factory-katya-learning-loop-2026-07-01-generation2b/generation-02/contact-sheet.jpg`.
   - Preliminary read: `tired_honest` and `skeptical_pause` remain strongest directions.
+- Generation 3 tightened batch:
+  - Prior file: `docs/factory-katya-generation3-prior-results.json`.
+  - Planner enters tightened mode from generation 3 onward when winners exist.
+  - 5/5 completed:
+    - `/tmp/ugc-factory-katya-learning-loop-2026-07-01-generation3/generation-03/katya_lab__g03__01__sofa_evening__three_quarter_left__tired_honest.mp4`
+    - `/tmp/ugc-factory-katya-learning-loop-2026-07-01-generation3/generation-03/katya_lab__g03__02__sofa_evening__three_quarter_left__tired_honest.mp4`
+    - `/tmp/ugc-factory-katya-learning-loop-2026-07-01-generation3/generation-03/katya_lab__g03__03__entryway_jacket__three_quarter_left__skeptical_pause.mp4`
+    - `/tmp/ugc-factory-katya-learning-loop-2026-07-01-generation3/generation-03/katya_lab__g03__04__mirror_selfie__three_quarter_left__friend_advice.mp4`
+    - `/tmp/ugc-factory-katya-learning-loop-2026-07-01-generation3/generation-03/katya_lab__g03__05__sofa_evening__three_quarter_left__skeptical_pause.mp4`
+  - Contact sheet: `/tmp/ugc-factory-katya-learning-loop-2026-07-01-generation3/generation-03/contact-sheet.jpg`.
+  - Preliminary read:
+    - `tired_honest low` looks like the strongest natural baseline.
+    - `skeptical_pause hallway` and `skeptical_pause sofa` are the strongest skeptical lines.
+    - `friend_advice` remains useful as contrast, not as core direction.
 - Проверки:
   - `npx tsx lib/factory/bloggerLearningLoopContract.test.mts`
   - `npx tsx lib/factory/bloggerMotionContract.test.mts`

@@ -379,3 +379,62 @@ Contact sheet:
    - один лучший tired honest;
    - один контрастный expressive variant;
 3. менять по одной оси, а не всё сразу.
+
+## Generation 3 tightened batch
+
+Дата: 2026-07-01
+
+Режим:
+
+- tightened generation mode;
+- planner меняет по одной оси вокруг generation 2 winners;
+- prior file: `docs/factory-katya-generation3-prior-results.json`
+
+Команда:
+
+```text
+node --import tsx lib/factory/bloggerLearningLoopRunner.mjs --generation 3 --limit 5 --generation-size 5 --prior-results-file docs/factory-katya-generation3-prior-results.json --confirm-paid true --out-dir /tmp/ugc-factory-katya-learning-loop-2026-07-01-generation3
+```
+
+Результат:
+
+- 5/5 completed;
+- batch не exploratory, а comparison-oriented;
+- сравниваются:
+  - `tired_honest` low vs medium;
+  - `skeptical_pause` hallway vs sofa;
+  - один expressive contrast: `friend_advice`.
+
+Успешные mp4:
+
+- `/tmp/ugc-factory-katya-learning-loop-2026-07-01-generation3/generation-03/katya_lab__g03__01__sofa_evening__three_quarter_left__tired_honest.mp4`
+- `/tmp/ugc-factory-katya-learning-loop-2026-07-01-generation3/generation-03/katya_lab__g03__02__sofa_evening__three_quarter_left__tired_honest.mp4`
+- `/tmp/ugc-factory-katya-learning-loop-2026-07-01-generation3/generation-03/katya_lab__g03__03__entryway_jacket__three_quarter_left__skeptical_pause.mp4`
+- `/tmp/ugc-factory-katya-learning-loop-2026-07-01-generation3/generation-03/katya_lab__g03__04__mirror_selfie__three_quarter_left__friend_advice.mp4`
+- `/tmp/ugc-factory-katya-learning-loop-2026-07-01-generation3/generation-03/katya_lab__g03__05__sofa_evening__three_quarter_left__skeptical_pause.mp4`
+
+Contact sheet:
+
+```text
+/tmp/ugc-factory-katya-learning-loop-2026-07-01-generation3/generation-03/contact-sheet.jpg
+```
+
+Предварительный визуальный вывод по кадрам:
+
+- `1 tired_honest low` выглядит очень сильным natural baseline;
+- `3 skeptical_pause hallway` остаётся хорошим skeptical candidate;
+- `5 skeptical_pause sofa` важен как сравнение той же подачи в другой сцене/look;
+- `2 tired_honest medium` полезен, но может оказаться чуть более постановочным, чем `1`;
+- `4 friend_advice` полезен как контрольный expressive run, но не выглядит главным кандидатом на core persona.
+
+Следующий шаг:
+
+1. generation 4 делать уже как near-final bakeoff;
+2. взять только 3 линии:
+   - `tired_honest low`
+   - `skeptical_pause hallway`
+   - `skeptical_pause sofa`
+3. внутри них сравнить только:
+   - micro-pause;
+   - lip-sync feel;
+   - first-2s realism.
