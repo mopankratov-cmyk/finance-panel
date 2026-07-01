@@ -2823,10 +2823,18 @@
   - `docs/factory-ugc-katya-actor-learning-loop-2026-07-01.md`: операционный план обучения.
 - Архитектура loop:
   - `target_runs`: 100.
-  - `generation_size`: 12.
-  - `generation_count`: 9.
+  - `generation_size`: 5.
+  - `generation_count`: 20.
   - Оси: scene, camera angle, pose, expression, motion preset, expressiveness.
-  - Runner пока не тратит деньги: следующий шаг — paid runner только для одного поколения.
+  - Runner тратит деньги только при `--confirm-paid true`.
+- First paid generation:
+  - Запущен generation 1, limit 5.
+  - 2/5 completed:
+    - `/tmp/ugc-factory-katya-learning-loop-2026-07-01/generation-01/katya_lab__g01__01__window_room__slightly_below__half_smile.mp4`
+    - `/tmp/ugc-factory-katya-learning-loop-2026-07-01/generation-01/katya_lab__g01__02__sofa_evening__three_quarter_right__tired_honest.mp4`
+  - 3/5 failed with HeyGen `MOVIO_PAYMENT_INSUFFICIENT_CREDIT`.
+  - Repair attempts also failed with insufficient API credits.
+  - Contact sheet: `/tmp/ugc-factory-katya-learning-loop-2026-07-01/generation-01/contact-sheet.jpg`.
 - Проверки:
   - `npx tsx lib/factory/bloggerLearningLoopContract.test.mts`
   - `npx tsx lib/factory/bloggerMotionContract.test.mts`

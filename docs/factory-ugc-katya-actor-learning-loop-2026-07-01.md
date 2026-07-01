@@ -25,6 +25,7 @@
 
 - `lib/factory/bloggerLearningLoop.ts`
 - `app/api/factory/blogger-learning-loop/route.ts`
+- `lib/factory/bloggerLearningLoopRunner.mjs`
 - `lib/factory/bloggerLearningLoopContract.test.mts`
 
 API:
@@ -36,18 +37,50 @@ POST /api/factory/blogger-learning-loop
 
 Маршрут dry-run only: он планирует 100 прогонов, но не вызывает платный HeyGen render.
 
+CLI runner:
+
+```text
+node --import tsx lib/factory/bloggerLearningLoopRunner.mjs --generation 1 --limit 5 --generation-size 5
+```
+
+Без `--confirm-paid true` runner только сохраняет план.
+
 ## Базовая стратегия 100 прогонов
 
 Не запускать 100 сразу.
 
 Делить на поколения:
 
-- generation size: 12;
+- generation size: 5;
 - target runs: 100;
-- всего 9 поколений;
+- всего 20 поколений;
 - после каждого поколения — оценка и выбор winners/losers.
 
-Причина: если сразу сделать 100, мы не учимся. Если делать 12 -> оценка -> улучшение -> 12, система начинает реально сходиться.
+Причина: если сразу сделать 100, мы не учимся. Если делать 5 -> оценка -> улучшение -> 5, система начинает реально сходиться.
+
+## Ограничение HeyGen fixed look
+
+Текущий `avatar_look_id` Кати хорошо подходит для проверки:
+
+- движения головы;
+- пауз;
+- улыбки/неулыбки;
+- expressiveness;
+- lip-sync;
+- first-2s AI read.
+
+Но разные комнаты, ракурсы и позы не будут полностью честно меняться, если мы рендерим один и тот же fixed avatar look.
+
+Чтобы реально получить "Катя в разных обстановках/позах", следующий слой должен создать несколько Katya source looks:
+
+- Katya hallway;
+- Katya kitchen;
+- Katya sofa/evening;
+- Katya desk;
+- Katya mirror/entryway;
+- Katya close selfie.
+
+До этого generation runner использует scene/angle/pose как гипотезы и motion context, но не обещает полного изменения комнаты.
 
 ## Оси вариативности
 
@@ -130,8 +163,8 @@ POST /api/factory/blogger-learning-loop
 ```json
 {
   "blogger_id": "katya_russian_creator_v3b",
-  "target_runs": 12,
-  "generation_size": 12
+  "target_runs": 5,
+  "generation_size": 5
 }
 ```
 
@@ -140,8 +173,8 @@ POST /api/factory/blogger-learning-loop
 ```json
 {
   "blogger_id": "katya_russian_creator_v3b",
-  "target_runs": 12,
-  "generation_size": 12,
+  "target_runs": 5,
+  "generation_size": 5,
   "start_generation": 2,
   "prior_results": [
     {
@@ -181,12 +214,58 @@ POST /api/factory/blogger-learning-loop
 
 ## Следующий инженерный шаг
 
-Добавить paid runner, который берёт только одно поколение из `planned_runs` и рендерит его в HeyGen:
+Paid runner добавлен. Следующий шаг — прогнать generation 1:
 
-- input: `generation`, `limit`, `confirmPaid`;
-- output: local mp4 paths;
-- no product;
-- no B-roll;
-- no main factory graph-run.
+```text
+HEYGEN_API_KEY=... node --import tsx lib/factory/bloggerLearningLoopRunner.mjs --generation 1 --limit 5 --generation-size 5 --confirm-paid true
+```
 
-Пока runner не добавлен, API намеренно dry-run only.
+Правила:
+
+- рендерить только 5;
+- смотреть все 5 глазами;
+- выбрать 1-2 winners;
+- внести prior results;
+- только потом запускать generation 2.
+
+## Generation 1 run
+
+Дата: 2026-07-01
+
+Команда:
+
+```text
+node --import tsx lib/factory/bloggerLearningLoopRunner.mjs --generation 1 --limit 5 --generation-size 5 --confirm-paid true --out-dir /tmp/ugc-factory-katya-learning-loop-2026-07-01
+```
+
+Результат:
+
+- 2/5 completed;
+- 3/5 failed из-за `MOVIO_PAYMENT_INSUFFICIENT_CREDIT`;
+- repair попытка тоже упёрлась в `MOVIO_PAYMENT_INSUFFICIENT_CREDIT`;
+- prompt не является причиной падения.
+
+Успешные mp4:
+
+- `/tmp/ugc-factory-katya-learning-loop-2026-07-01/generation-01/katya_lab__g01__01__window_room__slightly_below__half_smile.mp4`
+- `/tmp/ugc-factory-katya-learning-loop-2026-07-01/generation-01/katya_lab__g01__02__sofa_evening__three_quarter_right__tired_honest.mp4`
+
+Contact sheet:
+
+```text
+/tmp/ugc-factory-katya-learning-loop-2026-07-01/generation-01/contact-sheet.jpg
+```
+
+Failed due to credits:
+
+- `katya_lab__g01__03__messy_desk__upper_body__friend_advice`
+- `katya_lab__g01__04__mirror_selfie__slightly_above__calm_direct`
+- `katya_lab__g01__05__entryway_jacket__three_quarter_left__skeptical_pause`
+
+Следующий платный шаг после top-up:
+
+```text
+node --import tsx lib/factory/bloggerLearningLoopRunner.mjs --generation 1 --limit 5 --generation-size 5 --confirm-paid true --out-dir /tmp/ugc-factory-katya-learning-loop-2026-07-01-retry
+```
+
+Но лучше перед retry выбрать из двух успешных: если один явно сильнее, generation 2 строить вокруг него, а не добивать старую пятёрку.

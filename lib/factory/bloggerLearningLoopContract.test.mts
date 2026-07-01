@@ -6,13 +6,13 @@ import { buildKatyaLearningLoop } from "./bloggerLearningLoop";
   const plan = buildKatyaLearningLoop({
     blogger_id: "katya_russian_creator_v3b",
     target_runs: 100,
-    generation_size: 12,
+    generation_size: 5,
   });
   equal(plan.ok, true, "Katya learning loop builds");
   equal(plan.mode, "katya-blogger-learning-loop", "mode is explicit");
   equal(plan.target_runs, 100, "default target can plan 100 runs");
-  equal(plan.generation_size, 12, "generation size is preserved");
-  equal(plan.generation_count, 9, "100 runs are split into reviewable generations");
+  equal(plan.generation_size, 5, "generation size is preserved");
+  equal(plan.generation_count, 20, "100 runs are split into small reviewable generations");
   equal(plan.planned_runs.length, 100, "100 dry-run render candidates are planned");
   ok(plan.planned_runs.every((run) => run.blogger_id === "katya_russian_creator_v3b"), "all runs stay on Katya");
   ok(plan.planned_runs.every((run) => run.avatar_look_id), "all runs carry avatar look id");
@@ -66,6 +66,14 @@ import { buildKatyaLearningLoop } from "./bloggerLearningLoop";
   ok(/Dry-run only/.test(route), "route declares dry-run behavior");
   ok(!/heygenCreateVideo/.test(route), "learning loop route does not render paid video");
   ok(!/confirmPaid/.test(route), "learning loop route cannot bypass paid guard");
+}
+
+{
+  const runner = readFileSync("lib/factory/bloggerLearningLoopRunner.mjs", "utf8");
+  ok(/--confirm-paid true/.test(runner), "runner has an explicit paid render gate");
+  ok(/HEYGEN_API_KEY/.test(runner), "runner requires HeyGen key from env");
+  ok(/--generation-size/.test(runner) && /, 5, 4, 20/.test(runner), "runner defaults to five-run generations");
+  ok(runner.includes("Different room/angle/pose require separate Katya source looks"), "runner documents fixed-look limitation");
 }
 
 {

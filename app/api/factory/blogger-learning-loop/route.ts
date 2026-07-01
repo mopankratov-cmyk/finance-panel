@@ -8,7 +8,7 @@ export async function GET() {
   const plan = buildKatyaLearningLoop({
     blogger_id: "katya_russian_creator_v3b",
     target_runs: 100,
-    generation_size: 12,
+    generation_size: 5,
   });
   return NextResponse.json({
     ok: true,
