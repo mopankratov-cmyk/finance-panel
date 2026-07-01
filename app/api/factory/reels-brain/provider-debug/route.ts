@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { debugEnsembleInstagramSearch } from "@/lib/factory/reelsBrainSources";
+import { debugEnsembleInstagramSearch, debugYouTubeProviders } from "@/lib/factory/reelsBrainSources";
 import { debugApifyTiktokSearch } from "@/lib/factory/trendSources";
 
 export const dynamic = "force-dynamic";
@@ -18,6 +18,10 @@ export async function GET(req: NextRequest) {
   if (provider === "apify_tiktok") {
     const data = await debugApifyTiktokSearch(query, 3);
     return NextResponse.json({ ok: true, provider: "apify_tiktok", query, debug: data }, { headers: { "Cache-Control": "no-store" } });
+  }
+  if (provider === "youtube" || provider === "apify_youtube" || provider === "ensemble_youtube" || provider === "bright_youtube") {
+    const data = await debugYouTubeProviders(query, 5);
+    return NextResponse.json({ ok: true, provider: "youtube", query, debug: data }, { headers: { "Cache-Control": "no-store" } });
   }
   const data = await debugEnsembleInstagramSearch(query);
   return NextResponse.json({ ok: true, provider: "ensemble_instagram", query, debug: data }, { headers: { "Cache-Control": "no-store" } });

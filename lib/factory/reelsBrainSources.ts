@@ -624,6 +624,29 @@ export async function debugEnsembleInstagramSearch(query: string): Promise<Recor
   };
 }
 
+export async function debugYouTubeProviders(query: string, limit = 5): Promise<Record<string, unknown>> {
+  const providers: ReelsBrainProvider[] = ["youtube", "apify_youtube", "ensemble_youtube", "bright_youtube"];
+  const safeLimit = Math.max(1, Math.min(10, limit));
+  const runs = [];
+  for (const provider of providers) {
+    const result = await fetchReelsBrainProvider(provider, query, safeLimit);
+    const summary = summarizeProviderQuality(provider, query, result.videos);
+    runs.push({
+      provider,
+      configured: result.configured,
+      ok: !result.error,
+      error: result.error || null,
+      elapsed_ms: result.elapsedMs,
+      found: summary.found,
+      valid: summary.valid,
+      relevant: summary.relevant,
+      platforms: summary.platforms,
+      top: summary.top.slice(0, 3),
+    });
+  }
+  return { configured: runs.some((run) => run.configured), query, limit: safeLimit, runs };
+}
+
 function instagramSearchQueries(query: string): string[] {
   const base = query.trim();
   const cleaned = base

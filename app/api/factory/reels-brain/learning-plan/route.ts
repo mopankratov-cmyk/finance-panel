@@ -185,7 +185,7 @@ function nextTick(input: {
           platforms: "youtube",
           limit: "25",
           max_lanes: "3",
-          providers_per_lane: "1",
+          providers_per_lane: "2",
           provider_timeout_ms: "30000",
         },
         paid_collection: true,

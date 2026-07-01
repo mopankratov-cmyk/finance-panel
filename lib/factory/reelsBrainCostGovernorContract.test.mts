@@ -8,6 +8,7 @@ const actions = readFileSync("app/api/factory/reels-brain/autopilot-actions/rout
 const governor = readFileSync("app/api/factory/reels-brain/cost-governor/route.ts", "utf8");
 const report = readFileSync("app/api/factory/reels-brain/report/route.ts", "utf8");
 const learningPlan = readFileSync("app/api/factory/reels-brain/learning-plan/route.ts", "utf8");
+const providerDebug = readFileSync("app/api/factory/reels-brain/provider-debug/route.ts", "utf8");
 const autopilotJob = readFileSync("app/api/factory/jobs/reels-brain-autopilot/route.ts", "utf8");
 const cockpit = readFileSync("app/agent/reels-brain/ReelsBrainPixelCockpit.tsx", "utf8");
 const feedback = readFileSync("app/api/factory/reels-brain/feedback/route.ts", "utf8");
@@ -43,7 +44,10 @@ ok(/next_tick/.test(learningPlan) && /max_backlog_before_analyze/.test(learningP
 ok(/can_run_paid_collection/.test(learningPlan) && /cost_governor/.test(learningPlan), "learning-plan respects paid collection guard");
 ok(/worker_loop/.test(learningPlan) && /economics/.test(learningPlan), "learning-plan exposes unattended loop and cost trend");
 ok(/weakestPlatform/.test(learningPlan) && /focus_platform/.test(learningPlan), "learning-plan tracks the weakest platform and exposes focus");
+ok(/providers_per_lane: "2"/.test(learningPlan), "learning-plan tests a second YouTube provider before falling back");
 ok(!/POST\s*\(/.test(learningPlan), "learning-plan route is read-only");
+
+ok(/debugYouTubeProviders/.test(providerDebug) && /apify_youtube/.test(providerDebug), "provider-debug can inspect YouTube provider quality");
 
 ok(/fetchLearningPlan/.test(autopilotJob) && /executeNextTick/.test(autopilotJob), "autopilot job supervises the next training tick");
 ok(/reels_brain_autopilot/.test(autopilotJob) && /isAuthorizedReelsBrainJobRequest/.test(autopilotJob), "autopilot job is protected and reports its mode");
