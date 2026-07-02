@@ -35,6 +35,10 @@ function firstPositive(...values: unknown[]): number {
   return 0;
 }
 
+function pct(part: number, total: number): number {
+  return total > 0 ? Math.round((part / total) * 100) : 0;
+}
+
 async function getJson(path: string): Promise<JsonRecord> {
   const response = await fetch(path, { cache: "no-store" });
   const data = await response.json().catch(() => ({}));
@@ -60,6 +64,12 @@ function vmCostLabel(delta: number | null) {
   if (delta < -5) return "дешевеет";
   if (delta > 5) return "дорожает";
   return "стабильно";
+}
+
+function readinessTone(score: number) {
+  if (score >= 80) return { label: "ready", bg: "#dcfce7", bd: "#86efac", fg: "#166534" };
+  if (score >= 45) return { label: "warming up", bg: "#fef3c7", bd: "#fcd34d", fg: "#92400e" };
+  return { label: "building", bg: "#e0f2fe", bd: "#7dd3fc", fg: "#0f766e" };
 }
 
 function SectionTitle({ k, title }: { k: string; title: string }) {
@@ -297,6 +307,137 @@ export default function ReelsBrainPixelCockpit() {
       ["experimental", "Experiment", qualityGate.experimental || 0, "Только A/B тест, без масштабирования."],
       ["noise", "Noise", qualityGate.noise || 0, "Не отдавать в генератор."],
     ];
+    const targetVideos = num(mission.progress?.target || 10000);
+    const backlogRemaining = num(mission.backlog?.total || Math.max(0, totalVideos - analyzed));
+    const missionProgressPct = num(mission.progress?.progress_pct || pct(totalVideos, targetVideos || 10000));
+    const learningDeltaVideos = Math.max(0, num(today?.analyzed) || num(lastTimelineWithCost?.analyzed));
+    const learningDeltaPatterns = Math.max(0, num(totals.patterns_delta) || num(lastTimelineWithCost?.patterns_added));
+    const topInsight = strongCombinations[0] || recipes[0] || {};
+    const topFormat = formats[0] || {};
+    const bestHook = opHooks[0] || topHooks[0] || {};
+    const bestNiche = [...nicheTruth].sort((a, b) => num(b.avg_score || b.analyzed_rate) - num(a.avg_score || a.analyzed_rate))[0] || {};
+    const readinessCards = [
+      {
+        key: "corpus",
+        title: "Corpus",
+        score: Math.min(100, Math.round((totalVideos / Math.max(1, targetVideos)) * 100)),
+        value: `${compact(totalVideos)} / ${compact(targetVideos)}`,
+        note: backlogRemaining > 180 ? `ещё ${compact(backlogRemaining)} в backlog` : "корпус уже достаточный",
+      },
+      {
+        key: "patterns",
+        title: "Pattern Brain",
+        score: Math.min(100, readyPatterns * 4 + patterns),
+        value: `${compact(readyPatterns)} ready`,
+        note: readyPatterns >= 20 ? "можно опираться в brief" : "нужно ещё generator-ready паттерны",
+      },
+      {
+        key: "audio",
+        title: "Audio",
+        score: Math.min(100, num(audioBrain.with_audio_rate || 0)),
+        value: `${compact(audioBrain.with_audio)} audio-ready`,
+        note: audioBrain.next_step || "audio слой ещё догревается",
+      },
+      {
+        key: "feedback",
+        title: "Feedback Loop",
+        score: outcomeMemory.rows_live ? 100 : outcomeMemory.status === "schema_ready" ? 66 : 24,
+        value: outcomeMemory.rows_live ? `${compact(outcomeMemory.rows_live)} posts live` : "schema ready",
+        note: outcomeMemory.next_step || "ждём первые публикации",
+      },
+    ].map((item) => ({ ...item, tone: readinessTone(item.score) }));
+    const executiveCards = [
+      {
+        title: "Изучено видео",
+        value: compact(totalVideos),
+        note: `${compact(analyzed)} уже разобрано`,
+      },
+      {
+        title: "Понимание ниш",
+        value: `${score}%`,
+        note: bestNiche.niche ? `${NICHE_LABELS[bestNiche.niche] || bestNiche.niche} сейчас впереди` : "ждём плотнее данные по нишам",
+      },
+      {
+        title: "Паттерны в памяти",
+        value: compact(readyPatterns),
+        note: `${compact(patterns)} total · ${compact(cross)} cross-platform`,
+      },
+      {
+        title: "Цена обучения",
+        value: usd(usefulCost),
+        note: delta == null ? "ждём сравнение" : `${vmCostLabel(delta)} на ${Math.abs(delta)}%`,
+      },
+      {
+        title: "Статус петли",
+        value: autopilotActions.can_run_paid_collection ? "авторежим" : "анализ first",
+        note: mission.next_tick?.label || "мозг сам решает bulk vs analyze",
+      },
+    ];
+    const knowledgeCards = NICHES.map((niche) => {
+      const summary = summaries.find((item) => item.niche === niche) || {};
+      const row = nicheComparison.find((item) => item.niche === niche) || niches.find((item) => item.niche === niche) || {};
+      const topHook = ((summary.insights?.top_hooks || row.top_hooks || []) as JsonRecord[])[0] || {};
+      const topFormatForNiche = ((summary.insights?.winning_formats || []) as JsonRecord[])[0] || {};
+      const nicheScore = num(row.understanding_score || row.avg_score || row.analyzed_rate);
+      return {
+        niche,
+        score: nicheScore,
+        tone: readinessTone(nicheScore),
+        total: num(row.total_videos || row.total || summary.total_videos),
+        analyzed: num(row.analyzed_videos || row.analyzed || summary.analyzed_videos),
+        ready: num(row.generator_ready_patterns || summary.generator_ready_patterns),
+        topHook: topHook.hook_label || topHook.hook_type || "нужен более сильный хук",
+        topFormat: topFormatForNiche.label || "формат ещё кристаллизуется",
+        note: row.transfer_note || `Платформ с уверенным покрытием: ${compact(((row.platform_brains && Object.keys(row.platform_brains)) || []).length)}`,
+      };
+    });
+    const insightHighlights = [
+      {
+        title: "Главный winning hook",
+        body: bestHook.hook_label || bestHook.hook_type || "Пока нет сильного OP-hook лидера",
+        meta: `OP ${compact(bestHook.op_score)} · ${bestHook.confidence || "watch"}`,
+      },
+      {
+        title: "Формат, который тащит чаще всего",
+        body: topFormat.label || "Формат ещё не вышел в явный лидер",
+        meta: `частота ${compact(topFormat.frequency)} · score ${compact(topFormat.avg_score)}`,
+      },
+      {
+        title: "Лучшая комбинация",
+        body: topInsight.hook_label ? `${topInsight.hook_label} + ${topInsight.structure_label}` : "Сильная связка дозревает",
+        meta: topInsight.decision_label ? `${topInsight.decision_label} · OP ${compact(topInsight.op_score)}` : "ждём устойчивую комбинацию",
+      },
+      {
+        title: "Как мозг растёт сегодня",
+        body: learningDeltaVideos > 0 ? `За свежий цикл добрал ещё ${compact(learningDeltaVideos)} разобранных видео.` : "Сегодня основная работа идёт на backfill и quality layer.",
+        meta: learningDeltaPatterns > 0 ? `+${compact(learningDeltaPatterns)} паттернов` : `backlog ${compact(backlogRemaining)}`,
+      },
+    ];
+    const economicsCards = [
+      {
+        title: "Цена полезного видео",
+        value: usd(usefulCost),
+        note: delta == null ? "нет прошлого среза для сравнения" : `${vmCostLabel(delta)} · ${delta > 0 ? "+" : ""}${delta}%`,
+      },
+      {
+        title: "Вчера vs сегодня",
+        value: prevCost ? `${usd(prevCost)} → ${usd(usefulCost)}` : "ждём 2-й cost срез",
+        note: today?.date ? `срез ${today.date}` : "по последнему timeline event",
+      },
+      {
+        title: "Следующий лучший источник",
+        value: sourceMap[0]?.provider || "источник ещё выбирается",
+        note: sourceMap[0] ? `${usd(sourceMap[0].cost_per_analyzed)} за analyzed` : "нужно больше source economics",
+      },
+    ];
+    const nextAction = {
+      title: mission.next_tick?.label || "Продолжать анализ backlog",
+      reason: mission.next_tick?.reason || (backlogRemaining > 0
+        ? `В backlog ещё ${compact(backlogRemaining)} видео, и это быстрее усилит мозг, чем новый дорогой сбор.`
+        : "Корпус уже вырос, значит следующая ценность — в quality, patterns и feedback loop."),
+      command: mission.next_tick?.endpoint || (backlogRemaining > 0 ? "/api/factory/jobs/reels-brain-cron?task=analyze" : "/api/factory/jobs/reels-brain-cron"),
+      status: autopilotActions.can_run_paid_collection ? "можно без ручного пинка" : "сначала добить backlog",
+    };
 
     return {
       totals,
@@ -344,6 +485,15 @@ export default function ReelsBrainPixelCockpit() {
       taxonomyLabels,
       taxonomyByNiche,
       gateCards,
+      targetVideos,
+      backlogRemaining,
+      missionProgressPct,
+      executiveCards,
+      knowledgeCards,
+      insightHighlights,
+      economicsCards,
+      readinessCards,
+      nextAction,
       usefulCost,
       delta,
       costLabel: cheaper ? "дешевле" : expensive ? "дороже" : "ровно",
@@ -394,6 +544,12 @@ export default function ReelsBrainPixelCockpit() {
         .rb-two{display:grid;grid-template-columns:1fr 1.15fr;gap:24px;align-items:start}.rb-three{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}.rb-four{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}.rb-cost{display:grid;grid-template-columns:1.1fr .9fr;gap:18px}
         .rb-funnel{display:flex;flex-direction:column;gap:10px}.rb-funnel-row{display:flex;align-items:center;gap:20px;padding:18px 22px;border-radius:16px;background:#fff;border:1px solid #e2e8f0;box-shadow:0 1px 2px rgba(15,23,42,.04)}.rb-funnel-num{flex:0 0 148px}.rb-funnel-num strong{font:600 32px/1 'Space Grotesk';color:#0f172a}.rb-funnel-num span{display:block;font:500 12px/1.2 'Hanken Grotesk';color:#94a3b8;margin-top:5px}.rb-bar{height:9px;border-radius:99px;background:#eef2f7;overflow:hidden}.rb-bar i{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,#22d3ee,#34d399)}.rb-funnel-note{font:400 13px/1.45 'Hanken Grotesk';color:#64748b;margin-top:10px}.rb-pill{display:inline-flex;align-items:center;gap:6px;padding:4px 11px;border-radius:999px;font:600 11px/1 'JetBrains Mono';white-space:nowrap;background:#f8fafc;color:#475569;border:1px solid #e2e8f0}
         .rb-kpi{padding:20px;border-radius:16px;background:#fff;border:1px solid #e2e8f0}.rb-kpi .label{font:600 11px/1 'JetBrains Mono';color:#94a3b8;text-transform:uppercase;letter-spacing:.06em}.rb-kpi strong{display:block;font:600 34px/1 'Space Grotesk';margin-top:9px}.rb-kpi p{font:400 13px/1.45 'Hanken Grotesk';color:#64748b;margin:8px 0 0}
+        .rb-summary-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:14px}.rb-summary-card{padding:20px;border-radius:18px;background:linear-gradient(180deg,#fff,#f8fafc);border:1px solid #e2e8f0;box-shadow:0 1px 2px rgba(15,23,42,.04)}.rb-summary-card strong{display:block;font:700 30px/1 'Space Grotesk';margin-top:12px;color:#0f172a}.rb-summary-card p{margin:10px 0 0;color:#64748b;font:400 13px/1.45 'Hanken Grotesk'}
+        .rb-story-grid{display:grid;grid-template-columns:1.15fr .85fr;gap:18px}.rb-story-card{padding:22px;border-radius:18px;border:1px solid #e2e8f0;background:#fff}.rb-story-card h3{font:700 24px/1.1 'Space Grotesk';margin:12px 0 8px;color:#0f172a}.rb-story-card p{margin:0;color:#64748b;font:400 14px/1.55 'Hanken Grotesk'}
+        .rb-insight-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}.rb-insight-card{padding:18px;border-radius:16px;border:1px solid #e2e8f0;background:#fff}.rb-insight-card h3{font:700 18px/1.2 'Space Grotesk';margin:12px 0 8px}.rb-insight-card p{margin:0;color:#475569;font:400 13px/1.5 'Hanken Grotesk'}
+        .rb-readiness-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}.rb-readiness-card{padding:18px;border-radius:18px;background:#fff;border:1px solid #e2e8f0}.rb-readiness-card strong{display:block;font:700 26px/1 'Space Grotesk';margin-top:12px}.rb-readiness-card p{margin:8px 0 0;color:#64748b;font-size:13px;line-height:1.45}
+        .rb-next-action{display:grid;grid-template-columns:1.2fr .8fr;gap:18px;padding:24px;border-radius:22px;background:linear-gradient(135deg,#0f172a,#083344);color:#ecfeff;border:1px solid rgba(34,211,238,.18)}.rb-next-action h3{font:700 32px/1.05 'Space Grotesk';margin:14px 0 12px}.rb-next-action p{color:#bae6fd;font:400 14px/1.6 'Hanken Grotesk';margin:0}.rb-next-command{padding:14px 16px;border-radius:16px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.1);font:600 12px/1.5 'JetBrains Mono';color:#cffafe;word-break:break-word}
+        .rb-tech-layer{border:1px solid #dbeafe;border-radius:22px;background:linear-gradient(180deg,#fff,#f8fafc);overflow:hidden}.rb-tech-layer summary{list-style:none;cursor:pointer;padding:22px 24px;font:700 18px/1.2 'Space Grotesk';color:#0f172a;display:flex;align-items:center;justify-content:space-between}.rb-tech-layer summary::-webkit-details-marker{display:none}.rb-tech-layer summary span{font:600 11px/1 'JetBrains Mono';text-transform:uppercase;letter-spacing:.08em;color:#0891b2}.rb-tech-body{padding:0 24px 24px;display:flex;flex-direction:column;gap:52px}
         .rb-coverage{display:grid;grid-template-columns:128px repeat(3,1fr);gap:10px;align-items:center}.rb-coverage-head{font:600 11px/1.1 'JetBrains Mono';color:#64748b;text-align:center;text-transform:uppercase;letter-spacing:.03em}.rb-cell{height:46px;border-radius:11px;display:flex;align-items:center;justify-content:center;border:1px solid}.rb-cell span{font:600 11px/1 'JetBrains Mono';text-transform:uppercase;letter-spacing:.02em}
         .rb-dark{background:linear-gradient(135deg,#0f172a,#0b1b2e 56%,#07313b);color:#fff;border-color:rgba(255,255,255,.1)}.rb-dark .rb-section-title h2,.rb-dark h3{color:#fff}.rb-dark p{color:#cbd5e1}.rb-dark-card{border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.08);border-radius:16px;padding:16px}
         .rb-pattern{border:1px solid #e2e8f0;background:#fff;border-radius:16px;padding:16px}.rb-pattern h3{font:700 17px/1.25 'Space Grotesk';margin:0;color:#0f172a}.rb-pattern p{font:400 13px/1.45 'Hanken Grotesk';color:#64748b;margin:9px 0 0}
@@ -407,8 +563,8 @@ export default function ReelsBrainPixelCockpit() {
         .rb-mini-icon{width:34px;height:34px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:#ecfeff;border:1px solid #bae6fd;color:#0891b2;font:700 16px/1 'Space Grotesk'}
         .rb-question{padding:18px;border-radius:16px;background:#fff;border:1px solid #e2e8f0}.rb-question div{font:600 11px/1 'JetBrains Mono';letter-spacing:.14em;color:#0891b2;text-transform:uppercase}.rb-question p{font:600 18px/1.35 'Space Grotesk';margin:10px 0 0;color:#0f172a}
         @keyframes rbPulseGlow{0%,100%{opacity:.55;transform:scale(1)}50%{opacity:.9;transform:scale(1.06)}}@keyframes rbFloatOrb{0%,100%{transform:translateY(0)}50%{transform:translateY(-9px)}}@keyframes rbBlink{0%,100%{opacity:1}50%{opacity:.25}}
-        @media(max-width:980px){.rb-hero-grid,.rb-two,.rb-cost,.rb-hook-board{grid-template-columns:1fr}.rb-stats,.rb-four,.rb-detail-grid,.rb-gate,.rb-layer-grid{grid-template-columns:repeat(2,1fr)}.rb-three,.rb-brief-grid,.rb-road{grid-template-columns:1fr}.rb-shell,.rb-topbar,.rb-hero-grid{padding-left:22px;padding-right:22px}.rb-hero h1{font-size:38px}.rb-gauge-wrap{margin:0 auto}.rb-funnel-row{align-items:flex-start;flex-direction:column}.rb-funnel-num{flex:auto}.rb-coverage{grid-template-columns:100px repeat(3,1fr)}} 
-        @media(max-width:620px){.rb-stats,.rb-four,.rb-detail-grid,.rb-gate,.rb-layer-grid,.rb-drawer-grid{grid-template-columns:1fr}.rb-coverage,.rb-matrix{grid-template-columns:1fr}.rb-coverage-head,.rb-matrix-head{display:none}.rb-cell{justify-content:flex-start;padding:0 14px}.rb-hero h1{font-size:32px}.rb-matrix-row{display:block;border-top:1px solid #eef2f7}.rb-matrix-row>*{display:block;border-top:0;padding:6px 0}.rb-drawer{padding:20px}}
+        @media(max-width:980px){.rb-hero-grid,.rb-two,.rb-cost,.rb-hook-board,.rb-story-grid,.rb-next-action{grid-template-columns:1fr}.rb-stats,.rb-four,.rb-detail-grid,.rb-gate,.rb-layer-grid,.rb-summary-grid,.rb-insight-grid,.rb-readiness-grid{grid-template-columns:repeat(2,1fr)}.rb-three,.rb-brief-grid,.rb-road{grid-template-columns:1fr}.rb-shell,.rb-topbar,.rb-hero-grid{padding-left:22px;padding-right:22px}.rb-hero h1{font-size:38px}.rb-gauge-wrap{margin:0 auto}.rb-funnel-row{align-items:flex-start;flex-direction:column}.rb-funnel-num{flex:auto}.rb-coverage{grid-template-columns:100px repeat(3,1fr)}} 
+        @media(max-width:620px){.rb-stats,.rb-four,.rb-detail-grid,.rb-gate,.rb-layer-grid,.rb-drawer-grid,.rb-summary-grid,.rb-insight-grid,.rb-readiness-grid{grid-template-columns:1fr}.rb-coverage,.rb-matrix{grid-template-columns:1fr}.rb-coverage-head,.rb-matrix-head{display:none}.rb-cell{justify-content:flex-start;padding:0 14px}.rb-hero h1{font-size:32px}.rb-matrix-row{display:block;border-top:1px solid #eef2f7}.rb-matrix-row>*{display:block;border-top:0;padding:6px 0}.rb-drawer{padding:20px}.rb-tech-layer summary{padding:18px 18px}.rb-tech-body{padding:0 18px 18px}}
       `}</style>
 
       <section className="rb-hero">
@@ -456,6 +612,141 @@ export default function ReelsBrainPixelCockpit() {
           <div className="rb-card" style={{ borderColor: "#fecaca", background: "#fff1f2", color: "#991b1b" }}>Backend не ответил: {error}</div>
         ) : null}
 
+        <section>
+          <SectionTitle k="01 · Executive Summary" title="Что происходит с мозгом прямо сейчас" />
+          <div className="rb-summary-grid">
+            {vm.executiveCards.map((card) => (
+              <div className="rb-summary-card" key={card.title}>
+                <div className="rb-overline" style={{ color: "#0891b2" }}>{card.title}</div>
+                <strong>{card.value}</strong>
+                <p>{card.note}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="rb-story-grid">
+          <div className="rb-story-card">
+            <SectionTitle k="02 · Learning Progress" title="Растёт ли насмотренность" />
+            <div className="rb-bar" style={{ marginTop: 18 }}>
+              <i style={{ width: `${Math.max(4, Math.min(100, vm.missionProgressPct))}%` }} />
+            </div>
+            <h3>{compact(vm.totalVideos)} / {compact(vm.targetVideos)} видео до целевого корпуса</h3>
+            <p>
+              Уже разобрано {compact(vm.analyzed)} видео, в backlog осталось {compact(vm.backlogRemaining)}.
+              {vm.missionProgressPct >= 100
+                ? " Базовая цель по корпусу уже достигнута, теперь ценность растёт за счёт quality и pattern brain."
+                : " Основной рост дальше даёт связка bulk + analyze, без ручного переключения режимов."}
+            </p>
+          </div>
+          <div className="rb-story-card">
+            <SectionTitle k="02.5 · Next Best Action" title="Что система считает следующим шагом" />
+            <div className="rb-pill">{vm.nextAction.status}</div>
+            <h3>{vm.nextAction.title}</h3>
+            <p>{vm.nextAction.reason}</p>
+            <div className="rb-next-command" style={{ marginTop: 16 }}>{vm.nextAction.command}</div>
+          </div>
+        </section>
+
+        <section>
+          <SectionTitle k="03 · What The Brain Knows" title="Что уже понято по нишам" />
+          <div className="rb-three">
+            {vm.knowledgeCards.map((card) => (
+              <div className="rb-card" key={card.niche}>
+                <div className="rb-two" style={{ gridTemplateColumns: "1fr auto", gap: 14 }}>
+                  <div>
+                    <div className="rb-overline" style={{ color: "#0891b2" }}>{NICHE_LABELS[card.niche] || card.niche}</div>
+                    <h3 style={{ font: "700 28px/1 'Space Grotesk'", margin: "10px 0 0" }}>{compact(card.score)}%</h3>
+                  </div>
+                  <div className="rb-live-pill" style={{ background: card.tone.bg, borderColor: card.tone.bd, color: card.tone.fg }}>
+                    <i style={{ background: card.tone.fg }} />
+                    {card.tone.label}
+                  </div>
+                </div>
+                <div className="rb-three" style={{ marginTop: 14 }}>
+                  <div className="rb-brief-block"><b>Видео</b><p>{compact(card.total)} total · {compact(card.analyzed)} analyzed</p></div>
+                  <div className="rb-brief-block"><b>Ready</b><p>{compact(card.ready)} generator-ready</p></div>
+                  <div className="rb-brief-block"><b>Формат</b><p>{card.topFormat}</p></div>
+                </div>
+                <div className="rb-brief-block" style={{ marginTop: 12 }}>
+                  <b>Главный хук</b>
+                  <p>{card.topHook}</p>
+                </div>
+                <p style={{ marginTop: 12, color: "#64748b", lineHeight: 1.55 }}>{card.note}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section>
+          <SectionTitle k="04 · Winning Insights" title="Какие инсайты уже можно использовать" />
+          <div className="rb-insight-grid">
+            {vm.insightHighlights.map((item) => (
+              <div className="rb-insight-card" key={item.title}>
+                <div className="rb-pill">{item.meta}</div>
+                <h3>{item.title}</h3>
+                <p>{item.body}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="rb-two">
+          <div>
+            <SectionTitle k="05 · Learning Economics" title="Становится ли обучение дешевле" />
+            <div className="rb-three">
+              {vm.economicsCards.map((card) => (
+                <div className="rb-kpi" key={card.title}>
+                  <div className="label">{card.title}</div>
+                  <strong>{card.value}</strong>
+                  <p>{card.note}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div>
+            <SectionTitle k="05.5 · Readiness" title="Что уже готово для следующего слоя" />
+            <div className="rb-readiness-grid">
+              {vm.readinessCards.map((card) => (
+                <div className="rb-readiness-card" key={card.key}>
+                  <div className="rb-live-pill" style={{ background: card.tone.bg, borderColor: card.tone.bd, color: card.tone.fg }}>
+                    <i style={{ background: card.tone.fg }} />
+                    {card.tone.label}
+                  </div>
+                  <strong>{card.title}</strong>
+                  <p style={{ color: "#0f172a", fontWeight: 700, marginTop: 10 }}>{card.value}</p>
+                  <p>{card.note}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section>
+          <SectionTitle k="06 · Operational Call" title="Куда смотрим следующим экраном" />
+          <div className="rb-next-action">
+            <div>
+              <div className="rb-overline rb-cyan">Next Best Action</div>
+              <h3>{vm.nextAction.title}</h3>
+              <p>{vm.nextAction.reason}</p>
+            </div>
+            <div>
+              <div className="rb-overline rb-cyan" style={{ marginBottom: 12 }}>Команда / endpoint</div>
+              <div className="rb-next-command">{vm.nextAction.command}</div>
+              <div className="rb-dark-card" style={{ marginTop: 14 }}>
+                <div className="rb-overline rb-cyan">Режим</div>
+                <p style={{ marginTop: 8 }}>{vm.nextAction.status}</p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <details className="rb-tech-layer">
+          <summary>
+            <span>Hidden Technical Layer</span>
+            Техническая кухня, логи, taxonomy, automation history
+          </summary>
+          <div className="rb-tech-body">
         <section>
           <SectionTitle k="01 · Прогресс обучения" title="От сырого видео к Creative DNA" />
           <div className="rb-funnel">
@@ -1197,6 +1488,8 @@ export default function ReelsBrainPixelCockpit() {
             </div>
           ))}
         </section>
+          </div>
+        </details>
       </div>
 
       {selectedPattern ? (
