@@ -783,7 +783,9 @@ export default function ReelsBrainPixelCockpit() {
                   <div className="rb-pill">{combo.decision_label || combo.decision || "Watch"} · OP {compact(combo.op_score)}</div>
                   <h3 style={{ marginTop: 10 }}>{combo.hook_label} + {combo.structure_label}</h3>
                   <p>{(combo.retention || []).join(" · ") || "retention появится после пересборки"} · confidence {combo.confidence || "watch"}</p>
+                  {(combo.audio_logic || []).length ? <p>Audio logic: {(combo.audio_logic || []).join(" · ")}</p> : null}
                   <p style={{ color: "#0f172a", fontWeight: 600 }}>{combo.user_summary || combo.next_action}</p>
+                  {combo.audio_summary ? <p style={{ margin: 0, color: "#334155" }}>{combo.audio_summary}</p> : null}
                   <p>ниши {compact(combo.evidence?.niches)} · платформы {compact(combo.evidence?.platforms)} · references {compact(combo.evidence?.references)}</p>
                   {((combo.why_it_wins || []) as string[]).length ? (
                     <div style={{ marginTop: 10, display: "grid", gap: 6 }}>
@@ -866,7 +868,7 @@ export default function ReelsBrainPixelCockpit() {
             ))}
           </div>
           <div className="rb-brief-grid">
-            {(vm.recipes.length ? vm.recipes.slice(0, 3) : [{ id: "empty", title: "Creative briefs ждут Pattern Brain", creative_brief: { hook: "Сначала нужно разобрать корпус.", retention_mechanic: "ожидание доказательства", product_fit: ["любой товар с proof-кадром"], second_by_second: [] }, op_score: 0 }]).map((recipe) => (
+              {(vm.recipes.length ? vm.recipes.slice(0, 3) : [{ id: "empty", title: "Creative briefs ждут Pattern Brain", creative_brief: { hook: "Сначала нужно разобрать корпус.", retention_mechanic: "ожидание доказательства", product_fit: ["любой товар с proof-кадром"], second_by_second: [] }, op_score: 0 }]).map((recipe) => (
               <div className="rb-card rb-brief" key={recipe.id}>
                 <div className="rb-pill">OP {compact(recipe.op_score)}</div>
                 <h3 style={{ font: "600 24px/1.15 'Space Grotesk'", margin: "14px 0 12px" }}>{recipe.title}</h3>
@@ -1167,6 +1169,12 @@ export default function ReelsBrainPixelCockpit() {
               <b>Audio strategy</b>
               <p>{(selectedPattern.creative_brief?.audio_strategy || ["Голос должен начинаться быстро, музыка только поддерживает смысл, без мёртвого интро."]).join(" ")}</p>
             </div>
+            {(selectedPattern.audio_logic || []).length ? (
+              <div className="rb-brief-block" style={{ marginTop: 12 }}>
+                <b>Audio logic</b>
+                <p>{(selectedPattern.audio_logic || []).join(" · ")}</p>
+              </div>
+            ) : null}
             <div className="rb-drawer-grid" style={{ marginTop: 12 }}>
               <div className="rb-brief-block"><b>Копируем как механику</b><p>{(selectedPattern.creative_brief?.copy_as_mechanic || ["темп", "структуру", "тип доказательства"]).join(" · ")}</p></div>
               <div className="rb-brief-block"><b>Запрещено копировать</b><p>{(selectedPattern.creative_brief?.do_not_copy || ["текст", "музыку", "персонажа", "монтаж один в один"]).join(" · ")}</p></div>

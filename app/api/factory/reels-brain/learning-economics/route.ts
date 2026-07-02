@@ -397,6 +397,10 @@ function classifyAudioMechanics(row: CorpusAuditRow) {
   if (hasTranscript && wordsPerSecond != null && wordsPerSecond >= 2 && wordsPerSecond < 3.4) mechanics.push("calm_proof_voice");
   if (meanVolume != null && meanVolume >= -18 && meanVolume <= -10) mechanics.push("balanced_mobile_mix");
   if (!firstLongSilence(features) && firstSound != null && firstSound <= 0.5) mechanics.push("no_dead_intro");
+  if (hasTranscript && firstSound != null && firstSound > 0.8) mechanics.push("late_voice_entry");
+  if (hasTranscript && wordsPerSecond != null && wordsPerSecond < 1.8) mechanics.push("slow_flat_speech");
+  if (firstLongSilence(features)) mechanics.push("pause_before_payoff");
+  if (meanVolume != null && meanVolume < -20) mechanics.push("weak_voice_mix");
 
   return mechanics;
 }
@@ -409,8 +413,17 @@ function labelAudioMechanic(key: string) {
     calm_proof_voice: "Спокойный proof-voice",
     balanced_mobile_mix: "Нормальный мобильный микс",
     no_dead_intro: "Нет мёртвого вступления",
+    late_voice_entry: "Поздний вход голоса",
+    slow_flat_speech: "Вялая медленная речь",
+    pause_before_payoff: "Пауза перед payoff",
+    weak_voice_mix: "Слабый голос в миксе",
   };
   return labels[key] || key;
+}
+
+function audioMechanicDirection(key: string) {
+  if (["late_voice_entry", "slow_flat_speech", "weak_voice_mix"].includes(key)) return "negative";
+  return "positive";
 }
 
 function buildAudioBrain(rows: CorpusAuditRow[]) {
@@ -420,12 +433,13 @@ function buildAudioBrain(rows: CorpusAuditRow[]) {
   const mechanicMap = new Map<string, {
     key: string;
     label: string;
-    count: number;
-    views: number;
-    virality: number;
-    niches: Set<string>;
-    platforms: Set<string>;
-  }>();
+      count: number;
+      views: number;
+      virality: number;
+      niches: Set<string>;
+      platforms: Set<string>;
+      direction: "positive" | "negative";
+    }>();
 
   for (const row of audioRows) {
     const mechanics = classifyAudioMechanics(row);
@@ -438,6 +452,7 @@ function buildAudioBrain(rows: CorpusAuditRow[]) {
         virality: 0,
         niches: new Set<string>(),
         platforms: new Set<string>(),
+        direction: audioMechanicDirection(key),
       };
       bucket.count += 1;
       bucket.views += num(row.views);
@@ -448,14 +463,21 @@ function buildAudioBrain(rows: CorpusAuditRow[]) {
     }
   }
 
-  const top_mechanics = Array.from(mechanicMap.values()).map((row) => {
+  const scoredMechanics = Array.from(mechanicMap.values()).map((row) => {
     const avgViews = row.count ? Math.round(row.views / row.count) : 0;
     const avgVirality = row.count ? Math.round((row.virality / row.count) * 10) / 10 : 0;
-    const score = Math.round(Math.min(100, Math.log(row.count + 1) * 18 + Math.min(35, avgVirality * 3) + Math.min(18, row.platforms.size * 6) + Math.min(12, row.niches.size * 4)));
+    const score = Math.round(Math.min(100,
+      Math.log(row.count + 1) * 18
+      + Math.min(35, avgVirality * 3)
+      + Math.min(18, row.platforms.size * 6)
+      + Math.min(12, row.niches.size * 4)
+      + (row.direction === "negative" ? -18 : 0),
+    ));
     const decision = score >= 78 ? "scale" : score >= 58 ? "test" : "watch";
     return {
       key: row.key,
       label: row.label,
+      direction: row.direction,
       count: row.count,
       avg_views: avgViews,
       avg_virality: avgVirality,
@@ -473,29 +495,25 @@ function buildAudioBrain(rows: CorpusAuditRow[]) {
           ? "Проверить в A/B как обязательное правило для первых секунд."
           : "Собрать больше audio-ready референсов перед масштабированием.",
     };
-  }).sort((a, b) => b.score - a.score || b.count - a.count).slice(0, 6);
+  }).sort((a, b) => b.score - a.score || b.count - a.count);
 
+  const top_mechanics = scoredMechanics.filter((item) => item.direction === "positive").slice(0, 6);
   const anti_patterns = [
-    {
-      key: "late_first_sound",
-      label: "Поздний первый звук",
-      count: audioRows.filter((row) => {
-        const firstSound = audioFeatureNum(readSeed(row).audioFeatures, "first_sound_sec");
-        return firstSound != null && firstSound > 1;
-      }).length,
-      reason: "Первые секунды пустые, хук начинает терять энергию ещё до смысла.",
-      action: "Голос или сильный sound event должен входить раньше.",
-    },
-    {
-      key: "slow_flat_speech",
-      label: "Слишком вялая речь",
-      count: transcriptRows.filter((row) => {
-        const wordsPerSecond = audioFeatureNum(readSeed(row).audioFeatures, "words_per_second");
-        return wordsPerSecond != null && wordsPerSecond < 1.8;
-      }).length,
-      reason: "Речь не держит темп, UGC ощущается затянутым.",
-      action: "Ускорять смысловую плотность и убирать пустые связки.",
-    },
+    ...scoredMechanics.filter((item) => item.direction === "negative").map((item) => ({
+      key: item.key,
+      label: item.label,
+      count: item.count,
+      reason: item.key === "late_voice_entry"
+        ? "Голос слишком поздно включается, и первые секунды теряют хук."
+        : item.key === "slow_flat_speech"
+          ? "Речь тянется, не держит мобильный темп и снижает ощущение живости."
+          : "Смысловой голос слишком слаб в миксе и не тянет доказательство.",
+      action: item.key === "late_voice_entry"
+        ? "Поднимать voice/sound event в первые 0.3-0.8 секунды."
+        : item.key === "slow_flat_speech"
+          ? "Ускорять смысловую плотность речи и резать лишние связки."
+          : "Делать голос выше и чище в мобильном миксе.",
+    })),
     {
       key: "transcript_gap",
       label: "Есть media, но нет расшифровки",
@@ -903,7 +921,51 @@ function buildCorpusAudit(rows: CorpusAuditRow[]) {
   };
 }
 
-function buildAntiPatternBrain(audit: ReturnType<typeof buildCorpusAudit>, insightPayload: ReturnType<typeof buildInsights>) {
+function buildAudioCombinationLayer(rows: CorpusAuditRow[], combinations: Array<Record<string, unknown>>) {
+  const byUrl = new Map<string, CorpusAuditRow>();
+  for (const row of rows) {
+    const url = String(row.url || "").trim();
+    if (url) byUrl.set(url, row);
+  }
+
+  return combinations.map((combo) => {
+    const references = Array.isArray(combo.examples) ? combo.examples as Record<string, unknown>[] : [];
+    const mechanicCounts = new Map<string, number>();
+    for (const ref of references) {
+      const row = byUrl.get(String(ref.url || "").trim());
+      if (!row) continue;
+      for (const key of classifyAudioMechanics(row)) {
+        if (audioMechanicDirection(key) === "negative") continue;
+        mechanicCounts.set(key, (mechanicCounts.get(key) || 0) + 1);
+      }
+    }
+    const topAudio = Array.from(mechanicCounts.entries())
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .slice(0, 2)
+      .map(([key, count]) => ({
+        key,
+        label: labelAudioMechanic(key),
+        count,
+      }));
+    const audioLogic = topAudio.map((item) => item.label);
+    return {
+      ...combo,
+      audio_logic: audioLogic,
+      audio_summary: topAudio.length
+        ? `По звуку эту связку чаще всего тянут: ${topAudio.map((item) => item.label).join(" + ")}.`
+        : "По звуку у этой связки пока мало подтвержденных audio-ready референсов.",
+      next_action: topAudio.length && combo.decision === "scale_now"
+        ? `${String(combo.next_action || "").trim()} В звуке держать: ${topAudio.map((item) => item.label.toLowerCase()).join(", ")}.`
+        : combo.next_action,
+    };
+  });
+}
+
+function buildAntiPatternBrain(
+  audit: ReturnType<typeof buildCorpusAudit>,
+  insightPayload: ReturnType<typeof buildInsights>,
+  audioBrain?: ReturnType<typeof buildAudioBrain>,
+) {
   const weakHooks = (insightPayload.top_hooks || []).filter((hook) => hook.confidence === "low" || hook.op_score < 60).slice(0, 4);
   const weakFormats = (insightPayload.winning_formats || []).filter((format) => num(format.avg_score) < 55).slice(0, 4);
   const rows = [
@@ -942,6 +1004,13 @@ function buildAntiPatternBrain(audit: ReturnType<typeof buildCorpusAudit>, insig
       action: "Не масштабировать формат без A/B теста и сильного hook rewrite.",
       severity: num(format.avg_score) < 40 ? "high" : "medium",
     })),
+    ...((audioBrain?.anti_patterns || []).slice(0, 3).map((item) => ({
+      code: `audio_${item.key}`,
+      label: `Audio-риск: ${item.label}`,
+      evidence: `${item.count} кейсов · ${item.reason}`,
+      action: item.action,
+      severity: item.count >= 20 ? "high" : "medium",
+    }))),
   ].filter(Boolean);
   return {
     count: rows.length,
@@ -1989,7 +2058,12 @@ export async function GET(req: NextRequest) {
     };
 
     const insightPayload = buildInsights(rows);
-    const antiPatternBrain = buildAntiPatternBrain(corpusAudit, insightPayload);
+    const enrichedStrongCombinations = buildAudioCombinationLayer(
+      readinessSample,
+      (insightPayload.strong_combinations || []) as unknown as Record<string, unknown>[],
+    );
+    insightPayload.strong_combinations = enrichedStrongCombinations as unknown as typeof insightPayload.strong_combinations;
+    const antiPatternBrain = buildAntiPatternBrain(corpusAudit, insightPayload, audioBrain);
     const discoveryBrain = buildDiscoveryBrain(insightPayload.source_map, corpusAudit);
     const patternDecisionLayer = buildPatternDecisionLayer(insightPayload);
     const taxonomyBrain = buildTaxonomyBrain({ corpusSample, recentSample, playbooks: rows });
