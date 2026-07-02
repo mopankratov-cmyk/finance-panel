@@ -20,7 +20,13 @@ ok(/use_local_resolver/.test(worker), "offline worker forwards local resolver fl
 ok(/worker-state/.test(worker), "offline worker can send worker-state heartbeat");
 ok(/controller\.abort\(\)/.test(worker) && /signal:\s*controller\.signal/.test(worker), "offline worker fetchJson uses abort controller timeout");
 ok(/REELS_BRAIN_ENABLE_LOCAL_MEDIA_RESOLVER/.test(worker), "offline worker reads local media resolver env");
-ok(/REELS_BRAIN_OFFLINE_MODE/.test(worker) && /config\.mode === "audio"/.test(worker), "offline worker supports media/audio modes");
+ok(
+  /REELS_BRAIN_OFFLINE_MODE/.test(worker)
+    && /mode === "audio"/.test(worker)
+    && /mode === "media"/.test(worker),
+  "offline worker supports media/audio modes",
+);
+ok(/cycle % 2 === 1 \? "media" : "audio"/.test(worker), "offline worker supports mixed mode alternating media/audio cycles");
 ok(/while \(true\)/.test(worker) && /await runCycle\(config, cycle\)/.test(worker), "offline worker supports daemon loop");
 
 if (failed) process.exit(1);

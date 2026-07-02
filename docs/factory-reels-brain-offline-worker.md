@@ -9,6 +9,7 @@
 - берет свежие rows без `media_locator_candidates`;
 - дергает `GET /api/factory/jobs/reels-brain-media-backfill`;
 - при наличии локального resolver-а (`yt-dlp`) помогает добить прямой media URL;
+- затем чередует `media` и `audio` циклы, чтобы те же rows переходили в `audio_extracted` и `transcript_ready`;
 - шлет heartbeat в `/api/factory/worker-state`.
 
 ## Что уже есть в коде
@@ -29,12 +30,15 @@ REELS_BRAIN_MEDIA_BACKFILL_PROVIDER=apify_instagram
 REELS_BRAIN_MEDIA_BACKFILL_PLATFORM=instagram
 REELS_BRAIN_MEDIA_BACKFILL_LIMIT=3
 REELS_BRAIN_MEDIA_BACKFILL_SCAN=30
-REELS_BRAIN_OFFLINE_LOOP_EVERY_SEC=180
+REELS_BRAIN_OFFLINE_MODE=mixed
+REELS_BRAIN_OFFLINE_LOOP_EVERY_SEC=240
+REELS_BRAIN_AUDIO_BACKFILL_LIMIT=2
+REELS_BRAIN_AUDIO_BACKFILL_SCAN=18
 REELS_BRAIN_OFFLINE_HEARTBEAT=1
-WORKER_ID=reels-brain-offline-worker
-WORKER_LABEL=Reels Brain Offline Worker
-WORKER_TASK_ID=RB-OFFLINE-001
-WORKER_TASK_TITLE=Media locator backfill via offline worker
+WORKER_ID=reels-brain-mixed-worker
+WORKER_LABEL=Reels Brain Mixed Worker
+WORKER_TASK_ID=RB-MIXED-001
+WORKER_TASK_TITLE=Media and audio backfill loop
 ```
 
 ## Команда запуска
@@ -48,7 +52,7 @@ node lib/factory/reelsBrainOfflineWorker.mjs --once --provider apify_instagram -
 Daemon:
 
 ```bash
-node lib/factory/reelsBrainOfflineWorker.mjs --every-sec 180 --provider apify_instagram --platform instagram --limit 3 --scan 30 --use-local-resolver 1
+node lib/factory/reelsBrainOfflineWorker.mjs --every-sec 240 --mode mixed --provider apify_instagram --platform instagram --media-limit 3 --media-scan 30 --audio-limit 2 --audio-scan 18 --use-local-resolver 1
 ```
 
 Если нужен Bright Data вместо Apify:
@@ -83,11 +87,15 @@ yt-dlp --version
 
 1. Запустить one-shot на `limit=2` или `limit=3`.
 2. Проверить JSON-ответ.
-3. Если `used_local_resolver` и `rows_with_media` пошли вверх, переводить worker в daemon.
-4. После накопления media locators переходить к следующему слою:
-   - audio extraction
+3. Если `used_local_resolver` и `rows_with_media` пошли вверх, переводить worker в mixed-daemon.
+4. Mixed worker дальше сам чередует:
+   - `media` tick
+   - `audio` tick
    - transcript enrichment
+5. После накопления `audio_ready` слоя переходить к следующему углублению:
    - beat / speech features
+   - stronger audio patterns
+   - publication feedback loop
 
 ## Текущее live-наблюдение
 
