@@ -46,6 +46,7 @@ export function buildProductCleanPrompt(input: ProductCleanSourceInput): string 
       "Remove the model body, face, hair, hands, legs, shoes, background, props, hangers, text, badges and graphic overlays.",
       "Do not turn the garment into a generic jacket or shirt. Do not change fabric drape, color, proportions, closure type or seam layout.",
       "Show the complete garment centered as a ghost mannequin or flat clean packshot on a seamless light warm-grey studio background with a soft natural contact shadow.",
+      "Remove any brand typography, wordmarks or captions rendered outside the garment itself (including a brand name printed below the product on the card layout); keep only labels physically sewn onto the garment.",
       "Keep enough margin around the garment for marketplace use. No person, no extra objects, no captions.",
       "Vertical 9:16 composition, photorealistic, sharp fabric detail.",
     ].join(" ");
@@ -58,6 +59,7 @@ export function buildProductCleanPrompt(input: ProductCleanSourceInput): string 
       "Remove the model, hands, body, background, props, text, badges, price graphics and surrounding objects.",
       "Do not simplify the bag into a generic shape. Do not alter strap attachment points, hardware, logo placement, material finish or color.",
       "Show the complete bag centered on a seamless light warm-grey studio background with a soft natural contact shadow.",
+      "Remove any brand typography, wordmarks or captions rendered outside the bag itself (including a brand name printed below the product on the card layout); keep only markings physically attached to the bag.",
       "Keep full handles/strap visible when present, with clean marketplace margin. No person, no extra objects, no captions.",
       "Vertical 9:16 composition, photorealistic, sharp product edges and material detail.",
     ].join(" ");
@@ -67,6 +69,7 @@ export function buildProductCleanPrompt(input: ProductCleanSourceInput): string 
     `Extract only the ${product} from this source and recreate it as a clean professional product packshot.`,
     "Preserve the exact product shape, proportions, colour, material, logo, label text and visible details.",
     "Remove all surrounding text, people, hands, props, graphic overlays, badges and background clutter.",
+    "Remove any brand typography or captions rendered outside the product itself; keep only markings physically on the product.",
     "Place the product centered on a seamless light warm-grey studio background with a soft natural contact shadow.",
     "No extra text, no extra objects.",
     "Vertical 9:16 composition, photorealistic, sharp product edges.",

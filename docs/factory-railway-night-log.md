@@ -3120,3 +3120,11 @@
 - Telegram-канал ревью РАБОТАЕТ: бот @FACTORY_TG_BOT, вебхук на прод; владельцу ушли 10 видео за день. Токены в .env.local (в Vercel добавить FACTORY_TG_BOT_TOKEN/CHAT_ID для кнопок).
 - Оперучёт fal: OmniHuman может висеть в очереди 30+ мин — таймаут ≥25 мин, response_url сохранять в state (зашито в раннер); дубль-сабмит как обход застрявшей очереди сработал.
 - Осталось от владельца: вердикт по v5, 3-5 реальных артикулов + фото, вердикты голос A/B.
+
+## 2026-07-02 (день) — Identity-сверка в цикле сборки + clean-промпт против вшитых подписей
+
+- `lib/factory/productTwinIdentityCheck.ts`: vision-судья (Claude) сравнивает реальное фото и свежесобранный твин по атрибутам товара (длина, материал/фактура, цвет, фурнитура, ремни, лого). Fail-open без ключа, но с явной пометкой.
+- `lib/factory/productTwinBuild.ts`: после persistProductTwin сверка запускается автоматически, вердикт пишется через setProductTwinIdentityVerdict (source=build_auto_check) — fail-твин блокируется гейтом сразу при рождении. Результат возвращается вызывающему (build/batch-build/rebuild worker).
+- `lib/factory/productCleanSource.ts`: bag/apparel/default clean-промпты теперь явно убирают брендовую типографику вне товара (урок вшитой подписи CLÉRIN), сохраняя маркировку на самом изделии.
+- Проверки: `productTwinIdentityContract` (+6 asserts), `productCleanSource` 19/19, `productTwinBatchContract`, tsc чистый.
+- Дальше: пересборка NV-816/CLR00716/CLR00715 с автосверкой + контрольный платный рендер с чистого кадра.
