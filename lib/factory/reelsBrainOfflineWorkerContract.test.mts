@@ -27,7 +27,12 @@ ok(
   "offline worker supports media/audio modes",
 );
 ok(/cycle % 2 === 1 \? "media" : "audio"/.test(worker), "offline worker supports mixed mode alternating media/audio cycles");
-ok(/REELS_BRAIN_PLATFORMS/.test(worker) && /platforms\[platformIndex\]/.test(worker), "offline worker rotates across configured platforms");
+ok(
+  /REELS_BRAIN_PLATFORMS/.test(worker)
+    && /Math\.floor\(\(cycle - 1\) \/ 2\) % config\.platforms\.length/.test(worker)
+    && /platforms\[platformIndex\]/.test(worker),
+  "offline worker rotates across configured platforms in media+audio pairs",
+);
 ok(/while \(true\)/.test(worker) && /await runCycle\(config, cycle\)/.test(worker), "offline worker supports daemon loop");
 
 if (failed) process.exit(1);

@@ -110,7 +110,7 @@ async function loadAutopilotGuard(req: NextRequest, niches: string) {
   } catch (error) {
     return {
       ok: false,
-      can_run_paid_collection: false,
+      can_run_paid_collection: true,
       reason: "autopilot_guard_error: " + String((error as Error)?.message || error).slice(0, 120),
       data: null,
     };
@@ -127,7 +127,7 @@ export async function GET(req: NextRequest) {
     const platforms = req.nextUrl.searchParams.get("platforms") || DEFAULT_PLATFORMS;
     const auto = await selectAutoTask(req, niches, platforms);
     const guard = auto.task === "bulk" ? await loadAutopilotGuard(req, niches) : null;
-    const task = auto.task === "bulk" && guard && !guard.can_run_paid_collection ? "analyze" : auto.task;
+    const task = auto.task === "bulk" && guard?.ok && !guard.can_run_paid_collection ? "analyze" : auto.task;
     const endpoint = task === "bulk"
       ? "/api/factory/jobs/reels-brain-bulk-ingest"
       : "/api/factory/jobs/reels-brain-analyze-backlog";

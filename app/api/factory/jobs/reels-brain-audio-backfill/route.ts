@@ -59,9 +59,22 @@ function seedState(row: CorpusRow) {
   };
 }
 
+function isImageLikeLocator(value: string): boolean {
+  const target = value.trim().toLowerCase();
+  if (!target) return false;
+  return /\.(jpg|jpeg|png|webp|gif|bmp|heic|heif|avif)(\?|$)/i.test(target);
+}
+
+function isPlayableMediaLocator(value: string): boolean {
+  const target = value.trim();
+  if (!target) return false;
+  if (isImageLikeLocator(target)) return false;
+  return /^https?:\/\//i.test(target);
+}
+
 function bestMediaLocator(row: CorpusRow): string {
   const state = seedState(row);
-  return state.mediaLocators[0] || text(row.url, 1500) || "";
+  return state.mediaLocators.find((item) => isPlayableMediaLocator(item)) || "";
 }
 
 export async function GET(req: NextRequest) {
@@ -95,7 +108,8 @@ export async function GET(req: NextRequest) {
     const rows = ((data || []) as CorpusRow[])
       .filter((row) => {
         const state = seedState(row);
-        return state.mediaLocators.length > 0 && state.audioStatus !== "audio_extracted";
+        return state.mediaLocators.some((item) => isPlayableMediaLocator(item))
+          && state.audioStatus !== "audio_extracted";
       })
       .slice(0, limit);
 
