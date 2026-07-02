@@ -54,7 +54,7 @@ export interface UgcStoryboard {
   nextProviderActions: string[];
 }
 
-export const RUSSIAN_HEYGEN_BLOGGERS: Record<"katya" | "alina" | "sergey", UgcStoryboardBlogger> = {
+export const RUSSIAN_HEYGEN_BLOGGERS: Record<"katya" | "alina" | "sergey" | "manya" | "vika" | "olya", UgcStoryboardBlogger> = {
   katya: {
     id: "katya_russian_creator_v3b",
     name: "Катя",
@@ -74,6 +74,29 @@ export const RUSSIAN_HEYGEN_BLOGGERS: Record<"katya" | "alina" | "sergey", UgcSt
     name: "Сергей",
     role: "dad_review",
     avatarLookId: "a5e9b0c485a749518e577ce392318366",
+  },
+  // Поколение face-foundry 2026-07-02: собственные лица (FAL) + обученные HeyGen-группы;
+  // полные паспорта (group_id, все 14 look_id на каждую) — docs/factory-blogger-passports.json
+  manya: {
+    id: "manya_ugc_wb_v1",
+    name: "Маня",
+    role: "primary_creator",
+    avatarLookId: "f3d97943d5854f28bda126ad03f02bab", // look__manya__10__car_close
+    voiceId: "37832e32d4f7475ab7a1cb0db8e5dd66",
+  },
+  vika: {
+    id: "vika_ugc_wb_v1",
+    name: "Вика",
+    role: "primary_creator",
+    avatarLookId: "96171867fa664fb18b5f257f84c0f63a", // look__vika__10__car_close
+    voiceId: "37832e32d4f7475ab7a1cb0db8e5dd66",
+  },
+  olya: {
+    id: "olya_ugc_wb_v1",
+    name: "Оля",
+    role: "mom_review",
+    avatarLookId: "6359cf4afc1849d798fdfa4e0873f27a", // look__olya__05__mirror_close
+    voiceId: "37832e32d4f7475ab7a1cb0db8e5dd66",
   },
 };
 
