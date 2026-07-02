@@ -12,6 +12,7 @@ export interface ReelsPatternSourceVideo {
   virality_score?: number | string | null;
   views?: number | string | null;
   sound_title?: string | null;
+  analyzed_full?: unknown;
 }
 
 export interface ReelsPatternMemoryItem {
@@ -151,6 +152,10 @@ const RUSSIAN_STOP_TOPIC_TERMS = [
   /фильм/i,
 ];
 
+interface ReelsPatternBuildContext {
+  playbook?: unknown;
+}
+
 function compactText(...parts: (string | null | undefined)[]): string {
   return parts.filter(Boolean).join(" ").toLowerCase().replace(/\s+/g, " ").trim();
 }
@@ -159,7 +164,25 @@ function hasCyrillic(text: string): boolean {
   return /[а-яё]/i.test(text);
 }
 
-function relevanceTermsForNiche(niche: string): RegExp[] {
+function customRelevanceTerms(playbook: unknown, niche: string): RegExp[] {
+  const root = playbook && typeof playbook === "object" ? playbook as Record<string, unknown> : {};
+  const taxonomy = root.reels_brain_taxonomy && typeof root.reels_brain_taxonomy === "object"
+    ? root.reels_brain_taxonomy as Record<string, unknown>
+    : {};
+  const byNiche = taxonomy.relevance_terms_by_niche && typeof taxonomy.relevance_terms_by_niche === "object"
+    ? taxonomy.relevance_terms_by_niche as Record<string, unknown>
+    : {};
+  const shared = Array.isArray(taxonomy.relevance_terms) ? taxonomy.relevance_terms : [];
+  const nicheTerms = Array.isArray(byNiche[niche]) ? byNiche[niche] as unknown[] : [];
+  return [...shared, ...nicheTerms]
+    .map((value) => String(value || "").trim())
+    .filter(Boolean)
+    .map((value) => new RegExp(value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"));
+}
+
+function relevanceTermsForNiche(niche: string, playbook?: unknown): RegExp[] {
+  const dynamicTerms = customRelevanceTerms(playbook, niche);
+  if (dynamicTerms.length) return dynamicTerms;
   const normalized = niche.toLowerCase();
   if (normalized.includes("toy") || normalized.includes("игруш")) return NICHE_RELEVANCE_TERMS.toys;
   if (normalized.includes("cloth") || normalized.includes("одеж")) return NICHE_RELEVANCE_TERMS.clothing;
@@ -167,13 +190,22 @@ function relevanceTermsForNiche(niche: string): RegExp[] {
   return [];
 }
 
-function rowRelevanceScore(niche: string, row: ReelsPatternSourceVideo): number {
-  const text = compactText(row.hook_text, row.caption, row.format_detected, row.sound_title, stringifyReason(row.viral_reason));
+function rowRelevanceScore(niche: string, row: ReelsPatternSourceVideo, playbook?: unknown): number {
+  const text = compactText(
+    analysisField(row, "hook_text"),
+    row.hook_text,
+    row.caption,
+    explicitStructureType(row),
+    row.format_detected,
+    row.sound_title,
+    stringifyReason(row.viral_reason),
+    stringifyReason(row.analyzed_full),
+  );
   if (!text) return 0;
 
   let score = 0;
   if (hasCyrillic(text)) score += 35;
-  const terms = relevanceTermsForNiche(niche);
+  const terms = relevanceTermsForNiche(niche, playbook);
   if (terms.some((term) => term.test(text))) score += 45;
   if (/распаков|обзор|тест|провер|до\/после|до и после|лайфхак|сравн|vs|топ|подборк|находк/i.test(text)) score += 15;
   if (RUSSIAN_STOP_TOPIC_TERMS.some((term) => term.test(text)) && !terms.some((term) => term.test(text))) score -= 25;
@@ -185,6 +217,7 @@ function patternQuality(
   niche: string,
   pattern: ReelsPatternMemoryItem,
   rowScores: number[],
+  playbook?: unknown,
 ): Pick<ReelsPatternMemoryItem, "quality_label" | "quality_score" | "relevance_score" | "quality_reasons"> {
   const reasons: string[] = [];
   const avgRelevance = rowScores.length
@@ -208,7 +241,7 @@ function patternQuality(
   if (pattern.hook_type !== "direct_claim" && pattern.hook_type !== "unknown") qualityScore += 8;
   if (avgRelevance < 45) reasons.push("low_niche_relevance");
   if (pattern.hooks.some((hook) => !hasCyrillic(hook))) reasons.push("mixed_or_non_ru_examples");
-  if (!relevanceTermsForNiche(niche).length) reasons.push("unknown_niche_taxonomy");
+  if (!relevanceTermsForNiche(niche, playbook).length) reasons.push("unknown_niche_taxonomy");
 
   qualityScore = Math.max(0, Math.min(100, Math.round(qualityScore)));
   const quality_label = qualityScore >= 70 && pattern.frequency >= 2 && avgRelevance >= 55
@@ -261,7 +294,7 @@ export function inferHookType(text?: string | null): string {
   return "direct_claim";
 }
 
-function normalizeFormat(format?: string | null, caption?: string | null): string {
+export function inferStructureType(format?: string | null, caption?: string | null): string {
   const f = (format || "").toLowerCase().trim();
   if (f) return f.replace(/\s+/g, "_").slice(0, 60);
   const c = (caption || "").toLowerCase();
@@ -309,27 +342,48 @@ function beatCount(beatStructure: unknown): number {
   return 0;
 }
 
+function analysisField(row: ReelsPatternSourceVideo, key: string): string | null {
+  const root = row.analyzed_full && typeof row.analyzed_full === "object" ? row.analyzed_full as Record<string, unknown> : {};
+  const direct = root[key];
+  if (typeof direct === "string" && direct.trim()) return direct.trim();
+  const nested = root.analysis && typeof root.analysis === "object" ? (root.analysis as Record<string, unknown>)[key] : null;
+  return typeof nested === "string" && nested.trim() ? nested.trim() : null;
+}
+
+function explicitHookType(row: ReelsPatternSourceVideo): string | null {
+  return analysisField(row, "hook_type_v2")
+    || analysisField(row, "hook_type")
+    || analysisField(row, "hook_category");
+}
+
+function explicitStructureType(row: ReelsPatternSourceVideo): string | null {
+  return analysisField(row, "structure_v2")
+    || analysisField(row, "structure_type")
+    || analysisField(row, "format_detected");
+}
+
 function buildScopedPatternMemory(
   niche: string,
   platform: ReelsPlatform | "all",
   rows: ReelsPatternSourceVideo[],
   now: Date,
+  playbook?: unknown,
 ): ReelsPatternMemory {
   const groups = new Map<string, ReelsPatternMemoryItem>();
   const groupRelevance = new Map<string, number[]>();
-  const analyzedRows = rows.filter((r) => r.hook_text || r.format_detected || r.beat_structure || r.viral_reason);
+  const analyzedRows = rows.filter((r) => r.hook_text || r.format_detected || r.beat_structure || r.viral_reason || r.analyzed_full);
 
   for (const row of rows) {
     const hook = row.hook_text || row.caption || "";
-    const hookType = inferHookType(hook);
-    const structureType = normalizeFormat(row.format_detected, row.caption);
+    const hookType = explicitHookType(row) || inferHookType(hook);
+    const structureType = inferStructureType(explicitStructureType(row) || row.format_detected, row.caption);
     const retention = inferRetention(structureType, row.viral_reason);
     const emotion = inferEmotion(hookType, row.viral_reason);
     const beats = beatCount(row.beat_structure);
     const key = `${hookType}:${structureType}:${retention}:${emotion}`;
     const score = num(row.virality_score);
     const views = num(row.views);
-    const relevanceScore = rowRelevanceScore(niche, row);
+    const relevanceScore = rowRelevanceScore(niche, row, playbook);
     const viralLogic = `${hookType} -> ${structureType} -> ${retention}${beats ? ` (${beats} beats)` : ""}`;
     const viralLogicLabel = buildRussianViralLogicLabel(hookType, structureType, retention, beats);
     const existing = groups.get(key);
@@ -380,7 +434,7 @@ function buildScopedPatternMemory(
       };
       return {
         ...scored,
-        ...patternQuality(niche, scored, groupRelevance.get(`${p.hook_type}:${p.structure_type}:${p.retention_mechanism}:${p.emotion}`) || []),
+        ...patternQuality(niche, scored, groupRelevance.get(`${p.hook_type}:${p.structure_type}:${p.retention_mechanism}:${p.emotion}`) || [], playbook),
       };
     })
     .sort((a, b) => b.strength_score - a.strength_score || b.frequency - a.frequency);
@@ -460,8 +514,8 @@ function buildCrossPlatformPatterns(platformBrains: Partial<Record<ReelsPlatform
     .slice(0, 30);
 }
 
-export function buildReelsPatternMemory(niche: string, rows: ReelsPatternSourceVideo[], now = new Date()): ReelsPatternMemoryBundle {
-  const metaBrain = buildScopedPatternMemory(niche, "all", rows, now);
+export function buildReelsPatternMemory(niche: string, rows: ReelsPatternSourceVideo[], now = new Date(), context: ReelsPatternBuildContext = {}): ReelsPatternMemoryBundle {
+  const metaBrain = buildScopedPatternMemory(niche, "all", rows, now, context.playbook);
   const byPlatformRows = new Map<ReelsPlatform, ReelsPatternSourceVideo[]>();
 
   for (const row of rows) {
@@ -475,7 +529,7 @@ export function buildReelsPatternMemory(niche: string, rows: ReelsPatternSourceV
   const platformBrains = Object.fromEntries(
     Array.from(byPlatformRows.entries()).map(([platform, platformRows]) => [
       platform,
-      buildScopedPatternMemory(niche, platform, platformRows, now),
+      buildScopedPatternMemory(niche, platform, platformRows, now, context.playbook),
     ]),
   ) as Partial<Record<ReelsPlatform, ReelsPatternMemory>>;
 

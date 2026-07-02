@@ -91,6 +91,71 @@ type CorpusAuditRow = {
   source_orbit_id?: string | null;
   virality_score?: number | null;
   views?: number | null;
+  analyzed_full?: unknown;
+};
+
+type AudioVisualReadiness = {
+  sampled_rows: number;
+  with_media_locators: number;
+  with_media_locator_rate: number;
+  with_transcript: number;
+  with_transcript_rate: number;
+  ready_for_worker: number;
+  ready_for_worker_rate: number;
+  by_platform: Record<string, {
+    total: number;
+    with_media_locators: number;
+    ready_for_worker: number;
+  }>;
+  status: "spec_ready" | "media_seeded" | "worker_ready";
+  next_step: string;
+};
+
+type TaxonomyBrain = {
+  classified_videos: number;
+  classified_rate: number;
+  confident_videos: number;
+  confident_rate: number;
+  resolved_videos: number;
+  resolved_rate: number;
+  unresolved_any_videos: number;
+  unresolved_any_rate: number;
+  unresolved_hook_videos: number;
+  unresolved_hook_rate: number;
+  unresolved_structure_videos: number;
+  unresolved_structure_rate: number;
+  custom_hook_labels: string[];
+  custom_structure_labels: string[];
+  promoted_today: number;
+  promoted_yesterday: number;
+  estimated_total_spend_usd: number;
+  estimated_today_spend_usd: number;
+  estimated_yesterday_spend_usd: number;
+  estimated_usd_per_classified_video: number;
+  trend: "cheaper" | "more_expensive" | "flat" | "not_enough_data";
+  top_new_labels: Array<{ kind: "hook" | "structure"; label: string; niche: string; count: number }>;
+  pattern_lift: {
+    generator_ready_patterns: number;
+    high_confidence_patterns: number;
+    patterns_with_taxonomy_backing: number;
+    patterns_without_taxonomy_backing: number;
+    taxonomy_backed_rate: number;
+    next_step: string;
+  };
+  by_niche: Record<string, {
+    analyzed_videos: number;
+    classified_videos: number;
+    confident_videos: number;
+    resolved_videos: number;
+    unresolved_any_videos: number;
+    unresolved_hook_videos: number;
+    unresolved_structure_videos: number;
+    gray_zone_rate: number;
+    custom_hook_labels: number;
+    custom_structure_labels: number;
+  }>;
+  status: "planned" | "bootstrapping" | "learning" | "strong";
+  next_step: string;
 };
 
 async function loadFeedbackRows(db: NonNullable<ReturnType<typeof getSupabaseAdmin>>): Promise<{ rows: ReelsBrainMetricRow[]; warning: string | null }> {
@@ -276,6 +341,301 @@ function templateForPattern(pattern: InsightPattern) {
 
 function pct(part: number, total: number) {
   return total > 0 ? Math.round((part / total) * 1000) / 10 : 0;
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
+}
+
+function readSeed(row: CorpusAuditRow) {
+  const analyzedFull = asRecord(row.analyzed_full);
+  const reelsSeed = asRecord(analyzedFull?.reels_seed);
+  const mediaLocators = Array.isArray(reelsSeed?.media_locator_candidates)
+    ? reelsSeed.media_locator_candidates.filter((item) => typeof item === "string" && item.trim())
+    : [];
+  const transcript = typeof reelsSeed?.transcript === "string" ? reelsSeed.transcript.trim() : "";
+  return {
+    mediaLocators,
+    transcript,
+  };
+}
+
+function readTaxonomy(row: CorpusAuditRow) {
+  const analyzedFull = asRecord(row.analyzed_full);
+  const hookTypeV2 = String(analyzedFull?.hook_type_v2 || "").trim();
+  const structureV2 = String(analyzedFull?.structure_v2 || "").trim();
+  const confidence = num(analyzedFull?.taxonomy_confidence);
+  const updatedAt = String(analyzedFull?.taxonomy_updated_at || "");
+  return {
+    hookTypeV2,
+    structureV2,
+    confidence,
+    updatedAt,
+    classified: Boolean(hookTypeV2 || structureV2),
+  };
+}
+
+function buildAudioVisualReadiness(rows: CorpusAuditRow[]): AudioVisualReadiness {
+  const byPlatform = new Map<string, { total: number; with_media_locators: number; ready_for_worker: number }>();
+  let withMediaLocators = 0;
+  let withTranscript = 0;
+  let readyForWorker = 0;
+
+  for (const row of rows) {
+    const platform = String(row.platform || "unknown");
+    const bucket = byPlatform.get(platform) || { total: 0, with_media_locators: 0, ready_for_worker: 0 };
+    bucket.total += 1;
+    const seed = readSeed(row);
+    const hasMediaLocators = seed.mediaLocators.length > 0;
+    const hasTranscript = seed.transcript.length > 20;
+    if (hasMediaLocators) {
+      withMediaLocators += 1;
+      bucket.with_media_locators += 1;
+    }
+    if (hasTranscript) withTranscript += 1;
+    if (hasMediaLocators && row.analyzed) {
+      readyForWorker += 1;
+      bucket.ready_for_worker += 1;
+    }
+    byPlatform.set(platform, bucket);
+  }
+
+  const sampledRows = rows.length;
+  const readyRate = pct(readyForWorker, sampledRows);
+  return {
+    sampled_rows: sampledRows,
+    with_media_locators: withMediaLocators,
+    with_media_locator_rate: pct(withMediaLocators, sampledRows),
+    with_transcript: withTranscript,
+    with_transcript_rate: pct(withTranscript, sampledRows),
+    ready_for_worker: readyForWorker,
+    ready_for_worker_rate: readyRate,
+    by_platform: Object.fromEntries(Array.from(byPlatform.entries()).map(([platform, bucket]) => [platform, bucket])),
+    status: readyForWorker >= 100 ? "worker_ready" : withMediaLocators > 0 ? "media_seeded" : "spec_ready",
+    next_step: readyForWorker >= 100
+      ? `Оффлайн-воркер можно грузить глубже: уже готово ${readyForWorker} видео с media locators и базовым seed.`
+      : withMediaLocators > 0
+        ? `Media locators уже пишутся. Добрать и разметить ещё ${Math.max(0, 100 - readyForWorker)}+ видео, затем включить audio/deep extraction.`
+        : "Сначала накопить media locators в ingest metadata, затем запускать audio/deep extraction.",
+  };
+}
+
+function buildTaxonomyBrain(input: {
+  corpusSample: CorpusAuditRow[];
+  recentSample: CorpusAuditRow[];
+  playbooks: { niche?: string; playbook?: unknown }[];
+}): TaxonomyBrain {
+  const estimatedUsdPerVideoRaw = Number(process.env.REELS_BRAIN_TAXONOMY_USD_PER_VIDEO || 0.0008);
+  const estimatedUsdPerVideo = Number.isFinite(estimatedUsdPerVideoRaw) && estimatedUsdPerVideoRaw > 0 ? estimatedUsdPerVideoRaw : 0.0008;
+  let classifiedVideos = 0;
+  let confidentVideos = 0;
+  let analyzedVideos = 0;
+  let resolvedVideos = 0;
+  let unresolvedAnyVideos = 0;
+  let unresolvedHookVideos = 0;
+  let unresolvedStructureVideos = 0;
+  let promotedToday = 0;
+  let promotedYesterday = 0;
+  let todayClassified = 0;
+  let yesterdayClassified = 0;
+  const byNiche = new Map<string, {
+    analyzed_videos: number;
+    classified_videos: number;
+    confident_videos: number;
+    resolved_videos: number;
+    unresolved_any_videos: number;
+    unresolved_hook_videos: number;
+    unresolved_structure_videos: number;
+    custom_hook_labels: number;
+    custom_structure_labels: number;
+  }>();
+  const labelRows: Array<{ kind: "hook" | "structure"; label: string; niche: string; count: number }> = [];
+  const todayKey = dayKey(new Date().toISOString());
+  const yesterdayKey = dayKey(new Date().toISOString(), -1);
+
+  for (const row of input.corpusSample) {
+    const niche = String(row.niche || "").trim() || "unknown";
+    const currentNiche = byNiche.get(niche) || {
+      analyzed_videos: 0,
+      classified_videos: 0,
+      confident_videos: 0,
+      resolved_videos: 0,
+      unresolved_any_videos: 0,
+      unresolved_hook_videos: 0,
+      unresolved_structure_videos: 0,
+      custom_hook_labels: 0,
+      custom_structure_labels: 0,
+    };
+    if (row.analyzed) analyzedVideos += 1;
+    if (row.analyzed) currentNiche.analyzed_videos += 1;
+    const taxonomy = readTaxonomy(row);
+    const unresolvedHook = !taxonomy.hookTypeV2 || taxonomy.hookTypeV2 === "direct_claim" || taxonomy.hookTypeV2 === "unknown";
+    const unresolvedStructure = !taxonomy.structureV2 || taxonomy.structureV2 === "unknown_structure";
+    const unresolvedAny = unresolvedHook || unresolvedStructure;
+    if (unresolvedAny) {
+      unresolvedAnyVideos += 1;
+      currentNiche.unresolved_any_videos += 1;
+    }
+    if (unresolvedHook) {
+      unresolvedHookVideos += 1;
+      currentNiche.unresolved_hook_videos += 1;
+    }
+    if (unresolvedStructure) {
+      unresolvedStructureVideos += 1;
+      currentNiche.unresolved_structure_videos += 1;
+    }
+    if (taxonomy.classified) {
+      classifiedVideos += 1;
+      currentNiche.classified_videos += 1;
+      if (!unresolvedAny) {
+        resolvedVideos += 1;
+        currentNiche.resolved_videos += 1;
+      }
+      if (taxonomy.confidence >= 0.75) {
+        confidentVideos += 1;
+        currentNiche.confident_videos += 1;
+      }
+    }
+    byNiche.set(niche, currentNiche);
+  }
+
+  for (const row of input.recentSample) {
+    const taxonomy = readTaxonomy(row);
+    if (!taxonomy.classified || !taxonomy.updatedAt) continue;
+    const key = dayKey(taxonomy.updatedAt);
+    if (key === todayKey) todayClassified += 1;
+    if (key === yesterdayKey) yesterdayClassified += 1;
+  }
+
+  for (const row of input.playbooks) {
+    const niche = String(row.niche || "").trim();
+    if (!niche) continue;
+    const playbook = asRecord(row.playbook) || {};
+    const taxonomy = asRecord(playbook.reels_brain_taxonomy) || {};
+    const hookLabels = Array.isArray(taxonomy.custom_hook_labels) ? taxonomy.custom_hook_labels.map((item) => String(item || "").trim()).filter(Boolean) : [];
+    const structureLabels = Array.isArray(taxonomy.custom_structure_labels) ? taxonomy.custom_structure_labels.map((item) => String(item || "").trim()).filter(Boolean) : [];
+    const hookCounts = asRecord(asRecord(taxonomy.other_label_counts)?.hooks) || {};
+    const structureCounts = asRecord(asRecord(taxonomy.other_label_counts)?.structures) || {};
+    const taxonomyUpdatedAt = String(taxonomy.taxonomy_updated_at || "");
+    if (dayKey(taxonomyUpdatedAt) === todayKey) promotedToday += hookLabels.length + structureLabels.length;
+    if (dayKey(taxonomyUpdatedAt) === yesterdayKey) promotedYesterday += hookLabels.length + structureLabels.length;
+    const existing = byNiche.get(niche) || {
+      analyzed_videos: 0,
+      classified_videos: 0,
+      confident_videos: 0,
+      resolved_videos: 0,
+      unresolved_any_videos: 0,
+      unresolved_hook_videos: 0,
+      unresolved_structure_videos: 0,
+      custom_hook_labels: 0,
+      custom_structure_labels: 0,
+    };
+    byNiche.set(niche, {
+      ...existing,
+      custom_hook_labels: hookLabels.length,
+      custom_structure_labels: structureLabels.length,
+    });
+    for (const label of hookLabels) {
+      labelRows.push({ kind: "hook", label, niche, count: num(hookCounts[label]) });
+    }
+    for (const label of structureLabels) {
+      labelRows.push({ kind: "structure", label, niche, count: num(structureCounts[label]) });
+    }
+  }
+
+  const totalPromoted = labelRows.length;
+  const estimatedTodaySpend = Math.round(todayClassified * estimatedUsdPerVideo * 10000) / 10000;
+  const estimatedYesterdaySpend = Math.round(yesterdayClassified * estimatedUsdPerVideo * 10000) / 10000;
+  const estimatedTotalSpend = Math.round(classifiedVideos * estimatedUsdPerVideo * 10000) / 10000;
+
+  return {
+    classified_videos: classifiedVideos,
+    classified_rate: pct(classifiedVideos, analyzedVideos),
+    confident_videos: confidentVideos,
+    confident_rate: pct(confidentVideos, classifiedVideos),
+    resolved_videos: resolvedVideos,
+    resolved_rate: pct(resolvedVideos, analyzedVideos),
+    unresolved_any_videos: unresolvedAnyVideos,
+    unresolved_any_rate: pct(unresolvedAnyVideos, analyzedVideos),
+    unresolved_hook_videos: unresolvedHookVideos,
+    unresolved_hook_rate: pct(unresolvedHookVideos, analyzedVideos),
+    unresolved_structure_videos: unresolvedStructureVideos,
+    unresolved_structure_rate: pct(unresolvedStructureVideos, analyzedVideos),
+    custom_hook_labels: Array.from(new Set(labelRows.filter((row) => row.kind === "hook").map((row) => row.label))).sort(),
+    custom_structure_labels: Array.from(new Set(labelRows.filter((row) => row.kind === "structure").map((row) => row.label))).sort(),
+    promoted_today: promotedToday,
+    promoted_yesterday: promotedYesterday,
+    estimated_total_spend_usd: estimatedTotalSpend,
+    estimated_today_spend_usd: estimatedTodaySpend,
+    estimated_yesterday_spend_usd: estimatedYesterdaySpend,
+    estimated_usd_per_classified_video: estimatedUsdPerVideo,
+    trend: trendLabel(estimatedTodaySpend || null, estimatedYesterdaySpend || null),
+    top_new_labels: labelRows
+      .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label))
+      .slice(0, 8),
+    pattern_lift: {
+      generator_ready_patterns: 0,
+      high_confidence_patterns: 0,
+      patterns_with_taxonomy_backing: 0,
+      patterns_without_taxonomy_backing: 0,
+      taxonomy_backed_rate: 0,
+      next_step: "Сначала связать taxonomy со слоем generator-ready паттернов.",
+    },
+    by_niche: Object.fromEntries(Array.from(byNiche.entries()).map(([niche, value]) => [
+      niche,
+      {
+        ...value,
+        gray_zone_rate: pct(value.unresolved_any_videos, value.analyzed_videos),
+      },
+    ])),
+    status: classifiedVideos >= 500 ? "strong" : classifiedVideos >= 150 ? "learning" : classifiedVideos > 0 ? "bootstrapping" : "planned",
+    next_step: classifiedVideos >= 500
+      ? "Taxonomy уже достаточно широкая: можно жёстче использовать v2-классы в insight-витрине и discovery ranking."
+      : classifiedVideos > 0
+        ? "Наращивать nightly taxonomy-refresh, пока direct_claim и unknown_structure не станут редким исключением."
+        : "Сначала запустить taxonomy-refresh на analyzed корпусе, потом пересобрать pattern memory.",
+  };
+}
+
+function buildTaxonomyPatternLift(
+  taxonomyBrain: TaxonomyBrain,
+  patternDecisionLayer: ReturnType<typeof buildPatternDecisionLayer>,
+  corpusSample: CorpusAuditRow[],
+) {
+  const byUrl = new Map<string, ReturnType<typeof readTaxonomy>>();
+  for (const row of corpusSample) {
+    const url = String(row.url || "").trim();
+    if (!url) continue;
+    byUrl.set(url, readTaxonomy(row));
+  }
+  const patterns = patternDecisionLayer.pattern_details || [];
+  const generatorReady = patterns.filter((row) => row.quality_gate === "high_confidence" || row.quality_gate === "medium_confidence");
+  const highConfidence = patterns.filter((row) => row.quality_gate === "high_confidence");
+  const backed = generatorReady.filter((row) => {
+    const references = Array.isArray(row.source_references) ? row.source_references : [];
+    return references.some((ref) => {
+      const url = String((ref as Record<string, unknown>)?.url || "").trim();
+      const tax = byUrl.get(url);
+      if (!tax) return false;
+      const unresolvedHook = !tax.hookTypeV2 || tax.hookTypeV2 === "direct_claim" || tax.hookTypeV2 === "unknown";
+      const unresolvedStructure = !tax.structureV2 || tax.structureV2 === "unknown_structure";
+      return tax.classified && !unresolvedHook && !unresolvedStructure;
+    });
+  });
+  const unbacked = Math.max(0, generatorReady.length - backed.length);
+  return {
+    ...taxonomyBrain,
+    pattern_lift: {
+      generator_ready_patterns: generatorReady.length,
+      high_confidence_patterns: highConfidence.length,
+      patterns_with_taxonomy_backing: backed.length,
+      patterns_without_taxonomy_backing: unbacked,
+      taxonomy_backed_rate: pct(backed.length, generatorReady.length),
+      next_step: backed.length >= Math.max(3, Math.ceil(generatorReady.length * 0.5))
+        ? "Generator-ready слой уже заметно опирается на очищенные taxonomy-references."
+        : "Нужно дальше вычищать gray zone, чтобы больше generator-ready паттернов опирались на явно классифицированные референсы.",
+    },
+  };
 }
 
 function buildCorpusAudit(rows: CorpusAuditRow[]) {
@@ -643,6 +1003,7 @@ function buildNextIntelligenceLayers(input: {
   insightPayload: ReturnType<typeof buildInsights>;
   patternDecisionLayer: ReturnType<typeof buildPatternDecisionLayer>;
   corpusAudit: ReturnType<typeof buildCorpusAudit>;
+  audioVisualReadiness: AudioVisualReadiness;
 }) {
   const strongRecipes = input.patternDecisionLayer.pattern_details.filter((row) => row.quality_gate === "high_confidence");
   const topHooks = input.insightPayload.top_hooks || [];
@@ -653,9 +1014,13 @@ function buildNextIntelligenceLayers(input: {
       memory_write: "winner/loser outcomes должны дополнять pattern_details и anti_pattern_brain.",
     },
     audio_visual_intelligence: {
-      status: "spec_ready",
-      next_step: "Добавить extraction: speech speed, first sound, beat/drop, cut density, first-frame type.",
+      status: input.audioVisualReadiness.status,
+      next_step: input.audioVisualReadiness.next_step,
       useful_now: "Текущий visual recipe rule-based; следующий слой сделает его video-based.",
+      ready_for_worker: input.audioVisualReadiness.ready_for_worker,
+      with_media_locators: input.audioVisualReadiness.with_media_locators,
+      with_transcript: input.audioVisualReadiness.with_transcript,
+      by_platform: input.audioVisualReadiness.by_platform,
     },
     product_brain: {
       status: strongRecipes.length ? "seeded" : "needs_more_patterns",
@@ -896,6 +1261,20 @@ function buildInsights(rows: { niche?: string; playbook?: unknown }[]) {
     examples: InsightExample[];
     templates: Set<string>;
   }>();
+  const comboMap = new Map<string, {
+    hook_type: string;
+    hook_label: string;
+    structure_type: string;
+    structure_label: string;
+    retention_labels: Set<string>;
+    frequency: number;
+    op_score_sum: number;
+    quality_score_sum: number;
+    count: number;
+    niches: Set<string>;
+    platforms: Set<string>;
+    examples: InsightExample[];
+  }>();
   const formatMap = new Map<string, { label: string; frequency: number; score_sum: number; count: number; niches: Set<string> }>();
   const retentionMap = new Map<string, { label: string; frequency: number; score_sum: number; count: number; hooks: Set<string> }>();
   const recipes: Array<{
@@ -975,6 +1354,38 @@ function buildInsights(rows: { niche?: string; playbook?: unknown }[]) {
         generator_payload: generatorPayload(pattern, niche),
         examples: enrichExamples(pattern, niche),
       });
+
+      const comboKey = `${hookKey}:${formatKey}`;
+      const combo = comboMap.get(comboKey) || {
+        hook_type: hookKey,
+        hook_label: pattern.hook_label || hookKey,
+        structure_type: formatKey,
+        structure_label: pattern.structure_label || formatKey,
+        retention_labels: new Set<string>(),
+        frequency: 0,
+        op_score_sum: 0,
+        quality_score_sum: 0,
+        count: 0,
+        niches: new Set<string>(),
+        platforms: new Set<string>(),
+        examples: [],
+      };
+      combo.frequency += num(pattern.frequency);
+      combo.op_score_sum += insightScore(pattern, 1, 1);
+      combo.quality_score_sum += num(pattern.quality_score);
+      combo.count += 1;
+      combo.niches.add(niche);
+      combo.retention_labels.add(pattern.retention_label || retentionKey);
+      for (const [platform, platformBrain] of Object.entries(brain.platform_brains || {})) {
+        const platformPatterns = Array.isArray(platformBrain?.generator_ready_patterns) ? platformBrain.generator_ready_patterns : [];
+        if (platformPatterns.some((item) => (item as InsightPattern).hook_type === hookKey && (item as InsightPattern).structure_type === formatKey)) {
+          combo.platforms.add(platform);
+        }
+      }
+      for (const example of enrichExamples(pattern, niche)) {
+        if (combo.examples.length < 4) combo.examples.push(example);
+      }
+      comboMap.set(comboKey, combo);
     }
   }
 
@@ -1012,15 +1423,60 @@ function buildInsights(rows: { niche?: string; playbook?: unknown }[]) {
     frequent_hooks: top_hooks.filter((row) => row.segment === "frequent_hooks").slice(0, 4),
     experimental_hooks: top_hooks.filter((row) => row.segment === "experimental_hooks").slice(0, 4),
   };
+  const strong_combinations = Array.from(comboMap.values()).map((row) => {
+    const avgOpScore = row.count ? Math.round(row.op_score_sum / row.count) : 0;
+    const avgQualityScore = row.count ? Math.round(row.quality_score_sum / row.count) : 0;
+    const confidence = confidenceLevel({
+      frequency: row.frequency,
+      score: avgOpScore,
+      niches: row.niches.size,
+      platforms: row.platforms.size,
+      examples: row.examples.length,
+    });
+    const decision = avgOpScore >= 85 && confidence === "high"
+      ? "scale_now"
+      : avgOpScore >= 70 && confidence !== "low"
+        ? "test_next"
+        : "watch";
+    return {
+      id: `${row.hook_type}:${row.structure_type}`,
+      hook_type: row.hook_type,
+      hook_label: row.hook_label,
+      structure_type: row.structure_type,
+      structure_label: row.structure_label,
+      retention: Array.from(row.retention_labels).slice(0, 2),
+      frequency: row.frequency,
+      op_score: avgOpScore,
+      quality_score: avgQualityScore,
+      confidence,
+      decision,
+      decision_label: decision === "scale_now" ? "Scale" : decision === "test_next" ? "Test" : "Watch",
+      evidence: {
+        niches: row.niches.size,
+        platforms: row.platforms.size,
+        references: row.examples.length,
+      },
+      next_action: decision === "scale_now"
+        ? "Можно превращать в серию creative briefs и запускать пачку сценариев."
+        : decision === "test_next"
+          ? "Запускать через A/B: проверить товар-fit и proof-кадр."
+          : "Пока держать в наблюдении и наращивать доказательность корпуса.",
+      examples: row.examples.sort((a, b) => num(b.score) - num(a.score) || num(b.views) - num(a.views)).slice(0, 2),
+      niches: Array.from(row.niches).sort(),
+      platforms: Array.from(row.platforms).sort(),
+    };
+  }).sort((a, b) => b.op_score - a.op_score || b.frequency - a.frequency).slice(0, 8);
 
   return {
     summary: [
       top_hooks[0] ? `Самый сильный вход: ${top_hooks[0].hook_label} (${top_hooks[0].op_score}/100).` : "Паттерны хуков пока не найдены.",
+      strong_combinations[0] ? `Лучшая связка сейчас: ${strong_combinations[0].hook_label} + ${strong_combinations[0].structure_label}.` : "Сильная связка hook + structure пока не накоплена.",
       `Generator-ready паттерны уже можно отдавать в контент-завод как рецепты, но примеры исходников лучше держать рядом.`,
       `Технические логи спрятаны ниже: витрина показывает только выводы, уверенность и применение.`,
     ],
     top_hooks,
     hook_groups,
+    strong_combinations,
     winning_formats: Array.from(formatMap.values()).map((row) => ({
       label: row.label,
       frequency: row.frequency,
@@ -1095,24 +1551,41 @@ export async function GET(req: NextRequest) {
 
     const niches = splitList(req.nextUrl.searchParams.get("niches") || "ru_toys,ru_clothing,ru_cosmetics");
     const limit = Math.max(4, Math.min(80, Number(req.nextUrl.searchParams.get("limit") || 50)));
-    const [{ data, error }, { data: corpusRows, error: corpusError }] = await Promise.all([
+    const [
+      { data, error },
+      { data: corpusRows, error: corpusError },
+      { data: recentCorpusRows, error: recentCorpusError },
+    ] = await Promise.all([
       db
         .from("niche_playbooks")
         .select("niche,playbook,updated_at")
         .in("niche", niches),
       db
         .from("viral_videos")
-        .select("url,platform,niche,caption,hook_text,analyzed,source_orbit_id,virality_score,views")
+        .select("url,platform,niche,caption,hook_text,analyzed,source_orbit_id,virality_score,views,analyzed_full")
         .in("niche", niches)
         .order("virality_score", { ascending: false, nullsFirst: false })
         .limit(10000),
+      db
+        .from("viral_videos")
+        .select("url,platform,niche,caption,hook_text,analyzed,source_orbit_id,virality_score,views,analyzed_full,created_at")
+        .in("niche", niches)
+        .order("created_at", { ascending: false, nullsFirst: false })
+        .limit(1000),
     ]);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     if (corpusError) return NextResponse.json({ error: corpusError.message }, { status: 500 });
+    if (recentCorpusError) return NextResponse.json({ error: recentCorpusError.message }, { status: 500 });
 
     const feedbackRows = await loadFeedbackRows(db);
     const rows = ((data || []) as { niche?: string; playbook?: unknown; updated_at?: string }[]);
-    const corpusAudit = buildCorpusAudit((corpusRows || []) as CorpusAuditRow[]);
+    const corpusSample = (corpusRows || []) as CorpusAuditRow[];
+    const recentSample = (recentCorpusRows || []) as CorpusAuditRow[];
+    const readinessSample = Array.from(new Map(
+      [...recentSample, ...corpusSample].map((row) => [String(row.url || ""), row]),
+    ).values()).filter((row) => row.url);
+    const corpusAudit = buildCorpusAudit(corpusSample);
+    const audioVisualReadiness = buildAudioVisualReadiness(readinessSample);
     const runMap = new Map<string, ReturnType<typeof automationRunHistory>[number] & { niches: Set<string> }>();
     const nicheSummaries = rows.map((row) => {
       const brain = patternBrain(row.playbook);
@@ -1185,10 +1658,12 @@ export async function GET(req: NextRequest) {
         };
       });
 
+    const chronologicalRuns = [...runs].sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)));
+
     let cumulativeInserted = 0;
     let cumulativeAnalyzed = 0;
     let cumulativeCost = 0;
-    const timeline = runs.map((run) => {
+    const timeline = chronologicalRuns.map((run) => {
       cumulativeInserted += run.inserted;
       cumulativeAnalyzed += run.analyzed;
       cumulativeCost += run.cost_units;
@@ -1287,6 +1762,8 @@ export async function GET(req: NextRequest) {
     const antiPatternBrain = buildAntiPatternBrain(corpusAudit, insightPayload);
     const discoveryBrain = buildDiscoveryBrain(insightPayload.source_map, corpusAudit);
     const patternDecisionLayer = buildPatternDecisionLayer(insightPayload);
+    const taxonomyBrain = buildTaxonomyBrain({ corpusSample, recentSample, playbooks: rows });
+    const taxonomyWithLift = buildTaxonomyPatternLift(taxonomyBrain, patternDecisionLayer, corpusSample);
     const nicheComparison = buildNicheComparison(nicheSummaries, insightPayload);
     const dailyReport = buildDailyReport({
       totals,
@@ -1303,9 +1780,14 @@ export async function GET(req: NextRequest) {
       insights: insightPayload,
       feedbackRows: feedbackRows.rows,
     });
+    const baseNextLayers = buildNextIntelligenceLayers({ insightPayload, patternDecisionLayer, corpusAudit, audioVisualReadiness });
     const nextIntelligenceLayers = {
-      ...buildNextIntelligenceLayers({ insightPayload, patternDecisionLayer, corpusAudit }),
+      ...baseNextLayers,
       ...operatingSystem,
+      audio_visual_intelligence: {
+        ...operatingSystem.audio_visual_intelligence,
+        ...baseNextLayers.audio_visual_intelligence,
+      },
       data_quality: {
         status: corpusAudit.verdict,
         next_step: corpusAudit.ru_likely_rate < 80 ? "Усилить RU discovery." : "Держать RU-фокус и снижать low-signal.",
@@ -1323,17 +1805,19 @@ export async function GET(req: NextRequest) {
       niche_comparison: nicheComparison,
       daily_report: dailyReport,
       feedback_loop: operatingSystem.feedback_loop,
-      audio_visual_intelligence: operatingSystem.audio_visual_intelligence,
+      audio_visual_intelligence: nextIntelligenceLayers.audio_visual_intelligence,
       product_brain: operatingSystem.product_brain,
       audience_brain: operatingSystem.audience_brain,
       experiment_brain: operatingSystem.experiment_brain,
       portfolio_manager: operatingSystem.portfolio_manager,
+      audio_visual_readiness: audioVisualReadiness,
       feedback_warning: feedbackRows.warning,
       cost_governor: costGovernor,
       autopilot_actions: autopilotActions,
       next_intelligence_layers: nextIntelligenceLayers,
       anti_pattern_brain: antiPatternBrain,
       discovery_brain: discoveryBrain,
+      taxonomy_brain: taxonomyWithLift,
       timeline,
       daily_costs: {
         today,

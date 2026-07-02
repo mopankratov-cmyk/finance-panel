@@ -1,0 +1,74 @@
+{
+  "prior_results": [
+    {
+      "run_id": "katya_lab__g10__04__mirror_selfie__three_quarter_left__friend_advice",
+      "scores": {
+        "face_realism": 7.699999999999999,
+        "motion_realism": 9.4,
+        "lip_sync": 7,
+        "voice_naturalness": 6.9,
+        "room_authenticity": 8,
+        "anti_ai_first_2s": 10,
+        "repeatability_penalty": 4.5
+      },
+      "notes": "auto-winner rank 1: auto-selected from mirror_selfie/friend_advice/phone_in_hand/medium",
+      "fail_reasons": []
+    },
+    {
+      "run_id": "katya_lab__g10__01__mirror_selfie__three_quarter_left__friend_advice",
+      "scores": {
+        "face_realism": 7.699999999999999,
+        "motion_realism": 8.9,
+        "lip_sync": 7,
+        "voice_naturalness": 6.9,
+        "room_authenticity": 8,
+        "anti_ai_first_2s": 10,
+        "repeatability_penalty": 4.6
+      },
+      "notes": "auto-reviewed rank 2: auto-selected from mirror_selfie/friend_advice/leaning_on_table/low",
+      "fail_reasons": []
+    },
+    {
+      "run_id": "katya_lab__g10__05__mirror_selfie__three_quarter_left__skeptical_pause",
+      "scores": {
+        "face_realism": 7.699999999999999,
+        "motion_realism": 7.8,
+        "lip_sync": 7,
+        "voice_naturalness": 6.9,
+        "room_authenticity": 8,
+        "anti_ai_first_2s": 10,
+        "repeatability_penalty": 3.8
+      },
+      "notes": "auto-winner rank 3: auto-selected from mirror_selfie/skeptical_pause/sitting_close/low",
+      "fail_reasons": []
+    },
+    {
+      "run_id": "katya_lab__g10__03__mirror_selfie__three_quarter_left__skeptical_pause",
+      "scores": {
+        "face_realism": 7.699999999999999,
+        "motion_realism": 7.8,
+        "lip_sync": 7,
+        "voice_naturalness": 6.9,
+        "room_authenticity": 8,
+        "anti_ai_first_2s": 9.6,
+        "repeatability_penalty": 4.2
+      },
+      "notes": "auto-reviewed rank 4: auto-selected from mirror_selfie/skeptical_pause/sitting_close/medium",
+      "fail_reasons": []
+    },
+    {
+      "run_id": "katya_lab__g10__02__mirror_selfie__three_quarter_left__friend_advice",
+      "scores": {
+        "face_realism": 7.699999999999999,
+        "motion_realism": 7.699999999999999,
+        "lip_sync": 7,
+        "voice_naturalness": 6.9,
+        "room_authenticity": 8,
+        "anti_ai_first_2s": 9.3,
+        "repeatability_penalty": 5
+      },
+      "notes": "auto-reviewed rank 5: auto-selected from mirror_selfie/friend_advice/standing_relaxed/medium",
+      "fail_reasons": []
+    }
+  ]
+}

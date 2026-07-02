@@ -153,12 +153,16 @@ export default function ReelsBrainPixelCockpit() {
     const audit = learning?.corpus_audit || {};
     const antiPattern = learning?.anti_pattern_brain || {};
     const discovery = learning?.discovery_brain || {};
+    const taxonomy = learning?.taxonomy_brain || {};
     const dailyReport = learning?.daily_report || {};
     const qualityGate = learning?.quality_gate || {};
     const costGovernor = learning?.cost_governor || {};
     const autopilotActions = learning?.autopilot_actions || {};
     const mission = learningPlan?.learning_plan || {};
     const nextLayers = learning?.next_intelligence_layers || {};
+    const audioVisualSummary = nextLayers?.audio_visual_intelligence
+      ? `ready ${compact(nextLayers.audio_visual_intelligence.ready_for_worker)} · media ${compact(nextLayers.audio_visual_intelligence.with_media_locators)} · transcripts ${compact(nextLayers.audio_visual_intelligence.with_transcript)}`
+      : "";
     const patternDetails = (learning?.pattern_details || []) as JsonRecord[];
     const nicheComparison = (learning?.niche_comparison || []) as JsonRecord[];
     const niches = (learning?.niches || []) as JsonRecord[];
@@ -166,9 +170,13 @@ export default function ReelsBrainPixelCockpit() {
     const formats = (insights?.winning_formats || []) as JsonRecord[];
     const retentions = (insights?.retention_mechanics || []) as JsonRecord[];
     const recipes = (insights?.recipes || []) as JsonRecord[];
+    const strongCombinations = (insights?.strong_combinations || []) as JsonRecord[];
     const refs = (insights?.source_references || []) as JsonRecord[];
     const sourceMap = (insights?.source_map || []) as JsonRecord[];
-    const timeline = ((learning?.timeline || []) as JsonRecord[]).slice(-8);
+    const timeline = [...((learning?.timeline || []) as JsonRecord[])]
+      .sort((a, b) => String(a.created_at || "").localeCompare(String(b.created_at || "")))
+      .slice(-8)
+      .reverse();
     const daily = (economics?.rows || economics?.daily || []) as JsonRecord[];
     const totalVideos = Math.max(num(totals.total_videos), num(corpus?.total));
     const analyzed = Math.max(num(totals.analyzed_videos), num(corpus?.summary?.analyzed));
@@ -256,7 +264,31 @@ export default function ReelsBrainPixelCockpit() {
         value: usefulCost > 0 ? `Ориентир ${usd(usefulCost)} за полезную единицу насмотренности.` : "Нужно ещё накопить cost-события, чтобы честно считать цену.",
         meta: vmCostLabel(delta),
       },
+      {
+        title: "Taxonomy",
+        value: num(taxonomy.classified_videos) > 0
+          ? `Слой v2 уже разобрал ${compact(taxonomy.classified_videos)} спорных видео и начинает выращивать свой словарь.`
+          : "Ночной taxonomy-refresh ещё не прогрел корпус.",
+        meta: `${compact((taxonomy.custom_hook_labels || []).length)} hook labels · ${compact((taxonomy.custom_structure_labels || []).length)} structure labels`,
+      },
     ];
+    const taxonomyLabels = ((taxonomy.top_new_labels || []) as JsonRecord[]).slice(0, 8);
+    const taxonomyByNiche = NICHES.map((niche) => {
+      const row = ((taxonomy.by_niche || {}) as Record<string, JsonRecord>)[niche] || {};
+      return {
+        niche,
+        analyzed_videos: num(row.analyzed_videos),
+        classified_videos: num(row.classified_videos),
+        confident_videos: num(row.confident_videos),
+        resolved_videos: num(row.resolved_videos),
+        unresolved_any_videos: num(row.unresolved_any_videos),
+        unresolved_hook_videos: num(row.unresolved_hook_videos),
+        unresolved_structure_videos: num(row.unresolved_structure_videos),
+        gray_zone_rate: num(row.gray_zone_rate),
+        custom_hook_labels: num(row.custom_hook_labels),
+        custom_structure_labels: num(row.custom_structure_labels),
+      };
+    });
     const gateCards = [
       ["high_confidence", "High", qualityGate.high_confidence || 0, "Можно использовать как основу сценария."],
       ["medium_confidence", "Medium", qualityGate.medium_confidence || 0, "Можно брать, но проверять на товаре."],
@@ -271,12 +303,14 @@ export default function ReelsBrainPixelCockpit() {
       audit,
       antiPattern,
       discovery,
+      taxonomy,
       dailyReport,
       qualityGate,
       costGovernor,
       autopilotActions,
       mission,
       nextLayers,
+      audioVisualSummary,
       patternDetails,
       nicheComparison,
       score,
@@ -291,6 +325,7 @@ export default function ReelsBrainPixelCockpit() {
       formats,
       retentions,
       recipes,
+      strongCombinations,
       refs,
       sourceMap,
       timeline,
@@ -302,6 +337,8 @@ export default function ReelsBrainPixelCockpit() {
       frequentHooks,
       experimentalHooks,
       decisionCards,
+      taxonomyLabels,
+      taxonomyByNiche,
       gateCards,
       usefulCost,
       delta,
@@ -581,6 +618,108 @@ export default function ReelsBrainPixelCockpit() {
         </section>
 
         <section>
+          <SectionTitle k="04.5 · Taxonomy Layer" title="Как мозг доучивает свой словарь" />
+          <div className="rb-two">
+            <div className="rb-card">
+              <div className="rb-three">
+                <div className="rb-kpi">
+                  <div className="label">v2-классы</div>
+                  <strong>{compact(vm.taxonomy.classified_videos)}</strong>
+                  <p>{compact(vm.taxonomy.classified_rate)}% от разобранных видео</p>
+                </div>
+                <div className="rb-kpi">
+                  <div className="label">Уверенные</div>
+                  <strong>{compact(vm.taxonomy.confident_videos)}</strong>
+                  <p>{compact(vm.taxonomy.confident_rate)}% confidence 0.75+</p>
+                </div>
+                <div className="rb-kpi">
+                  <div className="label">Цена слоя</div>
+                  <strong>{usd(vm.taxonomy.estimated_usd_per_classified_video)}</strong>
+                  <p>{usd(vm.taxonomy.estimated_total_spend_usd)} суммарно</p>
+                </div>
+              </div>
+              <div className="rb-three" style={{ marginTop: 14 }}>
+                <div className="rb-kpi">
+                  <div className="label">Было серым</div>
+                  <strong>{compact(vm.taxonomy.classified_videos)}</strong>
+                  <p>это пул, который taxonomy прогнал через v2</p>
+                </div>
+                <div className="rb-kpi">
+                  <div className="label">Стало ясным</div>
+                  <strong>{compact(vm.taxonomy.resolved_videos)}</strong>
+                  <p>{compact(vm.taxonomy.resolved_rate)}% уже вывели из серой зоны</p>
+                </div>
+                <div className="rb-kpi">
+                  <div className="label">Осталось серым</div>
+                  <strong>{compact(vm.taxonomy.unresolved_any_videos)}</strong>
+                  <p>{compact(vm.taxonomy.unresolved_any_rate)}% ещё требуют доучивания</p>
+                </div>
+              </div>
+              <div className="rb-three" style={{ marginTop: 14 }}>
+                <div className="rb-kpi">
+                  <div className="label">Generator-ready</div>
+                  <strong>{compact(vm.taxonomy.pattern_lift?.generator_ready_patterns)}</strong>
+                  <p>паттернов сейчас в выходном слое</p>
+                </div>
+                <div className="rb-kpi">
+                  <div className="label">На taxonomy-evidence</div>
+                  <strong>{compact(vm.taxonomy.pattern_lift?.patterns_with_taxonomy_backing)}</strong>
+                  <p>{compact(vm.taxonomy.pattern_lift?.taxonomy_backed_rate)}% уже опираются на очищенные references</p>
+                </div>
+                <div className="rb-kpi">
+                  <div className="label">Ещё без опоры</div>
+                  <strong>{compact(vm.taxonomy.pattern_lift?.patterns_without_taxonomy_backing)}</strong>
+                  <p>их ценность вырастет после снятия серой зоны</p>
+                </div>
+              </div>
+              <div className="rb-pattern" style={{ marginTop: 14 }}>
+                <div className="rb-pill">{vm.taxonomy.status || "planned"} · {vm.taxonomy.trend || "watch"}</div>
+                <h3 style={{ marginTop: 10 }}>Taxonomy перестаёт жить на регэкспах</h3>
+                <p>{vm.taxonomy.pattern_lift?.next_step || vm.taxonomy.next_step || "Сначала нужно накопить v2-классификации на analyzed корпусе."}</p>
+              </div>
+            </div>
+            <div className="rb-card">
+              <div className="rb-overline" style={{ color: "#0891b2" }}>Новые ярлыки</div>
+              <h3 style={{ font: "600 24px/1.15 'Space Grotesk'", margin: "9px 0 14px" }}>Что словарь уже сам вытащил из корпуса</h3>
+              {(vm.taxonomyLabels.length ? vm.taxonomyLabels : [{ kind: "hook", label: "labels_will_appear", niche: "mixed", count: 0 }]).map((item: JsonRecord, index: number) => (
+                <div key={`${item.kind}:${item.label}:${index}`} style={{ display: "flex", justifyContent: "space-between", gap: 12, borderTop: "1px solid #eef2f7", padding: "12px 0" }}>
+                  <div>
+                    <strong>{item.label}</strong>
+                    <p style={{ margin: "4px 0 0", color: "#64748b", fontSize: 13 }}>{item.kind} · {NICHE_LABELS[item.niche] || item.niche || "mixed"}</p>
+                  </div>
+                  <span className="rb-pill">{compact(item.count || 0)}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="rb-card" style={{ marginTop: 16 }}>
+            <div className="rb-overline" style={{ color: "#0891b2" }}>Серая зона по нишам</div>
+            <h3 style={{ font: "600 24px/1.15 'Space Grotesk'", margin: "9px 0 14px" }}>Где ещё слишком много direct_claim и unknown_structure</h3>
+            <div className="rb-matrix">
+              <div className="rb-matrix-head">Ниша</div>
+              <div className="rb-matrix-head">v2</div>
+              <div className="rb-matrix-head">resolved</div>
+              <div className="rb-matrix-head">gray zone</div>
+              <div className="rb-matrix-head">hook unknown</div>
+              <div className="rb-matrix-head">structure unknown</div>
+              {vm.taxonomyByNiche.map((row: JsonRecord) => (
+                <div className="rb-matrix-row" key={`taxonomy:${row.niche}`}>
+                  <strong>{NICHE_LABELS[row.niche] || row.niche}</strong>
+                  <span>{compact(row.classified_videos)} / {compact(row.analyzed_videos)}</span>
+                  <span>{compact(row.resolved_videos)}</span>
+                  <span>{compact(row.gray_zone_rate)}%</span>
+                  <span>{compact(row.unresolved_hook_videos)}</span>
+                  <span>{compact(row.unresolved_structure_videos)}</span>
+                </div>
+              ))}
+            </div>
+            <p style={{ marginTop: 14, color: "#64748b", lineHeight: 1.55 }}>
+              Цель этого слоя: чтобы `direct_claim` и `unknown_structure` стали редким исключением, а не основной массой разобранных роликов.
+            </p>
+          </div>
+        </section>
+
+        <section>
           <SectionTitle k="05 · Что мозг понимает сейчас" title="Хуки, форматы, удержание, Creative DNA" />
           <div className="rb-hook-board">
             <div className="rb-hook-hero">
@@ -630,6 +769,21 @@ export default function ReelsBrainPixelCockpit() {
               <h3 style={{ font: "600 24px/1.15 'Space Grotesk'", margin: "14px 0 12px" }}>Creative DNA</h3>
               {(vm.recipes.length ? vm.recipes.slice(0, 4) : [{ title: "DNA появится после Pattern Brain", hook: "waiting", format: "waiting", retention: "waiting" }]).map((recipe) => (
                 <div className="rb-pattern" key={recipe.id || recipe.title}><h3>{recipe.hook} + {recipe.format}</h3><p>{recipe.retention} · OP {compact(recipe.op_score)}</p></div>
+              ))}
+            </div>
+          </div>
+          <div className="rb-card" style={{ marginTop: 16 }}>
+            <div className="rb-overline" style={{ color: "#0891b2" }}>Strong combinations</div>
+            <h3 style={{ font: "600 24px/1.15 'Space Grotesk'", margin: "9px 0 14px" }}>Какие связки уже можно масштабировать</h3>
+            <div className="rb-three">
+              {(vm.strongCombinations.length ? vm.strongCombinations.slice(0, 3) : [{ hook_label: "Ждём сильную связку", structure_label: "Pattern Brain", retention: [], op_score: 0, decision_label: "Watch", next_action: "Нужно больше разобранных и generator-ready паттернов.", evidence: { niches: 0, platforms: 0, references: 0 } }]).map((combo: JsonRecord) => (
+                <div className="rb-pattern" key={combo.id || `${combo.hook_label}:${combo.structure_label}`}>
+                  <div className="rb-pill">{combo.decision_label || combo.decision || "Watch"} · OP {compact(combo.op_score)}</div>
+                  <h3 style={{ marginTop: 10 }}>{combo.hook_label} + {combo.structure_label}</h3>
+                  <p>{(combo.retention || []).join(" · ") || "retention появится после пересборки"} · confidence {combo.confidence || "watch"}</p>
+                  <p>ниши {compact(combo.evidence?.niches)} · платформы {compact(combo.evidence?.platforms)} · references {compact(combo.evidence?.references)}</p>
+                  <p style={{ color: "#0f172a", fontWeight: 600 }}>{combo.next_action}</p>
+                </div>
               ))}
             </div>
           </div>
@@ -869,7 +1023,7 @@ export default function ReelsBrainPixelCockpit() {
           <SectionTitle k="09 · Текущий цикл обучения" title="Что происходит от прогона к прогону" />
           <div className="rb-card">
             <div className="rb-three">
-              {vm.timeline.length ? vm.timeline.slice(-6).map((run) => (
+              {vm.timeline.length ? vm.timeline.slice(0, 6).map((run) => (
                 <div className="rb-pattern" key={`${run.id || run.created_at}:${run.mode}`}>
                   <h3>{run.mode || "run"} · {new Date(run.created_at).toLocaleString("ru-RU")}</h3>
                   <p>+{compact(run.inserted)} видео · +{compact(run.analyzed)} память · {usd(run.usd_per_analyzed || run.usd_per_inserted)} / video</p>
@@ -884,7 +1038,7 @@ export default function ReelsBrainPixelCockpit() {
           <div className="rb-layer-grid">
             {[
               ["Feedback Loop", vm.nextLayers.feedback_loop?.status, vm.nextLayers.feedback_loop?.next_step],
-              ["Audio / Visual", vm.nextLayers.audio_visual_intelligence?.status, vm.nextLayers.audio_visual_intelligence?.next_step],
+              ["Audio / Visual", vm.nextLayers.audio_visual_intelligence?.status, [vm.nextLayers.audio_visual_intelligence?.next_step, vm.audioVisualSummary].filter(Boolean).join(" ")],
               ["Product Brain", vm.nextLayers.product_brain?.status, vm.nextLayers.product_brain?.next_step],
               ["Audience Brain", vm.nextLayers.audience_brain?.status, vm.nextLayers.audience_brain?.next_step],
               ["Experiment Brain", vm.nextLayers.experiment_brain?.status, vm.nextLayers.experiment_brain?.next_step],

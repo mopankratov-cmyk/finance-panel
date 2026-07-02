@@ -172,6 +172,20 @@ async function runAnalyzeBacklog(req: NextRequest, body: Record<string, unknown>
         signal: AbortSignal.timeout(115000),
       });
       const analyze = await analyzeResponse.json().catch(() => ({}));
+      let taxonomy: unknown = null;
+      if (analyzeResponse.ok) {
+        const taxonomyResponse = await internalFetch(`${origin}/api/factory/jobs/reels-brain-taxonomy-refresh`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            niches: lane.niche,
+            limit: Math.max(12, Math.min(50, lane.analyze_limit * 4)),
+            promote_threshold: 3,
+          }),
+          signal: AbortSignal.timeout(60000),
+        });
+        taxonomy = await taxonomyResponse.json().catch(() => ({}));
+      }
       let patterns: unknown = null;
       if (buildPatterns && analyzeResponse.ok) {
         const patternsResponse = await internalFetch(`${origin}/api/factory/reels-brain/patterns/build`, {
@@ -222,6 +236,11 @@ async function runAnalyzeBacklog(req: NextRequest, body: Record<string, unknown>
           error: analyzeResult.error,
           tail_cleanup: cleanup,
         },
+        taxonomy: taxonomy && typeof taxonomy === "object" ? {
+          ok: (taxonomy as { ok?: boolean }).ok,
+          selected: Number((taxonomy as { selected?: number }).selected || 0),
+          classified: Number((taxonomy as { classified?: number }).classified || 0),
+        } : null,
         patterns: patternsResult ? {
           ok: patternsResult.ok,
           niche: patternsResult.niche,

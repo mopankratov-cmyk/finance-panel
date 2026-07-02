@@ -8,7 +8,13 @@ export type BloggerMotionPresetId =
   | "half_smile"
   | "tired_honest"
   | "friend_advice"
-  | "practical_demo";
+  | "practical_demo"
+  | "voice_message"
+  | "walk_and_talk"
+  | "mid_task_aside"
+  | "story_lean"
+  | "disbelief_shake"
+  | "interrupted_real";
 
 export type BloggerFrameType = BloggerVariantRecord["framing_type"];
 export type BloggerDeliveryType = "confessional" | "matter_of_fact" | "friend_advice" | "practical_demo";
@@ -18,7 +24,7 @@ export interface BloggerMotionPreset {
   label: string;
   motion_prompt: string;
   expression_profile: string;
-  head_motion: "minimal" | "small_nod" | "soft_tilt" | "micro_pause";
+  head_motion: "minimal" | "small_nod" | "soft_tilt" | "micro_pause" | "handheld_sway" | "walk_sway" | "glance_away" | "head_shake";
   risk_notes: string[];
 }
 
@@ -150,6 +156,60 @@ export const BLOGGER_MOTION_PRESETS: readonly BloggerMotionPreset[] = [
     expression_profile: "practical_demo",
     head_motion: "small_nod",
     risk_notes: ["must cut to proof b-roll quickly"],
+  },
+  {
+    id: "voice_message",
+    label: "Voice message",
+    motion_prompt:
+      "talks like recording a casual voice message to a friend, natural micro head bobs following speech rhythm, one quick glance aside and back, subtle handheld phone shake and framing drift, imperfect amateur video feel, avoid presenter energy",
+    expression_profile: "friend_advice",
+    head_motion: "handheld_sway",
+    risk_notes: ["needs handheld-context look (car/selfie), reads odd on tripod-like frames"],
+  },
+  {
+    id: "walk_and_talk",
+    label: "Walk and talk",
+    motion_prompt:
+      "walking while talking to the phone held at arm length, natural gait sway in the framing, breath slightly affected by walking, occasional glance at the path and back to camera, no presenter smile",
+    expression_profile: "neutral_curious",
+    head_motion: "walk_sway",
+    risk_notes: ["only for outdoor/street looks; indoor walking reads staged"],
+  },
+  {
+    id: "mid_task_aside",
+    label: "Mid-task aside",
+    motion_prompt:
+      "talks as if briefly distracted from another activity, glances between an off-screen task and the camera, hands occasionally out of frame doing something, relaxed unfinished energy",
+    expression_profile: "thinking_out_loud",
+    head_motion: "glance_away",
+    risk_notes: ["too many glances away hurts hook retention in the first 2 seconds"],
+  },
+  {
+    id: "story_lean",
+    label: "Story lean",
+    motion_prompt:
+      "leans slightly closer to the camera as if sharing something semi-private, voice-matching conspiratorial energy, small pause before the key phrase, tiny eyebrow raise, then settles back",
+    expression_profile: "skeptical_but_warm",
+    head_motion: "soft_tilt",
+    risk_notes: ["lean must be subtle; a big lean toward camera reads acted"],
+  },
+  {
+    id: "disbelief_shake",
+    label: "Disbelief shake",
+    motion_prompt:
+      "starts with a barely visible head shake of disbelief, honest slightly amused expression, then calms into direct delivery, natural blink, no acting energy",
+    expression_profile: "tired_honest",
+    head_motion: "head_shake",
+    risk_notes: ["the shake must be micro; exaggerated shaking is an instant AI tell"],
+  },
+  {
+    id: "interrupted_real",
+    label: "Interrupted real",
+    motion_prompt:
+      "briefly looks off-camera mid-sentence as if someone or something distracted her, half-second pause, then returns to the camera and continues naturally, imperfect timing feel",
+    expression_profile: "neutral_curious",
+    head_motion: "glance_away",
+    risk_notes: ["use at most once per clip; repeating the interruption pattern becomes a signature"],
   },
 ] as const;
 

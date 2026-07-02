@@ -1,12 +1,14 @@
 import { equal, ok } from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { evaluateBloggerSample } from "./bloggerEvaluation";
+import { buildKatyaLookPack } from "./bloggerLookPack";
 import { applyEvaluationToRegistry, listBloggerVariants, registrySummary } from "./bloggerRegistry";
 import { RUSSIAN_HEYGEN_BLOGGERS } from "./ugcStoryboard";
 
 const registrySource = readFileSync("lib/factory/bloggerRegistry.ts", "utf8");
 const evaluationSource = readFileSync("lib/factory/bloggerEvaluation.ts", "utf8");
 const registryRoute = readFileSync("app/api/factory/blogger-registry/route.ts", "utf8");
+const lookPackRoute = readFileSync("app/api/factory/blogger-look-pack/route.ts", "utf8");
 const evaluationRoute = readFileSync("app/api/factory/blogger-evaluation/route.ts", "utf8");
 
 ok(/DEFAULT_BLOGGER_VARIANTS/.test(registrySource), "registry defines default blogger variants");
@@ -14,14 +16,24 @@ ok(/RUSSIAN_HEYGEN_BLOGGERS/.test(registrySource), "registry is grounded in curr
 ok(/living_blogger_v1/.test(evaluationSource), "evaluation has a stable scorecard version");
 ok(/face_realism/.test(evaluationSource) && /repeatability_penalty/.test(evaluationSource), "evaluation rubric covers realism and repeatability");
 ok(/listBloggerVariants/.test(registryRoute), "registry route exposes list helper");
+ok(/buildKatyaLookPack/.test(lookPackRoute), "look-pack route exposes Katya visual pack");
 ok(/evaluateBloggerSample/.test(evaluationRoute), "evaluation route uses the pure evaluator");
-ok(!/getSupabaseAdmin|\.from\("/.test(registryRoute + evaluationRoute), "new endpoints stay detached from DB for now");
+ok(!/getSupabaseAdmin|\.from\("/.test(registryRoute + lookPackRoute + evaluationRoute), "new endpoints stay detached from DB for now");
 
 {
   const registry = listBloggerVariants();
-  equal(registry.length, 3, "registry starts with 3 blogger variants");
+  ok(registry.length >= 8, "registry now includes Katya look-pack variants");
   equal(registry[0].blogger_id, RUSSIAN_HEYGEN_BLOGGERS.katya.id, "Katya is present");
-  equal(registrySummary(registry).active, 1, "one active variant by default");
+  ok(registrySummary(registry).active >= 2, "multiple active variants can exist by default");
+}
+
+{
+  const pack = buildKatyaLookPack();
+  equal(pack.mode, "katya-look-pack", "look-pack has explicit mode");
+  equal(pack.anchor_variant_id, "katya_russian_creator_v3b::mirror_core", "mirror core is the default anchor");
+  ok(pack.items.some((item) => item.variant_id.endsWith("::hallway_standing")), "hallway standing look is present");
+  ok(pack.items.some((item) => item.variant_id.endsWith("::kitchen_counter")), "kitchen counter look is present");
+  ok(pack.items.some((item) => item.variant_id.endsWith("::plain_wall_utility")), "plain wall utility look is present");
 }
 
 {

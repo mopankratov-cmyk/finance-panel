@@ -139,6 +139,18 @@ export async function POST(req: NextRequest) {
       log.push(r.ok ? `analyze: ${(analyze as { analyzed?: number }).analyzed ?? 0}` : `analyze: ${(analyze as { error?: string }).error || r.statusText}`);
     }
 
+    let taxonomy: unknown = null;
+    if (analyzeLimit > 0) {
+      const r = await internalFetch(`${origin}/api/factory/jobs/reels-brain-taxonomy-refresh`, {
+        method: "POST",
+        headers: fanoutHeaders,
+        body: JSON.stringify({ niches: niche, limit: Math.max(12, Math.min(50, analyzeLimit * 4)), promote_threshold: 3 }),
+        signal: AbortSignal.timeout(60000),
+      });
+      taxonomy = await r.json().catch(() => ({}));
+      log.push(r.ok ? `taxonomy: ${(taxonomy as { classified?: number }).classified ?? 0}` : `taxonomy: ${(taxonomy as { error?: string }).error || r.statusText}`);
+    }
+
     let patterns: unknown = null;
     if (buildPatterns) {
       const r = await internalFetch(`${origin}/api/factory/reels-brain/patterns/build`, {
@@ -173,6 +185,7 @@ export async function POST(req: NextRequest) {
       provider_shifts: providerShifts,
       retries,
       analyze,
+      taxonomy,
       patterns,
     }, { headers: { "Cache-Control": "no-store" } });
   } catch (e) {

@@ -17,7 +17,7 @@ async function loadPatternSourceVideos(
     const to = Math.min(from + SUPABASE_PAGE_SIZE - 1, limit - 1);
     const { data, error } = await db
       .from("viral_videos")
-      .select("id,url,platform,caption,hook_text,format_detected,beat_structure,viral_reason,virality_score,views,sound_title")
+      .select("id,url,platform,caption,hook_text,format_detected,beat_structure,viral_reason,virality_score,views,sound_title,analyzed_full")
       .eq("niche", niche)
       .order("virality_score", { ascending: false, nullsFirst: false })
       .range(from, to);
@@ -43,19 +43,18 @@ async function build(req: NextRequest, body: Record<string, unknown>) {
 
   const { rows, error } = await loadPatternSourceVideos(db, niche, limit);
   if (error) return NextResponse.json({ error: "viral_videos: " + error }, { status: 500 });
-
-  const memory = buildReelsPatternMemory(niche, rows);
+  const { data: existing } = await db
+    .from("niche_playbooks")
+    .select("playbook")
+    .eq("niche", niche)
+    .limit(1);
+  const current = ((existing as { playbook: Record<string, unknown> }[] | null)?.[0]?.playbook || {}) as Record<string, unknown>;
+  const memory = buildReelsPatternMemory(niche, rows, new Date(), { playbook: current });
   let persisted = false;
   let warning: string | null = null;
 
   if (persist) {
     try {
-      const { data: existing } = await db
-        .from("niche_playbooks")
-        .select("playbook")
-        .eq("niche", niche)
-        .limit(1);
-      const current = ((existing as { playbook: Record<string, unknown> }[] | null)?.[0]?.playbook || {}) as Record<string, unknown>;
       const playbook = {
         ...current,
         niche,

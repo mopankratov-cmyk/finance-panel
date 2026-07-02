@@ -136,5 +136,46 @@ function eq(a: unknown, b: unknown, m: string) { ok(JSON.stringify(a) === JSON.s
   eq(memory.cross_platform_patterns[0]?.platforms, ["instagram", "tiktok"], "cross-platform: preserves participating platforms");
 }
 
+{
+  const memory = buildReelsPatternMemory("ru_bags", [
+    {
+      id: 1,
+      platform: "instagram",
+      caption: "Смотри до конца",
+      analyzed_full: {
+        hook_type_v2: "warning_pattern_break",
+        structure_v2: "review",
+      },
+      virality_score: 31,
+      views: 220000,
+      sound_title: "soft beat",
+    },
+    {
+      id: 2,
+      platform: "tiktok",
+      caption: "Смотри до конца",
+      analyzed_full: {
+        hook_type_v2: "warning_pattern_break",
+        structure_v2: "review",
+      },
+      virality_score: 29,
+      views: 180000,
+      sound_title: "soft beat",
+    },
+  ], new Date("2026-06-26T00:00:00Z"), {
+    playbook: {
+      reels_brain_taxonomy: {
+        relevance_terms_by_niche: {
+          ru_bags: ["сумк", "рюкзак", "шоппер"],
+        },
+      },
+    },
+  });
+
+  eq(memory.patterns[0]?.hook_type, "warning_pattern_break", "memory: explicit analyzed_full hook type wins over regex fallback");
+  eq(memory.patterns[0]?.structure_type, "review", "memory: explicit analyzed_full structure wins over caption fallback");
+  ok(!memory.patterns[0]?.quality_reasons.includes("unknown_niche_taxonomy"), "memory: playbook taxonomy removes unknown niche penalty");
+}
+
 console.log(`\nreelsBrainPatterns: ${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

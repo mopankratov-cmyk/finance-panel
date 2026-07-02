@@ -4,6 +4,8 @@ export type ReelsSourceType = "manual" | "keyword" | "hashtag" | "creator" | "so
 export interface ReelsBrainInput {
   url?: string;
   video_url?: string;
+  media_url?: string;
+  image_url?: string;
   canonical_url?: string;
   platform?: string;
   caption?: string;
@@ -33,6 +35,7 @@ export interface NormalizedReelsVideo {
   platform: ReelsPlatform;
   url: string;
   canonicalUrl: string;
+  mediaUrl: string | null;
   videoId: string | null;
   caption: string | null;
   transcript: string | null;
@@ -85,11 +88,14 @@ function sourceOrbitId(provider: string, source: string | undefined): string {
 export function toFiniteNumber(value: unknown): number | null {
   if (value == null || value === "") return null;
   if (typeof value === "number") return Number.isFinite(value) ? value : null;
-  const normalized = String(value)
-    .trim()
-    .toLowerCase()
-    .replace(/,/g, ".")
-    .replace(/\s+/g, "")
+  const compact = String(value).trim().toLowerCase().replace(/\s+/g, "");
+  const thousandsComma = /^-?\d{1,3}(,\d{3})+(?:[a-zа-я]+)?$/i.test(compact);
+  const decimalComma = /^-?\d+,\d{1,2}(?:[a-zа-я]+)?$/i.test(compact);
+  const normalized = (thousandsComma
+    ? compact.replace(/,/g, "")
+    : decimalComma
+      ? compact.replace(/,/g, ".")
+      : compact)
     .replace(/тыс\.?|k$/i, "k")
     .replace(/млн\.?|m$/i, "m");
   const match = normalized.match(/^(-?\d+(?:\.\d+)?)([km])?$/i);
@@ -102,7 +108,31 @@ export function toFiniteNumber(value: unknown): number | null {
   const base = Number(match[1]);
   if (!Number.isFinite(base)) return null;
   const mult = match[2] === "m" ? 1_000_000 : match[2] === "k" ? 1_000 : 1;
-  return Math.round(base * mult);
+  const result = base * mult;
+  return mult === 1 ? result : Math.round(result);
+}
+
+export function toIsoDate(value: unknown): string | null {
+  if (value == null || value === "") return null;
+  if (value instanceof Date) {
+    const time = value.getTime();
+    return Number.isFinite(time) ? value.toISOString() : null;
+  }
+  if (typeof value === "number" && Number.isFinite(value)) {
+    const epoch = value > 1e12 ? value : value * 1000;
+    const date = new Date(epoch);
+    return Number.isFinite(date.getTime()) ? date.toISOString() : null;
+  }
+  const raw = String(value).trim();
+  if (!raw) return null;
+  if (/^\d{9,13}$/.test(raw)) {
+    const epoch = Number(raw.length >= 13 ? raw : raw) * (raw.length >= 13 ? 1 : 1000);
+    const date = new Date(epoch);
+    return Number.isFinite(date.getTime()) ? date.toISOString() : null;
+  }
+  const parsed = Date.parse(raw);
+  if (!Number.isFinite(parsed)) return raw;
+  return new Date(parsed).toISOString();
 }
 
 function cleanText(value: unknown, max = 2000): string | null {
@@ -182,6 +212,7 @@ export function normalizeReelsVideo(input: ReelsBrainInput): NormalizedReelsVide
     platform,
     url: rawUrl,
     canonicalUrl: canonical.canonicalUrl,
+    mediaUrl: cleanText(input.video_url || input.media_url || input.image_url, 1200),
     videoId: canonical.videoId,
     caption,
     transcript: cleanText(input.transcript, 6000),
@@ -192,7 +223,7 @@ export function normalizeReelsVideo(input: ReelsBrainInput): NormalizedReelsVide
     shares: toFiniteNumber(input.shares),
     followers: toFiniteNumber(input.followers ?? input.followers_creator ?? input.author_followers),
     durationSec: toFiniteNumber(input.duration_sec ?? input.duration),
-    publishedAt: cleanText(input.published_at || input.date, 120),
+    publishedAt: toIsoDate(input.published_at || input.date) || cleanText(input.published_at || input.date, 120),
     hashtags: parseHashtags(input.hashtags, caption),
     soundId: cleanText(input.sound_id, 240),
     soundTitle: cleanText(input.sound_title, 500),
@@ -201,7 +232,8 @@ export function normalizeReelsVideo(input: ReelsBrainInput): NormalizedReelsVide
 
 function recencyBoost(publishedAt: string | null, now = Date.now()): number {
   if (!publishedAt) return 0;
-  const t = Date.parse(publishedAt);
+  const normalized = toIsoDate(publishedAt) || publishedAt;
+  const t = Date.parse(normalized);
   if (!Number.isFinite(t)) return 0;
   const days = Math.max(0, (now - t) / 86400000);
   if (days <= 14) return 3;

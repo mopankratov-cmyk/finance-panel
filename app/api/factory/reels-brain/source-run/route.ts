@@ -23,6 +23,7 @@ import {
   sourceRelearnPolicy,
 } from "@/lib/factory/reelsBrainPlaybook";
 import { filterRelevantReelsInputs, pickBestBakeOffProvider, summarizeProviderQuality, type ReelsBrainProvider } from "@/lib/factory/reelsBrainSources";
+import { safeUpsertReelsCorpusRows } from "@/lib/factory/reelsBrainCorpusUpsert";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -35,6 +36,7 @@ interface ProviderRunSummary {
   relevant: number;
   normalized: number;
   rejected: number;
+  error?: string;
   quality: ReturnType<typeof summarizeProviderQuality>;
 }
 
@@ -73,14 +75,20 @@ function providerList(body: Record<string, unknown>): TrendProvider[] {
 function toInputs(provider: TrendProvider, videos: Awaited<ReturnType<typeof fetchViralFromProvider>>): ReelsBrainInput[] {
   return videos.map((v): ReelsBrainInput => ({
     url: v.url,
+    video_url: v.video_url,
     platform: v.platform || (provider === "virlo" ? "tiktok" : undefined),
     caption: v.caption || v.title,
     title: v.title,
+    transcript: v.transcript,
+    author: v.author,
+    username: v.username,
     views: v.views,
     likes: v.likes,
     comments: v.comments,
     shares: v.shares,
     followers: v.followers,
+    duration_sec: v.duration_sec,
+    hashtags: v.hashtags,
     sound_id: v.sound_id,
     sound_title: v.sound_title,
     published_at: v.published_at,
@@ -91,9 +99,11 @@ async function withProviderTimeout(provider: TrendProvider, query: string, limit
   let timer: ReturnType<typeof setTimeout> | null = null;
   try {
     return await Promise.race([
-      fetchViralFromProvider(provider, query, limit),
-      new Promise<Awaited<ReturnType<typeof fetchViralFromProvider>>>((resolve) => {
-        timer = setTimeout(() => resolve([]), timeoutMs);
+      fetchViralFromProvider(provider, query, limit)
+        .then((videos): { videos: Awaited<ReturnType<typeof fetchViralFromProvider>>; error?: string } => ({ videos }))
+        .catch((error) => ({ videos: [], error: String((error as Error)?.message || error).slice(0, 220) })),
+      new Promise<{ videos: Awaited<ReturnType<typeof fetchViralFromProvider>>; error?: string }>((resolve) => {
+        timer = setTimeout(() => resolve({ videos: [], error: `timeout after ${timeoutMs}ms` }), timeoutMs);
       }),
     ]);
   } finally {
@@ -148,7 +158,8 @@ export async function POST(req: NextRequest) {
 
     for (const provider of providers) {
       const remaining = Math.max(limit - allInputs.length, 1);
-      const videos = await withProviderTimeout(provider, query, remaining, providerTimeoutMs);
+      const providerResult = await withProviderTimeout(provider, query, remaining, providerTimeoutMs);
+      const videos = providerResult.videos;
       const inputs = toInputs(provider, videos);
       const relevantInputs = filterRelevantReelsInputs(query, inputs);
       const freshRelevant = relevantInputs.filter((input) => {
@@ -171,6 +182,7 @@ export async function POST(req: NextRequest) {
         relevant: freshRelevant.length,
         normalized: preparedPreview.rows.length,
         rejected: preparedPreview.rejected,
+        error: providerResult.error,
         quality: summarizeProviderQuality(provider as ReelsBrainProvider, query, inputs),
       });
 
@@ -184,17 +196,30 @@ export async function POST(req: NextRequest) {
     const prepared = makeViralVideoRows(finalInputs, { niche, sourceProvider: provider, sourceQuery: query, sourceType: "provider" });
 
     let inserted = 0;
+    let enriched = 0;
     if (prepared.rows.length) {
-      const { error, count } = await db
-        .from("viral_videos")
-        .upsert(prepared.rows, { onConflict: "url", ignoreDuplicates: true, count: "exact" });
-      if (error) return NextResponse.json({ error: "viral_videos: " + error.message }, { status: 500 });
-      inserted = count ?? prepared.rows.length;
+      try {
+        const write = await safeUpsertReelsCorpusRows({
+          db: db as any,
+          rows: prepared.rows,
+          normalized: prepared.normalized,
+          sourceProvider: provider,
+          sourceQuery: query,
+          sourceType: "provider",
+        });
+        inserted = write.inserted;
+        enriched = write.enriched;
+      } catch (error) {
+        return NextResponse.json({ error: "viral_videos: " + String((error as Error)?.message || error) }, { status: 500 });
+      }
     }
 
     let learnedProvider: string | null = learned?.provider || null;
     let memoryUpdated = false;
     let nextPlaybook = playbook || { niche };
+    const providerError = providerRuns.length > 0
+      && providerRuns.every((run) => Number(run.found || 0) < 1)
+      && providerRuns.some((run) => Boolean(run.error));
     nextPlaybook = rememberQueryPerformance(nextPlaybook, {
       query,
       platform: targetPlatform,
@@ -203,6 +228,7 @@ export async function POST(req: NextRequest) {
       inserted,
       low_yield: finalInputs.length > 0 && finalInputs.length < relearnPolicy.min_relevant,
       empty_result: finalInputs.length < 1,
+      provider_error: providerError,
       suppression_hours: finalInputs.length < 1 ? 48 : 24,
     });
     if (learned && learnedProvider) {
@@ -278,6 +304,7 @@ export async function POST(req: NextRequest) {
       relevant: finalInputs.length,
       normalized: prepared.rows.length,
       inserted,
+      enriched,
       rejected: prepared.rejected,
       quality: summarizeProviderQuality(provider as ReelsBrainProvider, query, finalInputs),
       provider_runs: providerRuns,

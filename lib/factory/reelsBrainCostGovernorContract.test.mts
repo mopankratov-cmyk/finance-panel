@@ -22,6 +22,9 @@ ok(/autopilot_actions: autopilotActions/.test(economics), "learning-economics re
 ok(/next_intelligence_layers: nextIntelligenceLayers/.test(economics), "learning-economics returns next intelligence layers");
 ok(/buildReelsBrainOperatingSystem/.test(economics), "learning-economics builds the operating-system layers");
 ok(/feedback_loop/.test(economics) && /product_brain/.test(economics) && /experiment_brain/.test(economics), "learning-economics returns advanced intelligence layers");
+ok(/const chronologicalRuns = \[\.\.\.runs\]\.sort/.test(economics) && /const timeline = chronologicalRuns\.map/.test(economics), "learning-economics normalizes automation history into chronological timeline");
+ok(/function buildAudioVisualReadiness/.test(economics) && /audio_visual_readiness: audioVisualReadiness/.test(economics), "learning-economics exposes audio/deep-worker readiness from corpus metadata");
+ok(/ready_for_worker/.test(cockpit) && /with_media_locators/.test(cockpit) && /audioVisualSummary/.test(cockpit), "cockpit surfaces audio/deep-worker readiness summary");
 
 ok(/internalFetch/.test(actions), "autopilot-actions reads learning-economics internally");
 ok(/\/api\/factory\/reels-brain\/learning-economics/.test(actions), "autopilot-actions points at learning-economics route");
@@ -34,7 +37,7 @@ ok(!/POST\s*\(/.test(governor), "cost-governor route is read-only");
 
 ok(/daily_report/.test(report) && /autopilot_actions/.test(report), "report route exposes operator report fields");
 ok(/anti_pattern_brain/.test(report) && /discovery_brain/.test(report), "report route includes learning context");
-ok(/feedback_loop/.test(report) && /portfolio_manager/.test(report), "report route exposes operating-system intelligence");
+ok(/feedback_loop/.test(report) && /portfolio_manager/.test(report) && /audio_visual_readiness/.test(report), "report route exposes operating-system intelligence and audio readiness");
 ok(!/POST\s*\(/.test(report), "report route is read-only");
 
 ok(/corpusProgress/.test(learningPlan) && /corpusExecutionPlan/.test(learningPlan), "learning-plan computes 10k corpus progress");
@@ -53,5 +56,7 @@ ok(/learningPlan/.test(cockpit) && /Learning Mission/.test(cockpit), "cockpit ex
 ok(/nextLayers/.test(cockpit), "cockpit reads next intelligence layers");
 ok(/selectedPattern/.test(cockpit) && /rb-drawer/.test(cockpit), "cockpit exposes pattern creative brief drawer");
 ok(/rb-click/.test(cockpit) && /setSelectedPattern/.test(cockpit), "cockpit pattern cards are inspectable");
+ok(/sort\(\(a, b\) => String\(a\.created_at \|\| \"\"\)\.localeCompare\(String\(b\.created_at \|\| \"\"\)\)\)\s*\.slice\(-8\)\s*\.reverse\(\)/.test(cockpit), "cockpit stores latest learning runs first");
+ok(/vm\.timeline\.slice\(0, 6\)/.test(cockpit), "cockpit renders newest six learning runs instead of stale tail");
 
 console.log("reelsBrainCostGovernorContract: passed");

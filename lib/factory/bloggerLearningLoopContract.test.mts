@@ -127,6 +127,19 @@ import { buildKatyaLearningLoop } from "./bloggerLearningLoop";
 }
 
 {
+  const expansion = readFileSync("lib/factory/bloggerAnchorExpansion.ts", "utf8");
+  ok(/katya-anchor-expansion/.test(expansion), "anchor expansion mode exists");
+  ok(/no broken mug or malformed props/i.test(expansion), "expansion explicitly guards against broken props");
+  ok(/entryway_jacket/.test(expansion) && /small_kitchen/.test(expansion) && /window_room/.test(expansion), "expansion covers multiple environments");
+}
+
+{
+  const expansionRunner = readFileSync("lib/factory/bloggerAnchorExpansionRunner.mjs", "utf8");
+  ok(/--confirm-paid/.test(expansionRunner), "expansion runner has a paid guard");
+  ok(/buildKatyaAnchorExpansion/.test(expansionRunner), "expansion runner uses anchor expansion planner");
+}
+
+{
   const source = readFileSync("lib/factory/bloggerLearningLoop.ts", "utf8");
   ok(/target_runs/.test(source), "loop exposes target run count");
   ok(/generation_size/.test(source), "loop exposes generation size");
