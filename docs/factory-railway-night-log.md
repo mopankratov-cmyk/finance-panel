@@ -3098,3 +3098,10 @@
   - `npx tsx lib/factory/productTwin.test.mts`, `productBrollBatchRouteContract` (20), `productTwinBatchContract`
   - `npx tsc --noEmit` — чисто
 - После деплоя: применить вердикты на прод через POST identity-verdict (8 артикулов), проверить fallback dry-run CLR00716.
+
+## 2026-07-02 (день) — Удаление fail-твинов
+
+- По решению владельца забракованные identity-аудитом твины удаляются целиком (строки БД + файлы архива).
+- Код: `deleteProductTwin` (store), `deleteYandexProductTwinFile` + guard `isDeletableProductTwinPath` (только медиа в product-twin подпапках архива; исходники съёмки недоступны), protected роут `product-twin/delete` (confirm обязателен; без force удаляются только fail-твины).
+- Проверки: `productTwinIdentityContract` (+7 asserts), `yandexArchiveCleanupContract`, tsc чистый.
+- После деплоя: удалить NV-08, NV-816, CLR00716, CLR00715 (fail); warn/pass не трогаем.
