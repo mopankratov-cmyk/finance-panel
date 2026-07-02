@@ -16,10 +16,13 @@ const worker = readFileSync("lib/factory/reelsBrainOfflineWorker.mjs", "utf8");
 ok(/reels-brain-media-backfill/.test(worker), "offline worker targets media-backfill route");
 ok(/reels-brain-audio-backfill/.test(worker), "offline worker supports audio-backfill route");
 ok(/reels-brain-media-commit/.test(worker), "offline worker persists local resolver results");
+ok(/reels-brain-audio-commit/.test(worker), "offline worker persists local audio extraction results");
 ok(/use_local_resolver/.test(worker), "offline worker forwards local resolver flag");
+ok(/dry_run/.test(worker), "offline worker can request dry-run audio candidates from API");
 ok(/worker-state/.test(worker), "offline worker can send worker-state heartbeat");
 ok(/controller\.abort\(\)/.test(worker) && /signal:\s*controller\.signal/.test(worker), "offline worker fetchJson uses abort controller timeout");
 ok(/REELS_BRAIN_ENABLE_LOCAL_MEDIA_RESOLVER/.test(worker), "offline worker reads local media resolver env");
+ok(/REELS_BRAIN_AUDIO_LOCAL/.test(worker), "offline worker reads local audio extraction env");
 ok(
   /REELS_BRAIN_OFFLINE_MODE/.test(worker)
     && /mode === "audio"/.test(worker)

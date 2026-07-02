@@ -3196,3 +3196,18 @@
 - `productTwinBuild.resolveInputImage`: новая ветка между манифестом и слепым пикером — для каталожного SKU кандидаты берутся из сырых IMG_* его цветовой папки и проходят vision-скрин (перёд/три-четверти без текста); pending-SKU валит сборку с понятной причиной.
 - Проверки: `wbSellerCatalogContract` (новый, 20 asserts), `twinSourceManifestContract`, `productTwinIdentityContract`, tsc чистый.
 - Эффект: завод готов собирать твины и гнать b-roll на все 32 куртко-цвета с контентом (было 4). Ветровки — после распаковки ZIP. Пересборка 12 базовых артикулов ждёт пополнения FAL (кошелёк в минусе).
+
+## 2026-07-02 (ночь) — Reels Brain: локальный audio loop вынесен на Railway
+
+- Прод-диагностика показала две реальные пробки:
+  - корпус уже `6682` строк, analyzed `6624`, но audio `0 ok / 7 failed / 6675 pending`;
+  - Railway worker стабильно крутит media/audio по платформам, но audio-этап на Vercel падал в `ffprobe_unavailable`.
+- Техфикс:
+  - `app/api/factory/jobs/reels-brain-audio-backfill/route.ts`: добавлен `dry_run=1`, чтобы Vercel только отдавал кандидатов без попытки извлечения аудио;
+  - `app/api/factory/jobs/reels-brain-audio-commit/route.ts`: новый авторизованный commit-route для записи локально извлечённых audio_features/transcript обратно в `viral_videos.analyzed_full`;
+  - `lib/factory/reelsBrainOfflineWorker.mjs`: worker теперь умеет `local-audio` режим по умолчанию, если на Railway есть `ffprobe` + `ffmpeg`; забирает dry-run кандидатов, сам делает `ffprobe`/`ffmpeg`, опционально `fal-whisper`, затем пишет результат через `audio-commit`.
+- Контуры безопасности:
+  - image-like media URLs локально не трогаются;
+  - старый media loop не сломан, mixed rotation и local yt-dlp resolver остаются.
+- Проверки: `reelsBrainOfflineWorkerContract` зелёный (14/14), `tsc --noEmit` зелёный.
+- Следующий live step: задеплоить свежий код в Vercel, затем перезапустить/перекатить Railway service, чтобы он начал брать новый `dry_run + audio-commit` путь.

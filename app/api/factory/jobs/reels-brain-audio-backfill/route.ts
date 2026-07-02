@@ -91,6 +91,7 @@ export async function GET(req: NextRequest) {
     const scan = numberParam(req, "scan", 24, limit, 120);
     const platform = String(req.nextUrl.searchParams.get("platform") || "").trim().toLowerCase();
     const transcribe = boolParam(req, "transcribe", true);
+    const dryRun = boolParam(req, "dry_run", false);
     const language = String(req.nextUrl.searchParams.get("language") || "ru").trim().slice(0, 12) || "ru";
 
     let query = db
@@ -121,6 +122,23 @@ export async function GET(req: NextRequest) {
     for (const row of rows) {
       const mediaUrl = bestMediaLocator(row);
       if (!mediaUrl) continue;
+
+      if (dryRun) {
+        const state = seedState(row);
+        runs.push({
+          id: row.id,
+          niche: row.niche,
+          platform: row.platform,
+          url: row.url,
+          media_url: mediaUrl,
+          ok: true,
+          audio_status: state.audioStatus,
+          transcript_status: state.transcriptStatus,
+          dry_run: true,
+        });
+        continue;
+      }
+
       const result = await extractAudioFeaturesFromMediaUrl(mediaUrl, { transcribe, language });
       const merged = mergeAnalyzedFullWithAudioExtraction(row.analyzed_full, {
         mediaUrl,
@@ -179,8 +197,9 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({
       ok: true,
-      mode: "reels_brain_audio_backfill",
+      mode: dryRun ? "reels_brain_audio_backfill_dry_run" : "reels_brain_audio_backfill",
       platform: platform || "mixed",
+      dry_run: dryRun,
       attempted: rows.length,
       extracted,
       transcript_ready: transcriptReady,
