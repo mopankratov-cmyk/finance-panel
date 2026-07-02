@@ -50,3 +50,9 @@ ok(/ANTHROPIC_API_KEY отсутствует/.test(identityCheck), "identity che
 ok(/длина одежды/.test(identityCheck) && /фурнитуру/.test(identityCheck), "identity prompt covers length/material/hardware attributes");
 // Clean-промпт: вшитая подпись бренда вне товара убирается (урок CLÉRIN).
 ok((cleanSource.match(/rendered outside the (bag|garment|product)/g) || []).length >= 3, "clean prompts strip brand captions outside the product for bag/apparel/default");
+
+// Скрин для одежды: кадр на модели без текста — годный источник (clean_first вырежет изделие).
+const screenSrc = readFileSync("lib/factory/twinSourceScreen.ts", "utf8");
+ok(/кадр НА МОДЕЛИ подходит/.test(screenSrc), "screen accepts on-model shots for apparel (clean step extracts the garment)");
+ok(/перекрыт больше чем на треть/.test(screenSrc), "screen still rejects heavily occluded product");
+ok(/role=on_model.*ГОДНЫЙ/.test(screenSrc), "on_model role without text is a valid source");
