@@ -427,6 +427,21 @@ function shortFormOnly(input: ReelsBrainInput): boolean {
   return duration <= 120;
 }
 
+function directPlatformUrl(query: string): { platform: "tiktok" | "instagram" | "youtube"; url: string } | null {
+  const target = str(query);
+  if (!target || !/^https?:\/\//i.test(target)) return null;
+  if (/tiktok\.com\//i.test(target)) return { platform: "tiktok", url: target };
+  if (/instagram\.com\//i.test(target)) return { platform: "instagram", url: target };
+  if (/youtube\.com\/shorts\/|youtu\.be\//i.test(target)) return { platform: "youtube", url: target };
+  return null;
+}
+
+function syntheticDirectUrlInput(query: string): ReelsBrainInput[] {
+  const direct = directPlatformUrl(query);
+  if (!direct) return [];
+  return [{ url: direct.url, platform: direct.platform }];
+}
+
 async function fetchYouTubeShorts(query: string, limit: number): Promise<ReelsBrainInput[]> {
   const key = YOUTUBE_KEY();
   if (!key) return [];
@@ -818,6 +833,18 @@ export async function fetchReelsBrainProvider(provider: ReelsBrainProvider, quer
     return { provider, query, configured: false, elapsedMs: 0, videos: [], error: `${provider} не настроен` };
   }
   try {
+    if (
+      (provider === "apify_tiktok" || provider === "apify_youtube" || provider === "apify_instagram")
+      && syntheticDirectUrlInput(query).length
+    ) {
+      return {
+        provider,
+        query,
+        configured: true,
+        elapsedMs: Date.now() - started,
+        videos: syntheticDirectUrlInput(query),
+      };
+    }
     if (provider === "youtube") {
       const videos = await fetchYouTubeShorts(query, limit);
       return { provider, query, configured: true, elapsedMs: Date.now() - started, videos };

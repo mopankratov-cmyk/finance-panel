@@ -2,6 +2,22 @@
 
 Этот журнал ведёт отдельный AI-worker на Railway во время ночных задач по контент-заводу.
 
+### 2026-07-02 — Reels Brain worker stabilization follow-up
+
+- Ветка: `feat/product-broll-operator-get-clean`
+- Цель: добить live-стабильность Reels Brain после mixed-worker deploy.
+- Изменено:
+  - `lib/factory/reelsBrainOfflineWorker.mjs`: ротация платформ переведена в пары `media -> audio` на одной платформе, затем переход к следующей.
+  - `app/api/factory/jobs/reels-brain-audio-any/route.ts`: добавлен compat-route на `reels-brain-audio-backfill`, чтобы старые smoke-checks не ловили `404`.
+  - `app/api/factory/jobs/reels-brain-cron/route.ts`: `autopilot_guard_error` больше не уводит cron в ложный `analyze`, если сам growth-task должен идти в `bulk`.
+  - `lib/factory/reelsBrainMediaResolver.ts`: если `ffprobe/ffmpeg` недоступны, route всё равно пытается получить transcript через FAL Whisper вместо жёсткого пустого фейла.
+  - `lib/factory/reelsBrainSources.ts`: direct TikTok/YouTube/Instagram URLs больше не гоняются через search-only provider path; для них создаётся exact URL seed без ухода в search results.
+- Live findings:
+  - Railway deploy `6af7b0f0-79cf-4dac-a457-2c1ced0818fd` поднялся успешно.
+  - В логах подтверждена новая ротация: `tiktok media -> tiktok audio -> instagram media -> instagram audio -> youtube media`.
+  - Главный остаточный блокер сейчас не Railway, а Vercel audio route: `ffprobe_unavailable` приходит из serverless runtime, где нет локального media stack.
+  - Следующий архитектурный шаг: вынести full audio extraction в Railway/local worker или отдельный media-runtime, а Vercel оставить только orchestration/commit.
+
 ### 2026-07-01  Katya targeted UGC bakeoff
 
 - Ветка: `feat/product-broll-operator-get-clean`

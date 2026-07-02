@@ -1,6 +1,7 @@
 // Reels Brain provider bake-off summary. Run: npx tsx lib/factory/reelsBrainSources.test.mts
 import {
   availableReelsBrainProviders,
+  fetchReelsBrainProvider,
   hasReelsBrainProvider,
   pickBestBakeOffProvider,
   pickBestBakeOffProviderByPlatform,
@@ -22,6 +23,30 @@ function eq(a: unknown, b: unknown, m: string) { ok(JSON.stringify(a) === JSON.s
 
   ok(hasReelsBrainProvider("apify_instagram"), "providers: reels brain enables apify_instagram through official actor fallback");
   ok(availableReelsBrainProviders().includes("apify_instagram"), "providers: reels brain registry includes apify_instagram fallback");
+
+  for (const [key, value] of Object.entries(original)) {
+    if (value == null) delete process.env[key];
+    else process.env[key] = value;
+  }
+}
+
+{
+  const original = {
+    APIFY_TOKEN: process.env.APIFY_TOKEN,
+    APIFY_TIKTOK_ACTOR: process.env.APIFY_TIKTOK_ACTOR,
+  };
+  process.env.APIFY_TOKEN = "token";
+  process.env.APIFY_TIKTOK_ACTOR = "demo-actor";
+
+  const direct = await fetchReelsBrainProvider(
+    "apify_tiktok",
+    "https://www.tiktok.com/@demo/video/7657332689397124384",
+    5,
+  );
+
+  eq(direct.videos.length, 1, "direct url: search providers short-circuit to exact URL seed");
+  eq(direct.videos[0]?.url, "https://www.tiktok.com/@demo/video/7657332689397124384", "direct url: keeps original tiktok URL");
+  eq(direct.videos[0]?.platform, "tiktok", "direct url: infers platform from URL");
 
   for (const [key, value] of Object.entries(original)) {
     if (value == null) delete process.env[key];

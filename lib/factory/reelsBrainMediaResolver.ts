@@ -249,16 +249,31 @@ export async function extractAudioFeaturesFromMediaUrl(
     };
   }
 
+  let transcript: string | null = null;
+  let transcriptError: string | null = null;
+  let transcriptStatus: ReelsBrainAudioExtractionResult["transcript_status"] = "transcript_pending";
+
+  if (options.transcribe) {
+    const transcribed = await transcribeFal(target, options.language || "ru");
+    transcript = transcribed.text;
+    transcriptError = transcribed.error || null;
+    transcriptStatus = transcript ? "transcript_ready" : (transcriptError ? "transcript_failed" : "transcript_pending");
+  }
+
   const [ffprobeReady, ffmpegReady] = await Promise.all([hasFfprobeBinary(), hasFfmpegBinary()]);
   if (!ffprobeReady || !ffmpegReady) {
     return {
-      ok: false,
+      ok: Boolean(transcript),
       media_status: "audio_failed",
       audio_status: "audio_failed",
-      transcript_status: "transcript_pending",
+      transcript_status: transcriptStatus,
       audio_features: null,
-      transcript: null,
-      error: !ffprobeReady ? "ffprobe_unavailable" : "ffmpeg_unavailable",
+      transcript,
+      error: [
+        !ffprobeReady ? "ffprobe_unavailable" : null,
+        !ffmpegReady ? "ffmpeg_unavailable" : null,
+        transcriptError,
+      ].filter(Boolean).join("; ") || null,
     };
   }
 
@@ -277,17 +292,6 @@ export async function extractAudioFeaturesFromMediaUrl(
   }
 
   const levels = await inspectAudioLevels(target);
-  let transcript: string | null = null;
-  let transcriptError: string | null = null;
-  let transcriptStatus: ReelsBrainAudioExtractionResult["transcript_status"] = "transcript_pending";
-
-  if (options.transcribe) {
-    const transcribed = await transcribeFal(target, options.language || "ru");
-    transcript = transcribed.text;
-    transcriptError = transcribed.error || null;
-    transcriptStatus = transcript ? "transcript_ready" : (transcriptError ? "transcript_failed" : "transcript_pending");
-  }
-
   const mediaDuration = parseNumber(probe.format?.duration);
   const audioDuration = parseNumber(audioStream.duration) ?? mediaDuration;
   const transcriptWords = transcript ? transcript.split(/\s+/).filter(Boolean).length : 0;
