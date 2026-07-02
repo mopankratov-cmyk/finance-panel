@@ -479,3 +479,20 @@ export async function deleteYandexArchiveFile(path: string): Promise<{ ok: boole
   const res = await yandexJson(`?path=${encodeURIComponent(clean)}&permanently=true`, { method: "DELETE" });
   return { ok: res.ok, status: res.status, error: res.ok ? undefined : safeError(JSON.stringify(res.body).slice(0, 200)) };
 }
+
+// Guard удаления твин-ассетов: только медиа внутри product-twin подпапок архивных корней.
+export function isDeletableProductTwinPath(path: string): boolean {
+  const clean = String(path || "").replace(/^(disk:|yandex-disk:)/, "");
+  const roots = [rootPath(), "/Приложения/Inferno Archive"];
+  return roots.some((root) => clean.startsWith(`${root}/`))
+    && clean.includes("/product-twin/")
+    && /\.(png|jpg|jpeg|webp|mp4|mov|webm)$/i.test(clean);
+}
+
+export async function deleteYandexProductTwinFile(path: string): Promise<{ ok: boolean; status: number; error?: string }> {
+  if (!token()) return { ok: false, status: 0, error: "YANDEX_DISK_OAUTH_TOKEN is missing" };
+  if (!isDeletableProductTwinPath(path)) return { ok: false, status: 0, error: "удалять можно только медиа внутри product-twin папок архива" };
+  const clean = String(path).replace(/^(disk:|yandex-disk:)/, "");
+  const res = await yandexJson(`?path=${encodeURIComponent(clean)}&permanently=true`, { method: "DELETE" });
+  return { ok: res.ok, status: res.status, error: res.ok ? undefined : safeError(JSON.stringify(res.body).slice(0, 200)) };
+}

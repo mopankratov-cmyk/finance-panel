@@ -492,3 +492,24 @@ export async function getProductTwinViewAssets(db: SupabaseClient, input: {
   if (input.viewId) rows = rows.filter((row) => row.viewId === input.viewId);
   return rows;
 }
+
+// Полное удаление твина: все строки content_assets (ассеты + derived views) этого twin_id.
+// Возвращает yandex-disk пути удалённых строк, чтобы вызывающий мог зачистить файлы архива.
+export async function deleteProductTwin(db: SupabaseClient, input: { twinId: string }): Promise<{ ok: boolean; deletedRows: number; yandexPaths: string[]; error?: string }> {
+  const { data, error } = await db.from("content_assets")
+    .select("id,url,path")
+    .eq("disk", DISK)
+    .contains("analysis", { product_twin: { twin_id: input.twinId } })
+    .limit(300);
+  if (error) return { ok: false, deletedRows: 0, yandexPaths: [], error: error.message };
+  const rows = (data as Array<{ id: number; url: string | null; path: string | null }> | null) || [];
+  if (!rows.length) return { ok: false, deletedRows: 0, yandexPaths: [], error: `twin ${input.twinId} не найден` };
+  const yandexPaths = rows
+    .map((row) => String(row.url || ""))
+    .filter((url) => url.startsWith("yandex-disk:"))
+    .map((url) => url.replace(/^yandex-disk:/, ""));
+  const ids = rows.map((row) => row.id);
+  const { error: deleteError } = await db.from("content_assets").delete().in("id", ids);
+  if (deleteError) return { ok: false, deletedRows: 0, yandexPaths, error: deleteError.message };
+  return { ok: true, deletedRows: ids.length, yandexPaths };
+}

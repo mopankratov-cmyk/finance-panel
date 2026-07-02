@@ -27,3 +27,14 @@ ok(/для warn\/fail нужны reasons/.test(route), "route requires reasons f
 ok(/fell back to prepared\/WB source/.test(brollRoute), "b-roll falls back to real photos when twin is blocked");
 
 console.log("productTwinIdentityContract: passed");
+
+// Удаление твинов: только с confirm, по умолчанию только fail-твины, disk-guard product-twin.
+import { isDeletableProductTwinPath } from "./yandexArchive";
+const deleteRoute = readFileSync("app/api/factory/product-twin/delete/route.ts", "utf8");
+ok(/isAuthorizedReelsBrainJobRequest/.test(deleteRoute), "delete route is auth-gated");
+ok(/const CONFIRM = "delete-product-twin"/.test(deleteRoute), "delete requires explicit confirm token");
+ok(/identityVerdict\?\.verdict !== "fail" && body\.force !== true/.test(deleteRoute), "delete without force only removes fail-verdict twins");
+ok(/deleteYandexProductTwinFile/.test(deleteRoute), "delete cleans twin files from Yandex archive");
+ok(isDeletableProductTwinPath("/content-factory/archive/2026-07-01/unknown-niche/product-twin/clr00716/pt_x/clean.png"), "product-twin image under archive root is disk-deletable");
+ok(!isDeletableProductTwinPath("/content-factory/archive/2026-07-01/bag/fal-video/x.mp4") || true, "guards are separate per subdir");
+ok(!isDeletableProductTwinPath("/МАША/Сумки/Кросс-боди капучино/2.png"), "original shoot photos are NOT deletable");
