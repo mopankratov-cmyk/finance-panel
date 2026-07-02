@@ -1439,7 +1439,7 @@
         "artifacts": 7.5,
         "ugc_feel": 8
       },
-      "critic_total": 39.0,
+      "critic_total": 39,
       "critic_notes": "ЛУЧШИЙ БАТЧА: тихость частично пробилась через ПРОМПТ взгляда. f3 — по-настоящему спокойная нейтраль (лучший тихий кадр батча). Но downgaze модель конвертировала в ЗАКРЫТЫЕ глаза, и смех всё же прорывается (f4)."
     },
     "drill_b05_08_asmr_closer": {
@@ -1503,7 +1503,7 @@
         "artifacts": 7.5,
         "ugc_feel": 8
       },
-      "critic_total": 36.0,
+      "critic_total": 36,
       "critic_notes": "Контроль medium-канон: бодрый baseline, визуально СОВПАДАЕТ с b05_06 (low) — дельта low≈0, ключевой результат теста."
     },
     "drill_b05_ctrl2": {
@@ -1535,8 +1535,328 @@
         "artifacts": 7.5,
         "ugc_feel": 8
       },
-      "critic_total": 36.0,
+      "critic_total": 36,
       "critic_notes": "Дубль ctrl1 практически идентичен покадрово → пайплайн детерминирован, различия b05_07 — реальный эффект промпта, не шум."
+    },
+    "drill_b06_01_calm_neutral_quiet": {
+      "plan": {
+        "clip_id": "drill_b06_01_calm_neutral_quiet",
+        "batch": 6,
+        "axis": "start_face",
+        "role": "explore",
+        "look_name": "look__manya__07__soft_window",
+        "degloss_hint": "golden hour low warm sunlight through the window, long soft shadows, selfie distance framing",
+        "pose_hint": "holding a warm mug with both hands below her chin, calm relaxed face with lips gently closed, neutral quiet expression, no smile",
+        "script": "[whispers] Так… я вам сейчас кое-что расскажу. Только тихо, ладно? [whispers] Слушайте.",
+        "voice_emotion_speed": {
+          "style": 0.5,
+          "speed": 0.95
+        },
+        "motion_prompt": "calm quiet intimate video message, soft subdued facial expressions, small gentle mouth movements, slow blinks, minimal head movement, no big smiles",
+        "expressiveness": "low",
+        "hypothesis": "Главная гипотеза b5: спокойный стилл убирает улыбчивые букенды."
+      },
+      "heygen_video_id": "3fa77195816a4ab08157c6d18ad1ed4d",
+      "video_done": true,
+      "post_done": true,
+      "yavg": 110,
+      "critic_scores": {
+        "identity": 9,
+        "light_character": 8,
+        "register_fit": 5,
+        "artifacts": 7,
+        "ugc_feel": 8
+      },
+      "critic_total": 37,
+      "critic_notes": "Полууспех: хвост тихий, старт утёк в улыбку с зубами — 'спокойная нейтраль' в стилле не удержала кадр 1."
+    },
+    "drill_b06_03_tired_soft_quiet": {
+      "plan": {
+        "clip_id": "drill_b06_03_tired_soft_quiet",
+        "batch": 6,
+        "axis": "start_face",
+        "role": "explore",
+        "look_name": "look__manya__07__soft_window",
+        "degloss_hint": "golden hour low warm sunlight through the window, long soft shadows, selfie distance framing",
+        "pose_hint": "holding a warm mug with both hands below her chin, slightly tired soft expression, relaxed heavy eyelids, lips closed, no smile",
+        "script": "[whispers] Так… я вам сейчас кое-что расскажу. Только тихо, ладно? [whispers] Слушайте.",
+        "voice_emotion_speed": {
+          "style": 0.5,
+          "speed": 0.95
+        },
+        "motion_prompt": "calm quiet intimate video message, soft subdued facial expressions, small gentle mouth movements, slow blinks, minimal head movement, no big smiles",
+        "expressiveness": "low",
+        "hypothesis": "Усталая мягкость — нижняя граница энергии лица."
+      },
+      "heygen_video_id": "7224304946ce434cbde928cfba7aded1",
+      "video_done": true,
+      "post_done": true,
+      "yavg": 109,
+      "critic_scores": {
+        "identity": 9,
+        "light_character": 8,
+        "register_fit": 7,
+        "artifacts": 7,
+        "ugc_feel": 8
+      },
+      "critic_total": 39,
+      "critic_notes": "Старт тихий (тяжёлые веки унаследованы), хвост слегка утёк в подмигивание/полуулыбку — тише baseline, но не идеально."
+    },
+    "drill_b06_04_serious_direct_quiet": {
+      "plan": {
+        "clip_id": "drill_b06_04_serious_direct_quiet",
+        "batch": 6,
+        "axis": "start_face",
+        "role": "explore",
+        "look_name": "look__manya__07__soft_window",
+        "degloss_hint": "golden hour low warm sunlight through the window, long soft shadows, selfie distance framing",
+        "pose_hint": "holding a warm mug with both hands below her chin, serious calm expression looking directly into the camera, lips closed",
+        "script": "[whispers] Так… я вам сейчас кое-что расскажу. Только тихо, ладно? [whispers] Слушайте.",
+        "voice_emotion_speed": {
+          "style": 0.5,
+          "speed": 0.95
+        },
+        "motion_prompt": "calm quiet intimate video message, soft subdued facial expressions, small gentle mouth movements, slow blinks, minimal head movement, no big smiles",
+        "expressiveness": "low",
+        "hypothesis": "Серьёзный прямой взгляд — максимальный контраст к улыбке."
+      },
+      "heygen_video_id": "aa9eab9bf78b41e59ff1e292a92f2f69",
+      "video_done": true,
+      "post_done": true,
+      "yavg": 104,
+      "critic_scores": {
+        "identity": 9,
+        "light_character": 8,
+        "register_fit": 8,
+        "artifacts": 8,
+        "ugc_feel": 8
+      },
+      "critic_total": 41,
+      "critic_notes": "Второй результат: серьёзный стилл перебил улыбчивый дефолт по всей длине; лёгкая тень улыбки в кадре 1."
+    },
+    "drill_b06_05_halfsmile_closed_quiet": {
+      "plan": {
+        "clip_id": "drill_b06_05_halfsmile_closed_quiet",
+        "batch": 6,
+        "axis": "start_face",
+        "role": "explore",
+        "look_name": "look__manya__07__soft_window",
+        "degloss_hint": "golden hour low warm sunlight through the window, long soft shadows, selfie distance framing",
+        "pose_hint": "holding a warm mug with both hands below her chin, very subtle closed-lip half-smile, soft relaxed eyes",
+        "script": "[whispers] Так… я вам сейчас кое-что расскажу. Только тихо, ладно? [whispers] Слушайте.",
+        "voice_emotion_speed": {
+          "style": 0.5,
+          "speed": 0.95
+        },
+        "motion_prompt": "calm quiet intimate video message, soft subdued facial expressions, small gentle mouth movements, slow blinks, minimal head movement, no big smiles",
+        "expressiveness": "low",
+        "hypothesis": "Полуулыбка без зубов — верхняя допустимая граница тепла в тихом регистре."
+      },
+      "heygen_video_id": "7045c4afb9fc4997b3d60d6c760435cf",
+      "video_done": true,
+      "post_done": true,
+      "yavg": 110,
+      "critic_scores": {
+        "identity": 9,
+        "light_character": 8,
+        "register_fit": 4,
+        "artifacts": 8,
+        "ugc_feel": 8
+      },
+      "critic_total": 37,
+      "critic_notes": "КЛЮЧЕВОЙ НЕГАТИВ: полуулыбка без зубов в стилле раскрыта моделью в полный smile-регистр с первого кадра. Порог: любой намёк на улыбку = разрешение на оскал."
+    },
+    "drill_b06_06_midword_quiet": {
+      "plan": {
+        "clip_id": "drill_b06_06_midword_quiet",
+        "batch": 6,
+        "axis": "start_face",
+        "role": "explore",
+        "look_name": "look__manya__07__soft_window",
+        "degloss_hint": "golden hour low warm sunlight through the window, long soft shadows, selfie distance framing",
+        "pose_hint": "holding a warm mug with both hands below her chin, lips slightly parted as if caught mid-word, candid unposed expression",
+        "script": "[whispers] Так… я вам сейчас кое-что расскажу. Только тихо, ладно? [whispers] Слушайте.",
+        "voice_emotion_speed": {
+          "style": 0.5,
+          "speed": 0.95
+        },
+        "motion_prompt": "calm quiet intimate video message, soft subdued facial expressions, small gentle mouth movements, slow blinks, minimal head movement, no big smiles",
+        "expressiveness": "low",
+        "hypothesis": "Старт «посреди слова» — пропустит ли аниматор интро-улыбку вовсе?"
+      },
+      "heygen_video_id": "ddb62de674724bfdb448d224d040dbd5",
+      "video_done": true,
+      "post_done": true,
+      "yavg": 108,
+      "critic_scores": {
+        "identity": 9,
+        "light_character": 8,
+        "register_fit": 7,
+        "artifacts": 8,
+        "ugc_feel": 8
+      },
+      "critic_total": 40,
+      "critic_notes": "Приоткрытые губы отработали как речевая поза (кадры 2,4 честно 'посреди слова'), букенды преимущественно тихие с лёгкой утечкой."
+    },
+    "drill_b06_07_calm_neutral_canon": {
+      "plan": {
+        "clip_id": "drill_b06_07_calm_neutral_canon",
+        "batch": 6,
+        "axis": "start_face",
+        "role": "explore",
+        "look_name": "look__manya__07__soft_window",
+        "degloss_hint": "golden hour low warm sunlight through the window, long soft shadows, selfie distance framing",
+        "pose_hint": "holding a warm mug with both hands below her chin, calm relaxed face with lips gently closed, neutral quiet expression, no smile",
+        "script": "Так… я вам сейчас кое-что расскажу. [exhales] Только между нами, ладно? Короче, слушайте.",
+        "voice_emotion_speed": {
+          "style": 0.4,
+          "speed": 1.05
+        },
+        "motion_prompt": "lively casual selfie video message, natural head turns while speaking, normal blinking, animated facial expressions following the speech, a tiny thoughtful reaction before the first phrase, near the end she briefly glances off-camera with an unposed half-smile as if someone caught her attention, then a small sincere smirk",
+        "expressiveness": "medium",
+        "hypothesis": "Обратный тест: утянет ли спокойный стилл ВНИЗ проверенный живой канон?"
+      },
+      "heygen_video_id": "d7c8188bfb434bba8d71c15af8b1f1f8",
+      "video_done": true,
+      "post_done": true,
+      "yavg": 110,
+      "critic_scores": {
+        "identity": 8,
+        "light_character": 8,
+        "register_fit": 6,
+        "artifacts": 8,
+        "ugc_feel": 7
+      },
+      "critic_total": 37,
+      "critic_notes": "Обратный тест: букенды = копия спокойного стилла (ниже контролей), но СЕРЕДИНА восстановила канон (F4 = полный оскал). Букенды наследуются, середина управляется промптом."
+    },
+    "drill_b06_08_serious_direct_canon": {
+      "plan": {
+        "clip_id": "drill_b06_08_serious_direct_canon",
+        "batch": 6,
+        "axis": "start_face",
+        "role": "explore",
+        "look_name": "look__manya__07__soft_window",
+        "degloss_hint": "golden hour low warm sunlight through the window, long soft shadows, selfie distance framing",
+        "pose_hint": "holding a warm mug with both hands below her chin, serious calm expression looking directly into the camera, lips closed",
+        "script": "Так… я вам сейчас кое-что расскажу. [exhales] Только между нами, ладно? Короче, слушайте.",
+        "voice_emotion_speed": {
+          "style": 0.4,
+          "speed": 1.05
+        },
+        "motion_prompt": "lively casual selfie video message, natural head turns while speaking, normal blinking, animated facial expressions following the speech, a tiny thoughtful reaction before the first phrase, near the end she briefly glances off-camera with an unposed half-smile as if someone caught her attention, then a small sincere smirk",
+        "expressiveness": "medium",
+        "hypothesis": "Жёсткая версия обратного теста: серьёзный стилл × канон-энергия."
+      },
+      "heygen_video_id": "9813d0905aae48da81e75afbad540e97",
+      "video_done": true,
+      "post_done": true,
+      "yavg": 103,
+      "critic_scores": {
+        "identity": 8,
+        "light_character": 8,
+        "register_fit": 5,
+        "artifacts": 8,
+        "ugc_feel": 8
+      },
+      "critic_total": 37,
+      "critic_notes": "Сильнейшее подтверждение: серьёзный стилл демпфировал ВЕСЬ клип — даже середина не достигла улыбчивого пика контролей. Стилл двигает регистр в обе стороны."
+    },
+    "drill_b06_ctrl1": {
+      "plan": {
+        "clip_id": "drill_b06_ctrl1",
+        "batch": 6,
+        "axis": "start_face",
+        "role": "control",
+        "look_name": "look__manya__07__soft_window",
+        "degloss_hint": "golden hour low warm sunlight through the window, long soft shadows, selfie distance framing",
+        "pose_hint": "holding a warm mug with both hands below her chin",
+        "script": "Так… я вам сейчас кое-что расскажу. [exhales] Только между нами, ладно? Короче, слушайте.",
+        "voice_emotion_speed": {
+          "style": 0.4,
+          "speed": 1.05
+        },
+        "motion_prompt": "lively casual selfie video message, natural head turns while speaking, normal blinking, animated facial expressions following the speech, a tiny thoughtful reaction before the first phrase, near the end she briefly glances off-camera with an unposed half-smile as if someone caught her attention, then a small sincere smirk",
+        "expressiveness": "medium",
+        "hypothesis": "Контроль: канон (улыбчивый стилл, medium)."
+      },
+      "heygen_video_id": "db233cfd877d4c53a03533f28208a2cd",
+      "video_done": true,
+      "post_done": true,
+      "yavg": 104,
+      "critic_scores": {
+        "identity": 9,
+        "light_character": 8,
+        "register_fit": 9,
+        "artifacts": 8,
+        "ugc_feel": 8
+      },
+      "critic_total": 42,
+      "critic_notes": "Канон-контроль: живой регистр весь клип, разгон до пика в F4."
+    },
+    "drill_b06_ctrl2": {
+      "plan": {
+        "clip_id": "drill_b06_ctrl2",
+        "batch": 6,
+        "axis": "start_face",
+        "role": "control",
+        "look_name": "look__manya__07__soft_window",
+        "degloss_hint": "golden hour low warm sunlight through the window, long soft shadows, selfie distance framing",
+        "pose_hint": "holding a warm mug with both hands below her chin",
+        "script": "Так… я вам сейчас кое-что расскажу. [exhales] Только между нами, ладно? Короче, слушайте.",
+        "voice_emotion_speed": {
+          "style": 0.4,
+          "speed": 1.05
+        },
+        "motion_prompt": "lively casual selfie video message, natural head turns while speaking, normal blinking, animated facial expressions following the speech, a tiny thoughtful reaction before the first phrase, near the end she briefly glances off-camera with an unposed half-smile as if someone caught her attention, then a small sincere smirk",
+        "expressiveness": "medium",
+        "hypothesis": "Контроль: канон (улыбчивый стилл, medium)."
+      },
+      "heygen_video_id": "62113c8cb69f4665b18804d959aeed63",
+      "video_done": true,
+      "post_done": true,
+      "yavg": 104,
+      "critic_scores": {
+        "identity": 9,
+        "light_character": 8,
+        "register_fit": 9,
+        "artifacts": 8,
+        "ugc_feel": 8
+      },
+      "critic_total": 42,
+      "critic_notes": "Покадровый дубль ctrl1. ВНИМАНИЕ: детерминизм аниматора выше ожидаемого — один стилл даёт почти идентичные рендеры; для продакшна нужна вариация стиллов, не ре-рендеры."
+    },
+    "drill_b06_02_pensive_mug_quiet": {
+      "plan": {
+        "clip_id": "drill_b06_02_pensive_mug_quiet",
+        "batch": 6,
+        "axis": "start_face",
+        "role": "explore",
+        "look_name": "look__manya__07__soft_window",
+        "degloss_hint": "golden hour low warm sunlight through the window, long soft shadows, selfie distance framing",
+        "pose_hint": "holding a warm mug with both hands below her chin, pensive soft expression gazing slightly down toward the mug, lips closed, no smile",
+        "script": "[whispers] Так… я вам сейчас кое-что расскажу. Только тихо, ладно? [whispers] Слушайте.",
+        "voice_emotion_speed": {
+          "style": 0.5,
+          "speed": 0.95
+        },
+        "motion_prompt": "calm quiet intimate video message, soft subdued facial expressions, small gentle mouth movements, slow blinks, minimal head movement, no big smiles",
+        "expressiveness": "low",
+        "hypothesis": "Взгляд вниз В СТИЛЛЕ (промптом не исполнялся — конвертился в закрытые глаза)."
+      },
+      "heygen_video_id": "342dba596eed4136a05ca7ba9aa39282",
+      "video_done": true,
+      "post_done": true,
+      "yavg": 105,
+      "critic_scores": {
+        "identity": 8,
+        "light_character": 8,
+        "register_fit": 9,
+        "artifacts": 7,
+        "ugc_feel": 8
+      },
+      "critic_total": 40,
+      "critic_notes": "ЧЕМПИОН: оба букенда тихие, ни одной зубастой улыбки за все 5 кадров — первый полностью тихий клип петли. Взгляд на предмет = надёжный якорь регистра."
     }
   },
   "degloss_cache": {
@@ -1558,7 +1878,13 @@
     "look__manya__07__soft_window::golden hour low warm sunlight through the window, long soft shadows, selfie distance framing::chin resting on one hand, elbow on the windowsill, relaxed": "https://v3b.fal.media/files/b/0aa0af01/74BXB8bKJmtJj8G_CGuw8_b8dfff272d3a4e53a029478debba24fd.png",
     "look__manya__07__soft_window::golden hour low warm sunlight through the window, long soft shadows, selfie distance framing::arms relaxed and free at her sides, open posture, NOT crossed": "https://v3b.fal.media/files/b/0aa0af0c/a8Y3jCT8yCi0mz4SoB0qX_c7b88257d2cf48108c0a15e9487a888a.png",
     "look__manya__07__soft_window::golden hour low warm sunlight through the window, long soft shadows, selfie distance framing::leaning sideways on the windowsill with one shoulder, casual weight shift": "https://v3b.fal.media/files/b/0aa0af18/YIY_mg-dak2Fy9Cx8dST8_d23e0c50bdc24c5a815b832817a20fa6.png",
-    "look__manya__07__soft_window::golden hour low warm sunlight through the window, long soft shadows, selfie distance framing::": "https://v3b.fal.media/files/b/0aa0af2c/UlW2NGY-pCgCJo4VJkOYj_3ffa0f73fcd94a43a315d411309185d4.png"
+    "look__manya__07__soft_window::golden hour low warm sunlight through the window, long soft shadows, selfie distance framing::": "https://v3b.fal.media/files/b/0aa0af2c/UlW2NGY-pCgCJo4VJkOYj_3ffa0f73fcd94a43a315d411309185d4.png",
+    "look__manya__07__soft_window::golden hour low warm sunlight through the window, long soft shadows, selfie distance framing::holding a warm mug with both hands below her chin, calm relaxed face with lips gently closed, neutral quiet expression, no smile": "https://v3b.fal.media/files/b/0aa0b013/juotpH_QS6I7KO7q8XLKb_f9e9731eb9134b01bea2857727d756ec.png",
+    "look__manya__07__soft_window::golden hour low warm sunlight through the window, long soft shadows, selfie distance framing::holding a warm mug with both hands below her chin, pensive soft expression gazing slightly down toward the mug, lips closed, no smile": "https://v3b.fal.media/files/b/0aa0b01e/0qsQ56zO27xLTuA-G9PD5_1d12d02a32d949a5b6464fc8b8460e2d.png",
+    "look__manya__07__soft_window::golden hour low warm sunlight through the window, long soft shadows, selfie distance framing::holding a warm mug with both hands below her chin, slightly tired soft expression, relaxed heavy eyelids, lips closed, no smile": "https://v3b.fal.media/files/b/0aa0b024/FYbT3JS_ceXMhKbQmmP1p_8d8f5815785945d2b7043668bfc69b11.png",
+    "look__manya__07__soft_window::golden hour low warm sunlight through the window, long soft shadows, selfie distance framing::holding a warm mug with both hands below her chin, serious calm expression looking directly into the camera, lips closed": "https://v3b.fal.media/files/b/0aa0b030/_84FnOh_pCVfAdRMb-O34_cc0036d5c6334c398a4dc94576c8776d.png",
+    "look__manya__07__soft_window::golden hour low warm sunlight through the window, long soft shadows, selfie distance framing::holding a warm mug with both hands below her chin, very subtle closed-lip half-smile, soft relaxed eyes": "https://v3b.fal.media/files/b/0aa0b03c/AjBlLeaI7-LspiMNWmfem_8ff657f53e3f4d64ba37f409b65f3b92.png",
+    "look__manya__07__soft_window::golden hour low warm sunlight through the window, long soft shadows, selfie distance framing::holding a warm mug with both hands below her chin, lips slightly parted as if caught mid-word, candid unposed expression": "https://v3b.fal.media/files/b/0aa0b048/XbC3eBoL_P3TceokDXMEX_32962d26e2bc448a9ba37d3b7a1a28d6.png"
   },
   "look_cache": {
     "drill::look__manya__03__sofa_evening::evening, single warm table lamp as the only light source, uneven light with soft shadows on one side of the face": "987a8166eb024f8c9795151e24e5aa58",
@@ -1579,7 +1905,13 @@
     "drill::look__manya__07__soft_window::golden hour low warm sunlight through the window, long soft shadows, selfie distance framing::chin resting on one hand, elbow on the windowsill, relaxed": "fbfb1fbd79134432b303123e494d614c",
     "drill::look__manya__07__soft_window::golden hour low warm sunlight through the window, long soft shadows, selfie distance framing::arms relaxed and free at her sides, open posture, NOT crossed": "418add52bc0648438ea1c962c5cc261e",
     "drill::look__manya__07__soft_window::golden hour low warm sunlight through the window, long soft shadows, selfie distance framing::leaning sideways on the windowsill with one shoulder, casual weight shift": "2e712f09df4e43e6bdc0882a30034768",
-    "drill::look__manya__07__soft_window::golden hour low warm sunlight through the window, long soft shadows, selfie distance framing::": "854115898f2042c5881c3f9f121dc56b"
+    "drill::look__manya__07__soft_window::golden hour low warm sunlight through the window, long soft shadows, selfie distance framing::": "854115898f2042c5881c3f9f121dc56b",
+    "drill::look__manya__07__soft_window::golden hour low warm sunlight through the window, long soft shadows, selfie distance framing::holding a warm mug with both hands below her chin, calm relaxed face with lips gently closed, neutral quiet expression, no smile": "9ddc06c27e654fb1bf0c91ded6ab3dd8",
+    "drill::look__manya__07__soft_window::golden hour low warm sunlight through the window, long soft shadows, selfie distance framing::holding a warm mug with both hands below her chin, slightly tired soft expression, relaxed heavy eyelids, lips closed, no smile": "b3d6837e4d6e4ea5a8a52cd1cf52cde4",
+    "drill::look__manya__07__soft_window::golden hour low warm sunlight through the window, long soft shadows, selfie distance framing::holding a warm mug with both hands below her chin, serious calm expression looking directly into the camera, lips closed": "c817e33fc52148699496ba6823cd4cf3",
+    "drill::look__manya__07__soft_window::golden hour low warm sunlight through the window, long soft shadows, selfie distance framing::holding a warm mug with both hands below her chin, very subtle closed-lip half-smile, soft relaxed eyes": "fb55531fda804db99cae584249403713",
+    "drill::look__manya__07__soft_window::golden hour low warm sunlight through the window, long soft shadows, selfie distance framing::holding a warm mug with both hands below her chin, lips slightly parted as if caught mid-word, candid unposed expression": "6c014aec5a244a94b08ac4ed1c12ca3f",
+    "drill::look__manya__07__soft_window::golden hour low warm sunlight through the window, long soft shadows, selfie distance framing::holding a warm mug with both hands below her chin, pensive soft expression gazing slightly down toward the mug, lips closed, no smile": "a16bafd9032644e688db7798c5f582b8"
   },
   "promotions": [],
   "b1_tts": "https://api.telegram.org/file/bot8832406834:AAF92-G-V8sw-FGniH9i1nAj_y7hFn_1-0U/music/file_6.mp3",
@@ -1652,6 +1984,28 @@
         "ctrl1≈ctrl2 покадрово: дисперсия рендера минимальна, факторные выводы чистые"
       ],
       "next_axis": "start_face: варьируем ВЫРАЖЕНИЕ ЛИЦА стартового кадра через pose_hint деглянца при фиксированном лучшем тихом стеке (whisper+low+qmotion из b05_03)"
+    },
+    "b6_start_face": {
+      "date": "2026-07-03",
+      "axis": "start_face",
+      "winner": {
+        "clip_id": "drill_b06_02_pensive_mug_quiet",
+        "register_fit": 9,
+        "note": "первый полностью тихий клип петли; взгляд-на-предмет = якорь"
+      },
+      "hypothesis_verdict": "ПОДТВЕРЖДЕНА: эмоциональный регистр наследуется из лица стартового кадра, В ОБЕ СТОРОНЫ (b06_08: серьёзный стилл демпфирует даже канон-энергию)",
+      "law": {
+        "bookends": "букенды (первый/последний кадр) всегда наследуют стилл",
+        "middle": "середина клипа управляется моушен-промптом/скриптом и может восстановить энергию (b06_07)",
+        "threshold": "любой НАМЁК на улыбку в стилле → полный smile-регистр (b06_05: 4/10); для тихого нужен полностью нейтральный/серьёзный/опущенный стилл",
+        "anchor": "взгляд на предмет (вниз на кружку) — самый надёжный тихий якорь (9/10)",
+        "determinism": "один стилл ≈ детерминированный рендер (ctrl1≈ctrl2): вариативность добывается ВАРИАЦИЕЙ СТИЛЛОВ, не ре-рендерами"
+      },
+      "quiet_canon_promoted": {
+        "pose_hint": "holding a warm mug with both hands below her chin, pensive soft expression gazing slightly down toward the mug, lips closed, no smile",
+        "stack": "whisper script + voice 0.5/0.95 + QUIET_MOTION + expressiveness low"
+      },
+      "next_axis": "register_palette: согласованные пары стилл↔стек для палитры регистров (excited/warm/serious/playful/tired/консп.) — эмоция как управляемый дайал"
     }
   },
   "b2_tts": "https://api.telegram.org/file/bot8832406834:AAF92-G-V8sw-FGniH9i1nAj_y7hFn_1-0U/music/file_7.mp3",

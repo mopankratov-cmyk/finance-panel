@@ -55,6 +55,25 @@ export const GESTURE_STOP_LIST = [
   "транзитные жесты в стартовом кадре (заправляет прядь, тянется к чему-то) — рука замерзает мёртвым грузом",
 ] as const;
 
+// ЗАКОН РЕГИСТРА (батч 6, гипотеза ПОДТВЕРЖДЕНА, в обе стороны — b06_08):
+// 1. Букенды (первый/последний кадр) ВСЕГДА наследуют выражение лица стартового кадра.
+// 2. Середина клипа управляется моушен-промптом/скриптом и может восстановить энергию (b06_07).
+// 3. Порог: любой НАМЁК на улыбку в стилле → полный smile-регистр (b06_05: полуулыбка → оскал).
+//    Для тихого регистра стилл должен быть полностью нейтральным/серьёзным/с опущенным взглядом.
+// 4. Взгляд на предмет (вниз на кружку) — самый надёжный тихий якорь (b06_02: 9/10,
+//    первый полностью тихий клип петли).
+// 5. Один стилл ≈ детерминированный рендер (ctrl1≈ctrl2 покадрово): вариативность
+//    добывается ВАРИАЦИЕЙ СТИЛЛОВ, а не ре-рендерами.
+export const DRILL_QUIET_CANON = {
+  look_name: "look__manya__07__soft_window",
+  degloss_hint: "golden hour low warm sunlight through the window, long soft shadows, selfie distance framing",
+  pose_hint: "holding a warm mug with both hands below her chin, pensive soft expression gazing slightly down toward the mug, lips closed, no smile",
+  script: "[whispers] Так… я вам сейчас кое-что расскажу. Только тихо, ладно? [whispers] Слушайте.",
+  voice: { style: 0.5, speed: 0.95 },
+  motion_prompt: "calm quiet intimate video message, soft subdued facial expressions, small gentle mouth movements, slow blinks, minimal head movement, no big smiles",
+  expressiveness: "low" as const,
+};
+
 const BATCH_SCRIPT: Record<number, string> = {
   1: "Так… я вам сейчас кое-что расскажу. [exhales] Только между нами, ладно? Короче, слушайте.",
 };
@@ -127,6 +146,21 @@ const START_FACE_ROWS: Array<{ id: string; face: string; canonEnergy?: boolean; 
   { id: "serious_direct_canon", face: "serious calm expression looking directly into the camera, lips closed", canonEnergy: true, hypothesis: "Жёсткая версия обратного теста: серьёзный стилл × канон-энергия." },
 ];
 
+// Батч 7: ось delivery = ПАЛИТРА РЕГИСТРОВ. Применяем закон регистра (b6) конструктивно:
+// каждый ряд — согласованная пара стилл↔стек (лицо стартового кадра + скрипт + голос +
+// моушен + expressiveness под ОДНУ эмоцию). Гипотеза: согласованность даёт чистый регистр
+// по всей длине; выход — эмоциональный дайал Мани для продакшна.
+const REGISTER_PALETTE_ROWS: Array<{ id: string; face: string; script: string; voice: { style: number; speed: number }; motion: string; expr: "low" | "medium"; hypothesis: string }> = [
+  { id: "excited_news", face: "eyes wide with excitement, big open smile, eyebrows raised", script: "[excited] Так, СТОП. Я не могу молчать! Вы должны это знать. Короче, слушайте!", voice: { style: 0.55, speed: 1.15 }, motion: "energetic selfie video message, expressive face following the speech, quick natural head movements, animated eyebrows", expr: "medium", hypothesis: "Верх палитры: восторженный стилл × excited-стек — согласованный максимум энергии." },
+  { id: "warm_friend", face: "warm gentle expression, soft kind eyes, relaxed closed-lip smile", script: BATCH_SCRIPT[1], voice: { style: 0.4, speed: 1.05 }, motion: "", expr: "medium", hypothesis: "Середина палитры: тёплая подруга — рабочая лошадка UGC." },
+  { id: "serious_expert", face: "serious calm expression looking directly into the camera, lips closed", script: "Так. Смотрите. Я разобралась и объясню по фактам. Без воды.", voice: { style: 0.35, speed: 1.0 }, motion: "calm confident delivery, steady direct gaze, minimal head movement, occasional slow nod, no smiles", expr: "low", hypothesis: "Экспертный регистр для обзоров: серьёзный стилл держит весь клип (закон b06_08)." },
+  { id: "conspiratorial", face: "leaning slightly toward the camera, sly knowing look, one eyebrow slightly raised, lips closed", script: "Тсс… никому, ладно? Я кое-что нашла. Такое не рассказывают.", voice: { style: 0.5, speed: 0.95 }, motion: "leans slightly closer to the camera as if sharing something semi-private, conspiratorial energy, small pause before the key phrase, tiny eyebrow raise, then settles back", expr: "medium", hypothesis: "Заговорщицкий: хитрый стилл × story_lean-моушен (b2)." },
+  { id: "tired_evening", face: "slightly tired soft expression, relaxed heavy eyelids, lips closed, no smile", script: "Уф… ну и день. [exhales] Ладно. Слушайте, пока не забыла.", voice: { style: 0.5, speed: 0.9 }, motion: QUIET_MOTION, expr: "low", hypothesis: "Усталый вечер: искренность нижней энергии (стилл b06_03 + согласованный скрипт)." },
+  { id: "playful_tease", face: "playful teasing expression, slight smirk, head tilted a little", script: "А вот и не скажу!… [laughs] Ладно-ладно. Слушайте, уговорили.", voice: { style: 0.55, speed: 1.1 }, motion: "playful teasing energy, small head tilts, bright eyes, a short genuine laugh, lively expressions", expr: "medium", hypothesis: "Игривый дразнящий: смирк-стилл × [laughs]-стек (b4: теги исполняются)." },
+  { id: "skeptic_review", face: "skeptical appraising expression, slightly narrowed eyes, lips pressed together", script: "Честно? Я не верила. Вообще не верила. …Ну и зря, как оказалось.", voice: { style: 0.45, speed: 1.0 }, motion: "starts with a barely visible head shake of disbelief, honest slightly amused expression, then calms into direct delivery, natural blink", expr: "medium", hypothesis: "Скептик: прищур-стилл × disbelief-моушен (b2) — регистр честного обзора." },
+  { id: "surprised_discovery", face: "genuinely surprised expression, raised eyebrows, mouth slightly open", script: "Так, СТОП. Вы это видели?… Я, если честно, в шоке.", voice: { style: 0.5, speed: 1.1 }, motion: "briefly looks off-camera mid-sentence as if someone distracted her, half-second pause, then returns to the camera and continues naturally, imperfect timing feel", expr: "medium", hypothesis: "Удивление-находка: 'о'-стилл × interrupted-моушен (канон b2)." },
+];
+
 // Батч 4: ось скрипт-стиля — 8 манер речи на канон-сетапе (кружка+золотой час),
 // варьируются ТОЛЬКО текст и голосовые параметры. Уроки b2: теги v3 исполняются.
 const SCRIPT_STYLE_ROWS: Array<{ id: string; script: string; voice: { style: number; speed: number }; hypothesis: string }> = [
@@ -181,6 +215,35 @@ export function buildDrillBatch(batch: number, axis: DrillAxis): DrillBatchPlan 
       });
     }
     return { ok: true, batch, axis, persona: "manya", clips, warnings: ["Варьируется ТОЛЬКО лицо стартового кадра; ряды 1-6 сравнивать с b05_03, ряды 7-8 — с контролями."] };
+  }
+  if (axis === "delivery") {
+    const clips: DrillClipPlan[] = REGISTER_PALETTE_ROWS.map((row, i) => ({
+      clip_id: `drill_b${String(batch).padStart(2, "0")}_${String(i + 1).padStart(2, "0")}_${row.id}`,
+      batch, axis, role: "explore" as const,
+      look_name: DRILL_BEST_KNOWN.look_name,
+      degloss_hint: DRILL_BEST_KNOWN.degloss_hint,
+      pose_hint: `${MUG_POSE}, ${row.face}`,
+      script: row.script,
+      voice_emotion_speed: row.voice,
+      motion_prompt: row.motion || DRILL_BEST_KNOWN.motion_prompt,
+      expressiveness: row.expr,
+      hypothesis: row.hypothesis,
+    }));
+    for (let c = 1; c <= 2; c++) {
+      clips.push({
+        clip_id: `drill_b${String(batch).padStart(2, "0")}_ctrl${c}`,
+        batch, axis, role: "control" as const,
+        look_name: DRILL_BEST_KNOWN.look_name,
+        degloss_hint: DRILL_BEST_KNOWN.degloss_hint,
+        pose_hint: c === 1 ? DRILL_BEST_KNOWN.pose_hint : DRILL_QUIET_CANON.pose_hint,
+        script: c === 1 ? BATCH_SCRIPT[1] : DRILL_QUIET_CANON.script,
+        voice_emotion_speed: c === 1 ? DRILL_BEST_KNOWN.voice : DRILL_QUIET_CANON.voice,
+        motion_prompt: c === 1 ? DRILL_BEST_KNOWN.motion_prompt : DRILL_QUIET_CANON.motion_prompt,
+        expressiveness: c === 1 ? DRILL_BEST_KNOWN.expressiveness : DRILL_QUIET_CANON.expressiveness,
+        hypothesis: c === 1 ? "Контроль: живой канон." : "Контроль: тихий канон (b06_02) — регрессия-чек обоих полюсов.",
+      });
+    }
+    return { ok: true, batch, axis, persona: "manya", clips, warnings: ["Палитра регистров: каждый ряд — согласованная пара стилл↔стек; контроли = оба канона (живой + тихий)."] };
   }
   if (axis === "quiet_register") {
     const clips: DrillClipPlan[] = QUIET_ROWS.map((row, i) => ({
