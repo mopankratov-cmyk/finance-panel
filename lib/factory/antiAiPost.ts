@@ -22,20 +22,21 @@ export interface AntiAiPostParams {
 
 // grainPassA/B: ревьюер просил «зерно должно читаться» (16+10), владелец 2026-07-02
 // вердиктнул «слишком много шума» — калибровка глазом владельца сильнее: 8+5.
-// sharpenCas + lanczos + битрейт 2600k: вердикт владельца «мягкая картинка» 2026-07-02 —
-// двойной энкод и ресемпл трясучки мылят; телефонная резкость обязана вернуться.
+// Вердикты владельца 2026-07-02: «мягкая картинка» → CAS+lanczos; «мыла многовато» → 1080p+CAS 0.55;
+// «камера дрожит» → тряска вдвое ниже (4/1.5px — дыхание руки, не дрожь);
+// CAS 0.55 + битрейт 3200k + рендеры Avatar IV на 1080p (720p был источником мыла).
 export const ANTI_AI_DEFAULTS: AntiAiPostParams = {
   grainPassA: 8,
   grainPassB: 5,
   warmthK: 7300,
   saturation: 1.05,
   contrast: 1.06,
-  shakeAmpLowPx: 8,
-  shakeAmpHighPx: 3,
+  shakeAmpLowPx: 4,
+  shakeAmpHighPx: 1.5,
   vignette: "PI/8",
-  crushBitrateK: 2600,
+  crushBitrateK: 3200,
   roomToneDb: 0.0035,
-  sharpenCas: 0.45,
+  sharpenCas: 0.55,
 };
 
 // Адаптивный грейд (урок 2026-07-02: «дотенение», откалиброванное на ярком v6,

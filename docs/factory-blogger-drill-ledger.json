@@ -1,0 +1,342 @@
+{
+  "clips": {
+    "drill_b01_01_lamp_sofa": {
+      "plan": {
+        "clip_id": "drill_b01_01_lamp_sofa",
+        "batch": 1,
+        "axis": "light_scene",
+        "role": "explore",
+        "look_name": "look__manya__03__sofa_evening",
+        "degloss_hint": "evening, single warm table lamp as the only light source, uneven light with soft shadows on one side of the face",
+        "script": "Так… я вам сейчас кое-что расскажу. [exhales] Только между нами, ладно? Короче, слушайте.",
+        "voice_emotion_speed": {
+          "style": 0.4,
+          "speed": 1.05
+        },
+        "motion_prompt": "lively casual selfie video message, natural head turns while speaking, normal blinking, animated facial expressions following the speech, a tiny thoughtful reaction before the first phrase and a small sincere smirk after the last phrase",
+        "expressiveness": "medium",
+        "hypothesis": "Вечерняя лампа — семья победителей (Оля, Вика v2)."
+      },
+      "heygen_video_id": "2196a9208b194325ae8cde46e840dc1d",
+      "video_done": true,
+      "post_done": true,
+      "yavg": 73,
+      "critic_scores": {
+        "identity": 8,
+        "light": 8.5,
+        "liveness": 7.5,
+        "artifacts": 8,
+        "ugc": 6
+      },
+      "critic_total": 38.0
+    },
+    "drill_b01_02_kitchen_sun": {
+      "plan": {
+        "clip_id": "drill_b01_02_kitchen_sun",
+        "batch": 1,
+        "axis": "light_scene",
+        "role": "explore",
+        "look_name": "look__manya__01__kitchen_counter",
+        "degloss_hint": "morning sun patches through the window, uneven light, slightly underexposed corners",
+        "script": "Так… я вам сейчас кое-что расскажу. [exhales] Только между нами, ладно? Короче, слушайте.",
+        "voice_emotion_speed": {
+          "style": 0.4,
+          "speed": 1.05
+        },
+        "motion_prompt": "lively casual selfie video message, natural head turns while speaking, normal blinking, animated facial expressions following the speech, a tiny thoughtful reaction before the first phrase and a small sincere smirk after the last phrase",
+        "expressiveness": "medium",
+        "hypothesis": "Солнечные пятна — семья Мани-чемпиона."
+      },
+      "heygen_video_id": "feec0471d5694e6f84c6ab3670b7c784",
+      "video_done": true,
+      "post_done": true,
+      "yavg": 109,
+      "critic_scores": {
+        "identity": 7,
+        "light": 8,
+        "liveness": 7,
+        "artifacts": 6.5,
+        "ugc": 6.5
+      },
+      "critic_total": 35.0
+    },
+    "drill_b01_03_street_overcast": {
+      "plan": {
+        "clip_id": "drill_b01_03_street_overcast",
+        "batch": 1,
+        "axis": "light_scene",
+        "role": "explore",
+        "look_name": "look__manya__11__street_entrance",
+        "degloss_hint": "overcast soft daylight outdoors, flat but dim light",
+        "script": "Так… я вам сейчас кое-что расскажу. [exhales] Только между нами, ладно? Короче, слушайте.",
+        "voice_emotion_speed": {
+          "style": 0.4,
+          "speed": 1.05
+        },
+        "motion_prompt": "lively casual selfie video message, natural head turns while speaking, normal blinking, animated facial expressions following the speech, a tiny thoughtful reaction before the first phrase and a small sincere smirk after the last phrase",
+        "expressiveness": "medium",
+        "hypothesis": "Пасмурная улица: свет мягкий, но не яркий — обойдёт ли провал яркого дня Вики v1?"
+      },
+      "heygen_video_id": "9a2969b135684e47a2e8fe8b42cda127",
+      "video_done": true,
+      "post_done": true,
+      "yavg": 101,
+      "critic_scores": {
+        "identity": 7.5,
+        "light": 5.5,
+        "liveness": 8.5,
+        "artifacts": 5,
+        "ugc": 6.5
+      },
+      "critic_total": 33.0
+    },
+    "drill_b01_04_window_golden": {
+      "plan": {
+        "clip_id": "drill_b01_04_window_golden",
+        "batch": 1,
+        "axis": "light_scene",
+        "role": "explore",
+        "look_name": "look__manya__07__soft_window",
+        "degloss_hint": "golden hour low warm sunlight through the window, long soft shadows",
+        "script": "Так… я вам сейчас кое-что расскажу. [exhales] Только между нами, ладно? Короче, слушайте.",
+        "voice_emotion_speed": {
+          "style": 0.4,
+          "speed": 1.05
+        },
+        "motion_prompt": "lively casual selfie video message, natural head turns while speaking, normal blinking, animated facial expressions following the speech, a tiny thoughtful reaction before the first phrase and a small sincere smirk after the last phrase",
+        "expressiveness": "medium",
+        "hypothesis": "Золотой час: тёплый низкий свет — макс. living-фактор?"
+      },
+      "heygen_video_id": "57327e8941914bf2bd27cd088379badd",
+      "video_done": true,
+      "post_done": true,
+      "yavg": 107,
+      "critic_scores": {
+        "identity": 8.5,
+        "light": 9,
+        "liveness": 9,
+        "artifacts": 8,
+        "ugc": 7.5
+      },
+      "critic_total": 42.0
+    },
+    "drill_b01_05_bathroom_vanity": {
+      "plan": {
+        "clip_id": "drill_b01_05_bathroom_vanity",
+        "batch": 1,
+        "axis": "light_scene",
+        "role": "explore",
+        "look_name": "look__manya__05__mirror_close",
+        "degloss_hint": "even but slightly dim bathroom vanity light, small shadows under chin",
+        "script": "Так… я вам сейчас кое-что расскажу. [exhales] Только между нами, ладно? Короче, слушайте.",
+        "voice_emotion_speed": {
+          "style": 0.4,
+          "speed": 1.05
+        },
+        "motion_prompt": "lively casual selfie video message, natural head turns while speaking, normal blinking, animated facial expressions following the speech, a tiny thoughtful reaction before the first phrase and a small sincere smirk after the last phrase",
+        "expressiveness": "medium",
+        "hypothesis": "Ровный тусклый свет ванной — распространённая UGC-сцена."
+      },
+      "heygen_video_id": "282aa2cab64e434890eb1587e6d3d933",
+      "video_done": true,
+      "post_done": true,
+      "yavg": 59,
+      "critic_scores": {
+        "identity": 7.5,
+        "light": 7.5,
+        "liveness": 8.5,
+        "artifacts": 7,
+        "ugc": 9
+      },
+      "critic_total": 39.5
+    },
+    "drill_b01_06_car_dim": {
+      "plan": {
+        "clip_id": "drill_b01_06_car_dim",
+        "batch": 1,
+        "axis": "light_scene",
+        "role": "explore",
+        "look_name": "look__manya__10__car_close",
+        "degloss_hint": "overcast day inside the car, dim soft light through windows, no direct sun",
+        "script": "Так… я вам сейчас кое-что расскажу. [exhales] Только между нами, ладно? Короче, слушайте.",
+        "voice_emotion_speed": {
+          "style": 0.4,
+          "speed": 1.05
+        },
+        "motion_prompt": "lively casual selfie video message, natural head turns while speaking, normal blinking, animated facial expressions following the speech, a tiny thoughtful reaction before the first phrase and a small sincere smirk after the last phrase",
+        "expressiveness": "medium",
+        "hypothesis": "Машина в пасмурный день: спасёт ли тусклость провал яркой машины?"
+      },
+      "heygen_video_id": "c6d929fd949d43b6a23c5a692559e551",
+      "video_done": true,
+      "post_done": true,
+      "yavg": 60,
+      "critic_scores": {
+        "identity": 7.5,
+        "light": 8.5,
+        "liveness": 7,
+        "artifacts": 8,
+        "ugc": 8
+      },
+      "critic_total": 39.0
+    },
+    "drill_b01_07_bedroom_dim_morning": {
+      "plan": {
+        "clip_id": "drill_b01_07_bedroom_dim_morning",
+        "batch": 1,
+        "axis": "light_scene",
+        "role": "explore",
+        "look_name": "look__manya__12__bed_morning",
+        "degloss_hint": "dim early morning light, curtains half closed, soft blue-grey tint",
+        "script": "Так… я вам сейчас кое-что расскажу. [exhales] Только между нами, ладно? Короче, слушайте.",
+        "voice_emotion_speed": {
+          "style": 0.4,
+          "speed": 1.05
+        },
+        "motion_prompt": "lively casual selfie video message, natural head turns while speaking, normal blinking, animated facial expressions following the speech, a tiny thoughtful reaction before the first phrase and a small sincere smirk after the last phrase",
+        "expressiveness": "medium",
+        "hypothesis": "Сонное утро: минимальная энергия света."
+      },
+      "heygen_video_id": "1649263fcc6140a7a5c3a57ee06e8a46",
+      "video_done": true,
+      "post_done": true,
+      "yavg": 89,
+      "critic_scores": {
+        "identity": 6,
+        "light": 9,
+        "liveness": 8,
+        "artifacts": 7.5,
+        "ugc": 5.5
+      },
+      "critic_total": 36.0
+    },
+    "drill_b01_08_hallway_dusk": {
+      "plan": {
+        "clip_id": "drill_b01_08_hallway_dusk",
+        "batch": 1,
+        "axis": "light_scene",
+        "role": "explore",
+        "look_name": "look__manya__14__plain_wall",
+        "degloss_hint": "dusk indoor light, single ceiling bulb far away, noticeably dim",
+        "script": "Так… я вам сейчас кое-что расскажу. [exhales] Только между нами, ладно? Короче, слушайте.",
+        "voice_emotion_speed": {
+          "style": 0.4,
+          "speed": 1.05
+        },
+        "motion_prompt": "lively casual selfie video message, natural head turns while speaking, normal blinking, animated facial expressions following the speech, a tiny thoughtful reaction before the first phrase and a small sincere smirk after the last phrase",
+        "expressiveness": "medium",
+        "hypothesis": "Сумерки коридора: нижняя граница освещённости."
+      },
+      "heygen_video_id": "60ab6132c1d144888a68d4b5ab466dbe",
+      "video_done": true,
+      "post_done": true,
+      "yavg": 72,
+      "critic_scores": {
+        "identity": 7,
+        "light": 7.5,
+        "liveness": 6.5,
+        "artifacts": 6.5,
+        "ugc": 5.5
+      },
+      "critic_total": 33.0
+    },
+    "drill_b01_ctrl1": {
+      "plan": {
+        "clip_id": "drill_b01_ctrl1",
+        "batch": 1,
+        "axis": "light_scene",
+        "role": "control",
+        "look_name": "look__manya__02__kitchen_close",
+        "degloss_hint": "uneven window light with soft shadows, slightly underexposed",
+        "script": "Так… я вам сейчас кое-что расскажу. [exhales] Только между нами, ладно? Короче, слушайте.",
+        "voice_emotion_speed": {
+          "style": 0.4,
+          "speed": 1.05
+        },
+        "motion_prompt": "lively casual selfie video message, natural head turns while speaking, normal blinking, animated facial expressions following the speech, a tiny thoughtful reaction before the first phrase and a small sincere smirk after the last phrase",
+        "expressiveness": "medium",
+        "hypothesis": "Контроль: канон-сетап, регрессия-чек и мера дисперсии рендера."
+      },
+      "heygen_video_id": "fdefa3714664409c9ec580e6c7222a60",
+      "video_done": true,
+      "post_done": true,
+      "yavg": 112,
+      "critic_scores": {
+        "identity": 9,
+        "light": 6,
+        "liveness": 8,
+        "artifacts": 8,
+        "ugc": 8
+      },
+      "critic_total": 39
+    },
+    "drill_b01_ctrl2": {
+      "plan": {
+        "clip_id": "drill_b01_ctrl2",
+        "batch": 1,
+        "axis": "light_scene",
+        "role": "control",
+        "look_name": "look__manya__02__kitchen_close",
+        "degloss_hint": "uneven window light with soft shadows, slightly underexposed",
+        "script": "Так… я вам сейчас кое-что расскажу. [exhales] Только между нами, ладно? Короче, слушайте.",
+        "voice_emotion_speed": {
+          "style": 0.4,
+          "speed": 1.05
+        },
+        "motion_prompt": "lively casual selfie video message, natural head turns while speaking, normal blinking, animated facial expressions following the speech, a tiny thoughtful reaction before the first phrase and a small sincere smirk after the last phrase",
+        "expressiveness": "medium",
+        "hypothesis": "Контроль: канон-сетап, регрессия-чек и мера дисперсии рендера."
+      },
+      "heygen_video_id": "a797e97a332646ebb620924687cec19d",
+      "video_done": true,
+      "post_done": true,
+      "yavg": 112,
+      "critic_scores": {
+        "identity": 9,
+        "light": 6,
+        "liveness": 8,
+        "artifacts": 8,
+        "ugc": 8
+      },
+      "critic_total": 39
+    }
+  },
+  "degloss_cache": {
+    "look__manya__03__sofa_evening::evening, single warm table lamp as the only light source, uneven light with soft shadows on one side of the face": "https://v3b.fal.media/files/b/0aa0ad95/_fzMi5Kg4hqLaXdPAWMm8_7a17d4e08ed44243a01017a47b6a0c9f.png",
+    "look__manya__01__kitchen_counter::morning sun patches through the window, uneven light, slightly underexposed corners": "https://v3b.fal.media/files/b/0aa0ada3/Jur3HdFIbq8BnEZYOYswX_5f24668e0070409fbded15c1b3fcb663.png",
+    "look__manya__11__street_entrance::overcast soft daylight outdoors, flat but dim light": "https://v3b.fal.media/files/b/0aa0adc0/lpIlb8lC-z8ivTS1mu0Lz_8b173f84fe9646a09cf1a7af4ea2f85b.png",
+    "look__manya__07__soft_window::golden hour low warm sunlight through the window, long soft shadows": "https://v3b.fal.media/files/b/0aa0adcc/1zYcbnitPKjB-SsJ6ovBO_477bcd7550fa4c7abacf7c0793c2206a.png",
+    "look__manya__05__mirror_close::even but slightly dim bathroom vanity light, small shadows under chin": "https://v3b.fal.media/files/b/0aa0add8/z1kT8Xy9CQeGWrCKygxLx_8e44a8e6b9cd470d85aad8f7679633a3.png",
+    "look__manya__10__car_close::overcast day inside the car, dim soft light through windows, no direct sun": "https://v3b.fal.media/files/b/0aa0ade4/DIDiWbTGzInUQTn7UBbCv_3f2830b771024cf78d973b4206835fe8.png",
+    "look__manya__12__bed_morning::dim early morning light, curtains half closed, soft blue-grey tint": "https://v3b.fal.media/files/b/0aa0adf3/5hU4KDn0rra2Ng30JVA2X_7421c8247e07450398b50b56cae537cb.png",
+    "look__manya__14__plain_wall::dusk indoor light, single ceiling bulb far away, noticeably dim": "https://v3b.fal.media/files/b/0aa0ae01/sGCBLuYoDpUSvDrgJfdOK_aa71ee9592d947f1a039da8d79f90446.png",
+    "look__manya__02__kitchen_close::uneven window light with soft shadows, slightly underexposed": "https://v3b.fal.media/files/b/0aa0ae0d/HITbtsUq_sMZeEuQxE_8v_594fb2c85b1a482b8796662894169da8.png"
+  },
+  "look_cache": {
+    "drill::look__manya__03__sofa_evening::evening, single warm table lamp as the only light source, uneven light with soft shadows on one side of the face": "987a8166eb024f8c9795151e24e5aa58",
+    "drill::look__manya__01__kitchen_counter::morning sun patches through the window, uneven light, slightly underexposed corners": "f2bea7282214459d99e12962c92e3d5c",
+    "drill::look__manya__11__street_entrance::overcast soft daylight outdoors, flat but dim light": "1bb34a706e694c3a8a0530df90543e4b",
+    "drill::look__manya__07__soft_window::golden hour low warm sunlight through the window, long soft shadows": "8189578bdd374fb28637da5de1ce906b",
+    "drill::look__manya__05__mirror_close::even but slightly dim bathroom vanity light, small shadows under chin": "22c500e5aff54c0ca6c8a17cc3e0a960",
+    "drill::look__manya__10__car_close::overcast day inside the car, dim soft light through windows, no direct sun": "0653ac807e51452eb493b320bc3b13f2",
+    "drill::look__manya__12__bed_morning::dim early morning light, curtains half closed, soft blue-grey tint": "772f99d3baf84969b26ed146696b39af",
+    "drill::look__manya__14__plain_wall::dusk indoor light, single ceiling bulb far away, noticeably dim": "faade57b3b6b4ca0b0f3feca6b28e00a",
+    "drill::look__manya__02__kitchen_close::uneven window light with soft shadows, slightly underexposed": "0757deb102174794abd2bc42d8baf392"
+  },
+  "promotions": [],
+  "b1_tts": "https://api.telegram.org/file/bot8832406834:AAF92-G-V8sw-FGniH9i1nAj_y7hFn_1-0U/music/file_6.mp3",
+  "batch_analysis": {
+    "b1_light_scene": {
+      "winner": "window_golden (42/50): золотой час = свет 9 + живость 9 + identity 8.5",
+      "learnings": [
+        "тёмные/неровные семьи света выигрывают по light_character (bedroom 9, lamp 8.5), но слишком тёмное ломает identity (bedroom 6)",
+        "селфи-дистанция обязательна: широкие статичные кадры убивают ugc_feel (bedroom/hallway 5.5) даже при отличном свете",
+        "машина реабилитирована тусклым светом (39): провал Вики v1 был про свет, не про сцену",
+        "зеркальное селфи в ванной = ugc_feel 9 — формат сам по себе рычаг",
+        "уличный деглянц генерит чёрные виньетки-углы (артефакт, чинить промптом)",
+        "дисперсия рендера канона НИЗКАЯ (ctrl1==ctrl2) — воспроизводимость подтверждена"
+      ],
+      "promoted": "DRILL_BEST_KNOWN -> soft_window + golden hour"
+    }
+  }
+}

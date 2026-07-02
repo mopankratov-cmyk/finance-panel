@@ -32,6 +32,18 @@ export const COMPOSITE_QC_CHECKLIST = [
   "нет рамок телефона и вотермарок (Seedream/nano-banana любят дорисовывать)",
 ] as const;
 
+// Канонический деглянц-промпт (вердикты владельца: «глянцевый», «больше артефактов на лице»).
+// Кожа должна быть ЖИВОЙ: поры, мелкие несовершенства, неровность — не гладкий рендер.
+export function buildDeglossPrompt(sceneHint: string): string {
+  return [
+    "Same woman, same face identity, same pose.",
+    `Re-render as a candid amateur smartphone photo: ${sceneHint},`,
+    "noticeably underexposed corners, ordinary muted colors.",
+    "Skin must look real and imperfect: natural matte texture with visible pores, a few tiny blemishes, slight uneven redness on cheeks and nose, faint under-eye shadows, no glossy highlights, no smoothing.",
+    "Slightly imperfect framing.",
+  ].join(" ");
+}
+
 export function buildProductCompositePrompt(input: ProductCompositeInput): string {
   const framing = input.framing === "half_body"
     ? "Casual phone photo, half-body framing"

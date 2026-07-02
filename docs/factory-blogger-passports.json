@@ -292,5 +292,27 @@
     "script_style": "разговорные оговорки («Так, ну что...»), паузы многоточиями, [exhales]-теги",
     "verdict": "ФИНАЛ: владелец выбрал «голос 2» (Nastya, нативный RU + редактор пауз) 2026-07-02",
     "voice_id": "YjESejviApN7SHrbfnA2"
+  },
+  "animator_winner": {
+    "engine": "heygen_avatar_iv",
+    "verdict": "бейкофф 2026-07-02 судья 33:30 vs OmniHuman (identity дрейф + глюки окна); OmniHuman = fallback с лучшей моторикой",
+    "known_tells": [
+      "avatar-relight лица (лечить luma-match постом)",
+      "сглаженная кожа/веснушки (grain+texture blend)",
+      "замороженный фон (лечить монтажом ≤4с)"
+    ],
+    "omnihuman_fixes": [
+      "заблюрить выбитые окна до генерации",
+      "eyes open в промпт",
+      "проверка физики пропсов в OTK"
+    ],
+    "final_four_verdict_2026_07_02": {
+      "talking_head": "heygen_direct ($0.067/с) — сцена попиксельно + реальный липсинк, 8.5-9 по осям",
+      "silent_broll": "fal-ai/kling-video/ai-avatar/v2/standard ($0.056/с) — свет 9, пластика 9, липсинка НЕТ: только молчаливые перебивки",
+      "excluded": [
+        "fal-ai/heygen/avatar4/image-to-video — хуже прямого и дороже на 49% (кроп-дрейф, задавленная экспозиция)",
+        "omnihuman — перерисовывает сцену даже после фиксов"
+      ]
+    }
   }
 }
