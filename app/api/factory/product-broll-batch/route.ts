@@ -435,6 +435,8 @@ async function handleProductBrollBatch(body: ProductBrollBody) {
       experiment_plan: experimentPlan,
       jobs,
       status_route: "/api/factory/video-fal-status/{task_id}?article=" + encodeURIComponent(article) + "&niche=" + encodeURIComponent(source.niche || recipe),
+      // OTK-гейт готового ролика (кадры → артефакт-чек → вердикт в фидбек): дергать после status=done.
+      judge_route: "/api/factory/product-broll-loop?action=judge&article=" + encodeURIComponent(article) + "&task_id={task_id}",
     }, { headers: { "Cache-Control": "no-store" } });
   } catch (e) {
     return NextResponse.json({
