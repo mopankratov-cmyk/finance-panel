@@ -3068,3 +3068,33 @@
   - `npm run dev` → Next.js 16.2.7 поднялся локально на `http://localhost:3000`
 - Следующий продовый шаг:
   - Запушить ветку, открыть PR, дождаться deploy и на production Studio проверить `Plan Montage`/`Render Montage`/`Check Status` на `NV-08` и `Loop Plan`/`Submit 1`/`Judge Last` на первом доступном simple SKU.
+
+## 2026-07-02 (вечер) — Спринт «Машина UGC»: день 1 — товар в руки
+
+- Ресёрч (3 агента): (1) product-in-hand = двухфазно: multi-image edit композит + анимация композита (товар не морфит, т.к. уже в кадре); (2) рынок 2026: identity-слой ≠ motion-слой, Arcads = mocap+Seedance 2.0 ~$11/видео, Icon = сборка из тегированных блоков, Sora 2 cameo — НЕ для продакшена (API нет, face-upload забанен); OmniHuman 1.5 = лучший price/quality talking-head ($0.14/сек) и путь миграции с HeyGen v2; (3) Telegram-рельс полностью готов в коде (lib/factory/telegram.ts: sendVideo с кнопками ✓Беру/✕Не то, голосовые ревью через fal-whisper + intent, вердикты → winners/reject) — блокер: FACTORY_TG_BOT_TOKEN/CHAT_ID пусты, ждём от владельца.
+- Прототип «Маня держит крем»: тест-товар с кириллической этикеткой «АКТИВ КРЕМ» → композиторы: Seedream v4 edit (этикетка плывёт: «КРЕN»), nano-banana-pro (хуже), **Seedream v4.5 edit = ПОБЕДИТЕЛЬ** — этикетка пиксельно, «гиалуроновая кислота» читается, поза «товар в камеру» ($0.04/композит, best-of-2).
+- ⚠️ Seedream v4.5 «исправил» опечатку исходника («килсота»→«кислота») — для реальных брендов нужен OCR-QC против фото карточки (авто-«улучшение» чужого лейбла = риск).
+- Рендерится: OmniHuman 1.5 анимация композита под MiniMax-голос — полный прототип «блогер рекламирует товар».
+- План спринта Д1-Д4 зафиксирован в тасках. От владельца ждём: TG-токены, 3-5 артикулов с фото, голосовое A/B.
+
+## 2026-07-02 (день) — Зачистка твинов: identity-аудит оригинал vs твин + гейт
+
+- Аудит всех 8 продакшн-твинов против реальных фото съёмки (публичные шары norvia/design), пары отсмотрены глазами:
+  - NV-08 — FAIL: твин заметно длиннее реальной куртки (подол у бёдер → почти до колен).
+  - NV-836 — PASS: силуэт/карман/кулиски/патч совпадают.
+  - NV-816 — FAIL: исходник — фото спины, весь перед твина синтезирован ИИ.
+  - NV-01 — WARN: подол длиннее, дорисован чёрный патч на рукаве.
+  - CLR00716 — FAIL: другая сумка (замша→зернистая кожа, широкий текстильный ремень→тонкий, тёмная фурнитура→серебро, выдуман шильдик).
+  - CLR00715 — FAIL: реальная — тёмный шоколад однотонная, твин — светлый тауп с контрастным клапаном.
+  - CLR001101 — WARN: кожа гладкая→зернистая, дорисован лишний тонкий ремешок.
+  - CLR001102 — WARN: та же фактура + второй ремешок.
+- Вывод: quality_score твина (0.6–0.79) меряет техкачество кадра и НЕ ловит identity-дрифт; 7/8 твинов расходятся с товаром.
+- Код:
+  - `lib/factory/productTwin.ts`: `ProductTwinIdentityVerdict` + чистый гейт `isTwinIdentityUsable` (fail блокирует, warn/pass пропускают, override явный).
+  - `lib/factory/productTwinStore.ts`: identity_verdict читается в rowsToTwin, `setProductTwinIdentityVerdict` пишет вердикт во все строки твина; `getBestProductTwinAsset` больше не отдаёт fail-твины → b-roll (обе ветки: twin_id и auto-twin) падает на реальные фото съёмки.
+  - `app/api/factory/product-twin/identity-verdict/route.ts`: GET вердикта, POST записи (protected, reasons обязательны для warn/fail).
+- Проверки:
+  - `npx tsx lib/factory/productTwinIdentityContract.test.mts` (новый, 11 asserts)
+  - `npx tsx lib/factory/productTwin.test.mts`, `productBrollBatchRouteContract` (20), `productTwinBatchContract`
+  - `npx tsc --noEmit` — чисто
+- После деплоя: применить вердикты на прод через POST identity-verdict (8 артикулов), проверить fallback dry-run CLR00716.

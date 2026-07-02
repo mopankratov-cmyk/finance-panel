@@ -1,0 +1,29 @@
+// Contract test for Product Twin identity gate. Run: npx tsx lib/factory/productTwinIdentityContract.test.mts
+import { readFileSync } from "node:fs";
+import { ok } from "node:assert/strict";
+import { isTwinIdentityUsable } from "./productTwin";
+
+const store = readFileSync("lib/factory/productTwinStore.ts", "utf8");
+const route = readFileSync("app/api/factory/product-twin/identity-verdict/route.ts", "utf8");
+const brollRoute = readFileSync("app/api/factory/product-broll-batch/route.ts", "utf8");
+
+// Гейт: fail блокирует твин, warn/pass/нет вердикта — пропускают, override явный.
+ok(isTwinIdentityUsable(undefined), "twin without verdict is usable");
+ok(isTwinIdentityUsable({ verdict: "pass", reasons: [] }), "pass verdict is usable");
+ok(isTwinIdentityUsable({ verdict: "warn", reasons: ["texture drift"] }), "warn verdict is usable (with warning downstream)");
+ok(!isTwinIdentityUsable({ verdict: "fail", reasons: ["different bag"] }), "fail verdict blocks the twin");
+ok(isTwinIdentityUsable({ verdict: "fail", reasons: ["different bag"] }, true), "explicit allowFailed overrides the block");
+
+// Store: гейт стоит в getBestProductTwinAsset — обе дороги b-roll (twin_id и auto-twin) закрыты.
+ok(/isTwinIdentityUsable\(twin\.identityVerdict/.test(store), "getBestProductTwinAsset enforces identity gate");
+ok(/identity_verdict/.test(store) && /setProductTwinIdentityVerdict/.test(store), "store persists identity verdict into twin rows");
+
+// Route: защищён, валидирует вердикт, требует reasons для warn/fail.
+ok(/isAuthorizedReelsBrainJobRequest/.test(route), "identity-verdict route is auth-gated");
+ok(/pass\|warn\|fail/.test(route), "route validates verdict values");
+ok(/для warn\/fail нужны reasons/.test(route), "route requires reasons for warn/fail");
+
+// B-roll: авто-твин ветка имеет fallback на реальные фото, когда твин забракован/отсутствует.
+ok(/fell back to prepared\/WB source/.test(brollRoute), "b-roll falls back to real photos when twin is blocked");
+
+console.log("productTwinIdentityContract: passed");
