@@ -34,9 +34,11 @@ export const COMPOSITE_QC_CHECKLIST = [
 
 // Канонический деглянц-промпт (вердикты владельца: «глянцевый», «больше артефактов на лице»).
 // Кожа должна быть ЖИВОЙ: поры, мелкие несовершенства, неровность — не гладкий рендер.
-export function buildDeglossPrompt(sceneHint: string): string {
+export function buildDeglossPrompt(sceneHint: string, poseHint?: string): string {
   return [
-    "Same woman, same face identity, same pose.",
+    poseHint
+      ? `Same woman, same face identity, same scene. Change her pose: ${poseHint}.`
+      : "Same woman, same face identity, same pose.",
     `Re-render as a candid amateur smartphone photo: ${sceneHint},`,
     "noticeably underexposed corners, ordinary muted colors.",
     "Skin must look real and imperfect: natural matte texture with visible pores, a few tiny blemishes, slight uneven redness on cheeks and nose, faint under-eye shadows, no glossy highlights, no smoothing.",
