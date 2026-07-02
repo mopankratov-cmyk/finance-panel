@@ -1,3 +1,4 @@
+import sharp from "sharp";
 import { diskById } from "@/lib/factory/contentDisks";
 import { buildProductCleanPrompt, imageBufferToDataUrl } from "@/lib/factory/productCleanSource";
 import { fetchWithRetry, runNanoBananaEdit } from "@/lib/factory/falImageEdit";
@@ -21,6 +22,7 @@ import { focusProductSourceImage } from "./productSourceCrop";
 import { checkTwinIdentity, type TwinIdentityCheckResult } from "./productTwinIdentityCheck";
 import { isBannedTwinSourceName, twinSourceForArticle } from "./twinSourceManifest";
 import { contentFolderForSku } from "./wbSellerCatalog";
+import { wbCardPhotoUrls } from "./wbCardPhotos";
 import { screenTwinSourceCandidate } from "./twinSourceScreen";
 import { yaCollectImages, yaDownloadHref } from "@/lib/yandex/disk";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -70,6 +72,7 @@ async function resolveInputImage(body: ProductTwinBuildInput): Promise<{ image: 
   let diskId = cleanText(body.disk || "design", 80);
   let sourcePicked = false;
   let sourceKindOverride = "";
+  const screenNotes: string[] = [];
 
   // 1) Манифест исходников (визуальный аудит 2026-07-02): проверенный глазами чистый кадр
   //    в приоритете над любыми эвристиками. blocked = чистого кадра в съёмке нет вообще.
@@ -92,9 +95,43 @@ async function resolveInputImage(body: ProductTwinBuildInput): Promise<{ image: 
     }
   }
 
+  // 1.5) Фото карточки WB по артикулу (публичный CDN): АРТИКУЛ-ТОЧНЫЙ источник для любого
+  //      каталожного SKU. Каждый URL привязан к конкретному цвету — «какой это товар» не угадываем.
+  //      Кандидаты (обложка → края → середина) проходят vision-скрин; первый чистый перёд — источник.
+  if (!diskPath) {
+    const wbUrls = wbCardPhotoUrls(article, 8);
+    for (const url of wbUrls) {
+      const probe = await fetchWithRetry(url, { cache: "no-store" }, 3);
+      if (!probe.ok) continue;
+      const raw = Buffer.from(await probe.arrayBuffer());
+      if (!raw.length) continue;
+      // WB отдаёт webp — приводим к png для nano-banana/sharp-совместимости.
+      const png = await sharp(raw).png().toBuffer().catch(() => null);
+      if (!png) continue;
+      const screen = await screenTwinSourceCandidate({ buffer: png, article, product, category });
+      if (screen.ran && !screen.ok) {
+        screenNotes.push(`${url.split("/").slice(-1)[0]}: ${screen.reasons.join("; ") || "отклонён скрином"}`);
+        continue;
+      }
+      if (screen.ran && screen.role && !["front", "three_quarter", "on_model"].includes(screen.role)) {
+        screenNotes.push(`${url.split("/").slice(-1)[0]}: ракурс ${screen.role} — не перёд`);
+        continue;
+      }
+      const focused = await focusProductSourceImage({ buffer: png, contentType: "image/png", category, article });
+      return {
+        image: imageBufferToDataUrl(focused.buffer, focused.contentType),
+        sourceKind: focused.applied ? "wb_card_photo_focus_crop" : "wb_card_photo",
+        sourceUrl: url,
+        focusStrategy: focused.applied ? focused.strategy : undefined,
+      };
+    }
+    if (wbUrls.length && screenNotes.length) {
+      return { error: `WB-фото ${article} не прошли vision-скрин: ${screenNotes.join(" · ")}`.slice(0, 600) };
+    }
+  }
+
   // 2) Полный SKU из WB-каталога (например NV-08-48 капучино): кандидаты — сырые кадры
   //    из съёмочной папки его цвета, каждый через vision-скрин.
-  const screenNotes: string[] = [];
   if (!diskPath) {
     const catalogFolder = contentFolderForSku(article);
     if (catalogFolder && "pending" in catalogFolder) return { error: `у ${article} нет контента: ${catalogFolder.pending}` };
