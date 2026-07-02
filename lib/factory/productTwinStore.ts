@@ -3,6 +3,7 @@ import sharp from "sharp";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   createTwinAsset,
+  isTwinIdentityUsable,
   pickBestTwinAsset,
   type ProductPromptLibrary,
   type ProductTwin,
@@ -345,6 +346,15 @@ function rowsToTwin(rows: ContentAssetRow[]): ProductTwin | null {
   const twinId = String(first?.twin_id || assets[0].twinId);
   const promptLibrary = (first?.prompt_library || {}) as ProductPromptLibrary;
   const preparationPlan = (first?.preparation_plan && typeof first.preparation_plan === "object" ? first.preparation_plan : undefined) as ProductTwinPreparationPlan | undefined;
+  const rawVerdict = first?.identity_verdict as Record<string, unknown> | undefined;
+  const identityVerdict = rawVerdict && typeof rawVerdict === "object" && rawVerdict.verdict
+    ? {
+      verdict: String(rawVerdict.verdict) as "pass" | "warn" | "fail",
+      reasons: Array.isArray(rawVerdict.reasons) ? rawVerdict.reasons.map(String) : [],
+      source: String(rawVerdict.source || "") || undefined,
+      checkedAt: String(rawVerdict.checked_at || "") || undefined,
+    }
+    : undefined;
   return {
     twinId,
     article: String(first?.article || assets[0].article),
@@ -359,6 +369,7 @@ function rowsToTwin(rows: ContentAssetRow[]): ProductTwin | null {
     preparationPlan,
     assets,
     createdAt: String(rows[0]?.created_at || ""),
+    identityVerdict,
   };
 }
 
@@ -386,11 +397,51 @@ export async function getLatestProductTwinByArticle(db: SupabaseClient, article:
   return latestId ? rowsToTwin(rows.filter((r) => (r.analysis?.product_twin as Record<string, unknown> | undefined)?.twin_id === latestId)) : null;
 }
 
-export async function getBestProductTwinAsset(db: SupabaseClient, input: { twinId?: string; article?: string; useCase: ProductTwinUseCase }): Promise<{ twin: ProductTwin; asset: ProductTwinAsset } | null> {
+export async function getBestProductTwinAsset(db: SupabaseClient, input: { twinId?: string; article?: string; useCase: ProductTwinUseCase; allowFailedIdentity?: boolean }): Promise<{ twin: ProductTwin; asset: ProductTwinAsset } | null> {
   const twin = input.twinId ? await getProductTwinById(db, input.twinId) : input.article ? await getLatestProductTwinByArticle(db, input.article) : null;
   if (!twin) return null;
+  // identity-гейт: твин, проваливший сверку с реальным товаром, не отдаём как источник —
+  // конвейер упадёт обратно на реальные фото съёмки.
+  if (!isTwinIdentityUsable(twin.identityVerdict, input.allowFailedIdentity === true)) return null;
   const asset = pickBestTwinAsset(twin.assets, input.useCase);
   return asset ? { twin, asset } : null;
+}
+
+// Записать identity-вердикт во все строки твина (analysis.product_twin.identity_verdict).
+export async function setProductTwinIdentityVerdict(db: SupabaseClient, input: {
+  twinId: string;
+  verdict: "pass" | "warn" | "fail";
+  reasons: string[];
+  source?: string;
+}): Promise<{ ok: boolean; updated: number; error?: string }> {
+  const { data, error } = await db.from("content_assets")
+    .select("id,analysis")
+    .eq("disk", DISK)
+    .contains("analysis", { product_twin: { twin_id: input.twinId } })
+    .limit(200);
+  if (error) return { ok: false, updated: 0, error: error.message };
+  const rows = (data as Array<{ id: number; analysis: Record<string, unknown> | null }> | null) || [];
+  if (!rows.length) return { ok: false, updated: 0, error: `twin ${input.twinId} не найден` };
+  let updated = 0;
+  for (const row of rows) {
+    const analysis = row.analysis || {};
+    const productTwin = (analysis.product_twin && typeof analysis.product_twin === "object" ? analysis.product_twin : {}) as Record<string, unknown>;
+    const next = {
+      ...analysis,
+      product_twin: {
+        ...productTwin,
+        identity_verdict: {
+          verdict: input.verdict,
+          reasons: input.reasons.map((r) => String(r).slice(0, 200)).slice(0, 12),
+          source: input.source || "manual_audit",
+          checked_at: new Date().toISOString(),
+        },
+      },
+    };
+    const { error: updateError } = await db.from("content_assets").update({ analysis: next }).eq("id", row.id);
+    if (!updateError) updated += 1;
+  }
+  return { ok: updated === rows.length, updated };
 }
 
 function rowToViewAsset(row: ContentAssetRow): ProductTwinViewAsset | null {

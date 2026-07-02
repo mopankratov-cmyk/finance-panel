@@ -79,6 +79,20 @@ export interface ProductTwin {
   preparationPlan?: ProductTwinPreparationPlan;
   assets: ProductTwinAsset[];
   createdAt: string;
+  identityVerdict?: ProductTwinIdentityVerdict;
+}
+
+// Сверка твина с реальным товаром (аудит оригинал-vs-твин): fail = ИИ изменил
+// материал/цвет/длину/фурнитуру, показывать покупателю нельзя.
+export interface ProductTwinIdentityVerdict {
+  verdict: "pass" | "warn" | "fail";
+  reasons: string[];
+  source?: string;
+  checkedAt?: string;
+}
+
+export function isTwinIdentityUsable(verdict: ProductTwinIdentityVerdict | undefined, allowFailed = false): boolean {
+  return allowFailed || verdict?.verdict !== "fail";
 }
 
 export function normalizeTwinCategory(value: unknown, article = "", product = ""): ProductTwinCategory {
