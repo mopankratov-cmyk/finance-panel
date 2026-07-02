@@ -432,3 +432,50 @@ export async function archiveFactoryVideosToYandex(db: DbClient | null | undefin
     items,
   };
 }
+
+// ── Janitor: листинг и удаление СТРОГО внутри fal-video подпапок архива ──
+// Нужен для чистки дублей mp4, которые плодились от повторных опросов video-fal-status
+// до введения stableKey, и для удаления бракованных генераций.
+
+export interface YandexArchiveEntry {
+  path: string;
+  name: string;
+  type: "file" | "dir";
+  size: number;
+  created: string;
+}
+
+export async function listYandexArchiveFolder(path: string, limit = 500): Promise<{ ok: boolean; error?: string; entries: YandexArchiveEntry[] }> {
+  if (!token()) return { ok: false, error: "YANDEX_DISK_OAUTH_TOKEN is missing", entries: [] };
+  const clean = String(path || "").replace(/^disk:/, "");
+  if (!clean.startsWith("/")) return { ok: false, error: "path must be absolute", entries: [] };
+  const res = await yandexJson(`?path=${encodeURIComponent(clean)}&limit=${Math.max(1, Math.min(1000, limit))}`, { method: "GET" });
+  if (!res.ok) return { ok: false, error: `list ${res.status}: ${safeError(JSON.stringify(res.body))}`, entries: [] };
+  const items = ((res.body as { _embedded?: { items?: Array<Record<string, unknown>> } })._embedded?.items || []);
+  return {
+    ok: true,
+    entries: items.map((item) => ({
+      path: String(item.path || "").replace(/^disk:/, ""),
+      name: String(item.name || ""),
+      type: item.type === "dir" ? "dir" as const : "file" as const,
+      size: Number(item.size || 0),
+      created: String(item.created || ""),
+    })),
+  };
+}
+
+export function isDeletableFalVideoPath(path: string): boolean {
+  const clean = String(path || "").replace(/^disk:/, "");
+  const roots = [rootPath(), "/Приложения/Inferno Archive"];
+  return roots.some((root) => clean.startsWith(`${root}/`))
+    && clean.includes("/fal-video/")
+    && /\.(mp4|mov|webm)$/i.test(clean);
+}
+
+export async function deleteYandexArchiveFile(path: string): Promise<{ ok: boolean; status: number; error?: string }> {
+  if (!token()) return { ok: false, status: 0, error: "YANDEX_DISK_OAUTH_TOKEN is missing" };
+  if (!isDeletableFalVideoPath(path)) return { ok: false, status: 0, error: "удалять можно только медиа внутри fal-video папок архива" };
+  const clean = String(path).replace(/^disk:/, "");
+  const res = await yandexJson(`?path=${encodeURIComponent(clean)}&permanently=true`, { method: "DELETE" });
+  return { ok: res.ok, status: res.status, error: res.ok ? undefined : safeError(JSON.stringify(res.body).slice(0, 200)) };
+}
