@@ -2,6 +2,142 @@
 
 Этот журнал ведёт отдельный AI-worker на Railway во время ночных задач по контент-заводу.
 
+### 2026-07-01  Katya targeted UGC bakeoff
+
+- Ветка: `feat/product-broll-operator-get-clean`
+- Цель: перестроить Katya learning loop вокруг user-picked UGC winners, а не вокруг моей предварительной naturalness-оценки.
+- Изменено:
+  - `lib/factory/bloggerLearningLoop.ts`: tightened selection теперь поддерживает более жёсткий winner-bias для user-approved lines
+  - `docs/factory-katya-generation4-prior-results.json`: user feedback для generation 3 зафиксирован как prior-results память
+  - `docs/factory-ugc-katya-actor-learning-loop-2026-07-01.md`: добавлен generation 4 targeted bakeoff
+- Проверки:
+  - generation 4 rendered 5/5 через HeyGen
+  - результаты и mp4 сохранены в `/tmp/ugc-factory-katya-learning-loop-2026-07-01-generation4/generation-04`
+- Результат:
+  - `tired_honest` демотирован как не лучший UGC-anchor
+  - активные рабочие линии сейчас:
+    - `skeptical_pause` / `entryway_jacket`
+  - `friend_advice` / `mirror_selfie`
+  - следующий цикл должен идти уже от winners generation 4 и добивать micro-variation, а не расширять матрицу
+
+### 2026-07-01  Katya autonomous selection loop
+
+- Ветка: `feat/product-broll-operator-get-clean`
+- Цель: убрать владельца из ручного выбора winners после каждого batch и перевести Katya loop в автономный режим.
+- Изменено:
+  - `lib/factory/bloggerLearningAutoSelect.ts`: heuristic auto-ranker для completed Katya runs
+  - `lib/factory/bloggerLearningLoopRunner.mjs`: добавлены `--auto-select` и `--auto-top-k`, runner сам пишет `auto-prior-results.json`
+  - `lib/factory/bloggerLearningLoopContract.test.mts`: контракт на auto-selection winners и runner persistence
+  - `docs/factory-katya-generation5-prior-results.json`: ручной победители generation 4 как вход в auto loop
+  - `docs/factory-katya-generation6-prior-results.json`: память, автоматически полученная из generation 5
+  - `docs/factory-ugc-katya-actor-learning-loop-2026-07-01.md`: задокументированы generation 5/6 и автономный режим
+- Проверки:
+  - `npx tsx lib/factory/bloggerLearningLoopContract.test.mts`
+  - `npx tsc --noEmit --pretty false`
+  - dry-run generation 5 в auto-select mode
+  - paid generation 5 completed 5/5
+  - paid generation 6 completed 5/5
+- Результат:
+  - generation 5 auto winners:
+    - `katya_lab__g05__04__mirror_selfie__three_quarter_left__friend_advice`
+    - `katya_lab__g05__01__entryway_jacket__three_quarter_left__skeptical_pause`
+  - generation 6 auto winners:
+    - `katya_lab__g06__04__mirror_selfie__three_quarter_left__friend_advice`
+    - `katya_lab__g06__01__mirror_selfie__three_quarter_left__friend_advice`
+  - loop сам начал стягиваться в `mirror_selfie + friend_advice` как текущий strongest basin
+
+### 2026-07-01  Katya autopilot and diversity guard
+
+- Ветка: `feat/product-broll-operator-get-clean`
+- Цель: перевести Katya loop из "generation-by-generation вручную" в настоящий multi-generation autopilot и не дать ему схлопнуться в один шаблон.
+- Изменено:
+  - `lib/factory/bloggerLearningLoopAutopilot.mjs`: generation chaining с auto-prior handoff между поколениями
+  - `lib/factory/bloggerLearningAutoSelect.ts`: diversity guard при выборе winners
+  - `lib/factory/bloggerLearningLoop.ts`: contrast guard в tightened planner, если прошлые winners принадлежат одной семье
+  - `lib/factory/bloggerLearningLoopContract.test.mts`: контракт на autopilot и anti-collapse behavior
+  - `docs/factory-ugc-katya-actor-learning-loop-2026-07-01.md`: задокументирован autopilot + anti-collapse upgrade
+- Проверки:
+  - `npx tsx lib/factory/bloggerLearningLoopContract.test.mts`
+  - `npx tsc --noEmit --pretty false`
+  - live autopilot run `generation 7 -> generation 8`
+  - repeat live autopilot run `generation 7 -> generation 8` после diversity upgrade
+- Результат:
+  - без guard-а autopilot быстро схлопывался в `mirror_selfie + friend_advice`
+  - после guard-а winners стали:
+    - generation 7:
+      - `katya_lab__g07__04__mirror_selfie__three_quarter_left__friend_advice`
+      - `katya_lab__g07__05__mirror_selfie__three_quarter_left__skeptical_pause`
+    - generation 8:
+      - `katya_lab__g08__04__mirror_selfie__three_quarter_left__friend_advice`
+      - `katya_lab__g08__05__mirror_selfie__three_quarter_left__skeptical_pause`
+  - loop теперь сохраняет двухветочную конкуренцию вместо монокультуры
+
+### 2026-07-01  Blogger motion loop
+
+- Ветка: `feat/product-broll-operator-get-clean`
+- Цель: убрать однотипные повороты головы/мимику через motion taxonomy и repeatability detector.
+- Изменено:
+  - `lib/factory/bloggerMotion.ts`: motion presets, controlled batch planner, repeatability detector
+  - `app/api/factory/blogger-motion/route.ts`: dry-run endpoint для batch/repeatability
+  - `lib/factory/bloggerMotionContract.test.mts`: контракт на taxonomy, batch и detector
+  - `docs/factory-ugc-blogger-motion-loop-2026-07-01.md`: runbook
+- Проверки:
+  - `npx tsx lib/factory/bloggerMotionContract.test.mts`
+  - `npx tsx lib/factory/bloggerRegistryContract.test.mts`
+  - `npx tsx lib/factory/ugcStoryboardContract.test.mts`
+  - `npx tsc --noEmit --pretty false`
+- Результат:
+  - следующие HeyGen samples можно планировать как controlled motion batch
+  - повторяемость стала измеримой до и после платного прогона
+
+### 2026-07-01  Blogger rubric and registry
+
+- Ветка: `feat/product-broll-operator-get-clean`
+- Цель: начать M1 `Living Blogger` roadmap не с новых smoke, а с памяти и общей шкалы оценки.
+- Изменено:
+  - `lib/factory/bloggerEvaluation.ts`: rubric `living_blogger_v1`
+  - `lib/factory/bloggerRegistry.ts`: static variant registry для Кати, Алины, Сергея
+  - `app/api/factory/blogger-evaluation/route.ts`: dry-run scoring endpoint
+  - `app/api/factory/blogger-registry/route.ts`: dry-run registry endpoint
+  - `lib/factory/bloggerRegistryContract.test.mts`: контракт на rubric/registry
+  - `docs/factory-ugc-blogger-rubric-registry-2026-07-01.md`: runbook
+- Проверки:
+  - `npx tsx lib/factory/bloggerRegistryContract.test.mts`
+  - `npx tsx lib/factory/ugcStoryboardContract.test.mts`
+  - `npx tsx lib/factory/ugcScriptContract.test.mts`
+  - `npx tsc --noEmit --pretty false`
+- Результат:
+  - следующие blogger smoke можно оценивать единым scorecard
+  - у sidecar появился первый variant memory layer без подключения БД
+
+### 2026-07-01  UGC living blogger 6-month roadmap
+
+- Ветка: `feat/product-broll-operator-get-clean`
+- Цель: превратить удачные HeyGen blogger smoke в долгий план по "оживлению" блогеров и learning loop, а не в разовые тесты.
+- Изменено:
+  - добавлен roadmap `docs/factory-ugc-living-blogger-6mo-roadmap-2026-07-01.md`
+- Результат:
+  - зафиксирован 6-месячный план по blogger realism, motion variation, voice+face pairing, storyboard learning и market feedback brain
+  - ближайший execution lane: rubric -> variant registry -> controlled batch -> repeatability penalty
+
+### 2026-07-01  UGC storyboard sidecar
+
+- Ветка: `codex/reels-brain-learning-mission`
+- Цель: отделить первые 2-4 секунды HeyGen talking-head от proof B-roll, чтобы тестировать блогеров без подключения к основному заводу.
+- Изменено:
+  - `lib/factory/ugcStoryboard.ts`: dry-run storyboard builder с `hook_talking_head` и `proof_broll`
+  - `app/api/factory/ugc-storyboard/route.ts`: dry-run endpoint без paid provider calls
+  - `lib/factory/ugcStoryboardContract.test.mts`: контракт на face clamp, proof cue и текущие HeyGen blogger IDs
+  - `docs/factory-ugc-storyboard-sidecar-2026-07-01.md`: runbook
+- Проверки:
+  - `npx tsx lib/factory/ugcStoryboardContract.test.mts`
+  - `npx tsx lib/factory/brollSpec.test.mts`
+  - `npx tsx lib/factory/ugcScriptContract.test.mts`
+  - `npx tsc --noEmit --pretty false`
+- Результат:
+  - Катя/Алина теперь могут идти в detached storyboard mini-tests
+  - правило "любое утверждение подтверждается кадром" стало машинным контрактом
+
 ### 2026-07-01  Reels Brain operating system and paid guard
 
 - Ветка: `fix/reels-brain-paid-cost-guard`
@@ -2712,6 +2848,203 @@
   - Product Twin Studio on current production still showed broken images before preview-proxy deploy. After PR #92 deploy, run `Load Twins` and inspect preview cards.
   - Quality `0.60` on `NV-836`, `NV-816`, `NV-01` should be visually reviewed before using as hero assets; they are structurally complete but below the preferred `0.68` threshold.
 
+### UGC Katya controlled motion batch
+
+- Дата: 2026-07-01
+- Ветка: `feat/product-broll-operator-get-clean`
+- Цель:
+  - Начать 6-месячную петлю "живого блогера" с контролируемого HeyGen batch без товара и без подключения к основному заводу.
+  - Проверить не только внешний вид блогера, а управляемость движения через `motion_prompt` и `expressiveness`.
+- Изменено:
+  - `lib/factory/heygen.ts`: добавлены `motionPrompt` и `expressiveness` в `HeyGenCreateVideoInput`.
+  - `lib/factory/heygenVideo.ts`: smoke-plan теперь прокидывает motion controls отдельно от spoken script.
+  - `lib/factory/heygenClientContract.test.mts` и `lib/factory/heygenVideoContract.test.mts`: покрытие motion controls.
+  - `docs/factory-ugc-blogger-motion-loop-2026-07-01.md`: roadmap обновлён фактом live batch.
+  - `docs/factory-ugc-katya-motion-batch-2026-07-01.md`: отдельный report по платному батчу.
+- Paid HeyGen results:
+  - 4/4 renders completed.
+  - Files:
+    - `/tmp/ugc-factory-heygen-katya-motion-batch-2026-07-01/katya-calm-direct-low.mp4`
+    - `/tmp/ugc-factory-heygen-katya-motion-batch-2026-07-01/katya-skeptical-pause-medium.mp4`
+    - `/tmp/ugc-factory-heygen-katya-motion-batch-2026-07-01/katya-small-nod-medium.mp4`
+    - `/tmp/ugc-factory-heygen-katya-motion-batch-2026-07-01/katya-friend-advice-high.mp4`
+    - `/tmp/ugc-factory-heygen-katya-motion-batch-2026-07-01/contact-sheet.jpg`
+- Предварительный вывод:
+  - `high` даёт больше эмоции, но риск presenter/рекламности выше.
+  - `medium` выглядит главным кандидатом для следующего controlled batch.
+  - Winner нужно выбирать по mp4, потому что ключевая проблема — движение, а не один кадр.
+- Проверки:
+  - `npx tsx lib/factory/heygenClientContract.test.mts`
+  - `npx tsx lib/factory/heygenVideoContract.test.mts`
+  - `npx tsx lib/factory/bloggerMotionContract.test.mts`
+
+### UGC Katya actor learning loop
+
+- Дата: 2026-07-01
+- Ветка: `feat/product-broll-operator-get-clean`
+- Решение:
+  - Временно не добавляем B-roll и товар.
+  - Фокус только на доработке одного блогера: Катя в разных обстановках, ракурсах, позах, expression и motion.
+  - 100 прогонов делаем поколениями, а не одной пачкой.
+- Изменено:
+  - `lib/factory/bloggerLearningLoop.ts`: dry-run planner для 100 Katya actor runs.
+  - `app/api/factory/blogger-learning-loop/route.ts`: API для плана поколений, без paid render.
+  - `lib/factory/bloggerLearningLoopContract.test.mts`: контракт на 100 runs, вариативность и запрет B-roll/product.
+  - `docs/factory-ugc-katya-actor-learning-loop-2026-07-01.md`: операционный план обучения.
+- Архитектура loop:
+  - `target_runs`: 100.
+  - `generation_size`: 5.
+  - `generation_count`: 20.
+  - Оси: scene, camera angle, pose, expression, motion preset, expressiveness.
+  - Runner тратит деньги только при `--confirm-paid true`.
+- First paid generation:
+  - Запущен generation 1, limit 5.
+  - 2/5 completed:
+    - `/tmp/ugc-factory-katya-learning-loop-2026-07-01/generation-01/katya_lab__g01__01__window_room__slightly_below__half_smile.mp4`
+    - `/tmp/ugc-factory-katya-learning-loop-2026-07-01/generation-01/katya_lab__g01__02__sofa_evening__three_quarter_right__tired_honest.mp4`
+  - 3/5 failed with HeyGen `MOVIO_PAYMENT_INSUFFICIENT_CREDIT`.
+  - Repair attempts also failed with insufficient API credits.
+  - Contact sheet: `/tmp/ugc-factory-katya-learning-loop-2026-07-01/generation-01/contact-sheet.jpg`.
+- First paid generation retry after top-up:
+  - API wallet checked via `GET /v3/users/me`: `$30.13` before retry.
+  - Retry generation 1 completed 5/5.
+  - API wallet after retry: `$28.58`.
+  - Files:
+    - `/tmp/ugc-factory-katya-learning-loop-2026-07-01-retry/generation-01/katya_lab__g01__01__window_room__slightly_below__half_smile.mp4`
+    - `/tmp/ugc-factory-katya-learning-loop-2026-07-01-retry/generation-01/katya_lab__g01__02__sofa_evening__three_quarter_right__tired_honest.mp4`
+    - `/tmp/ugc-factory-katya-learning-loop-2026-07-01-retry/generation-01/katya_lab__g01__03__messy_desk__upper_body__friend_advice.mp4`
+    - `/tmp/ugc-factory-katya-learning-loop-2026-07-01-retry/generation-01/katya_lab__g01__04__mirror_selfie__slightly_above__calm_direct.mp4`
+    - `/tmp/ugc-factory-katya-learning-loop-2026-07-01-retry/generation-01/katya_lab__g01__05__entryway_jacket__three_quarter_left__skeptical_pause.mp4`
+  - Contact sheet: `/tmp/ugc-factory-katya-learning-loop-2026-07-01-retry/generation-01/contact-sheet.jpg`.
+  - Preliminary frame read: #2 and #5 look like strongest candidates; final choice must be by mp4 motion.
+- Generation 2 bias + look-matrix fix:
+  - Added winner-biased planning from `prior_results` so next generation reuses strong scene/angle/motion signals instead of random exploration.
+  - Added Katya look matrix with multiple female looks:
+    - `hallway_hoodie`
+    - `kitchen_cardigan`
+    - `soft_window_cardigan`
+    - `skeptical_kitchen_selfie`
+  - Caught and removed an invalid non-Katya private look from the matrix before locking the next batch.
+- Valid generation 2b:
+  - Prior file: `docs/factory-katya-generation2-prior-results.json`.
+  - 5/5 completed:
+    - `/tmp/ugc-factory-katya-learning-loop-2026-07-01-generation2b/generation-02/katya_lab__g02__01__sofa_evening__three_quarter_left__tired_honest.mp4`
+    - `/tmp/ugc-factory-katya-learning-loop-2026-07-01-generation2b/generation-02/katya_lab__g02__02__sofa_evening__three_quarter_right__half_smile.mp4`
+    - `/tmp/ugc-factory-katya-learning-loop-2026-07-01-generation2b/generation-02/katya_lab__g02__03__entryway_jacket__three_quarter_left__skeptical_pause.mp4`
+    - `/tmp/ugc-factory-katya-learning-loop-2026-07-01-generation2b/generation-02/katya_lab__g02__04__mirror_selfie__three_quarter_right__friend_advice.mp4`
+    - `/tmp/ugc-factory-katya-learning-loop-2026-07-01-generation2b/generation-02/katya_lab__g02__05__sofa_evening__three_quarter_left__tired_honest.mp4`
+  - Contact sheet: `/tmp/ugc-factory-katya-learning-loop-2026-07-01-generation2b/generation-02/contact-sheet.jpg`.
+  - Preliminary read: `tired_honest` and `skeptical_pause` remain strongest directions.
+- Generation 3 tightened batch:
+  - Prior file: `docs/factory-katya-generation3-prior-results.json`.
+  - Planner enters tightened mode from generation 3 onward when winners exist.
+  - 5/5 completed:
+    - `/tmp/ugc-factory-katya-learning-loop-2026-07-01-generation3/generation-03/katya_lab__g03__01__sofa_evening__three_quarter_left__tired_honest.mp4`
+    - `/tmp/ugc-factory-katya-learning-loop-2026-07-01-generation3/generation-03/katya_lab__g03__02__sofa_evening__three_quarter_left__tired_honest.mp4`
+    - `/tmp/ugc-factory-katya-learning-loop-2026-07-01-generation3/generation-03/katya_lab__g03__03__entryway_jacket__three_quarter_left__skeptical_pause.mp4`
+    - `/tmp/ugc-factory-katya-learning-loop-2026-07-01-generation3/generation-03/katya_lab__g03__04__mirror_selfie__three_quarter_left__friend_advice.mp4`
+    - `/tmp/ugc-factory-katya-learning-loop-2026-07-01-generation3/generation-03/katya_lab__g03__05__sofa_evening__three_quarter_left__skeptical_pause.mp4`
+  - Contact sheet: `/tmp/ugc-factory-katya-learning-loop-2026-07-01-generation3/generation-03/contact-sheet.jpg`.
+  - Preliminary read:
+    - `tired_honest low` looks like the strongest natural baseline.
+    - `skeptical_pause hallway` and `skeptical_pause sofa` are the strongest skeptical lines.
+    - `friend_advice` remains useful as contrast, not as core direction.
+- Проверки:
+  - `npx tsx lib/factory/bloggerLearningLoopContract.test.mts`
+  - `npx tsx lib/factory/bloggerMotionContract.test.mts`
+  - `npx tsc --noEmit --pretty false`
+
+## 2026-07-01 (поздний вечер) — Face Foundry: фаза 0 (код, без платных вызовов)
+
+- Задача от владельца: собственное лицо блогера — генерим снаружи, загружаем в HeyGen как avatar group, оживляем выигрышными моушенами Катиной лаборатории.
+- Новые файлы (зона `lib/factory`, платных вызовов не было):
+  - `lib/factory/faceFoundry.ts` — план: 8 hero-кандидатов (разные vibe, synthetic-guard + анти-глянец) и 8 ракурсов/света с identity-guard для тренировки avatar group.
+  - `lib/factory/faceFoundryRunner.mjs` — CLI: `--stage hero|angles`, dry-run по умолчанию, `--confirm-paid true` для трат; FAL nano-banana (t2i) + nano-banana/edit; ретраи с таймаутами по образцу `falImageEdit.ts`; выход ракурсов скоупится по герою (`angles/<hero>/`); `--hero-file` перезаливает локальный PNG в fal storage на случай протухшего fal.media URL.
+  - `lib/factory/faceFoundryContract.test.mts` — контракт: уникальность spec_id, guard-строки в промптах, клампы count, инвариант hero/angle (модель выбирается по наличию `hero_image_url`).
+- Ревью: 2 адверсариальных ревьюера; все should-fix закрыты (ретраи/таймаут-ошибки с responseUrl, скоуп ракурсов, robustness `--hero-source`, пины инвариантов в тестах).
+- Проверки: `npx tsx lib/factory/faceFoundryContract.test.mts` OK; оба dry-run OK; `npx tsc --noEmit` 0 ошибок.
+- Следующий шаг (фаза 1, ~$1): `npx tsx lib/factory/faceFoundryRunner.mjs --stage hero --confirm-paid true` с FAL-ключом; рекомендация ревьюера — сначала smoke `--count 1`.
+
+## 2026-07-02 — Face Foundry: фазы 1-2 (три блогера, живой HeyGen-конвейер)
+
+- Владелец выбрал лица: Маня=soft_daylight, Вика=dark_blonde_wavy, Оля=mom_tired_kind (12 hero-кандидатов FAL nano-banana, 4 срезал контент-фильтр Gemini детерминированно — деньги не списаны).
+- Ресёрч «сколько артефактов нужно блогеру» (3 агента, web+repo): паспорт ≈ 100 отобранных артефактов; HeyGen Personal Model = мин 10 / реком 30+ фото, 60 кредитов тренировка; add-looks ≤4 image_keys/вызов; ⚠️ v2 photo_avatar API deprecated до 31.10.2026 (v3 = single-photo POST /v3/avatars). Память: ugc-blogger-asset-passport.
+- Матрица тренировочных ракурсов расширена 8→24 (эмоции с mid_speech для липсинка, полный рост, улица/машина/кафе/парк, золотой час/пасмурно/вечер); интерьеры апгрейжены по фидбеку владельца («не надо дешёвых квартир») — guard `not poor or run-down`.
+- Сгенерено 72/72 тренировочных кадра (3×24, FAL nano-banana edit, ~$3 суммарно c героями). QC: identity держится; исключён 1 кадр (Маня full_body_street — босиком).
+- Живой HeyGen прогон (ключ «для завода», кошелёк $13.98 + 839 кредитов): upload asset OK (image_key формат совпал), группа `ugc_manya_v1` создана живьём = v2-эндпоинты подтверждены. В аккаунте уже 7 групп (Katya v3b, Alina, Sergey...).
+- Раннер heygenAvatarGroupRunner: батчинг add по 4, fallback per-key при отказе батча (identity mismatch), внешне-созданная группа через state.creation_key, resume по state.json.
+- Матрица луков расширена 8→14 (полный рост ×2, крупняки ×3, машина/улица/парк/балкон, 6 гардеробных архетипов на персону) по запросу владельца «до 100 вариаций».
+- Тесты: faceFoundryContract + heygenAvatarGroupContract зелёные, tsc 0 ошибок.
+- Запущено: upload+group+train всех трёх групп (фон). Следующее: лук-смоук 1 шт с замером кошелька → полная библиотека луков → Avatar IV бейкофф против текущей Кати.
+
+## 2026-07-02 — Reels Brain Railway: offline media-backfill worker
+
+- Диагностика Railway production показала, что сервис `reels-brain-offline-worker` был online, но крутил старый `audio_backfill_batch_start` loop и застревал на `ready_for_worker: 0`.
+- Причина: runtime стартовал `node lib/factory/reelsBrainAudioRailwayWorker.mjs`, а текущий контур для добора `media_locator_candidates` уже вынесен в `lib/factory/reelsBrainOfflineWorker.mjs`.
+- Фикс в репо:
+  - добавлен совместимый shim `lib/factory/reelsBrainAudioRailwayWorker.mjs`, который переводит Railway на новый offline worker без ручной смены entrypoint;
+  - возвращён `railway.json` с `NIXPACKS` и явным `startCommand` на этот shim;
+  - дефолты shim-а включают `REELS_BRAIN_ENABLE_LOCAL_MEDIA_RESOLVER=1`, heartbeat и offline loop cadence.
+- Следующий live-step: задеплоить этот сервис через `railway up`, добавить `yt-dlp` в `NIXPACKS_PKGS`, прогнать one-shot и проверить рост `rows_with_media` / `ready_for_worker`.
+
+## 2026-07-02 (продолжение) — Фаза 2 ЗАКРЫТА: три обученных блогера с библиотеками луков
+
+- Дедупликация тренировочных сетов по запросу владельца: перцептивный dhash нашёл кластеры клонов (Маня front_neutral≈warm_lamp_evening d=5/144; Оля 4 фронталки слиплись). Отбраковано: Маня 5, Оля 3, Вика 1. Итог в тренировке: 20/24/22 фото (герой+ракурсы).
+- Пойман и закрыт баг v2 add: обязательное поле `name` (400 "name is invalid") — из-за него первый прогон добавил Мане 0 фото и тренировка ($4!) ушла на группе из 1 фото; успели докинуть 19 фото пока train был pending — тренировка в итоге прошла на полном сете.
+- Тренировки: все 3 группы `ready` (Маня fc29c149, Вика 1b2482be, Оля 3379c2f7). Цена тренировки на wallet-биллинге = $4 (кошелёк $13.98→$1.98 за 3 шт).
+- Живость по фидбеку владельца («позы неестественные»): 3 слоя — тренировочный сет остаётся стерильным (якорь identity), луки получили ось микро-действий (кофе mid-sip, смех с зажмуренными глазами, натягивает рукав куртки, оборот через плечо в парке, рассказ в машине с ремнём), плюс candid-guard "no stiff catalog pose". Главный слой живости — моушен на видео-стадии.
+- Луки сгенерены ВНЕШНЕ на FAL (nano-banana edit от героев) по рекомендации ресёрча: 42/42 без фейлов, pHash-дедуп = 0 дублей, identity держится (спот-чек). HeyGen-кредиты на луки не потрачены.
+- Новые стадии кода: faceFoundryRunner `--stage looks` (FAL-генерация луков из buildAvatarGroupLooks), heygenAvatarGroupRunner `--stage looks-external` (upload+add по одному с именем лука, только после train_ready). Заливка: 42/42 лука в группы, имена look__<persona>__NN__<scene>.
+- Ловушка zsh: фоновые команды не сплитят $var по пробелам (set -- $p дал пустой --hero-id) — циклы в фоне писать явными командами.
+- Запущен бесплатный Avatar IV смоук Мани (3 free credits на аккаунте): look plain_wall (жестикуляция) × моушен friend_advice (победитель Катиной лаборатории) × якорный скрипт.
+- Осталось на кошельке HeyGen: $1.98. На полный бейкофф фазы 3 (3 блогера × 2-3 клипа + старая Катя) нужно ~$10.
+
+## 2026-07-02 (ночь) — Фаза 3: оживление, анти-AI пост, бейкофф
+
+- Первый Avatar IV смоук Мани (plain_wall × friend_advice, голос Anya): вердикт владельца «палится». Диагноз ожидаем: сырые 6с говорящей головы без единого анти-AI слоя = худший режим.
+- Найден и заменён протухший voice_id Кати в ugcStoryboard-конфиге (37832e32d4f747... → Anya 37832e32d4f7475ab7a1cb0db8e5dd66); старый даёт «Voice not found» на прод-ключе.
+- Ресёрч анти-AI пост-обработки (2 агента, web+repo): топ-рычаг = монтаж 90/10 (лицо ≤3-5с, резы каждые 1-3с); пост лечит стерильную картинку/статичную камеру/«голос из вакуума», НЕ лечит липсинк/мимический дрифт/повторяющиеся жесты. Конкретика: temporal grain noise=alls=9, синусный handheld crop-shake (двухчастотный), деколоризация eq+curves, rgbashift ≤2px, второй прогон кодека 2Mbps, phone-EQ 120-9000Hz + компрессор + brown room tone -32dB. 30fps, НЕ 24. Голос: MiniMax Speech-02 HD через FAL бьёт HeyGen TTS. В заводе есть fal ffmpeg-рельса (falQueueVideo) но compose-только; Remotion VM = настоящий ffmpeg-бокс; room tone можно конфигом на dual-audio Shotstack.
+- ffmpeg 8.0 static arm64 поставлен в scratchpad (brew нет); анти-AI цепочка реализована и прогнана на 8 клипах. Вердикт владельца по пост-версиям: «чуть лучше».
+- Бейкофф отрендерен ($15.88 на кошельке после пополнения): Вика car+mirror, Оля car+mirror, старая Катя (победный лук лаборатории) — все на одном скрипте/голосе, + 3 Маниных. Страница сравнения: /tmp/ugc-factory-face-foundry/bakeoff.html (raw vs post).
+- Банк моушенов расширен 7→13 (voice_message, walk_and_talk, mid_task_aside, story_lean, disbelief_shake, interrupted_real) — тесты зелёные. Комбинаторика: 14 луков × 13 моушенов = 182 комбо/блогера ≈ 12 видео/день комфорт.
+- Согласован план: горизонт 1 = боевой формат (лицо 2-3с + твин b-roll + сабы + музыка + пост) + MiniMax голос; горизонт 2 = продуктизация паспортов из /tmp в bloggerRegistry + НАЧАТЬ ПУБЛИКОВАТЬ (петля V5 ждёт); горизонт 3 = vision-критик по рубрике living_blogger_v1 + winner mining по рыночным метрикам.
+
+## 2026-07-02 (ночь) — B-roll studio: живой аудит и фиксы качества source-кадра
+
+- Живой аудит конвейера product-broll-batch (Claude Code сессия владельца): прод dry-run POST на NV-08/CLR00716 выбрал `product_twin_latest`, категории/preservation-хвосты корректны; платный тест 1×Kling 5s на CLR00716 (~$0.35, FAL $12.46 до) отрендерился и заархивировался.
+- Вердикт по кадрам: кожа/строчка/движение — хорошо; косяки: (1) в Kling ушёл `shadow_bg` — карточка с паспарту и вшитой подписью CLÉRIN → «рамка-в-рамке» в ролике; (2) шильдик бренда при макро-зуме морфится в кашу; (3) повторные опросы `video-fal-status` плодили дубли файлов в архиве (hash от подписанной FAL-ссылки, она меняется на каждый poll).
+- Фиксы:
+  - `lib/factory/productTwin.ts`: pickBestTwinAsset для broll теперь предпочитает full-bleed (`broll_source`, `upscaled`, `clean_png`) карточному `shadow_bg`; hero-приоритет не тронут.
+  - `app/api/factory/product-broll-batch/route.ts`: `clean_first:true` теперь работает поверх twin/view/auto-twin источника — выбранный кадр рехостится (`rehostImageForFal`) и чистится nano-banana (срезает вшитую подпись/поля) перед video API; авто-твин ветка больше не исключает clean_first.
+  - `lib/factory/yandexArchive.ts` + `video-fal-status`: `archiveExternalMediaToYandex` принимает `stableKey` (task id) — идемпотентный путь архива при повторных опросах статуса.
+- Проверки:
+  - `node --import tsx lib/factory/productTwin.test.mts` (10 passed; контракт обновлён: broll предпочитает full-bleed, hero — карточку)
+  - `node --import tsx lib/factory/productBrollBatchRouteContract.test.mts` (18 passed, +2 asserts на twin-clean)
+  - `node --import tsx lib/factory/productBrollBatch.test.mts` (15 passed)
+  - `node --import tsx lib/factory/yandexArchiveDirectContract.test.mts` (+assert stableKey)
+  - `npx tsc --noEmit` — по затронутым файлам чисто (единственная ошибка в `reels-brain/source-run/route.ts` — параллельная незакоммиченная правка другого воркера, вне этого блока)
+- Осталось на потом: OTK/video-critic гейт на читаемость логотипа в готовом ролике; пере-генерация смоука с clean_first после деплоя.
+
+## 2026-07-02 (продолжение) — Форматы добыты и закодированы: reelFormats.ts
+
+- Майнинг форматов (3 агента: корпус Reels Brain / RU-рынок / возможности сборки).
+- РЫНОК-2026, критично для дистрибуции: IG-реклама запрещена законом с 01.09.2025 (штрафы до 500к₽), YouTube заблокирован с 02.2026, TikTok не грузится с RU. Главный канал = **Wibes** (лента WB: 3.7млн юзеров, −1% комиссии на проданное через ролик, органика новичкам, покупка в 1 тап, буст 250₽/1000). Требования Wibes: 15-30с, хук ≤2с, УТП читается БЕЗ звука, артикул с первых 2с, 3-5 роликов/нед. VK Клипы №2, TG-посевы №3 (CPV 0.09-0.6₽).
+- Корпус: единственный срез реальных хуков в репо = supabase/migrations/20260625_viral_hooks_seed.sql (37 хуков, 4 Virlo-орбиты, топ 1.6M views); таксономия 7 хуков × 6 структур × retention-механики в reelsBrainPatterns.ts.
+- Сборка: Shotstack = дробные резы + музыка/голос, но только 2 статических текст-слоя (per-beat text = малое расширение buildEdit); fal_timeline = целые секунды, 0 текста, falAutoSubtitle пост-пасс; Remotion VM = покадрово (премиум-лейн).
+- **Новое: lib/factory/reelFormats.ts + reelFormatsContract.test.mts** — реестр 6 исполнимых FormatSpec с бит-таймингами и evidence: skeptic_proof (косметика 5), before_after, versus_test (игрушки 5), wb_unboxing, silent_test_drive (БЕЗ блогера и звука — самый дешёвый лейн, Wibes-native), top_n_finds (одежда 5). Валидатор: лицо ≤4с суммарно (поймал 2 моих же нарушения при написании), артикул-эндкард обязателен, хук с 0с, works_without_sound требует плашек. Тесты зелёные, tsc чист.
+
+## 2026-07-02 (утро) — блогеры продуктизированы в код + MiniMax-голос работает
+
+- /tmp почистился при перезапуске: все локальные mp4/png потеряны, НО всё восстановлено из облаков (видео из аккаунта HeyGen по /v3/videos, группы/луки живут в HeyGen). Урок V20 подтверждён.
+- **docs/factory-blogger-passports.json** — полные паспорта из живого API: 3 group_id, 42 look_id с именами, конфиги голосов. Паспорта больше не живут в /tmp.
+- **MiniMax Speech-02 HD через FAL работает**: fal-ai/minimax/speech-02-hd (sample_rate/channel ЧИСЛАМИ, паузы <#0.35#>, Calm_Woman speed 0.9 pitch -1) → HeyGen /v3/videos принимает плоский audio_url + engine {type: avatar_iv} (форма A прошла с первой попытки). A/B Маня car: MiniMax vs Anya TTS — вердикт владельца ожидается.
+- Первый прогон vision-критика (кадровые полосы fps=1/2 tile 4x1, судья — Claude): Вика car ~8/10, Оля mirror ~7.5, Маня-minimax ~7.5, старая Катя ~8.5 ПО КАДРАМ (её слабость — движение, не картинка). Вывод: кадровый критик = дешёвый фильтр брака; «верю/не верю» решает движение+голос. Находка: у Катиного лука текст вшит в изображение («ЧЕСТНЫЙ ОБЗОР») и выглядит нативно — приём стоит перенести на новых.
+- **Продуктизация**: RUSSIAN_HEYGEN_BLOGGERS + manya/vika/olya (ugc_wb_v1, реальные look_id, голос Anya), DEFAULT_BLOGGER_VARIANTS + 6 вариантов (car_voice_message/mirror_selfie на каждую, скоры vision-критика, source_runs = heygen video ids). Все 4 blogger-теста зелёные, tsc чист.
+
+## 2026-07-02 (день) — плашки-луки + актёрские пробы
+
+- Катин приём перенесён на новых: у каждой девушки лук с вшитым нативным заголовком (nano-banana edit от исходного лука): Маня «ЧЕСТНЫЙ ОТЗЫВ» (кухня), Вика «ЧТО ПРИШЛО С WB» (зеркало, полный рост), Оля «НАШЛА, ЧЕМ ЗАНЯТЬ РЕБЁНКА» (стол). Ловушки nano-banana: (а) кириллица длинных фраз плывёт — лечится коротким текстом + «letter by letter»; (б) сам дорисовывает вотермарку CapCut — явный запрет в промпт; (в) команда «убери вотермарку» ЗАПРЕЩЕНА гвардом Gemini — только перегенерация с нуля. Плашки залиты в группы, look_id в паспортах (по 15 луков на девушку).
+- Актёрские пробы: 6 клипов (story_lean / disbelief_shake / interrupted_real × лучшие луки, expressiveness low, ~$2.4) + анти-AI пост. Страница actor-range.html — вердикт владельца ожидается для карты амплуа.
 ### Product Twin loop pack pass
 
 - Дата: 2026-07-01

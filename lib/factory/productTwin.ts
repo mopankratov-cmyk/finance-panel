@@ -163,8 +163,10 @@ export function pickBestTwinAsset(assets: ProductTwinAsset[], useCase: ProductTw
     : "adsSafe";
   const candidates = assets.filter((a) => Boolean(a[flag]));
   const serviceKinds = new Set<ProductTwinAssetKind>(["object_mask", "alpha", "depth_map", "segmentation"]);
+  // broll: видео-модель анимирует кадр целиком, поэтому карточные ассеты с паспарту
+  // (shadow_bg) дают «рамку-в-рамке» в ролике — сначала full-bleed кадры.
   const fallbackPriority: ProductTwinAssetKind[] = useCase === "broll"
-    ? ["shadow_bg", "clean_png", "upscaled", "white_bg", "gray_bg", "broll_source", "original"]
+    ? ["broll_source", "upscaled", "clean_png", "white_bg", "gray_bg", "shadow_bg", "original"]
     : useCase === "hero"
       ? ["shadow_bg", "white_bg", "clean_png", "upscaled", "gray_bg", "original"]
       : ["clean_png", "shadow_bg", "upscaled", "white_bg", "gray_bg", "original"];

@@ -63,7 +63,8 @@ const classification = classifyProductTwin(twin);
 
 assert.equal(classification.status, "ready");
 assert.equal(classification.canonical.hero, "pt_demo_shadow_bg");
-assert.equal(classification.canonical.broll, "pt_demo_shadow_bg");
+// broll предпочитает full-bleed clean_png карточному shadow_bg (см. pickBestTwinAsset)
+assert.equal(classification.canonical.broll, "pt_demo_clean_png");
 assert.equal(classification.summary.totalAssets, 2);
 assert.equal(classification.summary.readyAssets, 1);
 assert.equal(classification.summary.reviewAssets, 1);

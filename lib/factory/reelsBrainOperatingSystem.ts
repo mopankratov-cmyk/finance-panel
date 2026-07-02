@@ -12,6 +12,9 @@ export type ReelsBrainMetricRow = {
   revenue?: number | null;
   posted_at?: string | null;
   pulled_at?: string | null;
+  publication_id?: string | null;
+  external_post_id?: string | null;
+  source?: string | null;
 };
 
 type PatternLike = {
@@ -121,6 +124,13 @@ export function buildReelsBrainFeedbackLoop(metrics: ReelsBrainMetricRow[]) {
     total_orders: rows.reduce((sum, row) => sum + row.marketplace_orders, 0),
     total_revenue: Math.round(rows.reduce((sum, row) => sum + row.revenue, 0) * 100) / 100,
     by_platform: byPlatform,
+    outcome_schema: {
+      schema_ready: true,
+      required_fields: ["recipe_id", "platform", "views", "posted_at"],
+      recommended_fields: ["hook_rate", "hold_rate", "completion_rate", "ctr_card", "saves", "marketplace_orders", "revenue", "publication_id", "external_post_id"],
+      write_targets: ["post_metrics", "factory_publications", "reels_brain_feedback"],
+      ingestion_endpoints: ["/api/factory/post-metrics", "/api/factory/reels-brain/feedback"],
+    },
     next_step: rows.length
       ? "Писать winner/loser outcomes в Pattern Brain и Anti-Pattern Brain после каждого опубликованного ролика."
       : "Начать отправлять метрики через /api/factory/reels-brain/feedback или /api/factory/post-metrics.",

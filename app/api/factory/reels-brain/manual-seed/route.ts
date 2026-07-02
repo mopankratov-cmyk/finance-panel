@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { makeViralVideoRows, type ReelsBrainInput } from "@/lib/factory/reelsBrain";
+import { safeUpsertReelsCorpusRows } from "@/lib/factory/reelsBrainCorpusUpsert";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
@@ -25,17 +26,30 @@ export async function POST(req: NextRequest) {
     const prepared = makeViralVideoRows(videos, { niche, sourceProvider: "manual", sourceQuery, sourceType: "manual" });
     if (!prepared.rows.length) return NextResponse.json({ ok: true, niche, inserted: 0, rejected: prepared.rejected, warning: "не нашлось валидных URL" });
 
-    const { error, count } = await db
-      .from("viral_videos")
-      .upsert(prepared.rows, { onConflict: "url", ignoreDuplicates: true, count: "exact" });
-    if (error) return NextResponse.json({ error: "viral_videos: " + error.message }, { status: 500 });
+    let inserted = 0;
+    let enriched = 0;
+    try {
+      const write = await safeUpsertReelsCorpusRows({
+        db: db as any,
+        rows: prepared.rows,
+        normalized: prepared.normalized,
+        sourceProvider: "manual",
+        sourceQuery,
+        sourceType: "manual",
+      });
+      inserted = write.inserted;
+      enriched = write.enriched;
+    } catch (error) {
+      return NextResponse.json({ error: "viral_videos: " + String((error as Error)?.message || error) }, { status: 500 });
+    }
 
     return NextResponse.json({
       ok: true,
       niche,
       received: videos.length,
       normalized: prepared.rows.length,
-      inserted: count ?? prepared.rows.length,
+      inserted,
+      enriched,
       rejected: prepared.rejected,
       sample: prepared.rows.slice(0, 5).map((r) => ({ url: r.url, score: r.virality_score, platform: r.platform })),
     });

@@ -20,6 +20,7 @@ import { isAuthorizedReelsBrainJobRequest } from "@/lib/factory/reelsBrainJobAut
 import { buildReelsBrainBudgetPlan, reelsBrainBudgetLimits } from "@/lib/factory/reelsBrainBudget";
 import { persistReelsBrainAutomationRun, summarizeReelsBrainAutomationRuns } from "@/lib/factory/reelsBrainAutomationRuns";
 import { rememberDiscoverySourceRun } from "@/lib/factory/reelsBrainDiscovery";
+import { safeUpsertReelsCorpusRows } from "@/lib/factory/reelsBrainCorpusUpsert";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -43,6 +44,7 @@ type BulkProviderRun = {
   found?: number;
   normalized?: number;
   inserted?: number;
+  enriched?: number;
   rejected?: number;
   elapsed_ms?: number;
   error?: string | null;
@@ -292,6 +294,7 @@ async function persistDiscoveryLearning(input: {
         inserted,
         low_yield: found > 0 && inserted === 0,
         empty_result: found === 0,
+        provider_error: Boolean(run.error),
         suppression_hours: run.error ? 12 : found > 0 && inserted === 0 ? 18 : 36,
       });
       learnedSources += 1;
@@ -455,14 +458,29 @@ async function runBulk(req: NextRequest, body: Record<string, unknown>, execute:
           sourceType: "provider",
         });
         let inserted = 0;
+        let enriched = 0;
         if (prepared.rows.length) {
-          const { count, error } = await db
-            .from("viral_videos")
-            .upsert(prepared.rows, { onConflict: "url", ignoreDuplicates: true, count: "exact" });
-          if (error) {
-            return { niche: lane.niche, platform: lane.platform, provider, query: lane.query, ok: false, error: error.message };
+          try {
+            const write = await safeUpsertReelsCorpusRows({
+              db: db as any,
+              rows: prepared.rows,
+              normalized: prepared.normalized,
+              sourceProvider: provider,
+              sourceQuery: lane.query,
+              sourceType: "provider",
+            });
+            inserted = write.inserted;
+            enriched = write.enriched;
+          } catch (error) {
+            return {
+              niche: lane.niche,
+              platform: lane.platform,
+              provider,
+              query: lane.query,
+              ok: false,
+              error: String((error as Error)?.message || error),
+            };
           }
-          inserted = count ?? prepared.rows.length;
         }
         return {
           niche: lane.niche,
@@ -474,6 +492,7 @@ async function runBulk(req: NextRequest, body: Record<string, unknown>, execute:
           found: result.videos.length,
           normalized: prepared.rows.length,
           inserted,
+          enriched,
           rejected: prepared.rejected,
           elapsed_ms: Date.now() - started,
           error: result.error || null,

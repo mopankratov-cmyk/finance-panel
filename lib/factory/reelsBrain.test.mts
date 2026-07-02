@@ -6,6 +6,7 @@ import {
   normalizeReelsVideo,
   scoreReelsVideo,
   toFiniteNumber,
+  toIsoDate,
 } from "./reelsBrain";
 
 let pass = 0, fail = 0;
@@ -33,13 +34,24 @@ function eq(a: unknown, b: unknown, m: string) { ok(JSON.stringify(a) === JSON.s
   eq(toFiniteNumber("1.5k"), 1500, "number: k suffix");
   eq(toFiniteNumber("2,5 млн"), 2500000, "number: russian mln suffix");
   eq(toFiniteNumber("12 345"), 12345, "number: spaces");
+  eq(toFiniteNumber("1,234"), 1234, "number: comma thousands");
+  eq(toFiniteNumber("1,234,567"), 1234567, "number: multi comma thousands");
+  eq(toFiniteNumber("1,5"), 1.5, "number: decimal comma");
+  eq(toFiniteNumber("3,4 млн"), 3400000, "number: decimal comma with mln suffix");
   eq(toFiniteNumber("bad"), null, "number: bad → null");
+}
+
+{
+  eq(toIsoDate("1719858000"), "2024-07-01T18:20:00.000Z", "date: epoch seconds normalize to ISO");
 }
 
 {
   const video = normalizeReelsVideo({
     url: "https://www.instagram.com/reel/R1/",
+    video_url: "https://cdn.example.com/reel.mp4",
     caption: "Первый хук #Beauty #sale",
+    transcript: "Смотри до конца",
+    author: "Beauty Lab",
     views: "100k",
     likes: "8k",
     comments_count: 250,
@@ -50,12 +62,24 @@ function eq(a: unknown, b: unknown, m: string) { ok(JSON.stringify(a) === JSON.s
   });
   ok(!!video, "normalize: valid url accepted");
   eq(video?.platform, "instagram", "normalize: platform inferred");
+  eq(video?.mediaUrl, "https://cdn.example.com/reel.mp4", "normalize: media url kept for downstream deep-analysis");
+  eq(video?.transcript, "Смотри до конца", "normalize: transcript kept");
+  eq(video?.author, "Beauty Lab", "normalize: author kept");
   eq(video?.hashtags, ["beauty", "sale"], "normalize: hashtags from caption");
   eq(video?.views, 100000, "normalize: views parsed");
+  eq(video?.publishedAt, "2026-06-20T00:00:00.000Z", "normalize: published_at normalized to ISO");
   const score = scoreReelsVideo(video!, Date.parse("2026-06-26T00:00:00Z"));
   ok(score.total > 35, "score: high-view outlier gets strong score");
   ok(score.outlier > 0, "score: outlier component present");
   eq(score.recency, 3, "score: recent boost");
+}
+
+{
+  const video = normalizeReelsVideo({
+    url: "https://www.tiktok.com/@a/video/123",
+    published_at: "1719858000",
+  });
+  eq(video?.publishedAt, "2024-07-01T18:20:00.000Z", "normalize: epoch string published_at");
 }
 
 {

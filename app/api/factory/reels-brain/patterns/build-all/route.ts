@@ -34,7 +34,7 @@ async function buildAll(req: NextRequest, body: Record<string, unknown>) {
     const to = Math.min(maxCorpusRows - 1, from + pageSize - 1);
     let query = db
       .from("viral_videos")
-      .select("id,url,platform,niche,caption,hook_text,format_detected,beat_structure,viral_reason,virality_score,views,sound_title")
+      .select("id,url,platform,niche,caption,hook_text,format_detected,beat_structure,viral_reason,virality_score,views,sound_title,analyzed_full")
       .order("virality_score", { ascending: false, nullsFirst: false })
       .range(from, to);
     if (requestedNiches.length) query = query.in("niche", requestedNiches);
@@ -56,7 +56,6 @@ async function buildAll(req: NextRequest, body: Record<string, unknown>) {
 
   const results = [];
   for (const [niche, rows] of Array.from(byNiche.entries()).sort(([a], [b]) => a.localeCompare(b))) {
-    const memory = buildReelsPatternMemory(niche, rows);
     const { data: existing, error: existingError } = await db
       .from("niche_playbooks")
       .select("playbook")
@@ -68,6 +67,7 @@ async function buildAll(req: NextRequest, body: Record<string, unknown>) {
     }
 
     const current = ((existing as { playbook: Record<string, unknown> }[] | null)?.[0]?.playbook || {}) as Record<string, unknown>;
+    const memory = buildReelsPatternMemory(niche, rows, new Date(), { playbook: current });
     const playbook = {
       ...current,
       niche,

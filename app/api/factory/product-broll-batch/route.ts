@@ -238,7 +238,7 @@ async function handleProductBrollBatch(body: ProductBrollBody) {
         assetQuality: picked.asset.qualityScore,
         assetRisk: picked.asset.risk,
       };
-    } else if (!imageUrl && !imageDataUrl && !diskPath && !cleanFirst) {
+    } else if (!imageUrl && !imageDataUrl && !diskPath) {
       if (!db) return NextResponse.json({ ok: false, error: "Supabase не настроен" }, { status: 500 });
       const existingTwin = await getLatestProductTwinByArticle(db, article);
       const picked = existingTwin ? await getBestProductTwinAsset(db, { twinId: existingTwin.twinId, useCase: "broll" }) : null;
@@ -290,6 +290,23 @@ async function handleProductBrollBatch(body: ProductBrollBody) {
         imageKind: resolved.imageKind,
         niche: resolved.niche,
         warning: resolved.warning,
+      };
+    }
+
+    // clean_first поверх twin/view/prepared-источника: твин-ассеты несут карточную вёрстку
+    // (вшитая подпись бренда, поля) — nano-banana возвращает чистый full-bleed кадр для video API.
+    if (cleanFirst && source.imageKind !== "clean_source") {
+      const publicUrl = await rehostImageForFal(source.imageUrl);
+      const prompt = cleanPrompt || buildProductCleanPrompt({ article, product, category });
+      const clean = await runNanoBananaEdit({ image: publicUrl, prompt });
+      if (!clean.ok) return NextResponse.json({ ok: false, error: clean.error, response_url: clean.responseUrl }, { status: clean.responseUrl ? 504 : 502 });
+      source = {
+        ...source,
+        imageUrl: clean.imageUrl,
+        imageKind: "clean_source",
+        originalKind: source.imageKind,
+        cleanPromptUsed: prompt,
+        cleanResponseUrl: clean.responseUrl,
       };
     }
 

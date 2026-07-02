@@ -17,6 +17,8 @@ test("feedback loop classifies market winners and losers", () => {
   assert.equal(feedback.losers, 1);
   assert.equal(feedback.total_orders, 3);
   assert.equal(feedback.by_platform[0].platform, "instagram");
+  assert.equal(feedback.outcome_schema.schema_ready, true);
+  assert.ok(feedback.outcome_schema.recommended_fields.includes("completion_rate"));
 });
 
 test("operating system builds product audience experiment and portfolio layers", () => {

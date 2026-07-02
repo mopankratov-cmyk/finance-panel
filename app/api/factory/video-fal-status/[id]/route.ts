@@ -22,6 +22,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
         niche,
         name: id,
         subdir: "fal-video",
+        stableKey: id,
       }).catch((e) => ({ status: "failed" as const, yandex_path: null, yandex_url: null, error: String((e as Error)?.message || e).slice(0, 160), client_url: "" })) : null;
       return NextResponse.json({ status: "done", video_url: s.videoUrl, yandex_archive: archive, progress: "" });
     }

@@ -21,11 +21,15 @@ const identity = {
     voiceMode: "heygen_tts",
     realismMode: "phone_selfie",
     emotionalBeat: "skeptical",
+    motionPrompt: "Small skeptical head tilt in the first second, then steadier eye contact; avoid looping head swings.",
+    expressiveness: "medium",
   });
   equal(plan.ok, true, "valid identity and natural script build a smoke plan");
   equal(plan.paidBlocked, true, "smoke plan is paid-blocked");
   equal(plan.dryRun?.endpoint, "/v3/videos", "smoke dry-run targets v3 video creation");
   equal(plan.dryRun?.body.avatar_id, identity.avatarLookId, "smoke uses selected look id");
+  equal(plan.dryRun?.body.motion_prompt, "Small skeptical head tilt in the first second, then steadier eye contact; avoid looping head swings.", "smoke plan carries motion prompt separately from spoken script");
+  equal(plan.dryRun?.body.expressiveness, "medium", "smoke plan carries expressiveness separately from spoken script");
   ok(JSON.stringify(plan.dryRun?.body).includes("do not over-smile"), "realism directives are attached to the script");
 }
 

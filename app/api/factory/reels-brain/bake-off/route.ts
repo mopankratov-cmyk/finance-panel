@@ -17,6 +17,7 @@ import {
   type ReelsBrainProvider,
 } from "@/lib/factory/reelsBrainSources";
 import { normalizeTargetPlatform, preferredSourceProvider, rememberSourceProvider } from "@/lib/factory/reelsBrainPlaybook";
+import { safeUpsertReelsCorpusRows } from "@/lib/factory/reelsBrainCorpusUpsert";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -32,6 +33,7 @@ interface BakeOffRun {
   elapsed_ms: number;
   error: string | null;
   inserted?: number;
+  enriched?: number;
   quality: ProviderQualitySummary;
 }
 
@@ -194,6 +196,7 @@ async function runBakeOffTask(
 
   const quality = summarizeProviderQuality(provider, query, result.videos);
   let inserted = 0;
+  let enriched = 0;
 
   if (persist && db && result.videos.length) {
     const relevantVideos = filterRelevantReelsInputs(query, result.videos);
@@ -204,10 +207,16 @@ async function runBakeOffTask(
       sourceType: "provider",
     });
     if (prepared.rows.length) {
-      const { count } = await db
-        .from("viral_videos")
-        .upsert(prepared.rows, { onConflict: "url", ignoreDuplicates: true, count: "exact" });
-      inserted = count ?? prepared.rows.length;
+      const write = await safeUpsertReelsCorpusRows({
+        db: db as any,
+        rows: prepared.rows,
+        normalized: prepared.normalized,
+        sourceProvider: provider,
+        sourceQuery: query,
+        sourceType: "provider",
+      });
+      inserted = write.inserted;
+      enriched = write.enriched;
     }
   }
 
@@ -218,6 +227,7 @@ async function runBakeOffTask(
     elapsed_ms: result.elapsedMs,
     error: result.error || null,
     inserted,
+    enriched,
     quality,
   };
 }

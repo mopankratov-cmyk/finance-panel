@@ -1,0 +1,80 @@
+{
+  "prior_results": [
+    {
+      "run_id": "katya_lab__g03__03__entryway_jacket__three_quarter_left__skeptical_pause",
+      "scores": {
+        "face_realism": 8,
+        "motion_realism": 8,
+        "lip_sync": 7,
+        "voice_naturalness": 7,
+        "room_authenticity": 8,
+        "anti_ai_first_2s": 8,
+        "repeatability_penalty": 2
+      },
+      "notes": "user-selected winner: UGC style works",
+      "fail_reasons": []
+    },
+    {
+      "run_id": "katya_lab__g03__04__mirror_selfie__three_quarter_left__friend_advice",
+      "scores": {
+        "face_realism": 8,
+        "motion_realism": 8,
+        "lip_sync": 7,
+        "voice_naturalness": 7,
+        "room_authenticity": 8,
+        "anti_ai_first_2s": 8,
+        "repeatability_penalty": 2
+      },
+      "notes": "user-selected winner: UGC style works",
+      "fail_reasons": []
+    },
+    {
+      "run_id": "katya_lab__g03__01__sofa_evening__three_quarter_left__tired_honest",
+      "scores": {
+        "face_realism": 5,
+        "motion_realism": 5,
+        "lip_sync": 6,
+        "voice_naturalness": 6,
+        "room_authenticity": 6,
+        "anti_ai_first_2s": 5,
+        "repeatability_penalty": 6
+      },
+      "notes": "user rejected",
+      "fail_reasons": [
+        "not UGC enough"
+      ]
+    },
+    {
+      "run_id": "katya_lab__g03__02__sofa_evening__three_quarter_left__tired_honest",
+      "scores": {
+        "face_realism": 5,
+        "motion_realism": 5,
+        "lip_sync": 6,
+        "voice_naturalness": 6,
+        "room_authenticity": 6,
+        "anti_ai_first_2s": 5,
+        "repeatability_penalty": 6
+      },
+      "notes": "user rejected",
+      "fail_reasons": [
+        "not UGC enough"
+      ]
+    },
+    {
+      "run_id": "katya_lab__g03__05__sofa_evening__three_quarter_left__skeptical_pause",
+      "scores": {
+        "face_realism": 5,
+        "motion_realism": 5,
+        "lip_sync": 6,
+        "voice_naturalness": 6,
+        "room_authenticity": 6,
+        "anti_ai_first_2s": 5,
+        "repeatability_penalty": 6
+      },
+      "notes": "user rejected",
+      "fail_reasons": [
+        "not UGC enough"
+      ]
+    }
+  ]
+}

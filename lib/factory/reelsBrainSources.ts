@@ -8,11 +8,12 @@ import {
   normalizeReelsVideo,
   scoreReelsVideo,
   toFiniteNumber,
+  toIsoDate,
   type NormalizedReelsVideo,
   type ReelsBrainInput,
 } from "./reelsBrain";
 
-export type BrightDataProvider = "bright_tiktok" | "bright_instagram" | "bright_youtube";
+export type BrightDataProvider = "bright_tiktok" | "bright_instagram" | "bright_instagram_post" | "bright_youtube";
 export type EnsembleDataProvider = "ensemble_tiktok" | "ensemble_instagram" | "ensemble_youtube";
 export type ReelsBrainProvider = TrendProvider | "youtube" | BrightDataProvider | EnsembleDataProvider;
 
@@ -101,13 +102,14 @@ const ENSEMBLE_BASE_URL = () => process.env.ENSEMBLEDATA_BASE_URL || "https://en
 const BRIGHT_DATASET_IDS: Record<BrightDataProvider, string> = {
   bright_tiktok: process.env.BRIGHT_DATA_TIKTOK_DATASET_ID || "gd_lu702nij2f790tmv9h",
   bright_instagram: process.env.BRIGHT_DATA_INSTAGRAM_REELS_DATASET_ID || "gd_lyclm20il4r5helnj",
+  bright_instagram_post: process.env.BRIGHT_DATA_INSTAGRAM_POSTS_DATASET_ID || "gd_lk5ns7kz21pck8jpis",
   bright_youtube: process.env.BRIGHT_DATA_YOUTUBE_DATASET_ID || "gd_lk56epmy2i5g7lzu0k",
 };
 
 const STOP_WORDS = new Set([
   "обзор", "отзыв", "тест", "распаковка", "находки", "маркетплейс", "для", "что", "как", "это", "the", "and", "for", "with", "review", "viral", "product",
 ]);
-const BRIGHT_PROVIDERS: BrightDataProvider[] = ["bright_tiktok", "bright_instagram", "bright_youtube"];
+const BRIGHT_PROVIDERS: BrightDataProvider[] = ["bright_tiktok", "bright_instagram", "bright_instagram_post", "bright_youtube"];
 const ENSEMBLE_PROVIDERS: EnsembleDataProvider[] = ["ensemble_tiktok", "ensemble_instagram", "ensemble_youtube"];
 
 function isBrightProvider(provider: ReelsBrainProvider): provider is BrightDataProvider {
@@ -199,6 +201,15 @@ function arrayValue(value: unknown): unknown[] {
 function firstUrlList(value: unknown): string | undefined {
   const r = rec(value);
   return str(arrayValue(r.url_list)[0], r.url);
+}
+
+function firstObjectUrl(value: unknown): string | undefined {
+  const items = arrayValue(value);
+  for (const item of items) {
+    const found = str(rec(item).url, rec(item).src, rec(item).play_addr, rec(item).download_addr);
+    if (found) return found;
+  }
+  return undefined;
 }
 
 function textRuns(value: unknown): string | undefined {
@@ -298,7 +309,20 @@ function tiktokInput(row: Record<string, any>): ReelsBrainInput {
   const durationMs = num(video.duration ?? aweme.duration);
   return {
     url,
-    video_url: str(firstUrlList(rec(video.play_addr)), firstUrlList(rec(video.download_addr)), row.video_url),
+    video_url: str(
+      firstUrlList(rec(video.play_addr)),
+      firstUrlList(rec(video.download_addr)),
+      firstUrlList(rec(video.playAddr)),
+      firstUrlList(rec(video.downloadAddr)),
+      firstObjectUrl(video.bit_rate),
+      row.video_url,
+      row.videoUrl,
+      row.play_url,
+      row.playUrl,
+      row.download_url,
+      row.downloadUrl,
+      row.webVideoUrl,
+    ),
     platform: "tiktok",
     caption: str(aweme.desc, aweme.description, row.description, row.caption, row.text, row.title),
     author: str(author.nickname, author.unique_id, author.username, row.profile_username),
@@ -309,7 +333,8 @@ function tiktokInput(row: Record<string, any>): ReelsBrainInput {
     shares: num(stats.share_count ?? row.share_count ?? row.shareCount ?? row.shares),
     followers: num(author.follower_count ?? author.fans ?? row.followers),
     duration_sec: durationMs ? Math.round(durationMs / 1000) : num(row.video_duration ?? row.duration),
-    published_at: str(aweme.create_time, row.create_time, row.createTimeISO, row.date_posted, row.published_at),
+    published_at: toIsoDate(aweme.create_time ?? row.create_time ?? row.createTimeISO ?? row.date_posted ?? row.published_at)
+      || str(aweme.create_time, row.create_time, row.createTimeISO, row.date_posted, row.published_at),
     hashtags: row.hashtags,
     sound_id: str(music.id, music.mid, music.music_id, music.musicId, row.sound_id),
     sound_title: str(music.title, music.music_name, music.musicName, row.sound_title),
@@ -321,10 +346,32 @@ function instagramInput(row: Record<string, any>): ReelsBrainInput {
   const user = rec(media.user || row.user);
   const caption = media.caption && typeof media.caption === "object" ? rec(media.caption).text : media.caption;
   const code = str(media.code, media.shortcode, row.shortcode);
+  const postContent = arrayValue(row.post_content);
+  const firstVideoContent = postContent.find((item) => str(rec(item).type)?.toLowerCase() === "video");
+  const firstPhotoContent = postContent.find((item) => str(rec(item).type)?.toLowerCase() === "photo");
+  const rowVideos = arrayValue(row.videos);
+  const rowImages = arrayValue(row.images);
   const url = str(media.url, row.url) || (code ? `https://www.instagram.com/reel/${code}/` : undefined);
+  const videoUrl = str(
+    media.video_url,
+    firstObjectUrl(media.video_versions),
+    firstObjectUrl(rowVideos),
+    str(firstVideoContent && rec(firstVideoContent).url),
+    row.video_url,
+    row.videoUrl,
+    row.video_versions?.[0]?.url,
+  );
+  const imageUrl = str(
+    row.thumbnail,
+    Array.isArray(row.photos) ? row.photos[0] : null,
+    str(firstPhotoContent && rec(firstPhotoContent).url),
+    firstObjectUrl(rowImages),
+  );
   return {
     url,
-    video_url: str(media.video_url, row.video_url),
+    video_url: videoUrl,
+    media_url: videoUrl || imageUrl,
+    image_url: imageUrl,
     platform: "instagram",
     caption: str(caption, media.description, row.description, row.caption),
     author: str(user.username, row.user_posted, row.username),
@@ -508,6 +555,18 @@ function brightInstagramInputs(query: string, limit: number): { input: Record<st
   };
 }
 
+function brightInstagramPostInputs(query: string): { input: Record<string, unknown>[]; params: Record<string, string> } {
+  const queryUrls = urlsFromText(query, "instagram");
+  const postUrls = queryUrls.filter((url) => /\/p\//i.test(url));
+  if (!postUrls.length) {
+    throw new Error("bright_instagram_post требует Instagram post URL (/p/...)");
+  }
+  return {
+    input: Array.from(new Set(postUrls)).slice(0, 10).map((url) => ({ url })),
+    params: { dataset_id: BRIGHT_DATASET_IDS.bright_instagram_post },
+  };
+}
+
 async function fetchBrightData(provider: BrightDataProvider, query: string, limit: number): Promise<ReelsBrainInput[]> {
   if (provider === "bright_tiktok") {
     const rows = await brightScrape(
@@ -522,6 +581,11 @@ async function fetchBrightData(provider: BrightDataProvider, query: string, limi
       { dataset_id: BRIGHT_DATASET_IDS.bright_youtube, type: "discover_new", discover_by: "keyword" },
     );
     return rows.map((row) => apiRowToInput("youtube", row)).filter((input) => input.url && shortFormOnly(input)).slice(0, limit);
+  }
+  if (provider === "bright_instagram_post") {
+    const { input, params } = brightInstagramPostInputs(query);
+    const rows = await brightScrape(input, params);
+    return rows.map((row) => apiRowToInput("instagram", row)).filter((video) => video.url).slice(0, limit);
   }
   const { input, params } = brightInstagramInputs(query, limit);
   const rows = await brightScrape(input, params);
@@ -604,6 +668,70 @@ function sampleShape(value: unknown, depth = 0): unknown {
     else out[key] = typeof item;
   }
   return out;
+}
+
+function collectUrlishFields(value: unknown, prefix = "", depth = 0, out: Array<{ path: string; value: string }> = []): Array<{ path: string; value: string }> {
+  if (depth > 4 || value == null) return out;
+  if (Array.isArray(value)) {
+    value.slice(0, 6).forEach((item, index) => collectUrlishFields(item, `${prefix}[${index}]`, depth + 1, out));
+    return out;
+  }
+  if (typeof value !== "object") return out;
+  const row = value as Record<string, unknown>;
+  for (const [key, item] of Object.entries(row).slice(0, 80)) {
+    const path = prefix ? `${prefix}.${key}` : key;
+    if (typeof item === "string") {
+      const lower = key.toLowerCase();
+      if ((/^https?:\/\//i.test(item) || item.includes(".mp4")) && (
+        lower.includes("url")
+        || lower.includes("video")
+        || lower.includes("play")
+        || lower.includes("download")
+        || lower.includes("src")
+      )) {
+        out.push({ path, value: item.slice(0, 500) });
+      }
+      continue;
+    }
+    collectUrlishFields(item, path, depth + 1, out);
+  }
+  return out;
+}
+
+export async function debugBrightInstagramQuery(query: string, limit = 1): Promise<Record<string, unknown>> {
+  if (!BRIGHT_KEY()) return { configured: false, error: "BRIGHT_DATA_API_KEY не настроен" };
+  const { input, params } = brightInstagramInputs(query, Math.max(1, Math.min(limit, 3)));
+  const rows = await brightScrape(input, params);
+  const first = rows[0] || null;
+  return {
+    configured: true,
+    query,
+    count: rows.length,
+    input,
+    params,
+    first_shape: sampleShape(first),
+    first_keys: first ? Object.keys(first).slice(0, 120) : [],
+    urlish_fields: collectUrlishFields(first).slice(0, 80),
+    normalized_sample: first ? instagramInput(first) : null,
+  };
+}
+
+export async function debugBrightInstagramPostQuery(query: string): Promise<Record<string, unknown>> {
+  if (!BRIGHT_KEY()) return { configured: false, error: "BRIGHT_DATA_API_KEY не настроен" };
+  const { input, params } = brightInstagramPostInputs(query);
+  const rows = await brightScrape(input, params);
+  const first = rows[0] || null;
+  return {
+    configured: true,
+    query,
+    count: rows.length,
+    input,
+    params,
+    first_shape: sampleShape(first),
+    first_keys: first ? Object.keys(first).slice(0, 120) : [],
+    urlish_fields: collectUrlishFields(first).slice(0, 80),
+    normalized_sample: first ? instagramInput(first) : null,
+  };
 }
 
 export async function debugEnsembleInstagramSearch(query: string): Promise<Record<string, unknown>> {
@@ -711,14 +839,20 @@ export async function fetchReelsBrainProvider(provider: ReelsBrainProvider, quer
       elapsedMs: Date.now() - started,
       videos: videos.map((v): ReelsBrainInput => ({
         url: v.url,
+        video_url: v.video_url,
         platform: v.platform,
         caption: v.caption || v.title,
         title: v.title,
+        transcript: v.transcript,
+        author: v.author,
+        username: v.username,
         views: v.views,
         likes: v.likes,
         comments: v.comments,
         shares: v.shares,
         followers: v.followers,
+        duration_sec: v.duration_sec,
+        hashtags: v.hashtags,
         sound_id: v.sound_id,
         sound_title: v.sound_title,
         published_at: v.published_at,

@@ -24,6 +24,8 @@ ok(/process\.env\.FAL_KEY && !process\.env\.FAL_BILLING_KEY/.test(route), "route
 ok(/export async function GET/.test(route) && /bodyFromSearchParams/.test(route), "route supports browser-runnable operator GET mode");
 ok(/body\.operator_get === true \? 2 : 20/.test(route), "operator GET paid mode is capped to two jobs");
 ok(/status_route: "\/api\/factory\/video-fal-status\/\{task_id\}\?article="/.test(route), "route returns status route with article/niche archive metadata");
+ok(/cleanFirst && source\.imageKind !== "clean_source"/.test(route), "clean_first also cleans twin/view/prepared sources (strips card framing before video)");
+ok(/rehostImageForFal\(source\.imageUrl\)/.test(route), "twin clean pass rehosts yandex-disk source to public URL for nano-banana");
 
 console.log(`\nproductBrollBatchRouteContract: ${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

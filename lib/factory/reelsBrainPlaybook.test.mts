@@ -162,6 +162,16 @@ function eq(a: unknown, b: unknown, m: string) { ok(JSON.stringify(a) === JSON.s
     updated_at: "2026-12-27T00:00:00.000Z",
   });
   playbook = rememberQueryPerformance(playbook, {
+    query: "water gun dead query",
+    platform: "tiktok",
+    found: 0,
+    relevant: 0,
+    inserted: 0,
+    empty_result: true,
+    suppression_hours: 48,
+    updated_at: "2026-12-27T01:00:00.000Z",
+  });
+  playbook = rememberQueryPerformance(playbook, {
     query: "water gun weak query",
     platform: "tiktok",
     found: 4,
@@ -169,7 +179,7 @@ function eq(a: unknown, b: unknown, m: string) { ok(JSON.stringify(a) === JSON.s
     inserted: 0,
     low_yield: true,
     suppression_hours: 24,
-    updated_at: "2026-12-27T00:00:00.000Z",
+    updated_at: "2026-12-27T02:00:00.000Z",
   });
   playbook = rememberQueryPerformance(playbook, {
     query: "water gun weak query",
@@ -179,12 +189,27 @@ function eq(a: unknown, b: unknown, m: string) { ok(JSON.stringify(a) === JSON.s
     inserted: 0,
     low_yield: true,
     suppression_hours: 24,
-    updated_at: "2026-12-27T01:00:00.000Z",
+    updated_at: "2026-12-27T03:00:00.000Z",
   });
-  ok(suppressedSourceQueries(playbook, "tiktok").some((row) => row.query === "water gun dead query"), "queries: empty query gets suppressed");
+  ok(suppressedSourceQueries(playbook, "tiktok").some((row) => row.query === "water gun dead query"), "queries: empty query gets suppressed after repeated empties");
   ok(suppressedSourceQueries(playbook, "tiktok").some((row) => row.query === "water gun weak query"), "queries: repeated weak query gets suppressed");
   ok(!nextRecommendedSourceQueries(playbook, "water gun", "tiktok").includes("water gun dead query"), "queries: suppressed empty query removed from rotation");
   ok(!nextRecommendedSourceQueries(playbook, "water gun", "tiktok").includes("water gun weak query"), "queries: suppressed weak query removed from rotation");
+}
+
+{
+  let playbook = rememberQueryPerformance({}, {
+    query: "provider hiccup query",
+    platform: "tiktok",
+    found: 0,
+    relevant: 0,
+    inserted: 0,
+    empty_result: true,
+    provider_error: true,
+    updated_at: "2026-12-27T00:00:00.000Z",
+  });
+  eq(queryLeaderboard(playbook, "tiktok")[0]?.empty_runs, 0, "queries: provider error does not increment empty_runs");
+  ok(!suppressedSourceQueries(playbook, "tiktok").some((row) => row.query === "provider hiccup query"), "queries: provider error does not suppress query");
 }
 
 {
@@ -218,6 +243,16 @@ function eq(a: unknown, b: unknown, m: string) { ok(JSON.stringify(a) === JSON.s
     empty_result: true,
     suppression_hours: 1,
     updated_at: "2026-06-26T00:00:00.000Z",
+  });
+  playbook = rememberQueryPerformance(playbook, {
+    query: "water gun recovery query",
+    platform: "tiktok",
+    found: 0,
+    relevant: 0,
+    inserted: 0,
+    empty_result: true,
+    suppression_hours: 1,
+    updated_at: "2026-06-26T01:00:00.000Z",
   });
   ok(recoverableSourceQueries(playbook, "tiktok").some((row) => row.query === "water gun recovery query"), "queries: expired suppression becomes recoverable");
   eq(nextRecommendedSourceQuery(playbook, "water gun", "tiktok"), "water gun recovery query", "queries: recovery query returns first for soft re-check");

@@ -471,6 +471,7 @@ export function rememberQueryPerformance(
     updated_at?: string;
     low_yield?: boolean;
     empty_result?: boolean;
+    provider_error?: boolean;
     suppression_hours?: number;
   },
 ): Record<string, unknown> {
@@ -485,15 +486,16 @@ export function rememberQueryPerformance(
   const found = Math.max(0, num(input.found, 0));
   const relevant = Math.max(0, num(input.relevant, 0));
   const inserted = Math.max(0, num(input.inserted, 0));
+  const providerError = Boolean(input.provider_error);
   const duplicatePenalty = found > 0 && inserted === 0 ? Math.min(30, found * 1.5) : 0;
   const score = Math.max(0, Math.round((relevant * 3 + inserted * 4 + found - duplicatePenalty) * 10) / 10);
   const current = stats.find((row) => row.platform === platform && row.query === query);
   const lowYield = Boolean(input.low_yield) || (found > 0 && inserted === 0);
-  const emptyResult = Boolean(input.empty_result) || found === 0;
+  const emptyResult = !providerError && (Boolean(input.empty_result) || found === 0);
   const nextLowYieldRuns = lowYield ? (current?.low_yield_runs || 0) + 1 : 0;
-  const nextEmptyRuns = emptyResult ? (current?.empty_runs || 0) + 1 : 0;
+  const nextEmptyRuns = providerError ? (current?.empty_runs || 0) : (emptyResult ? (current?.empty_runs || 0) + 1 : 0);
   const suppressionHours = Math.max(0, num(input.suppression_hours, emptyResult ? 48 : 24));
-  const suppressedUntil = nextEmptyRuns >= 1 || nextLowYieldRuns >= 2
+  const suppressedUntil = nextEmptyRuns >= 2 || nextLowYieldRuns >= 2
     ? new Date(new Date(updatedAt).getTime() + suppressionHours * 60 * 60 * 1000).toISOString()
     : undefined;
   const next: ReelsBrainQueryStat = {

@@ -1,0 +1,281 @@
+{
+  "generated_at": "2026-07-02",
+  "source": "HeyGen API live fetch after /tmp loss",
+  "voice": {
+    "anya_ru_female": "37832e32d4f7475ab7a1cb0db8e5dd66",
+    "note": "Рабочий id Anya подтверждён живым рендером 2026-07-02; вариант с хвостом ...743ff1d55ec9a0cf невалиден (Voice not found)"
+  },
+  "minimax_voice": {
+    "model": "fal-ai/minimax/speech-02-hd",
+    "voice_id": "Calm_Woman",
+    "settings": {
+      "speed": 0.9,
+      "pitch": -1,
+      "language_boost": "Russian",
+      "sample_rate": 24000,
+      "channel": 1
+    },
+    "pause_syntax": "<#0.35#>",
+    "heygen_payload": "flat audio_url + engine {type: avatar_iv}"
+  },
+  "bloggers": {
+    "manya": {
+      "group_id": "fc29c149d7994673b254dd121c1dc516",
+      "display_name": "Маня",
+      "niche": "cosmetics",
+      "hero_image_key": "image/30f0ed8caadb430289106b4d2d469dc8/original.png",
+      "trained": true,
+      "looks": {
+        "plain_wall": {
+          "look_id": "b9b227747a8748898edc82fd7230a9fb",
+          "name": "look__manya__14__plain_wall",
+          "status": "completed"
+        },
+        "park_walk": {
+          "look_id": "6691941dc70d433694d3742ca224445d",
+          "name": "look__manya__13__park_walk",
+          "status": "completed"
+        },
+        "bed_morning": {
+          "look_id": "33f82d2af8fa436695b24f16fe2efb41",
+          "name": "look__manya__12__bed_morning",
+          "status": "completed"
+        },
+        "street_entrance": {
+          "look_id": "e96b41bc26984c32a86c893ee27b41de",
+          "name": "look__manya__11__street_entrance",
+          "status": "completed"
+        },
+        "car_close": {
+          "look_id": "f3d97943d5854f28bda126ad03f02bab",
+          "name": "look__manya__10__car_close",
+          "status": "completed"
+        },
+        "balcony_half": {
+          "look_id": "b99ac80267724e0893c4d5e3484e2579",
+          "name": "look__manya__09__balcony_half",
+          "status": "completed"
+        },
+        "desk_half": {
+          "look_id": "ed711f1f052d42f0b8b3460bb20e7f7a",
+          "name": "look__manya__08__desk_half",
+          "status": "completed"
+        },
+        "soft_window": {
+          "look_id": "0d606429bb7843f886241d8be27c5131",
+          "name": "look__manya__07__soft_window",
+          "status": "completed"
+        },
+        "hallway_full": {
+          "look_id": "bef58282ef194396a3158757c9218387",
+          "name": "look__manya__06__hallway_full",
+          "status": "completed"
+        },
+        "mirror_close": {
+          "look_id": "f06873dbf95e462aa0d1f6c0eb0e8408",
+          "name": "look__manya__05__mirror_close",
+          "status": "completed"
+        },
+        "mirror_full": {
+          "look_id": "2a7436c48dd8495fac88a4211f4df84f",
+          "name": "look__manya__04__mirror_full",
+          "status": "completed"
+        },
+        "sofa_evening": {
+          "look_id": "65d7be58a12e4e0b82bae898a6dbb2ae",
+          "name": "look__manya__03__sofa_evening",
+          "status": "completed"
+        },
+        "kitchen_close": {
+          "look_id": "59109b22388f49cc92a10a3fb1192474",
+          "name": "look__manya__02__kitchen_close",
+          "status": "completed"
+        },
+        "kitchen_counter": {
+          "look_id": "8e0512e45a5c43f6b8a2efddef65f1ee",
+          "name": "look__manya__01__kitchen_counter",
+          "status": "completed"
+        },
+        "text_plate": {
+          "look_id": "25d28aa652294046bf32a14908687307",
+          "name": "text_plate",
+          "burned_text": "ЧЕСТНЫЙ ОТЗЫВ",
+          "status": "completed"
+        }
+      },
+      "training_photo_looks": 20
+    },
+    "vika": {
+      "group_id": "1b2482bea0a843fa83ae0e02619b5c61",
+      "display_name": "Вика",
+      "niche": "clothing",
+      "hero_image_key": "image/7b464d8767b14e1b9cb23de67dd6f6dd/original.png",
+      "trained": true,
+      "looks": {
+        "plain_wall": {
+          "look_id": "0da6e7655931462f956050cf0586e719",
+          "name": "look__vika__14__plain_wall",
+          "status": "completed"
+        },
+        "park_walk": {
+          "look_id": "051c0d54d8aa4080aaf0cde94f191905",
+          "name": "look__vika__13__park_walk",
+          "status": "completed"
+        },
+        "bed_morning": {
+          "look_id": "03a50ea29b9a4d808e95864c8b95ac9e",
+          "name": "look__vika__12__bed_morning",
+          "status": "completed"
+        },
+        "street_entrance": {
+          "look_id": "5cbdd6f95c474059a5caff389f682fd0",
+          "name": "look__vika__11__street_entrance",
+          "status": "completed"
+        },
+        "car_close": {
+          "look_id": "96171867fa664fb18b5f257f84c0f63a",
+          "name": "look__vika__10__car_close",
+          "status": "completed"
+        },
+        "balcony_half": {
+          "look_id": "600a6781035b401b9347b1f4ecc09217",
+          "name": "look__vika__09__balcony_half",
+          "status": "completed"
+        },
+        "desk_half": {
+          "look_id": "f624fff7a0ea4219b2c1bf5352da7c49",
+          "name": "look__vika__08__desk_half",
+          "status": "completed"
+        },
+        "soft_window": {
+          "look_id": "72c8f1424a4e4d2da4433a0c2e5be4bb",
+          "name": "look__vika__07__soft_window",
+          "status": "completed"
+        },
+        "hallway_full": {
+          "look_id": "363a221482bb49e2885049b25192fd8f",
+          "name": "look__vika__06__hallway_full",
+          "status": "completed"
+        },
+        "mirror_close": {
+          "look_id": "2d5d8b6f5511488d99b36fea3467d3d5",
+          "name": "look__vika__05__mirror_close",
+          "status": "completed"
+        },
+        "mirror_full": {
+          "look_id": "aab29113a2144ccab92c9ece9b1ba1fa",
+          "name": "look__vika__04__mirror_full",
+          "status": "completed"
+        },
+        "sofa_evening": {
+          "look_id": "dcadcdbf724a4060967d5bc81bbefb45",
+          "name": "look__vika__03__sofa_evening",
+          "status": "completed"
+        },
+        "kitchen_close": {
+          "look_id": "b629cf7418944e48b5483885175ca394",
+          "name": "look__vika__02__kitchen_close",
+          "status": "completed"
+        },
+        "kitchen_counter": {
+          "look_id": "772b57a2b1a6455fa0602a6b09a64a43",
+          "name": "look__vika__01__kitchen_counter",
+          "status": "completed"
+        },
+        "text_plate": {
+          "look_id": "2a947bc77c464ad29f42485f47e4700e",
+          "name": "text_plate",
+          "burned_text": "ЧТО ПРИШЛО С WB",
+          "status": "completed"
+        }
+      },
+      "training_photo_looks": 24
+    },
+    "olya": {
+      "group_id": "3379c2f78ac145edb7fa67417e698013",
+      "display_name": "Оля",
+      "niche": "toys",
+      "hero_image_key": "image/c725b5f9bdd74214832dffef753da8d1/original.png",
+      "trained": true,
+      "looks": {
+        "plain_wall": {
+          "look_id": "cbd7d508d1284ca38cd876b73ef86018",
+          "name": "look__olya__14__plain_wall",
+          "status": "completed"
+        },
+        "park_walk": {
+          "look_id": "b264d7a44a58486da6eb0c23e9b9ac6f",
+          "name": "look__olya__13__park_walk",
+          "status": "completed"
+        },
+        "bed_morning": {
+          "look_id": "35e82a4425e54b4eb705aaac707e56cc",
+          "name": "look__olya__12__bed_morning",
+          "status": "completed"
+        },
+        "street_entrance": {
+          "look_id": "d9fedfef5f0447829e8b6ead8432626d",
+          "name": "look__olya__11__street_entrance",
+          "status": "completed"
+        },
+        "car_close": {
+          "look_id": "87e6ae6ac6654d4b919fbb3a8a5fe6f6",
+          "name": "look__olya__10__car_close",
+          "status": "completed"
+        },
+        "balcony_half": {
+          "look_id": "b528619fb0d04d5092a1c1ec65d524c3",
+          "name": "look__olya__09__balcony_half",
+          "status": "completed"
+        },
+        "desk_half": {
+          "look_id": "8b2aa80d7d2b46de8c32c30a975b19f1",
+          "name": "look__olya__08__desk_half",
+          "status": "completed"
+        },
+        "soft_window": {
+          "look_id": "6c00039a13dd4fa0b11de53601692b55",
+          "name": "look__olya__07__soft_window",
+          "status": "completed"
+        },
+        "hallway_full": {
+          "look_id": "467d9b38411147699b547894b61e1cdc",
+          "name": "look__olya__06__hallway_full",
+          "status": "completed"
+        },
+        "mirror_close": {
+          "look_id": "6359cf4afc1849d798fdfa4e0873f27a",
+          "name": "look__olya__05__mirror_close",
+          "status": "completed"
+        },
+        "mirror_full": {
+          "look_id": "bf372b6fd43e42649ebc8904d428dad5",
+          "name": "look__olya__04__mirror_full",
+          "status": "completed"
+        },
+        "sofa_evening": {
+          "look_id": "949fbb083e894d2eba5f0885b8446982",
+          "name": "look__olya__03__sofa_evening",
+          "status": "completed"
+        },
+        "kitchen_close": {
+          "look_id": "f4ec2fd1a71a41cb8372545716f7e2c7",
+          "name": "look__olya__02__kitchen_close",
+          "status": "completed"
+        },
+        "kitchen_counter": {
+          "look_id": "6a6f93de3dd640619adaa1a467cd091d",
+          "name": "look__olya__01__kitchen_counter",
+          "status": "completed"
+        },
+        "text_plate": {
+          "look_id": "d608f0f1e5c74e399acb2b1bbc1a41a5",
+          "name": "text_plate",
+          "burned_text": "НАШЛА, ЧЕМ ЗАНЯТЬ РЕБЁНКА",
+          "status": "completed"
+        }
+      },
+      "training_photo_looks": 22
+    }
+  }
+}

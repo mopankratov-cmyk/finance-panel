@@ -2,17 +2,25 @@
 // Вызовы идут с нашего сервера; скрап выполняется у провайдера (гео-блок РФ не мешает).
 // Активируется ключом: APIFY_TOKEN (+APIFY_ACTOR) или VIRLO_API_KEY. Trendsee — позже, если дадут API.
 
+import { toIsoDate } from "./reelsBrain";
+
 export type TrendProvider = "apify" | "apify_tiktok" | "apify_instagram" | "apify_youtube" | "virlo";
 type TrendPlatform = "tiktok" | "instagram" | "youtube";
 export interface ViralVideo {
   url?: string;
+  video_url?: string;
   caption?: string;
   title?: string;
+  transcript?: string;
+  author?: string;
+  username?: string;
   views?: number;
   likes?: number;
   comments?: number;
   shares?: number;
   followers?: number;
+  duration_sec?: number;
+  hashtags?: string[];
   platform?: string;
   sound_id?: string;
   sound_title?: string;
@@ -190,6 +198,8 @@ async function fromApify(niche: string, limit: number, opts: { actor?: string; p
   const token = process.env.APIFY_TOKEN!;
   const actor = opts.actor || process.env.APIFY_ACTOR || "lexis-solutions~tiktok-trending-videos-scraper";
   const platform = opts.platform || "tiktok";
+  const instagramUrls = platform === "instagram" ? instagramDirectUrls(niche) : [];
+  const instagramDirectOnly = platform === "instagram" && instagramUrls.some((url) => /\/(reel|p|tv)\//i.test(url));
   const input = {
     searchQueries: [niche],
     queries: [niche],
@@ -205,16 +215,23 @@ async function fromApify(niche: string, limit: number, opts: { actor?: string; p
     proxy: { useApifyProxy: true },
   };
   const actorInput = platform === "instagram"
-    ? {
-      ...input,
-      directUrls: instagramDirectUrls(niche),
-      resultsType: "posts",
-      resultsLimit: limit,
-      search: niche,
-      searchType: "hashtag",
-      addParentData: false,
-      onlyPostsNewerThan: "30 days",
-    }
+    ? (instagramDirectOnly
+      ? {
+        directUrls: instagramUrls.filter((url) => /\/(reel|p|tv)\//i.test(url)).slice(0, limit),
+        resultsType: "posts",
+        resultsLimit: limit,
+        addParentData: true,
+      }
+      : {
+        ...input,
+        directUrls: instagramUrls,
+        resultsType: "posts",
+        resultsLimit: limit,
+        search: niche,
+        searchType: "hashtag",
+        addParentData: false,
+        onlyPostsNewerThan: "30 days",
+      })
     : platform === "tiktok"
       ? tiktokActorInput(niche, limit)
     : input;
@@ -223,11 +240,26 @@ async function fromApify(niche: string, limit: number, opts: { actor?: string; p
     const r = await fetch(`https://api.apify.com/v2/acts/${actorPath}/run-sync-get-dataset-items?token=${token}&maxItems=${limit}`, {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(actorInput), signal: AbortSignal.timeout(55000),
     });
-    if (!r.ok) return [];
+    if (!r.ok) throw new Error(`Apify ${actorName} ${r.status}`);
     const items = (await r.json().catch(() => [])) as Record<string, unknown>[];
     return (Array.isArray(items) ? items : []).slice(0, limit).map((it) => ({
       url: (it.webVideoUrl || it.url || it.postPage || it.shortUrl || it.videoUrl || (it.shortCode ? `https://www.instagram.com/reel/${it.shortCode}/` : "")) as string,
+      video_url: (it.videoUrl || it.video_url || it.downloadUrl || it.webVideoUrl || (it.video_versions as Array<Record<string, unknown>> | undefined)?.[0]?.url || "") as string,
       caption: (it.text || it.caption || it.title || it.desc || it.description || it.alt || "") as string,
+      transcript: (it.transcript || it.subtitle || it.subtitles || "") as string,
+      author: ((it.authorMeta as Record<string, unknown> | undefined)?.name
+        || (it.authorMeta as Record<string, unknown> | undefined)?.nickname
+        || (it.authorMeta as Record<string, unknown> | undefined)?.username
+        || (it.authorMeta as Record<string, unknown> | undefined)?.uniqueId
+        || it.author
+        || it.username
+        || (it.ownerUsername as string)
+        || "") as string,
+      username: ((it.authorMeta as Record<string, unknown> | undefined)?.username
+        || (it.authorMeta as Record<string, unknown> | undefined)?.uniqueId
+        || it.username
+        || (it.ownerUsername as string)
+        || "") as string,
       views: num(it.playCount ?? it.views ?? it.viewCount ?? it.videoViewCount ?? it.videoPlayCount),
       likes: num(it.diggCount ?? it.likes ?? it.likeCount ?? it.likesCount),
       comments: num(it.commentCount ?? it.comments ?? it.commentsCount ?? it.commentsCount),
@@ -238,10 +270,17 @@ async function fromApify(niche: string, limit: number, opts: { actor?: string; p
         (it.authorStats as Record<string, unknown> | undefined)?.followerCount ??
         it.followers,
       ),
+      duration_sec: num(it.videoDuration ?? it.video_duration ?? it.duration ?? it.videoLength ?? it.length),
+      hashtags: Array.isArray(it.hashtags)
+        ? (it.hashtags as unknown[]).map((tag) => String(tag || "")).filter(Boolean)
+        : typeof it.hashtags === "string"
+          ? String(it.hashtags).split(/[,\s]+/).map((tag) => tag.trim()).filter(Boolean)
+          : [],
       platform: String(it.platform || platform),
       sound_id: String((it.musicMeta as Record<string, unknown> | undefined)?.musicId ?? it.musicId ?? it.sound_id ?? ""),
       sound_title: String((it.musicMeta as Record<string, unknown> | undefined)?.musicName ?? it.musicName ?? it.sound_title ?? ""),
-      published_at: String(it.createTimeISO ?? it.createTime ?? it.date ?? it.timestamp ?? ""),
+      published_at: toIsoDate(it.createTimeISO ?? it.createTime ?? it.date ?? it.timestamp ?? "")
+        || String(it.createTimeISO ?? it.createTime ?? it.date ?? it.timestamp ?? ""),
     })).filter((v) => v.caption || v.url);
   };
   try {
@@ -250,12 +289,18 @@ async function fromApify(niche: string, limit: number, opts: { actor?: string; p
       : platform === "tiktok"
         ? tiktokActorCandidates(actor)
         : [actor];
+    let lastError: Error | null = null;
     for (const actorName of actorCandidates) {
-      const videos = await runActor(actorName);
-      if (videos.length) return videos;
+      try {
+        const videos = await runActor(actorName);
+        if (videos.length) return videos;
+      } catch (error) {
+        lastError = error as Error;
+      }
     }
+    if (lastError) throw lastError;
     return [];
-  } catch { return []; }
+  } catch (error) { throw error; }
 }
 
 // Virlo через MCP (Streamable HTTP, JSON-RPC). VIRLO_API_KEY = токен, VIRLO_MCP_URL — эндпоинт.
@@ -281,18 +326,32 @@ async function fromVirlo(niche: string, limit: number): Promise<ViralVideo[]> {
     const data = (JSON.parse(textBlock) as { data?: Record<string, unknown>[] }).data || [];
     return data.slice(0, limit).map((it) => ({
       url: (it.url || "") as string,
+      video_url: (it.video_url || it.videoUrl || it.download_url || "") as string,
       caption: (it.description || "") as string,
+      transcript: (it.transcript || "") as string,
+      author: ((it.author as Record<string, unknown> | undefined)?.nickname
+        || (it.author as Record<string, unknown> | undefined)?.username
+        || (it.author as Record<string, unknown> | undefined)?.unique_id
+        || "") as string,
+      username: ((it.author as Record<string, unknown> | undefined)?.username
+        || (it.author as Record<string, unknown> | undefined)?.unique_id
+        || "") as string,
       views: num(it.views),
       likes: num(it.number_of_likes ?? it.likes),
       comments: num(it.number_of_comments ?? it.comments ?? it.comment_count),
       shares: num(it.number_of_shares ?? it.shares ?? it.share_count),
       followers: num((it.author as Record<string, unknown> | undefined)?.followers ?? (it.author as Record<string, unknown> | undefined)?.follower_count ?? it.followers),
+      duration_sec: num(it.duration ?? it.video_duration),
+      hashtags: Array.isArray(it.hashtags)
+        ? (it.hashtags as unknown[]).map((tag) => String(tag || "")).filter(Boolean)
+        : [],
       platform: String(it.platform || "tiktok"),
       sound_id: String((it.sound as Record<string, unknown> | undefined)?.id ?? it.sound_id ?? ""),
       sound_title: String((it.sound as Record<string, unknown> | undefined)?.title ?? it.sound_title ?? ""),
-      published_at: String(it.published_at ?? it.created_at ?? it.date ?? ""),
+      published_at: toIsoDate(it.published_at ?? it.created_at ?? it.date ?? "")
+        || String(it.published_at ?? it.created_at ?? it.date ?? ""),
     })).filter((v) => v.caption || v.url);
-  } catch { return []; }
+  } catch (error) { throw error; }
 }
 
 // ── Virlo Orbit: продукт-ориентированный поиск по ключевым фразам (асинхронный) ──

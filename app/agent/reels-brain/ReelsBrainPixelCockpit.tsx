@@ -108,6 +108,7 @@ function Gauge({ score, tone }: { score: number; tone: ReturnType<typeof statusT
 export default function ReelsBrainPixelCockpit() {
   const [learning, setLearning] = useState<JsonRecord | null>(null);
   const [corpus, setCorpus] = useState<JsonRecord | null>(null);
+  const [learningPlan, setLearningPlan] = useState<JsonRecord | null>(null);
   const [summaries, setSummaries] = useState<JsonRecord[]>([]);
   const [selectedPattern, setSelectedPattern] = useState<JsonRecord | null>(null);
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
@@ -119,14 +120,16 @@ export default function ReelsBrainPixelCockpit() {
       try {
         setState("loading");
         const nicheParam = NICHES.join(",");
-        const [learningData, corpusData, ...summaryData] = await Promise.all([
+        const [learningData, corpusData, learningPlanData, ...summaryData] = await Promise.all([
           getJson(`/api/factory/reels-brain/learning-economics?niches=${encodeURIComponent(nicheParam)}&limit=80`),
           getJson("/api/factory/reels-brain/corpus?limit=200&min_score=0"),
+          getJson(`/api/factory/reels-brain/learning-plan?niches=${encodeURIComponent(nicheParam)}&platforms=tiktok,instagram,youtube&target=10000&max_backlog_before_analyze=180`),
           ...NICHES.map((niche) => getJson(`/api/factory/reels-brain/summary?niche=${encodeURIComponent(niche)}`)),
         ]);
         if (!alive) return;
         setLearning(learningData);
         setCorpus(corpusData);
+        setLearningPlan(learningPlanData);
         setSummaries(summaryData);
         setState("ready");
       } catch (e) {
@@ -150,11 +153,18 @@ export default function ReelsBrainPixelCockpit() {
     const audit = learning?.corpus_audit || {};
     const antiPattern = learning?.anti_pattern_brain || {};
     const discovery = learning?.discovery_brain || {};
+    const taxonomy = learning?.taxonomy_brain || {};
+    const audioBrain = learning?.audio_brain || {};
+    const outcomeMemory = learning?.outcome_memory_brain || {};
     const dailyReport = learning?.daily_report || {};
     const qualityGate = learning?.quality_gate || {};
     const costGovernor = learning?.cost_governor || {};
     const autopilotActions = learning?.autopilot_actions || {};
+    const mission = learningPlan?.learning_plan || {};
     const nextLayers = learning?.next_intelligence_layers || {};
+    const audioVisualSummary = nextLayers?.audio_visual_intelligence
+      ? `ready ${compact(nextLayers.audio_visual_intelligence.ready_for_worker)} · media ${compact(nextLayers.audio_visual_intelligence.with_media_locators)} · audio ${compact(nextLayers.audio_visual_intelligence.with_audio_features)} · transcripts ${compact(nextLayers.audio_visual_intelligence.with_transcript)}`
+      : "";
     const patternDetails = (learning?.pattern_details || []) as JsonRecord[];
     const nicheComparison = (learning?.niche_comparison || []) as JsonRecord[];
     const niches = (learning?.niches || []) as JsonRecord[];
@@ -162,9 +172,13 @@ export default function ReelsBrainPixelCockpit() {
     const formats = (insights?.winning_formats || []) as JsonRecord[];
     const retentions = (insights?.retention_mechanics || []) as JsonRecord[];
     const recipes = (insights?.recipes || []) as JsonRecord[];
+    const strongCombinations = (insights?.strong_combinations || []) as JsonRecord[];
     const refs = (insights?.source_references || []) as JsonRecord[];
     const sourceMap = (insights?.source_map || []) as JsonRecord[];
-    const timeline = ((learning?.timeline || []) as JsonRecord[]).slice(-8);
+    const timeline = [...((learning?.timeline || []) as JsonRecord[])]
+      .sort((a, b) => String(a.created_at || "").localeCompare(String(b.created_at || "")))
+      .slice(-8)
+      .reverse();
     const daily = (economics?.rows || economics?.daily || []) as JsonRecord[];
     const totalVideos = Math.max(num(totals.total_videos), num(corpus?.total));
     const analyzed = Math.max(num(totals.analyzed_videos), num(corpus?.summary?.analyzed));
@@ -252,7 +266,31 @@ export default function ReelsBrainPixelCockpit() {
         value: usefulCost > 0 ? `Ориентир ${usd(usefulCost)} за полезную единицу насмотренности.` : "Нужно ещё накопить cost-события, чтобы честно считать цену.",
         meta: vmCostLabel(delta),
       },
+      {
+        title: "Taxonomy",
+        value: num(taxonomy.classified_videos) > 0
+          ? `Слой v2 уже разобрал ${compact(taxonomy.classified_videos)} спорных видео и начинает выращивать свой словарь.`
+          : "Ночной taxonomy-refresh ещё не прогрел корпус.",
+        meta: `${compact((taxonomy.custom_hook_labels || []).length)} hook labels · ${compact((taxonomy.custom_structure_labels || []).length)} structure labels`,
+      },
     ];
+    const taxonomyLabels = ((taxonomy.top_new_labels || []) as JsonRecord[]).slice(0, 8);
+    const taxonomyByNiche = NICHES.map((niche) => {
+      const row = ((taxonomy.by_niche || {}) as Record<string, JsonRecord>)[niche] || {};
+      return {
+        niche,
+        analyzed_videos: num(row.analyzed_videos),
+        classified_videos: num(row.classified_videos),
+        confident_videos: num(row.confident_videos),
+        resolved_videos: num(row.resolved_videos),
+        unresolved_any_videos: num(row.unresolved_any_videos),
+        unresolved_hook_videos: num(row.unresolved_hook_videos),
+        unresolved_structure_videos: num(row.unresolved_structure_videos),
+        gray_zone_rate: num(row.gray_zone_rate),
+        custom_hook_labels: num(row.custom_hook_labels),
+        custom_structure_labels: num(row.custom_structure_labels),
+      };
+    });
     const gateCards = [
       ["high_confidence", "High", qualityGate.high_confidence || 0, "Можно использовать как основу сценария."],
       ["medium_confidence", "Medium", qualityGate.medium_confidence || 0, "Можно брать, но проверять на товаре."],
@@ -267,11 +305,16 @@ export default function ReelsBrainPixelCockpit() {
       audit,
       antiPattern,
       discovery,
+      taxonomy,
+      audioBrain,
+      outcomeMemory,
       dailyReport,
       qualityGate,
       costGovernor,
       autopilotActions,
+      mission,
       nextLayers,
+      audioVisualSummary,
       patternDetails,
       nicheComparison,
       score,
@@ -286,6 +329,7 @@ export default function ReelsBrainPixelCockpit() {
       formats,
       retentions,
       recipes,
+      strongCombinations,
       refs,
       sourceMap,
       timeline,
@@ -297,6 +341,8 @@ export default function ReelsBrainPixelCockpit() {
       frequentHooks,
       experimentalHooks,
       decisionCards,
+      taxonomyLabels,
+      taxonomyByNiche,
       gateCards,
       usefulCost,
       delta,
@@ -308,7 +354,7 @@ export default function ReelsBrainPixelCockpit() {
         readyPatterns < 12 ? "Generator-ready рецептов мало: лучше не генерировать слишком однотипно." : "Рецептов уже хватает для первых стабильных креативных экспериментов.",
       ],
     };
-  }, [learning, corpus, summaries]);
+  }, [learning, corpus, learningPlan, summaries]);
 
   return (
     <main className="rb-page">
@@ -576,6 +622,108 @@ export default function ReelsBrainPixelCockpit() {
         </section>
 
         <section>
+          <SectionTitle k="04.5 · Taxonomy Layer" title="Как мозг доучивает свой словарь" />
+          <div className="rb-two">
+            <div className="rb-card">
+              <div className="rb-three">
+                <div className="rb-kpi">
+                  <div className="label">v2-классы</div>
+                  <strong>{compact(vm.taxonomy.classified_videos)}</strong>
+                  <p>{compact(vm.taxonomy.classified_rate)}% от разобранных видео</p>
+                </div>
+                <div className="rb-kpi">
+                  <div className="label">Уверенные</div>
+                  <strong>{compact(vm.taxonomy.confident_videos)}</strong>
+                  <p>{compact(vm.taxonomy.confident_rate)}% confidence 0.75+</p>
+                </div>
+                <div className="rb-kpi">
+                  <div className="label">Цена слоя</div>
+                  <strong>{usd(vm.taxonomy.estimated_usd_per_classified_video)}</strong>
+                  <p>{usd(vm.taxonomy.estimated_total_spend_usd)} суммарно</p>
+                </div>
+              </div>
+              <div className="rb-three" style={{ marginTop: 14 }}>
+                <div className="rb-kpi">
+                  <div className="label">Было серым</div>
+                  <strong>{compact(vm.taxonomy.classified_videos)}</strong>
+                  <p>это пул, который taxonomy прогнал через v2</p>
+                </div>
+                <div className="rb-kpi">
+                  <div className="label">Стало ясным</div>
+                  <strong>{compact(vm.taxonomy.resolved_videos)}</strong>
+                  <p>{compact(vm.taxonomy.resolved_rate)}% уже вывели из серой зоны</p>
+                </div>
+                <div className="rb-kpi">
+                  <div className="label">Осталось серым</div>
+                  <strong>{compact(vm.taxonomy.unresolved_any_videos)}</strong>
+                  <p>{compact(vm.taxonomy.unresolved_any_rate)}% ещё требуют доучивания</p>
+                </div>
+              </div>
+              <div className="rb-three" style={{ marginTop: 14 }}>
+                <div className="rb-kpi">
+                  <div className="label">Generator-ready</div>
+                  <strong>{compact(vm.taxonomy.pattern_lift?.generator_ready_patterns)}</strong>
+                  <p>паттернов сейчас в выходном слое</p>
+                </div>
+                <div className="rb-kpi">
+                  <div className="label">На taxonomy-evidence</div>
+                  <strong>{compact(vm.taxonomy.pattern_lift?.patterns_with_taxonomy_backing)}</strong>
+                  <p>{compact(vm.taxonomy.pattern_lift?.taxonomy_backed_rate)}% уже опираются на очищенные references</p>
+                </div>
+                <div className="rb-kpi">
+                  <div className="label">Ещё без опоры</div>
+                  <strong>{compact(vm.taxonomy.pattern_lift?.patterns_without_taxonomy_backing)}</strong>
+                  <p>их ценность вырастет после снятия серой зоны</p>
+                </div>
+              </div>
+              <div className="rb-pattern" style={{ marginTop: 14 }}>
+                <div className="rb-pill">{vm.taxonomy.status || "planned"} · {vm.taxonomy.trend || "watch"}</div>
+                <h3 style={{ marginTop: 10 }}>Taxonomy перестаёт жить на регэкспах</h3>
+                <p>{vm.taxonomy.pattern_lift?.next_step || vm.taxonomy.next_step || "Сначала нужно накопить v2-классификации на analyzed корпусе."}</p>
+              </div>
+            </div>
+            <div className="rb-card">
+              <div className="rb-overline" style={{ color: "#0891b2" }}>Новые ярлыки</div>
+              <h3 style={{ font: "600 24px/1.15 'Space Grotesk'", margin: "9px 0 14px" }}>Что словарь уже сам вытащил из корпуса</h3>
+              {(vm.taxonomyLabels.length ? vm.taxonomyLabels : [{ kind: "hook", label: "labels_will_appear", niche: "mixed", count: 0 }]).map((item: JsonRecord, index: number) => (
+                <div key={`${item.kind}:${item.label}:${index}`} style={{ display: "flex", justifyContent: "space-between", gap: 12, borderTop: "1px solid #eef2f7", padding: "12px 0" }}>
+                  <div>
+                    <strong>{item.label}</strong>
+                    <p style={{ margin: "4px 0 0", color: "#64748b", fontSize: 13 }}>{item.kind} · {NICHE_LABELS[item.niche] || item.niche || "mixed"}</p>
+                  </div>
+                  <span className="rb-pill">{compact(item.count || 0)}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="rb-card" style={{ marginTop: 16 }}>
+            <div className="rb-overline" style={{ color: "#0891b2" }}>Серая зона по нишам</div>
+            <h3 style={{ font: "600 24px/1.15 'Space Grotesk'", margin: "9px 0 14px" }}>Где ещё слишком много direct_claim и unknown_structure</h3>
+            <div className="rb-matrix">
+              <div className="rb-matrix-head">Ниша</div>
+              <div className="rb-matrix-head">v2</div>
+              <div className="rb-matrix-head">resolved</div>
+              <div className="rb-matrix-head">gray zone</div>
+              <div className="rb-matrix-head">hook unknown</div>
+              <div className="rb-matrix-head">structure unknown</div>
+              {vm.taxonomyByNiche.map((row: JsonRecord) => (
+                <div className="rb-matrix-row" key={`taxonomy:${row.niche}`}>
+                  <strong>{NICHE_LABELS[row.niche] || row.niche}</strong>
+                  <span>{compact(row.classified_videos)} / {compact(row.analyzed_videos)}</span>
+                  <span>{compact(row.resolved_videos)}</span>
+                  <span>{compact(row.gray_zone_rate)}%</span>
+                  <span>{compact(row.unresolved_hook_videos)}</span>
+                  <span>{compact(row.unresolved_structure_videos)}</span>
+                </div>
+              ))}
+            </div>
+            <p style={{ marginTop: 14, color: "#64748b", lineHeight: 1.55 }}>
+              Цель этого слоя: чтобы `direct_claim` и `unknown_structure` стали редким исключением, а не основной массой разобранных роликов.
+            </p>
+          </div>
+        </section>
+
+        <section>
           <SectionTitle k="05 · Что мозг понимает сейчас" title="Хуки, форматы, удержание, Creative DNA" />
           <div className="rb-hook-board">
             <div className="rb-hook-hero">
@@ -628,6 +776,107 @@ export default function ReelsBrainPixelCockpit() {
               ))}
             </div>
           </div>
+          <div className="rb-card" style={{ marginTop: 16 }}>
+            <div className="rb-overline" style={{ color: "#0891b2" }}>Strong combinations</div>
+            <h3 style={{ font: "600 24px/1.15 'Space Grotesk'", margin: "9px 0 14px" }}>Какие связки уже можно масштабировать</h3>
+            <div className="rb-three">
+              {(vm.strongCombinations.length ? vm.strongCombinations.slice(0, 3) : [{ hook_label: "Ждём сильную связку", structure_label: "Pattern Brain", retention: [], op_score: 0, decision_label: "Watch", next_action: "Нужно больше разобранных и generator-ready паттернов.", evidence: { niches: 0, platforms: 0, references: 0 } }]).map((combo: JsonRecord) => (
+                <div className="rb-pattern" key={combo.id || `${combo.hook_label}:${combo.structure_label}`}>
+                  <div className="rb-pill">{combo.decision_label || combo.decision || "Watch"} · OP {compact(combo.op_score)}</div>
+                  <h3 style={{ marginTop: 10 }}>{combo.hook_label} + {combo.structure_label}</h3>
+                  <p>{(combo.retention || []).join(" · ") || "retention появится после пересборки"} · confidence {combo.confidence || "watch"}</p>
+                  {(combo.audio_logic || []).length ? <p>Audio logic: {(combo.audio_logic || []).join(" · ")}</p> : null}
+                  <p style={{ color: "#0f172a", fontWeight: 600 }}>{combo.user_summary || combo.next_action}</p>
+                  {combo.audio_summary ? <p style={{ margin: 0, color: "#334155" }}>{combo.audio_summary}</p> : null}
+                  <p>ниши {compact(combo.evidence?.niches)} · платформы {compact(combo.evidence?.platforms)} · references {compact(combo.evidence?.references)}</p>
+                  {((combo.why_it_wins || []) as string[]).length ? (
+                    <div style={{ marginTop: 10, display: "grid", gap: 6 }}>
+                      {((combo.why_it_wins || []) as string[]).slice(0, 3).map((reason, index) => (
+                        <p key={`why:${index}`} style={{ margin: 0, color: "#334155" }}>Почему это сильно: {reason}</p>
+                      ))}
+                    </div>
+                  ) : null}
+                  {((combo.watchouts || []) as string[]).length ? (
+                    <div style={{ marginTop: 10, padding: 10, borderRadius: 12, background: "#fff7ed", border: "1px solid #fed7aa" }}>
+                      {((combo.watchouts || []) as string[]).slice(0, 2).map((risk, index) => (
+                        <p key={`risk:${index}`} style={{ margin: 0, color: "#9a3412" }}>На что смотреть: {risk}</p>
+                      ))}
+                    </div>
+                  ) : null}
+                  <p style={{ color: "#0f172a", fontWeight: 600, marginTop: 10 }}>{combo.next_action}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="rb-two" style={{ marginTop: 16 }}>
+            <div className="rb-card">
+              <div className="rb-overline" style={{ color: "#0891b2" }}>Audio Brain</div>
+              <h3 style={{ font: "600 24px/1.15 'Space Grotesk'", margin: "9px 0 14px" }}>Как мозг начинает понимать звук</h3>
+              <div className="rb-three">
+                <div className="rb-kpi">
+                  <div className="label">Audio-ready</div>
+                  <strong>{compact(vm.audioBrain.with_audio)}</strong>
+                  <p>{compact(vm.audioBrain.with_audio_rate)}% от sampled corpus</p>
+                </div>
+                <div className="rb-kpi">
+                  <div className="label">Transcript-ready</div>
+                  <strong>{compact(vm.audioBrain.with_transcript)}</strong>
+                  <p>{compact(vm.audioBrain.with_transcript_rate)}% с voice logic</p>
+                </div>
+                <div className="rb-kpi">
+                  <div className="label">Статус</div>
+                  <strong>{vm.audioBrain.status || "planned"}</strong>
+                  <p>audio layer</p>
+                </div>
+              </div>
+              <div className="rb-pattern" style={{ marginTop: 14 }}>
+                <div className="rb-pill">{vm.audioBrain.status || "planned"}</div>
+                <h3 style={{ marginTop: 10 }}>Звук перестаёт быть слепым пятном</h3>
+                <p>{vm.audioBrain.next_step || "Сначала нужно накопить audio-ready корпус."}</p>
+              </div>
+            </div>
+            <div className="rb-card">
+              <div className="rb-overline" style={{ color: "#0891b2" }}>Winning audio mechanics</div>
+              <h3 style={{ font: "600 24px/1.15 'Space Grotesk'", margin: "9px 0 14px" }}>Какие звуковые правила уже выглядят сильными</h3>
+              {((vm.audioBrain.top_mechanics || []) as JsonRecord[]).length ? ((vm.audioBrain.top_mechanics || []) as JsonRecord[]).slice(0, 3).map((item, index) => (
+                <div className="rb-pattern" key={item.key || index} style={{ marginTop: index ? 10 : 0 }}>
+                  <div className="rb-pill">{item.decision_label || item.decision || "Watch"} · score {compact(item.score)}</div>
+                  <h3 style={{ marginTop: 10 }}>{item.label}</h3>
+                  <p>count {compact(item.count)} · views {compact(item.avg_views)} · virality {compact(item.avg_virality)}</p>
+                  {((item.why_it_wins || []) as string[]).slice(0, 2).map((reason, reasonIndex) => (
+                    <p key={`audio-why:${reasonIndex}`} style={{ margin: 0, color: "#334155" }}>Почему это сильно: {reason}</p>
+                  ))}
+                  <p style={{ color: "#0f172a", fontWeight: 600, marginTop: 10 }}>{item.next_action}</p>
+                </div>
+              )) : (
+                <div className="rb-pattern">
+                  <h3>Audio patterns появятся после первых extraction циклов</h3>
+                  <p>Сейчас уже есть pipeline, осталось накопить больше audio-ready корпуса.</p>
+                </div>
+              )}
+            </div>
+          </div>
+          <div className="rb-card" style={{ marginTop: 16 }}>
+            <div className="rb-overline" style={{ color: "#0891b2" }}>Audio feature depth</div>
+            <h3 style={{ font: "600 24px/1.15 'Space Grotesk'", margin: "9px 0 14px" }}>Насколько глубоко уже разобран звук</h3>
+            <div className="rb-three">
+              <div className="rb-kpi">
+                <div className="label">Pause map</div>
+                <strong>{compact(vm.audioBrain.feature_depth?.pause_map_ready)}</strong>
+                <p>видео с картой пауз</p>
+              </div>
+              <div className="rb-kpi">
+                <div className="label">Pacing</div>
+                <strong>{compact(vm.audioBrain.feature_depth?.pacing_ready)}</strong>
+                <p>видео с pacing-tier</p>
+              </div>
+              <div className="rb-kpi">
+                <div className="label">Beat hint</div>
+                <strong>{compact(vm.audioBrain.feature_depth?.beat_hint_ready)}</strong>
+                <p>видео с rhythm hint</p>
+              </div>
+            </div>
+          </div>
         </section>
 
         <section>
@@ -642,7 +891,7 @@ export default function ReelsBrainPixelCockpit() {
             ))}
           </div>
           <div className="rb-brief-grid">
-            {(vm.recipes.length ? vm.recipes.slice(0, 3) : [{ id: "empty", title: "Creative briefs ждут Pattern Brain", creative_brief: { hook: "Сначала нужно разобрать корпус.", retention_mechanic: "ожидание доказательства", product_fit: ["любой товар с proof-кадром"], second_by_second: [] }, op_score: 0 }]).map((recipe) => (
+              {(vm.recipes.length ? vm.recipes.slice(0, 3) : [{ id: "empty", title: "Creative briefs ждут Pattern Brain", creative_brief: { hook: "Сначала нужно разобрать корпус.", retention_mechanic: "ожидание доказательства", product_fit: ["любой товар с proof-кадром"], second_by_second: [] }, op_score: 0 }]).map((recipe) => (
               <div className="rb-card rb-brief" key={recipe.id}>
                 <div className="rb-pill">OP {compact(recipe.op_score)}</div>
                 <h3 style={{ font: "600 24px/1.15 'Space Grotesk'", margin: "14px 0 12px" }}>{recipe.title}</h3>
@@ -650,6 +899,7 @@ export default function ReelsBrainPixelCockpit() {
                 <div className="rb-brief-block"><b>Удержание</b><p>{recipe.creative_brief?.retention_mechanic || recipe.retention}</p></div>
                 <div className="rb-brief-block"><b>Структура по секундам</b><p>{(recipe.creative_brief?.second_by_second || []).slice(0, 3).join(" ") || "0-2с хук, 2-8с доказательство, 8-15с payoff."}</p></div>
                 <div className="rb-brief-block"><b>Visual recipe</b><p>{(recipe.creative_brief?.visual_recipe || []).slice(0, 2).join(" ") || "Крупный план, proof-кадр, текст только для смысла."}</p></div>
+                <div className="rb-brief-block"><b>Audio strategy</b><p>{(recipe.creative_brief?.audio_strategy || ["Быстрый голосовой вход, чистый мобильный микс, музыка только как подложка."]).slice(0, 2).join(" ")}</p></div>
                 <div className="rb-brief-block"><b>Товар / тема</b><p>{(recipe.creative_brief?.product_fit || recipe.niches || []).slice(0, 3).join(" · ")}</p></div>
                 <div className="rb-brief-block"><b>Копируем механику</b><p>{(recipe.creative_brief?.copy_as_mechanic || ["темп", "структуру", "тип доказательства"]).slice(0, 2).join(" · ")}</p></div>
                 <div style={{ marginTop: 14, padding: 12, borderRadius: 12, background: "#fef2f2", color: "#991b1b", fontSize: 13, fontWeight: 600 }}>Копируем механику, не копируем текст, музыку, персонажей и чужой монтаж.</div>
@@ -775,10 +1025,133 @@ export default function ReelsBrainPixelCockpit() {
         </section>
 
         <section>
+          <SectionTitle k="08.8 · Outcome Memory" title="Готовность учиться на наших публикациях" />
+          <div className="rb-two">
+            <div className="rb-card">
+              <div className="rb-pill">{vm.outcomeMemory.status || "planned"} · live {compact(vm.outcomeMemory.rows_live)}</div>
+              <h3 style={{ font: "700 26px/1.1 'Space Grotesk'", margin: "14px 0" }}>Схема market feedback уже готова</h3>
+              <p>{vm.outcomeMemory.next_step || "Как только пойдут публикации, outcomes можно писать без перестройки мозга."}</p>
+              <div className="rb-three" style={{ marginTop: 16 }}>
+                <div className="rb-kpi">
+                  <div className="label">High confidence</div>
+                  <strong>{compact(vm.outcomeMemory.attach_targets?.high_confidence_patterns)}</strong>
+                  <p>паттернов готовы принять outcome</p>
+                </div>
+                <div className="rb-kpi">
+                  <div className="label">Medium confidence</div>
+                  <strong>{compact(vm.outcomeMemory.attach_targets?.medium_confidence_patterns)}</strong>
+                  <p>паттернов на следующую очередь</p>
+                </div>
+                <div className="rb-kpi">
+                  <div className="label">Memory write</div>
+                  <strong>{vm.outcomeMemory.attach_targets?.winner_memory_write || "waiting"}</strong>
+                  <p>победители/проигравшие</p>
+                </div>
+              </div>
+            </div>
+            <div className="rb-card">
+              <div className="rb-overline" style={{ color: "#0891b2" }}>Outcome schema</div>
+              <h3 style={{ font: "600 24px/1.15 'Space Grotesk'", margin: "9px 0 14px" }}>Что именно надо писать в память</h3>
+              <div className="rb-pattern">
+                <p><strong>Required:</strong> {((vm.outcomeMemory.schema?.required_fields || []) as string[]).join(" · ") || "recipe_id · platform · views · posted_at"}</p>
+                <p><strong>Recommended:</strong> {((vm.outcomeMemory.schema?.recommended_fields || []) as string[]).slice(0, 6).join(" · ") || "hook_rate · hold_rate · completion_rate · ctr_card · saves · revenue"}</p>
+                <p><strong>Endpoints:</strong> {((vm.outcomeMemory.schema?.ingestion_endpoints || []) as string[]).join(" · ") || "/api/factory/post-metrics · /api/factory/reels-brain/feedback"}</p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section>
+          <SectionTitle k="08.9 · Learning Mission" title="Как добираем насмотренность до 10k" />
+          <div className="rb-two">
+            <div className="rb-card">
+              <div className="rb-two" style={{ gridTemplateColumns: "1fr auto", gap: 16 }}>
+                <div>
+                  <div className="rb-overline" style={{ color: "#0891b2" }}>Standalone обучение</div>
+                  <h3 style={{ font: "700 30px/1.08 'Space Grotesk'", margin: "10px 0" }}>
+                    {compact(vm.mission.progress?.current || vm.totalVideos)} / {compact(vm.mission.progress?.target || 10000)} видео
+                  </h3>
+                  <p style={{ color: "#64748b", lineHeight: 1.5 }}>
+                    Завод пока не трогаем: мозг учится отдельно, копит русскоязычную насмотренность и сам решает, когда анализировать backlog, а когда покупать новый сбор.
+                  </p>
+                </div>
+                <div style={{ textAlign: "right" }}>
+                  <div className="rb-pill">{vm.mission.stage?.stage_label || "learning corpus"}</div>
+                  <div style={{ font: "700 36px/1 'Space Grotesk'", marginTop: 12 }}>{compact(vm.mission.progress?.progress_pct || 0)}%</div>
+                </div>
+              </div>
+              <div className="rb-bar" style={{ marginTop: 18 }}>
+                <i style={{ width: `${Math.max(3, Math.min(100, num(vm.mission.progress?.progress_pct)))}%` }} />
+              </div>
+              <div className="rb-three" style={{ marginTop: 16 }}>
+                <div className="rb-kpi">
+                  <div className="label">Backlog</div>
+                  <strong>{compact(vm.mission.backlog?.total || Math.max(0, vm.totalVideos - vm.analyzed))}</strong>
+                  <p>{vm.mission.backlog?.status === "analyze_first" ? "сначала анализируем" : "здоровый уровень"}</p>
+                </div>
+                <div className="rb-kpi">
+                  <div className="label">ETA до 10k</div>
+                  <strong>{compact(vm.mission.eta?.ticks_to_target || 0)}</strong>
+                  <p>тиков при текущей скорости</p>
+                </div>
+                <div className="rb-kpi">
+                  <div className="label">Guard</div>
+                  <strong>{vm.mission.guard?.can_run_paid_collection ? "ON" : "WAIT"}</strong>
+                  <p>{vm.mission.guard?.status || "watch"} · платный сбор {vm.mission.guard?.can_run_paid_collection ? "можно" : "пауза"}</p>
+                </div>
+              </div>
+            </div>
+            <div className="rb-card rb-dark">
+              <div className="rb-overline rb-cyan">Следующий безопасный тик</div>
+              <h3 style={{ font: "700 30px/1.08 'Space Grotesk'", margin: "12px 0" }}>{vm.mission.next_tick?.label || "Ждём свежий learning-plan"}</h3>
+              <p>{vm.mission.next_tick?.reason || "Как только экономика и backlog обновятся, мозг выберет: analyze, smart bulk или rebuild patterns."}</p>
+              <div className="rb-dark-card" style={{ marginTop: 16 }}>
+                <div className="rb-pill">{vm.mission.next_tick?.task || "watch"} · paid {vm.mission.next_tick?.paid_collection ? "yes" : "no"}</div>
+                <p style={{ marginTop: 10 }}>
+                  Endpoint: {vm.mission.next_tick?.endpoint || "/api/factory/reels-brain/learning-plan"}
+                </p>
+              </div>
+              <div className="rb-three" style={{ marginTop: 16 }}>
+                <div className="rb-dark-card"><div className="rb-overline rb-cyan">Сбор / тик</div><h3>{compact(vm.mission.eta?.inserted_per_tick || 0)}</h3><p>новых видео</p></div>
+                <div className="rb-dark-card"><div className="rb-overline rb-cyan">Анализ / тик</div><h3>{compact(vm.mission.eta?.analyzed_per_tick || 0)}</h3><p>в память</p></div>
+                <div className="rb-dark-card"><div className="rb-overline rb-cyan">До чистого backlog</div><h3>{compact(vm.mission.eta?.ticks_to_clear_backlog || 0)}</h3><p>тиков</p></div>
+              </div>
+            </div>
+          </div>
+          <div className="rb-card" style={{ marginTop: 16 }}>
+            <div className="rb-matrix">
+              <div className="rb-matrix-head">Срез</div>
+              <div className="rb-matrix-head">текущее</div>
+              <div className="rb-matrix-head">цель</div>
+              <div className="rb-matrix-head">осталось</div>
+              <div className="rb-matrix-head">день</div>
+              {((vm.mission.execution_plan?.by_platform || []) as JsonRecord[]).slice(0, 3).map((row) => (
+                <div className="rb-matrix-row" key={`mission:${row.platform}`}>
+                  <strong>{row.platform}</strong>
+                  <span>{compact(row.current)}</span>
+                  <span>{compact(row.target)}</span>
+                  <span>{compact(row.gap)}</span>
+                  <span>{compact(row.daily_required)}</span>
+                </div>
+              ))}
+              {((vm.mission.execution_plan?.by_niche || []) as JsonRecord[]).slice(0, 3).map((row) => (
+                <div className="rb-matrix-row" key={`mission:${row.niche}`}>
+                  <strong>{NICHE_LABELS[row.niche] || row.niche}</strong>
+                  <span>{compact(row.current)}</span>
+                  <span>{compact(row.target)}</span>
+                  <span>{compact(row.gap)}</span>
+                  <span>{compact(row.daily_required)}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section>
           <SectionTitle k="09 · Текущий цикл обучения" title="Что происходит от прогона к прогону" />
           <div className="rb-card">
             <div className="rb-three">
-              {vm.timeline.length ? vm.timeline.slice(-6).map((run) => (
+              {vm.timeline.length ? vm.timeline.slice(0, 6).map((run) => (
                 <div className="rb-pattern" key={`${run.id || run.created_at}:${run.mode}`}>
                   <h3>{run.mode || "run"} · {new Date(run.created_at).toLocaleString("ru-RU")}</h3>
                   <p>+{compact(run.inserted)} видео · +{compact(run.analyzed)} память · {usd(run.usd_per_analyzed || run.usd_per_inserted)} / video</p>
@@ -793,7 +1166,9 @@ export default function ReelsBrainPixelCockpit() {
           <div className="rb-layer-grid">
             {[
               ["Feedback Loop", vm.nextLayers.feedback_loop?.status, vm.nextLayers.feedback_loop?.next_step],
-              ["Audio / Visual", vm.nextLayers.audio_visual_intelligence?.status, vm.nextLayers.audio_visual_intelligence?.next_step],
+              ["Outcome Memory", vm.nextLayers.outcome_memory?.status, vm.nextLayers.outcome_memory?.next_step],
+              ["Audio / Visual", vm.nextLayers.audio_visual_intelligence?.status, [vm.nextLayers.audio_visual_intelligence?.next_step, vm.audioVisualSummary].filter(Boolean).join(" ")],
+              ["Audio Brain", vm.audioBrain.status, vm.audioBrain.next_step],
               ["Product Brain", vm.nextLayers.product_brain?.status, vm.nextLayers.product_brain?.next_step],
               ["Audience Brain", vm.nextLayers.audience_brain?.status, vm.nextLayers.audience_brain?.next_step],
               ["Experiment Brain", vm.nextLayers.experiment_brain?.status, vm.nextLayers.experiment_brain?.next_step],
@@ -851,6 +1226,16 @@ export default function ReelsBrainPixelCockpit() {
               <b>Visual recipe</b>
               <p>{(selectedPattern.creative_brief?.visual_recipe || []).join(" ") || "Крупный план, proof-кадр, быстрые смены смысла, текст только как усилитель."}</p>
             </div>
+            <div className="rb-brief-block" style={{ marginTop: 12 }}>
+              <b>Audio strategy</b>
+              <p>{(selectedPattern.creative_brief?.audio_strategy || ["Голос должен начинаться быстро, музыка только поддерживает смысл, без мёртвого интро."]).join(" ")}</p>
+            </div>
+            {(selectedPattern.audio_logic || []).length ? (
+              <div className="rb-brief-block" style={{ marginTop: 12 }}>
+                <b>Audio logic</b>
+                <p>{(selectedPattern.audio_logic || []).join(" · ")}</p>
+              </div>
+            ) : null}
             <div className="rb-drawer-grid" style={{ marginTop: 12 }}>
               <div className="rb-brief-block"><b>Копируем как механику</b><p>{(selectedPattern.creative_brief?.copy_as_mechanic || ["темп", "структуру", "тип доказательства"]).join(" · ")}</p></div>
               <div className="rb-brief-block"><b>Запрещено копировать</b><p>{(selectedPattern.creative_brief?.do_not_copy || ["текст", "музыку", "персонажа", "монтаж один в один"]).join(" · ")}</p></div>
