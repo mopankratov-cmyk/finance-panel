@@ -17,29 +17,50 @@ export interface AntiAiPostParams {
   vignette: string;
   crushBitrateK: number;
   roomToneDb: number;
+  sharpenCas: number;
 }
 
+// grainPassA/B: ревьюер просил «зерно должно читаться» (16+10), владелец 2026-07-02
+// вердиктнул «слишком много шума» — калибровка глазом владельца сильнее: 8+5.
+// sharpenCas + lanczos + битрейт 2600k: вердикт владельца «мягкая картинка» 2026-07-02 —
+// двойной энкод и ресемпл трясучки мылят; телефонная резкость обязана вернуться.
 export const ANTI_AI_DEFAULTS: AntiAiPostParams = {
-  grainPassA: 16,
-  grainPassB: 10,
+  grainPassA: 8,
+  grainPassB: 5,
   warmthK: 7300,
   saturation: 1.05,
   contrast: 1.06,
   shakeAmpLowPx: 8,
   shakeAmpHighPx: 3,
   vignette: "PI/8",
-  crushBitrateK: 2200,
+  crushBitrateK: 2600,
   roomToneDb: 0.0035,
+  sharpenCas: 0.45,
 };
+
+// Адаптивный грейд (урок 2026-07-02: «дотенение», откалиброванное на ярком v6,
+// утопило тёмный HeyGen-рендер). Замер: ffmpeg signalstats YAVG по первым кадрам.
+export function adaptGradeToLuma(yavg: number, base: AntiAiPostParams = ANTI_AI_DEFAULTS): AntiAiPostParams & { gamma: number; brightness: number; blackLift: number } {
+  if (yavg < 105) {
+    // тёмный исходник: лифт вместо прижатия
+    return { ...base, contrast: 1.05, gamma: 1.06, brightness: 0.04, blackLift: 0.01 };
+  }
+  if (yavg > 150) {
+    // яркий глянцевый: дотенение
+    return { ...base, contrast: 1.08, gamma: 0.97, brightness: 0.005, blackLift: 0.035 };
+  }
+  return { ...base, gamma: 1.0, brightness: 0.01, blackLift: 0.02 };
+}
 
 export function buildAntiAiVideoFilter(p: AntiAiPostParams = ANTI_AI_DEFAULTS): string {
   return [
     "fps=30",
-    "scale=iw*1.04:ih*1.04",
+    "scale=iw*1.04:ih*1.04:flags=lanczos",
     `crop=iw/1.04:ih/1.04:x='(in_w-out_w)/2+${p.shakeAmpLowPx}*sin(t*1.3)+${p.shakeAmpHighPx}*sin(t*7.9)':y='(in_h-out_h)/2+${Math.max(1, p.shakeAmpLowPx - 2)}*sin(t*1.7)+${Math.max(1, p.shakeAmpHighPx - 1)}*sin(t*9.3)'`,
     `eq=contrast=${p.contrast}:saturation=${p.saturation}:gamma=1.0:brightness=0.01`,
     `colortemperature=temperature=${p.warmthK}`,
-    "curves=all='0/0.02 0.5/0.52 1/1'",
+    "curves=all='0/0.02 0.5/0.52 1/0.97'",
+    `cas=${p.sharpenCas}`,
     "rgbashift=rh=-1:bh=1",
     `noise=alls=${p.grainPassA}:allf=t+u`,
     `vignette=${p.vignette}`,

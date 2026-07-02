@@ -252,12 +252,44 @@ export const REEL_FORMAT_REGISTRY: readonly ReelFormatSpec[] = [
   },
 ] as const;
 
+const STREET_INTERVIEW: ReelFormatSpec = {
+  format_id: "street_interview",
+  name_ru: "Уличный опрос («что заказала с WB?»)",
+  retention_mechanic: "curiosity_gap — случайный прохожий, честный ответ",
+  niche_fit: { cosmetics: 4, clothing: 5, toys: 3 },
+  platform_fit: { wibes: 5, vk_clips: 5, telegram: 4 },
+  duration_target_sec: [15, 30],
+  works_without_sound: false,
+  requires_blogger: true,
+  assembly_lane: "shotstack",
+  beats: [
+    { beat_id: "question_hook", start_sec: 0, end_sec: 2, slot: "text_card", direction: "кадр улицы + вопрос текстом, как титр интервью", text_overlay: "Спросили: что вы заказали с WB?" },
+    { beat_id: "answer_face", start_sec: 2, end_sec: 4.5, slot: "face", direction: "блогер на улице (street_entrance/park луки), отвечает как прохожий: неидеальный свет, шум улицы в звуке, лёгкое дрожание камеры, микрофон в кадре опционально — референс Min Choi street interview" },
+    { beat_id: "product_show", start_sec: 4.5, end_sec: 12, slot: "broll", direction: "врезка товара из реальных фото: «вот это» — макро с наездом, текст-плашка с ценой", text_overlay: "{price}₽" },
+    { beat_id: "verdict_face", start_sec: 12, end_sec: 13.5, slot: "face", direction: "короткий честный вердикт одной фразой («беру ещё») — суммарное лицо ровно 4с" },
+    ARTICLE_ENDCARD,
+  ],
+  hook_examples: [
+    "Спросили: что вы заказали с WB?",
+    "Девушка, что в пакете? — Сейчас покажу",
+    "Опрос: лучшая находка месяца с WB",
+  ],
+  guards: [
+    "снимается «на улице»: неидеальный свет и шум среды ОБЯЗАТЕЛЬНЫ (стерильность ломает жанр)",
+    "лицо суммарно ≤4с",
+    "товар — только реальные фото врезками (дефолт после вердикта владельца 2026-07-02)",
+  ],
+  evidence: "референс-охота 2026-07-02: Min Choi «This is 100% AI» (x.com/minchoi/1925387367806115943) — самый обманчивый жанр говорящей головы; RU-ниша пуста",
+};
+
+const ALL_FORMATS: readonly ReelFormatSpec[] = [...REEL_FORMAT_REGISTRY, STREET_INTERVIEW];
+
 export function listReelFormats(): ReelFormatSpec[] {
-  return REEL_FORMAT_REGISTRY.map((f) => ({ ...f, beats: f.beats.map((b) => ({ ...b })) }));
+  return ALL_FORMATS.map((f) => ({ ...f, beats: f.beats.map((b) => ({ ...b })) }));
 }
 
 export function getReelFormat(formatId: string): ReelFormatSpec | null {
-  return REEL_FORMAT_REGISTRY.find((f) => f.format_id === formatId) || null;
+  return ALL_FORMATS.find((f) => f.format_id === formatId) || null;
 }
 
 export function pickReelFormatsForNiche(niche: ReelNiche, platform: ReelPlatform = "wibes"): ReelFormatSpec[] {

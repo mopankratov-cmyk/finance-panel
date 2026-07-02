@@ -277,5 +277,20 @@
       },
       "training_photo_looks": 22
     }
+  },
+  "voice_winner": {
+    "provider": "elevenlabs",
+    "model": "fal-ai/elevenlabs/tts/eleven-v3",
+    "voice": "Nastya",
+    "settings": {
+      "stability": 0.4,
+      "similarity_boost": 0.8,
+      "style": 0.4,
+      "speed": 1.05,
+      "language_code": "ru"
+    },
+    "script_style": "разговорные оговорки («Так, ну что...»), паузы многоточиями, [exhales]-теги",
+    "verdict": "ФИНАЛ: владелец выбрал «голос 2» (Nastya, нативный RU + редактор пауз) 2026-07-02",
+    "voice_id": "YjESejviApN7SHrbfnA2"
   }
 }
