@@ -26,6 +26,7 @@ export async function POST(req: NextRequest) {
       reused: built.sourceKind === "reused_product_twin",
       source_path: built.sourcePath || null,
       clean_url: built.cleanUrl,
+      identity_check: built.identityCheck || null,
       assets: built.twin.assets.map((a) => ({
         asset_id: a.assetId,
         kind: a.kind,
