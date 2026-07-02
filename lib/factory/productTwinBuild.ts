@@ -19,9 +19,11 @@ import {
 } from "@/lib/factory/productTwinStore";
 import { focusProductSourceImage } from "./productSourceCrop";
 import { checkTwinIdentity, type TwinIdentityCheckResult } from "./productTwinIdentityCheck";
+import { isBannedTwinSourceName, twinSourceForArticle } from "./twinSourceManifest";
+import { screenTwinSourceCandidate } from "./twinSourceScreen";
 import { yaDownloadHref } from "@/lib/yandex/disk";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { pickProductSource } from "./productSourcePicker";
+import { pickProductSourceCandidates } from "./productSourcePicker";
 import { buildProductTwinPreparationPlan } from "./productTwinPrepPlan";
 
 export interface ProductTwinBuildInput {
@@ -61,20 +63,68 @@ async function resolveInputImage(body: ProductTwinBuildInput): Promise<{ image: 
   const directUrl = cleanText(body.image_url || body.imageUrl, 4000);
   if (/^https?:\/\//i.test(directUrl)) return { image: directUrl, sourceKind: "image_url", sourceUrl: directUrl };
 
+  const article = cleanText(body.article, 80);
+  const product = cleanText(body.product, 160);
   let diskPath = cleanText(body.disk_path || body.diskPath, 1200);
   let diskId = cleanText(body.disk || "design", 80);
   let sourcePicked = false;
+  let sourceKindOverride = "";
+
+  // 1) Манифест исходников (визуальный аудит 2026-07-02): проверенный глазами чистый кадр
+  //    в приоритете над любыми эвристиками. blocked = чистого кадра в съёмке нет вообще.
   if (!diskPath) {
-    const picked = await pickProductSource({ article: cleanText(body.article, 80), product: cleanText(body.product, 160) });
-    if (picked) {
-      diskPath = picked.path;
-      diskId = picked.disk;
-      sourcePicked = true;
+    const manifest = twinSourceForArticle(article);
+    if (manifest?.blocked) return { error: `у ${article} нет чистого исходника для твина: ${manifest.note}` };
+    if (manifest) {
+      const disk = diskById(manifest.disk);
+      if (disk) {
+        for (const candidate of [manifest.path, ...(manifest.fallbacks || [])]) {
+          const href = await yaDownloadHref(candidate, disk.key);
+          if (href) {
+            diskPath = candidate;
+            diskId = manifest.disk;
+            sourceKindOverride = "manifest_source";
+            break;
+          }
+        }
+      }
     }
   }
+
+  // 2) Слепой пикер — только как fallback, каждый кандидат проходит vision-скрин
+  //    (вшитый текст / перекрытый товар / подозрение на AI-рендер отклоняются).
+  const screenNotes: string[] = [];
+  if (!diskPath) {
+    const candidates = (await pickProductSourceCandidates({ article, product, limit: 4, probeLimit: 12 }))
+      .filter((candidate) => !isBannedTwinSourceName(article, candidate.path));
+    for (const candidate of candidates) {
+      const disk = diskById(candidate.disk);
+      if (!disk) continue;
+      const href = await yaDownloadHref(candidate.path, disk.key);
+      if (!href) continue;
+      const probe = await fetchWithRetry(href, { cache: "no-store" }, 3);
+      if (!probe.ok) continue;
+      const probeBuf = Buffer.from(await probe.arrayBuffer());
+      if (!probeBuf.length) continue;
+      const screen = await screenTwinSourceCandidate({ buffer: probeBuf, article, product, category });
+      if (screen.ran && !screen.ok) {
+        screenNotes.push(`${candidate.path.split("/").pop()}: ${screen.reasons.join("; ") || "отклонён скрином"}`);
+        continue;
+      }
+      diskPath = candidate.path;
+      diskId = candidate.disk;
+      sourcePicked = true;
+      break;
+    }
+    if (!diskPath && screenNotes.length) {
+      return { error: `все кандидаты пикера отклонены vision-скрином: ${screenNotes.join(" · ")}`.slice(0, 600) };
+    }
+  }
+
   if (!diskPath) return { error: "нужен image_url, image_data_url или disk_path" };
   const disk = diskById(diskId);
   if (!disk) return { error: "неизвестный disk" };
+  if (isBannedTwinSourceName(article, diskPath)) return { error: `исходник ${diskPath} запрещён манифестом (AI-рендер/карточка)` };
   const href = await yaDownloadHref(diskPath, disk.key);
   if (!href) return { error: `не удалось получить download href для ${diskPath}` };
   const img = await fetchWithRetry(href, { cache: "no-store" }, 5);
@@ -82,10 +132,11 @@ async function resolveInputImage(body: ProductTwinBuildInput): Promise<{ image: 
   const contentType = img.headers.get("content-type") || "image/png";
   const buf = Buffer.from(await img.arrayBuffer());
   if (!buf.length) return { error: "пустой image buffer" };
-  const focused = await focusProductSourceImage({ buffer: buf, contentType, category, article: cleanText(body.article, 80) });
+  const focused = await focusProductSourceImage({ buffer: buf, contentType, category, article });
   return {
     image: imageBufferToDataUrl(focused.buffer, focused.contentType),
-    sourceKind: focused.applied ? (sourcePicked ? "picked_disk_path_focus_crop" : "disk_path_focus_crop") : sourcePicked ? "picked_disk_path" : "disk_path",
+    sourceKind: sourceKindOverride
+      || (focused.applied ? (sourcePicked ? "picked_disk_path_focus_crop" : "disk_path_focus_crop") : sourcePicked ? "picked_disk_path" : "disk_path"),
     sourcePath: diskPath,
     sourcePicked,
     focusStrategy: focused.applied ? focused.strategy : undefined,
