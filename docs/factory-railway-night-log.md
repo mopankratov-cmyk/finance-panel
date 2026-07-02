@@ -3045,3 +3045,26 @@
 
 - Катин приём перенесён на новых: у каждой девушки лук с вшитым нативным заголовком (nano-banana edit от исходного лука): Маня «ЧЕСТНЫЙ ОТЗЫВ» (кухня), Вика «ЧТО ПРИШЛО С WB» (зеркало, полный рост), Оля «НАШЛА, ЧЕМ ЗАНЯТЬ РЕБЁНКА» (стол). Ловушки nano-banana: (а) кириллица длинных фраз плывёт — лечится коротким текстом + «letter by letter»; (б) сам дорисовывает вотермарку CapCut — явный запрет в промпт; (в) команда «убери вотермарку» ЗАПРЕЩЕНА гвардом Gemini — только перегенерация с нуля. Плашки залиты в группы, look_id в паспортах (по 15 луков на девушку).
 - Актёрские пробы: 6 клипов (story_lean / disbelief_shake / interrupted_real × лучшие луки, expressiveness low, ~$2.4) + анти-AI пост. Страница actor-range.html — вердикт владельца ожидается для карты амплуа.
+### Product Twin loop pack pass
+
+- Дата: 2026-07-01
+- Ветка: `feat/product-broll-lane-pack`
+- Цель:
+  - Дособрать операторский контур вокруг Product Twin Studio: real-photo montage status/feedback, richer apparel/bag shot ordering, и живой simple-SKU learning loop в UI.
+- Что сделано:
+  - `/api/factory/product-broll-montage` расширен до `plan | render | status | feedback`.
+  - Для montage добавлен pending flow: если FAL timeline не успел завершиться в одном запросе, route сохраняет `pending_url` в `content_assets` и умеет дожимать job через `status`.
+  - Для montage добавлен feedback loop (`usable` / `weak` / `reject`) c записью в `content_assets.analysis.product_broll_feedback` и best-effort сигналом в `cf_signals`.
+  - Порядок real-photo montage для `apparel` и `bag` переведён на slot-based scoring (`hero_front`, `closure_detail` / `hardware_detail`, `fabric_macro` / `handle_or_strap`, `side/back`, `inside_detail`) вместо жёсткой привязки только к нескольким `view_id`.
+  - Product Twin Studio для простых SKU теперь использует `/api/factory/product-broll-loop`: `Loop Plan` → `Submit 1` → `Judge Last` → `Reject Source`.
+  - Product Twin Studio для `apparel` / `bag` теперь умеет `Check Status` для montage и принимает montage feedback без выхода из экрана.
+  - Обновлены runbook и visual QA docs под новую операторскую процедуру.
+- Проверки:
+  - `npx tsx lib/factory/productBrollMontageContract.test.mts`
+  - `npx tsx lib/factory/productBrollQualityLoopContract.test.mts`
+  - `npx tsx lib/factory/productTwinStudioContract.test.mts`
+  - `npx eslint app/api/factory/product-broll-montage/route.ts app/inferno/product-twins/ProductTwinStudio.tsx lib/factory/productBrollMontageContract.test.mts lib/factory/productBrollQualityLoopContract.test.mts lib/factory/productTwinStudioContract.test.mts`
+  - `npx tsc --noEmit --pretty false`
+  - `npm run dev` → Next.js 16.2.7 поднялся локально на `http://localhost:3000`
+- Следующий продовый шаг:
+  - Запушить ветку, открыть PR, дождаться deploy и на production Studio проверить `Plan Montage`/`Render Montage`/`Check Status` на `NV-08` и `Loop Plan`/`Submit 1`/`Judge Last` на первом доступном simple SKU.

@@ -63,7 +63,11 @@ import { metricsPostBody, normalizeMetricsSnapshot, summarizeMetricsPoll } from 
   const route = readFileSync("app/api/factory/jobs/metrics-poll/route.ts", "utf8");
   ok(/\/api\/factory\/post-metrics/.test(route), "metrics poll forwards snapshots into post-metrics");
   ok(/no metrics available; batch remains fail-open/.test(route), "metrics poll is fail-open when no data exists");
-  ok(/CRON_SECRET/.test(route), "metrics poll job supports cron auth");
+  ok(/isAuthorizedReelsBrainJobRequest/.test(route), "metrics poll auth goes through the shared fail-closed helper");
+  ok(/await isAuthorizedReelsBrainJobRequest\(req\)/.test(route), "metrics poll awaits the async auth helper");
+  ok(!/function authOk/.test(route), "metrics poll has no local authOk copy");
+  ok(!/if \(!secret\) return true/.test(route), "metrics poll must not fail open when CRON_SECRET is missing");
+  ok(!/body\??\.secret/.test(route), "metrics poll no longer accepts the secret via request body");
 }
 
 console.log("metricsPoll: passed");

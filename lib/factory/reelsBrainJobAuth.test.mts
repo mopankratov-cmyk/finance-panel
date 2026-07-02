@@ -35,3 +35,39 @@ test("reels brain job auth rejects invalid request when cron secret is configure
   const req = buildRequest("https://example.com/api/factory/jobs/reels-brain-learning");
   assert.equal(await isAuthorizedReelsBrainJobRequest(req), false);
 });
+
+test("reels brain job auth rejects wrong bearer token", async () => {
+  process.env.CRON_SECRET = "test-secret";
+  const req = buildRequest("https://example.com/api/factory/jobs/reels-brain-learning", {
+    headers: { authorization: "Bearer wrong-secret" },
+  });
+  assert.equal(await isAuthorizedReelsBrainJobRequest(req), false);
+});
+
+test("reels brain job auth fails closed when cron secret is missing", async () => {
+  delete process.env.CRON_SECRET;
+  const req = buildRequest("https://example.com/api/factory/jobs/reels-brain-learning");
+  assert.equal(await isAuthorizedReelsBrainJobRequest(req), false);
+});
+
+test("reels brain job auth fails closed when cron secret is missing even with bearer header", async () => {
+  delete process.env.CRON_SECRET;
+  const req = buildRequest("https://example.com/api/factory/jobs/reels-brain-learning", {
+    headers: { authorization: "Bearer test-secret" },
+  });
+  assert.equal(await isAuthorizedReelsBrainJobRequest(req), false);
+});
+
+test("reels brain job auth fails closed when cron secret is missing even with valid session cookie", async () => {
+  delete process.env.CRON_SECRET;
+  const token = await signSession({
+    uid: "1",
+    email: "owner@example.com",
+    role: "director",
+    cabinet_ids: [],
+  });
+  const req = buildRequest("https://example.com/api/factory/jobs/reels-brain-learning", {
+    headers: { cookie: `${SESSION_COOKIE}=${token}` },
+  });
+  assert.equal(await isAuthorizedReelsBrainJobRequest(req), false);
+});

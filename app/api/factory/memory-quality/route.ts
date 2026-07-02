@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { isAuthorizedReelsBrainJobRequest } from "@/lib/factory/reelsBrainJobAuth";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -17,11 +18,6 @@ type Row = {
   winner_at?: string | null;
   created_at?: string | null;
 };
-
-function authOk(req: NextRequest): boolean {
-  const secret = process.env.CRON_SECRET || "";
-  return !!secret && req.headers.get("authorization") === `Bearer ${secret}`;
-}
 
 function text(value: unknown, max = 160): string {
   return String(value || "").replace(/\s+/g, " ").trim().slice(0, max);
@@ -116,12 +112,12 @@ function summarize(items: Array<{ label: Label; confidence: string }>) {
 }
 
 export async function GET(req: NextRequest) {
-  if (!authOk(req)) return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
+  if (!(await isAuthorizedReelsBrainJobRequest(req))) return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
   return run(false);
 }
 
 export async function POST(req: NextRequest) {
-  if (!authOk(req)) return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
+  if (!(await isAuthorizedReelsBrainJobRequest(req))) return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
   const body = await req.json().catch(() => ({}));
   return run(body.apply === true);
 }

@@ -12,6 +12,10 @@ ok(/\/api\/factory\/product-twin\/inventory/.test(studio), "studio loads product
 ok(/\/api\/factory\/product-twin\/source-pack/.test(studio), "studio can apply source packs");
 ok(/\/api\/factory\/product-twin\/batch-build/.test(studio), "studio can rebuild twins");
 ok(/\/api\/factory\/product-twin\/by-article/.test(studio), "studio can load latest twin by article");
+ok(/\/api\/factory\/product-broll-feedback/.test(studio), "studio can send b-roll QA feedback");
+ok(/\/api\/factory\/product-broll-loop/.test(studio) && /Loop Plan/.test(studio) && /Judge Last/.test(studio), "studio uses the guarded simple-SKU learning loop");
+ok(/\/api\/factory\/product-broll-montage/.test(studio) && /Plan Montage/.test(studio) && /Render Montage/.test(studio), "studio exposes real-photo montage lane for complex categories");
+ok(/source_gate/.test(studio) && /pickBrollView/.test(studio), "studio surfaces source gate and prefers derived b-roll views");
 ok(/NV-08,NV-836,NV-816,NV-01,CLR00716/.test(studio), "studio includes apparel and bag default articles");
 ok(/href="\/inferno\/product-twins"/.test(agent), "agent page links to Product Twin Studio");
 

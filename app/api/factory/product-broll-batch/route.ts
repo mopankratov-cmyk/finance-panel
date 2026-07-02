@@ -11,6 +11,7 @@ import { productTwinAssetPreviewUrl } from "@/lib/factory/productTwinPreview";
 import { falVideoSubmitDetailed, FAL_VIDEO_MODELS, type FalVideoModel } from "@/lib/factory/falVideo";
 import { yaDownloadHref } from "@/lib/yandex/disk";
 import { type ProductCategory } from "@/lib/factory/editPrompts";
+import { assessProductBrollSource, buildProductBrollExperimentPlan } from "@/lib/factory/productBrollLearning";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -146,6 +147,7 @@ function bodyFromSearchParams(sp: URLSearchParams): ProductBrollBody {
     category: sp.get("category") || "",
     view_id: sp.get("view_id") || sp.get("viewId") || sp.get("source_view_id") || sp.get("sourceViewId") || "",
     use_derived_view: boolParam(sp.get("use_derived_view") || sp.get("useDerivedView")),
+    allow_packshot: boolParam(sp.get("allow_packshot") || sp.get("allowPackshot")),
     operator_get: true,
   };
 }
@@ -175,6 +177,7 @@ async function handleProductBrollBatch(body: ProductBrollBody) {
     const niche = cleanText(body.niche, 80) || undefined;
     const category = (cleanText(body.category, 40) || undefined) as ProductCategory | undefined;
     const cleanPrompt = cleanText(body.clean_prompt || body.cleanPrompt, 8000);
+    const allowPackshot = body.allow_packshot === true || body.allowPackshot === true;
     const directSourceProvided = Boolean(twinId || imageUrl || imageDataUrl || diskPath);
     if (!directSourceProvided && !getSupabaseAdmin()) return NextResponse.json({ ok: false, error: "Supabase не настроен" }, { status: 500 });
     if (!cleanFirst && (imageDataUrl || diskPath)) return NextResponse.json({ ok: false, error: "image_data_url/disk_path требуют clean_first:true, чтобы получить публичный clean_url для video API" }, { status: 400 });
@@ -192,6 +195,9 @@ async function handleProductBrollBatch(body: ProductBrollBody) {
       assetId?: string;
       viewId?: string;
       viewPurpose?: string;
+      assetKind?: string;
+      assetQuality?: number | null;
+      assetRisk?: string | null;
     };
     const db = getSupabaseAdmin();
     const sourceViewId = cleanText(body.view_id || body.viewId || body.source_view_id || body.sourceViewId, 80);
@@ -214,6 +220,9 @@ async function handleProductBrollBatch(body: ProductBrollBody) {
         assetId: pickedView.sourceAssetId,
         viewId: pickedView.viewId,
         viewPurpose: pickedView.purpose,
+        assetKind: "product_twin_view",
+        assetQuality: null,
+        assetRisk: "low",
       };
     } else if (twinId) {
       if (!db) return NextResponse.json({ ok: false, error: "Supabase не настроен" }, { status: 500 });
@@ -225,6 +234,9 @@ async function handleProductBrollBatch(body: ProductBrollBody) {
         niche: picked.twin.category,
         twinId: picked.twin.twinId,
         assetId: picked.asset.assetId,
+        assetKind: picked.asset.kind,
+        assetQuality: picked.asset.qualityScore,
+        assetRisk: picked.asset.risk,
       };
     } else if (!imageUrl && !imageDataUrl && !diskPath) {
       if (!db) return NextResponse.json({ ok: false, error: "Supabase не настроен" }, { status: 500 });
@@ -237,6 +249,9 @@ async function handleProductBrollBatch(body: ProductBrollBody) {
           niche: picked.twin.category,
           twinId: picked.twin.twinId,
           assetId: picked.asset.assetId,
+          assetKind: picked.asset.kind,
+          assetQuality: picked.asset.qualityScore,
+          assetRisk: picked.asset.risk,
         };
       } else {
         const resolved = await resolveSourceImage({ article, product, scene, niche, prepare, imageUrl });
@@ -263,6 +278,9 @@ async function handleProductBrollBatch(body: ProductBrollBody) {
         originalPath: raw.sourcePath,
         cleanPromptUsed: prompt,
         cleanResponseUrl: clean.responseUrl,
+        assetKind: "clean_source",
+        assetQuality: null,
+        assetRisk: "medium",
       };
     } else {
       const resolved = await resolveSourceImage({ article, product, scene, niche, prepare, imageUrl });
@@ -293,6 +311,29 @@ async function handleProductBrollBatch(body: ProductBrollBody) {
     }
 
     const variants = buildProductBrollPlan({ article, product, recipe, count, model });
+    const sourceGate = assessProductBrollSource({
+      sourceKind: source.imageKind,
+      assetKind: source.assetKind,
+      assetQuality: source.assetQuality,
+      assetRisk: source.assetRisk,
+      viewId: source.viewId,
+      submit,
+      allowPackshot,
+    });
+    const experimentPlan = buildProductBrollExperimentPlan({
+      article,
+      product,
+      recipe,
+      model,
+      variants,
+      sourceKind: source.imageKind,
+      assetKind: source.assetKind,
+      assetQuality: source.assetQuality,
+      assetRisk: source.assetRisk,
+      viewId: source.viewId,
+      submit,
+      allowPackshot,
+    });
     if (!submit) {
       return NextResponse.json({
         ok: true,
@@ -306,6 +347,9 @@ async function handleProductBrollBatch(body: ProductBrollBody) {
         source_kind: source.imageKind,
         twin_id: source.twinId || null,
         asset_id: source.assetId || null,
+        asset_kind: source.assetKind || null,
+        asset_quality: source.assetQuality ?? null,
+        asset_risk: source.assetRisk || null,
         view_id: source.viewId || null,
         view_purpose: source.viewPurpose || null,
         original_source_kind: source.originalKind || null,
@@ -316,8 +360,31 @@ async function handleProductBrollBatch(body: ProductBrollBody) {
           response_url: source.cleanResponseUrl,
         } : null,
         warning: source.warning,
+        source_gate: sourceGate,
+        experiment_plan: experimentPlan,
         variants,
       }, { headers: { "Cache-Control": "no-store" } });
+    }
+
+    if (!sourceGate.ok) {
+      return NextResponse.json({
+        ok: false,
+        mode: "blocked",
+        error: "product b-roll source is not ready for paid submit",
+        article,
+        product,
+        source_image: source.imageUrl,
+        source_preview_url: productTwinAssetPreviewUrl(source.imageUrl),
+        source_kind: source.imageKind,
+        twin_id: source.twinId || null,
+        asset_id: source.assetId || null,
+        asset_kind: source.assetKind || null,
+        asset_quality: source.assetQuality ?? null,
+        asset_risk: source.assetRisk || null,
+        view_id: source.viewId || null,
+        source_gate: sourceGate,
+        experiment_plan: experimentPlan,
+      }, { status: 409, headers: { "Cache-Control": "no-store" } });
     }
 
     if (!process.env.FAL_KEY && !process.env.FAL_BILLING_KEY) return NextResponse.json({ ok: false, error: "FAL_KEY не настроен" }, { status: 500 });
@@ -350,6 +417,9 @@ async function handleProductBrollBatch(body: ProductBrollBody) {
       source_kind: source.imageKind,
       twin_id: source.twinId || null,
       asset_id: source.assetId || null,
+      asset_kind: source.assetKind || null,
+      asset_quality: source.assetQuality ?? null,
+      asset_risk: source.assetRisk || null,
       view_id: source.viewId || null,
       view_purpose: source.viewPurpose || null,
       original_source_kind: source.originalKind || null,
@@ -361,6 +431,8 @@ async function handleProductBrollBatch(body: ProductBrollBody) {
       } : null,
       submitted: jobs.filter((j) => j.ok).length,
       failed: jobs.filter((j) => !j.ok).length,
+      source_gate: sourceGate,
+      experiment_plan: experimentPlan,
       jobs,
       status_route: "/api/factory/video-fal-status/{task_id}?article=" + encodeURIComponent(article) + "&niche=" + encodeURIComponent(source.niche || recipe),
     }, { headers: { "Cache-Control": "no-store" } });

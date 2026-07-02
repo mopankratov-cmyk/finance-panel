@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { internalFetch } from "@/lib/internalFetch";
 import { extractFrames } from "@/lib/factory/serverMedia";
 import type { RunPlan } from "@/lib/factory/graphTypes";
+import { isAuthorizedReelsBrainJobRequest } from "@/lib/factory/reelsBrainJobAuth";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -14,11 +15,6 @@ interface RecipeRow {
   mode: string | null;
   output_url: string | null;
   run_plan: RunPlan | null;
-}
-
-function authOk(req: NextRequest): boolean {
-  const secret = process.env.CRON_SECRET || "";
-  return !!secret && req.headers.get("authorization") === `Bearer ${secret}`;
 }
 
 function addPlanWarning(plan: RunPlan, message: string): void {
@@ -53,7 +49,7 @@ async function genSave(origin: string, body: Record<string, unknown>) {
 
 export async function POST(req: NextRequest) {
   try {
-  if (!authOk(req)) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if (!(await isAuthorizedReelsBrainJobRequest(req))) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 500 });
 
