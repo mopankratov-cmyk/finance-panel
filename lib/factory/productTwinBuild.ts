@@ -14,9 +14,11 @@ import {
   downloadImageBuffer,
   getLatestProductTwinByArticle,
   persistProductTwin,
+  setProductTwinIdentityVerdict,
   uploadTwinAsset,
 } from "@/lib/factory/productTwinStore";
 import { focusProductSourceImage } from "./productSourceCrop";
+import { checkTwinIdentity, type TwinIdentityCheckResult } from "./productTwinIdentityCheck";
 import { yaDownloadHref } from "@/lib/yandex/disk";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { pickProductSource } from "./productSourcePicker";
@@ -96,6 +98,7 @@ export async function buildProductTwin(input: ProductTwinBuildInput, db: Supabas
   cleanUrl: string;
   sourceKind: string;
   sourcePath?: string;
+  identityCheck?: TwinIdentityCheckResult;
 } | { ok: false; error: string; status?: number; responseUrl?: string }> {
   const article = cleanText(input.article, 80);
   if (!article) return { ok: false, error: "нужен article", status: 400 };
@@ -190,5 +193,34 @@ export async function buildProductTwin(input: ProductTwinBuildInput, db: Supabas
     assets,
   });
   if (!saved.ok) return { ok: false, error: saved.error, status: 500 };
-  return { ok: true, twin: saved.twin, cleanUrl: clean.imageUrl, sourceKind: resolved.sourceKind, sourcePath: resolved.sourcePath };
+
+  // Identity-сверка «оригинал vs твин» сразу после сохранения: вердикт пишется в базу,
+  // fail-твин мгновенно блокируется гейтом getBestProductTwinAsset (b-roll уходит на реальные фото).
+  let identityCheck: TwinIdentityCheckResult = { ran: false, reasons: [], error: "исходник для сверки недоступен" };
+  const sourceBuffer = await resolveSourceBufferForIdentity(resolved.image);
+  if (sourceBuffer) {
+    identityCheck = await checkTwinIdentity({ sourceBuffer, twinBuffer: downloaded.buffer, article, product, category });
+    if (identityCheck.ran && identityCheck.verdict) {
+      await setProductTwinIdentityVerdict(db, {
+        twinId,
+        verdict: identityCheck.verdict,
+        reasons: identityCheck.reasons,
+        source: "build_auto_check",
+      });
+    }
+  }
+
+  return { ok: true, twin: saved.twin, cleanUrl: clean.imageUrl, sourceKind: resolved.sourceKind, sourcePath: resolved.sourcePath, identityCheck };
+}
+
+async function resolveSourceBufferForIdentity(image: string): Promise<Buffer | null> {
+  if (image.startsWith("data:image/")) {
+    const base64 = image.split(",")[1] || "";
+    return base64 ? Buffer.from(base64, "base64") : null;
+  }
+  if (/^https?:\/\//i.test(image)) {
+    const downloaded = await downloadImageBuffer(image);
+    return downloaded.ok ? downloaded.buffer : null;
+  }
+  return null;
 }

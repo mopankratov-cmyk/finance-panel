@@ -38,3 +38,15 @@ ok(/deleteYandexProductTwinFile/.test(deleteRoute), "delete cleans twin files fr
 ok(isDeletableProductTwinPath("/content-factory/archive/2026-07-01/unknown-niche/product-twin/clr00716/pt_x/clean.png"), "product-twin image under archive root is disk-deletable");
 ok(!isDeletableProductTwinPath("/content-factory/archive/2026-07-01/bag/fal-video/x.mp4") || true, "guards are separate per subdir");
 ok(!isDeletableProductTwinPath("/МАША/Сумки/Кросс-боди капучино/2.png"), "original shoot photos are NOT deletable");
+
+// Identity-сверка в цикле сборки: каждый новый твин сверяется с исходником до выдачи.
+const build = readFileSync("lib/factory/productTwinBuild.ts", "utf8");
+const identityCheck = readFileSync("lib/factory/productTwinIdentityCheck.ts", "utf8");
+const cleanSource = readFileSync("lib/factory/productCleanSource.ts", "utf8");
+ok(/checkTwinIdentity\(\{ sourceBuffer, twinBuffer/.test(build), "build runs identity check against the source photo");
+ok(/setProductTwinIdentityVerdict\(db/.test(build) && /source: "build_auto_check"/.test(build), "build persists auto verdict immediately after save");
+ok(/identityCheck/.test(build), "build returns identity check result to callers");
+ok(/ANTHROPIC_API_KEY отсутствует/.test(identityCheck), "identity check is fail-open without key but reports it");
+ok(/длина одежды/.test(identityCheck) && /фурнитуру/.test(identityCheck), "identity prompt covers length/material/hardware attributes");
+// Clean-промпт: вшитая подпись бренда вне товара убирается (урок CLÉRIN).
+ok((cleanSource.match(/rendered outside the (bag|garment|product)/g) || []).length >= 3, "clean prompts strip brand captions outside the product for bag/apparel/default");
