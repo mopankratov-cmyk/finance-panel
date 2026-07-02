@@ -56,3 +56,4 @@ const screenSrc = readFileSync("lib/factory/twinSourceScreen.ts", "utf8");
 ok(/кадр НА МОДЕЛИ подходит/.test(screenSrc), "screen accepts on-model shots for apparel (clean step extracts the garment)");
 ok(/перекрыт больше чем на треть/.test(screenSrc), "screen still rejects heavily occluded product");
 ok(/role=on_model.*ГОДНЫЙ/.test(screenSrc), "on_model role without text is a valid source");
+ok(/видно ЦЕЛИКОМ по длине/.test(screenSrc), "screen rejects cropped garment shots so twin does not invent length");
