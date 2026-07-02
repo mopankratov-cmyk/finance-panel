@@ -401,6 +401,9 @@ function classifyAudioMechanics(row: CorpusAuditRow) {
   if (hasTranscript && wordsPerSecond != null && wordsPerSecond < 1.8) mechanics.push("slow_flat_speech");
   if (firstLongSilence(features)) mechanics.push("pause_before_payoff");
   if (meanVolume != null && meanVolume < -20) mechanics.push("weak_voice_mix");
+  if (String(features?.pacing_tier || "") === "fast") mechanics.push("fast_pacing_tier");
+  if (String(features?.beat_density_hint || "") === "high") mechanics.push("dense_cut_rhythm");
+  if (audioFeatureNum(features, "dead_air_ratio_pct") != null && (audioFeatureNum(features, "dead_air_ratio_pct") || 0) <= 12) mechanics.push("low_dead_air");
 
   return mechanics;
 }
@@ -417,6 +420,9 @@ function labelAudioMechanic(key: string) {
     slow_flat_speech: "Вялая медленная речь",
     pause_before_payoff: "Пауза перед payoff",
     weak_voice_mix: "Слабый голос в миксе",
+    fast_pacing_tier: "Быстрый pacing layer",
+    dense_cut_rhythm: "Плотный ритм смен",
+    low_dead_air: "Мало пустого воздуха",
   };
   return labels[key] || key;
 }
@@ -536,11 +542,44 @@ function buildAudioBrain(rows: CorpusAuditRow[]) {
     with_transcript_rate: pct(withTranscript, total),
     top_mechanics,
     anti_patterns,
+    feature_depth: {
+      pause_map_ready: audioRows.filter((row) => audioFeatureNum(readSeed(row).audioFeatures, "pause_count") != null).length,
+      pacing_ready: audioRows.filter((row) => String(readSeed(row).audioFeatures?.pacing_tier || "") !== "").length,
+      beat_hint_ready: audioRows.filter((row) => String(readSeed(row).audioFeatures?.beat_density_hint || "") !== "").length,
+    },
     next_step: withAudio >= 100
       ? "Связывать audio mechanics с hook + structure и усиливать generator payload."
       : withAudio > 0
         ? "Добрать ещё audio-ready видео, чтобы механики стали статистически устойчивыми."
         : "Сначала прогнать audio backfill и transcript слой.",
+  };
+}
+
+function buildOutcomeMemoryBrain(
+  feedbackLoop: ReturnType<typeof buildReelsBrainOperatingSystem>["feedback_loop"],
+  patternDetails: Array<Record<string, unknown>>,
+) {
+  const highConfidencePatterns = patternDetails.filter((row) => String(row.quality_gate || "") === "high_confidence").length;
+  const mediumPatterns = patternDetails.filter((row) => String(row.quality_gate || "") === "medium_confidence").length;
+  return {
+    status: feedbackLoop.outcome_schema?.schema_ready ? "schema_ready" : "planned",
+    rows_live: feedbackLoop.total_posts || 0,
+    schema: feedbackLoop.outcome_schema || null,
+    mapping_ready: {
+      recipe_id: true,
+      platform: true,
+      top_funnel: true,
+      retention: true,
+      commerce: true,
+    },
+    attach_targets: {
+      high_confidence_patterns: highConfidencePatterns,
+      medium_confidence_patterns: mediumPatterns,
+      winner_memory_write: highConfidencePatterns + mediumPatterns > 0 ? "ready" : "waiting_patterns",
+    },
+    next_step: feedbackLoop.total_posts
+      ? "Начать писать market outcomes обратно в pattern/anti-pattern brain после каждого ролика."
+      : "Схема готова: как только пойдут публикации, писать outcomes через post-metrics и reels-brain/feedback.",
   };
 }
 
@@ -2084,6 +2123,7 @@ export async function GET(req: NextRequest) {
       insights: insightPayload,
       feedbackRows: feedbackRows.rows,
     });
+    const outcomeMemoryBrain = buildOutcomeMemoryBrain(operatingSystem.feedback_loop, patternDecisionLayer.pattern_details as Record<string, unknown>[]);
     const baseNextLayers = buildNextIntelligenceLayers({ insightPayload, patternDecisionLayer, corpusAudit, audioVisualReadiness });
     const nextIntelligenceLayers = {
       ...baseNextLayers,
@@ -2098,6 +2138,7 @@ export async function GET(req: NextRequest) {
         status: corpusAudit.verdict,
         next_step: corpusAudit.ru_likely_rate < 80 ? "Усилить RU discovery." : "Держать RU-фокус и снижать low-signal.",
       },
+      outcome_memory: outcomeMemoryBrain,
     };
 
     return NextResponse.json({
@@ -2111,6 +2152,7 @@ export async function GET(req: NextRequest) {
       niche_comparison: nicheComparison,
       daily_report: dailyReport,
       feedback_loop: operatingSystem.feedback_loop,
+      outcome_memory_brain: outcomeMemoryBrain,
       audio_visual_intelligence: nextIntelligenceLayers.audio_visual_intelligence,
       product_brain: operatingSystem.product_brain,
       audience_brain: operatingSystem.audience_brain,

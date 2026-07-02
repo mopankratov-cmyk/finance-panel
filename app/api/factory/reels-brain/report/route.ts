@@ -23,6 +23,7 @@ export async function GET(req: NextRequest) {
       discovery_brain: body.discovery_brain || null,
       taxonomy_brain: body.taxonomy_brain || null,
       feedback_loop: body.feedback_loop || body.next_intelligence_layers?.feedback_loop || null,
+      outcome_memory_brain: body.outcome_memory_brain || body.next_intelligence_layers?.outcome_memory || null,
       audio_visual_intelligence: body.audio_visual_intelligence || body.next_intelligence_layers?.audio_visual_intelligence || null,
       audio_visual_readiness: body.audio_visual_readiness || null,
       product_brain: body.product_brain || body.next_intelligence_layers?.product_brain || null,

@@ -26,7 +26,13 @@ export type ReelsBrainAudioFeatures = {
   mean_volume_db: number | null;
   max_volume_db: number | null;
   first_sound_sec: number | null;
+  first_speech_event_sec: number | null;
   silence_segments: Array<{ start_sec: number | null; end_sec: number | null; duration_sec: number | null }>;
+  pause_count: number;
+  long_pause_count: number;
+  dead_air_ratio_pct: number | null;
+  pacing_tier: "fast" | "medium" | "slow" | "unknown";
+  beat_density_hint: "high" | "medium" | "low" | "unknown";
   transcript_source: "fal_whisper" | null;
   transcript_error: string | null;
   words_per_second: number | null;
@@ -288,6 +294,26 @@ export async function extractAudioFeaturesFromMediaUrl(
   const wordsPerSecond = transcriptWords > 0 && audioDuration && audioDuration > 0
     ? Math.round((transcriptWords / audioDuration) * 1000) / 1000
     : null;
+  const pauseCount = levels.silence_segments.filter((segment) => (segment.duration_sec || 0) >= 0.2).length;
+  const longPauseCount = levels.silence_segments.filter((segment) => (segment.duration_sec || 0) >= 0.8).length;
+  const deadAirSeconds = levels.silence_segments.reduce((sum, segment) => sum + (segment.duration_sec || 0), 0);
+  const deadAirRatioPct = audioDuration && audioDuration > 0
+    ? Math.round((deadAirSeconds / audioDuration) * 1000) / 10
+    : null;
+  const pacingTier = wordsPerSecond == null
+    ? "unknown"
+    : wordsPerSecond >= 3.4
+      ? "fast"
+      : wordsPerSecond >= 2
+        ? "medium"
+        : "slow";
+  const beatDensityHint = pauseCount >= 10
+    ? "high"
+    : pauseCount >= 5
+      ? "medium"
+      : pauseCount > 0
+        ? "low"
+        : "unknown";
 
   const audioFeatures: ReelsBrainAudioFeatures = {
     media_url: target,
@@ -307,7 +333,13 @@ export async function extractAudioFeaturesFromMediaUrl(
     mean_volume_db: levels.mean_volume_db,
     max_volume_db: levels.max_volume_db,
     first_sound_sec: levels.first_sound_sec,
+    first_speech_event_sec: transcript ? (levels.first_sound_sec ?? 0) : null,
     silence_segments: levels.silence_segments,
+    pause_count: pauseCount,
+    long_pause_count: longPauseCount,
+    dead_air_ratio_pct: deadAirRatioPct,
+    pacing_tier: pacingTier,
+    beat_density_hint: beatDensityHint,
     transcript_source: transcript ? "fal_whisper" : null,
     transcript_error: transcriptError,
     words_per_second: wordsPerSecond,

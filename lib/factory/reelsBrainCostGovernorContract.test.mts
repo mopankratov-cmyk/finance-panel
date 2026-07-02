@@ -22,6 +22,7 @@ ok(/autopilot_actions: autopilotActions/.test(economics), "learning-economics re
 ok(/next_intelligence_layers: nextIntelligenceLayers/.test(economics), "learning-economics returns next intelligence layers");
 ok(/buildReelsBrainOperatingSystem/.test(economics), "learning-economics builds the operating-system layers");
 ok(/feedback_loop/.test(economics) && /product_brain/.test(economics) && /experiment_brain/.test(economics), "learning-economics returns advanced intelligence layers");
+ok(/outcome_memory_brain/.test(economics) && /outcome_memory/.test(economics), "learning-economics exposes outcome memory schema before publication loop");
 ok(/const chronologicalRuns = \[\.\.\.runs\]\.sort/.test(economics) && /const timeline = chronologicalRuns\.map/.test(economics), "learning-economics normalizes automation history into chronological timeline");
 ok(/function buildAudioVisualReadiness/.test(economics) && /audio_visual_readiness: audioVisualReadiness/.test(economics), "learning-economics exposes audio/deep-worker readiness from corpus metadata");
 ok(/ready_for_worker/.test(cockpit) && /with_media_locators/.test(cockpit) && /audioVisualSummary/.test(cockpit), "cockpit surfaces audio/deep-worker readiness summary");
@@ -37,7 +38,7 @@ ok(!/POST\s*\(/.test(governor), "cost-governor route is read-only");
 
 ok(/daily_report/.test(report) && /autopilot_actions/.test(report), "report route exposes operator report fields");
 ok(/anti_pattern_brain/.test(report) && /discovery_brain/.test(report), "report route includes learning context");
-ok(/feedback_loop/.test(report) && /portfolio_manager/.test(report) && /audio_visual_readiness/.test(report), "report route exposes operating-system intelligence and audio readiness");
+ok(/feedback_loop/.test(report) && /portfolio_manager/.test(report) && /audio_visual_readiness/.test(report) && /outcome_memory_brain/.test(report), "report route exposes operating-system intelligence, audio readiness and outcome memory");
 ok(!/POST\s*\(/.test(report), "report route is read-only");
 
 ok(/corpusProgress/.test(learningPlan) && /corpusExecutionPlan/.test(learningPlan), "learning-plan computes 10k corpus progress");

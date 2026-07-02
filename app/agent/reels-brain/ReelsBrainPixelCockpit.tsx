@@ -155,6 +155,7 @@ export default function ReelsBrainPixelCockpit() {
     const discovery = learning?.discovery_brain || {};
     const taxonomy = learning?.taxonomy_brain || {};
     const audioBrain = learning?.audio_brain || {};
+    const outcomeMemory = learning?.outcome_memory_brain || {};
     const dailyReport = learning?.daily_report || {};
     const qualityGate = learning?.quality_gate || {};
     const costGovernor = learning?.cost_governor || {};
@@ -306,6 +307,7 @@ export default function ReelsBrainPixelCockpit() {
       discovery,
       taxonomy,
       audioBrain,
+      outcomeMemory,
       dailyReport,
       qualityGate,
       costGovernor,
@@ -854,6 +856,27 @@ export default function ReelsBrainPixelCockpit() {
               )}
             </div>
           </div>
+          <div className="rb-card" style={{ marginTop: 16 }}>
+            <div className="rb-overline" style={{ color: "#0891b2" }}>Audio feature depth</div>
+            <h3 style={{ font: "600 24px/1.15 'Space Grotesk'", margin: "9px 0 14px" }}>Насколько глубоко уже разобран звук</h3>
+            <div className="rb-three">
+              <div className="rb-kpi">
+                <div className="label">Pause map</div>
+                <strong>{compact(vm.audioBrain.feature_depth?.pause_map_ready)}</strong>
+                <p>видео с картой пауз</p>
+              </div>
+              <div className="rb-kpi">
+                <div className="label">Pacing</div>
+                <strong>{compact(vm.audioBrain.feature_depth?.pacing_ready)}</strong>
+                <p>видео с pacing-tier</p>
+              </div>
+              <div className="rb-kpi">
+                <div className="label">Beat hint</div>
+                <strong>{compact(vm.audioBrain.feature_depth?.beat_hint_ready)}</strong>
+                <p>видео с rhythm hint</p>
+              </div>
+            </div>
+          </div>
         </section>
 
         <section>
@@ -1002,6 +1025,43 @@ export default function ReelsBrainPixelCockpit() {
         </section>
 
         <section>
+          <SectionTitle k="08.8 · Outcome Memory" title="Готовность учиться на наших публикациях" />
+          <div className="rb-two">
+            <div className="rb-card">
+              <div className="rb-pill">{vm.outcomeMemory.status || "planned"} · live {compact(vm.outcomeMemory.rows_live)}</div>
+              <h3 style={{ font: "700 26px/1.1 'Space Grotesk'", margin: "14px 0" }}>Схема market feedback уже готова</h3>
+              <p>{vm.outcomeMemory.next_step || "Как только пойдут публикации, outcomes можно писать без перестройки мозга."}</p>
+              <div className="rb-three" style={{ marginTop: 16 }}>
+                <div className="rb-kpi">
+                  <div className="label">High confidence</div>
+                  <strong>{compact(vm.outcomeMemory.attach_targets?.high_confidence_patterns)}</strong>
+                  <p>паттернов готовы принять outcome</p>
+                </div>
+                <div className="rb-kpi">
+                  <div className="label">Medium confidence</div>
+                  <strong>{compact(vm.outcomeMemory.attach_targets?.medium_confidence_patterns)}</strong>
+                  <p>паттернов на следующую очередь</p>
+                </div>
+                <div className="rb-kpi">
+                  <div className="label">Memory write</div>
+                  <strong>{vm.outcomeMemory.attach_targets?.winner_memory_write || "waiting"}</strong>
+                  <p>победители/проигравшие</p>
+                </div>
+              </div>
+            </div>
+            <div className="rb-card">
+              <div className="rb-overline" style={{ color: "#0891b2" }}>Outcome schema</div>
+              <h3 style={{ font: "600 24px/1.15 'Space Grotesk'", margin: "9px 0 14px" }}>Что именно надо писать в память</h3>
+              <div className="rb-pattern">
+                <p><strong>Required:</strong> {((vm.outcomeMemory.schema?.required_fields || []) as string[]).join(" · ") || "recipe_id · platform · views · posted_at"}</p>
+                <p><strong>Recommended:</strong> {((vm.outcomeMemory.schema?.recommended_fields || []) as string[]).slice(0, 6).join(" · ") || "hook_rate · hold_rate · completion_rate · ctr_card · saves · revenue"}</p>
+                <p><strong>Endpoints:</strong> {((vm.outcomeMemory.schema?.ingestion_endpoints || []) as string[]).join(" · ") || "/api/factory/post-metrics · /api/factory/reels-brain/feedback"}</p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section>
           <SectionTitle k="08.9 · Learning Mission" title="Как добираем насмотренность до 10k" />
           <div className="rb-two">
             <div className="rb-card">
@@ -1106,6 +1166,7 @@ export default function ReelsBrainPixelCockpit() {
           <div className="rb-layer-grid">
             {[
               ["Feedback Loop", vm.nextLayers.feedback_loop?.status, vm.nextLayers.feedback_loop?.next_step],
+              ["Outcome Memory", vm.nextLayers.outcome_memory?.status, vm.nextLayers.outcome_memory?.next_step],
               ["Audio / Visual", vm.nextLayers.audio_visual_intelligence?.status, [vm.nextLayers.audio_visual_intelligence?.next_step, vm.audioVisualSummary].filter(Boolean).join(" ")],
               ["Audio Brain", vm.audioBrain.status, vm.audioBrain.next_step],
               ["Product Brain", vm.nextLayers.product_brain?.status, vm.nextLayers.product_brain?.next_step],
