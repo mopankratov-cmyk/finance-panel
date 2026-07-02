@@ -125,9 +125,8 @@ async function resolveInputImage(body: ProductTwinBuildInput): Promise<{ image: 
         focusStrategy: focused.applied ? focused.strategy : undefined,
       };
     }
-    if (wbUrls.length && screenNotes.length) {
-      return { error: `WB-фото ${article} не прошли vision-скрин: ${screenNotes.join(" · ")}`.slice(0, 600) };
-    }
+    // Ни одна WB-карточка не прошла скрин — НЕ ошибка: проваливаемся к съёмочной папке/пикеру.
+    // screenNotes копятся и попадут в финальную диагностику, если и остальные источники пусты.
   }
 
   // 2) Полный SKU из WB-каталога (например NV-08-48 капучино): кандидаты — сырые кадры
