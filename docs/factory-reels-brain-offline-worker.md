@@ -28,6 +28,10 @@ CRON_SECRET=...
 REELS_BRAIN_ENABLE_LOCAL_MEDIA_RESOLVER=1
 REELS_BRAIN_MEDIA_BACKFILL_PROVIDER=apify_instagram
 REELS_BRAIN_MEDIA_BACKFILL_PLATFORM=instagram
+REELS_BRAIN_PLATFORMS=tiktok,instagram,youtube
+REELS_BRAIN_MEDIA_BACKFILL_PROVIDER_INSTAGRAM=bright_instagram
+REELS_BRAIN_MEDIA_BACKFILL_PROVIDER_TIKTOK=apify_tiktok
+REELS_BRAIN_MEDIA_BACKFILL_PROVIDER_YOUTUBE=apify_youtube
 REELS_BRAIN_MEDIA_BACKFILL_LIMIT=3
 REELS_BRAIN_MEDIA_BACKFILL_SCAN=30
 REELS_BRAIN_OFFLINE_MODE=mixed
@@ -52,7 +56,7 @@ node lib/factory/reelsBrainOfflineWorker.mjs --once --provider apify_instagram -
 Daemon:
 
 ```bash
-node lib/factory/reelsBrainOfflineWorker.mjs --every-sec 240 --mode mixed --provider apify_instagram --platform instagram --media-limit 3 --media-scan 30 --audio-limit 2 --audio-scan 18 --use-local-resolver 1
+node lib/factory/reelsBrainOfflineWorker.mjs --every-sec 240 --mode mixed --platforms tiktok,instagram,youtube --media-limit 3 --media-scan 30 --audio-limit 2 --audio-scan 18 --use-local-resolver 1
 ```
 
 Если нужен Bright Data вместо Apify:
@@ -92,6 +96,7 @@ yt-dlp --version
    - `media` tick
    - `audio` tick
    - transcript enrichment
+   - и вращает платформы по кругу `tiktok -> instagram -> youtube`
 5. После накопления `audio_ready` слоя переходить к следующему углублению:
    - beat / speech features
    - stronger audio patterns
