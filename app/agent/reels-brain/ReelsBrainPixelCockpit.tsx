@@ -781,8 +781,23 @@ export default function ReelsBrainPixelCockpit() {
                   <div className="rb-pill">{combo.decision_label || combo.decision || "Watch"} · OP {compact(combo.op_score)}</div>
                   <h3 style={{ marginTop: 10 }}>{combo.hook_label} + {combo.structure_label}</h3>
                   <p>{(combo.retention || []).join(" · ") || "retention появится после пересборки"} · confidence {combo.confidence || "watch"}</p>
+                  <p style={{ color: "#0f172a", fontWeight: 600 }}>{combo.user_summary || combo.next_action}</p>
                   <p>ниши {compact(combo.evidence?.niches)} · платформы {compact(combo.evidence?.platforms)} · references {compact(combo.evidence?.references)}</p>
-                  <p style={{ color: "#0f172a", fontWeight: 600 }}>{combo.next_action}</p>
+                  {((combo.why_it_wins || []) as string[]).length ? (
+                    <div style={{ marginTop: 10, display: "grid", gap: 6 }}>
+                      {((combo.why_it_wins || []) as string[]).slice(0, 3).map((reason, index) => (
+                        <p key={`why:${index}`} style={{ margin: 0, color: "#334155" }}>Почему это сильно: {reason}</p>
+                      ))}
+                    </div>
+                  ) : null}
+                  {((combo.watchouts || []) as string[]).length ? (
+                    <div style={{ marginTop: 10, padding: 10, borderRadius: 12, background: "#fff7ed", border: "1px solid #fed7aa" }}>
+                      {((combo.watchouts || []) as string[]).slice(0, 2).map((risk, index) => (
+                        <p key={`risk:${index}`} style={{ margin: 0, color: "#9a3412" }}>На что смотреть: {risk}</p>
+                      ))}
+                    </div>
+                  ) : null}
+                  <p style={{ color: "#0f172a", fontWeight: 600, marginTop: 10 }}>{combo.next_action}</p>
                 </div>
               ))}
             </div>

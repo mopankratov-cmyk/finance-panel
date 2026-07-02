@@ -1438,6 +1438,26 @@ function buildInsights(rows: { niche?: string; playbook?: unknown }[]) {
       : avgOpScore >= 70 && confidence !== "low"
         ? "test_next"
         : "watch";
+    const why_it_wins = [
+      row.frequency >= 5 ? `связка повторяется в корпусе ${row.frequency} раз и не выглядит случайной` : "",
+      row.niches.size >= 2 ? `уже работает минимум в ${row.niches.size} нишах, значит логика не слишком узкая` : "",
+      row.platforms.size >= 2 ? `переносится между ${row.platforms.size} платформами, значит это не локальный артефакт одной сети` : "",
+      row.examples.length >= 2 ? `есть несколько референсов с доказательством, а не один удачный ролик` : "",
+      avgOpScore >= 85 ? `OP score ${avgOpScore} показывает высокий шанс на сильный первый экран и удержание` : "",
+      avgQualityScore >= 70 ? `quality score ${avgQualityScore} говорит, что шум уже низкий и паттерн близок к generator-ready` : "",
+    ].filter(Boolean);
+    const watchouts = [
+      row.platforms.size < 2 ? "пока мало кроссплатформенной проверки" : "",
+      row.niches.size < 2 ? "пока подтверждено в ограниченном числе ниш" : "",
+      row.examples.length < 2 ? "референсов маловато, лучше не масштабировать вслепую" : "",
+      avgQualityScore < 70 ? "quality ещё не идеален, возможен шум в источниках" : "",
+    ].filter(Boolean);
+    const user_summary = decision === "scale_now"
+      ? "Связка уже похожа на рабочую механику для серии новых креативов."
+      : decision === "test_next"
+        ? "Связка выглядит сильной, но её лучше подтвердить через A/B, а не сразу масштабировать."
+        : "Связка пока интересная, но ещё не доказана настолько, чтобы на неё опираться."
+    ;
     return {
       id: `${row.hook_type}:${row.structure_type}`,
       hook_type: row.hook_type,
@@ -1451,6 +1471,9 @@ function buildInsights(rows: { niche?: string; playbook?: unknown }[]) {
       confidence,
       decision,
       decision_label: decision === "scale_now" ? "Scale" : decision === "test_next" ? "Test" : "Watch",
+      user_summary,
+      why_it_wins: why_it_wins.slice(0, 3),
+      watchouts: watchouts.slice(0, 2),
       evidence: {
         niches: row.niches.size,
         platforms: row.platforms.size,
