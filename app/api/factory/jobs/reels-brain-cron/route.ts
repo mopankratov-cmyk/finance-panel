@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { internalFetch } from "@/lib/internalFetch";
 import { isAuthorizedReelsBrainJobRequest } from "@/lib/factory/reelsBrainJobAuth";
+import { REELS_BRAIN_CORPUS_TARGET_TOTAL } from "@/lib/factory/reelsBrainCorpusTargets";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const dynamic = "force-dynamic";
@@ -8,7 +9,7 @@ export const maxDuration = 120;
 
 const DEFAULT_NICHES = "ru_toys,ru_clothing,ru_cosmetics";
 const DEFAULT_PLATFORMS = "tiktok,instagram,youtube";
-const DEFAULT_TARGET_TOTAL = 6000;
+const DEFAULT_TARGET_TOTAL = REELS_BRAIN_CORPUS_TARGET_TOTAL;
 const DEFAULT_MAX_BACKLOG_BEFORE_ANALYZE = 120;
 const SUPABASE_PAGE_SIZE = 1000;
 const MAX_BACKLOG_ROWS = 50000;
