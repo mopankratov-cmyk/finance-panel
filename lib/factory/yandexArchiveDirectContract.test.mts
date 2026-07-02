@@ -11,7 +11,8 @@ ok(/archiveExternalMediaToYandex/.test(falImageEdit), "FAL image edit archives g
 ok(/await archiveExternalMediaToYandex/.test(falImageEdit), "FAL image archive is awaited before route returns");
 ok(/yandex_archive/.test(falStatusRoute) && /archiveExternalMediaToYandex/.test(falStatusRoute), "FAL video status archives completed mp4");
 ok(/subdir: "fal-video"/.test(falStatusRoute), "FAL video archive writes to fal-video subdir");
+ok(/sp\.get\("article"\)/.test(falStatusRoute) && /sp\.get\("niche"\)/.test(falStatusRoute), "FAL video status accepts archive article/niche query metadata");
+ok(/stableKey: id/.test(falStatusRoute), "FAL video archive is idempotent across status polls (stableKey=task id)");
 ok(/subdir: "product-twin"/.test(twinStore), "Product Twin uploaded variants archive to product-twin subdir");
 
 console.log("yandexArchiveDirectContract: passed");
-

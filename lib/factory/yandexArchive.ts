@@ -196,6 +196,9 @@ export async function archiveExternalMediaToYandex(input: {
   name?: string | null;
   subdir?: string;
   folderSegments?: (string | null | undefined)[];
+  // Ключ идемпотентности: подписанные CDN-ссылки (FAL) меняются на каждый опрос статуса,
+  // поэтому hash от sourceUrl плодит дубликаты файла. stableKey (например, task_id) даёт один путь.
+  stableKey?: string | null;
 }): Promise<{ status: ArchiveStatus; yandex_path: string | null; yandex_url: string | null; operation_href?: string; error?: string; client_url: string }> {
   const sourceUrl = text(input.sourceUrl, 4000);
   const client_url = yandexClientUrl();
@@ -210,7 +213,7 @@ export async function archiveExternalMediaToYandex(input: {
     .map((segment, index) => safePathSegment(segment, `folder-${index + 1}`))
     .filter(Boolean)
     .join("/");
-  const hash = createHash("sha1").update(sourceUrl).digest("hex").slice(0, 12);
+  const hash = createHash("sha1").update(text(input.stableKey, 4000) || sourceUrl).digest("hex").slice(0, 12);
   const folder = nested ? `${subdir}/${nested}` : subdir;
   const path = `${rootPath()}/${day}/${niche}/${folder}/${article}-${name}-${hash}.${mediaExtFromUrl(sourceUrl, input.kind)}`;
   try {

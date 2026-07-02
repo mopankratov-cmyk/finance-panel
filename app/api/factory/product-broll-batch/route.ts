@@ -21,6 +21,8 @@ interface AssetRow {
   analysis?: { source_url?: string } | null;
 }
 
+type ProductBrollBody = Record<string, unknown>;
+
 function cleanText(value: unknown, max = 160): string {
   return String(value || "").trim().slice(0, max);
 }
@@ -121,17 +123,44 @@ async function resolveCleanInput(input: {
   };
 }
 
+function boolParam(value: string | null): boolean {
+  return value === "1" || value === "true" || value === "yes";
+}
+
+function bodyFromSearchParams(sp: URLSearchParams): ProductBrollBody {
+  return {
+    article: sp.get("article") || sp.get("sku_art") || "",
+    product: sp.get("product") || sp.get("product_name") || "",
+    count: sp.get("count") || "",
+    recipe: sp.get("recipe") || "",
+    model: sp.get("model") || "",
+    submit: boolParam(sp.get("submit")),
+    prepare: boolParam(sp.get("prepare")),
+    clean_first: boolParam(sp.get("clean_first") || sp.get("cleanFirst")),
+    image_url: sp.get("image_url") || sp.get("imageUrl") || "",
+    twin_id: sp.get("twin_id") || sp.get("twinId") || "",
+    disk_path: sp.get("disk_path") || sp.get("diskPath") || "",
+    disk: sp.get("disk") || "",
+    scene: sp.get("scene") || "",
+    niche: sp.get("niche") || "",
+    category: sp.get("category") || "",
+    view_id: sp.get("view_id") || sp.get("viewId") || sp.get("source_view_id") || sp.get("sourceViewId") || "",
+    use_derived_view: boolParam(sp.get("use_derived_view") || sp.get("useDerivedView")),
+    operator_get: true,
+  };
+}
+
 // P0 Repeatable B-roll Machine:
 // POST { article, product?, count?=10, recipe?="skincare_ritual", model?="kling", prepare?=false, clean_first?=false, submit?=false }
 // default submit=false: возвращает план без списания FAL. submit=true сабмитит N image-to-video задач.
-export async function POST(req: NextRequest) {
+async function handleProductBrollBatch(body: ProductBrollBody) {
   try {
-    const body = await req.json().catch(() => ({}));
     const article = cleanText(body.article || body.sku_art, 80);
     if (!article) return NextResponse.json({ ok: false, error: "нужен article" }, { status: 400 });
 
     const product = cleanText(body.product || body.product_name || article, 120);
-    const count = Math.max(1, Math.min(20, Number(body.count) || 10));
+    const maxCount = body.operator_get === true ? 2 : 20;
+    const count = Math.max(1, Math.min(maxCount, Number(body.count) || 10));
     const model = cleanModel(body.model);
     const recipe = (cleanText(body.recipe, 40) || "skincare_ritual") as ProductBrollRecipe;
     const submit = body.submit === true;
@@ -197,7 +226,7 @@ export async function POST(req: NextRequest) {
         twinId: picked.twin.twinId,
         assetId: picked.asset.assetId,
       };
-    } else if (!imageUrl && !imageDataUrl && !diskPath && !cleanFirst) {
+    } else if (!imageUrl && !imageDataUrl && !diskPath) {
       if (!db) return NextResponse.json({ ok: false, error: "Supabase не настроен" }, { status: 500 });
       const existingTwin = await getLatestProductTwinByArticle(db, article);
       const picked = existingTwin ? await getBestProductTwinAsset(db, { twinId: existingTwin.twinId, useCase: "broll" }) : null;
@@ -243,6 +272,23 @@ export async function POST(req: NextRequest) {
         imageKind: resolved.imageKind,
         niche: resolved.niche,
         warning: resolved.warning,
+      };
+    }
+
+    // clean_first поверх twin/view/prepared-источника: твин-ассеты несут карточную вёрстку
+    // (вшитая подпись бренда, поля) — nano-banana возвращает чистый full-bleed кадр для video API.
+    if (cleanFirst && source.imageKind !== "clean_source") {
+      const publicUrl = await rehostImageForFal(source.imageUrl);
+      const prompt = cleanPrompt || buildProductCleanPrompt({ article, product, category });
+      const clean = await runNanoBananaEdit({ image: publicUrl, prompt });
+      if (!clean.ok) return NextResponse.json({ ok: false, error: clean.error, response_url: clean.responseUrl }, { status: clean.responseUrl ? 504 : 502 });
+      source = {
+        ...source,
+        imageUrl: clean.imageUrl,
+        imageKind: "clean_source",
+        originalKind: source.imageKind,
+        cleanPromptUsed: prompt,
+        cleanResponseUrl: clean.responseUrl,
       };
     }
 
@@ -316,7 +362,7 @@ export async function POST(req: NextRequest) {
       submitted: jobs.filter((j) => j.ok).length,
       failed: jobs.filter((j) => !j.ok).length,
       jobs,
-      status_route: "/api/factory/video-fal-status/{task_id}",
+      status_route: "/api/factory/video-fal-status/{task_id}?article=" + encodeURIComponent(article) + "&niche=" + encodeURIComponent(source.niche || recipe),
     }, { headers: { "Cache-Control": "no-store" } });
   } catch (e) {
     return NextResponse.json({
@@ -324,4 +370,15 @@ export async function POST(req: NextRequest) {
       error: "product-broll-batch crash: " + String((e as Error)?.message || e).slice(0, 180),
     }, { status: 500, headers: { "Cache-Control": "no-store" } });
   }
+}
+
+// Operator GET mode: same behavior as POST, but runnable from an authenticated browser/session.
+// Paid generation still requires explicit ?submit=1 and is capped to 2 jobs.
+export async function GET(req: NextRequest) {
+  return handleProductBrollBatch(bodyFromSearchParams(req.nextUrl.searchParams));
+}
+
+export async function POST(req: NextRequest) {
+  const body = await req.json().catch(() => ({}));
+  return handleProductBrollBatch(body);
 }

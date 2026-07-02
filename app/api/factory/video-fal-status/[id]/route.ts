@@ -5,9 +5,12 @@ import { archiveExternalMediaToYandex } from "@/lib/factory/yandexArchive";
 export const dynamic = "force-dynamic";
 
 // Статус премиум-видео (FAL): token зашит в task_id (fv.<base64url>). Stateless.
-export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
+export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await ctx.params;
+    const sp = new URL(req.url).searchParams;
+    const article = String(sp.get("article") || "").trim().slice(0, 80) || null;
+    const niche = String(sp.get("niche") || "").trim().slice(0, 80) || null;
     const token = id.startsWith("fv.") ? id.slice(3) : "";
     if (!token) return NextResponse.json({ status: "error", error: "плохой task_id" });
     const s = await falVideoStatus(token);
@@ -15,8 +18,11 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
       const archive = s.videoUrl ? await archiveExternalMediaToYandex({
         sourceUrl: s.videoUrl,
         kind: "video",
+        article,
+        niche,
         name: id,
         subdir: "fal-video",
+        stableKey: id,
       }).catch((e) => ({ status: "failed" as const, yandex_path: null, yandex_url: null, error: String((e as Error)?.message || e).slice(0, 160), client_url: "" })) : null;
       return NextResponse.json({ status: "done", video_url: s.videoUrl, yandex_archive: archive, progress: "" });
     }

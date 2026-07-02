@@ -2953,3 +2953,74 @@
   - `npx tsx lib/factory/bloggerLearningLoopContract.test.mts`
   - `npx tsx lib/factory/bloggerMotionContract.test.mts`
   - `npx tsc --noEmit --pretty false`
+
+## 2026-07-01 (поздний вечер) — Face Foundry: фаза 0 (код, без платных вызовов)
+
+- Задача от владельца: собственное лицо блогера — генерим снаружи, загружаем в HeyGen как avatar group, оживляем выигрышными моушенами Катиной лаборатории.
+- Новые файлы (зона `lib/factory`, платных вызовов не было):
+  - `lib/factory/faceFoundry.ts` — план: 8 hero-кандидатов (разные vibe, synthetic-guard + анти-глянец) и 8 ракурсов/света с identity-guard для тренировки avatar group.
+  - `lib/factory/faceFoundryRunner.mjs` — CLI: `--stage hero|angles`, dry-run по умолчанию, `--confirm-paid true` для трат; FAL nano-banana (t2i) + nano-banana/edit; ретраи с таймаутами по образцу `falImageEdit.ts`; выход ракурсов скоупится по герою (`angles/<hero>/`); `--hero-file` перезаливает локальный PNG в fal storage на случай протухшего fal.media URL.
+  - `lib/factory/faceFoundryContract.test.mts` — контракт: уникальность spec_id, guard-строки в промптах, клампы count, инвариант hero/angle (модель выбирается по наличию `hero_image_url`).
+- Ревью: 2 адверсариальных ревьюера; все should-fix закрыты (ретраи/таймаут-ошибки с responseUrl, скоуп ракурсов, robustness `--hero-source`, пины инвариантов в тестах).
+- Проверки: `npx tsx lib/factory/faceFoundryContract.test.mts` OK; оба dry-run OK; `npx tsc --noEmit` 0 ошибок.
+- Следующий шаг (фаза 1, ~$1): `npx tsx lib/factory/faceFoundryRunner.mjs --stage hero --confirm-paid true` с FAL-ключом; рекомендация ревьюера — сначала smoke `--count 1`.
+
+## 2026-07-02 — Face Foundry: фазы 1-2 (три блогера, живой HeyGen-конвейер)
+
+- Владелец выбрал лица: Маня=soft_daylight, Вика=dark_blonde_wavy, Оля=mom_tired_kind (12 hero-кандидатов FAL nano-banana, 4 срезал контент-фильтр Gemini детерминированно — деньги не списаны).
+- Ресёрч «сколько артефактов нужно блогеру» (3 агента, web+repo): паспорт ≈ 100 отобранных артефактов; HeyGen Personal Model = мин 10 / реком 30+ фото, 60 кредитов тренировка; add-looks ≤4 image_keys/вызов; ⚠️ v2 photo_avatar API deprecated до 31.10.2026 (v3 = single-photo POST /v3/avatars). Память: ugc-blogger-asset-passport.
+- Матрица тренировочных ракурсов расширена 8→24 (эмоции с mid_speech для липсинка, полный рост, улица/машина/кафе/парк, золотой час/пасмурно/вечер); интерьеры апгрейжены по фидбеку владельца («не надо дешёвых квартир») — guard `not poor or run-down`.
+- Сгенерено 72/72 тренировочных кадра (3×24, FAL nano-banana edit, ~$3 суммарно c героями). QC: identity держится; исключён 1 кадр (Маня full_body_street — босиком).
+- Живой HeyGen прогон (ключ «для завода», кошелёк $13.98 + 839 кредитов): upload asset OK (image_key формат совпал), группа `ugc_manya_v1` создана живьём = v2-эндпоинты подтверждены. В аккаунте уже 7 групп (Katya v3b, Alina, Sergey...).
+- Раннер heygenAvatarGroupRunner: батчинг add по 4, fallback per-key при отказе батча (identity mismatch), внешне-созданная группа через state.creation_key, resume по state.json.
+- Матрица луков расширена 8→14 (полный рост ×2, крупняки ×3, машина/улица/парк/балкон, 6 гардеробных архетипов на персону) по запросу владельца «до 100 вариаций».
+- Тесты: faceFoundryContract + heygenAvatarGroupContract зелёные, tsc 0 ошибок.
+- Запущено: upload+group+train всех трёх групп (фон). Следующее: лук-смоук 1 шт с замером кошелька → полная библиотека луков → Avatar IV бейкофф против текущей Кати.
+
+## 2026-07-02 — Reels Brain Railway: offline media-backfill worker
+
+- Диагностика Railway production показала, что сервис `reels-brain-offline-worker` был online, но крутил старый `audio_backfill_batch_start` loop и застревал на `ready_for_worker: 0`.
+- Причина: runtime стартовал `node lib/factory/reelsBrainAudioRailwayWorker.mjs`, а текущий контур для добора `media_locator_candidates` уже вынесен в `lib/factory/reelsBrainOfflineWorker.mjs`.
+- Фикс в репо:
+  - добавлен совместимый shim `lib/factory/reelsBrainAudioRailwayWorker.mjs`, который переводит Railway на новый offline worker без ручной смены entrypoint;
+  - возвращён `railway.json` с `NIXPACKS` и явным `startCommand` на этот shim;
+  - дефолты shim-а включают `REELS_BRAIN_ENABLE_LOCAL_MEDIA_RESOLVER=1`, heartbeat и offline loop cadence.
+- Следующий live-step: задеплоить этот сервис через `railway up`, добавить `yt-dlp` в `NIXPACKS_PKGS`, прогнать one-shot и проверить рост `rows_with_media` / `ready_for_worker`.
+
+## 2026-07-02 (продолжение) — Фаза 2 ЗАКРЫТА: три обученных блогера с библиотеками луков
+
+- Дедупликация тренировочных сетов по запросу владельца: перцептивный dhash нашёл кластеры клонов (Маня front_neutral≈warm_lamp_evening d=5/144; Оля 4 фронталки слиплись). Отбраковано: Маня 5, Оля 3, Вика 1. Итог в тренировке: 20/24/22 фото (герой+ракурсы).
+- Пойман и закрыт баг v2 add: обязательное поле `name` (400 "name is invalid") — из-за него первый прогон добавил Мане 0 фото и тренировка ($4!) ушла на группе из 1 фото; успели докинуть 19 фото пока train был pending — тренировка в итоге прошла на полном сете.
+- Тренировки: все 3 группы `ready` (Маня fc29c149, Вика 1b2482be, Оля 3379c2f7). Цена тренировки на wallet-биллинге = $4 (кошелёк $13.98→$1.98 за 3 шт).
+- Живость по фидбеку владельца («позы неестественные»): 3 слоя — тренировочный сет остаётся стерильным (якорь identity), луки получили ось микро-действий (кофе mid-sip, смех с зажмуренными глазами, натягивает рукав куртки, оборот через плечо в парке, рассказ в машине с ремнём), плюс candid-guard "no stiff catalog pose". Главный слой живости — моушен на видео-стадии.
+- Луки сгенерены ВНЕШНЕ на FAL (nano-banana edit от героев) по рекомендации ресёрча: 42/42 без фейлов, pHash-дедуп = 0 дублей, identity держится (спот-чек). HeyGen-кредиты на луки не потрачены.
+- Новые стадии кода: faceFoundryRunner `--stage looks` (FAL-генерация луков из buildAvatarGroupLooks), heygenAvatarGroupRunner `--stage looks-external` (upload+add по одному с именем лука, только после train_ready). Заливка: 42/42 лука в группы, имена look__<persona>__NN__<scene>.
+- Ловушка zsh: фоновые команды не сплитят $var по пробелам (set -- $p дал пустой --hero-id) — циклы в фоне писать явными командами.
+- Запущен бесплатный Avatar IV смоук Мани (3 free credits на аккаунте): look plain_wall (жестикуляция) × моушен friend_advice (победитель Катиной лаборатории) × якорный скрипт.
+- Осталось на кошельке HeyGen: $1.98. На полный бейкофф фазы 3 (3 блогера × 2-3 клипа + старая Катя) нужно ~$10.
+
+## 2026-07-02 (ночь) — Фаза 3: оживление, анти-AI пост, бейкофф
+
+- Первый Avatar IV смоук Мани (plain_wall × friend_advice, голос Anya): вердикт владельца «палится». Диагноз ожидаем: сырые 6с говорящей головы без единого анти-AI слоя = худший режим.
+- Найден и заменён протухший voice_id Кати в ugcStoryboard-конфиге (37832e32d4f747... → Anya 37832e32d4f7475ab7a1cb0db8e5dd66); старый даёт «Voice not found» на прод-ключе.
+- Ресёрч анти-AI пост-обработки (2 агента, web+repo): топ-рычаг = монтаж 90/10 (лицо ≤3-5с, резы каждые 1-3с); пост лечит стерильную картинку/статичную камеру/«голос из вакуума», НЕ лечит липсинк/мимический дрифт/повторяющиеся жесты. Конкретика: temporal grain noise=alls=9, синусный handheld crop-shake (двухчастотный), деколоризация eq+curves, rgbashift ≤2px, второй прогон кодека 2Mbps, phone-EQ 120-9000Hz + компрессор + brown room tone -32dB. 30fps, НЕ 24. Голос: MiniMax Speech-02 HD через FAL бьёт HeyGen TTS. В заводе есть fal ffmpeg-рельса (falQueueVideo) но compose-только; Remotion VM = настоящий ffmpeg-бокс; room tone можно конфигом на dual-audio Shotstack.
+- ffmpeg 8.0 static arm64 поставлен в scratchpad (brew нет); анти-AI цепочка реализована и прогнана на 8 клипах. Вердикт владельца по пост-версиям: «чуть лучше».
+- Бейкофф отрендерен ($15.88 на кошельке после пополнения): Вика car+mirror, Оля car+mirror, старая Катя (победный лук лаборатории) — все на одном скрипте/голосе, + 3 Маниных. Страница сравнения: /tmp/ugc-factory-face-foundry/bakeoff.html (raw vs post).
+- Банк моушенов расширен 7→13 (voice_message, walk_and_talk, mid_task_aside, story_lean, disbelief_shake, interrupted_real) — тесты зелёные. Комбинаторика: 14 луков × 13 моушенов = 182 комбо/блогера ≈ 12 видео/день комфорт.
+- Согласован план: горизонт 1 = боевой формат (лицо 2-3с + твин b-roll + сабы + музыка + пост) + MiniMax голос; горизонт 2 = продуктизация паспортов из /tmp в bloggerRegistry + НАЧАТЬ ПУБЛИКОВАТЬ (петля V5 ждёт); горизонт 3 = vision-критик по рубрике living_blogger_v1 + winner mining по рыночным метрикам.
+
+## 2026-07-02 (ночь) — B-roll studio: живой аудит и фиксы качества source-кадра
+
+- Живой аудит конвейера product-broll-batch (Claude Code сессия владельца): прод dry-run POST на NV-08/CLR00716 выбрал `product_twin_latest`, категории/preservation-хвосты корректны; платный тест 1×Kling 5s на CLR00716 (~$0.35, FAL $12.46 до) отрендерился и заархивировался.
+- Вердикт по кадрам: кожа/строчка/движение — хорошо; косяки: (1) в Kling ушёл `shadow_bg` — карточка с паспарту и вшитой подписью CLÉRIN → «рамка-в-рамке» в ролике; (2) шильдик бренда при макро-зуме морфится в кашу; (3) повторные опросы `video-fal-status` плодили дубли файлов в архиве (hash от подписанной FAL-ссылки, она меняется на каждый poll).
+- Фиксы:
+  - `lib/factory/productTwin.ts`: pickBestTwinAsset для broll теперь предпочитает full-bleed (`broll_source`, `upscaled`, `clean_png`) карточному `shadow_bg`; hero-приоритет не тронут.
+  - `app/api/factory/product-broll-batch/route.ts`: `clean_first:true` теперь работает поверх twin/view/auto-twin источника — выбранный кадр рехостится (`rehostImageForFal`) и чистится nano-banana (срезает вшитую подпись/поля) перед video API; авто-твин ветка больше не исключает clean_first.
+  - `lib/factory/yandexArchive.ts` + `video-fal-status`: `archiveExternalMediaToYandex` принимает `stableKey` (task id) — идемпотентный путь архива при повторных опросах статуса.
+- Проверки:
+  - `node --import tsx lib/factory/productTwin.test.mts` (10 passed; контракт обновлён: broll предпочитает full-bleed, hero — карточку)
+  - `node --import tsx lib/factory/productBrollBatchRouteContract.test.mts` (18 passed, +2 asserts на twin-clean)
+  - `node --import tsx lib/factory/productBrollBatch.test.mts` (15 passed)
+  - `node --import tsx lib/factory/yandexArchiveDirectContract.test.mts` (+assert stableKey)
+  - `npx tsc --noEmit` — по затронутым файлам чисто (единственная ошибка в `reels-brain/source-run/route.ts` — параллельная незакоммиченная правка другого воркера, вне этого блока)
+- Осталось на потом: OTK/video-critic гейт на читаемость логотипа в готовом ролике; пере-генерация смоука с clean_first после деплоя.
