@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { transcribeFal } from "./asr";
 
 const execFileAsync = promisify(execFile);
 
@@ -10,6 +11,36 @@ export type ReelsBrainResolvedMedia = {
   duration_sec: number | null;
   extractor: string | null;
   source: "yt_dlp";
+};
+
+export type ReelsBrainAudioFeatures = {
+  media_url: string;
+  stream_access: "remote_stream";
+  extractor: "ffprobe+ffmpeg";
+  has_audio_stream: boolean;
+  media_duration_sec: number | null;
+  audio_duration_sec: number | null;
+  sample_rate_hz: number | null;
+  channels: number | null;
+  bit_rate_kbps: number | null;
+  mean_volume_db: number | null;
+  max_volume_db: number | null;
+  first_sound_sec: number | null;
+  silence_segments: Array<{ start_sec: number | null; end_sec: number | null; duration_sec: number | null }>;
+  transcript_source: "fal_whisper" | null;
+  transcript_error: string | null;
+  words_per_second: number | null;
+  extracted_at: string;
+};
+
+export type ReelsBrainAudioExtractionResult = {
+  ok: boolean;
+  media_status: "media_downloaded" | "audio_failed";
+  audio_status: "audio_extracted" | "audio_failed";
+  transcript_status: "transcript_ready" | "transcript_failed" | "transcript_pending";
+  audio_features: ReelsBrainAudioFeatures | null;
+  transcript: string | null;
+  error: string | null;
 };
 
 function text(value: unknown, max = 1200): string | null {
@@ -25,6 +56,12 @@ function num(value: unknown): number | null {
 
 function rec(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function parseNumber(value: string | undefined): number | null {
+  if (!value) return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function pickFormatUrl(payload: Record<string, unknown>): string | null {
@@ -58,6 +95,23 @@ export async function hasYtDlpBinary(): Promise<boolean> {
   }
 }
 
+async function hasBinary(binary: string, args: string[]): Promise<boolean> {
+  try {
+    await execFileAsync(binary, args, { timeout: 5000, maxBuffer: 256 * 1024 });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function hasFfmpegBinary(): Promise<boolean> {
+  return hasBinary("ffmpeg", ["-version"]);
+}
+
+export async function hasFfprobeBinary(): Promise<boolean> {
+  return hasBinary("ffprobe", ["-version"]);
+}
+
 export async function resolveMediaLocatorViaYtDlp(url: string): Promise<ReelsBrainResolvedMedia | null> {
   const target = text(url, 1500);
   if (!target) return null;
@@ -80,4 +134,193 @@ export async function resolveMediaLocatorViaYtDlp(url: string): Promise<ReelsBra
   } catch {
     return null;
   }
+}
+
+type ProbePayload = {
+  format?: {
+    duration?: string;
+    bit_rate?: string;
+  };
+  streams?: Array<{
+    codec_type?: string;
+    duration?: string;
+    sample_rate?: string;
+    channels?: number;
+    bit_rate?: string;
+  }>;
+};
+
+async function probeMediaAudio(url: string): Promise<ProbePayload | null> {
+  try {
+    const { stdout } = await execFileAsync(
+      "ffprobe",
+      [
+        "-v", "error",
+        "-show_format",
+        "-show_streams",
+        "-of", "json",
+        url,
+      ],
+      { timeout: 45000, maxBuffer: 4 * 1024 * 1024 },
+    );
+    return JSON.parse(stdout) as ProbePayload;
+  } catch {
+    return null;
+  }
+}
+
+function parseSilenceSegments(stderr: string) {
+  const starts = Array.from(stderr.matchAll(/silence_start:\s*([0-9.]+)/g)).map((match) => parseNumber(match[1]));
+  const ends = Array.from(stderr.matchAll(/silence_end:\s*([0-9.]+)\s*\|\s*silence_duration:\s*([0-9.]+)/g))
+    .map((match) => ({
+      end_sec: parseNumber(match[1]),
+      duration_sec: parseNumber(match[2]),
+    }));
+
+  const segments: Array<{ start_sec: number | null; end_sec: number | null; duration_sec: number | null }> = [];
+  const total = Math.max(starts.length, ends.length);
+  for (let index = 0; index < total; index += 1) {
+    segments.push({
+      start_sec: starts[index] ?? null,
+      end_sec: ends[index]?.end_sec ?? null,
+      duration_sec: ends[index]?.duration_sec ?? null,
+    });
+  }
+  return segments.slice(0, 12);
+}
+
+async function inspectAudioLevels(url: string) {
+  try {
+    const { stderr } = await execFileAsync(
+      "ffmpeg",
+      [
+        "-v", "info",
+        "-i", url,
+        "-vn",
+        "-af", "volumedetect,silencedetect=n=-35dB:d=0.20",
+        "-f", "null",
+        "-",
+      ],
+      { timeout: 90000, maxBuffer: 8 * 1024 * 1024 },
+    );
+    const meanVolume = stderr.match(/mean_volume:\s*(-?[0-9.]+)\s*dB/i)?.[1];
+    const maxVolume = stderr.match(/max_volume:\s*(-?[0-9.]+)\s*dB/i)?.[1];
+    const silenceSegments = parseSilenceSegments(stderr);
+    let firstSoundSec = 0;
+    if (silenceSegments.length && silenceSegments[0]?.start_sec === 0 && silenceSegments[0]?.end_sec != null) {
+      firstSoundSec = silenceSegments[0].end_sec || 0;
+    }
+    return {
+      mean_volume_db: parseNumber(meanVolume),
+      max_volume_db: parseNumber(maxVolume),
+      first_sound_sec: firstSoundSec,
+      silence_segments: silenceSegments,
+    };
+  } catch {
+    return {
+      mean_volume_db: null,
+      max_volume_db: null,
+      first_sound_sec: null,
+      silence_segments: [] as Array<{ start_sec: number | null; end_sec: number | null; duration_sec: number | null }>,
+    };
+  }
+}
+
+export async function extractAudioFeaturesFromMediaUrl(
+  mediaUrl: string,
+  options: { transcribe?: boolean; language?: string } = {},
+): Promise<ReelsBrainAudioExtractionResult> {
+  const target = text(mediaUrl, 1500);
+  if (!target) {
+    return {
+      ok: false,
+      media_status: "audio_failed",
+      audio_status: "audio_failed",
+      transcript_status: "transcript_pending",
+      audio_features: null,
+      transcript: null,
+      error: "missing_media_url",
+    };
+  }
+
+  const [ffprobeReady, ffmpegReady] = await Promise.all([hasFfprobeBinary(), hasFfmpegBinary()]);
+  if (!ffprobeReady || !ffmpegReady) {
+    return {
+      ok: false,
+      media_status: "audio_failed",
+      audio_status: "audio_failed",
+      transcript_status: "transcript_pending",
+      audio_features: null,
+      transcript: null,
+      error: !ffprobeReady ? "ffprobe_unavailable" : "ffmpeg_unavailable",
+    };
+  }
+
+  const probe = await probeMediaAudio(target);
+  const audioStream = (probe?.streams || []).find((stream) => stream.codec_type === "audio");
+  if (!probe || !audioStream) {
+    return {
+      ok: false,
+      media_status: "audio_failed",
+      audio_status: "audio_failed",
+      transcript_status: "transcript_pending",
+      audio_features: null,
+      transcript: null,
+      error: "audio_stream_not_found",
+    };
+  }
+
+  const levels = await inspectAudioLevels(target);
+  let transcript: string | null = null;
+  let transcriptError: string | null = null;
+  let transcriptStatus: ReelsBrainAudioExtractionResult["transcript_status"] = "transcript_pending";
+
+  if (options.transcribe) {
+    const transcribed = await transcribeFal(target, options.language || "ru");
+    transcript = transcribed.text;
+    transcriptError = transcribed.error || null;
+    transcriptStatus = transcript ? "transcript_ready" : (transcriptError ? "transcript_failed" : "transcript_pending");
+  }
+
+  const mediaDuration = parseNumber(probe.format?.duration);
+  const audioDuration = parseNumber(audioStream.duration) ?? mediaDuration;
+  const transcriptWords = transcript ? transcript.split(/\s+/).filter(Boolean).length : 0;
+  const wordsPerSecond = transcriptWords > 0 && audioDuration && audioDuration > 0
+    ? Math.round((transcriptWords / audioDuration) * 1000) / 1000
+    : null;
+
+  const audioFeatures: ReelsBrainAudioFeatures = {
+    media_url: target,
+    stream_access: "remote_stream",
+    extractor: "ffprobe+ffmpeg",
+    has_audio_stream: true,
+    media_duration_sec: mediaDuration,
+    audio_duration_sec: audioDuration,
+    sample_rate_hz: parseNumber(audioStream.sample_rate),
+    channels: typeof audioStream.channels === "number" ? audioStream.channels : null,
+    bit_rate_kbps: (() => {
+      const streamBitRate = parseNumber(audioStream.bit_rate);
+      const formatBitRate = parseNumber(probe.format?.bit_rate);
+      const bitRate = streamBitRate ?? formatBitRate;
+      return bitRate != null ? Math.round(bitRate / 1000) : null;
+    })(),
+    mean_volume_db: levels.mean_volume_db,
+    max_volume_db: levels.max_volume_db,
+    first_sound_sec: levels.first_sound_sec,
+    silence_segments: levels.silence_segments,
+    transcript_source: transcript ? "fal_whisper" : null,
+    transcript_error: transcriptError,
+    words_per_second: wordsPerSecond,
+    extracted_at: new Date().toISOString(),
+  };
+
+  return {
+    ok: true,
+    media_status: "media_downloaded",
+    audio_status: "audio_extracted",
+    transcript_status: transcriptStatus,
+    audio_features: audioFeatures,
+    transcript,
+    error: transcriptError,
+  };
 }

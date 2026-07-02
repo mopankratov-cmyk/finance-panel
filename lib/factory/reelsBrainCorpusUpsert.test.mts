@@ -1,5 +1,5 @@
 import { deepEqual, equal } from "node:assert/strict";
-import { buildReelsSeedMetadata, mergeAnalyzedFullWithReelsSeed } from "./reelsBrainCorpusUpsert";
+import { buildReelsSeedMetadata, mergeAnalyzedFullWithReelsSeed, mergeAnalyzedFullWithAudioExtraction } from "./reelsBrainCorpusUpsert";
 import type { NormalizedReelsVideo } from "./reelsBrain";
 
 const sampleVideo: NormalizedReelsVideo = {
@@ -35,6 +35,8 @@ const sampleVideo: NormalizedReelsVideo = {
   equal(seed.media_locator_candidates[0], "https://v16m-default.tiktokcdn.com/demo.mp4");
   equal(seed.transcript, "Это тестовый транскрипт");
   deepEqual(seed.hashtags, ["подарок", "ugc"]);
+  equal(seed.pipeline.media_status, "media_found");
+  equal(seed.pipeline.transcript_status, "transcript_ready");
 }
 
 {
@@ -63,6 +65,38 @@ const sampleVideo: NormalizedReelsVideo = {
     "https://old-cdn.example/video.mp4",
     "https://v16m-default.tiktokcdn.com/demo.mp4",
   ]);
+  equal(merged.reels_seed.pipeline.media_status, "media_found");
+}
+
+{
+  const merged = mergeAnalyzedFullWithAudioExtraction({
+    reels_seed: {
+      media_locator_candidates: ["https://old-cdn.example/video.mp4"],
+      pipeline: {
+        media_status: "media_found",
+        audio_status: "audio_pending",
+        transcript_status: "transcript_pending",
+        attempts: { media: 1, audio: 0, transcript: 0 },
+      },
+    },
+  }, {
+    mediaUrl: "https://old-cdn.example/video.mp4",
+    mediaStatus: "media_downloaded",
+    audioStatus: "audio_extracted",
+    transcriptStatus: "transcript_ready",
+    transcript: "новая расшифровка",
+    audioFeatures: { sample_rate_hz: 44100, channels: 2, mean_volume_db: -14.2 },
+    error: null,
+    now: "2026-07-02T09:00:00Z",
+  }) as Record<string, any>;
+
+  equal(merged.reels_seed.pipeline.media_status, "media_downloaded");
+  equal(merged.reels_seed.pipeline.audio_status, "audio_extracted");
+  equal(merged.reels_seed.pipeline.transcript_status, "transcript_ready");
+  equal(merged.reels_seed.transcript, "новая расшифровка");
+  equal(merged.reels_seed.audio_features.sample_rate_hz, 44100);
+  equal(merged.reels_seed.pipeline.attempts.audio, 1);
+  equal(merged.reels_seed.pipeline.attempts.transcript, 1);
 }
 
 console.log("reelsBrainCorpusUpsert: passed");

@@ -32,6 +32,22 @@ type SeedMetadata = {
   sound_title: string | null;
   published_at: string | null;
   last_seen_at: string;
+  pipeline: {
+    media_status: "media_missing" | "media_found" | "media_downloaded";
+    audio_status: "audio_pending" | "audio_extracted" | "audio_failed";
+    transcript_status: "transcript_pending" | "transcript_ready" | "transcript_failed";
+    last_error: string | null;
+    media_checked_at: string | null;
+    audio_checked_at: string | null;
+    transcript_checked_at: string | null;
+    attempts: {
+      media: number;
+      audio: number;
+      transcript: number;
+    };
+  };
+  audio_source_url: string | null;
+  audio_features: Record<string, unknown> | null;
 };
 
 function num(value: unknown): number | null {
@@ -107,6 +123,22 @@ export function buildReelsSeedMetadata(input: {
     sound_title: text(input.video.soundTitle, 500),
     published_at: text(input.video.publishedAt, 120),
     last_seen_at: now,
+    pipeline: {
+      media_status: mediaLocatorCandidates.length ? "media_found" : "media_missing",
+      audio_status: "audio_pending",
+      transcript_status: input.video.transcript ? "transcript_ready" : "transcript_pending",
+      last_error: null,
+      media_checked_at: now,
+      audio_checked_at: null,
+      transcript_checked_at: input.video.transcript ? now : null,
+      attempts: {
+        media: mediaLocatorCandidates.length ? 1 : 0,
+        audio: 0,
+        transcript: input.video.transcript ? 1 : 0,
+      },
+    },
+    audio_source_url: text(input.video.mediaUrl, 1500),
+    audio_features: null,
   };
 }
 
@@ -139,6 +171,82 @@ export function mergeAnalyzedFullWithReelsSeed(existing: unknown, seed: SeedMeta
       sound_title: text(currentSeed.sound_title, 500) || seed.sound_title,
       published_at: text(currentSeed.published_at, 120) || seed.published_at,
       last_seen_at: seed.last_seen_at,
+      pipeline: {
+        media_status: (() => {
+          const currentStatus = text(rec(currentSeed.pipeline).media_status, 60);
+          if (currentStatus === "media_downloaded") return "media_downloaded";
+          return seed.media_locator_candidates.length ? "media_found" : currentStatus || "media_missing";
+        })(),
+        audio_status: text(rec(currentSeed.pipeline).audio_status, 60) || "audio_pending",
+        transcript_status: (() => {
+          const currentStatus = text(rec(currentSeed.pipeline).transcript_status, 60);
+          if (currentStatus === "transcript_ready") return "transcript_ready";
+          return seed.transcript ? "transcript_ready" : currentStatus || "transcript_pending";
+        })(),
+        last_error: text(rec(currentSeed.pipeline).last_error, 240),
+        media_checked_at: seed.last_seen_at,
+        audio_checked_at: text(rec(currentSeed.pipeline).audio_checked_at, 120),
+        transcript_checked_at: seed.transcript ? seed.last_seen_at : text(rec(currentSeed.pipeline).transcript_checked_at, 120),
+        attempts: {
+          media: Math.max(1, num(rec(rec(currentSeed.pipeline).attempts).media) ?? 0, seed.media_locator_candidates.length ? 1 : 0),
+          audio: num(rec(rec(currentSeed.pipeline).attempts).audio) ?? 0,
+          transcript: Math.max(num(rec(rec(currentSeed.pipeline).attempts).transcript) ?? 0, seed.transcript ? 1 : 0),
+        },
+      },
+      audio_source_url: text(currentSeed.audio_source_url, 1500) || seed.audio_source_url,
+      audio_features: rec(currentSeed.audio_features),
+    },
+  };
+}
+
+export function mergeAnalyzedFullWithAudioExtraction(
+  existing: unknown,
+  input: {
+    mediaUrl: string;
+    mediaStatus: "media_downloaded" | "audio_failed";
+    audioStatus: "audio_extracted" | "audio_failed";
+    transcriptStatus: "transcript_ready" | "transcript_failed" | "transcript_pending";
+    transcript?: string | null;
+    audioFeatures?: Record<string, unknown> | null;
+    error?: string | null;
+    now?: string;
+  },
+) {
+  const current = rec(existing);
+  const currentSeed = rec(current.reels_seed);
+  const currentPipeline = rec(currentSeed.pipeline);
+  const currentAttempts = rec(currentPipeline.attempts);
+  const now = input.now || new Date().toISOString();
+
+  return {
+    ...current,
+    reels_seed: {
+      ...currentSeed,
+      media_locator_candidates: uniqStrings([
+        ...(Array.isArray(currentSeed.media_locator_candidates) ? currentSeed.media_locator_candidates : []),
+        input.mediaUrl,
+      ], 30),
+      transcript: input.transcript ? text(input.transcript, 6000) : text(currentSeed.transcript, 6000),
+      audio_source_url: text(currentSeed.audio_source_url, 1500) || text(input.mediaUrl, 1500),
+      audio_features: input.audioFeatures && typeof input.audioFeatures === "object"
+        ? { ...(rec(currentSeed.audio_features)), ...input.audioFeatures }
+        : rec(currentSeed.audio_features),
+      pipeline: {
+        media_status: input.mediaStatus,
+        audio_status: input.audioStatus,
+        transcript_status: input.transcriptStatus,
+        last_error: text(input.error, 240),
+        media_checked_at: now,
+        audio_checked_at: now,
+        transcript_checked_at: input.transcriptStatus !== "transcript_pending" ? now : text(currentPipeline.transcript_checked_at, 120),
+        attempts: {
+          media: (num(currentAttempts.media) ?? 0) + 1,
+          audio: (num(currentAttempts.audio) ?? 0) + 1,
+          transcript: input.transcriptStatus !== "transcript_pending"
+            ? (num(currentAttempts.transcript) ?? 0) + 1
+            : (num(currentAttempts.transcript) ?? 0),
+        },
+      },
     },
   };
 }

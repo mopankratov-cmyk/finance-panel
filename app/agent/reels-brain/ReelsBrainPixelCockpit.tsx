@@ -154,6 +154,7 @@ export default function ReelsBrainPixelCockpit() {
     const antiPattern = learning?.anti_pattern_brain || {};
     const discovery = learning?.discovery_brain || {};
     const taxonomy = learning?.taxonomy_brain || {};
+    const audioBrain = learning?.audio_brain || {};
     const dailyReport = learning?.daily_report || {};
     const qualityGate = learning?.quality_gate || {};
     const costGovernor = learning?.cost_governor || {};
@@ -161,7 +162,7 @@ export default function ReelsBrainPixelCockpit() {
     const mission = learningPlan?.learning_plan || {};
     const nextLayers = learning?.next_intelligence_layers || {};
     const audioVisualSummary = nextLayers?.audio_visual_intelligence
-      ? `ready ${compact(nextLayers.audio_visual_intelligence.ready_for_worker)} · media ${compact(nextLayers.audio_visual_intelligence.with_media_locators)} · transcripts ${compact(nextLayers.audio_visual_intelligence.with_transcript)}`
+      ? `ready ${compact(nextLayers.audio_visual_intelligence.ready_for_worker)} · media ${compact(nextLayers.audio_visual_intelligence.with_media_locators)} · audio ${compact(nextLayers.audio_visual_intelligence.with_audio_features)} · transcripts ${compact(nextLayers.audio_visual_intelligence.with_transcript)}`
       : "";
     const patternDetails = (learning?.pattern_details || []) as JsonRecord[];
     const nicheComparison = (learning?.niche_comparison || []) as JsonRecord[];
@@ -304,6 +305,7 @@ export default function ReelsBrainPixelCockpit() {
       antiPattern,
       discovery,
       taxonomy,
+      audioBrain,
       dailyReport,
       qualityGate,
       costGovernor,
@@ -802,6 +804,54 @@ export default function ReelsBrainPixelCockpit() {
               ))}
             </div>
           </div>
+          <div className="rb-two" style={{ marginTop: 16 }}>
+            <div className="rb-card">
+              <div className="rb-overline" style={{ color: "#0891b2" }}>Audio Brain</div>
+              <h3 style={{ font: "600 24px/1.15 'Space Grotesk'", margin: "9px 0 14px" }}>Как мозг начинает понимать звук</h3>
+              <div className="rb-three">
+                <div className="rb-kpi">
+                  <div className="label">Audio-ready</div>
+                  <strong>{compact(vm.audioBrain.with_audio)}</strong>
+                  <p>{compact(vm.audioBrain.with_audio_rate)}% от sampled corpus</p>
+                </div>
+                <div className="rb-kpi">
+                  <div className="label">Transcript-ready</div>
+                  <strong>{compact(vm.audioBrain.with_transcript)}</strong>
+                  <p>{compact(vm.audioBrain.with_transcript_rate)}% с voice logic</p>
+                </div>
+                <div className="rb-kpi">
+                  <div className="label">Статус</div>
+                  <strong>{vm.audioBrain.status || "planned"}</strong>
+                  <p>audio layer</p>
+                </div>
+              </div>
+              <div className="rb-pattern" style={{ marginTop: 14 }}>
+                <div className="rb-pill">{vm.audioBrain.status || "planned"}</div>
+                <h3 style={{ marginTop: 10 }}>Звук перестаёт быть слепым пятном</h3>
+                <p>{vm.audioBrain.next_step || "Сначала нужно накопить audio-ready корпус."}</p>
+              </div>
+            </div>
+            <div className="rb-card">
+              <div className="rb-overline" style={{ color: "#0891b2" }}>Winning audio mechanics</div>
+              <h3 style={{ font: "600 24px/1.15 'Space Grotesk'", margin: "9px 0 14px" }}>Какие звуковые правила уже выглядят сильными</h3>
+              {((vm.audioBrain.top_mechanics || []) as JsonRecord[]).length ? ((vm.audioBrain.top_mechanics || []) as JsonRecord[]).slice(0, 3).map((item, index) => (
+                <div className="rb-pattern" key={item.key || index} style={{ marginTop: index ? 10 : 0 }}>
+                  <div className="rb-pill">{item.decision_label || item.decision || "Watch"} · score {compact(item.score)}</div>
+                  <h3 style={{ marginTop: 10 }}>{item.label}</h3>
+                  <p>count {compact(item.count)} · views {compact(item.avg_views)} · virality {compact(item.avg_virality)}</p>
+                  {((item.why_it_wins || []) as string[]).slice(0, 2).map((reason, reasonIndex) => (
+                    <p key={`audio-why:${reasonIndex}`} style={{ margin: 0, color: "#334155" }}>Почему это сильно: {reason}</p>
+                  ))}
+                  <p style={{ color: "#0f172a", fontWeight: 600, marginTop: 10 }}>{item.next_action}</p>
+                </div>
+              )) : (
+                <div className="rb-pattern">
+                  <h3>Audio patterns появятся после первых extraction циклов</h3>
+                  <p>Сейчас уже есть pipeline, осталось накопить больше audio-ready корпуса.</p>
+                </div>
+              )}
+            </div>
+          </div>
         </section>
 
         <section>
@@ -824,6 +874,7 @@ export default function ReelsBrainPixelCockpit() {
                 <div className="rb-brief-block"><b>Удержание</b><p>{recipe.creative_brief?.retention_mechanic || recipe.retention}</p></div>
                 <div className="rb-brief-block"><b>Структура по секундам</b><p>{(recipe.creative_brief?.second_by_second || []).slice(0, 3).join(" ") || "0-2с хук, 2-8с доказательство, 8-15с payoff."}</p></div>
                 <div className="rb-brief-block"><b>Visual recipe</b><p>{(recipe.creative_brief?.visual_recipe || []).slice(0, 2).join(" ") || "Крупный план, proof-кадр, текст только для смысла."}</p></div>
+                <div className="rb-brief-block"><b>Audio strategy</b><p>{(recipe.creative_brief?.audio_strategy || ["Быстрый голосовой вход, чистый мобильный микс, музыка только как подложка."]).slice(0, 2).join(" ")}</p></div>
                 <div className="rb-brief-block"><b>Товар / тема</b><p>{(recipe.creative_brief?.product_fit || recipe.niches || []).slice(0, 3).join(" · ")}</p></div>
                 <div className="rb-brief-block"><b>Копируем механику</b><p>{(recipe.creative_brief?.copy_as_mechanic || ["темп", "структуру", "тип доказательства"]).slice(0, 2).join(" · ")}</p></div>
                 <div style={{ marginTop: 14, padding: 12, borderRadius: 12, background: "#fef2f2", color: "#991b1b", fontSize: 13, fontWeight: 600 }}>Копируем механику, не копируем текст, музыку, персонажей и чужой монтаж.</div>
@@ -1054,6 +1105,7 @@ export default function ReelsBrainPixelCockpit() {
             {[
               ["Feedback Loop", vm.nextLayers.feedback_loop?.status, vm.nextLayers.feedback_loop?.next_step],
               ["Audio / Visual", vm.nextLayers.audio_visual_intelligence?.status, [vm.nextLayers.audio_visual_intelligence?.next_step, vm.audioVisualSummary].filter(Boolean).join(" ")],
+              ["Audio Brain", vm.audioBrain.status, vm.audioBrain.next_step],
               ["Product Brain", vm.nextLayers.product_brain?.status, vm.nextLayers.product_brain?.next_step],
               ["Audience Brain", vm.nextLayers.audience_brain?.status, vm.nextLayers.audience_brain?.next_step],
               ["Experiment Brain", vm.nextLayers.experiment_brain?.status, vm.nextLayers.experiment_brain?.next_step],
@@ -1110,6 +1162,10 @@ export default function ReelsBrainPixelCockpit() {
             <div className="rb-brief-block" style={{ marginTop: 12 }}>
               <b>Visual recipe</b>
               <p>{(selectedPattern.creative_brief?.visual_recipe || []).join(" ") || "Крупный план, proof-кадр, быстрые смены смысла, текст только как усилитель."}</p>
+            </div>
+            <div className="rb-brief-block" style={{ marginTop: 12 }}>
+              <b>Audio strategy</b>
+              <p>{(selectedPattern.creative_brief?.audio_strategy || ["Голос должен начинаться быстро, музыка только поддерживает смысл, без мёртвого интро."]).join(" ")}</p>
             </div>
             <div className="rb-drawer-grid" style={{ marginTop: 12 }}>
               <div className="rb-brief-block"><b>Копируем как механику</b><p>{(selectedPattern.creative_brief?.copy_as_mechanic || ["темп", "структуру", "тип доказательства"]).join(" · ")}</p></div>

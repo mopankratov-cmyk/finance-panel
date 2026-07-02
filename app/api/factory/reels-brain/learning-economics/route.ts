@@ -52,6 +52,7 @@ type ReferenceCreativeBrief = {
   retention_mechanic: string;
   second_by_second: string[];
   visual_recipe: string[];
+  audio_strategy: string[];
   product_fit: string[];
   copy_as_mechanic: string[];
   do_not_copy: string[];
@@ -76,6 +77,7 @@ type GeneratorPayload = {
   structure: string;
   second_by_second: string[];
   visual_recipe: string[];
+  audio_strategy: string[];
   product_fit: string[];
   copy_as_mechanic: string[];
   do_not_copy: string[];
@@ -98,13 +100,18 @@ type AudioVisualReadiness = {
   sampled_rows: number;
   with_media_locators: number;
   with_media_locator_rate: number;
+  with_audio_features: number;
+  with_audio_features_rate: number;
   with_transcript: number;
   with_transcript_rate: number;
+  audio_failed: number;
+  audio_failed_rate: number;
   ready_for_worker: number;
   ready_for_worker_rate: number;
   by_platform: Record<string, {
     total: number;
     with_media_locators: number;
+    with_audio_features: number;
     ready_for_worker: number;
   }>;
   status: "spec_ready" | "media_seeded" | "worker_ready";
@@ -350,13 +357,172 @@ function asRecord(value: unknown): Record<string, unknown> | null {
 function readSeed(row: CorpusAuditRow) {
   const analyzedFull = asRecord(row.analyzed_full);
   const reelsSeed = asRecord(analyzedFull?.reels_seed);
+  const pipeline = asRecord(reelsSeed?.pipeline);
   const mediaLocators = Array.isArray(reelsSeed?.media_locator_candidates)
     ? reelsSeed.media_locator_candidates.filter((item) => typeof item === "string" && item.trim())
     : [];
   const transcript = typeof reelsSeed?.transcript === "string" ? reelsSeed.transcript.trim() : "";
+  const audioFeatures = asRecord(reelsSeed?.audio_features);
   return {
     mediaLocators,
     transcript,
+    audioFeatures,
+    audioStatus: String(pipeline?.audio_status || "").trim(),
+    transcriptStatus: String(pipeline?.transcript_status || "").trim(),
+  };
+}
+
+function audioFeatureNum(features: Record<string, unknown> | null | undefined, key: string) {
+  if (!features) return null;
+  return num(features[key]);
+}
+
+function firstLongSilence(features: Record<string, unknown> | null | undefined) {
+  const segments = Array.isArray(features?.silence_segments) ? features?.silence_segments as Record<string, unknown>[] : [];
+  return segments.find((segment) => num(segment?.duration_sec) >= 0.8) || null;
+}
+
+function classifyAudioMechanics(row: CorpusAuditRow) {
+  const seed = readSeed(row);
+  const features = seed.audioFeatures;
+  const firstSound = audioFeatureNum(features, "first_sound_sec");
+  const meanVolume = audioFeatureNum(features, "mean_volume_db");
+  const wordsPerSecond = audioFeatureNum(features, "words_per_second");
+  const hasTranscript = seed.transcript.length > 20;
+  const mechanics: string[] = [];
+
+  if (firstSound != null && firstSound <= 0.35) mechanics.push("instant_sound_hook");
+  if (hasTranscript && firstSound != null && firstSound <= 0.65) mechanics.push("voice_starts_immediately");
+  if (hasTranscript && wordsPerSecond != null && wordsPerSecond >= 3.4) mechanics.push("fast_ugc_speech");
+  if (hasTranscript && wordsPerSecond != null && wordsPerSecond >= 2 && wordsPerSecond < 3.4) mechanics.push("calm_proof_voice");
+  if (meanVolume != null && meanVolume >= -18 && meanVolume <= -10) mechanics.push("balanced_mobile_mix");
+  if (!firstLongSilence(features) && firstSound != null && firstSound <= 0.5) mechanics.push("no_dead_intro");
+
+  return mechanics;
+}
+
+function labelAudioMechanic(key: string) {
+  const labels: Record<string, string> = {
+    instant_sound_hook: "Звук цепляет сразу",
+    voice_starts_immediately: "Голос начинается сразу",
+    fast_ugc_speech: "Быстрая UGC-речь",
+    calm_proof_voice: "Спокойный proof-voice",
+    balanced_mobile_mix: "Нормальный мобильный микс",
+    no_dead_intro: "Нет мёртвого вступления",
+  };
+  return labels[key] || key;
+}
+
+function buildAudioBrain(rows: CorpusAuditRow[]) {
+  const audioRows = rows.filter((row) => Object.keys(readSeed(row).audioFeatures || {}).length > 0);
+  const transcriptRows = audioRows.filter((row) => readSeed(row).transcript.length > 20);
+  const total = rows.length;
+  const mechanicMap = new Map<string, {
+    key: string;
+    label: string;
+    count: number;
+    views: number;
+    virality: number;
+    niches: Set<string>;
+    platforms: Set<string>;
+  }>();
+
+  for (const row of audioRows) {
+    const mechanics = classifyAudioMechanics(row);
+    for (const key of mechanics) {
+      const bucket = mechanicMap.get(key) || {
+        key,
+        label: labelAudioMechanic(key),
+        count: 0,
+        views: 0,
+        virality: 0,
+        niches: new Set<string>(),
+        platforms: new Set<string>(),
+      };
+      bucket.count += 1;
+      bucket.views += num(row.views);
+      bucket.virality += num(row.virality_score);
+      if (row.niche) bucket.niches.add(String(row.niche));
+      if (row.platform) bucket.platforms.add(String(row.platform));
+      mechanicMap.set(key, bucket);
+    }
+  }
+
+  const top_mechanics = Array.from(mechanicMap.values()).map((row) => {
+    const avgViews = row.count ? Math.round(row.views / row.count) : 0;
+    const avgVirality = row.count ? Math.round((row.virality / row.count) * 10) / 10 : 0;
+    const score = Math.round(Math.min(100, Math.log(row.count + 1) * 18 + Math.min(35, avgVirality * 3) + Math.min(18, row.platforms.size * 6) + Math.min(12, row.niches.size * 4)));
+    const decision = score >= 78 ? "scale" : score >= 58 ? "test" : "watch";
+    return {
+      key: row.key,
+      label: row.label,
+      count: row.count,
+      avg_views: avgViews,
+      avg_virality: avgVirality,
+      score,
+      decision,
+      decision_label: decision === "scale" ? "Scale" : decision === "test" ? "Test" : "Watch",
+      why_it_wins: [
+        row.count >= 5 ? `повторяется ${row.count} раз в audio-ready корпусе` : "",
+        row.platforms.size >= 2 ? `встречается на ${row.platforms.size} платформах, значит это не локальная аномалия` : "",
+        avgVirality >= 12 ? `держится на роликах с хорошей virality ${avgVirality}` : "",
+      ].filter(Boolean),
+      next_action: decision === "scale"
+        ? "Добавлять эту аудио-механику в creative brief по умолчанию."
+        : decision === "test"
+          ? "Проверить в A/B как обязательное правило для первых секунд."
+          : "Собрать больше audio-ready референсов перед масштабированием.",
+    };
+  }).sort((a, b) => b.score - a.score || b.count - a.count).slice(0, 6);
+
+  const anti_patterns = [
+    {
+      key: "late_first_sound",
+      label: "Поздний первый звук",
+      count: audioRows.filter((row) => {
+        const firstSound = audioFeatureNum(readSeed(row).audioFeatures, "first_sound_sec");
+        return firstSound != null && firstSound > 1;
+      }).length,
+      reason: "Первые секунды пустые, хук начинает терять энергию ещё до смысла.",
+      action: "Голос или сильный sound event должен входить раньше.",
+    },
+    {
+      key: "slow_flat_speech",
+      label: "Слишком вялая речь",
+      count: transcriptRows.filter((row) => {
+        const wordsPerSecond = audioFeatureNum(readSeed(row).audioFeatures, "words_per_second");
+        return wordsPerSecond != null && wordsPerSecond < 1.8;
+      }).length,
+      reason: "Речь не держит темп, UGC ощущается затянутым.",
+      action: "Ускорять смысловую плотность и убирать пустые связки.",
+    },
+    {
+      key: "transcript_gap",
+      label: "Есть media, но нет расшифровки",
+      count: rows.filter((row) => {
+        const seed = readSeed(row);
+        return seed.mediaLocators.length > 0 && seed.transcript.length <= 20;
+      }).length,
+      reason: "Без transcript мозг хуже понимает voice logic и speech pacing.",
+      action: "Продолжать transcript backfill на RU-корпусе.",
+    },
+  ].filter((item) => item.count > 0).sort((a, b) => b.count - a.count).slice(0, 4);
+
+  const withAudio = audioRows.length;
+  const withTranscript = transcriptRows.length;
+  return {
+    status: withAudio >= 100 ? "learning" : withAudio > 0 ? "seeded" : "planned",
+    with_audio: withAudio,
+    with_audio_rate: pct(withAudio, total),
+    with_transcript: withTranscript,
+    with_transcript_rate: pct(withTranscript, total),
+    top_mechanics,
+    anti_patterns,
+    next_step: withAudio >= 100
+      ? "Связывать audio mechanics с hook + structure и усиливать generator payload."
+      : withAudio > 0
+        ? "Добрать ещё audio-ready видео, чтобы механики стали статистически устойчивыми."
+        : "Сначала прогнать audio backfill и transcript слой.",
   };
 }
 
@@ -376,24 +542,32 @@ function readTaxonomy(row: CorpusAuditRow) {
 }
 
 function buildAudioVisualReadiness(rows: CorpusAuditRow[]): AudioVisualReadiness {
-  const byPlatform = new Map<string, { total: number; with_media_locators: number; ready_for_worker: number }>();
+  const byPlatform = new Map<string, { total: number; with_media_locators: number; with_audio_features: number; ready_for_worker: number }>();
   let withMediaLocators = 0;
+  let withAudioFeatures = 0;
   let withTranscript = 0;
+  let audioFailed = 0;
   let readyForWorker = 0;
 
   for (const row of rows) {
     const platform = String(row.platform || "unknown");
-    const bucket = byPlatform.get(platform) || { total: 0, with_media_locators: 0, ready_for_worker: 0 };
+    const bucket = byPlatform.get(platform) || { total: 0, with_media_locators: 0, with_audio_features: 0, ready_for_worker: 0 };
     bucket.total += 1;
     const seed = readSeed(row);
     const hasMediaLocators = seed.mediaLocators.length > 0;
     const hasTranscript = seed.transcript.length > 20;
+    const hasAudioFeatures = Object.keys(seed.audioFeatures || {}).length > 0;
     if (hasMediaLocators) {
       withMediaLocators += 1;
       bucket.with_media_locators += 1;
     }
+    if (hasAudioFeatures) {
+      withAudioFeatures += 1;
+      bucket.with_audio_features += 1;
+    }
     if (hasTranscript) withTranscript += 1;
-    if (hasMediaLocators && row.analyzed) {
+    if (seed.audioStatus === "audio_failed") audioFailed += 1;
+    if (hasMediaLocators && hasAudioFeatures && row.analyzed) {
       readyForWorker += 1;
       bucket.ready_for_worker += 1;
     }
@@ -406,14 +580,20 @@ function buildAudioVisualReadiness(rows: CorpusAuditRow[]): AudioVisualReadiness
     sampled_rows: sampledRows,
     with_media_locators: withMediaLocators,
     with_media_locator_rate: pct(withMediaLocators, sampledRows),
+    with_audio_features: withAudioFeatures,
+    with_audio_features_rate: pct(withAudioFeatures, sampledRows),
     with_transcript: withTranscript,
     with_transcript_rate: pct(withTranscript, sampledRows),
+    audio_failed: audioFailed,
+    audio_failed_rate: pct(audioFailed, sampledRows),
     ready_for_worker: readyForWorker,
     ready_for_worker_rate: readyRate,
     by_platform: Object.fromEntries(Array.from(byPlatform.entries()).map(([platform, bucket]) => [platform, bucket])),
     status: readyForWorker >= 100 ? "worker_ready" : withMediaLocators > 0 ? "media_seeded" : "spec_ready",
     next_step: readyForWorker >= 100
       ? `Оффлайн-воркер можно грузить глубже: уже готово ${readyForWorker} видео с media locators и базовым seed.`
+      : withAudioFeatures > 0
+        ? `Audio extraction уже пошёл. Добрать ещё ${Math.max(0, 100 - readyForWorker)}+ разобранных видео с audio features и transcript-ready слоем.`
       : withMediaLocators > 0
         ? `Media locators уже пишутся. Добрать и разметить ещё ${Math.max(0, 100 - readyForWorker)}+ видео, затем включить audio/deep extraction.`
         : "Сначала накопить media locators в ingest metadata, затем запускать audio/deep extraction.",
@@ -1019,7 +1199,9 @@ function buildNextIntelligenceLayers(input: {
       useful_now: "Текущий visual recipe rule-based; следующий слой сделает его video-based.",
       ready_for_worker: input.audioVisualReadiness.ready_for_worker,
       with_media_locators: input.audioVisualReadiness.with_media_locators,
+      with_audio_features: input.audioVisualReadiness.with_audio_features,
       with_transcript: input.audioVisualReadiness.with_transcript,
+      audio_failed: input.audioVisualReadiness.audio_failed,
       by_platform: input.audioVisualReadiness.by_platform,
     },
     product_brain: {
@@ -1140,6 +1322,7 @@ function creativeBriefForPattern(pattern: InsightPattern, niche: string, example
     retention_mechanic: pattern.retention_label || pattern.retention_mechanism || "открытая петля / ожидание доказательства",
     second_by_second: secondsForPattern(pattern),
     visual_recipe: visualRecipeForPattern(pattern),
+    audio_strategy: audioStrategyForPattern(pattern),
     product_fit: productFitForPattern(pattern, niche),
     copy_as_mechanic: [
       "Темп раскрытия: быстрый хук -> доказательство -> payoff.",
@@ -1155,6 +1338,28 @@ function creativeBriefForPattern(pattern: InsightPattern, niche: string, example
   };
 }
 
+function audioStrategyForPattern(pattern: InsightPattern) {
+  const hookType = pattern.hook_type || "unknown";
+  const structureType = pattern.structure_type || "demo";
+  const strategy = [
+    "Звук или голос должны начинаться без длинной пустой подводки.",
+    "Речь должна не объяснять абстрактно, а усиливать кадр и proof-момент.",
+  ];
+  if (hookType === "warning_pattern_break") {
+    return [...strategy, "Первые 0.3-0.8с: резкий голосовой вход с предупреждением.", "Темп речи выше среднего, чтобы сразу поднять напряжение."];
+  }
+  if (hookType === "curiosity_gap" || hookType === "curiosity_question") {
+    return [...strategy, "Первые секунды: вопрос/интрига голосом без музыкального вступления.", "Сделать микро-паузу перед payoff, чтобы усилить досмотр."];
+  }
+  if (structureType === "before_after") {
+    return [...strategy, "Звук должен поддерживать трансформацию: быстрый вход и более спокойный payoff.", "Не растягивать вступление, переход к after — как можно раньше."];
+  }
+  if (structureType === "unboxing") {
+    return [...strategy, "Допустимы короткие tactile/packaging sounds, но главный акцент всё равно на смысловом voice proof.", "Монтаж и смена кадров должны поддерживать ритм речи."];
+  }
+  return [...strategy, "Держать мобильный микс чистым: без тихого, утонувшего голоса.", "Если есть музыка, она должна быть подложкой, а не основным носителем смысла."];
+}
+
 function generatorPayload(pattern: InsightPattern, niche: string): GeneratorPayload {
   const brief = creativeBriefForPattern(pattern, niche);
   return {
@@ -1164,6 +1369,7 @@ function generatorPayload(pattern: InsightPattern, niche: string): GeneratorPayl
     structure: pattern.structure_label || pattern.structure_type || "демонстрация",
     second_by_second: brief.second_by_second,
     visual_recipe: brief.visual_recipe,
+    audio_strategy: brief.audio_strategy,
     product_fit: brief.product_fit,
     copy_as_mechanic: brief.copy_as_mechanic,
     do_not_copy: brief.do_not_copy,
@@ -1609,6 +1815,7 @@ export async function GET(req: NextRequest) {
     ).values()).filter((row) => row.url);
     const corpusAudit = buildCorpusAudit(corpusSample);
     const audioVisualReadiness = buildAudioVisualReadiness(readinessSample);
+    const audioBrain = buildAudioBrain(readinessSample);
     const runMap = new Map<string, ReturnType<typeof automationRunHistory>[number] & { niches: Set<string> }>();
     const nicheSummaries = rows.map((row) => {
       const brain = patternBrain(row.playbook);
@@ -1810,6 +2017,8 @@ export async function GET(req: NextRequest) {
       audio_visual_intelligence: {
         ...operatingSystem.audio_visual_intelligence,
         ...baseNextLayers.audio_visual_intelligence,
+        top_audio_mechanics: audioBrain.top_mechanics.slice(0, 3),
+        anti_audio_patterns: audioBrain.anti_patterns.slice(0, 3),
       },
       data_quality: {
         status: corpusAudit.verdict,
@@ -1833,6 +2042,7 @@ export async function GET(req: NextRequest) {
       audience_brain: operatingSystem.audience_brain,
       experiment_brain: operatingSystem.experiment_brain,
       portfolio_manager: operatingSystem.portfolio_manager,
+      audio_brain: audioBrain,
       audio_visual_readiness: audioVisualReadiness,
       feedback_warning: feedbackRows.warning,
       cost_governor: costGovernor,
