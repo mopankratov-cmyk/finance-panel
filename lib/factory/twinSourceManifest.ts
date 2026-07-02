@@ -1,3 +1,5 @@
+import { legacyArticleForSku } from "./wbSellerCatalog";
+
 // Манифест исходников для цифровых твинов — результат визуального аудита съёмки 2026-07-02
 // (14 агентов отсмотрели все папки товаров: см. docs/factory-railway-night-log.md).
 // Проблема, которую решает манифест: в папках лежат готовые карточки маркетплейса с вшитым
@@ -110,7 +112,13 @@ export const TWIN_SOURCE_MANIFEST: TwinSourceManifestEntry[] = [
 
 export function twinSourceForArticle(article: string): TwinSourceManifestEntry | null {
   const clean = String(article || "").trim().toUpperCase();
-  return TWIN_SOURCE_MANIFEST.find((entry) => entry.article.toUpperCase() === clean) || null;
+  const direct = TWIN_SOURCE_MANIFEST.find((entry) => entry.article.toUpperCase() === clean);
+  if (direct) return direct;
+  // Полные SKU каталога (NV-08-57 и т.п.) наследуют манифест своего легаси-артикула:
+  // существующие твины/аудит записаны под короткими именами канонических цветов.
+  const legacy = legacyArticleForSku(clean);
+  if (legacy) return TWIN_SOURCE_MANIFEST.find((entry) => entry.article.toUpperCase() === legacy.toUpperCase()) || null;
+  return null;
 }
 
 export function isBannedTwinSourceName(article: string, pathOrName: string): boolean {

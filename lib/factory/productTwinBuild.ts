@@ -20,8 +20,9 @@ import {
 import { focusProductSourceImage } from "./productSourceCrop";
 import { checkTwinIdentity, type TwinIdentityCheckResult } from "./productTwinIdentityCheck";
 import { isBannedTwinSourceName, twinSourceForArticle } from "./twinSourceManifest";
+import { contentFolderForSku } from "./wbSellerCatalog";
 import { screenTwinSourceCandidate } from "./twinSourceScreen";
-import { yaDownloadHref } from "@/lib/yandex/disk";
+import { yaCollectImages, yaDownloadHref } from "@/lib/yandex/disk";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { pickProductSourceCandidates } from "./productSourcePicker";
 import { buildProductTwinPreparationPlan } from "./productTwinPrepPlan";
@@ -91,9 +92,48 @@ async function resolveInputImage(body: ProductTwinBuildInput): Promise<{ image: 
     }
   }
 
-  // 2) Слепой пикер — только как fallback, каждый кандидат проходит vision-скрин
-  //    (вшитый текст / перекрытый товар / подозрение на AI-рендер отклоняются).
+  // 2) Полный SKU из WB-каталога (например NV-08-48 капучино): кандидаты — сырые кадры
+  //    из съёмочной папки его цвета, каждый через vision-скрин.
   const screenNotes: string[] = [];
+  if (!diskPath) {
+    const catalogFolder = contentFolderForSku(article);
+    if (catalogFolder && "pending" in catalogFolder) return { error: `у ${article} нет контента: ${catalogFolder.pending}` };
+    if (catalogFolder) {
+      const disk = diskById(catalogFolder.disk);
+      if (disk) {
+        const images = (await yaCollectImages(catalogFolder.prefix, 1, disk.key))
+          .filter((item) => /^IMG_\d+/i.test(item.name) && !isBannedTwinSourceName(article, item.path))
+          .sort((a, b) => a.name.localeCompare(b.name));
+        // Перёд обычно в середине серии съёмки — начинаем с середины, максимум 5 попыток.
+        const ordered = [...images.slice(Math.floor(images.length / 2)), ...images.slice(0, Math.floor(images.length / 2))].slice(0, 5);
+        for (const item of ordered) {
+          const href = await yaDownloadHref(item.path, disk.key);
+          if (!href) continue;
+          const probe = await fetchWithRetry(href, { cache: "no-store" }, 3);
+          if (!probe.ok) continue;
+          const probeBuf = Buffer.from(await probe.arrayBuffer());
+          if (!probeBuf.length) continue;
+          const screen = await screenTwinSourceCandidate({ buffer: probeBuf, article, product, category });
+          if (screen.ran && !screen.ok) {
+            screenNotes.push(`${item.name}: ${screen.reasons.join("; ") || "отклонён скрином"}`);
+            continue;
+          }
+          if (screen.ran && screen.role && !["front", "three_quarter", "on_model"].includes(screen.role)) {
+            screenNotes.push(`${item.name}: ракурс ${screen.role} — не перёд`);
+            continue;
+          }
+          diskPath = item.path;
+          diskId = catalogFolder.disk;
+          sourceKindOverride = "catalog_color_folder";
+          break;
+        }
+        if (!diskPath) return { error: `в папке ${catalogFolder.prefix} не найден чистый перёд: ${screenNotes.join(" · ") || "нет кандидатов"}`.slice(0, 600) };
+      }
+    }
+  }
+
+  // 3) Слепой пикер — последний fallback, каждый кандидат проходит vision-скрин
+  //    (вшитый текст / перекрытый товар / подозрение на AI-рендер отклоняются).
   if (!diskPath) {
     const candidates = (await pickProductSourceCandidates({ article, product, limit: 4, probeLimit: 12 }))
       .filter((candidate) => !isBannedTwinSourceName(article, candidate.path));
