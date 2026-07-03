@@ -26,18 +26,31 @@ function splitList(value: string): string[] {
   return value.split(",").map((row) => row.trim()).filter(Boolean);
 }
 
+function isImageLikeLocator(value: string): boolean {
+  const target = value.trim().toLowerCase();
+  if (!target) return false;
+  return /\.(jpg|jpeg|png|webp|gif|bmp|heic|heif|avif)(\?|$)/i.test(target);
+}
+
+function isPlayableMediaLocator(value: string): boolean {
+  const target = value.trim();
+  if (!target) return false;
+  if (!/^https?:\/\//i.test(target)) return false;
+  return !isImageLikeLocator(target);
+}
+
 function hasMediaLocators(row: CorpusRow): boolean {
   const analyzedFull = rec(row.analyzed_full);
   const reelsSeed = rec(analyzedFull.reels_seed);
   const media = Array.isArray(reelsSeed.media_locator_candidates) ? reelsSeed.media_locator_candidates : [];
-  return media.some((item) => typeof item === "string" && item.trim());
+  return media.some((item) => typeof item === "string" && isPlayableMediaLocator(item));
 }
 
 function mediaLocator(video: Record<string, unknown> | null | undefined): string {
   if (!video) return "";
   const candidates = [video.video_url, video.media_url, video.image_url, video.thumbnail];
   for (const item of candidates) {
-    if (typeof item === "string" && item.trim()) return item.trim();
+    if (typeof item === "string" && isPlayableMediaLocator(item)) return item.trim();
   }
   return "";
 }
