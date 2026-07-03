@@ -65,16 +65,35 @@ function isImageLikeLocator(value: string): boolean {
   return /\.(jpg|jpeg|png|webp|gif|bmp|heic|heif|avif)(\?|$)/i.test(target);
 }
 
-function isPlayableMediaLocator(value: string): boolean {
+function isDirectVideoLocator(value: string): boolean {
   const target = value.trim();
   if (!target) return false;
   if (isImageLikeLocator(target)) return false;
+  if (/\.(mp4|m4v|mov|webm|m3u8)(\?|$)/i.test(target)) return true;
+  if (/mime_type=video_|video_mp4|\/video\/|\/videoplayback\b|\.googlevideo\.com\//i.test(target)) return true;
+  return false;
+}
+
+function isPlayableMediaLocator(value: string, platform = ""): boolean {
+  const target = value.trim();
+  if (!target) return false;
+  if (isImageLikeLocator(target)) return false;
+  if (isDirectVideoLocator(target)) return true;
   return /^https?:\/\//i.test(target);
 }
 
 function bestMediaLocator(row: CorpusRow): string {
   const state = seedState(row);
-  return state.mediaLocators.find((item) => isPlayableMediaLocator(item)) || "";
+  const platform = String(row.platform || "").trim().toLowerCase();
+  const direct = state.mediaLocators.find((item) => isDirectVideoLocator(item));
+  if (direct) return direct;
+
+  if (platform === "instagram") {
+    const reelPage = state.mediaLocators.find((item) => /^https?:\/\/(www\.)?instagram\.com\/(reel|reels|tv)\//i.test(item.trim()));
+    return reelPage || "";
+  }
+
+  return state.mediaLocators.find((item) => isPlayableMediaLocator(item, platform)) || "";
 }
 
 export async function GET(req: NextRequest) {
@@ -109,8 +128,10 @@ export async function GET(req: NextRequest) {
     const rows = ((data || []) as CorpusRow[])
       .filter((row) => {
         const state = seedState(row);
-        return state.mediaLocators.some((item) => isPlayableMediaLocator(item))
-          && state.audioStatus !== "audio_extracted";
+        const hasPlayable = state.mediaLocators.some((item) => isPlayableMediaLocator(item, String(row.platform || "")));
+        if (!hasPlayable) return false;
+        if (state.audioStatus !== "audio_extracted") return true;
+        return transcribe && state.transcriptStatus !== "transcript_ready";
       })
       .slice(0, limit);
 
