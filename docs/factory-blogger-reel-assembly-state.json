@@ -43,6 +43,30 @@
       "duration": 5.63,
       "broll": 1,
       "date": "2026-07-03"
+    },
+    "reel_manya_secret_v4": {
+      "out": "/tmp/ugc-factory-reels/reel_manya_secret_v4.mp4",
+      "duration": 6.1,
+      "broll": 2,
+      "date": "2026-07-03"
+    },
+    "reel_manya_stop_v4": {
+      "out": "/tmp/ugc-factory-reels/reel_manya_stop_v4.mp4",
+      "duration": 5.63,
+      "broll": 1,
+      "date": "2026-07-03"
+    },
+    "reel_manya_secret_v5": {
+      "out": "/tmp/ugc-factory-reels/reel_manya_secret_v5.mp4",
+      "duration": 6.1,
+      "broll": 2,
+      "date": "2026-07-03"
+    },
+    "reel_manya_stop_v5": {
+      "out": "/tmp/ugc-factory-reels/reel_manya_stop_v5.mp4",
+      "duration": 5.63,
+      "broll": 1,
+      "date": "2026-07-03"
     }
   }
 }
