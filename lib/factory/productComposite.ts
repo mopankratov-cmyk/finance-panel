@@ -42,7 +42,8 @@ export function buildDeglossPrompt(sceneHint: string, poseHint?: string): string
     `Re-render as a candid amateur smartphone photo: ${sceneHint},`,
     "noticeably underexposed corners, ordinary muted colors.",
     "Skin must look real and imperfect: natural matte texture with visible pores, a few tiny blemishes, slight uneven redness on cheeks and nose, faint under-eye shadows, no glossy highlights, no smoothing.",
-    "Slightly imperfect framing.",
+    // Drill b8: Seedream запекал рамку-мокап телефона в деглянц-стиллы (тот же тел, что у композитов)
+    "Slightly imperfect framing. Full-bleed photo: no phone frame, no screen mockup, no watermark, no borders.",
   ].join(" ");
 }
 
