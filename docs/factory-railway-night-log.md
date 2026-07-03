@@ -3250,3 +3250,39 @@
 - Фикс `wbCardPhotos.candidateOrder`: порядок теперь середина(0.4·count)→хвост→обложка; limit 8→14. Проверено: HT-42-01 пробует 12,13,14,15…; NV-08-02 — 9,10,…13,15,17,20.
 - Проверки: `wbCardPhotosContract` обновлён (обложка НЕ первая), tsc чистый.
 - Дальше: пересобрать 29 SKU из reshoot-листа — теперь резолвер добирается до чистых кадров.
+
+## 2026-07-03 — Reels Brain worker: облегчён cold start и включена честная bootstrap-диагностика
+
+- Цель: добить Railway worker до состояния, где он стартует быстро и не зависает в `INITIALIZING`, даже если на контейнере нет `ffmpeg/ffprobe`.
+- Диагностика:
+  - production service `reels-brain-offline-worker` продолжал крутить старый успешный deployment `f0d584cf...`, а новые `61de88b1...` и `a0176a3f...` не давали полезных startup-логов;
+  - runtime-логи старого деплоя подтвердили, что mixed loop жив, media backfill крутится, но audio ветка падала на `ffprobe_unavailable`, позже уже с новым кодом добавился хвост `whisper 422`;
+  - это указывало не на бизнес-логику, а на тяжёлый bootstrap-path до входа в основной воркер.
+- Фикс:
+  - `lib/factory/reelsBrainAudioRailwayWorker.mjs`: убран автодownload `ffmpeg` tarball на старте и убран `pip install yt-dlp` из cold start;
+  - shim теперь только ищет уже существующие бинарники в стандартных путях Railway/Nixpacks;
+  - добавлены явные startup-логи `bootstrap_start` и `bootstrap_ready` с полями `yt_dlp_bin`, `ffmpeg_bin`, `ffprobe_bin`, `fal_key_present`.
+- Ожидаемый эффект:
+  - новый deployment должен либо стартовать сразу и показать bootstrap-состояние в логах, либо честно упасть уже после вывода диагностической строки;
+  - worker больше не будет зависеть от сетевого скачивания heavy-бинарей в boot-time.
+- Локальные проверки:
+  - `npx tsx lib/factory/reelsBrainOfflineWorkerContract.test.mts` — зелёный (14/14)
+  - `npx tsc --noEmit --pretty false` — зелёный
+
+## 2026-07-03 — Пересборка 29 reshoot-SKU после фикса порядка: +17 годных
+
+- Anthropic-кредиты пополнены (были исчерпаны → оба vision-рубежа фейл-опенились). После пополнения — полный прогон 29 SKU из reshoot-листа с живым скрином+сверкой.
+- Итог 29: **17 годных (16 warn + 1 pass)** + 12 остались fail. 3 транзиентных «no response» (NV-08-04/05/48) добиты ретраем — все warn.
+- Восстановлены без дизайнера: куртки NV-08-02/04/05/48/55/58, NV-816-35 (pass!), NV-836-57; ветровки HT-42-01/04/32/35/43, HT-80-43, HT-83-11/35/43.
+- **Итого по каталогу: 48 из 60 SKU имеют годный твин** (было 4 на старте линии). Reshoot-лист сжался 29 → 12.
+- Остаются fail (гейт блокирует, не публикуются): HT-42-22, HT-80-04/11/22/32, HT-83-01/04/32, NV-01-05, NV-08-53, NV-836-02/53. Смесь: реальный дрифт nano-banana + цвета, где даже в чистой зоне карточки перёд обрезан/проблемный. HT-80 (ветровка база) проседает сильнее прочих — кандидат на точечный разбор.
+- Вывод «сам разберёшься»: подтверждён — 17/29 восстановлены только правкой резолвера, источник был в карточках всё это время.
+
+## 2026-07-03 — Ниша «bags» в рубрикаторе + свой набор b-roll moves
+
+- Находка при разборе товаров МАША по нишам: сумки CLÉRIN (CLR*) падали в нишу `default` и получали скинкейр-моушены b-roll («рука берёт крем», vanity orbit) — не для сумки.
+- `rubric.ts`: добавлена ниша `bags` (тип, веса audience+sell — акцент на удержание/бренд-шильдик, флоры наследуются), классификатор `nicheFromArticle` ловит CLR/сумк/кросс-боди/клатч/шоппер/рюкзак/bag/tote.
+- `productBrollBatch.ts`: рецепт `bag_lookbook` + BAG_LOOKBOOK_MOVES (10 движений: hero push, leather macro, hardware detail, strap drape, shoulder carry, turntable, flap gesture, flatlay rise, window light, in-hand walk). movesFor отдаёт их для recipe=bag_lookbook или category=bag.
+- Allowlist ниши расширен в graphRun.ts и video-critic (иначе bags молча резался в default).
+- Проверки: productBrollBatch 19 (+bags), rubricV2Contract, tsc чистый.
+- Эффект: 4 сумки теперь оцениваются и анимируются по своей нише, а не как косметика.

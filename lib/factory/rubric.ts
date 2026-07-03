@@ -4,7 +4,7 @@
 // Модель ставит по-осевые баллы 1–5; взвешенный балл, флоры и вердикт считает сервер (детерминированно).
 
 export type ContentMode = "audience" | "sell";
-export type RubricNiche = "clothing" | "toys" | "cosmetics" | "default";
+export type RubricNiche = "clothing" | "toys" | "cosmetics" | "bags" | "default";
 export interface AxisScores { hook: number; retention: number; native: number; brand: number; cta: number }
 export type RubricAxisV2 = "hook" | "scrollStop" | "retention" | "aiSlop" | "productVisibility" | "conversion";
 export type RubricAxesAny = Partial<Record<RubricAxisV2 | keyof AxisScores, unknown>>;
@@ -18,12 +18,15 @@ const WEIGHTS: Record<ContentMode, Record<RubricNiche, AxisScores>> = {
     clothing:  { hook: 0.32, retention: 0.28, native: 0.22, brand: 0.10, cta: 0.08 },
     toys:      { hook: 0.35, retention: 0.25, native: 0.20, brand: 0.10, cta: 0.10 },
     cosmetics: { hook: 0.30, retention: 0.30, native: 0.20, brand: 0.12, cta: 0.08 },
+    // Сумки: эстетика/фактура держат удержание, бренд-шильдик важнее чем у одежды (люкс-код).
+    bags:      { hook: 0.30, retention: 0.30, native: 0.20, brand: 0.12, cta: 0.08 },
     default:   { hook: 0.32, retention: 0.28, native: 0.22, brand: 0.10, cta: 0.08 },
   },
   sell: {
     clothing:  { hook: 0.25, retention: 0.18, native: 0.15, brand: 0.25, cta: 0.17 },
     toys:      { hook: 0.27, retention: 0.18, native: 0.15, brand: 0.23, cta: 0.17 },
     cosmetics: { hook: 0.25, retention: 0.20, native: 0.15, brand: 0.23, cta: 0.17 },
+    bags:      { hook: 0.24, retention: 0.18, native: 0.15, brand: 0.26, cta: 0.17 },
     default:   { hook: 0.25, retention: 0.18, native: 0.15, brand: 0.25, cta: 0.17 },
   },
 };
@@ -48,6 +51,7 @@ export function floorsFor(mode: ContentMode, basis: RubricBasis = "frames"): Par
 // Ниша из артикула/названия (грубое сопоставление под бренды селлера).
 export function nicheFromArticle(article = "", name = ""): RubricNiche {
   const s = `${article} ${name}`.toLowerCase();
+  if (/^clr|сумк|кросс.?боди|клатч|шоппер|рюкзак|bag|tote|clutch|backpack|crossbody/.test(s)) return "bags";
   if (/^nv|^ht|куртк|ветровк|пухов|пальто|плащ|жилет|одежд/.test(s)) return "clothing";
   if (/^tt|пистолет|игрушк|бластер|toy|water.gun/.test(s)) return "toys";
   if (/крем|сыворотк|маск|косметик|уход|тонер|патч|санскрин|санскрей|солнцезащит|тональн|пудра|помад|туш|тени|консилер|праймер|бальзам.*губ|cosmet|cream|serum|skincare|spf|sunscreen|collagen|коллаген|retinol|niacinamide|hyaluron|concealer|foundation|blush|mascara|lipstick|lipgloss|\blip\b|eyeshadow|eyeliner|brow|highlighter|contour|bronzer|primer|toner|essence|ampoule|moistur|cleanser|peeling|lash|setting.*powder|makeup|make.up|beauty|cushion|bb.?cream|cc.?cream/.test(s)) return "cosmetics";

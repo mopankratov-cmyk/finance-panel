@@ -167,7 +167,7 @@ function textOfNode(n: RunNode | undefined | null): string {
 }
 
 function asRubricNiche(value: string): RubricNiche | undefined {
-  return ["clothing", "toys", "cosmetics", "default"].includes(value) ? value as RubricNiche : undefined;
+  return ["clothing", "toys", "cosmetics", "bags", "default"].includes(value) ? value as RubricNiche : undefined;
 }
 
 // нода РЕГЕНЕРИРУЕМА: сгенерирована движком (не реальный клип/сборка) — реген disk_real бессмыслен.

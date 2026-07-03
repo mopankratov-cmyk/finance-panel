@@ -143,7 +143,7 @@ export async function POST(req: NextRequest) {
   const hook: string = (body.hook || "").toString().slice(0, 300);
   const article: string = (body.article || "").toString().slice(0, 40);
   const name: string = (body.product_name || "").toString().slice(0, 120);
-  const niche: RubricNiche = (["clothing", "toys", "cosmetics", "default"].includes(body.niche) ? body.niche : nicheFromArticle(article, name)) as RubricNiche;
+  const niche: RubricNiche = (["clothing", "toys", "cosmetics", "bags", "default"].includes(body.niche) ? body.niche : nicheFromArticle(article, name)) as RubricNiche;
   const scenarioText = scenarioDigest(body.scenario);
   const platformBrainHint = buildPlatformBrainHint(body.playbook, targetPlatform);
   const fallback = () => fallbackCritique({
