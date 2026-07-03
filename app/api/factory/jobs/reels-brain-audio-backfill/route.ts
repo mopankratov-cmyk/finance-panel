@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { isAuthorizedReelsBrainJobRequest } from "@/lib/factory/reelsBrainJobAuth";
-import { extractAudioFeaturesFromMediaUrl } from "@/lib/factory/reelsBrainMediaResolver";
+import { extractAudioFeaturesFromMediaUrl, shouldRetryTranscriptExtraction } from "@/lib/factory/reelsBrainMediaResolver";
 import { mergeAnalyzedFullWithAudioExtraction } from "@/lib/factory/reelsBrainCorpusUpsert";
 
 export const dynamic = "force-dynamic";
@@ -130,8 +130,11 @@ export async function GET(req: NextRequest) {
         const state = seedState(row);
         const hasPlayable = state.mediaLocators.some((item) => isPlayableMediaLocator(item, String(row.platform || "")));
         if (!hasPlayable) return false;
-        if (state.audioStatus !== "audio_extracted") return true;
-        return transcribe && state.transcriptStatus !== "transcript_ready";
+        return shouldRetryTranscriptExtraction({
+          audioStatus: state.audioStatus,
+          transcriptStatus: state.transcriptStatus,
+          transcriptError: state.audioFeatures?.transcript_error,
+        }) && (!state.audioStatus || state.audioStatus !== "audio_extracted" || transcribe);
       })
       .slice(0, limit);
 

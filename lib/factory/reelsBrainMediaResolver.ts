@@ -49,6 +49,24 @@ export type ReelsBrainAudioExtractionResult = {
   error: string | null;
 };
 
+export function isTerminalTranscriptError(error: unknown): boolean {
+  const value = text(error, 240)?.toLowerCase() || "";
+  if (!value) return false;
+  return value.includes("whisper_empty_text") || value.includes("transcript_no_speech");
+}
+
+export function shouldRetryTranscriptExtraction(state: {
+  audioStatus?: string | null;
+  transcriptStatus?: string | null;
+  transcriptError?: unknown;
+}): boolean {
+  const audioStatus = text(state.audioStatus, 60) || "audio_pending";
+  const transcriptStatus = text(state.transcriptStatus, 60) || "transcript_pending";
+  if (audioStatus !== "audio_extracted") return true;
+  if (transcriptStatus === "transcript_ready") return false;
+  return !isTerminalTranscriptError(state.transcriptError);
+}
+
 function text(value: unknown, max = 1200): string | null {
   if (typeof value !== "string") return null;
   const out = value.trim();

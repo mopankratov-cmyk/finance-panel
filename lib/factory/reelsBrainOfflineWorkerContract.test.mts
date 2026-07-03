@@ -25,6 +25,9 @@ ok(/REELS_BRAIN_ENABLE_LOCAL_MEDIA_RESOLVER/.test(worker), "offline worker reads
 ok(/REELS_BRAIN_AUDIO_LOCAL/.test(worker), "offline worker reads local audio extraction env");
 ok(/function shouldUseYtDlpCookies/.test(worker), "offline worker scopes yt-dlp cookies by target domain");
 ok(/youtube\\.com\\|youtu\\.be/.test(worker), "offline worker only applies yt-dlp cookies to YouTube domains");
+ok(/function finalizeTranscriptOutcome/.test(worker), "offline worker normalizes transcript outcomes");
+ok(/transcript_no_speech/.test(worker), "offline worker marks empty whisper responses as no-speech terminal state");
+ok(/remoteFallback = await transcribeFal/.test(worker), "offline worker retries local empty transcript via remote media fallback");
 ok(
   /REELS_BRAIN_OFFLINE_MODE/.test(worker)
     && /mode === "audio"/.test(worker)
