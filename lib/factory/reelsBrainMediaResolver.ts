@@ -55,6 +55,17 @@ export function isTerminalTranscriptError(error: unknown): boolean {
   return value.includes("whisper_empty_text") || value.includes("transcript_no_speech");
 }
 
+export function isTerminalAudioError(error: unknown): boolean {
+  const value = text(error, 240)?.toLowerCase() || "";
+  if (!value) return false;
+  return value.includes("media_fetch_403")
+    || value.includes("status code 10204")
+    || value.includes("video not available")
+    || value.includes("image_media_locator")
+    || value.includes("audio_stream_missing")
+    || value.includes("audio_stream_not_found");
+}
+
 export function shouldRetryTranscriptExtraction(state: {
   audioStatus?: string | null;
   transcriptStatus?: string | null;
@@ -65,6 +76,19 @@ export function shouldRetryTranscriptExtraction(state: {
   if (audioStatus !== "audio_extracted") return true;
   if (transcriptStatus === "transcript_ready") return false;
   return !isTerminalTranscriptError(state.transcriptError);
+}
+
+export function shouldRetryAudioBackfill(state: {
+  audioStatus?: string | null;
+  transcriptStatus?: string | null;
+  transcriptError?: unknown;
+  lastError?: unknown;
+}): boolean {
+  const audioStatus = text(state.audioStatus, 60) || "audio_pending";
+  if (audioStatus !== "audio_extracted") {
+    return !isTerminalAudioError(state.lastError);
+  }
+  return shouldRetryTranscriptExtraction(state);
 }
 
 function text(value: unknown, max = 1200): string | null {

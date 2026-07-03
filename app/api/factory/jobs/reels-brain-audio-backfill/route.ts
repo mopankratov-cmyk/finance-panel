@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { isAuthorizedReelsBrainJobRequest } from "@/lib/factory/reelsBrainJobAuth";
-import { extractAudioFeaturesFromMediaUrl, shouldRetryTranscriptExtraction } from "@/lib/factory/reelsBrainMediaResolver";
+import { extractAudioFeaturesFromMediaUrl, shouldRetryAudioBackfill } from "@/lib/factory/reelsBrainMediaResolver";
 import { mergeAnalyzedFullWithAudioExtraction } from "@/lib/factory/reelsBrainCorpusUpsert";
 
 export const dynamic = "force-dynamic";
@@ -56,6 +56,7 @@ function seedState(row: CorpusRow) {
     audioFeatures: rec(reelsSeed.audio_features),
     audioStatus: text(pipeline.audio_status, 60) || "audio_pending",
     transcriptStatus: text(pipeline.transcript_status, 60) || "transcript_pending",
+    lastError: text(pipeline.last_error, 240),
   };
 }
 
@@ -89,8 +90,14 @@ function bestMediaLocator(row: CorpusRow): string {
   if (direct) return direct;
 
   if (platform === "instagram") {
-    const reelPage = state.mediaLocators.find((item) => /^https?:\/\/(www\.)?instagram\.com\/(reel|reels|tv)\//i.test(item.trim()));
-    return reelPage || "";
+    const postPageCandidates = [
+      ...state.mediaLocators,
+      String(row.url || "").trim(),
+    ].filter(Boolean);
+    const page = postPageCandidates.find((item) =>
+      /^https?:\/\/(www\.)?instagram\.com\/(reel|reels|tv|p)\//i.test(item.trim()),
+    );
+    return page || "";
   }
 
   return state.mediaLocators.find((item) => isPlayableMediaLocator(item, platform)) || "";
@@ -128,12 +135,15 @@ export async function GET(req: NextRequest) {
     const rows = ((data || []) as CorpusRow[])
       .filter((row) => {
         const state = seedState(row);
-        const hasPlayable = state.mediaLocators.some((item) => isPlayableMediaLocator(item, String(row.platform || "")));
+        const platform = String(row.platform || "").trim().toLowerCase();
+        const hasPlayable = state.mediaLocators.some((item) => isPlayableMediaLocator(item, platform))
+          || (platform === "instagram" && /^https?:\/\/(www\.)?instagram\.com\/(reel|reels|tv|p)\//i.test(String(row.url || "").trim()));
         if (!hasPlayable) return false;
-        return shouldRetryTranscriptExtraction({
+        return shouldRetryAudioBackfill({
           audioStatus: state.audioStatus,
           transcriptStatus: state.transcriptStatus,
           transcriptError: state.audioFeatures?.transcript_error,
+          lastError: state.lastError,
         }) && (!state.audioStatus || state.audioStatus !== "audio_extracted" || transcribe);
       })
       .slice(0, limit);

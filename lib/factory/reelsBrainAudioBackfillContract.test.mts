@@ -16,9 +16,13 @@ const route = readFileSync("app/api/factory/jobs/reels-brain-audio-backfill/rout
 
 ok(/export function isTerminalTranscriptError/.test(resolver), "media resolver exposes terminal transcript error helper");
 ok(/export function shouldRetryTranscriptExtraction/.test(resolver), "media resolver exposes transcript retry helper");
+ok(/export function isTerminalAudioError/.test(resolver), "media resolver exposes terminal audio error helper");
+ok(/export function shouldRetryAudioBackfill/.test(resolver), "media resolver exposes audio backfill retry helper");
 ok(/whisper_empty_text/.test(resolver) && /transcript_no_speech/.test(resolver), "media resolver treats empty whisper results as terminal");
-ok(/shouldRetryTranscriptExtraction/.test(route), "audio backfill route uses transcript retry helper");
+ok(/media_fetch_403/.test(resolver) && /status code 10204/.test(resolver), "media resolver treats unavailable media as terminal audio errors");
+ok(/shouldRetryAudioBackfill/.test(route), "audio backfill route uses audio backfill retry helper");
 ok(/transcriptError:\s*state\.audioFeatures\?\.transcript_error/.test(route), "audio backfill route consults stored transcript error");
+ok(/instagram\.com\/\(reel\|reels\|tv\|p\)\\\//.test(route) || /instagram\\.com\\\/\(reel\|reels\|tv\|p\)\\\//.test(route) || /reel\|reels\|tv\|p/.test(route), "audio backfill route can fall back to instagram post pages");
 
 if (failed) process.exit(1);
 console.log(`reelsBrainAudioBackfillContract: ${passed} passed, ${failed} failed`);
