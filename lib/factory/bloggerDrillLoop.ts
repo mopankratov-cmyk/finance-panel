@@ -6,7 +6,7 @@
 
 import { buildDeglossPrompt } from "@/lib/factory/productComposite";
 
-export type DrillAxis = "light_scene" | "motion" | "start_pose" | "script_style" | "quiet_register" | "start_face" | "delivery" | "register_fix" | "framing" | "post_params";
+export type DrillAxis = "light_scene" | "motion" | "start_pose" | "script_style" | "quiet_register" | "start_face" | "delivery" | "register_fix" | "framing" | "showcase" | "post_params";
 
 export interface DrillClipPlan {
   clip_id: string;
@@ -302,7 +302,48 @@ const START_POSE_ROWS: Array<{ id: string; pose: string; hypothesis: string }> =
   { id: "leaning_sill", pose: "leaning sideways on the windowsill with one shoulder, casual weight shift", hypothesis: "Асимметричный вес — анти-манекен." },
 ];
 
+// SHOWCASE: 5 «живых» рилсов Мани БЕЗ монтажа (владелец: «сделай 5 разных без монтажа»).
+// Разные сцена × регистр × реальная тема персоны; лучшие канон-параметры (реализм-пас,
+// однорукая анатомия, identity-якорь в drillDeglossPrompt). Один чистый говорящий кадр.
+const SHOWCASE_ROWS: Array<{ id: string; look: string; hint: string; pose: string; script: string; voice: { style: number; speed: number }; motion: string; expr: "low" | "medium" }> = [
+  { id: "origin_serum", look: "look__manya__01__kitchen_counter", hint: "bright morning sun through the kitchen window, uneven light",
+    pose: `wearing a grey hoodie, her free hand raised mid-gesture, nothing in her hands, eyes wide with excitement, eyebrows raised, ${SELFIE_ARM_CROP}`,
+    script: "[excited] Так, СТОП. Я на работе открыла накладную и офигела. Сыворотка за четыре двести… а её аналог в закупке — триста сорок. [exhales] Один в один состав.",
+    voice: { style: 0.55, speed: 1.12 }, motion: `energetic selfie video message, expressive face, her free hand gestures while talking, quick natural head movements. ${SELFIE_ARM_DISCIPLINE}`, expr: "medium" },
+  { id: "mortgage_spite", look: "look__manya__12__bed_morning", hint: "dim late evening bedroom, bedside lamp, soft warm low light",
+    pose: `phone selfie POV, resting her head heavily on one hand, elbow on the bed, eyes half closed with tiredness, no smile, ${SELFIE_ARM_CROP}`,
+    script: "Ипотеку я взяла назло. [exhales] Мы копили на общую квартиру — общей не случилось. Короче, подписала одна. Лучшее назло в моей жизни.",
+    voice: { style: 0.5, speed: 0.92 }, motion: `very tired quiet video message, slow heavy blinks, subdued face, minimal movement, no smiles. ${SELFIE_ARM_DISCIPLINE}`, expr: "low" },
+  { id: "pronya_qc", look: "look__manya__03__sofa_evening", hint: "warm table lamp evening, single soft light source",
+    pose: `holding a warm mug in one hand, playful teasing expression, slight smirk, head tilted a little, ${SELFIE_ARM_CROP}`,
+    script: "Знакомьтесь — Проня. Полное имя Процент. [laughs] Официальный отдел контроля качества. Каждую баночку тестирует лапой.",
+    voice: { style: 0.55, speed: 1.08 }, motion: `playful teasing energy, small head tilts, bright eyes, a short genuine laugh. ${SELFIE_ARM_DISCIPLINE}`, expr: "medium" },
+  { id: "sunset_collection", look: "look__manya__07__soft_window", hint: "golden hour low warm sunlight through the window, long soft shadows, selfie distance framing",
+    pose: `holding a warm mug in one hand below her chin, gazing down toward the mug, lips closed, no smile, ${SELFIE_ARM_CROP}`,
+    script: "[whispers] С семнадцатого этажа закаты бесплатные. Единственное, за что я не переплатила. [exhales] Буду собирать. Это закат номер один.",
+    voice: { style: 0.5, speed: 0.95 }, motion: `calm quiet intimate video message, soft subdued expressions, slow blinks, minimal head movement, no big smiles. ${SELFIE_ARM_DISCIPLINE}`, expr: "low" },
+  { id: "traffic_math", look: "look__manya__10__car_close", hint: "overcast day inside the car, dim soft light, phone propped on the dashboard, static framing",
+    pose: "wearing a denim jacket, sitting in the driver seat, chin resting on her free hand, skeptical appraising expression, slightly narrowed eyes, no arms reaching toward the camera",
+    script: "Честно? Я посчитала, во сколько мне обходится час в пробке. [exhales] И теперь работаю из дома два дня в неделю. Цифры не врут.",
+    voice: { style: 0.45, speed: 1.0 }, motion: "starts with a barely visible head shake, honest slightly amused expression, then calms into direct delivery, natural blink", expr: "medium" },
+];
+
 export function buildDrillBatch(batch: number, axis: DrillAxis): DrillBatchPlan {
+  if (axis === "showcase") {
+    const clips: DrillClipPlan[] = SHOWCASE_ROWS.map((row, i) => ({
+      clip_id: `drill_b${String(batch).padStart(2, "0")}_${String(i + 1).padStart(2, "0")}_${row.id}`,
+      batch, axis, role: "explore" as const,
+      look_name: row.look,
+      degloss_hint: row.hint,
+      pose_hint: row.pose,
+      script: row.script,
+      voice_emotion_speed: row.voice,
+      motion_prompt: row.motion,
+      expressiveness: row.expr,
+      hypothesis: "Showcase: живой рилс без монтажа, реальная тема персоны.",
+    }));
+    return { ok: true, batch, axis, persona: "manya", clips, warnings: ["Showcase 5 рилсов без монтажа — разные сцена×регистр×тема."] };
+  }
   if (axis === "start_face") {
     const clips: DrillClipPlan[] = START_FACE_ROWS.map((row, i) => ({
       clip_id: `drill_b${String(batch).padStart(2, "0")}_${String(i + 1).padStart(2, "0")}_${row.id}`,
@@ -577,4 +618,20 @@ export const MANYA_FACE_ANCHOR =
 
 export function drillDeglossPrompt(hint: string, poseHint?: string): string {
   return `${buildDeglossPrompt(hint, poseHint)} ${MANYA_FACE_ANCHOR}`;
+}
+
+// IDENTITY-LOCK деглянц (2026-07-03, вердикт владельца «пять разных девушек»): базовые луки
+// паспорта — 5 РАЗНЫХ лиц (faceFoundry генерил каждый отдельно), поэтому деглянц каждого
+// давал разную Маню. Решение: два изображения в Seedream — ЛИЦО из image 1 (эталон),
+// СЦЕНА из image 2 (лук). Проверено: лицо держится канон-Маней при смене сцены/света/одежды.
+export function buildIdentityLockDeglossPrompt(sceneHint: string, poseHint?: string): string {
+  return [
+    "Two input images. Image 1 is the identity reference — image 2 is only a scene/environment reference.",
+    "Keep the EXACT face and identity of the woman from IMAGE 1: same soft rounded face with full cheeks, same short slightly upturned nose, same grey-blue eyes, same light brown hair, same light freckles across her nose and cheeks. Do NOT change her face — do not slim it, do not sharpen the jawline, do not clean the skin.",
+    `Re-render HER (the woman from image 1) in a new setting: ${sceneHint}.`,
+    poseHint ? `Pose and wardrobe: ${poseHint}.` : "",
+    "Use image 2 ONLY for the room/scene/lighting, never for her face.",
+    "Render as a candid amateur smartphone selfie. Skin must look real and imperfect: visible pores, a few tiny blemishes, slight uneven redness, faint under-eye shadows, no glossy highlights, no smoothing.",
+    "She has exactly two arms. Full-bleed photo: no phone frame, no screen mockup, no watermark, no borders.",
+  ].filter(Boolean).join(" ");
 }
