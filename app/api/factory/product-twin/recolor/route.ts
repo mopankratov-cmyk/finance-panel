@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { isAuthorizedReelsBrainJobRequest } from "@/lib/factory/reelsBrainJobAuth";
-import { recolorTwinFromBase } from "@/lib/factory/twinRecolor";
+import { recolorTwinFromBase, retouchTwin } from "@/lib/factory/twinRecolor";
 import { productTwinAssetPreviewUrl } from "@/lib/factory/productTwinPreview";
 import { WB_SELLER_CATALOG, catalogEntryForArticle } from "@/lib/factory/wbSellerCatalog";
 
@@ -18,6 +18,24 @@ export async function POST(req: NextRequest) {
     const db = getSupabaseAdmin();
     if (!db) return NextResponse.json({ ok: false, error: "Supabase не настроен" }, { status: 500 });
     const body = await req.json().catch(() => ({}));
+
+    // Ретушь: убрать вшитый артефакт (рукавный шильдик, утяжка) с твина того же артикула.
+    // POST { retouch: true, article, instructions: ["sleeve_patch", ...] }
+    if (body.retouch === true) {
+      const article = String(body.article || "").trim();
+      const instructions = Array.isArray(body.instructions) ? body.instructions.map((s: unknown) => String(s || "").trim()).filter(Boolean) : [];
+      if (!article || !instructions.length) return NextResponse.json({ ok: false, error: "нужны article и instructions[]" }, { status: 400 });
+      const catEntry = catalogEntryForArticle(article);
+      const product = String(body.product || (catEntry ? `${catEntry.category === "Ветровки" ? "ветровка" : "куртка"} NORVIA ${catEntry.color.split(";")[0]}` : `изделие ${article}`)).trim();
+      const r = await retouchTwin(db, { article, twinId: String(body.twin_id || body.twinId || "").trim() || undefined, product, instructions });
+      if (!r.ok) return NextResponse.json({ ok: false, error: r.error }, { status: r.status || 500 });
+      return NextResponse.json({
+        ok: true, mode: "retouch", article, instructions,
+        twin_id: r.twin.twinId,
+        preview_url: productTwinAssetPreviewUrl(r.twin.assets.find((a) => a.kind === "upscaled")?.url || r.twin.assets[0]?.url),
+      }, { headers: { "Cache-Control": "no-store" } });
+    }
+
     const baseArticle = String(body.base_article || body.baseArticle || "").trim();
     const baseTwinId = String(body.base_twin_id || body.baseTwinId || "").trim();
     if (!baseArticle && !baseTwinId) return NextResponse.json({ ok: false, error: "нужен base_article или base_twin_id" }, { status: 400 });

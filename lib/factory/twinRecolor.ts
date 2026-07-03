@@ -135,3 +135,86 @@ export async function recolorTwinFromBase(db: SupabaseClient, input: {
   if (!saved.ok) return { ok: false, error: saved.error, status: 500 };
   return { ok: true, twin: saved.twin, previewUrlSource: recolored.imageUrl };
 }
+
+// ── Ретушь твина: точечная правка (убрать вшитый рукавный шильдик, утяжку и т.п.) ──
+// Правка не трогает геометрию/цвет — только удаляет ошибочно дорисованную деталь.
+// Результат сохраняется как новый твин ТОГО ЖЕ артикула (становится latest).
+
+export const RETOUCH_PRESETS: Record<string, string> = {
+  sleeve_patch: "remove the small rectangular badge, patch or logo tag on the sleeve (it is an AI artifact, not a real part of the garment)",
+  sleeve_toggle: "remove the elastic drawcord toggle/cord-lock on the lower sleeve",
+  chest_patch: "remove any invented badge or patch on the chest that is not part of the real product",
+  hood: "remove the hood — this garment has a collar, not a hood",
+};
+
+export function buildRetouchPrompt(product: string, instructions: string[]): string {
+  const edits = instructions.filter(Boolean).join("; ");
+  return [
+    `Edit this clean product photo of ${product}. ${edits}.`,
+    "Keep EVERYTHING else pixel-identical: exact silhouette, garment length, cut, color, hood/collar, zipper, buttons, pockets, seams, stitching, cuffs, hardware, proportions, fabric texture, camera angle, background and lighting.",
+    "Only remove/fix the named artifact; do not restyle, recolor, resize or add anything.",
+    "Photorealistic, same clean studio packshot, vertical 9:16, sharp fabric detail.",
+  ].join(" ");
+}
+
+export async function retouchTwin(db: SupabaseClient, input: {
+  article: string;
+  twinId?: string;
+  product: string;
+  instructions: string[];          // готовые фразы или ключи RETOUCH_PRESETS
+}): Promise<{ ok: true; twin: ProductTwin; previewUrlSource: string } | { ok: false; error: string; status?: number }> {
+  const article = String(input.article || "").trim();
+  if (!article) return { ok: false, error: "нужен article", status: 400 };
+  if (!input.instructions?.length) return { ok: false, error: "нужны instructions (что убрать)", status: 400 };
+  if (!process.env.FAL_KEY && !process.env.FAL_BILLING_KEY) return { ok: false, error: "FAL_KEY не настроен", status: 500 };
+
+  const base = await getBestProductTwinAsset(db, {
+    twinId: input.twinId,
+    article: input.twinId ? undefined : article,
+    useCase: "hero",
+    allowFailedIdentity: true,
+  });
+  if (!base) return { ok: false, error: `твин для ${article} не найден`, status: 404 };
+
+  const resolved = input.instructions.map((i) => RETOUCH_PRESETS[i] || i);
+  const category = normalizeTwinCategory("apparel", article, input.product);
+  const publicBase = await rehostImageForFal(base.asset.url);
+  const prompt = buildRetouchPrompt(input.product, resolved);
+  const edited = await runNanoBananaEdit({ image: publicBase, prompt });
+  if (!edited.ok) return { ok: false, error: edited.error, status: edited.responseUrl ? 504 : 502 };
+
+  const downloaded = await downloadImageBuffer(edited.imageUrl);
+  if (!downloaded.ok) return { ok: false, error: `retouch download failed: ${downloaded.error}`, status: 502 };
+
+  const twinId = buildTwinId({ article, source: `retouch:${base.twin.twinId}`, version: `retouch-${Date.now()}` });
+  const variants = await buildTwinImageVariants({ cleanBuffer: downloaded.buffer, article, twinId, category });
+  const serviceKinds = new Set(["object_mask", "alpha", "depth_map", "segmentation"]);
+  const assets: ProductTwinAsset[] = [];
+  for (const variant of variants) {
+    const uploaded = await uploadTwinAsset(db, { article, twinId, kind: variant.kind, buffer: variant.buffer, contentType: variant.contentType });
+    if ("error" in uploaded) return { ok: false, error: `upload ${variant.kind}: ${uploaded.error}`, status: 502 };
+    const service = serviceKinds.has(variant.kind);
+    assets.push(createTwinAsset({
+      twinId, article, kind: variant.kind, url: uploaded.url, path: uploaded.path,
+      truthLevel: variant.kind === "clean_png" || variant.kind === "upscaled" ? "truthful" : "derived",
+      qualityScore: variant.quality.qualityScore,
+      qualityDetails: { ...(variant.quality.rejectReasons ? { reject_reasons: variant.quality.rejectReasons } : {}), retouched_from: base.twin.twinId, edits: resolved },
+      risk: variant.quality.identityRisk,
+      sourceKind: "retouch",
+      brollReady: service ? false : variant.quality.brollReady,
+      heroReady: service ? false : variant.quality.heroReady,
+      ugcReady: service ? false : variant.quality.brollReady && ["shadow_bg", "clean_png"].includes(variant.kind),
+      marketplaceSafe: service ? false : variant.quality.marketplaceSafe,
+      adsSafe: service ? false : variant.quality.adsSafe,
+    }));
+  }
+  const saved = await persistProductTwin(db, {
+    twinId, article, productName: input.product, category,
+    sourceKind: `retouch_from:${base.twin.twinId}`,
+    sourcePath: base.asset.url,
+    promptLibrary: buildProductPromptLibrary({ article, product: input.product, category, cleanPrompt: prompt }),
+    assets,
+  });
+  if (!saved.ok) return { ok: false, error: saved.error, status: 500 };
+  return { ok: true, twin: saved.twin, previewUrlSource: edited.imageUrl };
+}
