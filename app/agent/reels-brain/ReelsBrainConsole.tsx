@@ -738,8 +738,59 @@ type LearningEconomicsResponse = {
     yesterday?: LearningEconomicsDailyCost | null;
     rows?: LearningEconomicsDailyCost[];
   };
+  audio_visual_readiness?: {
+    sampled_rows: number;
+    with_media_locators: number;
+    with_media_locator_rate: number;
+    with_audio_features: number;
+    with_audio_features_rate: number;
+    with_transcript: number;
+    with_transcript_rate: number;
+    audio_failed: number;
+    audio_failed_rate: number;
+    ready_for_worker: number;
+    ready_for_worker_rate: number;
+    by_platform?: Record<string, {
+      total: number;
+      with_media_locators: number;
+      with_audio_features: number;
+      ready_for_worker: number;
+    }>;
+    status?: "spec_ready" | "media_seeded" | "worker_ready";
+    next_step?: string;
+  };
   warning?: string;
   error?: string;
+};
+
+type WorkerStateResponse = {
+  ok?: boolean;
+  worker?: {
+    worker_id?: string;
+    label?: string;
+    status?: string;
+    current_task_title?: string | null;
+    progress?: string | null;
+    note?: string | null;
+    blocker?: string | null;
+    last_seen?: string | null;
+    liveness?: {
+      state?: string;
+      age_sec?: number;
+    };
+  } | null;
+  worker_issue?: {
+    title?: string;
+    summary?: string;
+    action?: string;
+    severity?: string;
+  } | null;
+  heartbeat_diagnostics?: {
+    status?: string;
+    note?: string;
+    next_check_sec?: number;
+  } | null;
+  db_error?: string | null;
 };
 
 type LearningHookInsight = {
@@ -890,6 +941,26 @@ function spendSourceLabel(source: LearningEconomicsDailyCost["spend_source"] | "
   if (source === "actual") return "actual billing";
   if (source === "mixed") return "mixed";
   return "estimated";
+}
+
+function workerTone(status: string | undefined, liveness: string | undefined) {
+  if (liveness === "alive" && status === "working") return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  if (liveness === "alive") return "border-cyan-200 bg-cyan-50 text-cyan-700";
+  if (status === "blocked") return "border-red-200 bg-red-50 text-red-700";
+  return "border-amber-200 bg-amber-50 text-amber-700";
+}
+
+function workerLabel(status: string | undefined, liveness: string | undefined) {
+  if (liveness === "alive" && status === "working") return "worker active";
+  if (liveness === "alive") return status || "alive";
+  if (status === "blocked") return "worker blocked";
+  return "worker stale";
+}
+
+function audioReadinessTone(status: "spec_ready" | "media_seeded" | "worker_ready" | undefined) {
+  if (status === "worker_ready") return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  if (status === "media_seeded") return "border-cyan-200 bg-cyan-50 text-cyan-700";
+  return "border-amber-200 bg-amber-50 text-amber-700";
 }
 
 const HOOK_LABELS: Record<string, string> = {
@@ -1113,6 +1184,8 @@ export default function ReelsBrainPage() {
   const [learningEconomics, setLearningEconomics] = useState<LearningEconomicsResponse | null>(null);
   const [loadingLearningEconomics, setLoadingLearningEconomics] = useState(false);
   const [learningEconomicsError, setLearningEconomicsError] = useState("");
+  const [workerState, setWorkerState] = useState<WorkerStateResponse | null>(null);
+  const [workerStateError, setWorkerStateError] = useState("");
   const [insightNicheFilter, setInsightNicheFilter] = useState("all");
   const [insightConfidenceFilter, setInsightConfidenceFilter] = useState<"all" | "high" | "medium" | "low">("all");
   const [insightSegmentFilter, setInsightSegmentFilter] = useState<"all" | "op_hooks" | "frequent_hooks" | "experimental_hooks">("all");
@@ -1231,6 +1304,30 @@ export default function ReelsBrainPage() {
 
   useEffect(() => {
     let alive = true;
+    async function loadInitialWorkerState() {
+      setWorkerStateError("");
+      try {
+        const data = await readJson<WorkerStateResponse>(await fetch("/api/factory/worker-state", { cache: "no-store" }));
+        if (alive) setWorkerState(data);
+      } catch (error) {
+        if (alive) {
+          setWorkerState(null);
+          setWorkerStateError(String((error as Error)?.message || error));
+        }
+      }
+    }
+    void loadInitialWorkerState();
+    const timer = window.setInterval(() => {
+      void loadInitialWorkerState();
+    }, 60_000);
+    return () => {
+      alive = false;
+      window.clearInterval(timer);
+    };
+  }, []);
+
+  useEffect(() => {
+    let alive = true;
     async function loadInitialAnalyzeBacklog() {
       setAnalyzeBacklogLoading(true);
       try {
@@ -1281,6 +1378,7 @@ export default function ReelsBrainPage() {
     : null;
   const learningTimeline = learningEconomics?.timeline || [];
   const learningNiches = learningEconomics?.niches || [];
+  const audioVisualReadiness = learningEconomics?.audio_visual_readiness || null;
   const insightSummary = learningEconomics?.insights?.summary || [];
   const topHooks = learningEconomics?.insights?.top_hooks || [];
   const hookGroups = learningEconomics?.insights?.hook_groups || {};
@@ -1321,6 +1419,14 @@ export default function ReelsBrainPage() {
   const corpusProgress = portfolioCorpusTarget ? Math.min(100, Math.round((cockpitCorpusCurrent / portfolioCorpusTarget) * 100)) : 0;
   const discoveryReady = cockpitCorpusCurrent >= 2500;
   const analysisReady = analyzeBacklogTotals.total > 0 && analyzeBacklogTotals.unanalyzed === 0;
+  const activeWorker = workerState?.worker || null;
+  const workerIssue = workerState?.worker_issue || null;
+  const workerLiveness = activeWorker?.liveness?.state || "unknown";
+  const deepReadyVideos = Number(audioVisualReadiness?.ready_for_worker || 0);
+  const deepReadyRate = Number(audioVisualReadiness?.ready_for_worker_rate || 0);
+  const transcriptCoverage = Number(audioVisualReadiness?.with_transcript_rate || 0);
+  const mediaCoverage = Number(audioVisualReadiness?.with_media_locator_rate || 0);
+  const audioFailureRate = Number(audioVisualReadiness?.audio_failed_rate || 0);
   const brainStage = analysisReady
     ? "Готов к регулярному дообучению"
     : discoveryReady
@@ -1331,6 +1437,8 @@ export default function ReelsBrainPage() {
     : cockpitCorpusCurrent < portfolioCorpusTarget
       ? `добрать ${compactNumber(Math.max(0, portfolioCorpusTarget - cockpitCorpusCurrent))} видео до цели`
       : "снять карту источников и сравнить качество";
+  const nextDeepAction = audioVisualReadiness?.next_step
+    || (deepReadyVideos > 0 ? "Продолжать deep-analysis слой." : "Сначала подготовить корпус к deep-analysis.");
   const serverAutomationHistory: AutomationHistoryItem[] = (brainSummary?.automation_history || []).map((item) => ({
     id: `server:${item.id}`,
     title: automationTitle(item.mode),
@@ -2746,6 +2854,77 @@ export default function ReelsBrainPage() {
               {loadingLearningEconomics ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
               Обновить economics
             </button>
+          </div>
+
+          <div className="mt-4 grid gap-3 xl:grid-cols-[1.15fr_0.85fr]">
+            <div className="rounded-2xl border border-white/10 bg-white/10 p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-[0.18em] text-cyan-100/70">Brain operating status</p>
+                  <h4 className="mt-1 text-lg font-black">Что мозг уже умеет прямо сейчас</h4>
+                </div>
+                <span className={`rounded-full border px-3 py-1 text-xs font-black ${workerTone(activeWorker?.status, workerLiveness)}`}>
+                  {workerLabel(activeWorker?.status, workerLiveness)}
+                </span>
+              </div>
+              <div className="mt-4 grid gap-3 md:grid-cols-3">
+                <div className="rounded-2xl border border-white/10 bg-slate-950/30 p-4">
+                  <p className="text-xs font-bold uppercase tracking-wide text-cyan-100/70">Corpus → memory</p>
+                  <div className="mt-2 text-3xl font-black">{compactNumber(learningTotals?.analyzed_videos || 0)}</div>
+                  <p className="mt-1 text-xs text-slate-300">разобрано из {compactNumber(learningTotals?.total_videos || 0)} видео</p>
+                </div>
+                <div className="rounded-2xl border border-white/10 bg-slate-950/30 p-4">
+                  <p className="text-xs font-bold uppercase tracking-wide text-cyan-100/70">Deep-ready слой</p>
+                  <div className="mt-2 text-3xl font-black">{compactNumber(deepReadyVideos)}</div>
+                  <p className="mt-1 text-xs text-slate-300">{compactNumber(deepReadyRate)}% корпуса готовы к deep-analysis</p>
+                </div>
+                <div className="rounded-2xl border border-white/10 bg-slate-950/30 p-4">
+                  <p className="text-xs font-bold uppercase tracking-wide text-cyan-100/70">Pattern recipes</p>
+                  <div className="mt-2 text-3xl font-black">{compactNumber(learningTotals?.generator_ready_patterns || 0)}</div>
+                  <p className="mt-1 text-xs text-slate-300">готовы к передаче в генератор</p>
+                </div>
+              </div>
+              <div className="mt-4 rounded-2xl border border-white/10 bg-slate-950/30 p-4 text-sm text-slate-200">
+                <p className="font-bold text-white">Следующий шаг системы</p>
+                <p className="mt-2 leading-6">{nextDeepAction}</p>
+                {activeWorker?.note ? (
+                  <p className="mt-2 text-xs text-slate-400">Worker note: {activeWorker.note}</p>
+                ) : null}
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <div className="rounded-2xl border border-white/10 bg-white/10 p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-[0.18em] text-cyan-100/70">Deep-analysis readiness</p>
+                    <h4 className="mt-1 text-lg font-black">Насколько готов аудио-слой</h4>
+                  </div>
+                  <span className={`rounded-full border px-3 py-1 text-xs font-black ${audioReadinessTone(audioVisualReadiness?.status)}`}>
+                    {audioVisualReadiness?.status || "unknown"}
+                  </span>
+                </div>
+                <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-slate-200">
+                  <span className="rounded-xl bg-slate-950/35 px-3 py-2">media {compactNumber(mediaCoverage)}%</span>
+                  <span className="rounded-xl bg-slate-950/35 px-3 py-2">transcript {compactNumber(transcriptCoverage)}%</span>
+                  <span className="rounded-xl bg-slate-950/35 px-3 py-2">deep-ready {compactNumber(deepReadyRate)}%</span>
+                  <span className="rounded-xl bg-slate-950/35 px-3 py-2">audio fails {compactNumber(audioFailureRate)}%</span>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-white/10 bg-white/10 p-4">
+                <p className="text-xs font-bold uppercase tracking-[0.18em] text-cyan-100/70">Worker heartbeat</p>
+                <h4 className="mt-1 text-lg font-black">Состояние контура обучения</h4>
+                <div className="mt-3 space-y-2 text-sm text-slate-200">
+                  <p><span className="font-bold text-white">Task:</span> {activeWorker?.current_task_title || "—"}</p>
+                  <p><span className="font-bold text-white">Progress:</span> {activeWorker?.progress || "—"}</p>
+                  <p><span className="font-bold text-white">Last seen:</span> {activeWorker?.last_seen ? new Date(activeWorker.last_seen).toLocaleString("ru-RU") : "—"}</p>
+                  {workerIssue?.summary ? <p><span className="font-bold text-white">Issue:</span> {workerIssue.summary}</p> : null}
+                  {activeWorker?.blocker ? <p><span className="font-bold text-white">Blocker:</span> {activeWorker.blocker}</p> : null}
+                  {!workerIssue?.summary && workerStateError ? <p className="text-amber-200">{workerStateError}</p> : null}
+                </div>
+              </div>
+            </div>
           </div>
 
           {learningEconomicsError && <div className="mt-3 rounded-xl border border-red-300/30 bg-red-500/10 px-3 py-2 text-sm text-red-100">{learningEconomicsError}</div>}
