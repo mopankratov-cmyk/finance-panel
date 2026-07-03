@@ -1,7 +1,7 @@
 import { categoryFor, buildMotionPrompt, type ProductCategory } from "./editPrompts";
 import { type FalVideoModel } from "./falVideo";
 
-export type ProductBrollRecipe = "skincare_ritual" | "toy_action";
+export type ProductBrollRecipe = "skincare_ritual" | "toy_action" | "bag_lookbook";
 
 export interface ProductBrollVariant {
   id: string;
@@ -128,6 +128,59 @@ const TOY_ACTION_MOVES = [
   },
 ];
 
+const BAG_LOOKBOOK_MOVES = [
+  {
+    id: "hero-push",
+    label: "hero push-in",
+    motion: "Camera: slow clean push-in on the bag as a hero object on a minimal surface, soft studio light grazing the material.",
+  },
+  {
+    id: "leather-macro",
+    label: "leather macro",
+    motion: "Camera: slow macro glide across the grain and stitching, then a gentle pull-back revealing the whole silhouette.",
+  },
+  {
+    id: "hardware-detail",
+    label: "hardware detail",
+    motion: "Camera: close-up push toward the metal hardware, buckle and logo plate with a subtle rack-focus, no fast movement.",
+  },
+  {
+    id: "strap-drape",
+    label: "strap drape",
+    motion: "Camera: soft side slide following the strap as it drapes, ending on the front of the bag centered and dominant.",
+  },
+  {
+    id: "shoulder-carry",
+    label: "shoulder carry",
+    motion: "Camera: locked medium shot as a hand lifts the bag by the strap onto the shoulder, calm editorial pacing.",
+  },
+  {
+    id: "turntable",
+    label: "slow turntable",
+    motion: "Camera: smooth slow orbital track around the bag on a clean surface, showing front and side profile.",
+  },
+  {
+    id: "flap-open",
+    label: "flap gesture",
+    motion: "Camera: static premium close-up as one calm hand opens the flap and lets it settle, product stays fully intact.",
+  },
+  {
+    id: "flatlay-rise",
+    label: "flatlay rise",
+    motion: "Camera: top-down flat-lay of the bag on a neutral surface, slow vertical rise to a three-quarter hero angle.",
+  },
+  {
+    id: "window-light",
+    label: "window light",
+    motion: "Camera: gentle tilt through soft daylight, ending on the bag as the hero with warm calm mood.",
+  },
+  {
+    id: "in-hand-walk",
+    label: "in-hand walk",
+    motion: "Camera: minimal handheld-style micro-move as the bag is carried in hand, silhouette and hardware stay crisp.",
+  },
+];
+
 function clampCount(count: number | undefined): number {
   const n = Number.isFinite(count) && Number(count) > 0 ? Number(count) : 10;
   return Math.max(1, Math.min(MAX_VARIANTS, Math.round(n)));
@@ -148,6 +201,7 @@ function preservationClose(product: string, category: ProductCategory): string {
 
 function movesFor(recipe: ProductBrollRecipe | undefined, category: ProductCategory) {
   if (recipe === "toy_action" || category === "toy") return TOY_ACTION_MOVES;
+  if (recipe === "bag_lookbook" || category === "bag") return BAG_LOOKBOOK_MOVES;
   return SKINCARE_MOVES;
 }
 

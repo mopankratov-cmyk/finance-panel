@@ -36,5 +36,15 @@ function eq(a: unknown, b: unknown, m: string) { ok(JSON.stringify(a) === JSON.s
   eq(plan.length, 10, "empty/zero count falls back to default 10");
 }
 
+// Ниша сумок: свой набор moves (лукбук), а не скинкейр-ритуал.
+{
+  const bagPlan = buildProductBrollPlan({ article: "CLR00716", product: "сумка кросс-боди", category: "bag", count: 3 });
+  ok(bagPlan.length === 3, "bag plan builds");
+  ok(bagPlan.some(v => /leather|hardware|strap|shoulder|turntable|flap|silhouette/i.test(v.prompt)), "bag moves are lookbook, not skincare");
+  ok(!bagPlan.some(v => /vanity|dropper|skincare routine/i.test(v.prompt)), "bag plan drops skincare-only moves");
+  const bagRecipe = buildProductBrollPlan({ article: "CLR00716", product: "сумка", recipe: "bag_lookbook", count: 2 });
+  ok(bagRecipe.length === 2, "bag_lookbook recipe works");
+}
+
 console.log(`\nproductBrollBatch: ${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
