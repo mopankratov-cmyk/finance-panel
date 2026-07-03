@@ -150,6 +150,34 @@ export async function falVideoSubmit(model: FalVideoModel, imageUrl: string, pro
   return r.token;
 }
 
+// Kling Effects endpoint (Track A VFX): фиксированный effect_scene, БЕЗ промпта.
+// Возвращает тот же token-формат, что i2v-submit — встаёт в общий video-fal-status/archive.
+const KLING_EFFECTS_ENDPOINT = "fal-ai/kling-video/v1.6/standard/effects";
+export async function falKlingEffectSubmit(imageUrl: string, effectScene: string, duration: "5" | "10" = "5"): Promise<FalSubmitResult> {
+  const k = key();
+  if (!k) return { token: null, reason: "FAL_KEY не настроен" };
+  try {
+    const r = await fetch(`${QUEUE}${KLING_EFFECTS_ENDPOINT}`, {
+      method: "POST",
+      headers: { Authorization: `Key ${k}`, "Content-Type": "application/json", "X-Fal-Request-Timeout": "180" },
+      cache: "no-store",
+      body: JSON.stringify({ input_image_urls: [imageUrl], effect_scene: effectScene, duration }),
+      signal: AbortSignal.timeout(25000),
+    });
+    if (!r.ok) {
+      const body = await r.text().catch(() => "");
+      const reason = falFailureReason(r.status);
+      const detail = body.slice(0, 240);
+      console.warn(`[falKlingEffect] ${effectScene} → ${r.status} ${reason}: ${detail}`);
+      return { token: null, status: r.status, reason, detail };
+    }
+    const j = (await r.json().catch(() => ({}))) as { response_url?: string };
+    return { token: j.response_url ? Buffer.from(j.response_url).toString("base64url") : null, reason: j.response_url ? undefined : "fal effect submit без response_url" };
+  } catch (e) {
+    return { token: null, reason: "сеть/таймаут", detail: String(e).slice(0, 180) };
+  }
+}
+
 // Серверный compose через fal-ai/ffmpeg-api/compose (НЕ браузер — отдаёт mp4, работает в батче).
 // Слоит одновременные треки по таймлайну: видео + опц. прозрачный оверлей-PNG (хук-текст/субтитры,
 // тип image) + опц. аудио (mp3 ElevenLabs). FAL_KEY (крипто) уже есть. ВНИМАНИЕ: поведение image-трека

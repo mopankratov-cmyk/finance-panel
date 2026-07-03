@@ -3353,3 +3353,11 @@
 - Модуль содержит: 30 Track B motion-промптов (8 bag / 8 cosmetics / 6 toy / 8 apparel) с {PRODUCT}-подстановкой и честным финальным кадром (кроме size_distort), Track A матрицу Kling-эффектов (deform только toy), buildTrackAPayload/buildTrackBPrompt/planWave1.
 - `lib/factory/brollVfxContract.test.mts` (новый, 20+ asserts): категории исправлены, 30 промптов, формула, deform-safety, planWave1 без дублей.
 - Прогон НЕ запускался (§6: по команде владельца после проверки бюджета). Функции доступны в коде.
+
+## 2026-07-03 — VFX b-roll РАННЕР: студия жмёт кнопку
+
+- Достроен исполнитель к brollVfx (раньше был только справочник, ничего не сабмитило):
+  - `lib/factory/falVideo.ts`: `falKlingEffectSubmit` — Track A на Kling effects-endpoint (input_image_urls + effect_scene, БЕЗ промпта), токен в общем формате `fv.<base64url>` → встаёт в video-fal-status/archive.
+  - `app/api/factory/product-broll-vfx/route.ts`: раннер. POST {article,category?,track?,submit?} — один артикул; POST {wave1:true} — вся волна 1 по представителям. Source — из артикул-точного твина (getBestProductTwinAsset→rehost). submit=false по умолчанию (план без списания); GET-оператор никогда не сабмитит. blocked-артикул (TT04102) режется 409. Ответ подсказывает judge_route.
+- Проверки: brollVfxRunnerContract (новый), tsc чистый.
+- Теперь «гони волну 1» = POST wave1:true&submit:true реально сабмитит ~45 клипов A+B и отдаёт task_ids. Прогон — по команде владельца (бюджет ~$20-35).
