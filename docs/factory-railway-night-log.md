@@ -3266,3 +3266,21 @@
 - Фикс `wbCardPhotos.candidateOrder`: порядок теперь середина(0.4·count)→хвост→обложка; limit 8→14. Проверено: HT-42-01 пробует 12,13,14,15…; NV-08-02 — 9,10,…13,15,17,20.
 - Проверки: `wbCardPhotosContract` обновлён (обложка НЕ первая), tsc чистый.
 - Дальше: пересобрать 29 SKU из reshoot-листа — теперь резолвер добирается до чистых кадров.
+
+## 2026-07-03 — Reels Brain worker: облегчён cold start и включена честная bootstrap-диагностика
+
+- Цель: добить Railway worker до состояния, где он стартует быстро и не зависает в `INITIALIZING`, даже если на контейнере нет `ffmpeg/ffprobe`.
+- Диагностика:
+  - production service `reels-brain-offline-worker` продолжал крутить старый успешный deployment `f0d584cf...`, а новые `61de88b1...` и `a0176a3f...` не давали полезных startup-логов;
+  - runtime-логи старого деплоя подтвердили, что mixed loop жив, media backfill крутится, но audio ветка падала на `ffprobe_unavailable`, позже уже с новым кодом добавился хвост `whisper 422`;
+  - это указывало не на бизнес-логику, а на тяжёлый bootstrap-path до входа в основной воркер.
+- Фикс:
+  - `lib/factory/reelsBrainAudioRailwayWorker.mjs`: убран автодownload `ffmpeg` tarball на старте и убран `pip install yt-dlp` из cold start;
+  - shim теперь только ищет уже существующие бинарники в стандартных путях Railway/Nixpacks;
+  - добавлены явные startup-логи `bootstrap_start` и `bootstrap_ready` с полями `yt_dlp_bin`, `ffmpeg_bin`, `ffprobe_bin`, `fal_key_present`.
+- Ожидаемый эффект:
+  - новый deployment должен либо стартовать сразу и показать bootstrap-состояние в логах, либо честно упасть уже после вывода диагностической строки;
+  - worker больше не будет зависеть от сетевого скачивания heavy-бинарей в boot-time.
+- Локальные проверки:
+  - `npx tsx lib/factory/reelsBrainOfflineWorkerContract.test.mts` — зелёный (14/14)
+  - `npx tsc --noEmit --pretty false` — зелёный
