@@ -3361,3 +3361,11 @@
 - `app/api/factory/product-twin/recolor/route.ts`: POST одиночный {base_article,target_article,color} + батч {base_article, all_colors_of_model:true} по всем цветам модели из WB-каталога.
 - Проверки: twinRecolorContract (новый), tsc чистый.
 - Дальше: владелец выбирает лучший эталон на модель (4 куртки + 3 ветровки) по галерее; перекрашиваю в остальные цвета. Сумки оставляем как есть.
+
+## 2026-07-03 — VFX b-roll модуль: подключён + фикс категорий MASHA
+
+- `lib/factory/brollVfx.ts` (реализация docs/factory-broll-vfx-creatives-tz.md) был написан ранее, но лежал НЕзакоммиченным и НИКУДА не подключён, плюс с багом: категории MASHA перепутаны как в §1 ТЗ (TT* под cosmetics, YYS0101 под toy) — дескрипторы неверные («amber serum bottle» для чёрного водного бластера, «water blaster» для крема SPF).
+- Фикс: TT* → toy (водные бластеры/винтовки, корректные дескрипторы), YYS0101 → cosmetics (крем SPF). planWave1 берёт представителя [0] — фикс распространился (toy-клипы теперь на TT, не на крем).
+- Модуль содержит: 30 Track B motion-промптов (8 bag / 8 cosmetics / 6 toy / 8 apparel) с {PRODUCT}-подстановкой и честным финальным кадром (кроме size_distort), Track A матрицу Kling-эффектов (deform только toy), buildTrackAPayload/buildTrackBPrompt/planWave1.
+- `lib/factory/brollVfxContract.test.mts` (новый, 20+ asserts): категории исправлены, 30 промптов, формула, deform-safety, planWave1 без дублей.
+- Прогон НЕ запускался (§6: по команде владельца после проверки бюджета). Функции доступны в коде.
