@@ -2,7 +2,7 @@
 
 Статус: `live-ready`
 
-Цель: поднять offline-контур для `media locators`, когда обычные провайдеры находят Instagram/TikTok/YouTube видео, но не отдают прямой `video_url`.
+Цель: поднять offline-контур для `media locators`, когда обычные провайдеры находят Instagram/TikTok видео, но не отдают прямой `video_url`.
 
 Это не новый сборщик корпуса. Это worker для уже собранных `viral_videos`, который:
 
@@ -11,6 +11,8 @@
 - при наличии локального resolver-а (`yt-dlp`) помогает добить прямой media URL;
 - затем чередует `media` и `audio` циклы, чтобы те же rows переходили в `audio_extracted` и `transcript_ready`;
 - шлет heartbeat в `/api/factory/worker-state`.
+
+Важно: если YouTube идет через `YouTube Data API`, он работает как discovery/metadata-источник. Официальный API не отдает raw media URL, поэтому offline worker по умолчанию не крутит YouTube в media/audio-петле.
 
 ## Что уже есть в коде
 
@@ -28,10 +30,10 @@ CRON_SECRET=...
 REELS_BRAIN_ENABLE_LOCAL_MEDIA_RESOLVER=1
 REELS_BRAIN_MEDIA_BACKFILL_PROVIDER=apify_instagram
 REELS_BRAIN_MEDIA_BACKFILL_PLATFORM=instagram
-REELS_BRAIN_PLATFORMS=tiktok,instagram,youtube
+REELS_BRAIN_PLATFORMS=tiktok,instagram
 REELS_BRAIN_MEDIA_BACKFILL_PROVIDER_INSTAGRAM=bright_instagram
 REELS_BRAIN_MEDIA_BACKFILL_PROVIDER_TIKTOK=apify_tiktok
-REELS_BRAIN_MEDIA_BACKFILL_PROVIDER_YOUTUBE=apify_youtube
+REELS_BRAIN_MEDIA_BACKFILL_PROVIDER_YOUTUBE=youtube
 REELS_BRAIN_MEDIA_BACKFILL_LIMIT=3
 REELS_BRAIN_MEDIA_BACKFILL_SCAN=30
 REELS_BRAIN_OFFLINE_MODE=mixed
@@ -56,7 +58,7 @@ node lib/factory/reelsBrainOfflineWorker.mjs --once --provider apify_instagram -
 Daemon:
 
 ```bash
-node lib/factory/reelsBrainOfflineWorker.mjs --every-sec 240 --mode mixed --platforms tiktok,instagram,youtube --media-limit 3 --media-scan 30 --audio-limit 2 --audio-scan 18 --use-local-resolver 1
+node lib/factory/reelsBrainOfflineWorker.mjs --every-sec 240 --mode mixed --platforms tiktok,instagram --media-limit 3 --media-scan 30 --audio-limit 2 --audio-scan 18 --use-local-resolver 1
 ```
 
 Если нужен Bright Data вместо Apify:
@@ -116,7 +118,7 @@ yt-dlp --version
    - `media` tick
    - `audio` tick
    - transcript enrichment
-   - и вращает платформы по кругу `tiktok -> instagram -> youtube`
+  - и вращает платформы по кругу `tiktok -> instagram`
 5. После накопления `audio_ready` слоя переходить к следующему углублению:
    - beat / speech features
    - stronger audio patterns
@@ -129,3 +131,4 @@ yt-dlp --version
 - `apify_instagram` и `bright_instagram` матчат нужные Instagram posts;
 - но прямой `video_url` через provider response не отдают;
 - значит для Instagram offline/media слоя сейчас нужен именно local resolver, а не еще один обычный scraper provider.
+- `youtube` через официальный Data API подходит для discovery и наполнения корпуса, но не для media extraction.

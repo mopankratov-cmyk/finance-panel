@@ -3319,3 +3319,16 @@
 - Остались fail (6): HT-42-22, HT-80-04 (белая молния), HT-80-11 (пропали кнопки-планка), HT-83-01, HT-83-32, NV-836-02 (карманы без клапанов). Это самый упрямый A-паттерн — nano-banana продолжает удлинять короткие ветровки в парку даже с явным запретом в промпте; фикс уровня промпта тут упирается в структурную предвзятость модели.
 - Технический урок: с усиленным промптом билд вырос до ~100с; клиентский fetch без таймаута отваливался раньше ответа («no response»), хотя твин на сервере собирался. Добавлен AbortSignal.timeout(310000) в rebuild-скрипт.
 - **Покрытие каталога: 54/60 NORVIA + 8/9 МАША = 62/69 годных твинов** (было 4 на старте всей линии). Остаётся 6 NORVIA fail + 1 МАША blocked, все держит гейт (не публикуются).
+
+## 2026-07-03 — YouTube переключен в API-first режим для Reels Brain
+
+- Принято решение не тащить YouTube Shorts через `yt-dlp/cookies` как основной путь: anti-bot нестабилен и не нужен для discovery.
+- `Reels Brain` оставлен с официальным `youtube`-провайдером для discovery и пополнения корпуса через `YouTube Data API`.
+- Offline mixed worker переведен в практичный дефолт:
+  - `REELS_BRAIN_PLATFORMS=tiktok,instagram`
+  - `REELS_BRAIN_MEDIA_BACKFILL_PROVIDER_YOUTUBE=youtube`
+- Смысл: TikTok/Instagram продолжают идти в full-fidelity loop (`media -> transcript -> audio`), а YouTube работает как metadata/discovery-слой без траты циклов на media extraction.
+- Живая проверка production API:
+  - `POST /api/factory/jobs/reels-brain-bulk-ingest` с `platforms=["youtube"]`, `providers=["youtube"]`
+  - результат: `found=5`, `enriched=5`, `error=null`, `best_provider="youtube"`, `estimated_spend_usd=0.035`
+- Вывод: YouTube API-ветка жива и годится для роста корпуса; raw-media разбор Shorts остается отдельной задачей и больше не блокирует общий цикл обучения.
