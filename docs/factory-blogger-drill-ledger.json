@@ -3189,7 +3189,16 @@
       "heygen_video_id": "d64d5c038c0c4a40a7aa0538b298d580",
       "video_done": true,
       "post_done": true,
-      "yavg": 134
+      "yavg": 134,
+      "critic_scores": {
+        "identity": 7,
+        "light_character": 8,
+        "register_fit": 7,
+        "artifacts": 6,
+        "ugc_feel": 8
+      },
+      "critic_total": 36,
+      "critic_notes": "Кухня/худи/день: рука обрезана чисто, но РУКАВ МЕРЦАЕТ (к2 рукав до манжеты, к3/5 голая) — новый тел временной консистентности одежды; восторг дрейфует в испуг."
     },
     "drill_b12_02_mirror_playful": {
       "plan": {
@@ -3212,7 +3221,16 @@
       "heygen_video_id": "7cfd24dc72bd4a709e77df8b93b90872",
       "video_done": true,
       "post_done": true,
-      "yavg": 69
+      "yavg": 69,
+      "critic_scores": {
+        "identity": 6,
+        "light_character": 7,
+        "register_fit": 8,
+        "artifacts": 7,
+        "ugc_feel": 8
+      },
+      "critic_total": 36,
+      "critic_notes": "Зеркало легитимно, игривость держится, НО identity 6 — «сестра»: лицо худее, веснушек нет; глаза закрыты в 4/5 кадров."
     },
     "drill_b12_03_car_skeptic": {
       "plan": {
@@ -3235,7 +3253,16 @@
       "heygen_video_id": "f013516795804af2b7d4b509c69a05a8",
       "video_done": true,
       "post_done": true,
-      "yavg": 73
+      "yavg": 73,
+      "critic_scores": {
+        "identity": 6,
+        "light_character": 8,
+        "register_fit": 9,
+        "artifacts": 8,
+        "ugc_feel": 7
+      },
+      "critic_total": 38,
+      "critic_notes": "Скептик 9 — лучший перенос батча (deadpan вся длина); identity 6 (овал вытянут); телефон на держателе легитимен, но добавляет стоковости."
     },
     "drill_b12_04_lamp_quiet": {
       "plan": {
@@ -3258,7 +3285,16 @@
       "heygen_video_id": "da2f9f2e553c498cbe3d7bc6fce1cdda",
       "video_done": true,
       "post_done": true,
-      "yavg": 60
+      "yavg": 60,
+      "critic_scores": {
+        "identity": 7,
+        "light_character": 9,
+        "register_fit": 9,
+        "artifacts": 7,
+        "ugc_feel": 8
+      },
+      "critic_total": 40,
+      "critic_notes": "Лучший клип батча: тихий 9, свет-лампа 9 (лучший в батче), селфи-рука без телефона; минус — тестообразная рука в блюре."
     },
     "drill_b12_05_street_surprised": {
       "plan": {
@@ -3281,7 +3317,16 @@
       "heygen_video_id": "45a9255e47c14350b6cb3c25085ea000",
       "video_done": true,
       "post_done": true,
-      "yavg": 132
+      "yavg": 132,
+      "critic_scores": {
+        "identity": 6,
+        "light_character": 8,
+        "register_fit": 7,
+        "artifacts": 8,
+        "ugc_feel": 8
+      },
+      "critic_total": 37,
+      "critic_notes": "Улица/пасмурно/сумка: очень живой кадр; шок сползает в восторг в середине; identity 6 («худая версия»)."
     },
     "drill_b12_06_bathroom_warm": {
       "plan": {
@@ -3304,7 +3349,16 @@
       "heygen_video_id": "8025e2604e084e3fab5aa28ae84a9ab7",
       "video_done": true,
       "post_done": true,
-      "yavg": 74
+      "yavg": 74,
+      "critic_scores": {
+        "identity": 7.5,
+        "light_character": 7,
+        "register_fit": 8.5,
+        "artifacts": 3,
+        "ugc_feel": 7.5
+      },
+      "critic_total": 33.5,
+      "critic_notes": "ПАРАДОКС ГРУБЕЕ ожиданий: телефон на полке КАМЕРАМИ к зрителю + селфи-руки = съёмочной камеры не существует (artifacts 3). Мой промпт сам заложил противоречие. Тёплый регистр 8.5."
     },
     "drill_b12_07_bed_tired": {
       "plan": {
@@ -3327,7 +3381,16 @@
       "heygen_video_id": "3110c41999f0484bb42e48a1fdc0f52d",
       "video_done": true,
       "post_done": true,
-      "yavg": 65
+      "yavg": 65,
+      "critic_scores": {
+        "identity": 6,
+        "light_character": 7,
+        "register_fit": 8,
+        "artifacts": 7,
+        "ugc_feel": 7
+      },
+      "critic_total": 35,
+      "critic_notes": "Кровать/лампа: усталость держится; identity 6 (лицо длиннее, +5 лет); ключевой свет «ниоткуда»."
     },
     "drill_b12_08_wall_consp": {
       "plan": {
@@ -3346,7 +3409,20 @@
         "motion_prompt": "conspiratorial intimate delivery, she lowers the finger from her lips and speaks quietly, sly eyes, no big smiles. Her extended arm holding the phone stays fully extended and steady for the whole video, the phone never moves into the frame or appears in her other hand.",
         "expressiveness": "medium",
         "hypothesis": "Заговорщица в сумерках коридора: жест-«тсс» на нижней границе света b1."
-      }
+      },
+      "heygen_video_id": "6629b21c275f46a8bdce97735fb9bef5",
+      "video_done": true,
+      "post_done": true,
+      "yavg": 56,
+      "critic_scores": {
+        "identity": 5,
+        "light_character": 6,
+        "register_fit": 8,
+        "artifacts": 8,
+        "ugc_feel": 8
+      },
+      "critic_total": 35,
+      "critic_notes": "«Тсс» держится + подмигивания, НО identity 5 — ДРУГАЯ девушка (узкая челюсть, высокий лоб); дрейф даже против b12_07. Свет лица без источника."
     },
     "drill_b12_ctrl1": {
       "plan": {
@@ -3369,7 +3445,16 @@
       "heygen_video_id": "1906d4ad7792441ba1b30eff1ecf3ebb",
       "video_done": true,
       "post_done": true,
-      "yavg": 104
+      "yavg": 104,
+      "critic_scores": {
+        "identity": 10,
+        "light_character": 9,
+        "register_fit": 9,
+        "artifacts": 6,
+        "ugc_feel": 9
+      },
+      "critic_total": 43,
+      "critic_notes": "Референс канона. Критик поймал ТЕЛЕФОН у нижней кромки в к3-5 (канон-поза до b13) — подтверждает вердикт владельца №2."
     },
     "drill_b12_ctrl2": {
       "plan": {
@@ -3392,7 +3477,66 @@
       "heygen_video_id": "1a04714a2b514e348aa357ca6571bc10",
       "video_done": true,
       "post_done": true,
-      "yavg": 106
+      "yavg": 106,
+      "critic_scores": {
+        "identity": 9,
+        "light_character": 9,
+        "register_fit": 9,
+        "artifacts": 8,
+        "ugc_feel": 8
+      },
+      "critic_total": 43,
+      "critic_notes": "Тихий канон, регрессии нет — 6-й батч подряд."
+    },
+    "drill_b13_01_quiet_hook_crop": {
+      "plan": {
+        "clip_id": "drill_b13_01_quiet_hook_crop",
+        "batch": 13,
+        "axis": "register_fix",
+        "role": "explore",
+        "look_name": "look__manya__07__soft_window",
+        "degloss_hint": "golden hour low warm sunlight through the window, long soft shadows, selfie distance framing",
+        "pose_hint": "holding a warm mug in one hand below her chin, gazing down toward the mug, lips closed, no smile, her other arm reaching toward the camera and cropped by the frame edge at the wrist, the phone itself is NOT visible in the frame",
+        "script": "[whispers] Так… я вам сейчас кое-что расскажу. Только тихо, ладно? [whispers] Слушайте.",
+        "voice_emotion_speed": {
+          "style": 0.5,
+          "speed": 0.95
+        },
+        "motion_prompt": "calm quiet intimate video message, soft subdued facial expressions, small gentle mouth movements, slow blinks, minimal head movement, no big smiles",
+        "expressiveness": "low",
+        "hypothesis": "Тихий рилс-хук без видимого телефона (замена b10_01 в reel_manya_secret)."
+      },
+      "heygen_video_id": "4dfc577268c3420aad0b9d2d2c422d93",
+      "video_done": true,
+      "post_done": true,
+      "yavg": 107,
+      "eye_check": "PASS",
+      "critic_notes": "ГЛАЗАМИ: кружка в одной руке, предплечье обрезано, телефона НЕТ; к1 улыбка (стилл без якоря) — в рилсе читается естественным началом"
+    },
+    "drill_b13_02_excited_hook_crop": {
+      "plan": {
+        "clip_id": "drill_b13_02_excited_hook_crop",
+        "batch": 13,
+        "axis": "register_fix",
+        "role": "explore",
+        "look_name": "look__manya__07__soft_window",
+        "degloss_hint": "golden hour low warm sunlight through the window, long soft shadows, selfie distance framing",
+        "pose_hint": "her free hand raised mid-gesture at chest level, nothing in her hands, eyes wide with excitement, big open smile, eyebrows raised, her other arm reaching toward the camera and cropped by the frame edge at the wrist, the phone itself is NOT visible in the frame",
+        "script": "[excited] Так, СТОП. Я не могу молчать! Вы должны это знать. Короче, слушайте!",
+        "voice_emotion_speed": {
+          "style": 0.55,
+          "speed": 1.15
+        },
+        "motion_prompt": "energetic selfie video message, expressive face following the speech, her free hand gestures naturally while talking, quick natural head movements. Her extended arm holding the phone stays fully extended and steady for the whole video, the phone never moves into the frame or appears in her other hand.",
+        "expressiveness": "medium",
+        "hypothesis": "Восторг рилс-хук без видимого телефона (замена b11_01 в reel_manya_stop)."
+      },
+      "heygen_video_id": "52cc4fe62ea44fdc9f9f276c34d148cc",
+      "video_done": true,
+      "post_done": true,
+      "yavg": 117,
+      "eye_check": "PASS",
+      "critic_notes": "ГЛАЗАМИ: чисто — жест свободной рукой, рука обрезана, телефона НЕТ"
     }
   },
   "degloss_cache": {
@@ -3458,7 +3602,9 @@
     "look__manya__12__bed_morning::dim late evening in the bedroom, bedside lamp, soft warm low light::wearing an oversized sleep t-shirt, lying propped on pillows, resting her head heavily on one hand, eyes half closed with visible tiredness, no smile, her other arm reaching toward the camera and cropped by the frame edge at the wrist, the phone itself is NOT visible in the frame": "https://v3b.fal.media/files/b/0aa0be27/4ru97KMKsLBRQOxlbEXCl_0dc24dad63144802987e545296e9216d.png",
     "look__manya__14__plain_wall::dusk indoor light in the hallway, single warm ceiling bulb, noticeably dim but face clearly visible::wearing a dark hoodie, index finger raised to her lips in a hushing gesture, sly narrowed eyes, closed-lip smirk, her other arm reaching toward the camera and cropped by the frame edge at the wrist, the phone itself is NOT visible in the frame": "https://v3b.fal.media/files/b/0aa0be32/Ck6UkbWiPJZJoLdwqpj9e_a451bdd6c2a14b2bbaa7769988b173d5.png",
     "look__manya__11__street_entrance::overcast soft daylight outdoors near a residential entrance, flat dim light, wind in hair::wearing a light jacket, one hand raised toward her cheek in shock, eyes wide open, jaw dropped, no mug, her other arm reaching toward the camera and cropped by the frame edge at the wrist, the phone itself is NOT visible in the frame": "https://v3b.fal.media/files/b/0aa0be57/O_migdwzRmw5ebpHlrYwC_8c7d4561a2804431ab51c14ac483ef73.png",
-    "look__manya__05__mirror_close::slightly dim bathroom vanity light, even but unflattering, small shadows under chin, phone propped on the shelf::wearing a casual t-shirt with hair in a messy bun, both hands relaxed out of frame, warm gentle expression, soft kind eyes, relaxed closed-lip smile, no arms reaching toward the camera": "https://v3b.fal.media/files/b/0aa0be63/nVK3IHfBKc6pG3QGHeL_D_534b2e4738da4da7bad9333d266d3f7b.png"
+    "look__manya__05__mirror_close::slightly dim bathroom vanity light, even but unflattering, small shadows under chin, phone propped on the shelf::wearing a casual t-shirt with hair in a messy bun, both hands relaxed out of frame, warm gentle expression, soft kind eyes, relaxed closed-lip smile, no arms reaching toward the camera": "https://v3b.fal.media/files/b/0aa0be63/nVK3IHfBKc6pG3QGHeL_D_534b2e4738da4da7bad9333d266d3f7b.png",
+    "look__manya__07__soft_window::golden hour low warm sunlight through the window, long soft shadows, selfie distance framing::holding a warm mug in one hand below her chin, gazing down toward the mug, lips closed, no smile, her other arm reaching toward the camera and cropped by the frame edge at the wrist, the phone itself is NOT visible in the frame": "https://v3b.fal.media/files/b/0aa0be8d/x5P4LO3RUHASbOLaUNd93_3f3eb444b2ff40c09941530a083dffbf.png",
+    "look__manya__07__soft_window::golden hour low warm sunlight through the window, long soft shadows, selfie distance framing::her free hand raised mid-gesture at chest level, nothing in her hands, eyes wide with excitement, big open smile, eyebrows raised, her other arm reaching toward the camera and cropped by the frame edge at the wrist, the phone itself is NOT visible in the frame": "https://v3b.fal.media/files/b/0aa0bea5/2x6uusylSMFFcdgoNjqZp_436182325f4e4523a785008d7f88cb64.png"
   },
   "look_cache": {
     "drill::look__manya__03__sofa_evening::evening, single warm table lamp as the only light source, uneven light with soft shadows on one side of the face": "987a8166eb024f8c9795151e24e5aa58",
@@ -3522,7 +3668,10 @@
     "drill::look__manya__12__bed_morning::dim late evening in the bedroom, bedside lamp, soft warm low light::wearing an oversized sleep t-shirt, lying propped on pillows, resting her head heavily on one hand, eyes half closed with visible tiredness, no smile, her other arm reaching toward the camera and cropped by the frame edge at the wrist, the phone itself is NOT visible in the frame": "ede23f55b999476ba62dd1bce69399cf",
     "drill::look__manya__03__sofa_evening::late evening, single warm table lamp as the only light source, uneven light, soft shadows::wearing a cozy knitted sweater, holding a warm mug in one hand below her chin, gazing down toward the mug, lips closed, no smile, her other arm reaching toward the camera and cropped by the frame edge at the wrist, the phone itself is NOT visible in the frame": "761a0cf4e8a3483298a0fcfce347b71b",
     "drill::look__manya__11__street_entrance::overcast soft daylight outdoors near a residential entrance, flat dim light, wind in hair::wearing a light jacket, one hand raised toward her cheek in shock, eyes wide open, jaw dropped, no mug, her other arm reaching toward the camera and cropped by the frame edge at the wrist, the phone itself is NOT visible in the frame": "ff9404ff3b824630b65838b2635bfec9",
-    "drill::look__manya__05__mirror_close::slightly dim bathroom vanity light, even but unflattering, small shadows under chin, phone propped on the shelf::wearing a casual t-shirt with hair in a messy bun, both hands relaxed out of frame, warm gentle expression, soft kind eyes, relaxed closed-lip smile, no arms reaching toward the camera": "b1fd6fb71e2140749d2437165b59a3bc"
+    "drill::look__manya__05__mirror_close::slightly dim bathroom vanity light, even but unflattering, small shadows under chin, phone propped on the shelf::wearing a casual t-shirt with hair in a messy bun, both hands relaxed out of frame, warm gentle expression, soft kind eyes, relaxed closed-lip smile, no arms reaching toward the camera": "b1fd6fb71e2140749d2437165b59a3bc",
+    "drill::look__manya__14__plain_wall::dusk indoor light in the hallway, single warm ceiling bulb, noticeably dim but face clearly visible::wearing a dark hoodie, index finger raised to her lips in a hushing gesture, sly narrowed eyes, closed-lip smirk, her other arm reaching toward the camera and cropped by the frame edge at the wrist, the phone itself is NOT visible in the frame": "21692481f1934a048ede49c7192f3928",
+    "drill::look__manya__07__soft_window::golden hour low warm sunlight through the window, long soft shadows, selfie distance framing::holding a warm mug in one hand below her chin, gazing down toward the mug, lips closed, no smile, her other arm reaching toward the camera and cropped by the frame edge at the wrist, the phone itself is NOT visible in the frame": "c32e83a4b541453ebe0ab9e153474b2c",
+    "drill::look__manya__07__soft_window::golden hour low warm sunlight through the window, long soft shadows, selfie distance framing::her free hand raised mid-gesture at chest level, nothing in her hands, eyes wide with excitement, big open smile, eyebrows raised, her other arm reaching toward the camera and cropped by the frame edge at the wrist, the phone itself is NOT visible in the frame": "ee040e39e0fc4c34baa7a011ec209ab0"
   },
   "promotions": [],
   "b1_tts": "https://api.telegram.org/file/bot8832406834:AAF92-G-V8sw-FGniH9i1nAj_y7hFn_1-0U/music/file_6.mp3",
@@ -3704,6 +3853,37 @@
         "SELFIE_ARM_DISCIPLINE в моушены энергичных регистров",
         "рубрика критика: подсчёт рук обязателен"
       ]
+    },
+    "b12_framing_variety": {
+      "date": "2026-07-03",
+      "axis": "framing (разнообразие)",
+      "verdict": "РАЗНООБРАЗИЕ РАБОТАЕТ: 8 сцен/нарядов/светов, регистры переносятся (шёпот 9, скептик 9, тёплая 8.5); НОВАЯ ГЛАВНАЯ ПРОБЛЕМА — identity-дрейф",
+      "winner": {
+        "clip_id": "drill_b12_04_lamp_quiet",
+        "total": 40,
+        "note": "тихий у вечерней лампы"
+      },
+      "identity_drift": {
+        "scores": {
+          "kitchen": 7,
+          "mirror": 6,
+          "car": 6,
+          "lamp": 7,
+          "street": 6,
+          "bathroom": 7.5,
+          "bed": 6,
+          "wall": 5
+        },
+        "diagnosis": "Seedream при смене сцены/одежды/света «улучшает» лицо к дефолту: худеет овал, острее скулы, чистая кожа, веснушки исчезают; дрейф есть даже внутри батча (b12_07 vs b12_08)",
+        "fix": "MANYA_FACE_ANCHOR вшит в drillDeglossPrompt (геометрия лица + веснушки + запрет slimming); валидация в следующем батче"
+      },
+      "new_tells": [
+        "мерцание одежды: рукав селфи-руки появляется/исчезает между кадрами (b12_01)",
+        "подпёртый телефон камерами к зрителю + селфи-рука = несуществующая камера (b12_06, мой промпт сам заложил противоречие — prop-телефон и селфи-рука взаимоисключающи)",
+        "свет лица без видимого источника в тёмных сценах (b12_07/08) — аниматор доосвещает"
+      ],
+      "reels": "reel_manya_secret_v3 + reel_manya_stop_v3 собраны и у владельца: хук (b13, без телефона) → сцена-без-неё b-roll (Seedream убирает человека, Kling анимирует) → сквозной голос",
+      "next": "b14: identity-валидация якоря (перегон худших дрейферов wall/mirror/bed с MANYA_FACE_ANCHOR) + свет с источником в тёмных сценах"
     }
   },
   "b2_tts": "https://api.telegram.org/file/bot8832406834:AAF92-G-V8sw-FGniH9i1nAj_y7hFn_1-0U/music/file_7.mp3",
@@ -3738,6 +3918,10 @@
       },
       "root_cause": "позы «кружка ДВУМЯ руками» + селфи-дистанция деглянца",
       "critic_miss": "критик не считал руки — рубрика исправлена: подсчёт рук обязателен, 3 руки = hard fail"
+    },
+    "2026-07-03_phone_in_hand_again": {
+      "verdict": "«там опять телефон в руке» — по рилсам v2 (хуки из b10/b11 с видимым телефоном)",
+      "resolution": "решение b10 «телефон виден = честнее» ОТМЕНЕНО; SELFIE_ARM_CROP (рука обрезается кадром у запястья) — закон для всех селфи-поз; каноны и fix-ряды переписаны (15 замен), хуки перегнаны (b13), рилсы пересобраны v3"
     }
   }
 }
