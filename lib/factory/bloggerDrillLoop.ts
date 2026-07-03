@@ -45,7 +45,9 @@ const CANON_MOTION =
 export const DRILL_BEST_KNOWN = {
   look_name: "look__manya__07__soft_window",
   degloss_hint: "golden hour low warm sunlight through the window, long soft shadows, selfie distance framing",
-  pose_hint: "holding a warm mug with both hands below her chin" as string | undefined,
+  // 07-03 «три руки везде»: однорукая версия верифицирована глазами в b10_03 (warm_onehand
+  // = канон-скрипт + канон-моушен + 2 руки, телефон виден в вытянутой)
+  pose_hint: "holding a warm mug in one hand below her chin, her other arm extended toward the camera holding the phone" as string | undefined,
   motion_prompt: CANON_MOTION,
   expressiveness: "medium" as const,
   voice: { style: 0.4, speed: 1.05 },
@@ -67,7 +69,9 @@ export const GESTURE_STOP_LIST = [
 export const DRILL_QUIET_CANON = {
   look_name: "look__manya__07__soft_window",
   degloss_hint: "golden hour low warm sunlight through the window, long soft shadows, selfie distance framing",
-  pose_hint: "holding a warm mug with both hands below her chin, pensive soft expression gazing slightly down toward the mug, lips closed, no smile",
+  // 07-03 «три руки везде»: кружка ДВУМЯ руками + селфи-рука = 3; однорукая версия
+  // верифицирована глазами в b10_01 (2 руки, телефон виден в вытянутой, регистр держится)
+  pose_hint: "holding a warm mug in one hand below her chin, gazing down toward the mug, lips closed, no smile, her other arm extended toward the camera holding the phone",
   script: "[whispers] Так… я вам сейчас кое-что расскажу. Только тихо, ладно? [whispers] Слушайте.",
   voice: { style: 0.5, speed: 0.95 },
   motion_prompt: "calm quiet intimate video message, soft subdued facial expressions, small gentle mouth movements, slow blinks, minimal head movement, no big smiles",
@@ -180,6 +184,11 @@ const REGISTER_FIX_ROWS: Array<{ id: string; pose: string; script: string; voice
   { id: "consp_selfie_fix", pose: "phone selfie POV at close selfie distance, holding a warm mug in one hand, sly knowing look directly into the camera, one eyebrow slightly raised, lips closed in a subtle smirk", script: "Тсс… никому, ладно? Я кое-что нашла. Такое не рассказывают.", voice: { style: 0.5, speed: 0.95 }, motion: "leans slightly closer to the camera as if sharing something semi-private, conspiratorial energy, small pause before the key phrase, tiny eyebrow raise, then settles back", expr: "medium", hypothesis: "Заговорщица-фикс: явный селфи-POV в pose_hint против сползания композиции в b-roll (b07_04)." },
 ];
 
+// Дисциплина селфи-руки (вердикт владельца 07-03 + b10_04 «парадокс телефона»):
+// вытянутая рука с телефоном пинуется моушеном — паттерн «товар неподвижен».
+export const SELFIE_ARM_DISCIPLINE =
+  "Her extended arm holding the phone stays fully extended and steady for the whole video, the phone never moves into the frame or appears in her other hand.";
+
 // ПАЛИТРА-КАНОН (Библия Мани, батчи 5-9): верифицированные рецепты регистров.
 // Каждый рецепт: лицо стартового кадра (pose) + скрипт-тон + голос + моушен + expressiveness.
 // Стилл задаёт букенды и базовый тон, моушен/скрипт ведут середину (закон регистра b6).
@@ -190,13 +199,13 @@ const REGISTER_FIX_ROWS: Array<{ id: string; pose: string; script: string; voice
 // вариативность канона = alt_poses (вторые стиллы держат регистр: диван-эксперт 8, диван-warm 8).
 export const DRILL_REGISTER_CANON: Record<string, { pose: string; alt_poses?: string[]; voice: { style: number; speed: number }; motion: string; expr: "low" | "medium"; register_fit: number; source: string }> = {
   quiet: { pose: DRILL_QUIET_CANON.pose_hint, voice: DRILL_QUIET_CANON.voice, motion: DRILL_QUIET_CANON.motion_prompt, expr: "low", register_fit: 9, source: "b06_02, воспроизведён b07/b08 ctrl2" },
-  excited: { pose: "holding a warm mug with both hands below her chin, eyes wide with excitement, big open smile, eyebrows raised", voice: { style: 0.55, speed: 1.15 }, motion: "energetic selfie video message, expressive face following the speech, quick natural head movements, animated eyebrows", expr: "medium", register_fit: 9, source: "b07_01" },
+  excited: { pose: "her free hand raised mid-gesture at chest level, nothing in her hands, eyes wide with excitement, big open smile, eyebrows raised, her other arm extended toward the camera holding the phone", voice: { style: 0.55, speed: 1.15 }, motion: `energetic selfie video message, expressive face following the speech, her free hand gestures naturally while talking, quick natural head movements. ${SELFIE_ARM_DISCIPLINE}`, expr: "medium", register_fit: 9, source: "b11_01 (2 руки глазами; b07_01 был 3-рукий, b10_02 — левитация кружки)" },
   serious_expert: { pose: "sitting upright facing the camera, one forearm resting on the table, stern focused expression, slightly furrowed brow, lips firmly closed, absolutely no smile", alt_poses: ["sitting on the sofa, one arm resting along the backrest, stern focused expression, slightly furrowed brow, lips firmly closed, absolutely no smile"], voice: { style: 0.35, speed: 1.0 }, motion: "calm confident delivery, steady direct gaze, minimal head movement, occasional slow nod, no smiles", expr: "low", register_fit: 9, source: "b08_01; alt: b09_07 диван 8; medium-вариант b08_04 — альтернатива с напором" },
-  warm_friend: { pose: "holding a warm mug with both hands below her chin, warm gentle expression, soft kind eyes, relaxed closed-lip smile", alt_poses: ["phone selfie POV, leaning back against sofa cushions, warm gentle expression, soft kind eyes, relaxed closed-lip smile"], voice: { style: 0.4, speed: 1.05 }, motion: CANON_MOTION, expr: "medium", register_fit: 8, source: "b07_02; alt: b09_08 диван-релакс 8 (лучший свет b9)" },
-  playful_tease: { pose: "holding a warm mug with both hands below her chin, playful teasing expression, slight smirk, head tilted a little", voice: { style: 0.55, speed: 1.1 }, motion: "playful teasing energy, small head tilts, bright eyes, a short genuine laugh, lively expressions", expr: "medium", register_fit: 8, source: "b07_06" },
-  skeptic: { pose: "holding a warm mug with both hands below her chin, skeptical appraising expression, slightly narrowed eyes, lips pressed together", voice: { style: 0.45, speed: 1.0 }, motion: "starts with a barely visible head shake of disbelief, honest slightly amused expression, then calms into direct delivery, natural blink", expr: "medium", register_fit: 8, source: "b07_07" },
-  tired_evening: { pose: "phone selfie POV at close selfie distance, resting her head heavily on one hand, elbow on the table, eyes half closed with visible tiredness, no smile", alt_poses: ["holding a warm mug with both hands below her chin, visibly exhausted face, droopy half-closed heavy eyelids, faint dark circles under her eyes, slack relaxed features, no smile"], voice: { style: 0.5, speed: 0.9 }, motion: QUIET_MOTION, expr: "low", register_fit: 8, source: "b09_05 (физякорь в селфи-форме, лучший клип b9); alt: b08_05 кружка 7" },
-  surprised: { pose: "holding a warm mug with both hands below her chin, eyes wide open in shock, jaw dropped, one hand raised toward her cheek", voice: { style: 0.55, speed: 1.1 }, motion: "starts already mid-reaction with wide eyes, emphatic shocked delivery, hand near her face, then settles into fast excited explanation", expr: "medium", register_fit: 7, source: "b09_06 (жёсткий вход починен: шок в стилле + «СТОП!» первым словом; середина ещё дрейфует в восторг)" },
+  warm_friend: { pose: "holding a warm mug in one hand below her chin, warm gentle expression, soft kind eyes, relaxed closed-lip smile, her other arm extended toward the camera holding the phone", alt_poses: ["phone selfie POV, leaning back against sofa cushions, warm gentle expression, soft kind eyes, relaxed closed-lip smile"], voice: { style: 0.4, speed: 1.05 }, motion: CANON_MOTION, expr: "medium", register_fit: 8, source: "b07_02; alt: b09_08 диван-релакс 8 (лучший свет b9)" },
+  playful_tease: { pose: "her free hand touching her collarbone playfully, nothing in her hands, playful teasing expression, slight smirk, head tilted a little, her other arm extended toward the camera holding the phone", voice: { style: 0.55, speed: 1.1 }, motion: `playful teasing energy, small head tilts, bright eyes, a short genuine laugh, lively expressions. ${SELFIE_ARM_DISCIPLINE}`, expr: "medium", register_fit: 8, source: "b11_02 (2 руки глазами; b10_04 — парадокс телефона)" },
+  skeptic: { pose: "chin resting on her free hand, elbow on the table, skeptical appraising expression, slightly narrowed eyes, lips pressed together, no mug, her other arm extended toward the camera holding the phone", voice: { style: 0.45, speed: 1.0 }, motion: "starts with a barely visible head shake of disbelief, honest slightly amused expression, then calms into direct delivery, natural blink", expr: "medium", register_fit: 8, source: "b07_07" },
+  tired_evening: { pose: "phone selfie POV at close selfie distance, resting her head heavily on one hand, elbow on the table, eyes half closed with visible tiredness, no smile", voice: { style: 0.5, speed: 0.9 }, motion: QUIET_MOTION, expr: "low", register_fit: 8, source: "b09_05 (физякорь в селфи-форме, лучший клип b9); alt: b08_05 кружка 7" },
+  surprised: { pose: "one hand raised toward her cheek in shock, eyes wide open, jaw dropped, no mug, her other arm extended toward the camera holding the phone", voice: { style: 0.55, speed: 1.1 }, motion: "starts already mid-reaction with wide eyes, emphatic shocked delivery, hand near her face, then settles into fast excited explanation", expr: "medium", register_fit: 7, source: "b09_06 (жёсткий вход починен: шок в стилле + «СТОП!» первым словом; середина ещё дрейфует в восторг)" },
   conspiratorial: { pose: "phone selfie POV at close selfie distance, index finger raised to her lips in a hushing gesture, sly narrowed eyes, closed-lip smirk", voice: { style: 0.5, speed: 0.95 }, motion: "conspiratorial intimate delivery, she lowers the finger from her lips and speaks quietly, sly eyes, no big smiles", expr: "medium", register_fit: 8, source: "b09_02 v2 (жестовый якорь «тсс» — единственный, переживший анимацию; мимические якори прищур/оглядка не держатся)" },
 };
 
@@ -211,6 +220,31 @@ const REGISTER_FIX2_ROWS: Array<{ id: string; pose: string; script: string; voic
   { id: "surprised_hard_entry", pose: "holding a warm mug with both hands below her chin, eyes wide open in shock, jaw dropped, one hand raised toward her cheek", script: "СТОП! Нет, вы это ВИДЕЛИ?! Я в шоке. Реально в шоке.", voice: { style: 0.55, speed: 1.1 }, motion: "starts already mid-reaction with wide eyes, emphatic shocked delivery, hand near her face, then settles into fast excited explanation", expr: "medium", hypothesis: "Удивление: жёсткий вход (шок уже в стилле, «СТОП!» первым словом) против мягкого входа b07_08." },
   { id: "expert_sofa_variety", pose: "sitting on the sofa, one arm resting along the backrest, stern focused expression, slightly furrowed brow, lips firmly closed, absolutely no smile", script: "Так. Смотрите. Я разобралась и объясню по фактам. Без воды.", voice: { style: 0.35, speed: 1.0 }, motion: "calm confident delivery, steady direct gaze, minimal head movement, occasional slow nod, no smiles", expr: "low", hypothesis: "Эксперт: второй стилл (диван) — вариативность канона (детерминизм лечится стиллами)." },
   { id: "warm_sofa_variety", pose: "phone selfie POV, leaning back against sofa cushions, warm gentle expression, soft kind eyes, relaxed closed-lip smile", script: BATCH_SCRIPT[1], voice: { style: 0.4, speed: 1.05 }, motion: "", expr: "medium", hypothesis: "Тёплая подруга: второй стилл (диван-релакс) — вариативность рабочей лошадки." },
+];
+
+// Батч 10: БЮДЖЕТ РУК (вердикт владельца 07-03: «там три руки везде»). Корень: позы
+// «кружка ДВУМЯ руками» + селфи-дистанция => обе руки на кружке + селфи-рука = 3.
+// Закон: в селфи-POV занята максимум ОДНА рука (вторая держит телефон). Проверено глазами:
+// b06_02/b07_01 = 3 руки (брак); b09_05/b09_02v2 = 2 (чисто). Ряды: one-hand версии всех
+// кружечных регистров; контроли = СТАРЫЕ каноны (референс брака для сравнения критиком).
+const HAND_FIX_ROWS: Array<{ id: string; pose: string; script: string; voice: { style: number; speed: number }; motion: string; expr: "low" | "medium"; hypothesis: string }> = [
+  { id: "quiet_onehand", pose: "holding a warm mug in one hand below her chin, gazing down toward the mug, lips closed, no smile, her other arm extended toward the camera holding the phone", script: DRILL_QUIET_CANON.script, voice: DRILL_QUIET_CANON.voice, motion: DRILL_QUIET_CANON.motion_prompt, expr: "low", hypothesis: "Тихий канон в честной анатомии: держит ли взгляд-в-кружку регистр 9 одной рукой?" },
+  { id: "excited_onehand", pose: "holding a warm mug in one hand at chest level, eyes wide with excitement, big open smile, eyebrows raised, her other arm extended toward the camera holding the phone", script: "[excited] Так, СТОП. Я не могу молчать! Вы должны это знать. Короче, слушайте!", voice: { style: 0.55, speed: 1.15 }, motion: "energetic selfie video message, expressive face following the speech, quick natural head movements, animated eyebrows", expr: "medium", hypothesis: "Восторг-канон одной рукой (в b07_01 был кулак+кружка+селфи-рука)." },
+  { id: "warm_onehand", pose: "holding a warm mug in one hand below her chin, warm gentle expression, soft kind eyes, relaxed closed-lip smile, her other arm extended toward the camera holding the phone", script: BATCH_SCRIPT[1], voice: { style: 0.4, speed: 1.05 }, motion: "", expr: "medium", hypothesis: "Тёплая подруга одной рукой." },
+  { id: "playful_onehand", pose: "holding a warm mug in one hand, playful teasing expression, slight smirk, head tilted a little, her other arm extended toward the camera holding the phone", script: "А вот и не скажу!… [laughs] Ладно-ладно. Слушайте, уговорили.", voice: { style: 0.55, speed: 1.1 }, motion: "playful teasing energy, small head tilts, bright eyes, a short genuine laugh, lively expressions", expr: "medium", hypothesis: "Игривая одной рукой." },
+  { id: "skeptic_chinhand", pose: "chin resting on her free hand, elbow on the table, skeptical appraising expression, slightly narrowed eyes, lips pressed together, no mug, her other arm extended toward the camera holding the phone", script: "Честно? Я не верила. Вообще не верила. …Ну и зря, как оказалось.", voice: { style: 0.45, speed: 1.0 }, motion: "starts with a barely visible head shake of disbelief, honest slightly amused expression, then calms into direct delivery, natural blink", expr: "medium", hypothesis: "Скептик: подбородок на свободной руке, без кружки — ровно две руки." },
+  { id: "surprised_onehand", pose: "one hand raised toward her cheek in shock, eyes wide open, jaw dropped, no mug, her other arm extended toward the camera holding the phone", script: "СТОП! Нет, вы это ВИДЕЛИ?! Я в шоке. Реально в шоке.", voice: { style: 0.55, speed: 1.1 }, motion: "starts already mid-reaction with wide eyes, emphatic shocked delivery, hand near her face, then settles into fast excited explanation", expr: "medium", hypothesis: "Шок: рука к щеке БЕЗ кружки (в b09_06 поза сама описывала 3 руки — баг планировщика)." },
+];
+
+// Батч 10 — ИТОГ (проверено глазами, критерий владельца): 4/6 чистых двуруких
+// (quiet/warm/skeptic/surprised one-hand). Два брака от одной причины: в ЭНЕРГИЧНЫХ
+// регистрах аниматор оживляет руки и ломает физику реквизита — кружка левитирует
+// (excited f1), селфи-рука с телефоном втягивается в кадр (playful «кто тогда снимает?»).
+// Закон: у высокоэнергичных регистров реквизита в руке НЕТ; селфи-рука дисциплинируется
+// моушеном (паттерн «товар неподвижен» из productComposite, применённый к телефону).
+const HAND_FIX2_ROWS: Array<{ id: string; pose: string; script: string; voice: { style: number; speed: number }; motion: string; expr: "low" | "medium"; hypothesis: string }> = [
+  { id: "excited_nomug", pose: "her free hand raised mid-gesture at chest level, nothing in her hands, eyes wide with excitement, big open smile, eyebrows raised, her other arm extended toward the camera holding the phone", script: "[excited] Так, СТОП. Я не могу молчать! Вы должны это знать. Короче, слушайте!", voice: { style: 0.55, speed: 1.15 }, motion: `energetic selfie video message, expressive face following the speech, her free hand gestures naturally while talking, quick natural head movements. ${SELFIE_ARM_DISCIPLINE}`, expr: "medium", hypothesis: "Восторг без реквизита: свободной руке есть что делать (жестикулировать) — нечему левитировать." },
+  { id: "playful_nomug", pose: "her free hand touching her collarbone playfully, nothing in her hands, playful teasing expression, slight smirk, head tilted a little, her other arm extended toward the camera holding the phone", script: "А вот и не скажу!… [laughs] Ладно-ладно. Слушайте, уговорили.", voice: { style: 0.55, speed: 1.1 }, motion: `playful teasing energy, small head tilts, bright eyes, a short genuine laugh, lively expressions. ${SELFIE_ARM_DISCIPLINE}`, expr: "medium", hypothesis: "Игривая без реквизита + дисциплина селфи-руки (в b10_04 телефон втянуло в кадр)." },
 ];
 
 // Батч 4: ось скрипт-стиля — 8 манер речи на канон-сетапе (кружка+золотой час),
@@ -269,7 +303,7 @@ export function buildDrillBatch(batch: number, axis: DrillAxis): DrillBatchPlan 
     return { ok: true, batch, axis, persona: "manya", clips, warnings: ["Варьируется ТОЛЬКО лицо стартового кадра; ряды 1-6 сравнивать с b05_03, ряды 7-8 — с контролями."] };
   }
   if (axis === "register_fix") {
-    const rows = batch >= 9 ? REGISTER_FIX2_ROWS : REGISTER_FIX_ROWS;
+    const rows = batch >= 11 ? HAND_FIX2_ROWS : batch >= 10 ? HAND_FIX_ROWS : batch >= 9 ? REGISTER_FIX2_ROWS : REGISTER_FIX_ROWS;
     const clips: DrillClipPlan[] = rows.map((row, i) => ({
       clip_id: `drill_b${String(batch).padStart(2, "0")}_${String(i + 1).padStart(2, "0")}_${row.id}`,
       batch, axis, role: "explore" as const,

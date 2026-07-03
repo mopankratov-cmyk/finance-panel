@@ -44,6 +44,8 @@ export function buildDeglossPrompt(sceneHint: string, poseHint?: string): string
     "Skin must look real and imperfect: natural matte texture with visible pores, a few tiny blemishes, slight uneven redness on cheeks and nose, faint under-eye shadows, no glossy highlights, no smoothing.",
     // Drill b8: Seedream запекал рамку-мокап телефона в деглянц-стиллы (тот же тел, что у композитов)
     "Slightly imperfect framing. Full-bleed photo: no phone frame, no screen mockup, no watermark, no borders.",
+    // Вердикт владельца 07-03 «там три руки везде»: обе руки на реквизите + селфи-рука = 3.
+    "STRICT ANATOMY: she has exactly two arms. In selfie POV one arm is extended toward the camera holding the phone, so at most ONE other hand can be visible or holding anything. Count her arms: exactly two.",
   ].join(" ");
 }
 
