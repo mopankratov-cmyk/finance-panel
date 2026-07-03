@@ -14,6 +14,18 @@ const DEFAULT_MAX_BACKLOG_BEFORE_ANALYZE = 120;
 const SUPABASE_PAGE_SIZE = 1000;
 const MAX_BACKLOG_ROWS = 50000;
 
+function rec(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function firstNonEmptyRecord(...values: unknown[]): Record<string, unknown> {
+  for (const value of values) {
+    const record = rec(value);
+    if (Object.keys(record).length) return record;
+  }
+  return {};
+}
+
 function forcedTask(req: NextRequest): "bulk" | "analyze" | null {
   const raw = String(req.nextUrl.searchParams.get("task") || req.nextUrl.searchParams.get("mode") || "").trim().toLowerCase();
   if (raw === "bulk" || raw === "ingest") return "bulk";
@@ -135,13 +147,13 @@ export async function GET(req: NextRequest) {
       ? {
         niches,
         platforms,
-        max_lanes: 4,
-        limit: 40,
-        providers_per_lane: 1,
-        query_variants_per_lane: 2,
-        provider_timeout_ms: 18000,
-        max_provider_calls: 8,
-        max_cost_units: 24,
+        max_lanes: 6,
+        limit: 50,
+        providers_per_lane: 2,
+        query_variants_per_lane: 3,
+        provider_timeout_ms: 20000,
+        max_provider_calls: 12,
+        max_cost_units: 30,
         hours: 72,
       }
       : {
@@ -159,10 +171,19 @@ export async function GET(req: NextRequest) {
       signal: AbortSignal.timeout(115000),
     });
     const result = await response.json().catch(() => ({}));
-    const resultRecord = (result || {}) as Record<string, unknown>;
-    const nestedResultRecord = ((resultRecord.result || {}) || {}) as Record<string, unknown>;
-    const tickRecord = ((resultRecord.tick || nestedResultRecord.tick || nestedResultRecord || resultRecord) || {}) as Record<string, unknown>;
-    const summaryRecord = ((tickRecord.automation_summary || nestedResultRecord.automation_summary || resultRecord.automation_summary) || {}) as Record<string, unknown>;
+    const resultRecord = rec(result);
+    const nestedResultRecord = rec(resultRecord.result);
+    const tickRecord = firstNonEmptyRecord(
+      resultRecord.tick,
+      nestedResultRecord.tick,
+      nestedResultRecord,
+      resultRecord,
+    );
+    const summaryRecord = firstNonEmptyRecord(
+      tickRecord.automation_summary,
+      nestedResultRecord.automation_summary,
+      resultRecord.automation_summary,
+    );
     console.info("reels_brain_cron_tick", JSON.stringify({
       task,
       decision: auto.decision,
@@ -174,6 +195,7 @@ export async function GET(req: NextRequest) {
       ok: response.ok && (result as { ok?: boolean }).ok !== false,
       found: tickRecord.found ?? summaryRecord.found ?? null,
       inserted: tickRecord.inserted ?? summaryRecord.inserted ?? null,
+      enriched: tickRecord.enriched ?? summaryRecord.enriched ?? null,
       analyzed: tickRecord.analyzed ?? summaryRecord.analyzed ?? null,
       errors: tickRecord.errors ?? summaryRecord.errors ?? null,
       discovery_learning: Array.isArray(tickRecord.discovery_learning)

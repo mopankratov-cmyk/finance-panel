@@ -514,6 +514,32 @@ async function runBulk(req: NextRequest, body: Record<string, unknown>, execute:
     ? await persistDiscoveryLearning({ db, playbookMap, runs })
     : [];
 
+  console.info("reels_brain_bulk_tick", JSON.stringify({
+    execute,
+    niches,
+    platforms,
+    queue: queue.length,
+    blocked_lanes: blockedLanes.length,
+    budget_skipped: budgetSkipped.length,
+    runs: runs.length,
+    found: automationSummary.found,
+    inserted: automationSummary.inserted,
+    enriched: runs.reduce((sum, run) => sum + Number(run.enriched || 0), 0),
+    relevant: automationSummary.relevant,
+    errors: automationSummary.errors,
+    providers: Array.from(new Set(runs.map((run) => run.provider))).slice(0, 12),
+    sample: runs.slice(0, 6).map((run) => ({
+      niche: run.niche,
+      platform: run.platform,
+      provider: run.provider,
+      query: run.query,
+      found: run.found || 0,
+      inserted: run.inserted || 0,
+      enriched: run.enriched || 0,
+      error: run.error || null,
+    })),
+  }));
+
   return NextResponse.json({
     ok: true,
     mode: "bulk_raw_ingest",
