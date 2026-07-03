@@ -42,6 +42,10 @@ export function buildDeglossPrompt(sceneHint: string, poseHint?: string): string
     `Re-render as a candid amateur smartphone photo: ${sceneHint},`,
     "noticeably underexposed corners, ordinary muted colors.",
     "Skin must look real and imperfect: natural matte texture with visible pores, a few tiny blemishes, slight uneven redness on cheeks and nose, faint under-eye shadows, no glossy highlights, no smoothing.",
+    // Реализм-пас 2026-07-03: сцен-дефекты захвата, которые ffmpeg дёшево не подделает
+    // (свет/оптика запекаются в стилл до анимации Kling). Кожа: то, что пост не добавит.
+    "Extra skin realism: subsurface unevenness, a slightly oily T-zone highlight, a few stray flyaway hairs.",
+    "Capture defects: shot on an older smartphone front camera, mixed warm indoor and cool window light, slight overexposure near the window, faint fingerprint smudge softening one corner, uneven amateur lighting with no studio fill, a little visible ISO noise in the shadows.",
     // Drill b8: Seedream запекал рамку-мокап телефона в деглянц-стиллы (тот же тел, что у композитов)
     "Slightly imperfect framing. Full-bleed photo: no phone frame, no screen mockup, no watermark, no borders.",
     // Вердикт владельца 07-03 «там три руки везде»: обе руки на реквизите + селфи-рука = 3.

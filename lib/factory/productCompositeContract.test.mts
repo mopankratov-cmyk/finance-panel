@@ -68,10 +68,15 @@ import {
   assert.equal(tryon.model_image, "https://x/m.png");
 }
 
-// anti-AI post: both grain passes, warm global cast, phone crush
+// anti-AI post: realism pass 2026-07-03 (sensor+optics physics), warm cast, phone crush
 {
   const vf = buildAntiAiVideoFilter();
-  assert.ok(vf.includes(`noise=alls=${ANTI_AI_DEFAULTS.grainPassA}`), "pass A grain");
+  // хромо-доминантный сенсорный шум: яркость тоньше цвета, несимметричный (реальный CMOS)
+  assert.ok(vf.includes(`noise=c0s=${ANTI_AI_DEFAULTS.lumaNoiseA}:c0f=t:c1s=${ANTI_AI_DEFAULTS.chromaNoiseA}`), "pass A chroma-dominant sensor noise");
+  assert.ok(ANTI_AI_DEFAULTS.chromaNoiseA > ANTI_AI_DEFAULTS.lumaNoiseA, "chroma noise must dominate luma");
+  assert.ok(vf.includes("lenscorrection") && vf.includes(`k1=${ANTI_AI_DEFAULTS.lensK1}`), "front-cam barrel distortion");
+  assert.ok(vf.includes("hqdn3d") && vf.includes("unsharp=5:5:0.4:5:5:0"), "chroma smear + luma-only sharpen (phone ISP)");
+  assert.ok(vf.includes("sin(2*PI*t/3.3)"), "auto-exposure drift (ISP breathing)");
   assert.ok(vf.includes("colortemperature"), "global warm cast (v3 review: split-tone tell)");
   assert.ok(vf.includes("sin(t*1.3)") && vf.includes("sin(t*7.9)"), "dual-frequency handheld shake");
   const fc = buildAntiAiFilterComplex();
@@ -80,7 +85,8 @@ import {
   const { passA, passB } = buildAntiAiPassArgs("/in.mp4", "/out.mp4");
   assert.ok(passA.includes("-tune") && passA.includes("grain"), "pass A must not crush grain");
   const b = passB("/graded.mp4");
-  assert.ok(b.join(" ").includes(`noise=alls=${ANTI_AI_DEFAULTS.grainPassB}`), "pass B re-grain after crush (v3 review)");
+  assert.ok(b.join(" ").includes(`noise=c0s=${ANTI_AI_DEFAULTS.lumaNoiseB}`), "pass B re-noise after crush (v3 review)");
+  assert.ok(b.join(" ").includes("-g") && b.join(" ").includes("250"), "long GOP → macroblocking on motion");
   assert.ok(b.join(" ").includes(`${ANTI_AI_DEFAULTS.crushBitrateK}k`), "phone bitrate crush");
 }
 
