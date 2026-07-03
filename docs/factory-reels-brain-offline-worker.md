@@ -69,6 +69,26 @@ node lib/factory/reelsBrainOfflineWorker.mjs --every-sec 180 --provider bright_i
 
 Нужен установленный `yt-dlp`.
 
+Для YouTube Shorts может понадобиться авторизованный cookie jar. Worker поддерживает:
+
+```bash
+YT_DLP_COOKIES_PATH=/app/secrets/youtube-cookies.txt
+```
+
+или содержимое файла прямо в env:
+
+```bash
+YT_DLP_COOKIES_TXT='# Netscape HTTP Cookie File ...'
+```
+
+или base64:
+
+```bash
+YT_DLP_COOKIES_B64=...
+```
+
+Если cookies не заданы, `yt-dlp` может упереться в YouTube anti-bot с ошибкой `Sign in to confirm you're not a bot`.
+
 Проверка:
 
 ```bash
