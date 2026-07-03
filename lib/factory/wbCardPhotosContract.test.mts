@@ -11,15 +11,16 @@ equal(WB_SELLER_CATALOG.filter((e) => hasWbCardPhotos(e.article)).length, 60, "a
 // URL валидны, привязаны к артикулу, обложка идёт первой.
 const nv = wbCardPhotoUrls("NV-08-57", 8);
 ok(nv.length >= 3 && nv.length <= 8, "returns bounded candidate list");
-ok(nv[0].endsWith("/755338637/images/big/1.webp"), "cover (photo 1) comes first, article-exact wbId");
+ok(nv.every((u) => u.includes("/755338637/")), "candidates are article-exact (wbId in every url)");
+ok(!nv[0].endsWith("/1.webp"), "cover (text-heavy) is NOT tried first — clean middle zone leads");
 ok(nv.every((u) => u.startsWith("https://") && u.includes("/755338637/")), "all urls point at the same article");
 ok(wbCardPhotoUrls("nv-08-57", 1).length === 1, "article lookup case-insensitive");
 equal(wbCardPhotoUrls("NOPE-99", 8).length, 0, "unknown article yields no photos");
 
 // Порядок: обложка → края → середина (слайды размерной сетки/гарантии в конце очереди).
 const ht = wbCardPhotoUrls("HT-80-22", 8); // count 30
-ok(ht[0].endsWith("/1.webp") && ht[1].endsWith("/2.webp") && ht[2].endsWith("/3.webp"), "head is 1,2,3");
-ok(ht.some((u) => u.endsWith("/30.webp")) || ht.some((u) => u.endsWith("/28.webp")), "tail frames included before mid slides");
+ok(ht.some((u) => /\/(1[0-9]|2[0-9])\.webp$/.test(u)), "clean middle-zone frames are in the candidate set");
+ok(ht.length >= 8, "widened candidate list covers the clean zone");
 
 // Сборка: WB-ветка стоит между манифестом и съёмочной папкой, отдаёт article-exact источник.
 const build = readFileSync("lib/factory/productTwinBuild.ts", "utf8");

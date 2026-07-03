@@ -72,18 +72,23 @@ const WB_CARD_PHOTOS: Record<string, WbCardPhotoSource> = {
   "NV-836-57": { base: "https://basket-35.wbbasket.ru/vol7555/part755558/755558090/images/big/", count: 23 },
 };
 
-// Порядок проб: обложка (1) обычно чистая, дальше избегаем «серединных» слайдов
-// (размерная сетка, гарантия, состав) — берём начало и конец серии, где чаще чистые кадры.
+// Порядок проб выведен из структуры WB-карточек (сверено глазами по HT-42-01 и NV-08-02):
+// начало (#1..~6) — обложка + фиче-слайды с плашками «Весна 2026»/callout-ами (грязные);
+// СЕРЕДИНА-КОНЕЦ (#13..) — чистые кадры на модели в полный рост и ghost-packshot (предпоследний);
+// самый хвост (#last-1..last) — размерная сетка/уход/отзывы (грязные).
+// Поэтому пробуем: сначала середину и позднюю часть (чистые фронты и packshot), потом начало.
 function candidateOrder(count: number): number[] {
   const nums = Array.from({ length: count }, (_, i) => i + 1);
-  const head = nums.slice(0, 3);
-  const tail = nums.slice(-3);
-  const mid = nums.slice(3, -3);
-  return [...head, ...tail, ...mid];
+  if (count <= 6) return nums;
+  const cleanZone = nums.slice(Math.floor(count * 0.4), count - 1); // середина..предпоследний
+  const late = nums.slice(count - 1);                                // самый последний (иногда packshot)
+  const head = nums.slice(0, Math.floor(count * 0.4));               // обложка+фичи — последними
+  return [...cleanZone, ...late, ...head];
 }
 
-// До 8 URL фото карточки для артикула, в порядке предпочтения (обложка → края → середина).
-export function wbCardPhotoUrls(article: string, limit = 8): string[] {
+// URL фото карточки для артикула, в порядке предпочтения (чистая зона → хвост → обложки).
+// limit по умолчанию 14 — достаточно, чтобы пройти всю чистую зону среднего каталога (~22-28 фото).
+export function wbCardPhotoUrls(article: string, limit = 14): string[] {
   const clean = String(article || "").trim().toUpperCase();
   const key = Object.keys(WB_CARD_PHOTOS).find((k) => k.toUpperCase() === clean);
   const source = key ? WB_CARD_PHOTOS[key] : null;

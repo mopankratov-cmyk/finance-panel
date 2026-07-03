@@ -99,7 +99,7 @@ async function resolveInputImage(body: ProductTwinBuildInput): Promise<{ image: 
   //      каталожного SKU. Каждый URL привязан к конкретному цвету — «какой это товар» не угадываем.
   //      Кандидаты (обложка → края → середина) проходят vision-скрин; первый чистый перёд — источник.
   if (!diskPath) {
-    const wbUrls = wbCardPhotoUrls(article, 8);
+    const wbUrls = wbCardPhotoUrls(article, 14);
     for (const url of wbUrls) {
       const probe = await fetchWithRetry(url, { cache: "no-store" }, 3);
       if (!probe.ok) continue;
