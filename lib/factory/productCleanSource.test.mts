@@ -43,5 +43,13 @@ function ok(c: boolean, m: string) { if (c) pass++; else { fail++; console.error
   ok(/Remove the model, hands, body/i.test(p), "bag prompt separates clean bag from lifestyle source");
 }
 
+// Apparel clean-промпт бьёт по двум системным дрифтам: удлинение и выдуманный рукавный шильдик.
+{
+  const ap = buildProductCleanPrompt({ article: "NV-08-53", product: "куртка", category: "apparel" });
+  ok(/keep the exact garment LENGTH/i.test(ap), "apparel prompt locks garment length (no parka lengthening)");
+  ok(/do NOT invent or add any sleeve badge/i.test(ap), "apparel prompt forbids invented sleeve patch/logo");
+  ok(/if there is no hood, do not add one/i.test(ap), "apparel prompt forbids invented hood");
+}
+
 console.log(`\nproductCleanSource: ${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

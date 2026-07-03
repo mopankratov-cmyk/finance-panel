@@ -43,6 +43,12 @@ export function buildProductCleanPrompt(input: ProductCleanSourceInput): string 
     return [
       `Extract only the ${product} garment from this model/lifestyle/source image and recreate it as a clean professional apparel product twin.`,
       "Preserve the exact garment cut, length, hood/collar, sleeves, cuffs, zipper/buttons, pockets, seams, stitching, fabric texture, wrinkles, color and visible brand patch.",
+      // Частая галлюцинация nano-banana: удлиняет короткую ветровку в парку/пальто.
+      "CRITICAL: keep the exact garment LENGTH from the source. If the source is a short cropped jacket or windbreaker ending at the hip or waist with an elastic drawcord hem, keep it exactly that short — never lengthen it into a parka, coat or knee-length garment.",
+      // Частая галлюцинация: дорисовывает капюшон/меняет застёжку. Копировать только реальную конструкцию.
+      "Keep the closure exactly as in the source (zipper vs snap-button placket vs both) and the collar/hood exactly as shown — if there is no hood, do not add one; if the zipper is dark, keep it dark.",
+      // Самый частый дрифт по всему каталогу: выдуманный шильдик/нашивка на рукаве.
+      "Do NOT invent or add any sleeve badge, arm patch, brand tag, logo or emblem. Only reproduce markings that are clearly, physically present on the source garment; if unsure, add nothing.",
       "Remove the model body, face, hair, hands, legs, shoes, background, props, hangers, text, badges and graphic overlays.",
       "Do not turn the garment into a generic jacket or shirt. Do not change fabric drape, color, proportions, closure type or seam layout.",
       "Show the complete garment centered as a ghost mannequin or flat clean packshot on a seamless light warm-grey studio background with a soft natural contact shadow.",
