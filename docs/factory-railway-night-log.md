@@ -3353,3 +3353,11 @@
   - `instagram.with_media_locators` упал `60 -> 0`
   - витрина readiness теперь честно показывает, что deep-ready слой фактически держится на TikTok, а Instagram требует повторного video backfill.
 - Параллельно для Railway service обновлен `NIXPACKS_PKGS` на `ffmpeg-full yt-dlp` и запущен rebuild, чтобы дожать настоящий local audio toolchain (`ffmpeg_bin/ffprobe_bin` вместо `null`).
+
+## 2026-07-03 — Перекраска твинов от эталона (идея владельца)
+
+- Стратегия: вместо сборки каждого цвета отдельно (разное качество, дрифт) — взять ОДИН лучший твин-эталон на модель и перекрасить в остальные цвета. Перекраска не трогает геометрию → все цвета одинаково качественные, nano-banana не может удлинить/выдумать капюшон (структуру не перегенерируем). Это же лечит остаток fail.
+- `lib/factory/twinRecolor.ts`: `buildRecolorPrompt` (меняет только цвет ткани, жёстко держит силуэт/длину/застёжку/фурнитуру; hex-якорь цвета WB-палитры) + `recolorTwinFromBase` (эталон→nano-banana recolor→variants→upload→persist как твин целевого артикула, provenance recolor).
+- `app/api/factory/product-twin/recolor/route.ts`: POST одиночный {base_article,target_article,color} + батч {base_article, all_colors_of_model:true} по всем цветам модели из WB-каталога.
+- Проверки: twinRecolorContract (новый), tsc чистый.
+- Дальше: владелец выбирает лучший эталон на модель (4 куртки + 3 ветровки) по галерее; перекрашиваю в остальные цвета. Сумки оставляем как есть.
