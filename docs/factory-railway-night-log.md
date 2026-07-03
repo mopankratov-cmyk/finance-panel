@@ -3295,3 +3295,53 @@
 - `productCleanSource.ts` apparel-промпт усилен тремя строками: (1) жёсткая фиксация длины (короткая ветровка остаётся короткой, не парка); (2) копировать застёжку/капюшон как в источнике, не добавлять капюшон, тёмную молнию держать тёмной; (3) ЗАПРЕТ выдумывать рукавный шильдик/патч/лого — воспроизводить только реально присутствующую маркировку.
 - Проверки: productCleanSource 22 (+3), tsc чистый.
 - Ожидание: B-паттерн (рукавный шильдик) должен уйти → часть fail в warn/pass; A-паттерн (длина) частично, где источник честно показывает крой.
+
+## 2026-07-03 — Итог дожима: +6 годных (54/60 NORVIA)
+
+- Пересборка 12 fail с усиленным apparel-промптом: **6 подняли fail→warn**, 6 остались fail.
+- Сработало: B-паттерн (рукавный шильдик) закрыт полностью — NV-01-05, NV-08-53, NV-836-53 годны. A-паттерн частично — HT-80-22 (капюшон), HT-80-32 (длина), HT-83-04 годны.
+- Остались fail (6): HT-42-22, HT-80-04 (белая молния), HT-80-11 (пропали кнопки-планка), HT-83-01, HT-83-32, NV-836-02 (карманы без клапанов). Это самый упрямый A-паттерн — nano-banana продолжает удлинять короткие ветровки в парку даже с явным запретом в промпте; фикс уровня промпта тут упирается в структурную предвзятость модели.
+- Технический урок: с усиленным промптом билд вырос до ~100с; клиентский fetch без таймаута отваливался раньше ответа («no response»), хотя твин на сервере собирался. Добавлен AbortSignal.timeout(310000) в rebuild-скрипт.
+- **Покрытие каталога: 54/60 NORVIA + 8/9 МАША = 62/69 годных твинов** (было 4 на старте всей линии). Остаётся 6 NORVIA fail + 1 МАША blocked, все держит гейт (не публикуются).
+
+## 2026-07-03 — YouTube переключен в API-first режим для Reels Brain
+
+- Принято решение не тащить YouTube Shorts через `yt-dlp/cookies` как основной путь: anti-bot нестабилен и не нужен для discovery.
+- `Reels Brain` оставлен с официальным `youtube`-провайдером для discovery и пополнения корпуса через `YouTube Data API`.
+- Offline mixed worker переведен в практичный дефолт:
+  - `REELS_BRAIN_PLATFORMS=tiktok,instagram`
+  - `REELS_BRAIN_MEDIA_BACKFILL_PROVIDER_YOUTUBE=youtube`
+- Смысл: TikTok/Instagram продолжают идти в full-fidelity loop (`media -> transcript -> audio`), а YouTube работает как metadata/discovery-слой без траты циклов на media extraction.
+- Живая проверка production API:
+  - `POST /api/factory/jobs/reels-brain-bulk-ingest` с `platforms=["youtube"]`, `providers=["youtube"]`
+  - результат: `found=5`, `enriched=5`, `error=null`, `best_provider="youtube"`, `estimated_spend_usd=0.035`
+- Вывод: YouTube API-ветка жива и годится для роста корпуса; raw-media разбор Shorts остается отдельной задачей и больше не блокирует общий цикл обучения.
+
+## 2026-07-03 — Deep-analysis cleanup: расширены transcript timeout'ы и очищен ложный Instagram media слой
+
+- Проблема 1: mixed worker был жив, но transcript-only путь на Railway часто падал по таймауту до того, как FAL Whisper успевал вернуть текст.
+- Фикс:
+  - `lib/factory/reelsBrainOfflineWorker.mjs`: таймауты вынесены в env-aware константы и увеличены:
+    - `REELS_BRAIN_FAL_REHOST_FETCH_TIMEOUT_MS` → default `180000`
+    - `REELS_BRAIN_FAL_STORAGE_PUT_TIMEOUT_MS` → default `180000`
+    - `REELS_BRAIN_FAL_WHISPER_TIMEOUT_MS` → default `120000`
+    - `REELS_BRAIN_YTDLP_DOWNLOAD_TIMEOUT_MS` → default `240000`
+    - `REELS_BRAIN_HTTP_JSON_TIMEOUT_MS` → default `180000`
+  - цель: даже без `ffprobe/ffmpeg` увеличить шанс на `transcript_ready` через transcript-only ветку.
+- Проблема 2: в `audio_visual_readiness` Instagram показывал `with_media_locators=60`, но это были не видео, а старые `jpg/webp/heic` image-only locators. Они раздували готовность слоя и не давали честно понимать прогресс.
+- Data repair:
+  - через production Supabase reset'нуты `60` Instagram rows с image-only `reels_seed.media_locator_candidates`;
+  - `pipeline.media_status` переведен обратно в `media_missing`, чтобы rows снова попали в нормальный `media-backfill`.
+- Проверка после repair:
+  - `audio_visual_readiness.with_media_locators` упал `98 -> 38`
+  - `instagram.with_media_locators` упал `60 -> 0`
+  - витрина readiness теперь честно показывает, что deep-ready слой фактически держится на TikTok, а Instagram требует повторного video backfill.
+- Параллельно для Railway service обновлен `NIXPACKS_PKGS` на `ffmpeg-full yt-dlp` и запущен rebuild, чтобы дожать настоящий local audio toolchain (`ffmpeg_bin/ffprobe_bin` вместо `null`).
+
+## 2026-07-03 — Перекраска твинов от эталона (идея владельца)
+
+- Стратегия: вместо сборки каждого цвета отдельно (разное качество, дрифт) — взять ОДИН лучший твин-эталон на модель и перекрасить в остальные цвета. Перекраска не трогает геометрию → все цвета одинаково качественные, nano-banana не может удлинить/выдумать капюшон (структуру не перегенерируем). Это же лечит остаток fail.
+- `lib/factory/twinRecolor.ts`: `buildRecolorPrompt` (меняет только цвет ткани, жёстко держит силуэт/длину/застёжку/фурнитуру; hex-якорь цвета WB-палитры) + `recolorTwinFromBase` (эталон→nano-banana recolor→variants→upload→persist как твин целевого артикула, provenance recolor).
+- `app/api/factory/product-twin/recolor/route.ts`: POST одиночный {base_article,target_article,color} + батч {base_article, all_colors_of_model:true} по всем цветам модели из WB-каталога.
+- Проверки: twinRecolorContract (новый), tsc чистый.
+- Дальше: владелец выбирает лучший эталон на модель (4 куртки + 3 ветровки) по галерее; перекрашиваю в остальные цвета. Сумки оставляем как есть.
