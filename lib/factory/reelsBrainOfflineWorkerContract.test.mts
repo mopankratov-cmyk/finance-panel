@@ -23,6 +23,9 @@ ok(/worker-state/.test(worker), "offline worker can send worker-state heartbeat"
 ok(/controller\.abort\(\)/.test(worker) && /signal:\s*controller\.signal/.test(worker), "offline worker fetchJson uses abort controller timeout");
 ok(/REELS_BRAIN_ENABLE_LOCAL_MEDIA_RESOLVER/.test(worker), "offline worker reads local media resolver env");
 ok(/REELS_BRAIN_AUDIO_LOCAL/.test(worker), "offline worker reads local audio extraction env");
+ok(/REELS_BRAIN_QUEUE_PRIORITY/.test(worker), "offline worker reads queue priority env");
+ok(/REELS_BRAIN_WORKER_SHARD_INDEX/.test(worker) && /REELS_BRAIN_WORKER_SHARD_COUNT/.test(worker), "offline worker reads shard env");
+ok(/REELS_BRAIN_DEEP_ONLY/.test(worker), "offline worker reads deep-only env");
 ok(/function shouldUseYtDlpCookies/.test(worker), "offline worker scopes yt-dlp cookies by target domain");
 ok(/youtube\\.com\\|youtu\\.be/.test(worker), "offline worker only applies yt-dlp cookies to YouTube domains");
 ok(/function finalizeTranscriptOutcome/.test(worker), "offline worker normalizes transcript outcomes");
@@ -41,6 +44,8 @@ ok(
     && /platforms\[platformIndex\]/.test(worker),
   "offline worker rotates across configured platforms in media+audio pairs",
 );
+ok(/shard_index/.test(worker) && /shard_count/.test(worker), "offline worker forwards shard routing to queue routes");
+ok(/deep_only/.test(worker), "offline worker forwards deep-only routing to queue routes");
 ok(/while \(true\)/.test(worker) && /await runCycle\(config, cycle\)/.test(worker), "offline worker supports daemon loop");
 
 if (failed) process.exit(1);

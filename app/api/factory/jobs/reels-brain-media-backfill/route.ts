@@ -5,6 +5,7 @@ import { canonicalizeReelsUrl, makeViralVideoRows, type ReelsBrainInput } from "
 import { hasYtDlpBinary, resolveMediaLocatorViaYtDlp } from "@/lib/factory/reelsBrainMediaResolver";
 import { fetchReelsBrainProvider, hasReelsBrainProvider, type ReelsBrainProvider } from "@/lib/factory/reelsBrainSources";
 import { safeUpsertReelsCorpusRows } from "@/lib/factory/reelsBrainCorpusUpsert";
+import { parseShardConfig, scoreMediaCandidate, stableShardMatch } from "@/lib/factory/reelsBrainQueue";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -16,6 +17,8 @@ type CorpusRow = {
   url?: string | null;
   analyzed_full?: unknown;
   created_at?: string | null;
+  virality_score?: number | null;
+  views?: number | null;
 };
 
 function rec(value: unknown): Record<string, unknown> {
@@ -105,15 +108,41 @@ export async function GET(req: NextRequest) {
 
     const { data, error } = await db
       .from("viral_videos")
-      .select("id,niche,platform,url,analyzed_full,created_at")
+      .select("id,niche,platform,url,analyzed_full,created_at,virality_score,views")
       .in("niche", niches)
       .eq("platform", platform)
       .order("created_at", { ascending: false, nullsFirst: false })
       .limit(scan);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
+    const priorityMode = String(req.nextUrl.searchParams.get("priority") || "smart").trim().toLowerCase();
+    const { shardIndex, shardCount } = parseShardConfig({
+      shardIndex: req.nextUrl.searchParams.get("shard_index"),
+      shardCount: req.nextUrl.searchParams.get("shard_count"),
+    });
+
     const corpusRows = ((data || []) as CorpusRow[])
+      .filter((row) => stableShardMatch(row.id, shardIndex, shardCount))
       .filter((row) => row.url && !hasMediaLocators(row))
+      .map((row) => ({
+        row,
+        priority: priorityMode === "fifo"
+          ? 0
+          : scoreMediaCandidate({
+            id: row.id,
+            viralityScore: row.virality_score,
+            views: row.views,
+            createdAt: row.created_at,
+            hasPageFallback: /instagram\.com\/(reel|reels|tv|p)\//i.test(String(row.url || "")),
+          }),
+      }))
+      .sort((a, b) =>
+        b.priority - a.priority
+        || Number(b.row.virality_score || 0) - Number(a.row.virality_score || 0)
+        || Number(b.row.views || 0) - Number(a.row.views || 0)
+        || Number(b.row.id || 0) - Number(a.row.id || 0),
+      )
+      .map((entry) => entry.row)
       .slice(0, limit);
 
     const runs: Array<Record<string, unknown>> = [];
@@ -211,6 +240,9 @@ export async function GET(req: NextRequest) {
       platform,
       local_resolver_enabled: allowLocalResolver,
       local_resolver_available: ytDlpAvailable,
+      shard_index: shardIndex,
+      shard_count: shardCount,
+      priority: priorityMode,
       scanned: scan,
       attempted: corpusRows.length,
       rows_with_media: withMedia,

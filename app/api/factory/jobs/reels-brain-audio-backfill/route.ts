@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { isAuthorizedReelsBrainJobRequest } from "@/lib/factory/reelsBrainJobAuth";
 import { extractAudioFeaturesFromMediaUrl, shouldRetryAudioBackfill } from "@/lib/factory/reelsBrainMediaResolver";
 import { mergeAnalyzedFullWithAudioExtraction } from "@/lib/factory/reelsBrainCorpusUpsert";
+import { parseShardConfig, scoreAudioCandidate, stableShardMatch } from "@/lib/factory/reelsBrainQueue";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -15,6 +16,8 @@ type CorpusRow = {
   analyzed?: boolean | null;
   analyzed_full?: unknown;
   created_at?: string | null;
+  virality_score?: number | null;
+  views?: number | null;
 };
 
 function rec(value: unknown): Record<string, unknown> {
@@ -119,10 +122,16 @@ export async function GET(req: NextRequest) {
     const transcribe = boolParam(req, "transcribe", true);
     const dryRun = boolParam(req, "dry_run", false);
     const language = String(req.nextUrl.searchParams.get("language") || "ru").trim().slice(0, 12) || "ru";
+    const priorityMode = String(req.nextUrl.searchParams.get("priority") || "smart").trim().toLowerCase();
+    const deepOnly = boolParam(req, "deep_only", false);
+    const { shardIndex, shardCount } = parseShardConfig({
+      shardIndex: req.nextUrl.searchParams.get("shard_index"),
+      shardCount: req.nextUrl.searchParams.get("shard_count"),
+    });
 
     let query = db
       .from("viral_videos")
-      .select("id,niche,platform,url,analyzed,analyzed_full,created_at")
+      .select("id,niche,platform,url,analyzed,analyzed_full,created_at,virality_score,views")
       .in("niche", niches)
       .order("created_at", { ascending: false, nullsFirst: false })
       .limit(scan);
@@ -133,12 +142,14 @@ export async function GET(req: NextRequest) {
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
     const rows = ((data || []) as CorpusRow[])
+      .filter((row) => stableShardMatch(row.id, shardIndex, shardCount))
       .filter((row) => {
         const state = seedState(row);
         const platform = String(row.platform || "").trim().toLowerCase();
         const hasPlayable = state.mediaLocators.some((item) => isPlayableMediaLocator(item, platform))
           || (platform === "instagram" && /^https?:\/\/(www\.)?instagram\.com\/(reel|reels|tv|p)\//i.test(String(row.url || "").trim()));
         if (!hasPlayable) return false;
+        if (deepOnly && Number(row.virality_score || 0) < 45) return false;
         return shouldRetryAudioBackfill({
           audioStatus: state.audioStatus,
           transcriptStatus: state.transcriptStatus,
@@ -146,6 +157,35 @@ export async function GET(req: NextRequest) {
           lastError: state.lastError,
         }) && (!state.audioStatus || state.audioStatus !== "audio_extracted" || transcribe);
       })
+      .map((row) => {
+        const state = seedState(row);
+        const platform = String(row.platform || "").trim().toLowerCase();
+        const mediaUrl = bestMediaLocator(row);
+        return {
+          row,
+          state,
+          mediaUrl,
+          priority: priorityMode === "fifo"
+            ? 0
+            : scoreAudioCandidate({
+              id: row.id,
+              viralityScore: row.virality_score,
+              views: row.views,
+              createdAt: row.created_at,
+              audioStatus: state.audioStatus,
+              transcriptStatus: state.transcriptStatus,
+              hasDirectMedia: Boolean(mediaUrl && isDirectVideoLocator(mediaUrl)),
+              hasPageFallback: Boolean(platform === "instagram" && /^https?:\/\/(www\.)?instagram\.com\/(reel|reels|tv|p)\//i.test(mediaUrl)),
+            }),
+        };
+      })
+      .sort((a, b) =>
+        b.priority - a.priority
+        || Number(b.row.virality_score || 0) - Number(a.row.virality_score || 0)
+        || Number(b.row.views || 0) - Number(a.row.views || 0)
+        || Number(b.row.id || 0) - Number(a.row.id || 0),
+      )
+      .map((entry) => entry.row)
       .slice(0, limit);
 
     const runs: Array<Record<string, unknown>> = [];
@@ -234,6 +274,10 @@ export async function GET(req: NextRequest) {
       mode: dryRun ? "reels_brain_audio_backfill_dry_run" : "reels_brain_audio_backfill",
       platform: platform || "mixed",
       dry_run: dryRun,
+      shard_index: shardIndex,
+      shard_count: shardCount,
+      priority: priorityMode,
+      deep_only: deepOnly,
       attempted: rows.length,
       extracted,
       transcript_ready: transcriptReady,

@@ -8,6 +8,7 @@ import {
 } from "@/lib/factory/reelsBrainAutomation";
 import { isAuthorizedReelsBrainJobRequest } from "@/lib/factory/reelsBrainJobAuth";
 import { persistReelsBrainAutomationRun, summarizeReelsBrainAutomationRuns } from "@/lib/factory/reelsBrainAutomationRuns";
+import { parseShardConfig, stableBucketMatch } from "@/lib/factory/reelsBrainQueue";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -147,9 +148,17 @@ async function runAnalyzeBacklog(req: NextRequest, body: Record<string, unknown>
   const maxLanes = Math.max(1, Math.min(9, Number(body.max_lanes || req.nextUrl.searchParams.get("max_lanes") || (execute ? 3 : 9))));
   const limit = Math.max(1, Math.min(25, Number(body.limit || req.nextUrl.searchParams.get("limit") || 8)));
   const buildPatterns = parseBool(body.build_patterns ?? req.nextUrl.searchParams.get("build_patterns"), false);
+  const { shardIndex, shardCount } = parseShardConfig({
+    shardIndex: body.shard_index ?? req.nextUrl.searchParams.get("shard_index"),
+    shardCount: body.shard_count ?? req.nextUrl.searchParams.get("shard_count"),
+  });
 
   const lanes = await loadAnalyzeLanes(db, niches, platforms);
-  const queue = lanes.filter((lane) => lane.unanalyzed > 0).slice(0, maxLanes).map((lane) => ({
+  const queue = lanes
+    .filter((lane) => lane.unanalyzed > 0)
+    .filter((lane) => stableBucketMatch(`${lane.niche}:${lane.platform}`, shardIndex, shardCount))
+    .slice(0, maxLanes)
+    .map((lane) => ({
     ...lane,
     analyze_limit: Math.min(limit, lane.unanalyzed),
   }));
@@ -273,6 +282,8 @@ async function runAnalyzeBacklog(req: NextRequest, body: Record<string, unknown>
     niches,
     platforms,
     max_lanes: maxLanes,
+    shard_index: shardIndex,
+    shard_count: shardCount,
     limit,
     build_patterns: buildPatterns,
     lanes,

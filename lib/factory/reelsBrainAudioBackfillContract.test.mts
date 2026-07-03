@@ -23,6 +23,9 @@ ok(/media_fetch_403/.test(resolver) && /status code 10204/.test(resolver), "medi
 ok(/shouldRetryAudioBackfill/.test(route), "audio backfill route uses audio backfill retry helper");
 ok(/transcriptError:\s*state\.audioFeatures\?\.transcript_error/.test(route), "audio backfill route consults stored transcript error");
 ok(/instagram\.com\/\(reel\|reels\|tv\|p\)\\\//.test(route) || /instagram\\.com\\\/\(reel\|reels\|tv\|p\)\\\//.test(route) || /reel\|reels\|tv\|p/.test(route), "audio backfill route can fall back to instagram post pages");
+ok(/parseShardConfig/.test(route) && /stableShardMatch/.test(route), "audio backfill route supports sharded worker queues");
+ok(/scoreAudioCandidate/.test(route) && /priority/.test(route), "audio backfill route supports smart candidate prioritization");
+ok(/deepOnly/.test(route) && /virality_score/.test(route), "audio backfill route supports deep-only gating for expensive analysis");
 
 if (failed) process.exit(1);
 console.log(`reelsBrainAudioBackfillContract: ${passed} passed, ${failed} failed`);
