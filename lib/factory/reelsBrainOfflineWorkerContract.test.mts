@@ -23,6 +23,8 @@ ok(/worker-state/.test(worker), "offline worker can send worker-state heartbeat"
 ok(/controller\.abort\(\)/.test(worker) && /signal:\s*controller\.signal/.test(worker), "offline worker fetchJson uses abort controller timeout");
 ok(/REELS_BRAIN_ENABLE_LOCAL_MEDIA_RESOLVER/.test(worker), "offline worker reads local media resolver env");
 ok(/REELS_BRAIN_AUDIO_LOCAL/.test(worker), "offline worker reads local audio extraction env");
+ok(/function shouldUseYtDlpCookies/.test(worker), "offline worker scopes yt-dlp cookies by target domain");
+ok(/youtube\\.com\\|youtu\\.be/.test(worker), "offline worker only applies yt-dlp cookies to YouTube domains");
 ok(
   /REELS_BRAIN_OFFLINE_MODE/.test(worker)
     && /mode === "audio"/.test(worker)
