@@ -25,4 +25,15 @@ ok(/isAuthorizedReelsBrainJobRequest/.test(route), "recolor route is auth-gated"
 ok(/all_colors_of_model === true/.test(route), "route supports batch recolor across model colours");
 ok(/e\.model === baseEntry\.model && e\.article !== baseArticle/.test(route), "batch targets sibling colours of the same model");
 
+// Ретушь: убирает вшитый артефакт, сохраняет как твин того же артикула.
+import { buildRetouchPrompt, RETOUCH_PRESETS } from "./twinRecolor";
+const rt = buildRetouchPrompt("куртка NORVIA чёрная", [RETOUCH_PRESETS.sleeve_patch]);
+ok(/remove the small rectangular badge/i.test(rt), "retouch removes sleeve patch");
+ok(/Keep EVERYTHING else pixel-identical/i.test(rt) && /do not restyle, recolor, resize/i.test(rt), "retouch keeps geometry/color, only removes artifact");
+ok(RETOUCH_PRESETS.sleeve_toggle && RETOUCH_PRESETS.hood, "presets cover sleeve toggle and invented hood");
+const rmod = readFileSync("lib/factory/twinRecolor.ts", "utf8");
+ok(/sourceKind: "retouch"/.test(rmod) && /retouched_from: base\.twin\.twinId/.test(rmod), "retouch twin carries provenance");
+const rroute = readFileSync("app/api/factory/product-twin/recolor/route.ts", "utf8");
+ok(/body\.retouch === true/.test(rroute) && /retouchTwin\(db/.test(rroute), "recolor route has retouch branch");
+
 console.log("twinRecolorContract: passed");

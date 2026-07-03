@@ -3377,3 +3377,11 @@
   - `app/api/factory/product-broll-vfx/route.ts`: раннер. POST {article,category?,track?,submit?} — один артикул; POST {wave1:true} — вся волна 1 по представителям. Source — из артикул-точного твина (getBestProductTwinAsset→rehost). submit=false по умолчанию (план без списания); GET-оператор никогда не сабмитит. blocked-артикул (TT04102) режется 409. Ответ подсказывает judge_route.
 - Проверки: brollVfxRunnerContract (новый), tsc чистый.
 - Теперь «гони волну 1» = POST wave1:true&submit:true реально сабмитит ~45 клипов A+B и отдаёт task_ids. Прогон — по команде владельца (бюджет ~$20-35).
+
+## 2026-07-03 — Ретушь твинов: точечное удаление артефактов
+
+- Владелец/помощник по странице выбора отметил идеальные ветровки, с правкой: убрать вшитый рукавный шильдик (нашивку), у части — утяжку на рукаве. Это ретушь, не пересборка.
+- `lib/factory/twinRecolor.ts`: `retouchTwin` + `buildRetouchPrompt` + `RETOUCH_PRESETS` (sleeve_patch, sleeve_toggle, chest_patch, hood). nano-banana убирает только названный артефакт, геометрия/цвет держатся; результат — новый твин ТОГО ЖЕ артикула (становится latest).
+- `app/api/factory/product-twin/recolor/route.ts`: ветка `{retouch:true, article, instructions[]}`.
+- Проверки: twinRecolorContract (+retouch), tsc чистый.
+- Применяю к выбранным ветровкам: HT-42-01, HT-83-22 (шильдик+утяжка), HT-83-35.
