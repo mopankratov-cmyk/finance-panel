@@ -40,6 +40,11 @@ function numberParam(req: NextRequest, name: string, fallback: number, min: numb
   return Math.max(min, Math.min(max, value));
 }
 
+function widenedScanWindow(scan: number, shardCount: number, hardCap: number) {
+  const multiplier = Math.max(4, shardCount * 4);
+  return Math.max(scan, Math.min(hardCap, scan * multiplier));
+}
+
 function boolParam(req: NextRequest, name: string, fallback = false): boolean {
   const value = String(req.nextUrl.searchParams.get(name) || "").trim().toLowerCase();
   if (!value) return fallback;
@@ -129,19 +134,20 @@ export async function GET(req: NextRequest) {
       shardCount: req.nextUrl.searchParams.get("shard_count"),
     });
 
+    const queryScan = widenedScanWindow(scan, shardCount, 500);
     let query = db
       .from("viral_videos")
       .select("id,niche,platform,url,analyzed,analyzed_full,created_at,virality_score,views")
       .in("niche", niches)
       .order("created_at", { ascending: false, nullsFirst: false })
-      .limit(scan);
+      .limit(queryScan);
 
     if (platform) query = query.eq("platform", platform);
 
     const { data, error } = await query;
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-    const rows = ((data || []) as CorpusRow[])
+    const ranked = ((data || []) as CorpusRow[])
       .filter((row) => stableShardMatch(row.id, shardIndex, shardCount))
       .filter((row) => {
         const state = seedState(row);
@@ -149,7 +155,6 @@ export async function GET(req: NextRequest) {
         const hasPlayable = state.mediaLocators.some((item) => isPlayableMediaLocator(item, platform))
           || (platform === "instagram" && /^https?:\/\/(www\.)?instagram\.com\/(reel|reels|tv|p)\//i.test(String(row.url || "").trim()));
         if (!hasPlayable) return false;
-        if (deepOnly && Number(row.virality_score || 0) < 45) return false;
         return shouldRetryAudioBackfill({
           audioStatus: state.audioStatus,
           transcriptStatus: state.transcriptStatus,
@@ -179,6 +184,18 @@ export async function GET(req: NextRequest) {
             }),
         };
       })
+      .sort((a, b) =>
+        b.priority - a.priority
+        || Number(b.row.virality_score || 0) - Number(a.row.virality_score || 0)
+        || Number(b.row.views || 0) - Number(a.row.views || 0)
+        || Number(b.row.id || 0) - Number(a.row.id || 0),
+      );
+
+    const deepRanked = ranked.filter((entry) => Number(entry.row.virality_score || 0) >= 45);
+    const selectedRanked = deepOnly && deepRanked.length ? deepRanked : ranked;
+    const deepOnlyRelaxed = Boolean(deepOnly && !deepRanked.length && ranked.length);
+
+    const rows = selectedRanked
       .sort((a, b) =>
         b.priority - a.priority
         || Number(b.row.virality_score || 0) - Number(a.row.virality_score || 0)
@@ -278,6 +295,8 @@ export async function GET(req: NextRequest) {
       shard_count: shardCount,
       priority: priorityMode,
       deep_only: deepOnly,
+      deep_only_relaxed: deepOnlyRelaxed,
+      scanned: queryScan,
       attempted: rows.length,
       extracted,
       transcript_ready: transcriptReady,

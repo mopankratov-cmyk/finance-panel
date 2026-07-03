@@ -42,11 +42,20 @@ function isPlayableMediaLocator(value: string): boolean {
   return !isImageLikeLocator(target);
 }
 
-function hasMediaLocators(row: CorpusRow): boolean {
+function isDirectVideoLocator(value: string): boolean {
+  const target = value.trim();
+  if (!target) return false;
+  if (isImageLikeLocator(target)) return false;
+  if (/\.(mp4|m4v|mov|webm|m3u8)(\?|$)/i.test(target)) return true;
+  if (/mime_type=video_|video_mp4|\/video\/|\/videoplayback\b|\.googlevideo\.com\//i.test(target)) return true;
+  return false;
+}
+
+function hasResolvedMediaLocators(row: CorpusRow): boolean {
   const analyzedFull = rec(row.analyzed_full);
   const reelsSeed = rec(analyzedFull.reels_seed);
   const media = Array.isArray(reelsSeed.media_locator_candidates) ? reelsSeed.media_locator_candidates : [];
-  return media.some((item) => typeof item === "string" && isPlayableMediaLocator(item));
+  return media.some((item) => typeof item === "string" && isDirectVideoLocator(item));
 }
 
 function mediaLocator(video: Record<string, unknown> | null | undefined): string {
@@ -64,8 +73,18 @@ function numberParam(req: NextRequest, name: string, fallback: number, min: numb
   return Math.max(min, Math.min(max, value));
 }
 
-function providerParam(req: NextRequest): ReelsBrainProvider {
-  const raw = String(req.nextUrl.searchParams.get("provider") || "apify_instagram").trim().toLowerCase();
+function widenedScanWindow(scan: number, shardCount: number, hardCap: number) {
+  const multiplier = Math.max(4, shardCount * 4);
+  return Math.max(scan, Math.min(hardCap, scan * multiplier));
+}
+
+function providerParam(req: NextRequest, platform: string): ReelsBrainProvider {
+  const fallbackByPlatform: Record<string, string> = {
+    instagram: process.env.REELS_BRAIN_MEDIA_BACKFILL_PROVIDER_INSTAGRAM || process.env.REELS_BRAIN_MEDIA_BACKFILL_PROVIDER || "apify_instagram",
+    tiktok: process.env.REELS_BRAIN_MEDIA_BACKFILL_PROVIDER_TIKTOK || "apify_tiktok",
+    youtube: process.env.REELS_BRAIN_MEDIA_BACKFILL_PROVIDER_YOUTUBE || "youtube",
+  };
+  const raw = String(req.nextUrl.searchParams.get("provider") || fallbackByPlatform[platform] || "apify_instagram").trim().toLowerCase();
   return raw as ReelsBrainProvider;
 }
 
@@ -94,7 +113,8 @@ export async function GET(req: NextRequest) {
     const db = getSupabaseAdmin();
     if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 500 });
 
-    const provider = providerParam(req);
+    const platform = String(req.nextUrl.searchParams.get("platform") || "instagram").trim().toLowerCase();
+    const provider = providerParam(req, platform);
     if (!hasReelsBrainProvider(provider)) {
       return NextResponse.json({ error: `${provider} не настроен` }, { status: 503 });
     }
@@ -102,28 +122,27 @@ export async function GET(req: NextRequest) {
     const niches = splitList(req.nextUrl.searchParams.get("niches") || "ru_toys,ru_clothing,ru_cosmetics");
     const limit = numberParam(req, "limit", 3, 1, 6);
     const scan = numberParam(req, "scan", 120, limit, 500);
-    const platform = String(req.nextUrl.searchParams.get("platform") || "instagram").trim().toLowerCase();
     const allowLocalResolver = String(req.nextUrl.searchParams.get("use_local_resolver") || process.env.REELS_BRAIN_ENABLE_LOCAL_MEDIA_RESOLVER || "").toLowerCase() === "1";
     const ytDlpAvailable = allowLocalResolver ? await hasYtDlpBinary() : false;
-
-    const { data, error } = await db
-      .from("viral_videos")
-      .select("id,niche,platform,url,analyzed_full,created_at,virality_score,views")
-      .in("niche", niches)
-      .eq("platform", platform)
-      .order("created_at", { ascending: false, nullsFirst: false })
-      .limit(scan);
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-
     const priorityMode = String(req.nextUrl.searchParams.get("priority") || "smart").trim().toLowerCase();
     const { shardIndex, shardCount } = parseShardConfig({
       shardIndex: req.nextUrl.searchParams.get("shard_index"),
       shardCount: req.nextUrl.searchParams.get("shard_count"),
     });
 
+    const queryScan = widenedScanWindow(scan, shardCount, 800);
+    const { data, error } = await db
+      .from("viral_videos")
+      .select("id,niche,platform,url,analyzed_full,created_at,virality_score,views")
+      .in("niche", niches)
+      .eq("platform", platform)
+      .order("created_at", { ascending: false, nullsFirst: false })
+      .limit(queryScan);
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
     const corpusRows = ((data || []) as CorpusRow[])
       .filter((row) => stableShardMatch(row.id, shardIndex, shardCount))
-      .filter((row) => row.url && !hasMediaLocators(row))
+      .filter((row) => row.url && !hasResolvedMediaLocators(row))
       .map((row) => ({
         row,
         priority: priorityMode === "fifo"
@@ -243,7 +262,7 @@ export async function GET(req: NextRequest) {
       shard_index: shardIndex,
       shard_count: shardCount,
       priority: priorityMode,
-      scanned: scan,
+      scanned: queryScan,
       attempted: corpusRows.length,
       rows_with_media: withMedia,
       inserted,
