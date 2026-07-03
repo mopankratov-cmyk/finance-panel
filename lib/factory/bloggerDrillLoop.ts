@@ -6,7 +6,7 @@
 
 import { buildDeglossPrompt } from "@/lib/factory/productComposite";
 
-export type DrillAxis = "light_scene" | "motion" | "start_pose" | "script_style" | "quiet_register" | "start_face" | "delivery" | "framing" | "post_params";
+export type DrillAxis = "light_scene" | "motion" | "start_pose" | "script_style" | "quiet_register" | "start_face" | "delivery" | "register_fix" | "framing" | "post_params";
 
 export interface DrillClipPlan {
   clip_id: string;
@@ -161,6 +161,25 @@ const REGISTER_PALETTE_ROWS: Array<{ id: string; face: string; script: string; v
   { id: "surprised_discovery", face: "genuinely surprised expression, raised eyebrows, mouth slightly open", script: "Так, СТОП. Вы это видели?… Я, если честно, в шоке.", voice: { style: 0.5, speed: 1.1 }, motion: "briefly looks off-camera mid-sentence as if someone distracted her, half-second pause, then returns to the camera and continues naturally, imperfect timing feel", expr: "medium", hypothesis: "Удивление-находка: 'о'-стилл × interrupted-моушен (канон b2)." },
 ];
 
+// Батч 7 (палитра) — ИТОГИ: 6/8 регистров чистые (excited 9, warm 8, playful 8, skeptic 8,
+// surprised 7, conspiratorial 7); оба канона держат 9/10, тихий рецепт b06_02 воспроизвёлся
+// точно (рецепты детерминированы). Провалены: serious_expert (4 — серьёзность не попала
+// в стилл, дефолт-улыбка) и tired_evening (5 — «тяжёлые веки» Seedream размыл к дефолту).
+// Уроки: слабые эмоции лица требуют СИЛЬНЫХ формулировок или физического якоря позой;
+// слова про камеру в pose_hint («leaning toward the camera») могут перевернуть композицию
+// в кадр третьим лицом — селфи-POV усиливать явно.
+// Батч 8: ремонт двух регистров + селфи-фикс заговорщицы. Каждый ряд задаёт ПОЛНЫЙ pose_hint.
+const REGISTER_FIX_ROWS: Array<{ id: string; pose: string; script: string; voice: { style: number; speed: number }; motion: string; expr: "low" | "medium"; hypothesis: string }> = [
+  { id: "expert_stern_nomug", pose: "sitting upright facing the camera, one forearm resting on the table, stern focused expression, slightly furrowed brow, lips firmly closed, absolutely no smile", script: "Так. Смотрите. Я разобралась и объясню по фактам. Без воды.", voice: { style: 0.35, speed: 1.0 }, motion: "calm confident delivery, steady direct gaze, minimal head movement, occasional slow nod, no smiles", expr: "low", hypothesis: "Эксперт-фикс 1: жёсткая формулировка (stern+furrowed) вместо мягкой + убрана кружка (физика селфи)." },
+  { id: "expert_stern_mug_onehand", pose: "holding a warm mug in one hand at chest level, stern focused expression, slightly furrowed brow, lips firmly closed, absolutely no smile", script: "Так. Смотрите. Я разобралась и объясню по фактам. Без воды.", voice: { style: 0.35, speed: 1.0 }, motion: "calm confident delivery, steady direct gaze, minimal head movement, occasional slow nod, no smiles", expr: "low", hypothesis: "Эксперт-фикс 2: stern + кружка в ОДНОЙ руке (реквизит остаётся, физика сходится)." },
+  { id: "expert_notes_downgaze", pose: "glancing down at handwritten notes on the table in front of her, focused serious expression, lips closed, no smile", script: "Так. Смотрите. Я разобралась и объясню по фактам. Без воды.", voice: { style: 0.35, speed: 1.0 }, motion: "calm confident delivery, occasionally glances down at her notes and back to the camera, no smiles", expr: "low", hypothesis: "Эксперт-фикс 3: взгляд-на-предмет (записи) — проверенный якорь b06_02, перенесённый на серьёзный регистр." },
+  { id: "expert_stern_medium", pose: "sitting upright facing the camera, one forearm resting on the table, stern focused expression, slightly furrowed brow, lips firmly closed, absolutely no smile", script: "Так. Смотрите. Я разобралась и объясню по фактам. Без воды.", voice: { style: 0.35, speed: 1.0 }, motion: "confident assertive delivery, deliberate emphatic head movements following the arguments, no smiles", expr: "medium", hypothesis: "Эксперт-фикс 4: stern-стилл × MEDIUM — вернёт ли напор в середину (b07_03 был вял на low)?" },
+  { id: "tired_exhausted_strong", pose: "holding a warm mug with both hands below her chin, visibly exhausted face, droopy half-closed heavy eyelids, faint dark circles under her eyes, slack relaxed features, no smile", script: "Уф… ну и день. [exhales] Ладно. Слушайте, пока не забыла.", voice: { style: 0.5, speed: 0.9 }, motion: QUIET_MOTION, expr: "low", hypothesis: "Усталость-фикс 1: агрессивная формулировка лица (droopy half-closed + dark circles)." },
+  { id: "tired_head_on_hand", pose: "resting her head heavily on one hand, elbow on the table, eyes half closed with visible tiredness, no smile", script: "Уф… ну и день. [exhales] Ладно. Слушайте, пока не забыла.", voice: { style: 0.5, speed: 0.9 }, motion: QUIET_MOTION, expr: "low", hypothesis: "Усталость-фикс 2: ФИЗИЧЕСКИЙ якорь позой (голова на руке) — тело продаёт эмоцию вместо лица." },
+  { id: "tired_downgaze_mug", pose: "holding a warm mug with both hands, gazing down into the tea with a tired absent look, heavy eyelids, no smile", script: "Уф… ну и день. [exhales] Ладно. Слушайте, пока не забыла.", voice: { style: 0.5, speed: 0.9 }, motion: QUIET_MOTION, expr: "low", hypothesis: "Усталость-фикс 3: взгляд-в-кружку (якорь b06_02) + усталое лицо." },
+  { id: "consp_selfie_fix", pose: "phone selfie POV at close selfie distance, holding a warm mug in one hand, sly knowing look directly into the camera, one eyebrow slightly raised, lips closed in a subtle smirk", script: "Тсс… никому, ладно? Я кое-что нашла. Такое не рассказывают.", voice: { style: 0.5, speed: 0.95 }, motion: "leans slightly closer to the camera as if sharing something semi-private, conspiratorial energy, small pause before the key phrase, tiny eyebrow raise, then settles back", expr: "medium", hypothesis: "Заговорщица-фикс: явный селфи-POV в pose_hint против сползания композиции в b-roll (b07_04)." },
+];
+
 // Батч 4: ось скрипт-стиля — 8 манер речи на канон-сетапе (кружка+золотой час),
 // варьируются ТОЛЬКО текст и голосовые параметры. Уроки b2: теги v3 исполняются.
 const SCRIPT_STYLE_ROWS: Array<{ id: string; script: string; voice: { style: number; speed: number }; hypothesis: string }> = [
@@ -215,6 +234,35 @@ export function buildDrillBatch(batch: number, axis: DrillAxis): DrillBatchPlan 
       });
     }
     return { ok: true, batch, axis, persona: "manya", clips, warnings: ["Варьируется ТОЛЬКО лицо стартового кадра; ряды 1-6 сравнивать с b05_03, ряды 7-8 — с контролями."] };
+  }
+  if (axis === "register_fix") {
+    const clips: DrillClipPlan[] = REGISTER_FIX_ROWS.map((row, i) => ({
+      clip_id: `drill_b${String(batch).padStart(2, "0")}_${String(i + 1).padStart(2, "0")}_${row.id}`,
+      batch, axis, role: "explore" as const,
+      look_name: DRILL_BEST_KNOWN.look_name,
+      degloss_hint: DRILL_BEST_KNOWN.degloss_hint,
+      pose_hint: row.pose,
+      script: row.script,
+      voice_emotion_speed: row.voice,
+      motion_prompt: row.motion,
+      expressiveness: row.expr,
+      hypothesis: row.hypothesis,
+    }));
+    for (let c = 1; c <= 2; c++) {
+      clips.push({
+        clip_id: `drill_b${String(batch).padStart(2, "0")}_ctrl${c}`,
+        batch, axis, role: "control" as const,
+        look_name: DRILL_BEST_KNOWN.look_name,
+        degloss_hint: DRILL_BEST_KNOWN.degloss_hint,
+        pose_hint: c === 1 ? DRILL_BEST_KNOWN.pose_hint : DRILL_QUIET_CANON.pose_hint,
+        script: c === 1 ? BATCH_SCRIPT[1] : DRILL_QUIET_CANON.script,
+        voice_emotion_speed: c === 1 ? DRILL_BEST_KNOWN.voice : DRILL_QUIET_CANON.voice,
+        motion_prompt: c === 1 ? DRILL_BEST_KNOWN.motion_prompt : DRILL_QUIET_CANON.motion_prompt,
+        expressiveness: c === 1 ? DRILL_BEST_KNOWN.expressiveness : DRILL_QUIET_CANON.expressiveness,
+        hypothesis: c === 1 ? "Контроль: живой канон." : "Контроль: тихий канон.",
+      });
+    }
+    return { ok: true, batch, axis, persona: "manya", clips, warnings: ["Ремонт провальных регистров b7: полные pose_hint на ряд; сравнивать с b07_03 (эксперт 4) и b07_05 (усталость 5)."] };
   }
   if (axis === "delivery") {
     const clips: DrillClipPlan[] = REGISTER_PALETTE_ROWS.map((row, i) => ({
