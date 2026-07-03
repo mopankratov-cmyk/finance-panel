@@ -3167,6 +3167,232 @@
       "video_done": true,
       "post_done": true,
       "yavg": 106
+    },
+    "drill_b12_01_kitchen_excited": {
+      "plan": {
+        "clip_id": "drill_b12_01_kitchen_excited",
+        "batch": 12,
+        "axis": "framing",
+        "role": "explore",
+        "look_name": "look__manya__01__kitchen_counter",
+        "degloss_hint": "bright morning sun patches through the kitchen window, uneven light, slightly harsh shadows",
+        "pose_hint": "wearing an oversized grey hoodie, her free hand raised mid-gesture, nothing in her hands, eyes wide with excitement, big open smile, eyebrows raised, her other arm reaching toward the camera and cropped by the frame edge at the wrist, the phone itself is NOT visible in the frame",
+        "script": "[excited] Так, СТОП. Я не могу молчать! Вы должны это знать. Короче, слушайте!",
+        "voice_emotion_speed": {
+          "style": 0.55,
+          "speed": 1.15
+        },
+        "motion_prompt": "energetic selfie video message, expressive face following the speech, her free hand gestures naturally while talking, quick natural head movements. Her extended arm holding the phone stays fully extended and steady for the whole video, the phone never moves into the frame or appears in her other hand.",
+        "expressiveness": "medium",
+        "hypothesis": "Восторг на кухне в худи: рецепт переносится на другую сцену+одежду? Рука обрезана у запястья."
+      },
+      "heygen_video_id": "d64d5c038c0c4a40a7aa0538b298d580",
+      "video_done": true,
+      "post_done": true,
+      "yavg": 134
+    },
+    "drill_b12_02_mirror_playful": {
+      "plan": {
+        "clip_id": "drill_b12_02_mirror_playful",
+        "batch": 12,
+        "axis": "framing",
+        "role": "explore",
+        "look_name": "look__manya__05__mirror_close",
+        "degloss_hint": "casual mirror selfie in the hallway mirror, even indoor light, slightly dim",
+        "pose_hint": "wearing a black tank top, standing at the mirror holding her phone up in one hand visible in the reflection, playful teasing expression, slight smirk, head tilted",
+        "script": "А вот и не скажу!… [laughs] Ладно-ладно. Слушайте, уговорили.",
+        "voice_emotion_speed": {
+          "style": 0.55,
+          "speed": 1.1
+        },
+        "motion_prompt": "playful teasing energy in front of the mirror, small head tilts, bright eyes, a short genuine laugh, the phone stays steady in her hand",
+        "expressiveness": "medium",
+        "hypothesis": "Зеркальное селфи — единственная рамка, где телефон в кадре легитимен (+ ugc-рычаг b1)."
+      },
+      "heygen_video_id": "7cfd24dc72bd4a709e77df8b93b90872",
+      "video_done": true,
+      "post_done": true,
+      "yavg": 69
+    },
+    "drill_b12_03_car_skeptic": {
+      "plan": {
+        "clip_id": "drill_b12_03_car_skeptic",
+        "batch": 12,
+        "axis": "framing",
+        "role": "explore",
+        "look_name": "look__manya__10__car_close",
+        "degloss_hint": "overcast day inside the car, dim soft light, phone propped on the dashboard, static framing",
+        "pose_hint": "wearing a denim jacket, sitting in the driver seat, chin resting on her free hand, skeptical appraising expression, slightly narrowed eyes, lips pressed together, no arms reaching toward the camera",
+        "script": "Честно? Я не верила. Вообще не верила. …Ну и зря, как оказалось.",
+        "voice_emotion_speed": {
+          "style": 0.45,
+          "speed": 1
+        },
+        "motion_prompt": "starts with a barely visible head shake of disbelief, honest slightly amused expression, then calms into direct delivery, natural blink",
+        "expressiveness": "medium",
+        "hypothesis": "Скептик в машине с подпёртым телефоном: рук к камере нет вообще — нулевой риск анатомии."
+      },
+      "heygen_video_id": "f013516795804af2b7d4b509c69a05a8",
+      "video_done": true,
+      "post_done": true,
+      "yavg": 73
+    },
+    "drill_b12_04_lamp_quiet": {
+      "plan": {
+        "clip_id": "drill_b12_04_lamp_quiet",
+        "batch": 12,
+        "axis": "framing",
+        "role": "explore",
+        "look_name": "look__manya__03__sofa_evening",
+        "degloss_hint": "late evening, single warm table lamp as the only light source, uneven light, soft shadows",
+        "pose_hint": "wearing a cozy knitted sweater, holding a warm mug in one hand below her chin, gazing down toward the mug, lips closed, no smile, her other arm reaching toward the camera and cropped by the frame edge at the wrist, the phone itself is NOT visible in the frame",
+        "script": "[whispers] Так… я вам сейчас кое-что расскажу. Только тихо, ладно? [whispers] Слушайте.",
+        "voice_emotion_speed": {
+          "style": 0.5,
+          "speed": 0.95
+        },
+        "motion_prompt": "calm quiet intimate video message, soft subdued facial expressions, small gentle mouth movements, slow blinks, minimal head movement, no big smiles. Her extended arm holding the phone stays fully extended and steady for the whole video, the phone never moves into the frame or appears in her other hand.",
+        "expressiveness": "low",
+        "hypothesis": "Тихий канон при вечерней лампе (семья победителей b1) + рука обрезана у запястья."
+      },
+      "heygen_video_id": "da2f9f2e553c498cbe3d7bc6fce1cdda",
+      "video_done": true,
+      "post_done": true,
+      "yavg": 60
+    },
+    "drill_b12_05_street_surprised": {
+      "plan": {
+        "clip_id": "drill_b12_05_street_surprised",
+        "batch": 12,
+        "axis": "framing",
+        "role": "explore",
+        "look_name": "look__manya__11__street_entrance",
+        "degloss_hint": "overcast soft daylight outdoors near a residential entrance, flat dim light, wind in hair",
+        "pose_hint": "wearing a light jacket, one hand raised toward her cheek in shock, eyes wide open, jaw dropped, no mug, her other arm reaching toward the camera and cropped by the frame edge at the wrist, the phone itself is NOT visible in the frame",
+        "script": "СТОП! Нет, вы это ВИДЕЛИ?! Я в шоке. Реально в шоке.",
+        "voice_emotion_speed": {
+          "style": 0.55,
+          "speed": 1.1
+        },
+        "motion_prompt": "starts already mid-reaction with wide eyes, emphatic shocked delivery, hand near her face, then settles into fast excited explanation. Her extended arm holding the phone stays fully extended and steady for the whole video, the phone never moves into the frame or appears in her other hand.",
+        "expressiveness": "medium",
+        "hypothesis": "Шок на улице: пасмурный «некрасивый» свет против золотого часа — где UGC честнее?"
+      },
+      "heygen_video_id": "45a9255e47c14350b6cb3c25085ea000",
+      "video_done": true,
+      "post_done": true,
+      "yavg": 132
+    },
+    "drill_b12_06_bathroom_warm": {
+      "plan": {
+        "clip_id": "drill_b12_06_bathroom_warm",
+        "batch": 12,
+        "axis": "framing",
+        "role": "explore",
+        "look_name": "look__manya__05__mirror_close",
+        "degloss_hint": "slightly dim bathroom vanity light, even but unflattering, small shadows under chin, phone propped on the shelf",
+        "pose_hint": "wearing a casual t-shirt with hair in a messy bun, both hands relaxed out of frame, warm gentle expression, soft kind eyes, relaxed closed-lip smile, no arms reaching toward the camera",
+        "script": "Так… я вам сейчас кое-что расскажу. [exhales] Только между нами, ладно? Короче, слушайте.",
+        "voice_emotion_speed": {
+          "style": 0.4,
+          "speed": 1.05
+        },
+        "motion_prompt": "lively casual selfie video message, natural head turns while speaking, normal blinking, animated facial expressions following the speech, a tiny thoughtful reaction before the first phrase, near the end she briefly glances off-camera with an unposed half-smile as if someone caught her attention, then a small sincere smirk",
+        "expressiveness": "medium",
+        "hypothesis": "Тёплая подруга в ванной с подпёртым телефоном: бытовой невыгодный свет — максимум честности."
+      },
+      "heygen_video_id": "8025e2604e084e3fab5aa28ae84a9ab7",
+      "video_done": true,
+      "post_done": true,
+      "yavg": 74
+    },
+    "drill_b12_07_bed_tired": {
+      "plan": {
+        "clip_id": "drill_b12_07_bed_tired",
+        "batch": 12,
+        "axis": "framing",
+        "role": "explore",
+        "look_name": "look__manya__12__bed_morning",
+        "degloss_hint": "dim late evening in the bedroom, bedside lamp, soft warm low light",
+        "pose_hint": "wearing an oversized sleep t-shirt, lying propped on pillows, resting her head heavily on one hand, eyes half closed with visible tiredness, no smile, her other arm reaching toward the camera and cropped by the frame edge at the wrist, the phone itself is NOT visible in the frame",
+        "script": "Уф… ну и день. [exhales] Ладно. Слушайте, пока не забыла.",
+        "voice_emotion_speed": {
+          "style": 0.5,
+          "speed": 0.9
+        },
+        "motion_prompt": "very tired quiet video message, occasionally closes her eyes for a full second mid-sentence, slow heavy blinks, subdued face, minimal movement, no smiles. Her extended arm holding the phone stays fully extended and steady for the whole video, the phone never moves into the frame or appears in her other hand.",
+        "expressiveness": "low",
+        "hypothesis": "Усталость в кровати: родная сцена регистра (лампа чуть светлее — в b1 темнота ломала identity)."
+      },
+      "heygen_video_id": "3110c41999f0484bb42e48a1fdc0f52d",
+      "video_done": true,
+      "post_done": true,
+      "yavg": 65
+    },
+    "drill_b12_08_wall_consp": {
+      "plan": {
+        "clip_id": "drill_b12_08_wall_consp",
+        "batch": 12,
+        "axis": "framing",
+        "role": "explore",
+        "look_name": "look__manya__14__plain_wall",
+        "degloss_hint": "dusk indoor light in the hallway, single warm ceiling bulb, noticeably dim but face clearly visible",
+        "pose_hint": "wearing a dark hoodie, index finger raised to her lips in a hushing gesture, sly narrowed eyes, closed-lip smirk, her other arm reaching toward the camera and cropped by the frame edge at the wrist, the phone itself is NOT visible in the frame",
+        "script": "Тсс… никому, ладно? Я кое-что нашла. Такое не рассказывают.",
+        "voice_emotion_speed": {
+          "style": 0.5,
+          "speed": 0.95
+        },
+        "motion_prompt": "conspiratorial intimate delivery, she lowers the finger from her lips and speaks quietly, sly eyes, no big smiles. Her extended arm holding the phone stays fully extended and steady for the whole video, the phone never moves into the frame or appears in her other hand.",
+        "expressiveness": "medium",
+        "hypothesis": "Заговорщица в сумерках коридора: жест-«тсс» на нижней границе света b1."
+      }
+    },
+    "drill_b12_ctrl1": {
+      "plan": {
+        "clip_id": "drill_b12_ctrl1",
+        "batch": 12,
+        "axis": "framing",
+        "role": "control",
+        "look_name": "look__manya__07__soft_window",
+        "degloss_hint": "golden hour low warm sunlight through the window, long soft shadows, selfie distance framing",
+        "pose_hint": "holding a warm mug in one hand below her chin, her other arm extended toward the camera holding the phone",
+        "script": "Так… я вам сейчас кое-что расскажу. [exhales] Только между нами, ладно? Короче, слушайте.",
+        "voice_emotion_speed": {
+          "style": 0.4,
+          "speed": 1.05
+        },
+        "motion_prompt": "lively casual selfie video message, natural head turns while speaking, normal blinking, animated facial expressions following the speech, a tiny thoughtful reaction before the first phrase, near the end she briefly glances off-camera with an unposed half-smile as if someone caught her attention, then a small sincere smirk",
+        "expressiveness": "medium",
+        "hypothesis": "Контроль: живой канон (однорукий)."
+      },
+      "heygen_video_id": "1906d4ad7792441ba1b30eff1ecf3ebb",
+      "video_done": true,
+      "post_done": true,
+      "yavg": 104
+    },
+    "drill_b12_ctrl2": {
+      "plan": {
+        "clip_id": "drill_b12_ctrl2",
+        "batch": 12,
+        "axis": "framing",
+        "role": "control",
+        "look_name": "look__manya__07__soft_window",
+        "degloss_hint": "golden hour low warm sunlight through the window, long soft shadows, selfie distance framing",
+        "pose_hint": "holding a warm mug in one hand below her chin, gazing down toward the mug, lips closed, no smile, her other arm extended toward the camera holding the phone",
+        "script": "[whispers] Так… я вам сейчас кое-что расскажу. Только тихо, ладно? [whispers] Слушайте.",
+        "voice_emotion_speed": {
+          "style": 0.5,
+          "speed": 0.95
+        },
+        "motion_prompt": "calm quiet intimate video message, soft subdued facial expressions, small gentle mouth movements, slow blinks, minimal head movement, no big smiles",
+        "expressiveness": "low",
+        "hypothesis": "Контроль: тихий канон (однорукий)."
+      },
+      "heygen_video_id": "1a04714a2b514e348aa357ca6571bc10",
+      "video_done": true,
+      "post_done": true,
+      "yavg": 106
     }
   },
   "degloss_cache": {
@@ -3224,7 +3450,15 @@
     "look__manya__07__soft_window::golden hour low warm sunlight through the window, long soft shadows, selfie distance framing::one hand raised toward her cheek in shock, eyes wide open, jaw dropped, no mug, her other arm extended toward the camera holding the phone": "https://v3b.fal.media/files/b/0aa0b9d7/jztDOPewvY4D_nMQ42PYJ_14dbeef7f079400996f91e2615163c1d.png",
     "look__manya__07__soft_window::golden hour low warm sunlight through the window, long soft shadows, selfie distance framing::her free hand raised mid-gesture at chest level, nothing in her hands, eyes wide with excitement, big open smile, eyebrows raised, her other arm extended toward the camera holding the phone": "https://v3b.fal.media/files/b/0aa0ba0e/NZAgDKdPv3X0av3ICGgtV_801f0b3143a440fbb27573ac206429a5.png",
     "look__manya__07__soft_window::golden hour low warm sunlight through the window, long soft shadows, selfie distance framing::her free hand touching her collarbone playfully, nothing in her hands, playful teasing expression, slight smirk, head tilted a little, her other arm extended toward the camera holding the phone": "https://v3b.fal.media/files/b/0aa0ba10/Zw91E7uHKoYwAKqIq7Rnk_ebb18319bb044ffe94e2c926b7271b8c.png",
-    "look__manya__07__soft_window::golden hour low warm sunlight through the window, long soft shadows, selfie distance framing::holding a warm mug in one hand below her chin, her other arm extended toward the camera holding the phone": "https://v3b.fal.media/files/b/0aa0ba1d/DNqPfMOBesP_qnf0eNlSE_a974b060c5b942ff80d64aa85835b38d.png"
+    "look__manya__07__soft_window::golden hour low warm sunlight through the window, long soft shadows, selfie distance framing::holding a warm mug in one hand below her chin, her other arm extended toward the camera holding the phone": "https://v3b.fal.media/files/b/0aa0ba1d/DNqPfMOBesP_qnf0eNlSE_a974b060c5b942ff80d64aa85835b38d.png",
+    "look__manya__01__kitchen_counter::bright morning sun patches through the kitchen window, uneven light, slightly harsh shadows::wearing an oversized grey hoodie, her free hand raised mid-gesture, nothing in her hands, eyes wide with excitement, big open smile, eyebrows raised, her other arm reaching toward the camera and cropped by the frame edge at the wrist, the phone itself is NOT visible in the frame": "https://v3b.fal.media/files/b/0aa0bdd5/EmWTPnp0Zd1-60-tCIcfv_15a5fad5010349b59a3c6055790b8ce9.png",
+    "look__manya__05__mirror_close::casual mirror selfie in the hallway mirror, even indoor light, slightly dim::wearing a black tank top, standing at the mirror holding her phone up in one hand visible in the reflection, playful teasing expression, slight smirk, head tilted": "https://v3b.fal.media/files/b/0aa0bde8/AZtLt01qwNcgvjZbZqNKN_2ca561ad8392478e98d769f320e7f4c1.png",
+    "look__manya__10__car_close::overcast day inside the car, dim soft light, phone propped on the dashboard, static framing::wearing a denim jacket, sitting in the driver seat, chin resting on her free hand, skeptical appraising expression, slightly narrowed eyes, lips pressed together, no arms reaching toward the camera": "https://v3b.fal.media/files/b/0aa0bdfb/hJkTCicLOnefdkz5gX2Px_78a13cfde70343d08ffdc5e876bd05e5.png",
+    "look__manya__03__sofa_evening::late evening, single warm table lamp as the only light source, uneven light, soft shadows::wearing a cozy knitted sweater, holding a warm mug in one hand below her chin, gazing down toward the mug, lips closed, no smile, her other arm reaching toward the camera and cropped by the frame edge at the wrist, the phone itself is NOT visible in the frame": "https://v3b.fal.media/files/b/0aa0be0e/XNfrd6cjpKlxV_8HcQjbr_a3801dc8a16d453a9c0ed63679cf2075.png",
+    "look__manya__12__bed_morning::dim late evening in the bedroom, bedside lamp, soft warm low light::wearing an oversized sleep t-shirt, lying propped on pillows, resting her head heavily on one hand, eyes half closed with visible tiredness, no smile, her other arm reaching toward the camera and cropped by the frame edge at the wrist, the phone itself is NOT visible in the frame": "https://v3b.fal.media/files/b/0aa0be27/4ru97KMKsLBRQOxlbEXCl_0dc24dad63144802987e545296e9216d.png",
+    "look__manya__14__plain_wall::dusk indoor light in the hallway, single warm ceiling bulb, noticeably dim but face clearly visible::wearing a dark hoodie, index finger raised to her lips in a hushing gesture, sly narrowed eyes, closed-lip smirk, her other arm reaching toward the camera and cropped by the frame edge at the wrist, the phone itself is NOT visible in the frame": "https://v3b.fal.media/files/b/0aa0be32/Ck6UkbWiPJZJoLdwqpj9e_a451bdd6c2a14b2bbaa7769988b173d5.png",
+    "look__manya__11__street_entrance::overcast soft daylight outdoors near a residential entrance, flat dim light, wind in hair::wearing a light jacket, one hand raised toward her cheek in shock, eyes wide open, jaw dropped, no mug, her other arm reaching toward the camera and cropped by the frame edge at the wrist, the phone itself is NOT visible in the frame": "https://v3b.fal.media/files/b/0aa0be57/O_migdwzRmw5ebpHlrYwC_8c7d4561a2804431ab51c14ac483ef73.png",
+    "look__manya__05__mirror_close::slightly dim bathroom vanity light, even but unflattering, small shadows under chin, phone propped on the shelf::wearing a casual t-shirt with hair in a messy bun, both hands relaxed out of frame, warm gentle expression, soft kind eyes, relaxed closed-lip smile, no arms reaching toward the camera": "https://v3b.fal.media/files/b/0aa0be63/nVK3IHfBKc6pG3QGHeL_D_534b2e4738da4da7bad9333d266d3f7b.png"
   },
   "look_cache": {
     "drill::look__manya__03__sofa_evening::evening, single warm table lamp as the only light source, uneven light with soft shadows on one side of the face": "987a8166eb024f8c9795151e24e5aa58",
@@ -3281,7 +3515,14 @@
     "drill::look__manya__07__soft_window::golden hour low warm sunlight through the window, long soft shadows, selfie distance framing::one hand raised toward her cheek in shock, eyes wide open, jaw dropped, no mug, her other arm extended toward the camera holding the phone": "d3754b0b6ad34454a44b3413c4fc80d9",
     "drill::look__manya__07__soft_window::golden hour low warm sunlight through the window, long soft shadows, selfie distance framing::her free hand raised mid-gesture at chest level, nothing in her hands, eyes wide with excitement, big open smile, eyebrows raised, her other arm extended toward the camera holding the phone": "b5422c46aa9f45bba1a99daf2105f654",
     "drill::look__manya__07__soft_window::golden hour low warm sunlight through the window, long soft shadows, selfie distance framing::her free hand touching her collarbone playfully, nothing in her hands, playful teasing expression, slight smirk, head tilted a little, her other arm extended toward the camera holding the phone": "27c8961cd1db4b2cb63d4aef1a6fdd75",
-    "drill::look__manya__07__soft_window::golden hour low warm sunlight through the window, long soft shadows, selfie distance framing::holding a warm mug in one hand below her chin, her other arm extended toward the camera holding the phone": "809274cb53944f5298f7ee36b3f7e1ee"
+    "drill::look__manya__07__soft_window::golden hour low warm sunlight through the window, long soft shadows, selfie distance framing::holding a warm mug in one hand below her chin, her other arm extended toward the camera holding the phone": "809274cb53944f5298f7ee36b3f7e1ee",
+    "drill::look__manya__01__kitchen_counter::bright morning sun patches through the kitchen window, uneven light, slightly harsh shadows::wearing an oversized grey hoodie, her free hand raised mid-gesture, nothing in her hands, eyes wide with excitement, big open smile, eyebrows raised, her other arm reaching toward the camera and cropped by the frame edge at the wrist, the phone itself is NOT visible in the frame": "81f8dedc6b7e45598fe79f7b1c7707c9",
+    "drill::look__manya__05__mirror_close::casual mirror selfie in the hallway mirror, even indoor light, slightly dim::wearing a black tank top, standing at the mirror holding her phone up in one hand visible in the reflection, playful teasing expression, slight smirk, head tilted": "5c94ca18d0134bfca996c7818449e78e",
+    "drill::look__manya__10__car_close::overcast day inside the car, dim soft light, phone propped on the dashboard, static framing::wearing a denim jacket, sitting in the driver seat, chin resting on her free hand, skeptical appraising expression, slightly narrowed eyes, lips pressed together, no arms reaching toward the camera": "dc855a5ce4ea49b3badca0ecc70affcc",
+    "drill::look__manya__12__bed_morning::dim late evening in the bedroom, bedside lamp, soft warm low light::wearing an oversized sleep t-shirt, lying propped on pillows, resting her head heavily on one hand, eyes half closed with visible tiredness, no smile, her other arm reaching toward the camera and cropped by the frame edge at the wrist, the phone itself is NOT visible in the frame": "ede23f55b999476ba62dd1bce69399cf",
+    "drill::look__manya__03__sofa_evening::late evening, single warm table lamp as the only light source, uneven light, soft shadows::wearing a cozy knitted sweater, holding a warm mug in one hand below her chin, gazing down toward the mug, lips closed, no smile, her other arm reaching toward the camera and cropped by the frame edge at the wrist, the phone itself is NOT visible in the frame": "761a0cf4e8a3483298a0fcfce347b71b",
+    "drill::look__manya__11__street_entrance::overcast soft daylight outdoors near a residential entrance, flat dim light, wind in hair::wearing a light jacket, one hand raised toward her cheek in shock, eyes wide open, jaw dropped, no mug, her other arm reaching toward the camera and cropped by the frame edge at the wrist, the phone itself is NOT visible in the frame": "ff9404ff3b824630b65838b2635bfec9",
+    "drill::look__manya__05__mirror_close::slightly dim bathroom vanity light, even but unflattering, small shadows under chin, phone propped on the shelf::wearing a casual t-shirt with hair in a messy bun, both hands relaxed out of frame, warm gentle expression, soft kind eyes, relaxed closed-lip smile, no arms reaching toward the camera": "b1fd6fb71e2140749d2437165b59a3bc"
   },
   "promotions": [],
   "b1_tts": "https://api.telegram.org/file/bot8832406834:AAF92-G-V8sw-FGniH9i1nAj_y7hFn_1-0U/music/file_6.mp3",

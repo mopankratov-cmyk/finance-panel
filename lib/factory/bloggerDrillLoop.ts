@@ -247,6 +247,27 @@ const HAND_FIX2_ROWS: Array<{ id: string; pose: string; script: string; voice: {
   { id: "playful_nomug", pose: "her free hand touching her collarbone playfully, nothing in her hands, playful teasing expression, slight smirk, head tilted a little, her other arm extended toward the camera holding the phone", script: "А вот и не скажу!… [laughs] Ладно-ладно. Слушайте, уговорили.", voice: { style: 0.55, speed: 1.1 }, motion: `playful teasing energy, small head tilts, bright eyes, a short genuine laugh, lively expressions. ${SELFIE_ARM_DISCIPLINE}`, expr: "medium", hypothesis: "Игривая без реквизита + дисциплина селфи-руки (в b10_04 телефон втянуло в кадр)." },
 ];
 
+// Вердикт-разбор 07-03 («сам что думаешь»): телефон ВИДИМЫЙ в вытянутой руке — парадокс
+// (в настоящем селфи телефон и есть камера, его не видно никогда). Честная форма: рука
+// уходит К камере и обрезается кадром у запястья; телефон легитимно виден только в зеркале.
+export const SELFIE_ARM_CROP =
+  "her other arm reaching toward the camera and cropped by the frame edge at the wrist, the phone itself is NOT visible in the frame";
+
+// Батч 12: ось framing = РАЗНООБРАЗИЕ. Главный вывод разбора: единичный клип добит,
+// палится ОДНООБРАЗИЕ ленты (одно окно/кардиган/закат во всех клипах). Проверенные
+// рецепты регистров переносятся на другие сцены паспорта + другая одежда + разный свет
+// (включая «некрасивый» бытовой — золотой час в каждом клипе палится сам по себе).
+const VARIETY_ROWS: Array<{ id: string; look: string; hint: string; pose: string; script: string; voice: { style: number; speed: number }; motion: string; expr: "low" | "medium"; hypothesis: string }> = [
+  { id: "kitchen_excited", look: "look__manya__01__kitchen_counter", hint: "bright morning sun patches through the kitchen window, uneven light, slightly harsh shadows", pose: `wearing an oversized grey hoodie, her free hand raised mid-gesture, nothing in her hands, eyes wide with excitement, big open smile, eyebrows raised, ${SELFIE_ARM_CROP}`, script: "[excited] Так, СТОП. Я не могу молчать! Вы должны это знать. Короче, слушайте!", voice: { style: 0.55, speed: 1.15 }, motion: `energetic selfie video message, expressive face following the speech, her free hand gestures naturally while talking, quick natural head movements. ${SELFIE_ARM_DISCIPLINE}`, expr: "medium", hypothesis: "Восторг на кухне в худи: рецепт переносится на другую сцену+одежду? Рука обрезана у запястья." },
+  { id: "mirror_playful", look: "look__manya__05__mirror_close", hint: "casual mirror selfie in the hallway mirror, even indoor light, slightly dim", pose: "wearing a black tank top, standing at the mirror holding her phone up in one hand visible in the reflection, playful teasing expression, slight smirk, head tilted", script: "А вот и не скажу!… [laughs] Ладно-ладно. Слушайте, уговорили.", voice: { style: 0.55, speed: 1.1 }, motion: "playful teasing energy in front of the mirror, small head tilts, bright eyes, a short genuine laugh, the phone stays steady in her hand", expr: "medium", hypothesis: "Зеркальное селфи — единственная рамка, где телефон в кадре легитимен (+ ugc-рычаг b1)." },
+  { id: "car_skeptic", look: "look__manya__10__car_close", hint: "overcast day inside the car, dim soft light, phone propped on the dashboard, static framing", pose: "wearing a denim jacket, sitting in the driver seat, chin resting on her free hand, skeptical appraising expression, slightly narrowed eyes, lips pressed together, no arms reaching toward the camera", script: "Честно? Я не верила. Вообще не верила. …Ну и зря, как оказалось.", voice: { style: 0.45, speed: 1.0 }, motion: "starts with a barely visible head shake of disbelief, honest slightly amused expression, then calms into direct delivery, natural blink", expr: "medium", hypothesis: "Скептик в машине с подпёртым телефоном: рук к камере нет вообще — нулевой риск анатомии." },
+  { id: "lamp_quiet", look: "look__manya__03__sofa_evening", hint: "late evening, single warm table lamp as the only light source, uneven light, soft shadows", pose: `wearing a cozy knitted sweater, holding a warm mug in one hand below her chin, gazing down toward the mug, lips closed, no smile, ${SELFIE_ARM_CROP}`, script: "[whispers] Так… я вам сейчас кое-что расскажу. Только тихо, ладно? [whispers] Слушайте.", voice: { style: 0.5, speed: 0.95 }, motion: `calm quiet intimate video message, soft subdued facial expressions, small gentle mouth movements, slow blinks, minimal head movement, no big smiles. ${SELFIE_ARM_DISCIPLINE}`, expr: "low", hypothesis: "Тихий канон при вечерней лампе (семья победителей b1) + рука обрезана у запястья." },
+  { id: "street_surprised", look: "look__manya__11__street_entrance", hint: "overcast soft daylight outdoors near a residential entrance, flat dim light, wind in hair", pose: `wearing a light jacket, one hand raised toward her cheek in shock, eyes wide open, jaw dropped, no mug, ${SELFIE_ARM_CROP}`, script: "СТОП! Нет, вы это ВИДЕЛИ?! Я в шоке. Реально в шоке.", voice: { style: 0.55, speed: 1.1 }, motion: `starts already mid-reaction with wide eyes, emphatic shocked delivery, hand near her face, then settles into fast excited explanation. ${SELFIE_ARM_DISCIPLINE}`, expr: "medium", hypothesis: "Шок на улице: пасмурный «некрасивый» свет против золотого часа — где UGC честнее?" },
+  { id: "bathroom_warm", look: "look__manya__05__mirror_close", hint: "slightly dim bathroom vanity light, even but unflattering, small shadows under chin, phone propped on the shelf", pose: "wearing a casual t-shirt with hair in a messy bun, both hands relaxed out of frame, warm gentle expression, soft kind eyes, relaxed closed-lip smile, no arms reaching toward the camera", script: BATCH_SCRIPT[1], voice: { style: 0.4, speed: 1.05 }, motion: CANON_MOTION, expr: "medium", hypothesis: "Тёплая подруга в ванной с подпёртым телефоном: бытовой невыгодный свет — максимум честности." },
+  { id: "bed_tired", look: "look__manya__12__bed_morning", hint: "dim late evening in the bedroom, bedside lamp, soft warm low light", pose: `wearing an oversized sleep t-shirt, lying propped on pillows, resting her head heavily on one hand, eyes half closed with visible tiredness, no smile, ${SELFIE_ARM_CROP}`, script: "Уф… ну и день. [exhales] Ладно. Слушайте, пока не забыла.", voice: { style: 0.5, speed: 0.9 }, motion: `very tired quiet video message, occasionally closes her eyes for a full second mid-sentence, slow heavy blinks, subdued face, minimal movement, no smiles. ${SELFIE_ARM_DISCIPLINE}`, expr: "low", hypothesis: "Усталость в кровати: родная сцена регистра (лампа чуть светлее — в b1 темнота ломала identity)." },
+  { id: "wall_consp", look: "look__manya__14__plain_wall", hint: "dusk indoor light in the hallway, single warm ceiling bulb, noticeably dim but face clearly visible", pose: `wearing a dark hoodie, index finger raised to her lips in a hushing gesture, sly narrowed eyes, closed-lip smirk, ${SELFIE_ARM_CROP}`, script: "Тсс… никому, ладно? Я кое-что нашла. Такое не рассказывают.", voice: { style: 0.5, speed: 0.95 }, motion: `conspiratorial intimate delivery, she lowers the finger from her lips and speaks quietly, sly eyes, no big smiles. ${SELFIE_ARM_DISCIPLINE}`, expr: "medium", hypothesis: "Заговорщица в сумерках коридора: жест-«тсс» на нижней границе света b1." },
+];
+
 // Батч 4: ось скрипт-стиля — 8 манер речи на канон-сетапе (кружка+золотой час),
 // варьируются ТОЛЬКО текст и голосовые параметры. Уроки b2: теги v3 исполняются.
 const SCRIPT_STYLE_ROWS: Array<{ id: string; script: string; voice: { style: number; speed: number }; hypothesis: string }> = [
@@ -301,6 +322,35 @@ export function buildDrillBatch(batch: number, axis: DrillAxis): DrillBatchPlan 
       });
     }
     return { ok: true, batch, axis, persona: "manya", clips, warnings: ["Варьируется ТОЛЬКО лицо стартового кадра; ряды 1-6 сравнивать с b05_03, ряды 7-8 — с контролями."] };
+  }
+  if (axis === "framing") {
+    const clips: DrillClipPlan[] = VARIETY_ROWS.map((row, i) => ({
+      clip_id: `drill_b${String(batch).padStart(2, "0")}_${String(i + 1).padStart(2, "0")}_${row.id}`,
+      batch, axis, role: "explore" as const,
+      look_name: row.look,
+      degloss_hint: row.hint,
+      pose_hint: row.pose,
+      script: row.script,
+      voice_emotion_speed: row.voice,
+      motion_prompt: row.motion,
+      expressiveness: row.expr,
+      hypothesis: row.hypothesis,
+    }));
+    for (let c = 1; c <= 2; c++) {
+      clips.push({
+        clip_id: `drill_b${String(batch).padStart(2, "0")}_ctrl${c}`,
+        batch, axis, role: "control" as const,
+        look_name: DRILL_BEST_KNOWN.look_name,
+        degloss_hint: DRILL_BEST_KNOWN.degloss_hint,
+        pose_hint: c === 1 ? DRILL_BEST_KNOWN.pose_hint : DRILL_QUIET_CANON.pose_hint,
+        script: c === 1 ? BATCH_SCRIPT[1] : DRILL_QUIET_CANON.script,
+        voice_emotion_speed: c === 1 ? DRILL_BEST_KNOWN.voice : DRILL_QUIET_CANON.voice,
+        motion_prompt: c === 1 ? DRILL_BEST_KNOWN.motion_prompt : DRILL_QUIET_CANON.motion_prompt,
+        expressiveness: c === 1 ? DRILL_BEST_KNOWN.expressiveness : DRILL_QUIET_CANON.expressiveness,
+        hypothesis: c === 1 ? "Контроль: живой канон (однорукий)." : "Контроль: тихий канон (однорукий).",
+      });
+    }
+    return { ok: true, batch, axis, persona: "manya", clips, warnings: ["Разнообразие: сцены/одежда/свет паспорта на верифицированных рецептах; чек глазами: руки + телефон-парадокс."] };
   }
   if (axis === "register_fix") {
     const rows = batch >= 11 ? HAND_FIX2_ROWS : batch >= 10 ? HAND_FIX_ROWS : batch >= 9 ? REGISTER_FIX2_ROWS : REGISTER_FIX_ROWS;

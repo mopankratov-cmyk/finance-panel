@@ -1,0 +1,36 @@
+{
+  "broll_cache": {
+    "https://v3b.fal.media/files/b/0aa0b997/66kIW00y0uPvaVoJGw191_2838572774404001a7dcc113d5aed816.png::extreme close-up of her hands cradling the warm ceramic mug, gentle steam rising, slow subtle handheld drift, warm golden hour window light": "https://v3b.fal.media/files/b/0aa0bdf8/j-UKEUaTN-dkY0pEYkg_X_output.mp4",
+    "https://v3b.fal.media/files/b/0aa0b997/66kIW00y0uPvaVoJGw191_2838572774404001a7dcc113d5aed816.png::camera slowly pans away from her toward the bright window with sheer curtains, long golden hour shadows moving across the wall, she stays still sipping from the mug": "https://v3b.fal.media/files/b/0aa0be04/yGEoZpW35_XC78fdrcnJJ_output.mp4",
+    "https://v3b.fal.media/files/b/0aa0ba0e/NZAgDKdPv3X0av3ICGgtV_801f0b3143a440fbb27573ac206429a5.png::quick energetic handheld whip toward the sunlit living room behind her, sun patches on the floor and plants on shelves, lively amateur phone camera movement": "https://v3b.fal.media/files/b/0aa0be0e/kHOZGmUahbvvfZxCxx1DS_output.mp4",
+    "https://v3b.fal.media/files/b/0aa0be3e/Qw_ZI7PO1sZ9_I0bzd0iy_52e735ef55394e1e9327a8f8b533460f.png::static close-up of the steaming mug on the windowsill, gentle steam rising, subtle handheld micro-shake as if she holds the phone pointing at it, golden hour light, no people": "https://v3b.fal.media/files/b/0aa0be53/tjHTb1ztKCMnoAE_gdy8i_output.mp4",
+    "https://v3b.fal.media/files/b/0aa0be41/bD-qkmS_br8Dd0MJ7o9M6_19877801269947deacef2cc401e2fbb4.png::slow handheld pan across the empty living room with long golden hour shadows moving on the floor, glowing curtains, as if she turned the phone to show the room, no people": "https://v3b.fal.media/files/b/0aa0be5a/OXBf0RW0SVvSG3UgwXBmP_output.mp4",
+    "https://v3b.fal.media/files/b/0aa0be44/DGOeOwbX1L_Unv8bNqCal_893de3ea991b43b5b226052766605249.png::quick energetic handheld sweep across the sunlit living room, sun patches on the wooden floor, plants on shelves, as if she flipped the phone to show the room, no people": "https://v3b.fal.media/files/b/0aa0be64/Rjq2k-YZt4yQjUVqJbLvr_output.mp4"
+  },
+  "reels": {
+    "reel_manya_secret_v1": {
+      "out": "/tmp/ugc-factory-reels/reel_manya_secret_v1.mp4",
+      "duration": 6.1,
+      "broll": 2,
+      "date": "2026-07-03"
+    },
+    "reel_manya_stop_v1": {
+      "out": "/tmp/ugc-factory-reels/reel_manya_stop_v1.mp4",
+      "duration": 5.63,
+      "broll": 1,
+      "date": "2026-07-03"
+    },
+    "reel_manya_secret_v2": {
+      "out": "/tmp/ugc-factory-reels/reel_manya_secret_v2.mp4",
+      "duration": 6.1,
+      "broll": 2,
+      "date": "2026-07-03"
+    },
+    "reel_manya_stop_v2": {
+      "out": "/tmp/ugc-factory-reels/reel_manya_stop_v2.mp4",
+      "duration": 5.63,
+      "broll": 1,
+      "date": "2026-07-03"
+    }
+  }
+}
