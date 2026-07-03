@@ -3332,3 +3332,24 @@
   - `POST /api/factory/jobs/reels-brain-bulk-ingest` с `platforms=["youtube"]`, `providers=["youtube"]`
   - результат: `found=5`, `enriched=5`, `error=null`, `best_provider="youtube"`, `estimated_spend_usd=0.035`
 - Вывод: YouTube API-ветка жива и годится для роста корпуса; raw-media разбор Shorts остается отдельной задачей и больше не блокирует общий цикл обучения.
+
+## 2026-07-03 — Deep-analysis cleanup: расширены transcript timeout'ы и очищен ложный Instagram media слой
+
+- Проблема 1: mixed worker был жив, но transcript-only путь на Railway часто падал по таймауту до того, как FAL Whisper успевал вернуть текст.
+- Фикс:
+  - `lib/factory/reelsBrainOfflineWorker.mjs`: таймауты вынесены в env-aware константы и увеличены:
+    - `REELS_BRAIN_FAL_REHOST_FETCH_TIMEOUT_MS` → default `180000`
+    - `REELS_BRAIN_FAL_STORAGE_PUT_TIMEOUT_MS` → default `180000`
+    - `REELS_BRAIN_FAL_WHISPER_TIMEOUT_MS` → default `120000`
+    - `REELS_BRAIN_YTDLP_DOWNLOAD_TIMEOUT_MS` → default `240000`
+    - `REELS_BRAIN_HTTP_JSON_TIMEOUT_MS` → default `180000`
+  - цель: даже без `ffprobe/ffmpeg` увеличить шанс на `transcript_ready` через transcript-only ветку.
+- Проблема 2: в `audio_visual_readiness` Instagram показывал `with_media_locators=60`, но это были не видео, а старые `jpg/webp/heic` image-only locators. Они раздували готовность слоя и не давали честно понимать прогресс.
+- Data repair:
+  - через production Supabase reset'нуты `60` Instagram rows с image-only `reels_seed.media_locator_candidates`;
+  - `pipeline.media_status` переведен обратно в `media_missing`, чтобы rows снова попали в нормальный `media-backfill`.
+- Проверка после repair:
+  - `audio_visual_readiness.with_media_locators` упал `98 -> 38`
+  - `instagram.with_media_locators` упал `60 -> 0`
+  - витрина readiness теперь честно показывает, что deep-ready слой фактически держится на TikTok, а Instagram требует повторного video backfill.
+- Параллельно для Railway service обновлен `NIXPACKS_PKGS` на `ffmpeg-full yt-dlp` и запущен rebuild, чтобы дожать настоящий local audio toolchain (`ffmpeg_bin/ffprobe_bin` вместо `null`).
