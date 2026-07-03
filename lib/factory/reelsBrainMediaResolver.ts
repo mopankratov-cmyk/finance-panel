@@ -134,6 +134,23 @@ function pickFormatUrl(payload: Record<string, unknown>): string | null {
   return null;
 }
 
+function normalizeYtDlpTarget(url: string): string {
+  const target = text(url, 1500);
+  if (!target) return "";
+  try {
+    const parsed = new URL(target);
+    if (/tiktok\.com$/i.test(parsed.hostname) && /\/v\/[^/]+\.html$/i.test(parsed.pathname)) {
+      const shareItemId = text(parsed.searchParams.get("share_item_id"), 120);
+      if (shareItemId && /^\d{8,24}$/.test(shareItemId)) {
+        return `https://www.tiktok.com/embed/v2/${shareItemId}`;
+      }
+    }
+    return parsed.toString();
+  } catch {
+    return target;
+  }
+}
+
 export async function hasYtDlpBinary(): Promise<boolean> {
   try {
     await execFileAsync("yt-dlp", ["--version"], { timeout: 5000, maxBuffer: 256 * 1024 });
@@ -161,7 +178,7 @@ export async function hasFfprobeBinary(): Promise<boolean> {
 }
 
 export async function resolveMediaLocatorViaYtDlp(url: string): Promise<ReelsBrainResolvedMedia | null> {
-  const target = text(url, 1500);
+  const target = normalizeYtDlpTarget(url);
   if (!target) return null;
   try {
     const { stdout } = await execFileAsync(
