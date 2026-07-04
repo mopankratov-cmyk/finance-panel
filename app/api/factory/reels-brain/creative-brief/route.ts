@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
+import { internalFetch } from "@/lib/internalFetch";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { selectCreativeBriefFromSegmentLayers } from "@/lib/factory/reelsBrainCreativeBriefSource";
 import { selectCreativeBriefBrainWithTrust } from "@/lib/factory/reelsBrainCreativeBrief";
 import { buildReelsBrainDecisionPack } from "@/lib/factory/reelsBrainDecisionPack";
 import type { ReelsBrainMetricRow } from "@/lib/factory/reelsBrainOperatingSystem";
@@ -85,6 +87,23 @@ export async function GET(req: NextRequest) {
       .from("post_metrics")
       .select("recipe_id,platform,views,watch_rate,hook_rate,hold_rate,completion_rate,ctr_card,saves,marketplace_orders,revenue,posted_at,pulled_at")
       .limit(300);
+
+    const reportUrl = new URL("/api/factory/reels-brain/report", req.nextUrl.origin);
+    reportUrl.searchParams.set("niches", niche);
+    reportUrl.searchParams.set("limit", "40");
+    const reportResponse = await internalFetch(reportUrl);
+    const reportBody = await reportResponse.json().catch(() => ({}));
+    if (reportResponse.ok) {
+      const segmentBrief = selectCreativeBriefFromSegmentLayers({
+        niche,
+        platform,
+        segmentSolutions: reportBody.segment_solutions || null,
+        segmentSolutionMatrix: reportBody.segment_solution_matrix || null,
+      });
+      if (segmentBrief) {
+        return NextResponse.json(segmentBrief, { headers: { "Cache-Control": "no-store" } });
+      }
+    }
 
     const playbook = ((data as { playbook?: Record<string, unknown> }[] | null)?.[0]?.playbook || {}) as Record<string, unknown>;
     const root = (playbook.reels_brain_patterns || {}) as Record<string, unknown>;

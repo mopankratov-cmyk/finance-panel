@@ -9,12 +9,14 @@ const governor = readFileSync("app/api/factory/reels-brain/cost-governor/route.t
 const report = readFileSync("app/api/factory/reels-brain/report/route.ts", "utf8");
 const learningPlan = readFileSync("app/api/factory/reels-brain/learning-plan/route.ts", "utf8");
 const creativeExports = readFileSync("app/api/factory/reels-brain/creative-exports/route.ts", "utf8");
+const creativeBrief = readFileSync("app/api/factory/reels-brain/creative-brief/route.ts", "utf8");
 const readinessAudit = readFileSync("app/api/factory/reels-brain/readiness-audit/route.ts", "utf8");
 const decisionSnapshot = readFileSync("app/api/factory/reels-brain/decision-snapshot/route.ts", "utf8");
 const decisionSnapshotBuilder = readFileSync("lib/factory/reelsBrainDecisionSnapshot.ts", "utf8");
 const segmentSolutions = readFileSync("app/api/factory/reels-brain/segment-solutions/route.ts", "utf8");
 const segmentSolutionsBuilder = readFileSync("lib/factory/reelsBrainSegmentSolutions.ts", "utf8");
 const segmentSolutionMatrixBuilder = readFileSync("lib/factory/reelsBrainSegmentSolutionMatrix.ts", "utf8");
+const creativeBriefSourceBuilder = readFileSync("lib/factory/reelsBrainCreativeBriefSource.ts", "utf8");
 const segmentStabilityAudit = readFileSync("app/api/factory/reels-brain/stability-audit/route.ts", "utf8");
 const segmentStabilityAuditBuilder = readFileSync("lib/factory/reelsBrainSegmentStabilityAudit.ts", "utf8");
 const cockpit = readFileSync("app/agent/reels-brain/ReelsBrainPixelCockpit.tsx", "utf8");
@@ -50,6 +52,7 @@ ok(!/POST\s*\(/.test(governor), "cost-governor route is read-only");
 ok(/internalFetch/.test(creativeExports) && /segment_creative_exports/.test(creativeExports), "creative-exports route reads creative export bundles from learning-economics");
 ok(/lane/.test(creativeExports) && /niche/.test(creativeExports) && /platform/.test(creativeExports), "creative-exports route supports lane, niche and platform filters");
 ok(!/POST\s*\(/.test(creativeExports), "creative-exports route is read-only");
+ok(/internalFetch/.test(creativeBrief) && /segment_solution_matrix/.test(creativeBrief) && /selectCreativeBriefFromSegmentLayers/.test(creativeBrief) && /platform_matrix/.test(creativeBriefSourceBuilder), "creative-brief route prefers trust-aware segment layers before old playbook fallback");
 
 ok(/internalFetch/.test(readinessAudit) && /segment_readiness_audit/.test(readinessAudit), "readiness-audit route reads readiness audit from learning-economics");
 ok(/verdict/.test(readinessAudit) && /niche/.test(readinessAudit) && /platform/.test(readinessAudit), "readiness-audit route supports verdict, niche and platform filters");
