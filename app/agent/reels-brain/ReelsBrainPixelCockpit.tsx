@@ -259,6 +259,7 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
     const hypothesisBankGroups = (learning?.hypothesis_bank_groups || {}) as JsonRecord;
     const briefPack = (learning?.brief_pack || {}) as JsonRecord;
     const briefPackGroups = (learning?.brief_pack_groups || {}) as JsonRecord;
+    const segmentTrust = (learning?.segment_trust || {}) as JsonRecord;
     const actionPack = (learning?.action_pack || {}) as JsonRecord;
     const actionPackGroups = (learning?.action_pack_groups || {}) as JsonRecord;
     const nicheComparison = (learning?.niche_comparison || []) as JsonRecord[];
@@ -709,6 +710,7 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
       hypothesisBankGroups,
       briefPack,
       briefPackGroups,
+      segmentTrust,
       actionPack,
       actionPackGroups,
       nicheComparison,
@@ -1916,7 +1918,17 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
                   <div className="rb-three" style={{ marginTop: 10 }}>
                     {((vm.briefPackGroups.by_niche || []) as JsonRecord[]).slice(0, 3).map((group, index) => (
                       <div className="rb-pattern" key={`brief-pack-niche:${group.niche || index}`}>
-                        <div className="rb-pill">{NICHE_LABELS[group.niche] || group.niche || "mixed"}</div>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                          <div className="rb-pill">{NICHE_LABELS[group.niche] || group.niche || "mixed"}</div>
+                          {(() => {
+                            const trust = (((vm.segmentTrust.by_niche || []) as JsonRecord[]).find((item) => item.niche === group.niche) || {}) as JsonRecord;
+                            return trust.status ? (
+                              <div className="rb-pill" style={{ background: decisionTone(String(trust.status === "ready" ? "scale" : trust.status === "warming" ? "control" : "watch")).bg, borderColor: decisionTone(String(trust.status === "ready" ? "scale" : trust.status === "warming" ? "control" : "watch")).bd, color: decisionTone(String(trust.status === "ready" ? "scale" : trust.status === "warming" ? "control" : "watch")).fg }}>
+                                trust {compact(trust.score)}% · {String(trust.status)}
+                              </div>
+                            ) : null;
+                          })()}
+                        </div>
                         <h3 style={{ marginTop: 10 }}>{group.primary?.title || "Ждём niche brief"}</h3>
                         <p>{group.primary?.creative_brief?.hook || group.primary?.hook || "Сильный hook появится после накопления корпуса."}</p>
                       </div>
@@ -1930,7 +1942,17 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
                   <div className="rb-three" style={{ marginTop: 10 }}>
                     {((vm.briefPackGroups.by_platform || []) as JsonRecord[]).slice(0, 3).map((group, index) => (
                       <div className="rb-pattern" key={`brief-pack-platform:${group.platform || index}`}>
-                        <div className="rb-pill">{group.platform || "mixed"}</div>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                          <div className="rb-pill">{group.platform || "mixed"}</div>
+                          {(() => {
+                            const trust = (((vm.segmentTrust.by_platform || []) as JsonRecord[]).find((item) => item.platform === group.platform) || {}) as JsonRecord;
+                            return trust.status ? (
+                              <div className="rb-pill" style={{ background: decisionTone(String(trust.status === "ready" ? "scale" : trust.status === "warming" ? "control" : "watch")).bg, borderColor: decisionTone(String(trust.status === "ready" ? "scale" : trust.status === "warming" ? "control" : "watch")).bd, color: decisionTone(String(trust.status === "ready" ? "scale" : trust.status === "warming" ? "control" : "watch")).fg }}>
+                                trust {compact(trust.score)}% · {String(trust.status)}
+                              </div>
+                            ) : null;
+                          })()}
+                        </div>
                         <h3 style={{ marginTop: 10 }}>{group.primary?.title || "Ждём platform brief"}</h3>
                         <p>{group.primary?.creative_brief?.hook || group.primary?.hook || "Сильный hook появится после накопления корпуса."}</p>
                       </div>
@@ -2071,6 +2093,14 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
                         <div className="rb-pattern" key={`grouped-hypo-niche:${group.niche || index}`}>
                           <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
                             <div className="rb-pill">{NICHE_LABELS[group.niche] || group.niche || "mixed"}</div>
+                            {(() => {
+                              const trust = (((vm.segmentTrust.by_niche || []) as JsonRecord[]).find((item) => item.niche === group.niche) || {}) as JsonRecord;
+                              return trust.status ? (
+                                <div className="rb-pill" style={{ background: decisionTone(String(trust.status === "ready" ? "scale" : trust.status === "warming" ? "control" : "watch")).bg, borderColor: decisionTone(String(trust.status === "ready" ? "scale" : trust.status === "warming" ? "control" : "watch")).bd, color: decisionTone(String(trust.status === "ready" ? "scale" : trust.status === "warming" ? "control" : "watch")).fg }}>
+                                  trust {compact(trust.score)}% · {String(trust.status)}
+                                </div>
+                              ) : null;
+                            })()}
                             <div className="rb-pill" style={{ background: decisionTone(String(top.decision || "watch")).bg, borderColor: decisionTone(String(top.decision || "watch")).bd, color: decisionTone(String(top.decision || "watch")).fg }}>
                               {decisionTone(String(top.decision || "watch")).label}
                             </div>
@@ -2093,6 +2123,14 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
                         <div className="rb-pattern" key={`grouped-hypo-platform:${group.platform || index}`}>
                           <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
                             <div className="rb-pill">{group.platform || "mixed"}</div>
+                            {(() => {
+                              const trust = (((vm.segmentTrust.by_platform || []) as JsonRecord[]).find((item) => item.platform === group.platform) || {}) as JsonRecord;
+                              return trust.status ? (
+                                <div className="rb-pill" style={{ background: decisionTone(String(trust.status === "ready" ? "scale" : trust.status === "warming" ? "control" : "watch")).bg, borderColor: decisionTone(String(trust.status === "ready" ? "scale" : trust.status === "warming" ? "control" : "watch")).bd, color: decisionTone(String(trust.status === "ready" ? "scale" : trust.status === "warming" ? "control" : "watch")).fg }}>
+                                  trust {compact(trust.score)}% · {String(trust.status)}
+                                </div>
+                              ) : null;
+                            })()}
                             <div className="rb-pill" style={{ background: marketSignalTone(String(top.market_status || "no_feedback")).bg, borderColor: marketSignalTone(String(top.market_status || "no_feedback")).bd, color: marketSignalTone(String(top.market_status || "no_feedback")).fg }}>
                               {marketSignalTone(String(top.market_status || "no_feedback")).label}
                             </div>

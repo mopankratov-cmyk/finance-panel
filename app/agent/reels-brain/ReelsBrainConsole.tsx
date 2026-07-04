@@ -979,6 +979,35 @@ type LearningEconomicsResponse = {
       };
     }[];
   };
+  segment_trust?: {
+    by_niche?: {
+      niche: string;
+      score: number;
+      status: "ready" | "warming" | "weak";
+      confidence: "high" | "medium" | "low";
+      analyzed_rate: number;
+      total_videos: number;
+      analyzed_videos: number;
+      patterns: number;
+      generator_ready_patterns: number;
+      strong_platforms: string[];
+      weak_platforms: string[];
+      note: string;
+    }[];
+    by_platform?: {
+      platform: string;
+      score: number;
+      status: "ready" | "warming" | "weak";
+      confidence: "high" | "medium" | "low";
+      analyzed_rate: number;
+      total_videos: number;
+      analyzed_videos: number;
+      patterns: number;
+      generator_ready_patterns: number;
+      strongest_niches: string[];
+      note: string;
+    }[];
+  };
   action_pack?: {
     primary?: {
       rank: number;
@@ -1445,6 +1474,12 @@ function marketSignalCopy(status: "proven" | "promising" | "weak" | "no_feedback
   return { label: "no feedback", tone: "border-slate-200 bg-slate-50 text-slate-600" };
 }
 
+function segmentTrustCopy(status: "ready" | "warming" | "weak" | undefined) {
+  if (status === "ready") return { label: "trust ready", tone: "border-emerald-200 bg-emerald-50 text-emerald-700" };
+  if (status === "warming") return { label: "trust warming", tone: "border-cyan-200 bg-cyan-50 text-cyan-800" };
+  return { label: "trust weak", tone: "border-amber-200 bg-amber-50 text-amber-800" };
+}
+
 function capabilityTone(status: string) {
   if (status === "live") return "border-emerald-200 bg-emerald-50 text-emerald-700";
   if (status === "payload_ready" || status === "ui_ready") return "border-cyan-200 bg-cyan-50 text-cyan-800";
@@ -1729,8 +1764,11 @@ export default function ReelsBrainPage() {
   const hypothesisBankGroups = learningEconomics?.hypothesis_bank_groups || null;
   const briefPack = learningEconomics?.brief_pack || null;
   const briefPackGroups = learningEconomics?.brief_pack_groups || null;
+  const segmentTrust = learningEconomics?.segment_trust || null;
   const actionPack = learningEconomics?.action_pack || null;
   const actionPackGroups = learningEconomics?.action_pack_groups || null;
+  const segmentTrustByNiche = new Map((segmentTrust?.by_niche || []).map((row) => [row.niche, row]));
+  const segmentTrustByPlatform = new Map((segmentTrust?.by_platform || []).map((row) => [row.platform, row]));
   const patternDetailById = new Map(patternDetails.map((item) => [item.id, item]));
   const sourceReferences = learningEconomics?.insights?.source_references || [];
   const sourceMap = learningEconomics?.insights?.source_map || [];
@@ -3198,6 +3236,14 @@ export default function ReelsBrainPage() {
                 <div className="mt-3 grid gap-3 lg:grid-cols-3">
                   {briefPackGroups.by_niche.slice(0, 3).map((group) => (
                     <div key={`brief-niche:${group.niche}`} className="rounded-2xl border border-slate-200 bg-white p-4">
+                      {(() => {
+                        const trust = segmentTrustByNiche.get(group.niche);
+                        return trust ? (
+                          <div className={`mb-3 inline-flex rounded-full border px-2.5 py-1 text-xs font-black ${segmentTrustCopy(trust.status).tone}`}>
+                            {segmentTrustCopy(trust.status).label} · {compactNumber(trust.score)}%
+                          </div>
+                        ) : null;
+                      })()}
                       <div className="flex items-start justify-between gap-2">
                         <div>
                           <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-400">{NICHE_LABELS[group.niche] || group.niche || "Mixed niche"}</p>
@@ -3208,6 +3254,9 @@ export default function ReelsBrainPage() {
                         </span>
                       </div>
                       <p className="mt-3 text-xs leading-5 text-slate-600">{group.primary?.creative_brief?.hook || group.primary?.hook || "Сильный hook появится после накопления корпуса."}</p>
+                      {segmentTrustByNiche.get(group.niche)?.note ? (
+                        <p className="mt-2 text-xs text-slate-500">{segmentTrustByNiche.get(group.niche)?.note}</p>
+                      ) : null}
                     </div>
                   ))}
                 </div>
@@ -3227,6 +3276,14 @@ export default function ReelsBrainPage() {
                 <div className="mt-3 grid gap-3 lg:grid-cols-3">
                   {briefPackGroups.by_platform.slice(0, 3).map((group) => (
                     <div key={`brief-platform:${group.platform}`} className="rounded-2xl border border-slate-200 bg-white p-4">
+                      {(() => {
+                        const trust = segmentTrustByPlatform.get(group.platform);
+                        return trust ? (
+                          <div className={`mb-3 inline-flex rounded-full border px-2.5 py-1 text-xs font-black ${segmentTrustCopy(trust.status).tone}`}>
+                            {segmentTrustCopy(trust.status).label} · {compactNumber(trust.score)}%
+                          </div>
+                        ) : null;
+                      })()}
                       <div className="flex items-start justify-between gap-2">
                         <div>
                           <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-400">{titlePlatform(group.platform || "tiktok")}</p>
@@ -3237,6 +3294,9 @@ export default function ReelsBrainPage() {
                         </span>
                       </div>
                       <p className="mt-3 text-xs leading-5 text-slate-600">{group.primary?.creative_brief?.hook || group.primary?.hook || "Сильный hook появится после накопления корпуса."}</p>
+                      {segmentTrustByPlatform.get(group.platform)?.note ? (
+                        <p className="mt-2 text-xs text-slate-500">{segmentTrustByPlatform.get(group.platform)?.note}</p>
+                      ) : null}
                     </div>
                   ))}
                 </div>
@@ -3337,6 +3397,14 @@ export default function ReelsBrainPage() {
                 <div className="mt-3 grid gap-3 lg:grid-cols-3">
                   {actionPackGroups.by_niche.slice(0, 3).map((item: any) => (
                     <div key={`niche-pack:${item.niche}`} className="rounded-2xl border border-slate-200 bg-white p-4">
+                      {(() => {
+                        const trust = segmentTrustByNiche.get(item.niche);
+                        return trust ? (
+                          <div className={`mb-3 inline-flex rounded-full border px-2.5 py-1 text-xs font-black ${segmentTrustCopy(trust.status).tone}`}>
+                            {segmentTrustCopy(trust.status).label} · {compactNumber(trust.score)}%
+                          </div>
+                        ) : null;
+                      })()}
                       <div className="flex items-start justify-between gap-2">
                         <div>
                           <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-400">
@@ -3376,6 +3444,14 @@ export default function ReelsBrainPage() {
                 <div className="mt-3 grid gap-3 lg:grid-cols-3">
                   {actionPackGroups.by_platform.slice(0, 3).map((item: any) => (
                     <div key={`platform-pack:${item.platform}`} className="rounded-2xl border border-slate-200 bg-white p-4">
+                      {(() => {
+                        const trust = segmentTrustByPlatform.get(item.platform);
+                        return trust ? (
+                          <div className={`mb-3 inline-flex rounded-full border px-2.5 py-1 text-xs font-black ${segmentTrustCopy(trust.status).tone}`}>
+                            {segmentTrustCopy(trust.status).label} · {compactNumber(trust.score)}%
+                          </div>
+                        ) : null;
+                      })()}
                       <div className="flex items-start justify-between gap-2">
                         <div>
                           <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-400">
@@ -3465,6 +3541,14 @@ export default function ReelsBrainPage() {
                     const top = group.cards?.[0];
                     return (
                       <div key={`hypo-niche:${group.niche}`} className="rounded-2xl border border-slate-200 bg-white p-4">
+                        {(() => {
+                          const trust = segmentTrustByNiche.get(group.niche);
+                          return trust ? (
+                            <div className={`mb-3 inline-flex rounded-full border px-2.5 py-1 text-xs font-black ${segmentTrustCopy(trust.status).tone}`}>
+                              {segmentTrustCopy(trust.status).label} · {compactNumber(trust.score)}%
+                            </div>
+                          ) : null;
+                        })()}
                         <div className="flex items-start justify-between gap-2">
                           <div>
                             <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-400">{NICHE_LABELS[group.niche] || group.niche || "Mixed niche"}</p>
@@ -3505,6 +3589,14 @@ export default function ReelsBrainPage() {
                     const top = group.cards?.[0];
                     return (
                       <div key={`hypo-platform:${group.platform}`} className="rounded-2xl border border-slate-200 bg-white p-4">
+                        {(() => {
+                          const trust = segmentTrustByPlatform.get(group.platform);
+                          return trust ? (
+                            <div className={`mb-3 inline-flex rounded-full border px-2.5 py-1 text-xs font-black ${segmentTrustCopy(trust.status).tone}`}>
+                              {segmentTrustCopy(trust.status).label} · {compactNumber(trust.score)}%
+                            </div>
+                          ) : null;
+                        })()}
                         <div className="flex items-start justify-between gap-2">
                           <div>
                             <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-400">{titlePlatform(group.platform || "tiktok")}</p>

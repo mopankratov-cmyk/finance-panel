@@ -6,6 +6,7 @@ import { buildPatternOutcomeLayer } from "@/lib/factory/reelsBrainPatternOutcome
 import { buildGroupedReelsBrainHypothesisBanks, buildReelsBrainHypothesisBank } from "@/lib/factory/reelsBrainHypothesisBank";
 import { buildGroupedReelsBrainActionPacks, buildReelsBrainActionPack } from "@/lib/factory/reelsBrainActionPack";
 import { buildGroupedReelsBrainBriefPacks, buildReelsBrainBriefPack } from "@/lib/factory/reelsBrainBriefPack";
+import { buildReelsBrainSegmentTrust } from "@/lib/factory/reelsBrainSegmentTrust";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 20;
@@ -2296,6 +2297,10 @@ export async function GET(req: NextRequest) {
       platforms: ["tiktok", "instagram", "youtube"],
       limit: compactMode ? 2 : 3,
     });
+    const segmentTrust = buildReelsBrainSegmentTrust({
+      niches: nicheSummaries as Array<Parameters<typeof buildReelsBrainSegmentTrust>[0]["niches"][number]>,
+      platforms: ["tiktok", "instagram", "youtube"],
+    });
 
     const timelineResponse = compactMode ? takeRecordList(timeline, 12) : timeline;
 
@@ -2325,6 +2330,7 @@ export async function GET(req: NextRequest) {
       action_pack_groups: groupedActionPacks,
       brief_pack: briefPack,
       brief_pack_groups: groupedBriefPacks,
+      segment_trust: segmentTrust,
       feedback_warning: feedbackRows.warning,
       cost_governor: costGovernor,
       autopilot_actions: autopilotActions,
