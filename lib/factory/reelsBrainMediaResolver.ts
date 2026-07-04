@@ -154,6 +154,15 @@ function normalizeYtDlpTarget(url: string): string {
   }
 }
 
+function isDirectVideoLocator(value: string): boolean {
+  const target = value.trim().toLowerCase();
+  if (!target) return false;
+  if (/\.(jpg|jpeg|png|webp|gif|bmp|heic|heif|avif)(\?|$)/i.test(target)) return false;
+  if (/\.(mp4|m4v|mov|webm|m3u8)(\?|$)/i.test(target)) return true;
+  if (/mime_type=video_|video_mp4|\/video\/|\/videoplayback\b|\.googlevideo\.com\//i.test(target)) return true;
+  return false;
+}
+
 function shouldUseCookies(target: string): boolean {
   if (/(^https?:\/\/)?([a-z0-9-]+\.)?(youtube\.com|youtu\.be)(\/|$)/i.test(target)) {
     return String(process.env.YT_DLP_ENABLE_YOUTUBE_COOKIES || "").trim() === "1";
@@ -315,8 +324,8 @@ export async function extractAudioFeaturesFromMediaUrl(
   mediaUrl: string,
   options: { transcribe?: boolean; language?: string } = {},
 ): Promise<ReelsBrainAudioExtractionResult> {
-  const target = text(mediaUrl, 1500);
-  if (!target) {
+  const initialTarget = text(mediaUrl, 1500);
+  if (!initialTarget) {
     return {
       ok: false,
       media_status: "audio_failed",
@@ -326,6 +335,11 @@ export async function extractAudioFeaturesFromMediaUrl(
       transcript: null,
       error: "missing_media_url",
     };
+  }
+  let target = initialTarget;
+  if (!isDirectVideoLocator(target)) {
+    const resolved = await resolveMediaLocatorViaYtDlp(target);
+    if (resolved?.media_url) target = resolved.media_url;
   }
 
   let transcript: string | null = null;

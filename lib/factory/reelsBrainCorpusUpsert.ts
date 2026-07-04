@@ -95,6 +95,13 @@ function rec(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 }
 
+function shouldKeepPageLocator(input: { platform?: string; url?: string | null }) {
+  const platform = String(input.platform || "").trim().toLowerCase();
+  const url = text(input.url, 1500) || "";
+  if (platform === "youtube" && /(youtube\.com\/shorts\/|youtube\.com\/watch\?|youtu\.be\/)/i.test(url)) return true;
+  return false;
+}
+
 export function buildReelsSeedMetadata(input: {
   video: NormalizedReelsVideo;
   sourceProvider: string;
@@ -105,7 +112,9 @@ export function buildReelsSeedMetadata(input: {
   const now = input.now || new Date().toISOString();
   const mediaLocatorCandidates = uniqStrings([
     input.video.mediaUrl,
-    input.video.url !== input.video.canonicalUrl ? input.video.url : null,
+    input.video.url !== input.video.canonicalUrl || shouldKeepPageLocator({ platform: input.video.platform, url: input.video.url })
+      ? input.video.url
+      : null,
   ]);
   return {
     seed_version: 1,

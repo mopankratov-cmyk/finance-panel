@@ -99,4 +99,34 @@ const sampleVideo: NormalizedReelsVideo = {
   equal(merged.reels_seed.pipeline.attempts.transcript, 1);
 }
 
+{
+  const seed = buildReelsSeedMetadata({
+    sourceProvider: "apify_youtube",
+    sourceQuery: "ru cosmetics shorts",
+    sourceType: "provider",
+    video: {
+      url: "https://www.youtube.com/shorts/ABC123XYZ99",
+      canonicalUrl: "https://www.youtube.com/shorts/ABC123XYZ99",
+      platform: "youtube",
+      videoId: "ABC123XYZ99",
+      caption: "demo",
+      transcript: null,
+      author: null,
+      durationSec: 12,
+      hashtags: [],
+      mediaUrl: null,
+      soundId: null,
+      soundTitle: null,
+      publishedAt: null,
+      views: 1000,
+      likes: 10,
+      comments: 1,
+      shares: 0,
+      followers: 0,
+    },
+  });
+  equal(seed.media_locator_candidates[0], "https://www.youtube.com/shorts/ABC123XYZ99");
+  equal(seed.pipeline.media_status, "media_found");
+}
+
 console.log("reelsBrainCorpusUpsert: passed");
