@@ -257,6 +257,8 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
     const patternOutcomeSummary = (learning?.pattern_outcome_summary || {}) as JsonRecord;
     const hypothesisBank = (learning?.hypothesis_bank || {}) as JsonRecord;
     const hypothesisBankGroups = (learning?.hypothesis_bank_groups || {}) as JsonRecord;
+    const briefPack = (learning?.brief_pack || {}) as JsonRecord;
+    const briefPackGroups = (learning?.brief_pack_groups || {}) as JsonRecord;
     const actionPack = (learning?.action_pack || {}) as JsonRecord;
     const actionPackGroups = (learning?.action_pack_groups || {}) as JsonRecord;
     const nicheComparison = (learning?.niche_comparison || []) as JsonRecord[];
@@ -705,6 +707,8 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
       patternDetailById,
       hypothesisBank,
       hypothesisBankGroups,
+      briefPack,
+      briefPackGroups,
       actionPack,
       actionPackGroups,
       nicheComparison,
@@ -1892,6 +1896,50 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
               );
             })}
           </div>
+          {vm.briefPack.primary ? (
+            <div className="rb-card" style={{ marginTop: 16 }}>
+              <div className="rb-overline" style={{ color: "#0891b2" }}>Brief packs</div>
+              <h3 style={{ font: "600 24px/1.15 'Space Grotesk'", margin: "9px 0 14px" }}>Какие briefs уже можно превращать в съемку</h3>
+              <div className="rb-pattern" style={{ borderColor: "#bae6fd", background: "#f0f9ff" }}>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                  <div className="rb-pill">primary brief</div>
+                  <div className="rb-pill">OP {compact(vm.briefPack.primary.op_score)}</div>
+                </div>
+                <h3 style={{ marginTop: 10 }}>{vm.briefPack.primary.title}</h3>
+                <p>Hook: {vm.briefPack.primary.creative_brief?.hook || vm.briefPack.primary.hook} · Retention: {vm.briefPack.primary.creative_brief?.retention_mechanic || vm.briefPack.primary.retention}</p>
+                <p>Structure: {(vm.briefPack.primary.creative_brief?.second_by_second || []).slice(0, 2).join(" ") || "0-2с hook, 2-8с proof."}</p>
+                <p>Guardrails: {(vm.briefPack.primary.creative_brief?.do_not_copy || ["не копировать текст, музыку и покадровый монтаж"]).slice(0, 2).join(" · ")}</p>
+              </div>
+              {((vm.briefPackGroups.by_niche || []) as JsonRecord[]).length ? (
+                <div style={{ marginTop: 14 }}>
+                  <div className="rb-overline" style={{ color: "#0891b2" }}>По нишам</div>
+                  <div className="rb-three" style={{ marginTop: 10 }}>
+                    {((vm.briefPackGroups.by_niche || []) as JsonRecord[]).slice(0, 3).map((group, index) => (
+                      <div className="rb-pattern" key={`brief-pack-niche:${group.niche || index}`}>
+                        <div className="rb-pill">{NICHE_LABELS[group.niche] || group.niche || "mixed"}</div>
+                        <h3 style={{ marginTop: 10 }}>{group.primary?.title || "Ждём niche brief"}</h3>
+                        <p>{group.primary?.creative_brief?.hook || group.primary?.hook || "Сильный hook появится после накопления корпуса."}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+              {((vm.briefPackGroups.by_platform || []) as JsonRecord[]).length ? (
+                <div style={{ marginTop: 14 }}>
+                  <div className="rb-overline" style={{ color: "#0891b2" }}>По платформам</div>
+                  <div className="rb-three" style={{ marginTop: 10 }}>
+                    {((vm.briefPackGroups.by_platform || []) as JsonRecord[]).slice(0, 3).map((group, index) => (
+                      <div className="rb-pattern" key={`brief-pack-platform:${group.platform || index}`}>
+                        <div className="rb-pill">{group.platform || "mixed"}</div>
+                        <h3 style={{ marginTop: 10 }}>{group.primary?.title || "Ждём platform brief"}</h3>
+                        <p>{group.primary?.creative_brief?.hook || group.primary?.hook || "Сильный hook появится после накопления корпуса."}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
           <div className="rb-detail-grid" style={{ marginTop: 16 }}>
             {(vm.patternDetails.length ? vm.patternDetails.slice(0, 4) : vm.recipes.slice(0, 4)).map((pattern: JsonRecord) => (
               <div className="rb-card rb-detail" key={pattern.id || pattern.title}>

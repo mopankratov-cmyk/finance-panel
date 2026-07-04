@@ -5,6 +5,7 @@ import { buildReelsBrainOperatingSystem, type ReelsBrainMetricRow } from "@/lib/
 import { buildPatternOutcomeLayer } from "@/lib/factory/reelsBrainPatternOutcome";
 import { buildGroupedReelsBrainHypothesisBanks, buildReelsBrainHypothesisBank } from "@/lib/factory/reelsBrainHypothesisBank";
 import { buildGroupedReelsBrainActionPacks, buildReelsBrainActionPack } from "@/lib/factory/reelsBrainActionPack";
+import { buildGroupedReelsBrainBriefPacks, buildReelsBrainBriefPack } from "@/lib/factory/reelsBrainBriefPack";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 20;
@@ -2285,6 +2286,16 @@ export async function GET(req: NextRequest) {
       platforms: ["tiktok", "instagram", "youtube"],
       limit: compactMode ? 2 : 3,
     });
+    const briefPack = buildReelsBrainBriefPack(
+      insightPayload.recipes as unknown as Array<Parameters<typeof buildReelsBrainBriefPack>[0][number]>,
+      compactMode ? 4 : 6,
+    );
+    const groupedBriefPacks = buildGroupedReelsBrainBriefPacks({
+      recipes: insightPayload.recipes as unknown as Array<Parameters<typeof buildGroupedReelsBrainBriefPacks>[0]["recipes"][number]>,
+      niches: nicheSummaries.map((row) => row.niche),
+      platforms: ["tiktok", "instagram", "youtube"],
+      limit: compactMode ? 2 : 3,
+    });
 
     const timelineResponse = compactMode ? takeRecordList(timeline, 12) : timeline;
 
@@ -2312,6 +2323,8 @@ export async function GET(req: NextRequest) {
       hypothesis_bank_groups: groupedHypothesisBank,
       action_pack: actionPack,
       action_pack_groups: groupedActionPacks,
+      brief_pack: briefPack,
+      brief_pack_groups: groupedBriefPacks,
       feedback_warning: feedbackRows.warning,
       cost_governor: costGovernor,
       autopilot_actions: autopilotActions,

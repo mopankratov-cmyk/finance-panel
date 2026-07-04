@@ -860,6 +860,125 @@ type LearningEconomicsResponse = {
       };
     }[];
   };
+  brief_pack?: {
+    primary?: {
+      rank: number;
+      recipe_id: string;
+      title: string;
+      op_score: number;
+      confidence: string;
+      platforms: string[];
+      niches: string[];
+      hook: string;
+      retention: string;
+      format: string;
+      creative_brief: {
+        hook: string;
+        retention_mechanic: string;
+        second_by_second: string[];
+        visual_recipe: string[];
+        audio_strategy: string[];
+        product_fit: string[];
+        copy_as_mechanic: string[];
+        do_not_copy: string[];
+      };
+      evidence?: {
+        references?: number;
+      };
+    } | null;
+    alternatives?: {
+      rank: number;
+      recipe_id: string;
+      title: string;
+      op_score: number;
+      confidence: string;
+      platforms: string[];
+      niches: string[];
+      hook: string;
+      retention: string;
+      format: string;
+      creative_brief: {
+        hook: string;
+        retention_mechanic: string;
+        second_by_second: string[];
+        visual_recipe: string[];
+        audio_strategy: string[];
+        product_fit: string[];
+        copy_as_mechanic: string[];
+        do_not_copy: string[];
+      };
+      evidence?: {
+        references?: number;
+      };
+    }[];
+    summary?: {
+      total?: number;
+      high_confidence?: number;
+      medium_confidence?: number;
+      low_confidence?: number;
+      avg_op_score?: number;
+    };
+  };
+  brief_pack_groups?: {
+    by_niche?: {
+      niche: string;
+      primary?: {
+        rank: number;
+        recipe_id: string;
+        title: string;
+        op_score: number;
+        confidence: string;
+        hook: string;
+        retention: string;
+        creative_brief: {
+          hook: string;
+          retention_mechanic: string;
+          second_by_second: string[];
+          visual_recipe: string[];
+          audio_strategy: string[];
+          product_fit: string[];
+          copy_as_mechanic: string[];
+          do_not_copy: string[];
+        };
+        evidence?: {
+          references?: number;
+        };
+      } | null;
+      summary?: {
+        total?: number;
+        avg_op_score?: number;
+      };
+    }[];
+    by_platform?: {
+      platform: string;
+      primary?: {
+        rank: number;
+        recipe_id: string;
+        title: string;
+        op_score: number;
+        confidence: string;
+        hook: string;
+        retention: string;
+        creative_brief: {
+          hook: string;
+          retention_mechanic: string;
+          second_by_second: string[];
+          visual_recipe: string[];
+          audio_strategy: string[];
+          product_fit: string[];
+          copy_as_mechanic: string[];
+          do_not_copy: string[];
+        };
+        evidence?: {
+          references?: number;
+        };
+      } | null;
+      summary?: {
+        total?: number;
+        avg_op_score?: number;
+      };
+    }[];
+  };
   action_pack?: {
     primary?: {
       rank: number;
@@ -1608,6 +1727,8 @@ export default function ReelsBrainPage() {
   const patternDetails = learningEconomics?.pattern_details || [];
   const hypothesisBank = learningEconomics?.hypothesis_bank || null;
   const hypothesisBankGroups = learningEconomics?.hypothesis_bank_groups || null;
+  const briefPack = learningEconomics?.brief_pack || null;
+  const briefPackGroups = learningEconomics?.brief_pack_groups || null;
   const actionPack = learningEconomics?.action_pack || null;
   const actionPackGroups = learningEconomics?.action_pack_groups || null;
   const patternDetailById = new Map(patternDetails.map((item) => [item.id, item]));
@@ -3018,6 +3139,109 @@ export default function ReelsBrainPage() {
                 </div>
               )}) : <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-500">Рецепты появятся после сборки Pattern Brain.</div>}
             </div>
+          </div>
+
+          <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">Brief packs</p>
+                <h4 className="mt-1 text-lg font-black text-slate-950">Какие готовые creative briefs уже можно снимать</h4>
+              </div>
+              <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-bold text-slate-500">
+                {compactNumber(briefPack?.summary?.total || 0)} brief items
+              </span>
+            </div>
+            {briefPack?.primary ? (
+              <div className="mt-3 grid gap-3 lg:grid-cols-3">
+                <div className="rounded-2xl border border-cyan-200 bg-cyan-50 p-4 lg:col-span-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="text-xs font-black uppercase tracking-[0.16em] text-cyan-700">Primary brief</p>
+                      <h5 className="mt-1 text-lg font-black text-slate-950">{briefPack.primary.title}</h5>
+                    </div>
+                    <span className="shrink-0 rounded-full border border-cyan-200 bg-white px-2 py-1 text-xs font-black text-cyan-700">
+                      {compactNumber(briefPack.primary.op_score)}
+                    </span>
+                  </div>
+                  <p className="mt-3 text-xs leading-5 text-slate-700">
+                    Hook: {briefPack.primary.creative_brief.hook} · Retention: {briefPack.primary.creative_brief.retention_mechanic}
+                  </p>
+                  <p className="mt-2 text-xs leading-5 text-slate-600">
+                    Fit: {briefPack.primary.creative_brief.product_fit.slice(0, 2).join(" · ") || "mixed"} · refs {compactNumber(briefPack.primary.evidence?.references || 0)}
+                  </p>
+                  <div className="mt-3 rounded-xl border border-white/70 bg-white/70 p-3 text-xs leading-5 text-slate-700">
+                    <p className="font-black uppercase tracking-[0.14em] text-slate-500">Structure</p>
+                    <p className="mt-2">{briefPack.primary.creative_brief.second_by_second.slice(0, 3).join(" ") || "0-2с hook, 2-8с proof, 8-15с payoff."}</p>
+                  </div>
+                </div>
+                <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                  <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">Guardrails</p>
+                  <p className="mt-2 text-sm leading-6 text-slate-700">
+                    {briefPack.primary.creative_brief.do_not_copy.slice(0, 2).join(" · ") || "Не копировать текст, музыку и покадровый монтаж."}
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="mt-3 rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-500">Brief pack появится после роста generator-ready recipe слоя.</div>
+            )}
+            {briefPackGroups?.by_niche?.length ? (
+              <div className="mt-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">By niche</p>
+                    <h5 className="mt-1 text-sm font-black text-slate-950">Какие briefs готовы по нишам</h5>
+                  </div>
+                  <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-bold text-slate-500">
+                    {compactNumber(briefPackGroups.by_niche.length)} niche brief packs
+                  </span>
+                </div>
+                <div className="mt-3 grid gap-3 lg:grid-cols-3">
+                  {briefPackGroups.by_niche.slice(0, 3).map((group) => (
+                    <div key={`brief-niche:${group.niche}`} className="rounded-2xl border border-slate-200 bg-white p-4">
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-400">{NICHE_LABELS[group.niche] || group.niche || "Mixed niche"}</p>
+                          <h5 className="mt-1 text-sm font-black leading-5 text-slate-950">{group.primary?.title || "Ждем niche brief"}</h5>
+                        </div>
+                        <span className="shrink-0 rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-black text-slate-700">
+                          {compactNumber(group.primary?.op_score)}
+                        </span>
+                      </div>
+                      <p className="mt-3 text-xs leading-5 text-slate-600">{group.primary?.creative_brief?.hook || group.primary?.hook || "Сильный hook появится после накопления корпуса."}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+            {briefPackGroups?.by_platform?.length ? (
+              <div className="mt-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">By platform</p>
+                    <h5 className="mt-1 text-sm font-black text-slate-950">Какие briefs готовы по платформам</h5>
+                  </div>
+                  <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-bold text-slate-500">
+                    {compactNumber(briefPackGroups.by_platform.length)} platform brief packs
+                  </span>
+                </div>
+                <div className="mt-3 grid gap-3 lg:grid-cols-3">
+                  {briefPackGroups.by_platform.slice(0, 3).map((group) => (
+                    <div key={`brief-platform:${group.platform}`} className="rounded-2xl border border-slate-200 bg-white p-4">
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-400">{titlePlatform(group.platform || "tiktok")}</p>
+                          <h5 className="mt-1 text-sm font-black leading-5 text-slate-950">{group.primary?.title || "Ждем platform brief"}</h5>
+                        </div>
+                        <span className="shrink-0 rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-black text-slate-700">
+                          {compactNumber(group.primary?.op_score)}
+                        </span>
+                      </div>
+                      <p className="mt-3 text-xs leading-5 text-slate-600">{group.primary?.creative_brief?.hook || group.primary?.hook || "Сильный hook появится после накопления корпуса."}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
           </div>
 
           <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
