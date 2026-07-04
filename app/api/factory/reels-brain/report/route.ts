@@ -80,6 +80,7 @@ export async function GET(req: NextRequest) {
       pattern_atlas: body.pattern_atlas || null,
       segment_playbook: body.segment_playbook || null,
       segment_output_banks: body.segment_output_banks || null,
+      segment_decision_deck: body.segment_decision_deck || null,
       evidence_ledger: body.evidence_ledger || null,
       feedback_loop: body.feedback_loop || body.next_intelligence_layers?.feedback_loop || null,
       outcome_memory_brain: body.outcome_memory_brain || body.next_intelligence_layers?.outcome_memory || null,

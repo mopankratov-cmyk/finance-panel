@@ -283,6 +283,7 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
     const patternAtlas = (learning?.pattern_atlas || {}) as JsonRecord;
     const segmentPlaybook = (learning?.segment_playbook || {}) as JsonRecord;
     const segmentOutputBanks = (learning?.segment_output_banks || {}) as JsonRecord;
+    const segmentDecisionDeck = (learning?.segment_decision_deck || {}) as JsonRecord;
     const evidenceLedger = (learning?.evidence_ledger || {}) as JsonRecord;
     const actionPack = (learning?.action_pack || {}) as JsonRecord;
     const actionPackGroups = (learning?.action_pack_groups || {}) as JsonRecord;
@@ -705,6 +706,24 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
       actions: num(((segmentOutputBanks.actions || []) as JsonRecord[]).length),
       hypotheses: num(((segmentOutputBanks.hypotheses || []) as JsonRecord[]).length),
     };
+    const segmentDecisionCards = ((segmentDecisionDeck.items || []) as JsonRecord[]).slice(0, 6).map((row) => {
+      const grade = playbookTone(String(row.decision_grade === "ship" ? "ship_now" : row.decision_grade === "validate" ? "validate_and_ship" : row.decision_grade === "prepare" ? "prepare" : "research"));
+      const mode = decisionTone(String(row.generation_mode === "decision_ready" ? "primary" : row.generation_mode === "control_ready" ? "control_only" : "research_only"));
+      return {
+        ...row,
+        gradeTone: grade,
+        modeTone: mode,
+        label: `${NICHE_LABELS[String(row.niche)] || row.niche} × ${String(row.platform || "mixed").toUpperCase()}`,
+      };
+    });
+    const segmentDecisionSummary = {
+      total: num(segmentDecisionDeck.summary?.total),
+      ship: num(segmentDecisionDeck.summary?.ship),
+      validate: num(segmentDecisionDeck.summary?.validate),
+      prepare: num(segmentDecisionDeck.summary?.prepare),
+      research: num(segmentDecisionDeck.summary?.research),
+      ready: num(segmentDecisionDeck.summary?.ready_for_generation),
+    };
     const evidenceCards = ((evidenceLedger.items || []) as JsonRecord[]).slice(0, 6).map((row) => {
       const status = marketSignalTone(String(row.market_status || "no_feedback"));
       const mode = decisionTone(String(row.recommended_mode || "research_only"));
@@ -889,6 +908,8 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
       playbookSummary,
       segmentOutputCards,
       segmentOutputSummary,
+      segmentDecisionCards,
+      segmentDecisionSummary,
       evidenceCards,
       evidenceSummary,
       trustMatrix,
@@ -1698,6 +1719,57 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
                 <h3 style={{ font: "700 24px/1.1 'Space Grotesk'", margin: 0 }}>Segment outputs ещё пусты</h3>
                 <p style={{ marginTop: 10, color: "#64748b", lineHeight: 1.55 }}>
                   Этот слой заполнится, когда у сегментов накопятся одновременно briefs, action packs и hypothesis banks.
+                </p>
+              </div>
+            )}
+          </div>
+        </section>
+
+        <section>
+          <SectionTitle k="04.43 · Segment Decision Deck" title="Какие сегменты уже можно превращать в high-trust решения" />
+          <div className="rb-three">
+            {vm.segmentDecisionCards.length ? vm.segmentDecisionCards.map((item: JsonRecord) => (
+              <div className="rb-card" key={`segment-decision:${item.niche}:${item.platform}`}>
+                <div className="rb-two" style={{ gridTemplateColumns: "1fr auto", gap: 14 }}>
+                  <div>
+                    <div className="rb-overline" style={{ color: "#0891b2" }}>{item.label}</div>
+                    <h3 style={{ font: "700 28px/1 'Space Grotesk'", margin: "10px 0 0" }}>{compact(item.trust_score)}</h3>
+                  </div>
+                  <div style={{ display: "grid", gap: 8, justifyItems: "end" }}>
+                    <div className="rb-live-pill" style={{ background: item.gradeTone.bg, borderColor: item.gradeTone.bd, color: item.gradeTone.fg }}>
+                      <i style={{ background: item.gradeTone.fg }} />
+                      {item.gradeTone.label}
+                    </div>
+                    <div className="rb-live-pill" style={{ background: item.modeTone.bg, borderColor: item.modeTone.bd, color: item.modeTone.fg }}>
+                      <i style={{ background: item.modeTone.fg }} />
+                      {item.modeTone.label}
+                    </div>
+                  </div>
+                </div>
+                <div className="rb-three" style={{ marginTop: 14 }}>
+                  <div className="rb-brief-block"><b>Hook</b><p>{item.generator_payload?.hook || item.brief?.hook || "hook pending"}</p></div>
+                  <div className="rb-brief-block"><b>Retention</b><p>{item.generator_payload?.retention || item.brief?.retention || "retention pending"}</p></div>
+                  <div className="rb-brief-block"><b>Structure</b><p>{item.generator_payload?.structure || item.action?.structure || "structure pending"}</p></div>
+                </div>
+                <div className="rb-three" style={{ marginTop: 12 }}>
+                  <div className="rb-brief-block"><b>Brief</b><p>{item.brief?.title || "pending brief"}</p></div>
+                  <div className="rb-brief-block"><b>Action</b><p>{item.action?.title || "prepare"}</p></div>
+                  <div className="rb-brief-block"><b>Hypothesis</b><p>{item.hypothesis?.title || "next hypothesis"}</p></div>
+                </div>
+                <div className="rb-three" style={{ marginTop: 12 }}>
+                  <div className="rb-brief-block"><b>Corpus / Market</b><p>{compact(item.corpus_score)} / {compact(item.market_score)}</p></div>
+                  <div className="rb-brief-block"><b>Stable patterns</b><p>{compact(item.stable_pattern_count)}</p></div>
+                  <div className="rb-brief-block"><b>Evidence refs</b><p>{compact(item.brief?.evidence_refs)}</p></div>
+                </div>
+                <p style={{ marginTop: 12, color: "#475569", lineHeight: 1.55 }}>
+                  {item.why_now || item.hypothesis?.text || item.next_step}
+                </p>
+              </div>
+            )) : (
+              <div className="rb-card">
+                <h3 style={{ font: "700 24px/1.1 'Space Grotesk'", margin: 0 }}>Segment Decision Deck ещё пуст</h3>
+                <p style={{ marginTop: 10, color: "#64748b", lineHeight: 1.55 }}>
+                  Этот слой появится, когда segment outputs, evidence и atlas начнут пересекаться по одним и тем же сегментам.
                 </p>
               </div>
             )}

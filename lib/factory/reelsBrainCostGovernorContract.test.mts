@@ -42,6 +42,7 @@ ok(/daily_report/.test(report) && /autopilot_actions/.test(report), "report rout
 ok(/anti_pattern_brain/.test(report) && /discovery_brain/.test(report), "report route includes learning context");
 ok(/top_opportunities/.test(report) && /pattern_atlas/.test(report) && /segment_playbook/.test(report) && /evidence_ledger/.test(report), "report route exposes segment decision layers");
 ok(/segment_output_banks/.test(report), "report route exposes segment-specific output banks");
+ok(/segment_decision_deck/.test(report), "report route exposes segment decision deck");
 ok(/feedback_loop/.test(report) && /portfolio_manager/.test(report) && /audio_visual_readiness/.test(report) && /outcome_memory_brain/.test(report), "report route exposes operating-system intelligence, audio readiness and outcome memory");
 ok(/\/api\/factory\/reels-brain\/progress/.test(report) && /pipeline_progress/.test(report), "report route exposes compact pipeline progress");
 ok(!/POST\s*\(/.test(report), "report route is read-only");
@@ -66,6 +67,7 @@ ok(/segment_plan/.test(cockpit) && /segment-gap:/.test(cockpit), "cockpit surfac
 ok(/nextLayers/.test(cockpit), "cockpit reads next intelligence layers");
 ok(/Top Opportunities/.test(cockpit) && /Pattern Atlas/.test(cockpit) && /Segment Playbook/.test(cockpit) && /Evidence Ledger/.test(cockpit), "cockpit surfaces segment opportunity, atlas, playbook and evidence layers");
 ok(/segment_output_banks/.test(economics) && /Segment Output Banks/.test(cockpit) && /segment-output:/.test(cockpit), "learning-economics and cockpit expose segment-specific brief/action/hypothesis outputs");
+ok(/buildReelsBrainSegmentDecisionDeck/.test(economics) && /segment_decision_deck/.test(economics) && /Segment Decision Deck/.test(cockpit) && /segment-decision:/.test(cockpit), "learning-economics and cockpit expose a trust-ranked segment decision deck");
 ok(/selectedPattern/.test(cockpit) && /rb-drawer/.test(cockpit), "cockpit exposes pattern creative brief drawer");
 ok(/rb-click/.test(cockpit) && /setSelectedPattern/.test(cockpit), "cockpit pattern cards are inspectable");
 ok(/sort\(\(a, b\) => String\(a\.created_at \|\| \"\"\)\.localeCompare\(String\(b\.created_at \|\| \"\"\)\)\)\s*\.slice\(-8\)\s*\.reverse\(\)/.test(cockpit), "cockpit stores latest learning runs first");
