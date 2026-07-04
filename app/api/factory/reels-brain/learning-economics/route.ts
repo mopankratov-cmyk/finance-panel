@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { automationRunHistory } from "@/lib/factory/reelsBrainPlaybook";
 import { buildReelsBrainOperatingSystem, type ReelsBrainMetricRow } from "@/lib/factory/reelsBrainOperatingSystem";
+import { buildPatternOutcomeLayer } from "@/lib/factory/reelsBrainPatternOutcome";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 20;
@@ -1130,6 +1131,7 @@ function buildPatternDecisionLayer(insightPayload: ReturnType<typeof buildInsigh
       confidence: recipe.confidence,
       quality_gate: gate,
       niches: recipe.niches,
+      platforms: recipe.platforms,
       examples_count: recipe.examples?.length || 0,
       creative_brief: recipe.creative_brief,
       generator_payload: recipe.generator_payload,
@@ -1155,6 +1157,49 @@ function buildPatternDecisionLayer(insightPayload: ReturnType<typeof buildInsigh
     ],
   };
   return { pattern_details, quality_gate };
+}
+
+function attachPatternOutcomes(
+  patternDecisionLayer: ReturnType<typeof buildPatternDecisionLayer>,
+  feedbackRows: ReelsBrainMetricRow[],
+) {
+  const outcomeRows = buildPatternOutcomeLayer(
+    patternDecisionLayer.pattern_details.map((row) => ({
+      id: row.id,
+      title: row.title,
+      quality_gate: row.quality_gate,
+      confidence: row.confidence,
+      platforms: Array.isArray((row as Record<string, unknown>).platforms) ? (row as Record<string, unknown>).platforms as string[] : [],
+    })),
+    feedbackRows,
+  );
+  const outcomeById = new Map(outcomeRows.map((row) => [row.pattern_id, row]));
+  const pattern_details = patternDecisionLayer.pattern_details.map((row) => {
+    const outcome = outcomeById.get(row.id) || null;
+    return {
+      ...row,
+      market_signal: outcome,
+      final_decision: outcome?.final_decision || (row.quality_gate === "high_confidence" ? "control" : "watch"),
+      warnings: [
+        ...(row.warnings || []),
+        outcome?.status === "weak" ? "Рынок пока не подтверждает этот паттерн: держать в watch." : "",
+        outcome?.status === "proven" ? "Есть market confirmation: паттерн можно поднимать выше." : "",
+      ].filter(Boolean),
+    };
+  });
+  return {
+    ...patternDecisionLayer,
+    pattern_details,
+    outcome_summary: {
+      proven: outcomeRows.filter((row) => row.status === "proven").length,
+      promising: outcomeRows.filter((row) => row.status === "promising").length,
+      weak: outcomeRows.filter((row) => row.status === "weak").length,
+      no_feedback: outcomeRows.filter((row) => row.status === "no_feedback").length,
+      scale: outcomeRows.filter((row) => row.final_decision === "scale").length,
+      control: outcomeRows.filter((row) => row.final_decision === "control").length,
+      watch: outcomeRows.filter((row) => row.final_decision === "watch").length,
+    },
+  };
 }
 
 function buildNicheComparison(niches: {
@@ -1604,6 +1649,7 @@ function buildInsights(rows: { niche?: string; playbook?: unknown }[]) {
     op_score: number;
     confidence: "high" | "medium" | "low";
     niches: string[];
+    platforms: string[];
     creative_brief: ReferenceCreativeBrief;
     generator_payload: GeneratorPayload;
     examples: InsightExample[];
@@ -1659,6 +1705,15 @@ function buildInsights(rows: { niche?: string; playbook?: unknown }[]) {
       retention.hooks.add(pattern.hook_label || hookKey);
       retentionMap.set(retentionKey, retention);
 
+      const patternPlatforms = Object.entries(brain.platform_brains || {})
+        .filter(([, platformBrain]) => {
+          const ready = Array.isArray(platformBrain?.generator_ready_patterns) ? platformBrain.generator_ready_patterns : [];
+          const all = Array.isArray(platformBrain?.patterns) ? platformBrain.patterns : [];
+          return [...ready, ...all].some((item) => (item as InsightPattern).pattern_id === pattern.pattern_id);
+        })
+        .map(([platform]) => platform)
+        .sort();
+
       recipes.push({
         id: pattern.pattern_id || `${hookKey}:${formatKey}:${retentionKey}`,
         title: recipeTitle(pattern),
@@ -1668,6 +1723,7 @@ function buildInsights(rows: { niche?: string; playbook?: unknown }[]) {
         op_score: insightScore(pattern, 1, 1),
         confidence: confidenceLevel({ frequency: pattern.frequency, score: pattern.strength_score, niches: 1, platforms: 1, examples: pattern.examples?.length || 0 }),
         niches: [niche],
+        platforms: patternPlatforms,
         creative_brief: creativeBriefForPattern(pattern, niche),
         generator_payload: generatorPayload(pattern, niche),
         examples: enrichExamples(pattern, niche),
@@ -2109,7 +2165,7 @@ export async function GET(req: NextRequest) {
     insightPayload.strong_combinations = enrichedStrongCombinations as unknown as typeof insightPayload.strong_combinations;
     const antiPatternBrain = buildAntiPatternBrain(corpusAudit, insightPayload, audioBrain);
     const discoveryBrain = buildDiscoveryBrain(insightPayload.source_map, corpusAudit);
-    const patternDecisionLayer = buildPatternDecisionLayer(insightPayload);
+    const patternDecisionLayer = attachPatternOutcomes(buildPatternDecisionLayer(insightPayload), feedbackRows.rows);
     const taxonomyBrain = buildTaxonomyBrain({ corpusSample, recentSample, playbooks: rows });
     const taxonomyWithLift = buildTaxonomyPatternLift(taxonomyBrain, patternDecisionLayer, corpusSample);
     const nicheComparison = buildNicheComparison(nicheSummaries, insightPayload);
@@ -2180,10 +2236,12 @@ export async function GET(req: NextRequest) {
           format: row.format,
           op_score: row.op_score,
           quality_gate: row.quality_gate,
+          final_decision: record.final_decision,
           examples_count: row.examples_count,
           platforms: takeRecordList(record.platforms as string[] | undefined, 4),
           niches: takeRecordList(record.niches as string[] | undefined, 4),
           warnings: takeRecordList(record.warnings as string[] | undefined, 4),
+          market_signal: record.market_signal,
           audio_logic: takeRecordList(record.audio_logic as string[] | undefined, 4),
           creative_brief: row.creative_brief,
         };
@@ -2215,6 +2273,7 @@ export async function GET(req: NextRequest) {
       insights: insightsResponse,
       pattern_details: patternDetailsResponse,
       quality_gate: patternDecisionLayer.quality_gate,
+      pattern_outcome_summary: patternDecisionLayer.outcome_summary,
       niche_comparison: nicheComparison,
       daily_report: dailyReport,
       feedback_loop: operatingSystem.feedback_loop,
