@@ -129,4 +129,34 @@ const sampleVideo: NormalizedReelsVideo = {
   equal(seed.pipeline.media_status, "media_found");
 }
 
+{
+  const seed = buildReelsSeedMetadata({
+    sourceProvider: "apify_instagram",
+    sourceQuery: "обзор косметики",
+    sourceType: "provider",
+    video: {
+      url: "https://www.instagram.com/reel/CRU123ABC99/",
+      canonicalUrl: "https://www.instagram.com/reel/CRU123ABC99/",
+      platform: "instagram",
+      videoId: "CRU123ABC99",
+      caption: "demo",
+      transcript: null,
+      author: null,
+      durationSec: 18,
+      hashtags: [],
+      mediaUrl: null,
+      soundId: null,
+      soundTitle: null,
+      publishedAt: null,
+      views: 1000,
+      likes: 10,
+      comments: 1,
+      shares: 0,
+      followers: 0,
+    },
+  });
+  equal(seed.media_locator_candidates[0], "https://www.instagram.com/reel/CRU123ABC99/");
+  equal(seed.pipeline.media_status, "media_found");
+}
+
 console.log("reelsBrainCorpusUpsert: passed");

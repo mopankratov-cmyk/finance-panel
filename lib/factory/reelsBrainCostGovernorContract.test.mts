@@ -26,6 +26,7 @@ ok(/outcome_memory_brain/.test(economics) && /outcome_memory/.test(economics), "
 ok(/const chronologicalRuns = \[\.\.\.runs\]\.sort/.test(economics) && /const timeline = chronologicalRuns\.map/.test(economics), "learning-economics normalizes automation history into chronological timeline");
 ok(/function buildAudioVisualReadiness/.test(economics) && /audio_visual_readiness: audioVisualReadiness/.test(economics), "learning-economics exposes audio/deep-worker readiness from corpus metadata");
 ok(/ready_for_worker/.test(cockpit) && /with_media_locators/.test(cockpit) && /audioVisualSummary/.test(cockpit), "cockpit surfaces audio/deep-worker readiness summary");
+ok(/\/api\/factory\/reels-brain\/progress/.test(cockpit) && /Platform Backlogs/.test(cockpit) && /pipelinePlatforms/.test(cockpit), "cockpit surfaces pipeline progress and per-platform backlog health");
 
 ok(/internalFetch/.test(actions), "autopilot-actions reads learning-economics internally");
 ok(/\/api\/factory\/reels-brain\/learning-economics/.test(actions), "autopilot-actions points at learning-economics route");

@@ -90,7 +90,8 @@ function isPlayableMediaLocator(value: string, platform = ""): boolean {
   if (isDirectVideoLocator(target)) return true;
   if (!/^https?:\/\//i.test(target)) return false;
   if (platform === "youtube" && /(youtube\.com\/shorts\/|youtube\.com\/watch\?|youtu\.be\/)/i.test(target)) return true;
-  if (platform === "instagram" || platform === "tiktok") return false;
+  if (platform === "instagram" && /(instagram\.com|instagr\.am)\/(reel|reels|tv|p)\//i.test(target)) return true;
+  if (platform === "tiktok") return false;
   return true;
 }
 

@@ -39,6 +39,14 @@ function pct(part: number, total: number): number {
   return total > 0 ? Math.round((part / total) * 100) : 0;
 }
 
+function hoursLabel(value: unknown): string {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return "—";
+  if (parsed < 1) return "< 1ч";
+  if (parsed < 24) return `${Math.round(parsed)}ч`;
+  return `${Math.round(parsed / 24)}д`;
+}
+
 async function getJson(path: string): Promise<JsonRecord> {
   const response = await fetch(path, { cache: "no-store" });
   const data = await response.json().catch(() => ({}));
@@ -119,6 +127,7 @@ export default function ReelsBrainPixelCockpit() {
   const [learning, setLearning] = useState<JsonRecord | null>(null);
   const [corpus, setCorpus] = useState<JsonRecord | null>(null);
   const [learningPlan, setLearningPlan] = useState<JsonRecord | null>(null);
+  const [progress, setProgress] = useState<JsonRecord | null>(null);
   const [summaries, setSummaries] = useState<JsonRecord[]>([]);
   const [selectedPattern, setSelectedPattern] = useState<JsonRecord | null>(null);
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
@@ -130,16 +139,18 @@ export default function ReelsBrainPixelCockpit() {
       try {
         setState("loading");
         const nicheParam = NICHES.join(",");
-        const [learningData, corpusData, learningPlanData, ...summaryData] = await Promise.all([
+        const [learningData, corpusData, learningPlanData, progressData, ...summaryData] = await Promise.all([
           getJson(`/api/factory/reels-brain/learning-economics?niches=${encodeURIComponent(nicheParam)}&limit=80`),
           getJson("/api/factory/reels-brain/corpus?limit=200&min_score=0"),
           getJson(`/api/factory/reels-brain/learning-plan?niches=${encodeURIComponent(nicheParam)}&platforms=tiktok,instagram,youtube&target=10000&max_backlog_before_analyze=180`),
+          getJson(`/api/factory/reels-brain/progress?niches=${encodeURIComponent(nicheParam)}`),
           ...NICHES.map((niche) => getJson(`/api/factory/reels-brain/summary?niche=${encodeURIComponent(niche)}`)),
         ]);
         if (!alive) return;
         setLearning(learningData);
         setCorpus(corpusData);
         setLearningPlan(learningPlanData);
+        setProgress(progressData);
         setSummaries(summaryData);
         setState("ready");
       } catch (e) {
@@ -170,6 +181,9 @@ export default function ReelsBrainPixelCockpit() {
     const qualityGate = learning?.quality_gate || {};
     const costGovernor = learning?.cost_governor || {};
     const autopilotActions = learning?.autopilot_actions || {};
+    const progressTotals = progress?.totals || {};
+    const progressPlatforms = Array.isArray(progress?.platforms) ? progress.platforms : [];
+    const throughput24h = progress?.throughput_24h || {};
     const mission = learningPlan?.learning_plan || {};
     const nextLayers = learning?.next_intelligence_layers || {};
     const audioVisualSummary = nextLayers?.audio_visual_intelligence
@@ -373,6 +387,90 @@ export default function ReelsBrainPixelCockpit() {
         note: mission.next_tick?.label || "мозг сам решает bulk vs analyze",
       },
     ];
+    const pipelinePlatforms = ["tiktok", "instagram", "youtube"].map((platform) => {
+      const row = progressPlatforms.find((item: JsonRecord) => item.platform === platform) || {};
+      return {
+        platform,
+        total: num(row.total),
+        withMediaCandidates: num(row.with_media_candidates),
+        withDirectMedia: num(row.with_direct_media),
+        mediaDownloaded: num(row.media_downloaded),
+        audioExtracted: num(row.audio_extracted),
+        transcriptReady: num(row.transcript_ready),
+        analyzed: num(row.analyzed),
+        mediaBacklog: num(row.media_backlog),
+        audioBacklog: num(row.audio_backlog),
+        transcriptBacklog: num(row.transcript_backlog),
+        analyzeBacklog: num(row.analyze_backlog),
+        directRate: num(row.direct_media_rate),
+        audioRate: num(row.audio_extracted_rate),
+        analyzedRate: num(row.analyzed_rate),
+        etaAudio: row.automation_eta_hours?.audio,
+        etaAnalyze: row.automation_eta_hours?.analyze,
+        status: row.status || "empty",
+      };
+    });
+    const pipelineStages = [
+      {
+        name: "Media candidates",
+        count: num(progressTotals.with_media_candidates),
+        pct: num(progressTotals.media_candidate_rate),
+        note: "Видео, где у мозга уже есть что пробовать как media locator.",
+      },
+      {
+        name: "Direct media",
+        count: num(progressTotals.with_direct_media),
+        pct: num(progressTotals.direct_media_rate),
+        note: "Ролики, где media уже можно качать без доп. резолва страницы.",
+      },
+      {
+        name: "Audio ready",
+        count: num(progressTotals.audio_extracted),
+        pct: num(progressTotals.audio_extracted_rate),
+        note: "Видео, где извлечён звук и можно строить audio-brain.",
+      },
+      {
+        name: "Transcript ready",
+        count: num(progressTotals.transcript_ready),
+        pct: num(progressTotals.transcript_ready_rate),
+        note: "Видео, где есть голосовая дорожка и текст для hook/CTA разбора.",
+      },
+      {
+        name: "Analyzed",
+        count: num(progressTotals.analyzed),
+        pct: num(progressTotals.analyzed_rate),
+        note: "Финальный слой, который уже попал в pattern memory.",
+      },
+    ];
+    const bottleneckCandidates = [
+      { key: "media", count: num(progressTotals.media_backlog), label: "media bridge", note: "много видео ещё без нормального media locator" },
+      { key: "audio", count: num(progressTotals.audio_backlog), label: "audio extraction", note: "media уже есть, но звук ещё не снят" },
+      { key: "transcript", count: num(progressTotals.transcript_backlog), label: "transcript layer", note: "звук есть, но речь ещё не разложена в текст" },
+      { key: "analyze", count: num(progressTotals.analyze_backlog), label: "pattern analysis", note: "контент уже подготовлен, но ещё не дошёл до pattern brain" },
+    ].sort((a, b) => b.count - a.count);
+    const primaryBottleneck = bottleneckCandidates[0] || { key: "none", count: 0, label: "healthy", note: "явного узкого места нет" };
+    const pipelineEconomics = [
+      {
+        title: "Скорость анализа 24ч",
+        value: compact(throughput24h.analyzed),
+        note: "сколько видео реально дошло до памяти за последние сутки",
+      },
+      {
+        title: "Скорость intake 24ч",
+        value: compact(throughput24h.inserted),
+        note: "сколько новых видео попало в корпус за последние сутки",
+      },
+      {
+        title: "ETA audio backlog",
+        value: hoursLabel(progressTotals.eta_hours?.audio),
+        note: `${compact(progressTotals.audio_backlog)} видео ещё ждут audio extraction`,
+      },
+      {
+        title: "ETA analyze backlog",
+        value: hoursLabel(progressTotals.eta_hours?.analyze),
+        note: `${compact(progressTotals.analyze_backlog)} видео ещё ждут финальный анализ`,
+      },
+    ];
     const knowledgeCards = NICHES.map((niche) => {
       const summary = summaries.find((item) => item.niche === niche) || {};
       const row = nicheComparison.find((item) => item.niche === niche) || niches.find((item) => item.niche === niche) || {};
@@ -410,7 +508,7 @@ export default function ReelsBrainPixelCockpit() {
       {
         title: "Как мозг растёт сегодня",
         body: learningDeltaVideos > 0 ? `За свежий цикл добрал ещё ${compact(learningDeltaVideos)} разобранных видео.` : "Сегодня основная работа идёт на backfill и quality layer.",
-        meta: learningDeltaPatterns > 0 ? `+${compact(learningDeltaPatterns)} паттернов` : `backlog ${compact(backlogRemaining)}`,
+        meta: learningDeltaPatterns > 0 ? `+${compact(learningDeltaPatterns)} паттернов` : `${primaryBottleneck.label} · ${compact(primaryBottleneck.count)}`,
       },
     ];
     const economicsCards = [
@@ -496,6 +594,12 @@ export default function ReelsBrainPixelCockpit() {
       nextAction,
       usefulCost,
       delta,
+      progressTotals,
+      throughput24h,
+      pipelinePlatforms,
+      pipelineStages,
+      pipelineEconomics,
+      primaryBottleneck,
       costLabel: cheaper ? "дешевле" : expensive ? "дороже" : "ровно",
       costTone: cheaper ? "#22c55e" : expensive ? "#f59e0b" : "#38bdf8",
       blindSpots: [
@@ -504,7 +608,7 @@ export default function ReelsBrainPixelCockpit() {
         readyPatterns < 12 ? "Generator-ready рецептов мало: лучше не генерировать слишком однотипно." : "Рецептов уже хватает для первых стабильных креативных экспериментов.",
       ],
     };
-  }, [learning, corpus, learningPlan, summaries]);
+  }, [learning, corpus, learningPlan, progress, summaries]);
 
   return (
     <main className="rb-page">
@@ -599,7 +703,7 @@ export default function ReelsBrainPixelCockpit() {
               <MiniIcon>!</MiniIcon>
               <div>
                 <div className="rb-overline" style={{ color: "#fbbf24" }}>Текущее узкое место</div>
-                <div style={{ font: "500 14px/1.4 'Hanken Grotesk'", marginTop: 3 }}>{vm.blindSpots[0]}</div>
+                <div style={{ font: "500 14px/1.4 'Hanken Grotesk'", marginTop: 3 }}>{vm.primaryBottleneck.count > 0 ? `${vm.primaryBottleneck.label}: ${vm.primaryBottleneck.note}` : vm.blindSpots[0]}</div>
               </div>
             </div>
           </div>
@@ -686,6 +790,65 @@ export default function ReelsBrainPixelCockpit() {
                 <div className="rb-pill">{item.meta}</div>
                 <h3>{item.title}</h3>
                 <p>{item.body}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="rb-two">
+          <div>
+            <SectionTitle k="04.5 · Pipeline Health" title="Где сейчас тормозит рост мозга" />
+            <div className="rb-funnel">
+              {vm.pipelineStages.map((row) => (
+                <div className="rb-funnel-row" key={row.name}>
+                  <div className="rb-funnel-num"><strong>{compact(row.count)}</strong><span>{row.name}</span></div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div className="rb-bar"><i style={{ width: `${Math.max(3, Math.min(100, row.pct || 0))}%` }} /></div>
+                    <div className="rb-funnel-note">{row.note}</div>
+                  </div>
+                  <span className="rb-pill">{compact(row.pct)}%</span>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div>
+            <SectionTitle k="04.6 · Throughput" title="С какой скоростью он реально движется" />
+            <div className="rb-readiness-grid">
+              {vm.pipelineEconomics.map((card) => (
+                <div className="rb-readiness-card" key={card.title}>
+                  <strong>{card.value}</strong>
+                  <p style={{ color: "#0f172a", fontWeight: 700, marginTop: 10 }}>{card.title}</p>
+                  <p>{card.note}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section>
+          <SectionTitle k="04.7 · Platform Backlogs" title="Какая платформа проседает по media, audio и analyze" />
+          <div className="rb-three">
+            {vm.pipelinePlatforms.map((row: JsonRecord) => (
+              <div className="rb-card" key={`pipeline:${row.platform}`}>
+                <div className="rb-two" style={{ gridTemplateColumns: "1fr auto", gap: 14 }}>
+                  <div>
+                    <div className="rb-overline" style={{ color: "#0891b2" }}>{row.platform}</div>
+                    <h3 style={{ font: "700 28px/1 'Space Grotesk'", margin: "10px 0 0" }}>{compact(row.analyzed)} / {compact(row.total)}</h3>
+                  </div>
+                  <div className="rb-pill">{row.status}</div>
+                </div>
+                <div className="rb-three" style={{ marginTop: 14 }}>
+                  <div className="rb-brief-block"><b>Media</b><p>{compact(row.withDirectMedia)} direct · backlog {compact(row.mediaBacklog)}</p></div>
+                  <div className="rb-brief-block"><b>Audio</b><p>{compact(row.audioExtracted)} ready · backlog {compact(row.audioBacklog)}</p></div>
+                  <div className="rb-brief-block"><b>Analyze</b><p>{compact(row.analyzed)} done · backlog {compact(row.analyzeBacklog)}</p></div>
+                </div>
+                <div className="rb-brief-block" style={{ marginTop: 12 }}>
+                  <b>ETA</b>
+                  <p>audio {hoursLabel(row.etaAudio)} · analyze {hoursLabel(row.etaAnalyze)}</p>
+                </div>
+                <p style={{ marginTop: 12, color: "#64748b", lineHeight: 1.55 }}>
+                  candidates {compact(row.withMediaCandidates)} · transcripts {compact(row.transcriptReady)} · coverage {compact(row.analyzedRate)}%
+                </p>
               </div>
             ))}
           </div>

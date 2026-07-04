@@ -99,6 +99,7 @@ function shouldKeepPageLocator(input: { platform?: string; url?: string | null }
   const platform = String(input.platform || "").trim().toLowerCase();
   const url = text(input.url, 1500) || "";
   if (platform === "youtube" && /(youtube\.com\/shorts\/|youtube\.com\/watch\?|youtu\.be\/)/i.test(url)) return true;
+  if (platform === "instagram" && /(instagram\.com|instagr\.am)\/(reel|reels|tv|p)\//i.test(url)) return true;
   return false;
 }
 

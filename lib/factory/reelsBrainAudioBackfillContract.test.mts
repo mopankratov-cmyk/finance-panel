@@ -23,6 +23,13 @@ ok(/media_fetch_403/.test(resolver) && /status code 10204/.test(resolver) && /me
 ok(/shouldRetryAudioBackfill/.test(route), "audio backfill route uses audio backfill retry helper");
 ok(/transcriptError:\s*state\.audioFeatures\?\.transcript_error/.test(route), "audio backfill route consults stored transcript error");
 ok(/const hasPlayable = state\.mediaLocators\.some/.test(route) && !/Boolean\(String\(row\.url \|\| \"\"\)\.trim\(\)\)/.test(route), "audio backfill route only queues rows with real media locators");
+ok(
+  route.includes('platform === "youtube"')
+  && route.includes('youtube\\.com\\/shorts\\/')
+  && route.includes('platform === "instagram"')
+  && route.includes('instagram\\.com|instagr\\.am'),
+  "audio backfill route accepts YouTube and Instagram page locators for deep extraction",
+);
 ok(/parseShardConfig/.test(route) && /stableShardMatch/.test(route), "audio backfill route supports sharded worker queues");
 ok(/scoreAudioCandidate/.test(route) && /priority/.test(route), "audio backfill route supports smart candidate prioritization");
 ok(/deepOnly/.test(route) && /virality_score/.test(route), "audio backfill route supports deep-only gating for expensive analysis");
