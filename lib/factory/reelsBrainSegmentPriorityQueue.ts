@@ -1,0 +1,139 @@
+type SegmentGapRow = {
+  niche?: string;
+  platform?: string;
+  status?: "stable" | "grow_corpus" | "analyze_more" | "build_patterns" | string;
+  gap_score?: number;
+  gap?: {
+    total_videos?: number;
+    activation_total_videos?: number;
+    analyzed_videos?: number;
+    generator_ready_patterns?: number;
+    stable_patterns?: number;
+  };
+  next_action?: string;
+};
+
+type SegmentDecisionRow = {
+  niche?: string;
+  platform?: string;
+  decision_grade?: "ship" | "validate" | "prepare" | "research" | string;
+  generation_mode?: "decision_ready" | "control_ready" | "brief_only" | "research_only" | string;
+  ready_for_generation?: boolean;
+  trust_score?: number;
+  brief?: {
+    title?: string;
+    hook?: string;
+  };
+  action?: {
+    title?: string;
+    decision?: string;
+  };
+  hypothesis?: {
+    title?: string;
+  };
+  why_now?: string;
+  next_step?: string;
+};
+
+function num(value: unknown) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function text(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function keyOf(niche: unknown, platform: unknown) {
+  return `${text(niche)}__${text(platform)}`;
+}
+
+function normalizeGapAction(status: string) {
+  if (status === "grow_corpus") return "collect_segment_batch";
+  if (status === "analyze_more") return "analyze_segment_backlog";
+  if (status === "build_patterns") return "stabilize_segment_patterns";
+  return "watch_segment";
+}
+
+function normalizeDecisionAction(grade: string) {
+  if (grade === "ship") return "promote_segment_briefs";
+  if (grade === "validate") return "validate_segment_briefs";
+  if (grade === "prepare") return "prepare_segment_briefs";
+  return "watch_segment";
+}
+
+export function buildReelsBrainSegmentPriorityQueue(input: {
+  segmentPlan?: {
+    focus_segments?: SegmentGapRow[];
+  };
+  segmentDecisionDeck?: {
+    items?: SegmentDecisionRow[];
+  };
+  limit?: number;
+}) {
+  const decisionMap = new Map((input.segmentDecisionDeck?.items || []).map((row) => [keyOf(row.niche, row.platform), row] as const));
+  const gapRows = input.segmentPlan?.focus_segments || [];
+  const priorities = gapRows.map((row) => {
+    const decision = decisionMap.get(keyOf(row.niche, row.platform)) || {};
+    const decisionGrade = text(decision.decision_grade || "research");
+    const gapStatus = text(row.status || "watch");
+    const globalAction = decision.ready_for_generation
+      ? normalizeDecisionAction(decisionGrade)
+      : normalizeGapAction(gapStatus);
+    const urgency = Math.round(
+      (decision.ready_for_generation ? 55 : 0)
+      + Math.min(30, num(decision.trust_score) * 0.22)
+      + Math.min(35, num(row.gap_score) * 0.35)
+      + (gapStatus === "analyze_more" ? 10 : 0)
+      + (gapStatus === "grow_corpus" ? 8 : 0)
+      + (decisionGrade === "ship" ? 18 : decisionGrade === "validate" ? 10 : 0),
+    );
+    return {
+      niche: text(row.niche),
+      platform: text(row.platform),
+      label: `${text(row.niche)} × ${text(row.platform)}`,
+      action: globalAction,
+      urgency_score: urgency,
+      gap_status: gapStatus,
+      decision_grade: decisionGrade,
+      generation_mode: text(decision.generation_mode || "research_only"),
+      ready_for_generation: Boolean(decision.ready_for_generation),
+      gap_score: num(row.gap_score),
+      trust_score: num(decision.trust_score),
+      brief_title: text(decision.brief?.title),
+      brief_hook: text(decision.brief?.hook),
+      action_title: text(decision.action?.title),
+      action_decision: text(decision.action?.decision),
+      hypothesis_title: text(decision.hypothesis?.title),
+      next_action: text(row.next_action || decision.next_step),
+      why_now: text(decision.why_now),
+      gaps: {
+        total_videos: num(row.gap?.total_videos),
+        activation_total_videos: num(row.gap?.activation_total_videos),
+        analyzed_videos: num(row.gap?.analyzed_videos),
+        generator_ready_patterns: num(row.gap?.generator_ready_patterns),
+        stable_patterns: num(row.gap?.stable_patterns),
+      },
+    };
+  }).sort((a, b) =>
+    b.urgency_score - a.urgency_score
+    || Number(b.ready_for_generation) - Number(a.ready_for_generation)
+    || b.gap_score - a.gap_score
+    || b.trust_score - a.trust_score
+    || a.niche.localeCompare(b.niche)
+    || a.platform.localeCompare(b.platform),
+  );
+
+  return {
+    summary: {
+      total: priorities.length,
+      collect_segment_batch: priorities.filter((item) => item.action === "collect_segment_batch").length,
+      analyze_segment_backlog: priorities.filter((item) => item.action === "analyze_segment_backlog").length,
+      stabilize_segment_patterns: priorities.filter((item) => item.action === "stabilize_segment_patterns").length,
+      promote_segment_briefs: priorities.filter((item) => item.action === "promote_segment_briefs").length,
+      validate_segment_briefs: priorities.filter((item) => item.action === "validate_segment_briefs").length,
+      ready_for_generation: priorities.filter((item) => item.ready_for_generation).length,
+    },
+    items: priorities.slice(0, Math.max(4, input.limit || 8)),
+  };
+}

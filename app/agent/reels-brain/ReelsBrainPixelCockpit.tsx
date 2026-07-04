@@ -284,6 +284,7 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
     const segmentPlaybook = (learning?.segment_playbook || {}) as JsonRecord;
     const segmentOutputBanks = (learning?.segment_output_banks || {}) as JsonRecord;
     const segmentDecisionDeck = (learning?.segment_decision_deck || {}) as JsonRecord;
+    const segmentPriorityQueue = ((mission.segment_priority_queue || learning?.segment_priority_queue || {}) as JsonRecord);
     const evidenceLedger = (learning?.evidence_ledger || {}) as JsonRecord;
     const actionPack = (learning?.action_pack || {}) as JsonRecord;
     const actionPackGroups = (learning?.action_pack_groups || {}) as JsonRecord;
@@ -724,6 +725,10 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
       research: num(segmentDecisionDeck.summary?.research),
       ready: num(segmentDecisionDeck.summary?.ready_for_generation),
     };
+    const missionPriorityCards = ((segmentPriorityQueue.items || []) as JsonRecord[]).slice(0, 4).map((row) => ({
+      ...row,
+      modeTone: decisionTone(String(row.ready_for_generation ? "primary" : row.action === "analyze_segment_backlog" ? "control_only" : "research_only")),
+    }));
     const evidenceCards = ((evidenceLedger.items || []) as JsonRecord[]).slice(0, 6).map((row) => {
       const status = marketSignalTone(String(row.market_status || "no_feedback"));
       const mode = decisionTone(String(row.recommended_mode || "research_only"));
@@ -910,6 +915,7 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
       segmentOutputSummary,
       segmentDecisionCards,
       segmentDecisionSummary,
+      missionPriorityCards,
       evidenceCards,
       evidenceSummary,
       trustMatrix,
@@ -3056,6 +3062,38 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
                 </div>
               </div>
             ))}
+          </div>
+          <div className="rb-three" style={{ marginTop: 16 }}>
+            {vm.missionPriorityCards.length ? vm.missionPriorityCards.map((row: JsonRecord) => (
+              <div className="rb-card" key={`segment-priority:${row.niche}:${row.platform}`}>
+                <div className="rb-two" style={{ gridTemplateColumns: "1fr auto", gap: 14 }}>
+                  <div>
+                    <div className="rb-overline" style={{ color: "#0891b2" }}>
+                      {(NICHE_LABELS[row.niche] || row.niche || "niche")} × {String(row.platform || "mixed").toUpperCase()}
+                    </div>
+                    <h3 style={{ font: "700 24px/1.08 'Space Grotesk'", margin: "10px 0 0" }}>{compact(row.urgency_score || 0)}</h3>
+                  </div>
+                  <div className="rb-live-pill" style={{ background: row.modeTone.bg, borderColor: row.modeTone.bd, color: row.modeTone.fg }}>
+                    <i style={{ background: row.modeTone.fg }} />
+                    {String(row.action || "watch").replaceAll("_", " ")}
+                  </div>
+                </div>
+                <div className="rb-three" style={{ marginTop: 14 }}>
+                  <div className="rb-brief-block"><b>Trust</b><p>{compact(row.trust_score || 0)}</p></div>
+                  <div className="rb-brief-block"><b>Gap</b><p>{compact(row.gap_score || 0)}</p></div>
+                  <div className="rb-brief-block"><b>Grade</b><p>{row.decision_grade || "research"}</p></div>
+                </div>
+                <div className="rb-brief-block" style={{ marginTop: 12 }}>
+                  <b>Фокус тика</b>
+                  <p>{row.next_action || row.why_now || "Ждём свежий priority queue"}</p>
+                </div>
+                <p style={{ marginTop: 12, color: "#475569", lineHeight: 1.55 }}>
+                  {row.ready_for_generation
+                    ? `${row.brief_title || "brief"} · ${row.action_title || "action"} · ${row.hypothesis_title || "hypothesis"}`
+                    : `${row.gap_status || "watch"} · ${compact(row.gaps?.analyzed_videos || 0)} analyze gap · ${compact(row.gaps?.stable_patterns || 0)} stable gap`}
+                </p>
+              </div>
+            )) : null}
           </div>
         </section>
 

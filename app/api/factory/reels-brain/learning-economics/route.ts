@@ -12,6 +12,9 @@ import { buildReelsBrainPatternAtlas } from "@/lib/factory/reelsBrainPatternAtla
 import { buildReelsBrainSegmentPlaybook } from "@/lib/factory/reelsBrainSegmentPlaybook";
 import { buildReelsBrainEvidenceLedger } from "@/lib/factory/reelsBrainEvidenceLedger";
 import { buildReelsBrainSegmentDecisionDeck } from "@/lib/factory/reelsBrainSegmentDecisionDeck";
+import { buildReelsBrainSegmentPriorityQueue } from "@/lib/factory/reelsBrainSegmentPriorityQueue";
+import { REELS_BRAIN_CORPUS_TARGET_TOTAL } from "@/lib/factory/reelsBrainCorpusTargets";
+import { buildReelsBrainSegmentGapPlanner } from "@/lib/factory/reelsBrainSegmentGapPlanner";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 20;
@@ -1302,13 +1305,27 @@ function buildAutopilotActions(input: {
   discoveryBrain: ReturnType<typeof buildDiscoveryBrain>;
   antiPatternBrain: ReturnType<typeof buildAntiPatternBrain>;
   costGovernor: ReturnType<typeof buildCostGovernor>;
+  segmentPriorityQueue?: { items?: Array<Record<string, unknown>> };
 }) {
   const weakNiches = input.niches
     .filter((niche) => niche.understanding_score < 85 || niche.generator_ready_patterns < 12)
     .sort((a, b) => a.understanding_score - b.understanding_score)
     .slice(0, 3);
   const providers = input.discoveryBrain.providers || [];
+  const segmentActions = (input.segmentPriorityQueue?.items || []).slice(0, 4).map((segment) => ({
+    type: String(segment.action || "watch_segment"),
+    priority: Boolean(segment.ready_for_generation) || Number(segment.urgency_score || 0) >= 80 ? "high" : "medium",
+    niche: String(segment.niche || ""),
+    platform: String(segment.platform || "mixed"),
+    action: Boolean(segment.ready_for_generation)
+      ? `Перевести ${String(segment.niche || "")} × ${String(segment.platform || "")} в decision-ready lane`
+      : String(segment.next_action || `Сфокусировать следующий тик на ${String(segment.niche || "")} × ${String(segment.platform || "")}`),
+    reason: Boolean(segment.ready_for_generation)
+      ? `${String(segment.decision_grade || "validate")} · trust ${num(segment.trust_score)} · ${String(segment.brief_title || "segment brief")}`
+      : `${String(segment.gap_status || "watch")} · gap ${num(segment.gap_score)} · ${String(segment.why_now || "")}`.trim(),
+  }));
   const actions = [
+    ...segmentActions,
     ...weakNiches.map((niche) => ({
       type: "collect_more",
       priority: niche.understanding_score < 70 ? "high" : "medium",
@@ -2187,7 +2204,6 @@ export async function GET(req: NextRequest) {
       discoveryBrain,
     });
     const costGovernor = buildCostGovernor({ totals, corpusAudit, discoveryBrain, today });
-    const autopilotActions = buildAutopilotActions({ niches: nicheSummaries, discoveryBrain, antiPatternBrain, costGovernor });
     const operatingSystem = buildReelsBrainOperatingSystem({
       patterns: patternDecisionLayer.pattern_details,
       insights: insightPayload,
@@ -2382,6 +2398,27 @@ export async function GET(req: NextRequest) {
       patternAtlas,
       limit: compactMode ? 6 : 10,
     });
+    const segmentGapPlan = buildReelsBrainSegmentGapPlanner({
+      targetTotal: REELS_BRAIN_CORPUS_TARGET_TOTAL,
+      niches: nicheSummaries,
+      patternAtlas,
+      platforms: ["tiktok", "instagram", "youtube"],
+      limit: compactMode ? 6 : 10,
+    });
+    const segmentPriorityQueue = buildReelsBrainSegmentPriorityQueue({
+      segmentPlan: {
+        focus_segments: segmentGapPlan.focus_segments,
+      },
+      segmentDecisionDeck,
+      limit: compactMode ? 6 : 10,
+    });
+    const autopilotActions = buildAutopilotActions({
+      niches: nicheSummaries,
+      discoveryBrain,
+      antiPatternBrain,
+      costGovernor,
+      segmentPriorityQueue,
+    });
 
     const timelineResponse = compactMode ? takeRecordList(timeline, 12) : timeline;
 
@@ -2421,6 +2458,7 @@ export async function GET(req: NextRequest) {
       pattern_atlas: patternAtlas,
       segment_playbook: segmentPlaybook,
       segment_decision_deck: segmentDecisionDeck,
+      segment_priority_queue: segmentPriorityQueue,
       evidence_ledger: evidenceLedger,
       feedback_warning: feedbackRows.warning,
       cost_governor: costGovernor,
