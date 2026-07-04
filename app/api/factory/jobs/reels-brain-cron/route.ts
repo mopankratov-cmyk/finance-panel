@@ -46,6 +46,78 @@ function splitParam(value: string): string[] {
     .filter(Boolean);
 }
 
+async function loadPipelineProgress(req: NextRequest, niches: string) {
+  try {
+    const url = new URL("/api/factory/reels-brain/progress", req.nextUrl.origin);
+    url.searchParams.set("niches", niches);
+    const response = await internalFetch(url);
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) return { ok: false, data: null as Record<string, unknown> | null, error: data?.error || response.statusText };
+    return { ok: true, data: data as Record<string, unknown>, error: null as string | null };
+  } catch (error) {
+    return { ok: false, data: null as Record<string, unknown> | null, error: String((error as Error)?.message || error).slice(0, 160) };
+  }
+}
+
+async function runPipelinePreflight(req: NextRequest, input: {
+  niches: string;
+  progress: { ok: boolean; data: Record<string, unknown> | null };
+}) {
+  const totals = rec(input.progress.data?.totals);
+  const platforms = Array.isArray(input.progress.data?.platforms) ? input.progress.data?.platforms.map((row) => rec(row)) : [];
+  const instagram = platforms.find((row) => String(row.platform || "") === "instagram") || {};
+  const youtube = platforms.find((row) => String(row.platform || "") === "youtube") || {};
+  const mediaTarget = Number(instagram.media_backlog || 0) > 0 ? "instagram" : Number(youtube.media_backlog || 0) > 0 ? "youtube" : "";
+  const needsAudio = Number(totals.audio_backlog || 0) > 0 || Number(totals.transcript_backlog || 0) > 0;
+
+  const result: Record<string, unknown> = {
+    progress_totals: totals,
+  };
+
+  if (mediaTarget) {
+    const mediaUrl = new URL("/api/factory/jobs/reels-brain-media-backfill", req.nextUrl.origin);
+    mediaUrl.searchParams.set("niches", input.niches);
+    mediaUrl.searchParams.set("platform", mediaTarget);
+    mediaUrl.searchParams.set("limit", mediaTarget === "instagram" ? "2" : "1");
+    mediaUrl.searchParams.set("scan", mediaTarget === "instagram" ? "24" : "12");
+    mediaUrl.searchParams.set("use_local_resolver", "1");
+    mediaUrl.searchParams.set("priority", "smart");
+    const response = await internalFetch(mediaUrl);
+    const body = await response.json().catch(() => ({}));
+    result.media_tick = {
+      ok: response.ok && body?.ok !== false,
+      platform: mediaTarget,
+      attempted: body?.attempted ?? null,
+      rows_with_media: body?.rows_with_media ?? null,
+      inserted: body?.inserted ?? null,
+      enriched: body?.enriched ?? null,
+      error: body?.error || null,
+    };
+  }
+
+  if (needsAudio) {
+    const audioUrl = new URL("/api/factory/jobs/reels-brain-audio-backfill", req.nextUrl.origin);
+    audioUrl.searchParams.set("niches", input.niches);
+    audioUrl.searchParams.set("limit", "3");
+    audioUrl.searchParams.set("scan", "36");
+    audioUrl.searchParams.set("transcribe", "1");
+    audioUrl.searchParams.set("priority", "smart");
+    audioUrl.searchParams.set("deep_only", "1");
+    const response = await internalFetch(audioUrl);
+    const body = await response.json().catch(() => ({}));
+    result.audio_tick = {
+      ok: response.ok && body?.ok !== false,
+      extracted: body?.extracted ?? null,
+      transcript_ready: body?.transcript_ready ?? null,
+      failed: body?.failed ?? null,
+      attempted: Array.isArray(body?.runs) ? body.runs.length : null,
+      error: body?.error || null,
+    };
+  }
+
+  return result;
+}
+
 async function loadBacklogTotals(input: { niches: string; platforms: string }) {
   const db = getSupabaseAdmin();
   if (!db) return { total: 0, analyzed: 0, unanalyzed: 0, error: "Supabase не настроен" };
@@ -138,6 +210,8 @@ export async function GET(req: NextRequest) {
     const niches = req.nextUrl.searchParams.get("niches") || DEFAULT_NICHES;
     const platforms = req.nextUrl.searchParams.get("platforms") || DEFAULT_PLATFORMS;
     const auto = await selectAutoTask(req, niches, platforms);
+    const pipelineProgress = await loadPipelineProgress(req, niches);
+    const preflight = pipelineProgress.ok ? await runPipelinePreflight(req, { niches, progress: pipelineProgress }) : null;
     const guard = auto.task === "bulk" ? await loadAutopilotGuard(req, niches) : null;
     const task = auto.task === "bulk" && guard?.ok && !guard.can_run_paid_collection ? "analyze" : auto.task;
     const endpoint = task === "bulk"
@@ -188,6 +262,8 @@ export async function GET(req: NextRequest) {
       task,
       decision: auto.decision,
       guard: guard ? { ok: guard.ok, can_run_paid_collection: guard.can_run_paid_collection, reason: guard.reason } : null,
+      pipeline_progress_ok: pipelineProgress.ok,
+      pipeline_preflight: preflight,
       target_total: auto.targetTotal,
       backlog: auto.backlog,
       endpoint,
@@ -214,6 +290,8 @@ export async function GET(req: NextRequest) {
       cadence: "*/5 * * * *",
       policy: "auto until target: bulk while corpus is below target and backlog is small, otherwise analyze",
       guard: guard ? { ok: guard.ok, can_run_paid_collection: guard.can_run_paid_collection, reason: guard.reason } : null,
+      pipeline_progress: pipelineProgress.ok ? pipelineProgress.data : null,
+      pipeline_preflight: preflight,
       original_task: auto.task,
       target_total: auto.targetTotal,
       max_backlog_before_analyze: auto.maxBacklogBeforeAnalyze,

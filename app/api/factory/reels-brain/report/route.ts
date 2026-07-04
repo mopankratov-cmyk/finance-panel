@@ -4,13 +4,67 @@ import { internalFetch } from "@/lib/internalFetch";
 export const dynamic = "force-dynamic";
 export const maxDuration = 20;
 
+function compactProgress(body: Record<string, any> | null | undefined) {
+  const totals = body?.totals || {};
+  const platforms = Array.isArray(body?.platforms) ? body.platforms : [];
+  const throughput = body?.throughput_24h || {};
+  const bottlenecks = [
+    { key: "media", count: Number(totals.media_backlog || 0), label: "media bridge" },
+    { key: "audio", count: Number(totals.audio_backlog || 0), label: "audio extraction" },
+    { key: "transcript", count: Number(totals.transcript_backlog || 0), label: "transcript layer" },
+    { key: "analyze", count: Number(totals.analyze_backlog || 0), label: "pattern analysis" },
+  ].sort((a, b) => b.count - a.count);
+  return {
+    throughput_24h: {
+      analyzed: Number(throughput.analyzed || 0),
+      inserted: Number(throughput.inserted || 0),
+    },
+    totals: {
+      total: Number(totals.total || 0),
+      with_media_candidates: Number(totals.with_media_candidates || 0),
+      with_direct_media: Number(totals.with_direct_media || 0),
+      audio_extracted: Number(totals.audio_extracted || 0),
+      transcript_ready: Number(totals.transcript_ready || 0),
+      analyzed: Number(totals.analyzed || 0),
+      media_backlog: Number(totals.media_backlog || 0),
+      audio_backlog: Number(totals.audio_backlog || 0),
+      transcript_backlog: Number(totals.transcript_backlog || 0),
+      analyze_backlog: Number(totals.analyze_backlog || 0),
+      eta_hours: totals.eta_hours || null,
+    },
+    primary_bottleneck: bottlenecks[0] || null,
+    platforms: platforms.map((row) => ({
+      platform: row.platform,
+      status: row.status,
+      total: Number(row.total || 0),
+      with_direct_media: Number(row.with_direct_media || 0),
+      audio_extracted: Number(row.audio_extracted || 0),
+      transcript_ready: Number(row.transcript_ready || 0),
+      analyzed: Number(row.analyzed || 0),
+      media_backlog: Number(row.media_backlog || 0),
+      audio_backlog: Number(row.audio_backlog || 0),
+      transcript_backlog: Number(row.transcript_backlog || 0),
+      analyze_backlog: Number(row.analyze_backlog || 0),
+      automation_eta_hours: row.automation_eta_hours || null,
+    })),
+  };
+}
+
 export async function GET(req: NextRequest) {
   try {
-    const url = new URL("/api/factory/reels-brain/learning-economics", req.nextUrl.origin);
-    url.searchParams.set("niches", req.nextUrl.searchParams.get("niches") || "ru_toys,ru_clothing,ru_cosmetics");
-    url.searchParams.set("limit", req.nextUrl.searchParams.get("limit") || "80");
-    const response = await internalFetch(url);
+    const niches = req.nextUrl.searchParams.get("niches") || "ru_toys,ru_clothing,ru_cosmetics";
+    const limit = req.nextUrl.searchParams.get("limit") || "80";
+    const economicsUrl = new URL("/api/factory/reels-brain/learning-economics", req.nextUrl.origin);
+    economicsUrl.searchParams.set("niches", niches);
+    economicsUrl.searchParams.set("limit", limit);
+    const progressUrl = new URL("/api/factory/reels-brain/progress", req.nextUrl.origin);
+    progressUrl.searchParams.set("niches", niches);
+    const [response, progressResponse] = await Promise.all([
+      internalFetch(economicsUrl),
+      internalFetch(progressUrl),
+    ]);
     const body = await response.json().catch(() => ({}));
+    const progressBody = await progressResponse.json().catch(() => ({}));
     if (!response.ok) return NextResponse.json(body, { status: response.status });
     return NextResponse.json({
       ok: true,
@@ -32,6 +86,7 @@ export async function GET(req: NextRequest) {
       portfolio_manager: body.portfolio_manager || body.next_intelligence_layers?.portfolio_manager || null,
       cost_governor: body.cost_governor || null,
       autopilot_actions: body.autopilot_actions || null,
+      pipeline_progress: progressResponse.ok ? compactProgress(progressBody) : null,
     }, { headers: { "Cache-Control": "no-store" } });
   } catch (e) {
     return NextResponse.json({ error: "report reels-brain упал: " + String((e as Error)?.message || e).slice(0, 180) }, { status: 500 });

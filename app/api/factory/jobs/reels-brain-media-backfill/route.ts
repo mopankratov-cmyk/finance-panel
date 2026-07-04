@@ -227,17 +227,8 @@ export async function GET(req: NextRequest) {
     for (const row of corpusRows) {
       const query = String(row.url || "");
       const effectiveProvider = effectiveProviderForQuery(provider, query);
-      const syntheticFallback = deferTerminalMark ? syntheticDirectInput(query, platform) : [];
-      const result = syntheticFallback.length
-        ? {
-          provider: effectiveProvider,
-          query,
-          configured: true,
-          elapsedMs: 0,
-          videos: syntheticFallback,
-          error: undefined,
-        }
-        : await fetchReelsBrainProvider(effectiveProvider, query, 6);
+      const syntheticFallback = syntheticDirectInput(query, platform);
+      const result = await fetchReelsBrainProvider(effectiveProvider, query, 6);
       const matched = result.videos.filter((video) => sameCanonical(video.url, query));
       let mediaReady = matched.filter((video) => mediaLocator(video as Record<string, unknown>));
       let resolverSample: Record<string, unknown> | null = null;
@@ -257,6 +248,10 @@ export async function GET(req: NextRequest) {
           });
           mediaReady = matched.filter((video) => mediaLocator(video as Record<string, unknown>));
         }
+      }
+
+      if (!matched.length && syntheticFallback.length) {
+        matched.push(...syntheticFallback);
       }
 
       if (mediaReady.length) withMedia += 1;

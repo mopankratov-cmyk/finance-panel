@@ -22,7 +22,8 @@ ok(/!mediaReady\.length && !resolverSample && !deferTerminalMark/.test(route), "
 ok(/function effectiveProviderForQuery[\s\S]*provider === "bright_instagram"[\s\S]*bright_instagram_post/.test(route), "media backfill route can upgrade bright_instagram post URLs to bright_instagram_post");
 ok(!/function effectiveProviderForQuery[\s\S]*provider === "bright_instagram" \|\| provider === "apify_instagram"/.test(route), "media backfill route no longer rewrites apify_instagram post URLs into bright_instagram_post");
 ok(/function syntheticDirectInput/.test(route), "media backfill route exposes synthetic direct-url fallback");
-ok(/const syntheticFallback = deferTerminalMark \? syntheticDirectInput\(query, platform\) : \[\]/.test(route), "media backfill route shortcuts direct URLs when worker resolver is responsible");
+ok(/const syntheticFallback = syntheticDirectInput\(query, platform\);/.test(route), "media backfill route always preserves direct page-url fallback for instagram and youtube");
+ok(/if \(!matched\.length && syntheticFallback\.length\)/.test(route), "media backfill route keeps direct page-url rows alive even without provider media");
 
 if (failed) process.exit(1);
 console.log(`reelsBrainMediaBackfillContract: ${passed} passed, ${failed} failed`);
