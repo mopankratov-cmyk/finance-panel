@@ -156,7 +156,10 @@ function normalizeYtDlpTarget(url: string): string {
 
 function shouldUseCookies(target: string): boolean {
   if (/(^https?:\/\/)?([a-z0-9-]+\.)?(youtube\.com|youtu\.be)(\/|$)/i.test(target)) {
-    return false;
+    return String(process.env.YT_DLP_ENABLE_YOUTUBE_COOKIES || "").trim() === "1";
+  }
+  if (/(^https?:\/\/)?([a-z0-9-]+\.)?(instagram\.com|instagr\.am)(\/|$)/i.test(target)) {
+    return String(process.env.YT_DLP_ENABLE_INSTAGRAM_COOKIES || "").trim() === "1";
   }
   return false;
 }

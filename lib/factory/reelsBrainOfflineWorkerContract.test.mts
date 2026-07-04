@@ -30,6 +30,7 @@ ok(/REELS_BRAIN_DEEP_ONLY/.test(worker), "offline worker reads deep-only env");
 ok(/function shouldUseYtDlpCookies/.test(worker), "offline worker scopes yt-dlp cookies by target domain");
 ok(/youtube\\.com\\|youtu\\.be/.test(worker), "offline worker only applies yt-dlp cookies to YouTube domains");
 ok(/YT_DLP_ENABLE_YOUTUBE_COOKIES/.test(worker), "offline worker makes YouTube cookies opt-in");
+ok(/instagram\\.com\\|instagr\\.am/.test(worker) && /YT_DLP_ENABLE_INSTAGRAM_COOKIES/.test(worker), "offline worker can opt Instagram cookies into yt-dlp");
 ok(/REELS_BRAIN_ENABLE_YOUTUBE_LOCAL_RESOLVER/.test(worker), "offline worker makes YouTube local resolver opt-in");
 ok(/prependPathEntries\(NIX_BIN_DIRS\)/.test(worker) && /NIX_BIN_DIRS\.map\(\(dir\) => path\.join\(dir, "yt-dlp"\)\)/.test(worker), "offline worker searches nix yt-dlp locations before giving up");
 ok(/function shouldSkipDownloadForYtDlpProbe/.test(worker) && /base\.push\("--skip-download"\)/.test(worker), "offline worker disables --skip-download for YouTube cookie-backed probes");
