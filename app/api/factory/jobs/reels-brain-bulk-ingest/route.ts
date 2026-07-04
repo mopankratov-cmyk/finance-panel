@@ -18,6 +18,7 @@ import { corpusProgress, corpusTargetByPlatform } from "@/lib/factory/reelsBrain
 import { reelsBrainEnvStatus } from "@/lib/factory/reelsBrainEnv";
 import { isAuthorizedReelsBrainJobRequest } from "@/lib/factory/reelsBrainJobAuth";
 import { buildReelsBrainBudgetPlan, reelsBrainBudgetLimits } from "@/lib/factory/reelsBrainBudget";
+import { parseBulkExecutionIntent, summarizeBulkExecutionIntent, tuneBulkBudgetByExecutionIntent, tuneBulkLaneByExecutionIntent } from "@/lib/factory/reelsBrainBulkExecutionPolicy";
 import { persistReelsBrainAutomationRun, summarizeReelsBrainAutomationRuns } from "@/lib/factory/reelsBrainAutomationRuns";
 import { rememberDiscoverySourceRun } from "@/lib/factory/reelsBrainDiscovery";
 import { safeUpsertReelsCorpusRows } from "@/lib/factory/reelsBrainCorpusUpsert";
@@ -363,9 +364,15 @@ async function runBulk(req: NextRequest, body: Record<string, unknown>, execute:
   const providersPerLane = Math.max(1, Math.min(3, Number(body.providers_per_lane || req.nextUrl.searchParams.get("providers_per_lane") || 2)));
   const queryVariantsPerLane = Math.max(1, Math.min(3, Number(body.query_variants_per_lane || req.nextUrl.searchParams.get("query_variants_per_lane") || 1)));
   const timeoutMs = Math.max(5000, Math.min(30000, Number(body.provider_timeout_ms || req.nextUrl.searchParams.get("provider_timeout_ms") || 15000)));
-  const budgetLimits = reelsBrainBudgetLimits({
+  const executionIntent = parseBulkExecutionIntent(body.execution_intent);
+  const rawBudgetLimits = reelsBrainBudgetLimits({
     max_provider_calls: body.max_provider_calls || req.nextUrl.searchParams.get("max_provider_calls"),
     max_cost_units: body.max_cost_units || req.nextUrl.searchParams.get("max_cost_units"),
+  });
+  const budgetLimits = tuneBulkBudgetByExecutionIntent({
+    intent: executionIntent,
+    maxProviderCalls: rawBudgetLimits.max_provider_calls,
+    maxCostUnits: rawBudgetLimits.max_cost_units,
   });
   const skipUnseededInstagram = body.skip_unseeded_instagram === true || req.nextUrl.searchParams.get("skip_unseeded_instagram") === "true";
   const igSeeds = instagramSeeds(body, req);
@@ -421,19 +428,36 @@ async function runBulk(req: NextRequest, body: Record<string, unknown>, execute:
     const instagramSeed = lane.platform === "instagram" && igSeeds.length
       ? igSeeds[stableIndex(lane.niche, igSeeds.length)]
       : "";
-    const queries = instagramSeed ? [instagramSeed] : recommendedQueriesForLane;
-    return queries.map((query, index) => {
+    const baseQueries = instagramSeed ? [instagramSeed] : recommendedQueriesForLane;
+    const preferred = preferredSourceProvider(playbook, lane.platform);
+    const prioritizedProviders = prioritizeProvidersForQuery(lane.platform, baseQueries[0] || "", providersFor(lane.platform, body.providers), preferred as ReelsBrainProvider | null);
+    const tunedLane = tuneBulkLaneByExecutionIntent({
+      intent: executionIntent,
+      lane,
+      queries: baseQueries,
+      providers: prioritizedProviders,
+      preferredProvider: preferred as ReelsBrainProvider | null,
+      providersPerLane,
+      queryVariantsPerLane,
+      limit: lane.progress_pct >= 70 ? Math.max(8, Math.min(limit, 18)) : limit,
+      providerTimeoutMs: instagramSeed ? Math.min(timeoutMs, 18000) : timeoutMs,
+    });
+    return tunedLane.queries.map((query, index) => {
       const preferred = preferredSourceProvider(playbook, lane.platform);
       const providers = prioritizeProvidersForQuery(lane.platform, query, providersFor(lane.platform, body.providers), preferred as ReelsBrainProvider | null);
-      const providerCap = providerCapForLane({ lane, query, providersPerLane });
+      const providerCap = Math.min(
+        tunedLane.provider_cap,
+        providerCapForLane({ lane, query, providersPerLane: tunedLane.provider_cap }),
+      );
       return {
         ...lane,
         query,
         query_variant: index + 1,
         query_origin: instagramSeed ? "instagram_seed" : "playbook",
+        execution_strategy: tunedLane.strategy,
         providers: providers.slice(0, providerCap),
-        limit: lane.progress_pct >= 70 ? Math.max(8, Math.min(limit, 18)) : limit,
-        provider_timeout_ms: instagramSeed ? Math.min(timeoutMs, 18000) : timeoutMs,
+        limit: tunedLane.limit,
+        provider_timeout_ms: tunedLane.provider_timeout_ms,
       };
     });
   });
@@ -538,6 +562,7 @@ async function runBulk(req: NextRequest, body: Record<string, unknown>, execute:
     platforms,
     queue: queue.length,
     blocked_lanes: blockedLanes.length,
+    execution_intent: summarizeBulkExecutionIntent(executionIntent),
     budget_skipped: budgetSkipped.length,
     runs: runs.length,
     found: automationSummary.found,
@@ -569,6 +594,7 @@ async function runBulk(req: NextRequest, body: Record<string, unknown>, execute:
     providers_per_lane: providersPerLane,
     query_variants_per_lane: queryVariantsPerLane,
     query_override: queryOverride || null,
+    execution_intent: summarizeBulkExecutionIntent(executionIntent),
     skip_unseeded_instagram: skipUnseededInstagram,
     instagram_seed_count: igSeeds.length,
     queue,

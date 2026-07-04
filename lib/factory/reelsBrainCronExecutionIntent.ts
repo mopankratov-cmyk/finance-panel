@@ -29,7 +29,7 @@ type AnalyzeProfile = {
   build_patterns: boolean;
 };
 
-type CronExecutionIntent = {
+export type ReelsBrainCronExecutionIntent = {
   mode:
     | "generic_bulk"
     | "close_portfolio_gap"
@@ -49,7 +49,7 @@ type CronExecutionIntent = {
 export function buildReelsBrainCronExecutionIntent(input: {
   task: "bulk" | "analyze";
   nextTick?: JsonRecord | null;
-}) : CronExecutionIntent {
+}) : ReelsBrainCronExecutionIntent {
   const nextTick = rec(input.nextTick);
   const taskName = text(nextTick.task);
   const prioritySegment = rec(nextTick.priority_segment);

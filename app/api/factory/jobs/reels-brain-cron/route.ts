@@ -361,6 +361,7 @@ export async function GET(req: NextRequest) {
         max_provider_calls: Math.max(1, Math.min(50, Number(executionIntent.bulk_overrides?.max_provider_calls ?? adaptiveProfile.body.max_provider_calls))),
         max_cost_units: Math.max(1, Math.min(200, Number(executionIntent.bulk_overrides?.max_cost_units ?? adaptiveProfile.body.max_cost_units))),
         hours: Math.max(12, Math.min(168, Number(executionIntent.bulk_overrides?.hours ?? 72))),
+        execution_intent: executionIntent,
       }
       : {
         niches: effectiveNiches,

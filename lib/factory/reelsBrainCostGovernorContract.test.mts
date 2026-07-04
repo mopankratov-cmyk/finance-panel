@@ -9,6 +9,8 @@ const governor = readFileSync("app/api/factory/reels-brain/cost-governor/route.t
 const report = readFileSync("app/api/factory/reels-brain/report/route.ts", "utf8");
 const learningPlan = readFileSync("app/api/factory/reels-brain/learning-plan/route.ts", "utf8");
 const learningPlanBuilder = readFileSync("lib/factory/reelsBrainLearningPlan.ts", "utf8");
+const bulk = readFileSync("app/api/factory/jobs/reels-brain-bulk-ingest/route.ts", "utf8");
+const bulkExecutionPolicy = readFileSync("lib/factory/reelsBrainBulkExecutionPolicy.ts", "utf8");
 const generationPolicy = readFileSync("app/api/factory/reels-brain/generation-policy/route.ts", "utf8");
 const creativeSolution = readFileSync("app/api/factory/reels-brain/creative-solution/route.ts", "utf8");
 const creativeExports = readFileSync("app/api/factory/reels-brain/creative-exports/route.ts", "utf8");
@@ -105,6 +107,7 @@ ok(/function loadAutopilotGuard/.test(cron), "cron has an autopilot guard");
 ok(/original_task/.test(cron) && /can_run_paid_collection/.test(cron), "cron reports guard enforcement");
 ok(/loadLearningPlan/.test(cron) && /planned_task/.test(cron) && /collect_portfolio_gaps/.test(cron) && /planned_portfolio_segment/.test(cron), "cron consumes learning-plan and can execute portfolio-aware next ticks");
 ok(/buildReelsBrainCronExecutionIntent/.test(cron) && /execution_intent/.test(cron) && /support_primary_segment/.test(cronIntent), "cron executes learning-plan with policy-aware execution intent");
+ok(/execution_intent/.test(cron) && /execution_intent/.test(bulk) && /tuneBulkLaneByExecutionIntent/.test(bulk) && /support_primary_segment/.test(bulkExecutionPolicy), "bulk ingest consumes cron execution intent and tunes discovery lanes by policy");
 ok(/function loadPipelineProgress/.test(cron) && /pipeline_preflight/.test(cron) && /reels-brain-audio-backfill/.test(cron), "cron runs pipeline preflight for media and audio backlog");
 ok(/media_ticks/.test(cron) && /audio_ticks/.test(cron) && /platform\",\s*String\(target\.platform/.test(cron), "cron preflight fans out media and audio backlog across top platforms");
 ok(/use_autopilot_guard/.test(scheduler), "scheduler marks paid collection as guarded");

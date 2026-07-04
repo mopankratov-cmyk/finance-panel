@@ -20,7 +20,7 @@ const bulk = readFileSync("app/api/factory/jobs/reels-brain-bulk-ingest/route.ts
 ok(/\/api\/factory\/reels-brain\/progress/.test(route) && /\/api\/factory\/reels-brain\/providers/.test(route) && /\/api\/factory\/worker-state/.test(route), "health route aggregates progress, providers and worker-state");
 ok(/primary_bottleneck/.test(route) && /source_intelligence/.test(route), "health route exposes bottleneck and source intelligence");
 ok(/adaptiveCronProfile/.test(cron) && /adaptive_profile/.test(cron), "cron exposes adaptive intensity profile");
-ok(/providerCapForLane/.test(bulk) && /preferredSourceProvider/.test(bulk), "bulk ingest uses preferred provider memory and adaptive provider caps");
+ok(/providerCapForLane/.test(bulk) && /preferredSourceProvider/.test(bulk) && /execution_intent/.test(bulk) && /tuneBulkLaneByExecutionIntent/.test(bulk), "bulk ingest uses preferred provider memory, adaptive caps and execution intent");
 ok(/Pipeline/.test(reportHtml) && /Backlog by platform/.test(reportHtml), "public niche report shows pipeline backlog");
 ok(/Pipeline truth/.test(portfolioHtml) && /worker state/i.test(portfolioHtml), "portfolio report shows pipeline truth and worker state");
 
