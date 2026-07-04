@@ -1254,16 +1254,21 @@ function buildDailyReport(input: {
   insightPayload: ReturnType<typeof buildInsights>;
   antiPatternBrain: ReturnType<typeof buildAntiPatternBrain>;
   discoveryBrain: ReturnType<typeof buildDiscoveryBrain>;
+  portfolioReadiness?: {
+    summary?: Record<string, unknown>;
+  } | null;
 }) {
   const todayUseful = firstPositive(input.today?.usd_per_relevant, input.today?.usd_per_analyzed, input.today?.usd_per_inserted);
   const yesterdayUseful = firstPositive(input.yesterday?.usd_per_relevant, input.yesterday?.usd_per_analyzed, input.yesterday?.usd_per_inserted);
   const delta = todayUseful && yesterdayUseful ? Math.round((todayUseful - yesterdayUseful) / yesterdayUseful * 100) : null;
+  const portfolio = (input.portfolioReadiness?.summary || {}) as Record<string, unknown>;
   return {
     title: "Что мозг понял за сутки",
     bullets: [
       `В памяти ${num(input.totals.analyzed_videos)} разобранных видео и ${num(input.totals.generator_ready_patterns)} generator-ready паттернов.`,
       input.insightPayload.top_hooks?.[0] ? `Сильнейший хук: ${input.insightPayload.top_hooks[0].hook_label} (${input.insightPayload.top_hooks[0].op_score}/100).` : "Сильный хук пока не определён.",
       delta == null ? "Сравнение стоимости ждёт новых cost-событий." : `Стоимость полезной насмотренности ${delta <= 0 ? "снизилась" : "выросла"} на ${Math.abs(delta)}%.`,
+      `High-trust coverage по матрице ниш и платформ: ${num(portfolio.high_trust_coverage_pct)}% (${num(portfolio.stable_segments)} из ${num(portfolio.expected_segments)} сегментов).`,
       input.discoveryBrain.next_policy,
       input.antiPatternBrain.summary,
     ],
@@ -1312,12 +1317,18 @@ function buildAutopilotActions(input: {
   antiPatternBrain: ReturnType<typeof buildAntiPatternBrain>;
   costGovernor: ReturnType<typeof buildCostGovernor>;
   segmentPriorityQueue?: { items?: Array<Record<string, unknown>> };
+  portfolioReadiness?: {
+    summary?: Record<string, unknown>;
+    missing_segments?: Array<Record<string, unknown>>;
+  } | null;
 }) {
   const weakNiches = input.niches
     .filter((niche) => niche.understanding_score < 85 || niche.generator_ready_patterns < 12)
     .sort((a, b) => a.understanding_score - b.understanding_score)
     .slice(0, 3);
   const providers = input.discoveryBrain.providers || [];
+  const portfolioSummary = (input.portfolioReadiness?.summary || {}) as Record<string, unknown>;
+  const portfolioGaps = ((input.portfolioReadiness?.missing_segments || []) as Array<Record<string, unknown>>).slice(0, 3);
   const segmentActions = (input.segmentPriorityQueue?.items || []).slice(0, 4).map((segment) => ({
     type: String(segment.action || "watch_segment"),
     priority: Boolean(segment.ready_for_generation) || Number(segment.urgency_score || 0) >= 80 ? "high" : "medium",
@@ -1331,6 +1342,14 @@ function buildAutopilotActions(input: {
       : `${String(segment.gap_status || "watch")} · gap ${num(segment.gap_score)} · ${String(segment.why_now || "")}`.trim(),
   }));
   const actions = [
+    ...(num(portfolioSummary.high_trust_coverage_pct) < 85 ? portfolioGaps.map((segment) => ({
+      type: "close_portfolio_gap",
+      priority: num(portfolioSummary.high_trust_coverage_pct) < 60 ? "high" : "medium",
+      niche: String(segment.niche || ""),
+      platform: String(segment.platform || "mixed"),
+      action: `Закрыть portfolio gap для ${String(segment.niche || "")} × ${String(segment.platform || "")}`,
+      reason: `${String(segment.evidence_band || "missing")} · stability ${num(segment.stability_score)} · ${Array.isArray(segment.blockers) ? segment.blockers.slice(0, 2).join(" · ") : ""}`.trim(),
+    })) : []),
     ...segmentActions,
     ...weakNiches.map((niche) => ({
       type: "collect_more",
@@ -1364,6 +1383,12 @@ function buildAutopilotActions(input: {
   return {
     mode: input.costGovernor.status === "ok_to_continue" ? "autopilot_ready" : "budget_guarded",
     can_run_paid_collection: input.costGovernor.status === "ok_to_continue",
+    portfolio_readiness: {
+      high_trust_coverage_pct: num(portfolioSummary.high_trust_coverage_pct),
+      stable_segments: num(portfolioSummary.stable_segments),
+      expected_segments: num(portfolioSummary.expected_segments),
+      verdict: String(portfolioSummary.verdict || "still_building"),
+    },
     actions: actions.slice(0, 10),
   };
 }
@@ -2201,14 +2226,6 @@ export async function GET(req: NextRequest) {
     const taxonomyBrain = buildTaxonomyBrain({ corpusSample, recentSample, playbooks: rows });
     const taxonomyWithLift = buildTaxonomyPatternLift(taxonomyBrain, patternDecisionLayer, corpusSample);
     const nicheComparison = buildNicheComparison(nicheSummaries, insightPayload);
-    const dailyReport = buildDailyReport({
-      totals,
-      today,
-      yesterday,
-      insightPayload,
-      antiPatternBrain,
-      discoveryBrain,
-    });
     const costGovernor = buildCostGovernor({ totals, corpusAudit, discoveryBrain, today });
     const operatingSystem = buildReelsBrainOperatingSystem({
       patterns: patternDecisionLayer.pattern_details,
@@ -2463,12 +2480,22 @@ export async function GET(req: NextRequest) {
       niches: nicheSummaries.map((row) => row.niche),
       platforms: ["tiktok", "instagram", "youtube"],
     });
+    const dailyReport = buildDailyReport({
+      totals,
+      today,
+      yesterday,
+      insightPayload,
+      antiPatternBrain,
+      discoveryBrain,
+      portfolioReadiness,
+    });
     const autopilotActions = buildAutopilotActions({
       niches: nicheSummaries,
       discoveryBrain,
       antiPatternBrain,
       costGovernor,
       segmentPriorityQueue,
+      portfolioReadiness,
     });
 
     const timelineResponse = compactMode ? takeRecordList(timeline, 12) : timeline;

@@ -75,8 +75,12 @@ function nextTick(input: {
   canRunPaidCollection: boolean;
   guardStatus?: string;
   prioritySegment?: JsonRecord | null;
+  portfolioReadiness?: JsonRecord | null;
 }) {
   const backlog = Math.max(0, input.totalVideos - input.analyzedVideos);
+  const portfolio = (input.portfolioReadiness || {}) as JsonRecord;
+  const portfolioCoverage = num(portfolio.high_trust_coverage_pct);
+  const portfolioVerdict = String(portfolio.verdict || "still_building");
   if (backlog >= input.backlogLimit) {
     return {
       task: "analyze_backlog",
@@ -112,12 +116,18 @@ function nextTick(input: {
     return {
       task: input.prioritySegment?.action === "promote_segment_briefs" || input.prioritySegment?.action === "validate_segment_briefs"
         ? "collect_support_for_decision_segment"
+        : portfolioCoverage < 70
+          ? "collect_portfolio_gaps"
         : "collect_smart_batch",
       label: input.prioritySegment?.ready_for_generation
         ? `Поддержать decision-ready сегмент ${String(input.prioritySegment.label || "")}`
+        : portfolioCoverage < 70
+          ? "Закрывать дыры в portfolio coverage"
         : "Добрать новую умную пачку",
       reason: input.prioritySegment?.ready_for_generation
         ? `${String(input.prioritySegment.label || "")} уже близок к рабочим briefs/hypotheses; следующий сбор лучше направить в этот сегмент.`
+        : portfolioCoverage < 70
+          ? `High-trust coverage матрицы пока ${portfolioCoverage}% (${portfolioVerdict}); следующий сбор лучше тратить на незакрытые niches/platforms, а не на общий bulk.`
         : "Backlog под контролем, budget guard разрешает сбор, цель корпуса ещё не закрыта.",
       endpoint: "/api/factory/jobs/reels-brain-cron",
       params: {
@@ -131,6 +141,7 @@ function nextTick(input: {
       },
       paid_collection: true,
       priority_segment: input.prioritySegment || null,
+      portfolio_readiness: input.portfolioReadiness || null,
     };
   }
 
@@ -138,12 +149,13 @@ function nextTick(input: {
     task: "build_patterns",
     label: "Пересобрать Pattern Brain",
     reason: "Цель корпуса закрыта: следующий шаг — сжать данные в паттерны и creative briefs.",
-    endpoint: "/api/factory/jobs/reels-brain-learning",
-    params: { strategy: "analyze", build_patterns: "true" },
-    paid_collection: false,
-    priority_segment: input.prioritySegment || null,
-  };
-}
+      endpoint: "/api/factory/jobs/reels-brain-learning",
+      params: { strategy: "analyze", build_patterns: "true" },
+      paid_collection: false,
+      priority_segment: input.prioritySegment || null,
+      portfolio_readiness: input.portfolioReadiness || null,
+    };
+  }
 
 export async function GET(req: NextRequest) {
   try {
@@ -238,6 +250,7 @@ export async function GET(req: NextRequest) {
           canRunPaidCollection,
           guardStatus: String(costGovernor.status || ""),
           prioritySegment,
+          portfolioReadiness: portfolioSummary,
         }),
         execution_plan: executionPlan,
         segment_plan: segmentPlan,
