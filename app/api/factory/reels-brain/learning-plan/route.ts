@@ -8,6 +8,7 @@ import {
   corpusTargetByNiche,
   corpusTargetByPlatform,
 } from "@/lib/factory/reelsBrainCorpusTargets";
+import { buildReelsBrainSegmentGapPlanner } from "@/lib/factory/reelsBrainSegmentGapPlanner";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 20;
@@ -159,6 +160,15 @@ export async function GET(req: NextRequest) {
         .map(([platform, platformTarget]) => ({ platform, current: 0, target: platformTarget })),
       horizonDays: num(sp.get("horizon_days")) || 30,
     });
+    const segmentPlan = buildReelsBrainSegmentGapPlanner({
+      targetTotal: target,
+      niches: Array.isArray(learning.niches) ? learning.niches : [],
+      patternAtlas: learning.pattern_atlas || null,
+      platforms: platforms.filter((platform): platform is "tiktok" | "instagram" | "youtube" =>
+        platform === "tiktok" || platform === "instagram" || platform === "youtube",
+      ),
+      limit: 8,
+    });
 
     const costGovernor = autopilot.cost_governor || learning.cost_governor || {};
     const autopilotActions = autopilot.autopilot_actions || learning.autopilot_actions || {};
@@ -192,6 +202,7 @@ export async function GET(req: NextRequest) {
           guardStatus: String(costGovernor.status || ""),
         }),
         execution_plan: executionPlan,
+        segment_plan: segmentPlan,
         eta: {
           ticks_to_target: etaTicksToTarget,
           ticks_to_clear_backlog: etaTicksToAnalyzed,

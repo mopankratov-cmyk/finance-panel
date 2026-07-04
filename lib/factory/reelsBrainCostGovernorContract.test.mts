@@ -47,6 +47,7 @@ ok(!/POST\s*\(/.test(report), "report route is read-only");
 
 ok(/corpusProgress/.test(learningPlan) && /corpusExecutionPlan/.test(learningPlan), "learning-plan computes 10k corpus progress");
 ok(/next_tick/.test(learningPlan) && /max_backlog_before_analyze/.test(learningPlan), "learning-plan chooses the next safe training tick");
+ok(/buildReelsBrainSegmentGapPlanner/.test(learningPlan) && /segment_plan/.test(learningPlan), "learning-plan exposes segment-level gap planner toward stable trust");
 ok(/can_run_paid_collection/.test(learningPlan) && /cost_governor/.test(learningPlan), "learning-plan respects paid collection guard");
 ok(!/POST\s*\(/.test(learningPlan), "learning-plan route is read-only");
 
@@ -60,6 +61,7 @@ ok(/use_autopilot_guard/.test(scheduler), "scheduler marks paid collection as gu
 
 ok(/costGovernor/.test(cockpit) && /autopilotActions/.test(cockpit), "cockpit reads cost governor and autopilot actions");
 ok(/learningPlan/.test(cockpit) && /Learning Mission/.test(cockpit), "cockpit exposes the standalone learning mission");
+ok(/segment_plan/.test(cockpit) && /segment-gap:/.test(cockpit), "cockpit surfaces segment-level training gaps inside learning mission");
 ok(/nextLayers/.test(cockpit), "cockpit reads next intelligence layers");
 ok(/Top Opportunities/.test(cockpit) && /Pattern Atlas/.test(cockpit) && /Segment Playbook/.test(cockpit) && /Evidence Ledger/.test(cockpit), "cockpit surfaces segment opportunity, atlas, playbook and evidence layers");
 ok(/selectedPattern/.test(cockpit) && /rb-drawer/.test(cockpit), "cockpit exposes pattern creative brief drawer");

@@ -2884,6 +2884,30 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
               ))}
             </div>
           </div>
+          <div className="rb-three" style={{ marginTop: 16 }}>
+            {((vm.mission.segment_plan?.focus_segments || []) as JsonRecord[]).slice(0, 6).map((row) => (
+              <div className="rb-card" key={`segment-gap:${row.niche}:${row.platform}`}>
+                <div className="rb-two" style={{ gridTemplateColumns: "1fr auto", gap: 14 }}>
+                  <div>
+                    <div className="rb-overline" style={{ color: "#0891b2" }}>
+                      {(NICHE_LABELS[row.niche] || row.niche || "niche")} × {String(row.platform || "mixed").toUpperCase()}
+                    </div>
+                    <h3 style={{ font: "700 24px/1.08 'Space Grotesk'", margin: "10px 0 0" }}>{compact(row.gap_score || 0)}</h3>
+                  </div>
+                  <div className="rb-pill">{row.status || "watch"}</div>
+                </div>
+                <div className="rb-three" style={{ marginTop: 14 }}>
+                  <div className="rb-brief-block"><b>Total gap</b><p>{compact(row.gap?.total_videos || 0)}</p></div>
+                  <div className="rb-brief-block"><b>Analyze gap</b><p>{compact(row.gap?.analyzed_videos || 0)}</p></div>
+                  <div className="rb-brief-block"><b>Stable gap</b><p>{compact(row.gap?.stable_patterns || 0)}</p></div>
+                </div>
+                <div className="rb-brief-block" style={{ marginTop: 12 }}>
+                  <b>Следующий шаг</b>
+                  <p>{row.next_action || "Ждём свежий segment-plan"}</p>
+                </div>
+              </div>
+            ))}
+          </div>
         </section>
 
         <section>
