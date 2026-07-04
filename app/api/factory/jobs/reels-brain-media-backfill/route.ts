@@ -169,6 +169,7 @@ export async function GET(req: NextRequest) {
     const allowLocalResolverRequested = String(req.nextUrl.searchParams.get("use_local_resolver") || process.env.REELS_BRAIN_ENABLE_LOCAL_MEDIA_RESOLVER || "").toLowerCase() === "1";
     const allowLocalResolver = allowLocalResolverRequested && localResolverAllowedForPlatform(platform);
     const ytDlpAvailable = allowLocalResolver ? await hasYtDlpBinary() : false;
+    const deferTerminalMark = allowLocalResolverRequested && !ytDlpAvailable;
     const priorityMode = String(req.nextUrl.searchParams.get("priority") || "smart").trim().toLowerCase();
     const { shardIndex, shardCount } = parseShardConfig({
       shardIndex: req.nextUrl.searchParams.get("shard_index"),
@@ -240,7 +241,7 @@ export async function GET(req: NextRequest) {
       }
 
       if (mediaReady.length) withMedia += 1;
-      if (!mediaReady.length && !resolverSample) {
+      if (!mediaReady.length && !resolverSample && !deferTerminalMark) {
         await db
           .from("viral_videos")
           .update({
@@ -313,6 +314,7 @@ export async function GET(req: NextRequest) {
       platform,
       local_resolver_enabled: allowLocalResolver,
       local_resolver_available: ytDlpAvailable,
+      deferred_terminal_mark: deferTerminalMark,
       shard_index: shardIndex,
       shard_count: shardCount,
       priority: priorityMode,
