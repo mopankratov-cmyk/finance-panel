@@ -388,12 +388,12 @@ function instagramInput(row: Record<string, any>): ReelsBrainInput {
   };
 }
 
-function instagramRowHasVideoSignal(row: Record<string, any>): boolean {
+function instagramRowDirectVideoUrl(row: Record<string, any>): string | undefined {
   const media = rec(row.media || row.reel || row.post || row);
   const postContent = arrayValue(row.post_content);
   const rowVideos = arrayValue(row.videos);
   const firstVideoContent = postContent.find((item) => str(rec(item).type)?.toLowerCase() === "video");
-  const directVideoUrl = str(
+  return str(
     media.video_url,
     firstObjectUrl(media.video_versions),
     firstObjectUrl(rowVideos),
@@ -402,8 +402,12 @@ function instagramRowHasVideoSignal(row: Record<string, any>): boolean {
     row.videoUrl,
     row.video_versions?.[0]?.url,
   );
-  if (directVideoUrl) return true;
+}
 
+function instagramRowHasVideoSignal(row: Record<string, any>): boolean {
+  if (instagramRowDirectVideoUrl(row)) return true;
+  const media = rec(row.media || row.reel || row.post || row);
+  const postContent = arrayValue(row.post_content);
   const contentHints = [
     str(media.media_type, media.product_type, row.content_type, row.product_type),
     ...postContent.map((item) => str(rec(item).type, rec(item).content_type, rec(item).product_type)),
@@ -627,7 +631,7 @@ async function fetchBrightData(provider: BrightDataProvider, query: string, limi
     const { input, params } = brightInstagramPostInputs(query);
     const rows = await brightScrape(input, params);
     return rows
-      .filter((row) => instagramRowHasVideoSignal(row))
+      .filter((row) => Boolean(instagramRowDirectVideoUrl(row)))
       .map((row) => apiRowToInput("instagram", row))
       .filter((video) => video.url && shortFormOnly(video))
       .slice(0, limit);

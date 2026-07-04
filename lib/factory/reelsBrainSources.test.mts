@@ -300,7 +300,8 @@ function eq(a: unknown, b: unknown, m: string) { ok(JSON.stringify(a) === JSON.s
 {
   const source = readFileSync("lib/factory/reelsBrainSources.ts", "utf8");
   ok(/function instagramRowHasVideoSignal/.test(source), "instagram sources: video-signal helper exists");
-  ok(/provider === "bright_instagram_post"[\s\S]*instagramRowHasVideoSignal/.test(source), "instagram sources: bright_instagram_post is filtered by video signal");
+  ok(/function instagramRowDirectVideoUrl/.test(source), "instagram sources: direct-video helper exists");
+  ok(/provider === "bright_instagram_post"[\s\S]*instagramRowDirectVideoUrl/.test(source), "instagram sources: bright_instagram_post is filtered by direct video url");
   ok(/const \{ input, params \} = brightInstagramInputs[\s\S]*instagramRowHasVideoSignal/.test(source), "instagram sources: bright_instagram profile fetch is filtered by video signal");
 }
 
