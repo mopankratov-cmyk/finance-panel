@@ -140,7 +140,7 @@ function sameCanonical(a: string | undefined, b: string | undefined) {
 function effectiveProviderForQuery(provider: ReelsBrainProvider, query: string): ReelsBrainProvider {
   if (
     /instagram\.com\/p\//i.test(query)
-    && (provider === "bright_instagram" || provider === "apify_instagram")
+    && provider === "bright_instagram"
     && hasReelsBrainProvider("bright_instagram_post")
   ) {
     return "bright_instagram_post";

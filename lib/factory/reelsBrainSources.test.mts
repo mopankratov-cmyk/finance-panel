@@ -56,6 +56,12 @@ function eq(a: unknown, b: unknown, m: string) { ok(JSON.stringify(a) === JSON.s
 }
 
 {
+  const source = readFileSync("lib/factory/reelsBrainSources.ts", "utf8");
+  ok(/function shouldShortCircuitDirectUrl/.test(source), "direct url: helper controls provider short-circuiting");
+  ok(/direct\.platform === "instagram" && provider === "apify_instagram"\) return false;/.test(source), "direct url: apify_instagram keeps real provider fetch for instagram post URLs");
+}
+
+{
   const original = {
     YOUTUBE_API_KEY: process.env.YOUTUBE_API_KEY,
     GOOGLE_YOUTUBE_API_KEY: process.env.GOOGLE_YOUTUBE_API_KEY,

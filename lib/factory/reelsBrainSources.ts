@@ -472,6 +472,16 @@ function syntheticDirectUrlInput(query: string): ReelsBrainInput[] {
   return [{ url: direct.url, platform: direct.platform }];
 }
 
+function shouldShortCircuitDirectUrl(provider: ReelsBrainProvider, query: string): boolean {
+  const direct = directPlatformUrl(query);
+  if (!direct) return false;
+  if (direct.platform === "instagram" && provider === "apify_instagram") return false;
+  return provider === "apify_tiktok"
+    || provider === "apify_youtube"
+    || provider === "apify_instagram"
+    || provider === "youtube";
+}
+
 async function fetchYouTubeShorts(query: string, limit: number): Promise<ReelsBrainInput[]> {
   const key = YOUTUBE_KEY();
   if (!key) return [];
@@ -871,10 +881,7 @@ export async function fetchReelsBrainProvider(provider: ReelsBrainProvider, quer
     return { provider, query, configured: false, elapsedMs: 0, videos: [], error: `${provider} не настроен` };
   }
   try {
-    if (
-      (provider === "apify_tiktok" || provider === "apify_youtube" || provider === "apify_instagram" || provider === "youtube")
-      && syntheticDirectUrlInput(query).length
-    ) {
+    if (shouldShortCircuitDirectUrl(provider, query) && syntheticDirectUrlInput(query).length) {
       return {
         provider,
         query,
