@@ -93,21 +93,9 @@ function isPlayableMediaLocator(value: string, platform = ""): boolean {
 
 function bestMediaLocator(row: CorpusRow): string {
   const state = seedState(row);
-  const platform = String(row.platform || "").trim().toLowerCase();
   const direct = state.mediaLocators.find((item) => isDirectVideoLocator(item));
   if (direct) return direct;
-
-  if (platform === "instagram") {
-    const postPageCandidates = [
-      ...state.mediaLocators,
-      String(row.url || "").trim(),
-    ].filter(Boolean);
-    const page = postPageCandidates.find((item) =>
-      /^https?:\/\/(www\.)?instagram\.com\/(reel|reels|tv|p)\//i.test(item.trim()),
-    );
-    return page || "";
-  }
-
+  const platform = String(row.platform || "").trim().toLowerCase();
   return state.mediaLocators.find((item) => isPlayableMediaLocator(item, platform)) || "";
 }
 
@@ -153,7 +141,7 @@ export async function GET(req: NextRequest) {
         const state = seedState(row);
         const platform = String(row.platform || "").trim().toLowerCase();
         const hasPlayable = state.mediaLocators.some((item) => isPlayableMediaLocator(item, platform))
-          || (platform === "instagram" && /^https?:\/\/(www\.)?instagram\.com\/(reel|reels|tv|p)\//i.test(String(row.url || "").trim()));
+          || Boolean(String(row.url || "").trim());
         if (!hasPlayable) return false;
         return shouldRetryAudioBackfill({
           audioStatus: state.audioStatus,
