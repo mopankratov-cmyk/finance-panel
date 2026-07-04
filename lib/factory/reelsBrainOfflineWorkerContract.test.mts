@@ -21,6 +21,7 @@ ok(/use_local_resolver/.test(worker), "offline worker forwards local resolver fl
 ok(/dry_run/.test(worker), "offline worker can request dry-run audio candidates from API");
 ok(/worker-state/.test(worker), "offline worker can send worker-state heartbeat");
 ok(/controller\.abort\(\)/.test(worker) && /signal:\s*controller\.signal/.test(worker), "offline worker fetchJson uses abort controller timeout");
+ok(/raw == null \|\| String\(raw\)\.trim\(\) === ""/.test(worker), "offline worker timeout env parser falls back when env is unset");
 ok(/REELS_BRAIN_ENABLE_LOCAL_MEDIA_RESOLVER/.test(worker), "offline worker reads local media resolver env");
 ok(/REELS_BRAIN_AUDIO_LOCAL/.test(worker), "offline worker reads local audio extraction env");
 ok(/REELS_BRAIN_QUEUE_PRIORITY/.test(worker), "offline worker reads queue priority env");
@@ -33,6 +34,7 @@ ok(/function finalizeTranscriptOutcome/.test(worker), "offline worker normalizes
 ok(/transcript_no_speech/.test(worker), "offline worker marks empty whisper responses as no-speech terminal state");
 ok(/remoteFallback = await transcribeFal/.test(worker), "offline worker retries local empty transcript via remote media fallback");
 ok(/stage:\s*"heartbeat_failed_open"/.test(worker), "offline worker keeps cycle alive when heartbeat transport fails");
+ok(/function fetchJsonViaCurl/.test(worker) && /fetch_json_curl_fallback/.test(worker), "offline worker can fall back to curl transport for retryable fetch aborts");
 ok(
   /REELS_BRAIN_OFFLINE_MODE/.test(worker)
     && /mode === "audio"/.test(worker)
