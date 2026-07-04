@@ -809,6 +809,66 @@ type LearningEconomicsResponse = {
       no_feedback?: number;
     };
   };
+  action_pack?: {
+    primary?: {
+      rank: number;
+      pattern_id: string;
+      title: string;
+      decision: "scale" | "control" | "watch";
+      market_status: "proven" | "promising" | "weak" | "no_feedback";
+      confidence: "high" | "medium" | "low";
+      priority_score: number;
+      op_score: number;
+      why_now: string[];
+      success_metric: string;
+      guardrails: string[];
+      brief_seed: {
+        hook: string;
+        retention: string;
+        structure: string;
+        visual_recipe: string[];
+        audio_strategy: string[];
+        product_fit: string[];
+      };
+    } | null;
+    alternatives?: {
+      rank: number;
+      pattern_id: string;
+      title: string;
+      decision: "scale" | "control" | "watch";
+      market_status: "proven" | "promising" | "weak" | "no_feedback";
+      confidence: "high" | "medium" | "low";
+      priority_score: number;
+      op_score: number;
+      why_now: string[];
+      success_metric: string;
+      guardrails: string[];
+      brief_seed: {
+        hook: string;
+        retention: string;
+        structure: string;
+        visual_recipe: string[];
+        audio_strategy: string[];
+        product_fit: string[];
+      };
+    }[];
+    summary?: {
+      total?: number;
+      scale?: number;
+      control?: number;
+      watch?: number;
+      proven?: number;
+      promising?: number;
+      weak?: number;
+      no_feedback?: number;
+      rollout_order?: {
+        rank: number;
+        pattern_id: string;
+        priority_score: number;
+        decision: "scale" | "control" | "watch";
+      }[];
+    };
+  };
   warning?: string;
   error?: string;
 };
@@ -1450,6 +1510,7 @@ export default function ReelsBrainPage() {
   const generatorRecipes = learningEconomics?.insights?.recipes || [];
   const patternDetails = learningEconomics?.pattern_details || [];
   const hypothesisBank = learningEconomics?.hypothesis_bank || null;
+  const actionPack = learningEconomics?.action_pack || null;
   const patternDetailById = new Map(patternDetails.map((item) => [item.id, item]));
   const sourceReferences = learningEconomics?.insights?.source_references || [];
   const sourceMap = learningEconomics?.insights?.source_map || [];
@@ -2858,6 +2919,87 @@ export default function ReelsBrainPage() {
                 </div>
               )}) : <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-500">Рецепты появятся после сборки Pattern Brain.</div>}
             </div>
+          </div>
+
+          <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">Action pack</p>
+                <h4 className="mt-1 text-lg font-black text-slate-950">В каком порядке запускать лучшие решения</h4>
+              </div>
+              <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-bold text-slate-500">
+                {compactNumber(actionPack?.summary?.total || 0)} rollout items
+              </span>
+            </div>
+            <div className="mt-3 grid gap-3 lg:grid-cols-3">
+              {actionPack?.primary ? (
+                <>
+                  <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 lg:col-span-2">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <p className="text-xs font-black uppercase tracking-[0.16em] text-emerald-700">Primary rollout</p>
+                        <h5 className="mt-1 text-lg font-black text-slate-950">{actionPack.primary.title}</h5>
+                      </div>
+                      <span className="shrink-0 rounded-full border border-emerald-200 bg-white px-2 py-1 text-xs font-black text-emerald-700">
+                        {compactNumber(actionPack.primary.priority_score)}
+                      </span>
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-black ${decisionCopy(actionPack.primary.decision).tone}`}>{decisionCopy(actionPack.primary.decision).label}</span>
+                      <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-black ${marketSignalCopy(actionPack.primary.market_status).tone}`}>{marketSignalCopy(actionPack.primary.market_status).label}</span>
+                      <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-black ${confidenceCopy(actionPack.primary.confidence).tone}`}>{confidenceCopy(actionPack.primary.confidence).label}</span>
+                    </div>
+                    <div className="mt-3 space-y-1 text-xs text-slate-700">
+                      <p><span className="font-bold text-slate-900">Hook:</span> {actionPack.primary.brief_seed.hook}</p>
+                      <p><span className="font-bold text-slate-900">Retention:</span> {actionPack.primary.brief_seed.retention}</p>
+                      <p><span className="font-bold text-slate-900">Structure:</span> {actionPack.primary.brief_seed.structure}</p>
+                      <p><span className="font-bold text-slate-900">Fit:</span> {actionPack.primary.brief_seed.product_fit.slice(0, 2).join(" · ") || "mixed"}</p>
+                    </div>
+                    {actionPack.primary.why_now?.length ? (
+                      <div className="mt-3 rounded-xl border border-white/70 bg-white/70 p-3 text-xs leading-5 text-slate-700">
+                        <p className="font-black uppercase tracking-[0.14em] text-slate-500">Почему сейчас</p>
+                        <ul className="mt-2 list-disc space-y-1 pl-4">
+                          {actionPack.primary.why_now.slice(0, 3).map((item) => <li key={item}>{item}</li>)}
+                        </ul>
+                      </div>
+                    ) : null}
+                  </div>
+                  <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                    <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">Success metric</p>
+                    <p className="mt-2 text-sm leading-6 text-slate-700">{actionPack.primary.success_metric}</p>
+                    {actionPack.primary.guardrails?.length ? (
+                      <div className="mt-3 rounded-xl border border-amber-100 bg-amber-50 p-3 text-xs leading-5 text-amber-900">
+                        <p className="font-black">Guardrails</p>
+                        <ul className="mt-2 list-disc space-y-1 pl-4">
+                          {actionPack.primary.guardrails.slice(0, 3).map((item) => <li key={item}>{item}</li>)}
+                        </ul>
+                      </div>
+                    ) : null}
+                  </div>
+                </>
+              ) : (
+                <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-500 lg:col-span-3">Action pack появится после достаточного числа trust-ranked pattern details.</div>
+              )}
+            </div>
+            {actionPack?.alternatives?.length ? (
+              <div className="mt-3 grid gap-3 lg:grid-cols-3">
+                {actionPack.alternatives.slice(0, 3).map((item) => (
+                  <div key={item.pattern_id} className="rounded-2xl border border-slate-200 bg-white p-4">
+                    <div className="flex items-start justify-between gap-2">
+                      <h5 className="text-sm font-black leading-5 text-slate-950">{item.title}</h5>
+                      <span className="shrink-0 rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-black text-slate-700">
+                        #{compactNumber(item.rank)}
+                      </span>
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-black ${decisionCopy(item.decision).tone}`}>{decisionCopy(item.decision).label}</span>
+                      <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-black ${marketSignalCopy(item.market_status).tone}`}>{marketSignalCopy(item.market_status).label}</span>
+                    </div>
+                    <p className="mt-3 text-xs leading-5 text-slate-600">{item.success_metric}</p>
+                  </div>
+                ))}
+              </div>
+            ) : null}
           </div>
 
           <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
