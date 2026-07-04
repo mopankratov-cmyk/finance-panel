@@ -286,6 +286,7 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
     const segmentDecisionDeck = (learning?.segment_decision_deck || {}) as JsonRecord;
     const segmentPriorityQueue = ((mission.segment_priority_queue || learning?.segment_priority_queue || {}) as JsonRecord);
     const segmentGenerationPacks = (learning?.segment_generation_packs || {}) as JsonRecord;
+    const segmentCreativeExports = (learning?.segment_creative_exports || {}) as JsonRecord;
     const evidenceLedger = (learning?.evidence_ledger || {}) as JsonRecord;
     const actionPack = (learning?.action_pack || {}) as JsonRecord;
     const actionPackGroups = (learning?.action_pack_groups || {}) as JsonRecord;
@@ -734,6 +735,14 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
         label: `${NICHE_LABELS[String(row.niche)] || row.niche} × ${String(row.platform || "mixed").toUpperCase()}`,
       };
     });
+    const segmentExportCards = ((segmentCreativeExports.items || []) as JsonRecord[]).slice(0, 6).map((row) => {
+      const tone = playbookTone(String(row.lane === "ship" ? "ship_now" : row.lane === "validate" ? "validate_and_ship" : "research"));
+      return {
+        ...row,
+        laneTone: tone,
+        label: `${NICHE_LABELS[String(row.niche)] || row.niche} × ${String(row.platform || "mixed").toUpperCase()}`,
+      };
+    });
     const missionPriorityCards = ((segmentPriorityQueue.items || []) as JsonRecord[]).slice(0, 4).map((row) => ({
       ...row,
       modeTone: decisionTone(String(row.ready_for_generation ? "primary" : row.action === "analyze_segment_backlog" ? "control_only" : "research_only")),
@@ -925,6 +934,7 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
       segmentDecisionCards,
       segmentDecisionSummary,
       segmentGenerationCards,
+      segmentExportCards,
       missionPriorityCards,
       evidenceCards,
       evidenceSummary,
@@ -1827,6 +1837,50 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
                 <h3 style={{ font: "700 24px/1.1 'Space Grotesk'", margin: 0 }}>Segment Generation Packs ещё пусты</h3>
                 <p style={{ marginTop: 10, color: "#64748b", lineHeight: 1.55 }}>
                   Этот слой появится, когда decision deck накопит достаточно нормализованных payload-ов и quality-gated сегментов.
+                </p>
+              </div>
+            )}
+          </div>
+        </section>
+
+        <section>
+          <SectionTitle k="04.445 · Segment Creative Exports" title="Какие готовые bundles уже можно брать в работу без ручной сборки" />
+          <div className="rb-three">
+            {vm.segmentExportCards.length ? vm.segmentExportCards.map((item: JsonRecord) => (
+              <div className="rb-card" key={`segment-export:${item.niche}:${item.platform}`}>
+                <div className="rb-two" style={{ gridTemplateColumns: "1fr auto", gap: 14 }}>
+                  <div>
+                    <div className="rb-overline" style={{ color: "#0891b2" }}>{item.label}</div>
+                    <h3 style={{ font: "700 24px/1.08 'Space Grotesk'", margin: "10px 0 0" }}>{item.brief?.title || "Creative export"}</h3>
+                  </div>
+                  <div className="rb-live-pill" style={{ background: item.laneTone.bg, borderColor: item.laneTone.bd, color: item.laneTone.fg }}>
+                    <i style={{ background: item.laneTone.fg }} />
+                    {item.lane || "research"}
+                  </div>
+                </div>
+                <div className="rb-three" style={{ marginTop: 14 }}>
+                  <div className="rb-brief-block"><b>Hook</b><p>{item.brief?.hook || "hook pending"}</p></div>
+                  <div className="rb-brief-block"><b>Retention</b><p>{item.brief?.retention || "retention pending"}</p></div>
+                  <div className="rb-brief-block"><b>Structure</b><p>{item.brief?.structure || "structure pending"}</p></div>
+                </div>
+                <div className="rb-three" style={{ marginTop: 12 }}>
+                  <div className="rb-brief-block"><b>Hypothesis</b><p>{item.hypothesis?.title || "next hypothesis"}</p></div>
+                  <div className="rb-brief-block"><b>Action</b><p>{item.content_solution?.action_title || "content action"}</p></div>
+                  <div className="rb-brief-block"><b>Metric</b><p>{item.content_solution?.success_metric || item.hypothesis?.success_metric || "metric pending"}</p></div>
+                </div>
+                <div className="rb-brief-block" style={{ marginTop: 12 }}>
+                  <b>Generator lane</b>
+                  <p>{item.generator_bundle?.lane || "research"} · {((item.generator_bundle?.allowed_modes || []) as string[]).join(" · ") || "none"}</p>
+                </div>
+                <p style={{ marginTop: 12, color: "#475569", lineHeight: 1.55 }}>
+                  {item.why_now || item.next_step || "Ждём более сильный signal bundle"}
+                </p>
+              </div>
+            )) : (
+              <div className="rb-card">
+                <h3 style={{ font: "700 24px/1.1 'Space Grotesk'", margin: 0 }}>Segment Creative Exports ещё пусты</h3>
+                <p style={{ marginTop: 10, color: "#64748b", lineHeight: 1.55 }}>
+                  Этот слой заполнится, когда generation packs начнут стабильно проходить quality gate и собираться в operator-ready bundles.
                 </p>
               </div>
             )}

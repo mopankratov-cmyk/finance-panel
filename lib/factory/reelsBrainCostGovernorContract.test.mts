@@ -45,6 +45,7 @@ ok(/segment_output_banks/.test(report), "report route exposes segment-specific o
 ok(/segment_decision_deck/.test(report), "report route exposes segment decision deck");
 ok(/segment_priority_queue/.test(report), "report route exposes segment priority queue");
 ok(/segment_generation_packs/.test(report), "report route exposes segment generation packs");
+ok(/segment_creative_exports/.test(report), "report route exposes segment creative exports");
 ok(/feedback_loop/.test(report) && /portfolio_manager/.test(report) && /audio_visual_readiness/.test(report) && /outcome_memory_brain/.test(report), "report route exposes operating-system intelligence, audio readiness and outcome memory");
 ok(/\/api\/factory\/reels-brain\/progress/.test(report) && /pipeline_progress/.test(report), "report route exposes compact pipeline progress");
 ok(!/POST\s*\(/.test(report), "report route is read-only");
@@ -74,6 +75,7 @@ ok(/segment_output_banks/.test(economics) && /Segment Output Banks/.test(cockpit
 ok(/buildReelsBrainSegmentDecisionDeck/.test(economics) && /segment_decision_deck/.test(economics) && /Segment Decision Deck/.test(cockpit) && /segment-decision:/.test(cockpit), "learning-economics and cockpit expose a trust-ranked segment decision deck");
 ok(/buildReelsBrainSegmentPriorityQueue/.test(economics) && /segment_priority_queue/.test(economics), "learning-economics exposes a segment priority queue for autopilot");
 ok(/buildReelsBrainSegmentGenerationPacks/.test(economics) && /segment_generation_packs/.test(economics) && /Segment Generation Packs/.test(cockpit) && /segment-generation:/.test(cockpit), "learning-economics and cockpit expose quality-gated generation packs for strong segments");
+ok(/buildReelsBrainSegmentCreativeExports/.test(economics) && /segment_creative_exports/.test(economics) && /Segment Creative Exports/.test(cockpit) && /segment-export:/.test(cockpit), "learning-economics and cockpit expose operator-ready creative export bundles");
 ok(/selectedPattern/.test(cockpit) && /rb-drawer/.test(cockpit), "cockpit exposes pattern creative brief drawer");
 ok(/rb-click/.test(cockpit) && /setSelectedPattern/.test(cockpit), "cockpit pattern cards are inspectable");
 ok(/sort\(\(a, b\) => String\(a\.created_at \|\| \"\"\)\.localeCompare\(String\(b\.created_at \|\| \"\"\)\)\)\s*\.slice\(-8\)\s*\.reverse\(\)/.test(cockpit), "cockpit stores latest learning runs first");

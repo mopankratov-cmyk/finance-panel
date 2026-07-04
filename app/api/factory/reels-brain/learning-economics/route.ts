@@ -14,6 +14,7 @@ import { buildReelsBrainEvidenceLedger } from "@/lib/factory/reelsBrainEvidenceL
 import { buildReelsBrainSegmentDecisionDeck } from "@/lib/factory/reelsBrainSegmentDecisionDeck";
 import { buildReelsBrainSegmentPriorityQueue } from "@/lib/factory/reelsBrainSegmentPriorityQueue";
 import { buildReelsBrainSegmentGenerationPacks } from "@/lib/factory/reelsBrainSegmentGenerationPacks";
+import { buildReelsBrainSegmentCreativeExports } from "@/lib/factory/reelsBrainSegmentCreativeExports";
 import { REELS_BRAIN_CORPUS_TARGET_TOTAL } from "@/lib/factory/reelsBrainCorpusTargets";
 import { buildReelsBrainSegmentGapPlanner } from "@/lib/factory/reelsBrainSegmentGapPlanner";
 
@@ -2417,6 +2418,10 @@ export async function GET(req: NextRequest) {
       segmentDecisionDeck,
       limit: compactMode ? 6 : 10,
     });
+    const segmentCreativeExports = buildReelsBrainSegmentCreativeExports({
+      segmentGenerationPacks,
+      limit: compactMode ? 6 : 10,
+    });
     const autopilotActions = buildAutopilotActions({
       niches: nicheSummaries,
       discoveryBrain,
@@ -2465,6 +2470,7 @@ export async function GET(req: NextRequest) {
       segment_decision_deck: segmentDecisionDeck,
       segment_priority_queue: segmentPriorityQueue,
       segment_generation_packs: segmentGenerationPacks,
+      segment_creative_exports: segmentCreativeExports,
       evidence_ledger: evidenceLedger,
       feedback_warning: feedbackRows.warning,
       cost_governor: costGovernor,
