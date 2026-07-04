@@ -147,6 +147,7 @@ export default function ReelsBrainPixelCockpit() {
   const [health, setHealth] = useState<JsonRecord | null>(null);
   const [summaries, setSummaries] = useState<JsonRecord[]>([]);
   const [selectedPattern, setSelectedPattern] = useState<JsonRecord | null>(null);
+  const [techLayerOpen, setTechLayerOpen] = useState(false);
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
   const [error, setError] = useState("");
 
@@ -1033,11 +1034,15 @@ export default function ReelsBrainPixelCockpit() {
           </div>
         </section>
 
-        <details className="rb-tech-layer">
+        <details
+          className="rb-tech-layer"
+          onToggle={(event) => setTechLayerOpen((event.currentTarget as HTMLDetailsElement).open)}
+        >
           <summary>
             <span>Hidden Technical Layer</span>
             Техническая кухня, логи, taxonomy, automation history
           </summary>
+          {techLayerOpen ? (
           <div className="rb-tech-body">
         <section>
           <SectionTitle k="01 · Прогресс обучения" title="От сырого видео к Creative DNA" />
@@ -1781,6 +1786,7 @@ export default function ReelsBrainPixelCockpit() {
           ))}
         </section>
           </div>
+          ) : null}
         </details>
       </div>
 
