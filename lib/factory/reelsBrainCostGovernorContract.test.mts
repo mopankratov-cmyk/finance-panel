@@ -8,6 +8,7 @@ const actions = readFileSync("app/api/factory/reels-brain/autopilot-actions/rout
 const governor = readFileSync("app/api/factory/reels-brain/cost-governor/route.ts", "utf8");
 const report = readFileSync("app/api/factory/reels-brain/report/route.ts", "utf8");
 const learningPlan = readFileSync("app/api/factory/reels-brain/learning-plan/route.ts", "utf8");
+const learningPlanBuilder = readFileSync("lib/factory/reelsBrainLearningPlan.ts", "utf8");
 const generationPolicy = readFileSync("app/api/factory/reels-brain/generation-policy/route.ts", "utf8");
 const creativeSolution = readFileSync("app/api/factory/reels-brain/creative-solution/route.ts", "utf8");
 const creativeExports = readFileSync("app/api/factory/reels-brain/creative-exports/route.ts", "utf8");
@@ -124,9 +125,11 @@ ok(/buildReelsBrainSegmentSolutionMatrix/.test(economics) && /segment_solution_m
 ok(/buildReelsBrainGenerationPolicy/.test(economics) && /generation_policy/.test(economics) && /policy_mode/.test(generationPolicyBuilder), "learning-economics exposes unified generation policy on top of segment solutions");
 ok(/buildReelsBrainPortfolioReadiness/.test(economics) && /portfolio_readiness/.test(economics), "learning-economics exposes portfolio readiness for 10k coverage tracking");
 ok(/portfolioReadiness/.test(economics) && /close_portfolio_gap/.test(economics), "autopilot uses portfolio readiness to close high-trust coverage gaps");
+ok(/generationPolicy/.test(economics) && /ship_policy_segment/.test(economics) && /validate_policy_segment/.test(economics), "autopilot actions consume generation policy and expose production-aware segment moves");
 ok(/segmentStabilityAudit/.test(learningPlan) && /segment_stability/.test(learningPlan), "learning-plan uses segment stability audit in the main loop");
 ok(/portfolio_readiness/.test(learningPlan), "learning-plan exposes portfolio readiness in the mission loop");
 ok(/buildReelsBrainNextTick/.test(learningPlan) && /portfolio_priority_segment/.test(learningPlan), "learning-plan delegates portfolio-aware next tick selection and preserves focused gap segment");
+ok(/generationPolicy/.test(learningPlan) && /generation_policy/.test(learningPlanBuilder) && /policyLine/.test(learningPlanBuilder), "learning-plan uses generation policy when choosing the next collection move");
 ok(/\/api\/factory\/reels-brain\/readiness-audit\?verdict=/.test(cockpit), "cockpit exposes standalone readiness-audit endpoint per segment");
 ok(/\/api\/factory\/reels-brain\/decision-snapshot\?lane=/.test(cockpit), "cockpit exposes unified decision-snapshot endpoint per segment");
 ok(/\/api\/factory\/reels-brain\/segment-solutions\?lane=/.test(cockpit), "cockpit exposes operator-ready segment-solutions endpoint per segment");

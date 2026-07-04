@@ -63,10 +63,64 @@ const decisionSupportTick = buildReelsBrainNextTick({
       { niche: "ru_cosmetics", platform: "youtube", label: "ru_cosmetics × youtube", evidence_band: "missing", stability_score: 0, missing: true },
     ],
   },
+  generationPolicy: {
+    by_segment: [
+      {
+        niche: "ru_toys",
+        platform: "tiktok",
+        label: "ru_toys × tiktok",
+        policy_mode: "control_only",
+        trust_band: "medium",
+        evidence_band: "forming",
+        readiness_score: 72,
+        policy_reason: "segment already has a control-ready package",
+      },
+    ],
+  },
 });
 
 assert.equal(decisionSupportTick.task, "collect_support_for_decision_segment");
 assert.equal((decisionSupportTick.params as Record<string, unknown>).niche, "ru_toys");
 assert.equal((decisionSupportTick.params as Record<string, unknown>).platform, "tiktok");
+assert.equal((decisionSupportTick.generation_policy as Record<string, unknown>)?.policy_mode, "control_only");
+assert.match(decisionSupportTick.reason, /Policy control_only/);
+
+const policyDrivenTick = buildReelsBrainNextTick({
+  target: 10000,
+  totalVideos: 3200,
+  analyzedVideos: 3150,
+  backlogLimit: 180,
+  canRunPaidCollection: true,
+  prioritySegment: {
+    niche: "ru_clothing",
+    platform: "instagram",
+    label: "ru_clothing × instagram",
+    action: "watch_segment",
+  },
+  portfolioReadiness: {
+    summary: {
+      high_trust_coverage_pct: 84,
+      verdict: "forming",
+    },
+    missing_segments: [],
+  },
+  generationPolicy: {
+    by_segment: [
+      {
+        niche: "ru_clothing",
+        platform: "instagram",
+        label: "ru_clothing × instagram",
+        policy_mode: "primary",
+        trust_band: "high",
+        evidence_band: "stable",
+        readiness_score: 91,
+        policy_reason: "segment is already primary-ready",
+      },
+    ],
+  },
+});
+
+assert.equal(policyDrivenTick.task, "collect_support_for_decision_segment");
+assert.match(policyDrivenTick.reason, /primary-ready/);
 
 console.log("reelsBrainLearningPlan: passed");

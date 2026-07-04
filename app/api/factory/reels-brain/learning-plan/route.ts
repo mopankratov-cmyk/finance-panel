@@ -147,6 +147,7 @@ export async function GET(req: NextRequest) {
       guardStatus: String(costGovernor.status || ""),
       prioritySegment,
       portfolioReadiness,
+      generationPolicy: (learning.generation_policy || null) as JsonRecord | null,
     });
 
     return NextResponse.json({

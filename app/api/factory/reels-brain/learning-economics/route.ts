@@ -1319,6 +1319,11 @@ function buildAutopilotActions(input: {
   antiPatternBrain: ReturnType<typeof buildAntiPatternBrain>;
   costGovernor: ReturnType<typeof buildCostGovernor>;
   segmentPriorityQueue?: { items?: Array<Record<string, unknown>> };
+  generationPolicy?: {
+    by_niche?: Array<Record<string, unknown>>;
+    by_platform?: Array<Record<string, unknown>>;
+    by_segment?: Array<Record<string, unknown>>;
+  } | null;
   portfolioReadiness?: {
     summary?: Record<string, unknown>;
     missing_segments?: Array<Record<string, unknown>>;
@@ -1329,6 +1334,15 @@ function buildAutopilotActions(input: {
     .sort((a, b) => a.understanding_score - b.understanding_score)
     .slice(0, 3);
   const providers = input.discoveryBrain.providers || [];
+  const segmentPolicies = (input.generationPolicy?.by_segment || []).slice(0, 8).map((row) => ({
+    niche: String(row.niche || ""),
+    platform: String(row.platform || ""),
+    label: String(row.label || `${String(row.niche || "")} × ${String(row.platform || "")}`),
+    policy_mode: String(row.policy_mode || "research_only"),
+    trust_band: String(row.trust_band || "low"),
+    evidence_band: String(row.evidence_band || "missing"),
+    readiness_score: num(row.readiness_score),
+  }));
   const portfolioSummary = (input.portfolioReadiness?.summary || {}) as Record<string, unknown>;
   const portfolioGaps = ((input.portfolioReadiness?.missing_segments || []) as Array<Record<string, unknown>>).slice(0, 3);
   const segmentActions = (input.segmentPriorityQueue?.items || []).slice(0, 4).map((segment) => ({
@@ -1343,6 +1357,26 @@ function buildAutopilotActions(input: {
       ? `${String(segment.decision_grade || "validate")} · trust ${num(segment.trust_score)} · ${String(segment.brief_title || "segment brief")}`
       : `${String(segment.gap_status || "watch")} · gap ${num(segment.gap_score)} · ${String(segment.why_now || "")}`.trim(),
   }));
+  const policyActions = segmentPolicies.map((segment) => ({
+    type: segment.policy_mode === "primary"
+      ? "ship_policy_segment"
+      : segment.policy_mode === "control_only"
+        ? "validate_policy_segment"
+        : "research_policy_segment",
+    priority: segment.policy_mode === "primary"
+      ? "high"
+      : segment.policy_mode === "control_only"
+        ? "medium"
+        : "medium",
+    niche: segment.niche,
+    platform: segment.platform,
+    action: segment.policy_mode === "primary"
+      ? `Использовать ${segment.label} как primary generation policy`
+      : segment.policy_mode === "control_only"
+        ? `Гонять ${segment.label} только как control batch`
+        : `Продолжать исследование ${segment.label} до production-ready policy`,
+    reason: `${segment.policy_mode} · trust ${segment.trust_band} · evidence ${segment.evidence_band} · readiness ${segment.readiness_score}`,
+  }));
   const actions = [
     ...(num(portfolioSummary.high_trust_coverage_pct) < 85 ? portfolioGaps.map((segment) => ({
       type: "close_portfolio_gap",
@@ -1352,6 +1386,7 @@ function buildAutopilotActions(input: {
       action: `Закрыть portfolio gap для ${String(segment.niche || "")} × ${String(segment.platform || "")}`,
       reason: `${String(segment.evidence_band || "missing")} · stability ${num(segment.stability_score)} · ${Array.isArray(segment.blockers) ? segment.blockers.slice(0, 2).join(" · ") : ""}`.trim(),
     })) : []),
+    ...policyActions,
     ...segmentActions,
     ...weakNiches.map((niche) => ({
       type: "collect_more",
@@ -1390,6 +1425,11 @@ function buildAutopilotActions(input: {
       stable_segments: num(portfolioSummary.stable_segments),
       expected_segments: num(portfolioSummary.expected_segments),
       verdict: String(portfolioSummary.verdict || "still_building"),
+    },
+    generation_policy: {
+      primary_segments: segmentPolicies.filter((segment) => segment.policy_mode === "primary").length,
+      control_segments: segmentPolicies.filter((segment) => segment.policy_mode === "control_only").length,
+      research_segments: segmentPolicies.filter((segment) => segment.policy_mode === "research_only").length,
     },
     actions: actions.slice(0, 10),
   };
@@ -2511,6 +2551,7 @@ export async function GET(req: NextRequest) {
       antiPatternBrain,
       costGovernor,
       segmentPriorityQueue,
+      generationPolicy,
       portfolioReadiness,
     });
 

@@ -9,6 +9,17 @@ type FocusSegment = JsonRecord & {
   missing: boolean;
 };
 
+type PolicyRow = JsonRecord & {
+  niche?: string;
+  platform?: string;
+  policy_mode?: string;
+  label?: string;
+  trust_band?: string;
+  evidence_band?: string;
+  readiness_score?: number;
+  policy_reason?: string;
+};
+
 function num(value: unknown): number {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
@@ -48,6 +59,54 @@ function safeSegment(row: JsonRecord | null | undefined): FocusSegment | null {
   };
 }
 
+function safePolicyRow(row: JsonRecord | null | undefined): PolicyRow | null {
+  if (!row) return null;
+  const niche = text(row.niche);
+  const platform = text(row.platform);
+  const policyMode = text(row.policy_mode, "research_only");
+  if (!policyMode) return null;
+  return {
+    ...row,
+    ...(niche ? { niche } : {}),
+    ...(platform ? { platform } : {}),
+    policy_mode: policyMode,
+    label: text(row.label, niche && platform ? `${niche} × ${platform}` : niche || platform || "policy segment"),
+    trust_band: text(row.trust_band, "low"),
+    evidence_band: text(row.evidence_band, "missing"),
+    readiness_score: num(row.readiness_score),
+    policy_reason: text(row.policy_reason),
+  };
+}
+
+function selectPolicyForSegment(
+  generationPolicy: JsonRecord | null | undefined,
+  segment: FocusSegment | null,
+) {
+  if (!segment) return null;
+  const bySegment = Array.isArray(generationPolicy?.by_segment)
+    ? (generationPolicy?.by_segment as JsonRecord[])
+        .map((row) => safePolicyRow(row))
+        .filter(Boolean) as PolicyRow[]
+    : [];
+  const exact = bySegment.find((row) => row.niche === segment.niche && row.platform === segment.platform);
+  if (exact) return exact;
+
+  const byNiche = Array.isArray(generationPolicy?.by_niche)
+    ? (generationPolicy?.by_niche as JsonRecord[])
+        .map((row) => safePolicyRow(row))
+        .filter(Boolean) as PolicyRow[]
+    : [];
+  const nicheFallback = byNiche.find((row) => row.niche === segment.niche);
+  if (nicheFallback) return nicheFallback;
+
+  const byPlatform = Array.isArray(generationPolicy?.by_platform)
+    ? (generationPolicy?.by_platform as JsonRecord[])
+        .map((row) => safePolicyRow(row))
+        .filter(Boolean) as PolicyRow[]
+    : [];
+  return byPlatform.find((row) => row.platform === segment.platform) || null;
+}
+
 export function pickPortfolioFocusSegment(portfolioReadiness?: JsonRecord | null) {
   const candidates = Array.isArray(portfolioReadiness?.missing_segments)
     ? (portfolioReadiness?.missing_segments as JsonRecord[])
@@ -74,6 +133,7 @@ export function buildReelsBrainNextTick(input: {
   guardStatus?: string;
   prioritySegment?: JsonRecord | null;
   portfolioReadiness?: JsonRecord | null;
+  generationPolicy?: JsonRecord | null;
 }) {
   const backlog = Math.max(0, input.totalVideos - input.analyzedVideos);
   const portfolio = (input.portfolioReadiness || {}) as JsonRecord;
@@ -83,6 +143,13 @@ export function buildReelsBrainNextTick(input: {
   const prioritySegment = safeSegment(input.prioritySegment);
   const portfolioFocusSegment = pickPortfolioFocusSegment(portfolio);
   const collectionFocusSegment = portfolioFocusSegment || prioritySegment;
+  const shouldSupportDecisionSegment = prioritySegment?.action === "promote_segment_briefs"
+    || prioritySegment?.action === "validate_segment_briefs"
+    || text(selectPolicyForSegment(input.generationPolicy, prioritySegment)?.policy_mode, "research_only") === "primary"
+    || text(selectPolicyForSegment(input.generationPolicy, prioritySegment)?.policy_mode, "research_only") === "control_only";
+  const activePolicySegment = shouldSupportDecisionSegment ? prioritySegment : collectionFocusSegment || prioritySegment;
+  const activePolicy = selectPolicyForSegment(input.generationPolicy, activePolicySegment);
+  const activePolicyMode = text(activePolicy?.policy_mode, "research_only");
 
   if (backlog >= input.backlogLimit) {
     return {
@@ -118,10 +185,12 @@ export function buildReelsBrainNextTick(input: {
   }
 
   if (input.totalVideos < input.target) {
-    const shouldSupportDecisionSegment = prioritySegment?.action === "promote_segment_briefs"
-      || prioritySegment?.action === "validate_segment_briefs";
     const shouldClosePortfolioGaps = !shouldSupportDecisionSegment && portfolioCoverage < 70;
     const collectionSegment = shouldClosePortfolioGaps ? collectionFocusSegment : prioritySegment;
+    const policyReason = text(activePolicy?.policy_reason);
+    const policyLine = activePolicy
+      ? ` Policy ${activePolicyMode}: ${policyReason || `${text(activePolicy.label)} · trust ${text(activePolicy.trust_band)} · evidence ${text(activePolicy.evidence_band)} · readiness ${num(activePolicy.readiness_score)}.`}`
+      : "";
 
     return {
       task: shouldSupportDecisionSegment
@@ -137,12 +206,12 @@ export function buildReelsBrainNextTick(input: {
             : "Закрывать дыры в portfolio coverage"
           : "Добрать новую умную пачку",
       reason: shouldSupportDecisionSegment
-        ? `${String(prioritySegment?.label || "")} уже близок к рабочим briefs/hypotheses; следующий сбор лучше направить в этот сегмент.`
+        ? `${String(prioritySegment?.label || activePolicy?.label || "")} уже близок к рабочим briefs/hypotheses; следующий сбор лучше направить в этот сегмент.${policyLine}`
         : shouldClosePortfolioGaps
           ? collectionSegment
-            ? `High-trust coverage матрицы пока ${portfolioCoverage}% (${portfolioVerdict}); следующий сбор направляем в сегмент ${collectionSegment.label}, потому что он ещё не закрыт по доверию.`
-            : `High-trust coverage матрицы пока ${portfolioCoverage}% (${portfolioVerdict}); следующий сбор лучше тратить на незакрытые niches/platforms, а не на общий bulk.`
-          : "Backlog под контролем, budget guard разрешает сбор, цель корпуса ещё не закрыта.",
+            ? `High-trust coverage матрицы пока ${portfolioCoverage}% (${portfolioVerdict}); следующий сбор направляем в сегмент ${collectionSegment.label}, потому что он ещё не закрыт по доверию.${policyLine}`
+            : `High-trust coverage матрицы пока ${portfolioCoverage}% (${portfolioVerdict}); следующий сбор лучше тратить на незакрытые niches/platforms, а не на общий bulk.${policyLine}`
+          : `Backlog под контролем, budget guard разрешает сбор, цель корпуса ещё не закрыта.${policyLine}`,
       endpoint: "/api/factory/jobs/reels-brain-cron",
       params: {
         task: "bulk",
@@ -157,6 +226,7 @@ export function buildReelsBrainNextTick(input: {
       priority_segment: prioritySegment,
       portfolio_priority_segment: portfolioFocusSegment,
       portfolio_readiness: portfolio,
+      generation_policy: activePolicy,
     };
   }
 
