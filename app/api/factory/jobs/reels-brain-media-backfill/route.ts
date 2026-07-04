@@ -58,6 +58,40 @@ function hasResolvedMediaLocators(row: CorpusRow): boolean {
   return media.some((item) => typeof item === "string" && isDirectVideoLocator(item));
 }
 
+function hasTerminalMediaFailure(row: CorpusRow): boolean {
+  const analyzedFull = rec(row.analyzed_full);
+  const reelsSeed = rec(analyzedFull.reels_seed);
+  const pipeline = rec(reelsSeed.pipeline);
+  const lastError = String(pipeline.last_error || "").trim().toLowerCase();
+  return lastError === "media_locator_unresolved";
+}
+
+function markMediaLocatorUnresolved(existing: unknown) {
+  const current = rec(existing);
+  const currentSeed = rec(current.reels_seed);
+  const currentPipeline = rec(currentSeed.pipeline);
+  const currentAttempts = rec(currentPipeline.attempts);
+  const now = new Date().toISOString();
+  const currentMediaAttempts = Number(currentAttempts.media);
+
+  return {
+    ...current,
+    reels_seed: {
+      ...currentSeed,
+      pipeline: {
+        ...currentPipeline,
+        media_status: "media_missing",
+        last_error: "media_locator_unresolved",
+        media_checked_at: now,
+        attempts: {
+          ...currentAttempts,
+          media: Number.isFinite(currentMediaAttempts) ? currentMediaAttempts + 1 : 1,
+        },
+      },
+    },
+  };
+}
+
 function mediaLocator(video: Record<string, unknown> | null | undefined): string {
   if (!video) return "";
   const candidates = [video.video_url, video.media_url, video.image_url, video.thumbnail];
@@ -150,7 +184,7 @@ export async function GET(req: NextRequest) {
 
     const corpusRows = ((data || []) as CorpusRow[])
       .filter((row) => stableShardMatch(row.id, shardIndex, shardCount))
-      .filter((row) => row.url && !hasResolvedMediaLocators(row))
+      .filter((row) => row.url && !hasResolvedMediaLocators(row) && !hasTerminalMediaFailure(row))
       .map((row) => ({
         row,
         priority: priorityMode === "fifo"
@@ -203,6 +237,15 @@ export async function GET(req: NextRequest) {
       }
 
       if (mediaReady.length) withMedia += 1;
+      if (!mediaReady.length && !resolverSample) {
+        await db
+          .from("viral_videos")
+          .update({
+            analyzed_full: markMediaLocatorUnresolved(row.analyzed_full),
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", row.id);
+      }
 
       if (matched.length) {
         const prepared = makeViralVideoRows(matched as ReelsBrainInput[], {
