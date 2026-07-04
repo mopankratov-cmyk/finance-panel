@@ -85,6 +85,8 @@ export async function GET(req: NextRequest) {
       segment_generation_packs: body.segment_generation_packs || null,
       segment_creative_exports: body.segment_creative_exports || null,
       segment_readiness_audit: body.segment_readiness_audit || null,
+      segment_stability_audit: body.segment_stability_audit || null,
+      segment_solutions: body.segment_solutions || null,
       evidence_ledger: body.evidence_ledger || null,
       feedback_loop: body.feedback_loop || body.next_intelligence_layers?.feedback_loop || null,
       outcome_memory_brain: body.outcome_memory_brain || body.next_intelligence_layers?.outcome_memory || null,

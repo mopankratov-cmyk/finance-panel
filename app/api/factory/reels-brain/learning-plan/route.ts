@@ -199,9 +199,11 @@ export async function GET(req: NextRequest) {
     const segmentPriorityQueue = buildReelsBrainSegmentPriorityQueue({
       segmentPlan,
       segmentDecisionDeck: learning.segment_decision_deck || null,
+      segmentStabilityAudit: learning.segment_stability_audit || null,
       limit: 8,
     });
     const prioritySegment = ((segmentPriorityQueue.items || [])[0] || null) as JsonRecord | null;
+    const stabilitySummary = (learning.segment_stability_audit?.summary || {}) as JsonRecord;
 
     const costGovernor = autopilot.cost_governor || learning.cost_governor || {};
     const autopilotActions = autopilot.autopilot_actions || learning.autopilot_actions || {};
@@ -238,6 +240,13 @@ export async function GET(req: NextRequest) {
         execution_plan: executionPlan,
         segment_plan: segmentPlan,
         segment_priority_queue: segmentPriorityQueue,
+        segment_stability: {
+          stable: num(stabilitySummary.stable),
+          forming: num(stabilitySummary.forming),
+          thin: num(stabilitySummary.thin),
+          high_trust_segments: num(stabilitySummary.high_trust_segments),
+          decision_ready_segments: num(stabilitySummary.decision_ready),
+        },
         eta: {
           ticks_to_target: etaTicksToTarget,
           ticks_to_clear_backlog: etaTicksToAnalyzed,

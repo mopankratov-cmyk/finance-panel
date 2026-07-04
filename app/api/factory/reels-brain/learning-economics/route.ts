@@ -16,6 +16,8 @@ import { buildReelsBrainSegmentPriorityQueue } from "@/lib/factory/reelsBrainSeg
 import { buildReelsBrainSegmentGenerationPacks } from "@/lib/factory/reelsBrainSegmentGenerationPacks";
 import { buildReelsBrainSegmentCreativeExports } from "@/lib/factory/reelsBrainSegmentCreativeExports";
 import { buildReelsBrainSegmentReadinessAudit } from "@/lib/factory/reelsBrainSegmentReadinessAudit";
+import { buildReelsBrainSegmentSolutions } from "@/lib/factory/reelsBrainSegmentSolutions";
+import { buildReelsBrainSegmentStabilityAudit } from "@/lib/factory/reelsBrainSegmentStabilityAudit";
 import { REELS_BRAIN_CORPUS_TARGET_TOTAL } from "@/lib/factory/reelsBrainCorpusTargets";
 import { buildReelsBrainSegmentGapPlanner } from "@/lib/factory/reelsBrainSegmentGapPlanner";
 
@@ -2427,6 +2429,34 @@ export async function GET(req: NextRequest) {
       segmentGenerationPacks,
       limit: compactMode ? 6 : 10,
     });
+    const segmentDecisionSnapshot = {
+      summary: {
+        exports: segmentCreativeExports.summary || null,
+        audit: segmentReadinessAudit.summary || null,
+        filtered_total: Array.isArray(segmentCreativeExports.items) ? segmentCreativeExports.items.length : 0,
+      },
+      ship_now: segmentCreativeExports.ship_now || [],
+      validate_next: segmentCreativeExports.validate_next || [],
+      research_queue: segmentCreativeExports.research_queue || [],
+      items: (segmentCreativeExports.items || []).map((row) => {
+        const audit = (segmentReadinessAudit.items || []).find((auditRow) =>
+          String(auditRow.niche || "") === String((row as Record<string, unknown>).niche || "")
+          && String(auditRow.platform || "") === String((row as Record<string, unknown>).platform || ""),
+        ) || null;
+        return {
+          ...row,
+          audit,
+        };
+      }),
+    };
+    const segmentStabilityAudit = buildReelsBrainSegmentStabilityAudit({
+      decisionSnapshot: segmentDecisionSnapshot,
+      limit: compactMode ? 6 : 10,
+    });
+    const segmentSolutions = buildReelsBrainSegmentSolutions({
+      decisionSnapshot: segmentDecisionSnapshot,
+      limit: compactMode ? 6 : 10,
+    });
     const autopilotActions = buildAutopilotActions({
       niches: nicheSummaries,
       discoveryBrain,
@@ -2477,6 +2507,8 @@ export async function GET(req: NextRequest) {
       segment_generation_packs: segmentGenerationPacks,
       segment_creative_exports: segmentCreativeExports,
       segment_readiness_audit: segmentReadinessAudit,
+      segment_stability_audit: segmentStabilityAudit,
+      segment_solutions: segmentSolutions,
       evidence_ledger: evidenceLedger,
       feedback_warning: feedbackRows.warning,
       cost_governor: costGovernor,

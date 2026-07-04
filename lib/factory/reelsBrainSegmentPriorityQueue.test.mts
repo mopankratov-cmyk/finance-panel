@@ -48,15 +48,37 @@ function testBuildReelsBrainSegmentPriorityQueueBlendsGenerationAndLearningNeeds
         },
       ],
     },
+    segmentStabilityAudit: {
+      items: [
+        {
+          niche: "ru_toys",
+          platform: "tiktok",
+          evidence_band: "stable",
+          high_trust_segment: true,
+          stability_score: 93,
+          blockers: [],
+        },
+        {
+          niche: "ru_cosmetics",
+          platform: "instagram",
+          evidence_band: "forming",
+          high_trust_segment: false,
+          stability_score: 68,
+          blockers: ["fewer than 3 stable patterns"],
+        },
+      ],
+    },
   });
 
   assert.equal(result.summary.total, 2);
   assert.equal(result.summary.promote_segment_briefs, 1);
   assert.equal(result.summary.analyze_segment_backlog, 1);
   assert.equal(result.summary.ready_for_generation, 1);
+  assert.equal(result.summary.high_trust_segments, 1);
   assert.equal(result.items[0]?.niche, "ru_toys");
   assert.equal(result.items[0]?.action, "promote_segment_briefs");
   assert.equal(result.items[0]?.ready_for_generation, true);
+  assert.equal(result.items[0]?.evidence_band, "stable");
   assert.equal(result.items[1]?.action, "analyze_segment_backlog");
 }
 

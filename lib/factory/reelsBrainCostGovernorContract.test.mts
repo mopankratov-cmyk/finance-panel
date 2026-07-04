@@ -74,6 +74,7 @@ ok(/segment_priority_queue/.test(report), "report route exposes segment priority
 ok(/segment_generation_packs/.test(report), "report route exposes segment generation packs");
 ok(/segment_creative_exports/.test(report), "report route exposes segment creative exports");
 ok(/segment_readiness_audit/.test(report), "report route exposes segment readiness audit");
+ok(/segment_stability_audit/.test(report) && /segment_solutions/.test(report), "report route exposes segment stability audit and operator-ready solutions");
 ok(/feedback_loop/.test(report) && /portfolio_manager/.test(report) && /audio_visual_readiness/.test(report) && /outcome_memory_brain/.test(report), "report route exposes operating-system intelligence, audio readiness and outcome memory");
 ok(/\/api\/factory\/reels-brain\/progress/.test(report) && /pipeline_progress/.test(report), "report route exposes compact pipeline progress");
 ok(!/POST\s*\(/.test(report), "report route is read-only");
@@ -105,6 +106,9 @@ ok(/buildReelsBrainSegmentPriorityQueue/.test(economics) && /segment_priority_qu
 ok(/buildReelsBrainSegmentGenerationPacks/.test(economics) && /segment_generation_packs/.test(economics) && /Segment Generation Packs/.test(cockpit) && /segment-generation:/.test(cockpit), "learning-economics and cockpit expose quality-gated generation packs for strong segments");
 ok(/buildReelsBrainSegmentCreativeExports/.test(economics) && /segment_creative_exports/.test(economics) && /Segment Creative Exports/.test(cockpit) && /segment-export:/.test(cockpit), "learning-economics and cockpit expose operator-ready creative export bundles");
 ok(/buildReelsBrainSegmentReadinessAudit/.test(economics) && /segment_readiness_audit/.test(economics) && /Segment Readiness Audit/.test(cockpit) && /segment-audit:/.test(cockpit), "learning-economics and cockpit expose a transparent readiness audit for segment verdicts");
+ok(/buildReelsBrainSegmentStabilityAudit/.test(economics) && /segment_stability_audit/.test(economics), "learning-economics exposes segment stability audit for high-trust verification");
+ok(/buildReelsBrainSegmentSolutions/.test(economics) && /segment_solutions/.test(economics), "learning-economics exposes operator-ready segment solutions");
+ok(/segmentStabilityAudit/.test(learningPlan) && /segment_stability/.test(learningPlan), "learning-plan uses segment stability audit in the main loop");
 ok(/\/api\/factory\/reels-brain\/readiness-audit\?verdict=/.test(cockpit), "cockpit exposes standalone readiness-audit endpoint per segment");
 ok(/\/api\/factory\/reels-brain\/decision-snapshot\?lane=/.test(cockpit), "cockpit exposes unified decision-snapshot endpoint per segment");
 ok(/\/api\/factory\/reels-brain\/segment-solutions\?lane=/.test(cockpit), "cockpit exposes operator-ready segment-solutions endpoint per segment");

@@ -35,6 +35,15 @@ type SegmentDecisionRow = {
   next_step?: string;
 };
 
+type SegmentStabilityRow = {
+  niche?: string;
+  platform?: string;
+  evidence_band?: "stable" | "forming" | "thin" | string;
+  high_trust_segment?: boolean;
+  stability_score?: number;
+  blockers?: string[];
+};
+
 function num(value: unknown) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
@@ -69,23 +78,32 @@ export function buildReelsBrainSegmentPriorityQueue(input: {
   segmentDecisionDeck?: {
     items?: SegmentDecisionRow[];
   };
+  segmentStabilityAudit?: {
+    items?: SegmentStabilityRow[];
+  };
   limit?: number;
 }) {
   const decisionMap = new Map((input.segmentDecisionDeck?.items || []).map((row) => [keyOf(row.niche, row.platform), row] as const));
+  const stabilityMap = new Map((input.segmentStabilityAudit?.items || []).map((row) => [keyOf(row.niche, row.platform), row] as const));
   const gapRows = input.segmentPlan?.focus_segments || [];
   const priorities = gapRows.map((row) => {
     const decision = decisionMap.get(keyOf(row.niche, row.platform)) || {};
+    const stability = stabilityMap.get(keyOf(row.niche, row.platform)) || {};
     const decisionGrade = text(decision.decision_grade || "research");
     const gapStatus = text(row.status || "watch");
+    const evidenceBand = text(stability.evidence_band || "thin");
+    const highTrustSegment = Boolean(stability.high_trust_segment);
     const globalAction = decision.ready_for_generation
       ? normalizeDecisionAction(decisionGrade)
       : normalizeGapAction(gapStatus);
     const urgency = Math.round(
-      (decision.ready_for_generation ? 55 : 0)
+      ((decision.ready_for_generation || highTrustSegment) ? 55 : 0)
       + Math.min(30, num(decision.trust_score) * 0.22)
+      + Math.min(24, num(stability.stability_score) * 0.24)
       + Math.min(35, num(row.gap_score) * 0.35)
       + (gapStatus === "analyze_more" ? 10 : 0)
       + (gapStatus === "grow_corpus" ? 8 : 0)
+      + (evidenceBand === "stable" ? 14 : evidenceBand === "forming" ? 6 : 0)
       + (decisionGrade === "ship" ? 18 : decisionGrade === "validate" ? 10 : 0),
     );
     return {
@@ -98,6 +116,9 @@ export function buildReelsBrainSegmentPriorityQueue(input: {
       decision_grade: decisionGrade,
       generation_mode: text(decision.generation_mode || "research_only"),
       ready_for_generation: Boolean(decision.ready_for_generation),
+      evidence_band: evidenceBand,
+      high_trust_segment: highTrustSegment,
+      stability_score: num(stability.stability_score),
       gap_score: num(row.gap_score),
       trust_score: num(decision.trust_score),
       brief_title: text(decision.brief?.title),
@@ -107,6 +128,7 @@ export function buildReelsBrainSegmentPriorityQueue(input: {
       hypothesis_title: text(decision.hypothesis?.title),
       next_action: text(row.next_action || decision.next_step),
       why_now: text(decision.why_now),
+      blockers: Array.isArray(stability.blockers) ? stability.blockers.map((item) => text(item)).filter(Boolean).slice(0, 4) : [],
       gaps: {
         total_videos: num(row.gap?.total_videos),
         activation_total_videos: num(row.gap?.activation_total_videos),
@@ -133,6 +155,9 @@ export function buildReelsBrainSegmentPriorityQueue(input: {
       promote_segment_briefs: priorities.filter((item) => item.action === "promote_segment_briefs").length,
       validate_segment_briefs: priorities.filter((item) => item.action === "validate_segment_briefs").length,
       ready_for_generation: priorities.filter((item) => item.ready_for_generation).length,
+      high_trust_segments: priorities.filter((item) => item.high_trust_segment).length,
+      stable_segments: priorities.filter((item) => item.evidence_band === "stable").length,
+      forming_segments: priorities.filter((item) => item.evidence_band === "forming").length,
     },
     items: priorities.slice(0, Math.max(4, input.limit || 8)),
   };
