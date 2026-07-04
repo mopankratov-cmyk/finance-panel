@@ -18,6 +18,7 @@ import { buildReelsBrainSegmentCreativeExports } from "@/lib/factory/reelsBrainS
 import { buildReelsBrainSegmentReadinessAudit } from "@/lib/factory/reelsBrainSegmentReadinessAudit";
 import { buildReelsBrainSegmentSolutions } from "@/lib/factory/reelsBrainSegmentSolutions";
 import { buildReelsBrainSegmentStabilityAudit } from "@/lib/factory/reelsBrainSegmentStabilityAudit";
+import { buildReelsBrainPortfolioReadiness } from "@/lib/factory/reelsBrainPortfolioReadiness";
 import { REELS_BRAIN_CORPUS_TARGET_TOTAL } from "@/lib/factory/reelsBrainCorpusTargets";
 import { buildReelsBrainSegmentGapPlanner } from "@/lib/factory/reelsBrainSegmentGapPlanner";
 
@@ -2457,6 +2458,11 @@ export async function GET(req: NextRequest) {
       decisionSnapshot: segmentDecisionSnapshot,
       limit: compactMode ? 6 : 10,
     });
+    const portfolioReadiness = buildReelsBrainPortfolioReadiness({
+      segmentStabilityAudit,
+      niches: nicheSummaries.map((row) => row.niche),
+      platforms: ["tiktok", "instagram", "youtube"],
+    });
     const autopilotActions = buildAutopilotActions({
       niches: nicheSummaries,
       discoveryBrain,
@@ -2509,6 +2515,7 @@ export async function GET(req: NextRequest) {
       segment_readiness_audit: segmentReadinessAudit,
       segment_stability_audit: segmentStabilityAudit,
       segment_solutions: segmentSolutions,
+      portfolio_readiness: portfolioReadiness,
       evidence_ledger: evidenceLedger,
       feedback_warning: feedbackRows.warning,
       cost_governor: costGovernor,

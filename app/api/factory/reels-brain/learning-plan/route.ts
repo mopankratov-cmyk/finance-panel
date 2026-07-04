@@ -204,6 +204,8 @@ export async function GET(req: NextRequest) {
     });
     const prioritySegment = ((segmentPriorityQueue.items || [])[0] || null) as JsonRecord | null;
     const stabilitySummary = (learning.segment_stability_audit?.summary || {}) as JsonRecord;
+    const portfolioReadiness = (learning.portfolio_readiness || {}) as JsonRecord;
+    const portfolioSummary = (portfolioReadiness.summary || {}) as JsonRecord;
 
     const costGovernor = autopilot.cost_governor || learning.cost_governor || {};
     const autopilotActions = autopilot.autopilot_actions || learning.autopilot_actions || {};
@@ -246,6 +248,16 @@ export async function GET(req: NextRequest) {
           thin: num(stabilitySummary.thin),
           high_trust_segments: num(stabilitySummary.high_trust_segments),
           decision_ready_segments: num(stabilitySummary.decision_ready),
+        },
+        portfolio_readiness: {
+          expected_segments: num(portfolioSummary.expected_segments),
+          stable_segments: num(portfolioSummary.stable_segments),
+          forming_segments: num(portfolioSummary.forming_segments),
+          thin_segments: num(portfolioSummary.thin_segments),
+          missing_segments: num(portfolioSummary.missing_segments),
+          high_trust_coverage_pct: num(portfolioSummary.high_trust_coverage_pct),
+          known_coverage_pct: num(portfolioSummary.known_coverage_pct),
+          verdict: String(portfolioSummary.verdict || "still_building"),
         },
         eta: {
           ticks_to_target: etaTicksToTarget,

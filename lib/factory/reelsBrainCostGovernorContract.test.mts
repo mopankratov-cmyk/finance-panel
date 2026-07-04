@@ -75,6 +75,7 @@ ok(/segment_generation_packs/.test(report), "report route exposes segment genera
 ok(/segment_creative_exports/.test(report), "report route exposes segment creative exports");
 ok(/segment_readiness_audit/.test(report), "report route exposes segment readiness audit");
 ok(/segment_stability_audit/.test(report) && /segment_solutions/.test(report), "report route exposes segment stability audit and operator-ready solutions");
+ok(/portfolio_readiness/.test(report), "report route exposes portfolio readiness coverage");
 ok(/feedback_loop/.test(report) && /portfolio_manager/.test(report) && /audio_visual_readiness/.test(report) && /outcome_memory_brain/.test(report), "report route exposes operating-system intelligence, audio readiness and outcome memory");
 ok(/\/api\/factory\/reels-brain\/progress/.test(report) && /pipeline_progress/.test(report), "report route exposes compact pipeline progress");
 ok(!/POST\s*\(/.test(report), "report route is read-only");
@@ -108,11 +109,14 @@ ok(/buildReelsBrainSegmentCreativeExports/.test(economics) && /segment_creative_
 ok(/buildReelsBrainSegmentReadinessAudit/.test(economics) && /segment_readiness_audit/.test(economics) && /Segment Readiness Audit/.test(cockpit) && /segment-audit:/.test(cockpit), "learning-economics and cockpit expose a transparent readiness audit for segment verdicts");
 ok(/buildReelsBrainSegmentStabilityAudit/.test(economics) && /segment_stability_audit/.test(economics), "learning-economics exposes segment stability audit for high-trust verification");
 ok(/buildReelsBrainSegmentSolutions/.test(economics) && /segment_solutions/.test(economics), "learning-economics exposes operator-ready segment solutions");
+ok(/buildReelsBrainPortfolioReadiness/.test(economics) && /portfolio_readiness/.test(economics), "learning-economics exposes portfolio readiness for 10k coverage tracking");
 ok(/segmentStabilityAudit/.test(learningPlan) && /segment_stability/.test(learningPlan), "learning-plan uses segment stability audit in the main loop");
+ok(/portfolio_readiness/.test(learningPlan), "learning-plan exposes portfolio readiness in the mission loop");
 ok(/\/api\/factory\/reels-brain\/readiness-audit\?verdict=/.test(cockpit), "cockpit exposes standalone readiness-audit endpoint per segment");
 ok(/\/api\/factory\/reels-brain\/decision-snapshot\?lane=/.test(cockpit), "cockpit exposes unified decision-snapshot endpoint per segment");
 ok(/\/api\/factory\/reels-brain\/segment-solutions\?lane=/.test(cockpit), "cockpit exposes operator-ready segment-solutions endpoint per segment");
 ok(/\/api\/factory\/reels-brain\/stability-audit\?lane=/.test(cockpit), "cockpit exposes segment stability-audit endpoint per segment");
+ok(/Portfolio readiness/.test(cockpit) && /high-trust coverage/.test(cockpit), "cockpit surfaces portfolio readiness toward full niche/platform coverage");
 ok(/selectedPattern/.test(cockpit) && /rb-drawer/.test(cockpit), "cockpit exposes pattern creative brief drawer");
 ok(/rb-click/.test(cockpit) && /setSelectedPattern/.test(cockpit), "cockpit pattern cards are inspectable");
 ok(/sort\(\(a, b\) => String\(a\.created_at \|\| \"\"\)\.localeCompare\(String\(b\.created_at \|\| \"\"\)\)\)\s*\.slice\(-8\)\s*\.reverse\(\)/.test(cockpit), "cockpit stores latest learning runs first");

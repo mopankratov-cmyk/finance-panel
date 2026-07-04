@@ -288,6 +288,7 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
     const segmentGenerationPacks = (learning?.segment_generation_packs || {}) as JsonRecord;
     const segmentCreativeExports = (learning?.segment_creative_exports || {}) as JsonRecord;
     const segmentReadinessAudit = (learning?.segment_readiness_audit || {}) as JsonRecord;
+    const portfolioReadiness = (learning?.portfolio_readiness || mission.portfolio_readiness || {}) as JsonRecord;
     const evidenceLedger = (learning?.evidence_ledger || {}) as JsonRecord;
     const actionPack = (learning?.action_pack || {}) as JsonRecord;
     const actionPackGroups = (learning?.action_pack_groups || {}) as JsonRecord;
@@ -756,6 +757,14 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
       ...row,
       modeTone: decisionTone(String(row.ready_for_generation ? "primary" : row.action === "analyze_segment_backlog" ? "control_only" : "research_only")),
     }));
+    const portfolioCoverageCards = ((portfolioReadiness.by_platform || []) as JsonRecord[]).slice(0, 3).map((row) => ({
+      ...row,
+      label: String(row.platform || "mixed").toUpperCase(),
+    }));
+    const portfolioGapCards = ((portfolioReadiness.missing_segments || []) as JsonRecord[]).slice(0, 4).map((row) => ({
+      ...row,
+      label: `${NICHE_LABELS[String(row.niche)] || row.niche} × ${String(row.platform || "mixed").toUpperCase()}`,
+    }));
     const evidenceCards = ((evidenceLedger.items || []) as JsonRecord[]).slice(0, 6).map((row) => {
       const status = marketSignalTone(String(row.market_status || "no_feedback"));
       const mode = decisionTone(String(row.recommended_mode || "research_only"));
@@ -946,6 +955,8 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
       segmentExportCards,
       segmentAuditCards,
       missionPriorityCards,
+      portfolioCoverageCards,
+      portfolioGapCards,
       evidenceCards,
       evidenceSummary,
       trustMatrix,
@@ -3217,6 +3228,47 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
                   <span>{compact(row.daily_required)}</span>
                 </div>
               ))}
+            </div>
+          </div>
+          <div className="rb-two" style={{ marginTop: 16 }}>
+            <div className="rb-card">
+              <div className="rb-overline" style={{ color: "#0891b2" }}>Portfolio readiness</div>
+              <h3 style={{ font: "700 26px/1.08 'Space Grotesk'", margin: "10px 0" }}>
+                {compact(vm.mission.portfolio_readiness?.high_trust_coverage_pct || 0)}% high-trust coverage
+              </h3>
+              <p style={{ color: "#64748b", lineHeight: 1.5 }}>
+                {String(vm.mission.portfolio_readiness?.verdict || "still_building").replaceAll("_", " ")}
+              </p>
+              <div className="rb-three" style={{ marginTop: 14 }}>
+                <div className="rb-brief-block"><b>Stable</b><p>{compact(vm.mission.portfolio_readiness?.stable_segments || 0)}</p></div>
+                <div className="rb-brief-block"><b>Forming</b><p>{compact(vm.mission.portfolio_readiness?.forming_segments || 0)}</p></div>
+                <div className="rb-brief-block"><b>Missing</b><p>{compact(vm.mission.portfolio_readiness?.missing_segments || 0)}</p></div>
+              </div>
+              <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
+                {vm.portfolioCoverageCards.map((row: JsonRecord) => (
+                  <div className="rb-pattern" key={`portfolio-platform:${row.platform}`}>
+                    <h3>{row.label}</h3>
+                    <p>{compact(row.high_trust_pct || 0)}% high-trust · coverage {compact(row.coverage_pct || 0)}%</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="rb-card">
+              <div className="rb-overline" style={{ color: "#0891b2" }}>Main gaps</div>
+              <h3 style={{ font: "700 26px/1.08 'Space Grotesk'", margin: "10px 0" }}>Какие сегменты ещё не закрыты</h3>
+              <div style={{ display: "grid", gap: 10 }}>
+                {vm.portfolioGapCards.length ? vm.portfolioGapCards.map((row: JsonRecord) => (
+                  <div className="rb-pattern" key={`portfolio-gap:${row.niche}:${row.platform}`}>
+                    <h3>{row.label}</h3>
+                    <p>{row.evidence_band || "missing"} · score {compact(row.stability_score || 0)}</p>
+                  </div>
+                )) : (
+                  <div className="rb-pattern">
+                    <h3>Все сегменты уже закрыты</h3>
+                    <p>Портфель выглядит достаточно плотным для high-trust генерации.</p>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
           <div className="rb-three" style={{ marginTop: 16 }}>
