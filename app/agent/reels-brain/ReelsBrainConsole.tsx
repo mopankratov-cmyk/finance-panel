@@ -869,6 +869,47 @@ type LearningEconomicsResponse = {
       }[];
     };
   };
+  action_pack_groups?: {
+    by_niche?: {
+      niche: string;
+      primary?: {
+        rank: number;
+        pattern_id: string;
+        title: string;
+        decision: "scale" | "control" | "watch";
+        market_status: "proven" | "promising" | "weak" | "no_feedback";
+        confidence: "high" | "medium" | "low";
+        priority_score: number;
+        op_score: number;
+      } | null;
+      summary?: {
+        total?: number;
+        scale?: number;
+        control?: number;
+        watch?: number;
+      };
+    }[];
+    by_platform?: {
+      platform: string;
+      primary?: {
+        rank: number;
+        pattern_id: string;
+        title: string;
+        decision: "scale" | "control" | "watch";
+        market_status: "proven" | "promising" | "weak" | "no_feedback";
+        confidence: "high" | "medium" | "low";
+        priority_score: number;
+        op_score: number;
+      } | null;
+      summary?: {
+        total?: number;
+        proven?: number;
+        promising?: number;
+        weak?: number;
+        no_feedback?: number;
+      };
+    }[];
+  };
   warning?: string;
   error?: string;
 };
@@ -986,6 +1027,11 @@ const DEFAULT_QUERIES = [
   "детская игрушка распаковка",
   "бластер тест",
 ];
+const NICHE_LABELS: Record<string, string> = {
+  ru_toys: "Игрушки RU",
+  ru_clothing: "Одежда RU",
+  ru_cosmetics: "Косметика RU",
+};
 const PLATFORM_OPTIONS = ["tiktok", "instagram", "youtube"] as const;
 const AUTOMATION_HISTORY_KEY = "reels-brain-automation-history-v1";
 const AUTOMATION_HISTORY_LIMIT = 8;
@@ -1511,6 +1557,7 @@ export default function ReelsBrainPage() {
   const patternDetails = learningEconomics?.pattern_details || [];
   const hypothesisBank = learningEconomics?.hypothesis_bank || null;
   const actionPack = learningEconomics?.action_pack || null;
+  const actionPackGroups = learningEconomics?.action_pack_groups || null;
   const patternDetailById = new Map(patternDetails.map((item) => [item.id, item]));
   const sourceReferences = learningEconomics?.insights?.source_references || [];
   const sourceMap = learningEconomics?.insights?.source_map || [];
@@ -2998,6 +3045,84 @@ export default function ReelsBrainPage() {
                     <p className="mt-3 text-xs leading-5 text-slate-600">{item.success_metric}</p>
                   </div>
                 ))}
+              </div>
+            ) : null}
+            {actionPackGroups?.by_niche?.length ? (
+              <div className="mt-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">By niche</p>
+                    <h5 className="mt-1 text-sm font-black text-slate-950">Какие rollout-решения выигрывают по нишам</h5>
+                  </div>
+                  <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-bold text-slate-500">
+                    {compactNumber(actionPackGroups.by_niche.length)} niche ladders
+                  </span>
+                </div>
+                <div className="mt-3 grid gap-3 lg:grid-cols-3">
+                  {actionPackGroups.by_niche.slice(0, 3).map((item: any) => (
+                    <div key={`niche-pack:${item.niche}`} className="rounded-2xl border border-slate-200 bg-white p-4">
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-400">
+                            {NICHE_LABELS[item.niche] || item.niche || "Mixed niche"}
+                          </p>
+                          <h5 className="mt-1 text-sm font-black leading-5 text-slate-950">{item.primary?.title || "Ждем primary pattern"}</h5>
+                        </div>
+                        <span className="shrink-0 rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-black text-slate-700">
+                          {compactNumber(item.primary?.priority_score)}
+                        </span>
+                      </div>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-black ${decisionCopy(item.primary?.decision).tone}`}>{decisionCopy(item.primary?.decision).label}</span>
+                        <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-black ${marketSignalCopy(item.primary?.market_status).tone}`}>{marketSignalCopy(item.primary?.market_status).label}</span>
+                      </div>
+                      {item.summary ? (
+                        <p className="mt-3 text-xs leading-5 text-slate-600">
+                          {compactNumber(item.summary.total || 0)} patterns · scale {compactNumber(item.summary.scale || 0)} · control {compactNumber(item.summary.control || 0)}
+                        </p>
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+            {actionPackGroups?.by_platform?.length ? (
+              <div className="mt-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">By platform</p>
+                    <h5 className="mt-1 text-sm font-black text-slate-950">Какие rollout-решения выигрывают по платформам</h5>
+                  </div>
+                  <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-bold text-slate-500">
+                    {compactNumber(actionPackGroups.by_platform.length)} platform ladders
+                  </span>
+                </div>
+                <div className="mt-3 grid gap-3 lg:grid-cols-3">
+                  {actionPackGroups.by_platform.slice(0, 3).map((item: any) => (
+                    <div key={`platform-pack:${item.platform}`} className="rounded-2xl border border-slate-200 bg-white p-4">
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-400">
+                            {titlePlatform(item.platform || "tiktok")}
+                          </p>
+                          <h5 className="mt-1 text-sm font-black leading-5 text-slate-950">{item.primary?.title || "Ждем primary pattern"}</h5>
+                        </div>
+                        <span className="shrink-0 rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-black text-slate-700">
+                          {compactNumber(item.primary?.priority_score)}
+                        </span>
+                      </div>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-black ${decisionCopy(item.primary?.decision).tone}`}>{decisionCopy(item.primary?.decision).label}</span>
+                        <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-black ${marketSignalCopy(item.primary?.market_status).tone}`}>{marketSignalCopy(item.primary?.market_status).label}</span>
+                      </div>
+                      {item.summary ? (
+                        <p className="mt-3 text-xs leading-5 text-slate-600">
+                          {compactNumber(item.summary.total || 0)} patterns · proven {compactNumber(item.summary.proven || 0)} · promising {compactNumber(item.summary.promising || 0)}
+                        </p>
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
               </div>
             ) : null}
           </div>

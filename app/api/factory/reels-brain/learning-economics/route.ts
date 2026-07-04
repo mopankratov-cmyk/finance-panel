@@ -4,7 +4,7 @@ import { automationRunHistory } from "@/lib/factory/reelsBrainPlaybook";
 import { buildReelsBrainOperatingSystem, type ReelsBrainMetricRow } from "@/lib/factory/reelsBrainOperatingSystem";
 import { buildPatternOutcomeLayer } from "@/lib/factory/reelsBrainPatternOutcome";
 import { buildReelsBrainHypothesisBank } from "@/lib/factory/reelsBrainHypothesisBank";
-import { buildReelsBrainActionPack } from "@/lib/factory/reelsBrainActionPack";
+import { buildGroupedReelsBrainActionPacks, buildReelsBrainActionPack } from "@/lib/factory/reelsBrainActionPack";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 20;
@@ -2273,6 +2273,12 @@ export async function GET(req: NextRequest) {
       patternDecisionLayer.pattern_details as unknown as Array<Parameters<typeof buildReelsBrainActionPack>[0][number]>,
       compactMode ? 4 : 6,
     );
+    const groupedActionPacks = buildGroupedReelsBrainActionPacks({
+      patterns: patternDecisionLayer.pattern_details as unknown as Array<Parameters<typeof buildGroupedReelsBrainActionPacks>[0]["patterns"][number]>,
+      niches: nicheSummaries.map((row) => row.niche),
+      platforms: ["tiktok", "instagram", "youtube"],
+      limit: compactMode ? 2 : 3,
+    });
 
     const timelineResponse = compactMode ? takeRecordList(timeline, 12) : timeline;
 
@@ -2298,6 +2304,7 @@ export async function GET(req: NextRequest) {
       audio_visual_readiness: audioVisualReadiness,
       hypothesis_bank: hypothesisBank,
       action_pack: actionPack,
+      action_pack_groups: groupedActionPacks,
       feedback_warning: feedbackRows.warning,
       cost_governor: costGovernor,
       autopilot_actions: autopilotActions,

@@ -195,3 +195,30 @@ export function buildReelsBrainActionPack(patterns: ReelsBrainActionPattern[], l
     },
   };
 }
+
+export function buildGroupedReelsBrainActionPacks(input: {
+  patterns: ReelsBrainActionPattern[];
+  niches?: string[];
+  platforms?: string[];
+  limit?: number;
+}) {
+  const patterns = input.patterns || [];
+  const niches = Array.from(new Set((input.niches || patterns.flatMap((pattern) => list(pattern.niches, 20))).filter(Boolean))).sort();
+  const platforms = Array.from(new Set((input.platforms || patterns.flatMap((pattern) => list(pattern.platforms, 20))).filter(Boolean))).sort();
+  return {
+    by_niche: niches.map((niche) => ({
+      niche,
+      ...buildReelsBrainActionPack(
+        patterns.filter((pattern) => list(pattern.niches, 20).includes(niche)),
+        input.limit || 3,
+      ),
+    })).filter((row) => row.primary),
+    by_platform: platforms.map((platform) => ({
+      platform,
+      ...buildReelsBrainActionPack(
+        patterns.filter((pattern) => list(pattern.platforms, 20).includes(platform)),
+        input.limit || 3,
+      ),
+    })).filter((row) => row.primary),
+  };
+}

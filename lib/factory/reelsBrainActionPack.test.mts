@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { buildReelsBrainActionPack } from "./reelsBrainActionPack";
+import { buildGroupedReelsBrainActionPacks, buildReelsBrainActionPack } from "./reelsBrainActionPack";
 
 function testActionPackRanksScaleAndMarketProofAboveWatch() {
   const pack = buildReelsBrainActionPack([
@@ -35,8 +35,45 @@ function testActionPackRanksScaleAndMarketProofAboveWatch() {
   assert.equal(pack.summary.watch, 1);
 }
 
+function testGroupedActionPacksSplitByNicheAndPlatform() {
+  const grouped = buildGroupedReelsBrainActionPacks({
+    patterns: [
+      {
+        id: "tiktok_toys",
+        title: "TikTok toys",
+        op_score: 88,
+        final_decision: "scale",
+        confidence: "high",
+        niches: ["ru_toys"],
+        platforms: ["tiktok"],
+        creative_brief: { hook: "hook toys", retention_mechanic: "proof", structure: "demo" },
+        market_signal: { status: "proven", confidence: "high", winners: 3, total_posts: 4 },
+      },
+      {
+        id: "insta_cosmetics",
+        title: "Instagram cosmetics",
+        op_score: 81,
+        final_decision: "control",
+        confidence: "medium",
+        niches: ["ru_cosmetics"],
+        platforms: ["instagram"],
+        creative_brief: { hook: "hook cosmetics", retention_mechanic: "review", structure: "review" },
+        market_signal: { status: "promising", confidence: "medium", winners: 1, total_posts: 2 },
+      },
+    ],
+    limit: 2,
+  });
+
+  assert.equal(grouped.by_niche.length, 2);
+  assert.equal(grouped.by_platform.length, 2);
+  assert.equal(grouped.by_niche[0]?.primary?.pattern_id, "insta_cosmetics");
+  assert.equal(grouped.by_niche[1]?.primary?.pattern_id, "tiktok_toys");
+  assert.equal(grouped.by_platform.find((row) => row.platform === "tiktok")?.primary?.pattern_id, "tiktok_toys");
+}
+
 function run() {
   testActionPackRanksScaleAndMarketProofAboveWatch();
+  testGroupedActionPacksSplitByNicheAndPlatform();
   console.log("reelsBrainActionPack.test: ok");
 }
 

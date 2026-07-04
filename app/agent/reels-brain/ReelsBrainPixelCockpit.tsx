@@ -257,6 +257,7 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
     const patternOutcomeSummary = (learning?.pattern_outcome_summary || {}) as JsonRecord;
     const hypothesisBank = (learning?.hypothesis_bank || {}) as JsonRecord;
     const actionPack = (learning?.action_pack || {}) as JsonRecord;
+    const actionPackGroups = (learning?.action_pack_groups || {}) as JsonRecord;
     const nicheComparison = (learning?.niche_comparison || []) as JsonRecord[];
     const niches = (learning?.niches || []) as JsonRecord[];
     const topHooks = (insights?.top_hooks || []) as JsonRecord[];
@@ -703,6 +704,7 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
       patternDetailById,
       hypothesisBank,
       actionPack,
+      actionPackGroups,
       nicheComparison,
       score,
       tone,
@@ -1762,6 +1764,44 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
                         <p>{item.success_metric}</p>
                       </div>
                     ))}
+                  </div>
+                ) : null}
+                {((vm.actionPackGroups.by_niche || []) as JsonRecord[]).length ? (
+                  <div style={{ marginTop: 14 }}>
+                    <div className="rb-overline" style={{ color: "#0891b2" }}>По нишам</div>
+                    <div className="rb-three" style={{ marginTop: 10 }}>
+                      {((vm.actionPackGroups.by_niche || []) as JsonRecord[]).slice(0, 3).map((item, index) => (
+                        <div className="rb-pattern" key={`niche-pack:${item.niche || index}`}>
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                            <div className="rb-pill">{NICHE_LABELS[item.niche] || item.niche || "mixed"}</div>
+                            <div className="rb-pill" style={{ background: decisionTone(String(item.primary?.decision || "watch")).bg, borderColor: decisionTone(String(item.primary?.decision || "watch")).bd, color: decisionTone(String(item.primary?.decision || "watch")).fg }}>
+                              {decisionTone(String(item.primary?.decision || "watch")).label}
+                            </div>
+                          </div>
+                          <h3 style={{ marginTop: 10 }}>{item.primary?.title || "Ждём primary pattern"}</h3>
+                          <p>Priority {compact(item.primary?.priority_score)} · OP {compact(item.primary?.op_score)}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+                {((vm.actionPackGroups.by_platform || []) as JsonRecord[]).length ? (
+                  <div style={{ marginTop: 14 }}>
+                    <div className="rb-overline" style={{ color: "#0891b2" }}>По платформам</div>
+                    <div className="rb-three" style={{ marginTop: 10 }}>
+                      {((vm.actionPackGroups.by_platform || []) as JsonRecord[]).slice(0, 3).map((item, index) => (
+                        <div className="rb-pattern" key={`platform-pack:${item.platform || index}`}>
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                            <div className="rb-pill">{item.platform || "mixed"}</div>
+                            <div className="rb-pill" style={{ background: marketSignalTone(String(item.primary?.market_status || "no_feedback")).bg, borderColor: marketSignalTone(String(item.primary?.market_status || "no_feedback")).bd, color: marketSignalTone(String(item.primary?.market_status || "no_feedback")).fg }}>
+                              {marketSignalTone(String(item.primary?.market_status || "no_feedback")).label}
+                            </div>
+                          </div>
+                          <h3 style={{ marginTop: 10 }}>{item.primary?.title || "Ждём primary pattern"}</h3>
+                          <p>Priority {compact(item.primary?.priority_score)} · OP {compact(item.primary?.op_score)}</p>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 ) : null}
               </>
