@@ -117,6 +117,12 @@ function opportunityTone(value: string) {
   return { label: "collect more", bg: "#fff7ed", bd: "#fdba74", fg: "#9a3412" };
 }
 
+function atlasTone(value: string) {
+  if (value === "stable") return { label: "stable", bg: "#dcfce7", bd: "#86efac", fg: "#166534" };
+  if (value === "forming") return { label: "forming", bg: "#ecfeff", bd: "#67e8f9", fg: "#0f766e" };
+  return { label: "thin", bg: "#fff7ed", bd: "#fdba74", fg: "#9a3412" };
+}
+
 function marketSignalTone(value: string) {
   if (value === "proven") return { label: "market proven", bg: "#dcfce7", bd: "#86efac", fg: "#166534" };
   if (value === "promising") return { label: "promising", bg: "#ecfeff", bd: "#67e8f9", fg: "#0f766e" };
@@ -267,6 +273,7 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
     const briefPackGroups = (learning?.brief_pack_groups || {}) as JsonRecord;
     const segmentTrust = (learning?.segment_trust || {}) as JsonRecord;
     const topOpportunities = (learning?.top_opportunities || {}) as JsonRecord;
+    const patternAtlas = (learning?.pattern_atlas || {}) as JsonRecord;
     const actionPack = (learning?.action_pack || {}) as JsonRecord;
     const actionPackGroups = (learning?.action_pack_groups || {}) as JsonRecord;
     const nicheComparison = (learning?.niche_comparison || []) as JsonRecord[];
@@ -620,6 +627,23 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
       controlOnly: num(topOpportunities.summary?.control_only),
       researchOnly: num(topOpportunities.summary?.research_only),
     };
+    const atlasCards = ((patternAtlas.by_segment || []) as JsonRecord[]).slice(0, 6).map((row) => {
+      const status = atlasTone(String(row.status || "thin"));
+      const mode = decisionTone(String(row.recommended_mode || "research_only"));
+      return {
+        ...row,
+        statusTone: status,
+        modeTone: mode,
+        label: `${NICHE_LABELS[String(row.niche)] || row.niche} × ${String(row.platform || "mixed").toUpperCase()}`,
+      };
+    });
+    const atlasSummary = {
+      segments: num(patternAtlas.summary?.segments),
+      stable: num(patternAtlas.summary?.stable_segments),
+      forming: num(patternAtlas.summary?.forming_segments),
+      thin: num(patternAtlas.summary?.thin_segments),
+      patterns: num(patternAtlas.summary?.atlas_ready_patterns),
+    };
     const trustMatrix = NICHES.map((niche) => {
       const summary = summaries.find((item) => item.niche === niche) || {};
       const trustOverview = (summary.trust_overview || {}) as JsonRecord;
@@ -739,6 +763,7 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
       briefPackGroups,
       segmentTrust,
       topOpportunities,
+      patternAtlas,
       actionPack,
       actionPackGroups,
       nicheComparison,
@@ -776,6 +801,8 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
       knowledgeCards,
       opportunityCards,
       opportunitySummary,
+      atlasCards,
+      atlasSummary,
       trustMatrix,
       trustHotspots,
       insightHighlights,
@@ -972,6 +999,59 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
                 `primary ${compact(vm.opportunitySummary.primary)}`,
                 `control ${compact(vm.opportunitySummary.controlOnly)}`,
                 `research ${compact(vm.opportunitySummary.researchOnly)}`,
+              ].map((label) => (
+                <span key={label} style={{ padding: "6px 10px", borderRadius: 999, background: "#fff", border: "1px solid #dbe4ee", color: "#475569", fontSize: 12, fontWeight: 700 }}>
+                  {label}
+                </span>
+              ))}
+            </div>
+          ) : null}
+        </section>
+
+        <section style={{ marginTop: 24 }}>
+          <div style={{ fontSize: 12, color: "#0891b2", textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 700, marginBottom: 12 }}>Pattern Atlas</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 12 }}>
+            {vm.atlasCards.length ? vm.atlasCards.map((item: JsonRecord) => (
+              <div key={`${item.niche}:${item.platform}:atlas`} style={{ background: "#fff", border: "1px solid #dbe4ee", borderRadius: 18, padding: 16 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start" }}>
+                  <div>
+                    <strong>{item.label}</strong>
+                    <div style={{ marginTop: 6, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      <span style={{ padding: "4px 8px", borderRadius: 999, background: item.statusTone.bg, border: `1px solid ${item.statusTone.bd}`, color: item.statusTone.fg, fontSize: 12, fontWeight: 700 }}>
+                        {item.statusTone.label}
+                      </span>
+                      <span style={{ padding: "4px 8px", borderRadius: 999, background: item.modeTone.bg, border: `1px solid ${item.modeTone.bd}`, color: item.modeTone.fg, fontSize: 12, fontWeight: 700 }}>
+                        {item.modeTone.label}
+                      </span>
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 26, lineHeight: 1.05, fontWeight: 800 }}>{compact(item.avg_stability_score)}</div>
+                </div>
+                <div style={{ marginTop: 12, color: "#334155", lineHeight: 1.65 }}>
+                  <div>stable patterns {compact(item.stable_pattern_count)} · ready {compact(item.generator_ready_patterns)}</div>
+                  <div>coverage {compact(item.analyzed_videos)} / {compact(item.total_videos)} · {compact(item.analyzed_rate)}%</div>
+                </div>
+                <div style={{ marginTop: 12, color: "#0f172a", fontWeight: 700, lineHeight: 1.45 }}>
+                  {item.top_patterns?.[0]?.title || "Сильный сегментный паттерн ещё не выделился"}
+                </div>
+                <div style={{ marginTop: 8, color: "#64748b", fontSize: 14, lineHeight: 1.55 }}>
+                  {item.top_patterns?.[0]?.hook || item.next_step}
+                </div>
+              </div>
+            )) : (
+              <div style={{ background: "#fff", border: "1px solid #dbe4ee", borderRadius: 18, padding: 16, color: "#64748b" }}>
+                Atlas появится после накопления quality-gated и trust-ready сегментов.
+              </div>
+            )}
+          </div>
+          {vm.atlasSummary.segments ? (
+            <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {[
+                `segments ${compact(vm.atlasSummary.segments)}`,
+                `stable ${compact(vm.atlasSummary.stable)}`,
+                `forming ${compact(vm.atlasSummary.forming)}`,
+                `thin ${compact(vm.atlasSummary.thin)}`,
+                `atlas patterns ${compact(vm.atlasSummary.patterns)}`,
               ].map((label) => (
                 <span key={label} style={{ padding: "6px 10px", borderRadius: 999, background: "#fff", border: "1px solid #dbe4ee", color: "#475569", fontSize: 12, fontWeight: 700 }}>
                   {label}
@@ -1295,6 +1375,51 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
               ))}
             </div>
           ) : null}
+        </section>
+
+        <section>
+          <SectionTitle k="04.3 · Pattern Atlas" title="Какие platform-specific и niche-specific паттерны уже устойчивы" />
+          <div className="rb-three">
+            {vm.atlasCards.length ? vm.atlasCards.map((item: JsonRecord) => (
+              <div className="rb-card" key={`atlas-full:${item.niche}:${item.platform}`}>
+                <div className="rb-two" style={{ gridTemplateColumns: "1fr auto", gap: 14 }}>
+                  <div>
+                    <div className="rb-overline" style={{ color: "#0891b2" }}>{item.label}</div>
+                    <h3 style={{ font: "700 28px/1 'Space Grotesk'", margin: "10px 0 0" }}>{compact(item.avg_stability_score)}</h3>
+                  </div>
+                  <div style={{ display: "grid", gap: 8, justifyItems: "end" }}>
+                    <div className="rb-live-pill" style={{ background: item.statusTone.bg, borderColor: item.statusTone.bd, color: item.statusTone.fg }}>
+                      <i style={{ background: item.statusTone.fg }} />
+                      {item.statusTone.label}
+                    </div>
+                    <div className="rb-live-pill" style={{ background: item.modeTone.bg, borderColor: item.modeTone.bd, color: item.modeTone.fg }}>
+                      <i style={{ background: item.modeTone.fg }} />
+                      {item.modeTone.label}
+                    </div>
+                  </div>
+                </div>
+                <div className="rb-three" style={{ marginTop: 14 }}>
+                  <div className="rb-brief-block"><b>Stable</b><p>{compact(item.stable_pattern_count)} паттернов</p></div>
+                  <div className="rb-brief-block"><b>Coverage</b><p>{compact(item.analyzed_videos)} / {compact(item.total_videos)} · {compact(item.analyzed_rate)}%</p></div>
+                  <div className="rb-brief-block"><b>Ready</b><p>{compact(item.generator_ready_patterns)} generator-ready</p></div>
+                </div>
+                <div className="rb-brief-block" style={{ marginTop: 12 }}>
+                  <b>Leading pattern</b>
+                  <p>{item.top_patterns?.[0]?.title || "Паттерн ещё не стабилизировался"}</p>
+                </div>
+                <p style={{ marginTop: 12, color: "#475569", lineHeight: 1.55 }}>
+                  {item.top_patterns?.[0]?.hook || item.next_step}
+                </p>
+              </div>
+            )) : (
+              <div className="rb-card">
+                <h3 style={{ font: "700 24px/1.1 'Space Grotesk'", margin: 0 }}>Pattern Atlas ещё пуст</h3>
+                <p style={{ marginTop: 10, color: "#64748b", lineHeight: 1.55 }}>
+                  Этот слой наполнится автоматически, когда сегментная память накопит достаточно quality-gated паттернов.
+                </p>
+              </div>
+            )}
+          </div>
         </section>
 
         <section className="rb-two">

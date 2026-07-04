@@ -1066,6 +1066,73 @@ type LearningEconomicsResponse = {
       research_only?: number;
     };
   };
+  pattern_atlas?: {
+    summary?: {
+      segments?: number;
+      stable_segments?: number;
+      forming_segments?: number;
+      thin_segments?: number;
+      atlas_ready_patterns?: number;
+    };
+    champions?: {
+      niche: string;
+      platform: string;
+      label: string;
+      avg_stability_score: number;
+      stable_pattern_count: number;
+      leading_pattern: string;
+    }[];
+    by_segment?: {
+      niche: string;
+      platform: string;
+      status: "stable" | "forming" | "thin";
+      recommended_mode: "primary" | "control_only" | "research_only";
+      niche_trust_score: number;
+      niche_trust_status: string;
+      niche_note: string;
+      platform_trust_score: number;
+      platform_trust_status: string;
+      platform_note: string;
+      total_videos: number;
+      analyzed_videos: number;
+      analyzed_rate: number;
+      patterns_in_memory: number;
+      generator_ready_patterns: number;
+      stable_pattern_count: number;
+      avg_stability_score: number;
+      summary?: {
+        high_confidence?: number;
+        medium_confidence?: number;
+        scale_candidates?: number;
+        control_candidates?: number;
+      };
+      top_patterns?: {
+        id: string;
+        title: string;
+        hook: string;
+        retention: string;
+        format: string;
+        op_score: number;
+        stability_score: number;
+        quality_gate: string;
+        final_decision: string;
+        confidence: string;
+        market_status: string;
+        winners: number;
+        total_posts: number;
+        best_platform: string;
+        brief_seed?: {
+          hook?: string;
+          retention?: string;
+          visual_recipe?: string[];
+          audio_strategy?: string[];
+          product_fit?: string[];
+          do_not_copy?: string[];
+        };
+      }[];
+      next_step: string;
+    }[];
+  };
   action_pack?: {
     primary?: {
       rank: number;
@@ -1562,6 +1629,12 @@ function opportunityStatusCopy(status: "scale_now" | "build_next" | "collect_mor
   return { label: "collect more", tone: "border-amber-200 bg-amber-50 text-amber-800" };
 }
 
+function atlasStatusCopy(status: "stable" | "forming" | "thin" | undefined) {
+  if (status === "stable") return { label: "stable", tone: "border-emerald-200 bg-emerald-50 text-emerald-700" };
+  if (status === "forming") return { label: "forming", tone: "border-cyan-200 bg-cyan-50 text-cyan-800" };
+  return { label: "thin", tone: "border-amber-200 bg-amber-50 text-amber-800" };
+}
+
 function capabilityTone(status: string) {
   if (status === "live") return "border-emerald-200 bg-emerald-50 text-emerald-700";
   if (status === "payload_ready" || status === "ui_ready") return "border-cyan-200 bg-cyan-50 text-cyan-800";
@@ -1848,6 +1921,7 @@ export default function ReelsBrainPage() {
   const briefPackGroups = learningEconomics?.brief_pack_groups || null;
   const segmentTrust = learningEconomics?.segment_trust || null;
   const topOpportunities = learningEconomics?.top_opportunities || null;
+  const patternAtlas = learningEconomics?.pattern_atlas || null;
   const actionPack = learningEconomics?.action_pack || null;
   const actionPackGroups = learningEconomics?.action_pack_groups || null;
   const segmentTrustByNiche = new Map((segmentTrust?.by_niche || []).map((row) => [row.niche, row]));
@@ -3332,6 +3406,62 @@ export default function ReelsBrainPage() {
                 ))}
               </div>
             ) : null}
+          </div>
+
+          <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">Pattern atlas</p>
+                <h4 className="mt-1 text-lg font-black text-slate-950">Какие сегменты уже имеют устойчивые паттерны</h4>
+              </div>
+              <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-bold text-slate-500">
+                {compactNumber(patternAtlas?.summary?.stable_segments || 0)} stable · {compactNumber(patternAtlas?.summary?.atlas_ready_patterns || 0)} atlas patterns
+              </span>
+            </div>
+            <div className="mt-3 grid gap-3 lg:grid-cols-3">
+              {patternAtlas?.by_segment?.length ? patternAtlas.by_segment.slice(0, 6).map((segment) => {
+                const status = atlasStatusCopy(segment.status);
+                const mode = recommendationModeCopy(segment.recommended_mode);
+                return (
+                  <div key={`atlas:${segment.niche}:${segment.platform}`} className="rounded-2xl border border-slate-200 bg-white p-4">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-400">
+                          {(NICHE_LABELS[segment.niche] || segment.niche || "mixed niche")} · {titlePlatform(segment.platform || "tiktok")}
+                        </p>
+                        <h5 className="mt-1 text-sm font-black leading-5 text-slate-950">
+                          {segment.top_patterns?.[0]?.title || "Сильный сегментный паттерн ещё не проявился"}
+                        </h5>
+                      </div>
+                      <span className="shrink-0 rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-black text-slate-700">
+                        {compactNumber(segment.avg_stability_score)}
+                      </span>
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-black ${status.tone}`}>{status.label}</span>
+                      <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-black ${mode.tone}`}>{mode.label}</span>
+                    </div>
+                    <div className="mt-3 space-y-1 text-xs text-slate-600">
+                      <p><span className="font-bold text-slate-900">Coverage:</span> {compactNumber(segment.analyzed_videos)} / {compactNumber(segment.total_videos)} · {compactNumber(segment.analyzed_rate)}%</p>
+                      <p><span className="font-bold text-slate-900">Stable patterns:</span> {compactNumber(segment.stable_pattern_count)} · ready {compactNumber(segment.generator_ready_patterns)}</p>
+                      <p><span className="font-bold text-slate-900">Trust:</span> niche {compactNumber(segment.niche_trust_score)}% · platform {compactNumber(segment.platform_trust_score)}%</p>
+                    </div>
+                    {segment.top_patterns?.[0] ? (
+                      <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs leading-5 text-slate-700">
+                        <p><span className="font-black text-slate-900">Hook:</span> {segment.top_patterns[0].hook}</p>
+                        <p><span className="font-black text-slate-900">Retention:</span> {segment.top_patterns[0].retention}</p>
+                        <p><span className="font-black text-slate-900">Decision:</span> {segment.top_patterns[0].final_decision} · {segment.top_patterns[0].market_status}</p>
+                      </div>
+                    ) : null}
+                    <p className="mt-3 text-xs leading-5 text-slate-600">{segment.next_step}</p>
+                  </div>
+                );
+              }) : (
+                <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-500 lg:col-span-3">
+                  Atlas проявится, когда сегментная память накопит достаточно quality-gated паттернов.
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
