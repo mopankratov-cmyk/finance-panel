@@ -19,10 +19,10 @@ ok(/export function shouldRetryTranscriptExtraction/.test(resolver), "media reso
 ok(/export function isTerminalAudioError/.test(resolver), "media resolver exposes terminal audio error helper");
 ok(/export function shouldRetryAudioBackfill/.test(resolver), "media resolver exposes audio backfill retry helper");
 ok(/whisper_empty_text/.test(resolver) && /transcript_no_speech/.test(resolver), "media resolver treats empty whisper results as terminal");
-ok(/media_fetch_403/.test(resolver) && /status code 10204/.test(resolver) && /media_locator_unresolved/.test(resolver), "media resolver treats unavailable media and unresolved locators as terminal audio errors");
+ok(/media_fetch_403/.test(resolver) && /status code 10204/.test(resolver) && /media_locator_unresolved/.test(resolver) && /moov atom not found/.test(resolver), "media resolver treats unavailable and corrupted media locators as terminal audio errors");
 ok(/shouldRetryAudioBackfill/.test(route), "audio backfill route uses audio backfill retry helper");
 ok(/transcriptError:\s*state\.audioFeatures\?\.transcript_error/.test(route), "audio backfill route consults stored transcript error");
-ok(/Boolean\(String\(row\.url \|\| \"\"\)\.trim\(\)\)/.test(route), "audio backfill route can still queue source-url-only rows for local resolver fallback");
+ok(/const hasPlayable = state\.mediaLocators\.some/.test(route) && !/Boolean\(String\(row\.url \|\| \"\"\)\.trim\(\)\)/.test(route), "audio backfill route only queues rows with real media locators");
 ok(/parseShardConfig/.test(route) && /stableShardMatch/.test(route), "audio backfill route supports sharded worker queues");
 ok(/scoreAudioCandidate/.test(route) && /priority/.test(route), "audio backfill route supports smart candidate prioritization");
 ok(/deepOnly/.test(route) && /virality_score/.test(route), "audio backfill route supports deep-only gating for expensive analysis");

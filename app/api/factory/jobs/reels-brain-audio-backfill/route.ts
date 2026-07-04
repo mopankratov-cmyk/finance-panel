@@ -88,7 +88,9 @@ function isPlayableMediaLocator(value: string, platform = ""): boolean {
   if (!target) return false;
   if (isImageLikeLocator(target)) return false;
   if (isDirectVideoLocator(target)) return true;
-  return /^https?:\/\//i.test(target);
+  if (!/^https?:\/\//i.test(target)) return false;
+  if (platform === "instagram" || platform === "youtube" || platform === "tiktok") return false;
+  return true;
 }
 
 function bestMediaLocator(row: CorpusRow): string {
@@ -140,8 +142,7 @@ export async function GET(req: NextRequest) {
       .filter((row) => {
         const state = seedState(row);
         const platform = String(row.platform || "").trim().toLowerCase();
-        const hasPlayable = state.mediaLocators.some((item) => isPlayableMediaLocator(item, platform))
-          || Boolean(String(row.url || "").trim());
+        const hasPlayable = state.mediaLocators.some((item) => isPlayableMediaLocator(item, platform));
         if (!hasPlayable) return false;
         return shouldRetryAudioBackfill({
           audioStatus: state.audioStatus,

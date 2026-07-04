@@ -63,6 +63,8 @@ export function isTerminalAudioError(error: unknown): boolean {
     || value.includes("video not available")
     || value.includes("image_media_locator")
     || value.includes("media_locator_unresolved")
+    || value.includes("moov atom not found")
+    || value.includes("invalid data found when processing input")
     || value.includes("audio_stream_missing")
     || value.includes("audio_stream_not_found");
 }

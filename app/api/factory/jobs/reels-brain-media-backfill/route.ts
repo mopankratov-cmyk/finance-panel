@@ -63,7 +63,10 @@ function hasTerminalMediaFailure(row: CorpusRow): boolean {
   const reelsSeed = rec(analyzedFull.reels_seed);
   const pipeline = rec(reelsSeed.pipeline);
   const lastError = String(pipeline.last_error || "").trim().toLowerCase();
-  return lastError === "media_locator_unresolved";
+  return lastError === "media_locator_unresolved"
+    || lastError.includes("moov atom not found")
+    || lastError.includes("invalid data found when processing input")
+    || lastError.includes("audio_stream_not_found");
 }
 
 function markMediaLocatorUnresolved(existing: unknown) {
