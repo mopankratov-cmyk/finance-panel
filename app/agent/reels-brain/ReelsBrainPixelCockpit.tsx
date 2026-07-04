@@ -156,7 +156,7 @@ export default function ReelsBrainPixelCockpit() {
       setState("loading");
       const nicheParam = NICHES.join(",");
       const [learningRes, corpusRes, learningPlanRes, progressRes, healthRes, ...summaryRes] = await Promise.all([
-        getJsonSafe(`/api/factory/reels-brain/learning-economics?niches=${encodeURIComponent(nicheParam)}&limit=80`),
+        getJsonSafe(`/api/factory/reels-brain/learning-economics?niches=${encodeURIComponent(nicheParam)}&limit=80&compact=1`),
         getJsonSafe("/api/factory/reels-brain/corpus?limit=200&min_score=0"),
         getJsonSafe(`/api/factory/reels-brain/learning-plan?niches=${encodeURIComponent(nicheParam)}&platforms=tiktok,instagram,youtube&target=10000&max_backlog_before_analyze=180`),
         getJsonSafe(`/api/factory/reels-brain/progress?niches=${encodeURIComponent(nicheParam)}`),

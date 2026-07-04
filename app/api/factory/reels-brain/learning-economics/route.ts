@@ -6,6 +6,10 @@ import { buildReelsBrainOperatingSystem, type ReelsBrainMetricRow } from "@/lib/
 export const dynamic = "force-dynamic";
 export const maxDuration = 20;
 
+function takeRecordList<T>(value: T[] | undefined, limit: number): T[] {
+  return Array.isArray(value) ? value.slice(0, limit) : [];
+}
+
 type PatternBrain = {
   total_videos?: number;
   analyzed_videos?: number;
@@ -1881,6 +1885,7 @@ function understandingScore(brain: PatternBrain) {
 
 export async function GET(req: NextRequest) {
   try {
+    const compactMode = String(req.nextUrl.searchParams.get("compact") || "").trim() === "1";
     const db = getSupabaseAdmin();
     if (!db) {
       return NextResponse.json({ ok: true, niches: [], runs: [], warning: "Supabase не настроен" }, { headers: { "Cache-Control": "no-store" } });
@@ -2141,13 +2146,74 @@ export async function GET(req: NextRequest) {
       outcome_memory: outcomeMemoryBrain,
     };
 
+    const insightsResponse = compactMode
+      ? {
+        ...insightPayload,
+        top_hooks: takeRecordList(insightPayload.top_hooks, 10).map((row) => ({
+          hook_label: row.hook_label,
+          hook_type: row.hook_type,
+          op_score: row.op_score,
+          confidence: row.confidence,
+          frequency: row.frequency,
+          segment: row.segment,
+          niches: takeRecordList(row.niches, 4),
+          platforms: takeRecordList(row.platforms, 4),
+          examples: takeRecordList(row.examples, 2),
+        })),
+        winning_formats: takeRecordList(insightPayload.winning_formats, 8),
+        retention_mechanics: takeRecordList(insightPayload.retention_mechanics, 8),
+        recipes: takeRecordList(insightPayload.recipes, 8),
+        strong_combinations: takeRecordList(insightPayload.strong_combinations, 6),
+        source_references: takeRecordList(insightPayload.source_references, 6),
+        source_map: takeRecordList(insightPayload.source_map, 8),
+      }
+      : insightPayload;
+
+    const patternDetailsResponse = compactMode
+      ? takeRecordList(patternDecisionLayer.pattern_details, 10).map((row) => {
+        const record = row as Record<string, unknown>;
+        return {
+          id: row.id,
+          title: row.title,
+          hook: row.hook,
+          retention: row.retention,
+          format: row.format,
+          op_score: row.op_score,
+          quality_gate: row.quality_gate,
+          examples_count: row.examples_count,
+          platforms: takeRecordList(record.platforms as string[] | undefined, 4),
+          niches: takeRecordList(record.niches as string[] | undefined, 4),
+          warnings: takeRecordList(record.warnings as string[] | undefined, 4),
+          audio_logic: takeRecordList(record.audio_logic as string[] | undefined, 4),
+          creative_brief: row.creative_brief,
+        };
+      })
+      : patternDecisionLayer.pattern_details;
+
+    const antiPatternResponse = compactMode
+      ? {
+        ...antiPatternBrain,
+        items: takeRecordList(antiPatternBrain.items, 8),
+      }
+      : antiPatternBrain;
+
+    const discoveryResponse = compactMode
+      ? {
+        ...discoveryBrain,
+        providers: takeRecordList(discoveryBrain.providers, 8),
+        source_map: takeRecordList((discoveryBrain as Record<string, unknown>).source_map as Record<string, unknown>[] | undefined, 8),
+      }
+      : discoveryBrain;
+
+    const timelineResponse = compactMode ? takeRecordList(timeline, 12) : timeline;
+
     return NextResponse.json({
       ok: true,
       niches: nicheSummaries,
       totals,
       corpus_audit: corpusAudit,
-      insights: insightPayload,
-      pattern_details: patternDecisionLayer.pattern_details,
+      insights: insightsResponse,
+      pattern_details: patternDetailsResponse,
       quality_gate: patternDecisionLayer.quality_gate,
       niche_comparison: nicheComparison,
       daily_report: dailyReport,
@@ -2164,10 +2230,10 @@ export async function GET(req: NextRequest) {
       cost_governor: costGovernor,
       autopilot_actions: autopilotActions,
       next_intelligence_layers: nextIntelligenceLayers,
-      anti_pattern_brain: antiPatternBrain,
-      discovery_brain: discoveryBrain,
+      anti_pattern_brain: antiPatternResponse,
+      discovery_brain: discoveryResponse,
       taxonomy_brain: taxonomyWithLift,
-      timeline,
+      timeline: timelineResponse,
       daily_costs: {
         today,
         yesterday,
