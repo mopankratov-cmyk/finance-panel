@@ -91,6 +91,7 @@ ok(/buildReelsBrainFeedbackLoop/.test(feedback), "feedback route summarizes publ
 ok(/\/api\/factory\/post-metrics/.test(feedback), "feedback route writes through post-metrics");
 ok(/function loadAutopilotGuard/.test(cron), "cron has an autopilot guard");
 ok(/original_task/.test(cron) && /can_run_paid_collection/.test(cron), "cron reports guard enforcement");
+ok(/loadLearningPlan/.test(cron) && /planned_task/.test(cron) && /collect_portfolio_gaps/.test(cron), "cron consumes learning-plan and can execute portfolio-aware next ticks");
 ok(/function loadPipelineProgress/.test(cron) && /pipeline_preflight/.test(cron) && /reels-brain-audio-backfill/.test(cron), "cron runs pipeline preflight for media and audio backlog");
 ok(/media_ticks/.test(cron) && /audio_ticks/.test(cron) && /platform\",\s*String\(target\.platform/.test(cron), "cron preflight fans out media and audio backlog across top platforms");
 ok(/use_autopilot_guard/.test(scheduler), "scheduler marks paid collection as guarded");

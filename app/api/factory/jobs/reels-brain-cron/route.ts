@@ -33,6 +33,14 @@ function forcedTask(req: NextRequest): "bulk" | "analyze" | null {
   return null;
 }
 
+function normalizedPlanTask(value: unknown): "bulk" | "analyze" | null {
+  const raw = String(value || "").trim().toLowerCase();
+  if (!raw) return null;
+  if (["collect_smart_batch", "collect_support_for_decision_segment", "collect_portfolio_gaps", "bulk"].includes(raw)) return "bulk";
+  if (["analyze_backlog", "build_patterns", "wait_or_repair_sources", "analyze"].includes(raw)) return "analyze";
+  return null;
+}
+
 function numberParam(req: NextRequest, name: string, fallback: number, min: number, max: number): number {
   const value = Number(req.nextUrl.searchParams.get(name) || fallback);
   if (!Number.isFinite(value)) return fallback;
@@ -99,6 +107,27 @@ async function loadPipelineProgress(req: NextRequest, niches: string) {
   try {
     const url = new URL("/api/factory/reels-brain/progress", req.nextUrl.origin);
     url.searchParams.set("niches", niches);
+    const response = await internalFetch(url);
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) return { ok: false, data: null as Record<string, unknown> | null, error: data?.error || response.statusText };
+    return { ok: true, data: data as Record<string, unknown>, error: null as string | null };
+  } catch (error) {
+    return { ok: false, data: null as Record<string, unknown> | null, error: String((error as Error)?.message || error).slice(0, 160) };
+  }
+}
+
+async function loadLearningPlan(req: NextRequest, input: {
+  niches: string;
+  platforms: string;
+  targetTotal: number;
+  maxBacklogBeforeAnalyze: number;
+}) {
+  try {
+    const url = new URL("/api/factory/reels-brain/learning-plan", req.nextUrl.origin);
+    url.searchParams.set("niches", input.niches);
+    url.searchParams.set("platforms", input.platforms);
+    url.searchParams.set("target", String(input.targetTotal));
+    url.searchParams.set("max_backlog_before_analyze", String(input.maxBacklogBeforeAnalyze));
     const response = await internalFetch(url);
     const data = await response.json().catch(() => ({}));
     if (!response.ok) return { ok: false, data: null as Record<string, unknown> | null, error: data?.error || response.statusText };
@@ -291,20 +320,36 @@ export async function GET(req: NextRequest) {
     const niches = req.nextUrl.searchParams.get("niches") || DEFAULT_NICHES;
     const platforms = req.nextUrl.searchParams.get("platforms") || DEFAULT_PLATFORMS;
     const auto = await selectAutoTask(req, niches, platforms);
+    const learningPlan = await loadLearningPlan(req, {
+      niches,
+      platforms,
+      targetTotal: auto.targetTotal,
+      maxBacklogBeforeAnalyze: auto.maxBacklogBeforeAnalyze,
+    });
+    const nextTick = rec(learningPlan.data?.learning_plan)?.next_tick && typeof rec(learningPlan.data?.learning_plan).next_tick === "object"
+      ? rec(rec(learningPlan.data?.learning_plan).next_tick)
+      : {};
+    const plannedTask = forcedTask(req) ? null : normalizedPlanTask(nextTick.task);
+    const desiredTask = plannedTask || auto.task;
     const pipelineProgress = await loadPipelineProgress(req, niches);
-    const adaptiveProfile = adaptiveCronProfile({ autoTask: auto.task, backlog: auto.backlog, progress: pipelineProgress.data });
+    const adaptiveProfile = adaptiveCronProfile({ autoTask: desiredTask, backlog: auto.backlog, progress: pipelineProgress.data });
     const preflight = pipelineProgress.ok ? await runPipelinePreflight(req, { niches, progress: pipelineProgress, profile: adaptiveProfile.preflight }) : null;
-    const guard = auto.task === "bulk" ? await loadAutopilotGuard(req, niches) : null;
-    const task = auto.task === "bulk" && guard?.ok && !guard.can_run_paid_collection ? "analyze" : auto.task;
+    const guard = desiredTask === "bulk" ? await loadAutopilotGuard(req, niches) : null;
+    const task = desiredTask === "bulk" && guard?.ok && !guard.can_run_paid_collection ? "analyze" : desiredTask;
     const endpoint = task === "bulk"
       ? "/api/factory/jobs/reels-brain-bulk-ingest"
       : "/api/factory/jobs/reels-brain-analyze-backlog";
+    const planParams = rec(nextTick.params);
+    const targetedNiche = String(planParams.niche || "").trim();
+    const targetedPlatform = String(planParams.platform || "").trim();
+    const effectiveNiches = targetedNiche ? targetedNiche : niches;
+    const effectivePlatforms = targetedPlatform ? targetedPlatform : platforms;
     const body = task === "bulk"
       ? {
-        niches,
-        platforms,
+        niches: effectiveNiches,
+        platforms: effectivePlatforms,
         max_lanes: adaptiveProfile.body.max_lanes,
-        limit: adaptiveProfile.body.limit,
+        limit: Math.max(1, Math.min(80, Number(planParams.limit || adaptiveProfile.body.limit))),
         providers_per_lane: adaptiveProfile.body.providers_per_lane,
         query_variants_per_lane: adaptiveProfile.body.query_variants_per_lane,
         provider_timeout_ms: adaptiveProfile.body.provider_timeout_ms,
@@ -313,11 +358,13 @@ export async function GET(req: NextRequest) {
         hours: 72,
       }
       : {
-        niches,
-        platforms,
+        niches: effectiveNiches,
+        platforms: effectivePlatforms,
         max_lanes: adaptiveProfile.body.max_lanes,
-        limit: adaptiveProfile.body.limit,
-        build_patterns: adaptiveProfile.body.build_patterns,
+        limit: Math.max(1, Math.min(25, Number(planParams.limit || adaptiveProfile.body.limit))),
+        build_patterns: typeof planParams.build_patterns === "string" || typeof planParams.build_patterns === "boolean"
+          ? ["1", "true", "yes", "on"].includes(String(planParams.build_patterns).toLowerCase())
+          : adaptiveProfile.body.build_patterns,
       };
 
     const response = await internalFetch(`${req.nextUrl.origin}${endpoint}`, {
@@ -343,6 +390,9 @@ export async function GET(req: NextRequest) {
     console.info("reels_brain_cron_tick", JSON.stringify({
       task,
       decision: auto.decision,
+      planned_task: nextTick.task || null,
+      planned_reason: nextTick.reason || null,
+      planned_priority_segment: nextTick.priority_segment || null,
       adaptive_profile: adaptiveProfile,
       guard: guard ? { ok: guard.ok, can_run_paid_collection: guard.can_run_paid_collection, reason: guard.reason } : null,
       pipeline_progress_ok: pipelineProgress.ok,
@@ -372,11 +422,13 @@ export async function GET(req: NextRequest) {
       task,
       cadence: "*/5 * * * *",
       policy: "auto until target: bulk while corpus is below target and backlog is small, otherwise analyze",
+      learning_plan: learningPlan.ok ? learningPlan.data : null,
       adaptive_profile: adaptiveProfile,
       guard: guard ? { ok: guard.ok, can_run_paid_collection: guard.can_run_paid_collection, reason: guard.reason } : null,
       pipeline_progress: pipelineProgress.ok ? pipelineProgress.data : null,
       pipeline_preflight: preflight,
       original_task: auto.task,
+      planned_task: nextTick.task || null,
       target_total: auto.targetTotal,
       max_backlog_before_analyze: auto.maxBacklogBeforeAnalyze,
       backlog: auto.backlog,
