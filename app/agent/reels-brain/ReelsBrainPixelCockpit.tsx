@@ -1034,6 +1034,7 @@ export default function ReelsBrainPixelCockpit() {
           </div>
         </section>
 
+        {false && (
         <details
           className="rb-tech-layer"
           onToggle={(event) => setTechLayerOpen((event.currentTarget as HTMLDetailsElement).open)}
@@ -1191,7 +1192,7 @@ export default function ReelsBrainPixelCockpit() {
             <div className="rb-card rb-dark">
               <div className="rb-four">
                 <div className="rb-dark-card"><div className="rb-overline rb-cyan">Сегодня</div><h3 style={{ font: "600 34px/1 'Space Grotesk'", margin: "10px 0 0" }}>{usd(vm.usefulCost)}</h3><p>за полезное видео</p></div>
-                <div className="rb-dark-card"><div className="rb-overline rb-cyan">Дельта</div><h3 style={{ color: vm.costTone, font: "600 34px/1 'Space Grotesk'", margin: "10px 0 0" }}>{vm.delta == null ? "—" : `${vm.delta > 0 ? "+" : ""}${vm.delta}%`}</h3><p>{vm.costLabel} к прошлому срезу</p></div>
+                <div className="rb-dark-card"><div className="rb-overline rb-cyan">Дельта</div><h3 style={{ color: vm.costTone, font: "600 34px/1 'Space Grotesk'", margin: "10px 0 0" }}>{vm.delta == null ? "—" : `${(vm.delta ?? 0) > 0 ? "+" : ""}${vm.delta ?? 0}%`}</h3><p>{vm.costLabel} к прошлому срезу</p></div>
                 <div className="rb-dark-card"><div className="rb-overline rb-cyan">Источники</div><h3 style={{ font: "600 34px/1 'Space Grotesk'", margin: "10px 0 0" }}>{compact(vm.sourceMap.length)}</h3><p>провайдеры/карты</p></div>
                 <div className="rb-dark-card"><div className="rb-overline rb-cyan">Прогоны</div><h3 style={{ font: "600 34px/1 'Space Grotesk'", margin: "10px 0 0" }}>{compact(vm.timeline.length)}</h3><p>последние точки</p></div>
               </div>
@@ -1496,7 +1497,7 @@ export default function ReelsBrainPixelCockpit() {
           </div>
           <div className="rb-detail-grid" style={{ marginTop: 16 }}>
             {(vm.patternDetails.length ? vm.patternDetails.slice(0, 4) : vm.recipes.slice(0, 4)).map((pattern: JsonRecord) => (
-              <button type="button" className="rb-card rb-detail rb-click" key={pattern.id || pattern.title} onClick={() => setSelectedPattern(pattern)}>
+              <div className="rb-card rb-detail" key={pattern.id || pattern.title}>
                 <div className="rb-pill">{pattern.quality_gate || "pattern"} · OP {compact(pattern.op_score)}</div>
                 <h3 style={{ font: "700 24px/1.15 'Space Grotesk'", margin: "14px 0 10px" }}>{pattern.title}</h3>
                 <div className="rb-three">
@@ -1510,7 +1511,7 @@ export default function ReelsBrainPixelCockpit() {
                     {(pattern.warnings || []).join(" · ")}
                   </div>
                 ) : null}
-              </button>
+              </div>
             ))}
           </div>
           <div className="rb-card" style={{ marginTop: 16 }}>
@@ -1788,61 +1789,19 @@ export default function ReelsBrainPixelCockpit() {
           </div>
           ) : null}
         </details>
+        )}
+        <section>
+          <SectionTitle k="07 · Technical Layer" title="Технический слой временно свернут" />
+          <div className="rb-card">
+            <p style={{ margin: 0, color: "#475569", lineHeight: 1.6 }}>
+              Тяжелые технические блоки и deep-dive drawer временно убраны из рендера, чтобы cockpit стабильно открывался в браузере.
+              Сбор, обучение и API-прослойка продолжают работать в фоне.
+            </p>
+          </div>
+        </section>
       </div>
 
-      {selectedPattern ? (
-        <div className="rb-drawer-backdrop" role="dialog" aria-modal="true" onClick={() => setSelectedPattern(null)}>
-          <aside className="rb-drawer" onClick={(event) => event.stopPropagation()}>
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 18, alignItems: "flex-start" }}>
-              <div>
-                <div className="rb-pill">{selectedPattern.quality_gate || "pattern"} · OP {compact(selectedPattern.op_score)}</div>
-                <h2>{selectedPattern.title || "Паттерн Reels Brain"}</h2>
-                <p style={{ color: "#64748b", lineHeight: 1.5, marginTop: -4 }}>Это creative brief из памяти: механику можно использовать, чужой текст/музыку/монтаж копировать нельзя.</p>
-              </div>
-              <button type="button" className="rb-close" onClick={() => setSelectedPattern(null)} aria-label="Закрыть">×</button>
-            </div>
-
-            <div className="rb-drawer-grid" style={{ marginTop: 20 }}>
-              <div className="rb-brief-block"><b>Хук</b><p>{selectedPattern.creative_brief?.hook || selectedPattern.hook || "нет данных"}</p></div>
-              <div className="rb-brief-block"><b>Механика удержания</b><p>{selectedPattern.creative_brief?.retention_mechanic || selectedPattern.retention || "нет данных"}</p></div>
-              <div className="rb-brief-block"><b>Формат</b><p>{selectedPattern.format || "нет данных"}</p></div>
-              <div className="rb-brief-block"><b>Подходит для</b><p>{(selectedPattern.creative_brief?.product_fit || selectedPattern.niches || []).slice(0, 5).join(" · ") || "нужна доразметка"}</p></div>
-            </div>
-
-            <div className="rb-brief-block" style={{ marginTop: 12 }}>
-              <b>Структура по секундам</b>
-              <p>{(selectedPattern.creative_brief?.second_by_second || []).join(" ") || "0-2с хук, 2-8с доказательство, 8-15с payoff/CTA."}</p>
-            </div>
-            <div className="rb-brief-block" style={{ marginTop: 12 }}>
-              <b>Visual recipe</b>
-              <p>{(selectedPattern.creative_brief?.visual_recipe || []).join(" ") || "Крупный план, proof-кадр, быстрые смены смысла, текст только как усилитель."}</p>
-            </div>
-            <div className="rb-brief-block" style={{ marginTop: 12 }}>
-              <b>Audio strategy</b>
-              <p>{(selectedPattern.creative_brief?.audio_strategy || ["Голос должен начинаться быстро, музыка только поддерживает смысл, без мёртвого интро."]).join(" ")}</p>
-            </div>
-            {(selectedPattern.audio_logic || []).length ? (
-              <div className="rb-brief-block" style={{ marginTop: 12 }}>
-                <b>Audio logic</b>
-                <p>{(selectedPattern.audio_logic || []).join(" · ")}</p>
-              </div>
-            ) : null}
-            <div className="rb-drawer-grid" style={{ marginTop: 12 }}>
-              <div className="rb-brief-block"><b>Копируем как механику</b><p>{(selectedPattern.creative_brief?.copy_as_mechanic || ["темп", "структуру", "тип доказательства"]).join(" · ")}</p></div>
-              <div className="rb-brief-block"><b>Запрещено копировать</b><p>{(selectedPattern.creative_brief?.do_not_copy || ["текст", "музыку", "персонажа", "монтаж один в один"]).join(" · ")}</p></div>
-            </div>
-            {(selectedPattern.warnings || []).length ? (
-              <div style={{ marginTop: 12, padding: 14, borderRadius: 14, background: "#fff7ed", border: "1px solid #fed7aa", color: "#9a3412", fontWeight: 700 }}>
-                {(selectedPattern.warnings || []).join(" · ")}
-              </div>
-            ) : null}
-            <div className="rb-brief-block" style={{ marginTop: 12 }}>
-              <b>Доказательства</b>
-              <p>references {compact(selectedPattern.examples_count)} · платформы {(selectedPattern.platforms || []).join(" · ") || "mixed"} · ниши {(selectedPattern.niches || []).join(" · ") || "all"}</p>
-            </div>
-          </aside>
-        </div>
-      ) : null}
+      {null}
     </main>
   );
 }
