@@ -68,6 +68,20 @@ function list(value: unknown, limit = 4): string[] {
   return value.map((item) => text(item)).filter(Boolean).slice(0, limit);
 }
 
+function segmentPairs(input: Array<{ niches?: string[]; platforms?: string[] }>) {
+  const pairs = new Map<string, { niche: string; platform: string }>();
+  for (const item of input) {
+    for (const niche of list(item.niches, 20)) {
+      for (const platform of list(item.platforms, 20)) {
+        pairs.set(`${niche}__${platform}`, { niche, platform });
+      }
+    }
+  }
+  return Array.from(pairs.values()).sort((a, b) =>
+    a.niche.localeCompare(b.niche) || a.platform.localeCompare(b.platform),
+  );
+}
+
 function clamp(value: number, min = 0, max = 100) {
   return Math.max(min, Math.min(max, Math.round(value)));
 }
@@ -217,6 +231,15 @@ export function buildGroupedReelsBrainActionPacks(input: {
       platform,
       ...buildReelsBrainActionPack(
         patterns.filter((pattern) => list(pattern.platforms, 20).includes(platform)),
+        input.limit || 3,
+      ),
+    })).filter((row) => row.primary),
+    by_segment: segmentPairs(patterns).map(({ niche, platform }) => ({
+      niche,
+      platform,
+      ...buildReelsBrainActionPack(
+        patterns.filter((pattern) =>
+          list(pattern.niches, 20).includes(niche) && list(pattern.platforms, 20).includes(platform)),
         input.limit || 3,
       ),
     })).filter((row) => row.primary),

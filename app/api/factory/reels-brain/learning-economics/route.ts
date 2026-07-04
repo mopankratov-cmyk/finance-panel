@@ -2316,6 +2316,7 @@ export async function GET(req: NextRequest) {
         trustRows: segmentTrust.by_platform,
         key: "platform",
       }),
+      by_segment: groupedHypothesisBank.by_segment,
     };
     const trustedGroupedActionPacks = {
       by_niche: applySegmentTrustToGroups({
@@ -2328,6 +2329,7 @@ export async function GET(req: NextRequest) {
         trustRows: segmentTrust.by_platform,
         key: "platform",
       }),
+      by_segment: groupedActionPacks.by_segment,
     };
     const trustedGroupedBriefPacks = {
       by_niche: applySegmentTrustToGroups({
@@ -2340,6 +2342,7 @@ export async function GET(req: NextRequest) {
         trustRows: segmentTrust.by_platform,
         key: "platform",
       }),
+      by_segment: groupedBriefPacks.by_segment,
     };
     const topOpportunities = buildReelsBrainOpportunities({
       nicheSummaries,
@@ -2396,6 +2399,11 @@ export async function GET(req: NextRequest) {
       action_pack_groups: trustedGroupedActionPacks,
       brief_pack: briefPack,
       brief_pack_groups: trustedGroupedBriefPacks,
+      segment_output_banks: {
+        briefs: takeRecordList(trustedGroupedBriefPacks.by_segment, compactMode ? 6 : 10),
+        actions: takeRecordList(trustedGroupedActionPacks.by_segment, compactMode ? 6 : 10),
+        hypotheses: takeRecordList(trustedGroupedHypothesisBank.by_segment, compactMode ? 6 : 10),
+      },
       segment_trust: segmentTrust,
       top_opportunities: topOpportunities,
       pattern_atlas: patternAtlas,

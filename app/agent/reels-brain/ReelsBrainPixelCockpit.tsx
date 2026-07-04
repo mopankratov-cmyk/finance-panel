@@ -282,6 +282,7 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
     const topOpportunities = (learning?.top_opportunities || {}) as JsonRecord;
     const patternAtlas = (learning?.pattern_atlas || {}) as JsonRecord;
     const segmentPlaybook = (learning?.segment_playbook || {}) as JsonRecord;
+    const segmentOutputBanks = (learning?.segment_output_banks || {}) as JsonRecord;
     const evidenceLedger = (learning?.evidence_ledger || {}) as JsonRecord;
     const actionPack = (learning?.action_pack || {}) as JsonRecord;
     const actionPackGroups = (learning?.action_pack_groups || {}) as JsonRecord;
@@ -670,6 +671,40 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
       prepare: num(segmentPlaybook.summary?.prepare),
       research: num(segmentPlaybook.summary?.research),
     };
+    const segmentOutputCards = ((segmentOutputBanks.briefs || []) as JsonRecord[]).slice(0, 6).map((row, index) => {
+      const primary = (row.primary || {}) as JsonRecord;
+      const actionRow = (((segmentOutputBanks.actions || []) as JsonRecord[]).find((item) =>
+        String(item.niche || "") === String(row.niche || "") && String(item.platform || "") === String(row.platform || "")) || {}) as JsonRecord;
+      const hypothesisRow = (((segmentOutputBanks.hypotheses || []) as JsonRecord[]).find((item) =>
+        String(item.niche || "") === String(row.niche || "") && String(item.platform || "") === String(row.platform || "")) || {}) as JsonRecord;
+      const actionPrimary = (actionRow.primary || {}) as JsonRecord;
+      const topHypothesis = (((hypothesisRow.cards || []) as JsonRecord[])[0] || {}) as JsonRecord;
+      const confidence = statusTone(Math.min(100,
+        num(primary.op_score)
+        + (String(primary.confidence || "") === "high" ? 12 : String(primary.confidence || "") === "medium" ? 6 : 0)
+        + (String(actionPrimary.decision || "") === "scale" ? 10 : String(actionPrimary.decision || "") === "control" ? 4 : 0),
+      ));
+      return {
+        id: `${row.niche}:${row.platform}:${index}`,
+        niche: row.niche,
+        platform: row.platform,
+        label: `${NICHE_LABELS[String(row.niche)] || row.niche} × ${String(row.platform || "mixed").toUpperCase()}`,
+        confidenceTone: confidence,
+        briefTitle: primary.title || "pending brief",
+        briefHook: primary.creative_brief?.hook || primary.hook || "сильный хук дозревает",
+        retention: primary.creative_brief?.retention_mechanic || primary.retention || "proof retention",
+        actionTitle: actionPrimary.title || "prepare rollout",
+        actionDecision: actionPrimary.decision || "watch",
+        hypothesisTitle: topHypothesis.title || "next hypothesis",
+        hypothesisText: topHypothesis.hypothesis || "сегменту нужен ещё один цикл сигнала",
+        evidenceRefs: num(primary.evidence?.references),
+      };
+    });
+    const segmentOutputSummary = {
+      briefs: num(((segmentOutputBanks.briefs || []) as JsonRecord[]).length),
+      actions: num(((segmentOutputBanks.actions || []) as JsonRecord[]).length),
+      hypotheses: num(((segmentOutputBanks.hypotheses || []) as JsonRecord[]).length),
+    };
     const evidenceCards = ((evidenceLedger.items || []) as JsonRecord[]).slice(0, 6).map((row) => {
       const status = marketSignalTone(String(row.market_status || "no_feedback"));
       const mode = decisionTone(String(row.recommended_mode || "research_only"));
@@ -852,6 +887,8 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
       atlasSummary,
       playbookCards,
       playbookSummary,
+      segmentOutputCards,
+      segmentOutputSummary,
       evidenceCards,
       evidenceSummary,
       trustMatrix,
@@ -1621,6 +1658,46 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
                 <h3 style={{ font: "700 24px/1.1 'Space Grotesk'", margin: 0 }}>Segment Playbook ещё пуст</h3>
                 <p style={{ marginTop: 10, color: "#64748b", lineHeight: 1.55 }}>
                   Этот слой появится автоматически, когда atlas и opportunity слой накопят достаточно сигналов для action-ready сегментов.
+                </p>
+              </div>
+            )}
+          </div>
+        </section>
+
+        <section>
+          <SectionTitle k="04.42 · Segment Output Banks" title="Какие брифы, гипотезы и rollout-решения уже собраны по каждому сегменту" />
+          <div className="rb-three">
+            {vm.segmentOutputCards.length ? vm.segmentOutputCards.map((item: JsonRecord) => (
+              <div className="rb-card" key={`segment-output:${item.niche}:${item.platform}`}>
+                <div className="rb-two" style={{ gridTemplateColumns: "1fr auto", gap: 14 }}>
+                  <div>
+                    <div className="rb-overline" style={{ color: "#0891b2" }}>{item.label}</div>
+                    <h3 style={{ font: "700 24px/1.1 'Space Grotesk'", margin: "10px 0 0" }}>{item.briefTitle}</h3>
+                  </div>
+                  <div className="rb-live-pill" style={{ background: item.confidenceTone.bg, borderColor: item.confidenceTone.bd, color: item.confidenceTone.fg }}>
+                    <i style={{ background: item.confidenceTone.fg }} />
+                    {item.confidenceTone.label}
+                  </div>
+                </div>
+                <div className="rb-three" style={{ marginTop: 14 }}>
+                  <div className="rb-brief-block"><b>Brief hook</b><p>{item.briefHook}</p></div>
+                  <div className="rb-brief-block"><b>Retention</b><p>{item.retention}</p></div>
+                  <div className="rb-brief-block"><b>Evidence refs</b><p>{compact(item.evidenceRefs)}</p></div>
+                </div>
+                <div className="rb-three" style={{ marginTop: 12 }}>
+                  <div className="rb-brief-block"><b>Action</b><p>{item.actionTitle}</p></div>
+                  <div className="rb-brief-block"><b>Decision</b><p>{String(item.actionDecision || "watch").toUpperCase()}</p></div>
+                  <div className="rb-brief-block"><b>Hypothesis</b><p>{item.hypothesisTitle}</p></div>
+                </div>
+                <p style={{ marginTop: 12, color: "#475569", lineHeight: 1.55 }}>
+                  {item.hypothesisText}
+                </p>
+              </div>
+            )) : (
+              <div className="rb-card">
+                <h3 style={{ font: "700 24px/1.1 'Space Grotesk'", margin: 0 }}>Segment outputs ещё пусты</h3>
+                <p style={{ marginTop: 10, color: "#64748b", lineHeight: 1.55 }}>
+                  Этот слой заполнится, когда у сегментов накопятся одновременно briefs, action packs и hypothesis banks.
                 </p>
               </div>
             )}
