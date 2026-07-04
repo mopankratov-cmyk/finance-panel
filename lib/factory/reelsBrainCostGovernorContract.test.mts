@@ -8,6 +8,7 @@ const actions = readFileSync("app/api/factory/reels-brain/autopilot-actions/rout
 const governor = readFileSync("app/api/factory/reels-brain/cost-governor/route.ts", "utf8");
 const report = readFileSync("app/api/factory/reels-brain/report/route.ts", "utf8");
 const learningPlan = readFileSync("app/api/factory/reels-brain/learning-plan/route.ts", "utf8");
+const creativeExports = readFileSync("app/api/factory/reels-brain/creative-exports/route.ts", "utf8");
 const cockpit = readFileSync("app/agent/reels-brain/ReelsBrainPixelCockpit.tsx", "utf8");
 const feedback = readFileSync("app/api/factory/reels-brain/feedback/route.ts", "utf8");
 const cron = readFileSync("app/api/factory/jobs/reels-brain-cron/route.ts", "utf8");
@@ -37,6 +38,10 @@ ok(!/POST\s*\(/.test(actions), "autopilot-actions is read-only");
 ok(/internalFetch/.test(governor) && /cost_governor/.test(governor), "cost-governor route exposes budget state");
 ok(/daily_costs/.test(governor) && /totals/.test(governor), "cost-governor route includes cost context");
 ok(!/POST\s*\(/.test(governor), "cost-governor route is read-only");
+
+ok(/internalFetch/.test(creativeExports) && /segment_creative_exports/.test(creativeExports), "creative-exports route reads creative export bundles from learning-economics");
+ok(/lane/.test(creativeExports) && /niche/.test(creativeExports) && /platform/.test(creativeExports), "creative-exports route supports lane, niche and platform filters");
+ok(!/POST\s*\(/.test(creativeExports), "creative-exports route is read-only");
 
 ok(/daily_report/.test(report) && /autopilot_actions/.test(report), "report route exposes operator report fields");
 ok(/anti_pattern_brain/.test(report) && /discovery_brain/.test(report), "report route includes learning context");

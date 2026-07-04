@@ -1872,6 +1872,10 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
                   <b>Generator lane</b>
                   <p>{item.generator_bundle?.lane || "research"} · {((item.generator_bundle?.allowed_modes || []) as string[]).join(" · ") || "none"}</p>
                 </div>
+                <div className="rb-brief-block" style={{ marginTop: 12 }}>
+                  <b>Export endpoint</b>
+                  <p>/api/factory/reels-brain/creative-exports?lane={item.generator_bundle?.lane || "research"}&niche={item.niche}&platform={item.platform}</p>
+                </div>
                 <p style={{ marginTop: 12, color: "#475569", lineHeight: 1.55 }}>
                   {item.why_now || item.next_step || "Ждём более сильный signal bundle"}
                 </p>
