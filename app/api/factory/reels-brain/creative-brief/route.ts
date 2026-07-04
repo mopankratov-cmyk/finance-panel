@@ -43,6 +43,18 @@ type CrossPlatformPattern = Pattern & {
   avg_strength_score?: number;
 };
 
+type AntiPattern = {
+  anti_pattern_id?: string;
+  label?: string;
+  trigger_reason?: string;
+  severity?: string;
+  affected_patterns?: number;
+  total_frequency?: number;
+  avg_quality_score?: number;
+  avg_relevance_score?: number;
+  action?: string;
+};
+
 function num(value: unknown): number {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
@@ -203,7 +215,26 @@ function rationale(pattern: Pattern, crossPattern: CrossPlatformPattern | null) 
   return parts.join(" ");
 }
 
-function buildBrief(pattern: Pattern, niche: string, productType: string, platform: string, crossPattern: CrossPlatformPattern | null) {
+function antiPatternWarnings(antiPatterns: AntiPattern[]) {
+  return antiPatterns.slice(0, 3).map((item) => ({
+    anti_pattern_id: item.anti_pattern_id || null,
+    label: item.label || null,
+    severity: item.severity || "low",
+    trigger_reason: item.trigger_reason || null,
+    action: item.action || null,
+    affected_patterns: num(item.affected_patterns),
+    total_frequency: num(item.total_frequency),
+  }));
+}
+
+function buildBrief(
+  pattern: Pattern,
+  niche: string,
+  productType: string,
+  platform: string,
+  crossPattern: CrossPlatformPattern | null,
+  antiPatterns: AntiPattern[],
+) {
   const productFitNotes = productFit(productType, niche, pattern);
   const examples = topExamples(pattern, 3);
   return {
@@ -237,6 +268,7 @@ function buildBrief(pattern: Pattern, niche: string, productType: string, platfo
       top_sounds_seen: Array.isArray(pattern.sounds) ? pattern.sounds.slice(0, 4) : [],
       quality_reasons: Array.isArray(pattern.quality_reasons) ? pattern.quality_reasons : [],
       rationale: rationale(pattern, crossPattern),
+      anti_pattern_warnings: antiPatternWarnings(antiPatterns),
       cross_platform_support: crossPattern
         ? {
             platforms: Array.isArray(crossPattern.platforms) ? crossPattern.platforms : [],
@@ -277,9 +309,9 @@ export async function GET(req: NextRequest) {
 
     const playbook = ((data as { playbook?: Record<string, unknown> }[] | null)?.[0]?.playbook || {}) as Record<string, unknown>;
     const root = (playbook.reels_brain_patterns || {}) as Record<string, unknown>;
-    const platformBrains = (root.platform_brains || {}) as Record<string, { generator_ready_patterns?: Pattern[]; patterns?: Pattern[] }>;
+    const platformBrains = (root.platform_brains || {}) as Record<string, { generator_ready_patterns?: Pattern[]; patterns?: Pattern[]; anti_patterns?: AntiPattern[] }>;
     const crossPlatformPatterns = Array.isArray(root.cross_platform_patterns) ? root.cross_platform_patterns as CrossPlatformPattern[] : [];
-    const meta = (root.meta_brain || {}) as { generator_ready_patterns?: Pattern[]; patterns?: Pattern[] };
+    const meta = (root.meta_brain || {}) as { generator_ready_patterns?: Pattern[]; patterns?: Pattern[]; anti_patterns?: AntiPattern[] };
 
     const platformPatterns = platform && platformBrains[platform]
       ? (platformBrains[platform].generator_ready_patterns?.length
@@ -288,6 +320,9 @@ export async function GET(req: NextRequest) {
       : [];
     const fallbackPatterns = meta.generator_ready_patterns?.length ? meta.generator_ready_patterns : meta.patterns || [];
     const patterns = platformPatterns.length ? platformPatterns : fallbackPatterns;
+    const antiPatterns = platform && platformBrains[platform]?.anti_patterns?.length
+      ? platformBrains[platform].anti_patterns || []
+      : meta.anti_patterns || [];
     const best = bestPatternFromList(patterns);
 
     if (!best) {
@@ -305,7 +340,7 @@ export async function GET(req: NextRequest) {
         retention_mechanism: best.retention_mechanism || null,
         quality_label: best.quality_label || null,
       },
-      ...buildBrief(best, niche, productType, platform, crossPattern),
+      ...buildBrief(best, niche, productType, platform, crossPattern, antiPatterns),
     }, { headers: { "Cache-Control": "no-store" } });
   } catch (e) {
     return NextResponse.json({ error: "creative-brief reels-brain упал: " + String((e as Error)?.message || e).slice(0, 180) }, { status: 500 });
