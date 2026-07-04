@@ -1032,6 +1032,40 @@ type LearningEconomicsResponse = {
       note: string;
     }[];
   };
+  top_opportunities?: {
+    top?: {
+      niche: string;
+      platform: string;
+      opportunity_score: number;
+      status: "scale_now" | "build_next" | "collect_more";
+      recommended_mode: "primary" | "control_only" | "research_only";
+      total_videos: number;
+      analyzed_videos: number;
+      analyzed_rate: number;
+      generator_ready_patterns: number;
+      patterns: number;
+      niche_trust_score: number;
+      platform_trust_score: number;
+      niche_trust_status: string;
+      platform_trust_status: string;
+      niche_note: string;
+      platform_note: string;
+      best_brief_title: string;
+      best_brief_hook: string;
+      best_action_title: string;
+      best_hypothesis_title: string;
+      best_hypothesis: string;
+    }[];
+    summary?: {
+      total?: number;
+      scale_now?: number;
+      build_next?: number;
+      collect_more?: number;
+      primary?: number;
+      control_only?: number;
+      research_only?: number;
+    };
+  };
   action_pack?: {
     primary?: {
       rank: number;
@@ -1522,6 +1556,12 @@ function recommendationModeCopy(mode: "primary" | "control_only" | "research_onl
   return { label: "research", tone: "border-amber-200 bg-amber-50 text-amber-800" };
 }
 
+function opportunityStatusCopy(status: "scale_now" | "build_next" | "collect_more" | undefined) {
+  if (status === "scale_now") return { label: "scale now", tone: "border-emerald-200 bg-emerald-50 text-emerald-700" };
+  if (status === "build_next") return { label: "build next", tone: "border-cyan-200 bg-cyan-50 text-cyan-800" };
+  return { label: "collect more", tone: "border-amber-200 bg-amber-50 text-amber-800" };
+}
+
 function capabilityTone(status: string) {
   if (status === "live") return "border-emerald-200 bg-emerald-50 text-emerald-700";
   if (status === "payload_ready" || status === "ui_ready") return "border-cyan-200 bg-cyan-50 text-cyan-800";
@@ -1807,6 +1847,7 @@ export default function ReelsBrainPage() {
   const briefPack = learningEconomics?.brief_pack || null;
   const briefPackGroups = learningEconomics?.brief_pack_groups || null;
   const segmentTrust = learningEconomics?.segment_trust || null;
+  const topOpportunities = learningEconomics?.top_opportunities || null;
   const actionPack = learningEconomics?.action_pack || null;
   const actionPackGroups = learningEconomics?.action_pack_groups || null;
   const segmentTrustByNiche = new Map((segmentTrust?.by_niche || []).map((row) => [row.niche, row]));
@@ -3219,6 +3260,78 @@ export default function ReelsBrainPage() {
                 </div>
               )}) : <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-500">Рецепты появятся после сборки Pattern Brain.</div>}
             </div>
+          </div>
+
+          <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">Top opportunities</p>
+                <h4 className="mt-1 text-lg font-black text-slate-950">Где уже можно строить решения по niche × platform</h4>
+              </div>
+              <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-bold text-slate-500">
+                {compactNumber(topOpportunities?.summary?.total || 0)} segments
+              </span>
+            </div>
+            <div className="mt-3 grid gap-3 lg:grid-cols-3">
+              {topOpportunities?.top?.length ? topOpportunities.top.slice(0, 6).map((item) => {
+                const status = opportunityStatusCopy(item.status);
+                const mode = recommendationModeCopy(item.recommended_mode);
+                return (
+                  <div key={`opportunity:${item.niche}:${item.platform}`} className="rounded-2xl border border-slate-200 bg-white p-4">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-400">
+                          {(NICHE_LABELS[item.niche] || item.niche || "mixed niche")} · {titlePlatform(item.platform || "tiktok")}
+                        </p>
+                        <h5 className="mt-1 text-sm font-black leading-5 text-slate-950">
+                          {item.best_brief_title || item.best_action_title || item.best_hypothesis_title || "Сегмент пока дозревает"}
+                        </h5>
+                      </div>
+                      <span className="shrink-0 rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-black text-slate-700">
+                        {compactNumber(item.opportunity_score)}
+                      </span>
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-black ${status.tone}`}>
+                        {status.label}
+                      </span>
+                      <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-black ${mode.tone}`}>
+                        {mode.label}
+                      </span>
+                    </div>
+                    <div className="mt-3 space-y-1 text-xs text-slate-600">
+                      <p><span className="font-bold text-slate-900">Coverage:</span> {compactNumber(item.analyzed_videos)} / {compactNumber(item.total_videos)} · {compactNumber(item.analyzed_rate)}%</p>
+                      <p><span className="font-bold text-slate-900">Memory:</span> {compactNumber(item.generator_ready_patterns)} ready · {compactNumber(item.patterns)} total</p>
+                      <p><span className="font-bold text-slate-900">Trust:</span> niche {compactNumber(item.niche_trust_score)}% · platform {compactNumber(item.platform_trust_score)}%</p>
+                    </div>
+                    <p className="mt-3 text-xs leading-5 text-slate-600">
+                      {item.best_brief_hook || item.best_hypothesis || item.niche_note || item.platform_note || "Нужен ещё один цикл накопления сигнала."}
+                    </p>
+                  </div>
+                );
+              }) : (
+                <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-500 lg:col-span-3">
+                  Этот слой появится, когда trust-ranked brief/action/hypothesis банки накопят достаточно устойчивых сегментов.
+                </div>
+              )}
+            </div>
+            {topOpportunities?.summary?.total ? (
+              <div className="mt-3 grid gap-3 md:grid-cols-3 xl:grid-cols-6">
+                {[
+                  ["Scale now", topOpportunities.summary.scale_now || 0],
+                  ["Build next", topOpportunities.summary.build_next || 0],
+                  ["Collect more", topOpportunities.summary.collect_more || 0],
+                  ["Primary", topOpportunities.summary.primary || 0],
+                  ["Control", topOpportunities.summary.control_only || 0],
+                  ["Research", topOpportunities.summary.research_only || 0],
+                ].map(([label, value]) => (
+                  <div key={String(label)} className="rounded-xl border border-slate-200 bg-white px-3 py-2">
+                    <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">{label}</p>
+                    <p className="mt-1 text-xl font-black text-slate-950">{compactNumber(Number(value))}</p>
+                  </div>
+                ))}
+              </div>
+            ) : null}
           </div>
 
           <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">

@@ -1,0 +1,63 @@
+import assert from "node:assert/strict";
+import { buildReelsBrainOpportunities } from "./reelsBrainOpportunities";
+
+function testBuildReelsBrainOpportunitiesRanksBestSegments() {
+  const result = buildReelsBrainOpportunities({
+    nicheSummaries: [
+      {
+        niche: "ru_toys",
+        platform_brains: {
+          tiktok: { total_videos: 120, analyzed_videos: 95, patterns: 8, generator_ready_patterns: 5 },
+          instagram: { total_videos: 70, analyzed_videos: 55, patterns: 6, generator_ready_patterns: 3 },
+        },
+      },
+      {
+        niche: "ru_cosmetics",
+        platform_brains: {
+          instagram: { total_videos: 80, analyzed_videos: 35, patterns: 5, generator_ready_patterns: 2 },
+          youtube: { total_videos: 25, analyzed_videos: 8, patterns: 1, generator_ready_patterns: 0 },
+        },
+      },
+    ],
+    segmentTrust: {
+      by_niche: [
+        { niche: "ru_toys", score: 81, status: "ready", confidence: "high", note: "strong" },
+        { niche: "ru_cosmetics", score: 38, status: "weak", confidence: "low", note: "weak" },
+      ],
+      by_platform: [
+        { platform: "tiktok", score: 59, status: "warming", confidence: "medium", note: "warming" },
+        { platform: "instagram", score: 56, status: "warming", confidence: "medium", note: "warming" },
+        { platform: "youtube", score: 32, status: "weak", confidence: "low", note: "weak" },
+      ],
+    },
+    briefPackGroups: {
+      by_niche: [{ niche: "ru_toys", primary: { title: "Toys brief", creative_brief: { hook: "Смотри" } } }],
+      by_platform: [{ platform: "tiktok", primary: { title: "TikTok brief", creative_brief: { hook: "Смотри" } } }],
+    },
+    actionPackGroups: {
+      by_niche: [{ niche: "ru_toys", primary: { title: "Toys action" } }],
+      by_platform: [{ platform: "tiktok", primary: { title: "TikTok action" } }],
+    },
+    hypothesisBankGroups: {
+      by_niche: [{ niche: "ru_toys", primary: { title: "Toys hypothesis", hypothesis: "test toys" } }],
+      by_platform: [{ platform: "tiktok", primary: { title: "TikTok hypothesis", hypothesis: "test tiktok" } }],
+    },
+    limit: 6,
+  });
+
+  assert.equal(result.summary.total, 4);
+  assert.equal(result.top[0]?.niche, "ru_toys");
+  assert.equal(result.top[0]?.platform, "tiktok");
+  assert.equal(result.top[0]?.recommended_mode, "control_only");
+  assert.equal(result.top[0]?.best_brief_title, "TikTok brief");
+  assert.equal(result.top[0]?.best_action_title, "TikTok action");
+  assert.equal(result.top[0]?.best_hypothesis, "test tiktok");
+  assert.equal(result.top.at(-1)?.platform, "youtube");
+}
+
+function run() {
+  testBuildReelsBrainOpportunitiesRanksBestSegments();
+  console.log("reelsBrainOpportunities.test: ok");
+}
+
+run();

@@ -7,6 +7,7 @@ import { buildGroupedReelsBrainHypothesisBanks, buildReelsBrainHypothesisBank } 
 import { buildGroupedReelsBrainActionPacks, buildReelsBrainActionPack } from "@/lib/factory/reelsBrainActionPack";
 import { buildGroupedReelsBrainBriefPacks, buildReelsBrainBriefPack } from "@/lib/factory/reelsBrainBriefPack";
 import { applySegmentTrustToGroups, buildReelsBrainSegmentTrust } from "@/lib/factory/reelsBrainSegmentTrust";
+import { buildReelsBrainOpportunities } from "@/lib/factory/reelsBrainOpportunities";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 20;
@@ -2337,6 +2338,15 @@ export async function GET(req: NextRequest) {
         key: "platform",
       }),
     };
+    const topOpportunities = buildReelsBrainOpportunities({
+      nicheSummaries,
+      segmentTrust,
+      briefPackGroups: trustedGroupedBriefPacks,
+      actionPackGroups: trustedGroupedActionPacks,
+      hypothesisBankGroups: trustedGroupedHypothesisBank,
+      platforms: ["tiktok", "instagram", "youtube"],
+      limit: compactMode ? 6 : 10,
+    });
 
     const timelineResponse = compactMode ? takeRecordList(timeline, 12) : timeline;
 
@@ -2367,6 +2377,7 @@ export async function GET(req: NextRequest) {
       brief_pack: briefPack,
       brief_pack_groups: trustedGroupedBriefPacks,
       segment_trust: segmentTrust,
+      top_opportunities: topOpportunities,
       feedback_warning: feedbackRows.warning,
       cost_governor: costGovernor,
       autopilot_actions: autopilotActions,

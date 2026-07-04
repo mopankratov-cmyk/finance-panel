@@ -111,6 +111,12 @@ function decisionTone(value: string) {
   return { label: value || "watch", bg: "#fff7ed", bd: "#fdba74", fg: "#9a3412" };
 }
 
+function opportunityTone(value: string) {
+  if (value === "scale_now") return { label: "scale now", bg: "#dcfce7", bd: "#86efac", fg: "#166534" };
+  if (value === "build_next") return { label: "build next", bg: "#ecfeff", bd: "#67e8f9", fg: "#0f766e" };
+  return { label: "collect more", bg: "#fff7ed", bd: "#fdba74", fg: "#9a3412" };
+}
+
 function marketSignalTone(value: string) {
   if (value === "proven") return { label: "market proven", bg: "#dcfce7", bd: "#86efac", fg: "#166534" };
   if (value === "promising") return { label: "promising", bg: "#ecfeff", bd: "#67e8f9", fg: "#0f766e" };
@@ -260,6 +266,7 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
     const briefPack = (learning?.brief_pack || {}) as JsonRecord;
     const briefPackGroups = (learning?.brief_pack_groups || {}) as JsonRecord;
     const segmentTrust = (learning?.segment_trust || {}) as JsonRecord;
+    const topOpportunities = (learning?.top_opportunities || {}) as JsonRecord;
     const actionPack = (learning?.action_pack || {}) as JsonRecord;
     const actionPackGroups = (learning?.action_pack_groups || {}) as JsonRecord;
     const nicheComparison = (learning?.niche_comparison || []) as JsonRecord[];
@@ -593,6 +600,26 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
         note: row.transfer_note || `Платформ с уверенным покрытием: ${compact(((row.platform_brains && Object.keys(row.platform_brains)) || []).length)}`,
       };
     });
+    const opportunityCards = ((topOpportunities.top || []) as JsonRecord[]).slice(0, 6).map((row) => {
+      const status = opportunityTone(String(row.status || "collect_more"));
+      const mode = decisionTone(String(row.recommended_mode || "research_only"));
+      return {
+        ...row,
+        statusTone: status,
+        modeTone: mode,
+        label: `${NICHE_LABELS[String(row.niche)] || row.niche} × ${String(row.platform || "mixed").toUpperCase()}`,
+        trustBlend: Math.round((num(row.niche_trust_score) + num(row.platform_trust_score)) / 2),
+      };
+    });
+    const opportunitySummary = {
+      total: num(topOpportunities.summary?.total),
+      scaleNow: num(topOpportunities.summary?.scale_now),
+      buildNext: num(topOpportunities.summary?.build_next),
+      collectMore: num(topOpportunities.summary?.collect_more),
+      primary: num(topOpportunities.summary?.primary),
+      controlOnly: num(topOpportunities.summary?.control_only),
+      researchOnly: num(topOpportunities.summary?.research_only),
+    };
     const trustMatrix = NICHES.map((niche) => {
       const summary = summaries.find((item) => item.niche === niche) || {};
       const trustOverview = (summary.trust_overview || {}) as JsonRecord;
@@ -711,6 +738,7 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
       briefPack,
       briefPackGroups,
       segmentTrust,
+      topOpportunities,
       actionPack,
       actionPackGroups,
       nicheComparison,
@@ -746,6 +774,8 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
       missionProgressPct,
       executiveCards,
       knowledgeCards,
+      opportunityCards,
+      opportunitySummary,
       trustMatrix,
       trustHotspots,
       insightHighlights,
@@ -893,6 +923,62 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
               </div>
             ))}
           </div>
+        </section>
+
+        <section style={{ marginTop: 24 }}>
+          <div style={{ fontSize: 12, color: "#0891b2", textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 700, marginBottom: 12 }}>Top Opportunities</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 12 }}>
+            {vm.opportunityCards.length ? vm.opportunityCards.map((item: JsonRecord) => (
+              <div key={`${item.niche}:${item.platform}`} style={{ background: "#fff", border: "1px solid #dbe4ee", borderRadius: 18, padding: 16 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start" }}>
+                  <div>
+                    <strong>{item.label}</strong>
+                    <div style={{ marginTop: 6, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      <span style={{ padding: "4px 8px", borderRadius: 999, background: item.statusTone.bg, border: `1px solid ${item.statusTone.bd}`, color: item.statusTone.fg, fontSize: 12, fontWeight: 700 }}>
+                        {item.statusTone.label}
+                      </span>
+                      <span style={{ padding: "4px 8px", borderRadius: 999, background: item.modeTone.bg, border: `1px solid ${item.modeTone.bd}`, color: item.modeTone.fg, fontSize: 12, fontWeight: 700 }}>
+                        {item.modeTone.label}
+                      </span>
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 26, lineHeight: 1.05, fontWeight: 800 }}>{compact(item.opportunity_score)}</div>
+                </div>
+                <div style={{ marginTop: 12, color: "#334155", lineHeight: 1.65 }}>
+                  <div>analyzed {compact(item.analyzed_videos)} / {compact(item.total_videos)} · {compact(item.analyzed_rate)}%</div>
+                  <div>ready patterns {compact(item.generator_ready_patterns)} · patterns {compact(item.patterns)}</div>
+                  <div>trust blend {compact(item.trustBlend)}%</div>
+                </div>
+                <div style={{ marginTop: 12, color: "#0f172a", fontWeight: 700, lineHeight: 1.45 }}>
+                  {item.best_brief_title || item.best_action_title || item.best_hypothesis_title || "Сигнал созревает"}
+                </div>
+                <div style={{ marginTop: 8, color: "#64748b", fontSize: 14, lineHeight: 1.55 }}>
+                  {item.best_brief_hook || item.best_hypothesis || item.niche_note || item.platform_note}
+                </div>
+              </div>
+            )) : (
+              <div style={{ background: "#fff", border: "1px solid #dbe4ee", borderRadius: 18, padding: 16, color: "#64748b" }}>
+                Возможности появятся после следующей пересборки trust-ranked briefs, actions и hypotheses.
+              </div>
+            )}
+          </div>
+          {vm.opportunitySummary.total ? (
+            <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {[
+                `total ${compact(vm.opportunitySummary.total)}`,
+                `scale now ${compact(vm.opportunitySummary.scaleNow)}`,
+                `build next ${compact(vm.opportunitySummary.buildNext)}`,
+                `collect more ${compact(vm.opportunitySummary.collectMore)}`,
+                `primary ${compact(vm.opportunitySummary.primary)}`,
+                `control ${compact(vm.opportunitySummary.controlOnly)}`,
+                `research ${compact(vm.opportunitySummary.researchOnly)}`,
+              ].map((label) => (
+                <span key={label} style={{ padding: "6px 10px", borderRadius: 999, background: "#fff", border: "1px solid #dbe4ee", color: "#475569", fontSize: 12, fontWeight: 700 }}>
+                  {label}
+                </span>
+              ))}
+            </div>
+          ) : null}
         </section>
 
         <section style={{ marginTop: 24 }}>
@@ -1148,6 +1234,67 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
               </div>
             ))}
           </div>
+        </section>
+
+        <section>
+          <SectionTitle k="04.2 · Top Opportunities" title="Где мозг уже видит лучшие связки niche × platform" />
+          <div className="rb-three">
+            {vm.opportunityCards.length ? vm.opportunityCards.map((item: JsonRecord) => (
+              <div className="rb-card" key={`opportunity:${item.niche}:${item.platform}`}>
+                <div className="rb-two" style={{ gridTemplateColumns: "1fr auto", gap: 14 }}>
+                  <div>
+                    <div className="rb-overline" style={{ color: "#0891b2" }}>{item.label}</div>
+                    <h3 style={{ font: "700 28px/1 'Space Grotesk'", margin: "10px 0 0" }}>{compact(item.opportunity_score)}</h3>
+                  </div>
+                  <div style={{ display: "grid", gap: 8, justifyItems: "end" }}>
+                    <div className="rb-live-pill" style={{ background: item.statusTone.bg, borderColor: item.statusTone.bd, color: item.statusTone.fg }}>
+                      <i style={{ background: item.statusTone.fg }} />
+                      {item.statusTone.label}
+                    </div>
+                    <div className="rb-live-pill" style={{ background: item.modeTone.bg, borderColor: item.modeTone.bd, color: item.modeTone.fg }}>
+                      <i style={{ background: item.modeTone.fg }} />
+                      {item.modeTone.label}
+                    </div>
+                  </div>
+                </div>
+                <div className="rb-three" style={{ marginTop: 14 }}>
+                  <div className="rb-brief-block"><b>Покрытие</b><p>{compact(item.analyzed_videos)} / {compact(item.total_videos)} · {compact(item.analyzed_rate)}%</p></div>
+                  <div className="rb-brief-block"><b>Память</b><p>{compact(item.generator_ready_patterns)} ready · {compact(item.patterns)} total</p></div>
+                  <div className="rb-brief-block"><b>Trust blend</b><p>{compact(item.trustBlend)}%</p></div>
+                </div>
+                <div className="rb-brief-block" style={{ marginTop: 12 }}>
+                  <b>Лучший brief / hypothesis</b>
+                  <p>{item.best_brief_title || item.best_action_title || item.best_hypothesis_title || "Сегмент ещё дозревает"}</p>
+                </div>
+                <p style={{ marginTop: 12, color: "#475569", lineHeight: 1.55 }}>
+                  {item.best_brief_hook || item.best_hypothesis || item.niche_note || item.platform_note}
+                </p>
+              </div>
+            )) : (
+              <div className="rb-card">
+                <h3 style={{ font: "700 24px/1.1 'Space Grotesk'", margin: 0 }}>Top opportunities ещё пусты</h3>
+                <p style={{ marginTop: 10, color: "#64748b", lineHeight: 1.55 }}>
+                  Этот слой появится автоматически, когда trust-ranked brief packs, action packs и hypothesis banks накопят достаточно сигнала по сегментам.
+                </p>
+              </div>
+            )}
+          </div>
+          {vm.opportunitySummary.total ? (
+            <div className="rb-summary-grid" style={{ marginTop: 14 }}>
+              {[
+                ["Всего сегментов", compact(vm.opportunitySummary.total)],
+                ["Scale now", compact(vm.opportunitySummary.scaleNow)],
+                ["Build next", compact(vm.opportunitySummary.buildNext)],
+                ["Collect more", compact(vm.opportunitySummary.collectMore)],
+                ["Primary / Control / Research", `${compact(vm.opportunitySummary.primary)} / ${compact(vm.opportunitySummary.controlOnly)} / ${compact(vm.opportunitySummary.researchOnly)}`],
+              ].map(([label, value]) => (
+                <div className="rb-summary-card" key={label}>
+                  <div className="rb-overline" style={{ color: "#0891b2" }}>{label}</div>
+                  <strong>{value}</strong>
+                </div>
+              ))}
+            </div>
+          ) : null}
         </section>
 
         <section className="rb-two">
