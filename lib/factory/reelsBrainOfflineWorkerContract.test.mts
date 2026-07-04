@@ -39,6 +39,9 @@ ok(/function normalizeYtDlpTarget/.test(worker) && /share_item_id/.test(worker) 
 ok(/route_local_resolver_enabled/.test(worker), "offline worker logs route resolver state separately from worker resolver state");
 ok(/function fetchLocalMediaBackfillCandidates/.test(worker), "offline worker can source media backlog candidates directly from Supabase");
 ok(/stage: "local_media_candidate_fallback"/.test(worker), "offline worker logs when it falls back to local media candidate selection");
+ok(/function fetchInstagramMediaMapViaApify/.test(worker) && /stage: "instagram_apify_media_fallback"/.test(worker), "offline worker can enrich instagram direct urls through Apify fallback");
+ok(/function shouldApplyInstagramApifyMediaFallback/.test(worker) && /effective_provider: "apify_instagram"/.test(worker), "offline worker can override stale instagram provider responses with direct apify media");
+ok(/media_commit_direct/.test(worker) && /const directMediaUrl = toText\(/.test(worker), "offline worker can commit provider-returned direct media urls without yt-dlp");
 ok(/function finalizeTranscriptOutcome/.test(worker), "offline worker normalizes transcript outcomes");
 ok(/transcript_no_speech/.test(worker), "offline worker marks empty whisper responses as no-speech terminal state");
 ok(/remoteFallback = await transcribeFal/.test(worker), "offline worker retries local empty transcript via remote media fallback");
