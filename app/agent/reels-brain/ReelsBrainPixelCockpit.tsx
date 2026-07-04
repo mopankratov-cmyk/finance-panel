@@ -123,6 +123,13 @@ function atlasTone(value: string) {
   return { label: "thin", bg: "#fff7ed", bd: "#fdba74", fg: "#9a3412" };
 }
 
+function playbookTone(value: string) {
+  if (value === "ship_now") return { label: "ship now", bg: "#dcfce7", bd: "#86efac", fg: "#166534" };
+  if (value === "validate_and_ship") return { label: "validate", bg: "#ecfeff", bd: "#67e8f9", fg: "#0f766e" };
+  if (value === "prepare") return { label: "prepare", bg: "#e0f2fe", bd: "#7dd3fc", fg: "#0369a1" };
+  return { label: "research", bg: "#fff7ed", bd: "#fdba74", fg: "#9a3412" };
+}
+
 function marketSignalTone(value: string) {
   if (value === "proven") return { label: "market proven", bg: "#dcfce7", bd: "#86efac", fg: "#166534" };
   if (value === "promising") return { label: "promising", bg: "#ecfeff", bd: "#67e8f9", fg: "#0f766e" };
@@ -274,6 +281,7 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
     const segmentTrust = (learning?.segment_trust || {}) as JsonRecord;
     const topOpportunities = (learning?.top_opportunities || {}) as JsonRecord;
     const patternAtlas = (learning?.pattern_atlas || {}) as JsonRecord;
+    const segmentPlaybook = (learning?.segment_playbook || {}) as JsonRecord;
     const actionPack = (learning?.action_pack || {}) as JsonRecord;
     const actionPackGroups = (learning?.action_pack_groups || {}) as JsonRecord;
     const nicheComparison = (learning?.niche_comparison || []) as JsonRecord[];
@@ -644,6 +652,23 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
       thin: num(patternAtlas.summary?.thin_segments),
       patterns: num(patternAtlas.summary?.atlas_ready_patterns),
     };
+    const playbookCards = ((segmentPlaybook.items || []) as JsonRecord[]).slice(0, 6).map((row) => {
+      const status = playbookTone(String(row.status || "research"));
+      const mode = decisionTone(String(row.recommended_mode || "research_only"));
+      return {
+        ...row,
+        statusTone: status,
+        modeTone: mode,
+        label: `${NICHE_LABELS[String(row.niche)] || row.niche} × ${String(row.platform || "mixed").toUpperCase()}`,
+      };
+    });
+    const playbookSummary = {
+      total: num(segmentPlaybook.summary?.total),
+      shipNow: num(segmentPlaybook.summary?.ship_now),
+      validate: num(segmentPlaybook.summary?.validate_and_ship),
+      prepare: num(segmentPlaybook.summary?.prepare),
+      research: num(segmentPlaybook.summary?.research),
+    };
     const trustMatrix = NICHES.map((niche) => {
       const summary = summaries.find((item) => item.niche === niche) || {};
       const trustOverview = (summary.trust_overview || {}) as JsonRecord;
@@ -764,6 +789,7 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
       segmentTrust,
       topOpportunities,
       patternAtlas,
+      segmentPlaybook,
       actionPack,
       actionPackGroups,
       nicheComparison,
@@ -803,6 +829,8 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
       opportunitySummary,
       atlasCards,
       atlasSummary,
+      playbookCards,
+      playbookSummary,
       trustMatrix,
       trustHotspots,
       insightHighlights,
@@ -1052,6 +1080,59 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
                 `forming ${compact(vm.atlasSummary.forming)}`,
                 `thin ${compact(vm.atlasSummary.thin)}`,
                 `atlas patterns ${compact(vm.atlasSummary.patterns)}`,
+              ].map((label) => (
+                <span key={label} style={{ padding: "6px 10px", borderRadius: 999, background: "#fff", border: "1px solid #dbe4ee", color: "#475569", fontSize: 12, fontWeight: 700 }}>
+                  {label}
+                </span>
+              ))}
+            </div>
+          ) : null}
+        </section>
+
+        <section style={{ marginTop: 24 }}>
+          <div style={{ fontSize: 12, color: "#0891b2", textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 700, marginBottom: 12 }}>Segment Playbook</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 12 }}>
+            {vm.playbookCards.length ? vm.playbookCards.map((item: JsonRecord) => (
+              <div key={`${item.niche}:${item.platform}:playbook`} style={{ background: "#fff", border: "1px solid #dbe4ee", borderRadius: 18, padding: 16 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start" }}>
+                  <div>
+                    <strong>{item.label}</strong>
+                    <div style={{ marginTop: 6, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      <span style={{ padding: "4px 8px", borderRadius: 999, background: item.statusTone.bg, border: `1px solid ${item.statusTone.bd}`, color: item.statusTone.fg, fontSize: 12, fontWeight: 700 }}>
+                        {item.statusTone.label}
+                      </span>
+                      <span style={{ padding: "4px 8px", borderRadius: 999, background: item.modeTone.bg, border: `1px solid ${item.modeTone.bd}`, color: item.modeTone.fg, fontSize: 12, fontWeight: 700 }}>
+                        {item.modeTone.label}
+                      </span>
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 26, lineHeight: 1.05, fontWeight: 800 }}>{compact(item.opportunity_score)}</div>
+                </div>
+                <div style={{ marginTop: 12, color: "#334155", lineHeight: 1.65 }}>
+                  <div>brief {item.brief?.title || item.leading_pattern?.title || "pending"}</div>
+                  <div>stable {compact(item.stable_pattern_count)} · coverage {compact(item.coverage_rate)}%</div>
+                </div>
+                <div style={{ marginTop: 12, color: "#0f172a", fontWeight: 700, lineHeight: 1.45 }}>
+                  {item.hypothesis?.title || item.rollout?.title || "Segment decision"}
+                </div>
+                <div style={{ marginTop: 8, color: "#64748b", fontSize: 14, lineHeight: 1.55 }}>
+                  {item.hypothesis?.text || item.rollout?.next_step}
+                </div>
+              </div>
+            )) : (
+              <div style={{ background: "#fff", border: "1px solid #dbe4ee", borderRadius: 18, padding: 16, color: "#64748b" }}>
+                Playbook проявится после сборки atlas + opportunities.
+              </div>
+            )}
+          </div>
+          {vm.playbookSummary.total ? (
+            <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {[
+                `total ${compact(vm.playbookSummary.total)}`,
+                `ship now ${compact(vm.playbookSummary.shipNow)}`,
+                `validate ${compact(vm.playbookSummary.validate)}`,
+                `prepare ${compact(vm.playbookSummary.prepare)}`,
+                `research ${compact(vm.playbookSummary.research)}`,
               ].map((label) => (
                 <span key={label} style={{ padding: "6px 10px", borderRadius: 999, background: "#fff", border: "1px solid #dbe4ee", color: "#475569", fontSize: 12, fontWeight: 700 }}>
                   {label}
@@ -1416,6 +1497,51 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
                 <h3 style={{ font: "700 24px/1.1 'Space Grotesk'", margin: 0 }}>Pattern Atlas ещё пуст</h3>
                 <p style={{ marginTop: 10, color: "#64748b", lineHeight: 1.55 }}>
                   Этот слой наполнится автоматически, когда сегментная память накопит достаточно quality-gated паттернов.
+                </p>
+              </div>
+            )}
+          </div>
+        </section>
+
+        <section>
+          <SectionTitle k="04.4 · Segment Playbook" title="Какие сегментные решения уже готовы к запуску" />
+          <div className="rb-three">
+            {vm.playbookCards.length ? vm.playbookCards.map((item: JsonRecord) => (
+              <div className="rb-card" key={`playbook-full:${item.niche}:${item.platform}`}>
+                <div className="rb-two" style={{ gridTemplateColumns: "1fr auto", gap: 14 }}>
+                  <div>
+                    <div className="rb-overline" style={{ color: "#0891b2" }}>{item.label}</div>
+                    <h3 style={{ font: "700 28px/1 'Space Grotesk'", margin: "10px 0 0" }}>{compact(item.opportunity_score)}</h3>
+                  </div>
+                  <div style={{ display: "grid", gap: 8, justifyItems: "end" }}>
+                    <div className="rb-live-pill" style={{ background: item.statusTone.bg, borderColor: item.statusTone.bd, color: item.statusTone.fg }}>
+                      <i style={{ background: item.statusTone.fg }} />
+                      {item.statusTone.label}
+                    </div>
+                    <div className="rb-live-pill" style={{ background: item.modeTone.bg, borderColor: item.modeTone.bd, color: item.modeTone.fg }}>
+                      <i style={{ background: item.modeTone.fg }} />
+                      {item.modeTone.label}
+                    </div>
+                  </div>
+                </div>
+                <div className="rb-three" style={{ marginTop: 14 }}>
+                  <div className="rb-brief-block"><b>Brief</b><p>{item.brief?.title || item.leading_pattern?.title || "pending"}</p></div>
+                  <div className="rb-brief-block"><b>Hypothesis</b><p>{item.hypothesis?.title || "next test"}</p></div>
+                  <div className="rb-brief-block"><b>Rollout</b><p>{item.rollout?.title || "prepare"}</p></div>
+                </div>
+                <div className="rb-brief-block" style={{ marginTop: 12 }}>
+                  <b>Leading hook</b>
+                  <p>{item.brief?.hook || item.leading_pattern?.hook || item.rollout?.next_step}</p>
+                </div>
+                <p style={{ marginTop: 12, color: "#475569", lineHeight: 1.55 }}>
+                  {item.hypothesis?.text || item.rollout?.why_now}
+                </p>
+              </div>
+            )) : (
+              <div className="rb-card">
+                <h3 style={{ font: "700 24px/1.1 'Space Grotesk'", margin: 0 }}>Segment Playbook ещё пуст</h3>
+                <p style={{ marginTop: 10, color: "#64748b", lineHeight: 1.55 }}>
+                  Этот слой появится автоматически, когда atlas и opportunity слой накопят достаточно сигналов для action-ready сегментов.
                 </p>
               </div>
             )}

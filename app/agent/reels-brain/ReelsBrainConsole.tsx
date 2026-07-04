@@ -1133,6 +1133,57 @@ type LearningEconomicsResponse = {
       next_step: string;
     }[];
   };
+  segment_playbook?: {
+    summary?: {
+      total?: number;
+      ship_now?: number;
+      validate_and_ship?: number;
+      prepare?: number;
+      research?: number;
+      primary?: number;
+      control_only?: number;
+      research_only?: number;
+    };
+    items?: {
+      niche: string;
+      platform: string;
+      status: "ship_now" | "validate_and_ship" | "prepare" | "research";
+      recommended_mode: "primary" | "control_only" | "research_only";
+      opportunity_score: number;
+      stability_score: number;
+      stable_pattern_count: number;
+      coverage_rate: number;
+      leading_pattern: {
+        title: string;
+        hook: string;
+        retention: string;
+        format: string;
+        decision: string;
+        market_status: string;
+        brief_seed?: {
+          hook?: string;
+          retention?: string;
+          visual_recipe?: string[];
+          audio_strategy?: string[];
+          product_fit?: string[];
+          do_not_copy?: string[];
+        };
+      };
+      brief: {
+        title: string;
+        hook: string;
+      };
+      hypothesis: {
+        title: string;
+        text: string;
+      };
+      rollout: {
+        title: string;
+        why_now: string;
+        next_step: string;
+      };
+    }[];
+  };
   action_pack?: {
     primary?: {
       rank: number;
@@ -1635,6 +1686,13 @@ function atlasStatusCopy(status: "stable" | "forming" | "thin" | undefined) {
   return { label: "thin", tone: "border-amber-200 bg-amber-50 text-amber-800" };
 }
 
+function playbookStatusCopy(status: "ship_now" | "validate_and_ship" | "prepare" | "research" | undefined) {
+  if (status === "ship_now") return { label: "ship now", tone: "border-emerald-200 bg-emerald-50 text-emerald-700" };
+  if (status === "validate_and_ship") return { label: "validate + ship", tone: "border-cyan-200 bg-cyan-50 text-cyan-800" };
+  if (status === "prepare") return { label: "prepare", tone: "border-sky-200 bg-sky-50 text-sky-800" };
+  return { label: "research", tone: "border-amber-200 bg-amber-50 text-amber-800" };
+}
+
 function capabilityTone(status: string) {
   if (status === "live") return "border-emerald-200 bg-emerald-50 text-emerald-700";
   if (status === "payload_ready" || status === "ui_ready") return "border-cyan-200 bg-cyan-50 text-cyan-800";
@@ -1922,6 +1980,7 @@ export default function ReelsBrainPage() {
   const segmentTrust = learningEconomics?.segment_trust || null;
   const topOpportunities = learningEconomics?.top_opportunities || null;
   const patternAtlas = learningEconomics?.pattern_atlas || null;
+  const segmentPlaybook = learningEconomics?.segment_playbook || null;
   const actionPack = learningEconomics?.action_pack || null;
   const actionPackGroups = learningEconomics?.action_pack_groups || null;
   const segmentTrustByNiche = new Map((segmentTrust?.by_niche || []).map((row) => [row.niche, row]));
@@ -3459,6 +3518,56 @@ export default function ReelsBrainPage() {
               }) : (
                 <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-500 lg:col-span-3">
                   Atlas проявится, когда сегментная память накопит достаточно quality-gated паттернов.
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">Segment playbook</p>
+                <h4 className="mt-1 text-lg font-black text-slate-950">Какие решения уже можно запускать по сегментам</h4>
+              </div>
+              <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-bold text-slate-500">
+                {compactNumber(segmentPlaybook?.summary?.ship_now || 0)} ship now · {compactNumber(segmentPlaybook?.summary?.validate_and_ship || 0)} validate
+              </span>
+            </div>
+            <div className="mt-3 grid gap-3 lg:grid-cols-3">
+              {segmentPlaybook?.items?.length ? segmentPlaybook.items.slice(0, 6).map((item) => {
+                const status = playbookStatusCopy(item.status);
+                const mode = recommendationModeCopy(item.recommended_mode);
+                return (
+                  <div key={`playbook:${item.niche}:${item.platform}`} className="rounded-2xl border border-slate-200 bg-white p-4">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-400">
+                          {(NICHE_LABELS[item.niche] || item.niche || "mixed niche")} · {titlePlatform(item.platform || "tiktok")}
+                        </p>
+                        <h5 className="mt-1 text-sm font-black leading-5 text-slate-950">{item.brief.title || item.leading_pattern.title || "Сегментное решение формируется"}</h5>
+                      </div>
+                      <span className="shrink-0 rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-black text-slate-700">
+                        {compactNumber(item.opportunity_score)}
+                      </span>
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-black ${status.tone}`}>{status.label}</span>
+                      <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-black ${mode.tone}`}>{mode.label}</span>
+                    </div>
+                    <div className="mt-3 space-y-1 text-xs text-slate-600">
+                      <p><span className="font-bold text-slate-900">Brief hook:</span> {item.brief.hook || item.leading_pattern.hook || "pending"}</p>
+                      <p><span className="font-bold text-slate-900">Hypothesis:</span> {item.hypothesis.text || "Нужна следующая проверка"}</p>
+                      <p><span className="font-bold text-slate-900">Rollout:</span> {item.rollout.title || "Определяется"}</p>
+                    </div>
+                    <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs leading-5 text-slate-700">
+                      <p><span className="font-black text-slate-900">Почему сейчас:</span> {item.rollout.why_now}</p>
+                      <p className="mt-2"><span className="font-black text-slate-900">Next:</span> {item.rollout.next_step}</p>
+                    </div>
+                  </div>
+                );
+              }) : (
+                <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-500 lg:col-span-3">
+                  Segment playbook появится, когда atlas и opportunities накопят достаточно signal для action-ready сборки.
                 </div>
               )}
             </div>
