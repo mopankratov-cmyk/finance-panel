@@ -151,6 +151,17 @@ function normalizeYtDlpTarget(url: string): string {
   }
 }
 
+function shouldUseCookies(target: string): boolean {
+  if (/(^https?:\/\/)?([a-z0-9-]+\.)?(youtube\.com|youtu\.be)(\/|$)/i.test(target)) {
+    return false;
+  }
+  return false;
+}
+
+function shouldSkipDownloadForProbe(target: string): boolean {
+  return !shouldUseCookies(target);
+}
+
 export async function hasYtDlpBinary(): Promise<boolean> {
   try {
     await execFileAsync("yt-dlp", ["--version"], { timeout: 5000, maxBuffer: 256 * 1024 });
@@ -181,9 +192,12 @@ export async function resolveMediaLocatorViaYtDlp(url: string): Promise<ReelsBra
   const target = normalizeYtDlpTarget(url);
   if (!target) return null;
   try {
+    const probeArgs = ["-J", "--no-warnings"];
+    if (shouldSkipDownloadForProbe(target)) probeArgs.push("--skip-download");
+    probeArgs.push(target);
     const { stdout } = await execFileAsync(
       "yt-dlp",
-      ["-J", "--no-warnings", "--skip-download", target],
+      probeArgs,
       { timeout: 45000, maxBuffer: 8 * 1024 * 1024 },
     );
     const payload = JSON.parse(stdout) as Record<string, unknown>;

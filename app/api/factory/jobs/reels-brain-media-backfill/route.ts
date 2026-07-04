@@ -73,6 +73,13 @@ function numberParam(req: NextRequest, name: string, fallback: number, min: numb
   return Math.max(min, Math.min(max, value));
 }
 
+function localResolverAllowedForPlatform(platform: string): boolean {
+  if (platform === "youtube") {
+    return String(process.env.REELS_BRAIN_ENABLE_YOUTUBE_LOCAL_RESOLVER || "").toLowerCase() === "1";
+  }
+  return true;
+}
+
 function widenedScanWindow(scan: number, shardCount: number, hardCap: number) {
   const multiplier = Math.max(4, shardCount * 4);
   return Math.max(scan, Math.min(hardCap, scan * multiplier));
@@ -122,7 +129,8 @@ export async function GET(req: NextRequest) {
     const niches = splitList(req.nextUrl.searchParams.get("niches") || "ru_toys,ru_clothing,ru_cosmetics");
     const limit = numberParam(req, "limit", 3, 1, 6);
     const scan = numberParam(req, "scan", 120, limit, 500);
-    const allowLocalResolver = String(req.nextUrl.searchParams.get("use_local_resolver") || process.env.REELS_BRAIN_ENABLE_LOCAL_MEDIA_RESOLVER || "").toLowerCase() === "1";
+    const allowLocalResolverRequested = String(req.nextUrl.searchParams.get("use_local_resolver") || process.env.REELS_BRAIN_ENABLE_LOCAL_MEDIA_RESOLVER || "").toLowerCase() === "1";
+    const allowLocalResolver = allowLocalResolverRequested && localResolverAllowedForPlatform(platform);
     const ytDlpAvailable = allowLocalResolver ? await hasYtDlpBinary() : false;
     const priorityMode = String(req.nextUrl.searchParams.get("priority") || "smart").trim().toLowerCase();
     const { shardIndex, shardCount } = parseShardConfig({

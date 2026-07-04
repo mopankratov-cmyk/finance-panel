@@ -29,6 +29,9 @@ ok(/REELS_BRAIN_WORKER_SHARD_INDEX/.test(worker) && /REELS_BRAIN_WORKER_SHARD_CO
 ok(/REELS_BRAIN_DEEP_ONLY/.test(worker), "offline worker reads deep-only env");
 ok(/function shouldUseYtDlpCookies/.test(worker), "offline worker scopes yt-dlp cookies by target domain");
 ok(/youtube\\.com\\|youtu\\.be/.test(worker), "offline worker only applies yt-dlp cookies to YouTube domains");
+ok(/YT_DLP_ENABLE_YOUTUBE_COOKIES/.test(worker), "offline worker makes YouTube cookies opt-in");
+ok(/REELS_BRAIN_ENABLE_YOUTUBE_LOCAL_RESOLVER/.test(worker), "offline worker makes YouTube local resolver opt-in");
+ok(/function shouldSkipDownloadForYtDlpProbe/.test(worker) && /probeArgs\.push\("--skip-download"\)/.test(worker), "offline worker disables --skip-download for YouTube cookie-backed probes");
 ok(/function normalizeYtDlpTarget/.test(worker) && /share_item_id/.test(worker) && /embed\/v2/.test(worker), "offline worker normalizes TikTok share urls before yt-dlp");
 ok(/function finalizeTranscriptOutcome/.test(worker), "offline worker normalizes transcript outcomes");
 ok(/transcript_no_speech/.test(worker), "offline worker marks empty whisper responses as no-speech terminal state");
