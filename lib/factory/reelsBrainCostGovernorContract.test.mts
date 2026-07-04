@@ -8,6 +8,7 @@ const actions = readFileSync("app/api/factory/reels-brain/autopilot-actions/rout
 const governor = readFileSync("app/api/factory/reels-brain/cost-governor/route.ts", "utf8");
 const report = readFileSync("app/api/factory/reels-brain/report/route.ts", "utf8");
 const learningPlan = readFileSync("app/api/factory/reels-brain/learning-plan/route.ts", "utf8");
+const generationPolicy = readFileSync("app/api/factory/reels-brain/generation-policy/route.ts", "utf8");
 const creativeSolution = readFileSync("app/api/factory/reels-brain/creative-solution/route.ts", "utf8");
 const creativeExports = readFileSync("app/api/factory/reels-brain/creative-exports/route.ts", "utf8");
 const creativeBrief = readFileSync("app/api/factory/reels-brain/creative-brief/route.ts", "utf8");
@@ -17,6 +18,7 @@ const decisionSnapshotBuilder = readFileSync("lib/factory/reelsBrainDecisionSnap
 const segmentSolutions = readFileSync("app/api/factory/reels-brain/segment-solutions/route.ts", "utf8");
 const segmentSolutionsBuilder = readFileSync("lib/factory/reelsBrainSegmentSolutions.ts", "utf8");
 const segmentSolutionMatrixBuilder = readFileSync("lib/factory/reelsBrainSegmentSolutionMatrix.ts", "utf8");
+const generationPolicyBuilder = readFileSync("lib/factory/reelsBrainGenerationPolicy.ts", "utf8");
 const creativeBriefSourceBuilder = readFileSync("lib/factory/reelsBrainCreativeBriefSource.ts", "utf8");
 const segmentStabilityAudit = readFileSync("app/api/factory/reels-brain/stability-audit/route.ts", "utf8");
 const segmentStabilityAuditBuilder = readFileSync("lib/factory/reelsBrainSegmentStabilityAudit.ts", "utf8");
@@ -55,6 +57,7 @@ ok(/lane/.test(creativeExports) && /niche/.test(creativeExports) && /platform/.t
 ok(!/POST\s*\(/.test(creativeExports), "creative-exports route is read-only");
 ok(/internalFetch/.test(creativeBrief) && /segment_solution_matrix/.test(creativeBrief) && /selectCreativeBriefFromSegmentLayers/.test(creativeBrief) && /platform_matrix/.test(creativeBriefSourceBuilder), "creative-brief route prefers trust-aware segment layers before old playbook fallback");
 ok(/internalFetch/.test(creativeSolution) && /creative-brief/.test(creativeSolution) && /selectCreativeBriefFromSegmentLayers/.test(creativeSolution), "creative-solution route exposes unified trust-aware brief/hypothesis/action endpoint");
+ok(/internalFetch/.test(generationPolicy) && /generation_policy/.test(generationPolicy) && /segment_solution_matrix/.test(generationPolicy), "generation-policy route exposes unified trust-aware generation policy");
 
 ok(/internalFetch/.test(readinessAudit) && /segment_readiness_audit/.test(readinessAudit), "readiness-audit route reads readiness audit from learning-economics");
 ok(/verdict/.test(readinessAudit) && /niche/.test(readinessAudit) && /platform/.test(readinessAudit), "readiness-audit route supports verdict, niche and platform filters");
@@ -118,6 +121,7 @@ ok(/buildReelsBrainSegmentReadinessAudit/.test(economics) && /segment_readiness_
 ok(/buildReelsBrainSegmentStabilityAudit/.test(economics) && /segment_stability_audit/.test(economics), "learning-economics exposes segment stability audit for high-trust verification");
 ok(/buildReelsBrainSegmentSolutions/.test(economics) && /segment_solutions/.test(economics), "learning-economics exposes operator-ready segment solutions");
 ok(/buildReelsBrainSegmentSolutionMatrix/.test(economics) && /segment_solution_matrix/.test(economics) && /by_niche/.test(segmentSolutionMatrixBuilder) && /by_platform/.test(segmentSolutionMatrixBuilder), "learning-economics exposes trust-aware segment solution matrix by niche and platform");
+ok(/buildReelsBrainGenerationPolicy/.test(economics) && /generation_policy/.test(economics) && /policy_mode/.test(generationPolicyBuilder), "learning-economics exposes unified generation policy on top of segment solutions");
 ok(/buildReelsBrainPortfolioReadiness/.test(economics) && /portfolio_readiness/.test(economics), "learning-economics exposes portfolio readiness for 10k coverage tracking");
 ok(/portfolioReadiness/.test(economics) && /close_portfolio_gap/.test(economics), "autopilot uses portfolio readiness to close high-trust coverage gaps");
 ok(/segmentStabilityAudit/.test(learningPlan) && /segment_stability/.test(learningPlan), "learning-plan uses segment stability audit in the main loop");
@@ -130,6 +134,7 @@ ok(/\/api\/factory\/reels-brain\/creative-solution\?niche=/.test(cockpit), "cock
 ok(/\/api\/factory\/reels-brain\/stability-audit\?lane=/.test(cockpit), "cockpit exposes segment stability-audit endpoint per segment");
 ok(/Portfolio readiness/.test(cockpit) && /high-trust coverage/.test(cockpit), "cockpit surfaces portfolio readiness toward full niche/platform coverage");
 ok(/Segment Solution Matrix/.test(cockpit) && /segment_solution_matrix/.test(cockpit), "cockpit surfaces grouped niche/platform segment solution matrix");
+ok(/Generation Policy/.test(cockpit) && /generation-policy/.test(cockpit), "cockpit surfaces unified generation policy endpoint and cards");
 ok(/selectedPattern/.test(cockpit) && /rb-drawer/.test(cockpit), "cockpit exposes pattern creative brief drawer");
 ok(/rb-click/.test(cockpit) && /setSelectedPattern/.test(cockpit), "cockpit pattern cards are inspectable");
 ok(/sort\(\(a, b\) => String\(a\.created_at \|\| \"\"\)\.localeCompare\(String\(b\.created_at \|\| \"\"\)\)\)\s*\.slice\(-8\)\s*\.reverse\(\)/.test(cockpit), "cockpit stores latest learning runs first");

@@ -18,6 +18,7 @@ import { buildReelsBrainSegmentCreativeExports } from "@/lib/factory/reelsBrainS
 import { buildReelsBrainSegmentReadinessAudit } from "@/lib/factory/reelsBrainSegmentReadinessAudit";
 import { buildReelsBrainSegmentSolutions } from "@/lib/factory/reelsBrainSegmentSolutions";
 import { buildReelsBrainSegmentSolutionMatrix } from "@/lib/factory/reelsBrainSegmentSolutionMatrix";
+import { buildReelsBrainGenerationPolicy } from "@/lib/factory/reelsBrainGenerationPolicy";
 import { buildReelsBrainSegmentStabilityAudit } from "@/lib/factory/reelsBrainSegmentStabilityAudit";
 import { buildReelsBrainPortfolioReadiness } from "@/lib/factory/reelsBrainPortfolioReadiness";
 import { REELS_BRAIN_CORPUS_TARGET_TOTAL } from "@/lib/factory/reelsBrainCorpusTargets";
@@ -2487,6 +2488,9 @@ export async function GET(req: NextRequest) {
       platforms: ["tiktok", "instagram", "youtube"],
       limit: compactMode ? 6 : 10,
     });
+    const generationPolicy = buildReelsBrainGenerationPolicy({
+      segmentSolutionMatrix,
+    });
     const portfolioReadiness = buildReelsBrainPortfolioReadiness({
       segmentStabilityAudit,
       niches: nicheSummaries.map((row) => row.niche),
@@ -2555,6 +2559,7 @@ export async function GET(req: NextRequest) {
       segment_stability_audit: segmentStabilityAudit,
       segment_solutions: segmentSolutions,
       segment_solution_matrix: segmentSolutionMatrix,
+      generation_policy: generationPolicy,
       portfolio_readiness: portfolioReadiness,
       evidence_ledger: evidenceLedger,
       feedback_warning: feedbackRows.warning,

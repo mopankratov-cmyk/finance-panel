@@ -289,6 +289,7 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
     const segmentCreativeExports = (learning?.segment_creative_exports || {}) as JsonRecord;
     const segmentReadinessAudit = (learning?.segment_readiness_audit || {}) as JsonRecord;
     const segmentSolutionMatrix = (learning?.segment_solution_matrix || {}) as JsonRecord;
+    const generationPolicy = (learning?.generation_policy || {}) as JsonRecord;
     const portfolioReadiness = (learning?.portfolio_readiness || mission.portfolio_readiness || {}) as JsonRecord;
     const evidenceLedger = (learning?.evidence_ledger || {}) as JsonRecord;
     const actionPack = (learning?.action_pack || {}) as JsonRecord;
@@ -783,6 +784,13 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
       research: num(segmentSolutionMatrix.summary?.research_only),
       highTrust: num(segmentSolutionMatrix.summary?.high_trust_segments),
     };
+    const generationPolicyNicheCards = ((generationPolicy.by_niche || []) as JsonRecord[]).slice(0, 3);
+    const generationPolicyPlatformCards = ((generationPolicy.by_platform || []) as JsonRecord[]).slice(0, 3);
+    const generationPolicySummary = {
+      primaryNiches: num(generationPolicy.summary?.primary_niches),
+      primaryPlatforms: num(generationPolicy.summary?.primary_platforms),
+      highTrust: num(generationPolicy.summary?.high_trust_segments),
+    };
     const missionPriorityCards = ((segmentPriorityQueue.items || []) as JsonRecord[]).slice(0, 4).map((row) => ({
       ...row,
       modeTone: decisionTone(String(row.ready_for_generation ? "primary" : row.action === "analyze_segment_backlog" ? "control_only" : "research_only")),
@@ -987,6 +995,9 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
       segmentSolutionNicheCards,
       segmentSolutionPlatformCards,
       segmentSolutionSummary,
+      generationPolicyNicheCards,
+      generationPolicyPlatformCards,
+      generationPolicySummary,
       missionPriorityCards,
       portfolioCoverageCards,
       portfolioGapCards,
@@ -2139,6 +2150,65 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
               <div className="rb-brief-block" style={{ marginTop: 12 }}>
                 <b>Следующий шаг</b>
                 <p>Использовать эти матрицы как основу для более жёстких creative briefs и platform-specific generation policies.</p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section>
+          <SectionTitle k="04.449 · Generation Policy" title="Какой режим генерации мозг рекомендует по нишам и платформам" />
+          <div className="rb-three">
+            <div className="rb-card">
+              <div className="rb-overline" style={{ color: "#0891b2" }}>By niche</div>
+              <h3 style={{ font: "700 26px/1.08 'Space Grotesk'", margin: "10px 0" }}>
+                {compact(vm.generationPolicySummary.primaryNiches)} niche policies уже primary
+              </h3>
+              <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
+                {vm.generationPolicyNicheCards.length ? vm.generationPolicyNicheCards.map((row: JsonRecord) => (
+                  <div className="rb-pattern" key={`policy-niche:${row.niche}`}>
+                    <h3>{NICHE_LABELS[String(row.niche)] || row.niche}</h3>
+                    <p>{row.policy_mode} · trust {row.trust_band} · evidence {row.evidence_band}</p>
+                    <p>{row.brief_hook || row.hypothesis || row.decision_title || "policy pending"}</p>
+                    <p>{row.policy_reason}</p>
+                  </div>
+                )) : (
+                  <div className="rb-pattern"><h3>Niche policy пока пуст</h3><p>Ждём, когда segment solution matrix станет плотнее.</p></div>
+                )}
+              </div>
+            </div>
+            <div className="rb-card">
+              <div className="rb-overline" style={{ color: "#0891b2" }}>By platform</div>
+              <h3 style={{ font: "700 26px/1.08 'Space Grotesk'", margin: "10px 0" }}>
+                {compact(vm.generationPolicySummary.primaryPlatforms)} platform policies уже primary
+              </h3>
+              <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
+                {vm.generationPolicyPlatformCards.length ? vm.generationPolicyPlatformCards.map((row: JsonRecord) => (
+                  <div className="rb-pattern" key={`policy-platform:${row.platform}`}>
+                    <h3>{String(row.platform || "mixed").toUpperCase()}</h3>
+                    <p>{row.policy_mode} · trust {row.trust_band} · evidence {row.evidence_band}</p>
+                    <p>{row.brief_hook || row.hypothesis || row.decision_title || "policy pending"}</p>
+                    <p>{row.policy_reason}</p>
+                  </div>
+                )) : (
+                  <div className="rb-pattern"><h3>Platform policy пока пуст</h3><p>Ждём, когда platform-specific сегменты накопят больше stable evidence.</p></div>
+                )}
+              </div>
+            </div>
+            <div className="rb-card">
+              <div className="rb-overline" style={{ color: "#0891b2" }}>Unified endpoint</div>
+              <h3 style={{ font: "700 26px/1.08 'Space Grotesk'", margin: "10px 0" }}>Где это забирать генератору</h3>
+              <div className="rb-three" style={{ marginTop: 14 }}>
+                <div className="rb-brief-block"><b>High trust</b><p>{compact(vm.generationPolicySummary.highTrust)}</p></div>
+                <div className="rb-brief-block"><b>Niche primary</b><p>{compact(vm.generationPolicySummary.primaryNiches)}</p></div>
+                <div className="rb-brief-block"><b>Platform primary</b><p>{compact(vm.generationPolicySummary.primaryPlatforms)}</p></div>
+              </div>
+              <div className="rb-brief-block" style={{ marginTop: 12 }}>
+                <b>Endpoint</b>
+                <p>/api/factory/reels-brain/generation-policy</p>
+              </div>
+              <div className="rb-brief-block" style={{ marginTop: 12 }}>
+                <b>Назначение</b>
+                <p>Это policy-слой над segment solutions: какой режим генерации включать по нише, платформе и где нужен control вместо primary.</p>
               </div>
             </div>
           </div>
