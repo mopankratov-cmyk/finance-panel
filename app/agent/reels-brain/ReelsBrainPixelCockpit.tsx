@@ -1939,6 +1939,10 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
                   <p>/api/factory/reels-brain/segment-solutions?lane={item.generator_bundle?.lane || "research"}&niche={item.niche}&platform={item.platform}</p>
                 </div>
                 <div className="rb-brief-block" style={{ marginTop: 12 }}>
+                  <b>Creative solution</b>
+                  <p>/api/factory/reels-brain/creative-solution?niche={item.niche}&platform={item.platform}</p>
+                </div>
+                <div className="rb-brief-block" style={{ marginTop: 12 }}>
                   <b>Stability audit</b>
                   <p>/api/factory/reels-brain/stability-audit?lane={item.generator_bundle?.lane || "research"}&niche={item.niche}&platform={item.platform}</p>
                 </div>

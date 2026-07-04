@@ -8,6 +8,7 @@ const actions = readFileSync("app/api/factory/reels-brain/autopilot-actions/rout
 const governor = readFileSync("app/api/factory/reels-brain/cost-governor/route.ts", "utf8");
 const report = readFileSync("app/api/factory/reels-brain/report/route.ts", "utf8");
 const learningPlan = readFileSync("app/api/factory/reels-brain/learning-plan/route.ts", "utf8");
+const creativeSolution = readFileSync("app/api/factory/reels-brain/creative-solution/route.ts", "utf8");
 const creativeExports = readFileSync("app/api/factory/reels-brain/creative-exports/route.ts", "utf8");
 const creativeBrief = readFileSync("app/api/factory/reels-brain/creative-brief/route.ts", "utf8");
 const readinessAudit = readFileSync("app/api/factory/reels-brain/readiness-audit/route.ts", "utf8");
@@ -53,6 +54,7 @@ ok(/internalFetch/.test(creativeExports) && /segment_creative_exports/.test(crea
 ok(/lane/.test(creativeExports) && /niche/.test(creativeExports) && /platform/.test(creativeExports), "creative-exports route supports lane, niche and platform filters");
 ok(!/POST\s*\(/.test(creativeExports), "creative-exports route is read-only");
 ok(/internalFetch/.test(creativeBrief) && /segment_solution_matrix/.test(creativeBrief) && /selectCreativeBriefFromSegmentLayers/.test(creativeBrief) && /platform_matrix/.test(creativeBriefSourceBuilder), "creative-brief route prefers trust-aware segment layers before old playbook fallback");
+ok(/internalFetch/.test(creativeSolution) && /creative-brief/.test(creativeSolution) && /selectCreativeBriefFromSegmentLayers/.test(creativeSolution), "creative-solution route exposes unified trust-aware brief/hypothesis/action endpoint");
 
 ok(/internalFetch/.test(readinessAudit) && /segment_readiness_audit/.test(readinessAudit), "readiness-audit route reads readiness audit from learning-economics");
 ok(/verdict/.test(readinessAudit) && /niche/.test(readinessAudit) && /platform/.test(readinessAudit), "readiness-audit route supports verdict, niche and platform filters");
@@ -124,6 +126,7 @@ ok(/buildReelsBrainNextTick/.test(learningPlan) && /portfolio_priority_segment/.
 ok(/\/api\/factory\/reels-brain\/readiness-audit\?verdict=/.test(cockpit), "cockpit exposes standalone readiness-audit endpoint per segment");
 ok(/\/api\/factory\/reels-brain\/decision-snapshot\?lane=/.test(cockpit), "cockpit exposes unified decision-snapshot endpoint per segment");
 ok(/\/api\/factory\/reels-brain\/segment-solutions\?lane=/.test(cockpit), "cockpit exposes operator-ready segment-solutions endpoint per segment");
+ok(/\/api\/factory\/reels-brain\/creative-solution\?niche=/.test(cockpit), "cockpit exposes unified creative-solution endpoint per segment");
 ok(/\/api\/factory\/reels-brain\/stability-audit\?lane=/.test(cockpit), "cockpit exposes segment stability-audit endpoint per segment");
 ok(/Portfolio readiness/.test(cockpit) && /high-trust coverage/.test(cockpit), "cockpit surfaces portfolio readiness toward full niche/platform coverage");
 ok(/Segment Solution Matrix/.test(cockpit) && /segment_solution_matrix/.test(cockpit), "cockpit surfaces grouped niche/platform segment solution matrix");
