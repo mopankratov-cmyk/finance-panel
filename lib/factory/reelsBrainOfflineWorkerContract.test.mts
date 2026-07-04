@@ -31,8 +31,10 @@ ok(/function shouldUseYtDlpCookies/.test(worker), "offline worker scopes yt-dlp 
 ok(/youtube\\.com\\|youtu\\.be/.test(worker), "offline worker only applies yt-dlp cookies to YouTube domains");
 ok(/YT_DLP_ENABLE_YOUTUBE_COOKIES/.test(worker), "offline worker makes YouTube cookies opt-in");
 ok(/REELS_BRAIN_ENABLE_YOUTUBE_LOCAL_RESOLVER/.test(worker), "offline worker makes YouTube local resolver opt-in");
+ok(/prependPathEntries\(NIX_BIN_DIRS\)/.test(worker) && /NIX_BIN_DIRS\.map\(\(dir\) => path\.join\(dir, "yt-dlp"\)\)/.test(worker), "offline worker searches nix yt-dlp locations before giving up");
 ok(/function shouldSkipDownloadForYtDlpProbe/.test(worker) && /probeArgs\.push\("--skip-download"\)/.test(worker), "offline worker disables --skip-download for YouTube cookie-backed probes");
 ok(/function normalizeYtDlpTarget/.test(worker) && /share_item_id/.test(worker) && /embed\/v2/.test(worker), "offline worker normalizes TikTok share urls before yt-dlp");
+ok(/route_local_resolver_enabled/.test(worker), "offline worker logs route resolver state separately from worker resolver state");
 ok(/function finalizeTranscriptOutcome/.test(worker), "offline worker normalizes transcript outcomes");
 ok(/transcript_no_speech/.test(worker), "offline worker marks empty whisper responses as no-speech terminal state");
 ok(/remoteFallback = await transcribeFal/.test(worker), "offline worker retries local empty transcript via remote media fallback");
