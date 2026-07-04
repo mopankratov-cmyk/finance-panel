@@ -4,6 +4,7 @@ import { automationRunHistory } from "@/lib/factory/reelsBrainPlaybook";
 import { buildReelsBrainOperatingSystem, type ReelsBrainMetricRow } from "@/lib/factory/reelsBrainOperatingSystem";
 import { buildPatternOutcomeLayer } from "@/lib/factory/reelsBrainPatternOutcome";
 import { buildReelsBrainHypothesisBank } from "@/lib/factory/reelsBrainHypothesisBank";
+import { buildReelsBrainActionPack } from "@/lib/factory/reelsBrainActionPack";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 20;
@@ -2268,6 +2269,10 @@ export async function GET(req: NextRequest) {
       patternDecisionLayer.pattern_details as unknown as Array<Parameters<typeof buildReelsBrainHypothesisBank>[0][number]>,
       compactMode ? 6 : 10,
     );
+    const actionPack = buildReelsBrainActionPack(
+      patternDecisionLayer.pattern_details as unknown as Array<Parameters<typeof buildReelsBrainActionPack>[0][number]>,
+      compactMode ? 4 : 6,
+    );
 
     const timelineResponse = compactMode ? takeRecordList(timeline, 12) : timeline;
 
@@ -2292,6 +2297,7 @@ export async function GET(req: NextRequest) {
       audio_brain: audioBrain,
       audio_visual_readiness: audioVisualReadiness,
       hypothesis_bank: hypothesisBank,
+      action_pack: actionPack,
       feedback_warning: feedbackRows.warning,
       cost_governor: costGovernor,
       autopilot_actions: autopilotActions,

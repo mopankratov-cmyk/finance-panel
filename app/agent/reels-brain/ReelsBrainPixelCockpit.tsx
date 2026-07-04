@@ -256,6 +256,7 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
     const patternDetails = (learning?.pattern_details || []) as JsonRecord[];
     const patternOutcomeSummary = (learning?.pattern_outcome_summary || {}) as JsonRecord;
     const hypothesisBank = (learning?.hypothesis_bank || {}) as JsonRecord;
+    const actionPack = (learning?.action_pack || {}) as JsonRecord;
     const nicheComparison = (learning?.niche_comparison || []) as JsonRecord[];
     const niches = (learning?.niches || []) as JsonRecord[];
     const topHooks = (insights?.top_hooks || []) as JsonRecord[];
@@ -701,6 +702,7 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
       patternOutcomeSummary,
       patternDetailById,
       hypothesisBank,
+      actionPack,
       nicheComparison,
       score,
       tone,
@@ -1718,6 +1720,58 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
 
         <section>
           <SectionTitle k="06 · Доказательность и лучшие паттерны" title="Любой референс превращается в creative brief" />
+          <div className="rb-card" style={{ marginBottom: 16 }}>
+            <div className="rb-overline" style={{ color: "#0891b2" }}>Action pack</div>
+            <h3 style={{ font: "600 24px/1.15 'Space Grotesk'", margin: "9px 0 14px" }}>В каком порядке запускать лучшие решения</h3>
+            {vm.actionPack.primary ? (
+              <>
+                <div className="rb-pattern" style={{ borderColor: "#a7f3d0", background: "#f0fdf4" }}>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                    <div className="rb-pill">primary</div>
+                    <div className="rb-pill" style={{ background: decisionTone(String(vm.actionPack.primary.decision || "watch")).bg, borderColor: decisionTone(String(vm.actionPack.primary.decision || "watch")).bd, color: decisionTone(String(vm.actionPack.primary.decision || "watch")).fg }}>
+                      {decisionTone(String(vm.actionPack.primary.decision || "watch")).label}
+                    </div>
+                    <div className="rb-pill" style={{ background: marketSignalTone(String(vm.actionPack.primary.market_status || "no_feedback")).bg, borderColor: marketSignalTone(String(vm.actionPack.primary.market_status || "no_feedback")).bd, color: marketSignalTone(String(vm.actionPack.primary.market_status || "no_feedback")).fg }}>
+                      {marketSignalTone(String(vm.actionPack.primary.market_status || "no_feedback")).label}
+                    </div>
+                  </div>
+                  <h3 style={{ marginTop: 10 }}>{vm.actionPack.primary.title}</h3>
+                  <p style={{ color: "#0f172a", fontWeight: 600 }}>Priority {compact(vm.actionPack.primary.priority_score)} · OP {compact(vm.actionPack.primary.op_score)}</p>
+                  <p>Хук: {vm.actionPack.primary.brief_seed?.hook || "сильный хук"} · Удержание: {vm.actionPack.primary.brief_seed?.retention || "proof"}</p>
+                  <p>Структура: {vm.actionPack.primary.brief_seed?.structure || "демонстрация"} · Fit: {(vm.actionPack.primary.brief_seed?.product_fit || []).slice(0, 2).join(" · ") || "mixed"}</p>
+                  {((vm.actionPack.primary.why_now || []) as string[]).length ? (
+                    <div style={{ marginTop: 8, display: "grid", gap: 6 }}>
+                      {((vm.actionPack.primary.why_now || []) as string[]).slice(0, 2).map((item, index) => (
+                        <p key={`primary-why:${index}`} style={{ margin: 0, color: "#334155" }}>Почему сейчас: {item}</p>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+                {((vm.actionPack.alternatives || []) as JsonRecord[]).length ? (
+                  <div className="rb-three" style={{ marginTop: 14 }}>
+                    {((vm.actionPack.alternatives || []) as JsonRecord[]).slice(0, 3).map((item, index) => (
+                      <div className="rb-pattern" key={item.pattern_id || index}>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                          <div className="rb-pill">alt #{compact(item.rank)}</div>
+                          <div className="rb-pill" style={{ background: decisionTone(String(item.decision || "watch")).bg, borderColor: decisionTone(String(item.decision || "watch")).bd, color: decisionTone(String(item.decision || "watch")).fg }}>
+                            {decisionTone(String(item.decision || "watch")).label}
+                          </div>
+                        </div>
+                        <h3 style={{ marginTop: 10 }}>{item.title}</h3>
+                        <p>Priority {compact(item.priority_score)} · OP {compact(item.op_score)}</p>
+                        <p>{item.success_metric}</p>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </>
+            ) : (
+              <div className="rb-pattern">
+                <h3>Action pack появится после роста pattern-detail слоя</h3>
+                <p>Сначала нужны stable pattern details с trust и market feedback, затем мозг сам выстроит rollout ladder.</p>
+              </div>
+            )}
+          </div>
           <div className="rb-gate" style={{ marginBottom: 16 }}>
             {vm.gateCards.map(([key, label, value, text]) => (
               <div className="rb-gate-card" key={key}>
