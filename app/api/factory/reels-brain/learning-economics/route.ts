@@ -6,7 +6,7 @@ import { buildPatternOutcomeLayer } from "@/lib/factory/reelsBrainPatternOutcome
 import { buildGroupedReelsBrainHypothesisBanks, buildReelsBrainHypothesisBank } from "@/lib/factory/reelsBrainHypothesisBank";
 import { buildGroupedReelsBrainActionPacks, buildReelsBrainActionPack } from "@/lib/factory/reelsBrainActionPack";
 import { buildGroupedReelsBrainBriefPacks, buildReelsBrainBriefPack } from "@/lib/factory/reelsBrainBriefPack";
-import { buildReelsBrainSegmentTrust } from "@/lib/factory/reelsBrainSegmentTrust";
+import { applySegmentTrustToGroups, buildReelsBrainSegmentTrust } from "@/lib/factory/reelsBrainSegmentTrust";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 20;
@@ -2301,6 +2301,42 @@ export async function GET(req: NextRequest) {
       niches: nicheSummaries as Array<Parameters<typeof buildReelsBrainSegmentTrust>[0]["niches"][number]>,
       platforms: ["tiktok", "instagram", "youtube"],
     });
+    const trustedGroupedHypothesisBank = {
+      by_niche: applySegmentTrustToGroups({
+        groups: groupedHypothesisBank.by_niche,
+        trustRows: segmentTrust.by_niche,
+        key: "niche",
+      }),
+      by_platform: applySegmentTrustToGroups({
+        groups: groupedHypothesisBank.by_platform,
+        trustRows: segmentTrust.by_platform,
+        key: "platform",
+      }),
+    };
+    const trustedGroupedActionPacks = {
+      by_niche: applySegmentTrustToGroups({
+        groups: groupedActionPacks.by_niche,
+        trustRows: segmentTrust.by_niche,
+        key: "niche",
+      }),
+      by_platform: applySegmentTrustToGroups({
+        groups: groupedActionPacks.by_platform,
+        trustRows: segmentTrust.by_platform,
+        key: "platform",
+      }),
+    };
+    const trustedGroupedBriefPacks = {
+      by_niche: applySegmentTrustToGroups({
+        groups: groupedBriefPacks.by_niche,
+        trustRows: segmentTrust.by_niche,
+        key: "niche",
+      }),
+      by_platform: applySegmentTrustToGroups({
+        groups: groupedBriefPacks.by_platform,
+        trustRows: segmentTrust.by_platform,
+        key: "platform",
+      }),
+    };
 
     const timelineResponse = compactMode ? takeRecordList(timeline, 12) : timeline;
 
@@ -2325,11 +2361,11 @@ export async function GET(req: NextRequest) {
       audio_brain: audioBrain,
       audio_visual_readiness: audioVisualReadiness,
       hypothesis_bank: hypothesisBank,
-      hypothesis_bank_groups: groupedHypothesisBank,
+      hypothesis_bank_groups: trustedGroupedHypothesisBank,
       action_pack: actionPack,
-      action_pack_groups: groupedActionPacks,
+      action_pack_groups: trustedGroupedActionPacks,
       brief_pack: briefPack,
-      brief_pack_groups: groupedBriefPacks,
+      brief_pack_groups: trustedGroupedBriefPacks,
       segment_trust: segmentTrust,
       feedback_warning: feedbackRows.warning,
       cost_governor: costGovernor,

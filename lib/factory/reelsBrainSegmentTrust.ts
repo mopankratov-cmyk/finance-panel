@@ -129,3 +129,43 @@ export function buildReelsBrainSegmentTrust(input: {
       .sort((a, b) => b.score - a.score || a.platform.localeCompare(b.platform)),
   };
 }
+
+export function segmentRecommendationMode(status: unknown) {
+  const raw = String(status || "").trim().toLowerCase();
+  if (raw === "ready") return "primary";
+  if (raw === "warming") return "control_only";
+  return "research_only";
+}
+
+export function applySegmentTrustToGroups<
+  TGroup extends Record<string, unknown>,
+  TTrust extends { score?: number; status?: string; confidence?: string; note?: string }
+>(input: {
+  groups: TGroup[];
+  trustRows: TTrust[];
+  key: "niche" | "platform";
+}) {
+  const map = new Map<string, TTrust>(
+    (input.trustRows || [])
+      .map((row) => [String(row[input.key as keyof TTrust] || ""), row] as const)
+      .filter(([value]) => value),
+  );
+  return [...(input.groups || [])]
+    .map((group) => {
+      const value = String(group[input.key] || "");
+      const trust = map.get(value) || null;
+      return {
+        ...group,
+        trust_score: trust?.score ?? 0,
+        trust_status: trust?.status ?? "weak",
+        trust_confidence: trust?.confidence ?? "low",
+        trust_note: trust?.note ?? "",
+        recommended_mode: segmentRecommendationMode(trust?.status),
+        primary_allowed: segmentRecommendationMode(trust?.status) === "primary",
+      };
+    })
+    .sort((a, b) =>
+      Number(b.trust_score || 0) - Number(a.trust_score || 0)
+      || Number((b.primary_allowed ? 1 : 0)) - Number((a.primary_allowed ? 1 : 0))
+      || String(a[input.key] || "").localeCompare(String(b[input.key] || "")));
+}
