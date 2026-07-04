@@ -287,6 +287,7 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
     const segmentPriorityQueue = ((mission.segment_priority_queue || learning?.segment_priority_queue || {}) as JsonRecord);
     const segmentGenerationPacks = (learning?.segment_generation_packs || {}) as JsonRecord;
     const segmentCreativeExports = (learning?.segment_creative_exports || {}) as JsonRecord;
+    const segmentReadinessAudit = (learning?.segment_readiness_audit || {}) as JsonRecord;
     const evidenceLedger = (learning?.evidence_ledger || {}) as JsonRecord;
     const actionPack = (learning?.action_pack || {}) as JsonRecord;
     const actionPackGroups = (learning?.action_pack_groups || {}) as JsonRecord;
@@ -743,6 +744,14 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
         label: `${NICHE_LABELS[String(row.niche)] || row.niche} × ${String(row.platform || "mixed").toUpperCase()}`,
       };
     });
+    const segmentAuditCards = ((segmentReadinessAudit.items || []) as JsonRecord[]).slice(0, 6).map((row) => {
+      const tone = playbookTone(String(row.verdict === "ship" ? "ship_now" : row.verdict === "validate" ? "validate_and_ship" : "research"));
+      return {
+        ...row,
+        auditTone: tone,
+        label: `${NICHE_LABELS[String(row.niche)] || row.niche} × ${String(row.platform || "mixed").toUpperCase()}`,
+      };
+    });
     const missionPriorityCards = ((segmentPriorityQueue.items || []) as JsonRecord[]).slice(0, 4).map((row) => ({
       ...row,
       modeTone: decisionTone(String(row.ready_for_generation ? "primary" : row.action === "analyze_segment_backlog" ? "control_only" : "research_only")),
@@ -935,6 +944,7 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
       segmentDecisionSummary,
       segmentGenerationCards,
       segmentExportCards,
+      segmentAuditCards,
       missionPriorityCards,
       evidenceCards,
       evidenceSummary,
@@ -1885,6 +1895,51 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
                 <h3 style={{ font: "700 24px/1.1 'Space Grotesk'", margin: 0 }}>Segment Creative Exports ещё пусты</h3>
                 <p style={{ marginTop: 10, color: "#64748b", lineHeight: 1.55 }}>
                   Этот слой заполнится, когда generation packs начнут стабильно проходить quality gate и собираться в operator-ready bundles.
+                </p>
+              </div>
+            )}
+          </div>
+        </section>
+
+        <section>
+          <SectionTitle k="04.447 · Segment Readiness Audit" title="Почему сегмент считается ship, validate или research" />
+          <div className="rb-three">
+            {vm.segmentAuditCards.length ? vm.segmentAuditCards.map((item: JsonRecord) => (
+              <div className="rb-card" key={`segment-audit:${item.niche}:${item.platform}`}>
+                <div className="rb-two" style={{ gridTemplateColumns: "1fr auto", gap: 14 }}>
+                  <div>
+                    <div className="rb-overline" style={{ color: "#0891b2" }}>{item.label}</div>
+                    <h3 style={{ font: "700 24px/1.08 'Space Grotesk'", margin: "10px 0 0" }}>{item.verdict || "research"}</h3>
+                  </div>
+                  <div className="rb-live-pill" style={{ background: item.auditTone.bg, borderColor: item.auditTone.bd, color: item.auditTone.fg }}>
+                    <i style={{ background: item.auditTone.fg }} />
+                    {item.quality_gate_status || "watch"}
+                  </div>
+                </div>
+                <div className="rb-three" style={{ marginTop: 14 }}>
+                  <div className="rb-brief-block"><b>Trust gap</b><p>{compact(item.gaps?.trust_score || 0)}</p></div>
+                  <div className="rb-brief-block"><b>Corpus gap</b><p>{compact(item.gaps?.corpus_score || 0)}</p></div>
+                  <div className="rb-brief-block"><b>Market gap</b><p>{compact(item.gaps?.market_score || 0)}</p></div>
+                </div>
+                <div className="rb-three" style={{ marginTop: 12 }}>
+                  <div className="rb-brief-block"><b>Stable gap</b><p>{compact(item.gaps?.stable_patterns || 0)}</p></div>
+                  <div className="rb-brief-block"><b>Evidence gap</b><p>{compact(item.gaps?.evidence_refs || 0)}</p></div>
+                  <div className="rb-brief-block"><b>Ready exports</b><p>{item.exports_ready?.brief || "brief pending"}</p></div>
+                </div>
+                <div className="rb-brief-block" style={{ marginTop: 12 }}>
+                  <b>Strong signals</b>
+                  <p>{((item.strong_signals || []) as string[]).join(" · ") || "Сильные сигналы ещё не сложились"}</p>
+                </div>
+                <div className="rb-brief-block" style={{ marginTop: 12 }}>
+                  <b>Blockers</b>
+                  <p>{((item.blockers || []) as string[]).join(" · ") || "Блокеров нет"}</p>
+                </div>
+              </div>
+            )) : (
+              <div className="rb-card">
+                <h3 style={{ font: "700 24px/1.1 'Space Grotesk'", margin: 0 }}>Segment Readiness Audit ещё пуст</h3>
+                <p style={{ marginTop: 10, color: "#64748b", lineHeight: 1.55 }}>
+                  Этот слой появится, когда generation packs начнут стабильно объяснять свои quality gates и gap-ы.
                 </p>
               </div>
             )}
