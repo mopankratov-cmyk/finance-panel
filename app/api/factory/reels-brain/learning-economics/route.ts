@@ -17,6 +17,7 @@ import { buildReelsBrainSegmentGenerationPacks } from "@/lib/factory/reelsBrainS
 import { buildReelsBrainSegmentCreativeExports } from "@/lib/factory/reelsBrainSegmentCreativeExports";
 import { buildReelsBrainSegmentReadinessAudit } from "@/lib/factory/reelsBrainSegmentReadinessAudit";
 import { buildReelsBrainSegmentSolutions } from "@/lib/factory/reelsBrainSegmentSolutions";
+import { buildReelsBrainSegmentSolutionMatrix } from "@/lib/factory/reelsBrainSegmentSolutionMatrix";
 import { buildReelsBrainSegmentStabilityAudit } from "@/lib/factory/reelsBrainSegmentStabilityAudit";
 import { buildReelsBrainPortfolioReadiness } from "@/lib/factory/reelsBrainPortfolioReadiness";
 import { REELS_BRAIN_CORPUS_TARGET_TOTAL } from "@/lib/factory/reelsBrainCorpusTargets";
@@ -2475,6 +2476,12 @@ export async function GET(req: NextRequest) {
       decisionSnapshot: segmentDecisionSnapshot,
       limit: compactMode ? 6 : 10,
     });
+    const segmentSolutionMatrix = buildReelsBrainSegmentSolutionMatrix({
+      segmentSolutions,
+      niches: nicheSummaries.map((row) => row.niche),
+      platforms: ["tiktok", "instagram", "youtube"],
+      limit: compactMode ? 6 : 10,
+    });
     const portfolioReadiness = buildReelsBrainPortfolioReadiness({
       segmentStabilityAudit,
       niches: nicheSummaries.map((row) => row.niche),
@@ -2542,6 +2549,7 @@ export async function GET(req: NextRequest) {
       segment_readiness_audit: segmentReadinessAudit,
       segment_stability_audit: segmentStabilityAudit,
       segment_solutions: segmentSolutions,
+      segment_solution_matrix: segmentSolutionMatrix,
       portfolio_readiness: portfolioReadiness,
       evidence_ledger: evidenceLedger,
       feedback_warning: feedbackRows.warning,

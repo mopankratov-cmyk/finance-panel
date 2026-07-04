@@ -288,6 +288,7 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
     const segmentGenerationPacks = (learning?.segment_generation_packs || {}) as JsonRecord;
     const segmentCreativeExports = (learning?.segment_creative_exports || {}) as JsonRecord;
     const segmentReadinessAudit = (learning?.segment_readiness_audit || {}) as JsonRecord;
+    const segmentSolutionMatrix = (learning?.segment_solution_matrix || {}) as JsonRecord;
     const portfolioReadiness = (learning?.portfolio_readiness || mission.portfolio_readiness || {}) as JsonRecord;
     const evidenceLedger = (learning?.evidence_ledger || {}) as JsonRecord;
     const actionPack = (learning?.action_pack || {}) as JsonRecord;
@@ -753,6 +754,35 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
         label: `${NICHE_LABELS[String(row.niche)] || row.niche} × ${String(row.platform || "mixed").toUpperCase()}`,
       };
     });
+    const segmentSolutionNicheCards = ((segmentSolutionMatrix.by_niche || []) as JsonRecord[]).slice(0, 3).map((row) => ({
+      ...row,
+      label: NICHE_LABELS[String(row.niche)] || row.niche,
+      trustTone: statusTone(
+        Math.round(
+          num(row.avg_readiness_score) * 0.55
+          + num(row.avg_stability_score) * 0.35
+          + Math.min(10, num(row.ready_now) * 5),
+        ),
+      ),
+    }));
+    const segmentSolutionPlatformCards = ((segmentSolutionMatrix.by_platform || []) as JsonRecord[]).slice(0, 3).map((row) => ({
+      ...row,
+      label: String(row.platform || "mixed").toUpperCase(),
+      trustTone: statusTone(
+        Math.round(
+          num(row.avg_readiness_score) * 0.55
+          + num(row.avg_stability_score) * 0.35
+          + Math.min(10, num(row.ready_now) * 5),
+        ),
+      ),
+    }));
+    const segmentSolutionSummary = {
+      total: num(segmentSolutionMatrix.summary?.total_segments),
+      readyNow: num(segmentSolutionMatrix.summary?.ready_now),
+      controlled: num(segmentSolutionMatrix.summary?.controlled_test),
+      research: num(segmentSolutionMatrix.summary?.research_only),
+      highTrust: num(segmentSolutionMatrix.summary?.high_trust_segments),
+    };
     const missionPriorityCards = ((segmentPriorityQueue.items || []) as JsonRecord[]).slice(0, 4).map((row) => ({
       ...row,
       modeTone: decisionTone(String(row.ready_for_generation ? "primary" : row.action === "analyze_segment_backlog" ? "control_only" : "research_only")),
@@ -954,6 +984,9 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
       segmentGenerationCards,
       segmentExportCards,
       segmentAuditCards,
+      segmentSolutionNicheCards,
+      segmentSolutionPlatformCards,
+      segmentSolutionSummary,
       missionPriorityCards,
       portfolioCoverageCards,
       portfolioGapCards,
@@ -2015,6 +2048,95 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
                 </p>
               </div>
             )}
+          </div>
+        </section>
+        
+        <section>
+          <SectionTitle k="04.448 · Segment Solution Matrix" title="Какие niche-specific и platform-specific решения уже можно брать как основу" />
+          <div className="rb-three">
+            <div className="rb-card">
+              <div className="rb-overline" style={{ color: "#0891b2" }}>By niche</div>
+              <h3 style={{ font: "700 26px/1.08 'Space Grotesk'", margin: "10px 0" }}>
+                {compact(vm.segmentSolutionSummary.highTrust)} high-trust сегментов
+              </h3>
+              <p style={{ color: "#64748b", lineHeight: 1.5 }}>
+                Здесь мозг уже сжимает сегментные решения в нишевые пакеты, а не просто держит их как отдельные карточки.
+              </p>
+              <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
+                {vm.segmentSolutionNicheCards.length ? vm.segmentSolutionNicheCards.map((row: JsonRecord) => (
+                  <div className="rb-pattern" key={`solution-niche:${row.niche}`}>
+                    <div className="rb-two" style={{ gridTemplateColumns: "1fr auto", gap: 10 }}>
+                      <h3>{row.label}</h3>
+                      <div className="rb-live-pill" style={{ background: row.trustTone.bg, borderColor: row.trustTone.bd, color: row.trustTone.fg }}>
+                        <i style={{ background: row.trustTone.dot }} />
+                        {row.trustTone.label}
+                      </div>
+                    </div>
+                    <p>{row.primary?.creative_brief?.hook || row.primary?.creative_brief?.title || "Ждём ведущий niche brief"}</p>
+                    <p>ready {compact(row.ready_now)} · control {compact(row.controlled_test)} · research {compact(row.research_only)}</p>
+                    <p>platforms: {((row.coverage_labels || []) as string[]).join(" · ") || "none"}</p>
+                    <p>next gap: {row.next_gap?.label || row.next_gap?.platform || "gap closed"}</p>
+                  </div>
+                )) : (
+                  <div className="rb-pattern">
+                    <h3>Niche solution matrix пока пуст</h3>
+                    <p>Появится сразу, когда segment solutions накопят достаточно сегментов с внятным trust band.</p>
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="rb-card">
+              <div className="rb-overline" style={{ color: "#0891b2" }}>By platform</div>
+              <h3 style={{ font: "700 26px/1.08 'Space Grotesk'", margin: "10px 0" }}>
+                {compact(vm.segmentSolutionSummary.readyNow)} ready-now решений
+              </h3>
+              <p style={{ color: "#64748b", lineHeight: 1.5 }}>
+                Так видно, чем TikTok, Instagram и YouTube реально отличаются по рабочим механикам и степени доверия.
+              </p>
+              <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
+                {vm.segmentSolutionPlatformCards.length ? vm.segmentSolutionPlatformCards.map((row: JsonRecord) => (
+                  <div className="rb-pattern" key={`solution-platform:${row.platform}`}>
+                    <div className="rb-two" style={{ gridTemplateColumns: "1fr auto", gap: 10 }}>
+                      <h3>{row.label}</h3>
+                      <div className="rb-live-pill" style={{ background: row.trustTone.bg, borderColor: row.trustTone.bd, color: row.trustTone.fg }}>
+                        <i style={{ background: row.trustTone.dot }} />
+                        {row.trustTone.label}
+                      </div>
+                    </div>
+                    <p>{row.primary?.creative_brief?.hook || row.primary?.creative_brief?.title || "Ждём ведущий platform brief"}</p>
+                    <p>ready {compact(row.ready_now)} · high trust {compact(row.high_trust)}</p>
+                    <p>niches: {((row.coverage_labels || []) as string[]).map((value) => NICHE_LABELS[value] || value).join(" · ") || "none"}</p>
+                    <p>next gap: {row.next_gap?.label || row.next_gap?.niche || "gap closed"}</p>
+                  </div>
+                )) : (
+                  <div className="rb-pattern">
+                    <h3>Platform solution matrix пока пуст</h3>
+                    <p>Сначала нужно, чтобы хотя бы несколько сегментов прошли через segment solutions и readiness gates.</p>
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="rb-card">
+              <div className="rb-overline" style={{ color: "#0891b2" }}>What this unlocks</div>
+              <h3 style={{ font: "700 26px/1.08 'Space Grotesk'", margin: "10px 0" }}>Почему этот слой важен</h3>
+              <div className="rb-three" style={{ marginTop: 14 }}>
+                <div className="rb-brief-block"><b>Total</b><p>{compact(vm.segmentSolutionSummary.total)}</p></div>
+                <div className="rb-brief-block"><b>Controlled</b><p>{compact(vm.segmentSolutionSummary.controlled)}</p></div>
+                <div className="rb-brief-block"><b>Research</b><p>{compact(vm.segmentSolutionSummary.research)}</p></div>
+              </div>
+              <div className="rb-brief-block" style={{ marginTop: 12 }}>
+                <b>Зачем нужен matrix</b>
+                <p>Теперь brief, hypothesis и content decision можно читать не только по одному сегменту, но и как устойчивый срез по нише или платформе.</p>
+              </div>
+              <div className="rb-brief-block" style={{ marginTop: 12 }}>
+                <b>Источник</b>
+                <p>/api/factory/reels-brain/report → segment_solution_matrix</p>
+              </div>
+              <div className="rb-brief-block" style={{ marginTop: 12 }}>
+                <b>Следующий шаг</b>
+                <p>Использовать эти матрицы как основу для более жёстких creative briefs и platform-specific generation policies.</p>
+              </div>
+            </div>
           </div>
         </section>
 
