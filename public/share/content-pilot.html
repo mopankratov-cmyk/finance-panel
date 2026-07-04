@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Контент-пилот из твинов — Reels + Pinterest</title>
+<style>
+ :root{--ink:#211d17;--muted:#6f665b;--paper:#f4f1ec;--card:#fffdf9;--line:#e5ded2;--accent:#8a5533;--good:#2f6b43;--bad:#a23c2a;--sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;--mono:ui-monospace,Menlo,monospace;}
+ @media(prefers-color-scheme:dark){:root{--ink:#ece5da;--muted:#a79c8c;--paper:#181410;--card:#221d16;--line:#332c22;--accent:#c98a5e;--good:#7fc48d;--bad:#dd8570;}}
+ *{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--sans);padding:clamp(16px,4vw,40px) 0 80px}
+ .col{max-width:1080px;margin:0 auto;padding:0 clamp(14px,4vw,26px)}
+ .eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--accent);margin:0 0 8px}
+ h1{font-size:clamp(23px,4.5vw,30px);letter-spacing:-.02em;margin:0 0 10px}
+ .lede{font-size:15px;color:var(--muted);margin:0 0 6px;max-width:72ch;line-height:1.55}
+ hr{height:2px;width:46px;background:var(--accent);border:0;margin:18px 0 26px}
+ h2{font-size:16px;margin:34px 0 6px}
+ .sub{font-size:13.5px;color:var(--muted);margin:0 0 14px;max-width:70ch;line-height:1.5}
+ .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:16px}
+ figure{margin:0;background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+ video,img{width:100%;display:block;background:#e8e2d8}
+ figcaption{padding:10px 12px;font-size:12.5px;line-height:1.45}
+ figcaption b{display:block;font-size:13px;margin-bottom:2px}
+ figcaption span{color:var(--muted)}
+ .tag{display:inline-block;font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:5px;color:#fff;margin-bottom:6px}
+ .pass{background:var(--good)}.rej{background:var(--bad)}
+</style></head><body><div class="col">
+ <p class="eyebrow">Контент-завод · пилот 04.07</p>
+ <h1>Контент из товарных твинов — Reels/Wibes + Pinterest</h1>
+ <p class="lede">Пилот по итогам исследования: главный актив — цветовые линейки с <b>идентичной геометрией</b> (перекраска из эталона). Форматы №1 по данным: цветовой свитч-ролик (Wibes: досмотр + «пиши номер» в комменты) и палитра-пины (Pinterest: коллажи/палитры сохраняют в 2 раза чаще обычных пинов). Себестоимость пакета на модель ≈ $1, амортизируется на 8–9 SKU.</p>
+ <hr>
+
+ <h2>1 · Видео «9 цветов одной куртки» — формат №1 для Wibes</h2>
+ <p class="sub">Хук 2с → 9 цветов по 1с с плашками → эндкард «пиши номер цвета в комментарии». Детерминированная склейка карточек (ноль AI-видео = ноль искажений), 11с, звук не нужен.</p>
+ <div class="grid">
+  <figure><video src="https://jwjobmdihddytqfgymus.supabase.co/storage/v1/object/public/factory-media/content-pilot/color-switch-NV-08.mp4" controls muted loop playsinline></video>
+   <figcaption><span class="tag pass">PASS</span><b>color-switch · NV-08 «Кулиса»</b><span>9 цветов, каждый = свой SKU-тег на Wibes · ~$0.02/видео</span></figcaption></figure>
+ </div>
+
+ <h2>2 · Pinterest-пины 2:3 (1000×1500)</h2>
+ <p class="sub">Палитра-грид — самый сохраняемый формат для одежды 2025–26. Каждый пин ведёт на карточку WB конкретного артикула с UTM (WB режет комиссию за внешний трафик). Сцена — nano-banana «замена только фона», куртка попиксельно нетронута.</p>
+ <div class="grid">
+  <figure><img src="https://jwjobmdihddytqfgymus.supabase.co/storage/v1/object/public/factory-media/content-pilot/pin-palette-NV-08.png" loading="lazy">
+   <figcaption><span class="tag pass">PASS</span><b>Палитра 9 цветов</b><span>формат-магнит сохранений · $0</span></figcaption></figure>
+  <figure><img src="https://jwjobmdihddytqfgymus.supabase.co/storage/v1/object/public/factory-media/content-pilot/pin-hero-NV-08.png" loading="lazy">
+   <figcaption><span class="tag pass">PASS</span><b>«Какой цвет твой?»</b><span>hero + цветовые точки · $0</span></figcaption></figure>
+  <figure><img src="https://jwjobmdihddytqfgymus.supabase.co/storage/v1/object/public/factory-media/content-pilot/scene-NV-836-55.png" loading="lazy">
+   <figcaption><span class="tag pass">PASS</span><b>Лайфстайл-сцена · NV-836-55</b><span>осенняя улица, фон заменён, геометрия куртки нетронута · ~$0.04</span></figcaption></figure>
+ </div>
+
+ <h2>3 · Kling-биты для silent test-drive (движения по вайтлисту)</h2>
+ <p class="sub">Разрешённые движения: наезд, статичная камера + ветер, параллакс. Запрещённые: развороты/360°/морфы. Второй клип — живой пример, зачем нужен ОТК: Kling самовольно развернул куртку (выдуманная спина) → брак.</p>
+ <div class="grid">
+  <figure><video src="https://jwjobmdihddytqfgymus.supabase.co/storage/v1/object/public/factory-media/content-pilot/breeze-NV-816-53.mp4" controls muted loop playsinline></video>
+   <figcaption><span class="tag pass">PASS</span><b>breeze · NV-816-53</b><span>лёгкий наезд + ткань дышит, пояс/пуговицы держатся · $0.28</span></figcaption></figure>
+  <figure><video src="https://jwjobmdihddytqfgymus.supabase.co/storage/v1/object/public/factory-media/content-pilot/pushin-NV-01-35-REJECTED.mp4" controls muted loop playsinline></video>
+   <figcaption><span class="tag rej">БРАК — ОТК</span><b>push-in · NV-01-35 · отклонён</b><span>Kling развернул куртку боком/спиной — запрещённый режим, в публикацию не идёт</span></figcaption></figure>
+ </div>
+
+ <h2>Что дальше</h2>
+ <p class="sub">Волна 1: свитч-видео + палитра-пины на все 4 модели NV (~$4–5). Pinterest-аккаунт: доски «Женские куртки 2026» / «Капсульный гардероб» / «С чем носить», 3–5 пинов в день, старт пуховиков уже сейчас (сезонная фора 45–90 дней). Полная матрица форматов и экономика: <span style="font-family:var(--mono)">docs/factory-twin-content-matrix.md</span></p>
+</div></body></html>
