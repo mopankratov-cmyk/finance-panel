@@ -645,6 +645,7 @@ type LearningEconomicsResponse = {
       op_score: number;
       confidence?: "high" | "medium" | "low";
       niches: string[];
+      platforms?: string[];
       creative_brief?: LearningCreativeBrief;
       generator_payload?: LearningGeneratorPayload;
       examples?: LearningReferenceExample[];
@@ -758,6 +759,55 @@ type LearningEconomicsResponse = {
     }>;
     status?: "spec_ready" | "media_seeded" | "worker_ready";
     next_step?: string;
+  };
+  pattern_details?: {
+    id: string;
+    title: string;
+    hook: string;
+    format: string;
+    retention: string;
+    op_score: number;
+    quality_gate?: string;
+    final_decision?: "scale" | "control" | "watch";
+    confidence?: "high" | "medium" | "low";
+    platforms?: string[];
+    niches?: string[];
+    market_signal?: {
+      status?: "proven" | "promising" | "weak" | "no_feedback";
+      confidence?: "high" | "medium" | "low";
+      best_platform?: string;
+      winners?: number;
+      losers?: number;
+      total_posts?: number;
+      why?: string[];
+    };
+  }[];
+  hypothesis_bank?: {
+    cards?: {
+      id: string;
+      title: string;
+      platform_focus: string[];
+      niche_focus: string[];
+      decision: "scale" | "control" | "watch";
+      market_status: "proven" | "promising" | "weak" | "no_feedback";
+      confidence: "high" | "medium" | "low";
+      priority_score: number;
+      hypothesis: string;
+      why_now: string[];
+      test_plan: string[];
+      success_metric: string;
+      guardrails: string[];
+    }[];
+    summary?: {
+      total?: number;
+      scale?: number;
+      control?: number;
+      watch?: number;
+      proven?: number;
+      promising?: number;
+      weak?: number;
+      no_feedback?: number;
+    };
   };
   warning?: string;
   error?: string;
@@ -1106,6 +1156,19 @@ function confidenceCopy(confidence: "high" | "medium" | "low" | undefined) {
   return { label: "low confidence", tone: "border-amber-200 bg-amber-50 text-amber-800" };
 }
 
+function decisionCopy(decision: "scale" | "control" | "watch" | undefined) {
+  if (decision === "scale") return { label: "scale", tone: "border-emerald-200 bg-emerald-50 text-emerald-700" };
+  if (decision === "control") return { label: "control", tone: "border-cyan-200 bg-cyan-50 text-cyan-800" };
+  return { label: "watch", tone: "border-amber-200 bg-amber-50 text-amber-800" };
+}
+
+function marketSignalCopy(status: "proven" | "promising" | "weak" | "no_feedback" | undefined) {
+  if (status === "proven") return { label: "market proven", tone: "border-emerald-200 bg-emerald-50 text-emerald-700" };
+  if (status === "promising") return { label: "promising", tone: "border-cyan-200 bg-cyan-50 text-cyan-800" };
+  if (status === "weak") return { label: "weak", tone: "border-red-200 bg-red-50 text-red-700" };
+  return { label: "no feedback", tone: "border-slate-200 bg-slate-50 text-slate-600" };
+}
+
 function capabilityTone(status: string) {
   if (status === "live") return "border-emerald-200 bg-emerald-50 text-emerald-700";
   if (status === "payload_ready" || status === "ui_ready") return "border-cyan-200 bg-cyan-50 text-cyan-800";
@@ -1385,6 +1448,9 @@ export default function ReelsBrainPage() {
   const winningFormats = learningEconomics?.insights?.winning_formats || [];
   const retentionMechanics = learningEconomics?.insights?.retention_mechanics || [];
   const generatorRecipes = learningEconomics?.insights?.recipes || [];
+  const patternDetails = learningEconomics?.pattern_details || [];
+  const hypothesisBank = learningEconomics?.hypothesis_bank || null;
+  const patternDetailById = new Map(patternDetails.map((item) => [item.id, item]));
   const sourceReferences = learningEconomics?.insights?.source_references || [];
   const sourceMap = learningEconomics?.insights?.source_map || [];
   const legalGuard = learningEconomics?.insights?.legal_guard || null;
@@ -2706,7 +2772,11 @@ export default function ReelsBrainPage() {
               </span>
             </div>
             <div className="mt-3 grid gap-3 lg:grid-cols-3">
-              {filteredRecipes.length ? filteredRecipes.slice(0, 3).map((recipe) => (
+              {filteredRecipes.length ? filteredRecipes.slice(0, 3).map((recipe) => {
+                const pattern = patternDetailById.get(recipe.id);
+                const decision = decisionCopy(pattern?.final_decision);
+                const market = marketSignalCopy(pattern?.market_signal?.status);
+                return (
                 <div key={recipe.id} className="rounded-2xl border border-slate-200 bg-white p-4">
                   <div className="flex items-start justify-between gap-2">
                     <h5 className="text-sm font-black leading-5 text-slate-950">{recipe.title}</h5>
@@ -2714,14 +2784,27 @@ export default function ReelsBrainPage() {
                       {compactNumber(recipe.op_score)}
                     </span>
                   </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-black ${confidenceCopy(recipe.confidence).tone}`}>
+                      {confidenceCopy(recipe.confidence).label}
+                    </span>
+                    <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-black ${decision.tone}`}>
+                      {decision.label}
+                    </span>
+                    <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-black ${market.tone}`}>
+                      {market.label}
+                    </span>
+                  </div>
                   <div className="mt-3 space-y-1 text-xs text-slate-600">
                     <p><span className="font-bold text-slate-900">Hook:</span> {recipe.creative_brief?.hook || recipe.hook}</p>
                     <p><span className="font-bold text-slate-900">Retention:</span> {recipe.creative_brief?.retention_mechanic || recipe.retention}</p>
                     <p><span className="font-bold text-slate-900">Fit:</span> {(recipe.creative_brief?.product_fit || recipe.niches).slice(0, 2).join(" · ")}</p>
+                    {pattern?.market_signal ? (
+                      <p>
+                        <span className="font-bold text-slate-900">Market:</span> {pattern.market_signal.best_platform || "mixed"} · posts {compactNumber(pattern.market_signal.total_posts || 0)} · winners {compactNumber(pattern.market_signal.winners || 0)}
+                      </p>
+                    ) : null}
                   </div>
-                  <span className={`mt-3 inline-flex rounded-full border px-2.5 py-1 text-xs font-black ${confidenceCopy(recipe.confidence).tone}`}>
-                    {confidenceCopy(recipe.confidence).label}
-                  </span>
                   {recipe.creative_brief ? (
                     <details className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
                       <summary className="cursor-pointer text-xs font-black uppercase tracking-[0.14em] text-slate-500">
@@ -2773,7 +2856,55 @@ export default function ReelsBrainPage() {
                   ) : null}
                   <p className="mt-3 text-xs font-semibold text-slate-400">{recipe.niches.join(", ")}</p>
                 </div>
-              )) : <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-500">Рецепты появятся после сборки Pattern Brain.</div>}
+              )}) : <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-500">Рецепты появятся после сборки Pattern Brain.</div>}
+            </div>
+          </div>
+
+          <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">Hypothesis bank</p>
+                <h4 className="mt-1 text-lg font-black text-slate-950">Какие тесты мозг советует запускать дальше</h4>
+              </div>
+              <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-bold text-slate-500">
+                {compactNumber(hypothesisBank?.summary?.total || 0)} ideas
+              </span>
+            </div>
+            <div className="mt-3 grid gap-3 lg:grid-cols-3">
+              {hypothesisBank?.cards?.length ? hypothesisBank.cards.slice(0, 3).map((card) => {
+                const decision = decisionCopy(card.decision);
+                const market = marketSignalCopy(card.market_status);
+                const confidence = confidenceCopy(card.confidence);
+                return (
+                  <div key={card.id} className="rounded-2xl border border-slate-200 bg-white p-4">
+                    <div className="flex items-start justify-between gap-2">
+                      <h5 className="text-sm font-black leading-5 text-slate-950">{card.title}</h5>
+                      <span className="shrink-0 rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-black text-slate-700">
+                        {compactNumber(card.priority_score)}
+                      </span>
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-black ${decision.tone}`}>{decision.label}</span>
+                      <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-black ${market.tone}`}>{market.label}</span>
+                      <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-black ${confidence.tone}`}>{confidence.label}</span>
+                    </div>
+                    <p className="mt-3 text-xs leading-5 text-slate-600">{card.hypothesis}</p>
+                    <p className="mt-2 text-xs text-slate-500">Platforms: {card.platform_focus.join(", ") || "mixed"} · Niches: {card.niche_focus.join(", ") || "mixed"}</p>
+                    {card.test_plan?.length ? (
+                      <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs leading-5 text-slate-600">
+                        <p className="font-black uppercase tracking-[0.14em] text-slate-500">Test plan</p>
+                        <ol className="mt-2 list-decimal space-y-1 pl-4">
+                          {card.test_plan.slice(0, 3).map((step) => <li key={step}>{step}</li>)}
+                        </ol>
+                      </div>
+                    ) : null}
+                    <div className="mt-3 rounded-xl border border-amber-100 bg-amber-50 p-3 text-xs leading-5 text-amber-900">
+                      <p className="font-black">Success metric</p>
+                      <p className="mt-1">{card.success_metric}</p>
+                    </div>
+                  </div>
+                );
+              }) : <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-500">Hypothesis bank появится после роста pattern-memory.</div>}
             </div>
           </div>
 
