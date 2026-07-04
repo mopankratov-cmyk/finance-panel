@@ -1,0 +1,176 @@
+type JsonRecord = Record<string, any>;
+type FocusSegment = JsonRecord & {
+  niche: string;
+  platform: string;
+  label: string;
+  evidence_band: string;
+  blockers: string[];
+  stability_score: number;
+  missing: boolean;
+};
+
+function num(value: unknown): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function text(value: unknown, fallback = ""): string {
+  return typeof value === "string" ? value.trim() || fallback : fallback;
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function evidenceRank(value: unknown) {
+  const band = text(value, "missing");
+  if (band === "missing") return 0;
+  if (band === "thin") return 1;
+  if (band === "forming") return 2;
+  if (band === "stable") return 3;
+  return 1;
+}
+
+function safeSegment(row: JsonRecord | null | undefined): FocusSegment | null {
+  if (!row) return null;
+  const niche = text(row.niche);
+  const platform = text(row.platform);
+  if (!niche || !platform) return null;
+  return {
+    ...row,
+    niche,
+    platform,
+    label: text(row.label, `${niche} × ${platform}`),
+    evidence_band: text(row.evidence_band, "missing"),
+    blockers: Array.isArray(row.blockers) ? row.blockers.map((item) => text(item)).filter(Boolean).slice(0, 4) : [],
+    stability_score: num(row.stability_score),
+    missing: Boolean(row.missing),
+  };
+}
+
+export function pickPortfolioFocusSegment(portfolioReadiness?: JsonRecord | null) {
+  const candidates = Array.isArray(portfolioReadiness?.missing_segments)
+    ? (portfolioReadiness?.missing_segments as JsonRecord[])
+        .map((row) => safeSegment(row))
+        .filter(Boolean) as FocusSegment[]
+    : [];
+
+  return candidates
+    .sort((a, b) =>
+      Number(b.missing) - Number(a.missing)
+      || evidenceRank(a.evidence_band) - evidenceRank(b.evidence_band)
+      || a.stability_score - b.stability_score
+      || b.blockers.length - a.blockers.length
+      || a.label.localeCompare(b.label),
+    )[0] || null;
+}
+
+export function buildReelsBrainNextTick(input: {
+  target: number;
+  totalVideos: number;
+  analyzedVideos: number;
+  backlogLimit: number;
+  canRunPaidCollection: boolean;
+  guardStatus?: string;
+  prioritySegment?: JsonRecord | null;
+  portfolioReadiness?: JsonRecord | null;
+}) {
+  const backlog = Math.max(0, input.totalVideos - input.analyzedVideos);
+  const portfolio = (input.portfolioReadiness || {}) as JsonRecord;
+  const portfolioSummary = (portfolio.summary || portfolio) as JsonRecord;
+  const portfolioCoverage = num(portfolioSummary.high_trust_coverage_pct);
+  const portfolioVerdict = text(portfolioSummary.verdict, "still_building");
+  const prioritySegment = safeSegment(input.prioritySegment);
+  const portfolioFocusSegment = pickPortfolioFocusSegment(portfolio);
+  const collectionFocusSegment = portfolioFocusSegment || prioritySegment;
+
+  if (backlog >= input.backlogLimit) {
+    return {
+      task: "analyze_backlog",
+      label: "Сначала разобрать накопленный backlog",
+      reason: `В базе есть ${backlog} неразобранных видео. Дешевле превратить их в память, чем покупать новый сбор.${prioritySegment ? ` Главный сегмент тика: ${String(prioritySegment.label || "")}.` : ""}`,
+      endpoint: "/api/factory/jobs/reels-brain-learning",
+      params: {
+        strategy: "analyze",
+        limit: "80",
+        ...(prioritySegment ? {
+          niche: String(prioritySegment.niche || ""),
+          platform: String(prioritySegment.platform || ""),
+        } : {}),
+      },
+      paid_collection: false,
+      priority_segment: prioritySegment,
+      portfolio_priority_segment: portfolioFocusSegment,
+    };
+  }
+
+  if (!input.canRunPaidCollection) {
+    return {
+      task: "wait_or_repair_sources",
+      label: "Платный сбор временно не трогать",
+      reason: `Cost guard сейчас ${input.guardStatus || "watch"}: лучше чинить источники/анализ, а не жечь бюджет.`,
+      endpoint: "/api/factory/reels-brain/autopilot-actions",
+      params: { mode: "read_only" },
+      paid_collection: false,
+      priority_segment: prioritySegment,
+      portfolio_priority_segment: portfolioFocusSegment,
+    };
+  }
+
+  if (input.totalVideos < input.target) {
+    const shouldSupportDecisionSegment = prioritySegment?.action === "promote_segment_briefs"
+      || prioritySegment?.action === "validate_segment_briefs";
+    const shouldClosePortfolioGaps = !shouldSupportDecisionSegment && portfolioCoverage < 70;
+    const collectionSegment = shouldClosePortfolioGaps ? collectionFocusSegment : prioritySegment;
+
+    return {
+      task: shouldSupportDecisionSegment
+        ? "collect_support_for_decision_segment"
+        : shouldClosePortfolioGaps
+          ? "collect_portfolio_gaps"
+          : "collect_smart_batch",
+      label: shouldSupportDecisionSegment
+        ? `Поддержать decision-ready сегмент ${String(prioritySegment?.label || "")}`
+        : shouldClosePortfolioGaps
+          ? collectionSegment
+            ? `Закрывать дыру ${collectionSegment.label} в portfolio coverage`
+            : "Закрывать дыры в portfolio coverage"
+          : "Добрать новую умную пачку",
+      reason: shouldSupportDecisionSegment
+        ? `${String(prioritySegment?.label || "")} уже близок к рабочим briefs/hypotheses; следующий сбор лучше направить в этот сегмент.`
+        : shouldClosePortfolioGaps
+          ? collectionSegment
+            ? `High-trust coverage матрицы пока ${portfolioCoverage}% (${portfolioVerdict}); следующий сбор направляем в сегмент ${collectionSegment.label}, потому что он ещё не закрыт по доверию.`
+            : `High-trust coverage матрицы пока ${portfolioCoverage}% (${portfolioVerdict}); следующий сбор лучше тратить на незакрытые niches/platforms, а не на общий bulk.`
+          : "Backlog под контролем, budget guard разрешает сбор, цель корпуса ещё не закрыта.",
+      endpoint: "/api/factory/jobs/reels-brain-cron",
+      params: {
+        task: "bulk",
+        target: String(input.target),
+        max_backlog_before_analyze: String(input.backlogLimit),
+        ...(collectionSegment ? {
+          niche: String(collectionSegment.niche || ""),
+          platform: String(collectionSegment.platform || ""),
+        } : {}),
+      },
+      paid_collection: true,
+      priority_segment: prioritySegment,
+      portfolio_priority_segment: portfolioFocusSegment,
+      portfolio_readiness: portfolio,
+    };
+  }
+
+  return {
+    task: "build_patterns",
+    label: "Пересобрать Pattern Brain",
+    reason: "Цель корпуса закрыта: следующий шаг — сжать данные в паттерны и creative briefs.",
+    endpoint: "/api/factory/jobs/reels-brain-learning",
+    params: { strategy: "analyze", build_patterns: "true" },
+    paid_collection: false,
+    priority_segment: prioritySegment,
+    portfolio_priority_segment: portfolioFocusSegment,
+    portfolio_readiness: portfolio,
+  };
+}
+
+export { clamp, num, text };

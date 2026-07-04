@@ -8,6 +8,7 @@ import {
   corpusTargetByNiche,
   corpusTargetByPlatform,
 } from "@/lib/factory/reelsBrainCorpusTargets";
+import { buildReelsBrainNextTick } from "@/lib/factory/reelsBrainLearningPlan";
 import { buildReelsBrainSegmentGapPlanner } from "@/lib/factory/reelsBrainSegmentGapPlanner";
 import { buildReelsBrainSegmentPriorityQueue } from "@/lib/factory/reelsBrainSegmentPriorityQueue";
 
@@ -66,96 +67,6 @@ function learningVelocity(timeline: JsonRecord[]) {
     analyzed_per_tick: Math.round(analyzed / runs),
   };
 }
-
-function nextTick(input: {
-  target: number;
-  totalVideos: number;
-  analyzedVideos: number;
-  backlogLimit: number;
-  canRunPaidCollection: boolean;
-  guardStatus?: string;
-  prioritySegment?: JsonRecord | null;
-  portfolioReadiness?: JsonRecord | null;
-}) {
-  const backlog = Math.max(0, input.totalVideos - input.analyzedVideos);
-  const portfolio = (input.portfolioReadiness || {}) as JsonRecord;
-  const portfolioCoverage = num(portfolio.high_trust_coverage_pct);
-  const portfolioVerdict = String(portfolio.verdict || "still_building");
-  if (backlog >= input.backlogLimit) {
-    return {
-      task: "analyze_backlog",
-      label: "Сначала разобрать накопленный backlog",
-      reason: `В базе есть ${backlog} неразобранных видео. Дешевле превратить их в память, чем покупать новый сбор.${input.prioritySegment ? ` Главный сегмент тика: ${String(input.prioritySegment.label || "")}.` : ""}`,
-      endpoint: "/api/factory/jobs/reels-brain-learning",
-      params: {
-        strategy: "analyze",
-        limit: "80",
-        ...(input.prioritySegment ? {
-          niche: String(input.prioritySegment.niche || ""),
-          platform: String(input.prioritySegment.platform || ""),
-        } : {}),
-      },
-      paid_collection: false,
-      priority_segment: input.prioritySegment || null,
-    };
-  }
-
-  if (!input.canRunPaidCollection) {
-    return {
-      task: "wait_or_repair_sources",
-      label: "Платный сбор временно не трогать",
-      reason: `Cost guard сейчас ${input.guardStatus || "watch"}: лучше чинить источники/анализ, а не жечь бюджет.`,
-      endpoint: "/api/factory/reels-brain/autopilot-actions",
-      params: { mode: "read_only" },
-      paid_collection: false,
-      priority_segment: input.prioritySegment || null,
-    };
-  }
-
-  if (input.totalVideos < input.target) {
-    return {
-      task: input.prioritySegment?.action === "promote_segment_briefs" || input.prioritySegment?.action === "validate_segment_briefs"
-        ? "collect_support_for_decision_segment"
-        : portfolioCoverage < 70
-          ? "collect_portfolio_gaps"
-        : "collect_smart_batch",
-      label: input.prioritySegment?.ready_for_generation
-        ? `Поддержать decision-ready сегмент ${String(input.prioritySegment.label || "")}`
-        : portfolioCoverage < 70
-          ? "Закрывать дыры в portfolio coverage"
-        : "Добрать новую умную пачку",
-      reason: input.prioritySegment?.ready_for_generation
-        ? `${String(input.prioritySegment.label || "")} уже близок к рабочим briefs/hypotheses; следующий сбор лучше направить в этот сегмент.`
-        : portfolioCoverage < 70
-          ? `High-trust coverage матрицы пока ${portfolioCoverage}% (${portfolioVerdict}); следующий сбор лучше тратить на незакрытые niches/platforms, а не на общий bulk.`
-        : "Backlog под контролем, budget guard разрешает сбор, цель корпуса ещё не закрыта.",
-      endpoint: "/api/factory/jobs/reels-brain-cron",
-      params: {
-        task: "bulk",
-        target: String(input.target),
-        max_backlog_before_analyze: String(input.backlogLimit),
-        ...(input.prioritySegment ? {
-          niche: String(input.prioritySegment.niche || ""),
-          platform: String(input.prioritySegment.platform || ""),
-        } : {}),
-      },
-      paid_collection: true,
-      priority_segment: input.prioritySegment || null,
-      portfolio_readiness: input.portfolioReadiness || null,
-    };
-  }
-
-  return {
-    task: "build_patterns",
-    label: "Пересобрать Pattern Brain",
-    reason: "Цель корпуса закрыта: следующий шаг — сжать данные в паттерны и creative briefs.",
-      endpoint: "/api/factory/jobs/reels-brain-learning",
-      params: { strategy: "analyze", build_patterns: "true" },
-      paid_collection: false,
-      priority_segment: input.prioritySegment || null,
-      portfolio_readiness: input.portfolioReadiness || null,
-    };
-  }
 
 export async function GET(req: NextRequest) {
   try {
@@ -227,6 +138,16 @@ export async function GET(req: NextRequest) {
     const relevantSpeed = firstPositive(velocity.inserted_per_tick, velocity.analyzed_per_tick, 25);
     const etaTicksToTarget = progress.gap > 0 ? Math.ceil(progress.gap / Math.max(1, relevantSpeed)) : 0;
     const etaTicksToAnalyzed = backlog > 0 ? Math.ceil(backlog / Math.max(1, firstPositive(velocity.analyzed_per_tick, 40))) : 0;
+    const nextTick = buildReelsBrainNextTick({
+      target,
+      totalVideos,
+      analyzedVideos,
+      backlogLimit,
+      canRunPaidCollection,
+      guardStatus: String(costGovernor.status || ""),
+      prioritySegment,
+      portfolioReadiness,
+    });
 
     return NextResponse.json({
       ok: true,
@@ -242,16 +163,8 @@ export async function GET(req: NextRequest) {
           limit_before_paid_collection: backlogLimit,
           status: backlog >= backlogLimit ? "analyze_first" : "healthy",
         },
-        next_tick: nextTick({
-          target,
-          totalVideos,
-          analyzedVideos,
-          backlogLimit,
-          canRunPaidCollection,
-          guardStatus: String(costGovernor.status || ""),
-          prioritySegment,
-          portfolioReadiness: portfolioSummary,
-        }),
+        next_tick: nextTick,
+        portfolio_priority_segment: nextTick.portfolio_priority_segment || null,
         execution_plan: executionPlan,
         segment_plan: segmentPlan,
         segment_priority_queue: segmentPriorityQueue,
