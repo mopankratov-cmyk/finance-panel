@@ -11,10 +11,12 @@ async function loadPatternSourceVideos(
   db: NonNullable<ReturnType<typeof getSupabaseAdmin>>,
   niche: string,
   limit: number,
+  focusPlatform?: string | null,
 ): Promise<{ rows: ReelsPatternSourceVideo[]; error: string | null }> {
   const rows: ReelsPatternSourceVideo[] = [];
-  for (let from = 0; from < limit; from += SUPABASE_PAGE_SIZE) {
-    const to = Math.min(from + SUPABASE_PAGE_SIZE - 1, limit - 1);
+  const fetchLimit = Math.min(3000, Math.max(limit, focusPlatform ? limit * 2 : limit));
+  for (let from = 0; from < fetchLimit; from += SUPABASE_PAGE_SIZE) {
+    const to = Math.min(from + SUPABASE_PAGE_SIZE - 1, fetchLimit - 1);
     const { data, error } = await db
       .from("viral_videos")
       .select("id,url,platform,caption,hook_text,format_detected,beat_structure,viral_reason,virality_score,views,sound_title,analyzed_full")
@@ -26,7 +28,13 @@ async function loadPatternSourceVideos(
     rows.push(...page);
     if (page.length < to - from + 1) break;
   }
-  return { rows, error: null };
+  if (!focusPlatform) return { rows: rows.slice(0, limit), error: null };
+  const focus = String(focusPlatform || "").trim().toLowerCase();
+  const prioritized = [...rows].sort((a, b) =>
+    Number(String(b.platform || "").trim().toLowerCase() === focus) - Number(String(a.platform || "").trim().toLowerCase() === focus)
+    || Number(b.virality_score || 0) - Number(a.virality_score || 0)
+  );
+  return { rows: prioritized.slice(0, limit), error: null };
 }
 
 // POST { niche, limit?, persist? } or GET ?niche=&limit=&persist=true
@@ -38,10 +46,11 @@ async function build(req: NextRequest, body: Record<string, unknown>) {
   const sp = req.nextUrl.searchParams;
   const niche = String(body.niche || sp.get("niche") || "").trim();
   if (!niche) return NextResponse.json({ error: "нужна niche" }, { status: 400 });
+  const focusPlatform = String(body.platform || sp.get("platform") || "").trim().toLowerCase();
   const limit = Math.min(3000, Math.max(10, Number(body.limit || sp.get("limit") || 300)));
   const persist = body.persist === true || sp.get("persist") === "true";
 
-  const { rows, error } = await loadPatternSourceVideos(db, niche, limit);
+  const { rows, error } = await loadPatternSourceVideos(db, niche, limit, focusPlatform || null);
   if (error) return NextResponse.json({ error: "viral_videos: " + error }, { status: 500 });
   const { data: existing } = await db
     .from("niche_playbooks")
@@ -76,6 +85,11 @@ async function build(req: NextRequest, body: Record<string, unknown>) {
   return NextResponse.json({
     ok: true,
     niche,
+    focus_platform: focusPlatform || null,
+    compaction_context: {
+      platform_biased: Boolean(focusPlatform),
+      requested_limit: limit,
+    },
     source_videos: rows.length,
     persist,
     persisted,

@@ -25,6 +25,9 @@ const generationPolicyBuilder = readFileSync("lib/factory/reelsBrainGenerationPo
 const creativeBriefSourceBuilder = readFileSync("lib/factory/reelsBrainCreativeBriefSource.ts", "utf8");
 const segmentStabilityAudit = readFileSync("app/api/factory/reels-brain/stability-audit/route.ts", "utf8");
 const segmentStabilityAuditBuilder = readFileSync("lib/factory/reelsBrainSegmentStabilityAudit.ts", "utf8");
+const analyzeBacklog = readFileSync("app/api/factory/jobs/reels-brain-analyze-backlog/route.ts", "utf8");
+const analyzeCompactionPolicy = readFileSync("lib/factory/reelsBrainAnalyzeCompactionPolicy.ts", "utf8");
+const patternBuild = readFileSync("app/api/factory/reels-brain/patterns/build/route.ts", "utf8");
 const cockpit = readFileSync("app/agent/reels-brain/ReelsBrainPixelCockpit.tsx", "utf8");
 const feedback = readFileSync("app/api/factory/reels-brain/feedback/route.ts", "utf8");
 const cron = readFileSync("app/api/factory/jobs/reels-brain-cron/route.ts", "utf8");
@@ -108,6 +111,8 @@ ok(/original_task/.test(cron) && /can_run_paid_collection/.test(cron), "cron rep
 ok(/loadLearningPlan/.test(cron) && /planned_task/.test(cron) && /collect_portfolio_gaps/.test(cron) && /planned_portfolio_segment/.test(cron), "cron consumes learning-plan and can execute portfolio-aware next ticks");
 ok(/buildReelsBrainCronExecutionIntent/.test(cron) && /execution_intent/.test(cron) && /support_primary_segment/.test(cronIntent), "cron executes learning-plan with policy-aware execution intent");
 ok(/execution_intent/.test(cron) && /execution_intent/.test(bulk) && /tuneBulkLaneByExecutionIntent/.test(bulk) && /support_primary_segment/.test(bulkExecutionPolicy), "bulk ingest consumes cron execution intent and tunes discovery lanes by policy");
+ok(/execution_intent/.test(cron) && /execution_intent/.test(analyzeBacklog) && /tuneAnalyzeLaneByExecutionIntent/.test(analyzeBacklog) && /support_primary_segment/.test(analyzeCompactionPolicy), "analyze backlog consumes execution intent and tunes compaction depth by policy");
+ok(/focus_platform/.test(patternBuild) && /compaction_context/.test(patternBuild) && /loadPatternSourceVideos/.test(patternBuild), "patterns/build exposes platform-biased compaction context for policy-aware memory rebuilds");
 ok(/function loadPipelineProgress/.test(cron) && /pipeline_preflight/.test(cron) && /reels-brain-audio-backfill/.test(cron), "cron runs pipeline preflight for media and audio backlog");
 ok(/media_ticks/.test(cron) && /audio_ticks/.test(cron) && /platform\",\s*String\(target\.platform/.test(cron), "cron preflight fans out media and audio backlog across top platforms");
 ok(/use_autopilot_guard/.test(scheduler), "scheduler marks paid collection as guarded");

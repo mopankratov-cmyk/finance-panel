@@ -8,6 +8,7 @@ import {
 } from "@/lib/factory/reelsBrainAutomation";
 import { isAuthorizedReelsBrainJobRequest } from "@/lib/factory/reelsBrainJobAuth";
 import { persistReelsBrainAutomationRun, summarizeReelsBrainAutomationRuns } from "@/lib/factory/reelsBrainAutomationRuns";
+import { parseAnalyzeExecutionIntent, summarizeAnalyzeExecutionIntent, tuneAnalyzeLaneByExecutionIntent } from "@/lib/factory/reelsBrainAnalyzeCompactionPolicy";
 import { parseShardConfig, stableBucketMatch } from "@/lib/factory/reelsBrainQueue";
 
 export const dynamic = "force-dynamic";
@@ -148,6 +149,7 @@ async function runAnalyzeBacklog(req: NextRequest, body: Record<string, unknown>
   const maxLanes = Math.max(1, Math.min(9, Number(body.max_lanes || req.nextUrl.searchParams.get("max_lanes") || (execute ? 3 : 9))));
   const limit = Math.max(1, Math.min(25, Number(body.limit || req.nextUrl.searchParams.get("limit") || 8)));
   const buildPatterns = parseBool(body.build_patterns ?? req.nextUrl.searchParams.get("build_patterns"), false);
+  const executionIntent = parseAnalyzeExecutionIntent(body.execution_intent);
   const { shardIndex, shardCount } = parseShardConfig({
     shardIndex: body.shard_index ?? req.nextUrl.searchParams.get("shard_index"),
     shardCount: body.shard_count ?? req.nextUrl.searchParams.get("shard_count"),
@@ -158,10 +160,23 @@ async function runAnalyzeBacklog(req: NextRequest, body: Record<string, unknown>
     .filter((lane) => lane.unanalyzed > 0)
     .filter((lane) => stableBucketMatch(`${lane.niche}:${lane.platform}`, shardIndex, shardCount))
     .slice(0, maxLanes)
-    .map((lane) => ({
-    ...lane,
-    analyze_limit: Math.min(limit, lane.unanalyzed),
-  }));
+    .map((lane) => {
+      const tunedLane = tuneAnalyzeLaneByExecutionIntent({
+        intent: executionIntent,
+        lane,
+        analyzeLimit: Math.min(limit, lane.unanalyzed),
+        buildPatterns,
+      });
+      return {
+        ...lane,
+        execution_strategy: tunedLane.strategy,
+        analyze_limit: tunedLane.analyze_limit,
+        tuned_build_patterns: tunedLane.build_patterns,
+        taxonomy_limit: tunedLane.taxonomy_limit,
+        pattern_limit: tunedLane.pattern_limit,
+        focus_platform: tunedLane.focus_platform,
+      };
+    });
 
   const origin = req.nextUrl.origin;
   const cookie = req.headers.get("cookie");
@@ -172,11 +187,11 @@ async function runAnalyzeBacklog(req: NextRequest, body: Record<string, unknown>
       const analyzeResponse = await internalFetch(`${origin}/api/factory/reels-brain/analyze`, {
         method: "POST",
         headers,
-        body: JSON.stringify({
-          niche: lane.niche,
-          platform: lane.platform,
-          limit: lane.analyze_limit,
-          dry_run: false,
+          body: JSON.stringify({
+            niche: lane.niche,
+            platform: lane.platform,
+            limit: lane.analyze_limit,
+            dry_run: false,
         }),
         signal: AbortSignal.timeout(115000),
       });
@@ -188,7 +203,7 @@ async function runAnalyzeBacklog(req: NextRequest, body: Record<string, unknown>
           headers,
           body: JSON.stringify({
             niches: lane.niche,
-            limit: Math.max(12, Math.min(50, lane.analyze_limit * 4)),
+            limit: lane.taxonomy_limit,
             promote_threshold: 3,
           }),
           signal: AbortSignal.timeout(60000),
@@ -196,11 +211,17 @@ async function runAnalyzeBacklog(req: NextRequest, body: Record<string, unknown>
         taxonomy = await taxonomyResponse.json().catch(() => ({}));
       }
       let patterns: unknown = null;
-      if (buildPatterns && analyzeResponse.ok) {
+      if (lane.tuned_build_patterns && analyzeResponse.ok) {
         const patternsResponse = await internalFetch(`${origin}/api/factory/reels-brain/patterns/build`, {
           method: "POST",
           headers,
-          body: JSON.stringify({ niche: lane.niche, limit: 600, persist: true }),
+          body: JSON.stringify({
+            niche: lane.niche,
+            platform: lane.focus_platform,
+            limit: lane.pattern_limit,
+            persist: true,
+            execution_intent: executionIntent,
+          }),
           signal: AbortSignal.timeout(60000),
         });
         patterns = await patternsResponse.json().catch(() => ({}));
@@ -233,7 +254,15 @@ async function runAnalyzeBacklog(req: NextRequest, body: Record<string, unknown>
         niche: lane.niche,
         platform: lane.platform,
         ok: analyzeResponse.ok && analyzeResult.ok !== false,
-        plan: { queries: [], source_limit: 0, analyze_limit: lane.analyze_limit },
+        plan: {
+          queries: [],
+          source_limit: 0,
+          analyze_limit: lane.analyze_limit,
+          execution_strategy: lane.execution_strategy,
+          taxonomy_limit: lane.taxonomy_limit,
+          pattern_limit: lane.pattern_limit,
+          focus_platform: lane.focus_platform,
+        },
         metrics: summarizeLoopResult({ analyze, patterns }),
         analyze: {
           ok: analyzeResult.ok,
@@ -279,6 +308,7 @@ async function runAnalyzeBacklog(req: NextRequest, body: Record<string, unknown>
     ok: true,
     mode: "analyze_backlog",
     execute,
+    execution_intent: summarizeAnalyzeExecutionIntent(executionIntent),
     niches,
     platforms,
     max_lanes: maxLanes,

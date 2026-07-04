@@ -371,6 +371,7 @@ export async function GET(req: NextRequest) {
         build_patterns: typeof planParams.build_patterns === "string" || typeof planParams.build_patterns === "boolean"
           ? ["1", "true", "yes", "on"].includes(String(planParams.build_patterns).toLowerCase())
           : Boolean(executionIntent.analyze_overrides?.build_patterns ?? adaptiveProfile.body.build_patterns),
+        execution_intent: executionIntent,
       };
 
     const response = await internalFetch(`${req.nextUrl.origin}${endpoint}`, {
