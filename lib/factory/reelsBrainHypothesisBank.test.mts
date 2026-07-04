@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { buildReelsBrainHypothesisBank } from "./reelsBrainHypothesisBank";
+import { buildGroupedReelsBrainHypothesisBanks, buildReelsBrainHypothesisBank } from "./reelsBrainHypothesisBank";
 
 function testBuildHypothesisBankRanksDecisionAndFeedback() {
   const bank = buildReelsBrainHypothesisBank([
@@ -68,8 +68,77 @@ function testBuildHypothesisBankRanksDecisionAndFeedback() {
   assert.ok(bank.cards[1]?.success_metric.includes("первый сильный сигнал"));
 }
 
+function testGroupedHypothesisBanksSplitByNicheAndPlatform() {
+  const grouped = buildGroupedReelsBrainHypothesisBanks({
+    patterns: [
+      {
+        id: "pattern_toys_tiktok",
+        title: "Toys TikTok",
+        hook: "Смотри что делает",
+        format: "demo",
+        retention: "open loop",
+        op_score: 91,
+        confidence: "high",
+        quality_gate: "high_confidence",
+        final_decision: "scale",
+        niches: ["ru_toys"],
+        platforms: ["tiktok"],
+        creative_brief: {
+          hook: "Смотри что делает",
+          retention_mechanic: "open loop",
+          visual_recipe: ["proof close-up"],
+          audio_strategy: ["fast voice"],
+          product_fit: ["toy demo"],
+        },
+        market_signal: {
+          status: "proven",
+          confidence: "high",
+          best_platform: "tiktok",
+          winners: 4,
+          total_posts: 6,
+        },
+      },
+      {
+        id: "pattern_cosmetics_instagram",
+        title: "Cosmetics Instagram",
+        hook: "Я не ожидала",
+        format: "review",
+        retention: "proof",
+        op_score: 82,
+        confidence: "medium",
+        quality_gate: "medium_confidence",
+        final_decision: "control",
+        niches: ["ru_cosmetics"],
+        platforms: ["instagram"],
+        creative_brief: {
+          hook: "Я не ожидала",
+          retention_mechanic: "proof",
+          visual_recipe: ["ugc review"],
+          audio_strategy: ["clean voice"],
+          product_fit: ["cosmetics review"],
+        },
+        market_signal: {
+          status: "promising",
+          confidence: "medium",
+          best_platform: "instagram",
+          winners: 1,
+          total_posts: 2,
+        },
+      },
+    ],
+    limit: 2,
+  });
+
+  assert.equal(grouped.by_niche.length, 2);
+  assert.equal(grouped.by_platform.length, 2);
+  assert.equal(grouped.by_niche[0]?.summary?.total, 1);
+  assert.equal(grouped.by_platform.find((row) => row.platform === "tiktok")?.cards[0]?.id, "pattern_toys_tiktok");
+  assert.equal(grouped.by_platform.find((row) => row.platform === "instagram")?.cards[0]?.id, "pattern_cosmetics_instagram");
+}
+
 function run() {
   testBuildHypothesisBankRanksDecisionAndFeedback();
+  testGroupedHypothesisBanksSplitByNicheAndPlatform();
   console.log("reelsBrainHypothesisBank.test: ok");
 }
 

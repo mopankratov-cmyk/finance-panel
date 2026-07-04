@@ -222,3 +222,30 @@ export function buildReelsBrainHypothesisBank(patterns: ReelsBrainDecisionPatter
     },
   };
 }
+
+export function buildGroupedReelsBrainHypothesisBanks(input: {
+  patterns: ReelsBrainDecisionPattern[];
+  niches?: string[];
+  platforms?: string[];
+  limit?: number;
+}) {
+  const patterns = input.patterns || [];
+  const niches = Array.from(new Set((input.niches || patterns.flatMap((pattern) => list(pattern.niches, 20))).filter(Boolean))).sort();
+  const platforms = Array.from(new Set((input.platforms || patterns.flatMap((pattern) => list(pattern.platforms, 20))).filter(Boolean))).sort();
+  return {
+    by_niche: niches.map((niche) => ({
+      niche,
+      ...buildReelsBrainHypothesisBank(
+        patterns.filter((pattern) => list(pattern.niches, 20).includes(niche)),
+        input.limit || 3,
+      ),
+    })).filter((row) => row.cards.length),
+    by_platform: platforms.map((platform) => ({
+      platform,
+      ...buildReelsBrainHypothesisBank(
+        patterns.filter((pattern) => list(pattern.platforms, 20).includes(platform)),
+        input.limit || 3,
+      ),
+    })).filter((row) => row.cards.length),
+  };
+}

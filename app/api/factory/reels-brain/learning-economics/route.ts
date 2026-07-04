@@ -3,7 +3,7 @@ import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { automationRunHistory } from "@/lib/factory/reelsBrainPlaybook";
 import { buildReelsBrainOperatingSystem, type ReelsBrainMetricRow } from "@/lib/factory/reelsBrainOperatingSystem";
 import { buildPatternOutcomeLayer } from "@/lib/factory/reelsBrainPatternOutcome";
-import { buildReelsBrainHypothesisBank } from "@/lib/factory/reelsBrainHypothesisBank";
+import { buildGroupedReelsBrainHypothesisBanks, buildReelsBrainHypothesisBank } from "@/lib/factory/reelsBrainHypothesisBank";
 import { buildGroupedReelsBrainActionPacks, buildReelsBrainActionPack } from "@/lib/factory/reelsBrainActionPack";
 
 export const dynamic = "force-dynamic";
@@ -2269,6 +2269,12 @@ export async function GET(req: NextRequest) {
       patternDecisionLayer.pattern_details as unknown as Array<Parameters<typeof buildReelsBrainHypothesisBank>[0][number]>,
       compactMode ? 6 : 10,
     );
+    const groupedHypothesisBank = buildGroupedReelsBrainHypothesisBanks({
+      patterns: patternDecisionLayer.pattern_details as unknown as Array<Parameters<typeof buildGroupedReelsBrainHypothesisBanks>[0]["patterns"][number]>,
+      niches: nicheSummaries.map((row) => row.niche),
+      platforms: ["tiktok", "instagram", "youtube"],
+      limit: compactMode ? 2 : 3,
+    });
     const actionPack = buildReelsBrainActionPack(
       patternDecisionLayer.pattern_details as unknown as Array<Parameters<typeof buildReelsBrainActionPack>[0][number]>,
       compactMode ? 4 : 6,
@@ -2303,6 +2309,7 @@ export async function GET(req: NextRequest) {
       audio_brain: audioBrain,
       audio_visual_readiness: audioVisualReadiness,
       hypothesis_bank: hypothesisBank,
+      hypothesis_bank_groups: groupedHypothesisBank,
       action_pack: actionPack,
       action_pack_groups: groupedActionPacks,
       feedback_warning: feedbackRows.warning,

@@ -809,6 +809,57 @@ type LearningEconomicsResponse = {
       no_feedback?: number;
     };
   };
+  hypothesis_bank_groups?: {
+    by_niche?: {
+      niche: string;
+      cards: {
+        id: string;
+        title: string;
+        platform_focus: string[];
+        niche_focus: string[];
+        decision: "scale" | "control" | "watch";
+        market_status: "proven" | "promising" | "weak" | "no_feedback";
+        confidence: "high" | "medium" | "low";
+        priority_score: number;
+        hypothesis: string;
+        why_now: string[];
+        test_plan: string[];
+        success_metric: string;
+        guardrails: string[];
+      }[];
+      summary?: {
+        total?: number;
+        scale?: number;
+        control?: number;
+        watch?: number;
+      };
+    }[];
+    by_platform?: {
+      platform: string;
+      cards: {
+        id: string;
+        title: string;
+        platform_focus: string[];
+        niche_focus: string[];
+        decision: "scale" | "control" | "watch";
+        market_status: "proven" | "promising" | "weak" | "no_feedback";
+        confidence: "high" | "medium" | "low";
+        priority_score: number;
+        hypothesis: string;
+        why_now: string[];
+        test_plan: string[];
+        success_metric: string;
+        guardrails: string[];
+      }[];
+      summary?: {
+        total?: number;
+        proven?: number;
+        promising?: number;
+        weak?: number;
+        no_feedback?: number;
+      };
+    }[];
+  };
   action_pack?: {
     primary?: {
       rank: number;
@@ -1556,6 +1607,7 @@ export default function ReelsBrainPage() {
   const generatorRecipes = learningEconomics?.insights?.recipes || [];
   const patternDetails = learningEconomics?.pattern_details || [];
   const hypothesisBank = learningEconomics?.hypothesis_bank || null;
+  const hypothesisBankGroups = learningEconomics?.hypothesis_bank_groups || null;
   const actionPack = learningEconomics?.action_pack || null;
   const actionPackGroups = learningEconomics?.action_pack_groups || null;
   const patternDetailById = new Map(patternDetails.map((item) => [item.id, item]));
@@ -3173,6 +3225,86 @@ export default function ReelsBrainPage() {
                 );
               }) : <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-500">Hypothesis bank появится после роста pattern-memory.</div>}
             </div>
+            {hypothesisBankGroups?.by_niche?.length ? (
+              <div className="mt-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">By niche</p>
+                    <h5 className="mt-1 text-sm font-black text-slate-950">Какие гипотезы мозг советует по нишам</h5>
+                  </div>
+                  <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-bold text-slate-500">
+                    {compactNumber(hypothesisBankGroups.by_niche.length)} niche banks
+                  </span>
+                </div>
+                <div className="mt-3 grid gap-3 lg:grid-cols-3">
+                  {hypothesisBankGroups.by_niche.slice(0, 3).map((group) => {
+                    const top = group.cards?.[0];
+                    return (
+                      <div key={`hypo-niche:${group.niche}`} className="rounded-2xl border border-slate-200 bg-white p-4">
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-400">{NICHE_LABELS[group.niche] || group.niche || "Mixed niche"}</p>
+                            <h5 className="mt-1 text-sm font-black leading-5 text-slate-950">{top?.title || "Ждем niche hypothesis"}</h5>
+                          </div>
+                          <span className="shrink-0 rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-black text-slate-700">
+                            {compactNumber(top?.priority_score)}
+                          </span>
+                        </div>
+                        {top ? (
+                          <>
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-black ${decisionCopy(top.decision).tone}`}>{decisionCopy(top.decision).label}</span>
+                              <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-black ${marketSignalCopy(top.market_status).tone}`}>{marketSignalCopy(top.market_status).label}</span>
+                            </div>
+                            <p className="mt-3 text-xs leading-5 text-slate-600">{top.hypothesis}</p>
+                          </>
+                        ) : null}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null}
+            {hypothesisBankGroups?.by_platform?.length ? (
+              <div className="mt-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">By platform</p>
+                    <h5 className="mt-1 text-sm font-black text-slate-950">Какие гипотезы мозг советует по платформам</h5>
+                  </div>
+                  <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-bold text-slate-500">
+                    {compactNumber(hypothesisBankGroups.by_platform.length)} platform banks
+                  </span>
+                </div>
+                <div className="mt-3 grid gap-3 lg:grid-cols-3">
+                  {hypothesisBankGroups.by_platform.slice(0, 3).map((group) => {
+                    const top = group.cards?.[0];
+                    return (
+                      <div key={`hypo-platform:${group.platform}`} className="rounded-2xl border border-slate-200 bg-white p-4">
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-400">{titlePlatform(group.platform || "tiktok")}</p>
+                            <h5 className="mt-1 text-sm font-black leading-5 text-slate-950">{top?.title || "Ждем platform hypothesis"}</h5>
+                          </div>
+                          <span className="shrink-0 rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-black text-slate-700">
+                            {compactNumber(top?.priority_score)}
+                          </span>
+                        </div>
+                        {top ? (
+                          <>
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-black ${decisionCopy(top.decision).tone}`}>{decisionCopy(top.decision).label}</span>
+                              <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-black ${marketSignalCopy(top.market_status).tone}`}>{marketSignalCopy(top.market_status).label}</span>
+                            </div>
+                            <p className="mt-3 text-xs leading-5 text-slate-600">{top.hypothesis}</p>
+                          </>
+                        ) : null}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null}
           </div>
 
           <div className="mt-4 grid gap-4 xl:grid-cols-2">

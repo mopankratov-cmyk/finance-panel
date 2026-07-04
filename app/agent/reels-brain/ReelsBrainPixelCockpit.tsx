@@ -256,6 +256,7 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
     const patternDetails = (learning?.pattern_details || []) as JsonRecord[];
     const patternOutcomeSummary = (learning?.pattern_outcome_summary || {}) as JsonRecord;
     const hypothesisBank = (learning?.hypothesis_bank || {}) as JsonRecord;
+    const hypothesisBankGroups = (learning?.hypothesis_bank_groups || {}) as JsonRecord;
     const actionPack = (learning?.action_pack || {}) as JsonRecord;
     const actionPackGroups = (learning?.action_pack_groups || {}) as JsonRecord;
     const nicheComparison = (learning?.niche_comparison || []) as JsonRecord[];
@@ -703,6 +704,7 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
       patternOutcomeSummary,
       patternDetailById,
       hypothesisBank,
+      hypothesisBankGroups,
       actionPack,
       actionPackGroups,
       nicheComparison,
@@ -2011,6 +2013,50 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
                   <p>Сначала нужно больше паттернов с trust и market feedback, затем мозг начнёт ранжировать гипотезы сам.</p>
                 </div>
               )}
+              {((vm.hypothesisBankGroups.by_niche || []) as JsonRecord[]).length ? (
+                <div style={{ marginTop: 16 }}>
+                  <div className="rb-overline" style={{ color: "#0891b2" }}>По нишам</div>
+                  <div className="rb-three" style={{ marginTop: 10 }}>
+                    {((vm.hypothesisBankGroups.by_niche || []) as JsonRecord[]).slice(0, 3).map((group, index) => {
+                      const top = ((group.cards || []) as JsonRecord[])[0] || {};
+                      return (
+                        <div className="rb-pattern" key={`grouped-hypo-niche:${group.niche || index}`}>
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                            <div className="rb-pill">{NICHE_LABELS[group.niche] || group.niche || "mixed"}</div>
+                            <div className="rb-pill" style={{ background: decisionTone(String(top.decision || "watch")).bg, borderColor: decisionTone(String(top.decision || "watch")).bd, color: decisionTone(String(top.decision || "watch")).fg }}>
+                              {decisionTone(String(top.decision || "watch")).label}
+                            </div>
+                          </div>
+                          <h3 style={{ marginTop: 10 }}>{top.title || "Ждём niche hypothesis"}</h3>
+                          <p style={{ color: "#0f172a", fontWeight: 600 }}>{top.hypothesis || "Нужно больше trust-ranked pattern details."}</p>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : null}
+              {((vm.hypothesisBankGroups.by_platform || []) as JsonRecord[]).length ? (
+                <div style={{ marginTop: 16 }}>
+                  <div className="rb-overline" style={{ color: "#0891b2" }}>По платформам</div>
+                  <div className="rb-three" style={{ marginTop: 10 }}>
+                    {((vm.hypothesisBankGroups.by_platform || []) as JsonRecord[]).slice(0, 3).map((group, index) => {
+                      const top = ((group.cards || []) as JsonRecord[])[0] || {};
+                      return (
+                        <div className="rb-pattern" key={`grouped-hypo-platform:${group.platform || index}`}>
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                            <div className="rb-pill">{group.platform || "mixed"}</div>
+                            <div className="rb-pill" style={{ background: marketSignalTone(String(top.market_status || "no_feedback")).bg, borderColor: marketSignalTone(String(top.market_status || "no_feedback")).bd, color: marketSignalTone(String(top.market_status || "no_feedback")).fg }}>
+                              {marketSignalTone(String(top.market_status || "no_feedback")).label}
+                            </div>
+                          </div>
+                          <h3 style={{ marginTop: 10 }}>{top.title || "Ждём platform hypothesis"}</h3>
+                          <p style={{ color: "#0f172a", fontWeight: 600 }}>{top.hypothesis || "Нужно больше trust-ranked pattern details."}</p>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : null}
             </div>
           </div>
           <div>
