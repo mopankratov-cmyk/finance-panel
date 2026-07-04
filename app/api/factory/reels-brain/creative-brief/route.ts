@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { selectCreativeBriefBrainWithTrust } from "@/lib/factory/reelsBrainCreativeBrief";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 20;
@@ -54,6 +55,8 @@ type AntiPattern = {
   avg_relevance_score?: number;
   action?: string;
 };
+
+type TrustDecision = ReturnType<typeof selectCreativeBriefBrainWithTrust>;
 
 function num(value: unknown): number {
   const parsed = Number(value);
@@ -234,6 +237,7 @@ function buildBrief(
   platform: string,
   crossPattern: CrossPlatformPattern | null,
   antiPatterns: AntiPattern[],
+  trustDecision: TrustDecision,
 ) {
   const productFitNotes = productFit(productType, niche, pattern);
   const examples = topExamples(pattern, 3);
@@ -244,7 +248,12 @@ function buildBrief(
     product_type: productType || "любой товар с визуальным proof",
     pattern_id: pattern.pattern_id || `${pattern.hook_type || "hook"}:${pattern.structure_type || "format"}:${pattern.retention_mechanism || "retention"}`,
     op_score: score(pattern),
-    confidence_gate: confidenceGate(pattern),
+    confidence_gate: trustDecision.recommended_mode === "research_only"
+      ? "experimental"
+      : trustDecision.recommended_mode === "control_only" && confidenceGate(pattern) === "high_confidence"
+        ? "medium_confidence"
+        : confidenceGate(pattern),
+    trust_mode: trustDecision.recommended_mode,
     creative_brief: {
       hook: text(pattern.hook_label || pattern.hook_type || "сильный хук"),
       retention_mechanic: text(pattern.retention_label || pattern.retention_mechanism || "ожидание доказательства"),
@@ -269,6 +278,17 @@ function buildBrief(
       quality_reasons: Array.isArray(pattern.quality_reasons) ? pattern.quality_reasons : [],
       rationale: rationale(pattern, crossPattern),
       anti_pattern_warnings: antiPatternWarnings(antiPatterns),
+      trust_decision: {
+        selected_scope: trustDecision.selected_scope,
+        allow_primary_use: trustDecision.allow_primary_use,
+        recommended_mode: trustDecision.recommended_mode,
+        score: trustDecision.trust.score,
+        status: trustDecision.trust.status,
+        confidence: trustDecision.trust.confidence,
+        reasons: trustDecision.reasons,
+        why_ready: trustDecision.trust.why_ready,
+        why_not_yet: trustDecision.trust.why_not_yet,
+      },
       cross_platform_support: crossPattern
         ? {
             platforms: Array.isArray(crossPattern.platforms) ? crossPattern.platforms : [],
@@ -312,15 +332,17 @@ export async function GET(req: NextRequest) {
     const platformBrains = (root.platform_brains || {}) as Record<string, { generator_ready_patterns?: Pattern[]; patterns?: Pattern[]; anti_patterns?: AntiPattern[] }>;
     const crossPlatformPatterns = Array.isArray(root.cross_platform_patterns) ? root.cross_platform_patterns as CrossPlatformPattern[] : [];
     const meta = (root.meta_brain || {}) as { generator_ready_patterns?: Pattern[]; patterns?: Pattern[]; anti_patterns?: AntiPattern[] };
+    const trustDecision = selectCreativeBriefBrainWithTrust({ playbook, platform });
 
-    const platformPatterns = platform && platformBrains[platform]
+    const usePlatform = trustDecision.selected_scope === "platform" && platform && platformBrains[platform];
+    const platformPatterns = usePlatform
       ? (platformBrains[platform].generator_ready_patterns?.length
         ? platformBrains[platform].generator_ready_patterns
         : platformBrains[platform].patterns) || []
       : [];
     const fallbackPatterns = meta.generator_ready_patterns?.length ? meta.generator_ready_patterns : meta.patterns || [];
     const patterns = platformPatterns.length ? platformPatterns : fallbackPatterns;
-    const antiPatterns = platform && platformBrains[platform]?.anti_patterns?.length
+    const antiPatterns = usePlatform && platformBrains[platform]?.anti_patterns?.length
       ? platformBrains[platform].anti_patterns || []
       : meta.anti_patterns || [];
     const best = bestPatternFromList(patterns);
@@ -339,8 +361,9 @@ export async function GET(req: NextRequest) {
         structure_type: best.structure_type || null,
         retention_mechanism: best.retention_mechanism || null,
         quality_label: best.quality_label || null,
+        trust_scope: trustDecision.selected_scope,
       },
-      ...buildBrief(best, niche, productType, platform, crossPattern, antiPatterns),
+      ...buildBrief(best, niche, productType, platform, crossPattern, antiPatterns, trustDecision),
     }, { headers: { "Cache-Control": "no-store" } });
   } catch (e) {
     return NextResponse.json({ error: "creative-brief reels-brain упал: " + String((e as Error)?.message || e).slice(0, 180) }, { status: 500 });
