@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { selectCreativeBriefBrainWithTrust } from "@/lib/factory/reelsBrainCreativeBrief";
+import type { ReelsBrainMetricRow } from "@/lib/factory/reelsBrainOperatingSystem";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 20;
@@ -326,13 +327,17 @@ export async function GET(req: NextRequest) {
       .eq("niche", niche)
       .limit(1);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    const { data: feedbackRows } = await db
+      .from("post_metrics")
+      .select("recipe_id,platform,views,watch_rate,hook_rate,hold_rate,completion_rate,ctr_card,saves,marketplace_orders,revenue,posted_at,pulled_at")
+      .limit(300);
 
     const playbook = ((data as { playbook?: Record<string, unknown> }[] | null)?.[0]?.playbook || {}) as Record<string, unknown>;
     const root = (playbook.reels_brain_patterns || {}) as Record<string, unknown>;
     const platformBrains = (root.platform_brains || {}) as Record<string, { generator_ready_patterns?: Pattern[]; patterns?: Pattern[]; anti_patterns?: AntiPattern[] }>;
     const crossPlatformPatterns = Array.isArray(root.cross_platform_patterns) ? root.cross_platform_patterns as CrossPlatformPattern[] : [];
     const meta = (root.meta_brain || {}) as { generator_ready_patterns?: Pattern[]; patterns?: Pattern[]; anti_patterns?: AntiPattern[] };
-    const trustDecision = selectCreativeBriefBrainWithTrust({ playbook, platform });
+    const trustDecision = selectCreativeBriefBrainWithTrust({ playbook, platform, feedbackRows: ((feedbackRows || []) as ReelsBrainMetricRow[]) });
 
     const usePlatform = trustDecision.selected_scope === "platform" && platform && platformBrains[platform];
     const platformPatterns = usePlatform

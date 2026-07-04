@@ -1,5 +1,6 @@
-import { buildPatternTrustSummary, type ReelsBrainPatternTrust } from "./reelsBrainTrust";
+import { buildOutcomeSignal, buildPatternTrustSummary, type ReelsBrainPatternTrust } from "./reelsBrainTrust";
 import { corpusQualityGate } from "./reelsBrainPlaybook";
+import type { ReelsBrainMetricRow } from "./reelsBrainOperatingSystem";
 
 export type CreativeBriefPattern = {
   pattern_id?: string;
@@ -63,6 +64,7 @@ function metaLikeGate(platformTrusts: ReelsBrainPatternTrust[]) {
 export function selectCreativeBriefBrainWithTrust(input: {
   playbook: Record<string, unknown>;
   platform: string;
+  feedbackRows?: ReelsBrainMetricRow[];
 }): CreativeBriefTrustDecision {
   const platform = String(input.platform || "").trim().toLowerCase();
   const root = (input.playbook.reels_brain_patterns || {}) as Record<string, unknown>;
@@ -71,6 +73,7 @@ export function selectCreativeBriefBrainWithTrust(input: {
   const metaBrain = asBrain(root.meta_brain) || asBrain(root);
 
   const platformGate = platform ? corpusQualityGate(input.playbook, platform as "tiktok" | "instagram" | "youtube") : null;
+  const platformOutcome = platform ? buildOutcomeSignal(input.feedbackRows || [], platform as "tiktok" | "instagram" | "youtube") : null;
   const platformTrust = exactBrain
     ? buildPatternTrustSummary(exactBrain as any, {
         platform: (platform || "tiktok") as any,
@@ -85,7 +88,7 @@ export function selectCreativeBriefBrainWithTrust(input: {
         winners: 0,
         gates: platformGate || undefined,
         missing: [],
-      } as any, platformGate || undefined)
+      } as any, platformGate || undefined, platformOutcome)
     : null;
 
   const allPlatformTrusts = Object.entries(platformBrains)
@@ -93,6 +96,7 @@ export function selectCreativeBriefBrainWithTrust(input: {
       const brain = asBrain(value);
       if (!brain) return null;
       const gate = corpusQualityGate(input.playbook, key as "tiktok" | "instagram" | "youtube");
+      const outcome = buildOutcomeSignal(input.feedbackRows || [], key as "tiktok" | "instagram" | "youtube");
       return buildPatternTrustSummary(brain as any, {
         platform: key as any,
         ready:
@@ -106,10 +110,11 @@ export function selectCreativeBriefBrainWithTrust(input: {
         winners: 0,
         gates: gate,
         missing: [],
-      } as any, gate);
+      } as any, gate, outcome);
     })
     .filter(Boolean) as ReelsBrainPatternTrust[];
 
+  const metaOutcome = buildOutcomeSignal(input.feedbackRows || [], "all");
   const fallbackTrust = metaBrain
     ? buildPatternTrustSummary(metaBrain as any, {
         platform: "tiktok" as any,
@@ -121,7 +126,7 @@ export function selectCreativeBriefBrainWithTrust(input: {
         winners: 0,
         gates: metaLikeGate(allPlatformTrusts),
         missing: [],
-      } as any, metaLikeGate(allPlatformTrusts))
+      } as any, metaLikeGate(allPlatformTrusts), metaOutcome)
     : null;
 
   const usePlatform = !!platformTrust && (

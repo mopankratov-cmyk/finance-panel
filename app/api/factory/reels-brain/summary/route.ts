@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { buildReelsBrainPlatformSummary } from "@/lib/factory/reelsBrainSummary";
-import { buildNicheTrustSummary, buildPatternTrustSummary } from "@/lib/factory/reelsBrainTrust";
+import { buildNicheTrustSummary, buildOutcomeSignal, buildPatternTrustSummary } from "@/lib/factory/reelsBrainTrust";
 import {
   assessTrainingReadiness,
   automationRunHistory,
@@ -18,6 +18,7 @@ import {
 } from "@/lib/factory/reelsBrainPlaybook";
 import type { ReelsPlatform } from "@/lib/factory/reelsBrain";
 import type { ReelsPatternMemory } from "@/lib/factory/reelsBrainPatterns";
+import type { ReelsBrainMetricRow } from "@/lib/factory/reelsBrainOperatingSystem";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 20;
@@ -58,7 +59,12 @@ export async function GET(req: NextRequest) {
     const niche = String(req.nextUrl.searchParams.get("niche") || "").trim();
     if (!niche) return NextResponse.json({ error: "нужна niche" }, { status: 400 });
 
-    const [{ data: videos, error: videosError }, { data: winners, error: winnersError }, { data: playbookRows, error: playbookError }] = await Promise.all([
+    const [
+      { data: videos, error: videosError },
+      { data: winners, error: winnersError },
+      { data: playbookRows, error: playbookError },
+      { data: feedbackRows, error: feedbackError },
+    ] = await Promise.all([
       db.from("viral_videos")
         .select("platform,virality_score,analyzed,hook_text,format_detected,sound_title,source_orbit_id")
         .eq("niche", niche)
@@ -75,9 +81,13 @@ export async function GET(req: NextRequest) {
         .eq("niche", niche)
         .order("updated_at", { ascending: false })
         .limit(1),
+      db.from("post_metrics")
+        .select("recipe_id,platform,views,watch_rate,hook_rate,hold_rate,completion_rate,ctr_card,saves,marketplace_orders,revenue,posted_at,pulled_at")
+        .limit(300),
     ]);
 
     if (videosError) return NextResponse.json({ error: videosError.message }, { status: 500 });
+    const metricRows = feedbackError ? [] : (((feedbackRows || []) as ReelsBrainMetricRow[]));
     const playbook = (playbookRows as { playbook?: unknown }[] | null)?.[0]?.playbook;
     const patternCounts = playbookError ? {} : patternCountsFromPlaybook(playbook);
     const playbookRoot = rec(playbook);
@@ -97,13 +107,15 @@ export async function GET(req: NextRequest) {
         winners: platform.winners,
       });
       const brain = asBrain(platformBrains[platform.platform]);
+      const outcome = buildOutcomeSignal(metricRows, platform.platform);
       return {
         ...platform,
         relearn_policy: sourceRelearnPolicy(playbook, platform.platform),
         quality_gates: qualityGates,
         recommended_queries: recommendSourceQueries(playbook, niche, platform.platform),
         training_readiness: trainingReadiness,
-        trust: buildPatternTrustSummary(brain, trainingReadiness, qualityGates),
+        outcome_signal: outcome,
+        trust: buildPatternTrustSummary(brain, trainingReadiness, qualityGates, outcome),
         provider_history: sourceProviderHistory(playbook, platform.platform).slice(0, 5),
         query_leaderboard: queryLeaderboard(playbook, platform.platform).slice(0, 5),
         suppressed_queries: suppressedSourceQueries(playbook, platform.platform).slice(0, 5),
@@ -144,6 +156,7 @@ export async function GET(req: NextRequest) {
       min_patterns: acc.min_patterns + Number(platform.quality_gates?.min_patterns || 0),
       min_winners: acc.min_winners + Number(platform.quality_gates?.min_winners || 0),
     }), { min_videos: 0, min_analyzed: 0, min_patterns: 0, min_winners: 0 });
+    const metaOutcome = buildOutcomeSignal(metricRows, "all");
     const metaReadiness = {
       platform: "tiktok" as const,
       ready:
@@ -169,6 +182,7 @@ export async function GET(req: NextRequest) {
       meta_brain: metaBrain,
       readiness: metaReadiness,
       gates: metaReadiness.gates,
+      outcome: metaOutcome,
       platforms: platformsWithAlerts.map((platform) => ({
         platform: platform.platform,
         trust: platform.trust,
@@ -195,7 +209,7 @@ export async function GET(req: NextRequest) {
       source_provider_history: sourceProviderHistory(playbook).slice(0, 15),
       incidents: incidentHistory(playbook).slice(0, 20),
       automation_history: automationRunHistory(playbook).slice(0, 10),
-      warnings: [winnersError?.message, playbookError?.message].filter(Boolean),
+      warnings: [winnersError?.message, playbookError?.message, feedbackError?.message].filter(Boolean),
     }, { headers: { "Cache-Control": "no-store" } });
   } catch (e) {
     return NextResponse.json({ error: "summary reels-brain упал: " + String((e as Error)?.message || e).slice(0, 160) }, { status: 500 });

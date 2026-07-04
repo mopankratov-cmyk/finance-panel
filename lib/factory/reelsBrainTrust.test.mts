@@ -1,4 +1,4 @@
-import { buildNicheTrustSummary, buildPatternTrustSummary } from "./reelsBrainTrust";
+import { buildNicheTrustSummary, buildOutcomeSignal, buildPatternTrustSummary } from "./reelsBrainTrust";
 
 let pass = 0, fail = 0;
 function ok(c: boolean, m: string) { if (c) pass++; else { fail++; console.error("✗", m); } }
@@ -38,6 +38,24 @@ function eq(a: unknown, b: unknown, m: string) { ok(JSON.stringify(a) === JSON.s
 }
 
 {
+  const outcome = buildOutcomeSignal([
+    { platform: "tiktok", views: 22000, completion_rate: 0.49, ctr_card: 0.022, marketplace_orders: 2 },
+    { platform: "tiktok", views: 14000, completion_rate: 0.41, ctr_card: 0.018, saves: 80 },
+  ], "tiktok");
+  eq(outcome.status, "proven", "outcome: strong posts produce proven signal");
+  eq(outcome.confidence, "medium", "outcome: two posts give medium confidence");
+}
+
+{
+  const outcome = buildOutcomeSignal([
+    { platform: "instagram", views: 700, completion_rate: 0.12, ctr_card: 0.004 },
+    { platform: "instagram", views: 820, completion_rate: 0.18, ctr_card: 0.006 },
+  ], "instagram");
+  eq(outcome.status, "weak", "outcome: weak posts degrade signal");
+  ok(outcome.losers >= 2, "outcome: weak posts counted as losers");
+}
+
+{
   const trust = buildPatternTrustSummary({
     niche: "ru_clothing",
     platform: "instagram",
@@ -61,12 +79,25 @@ function eq(a: unknown, b: unknown, m: string) { ok(JSON.stringify(a) === JSON.s
     winners: 0,
     gates: { min_videos: 30, min_analyzed: 12, min_patterns: 4, min_winners: 2 },
     missing: ["videos", "patterns", "winners"],
+  }, undefined, {
+    platform: "instagram",
+    total_posts: 3,
+    winners: 0,
+    losers: 2,
+    avg_completion_rate: 0.16,
+    avg_ctr: 0.004,
+    total_orders: 0,
+    total_revenue: 0,
+    score: 18,
+    confidence: "medium",
+    status: "weak",
   });
 
   ok(trust.score < 50, "trust: thin brain scores low");
   eq(trust.status, "weak", "trust: thin brain is weak");
   eq(trust.confidence, "low", "trust: thin brain confidence low");
   ok(trust.why_not_yet.some((item) => item.includes("generator-ready")), "trust: explains why not ready");
+  ok(trust.why_not_yet.some((item) => item.includes("market feedback")), "trust: outcome weakness surfaces in reasons");
 }
 
 {
