@@ -834,7 +834,7 @@ export async function fetchReelsBrainProvider(provider: ReelsBrainProvider, quer
   }
   try {
     if (
-      (provider === "apify_tiktok" || provider === "apify_youtube" || provider === "apify_instagram")
+      (provider === "apify_tiktok" || provider === "apify_youtube" || provider === "apify_instagram" || provider === "youtube")
       && syntheticDirectUrlInput(query).length
     ) {
       return {

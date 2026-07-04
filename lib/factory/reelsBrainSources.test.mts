@@ -55,6 +55,30 @@ function eq(a: unknown, b: unknown, m: string) { ok(JSON.stringify(a) === JSON.s
 }
 
 {
+  const original = {
+    YOUTUBE_API_KEY: process.env.YOUTUBE_API_KEY,
+    GOOGLE_YOUTUBE_API_KEY: process.env.GOOGLE_YOUTUBE_API_KEY,
+  };
+  process.env.YOUTUBE_API_KEY = "youtube-demo-key";
+  delete process.env.GOOGLE_YOUTUBE_API_KEY;
+
+  const direct = await fetchReelsBrainProvider(
+    "youtube",
+    "https://www.youtube.com/shorts/ABC123XYZ99",
+    5,
+  );
+
+  eq(direct.videos.length, 1, "direct url: youtube provider short-circuits to exact shorts URL seed");
+  eq(direct.videos[0]?.url, "https://www.youtube.com/shorts/ABC123XYZ99", "direct url: keeps original youtube shorts URL");
+  eq(direct.videos[0]?.platform, "youtube", "direct url: infers youtube platform from URL");
+
+  for (const [key, value] of Object.entries(original)) {
+    if (value == null) delete process.env[key];
+    else process.env[key] = value;
+  }
+}
+
+{
   const summary = summarizeProviderQuality("apify", "water gun", [
     {
       url: "https://www.tiktok.com/@a/video/1?utm_source=x",
