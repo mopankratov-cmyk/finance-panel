@@ -1,4 +1,5 @@
 // Reels Brain provider bake-off summary. Run: npx tsx lib/factory/reelsBrainSources.test.mts
+import { readFileSync } from "node:fs";
 import {
   availableReelsBrainProviders,
   fetchReelsBrainProvider,
@@ -294,6 +295,13 @@ function eq(a: unknown, b: unknown, m: string) { ok(JSON.stringify(a) === JSON.s
   eq(bestByPlatform.tiktok?.provider, "apify_tiktok", "best-by-platform: tiktok winner selected");
   eq(bestByPlatform.instagram?.provider, "apify_instagram", "best-by-platform: instagram winner selected");
   eq(bestByPlatform.youtube, null, "best-by-platform: null when platform has no usable rows");
+}
+
+{
+  const source = readFileSync("lib/factory/reelsBrainSources.ts", "utf8");
+  ok(/function instagramRowHasVideoSignal/.test(source), "instagram sources: video-signal helper exists");
+  ok(/provider === "bright_instagram_post"[\s\S]*instagramRowHasVideoSignal/.test(source), "instagram sources: bright_instagram_post is filtered by video signal");
+  ok(/const \{ input, params \} = brightInstagramInputs[\s\S]*instagramRowHasVideoSignal/.test(source), "instagram sources: bright_instagram profile fetch is filtered by video signal");
 }
 
 console.log(`\nreelsBrainSources: ${pass} passed, ${fail} failed`);
