@@ -27,6 +27,7 @@ ok(/const chronologicalRuns = \[\.\.\.runs\]\.sort/.test(economics) && /const ti
 ok(/function buildAudioVisualReadiness/.test(economics) && /audio_visual_readiness: audioVisualReadiness/.test(economics), "learning-economics exposes audio/deep-worker readiness from corpus metadata");
 ok(/ready_for_worker/.test(cockpit) && /with_media_locators/.test(cockpit) && /audioVisualSummary/.test(cockpit), "cockpit surfaces audio/deep-worker readiness summary");
 ok(/\/api\/factory\/reels-brain\/progress/.test(cockpit) && /Platform Backlogs/.test(cockpit) && /pipelinePlatforms/.test(cockpit), "cockpit surfaces pipeline progress and per-platform backlog health");
+ok(/\/api\/factory\/reels-brain\/health/.test(cockpit) && /Live Ops/.test(cockpit) && /incidentTimeline/.test(cockpit), "cockpit surfaces health state and incident timeline");
 
 ok(/internalFetch/.test(actions), "autopilot-actions reads learning-economics internally");
 ok(/\/api\/factory\/reels-brain\/learning-economics/.test(actions), "autopilot-actions points at learning-economics route");
@@ -53,6 +54,7 @@ ok(/\/api\/factory\/post-metrics/.test(feedback), "feedback route writes through
 ok(/function loadAutopilotGuard/.test(cron), "cron has an autopilot guard");
 ok(/original_task/.test(cron) && /can_run_paid_collection/.test(cron), "cron reports guard enforcement");
 ok(/function loadPipelineProgress/.test(cron) && /pipeline_preflight/.test(cron) && /reels-brain-audio-backfill/.test(cron), "cron runs pipeline preflight for media and audio backlog");
+ok(/media_ticks/.test(cron) && /audio_ticks/.test(cron) && /platform\",\s*String\(target\.platform/.test(cron), "cron preflight fans out media and audio backlog across top platforms");
 ok(/use_autopilot_guard/.test(scheduler), "scheduler marks paid collection as guarded");
 
 ok(/costGovernor/.test(cockpit) && /autopilotActions/.test(cockpit), "cockpit reads cost governor and autopilot actions");
@@ -61,6 +63,6 @@ ok(/nextLayers/.test(cockpit), "cockpit reads next intelligence layers");
 ok(/selectedPattern/.test(cockpit) && /rb-drawer/.test(cockpit), "cockpit exposes pattern creative brief drawer");
 ok(/rb-click/.test(cockpit) && /setSelectedPattern/.test(cockpit), "cockpit pattern cards are inspectable");
 ok(/sort\(\(a, b\) => String\(a\.created_at \|\| \"\"\)\.localeCompare\(String\(b\.created_at \|\| \"\"\)\)\)\s*\.slice\(-8\)\s*\.reverse\(\)/.test(cockpit), "cockpit stores latest learning runs first");
-ok(/vm\.timeline\.slice\(0, 6\)/.test(cockpit), "cockpit renders newest six learning runs instead of stale tail");
+ok(/vm\.runTimeline\.slice\(0, 6\)/.test(cockpit), "cockpit renders newest six live run events instead of stale tail");
 
 console.log("reelsBrainCostGovernorContract: passed");

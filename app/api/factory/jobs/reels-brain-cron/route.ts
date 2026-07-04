@@ -115,54 +115,75 @@ async function runPipelinePreflight(req: NextRequest, input: {
 }) {
   const totals = rec(input.progress.data?.totals);
   const platforms = Array.isArray(input.progress.data?.platforms) ? input.progress.data?.platforms.map((row) => rec(row)) : [];
-  const instagram = platforms.find((row) => String(row.platform || "") === "instagram") || {};
-  const youtube = platforms.find((row) => String(row.platform || "") === "youtube") || {};
-  const mediaTarget = Number(instagram.media_backlog || 0) > 0 ? "instagram" : Number(youtube.media_backlog || 0) > 0 ? "youtube" : "";
+  const mediaTargets = [...platforms]
+    .filter((row) => Number(row.media_backlog || 0) > 0)
+    .sort((a, b) => Number(b.media_backlog || 0) - Number(a.media_backlog || 0))
+    .slice(0, input.profile.media_limit >= 3 ? 2 : 1);
+  const audioTargets = [...platforms]
+    .filter((row) => Number(row.audio_backlog || 0) + Number(row.transcript_backlog || 0) > 0)
+    .sort((a, b) =>
+      (Number(b.audio_backlog || 0) + Number(b.transcript_backlog || 0))
+      - (Number(a.audio_backlog || 0) + Number(a.transcript_backlog || 0)))
+    .slice(0, input.profile.audio_limit >= 4 ? 2 : 1);
   const needsAudio = Number(totals.audio_backlog || 0) > 0 || Number(totals.transcript_backlog || 0) > 0;
 
   const result: Record<string, unknown> = {
     progress_totals: totals,
   };
 
-  if (mediaTarget && input.profile.media_limit > 0) {
-    const mediaUrl = new URL("/api/factory/jobs/reels-brain-media-backfill", req.nextUrl.origin);
-    mediaUrl.searchParams.set("niches", input.niches);
-    mediaUrl.searchParams.set("platform", mediaTarget);
-    mediaUrl.searchParams.set("limit", String(input.profile.media_limit));
-    mediaUrl.searchParams.set("scan", String(input.profile.media_scan));
-    mediaUrl.searchParams.set("use_local_resolver", "1");
-    mediaUrl.searchParams.set("priority", "smart");
-    const response = await internalFetch(mediaUrl);
-    const body = await response.json().catch(() => ({}));
-    result.media_tick = {
-      ok: response.ok && body?.ok !== false,
-      platform: mediaTarget,
-      attempted: body?.attempted ?? null,
-      rows_with_media: body?.rows_with_media ?? null,
-      inserted: body?.inserted ?? null,
-      enriched: body?.enriched ?? null,
-      error: body?.error || null,
-    };
+  if (mediaTargets.length && input.profile.media_limit > 0) {
+    const perPlatformLimit = Math.max(1, Math.ceil(input.profile.media_limit / mediaTargets.length));
+    const mediaTicks = [];
+    for (const target of mediaTargets) {
+      const mediaUrl = new URL("/api/factory/jobs/reels-brain-media-backfill", req.nextUrl.origin);
+      mediaUrl.searchParams.set("niches", input.niches);
+      mediaUrl.searchParams.set("platform", String(target.platform || ""));
+      mediaUrl.searchParams.set("limit", String(perPlatformLimit));
+      mediaUrl.searchParams.set("scan", String(input.profile.media_scan));
+      mediaUrl.searchParams.set("use_local_resolver", "1");
+      mediaUrl.searchParams.set("priority", "smart");
+      const response = await internalFetch(mediaUrl);
+      const body = await response.json().catch(() => ({}));
+      mediaTicks.push({
+        ok: response.ok && body?.ok !== false,
+        platform: String(target.platform || ""),
+        attempted: body?.attempted ?? null,
+        rows_with_media: body?.rows_with_media ?? null,
+        inserted: body?.inserted ?? null,
+        enriched: body?.enriched ?? null,
+        error: body?.error || null,
+      });
+    }
+    result.media_tick = mediaTicks[0] || null;
+    result.media_ticks = mediaTicks;
   }
 
-  if (needsAudio && input.profile.audio_limit > 0) {
-    const audioUrl = new URL("/api/factory/jobs/reels-brain-audio-backfill", req.nextUrl.origin);
-    audioUrl.searchParams.set("niches", input.niches);
-    audioUrl.searchParams.set("limit", String(input.profile.audio_limit));
-    audioUrl.searchParams.set("scan", String(input.profile.audio_scan));
-    audioUrl.searchParams.set("transcribe", "1");
-    audioUrl.searchParams.set("priority", "smart");
-    audioUrl.searchParams.set("deep_only", input.profile.deep_only ? "1" : "0");
-    const response = await internalFetch(audioUrl);
-    const body = await response.json().catch(() => ({}));
-    result.audio_tick = {
-      ok: response.ok && body?.ok !== false,
-      extracted: body?.extracted ?? null,
-      transcript_ready: body?.transcript_ready ?? null,
-      failed: body?.failed ?? null,
-      attempted: Array.isArray(body?.runs) ? body.runs.length : null,
-      error: body?.error || null,
-    };
+  if (needsAudio && audioTargets.length && input.profile.audio_limit > 0) {
+    const perPlatformLimit = Math.max(1, Math.ceil(input.profile.audio_limit / audioTargets.length));
+    const audioTicks = [];
+    for (const target of audioTargets) {
+      const audioUrl = new URL("/api/factory/jobs/reels-brain-audio-backfill", req.nextUrl.origin);
+      audioUrl.searchParams.set("niches", input.niches);
+      audioUrl.searchParams.set("platform", String(target.platform || ""));
+      audioUrl.searchParams.set("limit", String(perPlatformLimit));
+      audioUrl.searchParams.set("scan", String(input.profile.audio_scan));
+      audioUrl.searchParams.set("transcribe", "1");
+      audioUrl.searchParams.set("priority", "smart");
+      audioUrl.searchParams.set("deep_only", input.profile.deep_only ? "1" : "0");
+      const response = await internalFetch(audioUrl);
+      const body = await response.json().catch(() => ({}));
+      audioTicks.push({
+        ok: response.ok && body?.ok !== false,
+        platform: String(target.platform || ""),
+        extracted: body?.extracted ?? null,
+        transcript_ready: body?.transcript_ready ?? null,
+        failed: body?.failed ?? null,
+        attempted: Array.isArray(body?.runs) ? body.runs.length : null,
+        error: body?.error || null,
+      });
+    }
+    result.audio_tick = audioTicks[0] || null;
+    result.audio_ticks = audioTicks;
   }
 
   return result;

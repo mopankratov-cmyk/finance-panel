@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
-import { automationRunHistory } from "@/lib/factory/reelsBrainPlaybook";
+import { automationRunHistory, incidentHistory } from "@/lib/factory/reelsBrainPlaybook";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 20;
@@ -71,6 +71,41 @@ function etaHours(backlog: number, throughputPer24h: number) {
   if (backlog <= 0) return 0;
   if (throughputPer24h <= 0) return null;
   return Math.round((backlog / throughputPer24h) * 24 * 10) / 10;
+}
+
+function createdAtMs(value: unknown): number {
+  const parsed = typeof value === "string" ? new Date(value).getTime() : NaN;
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function bottleneckMeta(key: string, count: number, throughputPer24h: number) {
+  const eta = etaHours(count, throughputPer24h);
+  if (key === "media") {
+    return {
+      label: "media bridge",
+      note: count > 0 ? "много роликов ещё не дошли до прямого media locator" : "media bridge чистый",
+      eta_hours: eta,
+    };
+  }
+  if (key === "audio") {
+    return {
+      label: "audio extraction",
+      note: count > 0 ? "media уже есть, но звук ещё не снят или не подтверждён" : "audio extraction чистый",
+      eta_hours: eta,
+    };
+  }
+  if (key === "transcript") {
+    return {
+      label: "transcript layer",
+      note: count > 0 ? "звук уже есть, но речь ещё не переведена в текст" : "transcript слой чистый",
+      eta_hours: eta,
+    };
+  }
+  return {
+    label: "pattern analysis",
+    note: count > 0 ? "контент подготовлен, но ещё не дошёл до pattern memory" : "pattern analysis чистый",
+    eta_hours: eta,
+  };
 }
 
 export async function GET(req: NextRequest) {
@@ -160,6 +195,8 @@ export async function GET(req: NextRequest) {
 
     let analyzedLast24h = 0;
     let insertedLast24h = 0;
+    const incidentTimeline: Array<Record<string, unknown>> = [];
+    const runTimeline: Array<Record<string, unknown>> = [];
     for (const niche of niches) {
       const playbook = latestPlaybookByNiche.get(niche)?.playbook;
       const runs = automationRunHistory(playbook).filter((run) => {
@@ -170,6 +207,35 @@ export async function GET(req: NextRequest) {
       for (const run of runs) {
         analyzedLast24h += num(run.analyzed);
         insertedLast24h += num(run.inserted);
+      }
+
+      for (const run of automationRunHistory(playbook).slice(0, 8)) {
+        const runRecord = rec(run);
+        runTimeline.push({
+          niche,
+          mode: text(run.mode, 60) || "run",
+          created_at: text(run.created_at, 120) || null,
+          inserted: num(run.inserted),
+          analyzed: num(run.analyzed),
+          found: num(run.found),
+          errors: num(run.errors),
+          providers: Array.isArray(runRecord.providers) ? runRecord.providers.slice(0, 4) : [],
+          usd_per_inserted: num(runRecord.usd_per_inserted),
+          usd_per_analyzed: num(runRecord.usd_per_analyzed),
+        });
+      }
+
+      for (const incident of incidentHistory(playbook).slice(0, 8)) {
+        incidentTimeline.push({
+          niche,
+          platform: text(incident.platform, 40) || "mixed",
+          severity: text(incident.severity, 40) || "watch",
+          kind: text(incident.kind, 80) || "incident",
+          provider: text(incident.provider, 80),
+          query: text(incident.query, 180),
+          message: text(incident.message, 220) || "incident",
+          created_at: text(incident.created_at, 120) || null,
+        });
       }
 
       const bundle = rec(rec(playbook).reels_brain_patterns);
@@ -192,6 +258,7 @@ export async function GET(req: NextRequest) {
       audio_extracted_rate: pct(bucket.audio_extracted, bucket.total),
       transcript_ready_rate: pct(bucket.transcript_ready, bucket.total),
       analyzed_rate: pct(bucket.analyzed, bucket.total),
+      total_backlog: bucket.media_backlog + bucket.audio_backlog + bucket.transcript_backlog + bucket.analyze_backlog,
       automation_eta_hours: {
         audio: etaHours(bucket.audio_backlog, analyzedLast24h),
         analyze: etaHours(bucket.analyze_backlog, analyzedLast24h),
@@ -234,6 +301,40 @@ export async function GET(req: NextRequest) {
       generator_ready_patterns: 0,
     });
 
+    const bottlenecks = [
+      { key: "media", count: totals.media_backlog },
+      { key: "audio", count: totals.audio_backlog },
+      { key: "transcript", count: totals.transcript_backlog },
+      { key: "analyze", count: totals.analyze_backlog },
+    ]
+      .map((item) => ({ ...item, ...bottleneckMeta(item.key, item.count, analyzedLast24h) }))
+      .sort((a, b) => b.count - a.count);
+
+    const platformWatchlist = [...platforms]
+      .map((platform) => {
+        const dominantGap = [
+          { key: "media", count: platform.media_backlog, label: "media" },
+          { key: "audio", count: platform.audio_backlog, label: "audio" },
+          { key: "transcript", count: platform.transcript_backlog, label: "transcript" },
+          { key: "analyze", count: platform.analyze_backlog, label: "analyze" },
+        ].sort((a, b) => b.count - a.count)[0];
+        return {
+          platform: platform.platform,
+          status: platform.status,
+          total_backlog: platform.total_backlog,
+          dominant_gap: dominantGap,
+          direct_rate: platform.direct_media_rate,
+          audio_rate: platform.audio_extracted_rate,
+          analyzed_rate: platform.analyzed_rate,
+          eta_audio_hours: platform.automation_eta_hours.audio,
+          eta_analyze_hours: platform.automation_eta_hours.analyze,
+          note: dominantGap?.count
+            ? `${platform.platform}: главный хвост сейчас в ${dominantGap.label}`
+            : `${platform.platform}: хвостов почти не осталось`,
+        };
+      })
+      .sort((a, b) => b.total_backlog - a.total_backlog);
+
     return NextResponse.json({
       ok: true,
       niches,
@@ -254,6 +355,15 @@ export async function GET(req: NextRequest) {
           analyze: etaHours(totals.analyze_backlog, analyzedLast24h),
         },
       },
+      primary_bottleneck: bottlenecks[0] || null,
+      bottlenecks,
+      platform_watchlist: platformWatchlist.slice(0, 6),
+      incident_timeline: incidentTimeline
+        .sort((a, b) => createdAtMs(b.created_at) - createdAtMs(a.created_at))
+        .slice(0, 18),
+      run_timeline: runTimeline
+        .sort((a, b) => createdAtMs(b.created_at) - createdAtMs(a.created_at))
+        .slice(0, 12),
       platforms,
     }, { headers: { "Cache-Control": "no-store" } });
   } catch (e) {

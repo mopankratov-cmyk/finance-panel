@@ -128,6 +128,7 @@ export default function ReelsBrainPixelCockpit() {
   const [corpus, setCorpus] = useState<JsonRecord | null>(null);
   const [learningPlan, setLearningPlan] = useState<JsonRecord | null>(null);
   const [progress, setProgress] = useState<JsonRecord | null>(null);
+  const [health, setHealth] = useState<JsonRecord | null>(null);
   const [summaries, setSummaries] = useState<JsonRecord[]>([]);
   const [selectedPattern, setSelectedPattern] = useState<JsonRecord | null>(null);
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
@@ -139,11 +140,12 @@ export default function ReelsBrainPixelCockpit() {
       try {
         setState("loading");
         const nicheParam = NICHES.join(",");
-        const [learningData, corpusData, learningPlanData, progressData, ...summaryData] = await Promise.all([
+        const [learningData, corpusData, learningPlanData, progressData, healthData, ...summaryData] = await Promise.all([
           getJson(`/api/factory/reels-brain/learning-economics?niches=${encodeURIComponent(nicheParam)}&limit=80`),
           getJson("/api/factory/reels-brain/corpus?limit=200&min_score=0"),
           getJson(`/api/factory/reels-brain/learning-plan?niches=${encodeURIComponent(nicheParam)}&platforms=tiktok,instagram,youtube&target=10000&max_backlog_before_analyze=180`),
           getJson(`/api/factory/reels-brain/progress?niches=${encodeURIComponent(nicheParam)}`),
+          getJson(`/api/factory/reels-brain/health?niches=${encodeURIComponent(nicheParam)}`),
           ...NICHES.map((niche) => getJson(`/api/factory/reels-brain/summary?niche=${encodeURIComponent(niche)}`)),
         ]);
         if (!alive) return;
@@ -151,6 +153,7 @@ export default function ReelsBrainPixelCockpit() {
         setCorpus(corpusData);
         setLearningPlan(learningPlanData);
         setProgress(progressData);
+        setHealth(healthData);
         setSummaries(summaryData);
         setState("ready");
       } catch (e) {
@@ -183,7 +186,16 @@ export default function ReelsBrainPixelCockpit() {
     const autopilotActions = learning?.autopilot_actions || {};
     const progressTotals = progress?.totals || {};
     const progressPlatforms = Array.isArray(progress?.platforms) ? progress.platforms : [];
+    const progressPrimaryBottleneck = progress?.primary_bottleneck || {};
+    const progressIncidentTimeline = Array.isArray(progress?.incident_timeline) ? progress.incident_timeline : [];
+    const progressRunTimeline = Array.isArray(progress?.run_timeline) ? progress.run_timeline : [];
+    const platformWatchlist = Array.isArray(progress?.platform_watchlist) ? progress.platform_watchlist : [];
     const throughput24h = progress?.throughput_24h || {};
+    const healthState = health?.health || {};
+    const workerState = healthState?.worker || {};
+    const providerState = healthState?.providers || {};
+    const workerIssue = workerState?.issue || {};
+    const workerWarnings = Array.isArray(workerState?.warnings) ? workerState.warnings : [];
     const mission = learningPlan?.learning_plan || {};
     const nextLayers = learning?.next_intelligence_layers || {};
     const audioVisualSummary = nextLayers?.audio_visual_intelligence
@@ -448,7 +460,13 @@ export default function ReelsBrainPixelCockpit() {
       { key: "transcript", count: num(progressTotals.transcript_backlog), label: "transcript layer", note: "звук есть, но речь ещё не разложена в текст" },
       { key: "analyze", count: num(progressTotals.analyze_backlog), label: "pattern analysis", note: "контент уже подготовлен, но ещё не дошёл до pattern brain" },
     ].sort((a, b) => b.count - a.count);
-    const primaryBottleneck = bottleneckCandidates[0] || { key: "none", count: 0, label: "healthy", note: "явного узкого места нет" };
+    const primaryBottleneck = {
+      key: String(progressPrimaryBottleneck.key || bottleneckCandidates[0]?.key || "none"),
+      count: num(progressPrimaryBottleneck.count || bottleneckCandidates[0]?.count),
+      label: String(progressPrimaryBottleneck.label || bottleneckCandidates[0]?.label || "healthy"),
+      note: String(progressPrimaryBottleneck.note || bottleneckCandidates[0]?.note || "явного узкого места нет"),
+      etaHours: progressPrimaryBottleneck.eta_hours,
+    };
     const pipelineEconomics = [
       {
         title: "Скорость анализа 24ч",
@@ -469,6 +487,31 @@ export default function ReelsBrainPixelCockpit() {
         title: "ETA analyze backlog",
         value: hoursLabel(progressTotals.eta_hours?.analyze),
         note: `${compact(progressTotals.analyze_backlog)} видео ещё ждут финальный анализ`,
+      },
+    ];
+    const incidentTimeline = progressIncidentTimeline.slice(0, 8);
+    const liveOpsCards = [
+      {
+        title: "Worker",
+        value: workerIssue?.level || healthState?.status || "watch",
+        note: workerIssue?.message || workerWarnings[0] || "worker без свежих красных флагов",
+      },
+      {
+        title: "Providers",
+        value: compact(providerState?.count || 0),
+        note: providerState?.trend_source || "источник лидера ещё уточняется",
+      },
+      {
+        title: "Главный хвост",
+        value: primaryBottleneck.label,
+        note: primaryBottleneck.count > 0
+          ? `${compact(primaryBottleneck.count)} видео · ETA ${hoursLabel(primaryBottleneck.etaHours)}`
+          : "явных узких мест нет",
+      },
+      {
+        title: "Инциденты",
+        value: compact(incidentTimeline.length),
+        note: incidentTimeline[0]?.message || "свежих алертов сейчас нет",
       },
     ];
     const knowledgeCards = NICHES.map((niche) => {
@@ -600,6 +643,10 @@ export default function ReelsBrainPixelCockpit() {
       pipelineStages,
       pipelineEconomics,
       primaryBottleneck,
+      incidentTimeline,
+      platformWatchlist,
+      liveOpsCards,
+      runTimeline: progressRunTimeline.length ? progressRunTimeline : timeline,
       costLabel: cheaper ? "дешевле" : expensive ? "дороже" : "ровно",
       costTone: cheaper ? "#22c55e" : expensive ? "#f59e0b" : "#38bdf8",
       blindSpots: [
@@ -608,7 +655,7 @@ export default function ReelsBrainPixelCockpit() {
         readyPatterns < 12 ? "Generator-ready рецептов мало: лучше не генерировать слишком однотипно." : "Рецептов уже хватает для первых стабильных креативных экспериментов.",
       ],
     };
-  }, [learning, corpus, learningPlan, progress, summaries]);
+  }, [learning, corpus, learningPlan, progress, health, summaries]);
 
   return (
     <main className="rb-page">
@@ -703,7 +750,11 @@ export default function ReelsBrainPixelCockpit() {
               <MiniIcon>!</MiniIcon>
               <div>
                 <div className="rb-overline" style={{ color: "#fbbf24" }}>Текущее узкое место</div>
-                <div style={{ font: "500 14px/1.4 'Hanken Grotesk'", marginTop: 3 }}>{vm.primaryBottleneck.count > 0 ? `${vm.primaryBottleneck.label}: ${vm.primaryBottleneck.note}` : vm.blindSpots[0]}</div>
+                <div style={{ font: "500 14px/1.4 'Hanken Grotesk'", marginTop: 3 }}>
+                  {vm.primaryBottleneck.count > 0
+                    ? `${vm.primaryBottleneck.label}: ${vm.primaryBottleneck.note}. ETA ${hoursLabel(vm.primaryBottleneck.etaHours)}`
+                    : vm.blindSpots[0]}
+                </div>
               </div>
             </div>
           </div>
@@ -720,6 +771,19 @@ export default function ReelsBrainPixelCockpit() {
           <SectionTitle k="01 · Executive Summary" title="Что происходит с мозгом прямо сейчас" />
           <div className="rb-summary-grid">
             {vm.executiveCards.map((card) => (
+              <div className="rb-summary-card" key={card.title}>
+                <div className="rb-overline" style={{ color: "#0891b2" }}>{card.title}</div>
+                <strong>{card.value}</strong>
+                <p>{card.note}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section>
+          <SectionTitle k="01.5 · Live Ops" title="Здоровье пайплайна без тех-раздела" />
+          <div className="rb-summary-grid">
+            {vm.liveOpsCards.map((card) => (
               <div className="rb-summary-card" key={card.title}>
                 <div className="rb-overline" style={{ color: "#0891b2" }}>{card.title}</div>
                 <strong>{card.value}</strong>
@@ -851,6 +915,41 @@ export default function ReelsBrainPixelCockpit() {
                 </p>
               </div>
             ))}
+          </div>
+        </section>
+
+        <section className="rb-two">
+          <div>
+            <SectionTitle k="04.8 · Incident Timeline" title="Какие сбои реально мешают обучению" />
+            <div className="rb-card">
+              <div className="rb-hook-list">
+                {vm.incidentTimeline.length ? vm.incidentTimeline.map((item: JsonRecord, index: number) => (
+                  <div className="rb-pattern" key={`${item.created_at || index}:${item.kind || item.message}`}>
+                    <h3>{item.message || item.kind || "incident"}</h3>
+                    <p>
+                      {(item.severity || "watch").toString()} · {(item.platform || "mixed").toString()} · {(item.provider || "provider?").toString()}
+                      {item.query ? ` · ${item.query}` : ""}
+                    </p>
+                  </div>
+                )) : <div className="rb-pattern"><h3>Свежих инцидентов нет</h3><p>Пока pipeline идёт без новых provider/error сигналов.</p></div>}
+              </div>
+            </div>
+          </div>
+          <div>
+            <SectionTitle k="04.9 · Platform Watchlist" title="Куда operator смотрел бы первым" />
+            <div className="rb-card">
+              <div className="rb-hook-list">
+                {vm.platformWatchlist.length ? vm.platformWatchlist.slice(0, 4).map((item: JsonRecord) => (
+                  <div className="rb-pattern" key={`watch:${item.platform}`}>
+                    <h3>{item.platform}</h3>
+                    <p>{item.note}</p>
+                    <p style={{ marginTop: 8 }}>
+                      backlog {compact(item.total_backlog)} · audio ETA {hoursLabel(item.eta_audio_hours)} · analyze ETA {hoursLabel(item.eta_analyze_hours)}
+                    </p>
+                  </div>
+                )) : <div className="rb-pattern"><h3>Watchlist пока пуст</h3><p>Значит явной просадки по платформам сейчас нет.</p></div>}
+              </div>
+            </div>
           </div>
         </section>
 
@@ -1605,7 +1704,7 @@ export default function ReelsBrainPixelCockpit() {
           <SectionTitle k="09 · Текущий цикл обучения" title="Что происходит от прогона к прогону" />
           <div className="rb-card">
             <div className="rb-three">
-              {vm.timeline.length ? vm.timeline.slice(0, 6).map((run) => (
+              {vm.runTimeline.length ? vm.runTimeline.slice(0, 6).map((run: JsonRecord) => (
                 <div className="rb-pattern" key={`${run.id || run.created_at}:${run.mode}`}>
                   <h3>{run.mode || "run"} · {new Date(run.created_at).toLocaleString("ru-RU")}</h3>
                   <p>+{compact(run.inserted)} видео · +{compact(run.analyzed)} память · {usd(run.usd_per_analyzed || run.usd_per_inserted)} / video</p>
