@@ -46,6 +46,55 @@ function splitParam(value: string): string[] {
     .filter(Boolean);
 }
 
+function adaptiveCronProfile(input: {
+  autoTask: "bulk" | "analyze";
+  backlog: { total?: number; analyzed?: number; unanalyzed?: number } | null;
+  progress: Record<string, unknown> | null;
+}) {
+  const totals = rec(input.progress?.totals);
+  const mediaBacklog = Number(totals.media_backlog || 0);
+  const audioBacklog = Number(totals.audio_backlog || 0);
+  const transcriptBacklog = Number(totals.transcript_backlog || 0);
+  const analyzeBacklog = Number(totals.analyze_backlog || input.backlog?.unanalyzed || 0);
+  const corpusTotal = Number(totals.total || input.backlog?.total || 0);
+
+  const preflight = {
+    media_limit: mediaBacklog >= 120 ? 3 : mediaBacklog >= 24 ? 2 : mediaBacklog > 0 ? 1 : 0,
+    media_scan: mediaBacklog >= 120 ? 48 : mediaBacklog >= 24 ? 24 : 12,
+    audio_limit: audioBacklog + transcriptBacklog >= 180 ? 6 : audioBacklog + transcriptBacklog >= 60 ? 4 : audioBacklog + transcriptBacklog > 0 ? 2 : 0,
+    audio_scan: audioBacklog + transcriptBacklog >= 180 ? 72 : audioBacklog + transcriptBacklog >= 60 ? 42 : 24,
+    deep_only: audioBacklog + transcriptBacklog >= 120,
+  };
+
+  if (input.autoTask === "analyze") {
+    return {
+      task: "analyze" as const,
+      body: {
+        max_lanes: analyzeBacklog >= 500 ? 6 : analyzeBacklog >= 180 ? 4 : 3,
+        limit: analyzeBacklog >= 500 ? 24 : analyzeBacklog >= 180 ? 18 : 12,
+        build_patterns: analyzeBacklog <= 24,
+      },
+      preflight,
+      reason: `adaptive analyze profile: corpus=${corpusTotal}, analyze_backlog=${analyzeBacklog}, audio_backlog=${audioBacklog}, media_backlog=${mediaBacklog}`,
+    };
+  }
+
+  return {
+    task: "bulk" as const,
+    body: {
+      max_lanes: corpusTotal < 2500 ? 6 : corpusTotal < 6000 ? 5 : 4,
+      limit: corpusTotal < 2500 ? 60 : corpusTotal < 6000 ? 45 : 30,
+      providers_per_lane: mediaBacklog + audioBacklog > 0 ? 1 : corpusTotal < 2500 ? 2 : 1,
+      query_variants_per_lane: corpusTotal < 2500 ? 3 : corpusTotal < 6000 ? 2 : 1,
+      provider_timeout_ms: mediaBacklog > 0 ? 18000 : 15000,
+      max_provider_calls: corpusTotal < 2500 ? 12 : 8,
+      max_cost_units: corpusTotal < 2500 ? 30 : 18,
+    },
+    preflight,
+    reason: `adaptive bulk profile: corpus=${corpusTotal}, media_backlog=${mediaBacklog}, audio_backlog=${audioBacklog}, analyze_backlog=${analyzeBacklog}`,
+  };
+}
+
 async function loadPipelineProgress(req: NextRequest, niches: string) {
   try {
     const url = new URL("/api/factory/reels-brain/progress", req.nextUrl.origin);
@@ -62,6 +111,7 @@ async function loadPipelineProgress(req: NextRequest, niches: string) {
 async function runPipelinePreflight(req: NextRequest, input: {
   niches: string;
   progress: { ok: boolean; data: Record<string, unknown> | null };
+  profile: { media_limit: number; media_scan: number; audio_limit: number; audio_scan: number; deep_only: boolean };
 }) {
   const totals = rec(input.progress.data?.totals);
   const platforms = Array.isArray(input.progress.data?.platforms) ? input.progress.data?.platforms.map((row) => rec(row)) : [];
@@ -74,12 +124,12 @@ async function runPipelinePreflight(req: NextRequest, input: {
     progress_totals: totals,
   };
 
-  if (mediaTarget) {
+  if (mediaTarget && input.profile.media_limit > 0) {
     const mediaUrl = new URL("/api/factory/jobs/reels-brain-media-backfill", req.nextUrl.origin);
     mediaUrl.searchParams.set("niches", input.niches);
     mediaUrl.searchParams.set("platform", mediaTarget);
-    mediaUrl.searchParams.set("limit", mediaTarget === "instagram" ? "2" : "1");
-    mediaUrl.searchParams.set("scan", mediaTarget === "instagram" ? "24" : "12");
+    mediaUrl.searchParams.set("limit", String(input.profile.media_limit));
+    mediaUrl.searchParams.set("scan", String(input.profile.media_scan));
     mediaUrl.searchParams.set("use_local_resolver", "1");
     mediaUrl.searchParams.set("priority", "smart");
     const response = await internalFetch(mediaUrl);
@@ -95,14 +145,14 @@ async function runPipelinePreflight(req: NextRequest, input: {
     };
   }
 
-  if (needsAudio) {
+  if (needsAudio && input.profile.audio_limit > 0) {
     const audioUrl = new URL("/api/factory/jobs/reels-brain-audio-backfill", req.nextUrl.origin);
     audioUrl.searchParams.set("niches", input.niches);
-    audioUrl.searchParams.set("limit", "3");
-    audioUrl.searchParams.set("scan", "36");
+    audioUrl.searchParams.set("limit", String(input.profile.audio_limit));
+    audioUrl.searchParams.set("scan", String(input.profile.audio_scan));
     audioUrl.searchParams.set("transcribe", "1");
     audioUrl.searchParams.set("priority", "smart");
-    audioUrl.searchParams.set("deep_only", "1");
+    audioUrl.searchParams.set("deep_only", input.profile.deep_only ? "1" : "0");
     const response = await internalFetch(audioUrl);
     const body = await response.json().catch(() => ({}));
     result.audio_tick = {
@@ -147,7 +197,17 @@ async function loadBacklogTotals(input: { niches: string; platforms: string }) {
   return summary;
 }
 
-async function selectAutoTask(req: NextRequest, niches: string, platforms: string) {
+async function selectAutoTask(
+  req: NextRequest,
+  niches: string,
+  platforms: string,
+): Promise<{
+  task: "bulk" | "analyze";
+  targetTotal: number;
+  maxBacklogBeforeAnalyze: number;
+  backlog: { total: number; analyzed: number; unanalyzed: number; error?: string } | null;
+  decision: string;
+}> {
   const forced = forcedTask(req);
   const targetTotal = numberParam(req, "target", DEFAULT_TARGET_TOTAL, 1000, 10000);
   const maxBacklogBeforeAnalyze = numberParam(req, "max_backlog_before_analyze", DEFAULT_MAX_BACKLOG_BEFORE_ANALYZE, 1, 1000);
@@ -211,7 +271,8 @@ export async function GET(req: NextRequest) {
     const platforms = req.nextUrl.searchParams.get("platforms") || DEFAULT_PLATFORMS;
     const auto = await selectAutoTask(req, niches, platforms);
     const pipelineProgress = await loadPipelineProgress(req, niches);
-    const preflight = pipelineProgress.ok ? await runPipelinePreflight(req, { niches, progress: pipelineProgress }) : null;
+    const adaptiveProfile = adaptiveCronProfile({ autoTask: auto.task, backlog: auto.backlog, progress: pipelineProgress.data });
+    const preflight = pipelineProgress.ok ? await runPipelinePreflight(req, { niches, progress: pipelineProgress, profile: adaptiveProfile.preflight }) : null;
     const guard = auto.task === "bulk" ? await loadAutopilotGuard(req, niches) : null;
     const task = auto.task === "bulk" && guard?.ok && !guard.can_run_paid_collection ? "analyze" : auto.task;
     const endpoint = task === "bulk"
@@ -221,21 +282,21 @@ export async function GET(req: NextRequest) {
       ? {
         niches,
         platforms,
-        max_lanes: 6,
-        limit: 50,
-        providers_per_lane: 2,
-        query_variants_per_lane: 3,
-        provider_timeout_ms: 20000,
-        max_provider_calls: 12,
-        max_cost_units: 30,
+        max_lanes: adaptiveProfile.body.max_lanes,
+        limit: adaptiveProfile.body.limit,
+        providers_per_lane: adaptiveProfile.body.providers_per_lane,
+        query_variants_per_lane: adaptiveProfile.body.query_variants_per_lane,
+        provider_timeout_ms: adaptiveProfile.body.provider_timeout_ms,
+        max_provider_calls: adaptiveProfile.body.max_provider_calls,
+        max_cost_units: adaptiveProfile.body.max_cost_units,
         hours: 72,
       }
       : {
         niches,
         platforms,
-        max_lanes: 6,
-        limit: 18,
-        build_patterns: false,
+        max_lanes: adaptiveProfile.body.max_lanes,
+        limit: adaptiveProfile.body.limit,
+        build_patterns: adaptiveProfile.body.build_patterns,
       };
 
     const response = await internalFetch(`${req.nextUrl.origin}${endpoint}`, {
@@ -261,6 +322,7 @@ export async function GET(req: NextRequest) {
     console.info("reels_brain_cron_tick", JSON.stringify({
       task,
       decision: auto.decision,
+      adaptive_profile: adaptiveProfile,
       guard: guard ? { ok: guard.ok, can_run_paid_collection: guard.can_run_paid_collection, reason: guard.reason } : null,
       pipeline_progress_ok: pipelineProgress.ok,
       pipeline_preflight: preflight,
@@ -289,6 +351,7 @@ export async function GET(req: NextRequest) {
       task,
       cadence: "*/5 * * * *",
       policy: "auto until target: bulk while corpus is below target and backlog is small, otherwise analyze",
+      adaptive_profile: adaptiveProfile,
       guard: guard ? { ok: guard.ok, can_run_paid_collection: guard.can_run_paid_collection, reason: guard.reason } : null,
       pipeline_progress: pipelineProgress.ok ? pipelineProgress.data : null,
       pipeline_preflight: preflight,

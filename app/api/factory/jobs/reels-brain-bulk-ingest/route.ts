@@ -13,7 +13,7 @@ import {
   parseAutomationPlatforms,
   type ReelsBrainCorpusGrowthLane,
 } from "@/lib/factory/reelsBrainAutomation";
-import { nextRecommendedSourceQueries, queryLeaderboard, rememberQueryPerformance } from "@/lib/factory/reelsBrainPlaybook";
+import { nextRecommendedSourceQueries, preferredSourceProvider, queryLeaderboard, rememberQueryPerformance } from "@/lib/factory/reelsBrainPlaybook";
 import { corpusProgress, corpusTargetByPlatform } from "@/lib/factory/reelsBrainCorpusTargets";
 import { reelsBrainEnvStatus } from "@/lib/factory/reelsBrainEnv";
 import { isAuthorizedReelsBrainJobRequest } from "@/lib/factory/reelsBrainJobAuth";
@@ -150,32 +150,48 @@ function prioritizeProvidersForQuery(
   platform: "tiktok" | "instagram" | "youtube",
   query: string,
   providers: ReelsBrainProvider[],
+  preferredProvider: ReelsBrainProvider | null,
 ): ReelsBrainProvider[] {
+  const movePreferred = (rows: ReelsBrainProvider[]) => preferredProvider && rows.includes(preferredProvider)
+    ? [preferredProvider, ...rows.filter((provider) => provider !== preferredProvider)]
+    : rows;
   if (platform === "tiktok" && isRussianQuery(query)) {
     const preferred: ReelsBrainProvider[] = ["virlo", "apify_tiktok", "apify", "ensemble_tiktok"];
     const seen = new Set<ReelsBrainProvider>();
-    return [
+    return movePreferred([
       ...preferred.filter((provider) => providers.includes(provider) && !seen.has(provider) && seen.add(provider)),
       ...providers.filter((provider) => provider !== "bright_tiktok" && !seen.has(provider) && seen.add(provider)),
       ...providers.filter((provider) => !seen.has(provider) && seen.add(provider)),
-    ];
+    ]);
   }
-  if (platform !== "instagram") return providers;
+  if (platform !== "instagram") return movePreferred(providers);
   if (!isInstagramUrlQuery(query)) {
     const preferred: ReelsBrainProvider[] = ["apify_instagram", "ensemble_instagram"];
     const seen = new Set<ReelsBrainProvider>();
-    return [
+    return movePreferred([
       ...preferred.filter((provider) => providers.includes(provider) && !seen.has(provider) && seen.add(provider)),
       ...providers.filter((provider) => provider !== "bright_instagram" && !seen.has(provider) && seen.add(provider)),
       ...providers.filter((provider) => !seen.has(provider) && seen.add(provider)),
-    ];
+    ]);
   }
-  const preferred: ReelsBrainProvider[] = ["bright_instagram", "ensemble_instagram", "apify_instagram"];
+  const preferred: ReelsBrainProvider[] = ["apify_instagram", "bright_instagram", "ensemble_instagram"];
   const seen = new Set<ReelsBrainProvider>();
-  return [
+  return movePreferred([
     ...preferred.filter((provider) => providers.includes(provider) && !seen.has(provider) && seen.add(provider)),
     ...providers.filter((provider) => !seen.has(provider) && seen.add(provider)),
-  ];
+  ]);
+}
+
+function providerCapForLane(input: {
+  lane: ReelsBrainCorpusGrowthLane;
+  query: string;
+  providersPerLane: number;
+}) {
+  if (input.lane.platform === "instagram" && isInstagramUrlQuery(input.query)) return 1;
+  if (input.lane.platform === "youtube" && input.lane.progress_pct >= 55) return 1;
+  if (input.lane.progress_pct >= 70) return 1;
+  if (input.lane.progress_pct >= 40) return Math.max(1, Math.min(2, input.providersPerLane));
+  return input.providersPerLane;
 }
 
 function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
@@ -407,15 +423,17 @@ async function runBulk(req: NextRequest, body: Record<string, unknown>, execute:
       : "";
     const queries = instagramSeed ? [instagramSeed] : recommendedQueriesForLane;
     return queries.map((query, index) => {
-      const providers = prioritizeProvidersForQuery(lane.platform, query, providersFor(lane.platform, body.providers));
+      const preferred = preferredSourceProvider(playbook, lane.platform);
+      const providers = prioritizeProvidersForQuery(lane.platform, query, providersFor(lane.platform, body.providers), preferred as ReelsBrainProvider | null);
+      const providerCap = providerCapForLane({ lane, query, providersPerLane });
       return {
         ...lane,
         query,
         query_variant: index + 1,
         query_origin: instagramSeed ? "instagram_seed" : "playbook",
-        providers: providers.slice(0, providersPerLane),
-        limit,
-        provider_timeout_ms: timeoutMs,
+        providers: providers.slice(0, providerCap),
+        limit: lane.progress_pct >= 70 ? Math.max(8, Math.min(limit, 18)) : limit,
+        provider_timeout_ms: instagramSeed ? Math.min(timeoutMs, 18000) : timeoutMs,
       };
     });
   });

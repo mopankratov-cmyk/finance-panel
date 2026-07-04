@@ -25,15 +25,18 @@ async function safeJson(url: string) {
 export async function GET(req: NextRequest) {
   const niche = String(req.nextUrl.searchParams.get("niche") || "toys").trim() || "toys";
   const origin = req.nextUrl.origin;
-  const [summary, digest] = await Promise.all([
+  const [summary, digest, report] = await Promise.all([
     safeJson(`${origin}/api/factory/reels-brain/summary?niche=${encodeURIComponent(niche)}`),
     safeJson(`${origin}/api/factory/reels-brain/digest?niche=${encodeURIComponent(niche)}`),
+    safeJson(`${origin}/api/factory/reels-brain/report?niches=${encodeURIComponent(niche)}`),
   ]);
 
   const platforms = Array.isArray((summary as { platforms?: unknown[] }).platforms) ? (summary as { platforms: Record<string, any>[] }).platforms : [];
   const incidents = Array.isArray((digest as { digest?: { latest_incidents?: unknown[] } }).digest?.latest_incidents)
     ? ((digest as { digest: { latest_incidents: Record<string, any>[] } }).digest.latest_incidents)
     : [];
+  const pipeline = ((report as { pipeline_progress?: Record<string, any> }).pipeline_progress) || {};
+  const pipelinePlatforms = Array.isArray(pipeline.platforms) ? pipeline.platforms : [];
   const html = `<!DOCTYPE html>
   <html lang="ru">
   <head>
@@ -77,6 +80,11 @@ export async function GET(req: NextRequest) {
         <div class="metric"><div class="v">${escapeHtml((digest as any)?.digest?.total_incidents || 0)}</div><div class="k">Incidents</div></div>
         <div class="metric"><div class="v">${escapeHtml((digest as any)?.digest?.critical_incidents || 0)}</div><div class="k">Critical</div></div>
       </div>
+      <div class="grid three" style="margin-top:16px">
+        <div class="metric"><div class="v">${escapeHtml(pipeline?.throughput_24h?.analyzed || 0)}</div><div class="k">Analyzed 24h</div></div>
+        <div class="metric"><div class="v">${escapeHtml(pipeline?.totals?.audio_backlog || 0)}</div><div class="k">Audio backlog</div></div>
+        <div class="metric"><div class="v">${escapeHtml(pipeline?.primary_bottleneck?.label || "—")}</div><div class="k">Primary bottleneck</div></div>
+      </div>
       <div class="grid two" style="margin-top:16px">
         <div class="card">
           <div class="eyebrow">Platforms</div>
@@ -103,6 +111,26 @@ export async function GET(req: NextRequest) {
                 </div>
               </div>
             `).join("")}
+          </div>
+        </div>
+        <div class="card">
+          <div class="eyebrow">Pipeline</div>
+          <h2 class="title">Backlog by platform</h2>
+          <div class="list" style="margin-top:16px">
+            ${pipelinePlatforms.length ? pipelinePlatforms.map((row) => `
+              <div class="row">
+                <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start">
+                  <div style="font-weight:900">${escapeHtml(row.platform)}</div>
+                  <span class="status ${escapeHtml(row.status === "healthy" ? "ready" : "watch")}">${escapeHtml(row.status || "watch")}</span>
+                </div>
+                <div class="meta" style="margin-top:8px">
+                  <span>media ${escapeHtml(row.media_backlog || 0)}</span>
+                  <span>audio ${escapeHtml(row.audio_backlog || 0)}</span>
+                  <span>transcript ${escapeHtml(row.transcript_backlog || 0)}</span>
+                  <span>analyze ${escapeHtml(row.analyze_backlog || 0)}</span>
+                </div>
+              </div>
+            `).join("") : `<div class="row"><div style="font-weight:800">Pipeline data пока недоступен</div></div>`}
           </div>
         </div>
         <div class="card">

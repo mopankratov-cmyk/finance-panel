@@ -26,8 +26,10 @@ export async function GET(req: NextRequest) {
   const origin = req.nextUrl.origin;
   const niches = String(req.nextUrl.searchParams.get("niches") || "toys,clothing,cosmetics,default");
   const data = await safeJson(`${origin}/api/factory/reels-brain/digest-all?niches=${encodeURIComponent(niches)}`);
+  const health = await safeJson(`${origin}/api/factory/reels-brain/health?niches=${encodeURIComponent(niches)}`);
   const rows = Array.isArray((data as { niches?: unknown[] }).niches) ? (data as { niches: Record<string, any>[] }).niches : [];
   const portfolio = (data as { portfolio?: Record<string, any> }).portfolio || {};
+  const pipeline = (portfolio.pipeline_progress || (health as any)?.health?.pipeline || {}) as Record<string, any>;
 
   const html = `<!DOCTYPE html>
   <html lang="ru">
@@ -71,6 +73,12 @@ export async function GET(req: NextRequest) {
         <div class="metric"><div class="v">${escapeHtml(portfolio.ready_niches || 0)}</div><div class="k">Ready</div></div>
         <div class="metric"><div class="v">${escapeHtml(portfolio.watch_niches || 0)}</div><div class="k">Watch</div></div>
         <div class="metric"><div class="v">${escapeHtml(portfolio.avg_readiness || 0)}%</div><div class="k">Avg readiness</div></div>
+      </div>
+      <div class="grid four" style="margin-top:16px">
+        <div class="metric"><div class="v">${escapeHtml(pipeline?.throughput_24h?.inserted || 0)}</div><div class="k">Inserted 24h</div></div>
+        <div class="metric"><div class="v">${escapeHtml(pipeline?.throughput_24h?.analyzed || 0)}</div><div class="k">Analyzed 24h</div></div>
+        <div class="metric"><div class="v">${escapeHtml(pipeline?.totals?.media_backlog || 0)}</div><div class="k">Media backlog</div></div>
+        <div class="metric"><div class="v">${escapeHtml((health as any)?.health?.worker?.issue?.level || "—")}</div><div class="k">Worker state</div></div>
       </div>
       <div class="card" style="margin-top:16px">
         <div class="eyebrow">10k Corpus Goal</div>
@@ -151,6 +159,14 @@ export async function GET(req: NextRequest) {
                     </div>
                   </div>
                 `).join("") || `<div class="meta">empty</div>`}
+              </div>
+            </div>
+            <div class="row">
+              <div style="font-weight:900">Pipeline truth</div>
+              <div class="meta" style="margin-top:8px">
+                ${((Array.isArray(pipeline?.platforms) ? pipeline.platforms : []) as Record<string, any>[]).map((item) => `
+                  <span>${escapeHtml(item.platform)} media ${escapeHtml(item.media_backlog || 0)} · audio ${escapeHtml(item.audio_backlog || 0)} · analyze ${escapeHtml(item.analyze_backlog || 0)}</span>
+                `).join("") || "empty"}
               </div>
             </div>
             <div class="row">
