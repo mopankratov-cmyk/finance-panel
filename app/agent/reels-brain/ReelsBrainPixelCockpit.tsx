@@ -285,6 +285,7 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
     const segmentOutputBanks = (learning?.segment_output_banks || {}) as JsonRecord;
     const segmentDecisionDeck = (learning?.segment_decision_deck || {}) as JsonRecord;
     const segmentPriorityQueue = ((mission.segment_priority_queue || learning?.segment_priority_queue || {}) as JsonRecord);
+    const segmentGenerationPacks = (learning?.segment_generation_packs || {}) as JsonRecord;
     const evidenceLedger = (learning?.evidence_ledger || {}) as JsonRecord;
     const actionPack = (learning?.action_pack || {}) as JsonRecord;
     const actionPackGroups = (learning?.action_pack_groups || {}) as JsonRecord;
@@ -725,6 +726,14 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
       research: num(segmentDecisionDeck.summary?.research),
       ready: num(segmentDecisionDeck.summary?.ready_for_generation),
     };
+    const segmentGenerationCards = ((segmentGenerationPacks.items || []) as JsonRecord[]).slice(0, 6).map((row) => {
+      const status = playbookTone(String(row.quality_gate?.status === "ready" ? "ship_now" : row.quality_gate?.status === "needs_validation" ? "validate_and_ship" : "research"));
+      return {
+        ...row,
+        gateTone: status,
+        label: `${NICHE_LABELS[String(row.niche)] || row.niche} × ${String(row.platform || "mixed").toUpperCase()}`,
+      };
+    });
     const missionPriorityCards = ((segmentPriorityQueue.items || []) as JsonRecord[]).slice(0, 4).map((row) => ({
       ...row,
       modeTone: decisionTone(String(row.ready_for_generation ? "primary" : row.action === "analyze_segment_backlog" ? "control_only" : "research_only")),
@@ -915,6 +924,7 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
       segmentOutputSummary,
       segmentDecisionCards,
       segmentDecisionSummary,
+      segmentGenerationCards,
       missionPriorityCards,
       evidenceCards,
       evidenceSummary,
@@ -1776,6 +1786,47 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
                 <h3 style={{ font: "700 24px/1.1 'Space Grotesk'", margin: 0 }}>Segment Decision Deck ещё пуст</h3>
                 <p style={{ marginTop: 10, color: "#64748b", lineHeight: 1.55 }}>
                   Этот слой появится, когда segment outputs, evidence и atlas начнут пересекаться по одним и тем же сегментам.
+                </p>
+              </div>
+            )}
+          </div>
+        </section>
+
+        <section>
+          <SectionTitle k="04.44 · Segment Generation Packs" title="Какие сегменты уже готовы к передаче в генератор" />
+          <div className="rb-three">
+            {vm.segmentGenerationCards.length ? vm.segmentGenerationCards.map((item: JsonRecord) => (
+              <div className="rb-card" key={`segment-generation:${item.niche}:${item.platform}`}>
+                <div className="rb-two" style={{ gridTemplateColumns: "1fr auto", gap: 14 }}>
+                  <div>
+                    <div className="rb-overline" style={{ color: "#0891b2" }}>{item.label}</div>
+                    <h3 style={{ font: "700 24px/1.08 'Space Grotesk'", margin: "10px 0 0" }}>{compact(item.readiness_score || 0)}</h3>
+                  </div>
+                  <div className="rb-live-pill" style={{ background: item.gateTone.bg, borderColor: item.gateTone.bd, color: item.gateTone.fg }}>
+                    <i style={{ background: item.gateTone.fg }} />
+                    {item.quality_gate?.status || "watch"}
+                  </div>
+                </div>
+                <div className="rb-three" style={{ marginTop: 14 }}>
+                  <div className="rb-brief-block"><b>Hook</b><p>{item.payload?.hook || "hook pending"}</p></div>
+                  <div className="rb-brief-block"><b>Retention</b><p>{item.payload?.retention || "retention pending"}</p></div>
+                  <div className="rb-brief-block"><b>Structure</b><p>{item.payload?.structure || "structure pending"}</p></div>
+                </div>
+                <div className="rb-three" style={{ marginTop: 12 }}>
+                  <div className="rb-brief-block"><b>Gate</b><p>trust {compact(item.quality_gate?.min_trust_score || 0)} · corpus {compact(item.quality_gate?.min_corpus_score || 0)}</p></div>
+                  <div className="rb-brief-block"><b>Market / Stable</b><p>{compact(item.quality_gate?.min_market_score || 0)} · {compact(item.quality_gate?.min_stable_patterns || 0)}</p></div>
+                  <div className="rb-brief-block"><b>Allowed modes</b><p>{((item.quality_gate?.allowed_generation_modes || []) as string[]).join(" · ") || "none"}</p></div>
+                </div>
+                <div className="rb-brief-block" style={{ marginTop: 12 }}>
+                  <b>Блокеры</b>
+                  <p>{((item.quality_gate?.blocked_reasons || []) as string[]).join(" · ") || "Нет блокеров"}</p>
+                </div>
+              </div>
+            )) : (
+              <div className="rb-card">
+                <h3 style={{ font: "700 24px/1.1 'Space Grotesk'", margin: 0 }}>Segment Generation Packs ещё пусты</h3>
+                <p style={{ marginTop: 10, color: "#64748b", lineHeight: 1.55 }}>
+                  Этот слой появится, когда decision deck накопит достаточно нормализованных payload-ов и quality-gated сегментов.
                 </p>
               </div>
             )}
