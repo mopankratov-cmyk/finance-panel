@@ -10,6 +10,7 @@ const report = readFileSync("app/api/factory/reels-brain/report/route.ts", "utf8
 const learningPlan = readFileSync("app/api/factory/reels-brain/learning-plan/route.ts", "utf8");
 const creativeExports = readFileSync("app/api/factory/reels-brain/creative-exports/route.ts", "utf8");
 const readinessAudit = readFileSync("app/api/factory/reels-brain/readiness-audit/route.ts", "utf8");
+const decisionSnapshot = readFileSync("app/api/factory/reels-brain/decision-snapshot/route.ts", "utf8");
 const cockpit = readFileSync("app/agent/reels-brain/ReelsBrainPixelCockpit.tsx", "utf8");
 const feedback = readFileSync("app/api/factory/reels-brain/feedback/route.ts", "utf8");
 const cron = readFileSync("app/api/factory/jobs/reels-brain-cron/route.ts", "utf8");
@@ -47,6 +48,10 @@ ok(!/POST\s*\(/.test(creativeExports), "creative-exports route is read-only");
 ok(/internalFetch/.test(readinessAudit) && /segment_readiness_audit/.test(readinessAudit), "readiness-audit route reads readiness audit from learning-economics");
 ok(/verdict/.test(readinessAudit) && /niche/.test(readinessAudit) && /platform/.test(readinessAudit), "readiness-audit route supports verdict, niche and platform filters");
 ok(!/POST\s*\(/.test(readinessAudit), "readiness-audit route is read-only");
+
+ok(/creative-exports/.test(decisionSnapshot) && /readiness-audit/.test(decisionSnapshot), "decision-snapshot route combines creative exports and readiness audit");
+ok(/lane/.test(decisionSnapshot) && /niche/.test(decisionSnapshot) && /platform/.test(decisionSnapshot), "decision-snapshot route supports lane, niche and platform filters");
+ok(!/POST\s*\(/.test(decisionSnapshot), "decision-snapshot route is read-only");
 
 ok(/daily_report/.test(report) && /autopilot_actions/.test(report), "report route exposes operator report fields");
 ok(/anti_pattern_brain/.test(report) && /discovery_brain/.test(report), "report route includes learning context");
@@ -89,6 +94,7 @@ ok(/buildReelsBrainSegmentGenerationPacks/.test(economics) && /segment_generatio
 ok(/buildReelsBrainSegmentCreativeExports/.test(economics) && /segment_creative_exports/.test(economics) && /Segment Creative Exports/.test(cockpit) && /segment-export:/.test(cockpit), "learning-economics and cockpit expose operator-ready creative export bundles");
 ok(/buildReelsBrainSegmentReadinessAudit/.test(economics) && /segment_readiness_audit/.test(economics) && /Segment Readiness Audit/.test(cockpit) && /segment-audit:/.test(cockpit), "learning-economics and cockpit expose a transparent readiness audit for segment verdicts");
 ok(/\/api\/factory\/reels-brain\/readiness-audit\?verdict=/.test(cockpit), "cockpit exposes standalone readiness-audit endpoint per segment");
+ok(/\/api\/factory\/reels-brain\/decision-snapshot\?lane=/.test(cockpit), "cockpit exposes unified decision-snapshot endpoint per segment");
 ok(/selectedPattern/.test(cockpit) && /rb-drawer/.test(cockpit), "cockpit exposes pattern creative brief drawer");
 ok(/rb-click/.test(cockpit) && /setSelectedPattern/.test(cockpit), "cockpit pattern cards are inspectable");
 ok(/sort\(\(a, b\) => String\(a\.created_at \|\| \"\"\)\.localeCompare\(String\(b\.created_at \|\| \"\"\)\)\)\s*\.slice\(-8\)\s*\.reverse\(\)/.test(cockpit), "cockpit stores latest learning runs first");
