@@ -10,6 +10,7 @@ import { applySegmentTrustToGroups, buildReelsBrainSegmentTrust } from "@/lib/fa
 import { buildReelsBrainOpportunities } from "@/lib/factory/reelsBrainOpportunities";
 import { buildReelsBrainPatternAtlas } from "@/lib/factory/reelsBrainPatternAtlas";
 import { buildReelsBrainSegmentPlaybook } from "@/lib/factory/reelsBrainSegmentPlaybook";
+import { buildReelsBrainEvidenceLedger } from "@/lib/factory/reelsBrainEvidenceLedger";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 20;
@@ -2362,6 +2363,10 @@ export async function GET(req: NextRequest) {
       patternAtlas,
       limit: compactMode ? 6 : 10,
     });
+    const evidenceLedger = buildReelsBrainEvidenceLedger({
+      segmentPlaybook,
+      limit: compactMode ? 6 : 10,
+    });
 
     const timelineResponse = compactMode ? takeRecordList(timeline, 12) : timeline;
 
@@ -2395,6 +2400,7 @@ export async function GET(req: NextRequest) {
       top_opportunities: topOpportunities,
       pattern_atlas: patternAtlas,
       segment_playbook: segmentPlaybook,
+      evidence_ledger: evidenceLedger,
       feedback_warning: feedbackRows.warning,
       cost_governor: costGovernor,
       autopilot_actions: autopilotActions,

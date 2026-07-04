@@ -282,6 +282,7 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
     const topOpportunities = (learning?.top_opportunities || {}) as JsonRecord;
     const patternAtlas = (learning?.pattern_atlas || {}) as JsonRecord;
     const segmentPlaybook = (learning?.segment_playbook || {}) as JsonRecord;
+    const evidenceLedger = (learning?.evidence_ledger || {}) as JsonRecord;
     const actionPack = (learning?.action_pack || {}) as JsonRecord;
     const actionPackGroups = (learning?.action_pack_groups || {}) as JsonRecord;
     const nicheComparison = (learning?.niche_comparison || []) as JsonRecord[];
@@ -669,6 +670,25 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
       prepare: num(segmentPlaybook.summary?.prepare),
       research: num(segmentPlaybook.summary?.research),
     };
+    const evidenceCards = ((evidenceLedger.items || []) as JsonRecord[]).slice(0, 6).map((row) => {
+      const status = marketSignalTone(String(row.market_status || "no_feedback"));
+      const mode = decisionTone(String(row.recommended_mode || "research_only"));
+      const evidence = playbookTone(String(row.evidence_status || "research"));
+      return {
+        ...row,
+        marketTone: status,
+        modeTone: mode,
+        evidenceTone: evidence,
+        label: `${NICHE_LABELS[String(row.niche)] || row.niche} × ${String(row.platform || "mixed").toUpperCase()}`,
+      };
+    });
+    const evidenceSummary = {
+      total: num(evidenceLedger.summary?.total),
+      highTrust: num(evidenceLedger.summary?.high_trust),
+      validated: num(evidenceLedger.summary?.validated),
+      marketThin: num(evidenceLedger.summary?.corpus_strong_market_thin),
+      research: num(evidenceLedger.summary?.research),
+    };
     const trustMatrix = NICHES.map((niche) => {
       const summary = summaries.find((item) => item.niche === niche) || {};
       const trustOverview = (summary.trust_overview || {}) as JsonRecord;
@@ -790,6 +810,7 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
       topOpportunities,
       patternAtlas,
       segmentPlaybook,
+      evidenceLedger,
       actionPack,
       actionPackGroups,
       nicheComparison,
@@ -831,6 +852,8 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
       atlasSummary,
       playbookCards,
       playbookSummary,
+      evidenceCards,
+      evidenceSummary,
       trustMatrix,
       trustHotspots,
       insightHighlights,
@@ -1133,6 +1156,62 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
                 `validate ${compact(vm.playbookSummary.validate)}`,
                 `prepare ${compact(vm.playbookSummary.prepare)}`,
                 `research ${compact(vm.playbookSummary.research)}`,
+              ].map((label) => (
+                <span key={label} style={{ padding: "6px 10px", borderRadius: 999, background: "#fff", border: "1px solid #dbe4ee", color: "#475569", fontSize: 12, fontWeight: 700 }}>
+                  {label}
+                </span>
+              ))}
+            </div>
+          ) : null}
+        </section>
+
+        <section style={{ marginTop: 24 }}>
+          <div style={{ fontSize: 12, color: "#0891b2", textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 700, marginBottom: 12 }}>Evidence Ledger</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 12 }}>
+            {vm.evidenceCards.length ? vm.evidenceCards.map((item: JsonRecord) => (
+              <div key={`${item.niche}:${item.platform}:evidence`} style={{ background: "#fff", border: "1px solid #dbe4ee", borderRadius: 18, padding: 16 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start" }}>
+                  <div>
+                    <strong>{item.label}</strong>
+                    <div style={{ marginTop: 6, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      <span style={{ padding: "4px 8px", borderRadius: 999, background: item.evidenceTone.bg, border: `1px solid ${item.evidenceTone.bd}`, color: item.evidenceTone.fg, fontSize: 12, fontWeight: 700 }}>
+                        {item.evidenceTone.label}
+                      </span>
+                      <span style={{ padding: "4px 8px", borderRadius: 999, background: item.modeTone.bg, border: `1px solid ${item.modeTone.bd}`, color: item.modeTone.fg, fontSize: 12, fontWeight: 700 }}>
+                        {item.modeTone.label}
+                      </span>
+                      <span style={{ padding: "4px 8px", borderRadius: 999, background: item.marketTone.bg, border: `1px solid ${item.marketTone.bd}`, color: item.marketTone.fg, fontSize: 12, fontWeight: 700 }}>
+                        {item.marketTone.label}
+                      </span>
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 26, lineHeight: 1.05, fontWeight: 800 }}>{compact(item.corpus_score)}</div>
+                </div>
+                <div style={{ marginTop: 12, color: "#334155", lineHeight: 1.65 }}>
+                  <div>market {compact(item.market_score)} · stable {compact(item.stable_pattern_count)}</div>
+                  <div>coverage {compact(item.coverage_rate)}% · brief {item.brief_title || "pending"}</div>
+                </div>
+                <div style={{ marginTop: 12, color: "#0f172a", fontWeight: 700, lineHeight: 1.45 }}>
+                  {item.leading_pattern_title || item.rollout_title || "Evidence status"}
+                </div>
+                <div style={{ marginTop: 8, color: "#64748b", fontSize: 14, lineHeight: 1.55 }}>
+                  {item.why_now || item.next_step}
+                </div>
+              </div>
+            )) : (
+              <div style={{ background: "#fff", border: "1px solid #dbe4ee", borderRadius: 18, padding: 16, color: "#64748b" }}>
+                Evidence ledger появится после наполнения segment playbook.
+              </div>
+            )}
+          </div>
+          {vm.evidenceSummary.total ? (
+            <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {[
+                `total ${compact(vm.evidenceSummary.total)}`,
+                `high trust ${compact(vm.evidenceSummary.highTrust)}`,
+                `validated ${compact(vm.evidenceSummary.validated)}`,
+                `market thin ${compact(vm.evidenceSummary.marketThin)}`,
+                `research ${compact(vm.evidenceSummary.research)}`,
               ].map((label) => (
                 <span key={label} style={{ padding: "6px 10px", borderRadius: 999, background: "#fff", border: "1px solid #dbe4ee", color: "#475569", fontSize: 12, fontWeight: 700 }}>
                   {label}
@@ -1542,6 +1621,51 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
                 <h3 style={{ font: "700 24px/1.1 'Space Grotesk'", margin: 0 }}>Segment Playbook ещё пуст</h3>
                 <p style={{ marginTop: 10, color: "#64748b", lineHeight: 1.55 }}>
                   Этот слой появится автоматически, когда atlas и opportunity слой накопят достаточно сигналов для action-ready сегментов.
+                </p>
+              </div>
+            )}
+          </div>
+        </section>
+
+        <section>
+          <SectionTitle k="04.45 · Evidence Ledger" title="Где сегмент подтвержден корпусом, а где уже и рынком" />
+          <div className="rb-three">
+            {vm.evidenceCards.length ? vm.evidenceCards.map((item: JsonRecord) => (
+              <div className="rb-card" key={`evidence-full:${item.niche}:${item.platform}`}>
+                <div className="rb-two" style={{ gridTemplateColumns: "1fr auto", gap: 14 }}>
+                  <div>
+                    <div className="rb-overline" style={{ color: "#0891b2" }}>{item.label}</div>
+                    <h3 style={{ font: "700 28px/1 'Space Grotesk'", margin: "10px 0 0" }}>{compact(item.corpus_score)} / {compact(item.market_score)}</h3>
+                  </div>
+                  <div style={{ display: "grid", gap: 8, justifyItems: "end" }}>
+                    <div className="rb-live-pill" style={{ background: item.evidenceTone.bg, borderColor: item.evidenceTone.bd, color: item.evidenceTone.fg }}>
+                      <i style={{ background: item.evidenceTone.fg }} />
+                      {item.evidenceTone.label}
+                    </div>
+                    <div className="rb-live-pill" style={{ background: item.marketTone.bg, borderColor: item.marketTone.bd, color: item.marketTone.fg }}>
+                      <i style={{ background: item.marketTone.fg }} />
+                      {item.marketTone.label}
+                    </div>
+                  </div>
+                </div>
+                <div className="rb-three" style={{ marginTop: 14 }}>
+                  <div className="rb-brief-block"><b>Brief</b><p>{item.brief_title || "pending"}</p></div>
+                  <div className="rb-brief-block"><b>Pattern depth</b><p>{compact(item.stable_pattern_count)} stable · {compact(item.coverage_rate)}%</p></div>
+                  <div className="rb-brief-block"><b>Mode</b><p>{item.recommended_mode}</p></div>
+                </div>
+                <div className="rb-brief-block" style={{ marginTop: 12 }}>
+                  <b>Why now</b>
+                  <p>{item.why_now || item.next_step}</p>
+                </div>
+                <p style={{ marginTop: 12, color: "#475569", lineHeight: 1.55 }}>
+                  {item.brief_hook || item.leading_pattern_title || item.rollout_title}
+                </p>
+              </div>
+            )) : (
+              <div className="rb-card">
+                <h3 style={{ font: "700 24px/1.1 'Space Grotesk'", margin: 0 }}>Evidence Ledger ещё пуст</h3>
+                <p style={{ marginTop: 10, color: "#64748b", lineHeight: 1.55 }}>
+                  Этот слой появится автоматически, когда playbook накопит достаточно сегментов с понятной corpus и market evidence.
                 </p>
               </div>
             )}

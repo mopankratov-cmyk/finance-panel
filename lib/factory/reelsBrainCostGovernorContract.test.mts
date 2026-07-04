@@ -40,7 +40,7 @@ ok(!/POST\s*\(/.test(governor), "cost-governor route is read-only");
 
 ok(/daily_report/.test(report) && /autopilot_actions/.test(report), "report route exposes operator report fields");
 ok(/anti_pattern_brain/.test(report) && /discovery_brain/.test(report), "report route includes learning context");
-ok(/top_opportunities/.test(report) && /pattern_atlas/.test(report) && /segment_playbook/.test(report), "report route exposes segment decision layers");
+ok(/top_opportunities/.test(report) && /pattern_atlas/.test(report) && /segment_playbook/.test(report) && /evidence_ledger/.test(report), "report route exposes segment decision layers");
 ok(/feedback_loop/.test(report) && /portfolio_manager/.test(report) && /audio_visual_readiness/.test(report) && /outcome_memory_brain/.test(report), "report route exposes operating-system intelligence, audio readiness and outcome memory");
 ok(/\/api\/factory\/reels-brain\/progress/.test(report) && /pipeline_progress/.test(report), "report route exposes compact pipeline progress");
 ok(!/POST\s*\(/.test(report), "report route is read-only");
@@ -61,7 +61,7 @@ ok(/use_autopilot_guard/.test(scheduler), "scheduler marks paid collection as gu
 ok(/costGovernor/.test(cockpit) && /autopilotActions/.test(cockpit), "cockpit reads cost governor and autopilot actions");
 ok(/learningPlan/.test(cockpit) && /Learning Mission/.test(cockpit), "cockpit exposes the standalone learning mission");
 ok(/nextLayers/.test(cockpit), "cockpit reads next intelligence layers");
-ok(/Top Opportunities/.test(cockpit) && /Pattern Atlas/.test(cockpit) && /Segment Playbook/.test(cockpit), "cockpit surfaces segment opportunity, atlas and playbook layers");
+ok(/Top Opportunities/.test(cockpit) && /Pattern Atlas/.test(cockpit) && /Segment Playbook/.test(cockpit) && /Evidence Ledger/.test(cockpit), "cockpit surfaces segment opportunity, atlas, playbook and evidence layers");
 ok(/selectedPattern/.test(cockpit) && /rb-drawer/.test(cockpit), "cockpit exposes pattern creative brief drawer");
 ok(/rb-click/.test(cockpit) && /setSelectedPattern/.test(cockpit), "cockpit pattern cards are inspectable");
 ok(/sort\(\(a, b\) => String\(a\.created_at \|\| \"\"\)\.localeCompare\(String\(b\.created_at \|\| \"\"\)\)\)\s*\.slice\(-8\)\s*\.reverse\(\)/.test(cockpit), "cockpit stores latest learning runs first");

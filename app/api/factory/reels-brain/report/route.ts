@@ -79,6 +79,7 @@ export async function GET(req: NextRequest) {
       top_opportunities: body.top_opportunities || null,
       pattern_atlas: body.pattern_atlas || null,
       segment_playbook: body.segment_playbook || null,
+      evidence_ledger: body.evidence_ledger || null,
       feedback_loop: body.feedback_loop || body.next_intelligence_layers?.feedback_loop || null,
       outcome_memory_brain: body.outcome_memory_brain || body.next_intelligence_layers?.outcome_memory || null,
       audio_visual_intelligence: body.audio_visual_intelligence || body.next_intelligence_layers?.audio_visual_intelligence || null,
