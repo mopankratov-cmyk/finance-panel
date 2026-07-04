@@ -23,6 +23,24 @@ type GroupRow = {
   } | null;
 };
 
+type SegmentOutputRow = {
+  niche?: string;
+  platform?: string;
+  primary?: {
+    title?: string;
+    hook?: string;
+    hypothesis?: string;
+    decision?: string;
+    creative_brief?: {
+      hook?: string;
+    };
+  } | null;
+  cards?: Array<{
+    title?: string;
+    hypothesis?: string;
+  }>;
+};
+
 type NicheSummaryRow = {
   niche: string;
   total_videos?: number;
@@ -48,6 +66,10 @@ function clamp(value: number, min = 0, max = 100) {
 
 function text(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function joinKey(niche: string, platform: string) {
+  return `${niche}__${platform}`;
 }
 
 function recommendationMode(nicheStatus: string, platformStatus: string) {
@@ -80,6 +102,11 @@ export function buildReelsBrainOpportunities(input: {
     by_niche?: GroupRow[];
     by_platform?: GroupRow[];
   };
+  segmentOutputBanks?: {
+    briefs?: SegmentOutputRow[];
+    actions?: SegmentOutputRow[];
+    hypotheses?: SegmentOutputRow[];
+  };
   platforms?: string[];
   limit?: number;
 }) {
@@ -91,6 +118,9 @@ export function buildReelsBrainOpportunities(input: {
   const actionByPlatform = new Map((input.actionPackGroups?.by_platform || []).map((row) => [text(row.platform), row]));
   const hypothesisByNiche = new Map((input.hypothesisBankGroups?.by_niche || []).map((row) => [text(row.niche), row]));
   const hypothesisByPlatform = new Map((input.hypothesisBankGroups?.by_platform || []).map((row) => [text(row.platform), row]));
+  const briefBySegment = new Map((input.segmentOutputBanks?.briefs || []).map((row) => [joinKey(text(row.niche), text(row.platform)), row]));
+  const actionBySegment = new Map((input.segmentOutputBanks?.actions || []).map((row) => [joinKey(text(row.niche), text(row.platform)), row]));
+  const hypothesisBySegment = new Map((input.segmentOutputBanks?.hypotheses || []).map((row) => [joinKey(text(row.niche), text(row.platform)), row]));
   const platforms = input.platforms || ["tiktok", "instagram", "youtube"];
 
   const opportunities = input.nicheSummaries.flatMap((nicheRow) =>
@@ -99,6 +129,7 @@ export function buildReelsBrainOpportunities(input: {
       const platformRow = nicheRow.platform_brains?.[platform] || {};
       const nicheTrust = nicheTrustByKey.get(niche) || {};
       const platformTrust = platformTrustByKey.get(platform) || {};
+      const segmentKey = joinKey(niche, platform);
       const readyPatterns = num(platformRow.generator_ready_patterns);
       const analyzed = num(platformRow.analyzed_videos);
       const total = num(platformRow.total_videos);
@@ -117,6 +148,10 @@ export function buildReelsBrainOpportunities(input: {
       const actionPlatform = actionByPlatform.get(platform);
       const hypothesisNiche = hypothesisByNiche.get(niche);
       const hypothesisPlatform = hypothesisByPlatform.get(platform);
+      const briefSegment = briefBySegment.get(segmentKey);
+      const actionSegment = actionBySegment.get(segmentKey);
+      const hypothesisSegment = hypothesisBySegment.get(segmentKey);
+      const primaryHypothesisCard = (hypothesisSegment?.cards || [])[0] || null;
       return {
         niche,
         platform,
@@ -134,11 +169,18 @@ export function buildReelsBrainOpportunities(input: {
         platform_trust_status: text(platformTrust.status),
         niche_note: text(nicheTrust.note),
         platform_note: text(platformTrust.note),
-        best_brief_title: text(briefPlatform?.primary?.title || briefNiche?.primary?.title),
-        best_brief_hook: text(briefPlatform?.primary?.creative_brief?.hook || briefPlatform?.primary?.hook || briefNiche?.primary?.creative_brief?.hook || briefNiche?.primary?.hook),
-        best_action_title: text(actionPlatform?.primary?.title || actionNiche?.primary?.title),
-        best_hypothesis_title: text(hypothesisPlatform?.primary?.title || hypothesisNiche?.primary?.title),
-        best_hypothesis: text(hypothesisPlatform?.primary?.hypothesis || hypothesisNiche?.primary?.hypothesis),
+        best_brief_title: text(briefSegment?.primary?.title || briefPlatform?.primary?.title || briefNiche?.primary?.title),
+        best_brief_hook: text(
+          briefSegment?.primary?.creative_brief?.hook
+          || briefSegment?.primary?.hook
+          || briefPlatform?.primary?.creative_brief?.hook
+          || briefPlatform?.primary?.hook
+          || briefNiche?.primary?.creative_brief?.hook
+          || briefNiche?.primary?.hook,
+        ),
+        best_action_title: text(actionSegment?.primary?.title || actionPlatform?.primary?.title || actionNiche?.primary?.title),
+        best_hypothesis_title: text(primaryHypothesisCard?.title || hypothesisPlatform?.primary?.title || hypothesisNiche?.primary?.title),
+        best_hypothesis: text(primaryHypothesisCard?.hypothesis || hypothesisPlatform?.primary?.hypothesis || hypothesisNiche?.primary?.hypothesis),
       };
     }),
   )

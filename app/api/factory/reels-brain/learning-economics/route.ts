@@ -2391,6 +2391,11 @@ export async function GET(req: NextRequest) {
       briefPackGroups: trustedGroupedBriefPacks,
       actionPackGroups: trustedGroupedActionPacks,
       hypothesisBankGroups: trustedGroupedHypothesisBank,
+      segmentOutputBanks: {
+        briefs: trustedGroupedBriefPacks.by_segment,
+        actions: trustedGroupedActionPacks.by_segment,
+        hypotheses: trustedGroupedHypothesisBank.by_segment,
+      },
       platforms: ["tiktok", "instagram", "youtube"],
       limit: compactMode ? 6 : 10,
     });

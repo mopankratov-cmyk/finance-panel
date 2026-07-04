@@ -42,6 +42,11 @@ function testBuildReelsBrainOpportunitiesRanksBestSegments() {
       by_niche: [{ niche: "ru_toys", primary: { title: "Toys hypothesis", hypothesis: "test toys" } }],
       by_platform: [{ platform: "tiktok", primary: { title: "TikTok hypothesis", hypothesis: "test tiktok" } }],
     },
+    segmentOutputBanks: {
+      briefs: [{ niche: "ru_toys", platform: "tiktok", primary: { title: "Exact TikTok brief", creative_brief: { hook: "Точный сегментный hook" } } }],
+      actions: [{ niche: "ru_toys", platform: "tiktok", primary: { title: "Exact TikTok action", decision: "scale" } }],
+      hypotheses: [{ niche: "ru_toys", platform: "tiktok", cards: [{ title: "Exact TikTok hypothesis", hypothesis: "test exact tiktok" }] }],
+    },
     limit: 6,
   });
 
@@ -49,9 +54,9 @@ function testBuildReelsBrainOpportunitiesRanksBestSegments() {
   assert.equal(result.top[0]?.niche, "ru_toys");
   assert.equal(result.top[0]?.platform, "tiktok");
   assert.equal(result.top[0]?.recommended_mode, "control_only");
-  assert.equal(result.top[0]?.best_brief_title, "TikTok brief");
-  assert.equal(result.top[0]?.best_action_title, "TikTok action");
-  assert.equal(result.top[0]?.best_hypothesis, "test tiktok");
+  assert.equal(result.top[0]?.best_brief_title, "Exact TikTok brief");
+  assert.equal(result.top[0]?.best_action_title, "Exact TikTok action");
+  assert.equal(result.top[0]?.best_hypothesis, "test exact tiktok");
   assert.equal(result.top.at(-1)?.platform, "youtube");
 }
 
