@@ -37,6 +37,8 @@ ok(/function shouldSkipDownloadForYtDlpProbe/.test(worker) && /base\.push\("--sk
 ok(/function ytDlpProbeArgSets/.test(worker) && /player_client=android,web/.test(worker) && /-f", "b\/best"/.test(worker), "offline worker retries YouTube probes with alternate clients and fallback format selection");
 ok(/function normalizeYtDlpTarget/.test(worker) && /share_item_id/.test(worker) && /embed\/v2/.test(worker), "offline worker normalizes TikTok share urls before yt-dlp");
 ok(/route_local_resolver_enabled/.test(worker), "offline worker logs route resolver state separately from worker resolver state");
+ok(/function fetchLocalMediaBackfillCandidates/.test(worker), "offline worker can source media backlog candidates directly from Supabase");
+ok(/stage: "local_media_candidate_fallback"/.test(worker), "offline worker logs when it falls back to local media candidate selection");
 ok(/function finalizeTranscriptOutcome/.test(worker), "offline worker normalizes transcript outcomes");
 ok(/transcript_no_speech/.test(worker), "offline worker marks empty whisper responses as no-speech terminal state");
 ok(/remoteFallback = await transcribeFal/.test(worker), "offline worker retries local empty transcript via remote media fallback");
