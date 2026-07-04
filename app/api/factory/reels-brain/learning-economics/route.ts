@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { automationRunHistory } from "@/lib/factory/reelsBrainPlaybook";
 import { buildReelsBrainOperatingSystem, type ReelsBrainMetricRow } from "@/lib/factory/reelsBrainOperatingSystem";
 import { buildPatternOutcomeLayer } from "@/lib/factory/reelsBrainPatternOutcome";
+import { buildReelsBrainHypothesisBank } from "@/lib/factory/reelsBrainHypothesisBank";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 20;
@@ -2263,6 +2264,11 @@ export async function GET(req: NextRequest) {
       }
       : discoveryBrain;
 
+    const hypothesisBank = buildReelsBrainHypothesisBank(
+      patternDecisionLayer.pattern_details as unknown as Array<Parameters<typeof buildReelsBrainHypothesisBank>[0][number]>,
+      compactMode ? 6 : 10,
+    );
+
     const timelineResponse = compactMode ? takeRecordList(timeline, 12) : timeline;
 
     return NextResponse.json({
@@ -2285,6 +2291,7 @@ export async function GET(req: NextRequest) {
       portfolio_manager: operatingSystem.portfolio_manager,
       audio_brain: audioBrain,
       audio_visual_readiness: audioVisualReadiness,
+      hypothesis_bank: hypothesisBank,
       feedback_warning: feedbackRows.warning,
       cost_governor: costGovernor,
       autopilot_actions: autopilotActions,

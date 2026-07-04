@@ -255,6 +255,7 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
       : "";
     const patternDetails = (learning?.pattern_details || []) as JsonRecord[];
     const patternOutcomeSummary = (learning?.pattern_outcome_summary || {}) as JsonRecord;
+    const hypothesisBank = (learning?.hypothesis_bank || {}) as JsonRecord;
     const nicheComparison = (learning?.niche_comparison || []) as JsonRecord[];
     const niches = (learning?.niches || []) as JsonRecord[];
     const topHooks = (insights?.top_hooks || []) as JsonRecord[];
@@ -699,6 +700,7 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
       patternDetails,
       patternOutcomeSummary,
       patternDetailById,
+      hypothesisBank,
       nicheComparison,
       score,
       tone,
@@ -1850,7 +1852,75 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
 
         <section className="rb-two">
           <div>
-            <SectionTitle k="07 · Anti-Pattern Brain" title="Что НЕ надо масштабировать" />
+            <SectionTitle k="07 · Hypothesis Bank" title="Какие тесты мозг советует запускать дальше" />
+            <div className="rb-card">
+              <div className="rb-three" style={{ marginBottom: 16 }}>
+                {[
+                  ["Scale", vm.hypothesisBank.summary?.scale, "гипотезы для усиления"],
+                  ["Control", vm.hypothesisBank.summary?.control, "гипотезы для контролируемого теста"],
+                  ["Watch", vm.hypothesisBank.summary?.watch, "разведочные гипотезы"],
+                ].map(([label, value, text]) => {
+                  const tone = decisionTone(String(label).toLowerCase());
+                  return (
+                    <div className="rb-pattern" key={`hypo-summary:${label}`}>
+                      <div className="rb-pill" style={{ background: tone.bg, borderColor: tone.bd, color: tone.fg }}>{label}</div>
+                      <h3 style={{ marginTop: 10 }}>{compact(value)}</h3>
+                      <p>{text}</p>
+                    </div>
+                  );
+                })}
+              </div>
+              {((vm.hypothesisBank.cards || []) as JsonRecord[]).length ? ((vm.hypothesisBank.cards || []) as JsonRecord[]).slice(0, 4).map((card, index) => {
+                const decision = decisionTone(String(card.decision || "watch"));
+                const market = marketSignalTone(String(card.market_status || "no_feedback"));
+                return (
+                  <div className="rb-pattern" key={card.id || index} style={{ marginTop: index ? 12 : 0 }}>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                      <div className="rb-pill">priority {compact(card.priority_score)}</div>
+                      <div className="rb-pill" style={{ background: decision.bg, borderColor: decision.bd, color: decision.fg }}>{decision.label}</div>
+                      <div className="rb-pill" style={{ background: market.bg, borderColor: market.bd, color: market.fg }}>{market.label}</div>
+                    </div>
+                    <h3 style={{ marginTop: 10 }}>{card.title}</h3>
+                    <p style={{ color: "#0f172a", fontWeight: 600 }}>{card.hypothesis}</p>
+                    <p>Платформы: {(card.platform_focus || []).join(" · ") || "mixed"} · Ниши: {(card.niche_focus || []).join(" · ") || "mixed"}</p>
+                    {((card.why_now || []) as string[]).length ? (
+                      <div style={{ marginTop: 8, display: "grid", gap: 6 }}>
+                        {((card.why_now || []) as string[]).slice(0, 2).map((item, itemIndex) => (
+                          <p key={`why-now:${itemIndex}`} style={{ margin: 0, color: "#334155" }}>Почему сейчас: {item}</p>
+                        ))}
+                      </div>
+                    ) : null}
+                    {((card.test_plan || []) as string[]).length ? (
+                      <div style={{ marginTop: 10, padding: 12, borderRadius: 12, background: "#f8fafc", border: "1px solid #e2e8f0" }}>
+                        <p style={{ margin: 0, color: "#0f172a", fontWeight: 700 }}>Test plan</p>
+                        {((card.test_plan || []) as string[]).slice(0, 3).map((item, itemIndex) => (
+                          <p key={`test-plan:${itemIndex}`} style={{ margin: "6px 0 0", color: "#475569" }}>{item}</p>
+                        ))}
+                      </div>
+                    ) : null}
+                    <div className="rb-brief-block" style={{ marginTop: 10 }}>
+                      <b>Успех</b>
+                      <p>{card.success_metric || "Сравнить с baseline по удержанию и коммерческому сигналу."}</p>
+                    </div>
+                    {((card.guardrails || []) as string[]).length ? (
+                      <div style={{ marginTop: 10, padding: 12, borderRadius: 12, background: "#fff7ed", border: "1px solid #fed7aa" }}>
+                        {((card.guardrails || []) as string[]).slice(0, 3).map((item, itemIndex) => (
+                          <p key={`guardrail:${itemIndex}`} style={{ margin: itemIndex ? "6px 0 0" : 0, color: "#9a3412" }}>Guardrail: {item}</p>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              }) : (
+                <div className="rb-pattern">
+                  <h3>Hypothesis bank появится после роста pattern-memory</h3>
+                  <p>Сначала нужно больше паттернов с trust и market feedback, затем мозг начнёт ранжировать гипотезы сам.</p>
+                </div>
+              )}
+            </div>
+          </div>
+          <div>
+            <SectionTitle k="08 · Anti-Pattern Brain" title="Что НЕ надо масштабировать" />
             <div className="rb-card">
               {((vm.antiPattern.items || []).length ? vm.antiPattern.items : vm.blindSpots.map((spot, index) => ({ code: `risk_${index}`, label: `Риск ${index + 1}`, evidence: spot, action: "Держать как watch-сигнал до следующего прогона.", severity: "medium" }))).slice(0, 5).map((item: JsonRecord, index: number) => (
                 <div className="rb-pattern" key={item.code || item.label} style={{ marginTop: index ? 10 : 0, borderColor: item.severity === "high" ? "#fecaca" : "#e2e8f0", background: item.severity === "high" ? "#fff1f2" : "#fff" }}>
@@ -1863,7 +1933,7 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
             </div>
           </div>
           <div>
-            <SectionTitle k="08 · Discovery Brain" title="Как сборщик будет дешеветь" />
+            <SectionTitle k="09 · Discovery Brain" title="Как сборщик будет дешеветь" />
             <div className="rb-card">
               <div className="rb-pattern">
                 <div className="rb-pill">{vm.discovery.ru_focus || "ru_focus"}</div>
