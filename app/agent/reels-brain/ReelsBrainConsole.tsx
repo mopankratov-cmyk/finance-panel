@@ -812,6 +812,12 @@ type LearningEconomicsResponse = {
   hypothesis_bank_groups?: {
     by_niche?: {
       niche: string;
+      trust_score?: number;
+      trust_status?: "ready" | "warming" | "weak";
+      trust_confidence?: "high" | "medium" | "low";
+      trust_note?: string;
+      recommended_mode?: "primary" | "control_only" | "research_only";
+      primary_allowed?: boolean;
       cards: {
         id: string;
         title: string;
@@ -836,6 +842,12 @@ type LearningEconomicsResponse = {
     }[];
     by_platform?: {
       platform: string;
+      trust_score?: number;
+      trust_status?: "ready" | "warming" | "weak";
+      trust_confidence?: "high" | "medium" | "low";
+      trust_note?: string;
+      recommended_mode?: "primary" | "control_only" | "research_only";
+      primary_allowed?: boolean;
       cards: {
         id: string;
         title: string;
@@ -922,6 +934,12 @@ type LearningEconomicsResponse = {
   brief_pack_groups?: {
     by_niche?: {
       niche: string;
+      trust_score?: number;
+      trust_status?: "ready" | "warming" | "weak";
+      trust_confidence?: "high" | "medium" | "low";
+      trust_note?: string;
+      recommended_mode?: "primary" | "control_only" | "research_only";
+      primary_allowed?: boolean;
       primary?: {
         rank: number;
         recipe_id: string;
@@ -951,6 +969,12 @@ type LearningEconomicsResponse = {
     }[];
     by_platform?: {
       platform: string;
+      trust_score?: number;
+      trust_status?: "ready" | "warming" | "weak";
+      trust_confidence?: "high" | "medium" | "low";
+      trust_note?: string;
+      recommended_mode?: "primary" | "control_only" | "research_only";
+      primary_allowed?: boolean;
       primary?: {
         rank: number;
         recipe_id: string;
@@ -1071,6 +1095,12 @@ type LearningEconomicsResponse = {
   action_pack_groups?: {
     by_niche?: {
       niche: string;
+      trust_score?: number;
+      trust_status?: "ready" | "warming" | "weak";
+      trust_confidence?: "high" | "medium" | "low";
+      trust_note?: string;
+      recommended_mode?: "primary" | "control_only" | "research_only";
+      primary_allowed?: boolean;
       primary?: {
         rank: number;
         pattern_id: string;
@@ -1090,6 +1120,12 @@ type LearningEconomicsResponse = {
     }[];
     by_platform?: {
       platform: string;
+      trust_score?: number;
+      trust_status?: "ready" | "warming" | "weak";
+      trust_confidence?: "high" | "medium" | "low";
+      trust_note?: string;
+      recommended_mode?: "primary" | "control_only" | "research_only";
+      primary_allowed?: boolean;
       primary?: {
         rank: number;
         pattern_id: string;
@@ -1478,6 +1514,12 @@ function segmentTrustCopy(status: "ready" | "warming" | "weak" | undefined) {
   if (status === "ready") return { label: "trust ready", tone: "border-emerald-200 bg-emerald-50 text-emerald-700" };
   if (status === "warming") return { label: "trust warming", tone: "border-cyan-200 bg-cyan-50 text-cyan-800" };
   return { label: "trust weak", tone: "border-amber-200 bg-amber-50 text-amber-800" };
+}
+
+function recommendationModeCopy(mode: "primary" | "control_only" | "research_only" | undefined) {
+  if (mode === "primary") return { label: "primary", tone: "border-emerald-200 bg-emerald-50 text-emerald-700" };
+  if (mode === "control_only") return { label: "control only", tone: "border-cyan-200 bg-cyan-50 text-cyan-800" };
+  return { label: "research", tone: "border-amber-200 bg-amber-50 text-amber-800" };
 }
 
 function capabilityTone(status: string) {
@@ -3239,8 +3281,13 @@ export default function ReelsBrainPage() {
                       {(() => {
                         const trust = segmentTrustByNiche.get(group.niche);
                         return trust ? (
-                          <div className={`mb-3 inline-flex rounded-full border px-2.5 py-1 text-xs font-black ${segmentTrustCopy(trust.status).tone}`}>
-                            {segmentTrustCopy(trust.status).label} · {compactNumber(trust.score)}%
+                          <div className="mb-3 flex flex-wrap gap-2">
+                            <div className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-black ${segmentTrustCopy(trust.status).tone}`}>
+                              {segmentTrustCopy(trust.status).label} · {compactNumber(trust.score)}%
+                            </div>
+                            <div className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-black ${recommendationModeCopy(group.recommended_mode).tone}`}>
+                              {recommendationModeCopy(group.recommended_mode).label}
+                            </div>
                           </div>
                         ) : null;
                       })()}
@@ -3279,8 +3326,13 @@ export default function ReelsBrainPage() {
                       {(() => {
                         const trust = segmentTrustByPlatform.get(group.platform);
                         return trust ? (
-                          <div className={`mb-3 inline-flex rounded-full border px-2.5 py-1 text-xs font-black ${segmentTrustCopy(trust.status).tone}`}>
-                            {segmentTrustCopy(trust.status).label} · {compactNumber(trust.score)}%
+                          <div className="mb-3 flex flex-wrap gap-2">
+                            <div className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-black ${segmentTrustCopy(trust.status).tone}`}>
+                              {segmentTrustCopy(trust.status).label} · {compactNumber(trust.score)}%
+                            </div>
+                            <div className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-black ${recommendationModeCopy(group.recommended_mode).tone}`}>
+                              {recommendationModeCopy(group.recommended_mode).label}
+                            </div>
                           </div>
                         ) : null;
                       })()}
@@ -3400,8 +3452,13 @@ export default function ReelsBrainPage() {
                       {(() => {
                         const trust = segmentTrustByNiche.get(item.niche);
                         return trust ? (
-                          <div className={`mb-3 inline-flex rounded-full border px-2.5 py-1 text-xs font-black ${segmentTrustCopy(trust.status).tone}`}>
-                            {segmentTrustCopy(trust.status).label} · {compactNumber(trust.score)}%
+                          <div className="mb-3 flex flex-wrap gap-2">
+                            <div className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-black ${segmentTrustCopy(trust.status).tone}`}>
+                              {segmentTrustCopy(trust.status).label} · {compactNumber(trust.score)}%
+                            </div>
+                            <div className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-black ${recommendationModeCopy(item.recommended_mode).tone}`}>
+                              {recommendationModeCopy(item.recommended_mode).label}
+                            </div>
                           </div>
                         ) : null;
                       })()}
@@ -3447,8 +3504,13 @@ export default function ReelsBrainPage() {
                       {(() => {
                         const trust = segmentTrustByPlatform.get(item.platform);
                         return trust ? (
-                          <div className={`mb-3 inline-flex rounded-full border px-2.5 py-1 text-xs font-black ${segmentTrustCopy(trust.status).tone}`}>
-                            {segmentTrustCopy(trust.status).label} · {compactNumber(trust.score)}%
+                          <div className="mb-3 flex flex-wrap gap-2">
+                            <div className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-black ${segmentTrustCopy(trust.status).tone}`}>
+                              {segmentTrustCopy(trust.status).label} · {compactNumber(trust.score)}%
+                            </div>
+                            <div className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-black ${recommendationModeCopy(item.recommended_mode).tone}`}>
+                              {recommendationModeCopy(item.recommended_mode).label}
+                            </div>
                           </div>
                         ) : null;
                       })()}
@@ -3544,8 +3606,13 @@ export default function ReelsBrainPage() {
                         {(() => {
                           const trust = segmentTrustByNiche.get(group.niche);
                           return trust ? (
-                            <div className={`mb-3 inline-flex rounded-full border px-2.5 py-1 text-xs font-black ${segmentTrustCopy(trust.status).tone}`}>
-                              {segmentTrustCopy(trust.status).label} · {compactNumber(trust.score)}%
+                            <div className="mb-3 flex flex-wrap gap-2">
+                              <div className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-black ${segmentTrustCopy(trust.status).tone}`}>
+                                {segmentTrustCopy(trust.status).label} · {compactNumber(trust.score)}%
+                              </div>
+                              <div className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-black ${recommendationModeCopy(group.recommended_mode).tone}`}>
+                                {recommendationModeCopy(group.recommended_mode).label}
+                              </div>
                             </div>
                           ) : null;
                         })()}
@@ -3592,8 +3659,13 @@ export default function ReelsBrainPage() {
                         {(() => {
                           const trust = segmentTrustByPlatform.get(group.platform);
                           return trust ? (
-                            <div className={`mb-3 inline-flex rounded-full border px-2.5 py-1 text-xs font-black ${segmentTrustCopy(trust.status).tone}`}>
-                              {segmentTrustCopy(trust.status).label} · {compactNumber(trust.score)}%
+                            <div className="mb-3 flex flex-wrap gap-2">
+                              <div className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-black ${segmentTrustCopy(trust.status).tone}`}>
+                                {segmentTrustCopy(trust.status).label} · {compactNumber(trust.score)}%
+                              </div>
+                              <div className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-black ${recommendationModeCopy(group.recommended_mode).tone}`}>
+                                {recommendationModeCopy(group.recommended_mode).label}
+                              </div>
                             </div>
                           ) : null;
                         })()}

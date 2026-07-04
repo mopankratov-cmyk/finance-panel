@@ -1923,9 +1923,12 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
                           {(() => {
                             const trust = (((vm.segmentTrust.by_niche || []) as JsonRecord[]).find((item) => item.niche === group.niche) || {}) as JsonRecord;
                             return trust.status ? (
-                              <div className="rb-pill" style={{ background: decisionTone(String(trust.status === "ready" ? "scale" : trust.status === "warming" ? "control" : "watch")).bg, borderColor: decisionTone(String(trust.status === "ready" ? "scale" : trust.status === "warming" ? "control" : "watch")).bd, color: decisionTone(String(trust.status === "ready" ? "scale" : trust.status === "warming" ? "control" : "watch")).fg }}>
-                                trust {compact(trust.score)}% · {String(trust.status)}
-                              </div>
+                              <>
+                                <div className="rb-pill" style={{ background: decisionTone(String(trust.status === "ready" ? "scale" : trust.status === "warming" ? "control" : "watch")).bg, borderColor: decisionTone(String(trust.status === "ready" ? "scale" : trust.status === "warming" ? "control" : "watch")).bd, color: decisionTone(String(trust.status === "ready" ? "scale" : trust.status === "warming" ? "control" : "watch")).fg }}>
+                                  trust {compact(trust.score)}% · {String(trust.status)}
+                                </div>
+                                <div className="rb-pill">{String(group.recommended_mode || "research")}</div>
+                              </>
                             ) : null;
                           })()}
                         </div>
@@ -1947,9 +1950,12 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
                           {(() => {
                             const trust = (((vm.segmentTrust.by_platform || []) as JsonRecord[]).find((item) => item.platform === group.platform) || {}) as JsonRecord;
                             return trust.status ? (
-                              <div className="rb-pill" style={{ background: decisionTone(String(trust.status === "ready" ? "scale" : trust.status === "warming" ? "control" : "watch")).bg, borderColor: decisionTone(String(trust.status === "ready" ? "scale" : trust.status === "warming" ? "control" : "watch")).bd, color: decisionTone(String(trust.status === "ready" ? "scale" : trust.status === "warming" ? "control" : "watch")).fg }}>
-                                trust {compact(trust.score)}% · {String(trust.status)}
-                              </div>
+                              <>
+                                <div className="rb-pill" style={{ background: decisionTone(String(trust.status === "ready" ? "scale" : trust.status === "warming" ? "control" : "watch")).bg, borderColor: decisionTone(String(trust.status === "ready" ? "scale" : trust.status === "warming" ? "control" : "watch")).bd, color: decisionTone(String(trust.status === "ready" ? "scale" : trust.status === "warming" ? "control" : "watch")).fg }}>
+                                  trust {compact(trust.score)}% · {String(trust.status)}
+                                </div>
+                                <div className="rb-pill">{String(group.recommended_mode || "research")}</div>
+                              </>
                             ) : null;
                           })()}
                         </div>
@@ -2096,9 +2102,12 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
                             {(() => {
                               const trust = (((vm.segmentTrust.by_niche || []) as JsonRecord[]).find((item) => item.niche === group.niche) || {}) as JsonRecord;
                               return trust.status ? (
-                                <div className="rb-pill" style={{ background: decisionTone(String(trust.status === "ready" ? "scale" : trust.status === "warming" ? "control" : "watch")).bg, borderColor: decisionTone(String(trust.status === "ready" ? "scale" : trust.status === "warming" ? "control" : "watch")).bd, color: decisionTone(String(trust.status === "ready" ? "scale" : trust.status === "warming" ? "control" : "watch")).fg }}>
-                                  trust {compact(trust.score)}% · {String(trust.status)}
-                                </div>
+                                <>
+                                  <div className="rb-pill" style={{ background: decisionTone(String(trust.status === "ready" ? "scale" : trust.status === "warming" ? "control" : "watch")).bg, borderColor: decisionTone(String(trust.status === "ready" ? "scale" : trust.status === "warming" ? "control" : "watch")).bd, color: decisionTone(String(trust.status === "ready" ? "scale" : trust.status === "warming" ? "control" : "watch")).fg }}>
+                                    trust {compact(trust.score)}% · {String(trust.status)}
+                                  </div>
+                                  <div className="rb-pill">{String(group.recommended_mode || "research")}</div>
+                                </>
                               ) : null;
                             })()}
                             <div className="rb-pill" style={{ background: decisionTone(String(top.decision || "watch")).bg, borderColor: decisionTone(String(top.decision || "watch")).bd, color: decisionTone(String(top.decision || "watch")).fg }}>
@@ -2126,9 +2135,12 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
                             {(() => {
                               const trust = (((vm.segmentTrust.by_platform || []) as JsonRecord[]).find((item) => item.platform === group.platform) || {}) as JsonRecord;
                               return trust.status ? (
-                                <div className="rb-pill" style={{ background: decisionTone(String(trust.status === "ready" ? "scale" : trust.status === "warming" ? "control" : "watch")).bg, borderColor: decisionTone(String(trust.status === "ready" ? "scale" : trust.status === "warming" ? "control" : "watch")).bd, color: decisionTone(String(trust.status === "ready" ? "scale" : trust.status === "warming" ? "control" : "watch")).fg }}>
-                                  trust {compact(trust.score)}% · {String(trust.status)}
-                                </div>
+                                <>
+                                  <div className="rb-pill" style={{ background: decisionTone(String(trust.status === "ready" ? "scale" : trust.status === "warming" ? "control" : "watch")).bg, borderColor: decisionTone(String(trust.status === "ready" ? "scale" : trust.status === "warming" ? "control" : "watch")).bd, color: decisionTone(String(trust.status === "ready" ? "scale" : trust.status === "warming" ? "control" : "watch")).fg }}>
+                                    trust {compact(trust.score)}% · {String(trust.status)}
+                                  </div>
+                                  <div className="rb-pill">{String(group.recommended_mode || "research")}</div>
+                                </>
                               ) : null;
                             })()}
                             <div className="rb-pill" style={{ background: marketSignalTone(String(top.market_status || "no_feedback")).bg, borderColor: marketSignalTone(String(top.market_status || "no_feedback")).bd, color: marketSignalTone(String(top.market_status || "no_feedback")).fg }}>
