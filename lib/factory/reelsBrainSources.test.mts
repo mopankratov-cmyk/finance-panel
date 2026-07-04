@@ -45,9 +45,9 @@ function eq(a: unknown, b: unknown, m: string) { ok(JSON.stringify(a) === JSON.s
     5,
   );
 
-  eq(direct.videos.length, 1, "direct url: search providers short-circuit to exact URL seed");
-  eq(direct.videos[0]?.url, "https://www.tiktok.com/@demo/video/7657332689397124384", "direct url: keeps original tiktok URL");
-  eq(direct.videos[0]?.platform, "tiktok", "direct url: infers platform from URL");
+  eq(direct.configured, true, "direct url: apify_tiktok still reports configured when provider fetch errors");
+  eq(direct.videos.length, 0, "direct url: apify_tiktok no longer short-circuits to synthetic exact URL seed");
+  ok(typeof direct.error === "string" && direct.error.length > 0, "direct url: apify_tiktok surfaces provider error instead of fake success");
 
   for (const [key, value] of Object.entries(original)) {
     if (value == null) delete process.env[key];
@@ -58,7 +58,7 @@ function eq(a: unknown, b: unknown, m: string) { ok(JSON.stringify(a) === JSON.s
 {
   const source = readFileSync("lib/factory/reelsBrainSources.ts", "utf8");
   ok(/function shouldShortCircuitDirectUrl/.test(source), "direct url: helper controls provider short-circuiting");
-  ok(/direct\.platform === "instagram" && provider === "apify_instagram"\) return false;/.test(source), "direct url: apify_instagram keeps real provider fetch for instagram post URLs");
+  ok(/provider === "apify_tiktok" \|\| provider === "apify_instagram" \|\| provider === "apify_youtube"\) return false;/.test(source), "direct url: apify providers keep real fetch for media enrichment");
 }
 
 {

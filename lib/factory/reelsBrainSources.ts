@@ -212,6 +212,25 @@ function firstObjectUrl(value: unknown): string | undefined {
   return undefined;
 }
 
+function firstMediaUrl(value: unknown): string | undefined {
+  const items = arrayValue(value);
+  for (const item of items) {
+    if (typeof item === "string" && item.trim()) return item.trim();
+    const found = str(rec(item).url, rec(item).src);
+    if (found) return found;
+  }
+  return undefined;
+}
+
+function firstChildVideoUrl(value: unknown): string | undefined {
+  const items = arrayValue(value);
+  for (const item of items) {
+    const found = str(rec(item).videoUrl, rec(item).video_url);
+    if (found) return found;
+  }
+  return undefined;
+}
+
 function textRuns(value: unknown): string | undefined {
   if (typeof value === "string") return value;
   const r = rec(value);
@@ -310,6 +329,8 @@ function tiktokInput(row: Record<string, any>): ReelsBrainInput {
   return {
     url,
     video_url: str(
+      firstMediaUrl(row.mediaUrls),
+      rec(row.videoMeta).downloadAddr,
       firstUrlList(rec(video.play_addr)),
       firstUrlList(rec(video.download_addr)),
       firstUrlList(rec(video.playAddr)),
@@ -354,6 +375,8 @@ function instagramInput(row: Record<string, any>): ReelsBrainInput {
   const url = str(media.url, row.url) || (code ? `https://www.instagram.com/reel/${code}/` : undefined);
   const videoUrl = str(
     media.video_url,
+    row.videoUrl,
+    firstChildVideoUrl(row.childPosts),
     firstObjectUrl(media.video_versions),
     firstObjectUrl(rowVideos),
     str(firstVideoContent && rec(firstVideoContent).url),
@@ -475,11 +498,8 @@ function syntheticDirectUrlInput(query: string): ReelsBrainInput[] {
 function shouldShortCircuitDirectUrl(provider: ReelsBrainProvider, query: string): boolean {
   const direct = directPlatformUrl(query);
   if (!direct) return false;
-  if (direct.platform === "instagram" && provider === "apify_instagram") return false;
-  return provider === "apify_tiktok"
-    || provider === "apify_youtube"
-    || provider === "apify_instagram"
-    || provider === "youtube";
+  if (provider === "apify_tiktok" || provider === "apify_instagram" || provider === "apify_youtube") return false;
+  return provider === "youtube";
 }
 
 async function fetchYouTubeShorts(query: string, limit: number): Promise<ReelsBrainInput[]> {

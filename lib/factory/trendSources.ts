@@ -93,6 +93,28 @@ export function trendSourceName(): string {
 const num = (v: unknown) => (Number(v) || 0);
 const apifyActorPath = (actor: string) => actor.trim().replace(/\//g, "~");
 
+function firstMediaUrl(value: unknown): string {
+  if (!Array.isArray(value)) return "";
+  for (const item of value) {
+    if (typeof item === "string" && item.trim()) return item.trim();
+    if (item && typeof item === "object" && typeof (item as Record<string, unknown>).url === "string") {
+      return String((item as Record<string, unknown>).url || "").trim();
+    }
+  }
+  return "";
+}
+
+function firstChildVideoUrl(value: unknown): string {
+  if (!Array.isArray(value)) return "";
+  for (const item of value) {
+    if (!item || typeof item !== "object") continue;
+    const row = item as Record<string, unknown>;
+    const candidate = String(row.videoUrl || row.video_url || "").trim();
+    if (candidate) return candidate;
+  }
+  return "";
+}
+
 function hashtagSeeds(niche: string): string[] {
   const tokens = niche
     .toLowerCase()
@@ -114,6 +136,23 @@ function instagramDirectUrls(niche: string): string[] {
 }
 
 function tiktokActorInput(niche: string, limit: number) {
+  const directUrls = (niche.match(/https?:\/\/[^\s"']+/g) || [])
+    .map((url) => url.replace(/[),.;]+$/, ""))
+    .filter((url) => /tiktok\.com\//i.test(url));
+  if (directUrls.length) {
+    return {
+      postURLs: directUrls.slice(0, limit),
+      shouldDownloadVideos: true,
+      shouldDownloadSubtitles: false,
+      shouldDownloadCovers: false,
+      shouldDownloadAvatars: false,
+      proxyCountryCode: "None",
+      proxy: { useApifyProxy: true },
+      maxItems: limit,
+      resultsLimit: limit,
+      resultsPerPage: limit,
+    };
+  }
   return {
     searchQueries: [niche],
     queries: [niche],
@@ -237,14 +276,31 @@ async function fromApify(niche: string, limit: number, opts: { actor?: string; p
     : input;
   const runActor = async (actorName: string) => {
     const actorPath = apifyActorPath(actorName);
-    const r = await fetch(`https://api.apify.com/v2/acts/${actorPath}/run-sync-get-dataset-items?token=${token}&maxItems=${limit}`, {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(actorInput), signal: AbortSignal.timeout(55000),
+    const requestUrl = new URL(`https://api.apify.com/v2/acts/${actorPath}/run-sync-get-dataset-items`);
+    requestUrl.searchParams.set("token", token);
+    requestUrl.searchParams.set("maxItems", String(limit));
+    if (platform === "instagram") requestUrl.searchParams.set("maxTotalChargeUsd", "0.05");
+    const r = await fetch(requestUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(platform === "instagram" ? { ...actorInput, maxTotalChargeUsd: 0.05 } : actorInput),
+      signal: AbortSignal.timeout(55000),
     });
     if (!r.ok) throw new Error(`Apify ${actorName} ${r.status}`);
     const items = (await r.json().catch(() => [])) as Record<string, unknown>[];
     return (Array.isArray(items) ? items : []).slice(0, limit).map((it) => ({
       url: (it.webVideoUrl || it.url || it.postPage || it.shortUrl || it.videoUrl || (it.shortCode ? `https://www.instagram.com/reel/${it.shortCode}/` : "")) as string,
-      video_url: (it.videoUrl || it.video_url || it.downloadUrl || it.webVideoUrl || (it.video_versions as Array<Record<string, unknown>> | undefined)?.[0]?.url || "") as string,
+      video_url: (
+        it.videoUrl
+        || it.video_url
+        || it.downloadUrl
+        || (it.videoMeta as Record<string, unknown> | undefined)?.downloadAddr
+        || firstMediaUrl(it.mediaUrls)
+        || it.webVideoUrl
+        || firstChildVideoUrl(it.childPosts)
+        || (it.video_versions as Array<Record<string, unknown>> | undefined)?.[0]?.url
+        || ""
+      ) as string,
       caption: (it.text || it.caption || it.title || it.desc || it.description || it.alt || "") as string,
       transcript: (it.transcript || it.subtitle || it.subtitles || "") as string,
       author: ((it.authorMeta as Record<string, unknown> | undefined)?.name
@@ -270,9 +326,21 @@ async function fromApify(niche: string, limit: number, opts: { actor?: string; p
         (it.authorStats as Record<string, unknown> | undefined)?.followerCount ??
         it.followers,
       ),
-      duration_sec: num(it.videoDuration ?? it.video_duration ?? it.duration ?? it.videoLength ?? it.length),
+      duration_sec: num(
+        it.videoDuration
+        ?? it.video_duration
+        ?? it.duration
+        ?? (it.videoMeta as Record<string, unknown> | undefined)?.duration
+        ?? it.videoLength
+        ?? it.length,
+      ),
       hashtags: Array.isArray(it.hashtags)
-        ? (it.hashtags as unknown[]).map((tag) => String(tag || "")).filter(Boolean)
+        ? (it.hashtags as unknown[]).map((tag) => {
+          if (tag && typeof tag === "object") {
+            return String((tag as Record<string, unknown>).name || (tag as Record<string, unknown>).title || "").trim();
+          }
+          return String(tag || "").trim();
+        }).filter(Boolean)
         : typeof it.hashtags === "string"
           ? String(it.hashtags).split(/[,\s]+/).map((tag) => tag.trim()).filter(Boolean)
           : [],
