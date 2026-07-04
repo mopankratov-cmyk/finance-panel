@@ -687,6 +687,115 @@ export default function ReelsBrainPixelCockpit() {
   }, [learning, corpus, learningPlan, progress, health, summaries]);
 
   return (
+    <main style={{ width: "100%", minHeight: "100vh", background: "#f4f7fb", color: "#0f172a", fontFamily: "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" }}>
+      <div style={{ maxWidth: 1180, margin: "0 auto", padding: "32px 20px 64px" }}>
+        <div style={{ background: "#0f172a", color: "#e2e8f0", borderRadius: 24, padding: 24, border: "1px solid #1e293b" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 16, flexWrap: "wrap", alignItems: "center" }}>
+            <div>
+              <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: "0.14em", color: "#67e8f9", fontWeight: 700 }}>Reels Brain</div>
+              <h1 style={{ margin: "12px 0 8px", fontSize: 40, lineHeight: 1.05 }}>Lite Mode</h1>
+              <p style={{ margin: 0, maxWidth: 720, color: "#cbd5e1", lineHeight: 1.6 }}>
+                Упрощённый режим для стабильной работы в браузере. Данные и обучение те же, убран только тяжёлый визуальный слой.
+              </p>
+            </div>
+            <div style={{ padding: "10px 14px", borderRadius: 999, background: "#0b3b2e", color: "#86efac", fontWeight: 700, fontSize: 13 }}>
+              {state === "loading" ? "загрузка" : "страница активна"}
+            </div>
+          </div>
+        </div>
+
+        {error ? (
+          <div style={{ marginTop: 16, padding: 14, borderRadius: 16, background: "#fff7ed", border: "1px solid #fdba74", color: "#9a3412", fontWeight: 600 }}>
+            {error}
+          </div>
+        ) : null}
+
+        <section style={{ marginTop: 24, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}>
+          {[
+            ["Видео в корпусе", compact(vm.totalVideos)],
+            ["Разобрано", compact(vm.analyzed)],
+            ["Ready patterns", compact(vm.readyPatterns)],
+            ["Понимание", `${vm.score}%`],
+            ["Цена полезного видео", usd(vm.usefulCost)],
+            ["Статус петли", vm.nextAction.status],
+          ].map(([label, value]) => (
+            <div key={label} style={{ background: "#fff", border: "1px solid #dbe4ee", borderRadius: 18, padding: 16 }}>
+              <div style={{ fontSize: 12, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 700 }}>{label}</div>
+              <div style={{ marginTop: 10, fontSize: 30, lineHeight: 1.05, fontWeight: 800 }}>{value}</div>
+            </div>
+          ))}
+        </section>
+
+        <section style={{ marginTop: 24, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 16 }}>
+          <div style={{ background: "#fff", border: "1px solid #dbe4ee", borderRadius: 18, padding: 18 }}>
+            <div style={{ fontSize: 12, color: "#0891b2", textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 700 }}>Next Best Action</div>
+            <h2 style={{ margin: "10px 0 8px", fontSize: 24 }}>{vm.nextAction.title}</h2>
+            <p style={{ margin: 0, color: "#475569", lineHeight: 1.6 }}>{vm.nextAction.reason}</p>
+            <div style={{ marginTop: 12, padding: 12, borderRadius: 12, background: "#f8fafc", color: "#0f172a", fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: 13 }}>
+              {vm.nextAction.command}
+            </div>
+          </div>
+
+          <div style={{ background: "#fff", border: "1px solid #dbe4ee", borderRadius: 18, padding: 18 }}>
+            <div style={{ fontSize: 12, color: "#0891b2", textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 700 }}>Главное узкое место</div>
+            <h2 style={{ margin: "10px 0 8px", fontSize: 24 }}>{vm.primaryBottleneck.label}</h2>
+            <p style={{ margin: 0, color: "#475569", lineHeight: 1.6 }}>{vm.primaryBottleneck.note}</p>
+          </div>
+        </section>
+
+        <section style={{ marginTop: 24 }}>
+          <div style={{ fontSize: 12, color: "#0891b2", textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 700, marginBottom: 12 }}>Платформы</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 12 }}>
+            {vm.pipelinePlatforms.map((row: JsonRecord) => (
+              <div key={row.platform} style={{ background: "#fff", border: "1px solid #dbe4ee", borderRadius: 18, padding: 16 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
+                  <strong style={{ fontSize: 20 }}>{row.platform}</strong>
+                  <span style={{ fontSize: 12, color: "#64748b", fontWeight: 700 }}>{row.status}</span>
+                </div>
+                <div style={{ marginTop: 12, color: "#334155", lineHeight: 1.7 }}>
+                  <div>media: {compact(row.withDirectMedia)} · backlog {compact(row.mediaBacklog)}</div>
+                  <div>audio: {compact(row.audioExtracted)} · backlog {compact(row.audioBacklog)}</div>
+                  <div>analyze: {compact(row.analyzed)} / {compact(row.total)}</div>
+                  <div>ETA audio: {hoursLabel(row.etaAudio)} · ETA analyze: {hoursLabel(row.etaAnalyze)}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section style={{ marginTop: 24, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 16 }}>
+          <div style={{ background: "#fff", border: "1px solid #dbe4ee", borderRadius: 18, padding: 18 }}>
+            <div style={{ fontSize: 12, color: "#0891b2", textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 700 }}>Инциденты</div>
+            <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+              {vm.incidentTimeline.length ? vm.incidentTimeline.slice(0, 4).map((item: JsonRecord, index: number) => (
+                <div key={`${item.created_at || index}:${item.kind || item.message}`} style={{ border: "1px solid #e2e8f0", borderRadius: 14, padding: 12 }}>
+                  <strong style={{ display: "block" }}>{item.message || item.kind || "incident"}</strong>
+                  <div style={{ marginTop: 6, color: "#64748b", fontSize: 14 }}>
+                    {(item.severity || "watch").toString()} · {(item.platform || "mixed").toString()} · {(item.provider || "provider?").toString()}
+                  </div>
+                </div>
+              )) : <div style={{ color: "#64748b" }}>Свежих инцидентов нет.</div>}
+            </div>
+          </div>
+
+          <div style={{ background: "#fff", border: "1px solid #dbe4ee", borderRadius: 18, padding: 18 }}>
+            <div style={{ fontSize: 12, color: "#0891b2", textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 700 }}>Экономика обучения</div>
+            <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+              {vm.economicsCards.map((card: { title: string; value: string; note: string }) => (
+                <div key={card.title} style={{ border: "1px solid #e2e8f0", borderRadius: 14, padding: 12 }}>
+                  <strong style={{ display: "block" }}>{card.title}</strong>
+                  <div style={{ marginTop: 6, fontSize: 22, fontWeight: 800 }}>{card.value}</div>
+                  <div style={{ marginTop: 4, color: "#64748b", fontSize: 14 }}>{card.note}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+      </div>
+    </main>
+  );
+
+  return (
     <main className="rb-page">
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Hanken+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
