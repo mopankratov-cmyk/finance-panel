@@ -26,6 +26,7 @@ const segmentStabilityAuditBuilder = readFileSync("lib/factory/reelsBrainSegment
 const cockpit = readFileSync("app/agent/reels-brain/ReelsBrainPixelCockpit.tsx", "utf8");
 const feedback = readFileSync("app/api/factory/reels-brain/feedback/route.ts", "utf8");
 const cron = readFileSync("app/api/factory/jobs/reels-brain-cron/route.ts", "utf8");
+const cronIntent = readFileSync("lib/factory/reelsBrainCronExecutionIntent.ts", "utf8");
 const scheduler = readFileSync("lib/factory/reelsBrainScheduler.ts", "utf8");
 
 ok(/function buildCostGovernor/.test(economics), "learning-economics builds a cost governor");
@@ -103,6 +104,7 @@ ok(/\/api\/factory\/post-metrics/.test(feedback), "feedback route writes through
 ok(/function loadAutopilotGuard/.test(cron), "cron has an autopilot guard");
 ok(/original_task/.test(cron) && /can_run_paid_collection/.test(cron), "cron reports guard enforcement");
 ok(/loadLearningPlan/.test(cron) && /planned_task/.test(cron) && /collect_portfolio_gaps/.test(cron) && /planned_portfolio_segment/.test(cron), "cron consumes learning-plan and can execute portfolio-aware next ticks");
+ok(/buildReelsBrainCronExecutionIntent/.test(cron) && /execution_intent/.test(cron) && /support_primary_segment/.test(cronIntent), "cron executes learning-plan with policy-aware execution intent");
 ok(/function loadPipelineProgress/.test(cron) && /pipeline_preflight/.test(cron) && /reels-brain-audio-backfill/.test(cron), "cron runs pipeline preflight for media and audio backlog");
 ok(/media_ticks/.test(cron) && /audio_ticks/.test(cron) && /platform\",\s*String\(target\.platform/.test(cron), "cron preflight fans out media and audio backlog across top platforms");
 ok(/use_autopilot_guard/.test(scheduler), "scheduler marks paid collection as guarded");

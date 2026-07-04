@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { internalFetch } from "@/lib/internalFetch";
 import { isAuthorizedReelsBrainJobRequest } from "@/lib/factory/reelsBrainJobAuth";
 import { REELS_BRAIN_CORPUS_TARGET_TOTAL } from "@/lib/factory/reelsBrainCorpusTargets";
+import { buildReelsBrainCronExecutionIntent } from "@/lib/factory/reelsBrainCronExecutionIntent";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const dynamic = "force-dynamic";
@@ -336,6 +337,10 @@ export async function GET(req: NextRequest) {
     const preflight = pipelineProgress.ok ? await runPipelinePreflight(req, { niches, progress: pipelineProgress, profile: adaptiveProfile.preflight }) : null;
     const guard = desiredTask === "bulk" ? await loadAutopilotGuard(req, niches) : null;
     const task = desiredTask === "bulk" && guard?.ok && !guard.can_run_paid_collection ? "analyze" : desiredTask;
+    const executionIntent = buildReelsBrainCronExecutionIntent({
+      task,
+      nextTick,
+    });
     const endpoint = task === "bulk"
       ? "/api/factory/jobs/reels-brain-bulk-ingest"
       : "/api/factory/jobs/reels-brain-analyze-backlog";
@@ -348,23 +353,23 @@ export async function GET(req: NextRequest) {
       ? {
         niches: effectiveNiches,
         platforms: effectivePlatforms,
-        max_lanes: adaptiveProfile.body.max_lanes,
-        limit: Math.max(1, Math.min(80, Number(planParams.limit || adaptiveProfile.body.limit))),
-        providers_per_lane: adaptiveProfile.body.providers_per_lane,
-        query_variants_per_lane: adaptiveProfile.body.query_variants_per_lane,
-        provider_timeout_ms: adaptiveProfile.body.provider_timeout_ms,
-        max_provider_calls: adaptiveProfile.body.max_provider_calls,
-        max_cost_units: adaptiveProfile.body.max_cost_units,
-        hours: 72,
+        max_lanes: Math.max(1, Math.min(6, Number(executionIntent.bulk_overrides?.max_lanes ?? adaptiveProfile.body.max_lanes))),
+        limit: Math.max(1, Math.min(80, Number(planParams.limit || executionIntent.bulk_overrides?.limit || adaptiveProfile.body.limit))),
+        providers_per_lane: Math.max(1, Math.min(3, Number(executionIntent.bulk_overrides?.providers_per_lane ?? adaptiveProfile.body.providers_per_lane))),
+        query_variants_per_lane: Math.max(1, Math.min(3, Number(executionIntent.bulk_overrides?.query_variants_per_lane ?? adaptiveProfile.body.query_variants_per_lane))),
+        provider_timeout_ms: Math.max(5000, Math.min(30000, Number(executionIntent.bulk_overrides?.provider_timeout_ms ?? adaptiveProfile.body.provider_timeout_ms))),
+        max_provider_calls: Math.max(1, Math.min(50, Number(executionIntent.bulk_overrides?.max_provider_calls ?? adaptiveProfile.body.max_provider_calls))),
+        max_cost_units: Math.max(1, Math.min(200, Number(executionIntent.bulk_overrides?.max_cost_units ?? adaptiveProfile.body.max_cost_units))),
+        hours: Math.max(12, Math.min(168, Number(executionIntent.bulk_overrides?.hours ?? 72))),
       }
       : {
         niches: effectiveNiches,
         platforms: effectivePlatforms,
-        max_lanes: adaptiveProfile.body.max_lanes,
-        limit: Math.max(1, Math.min(25, Number(planParams.limit || adaptiveProfile.body.limit))),
+        max_lanes: Math.max(1, Math.min(9, Number(executionIntent.analyze_overrides?.max_lanes ?? adaptiveProfile.body.max_lanes))),
+        limit: Math.max(1, Math.min(25, Number(planParams.limit || executionIntent.analyze_overrides?.limit || adaptiveProfile.body.limit))),
         build_patterns: typeof planParams.build_patterns === "string" || typeof planParams.build_patterns === "boolean"
           ? ["1", "true", "yes", "on"].includes(String(planParams.build_patterns).toLowerCase())
-          : adaptiveProfile.body.build_patterns,
+          : Boolean(executionIntent.analyze_overrides?.build_patterns ?? adaptiveProfile.body.build_patterns),
       };
 
     const response = await internalFetch(`${req.nextUrl.origin}${endpoint}`, {
@@ -394,6 +399,7 @@ export async function GET(req: NextRequest) {
       planned_reason: nextTick.reason || null,
       planned_priority_segment: nextTick.priority_segment || null,
       planned_portfolio_segment: nextTick.portfolio_priority_segment || null,
+      execution_intent: executionIntent,
       adaptive_profile: adaptiveProfile,
       guard: guard ? { ok: guard.ok, can_run_paid_collection: guard.can_run_paid_collection, reason: guard.reason } : null,
       pipeline_progress_ok: pipelineProgress.ok,
@@ -424,6 +430,7 @@ export async function GET(req: NextRequest) {
       cadence: "*/5 * * * *",
       policy: "auto until target: bulk while corpus is below target and backlog is small, otherwise analyze",
       learning_plan: learningPlan.ok ? learningPlan.data : null,
+      execution_intent: executionIntent,
       adaptive_profile: adaptiveProfile,
       guard: guard ? { ok: guard.ok, can_run_paid_collection: guard.can_run_paid_collection, reason: guard.reason } : null,
       pipeline_progress: pipelineProgress.ok ? pipelineProgress.data : null,
