@@ -46,6 +46,7 @@ test("selectCreativeBriefFromSegmentLayers prefers exact segment solution over g
   assert.equal(result?.source, "segment_solution");
   assert.equal(result?.creative_brief.hook, "Смотри что внутри");
   assert.equal(result?.trust_summary.evidence_band, "stable");
+  assert.equal(result?.source_trace?.[0]?.source, "segment_solution");
 });
 
 test("selectCreativeBriefFromSegmentLayers falls back to platform then niche matrix", () => {
@@ -77,6 +78,7 @@ test("selectCreativeBriefFromSegmentLayers falls back to platform then niche mat
   });
   assert.equal(platformResult?.source, "platform_matrix");
   assert.equal(platformResult?.platform, "youtube");
+  assert.equal(platformResult?.source_trace?.[0]?.source, "platform_matrix");
 
   const nicheResult = selectCreativeBriefFromSegmentLayers({
     niche: "ru_toys",
@@ -106,4 +108,62 @@ test("selectCreativeBriefFromSegmentLayers falls back to platform then niche mat
   });
   assert.equal(nicheResult?.source, "niche_matrix");
   assert.equal(nicheResult?.creative_brief.hook, "Niche fallback");
+  assert.equal(nicheResult?.source_trace?.[0]?.source, "niche_matrix");
+});
+
+test("selectCreativeBriefFromSegmentLayers exposes alternative fallback ladder when multiple candidates exist", () => {
+  const result = selectCreativeBriefFromSegmentLayers({
+    niche: "ru_toys",
+    platform: "instagram",
+    segmentSolutions: {
+      items: [
+        {
+          niche: "ru_toys",
+          platform: "instagram",
+          label: "ru_toys × instagram",
+          readiness_score: 88,
+          trust_band: "high",
+          production_state: "ready_now",
+          creative_brief: { hook: "Exact" },
+          trust_summary: { evidence_band: "stable", stability_score: 84 },
+        },
+      ],
+    },
+    segmentSolutionMatrix: {
+      by_platform: [
+        {
+          platform: "instagram",
+          primary: {
+            niche: "ru_cosmetics",
+            platform: "instagram",
+            label: "ru_cosmetics × instagram",
+            readiness_score: 63,
+            trust_band: "medium",
+            production_state: "controlled_test",
+            creative_brief: { hook: "Platform alt" },
+            trust_summary: { evidence_band: "forming", stability_score: 58 },
+          },
+        },
+      ],
+      by_niche: [
+        {
+          niche: "ru_toys",
+          primary: {
+            niche: "ru_toys",
+            platform: "youtube",
+            label: "ru_toys × youtube",
+            readiness_score: 57,
+            trust_band: "medium",
+            production_state: "controlled_test",
+            creative_brief: { hook: "Niche alt" },
+            trust_summary: { evidence_band: "forming", stability_score: 51 },
+          },
+        },
+      ],
+    },
+  });
+
+  assert.equal(result?.alternatives?.length, 2);
+  assert.equal(result?.alternatives?.[0]?.source, "platform_matrix");
+  assert.equal(result?.alternatives?.[1]?.source, "niche_matrix");
 });

@@ -45,11 +45,46 @@ function asPrimary(row: unknown) {
   return row && typeof row === "object" ? row as JsonRecord : null;
 }
 
-function buildResponseFromSolution(row: JsonRecord, source: "segment_solution" | "platform_matrix" | "niche_matrix") {
+function buildAlternative(row: JsonRecord, source: "segment_solution" | "platform_matrix" | "niche_matrix") {
   const brief = (row.creative_brief || {}) as JsonRecord;
   const hypothesis = (row.hypothesis || {}) as JsonRecord;
   const contentDecision = (row.content_decision || {}) as JsonRecord;
   const trustSummary = (row.trust_summary || {}) as JsonRecord;
+  return {
+    source,
+    label: text(row.label, `${row.niche || "niche"} × ${row.platform || "platform"}`),
+    niche: text(row.niche),
+    platform: text(row.platform),
+    trust_band: text(row.trust_band, "low"),
+    evidence_band: text(trustSummary.evidence_band, "missing"),
+    production_state: text(row.production_state, "research_only"),
+    readiness_score: num(row.readiness_score),
+    stability_score: num(trustSummary.stability_score),
+    hook: text(brief.hook),
+    hypothesis: text(hypothesis.text),
+    content_decision: text(contentDecision.decision || contentDecision.title),
+  };
+}
+
+function buildResponseFromSolution(
+  row: JsonRecord,
+  source: "segment_solution" | "platform_matrix" | "niche_matrix",
+  candidates: Array<{ source: "segment_solution" | "platform_matrix" | "niche_matrix"; row: JsonRecord }>,
+) {
+  const brief = (row.creative_brief || {}) as JsonRecord;
+  const hypothesis = (row.hypothesis || {}) as JsonRecord;
+  const contentDecision = (row.content_decision || {}) as JsonRecord;
+  const trustSummary = (row.trust_summary || {}) as JsonRecord;
+  const sourceTrace = candidates.map((candidate, index) => ({
+    rank: index + 1,
+    source: candidate.source,
+    label: text(candidate.row.label, `${candidate.row.niche || "niche"} × ${candidate.row.platform || "platform"}`),
+    readiness_score: num(candidate.row.readiness_score),
+    trust_band: text(candidate.row.trust_band, "low"),
+    evidence_band: text(((candidate.row.trust_summary || {}) as JsonRecord).evidence_band, "missing"),
+    production_state: text(candidate.row.production_state, "research_only"),
+    chosen: candidate.row === row && candidate.source === source,
+  }));
   const decisionPack = {
     trust_mode: text(row.production_state, "research_only"),
     trust_band: text(row.trust_band, "low"),
@@ -114,7 +149,11 @@ function buildResponseFromSolution(row: JsonRecord, source: "segment_solution" |
     },
     trust_why: list(row.trust_why, 5),
     decision_pack: decisionPack,
-    alternatives: [],
+    source_trace: sourceTrace,
+    alternatives: candidates
+      .filter((candidate) => !(candidate.row === row && candidate.source === source))
+      .map((candidate) => buildAlternative(candidate.row, candidate.source))
+      .slice(0, 3),
   };
 }
 
@@ -129,17 +168,23 @@ export function selectCreativeBriefFromSegmentLayers(input: {
   const exact = records(input.segmentSolutions?.items)
     .filter((row) => text(row.niche) === niche && text(row.platform).toLowerCase() === platform)
     .sort(itemSort)[0];
-  if (exact) return buildResponseFromSolution(exact, "segment_solution");
 
   const platformRow = records(input.segmentSolutionMatrix?.by_platform)
     .find((row) => text(row.platform).toLowerCase() === platform);
   const platformPrimary = asPrimary(platformRow?.primary);
-  if (platformPrimary) return buildResponseFromSolution(platformPrimary, "platform_matrix");
 
   const nicheRow = records(input.segmentSolutionMatrix?.by_niche)
     .find((row) => text(row.niche) === niche);
   const nichePrimary = asPrimary(nicheRow?.primary);
-  if (nichePrimary) return buildResponseFromSolution(nichePrimary, "niche_matrix");
+  const candidates = [
+    exact ? { source: "segment_solution" as const, row: exact } : null,
+    platformPrimary ? { source: "platform_matrix" as const, row: platformPrimary } : null,
+    nichePrimary ? { source: "niche_matrix" as const, row: nichePrimary } : null,
+  ].filter(Boolean) as Array<{ source: "segment_solution" | "platform_matrix" | "niche_matrix"; row: JsonRecord }>;
+
+  if (exact) return buildResponseFromSolution(exact, "segment_solution", candidates);
+  if (platformPrimary) return buildResponseFromSolution(platformPrimary, "platform_matrix", candidates);
+  if (nichePrimary) return buildResponseFromSolution(nichePrimary, "niche_matrix", candidates);
 
   return null;
 }
