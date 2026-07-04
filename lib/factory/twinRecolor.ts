@@ -58,7 +58,8 @@ export function buildRecolorPrompt(product: string, color: string): string {
   return [
     `Recolor this ${product} to ${target}.`,
     "Change ONLY the fabric colour of the garment to this exact colour across the whole piece (main body, sleeves, hood).",
-    "Keep EVERYTHING else pixel-identical: the exact silhouette, garment length, cut, hood/collar, zipper and buttons, pockets, seams, stitching, drawcord, cuffs, hardware colour, proportions, fabric texture and folds, camera angle, pose, background and lighting.",
+    "Also recolor any visible interior lining fabric (inside the hood, inside the collar) to this SAME new colour — no contrasting lining, the inside must match the outside.",
+    "Keep EVERYTHING else pixel-identical: the exact silhouette, garment length, cut, hood/collar, zipper and buttons, pockets, seams, stitching, drawcord, cuffs, hardware colour, belt/tie if present, proportions, fabric texture and folds, camera angle, pose, background and lighting.",
     "Do NOT restyle, do NOT change the shape, length or construction, do NOT add or remove any detail, badge or patch.",
     "Photorealistic, same clean studio packshot, vertical 9:16, sharp fabric detail.",
   ].join(" ");
