@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { internalFetch } from "@/lib/internalFetch";
+import { buildReelsBrainDecisionSnapshot } from "@/lib/factory/reelsBrainDecisionSnapshot";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 20;
@@ -8,14 +9,6 @@ type JsonRecord = Record<string, unknown>;
 
 function text(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
-}
-
-function list(value: unknown) {
-  return Array.isArray(value) ? value as JsonRecord[] : [];
-}
-
-function keyOf(niche: unknown, platform: unknown) {
-  return `${text(niche)}__${text(platform)}`;
 }
 
 export async function GET(req: NextRequest) {
@@ -52,40 +45,26 @@ export async function GET(req: NextRequest) {
     if (!exportsRes.ok) return NextResponse.json(exportsBody, { status: exportsRes.status });
     if (!auditRes.ok) return NextResponse.json(auditBody, { status: auditRes.status });
 
-    const exportItems = list((exportsBody as JsonRecord).items);
-    const auditItems = list((auditBody as JsonRecord).items);
-    const auditMap = new Map(auditItems.map((row) => [keyOf(row.niche, row.platform), row] as const));
-    const items = exportItems.map((row) => {
-      const audit = auditMap.get(keyOf(row.niche, row.platform)) || {};
-      return {
-        ...row,
-        audit,
-      };
+    const snapshot = buildReelsBrainDecisionSnapshot({
+      creativeExports: exportsBody as {
+        summary?: Record<string, unknown> | null;
+        ship_now?: JsonRecord[];
+        validate_next?: JsonRecord[];
+        research_queue?: JsonRecord[];
+        items?: JsonRecord[];
+      },
+      readinessAudit: auditBody as {
+        summary?: Record<string, unknown> | null;
+        items?: JsonRecord[];
+      },
+      lane,
+      niche,
+      platform,
     });
 
     return NextResponse.json({
       ok: true,
-      lane: lane || null,
-      niche: niche || null,
-      platform: platform || null,
-      summary: {
-        exports: (exportsBody as JsonRecord).summary || null,
-        audit: (auditBody as JsonRecord).summary || null,
-        filtered_total: items.length,
-      },
-      ship_now: list((exportsBody as JsonRecord).ship_now).map((row) => ({
-        ...row,
-        audit: auditMap.get(keyOf(row.niche, row.platform)) || null,
-      })),
-      validate_next: list((exportsBody as JsonRecord).validate_next).map((row) => ({
-        ...row,
-        audit: auditMap.get(keyOf(row.niche, row.platform)) || null,
-      })),
-      research_queue: list((exportsBody as JsonRecord).research_queue).map((row) => ({
-        ...row,
-        audit: auditMap.get(keyOf(row.niche, row.platform)) || null,
-      })),
-      items,
+      ...snapshot,
     }, { headers: { "Cache-Control": "no-store" } });
   } catch (e) {
     return NextResponse.json({

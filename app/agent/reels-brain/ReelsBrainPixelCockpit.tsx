@@ -1890,6 +1890,10 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
                   <b>Decision snapshot</b>
                   <p>/api/factory/reels-brain/decision-snapshot?lane={item.generator_bundle?.lane || "research"}&niche={item.niche}&platform={item.platform}</p>
                 </div>
+                <div className="rb-brief-block" style={{ marginTop: 12 }}>
+                  <b>Segment solutions</b>
+                  <p>/api/factory/reels-brain/segment-solutions?lane={item.generator_bundle?.lane || "research"}&niche={item.niche}&platform={item.platform}</p>
+                </div>
                 <p style={{ marginTop: 12, color: "#475569", lineHeight: 1.55 }}>
                   {item.why_now || item.next_step || "Ждём более сильный signal bundle"}
                 </p>
