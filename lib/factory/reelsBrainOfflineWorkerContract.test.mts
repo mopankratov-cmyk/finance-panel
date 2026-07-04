@@ -32,7 +32,8 @@ ok(/youtube\\.com\\|youtu\\.be/.test(worker), "offline worker only applies yt-dl
 ok(/YT_DLP_ENABLE_YOUTUBE_COOKIES/.test(worker), "offline worker makes YouTube cookies opt-in");
 ok(/REELS_BRAIN_ENABLE_YOUTUBE_LOCAL_RESOLVER/.test(worker), "offline worker makes YouTube local resolver opt-in");
 ok(/prependPathEntries\(NIX_BIN_DIRS\)/.test(worker) && /NIX_BIN_DIRS\.map\(\(dir\) => path\.join\(dir, "yt-dlp"\)\)/.test(worker), "offline worker searches nix yt-dlp locations before giving up");
-ok(/function shouldSkipDownloadForYtDlpProbe/.test(worker) && /probeArgs\.push\("--skip-download"\)/.test(worker), "offline worker disables --skip-download for YouTube cookie-backed probes");
+ok(/function shouldSkipDownloadForYtDlpProbe/.test(worker) && /base\.push\("--skip-download"\)/.test(worker), "offline worker disables --skip-download for YouTube cookie-backed probes");
+ok(/function ytDlpProbeArgSets/.test(worker) && /player_client=android,web/.test(worker) && /-f", "b\/best"/.test(worker), "offline worker retries YouTube probes with alternate clients and fallback format selection");
 ok(/function normalizeYtDlpTarget/.test(worker) && /share_item_id/.test(worker) && /embed\/v2/.test(worker), "offline worker normalizes TikTok share urls before yt-dlp");
 ok(/route_local_resolver_enabled/.test(worker), "offline worker logs route resolver state separately from worker resolver state");
 ok(/function finalizeTranscriptOutcome/.test(worker), "offline worker normalizes transcript outcomes");
