@@ -1934,6 +1934,10 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
                   <b>Blockers</b>
                   <p>{((item.blockers || []) as string[]).join(" · ") || "Блокеров нет"}</p>
                 </div>
+                <div className="rb-brief-block" style={{ marginTop: 12 }}>
+                  <b>Audit endpoint</b>
+                  <p>/api/factory/reels-brain/readiness-audit?verdict={item.verdict || "research"}&niche={item.niche}&platform={item.platform}</p>
+                </div>
               </div>
             )) : (
               <div className="rb-card">
