@@ -105,6 +105,19 @@ function readinessTone(score: number) {
   return { label: "building", bg: "#e0f2fe", bd: "#7dd3fc", fg: "#0f766e" };
 }
 
+function decisionTone(value: string) {
+  if (value === "scale") return { label: "scale", bg: "#dcfce7", bd: "#86efac", fg: "#166534" };
+  if (value === "control" || value === "control_only") return { label: "control", bg: "#ecfeff", bd: "#67e8f9", fg: "#0f766e" };
+  return { label: value || "watch", bg: "#fff7ed", bd: "#fdba74", fg: "#9a3412" };
+}
+
+function marketSignalTone(value: string) {
+  if (value === "proven") return { label: "market proven", bg: "#dcfce7", bd: "#86efac", fg: "#166534" };
+  if (value === "promising") return { label: "promising", bg: "#ecfeff", bd: "#67e8f9", fg: "#0f766e" };
+  if (value === "weak") return { label: "weak", bg: "#fee2e2", bd: "#fca5a5", fg: "#991b1b" };
+  return { label: "no feedback", bg: "#f8fafc", bd: "#cbd5e1", fg: "#64748b" };
+}
+
 function SectionTitle({ k, title }: { k: string; title: string }) {
   return (
     <div className="rb-section-title">
@@ -241,6 +254,7 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
       ? `ready ${compact(nextLayers.audio_visual_intelligence.ready_for_worker)} · media ${compact(nextLayers.audio_visual_intelligence.with_media_locators)} · audio ${compact(nextLayers.audio_visual_intelligence.with_audio_features)} · transcripts ${compact(nextLayers.audio_visual_intelligence.with_transcript)}`
       : "";
     const patternDetails = (learning?.pattern_details || []) as JsonRecord[];
+    const patternOutcomeSummary = (learning?.pattern_outcome_summary || {}) as JsonRecord;
     const nicheComparison = (learning?.niche_comparison || []) as JsonRecord[];
     const niches = (learning?.niches || []) as JsonRecord[];
     const topHooks = (insights?.top_hooks || []) as JsonRecord[];
@@ -378,6 +392,7 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
     const learningDeltaVideos = Math.max(0, num(today?.analyzed) || num(lastTimelineWithCost?.analyzed));
     const learningDeltaPatterns = Math.max(0, num(totals.patterns_delta) || num(lastTimelineWithCost?.patterns_added));
     const topInsight = strongCombinations[0] || recipes[0] || {};
+    const patternDetailById = new Map(patternDetails.map((row) => [String(row.id || ""), row]));
     const topFormat = formats[0] || {};
     const bestHook = opHooks[0] || topHooks[0] || {};
     const bestNiche = [...nicheTruth].sort((a, b) => num(b.avg_score || b.analyzed_rate) - num(a.avg_score || a.analyzed_rate))[0] || {};
@@ -682,6 +697,8 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
       nextLayers,
       audioVisualSummary,
       patternDetails,
+      patternOutcomeSummary,
+      patternDetailById,
       nicheComparison,
       score,
       tone,
@@ -1708,32 +1725,106 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
               </div>
             ))}
           </div>
+          <div className="rb-three" style={{ marginBottom: 16 }}>
+            {[
+              ["Scale", vm.patternOutcomeSummary.scale, "паттерны, которые уже можно уверенно усиливать"],
+              ["Control", vm.patternOutcomeSummary.control, "паттерны, которые лучше вести как контролируемый тест"],
+              ["Watch", vm.patternOutcomeSummary.watch, "паттерны, за которыми ещё нужно наблюдать"],
+            ].map(([label, value, text]) => {
+              const tone = decisionTone(String(label).toLowerCase());
+              return (
+                <div className="rb-card" key={String(label)}>
+                  <div className="rb-pill" style={{ background: tone.bg, borderColor: tone.bd, color: tone.fg }}>{label}</div>
+                  <h3 style={{ font: "700 30px/1 'Space Grotesk'", margin: "14px 0 8px" }}>{compact(value)}</h3>
+                  <p style={{ margin: 0, color: "#475569" }}>{text}</p>
+                </div>
+              );
+            })}
+          </div>
+          <div className="rb-three" style={{ marginBottom: 16 }}>
+            {[
+              ["Proven", vm.patternOutcomeSummary.proven, "рынок уже подтвердил механику публикациями"],
+              ["Promising", vm.patternOutcomeSummary.promising, "сигнал хороший, но статистика ещё небольшая"],
+              ["Weak / no feedback", num(vm.patternOutcomeSummary.weak) + num(vm.patternOutcomeSummary.no_feedback), "либо рынок спорит, либо ещё нет обратной связи"],
+            ].map(([label, value, text]) => {
+              const tone = marketSignalTone(
+                label === "Proven" ? "proven" : label === "Promising" ? "promising" : label === "Weak / no feedback" && num(vm.patternOutcomeSummary.weak) > 0 ? "weak" : "no_feedback",
+              );
+              return (
+                <div className="rb-card" key={String(label)}>
+                  <div className="rb-pill" style={{ background: tone.bg, borderColor: tone.bd, color: tone.fg }}>{tone.label}</div>
+                  <h3 style={{ font: "700 30px/1 'Space Grotesk'", margin: "14px 0 8px" }}>{compact(value)}</h3>
+                  <p style={{ margin: 0, color: "#475569" }}>{text}</p>
+                </div>
+              );
+            })}
+          </div>
           <div className="rb-brief-grid">
-              {(vm.recipes.length ? vm.recipes.slice(0, 3) : [{ id: "empty", title: "Creative briefs ждут Pattern Brain", creative_brief: { hook: "Сначала нужно разобрать корпус.", retention_mechanic: "ожидание доказательства", product_fit: ["любой товар с proof-кадром"], second_by_second: [] }, op_score: 0 }]).map((recipe) => (
-              <div className="rb-card rb-brief" key={recipe.id}>
-                <div className="rb-pill">OP {compact(recipe.op_score)}</div>
-                <h3 style={{ font: "600 24px/1.15 'Space Grotesk'", margin: "14px 0 12px" }}>{recipe.title}</h3>
-                <div className="rb-brief-block"><b>Хук</b><p>{recipe.creative_brief?.hook || recipe.hook}</p></div>
-                <div className="rb-brief-block"><b>Удержание</b><p>{recipe.creative_brief?.retention_mechanic || recipe.retention}</p></div>
-                <div className="rb-brief-block"><b>Структура по секундам</b><p>{(recipe.creative_brief?.second_by_second || []).slice(0, 3).join(" ") || "0-2с хук, 2-8с доказательство, 8-15с payoff."}</p></div>
-                <div className="rb-brief-block"><b>Visual recipe</b><p>{(recipe.creative_brief?.visual_recipe || []).slice(0, 2).join(" ") || "Крупный план, proof-кадр, текст только для смысла."}</p></div>
-                <div className="rb-brief-block"><b>Audio strategy</b><p>{(recipe.creative_brief?.audio_strategy || ["Быстрый голосовой вход, чистый мобильный микс, музыка только как подложка."]).slice(0, 2).join(" ")}</p></div>
-                <div className="rb-brief-block"><b>Товар / тема</b><p>{(recipe.creative_brief?.product_fit || recipe.niches || []).slice(0, 3).join(" · ")}</p></div>
-                <div className="rb-brief-block"><b>Копируем механику</b><p>{(recipe.creative_brief?.copy_as_mechanic || ["темп", "структуру", "тип доказательства"]).slice(0, 2).join(" · ")}</p></div>
-                <div style={{ marginTop: 14, padding: 12, borderRadius: 12, background: "#fef2f2", color: "#991b1b", fontSize: 13, fontWeight: 600 }}>Копируем механику, не копируем текст, музыку, персонажей и чужой монтаж.</div>
-              </div>
-            ))}
+            {(vm.recipes.length ? vm.recipes.slice(0, 3) : [{ id: "empty", title: "Creative briefs ждут Pattern Brain", creative_brief: { hook: "Сначала нужно разобрать корпус.", retention_mechanic: "ожидание доказательства", product_fit: ["любой товар с proof-кадром"], second_by_second: [] }, op_score: 0 }]).map((recipe) => {
+              const outcome = vm.patternDetailById.get(String(recipe.id || "")) || {};
+              const decision = decisionTone(String(outcome.final_decision || "watch"));
+              const market = marketSignalTone(String(outcome.market_signal?.status || "no_feedback"));
+              return (
+                <div className="rb-card rb-brief" key={recipe.id}>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                    <div className="rb-pill">OP {compact(recipe.op_score)}</div>
+                    <div className="rb-pill" style={{ background: decision.bg, borderColor: decision.bd, color: decision.fg }}>{decision.label}</div>
+                    <div className="rb-pill" style={{ background: market.bg, borderColor: market.bd, color: market.fg }}>{market.label}</div>
+                  </div>
+                  <h3 style={{ font: "600 24px/1.15 'Space Grotesk'", margin: "14px 0 12px" }}>{recipe.title}</h3>
+                  {(outcome.market_signal?.best_platform || outcome.market_signal?.total_posts) ? (
+                    <div style={{ marginBottom: 14, padding: 12, borderRadius: 12, background: "#f8fafc", border: "1px solid #e2e8f0" }}>
+                      <p style={{ margin: 0, color: "#0f172a", fontWeight: 700 }}>
+                        Рынок говорит: {outcome.market_signal?.best_platform || "mixed"} · posts {compact(outcome.market_signal?.total_posts)}
+                      </p>
+                      <p style={{ margin: "6px 0 0", color: "#475569", fontSize: 13 }}>
+                        winners {compact(outcome.market_signal?.winners)} · losers {compact(outcome.market_signal?.losers)} · confidence {compact(outcome.market_signal?.confidence)}
+                      </p>
+                    </div>
+                  ) : null}
+                  <div className="rb-brief-block"><b>Хук</b><p>{recipe.creative_brief?.hook || recipe.hook}</p></div>
+                  <div className="rb-brief-block"><b>Удержание</b><p>{recipe.creative_brief?.retention_mechanic || recipe.retention}</p></div>
+                  <div className="rb-brief-block"><b>Структура по секундам</b><p>{(recipe.creative_brief?.second_by_second || []).slice(0, 3).join(" ") || "0-2с хук, 2-8с доказательство, 8-15с payoff."}</p></div>
+                  <div className="rb-brief-block"><b>Visual recipe</b><p>{(recipe.creative_brief?.visual_recipe || []).slice(0, 2).join(" ") || "Крупный план, proof-кадр, текст только для смысла."}</p></div>
+                  <div className="rb-brief-block"><b>Audio strategy</b><p>{(recipe.creative_brief?.audio_strategy || ["Быстрый голосовой вход, чистый мобильный микс, музыка только как подложка."]).slice(0, 2).join(" ")}</p></div>
+                  <div className="rb-brief-block"><b>Товар / тема</b><p>{(recipe.creative_brief?.product_fit || recipe.niches || []).slice(0, 3).join(" · ")}</p></div>
+                  <div className="rb-brief-block"><b>Копируем механику</b><p>{(recipe.creative_brief?.copy_as_mechanic || ["темп", "структуру", "тип доказательства"]).slice(0, 2).join(" · ")}</p></div>
+                  <div style={{ marginTop: 14, padding: 12, borderRadius: 12, background: "#fef2f2", color: "#991b1b", fontSize: 13, fontWeight: 600 }}>Копируем механику, не копируем текст, музыку, персонажей и чужой монтаж.</div>
+                </div>
+              );
+            })}
           </div>
           <div className="rb-detail-grid" style={{ marginTop: 16 }}>
             {(vm.patternDetails.length ? vm.patternDetails.slice(0, 4) : vm.recipes.slice(0, 4)).map((pattern: JsonRecord) => (
               <div className="rb-card rb-detail" key={pattern.id || pattern.title}>
-                <div className="rb-pill">{pattern.quality_gate || "pattern"} · OP {compact(pattern.op_score)}</div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                  <div className="rb-pill">{pattern.quality_gate || "pattern"} · OP {compact(pattern.op_score)}</div>
+                  <div className="rb-pill" style={{ background: decisionTone(String(pattern.final_decision || "watch")).bg, borderColor: decisionTone(String(pattern.final_decision || "watch")).bd, color: decisionTone(String(pattern.final_decision || "watch")).fg }}>
+                    {decisionTone(String(pattern.final_decision || "watch")).label}
+                  </div>
+                  <div className="rb-pill" style={{ background: marketSignalTone(String(pattern.market_signal?.status || "no_feedback")).bg, borderColor: marketSignalTone(String(pattern.market_signal?.status || "no_feedback")).bd, color: marketSignalTone(String(pattern.market_signal?.status || "no_feedback")).fg }}>
+                    {marketSignalTone(String(pattern.market_signal?.status || "no_feedback")).label}
+                  </div>
+                </div>
                 <h3 style={{ font: "700 24px/1.15 'Space Grotesk'", margin: "14px 0 10px" }}>{pattern.title}</h3>
                 <div className="rb-three">
                   <div className="rb-brief-block"><b>Хук</b><p>{pattern.hook}</p></div>
                   <div className="rb-brief-block"><b>Формат</b><p>{pattern.format}</p></div>
                   <div className="rb-brief-block"><b>Удержание</b><p>{pattern.retention}</p></div>
                 </div>
+                {pattern.market_signal ? (
+                  <div style={{ marginTop: 12, padding: 12, borderRadius: 12, background: "#f8fafc", border: "1px solid #e2e8f0" }}>
+                    <p style={{ margin: 0, color: "#0f172a", fontWeight: 700 }}>
+                      Best platform: {pattern.market_signal.best_platform || "mixed"} · posts {compact(pattern.market_signal.total_posts)}
+                    </p>
+                    <p style={{ margin: "6px 0 0", color: "#475569", fontSize: 13 }}>
+                      winners {compact(pattern.market_signal.winners)} · losers {compact(pattern.market_signal.losers)} · confidence {compact(pattern.market_signal.confidence)}
+                    </p>
+                    {Array.isArray(pattern.market_signal.why) && pattern.market_signal.why.length ? (
+                      <p style={{ margin: "6px 0 0", color: "#334155", fontSize: 13 }}>{pattern.market_signal.why.slice(0, 2).join(" · ")}</p>
+                    ) : null}
+                  </div>
+                ) : null}
                 <p style={{ color: "#64748b", lineHeight: 1.5, marginTop: 12 }}>Ниши: {(pattern.niches || []).join(", ") || "all"} · references {compact(pattern.examples_count)}</p>
                 {(pattern.warnings || []).length ? (
                   <div style={{ marginTop: 12, padding: 12, borderRadius: 12, background: "#fff7ed", border: "1px solid #fed7aa", color: "#9a3412", fontSize: 13, fontWeight: 700 }}>
