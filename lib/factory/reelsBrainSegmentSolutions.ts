@@ -1,4 +1,5 @@
 type JsonRecord = Record<string, unknown>;
+import { buildReelsBrainSegmentStabilityAudit } from "./reelsBrainSegmentStabilityAudit";
 
 function text(value: unknown, fallback = "") {
   return typeof value === "string" ? value.trim() || fallback : fallback;
@@ -19,15 +20,9 @@ function records(value: unknown): JsonRecord[] {
   return Array.isArray(value) ? value.filter((item) => item && typeof item === "object") as JsonRecord[] : [];
 }
 
-function trustBand(readinessScore: number, verdict: string) {
-  if (readinessScore >= 85 && verdict === "ship") return "high";
-  if (readinessScore >= 65 && (verdict === "ship" || verdict === "validate")) return "medium";
-  return "low";
-}
-
-function productionState(lane: string, trust: string) {
-  if (lane === "ship" && trust === "high") return "ready_now";
-  if (lane === "validate" || trust === "medium") return "controlled_test";
+function productionState(lane: string, evidenceBand: string) {
+  if (lane === "ship" && evidenceBand === "stable") return "ready_now";
+  if (lane === "validate" || evidenceBand === "forming") return "controlled_test";
   return "research_only";
 }
 
@@ -41,6 +36,13 @@ export function buildReelsBrainSegmentSolutions(input: {
   } | null;
   limit?: number;
 }) {
+  const stabilityAudit = buildReelsBrainSegmentStabilityAudit({
+    decisionSnapshot: input.decisionSnapshot || null,
+    limit: Math.max(20, input.limit || 12),
+  });
+  const stabilityMap = new Map(
+    records(stabilityAudit.items).map((row) => [`${text(row.niche)}__${text(row.platform)}`, row] as const),
+  );
   const rows = records(input.decisionSnapshot?.items)
     .map((row) => {
       const brief = (row.brief && typeof row.brief === "object" ? row.brief : {}) as JsonRecord;
@@ -50,11 +52,13 @@ export function buildReelsBrainSegmentSolutions(input: {
       const lane = text(row.lane, "research");
       const readinessScore = num(row.readiness_score);
       const verdict = text(audit.verdict, lane);
-      const trust = trustBand(readinessScore, verdict);
-      const production = productionState(lane, trust);
+      const stability = (stabilityMap.get(`${text(row.niche)}__${text(row.platform)}`) || {}) as JsonRecord;
+      const evidenceBand = text(stability.evidence_band, "thin");
+      const trust = evidenceBand === "stable" ? "high" : evidenceBand === "forming" ? "medium" : "low";
+      const production = productionState(lane, evidenceBand);
       const trustWhy = [
-        ...list(audit.strong_signals, 4),
-        ...list(audit.blockers, 3).map((item) => `blocker: ${item}`),
+        ...list(stability.strengths, 4),
+        ...list(stability.blockers, 3).map((item) => `blocker: ${item}`),
       ].slice(0, 5);
 
       return {
@@ -95,12 +99,15 @@ export function buildReelsBrainSegmentSolutions(input: {
         trust_summary: {
           band: trust,
           score: readinessScore,
-          signals: list(audit.strong_signals, 4),
-          blockers: list(audit.blockers, 4),
+          evidence_band: evidenceBand,
+          stability_score: num(stability.stability_score),
+          signals: list(stability.strengths, 4),
+          blockers: list(stability.blockers, 4),
           current: (audit.current && typeof audit.current === "object" ? audit.current : null) as JsonRecord | null,
           targets: (audit.targets && typeof audit.targets === "object" ? audit.targets : null) as JsonRecord | null,
         },
         trust_why: trustWhy.length ? trustWhy : ["Нужен следующий цикл сигнала по сегменту."],
+        stability_audit: stability,
       };
     })
     .filter((row) => row.niche && row.platform && (row.creative_brief.hook || row.hypothesis.text || row.content_decision.title))

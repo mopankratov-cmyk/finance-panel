@@ -14,6 +14,8 @@ const decisionSnapshot = readFileSync("app/api/factory/reels-brain/decision-snap
 const decisionSnapshotBuilder = readFileSync("lib/factory/reelsBrainDecisionSnapshot.ts", "utf8");
 const segmentSolutions = readFileSync("app/api/factory/reels-brain/segment-solutions/route.ts", "utf8");
 const segmentSolutionsBuilder = readFileSync("lib/factory/reelsBrainSegmentSolutions.ts", "utf8");
+const segmentStabilityAudit = readFileSync("app/api/factory/reels-brain/stability-audit/route.ts", "utf8");
+const segmentStabilityAuditBuilder = readFileSync("lib/factory/reelsBrainSegmentStabilityAudit.ts", "utf8");
 const cockpit = readFileSync("app/agent/reels-brain/ReelsBrainPixelCockpit.tsx", "utf8");
 const feedback = readFileSync("app/api/factory/reels-brain/feedback/route.ts", "utf8");
 const cron = readFileSync("app/api/factory/jobs/reels-brain-cron/route.ts", "utf8");
@@ -57,8 +59,11 @@ ok(/lane/.test(decisionSnapshot) && /niche/.test(decisionSnapshot) && /platform/
 ok(/buildReelsBrainDecisionSnapshot/.test(decisionSnapshot) && /filtered_total/.test(decisionSnapshotBuilder), "decision-snapshot route delegates merge logic to a reusable builder");
 ok(!/POST\s*\(/.test(decisionSnapshot), "decision-snapshot route is read-only");
 ok(/decision-snapshot/.test(segmentSolutions) && /buildReelsBrainSegmentSolutions/.test(segmentSolutions), "segment-solutions route derives operator outputs from the decision snapshot");
-ok(/creative_brief/.test(segmentSolutionsBuilder) && /content_decision/.test(segmentSolutionsBuilder) && /trust_summary/.test(segmentSolutionsBuilder), "segment-solutions builder produces brief, content decision and trust layers");
+ok(/buildReelsBrainSegmentStabilityAudit/.test(segmentSolutionsBuilder) && /creative_brief/.test(segmentSolutionsBuilder) && /content_decision/.test(segmentSolutionsBuilder) && /trust_summary/.test(segmentSolutionsBuilder), "segment-solutions builder produces brief, content decision and trust layers on top of a stability audit");
 ok(!/POST\s*\(/.test(segmentSolutions), "segment-solutions route is read-only");
+ok(/decision-snapshot/.test(segmentStabilityAudit) && /buildReelsBrainSegmentStabilityAudit/.test(segmentStabilityAudit), "stability-audit route derives trust evidence from the decision snapshot");
+ok(/evidence_band/.test(segmentStabilityAuditBuilder) && /high_trust_segment/.test(segmentStabilityAuditBuilder) && /blockers/.test(segmentStabilityAuditBuilder), "stability-audit builder proves whether a segment is actually high-trust");
+ok(!/POST\s*\(/.test(segmentStabilityAudit), "stability-audit route is read-only");
 
 ok(/daily_report/.test(report) && /autopilot_actions/.test(report), "report route exposes operator report fields");
 ok(/anti_pattern_brain/.test(report) && /discovery_brain/.test(report), "report route includes learning context");
@@ -103,6 +108,7 @@ ok(/buildReelsBrainSegmentReadinessAudit/.test(economics) && /segment_readiness_
 ok(/\/api\/factory\/reels-brain\/readiness-audit\?verdict=/.test(cockpit), "cockpit exposes standalone readiness-audit endpoint per segment");
 ok(/\/api\/factory\/reels-brain\/decision-snapshot\?lane=/.test(cockpit), "cockpit exposes unified decision-snapshot endpoint per segment");
 ok(/\/api\/factory\/reels-brain\/segment-solutions\?lane=/.test(cockpit), "cockpit exposes operator-ready segment-solutions endpoint per segment");
+ok(/\/api\/factory\/reels-brain\/stability-audit\?lane=/.test(cockpit), "cockpit exposes segment stability-audit endpoint per segment");
 ok(/selectedPattern/.test(cockpit) && /rb-drawer/.test(cockpit), "cockpit exposes pattern creative brief drawer");
 ok(/rb-click/.test(cockpit) && /setSelectedPattern/.test(cockpit), "cockpit pattern cards are inspectable");
 ok(/sort\(\(a, b\) => String\(a\.created_at \|\| \"\"\)\.localeCompare\(String\(b\.created_at \|\| \"\"\)\)\)\s*\.slice\(-8\)\s*\.reverse\(\)/.test(cockpit), "cockpit stores latest learning runs first");
