@@ -104,6 +104,8 @@ function eq(a: unknown, b: unknown, m: string) { ok(JSON.stringify(a) === JSON.s
   eq(noisy?.quality_label, "noise", "quality: short off-niche singleton is noise");
   ok(memory.generator_ready_patterns.some((pattern) => pattern.structure_type === "before_after"), "quality: repeated RU cosmetics proof pattern is generator-ready");
   ok(memory.top_hooks.every((hook) => hook !== "котик"), "quality: top hooks prefer generator-ready bank");
+  ok(memory.anti_patterns.some((pattern) => pattern.trigger_reason === "low_niche_relevance"), "anti-patterns: captures off-niche weak patterns");
+  ok(memory.anti_patterns.some((pattern) => pattern.trigger_reason === "singleton_pattern"), "anti-patterns: captures singleton noise");
 }
 
 {
@@ -175,6 +177,31 @@ function eq(a: unknown, b: unknown, m: string) { ok(JSON.stringify(a) === JSON.s
   eq(memory.patterns[0]?.hook_type, "warning_pattern_break", "memory: explicit analyzed_full hook type wins over regex fallback");
   eq(memory.patterns[0]?.structure_type, "review", "memory: explicit analyzed_full structure wins over caption fallback");
   ok(!memory.patterns[0]?.quality_reasons.includes("unknown_niche_taxonomy"), "memory: playbook taxonomy removes unknown niche penalty");
+}
+
+{
+  const memory = buildReelsPatternMemory("ru_unknown_niche", [
+    {
+      id: 1,
+      platform: "instagram",
+      caption: "Просто обзор товара без taxonomy",
+      hook_text: "Смотри до конца",
+      format_detected: "review",
+      virality_score: 21,
+      views: 110000,
+    },
+    {
+      id: 2,
+      platform: "tiktok",
+      caption: "Просто обзор товара без taxonomy",
+      hook_text: "Смотри до конца",
+      format_detected: "review",
+      virality_score: 19,
+      views: 90000,
+    },
+  ], new Date("2026-06-26T00:00:00Z"));
+
+  ok(memory.anti_patterns.some((pattern) => pattern.trigger_reason === "unknown_niche_taxonomy"), "anti-patterns: surfaces missing taxonomy as a separate action item");
 }
 
 console.log(`\nreelsBrainPatterns: ${pass} passed, ${fail} failed`);

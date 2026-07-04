@@ -39,6 +39,19 @@ export interface ReelsPatternMemoryItem {
   quality_reasons: string[];
 }
 
+export interface ReelsAntiPatternItem {
+  anti_pattern_id: string;
+  label: string;
+  trigger_reason: string;
+  severity: "high" | "medium" | "low";
+  affected_patterns: number;
+  total_frequency: number;
+  avg_quality_score: number;
+  avg_relevance_score: number;
+  examples: { pattern_id: string; hook?: string; url?: string | null; quality_score: number; frequency: number }[];
+  action: string;
+}
+
 export interface ReelsPatternMemory {
   niche: string;
   platform: ReelsPlatform | "all";
@@ -46,6 +59,7 @@ export interface ReelsPatternMemory {
   analyzed_videos: number;
   patterns: ReelsPatternMemoryItem[];
   generator_ready_patterns: ReelsPatternMemoryItem[];
+  anti_patterns: ReelsAntiPatternItem[];
   top_hooks: string[];
   quality_summary: {
     generator_ready: number;
@@ -258,6 +272,101 @@ function patternQuality(
   };
 }
 
+function antiPatternLabel(reason: string, pattern: ReelsPatternMemoryItem): { label: string; action: string; severity: ReelsAntiPatternItem["severity"] } {
+  switch (reason) {
+    case "low_niche_relevance":
+      return {
+        label: "Паттерн выглядит офферно слабым для ниши",
+        action: "Не делать его базой для brief; сначала усилить niche fit или убрать из control-пула.",
+        severity: "high",
+      };
+    case "singleton_pattern":
+      return {
+        label: "Случайный одиночный паттерн без повторяемости",
+        action: "Не масштабировать, пока не появятся повторные подтверждения в корпусе.",
+        severity: "medium",
+      };
+    case "unknown_structure":
+      return {
+        label: "Структура паттерна ещё сырая и нечитабельная",
+        action: "Доразметить структуру через taxonomy или не использовать в generator-ready слое.",
+        severity: "medium",
+      };
+    case "mixed_or_non_ru_examples":
+      return {
+        label: "Паттерн смешивает нерелевантные языковые или культурные примеры",
+        action: "Брать только механику, но не использовать как прямой RU-template без адаптации.",
+        severity: "medium",
+      };
+    case "unknown_niche_taxonomy":
+      return {
+        label: "Для ниши ещё не хватает taxonomy-словаря",
+        action: "Сначала нарастить relevance terms и taxonomy evidence по этой нише.",
+        severity: "low",
+      };
+    default:
+      return {
+        label: `Слабый паттерн: ${pattern.structure_label || pattern.structure_type || "неопределённый формат"}`,
+        action: "Оставить только как экспериментальный reference и не поднимать в основной brief-layer.",
+        severity: "low",
+      };
+  }
+}
+
+function buildAntiPatterns(patterns: ReelsPatternMemoryItem[]): ReelsAntiPatternItem[] {
+  const grouped = new Map<string, ReelsAntiPatternItem>();
+  for (const pattern of patterns) {
+    if (pattern.quality_label === "generator_ready") continue;
+    const reasons = pattern.quality_reasons.length ? pattern.quality_reasons : ["weak_pattern"];
+    for (const reason of reasons) {
+      const meta = antiPatternLabel(reason, pattern);
+      const key = `${reason}:${pattern.structure_type || "unknown_structure"}`;
+      const current = grouped.get(key) || {
+        anti_pattern_id: slugPart(key),
+        label: meta.label,
+        trigger_reason: reason,
+        severity: meta.severity,
+        affected_patterns: 0,
+        total_frequency: 0,
+        avg_quality_score: 0,
+        avg_relevance_score: 0,
+        examples: [],
+        action: meta.action,
+      };
+      current.affected_patterns += 1;
+      current.total_frequency += pattern.frequency;
+      current.avg_quality_score += pattern.quality_score;
+      current.avg_relevance_score += pattern.relevance_score;
+      if (current.examples.length < 4) {
+        current.examples.push({
+          pattern_id: pattern.pattern_id,
+          hook: pattern.hooks[0] || pattern.hook_label || pattern.hook_type,
+          url: pattern.examples[0]?.url || null,
+          quality_score: pattern.quality_score,
+          frequency: pattern.frequency,
+        });
+      }
+      if (meta.severity === "high" || (meta.severity === "medium" && current.severity === "low")) {
+        current.severity = meta.severity;
+      }
+      grouped.set(key, current);
+    }
+  }
+
+  return Array.from(grouped.values())
+    .map((item) => ({
+      ...item,
+      avg_quality_score: Math.round(item.avg_quality_score / Math.max(1, item.affected_patterns)),
+      avg_relevance_score: Math.round(item.avg_relevance_score / Math.max(1, item.affected_patterns)),
+    }))
+    .sort((a, b) =>
+      (a.severity === "high" ? 3 : a.severity === "medium" ? 2 : 1) < (b.severity === "high" ? 3 : b.severity === "medium" ? 2 : 1) ? 1 : -1
+      || b.total_frequency - a.total_frequency
+      || a.avg_quality_score - b.avg_quality_score
+    )
+    .slice(0, 12);
+}
+
 export function labelReelsHookType(value?: string | null): string {
   const key = String(value || "unknown");
   return HOOK_LABELS[key] || fallbackLabel(key);
@@ -455,6 +564,7 @@ function buildScopedPatternMemory(
     analyzed_videos: analyzedRows.length,
     patterns,
     generator_ready_patterns: generatorReadyPatterns,
+    anti_patterns: buildAntiPatterns(patterns),
     top_hooks: (generatorReadyPatterns.length ? generatorReadyPatterns : patterns).flatMap((p) => p.hooks.slice(0, 2)).slice(0, 20),
     quality_summary: qualitySummary,
     generated_at: now.toISOString(),
