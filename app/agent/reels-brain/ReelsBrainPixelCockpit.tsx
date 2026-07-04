@@ -54,6 +54,22 @@ async function getJson(path: string): Promise<JsonRecord> {
   return data;
 }
 
+async function getJsonSafe(path: string): Promise<{ ok: true; data: JsonRecord } | { ok: false; error: string }> {
+  try {
+    const data = await getJson(path);
+    return { ok: true, data };
+  } catch (error) {
+    return { ok: false, error: String((error as Error)?.message || error) };
+  }
+}
+
+function safeDateLabel(value: unknown): string {
+  if (typeof value !== "string" || !value.trim()) return "время неизвестно";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "время неизвестно";
+  return parsed.toLocaleString("ru-RU");
+}
+
 function statusTone(score: number) {
   if (score >= 72) return { label: "high", bg: "#dcfce7", bd: "#86efac", fg: "#166534", dot: "#22c55e" };
   if (score >= 42) return { label: "medium", bg: "#fef3c7", bd: "#facc15", fg: "#854d0e", dot: "#f59e0b" };
@@ -137,30 +153,42 @@ export default function ReelsBrainPixelCockpit() {
   useEffect(() => {
     let alive = true;
     async function load() {
-      try {
-        setState("loading");
-        const nicheParam = NICHES.join(",");
-        const [learningData, corpusData, learningPlanData, progressData, healthData, ...summaryData] = await Promise.all([
-          getJson(`/api/factory/reels-brain/learning-economics?niches=${encodeURIComponent(nicheParam)}&limit=80`),
-          getJson("/api/factory/reels-brain/corpus?limit=200&min_score=0"),
-          getJson(`/api/factory/reels-brain/learning-plan?niches=${encodeURIComponent(nicheParam)}&platforms=tiktok,instagram,youtube&target=10000&max_backlog_before_analyze=180`),
-          getJson(`/api/factory/reels-brain/progress?niches=${encodeURIComponent(nicheParam)}`),
-          getJson(`/api/factory/reels-brain/health?niches=${encodeURIComponent(nicheParam)}`),
-          ...NICHES.map((niche) => getJson(`/api/factory/reels-brain/summary?niche=${encodeURIComponent(niche)}`)),
-        ]);
-        if (!alive) return;
-        setLearning(learningData);
-        setCorpus(corpusData);
-        setLearningPlan(learningPlanData);
-        setProgress(progressData);
-        setHealth(healthData);
-        setSummaries(summaryData);
-        setState("ready");
-      } catch (e) {
-        if (!alive) return;
-        setError(String((e as Error)?.message || e));
+      setState("loading");
+      const nicheParam = NICHES.join(",");
+      const [learningRes, corpusRes, learningPlanRes, progressRes, healthRes, ...summaryRes] = await Promise.all([
+        getJsonSafe(`/api/factory/reels-brain/learning-economics?niches=${encodeURIComponent(nicheParam)}&limit=80`),
+        getJsonSafe("/api/factory/reels-brain/corpus?limit=200&min_score=0"),
+        getJsonSafe(`/api/factory/reels-brain/learning-plan?niches=${encodeURIComponent(nicheParam)}&platforms=tiktok,instagram,youtube&target=10000&max_backlog_before_analyze=180`),
+        getJsonSafe(`/api/factory/reels-brain/progress?niches=${encodeURIComponent(nicheParam)}`),
+        getJsonSafe(`/api/factory/reels-brain/health?niches=${encodeURIComponent(nicheParam)}`),
+        ...NICHES.map((niche) => getJsonSafe(`/api/factory/reels-brain/summary?niche=${encodeURIComponent(niche)}`)),
+      ]);
+      if (!alive) return;
+
+      const failures = [
+        learningRes.ok ? null : `learning-economics: ${learningRes.error}`,
+        corpusRes.ok ? null : `corpus: ${corpusRes.error}`,
+        learningPlanRes.ok ? null : `learning-plan: ${learningPlanRes.error}`,
+        progressRes.ok ? null : `progress: ${progressRes.error}`,
+        healthRes.ok ? null : `health: ${healthRes.error}`,
+        ...summaryRes.map((item, index) => item.ok ? null : `summary ${NICHES[index]}: ${item.error}`),
+      ].filter(Boolean) as string[];
+
+      setLearning(learningRes.ok ? learningRes.data : {});
+      setCorpus(corpusRes.ok ? corpusRes.data : {});
+      setLearningPlan(learningPlanRes.ok ? learningPlanRes.data : {});
+      setProgress(progressRes.ok ? progressRes.data : {});
+      setHealth(healthRes.ok ? healthRes.data : {});
+      setSummaries(summaryRes.map((item) => item.ok ? item.data : {}));
+
+      if (failures.length >= 5) {
+        setError(failures.slice(0, 3).join(" · "));
         setState("error");
+        return;
       }
+
+      setError(failures.length ? `Часть слоёв временно недоступна: ${failures.slice(0, 2).join(" · ")}` : "");
+      setState("ready");
     }
     load();
     const timer = window.setInterval(load, 60_000);
@@ -765,6 +793,8 @@ export default function ReelsBrainPixelCockpit() {
       <div className="rb-shell">
         {state === "error" ? (
           <div className="rb-card" style={{ borderColor: "#fecaca", background: "#fff1f2", color: "#991b1b" }}>Backend не ответил: {error}</div>
+        ) : error ? (
+          <div className="rb-card" style={{ borderColor: "#bae6fd", background: "#f0f9ff", color: "#0f766e" }}>{error}</div>
         ) : null}
 
         <section>
@@ -1706,7 +1736,7 @@ export default function ReelsBrainPixelCockpit() {
             <div className="rb-three">
               {vm.runTimeline.length ? vm.runTimeline.slice(0, 6).map((run: JsonRecord) => (
                 <div className="rb-pattern" key={`${run.id || run.created_at}:${run.mode}`}>
-                  <h3>{run.mode || "run"} · {new Date(run.created_at).toLocaleString("ru-RU")}</h3>
+                  <h3>{run.mode || "run"} · {safeDateLabel(run.created_at)}</h3>
                   <p>+{compact(run.inserted)} видео · +{compact(run.analyzed)} память · {usd(run.usd_per_analyzed || run.usd_per_inserted)} / video</p>
                 </div>
               )) : <div className="rb-pattern"><h3>История прогонов пока пустая</h3><p>После следующего worker tick здесь появится динамика.</p></div>}
