@@ -148,6 +148,15 @@ function effectiveProviderForQuery(provider: ReelsBrainProvider, query: string):
   return provider;
 }
 
+function syntheticDirectInput(query: string, platform: string): ReelsBrainInput[] {
+  const target = String(query || "").trim();
+  if (!/^https?:\/\//i.test(target)) return [];
+  if (platform === "instagram" && /instagram\.com\//i.test(target)) return [{ url: target, platform: "instagram" }];
+  if (platform === "youtube" && /(youtube\.com\/shorts\/|youtu\.be\/)/i.test(target)) return [{ url: target, platform: "youtube" }];
+  if (platform === "tiktok" && /tiktok\.com\//i.test(target)) return [{ url: target, platform: "tiktok" }];
+  return [];
+}
+
 export async function GET(req: NextRequest) {
   try {
     if (!(await isAuthorizedReelsBrainJobRequest(req))) {
@@ -218,7 +227,17 @@ export async function GET(req: NextRequest) {
     for (const row of corpusRows) {
       const query = String(row.url || "");
       const effectiveProvider = effectiveProviderForQuery(provider, query);
-      const result = await fetchReelsBrainProvider(effectiveProvider, query, 6);
+      const syntheticFallback = deferTerminalMark ? syntheticDirectInput(query, platform) : [];
+      const result = syntheticFallback.length
+        ? {
+          provider: effectiveProvider,
+          query,
+          configured: true,
+          elapsedMs: 0,
+          videos: syntheticFallback,
+          error: undefined,
+        }
+        : await fetchReelsBrainProvider(effectiveProvider, query, 6);
       const matched = result.videos.filter((video) => sameCanonical(video.url, query));
       let mediaReady = matched.filter((video) => mediaLocator(video as Record<string, unknown>));
       let resolverSample: Record<string, unknown> | null = null;
