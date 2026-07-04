@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { buildReelsBrainPlatformSummary } from "@/lib/factory/reelsBrainSummary";
+import { buildNicheTrustSummary, buildPatternTrustSummary } from "@/lib/factory/reelsBrainTrust";
 import {
   assessTrainingReadiness,
   automationRunHistory,
@@ -16,6 +17,7 @@ import {
   sourceRelearnPolicy,
 } from "@/lib/factory/reelsBrainPlaybook";
 import type { ReelsPlatform } from "@/lib/factory/reelsBrain";
+import type { ReelsPatternMemory } from "@/lib/factory/reelsBrainPatterns";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 20;
@@ -30,6 +32,15 @@ function patternCountsFromPlaybook(playbook: unknown): Partial<Record<ReelsPlatf
     out[platform] = Array.isArray(brain.patterns) ? brain.patterns.length : 0;
   }
   return out;
+}
+
+function rec(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function asBrain(value: unknown): ReelsPatternMemory | null {
+  const row = rec(value);
+  return Array.isArray(row.patterns) ? row as unknown as ReelsPatternMemory : null;
 }
 
 function daysSince(value: string | undefined): number | null {
@@ -69,26 +80,36 @@ export async function GET(req: NextRequest) {
     if (videosError) return NextResponse.json({ error: videosError.message }, { status: 500 });
     const playbook = (playbookRows as { playbook?: unknown }[] | null)?.[0]?.playbook;
     const patternCounts = playbookError ? {} : patternCountsFromPlaybook(playbook);
+    const playbookRoot = rec(playbook);
+    const patternRoot = rec(playbookRoot.reels_brain_patterns);
+    const platformBrains = rec(patternRoot.platform_brains);
+    const metaBrain = asBrain(patternRoot.meta_brain) || asBrain(patternRoot);
     const platforms = buildReelsBrainPlatformSummary({
       videos: (videos as Parameters<typeof buildReelsBrainPlatformSummary>[0]["videos"] | null) || [],
       winners: winnersError ? [] : ((winners as Parameters<typeof buildReelsBrainPlatformSummary>[0]["winners"] | null) || []),
       patternCounts,
-    }).map((platform) => ({
-      ...platform,
-      relearn_policy: sourceRelearnPolicy(playbook, platform.platform),
-      quality_gates: corpusQualityGate(playbook, platform.platform),
-      recommended_queries: recommendSourceQueries(playbook, niche, platform.platform),
-      training_readiness: assessTrainingReadiness(playbook, platform.platform, {
+    }).map((platform) => {
+      const qualityGates = corpusQualityGate(playbook, platform.platform);
+      const trainingReadiness = assessTrainingReadiness(playbook, platform.platform, {
         videos: platform.videos,
         analyzed: platform.analyzed,
         patterns: platform.pattern_count,
         winners: platform.winners,
-      }),
-      provider_history: sourceProviderHistory(playbook, platform.platform).slice(0, 5),
-      query_leaderboard: queryLeaderboard(playbook, platform.platform).slice(0, 5),
-      suppressed_queries: suppressedSourceQueries(playbook, platform.platform).slice(0, 5),
-      recovery_queries: recoverableSourceQueries(playbook, platform.platform).slice(0, 3),
-    }));
+      });
+      const brain = asBrain(platformBrains[platform.platform]);
+      return {
+        ...platform,
+        relearn_policy: sourceRelearnPolicy(playbook, platform.platform),
+        quality_gates: qualityGates,
+        recommended_queries: recommendSourceQueries(playbook, niche, platform.platform),
+        training_readiness: trainingReadiness,
+        trust: buildPatternTrustSummary(brain, trainingReadiness, qualityGates),
+        provider_history: sourceProviderHistory(playbook, platform.platform).slice(0, 5),
+        query_leaderboard: queryLeaderboard(playbook, platform.platform).slice(0, 5),
+        suppressed_queries: suppressedSourceQueries(playbook, platform.platform).slice(0, 5),
+        recovery_queries: recoverableSourceQueries(playbook, platform.platform).slice(0, 3),
+      };
+    });
     const platformsWithAlerts = platforms.map((platform) => {
       const preferred = preferredSourceProviders(playbook)[normalizeShortPlatform(platform.platform)];
       const staleDays = daysSince(preferred?.updated_at);
@@ -108,15 +129,67 @@ export async function GET(req: NextRequest) {
         provider_stale_days: staleDays,
         provider_drift: championChangedRecently,
         alerts,
-        status: alerts.length ? (platform.training_readiness.ready ? "watch" : "weak") : "ready",
+        status: alerts.length ? (platform.training_readiness.ready ? "watch" : "weak") : platform.trust.status,
       };
     });
+    const nicheTotals = {
+      videos: platformsWithAlerts.reduce((sum, platform) => sum + platform.videos, 0),
+      analyzed: platformsWithAlerts.reduce((sum, platform) => sum + platform.analyzed, 0),
+      patterns: metaBrain?.patterns.length || 0,
+      winners: platformsWithAlerts.reduce((sum, platform) => sum + platform.winners, 0),
+    };
+    const nicheGates = platformsWithAlerts.reduce((acc, platform) => ({
+      min_videos: acc.min_videos + Number(platform.quality_gates?.min_videos || 0),
+      min_analyzed: acc.min_analyzed + Number(platform.quality_gates?.min_analyzed || 0),
+      min_patterns: acc.min_patterns + Number(platform.quality_gates?.min_patterns || 0),
+      min_winners: acc.min_winners + Number(platform.quality_gates?.min_winners || 0),
+    }), { min_videos: 0, min_analyzed: 0, min_patterns: 0, min_winners: 0 });
+    const metaReadiness = {
+      platform: "tiktok" as const,
+      ready:
+        nicheTotals.videos >= nicheGates.min_videos
+        && nicheTotals.analyzed >= nicheGates.min_analyzed
+        && nicheTotals.patterns >= nicheGates.min_patterns
+        && nicheTotals.winners >= nicheGates.min_winners,
+      score: 0,
+      videos: nicheTotals.videos,
+      analyzed: nicheTotals.analyzed,
+      patterns: nicheTotals.patterns,
+      winners: nicheTotals.winners,
+      gates: nicheGates,
+      missing: [
+        nicheTotals.videos >= nicheGates.min_videos ? "" : "videos",
+        nicheTotals.analyzed >= nicheGates.min_analyzed ? "" : "analyzed",
+        nicheTotals.patterns >= nicheGates.min_patterns ? "" : "patterns",
+        nicheTotals.winners >= nicheGates.min_winners ? "" : "winners",
+      ].filter(Boolean),
+    };
+    const trust_overview = buildNicheTrustSummary({
+      niche,
+      meta_brain: metaBrain,
+      readiness: metaReadiness,
+      gates: metaReadiness.gates,
+      platforms: platformsWithAlerts.map((platform) => ({
+        platform: platform.platform,
+        trust: platform.trust,
+      })),
+    });
+    const anti_pattern_hotspots = platformsWithAlerts
+      .flatMap((platform) => (platform.trust.top_risks || []).map((label) => ({
+        platform: platform.platform,
+        label,
+        severity: platform.trust.high_risk_anti_patterns > 0 ? "high" : platform.trust.medium_risk_anti_patterns > 0 ? "medium" : "low",
+        trust_score: platform.trust.score,
+      })))
+      .slice(0, 9);
 
     return NextResponse.json({
       ok: true,
       niche,
       total_videos: platformsWithAlerts.reduce((sum, platform) => sum + platform.videos, 0),
       total_winners: platformsWithAlerts.reduce((sum, platform) => sum + platform.winners, 0),
+      trust_overview,
+      anti_pattern_hotspots,
       platforms: platformsWithAlerts,
       preferred_source_providers: preferredSourceProviders(playbook),
       source_provider_history: sourceProviderHistory(playbook).slice(0, 15),

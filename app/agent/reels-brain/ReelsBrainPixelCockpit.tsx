@@ -571,6 +571,51 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
         note: row.transfer_note || `Платформ с уверенным покрытием: ${compact(((row.platform_brains && Object.keys(row.platform_brains)) || []).length)}`,
       };
     });
+    const trustMatrix = NICHES.map((niche) => {
+      const summary = summaries.find((item) => item.niche === niche) || {};
+      const trustOverview = (summary.trust_overview || {}) as JsonRecord;
+      const platforms = Array.isArray(summary.platforms) ? summary.platforms as JsonRecord[] : [];
+      return {
+        niche,
+        overallScore: num(trustOverview.score),
+        overallStatus: String(trustOverview.status || "weak"),
+        overallConfidence: String(trustOverview.confidence || "low"),
+        overallNote: String(trustOverview.note || "сегмент ещё прогревается"),
+        strongPlatforms: Array.isArray(trustOverview.strong_platforms) ? trustOverview.strong_platforms : [],
+        weakPlatforms: Array.isArray(trustOverview.weak_platforms) ? trustOverview.weak_platforms : [],
+        cells: ["tiktok", "instagram", "youtube"].map((platform) => {
+          const row = platforms.find((item) => item.platform === platform) || {};
+          const trust = (row.trust || {}) as JsonRecord;
+          return {
+            platform,
+            score: num(trust.score),
+            status: String(trust.status || "weak"),
+            confidence: String(trust.confidence || "low"),
+            readyPatterns: num(trust.generator_ready_patterns),
+            antiPatterns: num(trust.anti_patterns),
+            topRisks: Array.isArray(trust.top_risks) ? trust.top_risks.slice(0, 2) : [],
+          };
+        }),
+      };
+    });
+    const trustHotspots = summaries
+      .flatMap((summary) => {
+        const niche = String(summary.niche || "");
+        const items = Array.isArray(summary.anti_pattern_hotspots) ? summary.anti_pattern_hotspots as JsonRecord[] : [];
+        return items.map((item) => ({
+          niche,
+          platform: String(item.platform || "mixed"),
+          label: String(item.label || "risk"),
+          severity: String(item.severity || "low"),
+          trustScore: num(item.trust_score),
+        }));
+      })
+      .sort((a, b) => {
+        const left = (a.severity === "high" ? 3 : a.severity === "medium" ? 2 : 1) * 1000 - a.trustScore;
+        const right = (b.severity === "high" ? 3 : b.severity === "medium" ? 2 : 1) * 1000 - b.trustScore;
+        return right - left;
+      })
+      .slice(0, 6);
     const insightHighlights = [
       {
         title: "Главный winning hook",
@@ -670,6 +715,8 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
       missionProgressPct,
       executiveCards,
       knowledgeCards,
+      trustMatrix,
+      trustHotspots,
       insightHighlights,
       economicsCards,
       readinessCards,
@@ -770,6 +817,70 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
                 </div>
               </div>
             ))}
+          </div>
+        </section>
+
+        <section style={{ marginTop: 24, display: "grid", gap: 16 }}>
+          <div style={{ fontSize: 12, color: "#0891b2", textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 700 }}>Trust Matrix</div>
+          <div style={{ display: "grid", gap: 12 }}>
+            {vm.trustMatrix.map((row: JsonRecord) => (
+              <div key={row.niche} style={{ background: "#fff", border: "1px solid #dbe4ee", borderRadius: 18, padding: 18 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
+                  <div>
+                    <div style={{ fontSize: 12, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 700 }}>{NICHE_LABELS[row.niche] || row.niche}</div>
+                    <h2 style={{ margin: "8px 0 6px", fontSize: 24 }}>{compact(row.overallScore)}% · {row.overallStatus}</h2>
+                    <p style={{ margin: 0, color: "#475569", lineHeight: 1.6, maxWidth: 760 }}>{row.overallNote}</p>
+                  </div>
+                  <div style={{ display: "grid", gap: 6, justifyItems: "end" }}>
+                    <div style={{ padding: "6px 10px", borderRadius: 999, background: "#f8fafc", border: "1px solid #e2e8f0", fontSize: 12, fontWeight: 700, color: "#0f172a" }}>
+                      confidence · {row.overallConfidence}
+                    </div>
+                    <div style={{ fontSize: 13, color: "#64748b", textAlign: "right" }}>
+                      strong: {(row.strongPlatforms || []).join(", ") || "—"}<br />
+                      weak: {(row.weakPlatforms || []).join(", ") || "—"}
+                    </div>
+                  </div>
+                </div>
+                <div style={{ marginTop: 14, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 }}>
+                  {(row.cells || []).map((cell: JsonRecord) => (
+                    <div key={cell.platform} style={{ border: "1px solid #e2e8f0", borderRadius: 14, padding: 14, background: "#f8fafc" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
+                        <strong style={{ fontSize: 18 }}>{cell.platform}</strong>
+                        <span style={{ fontSize: 12, color: "#64748b", fontWeight: 700 }}>{cell.status} · {cell.confidence}</span>
+                      </div>
+                      <div style={{ marginTop: 10, fontSize: 26, lineHeight: 1.05, fontWeight: 800 }}>{compact(cell.score)}%</div>
+                      <div style={{ marginTop: 8, color: "#334155", lineHeight: 1.6 }}>
+                        <div>ready patterns: {compact(cell.readyPatterns)}</div>
+                        <div>anti-patterns: {compact(cell.antiPatterns)}</div>
+                      </div>
+                      <div style={{ marginTop: 8, fontSize: 13, color: "#64748b" }}>
+                        {(cell.topRisks || []).length ? `Риски: ${(cell.topRisks || []).join(" · ")}` : "Явных risk-hotspot'ов мало."}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section style={{ marginTop: 24 }}>
+          <div style={{ fontSize: 12, color: "#0891b2", textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 700, marginBottom: 12 }}>Risk Hotspots</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 12 }}>
+            {vm.trustHotspots.length ? vm.trustHotspots.map((item: JsonRecord, index: number) => (
+              <div key={`${item.niche}:${item.platform}:${item.label}:${index}`} style={{ background: "#fff", border: "1px solid #dbe4ee", borderRadius: 18, padding: 16 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
+                  <strong>{NICHE_LABELS[item.niche] || item.niche} · {item.platform}</strong>
+                  <span style={{ fontSize: 12, color: "#64748b", fontWeight: 700 }}>{item.severity}</span>
+                </div>
+                <div style={{ marginTop: 10, color: "#0f172a", fontWeight: 700, lineHeight: 1.45 }}>{item.label}</div>
+                <div style={{ marginTop: 8, color: "#64748b", fontSize: 14 }}>trust score сегмента: {compact(item.trustScore)}%</div>
+              </div>
+            )) : (
+              <div style={{ background: "#fff", border: "1px solid #dbe4ee", borderRadius: 18, padding: 16, color: "#64748b" }}>
+                Hotspot'ы появятся после следующей пересборки pattern brain.
+              </div>
+            )}
           </div>
         </section>
 
