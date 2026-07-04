@@ -45,6 +45,37 @@ function widenedScanWindow(scan: number, shardCount: number, hardCap: number) {
   return Math.max(scan, Math.min(hardCap, scan * multiplier));
 }
 
+async function fetchCorpusRows(input: {
+  db: NonNullable<ReturnType<typeof getSupabaseAdmin>>;
+  niches: string[];
+  platform: string;
+  queryScan: number;
+}) {
+  const pageSize = 1000;
+  const rows: CorpusRow[] = [];
+
+  for (let offset = 0; offset < input.queryScan; offset += pageSize) {
+    const upper = Math.min(offset + pageSize - 1, input.queryScan - 1);
+    let query = input.db
+      .from("viral_videos")
+      .select("id,niche,platform,url,analyzed,analyzed_full,created_at,virality_score,views")
+      .in("niche", input.niches)
+      .order("created_at", { ascending: false, nullsFirst: false })
+      .range(offset, upper);
+
+    if (input.platform) query = query.eq("platform", input.platform);
+
+    const { data, error } = await query;
+    if (error) return { data: null, error };
+
+    const batch = (data || []) as CorpusRow[];
+    rows.push(...batch);
+    if (batch.length < pageSize) break;
+  }
+
+  return { data: rows, error: null };
+}
+
 function boolParam(req: NextRequest, name: string, fallback = false): boolean {
   const value = String(req.nextUrl.searchParams.get(name) || "").trim().toLowerCase();
   if (!value) return fallback;
@@ -103,6 +134,11 @@ function bestMediaLocator(row: CorpusRow): string {
   return state.mediaLocators.find((item) => isPlayableMediaLocator(item, platform)) || "";
 }
 
+function hasRecoverablePageFallback(state: ReturnType<typeof seedState>, platform: string): boolean {
+  if (!state.mediaLocators.length) return false;
+  return state.mediaLocators.some((item) => isPlayableMediaLocator(item, platform) && !isDirectVideoLocator(item));
+}
+
 export async function GET(req: NextRequest) {
   try {
     if (!(await isAuthorizedReelsBrainJobRequest(req))) {
@@ -114,7 +150,7 @@ export async function GET(req: NextRequest) {
 
     const niches = splitList(req.nextUrl.searchParams.get("niches") || "ru_toys,ru_clothing,ru_cosmetics");
     const limit = numberParam(req, "limit", 2, 1, 6);
-    const scan = numberParam(req, "scan", 24, limit, 120);
+    const scan = numberParam(req, "scan", 24, limit, 2000);
     const platform = String(req.nextUrl.searchParams.get("platform") || "").trim().toLowerCase();
     const transcribe = boolParam(req, "transcribe", true);
     const dryRun = boolParam(req, "dry_run", false);
@@ -126,17 +162,13 @@ export async function GET(req: NextRequest) {
       shardCount: req.nextUrl.searchParams.get("shard_count"),
     });
 
-    const queryScan = widenedScanWindow(scan, shardCount, 500);
-    let query = db
-      .from("viral_videos")
-      .select("id,niche,platform,url,analyzed,analyzed_full,created_at,virality_score,views")
-      .in("niche", niches)
-      .order("created_at", { ascending: false, nullsFirst: false })
-      .limit(queryScan);
-
-    if (platform) query = query.eq("platform", platform);
-
-    const { data, error } = await query;
+    const queryScan = widenedScanWindow(scan, shardCount, 5000);
+    const { data, error } = await fetchCorpusRows({
+      db,
+      niches,
+      platform,
+      queryScan,
+    });
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
     const ranked = ((data || []) as CorpusRow[])
@@ -146,12 +178,19 @@ export async function GET(req: NextRequest) {
         const platform = String(row.platform || "").trim().toLowerCase();
         const hasPlayable = state.mediaLocators.some((item) => isPlayableMediaLocator(item, platform));
         if (!hasPlayable) return false;
-        return shouldRetryAudioBackfill({
+        const shouldRetry = shouldRetryAudioBackfill({
           audioStatus: state.audioStatus,
           transcriptStatus: state.transcriptStatus,
           transcriptError: state.audioFeatures?.transcript_error,
           lastError: state.lastError,
-        }) && (!state.audioStatus || state.audioStatus !== "audio_extracted" || transcribe);
+        });
+        const retryRecoverableFallback = (
+          state.audioStatus !== "audio_extracted"
+          && hasRecoverablePageFallback(state, platform)
+          && Boolean(state.lastError)
+        );
+        return (shouldRetry || retryRecoverableFallback)
+          && (!state.audioStatus || state.audioStatus !== "audio_extracted" || transcribe);
       })
       .map((row) => {
         const state = seedState(row);

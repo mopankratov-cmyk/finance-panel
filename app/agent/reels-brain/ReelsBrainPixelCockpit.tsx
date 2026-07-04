@@ -3,6 +3,15 @@
 import { useEffect, useMemo, useState } from "react";
 
 type JsonRecord = Record<string, any>;
+type BootPayload = {
+  learning?: JsonRecord;
+  corpus?: JsonRecord;
+  learningPlan?: JsonRecord;
+  progress?: JsonRecord;
+  health?: JsonRecord;
+  summaries?: JsonRecord[];
+  error?: string;
+};
 
 const NICHES = ["ru_toys", "ru_clothing", "ru_cosmetics"];
 const NICHE_LABELS: Record<string, string> = {
@@ -139,19 +148,20 @@ function Gauge({ score, tone }: { score: number; tone: ReturnType<typeof statusT
   );
 }
 
-export default function ReelsBrainPixelCockpit() {
-  const [learning, setLearning] = useState<JsonRecord | null>(null);
-  const [corpus, setCorpus] = useState<JsonRecord | null>(null);
-  const [learningPlan, setLearningPlan] = useState<JsonRecord | null>(null);
-  const [progress, setProgress] = useState<JsonRecord | null>(null);
-  const [health, setHealth] = useState<JsonRecord | null>(null);
-  const [summaries, setSummaries] = useState<JsonRecord[]>([]);
+export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: BootPayload }) {
+  const [learning, setLearning] = useState<JsonRecord | null>(initialData?.learning || null);
+  const [corpus, setCorpus] = useState<JsonRecord | null>(initialData?.corpus || null);
+  const [learningPlan, setLearningPlan] = useState<JsonRecord | null>(initialData?.learningPlan || null);
+  const [progress, setProgress] = useState<JsonRecord | null>(initialData?.progress || null);
+  const [health, setHealth] = useState<JsonRecord | null>(initialData?.health || null);
+  const [summaries, setSummaries] = useState<JsonRecord[]>(initialData?.summaries || []);
   const [selectedPattern, setSelectedPattern] = useState<JsonRecord | null>(null);
   const [techLayerOpen, setTechLayerOpen] = useState(false);
-  const [state, setState] = useState<"loading" | "ready" | "error">("loading");
-  const [error, setError] = useState("");
+  const [state, setState] = useState<"loading" | "ready" | "error">(initialData ? (initialData.error ? "error" : "ready") : "loading");
+  const [error, setError] = useState(initialData?.error || "");
 
   useEffect(() => {
+    if (initialData) return;
     let alive = true;
     async function load() {
       setState("loading");
@@ -197,7 +207,7 @@ export default function ReelsBrainPixelCockpit() {
       alive = false;
       window.clearInterval(timer);
     };
-  }, []);
+  }, [initialData]);
 
   const vm = useMemo(() => {
     const totals = learning?.totals || {};
