@@ -225,5 +225,88 @@ assert.ok((rankedByEfficiency.items[0]?.data_readiness_score as number) > (ranke
 assert.equal(rankedByEfficiency.items[0]?.source_provider, "youtube");
 assert.ok(["pin_winner_provider", "close_exact_proof", "controlled_discovery", "seed_and_collect", "probe_and_collect"].includes(String(rankedByEfficiency.items[0]?.source_discovery_mode)));
 assert.ok(Array.isArray(rankedByEfficiency.summary.provider_recommendations));
+assert.equal(result.summary.primary_priority_segments, 1);
+
+const prioritizedByPolicy = buildReelsBrainExactSegmentQueue({
+  portfolioReadiness: {
+    summary: {
+      expected_segments: 3,
+    },
+    missing_segments: [
+      {
+        niche: "ru_toys",
+        platform: "youtube",
+        evidence_band: "forming",
+        stability_score: 78,
+        outcome_status: "no_feedback",
+        missing: false,
+      },
+      {
+        niche: "ru_cosmetics",
+        platform: "tiktok",
+        evidence_band: "forming",
+        stability_score: 45,
+        outcome_status: "no_feedback",
+        missing: false,
+      },
+    ],
+  },
+  generationPolicy: {
+    by_segment: [
+      {
+        niche: "ru_cosmetics",
+        platform: "tiktok",
+        policy_mode: "primary",
+        outcome_status: "no_feedback",
+      },
+      {
+        niche: "ru_toys",
+        platform: "youtube",
+        policy_mode: "research_only",
+        outcome_status: "no_feedback",
+      },
+    ],
+  },
+  discoveryBrain: {
+    providers: [
+      { provider: "youtube", decision: "scale", reason: "best youtube source", discovery_score: 88 },
+      { provider: "apify_tiktok", decision: "watch", reason: "usable tiktok source", discovery_score: 60 },
+    ],
+  },
+  segmentPriorityQueue: {
+    items: [
+      {
+        niche: "ru_toys",
+        platform: "youtube",
+        urgency_score: 74,
+        action: "collect_segment_batch",
+        readiness_direct_rate: 88,
+        readiness_audio_rate: 72,
+        readiness_transcript_ready_rate: 61,
+        readiness_analyzed_rate: 66,
+        readiness_total_backlog: 9,
+      },
+      {
+        niche: "ru_cosmetics",
+        platform: "tiktok",
+        urgency_score: 90,
+        action: "collect_segment_batch",
+        readiness_direct_rate: 42,
+        readiness_audio_rate: 18,
+        readiness_transcript_ready_rate: 10,
+        readiness_analyzed_rate: 31,
+        readiness_total_backlog: 24,
+        ready_for_generation: true,
+      },
+    ],
+  },
+  segmentSolutionMatrix: {
+    by_platform: [],
+    by_niche: [],
+  },
+});
+
+assert.equal(prioritizedByPolicy.items[0]?.platform, "tiktok");
+assert.equal(prioritizedByPolicy.items[0]?.segment_priority_mode, "primary");
 
 console.log("reelsBrainExactSegmentQueue: passed");

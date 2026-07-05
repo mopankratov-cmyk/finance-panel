@@ -27,6 +27,13 @@ function evidenceRank(value: unknown) {
   return 0;
 }
 
+function policyModeRank(value: unknown) {
+  const mode = text(value, "research_only");
+  if (mode === "primary") return 3;
+  if (mode === "control_only") return 2;
+  return 1;
+}
+
 export function buildReelsBrainPortfolioReadiness(input: {
   segmentStabilityAudit?: {
     items?: JsonRecord[];
@@ -36,6 +43,9 @@ export function buildReelsBrainPortfolioReadiness(input: {
   } | null;
   niches?: string[];
   platforms?: string[];
+  segmentPriorityQueue?: {
+    items?: JsonRecord[];
+  } | null;
 }) {
   const niches = Array.from(new Set((input.niches || []).map((row) => text(row)).filter(Boolean))).sort();
   const platforms = Array.from(new Set((input.platforms || []).map((row) => text(row)).filter(Boolean))).sort();
@@ -44,11 +54,13 @@ export function buildReelsBrainPortfolioReadiness(input: {
   const expectedTotal = niches.length * platforms.length;
   const rowMap = new Map(rows.map((row) => [`${text(row.niche)}__${text(row.platform)}`, row] as const));
   const solutionMap = new Map(solutionRows.map((row) => [`${text(row.niche)}__${text(row.platform)}`, row] as const));
+  const priorityMap = new Map(records(input.segmentPriorityQueue?.items).map((row) => [`${text(row.niche)}__${text(row.platform)}`, row] as const));
 
   const bySegment = niches.flatMap((niche) =>
     platforms.map((platform) => {
       const row = (rowMap.get(`${niche}__${platform}`) || {}) as JsonRecord;
       const solution = (solutionMap.get(`${niche}__${platform}`) || {}) as JsonRecord;
+      const priority = (priorityMap.get(`${niche}__${platform}`) || {}) as JsonRecord;
       const band = text(row.evidence_band, "missing");
       const stability = num(row.stability_score);
       const publishableExact = Boolean(solution.publishable_exact);
@@ -56,6 +68,9 @@ export function buildReelsBrainPortfolioReadiness(input: {
         niche,
         platform,
         label: `${niche} × ${platform}`,
+        segment_priority_score: num(priority.decision_priority_score || priority.urgency_score),
+        segment_priority_mode: text(priority.policy_mode, "research_only"),
+        segment_ready_for_generation: Boolean(priority.ready_for_generation),
         evidence_band: band,
         stability_score: stability,
         high_trust_segment: Boolean(row.high_trust_segment),
@@ -89,6 +104,7 @@ export function buildReelsBrainPortfolioReadiness(input: {
       high_trust_pct: pct(highTrust, items.length),
       publishable_exact_pct: pct(publishableExact, items.length),
       weak_outcome_segments: weakOutcome,
+      primary_priority_segments: items.filter((row) => row.segment_priority_mode === "primary").length,
       readiness: publishableExact === items.length
         ? "publishable_exact"
         : highTrust === items.length
@@ -99,7 +115,8 @@ export function buildReelsBrainPortfolioReadiness(input: {
       next_gap: items.find((row) => !row.high_trust_segment)?.platform || null,
     };
   }).sort((a, b) =>
-    b.publishable_exact_pct - a.publishable_exact_pct
+    b.primary_priority_segments - a.primary_priority_segments
+    || b.publishable_exact_pct - a.publishable_exact_pct
     || b.high_trust_pct - a.high_trust_pct
     || b.coverage_pct - a.coverage_pct
     || a.niche.localeCompare(b.niche),
@@ -126,6 +143,7 @@ export function buildReelsBrainPortfolioReadiness(input: {
       high_trust_pct: pct(highTrust, items.length),
       publishable_exact_pct: pct(publishableExact, items.length),
       weak_outcome_segments: weakOutcome,
+      primary_priority_segments: items.filter((row) => row.segment_priority_mode === "primary").length,
       readiness: publishableExact === items.length
         ? "publishable_exact"
         : highTrust === items.length
@@ -136,7 +154,8 @@ export function buildReelsBrainPortfolioReadiness(input: {
       next_gap: items.find((row) => !row.high_trust_segment)?.niche || null,
     };
   }).sort((a, b) =>
-    b.publishable_exact_pct - a.publishable_exact_pct
+    b.primary_priority_segments - a.primary_priority_segments
+    || b.publishable_exact_pct - a.publishable_exact_pct
     || b.high_trust_pct - a.high_trust_pct
     || b.coverage_pct - a.coverage_pct
     || a.platform.localeCompare(b.platform),
@@ -186,7 +205,9 @@ export function buildReelsBrainPortfolioReadiness(input: {
     publishable_exact_gaps: bySegment
       .filter((row) => !row.publishable_exact)
       .sort((a, b) =>
-        Number(Boolean(b.high_trust_segment)) - Number(Boolean(a.high_trust_segment))
+        policyModeRank(b.segment_priority_mode) - policyModeRank(a.segment_priority_mode)
+        || b.segment_priority_score - a.segment_priority_score
+        || Number(Boolean(b.high_trust_segment)) - Number(Boolean(a.high_trust_segment))
         || evidenceRank(b.evidence_band) - evidenceRank(a.evidence_band)
         || b.stability_score - a.stability_score
         || Number(Boolean(a.missing)) - Number(Boolean(b.missing))

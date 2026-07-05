@@ -142,3 +142,43 @@ test("buildReelsBrainPortfolioReadiness prioritizes exact gaps that are closest 
   assert.equal(result.publishable_exact_gaps[0]?.platform, "instagram");
   assert.equal(result.publishable_exact_gaps[1]?.niche, "ru_cosmetics");
 });
+
+test("buildReelsBrainPortfolioReadiness prioritizes high-payoff exact gaps", () => {
+  const result = buildReelsBrainPortfolioReadiness({
+    niches: ["ru_toys", "ru_cosmetics"],
+    platforms: ["youtube", "tiktok"],
+    segmentStabilityAudit: {
+      items: [
+        { niche: "ru_toys", platform: "youtube", evidence_band: "stable", stability_score: 92, high_trust_segment: true },
+        { niche: "ru_cosmetics", platform: "tiktok", evidence_band: "forming", stability_score: 61, high_trust_segment: false },
+      ],
+    },
+    segmentSolutionMatrix: {
+      by_segment: [
+        { niche: "ru_toys", platform: "youtube", publishable_exact: true },
+      ],
+    },
+    segmentPriorityQueue: {
+      items: [
+        {
+          niche: "ru_cosmetics",
+          platform: "tiktok",
+          decision_priority_score: 97,
+          policy_mode: "primary",
+          ready_for_generation: true,
+        },
+        {
+          niche: "ru_toys",
+          platform: "tiktok",
+          decision_priority_score: 41,
+          policy_mode: "research_only",
+        },
+      ],
+    },
+  });
+
+  assert.equal(result.publishable_exact_gaps[0]?.platform, "tiktok");
+  assert.equal(result.publishable_exact_gaps[0]?.segment_priority_mode, "primary");
+  assert.equal(result.by_niche[0]?.niche, "ru_cosmetics");
+  assert.equal(result.by_niche[0]?.primary_priority_segments, 1);
+});

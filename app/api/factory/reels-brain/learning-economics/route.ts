@@ -2939,6 +2939,7 @@ export async function GET(req: NextRequest) {
       segmentSolutionMatrix,
       niches: nicheSummaries.map((row) => row.niche),
       platforms: ["tiktok", "instagram", "youtube"],
+      segmentPriorityQueue,
     });
     const exactSegmentQueue = buildReelsBrainExactSegmentQueue({
       portfolioReadiness,
@@ -3154,6 +3155,21 @@ export async function GET(req: NextRequest) {
       platforms: ["tiktok", "instagram", "youtube"],
       limit: compactMode ? 6 : 10,
     });
+    const prioritizedPortfolioReadiness = buildReelsBrainPortfolioReadiness({
+      segmentStabilityAudit: prioritizedSegmentStabilityAudit,
+      segmentSolutionMatrix: prioritizedSegmentSolutionMatrix,
+      niches: nicheSummaries.map((row) => row.niche),
+      platforms: ["tiktok", "instagram", "youtube"],
+      segmentPriorityQueue,
+    });
+    const prioritizedExactSegmentQueue = buildReelsBrainExactSegmentQueue({
+      portfolioReadiness: prioritizedPortfolioReadiness,
+      segmentSolutionMatrix: prioritizedSegmentSolutionMatrix,
+      generationPolicy,
+      discoveryBrain,
+      segmentPriorityQueue,
+      limit: compactMode ? 6 : 10,
+    });
     const dailyReport = buildDailyReport({
       totals,
       today,
@@ -3171,10 +3187,10 @@ export async function GET(req: NextRequest) {
       totals,
       outcomeMemory: outcomeMemoryBrain,
       measurementPlan,
-      exactSegmentQueue,
+      exactSegmentQueue: prioritizedExactSegmentQueue,
       segmentPriorityQueue,
       generationPolicy,
-      portfolioReadiness,
+      portfolioReadiness: prioritizedPortfolioReadiness,
     });
 
     const timelineResponse = compactMode ? takeRecordList(timeline, 12) : timeline;
@@ -3193,7 +3209,7 @@ export async function GET(req: NextRequest) {
       feedback_loop: operatingSystem.feedback_loop,
       outcome_memory_brain: outcomeMemoryBrain,
       measurement_plan: measurementPlan,
-      exact_segment_queue: exactSegmentQueue,
+      exact_segment_queue: prioritizedExactSegmentQueue,
       audio_visual_intelligence: nextIntelligenceLayers.audio_visual_intelligence,
       product_brain: operatingSystem.product_brain,
       audience_brain: operatingSystem.audience_brain,
@@ -3228,7 +3244,7 @@ export async function GET(req: NextRequest) {
       segment_solutions: prioritizedSegmentSolutions,
       segment_solution_matrix: prioritizedSegmentSolutionMatrix,
       generation_policy: generationPolicy,
-      portfolio_readiness: portfolioReadiness,
+      portfolio_readiness: prioritizedPortfolioReadiness,
       evidence_ledger: evidenceLedger,
       feedback_warning: feedbackRows.warning,
       cost_governor: costGovernor,
