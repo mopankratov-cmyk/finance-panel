@@ -189,3 +189,63 @@ test("selectCreativeBriefFromSegmentLayers exposes alternative fallback ladder w
   assert.equal(result?.alternatives?.[0]?.source, "platform_matrix");
   assert.equal(result?.alternatives?.[1]?.source, "niche_matrix");
 });
+
+test("selectCreativeBriefFromSegmentLayers avoids exact weak segment when healthier fallback exists", () => {
+  const result = selectCreativeBriefFromSegmentLayers({
+    niche: "ru_toys",
+    platform: "instagram",
+    segmentSolutions: {
+      items: [
+        {
+          niche: "ru_toys",
+          platform: "instagram",
+          label: "ru_toys × instagram",
+          readiness_score: 92,
+          trust_band: "high",
+          production_state: "ready_now",
+          creative_brief: { hook: "Weak exact" },
+          trust_summary: {
+            evidence_band: "stable",
+            stability_score: 89,
+            outcome_status: "weak",
+            outcome_confidence: "medium",
+            outcome_posts: 4,
+            outcome_winners: 0,
+            outcome_losers: 3,
+          },
+        },
+      ],
+    },
+    segmentSolutionMatrix: {
+      by_platform: [
+        {
+          platform: "instagram",
+          primary: {
+            niche: "ru_cosmetics",
+            platform: "instagram",
+            label: "ru_cosmetics × instagram",
+            readiness_score: 74,
+            trust_band: "medium",
+            production_state: "controlled_test",
+            creative_brief: { hook: "Healthy fallback" },
+            trust_summary: {
+              evidence_band: "forming",
+              stability_score: 67,
+              outcome_status: "proven",
+              outcome_confidence: "high",
+              outcome_posts: 6,
+              outcome_winners: 3,
+              outcome_losers: 0,
+            },
+          },
+        },
+      ],
+      by_niche: [],
+    },
+  });
+
+  assert.equal(result?.source, "platform_matrix");
+  assert.equal(result?.creative_brief.hook, "Healthy fallback");
+  assert.equal(result?.source_trace?.[0]?.outcome_status, "proven");
+  assert.equal(result?.alternatives?.[0]?.outcome_status, "weak");
+});

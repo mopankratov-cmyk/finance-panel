@@ -47,6 +47,30 @@ function asPrimary(row: unknown) {
   return row && typeof row === "object" ? row as JsonRecord : null;
 }
 
+function outcomePenalty(value: unknown) {
+  const status = text(value, "no_feedback");
+  if (status === "weak") return -90;
+  if (status === "promising") return 6;
+  if (status === "proven") return 18;
+  return 0;
+}
+
+function sourcePreference(source: "segment_solution" | "platform_matrix" | "niche_matrix") {
+  if (source === "segment_solution") return 24;
+  if (source === "platform_matrix") return 14;
+  return 10;
+}
+
+function candidateScore(candidate: { source: "segment_solution" | "platform_matrix" | "niche_matrix"; row: JsonRecord }) {
+  const trustSummary = (candidate.row.trust_summary || {}) as JsonRecord;
+  return sourcePreference(candidate.source)
+    + productionRank(candidate.row.production_state) * 12
+    + trustRank(candidate.row.trust_band) * 10
+    + num(trustSummary.stability_score) * 0.45
+    + num(candidate.row.readiness_score) * 0.25
+    + outcomePenalty(trustSummary.outcome_status);
+}
+
 function buildAlternative(row: JsonRecord, source: "segment_solution" | "platform_matrix" | "niche_matrix") {
   const brief = (row.creative_brief || {}) as JsonRecord;
   const hypothesis = (row.hypothesis || {}) as JsonRecord;
@@ -59,6 +83,7 @@ function buildAlternative(row: JsonRecord, source: "segment_solution" | "platfor
     platform: text(row.platform),
     trust_band: text(row.trust_band, "low"),
     evidence_band: text(trustSummary.evidence_band, "missing"),
+    outcome_status: text(trustSummary.outcome_status, "no_feedback"),
     production_state: text(row.production_state, "research_only"),
     readiness_score: num(row.readiness_score),
     stability_score: num(trustSummary.stability_score),
@@ -91,10 +116,12 @@ function buildResponseFromSolution(
     rank: index + 1,
     source: candidate.source,
     label: text(candidate.row.label, `${candidate.row.niche || "niche"} × ${candidate.row.platform || "platform"}`),
+    outcome_status: text((((candidate.row.trust_summary || {}) as JsonRecord).outcome_status), "no_feedback"),
     readiness_score: num(candidate.row.readiness_score),
     trust_band: text(candidate.row.trust_band, "low"),
     evidence_band: text(((candidate.row.trust_summary || {}) as JsonRecord).evidence_band, "missing"),
     production_state: text(candidate.row.production_state, "research_only"),
+    candidate_score: Math.round(candidateScore(candidate) * 10) / 10,
     chosen: candidate.row === row && candidate.source === source,
   }));
   const decisionPack = {
@@ -208,10 +235,14 @@ export function selectCreativeBriefFromSegmentLayers(input: {
     platformPrimary ? { source: "platform_matrix" as const, row: platformPrimary } : null,
     nichePrimary ? { source: "niche_matrix" as const, row: nichePrimary } : null,
   ].filter(Boolean) as Array<{ source: "segment_solution" | "platform_matrix" | "niche_matrix"; row: JsonRecord }>;
+  const rankedCandidates = [...candidates].sort((a, b) =>
+    candidateScore(b) - candidateScore(a)
+    || itemSort(a.row, b.row)
+    || sourcePreference(b.source) - sourcePreference(a.source)
+  );
+  const selected = rankedCandidates[0] || null;
 
-  if (exact) return buildResponseFromSolution(exact, "segment_solution", candidates);
-  if (platformPrimary) return buildResponseFromSolution(platformPrimary, "platform_matrix", candidates);
-  if (nichePrimary) return buildResponseFromSolution(nichePrimary, "niche_matrix", candidates);
+  if (selected) return buildResponseFromSolution(selected.row, selected.source, rankedCandidates);
 
   return null;
 }
