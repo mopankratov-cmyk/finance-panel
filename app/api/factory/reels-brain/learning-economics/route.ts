@@ -26,6 +26,7 @@ import { buildReelsBrainSegmentGapPlanner } from "@/lib/factory/reelsBrainSegmen
 import { loadReelsBrainFeedbackRows } from "@/lib/factory/reelsBrainFeedbackRows";
 import { buildReelsBrainOutcomeAntiPatternMemory } from "@/lib/factory/reelsBrainOutcomeAntiPatternMemory";
 import { buildReelsBrainPatternOutcomeMemory } from "@/lib/factory/reelsBrainPatternOutcomeMemory";
+import { buildReelsBrainMeasurementPlan } from "@/lib/factory/reelsBrainMeasurementPlan";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 20;
@@ -2823,6 +2824,12 @@ export async function GET(req: NextRequest) {
     const generationPolicy = buildReelsBrainGenerationPolicy({
       segmentSolutionMatrix,
     });
+    const measurementPlan = buildReelsBrainMeasurementPlan({
+      outcomeMemory: outcomeMemoryBrain,
+      segmentSolutionMatrix,
+      generationPolicy,
+      limit: compactMode ? 4 : 6,
+    });
     const portfolioReadiness = buildReelsBrainPortfolioReadiness({
       segmentStabilityAudit,
       niches: nicheSummaries.map((row) => row.niche),
@@ -2864,6 +2871,7 @@ export async function GET(req: NextRequest) {
       daily_report: dailyReport,
       feedback_loop: operatingSystem.feedback_loop,
       outcome_memory_brain: outcomeMemoryBrain,
+      measurement_plan: measurementPlan,
       audio_visual_intelligence: nextIntelligenceLayers.audio_visual_intelligence,
       product_brain: operatingSystem.product_brain,
       audience_brain: operatingSystem.audience_brain,

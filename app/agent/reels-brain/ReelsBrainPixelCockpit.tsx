@@ -290,6 +290,7 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
     const segmentReadinessAudit = (learning?.segment_readiness_audit || {}) as JsonRecord;
     const segmentSolutionMatrix = (learning?.segment_solution_matrix || {}) as JsonRecord;
     const generationPolicy = (learning?.generation_policy || {}) as JsonRecord;
+    const measurementPlan = (learning?.measurement_plan || {}) as JsonRecord;
     const portfolioReadiness = (learning?.portfolio_readiness || mission.portfolio_readiness || {}) as JsonRecord;
     const evidenceLedger = (learning?.evidence_ledger || {}) as JsonRecord;
     const actionPack = (learning?.action_pack || {}) as JsonRecord;
@@ -998,6 +999,7 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
       generationPolicyNicheCards,
       generationPolicyPlatformCards,
       generationPolicySummary,
+      measurementPlan,
       missionPriorityCards,
       portfolioCoverageCards,
       portfolioGapCards,
@@ -3377,6 +3379,40 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
                 <p><strong>Required:</strong> {((vm.outcomeMemory.schema?.required_fields || []) as string[]).join(" · ") || "recipe_id · platform · views · posted_at"}</p>
                 <p><strong>Recommended:</strong> {((vm.outcomeMemory.schema?.recommended_fields || []) as string[]).slice(0, 6).join(" · ") || "hook_rate · hold_rate · completion_rate · ctr_card · saves · revenue"}</p>
                 <p><strong>Endpoints:</strong> {((vm.outcomeMemory.schema?.ingestion_endpoints || []) as string[]).join(" · ") || "/api/factory/post-metrics · /api/factory/reels-brain/feedback"}</p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section>
+          <SectionTitle k="08.85 · Measurement Plan" title="Как подтверждаем сильные паттерны рынком" />
+          <div className="rb-two">
+            <div className="rb-card">
+              <div className="rb-pill">{vm.measurementPlan.status || "waiting"} · candidates {compact(vm.measurementPlan.total_candidates || 0)}</div>
+              <h3 style={{ font: "700 26px/1.1 'Space Grotesk'", margin: "14px 0" }}>Очередь на market validation</h3>
+              <p>{vm.measurementPlan.next_step || "Как только появятся strong no-feedback patterns, здесь соберётся measurement plan."}</p>
+              {((vm.measurementPlan.items || []) as JsonRecord[]).length ? ((vm.measurementPlan.items || []) as JsonRecord[]).slice(0, 4).map((item, index) => (
+                <div className="rb-pattern" key={`measurement:${item.measurement_id || index}`} style={{ marginTop: index ? 10 : 0 }}>
+                  <div className="rb-pill">{item.policy_mode || "research_only"} · priority {compact(item.decision_priority_score || 0)}</div>
+                  <h3 style={{ marginTop: 10 }}>{item.action || item.title || "Measurement item"}</h3>
+                  <p>{item.reason}</p>
+                  <p><strong>Brief:</strong> {((item.publish_brief as JsonRecord | null)?.hook) || "hook"} · {((item.publish_brief as JsonRecord | null)?.structure) || "structure"} · {((item.publish_brief as JsonRecord | null)?.next_step) || "снять метрики"}</p>
+                </div>
+              )) : (
+                <div className="rb-pattern">
+                  <h3>Measurement queue пока пустая</h3>
+                  <p>Сначала сильные паттерны должны попасть в no-feedback queue, после этого мозг соберёт валидирующий план.</p>
+                </div>
+              )}
+            </div>
+            <div className="rb-card">
+              <div className="rb-overline" style={{ color: "#0891b2" }}>Validation routes</div>
+              <h3 style={{ font: "600 24px/1.15 'Space Grotesk'", margin: "9px 0 14px" }}>Куда вести сигнал после публикации</h3>
+              <div className="rb-pattern">
+                <p><strong>Creative source:</strong> /api/factory/reels-brain/creative-solution</p>
+                <p><strong>Feedback writeback:</strong> /api/factory/reels-brain/feedback</p>
+                <p><strong>Raw market metrics:</strong> /api/factory/post-metrics</p>
+                <p><strong>Measurement endpoint:</strong> /api/factory/reels-brain/measurement-plan</p>
               </div>
             </div>
           </div>

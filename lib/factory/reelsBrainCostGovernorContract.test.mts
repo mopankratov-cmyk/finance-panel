@@ -12,6 +12,7 @@ const learningPlanBuilder = readFileSync("lib/factory/reelsBrainLearningPlan.ts"
 const bulk = readFileSync("app/api/factory/jobs/reels-brain-bulk-ingest/route.ts", "utf8");
 const bulkExecutionPolicy = readFileSync("lib/factory/reelsBrainBulkExecutionPolicy.ts", "utf8");
 const generationPolicy = readFileSync("app/api/factory/reels-brain/generation-policy/route.ts", "utf8");
+const measurementPlanRoute = readFileSync("app/api/factory/reels-brain/measurement-plan/route.ts", "utf8");
 const creativeSolution = readFileSync("app/api/factory/reels-brain/creative-solution/route.ts", "utf8");
 const creativeExports = readFileSync("app/api/factory/reels-brain/creative-exports/route.ts", "utf8");
 const creativeBrief = readFileSync("app/api/factory/reels-brain/creative-brief/route.ts", "utf8");
@@ -23,6 +24,7 @@ const segmentSolutionsBuilder = readFileSync("lib/factory/reelsBrainSegmentSolut
 const segmentSolutionMatrixBuilder = readFileSync("lib/factory/reelsBrainSegmentSolutionMatrix.ts", "utf8");
 const generationPolicyBuilder = readFileSync("lib/factory/reelsBrainGenerationPolicy.ts", "utf8");
 const creativeBriefSourceBuilder = readFileSync("lib/factory/reelsBrainCreativeBriefSource.ts", "utf8");
+const measurementPlanBuilder = readFileSync("lib/factory/reelsBrainMeasurementPlan.ts", "utf8");
 const segmentStabilityAudit = readFileSync("app/api/factory/reels-brain/stability-audit/route.ts", "utf8");
 const segmentStabilityAuditBuilder = readFileSync("lib/factory/reelsBrainSegmentStabilityAudit.ts", "utf8");
 const analyzeBacklog = readFileSync("app/api/factory/jobs/reels-brain-analyze-backlog/route.ts", "utf8");
@@ -64,6 +66,7 @@ ok(!/POST\s*\(/.test(actions), "autopilot-actions is read-only");
 ok(/internalFetch/.test(governor) && /cost_governor/.test(governor), "cost-governor route exposes budget state");
 ok(/daily_costs/.test(governor) && /totals/.test(governor), "cost-governor route includes cost context");
 ok(!/POST\s*\(/.test(governor), "cost-governor route is read-only");
+ok(/internalFetch/.test(measurementPlanRoute) && /measurement_plan/.test(measurementPlanRoute) && /outcome_memory_brain/.test(measurementPlanRoute), "measurement-plan route exposes read-only validation queue on top of report");
 
 ok(/internalFetch/.test(creativeExports) && /segment_creative_exports/.test(creativeExports), "creative-exports route reads creative export bundles from learning-economics");
 ok(/lane/.test(creativeExports) && /niche/.test(creativeExports) && /platform/.test(creativeExports), "creative-exports route supports lane, niche and platform filters");
@@ -90,6 +93,7 @@ ok(!/POST\s*\(/.test(segmentStabilityAudit), "stability-audit route is read-only
 ok(/daily_report/.test(report) && /autopilot_actions/.test(report), "report route exposes operator report fields");
 ok(/anti_pattern_brain/.test(report) && /discovery_brain/.test(report), "report route includes learning context");
 ok(/top_opportunities/.test(report) && /pattern_atlas/.test(report) && /segment_playbook/.test(report) && /evidence_ledger/.test(report), "report route exposes segment decision layers");
+ok(/measurement_plan/.test(report) && /buildReelsBrainMeasurementPlan/.test(economics) && /measurement_plan: measurementPlan/.test(economics), "report route exposes measurement plan built from strong no-feedback patterns");
 ok(/segment_output_banks/.test(report), "report route exposes segment-specific output banks");
 ok(/segment_decision_deck/.test(report), "report route exposes segment decision deck");
 ok(/segment_priority_queue/.test(report), "report route exposes segment priority queue");
@@ -128,6 +132,7 @@ ok(/use_autopilot_guard/.test(scheduler), "scheduler marks paid collection as gu
 
 ok(/costGovernor/.test(cockpit) && /autopilotActions/.test(cockpit), "cockpit reads cost governor and autopilot actions");
 ok(/Feedback coverage queue/.test(cockpit) && /pattern_memory\?\.no_feedback_queue/.test(cockpit), "cockpit surfaces strong patterns waiting for market validation");
+ok(/Measurement Plan/.test(cockpit) && /measurementPlan/.test(cockpit) && /measurement-plan/.test(cockpit), "cockpit surfaces operator-ready measurement plan");
 ok(/learningPlan/.test(cockpit) && /Learning Mission/.test(cockpit), "cockpit exposes the standalone learning mission");
 ok(/segment_plan/.test(cockpit) && /segment-gap:/.test(cockpit), "cockpit surfaces segment-level training gaps inside learning mission");
 ok(/segment-priority:/.test(cockpit) && /missionPriorityCards/.test(cockpit), "cockpit surfaces priority segment lane inside learning mission");
@@ -143,6 +148,7 @@ ok(/buildReelsBrainSegmentStabilityAudit/.test(economics) && /segment_stability_
 ok(/buildReelsBrainSegmentSolutions/.test(economics) && /segment_solutions/.test(economics), "learning-economics exposes operator-ready segment solutions");
 ok(/buildReelsBrainSegmentSolutionMatrix/.test(economics) && /segment_solution_matrix/.test(economics) && /by_niche/.test(segmentSolutionMatrixBuilder) && /by_platform/.test(segmentSolutionMatrixBuilder), "learning-economics exposes trust-aware segment solution matrix by niche and platform");
 ok(/buildReelsBrainGenerationPolicy/.test(economics) && /generation_policy/.test(economics) && /policy_mode/.test(generationPolicyBuilder), "learning-economics exposes unified generation policy on top of segment solutions");
+ok(/buildReelsBrainMeasurementPlan/.test(economics) && /measurement_plan/.test(economics) && /validation_goal/.test(measurementPlanBuilder), "learning-economics exposes reusable market-validation plan for strong patterns without proof");
 ok(/buildReelsBrainPortfolioReadiness/.test(economics) && /portfolio_readiness/.test(economics), "learning-economics exposes portfolio readiness for 10k coverage tracking");
 ok(/portfolioReadiness/.test(economics) && /close_portfolio_gap/.test(economics), "autopilot uses portfolio readiness to close high-trust coverage gaps");
 ok(/generationPolicy/.test(economics) && /ship_policy_segment/.test(economics) && /validate_policy_segment/.test(economics), "autopilot actions consume generation policy and expose production-aware segment moves");
