@@ -175,6 +175,7 @@ ok(/buildReelsBrainMeasurementPlan/.test(economics) && /measurement_plan/.test(e
 ok(/buildReelsBrainPortfolioReadiness/.test(economics) && /portfolio_readiness/.test(economics) && /publishable_exact_coverage_pct/.test(economics), "learning-economics exposes portfolio readiness for 10k coverage tracking including publishable exact coverage");
 ok(/exact_segment_evidence/.test(economics) && /prove_exact_segment/.test(economics), "learning-economics exposes exact-segment evidence actions when briefs still depend on transfer");
 ok(/portfolioReadiness/.test(economics) && /close_portfolio_gap/.test(economics), "autopilot uses portfolio readiness to close high-trust coverage gaps");
+ok(/publishable_exact_gaps/.test(economics) && /close_publishable_exact_gap/.test(economics) && /publishable_exact_gap_segments/.test(economics), "autopilot escalates publishable exact portfolio gaps once high-trust coverage exists");
 ok(/generationPolicy/.test(economics) && /ship_policy_segment/.test(economics) && /validate_policy_segment/.test(economics), "autopilot actions consume generation policy and expose production-aware segment moves");
 ok(/review_pattern_gain_economics/.test(economics) && /pattern_gain_cost_trend/.test(economics), "autopilot reacts when pattern-gain economics degrade");
 ok(/segmentStabilityAudit/.test(learningPlan) && /segment_stability/.test(learningPlan), "learning-plan uses segment stability audit in the main loop");
@@ -190,6 +191,7 @@ ok(/\/api\/factory\/reels-brain\/segment-solutions\?lane=/.test(cockpit), "cockp
 ok(/\/api\/factory\/reels-brain\/creative-solution\?niche=/.test(cockpit), "cockpit exposes unified creative-solution endpoint per segment");
 ok(/\/api\/factory\/reels-brain\/stability-audit\?lane=/.test(cockpit), "cockpit exposes segment stability-audit endpoint per segment");
 ok(/Portfolio readiness/.test(cockpit) && /high-trust coverage/.test(cockpit), "cockpit surfaces portfolio readiness toward full niche/platform coverage");
+ok(/publishable exact/.test(cockpit) && /Exact-ready/.test(cockpit) && /portfolioCoverageCards/.test(cockpit), "cockpit surfaces publishable exact portfolio coverage alongside high-trust coverage");
 ok(/Exact Proof Queue/.test(cockpit) && /borrowed_brief_segments/.test(cockpit) && /exactEvidenceCards/.test(cockpit), "cockpit surfaces where briefs still depend on transfer instead of exact segment proof");
 ok(/Avg trust gain/.test(cockpit) && /Avg ETA/.test(cockpit) && /Data readiness/.test(cockpit) && /Preferred providers/.test(cockpit) && /source_provider/.test(cockpit) && /eff/.test(cockpit), "cockpit surfaces exact-proof queue gain, ETA, data-readiness and provider strategy for operator prioritization");
 ok(/Niche trust migration/.test(cockpit) && /source_mix_audit/.test(cockpit) && /sourceMixNicheCards/.test(cockpit), "cockpit surfaces niche-level exact-proof trust migration from source mix audit");

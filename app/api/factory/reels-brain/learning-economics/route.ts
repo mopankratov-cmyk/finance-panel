@@ -1547,6 +1547,7 @@ function buildAutopilotActions(input: {
   portfolioReadiness?: {
     summary?: Record<string, unknown>;
     missing_segments?: Array<Record<string, unknown>>;
+    publishable_exact_gaps?: Array<Record<string, unknown>>;
   } | null;
   exactSegmentQueue?: {
     summary?: Record<string, unknown>;
@@ -1572,6 +1573,18 @@ function buildAutopilotActions(input: {
   }));
   const portfolioSummary = (input.portfolioReadiness?.summary || {}) as Record<string, unknown>;
   const portfolioGaps = ((input.portfolioReadiness?.missing_segments || []) as Array<Record<string, unknown>>).slice(0, 3);
+  const publishableExactCoverage = num(portfolioSummary.publishable_exact_coverage_pct);
+  const publishableExactGapQueue = ((input.portfolioReadiness?.publishable_exact_gaps || []) as Array<Record<string, unknown>>)
+    .slice(0, 3)
+    .map((segment) => ({
+      niche: String(segment.niche || ""),
+      platform: String(segment.platform || "mixed"),
+      label: String(segment.label || `${String(segment.niche || "")} × ${String(segment.platform || "mixed")}`),
+      evidence_band: String(segment.evidence_band || "missing"),
+      stability_score: num(segment.stability_score),
+      blockers: Array.isArray(segment.blockers) ? segment.blockers.slice(0, 2).map((item) => String(item)) : [],
+      high_trust_segment: Boolean(segment.high_trust_segment),
+    }));
   const patternMemory = (input.outcomeMemory?.pattern_memory || {}) as Record<string, unknown>;
   const feedbackCoverageQueue = ((patternMemory.no_feedback_queue || []) as Array<Record<string, unknown>>).slice(0, 4).map((row) => ({
     pattern_id: String(row.pattern_id || ""),
@@ -1646,6 +1659,18 @@ function buildAutopilotActions(input: {
       action: `Закрыть portfolio gap для ${String(segment.niche || "")} × ${String(segment.platform || "")}`,
       reason: `${String(segment.evidence_band || "missing")} · stability ${num(segment.stability_score)} · ${Array.isArray(segment.blockers) ? segment.blockers.slice(0, 2).join(" · ") : ""}`.trim(),
     })) : []),
+    ...(num(portfolioSummary.high_trust_coverage_pct) >= 60 && publishableExactCoverage < 70
+      ? publishableExactGapQueue.map((segment) => ({
+        type: "close_publishable_exact_gap",
+        priority: publishableExactCoverage < 35 || !segment.high_trust_segment ? "high" : "medium",
+        niche: segment.niche,
+        platform: segment.platform,
+        action: `Довести ${segment.label} до publishable exact`,
+        reason: segment.high_trust_segment
+          ? `high trust уже есть · exact ${publishableExactCoverage}% · ${segment.blockers.join(" · ") || `${segment.evidence_band} → нужен exact-ready пакет`}`
+          : `${segment.evidence_band} · stability ${segment.stability_score} · сначала закрепить segment proof, потом exact-ready bundle`,
+      }))
+      : []),
     ...exactEvidenceQueue.map((segment) => ({
       type: "prove_exact_segment",
       priority: segment.status === "missing_exact_segment" || segment.status === "borrowed_brief_only" ? "high" : "medium",
@@ -1701,6 +1726,7 @@ function buildAutopilotActions(input: {
       high_trust_coverage_pct: num(portfolioSummary.high_trust_coverage_pct),
       publishable_exact_coverage_pct: num(portfolioSummary.publishable_exact_coverage_pct),
       publishable_exact_segments: num(portfolioSummary.publishable_exact_segments),
+      publishable_exact_gap_segments: publishableExactGapQueue.length,
       stable_segments: num(portfolioSummary.stable_segments),
       expected_segments: num(portfolioSummary.expected_segments),
       verdict: String(portfolioSummary.verdict || "still_building"),

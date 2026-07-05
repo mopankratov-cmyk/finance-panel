@@ -839,6 +839,7 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
     const portfolioCoverageCards = ((portfolioReadiness.by_platform || []) as JsonRecord[]).slice(0, 3).map((row) => ({
       ...row,
       label: String(row.platform || "mixed").toUpperCase(),
+      readinessLabel: String(row.readiness || "weak").replaceAll("_", " "),
     }));
     const portfolioGapCards = ((portfolioReadiness.missing_segments || []) as JsonRecord[]).slice(0, 4).map((row) => ({
       ...row,
@@ -3502,6 +3503,9 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
             <div className="rb-card">
               <div className="rb-pill">{vm.autopilotActions.mode || "autopilot_waiting"} · paid {vm.autopilotActions.can_run_paid_collection ? "yes" : "no"}</div>
               <h3 style={{ font: "700 26px/1.1 'Space Grotesk'", margin: "14px 0" }}>Следующие действия сборщика</h3>
+              <p style={{ color: "#64748b", lineHeight: 1.5 }}>
+                Portfolio: {compact(vm.autopilotActions.portfolio_readiness?.high_trust_coverage_pct || 0)}% high-trust · {compact(vm.autopilotActions.portfolio_readiness?.publishable_exact_coverage_pct || 0)}% publishable exact.
+              </p>
               {((vm.autopilotActions.actions || []) as JsonRecord[]).length ? ((vm.autopilotActions.actions || []) as JsonRecord[]).slice(0, 6).map((action, index) => (
                 <div className="rb-pattern" key={`${action.type}:${action.provider || action.niche || index}`} style={{ marginTop: index ? 10 : 0 }}>
                   <div className="rb-pill">{action.priority || "medium"} · {action.type || "action"}</div>
@@ -3745,18 +3749,19 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
                 {compact(vm.mission.portfolio_readiness?.high_trust_coverage_pct || 0)}% high-trust coverage
               </h3>
               <p style={{ color: "#64748b", lineHeight: 1.5 }}>
-                {String(vm.mission.portfolio_readiness?.verdict || "still_building").replaceAll("_", " ")}
+                {compact(vm.mission.portfolio_readiness?.publishable_exact_coverage_pct || 0)}% publishable exact · {String(vm.mission.portfolio_readiness?.verdict || "still_building").replaceAll("_", " ")}
               </p>
               <div className="rb-three" style={{ marginTop: 14 }}>
                 <div className="rb-brief-block"><b>Stable</b><p>{compact(vm.mission.portfolio_readiness?.stable_segments || 0)}</p></div>
-                <div className="rb-brief-block"><b>Forming</b><p>{compact(vm.mission.portfolio_readiness?.forming_segments || 0)}</p></div>
+                <div className="rb-brief-block"><b>Exact-ready</b><p>{compact(vm.mission.portfolio_readiness?.publishable_exact_segments || 0)}</p></div>
                 <div className="rb-brief-block"><b>Missing</b><p>{compact(vm.mission.portfolio_readiness?.missing_segments || 0)}</p></div>
               </div>
               <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
                 {vm.portfolioCoverageCards.map((row: JsonRecord) => (
                   <div className="rb-pattern" key={`portfolio-platform:${row.platform}`}>
                     <h3>{row.label}</h3>
-                    <p>{compact(row.high_trust_pct || 0)}% high-trust · coverage {compact(row.coverage_pct || 0)}%</p>
+                    <p>{compact(row.high_trust_pct || 0)}% high-trust · {compact(row.publishable_exact_pct || 0)}% publishable exact · coverage {compact(row.coverage_pct || 0)}%</p>
+                    <p style={{ marginTop: 8 }}>{String(row.readinessLabel || "weak")} · next gap {String(row.next_gap || "none")}</p>
                   </div>
                 ))}
               </div>
