@@ -218,6 +218,12 @@ export async function GET(req: NextRequest) {
           validate_lane_briefs: num((briefCoverageAudit.summary as JsonRecord | undefined)?.validate_lane_briefs),
           usable_exact_ready_pct: num((briefCoverageAudit.summary as JsonRecord | undefined)?.usable_exact_ready_pct),
           blocked_or_incomplete_segments: num((briefCoverageAudit.summary as JsonRecord | undefined)?.blocked_or_incomplete_segments),
+          missing_field_hotspots: Array.isArray((briefCoverageAudit.summary as JsonRecord | undefined)?.missing_field_hotspots)
+            ? ((briefCoverageAudit.summary as JsonRecord | undefined)?.missing_field_hotspots as unknown[]).slice(0, 5)
+            : [],
+          missing_family_hotspots: Array.isArray((briefCoverageAudit.summary as JsonRecord | undefined)?.missing_family_hotspots)
+            ? ((briefCoverageAudit.summary as JsonRecord | undefined)?.missing_family_hotspots as unknown[]).slice(0, 5)
+            : [],
           items: briefCoverageGapQueue.slice(0, 6),
         },
         ship_ready_queue: {
@@ -226,6 +232,12 @@ export async function GET(req: NextRequest) {
           exact_ready_gaps: num((shipReadyQueue.summary as JsonRecord | undefined)?.exact_ready_gaps),
           avg_ship_readiness_score: num((shipReadyQueue.summary as JsonRecord | undefined)?.avg_ship_readiness_score),
           top_ship_ready_pct: num((shipReadyQueue.summary as JsonRecord | undefined)?.top_ship_ready_pct),
+          missing_field_hotspots: Array.isArray((shipReadyQueue.summary as JsonRecord | undefined)?.missing_field_hotspots)
+            ? ((shipReadyQueue.summary as JsonRecord | undefined)?.missing_field_hotspots as unknown[]).slice(0, 5)
+            : [],
+          missing_family_hotspots: Array.isArray((shipReadyQueue.summary as JsonRecord | undefined)?.missing_family_hotspots)
+            ? ((shipReadyQueue.summary as JsonRecord | undefined)?.missing_family_hotspots as unknown[]).slice(0, 5)
+            : [],
           top_ship_candidates: topShipCandidates.slice(0, 3),
           items: shipReadyItems.slice(0, 6),
         },

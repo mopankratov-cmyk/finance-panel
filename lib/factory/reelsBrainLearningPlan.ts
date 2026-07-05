@@ -175,6 +175,17 @@ function exactSourceParams(segment: FocusSegment | null) {
   };
 }
 
+function firstGapFocus(row: JsonRecord | null | undefined) {
+  const fields = Array.isArray(row?.missing_fields) ? row?.missing_fields.map((item) => text(item)).filter(Boolean) : [];
+  const families = Array.isArray(row?.missing_field_families) ? row?.missing_field_families.map((item) => text(item)).filter(Boolean) : [];
+  return {
+    field: fields[0] || "",
+    family: families[0] || "",
+    fields,
+    families,
+  };
+}
+
 export function pickPortfolioFocusSegment(portfolioReadiness?: JsonRecord | null) {
   const candidates = Array.isArray(portfolioReadiness?.missing_segments)
     ? (portfolioReadiness?.missing_segments as JsonRecord[])
@@ -282,6 +293,8 @@ export function buildReelsBrainNextTick(input: {
     || shipReadyItems[0]
     || null,
   );
+  const briefGapFocus = firstGapFocus(records((input.briefCoverageAudit as BriefCoverageAuditSummary | null | undefined)?.gap_queue)[0] || null);
+  const shipGapFocus = firstGapFocus(shipReadyTopCandidates[0] || shipReadyItems[0] || null);
   const shipReadySummary = ((shipReadyQueue as ShipReadyQueueSummary | null | undefined)?.summary || {}) as JsonRecord;
   const publishableExactGapSegment = pickPublishableExactFocusSegment({
     portfolioReadiness: portfolio,
@@ -343,14 +356,23 @@ export function buildReelsBrainNextTick(input: {
         ? `Дожать ship-ready bundle для ${String(prioritySegment?.label || "")}`
         : `Дожать usable brief для ${String(prioritySegment?.label || "")}`,
       reason: shipReadyDecisionSegment
-        ? `${String(prioritySegment?.label || "")} уже попал в ship-ready очередь: trust и exact-proof на месте, но production-grade brief bundle ещё не закрыт. Следующий цикл лучше потратить на analyze + pattern compaction по этому сегменту, чтобы добить missing fields и перевести его в реально publishable exact brief.`
-        : `${String(prioritySegment?.label || "")} уже выглядит достаточно сильным по trust и exact-proof, но usable creative export ещё не собран до конца. Следующий цикл лучше потратить на analyze + pattern compaction по этому сегменту, чтобы закрыть missing fields и собрать production-usable brief bundle.`,
+        ? `${String(prioritySegment?.label || "")} уже попал в ship-ready очередь: trust и exact-proof на месте, но production-grade brief bundle ещё не закрыт.${shipGapFocus.field ? ` Главный пробел сейчас: ${shipGapFocus.field}.` : ""} Следующий цикл лучше потратить на analyze + pattern compaction по этому сегменту, чтобы добить missing fields и перевести его в реально publishable exact brief.`
+        : `${String(prioritySegment?.label || "")} уже выглядит достаточно сильным по trust и exact-proof, но usable creative export ещё не собран до конца.${briefGapFocus.field ? ` Главный пробел сейчас: ${briefGapFocus.field}.` : ""} Следующий цикл лучше потратить на analyze + pattern compaction по этому сегменту, чтобы закрыть missing fields и собрать production-usable brief bundle.`,
       endpoint: "/api/factory/jobs/reels-brain-learning",
       params: {
         strategy: "analyze",
         limit: "80",
         build_patterns: "true",
         focus: shipReadyDecisionSegment ? "ship_ready_bundle_completion" : "brief_bundle_completion",
+        ...(shipReadyDecisionSegment
+          ? {
+            field_focus: shipGapFocus.field || "",
+            family_focus: shipGapFocus.family || "",
+          }
+          : {
+            field_focus: briefGapFocus.field || "",
+            family_focus: briefGapFocus.family || "",
+          }),
         ...(prioritySegment ? {
           niche: String(prioritySegment.niche || ""),
           platform: String(prioritySegment.platform || ""),
@@ -479,9 +501,9 @@ export function buildReelsBrainNextTick(input: {
             : exactProofMissingForDecisionSegment
             ? `${String(prioritySegment?.label || activePolicy?.label || "")} уже выглядит strong по briefs/patterns, но exact-segment proof ещё не закрыт. Следующий сбор лучше направить в этот же niche × platform, чтобы добрать доказательный слой, а не масштабировать на transfer-evidence.${policyLine}`
             : shipReadyDecisionSegment
-              ? `${String(prioritySegment?.label || activePolicy?.label || "")} уже попал в ship-ready очередь: сегмент силён по exact-proof и policy, но production-grade bundle ещё не закрыт. Если analyze backlog уже не даёт новых missing fields, следующий цикл может добрать узкий exact material именно под publishable brief completion.${policyLine}`
+              ? `${String(prioritySegment?.label || activePolicy?.label || "")} уже попал в ship-ready очередь: сегмент силён по exact-proof и policy, но production-grade bundle ещё не закрыт.${shipGapFocus.field ? ` Главный пробел сейчас: ${shipGapFocus.field}.` : ""} Если analyze backlog уже не даёт новых missing fields, следующий цикл может добрать узкий exact material именно под publishable brief completion.${policyLine}`
             : briefBundleGapForDecisionSegment
-              ? `${String(prioritySegment?.label || activePolicy?.label || "")} уже strong по evidence, но usable creative brief ещё неполный. Если backlog уже вычищен, следующий цикл может добрать точечный сегментный материал для закрытия output-gap и сборки production-usable bundle.${policyLine}`
+              ? `${String(prioritySegment?.label || activePolicy?.label || "")} уже strong по evidence, но usable creative brief ещё неполный.${briefGapFocus.field ? ` Главный пробел сейчас: ${briefGapFocus.field}.` : ""} Если backlog уже вычищен, следующий цикл может добрать точечный сегментный материал для закрытия output-gap и сборки production-usable bundle.${policyLine}`
             : `${String(prioritySegment?.label || activePolicy?.label || "")} уже близок к рабочим briefs/hypotheses; следующий сбор лучше направить в этот сегмент.${policyLine}`
         : shouldClosePublishableExactPortfolioGaps
           ? collectionSegment

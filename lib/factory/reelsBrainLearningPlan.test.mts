@@ -497,6 +497,7 @@ const briefBundleCompletionTick = buildReelsBrainNextTick({
         lane: "ship",
         proof_quality: "exact_segment",
         missing_fields: ["structure"],
+        missing_field_families: ["structure"],
         blocked_reasons: [],
         next_step: "Fill structure in brief bundle",
       },
@@ -509,8 +510,11 @@ assert.equal((briefBundleCompletionTick.params as Record<string, unknown>).focus
 assert.equal((briefBundleCompletionTick.params as Record<string, unknown>).build_patterns, "true");
 assert.equal((briefBundleCompletionTick.params as Record<string, unknown>).niche, "ru_toys");
 assert.equal((briefBundleCompletionTick.params as Record<string, unknown>).platform, "tiktok");
+assert.equal((briefBundleCompletionTick.params as Record<string, unknown>).field_focus, "structure");
+assert.equal((briefBundleCompletionTick.params as Record<string, unknown>).family_focus, "structure");
 assert.match(briefBundleCompletionTick.label, /usable brief/i);
 assert.match(briefBundleCompletionTick.reason, /usable creative export/i);
+assert.match(briefBundleCompletionTick.reason, /Главный пробел сейчас: structure/);
 
 const shipReadyBundleCompletionTick = buildReelsBrainNextTick({
   target: 10000,
@@ -554,6 +558,7 @@ const shipReadyBundleCompletionTick = buildReelsBrainNextTick({
         lane: "ship",
         ship_readiness_score: 92,
         missing_fields: ["visual_recipe"],
+        missing_field_families: ["visual"],
       },
     ],
   },
@@ -564,7 +569,10 @@ assert.equal((shipReadyBundleCompletionTick.params as Record<string, unknown>).f
 assert.equal((shipReadyBundleCompletionTick.params as Record<string, unknown>).build_patterns, "true");
 assert.equal((shipReadyBundleCompletionTick.params as Record<string, unknown>).niche, "ru_clothing");
 assert.equal((shipReadyBundleCompletionTick.params as Record<string, unknown>).platform, "instagram");
+assert.equal((shipReadyBundleCompletionTick.params as Record<string, unknown>).field_focus, "visual_recipe");
+assert.equal((shipReadyBundleCompletionTick.params as Record<string, unknown>).family_focus, "visual");
 assert.match(shipReadyBundleCompletionTick.label, /ship-ready bundle/i);
 assert.match(shipReadyBundleCompletionTick.reason, /publishable exact brief/i);
+assert.match(shipReadyBundleCompletionTick.reason, /Главный пробел сейчас: visual_recipe/);
 
 console.log("reelsBrainLearningPlan: passed");

@@ -48,5 +48,8 @@ assert.equal(result.summary.validate_candidates, 1);
 assert.equal(result.top_ship_candidates[0]?.platform, "tiktok");
 assert.equal(result.top_ship_candidates[0]?.ship_readiness_score > result.top_validate_candidates[0]?.ship_readiness_score, true);
 assert.deepEqual(result.top_ship_candidates[0]?.generation_modes, ["decision_ready"]);
+assert.equal(result.top_ship_candidates[0]?.primary_missing_family, "structure");
+assert.deepEqual(result.top_ship_candidates[0]?.field_fill_order, ["structure"]);
+assert.equal((result.summary.missing_family_hotspots || [])[0]?.label, "structure");
 
 console.log("reelsBrainShipReadyQueue.test: ok");

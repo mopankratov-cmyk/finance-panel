@@ -775,6 +775,8 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
       shipLane: num(briefCoverageAudit.summary?.ship_lane_briefs),
       validateLane: num(briefCoverageAudit.summary?.validate_lane_briefs),
       usablePct: num(briefCoverageAudit.summary?.usable_exact_ready_pct),
+      topMissingFields: ((briefCoverageAudit.summary?.missing_field_hotspots || []) as JsonRecord[]).slice(0, 3),
+      topMissingFamilies: ((briefCoverageAudit.summary?.missing_family_hotspots || []) as JsonRecord[]).slice(0, 3),
     };
     const shipReadyCards = ((shipReadyQueue.top_ship_candidates || []) as JsonRecord[]).slice(0, 4).map((row) => ({
       ...row,
@@ -787,6 +789,8 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
       validateCandidates: num(shipReadyQueue.summary?.validate_candidates),
       avgScore: num(shipReadyQueue.summary?.avg_ship_readiness_score),
       topPct: num(shipReadyQueue.summary?.top_ship_ready_pct),
+      topMissingFields: ((shipReadyQueue.summary?.missing_field_hotspots || []) as JsonRecord[]).slice(0, 3),
+      topMissingFamilies: ((shipReadyQueue.summary?.missing_family_hotspots || []) as JsonRecord[]).slice(0, 3),
     };
     const segmentAuditCards = ((segmentReadinessAudit.items || []) as JsonRecord[]).slice(0, 6).map((row) => {
       const tone = playbookTone(String(row.verdict === "ship" ? "ship_now" : row.verdict === "validate" ? "validate_and_ship" : "research"));
@@ -2074,6 +2078,24 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
               </p>
             </div>
           </div>
+          <div className="rb-two" style={{ marginTop: 18 }}>
+            <div className="rb-card">
+              <div className="rb-overline" style={{ color: "#0891b2" }}>Top missing fields</div>
+              <p style={{ marginTop: 10, color: "#64748b", lineHeight: 1.55 }}>
+                {vm.briefCoverageSummary?.topMissingFields?.length
+                  ? ((vm.briefCoverageSummary.topMissingFields as JsonRecord[]).map((row) => `${row.label} (${compact(row.count || 0)})`).join(" · "))
+                  : "Критичных field-gap-ов почти не осталось"}
+              </p>
+            </div>
+            <div className="rb-card">
+              <div className="rb-overline" style={{ color: "#0891b2" }}>Top missing families</div>
+              <p style={{ marginTop: 10, color: "#64748b", lineHeight: 1.55 }}>
+                {vm.briefCoverageSummary?.topMissingFamilies?.length
+                  ? ((vm.briefCoverageSummary.topMissingFamilies as JsonRecord[]).map((row) => `${row.label} (${compact(row.count || 0)})`).join(" · "))
+                  : "Семейства пробелов уже вычищены"}
+              </p>
+            </div>
+          </div>
           <div className="rb-three" style={{ marginTop: 18 }}>
             {vm.briefCoverageNicheCards.length ? vm.briefCoverageNicheCards.map((row: JsonRecord) => (
               <div className="rb-card" key={`brief-coverage:${row.niche}`}>
@@ -2125,6 +2147,10 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
                   <p>{((row.missing_fields || []) as string[]).join(" · ") || "Bundle complete"}</p>
                 </div>
                 <div className="rb-brief-block" style={{ marginTop: 12 }}>
+                  <b>Gap families</b>
+                  <p>{((row.missing_field_families || []) as string[]).join(" · ") || "No dominant family gap"}</p>
+                </div>
+                <div className="rb-brief-block" style={{ marginTop: 12 }}>
                   <b>Blocked reasons</b>
                   <p>{((row.blocked_reasons || []) as string[]).join(" · ") || "Нет блокеров"}</p>
                 </div>
@@ -2162,6 +2188,24 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
               </p>
             </div>
           </div>
+          <div className="rb-two" style={{ marginTop: 18 }}>
+            <div className="rb-card">
+              <div className="rb-overline" style={{ color: "#0891b2" }}>Ship field hotspots</div>
+              <p style={{ marginTop: 10, color: "#64748b", lineHeight: 1.55 }}>
+                {vm.shipReadySummary?.topMissingFields?.length
+                  ? ((vm.shipReadySummary.topMissingFields as JsonRecord[]).map((row) => `${row.label} (${compact(row.count || 0)})`).join(" · "))
+                  : "Ship-очередь без критичных field-gap-ов"}
+              </p>
+            </div>
+            <div className="rb-card">
+              <div className="rb-overline" style={{ color: "#0891b2" }}>Ship gap families</div>
+              <p style={{ marginTop: 10, color: "#64748b", lineHeight: 1.55 }}>
+                {vm.shipReadySummary?.topMissingFamilies?.length
+                  ? ((vm.shipReadySummary.topMissingFamilies as JsonRecord[]).map((row) => `${row.label} (${compact(row.count || 0)})`).join(" · "))
+                  : "Главные семейства пробелов уже закрыты"}
+              </p>
+            </div>
+          </div>
           <div className="rb-three" style={{ marginTop: 18 }}>
             {vm.shipReadyCards.length ? vm.shipReadyCards.map((row: JsonRecord) => (
               <div className="rb-card" key={`ship-ready:${row.niche}:${row.platform}`}>
@@ -2183,6 +2227,14 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
                 <div className="rb-brief-block" style={{ marginTop: 12 }}>
                   <b>Missing</b>
                   <p>{((row.missing_fields || []) as string[]).join(" · ") || "Missing fields closed"}</p>
+                </div>
+                <div className="rb-brief-block" style={{ marginTop: 12 }}>
+                  <b>Focus family</b>
+                  <p>{String(row.primary_missing_family || "none")}</p>
+                </div>
+                <div className="rb-brief-block" style={{ marginTop: 12 }}>
+                  <b>Fill order</b>
+                  <p>{((row.field_fill_order || []) as string[]).join(" → ") || "No field plan needed"}</p>
                 </div>
                 <div className="rb-brief-block" style={{ marginTop: 12 }}>
                   <b>Blocked</b>

@@ -32,10 +32,18 @@ const result = buildReelsBrainBriefCoverageAudit({
         brief: {
           title: "Toys brief",
           hook: "Смотри что внутри",
+          retention: "быстрый reveal",
           structure: "demo",
+          second_by_second: ["0-2 hook", "2-6 reveal"],
+          visual_recipe: ["macro hands", "product close-up"],
+          audio_strategy: ["fast ugc voice"],
+          product_fit: ["kids toys"],
+          copy_as_mechanic: ["surprise reveal"],
+          do_not_copy: ["literal competitor copy"],
         },
         content_solution: {
           action_title: "Scale toys",
+          success_metric: "hook rate",
         },
         trust: {
           proof_quality: "exact_segment",
@@ -50,6 +58,10 @@ const result = buildReelsBrainBriefCoverageAudit({
         brief: {
           title: "Beauty brief",
           hook: "До и после",
+          retention: "show transformation",
+          second_by_second: ["0-2 before", "2-6 after"],
+          audio_strategy: ["voiceover"],
+          product_fit: ["beauty"],
         },
         content_solution: {},
         generator_bundle: {
@@ -71,6 +83,10 @@ assert.equal(result.by_niche[0]?.usable_exact_ready, 1);
 assert.equal(result.by_platform[0]?.exact_ready, 1);
 assert.equal(result.gap_queue[0]?.platform, "instagram");
 assert.ok((result.gap_queue[0]?.missing_fields || []).includes("structure"));
+assert.ok((result.gap_queue[0]?.missing_fields || []).includes("visual recipe"));
+assert.ok((result.gap_queue[0]?.missing_field_families || []).includes("visual"));
 assert.ok((result.gap_queue[0]?.blocked_reasons || []).includes("trust score ниже decision-grade порога"));
+assert.equal((result.summary.missing_field_hotspots || [])[0]?.label, "content action");
+assert.equal((result.summary.missing_family_hotspots || [])[0]?.label, "execution");
 
 console.log("reelsBrainBriefCoverageAudit.test: ok");

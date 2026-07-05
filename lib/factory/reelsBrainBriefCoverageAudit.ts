@@ -23,18 +23,60 @@ function pct(part: number, total: number) {
   return total > 0 ? Math.round((part / total) * 100) : 0;
 }
 
+function uniq(value: string[], limit = 8) {
+  return Array.from(new Set(value.map((item) => text(item)).filter(Boolean))).slice(0, limit);
+}
+
+function hotspotCounts(values: string[], limit = 5) {
+  const counts = new Map<string, number>();
+  for (const value of values.map((item) => text(item)).filter(Boolean)) {
+    counts.set(value, (counts.get(value) || 0) + 1);
+  }
+  return Array.from(counts.entries())
+    .map(([label, count]) => ({ label, count }))
+    .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label))
+    .slice(0, limit);
+}
+
+function fieldFamily(field: string) {
+  const normalized = text(field).toLowerCase();
+  if (!normalized) return "";
+  if (normalized.includes("title")) return "positioning";
+  if (normalized.includes("hook")) return "hook";
+  if (normalized.includes("structure")) return "structure";
+  if (normalized.includes("retention")) return "retention";
+  if (normalized.includes("second-by-second") || normalized.includes("timeline")) return "timeline";
+  if (normalized.includes("visual")) return "visual";
+  if (normalized.includes("audio")) return "audio";
+  if (normalized.includes("product fit")) return "offer-fit";
+  if (normalized.includes("copy mechanic")) return "mechanic";
+  if (normalized.includes("do-not-copy")) return "guardrails";
+  if (normalized.includes("content action")) return "execution";
+  if (normalized.includes("success metric")) return "measurement";
+  return "other";
+}
+
 function exportCompleteness(row: JsonRecord) {
   const brief = (row.brief && typeof row.brief === "object" ? row.brief : {}) as JsonRecord;
   const action = (row.content_solution && typeof row.content_solution === "object" ? row.content_solution : {}) as JsonRecord;
   const missing = [
     !text(brief.title) ? "brief title" : "",
     !text(brief.hook) ? "hook" : "",
+    !text(brief.retention) ? "retention" : "",
     !text(brief.structure) ? "structure" : "",
+    !list(brief.second_by_second, 2).length ? "second-by-second timeline" : "",
+    !list(brief.visual_recipe, 2).length ? "visual recipe" : "",
+    !list(brief.audio_strategy, 2).length ? "audio strategy" : "",
+    !list(brief.product_fit, 2).length ? "product fit" : "",
+    !list(brief.copy_as_mechanic, 2).length ? "copy mechanic" : "",
+    !list(brief.do_not_copy, 2).length ? "do-not-copy guardrails" : "",
     !text(action.action_title) ? "content action" : "",
+    !text(action.success_metric) ? "success metric" : "",
   ].filter(Boolean);
   return {
     usable: missing.length === 0,
     missing,
+    families: uniq(missing.map((item) => fieldFamily(item))),
   };
 }
 
@@ -53,6 +95,7 @@ type CoverageRow = {
   exact_ready: boolean;
   usable_export: boolean;
   missing_fields: string[];
+  missing_field_families: string[];
   blocked_reasons: string[];
   readiness_score: number;
   next_step: string;
@@ -95,6 +138,7 @@ function summarizeDimension<T extends "niche" | "platform">(rows: CoverageRow[],
         lane: topGap.lane,
         proof_quality: topGap.proof_quality,
         missing_fields: topGap.missing_fields,
+        missing_field_families: topGap.missing_field_families,
         blocked_reasons: topGap.blocked_reasons,
         next_step: topGap.next_step,
       } : null,
@@ -124,6 +168,13 @@ export function buildReelsBrainBriefCoverageAudit(input: {
     const completeness = exportCompleteness(row);
     const lane = text(row.lane || row.generator_bundle && (row.generator_bundle as JsonRecord).lane, "research");
     const proofQuality = text((row.trust as JsonRecord | null)?.proof_quality || pack.proof_quality, "untraced");
+    const blockedReasons = list((row.generator_bundle as JsonRecord | null)?.blocked_reasons || pack.quality_gate && (pack.quality_gate as JsonRecord).blocked_reasons, 5);
+    const nextStep = text(row.next_step || pack.next_step)
+      || (completeness.missing.length
+        ? `Сначала закрыть ${completeness.missing.slice(0, 2).join(" + ")} и пересобрать publishable bundle.`
+        : blockedReasons.length
+          ? `Сначала снять блокер: ${blockedReasons[0]}.`
+          : "Сначала закрыть quality gate и дозаполнить bundle.");
     return {
       niche,
       platform,
@@ -133,9 +184,10 @@ export function buildReelsBrainBriefCoverageAudit(input: {
       exact_ready: proofQuality === "exact_segment" && lane === "ship",
       usable_export: completeness.usable && lane !== "research",
       missing_fields: completeness.missing,
-      blocked_reasons: list((row.generator_bundle as JsonRecord | null)?.blocked_reasons || pack.quality_gate && (pack.quality_gate as JsonRecord).blocked_reasons, 5),
+      missing_field_families: completeness.families,
+      blocked_reasons: blockedReasons,
       readiness_score: num(row.readiness_score || pack.readiness_score),
-      next_step: text(row.next_step || pack.next_step, "Сначала закрыть quality gate и дозаполнить bundle."),
+      next_step: nextStep,
     } satisfies CoverageRow;
   }).sort((a, b) =>
     Number(b.usable_export && b.exact_ready) - Number(a.usable_export && a.exact_ready)
@@ -156,6 +208,9 @@ export function buildReelsBrainBriefCoverageAudit(input: {
       || a.label.localeCompare(b.label),
     )
     .slice(0, Math.max(4, input.limit || 8));
+  const missingFieldHotspots = hotspotCounts(gapQueue.flatMap((row) => row.missing_fields));
+  const missingFamilyHotspots = hotspotCounts(gapQueue.flatMap((row) => row.missing_field_families));
+  const blockedReasonHotspots = hotspotCounts(gapQueue.flatMap((row) => row.blocked_reasons));
 
   return {
     summary: {
@@ -167,6 +222,9 @@ export function buildReelsBrainBriefCoverageAudit(input: {
       usable_exact_ready_pct: pct(usableExactReady, items.length),
       exact_ready_pct: pct(exactReady, items.length),
       blocked_or_incomplete_segments: gapQueue.length,
+      missing_field_hotspots: missingFieldHotspots,
+      missing_family_hotspots: missingFamilyHotspots,
+      blocked_reason_hotspots: blockedReasonHotspots,
     },
     by_niche: summarizeDimension(items, "niche").slice(0, Math.max(3, input.limit || 8)),
     by_platform: summarizeDimension(items, "platform").slice(0, Math.max(3, input.limit || 8)),
