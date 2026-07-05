@@ -286,8 +286,115 @@ function testBuildReelsBrainSegmentDecisionDeckRanksDecisionReadySegments() {
   assert.equal(cosmetics?.outcome_status, "weak");
 }
 
+function testSegmentDecisionDeckPrioritizesHighPayoffSegment() {
+  const result = buildReelsBrainSegmentDecisionDeck({
+    segmentOutputBanks: {
+      briefs: [
+        {
+          niche: "ru_toys",
+          platform: "youtube",
+          recommended_mode: "primary",
+          trust_score: 92,
+          primary: {
+            title: "YT Toys brief",
+            confidence: "high",
+            evidence: { references: 4 },
+            creative_brief: { hook: "hook y", retention_mechanic: "proof" },
+          },
+        },
+        {
+          niche: "ru_cosmetics",
+          platform: "tiktok",
+          recommended_mode: "control_only",
+          trust_score: 70,
+          primary: {
+            title: "TT Cosmetics brief",
+            confidence: "medium",
+            evidence: { references: 2 },
+            creative_brief: { hook: "hook t", retention_mechanic: "ugc proof" },
+          },
+        },
+      ],
+      actions: [
+        {
+          niche: "ru_toys",
+          platform: "youtube",
+          primary: { title: "Scale yt toys", decision: "scale", priority_score: 95, brief_seed: { structure: "demo" } },
+        },
+        {
+          niche: "ru_cosmetics",
+          platform: "tiktok",
+          primary: { title: "Validate tt cosmetics", decision: "control", priority_score: 76, brief_seed: { structure: "ugc" } },
+        },
+      ],
+      hypotheses: [
+        {
+          niche: "ru_toys",
+          platform: "youtube",
+          cards: [{ title: "YT hypothesis", hypothesis: "yt", priority_score: 90 }],
+        },
+        {
+          niche: "ru_cosmetics",
+          platform: "tiktok",
+          cards: [{ title: "TT hypothesis", hypothesis: "tt", priority_score: 72 }],
+        },
+      ],
+    },
+    segmentPlaybook: {
+      items: [
+        { niche: "ru_toys", platform: "youtube", status: "ship_now", recommended_mode: "primary", opportunity_score: 96, stability_score: 90, stable_pattern_count: 4 },
+        { niche: "ru_cosmetics", platform: "tiktok", status: "validate_and_ship", recommended_mode: "control_only", opportunity_score: 76, stability_score: 66, stable_pattern_count: 1 },
+      ],
+    },
+    evidenceLedger: {
+      items: [
+        { niche: "ru_toys", platform: "youtube", evidence_status: "high_trust", corpus_score: 91, market_score: 86, proof_quality: "exact_segment", exact_segment_posts: 2 },
+        { niche: "ru_cosmetics", platform: "tiktok", evidence_status: "validated", corpus_score: 72, market_score: 61, proof_quality: "traced_transfer_only", traced_posts: 2 },
+      ],
+    },
+    patternAtlas: {
+      by_segment: [
+        { niche: "ru_toys", platform: "youtube", status: "stable", stable_pattern_count: 4, analyzed_videos: 90 },
+        { niche: "ru_cosmetics", platform: "tiktok", status: "forming", stable_pattern_count: 1, analyzed_videos: 29 },
+      ],
+    },
+    feedbackLoop: {
+      by_segment: [
+        { niche: "ru_toys", platform: "youtube", segment: "ru_toys × youtube", posts: 5, winners: 3, status: "proven", proof_quality: "exact_segment" },
+        { niche: "ru_cosmetics", platform: "tiktok", segment: "ru_cosmetics × tiktok", posts: 2, winners: 1, status: "promising", proof_quality: "traced_transfer_only" },
+      ],
+    },
+    segmentPriorityQueue: [
+      {
+        niche: "ru_cosmetics",
+        platform: "tiktok",
+        decision_priority_score: 97,
+        policy_mode: "primary",
+        ready_for_generation: true,
+        recommended_upgrade: {
+          projected_trust_gain_score: 25,
+          projected_production_state: "decision_ready",
+          unlocked_output: "segment deck",
+        },
+      },
+      {
+        niche: "ru_toys",
+        platform: "youtube",
+        decision_priority_score: 43,
+        policy_mode: "research_only",
+      },
+    ],
+  });
+
+  assert.equal(result.items[0]?.niche, "ru_cosmetics");
+  assert.equal(result.items[0]?.platform, "tiktok");
+  assert.equal(result.items[0]?.segment_priority_mode, "primary");
+  assert.equal(result.summary.primary_priority_segments, 1);
+}
+
 function run() {
   testBuildReelsBrainSegmentDecisionDeckRanksDecisionReadySegments();
+  testSegmentDecisionDeckPrioritizesHighPayoffSegment();
   console.log("reelsBrainSegmentDecisionDeck.test: ok");
 }
 

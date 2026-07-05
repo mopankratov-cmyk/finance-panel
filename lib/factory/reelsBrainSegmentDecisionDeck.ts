@@ -109,6 +109,37 @@ type SegmentOutcomeRow = {
   evidence?: string;
 };
 
+type SegmentPriorityRow = {
+  niche?: string;
+  platform?: string;
+  decision_priority_score?: number;
+  urgency_score?: number;
+  ready_for_generation?: boolean;
+  policy_mode?: string;
+  recommended_upgrade?: {
+    projected_trust_gain_score?: number;
+    projected_production_state?: string;
+    unlocked_output?: string;
+  } | null;
+};
+
+type SegmentPolicyRow = {
+  niche?: string;
+  platform?: string;
+  policy_mode?: string;
+  decision_priority_score?: number;
+  recommended_upgrade?: {
+    projected_trust_gain_score?: number;
+    projected_production_state?: string;
+    unlocked_output?: string;
+  } | null;
+  next_upgrade?: {
+    projected_trust_gain_score?: number;
+    projected_production_state?: string;
+    unlocked_output?: string;
+  } | null;
+};
+
 function num(value: unknown) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
@@ -206,6 +237,38 @@ function generationMode(grade: string) {
   return "research_only";
 }
 
+function policyModeScore(value: unknown) {
+  const raw = text(value).toLowerCase();
+  if (raw === "primary") return 3;
+  if (raw === "control_only") return 2;
+  return 1;
+}
+
+function segmentPrioritySignal(
+  niche: string,
+  platform: string,
+  segmentPriorityMap: Map<string, SegmentPriorityRow>,
+  segmentPolicyMap: Map<string, SegmentPolicyRow>,
+) {
+  const key = `${niche}__${platform}`;
+  const priority = segmentPriorityMap.get(key);
+  const policy = segmentPolicyMap.get(key);
+  const upgrade = policy?.recommended_upgrade || policy?.next_upgrade || priority?.recommended_upgrade || null;
+  return {
+    segment_priority_score: Math.max(
+      num(priority?.decision_priority_score),
+      num(priority?.urgency_score),
+      num(policy?.decision_priority_score),
+      num(upgrade?.projected_trust_gain_score),
+    ),
+    segment_priority_mode: text(priority?.policy_mode || policy?.policy_mode) || "research_only",
+    segment_ready_for_generation: Boolean(priority?.ready_for_generation),
+    projected_trust_gain_score: num(upgrade?.projected_trust_gain_score),
+    projected_production_state: text(upgrade?.projected_production_state),
+    unlocked_output: text(upgrade?.unlocked_output),
+  };
+}
+
 export function buildReelsBrainSegmentDecisionDeck(input: {
   segmentOutputBanks?: {
     briefs?: BriefRow[];
@@ -236,6 +299,10 @@ export function buildReelsBrainSegmentDecisionDeck(input: {
     };
   };
   limit?: number;
+  segmentPriorityQueue?: SegmentPriorityRow[];
+  generationPolicy?: {
+    by_segment?: SegmentPolicyRow[];
+  } | null;
 }) {
   const briefMap = new Map((input.segmentOutputBanks?.briefs || []).map((row) => [keyOf(row.niche, row.platform), row] as const));
   const actionMap = new Map((input.segmentOutputBanks?.actions || []).map((row) => [keyOf(row.niche, row.platform), row] as const));
@@ -251,6 +318,8 @@ export function buildReelsBrainSegmentDecisionDeck(input: {
     ];
   const outcomeMap = new Map((feedbackRows || []).map((row) => [keyOf(row.niche, row.platform), row] as const));
   const trustActionMap = new Map((input.feedbackLoop?.segment_outcome_memory?.trust_update_queue || []).map((row) => [text(row.segment), row] as const));
+  const segmentPriorityMap = new Map((input.segmentPriorityQueue || []).map((row) => [keyOf(row.niche, row.platform), row] as const));
+  const segmentPolicyMap = new Map((((input.generationPolicy?.by_segment) || []) as SegmentPolicyRow[]).map((row) => [keyOf(row.niche, row.platform), row] as const));
   const keys = Array.from(new Set([
     ...briefMap.keys(),
     ...actionMap.keys(),
@@ -282,6 +351,7 @@ export function buildReelsBrainSegmentDecisionDeck(input: {
       const outcomeStatus = text(outcomeRow.status || evidenceRow.market_status || "no_feedback");
       const proofQuality = normalizeProofQuality(outcomeRow.proof_quality || evidenceRow.proof_quality);
       const queuedOutcome = trustActionMap.get(segmentLabel) || null;
+      const priority = segmentPrioritySignal(niche, platform, segmentPriorityMap, segmentPolicyMap);
       const score = clamp(
         num(briefRow.trust_score) * 0.18
         + num(evidenceRow.corpus_score) * 0.28
@@ -304,6 +374,12 @@ export function buildReelsBrainSegmentDecisionDeck(input: {
         platform,
         label: segmentLabel,
         trust_score: score,
+        segment_priority_score: priority.segment_priority_score,
+        segment_priority_mode: priority.segment_priority_mode,
+        segment_ready_for_generation: priority.segment_ready_for_generation,
+        projected_trust_gain_score: priority.projected_trust_gain_score,
+        projected_production_state: priority.projected_production_state,
+        unlocked_output: priority.unlocked_output,
         decision_grade: grade,
         generation_mode: generationMode(grade),
         ready_for_generation: (grade === "ship" || grade === "validate") && outcomeStatus !== "weak",
@@ -386,7 +462,9 @@ export function buildReelsBrainSegmentDecisionDeck(input: {
     })
     .filter((item) => item.niche && item.platform && (item.brief.title || item.action.title || item.hypothesis.title))
     .sort((a, b) =>
-      b.trust_score - a.trust_score
+      policyModeScore(b.segment_priority_mode) - policyModeScore(a.segment_priority_mode)
+      || b.segment_priority_score - a.segment_priority_score
+      || b.trust_score - a.trust_score
       || Number(b.ready_for_generation) - Number(a.ready_for_generation)
       || b.stable_pattern_count - a.stable_pattern_count
       || b.opportunity_score - a.opportunity_score
@@ -402,6 +480,7 @@ export function buildReelsBrainSegmentDecisionDeck(input: {
       prepare: items.filter((item) => item.decision_grade === "prepare").length,
       research: items.filter((item) => item.decision_grade === "research").length,
       ready_for_generation: items.filter((item) => item.ready_for_generation).length,
+      primary_priority_segments: items.filter((item) => item.segment_priority_mode === "primary").length,
       decision_ready: items.filter((item) => item.generation_mode === "decision_ready").length,
       control_ready: items.filter((item) => item.generation_mode === "control_ready").length,
       exact_proof_ready: items.filter((item) => item.proof_quality === "exact_segment").length,

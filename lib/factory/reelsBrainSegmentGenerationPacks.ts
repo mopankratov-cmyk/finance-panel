@@ -59,6 +59,12 @@ type SegmentDecisionItem = {
   };
   why_now?: string;
   next_step?: string;
+  segment_priority_score?: number;
+  segment_priority_mode?: string;
+  segment_ready_for_generation?: boolean;
+  projected_trust_gain_score?: number;
+  projected_production_state?: string;
+  unlocked_output?: string;
 };
 
 function num(value: unknown) {
@@ -86,6 +92,13 @@ function gateStatus(item: SegmentDecisionItem) {
   if (grade === "validate") return "needs_validation";
   if (grade === "ship") return "needs_validation";
   return "not_ready";
+}
+
+function policyModeScore(value: unknown) {
+  const raw = text(value).toLowerCase();
+  if (raw === "primary") return 3;
+  if (raw === "control_only") return 2;
+  return 1;
 }
 
 function blockedReasons(item: SegmentDecisionItem) {
@@ -139,6 +152,12 @@ export function buildReelsBrainSegmentGenerationPacks(input: {
         label: `${text(item.niche)} × ${text(item.platform)}`,
         decision_grade: text(item.decision_grade),
         generation_mode: text(item.generation_mode),
+        segment_priority_score: num(item.segment_priority_score),
+        segment_priority_mode: text(item.segment_priority_mode, "research_only"),
+        segment_ready_for_generation: Boolean(item.segment_ready_for_generation),
+        projected_trust_gain_score: num(item.projected_trust_gain_score),
+        projected_production_state: text(item.projected_production_state),
+        unlocked_output: text(item.unlocked_output),
         readiness_score: readinessScore,
         ready_for_generation: Boolean(item.ready_for_generation),
         quality_gate: qualityGate,
@@ -181,7 +200,9 @@ export function buildReelsBrainSegmentGenerationPacks(input: {
       };
     })
     .sort((a, b) =>
-      Number(b.ready_for_generation) - Number(a.ready_for_generation)
+      policyModeScore(b.segment_priority_mode) - policyModeScore(a.segment_priority_mode)
+      || b.segment_priority_score - a.segment_priority_score
+      || Number(b.ready_for_generation) - Number(a.ready_for_generation)
       || b.readiness_score - a.readiness_score
       || b.stable_pattern_count - a.stable_pattern_count
       || a.niche.localeCompare(b.niche)
@@ -194,6 +215,7 @@ export function buildReelsBrainSegmentGenerationPacks(input: {
       ready: items.filter((item) => item.quality_gate.status === "ready").length,
       needs_validation: items.filter((item) => item.quality_gate.status === "needs_validation").length,
       not_ready: items.filter((item) => item.quality_gate.status === "not_ready").length,
+      primary_priority_segments: items.filter((item) => item.segment_priority_mode === "primary").length,
       decision_ready: items.filter((item) => item.generation_mode === "decision_ready").length,
       control_ready: items.filter((item) => item.generation_mode === "control_ready").length,
       exact_proof_ready: items.filter((item) => item.proof_quality === "exact_segment").length,

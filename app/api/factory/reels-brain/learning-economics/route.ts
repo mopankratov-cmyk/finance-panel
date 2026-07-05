@@ -3078,6 +3078,24 @@ export async function GET(req: NextRequest) {
       segmentPriorityQueue: segmentPriorityQueue.items,
       generationPolicy,
     });
+    const prioritizedSegmentDecisionDeck = buildReelsBrainSegmentDecisionDeck({
+      segmentOutputBanks: {
+        briefs: prioritizedTrustedGroupedBriefPacks.by_segment,
+        actions: prioritizedTrustedGroupedActionPacks.by_segment,
+        hypotheses: prioritizedTrustedGroupedHypothesisBank.by_segment,
+      },
+      segmentPlaybook: prioritizedSegmentPlaybook,
+      evidenceLedger,
+      patternAtlas: prioritizedPatternAtlas,
+      feedbackLoop: operatingSystem.feedback_loop,
+      limit: compactMode ? 6 : 10,
+      segmentPriorityQueue: segmentPriorityQueue.items,
+      generationPolicy,
+    });
+    const prioritizedSegmentGenerationPacks = buildReelsBrainSegmentGenerationPacks({
+      segmentDecisionDeck: prioritizedSegmentDecisionDeck,
+      limit: compactMode ? 6 : 10,
+    });
     const dailyReport = buildDailyReport({
       totals,
       today,
@@ -3140,9 +3158,9 @@ export async function GET(req: NextRequest) {
       top_opportunities: prioritizedTopOpportunities,
       pattern_atlas: prioritizedPatternAtlas,
       segment_playbook: prioritizedSegmentPlaybook,
-      segment_decision_deck: segmentDecisionDeck,
+      segment_decision_deck: prioritizedSegmentDecisionDeck,
       segment_priority_queue: segmentPriorityQueue,
-      segment_generation_packs: segmentGenerationPacks,
+      segment_generation_packs: prioritizedSegmentGenerationPacks,
       segment_creative_exports: segmentCreativeExports,
       brief_coverage_audit: briefCoverageAudit,
       ship_ready_queue: shipReadyQueue,

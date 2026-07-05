@@ -117,8 +117,65 @@ function testBuildReelsBrainSegmentGenerationPacksProducesQualityGatedPayloads()
   assert.ok(result.items[1]?.quality_gate.blocked_reasons.includes("рынок пока не подтверждает сегмент outcome-постами"));
 }
 
+function testSegmentGenerationPacksPrioritizeHighPayoffSegment() {
+  const result = buildReelsBrainSegmentGenerationPacks({
+    segmentDecisionDeck: {
+      items: [
+        {
+          niche: "ru_toys",
+          platform: "youtube",
+          trust_score: 94,
+          decision_grade: "ship",
+          generation_mode: "decision_ready",
+          ready_for_generation: true,
+          evidence_status: "high_trust",
+          outcome_status: "proven",
+          proof_quality: "exact_segment",
+          corpus_score: 91,
+          market_score: 84,
+          stable_pattern_count: 4,
+          brief: { title: "YT brief", hook: "hook y", retention: "proof", evidence_refs: 4 },
+          action: { title: "Scale yt", decision: "scale", structure: "demo" },
+          generator_payload: { hook: "hook y", retention: "proof", structure: "demo" },
+          segment_priority_score: 41,
+          segment_priority_mode: "research_only",
+        },
+        {
+          niche: "ru_cosmetics",
+          platform: "tiktok",
+          trust_score: 71,
+          decision_grade: "validate",
+          generation_mode: "control_ready",
+          ready_for_generation: true,
+          evidence_status: "validated",
+          outcome_status: "promising",
+          proof_quality: "traced_transfer_only",
+          corpus_score: 73,
+          market_score: 62,
+          stable_pattern_count: 1,
+          brief: { title: "TT brief", hook: "hook t", retention: "ugc proof", evidence_refs: 2 },
+          action: { title: "Validate tt", decision: "control", structure: "ugc" },
+          generator_payload: { hook: "hook t", retention: "ugc proof", structure: "ugc" },
+          segment_priority_score: 97,
+          segment_priority_mode: "primary",
+          segment_ready_for_generation: true,
+          projected_trust_gain_score: 25,
+          projected_production_state: "decision_ready",
+          unlocked_output: "segment packs",
+        },
+      ],
+    },
+  });
+
+  assert.equal(result.items[0]?.niche, "ru_cosmetics");
+  assert.equal(result.items[0]?.platform, "tiktok");
+  assert.equal(result.items[0]?.segment_priority_mode, "primary");
+  assert.equal(result.summary.primary_priority_segments, 1);
+}
+
 function run() {
   testBuildReelsBrainSegmentGenerationPacksProducesQualityGatedPayloads();
+  testSegmentGenerationPacksPrioritizeHighPayoffSegment();
   console.log("reelsBrainSegmentGenerationPacks.test: ok");
 }
 
