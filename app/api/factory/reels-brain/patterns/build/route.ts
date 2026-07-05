@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import {
+  buildPatternBuildContext,
+  patternBuildFetchLimit,
+  prioritizePatternSourceVideos,
+} from "@/lib/factory/reelsBrainPatternBuildContext";
 import { buildReelsPatternMemory, type ReelsPatternSourceVideo } from "@/lib/factory/reelsBrainPatterns";
 
 export const dynamic = "force-dynamic";
@@ -7,36 +12,22 @@ export const maxDuration = 60;
 
 const SUPABASE_PAGE_SIZE = 1000;
 
-function rec(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
-}
-
-function text(value: unknown): string {
-  return typeof value === "string" ? value.trim() : "";
-}
-
-function focusPlatformFromIntent(intent: unknown, niche: string) {
-  const row = rec(intent);
-  const label = text(row.focus_segment);
-  const [focusNiche = "", focusPlatform = ""] = label.split("×").map((part) => part.trim().toLowerCase());
-  if (!focusNiche || focusNiche !== niche.trim().toLowerCase()) return null;
-  return focusPlatform || null;
-}
-
 async function loadPatternSourceVideos(
   db: NonNullable<ReturnType<typeof getSupabaseAdmin>>,
-  niche: string,
-  limit: number,
-  focusPlatform?: string | null,
+  input: {
+    niche: string;
+    limit: number;
+    context: ReturnType<typeof buildPatternBuildContext>;
+  },
 ): Promise<{ rows: ReelsPatternSourceVideo[]; error: string | null }> {
   const rows: ReelsPatternSourceVideo[] = [];
-  const fetchLimit = Math.min(3000, Math.max(limit, focusPlatform ? limit * 2 : limit));
+  const fetchLimit = patternBuildFetchLimit(input.limit, input.context);
   for (let from = 0; from < fetchLimit; from += SUPABASE_PAGE_SIZE) {
     const to = Math.min(from + SUPABASE_PAGE_SIZE - 1, fetchLimit - 1);
     const { data, error } = await db
       .from("viral_videos")
       .select("id,url,platform,caption,hook_text,format_detected,beat_structure,viral_reason,virality_score,views,sound_title,analyzed_full")
-      .eq("niche", niche)
+      .eq("niche", input.niche)
       .order("virality_score", { ascending: false, nullsFirst: false })
       .range(from, to);
     if (error) return { rows, error: error.message };
@@ -44,13 +35,7 @@ async function loadPatternSourceVideos(
     rows.push(...page);
     if (page.length < to - from + 1) break;
   }
-  if (!focusPlatform) return { rows: rows.slice(0, limit), error: null };
-  const focus = String(focusPlatform || "").trim().toLowerCase();
-  const prioritized = [...rows].sort((a, b) =>
-    Number(String(b.platform || "").trim().toLowerCase() === focus) - Number(String(a.platform || "").trim().toLowerCase() === focus)
-    || Number(b.virality_score || 0) - Number(a.virality_score || 0)
-  );
-  return { rows: prioritized.slice(0, limit), error: null };
+  return { rows: prioritizePatternSourceVideos(rows, input.context, input.limit), error: null };
 }
 
 // POST { niche, limit?, persist? } or GET ?niche=&limit=&persist=true
@@ -62,14 +47,21 @@ async function build(req: NextRequest, body: Record<string, unknown>) {
   const sp = req.nextUrl.searchParams;
   const niche = String(body.niche || sp.get("niche") || "").trim();
   if (!niche) return NextResponse.json({ error: "нужна niche" }, { status: 400 });
-  const executionIntent = rec(body.execution_intent);
-  const intentFocusPlatform = focusPlatformFromIntent(executionIntent, niche);
-  const focusPlatform = String(body.platform || sp.get("platform") || intentFocusPlatform || "").trim().toLowerCase();
-  const sourceDiscoveryMode = text(body.source_discovery_mode || sp.get("source_discovery_mode") || executionIntent.source_discovery_mode || "");
   const limit = Math.min(3000, Math.max(10, Number(body.limit || sp.get("limit") || 300)));
   const persist = body.persist === true || sp.get("persist") === "true";
+  const context = buildPatternBuildContext({
+    niche,
+    requestedLimit: limit,
+    executionIntent: body.execution_intent,
+    sourceDiscoveryMode: body.source_discovery_mode || sp.get("source_discovery_mode"),
+    platform: body.platform || sp.get("platform"),
+  });
 
-  const { rows, error } = await loadPatternSourceVideos(db, niche, limit, focusPlatform || null);
+  const { rows, error } = await loadPatternSourceVideos(db, {
+    niche,
+    limit,
+    context,
+  });
   if (error) return NextResponse.json({ error: "viral_videos: " + error }, { status: 500 });
   const { data: existing } = await db
     .from("niche_playbooks")
@@ -104,14 +96,8 @@ async function build(req: NextRequest, body: Record<string, unknown>) {
   return NextResponse.json({
     ok: true,
     niche,
-    focus_platform: focusPlatform || null,
-    compaction_context: {
-      platform_biased: Boolean(focusPlatform),
-      exact_proof_biased: sourceDiscoveryMode === "close_exact_proof" || sourceDiscoveryMode === "pin_winner_provider",
-      source_discovery_mode: sourceDiscoveryMode || null,
-      execution_mode: text(executionIntent.mode) || null,
-      requested_limit: limit,
-    },
+    focus_platform: context.focus_platform,
+    compaction_context: context,
     source_videos: rows.length,
     persist,
     persisted,

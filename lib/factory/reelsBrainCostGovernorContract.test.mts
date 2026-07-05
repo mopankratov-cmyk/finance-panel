@@ -40,6 +40,7 @@ const segmentStabilityAuditBuilder = readFileSync("lib/factory/reelsBrainSegment
 const analyzeBacklog = readFileSync("app/api/factory/jobs/reels-brain-analyze-backlog/route.ts", "utf8");
 const analyzeCompactionPolicy = readFileSync("lib/factory/reelsBrainAnalyzeCompactionPolicy.ts", "utf8");
 const patternBuild = readFileSync("app/api/factory/reels-brain/patterns/build/route.ts", "utf8");
+const patternBuildContext = readFileSync("lib/factory/reelsBrainPatternBuildContext.ts", "utf8");
 const feedbackRoute = readFileSync("app/api/factory/reels-brain/feedback/route.ts", "utf8");
 const feedbackRows = readFileSync("lib/factory/reelsBrainFeedbackRows.ts", "utf8");
 const operatingSystem = readFileSync("lib/factory/reelsBrainOperatingSystem.ts", "utf8");
@@ -154,8 +155,9 @@ ok(/buildReelsBrainCronExecutionIntent/.test(cron) && /execution_intent/.test(cr
 ok(/execution_intent/.test(cron) && /execution_intent/.test(bulk) && /tuneBulkLaneByExecutionIntent/.test(bulk) && /support_primary_segment/.test(bulkExecutionPolicy) && /close_exact_segment_gap/.test(bulkExecutionPolicy), "bulk ingest consumes cron execution intent and tunes discovery lanes by policy including exact-proof gap mode");
 ok(/execution_intent/.test(cron) && /execution_intent/.test(analyzeBacklog) && /tuneAnalyzeLaneByExecutionIntent/.test(analyzeBacklog) && /support_primary_segment/.test(analyzeCompactionPolicy) && /close_exact_segment_gap/.test(analyzeCompactionPolicy) && /high_trust_generation_upgrade/.test(analyzeCompactionPolicy), "analyze backlog consumes execution intent and tunes compaction depth by policy including exact-proof and high-trust generation upgrade modes");
 ok(/ship_ready_bundle_completion/.test(cronIntent) && /ship_ready_bundle_completion/.test(analyzeCompactionPolicy), "cron execution intent and analyze policy preserve ship-ready exact brief completion focus");
-ok(/focus_platform/.test(patternBuild) && /compaction_context/.test(patternBuild) && /loadPatternSourceVideos/.test(patternBuild), "patterns/build exposes platform-biased compaction context for policy-aware memory rebuilds");
-ok(/source_discovery_mode/.test(patternBuild) && /exact_proof_biased/.test(patternBuild) && /focusPlatformFromIntent/.test(patternBuild), "patterns/build derives exact-proof-biased compaction context from execution intent");
+ok(/focus_platform/.test(patternBuild) && /compaction_context/.test(patternBuild) && /loadPatternSourceVideos/.test(patternBuild) && /buildPatternBuildContext/.test(patternBuildContext), "patterns/build exposes platform-biased compaction context for policy-aware memory rebuilds");
+ok(/source_discovery_mode/.test(patternBuildContext) && /exact_proof_biased/.test(patternBuildContext) && /focusPlatformFromIntent/.test(patternBuildContext), "patterns/build derives exact-proof-biased compaction context from execution intent");
+ok(/brief_bundle_biased/.test(patternBuildContext) && /ship_ready_biased/.test(patternBuildContext) && /high_trust_generation_biased/.test(patternBuildContext) && /prioritizePatternSourceVideos/.test(patternBuildContext), "patterns/build upgrades memory rebuild for brief-bundle, ship-ready and high-trust generation loops");
 ok(/function loadPipelineProgress/.test(cron) && /pipeline_preflight/.test(cron) && /reels-brain-audio-backfill/.test(cron), "cron runs pipeline preflight for media and audio backlog");
 ok(/media_ticks/.test(cron) && /audio_ticks/.test(cron) && /platform\",\s*String\(target\.platform/.test(cron), "cron preflight fans out media and audio backlog across top platforms");
 ok(/focus_niche/.test(cron) && /focus_platform/.test(cron) && /source_discovery_mode/.test(cron) && /field_focus/.test(cron) && /family_focus/.test(cron) && /prioritizeFocusTargets/.test(cron), "cron preflight forwards focused exact-proof and brief-gap context into readiness backfill");
