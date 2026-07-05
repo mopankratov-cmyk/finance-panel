@@ -292,6 +292,7 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
     const shipReadyQueue = (learning?.ship_ready_queue || {}) as JsonRecord;
     const segmentReadinessAudit = (learning?.segment_readiness_audit || {}) as JsonRecord;
     const segmentSolutionMatrix = (learning?.segment_solution_matrix || {}) as JsonRecord;
+    const generationReadiness = (learning?.generation_readiness || {}) as JsonRecord;
     const generationPolicy = (learning?.generation_policy || {}) as JsonRecord;
     const measurementPlan = (learning?.measurement_plan || {}) as JsonRecord;
     const validationRunbook = (((autopilotActions.validation_runbook || learning?.validation_runbook || {}) as JsonRecord));
@@ -487,6 +488,11 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
         title: "Паттерны в памяти",
         value: compact(readyPatterns),
         note: `${compact(patterns)} total · ${compact(cross)} cross-platform`,
+      },
+      {
+        title: "High-trust output",
+        value: `${compact((generationReadiness.summary as JsonRecord | undefined)?.high_trust_generation_ready_segments)} seg`,
+        note: `${compact((generationReadiness.summary as JsonRecord | undefined)?.segment_specific_ready_pct)}% сегментов готовы к high-trust generation`,
       },
       {
         title: "Цена обучения",

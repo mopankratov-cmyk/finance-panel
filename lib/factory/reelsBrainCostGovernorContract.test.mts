@@ -118,6 +118,7 @@ ok(/brief_gap_progress/.test(report) && /buildReelsBrainBriefGapProgress/.test(r
 ok(/buildReelsBrainSourceMixAudit/.test(report) && /source_mix_audit/.test(report), "report route exposes source-mix audit for segment-layer vs legacy dependency");
 ok(/segment_readiness_audit/.test(report), "report route exposes segment readiness audit");
 ok(/segment_stability_audit/.test(report) && /segment_solutions/.test(report), "report route exposes segment stability audit and operator-ready solutions");
+ok(/buildReelsBrainGenerationReadiness/.test(economics) && /generation_readiness/.test(economics) && /generation_readiness/.test(report), "learning-economics and report expose high-trust generation readiness coverage by segment, niche and platform");
 ok(/segment_solution_matrix/.test(report), "report route exposes segment solution matrix");
 ok(/portfolio_readiness/.test(report), "report route exposes portfolio readiness coverage");
 ok(/feedback_loop/.test(report) && /validation_trace/.test(operatingSystem) && /portfolio_manager/.test(report) && /audio_visual_readiness/.test(report) && /outcome_memory_brain/.test(report), "report route exposes operating-system intelligence, validation trace, audio readiness and outcome memory");

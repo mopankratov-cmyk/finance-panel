@@ -20,6 +20,7 @@ import { buildReelsBrainShipReadyQueue } from "@/lib/factory/reelsBrainShipReady
 import { buildReelsBrainSegmentReadinessAudit } from "@/lib/factory/reelsBrainSegmentReadinessAudit";
 import { buildReelsBrainSegmentSolutions } from "@/lib/factory/reelsBrainSegmentSolutions";
 import { buildReelsBrainSegmentSolutionMatrix } from "@/lib/factory/reelsBrainSegmentSolutionMatrix";
+import { buildReelsBrainGenerationReadiness } from "@/lib/factory/reelsBrainGenerationReadiness";
 import { buildReelsBrainGenerationPolicy } from "@/lib/factory/reelsBrainGenerationPolicy";
 import { buildReelsBrainSegmentStabilityAudit } from "@/lib/factory/reelsBrainSegmentStabilityAudit";
 import { buildReelsBrainPortfolioReadiness } from "@/lib/factory/reelsBrainPortfolioReadiness";
@@ -1455,11 +1456,15 @@ function buildDailyReport(input: {
   portfolioReadiness?: {
     summary?: Record<string, unknown>;
   } | null;
+  generationReadiness?: {
+    summary?: Record<string, unknown>;
+  } | null;
 }) {
   const todayUseful = firstPositive(input.today?.usd_per_relevant, input.today?.usd_per_analyzed, input.today?.usd_per_inserted);
   const yesterdayUseful = firstPositive(input.yesterday?.usd_per_relevant, input.yesterday?.usd_per_analyzed, input.yesterday?.usd_per_inserted);
   const delta = todayUseful && yesterdayUseful ? Math.round((todayUseful - yesterdayUseful) / yesterdayUseful * 100) : null;
   const portfolio = (input.portfolioReadiness?.summary || {}) as Record<string, unknown>;
+  const generation = (input.generationReadiness?.summary || {}) as Record<string, unknown>;
   return {
     title: "Что мозг понял за сутки",
     bullets: [
@@ -1468,6 +1473,7 @@ function buildDailyReport(input: {
       delta == null ? "Сравнение стоимости ждёт новых cost-событий." : `Стоимость полезной насмотренности ${delta <= 0 ? "снизилась" : "выросла"} на ${Math.abs(delta)}%.`,
       `High-trust coverage по матрице ниш и платформ: ${num(portfolio.high_trust_coverage_pct)}% (${num(portfolio.stable_segments)} из ${num(portfolio.expected_segments)} сегментов).`,
       `Publishable exact coverage: ${num(portfolio.publishable_exact_coverage_pct)}% (${num(portfolio.publishable_exact_segments)} из ${num(portfolio.expected_segments)} сегментов).`,
+      `Generation-ready coverage: ${num(generation.segment_specific_ready_pct)}% сегментов, ${num(generation.niche_specific_ready_pct)}% ниш и ${num(generation.platform_specific_ready_pct)}% платформ уже дают high-trust output.`,
       input.discoveryBrain.next_policy,
       input.antiPatternBrain.summary,
     ],
@@ -3155,6 +3161,13 @@ export async function GET(req: NextRequest) {
       platforms: ["tiktok", "instagram", "youtube"],
       limit: compactMode ? 6 : 10,
     });
+    const generationReadiness = buildReelsBrainGenerationReadiness({
+      segmentSolutionMatrix: prioritizedSegmentSolutionMatrix,
+      segmentReadinessAudit: prioritizedSegmentReadinessAudit,
+      segmentCreativeExports: prioritizedSegmentCreativeExports,
+      generationPolicy,
+      limit: compactMode ? 6 : 10,
+    });
     const prioritizedPortfolioReadiness = buildReelsBrainPortfolioReadiness({
       segmentStabilityAudit: prioritizedSegmentStabilityAudit,
       segmentSolutionMatrix: prioritizedSegmentSolutionMatrix,
@@ -3178,6 +3191,7 @@ export async function GET(req: NextRequest) {
       antiPatternBrain,
       discoveryBrain,
       portfolioReadiness: prioritizedPortfolioReadiness,
+      generationReadiness,
     });
     const autopilotActions = buildAutopilotActions({
       niches: nicheSummaries,
@@ -3240,6 +3254,7 @@ export async function GET(req: NextRequest) {
       ship_ready_queue: prioritizedShipReadyQueue,
       brief_gap_progress: prioritizedBriefGapProgress,
       segment_readiness_audit: prioritizedSegmentReadinessAudit,
+      generation_readiness: generationReadiness,
       segment_stability_audit: prioritizedSegmentStabilityAudit,
       segment_solutions: prioritizedSegmentSolutions,
       segment_solution_matrix: prioritizedSegmentSolutionMatrix,

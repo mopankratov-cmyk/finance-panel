@@ -129,6 +129,7 @@ export async function GET(req: NextRequest) {
       segment_priority_queue: body.segment_priority_queue || null,
       segment_generation_packs: body.segment_generation_packs || null,
       segment_creative_exports: body.segment_creative_exports || null,
+      generation_readiness: body.generation_readiness || null,
       brief_coverage_audit: briefCoverageAudit,
       ship_ready_queue: shipReadyQueue,
       brief_gap_progress: briefGapProgress,
