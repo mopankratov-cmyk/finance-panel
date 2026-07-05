@@ -139,7 +139,72 @@ function testActionPackPrioritizesHighPayoffSegment() {
   assert.equal(pack.primary?.pattern_id, "primary_segment");
   assert.equal(pack.primary?.segment_priority_mode, "primary");
   assert.equal(pack.primary?.segment_ready_for_generation, true);
+  assert.equal(pack.primary?.proof_quality, "untraced");
   assert.equal(pack.summary.primary_policy_mode, "primary");
+}
+
+function testActionPackSurfacesTrustAwareSegmentContext() {
+  const pack = buildReelsBrainActionPack([
+    {
+      id: "transfer_action",
+      title: "Transfer Action",
+      op_score: 95,
+      final_decision: "scale",
+      confidence: "high",
+      niches: ["ru_toys"],
+      platforms: ["youtube"],
+      creative_brief: { hook: "hook y", retention_mechanic: "proof", structure: "demo" },
+      market_signal: { status: "proven", confidence: "high", winners: 3, total_posts: 5 },
+    },
+    {
+      id: "exact_action",
+      title: "Exact Action",
+      op_score: 86,
+      final_decision: "control",
+      confidence: "medium",
+      niches: ["ru_toys"],
+      platforms: ["instagram"],
+      creative_brief: { hook: "hook i", retention_mechanic: "open loop", structure: "ugc" },
+      market_signal: { status: "promising", confidence: "medium", winners: 1, total_posts: 2 },
+    },
+  ], 4, {
+    generationPolicy: {
+      by_segment: [
+        {
+          niche: "ru_toys",
+          platform: "instagram",
+          policy_mode: "primary",
+          trust_band: "high_trust",
+          evidence_band: "exact",
+          high_trust_generation_ready: true,
+          proof_quality: "exact_segment",
+          publishable_exact: true,
+          policy_reason: "Exact proof already validated for this segment.",
+          decision_priority_score: 92,
+        },
+        {
+          niche: "ru_toys",
+          platform: "youtube",
+          policy_mode: "research_only",
+          trust_band: "transfer_only",
+          evidence_band: "borrowed",
+          high_trust_generation_ready: false,
+          proof_quality: "transfer",
+          publishable_exact: false,
+          policy_reason: "Still borrowed from adjacent segment.",
+          decision_priority_score: 96,
+        },
+      ],
+    },
+  });
+
+  assert.equal(pack.primary?.pattern_id, "exact_action");
+  assert.equal(pack.primary?.proof_quality, "exact_segment");
+  assert.equal(pack.primary?.high_trust_generation_ready, true);
+  assert.equal(pack.primary?.publishable_exact, true);
+  assert.match(pack.primary?.policy_reason || "", /Exact proof/i);
+  assert.equal(pack.summary.exact_proof_ready, 1);
+  assert.equal(pack.summary.generation_ready, 1);
 }
 
 function testGroupedActionPacksSortBySegmentPriority() {
@@ -193,6 +258,7 @@ function run() {
   testActionPackRanksScaleAndMarketProofAboveWatch();
   testGroupedActionPacksSplitByNicheAndPlatform();
   testActionPackPrioritizesHighPayoffSegment();
+  testActionPackSurfacesTrustAwareSegmentContext();
   testGroupedActionPacksSortBySegmentPriority();
   console.log("reelsBrainActionPack.test: ok");
 }

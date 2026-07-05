@@ -53,6 +53,14 @@ type SegmentPolicyRow = {
   niche?: string;
   platform?: string;
   policy_mode?: string;
+  trust_band?: string;
+  evidence_band?: string;
+  high_trust_generation_ready?: boolean;
+  proof_quality?: string;
+  publishable_exact?: boolean;
+  outcome_status?: string;
+  outcome_confidence?: string;
+  policy_reason?: string;
   decision_priority_score?: number;
   recommended_upgrade?: {
     projected_trust_gain_score?: number;
@@ -83,6 +91,12 @@ export type ReelsBrainHypothesisCard = {
   segment_priority_mode: string;
   segment_priority_label: string;
   segment_ready_for_generation: boolean;
+  trust_band: string;
+  evidence_band: string;
+  proof_quality: string;
+  high_trust_generation_ready: boolean;
+  publishable_exact: boolean;
+  policy_reason: string;
   projected_trust_gain_score: number;
   projected_production_state: string;
   unlocked_output: string;
@@ -161,6 +175,15 @@ function policyModeScore(value: unknown) {
   return 1;
 }
 
+function proofQualityRank(value: unknown) {
+  const raw = text(value).toLowerCase();
+  if (raw === "exact_segment") return 4;
+  if (raw === "publishable_exact") return 3;
+  if (raw === "transfer_guarded") return 2;
+  if (raw === "transfer") return 1;
+  return 0;
+}
+
 function priorityScore(pattern: ReelsBrainDecisionPattern) {
   const decision = normalizeDecision(pattern.final_decision);
   const market = normalizeMarketStatus(pattern.market_signal?.status);
@@ -176,12 +199,18 @@ function priorityScore(pattern: ReelsBrainDecisionPattern) {
 function sortHypothesisCards<T extends {
   segment_priority_mode?: string;
   segment_priority_score?: number;
+  high_trust_generation_ready?: boolean;
+  publishable_exact?: boolean;
+  proof_quality?: string;
   priority_score?: number;
   decision?: string;
   title?: string;
 }>(rows: T[]) {
   return rows.sort((a, b) =>
     policyModeScore(b.segment_priority_mode) - policyModeScore(a.segment_priority_mode)
+    || Number(Boolean(b.high_trust_generation_ready)) - Number(Boolean(a.high_trust_generation_ready))
+    || Number(Boolean(b.publishable_exact)) - Number(Boolean(a.publishable_exact))
+    || proofQualityRank(b.proof_quality) - proofQualityRank(a.proof_quality)
     || num(b.segment_priority_score) - num(a.segment_priority_score)
     || num(b.priority_score) - num(a.priority_score)
     || text(a.decision).localeCompare(text(b.decision))
@@ -276,12 +305,21 @@ function segmentSignal(
       segment_priority_score: priorityScore,
       segment_priority_mode: text(priority?.policy_mode || policy?.policy_mode, "research_only"),
       segment_ready_for_generation: Boolean(priority?.ready_for_generation),
+      trust_band: text(policy?.trust_band, "unknown"),
+      evidence_band: text(policy?.evidence_band, "unknown"),
+      proof_quality: text(policy?.proof_quality, "untraced"),
+      high_trust_generation_ready: Boolean(policy?.high_trust_generation_ready),
+      publishable_exact: Boolean(policy?.publishable_exact),
+      policy_reason: text(policy?.policy_reason),
       projected_trust_gain_score: num(upgrade?.projected_trust_gain_score),
       projected_production_state: text(upgrade?.projected_production_state),
       unlocked_output: text(upgrade?.unlocked_output),
     };
   }).sort((a, b) =>
     policyModeScore(b.segment_priority_mode) - policyModeScore(a.segment_priority_mode)
+    || Number(Boolean(b.high_trust_generation_ready)) - Number(Boolean(a.high_trust_generation_ready))
+    || Number(Boolean(b.publishable_exact)) - Number(Boolean(a.publishable_exact))
+    || proofQualityRank(b.proof_quality) - proofQualityRank(a.proof_quality)
     || b.segment_priority_score - a.segment_priority_score
     || Number(b.segment_ready_for_generation) - Number(a.segment_ready_for_generation)
     || b.projected_trust_gain_score - a.projected_trust_gain_score
@@ -320,6 +358,12 @@ export function buildReelsBrainHypothesisBank(
         segment_priority_mode: priority?.segment_priority_mode || "research_only",
         segment_priority_label: priority?.label || "",
         segment_ready_for_generation: priority?.segment_ready_for_generation || false,
+        trust_band: priority?.trust_band || "unknown",
+        evidence_band: priority?.evidence_band || "unknown",
+        proof_quality: priority?.proof_quality || "untraced",
+        high_trust_generation_ready: priority?.high_trust_generation_ready || false,
+        publishable_exact: priority?.publishable_exact || false,
+        policy_reason: priority?.policy_reason || "",
         projected_trust_gain_score: priority?.projected_trust_gain_score || 0,
         projected_production_state: priority?.projected_production_state || "",
         unlocked_output: priority?.unlocked_output || "",
@@ -347,6 +391,8 @@ export function buildReelsBrainHypothesisBank(
       primary_policy_mode: text(cards[0]?.segment_priority_mode, "research_only"),
       primary_segment_priority_score: num(cards[0]?.segment_priority_score),
       ready_for_generation: cards.filter((card) => card.segment_ready_for_generation).length,
+      exact_proof_ready: cards.filter((card) => card.publishable_exact).length,
+      generation_ready: cards.filter((card) => card.high_trust_generation_ready).length,
       by_platform: ["tiktok", "instagram", "youtube"].map((platform) => ({
         platform,
         count: cards.filter((card) => card.platform_focus.includes(platform)).length,
@@ -372,11 +418,14 @@ export function buildGroupedReelsBrainHypothesisBanks(input: {
     segmentPriorityQueue: input.segmentPriorityQueue,
     generationPolicy: input.generationPolicy,
   };
-  const sortGroups = <T extends { cards?: Array<{ segment_priority_mode?: string; segment_priority_score?: number; priority_score?: number; decision?: string; title?: string }> }>(rows: T[]) =>
+  const sortGroups = <T extends { cards?: Array<{ segment_priority_mode?: string; high_trust_generation_ready?: boolean; publishable_exact?: boolean; proof_quality?: string; segment_priority_score?: number; priority_score?: number; decision?: string; title?: string }> }>(rows: T[]) =>
     rows.sort((a, b) => {
       const aPrimary = a.cards?.[0];
       const bPrimary = b.cards?.[0];
       return policyModeScore(bPrimary?.segment_priority_mode) - policyModeScore(aPrimary?.segment_priority_mode)
+        || Number(Boolean(bPrimary?.high_trust_generation_ready)) - Number(Boolean(aPrimary?.high_trust_generation_ready))
+        || Number(Boolean(bPrimary?.publishable_exact)) - Number(Boolean(aPrimary?.publishable_exact))
+        || proofQualityRank(bPrimary?.proof_quality) - proofQualityRank(aPrimary?.proof_quality)
         || num(bPrimary?.segment_priority_score) - num(aPrimary?.segment_priority_score)
         || num(bPrimary?.priority_score) - num(aPrimary?.priority_score)
         || text(aPrimary?.decision).localeCompare(text(bPrimary?.decision))

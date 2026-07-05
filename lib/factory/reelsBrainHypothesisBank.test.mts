@@ -214,7 +214,82 @@ function testHypothesisBankPrioritizesHighPayoffSegment() {
   assert.equal(bank.cards[0]?.id, "pattern_primary_segment");
   assert.equal(bank.cards[0]?.segment_priority_mode, "primary");
   assert.equal(bank.cards[0]?.segment_ready_for_generation, true);
+  assert.equal(bank.cards[0]?.proof_quality, "untraced");
   assert.equal(bank.summary.primary_policy_mode, "primary");
+}
+
+function testHypothesisBankSurfacesTrustAwareSegmentContext() {
+  const bank = buildReelsBrainHypothesisBank([
+    {
+      id: "transfer_hypothesis",
+      title: "Transfer Hypothesis",
+      hook: "Смотри быстро",
+      format: "demo",
+      retention: "open loop",
+      op_score: 95,
+      confidence: "high",
+      final_decision: "scale",
+      niches: ["ru_toys"],
+      platforms: ["youtube"],
+      creative_brief: {
+        hook: "Смотри быстро",
+        retention_mechanic: "open loop",
+      },
+    },
+    {
+      id: "exact_hypothesis",
+      title: "Exact Hypothesis",
+      hook: "Я не ожидала",
+      format: "ugc",
+      retention: "proof",
+      op_score: 86,
+      confidence: "medium",
+      final_decision: "control",
+      niches: ["ru_toys"],
+      platforms: ["instagram"],
+      creative_brief: {
+        hook: "Я не ожидала",
+        retention_mechanic: "proof",
+      },
+    },
+  ], 8, {
+    generationPolicy: {
+      by_segment: [
+        {
+          niche: "ru_toys",
+          platform: "instagram",
+          policy_mode: "primary",
+          trust_band: "high_trust",
+          evidence_band: "exact",
+          high_trust_generation_ready: true,
+          proof_quality: "exact_segment",
+          publishable_exact: true,
+          policy_reason: "Exact proof already validated for this segment.",
+          decision_priority_score: 92,
+        },
+        {
+          niche: "ru_toys",
+          platform: "youtube",
+          policy_mode: "research_only",
+          trust_band: "transfer_only",
+          evidence_band: "borrowed",
+          high_trust_generation_ready: false,
+          proof_quality: "transfer",
+          publishable_exact: false,
+          policy_reason: "Still borrowed from adjacent segment.",
+          decision_priority_score: 96,
+        },
+      ],
+    },
+  });
+
+  assert.equal(bank.cards[0]?.id, "exact_hypothesis");
+  assert.equal(bank.cards[0]?.proof_quality, "exact_segment");
+  assert.equal(bank.cards[0]?.high_trust_generation_ready, true);
+  assert.equal(bank.cards[0]?.publishable_exact, true);
+  assert.match(bank.cards[0]?.policy_reason || "", /Exact proof/i);
+  assert.equal(bank.summary.exact_proof_ready, 1);
+  assert.equal(bank.summary.generation_ready, 1);
 }
 
 function testGroupedHypothesisBanksSortBySegmentPriority() {
@@ -272,6 +347,7 @@ function run() {
   testBuildHypothesisBankRanksDecisionAndFeedback();
   testGroupedHypothesisBanksSplitByNicheAndPlatform();
   testHypothesisBankPrioritizesHighPayoffSegment();
+  testHypothesisBankSurfacesTrustAwareSegmentContext();
   testGroupedHypothesisBanksSortBySegmentPriority();
   console.log("reelsBrainHypothesisBank.test: ok");
 }
