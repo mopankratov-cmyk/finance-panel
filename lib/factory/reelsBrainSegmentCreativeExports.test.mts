@@ -86,8 +86,61 @@ function testBuildReelsBrainSegmentCreativeExportsSplitsShipAndValidateLanes() {
   assert.equal(result.items[0]?.publishable_exact, true);
 }
 
+function testSegmentCreativeExportsPrioritizeHighPayoffSegment() {
+  const result = buildReelsBrainSegmentCreativeExports({
+    segmentGenerationPacks: {
+      items: [
+        {
+          niche: "ru_toys",
+          platform: "youtube",
+          label: "ru_toys × youtube",
+          readiness_score: 96,
+          ready_for_generation: true,
+          quality_gate: { status: "ready", allowed_generation_modes: ["decision_ready"], blocked_reasons: [] },
+          proof_quality: "exact_segment",
+          payload: { hook: "hook y", retention: "proof", structure: "demo" },
+          brief_title: "YT brief",
+          action_title: "Scale yt",
+          action_decision: "scale",
+          hypothesis_title: "YT hypothesis",
+          hypothesis_text: "yt",
+          segment_priority_score: 41,
+          segment_priority_mode: "research_only",
+        },
+        {
+          niche: "ru_cosmetics",
+          platform: "tiktok",
+          label: "ru_cosmetics × tiktok",
+          readiness_score: 75,
+          ready_for_generation: true,
+          quality_gate: { status: "needs_validation", allowed_generation_modes: ["control_ready"], blocked_reasons: [] },
+          proof_quality: "traced_transfer_only",
+          payload: { hook: "hook t", retention: "ugc proof", structure: "ugc" },
+          brief_title: "TT brief",
+          action_title: "Validate tt",
+          action_decision: "control",
+          hypothesis_title: "TT hypothesis",
+          hypothesis_text: "tt",
+          segment_priority_score: 97,
+          segment_priority_mode: "primary",
+          segment_ready_for_generation: true,
+          projected_trust_gain_score: 24,
+          projected_production_state: "decision_ready",
+          unlocked_output: "creative exports",
+        },
+      ],
+    },
+  });
+
+  assert.equal(result.items[0]?.niche, "ru_cosmetics");
+  assert.equal(result.items[0]?.platform, "tiktok");
+  assert.equal(result.items[0]?.segment_priority_mode, "primary");
+  assert.equal(result.summary.primary_priority_segments, 1);
+}
+
 function run() {
   testBuildReelsBrainSegmentCreativeExportsSplitsShipAndValidateLanes();
+  testSegmentCreativeExportsPrioritizeHighPayoffSegment();
   console.log("reelsBrainSegmentCreativeExports.test: ok");
 }
 

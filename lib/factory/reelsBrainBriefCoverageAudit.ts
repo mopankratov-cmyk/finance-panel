@@ -99,7 +99,20 @@ type CoverageRow = {
   blocked_reasons: string[];
   readiness_score: number;
   next_step: string;
+  segment_priority_score: number;
+  segment_priority_mode: string;
+  segment_ready_for_generation: boolean;
+  projected_trust_gain_score: number;
+  projected_production_state: string;
+  unlocked_output: string;
 };
+
+function policyModeScore(value: unknown) {
+  const raw = text(value).toLowerCase();
+  if (raw === "primary") return 3;
+  if (raw === "control_only") return 2;
+  return 1;
+}
 
 function summarizeDimension<T extends "niche" | "platform">(rows: CoverageRow[], dimension: T) {
   const groups = new Map<string, CoverageRow[]>();
@@ -180,6 +193,12 @@ export function buildReelsBrainBriefCoverageAudit(input: {
       platform,
       label: text(row.label, `${niche} × ${platform}`),
       lane,
+      segment_priority_score: Math.max(num(row.segment_priority_score), num(pack.segment_priority_score)),
+      segment_priority_mode: text(row.segment_priority_mode || pack.segment_priority_mode, "research_only"),
+      segment_ready_for_generation: Boolean(row.segment_ready_for_generation || pack.segment_ready_for_generation),
+      projected_trust_gain_score: Math.max(num(row.projected_trust_gain_score), num(pack.projected_trust_gain_score)),
+      projected_production_state: text(row.projected_production_state || pack.projected_production_state),
+      unlocked_output: text(row.unlocked_output || pack.unlocked_output),
       proof_quality: proofQuality,
       exact_ready: proofQuality === "exact_segment" && lane === "ship",
       usable_export: completeness.usable && lane !== "research",
@@ -190,7 +209,9 @@ export function buildReelsBrainBriefCoverageAudit(input: {
       next_step: nextStep,
     } satisfies CoverageRow;
   }).sort((a, b) =>
-    Number(b.usable_export && b.exact_ready) - Number(a.usable_export && a.exact_ready)
+    policyModeScore(b.segment_priority_mode) - policyModeScore(a.segment_priority_mode)
+    || b.segment_priority_score - a.segment_priority_score
+    || Number(b.usable_export && b.exact_ready) - Number(a.usable_export && a.exact_ready)
     || statusRank(b.lane) - statusRank(a.lane)
     || b.readiness_score - a.readiness_score
     || a.label.localeCompare(b.label),
@@ -203,7 +224,9 @@ export function buildReelsBrainBriefCoverageAudit(input: {
   const gapQueue = items
     .filter((row) => !row.usable_export || !row.exact_ready)
     .sort((a, b) =>
-      statusRank(b.lane) - statusRank(a.lane)
+      policyModeScore(b.segment_priority_mode) - policyModeScore(a.segment_priority_mode)
+      || b.segment_priority_score - a.segment_priority_score
+      || statusRank(b.lane) - statusRank(a.lane)
       || b.readiness_score - a.readiness_score
       || a.label.localeCompare(b.label),
     )
@@ -222,6 +245,7 @@ export function buildReelsBrainBriefCoverageAudit(input: {
       usable_exact_ready_pct: pct(usableExactReady, items.length),
       exact_ready_pct: pct(exactReady, items.length),
       blocked_or_incomplete_segments: gapQueue.length,
+      primary_priority_segments: items.filter((row) => row.segment_priority_mode === "primary").length,
       missing_field_hotspots: missingFieldHotspots,
       missing_family_hotspots: missingFamilyHotspots,
       blocked_reason_hotspots: blockedReasonHotspots,

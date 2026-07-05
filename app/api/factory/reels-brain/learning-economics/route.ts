@@ -3096,6 +3096,25 @@ export async function GET(req: NextRequest) {
       segmentDecisionDeck: prioritizedSegmentDecisionDeck,
       limit: compactMode ? 6 : 10,
     });
+    const prioritizedSegmentCreativeExports = buildReelsBrainSegmentCreativeExports({
+      segmentGenerationPacks: prioritizedSegmentGenerationPacks,
+      limit: compactMode ? 6 : 10,
+    });
+    const prioritizedBriefCoverageAudit = buildReelsBrainBriefCoverageAudit({
+      segmentGenerationPacks: prioritizedSegmentGenerationPacks,
+      segmentCreativeExports: prioritizedSegmentCreativeExports,
+      limit: compactMode ? 6 : 10,
+    });
+    const prioritizedShipReadyQueue = buildReelsBrainShipReadyQueue({
+      briefCoverageAudit: prioritizedBriefCoverageAudit,
+      segmentGenerationPacks: prioritizedSegmentGenerationPacks,
+      limit: compactMode ? 6 : 10,
+    });
+    const prioritizedBriefGapProgress = buildReelsBrainBriefGapProgress({
+      briefCoverageAudit: prioritizedBriefCoverageAudit,
+      shipReadyQueue: prioritizedShipReadyQueue,
+      limit: compactMode ? 6 : 10,
+    });
     const dailyReport = buildDailyReport({
       totals,
       today,
@@ -3161,10 +3180,10 @@ export async function GET(req: NextRequest) {
       segment_decision_deck: prioritizedSegmentDecisionDeck,
       segment_priority_queue: segmentPriorityQueue,
       segment_generation_packs: prioritizedSegmentGenerationPacks,
-      segment_creative_exports: segmentCreativeExports,
-      brief_coverage_audit: briefCoverageAudit,
-      ship_ready_queue: shipReadyQueue,
-      brief_gap_progress: briefGapProgress,
+      segment_creative_exports: prioritizedSegmentCreativeExports,
+      brief_coverage_audit: prioritizedBriefCoverageAudit,
+      ship_ready_queue: prioritizedShipReadyQueue,
+      brief_gap_progress: prioritizedBriefGapProgress,
       segment_readiness_audit: segmentReadinessAudit,
       segment_stability_audit: segmentStabilityAudit,
       segment_solutions: segmentSolutions,

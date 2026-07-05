@@ -72,6 +72,13 @@ function completionScore(row: JsonRecord) {
   ));
 }
 
+function policyModeScore(value: unknown) {
+  const raw = text(value).toLowerCase();
+  if (raw === "primary") return 3;
+  if (raw === "control_only") return 2;
+  return 1;
+}
+
 export function buildReelsBrainShipReadyQueue(input: {
   briefCoverageAudit?: { gap_queue?: JsonRecord[]; summary?: JsonRecord | null } | null;
   segmentGenerationPacks?: { items?: JsonRecord[]; summary?: JsonRecord | null } | null;
@@ -100,6 +107,12 @@ export function buildReelsBrainShipReadyQueue(input: {
       platform,
       label: text(row.label, `${niche} × ${platform}`),
       lane: text(row.lane, "research"),
+      segment_priority_score: Math.max(num(row.segment_priority_score), num(pack.segment_priority_score)),
+      segment_priority_mode: text(row.segment_priority_mode || pack.segment_priority_mode, "research_only"),
+      segment_ready_for_generation: Boolean(row.segment_ready_for_generation || pack.segment_ready_for_generation),
+      projected_trust_gain_score: Math.max(num(row.projected_trust_gain_score), num(pack.projected_trust_gain_score)),
+      projected_production_state: text(row.projected_production_state || pack.projected_production_state),
+      unlocked_output: text(row.unlocked_output || pack.unlocked_output),
       proof_quality: text(row.proof_quality, "untraced"),
       readiness_score: readinessScore,
       missing_fields: missingFields,
@@ -115,7 +128,9 @@ export function buildReelsBrainShipReadyQueue(input: {
       generation_modes: list((pack.quality_gate as JsonRecord | null)?.allowed_generation_modes, 4),
     };
   }).sort((a, b) =>
-    b.ship_readiness_score - a.ship_readiness_score
+    policyModeScore(b.segment_priority_mode) - policyModeScore(a.segment_priority_mode)
+    || b.segment_priority_score - a.segment_priority_score
+    || b.ship_readiness_score - a.ship_readiness_score
     || Number(b.exact_ready) - Number(a.exact_ready)
     || b.readiness_score - a.readiness_score
     || a.label.localeCompare(b.label),
@@ -133,6 +148,7 @@ export function buildReelsBrainShipReadyQueue(input: {
       validate_candidates: validateCandidates.length,
       exact_ready_gaps: items.filter((row) => row.exact_ready).length,
       avg_ship_readiness_score: items.length ? Math.round(items.reduce((sum, row) => sum + row.ship_readiness_score, 0) / items.length) : 0,
+      primary_priority_segments: items.filter((row) => row.segment_priority_mode === "primary").length,
       top_ship_ready_pct: pct(shipCandidates.filter((row) => row.ship_readiness_score >= 70).length, Math.max(1, shipCandidates.length)),
       missing_field_hotspots: missingFieldHotspots,
       missing_family_hotspots: missingFamilyHotspots,
