@@ -39,15 +39,18 @@
  </div>
  <img src="https://jwjobmdihddytqfgymus.supabase.co/storage/v1/object/public/factory-media/ht-windbreakers-fix/_board_ht42.jpg" loading="lazy">
 
- <h2>HT-83 · без структурных правок</h2>
- <p class="sub">Андрей: «берём этот шоколад цвет за базу и делаем все остальные цвета по нему» — без доп. правок по крою. База уже была верной, просто разошлась на 7 цветов.</p>
- <img src="https://jwjobmdihddytqfgymus.supabase.co/storage/v1/object/public/factory-media/ht-windbreakers-fix/_board_ht83.jpg" loading="lazy">
+ <h2>HT-83 · утяжка-кулиска на рукавах (по референс-фото из реальной съёмки)</h2>
+ <p class="sub">Владелец прислал референс-фото с утяжкой на рукаве («добавить с двух сторон»). Первая попытка (текст + ручная склейка зеркалом) дала кривой результат с заметным швом — отклонено владельцем. Разобрали архивы реальной фотосъёмки HT-83 (5 zip, ~2ГБ) и нашли настоящую деталь на живых фото покупательниц в 3 цветах: маленькая резинка-сборка у самого края манжеты с коротким шнурком и мелким тёмным бегунком — симметрично на обоих рукавах. Расширили пайплайн ретуши (<code>lib/factory/twinRecolor.ts</code>) под второе референс-фото — не потребовалось на этот раз (точное текстовое описание по увиденной детали хватило), но пригодится для будущих правок с фото-референсами.</p>
+ <div class="grid2">
+  <figure><img src="https://jwjobmdihddytqfgymus.supabase.co/storage/v1/object/public/factory-media/ht-windbreakers-fix/real-cuff-reference.jpg" loading="lazy"><figcaption>Реальное фото съёмки — деталь манжеты</figcaption></figure>
+  <figure><img src="https://jwjobmdihddytqfgymus.supabase.co/storage/v1/object/public/factory-media/ht-windbreakers-fix/_board_ht83_v2.jpg" loading="lazy"><figcaption><span class="tag ship">SHIP</span>Твин с утяжкой, разошлось на все 8 цветов</figcaption></figure>
+ </div>
 
  <h2>Сводка</h2>
  <table>
   <tr><th>Модель</th><th>База</th><th>Правки</th><th>Итог</th></tr>
   <tr><td>HT-42</td><td>42-35 шоколад</td><td>рукав +3см, утяжка пояса</td><td>рукав ✓, утяжка пропущена</td></tr>
   <tr><td>HT-80</td><td>80-43 св-син</td><td>−2см, капюшон вместо воротника</td><td>✓ полностью, разошлось на все цвета</td></tr>
-  <tr><td>HT-83</td><td>83-35 шоколад</td><td>без правок</td><td>✓ чисто</td></tr>
+  <tr><td>HT-83</td><td>83-35 шоколад</td><td>утяжка-кулиска на рукавах (по реальному фото)</td><td>✓ симметрично, разошлось на все цвета</td></tr>
  </table>
 </div></body></html>
