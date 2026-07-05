@@ -12,6 +12,8 @@ const runbook = buildReelsBrainValidationRunbook({
         niche: "ru_toys",
         platform: "instagram",
         policy_mode: "primary",
+        segment_priority_score: 98,
+        segment_priority_reason: "instagram exact segment has the highest current payoff",
         priority: "high",
         action: "Сделать exact-proof run для ru_toys × instagram",
         validation_goal: "Подтвердить, что exact segment работает сам.",
@@ -59,6 +61,8 @@ assert.equal(runbook.items[0]?.feedback_payload_template.measurement_id, "exact_
 assert.equal(runbook.items[0]?.feedback_payload_template.validation_task_id, "exact__ru_toys__instagram");
 assert.equal(runbook.items[0]?.recommended_upgrade?.unlocked_output, "publishable_exact_brief");
 assert.equal(runbook.items[0]?.recommended_upgrade?.projected_trust_gain_score, 27);
+assert.equal(runbook.items[0]?.segment_priority_score, 98);
+assert.match(runbook.items[0]?.segment_priority_reason || "", /highest current payoff/);
 assert.match(runbook.items[0]?.publish_checklist[0] || "", /exact segment/i);
 
 console.log("reelsBrainValidationRunbook: passed");

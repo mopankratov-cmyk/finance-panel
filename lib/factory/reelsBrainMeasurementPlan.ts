@@ -169,6 +169,8 @@ export function buildReelsBrainMeasurementPlan(input: {
         niche,
         platform,
         policy_mode: text(policy.policy_mode, text(segment.policy_mode, "research_only")),
+        segment_priority_score: num(priority.decision_priority_score),
+        segment_priority_reason: text(priority.policy_reason),
         decision_priority_score: Math.max(
           60,
           num(segment.urgency_score),
@@ -231,6 +233,8 @@ export function buildReelsBrainMeasurementPlan(input: {
         niche,
         platform,
         policy_mode: policyMode,
+        segment_priority_score: num(priority.decision_priority_score),
+        segment_priority_reason: text(priority.policy_reason),
         decision_priority_score: Math.max(
           num(pattern.decision_priority_score),
           num(priority.decision_priority_score),

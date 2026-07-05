@@ -49,6 +49,7 @@ export function buildReelsBrainValidationQueue(input: {
   const items = records(input.measurementPlan?.items)
     .sort((a, b) =>
       proofScopeRank(b.proof_scope) - proofScopeRank(a.proof_scope)
+      || num(b.segment_priority_score) - num(a.segment_priority_score)
       || num(((b.recommended_upgrade as JsonRecord | null)?.projected_trust_gain_score)) - num(((a.recommended_upgrade as JsonRecord | null)?.projected_trust_gain_score))
       || num(b.decision_priority_score) - num(a.decision_priority_score)
       || text(a.title).localeCompare(text(b.title)),
@@ -66,6 +67,8 @@ export function buildReelsBrainValidationQueue(input: {
       niche: text(item.niche, "mixed"),
       platform: text(item.platform, "mixed"),
       policy_mode: text(item.policy_mode, "research_only"),
+      segment_priority_score: num(item.segment_priority_score),
+      segment_priority_reason: text(item.segment_priority_reason),
       action: text(item.action, "Снять market signal"),
       validation_goal: text(item.validation_goal, "Получить первые market-сигналы."),
       recommended_upgrade: upgrade,

@@ -44,6 +44,8 @@ export function buildReelsBrainValidationRunbook(input: {
       niche: text(row.niche, text(measurement.niche, "mixed")),
       platform: text(row.platform, text(measurement.platform, "mixed")),
       policy_mode: text(row.policy_mode, text(measurement.policy_mode, "research_only")),
+      segment_priority_score: Number(row.segment_priority_score || measurement.segment_priority_score || 0),
+      segment_priority_reason: text(row.segment_priority_reason, text(measurement.segment_priority_reason, "")),
       priority: text(row.priority, "medium"),
       action: text(row.action, text(measurement.action, "Снять market signal")),
       validation_goal: text(row.validation_goal, text(measurement.validation_goal, "Получить первые market-сигналы.")),

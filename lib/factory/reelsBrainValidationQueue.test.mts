@@ -39,6 +39,8 @@ const queue = buildReelsBrainValidationQueue({
         niche: "ru_toys",
         platform: "tiktok",
         policy_mode: "control_only",
+        segment_priority_score: 72,
+        segment_priority_reason: "tiktok is useful but not the top segment",
         decision_priority_score: 91,
         action: "Сделать measurement-run для Proof opener на ru_toys × tiktok",
         validation_goal: "Проверить паттерн в controlled batch до повышения trust.",
@@ -68,6 +70,8 @@ const queue = buildReelsBrainValidationQueue({
         niche: "ru_toys",
         platform: "instagram",
         policy_mode: "control_only",
+        segment_priority_score: 96,
+        segment_priority_reason: "instagram is the strongest control-ready payoff now",
         decision_priority_score: 89,
         action: "Сделать measurement-run для Visual payoff на ru_toys × instagram",
         validation_goal: "Проверить паттерн в controlled batch до повышения trust.",
@@ -100,6 +104,8 @@ assert.equal(queue.queue[0]?.priority, "high");
 assert.equal(queue.queue[0]?.writeback_targets.feedback, "/api/factory/reels-brain/feedback");
 assert.equal(queue.queue[0]?.task_payload.proof_scope, "exact_segment");
 assert.equal(queue.queue[1]?.task_payload.pattern_id, "p2");
+assert.equal(queue.queue[1]?.segment_priority_score, 96);
+assert.match(queue.queue[1]?.segment_priority_reason || "", /strongest control-ready payoff now/);
 assert.equal(queue.queue[1]?.recommended_upgrade?.projected_trust_gain_score, 31);
 assert.equal(queue.queue[2]?.task_payload.pattern_id, "p1");
 assert.match(queue.next_step, /prove_exact_segment/);
