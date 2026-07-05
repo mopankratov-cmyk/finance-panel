@@ -110,9 +110,20 @@ function numberParam(req: NextRequest, name: string, fallback: number, min: numb
   return Math.max(min, Math.min(max, value));
 }
 
+function hasConfiguredYtDlpCookies(): boolean {
+  if (String(process.env.YT_DLP_COOKIES_PATH || "").trim()) return true;
+  if (String(process.env.YT_DLP_COOKIES_TXT || "").trim()) return true;
+  if (String(process.env.YT_DLP_COOKIES_B64 || process.env.YT_DLP_COOKIES_BASE64 || "").trim()) return true;
+  if (String(process.env.YT_DLP_COOKIES_GZ_B64 || "").trim()) return true;
+  return Object.entries(process.env).some(([key, value]) =>
+    /^YT_DLP_COOKIES_(B64|GZ_B64)_PART_\d+$/i.test(key) && typeof value === "string" && value.trim(),
+  );
+}
+
 function localResolverAllowedForPlatform(platform: string): boolean {
   if (platform === "youtube") {
-    return String(process.env.REELS_BRAIN_ENABLE_YOUTUBE_LOCAL_RESOLVER || "").toLowerCase() === "1";
+    return String(process.env.REELS_BRAIN_ENABLE_YOUTUBE_LOCAL_RESOLVER || "").toLowerCase() === "1"
+      || hasConfiguredYtDlpCookies();
   }
   return true;
 }

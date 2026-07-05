@@ -32,6 +32,8 @@ ok(/youtube\\.com\\|youtu\\.be/.test(worker), "offline worker only applies yt-dl
 ok(/YT_DLP_ENABLE_YOUTUBE_COOKIES/.test(worker), "offline worker makes YouTube cookies opt-in");
 ok(/instagram\\.com\\|instagr\\.am/.test(worker) && /YT_DLP_ENABLE_INSTAGRAM_COOKIES/.test(worker), "offline worker can opt Instagram cookies into yt-dlp");
 ok(/REELS_BRAIN_ENABLE_YOUTUBE_LOCAL_RESOLVER/.test(worker), "offline worker makes YouTube local resolver opt-in");
+ok(/function hasConfiguredYtDlpCookies/.test(worker) && /YT_DLP_COOKIES_PATH/.test(worker) && /YT_DLP_COOKIES_B64/.test(worker), "offline worker detects configured yt-dlp cookies from env");
+ok(/localResolverAllowedForPlatform/.test(worker) && /hasConfiguredYtDlpCookies\(\)/.test(worker), "offline worker auto-allows YouTube local resolver when cookie jar is configured");
 ok(/prependPathEntries\(NIX_BIN_DIRS\)/.test(worker) && /NIX_BIN_DIRS\.map\(\(dir\) => path\.join\(dir, "yt-dlp"\)\)/.test(worker), "offline worker searches nix yt-dlp locations before giving up");
 ok(/function shouldSkipDownloadForYtDlpProbe/.test(worker) && /base\.push\("--skip-download"\)/.test(worker), "offline worker disables --skip-download for YouTube cookie-backed probes");
 ok(/function ytDlpProbeArgSets/.test(worker) && /player_client=android,web/.test(worker) && /-f", "b\/best"/.test(worker), "offline worker retries YouTube probes with alternate clients and fallback format selection");
