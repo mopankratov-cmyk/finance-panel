@@ -39,6 +39,7 @@ export type ReelsBrainCronExecutionIntent = {
     | "explore_research_segment"
     | "generic_analyze"
     | "ship_ready_bundle_completion"
+    | "high_trust_generation_upgrade"
     | "pattern_compaction";
   task: "bulk" | "analyze";
   focus_segment: string | null;
@@ -91,6 +92,7 @@ export function buildReelsBrainCronExecutionIntent(input: {
   const params = rec(nextTick.params);
   const exactProofFocus = text(params.focus) === "exact_segment_proof";
   const shipReadyFocus = text(params.focus) === "ship_ready_bundle_completion";
+  const generationUpgradeFocus = text(params.focus) === "high_trust_generation_upgrade";
   const preferredProvider = text(params.preferred_provider) || null;
   const sourceDiscoveryMode = text(params.source_discovery_mode) || null;
   const sourceProviderReason = text(params.source_provider_reason) || null;
@@ -151,6 +153,33 @@ export function buildReelsBrainCronExecutionIntent(input: {
         analyze_overrides: {
           max_lanes: 1,
           limit: 10,
+          build_patterns: true,
+        },
+        preferred_provider: preferredProvider,
+        source_discovery_mode: sourceDiscoveryMode,
+        source_provider_reason: sourceProviderReason,
+        field_focus: fieldFocus,
+        family_focus: familyFocus,
+        recommended_loop: recommendedLoop,
+        unlocked_output: unlockedOutput,
+        projected_production_state: projectedProductionState,
+        projected_trust_gain_score: projectedTrustGainScore,
+        projected_trust_gain_band: projectedTrustGainBand,
+      };
+    }
+
+    if (generationUpgradeFocus) {
+      return {
+        mode: "high_trust_generation_upgrade",
+        task: "analyze",
+        focus_segment: focusSegment,
+        policy_mode: policyMode,
+        explanation: focusSegment
+          ? `High-trust generation upgrade for ${focusSegment}: дожимаем publishable exact сегмент до usable brief/hypothesis/content solution, а не просто анализируем общий backlog.${projectedGainLine}`
+          : `High-trust generation upgrade: дожимаем publishable exact сегмент до usable output.${projectedGainLine}`,
+        analyze_overrides: {
+          max_lanes: 1,
+          limit: 12,
           build_patterns: true,
         },
         preferred_provider: preferredProvider,

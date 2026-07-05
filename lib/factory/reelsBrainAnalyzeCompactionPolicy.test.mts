@@ -93,4 +93,30 @@ test("tuneAnalyzeLaneByExecutionIntent tightens ship-ready compaction for high t
   assert.equal(result.pattern_limit, 180);
 });
 
+test("tuneAnalyzeLaneByExecutionIntent creates focused high-trust generation upgrade compaction", () => {
+  const intent = parseAnalyzeExecutionIntent({
+    mode: "high_trust_generation_upgrade",
+    task: "analyze",
+    focus_segment: "ru_cosmetics × instagram",
+    policy_mode: "primary",
+    explanation: "generation upgrade",
+    projected_trust_gain_score: 34,
+    projected_trust_gain_band: "high",
+    unlocked_output: "usable_segment_bundle",
+  });
+  const result = tuneAnalyzeLaneByExecutionIntent({
+    intent,
+    lane: { niche: "ru_cosmetics", platform: "instagram", unanalyzed: 21 },
+    analyzeLimit: 16,
+    buildPatterns: false,
+  });
+
+  assert.equal(result.strategy, "high_trust_generation_upgrade");
+  assert.equal(result.analyze_limit, 8);
+  assert.equal(result.build_patterns, true);
+  assert.equal(result.focus_platform, "instagram");
+  assert.equal(result.taxonomy_limit, 16);
+  assert.equal(result.pattern_limit, 200);
+});
+
 console.log("reelsBrainAnalyzeCompactionPolicy: passed");

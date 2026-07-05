@@ -154,6 +154,38 @@ test("buildReelsBrainCronExecutionIntent creates dedicated ship-ready analyze mo
   assert.match(result.explanation, /\+31/);
 });
 
+test("buildReelsBrainCronExecutionIntent creates dedicated high-trust generation upgrade mode", () => {
+  const result = buildReelsBrainCronExecutionIntent({
+    task: "analyze",
+    nextTick: {
+      task: "analyze_backlog",
+      params: {
+        focus: "high_trust_generation_upgrade",
+        projected_trust_gain_score: "29",
+        projected_trust_gain_band: "medium",
+        unlocked_output: "usable_segment_bundle",
+        projected_production_state: "high_trust_generation_ready",
+      },
+      priority_segment: {
+        label: "ru_cosmetics × instagram",
+      },
+      generation_policy: {
+        policy_mode: "primary",
+      },
+    },
+  });
+
+  assert.equal(result.mode, "high_trust_generation_upgrade");
+  assert.equal(result.focus_segment, "ru_cosmetics × instagram");
+  assert.equal(result.analyze_overrides?.build_patterns, true);
+  assert.equal(result.analyze_overrides?.max_lanes, 1);
+  assert.equal(result.analyze_overrides?.limit, 12);
+  assert.equal(result.projected_trust_gain_score, 29);
+  assert.equal(result.projected_trust_gain_band, "medium");
+  assert.equal(result.unlocked_output, "usable_segment_bundle");
+  assert.match(result.explanation, /usable brief\/hypothesis\/content solution/i);
+});
+
 test("buildReelsBrainCronExecutionIntent forces build_patterns when corpus target is already reached", () => {
   const result = buildReelsBrainCronExecutionIntent({
     task: "analyze",

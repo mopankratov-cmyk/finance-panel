@@ -56,6 +56,13 @@ export function tuneAnalyzeLaneByExecutionIntent(input: {
     taxonomyLimit = Math.max(12, Math.min(highValueUpgrade ? 18 : 24, analyzeLimit * 2));
     patternLimit = highValueUpgrade ? 180 : 240;
     focusPlatform = input.lane.platform;
+  } else if (mode === "high_trust_generation_upgrade" && focused) {
+    strategy = "high_trust_generation_upgrade";
+    analyzeLimit = Math.max(6, Math.min(analyzeLimit, highValueUpgrade ? 8 : 10, input.lane.unanalyzed));
+    buildPatterns = true;
+    taxonomyLimit = Math.max(14, Math.min(highValueUpgrade ? 22 : 30, analyzeLimit * 2));
+    patternLimit = highValueUpgrade ? 200 : 280;
+    focusPlatform = input.lane.platform;
   } else if (mode === "support_control_segment" && focused) {
     strategy = "support_control_segment";
     analyzeLimit = Math.max(8, Math.min(analyzeLimit, highValueUpgrade ? 10 : 12, input.lane.unanalyzed));
