@@ -16,6 +16,7 @@ import { buildReelsBrainSegmentPriorityQueue } from "@/lib/factory/reelsBrainSeg
 import { buildReelsBrainSegmentGenerationPacks } from "@/lib/factory/reelsBrainSegmentGenerationPacks";
 import { buildReelsBrainSegmentCreativeExports } from "@/lib/factory/reelsBrainSegmentCreativeExports";
 import { buildReelsBrainBriefCoverageAudit } from "@/lib/factory/reelsBrainBriefCoverageAudit";
+import { buildReelsBrainShipReadyQueue } from "@/lib/factory/reelsBrainShipReadyQueue";
 import { buildReelsBrainSegmentReadinessAudit } from "@/lib/factory/reelsBrainSegmentReadinessAudit";
 import { buildReelsBrainSegmentSolutions } from "@/lib/factory/reelsBrainSegmentSolutions";
 import { buildReelsBrainSegmentSolutionMatrix } from "@/lib/factory/reelsBrainSegmentSolutionMatrix";
@@ -2831,6 +2832,11 @@ export async function GET(req: NextRequest) {
       segmentCreativeExports,
       limit: compactMode ? 6 : 10,
     });
+    const shipReadyQueue = buildReelsBrainShipReadyQueue({
+      briefCoverageAudit,
+      segmentGenerationPacks,
+      limit: compactMode ? 6 : 10,
+    });
     const segmentReadinessAudit = buildReelsBrainSegmentReadinessAudit({
       segmentGenerationPacks,
       limit: compactMode ? 6 : 10,
@@ -2959,6 +2965,7 @@ export async function GET(req: NextRequest) {
       segment_generation_packs: segmentGenerationPacks,
       segment_creative_exports: segmentCreativeExports,
       brief_coverage_audit: briefCoverageAudit,
+      ship_ready_queue: shipReadyQueue,
       segment_readiness_audit: segmentReadinessAudit,
       segment_stability_audit: segmentStabilityAudit,
       segment_solutions: segmentSolutions,

@@ -289,6 +289,7 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
     const segmentGenerationPacks = (learning?.segment_generation_packs || {}) as JsonRecord;
     const segmentCreativeExports = (learning?.segment_creative_exports || {}) as JsonRecord;
     const briefCoverageAudit = (learning?.brief_coverage_audit || {}) as JsonRecord;
+    const shipReadyQueue = (learning?.ship_ready_queue || {}) as JsonRecord;
     const segmentReadinessAudit = (learning?.segment_readiness_audit || {}) as JsonRecord;
     const segmentSolutionMatrix = (learning?.segment_solution_matrix || {}) as JsonRecord;
     const generationPolicy = (learning?.generation_policy || {}) as JsonRecord;
@@ -775,6 +776,18 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
       validateLane: num(briefCoverageAudit.summary?.validate_lane_briefs),
       usablePct: num(briefCoverageAudit.summary?.usable_exact_ready_pct),
     };
+    const shipReadyCards = ((shipReadyQueue.top_ship_candidates || []) as JsonRecord[]).slice(0, 4).map((row) => ({
+      ...row,
+      label: `${NICHE_LABELS[String(row.niche)] || row.niche} × ${String(row.platform || "mixed").toUpperCase()}`,
+      laneTone: playbookTone("ship_now"),
+    }));
+    const shipReadySummary = {
+      total: num(shipReadyQueue.summary?.total_gaps),
+      shipCandidates: num(shipReadyQueue.summary?.ship_candidates),
+      validateCandidates: num(shipReadyQueue.summary?.validate_candidates),
+      avgScore: num(shipReadyQueue.summary?.avg_ship_readiness_score),
+      topPct: num(shipReadyQueue.summary?.top_ship_ready_pct),
+    };
     const segmentAuditCards = ((segmentReadinessAudit.items || []) as JsonRecord[]).slice(0, 6).map((row) => {
       const tone = playbookTone(String(row.verdict === "ship" ? "ship_now" : row.verdict === "validate" ? "validate_and_ship" : "research"));
       return {
@@ -1043,6 +1056,8 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
       briefCoverageNicheCards,
       briefCoverageGapCards,
       briefCoverageSummary,
+      shipReadyCards,
+      shipReadySummary,
       segmentAuditCards,
       segmentSolutionNicheCards,
       segmentSolutionPlatformCards,
@@ -2118,6 +2133,73 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
                 </div>
               </div>
             )) : null}
+          </div>
+        </section>
+
+        <section>
+          <SectionTitle k="04.4465 · Ship-Ready Queue" title="Какие сегменты быстрее всего превратить в production-grade exact briefs" />
+          <div className="rb-grid-hero">
+            <div className="rb-card">
+              <div className="rb-overline" style={{ color: "#0891b2" }}>Ship candidates</div>
+              <h3 style={{ font: "700 34px/1 'Space Grotesk'", margin: "10px 0 0" }}>{compact(vm.shipReadySummary?.shipCandidates || 0)}</h3>
+              <p style={{ marginTop: 10, color: "#64748b", lineHeight: 1.55 }}>
+                Сегменты в `ship` lane, где output gap уже маленький и их выгодно дожать в первую очередь.
+              </p>
+            </div>
+            <div className="rb-card">
+              <div className="rb-overline" style={{ color: "#0891b2" }}>Avg ship-readiness</div>
+              <h3 style={{ font: "700 34px/1 'Space Grotesk'", margin: "10px 0 0" }}>{compact(vm.shipReadySummary?.avgScore || 0)}</h3>
+              <p style={{ marginTop: 10, color: "#64748b", lineHeight: 1.55 }}>
+                Средняя близость gap queue к production-grade exact brief.
+              </p>
+            </div>
+            <div className="rb-card">
+              <div className="rb-overline" style={{ color: "#0891b2" }}>Top ship-ready %</div>
+              <h3 style={{ font: "700 34px/1 'Space Grotesk'", margin: "10px 0 0" }}>{compact(vm.shipReadySummary?.topPct || 0)}%</h3>
+              <p style={{ marginTop: 10, color: "#64748b", lineHeight: 1.55 }}>
+                Доля ship-кандидатов, которые уже почти готовы к exact production bundle.
+              </p>
+            </div>
+          </div>
+          <div className="rb-three" style={{ marginTop: 18 }}>
+            {vm.shipReadyCards.length ? vm.shipReadyCards.map((row: JsonRecord) => (
+              <div className="rb-card" key={`ship-ready:${row.niche}:${row.platform}`}>
+                <div className="rb-two" style={{ gridTemplateColumns: "1fr auto", gap: 14 }}>
+                  <div>
+                    <div className="rb-overline" style={{ color: "#0891b2" }}>{row.label}</div>
+                    <h3 style={{ font: "700 24px/1.08 'Space Grotesk'", margin: "10px 0 0" }}>{compact(row.ship_readiness_score || 0)}</h3>
+                  </div>
+                  <div className="rb-live-pill" style={{ background: row.laneTone.bg, borderColor: row.laneTone.bd, color: row.laneTone.fg }}>
+                    <i style={{ background: row.laneTone.fg }} />
+                    {row.lane || "ship"}
+                  </div>
+                </div>
+                <div className="rb-three" style={{ marginTop: 14 }}>
+                  <div className="rb-brief-block"><b>Proof</b><p>{row.proof_quality || "untraced"}</p></div>
+                  <div className="rb-brief-block"><b>Readiness</b><p>{compact(row.readiness_score || 0)}</p></div>
+                  <div className="rb-brief-block"><b>Modes</b><p>{((row.generation_modes || []) as string[]).join(" · ") || "none"}</p></div>
+                </div>
+                <div className="rb-brief-block" style={{ marginTop: 12 }}>
+                  <b>Missing</b>
+                  <p>{((row.missing_fields || []) as string[]).join(" · ") || "Missing fields closed"}</p>
+                </div>
+                <div className="rb-brief-block" style={{ marginTop: 12 }}>
+                  <b>Blocked</b>
+                  <p>{((row.blocked_reasons || []) as string[]).join(" · ") || "Нет блокеров"}</p>
+                </div>
+                <div className="rb-brief-block" style={{ marginTop: 12 }}>
+                  <b>Next step</b>
+                  <p>{row.next_step || "Close final ship gap"}</p>
+                </div>
+              </div>
+            )) : (
+              <div className="rb-card">
+                <h3 style={{ font: "700 24px/1.1 'Space Grotesk'", margin: 0 }}>Ship-Ready Queue ещё пуста</h3>
+                <p style={{ marginTop: 10, color: "#64748b", lineHeight: 1.55 }}>
+                  Этот слой заполнится, когда появятся exact-ready сегменты с маленькими output-gap-ами, которые уже выгодно дожимать до production-grade brief.
+                </p>
+              </div>
+            )}
           </div>
         </section>
 
