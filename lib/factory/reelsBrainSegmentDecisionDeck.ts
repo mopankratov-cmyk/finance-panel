@@ -86,6 +86,23 @@ type AtlasRow = {
   total_videos?: number;
 };
 
+type SegmentOutcomeRow = {
+  segment?: string;
+  niche?: string;
+  platform?: string;
+  posts?: number;
+  views?: number;
+  winners?: number;
+  losers?: number;
+  orders?: number;
+  revenue?: number;
+  avg_completion_rate?: number | null;
+  avg_ctr?: number | null;
+  status?: "proven" | "promising" | "weak" | "no_feedback" | string;
+  trust_action?: string;
+  evidence?: string;
+};
+
 function num(value: unknown) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
@@ -134,13 +151,30 @@ function atlasBoost(value: string) {
   return 0;
 }
 
+function outcomeBoost(value: string) {
+  if (value === "proven") return 18;
+  if (value === "promising") return 8;
+  if (value === "weak") return -18;
+  return 0;
+}
+
+function outcomeConfidence(posts: number, winners: number) {
+  if (posts >= 6 || winners >= 3) return "high";
+  if (posts >= 3 || winners >= 1) return "medium";
+  if (posts > 0) return "low";
+  return "none";
+}
+
 function decisionGrade(input: {
   score: number;
   evidenceStatus: string;
   playbookStatus: string;
   mode: string;
+  outcomeStatus: string;
 }) {
+  if (input.outcomeStatus === "weak" && input.score < 82) return "research";
   if (input.score >= 82 && input.evidenceStatus === "high_trust" && (input.playbookStatus === "ship_now" || input.mode === "primary")) return "ship";
+  if (input.score >= 74 && input.outcomeStatus === "proven" && (input.playbookStatus === "ship_now" || input.mode === "primary")) return "ship";
   if (input.score >= 66 && (input.evidenceStatus === "validated" || input.playbookStatus === "validate_and_ship")) return "validate";
   if (input.score >= 48 && (input.playbookStatus === "prepare" || input.evidenceStatus === "corpus_strong_market_thin")) return "prepare";
   return "research";
@@ -168,6 +202,20 @@ export function buildReelsBrainSegmentDecisionDeck(input: {
   patternAtlas?: {
     by_segment?: AtlasRow[];
   };
+  feedbackLoop?: {
+    by_segment?: SegmentOutcomeRow[];
+    segment_outcome_memory?: {
+      strongest_segments?: SegmentOutcomeRow[];
+      promising_segments?: SegmentOutcomeRow[];
+      weak_segments?: SegmentOutcomeRow[];
+      trust_update_queue?: Array<{
+        segment?: string;
+        status?: string;
+        trust_action?: string;
+        evidence?: string;
+      }>;
+    };
+  };
   limit?: number;
 }) {
   const briefMap = new Map((input.segmentOutputBanks?.briefs || []).map((row) => [keyOf(row.niche, row.platform), row] as const));
@@ -176,6 +224,14 @@ export function buildReelsBrainSegmentDecisionDeck(input: {
   const playbookMap = new Map((input.segmentPlaybook?.items || []).map((row) => [keyOf(row.niche, row.platform), row] as const));
   const evidenceMap = new Map((input.evidenceLedger?.items || []).map((row) => [keyOf(row.niche, row.platform), row] as const));
   const atlasMap = new Map((input.patternAtlas?.by_segment || []).map((row) => [keyOf(row.niche, row.platform), row] as const));
+  const feedbackRows = input.feedbackLoop?.by_segment
+    || [
+      ...(input.feedbackLoop?.segment_outcome_memory?.strongest_segments || []),
+      ...(input.feedbackLoop?.segment_outcome_memory?.promising_segments || []),
+      ...(input.feedbackLoop?.segment_outcome_memory?.weak_segments || []),
+    ];
+  const outcomeMap = new Map((feedbackRows || []).map((row) => [keyOf(row.niche, row.platform), row] as const));
+  const trustActionMap = new Map((input.feedbackLoop?.segment_outcome_memory?.trust_update_queue || []).map((row) => [text(row.segment), row] as const));
   const keys = Array.from(new Set([
     ...briefMap.keys(),
     ...actionMap.keys(),
@@ -183,6 +239,7 @@ export function buildReelsBrainSegmentDecisionDeck(input: {
     ...playbookMap.keys(),
     ...evidenceMap.keys(),
     ...atlasMap.keys(),
+    ...outcomeMap.keys(),
   ]));
 
   const items = keys
@@ -193,14 +250,18 @@ export function buildReelsBrainSegmentDecisionDeck(input: {
       const playbookRow = playbookMap.get(key) || {};
       const evidenceRow = evidenceMap.get(key) || {};
       const atlasRow = atlasMap.get(key) || {};
+      const outcomeRow = outcomeMap.get(key) || {};
       const primaryBrief = briefRow.primary || null;
       const primaryAction = actionRow.primary || null;
       const primaryHypothesis = (hypothesisRow.cards || [])[0] || null;
       const niche = text(briefRow.niche || actionRow.niche || hypothesisRow.niche || playbookRow.niche || evidenceRow.niche || atlasRow.niche);
       const platform = text(briefRow.platform || actionRow.platform || hypothesisRow.platform || playbookRow.platform || evidenceRow.platform || atlasRow.platform);
+      const segmentLabel = `${niche} × ${platform}`;
       const mode = text(playbookRow.recommended_mode || briefRow.recommended_mode || actionRow.recommended_mode || "research_only");
       const evidenceStatus = text(evidenceRow.evidence_status || "research");
       const playbookStatus = text(playbookRow.status || "research");
+      const outcomeStatus = text(outcomeRow.status || evidenceRow.market_status || "no_feedback");
+      const queuedOutcome = trustActionMap.get(segmentLabel) || null;
       const score = clamp(
         num(briefRow.trust_score) * 0.18
         + num(evidenceRow.corpus_score) * 0.28
@@ -213,21 +274,34 @@ export function buildReelsBrainSegmentDecisionDeck(input: {
         + confidenceBoost(text(primaryBrief?.confidence))
         + evidenceBoost(evidenceStatus)
         + modeBoost(mode)
-        + atlasBoost(text(atlasRow.status)),
+        + atlasBoost(text(atlasRow.status))
+        + outcomeBoost(outcomeStatus)
       );
-      const grade = decisionGrade({ score, evidenceStatus, playbookStatus, mode });
+      const grade = decisionGrade({ score, evidenceStatus, playbookStatus, mode, outcomeStatus });
       return {
         niche,
         platform,
-        label: `${niche} × ${platform}`,
+        label: segmentLabel,
         trust_score: score,
         decision_grade: grade,
         generation_mode: generationMode(grade),
-        ready_for_generation: grade === "ship" || grade === "validate",
+        ready_for_generation: (grade === "ship" || grade === "validate") && outcomeStatus !== "weak",
         recommended_mode: mode,
         evidence_status: evidenceStatus,
         playbook_status: playbookStatus,
         atlas_status: text(atlasRow.status),
+        outcome_status: outcomeStatus,
+        outcome_confidence: outcomeConfidence(num(outcomeRow.posts), num(outcomeRow.winners)),
+        outcome_boost: outcomeBoost(outcomeStatus),
+        outcome_posts: num(outcomeRow.posts),
+        outcome_winners: num(outcomeRow.winners),
+        outcome_losers: num(outcomeRow.losers),
+        outcome_orders: num(outcomeRow.orders),
+        outcome_revenue: num(outcomeRow.revenue),
+        outcome_avg_completion_rate: num(outcomeRow.avg_completion_rate),
+        outcome_avg_ctr: num(outcomeRow.avg_ctr),
+        outcome_trust_action: text(outcomeRow.trust_action || queuedOutcome?.trust_action),
+        outcome_evidence: text(queuedOutcome?.evidence || outcomeRow.evidence),
         corpus_score: num(evidenceRow.corpus_score),
         market_score: num(evidenceRow.market_score),
         opportunity_score: num(playbookRow.opportunity_score),
@@ -268,8 +342,18 @@ export function buildReelsBrainSegmentDecisionDeck(input: {
           copy_as_mechanic: list(primaryBrief?.creative_brief?.copy_as_mechanic, 3),
           do_not_copy: list(primaryBrief?.creative_brief?.do_not_copy, 3),
         },
-        why_now: text(playbookRow.rollout?.why_now),
-        next_step: text(playbookRow.rollout?.next_step),
+        why_now: [
+          text(playbookRow.rollout?.why_now),
+          outcomeStatus === "proven" ? "Сегмент уже подтвержден outcome-постами." : "",
+          outcomeStatus === "promising" ? "Появились первые market outcome сигналы, можно валидировать дальше." : "",
+          outcomeStatus === "weak" ? "Рынок пока не подтверждает сегмент, нужен пересмотр before scaling." : "",
+        ].filter(Boolean).join(" "),
+        next_step: [
+          text(playbookRow.rollout?.next_step),
+          outcomeStatus === "proven" ? "Поднимать в основной generation lane и масштабировать вариации." : "",
+          outcomeStatus === "promising" ? "Сделать controlled test, чтобы добрать winner/loser signal." : "",
+          outcomeStatus === "weak" ? "Пересобрать hook/structure и не пускать в основной lane." : "",
+        ].filter(Boolean).join(" "),
       };
     })
     .filter((item) => item.niche && item.platform && (item.brief.title || item.action.title || item.hypothesis.title))

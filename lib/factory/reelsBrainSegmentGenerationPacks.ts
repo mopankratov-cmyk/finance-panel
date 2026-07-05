@@ -11,6 +11,14 @@ type SegmentDecisionItem = {
   corpus_score?: number;
   market_score?: number;
   stable_pattern_count?: number;
+  outcome_status?: string;
+  outcome_confidence?: string;
+  outcome_boost?: number;
+  outcome_posts?: number;
+  outcome_winners?: number;
+  outcome_losers?: number;
+  outcome_trust_action?: string;
+  outcome_evidence?: string;
   brief?: {
     title?: string;
     hook?: string;
@@ -84,6 +92,7 @@ function blockedReasons(item: SegmentDecisionItem) {
   if (num(item.brief?.evidence_refs) < 2) out.push("недостаточно reference evidence");
   if (text(item.generator_payload?.hook).length < 4) out.push("hook ещё не нормализован");
   if (text(item.generator_payload?.structure).length < 3) out.push("structure ещё не нормализована");
+  if (text(item.outcome_status) === "weak") out.push("рынок пока не подтверждает сегмент outcome-постами");
   return out;
 }
 
@@ -116,7 +125,8 @@ export function buildReelsBrainSegmentGenerationPacks(input: {
         + num(item.corpus_score) * 0.22
         + num(item.market_score) * 0.14
         + Math.min(14, num(item.stable_pattern_count) * 4)
-        + Math.min(8, num(item.brief?.evidence_refs) * 4),
+        + Math.min(8, num(item.brief?.evidence_refs) * 4)
+        + num(item.outcome_boost)
       );
       return {
         niche: text(item.niche),
@@ -147,6 +157,13 @@ export function buildReelsBrainSegmentGenerationPacks(input: {
         hypothesis_text: text(item.hypothesis?.text),
         hypothesis_success_metric: text(item.hypothesis?.success_metric),
         evidence_status: text(item.evidence_status),
+        outcome_status: text(item.outcome_status, "no_feedback"),
+        outcome_confidence: text(item.outcome_confidence, "none"),
+        outcome_posts: num(item.outcome_posts),
+        outcome_winners: num(item.outcome_winners),
+        outcome_losers: num(item.outcome_losers),
+        outcome_trust_action: text(item.outcome_trust_action),
+        outcome_evidence: text(item.outcome_evidence),
         corpus_score: num(item.corpus_score),
         market_score: num(item.market_score),
         stable_pattern_count: num(item.stable_pattern_count),

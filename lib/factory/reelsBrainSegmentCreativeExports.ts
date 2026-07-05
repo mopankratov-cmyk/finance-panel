@@ -33,6 +33,13 @@ type GenerationPackRow = {
   why_now?: string;
   next_step?: string;
   evidence_status?: string;
+  outcome_status?: string;
+  outcome_confidence?: string;
+  outcome_posts?: number;
+  outcome_winners?: number;
+  outcome_losers?: number;
+  outcome_trust_action?: string;
+  outcome_evidence?: string;
   corpus_score?: number;
   market_score?: number;
   stable_pattern_count?: number;
@@ -106,6 +113,13 @@ export function buildReelsBrainSegmentCreativeExports(input: {
         },
         trust: {
           evidence_status: text(row.evidence_status),
+          outcome_status: text(row.outcome_status, "no_feedback"),
+          outcome_confidence: text(row.outcome_confidence, "none"),
+          outcome_posts: num(row.outcome_posts),
+          outcome_winners: num(row.outcome_winners),
+          outcome_losers: num(row.outcome_losers),
+          outcome_trust_action: text(row.outcome_trust_action),
+          outcome_evidence: text(row.outcome_evidence),
           corpus_score: num(row.corpus_score),
           market_score: num(row.market_score),
           stable_pattern_count: num(row.stable_pattern_count),

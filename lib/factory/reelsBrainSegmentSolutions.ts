@@ -55,8 +55,16 @@ export function buildReelsBrainSegmentSolutions(input: {
       const stability = (stabilityMap.get(`${text(row.niche)}__${text(row.platform)}`) || {}) as JsonRecord;
       const evidenceBand = text(stability.evidence_band, "thin");
       const trust = evidenceBand === "stable" ? "high" : evidenceBand === "forming" ? "medium" : "low";
+      const trustRow = (row.trust && typeof row.trust === "object" ? row.trust : {}) as JsonRecord;
+      const outcomeStatus = text(trustRow.outcome_status, "no_feedback");
+      const outcomePosts = num(trustRow.outcome_posts);
+      const outcomeWinners = num(trustRow.outcome_winners);
+      const outcomeLosers = num(trustRow.outcome_losers);
       const production = productionState(lane, evidenceBand);
       const trustWhy = [
+        outcomeStatus === "proven" ? `рынок уже подтвердил сегмент: ${outcomeWinners}/${Math.max(outcomePosts, 1)} winner-posts` : "",
+        outcomeStatus === "promising" ? `есть первые outcome-сигналы: ${outcomePosts} постов в обратной связи` : "",
+        outcomeStatus === "weak" ? `обратная связь слабая: ${outcomeLosers}/${Math.max(outcomePosts, 1)} loser-posts` : "",
         ...list(stability.strengths, 4),
         ...list(stability.blockers, 3).map((item) => `blocker: ${item}`),
       ].slice(0, 5);
@@ -100,6 +108,13 @@ export function buildReelsBrainSegmentSolutions(input: {
           band: trust,
           score: readinessScore,
           evidence_band: evidenceBand,
+          outcome_status: outcomeStatus,
+          outcome_confidence: text(trustRow.outcome_confidence, "none"),
+          outcome_posts: outcomePosts,
+          outcome_winners: outcomeWinners,
+          outcome_losers: outcomeLosers,
+          outcome_trust_action: text(trustRow.outcome_trust_action),
+          outcome_evidence: text(trustRow.outcome_evidence),
           stability_score: num(stability.stability_score),
           signals: list(stability.strengths, 4),
           blockers: list(stability.blockers, 4),

@@ -2460,6 +2460,7 @@ export async function GET(req: NextRequest) {
       segmentPlaybook,
       evidenceLedger,
       patternAtlas,
+      feedbackLoop: operatingSystem.feedback_loop,
       limit: compactMode ? 6 : 10,
     });
     const segmentGapPlan = buildReelsBrainSegmentGapPlanner({

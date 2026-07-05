@@ -140,18 +140,61 @@ function testBuildReelsBrainSegmentDecisionDeckRanksDecisionReadySegments() {
         { niche: "ru_cosmetics", platform: "instagram", status: "forming", stable_pattern_count: 2, analyzed_videos: 34 },
       ],
     },
+    feedbackLoop: {
+      by_segment: [
+        {
+          niche: "ru_toys",
+          platform: "tiktok",
+          segment: "ru_toys × tiktok",
+          posts: 6,
+          winners: 3,
+          losers: 0,
+          status: "proven",
+          trust_action: "promote_segment_trust",
+        },
+        {
+          niche: "ru_cosmetics",
+          platform: "instagram",
+          segment: "ru_cosmetics × instagram",
+          posts: 3,
+          winners: 0,
+          losers: 2,
+          status: "weak",
+          trust_action: "review_or_penalize_segment",
+        },
+      ],
+      segment_outcome_memory: {
+        trust_update_queue: [
+          {
+            segment: "ru_toys × tiktok",
+            trust_action: "promote_segment_trust",
+            evidence: "3 winners / 6 posts",
+          },
+          {
+            segment: "ru_cosmetics × instagram",
+            trust_action: "review_or_penalize_segment",
+            evidence: "0 winners / 3 posts",
+          },
+        ],
+      },
+    },
   });
 
   assert.equal(result.summary.total, 2);
   assert.equal(result.summary.ship, 1);
   assert.equal(result.summary.validate, 1);
-  assert.equal(result.summary.ready_for_generation, 2);
+  assert.equal(result.summary.research, 0);
+  assert.equal(result.summary.ready_for_generation, 1);
   assert.equal(result.items[0]?.niche, "ru_toys");
   assert.equal(result.items[0]?.decision_grade, "ship");
   assert.equal(result.items[0]?.generation_mode, "decision_ready");
+  assert.equal(result.items[0]?.outcome_status, "proven");
+  assert.equal(result.items[0]?.outcome_confidence, "high");
   assert.equal(result.items[0]?.generator_payload.structure, "demo");
   assert.equal(result.items[1]?.decision_grade, "validate");
   assert.equal(result.items[1]?.generation_mode, "control_ready");
+  assert.equal(result.items[1]?.ready_for_generation, false);
+  assert.equal(result.items[1]?.outcome_status, "weak");
 }
 
 function run() {
