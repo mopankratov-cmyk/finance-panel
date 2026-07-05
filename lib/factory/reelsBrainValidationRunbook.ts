@@ -44,6 +44,7 @@ export function buildReelsBrainValidationRunbook(input: {
       niche: text(row.niche, text(measurement.niche, "mixed")),
       platform: text(row.platform, text(measurement.platform, "mixed")),
       policy_mode: text(row.policy_mode, text(measurement.policy_mode, "research_only")),
+      high_trust_generation_ready: Boolean(row.high_trust_generation_ready || measurement.high_trust_generation_ready || payload.high_trust_generation_ready),
       segment_priority_score: Number(row.segment_priority_score || measurement.segment_priority_score || 0),
       segment_priority_reason: text(row.segment_priority_reason, text(measurement.segment_priority_reason, "")),
       priority: text(row.priority, "medium"),
@@ -70,6 +71,8 @@ export function buildReelsBrainValidationRunbook(input: {
       publish_checklist: [
         proofScope === "exact_segment"
           ? "Снять exact segment variant, не опираясь на соседний transfer как на финальное доказательство."
+          : Boolean(row.high_trust_generation_ready || measurement.high_trust_generation_ready || payload.high_trust_generation_ready)
+            ? "Снять production-usable variant и проверить, что generation-ready сегмент не теряет high-trust сигнал на публикации."
           : "Снять variant по strongest pattern и не менять ключевую механику.",
         "После публикации сразу записать views и базовые rates.",
         "Если есть publication_id или external_post_id, вернуть их в writeback.",

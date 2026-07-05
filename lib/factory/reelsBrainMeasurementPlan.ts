@@ -34,6 +34,7 @@ function scoreCandidate(candidate: JsonRecord, pattern: JsonRecord) {
   const exactNiche = niche && patternNiches.includes(niche) ? 30 : 0;
   const exactPlatform = platform && patternPlatforms.includes(platform) ? 24 : 0;
   return policyRank(candidate.policy_mode) * 20
+    + (candidate.high_trust_generation_ready ? 22 : 0)
     + exactNiche
     + exactPlatform
     + num(candidate.readiness_score) * 0.2
@@ -169,6 +170,7 @@ export function buildReelsBrainMeasurementPlan(input: {
         niche,
         platform,
         policy_mode: text(policy.policy_mode, text(segment.policy_mode, "research_only")),
+        high_trust_generation_ready: Boolean(exactRow.high_trust_generation_ready || policy.high_trust_generation_ready),
         segment_priority_score: num(priority.decision_priority_score),
         segment_priority_reason: text(priority.policy_reason),
         decision_priority_score: Math.max(
@@ -225,6 +227,7 @@ export function buildReelsBrainMeasurementPlan(input: {
       const niche = text(candidate?.niche) || text(list(pattern.niches, 1)[0], "mixed");
       const platform = text(candidate?.platform) || text(list(pattern.platforms, 1)[0], "mixed");
       const policyMode = text(policy.policy_mode, "research_only");
+      const highTrustGenerationReady = Boolean(candidate?.high_trust_generation_ready || policy.high_trust_generation_ready);
       return {
         measurement_id: `${text(pattern.pattern_id)}__${niche}__${platform}`,
         task_type: "validate_pattern_feedback",
@@ -233,6 +236,7 @@ export function buildReelsBrainMeasurementPlan(input: {
         niche,
         platform,
         policy_mode: policyMode,
+        high_trust_generation_ready: highTrustGenerationReady,
         segment_priority_score: num(priority.decision_priority_score),
         segment_priority_reason: text(priority.policy_reason),
         decision_priority_score: Math.max(
@@ -242,7 +246,9 @@ export function buildReelsBrainMeasurementPlan(input: {
         ),
         hook_type: text(pattern.hook_type),
         structure_type: text(pattern.structure_type),
-        validation_goal: policyMode === "primary"
+        validation_goal: highTrustGenerationReady
+          ? "Подтвердить production-usable сегмент без деградации high-trust сигнала."
+          : policyMode === "primary"
           ? "Подтвердить, что паттерн выдерживает основной production lane."
           : policyMode === "control_only"
             ? "Проверить паттерн в controlled batch до повышения trust."
@@ -256,16 +262,24 @@ export function buildReelsBrainMeasurementPlan(input: {
         recommended_upgrade: upgrade,
         metrics_to_capture: ["views", "watch_rate", "completion_rate", "ctr", "saves", "marketplace_orders"],
         action: `Сделать measurement-run для ${text(pattern.title, text(pattern.pattern_id, "pattern"))} на ${niche} × ${platform}`,
-        reason: `${text(pattern.quality_gate, "unknown")} · priority ${Math.max(num(pattern.decision_priority_score), num(priority.decision_priority_score))} · policy ${policyMode}${upgrade?.unlocked_output ? ` · upgrade ${upgrade.unlocked_output}` : ""}${text(priority.policy_reason) ? ` · ${text(priority.policy_reason)}` : ""}`,
+        reason: `${text(pattern.quality_gate, "unknown")} · priority ${Math.max(num(pattern.decision_priority_score), num(priority.decision_priority_score))} · policy ${policyMode}${highTrustGenerationReady ? " · gen-ready" : ""}${upgrade?.unlocked_output ? ` · upgrade ${upgrade.unlocked_output}` : ""}${text(priority.policy_reason) ? ` · ${text(priority.policy_reason)}` : ""}`,
         endpoints: {
           creative_solution: `/api/factory/reels-brain/creative-solution?niche=${encodeURIComponent(niche)}&platform=${encodeURIComponent(platform)}`,
           feedback_writeback: "/api/factory/reels-brain/feedback",
           post_metrics: "/api/factory/post-metrics",
         },
+        proof_scope: "pattern_feedback",
       };
     });
 
   const items = [...exactItems, ...patternItems]
+    .sort((a, b) =>
+      Number(Boolean(b.high_trust_generation_ready)) - Number(Boolean(a.high_trust_generation_ready))
+      || (text(b.proof_scope) === "exact_segment" ? 1 : 0) - (text(a.proof_scope) === "exact_segment" ? 1 : 0)
+      || num(b.segment_priority_score) - num(a.segment_priority_score)
+      || num(b.decision_priority_score) - num(a.decision_priority_score)
+      || text(a.title).localeCompare(text(b.title)),
+    )
     .slice(0, limit);
 
   return {

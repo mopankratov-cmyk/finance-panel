@@ -24,6 +24,10 @@ function proofScopeRank(value: unknown) {
   return text(value) === "exact_segment" ? 2 : 1;
 }
 
+function generationReadyRank(value: unknown) {
+  return Boolean(value) ? 1 : 0;
+}
+
 function recommendedUpgrade(value: unknown) {
   const row = value && typeof value === "object" ? value as JsonRecord : {};
   return {
@@ -49,6 +53,7 @@ export function buildReelsBrainValidationQueue(input: {
   const items = records(input.measurementPlan?.items)
     .sort((a, b) =>
       proofScopeRank(b.proof_scope) - proofScopeRank(a.proof_scope)
+      || generationReadyRank(b.high_trust_generation_ready) - generationReadyRank(a.high_trust_generation_ready)
       || num(b.segment_priority_score) - num(a.segment_priority_score)
       || num(((b.recommended_upgrade as JsonRecord | null)?.projected_trust_gain_score)) - num(((a.recommended_upgrade as JsonRecord | null)?.projected_trust_gain_score))
       || num(b.decision_priority_score) - num(a.decision_priority_score)
@@ -67,6 +72,7 @@ export function buildReelsBrainValidationQueue(input: {
       niche: text(item.niche, "mixed"),
       platform: text(item.platform, "mixed"),
       policy_mode: text(item.policy_mode, "research_only"),
+      high_trust_generation_ready: Boolean(item.high_trust_generation_ready),
       segment_priority_score: num(item.segment_priority_score),
       segment_priority_reason: text(item.segment_priority_reason),
       action: text(item.action, "Снять market signal"),
@@ -91,6 +97,7 @@ export function buildReelsBrainValidationQueue(input: {
         target_platform: text(item.platform, "mixed"),
         validation_goal: text(item.validation_goal),
         proof_scope: text(item.proof_scope),
+        high_trust_generation_ready: Boolean(item.high_trust_generation_ready),
       },
     };
   });
@@ -103,7 +110,7 @@ export function buildReelsBrainValidationQueue(input: {
     exact_gap_candidates: num(input.measurementPlan?.exact_gap_candidates),
     queue,
     next_step: queue.length
-      ? "Брать верх очереди: сначала prove_exact_segment, затем validate_pattern_feedback, и после публикации писать outcome через feedback/post-metrics."
+      ? "Брать верх очереди: сначала prove_exact_segment, затем generation-ready validation задачи, затем validate_pattern_feedback, и после публикации писать outcome через feedback/post-metrics."
       : "Сначала собрать measurement plan из strong no-feedback patterns.",
   };
 }

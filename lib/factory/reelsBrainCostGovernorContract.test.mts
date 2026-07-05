@@ -14,6 +14,7 @@ const bulkExecutionPolicy = readFileSync("lib/factory/reelsBrainBulkExecutionPol
 const generationPolicy = readFileSync("app/api/factory/reels-brain/generation-policy/route.ts", "utf8");
 const measurementPlanRoute = readFileSync("app/api/factory/reels-brain/measurement-plan/route.ts", "utf8");
 const validationQueueRoute = readFileSync("app/api/factory/reels-brain/validation-queue/route.ts", "utf8");
+const validationQueueBuilder = readFileSync("lib/factory/reelsBrainValidationQueue.ts", "utf8");
 const creativeSolution = readFileSync("app/api/factory/reels-brain/creative-solution/route.ts", "utf8");
 const creativeExports = readFileSync("app/api/factory/reels-brain/creative-exports/route.ts", "utf8");
 const creativeBrief = readFileSync("app/api/factory/reels-brain/creative-brief/route.ts", "utf8");
@@ -77,6 +78,7 @@ ok(/daily_costs/.test(governor) && /totals/.test(governor), "cost-governor route
 ok(!/POST\s*\(/.test(governor), "cost-governor route is read-only");
 ok(/internalFetch/.test(measurementPlanRoute) && /measurement_plan/.test(measurementPlanRoute) && /outcome_memory_brain/.test(measurementPlanRoute), "measurement-plan route exposes read-only validation queue on top of report");
 ok(/buildReelsBrainValidationRunbook/.test(validationQueueRoute) && /validation_runbook/.test(validationQueueRoute) && /feedback_payload_template/.test(validationRunbookBuilder), "validation-queue route exposes execution-ready runbook with writeback template");
+ok(/high_trust_generation_ready/.test(measurementPlanBuilder) && /generation-ready validation/i.test(validationQueueBuilder) && /production-usable variant/i.test(validationRunbookBuilder), "measurement, validation queue, and runbook preserve generation-ready execution priority");
 
 ok(/internalFetch/.test(creativeExports) && /segment_creative_exports/.test(creativeExports), "creative-exports route reads creative export bundles from learning-economics");
 ok(/lane/.test(creativeExports) && /niche/.test(creativeExports) && /platform/.test(creativeExports), "creative-exports route supports lane, niche and platform filters");

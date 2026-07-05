@@ -70,6 +70,7 @@ const queue = buildReelsBrainValidationQueue({
         niche: "ru_toys",
         platform: "instagram",
         policy_mode: "control_only",
+        high_trust_generation_ready: true,
         segment_priority_score: 96,
         segment_priority_reason: "instagram is the strongest control-ready payoff now",
         decision_priority_score: 89,
@@ -105,9 +106,11 @@ assert.equal(queue.queue[0]?.writeback_targets.feedback, "/api/factory/reels-bra
 assert.equal(queue.queue[0]?.task_payload.proof_scope, "exact_segment");
 assert.equal(queue.queue[1]?.task_payload.pattern_id, "p2");
 assert.equal(queue.queue[1]?.segment_priority_score, 96);
+assert.equal(queue.queue[1]?.high_trust_generation_ready, true);
+assert.equal(queue.queue[1]?.task_payload.high_trust_generation_ready, true);
 assert.match(queue.queue[1]?.segment_priority_reason || "", /strongest control-ready payoff now/);
 assert.equal(queue.queue[1]?.recommended_upgrade?.projected_trust_gain_score, 31);
 assert.equal(queue.queue[2]?.task_payload.pattern_id, "p1");
-assert.match(queue.next_step, /prove_exact_segment/);
+assert.match(queue.next_step, /generation-ready validation/i);
 
 console.log("reelsBrainValidationQueue.test: ok");
