@@ -123,6 +123,44 @@ const policyDrivenTick = buildReelsBrainNextTick({
 assert.equal(policyDrivenTick.task, "collect_support_for_decision_segment");
 assert.match(policyDrivenTick.reason, /primary-ready/);
 
+const publishableExactCoverageTick = buildReelsBrainNextTick({
+  target: 10000,
+  totalVideos: 3200,
+  analyzedVideos: 3150,
+  backlogLimit: 180,
+  canRunPaidCollection: true,
+  prioritySegment: {
+    niche: "ru_clothing",
+    platform: "instagram",
+    label: "ru_clothing × instagram",
+    action: "watch_segment",
+  },
+  portfolioReadiness: {
+    summary: {
+      high_trust_coverage_pct: 84,
+      publishable_exact_coverage_pct: 33,
+      verdict: "high_trust_but_exact_gaps",
+    },
+    missing_segments: [],
+    publishable_exact_gaps: [
+      {
+        niche: "ru_toys",
+        platform: "youtube",
+        label: "ru_toys × youtube",
+        evidence_band: "stable",
+        stability_score: 79,
+        missing: false,
+      },
+    ],
+  },
+});
+
+assert.equal(publishableExactCoverageTick.task, "collect_portfolio_gaps");
+assert.equal((publishableExactCoverageTick.params as Record<string, unknown>).niche, "ru_toys");
+assert.equal((publishableExactCoverageTick.params as Record<string, unknown>).platform, "youtube");
+assert.match(publishableExactCoverageTick.label, /publishable exact/i);
+assert.match(publishableExactCoverageTick.reason, /publishable exact coverage/i);
+
 const weakOutcomeTick = buildReelsBrainNextTick({
   target: 10000,
   totalVideos: 3200,

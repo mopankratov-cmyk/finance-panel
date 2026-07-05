@@ -1466,6 +1466,7 @@ function buildDailyReport(input: {
       input.insightPayload.top_hooks?.[0] ? `Сильнейший хук: ${input.insightPayload.top_hooks[0].hook_label} (${input.insightPayload.top_hooks[0].op_score}/100).` : "Сильный хук пока не определён.",
       delta == null ? "Сравнение стоимости ждёт новых cost-событий." : `Стоимость полезной насмотренности ${delta <= 0 ? "снизилась" : "выросла"} на ${Math.abs(delta)}%.`,
       `High-trust coverage по матрице ниш и платформ: ${num(portfolio.high_trust_coverage_pct)}% (${num(portfolio.stable_segments)} из ${num(portfolio.expected_segments)} сегментов).`,
+      `Publishable exact coverage: ${num(portfolio.publishable_exact_coverage_pct)}% (${num(portfolio.publishable_exact_segments)} из ${num(portfolio.expected_segments)} сегментов).`,
       input.discoveryBrain.next_policy,
       input.antiPatternBrain.summary,
     ],
@@ -1698,6 +1699,8 @@ function buildAutopilotActions(input: {
     can_run_paid_collection: input.costGovernor.status === "ok_to_continue",
     portfolio_readiness: {
       high_trust_coverage_pct: num(portfolioSummary.high_trust_coverage_pct),
+      publishable_exact_coverage_pct: num(portfolioSummary.publishable_exact_coverage_pct),
+      publishable_exact_segments: num(portfolioSummary.publishable_exact_segments),
       stable_segments: num(portfolioSummary.stable_segments),
       expected_segments: num(portfolioSummary.expected_segments),
       verdict: String(portfolioSummary.verdict || "still_building"),
@@ -2880,6 +2883,7 @@ export async function GET(req: NextRequest) {
     });
     const portfolioReadiness = buildReelsBrainPortfolioReadiness({
       segmentStabilityAudit,
+      segmentSolutionMatrix,
       niches: nicheSummaries.map((row) => row.niche),
       platforms: ["tiktok", "instagram", "youtube"],
     });

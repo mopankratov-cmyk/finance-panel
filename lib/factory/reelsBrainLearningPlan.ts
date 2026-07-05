@@ -212,6 +212,7 @@ export function buildReelsBrainNextTick(input: {
   const portfolio = (input.portfolioReadiness || {}) as JsonRecord;
   const portfolioSummary = (portfolio.summary || portfolio) as JsonRecord;
   const portfolioCoverage = num(portfolioSummary.high_trust_coverage_pct);
+  const portfolioExactCoverage = num(portfolioSummary.publishable_exact_coverage_pct);
   const portfolioVerdict = text(portfolioSummary.verdict, "still_building");
   const learningEconomics = safeLearningEconomics(input.learningEconomics);
   const patternMemory = (input.outcomeMemory && typeof input.outcomeMemory === "object"
@@ -241,6 +242,9 @@ export function buildReelsBrainNextTick(input: {
     || null,
   );
   const shipReadySummary = ((shipReadyQueue as ShipReadyQueueSummary | null | undefined)?.summary || {}) as JsonRecord;
+  const publishableExactGapSegment = safeSegment(
+    records((portfolio.publishable_exact_gaps as JsonRecord[] | undefined))[0] || null,
+  );
   const collectionFocusSegment = exactFocusSegment || portfolioFocusSegment || prioritySegment;
   const directSegmentPolicy = selectPolicyForSegment(input.generationPolicy, prioritySegment);
   const directPolicyMode = text(directSegmentPolicy?.policy_mode, "research_only");
@@ -271,6 +275,10 @@ export function buildReelsBrainNextTick(input: {
     && !exactProofMissingForDecisionSegment
     && sameSegment(prioritySegment, shipReadyFocusSegment)
     && num(shipReadySummary.ship_candidates) > 0;
+  const shouldClosePublishableExactPortfolioGaps = (!shouldSupportDecisionSegment || marketBlockedDecisionSupport || readinessBlockedDecisionSupport)
+    && portfolioCoverage >= 60
+    && portfolioExactCoverage < 55
+    && Boolean(publishableExactGapSegment);
   const activePolicySegment = shouldSupportDecisionSegment ? prioritySegment : collectionFocusSegment || prioritySegment;
   const activePolicy = selectPolicyForSegment(input.generationPolicy, activePolicySegment);
   const activePolicyMode = text(activePolicy?.policy_mode, "research_only");
@@ -377,7 +385,11 @@ export function buildReelsBrainNextTick(input: {
 
   if (input.totalVideos < input.target) {
     const shouldClosePortfolioGaps = (!shouldSupportDecisionSegment || marketBlockedDecisionSupport || readinessBlockedDecisionSupport) && portfolioCoverage < 70;
-    const collectionSegment = shouldClosePortfolioGaps ? collectionFocusSegment : prioritySegment;
+    const collectionSegment = shouldClosePublishableExactPortfolioGaps
+      ? publishableExactGapSegment
+      : shouldClosePortfolioGaps
+        ? collectionFocusSegment
+        : prioritySegment;
     const policyReason = text(activePolicy?.policy_reason);
     const policyLine = activePolicy
       ? ` Policy ${activePolicyMode}: ${policyReason || `${text(activePolicy.label)} · trust ${text(activePolicy.trust_band)} · evidence ${text(activePolicy.evidence_band)} · readiness ${num(activePolicy.readiness_score)}.`}`
@@ -388,7 +400,7 @@ export function buildReelsBrainNextTick(input: {
         ? marketBlockedDecisionSupport || readinessBlockedDecisionSupport
           ? "collect_portfolio_gaps"
           : "collect_support_for_decision_segment"
-        : shouldClosePortfolioGaps
+        : shouldClosePublishableExactPortfolioGaps || shouldClosePortfolioGaps
           ? "collect_portfolio_gaps"
           : "collect_smart_batch",
       label: shouldSupportDecisionSegment
@@ -407,6 +419,10 @@ export function buildReelsBrainNextTick(input: {
           : briefBundleGapForDecisionSegment
             ? `Дожать usable brief для ${String(prioritySegment?.label || "")}`
           : `Поддержать decision-ready сегмент ${String(prioritySegment?.label || "")}`
+        : shouldClosePublishableExactPortfolioGaps
+          ? collectionSegment
+            ? `Поднимать ${collectionSegment.label} до publishable exact`
+            : "Поднимать portfolio до publishable exact"
         : shouldClosePortfolioGaps
           ? collectionSegment
             ? `Закрывать дыру ${collectionSegment.label} в portfolio coverage`
@@ -424,6 +440,10 @@ export function buildReelsBrainNextTick(input: {
             : briefBundleGapForDecisionSegment
               ? `${String(prioritySegment?.label || activePolicy?.label || "")} уже strong по evidence, но usable creative brief ещё неполный. Если backlog уже вычищен, следующий цикл может добрать точечный сегментный материал для закрытия output-gap и сборки production-usable bundle.${policyLine}`
             : `${String(prioritySegment?.label || activePolicy?.label || "")} уже близок к рабочим briefs/hypotheses; следующий сбор лучше направить в этот сегмент.${policyLine}`
+        : shouldClosePublishableExactPortfolioGaps
+          ? collectionSegment
+            ? `High-trust coverage уже ${portfolioCoverage}%, но publishable exact coverage всё ещё ${portfolioExactCoverage}% (${portfolioVerdict}). Следующий сбор направляем в ${collectionSegment.label}, чтобы переводить knowledge-layer в реально publishable exact сегменты.${policyLine}`
+            : `High-trust coverage уже ${portfolioCoverage}%, но publishable exact coverage всё ещё ${portfolioExactCoverage}%. Следующий сбор лучше тратить на сегменты, где exact-ready bundle ещё не доведён до publishable состояния.${policyLine}`
         : shouldClosePortfolioGaps
           ? collectionSegment
             ? `High-trust coverage матрицы пока ${portfolioCoverage}% (${portfolioVerdict}); следующий сбор направляем в сегмент ${collectionSegment.label}, потому что он ещё не закрыт по доверию.${policyLine}`

@@ -242,6 +242,8 @@ export async function GET(req: NextRequest) {
           thin_segments: num(portfolioSummary.thin_segments),
           missing_segments: num(portfolioSummary.missing_segments),
           high_trust_coverage_pct: num(portfolioSummary.high_trust_coverage_pct),
+          publishable_exact_segments: num(portfolioSummary.publishable_exact_segments),
+          publishable_exact_coverage_pct: num(portfolioSummary.publishable_exact_coverage_pct),
           known_coverage_pct: num(portfolioSummary.known_coverage_pct),
           verdict: String(portfolioSummary.verdict || "still_building"),
         },
