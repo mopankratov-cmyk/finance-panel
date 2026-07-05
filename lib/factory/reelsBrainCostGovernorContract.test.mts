@@ -58,6 +58,7 @@ ok(/\/api\/factory\/reels-brain\/health/.test(cockpit) && /Live Ops/.test(cockpi
 ok(/internalFetch/.test(actions), "autopilot-actions reads learning-economics internally");
 ok(/\/api\/factory\/reels-brain\/learning-economics/.test(actions), "autopilot-actions points at learning-economics route");
 ok(/autopilot_actions/.test(actions) && /cost_governor/.test(actions), "autopilot-actions exposes operator-ready fields");
+ok(/outcome_memory_brain/.test(actions) && /feedback_coverage/.test(economics) && /validate_pattern_feedback/.test(economics), "autopilot-actions exposes strong-pattern feedback coverage queue");
 ok(!/POST\s*\(/.test(actions), "autopilot-actions is read-only");
 
 ok(/internalFetch/.test(governor) && /cost_governor/.test(governor), "cost-governor route exposes budget state");
@@ -126,6 +127,7 @@ ok(/media_ticks/.test(cron) && /audio_ticks/.test(cron) && /platform\",\s*String
 ok(/use_autopilot_guard/.test(scheduler), "scheduler marks paid collection as guarded");
 
 ok(/costGovernor/.test(cockpit) && /autopilotActions/.test(cockpit), "cockpit reads cost governor and autopilot actions");
+ok(/Feedback coverage queue/.test(cockpit) && /pattern_memory\?\.no_feedback_queue/.test(cockpit), "cockpit surfaces strong patterns waiting for market validation");
 ok(/learningPlan/.test(cockpit) && /Learning Mission/.test(cockpit), "cockpit exposes the standalone learning mission");
 ok(/segment_plan/.test(cockpit) && /segment-gap:/.test(cockpit), "cockpit surfaces segment-level training gaps inside learning mission");
 ok(/segment-priority:/.test(cockpit) && /missionPriorityCards/.test(cockpit), "cockpit surfaces priority segment lane inside learning mission");

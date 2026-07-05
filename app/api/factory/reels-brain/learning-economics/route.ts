@@ -1523,6 +1523,9 @@ function buildAutopilotActions(input: {
   antiPatternBrain: ReturnType<typeof buildAntiPatternBrain>;
   costGovernor: ReturnType<typeof buildCostGovernor>;
   totals?: Record<string, unknown>;
+  outcomeMemory?: {
+    pattern_memory?: Record<string, unknown>;
+  } | null;
   segmentPriorityQueue?: { items?: Array<Record<string, unknown>> };
   generationPolicy?: {
     by_niche?: Array<Record<string, unknown>>;
@@ -1553,6 +1556,17 @@ function buildAutopilotActions(input: {
   }));
   const portfolioSummary = (input.portfolioReadiness?.summary || {}) as Record<string, unknown>;
   const portfolioGaps = ((input.portfolioReadiness?.missing_segments || []) as Array<Record<string, unknown>>).slice(0, 3);
+  const patternMemory = (input.outcomeMemory?.pattern_memory || {}) as Record<string, unknown>;
+  const feedbackCoverageQueue = ((patternMemory.no_feedback_queue || []) as Array<Record<string, unknown>>).slice(0, 4).map((row) => ({
+    pattern_id: String(row.pattern_id || ""),
+    title: String(row.title || row.pattern_id || "pattern"),
+    quality_gate: String(row.quality_gate || "unknown"),
+    decision_priority_score: num(row.decision_priority_score),
+    hook_type: String(row.hook_type || ""),
+    structure_type: String(row.structure_type || ""),
+    niches: Array.isArray(row.niches) ? row.niches.slice(0, 3) : [],
+    platforms: Array.isArray(row.platforms) ? row.platforms.slice(0, 3) : [],
+  }));
   const segmentActions = (input.segmentPriorityQueue?.items || []).slice(0, 4).map((segment) => ({
     type: String(segment.action || "watch_segment"),
     priority: Boolean(segment.ready_for_generation) || Number(segment.urgency_score || 0) >= 80 ? "high" : "medium",
@@ -1602,6 +1616,15 @@ function buildAutopilotActions(input: {
       action: `Закрыть portfolio gap для ${String(segment.niche || "")} × ${String(segment.platform || "")}`,
       reason: `${String(segment.evidence_band || "missing")} · stability ${num(segment.stability_score)} · ${Array.isArray(segment.blockers) ? segment.blockers.slice(0, 2).join(" · ") : ""}`.trim(),
     })) : []),
+    ...feedbackCoverageQueue.map((pattern) => ({
+      type: "validate_pattern_feedback",
+      priority: pattern.quality_gate === "high_confidence" ? "high" : "medium",
+      niche: Array.isArray(pattern.niches) ? String(pattern.niches[0] || "mixed") : "mixed",
+      platform: Array.isArray(pattern.platforms) ? String(pattern.platforms[0] || "mixed") : "mixed",
+      pattern_id: pattern.pattern_id,
+      action: `Довести до market-proof паттерн ${pattern.title}`,
+      reason: `${pattern.quality_gate} · priority ${pattern.decision_priority_score} · ${pattern.hook_type || "hook"} / ${pattern.structure_type || "structure"}`,
+    })),
     ...policyActions,
     ...segmentActions,
     ...weakNiches.map((niche) => ({
@@ -1641,6 +1664,13 @@ function buildAutopilotActions(input: {
       stable_segments: num(portfolioSummary.stable_segments),
       expected_segments: num(portfolioSummary.expected_segments),
       verdict: String(portfolioSummary.verdict || "still_building"),
+    },
+    feedback_coverage: {
+      coverage_rate: num(patternMemory.coverage_rate),
+      high_confidence_no_feedback: num((patternMemory.coverage_gaps as Record<string, unknown> | undefined)?.high_confidence_no_feedback),
+      medium_confidence_no_feedback: num((patternMemory.coverage_gaps as Record<string, unknown> | undefined)?.medium_confidence_no_feedback),
+      total_no_feedback_queue: num((patternMemory.coverage_gaps as Record<string, unknown> | undefined)?.total_no_feedback_queue),
+      queue: feedbackCoverageQueue,
     },
     generation_policy: {
       primary_segments: segmentPolicies.filter((segment) => segment.policy_mode === "primary").length,
@@ -2813,6 +2843,7 @@ export async function GET(req: NextRequest) {
       antiPatternBrain,
       costGovernor,
       totals,
+      outcomeMemory: outcomeMemoryBrain,
       segmentPriorityQueue,
       generationPolicy,
       portfolioReadiness,

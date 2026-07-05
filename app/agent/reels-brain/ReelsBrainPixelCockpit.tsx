@@ -3283,6 +3283,18 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
                   <p>Как только появятся cost/yield события, он скажет: масштабировать, ограничить или остановить источник.</p>
                 </div>
               )}
+              {((vm.autopilotActions.feedback_coverage?.queue || []) as JsonRecord[]).length ? (
+                <div style={{ marginTop: 18 }}>
+                  <div className="rb-overline" style={{ color: "#0891b2" }}>Feedback coverage queue</div>
+                  {((vm.autopilotActions.feedback_coverage?.queue || []) as JsonRecord[]).slice(0, 4).map((pattern, index) => (
+                    <div className="rb-pattern" key={`feedback-coverage:${pattern.pattern_id || index}`} style={{ marginTop: 10 }}>
+                      <div className="rb-pill">{pattern.quality_gate || "unknown"} · priority {compact(pattern.decision_priority_score)}</div>
+                      <h3 style={{ marginTop: 10 }}>{pattern.title || pattern.pattern_id || "Pattern"}</h3>
+                      <p>{(Array.isArray(pattern.niches) ? pattern.niches.join(", ") : "mixed")} · {(Array.isArray(pattern.platforms) ? pattern.platforms.join(", ") : "mixed")} · {pattern.hook_type || "hook"} / {pattern.structure_type || "structure"}</p>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
             </div>
             <div className="rb-card rb-dark">
               <div className="rb-overline rb-cyan">Cost governor</div>
@@ -3329,6 +3341,34 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
                   <p>победители/проигравшие</p>
                 </div>
               </div>
+              <div className="rb-three" style={{ marginTop: 16 }}>
+                <div className="rb-kpi">
+                  <div className="label">Coverage rate</div>
+                  <strong>{compact(vm.outcomeMemory.pattern_memory?.coverage_rate || 0)}%</strong>
+                  <p>сильных паттернов уже с market feedback</p>
+                </div>
+                <div className="rb-kpi">
+                  <div className="label">High no-feedback</div>
+                  <strong>{compact(vm.outcomeMemory.pattern_memory?.coverage_gaps?.high_confidence_no_feedback || 0)}</strong>
+                  <p>high-confidence ещё без proof</p>
+                </div>
+                <div className="rb-kpi">
+                  <div className="label">Coverage queue</div>
+                  <strong>{compact(vm.outcomeMemory.pattern_memory?.coverage_gaps?.total_no_feedback_queue || 0)}</strong>
+                  <p>паттернов ждут measurement loop</p>
+                </div>
+              </div>
+              {((vm.outcomeMemory.pattern_memory?.no_feedback_queue || []) as JsonRecord[]).length ? (
+                <div style={{ marginTop: 18 }}>
+                  {((vm.outcomeMemory.pattern_memory?.no_feedback_queue || []) as JsonRecord[]).slice(0, 4).map((pattern, index) => (
+                    <div className="rb-pattern" key={`outcome-gap:${pattern.pattern_id || index}`} style={{ marginTop: index ? 10 : 0 }}>
+                      <div className="rb-pill">{pattern.quality_gate || "unknown"} · priority {compact(pattern.decision_priority_score || 0)}</div>
+                      <h3 style={{ marginTop: 10 }}>{pattern.title || pattern.pattern_id || "Pattern without feedback"}</h3>
+                      <p>{(Array.isArray(pattern.niches) ? pattern.niches.join(", ") : "mixed")} · {(Array.isArray(pattern.platforms) ? pattern.platforms.join(", ") : "mixed")} · {pattern.hook_type || "hook"} / {pattern.structure_type || "structure"}</p>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
             </div>
             <div className="rb-card">
               <div className="rb-overline" style={{ color: "#0891b2" }}>Outcome schema</div>
