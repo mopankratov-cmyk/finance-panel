@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { internalFetch } from "@/lib/internalFetch";
 import { buildReelsBrainValidationRunbook } from "@/lib/factory/reelsBrainValidationRunbook";
+import { buildReelsBrainSourceMixAudit } from "@/lib/factory/reelsBrainSourceMixAudit";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 20;
@@ -86,6 +87,12 @@ export async function GET(req: NextRequest) {
       measurementPlan: body.measurement_plan || null,
       limit: 4,
     });
+    const sourceMixAudit = buildReelsBrainSourceMixAudit({
+      segmentSolutions: body.segment_solutions || null,
+      segmentGenerationPacks: body.segment_generation_packs || null,
+      exactSegmentQueue: body.exact_segment_queue || null,
+      feedbackLoop: body.feedback_loop || body.next_intelligence_layers?.feedback_loop || null,
+    });
     return NextResponse.json({
       ok: true,
       report_type: req.nextUrl.searchParams.get("type") || "daily",
@@ -104,6 +111,7 @@ export async function GET(req: NextRequest) {
       segment_priority_queue: body.segment_priority_queue || null,
       segment_generation_packs: body.segment_generation_packs || null,
       segment_creative_exports: body.segment_creative_exports || null,
+      source_mix_audit: sourceMixAudit,
       segment_readiness_audit: body.segment_readiness_audit || null,
       segment_stability_audit: body.segment_stability_audit || null,
       segment_solutions: body.segment_solutions || null,

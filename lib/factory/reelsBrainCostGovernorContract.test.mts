@@ -104,6 +104,7 @@ ok(/segment_decision_deck/.test(report), "report route exposes segment decision 
 ok(/segment_priority_queue/.test(report), "report route exposes segment priority queue");
 ok(/segment_generation_packs/.test(report), "report route exposes segment generation packs");
 ok(/segment_creative_exports/.test(report), "report route exposes segment creative exports");
+ok(/buildReelsBrainSourceMixAudit/.test(report) && /source_mix_audit/.test(report), "report route exposes source-mix audit for segment-layer vs legacy dependency");
 ok(/segment_readiness_audit/.test(report), "report route exposes segment readiness audit");
 ok(/segment_stability_audit/.test(report) && /segment_solutions/.test(report), "report route exposes segment stability audit and operator-ready solutions");
 ok(/segment_solution_matrix/.test(report), "report route exposes segment solution matrix");

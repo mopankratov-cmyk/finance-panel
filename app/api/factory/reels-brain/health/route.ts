@@ -74,10 +74,12 @@ export async function GET(req: NextRequest) {
           current: worker.worker || null,
           warnings: worker.warnings || [],
         },
+        source_mix_audit: report.source_mix_audit || null,
       },
       sources: {
         providers: availableProviders,
         source_intelligence: report.discovery_brain || null,
+        source_mix_audit: report.source_mix_audit || null,
         autopilot_actions: report.autopilot_actions || null,
       },
     }, { headers: { "Cache-Control": "no-store" } });

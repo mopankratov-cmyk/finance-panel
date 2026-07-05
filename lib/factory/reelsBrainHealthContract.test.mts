@@ -20,7 +20,7 @@ const analyze = readFileSync("app/api/factory/jobs/reels-brain-analyze-backlog/r
 const feedback = readFileSync("app/api/factory/reels-brain/feedback/route.ts", "utf8");
 
 ok(/\/api\/factory\/reels-brain\/progress/.test(route) && /\/api\/factory\/reels-brain\/providers/.test(route) && /\/api\/factory\/worker-state/.test(route), "health route aggregates progress, providers and worker-state");
-ok(/primary_bottleneck/.test(route) && /source_intelligence/.test(route), "health route exposes bottleneck and source intelligence");
+ok(/primary_bottleneck/.test(route) && /source_intelligence/.test(route) && /source_mix_audit/.test(route), "health route exposes bottleneck, source intelligence and legacy-vs-segment source audit");
 ok(/adaptiveCronProfile/.test(cron) && /adaptive_profile/.test(cron), "cron exposes adaptive intensity profile");
 ok(/providerCapForLane/.test(bulk) && /preferredSourceProvider/.test(bulk) && /execution_intent/.test(bulk) && /tuneBulkLaneByExecutionIntent/.test(bulk), "bulk ingest uses preferred provider memory, adaptive caps and execution intent");
 ok(/execution_intent/.test(analyze) && /tuned_build_patterns/.test(analyze) && /pattern_limit/.test(analyze), "analyze backlog exposes compaction tuning and execution intent");
