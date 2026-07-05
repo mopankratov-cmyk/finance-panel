@@ -36,6 +36,13 @@ const result = buildReelsBrainExactSegmentQueue({
       },
     ],
   },
+  discoveryBrain: {
+    providers: [
+      { provider: "apify_tiktok", decision: "scale", reason: "cheap tiktok yield", discovery_score: 82 },
+      { provider: "youtube", decision: "watch", reason: "healthy youtube lane", discovery_score: 58 },
+      { provider: "apify_instagram", decision: "scale", reason: "best instagram lane", discovery_score: 91 },
+    ],
+  },
   segmentPriorityQueue: {
     items: [
       {
@@ -106,6 +113,8 @@ assert.ok((result.items[0]?.expected_trust_gain as number) > 0);
 assert.ok((result.items[0]?.eta_ticks as number) >= 1);
 assert.ok((result.items[0]?.efficiency_score as number) > 0);
 assert.ok((result.items[0]?.data_readiness_score as number) >= 0);
+assert.ok(typeof result.items[0]?.source_provider === "string");
+assert.ok(typeof result.items[0]?.source_discovery_mode === "string");
 assert.match(result.items[1]?.blockers[1] || "", /transfer signal/i);
 
 const rankedByEfficiency = buildReelsBrainExactSegmentQueue({
@@ -146,6 +155,12 @@ const rankedByEfficiency = buildReelsBrainExactSegmentQueue({
         policy_mode: "research_only",
         outcome_status: "no_feedback",
       },
+    ],
+  },
+  discoveryBrain: {
+    providers: [
+      { provider: "youtube", decision: "scale", reason: "best youtube source", discovery_score: 88 },
+      { provider: "apify_instagram", decision: "watch", reason: "usable instagram source", discovery_score: 49 },
     ],
   },
   segmentPriorityQueue: {
@@ -207,5 +222,8 @@ const rankedByEfficiency = buildReelsBrainExactSegmentQueue({
 assert.equal(rankedByEfficiency.items[0]?.niche, "ru_cosmetics");
 assert.ok((rankedByEfficiency.items[0]?.efficiency_score as number) >= (rankedByEfficiency.items[1]?.efficiency_score as number));
 assert.ok((rankedByEfficiency.items[0]?.data_readiness_score as number) > (rankedByEfficiency.items[1]?.data_readiness_score as number));
+assert.equal(rankedByEfficiency.items[0]?.source_provider, "youtube");
+assert.ok(["pin_winner_provider", "close_exact_proof", "controlled_discovery", "seed_and_collect", "probe_and_collect"].includes(String(rankedByEfficiency.items[0]?.source_discovery_mode)));
+assert.ok(Array.isArray(rankedByEfficiency.summary.provider_recommendations));
 
 console.log("reelsBrainExactSegmentQueue: passed");

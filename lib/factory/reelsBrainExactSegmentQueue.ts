@@ -38,6 +38,85 @@ function policyRank(value: string) {
   return 1;
 }
 
+function providerDecisionRank(value: string) {
+  if (value === "scale") return 3;
+  if (value === "watch") return 2;
+  return 1;
+}
+
+function providerPlatformFit(provider: string, platform: string) {
+  const normalized = provider.toLowerCase();
+  if (platform === "youtube") return normalized.includes("youtube") ? 3 : 0;
+  if (platform === "instagram") {
+    if (normalized.includes("instagram")) return normalized.includes("post") ? 2 : 3;
+    return 0;
+  }
+  if (platform === "tiktok") {
+    if (normalized.includes("tiktok")) return 3;
+    if (normalized === "apify" || normalized === "virlo") return 2;
+    return 0;
+  }
+  return 0;
+}
+
+function defaultProviderForPlatform(platform: string) {
+  if (platform === "youtube") return "youtube";
+  if (platform === "instagram") return "apify_instagram";
+  return "apify_tiktok";
+}
+
+function providerRecommendation(input: {
+  providers: JsonRecord[];
+  platform: string;
+  policyMode: string;
+  dataReadinessScore: number;
+  status: string;
+}) {
+  const ranked = input.providers
+    .map((row) => ({
+      provider: text(row.provider),
+      decision: text(row.decision, "watch"),
+      reason: text(row.reason),
+      discovery_score: num(row.discovery_score),
+      fit: providerPlatformFit(text(row.provider), input.platform),
+    }))
+    .filter((row) => row.provider && row.fit > 0)
+    .sort((a, b) =>
+      providerDecisionRank(b.decision) - providerDecisionRank(a.decision)
+      || b.fit - a.fit
+      || b.discovery_score - a.discovery_score
+      || a.provider.localeCompare(b.provider),
+    );
+  const best = ranked[0] || null;
+  const provider = best?.provider || defaultProviderForPlatform(input.platform);
+  const decision = best?.decision || "watch";
+  const discoveryMode = input.status === "missing_exact_segment"
+    ? input.dataReadinessScore < 40
+      ? "seed_and_collect"
+      : "close_exact_proof"
+    : input.policyMode === "primary"
+      ? "pin_winner_provider"
+      : input.policyMode === "control_only"
+        ? "controlled_discovery"
+        : input.dataReadinessScore >= 60
+          ? "close_exact_proof"
+          : "probe_and_collect";
+  const reason = best?.reason
+    || (discoveryMode === "seed_and_collect"
+      ? "Сегмент ещё сырой по data layer: сначала узко собрать seed-корпус."
+      : discoveryMode === "pin_winner_provider"
+        ? "Сегмент уже близок к production, поэтому лучше идти через лучшего текущего провайдера."
+        : discoveryMode === "controlled_discovery"
+          ? "Сегмент лучше закрывать через control-ready discovery, без широкого explore."
+          : "Идём через узкий provider-focused сбор, чтобы быстрее закрыть exact-proof.");
+  return {
+    provider,
+    provider_decision: decision,
+    discovery_mode: discoveryMode,
+    provider_reason: reason,
+  };
+}
+
 function readinessBlend(input: {
   directRate: number;
   audioRate: number;
@@ -66,6 +145,9 @@ export function buildReelsBrainExactSegmentQueue(input: {
   } | null;
   generationPolicy?: {
     by_segment?: JsonRecord[];
+  } | null;
+  discoveryBrain?: {
+    providers?: JsonRecord[];
   } | null;
   segmentPriorityQueue?: {
     items?: JsonRecord[];
@@ -177,6 +259,13 @@ export function buildReelsBrainExactSegmentQueue(input: {
       - (text(policy.policy_mode) === "primary" ? 0.9 : text(policy.policy_mode) === "control_only" ? 0.4 : 0),
     )));
     const efficiencyScore = Math.round(((expectedTrustGain * (0.55 + dataReadinessScore / 100)) / etaTicks) * 10) / 10;
+    const sourceStrategy = providerRecommendation({
+      providers: records(input.discoveryBrain?.providers),
+      platform,
+      policyMode: text(policy.policy_mode, "research_only"),
+      dataReadinessScore,
+      status,
+    });
 
     return {
       niche,
@@ -197,6 +286,10 @@ export function buildReelsBrainExactSegmentQueue(input: {
       eta_ticks: etaTicks,
       efficiency_score: efficiencyScore,
       data_readiness_score: dataReadinessScore,
+      source_provider: sourceStrategy.provider,
+      source_provider_decision: sourceStrategy.provider_decision,
+      source_discovery_mode: sourceStrategy.discovery_mode,
+      source_provider_reason: sourceStrategy.provider_reason,
       readiness_direct_rate: readinessDirectRate,
       readiness_audio_rate: readinessAudioRate,
       readiness_transcript_ready_rate: readinessTranscriptRate,
@@ -244,6 +337,7 @@ export function buildReelsBrainExactSegmentQueue(input: {
       avg_expected_trust_gain: items.length ? Math.round(items.reduce((sum, row) => sum + row.expected_trust_gain, 0) / items.length) : 0,
       avg_eta_ticks: items.length ? Math.round((items.reduce((sum, row) => sum + row.eta_ticks, 0) / items.length) * 10) / 10 : 0,
       avg_data_readiness_score: items.length ? Math.round(items.reduce((sum, row) => sum + row.data_readiness_score, 0) / items.length) : 0,
+      provider_recommendations: Array.from(new Set(items.map((row) => row.source_provider).filter(Boolean))).slice(0, 6),
     },
     items: items.slice(0, Math.max(4, input.limit || 8)),
   };

@@ -2875,6 +2875,7 @@ export async function GET(req: NextRequest) {
       portfolioReadiness,
       segmentSolutionMatrix,
       generationPolicy,
+      discoveryBrain,
       segmentPriorityQueue,
       limit: compactMode ? 6 : 10,
     });

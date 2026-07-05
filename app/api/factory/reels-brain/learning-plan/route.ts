@@ -195,6 +195,12 @@ export async function GET(req: NextRequest) {
           avg_expected_trust_gain: num((exactSegmentQueue.summary as JsonRecord | undefined)?.avg_expected_trust_gain),
           avg_eta_ticks: num((exactSegmentQueue.summary as JsonRecord | undefined)?.avg_eta_ticks),
           avg_data_readiness_score: num((exactSegmentQueue.summary as JsonRecord | undefined)?.avg_data_readiness_score),
+          provider_recommendations: Array.isArray((exactSegmentQueue.summary as JsonRecord | undefined)?.provider_recommendations)
+            ? ((exactSegmentQueue.summary as JsonRecord | undefined)?.provider_recommendations as unknown[])
+                .map((item) => String(item || "").trim())
+                .filter(Boolean)
+                .slice(0, 6)
+            : [],
           items: exactQueueItems.slice(0, 6),
         },
         segment_stability: {
