@@ -2205,6 +2205,8 @@ export async function GET(req: NextRequest) {
       .slice(-limit)
       .map((run) => {
         const costUnits = unitCost(run);
+        const patternGainProxy = num(run.pattern_gain_proxy);
+        const highTrustGainProxy = num(run.high_trust_gain_proxy);
         return {
           id: run.id,
           mode: run.mode,
@@ -2220,15 +2222,20 @@ export async function GET(req: NextRequest) {
           errors: run.errors,
           best_provider: run.best_provider || null,
           cost_units: costUnits,
+          pattern_gain_proxy: patternGainProxy,
+          high_trust_gain_proxy: highTrustGainProxy,
           spend_usd: spendUsd(run).value,
           spend_source: spendUsd(run).source,
           inserted_per_100_cost_units: Math.round((run.inserted / costUnits) * 1000) / 10,
           analyzed_per_100_cost_units: Math.round((run.analyzed / costUnits) * 1000) / 10,
+          pattern_gain_per_100_cost_units: costUnits > 0 ? Math.round((patternGainProxy / costUnits) * 1000) / 10 : 0,
           cost_units_per_inserted: run.inserted > 0 ? Math.round((costUnits / run.inserted) * 10) / 10 : null,
           cost_units_per_analyzed: run.analyzed > 0 ? Math.round((costUnits / run.analyzed) * 10) / 10 : null,
+          cost_units_per_pattern_gain: patternGainProxy > 0 ? Math.round((costUnits / patternGainProxy) * 10) / 10 : null,
           usd_per_inserted: run.inserted > 0 ? perUnit(spendUsd(run).value, run.inserted) : null,
           usd_per_analyzed: run.analyzed > 0 ? perUnit(spendUsd(run).value, run.analyzed) : null,
           usd_per_relevant: run.relevant > 0 ? perUnit(spendUsd(run).value, run.relevant) : null,
+          usd_per_pattern_gain: patternGainProxy > 0 ? perUnit(spendUsd(run).value, patternGainProxy) : null,
         };
       });
 
@@ -2237,15 +2244,18 @@ export async function GET(req: NextRequest) {
     let cumulativeInserted = 0;
     let cumulativeAnalyzed = 0;
     let cumulativeCost = 0;
+    let cumulativePatternGain = 0;
     const timeline = chronologicalRuns.map((run) => {
       cumulativeInserted += run.inserted;
       cumulativeAnalyzed += run.analyzed;
       cumulativeCost += run.cost_units;
+      cumulativePatternGain += run.pattern_gain_proxy;
       return {
         ...run,
         cumulative_inserted: cumulativeInserted,
         cumulative_analyzed: cumulativeAnalyzed,
         cumulative_cost_units: cumulativeCost,
+        cumulative_pattern_gain_proxy: Math.round(cumulativePatternGain * 10) / 10,
       };
     });
 
@@ -2265,6 +2275,8 @@ export async function GET(req: NextRequest) {
         retries: 0,
         errors: 0,
         cost_units: 0,
+        pattern_gain_proxy: 0,
+        high_trust_gain_proxy: 0,
         spend_usd: 0,
         spend_source: "estimated" as "estimated" | "actual" | "mixed",
       };
@@ -2276,6 +2288,8 @@ export async function GET(req: NextRequest) {
       current.retries += row.retries;
       current.errors += row.errors;
       current.cost_units += row.cost_units;
+      current.pattern_gain_proxy += row.pattern_gain_proxy;
+      current.high_trust_gain_proxy += row.high_trust_gain_proxy;
       current.spend_usd += row.spend_usd;
       if (current.spend_source !== row.spend_source) current.spend_source = current.runs > 1 ? "mixed" : row.spend_source;
       map.set(key, current);
@@ -2290,6 +2304,8 @@ export async function GET(req: NextRequest) {
       retries: number;
       errors: number;
       cost_units: number;
+      pattern_gain_proxy: number;
+      high_trust_gain_proxy: number;
       spend_usd: number;
       spend_source: "estimated" | "actual" | "mixed";
     }>()).values())
@@ -2301,7 +2317,9 @@ export async function GET(req: NextRequest) {
         usd_per_inserted: perUnit(row.spend_usd, row.inserted),
         usd_per_analyzed: perUnit(row.spend_usd, row.analyzed),
         usd_per_relevant: perUnit(row.spend_usd, row.relevant),
+        usd_per_pattern_gain: row.pattern_gain_proxy > 0 ? perUnit(row.spend_usd, row.pattern_gain_proxy) : null,
         cost_units_per_inserted: perUnit(row.cost_units, row.inserted),
+        cost_units_per_pattern_gain: row.pattern_gain_proxy > 0 ? perUnit(row.cost_units, row.pattern_gain_proxy) : null,
       }));
     const today = dailyRows.find((row) => row.date === todayKey) || null;
     const yesterday = dailyRows.find((row) => row.date === yesterdayKey) || null;
@@ -2315,6 +2333,12 @@ export async function GET(req: NextRequest) {
     const avgPreviousCost = previousIntake.length
       ? previousIntake.reduce((sum, row) => sum + (row.cost_units_per_inserted || 0), 0) / previousIntake.length
       : null;
+    const avgRecentPatternGainCost = recentIntake.length
+      ? recentIntake.reduce((sum, row) => sum + (row.cost_units_per_pattern_gain || 0), 0) / recentIntake.length
+      : null;
+    const avgPreviousPatternGainCost = previousIntake.length
+      ? previousIntake.reduce((sum, row) => sum + (row.cost_units_per_pattern_gain || 0), 0) / previousIntake.length
+      : null;
     const totals = {
       total_videos: nicheSummaries.reduce((sum, row) => sum + row.total_videos, 0),
       analyzed_videos: nicheSummaries.reduce((sum, row) => sum + row.analyzed_videos, 0),
@@ -2324,9 +2348,14 @@ export async function GET(req: NextRequest) {
       avg_understanding_score: nicheSummaries.length
         ? Math.round(nicheSummaries.reduce((sum, row) => sum + row.understanding_score, 0) / nicheSummaries.length)
         : 0,
+      pattern_gain_proxy_total: Math.round(timeline.reduce((sum, row) => sum + row.pattern_gain_proxy, 0) * 10) / 10,
+      high_trust_gain_proxy_total: Math.round(timeline.reduce((sum, row) => sum + row.high_trust_gain_proxy, 0) * 10) / 10,
       cost_units_per_inserted_recent: avgRecentCost == null ? null : Math.round(avgRecentCost * 10) / 10,
       cost_units_per_inserted_previous: avgPreviousCost == null ? null : Math.round(avgPreviousCost * 10) / 10,
+      cost_units_per_pattern_gain_recent: avgRecentPatternGainCost == null ? null : Math.round(avgRecentPatternGainCost * 10) / 10,
+      cost_units_per_pattern_gain_previous: avgPreviousPatternGainCost == null ? null : Math.round(avgPreviousPatternGainCost * 10) / 10,
       cost_trend: trendLabel(avgRecentCost, avgPreviousCost),
+      pattern_gain_cost_trend: trendLabel(avgRecentPatternGainCost, avgPreviousPatternGainCost),
       today_usd_per_useful_video: todayUseful,
       yesterday_usd_per_useful_video: yesterdayUseful,
       day_cost_trend: trendLabel(todayUseful, yesterdayUseful),

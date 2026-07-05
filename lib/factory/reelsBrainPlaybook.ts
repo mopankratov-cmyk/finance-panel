@@ -114,6 +114,8 @@ export interface ReelsBrainAutomationRunHistoryEntry {
   errors: number;
   best_provider?: string | null;
   cost_units?: number;
+  pattern_gain_proxy?: number;
+  high_trust_gain_proxy?: number;
   estimated_spend_usd?: number;
   actual_spend_usd?: number | null;
   spend_source?: "estimated" | "actual";
@@ -642,6 +644,8 @@ export function automationRunHistory(playbook: unknown): ReelsBrainAutomationRun
       errors: Math.max(0, num(row.errors, 0)),
       best_provider: row.best_provider ? String(row.best_provider) : null,
       cost_units: Math.max(0, num(row.cost_units, 0)) || undefined,
+      pattern_gain_proxy: Math.max(0, num(row.pattern_gain_proxy, 0)) || undefined,
+      high_trust_gain_proxy: Math.max(0, num(row.high_trust_gain_proxy, 0)) || undefined,
       estimated_spend_usd: Math.max(0, num(row.estimated_spend_usd, 0)) || undefined,
       actual_spend_usd: row.actual_spend_usd == null ? null : Math.max(0, num(row.actual_spend_usd, 0)),
       spend_source: row.spend_source === "actual" ? "actual" : row.spend_source === "estimated" ? "estimated" : undefined,
@@ -674,6 +678,8 @@ export function rememberAutomationRun(
     errors: Math.max(0, num(input.errors, 0)),
     best_provider: input.best_provider || null,
     cost_units: Math.max(0, num(input.cost_units, 0)) || undefined,
+    pattern_gain_proxy: Math.max(0, num(input.pattern_gain_proxy, 0)) || undefined,
+    high_trust_gain_proxy: Math.max(0, num(input.high_trust_gain_proxy, 0)) || undefined,
     estimated_spend_usd: Math.max(0, num(input.estimated_spend_usd, 0)) || undefined,
     actual_spend_usd: input.actual_spend_usd == null ? null : Math.max(0, num(input.actual_spend_usd, 0)),
     spend_source: input.spend_source === "actual" ? "actual" : input.spend_source === "estimated" ? "estimated" : undefined,

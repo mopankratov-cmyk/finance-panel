@@ -41,6 +41,8 @@ type BulkProviderRun = {
   provider: ReelsBrainProvider;
   query: string;
   cost_units?: number;
+  pattern_gain_proxy?: number;
+  high_trust_gain_proxy?: number;
   ok: boolean;
   found?: number;
   normalized?: number;
@@ -50,6 +52,40 @@ type BulkProviderRun = {
   elapsed_ms?: number;
   error?: string | null;
 };
+
+function patternGainProxyForBulkRun(input: {
+  lane: ReelsBrainCorpusGrowthLane & { execution_strategy?: string };
+  inserted: number;
+  enriched: number;
+  found: number;
+}) {
+  const inserted = Math.max(0, Number(input.inserted || 0));
+  const enriched = Math.max(0, Number(input.enriched || 0));
+  const found = Math.max(0, Number(input.found || 0));
+  if (inserted < 1 && enriched < 1) {
+    return { pattern_gain_proxy: 0, high_trust_gain_proxy: 0 };
+  }
+  const strategy = String(input.lane.execution_strategy || "");
+  const progressWeight = input.lane.progress_pct < 35 ? 1.4 : input.lane.progress_pct < 65 ? 1.15 : 0.9;
+  const gapWeight = input.lane.gap > 0 ? 1 + Math.min(0.45, input.lane.gap / Math.max(1, input.lane.corpus_target) * 0.6) : 1;
+  const strategyWeight = strategy === "close_portfolio_gap"
+    ? 1.5
+    : strategy === "support_primary_segment"
+      ? 1.35
+      : strategy === "support_control_segment"
+        ? 1.2
+        : strategy === "explore_research_segment"
+          ? 1.15
+          : 1;
+  const usefulness = inserted * 0.75 + enriched * 1.2 + Math.min(inserted, found) * 0.15;
+  const patternGain = Math.round(usefulness * progressWeight * gapWeight * strategyWeight * 10) / 10;
+  const highTrustWeight = strategy === "close_portfolio_gap" || strategy === "support_primary_segment" ? 0.42 : strategy === "support_control_segment" ? 0.24 : 0.12;
+  const highTrustGain = Math.round(patternGain * highTrustWeight * 10) / 10;
+  return {
+    pattern_gain_proxy: patternGain,
+    high_trust_gain_proxy: highTrustGain,
+  };
+}
 
 function providersFor(platform: "tiktok" | "instagram" | "youtube", requested: unknown): ReelsBrainProvider[] {
   if (Array.isArray(requested) && requested.length) {
@@ -525,6 +561,12 @@ async function runBulk(req: NextRequest, body: Record<string, unknown>, execute:
           }
         }
         return {
+          ...patternGainProxyForBulkRun({
+            lane,
+            inserted,
+            enriched,
+            found: result.videos.length,
+          }),
           niche: lane.niche,
           platform: lane.platform,
           provider,

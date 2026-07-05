@@ -11,6 +11,8 @@ type AutomationRunLike = {
   analyzed?: number;
   provider?: string;
   cost_units?: number;
+  pattern_gain_proxy?: number;
+  high_trust_gain_proxy?: number;
   estimated_spend_usd?: number;
   actual_spend_usd?: number | null;
   spend_source?: "estimated" | "actual";
@@ -69,6 +71,8 @@ export function summarizeReelsBrainAutomationRuns(input: {
   let retries = 0;
   let errors = 0;
   let costUnits = 0;
+  let patternGainProxy = 0;
+  let highTrustGainProxy = 0;
   let estimatedSpendUsd = 0;
   let actualSpendUsd = 0;
   let hasActualSpend = false;
@@ -87,6 +91,8 @@ export function summarizeReelsBrainAutomationRuns(input: {
     retries += num(metrics?.retries);
     const runCostUnits = num(run.cost_units);
     costUnits += runCostUnits;
+    patternGainProxy += num(run.pattern_gain_proxy);
+    highTrustGainProxy += num(run.high_trust_gain_proxy);
     estimatedSpendUsd += num(run.estimated_spend_usd) || estimatedUsdFromCostUnits(runCostUnits);
     if (run.actual_spend_usd != null) {
       actualSpendUsd += num(run.actual_spend_usd);
@@ -114,6 +120,8 @@ export function summarizeReelsBrainAutomationRuns(input: {
     errors,
     best_provider: bestProvider,
     cost_units: costUnits || undefined,
+    pattern_gain_proxy: patternGainProxy ? Math.round(patternGainProxy * 10) / 10 : undefined,
+    high_trust_gain_proxy: highTrustGainProxy ? Math.round(highTrustGainProxy * 10) / 10 : undefined,
     estimated_spend_usd: estimatedSpendUsd ? Math.round(estimatedSpendUsd * 10000) / 10000 : undefined,
     actual_spend_usd: hasActualSpend ? Math.round(actualSpendUsd * 10000) / 10000 : null,
     spend_source: hasActualSpend ? "actual" : costUnits > 0 ? "estimated" : undefined,
