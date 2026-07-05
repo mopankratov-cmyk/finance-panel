@@ -32,8 +32,12 @@ function defaultPolicyReason(primary: JsonRecord | null, nextGap: JsonRecord | n
   const readiness = num(primary?.readiness_score);
   const trustBand = text(primary?.trust_band, "low");
   const evidenceBand = text((primary?.trust_summary as JsonRecord | null)?.evidence_band, "missing");
+  const proofQuality = text((primary?.trust_summary as JsonRecord | null)?.proof_quality, "untraced");
   const label = text(primary?.label, scope === "niche" ? "niche segment" : "platform segment");
   const gapLabel = text(nextGap?.label || nextGap?.platform || nextGap?.niche);
+  if (modeFromProductionState(primary?.production_state) === "primary" && proofQuality === "exact_segment") {
+    return `${label} уже publishable exact policy: trust ${trustBand}, evidence ${evidenceBand}, readiness ${readiness}.`;
+  }
   if (modeFromProductionState(primary?.production_state) === "primary") {
     return `${label} уже можно использовать как основной policy: trust ${trustBand}, evidence ${evidenceBand}, readiness ${readiness}.`;
   }
@@ -49,6 +53,8 @@ function buildPolicyRow(row: JsonRecord, scope: "niche" | "platform") {
   const trustSummary = (primary?.trust_summary && typeof primary.trust_summary === "object" ? primary.trust_summary : {}) as JsonRecord;
   const outcomeStatus = text(trustSummary.outcome_status, "no_feedback");
   const policyMode = outcomeAdjustedPolicyMode(modeFromProductionState(primary?.production_state), outcomeStatus);
+  const proofQuality = text(trustSummary.proof_quality, "untraced");
+  const publishableExact = text(primary?.production_state) === "ready_now" && proofQuality === "exact_segment";
   const brief = (primary?.creative_brief && typeof primary.creative_brief === "object" ? primary.creative_brief : {}) as JsonRecord;
   const hypothesis = (primary?.hypothesis && typeof primary.hypothesis === "object" ? primary.hypothesis : {}) as JsonRecord;
   const decision = (primary?.content_decision && typeof primary.content_decision === "object" ? primary.content_decision : {}) as JsonRecord;
@@ -59,6 +65,8 @@ function buildPolicyRow(row: JsonRecord, scope: "niche" | "platform") {
     automation_allowed: policyMode !== "research_only",
     trust_band: text(primary?.trust_band, "low"),
     evidence_band: text(trustSummary.evidence_band, "missing"),
+    publishable_exact: publishableExact,
+    proof_quality: proofQuality,
     outcome_status: outcomeStatus,
     outcome_confidence: text(trustSummary.outcome_confidence, "none"),
     readiness_score: num(primary?.readiness_score),
@@ -84,6 +92,7 @@ function buildPolicyRow(row: JsonRecord, scope: "niche" | "platform") {
       outcomeStatus === "promising" && modeFromProductionState(primary?.production_state) === "primary"
         ? "Market outcome ещё только формируется: primary policy понижен до control_only."
         : "",
+      publishableExact ? "Это publishable exact segment: его нужно предпочитать transfer-ready альтернативам." : "",
     ].filter(Boolean).join(" "),
   };
 }
@@ -103,13 +112,15 @@ export function buildReelsBrainGenerationPolicy(input: {
     ? input.segmentSolutionMatrix?.by_platform.map((row) => buildPolicyRow(row, "platform"))
     : [];
   const bySegment = Array.isArray(input.segmentSolutionMatrix?.by_segment)
-    ? input.segmentSolutionMatrix?.by_segment.slice(0, 12).map((row) => ({
+      ? input.segmentSolutionMatrix?.by_segment.slice(0, 12).map((row) => ({
         label: text(row.label),
         niche: text(row.niche),
         platform: text(row.platform),
         policy_mode: modeFromProductionState(row.production_state),
         trust_band: text(row.trust_band, "low"),
         evidence_band: text(((row.trust_summary as JsonRecord | null)?.evidence_band), "missing"),
+        proof_quality: text(((row.trust_summary as JsonRecord | null)?.proof_quality), "untraced"),
+        publishable_exact: text(row.production_state) === "ready_now" && text(((row.trust_summary as JsonRecord | null)?.proof_quality), "untraced") === "exact_segment",
         readiness_score: num(row.readiness_score),
         brief_hook: text(((row.creative_brief as JsonRecord | null)?.hook)),
         decision: text(((row.content_decision as JsonRecord | null)?.decision)),
@@ -124,8 +135,11 @@ export function buildReelsBrainGenerationPolicy(input: {
       controlled_test: num(input.segmentSolutionMatrix?.summary?.controlled_test),
       research_only: num(input.segmentSolutionMatrix?.summary?.research_only),
       high_trust_segments: num(input.segmentSolutionMatrix?.summary?.high_trust_segments),
+      publishable_exact_segments: num(input.segmentSolutionMatrix?.summary?.publishable_exact_segments),
       primary_niches: byNiche.filter((row) => row.policy_mode === "primary").length,
+      primary_exact_niches: byNiche.filter((row) => row.policy_mode === "primary" && row.publishable_exact).length,
       primary_platforms: byPlatform.filter((row) => row.policy_mode === "primary").length,
+      primary_exact_platforms: byPlatform.filter((row) => row.policy_mode === "primary" && row.publishable_exact).length,
     },
     global_default: bySegment[0] || null,
     by_niche: byNiche,

@@ -42,8 +42,16 @@ function productionRank(value: unknown) {
   return 1;
 }
 
+function publishableExact(row: JsonRecord | null | undefined) {
+  if (!row) return false;
+  const trustSummary = (row.trust_summary && typeof row.trust_summary === "object" ? row.trust_summary : {}) as JsonRecord;
+  return text(row.production_state) === "ready_now"
+    && text(trustSummary.proof_quality) === "exact_segment";
+}
+
 function itemSort(a: JsonRecord, b: JsonRecord) {
-  return productionRank(b.production_state) - productionRank(a.production_state)
+  return Number(publishableExact(b)) - Number(publishableExact(a))
+    || productionRank(b.production_state) - productionRank(a.production_state)
     || trustRank(b.trust_band) - trustRank(a.trust_band)
     || evidenceRank((b.trust_summary as JsonRecord | null)?.evidence_band) - evidenceRank((a.trust_summary as JsonRecord | null)?.evidence_band)
     || num((b.trust_summary as JsonRecord | null)?.stability_score) - num((a.trust_summary as JsonRecord | null)?.stability_score)
@@ -72,6 +80,7 @@ function summarizeGroup(groupKey: string, items: JsonRecord[], dimension: "niche
   const controlled = sorted.filter((row) => text(row.production_state) === "controlled_test").length;
   const research = sorted.filter((row) => text(row.production_state) === "research_only").length;
   const highTrust = sorted.filter((row) => text(row.trust_band) === "high").length;
+  const publishableExactCount = sorted.filter((row) => publishableExact(row)).length;
   const avgReadiness = sorted.length ? Math.round(sorted.reduce((sum, row) => sum + num(row.readiness_score), 0) / sorted.length) : 0;
   const avgStability = sorted.length
     ? Math.round(sorted.reduce((sum, row) => sum + num((row.trust_summary as JsonRecord | null)?.stability_score), 0) / sorted.length)
@@ -89,12 +98,14 @@ function summarizeGroup(groupKey: string, items: JsonRecord[], dimension: "niche
     label: groupKey,
     trust_band: primary ? text(primary.trust_band, "low") : "low",
     evidence_band: primary ? text((primary.trust_summary as JsonRecord | null)?.evidence_band, "missing") : "missing",
+    publishable_exact: Boolean(primary && publishableExact(primary)),
     avg_readiness_score: avgReadiness,
     avg_stability_score: avgStability,
     ready_now: readyNow,
     controlled_test: controlled,
     research_only: research,
     high_trust: highTrust,
+    publishable_exact_segments: publishableExactCount,
     total_segments: sorted.length,
     coverage_labels: coverage,
     primary,
@@ -130,7 +141,8 @@ export function buildReelsBrainSegmentSolutionMatrix(input: {
     .map((niche) => summarizeGroup(niche, items.filter((row) => text(row.niche) === niche), "niche"))
     .filter((row) => row.total_segments > 0)
     .sort((a, b) =>
-      productionRank((b.primary as JsonRecord | null)?.production_state) - productionRank((a.primary as JsonRecord | null)?.production_state)
+      Number(Boolean(b.publishable_exact)) - Number(Boolean(a.publishable_exact))
+      || productionRank((b.primary as JsonRecord | null)?.production_state) - productionRank((a.primary as JsonRecord | null)?.production_state)
       || trustRank((b.primary as JsonRecord | null)?.trust_band) - trustRank((a.primary as JsonRecord | null)?.trust_band)
       || b.avg_readiness_score - a.avg_readiness_score
       || text(a.niche).localeCompare(text(b.niche)),
@@ -139,7 +151,8 @@ export function buildReelsBrainSegmentSolutionMatrix(input: {
     .map((platform) => summarizeGroup(platform, items.filter((row) => text(row.platform) === platform), "platform"))
     .filter((row) => row.total_segments > 0)
     .sort((a, b) =>
-      productionRank((b.primary as JsonRecord | null)?.production_state) - productionRank((a.primary as JsonRecord | null)?.production_state)
+      Number(Boolean(b.publishable_exact)) - Number(Boolean(a.publishable_exact))
+      || productionRank((b.primary as JsonRecord | null)?.production_state) - productionRank((a.primary as JsonRecord | null)?.production_state)
       || trustRank((b.primary as JsonRecord | null)?.trust_band) - trustRank((a.primary as JsonRecord | null)?.trust_band)
       || b.avg_readiness_score - a.avg_readiness_score
       || text(a.platform).localeCompare(text(b.platform)),
@@ -152,6 +165,7 @@ export function buildReelsBrainSegmentSolutionMatrix(input: {
       controlled_test: items.filter((row) => text(row.production_state) === "controlled_test").length,
       research_only: items.filter((row) => text(row.production_state) === "research_only").length,
       high_trust_segments: items.filter((row) => text(row.trust_band) === "high").length,
+      publishable_exact_segments: items.filter((row) => publishableExact(row)).length,
       niches: byNiche.length,
       platforms: byPlatform.length,
       source_summary: input.segmentSolutions?.summary || null,

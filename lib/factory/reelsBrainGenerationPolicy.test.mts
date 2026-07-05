@@ -11,11 +11,13 @@ test("buildReelsBrainGenerationPolicy maps solution matrix into generation modes
         controlled_test: 1,
         research_only: 1,
         high_trust_segments: 1,
+        publishable_exact_segments: 1,
       },
       by_niche: [
         {
           niche: "ru_toys",
           label: "ru_toys",
+          publishable_exact: true,
           coverage_labels: ["instagram", "tiktok"],
           next_gap: { label: "ru_toys × youtube" },
           primary: {
@@ -24,7 +26,7 @@ test("buildReelsBrainGenerationPolicy maps solution matrix into generation modes
             trust_band: "high",
             production_state: "ready_now",
             trust_why: ["stable corpus"],
-            trust_summary: { evidence_band: "stable", stability_score: 84, blockers: [] },
+            trust_summary: { evidence_band: "stable", stability_score: 84, blockers: [], proof_quality: "exact_segment" },
             creative_brief: { title: "Reveal brief", hook: "Смотри что внутри", retention: "open loop", structure: "reveal", do_not_copy: ["text"] },
             hypothesis: { title: "Reveal wins", text: "Reveal boosts hold", success_metric: "3s hold" },
             content_decision: { title: "Scale reveal", decision: "scale", success_metric: "3s hold", guardrails: ["no direct copy"] },
@@ -58,7 +60,7 @@ test("buildReelsBrainGenerationPolicy maps solution matrix into generation modes
           readiness_score: 90,
           trust_band: "high",
           production_state: "ready_now",
-          trust_summary: { evidence_band: "stable" },
+          trust_summary: { evidence_band: "stable", proof_quality: "exact_segment" },
           creative_brief: { hook: "Segment hook" },
           hypothesis: { text: "Segment hypothesis" },
           content_decision: { decision: "scale" },
@@ -68,10 +70,15 @@ test("buildReelsBrainGenerationPolicy maps solution matrix into generation modes
   });
 
   assert.equal(result.summary.primary_niches, 1);
+  assert.equal(result.summary.publishable_exact_segments, 1);
+  assert.equal(result.summary.primary_exact_niches, 1);
   assert.equal(result.summary.primary_platforms, 0);
   assert.equal(result.global_default?.policy_mode, "primary");
+  assert.equal(result.global_default?.publishable_exact, true);
   assert.equal(result.by_niche[0]?.policy_mode, "primary");
+  assert.equal(result.by_niche[0]?.publishable_exact, true);
   assert.equal(result.by_niche[0]?.brief_hook, "Смотри что внутри");
+  assert.match(String(result.by_niche[0]?.policy_reason), /publishable exact policy/i);
   assert.equal(result.by_platform[0]?.policy_mode, "control_only");
 });
 
