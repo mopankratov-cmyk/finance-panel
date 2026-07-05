@@ -512,6 +512,10 @@ const briefBundleCompletionTick = buildReelsBrainNextTick({
         lane: "ship",
         missing_fields: ["visual recipe"],
         missing_field_families: ["visual"],
+        unlocked_output: "publishable_visual_brief",
+        projected_trust_gain_score: 33,
+        projected_trust_gain_band: "high",
+        projected_production_state: "publishable_exact",
       },
     ],
   },
@@ -527,6 +531,8 @@ assert.equal((briefBundleCompletionTick.params as Record<string, unknown>).famil
 assert.match(briefBundleCompletionTick.label, /usable brief/i);
 assert.match(briefBundleCompletionTick.reason, /usable creative export/i);
 assert.match(briefBundleCompletionTick.reason, /Главный пробел сейчас: visual recipe/);
+assert.match(briefBundleCompletionTick.reason, /Что откроется после фикса: publishable_visual_brief/);
+assert.match(briefBundleCompletionTick.reason, /Ожидаемый trust delta: \+\d+ \(high\)/);
 assert.equal((briefBundleCompletionTick.brief_gap_progress_focus as Record<string, unknown>)?.label, "ru_toys × tiktok");
 
 const shipReadyBundleCompletionTick = buildReelsBrainNextTick({
@@ -575,6 +581,22 @@ const shipReadyBundleCompletionTick = buildReelsBrainNextTick({
       },
     ],
   },
+  briefGapProgress: {
+    top_candidates: [
+      {
+        niche: "ru_clothing",
+        platform: "instagram",
+        label: "ru_clothing × instagram",
+        lane: "ship",
+        missing_fields: ["visual_recipe"],
+        missing_field_families: ["visual"],
+        unlocked_output: "publishable_visual_brief",
+        projected_trust_gain_score: 31,
+        projected_trust_gain_band: "high",
+        projected_production_state: "publishable_exact",
+      },
+    ],
+  },
 });
 
 assert.equal(shipReadyBundleCompletionTick.task, "analyze_backlog");
@@ -587,5 +609,6 @@ assert.equal((shipReadyBundleCompletionTick.params as Record<string, unknown>).f
 assert.match(shipReadyBundleCompletionTick.label, /ship-ready bundle/i);
 assert.match(shipReadyBundleCompletionTick.reason, /publishable exact brief/i);
 assert.match(shipReadyBundleCompletionTick.reason, /Главный пробел сейчас: visual_recipe/);
+assert.match(shipReadyBundleCompletionTick.reason, /Что откроется после фикса:/);
 
 console.log("reelsBrainLearningPlan: passed");

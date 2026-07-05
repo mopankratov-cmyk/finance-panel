@@ -191,6 +191,19 @@ function firstGapFocus(row: JsonRecord | null | undefined) {
   };
 }
 
+function gapOutcomeLine(row: JsonRecord | null | undefined) {
+  const unlocked = text(row?.unlocked_output);
+  const trustBand = text(row?.projected_trust_gain_band);
+  const trustScore = num(row?.projected_trust_gain_score);
+  const productionState = text(row?.projected_production_state);
+  const parts = [
+    unlocked ? ` Что откроется после фикса: ${unlocked}.` : "",
+    trustScore > 0 ? ` Ожидаемый trust delta: +${trustScore}${trustBand ? ` (${trustBand})` : ""}.` : "",
+    productionState ? ` Следующее состояние: ${productionState}.` : "",
+  ].filter(Boolean);
+  return parts.join("");
+}
+
 export function pickPortfolioFocusSegment(portfolioReadiness?: JsonRecord | null) {
   const candidates = Array.isArray(portfolioReadiness?.missing_segments)
     ? (portfolioReadiness?.missing_segments as JsonRecord[])
@@ -303,10 +316,16 @@ export function buildReelsBrainNextTick(input: {
     || null,
   );
   const briefGapFocus = firstGapFocus(briefGapCandidates[0] || records((input.briefCoverageAudit as BriefCoverageAuditSummary | null | undefined)?.gap_queue)[0] || null);
+  const briefGapOutcome = gapOutcomeLine(briefGapCandidates[0] || null);
   const shipGapFocus = firstGapFocus(
     briefGapProgressFocusSegment && text((briefGapProgressFocusSegment as JsonRecord).lane) === "ship"
       ? briefGapProgressFocusSegment
       : shipReadyTopCandidates[0] || shipReadyItems[0] || null,
+  );
+  const shipGapOutcome = gapOutcomeLine(
+    briefGapProgressFocusSegment && text((briefGapProgressFocusSegment as JsonRecord).lane) === "ship"
+      ? briefGapProgressFocusSegment
+      : null,
   );
   const shipReadySummary = ((shipReadyQueue as ShipReadyQueueSummary | null | undefined)?.summary || {}) as JsonRecord;
   const publishableExactGapSegment = pickPublishableExactFocusSegment({
@@ -373,8 +392,8 @@ export function buildReelsBrainNextTick(input: {
         ? `Дожать ship-ready bundle для ${String(prioritySegment?.label || "")}`
         : `Дожать usable brief для ${String(prioritySegment?.label || "")}`,
       reason: shipReadyDecisionSegment
-        ? `${String(prioritySegment?.label || "")} уже попал в ship-ready очередь: trust и exact-proof на месте, но production-grade brief bundle ещё не закрыт.${shipGapFocus.field ? ` Главный пробел сейчас: ${shipGapFocus.field}.` : ""} Следующий цикл лучше потратить на analyze + pattern compaction по этому сегменту, чтобы добить missing fields и перевести его в реально publishable exact brief.`
-        : `${String(prioritySegment?.label || "")} уже выглядит достаточно сильным по trust и exact-proof, но usable creative export ещё не собран до конца.${briefGapFocus.field ? ` Главный пробел сейчас: ${briefGapFocus.field}.` : ""} Следующий цикл лучше потратить на analyze + pattern compaction по этому сегменту, чтобы закрыть missing fields и собрать production-usable brief bundle.`,
+        ? `${String(prioritySegment?.label || "")} уже попал в ship-ready очередь: trust и exact-proof на месте, но production-grade brief bundle ещё не закрыт.${shipGapFocus.field ? ` Главный пробел сейчас: ${shipGapFocus.field}.` : ""}${shipGapOutcome} Следующий цикл лучше потратить на analyze + pattern compaction по этому сегменту, чтобы добить missing fields и перевести его в реально publishable exact brief.`
+        : `${String(prioritySegment?.label || "")} уже выглядит достаточно сильным по trust и exact-proof, но usable creative export ещё не собран до конца.${briefGapFocus.field ? ` Главный пробел сейчас: ${briefGapFocus.field}.` : ""}${briefGapOutcome} Следующий цикл лучше потратить на analyze + pattern compaction по этому сегменту, чтобы закрыть missing fields и собрать production-usable brief bundle.`,
       endpoint: "/api/factory/jobs/reels-brain-learning",
       params: {
         strategy: "analyze",
@@ -519,9 +538,9 @@ export function buildReelsBrainNextTick(input: {
             : exactProofMissingForDecisionSegment
             ? `${String(prioritySegment?.label || activePolicy?.label || "")} уже выглядит strong по briefs/patterns, но exact-segment proof ещё не закрыт. Следующий сбор лучше направить в этот же niche × platform, чтобы добрать доказательный слой, а не масштабировать на transfer-evidence.${policyLine}`
             : shipReadyDecisionSegment
-              ? `${String(prioritySegment?.label || activePolicy?.label || "")} уже попал в ship-ready очередь: сегмент силён по exact-proof и policy, но production-grade bundle ещё не закрыт.${shipGapFocus.field ? ` Главный пробел сейчас: ${shipGapFocus.field}.` : ""} Если analyze backlog уже не даёт новых missing fields, следующий цикл может добрать узкий exact material именно под publishable brief completion.${policyLine}`
+              ? `${String(prioritySegment?.label || activePolicy?.label || "")} уже попал в ship-ready очередь: сегмент силён по exact-proof и policy, но production-grade bundle ещё не закрыт.${shipGapFocus.field ? ` Главный пробел сейчас: ${shipGapFocus.field}.` : ""}${shipGapOutcome} Если analyze backlog уже не даёт новых missing fields, следующий цикл может добрать узкий exact material именно под publishable brief completion.${policyLine}`
             : briefBundleGapForDecisionSegment
-              ? `${String(prioritySegment?.label || activePolicy?.label || "")} уже strong по evidence, но usable creative brief ещё неполный.${briefGapFocus.field ? ` Главный пробел сейчас: ${briefGapFocus.field}.` : ""} Если backlog уже вычищен, следующий цикл может добрать точечный сегментный материал для закрытия output-gap и сборки production-usable bundle.${policyLine}`
+              ? `${String(prioritySegment?.label || activePolicy?.label || "")} уже strong по evidence, но usable creative brief ещё неполный.${briefGapFocus.field ? ` Главный пробел сейчас: ${briefGapFocus.field}.` : ""}${briefGapOutcome} Если backlog уже вычищен, следующий цикл может добрать точечный сегментный материал для закрытия output-gap и сборки production-usable bundle.${policyLine}`
             : `${String(prioritySegment?.label || activePolicy?.label || "")} уже близок к рабочим briefs/hypotheses; следующий сбор лучше направить в этот сегмент.${policyLine}`
         : shouldClosePublishableExactPortfolioGaps
           ? collectionSegment
