@@ -50,6 +50,8 @@ test("buildReelsBrainCronExecutionIntent creates dedicated exact-proof mode for 
       task: "collect_support_for_decision_segment",
       params: {
         focus: "exact_segment_proof",
+        preferred_provider: "bright_instagram",
+        source_discovery_mode: "close_exact_proof",
       },
       priority_segment: {
         label: "ru_toys × instagram",
@@ -66,6 +68,8 @@ test("buildReelsBrainCronExecutionIntent creates dedicated exact-proof mode for 
   assert.equal(result.bulk_overrides?.query_variants_per_lane, 1);
   assert.equal(result.bulk_overrides?.max_cost_units, 6);
   assert.equal(result.bulk_overrides?.hours, 48);
+  assert.equal(result.preferred_provider, "bright_instagram");
+  assert.equal(result.source_discovery_mode, "close_exact_proof");
 });
 
 test("buildReelsBrainCronExecutionIntent narrows research collection when pattern gain gets expensive", () => {

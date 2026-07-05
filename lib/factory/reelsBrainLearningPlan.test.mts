@@ -303,6 +303,9 @@ const exactProofTick = buildReelsBrainNextTick({
         evidence_band: "forming",
         stability_score: 61,
         exact_proof_missing: true,
+        source_provider: "bright_instagram",
+        source_discovery_mode: "close_exact_proof",
+        source_provider_reason: "instagram exact proof needs pinned provider",
       },
     ],
   },
@@ -357,6 +360,9 @@ const exactProofDecisionSupportTick = buildReelsBrainNextTick({
         evidence_band: "forming",
         stability_score: 61,
         exact_proof_missing: true,
+        source_provider: "bright_instagram",
+        source_discovery_mode: "close_exact_proof",
+        source_provider_reason: "instagram exact proof needs pinned provider",
       },
     ],
   },
@@ -366,6 +372,8 @@ assert.equal(exactProofDecisionSupportTick.task, "collect_support_for_decision_s
 assert.equal((exactProofDecisionSupportTick.params as Record<string, unknown>).niche, "ru_toys");
 assert.equal((exactProofDecisionSupportTick.params as Record<string, unknown>).platform, "instagram");
 assert.equal((exactProofDecisionSupportTick.params as Record<string, unknown>).focus, "exact_segment_proof");
+assert.equal((exactProofDecisionSupportTick.params as Record<string, unknown>).preferred_provider, "bright_instagram");
+assert.equal((exactProofDecisionSupportTick.params as Record<string, unknown>).source_discovery_mode, "close_exact_proof");
 assert.match(exactProofDecisionSupportTick.label, /exact proof/i);
 assert.match(exactProofDecisionSupportTick.reason, /exact-segment proof/i);
 

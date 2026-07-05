@@ -152,6 +152,18 @@ function sameSegment(
     && text(left?.platform) === text(right?.platform);
 }
 
+function exactSourceParams(segment: FocusSegment | null) {
+  if (!segment) return {};
+  const preferredProvider = text(segment.source_provider);
+  const discoveryMode = text(segment.source_discovery_mode);
+  const providerReason = text(segment.source_provider_reason);
+  return {
+    ...(preferredProvider ? { preferred_provider: preferredProvider } : {}),
+    ...(discoveryMode ? { source_discovery_mode: discoveryMode } : {}),
+    ...(providerReason ? { source_provider_reason: providerReason } : {}),
+  };
+}
+
 export function pickPortfolioFocusSegment(portfolioReadiness?: JsonRecord | null) {
   const candidates = Array.isArray(portfolioReadiness?.missing_segments)
     ? (portfolioReadiness?.missing_segments as JsonRecord[])
@@ -350,6 +362,7 @@ export function buildReelsBrainNextTick(input: {
           platform: String(collectionSegment.platform || ""),
         } : {}),
         ...(exactProofMissingForDecisionSegment ? { focus: "exact_segment_proof" } : {}),
+        ...exactSourceParams(exactProofMissingForDecisionSegment ? exactFocusSegment : collectionSegment),
       },
       paid_collection: true,
       priority_segment: prioritySegment,

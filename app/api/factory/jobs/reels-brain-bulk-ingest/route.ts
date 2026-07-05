@@ -231,6 +231,16 @@ function providerCapForLane(input: {
   return input.providersPerLane;
 }
 
+function sameSegment(
+  lane: { niche: string; platform: string },
+  intent: { focus_segment?: string | null } | null,
+) {
+  const label = String(intent?.focus_segment || "").trim();
+  if (!label) return false;
+  const [niche = "", platform = ""] = label.split("×").map((part) => part.trim().toLowerCase());
+  return niche === lane.niche.trim().toLowerCase() && platform === lane.platform.trim().toLowerCase();
+}
+
 function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | null = null;
   return Promise.race([
@@ -413,6 +423,14 @@ async function runBulk(req: NextRequest, body: Record<string, unknown>, execute:
   const skipUnseededInstagram = body.skip_unseeded_instagram === true || req.nextUrl.searchParams.get("skip_unseeded_instagram") === "true";
   const igSeeds = instagramSeeds(body, req);
   const queryOverride = String(body.query || req.nextUrl.searchParams.get("query") || "").trim().slice(0, 160);
+  const recommendedQueryOverride = !queryOverride
+    ? String((body.execution_intent as Record<string, unknown> | null)?.query_override || "").trim().slice(0, 160)
+    : "";
+  const effectiveQueryOverride = queryOverride || recommendedQueryOverride;
+  const intentPreferredProvider = (() => {
+    const raw = String(executionIntent?.preferred_provider || "").trim().toLowerCase();
+    return hasReelsBrainProvider(raw as ReelsBrainProvider) ? raw as ReelsBrainProvider : null;
+  })();
 
   const { playbookMap, corpusMap, queryCountMap } = await loadContext(db, niches);
   const platformTargets = corpusTargetByPlatform();
@@ -456,7 +474,7 @@ async function runBulk(req: NextRequest, body: Record<string, unknown>, execute:
     const recommendedQueriesForLane = selectLaneQueries({
       lane,
       recommendedQueries,
-      queryOverride,
+      queryOverride: sameSegment(lane, executionIntent) ? effectiveQueryOverride : queryOverride,
       limit,
       playbook,
       queryCounts: queryCountMap.get(`${lane.niche}:${lane.platform}`),
@@ -465,7 +483,9 @@ async function runBulk(req: NextRequest, body: Record<string, unknown>, execute:
       ? igSeeds[stableIndex(lane.niche, igSeeds.length)]
       : "";
     const baseQueries = instagramSeed ? [instagramSeed] : recommendedQueriesForLane;
-    const preferred = preferredSourceProvider(playbook, lane.platform);
+    const preferred = sameSegment(lane, executionIntent) && intentPreferredProvider
+      ? intentPreferredProvider
+      : preferredSourceProvider(playbook, lane.platform);
     const prioritizedProviders = prioritizeProvidersForQuery(lane.platform, baseQueries[0] || "", providersFor(lane.platform, body.providers), preferred as ReelsBrainProvider | null);
     const tunedLane = tuneBulkLaneByExecutionIntent({
       intent: executionIntent,
@@ -473,13 +493,16 @@ async function runBulk(req: NextRequest, body: Record<string, unknown>, execute:
       queries: baseQueries,
       providers: prioritizedProviders,
       preferredProvider: preferred as ReelsBrainProvider | null,
+      recommendedProvider: sameSegment(lane, executionIntent) ? intentPreferredProvider : null,
       providersPerLane,
       queryVariantsPerLane,
       limit: lane.progress_pct >= 70 ? Math.max(8, Math.min(limit, 18)) : limit,
       providerTimeoutMs: instagramSeed ? Math.min(timeoutMs, 18000) : timeoutMs,
     });
     return tunedLane.queries.map((query, index) => {
-      const preferred = preferredSourceProvider(playbook, lane.platform);
+      const preferred = sameSegment(lane, executionIntent) && intentPreferredProvider
+        ? intentPreferredProvider
+        : preferredSourceProvider(playbook, lane.platform);
       const providers = prioritizeProvidersForQuery(lane.platform, query, providersFor(lane.platform, body.providers), preferred as ReelsBrainProvider | null);
       const providerCap = Math.min(
         tunedLane.provider_cap,

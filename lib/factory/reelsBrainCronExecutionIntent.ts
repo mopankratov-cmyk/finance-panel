@@ -43,6 +43,9 @@ export type ReelsBrainCronExecutionIntent = {
   focus_segment: string | null;
   policy_mode: "primary" | "control_only" | "research_only";
   explanation: string;
+  preferred_provider?: string | null;
+  source_discovery_mode?: string | null;
+  source_provider_reason?: string | null;
   bulk_overrides?: Partial<BulkProfile> & { hours?: number };
   analyze_overrides?: Partial<AnalyzeProfile>;
 };
@@ -77,7 +80,11 @@ export function buildReelsBrainCronExecutionIntent(input: {
   const policyMode = (policyModeRaw === "primary" || policyModeRaw === "control_only")
     ? policyModeRaw
     : "research_only";
-  const exactProofFocus = text(rec(nextTick.params).focus) === "exact_segment_proof";
+  const params = rec(nextTick.params);
+  const exactProofFocus = text(params.focus) === "exact_segment_proof";
+  const preferredProvider = text(params.preferred_provider) || null;
+  const sourceDiscoveryMode = text(params.source_discovery_mode) || null;
+  const sourceProviderReason = text(params.source_provider_reason) || null;
   const learningEconomics = safeLearningEconomics(nextTick.learning_economics);
   const expensivePatternGain = learningEconomics.weak_pattern_gain
     || learningEconomics.pattern_gain_cost_trend === "more_expensive";
@@ -100,6 +107,9 @@ export function buildReelsBrainCronExecutionIntent(input: {
           limit: 10,
           build_patterns: true,
         },
+        preferred_provider: preferredProvider,
+        source_discovery_mode: sourceDiscoveryMode,
+        source_provider_reason: sourceProviderReason,
       };
     }
 
@@ -127,6 +137,9 @@ export function buildReelsBrainCronExecutionIntent(input: {
           }
           : {}),
       },
+      preferred_provider: preferredProvider,
+      source_discovery_mode: sourceDiscoveryMode,
+      source_provider_reason: sourceProviderReason,
     };
   }
 
@@ -153,6 +166,9 @@ export function buildReelsBrainCronExecutionIntent(input: {
         max_cost_units: exactProofFocus ? 6 : 8,
         hours: exactProofFocus ? 48 : 96,
       },
+      preferred_provider: preferredProvider,
+      source_discovery_mode: sourceDiscoveryMode,
+      source_provider_reason: sourceProviderReason,
     };
   }
 
@@ -176,6 +192,9 @@ export function buildReelsBrainCronExecutionIntent(input: {
           max_cost_units: 6,
           hours: 48,
         },
+        preferred_provider: preferredProvider,
+        source_discovery_mode: sourceDiscoveryMode,
+        source_provider_reason: sourceProviderReason,
       };
     }
 
@@ -198,6 +217,9 @@ export function buildReelsBrainCronExecutionIntent(input: {
           max_cost_units: 6,
           hours: 48,
         },
+        preferred_provider: preferredProvider,
+        source_discovery_mode: sourceDiscoveryMode,
+        source_provider_reason: sourceProviderReason,
       };
     }
 
@@ -219,6 +241,9 @@ export function buildReelsBrainCronExecutionIntent(input: {
           max_cost_units: 8,
           hours: 72,
         },
+        preferred_provider: preferredProvider,
+        source_discovery_mode: sourceDiscoveryMode,
+        source_provider_reason: sourceProviderReason,
       };
     }
   }
@@ -245,6 +270,9 @@ export function buildReelsBrainCronExecutionIntent(input: {
         max_cost_units: expensivePatternGain ? 6 : undefined,
         hours: expensivePatternGain ? 48 : 96,
       },
+      preferred_provider: preferredProvider,
+      source_discovery_mode: sourceDiscoveryMode,
+      source_provider_reason: sourceProviderReason,
     };
   }
 
@@ -256,5 +284,8 @@ export function buildReelsBrainCronExecutionIntent(input: {
     explanation: focusSegment
       ? `Generic bulk around ${focusSegment}: corpus growth without narrow execution overrides.`
       : "Generic bulk: corpus growth without narrow execution overrides.",
+    preferred_provider: preferredProvider,
+    source_discovery_mode: sourceDiscoveryMode,
+    source_provider_reason: sourceProviderReason,
   };
 }

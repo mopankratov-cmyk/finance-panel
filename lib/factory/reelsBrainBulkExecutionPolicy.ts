@@ -42,6 +42,9 @@ export function parseBulkExecutionIntent(value: unknown): ReelsBrainCronExecutio
     focus_segment: text(row.focus_segment) || null,
     policy_mode: policyMode === "primary" || policyMode === "control_only" ? policyMode : "research_only",
     explanation: text(row.explanation),
+    preferred_provider: text(row.preferred_provider) || null,
+    source_discovery_mode: text(row.source_discovery_mode) || null,
+    source_provider_reason: text(row.source_provider_reason) || null,
     bulk_overrides: row.bulk_overrides && typeof row.bulk_overrides === "object" && !Array.isArray(row.bulk_overrides)
       ? row.bulk_overrides as NonNullable<ReelsBrainCronExecutionIntent["bulk_overrides"]>
       : undefined,
@@ -57,6 +60,7 @@ export function tuneBulkLaneByExecutionIntent(input: {
   queries: string[];
   providers: ReelsBrainProvider[];
   preferredProvider: ReelsBrainProvider | null;
+  recommendedProvider?: ReelsBrainProvider | null;
   providersPerLane: number;
   queryVariantsPerLane: number;
   limit: number;
@@ -73,16 +77,21 @@ export function tuneBulkLaneByExecutionIntent(input: {
   let limit = input.limit;
   let providerTimeoutMs = input.providerTimeoutMs;
   let strategy = "generic_bulk";
+  const pinnedProvider = input.recommendedProvider && providers.includes(input.recommendedProvider)
+    ? input.recommendedProvider
+    : input.preferredProvider && providers.includes(input.preferredProvider)
+      ? input.preferredProvider
+      : null;
 
   if (intent?.mode === "support_primary_segment" && focused) {
     strategy = "support_primary_segment";
     queryCap = 1;
-    providerCap = input.preferredProvider ? 1 : Math.min(1, providerCapBase);
+    providerCap = pinnedProvider ? 1 : Math.min(1, providerCapBase);
     limit = Math.max(10, Math.min(limit, 18));
     providerTimeoutMs = Math.min(providerTimeoutMs, 14000);
     queries = queries.slice(0, 1);
-    providers = input.preferredProvider && providers.includes(input.preferredProvider)
-      ? [input.preferredProvider]
+    providers = pinnedProvider
+      ? [pinnedProvider]
       : providers.slice(0, 1);
   } else if (intent?.mode === "support_control_segment" && focused) {
     strategy = "support_control_segment";
@@ -90,18 +99,20 @@ export function tuneBulkLaneByExecutionIntent(input: {
     providerCap = Math.min(2, providerCapBase);
     limit = Math.max(12, Math.min(limit, 22));
     queries = queries.slice(0, queryCap);
-    providers = input.preferredProvider && providers.includes(input.preferredProvider)
-      ? uniqueProviders([input.preferredProvider, ...providers]).slice(0, providerCap)
+    providers = pinnedProvider
+      ? uniqueProviders([pinnedProvider, ...providers]).slice(0, providerCap)
       : providers.slice(0, providerCap);
   } else if (intent?.mode === "close_exact_segment_gap" && focused) {
-    strategy = "close_exact_segment_gap";
+    strategy = intent.source_discovery_mode
+      ? `close_exact_segment_gap:${intent.source_discovery_mode}`
+      : "close_exact_segment_gap";
     queryCap = 1;
     providerCap = 1;
     limit = Math.max(10, Math.min(limit, 18));
     providerTimeoutMs = Math.min(providerTimeoutMs, 14000);
     queries = queries.slice(0, 1);
-    providers = input.preferredProvider && providers.includes(input.preferredProvider)
-      ? [input.preferredProvider]
+    providers = pinnedProvider
+      ? [pinnedProvider]
       : providers.slice(0, 1);
   } else if (intent?.mode === "close_portfolio_gap" && focused) {
     strategy = "close_portfolio_gap";
@@ -109,8 +120,8 @@ export function tuneBulkLaneByExecutionIntent(input: {
     providerCap = 1;
     limit = Math.max(12, Math.min(limit, 24));
     queries = queries.slice(0, 1);
-    providers = input.preferredProvider && providers.includes(input.preferredProvider)
-      ? [input.preferredProvider]
+    providers = pinnedProvider
+      ? [pinnedProvider]
       : providers.slice(0, 1);
   } else if (intent?.mode === "explore_research_segment" || intent?.policy_mode === "research_only") {
     strategy = "explore_research_segment";
@@ -166,6 +177,8 @@ export function summarizeBulkExecutionIntent(intent: ReelsBrainCronExecutionInte
       policy_mode: intent.policy_mode,
       focus_segment: intent.focus_segment,
       explanation: intent.explanation,
+      preferred_provider: intent.preferred_provider || null,
+      source_discovery_mode: intent.source_discovery_mode || null,
       bulk_overrides: intent.bulk_overrides || null,
     }
     : null;

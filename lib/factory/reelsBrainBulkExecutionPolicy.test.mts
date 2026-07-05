@@ -77,6 +77,8 @@ test("tuneBulkLaneByExecutionIntent narrows exact-proof collection to one provid
     focus_segment: "ru_toys × instagram",
     policy_mode: "primary",
     explanation: "exact proof",
+    preferred_provider: "apify_instagram",
+    source_discovery_mode: "close_exact_proof",
   });
   const result = tuneBulkLaneByExecutionIntent({
     intent,
@@ -84,15 +86,16 @@ test("tuneBulkLaneByExecutionIntent narrows exact-proof collection to one provid
     queries: ["q1", "q2", "q3"],
     providers: ["apify_instagram", "bright_instagram"],
     preferredProvider: "bright_instagram",
+    recommendedProvider: "apify_instagram",
     providersPerLane: 2,
     queryVariantsPerLane: 2,
     limit: 30,
     providerTimeoutMs: 18000,
   });
 
-  assert.equal(result.strategy, "close_exact_segment_gap");
+  assert.equal(result.strategy, "close_exact_segment_gap:close_exact_proof");
   assert.deepEqual(result.queries, ["q1"]);
-  assert.deepEqual(result.providers, ["bright_instagram"]);
+  assert.deepEqual(result.providers, ["apify_instagram"]);
   assert.equal(result.limit, 18);
   assert.equal(result.provider_timeout_ms, 14000);
 });
