@@ -15,6 +15,7 @@ import { buildReelsBrainSegmentDecisionDeck } from "@/lib/factory/reelsBrainSegm
 import { buildReelsBrainSegmentPriorityQueue } from "@/lib/factory/reelsBrainSegmentPriorityQueue";
 import { buildReelsBrainSegmentGenerationPacks } from "@/lib/factory/reelsBrainSegmentGenerationPacks";
 import { buildReelsBrainSegmentCreativeExports } from "@/lib/factory/reelsBrainSegmentCreativeExports";
+import { buildReelsBrainBriefCoverageAudit } from "@/lib/factory/reelsBrainBriefCoverageAudit";
 import { buildReelsBrainSegmentReadinessAudit } from "@/lib/factory/reelsBrainSegmentReadinessAudit";
 import { buildReelsBrainSegmentSolutions } from "@/lib/factory/reelsBrainSegmentSolutions";
 import { buildReelsBrainSegmentSolutionMatrix } from "@/lib/factory/reelsBrainSegmentSolutionMatrix";
@@ -2825,6 +2826,11 @@ export async function GET(req: NextRequest) {
       segmentGenerationPacks,
       limit: compactMode ? 6 : 10,
     });
+    const briefCoverageAudit = buildReelsBrainBriefCoverageAudit({
+      segmentGenerationPacks,
+      segmentCreativeExports,
+      limit: compactMode ? 6 : 10,
+    });
     const segmentReadinessAudit = buildReelsBrainSegmentReadinessAudit({
       segmentGenerationPacks,
       limit: compactMode ? 6 : 10,
@@ -2952,6 +2958,7 @@ export async function GET(req: NextRequest) {
       segment_priority_queue: segmentPriorityQueue,
       segment_generation_packs: segmentGenerationPacks,
       segment_creative_exports: segmentCreativeExports,
+      brief_coverage_audit: briefCoverageAudit,
       segment_readiness_audit: segmentReadinessAudit,
       segment_stability_audit: segmentStabilityAudit,
       segment_solutions: segmentSolutions,

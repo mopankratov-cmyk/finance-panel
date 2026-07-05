@@ -288,6 +288,7 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
     const segmentPriorityQueue = ((mission.segment_priority_queue || learning?.segment_priority_queue || {}) as JsonRecord);
     const segmentGenerationPacks = (learning?.segment_generation_packs || {}) as JsonRecord;
     const segmentCreativeExports = (learning?.segment_creative_exports || {}) as JsonRecord;
+    const briefCoverageAudit = (learning?.brief_coverage_audit || {}) as JsonRecord;
     const segmentReadinessAudit = (learning?.segment_readiness_audit || {}) as JsonRecord;
     const segmentSolutionMatrix = (learning?.segment_solution_matrix || {}) as JsonRecord;
     const generationPolicy = (learning?.generation_policy || {}) as JsonRecord;
@@ -751,6 +752,29 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
         label: `${NICHE_LABELS[String(row.niche)] || row.niche} × ${String(row.platform || "mixed").toUpperCase()}`,
       };
     });
+    const briefCoverageNicheCards = ((briefCoverageAudit.by_niche || []) as JsonRecord[]).slice(0, 3).map((row) => ({
+      ...row,
+      label: NICHE_LABELS[String(row.niche)] || row.niche,
+      trustTone: statusTone(
+        Math.round(
+          num(row.usable_exact_ready_pct) * 0.7
+          + num(row.exact_ready_pct) * 0.2
+          + Math.max(0, 10 - Math.min(10, num(row.blocked) * 2)),
+        ),
+      ),
+    }));
+    const briefCoverageGapCards = ((briefCoverageAudit.gap_queue || []) as JsonRecord[]).slice(0, 4).map((row) => ({
+      ...row,
+      label: `${NICHE_LABELS[String(row.niche)] || row.niche} × ${String(row.platform || "mixed").toUpperCase()}`,
+      laneTone: playbookTone(String(row.lane === "ship" ? "ship_now" : row.lane === "validate" ? "validate_and_ship" : "research")),
+    }));
+    const briefCoverageSummary = {
+      usableExactReady: num(briefCoverageAudit.summary?.usable_exact_ready_briefs),
+      exactReady: num(briefCoverageAudit.summary?.exact_ready_briefs),
+      shipLane: num(briefCoverageAudit.summary?.ship_lane_briefs),
+      validateLane: num(briefCoverageAudit.summary?.validate_lane_briefs),
+      usablePct: num(briefCoverageAudit.summary?.usable_exact_ready_pct),
+    };
     const segmentAuditCards = ((segmentReadinessAudit.items || []) as JsonRecord[]).slice(0, 6).map((row) => {
       const tone = playbookTone(String(row.verdict === "ship" ? "ship_now" : row.verdict === "validate" ? "validate_and_ship" : "research"));
       return {
@@ -1016,6 +1040,9 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
       segmentDecisionSummary,
       segmentGenerationCards,
       segmentExportCards,
+      briefCoverageNicheCards,
+      briefCoverageGapCards,
+      briefCoverageSummary,
       segmentAuditCards,
       segmentSolutionNicheCards,
       segmentSolutionPlatformCards,
@@ -2003,6 +2030,94 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
                 </p>
               </div>
             )}
+          </div>
+        </section>
+
+        <section>
+          <SectionTitle k="04.446 · Brief Coverage Audit" title="Где уже есть usable exact-ready briefs, а где ещё дырка в output-слое" />
+          <div className="rb-grid-hero">
+            <div className="rb-card">
+              <div className="rb-overline" style={{ color: "#0891b2" }}>Usable exact-ready</div>
+              <h3 style={{ font: "700 34px/1 'Space Grotesk'", margin: "10px 0 0" }}>{compact(vm.briefCoverageSummary?.usableExactReady || 0)}</h3>
+              <p style={{ marginTop: 10, color: "#64748b", lineHeight: 1.55 }}>
+                {compact(vm.briefCoverageSummary?.usablePct || 0)}% от сегментов уже могут отдать точный brief без ручной сборки.
+              </p>
+            </div>
+            <div className="rb-card">
+              <div className="rb-overline" style={{ color: "#0891b2" }}>Ship / Validate</div>
+              <h3 style={{ font: "700 34px/1 'Space Grotesk'", margin: "10px 0 0" }}>{compact(vm.briefCoverageSummary?.shipLane || 0)} / {compact(vm.briefCoverageSummary?.validateLane || 0)}</h3>
+              <p style={{ marginTop: 10, color: "#64748b", lineHeight: 1.55 }}>
+                Сколько сегментов уже стоят в боевых export-лейнах, даже если exact-ready coverage ещё неполная.
+              </p>
+            </div>
+            <div className="rb-card">
+              <div className="rb-overline" style={{ color: "#0891b2" }}>Exact-ready total</div>
+              <h3 style={{ font: "700 34px/1 'Space Grotesk'", margin: "10px 0 0" }}>{compact(vm.briefCoverageSummary?.exactReady || 0)}</h3>
+              <p style={{ marginTop: 10, color: "#64748b", lineHeight: 1.55 }}>
+                Сегменты, у которых уже есть exact-proof, но не всегда уже собран usable export bundle.
+              </p>
+            </div>
+          </div>
+          <div className="rb-three" style={{ marginTop: 18 }}>
+            {vm.briefCoverageNicheCards.length ? vm.briefCoverageNicheCards.map((row: JsonRecord) => (
+              <div className="rb-card" key={`brief-coverage:${row.niche}`}>
+                <div className="rb-two" style={{ gridTemplateColumns: "1fr auto", gap: 14 }}>
+                  <div>
+                    <div className="rb-overline" style={{ color: "#0891b2" }}>{row.label}</div>
+                    <h3 style={{ font: "700 24px/1.08 'Space Grotesk'", margin: "10px 0 0" }}>{compact(row.usable_exact_ready_pct || 0)}%</h3>
+                  </div>
+                  <div className="rb-live-pill" style={{ background: row.trustTone.bg, borderColor: row.trustTone.bd, color: row.trustTone.fg }}>
+                    <i style={{ background: row.trustTone.fg }} />
+                    usable
+                  </div>
+                </div>
+                <div className="rb-three" style={{ marginTop: 14 }}>
+                  <div className="rb-brief-block"><b>Usable exact</b><p>{compact(row.usable_exact_ready || 0)} / {compact(row.total || 0)}</p></div>
+                  <div className="rb-brief-block"><b>Exact-ready</b><p>{compact(row.exact_ready || 0)}</p></div>
+                  <div className="rb-brief-block"><b>Blocked</b><p>{compact(row.blocked || 0)}</p></div>
+                </div>
+                <div className="rb-brief-block" style={{ marginTop: 12 }}>
+                  <b>Top gap</b>
+                  <p>{row.top_gap?.label || "Gap-ов почти не осталось"}</p>
+                  <p style={{ marginTop: 6, color: "#475569" }}>{((row.top_gap?.missing_fields || []) as string[]).join(" · ") || ((row.top_gap?.blocked_reasons || []) as string[]).join(" · ") || "Готово к scale"}</p>
+                </div>
+              </div>
+            )) : (
+              <div className="rb-card">
+                <h3 style={{ font: "700 24px/1.1 'Space Grotesk'", margin: 0 }}>Brief Coverage Audit ещё пуст</h3>
+                <p style={{ marginTop: 10, color: "#64748b", lineHeight: 1.55 }}>
+                  Этот слой появится, когда segment creative exports накопят достаточно exact-ready и validate-ready bundle-ов.
+                </p>
+              </div>
+            )}
+          </div>
+          <div className="rb-three" style={{ marginTop: 18 }}>
+            {vm.briefCoverageGapCards.length ? vm.briefCoverageGapCards.map((row: JsonRecord) => (
+              <div className="rb-card" key={`brief-gap:${row.niche}:${row.platform}`}>
+                <div className="rb-two" style={{ gridTemplateColumns: "1fr auto", gap: 14 }}>
+                  <div>
+                    <div className="rb-overline" style={{ color: "#0891b2" }}>{row.label}</div>
+                    <h3 style={{ font: "700 24px/1.08 'Space Grotesk'", margin: "10px 0 0" }}>{row.proof_quality || "untraced"}</h3>
+                  </div>
+                  <div className="rb-live-pill" style={{ background: row.laneTone.bg, borderColor: row.laneTone.bd, color: row.laneTone.fg }}>
+                    <i style={{ background: row.laneTone.fg }} />
+                    {row.lane || "research"}
+                  </div>
+                </div>
+                <div className="rb-brief-block" style={{ marginTop: 12 }}>
+                  <b>Missing fields</b>
+                  <p>{((row.missing_fields || []) as string[]).join(" · ") || "Bundle complete"}</p>
+                </div>
+                <div className="rb-brief-block" style={{ marginTop: 12 }}>
+                  <b>Blocked reasons</b>
+                  <p>{((row.blocked_reasons || []) as string[]).join(" · ") || "Нет блокеров"}</p>
+                </div>
+                <div className="rb-brief-block" style={{ marginTop: 12 }}>
+                  <b>Next step</b>
+                  <p>{row.next_step || "Дожать exact-ready bundle"}</p>
+                </div>
+              </div>
+            )) : null}
           </div>
         </section>
 

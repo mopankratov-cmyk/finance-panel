@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { internalFetch } from "@/lib/internalFetch";
 import { buildReelsBrainValidationRunbook } from "@/lib/factory/reelsBrainValidationRunbook";
 import { buildReelsBrainSourceMixAudit } from "@/lib/factory/reelsBrainSourceMixAudit";
+import { buildReelsBrainBriefCoverageAudit } from "@/lib/factory/reelsBrainBriefCoverageAudit";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 20;
@@ -93,6 +94,11 @@ export async function GET(req: NextRequest) {
       exactSegmentQueue: body.exact_segment_queue || null,
       feedbackLoop: body.feedback_loop || body.next_intelligence_layers?.feedback_loop || null,
     });
+    const briefCoverageAudit = buildReelsBrainBriefCoverageAudit({
+      segmentGenerationPacks: body.segment_generation_packs || null,
+      segmentCreativeExports: body.segment_creative_exports || null,
+      limit: 6,
+    });
     return NextResponse.json({
       ok: true,
       report_type: req.nextUrl.searchParams.get("type") || "daily",
@@ -111,6 +117,7 @@ export async function GET(req: NextRequest) {
       segment_priority_queue: body.segment_priority_queue || null,
       segment_generation_packs: body.segment_generation_packs || null,
       segment_creative_exports: body.segment_creative_exports || null,
+      brief_coverage_audit: briefCoverageAudit,
       source_mix_audit: sourceMixAudit,
       segment_readiness_audit: body.segment_readiness_audit || null,
       segment_stability_audit: body.segment_stability_audit || null,
