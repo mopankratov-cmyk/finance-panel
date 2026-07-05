@@ -91,9 +91,9 @@ ok(/internalFetch/.test(readinessAudit) && /segment_readiness_audit/.test(readin
 ok(/verdict/.test(readinessAudit) && /niche/.test(readinessAudit) && /platform/.test(readinessAudit), "readiness-audit route supports verdict, niche and platform filters");
 ok(!/POST\s*\(/.test(readinessAudit), "readiness-audit route is read-only");
 
-ok(/creative-exports/.test(decisionSnapshot) && /readiness-audit/.test(decisionSnapshot), "decision-snapshot route combines creative exports and readiness audit");
+ok(/creative-exports/.test(decisionSnapshot) && /readiness-audit/.test(decisionSnapshot) && /segment_solution_matrix/.test(decisionSnapshot), "decision-snapshot route combines creative exports, readiness audit and upgrade-aware solution matrix");
 ok(/lane/.test(decisionSnapshot) && /niche/.test(decisionSnapshot) && /platform/.test(decisionSnapshot), "decision-snapshot route supports lane, niche and platform filters");
-ok(/buildReelsBrainDecisionSnapshot/.test(decisionSnapshot) && /filtered_total/.test(decisionSnapshotBuilder), "decision-snapshot route delegates merge logic to a reusable builder");
+ok(/buildReelsBrainDecisionSnapshot/.test(decisionSnapshot) && /filtered_total/.test(decisionSnapshotBuilder) && /upgrade_forecast_segments/.test(decisionSnapshotBuilder), "decision-snapshot route delegates merge logic to a reusable builder with upgrade forecasts");
 ok(!/POST\s*\(/.test(decisionSnapshot), "decision-snapshot route is read-only");
 ok(/decision-snapshot/.test(segmentSolutions) && /buildReelsBrainSegmentSolutions/.test(segmentSolutions), "segment-solutions route derives operator outputs from the decision snapshot");
 ok(/buildReelsBrainSegmentStabilityAudit/.test(segmentSolutionsBuilder) && /creative_brief/.test(segmentSolutionsBuilder) && /content_decision/.test(segmentSolutionsBuilder) && /trust_summary/.test(segmentSolutionsBuilder), "segment-solutions builder produces brief, content decision and trust layers on top of a stability audit");

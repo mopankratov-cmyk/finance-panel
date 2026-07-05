@@ -36,14 +36,21 @@ export async function GET(req: NextRequest) {
     if (niche) auditUrl.searchParams.set("niche", niche);
     if (platform) auditUrl.searchParams.set("platform", platform);
 
-    const [exportsRes, auditRes] = await Promise.all([
+    const reportUrl = new URL("/api/factory/reels-brain/report", req.nextUrl.origin);
+    reportUrl.searchParams.set("niches", niches);
+    reportUrl.searchParams.set("limit", limit);
+
+    const [exportsRes, auditRes, reportRes] = await Promise.all([
       internalFetch(exportsUrl),
       internalFetch(auditUrl),
+      internalFetch(reportUrl),
     ]);
     const exportsBody = await exportsRes.json().catch(() => ({}));
     const auditBody = await auditRes.json().catch(() => ({}));
+    const reportBody = await reportRes.json().catch(() => ({}));
     if (!exportsRes.ok) return NextResponse.json(exportsBody, { status: exportsRes.status });
     if (!auditRes.ok) return NextResponse.json(auditBody, { status: auditRes.status });
+    if (!reportRes.ok) return NextResponse.json(reportBody, { status: reportRes.status });
 
     const snapshot = buildReelsBrainDecisionSnapshot({
       creativeExports: exportsBody as {
@@ -57,6 +64,11 @@ export async function GET(req: NextRequest) {
         summary?: Record<string, unknown> | null;
         items?: JsonRecord[];
       },
+      segmentSolutionMatrix: (reportBody.segment_solution_matrix || null) as {
+        by_segment?: JsonRecord[];
+        by_platform?: JsonRecord[];
+        by_niche?: JsonRecord[];
+      } | null,
       lane,
       niche,
       platform,

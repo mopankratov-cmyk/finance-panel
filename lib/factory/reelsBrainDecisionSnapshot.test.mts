@@ -25,9 +25,31 @@ test("buildReelsBrainDecisionSnapshot merges readiness audit into export items",
         { niche: "ru_cosmetics", platform: "tiktok", verdict: "validate", trust: 0.68 },
       ],
     },
+    segmentSolutionMatrix: {
+      by_segment: [
+        {
+          niche: "ru_toys",
+          platform: "instagram",
+          upgrade_forecast: {
+            unlocked_output: "publishable_exact_brief",
+            projected_trust_gain_score: 28,
+          },
+        },
+      ],
+      by_platform: [
+        {
+          platform: "tiktok",
+          next_upgrade: {
+            unlocked_output: "performance_tuned_brief",
+            projected_trust_gain_score: 19,
+          },
+        },
+      ],
+    },
   });
 
   assert.equal(snapshot.summary.filtered_total, 2);
+  assert.equal(snapshot.summary.upgrade_forecast_segments, 2);
   assert.equal(snapshot.items.length, 2);
   assert.deepEqual(snapshot.items[0]?.audit, {
     niche: "ru_toys",
@@ -41,6 +63,8 @@ test("buildReelsBrainDecisionSnapshot merges readiness audit into export items",
     verdict: "validate",
     trust: 0.68,
   });
+  assert.equal((snapshot.items[0]?.upgrade_forecast as Record<string, unknown> | undefined)?.unlocked_output, "publishable_exact_brief");
+  assert.equal((snapshot.items[1]?.upgrade_forecast as Record<string, unknown> | undefined)?.unlocked_output, "performance_tuned_brief");
 });
 
 test("buildReelsBrainDecisionSnapshot respects lane filter", () => {
