@@ -2952,6 +2952,7 @@ export async function GET(req: NextRequest) {
       outcomeMemory: outcomeMemoryBrain,
       segmentSolutionMatrix,
       generationPolicy,
+      segmentPriorityQueue,
       exactSegmentQueue,
       limit: compactMode ? 4 : 6,
     });

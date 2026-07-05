@@ -95,6 +95,9 @@ export function buildReelsBrainMeasurementPlan(input: {
   generationPolicy?: {
     by_segment?: JsonRecord[];
   } | null;
+  segmentPriorityQueue?: {
+    items?: JsonRecord[];
+  } | null;
   exactSegmentQueue?: {
     items?: JsonRecord[];
     summary?: JsonRecord;
@@ -105,6 +108,8 @@ export function buildReelsBrainMeasurementPlan(input: {
   const bySegment = records(input.segmentSolutionMatrix?.by_segment);
   const policyRows = records(input.generationPolicy?.by_segment);
   const policyBySegment = new Map(policyRows.map((row) => [`${text(row.niche)}__${text(row.platform)}`, row] as const));
+  const priorityRows = records(input.segmentPriorityQueue?.items);
+  const priorityBySegment = new Map(priorityRows.map((row) => [`${text(row.niche)}__${text(row.platform)}`, row] as const));
   const exactQueueRows = records(input.exactSegmentQueue?.items);
   const limit = Math.max(3, input.limit || 6);
 
@@ -119,6 +124,7 @@ export function buildReelsBrainMeasurementPlan(input: {
       const platform = text(segment.platform, "mixed");
       const exactRow = bySegment.find((row) => text(row.niche) === niche && text(row.platform) === platform) || {};
       const policy = policyBySegment.get(`${niche}__${platform}`) || {};
+      const priority = priorityBySegment.get(`${niche}__${platform}`) || {};
       const brief = exactRow?.creative_brief && typeof exactRow.creative_brief === "object" ? exactRow.creative_brief as JsonRecord : {};
       const decision = exactRow?.content_decision && typeof exactRow.content_decision === "object" ? exactRow.content_decision as JsonRecord : {};
       const upgrade = recommendedUpgrade(
@@ -138,7 +144,12 @@ export function buildReelsBrainMeasurementPlan(input: {
         niche,
         platform,
         policy_mode: text(policy.policy_mode, text(segment.policy_mode, "research_only")),
-        decision_priority_score: Math.max(60, num(segment.urgency_score)),
+        decision_priority_score: Math.max(
+          60,
+          num(segment.urgency_score),
+          num(priority.decision_priority_score),
+          upgrade?.projected_trust_gain_score ? Math.min(100, num(priority.decision_priority_score) + Math.round(upgrade.projected_trust_gain_score * 0.35)) : 0,
+        ),
         hook_type: "",
         structure_type: "",
         validation_goal: status === "borrowed_brief_only"
@@ -159,7 +170,7 @@ export function buildReelsBrainMeasurementPlan(input: {
         recommended_upgrade: upgrade,
         metrics_to_capture: ["views", "watch_rate", "completion_rate", "ctr", "saves", "marketplace_orders"],
         action: `Сделать exact-proof run для ${niche} × ${platform}`,
-        reason: `${status} · urgency ${num(segment.urgency_score)} · policy ${text(policy.policy_mode, text(segment.policy_mode, "research_only"))}${upgrade?.unlocked_output ? ` · upgrade ${upgrade.unlocked_output}` : ""}`,
+        reason: `${status} · urgency ${Math.max(num(segment.urgency_score), num(priority.decision_priority_score))} · policy ${text(policy.policy_mode, text(segment.policy_mode, "research_only"))}${upgrade?.unlocked_output ? ` · upgrade ${upgrade.unlocked_output}` : ""}${text(priority.policy_reason) ? ` · ${text(priority.policy_reason)}` : ""}`,
         endpoints: {
           creative_solution: `/api/factory/reels-brain/creative-solution?niche=${encodeURIComponent(niche)}&platform=${encodeURIComponent(platform)}`,
           feedback_writeback: "/api/factory/reels-brain/feedback",
@@ -174,6 +185,7 @@ export function buildReelsBrainMeasurementPlan(input: {
     .map((pattern) => {
       const candidate = bestCandidateForPattern(pattern, bySegment, policyBySegment);
       const policy = candidate ? (policyBySegment.get(`${text(candidate.niche)}__${text(candidate.platform)}`) || {}) : {};
+      const priority = candidate ? (priorityBySegment.get(`${text(candidate.niche)}__${text(candidate.platform)}`) || {}) : {};
       const brief = candidate?.creative_brief && typeof candidate.creative_brief === "object" ? candidate.creative_brief as JsonRecord : {};
       const decision = candidate?.content_decision && typeof candidate.content_decision === "object" ? candidate.content_decision as JsonRecord : {};
       const upgrade = recommendedUpgrade(
@@ -194,7 +206,11 @@ export function buildReelsBrainMeasurementPlan(input: {
         niche,
         platform,
         policy_mode: policyMode,
-        decision_priority_score: num(pattern.decision_priority_score),
+        decision_priority_score: Math.max(
+          num(pattern.decision_priority_score),
+          num(priority.decision_priority_score),
+          upgrade?.projected_trust_gain_score ? Math.min(100, num(priority.decision_priority_score) + Math.round(upgrade.projected_trust_gain_score * 0.3)) : 0,
+        ),
         hook_type: text(pattern.hook_type),
         structure_type: text(pattern.structure_type),
         validation_goal: policyMode === "primary"
@@ -211,7 +227,7 @@ export function buildReelsBrainMeasurementPlan(input: {
         recommended_upgrade: upgrade,
         metrics_to_capture: ["views", "watch_rate", "completion_rate", "ctr", "saves", "marketplace_orders"],
         action: `Сделать measurement-run для ${text(pattern.title, text(pattern.pattern_id, "pattern"))} на ${niche} × ${platform}`,
-        reason: `${text(pattern.quality_gate, "unknown")} · priority ${num(pattern.decision_priority_score)} · policy ${policyMode}${upgrade?.unlocked_output ? ` · upgrade ${upgrade.unlocked_output}` : ""}`,
+        reason: `${text(pattern.quality_gate, "unknown")} · priority ${Math.max(num(pattern.decision_priority_score), num(priority.decision_priority_score))} · policy ${policyMode}${upgrade?.unlocked_output ? ` · upgrade ${upgrade.unlocked_output}` : ""}${text(priority.policy_reason) ? ` · ${text(priority.policy_reason)}` : ""}`,
         endpoints: {
           creative_solution: `/api/factory/reels-brain/creative-solution?niche=${encodeURIComponent(niche)}&platform=${encodeURIComponent(platform)}`,
           feedback_writeback: "/api/factory/reels-brain/feedback",
