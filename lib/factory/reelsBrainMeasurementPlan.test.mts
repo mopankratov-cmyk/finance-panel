@@ -109,4 +109,104 @@ assert.match(plan.items[1]?.action || "", /measurement-run/);
 assert.equal(plan.items[1]?.endpoints.feedback_writeback, "/api/factory/reels-brain/feedback");
 assert.equal(plan.exact_gap_candidates, 1);
 
+const priorityDrivenPlan = buildReelsBrainMeasurementPlan({
+  outcomeMemory: {
+    pattern_memory: {
+      no_feedback_queue: [
+        {
+          pattern_id: "p2",
+          title: "Cross-platform proof",
+          quality_gate: "high_confidence",
+          decision_priority_score: 84,
+          hook_type: "demo",
+          structure_type: "review",
+          niches: ["ru_toys"],
+          platforms: ["tiktok", "instagram"],
+        },
+      ],
+    },
+  },
+  segmentSolutionMatrix: {
+    by_segment: [
+      {
+        niche: "ru_toys",
+        platform: "tiktok",
+        production_state: "controlled_test",
+        readiness_score: 78,
+        upgrade_forecast: {
+          unlocked_output: "performance_tuned_brief",
+          projected_production_state: "near_publishable",
+          projected_trust_gain_score: 18,
+          projected_trust_gain_band: "medium",
+          recommended_loop: "audio_backfill",
+        },
+        creative_brief: {
+          hook: "TT hook",
+          retention: "fast proof",
+          structure: "demo",
+        },
+        content_decision: {
+          next_step: "Run TT batch",
+        },
+      },
+      {
+        niche: "ru_toys",
+        platform: "instagram",
+        production_state: "controlled_test",
+        readiness_score: 76,
+        upgrade_forecast: {
+          unlocked_output: "publishable_visual_brief",
+          projected_production_state: "publishable_exact",
+          projected_trust_gain_score: 31,
+          projected_trust_gain_band: "high",
+          recommended_loop: "media_backfill",
+        },
+        creative_brief: {
+          hook: "IG hook",
+          retention: "visual payoff",
+          structure: "review",
+        },
+        content_decision: {
+          next_step: "Run IG batch",
+        },
+      },
+    ],
+  },
+  generationPolicy: {
+    by_segment: [
+      {
+        niche: "ru_toys",
+        platform: "tiktok",
+        policy_mode: "control_only",
+      },
+      {
+        niche: "ru_toys",
+        platform: "instagram",
+        policy_mode: "control_only",
+      },
+    ],
+  },
+  segmentPriorityQueue: {
+    items: [
+      {
+        niche: "ru_toys",
+        platform: "tiktok",
+        decision_priority_score: 78,
+        policy_reason: "tiktok is still useful but not top payoff",
+      },
+      {
+        niche: "ru_toys",
+        platform: "instagram",
+        decision_priority_score: 96,
+        policy_reason: "instagram is the strongest control-ready payoff now",
+      },
+    ],
+  },
+});
+
+assert.equal(priorityDrivenPlan.items[0]?.pattern_id, "p2");
+assert.equal(priorityDrivenPlan.items[0]?.platform, "instagram");
+assert.equal(priorityDrivenPlan.items[0]?.publish_brief.hook, "IG hook");
+assert.match(priorityDrivenPlan.items[0]?.reason || "", /strongest control-ready payoff now/);
+
 console.log("reelsBrainMeasurementPlan.test: ok");

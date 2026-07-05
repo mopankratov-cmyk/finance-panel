@@ -36,13 +36,16 @@ function scoreCandidate(candidate: JsonRecord, pattern: JsonRecord) {
   return policyRank(candidate.policy_mode) * 20
     + exactNiche
     + exactPlatform
-    + num(candidate.readiness_score) * 0.2;
+    + num(candidate.readiness_score) * 0.2
+    + Math.min(24, num(candidate.segment_priority_score) * 0.18)
+    + Math.min(18, num(candidate.projected_trust_gain_score) * 0.5);
 }
 
 function bestCandidateForPattern(
   pattern: JsonRecord,
   bySegment: JsonRecord[],
   policyBySegment: Map<string, JsonRecord>,
+  priorityBySegment: Map<string, JsonRecord>,
 ) {
   return [...bySegment]
     .filter((candidate) => {
@@ -56,8 +59,30 @@ function bestCandidateForPattern(
     .sort((a, b) => {
       const policyA = policyBySegment.get(`${text(a.niche)}__${text(a.platform)}`) || {};
       const policyB = policyBySegment.get(`${text(b.niche)}__${text(b.platform)}`) || {};
-      return scoreCandidate({ ...b, policy_mode: text(policyB.policy_mode, b.production_state ? "control_only" : "research_only") }, pattern)
-        - scoreCandidate({ ...a, policy_mode: text(policyA.policy_mode, a.production_state ? "control_only" : "research_only") }, pattern);
+      const priorityA = priorityBySegment.get(`${text(a.niche)}__${text(a.platform)}`) || {};
+      const priorityB = priorityBySegment.get(`${text(b.niche)}__${text(b.platform)}`) || {};
+      const upgradeA = (a.recommended_upgrade && typeof a.recommended_upgrade === "object"
+        ? a.recommended_upgrade
+        : a.upgrade_forecast && typeof a.upgrade_forecast === "object"
+          ? a.upgrade_forecast
+          : {}) as JsonRecord;
+      const upgradeB = (b.recommended_upgrade && typeof b.recommended_upgrade === "object"
+        ? b.recommended_upgrade
+        : b.upgrade_forecast && typeof b.upgrade_forecast === "object"
+          ? b.upgrade_forecast
+          : {}) as JsonRecord;
+      return scoreCandidate({
+        ...b,
+        policy_mode: text(policyB.policy_mode, b.production_state ? "control_only" : "research_only"),
+        segment_priority_score: num(priorityB.decision_priority_score),
+        projected_trust_gain_score: num(upgradeB.projected_trust_gain_score),
+      }, pattern)
+        - scoreCandidate({
+          ...a,
+          policy_mode: text(policyA.policy_mode, a.production_state ? "control_only" : "research_only"),
+          segment_priority_score: num(priorityA.decision_priority_score),
+          projected_trust_gain_score: num(upgradeA.projected_trust_gain_score),
+        }, pattern);
     })[0] || null;
 }
 
@@ -183,7 +208,7 @@ export function buildReelsBrainMeasurementPlan(input: {
 
   const patternItems = noFeedbackQueue
     .map((pattern) => {
-      const candidate = bestCandidateForPattern(pattern, bySegment, policyBySegment);
+      const candidate = bestCandidateForPattern(pattern, bySegment, policyBySegment, priorityBySegment);
       const policy = candidate ? (policyBySegment.get(`${text(candidate.niche)}__${text(candidate.platform)}`) || {}) : {};
       const priority = candidate ? (priorityBySegment.get(`${text(candidate.niche)}__${text(candidate.platform)}`) || {}) : {};
       const brief = candidate?.creative_brief && typeof candidate.creative_brief === "object" ? candidate.creative_brief as JsonRecord : {};
