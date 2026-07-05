@@ -31,6 +31,7 @@ import { buildReelsBrainPatternOutcomeMemory } from "@/lib/factory/reelsBrainPat
 import { buildReelsBrainMeasurementPlan } from "@/lib/factory/reelsBrainMeasurementPlan";
 import { buildReelsBrainValidationQueue } from "@/lib/factory/reelsBrainValidationQueue";
 import { buildReelsBrainExactSegmentQueue } from "@/lib/factory/reelsBrainExactSegmentQueue";
+import { buildReelsBrainBriefGapProgress } from "@/lib/factory/reelsBrainBriefGapProgress";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 20;
@@ -2866,6 +2867,11 @@ export async function GET(req: NextRequest) {
       segmentGenerationPacks,
       limit: compactMode ? 6 : 10,
     });
+    const briefGapProgress = buildReelsBrainBriefGapProgress({
+      briefCoverageAudit,
+      shipReadyQueue,
+      limit: compactMode ? 6 : 10,
+    });
     const segmentReadinessAudit = buildReelsBrainSegmentReadinessAudit({
       segmentGenerationPacks,
       limit: compactMode ? 6 : 10,
@@ -2996,6 +3002,7 @@ export async function GET(req: NextRequest) {
       segment_creative_exports: segmentCreativeExports,
       brief_coverage_audit: briefCoverageAudit,
       ship_ready_queue: shipReadyQueue,
+      brief_gap_progress: briefGapProgress,
       segment_readiness_audit: segmentReadinessAudit,
       segment_stability_audit: segmentStabilityAudit,
       segment_solutions: segmentSolutions,

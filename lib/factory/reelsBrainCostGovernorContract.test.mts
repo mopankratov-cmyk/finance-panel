@@ -29,6 +29,7 @@ const measurementPlanBuilder = readFileSync("lib/factory/reelsBrainMeasurementPl
 const validationRunbookBuilder = readFileSync("lib/factory/reelsBrainValidationRunbook.ts", "utf8");
 const briefCoverageAuditBuilder = readFileSync("lib/factory/reelsBrainBriefCoverageAudit.ts", "utf8");
 const shipReadyQueueBuilder = readFileSync("lib/factory/reelsBrainShipReadyQueue.ts", "utf8");
+const briefGapProgressBuilder = readFileSync("lib/factory/reelsBrainBriefGapProgress.ts", "utf8");
 const segmentStabilityAudit = readFileSync("app/api/factory/reels-brain/stability-audit/route.ts", "utf8");
 const segmentStabilityAuditBuilder = readFileSync("lib/factory/reelsBrainSegmentStabilityAudit.ts", "utf8");
 const analyzeBacklog = readFileSync("app/api/factory/jobs/reels-brain-analyze-backlog/route.ts", "utf8");
@@ -113,6 +114,7 @@ ok(/segment_generation_packs/.test(report), "report route exposes segment genera
 ok(/segment_creative_exports/.test(report), "report route exposes segment creative exports");
 ok(/brief_coverage_audit/.test(report) && /buildReelsBrainBriefCoverageAudit/.test(report), "report route exposes usable exact-ready brief coverage audit");
 ok(/ship_ready_queue/.test(report) && /buildReelsBrainShipReadyQueue/.test(report), "report route exposes ship-ready exact brief queue");
+ok(/brief_gap_progress/.test(report) && /buildReelsBrainBriefGapProgress/.test(report), "report route exposes brief-gap uplift board on top of ship-ready coverage");
 ok(/buildReelsBrainSourceMixAudit/.test(report) && /source_mix_audit/.test(report), "report route exposes source-mix audit for segment-layer vs legacy dependency");
 ok(/segment_readiness_audit/.test(report), "report route exposes segment readiness audit");
 ok(/segment_stability_audit/.test(report) && /segment_solutions/.test(report), "report route exposes segment stability audit and operator-ready solutions");
@@ -166,6 +168,7 @@ ok(/buildReelsBrainSegmentGenerationPacks/.test(economics) && /segment_generatio
 ok(/buildReelsBrainSegmentCreativeExports/.test(economics) && /segment_creative_exports/.test(economics) && /Segment Creative Exports/.test(cockpit) && /segment-export:/.test(cockpit), "learning-economics and cockpit expose operator-ready creative export bundles");
 ok(/buildReelsBrainBriefCoverageAudit/.test(economics) && /brief_coverage_audit/.test(economics) && /Brief Coverage Audit/.test(cockpit) && /brief-gap:/.test(cockpit) && /usable_exact_ready_pct/.test(briefCoverageAuditBuilder) && /missing_field_families/.test(briefCoverageAuditBuilder) && /Top missing fields/.test(cockpit), "learning-economics and cockpit expose usable exact-ready brief coverage with field-level gap visibility");
 ok(/buildReelsBrainShipReadyQueue/.test(economics) && /ship_ready_queue/.test(economics) && /Ship-Ready Queue/.test(cockpit) && /ship-ready:/.test(cockpit) && /ship_readiness_score/.test(shipReadyQueueBuilder) && /field_fill_order/.test(shipReadyQueueBuilder) && /Ship field hotspots/.test(cockpit), "learning-economics and cockpit expose a ship-ready queue for production-grade exact brief completion with field close plans");
+ok(/buildReelsBrainBriefGapProgress/.test(economics) && /brief_gap_progress/.test(economics) && /Brief Gap Uplift/.test(cockpit) && /one_field_away/.test(briefGapProgressBuilder) && /estimated_uplift_score/.test(briefGapProgressBuilder), "learning-economics and cockpit expose a brief-gap uplift board for fast publishable exact wins");
 ok(/buildReelsBrainSegmentReadinessAudit/.test(economics) && /segment_readiness_audit/.test(economics) && /Segment Readiness Audit/.test(cockpit) && /segment-audit:/.test(cockpit), "learning-economics and cockpit expose a transparent readiness audit for segment verdicts");
 ok(/buildReelsBrainSegmentStabilityAudit/.test(economics) && /segment_stability_audit/.test(economics), "learning-economics exposes segment stability audit for high-trust verification");
 ok(/buildReelsBrainSegmentSolutions/.test(economics) && /segment_solutions/.test(economics), "learning-economics exposes operator-ready segment solutions");

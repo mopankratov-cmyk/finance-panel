@@ -4,6 +4,7 @@ import { buildReelsBrainValidationRunbook } from "@/lib/factory/reelsBrainValida
 import { buildReelsBrainSourceMixAudit } from "@/lib/factory/reelsBrainSourceMixAudit";
 import { buildReelsBrainBriefCoverageAudit } from "@/lib/factory/reelsBrainBriefCoverageAudit";
 import { buildReelsBrainShipReadyQueue } from "@/lib/factory/reelsBrainShipReadyQueue";
+import { buildReelsBrainBriefGapProgress } from "@/lib/factory/reelsBrainBriefGapProgress";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 20;
@@ -105,6 +106,11 @@ export async function GET(req: NextRequest) {
       segmentGenerationPacks: body.segment_generation_packs || null,
       limit: 6,
     });
+    const briefGapProgress = buildReelsBrainBriefGapProgress({
+      briefCoverageAudit,
+      shipReadyQueue,
+      limit: 6,
+    });
     return NextResponse.json({
       ok: true,
       report_type: req.nextUrl.searchParams.get("type") || "daily",
@@ -125,6 +131,7 @@ export async function GET(req: NextRequest) {
       segment_creative_exports: body.segment_creative_exports || null,
       brief_coverage_audit: briefCoverageAudit,
       ship_ready_queue: shipReadyQueue,
+      brief_gap_progress: briefGapProgress,
       source_mix_audit: sourceMixAudit,
       segment_readiness_audit: body.segment_readiness_audit || null,
       segment_stability_audit: body.segment_stability_audit || null,

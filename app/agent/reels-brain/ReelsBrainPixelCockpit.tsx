@@ -792,6 +792,21 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
       topMissingFields: ((shipReadyQueue.summary?.missing_field_hotspots || []) as JsonRecord[]).slice(0, 3),
       topMissingFamilies: ((shipReadyQueue.summary?.missing_family_hotspots || []) as JsonRecord[]).slice(0, 3),
     };
+    const briefGapProgress = (learning?.brief_gap_progress || {}) as JsonRecord;
+    const briefGapProgressRawSummary = ((briefGapProgress.summary || {}) as JsonRecord);
+    const briefGapProgressSummary = {
+      oneFieldAway: num(briefGapProgressRawSummary.one_field_away_segments),
+      closeToPublishable: num(briefGapProgressRawSummary.close_to_publishable_segments),
+      publishableIfClosedPct: num(briefGapProgressRawSummary.publishable_if_closed_pct),
+      avgUplift: num(briefGapProgressRawSummary.avg_uplift_score),
+      topFamilies: ((briefGapProgressRawSummary.top_missing_family_hotspots || []) as JsonRecord[]).slice(0, 3),
+      topLoops: ((briefGapProgressRawSummary.recommended_loop_hotspots || []) as JsonRecord[]).slice(0, 3),
+    };
+    const briefGapProgressCards = ((briefGapProgress.top_candidates || []) as JsonRecord[]).slice(0, 4).map((row) => ({
+      ...row,
+      label: `${NICHE_LABELS[String(row.niche)] || row.niche} × ${String(row.platform || "mixed").toUpperCase()}`,
+      laneTone: playbookTone(String(row.lane === "ship" ? "ship_now" : row.lane === "validate" ? "validate_and_ship" : "research")),
+    }));
     const segmentAuditCards = ((segmentReadinessAudit.items || []) as JsonRecord[]).slice(0, 6).map((row) => {
       const tone = playbookTone(String(row.verdict === "ship" ? "ship_now" : row.verdict === "validate" ? "validate_and_ship" : "research"));
       return {
@@ -1063,6 +1078,8 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
       briefCoverageSummary,
       shipReadyCards,
       shipReadySummary,
+      briefGapProgressSummary,
+      briefGapProgressCards,
       segmentAuditCards,
       segmentSolutionNicheCards,
       segmentSolutionPlatformCards,
@@ -2250,6 +2267,87 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
                 <h3 style={{ font: "700 24px/1.1 'Space Grotesk'", margin: 0 }}>Ship-Ready Queue ещё пуста</h3>
                 <p style={{ marginTop: 10, color: "#64748b", lineHeight: 1.55 }}>
                   Этот слой заполнится, когда появятся exact-ready сегменты с маленькими output-gap-ами, которые уже выгодно дожимать до production-grade brief.
+                </p>
+              </div>
+            )}
+          </div>
+        </section>
+
+        <section>
+          <SectionTitle k="04.4467 · Brief Gap Uplift" title="Какие сегменты дадут самый быстрый publishable uplift" />
+          <div className="rb-grid-hero">
+            <div className="rb-card">
+              <div className="rb-overline" style={{ color: "#0891b2" }}>One field away</div>
+              <h3 style={{ font: "700 34px/1 'Space Grotesk'", margin: "10px 0 0" }}>{compact(vm.briefGapProgressSummary?.oneFieldAway || 0)}</h3>
+              <p style={{ marginTop: 10, color: "#64748b", lineHeight: 1.55 }}>
+                Сегменты, где до publishable exact обычно остался один явный field-gap.
+              </p>
+            </div>
+            <div className="rb-card">
+              <div className="rb-overline" style={{ color: "#0891b2" }}>Close to publishable</div>
+              <h3 style={{ font: "700 34px/1 'Space Grotesk'", margin: "10px 0 0" }}>{compact(vm.briefGapProgressSummary?.closeToPublishable || 0)}</h3>
+              <p style={{ marginTop: 10, color: "#64748b", lineHeight: 1.55 }}>
+                Сегменты, где закрытие 1-2 gaps уже может перевести bundle в production-grade состояние.
+              </p>
+            </div>
+            <div className="rb-card">
+              <div className="rb-overline" style={{ color: "#0891b2" }}>If gaps close</div>
+              <h3 style={{ font: "700 34px/1 'Space Grotesk'", margin: "10px 0 0" }}>{compact(vm.briefGapProgressSummary?.publishableIfClosedPct || 0)}%</h3>
+              <p style={{ marginTop: 10, color: "#64748b", lineHeight: 1.55 }}>
+                Доля uplift-кандидатов, которые уже близки к publishable exact после закрытия текущих gaps.
+              </p>
+            </div>
+          </div>
+          <div className="rb-two" style={{ marginTop: 18 }}>
+            <div className="rb-card">
+              <div className="rb-overline" style={{ color: "#0891b2" }}>Top uplift families</div>
+              <p style={{ marginTop: 10, color: "#64748b", lineHeight: 1.55 }}>
+                {vm.briefGapProgressSummary?.topFamilies?.length
+                  ? ((vm.briefGapProgressSummary.topFamilies as JsonRecord[]).map((row) => `${row.label} (${compact(row.count || 0)})`).join(" · "))
+                  : "Семейства uplift-gap-ов почти вычищены"}
+              </p>
+            </div>
+            <div className="rb-card">
+              <div className="rb-overline" style={{ color: "#0891b2" }}>Recommended loops</div>
+              <p style={{ marginTop: 10, color: "#64748b", lineHeight: 1.55 }}>
+                {vm.briefGapProgressSummary?.topLoops?.length
+                  ? ((vm.briefGapProgressSummary.topLoops as JsonRecord[]).map((row) => `${row.label} (${compact(row.count || 0)})`).join(" · "))
+                  : "Явных uplift loop-ов пока нет"}
+              </p>
+            </div>
+          </div>
+          <div className="rb-three" style={{ marginTop: 18 }}>
+            {vm.briefGapProgressCards.length ? vm.briefGapProgressCards.map((row: JsonRecord) => (
+              <div className="rb-card" key={`brief-gap-progress:${row.niche}:${row.platform}`}>
+                <div className="rb-two" style={{ gridTemplateColumns: "1fr auto", gap: 14 }}>
+                  <div>
+                    <div className="rb-overline" style={{ color: "#0891b2" }}>{row.label}</div>
+                    <h3 style={{ font: "700 24px/1.08 'Space Grotesk'", margin: "10px 0 0" }}>{compact(row.estimated_uplift_score || 0)}</h3>
+                  </div>
+                  <div className="rb-live-pill" style={{ background: row.laneTone.bg, borderColor: row.laneTone.bd, color: row.laneTone.fg }}>
+                    <i style={{ background: row.laneTone.fg }} />
+                    {row.closure_stage || "uplift"}
+                  </div>
+                </div>
+                <div className="rb-three" style={{ marginTop: 14 }}>
+                  <div className="rb-brief-block"><b>Loop</b><p>{String(row.recommended_loop || "watch")}</p></div>
+                  <div className="rb-brief-block"><b>Family</b><p>{String(row.primary_missing_family || "none")}</p></div>
+                  <div className="rb-brief-block"><b>Missing</b><p>{compact(row.missing_count || 0)}</p></div>
+                </div>
+                <div className="rb-brief-block" style={{ marginTop: 12 }}>
+                  <b>Fields</b>
+                  <p>{((row.missing_fields || []) as string[]).join(" · ") || "Gap closed"}</p>
+                </div>
+                <div className="rb-brief-block" style={{ marginTop: 12 }}>
+                  <b>Next step</b>
+                  <p>{String(row.next_step || "Close remaining gap")}</p>
+                </div>
+              </div>
+            )) : (
+              <div className="rb-card">
+                <h3 style={{ font: "700 24px/1.1 'Space Grotesk'", margin: 0 }}>Uplift board ещё пуст</h3>
+                <p style={{ marginTop: 10, color: "#64748b", lineHeight: 1.55 }}>
+                  Этот слой появится, когда в brief coverage и ship-ready queue наберутся сегменты, которые уже близки к publishable exact.
                 </p>
               </div>
             )}
