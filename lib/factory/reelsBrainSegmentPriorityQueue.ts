@@ -71,6 +71,19 @@ type SegmentPolicyRow = {
   next_upgrade?: Record<string, unknown> | null;
 };
 
+type SegmentOutcomeRow = {
+  niche?: string;
+  platform?: string;
+  segment?: string;
+  status?: "proven" | "promising" | "weak" | "no_feedback" | string;
+  proof_quality?: "exact_segment" | "traced_transfer_only" | "untraced" | string;
+  winners?: number;
+  losers?: number;
+  traced_posts?: number;
+  exact_segment_posts?: number;
+  generation_ready_posts?: number;
+};
+
 function num(value: unknown) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
@@ -129,6 +142,26 @@ function policyDecisionGrade(value: string) {
   return "research";
 }
 
+function outcomeStatusBoost(value: string) {
+  if (value === "proven") return 16;
+  if (value === "promising") return 7;
+  if (value === "weak") return -28;
+  return 0;
+}
+
+function trustActionBoost(value: string) {
+  if (value === "promote_segment_trust") return 10;
+  if (value === "keep_validating_segment") return 4;
+  if (value === "review_or_penalize_segment") return -14;
+  return 0;
+}
+
+function proofQualityBoost(value: string) {
+  if (value === "exact_segment") return 12;
+  if (value === "traced_transfer_only") return 4;
+  return 0;
+}
+
 function readinessBlocked(row: SegmentReadinessRow | undefined) {
   if (!row) return false;
   const dominantGap = text(row.dominant_gap?.key || "");
@@ -156,20 +189,43 @@ export function buildReelsBrainSegmentPriorityQueue(input: {
   generationPolicy?: {
     by_segment?: SegmentPolicyRow[];
   };
+  feedbackLoop?: {
+    by_segment?: SegmentOutcomeRow[];
+    segment_outcome_memory?: {
+      strongest_segments?: SegmentOutcomeRow[];
+      promising_segments?: SegmentOutcomeRow[];
+      weak_segments?: SegmentOutcomeRow[];
+      trust_update_queue?: Array<{
+        segment?: string;
+        status?: string;
+        trust_action?: string;
+        evidence?: string;
+      }>;
+    };
+  };
   limit?: number;
 }) {
   const decisionMap = new Map((input.segmentDecisionDeck?.items || []).map((row) => [keyOf(row.niche, row.platform), row] as const));
   const stabilityMap = new Map((input.segmentStabilityAudit?.items || []).map((row) => [keyOf(row.niche, row.platform), row] as const));
   const readinessMap = new Map((input.segmentReadinessWatchlist?.items || []).map((row) => [keyOf(row.niche, row.platform), row] as const));
   const policyMap = new Map(((input.generationPolicy?.by_segment || []) as SegmentPolicyRow[]).map((row) => [keyOf(row.niche, row.platform), row] as const));
+  const feedbackRows = input.feedbackLoop?.by_segment
+    || [
+      ...(input.feedbackLoop?.segment_outcome_memory?.strongest_segments || []),
+      ...(input.feedbackLoop?.segment_outcome_memory?.promising_segments || []),
+      ...(input.feedbackLoop?.segment_outcome_memory?.weak_segments || []),
+    ];
+  const feedbackMap = new Map((feedbackRows || []).map((row) => [keyOf(row.niche, row.platform), row] as const));
+  const trustActionMap = new Map((input.feedbackLoop?.segment_outcome_memory?.trust_update_queue || []).map((row) => [text(row.segment), row] as const));
   const gapRows = input.segmentPlan?.focus_segments || [];
   const priorities = gapRows.map((row) => {
     const decision = decisionMap.get(keyOf(row.niche, row.platform)) || {};
     const stability = stabilityMap.get(keyOf(row.niche, row.platform)) || {};
     const readiness = readinessMap.get(keyOf(row.niche, row.platform));
     const policy = policyMap.get(keyOf(row.niche, row.platform)) || {};
+    const outcome = feedbackMap.get(keyOf(row.niche, row.platform)) || {};
     const decisionGrade = text(decision.decision_grade || "research");
-    const outcomeStatus = text((decision as { outcome_status?: string }).outcome_status || "no_feedback");
+    const outcomeStatus = text(outcome.status || (decision as { outcome_status?: string }).outcome_status || "no_feedback");
     const policyMode = text(policy.policy_mode || "research_only");
     const policyPriorityScore = num(policy.decision_priority_score);
     const upgrade = recommendedUpgrade((policy.recommended_upgrade || policy.next_upgrade) as Record<string, unknown> | null);
@@ -177,6 +233,9 @@ export function buildReelsBrainSegmentPriorityQueue(input: {
     const evidenceBand = text(stability.evidence_band || "thin");
     const highTrustSegment = Boolean(stability.high_trust_segment);
     const marketBlocked = outcomeStatus === "weak";
+    const proofQuality = text(outcome.proof_quality || "");
+    const trustQueue = trustActionMap.get(`${text(row.niche)} × ${text(row.platform)}`) || null;
+    const trustAction = text(trustQueue?.trust_action || "");
     const readinessGap = text(readiness?.dominant_gap?.key || "analyze");
     const readinessGapCount = num(readiness?.dominant_gap?.count);
     const readinessSoftBlocked = readinessBlocked(readiness);
@@ -204,8 +263,14 @@ export function buildReelsBrainSegmentPriorityQueue(input: {
       + (policyRank(policyMode) === 3 ? 20 : policyRank(policyMode) === 2 ? 10 : 0)
       + Math.min(22, policyPriorityScore * 0.2)
       + Math.min(18, upgrade.projected_trust_gain_score * 0.55)
+      + outcomeStatusBoost(outcomeStatus)
+      + proofQualityBoost(proofQuality)
+      + trustActionBoost(trustAction)
+      + Math.min(12, num(outcome.winners) * 3)
+      + Math.min(8, num(outcome.generation_ready_posts) * 4)
       + (readinessGap === "audio" || readinessGap === "transcript" ? 12 : readinessGap === "media" ? 8 : 0)
       - (marketBlocked ? 36 : 0)
+      - Math.min(14, num(outcome.losers) * 5)
       - (readinessSoftBlocked && Boolean(decision.ready_for_generation) ? 18 : 0)
     );
     const urgency = Math.max(0, Math.min(100, urgencyBase));
@@ -224,6 +289,14 @@ export function buildReelsBrainSegmentPriorityQueue(input: {
       policy_reason: text(policy.policy_reason),
       ready_for_generation: effectiveReadyForGeneration,
       outcome_status: outcomeStatus,
+      proof_quality: proofQuality || "untraced",
+      outcome_winners: num(outcome.winners),
+      outcome_losers: num(outcome.losers),
+      exact_segment_posts: num(outcome.exact_segment_posts),
+      traced_posts: num(outcome.traced_posts),
+      generation_ready_posts: num(outcome.generation_ready_posts),
+      trust_action: trustAction || "wait_for_feedback",
+      trust_evidence: text(trustQueue?.evidence),
       evidence_band: evidenceBand,
       high_trust_segment: highTrustSegment,
       stability_score: num(stability.stability_score),
@@ -276,6 +349,9 @@ export function buildReelsBrainSegmentPriorityQueue(input: {
       ready_for_generation: priorities.filter((item) => item.ready_for_generation).length,
       readiness_blocked: priorities.filter((item) => item.readiness_blocked).length,
       high_trust_segments: priorities.filter((item) => item.high_trust_segment).length,
+      proven_outcomes: priorities.filter((item) => item.outcome_status === "proven").length,
+      weak_outcomes: priorities.filter((item) => item.outcome_status === "weak").length,
+      exact_feedback_segments: priorities.filter((item) => item.proof_quality === "exact_segment").length,
       stable_segments: priorities.filter((item) => item.evidence_band === "stable").length,
       forming_segments: priorities.filter((item) => item.evidence_band === "forming").length,
     },

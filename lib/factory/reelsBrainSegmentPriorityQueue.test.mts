@@ -98,6 +98,46 @@ function testBuildReelsBrainSegmentPriorityQueueBlendsGenerationAndLearningNeeds
         },
       ],
     },
+    feedbackLoop: {
+      by_segment: [
+        {
+          niche: "ru_toys",
+          platform: "tiktok",
+          status: "proven",
+          proof_quality: "exact_segment",
+          winners: 3,
+          losers: 0,
+          traced_posts: 4,
+          exact_segment_posts: 2,
+          generation_ready_posts: 1,
+        },
+        {
+          niche: "ru_cosmetics",
+          platform: "instagram",
+          status: "promising",
+          proof_quality: "traced_transfer_only",
+          winners: 1,
+          losers: 0,
+          traced_posts: 2,
+          exact_segment_posts: 0,
+          generation_ready_posts: 0,
+        },
+      ],
+      segment_outcome_memory: {
+        trust_update_queue: [
+          {
+            segment: "ru_toys × tiktok",
+            trust_action: "promote_segment_trust",
+            evidence: "3 winners / 4 posts · exact 2",
+          },
+          {
+            segment: "ru_cosmetics × instagram",
+            trust_action: "keep_validating_segment",
+            evidence: "1 winners / 2 posts · exact 0",
+          },
+        ],
+      },
+    },
   });
 
   assert.equal(result.summary.total, 2);
@@ -105,15 +145,23 @@ function testBuildReelsBrainSegmentPriorityQueueBlendsGenerationAndLearningNeeds
   assert.equal(result.summary.validate_segment_briefs, 1);
   assert.equal(result.summary.ready_for_generation, 2);
   assert.equal(result.summary.high_trust_segments, 1);
+  assert.equal(result.summary.proven_outcomes, 1);
+  assert.equal(result.summary.weak_outcomes, 0);
+  assert.equal(result.summary.exact_feedback_segments, 1);
   assert.equal(result.items[0]?.niche, "ru_toys");
   assert.equal(result.items[0]?.action, "promote_segment_briefs");
   assert.equal(result.items[0]?.ready_for_generation, true);
   assert.equal(result.items[0]?.evidence_band, "stable");
   assert.equal(result.items[0]?.policy_mode, "primary");
   assert.equal(result.items[0]?.decision_priority_score, 100);
+  assert.equal(result.items[0]?.outcome_status, "proven");
+  assert.equal(result.items[0]?.proof_quality, "exact_segment");
+  assert.equal(result.items[0]?.trust_action, "promote_segment_trust");
+  assert.match(String(result.items[0]?.trust_evidence), /exact 2/);
   assert.equal(result.items[0]?.recommended_upgrade?.unlocked_output, "publishable_exact_brief");
   assert.equal(result.items[1]?.action, "validate_segment_briefs");
   assert.equal(result.items[1]?.policy_mode, "control_only");
+  assert.equal(result.items[1]?.outcome_status, "promising");
 }
 
 function run() {
@@ -193,12 +241,39 @@ function testBuildReelsBrainSegmentPriorityQueueRespectsReadinessBlocks() {
         },
       ],
     },
+    feedbackLoop: {
+      by_segment: [
+        {
+          niche: "ru_toys",
+          platform: "youtube",
+          status: "weak",
+          proof_quality: "exact_segment",
+          winners: 0,
+          losers: 2,
+          traced_posts: 2,
+          exact_segment_posts: 2,
+          generation_ready_posts: 0,
+        },
+      ],
+      segment_outcome_memory: {
+        trust_update_queue: [
+          {
+            segment: "ru_toys × youtube",
+            trust_action: "review_or_penalize_segment",
+            evidence: "0 winners / 2 posts",
+          },
+        ],
+      },
+    },
   });
 
   assert.equal(result.summary.readiness_blocked, 1);
   assert.equal(result.summary.promote_segment_briefs, 0);
+  assert.equal(result.summary.weak_outcomes, 1);
   assert.equal(result.items[0]?.readiness_blocked, true);
   assert.equal(result.items[0]?.ready_for_generation, false);
+  assert.equal(result.items[0]?.outcome_status, "weak");
+  assert.equal(result.items[0]?.trust_action, "review_or_penalize_segment");
   assert.equal(result.items[0]?.readiness_dominant_gap, "audio");
   assert.equal(result.items[0]?.action, "collect_segment_batch");
   assert.equal(result.items[0]?.policy_mode, "primary");
@@ -272,6 +347,30 @@ function testBuildReelsBrainSegmentPriorityQueueLetsPolicyOverrideWeakDecisionDe
         },
       ],
     },
+    feedbackLoop: {
+      by_segment: [
+        {
+          niche: "ru_clothing",
+          platform: "instagram",
+          status: "proven",
+          proof_quality: "exact_segment",
+          winners: 2,
+          losers: 0,
+          traced_posts: 3,
+          exact_segment_posts: 1,
+          generation_ready_posts: 1,
+        },
+      ],
+      segment_outcome_memory: {
+        trust_update_queue: [
+          {
+            segment: "ru_clothing × instagram",
+            trust_action: "promote_segment_trust",
+            evidence: "2 winners / 3 posts",
+          },
+        ],
+      },
+    },
   });
 
   assert.equal(result.items[0]?.niche, "ru_clothing");
@@ -279,5 +378,7 @@ function testBuildReelsBrainSegmentPriorityQueueLetsPolicyOverrideWeakDecisionDe
   assert.equal(result.items[0]?.action, "promote_segment_briefs");
   assert.equal(result.items[0]?.policy_mode, "primary");
   assert.equal(result.items[0]?.ready_for_generation, true);
+  assert.equal(result.items[0]?.outcome_status, "proven");
+  assert.equal(result.items[0]?.proof_quality, "exact_segment");
   assert.match(String(result.items[0]?.policy_reason), /strongest exact-ready policy/i);
 }

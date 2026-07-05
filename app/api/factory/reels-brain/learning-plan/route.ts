@@ -129,6 +129,7 @@ export async function GET(req: NextRequest) {
         items: Array.isArray(progressBody.segment_watchlist) ? progressBody.segment_watchlist : [],
       },
       generationPolicy: learning.generation_policy || null,
+      feedbackLoop: learning.feedback_loop || null,
       limit: 8,
     });
     const prioritySegment = ((segmentPriorityQueue.items || [])[0] || null) as JsonRecord | null;

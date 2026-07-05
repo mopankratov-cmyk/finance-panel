@@ -3059,6 +3059,7 @@ export async function GET(req: NextRequest) {
       },
       segmentDecisionDeck,
       generationPolicy,
+      feedbackLoop,
       limit: compactMode ? 6 : 10,
     });
     const portfolioReadiness = buildReelsBrainPortfolioReadiness({
