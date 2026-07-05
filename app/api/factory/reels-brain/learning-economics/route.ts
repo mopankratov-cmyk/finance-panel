@@ -3177,7 +3177,7 @@ export async function GET(req: NextRequest) {
       insightPayload,
       antiPatternBrain,
       discoveryBrain,
-      portfolioReadiness,
+      portfolioReadiness: prioritizedPortfolioReadiness,
     });
     const autopilotActions = buildAutopilotActions({
       niches: nicheSummaries,
