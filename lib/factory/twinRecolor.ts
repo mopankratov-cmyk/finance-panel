@@ -148,14 +148,17 @@ export const RETOUCH_PRESETS: Record<string, string> = {
   hood: "remove the hood — this garment has a collar, not a hood",
 };
 
-export function buildRetouchPrompt(product: string, instructions: string[]): string {
+export function buildRetouchPrompt(product: string, instructions: string[], hasReferenceImage?: boolean): string {
   const edits = instructions.filter(Boolean).join("; ");
   return [
-    `Edit this clean product photo of ${product}. ${edits}.`,
+    `Edit this clean product photo of ${product} (the FIRST image). ${edits}.`,
+    hasReferenceImage
+      ? "The SECOND image is a reference showing the exact detail/construction to copy — match its style, proportions and placement precisely, adapted to this garment's own fabric colour and camera angle. Do not copy the reference image's background, garment colour, or anything else besides the specific detail described above."
+      : "",
     "Keep EVERYTHING else pixel-identical: exact silhouette, garment length, cut, color, hood/collar, zipper, buttons, pockets, seams, stitching, cuffs, hardware, proportions, fabric texture, camera angle, background and lighting.",
-    "Only remove/fix the named artifact; do not restyle, recolor, resize or add anything.",
+    "Only add/remove/fix the named detail; do not restyle, recolor, resize or add anything else.",
     "Photorealistic, same clean studio packshot, vertical 9:16, sharp fabric detail.",
-  ].join(" ");
+  ].filter(Boolean).join(" ");
 }
 
 export async function retouchTwin(db: SupabaseClient, input: {
@@ -163,6 +166,7 @@ export async function retouchTwin(db: SupabaseClient, input: {
   twinId?: string;
   product: string;
   instructions: string[];          // готовые фразы или ключи RETOUCH_PRESETS
+  referenceImageUrls?: string[];   // опционально: доп. референс-фото (напр. деталь от Андрея)
 }): Promise<{ ok: true; twin: ProductTwin; previewUrlSource: string } | { ok: false; error: string; status?: number }> {
   const article = String(input.article || "").trim();
   if (!article) return { ok: false, error: "нужен article", status: 400 };
@@ -180,8 +184,9 @@ export async function retouchTwin(db: SupabaseClient, input: {
   const resolved = input.instructions.map((i) => RETOUCH_PRESETS[i] || i);
   const category = normalizeTwinCategory("apparel", article, input.product);
   const publicBase = await rehostImageForFal(base.asset.url);
-  const prompt = buildRetouchPrompt(input.product, resolved);
-  const edited = await runNanoBananaEdit({ image: publicBase, prompt });
+  const referenceImages = (input.referenceImageUrls || []).filter(Boolean);
+  const prompt = buildRetouchPrompt(input.product, resolved, referenceImages.length > 0);
+  const edited = await runNanoBananaEdit({ image: publicBase, referenceImages, prompt });
   if (!edited.ok) return { ok: false, error: edited.error, status: edited.responseUrl ? 504 : 502 };
 
   const downloaded = await downloadImageBuffer(edited.imageUrl);

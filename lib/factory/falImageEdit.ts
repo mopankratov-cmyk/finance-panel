@@ -18,17 +18,19 @@ export async function fetchWithRetry(url: string, init: RequestInit = {}, tries 
 
 export async function runNanoBananaEdit(input: {
   image: string;
+  referenceImages?: string[];
   prompt: string;
   maxWaitMs?: number;
 }): Promise<{ ok: true; imageUrl: string; responseUrl: string } | { ok: false; error: string; responseUrl?: string }> {
   const key = process.env.FAL_KEY || process.env.FAL_BILLING_KEY || "";
   if (!key) return { ok: false, error: "FAL_KEY не настроен" };
+  const imageUrls = [input.image, ...(input.referenceImages || []).filter(Boolean)];
   const sub = await fetchWithRetry(`${QUEUE}${NANO_EDIT}`, {
     method: "POST",
     headers: { Authorization: `Key ${key}`, "Content-Type": "application/json" },
     cache: "no-store",
     body: JSON.stringify({
-      image_urls: [input.image],
+      image_urls: imageUrls,
       prompt: input.prompt,
       num_images: 1,
       aspect_ratio: "9:16",

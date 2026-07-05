@@ -19,15 +19,16 @@ export async function POST(req: NextRequest) {
     if (!db) return NextResponse.json({ ok: false, error: "Supabase не настроен" }, { status: 500 });
     const body = await req.json().catch(() => ({}));
 
-    // Ретушь: убрать вшитый артефакт (рукавный шильдик, утяжка) с твина того же артикула.
-    // POST { retouch: true, article, instructions: ["sleeve_patch", ...] }
+    // Ретушь: убрать вшитый артефакт (рукавный шильдик, утяжка) или добавить деталь по референсу.
+    // POST { retouch: true, article, instructions: ["sleeve_patch", ...], reference_image_urls?: [...] }
     if (body.retouch === true) {
       const article = String(body.article || "").trim();
       const instructions = Array.isArray(body.instructions) ? body.instructions.map((s: unknown) => String(s || "").trim()).filter(Boolean) : [];
       if (!article || !instructions.length) return NextResponse.json({ ok: false, error: "нужны article и instructions[]" }, { status: 400 });
       const catEntry = catalogEntryForArticle(article);
       const product = String(body.product || (catEntry ? `${catEntry.category === "Ветровки" ? "ветровка" : "куртка"} NORVIA ${catEntry.color.split(";")[0]}` : `изделие ${article}`)).trim();
-      const r = await retouchTwin(db, { article, twinId: String(body.twin_id || body.twinId || "").trim() || undefined, product, instructions });
+      const referenceImageUrls = Array.isArray(body.reference_image_urls) ? body.reference_image_urls.map((s: unknown) => String(s || "").trim()).filter(Boolean) : [];
+      const r = await retouchTwin(db, { article, twinId: String(body.twin_id || body.twinId || "").trim() || undefined, product, instructions, referenceImageUrls });
       if (!r.ok) return NextResponse.json({ ok: false, error: r.error }, { status: r.status || 500 });
       return NextResponse.json({
         ok: true, mode: "retouch", article, instructions,
