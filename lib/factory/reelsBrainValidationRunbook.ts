@@ -37,6 +37,7 @@ export function buildReelsBrainValidationRunbook(input: {
         ? row.recommended_upgrade
         : {}) as JsonRecord;
     const proofScope = text(payload.proof_scope);
+    const highTrustGenerationReady = Boolean(row.high_trust_generation_ready || measurement.high_trust_generation_ready || payload.high_trust_generation_ready);
     return {
       task_id: text(row.task_id),
       task_type: text(row.type, "validate_pattern_feedback"),
@@ -44,7 +45,7 @@ export function buildReelsBrainValidationRunbook(input: {
       niche: text(row.niche, text(measurement.niche, "mixed")),
       platform: text(row.platform, text(measurement.platform, "mixed")),
       policy_mode: text(row.policy_mode, text(measurement.policy_mode, "research_only")),
-      high_trust_generation_ready: Boolean(row.high_trust_generation_ready || measurement.high_trust_generation_ready || payload.high_trust_generation_ready),
+      high_trust_generation_ready: highTrustGenerationReady,
       segment_priority_score: Number(row.segment_priority_score || measurement.segment_priority_score || 0),
       segment_priority_reason: text(row.segment_priority_reason, text(measurement.segment_priority_reason, "")),
       priority: text(row.priority, "medium"),
@@ -71,7 +72,7 @@ export function buildReelsBrainValidationRunbook(input: {
       publish_checklist: [
         proofScope === "exact_segment"
           ? "Снять exact segment variant, не опираясь на соседний transfer как на финальное доказательство."
-          : Boolean(row.high_trust_generation_ready || measurement.high_trust_generation_ready || payload.high_trust_generation_ready)
+          : highTrustGenerationReady
             ? "Снять production-usable variant и проверить, что generation-ready сегмент не теряет high-trust сигнал на публикации."
           : "Снять variant по strongest pattern и не менять ключевую механику.",
         "После публикации сразу записать views и базовые rates.",
@@ -93,6 +94,7 @@ export function buildReelsBrainValidationRunbook(input: {
         revenue: null,
         source: "reels_brain_feedback",
         proof_scope: proofScope || null,
+        high_trust_generation_ready: highTrustGenerationReady,
       },
     };
   });

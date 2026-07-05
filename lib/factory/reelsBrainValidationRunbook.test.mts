@@ -60,6 +60,7 @@ assert.equal(runbook.items[0]?.creative_solution_endpoint, "/api/factory/reels-b
 assert.equal(runbook.items[0]?.feedback_payload_template.platform, "instagram");
 assert.equal(runbook.items[0]?.feedback_payload_template.measurement_id, "exact__ru_toys__instagram");
 assert.equal(runbook.items[0]?.feedback_payload_template.validation_task_id, "exact__ru_toys__instagram");
+assert.equal(runbook.items[0]?.feedback_payload_template.high_trust_generation_ready, true);
 assert.equal(runbook.items[0]?.recommended_upgrade?.unlocked_output, "publishable_exact_brief");
 assert.equal(runbook.items[0]?.recommended_upgrade?.projected_trust_gain_score, 27);
 assert.equal(runbook.items[0]?.high_trust_generation_ready, true);
