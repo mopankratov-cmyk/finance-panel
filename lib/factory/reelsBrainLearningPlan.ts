@@ -192,6 +192,46 @@ export function pickPortfolioFocusSegment(portfolioReadiness?: JsonRecord | null
     )[0] || null;
 }
 
+function pickPublishableExactFocusSegment(input: {
+  portfolioReadiness?: JsonRecord | null;
+  generationPolicy?: JsonRecord | null;
+  segmentPriorityQueue?: { items?: Array<JsonRecord> } | JsonRecord | null;
+}) {
+  const candidates = Array.isArray(input.portfolioReadiness?.publishable_exact_gaps)
+    ? (input.portfolioReadiness?.publishable_exact_gaps as JsonRecord[])
+        .map((row) => safeSegment(row))
+        .filter(Boolean) as FocusSegment[]
+    : [];
+  const policyRows = Array.isArray(input.generationPolicy?.by_segment)
+    ? (input.generationPolicy?.by_segment as JsonRecord[])
+        .map((row) => safePolicyRow(row))
+        .filter(Boolean) as PolicyRow[]
+    : [];
+  const priorityRows = records((input.segmentPriorityQueue as { items?: Array<JsonRecord> } | JsonRecord | null | undefined)?.items);
+  const policyMap = new Map(policyRows.map((row) => [`${row.niche || ""}__${row.platform || ""}`, row] as const));
+  const priorityMap = new Map(priorityRows.map((row) => [`${text(row.niche)}__${text(row.platform)}`, row] as const));
+
+  return candidates
+    .sort((a, b) => {
+      const leftPolicy = policyMap.get(`${a.niche}__${a.platform}`) || null;
+      const rightPolicy = policyMap.get(`${b.niche}__${b.platform}`) || null;
+      const leftPriority = (priorityMap.get(`${a.niche}__${a.platform}`) || {}) as JsonRecord;
+      const rightPriority = (priorityMap.get(`${b.niche}__${b.platform}`) || {}) as JsonRecord;
+      const leftPolicyRank = text(leftPolicy?.policy_mode) === "primary" ? 3 : text(leftPolicy?.policy_mode) === "control_only" ? 2 : 1;
+      const rightPolicyRank = text(rightPolicy?.policy_mode) === "primary" ? 3 : text(rightPolicy?.policy_mode) === "control_only" ? 2 : 1;
+      const leftReadiness = Math.max(num(leftPolicy?.readiness_score), num(leftPriority.readiness_analyzed_rate));
+      const rightReadiness = Math.max(num(rightPolicy?.readiness_score), num(rightPriority.readiness_analyzed_rate));
+      return Number(Boolean(b.high_trust_segment)) - Number(Boolean(a.high_trust_segment))
+        || evidenceRank(b.evidence_band) - evidenceRank(a.evidence_band)
+        || rightPolicyRank - leftPolicyRank
+        || rightReadiness - leftReadiness
+        || num(rightPriority.urgency_score) - num(leftPriority.urgency_score)
+        || b.stability_score - a.stability_score
+        || a.blockers.length - b.blockers.length
+        || a.label.localeCompare(b.label);
+    })[0] || null;
+}
+
 export function buildReelsBrainNextTick(input: {
   target: number;
   totalVideos: number;
@@ -202,6 +242,7 @@ export function buildReelsBrainNextTick(input: {
   prioritySegment?: JsonRecord | null;
   portfolioReadiness?: JsonRecord | null;
   generationPolicy?: JsonRecord | null;
+  segmentPriorityQueue?: { items?: Array<JsonRecord> } | JsonRecord | null;
   learningEconomics?: JsonRecord | null;
   outcomeMemory?: OutcomeMemorySummary | JsonRecord | null;
   exactSegmentQueue?: ExactSegmentQueueSummary | JsonRecord | null;
@@ -242,9 +283,11 @@ export function buildReelsBrainNextTick(input: {
     || null,
   );
   const shipReadySummary = ((shipReadyQueue as ShipReadyQueueSummary | null | undefined)?.summary || {}) as JsonRecord;
-  const publishableExactGapSegment = safeSegment(
-    records((portfolio.publishable_exact_gaps as JsonRecord[] | undefined))[0] || null,
-  );
+  const publishableExactGapSegment = pickPublishableExactFocusSegment({
+    portfolioReadiness: portfolio,
+    generationPolicy: input.generationPolicy,
+    segmentPriorityQueue: input.segmentPriorityQueue,
+  });
   const collectionFocusSegment = exactFocusSegment || portfolioFocusSegment || prioritySegment;
   const directSegmentPolicy = selectPolicyForSegment(input.generationPolicy, prioritySegment);
   const directPolicyMode = text(directSegmentPolicy?.policy_mode, "research_only");

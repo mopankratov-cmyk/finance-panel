@@ -162,6 +162,7 @@ export async function GET(req: NextRequest) {
       prioritySegment: preferredPrioritySegment,
       portfolioReadiness,
       generationPolicy: (learning.generation_policy || null) as JsonRecord | null,
+      segmentPriorityQueue,
       outcomeMemory: (learning.outcome_memory_brain || null) as JsonRecord | null,
       exactSegmentQueue,
       briefCoverageAudit,

@@ -144,12 +144,52 @@ const publishableExactCoverageTick = buildReelsBrainNextTick({
     missing_segments: [],
     publishable_exact_gaps: [
       {
+        niche: "ru_cosmetics",
+        platform: "instagram",
+        label: "ru_cosmetics × instagram",
+        evidence_band: "forming",
+        stability_score: 48,
+        missing: false,
+        high_trust_segment: false,
+      },
+      {
         niche: "ru_toys",
         platform: "youtube",
         label: "ru_toys × youtube",
         evidence_band: "stable",
         stability_score: 79,
         missing: false,
+        high_trust_segment: true,
+      },
+    ],
+  },
+  generationPolicy: {
+    by_segment: [
+      {
+        niche: "ru_toys",
+        platform: "youtube",
+        label: "ru_toys × youtube",
+        policy_mode: "primary",
+        trust_band: "high",
+        evidence_band: "stable",
+        readiness_score: 90,
+        policy_reason: "segment is one step away from publishable exact",
+      },
+    ],
+  },
+  segmentPriorityQueue: {
+    items: [
+      {
+        niche: "ru_toys",
+        platform: "youtube",
+        urgency_score: 92,
+        readiness_analyzed_rate: 88,
+      },
+      {
+        niche: "ru_cosmetics",
+        platform: "instagram",
+        urgency_score: 44,
+        readiness_analyzed_rate: 39,
       },
     ],
   },

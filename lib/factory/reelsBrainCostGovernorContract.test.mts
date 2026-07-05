@@ -181,6 +181,7 @@ ok(/review_pattern_gain_economics/.test(economics) && /pattern_gain_cost_trend/.
 ok(/segmentStabilityAudit/.test(learningPlan) && /segment_stability/.test(learningPlan), "learning-plan uses segment stability audit in the main loop");
 ok(/portfolio_readiness/.test(learningPlan) && /publishable_exact_coverage_pct/.test(learningPlan), "learning-plan exposes portfolio readiness in the mission loop including publishable exact coverage");
 ok(/buildReelsBrainNextTick/.test(learningPlan) && /portfolio_priority_segment/.test(learningPlan), "learning-plan delegates portfolio-aware next tick selection and preserves focused gap segment");
+ok(/segmentPriorityQueue/.test(learningPlan) && /pickPublishableExactFocusSegment/.test(learningPlanBuilder), "learning-plan ranks publishable exact gaps using segment priority context instead of raw list order");
 ok(/generationPolicy/.test(learningPlan) && /generation_policy/.test(learningPlanBuilder) && /policyLine/.test(learningPlanBuilder), "learning-plan uses generation policy when choosing the next collection move");
 ok(/feedback_coverage/.test(learningPlan) && /improve_feedback_coverage/.test(learningPlanBuilder) && /no_feedback_queue/.test(learningPlanBuilder), "learning-plan can pivot from corpus growth to strong-pattern feedback coverage");
 ok(/brief_bundle_completion/.test(learningPlanBuilder) && /briefCoverageAudit/.test(learningPlanBuilder), "learning-plan can pivot from corpus growth to closing usable brief bundle gaps");
