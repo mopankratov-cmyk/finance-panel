@@ -166,4 +166,36 @@ assert.equal(weakOutcomeTick.task, "collect_portfolio_gaps");
 assert.equal((weakOutcomeTick.params as Record<string, unknown>).niche, "ru_cosmetics");
 assert.match(weakOutcomeTick.reason, /weak outcome/);
 
+const expensivePatternGainTick = buildReelsBrainNextTick({
+  target: 10000,
+  totalVideos: 3200,
+  analyzedVideos: 3110,
+  backlogLimit: 180,
+  canRunPaidCollection: true,
+  prioritySegment: {
+    niche: "ru_toys",
+    platform: "tiktok",
+    label: "ru_toys × tiktok",
+    action: "collect_segment_batch",
+  },
+  portfolioReadiness: {
+    summary: {
+      high_trust_coverage_pct: 58,
+      verdict: "still_building",
+    },
+    missing_segments: [],
+  },
+  learningEconomics: {
+    pattern_gain_cost_trend: "more_expensive",
+    weak_pattern_gain: true,
+    pattern_gain_proxy_total: 12,
+    high_trust_gain_proxy_total: 4,
+    cost_units_per_pattern_gain_recent: 18,
+  },
+});
+
+assert.equal(expensivePatternGainTick.task, "analyze_backlog");
+assert.equal((expensivePatternGainTick.params as Record<string, unknown>).build_patterns, "true");
+assert.match(expensivePatternGainTick.reason, /economics уже ухудшилась/);
+
 console.log("reelsBrainLearningPlan: passed");

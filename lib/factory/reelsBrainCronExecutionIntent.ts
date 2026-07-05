@@ -46,6 +46,23 @@ export type ReelsBrainCronExecutionIntent = {
   analyze_overrides?: Partial<AnalyzeProfile>;
 };
 
+type LearningEconomics = {
+  pattern_gain_cost_trend: string;
+  weak_pattern_gain: boolean;
+  pattern_gain_proxy_total: number;
+  high_trust_gain_proxy_total: number;
+};
+
+function safeLearningEconomics(value: unknown): LearningEconomics {
+  const row = rec(value);
+  return {
+    pattern_gain_cost_trend: text(row.pattern_gain_cost_trend, "not_enough_data"),
+    weak_pattern_gain: Boolean(row.weak_pattern_gain),
+    pattern_gain_proxy_total: num(row.pattern_gain_proxy_total),
+    high_trust_gain_proxy_total: num(row.high_trust_gain_proxy_total),
+  };
+}
+
 export function buildReelsBrainCronExecutionIntent(input: {
   task: "bulk" | "analyze";
   nextTick?: JsonRecord | null;
@@ -59,6 +76,9 @@ export function buildReelsBrainCronExecutionIntent(input: {
   const policyMode = (policyModeRaw === "primary" || policyModeRaw === "control_only")
     ? policyModeRaw
     : "research_only";
+  const learningEconomics = safeLearningEconomics(nextTick.learning_economics);
+  const expensivePatternGain = learningEconomics.weak_pattern_gain
+    || learningEconomics.pattern_gain_cost_trend === "more_expensive";
   const priorityLabel = text(prioritySegment.label);
   const portfolioLabel = text(portfolioSegment.label);
   const focusSegment = priorityLabel || portfolioLabel || text(policy.label) || null;
@@ -89,13 +109,22 @@ export function buildReelsBrainCronExecutionIntent(input: {
       explanation: focusSegment
         ? `Analyze backlog around ${focusSegment}: сначала превратить накопленный корпус в память.`
         : "Analyze backlog: сначала превратить накопленный корпус в память.",
-      analyze_overrides: policyMode === "primary" || policyMode === "control_only"
-        ? {
-          build_patterns: true,
-          max_lanes: 2,
-          limit: 12,
-        }
-        : undefined,
+      analyze_overrides: {
+        ...(policyMode === "primary" || policyMode === "control_only"
+          ? {
+            build_patterns: true,
+            max_lanes: 2,
+            limit: 12,
+          }
+          : {}),
+        ...(expensivePatternGain
+          ? {
+            build_patterns: true,
+            max_lanes: 3,
+            limit: 16,
+          }
+          : {}),
+      },
     };
   }
 
@@ -172,12 +201,20 @@ export function buildReelsBrainCronExecutionIntent(input: {
       focus_segment: focusSegment,
       policy_mode: policyMode,
       explanation: focusSegment
-        ? `Explore research segment ${focusSegment}: держим discovery шире, потому что доверие ещё не собрано.`
-        : "Explore research segment: держим discovery шире, потому что доверие ещё не собрано.",
+        ? expensivePatternGain
+          ? `Explore research segment ${focusSegment}: доверие ещё не собрано, но pattern gain деградирует, поэтому discovery сужаем и делаем его дешевле.`
+          : `Explore research segment ${focusSegment}: держим discovery шире, потому что доверие ещё не собрано.`
+        : expensivePatternGain
+          ? "Explore research segment: pattern gain дорожает, поэтому discovery сужаем и делаем его дешевле."
+          : "Explore research segment: держим discovery шире, потому что доверие ещё не собрано.",
       bulk_overrides: {
-        providers_per_lane: 2,
-        query_variants_per_lane: 2,
-        hours: 96,
+        providers_per_lane: expensivePatternGain ? 1 : 2,
+        query_variants_per_lane: expensivePatternGain ? 1 : 2,
+        max_lanes: expensivePatternGain ? 1 : undefined,
+        limit: expensivePatternGain ? 18 : undefined,
+        max_provider_calls: expensivePatternGain ? 2 : undefined,
+        max_cost_units: expensivePatternGain ? 6 : undefined,
+        hours: expensivePatternGain ? 48 : 96,
       },
     };
   }

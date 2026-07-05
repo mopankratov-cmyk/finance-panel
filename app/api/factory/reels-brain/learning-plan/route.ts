@@ -148,6 +148,13 @@ export async function GET(req: NextRequest) {
       prioritySegment,
       portfolioReadiness,
       generationPolicy: (learning.generation_policy || null) as JsonRecord | null,
+      learningEconomics: {
+        pattern_gain_cost_trend: totals.pattern_gain_cost_trend,
+        pattern_gain_proxy_total: totals.pattern_gain_proxy_total,
+        high_trust_gain_proxy_total: totals.high_trust_gain_proxy_total,
+        cost_units_per_pattern_gain_recent: totals.cost_units_per_pattern_gain_recent,
+        weak_pattern_gain: costGovernor.weak_pattern_gain,
+      },
     });
 
     return NextResponse.json({

@@ -20,6 +20,14 @@ type PolicyRow = JsonRecord & {
   policy_reason?: string;
 };
 
+type LearningEconomicsSummary = {
+  pattern_gain_cost_trend: string;
+  pattern_gain_proxy_total: number;
+  high_trust_gain_proxy_total: number;
+  cost_units_per_pattern_gain_recent: number;
+  weak_pattern_gain: boolean;
+};
+
 function num(value: unknown): number {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
@@ -79,6 +87,16 @@ function safePolicyRow(row: JsonRecord | null | undefined): PolicyRow | null {
   };
 }
 
+function safeLearningEconomics(row: JsonRecord | null | undefined): LearningEconomicsSummary {
+  return {
+    pattern_gain_cost_trend: text(row?.pattern_gain_cost_trend, "not_enough_data"),
+    pattern_gain_proxy_total: num(row?.pattern_gain_proxy_total),
+    high_trust_gain_proxy_total: num(row?.high_trust_gain_proxy_total),
+    cost_units_per_pattern_gain_recent: num(row?.cost_units_per_pattern_gain_recent),
+    weak_pattern_gain: Boolean(row?.weak_pattern_gain),
+  };
+}
+
 function selectPolicyForSegment(
   generationPolicy: JsonRecord | null | undefined,
   segment: FocusSegment | null,
@@ -135,12 +153,14 @@ export function buildReelsBrainNextTick(input: {
   prioritySegment?: JsonRecord | null;
   portfolioReadiness?: JsonRecord | null;
   generationPolicy?: JsonRecord | null;
+  learningEconomics?: JsonRecord | null;
 }) {
   const backlog = Math.max(0, input.totalVideos - input.analyzedVideos);
   const portfolio = (input.portfolioReadiness || {}) as JsonRecord;
   const portfolioSummary = (portfolio.summary || portfolio) as JsonRecord;
   const portfolioCoverage = num(portfolioSummary.high_trust_coverage_pct);
   const portfolioVerdict = text(portfolioSummary.verdict, "still_building");
+  const learningEconomics = safeLearningEconomics(input.learningEconomics);
   const prioritySegment = safeSegment(input.prioritySegment);
   const portfolioFocusSegment = pickPortfolioFocusSegment(portfolio);
   const collectionFocusSegment = portfolioFocusSegment || prioritySegment;
@@ -155,16 +175,25 @@ export function buildReelsBrainNextTick(input: {
   const activePolicySegment = shouldSupportDecisionSegment ? prioritySegment : collectionFocusSegment || prioritySegment;
   const activePolicy = selectPolicyForSegment(input.generationPolicy, activePolicySegment);
   const activePolicyMode = text(activePolicy?.policy_mode, "research_only");
+  const patternGainTrend = learningEconomics.pattern_gain_cost_trend;
+  const expensivePatternGain = patternGainTrend === "more_expensive" || learningEconomics.weak_pattern_gain;
+  const dynamicBacklogLimit = expensivePatternGain
+    ? clamp(Math.round(input.backlogLimit * (learningEconomics.weak_pattern_gain ? 0.45 : 0.65)), 24, input.backlogLimit)
+    : input.backlogLimit;
+  const shouldAnalyzeForEconomics = backlog >= dynamicBacklogLimit && backlog > 0;
 
-  if (backlog >= input.backlogLimit) {
+  if (shouldAnalyzeForEconomics) {
     return {
       task: "analyze_backlog",
       label: "Сначала разобрать накопленный backlog",
-      reason: `В базе есть ${backlog} неразобранных видео. Дешевле превратить их в память, чем покупать новый сбор.${prioritySegment ? ` Главный сегмент тика: ${String(prioritySegment.label || "")}.` : ""}`,
+      reason: expensivePatternGain
+        ? `В базе есть ${backlog} неразобранных видео, а economics уже ухудшилась (${patternGainTrend || "weak_pattern_gain"}). Сейчас выгоднее дожать анализ и pattern compaction, чем покупать новый сбор.${prioritySegment ? ` Главный сегмент тика: ${String(prioritySegment.label || "")}.` : ""}`
+        : `В базе есть ${backlog} неразобранных видео. Дешевле превратить их в память, чем покупать новый сбор.${prioritySegment ? ` Главный сегмент тика: ${String(prioritySegment.label || "")}.` : ""}`,
       endpoint: "/api/factory/jobs/reels-brain-learning",
       params: {
         strategy: "analyze",
-        limit: "80",
+        limit: expensivePatternGain ? "100" : "80",
+        ...(expensivePatternGain ? { build_patterns: "true" } : {}),
         ...(prioritySegment ? {
           niche: String(prioritySegment.niche || ""),
           platform: String(prioritySegment.platform || ""),
@@ -173,6 +202,7 @@ export function buildReelsBrainNextTick(input: {
       paid_collection: false,
       priority_segment: prioritySegment,
       portfolio_priority_segment: portfolioFocusSegment,
+      learning_economics: learningEconomics,
     };
   }
 
@@ -186,6 +216,7 @@ export function buildReelsBrainNextTick(input: {
       paid_collection: false,
       priority_segment: prioritySegment,
       portfolio_priority_segment: portfolioFocusSegment,
+      learning_economics: learningEconomics,
     };
   }
 
@@ -240,6 +271,7 @@ export function buildReelsBrainNextTick(input: {
       portfolio_priority_segment: portfolioFocusSegment,
       portfolio_readiness: portfolio,
       generation_policy: activePolicy,
+      learning_economics: learningEconomics,
     };
   }
 
@@ -253,6 +285,7 @@ export function buildReelsBrainNextTick(input: {
     priority_segment: prioritySegment,
     portfolio_priority_segment: portfolioFocusSegment,
     portfolio_readiness: portfolio,
+    learning_economics: learningEconomics,
   };
 }
 

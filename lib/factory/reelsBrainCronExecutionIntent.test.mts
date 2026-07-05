@@ -43,6 +43,52 @@ test("buildReelsBrainCronExecutionIntent keeps research collection wider", () =>
   assert.equal(result.bulk_overrides?.hours, 96);
 });
 
+test("buildReelsBrainCronExecutionIntent narrows research collection when pattern gain gets expensive", () => {
+  const result = buildReelsBrainCronExecutionIntent({
+    task: "bulk",
+    nextTick: {
+      task: "collect_smart_batch",
+      priority_segment: {
+        label: "ru_clothing × instagram",
+      },
+      generation_policy: {
+        policy_mode: "research_only",
+      },
+      learning_economics: {
+        pattern_gain_cost_trend: "more_expensive",
+        weak_pattern_gain: true,
+      },
+    },
+  });
+
+  assert.equal(result.mode, "explore_research_segment");
+  assert.equal(result.bulk_overrides?.providers_per_lane, 1);
+  assert.equal(result.bulk_overrides?.query_variants_per_lane, 1);
+  assert.equal(result.bulk_overrides?.max_cost_units, 6);
+  assert.equal(result.bulk_overrides?.hours, 48);
+});
+
+test("buildReelsBrainCronExecutionIntent pushes analyze toward compaction when pattern gain is weak", () => {
+  const result = buildReelsBrainCronExecutionIntent({
+    task: "analyze",
+    nextTick: {
+      task: "analyze_backlog",
+      priority_segment: {
+        label: "ru_cosmetics × youtube",
+      },
+      learning_economics: {
+        pattern_gain_cost_trend: "more_expensive",
+        weak_pattern_gain: true,
+      },
+    },
+  });
+
+  assert.equal(result.mode, "generic_analyze");
+  assert.equal(result.analyze_overrides?.build_patterns, true);
+  assert.equal(result.analyze_overrides?.max_lanes, 3);
+  assert.equal(result.analyze_overrides?.limit, 16);
+});
+
 test("buildReelsBrainCronExecutionIntent forces build_patterns when corpus target is already reached", () => {
   const result = buildReelsBrainCronExecutionIntent({
     task: "analyze",
