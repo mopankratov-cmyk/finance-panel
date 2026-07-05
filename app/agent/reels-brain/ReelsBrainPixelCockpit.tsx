@@ -3644,6 +3644,11 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
               <div className="rb-brief-block"><b>Borrowed briefs</b><p>{compact(vm.exactSegmentQueue.borrowed_brief_segments || 0)}</p></div>
               <div className="rb-brief-block"><b>Weak exact</b><p>{compact(vm.exactSegmentQueue.weak_exact_outcome_segments || 0)}</p></div>
             </div>
+            <div className="rb-three" style={{ marginTop: 12 }}>
+              <div className="rb-brief-block"><b>Avg trust gain</b><p>{compact(vm.exactSegmentQueue.avg_expected_trust_gain || 0)}</p></div>
+              <div className="rb-brief-block"><b>Avg ETA</b><p>{compact(vm.exactSegmentQueue.avg_eta_ticks || 0)} ticks</p></div>
+              <div className="rb-brief-block"><b>Queue mode</b><p>close exact-proof gaps first</p></div>
+            </div>
             <div style={{ display: "grid", gap: 10, marginTop: 14 }}>
               {vm.exactEvidenceCards.length ? vm.exactEvidenceCards.map((row: JsonRecord) => (
                 <div className="rb-pattern" key={`exact-evidence:${row.niche}:${row.platform}`}>
@@ -3655,7 +3660,7 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
                     </div>
                   </div>
                   <p style={{ color: "#475569", lineHeight: 1.5 }}>
-                    transfer {compact(row.transfer_count || 0)} · urgency {compact(row.urgency_score || 0)} · {row.policy_mode || "research_only"}
+                    transfer {compact(row.transfer_count || 0)} · urgency {compact(row.urgency_score || 0)} · gain {compact(row.expected_trust_gain || 0)} · ETA {compact(row.eta_ticks || 0)} · eff {compact(row.efficiency_score || 0)}
                   </p>
                   <p style={{ color: "#0f172a", fontWeight: 600 }}>{row.desired_proof || "Нужно добрать exact proof по сегменту."}</p>
                 </div>

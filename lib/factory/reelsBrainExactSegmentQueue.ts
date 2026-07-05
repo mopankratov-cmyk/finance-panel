@@ -32,6 +32,12 @@ function statusRank(value: string) {
   return 1;
 }
 
+function policyRank(value: string) {
+  if (value === "primary") return 3;
+  if (value === "control_only") return 2;
+  return 1;
+}
+
 export function buildReelsBrainExactSegmentQueue(input: {
   portfolioReadiness?: {
     summary?: JsonRecord | null;
@@ -122,6 +128,25 @@ export function buildReelsBrainExactSegmentQueue(input: {
       + Math.min(10, transferSupport.length * 6)
       + (text(policy.policy_mode) === "primary" ? 16 : text(policy.policy_mode) === "control_only" ? 8 : 0),
     );
+    const expectedTrustGain = Math.round(
+      (missing ? 32 : 0)
+      + (borrowedOnly ? 28 : 0)
+      + (outcomeStatus === "weak" ? 22 : outcomeStatus === "no_feedback" ? 14 : 8)
+      + Math.min(14, transferSupport.length * 7)
+      + Math.min(20, num(priority.urgency_score) * 0.12)
+      + (text(policy.policy_mode) === "primary" ? 18 : text(policy.policy_mode) === "control_only" ? 10 : 4),
+    );
+    const etaTicks = Math.max(1, Math.min(9, Math.round(
+      1
+      + (missing ? 2.4 : 0)
+      + (outcomeStatus === "weak" ? 2.2 : outcomeStatus === "no_feedback" ? 1.1 : 0.5)
+      + Math.min(2.5, num(priority.readiness_dominant_gap_count) / 10)
+      + (borrowedOnly ? 0.8 : 0)
+      + (transferSupport.length > 1 ? 0.5 : 0)
+      - Math.min(2.2, num(segment.stability_score) / 45)
+      - (text(policy.policy_mode) === "primary" ? 0.9 : text(policy.policy_mode) === "control_only" ? 0.4 : 0),
+    )));
+    const efficiencyScore = Math.round((expectedTrustGain / etaTicks) * 10) / 10;
 
     return {
       niche,
@@ -138,6 +163,9 @@ export function buildReelsBrainExactSegmentQueue(input: {
       current_next_action: text(priority.next_action || priority.next_step || ""),
       transfer_support: transferSupport,
       blockers,
+      expected_trust_gain: expectedTrustGain,
+      eta_ticks: etaTicks,
+      efficiency_score: efficiencyScore,
       desired_proof: missing
         ? "Собрать exact segment corpus и довести до первого stable segment layer."
         : borrowedOnly
@@ -152,7 +180,11 @@ export function buildReelsBrainExactSegmentQueue(input: {
     };
   }).sort((a, b) =>
     statusRank(b.status) - statusRank(a.status)
+    || policyRank(b.policy_mode) - policyRank(a.policy_mode)
+    || b.efficiency_score - a.efficiency_score
+    || b.expected_trust_gain - a.expected_trust_gain
     || b.urgency_score - a.urgency_score
+    || a.eta_ticks - b.eta_ticks
     || b.transfer_count - a.transfer_count
     || a.label.localeCompare(b.label),
   );
@@ -173,6 +205,8 @@ export function buildReelsBrainExactSegmentQueue(input: {
       weak_exact_outcome_segments: weak,
       exact_ready_segments: exactReady,
       exact_proof_coverage_pct: pct(exactProven, exactProven + items.length),
+      avg_expected_trust_gain: items.length ? Math.round(items.reduce((sum, row) => sum + row.expected_trust_gain, 0) / items.length) : 0,
+      avg_eta_ticks: items.length ? Math.round((items.reduce((sum, row) => sum + row.eta_ticks, 0) / items.length) * 10) / 10 : 0,
     },
     items: items.slice(0, Math.max(4, input.limit || 8)),
   };

@@ -87,9 +87,103 @@ const result = buildReelsBrainExactSegmentQueue({
 assert.equal(result.summary.total_gap_segments, 2);
 assert.equal(result.summary.borrowed_brief_segments, 1);
 assert.equal(result.summary.missing_exact_segments, 1);
+assert.ok((result.summary.avg_expected_trust_gain as number) > 0);
+assert.ok((result.summary.avg_eta_ticks as number) >= 1);
 assert.equal(result.items[0]?.status, "missing_exact_segment");
 assert.equal(result.items[1]?.status, "borrowed_brief_only");
 assert.equal(result.items[1]?.transfer_support.length, 2);
+assert.ok((result.items[0]?.expected_trust_gain as number) > 0);
+assert.ok((result.items[0]?.eta_ticks as number) >= 1);
+assert.ok((result.items[0]?.efficiency_score as number) > 0);
 assert.match(result.items[1]?.blockers[1] || "", /transfer signal/i);
+
+const rankedByEfficiency = buildReelsBrainExactSegmentQueue({
+  portfolioReadiness: {
+    summary: {
+      expected_segments: 5,
+    },
+    missing_segments: [
+      {
+        niche: "ru_cosmetics",
+        platform: "youtube",
+        evidence_band: "forming",
+        stability_score: 72,
+        outcome_status: "no_feedback",
+        missing: false,
+      },
+      {
+        niche: "ru_clothing",
+        platform: "instagram",
+        evidence_band: "forming",
+        stability_score: 38,
+        outcome_status: "no_feedback",
+        missing: false,
+      },
+    ],
+  },
+  generationPolicy: {
+    by_segment: [
+      {
+        niche: "ru_cosmetics",
+        platform: "youtube",
+        policy_mode: "primary",
+        outcome_status: "no_feedback",
+      },
+      {
+        niche: "ru_clothing",
+        platform: "instagram",
+        policy_mode: "research_only",
+        outcome_status: "no_feedback",
+      },
+    ],
+  },
+  segmentPriorityQueue: {
+    items: [
+      {
+        niche: "ru_cosmetics",
+        platform: "youtube",
+        urgency_score: 74,
+        action: "collect_segment_batch",
+      },
+      {
+        niche: "ru_clothing",
+        platform: "instagram",
+        urgency_score: 96,
+        action: "collect_segment_batch",
+        readiness_dominant_gap_count: 15,
+      },
+    ],
+  },
+  segmentSolutionMatrix: {
+    by_platform: [
+      {
+        platform: "youtube",
+        primary: {
+          niche: "ru_toys",
+          platform: "youtube",
+          label: "ru_toys × youtube",
+          trust_band: "high",
+          readiness_score: 86,
+          trust_summary: { evidence_band: "stable" },
+        },
+      },
+      {
+        platform: "instagram",
+        primary: {
+          niche: "ru_toys",
+          platform: "instagram",
+          label: "ru_toys × instagram",
+          trust_band: "medium",
+          readiness_score: 61,
+          trust_summary: { evidence_band: "forming" },
+        },
+      },
+    ],
+    by_niche: [],
+  },
+});
+
+assert.equal(rankedByEfficiency.items[0]?.niche, "ru_cosmetics");
+assert.ok((rankedByEfficiency.items[0]?.efficiency_score as number) >= (rankedByEfficiency.items[1]?.efficiency_score as number));
 
 console.log("reelsBrainExactSegmentQueue: passed");
