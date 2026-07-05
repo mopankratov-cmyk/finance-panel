@@ -377,4 +377,61 @@ assert.equal((exactProofDecisionSupportTick.params as Record<string, unknown>).s
 assert.match(exactProofDecisionSupportTick.label, /exact proof/i);
 assert.match(exactProofDecisionSupportTick.reason, /exact-segment proof/i);
 
+const briefBundleCompletionTick = buildReelsBrainNextTick({
+  target: 10000,
+  totalVideos: 3200,
+  analyzedVideos: 3140,
+  backlogLimit: 180,
+  canRunPaidCollection: true,
+  prioritySegment: {
+    niche: "ru_toys",
+    platform: "tiktok",
+    label: "ru_toys × tiktok",
+    action: "promote_segment_briefs",
+    ready_for_generation: true,
+  },
+  generationPolicy: {
+    by_segment: [
+      {
+        niche: "ru_toys",
+        platform: "tiktok",
+        label: "ru_toys × tiktok",
+        policy_mode: "primary",
+        trust_band: "high",
+        evidence_band: "stable",
+        readiness_score: 91,
+        policy_reason: "segment is ready on trust but export pack is still incomplete",
+      },
+    ],
+  },
+  exactSegmentQueue: {
+    items: [],
+  },
+  briefCoverageAudit: {
+    summary: {
+      blocked_or_incomplete_segments: 2,
+    },
+    gap_queue: [
+      {
+        niche: "ru_toys",
+        platform: "tiktok",
+        label: "ru_toys × tiktok",
+        lane: "ship",
+        proof_quality: "exact_segment",
+        missing_fields: ["structure"],
+        blocked_reasons: [],
+        next_step: "Fill structure in brief bundle",
+      },
+    ],
+  },
+});
+
+assert.equal(briefBundleCompletionTick.task, "analyze_backlog");
+assert.equal((briefBundleCompletionTick.params as Record<string, unknown>).focus, "brief_bundle_completion");
+assert.equal((briefBundleCompletionTick.params as Record<string, unknown>).build_patterns, "true");
+assert.equal((briefBundleCompletionTick.params as Record<string, unknown>).niche, "ru_toys");
+assert.equal((briefBundleCompletionTick.params as Record<string, unknown>).platform, "tiktok");
+assert.match(briefBundleCompletionTick.label, /usable brief/i);
+assert.match(briefBundleCompletionTick.reason, /usable creative export/i);
+
 console.log("reelsBrainLearningPlan: passed");

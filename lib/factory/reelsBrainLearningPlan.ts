@@ -40,6 +40,11 @@ type ExactSegmentQueueSummary = {
   items?: Array<JsonRecord>;
 };
 
+type BriefCoverageAuditSummary = {
+  gap_queue?: Array<JsonRecord>;
+  summary?: JsonRecord | null;
+};
+
 function num(value: unknown): number {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
@@ -194,6 +199,7 @@ export function buildReelsBrainNextTick(input: {
   learningEconomics?: JsonRecord | null;
   outcomeMemory?: OutcomeMemorySummary | JsonRecord | null;
   exactSegmentQueue?: ExactSegmentQueueSummary | JsonRecord | null;
+  briefCoverageAudit?: BriefCoverageAuditSummary | JsonRecord | null;
 }) {
   const backlog = Math.max(0, input.totalVideos - input.analyzedVideos);
   const portfolio = (input.portfolioReadiness || {}) as JsonRecord;
@@ -216,6 +222,9 @@ export function buildReelsBrainNextTick(input: {
   const exactFocusSegment = safeSegment(
     records((input.exactSegmentQueue as ExactSegmentQueueSummary | null | undefined)?.items)[0] || null,
   );
+  const briefCoverageFocusSegment = safeSegment(
+    records((input.briefCoverageAudit as BriefCoverageAuditSummary | null | undefined)?.gap_queue)[0] || null,
+  );
   const collectionFocusSegment = exactFocusSegment || portfolioFocusSegment || prioritySegment;
   const directSegmentPolicy = selectPolicyForSegment(input.generationPolicy, prioritySegment);
   const directPolicyMode = text(directSegmentPolicy?.policy_mode, "research_only");
@@ -231,6 +240,15 @@ export function buildReelsBrainNextTick(input: {
     && !readinessBlockedDecisionSupport
     && sameSegment(prioritySegment, exactFocusSegment)
     && Boolean((exactFocusSegment as JsonRecord | null)?.exact_proof_missing);
+  const briefBundleGapForDecisionSegment = shouldSupportDecisionSegment
+    && !marketBlockedDecisionSupport
+    && !readinessBlockedDecisionSupport
+    && !exactProofMissingForDecisionSegment
+    && sameSegment(prioritySegment, briefCoverageFocusSegment)
+    && (
+      records((input.briefCoverageAudit as BriefCoverageAuditSummary | null | undefined)?.gap_queue).length > 0
+      || num(((input.briefCoverageAudit as BriefCoverageAuditSummary | null | undefined)?.summary || {})["blocked_or_incomplete_segments"]) > 0
+    );
   const activePolicySegment = shouldSupportDecisionSegment ? prioritySegment : collectionFocusSegment || prioritySegment;
   const activePolicy = selectPolicyForSegment(input.generationPolicy, activePolicySegment);
   const activePolicyMode = text(activePolicy?.policy_mode, "research_only");
@@ -244,6 +262,30 @@ export function buildReelsBrainNextTick(input: {
     && input.totalVideos >= Math.round(input.target * 0.85)
     && highConfidenceNoFeedback >= 2
     && feedbackCoverageRate < 75;
+
+  if (briefBundleGapForDecisionSegment && backlog > 0) {
+    return {
+      task: "analyze_backlog",
+      label: `Дожать usable brief для ${String(prioritySegment?.label || "")}`,
+      reason: `${String(prioritySegment?.label || "")} уже выглядит достаточно сильным по trust и exact-proof, но usable creative export ещё не собран до конца. Следующий цикл лучше потратить на analyze + pattern compaction по этому сегменту, чтобы закрыть missing fields и собрать production-usable brief bundle.`,
+      endpoint: "/api/factory/jobs/reels-brain-learning",
+      params: {
+        strategy: "analyze",
+        limit: "80",
+        build_patterns: "true",
+        focus: "brief_bundle_completion",
+        ...(prioritySegment ? {
+          niche: String(prioritySegment.niche || ""),
+          platform: String(prioritySegment.platform || ""),
+        } : {}),
+      },
+      paid_collection: false,
+      priority_segment: prioritySegment,
+      portfolio_priority_segment: portfolioFocusSegment,
+      learning_economics: learningEconomics,
+      brief_coverage_focus: briefCoverageFocusSegment,
+    };
+  }
 
   if (shouldAnalyzeForEconomics) {
     return {
@@ -333,6 +375,8 @@ export function buildReelsBrainNextTick(input: {
               : "Не усиливать weak сегмент; закрывать portfolio gaps"
           : exactProofMissingForDecisionSegment
             ? `Добрать exact proof для ${String(prioritySegment?.label || "")}`
+          : briefBundleGapForDecisionSegment
+            ? `Дожать usable brief для ${String(prioritySegment?.label || "")}`
           : `Поддержать decision-ready сегмент ${String(prioritySegment?.label || "")}`
         : shouldClosePortfolioGaps
           ? collectionSegment
@@ -345,7 +389,9 @@ export function buildReelsBrainNextTick(input: {
           : readinessBlockedDecisionSupport
             ? `${String(prioritySegment?.label || activePolicy?.label || "")} силён по trust, но ещё не дозрел по learning-layer (${String(prioritySegment?.readiness_dominant_gap || "readiness")} backlog ${num(prioritySegment?.readiness_total_backlog)}). Сначала закрываем readiness gap и только потом усиливаем segment briefs.${policyLine}`
             : exactProofMissingForDecisionSegment
-              ? `${String(prioritySegment?.label || activePolicy?.label || "")} уже выглядит strong по briefs/patterns, но exact-segment proof ещё не закрыт. Следующий сбор лучше направить в этот же niche × platform, чтобы добрать доказательный слой, а не масштабировать на transfer-evidence.${policyLine}`
+            ? `${String(prioritySegment?.label || activePolicy?.label || "")} уже выглядит strong по briefs/patterns, но exact-segment proof ещё не закрыт. Следующий сбор лучше направить в этот же niche × platform, чтобы добрать доказательный слой, а не масштабировать на transfer-evidence.${policyLine}`
+            : briefBundleGapForDecisionSegment
+              ? `${String(prioritySegment?.label || activePolicy?.label || "")} уже strong по evidence, но usable creative brief ещё неполный. Если backlog уже вычищен, следующий цикл может добрать точечный сегментный материал для закрытия output-gap и сборки production-usable bundle.${policyLine}`
             : `${String(prioritySegment?.label || activePolicy?.label || "")} уже близок к рабочим briefs/hypotheses; следующий сбор лучше направить в этот сегмент.${policyLine}`
         : shouldClosePortfolioGaps
           ? collectionSegment
@@ -361,7 +407,7 @@ export function buildReelsBrainNextTick(input: {
           niche: String(collectionSegment.niche || ""),
           platform: String(collectionSegment.platform || ""),
         } : {}),
-        ...(exactProofMissingForDecisionSegment ? { focus: "exact_segment_proof" } : {}),
+        ...(exactProofMissingForDecisionSegment ? { focus: "exact_segment_proof" } : briefBundleGapForDecisionSegment ? { focus: "brief_bundle_completion" } : {}),
         ...exactSourceParams(exactProofMissingForDecisionSegment ? exactFocusSegment : collectionSegment),
       },
       paid_collection: true,

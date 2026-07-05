@@ -135,6 +135,8 @@ export async function GET(req: NextRequest) {
     const portfolioSummary = (portfolioReadiness.summary || {}) as JsonRecord;
     const exactSegmentQueue = (learning.exact_segment_queue || {}) as JsonRecord;
     const exactQueueItems = Array.isArray(exactSegmentQueue.items) ? exactSegmentQueue.items as JsonRecord[] : [];
+    const briefCoverageAudit = (learning.brief_coverage_audit || {}) as JsonRecord;
+    const briefCoverageGapQueue = Array.isArray(briefCoverageAudit.gap_queue) ? briefCoverageAudit.gap_queue as JsonRecord[] : [];
 
     const costGovernor = autopilot.cost_governor || learning.cost_governor || {};
     const autopilotActions = autopilot.autopilot_actions || learning.autopilot_actions || {};
@@ -159,6 +161,7 @@ export async function GET(req: NextRequest) {
       generationPolicy: (learning.generation_policy || null) as JsonRecord | null,
       outcomeMemory: (learning.outcome_memory_brain || null) as JsonRecord | null,
       exactSegmentQueue,
+      briefCoverageAudit,
       learningEconomics: {
         pattern_gain_cost_trend: totals.pattern_gain_cost_trend,
         pattern_gain_proxy_total: totals.pattern_gain_proxy_total,
@@ -202,6 +205,15 @@ export async function GET(req: NextRequest) {
                 .slice(0, 6)
             : [],
           items: exactQueueItems.slice(0, 6),
+        },
+        brief_coverage_audit: {
+          usable_exact_ready_briefs: num((briefCoverageAudit.summary as JsonRecord | undefined)?.usable_exact_ready_briefs),
+          exact_ready_briefs: num((briefCoverageAudit.summary as JsonRecord | undefined)?.exact_ready_briefs),
+          ship_lane_briefs: num((briefCoverageAudit.summary as JsonRecord | undefined)?.ship_lane_briefs),
+          validate_lane_briefs: num((briefCoverageAudit.summary as JsonRecord | undefined)?.validate_lane_briefs),
+          usable_exact_ready_pct: num((briefCoverageAudit.summary as JsonRecord | undefined)?.usable_exact_ready_pct),
+          blocked_or_incomplete_segments: num((briefCoverageAudit.summary as JsonRecord | undefined)?.blocked_or_incomplete_segments),
+          items: briefCoverageGapQueue.slice(0, 6),
         },
         segment_stability: {
           stable: num(stabilitySummary.stable),

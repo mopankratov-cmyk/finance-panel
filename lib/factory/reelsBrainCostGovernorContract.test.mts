@@ -125,6 +125,7 @@ ok(/next_tick/.test(learningPlan) && /max_backlog_before_analyze/.test(learningP
 ok(/buildReelsBrainSegmentGapPlanner/.test(learningPlan) && /segment_plan/.test(learningPlan), "learning-plan exposes segment-level gap planner toward stable trust");
 ok(/buildReelsBrainSegmentPriorityQueue/.test(learningPlan) && /segment_priority_queue/.test(learningPlan), "learning-plan exposes segment priority queue on top of gap plan");
 ok(/exact_segment_queue/.test(learningPlan) && /exact_proof_coverage_pct/.test(learningPlan) && /avg_expected_trust_gain/.test(learningPlan) && /avg_eta_ticks/.test(learningPlan) && /avg_data_readiness_score/.test(learningPlan) && /provider_recommendations/.test(learningPlan), "learning-plan exposes exact segment proof queue inside the mission loop with trust-gain, data-readiness and provider strategy");
+ok(/brief_coverage_audit/.test(learningPlan) && /usable_exact_ready_briefs/.test(learningPlan) && /blocked_or_incomplete_segments/.test(learningPlan), "learning-plan exposes usable exact-ready brief coverage inside the mission loop");
 ok(/can_run_paid_collection/.test(learningPlan) && /cost_governor/.test(learningPlan), "learning-plan respects paid collection guard");
 ok(!/POST\s*\(/.test(learningPlan), "learning-plan route is read-only");
 
@@ -176,6 +177,7 @@ ok(/portfolio_readiness/.test(learningPlan), "learning-plan exposes portfolio re
 ok(/buildReelsBrainNextTick/.test(learningPlan) && /portfolio_priority_segment/.test(learningPlan), "learning-plan delegates portfolio-aware next tick selection and preserves focused gap segment");
 ok(/generationPolicy/.test(learningPlan) && /generation_policy/.test(learningPlanBuilder) && /policyLine/.test(learningPlanBuilder), "learning-plan uses generation policy when choosing the next collection move");
 ok(/feedback_coverage/.test(learningPlan) && /improve_feedback_coverage/.test(learningPlanBuilder) && /no_feedback_queue/.test(learningPlanBuilder), "learning-plan can pivot from corpus growth to strong-pattern feedback coverage");
+ok(/brief_bundle_completion/.test(learningPlanBuilder) && /briefCoverageAudit/.test(learningPlanBuilder), "learning-plan can pivot from corpus growth to closing usable brief bundle gaps");
 ok(/\/api\/factory\/reels-brain\/readiness-audit\?verdict=/.test(cockpit), "cockpit exposes standalone readiness-audit endpoint per segment");
 ok(/\/api\/factory\/reels-brain\/decision-snapshot\?lane=/.test(cockpit), "cockpit exposes unified decision-snapshot endpoint per segment");
 ok(/\/api\/factory\/reels-brain\/segment-solutions\?lane=/.test(cockpit), "cockpit exposes operator-ready segment-solutions endpoint per segment");
