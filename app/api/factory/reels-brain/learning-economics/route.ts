@@ -2956,6 +2956,64 @@ export async function GET(req: NextRequest) {
       exactSegmentQueue,
       limit: compactMode ? 4 : 6,
     });
+    const prioritizedHypothesisBank = buildReelsBrainHypothesisBank(
+      patternDecisionLayer.pattern_details as unknown as Array<Parameters<typeof buildReelsBrainHypothesisBank>[0][number]>,
+      compactMode ? 6 : 10,
+      {
+        segmentPriorityQueue: segmentPriorityQueue.items,
+        generationPolicy,
+      },
+    );
+    const prioritizedGroupedHypothesisBank = buildGroupedReelsBrainHypothesisBanks({
+      patterns: patternDecisionLayer.pattern_details as unknown as Array<Parameters<typeof buildGroupedReelsBrainHypothesisBanks>[0]["patterns"][number]>,
+      niches: nicheSummaries.map((row) => row.niche),
+      platforms: ["tiktok", "instagram", "youtube"],
+      limit: compactMode ? 2 : 3,
+      segmentPriorityQueue: segmentPriorityQueue.items,
+      generationPolicy,
+    });
+    const prioritizedTrustedGroupedHypothesisBank = {
+      by_niche: applySegmentTrustToGroups({
+        groups: prioritizedGroupedHypothesisBank.by_niche,
+        trustRows: segmentTrust.by_niche,
+        key: "niche",
+      }),
+      by_platform: applySegmentTrustToGroups({
+        groups: prioritizedGroupedHypothesisBank.by_platform,
+        trustRows: segmentTrust.by_platform,
+        key: "platform",
+      }),
+      by_segment: prioritizedGroupedHypothesisBank.by_segment,
+    };
+    const prioritizedActionPack = buildReelsBrainActionPack(
+      patternDecisionLayer.pattern_details as unknown as Array<Parameters<typeof buildReelsBrainActionPack>[0][number]>,
+      compactMode ? 4 : 6,
+      {
+        segmentPriorityQueue: segmentPriorityQueue.items,
+        generationPolicy,
+      },
+    );
+    const prioritizedGroupedActionPacks = buildGroupedReelsBrainActionPacks({
+      patterns: patternDecisionLayer.pattern_details as unknown as Array<Parameters<typeof buildGroupedReelsBrainActionPacks>[0]["patterns"][number]>,
+      niches: nicheSummaries.map((row) => row.niche),
+      platforms: ["tiktok", "instagram", "youtube"],
+      limit: compactMode ? 2 : 3,
+      segmentPriorityQueue: segmentPriorityQueue.items,
+      generationPolicy,
+    });
+    const prioritizedTrustedGroupedActionPacks = {
+      by_niche: applySegmentTrustToGroups({
+        groups: prioritizedGroupedActionPacks.by_niche,
+        trustRows: segmentTrust.by_niche,
+        key: "niche",
+      }),
+      by_platform: applySegmentTrustToGroups({
+        groups: prioritizedGroupedActionPacks.by_platform,
+        trustRows: segmentTrust.by_platform,
+        key: "platform",
+      }),
+      by_segment: prioritizedGroupedActionPacks.by_segment,
+    };
     const prioritizedBriefPack = buildReelsBrainBriefPack(
       insightPayload.recipes as unknown as Array<Parameters<typeof buildReelsBrainBriefPack>[0][number]>,
       compactMode ? 4 : 6,
@@ -2991,12 +3049,12 @@ export async function GET(req: NextRequest) {
       nicheSummaries,
       segmentTrust,
       briefPackGroups: prioritizedTrustedGroupedBriefPacks,
-      actionPackGroups: trustedGroupedActionPacks,
-      hypothesisBankGroups: trustedGroupedHypothesisBank,
+      actionPackGroups: prioritizedTrustedGroupedActionPacks,
+      hypothesisBankGroups: prioritizedTrustedGroupedHypothesisBank,
       segmentOutputBanks: {
         briefs: prioritizedTrustedGroupedBriefPacks.by_segment,
-        actions: trustedGroupedActionPacks.by_segment,
-        hypotheses: trustedGroupedHypothesisBank.by_segment,
+        actions: prioritizedTrustedGroupedActionPacks.by_segment,
+        hypotheses: prioritizedTrustedGroupedHypothesisBank.by_segment,
       },
       platforms: ["tiktok", "instagram", "youtube"],
       limit: compactMode ? 6 : 10,
@@ -3048,16 +3106,16 @@ export async function GET(req: NextRequest) {
       portfolio_manager: operatingSystem.portfolio_manager,
       audio_brain: audioBrain,
       audio_visual_readiness: audioVisualReadiness,
-      hypothesis_bank: hypothesisBank,
-      hypothesis_bank_groups: trustedGroupedHypothesisBank,
-      action_pack: actionPack,
-      action_pack_groups: trustedGroupedActionPacks,
+      hypothesis_bank: prioritizedHypothesisBank,
+      hypothesis_bank_groups: prioritizedTrustedGroupedHypothesisBank,
+      action_pack: prioritizedActionPack,
+      action_pack_groups: prioritizedTrustedGroupedActionPacks,
       brief_pack: prioritizedBriefPack,
       brief_pack_groups: prioritizedTrustedGroupedBriefPacks,
       segment_output_banks: {
         briefs: takeRecordList(prioritizedTrustedGroupedBriefPacks.by_segment, compactMode ? 6 : 10),
-        actions: takeRecordList(trustedGroupedActionPacks.by_segment, compactMode ? 6 : 10),
-        hypotheses: takeRecordList(trustedGroupedHypothesisBank.by_segment, compactMode ? 6 : 10),
+        actions: takeRecordList(prioritizedTrustedGroupedActionPacks.by_segment, compactMode ? 6 : 10),
+        hypotheses: takeRecordList(prioritizedTrustedGroupedHypothesisBank.by_segment, compactMode ? 6 : 10),
       },
       segment_trust: segmentTrust,
       top_opportunities: prioritizedTopOpportunities,
