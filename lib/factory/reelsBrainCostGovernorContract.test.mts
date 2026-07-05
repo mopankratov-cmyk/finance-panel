@@ -149,6 +149,7 @@ ok(/segmentStabilityAudit/.test(learningPlan) && /segment_stability/.test(learni
 ok(/portfolio_readiness/.test(learningPlan), "learning-plan exposes portfolio readiness in the mission loop");
 ok(/buildReelsBrainNextTick/.test(learningPlan) && /portfolio_priority_segment/.test(learningPlan), "learning-plan delegates portfolio-aware next tick selection and preserves focused gap segment");
 ok(/generationPolicy/.test(learningPlan) && /generation_policy/.test(learningPlanBuilder) && /policyLine/.test(learningPlanBuilder), "learning-plan uses generation policy when choosing the next collection move");
+ok(/feedback_coverage/.test(learningPlan) && /improve_feedback_coverage/.test(learningPlanBuilder) && /no_feedback_queue/.test(learningPlanBuilder), "learning-plan can pivot from corpus growth to strong-pattern feedback coverage");
 ok(/\/api\/factory\/reels-brain\/readiness-audit\?verdict=/.test(cockpit), "cockpit exposes standalone readiness-audit endpoint per segment");
 ok(/\/api\/factory\/reels-brain\/decision-snapshot\?lane=/.test(cockpit), "cockpit exposes unified decision-snapshot endpoint per segment");
 ok(/\/api\/factory\/reels-brain\/segment-solutions\?lane=/.test(cockpit), "cockpit exposes operator-ready segment-solutions endpoint per segment");

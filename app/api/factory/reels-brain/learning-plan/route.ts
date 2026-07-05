@@ -152,6 +152,7 @@ export async function GET(req: NextRequest) {
       prioritySegment,
       portfolioReadiness,
       generationPolicy: (learning.generation_policy || null) as JsonRecord | null,
+      outcomeMemory: (learning.outcome_memory_brain || null) as JsonRecord | null,
       learningEconomics: {
         pattern_gain_cost_trend: totals.pattern_gain_cost_trend,
         pattern_gain_proxy_total: totals.pattern_gain_proxy_total,
@@ -196,6 +197,15 @@ export async function GET(req: NextRequest) {
           high_trust_coverage_pct: num(portfolioSummary.high_trust_coverage_pct),
           known_coverage_pct: num(portfolioSummary.known_coverage_pct),
           verdict: String(portfolioSummary.verdict || "still_building"),
+        },
+        feedback_coverage: {
+          coverage_rate: num(learning.outcome_memory_brain?.pattern_memory?.coverage_rate),
+          high_confidence_no_feedback: num(learning.outcome_memory_brain?.pattern_memory?.coverage_gaps?.high_confidence_no_feedback),
+          medium_confidence_no_feedback: num(learning.outcome_memory_brain?.pattern_memory?.coverage_gaps?.medium_confidence_no_feedback),
+          total_no_feedback_queue: num(learning.outcome_memory_brain?.pattern_memory?.coverage_gaps?.total_no_feedback_queue),
+          top_unvalidated_patterns: Array.isArray(learning.outcome_memory_brain?.pattern_memory?.no_feedback_queue)
+            ? (learning.outcome_memory_brain.pattern_memory.no_feedback_queue as JsonRecord[]).slice(0, 5)
+            : [],
         },
         eta: {
           ticks_to_target: etaTicksToTarget,

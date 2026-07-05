@@ -244,4 +244,39 @@ assert.equal((readinessBlockedTick.params as Record<string, unknown>).niche, "ru
 assert.match(readinessBlockedTick.label, /ещё сырой/);
 assert.match(readinessBlockedTick.reason, /не дозрел по learning-layer/);
 
+const feedbackCoverageTick = buildReelsBrainNextTick({
+  target: 10000,
+  totalVideos: 9100,
+  analyzedVideos: 9050,
+  backlogLimit: 180,
+  canRunPaidCollection: true,
+  portfolioReadiness: {
+    summary: {
+      high_trust_coverage_pct: 78,
+      verdict: "forming",
+    },
+    missing_segments: [],
+  },
+  outcomeMemory: {
+    pattern_memory: {
+      coverage_rate: 54,
+      coverage_gaps: {
+        high_confidence_no_feedback: 3,
+        medium_confidence_no_feedback: 1,
+        total_no_feedback_queue: 4,
+      },
+      no_feedback_queue: [
+        { pattern_id: "p1" },
+        { pattern_id: "p2" },
+        { pattern_id: "p3" },
+      ],
+    },
+  },
+});
+
+assert.equal(feedbackCoverageTick.task, "improve_feedback_coverage");
+assert.equal((feedbackCoverageTick.params as Record<string, unknown>).focus, "feedback_coverage");
+assert.equal((feedbackCoverageTick.params as Record<string, unknown>).pattern_ids, "p1,p2,p3");
+assert.match(feedbackCoverageTick.reason, /high-confidence паттернов всё ещё без market proof/);
+
 console.log("reelsBrainLearningPlan: passed");

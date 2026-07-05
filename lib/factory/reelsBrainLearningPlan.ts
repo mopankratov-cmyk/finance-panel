@@ -28,6 +28,14 @@ type LearningEconomicsSummary = {
   weak_pattern_gain: boolean;
 };
 
+type OutcomeMemorySummary = {
+  pattern_memory?: {
+    no_feedback_queue?: Array<JsonRecord>;
+    coverage_gaps?: JsonRecord;
+    coverage_rate?: number;
+  };
+};
+
 function num(value: unknown): number {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
@@ -154,6 +162,7 @@ export function buildReelsBrainNextTick(input: {
   portfolioReadiness?: JsonRecord | null;
   generationPolicy?: JsonRecord | null;
   learningEconomics?: JsonRecord | null;
+  outcomeMemory?: OutcomeMemorySummary | JsonRecord | null;
 }) {
   const backlog = Math.max(0, input.totalVideos - input.analyzedVideos);
   const portfolio = (input.portfolioReadiness || {}) as JsonRecord;
@@ -161,6 +170,16 @@ export function buildReelsBrainNextTick(input: {
   const portfolioCoverage = num(portfolioSummary.high_trust_coverage_pct);
   const portfolioVerdict = text(portfolioSummary.verdict, "still_building");
   const learningEconomics = safeLearningEconomics(input.learningEconomics);
+  const patternMemory = (input.outcomeMemory && typeof input.outcomeMemory === "object"
+    ? ((input.outcomeMemory as OutcomeMemorySummary).pattern_memory || {})
+    : {}) as JsonRecord;
+  const noFeedbackQueue = Array.isArray(patternMemory.no_feedback_queue) ? patternMemory.no_feedback_queue as JsonRecord[] : [];
+  const coverageGaps = (patternMemory.coverage_gaps && typeof patternMemory.coverage_gaps === "object")
+    ? patternMemory.coverage_gaps as JsonRecord
+    : {};
+  const highConfidenceNoFeedback = num(coverageGaps.high_confidence_no_feedback);
+  const totalNoFeedbackQueue = num(coverageGaps.total_no_feedback_queue || noFeedbackQueue.length);
+  const feedbackCoverageRate = num(patternMemory.coverage_rate);
   const prioritySegment = safeSegment(input.prioritySegment);
   const portfolioFocusSegment = pickPortfolioFocusSegment(portfolio);
   const collectionFocusSegment = portfolioFocusSegment || prioritySegment;
@@ -182,6 +201,10 @@ export function buildReelsBrainNextTick(input: {
     ? clamp(Math.round(input.backlogLimit * (learningEconomics.weak_pattern_gain ? 0.45 : 0.65)), 24, input.backlogLimit)
     : input.backlogLimit;
   const shouldAnalyzeForEconomics = backlog >= dynamicBacklogLimit && backlog > 0;
+  const shouldImproveFeedbackCoverage = backlog < dynamicBacklogLimit
+    && input.totalVideos >= Math.round(input.target * 0.85)
+    && highConfidenceNoFeedback >= 2
+    && feedbackCoverageRate < 75;
 
   if (shouldAnalyzeForEconomics) {
     return {
@@ -204,6 +227,29 @@ export function buildReelsBrainNextTick(input: {
       priority_segment: prioritySegment,
       portfolio_priority_segment: portfolioFocusSegment,
       learning_economics: learningEconomics,
+    };
+  }
+
+  if (shouldImproveFeedbackCoverage) {
+    return {
+      task: "improve_feedback_coverage",
+      label: "Закрывать market-feedback у сильных паттернов",
+      reason: `Корпус уже достаточно большой (${input.totalVideos}/${input.target}), но ${highConfidenceNoFeedback} high-confidence паттернов всё ещё без market proof. Следующий цикл лучше потратить на measurement loop, а не на слепой добор корпуса.`,
+      endpoint: "/api/factory/reels-brain/autopilot-actions",
+      params: {
+        mode: "read_only",
+        focus: "feedback_coverage",
+        pattern_ids: noFeedbackQueue.slice(0, 3).map((row) => text(row.pattern_id)).filter(Boolean).join(","),
+      },
+      paid_collection: false,
+      priority_segment: prioritySegment,
+      portfolio_priority_segment: portfolioFocusSegment,
+      learning_economics: learningEconomics,
+      outcome_memory_focus: {
+        high_confidence_no_feedback: highConfidenceNoFeedback,
+        total_no_feedback_queue: totalNoFeedbackQueue,
+        feedback_coverage_rate: feedbackCoverageRate,
+      },
     };
   }
 

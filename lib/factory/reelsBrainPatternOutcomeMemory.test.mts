@@ -29,6 +29,24 @@ function testBuildReelsBrainPatternOutcomeMemorySplitsStablePromotionAndDecay() 
         id: "cold-1",
         title: "No feedback yet",
         quality_gate: "high_confidence",
+        confidence: "high",
+        decision_priority_score: 93,
+        hook_type: "warning_pattern_break",
+        structure_type: "demo",
+        niches: ["ru_toys"],
+        platforms: ["tiktok"],
+        market_signal: { status: "no_feedback", confidence: "low", score: 0, winners: 0, losers: 0, total_posts: 0 },
+      },
+      {
+        id: "cold-2",
+        title: "Medium no feedback",
+        quality_gate: "medium_confidence",
+        confidence: "medium",
+        decision_priority_score: 71,
+        hook_type: "demo_review",
+        structure_type: "review",
+        niches: ["ru_beauty"],
+        platforms: ["instagram"],
         market_signal: { status: "no_feedback", confidence: "low", score: 0, winners: 0, losers: 0, total_posts: 0 },
       },
     ],
@@ -39,12 +57,16 @@ function testBuildReelsBrainPatternOutcomeMemorySplitsStablePromotionAndDecay() 
   assert.equal(result.by_status.proven, 1);
   assert.equal(result.by_status.promising, 1);
   assert.equal(result.by_status.weak, 1);
-  assert.equal(result.by_status.no_feedback, 1);
+  assert.equal(result.by_status.no_feedback, 2);
   assert.equal(result.stable_patterns[0]?.pattern_id, "stable-1");
   assert.equal(result.promotion_queue[0]?.pattern_id, "warm-1");
   assert.equal(result.decaying_patterns[0]?.pattern_id, "weak-1");
   assert.equal(result.trust_write_queue.length, 3);
-  assert.equal(result.coverage_rate, 75);
+  assert.equal(result.no_feedback_queue[0]?.pattern_id, "cold-1");
+  assert.equal(result.coverage_gaps.high_confidence_no_feedback, 1);
+  assert.equal(result.coverage_gaps.medium_confidence_no_feedback, 1);
+  assert.equal(result.coverage_rate, 60);
+  assert.ok(String(result.next_step).includes("measurement loop"));
 }
 
 function run() {

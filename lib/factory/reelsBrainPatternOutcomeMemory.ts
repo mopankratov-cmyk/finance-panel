@@ -2,6 +2,12 @@ type PatternOutcomeRow = {
   id?: string;
   title?: string;
   quality_gate?: string;
+  confidence?: string;
+  decision_priority_score?: number;
+  hook_type?: string;
+  structure_type?: string;
+  niches?: string[];
+  platforms?: string[];
   market_signal?: {
     status?: string;
     confidence?: string;
@@ -41,6 +47,12 @@ function compactRow(row: PatternOutcomeRow) {
     pattern_id: text(row.id),
     title: text(row.title),
     quality_gate: text(row.quality_gate),
+    pattern_confidence: text(row.confidence, "low"),
+    decision_priority_score: num(row.decision_priority_score),
+    hook_type: text(row.hook_type),
+    structure_type: text(row.structure_type),
+    niches: Array.isArray(row.niches) ? row.niches.map((item) => text(item)).filter(Boolean).slice(0, 4) : [],
+    platforms: Array.isArray(row.platforms) ? row.platforms.map((item) => text(item)).filter(Boolean).slice(0, 4) : [],
     market_status: text(market?.status, "no_feedback"),
     confidence: text(market?.confidence, "low"),
     score: num(market?.score),
@@ -94,10 +106,25 @@ export function buildReelsBrainPatternOutcomeMemory(input: {
     const gate = text(row.quality_gate);
     return gate === "high_confidence" || gate === "medium_confidence";
   }).length;
+  const noFeedbackQueue = rows
+    .filter((row) => {
+      const gate = text(row.quality_gate);
+      const posts = num(row.market_signal?.total_posts);
+      return posts === 0 && (gate === "high_confidence" || gate === "medium_confidence");
+    })
+    .sort((a, b) =>
+      num(b.decision_priority_score) - num(a.decision_priority_score)
+      || num(b.market_signal?.score) - num(a.market_signal?.score)
+      || text(a.title).localeCompare(text(b.title)),
+    )
+    .slice(0, limit)
+    .map(compactRow);
 
   const coverage = attachablePatterns > 0
     ? Math.round((withFeedback.length / attachablePatterns) * 100)
     : 0;
+  const highConfidenceNoFeedback = noFeedbackQueue.filter((row) => row.quality_gate === "high_confidence").length;
+  const mediumConfidenceNoFeedback = noFeedbackQueue.filter((row) => row.quality_gate === "medium_confidence").length;
 
   return {
     status: withFeedback.length >= 12
@@ -108,6 +135,11 @@ export function buildReelsBrainPatternOutcomeMemory(input: {
     rows_live: withFeedback.length,
     attachable_patterns: attachablePatterns,
     coverage_rate: coverage,
+    coverage_gaps: {
+      high_confidence_no_feedback: highConfidenceNoFeedback,
+      medium_confidence_no_feedback: mediumConfidenceNoFeedback,
+      total_no_feedback_queue: noFeedbackQueue.length,
+    },
     by_status: {
       proven: proven.length,
       promising: promising.length,
@@ -117,6 +149,7 @@ export function buildReelsBrainPatternOutcomeMemory(input: {
     stable_patterns: stablePatterns,
     promotion_queue: promotionQueue,
     decaying_patterns: decayingPatterns,
+    no_feedback_queue: noFeedbackQueue,
     trust_write_queue: [
       ...stablePatterns.filter((row) => row.trust_write === "promote_pattern_priority"),
       ...promotionQueue.filter((row) => row.trust_write === "keep_validating_pattern"),
@@ -124,6 +157,8 @@ export function buildReelsBrainPatternOutcomeMemory(input: {
     ].slice(0, limit),
     next_step: withFeedback.length === 0
       ? "Ждём больше publication feedback, чтобы pattern memory стала статистически полезной."
+      : noFeedbackQueue.length > 0
+        ? "Самые сильные паттерны без market feedback нужно первыми гнать в measurement loop."
       : decayingPatterns.length > 0
         ? "Пересобирать weak high-confidence паттерны и не пускать их в blind scale."
         : promotionQueue.length > 0
