@@ -22,6 +22,8 @@ export interface ReelsDiscoverySource {
   relevant: number;
   breakout: number;
   inserted: number;
+  segment_outcome_status?: "proven" | "promising" | "weak" | "no_feedback" | string;
+  segment_outcome_confidence?: "high" | "medium" | "low" | "none" | string;
   last_checked_at?: string;
   next_check_at?: string;
   reason?: string;
@@ -55,6 +57,8 @@ export interface ReelsDiscoveryPlanItem {
 export interface ReelsDiscoveryPlan {
   niche: string;
   platform: Exclude<ReelsPlatform, "unknown">;
+  outcome_status: "proven" | "promising" | "weak" | "no_feedback";
+  outcome_confidence: "high" | "medium" | "low" | "none";
   budget_split: Record<ReelsDiscoveryLane, number>;
   items: ReelsDiscoveryPlanItem[];
   source_count: number;
@@ -220,6 +224,43 @@ function discoveryRoot(playbook: unknown): Record<string, unknown> {
   return rec(rec(playbook).reels_brain_discovery);
 }
 
+function feedbackRoot(playbook: unknown): Record<string, unknown> {
+  const pb = rec(playbook);
+  return rec(
+    pb.feedback_loop
+    || pb.reels_brain_feedback_loop
+    || rec(pb.reels_brain_learning_economics).feedback_loop
+    || rec(pb.reels_brain_report).feedback_loop,
+  );
+}
+
+function segmentOutcomeFromPlaybook(playbook: unknown, niche: string, platform: Exclude<ReelsPlatform, "unknown">) {
+  const feedback = feedbackRoot(playbook);
+  const memory = rec(feedback.segment_outcome_memory);
+  const rows = [
+    ...(Array.isArray(memory.strongest_segments) ? memory.strongest_segments : []),
+    ...(Array.isArray(memory.promising_segments) ? memory.promising_segments : []),
+    ...(Array.isArray(memory.weak_segments) ? memory.weak_segments : []),
+    ...(Array.isArray(feedback.by_segment) ? feedback.by_segment : []),
+  ];
+  const hit = rows
+    .filter((item) => item && typeof item === "object")
+    .map((item) => rec(item))
+    .find((row) => clean(row.niche, 80) === niche && normalizeShortPlatform(row.platform) === platform);
+  if (!hit) return { status: "no_feedback" as const, confidence: "none" as const };
+  const status = clean(hit.status || "no_feedback", 40) as "proven" | "promising" | "weak" | "no_feedback";
+  const posts = Math.max(0, num(hit.posts));
+  const winners = Math.max(0, num(hit.winners));
+  const confidence: "high" | "medium" | "low" | "none" = posts >= 6 || winners >= 3
+    ? "high"
+    : posts >= 3 || winners >= 1
+      ? "medium"
+      : posts > 0
+        ? "low"
+        : "none";
+  return { status, confidence };
+}
+
 export function discoverySources(playbook: unknown, filters?: {
   niche?: string;
   platform?: unknown;
@@ -259,6 +300,8 @@ export function discoverySources(playbook: unknown, filters?: {
       relevant: Math.max(0, num(row.relevant)),
       breakout: Math.max(0, num(row.breakout)),
       inserted: Math.max(0, num(row.inserted)),
+      segment_outcome_status: row.segment_outcome_status ? clean(row.segment_outcome_status, 40) : undefined,
+      segment_outcome_confidence: row.segment_outcome_confidence ? clean(row.segment_outcome_confidence, 20) : undefined,
       last_checked_at: row.last_checked_at ? clean(row.last_checked_at, 60) : undefined,
       next_check_at: row.next_check_at ? clean(row.next_check_at, 60) : undefined,
       reason: row.reason ? clean(row.reason, 240) : undefined,
@@ -360,6 +403,8 @@ export function rememberDiscoverySourceRun(playbook: unknown, input: {
   inserted?: number;
   cost_units?: number;
   status?: ReelsDiscoverySourceStatus;
+  segment_outcome_status?: "proven" | "promising" | "weak" | "no_feedback" | string;
+  segment_outcome_confidence?: "high" | "medium" | "low" | "none" | string;
   reason?: string;
   checked_at?: string;
 }): Record<string, unknown> {
@@ -398,6 +443,8 @@ export function rememberDiscoverySourceRun(playbook: unknown, input: {
     relevant: (existing?.relevant || 0) + relevant,
     breakout: (existing?.breakout || 0) + breakout,
     inserted: (existing?.inserted || 0) + inserted,
+    segment_outcome_status: clean(input.segment_outcome_status || existing?.segment_outcome_status || "", 40) || undefined,
+    segment_outcome_confidence: clean(input.segment_outcome_confidence || existing?.segment_outcome_confidence || "", 20) || undefined,
     last_checked_at: checkedAt,
     reason: clean(input.reason || existing?.reason || "", 240) || undefined,
   };
@@ -421,6 +468,8 @@ export function rememberDiscoverySourceRun(playbook: unknown, input: {
         breakout,
         inserted,
         cost_units: Math.max(1, num(input.cost_units, 1)),
+        segment_outcome_status: next.segment_outcome_status,
+        segment_outcome_confidence: next.segment_outcome_confidence,
         yield_score: next.yield_score,
         created_at: checkedAt,
       }, ...history].slice(0, 200),
@@ -577,6 +626,31 @@ function seedSources(playbook: unknown, niche: string, platform: Exclude<ReelsPl
   return out;
 }
 
+function lanePriorityByOutcome(input: {
+  source: ReelsDiscoverySource;
+  lane: ReelsDiscoveryLane;
+  outcomeStatus: "proven" | "promising" | "weak" | "no_feedback";
+}) {
+  const base = input.source.yield_score * 1.3 + input.source.breakout_rate * 25 + input.source.relevance_rate * 20 - input.source.runs * 0.8;
+  if (input.outcomeStatus === "proven") {
+    return base
+      + (input.lane === "exploit" ? 24 : input.lane === "refresh" ? 8 : 0)
+      + (input.source.type === "account" || input.source.type === "query" ? 6 : 0);
+  }
+  if (input.outcomeStatus === "promising") {
+    return base
+      + (input.lane === "refresh" ? 18 : input.lane === "explore" ? 10 : 4)
+      + (input.source.runs <= 1 ? 8 : 0);
+  }
+  if (input.outcomeStatus === "weak") {
+    return base
+      + (input.lane === "explore" ? 26 : input.lane === "refresh" ? 14 : -40)
+      + (input.source.runs <= 1 ? 12 : 0)
+      - (input.source.type === "account" ? 8 : 0);
+  }
+  return base + (input.lane === "exploit" ? 8 : input.lane === "explore" ? 4 : 0);
+}
+
 export function buildDiscoveryPlan(playbook: unknown, input: {
   niche: string;
   platform: unknown;
@@ -588,20 +662,41 @@ export function buildDiscoveryPlan(playbook: unknown, input: {
   const platform = normalizeShortPlatform(input.platform);
   const maxItems = clamp(num(input.max_items, 6), 1, 20);
   const sourceLimit = clamp(num(input.source_limit, 25), 1, 100);
+  const segmentOutcome = segmentOutcomeFromPlaybook(playbook, niche, platform);
   const learnedSources = discoverySources(playbook, { niche, platform });
   const seeds = seedSources(playbook, niche, platform, Math.max(4, maxItems));
   const byId = new Map<string, ReelsDiscoverySource>();
   for (const source of [...learnedSources, ...seeds]) if (!byId.has(source.id)) byId.set(source.id, source);
   const sources = Array.from(byId.values());
   const activeSources = sources.filter((source) => source.status === "active");
-  const exploit = activeSources.filter((source) => source.yield_score >= 45).slice(0, Math.ceil(maxItems * 0.7));
+  const budgetSplit = segmentOutcome.status === "proven"
+    ? { explore: 15, exploit: 70, refresh: 15 }
+    : segmentOutcome.status === "promising"
+      ? { explore: 35, exploit: 35, refresh: 30 }
+      : segmentOutcome.status === "weak"
+        ? { explore: 55, exploit: 10, refresh: 35 }
+        : { explore: 20, exploit: 70, refresh: 10 };
+  const exploitMinYield = segmentOutcome.status === "weak" ? 70 : segmentOutcome.status === "promising" ? 52 : 45;
+  const exploit = activeSources
+    .filter((source) => source.yield_score >= exploitMinYield)
+    .sort((a, b) =>
+      lanePriorityByOutcome({ source: b, lane: "exploit", outcomeStatus: segmentOutcome.status })
+      - lanePriorityByOutcome({ source: a, lane: "exploit", outcomeStatus: segmentOutcome.status }))
+    .slice(0, Math.ceil(maxItems * (budgetSplit.exploit / 100)));
   const refresh = activeSources
     .filter((source) => source.runs > 0 && source.yield_score >= 20 && !exploit.some((row) => row.id === source.id))
-    .slice(0, Math.max(1, Math.floor(maxItems * 0.1)));
+    .sort((a, b) =>
+      lanePriorityByOutcome({ source: b, lane: "refresh", outcomeStatus: segmentOutcome.status })
+      - lanePriorityByOutcome({ source: a, lane: "refresh", outcomeStatus: segmentOutcome.status }))
+    .slice(0, Math.max(1, Math.floor(maxItems * (budgetSplit.refresh / 100))));
   const used = new Set([...exploit, ...refresh].map((source) => source.id));
   const explore = activeSources
     .filter((source) => !used.has(source.id))
-    .sort((a, b) => a.runs - b.runs || b.yield_score - a.yield_score)
+    .sort((a, b) =>
+      lanePriorityByOutcome({ source: b, lane: "explore", outcomeStatus: segmentOutcome.status })
+      - lanePriorityByOutcome({ source: a, lane: "explore", outcomeStatus: segmentOutcome.status })
+      || a.runs - b.runs
+      || b.yield_score - a.yield_score)
     .slice(0, Math.max(1, maxItems - exploit.length - refresh.length));
   const items: ReelsDiscoveryPlanItem[] = [
     ...exploit.map((source) => ({ lane: "exploit" as const, source })),
@@ -625,13 +720,22 @@ export function buildDiscoveryPlan(playbook: unknown, input: {
   return {
     niche,
     platform,
-    budget_split: { explore: 20, exploit: 70, refresh: 10 },
+    outcome_status: segmentOutcome.status,
+    outcome_confidence: segmentOutcome.confidence,
+    budget_split: budgetSplit,
     items,
     source_count: sources.length,
     active_source_count: activeSources.length,
     notes: [
       "Discovery Intelligence plans cheap source collection before expensive analysis.",
       "Use source_run_payload with /api/factory/reels-brain/source-run; then POST results to discovery/learn.",
+      segmentOutcome.status === "weak"
+        ? "Segment outcome is weak: reduce exploit, search for new sources and refresh assumptions."
+        : segmentOutcome.status === "promising"
+          ? "Segment outcome is promising: keep balanced explore/refresh until winners stabilize."
+          : segmentOutcome.status === "proven"
+            ? "Segment outcome is proven: exploit top sources while keeping a light refresh lane."
+            : "No segment outcome feedback yet: default discovery split remains active.",
     ],
   };
 }

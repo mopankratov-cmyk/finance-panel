@@ -35,6 +35,8 @@ import {
     breakout: 18,
     inserted: 30,
     cost_units: 4,
+    segment_outcome_status: "promising",
+    segment_outcome_confidence: "medium",
     checked_at: "2026-06-28T00:00:00.000Z",
   });
   const sources = discoverySources(playbook, { niche: "ru_cosmetics", platform: "tiktok" });
@@ -44,6 +46,8 @@ import {
   assert.ok(sources[0].yield_score > 50);
   assert.equal(sources[0].relevance_rate, 0.42);
   assert.equal(sources[0].breakout_rate, 0.429);
+  assert.equal(sources[0].segment_outcome_status, "promising");
+  assert.equal(sources[0].segment_outcome_confidence, "medium");
 }
 
 {
@@ -152,6 +156,96 @@ import {
   assert.equal(plan.items[0].source.type, "account");
   assert.equal(plan.items[0].source_run_payload.discovery_source_type, "account");
   assert.equal(plan.items[0].source_run_payload.limit, 15);
+}
+
+{
+  let playbook: Record<string, unknown> = {
+    niche: "ru_cosmetics",
+    feedback_loop: {
+      segment_outcome_memory: {
+        weak_segments: [
+          {
+            niche: "ru_cosmetics",
+            platform: "instagram",
+            status: "weak",
+            posts: 4,
+            winners: 0,
+          },
+        ],
+      },
+    },
+  };
+  playbook = rememberDiscoverySourceRun(playbook, {
+    niche: "ru_cosmetics",
+    platform: "instagram",
+    type: "query",
+    value: "косметика обзор",
+    found: 80,
+    relevant: 32,
+    breakout: 10,
+    inserted: 20,
+    cost_units: 3,
+  });
+  playbook = rememberDiscoverySourceRun(playbook, {
+    niche: "ru_cosmetics",
+    platform: "instagram",
+    type: "account",
+    value: "@beauty_lab",
+    found: 40,
+    relevant: 20,
+    breakout: 7,
+    inserted: 12,
+    cost_units: 2,
+  });
+  const plan = buildDiscoveryPlan(playbook, {
+    niche: "ru_cosmetics",
+    platform: "instagram",
+    max_items: 4,
+    source_limit: 15,
+  });
+
+  assert.equal(plan.outcome_status, "weak");
+  assert.deepEqual(plan.budget_split, { explore: 55, exploit: 10, refresh: 35 });
+  assert.ok(plan.notes.some((note) => note.includes("weak")));
+}
+
+{
+  let playbook: Record<string, unknown> = {
+    niche: "ru_toys",
+    feedback_loop: {
+      segment_outcome_memory: {
+        strongest_segments: [
+          {
+            niche: "ru_toys",
+            platform: "tiktok",
+            status: "proven",
+            posts: 6,
+            winners: 3,
+          },
+        ],
+      },
+    },
+  };
+  playbook = rememberDiscoverySourceRun(playbook, {
+    niche: "ru_toys",
+    platform: "tiktok",
+    type: "query",
+    value: "игрушки обзор",
+    found: 120,
+    relevant: 60,
+    breakout: 30,
+    inserted: 44,
+    cost_units: 4,
+  });
+  const plan = buildDiscoveryPlan(playbook, {
+    niche: "ru_toys",
+    platform: "tiktok",
+    max_items: 4,
+  });
+
+  assert.equal(plan.outcome_status, "proven");
+  assert.equal(plan.outcome_confidence, "high");
+  assert.deepEqual(plan.budget_split, { explore: 15, exploit: 70, refresh: 15 });
 }
 
 console.log("reelsBrainDiscovery: ok");
