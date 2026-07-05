@@ -2334,9 +2334,18 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
                   <div className="rb-brief-block"><b>Family</b><p>{String(row.primary_missing_family || "none")}</p></div>
                   <div className="rb-brief-block"><b>Missing</b><p>{compact(row.missing_count || 0)}</p></div>
                 </div>
+                <div className="rb-three" style={{ marginTop: 12 }}>
+                  <div className="rb-brief-block"><b>Unlocks</b><p>{String(row.unlocked_output || "next_layer")}</p></div>
+                  <div className="rb-brief-block"><b>Trust delta</b><p>{compact(row.projected_trust_gain_score || 0)} · {String(row.projected_trust_gain_band || "low")}</p></div>
+                  <div className="rb-brief-block"><b>State</b><p>{String(row.projected_production_state || "forming")}</p></div>
+                </div>
                 <div className="rb-brief-block" style={{ marginTop: 12 }}>
                   <b>Fields</b>
                   <p>{((row.missing_fields || []) as string[]).join(" · ") || "Gap closed"}</p>
+                </div>
+                <div className="rb-brief-block" style={{ marginTop: 12 }}>
+                  <b>After close</b>
+                  <p>{String(row.unlocked_next_step || "Сегмент поднимется в следующий production слой.")}</p>
                 </div>
                 <div className="rb-brief-block" style={{ marginTop: 12 }}>
                   <b>Next step</b>

@@ -55,7 +55,12 @@ assert.equal(result.summary.close_to_publishable_segments, 0);
 assert.equal(result.top_candidates[0]?.label, "ru_toys × tiktok");
 assert.equal(result.top_candidates[0]?.recommended_loop, "media_backfill");
 assert.equal(result.top_candidates[0]?.closure_stage, "one_field_away");
+assert.equal(result.top_candidates[0]?.unlocked_output, "publishable_visual_brief");
+assert.equal(result.top_candidates[0]?.projected_production_state, "publishable_exact");
+assert.equal(result.top_candidates[0]?.projected_trust_gain_band, "high");
 assert.equal(result.top_candidates[1]?.recommended_loop, "collect_exact_proof");
+assert.equal(result.top_candidates[1]?.unlocked_output, "exact_segment_evidence");
+assert.equal(result.top_candidates[1]?.projected_production_state, "proof_needed");
 assert.ok((result.summary.top_missing_family_hotspots || []).some((row) => row.label === "visual"));
 
 console.log("reelsBrainBriefGapProgress.test: ok");

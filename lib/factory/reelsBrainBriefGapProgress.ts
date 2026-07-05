@@ -49,6 +49,43 @@ function closureStage(input: { exactReady: boolean; missingCount: number; blocke
   return "needs_exact_proof";
 }
 
+function unlockedOutput(family: string, stage: string, exactReady: boolean) {
+  if (!exactReady) return "exact_segment_evidence";
+  if (["visual", "timeline"].includes(family)) return "publishable_visual_brief";
+  if (["audio", "retention"].includes(family)) return "performance_tuned_brief";
+  if (["hook", "positioning", "mechanic", "structure"].includes(family)) return "generator_ready_brief";
+  if (["execution", "measurement"].includes(family)) return "ship_ready_action_pack";
+  return stage === "one_field_away" ? "publishable_exact_brief" : "generator_ready_brief";
+}
+
+function projectedProductionState(stage: string, exactReady: boolean, blockedCount: number) {
+  if (!exactReady) return blockedCount > 0 ? "proof_needed" : "controlled_test";
+  if (stage === "one_field_away" && blockedCount === 0) return "publishable_exact";
+  if (stage === "close_to_publishable" && blockedCount <= 1) return "near_publishable";
+  if (stage === "exact_but_incomplete") return "brief_hardening";
+  return "proof_needed";
+}
+
+function projectedTrustGain(input: { exactReady: boolean; missingCount: number; blockedCount: number; upliftScore: number }) {
+  const gain = Math.max(0, Math.round(
+    (input.exactReady ? 14 : 8)
+    + Math.max(0, 18 - input.missingCount * 4)
+    + Math.max(0, 10 - input.blockedCount * 5)
+    + Math.min(8, Math.round(input.upliftScore / 12)),
+  ));
+  const band = gain >= 28 ? "high" : gain >= 18 ? "medium" : "low";
+  return { score: gain, band };
+}
+
+function nextUnlockedStep(loop: string, output: string) {
+  if (output === "publishable_exact_brief") return "Можно переводить сегмент в publishable exact и снимать продовый бриф.";
+  if (output === "ship_ready_action_pack") return "Можно закрывать action layer и запускать controlled rollout без ручной догадки.";
+  if (output === "exact_segment_evidence") return "Сначала закрываем proof-layer, чтобы следующие брифы опирались на exact evidence.";
+  if (loop === "media_backfill") return "После добора media-поля сегмент перейдёт в production-grade visual bundle.";
+  if (loop === "audio_backfill") return "После аудио-добора сегмент станет пригоден для retention-tuned production bundle.";
+  return "После закрытия gap-а сегмент поднимется в следующий production-ready слой.";
+}
+
 export function buildReelsBrainBriefGapProgress(input: {
   briefCoverageAudit?: { gap_queue?: JsonRecord[]; summary?: JsonRecord | null } | null;
   shipReadyQueue?: { items?: JsonRecord[]; top_ship_candidates?: JsonRecord[]; summary?: JsonRecord | null } | null;
@@ -83,6 +120,10 @@ export function buildReelsBrainBriefGapProgress(input: {
       - missingCount * 7
       - blockedCount * 5
     ));
+    const loop = recommendedLoop(primaryFamily, exactReady, blockedCount);
+    const unlocked = unlockedOutput(primaryFamily, stage, exactReady);
+    const projectedState = projectedProductionState(stage, exactReady, blockedCount);
+    const trustGain = projectedTrustGain({ exactReady, missingCount, blockedCount, upliftScore });
     return {
       niche: text(row.niche),
       platform: text(row.platform),
@@ -100,7 +141,12 @@ export function buildReelsBrainBriefGapProgress(input: {
       primary_missing_family: primaryFamily,
       closure_stage: stage,
       estimated_uplift_score: upliftScore,
-      recommended_loop: recommendedLoop(primaryFamily, exactReady, blockedCount),
+      projected_trust_gain_score: trustGain.score,
+      projected_trust_gain_band: trustGain.band,
+      unlocked_output: unlocked,
+      projected_production_state: projectedState,
+      recommended_loop: loop,
+      unlocked_next_step: nextUnlockedStep(loop, unlocked),
       next_step: text(row.next_step, "Close the remaining brief gaps."),
     };
   }).sort((a, b) =>
