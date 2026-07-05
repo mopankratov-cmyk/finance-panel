@@ -1,3 +1,5 @@
+import { buildReelsBrainOutcomeGuardrails } from "./reelsBrainOutcomeGuardrails";
+
 type GenerationPackRow = {
   niche?: string;
   platform?: string;
@@ -61,6 +63,10 @@ function list(value: unknown, limit = 4): string[] {
     : [];
 }
 
+function uniq(value: string[], limit = 6) {
+  return Array.from(new Set(value.map((item) => text(item)).filter(Boolean))).slice(0, limit);
+}
+
 function exportLane(value: string) {
   if (value === "ready") return "ship";
   if (value === "needs_validation") return "validate";
@@ -76,6 +82,16 @@ export function buildReelsBrainSegmentCreativeExports(input: {
   const rows = (input.segmentGenerationPacks?.items || [])
     .map((row) => {
       const lane = exportLane(text(row.quality_gate?.status));
+      const outcomeGuardrails = buildReelsBrainOutcomeGuardrails({
+        outcome_status: row.outcome_status,
+        outcome_confidence: row.outcome_confidence,
+        outcome_posts: row.outcome_posts,
+        outcome_winners: row.outcome_winners,
+        outcome_losers: row.outcome_losers,
+        outcome_trust_action: row.outcome_trust_action,
+        outcome_evidence: row.outcome_evidence,
+        platform: row.platform,
+      });
       return {
         niche: text(row.niche),
         platform: text(row.platform),
@@ -93,7 +109,10 @@ export function buildReelsBrainSegmentCreativeExports(input: {
           audio_strategy: list(row.payload?.audio_strategy, 3),
           product_fit: list(row.payload?.product_fit, 3),
           copy_as_mechanic: list(row.payload?.copy_as_mechanic, 3),
-          do_not_copy: list(row.payload?.do_not_copy, 3),
+          do_not_copy: uniq([
+            ...list(row.payload?.do_not_copy, 3),
+            ...outcomeGuardrails.do_not_copy,
+          ], 5),
         },
         hypothesis: {
           title: text(row.hypothesis_title, "Hypothesis"),
@@ -104,7 +123,10 @@ export function buildReelsBrainSegmentCreativeExports(input: {
           action_title: text(row.action_title, "Content action"),
           action_decision: text(row.action_decision),
           success_metric: text(row.action_success_metric || row.hypothesis_success_metric),
-          guardrails: list(row.action_guardrails, 4),
+          guardrails: uniq([
+            ...list(row.action_guardrails, 4),
+            ...outcomeGuardrails.guardrails,
+          ], 6),
           execution_note: lane === "ship"
             ? "Можно идти в основной generation lane."
             : lane === "validate"
@@ -120,6 +142,7 @@ export function buildReelsBrainSegmentCreativeExports(input: {
           outcome_losers: num(row.outcome_losers),
           outcome_trust_action: text(row.outcome_trust_action),
           outcome_evidence: text(row.outcome_evidence),
+          outcome_anti_patterns: outcomeGuardrails.anti_patterns,
           corpus_score: num(row.corpus_score),
           market_score: num(row.market_score),
           stable_pattern_count: num(row.stable_pattern_count),
@@ -137,8 +160,13 @@ export function buildReelsBrainSegmentCreativeExports(input: {
             audio_strategy: list(row.payload?.audio_strategy, 3),
             product_fit: list(row.payload?.product_fit, 3),
             copy_as_mechanic: list(row.payload?.copy_as_mechanic, 3),
-            do_not_copy: list(row.payload?.do_not_copy, 3),
+            do_not_copy: uniq([
+              ...list(row.payload?.do_not_copy, 3),
+              ...outcomeGuardrails.do_not_copy,
+            ], 5),
           },
+          outcome_guardrails: outcomeGuardrails.guardrails,
+          outcome_anti_patterns: outcomeGuardrails.anti_patterns,
         },
         why_now: text(row.why_now),
         next_step: text(row.next_step),

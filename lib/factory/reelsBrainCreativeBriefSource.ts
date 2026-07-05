@@ -1,3 +1,5 @@
+import { buildReelsBrainOutcomeGuardrails } from "./reelsBrainOutcomeGuardrails";
+
 type JsonRecord = Record<string, unknown>;
 
 function num(value: unknown) {
@@ -75,6 +77,16 @@ function buildResponseFromSolution(
   const hypothesis = (row.hypothesis || {}) as JsonRecord;
   const contentDecision = (row.content_decision || {}) as JsonRecord;
   const trustSummary = (row.trust_summary || {}) as JsonRecord;
+  const outcomeGuardrails = buildReelsBrainOutcomeGuardrails({
+    outcome_status: text(trustSummary.outcome_status),
+    outcome_confidence: text(trustSummary.outcome_confidence),
+    outcome_posts: num(trustSummary.outcome_posts),
+    outcome_winners: num(trustSummary.outcome_winners),
+    outcome_losers: num(trustSummary.outcome_losers),
+    outcome_trust_action: text(trustSummary.outcome_trust_action),
+    outcome_evidence: text(trustSummary.outcome_evidence),
+    platform: text(row.platform),
+  });
   const sourceTrace = candidates.map((candidate, index) => ({
     rank: index + 1,
     source: candidate.source,
@@ -93,7 +105,10 @@ function buildResponseFromSolution(
     stability_score: num(trustSummary.stability_score),
     why: list(row.trust_why, 5),
     blockers: list(trustSummary.blockers, 5),
-    guardrails: list(contentDecision.guardrails, 5),
+    guardrails: Array.from(new Set([
+      ...list(contentDecision.guardrails, 5),
+      ...outcomeGuardrails.guardrails,
+    ])).slice(0, 6),
     success_metric: text(contentDecision.success_metric || hypothesis.success_metric),
     next_step: text(contentDecision.next_step || row.next_step),
   };
@@ -125,7 +140,10 @@ function buildResponseFromSolution(
       audio_strategy: list(brief.audio_strategy, 4),
       product_fit: list(brief.product_fit, 4),
       copy_as_mechanic: list(brief.copy_as_mechanic, 4),
-      do_not_copy: list(brief.do_not_copy, 4),
+      do_not_copy: Array.from(new Set([
+        ...list(brief.do_not_copy, 4),
+        ...outcomeGuardrails.do_not_copy,
+      ])).slice(0, 5),
     },
     hypothesis: {
       title: text(hypothesis.title, "Hypothesis"),
@@ -136,7 +154,10 @@ function buildResponseFromSolution(
       title: text(contentDecision.title || contentDecision.action_title, "Content decision"),
       decision: text(contentDecision.decision, "research"),
       success_metric: text(contentDecision.success_metric || hypothesis.success_metric),
-      guardrails: list(contentDecision.guardrails, 5),
+      guardrails: Array.from(new Set([
+        ...list(contentDecision.guardrails, 5),
+        ...outcomeGuardrails.guardrails,
+      ])).slice(0, 6),
       execution_note: text(contentDecision.execution_note),
       next_step: text(contentDecision.next_step || row.next_step),
     },
@@ -146,7 +167,13 @@ function buildResponseFromSolution(
       stability_score: num(trustSummary.stability_score),
       signals: list(trustSummary.signals, 4),
       blockers: list(trustSummary.blockers, 5),
+      outcome_status: text(trustSummary.outcome_status, "no_feedback"),
+      outcome_confidence: text(trustSummary.outcome_confidence, "none"),
+      outcome_posts: num(trustSummary.outcome_posts),
+      outcome_winners: num(trustSummary.outcome_winners),
+      outcome_losers: num(trustSummary.outcome_losers),
     },
+    anti_patterns: outcomeGuardrails.anti_patterns,
     trust_why: list(row.trust_why, 5),
     decision_pack: decisionPack,
     source_trace: sourceTrace,

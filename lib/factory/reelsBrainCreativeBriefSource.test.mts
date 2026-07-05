@@ -24,7 +24,17 @@ test("selectCreativeBriefFromSegmentLayers prefers exact segment solution over g
           },
           hypothesis: { title: "Reveal wins", text: "Reveal grows hold", success_metric: "3s hold" },
           content_decision: { title: "Launch reveal", decision: "scale", success_metric: "3s hold", guardrails: ["no direct copy"] },
-          trust_summary: { evidence_band: "stable", stability_score: 88, signals: ["4 stable patterns"], blockers: [] },
+          trust_summary: {
+            evidence_band: "stable",
+            stability_score: 88,
+            signals: ["4 stable patterns"],
+            blockers: [],
+            outcome_status: "proven",
+            outcome_confidence: "high",
+            outcome_posts: 6,
+            outcome_winners: 3,
+            outcome_losers: 0,
+          },
           trust_why: ["stable corpus", "market signal present"],
         },
       ],
@@ -46,6 +56,7 @@ test("selectCreativeBriefFromSegmentLayers prefers exact segment solution over g
   assert.equal(result?.source, "segment_solution");
   assert.equal(result?.creative_brief.hook, "Смотри что внутри");
   assert.equal(result?.trust_summary.evidence_band, "stable");
+  assert.equal(result?.trust_summary.outcome_status, "proven");
   assert.equal(result?.source_trace?.[0]?.source, "segment_solution");
 });
 
@@ -68,7 +79,16 @@ test("selectCreativeBriefFromSegmentLayers falls back to platform then niche mat
             creative_brief: { hook: "YouTube proof", retention: "context + payoff" },
             hypothesis: { text: "Need more context" },
             content_decision: { title: "Control batch", decision: "validate" },
-            trust_summary: { evidence_band: "forming", stability_score: 61, blockers: ["need more winners"] },
+            trust_summary: {
+              evidence_band: "forming",
+              stability_score: 61,
+              blockers: ["need more winners"],
+              outcome_status: "weak",
+              outcome_confidence: "medium",
+              outcome_posts: 3,
+              outcome_winners: 0,
+              outcome_losers: 2,
+            },
             trust_why: ["platform signal exists"],
           },
         },
@@ -78,6 +98,8 @@ test("selectCreativeBriefFromSegmentLayers falls back to platform then niche mat
   });
   assert.equal(platformResult?.source, "platform_matrix");
   assert.equal(platformResult?.platform, "youtube");
+  assert.ok(platformResult?.content_decision.guardrails.some((item) => item.includes("Не пускать текущую механику")));
+  assert.equal(platformResult?.anti_patterns?.[0]?.label, "Weak segment outcome");
   assert.equal(platformResult?.source_trace?.[0]?.source, "platform_matrix");
 
   const nicheResult = selectCreativeBriefFromSegmentLayers({

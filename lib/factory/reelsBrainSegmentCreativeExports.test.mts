@@ -42,6 +42,13 @@ function testBuildReelsBrainSegmentCreativeExportsSplitsShipAndValidateLanes() {
           readiness_score: 71,
           ready_for_generation: true,
           quality_gate: { status: "needs_validation", allowed_generation_modes: ["control_ready"], blocked_reasons: ["trust score ниже decision-grade порога"] },
+          outcome_status: "weak",
+          outcome_confidence: "medium",
+          outcome_posts: 3,
+          outcome_winners: 0,
+          outcome_losers: 2,
+          outcome_trust_action: "review_or_penalize_segment",
+          outcome_evidence: "0 winners / 3 posts",
           payload: {
             hook: "До и после",
             retention: "proof frame",
@@ -69,6 +76,9 @@ function testBuildReelsBrainSegmentCreativeExportsSplitsShipAndValidateLanes() {
   assert.equal(result.validate_next[0]?.content_solution.action_decision, "control");
   assert.equal(result.items[0]?.generator_bundle.lane, "ship");
   assert.equal(result.items[1]?.generator_bundle.blocked_reasons[0], "trust score ниже decision-grade порога");
+  assert.ok(result.items[1]?.content_solution.guardrails.some((item: string) => item.includes("Не пускать текущую механику")));
+  assert.ok(result.items[1]?.brief.do_not_copy.some((item: string) => item.includes("weak")));
+  assert.equal(result.items[1]?.trust.outcome_anti_patterns?.[0]?.label, "Weak segment outcome");
 }
 
 function run() {
