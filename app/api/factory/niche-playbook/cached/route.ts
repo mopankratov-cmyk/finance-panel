@@ -48,6 +48,7 @@ export async function GET(req: NextRequest) {
         platform_brain: selectedBrain.brain,
         meta_brain: selectedBrain.meta_brain,
         cross_platform_patterns: selectedBrain.cross_platform_patterns,
+        rebuild_context: selectedBrain.rebuild_context,
       },
     });
   } catch (e) {

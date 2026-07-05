@@ -88,10 +88,28 @@ export interface CrossPlatformPattern {
   avg_strength_score: number;
 }
 
+export interface ReelsPatternRebuildContext {
+  focus_platform?: string | null;
+  source_discovery_mode?: string | null;
+  execution_mode?: string | null;
+  field_focus?: string | null;
+  family_focus?: string | null;
+  platform_biased?: boolean;
+  exact_proof_biased?: boolean;
+  brief_bundle_biased?: boolean;
+  ship_ready_biased?: boolean;
+  high_trust_generation_biased?: boolean;
+  output_ready_biased?: boolean;
+  requested_limit?: number;
+  source_videos?: number;
+  persisted_at?: string | null;
+}
+
 export interface ReelsPatternMemoryBundle extends ReelsPatternMemory {
   meta_brain: ReelsPatternMemory;
   platform_brains: Partial<Record<ReelsPlatform, ReelsPatternMemory>>;
   cross_platform_patterns: CrossPlatformPattern[];
+  rebuild_context?: ReelsPatternRebuildContext;
 }
 
 function num(value: unknown): number {

@@ -93,6 +93,7 @@ export async function GET(req: NextRequest) {
     const playbookRoot = rec(playbook);
     const patternRoot = rec(playbookRoot.reels_brain_patterns);
     const platformBrains = rec(patternRoot.platform_brains);
+    const rebuildContext = rec(patternRoot.rebuild_context);
     const metaBrain = asBrain(patternRoot.meta_brain) || asBrain(patternRoot);
     const platforms = buildReelsBrainPlatformSummary({
       videos: (videos as Parameters<typeof buildReelsBrainPlatformSummary>[0]["videos"] | null) || [],
@@ -203,6 +204,7 @@ export async function GET(req: NextRequest) {
       total_videos: platformsWithAlerts.reduce((sum, platform) => sum + platform.videos, 0),
       total_winners: platformsWithAlerts.reduce((sum, platform) => sum + platform.winners, 0),
       trust_overview,
+      pattern_rebuild_context: Object.keys(rebuildContext).length ? rebuildContext : null,
       anti_pattern_hotspots,
       platforms: platformsWithAlerts,
       preferred_source_providers: preferredSourceProviders(playbook),

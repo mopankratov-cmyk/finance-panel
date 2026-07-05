@@ -52,6 +52,8 @@ const cronIntent = readFileSync("lib/factory/reelsBrainCronExecutionIntent.ts", 
 const scheduler = readFileSync("lib/factory/reelsBrainScheduler.ts", "utf8");
 const vendorReport = readFileSync("app/inferno/vendor/reels-brain-report/route.ts", "utf8");
 const vendorPortfolio = readFileSync("app/inferno/vendor/reels-brain-portfolio/route.ts", "utf8");
+const nichePlaybookCached = readFileSync("app/api/factory/niche-playbook/cached/route.ts", "utf8");
+const summaryRoute = readFileSync("app/api/factory/reels-brain/summary/route.ts", "utf8");
 
 ok(/function buildCostGovernor/.test(economics), "learning-economics builds a cost governor");
 ok(/REELS_BRAIN_MAX_DAILY_SPEND_USD/.test(economics), "cost governor has daily spend env guard");
@@ -158,6 +160,7 @@ ok(/ship_ready_bundle_completion/.test(cronIntent) && /ship_ready_bundle_complet
 ok(/focus_platform/.test(patternBuild) && /compaction_context/.test(patternBuild) && /loadPatternSourceVideos/.test(patternBuild) && /buildPatternBuildContext/.test(patternBuildContext), "patterns/build exposes platform-biased compaction context for policy-aware memory rebuilds");
 ok(/source_discovery_mode/.test(patternBuildContext) && /exact_proof_biased/.test(patternBuildContext) && /focusPlatformFromIntent/.test(patternBuildContext), "patterns/build derives exact-proof-biased compaction context from execution intent");
 ok(/brief_bundle_biased/.test(patternBuildContext) && /ship_ready_biased/.test(patternBuildContext) && /high_trust_generation_biased/.test(patternBuildContext) && /prioritizePatternSourceVideos/.test(patternBuildContext), "patterns/build upgrades memory rebuild for brief-bundle, ship-ready and high-trust generation loops");
+ok(/rebuild_context/.test(patternBuild) && /rebuild_context/.test(nichePlaybookCached) && /pattern_rebuild_context/.test(summaryRoute), "focused pattern rebuild context is persisted into memory and exposed to downstream readers");
 ok(/function loadPipelineProgress/.test(cron) && /pipeline_preflight/.test(cron) && /reels-brain-audio-backfill/.test(cron), "cron runs pipeline preflight for media and audio backlog");
 ok(/media_ticks/.test(cron) && /audio_ticks/.test(cron) && /platform\",\s*String\(target\.platform/.test(cron), "cron preflight fans out media and audio backlog across top platforms");
 ok(/focus_niche/.test(cron) && /focus_platform/.test(cron) && /source_discovery_mode/.test(cron) && /field_focus/.test(cron) && /family_focus/.test(cron) && /prioritizeFocusTargets/.test(cron), "cron preflight forwards focused exact-proof and brief-gap context into readiness backfill");

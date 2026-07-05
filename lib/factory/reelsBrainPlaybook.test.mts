@@ -38,6 +38,11 @@ function eq(a: unknown, b: unknown, m: string) { ok(JSON.stringify(a) === JSON.s
 {
   const playbook = {
     reels_brain_patterns: {
+      rebuild_context: {
+        execution_mode: "brief_bundle_completion",
+        focus_platform: "tiktok",
+        output_ready_biased: true,
+      },
       platform_brains: {
         tiktok: { niche: "toys", platform: "tiktok", total_videos: 3, analyzed_videos: 2, patterns: [{ hook_type: "warning", structure_type: "demo", retention_mechanism: "proof_wait", frequency: 2 }], top_hooks: ["Не покупай это"], generated_at: "2026-06-27T00:00:00.000Z" },
       },
@@ -51,6 +56,7 @@ function eq(a: unknown, b: unknown, m: string) { ok(JSON.stringify(a) === JSON.s
   const selected = selectReelsBrain(playbook, "Tiktok");
   eq(selected.requested_platform, "tiktok", "select: target platform");
   eq(selected.brain?.platform, "tiktok", "select: exact platform brain");
+  eq(selected.rebuild_context?.execution_mode, "brief_bundle_completion", "select: rebuild context preserved");
   ok(buildPlatformBrainHint(playbook, "Tiktok").includes("PLATFORM BRAIN (TIKTOK)"), "hint: platform header");
 }
 

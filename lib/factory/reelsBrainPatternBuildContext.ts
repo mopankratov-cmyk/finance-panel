@@ -1,4 +1,4 @@
-import type { ReelsPatternSourceVideo } from "./reelsBrainPatterns";
+import type { ReelsPatternRebuildContext, ReelsPatternSourceVideo } from "./reelsBrainPatterns";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -76,7 +76,7 @@ function fieldFocusScore(row: ReelsPatternSourceVideo, fieldFocus: string, famil
   return score;
 }
 
-export type ReelsBrainPatternBuildContext = {
+export type ReelsBrainPatternBuildContext = ReelsPatternRebuildContext & {
   focus_platform: string | null;
   source_discovery_mode: string | null;
   execution_mode: string | null;

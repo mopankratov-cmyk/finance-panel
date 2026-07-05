@@ -3,6 +3,7 @@ import {
   type CrossPlatformPattern,
   type ReelsPatternMemory,
   type ReelsPatternMemoryBundle,
+  type ReelsPatternRebuildContext,
   labelReelsHookType,
   labelReelsRetentionMechanism,
   labelReelsStructureType,
@@ -15,6 +16,7 @@ export interface SelectedReelsBrain {
   brain: ReelsPatternMemory | null;
   meta_brain: ReelsPatternMemory | null;
   cross_platform_patterns: CrossPlatformPattern[];
+  rebuild_context: ReelsPatternRebuildContext | null;
 }
 
 export interface ReelsBrainSourceChoice {
@@ -787,6 +789,9 @@ export function selectReelsBrain(playbook: unknown, targetPlatform: unknown): Se
   const crossPlatformPatterns = Array.isArray(bundle.cross_platform_patterns)
     ? (bundle.cross_platform_patterns as CrossPlatformPattern[])
     : [];
+  const rebuildContext = bundle.rebuild_context && typeof bundle.rebuild_context === "object"
+    ? bundle.rebuild_context as ReelsPatternRebuildContext
+    : null;
 
   return {
     platform: exactBrain?.platform === requested ? requested : requested,
@@ -794,6 +799,7 @@ export function selectReelsBrain(playbook: unknown, targetPlatform: unknown): Se
     brain: fallbackBrain,
     meta_brain: metaBrain,
     cross_platform_patterns: crossPlatformPatterns,
+    rebuild_context: rebuildContext,
   };
 }
 

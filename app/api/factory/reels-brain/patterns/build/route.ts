@@ -70,6 +70,14 @@ async function build(req: NextRequest, body: Record<string, unknown>) {
     .limit(1);
   const current = ((existing as { playbook: Record<string, unknown> }[] | null)?.[0]?.playbook || {}) as Record<string, unknown>;
   const memory = buildReelsPatternMemory(niche, rows, new Date(), { playbook: current });
+  const persistedMemory = {
+    ...memory,
+    rebuild_context: {
+      ...context,
+      source_videos: rows.length,
+      persisted_at: new Date().toISOString(),
+    },
+  };
   let persisted = false;
   let warning: string | null = null;
 
@@ -78,7 +86,7 @@ async function build(req: NextRequest, body: Record<string, unknown>) {
       const playbook = {
         ...current,
         niche,
-        reels_brain_patterns: memory,
+        reels_brain_patterns: persistedMemory,
         updated_by: "reels-brain-patterns",
       };
       const { error: upErr } = await db.from("niche_playbooks").upsert({
@@ -102,7 +110,7 @@ async function build(req: NextRequest, body: Record<string, unknown>) {
     persist,
     persisted,
     warning,
-    memory,
+    memory: persistedMemory,
     summary: {
       meta_patterns: memory.meta_brain.patterns.length,
       generator_ready_patterns: memory.meta_brain.generator_ready_patterns.length,
