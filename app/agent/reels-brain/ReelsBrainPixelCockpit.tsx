@@ -3647,7 +3647,7 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
             <div className="rb-three" style={{ marginTop: 12 }}>
               <div className="rb-brief-block"><b>Avg trust gain</b><p>{compact(vm.exactSegmentQueue.avg_expected_trust_gain || 0)}</p></div>
               <div className="rb-brief-block"><b>Avg ETA</b><p>{compact(vm.exactSegmentQueue.avg_eta_ticks || 0)} ticks</p></div>
-              <div className="rb-brief-block"><b>Queue mode</b><p>close exact-proof gaps first</p></div>
+              <div className="rb-brief-block"><b>Data readiness</b><p>{compact(vm.exactSegmentQueue.avg_data_readiness_score || 0)}</p></div>
             </div>
             <div style={{ display: "grid", gap: 10, marginTop: 14 }}>
               {vm.exactEvidenceCards.length ? vm.exactEvidenceCards.map((row: JsonRecord) => (
@@ -3660,7 +3660,10 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
                     </div>
                   </div>
                   <p style={{ color: "#475569", lineHeight: 1.5 }}>
-                    transfer {compact(row.transfer_count || 0)} · urgency {compact(row.urgency_score || 0)} · gain {compact(row.expected_trust_gain || 0)} · ETA {compact(row.eta_ticks || 0)} · eff {compact(row.efficiency_score || 0)}
+                    transfer {compact(row.transfer_count || 0)} · urgency {compact(row.urgency_score || 0)} · gain {compact(row.expected_trust_gain || 0)} · ETA {compact(row.eta_ticks || 0)} · readiness {compact(row.data_readiness_score || 0)} · eff {compact(row.efficiency_score || 0)}
+                  </p>
+                  <p style={{ color: "#64748b", lineHeight: 1.45 }}>
+                    media {compact(row.readiness_direct_rate || 0)} · audio {compact(row.readiness_audio_rate || 0)} · transcript {compact(row.readiness_transcript_ready_rate || 0)} · analyzed {compact(row.readiness_analyzed_rate || 0)} · backlog {compact(row.readiness_total_backlog || 0)}
                   </p>
                   <p style={{ color: "#0f172a", fontWeight: 600 }}>{row.desired_proof || "Нужно добрать exact proof по сегменту."}</p>
                 </div>

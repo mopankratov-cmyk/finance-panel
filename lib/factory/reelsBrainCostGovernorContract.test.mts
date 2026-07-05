@@ -122,7 +122,7 @@ ok(/corpusProgress/.test(learningPlan) && /corpusExecutionPlan/.test(learningPla
 ok(/next_tick/.test(learningPlan) && /max_backlog_before_analyze/.test(learningPlan), "learning-plan chooses the next safe training tick");
 ok(/buildReelsBrainSegmentGapPlanner/.test(learningPlan) && /segment_plan/.test(learningPlan), "learning-plan exposes segment-level gap planner toward stable trust");
 ok(/buildReelsBrainSegmentPriorityQueue/.test(learningPlan) && /segment_priority_queue/.test(learningPlan), "learning-plan exposes segment priority queue on top of gap plan");
-ok(/exact_segment_queue/.test(learningPlan) && /exact_proof_coverage_pct/.test(learningPlan) && /avg_expected_trust_gain/.test(learningPlan) && /avg_eta_ticks/.test(learningPlan), "learning-plan exposes exact segment proof queue inside the mission loop with trust-gain economics");
+ok(/exact_segment_queue/.test(learningPlan) && /exact_proof_coverage_pct/.test(learningPlan) && /avg_expected_trust_gain/.test(learningPlan) && /avg_eta_ticks/.test(learningPlan) && /avg_data_readiness_score/.test(learningPlan), "learning-plan exposes exact segment proof queue inside the mission loop with trust-gain and data-readiness economics");
 ok(/can_run_paid_collection/.test(learningPlan) && /cost_governor/.test(learningPlan), "learning-plan respects paid collection guard");
 ok(!/POST\s*\(/.test(learningPlan), "learning-plan route is read-only");
 
@@ -178,7 +178,7 @@ ok(/\/api\/factory\/reels-brain\/creative-solution\?niche=/.test(cockpit), "cock
 ok(/\/api\/factory\/reels-brain\/stability-audit\?lane=/.test(cockpit), "cockpit exposes segment stability-audit endpoint per segment");
 ok(/Portfolio readiness/.test(cockpit) && /high-trust coverage/.test(cockpit), "cockpit surfaces portfolio readiness toward full niche/platform coverage");
 ok(/Exact Proof Queue/.test(cockpit) && /borrowed_brief_segments/.test(cockpit) && /exactEvidenceCards/.test(cockpit), "cockpit surfaces where briefs still depend on transfer instead of exact segment proof");
-ok(/Avg trust gain/.test(cockpit) && /Avg ETA/.test(cockpit) && /eff/.test(cockpit), "cockpit surfaces exact-proof queue gain and ETA signals for operator prioritization");
+ok(/Avg trust gain/.test(cockpit) && /Avg ETA/.test(cockpit) && /Data readiness/.test(cockpit) && /eff/.test(cockpit), "cockpit surfaces exact-proof queue gain, ETA and data-readiness signals for operator prioritization");
 ok(/Niche trust migration/.test(cockpit) && /source_mix_audit/.test(cockpit) && /sourceMixNicheCards/.test(cockpit), "cockpit surfaces niche-level exact-proof trust migration from source mix audit");
 ok(/Exact-gap watchlist/.test(cockpit) && /sourceMixWatchCards/.test(cockpit), "cockpit surfaces exact-gap watchlist for niche x platform proof holes");
 ok(/Segment Solution Matrix/.test(cockpit) && /segment_solution_matrix/.test(cockpit), "cockpit surfaces grouped niche/platform segment solution matrix");

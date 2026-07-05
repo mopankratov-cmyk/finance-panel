@@ -38,6 +38,23 @@ function policyRank(value: string) {
   return 1;
 }
 
+function readinessBlend(input: {
+  directRate: number;
+  audioRate: number;
+  transcriptRate: number;
+  analyzedRate: number;
+  backlog: number;
+}) {
+  const base = Math.round(
+    input.directRate * 0.24
+    + input.audioRate * 0.24
+    + input.transcriptRate * 0.18
+    + input.analyzedRate * 0.24
+    + Math.max(0, 20 - Math.min(20, input.backlog * 0.5)),
+  );
+  return Math.max(0, Math.min(100, base));
+}
+
 export function buildReelsBrainExactSegmentQueue(input: {
   portfolioReadiness?: {
     summary?: JsonRecord | null;
@@ -128,6 +145,18 @@ export function buildReelsBrainExactSegmentQueue(input: {
       + Math.min(10, transferSupport.length * 6)
       + (text(policy.policy_mode) === "primary" ? 16 : text(policy.policy_mode) === "control_only" ? 8 : 0),
     );
+    const readinessDirectRate = num(priority.readiness_direct_rate);
+    const readinessAudioRate = num(priority.readiness_audio_rate);
+    const readinessTranscriptRate = num(priority.readiness_transcript_ready_rate);
+    const readinessAnalyzedRate = num(priority.readiness_analyzed_rate);
+    const readinessTotalBacklog = num(priority.readiness_total_backlog);
+    const dataReadinessScore = readinessBlend({
+      directRate: readinessDirectRate,
+      audioRate: readinessAudioRate,
+      transcriptRate: readinessTranscriptRate,
+      analyzedRate: readinessAnalyzedRate,
+      backlog: readinessTotalBacklog,
+    });
     const expectedTrustGain = Math.round(
       (missing ? 32 : 0)
       + (borrowedOnly ? 28 : 0)
@@ -144,9 +173,10 @@ export function buildReelsBrainExactSegmentQueue(input: {
       + (borrowedOnly ? 0.8 : 0)
       + (transferSupport.length > 1 ? 0.5 : 0)
       - Math.min(2.2, num(segment.stability_score) / 45)
+      - Math.min(1.8, dataReadinessScore / 55)
       - (text(policy.policy_mode) === "primary" ? 0.9 : text(policy.policy_mode) === "control_only" ? 0.4 : 0),
     )));
-    const efficiencyScore = Math.round((expectedTrustGain / etaTicks) * 10) / 10;
+    const efficiencyScore = Math.round(((expectedTrustGain * (0.55 + dataReadinessScore / 100)) / etaTicks) * 10) / 10;
 
     return {
       niche,
@@ -166,6 +196,12 @@ export function buildReelsBrainExactSegmentQueue(input: {
       expected_trust_gain: expectedTrustGain,
       eta_ticks: etaTicks,
       efficiency_score: efficiencyScore,
+      data_readiness_score: dataReadinessScore,
+      readiness_direct_rate: readinessDirectRate,
+      readiness_audio_rate: readinessAudioRate,
+      readiness_transcript_ready_rate: readinessTranscriptRate,
+      readiness_analyzed_rate: readinessAnalyzedRate,
+      readiness_total_backlog: readinessTotalBacklog,
       desired_proof: missing
         ? "Собрать exact segment corpus и довести до первого stable segment layer."
         : borrowedOnly
@@ -207,6 +243,7 @@ export function buildReelsBrainExactSegmentQueue(input: {
       exact_proof_coverage_pct: pct(exactProven, exactProven + items.length),
       avg_expected_trust_gain: items.length ? Math.round(items.reduce((sum, row) => sum + row.expected_trust_gain, 0) / items.length) : 0,
       avg_eta_ticks: items.length ? Math.round((items.reduce((sum, row) => sum + row.eta_ticks, 0) / items.length) * 10) / 10 : 0,
+      avg_data_readiness_score: items.length ? Math.round(items.reduce((sum, row) => sum + row.data_readiness_score, 0) / items.length) : 0,
     },
     items: items.slice(0, Math.max(4, input.limit || 8)),
   };

@@ -194,6 +194,7 @@ export async function GET(req: NextRequest) {
           weak_exact_outcome_segments: num((exactSegmentQueue.summary as JsonRecord | undefined)?.weak_exact_outcome_segments),
           avg_expected_trust_gain: num((exactSegmentQueue.summary as JsonRecord | undefined)?.avg_expected_trust_gain),
           avg_eta_ticks: num((exactSegmentQueue.summary as JsonRecord | undefined)?.avg_eta_ticks),
+          avg_data_readiness_score: num((exactSegmentQueue.summary as JsonRecord | undefined)?.avg_data_readiness_score),
           items: exactQueueItems.slice(0, 6),
         },
         segment_stability: {

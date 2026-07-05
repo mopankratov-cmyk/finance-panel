@@ -45,12 +45,22 @@ const result = buildReelsBrainExactSegmentQueue({
         action: "collect_segment_batch",
         readiness_dominant_gap: "audio",
         readiness_dominant_gap_count: 12,
+        readiness_direct_rate: 74,
+        readiness_audio_rate: 41,
+        readiness_transcript_ready_rate: 33,
+        readiness_analyzed_rate: 58,
+        readiness_total_backlog: 18,
       },
       {
         niche: "ru_cosmetics",
         platform: "youtube",
         urgency_score: 91,
         action: "collect_segment_batch",
+        readiness_direct_rate: 21,
+        readiness_audio_rate: 6,
+        readiness_transcript_ready_rate: 0,
+        readiness_analyzed_rate: 12,
+        readiness_total_backlog: 41,
       },
     ],
   },
@@ -95,6 +105,7 @@ assert.equal(result.items[1]?.transfer_support.length, 2);
 assert.ok((result.items[0]?.expected_trust_gain as number) > 0);
 assert.ok((result.items[0]?.eta_ticks as number) >= 1);
 assert.ok((result.items[0]?.efficiency_score as number) > 0);
+assert.ok((result.items[0]?.data_readiness_score as number) >= 0);
 assert.match(result.items[1]?.blockers[1] || "", /transfer signal/i);
 
 const rankedByEfficiency = buildReelsBrainExactSegmentQueue({
@@ -144,6 +155,11 @@ const rankedByEfficiency = buildReelsBrainExactSegmentQueue({
         platform: "youtube",
         urgency_score: 74,
         action: "collect_segment_batch",
+        readiness_direct_rate: 88,
+        readiness_audio_rate: 72,
+        readiness_transcript_ready_rate: 61,
+        readiness_analyzed_rate: 66,
+        readiness_total_backlog: 9,
       },
       {
         niche: "ru_clothing",
@@ -151,6 +167,11 @@ const rankedByEfficiency = buildReelsBrainExactSegmentQueue({
         urgency_score: 96,
         action: "collect_segment_batch",
         readiness_dominant_gap_count: 15,
+        readiness_direct_rate: 36,
+        readiness_audio_rate: 14,
+        readiness_transcript_ready_rate: 4,
+        readiness_analyzed_rate: 21,
+        readiness_total_backlog: 31,
       },
     ],
   },
@@ -185,5 +206,6 @@ const rankedByEfficiency = buildReelsBrainExactSegmentQueue({
 
 assert.equal(rankedByEfficiency.items[0]?.niche, "ru_cosmetics");
 assert.ok((rankedByEfficiency.items[0]?.efficiency_score as number) >= (rankedByEfficiency.items[1]?.efficiency_score as number));
+assert.ok((rankedByEfficiency.items[0]?.data_readiness_score as number) > (rankedByEfficiency.items[1]?.data_readiness_score as number));
 
 console.log("reelsBrainExactSegmentQueue: passed");
