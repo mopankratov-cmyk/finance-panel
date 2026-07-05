@@ -312,4 +312,61 @@ assert.equal(exactProofTick.task, "collect_portfolio_gaps");
 assert.equal((exactProofTick.params as Record<string, unknown>).niche, "ru_toys");
 assert.equal((exactProofTick.params as Record<string, unknown>).platform, "instagram");
 
+const exactProofDecisionSupportTick = buildReelsBrainNextTick({
+  target: 10000,
+  totalVideos: 3200,
+  analyzedVideos: 3150,
+  backlogLimit: 180,
+  canRunPaidCollection: true,
+  prioritySegment: {
+    niche: "ru_toys",
+    platform: "instagram",
+    label: "ru_toys × instagram",
+    action: "promote_segment_briefs",
+    ready_for_generation: true,
+  },
+  portfolioReadiness: {
+    summary: {
+      high_trust_coverage_pct: 56,
+      verdict: "forming",
+    },
+    missing_segments: [
+      { niche: "ru_cosmetics", platform: "youtube", label: "ru_cosmetics × youtube", evidence_band: "missing", stability_score: 0, missing: true },
+    ],
+  },
+  generationPolicy: {
+    by_segment: [
+      {
+        niche: "ru_toys",
+        platform: "instagram",
+        label: "ru_toys × instagram",
+        policy_mode: "primary",
+        trust_band: "high",
+        evidence_band: "forming",
+        readiness_score: 82,
+        policy_reason: "segment is strong, but exact-proof is still open",
+      },
+    ],
+  },
+  exactSegmentQueue: {
+    items: [
+      {
+        niche: "ru_toys",
+        platform: "instagram",
+        label: "ru_toys × instagram",
+        evidence_band: "forming",
+        stability_score: 61,
+        exact_proof_missing: true,
+      },
+    ],
+  },
+});
+
+assert.equal(exactProofDecisionSupportTick.task, "collect_support_for_decision_segment");
+assert.equal((exactProofDecisionSupportTick.params as Record<string, unknown>).niche, "ru_toys");
+assert.equal((exactProofDecisionSupportTick.params as Record<string, unknown>).platform, "instagram");
+assert.equal((exactProofDecisionSupportTick.params as Record<string, unknown>).focus, "exact_segment_proof");
+assert.match(exactProofDecisionSupportTick.label, /exact proof/i);
+assert.match(exactProofDecisionSupportTick.reason, /exact-segment proof/i);
+
 console.log("reelsBrainLearningPlan: passed");

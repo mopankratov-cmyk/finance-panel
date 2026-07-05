@@ -74,6 +74,9 @@ type EvidenceRow = {
   corpus_score?: number;
   market_score?: number;
   market_status?: string;
+  proof_quality?: "exact_segment" | "traced_transfer_only" | "untraced" | string;
+  exact_segment_posts?: number;
+  traced_posts?: number;
 };
 
 type AtlasRow = {
@@ -99,6 +102,9 @@ type SegmentOutcomeRow = {
   avg_completion_rate?: number | null;
   avg_ctr?: number | null;
   status?: "proven" | "promising" | "weak" | "no_feedback" | string;
+  proof_quality?: "exact_segment" | "traced_transfer_only" | "untraced" | string;
+  exact_segment_posts?: number;
+  traced_posts?: number;
   trust_action?: string;
   evidence?: string;
 };
@@ -165,16 +171,29 @@ function outcomeConfidence(posts: number, winners: number) {
   return "none";
 }
 
+function normalizeProofQuality(value: unknown) {
+  const raw = text(value);
+  if (raw === "exact_segment") return "exact_segment";
+  if (raw === "traced_transfer_only") return "traced_transfer_only";
+  return "untraced";
+}
+
 function decisionGrade(input: {
   score: number;
   evidenceStatus: string;
   playbookStatus: string;
   mode: string;
   outcomeStatus: string;
+  proofQuality: string;
 }) {
   if (input.outcomeStatus === "weak" && input.score < 82) return "research";
   if (input.score >= 82 && input.evidenceStatus === "high_trust" && (input.playbookStatus === "ship_now" || input.mode === "primary")) return "ship";
-  if (input.score >= 74 && input.outcomeStatus === "proven" && (input.playbookStatus === "ship_now" || input.mode === "primary")) return "ship";
+  if (
+    input.score >= 74
+    && input.outcomeStatus === "proven"
+    && input.proofQuality === "exact_segment"
+    && (input.playbookStatus === "ship_now" || input.mode === "primary")
+  ) return "ship";
   if (input.score >= 66 && (input.evidenceStatus === "validated" || input.playbookStatus === "validate_and_ship")) return "validate";
   if (input.score >= 48 && (input.playbookStatus === "prepare" || input.evidenceStatus === "corpus_strong_market_thin")) return "prepare";
   return "research";
@@ -261,6 +280,7 @@ export function buildReelsBrainSegmentDecisionDeck(input: {
       const evidenceStatus = text(evidenceRow.evidence_status || "research");
       const playbookStatus = text(playbookRow.status || "research");
       const outcomeStatus = text(outcomeRow.status || evidenceRow.market_status || "no_feedback");
+      const proofQuality = normalizeProofQuality(outcomeRow.proof_quality || evidenceRow.proof_quality);
       const queuedOutcome = trustActionMap.get(segmentLabel) || null;
       const score = clamp(
         num(briefRow.trust_score) * 0.18
@@ -276,8 +296,9 @@ export function buildReelsBrainSegmentDecisionDeck(input: {
         + modeBoost(mode)
         + atlasBoost(text(atlasRow.status))
         + outcomeBoost(outcomeStatus)
+        + (proofQuality === "exact_segment" ? 8 : proofQuality === "traced_transfer_only" ? 2 : -6)
       );
-      const grade = decisionGrade({ score, evidenceStatus, playbookStatus, mode, outcomeStatus });
+      const grade = decisionGrade({ score, evidenceStatus, playbookStatus, mode, outcomeStatus, proofQuality });
       return {
         niche,
         platform,
@@ -291,9 +312,12 @@ export function buildReelsBrainSegmentDecisionDeck(input: {
         playbook_status: playbookStatus,
         atlas_status: text(atlasRow.status),
         outcome_status: outcomeStatus,
+        proof_quality: proofQuality,
         outcome_confidence: outcomeConfidence(num(outcomeRow.posts), num(outcomeRow.winners)),
         outcome_boost: outcomeBoost(outcomeStatus),
         outcome_posts: num(outcomeRow.posts),
+        outcome_exact_segment_posts: num(outcomeRow.exact_segment_posts || evidenceRow.exact_segment_posts),
+        outcome_traced_posts: num(outcomeRow.traced_posts || evidenceRow.traced_posts),
         outcome_winners: num(outcomeRow.winners),
         outcome_losers: num(outcomeRow.losers),
         outcome_orders: num(outcomeRow.orders),
@@ -344,12 +368,16 @@ export function buildReelsBrainSegmentDecisionDeck(input: {
         },
         why_now: [
           text(playbookRow.rollout?.why_now),
+          proofQuality === "exact_segment" ? "Сегмент подтверждён exact-proof слоем." : "",
+          proofQuality === "traced_transfer_only" ? "Есть только transfer-level proof, поэтому нужен ещё один точный validation pass." : "",
+          proofQuality === "untraced" && outcomeStatus !== "no_feedback" ? "Outcome уже есть, но он ещё не оформлен как доказательный validation trace." : "",
           outcomeStatus === "proven" ? "Сегмент уже подтвержден outcome-постами." : "",
           outcomeStatus === "promising" ? "Появились первые market outcome сигналы, можно валидировать дальше." : "",
           outcomeStatus === "weak" ? "Рынок пока не подтверждает сегмент, нужен пересмотр before scaling." : "",
         ].filter(Boolean).join(" "),
         next_step: [
           text(playbookRow.rollout?.next_step),
+          proofQuality !== "exact_segment" && outcomeStatus !== "weak" ? "Добрать exact-segment proof перед переводом в fully decision-ready lane." : "",
           outcomeStatus === "proven" ? "Поднимать в основной generation lane и масштабировать вариации." : "",
           outcomeStatus === "promising" ? "Сделать controlled test, чтобы добрать winner/loser signal." : "",
           outcomeStatus === "weak" ? "Пересобрать hook/structure и не пускать в основной lane." : "",
@@ -376,6 +404,7 @@ export function buildReelsBrainSegmentDecisionDeck(input: {
       ready_for_generation: items.filter((item) => item.ready_for_generation).length,
       decision_ready: items.filter((item) => item.generation_mode === "decision_ready").length,
       control_ready: items.filter((item) => item.generation_mode === "control_ready").length,
+      exact_proof_ready: items.filter((item) => item.proof_quality === "exact_segment").length,
       proven_outcomes: items.filter((item) => item.outcome_status === "proven").length,
       weak_outcomes: items.filter((item) => item.outcome_status === "weak").length,
     },

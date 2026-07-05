@@ -142,6 +142,16 @@ function selectPolicyForSegment(
   return byPlatform.find((row) => row.platform === segment.platform) || null;
 }
 
+function sameSegment(
+  left: { niche?: string; platform?: string } | null | undefined,
+  right: { niche?: string; platform?: string } | null | undefined,
+) {
+  return text(left?.niche) !== ""
+    && text(left?.niche) === text(right?.niche)
+    && text(left?.platform) !== ""
+    && text(left?.platform) === text(right?.platform);
+}
+
 export function pickPortfolioFocusSegment(portfolioReadiness?: JsonRecord | null) {
   const candidates = Array.isArray(portfolioReadiness?.missing_segments)
     ? (portfolioReadiness?.missing_segments as JsonRecord[])
@@ -204,6 +214,11 @@ export function buildReelsBrainNextTick(input: {
     || directPolicyMode === "control_only";
   const readinessBlockedDecisionSupport = Boolean(prioritySegment?.readiness_blocked);
   const marketBlockedDecisionSupport = directOutcomeStatus === "weak";
+  const exactProofMissingForDecisionSegment = shouldSupportDecisionSegment
+    && !marketBlockedDecisionSupport
+    && !readinessBlockedDecisionSupport
+    && sameSegment(prioritySegment, exactFocusSegment)
+    && Boolean((exactFocusSegment as JsonRecord | null)?.exact_proof_missing);
   const activePolicySegment = shouldSupportDecisionSegment ? prioritySegment : collectionFocusSegment || prioritySegment;
   const activePolicy = selectPolicyForSegment(input.generationPolicy, activePolicySegment);
   const activePolicyMode = text(activePolicy?.policy_mode, "research_only");
@@ -304,6 +319,8 @@ export function buildReelsBrainNextTick(input: {
             : readinessBlockedDecisionSupport
               ? "Сегмент ещё сырой; закрывать portfolio gaps"
               : "Не усиливать weak сегмент; закрывать portfolio gaps"
+          : exactProofMissingForDecisionSegment
+            ? `Добрать exact proof для ${String(prioritySegment?.label || "")}`
           : `Поддержать decision-ready сегмент ${String(prioritySegment?.label || "")}`
         : shouldClosePortfolioGaps
           ? collectionSegment
@@ -315,6 +332,8 @@ export function buildReelsBrainNextTick(input: {
           ? `${String(prioritySegment?.label || activePolicy?.label || "")} формально близок к decision-ready, но рынок уже даёт weak outcome; следующий сбор лучше не вливать в него, а закрывать другие gaps.${policyLine}`
           : readinessBlockedDecisionSupport
             ? `${String(prioritySegment?.label || activePolicy?.label || "")} силён по trust, но ещё не дозрел по learning-layer (${String(prioritySegment?.readiness_dominant_gap || "readiness")} backlog ${num(prioritySegment?.readiness_total_backlog)}). Сначала закрываем readiness gap и только потом усиливаем segment briefs.${policyLine}`
+            : exactProofMissingForDecisionSegment
+              ? `${String(prioritySegment?.label || activePolicy?.label || "")} уже выглядит strong по briefs/patterns, но exact-segment proof ещё не закрыт. Следующий сбор лучше направить в этот же niche × platform, чтобы добрать доказательный слой, а не масштабировать на transfer-evidence.${policyLine}`
             : `${String(prioritySegment?.label || activePolicy?.label || "")} уже близок к рабочим briefs/hypotheses; следующий сбор лучше направить в этот сегмент.${policyLine}`
         : shouldClosePortfolioGaps
           ? collectionSegment
@@ -330,6 +349,7 @@ export function buildReelsBrainNextTick(input: {
           niche: String(collectionSegment.niche || ""),
           platform: String(collectionSegment.platform || ""),
         } : {}),
+        ...(exactProofMissingForDecisionSegment ? { focus: "exact_segment_proof" } : {}),
       },
       paid_collection: true,
       priority_segment: prioritySegment,
