@@ -1,4 +1,5 @@
 import { normalizeTargetPlatform } from "./reelsBrainPlaybook";
+import { inferHookType, inferStructureType } from "./reelsBrainPatterns";
 
 type DbClient = NonNullable<any>;
 
@@ -23,6 +24,10 @@ export type ReelsBrainFeedbackMetricRow = {
   article?: string | null;
   target_platform?: string | null;
   segment_label?: string | null;
+  hook_text?: string | null;
+  hook_type?: string | null;
+  structure_type?: string | null;
+  pattern_signature?: string | null;
 };
 
 function text(value: unknown) {
@@ -34,6 +39,24 @@ function recipeNiche(runPlan: Record<string, unknown> | null | undefined, fallba
   if (direct) return direct;
   const plan = runPlan || {};
   return text(plan.niche) || text((plan.product as Record<string, unknown> | undefined)?.niche) || text((plan.inputs as Record<string, unknown> | undefined)?.niche);
+}
+
+function runPlanHookText(runPlan: Record<string, unknown> | null | undefined) {
+  const plan = runPlan || {};
+  const nodes = Array.isArray(plan.nodes) ? plan.nodes as Array<Record<string, unknown>> : [];
+  const hookNode = nodes.find((node) => String((node.params as Record<string, unknown> | undefined)?.role || node.slot || "").toLowerCase() === "hook")
+    || nodes[0];
+  if (!hookNode) return "";
+  const params = hookNode.params && typeof hookNode.params === "object" ? hookNode.params as Record<string, unknown> : {};
+  return text(hookNode.onscreen_text) || text(params.onscreen_text) || text(hookNode.prompt);
+}
+
+function runPlanStructure(runPlan: Record<string, unknown> | null | undefined) {
+  const plan = runPlan || {};
+  return text(plan.structure)
+    || text((plan.generator_payload as Record<string, unknown> | undefined)?.structure)
+    || text((plan.brief_seed as Record<string, unknown> | undefined)?.structure)
+    || text((plan.creative_brief as Record<string, unknown> | undefined)?.structure);
 }
 
 export async function loadReelsBrainFeedbackRows(
@@ -48,17 +71,30 @@ export async function loadReelsBrainFeedbackRows(
     if (error) return { rows: [], warning: `post_metrics: ${error.message}` };
     const rows = ((data || []) as ReelsBrainFeedbackMetricRow[]);
     const recipeIds = Array.from(new Set(rows.map((row) => Number(row.recipe_id)).filter((id) => Number.isFinite(id) && id > 0)));
-    let recipeMap = new Map<number, { niche?: string | null; article?: string | null; run_plan?: Record<string, unknown> | null }>();
+    let recipeMap = new Map<number, {
+      niche?: string | null;
+      article?: string | null;
+      mode?: string | null;
+      format_detected?: string | null;
+      run_plan?: Record<string, unknown> | null;
+    }>();
     if (recipeIds.length) {
       const { data: recipes, error: recipeError } = await db
         .from("node_recipes")
-        .select("id,niche,article,run_plan")
+        .select("id,niche,article,mode,format_detected,run_plan")
         .in("id", recipeIds);
       if (recipeError) {
         return { rows, warning: `node_recipes: ${recipeError.message}` };
       }
       recipeMap = new Map(
-        (((recipes || []) as Array<{ id?: number; niche?: string | null; article?: string | null; run_plan?: Record<string, unknown> | null }>))
+        (((recipes || []) as Array<{
+          id?: number;
+          niche?: string | null;
+          article?: string | null;
+          mode?: string | null;
+          format_detected?: string | null;
+          run_plan?: Record<string, unknown> | null;
+        }>))
           .map((row) => [Number(row.id), row] as const),
       );
     }
@@ -69,12 +105,22 @@ export async function loadReelsBrainFeedbackRows(
       const niche = recipeNiche(runPlan, recipe?.niche || null);
       const targetPlatform = normalizeTargetPlatform(row.platform || runPlan?.target_platform || "");
       const platform = targetPlatform === "unknown" ? text(row.platform) : targetPlatform;
+      const hookText = runPlanHookText(runPlan) || text(recipe?.article);
+      const hookType = inferHookType(hookText);
+      const structureType = inferStructureType(
+        text(recipe?.format_detected) || runPlanStructure(runPlan) || text(recipe?.mode),
+        text(recipe?.article),
+      );
       return {
         ...row,
         niche: niche || null,
         article: text(recipe?.article) || null,
         target_platform: platform || null,
         segment_label: niche && platform && platform !== "unknown" ? `${niche} × ${platform}` : null,
+        hook_text: hookText || null,
+        hook_type: hookType || null,
+        structure_type: structureType || null,
+        pattern_signature: hookType && structureType ? `${hookType}:${structureType}` : null,
       };
     });
 

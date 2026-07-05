@@ -19,6 +19,10 @@ export type ReelsBrainMetricRow = {
   article?: string | null;
   target_platform?: string | null;
   segment_label?: string | null;
+  hook_text?: string | null;
+  hook_type?: string | null;
+  structure_type?: string | null;
+  pattern_signature?: string | null;
 };
 
 type PatternLike = {

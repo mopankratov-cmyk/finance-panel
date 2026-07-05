@@ -1240,7 +1240,9 @@ function buildPatternDecisionLayer(insightPayload: ReturnType<typeof buildInsigh
     return {
       id: recipe.id,
       title: recipe.title,
+      hook_type: recipe.hook_type,
       hook: recipe.hook,
+      structure_type: recipe.structure_type,
       format: recipe.format,
       retention: recipe.retention,
       op_score: recipe.op_score,
@@ -1327,9 +1329,11 @@ function attachPatternOutcomes(
     patternDecisionLayer.pattern_details.map((row) => ({
       id: row.id,
       title: row.title,
+      hook_type: typeof (row as Record<string, unknown>).hook_type === "string" ? (row as Record<string, unknown>).hook_type as string : "",
       quality_gate: row.quality_gate,
       confidence: row.confidence,
       niches: Array.isArray((row as Record<string, unknown>).niches) ? (row as Record<string, unknown>).niches as string[] : [],
+      structure_type: typeof (row as Record<string, unknown>).structure_type === "string" ? (row as Record<string, unknown>).structure_type as string : "",
       platforms: Array.isArray((row as Record<string, unknown>).platforms) ? (row as Record<string, unknown>).platforms as string[] : [],
     })),
     feedbackRows,
@@ -1943,7 +1947,9 @@ function buildInsights(rows: { niche?: string; playbook?: unknown }[]) {
   const recipes: Array<{
     id: string;
     title: string;
+    hook_type: string;
     hook: string;
+    structure_type: string;
     format: string;
     retention: string;
     op_score: number;
@@ -2017,7 +2023,9 @@ function buildInsights(rows: { niche?: string; playbook?: unknown }[]) {
       recipes.push({
         id: pattern.pattern_id || `${hookKey}:${formatKey}:${retentionKey}`,
         title: recipeTitle(pattern),
+        hook_type: hookKey,
         hook: pattern.hook_label || hookKey,
+        structure_type: formatKey,
         format: pattern.structure_label || formatKey,
         retention: pattern.retention_label || retentionKey,
         op_score: insightScore(pattern, 1, 1),

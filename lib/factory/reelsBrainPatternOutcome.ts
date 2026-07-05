@@ -8,6 +8,8 @@ export type PatternOutcomeInput = {
   confidence?: "high" | "medium" | "low";
   platforms?: string[];
   niches?: string[];
+  hook_type?: string;
+  structure_type?: string;
 };
 
 export type PatternOutcomeResult = {
@@ -68,13 +70,17 @@ function rowNiche(row: ReelsBrainMetricRow) {
 
 function filterFeedbackRows(
   rows: ReelsBrainMetricRow[],
-  input: { platform?: string; niche?: string },
+  input: { platform?: string; niche?: string; hookType?: string; structureType?: string },
 ) {
   const platform = String(input.platform || "").trim().toLowerCase();
   const niche = String(input.niche || "").trim().toLowerCase();
+  const hookType = String(input.hookType || "").trim().toLowerCase();
+  const structureType = String(input.structureType || "").trim().toLowerCase();
   return rows.filter((row) => {
     if (platform && rowPlatform(row) !== platform) return false;
     if (niche && rowNiche(row) !== niche) return false;
+    if (hookType && String(row.hook_type || "").trim().toLowerCase() !== hookType) return false;
+    if (structureType && String(row.structure_type || "").trim().toLowerCase() !== structureType) return false;
     return true;
   });
 }
@@ -86,8 +92,10 @@ export function buildPatternOutcomeLayer(
   return patterns.map((pattern) => {
     const platforms = normalizePlatforms(Array.isArray(pattern.platforms) ? pattern.platforms : []);
     const niches = normalizeNiches(Array.isArray(pattern.niches) ? pattern.niches : []);
+    const hookType = String(pattern.hook_type || "").trim().toLowerCase();
+    const structureType = String(pattern.structure_type || "").trim().toLowerCase();
     const segmentSignals = niches.flatMap((niche) => platforms.map((platform) => {
-      const scopedRows = filterFeedbackRows(feedbackRows, { niche, platform });
+      const scopedRows = filterFeedbackRows(feedbackRows, { niche, platform, hookType, structureType });
       const signal = buildOutcomeSignal(scopedRows, "all");
       return {
         niche,
@@ -104,8 +112,13 @@ export function buildPatternOutcomeLayer(
 
     const platformSignals = platforms.map((platform) => {
       const scopedRows = niches.length
-        ? feedbackRows.filter((row) => rowPlatform(row) === platform && niches.includes(rowNiche(row)))
-        : filterFeedbackRows(feedbackRows, { platform });
+        ? feedbackRows.filter((row) =>
+          rowPlatform(row) === platform
+          && niches.includes(rowNiche(row))
+          && (!hookType || String(row.hook_type || "").trim().toLowerCase() === hookType)
+          && (!structureType || String(row.structure_type || "").trim().toLowerCase() === structureType),
+        )
+        : filterFeedbackRows(feedbackRows, { platform, hookType, structureType });
       const signal = buildOutcomeSignal(scopedRows, "all");
       return {
         platform,
@@ -145,6 +158,9 @@ export function buildPatternOutcomeLayer(
       if (best.platform) why.push(`лучший market signal сейчас у ${best.platform}: ${best.status}`);
     } else {
       why.push("у паттерна пока нет platform mapping, поэтому нет точного outcome-routing");
+    }
+    if (hookType || structureType) {
+      why.push(`outcome матчится по pattern signature: ${hookType || "unknown"} / ${structureType || "unknown_structure"}`);
     }
     if (bestSegment?.segment) why.push(`лучший подтверждённый сегмент: ${bestSegment.segment}`);
     if (niches.length && !segmentSignals.length) why.push(`по сегментам ${niches.join(", ")} market feedback ещё не накоплен`);

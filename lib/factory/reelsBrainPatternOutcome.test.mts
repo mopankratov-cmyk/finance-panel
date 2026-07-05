@@ -11,10 +11,12 @@ function eq(a: unknown, b: unknown, m: string) { ok(JSON.stringify(a) === JSON.s
       quality_gate: "high_confidence",
       niches: ["ru_toys"],
       platforms: ["tiktok"],
+      hook_type: "warning_pattern_break",
+      structure_type: "demo",
     },
   ], [
-    { platform: "tiktok", niche: "ru_toys", views: 22000, completion_rate: 0.52, ctr_card: 0.02, marketplace_orders: 2 },
-    { platform: "tiktok", niche: "ru_toys", views: 13000, completion_rate: 0.41, saves: 66 },
+    { platform: "tiktok", niche: "ru_toys", hook_type: "warning_pattern_break", structure_type: "demo", views: 22000, completion_rate: 0.52, ctr_card: 0.02, marketplace_orders: 2 },
+    { platform: "tiktok", niche: "ru_toys", hook_type: "warning_pattern_break", structure_type: "demo", views: 13000, completion_rate: 0.41, saves: 66 },
   ]);
 
   eq(rows[0]?.status, "proven", "pattern outcome: strong platform is proven");
@@ -29,10 +31,12 @@ function eq(a: unknown, b: unknown, m: string) { ok(JSON.stringify(a) === JSON.s
       quality_gate: "medium_confidence",
       niches: ["ru_cosmetics"],
       platforms: ["instagram"],
+      hook_type: "direct_claim",
+      structure_type: "review",
     },
   ], [
-    { platform: "instagram", niche: "ru_cosmetics", views: 620, completion_rate: 0.12, ctr_card: 0.003 },
-    { platform: "instagram", niche: "ru_cosmetics", views: 710, completion_rate: 0.18, ctr_card: 0.005 },
+    { platform: "instagram", niche: "ru_cosmetics", hook_type: "direct_claim", structure_type: "review", views: 620, completion_rate: 0.12, ctr_card: 0.003 },
+    { platform: "instagram", niche: "ru_cosmetics", hook_type: "direct_claim", structure_type: "review", views: 710, completion_rate: 0.18, ctr_card: 0.005 },
   ]);
 
   eq(rows[0]?.status, "weak", "pattern outcome: weak feedback lowers pattern");
@@ -46,14 +50,35 @@ function eq(a: unknown, b: unknown, m: string) { ok(JSON.stringify(a) === JSON.s
       quality_gate: "high_confidence",
       niches: ["ru_toys"],
       platforms: ["tiktok"],
+      hook_type: "warning_pattern_break",
+      structure_type: "demo",
     },
   ], [
-    { platform: "tiktok", niche: "ru_cosmetics", views: 24000, completion_rate: 0.56, marketplace_orders: 3 },
-    { platform: "tiktok", niche: "ru_cosmetics", views: 18000, completion_rate: 0.49, saves: 80 },
+    { platform: "tiktok", niche: "ru_cosmetics", hook_type: "warning_pattern_break", structure_type: "demo", views: 24000, completion_rate: 0.56, marketplace_orders: 3 },
+    { platform: "tiktok", niche: "ru_cosmetics", hook_type: "warning_pattern_break", structure_type: "demo", views: 18000, completion_rate: 0.49, saves: 80 },
   ]);
 
   eq(rows[0]?.status, "no_feedback", "pattern outcome: other niche winners do not leak into segment");
   eq(rows[0]?.platform_signals[0]?.total_posts, 0, "pattern outcome: platform summary is scoped to matching niches");
+}
+
+{
+  const rows = buildPatternOutcomeLayer([
+    {
+      id: "p5",
+      quality_gate: "high_confidence",
+      niches: ["ru_toys"],
+      platforms: ["tiktok"],
+      hook_type: "warning_pattern_break",
+      structure_type: "demo",
+    },
+  ], [
+    { platform: "tiktok", niche: "ru_toys", hook_type: "direct_claim", structure_type: "demo", views: 24000, completion_rate: 0.56, marketplace_orders: 3 },
+    { platform: "tiktok", niche: "ru_toys", hook_type: "warning_pattern_break", structure_type: "review", views: 18000, completion_rate: 0.49, saves: 80 },
+  ]);
+
+  eq(rows[0]?.status, "no_feedback", "pattern outcome: mismatched hook/structure does not leak inside same segment");
+  eq(rows[0]?.segment_signals[0]?.total_posts, 0, "pattern outcome: segment summary is pattern-scoped");
 }
 
 {
