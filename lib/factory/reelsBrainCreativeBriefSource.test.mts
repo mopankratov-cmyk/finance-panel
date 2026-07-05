@@ -51,12 +51,29 @@ test("selectCreativeBriefFromSegmentLayers prefers exact segment solution over g
         },
       ],
     },
+    segmentGenerationPacks: {
+      items: [
+        {
+          niche: "ru_toys",
+          platform: "instagram",
+          quality_gate: {
+            status: "ready",
+            allowed_generation_modes: ["decision_ready"],
+            blocked_reasons: [],
+            min_trust_score: 82,
+          },
+        },
+      ],
+    },
   });
 
   assert.equal(result?.source, "segment_solution");
   assert.equal(result?.creative_brief.hook, "Смотри что внутри");
   assert.equal(result?.trust_summary.evidence_band, "stable");
   assert.equal(result?.trust_summary.outcome_status, "proven");
+  assert.equal(result?.fit_summary?.mode, "exact_segment");
+  assert.equal(result?.quality_gate?.status, "ready");
+  assert.equal(result?.quality_gate?.exact_segment_ready, true);
   assert.equal(result?.source_trace?.[0]?.source, "segment_solution");
 });
 
@@ -98,6 +115,10 @@ test("selectCreativeBriefFromSegmentLayers falls back to platform then niche mat
   });
   assert.equal(platformResult?.source, "platform_matrix");
   assert.equal(platformResult?.platform, "youtube");
+  assert.equal(platformResult?.fit_summary?.mode, "platform_transfer");
+  assert.equal(platformResult?.quality_gate?.status, "needs_validation");
+  assert.equal(platformResult?.quality_gate?.exact_segment_ready, false);
+  assert.match(String(platformResult?.fit_summary?.transfer_note || ""), /exact segment/i);
   assert.ok(platformResult?.content_decision.guardrails.some((item) => item.includes("Не пускать текущую механику")));
   assert.equal(platformResult?.anti_patterns?.[0]?.label, "Weak segment outcome");
   assert.equal(platformResult?.source_trace?.[0]?.source, "platform_matrix");
@@ -130,6 +151,8 @@ test("selectCreativeBriefFromSegmentLayers falls back to platform then niche mat
   });
   assert.equal(nicheResult?.source, "niche_matrix");
   assert.equal(nicheResult?.creative_brief.hook, "Niche fallback");
+  assert.equal(nicheResult?.fit_summary?.mode, "niche_transfer");
+  assert.equal(nicheResult?.quality_gate?.status, "needs_validation");
   assert.equal(nicheResult?.source_trace?.[0]?.source, "niche_matrix");
 });
 
@@ -187,7 +210,9 @@ test("selectCreativeBriefFromSegmentLayers exposes alternative fallback ladder w
 
   assert.equal(result?.alternatives?.length, 2);
   assert.equal(result?.alternatives?.[0]?.source, "platform_matrix");
+  assert.equal(result?.alternatives?.[0]?.fit_mode, "platform_transfer");
   assert.equal(result?.alternatives?.[1]?.source, "niche_matrix");
+  assert.equal(result?.alternatives?.[1]?.fit_mode, "niche_transfer");
 });
 
 test("selectCreativeBriefFromSegmentLayers avoids exact weak segment when healthier fallback exists", () => {
@@ -246,6 +271,9 @@ test("selectCreativeBriefFromSegmentLayers avoids exact weak segment when health
 
   assert.equal(result?.source, "platform_matrix");
   assert.equal(result?.creative_brief.hook, "Healthy fallback");
+  assert.equal(result?.fit_summary?.mode, "platform_transfer");
+  assert.equal(result?.quality_gate?.status, "needs_validation");
+  assert.ok((result?.quality_gate?.blocked_reasons || []).some((item: string) => item.includes("exact segment")));
   assert.equal(result?.source_trace?.[0]?.outcome_status, "proven");
   assert.equal(result?.alternatives?.[0]?.outcome_status, "weak");
 });

@@ -61,23 +61,60 @@ function sourcePreference(source: "segment_solution" | "platform_matrix" | "nich
   return 10;
 }
 
-function candidateScore(candidate: { source: "segment_solution" | "platform_matrix" | "niche_matrix"; row: JsonRecord }) {
+function fitMode(input: { requestedNiche: string; requestedPlatform: string; row: JsonRecord }) {
+  const nicheMatch = text(input.row.niche) === input.requestedNiche;
+  const platformMatch = text(input.row.platform).toLowerCase() === input.requestedPlatform;
+  if (nicheMatch && platformMatch) return "exact_segment";
+  if (platformMatch) return "platform_transfer";
+  if (nicheMatch) return "niche_transfer";
+  return "broad_transfer";
+}
+
+function fitPenalty(mode: string) {
+  if (mode === "exact_segment") return 0;
+  if (mode === "platform_transfer") return -8;
+  if (mode === "niche_transfer") return -10;
+  return -16;
+}
+
+function candidateScore(candidate: {
+  source: "segment_solution" | "platform_matrix" | "niche_matrix";
+  row: JsonRecord;
+  requestedNiche: string;
+  requestedPlatform: string;
+}) {
   const trustSummary = (candidate.row.trust_summary || {}) as JsonRecord;
+  const mode = fitMode({
+    requestedNiche: candidate.requestedNiche,
+    requestedPlatform: candidate.requestedPlatform,
+    row: candidate.row,
+  });
   return sourcePreference(candidate.source)
     + productionRank(candidate.row.production_state) * 12
     + trustRank(candidate.row.trust_band) * 10
     + num(trustSummary.stability_score) * 0.45
     + num(candidate.row.readiness_score) * 0.25
-    + outcomePenalty(trustSummary.outcome_status);
+    + outcomePenalty(trustSummary.outcome_status)
+    + fitPenalty(mode);
 }
 
-function buildAlternative(row: JsonRecord, source: "segment_solution" | "platform_matrix" | "niche_matrix") {
+function buildAlternative(
+  row: JsonRecord,
+  source: "segment_solution" | "platform_matrix" | "niche_matrix",
+  requested: { niche: string; platform: string },
+) {
   const brief = (row.creative_brief || {}) as JsonRecord;
   const hypothesis = (row.hypothesis || {}) as JsonRecord;
   const contentDecision = (row.content_decision || {}) as JsonRecord;
   const trustSummary = (row.trust_summary || {}) as JsonRecord;
+  const mode = fitMode({
+    requestedNiche: requested.niche,
+    requestedPlatform: requested.platform,
+    row,
+  });
   return {
     source,
+    fit_mode: mode,
     label: text(row.label, `${row.niche || "niche"} × ${row.platform || "platform"}`),
     niche: text(row.niche),
     platform: text(row.platform),
@@ -96,12 +133,50 @@ function buildAlternative(row: JsonRecord, source: "segment_solution" | "platfor
 function buildResponseFromSolution(
   row: JsonRecord,
   source: "segment_solution" | "platform_matrix" | "niche_matrix",
-  candidates: Array<{ source: "segment_solution" | "platform_matrix" | "niche_matrix"; row: JsonRecord }>,
+  candidates: Array<{
+    source: "segment_solution" | "platform_matrix" | "niche_matrix";
+    row: JsonRecord;
+    requestedNiche: string;
+    requestedPlatform: string;
+  }>,
+  input: {
+    requestedNiche: string;
+    requestedPlatform: string;
+    segmentGenerationPacks?: { items?: JsonRecord[] } | null;
+  },
 ) {
   const brief = (row.creative_brief || {}) as JsonRecord;
   const hypothesis = (row.hypothesis || {}) as JsonRecord;
   const contentDecision = (row.content_decision || {}) as JsonRecord;
   const trustSummary = (row.trust_summary || {}) as JsonRecord;
+  const mode = fitMode({
+    requestedNiche: input.requestedNiche,
+    requestedPlatform: input.requestedPlatform,
+    row,
+  });
+  const packRow = records(input.segmentGenerationPacks?.items).find((item) =>
+    text(item.niche) === text(row.niche) && text(item.platform).toLowerCase() === text(row.platform).toLowerCase(),
+  ) || null;
+  const packGate = (packRow?.quality_gate && typeof packRow.quality_gate === "object" ? packRow.quality_gate : {}) as JsonRecord;
+  const baseGateStatus = text(packGate.status, text(row.production_state) === "ready_now"
+    ? "ready"
+    : text(row.production_state) === "controlled_test"
+      ? "needs_validation"
+      : "not_ready");
+  const effectiveGateStatus = mode === "exact_segment"
+    ? baseGateStatus
+    : baseGateStatus === "ready"
+      ? "needs_validation"
+      : baseGateStatus;
+  const transferReasons = mode === "exact_segment"
+    ? []
+    : [
+        mode === "platform_transfer"
+          ? `Решение перенесено с другой ниши внутри ${text(row.platform)}; exact segment ${input.requestedNiche} × ${input.requestedPlatform} ещё не доказан.`
+          : mode === "niche_transfer"
+            ? `Решение перенесено с другой платформы внутри ${text(row.niche)}; exact segment ${input.requestedNiche} × ${input.requestedPlatform} ещё не доказан.`
+            : `Решение перенесено из смежного сегмента ${text(row.niche)} × ${text(row.platform)}; exact segment ещё не доказан.`,
+      ];
   const outcomeGuardrails = buildReelsBrainOutcomeGuardrails({
     outcome_status: text(trustSummary.outcome_status),
     outcome_confidence: text(trustSummary.outcome_confidence),
@@ -115,6 +190,11 @@ function buildResponseFromSolution(
   const sourceTrace = candidates.map((candidate, index) => ({
     rank: index + 1,
     source: candidate.source,
+    fit_mode: fitMode({
+      requestedNiche: candidate.requestedNiche,
+      requestedPlatform: candidate.requestedPlatform,
+      row: candidate.row,
+    }),
     label: text(candidate.row.label, `${candidate.row.niche || "niche"} × ${candidate.row.platform || "platform"}`),
     outcome_status: text((((candidate.row.trust_summary || {}) as JsonRecord).outcome_status), "no_feedback"),
     readiness_score: num(candidate.row.readiness_score),
@@ -124,14 +204,39 @@ function buildResponseFromSolution(
     candidate_score: Math.round(candidateScore(candidate) * 10) / 10,
     chosen: candidate.row === row && candidate.source === source,
   }));
+  const allowedModes = Array.isArray(packGate.allowed_generation_modes)
+    ? packGate.allowed_generation_modes.map((item) => text(item)).filter(Boolean)
+    : [];
+  const blockedReasons = Array.from(new Set([
+    ...list(packGate.blocked_reasons, 6),
+    ...transferReasons,
+  ])).filter(Boolean);
+  const qualityGate = {
+    status: effectiveGateStatus,
+    source: packRow ? "segment_generation_pack" : "segment_solution_fallback",
+    min_trust_score: num(packGate.min_trust_score),
+    min_corpus_score: num(packGate.min_corpus_score),
+    min_market_score: num(packGate.min_market_score),
+    min_stable_patterns: num(packGate.min_stable_patterns),
+    min_evidence_refs: num(packGate.min_evidence_refs),
+    allowed_generation_modes: mode === "exact_segment"
+      ? allowedModes
+      : Array.from(new Set(["control_ready", "brief_only"].filter((value) => allowedModes.length ? allowedModes.includes(value) || value === "brief_only" : true))),
+    blocked_reasons: blockedReasons,
+    exact_segment_ready: mode === "exact_segment" && effectiveGateStatus === "ready",
+  };
   const decisionPack = {
     trust_mode: text(row.production_state, "research_only"),
     trust_band: text(row.trust_band, "low"),
+    fit_mode: mode,
     evidence_band: text(trustSummary.evidence_band, "missing"),
     readiness_score: num(row.readiness_score),
     stability_score: num(trustSummary.stability_score),
     why: list(row.trust_why, 5),
-    blockers: list(trustSummary.blockers, 5),
+    blockers: Array.from(new Set([
+      ...list(trustSummary.blockers, 5),
+      ...blockedReasons,
+    ])).slice(0, 6),
     guardrails: Array.from(new Set([
       ...list(contentDecision.guardrails, 5),
       ...outcomeGuardrails.guardrails,
@@ -143,6 +248,19 @@ function buildResponseFromSolution(
   return {
     ok: true,
     source,
+    requested_segment: {
+      niche: input.requestedNiche,
+      platform: input.requestedPlatform,
+    },
+    fit_summary: {
+      mode,
+      requested_niche: input.requestedNiche,
+      requested_platform: input.requestedPlatform,
+      matched_niche: text(row.niche),
+      matched_platform: text(row.platform),
+      is_exact_match: mode === "exact_segment",
+      transfer_note: transferReasons[0] || "",
+    },
     selected_pattern: {
       pattern_id: text(row.label || `${row.niche || "niche"}:${row.platform || "platform"}`),
       hook_type: null,
@@ -200,13 +318,17 @@ function buildResponseFromSolution(
       outcome_winners: num(trustSummary.outcome_winners),
       outcome_losers: num(trustSummary.outcome_losers),
     },
+    quality_gate: qualityGate,
     anti_patterns: outcomeGuardrails.anti_patterns,
     trust_why: list(row.trust_why, 5),
     decision_pack: decisionPack,
     source_trace: sourceTrace,
     alternatives: candidates
       .filter((candidate) => !(candidate.row === row && candidate.source === source))
-      .map((candidate) => buildAlternative(candidate.row, candidate.source))
+      .map((candidate) => buildAlternative(candidate.row, candidate.source, {
+        niche: input.requestedNiche,
+        platform: input.requestedPlatform,
+      }))
       .slice(0, 3),
   };
 }
@@ -216,6 +338,7 @@ export function selectCreativeBriefFromSegmentLayers(input: {
   platform: string;
   segmentSolutions?: { items?: JsonRecord[] } | null;
   segmentSolutionMatrix?: { by_niche?: JsonRecord[]; by_platform?: JsonRecord[] } | null;
+  segmentGenerationPacks?: { items?: JsonRecord[] } | null;
 }) {
   const niche = text(input.niche);
   const platform = text(input.platform).toLowerCase();
@@ -231,10 +354,15 @@ export function selectCreativeBriefFromSegmentLayers(input: {
     .find((row) => text(row.niche) === niche);
   const nichePrimary = asPrimary(nicheRow?.primary);
   const candidates = [
-    exact ? { source: "segment_solution" as const, row: exact } : null,
-    platformPrimary ? { source: "platform_matrix" as const, row: platformPrimary } : null,
-    nichePrimary ? { source: "niche_matrix" as const, row: nichePrimary } : null,
-  ].filter(Boolean) as Array<{ source: "segment_solution" | "platform_matrix" | "niche_matrix"; row: JsonRecord }>;
+    exact ? { source: "segment_solution" as const, row: exact, requestedNiche: niche, requestedPlatform: platform } : null,
+    platformPrimary ? { source: "platform_matrix" as const, row: platformPrimary, requestedNiche: niche, requestedPlatform: platform } : null,
+    nichePrimary ? { source: "niche_matrix" as const, row: nichePrimary, requestedNiche: niche, requestedPlatform: platform } : null,
+  ].filter(Boolean) as Array<{
+    source: "segment_solution" | "platform_matrix" | "niche_matrix";
+    row: JsonRecord;
+    requestedNiche: string;
+    requestedPlatform: string;
+  }>;
   const rankedCandidates = [...candidates].sort((a, b) =>
     candidateScore(b) - candidateScore(a)
     || itemSort(a.row, b.row)
@@ -242,7 +370,13 @@ export function selectCreativeBriefFromSegmentLayers(input: {
   );
   const selected = rankedCandidates[0] || null;
 
-  if (selected) return buildResponseFromSolution(selected.row, selected.source, rankedCandidates);
+  if (selected) {
+    return buildResponseFromSolution(selected.row, selected.source, rankedCandidates, {
+      requestedNiche: niche,
+      requestedPlatform: platform,
+      segmentGenerationPacks: input.segmentGenerationPacks || null,
+    });
+  }
 
   return null;
 }

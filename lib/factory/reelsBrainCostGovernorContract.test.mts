@@ -71,8 +71,9 @@ ok(/internalFetch/.test(measurementPlanRoute) && /measurement_plan/.test(measure
 ok(/internalFetch/.test(creativeExports) && /segment_creative_exports/.test(creativeExports), "creative-exports route reads creative export bundles from learning-economics");
 ok(/lane/.test(creativeExports) && /niche/.test(creativeExports) && /platform/.test(creativeExports), "creative-exports route supports lane, niche and platform filters");
 ok(!/POST\s*\(/.test(creativeExports), "creative-exports route is read-only");
-ok(/internalFetch/.test(creativeBrief) && /segment_solution_matrix/.test(creativeBrief) && /selectCreativeBriefFromSegmentLayers/.test(creativeBrief) && /platform_matrix/.test(creativeBriefSourceBuilder), "creative-brief route prefers trust-aware segment layers before old playbook fallback");
-ok(/internalFetch/.test(creativeSolution) && /creative-brief/.test(creativeSolution) && /selectCreativeBriefFromSegmentLayers/.test(creativeSolution), "creative-solution route exposes unified trust-aware brief/hypothesis/action endpoint");
+ok(/internalFetch/.test(creativeBrief) && /segment_solution_matrix/.test(creativeBrief) && /segment_generation_packs/.test(creativeBrief) && /selectCreativeBriefFromSegmentLayers/.test(creativeBrief) && /platform_matrix/.test(creativeBriefSourceBuilder), "creative-brief route prefers trust-aware segment layers and pulls generation gates before old playbook fallback");
+ok(/internalFetch/.test(creativeSolution) && /creative-brief/.test(creativeSolution) && /segment_generation_packs/.test(creativeSolution) && /selectCreativeBriefFromSegmentLayers/.test(creativeSolution), "creative-solution route exposes unified trust-aware brief/hypothesis/action endpoint");
+ok(/fit_summary/.test(creativeBriefSourceBuilder) && /quality_gate/.test(creativeBriefSourceBuilder) && /exact_segment/.test(creativeBriefSourceBuilder), "creative brief source marks exact-vs-transfer fit and degrades quality gate for borrowed evidence");
 ok(/internalFetch/.test(generationPolicy) && /generation_policy/.test(generationPolicy) && /segment_solution_matrix/.test(generationPolicy), "generation-policy route exposes unified trust-aware generation policy");
 
 ok(/internalFetch/.test(readinessAudit) && /segment_readiness_audit/.test(readinessAudit), "readiness-audit route reads readiness audit from learning-economics");

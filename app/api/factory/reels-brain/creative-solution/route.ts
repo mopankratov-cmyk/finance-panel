@@ -24,6 +24,7 @@ export async function GET(req: NextRequest) {
         platform,
         segmentSolutions: reportBody.segment_solutions || null,
         segmentSolutionMatrix: reportBody.segment_solution_matrix || null,
+        segmentGenerationPacks: reportBody.segment_generation_packs || null,
       });
       if (solution) {
         return NextResponse.json({
