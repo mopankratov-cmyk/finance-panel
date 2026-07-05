@@ -31,6 +31,7 @@ const patternBuild = readFileSync("app/api/factory/reels-brain/patterns/build/ro
 const feedbackRoute = readFileSync("app/api/factory/reels-brain/feedback/route.ts", "utf8");
 const feedbackRows = readFileSync("lib/factory/reelsBrainFeedbackRows.ts", "utf8");
 const operatingSystem = readFileSync("lib/factory/reelsBrainOperatingSystem.ts", "utf8");
+const outcomeAntiPatternMemory = readFileSync("lib/factory/reelsBrainOutcomeAntiPatternMemory.ts", "utf8");
 const cockpit = readFileSync("app/agent/reels-brain/ReelsBrainPixelCockpit.tsx", "utf8");
 const feedback = readFileSync("app/api/factory/reels-brain/feedback/route.ts", "utf8");
 const cron = readFileSync("app/api/factory/jobs/reels-brain-cron/route.ts", "utf8");
@@ -110,6 +111,7 @@ ok(!/POST\s*\(/.test(learningPlan), "learning-plan route is read-only");
 ok(/buildReelsBrainFeedbackLoop/.test(feedback), "feedback route summarizes publication metrics");
 ok(/\/api\/factory\/post-metrics/.test(feedback), "feedback route writes through post-metrics");
 ok(/loadReelsBrainFeedbackRows/.test(feedbackRoute) && /segment_label/.test(feedbackRows) && /segment_outcome_memory/.test(operatingSystem), "feedback loop enriches post metrics with segment context and exposes segment outcome memory");
+ok(/buildReelsBrainOutcomeAntiPatternMemory/.test(economics) && /outcome_writeback/.test(economics) && /segment_outcome_memory/.test(outcomeAntiPatternMemory), "learning-economics writes segment outcome memory back into anti-pattern brain");
 ok(/function loadAutopilotGuard/.test(cron), "cron has an autopilot guard");
 ok(/original_task/.test(cron) && /can_run_paid_collection/.test(cron), "cron reports guard enforcement");
 ok(/loadLearningPlan/.test(cron) && /planned_task/.test(cron) && /collect_portfolio_gaps/.test(cron) && /planned_portfolio_segment/.test(cron), "cron consumes learning-plan and can execute portfolio-aware next ticks");

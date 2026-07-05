@@ -24,6 +24,7 @@ import { buildReelsBrainPortfolioReadiness } from "@/lib/factory/reelsBrainPortf
 import { REELS_BRAIN_CORPUS_TARGET_TOTAL } from "@/lib/factory/reelsBrainCorpusTargets";
 import { buildReelsBrainSegmentGapPlanner } from "@/lib/factory/reelsBrainSegmentGapPlanner";
 import { loadReelsBrainFeedbackRows } from "@/lib/factory/reelsBrainFeedbackRows";
+import { buildReelsBrainOutcomeAntiPatternMemory } from "@/lib/factory/reelsBrainOutcomeAntiPatternMemory";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 20;
@@ -1023,9 +1024,14 @@ function buildAntiPatternBrain(
   audit: ReturnType<typeof buildCorpusAudit>,
   insightPayload: ReturnType<typeof buildInsights>,
   audioBrain?: ReturnType<typeof buildAudioBrain>,
+  feedbackLoop?: ReturnType<typeof buildReelsBrainOperatingSystem>["feedback_loop"],
 ) {
   const weakHooks = (insightPayload.top_hooks || []).filter((hook) => hook.confidence === "low" || hook.op_score < 60).slice(0, 4);
   const weakFormats = (insightPayload.winning_formats || []).filter((format) => num(format.avg_score) < 55).slice(0, 4);
+  const outcomeWriteback = buildReelsBrainOutcomeAntiPatternMemory({
+    feedbackLoop: feedbackLoop || null,
+    limit: 4,
+  });
   const rows = [
     audit.duplicate_rate > 2 ? {
       code: "duplicate_source_waste",
@@ -1069,10 +1075,12 @@ function buildAntiPatternBrain(
       action: item.action,
       severity: item.count >= 20 ? "high" : "medium",
     }))),
+    ...outcomeWriteback.items,
   ].filter(Boolean);
   return {
     count: rows.length,
     items: rows.slice(0, 10),
+    outcome_writeback: outcomeWriteback,
     summary: rows.length
       ? "Anti-pattern слой уже видит, где мозг тратит насмотренность или рискует генерировать слабые механики."
       : "Критичных anti-pattern сигналов в текущем срезе не найдено.",
@@ -2256,7 +2264,6 @@ export async function GET(req: NextRequest) {
       (insightPayload.strong_combinations || []) as unknown as Record<string, unknown>[],
     );
     insightPayload.strong_combinations = enrichedStrongCombinations as unknown as typeof insightPayload.strong_combinations;
-    const antiPatternBrain = buildAntiPatternBrain(corpusAudit, insightPayload, audioBrain);
     const discoveryBrain = buildDiscoveryBrain(insightPayload.source_map, corpusAudit);
     const patternDecisionLayer = attachPatternOutcomes(buildPatternDecisionLayer(insightPayload), feedbackRows.rows);
     const taxonomyBrain = buildTaxonomyBrain({ corpusSample, recentSample, playbooks: rows });
@@ -2268,6 +2275,7 @@ export async function GET(req: NextRequest) {
       insights: insightPayload,
       feedbackRows: feedbackRows.rows,
     });
+    const antiPatternBrain = buildAntiPatternBrain(corpusAudit, insightPayload, audioBrain, operatingSystem.feedback_loop);
     const outcomeMemoryBrain = buildOutcomeMemoryBrain(operatingSystem.feedback_loop, patternDecisionLayer.pattern_details as Record<string, unknown>[]);
     const baseNextLayers = buildNextIntelligenceLayers({ insightPayload, patternDecisionLayer, corpusAudit, audioVisualReadiness });
     const nextIntelligenceLayers = {
