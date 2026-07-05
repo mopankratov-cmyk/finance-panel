@@ -32,6 +32,8 @@ export async function GET(req: NextRequest) {
   const pipeline = (portfolio.pipeline_progress || (health as any)?.health?.pipeline || {}) as Record<string, any>;
   const sourceAudit = (portfolio.source_mix_audit || (health as any)?.health?.source_mix_audit || {}) as Record<string, any>;
   const sourceAuditSummary = (sourceAudit.summary && typeof sourceAudit.summary === "object") ? sourceAudit.summary : {};
+  const sourceAuditNiches = Array.isArray(sourceAudit.by_niche) ? sourceAudit.by_niche : [];
+  const sourceAuditWatchlist = Array.isArray(sourceAudit.exact_gap_watchlist) ? sourceAudit.exact_gap_watchlist : [];
   const sourceAuditRiskClass = sourceAuditSummary.fallback_dependency_risk === "low"
     ? "ready"
     : sourceAuditSummary.fallback_dependency_risk === "medium"
@@ -100,6 +102,11 @@ export async function GET(req: NextRequest) {
         </div>
         <div class="meta" style="margin-top:10px">
           <span>${escapeHtml(sourceAudit.next_step || "Portfolio-level source mix guidance will appear here once all lanes expose segment solutions.")}</span>
+        </div>
+        <div class="meta" style="margin-top:10px">
+          ${sourceAuditNiches.slice(0, 6).map((item) => `
+            <span>${escapeHtml(item.niche)} ${escapeHtml(item.exact_ready_pct || 0)}% exact-ready</span>
+          `).join("")}
         </div>
       </div>
       <div class="card" style="margin-top:16px">
@@ -202,6 +209,21 @@ export async function GET(req: NextRequest) {
             <div class="row">
               <div style="font-weight:900">Operator next step</div>
               <div class="meta" style="margin-top:8px">Open /agent/reels-brain, run mini bake-off, then source refresh, then loop on the weakest platform.</div>
+            </div>
+            <div class="row">
+              <div style="font-weight:900">Exact-gap queue</div>
+              <div class="list" style="margin-top:12px">
+                ${(sourceAuditWatchlist as Record<string, any>[]).slice(0, 4).map((item) => `
+                  <div class="row" style="padding:12px">
+                    <div style="font-weight:800">${escapeHtml(item.label || "unknown segment")}</div>
+                    <div class="meta" style="margin-top:6px">
+                      <span>${escapeHtml(item.status || "unknown")}</span>
+                      <span>urgency ${escapeHtml(item.urgency_score || 0)}</span>
+                      <span>next ${escapeHtml(item.current_action || "watch_segment")}</span>
+                    </div>
+                  </div>
+                `).join("") || `<div class="meta">empty</div>`}
+              </div>
             </div>
           </div>
         </div>

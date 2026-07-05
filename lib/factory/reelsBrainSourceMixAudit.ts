@@ -33,7 +33,7 @@ function riskBand(input: {
 export function buildReelsBrainSourceMixAudit(input: {
   segmentSolutions?: { items?: JsonRecord[] } | null;
   segmentGenerationPacks?: { items?: JsonRecord[] } | null;
-  exactSegmentQueue?: { summary?: JsonRecord | null } | null;
+  exactSegmentQueue?: { summary?: JsonRecord | null; items?: JsonRecord[] | null } | null;
   feedbackLoop?: { validation_trace?: JsonRecord | null } | null;
 }) {
   const solutions = records(input.segmentSolutions?.items);
@@ -44,6 +44,19 @@ export function buildReelsBrainSourceMixAudit(input: {
   const exactGapSegments = num(input.exactSegmentQueue?.summary && (input.exactSegmentQueue.summary as JsonRecord).exact_gap_segments);
   const tracedPosts = num(input.feedbackLoop?.validation_trace && (input.feedbackLoop.validation_trace as JsonRecord).traced_posts);
   const exactTracePosts = num(input.feedbackLoop?.validation_trace && (input.feedbackLoop.validation_trace as JsonRecord).exact_segment_posts);
+  const gapWatchlist = records(input.exactSegmentQueue?.items)
+    .map((row) => ({
+      niche: text(row.niche, "unknown"),
+      platform: text(row.platform, "unknown"),
+      label: text(row.label, `${text(row.niche, "unknown")} × ${text(row.platform, "unknown")}`),
+      status: text(row.status, "unknown"),
+      urgency_score: num(row.urgency_score),
+      desired_proof: text(row.desired_proof),
+      current_action: text(row.current_action),
+      transfer_count: num(row.transfer_count),
+    }))
+    .sort((a, b) => b.urgency_score - a.urgency_score || a.label.localeCompare(b.label))
+    .slice(0, 8);
 
   const items = solutions.map((row) => {
     const trust = (row.trust_summary && typeof row.trust_summary === "object" ? row.trust_summary : {}) as JsonRecord;
@@ -109,6 +122,27 @@ export function buildReelsBrainSourceMixAudit(input: {
       fallback_dependency_risk: risk,
     },
     by_platform: byPlatform,
+    by_niche: Array.from(items.reduce((map, row) => {
+      const current = map.get(row.niche) || {
+        niche: row.niche,
+        total: 0,
+        exact_ready: 0,
+        transfer_only: 0,
+        untraced: 0,
+      };
+      current.total += 1;
+      if (row.proof_quality === "exact_segment" && row.exact_segment_ready) current.exact_ready += 1;
+      if (row.proof_quality === "traced_transfer_only") current.transfer_only += 1;
+      if (row.proof_quality === "untraced") current.untraced += 1;
+      map.set(row.niche, current);
+      return map;
+    }, new Map<string, { niche: string; total: number; exact_ready: number; transfer_only: number; untraced: number }>()).values())
+      .map((row) => ({
+        ...row,
+        exact_ready_pct: pct(row.exact_ready, row.total),
+      }))
+      .sort((a, b) => b.total - a.total || a.niche.localeCompare(b.niche)),
+    exact_gap_watchlist: gapWatchlist,
     next_step: risk === "low"
       ? "Большая часть production-решений уже идёт через exact-ready segment layer; можно дальше снижать долю legacy path."
       : risk === "medium"

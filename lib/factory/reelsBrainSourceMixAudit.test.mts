@@ -57,6 +57,18 @@ const result = buildReelsBrainSourceMixAudit({
     summary: {
       exact_gap_segments: 2,
     },
+    items: [
+      {
+        niche: "ru_clothing",
+        platform: "instagram",
+        label: "ru_clothing × instagram",
+        status: "borrowed_brief_only",
+        urgency_score: 71,
+        desired_proof: "Подтвердить exact segment",
+        current_action: "collect_segment_batch",
+        transfer_count: 1,
+      },
+    ],
   },
   feedbackLoop: {
     validation_trace: {
@@ -75,5 +87,8 @@ assert.equal(result.summary.validation_traced_posts, 12);
 assert.equal(result.summary.validation_exact_posts, 5);
 assert.equal(result.summary.legacy_fallback_policy, "guarded");
 assert.equal(result.by_platform[0]?.platform, "instagram");
+assert.equal(result.by_niche[0]?.niche, "ru_clothing");
+assert.equal(result.exact_gap_watchlist[0]?.label, "ru_clothing × instagram");
+assert.equal(result.exact_gap_watchlist[0]?.status, "borrowed_brief_only");
 
 console.log("reelsBrainSourceMixAudit.test: ok");

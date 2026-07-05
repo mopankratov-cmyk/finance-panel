@@ -40,6 +40,8 @@ export async function GET(req: NextRequest) {
   const sourceMixAudit = ((report as { source_mix_audit?: Record<string, any> }).source_mix_audit) || {};
   const sourceMixSummary = (sourceMixAudit.summary && typeof sourceMixAudit.summary === "object") ? sourceMixAudit.summary : {};
   const sourceMixPlatforms = Array.isArray(sourceMixAudit.by_platform) ? sourceMixAudit.by_platform : [];
+  const sourceMixNiches = Array.isArray(sourceMixAudit.by_niche) ? sourceMixAudit.by_niche : [];
+  const sourceMixWatchlist = Array.isArray(sourceMixAudit.exact_gap_watchlist) ? sourceMixAudit.exact_gap_watchlist : [];
   const sourceMixRiskClass = sourceMixSummary.fallback_dependency_risk === "low"
     ? "ready"
     : sourceMixSummary.fallback_dependency_risk === "medium"
@@ -167,6 +169,26 @@ export async function GET(req: NextRequest) {
       </div>
       <div class="grid two" style="margin-top:16px">
         <div class="card">
+          <div class="eyebrow">Niche trust</div>
+          <h2 class="title">Exact-proof by niche</h2>
+          <div class="list" style="margin-top:16px">
+            ${sourceMixNiches.length ? sourceMixNiches.map((row) => `
+              <div class="row">
+                <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start">
+                  <div style="font-weight:900">${escapeHtml(row.niche)}</div>
+                  <span class="status ${escapeHtml(Number(row.exact_ready_pct || 0) >= 50 ? "ready" : Number(row.exact_ready_pct || 0) >= 20 ? "watch" : "weak")}">${escapeHtml(row.exact_ready_pct || 0)}% exact-ready</span>
+                </div>
+                <div class="meta" style="margin-top:8px">
+                  <span>segments ${escapeHtml(row.total || 0)}</span>
+                  <span>exact ${escapeHtml(row.exact_ready || 0)}</span>
+                  <span>transfer ${escapeHtml(row.transfer_only || 0)}</span>
+                  <span>untraced ${escapeHtml(row.untraced || 0)}</span>
+                </div>
+              </div>
+            `).join("") : `<div class="row"><div style="font-weight:800">Niche-level source audit пока пустой</div></div>`}
+          </div>
+        </div>
+        <div class="card">
           <div class="eyebrow">Pipeline</div>
           <h2 class="title">Backlog by platform</h2>
           <div class="list" style="margin-top:16px">
@@ -184,6 +206,33 @@ export async function GET(req: NextRequest) {
                 </div>
               </div>
             `).join("") : `<div class="row"><div style="font-weight:800">Pipeline data пока недоступен</div></div>`}
+          </div>
+        </div>
+        <div class="card">
+          <div class="eyebrow">Exact gaps</div>
+          <h2 class="title">Where exact-proof is still missing</h2>
+          <div class="list" style="margin-top:16px">
+            ${sourceMixWatchlist.length ? sourceMixWatchlist.map((row) => `
+              <div class="row">
+                <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start">
+                  <div>
+                    <div style="font-weight:900">${escapeHtml(row.label)}</div>
+                    <div class="meta" style="margin-top:8px">
+                      <span>${escapeHtml(row.status || "unknown")}</span>
+                      <span>urgency ${escapeHtml(row.urgency_score || 0)}</span>
+                      <span>transfer ${escapeHtml(row.transfer_count || 0)}</span>
+                    </div>
+                  </div>
+                  <span class="status watch">exact gap</span>
+                </div>
+                <div class="meta" style="margin-top:10px">
+                  <span>${escapeHtml(row.desired_proof || "Need exact-proof evidence.")}</span>
+                </div>
+                <div class="meta" style="margin-top:8px">
+                  <span>next ${escapeHtml(row.current_action || "watch_segment")}</span>
+                </div>
+              </div>
+            `).join("") : `<div class="row"><div style="font-weight:800">Exact-gap watchlist пока пуст</div></div>`}
           </div>
         </div>
         <div class="card">
