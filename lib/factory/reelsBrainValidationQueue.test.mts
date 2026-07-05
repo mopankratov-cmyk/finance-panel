@@ -53,6 +53,42 @@ const queue = buildReelsBrainValidationQueue({
           feedback_writeback: "/api/factory/reels-brain/feedback",
           post_metrics: "/api/factory/post-metrics",
         },
+        recommended_upgrade: {
+          unlocked_output: "performance_tuned_brief",
+          projected_production_state: "near_publishable",
+          projected_trust_gain_score: 18,
+          projected_trust_gain_band: "medium",
+          recommended_loop: "audio_backfill",
+        },
+      },
+      {
+        measurement_id: "m2",
+        pattern_id: "p2",
+        title: "Visual payoff",
+        niche: "ru_toys",
+        platform: "instagram",
+        policy_mode: "control_only",
+        decision_priority_score: 89,
+        action: "Сделать measurement-run для Visual payoff на ru_toys × instagram",
+        validation_goal: "Проверить паттерн в controlled batch до повышения trust.",
+        publish_brief: {
+          hook: "Покажи результат сразу",
+          retention: "visual payoff",
+          structure: "demo",
+          next_step: "Собрать 2 публикации и проверить saves.",
+        },
+        metrics_to_capture: ["views", "watch_rate", "saves"],
+        endpoints: {
+          feedback_writeback: "/api/factory/reels-brain/feedback",
+          post_metrics: "/api/factory/post-metrics",
+        },
+        recommended_upgrade: {
+          unlocked_output: "publishable_visual_brief",
+          projected_production_state: "publishable_exact",
+          projected_trust_gain_score: 31,
+          projected_trust_gain_band: "high",
+          recommended_loop: "media_backfill",
+        },
       },
     ],
   },
@@ -63,7 +99,9 @@ assert.equal(queue.queue[0]?.type, "prove_exact_segment");
 assert.equal(queue.queue[0]?.priority, "high");
 assert.equal(queue.queue[0]?.writeback_targets.feedback, "/api/factory/reels-brain/feedback");
 assert.equal(queue.queue[0]?.task_payload.proof_scope, "exact_segment");
-assert.equal(queue.queue[1]?.task_payload.pattern_id, "p1");
+assert.equal(queue.queue[1]?.task_payload.pattern_id, "p2");
+assert.equal(queue.queue[1]?.recommended_upgrade?.projected_trust_gain_score, 31);
+assert.equal(queue.queue[2]?.task_payload.pattern_id, "p1");
 assert.match(queue.next_step, /prove_exact_segment/);
 
 console.log("reelsBrainValidationQueue.test: ok");

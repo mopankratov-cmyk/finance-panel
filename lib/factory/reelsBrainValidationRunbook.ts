@@ -31,6 +31,11 @@ export function buildReelsBrainValidationRunbook(input: {
     const endpoints = (measurement.endpoints && typeof measurement.endpoints === "object" ? measurement.endpoints : {}) as JsonRecord;
     const writeback = (row.writeback_targets && typeof row.writeback_targets === "object" ? row.writeback_targets : {}) as JsonRecord;
     const payload = (row.task_payload && typeof row.task_payload === "object" ? row.task_payload : {}) as JsonRecord;
+    const upgrade = (measurement.recommended_upgrade && typeof measurement.recommended_upgrade === "object"
+      ? measurement.recommended_upgrade
+      : row.recommended_upgrade && typeof row.recommended_upgrade === "object"
+        ? row.recommended_upgrade
+        : {}) as JsonRecord;
     const proofScope = text(payload.proof_scope);
     return {
       task_id: text(row.task_id),
@@ -43,6 +48,14 @@ export function buildReelsBrainValidationRunbook(input: {
       action: text(row.action, text(measurement.action, "Снять market signal")),
       validation_goal: text(row.validation_goal, text(measurement.validation_goal, "Получить первые market-сигналы.")),
       proof_scope: proofScope || "pattern_feedback",
+      recommended_upgrade: {
+        unlocked_output: text(upgrade.unlocked_output),
+        projected_production_state: text(upgrade.projected_production_state),
+        projected_trust_gain_score: Number(upgrade.projected_trust_gain_score || 0),
+        projected_trust_gain_band: text(upgrade.projected_trust_gain_band),
+        recommended_loop: text(upgrade.recommended_loop),
+        unlocked_next_step: text(upgrade.unlocked_next_step),
+      },
       publish_brief: {
         hook: text(brief.hook, "hook"),
         retention: text(brief.retention, "retention"),

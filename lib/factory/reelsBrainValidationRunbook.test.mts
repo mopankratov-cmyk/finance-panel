@@ -38,6 +38,13 @@ const runbook = buildReelsBrainValidationRunbook({
         endpoints: {
           creative_solution: "/api/factory/reels-brain/creative-solution?niche=ru_toys&platform=instagram",
         },
+        recommended_upgrade: {
+          unlocked_output: "publishable_exact_brief",
+          projected_production_state: "publishable_exact",
+          projected_trust_gain_score: 27,
+          projected_trust_gain_band: "high",
+          recommended_loop: "analyze_and_compact",
+        },
       },
     ],
   },
@@ -50,6 +57,8 @@ assert.equal(runbook.items[0]?.creative_solution_endpoint, "/api/factory/reels-b
 assert.equal(runbook.items[0]?.feedback_payload_template.platform, "instagram");
 assert.equal(runbook.items[0]?.feedback_payload_template.measurement_id, "exact__ru_toys__instagram");
 assert.equal(runbook.items[0]?.feedback_payload_template.validation_task_id, "exact__ru_toys__instagram");
+assert.equal(runbook.items[0]?.recommended_upgrade?.unlocked_output, "publishable_exact_brief");
+assert.equal(runbook.items[0]?.recommended_upgrade?.projected_trust_gain_score, 27);
 assert.match(runbook.items[0]?.publish_checklist[0] || "", /exact segment/i);
 
 console.log("reelsBrainValidationRunbook: passed");

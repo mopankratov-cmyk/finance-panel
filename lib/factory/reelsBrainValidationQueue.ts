@@ -20,6 +20,22 @@ function taskPriority(value: unknown) {
   return "low";
 }
 
+function proofScopeRank(value: unknown) {
+  return text(value) === "exact_segment" ? 2 : 1;
+}
+
+function recommendedUpgrade(value: unknown) {
+  const row = value && typeof value === "object" ? value as JsonRecord : {};
+  return {
+    unlocked_output: text(row.unlocked_output),
+    projected_production_state: text(row.projected_production_state),
+    projected_trust_gain_score: num(row.projected_trust_gain_score),
+    projected_trust_gain_band: text(row.projected_trust_gain_band),
+    recommended_loop: text(row.recommended_loop),
+    unlocked_next_step: text(row.unlocked_next_step),
+  };
+}
+
 export function buildReelsBrainValidationQueue(input: {
   measurementPlan?: {
     items?: JsonRecord[];
@@ -30,10 +46,17 @@ export function buildReelsBrainValidationQueue(input: {
   } | null;
   limit?: number;
 }) {
-  const items = records(input.measurementPlan?.items);
+  const items = records(input.measurementPlan?.items)
+    .sort((a, b) =>
+      proofScopeRank(b.proof_scope) - proofScopeRank(a.proof_scope)
+      || num(((b.recommended_upgrade as JsonRecord | null)?.projected_trust_gain_score)) - num(((a.recommended_upgrade as JsonRecord | null)?.projected_trust_gain_score))
+      || num(b.decision_priority_score) - num(a.decision_priority_score)
+      || text(a.title).localeCompare(text(b.title)),
+    );
   const limit = Math.max(3, input.limit || 6);
   const queue = items.slice(0, limit).map((item, index) => {
     const brief = (item.publish_brief && typeof item.publish_brief === "object") ? item.publish_brief as JsonRecord : {};
+    const upgrade = recommendedUpgrade(item.recommended_upgrade);
     return {
       task_id: text(item.measurement_id, `measurement_${index + 1}`),
       type: text(item.task_type, "validate_pattern_feedback"),
@@ -45,6 +68,7 @@ export function buildReelsBrainValidationQueue(input: {
       policy_mode: text(item.policy_mode, "research_only"),
       action: text(item.action, "Снять market signal"),
       validation_goal: text(item.validation_goal, "Получить первые market-сигналы."),
+      recommended_upgrade: upgrade,
       publish_brief: {
         hook: text(brief.hook, "hook"),
         retention: text(brief.retention, "retention"),
