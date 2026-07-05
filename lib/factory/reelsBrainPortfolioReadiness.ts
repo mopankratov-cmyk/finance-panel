@@ -64,6 +64,7 @@ export function buildReelsBrainPortfolioReadiness(input: {
       const band = text(row.evidence_band, "missing");
       const stability = num(row.stability_score);
       const publishableExact = Boolean(solution.publishable_exact);
+      const generationReady = Boolean(solution.high_trust_generation_ready);
       return {
         niche,
         platform,
@@ -74,6 +75,7 @@ export function buildReelsBrainPortfolioReadiness(input: {
         evidence_band: band,
         stability_score: stability,
         high_trust_segment: Boolean(row.high_trust_segment),
+        high_trust_generation_ready: generationReady,
         publishable_exact: publishableExact,
         outcome_status: text(row.outcome_status, "no_feedback"),
         missing: !rowMap.has(`${niche}__${platform}`),
@@ -87,6 +89,7 @@ export function buildReelsBrainPortfolioReadiness(input: {
     const items = bySegment.filter((row) => row.niche === niche);
     const stable = items.filter((row) => row.evidence_band === "stable").length;
     const highTrust = items.filter((row) => row.high_trust_segment).length;
+    const generationReady = items.filter((row) => row.high_trust_generation_ready).length;
     const forming = items.filter((row) => row.evidence_band === "forming").length;
     const thin = items.filter((row) => row.evidence_band === "thin").length;
     const missing = items.filter((row) => row.missing).length;
@@ -96,12 +99,14 @@ export function buildReelsBrainPortfolioReadiness(input: {
       niche,
       stable,
       high_trust: highTrust,
+      generation_ready: generationReady,
       forming,
       thin,
       missing,
       publishable_exact: publishableExact,
       coverage_pct: pct(stable + forming + thin, items.length),
       high_trust_pct: pct(highTrust, items.length),
+      generation_ready_pct: pct(generationReady, items.length),
       publishable_exact_pct: pct(publishableExact, items.length),
       weak_outcome_segments: weakOutcome,
       primary_priority_segments: items.filter((row) => row.segment_priority_mode === "primary").length,
@@ -126,6 +131,7 @@ export function buildReelsBrainPortfolioReadiness(input: {
     const items = bySegment.filter((row) => row.platform === platform);
     const stable = items.filter((row) => row.evidence_band === "stable").length;
     const highTrust = items.filter((row) => row.high_trust_segment).length;
+    const generationReady = items.filter((row) => row.high_trust_generation_ready).length;
     const forming = items.filter((row) => row.evidence_band === "forming").length;
     const thin = items.filter((row) => row.evidence_band === "thin").length;
     const missing = items.filter((row) => row.missing).length;
@@ -135,12 +141,14 @@ export function buildReelsBrainPortfolioReadiness(input: {
       platform,
       stable,
       high_trust: highTrust,
+      generation_ready: generationReady,
       forming,
       thin,
       missing,
       publishable_exact: publishableExact,
       coverage_pct: pct(stable + forming + thin, items.length),
       high_trust_pct: pct(highTrust, items.length),
+      generation_ready_pct: pct(generationReady, items.length),
       publishable_exact_pct: pct(publishableExact, items.length),
       weak_outcome_segments: weakOutcome,
       primary_priority_segments: items.filter((row) => row.segment_priority_mode === "primary").length,
@@ -163,6 +171,7 @@ export function buildReelsBrainPortfolioReadiness(input: {
 
   const stable = bySegment.filter((row) => row.evidence_band === "stable").length;
   const highTrust = bySegment.filter((row) => row.high_trust_segment).length;
+  const generationReady = bySegment.filter((row) => row.high_trust_generation_ready).length;
   const forming = bySegment.filter((row) => row.evidence_band === "forming").length;
   const thin = bySegment.filter((row) => row.evidence_band === "thin").length;
   const missing = bySegment.filter((row) => row.missing).length;
@@ -188,12 +197,14 @@ export function buildReelsBrainPortfolioReadiness(input: {
       expected_segments: expectedTotal,
       stable_segments: stable,
       market_confirmed_segments: highTrust,
+      generation_ready_segments: generationReady,
       forming_segments: forming,
       thin_segments: thin,
       missing_segments: missing,
       weak_outcome_segments: weakOutcome,
       covered_segments: coverageKnown,
       high_trust_coverage_pct: pct(highTrust, expectedTotal),
+      generation_ready_coverage_pct: pct(generationReady, expectedTotal),
       publishable_exact_segments: publishableExact,
       publishable_exact_coverage_pct: pct(publishableExact, expectedTotal),
       known_coverage_pct: pct(coverageKnown, expectedTotal),
@@ -207,6 +218,7 @@ export function buildReelsBrainPortfolioReadiness(input: {
       .sort((a, b) =>
         policyModeRank(b.segment_priority_mode) - policyModeRank(a.segment_priority_mode)
         || b.segment_priority_score - a.segment_priority_score
+        || Number(Boolean(b.high_trust_generation_ready)) - Number(Boolean(a.high_trust_generation_ready))
         || Number(Boolean(b.high_trust_segment)) - Number(Boolean(a.high_trust_segment))
         || evidenceRank(b.evidence_band) - evidenceRank(a.evidence_band)
         || b.stability_score - a.stability_score
@@ -216,7 +228,10 @@ export function buildReelsBrainPortfolioReadiness(input: {
       .slice(0, 12),
     strongest_segments: bySegment
       .filter((row) => row.high_trust_segment)
-      .sort((a, b) => b.stability_score - a.stability_score || a.label.localeCompare(b.label))
+      .sort((a, b) =>
+        Number(Boolean(b.high_trust_generation_ready)) - Number(Boolean(a.high_trust_generation_ready))
+        || b.stability_score - a.stability_score
+        || a.label.localeCompare(b.label))
       .slice(0, 12),
   };
 }

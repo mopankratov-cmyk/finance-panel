@@ -1767,10 +1767,13 @@ function buildAutopilotActions(input: {
     can_run_paid_collection: input.costGovernor.status === "ok_to_continue",
     portfolio_readiness: {
       high_trust_coverage_pct: num(portfolioSummary.high_trust_coverage_pct),
+      generation_ready_coverage_pct: num(portfolioSummary.generation_ready_coverage_pct),
+      generation_ready_segments: num(portfolioSummary.generation_ready_segments),
       publishable_exact_coverage_pct: num(portfolioSummary.publishable_exact_coverage_pct),
       publishable_exact_segments: num(portfolioSummary.publishable_exact_segments),
       publishable_exact_gap_segments: publishableExactGapQueue.length,
       stable_segments: num(portfolioSummary.stable_segments),
+      market_confirmed_segments: num(portfolioSummary.market_confirmed_segments),
       expected_segments: num(portfolioSummary.expected_segments),
       verdict: String(portfolioSummary.verdict || "still_building"),
     },

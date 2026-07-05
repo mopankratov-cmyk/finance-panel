@@ -15,7 +15,7 @@ test("buildReelsBrainPortfolioReadiness summarizes matrix coverage", () => {
     },
     segmentSolutionMatrix: {
       by_segment: [
-        { niche: "ru_toys", platform: "tiktok", publishable_exact: true },
+        { niche: "ru_toys", platform: "tiktok", publishable_exact: true, high_trust_generation_ready: true },
       ],
     },
   });
@@ -26,8 +26,11 @@ test("buildReelsBrainPortfolioReadiness summarizes matrix coverage", () => {
   assert.equal(result.summary.thin_segments, 1);
   assert.equal(result.summary.missing_segments, 1);
   assert.equal(result.summary.high_trust_coverage_pct, 25);
+  assert.equal(result.summary.generation_ready_segments, 1);
+  assert.equal(result.summary.generation_ready_coverage_pct, 25);
   assert.equal(result.summary.publishable_exact_segments, 1);
   assert.equal(result.summary.publishable_exact_coverage_pct, 25);
+  assert.equal(result.by_niche[0]?.generation_ready_pct, 50);
   assert.equal(result.by_niche[0]?.niche, "ru_toys");
   assert.equal(result.by_platform[0]?.platform, "tiktok");
 });
@@ -44,14 +47,15 @@ test("buildReelsBrainPortfolioReadiness marks fully stable matrix as ready", () 
     },
     segmentSolutionMatrix: {
       by_segment: [
-        { niche: "ru_toys", platform: "tiktok", publishable_exact: true },
-        { niche: "ru_toys", platform: "instagram", publishable_exact: true },
+        { niche: "ru_toys", platform: "tiktok", publishable_exact: true, high_trust_generation_ready: true },
+        { niche: "ru_toys", platform: "instagram", publishable_exact: true, high_trust_generation_ready: true },
       ],
     },
   });
 
   assert.equal(result.summary.verdict, "ready_for_publishable_exact_generation");
   assert.equal(result.summary.high_trust_coverage_pct, 100);
+  assert.equal(result.summary.generation_ready_coverage_pct, 100);
   assert.equal(result.summary.publishable_exact_coverage_pct, 100);
   assert.equal(result.missing_segments.length, 0);
 });
@@ -83,7 +87,7 @@ test("buildReelsBrainPortfolioReadiness keeps weak-outcome stable segments out o
     },
     segmentSolutionMatrix: {
       by_segment: [
-        { niche: "ru_toys", platform: "instagram", publishable_exact: true },
+        { niche: "ru_toys", platform: "instagram", publishable_exact: true, high_trust_generation_ready: true },
       ],
     },
   });
@@ -92,6 +96,7 @@ test("buildReelsBrainPortfolioReadiness keeps weak-outcome stable segments out o
   assert.equal(result.summary.market_confirmed_segments, 1);
   assert.equal(result.summary.weak_outcome_segments, 1);
   assert.equal(result.summary.high_trust_coverage_pct, 50);
+  assert.equal(result.summary.generation_ready_coverage_pct, 50);
   assert.equal(result.summary.publishable_exact_coverage_pct, 50);
   assert.equal(result.summary.verdict, "still_building");
   assert.equal(result.missing_segments[0]?.platform, "tiktok");
@@ -109,12 +114,13 @@ test("buildReelsBrainPortfolioReadiness distinguishes high trust from publishabl
     },
     segmentSolutionMatrix: {
       by_segment: [
-        { niche: "ru_toys", platform: "tiktok", publishable_exact: true },
+        { niche: "ru_toys", platform: "tiktok", publishable_exact: true, high_trust_generation_ready: true },
       ],
     },
   });
 
   assert.equal(result.summary.high_trust_coverage_pct, 100);
+  assert.equal(result.summary.generation_ready_coverage_pct, 50);
   assert.equal(result.summary.publishable_exact_coverage_pct, 50);
   assert.equal(result.summary.verdict, "high_trust_but_exact_gaps");
   assert.equal(result.publishable_exact_gaps[0]?.platform, "instagram");
@@ -133,7 +139,7 @@ test("buildReelsBrainPortfolioReadiness prioritizes exact gaps that are closest 
     },
     segmentSolutionMatrix: {
       by_segment: [
-        { niche: "ru_toys", platform: "tiktok", publishable_exact: true },
+        { niche: "ru_toys", platform: "tiktok", publishable_exact: true, high_trust_generation_ready: true },
       ],
     },
   });
@@ -155,7 +161,7 @@ test("buildReelsBrainPortfolioReadiness prioritizes high-payoff exact gaps", () 
     },
     segmentSolutionMatrix: {
       by_segment: [
-        { niche: "ru_toys", platform: "youtube", publishable_exact: true },
+        { niche: "ru_toys", platform: "youtube", publishable_exact: true, high_trust_generation_ready: true },
       ],
     },
     segmentPriorityQueue: {

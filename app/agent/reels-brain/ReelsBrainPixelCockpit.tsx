@@ -3982,18 +3982,27 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
                 {compact(vm.mission.portfolio_readiness?.high_trust_coverage_pct || 0)}% high-trust coverage
               </h3>
               <p style={{ color: "#64748b", lineHeight: 1.5 }}>
-                {compact(vm.mission.portfolio_readiness?.publishable_exact_coverage_pct || 0)}% publishable exact · {String(vm.mission.portfolio_readiness?.verdict || "still_building").replaceAll("_", " ")}
+                {compact(vm.mission.portfolio_readiness?.generation_ready_coverage_pct || 0)}% generation-ready · {compact(vm.mission.portfolio_readiness?.publishable_exact_coverage_pct || 0)}% publishable exact · {String(vm.mission.portfolio_readiness?.verdict || "still_building").replaceAll("_", " ")}
               </p>
               <div className="rb-three" style={{ marginTop: 14 }}>
+                <div className="rb-brief-block"><b>Gen-ready</b><p>{compact(vm.mission.portfolio_readiness?.generation_ready_segments || 0)}</p></div>
                 <div className="rb-brief-block"><b>Stable</b><p>{compact(vm.mission.portfolio_readiness?.stable_segments || 0)}</p></div>
                 <div className="rb-brief-block"><b>Exact-ready</b><p>{compact(vm.mission.portfolio_readiness?.publishable_exact_segments || 0)}</p></div>
+              </div>
+              <div className="rb-three" style={{ marginTop: 12 }}>
                 <div className="rb-brief-block"><b>Missing</b><p>{compact(vm.mission.portfolio_readiness?.missing_segments || 0)}</p></div>
+                <div className="rb-brief-block"><b>High trust</b><p>{compact(vm.mission.portfolio_readiness?.market_confirmed_segments || 0)}</p></div>
+                <div className="rb-brief-block"><b>Expected</b><p>{compact(vm.mission.portfolio_readiness?.expected_segments || 0)}</p></div>
+              </div>
+              <div className="rb-brief-block" style={{ marginTop: 12 }}>
+                <b>Что это значит</b>
+                <p>Stable и high-trust показывают глубину понимания ниши. Publishable exact показывает, где уже закрыт точный доказательный слой. Generation-ready показывает следующий, более строгий уровень: где мозг уже может отдавать high-trust генеративные решения без хрупкого fallback.</p>
               </div>
               <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
                 {vm.portfolioCoverageCards.map((row: JsonRecord) => (
                   <div className="rb-pattern" key={`portfolio-platform:${row.platform}`}>
                     <h3>{row.label}</h3>
-                    <p>{compact(row.high_trust_pct || 0)}% high-trust · {compact(row.publishable_exact_pct || 0)}% publishable exact · coverage {compact(row.coverage_pct || 0)}%</p>
+                    <p>{compact(row.high_trust_pct || 0)}% high-trust · {compact(row.generation_ready_pct || 0)}% gen-ready · {compact(row.publishable_exact_pct || 0)}% publishable exact · coverage {compact(row.coverage_pct || 0)}%</p>
                     <p style={{ marginTop: 8 }}>{String(row.readinessLabel || "weak")} · next gap {String(row.next_gap || "none")}</p>
                   </div>
                 ))}
