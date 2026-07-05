@@ -68,23 +68,58 @@ function testBuildReelsBrainSegmentPriorityQueueBlendsGenerationAndLearningNeeds
         },
       ],
     },
+    generationPolicy: {
+      by_segment: [
+        {
+          niche: "ru_toys",
+          platform: "tiktok",
+          policy_mode: "primary",
+          policy_reason: "segment is already publishable exact",
+          decision_priority_score: 96,
+          next_upgrade: {
+            unlocked_output: "publishable_exact_brief",
+            projected_trust_gain_score: 28,
+            projected_trust_gain_band: "high",
+            recommended_loop: "analyze_and_compact",
+          },
+        },
+        {
+          niche: "ru_cosmetics",
+          platform: "instagram",
+          policy_mode: "control_only",
+          policy_reason: "segment still needs one validation loop",
+          decision_priority_score: 74,
+          next_upgrade: {
+            unlocked_output: "generator_ready_brief",
+            projected_trust_gain_score: 16,
+            projected_trust_gain_band: "medium",
+            recommended_loop: "media_backfill",
+          },
+        },
+      ],
+    },
   });
 
   assert.equal(result.summary.total, 2);
   assert.equal(result.summary.promote_segment_briefs, 1);
-  assert.equal(result.summary.analyze_segment_backlog, 1);
-  assert.equal(result.summary.ready_for_generation, 1);
+  assert.equal(result.summary.validate_segment_briefs, 1);
+  assert.equal(result.summary.ready_for_generation, 2);
   assert.equal(result.summary.high_trust_segments, 1);
   assert.equal(result.items[0]?.niche, "ru_toys");
   assert.equal(result.items[0]?.action, "promote_segment_briefs");
   assert.equal(result.items[0]?.ready_for_generation, true);
   assert.equal(result.items[0]?.evidence_band, "stable");
-  assert.equal(result.items[1]?.action, "analyze_segment_backlog");
+  assert.equal(result.items[0]?.policy_mode, "primary");
+  assert.equal(result.items[0]?.decision_priority_score, 100);
+  assert.equal(result.items[0]?.recommended_upgrade?.unlocked_output, "publishable_exact_brief");
+  assert.equal(result.items[1]?.action, "validate_segment_briefs");
+  assert.equal(result.items[1]?.policy_mode, "control_only");
 }
 
 function run() {
   testBuildReelsBrainSegmentPriorityQueueBlendsGenerationAndLearningNeeds();
   testBuildReelsBrainSegmentPriorityQueueRespectsReadinessBlocks();
+  testBuildReelsBrainSegmentPriorityQueueLetsPolicyOverrideWeakDecisionDeck();
   console.log("reelsBrainSegmentPriorityQueue.test: ok");
 }
 
@@ -141,6 +176,23 @@ function testBuildReelsBrainSegmentPriorityQueueRespectsReadinessBlocks() {
         },
       ],
     },
+    generationPolicy: {
+      by_segment: [
+        {
+          niche: "ru_toys",
+          platform: "youtube",
+          policy_mode: "primary",
+          policy_reason: "policy is strong but blocked by audio readiness",
+          decision_priority_score: 91,
+          next_upgrade: {
+            unlocked_output: "performance_tuned_brief",
+            projected_trust_gain_score: 24,
+            projected_trust_gain_band: "high",
+            recommended_loop: "audio_backfill",
+          },
+        },
+      ],
+    },
   });
 
   assert.equal(result.summary.readiness_blocked, 1);
@@ -149,4 +201,83 @@ function testBuildReelsBrainSegmentPriorityQueueRespectsReadinessBlocks() {
   assert.equal(result.items[0]?.ready_for_generation, false);
   assert.equal(result.items[0]?.readiness_dominant_gap, "audio");
   assert.equal(result.items[0]?.action, "collect_segment_batch");
+  assert.equal(result.items[0]?.policy_mode, "primary");
+  assert.equal(result.items[0]?.recommended_upgrade?.recommended_loop, "audio_backfill");
+}
+
+function testBuildReelsBrainSegmentPriorityQueueLetsPolicyOverrideWeakDecisionDeck() {
+  const result = buildReelsBrainSegmentPriorityQueue({
+    segmentPlan: {
+      focus_segments: [
+        {
+          niche: "ru_clothing",
+          platform: "instagram",
+          status: "analyze_more",
+          gap_score: 52,
+          gap: { total_videos: 58, analyzed_videos: 31, stable_patterns: 2 },
+        },
+        {
+          niche: "ru_toys",
+          platform: "youtube",
+          status: "grow_corpus",
+          gap_score: 59,
+          gap: { total_videos: 96, analyzed_videos: 37, stable_patterns: 1 },
+        },
+      ],
+    },
+    segmentDecisionDeck: {
+      items: [
+        {
+          niche: "ru_clothing",
+          platform: "instagram",
+          decision_grade: "research",
+          generation_mode: "research_only",
+          ready_for_generation: false,
+          trust_score: 71,
+        },
+      ],
+    },
+    segmentStabilityAudit: {
+      items: [
+        {
+          niche: "ru_clothing",
+          platform: "instagram",
+          evidence_band: "stable",
+          high_trust_segment: true,
+          stability_score: 88,
+        },
+        {
+          niche: "ru_toys",
+          platform: "youtube",
+          evidence_band: "forming",
+          high_trust_segment: false,
+          stability_score: 63,
+        },
+      ],
+    },
+    generationPolicy: {
+      by_segment: [
+        {
+          niche: "ru_clothing",
+          platform: "instagram",
+          policy_mode: "primary",
+          policy_reason: "segment has the strongest exact-ready policy",
+          decision_priority_score: 93,
+          next_upgrade: {
+            unlocked_output: "publishable_visual_brief",
+            projected_trust_gain_score: 31,
+            projected_trust_gain_band: "high",
+            recommended_loop: "media_backfill",
+          },
+        },
+      ],
+    },
+  });
+
+  assert.equal(result.items[0]?.niche, "ru_clothing");
+  assert.equal(result.items[0]?.platform, "instagram");
+  assert.equal(result.items[0]?.action, "promote_segment_briefs");
+  assert.equal(result.items[0]?.policy_mode, "primary");
+  assert.equal(result.items[0]?.ready_for_generation, true);
+  assert.match(String(result.items[0]?.policy_reason), /strongest exact-ready policy/i);
 }

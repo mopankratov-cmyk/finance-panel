@@ -61,6 +61,16 @@ type SegmentReadinessRow = {
   analyzed_rate?: number;
 };
 
+type SegmentPolicyRow = {
+  niche?: string;
+  platform?: string;
+  policy_mode?: string;
+  policy_reason?: string;
+  decision_priority_score?: number;
+  recommended_upgrade?: Record<string, unknown> | null;
+  next_upgrade?: Record<string, unknown> | null;
+};
+
 function num(value: unknown) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
@@ -72,6 +82,24 @@ function text(value: unknown) {
 
 function keyOf(niche: unknown, platform: unknown) {
   return `${text(niche)}__${text(platform)}`;
+}
+
+function policyRank(value: string) {
+  if (value === "primary") return 3;
+  if (value === "control_only") return 2;
+  return 1;
+}
+
+function recommendedUpgrade(value: unknown) {
+  const row = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  return {
+    unlocked_output: text(row.unlocked_output),
+    projected_production_state: text(row.projected_production_state),
+    projected_trust_gain_score: num(row.projected_trust_gain_score),
+    projected_trust_gain_band: text(row.projected_trust_gain_band),
+    recommended_loop: text(row.recommended_loop),
+    unlocked_next_step: text(row.unlocked_next_step),
+  };
 }
 
 function normalizeGapAction(status: string) {
@@ -86,6 +114,19 @@ function normalizeDecisionAction(grade: string) {
   if (grade === "validate") return "validate_segment_briefs";
   if (grade === "prepare") return "prepare_segment_briefs";
   return "watch_segment";
+}
+
+function decisionGradeRank(value: string) {
+  if (value === "ship") return 4;
+  if (value === "validate") return 3;
+  if (value === "prepare") return 2;
+  return 1;
+}
+
+function policyDecisionGrade(value: string) {
+  if (value === "primary") return "ship";
+  if (value === "control_only") return "validate";
+  return "research";
 }
 
 function readinessBlocked(row: SegmentReadinessRow | undefined) {
@@ -112,18 +153,26 @@ export function buildReelsBrainSegmentPriorityQueue(input: {
   segmentReadinessWatchlist?: {
     items?: SegmentReadinessRow[];
   };
+  generationPolicy?: {
+    by_segment?: SegmentPolicyRow[];
+  };
   limit?: number;
 }) {
   const decisionMap = new Map((input.segmentDecisionDeck?.items || []).map((row) => [keyOf(row.niche, row.platform), row] as const));
   const stabilityMap = new Map((input.segmentStabilityAudit?.items || []).map((row) => [keyOf(row.niche, row.platform), row] as const));
   const readinessMap = new Map((input.segmentReadinessWatchlist?.items || []).map((row) => [keyOf(row.niche, row.platform), row] as const));
+  const policyMap = new Map(((input.generationPolicy?.by_segment || []) as SegmentPolicyRow[]).map((row) => [keyOf(row.niche, row.platform), row] as const));
   const gapRows = input.segmentPlan?.focus_segments || [];
   const priorities = gapRows.map((row) => {
     const decision = decisionMap.get(keyOf(row.niche, row.platform)) || {};
     const stability = stabilityMap.get(keyOf(row.niche, row.platform)) || {};
     const readiness = readinessMap.get(keyOf(row.niche, row.platform));
+    const policy = policyMap.get(keyOf(row.niche, row.platform)) || {};
     const decisionGrade = text(decision.decision_grade || "research");
     const outcomeStatus = text((decision as { outcome_status?: string }).outcome_status || "no_feedback");
+    const policyMode = text(policy.policy_mode || "research_only");
+    const policyPriorityScore = num(policy.decision_priority_score);
+    const upgrade = recommendedUpgrade((policy.recommended_upgrade || policy.next_upgrade) as Record<string, unknown> | null);
     const gapStatus = text(row.status || "watch");
     const evidenceBand = text(stability.evidence_band || "thin");
     const highTrustSegment = Boolean(stability.high_trust_segment);
@@ -131,11 +180,18 @@ export function buildReelsBrainSegmentPriorityQueue(input: {
     const readinessGap = text(readiness?.dominant_gap?.key || "analyze");
     const readinessGapCount = num(readiness?.dominant_gap?.count);
     const readinessSoftBlocked = readinessBlocked(readiness);
-    const effectiveReadyForGeneration = Boolean(decision.ready_for_generation) && !marketBlocked && !readinessSoftBlocked;
+    const effectiveReadyForGeneration = (
+      Boolean(decision.ready_for_generation)
+      || policyMode === "primary"
+      || policyMode === "control_only"
+    ) && !marketBlocked && !readinessSoftBlocked;
+    const effectiveDecisionGrade = decisionGradeRank(decisionGrade) >= decisionGradeRank(policyDecisionGrade(policyMode))
+      ? decisionGrade
+      : policyDecisionGrade(policyMode);
     const globalAction = effectiveReadyForGeneration
-      ? normalizeDecisionAction(decisionGrade)
+      ? normalizeDecisionAction(effectiveDecisionGrade)
       : normalizeGapAction(gapStatus);
-    const urgency = Math.round(
+    const urgencyBase = Math.round(
       ((effectiveReadyForGeneration) || highTrustSegment ? 55 : 0)
       + Math.min(30, num(decision.trust_score) * 0.22)
       + Math.min(24, num(stability.stability_score) * 0.24)
@@ -144,20 +200,28 @@ export function buildReelsBrainSegmentPriorityQueue(input: {
       + (gapStatus === "analyze_more" ? 10 : 0)
       + (gapStatus === "grow_corpus" ? 8 : 0)
       + (evidenceBand === "stable" ? 14 : evidenceBand === "forming" ? 6 : 0)
-      + (decisionGrade === "ship" ? 18 : decisionGrade === "validate" ? 10 : 0)
+      + (effectiveDecisionGrade === "ship" ? 18 : effectiveDecisionGrade === "validate" ? 10 : effectiveDecisionGrade === "prepare" ? 4 : 0)
+      + (policyRank(policyMode) === 3 ? 20 : policyRank(policyMode) === 2 ? 10 : 0)
+      + Math.min(22, policyPriorityScore * 0.2)
+      + Math.min(18, upgrade.projected_trust_gain_score * 0.55)
       + (readinessGap === "audio" || readinessGap === "transcript" ? 12 : readinessGap === "media" ? 8 : 0)
       - (marketBlocked ? 36 : 0)
       - (readinessSoftBlocked && Boolean(decision.ready_for_generation) ? 18 : 0)
     );
+    const urgency = Math.max(0, Math.min(100, urgencyBase));
+    const decisionPriorityScore = Math.max(urgency, policyPriorityScore, upgrade.projected_trust_gain_score > 0 ? Math.min(100, urgency + Math.round(upgrade.projected_trust_gain_score * 0.4)) : urgency);
     return {
       niche: text(row.niche),
       platform: text(row.platform),
       label: `${text(row.niche)} × ${text(row.platform)}`,
       action: globalAction,
       urgency_score: urgency,
+      decision_priority_score: decisionPriorityScore,
       gap_status: gapStatus,
-      decision_grade: decisionGrade,
+      decision_grade: effectiveDecisionGrade,
       generation_mode: text(decision.generation_mode || "research_only"),
+      policy_mode: policyMode,
+      policy_reason: text(policy.policy_reason),
       ready_for_generation: effectiveReadyForGeneration,
       outcome_status: outcomeStatus,
       evidence_band: evidenceBand,
@@ -165,6 +229,7 @@ export function buildReelsBrainSegmentPriorityQueue(input: {
       stability_score: num(stability.stability_score),
       gap_score: num(row.gap_score),
       trust_score: num(decision.trust_score),
+      recommended_upgrade: upgrade,
       readiness_blocked: readinessSoftBlocked,
       readiness_total_backlog: num(readiness?.total_backlog),
       readiness_direct_rate: num(readiness?.direct_rate),
@@ -190,8 +255,10 @@ export function buildReelsBrainSegmentPriorityQueue(input: {
       },
     };
   }).sort((a, b) =>
-    b.urgency_score - a.urgency_score
+    b.decision_priority_score - a.decision_priority_score
+    || b.urgency_score - a.urgency_score
     || Number(b.ready_for_generation) - Number(a.ready_for_generation)
+    || num(b.recommended_upgrade.projected_trust_gain_score) - num(a.recommended_upgrade.projected_trust_gain_score)
     || b.gap_score - a.gap_score
     || b.trust_score - a.trust_score
     || a.niche.localeCompare(b.niche)

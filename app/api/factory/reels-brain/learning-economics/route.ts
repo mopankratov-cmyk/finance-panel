@@ -2861,13 +2861,6 @@ export async function GET(req: NextRequest) {
       platforms: ["tiktok", "instagram", "youtube"],
       limit: compactMode ? 6 : 10,
     });
-    const segmentPriorityQueue = buildReelsBrainSegmentPriorityQueue({
-      segmentPlan: {
-        focus_segments: segmentGapPlan.focus_segments,
-      },
-      segmentDecisionDeck,
-      limit: compactMode ? 6 : 10,
-    });
     const segmentGenerationPacks = buildReelsBrainSegmentGenerationPacks({
       segmentDecisionDeck,
       limit: compactMode ? 6 : 10,
@@ -2932,6 +2925,14 @@ export async function GET(req: NextRequest) {
     });
     const generationPolicy = buildReelsBrainGenerationPolicy({
       segmentSolutionMatrix,
+    });
+    const segmentPriorityQueue = buildReelsBrainSegmentPriorityQueue({
+      segmentPlan: {
+        focus_segments: segmentGapPlan.focus_segments,
+      },
+      segmentDecisionDeck,
+      generationPolicy,
+      limit: compactMode ? 6 : 10,
     });
     const portfolioReadiness = buildReelsBrainPortfolioReadiness({
       segmentStabilityAudit,

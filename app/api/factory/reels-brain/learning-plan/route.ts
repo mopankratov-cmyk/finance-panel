@@ -128,6 +128,7 @@ export async function GET(req: NextRequest) {
       segmentReadinessWatchlist: {
         items: Array.isArray(progressBody.segment_watchlist) ? progressBody.segment_watchlist : [],
       },
+      generationPolicy: learning.generation_policy || null,
       limit: 8,
     });
     const prioritySegment = ((segmentPriorityQueue.items || [])[0] || null) as JsonRecord | null;
