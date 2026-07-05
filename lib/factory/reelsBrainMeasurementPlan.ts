@@ -69,6 +69,18 @@ function exactSegmentStatusRank(value: unknown) {
   return 1;
 }
 
+function recommendedUpgrade(row: JsonRecord | null | undefined) {
+  if (!row) return null;
+  return {
+    unlocked_output: text(row.unlocked_output),
+    projected_production_state: text(row.projected_production_state),
+    projected_trust_gain_score: num(row.projected_trust_gain_score),
+    projected_trust_gain_band: text(row.projected_trust_gain_band),
+    recommended_loop: text(row.recommended_loop),
+    unlocked_next_step: text(row.unlocked_next_step),
+  };
+}
+
 export function buildReelsBrainMeasurementPlan(input: {
   outcomeMemory?: {
     pattern_memory?: {
@@ -109,6 +121,13 @@ export function buildReelsBrainMeasurementPlan(input: {
       const policy = policyBySegment.get(`${niche}__${platform}`) || {};
       const brief = exactRow?.creative_brief && typeof exactRow.creative_brief === "object" ? exactRow.creative_brief as JsonRecord : {};
       const decision = exactRow?.content_decision && typeof exactRow.content_decision === "object" ? exactRow.content_decision as JsonRecord : {};
+      const upgrade = recommendedUpgrade(
+        (exactRow?.recommended_upgrade && typeof exactRow.recommended_upgrade === "object"
+          ? exactRow.recommended_upgrade
+          : exactRow?.upgrade_forecast && typeof exactRow.upgrade_forecast === "object"
+            ? exactRow.upgrade_forecast
+            : null) as JsonRecord | null,
+      );
       const status = text(segment.status, "forming_exact_segment");
       const transferSupport = records(segment.transfer_support).slice(0, 2).map((row) => text(row.label)).filter(Boolean);
       return {
@@ -137,9 +156,10 @@ export function buildReelsBrainMeasurementPlan(input: {
             ? `Снять 1-3 exact публикации и сравнить с transfer-сигналом: ${transferSupport.join(" / ")}.`
             : "Снять 1-3 exact публикации и снять первые market сигналы."),
         },
+        recommended_upgrade: upgrade,
         metrics_to_capture: ["views", "watch_rate", "completion_rate", "ctr", "saves", "marketplace_orders"],
         action: `Сделать exact-proof run для ${niche} × ${platform}`,
-        reason: `${status} · urgency ${num(segment.urgency_score)} · policy ${text(policy.policy_mode, text(segment.policy_mode, "research_only"))}`,
+        reason: `${status} · urgency ${num(segment.urgency_score)} · policy ${text(policy.policy_mode, text(segment.policy_mode, "research_only"))}${upgrade?.unlocked_output ? ` · upgrade ${upgrade.unlocked_output}` : ""}`,
         endpoints: {
           creative_solution: `/api/factory/reels-brain/creative-solution?niche=${encodeURIComponent(niche)}&platform=${encodeURIComponent(platform)}`,
           feedback_writeback: "/api/factory/reels-brain/feedback",
@@ -156,6 +176,13 @@ export function buildReelsBrainMeasurementPlan(input: {
       const policy = candidate ? (policyBySegment.get(`${text(candidate.niche)}__${text(candidate.platform)}`) || {}) : {};
       const brief = candidate?.creative_brief && typeof candidate.creative_brief === "object" ? candidate.creative_brief as JsonRecord : {};
       const decision = candidate?.content_decision && typeof candidate.content_decision === "object" ? candidate.content_decision as JsonRecord : {};
+      const upgrade = recommendedUpgrade(
+        (candidate?.recommended_upgrade && typeof candidate.recommended_upgrade === "object"
+          ? candidate.recommended_upgrade
+          : candidate?.upgrade_forecast && typeof candidate.upgrade_forecast === "object"
+            ? candidate.upgrade_forecast
+            : null) as JsonRecord | null,
+      );
       const niche = text(candidate?.niche) || text(list(pattern.niches, 1)[0], "mixed");
       const platform = text(candidate?.platform) || text(list(pattern.platforms, 1)[0], "mixed");
       const policyMode = text(policy.policy_mode, "research_only");
@@ -181,9 +208,10 @@ export function buildReelsBrainMeasurementPlan(input: {
           structure: text(brief.structure, text(pattern.structure_type, "structure")),
           next_step: text(decision.next_step, "Собрать 1-3 тестовых публикации и снять market signal."),
         },
+        recommended_upgrade: upgrade,
         metrics_to_capture: ["views", "watch_rate", "completion_rate", "ctr", "saves", "marketplace_orders"],
         action: `Сделать measurement-run для ${text(pattern.title, text(pattern.pattern_id, "pattern"))} на ${niche} × ${platform}`,
-        reason: `${text(pattern.quality_gate, "unknown")} · priority ${num(pattern.decision_priority_score)} · policy ${policyMode}`,
+        reason: `${text(pattern.quality_gate, "unknown")} · priority ${num(pattern.decision_priority_score)} · policy ${policyMode}${upgrade?.unlocked_output ? ` · upgrade ${upgrade.unlocked_output}` : ""}`,
         endpoints: {
           creative_solution: `/api/factory/reels-brain/creative-solution?niche=${encodeURIComponent(niche)}&platform=${encodeURIComponent(platform)}`,
           feedback_writeback: "/api/factory/reels-brain/feedback",

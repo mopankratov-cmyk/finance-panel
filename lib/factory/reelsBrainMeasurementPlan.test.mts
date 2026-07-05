@@ -41,6 +41,14 @@ const plan = buildReelsBrainMeasurementPlan({
         platform: "tiktok",
         production_state: "controlled_test",
         readiness_score: 82,
+        recommended_upgrade: {
+          unlocked_output: "performance_tuned_brief",
+          projected_production_state: "near_publishable",
+          projected_trust_gain_score: 21,
+          projected_trust_gain_band: "medium",
+          recommended_loop: "audio_backfill",
+          unlocked_next_step: "После аудио-добора сегмент станет retention-tuned.",
+        },
         creative_brief: {
           hook: "Не покупай пока не увидишь",
           retention: "proof first",
@@ -75,6 +83,8 @@ assert.equal(plan.items[1]?.niche, "ru_toys");
 assert.equal(plan.items[1]?.platform, "tiktok");
 assert.equal(plan.items[1]?.policy_mode, "control_only");
 assert.equal(plan.items[1]?.publish_brief.hook, "Не покупай пока не увидишь");
+assert.equal(plan.items[1]?.recommended_upgrade?.unlocked_output, "performance_tuned_brief");
+assert.match(plan.items[1]?.reason || "", /upgrade performance_tuned_brief/);
 assert.match(plan.items[1]?.action || "", /measurement-run/);
 assert.equal(plan.items[1]?.endpoints.feedback_writeback, "/api/factory/reels-brain/feedback");
 assert.equal(plan.exact_gap_candidates, 1);

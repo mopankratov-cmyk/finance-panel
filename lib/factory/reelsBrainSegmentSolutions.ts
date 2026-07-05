@@ -26,6 +26,18 @@ function productionState(lane: string, evidenceBand: string) {
   return "research_only";
 }
 
+function upgradeForecast(row: JsonRecord | null | undefined) {
+  if (!row) return null;
+  return {
+    unlocked_output: text(row.unlocked_output),
+    projected_production_state: text(row.projected_production_state),
+    projected_trust_gain_score: num(row.projected_trust_gain_score),
+    projected_trust_gain_band: text(row.projected_trust_gain_band),
+    recommended_loop: text(row.recommended_loop),
+    unlocked_next_step: text(row.unlocked_next_step),
+  };
+}
+
 export function buildReelsBrainSegmentSolutions(input: {
   decisionSnapshot?: {
     summary?: JsonRecord | null;
@@ -61,6 +73,9 @@ export function buildReelsBrainSegmentSolutions(input: {
       const outcomePosts = num(trustRow.outcome_posts);
       const outcomeWinners = num(trustRow.outcome_winners);
       const outcomeLosers = num(trustRow.outcome_losers);
+      const recommendedUpgrade = upgradeForecast((row.upgrade_forecast && typeof row.upgrade_forecast === "object"
+        ? row.upgrade_forecast
+        : null) as JsonRecord | null);
       const production = proofQuality === "exact_segment"
         ? productionState(lane, evidenceBand)
         : lane === "ship" || lane === "validate" || evidenceBand === "forming"
@@ -110,6 +125,7 @@ export function buildReelsBrainSegmentSolutions(input: {
           guardrails: list(contentSolution.guardrails, 5),
           execution_note: text(contentSolution.execution_note),
           next_step: text(row.next_step),
+          recommended_upgrade: recommendedUpgrade,
         },
         trust_summary: {
           band: trust,
@@ -130,6 +146,7 @@ export function buildReelsBrainSegmentSolutions(input: {
           targets: (audit.targets && typeof audit.targets === "object" ? audit.targets : null) as JsonRecord | null,
         },
         trust_why: trustWhy.length ? trustWhy : ["Нужен следующий цикл сигнала по сегменту."],
+        recommended_upgrade: recommendedUpgrade,
         stability_audit: stability,
       };
     })

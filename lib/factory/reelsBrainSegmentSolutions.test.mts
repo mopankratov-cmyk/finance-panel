@@ -51,6 +51,14 @@ test("buildReelsBrainSegmentSolutions maps decision snapshot into operator-ready
             guardrails: ["no direct copy"],
             execution_note: "ship it",
           },
+          upgrade_forecast: {
+            unlocked_output: "publishable_visual_brief",
+            projected_production_state: "publishable_exact",
+            projected_trust_gain_score: 26,
+            projected_trust_gain_band: "high",
+            recommended_loop: "media_backfill",
+            unlocked_next_step: "После закрытия visual-gap сегмент станет publishable exact.",
+          },
           next_step: "Снять 3 вариации",
           audit: {
             verdict: "ship",
@@ -94,6 +102,8 @@ test("buildReelsBrainSegmentSolutions maps decision snapshot into operator-ready
   assert.equal(result.items[0]?.trust_summary.proof_quality, "exact_segment");
   assert.equal(result.items[0]?.trust_summary.outcome_status, "proven");
   assert.equal(result.items[0]?.trust_summary.outcome_winners, 3);
+  assert.equal(result.items[0]?.recommended_upgrade?.unlocked_output, "publishable_visual_brief");
+  assert.equal(result.items[0]?.content_decision.recommended_upgrade?.projected_trust_gain_score, 26);
   assert.deepEqual(result.items[0]?.creative_brief.second_by_second, ["0-2 hook", "2-5 reveal"]);
   assert.equal(result.items[1]?.production_state, "research_only");
   assert.equal(result.items[1]?.trust_summary.proof_quality, "traced_transfer_only");
