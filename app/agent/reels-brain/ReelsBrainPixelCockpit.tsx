@@ -843,6 +843,8 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
       controlled: num(segmentSolutionMatrix.summary?.controlled_test),
       research: num(segmentSolutionMatrix.summary?.research_only),
       highTrust: num(segmentSolutionMatrix.summary?.high_trust_segments),
+      upgradeGroups: num(segmentSolutionMatrix.summary?.groups_with_upgrade_forecast),
+      avgProjectedTrustGain: num(segmentSolutionMatrix.summary?.avg_projected_trust_gain),
     };
     const generationPolicyNicheCards = ((generationPolicy.by_niche || []) as JsonRecord[]).slice(0, 3);
     const generationPolicyPlatformCards = ((generationPolicy.by_platform || []) as JsonRecord[]).slice(0, 3);
@@ -2482,6 +2484,7 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
                     <p>ready {compact(row.ready_now)} · control {compact(row.controlled_test)} · research {compact(row.research_only)}</p>
                     <p>platforms: {((row.coverage_labels || []) as string[]).join(" · ") || "none"}</p>
                     <p>next gap: {row.next_gap?.label || row.next_gap?.platform || "gap closed"}</p>
+                    <p>upgrade: {row.next_upgrade?.unlocked_output || "no immediate uplift"} · trust +{compact(row.next_upgrade?.projected_trust_gain_score || 0)}</p>
                   </div>
                 )) : (
                   <div className="rb-pattern">
@@ -2513,6 +2516,7 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
                     <p>ready {compact(row.ready_now)} · high trust {compact(row.high_trust)}</p>
                     <p>niches: {((row.coverage_labels || []) as string[]).map((value) => NICHE_LABELS[value] || value).join(" · ") || "none"}</p>
                     <p>next gap: {row.next_gap?.label || row.next_gap?.niche || "gap closed"}</p>
+                    <p>upgrade: {row.next_upgrade?.unlocked_output || "no immediate uplift"} · trust +{compact(row.next_upgrade?.projected_trust_gain_score || 0)}</p>
                   </div>
                 )) : (
                   <div className="rb-pattern">
@@ -2529,6 +2533,11 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
                 <div className="rb-brief-block"><b>Total</b><p>{compact(vm.segmentSolutionSummary.total)}</p></div>
                 <div className="rb-brief-block"><b>Controlled</b><p>{compact(vm.segmentSolutionSummary.controlled)}</p></div>
                 <div className="rb-brief-block"><b>Research</b><p>{compact(vm.segmentSolutionSummary.research)}</p></div>
+              </div>
+              <div className="rb-three" style={{ marginTop: 12 }}>
+                <div className="rb-brief-block"><b>Upgrade groups</b><p>{compact(vm.segmentSolutionSummary.upgradeGroups)}</p></div>
+                <div className="rb-brief-block"><b>Avg trust uplift</b><p>+{compact(vm.segmentSolutionSummary.avgProjectedTrustGain)}</p></div>
+                <div className="rb-brief-block"><b>Ready now</b><p>{compact(vm.segmentSolutionSummary.readyNow)}</p></div>
               </div>
               <div className="rb-brief-block" style={{ marginTop: 12 }}>
                 <b>Зачем нужен matrix</b>

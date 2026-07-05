@@ -63,10 +63,34 @@ function dedupeStrings(values: string[], limit = 5) {
   return Array.from(new Set(values.filter(Boolean))).slice(0, limit);
 }
 
-function summarizeGroup(groupKey: string, items: JsonRecord[], dimension: "niche" | "platform") {
+function upgradeForecast(row: JsonRecord | null | undefined) {
+  if (!row) return null;
+  return {
+    label: text(row.label),
+    closure_stage: text(row.closure_stage),
+    recommended_loop: text(row.recommended_loop),
+    unlocked_output: text(row.unlocked_output),
+    projected_production_state: text(row.projected_production_state),
+    projected_trust_gain_score: num(row.projected_trust_gain_score),
+    projected_trust_gain_band: text(row.projected_trust_gain_band),
+    primary_missing_family: text(row.primary_missing_family),
+    missing_fields: list(row.missing_fields, 4),
+    next_step: text(row.next_step),
+    unlocked_next_step: text(row.unlocked_next_step),
+  };
+}
+
+function summarizeGroup(groupKey: string, items: JsonRecord[], dimension: "niche" | "platform", gapCandidates: JsonRecord[]) {
   const sorted = [...items].sort(itemSort);
   const primary = sorted[0] || null;
   const otherDimension = dimension === "niche" ? "platform" : "niche";
+  const matchingGapCandidates = gapCandidates
+    .filter((row) => text(row[dimension]) === groupKey)
+    .sort((a, b) =>
+      num(b.estimated_uplift_score) - num(a.estimated_uplift_score)
+      || num(b.projected_trust_gain_score) - num(a.projected_trust_gain_score)
+      || text(a.label).localeCompare(text(b.label)),
+    );
   const coverage = dedupeStrings(sorted.map((row) => text(row[otherDimension])), 20);
   const blockers = dedupeStrings(
     sorted.flatMap((row) => list((row.trust_summary as JsonRecord | null)?.blockers, 10)),
@@ -84,6 +108,9 @@ function summarizeGroup(groupKey: string, items: JsonRecord[], dimension: "niche
   const avgReadiness = sorted.length ? Math.round(sorted.reduce((sum, row) => sum + num(row.readiness_score), 0) / sorted.length) : 0;
   const avgStability = sorted.length
     ? Math.round(sorted.reduce((sum, row) => sum + num((row.trust_summary as JsonRecord | null)?.stability_score), 0) / sorted.length)
+    : 0;
+  const avgProjectedTrustGain = matchingGapCandidates.length
+    ? Math.round(matchingGapCandidates.reduce((sum, row) => sum + num(row.projected_trust_gain_score), 0) / matchingGapCandidates.length)
     : 0;
   const nextGap = [...sorted]
     .sort((a, b) =>
@@ -106,9 +133,12 @@ function summarizeGroup(groupKey: string, items: JsonRecord[], dimension: "niche
     research_only: research,
     high_trust: highTrust,
     publishable_exact_segments: publishableExactCount,
+    upgrade_candidates: matchingGapCandidates.length,
+    avg_projected_trust_gain: avgProjectedTrustGain,
     total_segments: sorted.length,
     coverage_labels: coverage,
     primary,
+    next_upgrade: upgradeForecast(matchingGapCandidates[0] || null),
     top_hooks: hooks,
     blockers,
     next_gap: nextGap ? {
@@ -128,17 +158,31 @@ export function buildReelsBrainSegmentSolutionMatrix(input: {
     items?: JsonRecord[];
     summary?: JsonRecord | null;
   } | null;
+  briefGapProgress?: {
+    top_candidates?: JsonRecord[];
+    summary?: JsonRecord | null;
+  } | null;
   niches?: string[];
   platforms?: string[];
   limit?: number;
 }) {
-  const items = records(input.segmentSolutions?.items)
+  const gapCandidates = records(input.briefGapProgress?.top_candidates);
+  const items: JsonRecord[] = records(input.segmentSolutions?.items)
     .filter((row) => text(row.niche) && text(row.platform))
+    .map((row) => ({
+      ...row,
+      upgrade_forecast: upgradeForecast(
+        gapCandidates.find((candidate) =>
+          text(candidate.niche) === text(row.niche)
+          && text(candidate.platform) === text(row.platform),
+        ) || null,
+      ),
+    }))
     .sort(itemSort);
   const niches = Array.from(new Set((input.niches || items.map((row) => text(row.niche))).map((row) => text(row)).filter(Boolean))).sort();
   const platforms = Array.from(new Set((input.platforms || items.map((row) => text(row.platform))).map((row) => text(row)).filter(Boolean))).sort();
   const byNiche = niches
-    .map((niche) => summarizeGroup(niche, items.filter((row) => text(row.niche) === niche), "niche"))
+    .map((niche) => summarizeGroup(niche, items.filter((row) => text(row.niche) === niche), "niche", gapCandidates))
     .filter((row) => row.total_segments > 0)
     .sort((a, b) =>
       Number(Boolean(b.publishable_exact)) - Number(Boolean(a.publishable_exact))
@@ -148,7 +192,7 @@ export function buildReelsBrainSegmentSolutionMatrix(input: {
       || text(a.niche).localeCompare(text(b.niche)),
     );
   const byPlatform = platforms
-    .map((platform) => summarizeGroup(platform, items.filter((row) => text(row.platform) === platform), "platform"))
+    .map((platform) => summarizeGroup(platform, items.filter((row) => text(row.platform) === platform), "platform", gapCandidates))
     .filter((row) => row.total_segments > 0)
     .sort((a, b) =>
       Number(Boolean(b.publishable_exact)) - Number(Boolean(a.publishable_exact))
@@ -166,6 +210,10 @@ export function buildReelsBrainSegmentSolutionMatrix(input: {
       research_only: items.filter((row) => text(row.production_state) === "research_only").length,
       high_trust_segments: items.filter((row) => text(row.trust_band) === "high").length,
       publishable_exact_segments: items.filter((row) => publishableExact(row)).length,
+      groups_with_upgrade_forecast: byNiche.filter((row) => Boolean(row.next_upgrade)).length,
+      avg_projected_trust_gain: gapCandidates.length
+        ? Math.round(gapCandidates.reduce((sum, row) => sum + num(row.projected_trust_gain_score), 0) / gapCandidates.length)
+        : 0,
       niches: byNiche.length,
       platforms: byPlatform.length,
       source_summary: input.segmentSolutions?.summary || null,

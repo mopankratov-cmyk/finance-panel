@@ -2906,6 +2906,7 @@ export async function GET(req: NextRequest) {
     });
     const segmentSolutionMatrix = buildReelsBrainSegmentSolutionMatrix({
       segmentSolutions,
+      briefGapProgress,
       niches: nicheSummaries.map((row) => row.niche),
       platforms: ["tiktok", "instagram", "youtube"],
       limit: compactMode ? 6 : 10,

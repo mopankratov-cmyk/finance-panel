@@ -41,6 +41,26 @@ test("buildReelsBrainSegmentSolutionMatrix groups solutions by niche and platfor
         },
       ],
     },
+    briefGapProgress: {
+      top_candidates: [
+        {
+          niche: "ru_toys",
+          platform: "youtube",
+          label: "ru_toys × youtube",
+          estimated_uplift_score: 81,
+          closure_stage: "close_to_publishable",
+          recommended_loop: "audio_backfill",
+          unlocked_output: "performance_tuned_brief",
+          projected_production_state: "near_publishable",
+          projected_trust_gain_score: 24,
+          projected_trust_gain_band: "medium",
+          primary_missing_family: "audio",
+          missing_fields: ["audio strategy"],
+          next_step: "Close audio layer",
+          unlocked_next_step: "After audio close, this segment becomes retention-tuned.",
+        },
+      ],
+    },
     niches: ["ru_toys", "ru_cosmetics"],
     platforms: ["instagram", "youtube", "tiktok"],
   });
@@ -53,6 +73,11 @@ test("buildReelsBrainSegmentSolutionMatrix groups solutions by niche and platfor
   assert.equal(result.by_platform[0]?.platform, "instagram");
   assert.equal(result.by_platform[0]?.primary?.trust_band, "high");
   assert.equal(result.by_niche[1]?.next_gap?.production_state, "research_only");
+  assert.equal(result.summary.groups_with_upgrade_forecast, 1);
+  assert.equal(result.summary.avg_projected_trust_gain, 24);
+  assert.equal(result.by_niche[0]?.next_upgrade?.unlocked_output, "performance_tuned_brief");
+  assert.equal(result.by_niche[0]?.next_upgrade?.projected_trust_gain_score, 24);
+  assert.equal((result.by_segment[1]?.upgrade_forecast as Record<string, unknown> | undefined)?.recommended_loop, "audio_backfill");
   assert.equal(result.summary.publishable_exact_segments, 1);
   assert.equal(result.by_niche[0]?.publishable_exact, true);
   assert.equal(result.by_niche[0]?.publishable_exact_segments, 1);
@@ -84,6 +109,26 @@ test("buildReelsBrainSegmentSolutionMatrix prefers publishable exact primary ins
         },
       ],
     },
+    briefGapProgress: {
+      top_candidates: [
+        {
+          niche: "ru_toys",
+          platform: "youtube",
+          label: "ru_toys × youtube",
+          estimated_uplift_score: 77,
+          closure_stage: "close_to_publishable",
+          recommended_loop: "analyze_and_compact",
+          unlocked_output: "generator_ready_brief",
+          projected_production_state: "near_publishable",
+          projected_trust_gain_score: 21,
+          projected_trust_gain_band: "medium",
+          primary_missing_family: "structure",
+          missing_fields: ["structure"],
+          next_step: "Close structure",
+          unlocked_next_step: "After structure close, segment becomes generator-ready.",
+        },
+      ],
+    },
     niches: ["ru_toys"],
     platforms: ["instagram", "youtube"],
   });
@@ -91,4 +136,5 @@ test("buildReelsBrainSegmentSolutionMatrix prefers publishable exact primary ins
   assert.equal(result.by_niche[0]?.primary?.label, "ru_toys × instagram");
   assert.equal(result.by_niche[0]?.publishable_exact, true);
   assert.equal(result.summary.publishable_exact_segments, 1);
+  assert.equal((result.by_niche[0]?.next_upgrade as Record<string, unknown> | undefined)?.label, "ru_toys × youtube");
 });
