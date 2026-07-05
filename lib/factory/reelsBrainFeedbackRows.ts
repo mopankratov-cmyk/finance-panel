@@ -20,6 +20,7 @@ export type ReelsBrainFeedbackMetricRow = {
   publication_id?: string | null;
   external_post_id?: string | null;
   source?: string | null;
+  raw_metrics?: Record<string, unknown> | null;
   niche?: string | null;
   article?: string | null;
   target_platform?: string | null;
@@ -28,6 +29,9 @@ export type ReelsBrainFeedbackMetricRow = {
   hook_type?: string | null;
   structure_type?: string | null;
   pattern_signature?: string | null;
+  measurement_id?: string | null;
+  validation_task_id?: string | null;
+  proof_scope?: string | null;
 };
 
 function text(value: unknown) {
@@ -66,7 +70,7 @@ export async function loadReelsBrainFeedbackRows(
   try {
     const { data, error } = await db
       .from("post_metrics")
-      .select("recipe_id,platform,views,watch_rate,hook_rate,hold_rate,completion_rate,ctr_card,saves,marketplace_orders,revenue,posted_at,pulled_at,publication_id,external_post_id,source")
+      .select("recipe_id,platform,views,watch_rate,hook_rate,hold_rate,completion_rate,ctr_card,saves,marketplace_orders,revenue,posted_at,pulled_at,publication_id,external_post_id,source,raw_metrics")
       .limit(limit);
     if (error) return { rows: [], warning: `post_metrics: ${error.message}` };
     const rows = ((data || []) as ReelsBrainFeedbackMetricRow[]);
@@ -111,6 +115,7 @@ export async function loadReelsBrainFeedbackRows(
         text(recipe?.format_detected) || runPlanStructure(runPlan) || text(recipe?.mode),
         text(recipe?.article),
       );
+      const rawMetrics = (row.raw_metrics && typeof row.raw_metrics === "object" ? row.raw_metrics : {}) as Record<string, unknown>;
       return {
         ...row,
         niche: niche || null,
@@ -121,6 +126,9 @@ export async function loadReelsBrainFeedbackRows(
         hook_type: hookType || null,
         structure_type: structureType || null,
         pattern_signature: hookType && structureType ? `${hookType}:${structureType}` : null,
+        measurement_id: text(rawMetrics.measurement_id) || null,
+        validation_task_id: text(rawMetrics.validation_task_id) || null,
+        proof_scope: text(rawMetrics.proof_scope) || null,
       };
     });
 

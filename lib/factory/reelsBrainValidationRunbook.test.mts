@@ -48,6 +48,8 @@ assert.equal(runbook.exact_gap_candidates, 2);
 assert.equal(runbook.items[0]?.proof_scope, "exact_segment");
 assert.equal(runbook.items[0]?.creative_solution_endpoint, "/api/factory/reels-brain/creative-solution?niche=ru_toys&platform=instagram");
 assert.equal(runbook.items[0]?.feedback_payload_template.platform, "instagram");
+assert.equal(runbook.items[0]?.feedback_payload_template.measurement_id, "exact__ru_toys__instagram");
+assert.equal(runbook.items[0]?.feedback_payload_template.validation_task_id, "exact__ru_toys__instagram");
 assert.match(runbook.items[0]?.publish_checklist[0] || "", /exact segment/i);
 
 console.log("reelsBrainValidationRunbook: passed");

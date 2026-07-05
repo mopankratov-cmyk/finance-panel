@@ -60,6 +60,8 @@ export function buildReelsBrainValidationRunbook(input: {
         "Если есть publication_id или external_post_id, вернуть их в writeback.",
       ],
       feedback_payload_template: {
+        measurement_id: text(row.task_id),
+        validation_task_id: text(row.task_id),
         recipe_id: null,
         platform: text(row.platform, "mixed"),
         views: null,

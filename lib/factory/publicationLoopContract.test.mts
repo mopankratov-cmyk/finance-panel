@@ -20,6 +20,13 @@ ok(/import \{ recordFactoryPublication \} from "@\/lib\/factory\/publications"/.
 ok(/let publicationId: string \| null/.test(postMetrics), "post-metrics tracks publication id");
 ok(/status: "published"/.test(postMetrics), "post-metrics marks metrics-bearing publications as published");
 ok(/publication_id: publicationId/.test(postMetrics), "post-metrics writes publication_id");
+ok(/const measurementId = String\(b\.measurement_id \|\| ""\)\.trim\(\)/.test(postMetrics), "post-metrics reads measurement id from payload");
+ok(/const validationTaskId = String\(b\.validation_task_id \|\| b\.task_id \|\| ""\)\.trim\(\)/.test(postMetrics), "post-metrics reads validation task id from payload");
+ok(/const proofScope = String\(b\.proof_scope \|\| ""\)\.trim\(\)/.test(postMetrics), "post-metrics reads proof scope from payload");
+ok(/measurement_id: measurementId/.test(postMetrics), "post-metrics forwards measurement id into publication metadata");
+ok(/validation_task_id: validationTaskId/.test(postMetrics), "post-metrics forwards validation task id into publication metadata");
+ok(/proof_scope: proofScope/.test(postMetrics), "post-metrics forwards proof scope into publication metadata");
+ok(/raw_metrics:\s*\{[\s\S]*measurement_id: measurementId[\s\S]*validation_task_id: validationTaskId[\s\S]*proof_scope: proofScope[\s\S]*\}/.test(postMetrics), "post-metrics stores validation traceability inside raw_metrics");
 ok(/return NextResponse\.json\(\{ ok: true[\s\S]*publication_id: publicationId/.test(postMetrics), "post-metrics returns publication id");
 
 console.log("publicationLoopContract: passed");

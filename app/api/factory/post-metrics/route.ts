@@ -49,6 +49,9 @@ export async function POST(req: NextRequest) {
     const outputUrl = String(b.source_url || b.url || recipeRow?.output_url || "").trim();
     const externalPostId = String(b.external_post_id || b.post_id || "").trim();
     const publishedUrl = String(b.published_url || b.post_url || "").trim();
+    const measurementId = String(b.measurement_id || "").trim();
+    const validationTaskId = String(b.validation_task_id || b.task_id || "").trim();
+    const proofScope = String(b.proof_scope || "").trim();
 
     if (!publicationId) {
       const publication = await recordFactoryPublication(db, {
@@ -64,6 +67,9 @@ export async function POST(req: NextRequest) {
           watch_rate: rateOrNull(b.watch_rate),
           ctr: rateOrNull(b.ctr),
           saves: countOrNull(b.saves),
+          ...(measurementId ? { measurement_id: measurementId } : {}),
+          ...(validationTaskId ? { validation_task_id: validationTaskId } : {}),
+          ...(proofScope ? { proof_scope: proofScope } : {}),
         },
       });
       publicationId = publication.id;
@@ -89,7 +95,12 @@ export async function POST(req: NextRequest) {
         revenue: b.revenue == null || b.revenue === "" ? null : Math.max(0, Number(b.revenue) || 0),
         pulled_at: new Date().toISOString(),
         source: String(b.source || "manual").slice(0, 40),
-        raw_metrics: b.raw_metrics && typeof b.raw_metrics === "object" ? b.raw_metrics : {},
+        raw_metrics: {
+          ...(b.raw_metrics && typeof b.raw_metrics === "object" ? b.raw_metrics as Record<string, unknown> : {}),
+          ...(measurementId ? { measurement_id: measurementId } : {}),
+          ...(validationTaskId ? { validation_task_id: validationTaskId } : {}),
+          ...(proofScope ? { proof_scope: proofScope } : {}),
+        },
       });
       if (error) {
         warnings.push("post_metrics insert: " + error.message.slice(0, 140));

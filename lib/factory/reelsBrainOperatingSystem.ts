@@ -15,6 +15,7 @@ export type ReelsBrainMetricRow = {
   publication_id?: string | null;
   external_post_id?: string | null;
   source?: string | null;
+  raw_metrics?: Record<string, unknown> | null;
   niche?: string | null;
   article?: string | null;
   target_platform?: string | null;
@@ -23,6 +24,9 @@ export type ReelsBrainMetricRow = {
   hook_type?: string | null;
   structure_type?: string | null;
   pattern_signature?: string | null;
+  measurement_id?: string | null;
+  validation_task_id?: string | null;
+  proof_scope?: string | null;
 };
 
 type PatternLike = {
@@ -63,6 +67,13 @@ function normalizePlatform(value: unknown): string {
   if (raw.includes("you") || raw.includes("short")) return "youtube";
   if (raw.includes("tik")) return "tiktok";
   return raw || "unknown";
+}
+
+function normalizeProofScope(value: unknown): string {
+  const raw = String(value || "").trim().toLowerCase();
+  if (raw === "exact_segment") return "exact_segment";
+  if (raw === "pattern_feedback") return "pattern_feedback";
+  return raw || "unscoped";
 }
 
 function productTypeFromText(value: string): string {
@@ -234,6 +245,84 @@ export function buildReelsBrainFeedbackLoop(metrics: ReelsBrainMetricRow[]) {
       evidence: `${row.winners} winners / ${row.posts} posts · orders ${row.orders} · revenue ${row.revenue}`,
     }));
 
+  const validationTraceRows = rows.filter((row) =>
+    typeof row.measurement_id === "string"
+    || typeof row.validation_task_id === "string"
+    || typeof row.proof_scope === "string",
+  );
+  const traceByProofScope = Array.from(validationTraceRows.reduce((map, row) => {
+    const proofScope = normalizeProofScope(row.proof_scope);
+    const current = map.get(proofScope) || {
+      proof_scope: proofScope,
+      posts: 0,
+      winners: 0,
+      losers: 0,
+      views: 0,
+      orders: 0,
+      revenue: 0,
+    };
+    current.posts += 1;
+    current.views += row.views;
+    current.orders += row.marketplace_orders;
+    current.revenue += row.revenue;
+    if (winners.includes(row)) current.winners += 1;
+    if (losers.includes(row)) current.losers += 1;
+    map.set(proofScope, current);
+    return map;
+  }, new Map<string, {
+    proof_scope: string;
+    posts: number;
+    winners: number;
+    losers: number;
+    views: number;
+    orders: number;
+    revenue: number;
+  }>()).values()).map((row) => ({
+    proof_scope: row.proof_scope,
+    posts: row.posts,
+    winners: row.winners,
+    losers: row.losers,
+    views: row.views,
+    orders: row.orders,
+    revenue: Math.round(row.revenue * 100) / 100,
+    trust_ratio: row.posts > 0 ? Math.round((row.winners / row.posts) * 1000) / 1000 : 0,
+  })).sort((a, b) =>
+    b.posts - a.posts
+    || b.winners - a.winners
+    || a.proof_scope.localeCompare(b.proof_scope),
+  );
+  const traceTopTasks = Array.from(validationTraceRows.reduce((map, row) => {
+    const taskId = typeof row.validation_task_id === "string" && row.validation_task_id.trim()
+      ? row.validation_task_id.trim()
+      : typeof row.measurement_id === "string"
+        ? row.measurement_id.trim()
+        : "";
+    if (!taskId) return map;
+    const current = map.get(taskId) || {
+      task_id: taskId,
+      proof_scope: normalizeProofScope(row.proof_scope),
+      posts: 0,
+      winners: 0,
+      views: 0,
+    };
+    current.posts += 1;
+    current.views += row.views;
+    if (winners.includes(row)) current.winners += 1;
+    map.set(taskId, current);
+    return map;
+  }, new Map<string, {
+    task_id: string;
+    proof_scope: string;
+    posts: number;
+    winners: number;
+    views: number;
+  }>()).values()).sort((a, b) =>
+    b.posts - a.posts
+    || b.winners - a.winners
+    || b.views - a.views
+    || a.task_id.localeCompare(b.task_id),
+  ).slice(0, 8);
+
   return {
     status: rows.length ? "live" : "ready_for_metrics",
     total_posts: rows.length,
@@ -252,6 +341,21 @@ export function buildReelsBrainFeedbackLoop(metrics: ReelsBrainMetricRow[]) {
       promising_segments: bySegment.filter((row) => row.status === "promising").slice(0, 5),
       weak_segments: bySegment.filter((row) => row.status === "weak").slice(0, 5),
       trust_update_queue: trustUpdateQueue,
+    },
+    validation_trace: {
+      ready: validationTraceRows.length > 0,
+      traced_posts: validationTraceRows.length,
+      traced_coverage_rate: rows.length > 0 ? Math.round((validationTraceRows.length / rows.length) * 100) : 0,
+      exact_segment_posts: validationTraceRows.filter((row) => normalizeProofScope(row.proof_scope) === "exact_segment").length,
+      pattern_feedback_posts: validationTraceRows.filter((row) => normalizeProofScope(row.proof_scope) === "pattern_feedback").length,
+      unscoped_posts: validationTraceRows.filter((row) => normalizeProofScope(row.proof_scope) === "unscoped").length,
+      by_proof_scope: traceByProofScope,
+      top_tasks: traceTopTasks,
+      next_step: validationTraceRows.length === 0
+        ? "Начать писать measurement_id / validation_task_id в каждый feedback-post, иначе trust не будет доказательным."
+        : traceByProofScope.some((row) => row.proof_scope === "exact_segment") === false
+          ? "Добавить exact-segment публикации, иначе брифы останутся на transfer-доказательстве."
+          : "Сравнивать trust по exact_segment против pattern_feedback и поднимать только доказанные сегменты.",
     },
     outcome_schema: {
       schema_ready: true,
