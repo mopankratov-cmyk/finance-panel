@@ -171,6 +171,7 @@ export function buildReelsBrainNextTick(input: {
     || prioritySegment?.action === "validate_segment_briefs"
     || directPolicyMode === "primary"
     || directPolicyMode === "control_only";
+  const readinessBlockedDecisionSupport = Boolean(prioritySegment?.readiness_blocked);
   const marketBlockedDecisionSupport = directOutcomeStatus === "weak";
   const activePolicySegment = shouldSupportDecisionSegment ? prioritySegment : collectionFocusSegment || prioritySegment;
   const activePolicy = selectPolicyForSegment(input.generationPolicy, activePolicySegment);
@@ -221,7 +222,7 @@ export function buildReelsBrainNextTick(input: {
   }
 
   if (input.totalVideos < input.target) {
-    const shouldClosePortfolioGaps = (!shouldSupportDecisionSegment || marketBlockedDecisionSupport) && portfolioCoverage < 70;
+    const shouldClosePortfolioGaps = (!shouldSupportDecisionSegment || marketBlockedDecisionSupport || readinessBlockedDecisionSupport) && portfolioCoverage < 70;
     const collectionSegment = shouldClosePortfolioGaps ? collectionFocusSegment : prioritySegment;
     const policyReason = text(activePolicy?.policy_reason);
     const policyLine = activePolicy
@@ -230,17 +231,21 @@ export function buildReelsBrainNextTick(input: {
 
     return {
       task: shouldSupportDecisionSegment
-        ? marketBlockedDecisionSupport
+        ? marketBlockedDecisionSupport || readinessBlockedDecisionSupport
           ? "collect_portfolio_gaps"
           : "collect_support_for_decision_segment"
         : shouldClosePortfolioGaps
           ? "collect_portfolio_gaps"
           : "collect_smart_batch",
       label: shouldSupportDecisionSegment
-        ? marketBlockedDecisionSupport
+        ? marketBlockedDecisionSupport || readinessBlockedDecisionSupport
           ? collectionSegment
-            ? `Не усиливать weak сегмент; закрывать дыру ${collectionSegment.label}`
-            : "Не усиливать weak сегмент; закрывать portfolio gaps"
+            ? readinessBlockedDecisionSupport
+              ? `Сегмент ${String(prioritySegment?.label || "")} ещё сырой; закрывать дыру ${collectionSegment.label}`
+              : `Не усиливать weak сегмент; закрывать дыру ${collectionSegment.label}`
+            : readinessBlockedDecisionSupport
+              ? "Сегмент ещё сырой; закрывать portfolio gaps"
+              : "Не усиливать weak сегмент; закрывать portfolio gaps"
           : `Поддержать decision-ready сегмент ${String(prioritySegment?.label || "")}`
         : shouldClosePortfolioGaps
           ? collectionSegment
@@ -250,7 +255,9 @@ export function buildReelsBrainNextTick(input: {
       reason: shouldSupportDecisionSegment
         ? marketBlockedDecisionSupport
           ? `${String(prioritySegment?.label || activePolicy?.label || "")} формально близок к decision-ready, но рынок уже даёт weak outcome; следующий сбор лучше не вливать в него, а закрывать другие gaps.${policyLine}`
-          : `${String(prioritySegment?.label || activePolicy?.label || "")} уже близок к рабочим briefs/hypotheses; следующий сбор лучше направить в этот сегмент.${policyLine}`
+          : readinessBlockedDecisionSupport
+            ? `${String(prioritySegment?.label || activePolicy?.label || "")} силён по trust, но ещё не дозрел по learning-layer (${String(prioritySegment?.readiness_dominant_gap || "readiness")} backlog ${num(prioritySegment?.readiness_total_backlog)}). Сначала закрываем readiness gap и только потом усиливаем segment briefs.${policyLine}`
+            : `${String(prioritySegment?.label || activePolicy?.label || "")} уже близок к рабочим briefs/hypotheses; следующий сбор лучше направить в этот сегмент.${policyLine}`
         : shouldClosePortfolioGaps
           ? collectionSegment
             ? `High-trust coverage матрицы пока ${portfolioCoverage}% (${portfolioVerdict}); следующий сбор направляем в сегмент ${collectionSegment.label}, потому что он ещё не закрыт по доверию.${policyLine}`

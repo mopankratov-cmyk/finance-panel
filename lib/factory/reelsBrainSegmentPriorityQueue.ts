@@ -45,6 +45,22 @@ type SegmentStabilityRow = {
   blockers?: string[];
 };
 
+type SegmentReadinessRow = {
+  niche?: string;
+  platform?: string;
+  total?: number;
+  total_backlog?: number;
+  dominant_gap?: {
+    key?: "media" | "audio" | "transcript" | "analyze" | string;
+    count?: number;
+    label?: string;
+  };
+  direct_rate?: number;
+  audio_rate?: number;
+  transcript_ready_rate?: number;
+  analyzed_rate?: number;
+};
+
 function num(value: unknown) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
@@ -72,6 +88,17 @@ function normalizeDecisionAction(grade: string) {
   return "watch_segment";
 }
 
+function readinessBlocked(row: SegmentReadinessRow | undefined) {
+  if (!row) return false;
+  const dominantGap = text(row.dominant_gap?.key || "");
+  const totalBacklog = num(row.total_backlog);
+  if (totalBacklog <= 0) return false;
+  if (dominantGap === "media") return num(row.direct_rate) < 55;
+  if (dominantGap === "audio") return num(row.audio_rate) < 45;
+  if (dominantGap === "transcript") return num(row.transcript_ready_rate) < 40;
+  return false;
+}
+
 export function buildReelsBrainSegmentPriorityQueue(input: {
   segmentPlan?: {
     focus_segments?: SegmentGapRow[];
@@ -82,33 +109,45 @@ export function buildReelsBrainSegmentPriorityQueue(input: {
   segmentStabilityAudit?: {
     items?: SegmentStabilityRow[];
   };
+  segmentReadinessWatchlist?: {
+    items?: SegmentReadinessRow[];
+  };
   limit?: number;
 }) {
   const decisionMap = new Map((input.segmentDecisionDeck?.items || []).map((row) => [keyOf(row.niche, row.platform), row] as const));
   const stabilityMap = new Map((input.segmentStabilityAudit?.items || []).map((row) => [keyOf(row.niche, row.platform), row] as const));
+  const readinessMap = new Map((input.segmentReadinessWatchlist?.items || []).map((row) => [keyOf(row.niche, row.platform), row] as const));
   const gapRows = input.segmentPlan?.focus_segments || [];
   const priorities = gapRows.map((row) => {
     const decision = decisionMap.get(keyOf(row.niche, row.platform)) || {};
     const stability = stabilityMap.get(keyOf(row.niche, row.platform)) || {};
+    const readiness = readinessMap.get(keyOf(row.niche, row.platform));
     const decisionGrade = text(decision.decision_grade || "research");
     const outcomeStatus = text((decision as { outcome_status?: string }).outcome_status || "no_feedback");
     const gapStatus = text(row.status || "watch");
     const evidenceBand = text(stability.evidence_band || "thin");
     const highTrustSegment = Boolean(stability.high_trust_segment);
     const marketBlocked = outcomeStatus === "weak";
-    const globalAction = decision.ready_for_generation && !marketBlocked
+    const readinessGap = text(readiness?.dominant_gap?.key || "analyze");
+    const readinessGapCount = num(readiness?.dominant_gap?.count);
+    const readinessSoftBlocked = readinessBlocked(readiness);
+    const effectiveReadyForGeneration = Boolean(decision.ready_for_generation) && !marketBlocked && !readinessSoftBlocked;
+    const globalAction = effectiveReadyForGeneration
       ? normalizeDecisionAction(decisionGrade)
       : normalizeGapAction(gapStatus);
     const urgency = Math.round(
-      ((decision.ready_for_generation && !marketBlocked) || highTrustSegment ? 55 : 0)
+      ((effectiveReadyForGeneration) || highTrustSegment ? 55 : 0)
       + Math.min(30, num(decision.trust_score) * 0.22)
       + Math.min(24, num(stability.stability_score) * 0.24)
       + Math.min(35, num(row.gap_score) * 0.35)
+      + Math.min(24, num(readiness?.total_backlog) * 0.45)
       + (gapStatus === "analyze_more" ? 10 : 0)
       + (gapStatus === "grow_corpus" ? 8 : 0)
       + (evidenceBand === "stable" ? 14 : evidenceBand === "forming" ? 6 : 0)
       + (decisionGrade === "ship" ? 18 : decisionGrade === "validate" ? 10 : 0)
+      + (readinessGap === "audio" || readinessGap === "transcript" ? 12 : readinessGap === "media" ? 8 : 0)
       - (marketBlocked ? 36 : 0)
+      - (readinessSoftBlocked && Boolean(decision.ready_for_generation) ? 18 : 0)
     );
     return {
       niche: text(row.niche),
@@ -119,13 +158,21 @@ export function buildReelsBrainSegmentPriorityQueue(input: {
       gap_status: gapStatus,
       decision_grade: decisionGrade,
       generation_mode: text(decision.generation_mode || "research_only"),
-      ready_for_generation: Boolean(decision.ready_for_generation) && !marketBlocked,
+      ready_for_generation: effectiveReadyForGeneration,
       outcome_status: outcomeStatus,
       evidence_band: evidenceBand,
       high_trust_segment: highTrustSegment,
       stability_score: num(stability.stability_score),
       gap_score: num(row.gap_score),
       trust_score: num(decision.trust_score),
+      readiness_blocked: readinessSoftBlocked,
+      readiness_total_backlog: num(readiness?.total_backlog),
+      readiness_direct_rate: num(readiness?.direct_rate),
+      readiness_audio_rate: num(readiness?.audio_rate),
+      readiness_transcript_ready_rate: num(readiness?.transcript_ready_rate),
+      readiness_analyzed_rate: num(readiness?.analyzed_rate),
+      readiness_dominant_gap: readinessGap,
+      readiness_dominant_gap_count: readinessGapCount,
       brief_title: text(decision.brief?.title),
       brief_hook: text(decision.brief?.hook),
       action_title: text(decision.action?.title),
@@ -160,6 +207,7 @@ export function buildReelsBrainSegmentPriorityQueue(input: {
       promote_segment_briefs: priorities.filter((item) => item.action === "promote_segment_briefs").length,
       validate_segment_briefs: priorities.filter((item) => item.action === "validate_segment_briefs").length,
       ready_for_generation: priorities.filter((item) => item.ready_for_generation).length,
+      readiness_blocked: priorities.filter((item) => item.readiness_blocked).length,
       high_trust_segments: priorities.filter((item) => item.high_trust_segment).length,
       stable_segments: priorities.filter((item) => item.evidence_band === "stable").length,
       forming_segments: priorities.filter((item) => item.evidence_band === "forming").length,

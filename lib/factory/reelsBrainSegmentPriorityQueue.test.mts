@@ -84,7 +84,69 @@ function testBuildReelsBrainSegmentPriorityQueueBlendsGenerationAndLearningNeeds
 
 function run() {
   testBuildReelsBrainSegmentPriorityQueueBlendsGenerationAndLearningNeeds();
+  testBuildReelsBrainSegmentPriorityQueueRespectsReadinessBlocks();
   console.log("reelsBrainSegmentPriorityQueue.test: ok");
 }
 
 run();
+
+function testBuildReelsBrainSegmentPriorityQueueRespectsReadinessBlocks() {
+  const result = buildReelsBrainSegmentPriorityQueue({
+    segmentPlan: {
+      focus_segments: [
+        {
+          niche: "ru_toys",
+          platform: "youtube",
+          status: "grow_corpus",
+          gap_score: 56,
+          gap: { total_videos: 84, analyzed_videos: 21, stable_patterns: 1 },
+        },
+      ],
+    },
+    segmentDecisionDeck: {
+      items: [
+        {
+          niche: "ru_toys",
+          platform: "youtube",
+          decision_grade: "ship",
+          generation_mode: "decision_ready",
+          ready_for_generation: true,
+          trust_score: 88,
+        },
+      ],
+    },
+    segmentStabilityAudit: {
+      items: [
+        {
+          niche: "ru_toys",
+          platform: "youtube",
+          evidence_band: "stable",
+          high_trust_segment: true,
+          stability_score: 90,
+        },
+      ],
+    },
+    segmentReadinessWatchlist: {
+      items: [
+        {
+          niche: "ru_toys",
+          platform: "youtube",
+          total: 84,
+          total_backlog: 33,
+          dominant_gap: { key: "audio", count: 18, label: "audio" },
+          direct_rate: 77,
+          audio_rate: 22,
+          transcript_ready_rate: 15,
+          analyzed_rate: 25,
+        },
+      ],
+    },
+  });
+
+  assert.equal(result.summary.readiness_blocked, 1);
+  assert.equal(result.summary.promote_segment_briefs, 0);
+  assert.equal(result.items[0]?.readiness_blocked, true);
+  assert.equal(result.items[0]?.ready_for_generation, false);
+  assert.equal(result.items[0]?.readiness_dominant_gap, "audio");
+  assert.equal(result.items[0]?.action, "collect_segment_batch");
+}

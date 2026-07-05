@@ -198,4 +198,50 @@ assert.equal(expensivePatternGainTick.task, "analyze_backlog");
 assert.equal((expensivePatternGainTick.params as Record<string, unknown>).build_patterns, "true");
 assert.match(expensivePatternGainTick.reason, /economics уже ухудшилась/);
 
+const readinessBlockedTick = buildReelsBrainNextTick({
+  target: 10000,
+  totalVideos: 3200,
+  analyzedVideos: 3150,
+  backlogLimit: 180,
+  canRunPaidCollection: true,
+  prioritySegment: {
+    niche: "ru_toys",
+    platform: "youtube",
+    label: "ru_toys × youtube",
+    action: "promote_segment_briefs",
+    ready_for_generation: false,
+    readiness_blocked: true,
+    readiness_dominant_gap: "audio",
+    readiness_total_backlog: 33,
+  },
+  portfolioReadiness: {
+    summary: {
+      high_trust_coverage_pct: 42,
+      verdict: "still_building",
+    },
+    missing_segments: [
+      { niche: "ru_cosmetics", platform: "youtube", label: "ru_cosmetics × youtube", evidence_band: "missing", stability_score: 0, missing: true },
+    ],
+  },
+  generationPolicy: {
+    by_segment: [
+      {
+        niche: "ru_toys",
+        platform: "youtube",
+        label: "ru_toys × youtube",
+        policy_mode: "primary",
+        trust_band: "high",
+        evidence_band: "stable",
+        readiness_score: 89,
+        policy_reason: "segment is trust-strong but asset layer is still weak",
+      },
+    ],
+  },
+});
+
+assert.equal(readinessBlockedTick.task, "collect_portfolio_gaps");
+assert.equal((readinessBlockedTick.params as Record<string, unknown>).niche, "ru_cosmetics");
+assert.match(readinessBlockedTick.label, /ещё сырой/);
+assert.match(readinessBlockedTick.reason, /не дозрел по learning-layer/);
+
 console.log("reelsBrainLearningPlan: passed");

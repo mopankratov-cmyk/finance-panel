@@ -76,10 +76,11 @@ export async function GET(req: NextRequest) {
     const niches = splitList(sp.get("niches"), ["ru_toys", "ru_clothing", "ru_cosmetics"]);
     const platforms = splitList(sp.get("platforms"), ["tiktok", "instagram", "youtube"]);
 
-    const [learning, corpus, autopilot] = await Promise.all([
+    const [learning, corpus, autopilot, progressBody] = await Promise.all([
       readInternal(req, "/api/factory/reels-brain/learning-economics", { niches: niches.join(","), limit: sp.get("limit") || "80" }),
       readInternal(req, "/api/factory/reels-brain/corpus", { limit: "200", min_score: "0" }),
       readInternal(req, "/api/factory/reels-brain/autopilot-actions", { niches: niches.join(","), limit: sp.get("limit") || "80" }),
+      readInternal(req, "/api/factory/reels-brain/progress", { niches: niches.join(",") }),
     ]);
 
     const totals = learning.totals || {};
@@ -123,6 +124,9 @@ export async function GET(req: NextRequest) {
       segmentPlan,
       segmentDecisionDeck: learning.segment_decision_deck || null,
       segmentStabilityAudit: learning.segment_stability_audit || null,
+      segmentReadinessWatchlist: {
+        items: Array.isArray(progressBody.segment_watchlist) ? progressBody.segment_watchlist : [],
+      },
       limit: 8,
     });
     const prioritySegment = ((segmentPriorityQueue.items || [])[0] || null) as JsonRecord | null;
