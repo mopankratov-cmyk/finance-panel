@@ -73,6 +73,7 @@ function safePolicyRow(row: JsonRecord | null | undefined): PolicyRow | null {
     label: text(row.label, niche && platform ? `${niche} × ${platform}` : niche || platform || "policy segment"),
     trust_band: text(row.trust_band, "low"),
     evidence_band: text(row.evidence_band, "missing"),
+    outcome_status: text(row.outcome_status, "no_feedback"),
     readiness_score: num(row.readiness_score),
     policy_reason: text(row.policy_reason),
   };
@@ -143,10 +144,14 @@ export function buildReelsBrainNextTick(input: {
   const prioritySegment = safeSegment(input.prioritySegment);
   const portfolioFocusSegment = pickPortfolioFocusSegment(portfolio);
   const collectionFocusSegment = portfolioFocusSegment || prioritySegment;
+  const directSegmentPolicy = selectPolicyForSegment(input.generationPolicy, prioritySegment);
+  const directPolicyMode = text(directSegmentPolicy?.policy_mode, "research_only");
+  const directOutcomeStatus = text((directSegmentPolicy as JsonRecord | null)?.outcome_status, "no_feedback");
   const shouldSupportDecisionSegment = prioritySegment?.action === "promote_segment_briefs"
     || prioritySegment?.action === "validate_segment_briefs"
-    || text(selectPolicyForSegment(input.generationPolicy, prioritySegment)?.policy_mode, "research_only") === "primary"
-    || text(selectPolicyForSegment(input.generationPolicy, prioritySegment)?.policy_mode, "research_only") === "control_only";
+    || directPolicyMode === "primary"
+    || directPolicyMode === "control_only";
+  const marketBlockedDecisionSupport = directOutcomeStatus === "weak";
   const activePolicySegment = shouldSupportDecisionSegment ? prioritySegment : collectionFocusSegment || prioritySegment;
   const activePolicy = selectPolicyForSegment(input.generationPolicy, activePolicySegment);
   const activePolicyMode = text(activePolicy?.policy_mode, "research_only");
@@ -185,7 +190,7 @@ export function buildReelsBrainNextTick(input: {
   }
 
   if (input.totalVideos < input.target) {
-    const shouldClosePortfolioGaps = !shouldSupportDecisionSegment && portfolioCoverage < 70;
+    const shouldClosePortfolioGaps = (!shouldSupportDecisionSegment || marketBlockedDecisionSupport) && portfolioCoverage < 70;
     const collectionSegment = shouldClosePortfolioGaps ? collectionFocusSegment : prioritySegment;
     const policyReason = text(activePolicy?.policy_reason);
     const policyLine = activePolicy
@@ -194,19 +199,27 @@ export function buildReelsBrainNextTick(input: {
 
     return {
       task: shouldSupportDecisionSegment
-        ? "collect_support_for_decision_segment"
+        ? marketBlockedDecisionSupport
+          ? "collect_portfolio_gaps"
+          : "collect_support_for_decision_segment"
         : shouldClosePortfolioGaps
           ? "collect_portfolio_gaps"
           : "collect_smart_batch",
       label: shouldSupportDecisionSegment
-        ? `Поддержать decision-ready сегмент ${String(prioritySegment?.label || "")}`
+        ? marketBlockedDecisionSupport
+          ? collectionSegment
+            ? `Не усиливать weak сегмент; закрывать дыру ${collectionSegment.label}`
+            : "Не усиливать weak сегмент; закрывать portfolio gaps"
+          : `Поддержать decision-ready сегмент ${String(prioritySegment?.label || "")}`
         : shouldClosePortfolioGaps
           ? collectionSegment
             ? `Закрывать дыру ${collectionSegment.label} в portfolio coverage`
             : "Закрывать дыры в portfolio coverage"
           : "Добрать новую умную пачку",
       reason: shouldSupportDecisionSegment
-        ? `${String(prioritySegment?.label || activePolicy?.label || "")} уже близок к рабочим briefs/hypotheses; следующий сбор лучше направить в этот сегмент.${policyLine}`
+        ? marketBlockedDecisionSupport
+          ? `${String(prioritySegment?.label || activePolicy?.label || "")} формально близок к decision-ready, но рынок уже даёт weak outcome; следующий сбор лучше не вливать в него, а закрывать другие gaps.${policyLine}`
+          : `${String(prioritySegment?.label || activePolicy?.label || "")} уже близок к рабочим briefs/hypotheses; следующий сбор лучше направить в этот сегмент.${policyLine}`
         : shouldClosePortfolioGaps
           ? collectionSegment
             ? `High-trust coverage матрицы пока ${portfolioCoverage}% (${portfolioVerdict}); следующий сбор направляем в сегмент ${collectionSegment.label}, потому что он ещё не закрыт по доверию.${policyLine}`

@@ -20,6 +20,7 @@ type SegmentDecisionRow = {
   generation_mode?: "decision_ready" | "control_ready" | "brief_only" | "research_only" | string;
   ready_for_generation?: boolean;
   trust_score?: number;
+  outcome_status?: string;
   brief?: {
     title?: string;
     hook?: string;
@@ -90,21 +91,24 @@ export function buildReelsBrainSegmentPriorityQueue(input: {
     const decision = decisionMap.get(keyOf(row.niche, row.platform)) || {};
     const stability = stabilityMap.get(keyOf(row.niche, row.platform)) || {};
     const decisionGrade = text(decision.decision_grade || "research");
+    const outcomeStatus = text((decision as { outcome_status?: string }).outcome_status || "no_feedback");
     const gapStatus = text(row.status || "watch");
     const evidenceBand = text(stability.evidence_band || "thin");
     const highTrustSegment = Boolean(stability.high_trust_segment);
-    const globalAction = decision.ready_for_generation
+    const marketBlocked = outcomeStatus === "weak";
+    const globalAction = decision.ready_for_generation && !marketBlocked
       ? normalizeDecisionAction(decisionGrade)
       : normalizeGapAction(gapStatus);
     const urgency = Math.round(
-      ((decision.ready_for_generation || highTrustSegment) ? 55 : 0)
+      ((decision.ready_for_generation && !marketBlocked) || highTrustSegment ? 55 : 0)
       + Math.min(30, num(decision.trust_score) * 0.22)
       + Math.min(24, num(stability.stability_score) * 0.24)
       + Math.min(35, num(row.gap_score) * 0.35)
       + (gapStatus === "analyze_more" ? 10 : 0)
       + (gapStatus === "grow_corpus" ? 8 : 0)
       + (evidenceBand === "stable" ? 14 : evidenceBand === "forming" ? 6 : 0)
-      + (decisionGrade === "ship" ? 18 : decisionGrade === "validate" ? 10 : 0),
+      + (decisionGrade === "ship" ? 18 : decisionGrade === "validate" ? 10 : 0)
+      - (marketBlocked ? 36 : 0)
     );
     return {
       niche: text(row.niche),
@@ -115,7 +119,8 @@ export function buildReelsBrainSegmentPriorityQueue(input: {
       gap_status: gapStatus,
       decision_grade: decisionGrade,
       generation_mode: text(decision.generation_mode || "research_only"),
-      ready_for_generation: Boolean(decision.ready_for_generation),
+      ready_for_generation: Boolean(decision.ready_for_generation) && !marketBlocked,
+      outcome_status: outcomeStatus,
       evidence_band: evidenceBand,
       high_trust_segment: highTrustSegment,
       stability_score: num(stability.stability_score),

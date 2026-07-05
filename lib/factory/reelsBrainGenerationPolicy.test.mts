@@ -74,3 +74,54 @@ test("buildReelsBrainGenerationPolicy maps solution matrix into generation modes
   assert.equal(result.by_niche[0]?.brief_hook, "Смотри что внутри");
   assert.equal(result.by_platform[0]?.policy_mode, "control_only");
 });
+
+test("buildReelsBrainGenerationPolicy downgrades weak and promising market outcomes", () => {
+  const result = buildReelsBrainGenerationPolicy({
+    segmentSolutionMatrix: {
+      by_niche: [
+        {
+          niche: "ru_cosmetics",
+          label: "ru_cosmetics",
+          primary: {
+            label: "ru_cosmetics × instagram",
+            readiness_score: 88,
+            trust_band: "high",
+            production_state: "ready_now",
+            trust_summary: {
+              evidence_band: "stable",
+              outcome_status: "promising",
+              outcome_confidence: "medium",
+            },
+            creative_brief: { hook: "A" },
+            content_decision: { decision: "scale" },
+          },
+        },
+      ],
+      by_platform: [
+        {
+          platform: "youtube",
+          label: "youtube",
+          primary: {
+            label: "ru_toys × youtube",
+            readiness_score: 79,
+            trust_band: "medium",
+            production_state: "controlled_test",
+            trust_summary: {
+              evidence_band: "forming",
+              outcome_status: "weak",
+              outcome_confidence: "medium",
+            },
+            creative_brief: { hook: "B" },
+            content_decision: { decision: "validate" },
+          },
+        },
+      ],
+      by_segment: [],
+    },
+  });
+
+  assert.equal(result.by_niche[0]?.policy_mode, "control_only");
+  assert.equal(result.by_niche[0]?.outcome_status, "promising");
+  assert.equal(result.by_platform[0]?.policy_mode, "research_only");
+  assert.equal(result.by_platform[0]?.automation_allowed, false);
+});

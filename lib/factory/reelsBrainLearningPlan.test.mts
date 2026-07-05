@@ -123,4 +123,47 @@ const policyDrivenTick = buildReelsBrainNextTick({
 assert.equal(policyDrivenTick.task, "collect_support_for_decision_segment");
 assert.match(policyDrivenTick.reason, /primary-ready/);
 
+const weakOutcomeTick = buildReelsBrainNextTick({
+  target: 10000,
+  totalVideos: 3200,
+  analyzedVideos: 3150,
+  backlogLimit: 180,
+  canRunPaidCollection: true,
+  prioritySegment: {
+    niche: "ru_clothing",
+    platform: "instagram",
+    label: "ru_clothing × instagram",
+    action: "promote_segment_briefs",
+    ready_for_generation: true,
+  },
+  portfolioReadiness: {
+    summary: {
+      high_trust_coverage_pct: 42,
+      verdict: "still_building",
+    },
+    missing_segments: [
+      { niche: "ru_cosmetics", platform: "youtube", label: "ru_cosmetics × youtube", evidence_band: "missing", stability_score: 0, missing: true },
+    ],
+  },
+  generationPolicy: {
+    by_segment: [
+      {
+        niche: "ru_clothing",
+        platform: "instagram",
+        label: "ru_clothing × instagram",
+        policy_mode: "research_only",
+        outcome_status: "weak",
+        trust_band: "medium",
+        evidence_band: "forming",
+        readiness_score: 74,
+        policy_reason: "market outcome is weak",
+      },
+    ],
+  },
+});
+
+assert.equal(weakOutcomeTick.task, "collect_portfolio_gaps");
+assert.equal((weakOutcomeTick.params as Record<string, unknown>).niche, "ru_cosmetics");
+assert.match(weakOutcomeTick.reason, /weak outcome/);
+
 console.log("reelsBrainLearningPlan: passed");

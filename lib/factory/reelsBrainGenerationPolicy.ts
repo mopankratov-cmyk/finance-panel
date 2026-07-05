@@ -22,6 +22,12 @@ function modeFromProductionState(value: unknown) {
   return "research_only";
 }
 
+function outcomeAdjustedPolicyMode(baseMode: string, outcomeStatus: string) {
+  if (outcomeStatus === "weak") return "research_only";
+  if (outcomeStatus === "promising" && baseMode === "primary") return "control_only";
+  return baseMode;
+}
+
 function defaultPolicyReason(primary: JsonRecord | null, nextGap: JsonRecord | null, scope: "niche" | "platform") {
   const readiness = num(primary?.readiness_score);
   const trustBand = text(primary?.trust_band, "low");
@@ -40,7 +46,9 @@ function defaultPolicyReason(primary: JsonRecord | null, nextGap: JsonRecord | n
 function buildPolicyRow(row: JsonRecord, scope: "niche" | "platform") {
   const primary = (row.primary && typeof row.primary === "object" ? row.primary : null) as JsonRecord | null;
   const nextGap = (row.next_gap && typeof row.next_gap === "object" ? row.next_gap : null) as JsonRecord | null;
-  const policyMode = modeFromProductionState(primary?.production_state);
+  const trustSummary = (primary?.trust_summary && typeof primary.trust_summary === "object" ? primary.trust_summary : {}) as JsonRecord;
+  const outcomeStatus = text(trustSummary.outcome_status, "no_feedback");
+  const policyMode = outcomeAdjustedPolicyMode(modeFromProductionState(primary?.production_state), outcomeStatus);
   const brief = (primary?.creative_brief && typeof primary.creative_brief === "object" ? primary.creative_brief : {}) as JsonRecord;
   const hypothesis = (primary?.hypothesis && typeof primary.hypothesis === "object" ? primary.hypothesis : {}) as JsonRecord;
   const decision = (primary?.content_decision && typeof primary.content_decision === "object" ? primary.content_decision : {}) as JsonRecord;
@@ -50,9 +58,11 @@ function buildPolicyRow(row: JsonRecord, scope: "niche" | "platform") {
     policy_mode: policyMode,
     automation_allowed: policyMode !== "research_only",
     trust_band: text(primary?.trust_band, "low"),
-    evidence_band: text((primary?.trust_summary as JsonRecord | null)?.evidence_band, "missing"),
+    evidence_band: text(trustSummary.evidence_band, "missing"),
+    outcome_status: outcomeStatus,
+    outcome_confidence: text(trustSummary.outcome_confidence, "none"),
     readiness_score: num(primary?.readiness_score),
-    stability_score: num((primary?.trust_summary as JsonRecord | null)?.stability_score),
+    stability_score: num(trustSummary.stability_score),
     brief_title: text(brief.title || primary?.pattern_title || primary?.label),
     brief_hook: text(brief.hook),
     retention: text(brief.retention),
@@ -65,10 +75,16 @@ function buildPolicyRow(row: JsonRecord, scope: "niche" | "platform") {
     guardrails: list(decision.guardrails, 4),
     do_not_copy: list(brief.do_not_copy, 4),
     why: list(primary?.trust_why, 4),
-    blockers: list((primary?.trust_summary as JsonRecord | null)?.blockers, 4),
+    blockers: list(trustSummary.blockers, 4),
     next_gap: nextGap,
     coverage_labels: list(row.coverage_labels, 20),
-    policy_reason: defaultPolicyReason(primary, nextGap, scope),
+    policy_reason: [
+      defaultPolicyReason(primary, nextGap, scope),
+      outcomeStatus === "weak" ? "Market outcome слабый: policy принудительно опущен в research_only." : "",
+      outcomeStatus === "promising" && modeFromProductionState(primary?.production_state) === "primary"
+        ? "Market outcome ещё только формируется: primary policy понижен до control_only."
+        : "",
+    ].filter(Boolean).join(" "),
   };
 }
 
