@@ -26,6 +26,20 @@ export type ReelsBrainBriefRecipe = {
   }>;
 };
 
+type SegmentReadinessRow = {
+  niche?: string;
+  platform?: string;
+  total_backlog?: number;
+  dominant_gap?: {
+    key?: string;
+    count?: number;
+  };
+  direct_rate?: number;
+  audio_rate?: number;
+  transcript_ready_rate?: number;
+  analyzed_rate?: number;
+};
+
 function num(value: unknown): number {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
@@ -61,13 +75,43 @@ function confidenceScore(value: unknown) {
   return 1;
 }
 
-function normalizeRecipe(recipe: ReelsBrainBriefRecipe, rank: number) {
+function readinessPenalty(row: SegmentReadinessRow | undefined) {
+  if (!row) return { penalty: 0, status: "unknown", flag: "" };
+  const dominantGap = text(row.dominant_gap?.key || "");
+  const totalBacklog = num(row.total_backlog);
+  if (totalBacklog <= 0) return { penalty: 0, status: "backed", flag: "" };
+  if (dominantGap === "media" && num(row.direct_rate) < 55) return { penalty: 18, status: "thin", flag: "media_gap" };
+  if (dominantGap === "audio" && num(row.audio_rate) < 45) return { penalty: 16, status: "thin", flag: "audio_gap" };
+  if (dominantGap === "transcript" && num(row.transcript_ready_rate) < 40) return { penalty: 12, status: "thin", flag: "transcript_gap" };
+  return { penalty: 6, status: "watch", flag: dominantGap ? `${dominantGap}_watch` : "readiness_watch" };
+}
+
+function normalizeRecipe(
+  recipe: ReelsBrainBriefRecipe,
+  rank: number,
+  readinessMap: Map<string, SegmentReadinessRow>,
+) {
+  const pairs = segmentPairs([recipe]);
+  const readinessRows = pairs.map(({ niche, platform }) => readinessMap.get(`${niche}__${platform}`)).filter(Boolean) as SegmentReadinessRow[];
+  const penalties = readinessRows.map((row) => readinessPenalty(row));
+  const maxPenalty = penalties.reduce((max, item) => Math.max(max, item.penalty), 0);
+  const readinessStatus = penalties.some((item) => item.status === "thin")
+    ? "thin"
+    : penalties.some((item) => item.status === "watch")
+      ? "watch"
+      : penalties.length
+        ? "backed"
+        : "unknown";
+  const readinessFlags = Array.from(new Set(penalties.map((item) => item.flag).filter(Boolean)));
   return {
     rank,
     recipe_id: text(recipe.id, `recipe_${rank}`),
     title: text(recipe.title, `Brief ${rank}`),
     op_score: num(recipe.op_score),
+    effective_op_score: Math.max(0, num(recipe.op_score) - maxPenalty),
     confidence: text(recipe.confidence, "low"),
+    readiness_status: readinessStatus,
+    readiness_flags: readinessFlags,
     platforms: list(recipe.platforms, 4),
     niches: list(recipe.niches, 4),
     hook: text(recipe.creative_brief?.hook || recipe.hook, "сильный хук"),
@@ -90,14 +134,27 @@ function normalizeRecipe(recipe: ReelsBrainBriefRecipe, rank: number) {
   };
 }
 
-export function buildReelsBrainBriefPack(recipes: ReelsBrainBriefRecipe[], limit = 3) {
+export function buildReelsBrainBriefPack(
+  recipes: ReelsBrainBriefRecipe[],
+  limit = 3,
+  options?: {
+    segmentReadiness?: SegmentReadinessRow[];
+  },
+) {
+  const readinessMap = new Map((options?.segmentReadiness || []).map((row) => [`${text(row.niche)}__${text(row.platform)}`, row]));
   const ranked = [...(recipes || [])]
     .sort((a, b) =>
       num(b.op_score) - num(a.op_score)
       || confidenceScore(b.confidence) - confidenceScore(a.confidence)
       || text(a.title).localeCompare(text(b.title)))
     .slice(0, Math.max(1, limit))
-    .map((recipe, index) => normalizeRecipe(recipe, index + 1));
+    .map((recipe, index) => normalizeRecipe(recipe, index + 1, readinessMap))
+    .sort((a, b) =>
+      num(b.effective_op_score) - num(a.effective_op_score)
+      || confidenceScore(b.confidence) - confidenceScore(a.confidence)
+      || text(a.title).localeCompare(text(b.title)),
+    )
+    .map((recipe, index) => ({ ...recipe, rank: index + 1 }));
 
   return {
     primary: ranked[0] || null,
@@ -107,6 +164,9 @@ export function buildReelsBrainBriefPack(recipes: ReelsBrainBriefRecipe[], limit
       high_confidence: ranked.filter((item) => item.confidence === "high").length,
       medium_confidence: ranked.filter((item) => item.confidence === "medium").length,
       low_confidence: ranked.filter((item) => item.confidence !== "high" && item.confidence !== "medium").length,
+      readiness_backed: ranked.filter((item) => item.readiness_status === "backed").length,
+      readiness_watch: ranked.filter((item) => item.readiness_status === "watch").length,
+      readiness_thin: ranked.filter((item) => item.readiness_status === "thin").length,
       avg_op_score: ranked.length ? Math.round(ranked.reduce((sum, item) => sum + num(item.op_score), 0) / ranked.length) : 0,
     },
   };
@@ -117,6 +177,7 @@ export function buildGroupedReelsBrainBriefPacks(input: {
   niches?: string[];
   platforms?: string[];
   limit?: number;
+  segmentReadiness?: SegmentReadinessRow[];
 }) {
   const recipes = input.recipes || [];
   const niches = Array.from(new Set((input.niches || recipes.flatMap((recipe) => list(recipe.niches, 20))).filter(Boolean))).sort();
@@ -127,6 +188,7 @@ export function buildGroupedReelsBrainBriefPacks(input: {
       ...buildReelsBrainBriefPack(
         recipes.filter((recipe) => list(recipe.niches, 20).includes(niche)),
         input.limit || 3,
+        { segmentReadiness: input.segmentReadiness },
       ),
     })).filter((row) => row.primary),
     by_platform: platforms.map((platform) => ({
@@ -134,6 +196,7 @@ export function buildGroupedReelsBrainBriefPacks(input: {
       ...buildReelsBrainBriefPack(
         recipes.filter((recipe) => list(recipe.platforms, 20).includes(platform)),
         input.limit || 3,
+        { segmentReadiness: input.segmentReadiness },
       ),
     })).filter((row) => row.primary),
     by_segment: segmentPairs(recipes).map(({ niche, platform }) => ({
@@ -143,6 +206,7 @@ export function buildGroupedReelsBrainBriefPacks(input: {
         recipes.filter((recipe) =>
           list(recipe.niches, 20).includes(niche) && list(recipe.platforms, 20).includes(platform)),
         input.limit || 3,
+        { segmentReadiness: input.segmentReadiness },
       ),
     })).filter((row) => row.primary),
   };

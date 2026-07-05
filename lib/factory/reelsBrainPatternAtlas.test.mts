@@ -29,6 +29,38 @@ function testBuildReelsBrainPatternAtlasFindsStableSegments() {
         { platform: "youtube", score: 29, status: "weak", confidence: "low", note: "weak yt" },
       ],
     },
+    segmentReadiness: [
+      {
+        niche: "ru_toys",
+        platform: "tiktok",
+        total_backlog: 0,
+        dominant_gap: { key: "analyze", count: 0 },
+        direct_rate: 91,
+        audio_rate: 88,
+        transcript_ready_rate: 84,
+        analyzed_rate: 75,
+      },
+      {
+        niche: "ru_toys",
+        platform: "instagram",
+        total_backlog: 12,
+        dominant_gap: { key: "audio", count: 7 },
+        direct_rate: 73,
+        audio_rate: 28,
+        transcript_ready_rate: 19,
+        analyzed_rate: 50,
+      },
+      {
+        niche: "ru_cosmetics",
+        platform: "youtube",
+        total_backlog: 18,
+        dominant_gap: { key: "media", count: 10 },
+        direct_rate: 22,
+        audio_rate: 9,
+        transcript_ready_rate: 4,
+        analyzed_rate: 41,
+      },
+    ],
     patterns: [
       {
         id: "p1",
@@ -115,6 +147,8 @@ function testBuildReelsBrainPatternAtlasFindsStableSegments() {
   assert.equal(result.by_segment[0]?.platform, "tiktok");
   assert.equal(result.by_segment[0]?.status, "stable");
   assert.equal(result.by_segment[0]?.recommended_mode, "primary");
+  assert.equal(result.by_segment.find((row) => row.niche === "ru_toys" && row.platform === "instagram")?.readiness_status, "thin");
+  assert.equal(result.by_segment.find((row) => row.niche === "ru_toys" && row.platform === "instagram")?.recommended_mode, "research_only");
   assert.equal(result.by_segment[0]?.top_patterns[0]?.title, "Fast demo surprise");
   assert.equal(result.by_niche[0]?.niche, "ru_toys");
   assert.equal(result.by_platform[0]?.platform, "tiktok");

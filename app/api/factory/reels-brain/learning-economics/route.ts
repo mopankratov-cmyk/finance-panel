@@ -145,6 +145,22 @@ type AudioVisualReadiness = {
   next_step: string;
 };
 
+type SegmentAudioVisualReadinessRow = {
+  niche: string;
+  platform: string;
+  total: number;
+  total_backlog: number;
+  dominant_gap: {
+    key: "media" | "audio" | "transcript" | "analyze";
+    count: number;
+    label: string;
+  };
+  direct_rate: number;
+  audio_rate: number;
+  transcript_ready_rate: number;
+  analyzed_rate: number;
+};
+
 type TaxonomyBrain = {
   classified_videos: number;
   classified_rate: number;
@@ -385,6 +401,7 @@ function readSeed(row: CorpusAuditRow) {
     mediaLocators,
     transcript,
     audioFeatures,
+    mediaStatus: String(pipeline?.media_status || "").trim(),
     audioStatus: String(pipeline?.audio_status || "").trim(),
     transcriptStatus: String(pipeline?.transcript_status || "").trim(),
   };
@@ -675,6 +692,83 @@ function buildAudioVisualReadiness(rows: CorpusAuditRow[]): AudioVisualReadiness
         ? `Media locators уже пишутся. Добрать и разметить ещё ${Math.max(0, 100 - readyForWorker)}+ видео, затем включить audio/deep extraction.`
         : "Сначала накопить media locators в ingest metadata, затем запускать audio/deep extraction.",
   };
+}
+
+function buildSegmentAudioVisualReadiness(rows: CorpusAuditRow[]): SegmentAudioVisualReadinessRow[] {
+  const buckets = new Map<string, {
+    niche: string;
+    platform: string;
+    total: number;
+    with_direct_media: number;
+    audio_extracted: number;
+    transcript_ready: number;
+    analyzed: number;
+    media_backlog: number;
+    audio_backlog: number;
+    transcript_backlog: number;
+    analyze_backlog: number;
+  }>();
+
+  for (const row of rows) {
+    const niche = String(row.niche || "unknown").trim() || "unknown";
+    const platform = String(row.platform || "unknown").trim() || "unknown";
+    const key = `${niche}__${platform}`;
+    const current = buckets.get(key) || {
+      niche,
+      platform,
+      total: 0,
+      with_direct_media: 0,
+      audio_extracted: 0,
+      transcript_ready: 0,
+      analyzed: 0,
+      media_backlog: 0,
+      audio_backlog: 0,
+      transcript_backlog: 0,
+      analyze_backlog: 0,
+    };
+    const seed = readSeed(row);
+    const mediaReady = seed.mediaLocators.length > 0 || seed.mediaStatus === "media_downloaded";
+    current.total += 1;
+    if (mediaReady) current.with_direct_media += 1;
+    if (seed.audioStatus === "audio_extracted") current.audio_extracted += 1;
+    if (seed.transcript.length > 20 || seed.transcriptStatus === "transcript_ready") current.transcript_ready += 1;
+    if (row.analyzed) current.analyzed += 1;
+    if (!mediaReady) current.media_backlog += 1;
+    if (mediaReady && seed.audioStatus !== "audio_extracted") current.audio_backlog += 1;
+    if (seed.audioStatus === "audio_extracted" && seed.transcriptStatus !== "transcript_ready") current.transcript_backlog += 1;
+    if (!row.analyzed) current.analyze_backlog += 1;
+    buckets.set(key, current);
+  }
+
+  return Array.from(buckets.values())
+    .map((row) => {
+      const dominant_gap = [
+        { key: "media" as const, count: row.media_backlog, label: "media" },
+        { key: "audio" as const, count: row.audio_backlog, label: "audio" },
+        { key: "transcript" as const, count: row.transcript_backlog, label: "transcript" },
+        { key: "analyze" as const, count: row.analyze_backlog, label: "analyze" },
+      ].sort((a, b) => b.count - a.count)[0];
+      return {
+        niche: row.niche,
+        platform: row.platform,
+        total: row.total,
+        total_backlog: row.media_backlog + row.audio_backlog + row.transcript_backlog + row.analyze_backlog,
+        dominant_gap,
+        direct_rate: pct(row.with_direct_media, row.total),
+        audio_rate: pct(row.audio_extracted, row.total),
+        transcript_ready_rate: pct(row.transcript_ready, row.total),
+        analyzed_rate: pct(row.analyzed, row.total),
+      };
+    })
+    .filter((row) => row.total > 0)
+    .sort((a, b) =>
+      b.total_backlog - a.total_backlog
+      || a.direct_rate - b.direct_rate
+      || a.audio_rate - b.audio_rate
+      || a.transcript_ready_rate - b.transcript_ready_rate
+      || a.niche.localeCompare(b.niche)
+      || a.platform.localeCompare(b.platform),
+    );
 }
 
 function buildTaxonomyBrain(input: {
@@ -2189,6 +2283,7 @@ export async function GET(req: NextRequest) {
     ).values()).filter((row) => row.url);
     const corpusAudit = buildCorpusAudit(corpusSample);
     const audioVisualReadiness = buildAudioVisualReadiness(readinessSample);
+    const segmentAudioVisualReadiness = buildSegmentAudioVisualReadiness(readinessSample);
     const audioBrain = buildAudioBrain(readinessSample);
     const runMap = new Map<string, ReturnType<typeof automationRunHistory>[number] & { niches: Set<string> }>();
     const nicheSummaries = rows.map((row) => {
@@ -2514,12 +2609,14 @@ export async function GET(req: NextRequest) {
     const briefPack = buildReelsBrainBriefPack(
       insightPayload.recipes as unknown as Array<Parameters<typeof buildReelsBrainBriefPack>[0][number]>,
       compactMode ? 4 : 6,
+      { segmentReadiness: segmentAudioVisualReadiness },
     );
     const groupedBriefPacks = buildGroupedReelsBrainBriefPacks({
       recipes: insightPayload.recipes as unknown as Array<Parameters<typeof buildGroupedReelsBrainBriefPacks>[0]["recipes"][number]>,
       niches: nicheSummaries.map((row) => row.niche),
       platforms: ["tiktok", "instagram", "youtube"],
       limit: compactMode ? 2 : 3,
+      segmentReadiness: segmentAudioVisualReadiness,
     });
     const segmentTrust = buildReelsBrainSegmentTrust({
       niches: nicheSummaries as Array<Parameters<typeof buildReelsBrainSegmentTrust>[0]["niches"][number]>,
@@ -2582,6 +2679,7 @@ export async function GET(req: NextRequest) {
       patterns: patternDecisionLayer.pattern_details,
       nicheSummaries,
       segmentTrust,
+      segmentReadiness: segmentAudioVisualReadiness,
       platforms: ["tiktok", "instagram", "youtube"],
       segmentLimit: compactMode ? 6 : 10,
       patternLimit: compactMode ? 2 : 3,

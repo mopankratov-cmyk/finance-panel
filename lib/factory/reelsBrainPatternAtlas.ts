@@ -52,6 +52,20 @@ type SegmentSummaryRow = {
   }>;
 };
 
+type SegmentReadinessRow = {
+  niche?: string;
+  platform?: string;
+  total_backlog?: number;
+  dominant_gap?: {
+    key?: string;
+    count?: number;
+  };
+  direct_rate?: number;
+  audio_rate?: number;
+  transcript_ready_rate?: number;
+  analyzed_rate?: number;
+};
+
 function num(value: unknown) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
@@ -109,6 +123,17 @@ function atlasStatus(avgScore: number, stableCount: number, analyzed: number) {
   return "thin";
 }
 
+function readinessBlocked(row: SegmentReadinessRow | undefined) {
+  if (!row) return false;
+  const dominantGap = text(row.dominant_gap?.key || "");
+  const totalBacklog = num(row.total_backlog);
+  if (totalBacklog <= 0) return false;
+  if (dominantGap === "media") return num(row.direct_rate) < 55;
+  if (dominantGap === "audio") return num(row.audio_rate) < 45;
+  if (dominantGap === "transcript") return num(row.transcript_ready_rate) < 40;
+  return false;
+}
+
 function patternStabilityScore(pattern: PatternRow) {
   return clamp(
     Math.min(34, num(pattern.op_score) * 0.34)
@@ -127,6 +152,7 @@ export function buildReelsBrainPatternAtlas(input: {
     by_niche?: SegmentTrustRow[];
     by_platform?: SegmentTrustRow[];
   };
+  segmentReadiness?: SegmentReadinessRow[];
   platforms?: string[];
   segmentLimit?: number;
   patternLimit?: number;
@@ -134,6 +160,7 @@ export function buildReelsBrainPatternAtlas(input: {
   const nicheTrustByKey = new Map((input.segmentTrust.by_niche || []).map((row) => [text(row.niche), row]));
   const platformTrustByKey = new Map((input.segmentTrust.by_platform || []).map((row) => [text(row.platform), row]));
   const nicheSummaryByKey = new Map((input.nicheSummaries || []).map((row) => [row.niche, row]));
+  const readinessByKey = new Map((input.segmentReadiness || []).map((row) => [`${text(row.niche)}__${text(row.platform)}`, row]));
   const platforms = input.platforms || ["tiktok", "instagram", "youtube"];
   const segmentLimit = Math.max(4, input.segmentLimit || 8);
   const patternLimit = Math.max(2, input.patternLimit || 3);
@@ -144,6 +171,7 @@ export function buildReelsBrainPatternAtlas(input: {
       const platformStats = nicheRow.platform_brains?.[platform] || {};
       const nicheTrust = nicheTrustByKey.get(niche) || {};
       const platformTrust = platformTrustByKey.get(platform) || {};
+      const readiness = readinessByKey.get(`${niche}__${platform}`);
       const stablePatterns = (input.patterns || [])
         .filter((pattern) => list(pattern.niches).includes(niche) && list(pattern.platforms).includes(platform))
         .map((pattern) => {
@@ -187,14 +215,25 @@ export function buildReelsBrainPatternAtlas(input: {
       const analyzed = num(platformStats.analyzed_videos);
       const total = num(platformStats.total_videos);
       const analyzedRate = total > 0 ? Math.round((analyzed / total) * 100) : 0;
-      const mode = recommendationMode(text(nicheTrust.status), text(platformTrust.status));
-      const status = atlasStatus(avgStableScore, stablePatterns.length, analyzed);
+      const readinessThin = readinessBlocked(readiness);
+      const mode = readinessThin ? "research_only" : recommendationMode(text(nicheTrust.status), text(platformTrust.status));
+      const baseStatus = atlasStatus(avgStableScore, stablePatterns.length, analyzed);
+      const status = readinessThin
+        ? baseStatus === "stable"
+          ? "forming"
+          : "thin"
+        : baseStatus;
 
       return {
         niche,
         platform,
         status,
         recommended_mode: mode,
+        readiness_backed: !readinessThin,
+        readiness_status: readinessThin ? "thin" : "backed",
+        readiness_note: readinessThin
+          ? `Foundation ещё сырой: ${text(readiness?.dominant_gap?.key || "readiness")} gap ${num(readiness?.total_backlog)}`
+          : "Segment подкреплён media/audio/transcript coverage.",
         niche_trust_score: num(nicheTrust.score),
         niche_trust_status: text(nicheTrust.status),
         niche_note: text(nicheTrust.note),
@@ -204,6 +243,12 @@ export function buildReelsBrainPatternAtlas(input: {
         total_videos: total,
         analyzed_videos: analyzed,
         analyzed_rate: analyzedRate,
+        readiness_direct_rate: num(readiness?.direct_rate),
+        readiness_audio_rate: num(readiness?.audio_rate),
+        readiness_transcript_ready_rate: num(readiness?.transcript_ready_rate),
+        readiness_analyzed_rate: num(readiness?.analyzed_rate),
+        readiness_total_backlog: num(readiness?.total_backlog),
+        readiness_dominant_gap: text(readiness?.dominant_gap?.key),
         patterns_in_memory: num(platformStats.patterns),
         generator_ready_patterns: num(platformStats.generator_ready_patterns),
         stable_pattern_count: stablePatterns.length,
@@ -218,7 +263,9 @@ export function buildReelsBrainPatternAtlas(input: {
         next_step: status === "stable"
           ? "Можно собирать platform-specific и niche-specific briefs из этого сегмента."
           : status === "forming"
-            ? "Сегмент уже полезен для control-решений, но ему нужен ещё один цикл анализа."
+            ? readinessThin
+              ? "Паттерны уже заметны, но сначала нужно дожать media/audio/transcript foundation."
+              : "Сегмент уже полезен для control-решений, но ему нужен ещё один цикл анализа."
             : "Сначала добрать analyzed и generator-ready слой, потом строить решения.",
       };
     }),
