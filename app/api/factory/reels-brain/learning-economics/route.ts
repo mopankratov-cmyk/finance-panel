@@ -2866,12 +2866,6 @@ export async function GET(req: NextRequest) {
     const generationPolicy = buildReelsBrainGenerationPolicy({
       segmentSolutionMatrix,
     });
-    const measurementPlan = buildReelsBrainMeasurementPlan({
-      outcomeMemory: outcomeMemoryBrain,
-      segmentSolutionMatrix,
-      generationPolicy,
-      limit: compactMode ? 4 : 6,
-    });
     const portfolioReadiness = buildReelsBrainPortfolioReadiness({
       segmentStabilityAudit,
       niches: nicheSummaries.map((row) => row.niche),
@@ -2883,6 +2877,13 @@ export async function GET(req: NextRequest) {
       generationPolicy,
       segmentPriorityQueue,
       limit: compactMode ? 6 : 10,
+    });
+    const measurementPlan = buildReelsBrainMeasurementPlan({
+      outcomeMemory: outcomeMemoryBrain,
+      segmentSolutionMatrix,
+      generationPolicy,
+      exactSegmentQueue,
+      limit: compactMode ? 4 : 6,
     });
     const dailyReport = buildDailyReport({
       totals,

@@ -2,6 +2,18 @@ import assert from "node:assert/strict";
 import { buildReelsBrainMeasurementPlan } from "./reelsBrainMeasurementPlan";
 
 const plan = buildReelsBrainMeasurementPlan({
+  exactSegmentQueue: {
+    items: [
+      {
+        niche: "ru_clothing",
+        platform: "instagram",
+        status: "borrowed_brief_only",
+        urgency_score: 95,
+        policy_mode: "primary",
+        transfer_support: [{ label: "ru_clothing × tiktok" }],
+      },
+    ],
+  },
   outcomeMemory: {
     pattern_memory: {
       coverage_rate: 58,
@@ -53,12 +65,18 @@ const plan = buildReelsBrainMeasurementPlan({
 });
 
 assert.equal(plan.status, "ready");
-assert.equal(plan.items[0]?.pattern_id, "p1");
-assert.equal(plan.items[0]?.niche, "ru_toys");
-assert.equal(plan.items[0]?.platform, "tiktok");
-assert.equal(plan.items[0]?.policy_mode, "control_only");
-assert.equal(plan.items[0]?.publish_brief.hook, "Не покупай пока не увидишь");
-assert.match(plan.items[0]?.action || "", /measurement-run/);
-assert.equal(plan.items[0]?.endpoints.feedback_writeback, "/api/factory/reels-brain/feedback");
+assert.equal(plan.items[0]?.task_type, "prove_exact_segment");
+assert.equal(plan.items[0]?.niche, "ru_clothing");
+assert.equal(plan.items[0]?.platform, "instagram");
+assert.equal(plan.items[0]?.policy_mode, "primary");
+assert.match(plan.items[0]?.action || "", /exact-proof run/);
+assert.equal(plan.items[1]?.pattern_id, "p1");
+assert.equal(plan.items[1]?.niche, "ru_toys");
+assert.equal(plan.items[1]?.platform, "tiktok");
+assert.equal(plan.items[1]?.policy_mode, "control_only");
+assert.equal(plan.items[1]?.publish_brief.hook, "Не покупай пока не увидишь");
+assert.match(plan.items[1]?.action || "", /measurement-run/);
+assert.equal(plan.items[1]?.endpoints.feedback_writeback, "/api/factory/reels-brain/feedback");
+assert.equal(plan.exact_gap_candidates, 1);
 
 console.log("reelsBrainMeasurementPlan.test: ok");

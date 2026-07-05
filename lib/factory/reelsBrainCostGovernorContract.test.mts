@@ -94,7 +94,7 @@ ok(!/POST\s*\(/.test(segmentStabilityAudit), "stability-audit route is read-only
 ok(/daily_report/.test(report) && /autopilot_actions/.test(report), "report route exposes operator report fields");
 ok(/anti_pattern_brain/.test(report) && /discovery_brain/.test(report), "report route includes learning context");
 ok(/top_opportunities/.test(report) && /pattern_atlas/.test(report) && /segment_playbook/.test(report) && /evidence_ledger/.test(report), "report route exposes segment decision layers");
-ok(/measurement_plan/.test(report) && /buildReelsBrainMeasurementPlan/.test(economics) && /measurement_plan: measurementPlan/.test(economics), "report route exposes measurement plan built from strong no-feedback patterns");
+ok(/measurement_plan/.test(report) && /buildReelsBrainMeasurementPlan/.test(economics) && /measurement_plan: measurementPlan/.test(economics) && /exactSegmentQueue/.test(economics), "report route exposes measurement plan built from strong no-feedback patterns and exact-segment proof gaps");
 ok(/exact_segment_queue/.test(report) && /buildReelsBrainExactSegmentQueue/.test(economics), "report route exposes exact-segment proof queue for borrowed-brief gaps");
 ok(/segment_output_banks/.test(report), "report route exposes segment-specific output banks");
 ok(/segment_decision_deck/.test(report), "report route exposes segment decision deck");
@@ -151,7 +151,7 @@ ok(/buildReelsBrainSegmentStabilityAudit/.test(economics) && /segment_stability_
 ok(/buildReelsBrainSegmentSolutions/.test(economics) && /segment_solutions/.test(economics), "learning-economics exposes operator-ready segment solutions");
 ok(/buildReelsBrainSegmentSolutionMatrix/.test(economics) && /segment_solution_matrix/.test(economics) && /by_niche/.test(segmentSolutionMatrixBuilder) && /by_platform/.test(segmentSolutionMatrixBuilder), "learning-economics exposes trust-aware segment solution matrix by niche and platform");
 ok(/buildReelsBrainGenerationPolicy/.test(economics) && /generation_policy/.test(economics) && /policy_mode/.test(generationPolicyBuilder), "learning-economics exposes unified generation policy on top of segment solutions");
-ok(/buildReelsBrainMeasurementPlan/.test(economics) && /measurement_plan/.test(economics) && /validation_goal/.test(measurementPlanBuilder), "learning-economics exposes reusable market-validation plan for strong patterns without proof");
+ok(/buildReelsBrainMeasurementPlan/.test(economics) && /measurement_plan/.test(economics) && /validation_goal/.test(measurementPlanBuilder) && /prove_exact_segment/.test(measurementPlanBuilder), "learning-economics exposes reusable market-validation plan for strong patterns and exact-segment proof gaps");
 ok(/buildReelsBrainPortfolioReadiness/.test(economics) && /portfolio_readiness/.test(economics), "learning-economics exposes portfolio readiness for 10k coverage tracking");
 ok(/exact_segment_evidence/.test(economics) && /prove_exact_segment/.test(economics), "learning-economics exposes exact-segment evidence actions when briefs still depend on transfer");
 ok(/portfolioReadiness/.test(economics) && /close_portfolio_gap/.test(economics), "autopilot uses portfolio readiness to close high-trust coverage gaps");

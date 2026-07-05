@@ -61,6 +61,14 @@ function bestCandidateForPattern(
     })[0] || null;
 }
 
+function exactSegmentStatusRank(value: unknown) {
+  const status = text(value, "forming_exact_segment");
+  if (status === "missing_exact_segment") return 4;
+  if (status === "borrowed_brief_only") return 3;
+  if (status === "weak_exact_outcome") return 2;
+  return 1;
+}
+
 export function buildReelsBrainMeasurementPlan(input: {
   outcomeMemory?: {
     pattern_memory?: {
@@ -75,15 +83,74 @@ export function buildReelsBrainMeasurementPlan(input: {
   generationPolicy?: {
     by_segment?: JsonRecord[];
   } | null;
+  exactSegmentQueue?: {
+    items?: JsonRecord[];
+    summary?: JsonRecord;
+  } | null;
   limit?: number;
 }) {
   const noFeedbackQueue = records(input.outcomeMemory?.pattern_memory?.no_feedback_queue);
   const bySegment = records(input.segmentSolutionMatrix?.by_segment);
   const policyRows = records(input.generationPolicy?.by_segment);
   const policyBySegment = new Map(policyRows.map((row) => [`${text(row.niche)}__${text(row.platform)}`, row] as const));
+  const exactQueueRows = records(input.exactSegmentQueue?.items);
   const limit = Math.max(3, input.limit || 6);
 
-  const items = noFeedbackQueue
+  const exactItems = exactQueueRows
+    .sort((a, b) =>
+      exactSegmentStatusRank(b.status) - exactSegmentStatusRank(a.status)
+      || num(b.urgency_score) - num(a.urgency_score)
+      || text(a.label).localeCompare(text(b.label)),
+    )
+    .map((segment) => {
+      const niche = text(segment.niche, "mixed");
+      const platform = text(segment.platform, "mixed");
+      const exactRow = bySegment.find((row) => text(row.niche) === niche && text(row.platform) === platform) || {};
+      const policy = policyBySegment.get(`${niche}__${platform}`) || {};
+      const brief = exactRow?.creative_brief && typeof exactRow.creative_brief === "object" ? exactRow.creative_brief as JsonRecord : {};
+      const decision = exactRow?.content_decision && typeof exactRow.content_decision === "object" ? exactRow.content_decision as JsonRecord : {};
+      const status = text(segment.status, "forming_exact_segment");
+      const transferSupport = records(segment.transfer_support).slice(0, 2).map((row) => text(row.label)).filter(Boolean);
+      return {
+        measurement_id: `exact__${niche}__${platform}`,
+        task_type: "prove_exact_segment",
+        pattern_id: "",
+        title: text(segment.label, `${niche} × ${platform}`),
+        niche,
+        platform,
+        policy_mode: text(policy.policy_mode, text(segment.policy_mode, "research_only")),
+        decision_priority_score: Math.max(60, num(segment.urgency_score)),
+        hook_type: "",
+        structure_type: "",
+        validation_goal: status === "borrowed_brief_only"
+          ? "Подтвердить, что exact segment работает сам, а не только через transfer-соседа."
+          : status === "missing_exact_segment"
+            ? "Собрать первый exact proof по сегменту и перестать жить на blind transfer."
+            : status === "weak_exact_outcome"
+              ? "Пересобрать механику и вернуть positive outcome именно на exact segment."
+              : "Дотянуть exact segment до market-confirmed состояния.",
+        publish_brief: {
+          hook: text(brief.hook, "Собрать exact hook под сегмент"),
+          retention: text(brief.retention, "proof first"),
+          structure: text(brief.structure, "demo"),
+          next_step: text(decision.next_step, transferSupport.length
+            ? `Снять 1-3 exact публикации и сравнить с transfer-сигналом: ${transferSupport.join(" / ")}.`
+            : "Снять 1-3 exact публикации и снять первые market сигналы."),
+        },
+        metrics_to_capture: ["views", "watch_rate", "completion_rate", "ctr", "saves", "marketplace_orders"],
+        action: `Сделать exact-proof run для ${niche} × ${platform}`,
+        reason: `${status} · urgency ${num(segment.urgency_score)} · policy ${text(policy.policy_mode, text(segment.policy_mode, "research_only"))}`,
+        endpoints: {
+          creative_solution: `/api/factory/reels-brain/creative-solution?niche=${encodeURIComponent(niche)}&platform=${encodeURIComponent(platform)}`,
+          feedback_writeback: "/api/factory/reels-brain/feedback",
+          post_metrics: "/api/factory/post-metrics",
+        },
+        proof_scope: "exact_segment",
+        transfer_support: transferSupport,
+      };
+    });
+
+  const patternItems = noFeedbackQueue
     .map((pattern) => {
       const candidate = bestCandidateForPattern(pattern, bySegment, policyBySegment);
       const policy = candidate ? (policyBySegment.get(`${text(candidate.niche)}__${text(candidate.platform)}`) || {}) : {};
@@ -94,6 +161,7 @@ export function buildReelsBrainMeasurementPlan(input: {
       const policyMode = text(policy.policy_mode, "research_only");
       return {
         measurement_id: `${text(pattern.pattern_id)}__${niche}__${platform}`,
+        task_type: "validate_pattern_feedback",
         pattern_id: text(pattern.pattern_id),
         title: text(pattern.title, text(pattern.pattern_id, "pattern")),
         niche,
@@ -122,7 +190,9 @@ export function buildReelsBrainMeasurementPlan(input: {
           post_metrics: "/api/factory/post-metrics",
         },
       };
-    })
+    });
+
+  const items = [...exactItems, ...patternItems]
     .slice(0, limit);
 
   return {
@@ -130,9 +200,10 @@ export function buildReelsBrainMeasurementPlan(input: {
     coverage_rate: num(input.outcomeMemory?.pattern_memory?.coverage_rate),
     total_candidates: noFeedbackQueue.length,
     high_confidence_no_feedback: num((input.outcomeMemory?.pattern_memory?.coverage_gaps as JsonRecord | undefined)?.high_confidence_no_feedback),
+    exact_gap_candidates: exactQueueRows.length,
     items,
     next_step: items.length
-      ? "Брать верх очереди, выпускать measurement-публикации и сразу писать метрики обратно в feedback loop."
+      ? "Брать верх очереди: сначала закрывать exact-proof gaps, затем добивать pattern feedback и сразу писать метрики обратно в feedback loop."
       : "Сначала накопить strong patterns without feedback, затем строить measurement queue.",
   };
 }

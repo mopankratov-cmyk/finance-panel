@@ -6,7 +6,32 @@ const queue = buildReelsBrainValidationQueue({
     coverage_rate: 61,
     high_confidence_no_feedback: 2,
     total_candidates: 3,
+    exact_gap_candidates: 1,
     items: [
+      {
+        measurement_id: "exact_ru_toys_instagram",
+        task_type: "prove_exact_segment",
+        pattern_id: "",
+        title: "ru_toys × instagram",
+        niche: "ru_toys",
+        platform: "instagram",
+        policy_mode: "primary",
+        decision_priority_score: 97,
+        action: "Сделать exact-proof run для ru_toys × instagram",
+        validation_goal: "Подтвердить, что exact segment работает сам, а не только через transfer-соседа.",
+        publish_brief: {
+          hook: "Новый exact hook",
+          retention: "proof first",
+          structure: "demo",
+          next_step: "Снять 3 exact публикации и сравнить с transfer.",
+        },
+        metrics_to_capture: ["views", "watch_rate", "completion_rate"],
+        endpoints: {
+          feedback_writeback: "/api/factory/reels-brain/feedback",
+          post_metrics: "/api/factory/post-metrics",
+        },
+        proof_scope: "exact_segment",
+      },
       {
         measurement_id: "m1",
         pattern_id: "p1",
@@ -34,10 +59,11 @@ const queue = buildReelsBrainValidationQueue({
 });
 
 assert.equal(queue.status, "ready");
-assert.equal(queue.queue[0]?.type, "validate_pattern_feedback");
+assert.equal(queue.queue[0]?.type, "prove_exact_segment");
 assert.equal(queue.queue[0]?.priority, "high");
 assert.equal(queue.queue[0]?.writeback_targets.feedback, "/api/factory/reels-brain/feedback");
-assert.equal(queue.queue[0]?.task_payload.pattern_id, "p1");
-assert.match(queue.next_step, /validation-run/);
+assert.equal(queue.queue[0]?.task_payload.proof_scope, "exact_segment");
+assert.equal(queue.queue[1]?.task_payload.pattern_id, "p1");
+assert.match(queue.next_step, /prove_exact_segment/);
 
 console.log("reelsBrainValidationQueue.test: ok");
