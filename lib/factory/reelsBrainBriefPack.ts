@@ -40,6 +40,37 @@ type SegmentReadinessRow = {
   analyzed_rate?: number;
 };
 
+type SegmentPriorityRow = {
+  niche?: string;
+  platform?: string;
+  decision_priority_score?: number;
+  urgency_score?: number;
+  ready_for_generation?: boolean;
+  policy_mode?: string;
+  recommended_upgrade?: {
+    projected_trust_gain_score?: number;
+    projected_production_state?: string;
+    unlocked_output?: string;
+  } | null;
+};
+
+type SegmentPolicyRow = {
+  niche?: string;
+  platform?: string;
+  policy_mode?: string;
+  decision_priority_score?: number;
+  recommended_upgrade?: {
+    projected_trust_gain_score?: number;
+    projected_production_state?: string;
+    unlocked_output?: string;
+  } | null;
+  next_upgrade?: {
+    projected_trust_gain_score?: number;
+    projected_production_state?: string;
+    unlocked_output?: string;
+  } | null;
+};
+
 function num(value: unknown): number {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
@@ -75,6 +106,29 @@ function confidenceScore(value: unknown) {
   return 1;
 }
 
+function policyModeScore(value: unknown) {
+  const raw = text(value).toLowerCase();
+  if (raw === "primary") return 3;
+  if (raw === "control_only") return 2;
+  return 1;
+}
+
+function sortPackRows<T extends {
+  segment_priority_score?: number;
+  segment_priority_mode?: string;
+  effective_op_score?: number;
+  confidence?: string;
+  title?: string;
+}>(rows: T[]) {
+  return rows.sort((a, b) =>
+    policyModeScore(b.segment_priority_mode) - policyModeScore(a.segment_priority_mode)
+    || num(b.segment_priority_score) - num(a.segment_priority_score)
+    || num(b.effective_op_score) - num(a.effective_op_score)
+    || confidenceScore(b.confidence) - confidenceScore(a.confidence)
+    || text(a.title).localeCompare(text(b.title)),
+  );
+}
+
 function readinessPenalty(row: SegmentReadinessRow | undefined) {
   if (!row) return { penalty: 0, status: "unknown", flag: "" };
   const dominantGap = text(row.dominant_gap?.key || "");
@@ -90,11 +144,43 @@ function normalizeRecipe(
   recipe: ReelsBrainBriefRecipe,
   rank: number,
   readinessMap: Map<string, SegmentReadinessRow>,
+  segmentPriorityMap: Map<string, SegmentPriorityRow>,
+  segmentPolicyMap: Map<string, SegmentPolicyRow>,
 ) {
   const pairs = segmentPairs([recipe]);
   const readinessRows = pairs.map(({ niche, platform }) => readinessMap.get(`${niche}__${platform}`)).filter(Boolean) as SegmentReadinessRow[];
   const penalties = readinessRows.map((row) => readinessPenalty(row));
   const maxPenalty = penalties.reduce((max, item) => Math.max(max, item.penalty), 0);
+  const segmentSignals = pairs.map(({ niche, platform }) => {
+    const key = `${niche}__${platform}`;
+    const priority = segmentPriorityMap.get(key);
+    const policy = segmentPolicyMap.get(key);
+    const upgrade = policy?.recommended_upgrade || policy?.next_upgrade || priority?.recommended_upgrade || null;
+    const priorityScore = Math.max(
+      num(priority?.decision_priority_score),
+      num(priority?.urgency_score),
+      num(policy?.decision_priority_score),
+      num(upgrade?.projected_trust_gain_score),
+    );
+    return {
+      niche,
+      platform,
+      label: `${niche} × ${platform}`,
+      priority_score: priorityScore,
+      priority_mode: text(priority?.policy_mode || policy?.policy_mode, "research_only"),
+      ready_for_generation: Boolean(priority?.ready_for_generation),
+      projected_trust_gain_score: num(upgrade?.projected_trust_gain_score),
+      projected_production_state: text(upgrade?.projected_production_state),
+      unlocked_output: text(upgrade?.unlocked_output),
+    };
+  }).sort((a, b) =>
+    policyModeScore(b.priority_mode) - policyModeScore(a.priority_mode)
+    || b.priority_score - a.priority_score
+    || Number(b.ready_for_generation) - Number(a.ready_for_generation)
+    || b.projected_trust_gain_score - a.projected_trust_gain_score
+    || a.label.localeCompare(b.label),
+  );
+  const primarySegmentSignal = segmentSignals[0] || null;
   const readinessStatus = penalties.some((item) => item.status === "thin")
     ? "thin"
     : penalties.some((item) => item.status === "watch")
@@ -109,6 +195,13 @@ function normalizeRecipe(
     title: text(recipe.title, `Brief ${rank}`),
     op_score: num(recipe.op_score),
     effective_op_score: Math.max(0, num(recipe.op_score) - maxPenalty),
+    segment_priority_score: primarySegmentSignal?.priority_score || 0,
+    segment_priority_mode: primarySegmentSignal?.priority_mode || "research_only",
+    segment_priority_label: primarySegmentSignal?.label || "",
+    segment_ready_for_generation: primarySegmentSignal?.ready_for_generation || false,
+    projected_trust_gain_score: primarySegmentSignal?.projected_trust_gain_score || 0,
+    projected_production_state: primarySegmentSignal?.projected_production_state || "",
+    unlocked_output: primarySegmentSignal?.unlocked_output || "",
     confidence: text(recipe.confidence, "low"),
     readiness_status: readinessStatus,
     readiness_flags: readinessFlags,
@@ -139,35 +232,40 @@ export function buildReelsBrainBriefPack(
   limit = 3,
   options?: {
     segmentReadiness?: SegmentReadinessRow[];
+    segmentPriorityQueue?: SegmentPriorityRow[];
+    generationPolicy?: {
+      by_segment?: SegmentPolicyRow[];
+    } | null;
   },
 ) {
   const readinessMap = new Map((options?.segmentReadiness || []).map((row) => [`${text(row.niche)}__${text(row.platform)}`, row]));
+  const segmentPriorityMap = new Map((options?.segmentPriorityQueue || []).map((row) => [`${text(row.niche)}__${text(row.platform)}`, row]));
+  const segmentPolicyMap = new Map((((options?.generationPolicy?.by_segment) || []) as SegmentPolicyRow[]).map((row) => [`${text(row.niche)}__${text(row.platform)}`, row]));
   const ranked = [...(recipes || [])]
     .sort((a, b) =>
       num(b.op_score) - num(a.op_score)
       || confidenceScore(b.confidence) - confidenceScore(a.confidence)
       || text(a.title).localeCompare(text(b.title)))
     .slice(0, Math.max(1, limit))
-    .map((recipe, index) => normalizeRecipe(recipe, index + 1, readinessMap))
-    .sort((a, b) =>
-      num(b.effective_op_score) - num(a.effective_op_score)
-      || confidenceScore(b.confidence) - confidenceScore(a.confidence)
-      || text(a.title).localeCompare(text(b.title)),
-    )
+    .map((recipe, index) => normalizeRecipe(recipe, index + 1, readinessMap, segmentPriorityMap, segmentPolicyMap));
+  const normalizedRanked = sortPackRows(ranked)
     .map((recipe, index) => ({ ...recipe, rank: index + 1 }));
 
   return {
-    primary: ranked[0] || null,
-    alternatives: ranked.slice(1),
+    primary: normalizedRanked[0] || null,
+    alternatives: normalizedRanked.slice(1),
     summary: {
-      total: ranked.length,
-      high_confidence: ranked.filter((item) => item.confidence === "high").length,
-      medium_confidence: ranked.filter((item) => item.confidence === "medium").length,
-      low_confidence: ranked.filter((item) => item.confidence !== "high" && item.confidence !== "medium").length,
-      readiness_backed: ranked.filter((item) => item.readiness_status === "backed").length,
-      readiness_watch: ranked.filter((item) => item.readiness_status === "watch").length,
-      readiness_thin: ranked.filter((item) => item.readiness_status === "thin").length,
-      avg_op_score: ranked.length ? Math.round(ranked.reduce((sum, item) => sum + num(item.op_score), 0) / ranked.length) : 0,
+      total: normalizedRanked.length,
+      high_confidence: normalizedRanked.filter((item) => item.confidence === "high").length,
+      medium_confidence: normalizedRanked.filter((item) => item.confidence === "medium").length,
+      low_confidence: normalizedRanked.filter((item) => item.confidence !== "high" && item.confidence !== "medium").length,
+      readiness_backed: normalizedRanked.filter((item) => item.readiness_status === "backed").length,
+      readiness_watch: normalizedRanked.filter((item) => item.readiness_status === "watch").length,
+      readiness_thin: normalizedRanked.filter((item) => item.readiness_status === "thin").length,
+      primary_policy_mode: text(normalizedRanked[0]?.segment_priority_mode, "research_only"),
+      primary_segment_priority_score: num(normalizedRanked[0]?.segment_priority_score),
+      ready_for_generation: normalizedRanked.filter((item) => item.segment_ready_for_generation).length,
+      avg_op_score: normalizedRanked.length ? Math.round(normalizedRanked.reduce((sum, item) => sum + num(item.op_score), 0) / normalizedRanked.length) : 0,
     },
   };
 }
@@ -178,36 +276,53 @@ export function buildGroupedReelsBrainBriefPacks(input: {
   platforms?: string[];
   limit?: number;
   segmentReadiness?: SegmentReadinessRow[];
+  segmentPriorityQueue?: SegmentPriorityRow[];
+  generationPolicy?: {
+    by_segment?: SegmentPolicyRow[];
+  } | null;
 }) {
   const recipes = input.recipes || [];
   const niches = Array.from(new Set((input.niches || recipes.flatMap((recipe) => list(recipe.niches, 20))).filter(Boolean))).sort();
   const platforms = Array.from(new Set((input.platforms || recipes.flatMap((recipe) => list(recipe.platforms, 20))).filter(Boolean))).sort();
+  const options = {
+    segmentReadiness: input.segmentReadiness,
+    segmentPriorityQueue: input.segmentPriorityQueue,
+    generationPolicy: input.generationPolicy,
+  };
+  const sortGroups = <T extends { primary?: { segment_priority_mode?: string; segment_priority_score?: number; effective_op_score?: number; confidence?: string; title?: string } | null }>(rows: T[]) =>
+    rows.sort((a, b) =>
+      policyModeScore(b.primary?.segment_priority_mode) - policyModeScore(a.primary?.segment_priority_mode)
+      || num(b.primary?.segment_priority_score) - num(a.primary?.segment_priority_score)
+      || num(b.primary?.effective_op_score) - num(a.primary?.effective_op_score)
+      || confidenceScore(b.primary?.confidence) - confidenceScore(a.primary?.confidence)
+      || text(a.primary?.title).localeCompare(text(b.primary?.title)),
+    );
   return {
-    by_niche: niches.map((niche) => ({
+    by_niche: sortGroups(niches.map((niche) => ({
       niche,
       ...buildReelsBrainBriefPack(
         recipes.filter((recipe) => list(recipe.niches, 20).includes(niche)),
         input.limit || 3,
-        { segmentReadiness: input.segmentReadiness },
+        options,
       ),
-    })).filter((row) => row.primary),
-    by_platform: platforms.map((platform) => ({
+    })).filter((row) => row.primary)),
+    by_platform: sortGroups(platforms.map((platform) => ({
       platform,
       ...buildReelsBrainBriefPack(
         recipes.filter((recipe) => list(recipe.platforms, 20).includes(platform)),
         input.limit || 3,
-        { segmentReadiness: input.segmentReadiness },
+        options,
       ),
-    })).filter((row) => row.primary),
-    by_segment: segmentPairs(recipes).map(({ niche, platform }) => ({
+    })).filter((row) => row.primary)),
+    by_segment: sortGroups(segmentPairs(recipes).map(({ niche, platform }) => ({
       niche,
       platform,
       ...buildReelsBrainBriefPack(
         recipes.filter((recipe) =>
           list(recipe.niches, 20).includes(niche) && list(recipe.platforms, 20).includes(platform)),
         input.limit || 3,
-        { segmentReadiness: input.segmentReadiness },
+        options,
       ),
-    })).filter((row) => row.primary),
+    })).filter((row) => row.primary)),
   };
 }

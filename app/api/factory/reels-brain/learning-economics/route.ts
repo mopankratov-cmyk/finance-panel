@@ -2956,6 +2956,51 @@ export async function GET(req: NextRequest) {
       exactSegmentQueue,
       limit: compactMode ? 4 : 6,
     });
+    const prioritizedBriefPack = buildReelsBrainBriefPack(
+      insightPayload.recipes as unknown as Array<Parameters<typeof buildReelsBrainBriefPack>[0][number]>,
+      compactMode ? 4 : 6,
+      {
+        segmentReadiness: segmentAudioVisualReadiness,
+        segmentPriorityQueue: segmentPriorityQueue.items,
+        generationPolicy,
+      },
+    );
+    const prioritizedGroupedBriefPacks = buildGroupedReelsBrainBriefPacks({
+      recipes: insightPayload.recipes as unknown as Array<Parameters<typeof buildGroupedReelsBrainBriefPacks>[0]["recipes"][number]>,
+      niches: nicheSummaries.map((row) => row.niche),
+      platforms: ["tiktok", "instagram", "youtube"],
+      limit: compactMode ? 2 : 3,
+      segmentReadiness: segmentAudioVisualReadiness,
+      segmentPriorityQueue: segmentPriorityQueue.items,
+      generationPolicy,
+    });
+    const prioritizedTrustedGroupedBriefPacks = {
+      by_niche: applySegmentTrustToGroups({
+        groups: prioritizedGroupedBriefPacks.by_niche,
+        trustRows: segmentTrust.by_niche,
+        key: "niche",
+      }),
+      by_platform: applySegmentTrustToGroups({
+        groups: prioritizedGroupedBriefPacks.by_platform,
+        trustRows: segmentTrust.by_platform,
+        key: "platform",
+      }),
+      by_segment: prioritizedGroupedBriefPacks.by_segment,
+    };
+    const prioritizedTopOpportunities = buildReelsBrainOpportunities({
+      nicheSummaries,
+      segmentTrust,
+      briefPackGroups: prioritizedTrustedGroupedBriefPacks,
+      actionPackGroups: trustedGroupedActionPacks,
+      hypothesisBankGroups: trustedGroupedHypothesisBank,
+      segmentOutputBanks: {
+        briefs: prioritizedTrustedGroupedBriefPacks.by_segment,
+        actions: trustedGroupedActionPacks.by_segment,
+        hypotheses: trustedGroupedHypothesisBank.by_segment,
+      },
+      platforms: ["tiktok", "instagram", "youtube"],
+      limit: compactMode ? 6 : 10,
+    });
     const dailyReport = buildDailyReport({
       totals,
       today,
@@ -3007,15 +3052,15 @@ export async function GET(req: NextRequest) {
       hypothesis_bank_groups: trustedGroupedHypothesisBank,
       action_pack: actionPack,
       action_pack_groups: trustedGroupedActionPacks,
-      brief_pack: briefPack,
-      brief_pack_groups: trustedGroupedBriefPacks,
+      brief_pack: prioritizedBriefPack,
+      brief_pack_groups: prioritizedTrustedGroupedBriefPacks,
       segment_output_banks: {
-        briefs: takeRecordList(trustedGroupedBriefPacks.by_segment, compactMode ? 6 : 10),
+        briefs: takeRecordList(prioritizedTrustedGroupedBriefPacks.by_segment, compactMode ? 6 : 10),
         actions: takeRecordList(trustedGroupedActionPacks.by_segment, compactMode ? 6 : 10),
         hypotheses: takeRecordList(trustedGroupedHypothesisBank.by_segment, compactMode ? 6 : 10),
       },
       segment_trust: segmentTrust,
-      top_opportunities: topOpportunities,
+      top_opportunities: prioritizedTopOpportunities,
       pattern_atlas: patternAtlas,
       segment_playbook: segmentPlaybook,
       segment_decision_deck: segmentDecisionDeck,
