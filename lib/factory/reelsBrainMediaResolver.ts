@@ -1,4 +1,8 @@
 import { execFile } from "node:child_process";
+import { mkdtemp, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { gunzipSync } from "node:zlib";
 import { promisify } from "node:util";
 import { transcribeFal } from "./asr";
 
@@ -112,6 +116,8 @@ function ffprobeBin() {
   return text(process.env.FFPROBE_BIN, 600) || "ffprobe";
 }
 
+let ytDlpCookiesPathPromise: Promise<string> | null = null;
+
 function num(value: unknown): number | null {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
@@ -189,6 +195,69 @@ function shouldSkipDownloadForProbe(target: string): boolean {
   return !shouldUseCookies(target);
 }
 
+function collectEnvParts(prefix: string) {
+  return Object.entries(process.env)
+    .filter(([key, value]) => key.startsWith(prefix) && typeof value === "string" && value.trim())
+    .sort((a, b) => {
+      const ai = Number(a[0].slice(prefix.length)) || 0;
+      const bi = Number(b[0].slice(prefix.length)) || 0;
+      return ai - bi;
+    })
+    .map(([, value]) => String(value));
+}
+
+async function ensureYtDlpCookiesPath() {
+  const explicitPath = text(process.env.YT_DLP_COOKIES_PATH, 1200);
+  if (explicitPath) return explicitPath;
+
+  if (!ytDlpCookiesPathPromise) {
+    ytDlpCookiesPathPromise = (async () => {
+      const plain = process.env.YT_DLP_COOKIES_TXT;
+      const base64 = process.env.YT_DLP_COOKIES_B64 || process.env.YT_DLP_COOKIES_BASE64;
+      const base64Parts = collectEnvParts("YT_DLP_COOKIES_B64_PART_");
+      const gzipBase64 = process.env.YT_DLP_COOKIES_GZ_B64;
+      const gzipBase64Parts = collectEnvParts("YT_DLP_COOKIES_GZ_B64_PART_");
+      let content = "";
+
+      if (typeof plain === "string" && plain.trim()) {
+        content = plain;
+      } else if (gzipBase64Parts.length) {
+        content = gunzipSync(Buffer.from(gzipBase64Parts.join(""), "base64")).toString("utf8");
+      } else if (typeof gzipBase64 === "string" && gzipBase64.trim()) {
+        content = gunzipSync(Buffer.from(gzipBase64.trim(), "base64")).toString("utf8");
+      } else if (base64Parts.length) {
+        content = Buffer.from(base64Parts.join(""), "base64").toString("utf8");
+      } else if (typeof base64 === "string" && base64.trim()) {
+        content = Buffer.from(base64.trim(), "base64").toString("utf8");
+      }
+
+      if (!content.trim()) return "";
+
+      const dir = await mkdtemp(path.join(os.tmpdir(), "reels-brain-cookies-"));
+      const filePath = path.join(dir, "youtube-cookies.txt");
+      await writeFile(filePath, content, "utf8");
+      process.env.YT_DLP_COOKIES_PATH = filePath;
+      return filePath;
+    })();
+  }
+
+  return ytDlpCookiesPathPromise;
+}
+
+function ytDlpProbeArgSets(target: string) {
+  const base = ["-J", "--no-warnings"];
+  if (shouldSkipDownloadForProbe(target)) base.push("--skip-download");
+  if (/(^https?:\/\/)?([a-z0-9-]+\.)?(youtube\.com|youtu\.be)(\/|$)/i.test(target)) {
+    return [
+      [...base, target],
+      [...base, "--extractor-args", "youtube:player_client=android,web", target],
+      [...base, "--extractor-args", "youtube:player_client=ios,android,web", target],
+      [...base, "--extractor-args", "youtube:player_client=android,web", "-f", "b/best", target],
+    ];
+  }
+  return [[...base, target]];
+}
+
 export async function hasYtDlpBinary(): Promise<boolean> {
   try {
     await execFileAsync(ytDlpBin(), ["--version"], { timeout: 5000, maxBuffer: 256 * 1024 });
@@ -208,38 +277,39 @@ async function hasBinary(binary: string, args: string[]): Promise<boolean> {
 }
 
 export async function hasFfmpegBinary(): Promise<boolean> {
-  return hasBinary("ffmpeg", ["-version"]);
+  return hasBinary(ffmpegBin(), ["-version"]);
 }
 
 export async function hasFfprobeBinary(): Promise<boolean> {
-  return hasBinary("ffprobe", ["-version"]);
+  return hasBinary(ffprobeBin(), ["-version"]);
 }
 
 export async function resolveMediaLocatorViaYtDlp(url: string): Promise<ReelsBrainResolvedMedia | null> {
   const target = normalizeYtDlpTarget(url);
   if (!target) return null;
-  try {
-    const probeArgs = ["-J", "--no-warnings"];
-    if (shouldSkipDownloadForProbe(target)) probeArgs.push("--skip-download");
-    probeArgs.push(target);
-    const { stdout } = await execFileAsync(
-      ytDlpBin(),
-      probeArgs,
-      { timeout: 45000, maxBuffer: 8 * 1024 * 1024 },
-    );
-    const payload = JSON.parse(stdout) as Record<string, unknown>;
-    const mediaUrl = pickFormatUrl(payload);
-    return {
-      media_url: mediaUrl,
-      title: text(payload.title, 500),
-      author: text(payload.uploader, 240) || text(payload.channel, 240),
-      duration_sec: num(payload.duration),
-      extractor: text(payload.extractor_key, 120) || text(payload.extractor, 120),
-      source: "yt_dlp",
-    };
-  } catch {
-    return null;
+  const cookiesPath = shouldUseCookies(target) ? await ensureYtDlpCookiesPath() : "";
+  for (const probeArgs of ytDlpProbeArgSets(target)) {
+    try {
+      const args = cookiesPath ? ["--cookies", cookiesPath, ...probeArgs] : probeArgs;
+      const { stdout } = await execFileAsync(
+        ytDlpBin(),
+        args,
+        { timeout: 45000, maxBuffer: 8 * 1024 * 1024 },
+      );
+      const payload = JSON.parse(stdout) as Record<string, unknown>;
+      const mediaUrl = pickFormatUrl(payload);
+      if (!mediaUrl) continue;
+      return {
+        media_url: mediaUrl,
+        title: text(payload.title, 500),
+        author: text(payload.uploader, 240) || text(payload.channel, 240),
+        duration_sec: num(payload.duration),
+        extractor: text(payload.extractor_key, 120) || text(payload.extractor, 120),
+        source: "yt_dlp",
+      };
+    } catch {}
   }
+  return null;
 }
 
 type ProbePayload = {

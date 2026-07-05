@@ -21,6 +21,10 @@ ok(/export function shouldRetryAudioBackfill/.test(resolver), "media resolver ex
 ok(/function ytDlpBin\(\)/.test(resolver) && /process\.env\.YT_DLP_BIN/.test(resolver), "media resolver respects YT_DLP_BIN from worker env");
 ok(/function ffmpegBin\(\)/.test(resolver) && /process\.env\.FFMPEG_BIN/.test(resolver), "media resolver respects FFMPEG_BIN from worker env");
 ok(/function ffprobeBin\(\)/.test(resolver) && /process\.env\.FFPROBE_BIN/.test(resolver), "media resolver respects FFPROBE_BIN from worker env");
+ok(/async function ensureYtDlpCookiesPath/.test(resolver) && /YT_DLP_COOKIES_PATH/.test(resolver), "media resolver can materialize yt-dlp cookie file from env");
+ok(/YT_DLP_COOKIES_B64/.test(resolver) && /YT_DLP_COOKIES_GZ_B64/.test(resolver) && /YT_DLP_COOKIES_TXT/.test(resolver), "media resolver supports plain, base64 and gzipped cookie payloads");
+ok(/function ytDlpProbeArgSets/.test(resolver) && /youtube:player_client=android,web/.test(resolver), "media resolver retries YouTube probe with multiple player clients");
+ok(/--cookies/.test(resolver) && /ensureYtDlpCookiesPath/.test(resolver), "media resolver passes cookie file to yt-dlp when cookies are enabled");
 ok(/whisper_empty_text/.test(resolver) && /transcript_no_speech/.test(resolver), "media resolver treats empty whisper results as terminal");
 ok(/media_fetch_403/.test(resolver) && /status code 10204/.test(resolver) && /media_locator_unresolved/.test(resolver) && /moov atom not found/.test(resolver), "media resolver treats unavailable and corrupted media locators as terminal audio errors");
 ok(/shouldRetryAudioBackfill/.test(route), "audio backfill route uses audio backfill retry helper");
