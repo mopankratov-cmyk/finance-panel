@@ -78,6 +78,10 @@ function createdAtMs(value: unknown): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function segmentKey(niche: string, platform: string) {
+  return `${niche}__${platform}`;
+}
+
 function bottleneckMeta(key: string, count: number, throughputPer24h: number) {
   const eta = etaHours(count, throughputPer24h);
   if (key === "media") {
@@ -154,6 +158,19 @@ export async function GET(req: NextRequest) {
       patterns: number;
       generator_ready_patterns: number;
     }>();
+    const segmentBuckets = new Map<string, {
+      niche: string;
+      platform: string;
+      total: number;
+      with_direct_media: number;
+      audio_extracted: number;
+      transcript_ready: number;
+      analyzed: number;
+      media_backlog: number;
+      audio_backlog: number;
+      transcript_backlog: number;
+      analyze_backlog: number;
+    }>();
 
     for (const platform of ["tiktok", "instagram", "youtube"]) {
       buckets.set(platform, {
@@ -177,6 +194,7 @@ export async function GET(req: NextRequest) {
       const platform = String(row.platform || "unknown").trim().toLowerCase();
       if (!buckets.has(platform)) continue;
       const bucket = buckets.get(platform)!;
+      const niche = String(row.niche || "unknown").trim() || "unknown";
       const seed = seedState(row);
       bucket.total += 1;
       if (seed.mediaLocators.length) bucket.with_media_candidates += 1;
@@ -191,6 +209,30 @@ export async function GET(req: NextRequest) {
       if (mediaReady && seed.audioStatus !== "audio_extracted") bucket.audio_backlog += 1;
       if (seed.audioStatus === "audio_extracted" && seed.transcriptStatus !== "transcript_ready") bucket.transcript_backlog += 1;
       if (!row.analyzed) bucket.analyze_backlog += 1;
+
+      const currentSegment = segmentBuckets.get(segmentKey(niche, platform)) || {
+        niche,
+        platform,
+        total: 0,
+        with_direct_media: 0,
+        audio_extracted: 0,
+        transcript_ready: 0,
+        analyzed: 0,
+        media_backlog: 0,
+        audio_backlog: 0,
+        transcript_backlog: 0,
+        analyze_backlog: 0,
+      };
+      currentSegment.total += 1;
+      if (seed.directMediaLocators.length > 0 || seed.mediaStatus === "media_downloaded") currentSegment.with_direct_media += 1;
+      if (seed.audioStatus === "audio_extracted") currentSegment.audio_extracted += 1;
+      if (seed.transcriptStatus === "transcript_ready") currentSegment.transcript_ready += 1;
+      if (row.analyzed) currentSegment.analyzed += 1;
+      if (!mediaReady) currentSegment.media_backlog += 1;
+      if (mediaReady && seed.audioStatus !== "audio_extracted") currentSegment.audio_backlog += 1;
+      if (seed.audioStatus === "audio_extracted" && seed.transcriptStatus !== "transcript_ready") currentSegment.transcript_backlog += 1;
+      if (!row.analyzed) currentSegment.analyze_backlog += 1;
+      segmentBuckets.set(segmentKey(niche, platform), currentSegment);
     }
 
     let analyzedLast24h = 0;
@@ -335,6 +377,48 @@ export async function GET(req: NextRequest) {
       })
       .sort((a, b) => b.total_backlog - a.total_backlog);
 
+    const segmentWatchlist = Array.from(segmentBuckets.values())
+      .map((segment) => {
+        const dominantGap = [
+          { key: "media", count: segment.media_backlog, label: "media" },
+          { key: "audio", count: segment.audio_backlog, label: "audio" },
+          { key: "transcript", count: segment.transcript_backlog, label: "transcript" },
+          { key: "analyze", count: segment.analyze_backlog, label: "analyze" },
+        ].sort((a, b) => b.count - a.count)[0];
+        const totalBacklog = segment.media_backlog + segment.audio_backlog + segment.transcript_backlog + segment.analyze_backlog;
+        return {
+          niche: segment.niche,
+          platform: segment.platform,
+          total: segment.total,
+          total_backlog: totalBacklog,
+          dominant_gap: dominantGap,
+          with_direct_media: segment.with_direct_media,
+          direct_rate: pct(segment.with_direct_media, segment.total),
+          audio_extracted: segment.audio_extracted,
+          audio_rate: pct(segment.audio_extracted, segment.total),
+          transcript_ready: segment.transcript_ready,
+          transcript_ready_rate: pct(segment.transcript_ready, segment.total),
+          analyzed: segment.analyzed,
+          analyzed_rate: pct(segment.analyzed, segment.total),
+          automation_eta_hours: {
+            audio: etaHours(segment.audio_backlog + segment.transcript_backlog, analyzedLast24h),
+            analyze: etaHours(segment.analyze_backlog, analyzedLast24h),
+          },
+          note: dominantGap?.count
+            ? `${segment.niche} × ${segment.platform}: главный хвост сейчас в ${dominantGap.label}`
+            : `${segment.niche} × ${segment.platform}: хвостов почти не осталось`,
+        };
+      })
+      .filter((segment) => segment.total > 0)
+      .sort((a, b) =>
+        b.total_backlog - a.total_backlog
+        || a.direct_rate - b.direct_rate
+        || a.audio_rate - b.audio_rate
+        || a.analyzed_rate - b.analyzed_rate
+        || a.niche.localeCompare(b.niche)
+        || a.platform.localeCompare(b.platform),
+      );
+
     return NextResponse.json({
       ok: true,
       niches,
@@ -358,6 +442,7 @@ export async function GET(req: NextRequest) {
       primary_bottleneck: bottlenecks[0] || null,
       bottlenecks,
       platform_watchlist: platformWatchlist.slice(0, 6),
+      segment_watchlist: segmentWatchlist.slice(0, 12),
       incident_timeline: incidentTimeline
         .sort((a, b) => createdAtMs(b.created_at) - createdAtMs(a.created_at))
         .slice(0, 18),

@@ -47,6 +47,20 @@ function compactProgress(body: Record<string, any> | null | undefined) {
       analyze_backlog: Number(row.analyze_backlog || 0),
       automation_eta_hours: row.automation_eta_hours || null,
     })),
+    segment_watchlist: Array.isArray(body?.segment_watchlist)
+      ? body.segment_watchlist.slice(0, 8).map((row: any) => ({
+        niche: row.niche,
+        platform: row.platform,
+        total: Number(row.total || 0),
+        total_backlog: Number(row.total_backlog || 0),
+        dominant_gap: row.dominant_gap || null,
+        direct_rate: Number(row.direct_rate || 0),
+        audio_rate: Number(row.audio_rate || 0),
+        transcript_ready_rate: Number(row.transcript_ready_rate || 0),
+        analyzed_rate: Number(row.analyzed_rate || 0),
+        automation_eta_hours: row.automation_eta_hours || null,
+      }))
+      : [],
   };
 }
 

@@ -145,16 +145,29 @@ async function runPipelinePreflight(req: NextRequest, input: {
 }) {
   const totals = rec(input.progress.data?.totals);
   const platforms = Array.isArray(input.progress.data?.platforms) ? input.progress.data?.platforms.map((row) => rec(row)) : [];
-  const mediaTargets = [...platforms]
-    .filter((row) => Number(row.media_backlog || 0) > 0)
-    .sort((a, b) => Number(b.media_backlog || 0) - Number(a.media_backlog || 0))
+  const segments = Array.isArray(input.progress.data?.segment_watchlist) ? input.progress.data?.segment_watchlist.map((row) => rec(row)) : [];
+  const mediaSegmentTargets = [...segments]
+    .filter((row) => Number(row.total_backlog || 0) > 0 && String(rec(row.dominant_gap).key || "") === "media")
+    .sort((a, b) => Number(b.total_backlog || 0) - Number(a.total_backlog || 0))
     .slice(0, input.profile.media_limit >= 3 ? 2 : 1);
-  const audioTargets = [...platforms]
-    .filter((row) => Number(row.audio_backlog || 0) + Number(row.transcript_backlog || 0) > 0)
-    .sort((a, b) =>
-      (Number(b.audio_backlog || 0) + Number(b.transcript_backlog || 0))
-      - (Number(a.audio_backlog || 0) + Number(a.transcript_backlog || 0)))
+  const audioSegmentTargets = [...segments]
+    .filter((row) => Number(row.total_backlog || 0) > 0 && ["audio", "transcript"].includes(String(rec(row.dominant_gap).key || "")))
+    .sort((a, b) => Number(b.total_backlog || 0) - Number(a.total_backlog || 0))
     .slice(0, input.profile.audio_limit >= 4 ? 2 : 1);
+  const mediaTargets = mediaSegmentTargets.length
+    ? mediaSegmentTargets
+    : [...platforms]
+        .filter((row) => Number(row.media_backlog || 0) > 0)
+        .sort((a, b) => Number(b.media_backlog || 0) - Number(a.media_backlog || 0))
+        .slice(0, input.profile.media_limit >= 3 ? 2 : 1);
+  const audioTargets = audioSegmentTargets.length
+    ? audioSegmentTargets
+    : [...platforms]
+        .filter((row) => Number(row.audio_backlog || 0) + Number(row.transcript_backlog || 0) > 0)
+        .sort((a, b) =>
+          (Number(b.audio_backlog || 0) + Number(b.transcript_backlog || 0))
+          - (Number(a.audio_backlog || 0) + Number(a.transcript_backlog || 0)))
+        .slice(0, input.profile.audio_limit >= 4 ? 2 : 1);
   const needsAudio = Number(totals.audio_backlog || 0) > 0 || Number(totals.transcript_backlog || 0) > 0;
 
   const result: Record<string, unknown> = {
@@ -166,7 +179,7 @@ async function runPipelinePreflight(req: NextRequest, input: {
     const mediaTicks = [];
     for (const target of mediaTargets) {
       const mediaUrl = new URL("/api/factory/jobs/reels-brain-media-backfill", req.nextUrl.origin);
-      mediaUrl.searchParams.set("niches", input.niches);
+      mediaUrl.searchParams.set("niches", String(target.niche || input.niches));
       mediaUrl.searchParams.set("platform", String(target.platform || ""));
       mediaUrl.searchParams.set("limit", String(perPlatformLimit));
       mediaUrl.searchParams.set("scan", String(input.profile.media_scan));
@@ -176,6 +189,7 @@ async function runPipelinePreflight(req: NextRequest, input: {
       const body = await response.json().catch(() => ({}));
       mediaTicks.push({
         ok: response.ok && body?.ok !== false,
+        niche: String(target.niche || ""),
         platform: String(target.platform || ""),
         attempted: body?.attempted ?? null,
         rows_with_media: body?.rows_with_media ?? null,
@@ -193,7 +207,7 @@ async function runPipelinePreflight(req: NextRequest, input: {
     const audioTicks = [];
     for (const target of audioTargets) {
       const audioUrl = new URL("/api/factory/jobs/reels-brain-audio-backfill", req.nextUrl.origin);
-      audioUrl.searchParams.set("niches", input.niches);
+      audioUrl.searchParams.set("niches", String(target.niche || input.niches));
       audioUrl.searchParams.set("platform", String(target.platform || ""));
       audioUrl.searchParams.set("limit", String(perPlatformLimit));
       audioUrl.searchParams.set("scan", String(input.profile.audio_scan));
@@ -204,6 +218,7 @@ async function runPipelinePreflight(req: NextRequest, input: {
       const body = await response.json().catch(() => ({}));
       audioTicks.push({
         ok: response.ok && body?.ok !== false,
+        niche: String(target.niche || ""),
         platform: String(target.platform || ""),
         extracted: body?.extracted ?? null,
         transcript_ready: body?.transcript_ready ?? null,
