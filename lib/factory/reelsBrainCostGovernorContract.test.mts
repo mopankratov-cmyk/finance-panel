@@ -140,6 +140,7 @@ ok(/execution_intent/.test(cron) && /execution_intent/.test(analyzeBacklog) && /
 ok(/focus_platform/.test(patternBuild) && /compaction_context/.test(patternBuild) && /loadPatternSourceVideos/.test(patternBuild), "patterns/build exposes platform-biased compaction context for policy-aware memory rebuilds");
 ok(/function loadPipelineProgress/.test(cron) && /pipeline_preflight/.test(cron) && /reels-brain-audio-backfill/.test(cron), "cron runs pipeline preflight for media and audio backlog");
 ok(/media_ticks/.test(cron) && /audio_ticks/.test(cron) && /platform\",\s*String\(target\.platform/.test(cron), "cron preflight fans out media and audio backlog across top platforms");
+ok(/focus_niche/.test(cron) && /focus_platform/.test(cron) && /source_discovery_mode/.test(cron) && /prioritizeFocusTargets/.test(cron), "cron preflight forwards focused exact-proof segment context into readiness backfill");
 ok(/use_autopilot_guard/.test(scheduler), "scheduler marks paid collection as guarded");
 
 ok(/costGovernor/.test(cockpit) && /autopilotActions/.test(cockpit), "cockpit reads cost governor and autopilot actions");

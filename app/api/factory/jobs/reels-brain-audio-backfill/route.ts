@@ -82,6 +82,12 @@ function boolParam(req: NextRequest, name: string, fallback = false): boolean {
   return value === "1" || value === "true" || value === "yes";
 }
 
+function sameFocusSegment(row: CorpusRow, focusNiche: string, focusPlatform: string) {
+  if (!focusNiche || !focusPlatform) return false;
+  return String(row.niche || "").trim().toLowerCase() === focusNiche
+    && String(row.platform || "").trim().toLowerCase() === focusPlatform;
+}
+
 function seedState(row: CorpusRow) {
   const analyzedFull = rec(row.analyzed_full);
   const reelsSeed = rec(analyzedFull.reels_seed);
@@ -157,6 +163,9 @@ export async function GET(req: NextRequest) {
     const language = String(req.nextUrl.searchParams.get("language") || "ru").trim().slice(0, 12) || "ru";
     const priorityMode = String(req.nextUrl.searchParams.get("priority") || "smart").trim().toLowerCase();
     const deepOnly = boolParam(req, "deep_only", false);
+    const focusNiche = String(req.nextUrl.searchParams.get("focus_niche") || "").trim().toLowerCase();
+    const focusPlatform = String(req.nextUrl.searchParams.get("focus_platform") || "").trim().toLowerCase();
+    const sourceDiscoveryMode = String(req.nextUrl.searchParams.get("source_discovery_mode") || "").trim().toLowerCase();
     const { shardIndex, shardCount } = parseShardConfig({
       shardIndex: req.nextUrl.searchParams.get("shard_index"),
       shardCount: req.nextUrl.searchParams.get("shard_count"),
@@ -196,38 +205,66 @@ export async function GET(req: NextRequest) {
         const state = seedState(row);
         const platform = String(row.platform || "").trim().toLowerCase();
         const mediaUrl = bestMediaLocator(row);
+        const focusMatch = sameFocusSegment(row, focusNiche, focusPlatform);
+        const baseScore = priorityMode === "fifo"
+          ? 0
+          : scoreAudioCandidate({
+            id: row.id,
+            viralityScore: row.virality_score,
+            views: row.views,
+            createdAt: row.created_at,
+            audioStatus: state.audioStatus,
+            transcriptStatus: state.transcriptStatus,
+            hasDirectMedia: Boolean(mediaUrl && isDirectVideoLocator(mediaUrl)),
+            hasPageFallback: Boolean(platform === "instagram" && /^https?:\/\/(www\.)?instagram\.com\/(reel|reels|tv|p)\//i.test(mediaUrl)),
+          });
+        const focusBoost = focusMatch
+          ? sourceDiscoveryMode === "close_exact_proof" || sourceDiscoveryMode === "pin_winner_provider"
+            ? state.audioStatus === "audio_extracted" && state.transcriptStatus !== "transcript_ready"
+              ? 42
+              : 30
+            : sourceDiscoveryMode === "seed_and_collect"
+              ? 24
+              : 18
+          : 0;
         return {
           row,
           state,
           mediaUrl,
-          priority: priorityMode === "fifo"
-            ? 0
-            : scoreAudioCandidate({
-              id: row.id,
-              viralityScore: row.virality_score,
-              views: row.views,
-              createdAt: row.created_at,
-              audioStatus: state.audioStatus,
-              transcriptStatus: state.transcriptStatus,
-              hasDirectMedia: Boolean(mediaUrl && isDirectVideoLocator(mediaUrl)),
-              hasPageFallback: Boolean(platform === "instagram" && /^https?:\/\/(www\.)?instagram\.com\/(reel|reels|tv|p)\//i.test(mediaUrl)),
-            }),
+          focusMatch,
+          priority: Math.round((baseScore + focusBoost) * 10) / 10,
         };
       })
       .sort((a, b) =>
-        b.priority - a.priority
+        Number(b.focusMatch) - Number(a.focusMatch)
+        || b.priority - a.priority
         || Number(b.row.virality_score || 0) - Number(a.row.virality_score || 0)
         || Number(b.row.views || 0) - Number(a.row.views || 0)
         || Number(b.row.id || 0) - Number(a.row.id || 0),
       );
 
+    const exactFocusRanked = focusNiche && focusPlatform
+      ? ranked.filter((entry) => entry.focusMatch)
+      : [];
     const deepRanked = ranked.filter((entry) => Number(entry.row.virality_score || 0) >= 45);
-    const selectedRanked = deepOnly && deepRanked.length ? deepRanked : ranked;
-    const deepOnlyRelaxed = Boolean(deepOnly && !deepRanked.length && ranked.length);
+    const deepFocusedRanked = deepRanked.filter((entry) => entry.focusMatch);
+    const selectedRanked = deepOnly
+      ? deepFocusedRanked.length
+        ? deepFocusedRanked
+        : deepRanked.length
+          ? deepRanked
+          : exactFocusRanked.length
+            ? exactFocusRanked
+            : ranked
+      : exactFocusRanked.length
+        ? [...exactFocusRanked, ...ranked.filter((entry) => !entry.focusMatch)]
+        : ranked;
+    const deepOnlyRelaxed = Boolean(deepOnly && !deepFocusedRanked.length && !deepRanked.length && ranked.length);
 
     const rows = selectedRanked
       .sort((a, b) =>
-        b.priority - a.priority
+        Number(b.focusMatch) - Number(a.focusMatch)
+        || b.priority - a.priority
         || Number(b.row.virality_score || 0) - Number(a.row.virality_score || 0)
         || Number(b.row.views || 0) - Number(a.row.views || 0)
         || Number(b.row.id || 0) - Number(a.row.id || 0),
@@ -326,6 +363,9 @@ export async function GET(req: NextRequest) {
       priority: priorityMode,
       deep_only: deepOnly,
       deep_only_relaxed: deepOnlyRelaxed,
+      focus_niche: focusNiche || null,
+      focus_platform: focusPlatform || null,
+      source_discovery_mode: sourceDiscoveryMode || null,
       scanned: queryScan,
       attempted: rows.length,
       extracted,

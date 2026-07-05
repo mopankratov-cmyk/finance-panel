@@ -40,6 +40,8 @@ ok(
 ok(/parseShardConfig/.test(route) && /stableShardMatch/.test(route), "audio backfill route supports sharded worker queues");
 ok(/scoreAudioCandidate/.test(route) && /priority/.test(route), "audio backfill route supports smart candidate prioritization");
 ok(/deepOnly/.test(route) && /virality_score/.test(route), "audio backfill route supports deep-only gating for expensive analysis");
+ok(/focus_niche/.test(route) && /focus_platform/.test(route) && /source_discovery_mode/.test(route), "audio backfill route accepts focused segment context from the learning loop");
+ok(/focusMatch/.test(route) && /close_exact_proof/.test(route) && /deepFocusedRanked/.test(route), "audio backfill route prioritizes exact-proof focused rows before generic backlog");
 
 if (failed) process.exit(1);
 console.log(`reelsBrainAudioBackfillContract: ${passed} passed, ${failed} failed`);

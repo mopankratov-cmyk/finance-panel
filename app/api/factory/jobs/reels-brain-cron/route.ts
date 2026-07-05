@@ -27,6 +27,32 @@ function firstNonEmptyRecord(...values: unknown[]): Record<string, unknown> {
   return {};
 }
 
+function focusSegment(intent: { focus_segment?: string | null } | null | undefined) {
+  const raw = String(intent?.focus_segment || "").trim();
+  if (!raw) return { niche: "", platform: "" };
+  const [niche = "", platform = ""] = raw.split("×").map((part) => part.trim().toLowerCase());
+  return { niche, platform };
+}
+
+function sameTargetFocus(
+  target: Record<string, unknown>,
+  focus: { niche: string; platform: string },
+) {
+  if (!focus.niche || !focus.platform) return false;
+  return String(target.niche || "").trim().toLowerCase() === focus.niche
+    && String(target.platform || "").trim().toLowerCase() === focus.platform;
+}
+
+function prioritizeFocusTargets<T extends Record<string, unknown>>(
+  targets: T[],
+  focus: { niche: string; platform: string },
+) {
+  if (!focus.niche || !focus.platform) return targets;
+  const focused = targets.filter((target) => sameTargetFocus(target, focus));
+  if (!focused.length) return targets;
+  return [...focused, ...targets.filter((target) => !sameTargetFocus(target, focus))];
+}
+
 function forcedTask(req: NextRequest): "bulk" | "analyze" | null {
   const raw = String(req.nextUrl.searchParams.get("task") || req.nextUrl.searchParams.get("mode") || "").trim().toLowerCase();
   if (raw === "bulk" || raw === "ingest") return "bulk";
@@ -142,10 +168,12 @@ async function runPipelinePreflight(req: NextRequest, input: {
   niches: string;
   progress: { ok: boolean; data: Record<string, unknown> | null };
   profile: { media_limit: number; media_scan: number; audio_limit: number; audio_scan: number; deep_only: boolean };
+  executionIntent: { focus_segment?: string | null; source_discovery_mode?: string | null } | null;
 }) {
   const totals = rec(input.progress.data?.totals);
   const platforms = Array.isArray(input.progress.data?.platforms) ? input.progress.data?.platforms.map((row) => rec(row)) : [];
   const segments = Array.isArray(input.progress.data?.segment_watchlist) ? input.progress.data?.segment_watchlist.map((row) => rec(row)) : [];
+  const focus = focusSegment(input.executionIntent);
   const mediaSegmentTargets = [...segments]
     .filter((row) => Number(row.total_backlog || 0) > 0 && String(rec(row.dominant_gap).key || "") === "media")
     .sort((a, b) => Number(b.total_backlog || 0) - Number(a.total_backlog || 0))
@@ -168,16 +196,18 @@ async function runPipelinePreflight(req: NextRequest, input: {
           (Number(b.audio_backlog || 0) + Number(b.transcript_backlog || 0))
           - (Number(a.audio_backlog || 0) + Number(a.transcript_backlog || 0)))
         .slice(0, input.profile.audio_limit >= 4 ? 2 : 1);
+  const prioritizedMediaTargets = prioritizeFocusTargets(mediaTargets, focus);
+  const prioritizedAudioTargets = prioritizeFocusTargets(audioTargets, focus);
   const needsAudio = Number(totals.audio_backlog || 0) > 0 || Number(totals.transcript_backlog || 0) > 0;
 
   const result: Record<string, unknown> = {
     progress_totals: totals,
   };
 
-  if (mediaTargets.length && input.profile.media_limit > 0) {
-    const perPlatformLimit = Math.max(1, Math.ceil(input.profile.media_limit / mediaTargets.length));
+  if (prioritizedMediaTargets.length && input.profile.media_limit > 0) {
+    const perPlatformLimit = Math.max(1, Math.ceil(input.profile.media_limit / prioritizedMediaTargets.length));
     const mediaTicks = [];
-    for (const target of mediaTargets) {
+    for (const target of prioritizedMediaTargets) {
       const mediaUrl = new URL("/api/factory/jobs/reels-brain-media-backfill", req.nextUrl.origin);
       mediaUrl.searchParams.set("niches", String(target.niche || input.niches));
       mediaUrl.searchParams.set("platform", String(target.platform || ""));
@@ -202,10 +232,10 @@ async function runPipelinePreflight(req: NextRequest, input: {
     result.media_ticks = mediaTicks;
   }
 
-  if (needsAudio && audioTargets.length && input.profile.audio_limit > 0) {
-    const perPlatformLimit = Math.max(1, Math.ceil(input.profile.audio_limit / audioTargets.length));
+  if (needsAudio && prioritizedAudioTargets.length && input.profile.audio_limit > 0) {
+    const perPlatformLimit = Math.max(1, Math.ceil(input.profile.audio_limit / prioritizedAudioTargets.length));
     const audioTicks = [];
-    for (const target of audioTargets) {
+    for (const target of prioritizedAudioTargets) {
       const audioUrl = new URL("/api/factory/jobs/reels-brain-audio-backfill", req.nextUrl.origin);
       audioUrl.searchParams.set("niches", String(target.niche || input.niches));
       audioUrl.searchParams.set("platform", String(target.platform || ""));
@@ -213,7 +243,16 @@ async function runPipelinePreflight(req: NextRequest, input: {
       audioUrl.searchParams.set("scan", String(input.profile.audio_scan));
       audioUrl.searchParams.set("transcribe", "1");
       audioUrl.searchParams.set("priority", "smart");
-      audioUrl.searchParams.set("deep_only", input.profile.deep_only ? "1" : "0");
+      if (sameTargetFocus(target, focus)) {
+        audioUrl.searchParams.set("focus_niche", focus.niche);
+        audioUrl.searchParams.set("focus_platform", focus.platform);
+      }
+      if (input.executionIntent?.source_discovery_mode) {
+        audioUrl.searchParams.set("source_discovery_mode", String(input.executionIntent.source_discovery_mode));
+      }
+      const focusedDeepOnly = sameTargetFocus(target, focus)
+        && ["close_exact_proof", "pin_winner_provider"].includes(String(input.executionIntent?.source_discovery_mode || ""));
+      audioUrl.searchParams.set("deep_only", input.profile.deep_only || focusedDeepOnly ? "1" : "0");
       const response = await internalFetch(audioUrl);
       const body = await response.json().catch(() => ({}));
       audioTicks.push({
@@ -348,14 +387,21 @@ export async function GET(req: NextRequest) {
     const plannedTask = forcedTask(req) ? null : normalizedPlanTask(nextTick.task);
     const desiredTask = plannedTask || auto.task;
     const pipelineProgress = await loadPipelineProgress(req, niches);
-    const adaptiveProfile = adaptiveCronProfile({ autoTask: desiredTask, backlog: auto.backlog, progress: pipelineProgress.data });
-    const preflight = pipelineProgress.ok ? await runPipelinePreflight(req, { niches, progress: pipelineProgress, profile: adaptiveProfile.preflight }) : null;
     const guard = desiredTask === "bulk" ? await loadAutopilotGuard(req, niches) : null;
     const task = desiredTask === "bulk" && guard?.ok && !guard.can_run_paid_collection ? "analyze" : desiredTask;
     const executionIntent = buildReelsBrainCronExecutionIntent({
       task,
       nextTick,
     });
+    const adaptiveProfile = adaptiveCronProfile({ autoTask: task, backlog: auto.backlog, progress: pipelineProgress.data });
+    const preflight = pipelineProgress.ok
+      ? await runPipelinePreflight(req, {
+        niches,
+        progress: pipelineProgress,
+        profile: adaptiveProfile.preflight,
+        executionIntent,
+      })
+      : null;
     const endpoint = task === "bulk"
       ? "/api/factory/jobs/reels-brain-bulk-ingest"
       : "/api/factory/jobs/reels-brain-analyze-backlog";
