@@ -215,6 +215,86 @@ test("selectCreativeBriefFromSegmentLayers exposes alternative fallback ladder w
   assert.equal(result?.alternatives?.[1]?.fit_mode, "niche_transfer");
 });
 
+test("selectCreativeBriefFromSegmentLayers prioritizes publishable exact brief over stronger transfer fallback", () => {
+  const result = selectCreativeBriefFromSegmentLayers({
+    niche: "ru_toys",
+    platform: "instagram",
+    segmentSolutions: {
+      items: [
+        {
+          niche: "ru_toys",
+          platform: "instagram",
+          label: "ru_toys × instagram",
+          readiness_score: 79,
+          trust_band: "medium",
+          production_state: "ready_now",
+          creative_brief: { hook: "Exact publishable" },
+          trust_summary: {
+            evidence_band: "stable",
+            stability_score: 71,
+            outcome_status: "promising",
+            outcome_confidence: "medium",
+          },
+        },
+      ],
+    },
+    segmentSolutionMatrix: {
+      by_platform: [
+        {
+          platform: "instagram",
+          primary: {
+            niche: "ru_cosmetics",
+            platform: "instagram",
+            label: "ru_cosmetics × instagram",
+            readiness_score: 92,
+            trust_band: "high",
+            production_state: "ready_now",
+            creative_brief: { hook: "Transfer winner" },
+            trust_summary: {
+              evidence_band: "stable",
+              stability_score: 89,
+              outcome_status: "proven",
+              outcome_confidence: "high",
+            },
+          },
+        },
+      ],
+      by_niche: [],
+    },
+    segmentGenerationPacks: {
+      items: [
+        {
+          niche: "ru_toys",
+          platform: "instagram",
+          proof_quality: "exact_segment",
+          quality_gate: {
+            status: "ready",
+            allowed_generation_modes: ["decision_ready"],
+            blocked_reasons: [],
+          },
+        },
+        {
+          niche: "ru_cosmetics",
+          platform: "instagram",
+          proof_quality: "exact_segment",
+          quality_gate: {
+            status: "ready",
+            allowed_generation_modes: ["decision_ready"],
+            blocked_reasons: [],
+          },
+        },
+      ],
+    },
+  });
+
+  assert.equal(result?.source, "segment_solution");
+  assert.equal(result?.creative_brief.hook, "Exact publishable");
+  assert.equal(result?.quality_gate.exact_segment_ready, true);
+  assert.equal(result?.source_trace?.[0]?.publishable_exact, true);
+  assert.equal(result?.source_trace?.[1]?.source, "platform_matrix");
+  assert.equal(result?.alternatives?.[0]?.source, "platform_matrix");
+});
+
 test("selectCreativeBriefFromSegmentLayers avoids exact weak segment when healthier fallback exists", () => {
   const result = selectCreativeBriefFromSegmentLayers({
     niche: "ru_toys",

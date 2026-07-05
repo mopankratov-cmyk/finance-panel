@@ -77,11 +77,44 @@ function fitPenalty(mode: string) {
   return -16;
 }
 
+function findPackRow(
+  packs: JsonRecord[] | undefined,
+  row: JsonRecord,
+) {
+  return (packs || []).find((item) =>
+    text(item.niche) === text(row.niche)
+    && text(item.platform).toLowerCase() === text(row.platform).toLowerCase(),
+  ) || null;
+}
+
+function packGateScore(input: {
+  mode: string;
+  row: JsonRecord;
+  packRow: JsonRecord | null;
+}) {
+  const qualityGate = (input.packRow?.quality_gate && typeof input.packRow.quality_gate === "object"
+    ? input.packRow.quality_gate
+    : {}) as JsonRecord;
+  const gateStatus = text(qualityGate.status, text(input.row.production_state) === "ready_now"
+    ? "ready"
+    : text(input.row.production_state) === "controlled_test"
+      ? "needs_validation"
+      : "not_ready");
+  const proofQuality = text(input.packRow?.proof_quality || input.row.proof_quality || (input.row.trust_summary as JsonRecord | null)?.proof_quality, "untraced");
+  const exactPublishable = input.mode === "exact_segment" && gateStatus === "ready" && proofQuality === "exact_segment";
+  if (exactPublishable) return 30;
+  if (input.mode === "exact_segment" && gateStatus === "needs_validation") return 8;
+  if (input.mode !== "exact_segment" && gateStatus === "ready") return 4;
+  if (gateStatus === "not_ready") return -6;
+  return 0;
+}
+
 function candidateScore(candidate: {
   source: "segment_solution" | "platform_matrix" | "niche_matrix";
   row: JsonRecord;
   requestedNiche: string;
   requestedPlatform: string;
+  packRow?: JsonRecord | null;
 }) {
   const trustSummary = (candidate.row.trust_summary || {}) as JsonRecord;
   const mode = fitMode({
@@ -95,6 +128,11 @@ function candidateScore(candidate: {
     + num(trustSummary.stability_score) * 0.45
     + num(candidate.row.readiness_score) * 0.25
     + outcomePenalty(trustSummary.outcome_status)
+    + packGateScore({
+      mode,
+      row: candidate.row,
+      packRow: candidate.packRow || null,
+    })
     + fitPenalty(mode);
 }
 
@@ -112,6 +150,9 @@ function buildAlternative(
     requestedPlatform: requested.platform,
     row,
   });
+  const qualityGate = (row.quality_gate && typeof row.quality_gate === "object" ? row.quality_gate : {}) as JsonRecord;
+  const proofQuality = text(row.proof_quality || (trustSummary as JsonRecord).proof_quality, "untraced");
+  const exactSegmentReady = mode === "exact_segment" && text(qualityGate.status) === "ready" && proofQuality === "exact_segment";
   return {
     source,
     fit_mode: mode,
@@ -124,6 +165,8 @@ function buildAlternative(
     production_state: text(row.production_state, "research_only"),
     readiness_score: num(row.readiness_score),
     stability_score: num(trustSummary.stability_score),
+    exact_segment_ready: exactSegmentReady,
+    publishable_exact: exactSegmentReady,
     hook: text(brief.hook),
     hypothesis: text(hypothesis.text),
     content_decision: text(contentDecision.decision || contentDecision.title),
@@ -138,6 +181,7 @@ function buildResponseFromSolution(
     row: JsonRecord;
     requestedNiche: string;
     requestedPlatform: string;
+    packRow?: JsonRecord | null;
   }>,
   input: {
     requestedNiche: string;
@@ -201,6 +245,16 @@ function buildResponseFromSolution(
     trust_band: text(candidate.row.trust_band, "low"),
     evidence_band: text(((candidate.row.trust_summary || {}) as JsonRecord).evidence_band, "missing"),
     production_state: text(candidate.row.production_state, "research_only"),
+    pack_gate_status: text((((candidate.packRow || {}) as JsonRecord).quality_gate as JsonRecord | null)?.status, "unknown"),
+    publishable_exact: Boolean(
+      fitMode({
+        requestedNiche: candidate.requestedNiche,
+        requestedPlatform: candidate.requestedPlatform,
+        row: candidate.row,
+      }) === "exact_segment"
+      && text((((candidate.packRow || {}) as JsonRecord).quality_gate as JsonRecord | null)?.status) === "ready"
+      && text((candidate.packRow || candidate.row).proof_quality || (((candidate.row.trust_summary || {}) as JsonRecord).proof_quality), "untraced") === "exact_segment",
+    ),
     candidate_score: Math.round(candidateScore(candidate) * 10) / 10,
     chosen: candidate.row === row && candidate.source === source,
   }));
@@ -346,6 +400,7 @@ export function selectCreativeBriefFromSegmentLayers(input: {
   const exact = records(input.segmentSolutions?.items)
     .filter((row) => text(row.niche) === niche && text(row.platform).toLowerCase() === platform)
     .sort(itemSort)[0];
+  const packs = records(input.segmentGenerationPacks?.items);
 
   const platformRow = records(input.segmentSolutionMatrix?.by_platform)
     .find((row) => text(row.platform).toLowerCase() === platform);
@@ -355,14 +410,15 @@ export function selectCreativeBriefFromSegmentLayers(input: {
     .find((row) => text(row.niche) === niche);
   const nichePrimary = asPrimary(nicheRow?.primary);
   const candidates = [
-    exact ? { source: "segment_solution" as const, row: exact, requestedNiche: niche, requestedPlatform: platform } : null,
-    platformPrimary ? { source: "platform_matrix" as const, row: platformPrimary, requestedNiche: niche, requestedPlatform: platform } : null,
-    nichePrimary ? { source: "niche_matrix" as const, row: nichePrimary, requestedNiche: niche, requestedPlatform: platform } : null,
+    exact ? { source: "segment_solution" as const, row: exact, requestedNiche: niche, requestedPlatform: platform, packRow: findPackRow(packs, exact) } : null,
+    platformPrimary ? { source: "platform_matrix" as const, row: platformPrimary, requestedNiche: niche, requestedPlatform: platform, packRow: findPackRow(packs, platformPrimary) } : null,
+    nichePrimary ? { source: "niche_matrix" as const, row: nichePrimary, requestedNiche: niche, requestedPlatform: platform, packRow: findPackRow(packs, nichePrimary) } : null,
   ].filter(Boolean) as Array<{
     source: "segment_solution" | "platform_matrix" | "niche_matrix";
     row: JsonRecord;
     requestedNiche: string;
     requestedPlatform: string;
+    packRow?: JsonRecord | null;
   }>;
   const rankedCandidates = [...candidates].sort((a, b) =>
     candidateScore(b) - candidateScore(a)
