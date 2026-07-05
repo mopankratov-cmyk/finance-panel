@@ -53,3 +53,6 @@ next-env.d.ts
 # openreels: тяжёлые тестовые медиа-инпуты v0-v9 (46MB видео) — локальные, не в git.
 # После V23 шаблон Remotion на пропсах → ассеты динамические из брифа; эти mp4 в проде не нужны.
 /public/reel-assets/
+
+# graphify: локальный кодовый граф-кэш (rebuild через `graphify update .`), не деплоить.
+/graphify-out/
