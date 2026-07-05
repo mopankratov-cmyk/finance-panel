@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { normalizeLegacyCreativeSolution } from "@/app/api/factory/reels-brain/creative-solution/route";
+import { normalizeLegacyCreativeSolution } from "./reelsBrainLegacyCreativeSolutionGuard";
 
 test("normalizeLegacyCreativeSolution downgrades legacy fallback to validation-only exact-proof guard", () => {
   const result = normalizeLegacyCreativeSolution({

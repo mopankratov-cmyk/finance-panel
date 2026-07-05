@@ -4,6 +4,7 @@ import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { selectCreativeBriefFromSegmentLayers } from "@/lib/factory/reelsBrainCreativeBriefSource";
 import { selectCreativeBriefBrainWithTrust } from "@/lib/factory/reelsBrainCreativeBrief";
 import { buildReelsBrainDecisionPack } from "@/lib/factory/reelsBrainDecisionPack";
+import { normalizeLegacyCreativeBrief } from "@/lib/factory/reelsBrainLegacyCreativeBriefGuard";
 import type { ReelsBrainMetricRow } from "@/lib/factory/reelsBrainOperatingSystem";
 
 export const dynamic = "force-dynamic";
@@ -143,20 +144,26 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ ok: false, error: "Не удалось собрать decision pack для этой ниши" }, { status: 404 });
     }
 
-    return NextResponse.json({
-      ok: true,
-      selected_pattern: {
-        pattern_id: best.pattern_id || null,
-        hook_type: best.hook_type || null,
-        structure_type: best.structure_type || null,
-        retention_mechanism: best.retention_mechanism || null,
-        quality_label: best.quality_label || null,
-        trust_scope: trustDecision.selected_scope,
-      },
-      ...best,
-      alternatives: pack.alternatives,
-      decision_pack: pack.decision_pack,
-    }, { headers: { "Cache-Control": "no-store" } });
+    return NextResponse.json(
+      normalizeLegacyCreativeBrief({
+        ok: true,
+        selected_pattern: {
+          pattern_id: best.pattern_id || null,
+          hook_type: best.hook_type || null,
+          structure_type: best.structure_type || null,
+          retention_mechanism: best.retention_mechanism || null,
+          quality_label: best.quality_label || null,
+          trust_scope: trustDecision.selected_scope,
+        },
+        ...best,
+        alternatives: pack.alternatives,
+        decision_pack: pack.decision_pack,
+      }, {
+        niche,
+        platform,
+      }),
+      { headers: { "Cache-Control": "no-store" } },
+    );
   } catch (e) {
     return NextResponse.json({ error: "creative-brief reels-brain упал: " + String((e as Error)?.message || e).slice(0, 180) }, { status: 500 });
   }
