@@ -13,6 +13,8 @@ test("buildReelsBrainSegmentSolutions maps decision snapshot into operator-ready
           lane: "ship",
           label: "ru_toys × instagram",
           readiness_score: 91,
+          high_trust_generation_ready: true,
+          publishable_exact: true,
           trust: {
             corpus_score: 86,
             market_score: 71,
@@ -96,9 +98,14 @@ test("buildReelsBrainSegmentSolutions maps decision snapshot into operator-ready
 
   assert.equal(result.summary.total, 2);
   assert.equal(result.summary.ready_now, 1);
+  assert.equal(result.summary.generation_ready, 1);
+  assert.equal(result.summary.publishable_exact, 1);
   assert.equal(result.items[0]?.production_state, "ready_now");
+  assert.equal(result.items[0]?.high_trust_generation_ready, true);
+  assert.equal(result.items[0]?.publishable_exact, true);
   assert.equal(result.items[0]?.trust_band, "high");
   assert.equal(result.items[0]?.trust_summary.evidence_band, "stable");
+  assert.equal(result.items[0]?.trust_summary.high_trust_generation_ready, true);
   assert.equal(result.items[0]?.trust_summary.proof_quality, "exact_segment");
   assert.equal(result.items[0]?.trust_summary.outcome_status, "proven");
   assert.equal(result.items[0]?.trust_summary.outcome_winners, 3);
@@ -108,7 +115,7 @@ test("buildReelsBrainSegmentSolutions maps decision snapshot into operator-ready
   assert.equal(result.items[1]?.production_state, "research_only");
   assert.equal(result.items[1]?.trust_summary.proof_quality, "traced_transfer_only");
   assert.equal(result.items[1]?.trust_summary.outcome_status, "weak");
-  assert.ok(result.items[1]?.trust_why.some((item) => item.includes("обратная связь слабая")));
+  assert.equal(result.items[1]?.trust_summary.outcome_losers, 2);
   assert.ok(result.items[1]?.trust_summary.blockers.includes("trust floor below 85"));
   assert.ok(result.items[1]?.trust_summary.blockers.includes("fewer than 3 stable patterns"));
 });
@@ -177,6 +184,8 @@ test("buildReelsBrainSegmentSolutions prioritizes high-payoff segment", () => {
           platform: "tiktok",
           lane: "validate",
           readiness_score: 71,
+          high_trust_generation_ready: true,
+          publishable_exact: true,
           trust: { corpus_score: 70, market_score: 56, stable_pattern_count: 2, evidence_refs: 2, proof_quality: "traced_transfer_only" },
           brief: { hook: "B" },
           content_solution: { action_title: "B" },
@@ -191,5 +200,6 @@ test("buildReelsBrainSegmentSolutions prioritizes high-payoff segment", () => {
 
   assert.equal(result.items[0]?.platform, "tiktok");
   assert.equal(result.items[0]?.segment_priority_mode, "primary");
+  assert.equal(result.items[0]?.high_trust_generation_ready, true);
   assert.equal(result.summary.primary_priority_segments, 1);
 });

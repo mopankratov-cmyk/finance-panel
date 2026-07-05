@@ -80,15 +80,21 @@ export function buildReelsBrainSegmentSolutions(input: {
       const outcomePosts = num(trustRow.outcome_posts);
       const outcomeWinners = num(trustRow.outcome_winners);
       const outcomeLosers = num(trustRow.outcome_losers);
+      const highTrustGenerationReady = Boolean(row.high_trust_generation_ready);
+      const publishableExact = Boolean(row.publishable_exact || highTrustGenerationReady);
       const recommendedUpgrade = upgradeForecast((row.upgrade_forecast && typeof row.upgrade_forecast === "object"
         ? row.upgrade_forecast
         : null) as JsonRecord | null);
-      const production = proofQuality === "exact_segment"
+      const production = highTrustGenerationReady
+        ? "ready_now"
+        : proofQuality === "exact_segment"
         ? productionState(lane, evidenceBand)
         : lane === "ship" || lane === "validate" || evidenceBand === "forming"
           ? "controlled_test"
           : "research_only";
       const trustWhy = [
+        highTrustGenerationReady ? "generation-ready слой уже считает сегмент high-trust и production-usable." : "",
+        publishableExact && !highTrustGenerationReady ? "publishable exact уже закрыт, но high-trust generation-ready слой ещё не добран полностью." : "",
         proofQuality === "exact_segment" ? "exact-proof уже закрыт для этого niche × platform" : "",
         proofQuality === "traced_transfer_only" ? "есть только transfer-level proof, поэтому продовый rollout ещё рано" : "",
         outcomeStatus === "proven" ? `рынок уже подтвердил сегмент: ${outcomeWinners}/${Math.max(outcomePosts, 1)} winner-posts` : "",
@@ -111,6 +117,8 @@ export function buildReelsBrainSegmentSolutions(input: {
         unlocked_output: text(row.unlocked_output),
         verdict,
         readiness_score: readinessScore,
+        high_trust_generation_ready: highTrustGenerationReady,
+        publishable_exact: publishableExact,
         trust_band: trust,
         production_state: production,
         ready_for_production: production === "ready_now",
@@ -153,6 +161,8 @@ export function buildReelsBrainSegmentSolutions(input: {
           outcome_trust_action: text(trustRow.outcome_trust_action),
           outcome_evidence: text(trustRow.outcome_evidence),
           stability_score: num(stability.stability_score),
+          high_trust_generation_ready: highTrustGenerationReady,
+          publishable_exact: publishableExact,
           signals: list(stability.strengths, 4),
           blockers: list(stability.blockers, 4),
           current: (audit.current && typeof audit.current === "object" ? audit.current : null) as JsonRecord | null,
@@ -167,6 +177,7 @@ export function buildReelsBrainSegmentSolutions(input: {
     .sort((a, b) =>
       policyModeScore(b.segment_priority_mode) - policyModeScore(a.segment_priority_mode)
       || b.segment_priority_score - a.segment_priority_score
+      || Number(b.high_trust_generation_ready) - Number(a.high_trust_generation_ready)
       || Number(b.ready_for_production) - Number(a.ready_for_production)
       || b.readiness_score - a.readiness_score
       || a.niche.localeCompare(b.niche)
@@ -186,6 +197,8 @@ export function buildReelsBrainSegmentSolutions(input: {
       high_trust: rows.filter((row) => row.trust_band === "high").length,
       medium_trust: rows.filter((row) => row.trust_band === "medium").length,
       low_trust: rows.filter((row) => row.trust_band === "low").length,
+      generation_ready: rows.filter((row) => row.high_trust_generation_ready).length,
+      publishable_exact: rows.filter((row) => row.publishable_exact).length,
       primary_priority_segments: rows.filter((row) => row.segment_priority_mode === "primary").length,
     },
     ship_now: items.filter((row) => row.lane === "ship"),

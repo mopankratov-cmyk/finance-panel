@@ -850,6 +850,8 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
       controlled: num(segmentSolutionMatrix.summary?.controlled_test),
       research: num(segmentSolutionMatrix.summary?.research_only),
       highTrust: num(segmentSolutionMatrix.summary?.high_trust_segments),
+      generationReady: num(segmentSolutionMatrix.summary?.generation_ready_segments),
+      publishableExact: num(segmentSolutionMatrix.summary?.publishable_exact_segments),
       upgradeGroups: num(segmentSolutionMatrix.summary?.groups_with_upgrade_forecast),
       avgProjectedTrustGain: num(segmentSolutionMatrix.summary?.avg_projected_trust_gain),
     };
@@ -2500,7 +2502,7 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
                       </div>
                     </div>
                     <p>{row.primary?.creative_brief?.hook || row.primary?.creative_brief?.title || "Ждём ведущий niche brief"}</p>
-                    <p>ready {compact(row.ready_now)} · control {compact(row.controlled_test)} · research {compact(row.research_only)}</p>
+                    <p>gen-ready {compact(row.generation_ready_segments || 0)} · ready {compact(row.ready_now)} · control {compact(row.controlled_test)} · research {compact(row.research_only)}</p>
                     <p>platforms: {((row.coverage_labels || []) as string[]).join(" · ") || "none"}</p>
                     <p>next gap: {row.next_gap?.label || row.next_gap?.platform || "gap closed"}</p>
                     <p>upgrade: {row.next_upgrade?.unlocked_output || "no immediate uplift"} · trust +{compact(row.next_upgrade?.projected_trust_gain_score || 0)}</p>
@@ -2532,7 +2534,7 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
                       </div>
                     </div>
                     <p>{row.primary?.creative_brief?.hook || row.primary?.creative_brief?.title || "Ждём ведущий platform brief"}</p>
-                    <p>ready {compact(row.ready_now)} · high trust {compact(row.high_trust)}</p>
+                    <p>gen-ready {compact(row.generation_ready_segments || 0)} · ready {compact(row.ready_now)} · high trust {compact(row.high_trust)}</p>
                     <p>niches: {((row.coverage_labels || []) as string[]).map((value) => NICHE_LABELS[value] || value).join(" · ") || "none"}</p>
                     <p>next gap: {row.next_gap?.label || row.next_gap?.niche || "gap closed"}</p>
                     <p>upgrade: {row.next_upgrade?.unlocked_output || "no immediate uplift"} · trust +{compact(row.next_upgrade?.projected_trust_gain_score || 0)}</p>
@@ -2557,6 +2559,11 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
                 <div className="rb-brief-block"><b>Upgrade groups</b><p>{compact(vm.segmentSolutionSummary.upgradeGroups)}</p></div>
                 <div className="rb-brief-block"><b>Avg trust uplift</b><p>+{compact(vm.segmentSolutionSummary.avgProjectedTrustGain)}</p></div>
                 <div className="rb-brief-block"><b>Ready now</b><p>{compact(vm.segmentSolutionSummary.readyNow)}</p></div>
+              </div>
+              <div className="rb-three" style={{ marginTop: 12 }}>
+                <div className="rb-brief-block"><b>Gen-ready</b><p>{compact(vm.segmentSolutionSummary.generationReady)}</p></div>
+                <div className="rb-brief-block"><b>Publishable exact</b><p>{compact(vm.segmentSolutionSummary.publishableExact)}</p></div>
+                <div className="rb-brief-block"><b>High trust</b><p>{compact(vm.segmentSolutionSummary.highTrust)}</p></div>
               </div>
               <div className="rb-brief-block" style={{ marginTop: 12 }}>
                 <b>Зачем нужен matrix</b>

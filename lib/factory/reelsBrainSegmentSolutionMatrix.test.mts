@@ -11,6 +11,7 @@ test("buildReelsBrainSegmentSolutionMatrix groups solutions by niche and platfor
           platform: "instagram",
           label: "ru_toys × instagram",
           readiness_score: 92,
+          high_trust_generation_ready: true,
           trust_band: "high",
           production_state: "ready_now",
           creative_brief: { hook: "Покажи что внутри" },
@@ -67,8 +68,10 @@ test("buildReelsBrainSegmentSolutionMatrix groups solutions by niche and platfor
 
   assert.equal(result.summary.total_segments, 3);
   assert.equal(result.summary.ready_now, 1);
+  assert.equal(result.summary.generation_ready_segments, 1);
   assert.equal(result.by_niche[0]?.niche, "ru_toys");
   assert.equal(result.by_niche[0]?.primary?.label, "ru_toys × instagram");
+  assert.equal(result.by_niche[0]?.high_trust_generation_ready, true);
   assert.deepEqual(result.by_niche[0]?.coverage_labels, ["instagram", "youtube"]);
   assert.equal(result.by_platform[0]?.platform, "instagram");
   assert.equal(result.by_platform[0]?.primary?.trust_band, "high");
@@ -92,6 +95,7 @@ test("buildReelsBrainSegmentSolutionMatrix prefers publishable exact primary ins
           platform: "instagram",
           label: "ru_toys × instagram",
           readiness_score: 82,
+          high_trust_generation_ready: true,
           trust_band: "medium",
           production_state: "ready_now",
           creative_brief: { hook: "Exact winner" },
@@ -134,7 +138,9 @@ test("buildReelsBrainSegmentSolutionMatrix prefers publishable exact primary ins
   });
 
   assert.equal(result.by_niche[0]?.primary?.label, "ru_toys × instagram");
+  assert.equal(result.by_niche[0]?.high_trust_generation_ready, true);
   assert.equal(result.by_niche[0]?.publishable_exact, true);
+  assert.equal(result.summary.generation_ready_segments, 1);
   assert.equal(result.summary.publishable_exact_segments, 1);
   assert.equal((result.by_niche[0]?.next_upgrade as Record<string, unknown> | undefined)?.label, "ru_toys × youtube");
 });
@@ -161,6 +167,7 @@ test("buildReelsBrainSegmentSolutionMatrix prioritizes high-payoff segment", () 
           platform: "tiktok",
           label: "ru_cosmetics × tiktok",
           readiness_score: 72,
+          high_trust_generation_ready: true,
           trust_band: "medium",
           production_state: "controlled_test",
           segment_priority_score: 97,
@@ -181,5 +188,6 @@ test("buildReelsBrainSegmentSolutionMatrix prioritizes high-payoff segment", () 
 
   assert.equal(result.by_segment[0]?.platform, "tiktok");
   assert.equal(result.by_segment[0]?.segment_priority_mode, "primary");
+  assert.equal(result.by_segment[0]?.high_trust_generation_ready, true);
   assert.equal(result.summary.primary_priority_segments, 1);
 });
