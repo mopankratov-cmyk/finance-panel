@@ -18,6 +18,9 @@ ok(/export function isTerminalTranscriptError/.test(resolver), "media resolver e
 ok(/export function shouldRetryTranscriptExtraction/.test(resolver), "media resolver exposes transcript retry helper");
 ok(/export function isTerminalAudioError/.test(resolver), "media resolver exposes terminal audio error helper");
 ok(/export function shouldRetryAudioBackfill/.test(resolver), "media resolver exposes audio backfill retry helper");
+ok(/function ytDlpBin\(\)/.test(resolver) && /process\.env\.YT_DLP_BIN/.test(resolver), "media resolver respects YT_DLP_BIN from worker env");
+ok(/function ffmpegBin\(\)/.test(resolver) && /process\.env\.FFMPEG_BIN/.test(resolver), "media resolver respects FFMPEG_BIN from worker env");
+ok(/function ffprobeBin\(\)/.test(resolver) && /process\.env\.FFPROBE_BIN/.test(resolver), "media resolver respects FFPROBE_BIN from worker env");
 ok(/whisper_empty_text/.test(resolver) && /transcript_no_speech/.test(resolver), "media resolver treats empty whisper results as terminal");
 ok(/media_fetch_403/.test(resolver) && /status code 10204/.test(resolver) && /media_locator_unresolved/.test(resolver) && /moov atom not found/.test(resolver), "media resolver treats unavailable and corrupted media locators as terminal audio errors");
 ok(/shouldRetryAudioBackfill/.test(route), "audio backfill route uses audio backfill retry helper");

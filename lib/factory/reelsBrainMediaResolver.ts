@@ -100,6 +100,18 @@ function text(value: unknown, max = 1200): string | null {
   return out ? out.slice(0, max) : null;
 }
 
+function ytDlpBin() {
+  return text(process.env.YT_DLP_BIN, 600) || "yt-dlp";
+}
+
+function ffmpegBin() {
+  return text(process.env.FFMPEG_BIN, 600) || "ffmpeg";
+}
+
+function ffprobeBin() {
+  return text(process.env.FFPROBE_BIN, 600) || "ffprobe";
+}
+
 function num(value: unknown): number | null {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
@@ -179,7 +191,7 @@ function shouldSkipDownloadForProbe(target: string): boolean {
 
 export async function hasYtDlpBinary(): Promise<boolean> {
   try {
-    await execFileAsync("yt-dlp", ["--version"], { timeout: 5000, maxBuffer: 256 * 1024 });
+    await execFileAsync(ytDlpBin(), ["--version"], { timeout: 5000, maxBuffer: 256 * 1024 });
     return true;
   } catch {
     return false;
@@ -211,7 +223,7 @@ export async function resolveMediaLocatorViaYtDlp(url: string): Promise<ReelsBra
     if (shouldSkipDownloadForProbe(target)) probeArgs.push("--skip-download");
     probeArgs.push(target);
     const { stdout } = await execFileAsync(
-      "yt-dlp",
+      ytDlpBin(),
       probeArgs,
       { timeout: 45000, maxBuffer: 8 * 1024 * 1024 },
     );
@@ -247,7 +259,7 @@ type ProbePayload = {
 async function probeMediaAudio(url: string): Promise<ProbePayload | null> {
   try {
     const { stdout } = await execFileAsync(
-      "ffprobe",
+      ffprobeBin(),
       [
         "-v", "error",
         "-show_format",
@@ -286,7 +298,7 @@ function parseSilenceSegments(stderr: string) {
 async function inspectAudioLevels(url: string) {
   try {
     const { stderr } = await execFileAsync(
-      "ffmpeg",
+      ffmpegBin(),
       [
         "-v", "info",
         "-i", url,
