@@ -7,6 +7,33 @@ import { loadReelsBrainFeedbackRows } from "@/lib/factory/reelsBrainFeedbackRows
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
 
+function text(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function bool(value: unknown): boolean | null {
+  if (typeof value === "boolean") return value;
+  const raw = text(value).toLowerCase();
+  if (!raw) return null;
+  if (["1", "true", "yes", "ready", "high"].includes(raw)) return true;
+  if (["0", "false", "no", "not_ready", "low"].includes(raw)) return false;
+  return null;
+}
+
+function feedbackRawMetrics(body: Record<string, unknown>) {
+  const measurementId = text(body.measurement_id);
+  const validationTaskId = text(body.validation_task_id) || text(body.task_id);
+  const proofScope = text(body.proof_scope);
+  const highTrustGenerationReady = bool(body.high_trust_generation_ready);
+  return {
+    ...(body.raw_metrics && typeof body.raw_metrics === "object" ? body.raw_metrics as Record<string, unknown> : {}),
+    ...(measurementId ? { measurement_id: measurementId } : {}),
+    ...(validationTaskId ? { validation_task_id: validationTaskId } : {}),
+    ...(proofScope ? { proof_scope: proofScope } : {}),
+    ...(highTrustGenerationReady != null ? { high_trust_generation_ready: highTrustGenerationReady } : {}),
+  };
+}
+
 async function loadRows(): Promise<{ rows: ReelsBrainMetricRow[]; warning: string | null }> {
   const db = getSupabaseAdmin();
   if (!db) return { rows: [], warning: "Supabase не настроен" };
@@ -38,6 +65,7 @@ export async function POST(req: NextRequest) {
       body: JSON.stringify({
         ...body,
         source: body.source || "reels_brain_feedback",
+        raw_metrics: feedbackRawMetrics(body),
       }),
       signal: AbortSignal.timeout(25000),
     });
