@@ -3059,6 +3059,25 @@ export async function GET(req: NextRequest) {
       platforms: ["tiktok", "instagram", "youtube"],
       limit: compactMode ? 6 : 10,
     });
+    const prioritizedPatternAtlas = buildReelsBrainPatternAtlas({
+      patterns: patternDecisionLayer.pattern_details,
+      nicheSummaries,
+      segmentTrust,
+      segmentReadiness: segmentAudioVisualReadiness,
+      platforms: ["tiktok", "instagram", "youtube"],
+      segmentLimit: compactMode ? 6 : 10,
+      patternLimit: compactMode ? 2 : 3,
+      segmentPriorityQueue: segmentPriorityQueue.items,
+      generationPolicy,
+    });
+    const prioritizedSegmentPlaybook = buildReelsBrainSegmentPlaybook({
+      opportunities: prioritizedTopOpportunities,
+      patternAtlas: prioritizedPatternAtlas,
+      feedbackLoop: operatingSystem.feedback_loop,
+      limit: compactMode ? 6 : 10,
+      segmentPriorityQueue: segmentPriorityQueue.items,
+      generationPolicy,
+    });
     const dailyReport = buildDailyReport({
       totals,
       today,
@@ -3119,8 +3138,8 @@ export async function GET(req: NextRequest) {
       },
       segment_trust: segmentTrust,
       top_opportunities: prioritizedTopOpportunities,
-      pattern_atlas: patternAtlas,
-      segment_playbook: segmentPlaybook,
+      pattern_atlas: prioritizedPatternAtlas,
+      segment_playbook: prioritizedSegmentPlaybook,
       segment_decision_deck: segmentDecisionDeck,
       segment_priority_queue: segmentPriorityQueue,
       segment_generation_packs: segmentGenerationPacks,

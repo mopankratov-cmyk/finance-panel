@@ -66,6 +66,37 @@ type SegmentReadinessRow = {
   analyzed_rate?: number;
 };
 
+type SegmentPriorityRow = {
+  niche?: string;
+  platform?: string;
+  decision_priority_score?: number;
+  urgency_score?: number;
+  ready_for_generation?: boolean;
+  policy_mode?: string;
+  recommended_upgrade?: {
+    projected_trust_gain_score?: number;
+    projected_production_state?: string;
+    unlocked_output?: string;
+  } | null;
+};
+
+type SegmentPolicyRow = {
+  niche?: string;
+  platform?: string;
+  policy_mode?: string;
+  decision_priority_score?: number;
+  recommended_upgrade?: {
+    projected_trust_gain_score?: number;
+    projected_production_state?: string;
+    unlocked_output?: string;
+  } | null;
+  next_upgrade?: {
+    projected_trust_gain_score?: number;
+    projected_production_state?: string;
+    unlocked_output?: string;
+  } | null;
+};
+
 function num(value: unknown) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
@@ -145,6 +176,38 @@ function patternStabilityScore(pattern: PatternRow) {
   );
 }
 
+function policyModeScore(value: unknown) {
+  const raw = text(value).toLowerCase();
+  if (raw === "primary") return 3;
+  if (raw === "control_only") return 2;
+  return 1;
+}
+
+function segmentPrioritySignal(
+  niche: string,
+  platform: string,
+  segmentPriorityMap: Map<string, SegmentPriorityRow>,
+  segmentPolicyMap: Map<string, SegmentPolicyRow>,
+) {
+  const key = `${niche}__${platform}`;
+  const priority = segmentPriorityMap.get(key);
+  const policy = segmentPolicyMap.get(key);
+  const upgrade = policy?.recommended_upgrade || policy?.next_upgrade || priority?.recommended_upgrade || null;
+    return {
+      segment_priority_score: Math.max(
+        num(priority?.decision_priority_score),
+        num(priority?.urgency_score),
+        num(policy?.decision_priority_score),
+        num(upgrade?.projected_trust_gain_score),
+      ),
+      segment_priority_mode: text(priority?.policy_mode || policy?.policy_mode) || "research_only",
+      segment_ready_for_generation: Boolean(priority?.ready_for_generation),
+      projected_trust_gain_score: num(upgrade?.projected_trust_gain_score),
+      projected_production_state: text(upgrade?.projected_production_state),
+    unlocked_output: text(upgrade?.unlocked_output),
+  };
+}
+
 export function buildReelsBrainPatternAtlas(input: {
   patterns: PatternRow[];
   nicheSummaries: SegmentSummaryRow[];
@@ -156,11 +219,17 @@ export function buildReelsBrainPatternAtlas(input: {
   platforms?: string[];
   segmentLimit?: number;
   patternLimit?: number;
+  segmentPriorityQueue?: SegmentPriorityRow[];
+  generationPolicy?: {
+    by_segment?: SegmentPolicyRow[];
+  } | null;
 }) {
   const nicheTrustByKey = new Map((input.segmentTrust.by_niche || []).map((row) => [text(row.niche), row]));
   const platformTrustByKey = new Map((input.segmentTrust.by_platform || []).map((row) => [text(row.platform), row]));
   const nicheSummaryByKey = new Map((input.nicheSummaries || []).map((row) => [row.niche, row]));
   const readinessByKey = new Map((input.segmentReadiness || []).map((row) => [`${text(row.niche)}__${text(row.platform)}`, row]));
+  const segmentPriorityMap = new Map((input.segmentPriorityQueue || []).map((row) => [`${text(row.niche)}__${text(row.platform)}`, row]));
+  const segmentPolicyMap = new Map((((input.generationPolicy?.by_segment) || []) as SegmentPolicyRow[]).map((row) => [`${text(row.niche)}__${text(row.platform)}`, row]));
   const platforms = input.platforms || ["tiktok", "instagram", "youtube"];
   const segmentLimit = Math.max(4, input.segmentLimit || 8);
   const patternLimit = Math.max(2, input.patternLimit || 3);
@@ -223,12 +292,19 @@ export function buildReelsBrainPatternAtlas(input: {
           ? "forming"
           : "thin"
         : baseStatus;
+      const priority = segmentPrioritySignal(niche, platform, segmentPriorityMap, segmentPolicyMap);
 
       return {
         niche,
         platform,
         status,
         recommended_mode: mode,
+        segment_priority_score: priority.segment_priority_score,
+        segment_priority_mode: priority.segment_priority_mode,
+        segment_ready_for_generation: priority.segment_ready_for_generation,
+        projected_trust_gain_score: priority.projected_trust_gain_score,
+        projected_production_state: priority.projected_production_state,
+        unlocked_output: priority.unlocked_output,
         readiness_backed: !readinessThin,
         readiness_status: readinessThin ? "thin" : "backed",
         readiness_note: readinessThin
@@ -277,7 +353,9 @@ export function buildReelsBrainPatternAtlas(input: {
       || row.stable_pattern_count > 0,
     )
     .sort((a, b) =>
-      b.avg_stability_score - a.avg_stability_score
+      policyModeScore(b.segment_priority_mode) - policyModeScore(a.segment_priority_mode)
+      || b.segment_priority_score - a.segment_priority_score
+      || b.avg_stability_score - a.avg_stability_score
       || b.stable_pattern_count - a.stable_pattern_count
       || b.analyzed_videos - a.analyzed_videos
       || a.niche.localeCompare(b.niche)
@@ -316,6 +394,8 @@ export function buildReelsBrainPatternAtlas(input: {
     forming_segments: bySegment.filter((row) => row.status === "forming").length,
     thin_segments: bySegment.filter((row) => row.status === "thin").length,
     atlas_ready_patterns: bySegment.reduce((sum, row) => sum + row.stable_pattern_count, 0),
+    primary_priority_segments: bySegment.filter((row) => row.segment_priority_mode === "primary").length,
+    ready_for_generation: bySegment.filter((row) => row.segment_ready_for_generation).length,
   };
 
   const topSegments = bySegment.slice(0, segmentLimit);

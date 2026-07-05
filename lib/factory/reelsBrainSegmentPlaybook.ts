@@ -60,6 +60,37 @@ type SegmentOutcomeRow = {
   trust_action?: string;
 };
 
+type SegmentPriorityRow = {
+  niche?: string;
+  platform?: string;
+  decision_priority_score?: number;
+  urgency_score?: number;
+  ready_for_generation?: boolean;
+  policy_mode?: string;
+  recommended_upgrade?: {
+    projected_trust_gain_score?: number;
+    projected_production_state?: string;
+    unlocked_output?: string;
+  } | null;
+};
+
+type SegmentPolicyRow = {
+  niche?: string;
+  platform?: string;
+  policy_mode?: string;
+  decision_priority_score?: number;
+  recommended_upgrade?: {
+    projected_trust_gain_score?: number;
+    projected_production_state?: string;
+    unlocked_output?: string;
+  } | null;
+  next_upgrade?: {
+    projected_trust_gain_score?: number;
+    projected_production_state?: string;
+    unlocked_output?: string;
+  } | null;
+};
+
 function num(value: unknown) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
@@ -100,11 +131,40 @@ function normalizeProofQuality(value: unknown) {
   return "untraced";
 }
 
+function segmentPrioritySignal(
+  niche: string,
+  platform: string,
+  segmentPriorityMap: Map<string, SegmentPriorityRow>,
+  segmentPolicyMap: Map<string, SegmentPolicyRow>,
+) {
+  const key = `${niche}__${platform}`;
+  const priority = segmentPriorityMap.get(key);
+  const policy = segmentPolicyMap.get(key);
+  const upgrade = policy?.recommended_upgrade || policy?.next_upgrade || priority?.recommended_upgrade || null;
+  return {
+    segment_priority_score: Math.max(
+      num(priority?.decision_priority_score),
+      num(priority?.urgency_score),
+      num(policy?.decision_priority_score),
+      num(upgrade?.projected_trust_gain_score),
+    ),
+    segment_priority_mode: text(priority?.policy_mode || policy?.policy_mode) || "research_only",
+    segment_ready_for_generation: Boolean(priority?.ready_for_generation),
+    projected_trust_gain_score: num(upgrade?.projected_trust_gain_score),
+    projected_production_state: text(upgrade?.projected_production_state),
+    unlocked_output: text(upgrade?.unlocked_output),
+  };
+}
+
 export function buildReelsBrainSegmentPlaybook(input: {
   opportunities?: { top?: OpportunityRow[] };
   patternAtlas?: { by_segment?: AtlasSegment[] };
   feedbackLoop?: { by_segment?: SegmentOutcomeRow[] };
   limit?: number;
+  segmentPriorityQueue?: SegmentPriorityRow[];
+  generationPolicy?: {
+    by_segment?: SegmentPolicyRow[];
+  } | null;
 }) {
   const opportunityMap = new Map(
     (input.opportunities?.top || [])
@@ -114,6 +174,8 @@ export function buildReelsBrainSegmentPlaybook(input: {
     (input.feedbackLoop?.by_segment || [])
       .map((row) => [joinKey(text(row.niche), text(row.platform)), row] as const),
   );
+  const segmentPriorityMap = new Map((input.segmentPriorityQueue || []).map((row) => [joinKey(text(row.niche), text(row.platform)), row] as const));
+  const segmentPolicyMap = new Map((((input.generationPolicy?.by_segment) || []) as SegmentPolicyRow[]).map((row) => [joinKey(text(row.niche), text(row.platform)), row] as const));
 
   const rows = (input.patternAtlas?.by_segment || [])
     .map((segment) => {
@@ -136,12 +198,19 @@ export function buildReelsBrainSegmentPlaybook(input: {
       const coverage = num(segment.total_videos) > 0
         ? Math.round((num(segment.analyzed_videos) / num(segment.total_videos)) * 100)
         : 0;
+      const priority = segmentPrioritySignal(niche, platform, segmentPriorityMap, segmentPolicyMap);
 
       return {
         niche,
         platform,
         status,
         recommended_mode: mode,
+        segment_priority_score: priority.segment_priority_score,
+        segment_priority_mode: priority.segment_priority_mode,
+        segment_ready_for_generation: priority.segment_ready_for_generation,
+        projected_trust_gain_score: priority.projected_trust_gain_score,
+        projected_production_state: priority.projected_production_state,
+        unlocked_output: priority.unlocked_output,
         opportunity_score: num(opportunity.opportunity_score),
         stability_score: num(segment.avg_stability_score),
         stable_pattern_count: num(segment.stable_pattern_count),
@@ -207,7 +276,9 @@ export function buildReelsBrainSegmentPlaybook(input: {
     })
     .filter((row) => row.leading_pattern.title || row.brief.title || row.hypothesis.text || row.rollout.title)
     .sort((a, b) =>
-      modeRank(b.recommended_mode) - modeRank(a.recommended_mode)
+      modeRank(b.segment_priority_mode || b.recommended_mode) - modeRank(a.segment_priority_mode || a.recommended_mode)
+      || b.segment_priority_score - a.segment_priority_score
+      || modeRank(b.recommended_mode) - modeRank(a.recommended_mode)
       || b.opportunity_score - a.opportunity_score
       || b.stability_score - a.stability_score
       || b.stable_pattern_count - a.stable_pattern_count
@@ -225,6 +296,8 @@ export function buildReelsBrainSegmentPlaybook(input: {
       primary: rows.filter((row) => row.recommended_mode === "primary").length,
       control_only: rows.filter((row) => row.recommended_mode === "control_only").length,
       research_only: rows.filter((row) => row.recommended_mode === "research_only").length,
+      primary_priority_segments: rows.filter((row) => row.segment_priority_mode === "primary").length,
+      ready_for_generation: rows.filter((row) => row.segment_ready_for_generation).length,
     },
     items: rows.slice(0, Math.max(4, input.limit || 8)),
   };

@@ -181,8 +181,132 @@ function testBuildReelsBrainSegmentPlaybookRanksReadySegments() {
   assert.equal(cosmetics?.segment_outcome_status, "weak");
 }
 
+function testSegmentPlaybookPrioritizesHighPayoffSegment() {
+  const result = buildReelsBrainSegmentPlaybook({
+    opportunities: {
+      top: [
+        {
+          niche: "ru_toys",
+          platform: "youtube",
+          opportunity_score: 94,
+          status: "scale_now",
+          recommended_mode: "primary",
+          best_brief_title: "YT Toys brief",
+          best_action_title: "Scale yt toys",
+          best_hypothesis_title: "YT Toys hypothesis",
+          best_hypothesis: "Сильный ютуб паттерн",
+        },
+        {
+          niche: "ru_cosmetics",
+          platform: "tiktok",
+          opportunity_score: 78,
+          status: "build_next",
+          recommended_mode: "control_only",
+          best_brief_title: "TT Cosmetics brief",
+          best_action_title: "Validate tt cosmetics",
+          best_hypothesis_title: "TT Cosmetics hypothesis",
+          best_hypothesis: "Перспективный тикток сегмент",
+        },
+      ],
+    },
+    patternAtlas: {
+      by_segment: [
+        {
+          niche: "ru_toys",
+          platform: "youtube",
+          status: "stable",
+          recommended_mode: "primary",
+          avg_stability_score: 88,
+          stable_pattern_count: 4,
+          analyzed_videos: 96,
+          total_videos: 130,
+          top_patterns: [
+            {
+              title: "YT Toys winner",
+              hook: "Смотри быстро",
+              retention: "open loop",
+              format: "demo",
+              final_decision: "scale",
+              market_status: "proven",
+              stability_score: 91,
+            },
+          ],
+        },
+        {
+          niche: "ru_cosmetics",
+          platform: "tiktok",
+          status: "forming",
+          recommended_mode: "control_only",
+          avg_stability_score: 66,
+          stable_pattern_count: 1,
+          analyzed_videos: 28,
+          total_videos: 57,
+          top_patterns: [
+            {
+              title: "TT Cosmetics winner",
+              hook: "Смотри эффект",
+              retention: "proof",
+              format: "ugc",
+              final_decision: "control",
+              market_status: "promising",
+              stability_score: 69,
+            },
+          ],
+        },
+      ],
+    },
+    feedbackLoop: {
+      by_segment: [
+        {
+          niche: "ru_toys",
+          platform: "youtube",
+          status: "proven",
+          posts: 4,
+          winners: 2,
+          proof_quality: "exact_segment",
+        },
+        {
+          niche: "ru_cosmetics",
+          platform: "tiktok",
+          status: "promising",
+          posts: 2,
+          winners: 1,
+          proof_quality: "traced_transfer_only",
+        },
+      ],
+    },
+    segmentPriorityQueue: [
+      {
+        niche: "ru_cosmetics",
+        platform: "tiktok",
+        decision_priority_score: 95,
+        policy_mode: "primary",
+        ready_for_generation: true,
+        recommended_upgrade: {
+          projected_trust_gain_score: 25,
+          projected_production_state: "decision_ready",
+          unlocked_output: "segment playbook",
+        },
+      },
+      {
+        niche: "ru_toys",
+        platform: "youtube",
+        decision_priority_score: 41,
+        policy_mode: "research_only",
+      },
+    ],
+    limit: 6,
+  });
+
+  assert.equal(result.items[0]?.niche, "ru_cosmetics");
+  assert.equal(result.items[0]?.platform, "tiktok");
+  assert.equal(result.items[0]?.segment_priority_mode, "primary");
+  assert.equal(result.summary.primary_priority_segments, 1);
+}
+
 function run() {
   testBuildReelsBrainSegmentPlaybookRanksReadySegments();
+  testSegmentPlaybookPrioritizesHighPayoffSegment();
   console.log("reelsBrainSegmentPlaybook.test: ok");
 }
 

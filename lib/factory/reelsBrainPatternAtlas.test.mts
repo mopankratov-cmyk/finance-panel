@@ -156,8 +156,95 @@ function testBuildReelsBrainPatternAtlasFindsStableSegments() {
   assert.equal(result.lookup.hasStableAtlas, true);
 }
 
+function testPatternAtlasPrioritizesHighPayoffSegment() {
+  const result = buildReelsBrainPatternAtlas({
+    nicheSummaries: [
+      {
+        niche: "ru_toys",
+        platform_brains: {
+          youtube: { total_videos: 120, analyzed_videos: 92, patterns: 6, generator_ready_patterns: 4 },
+        },
+      },
+      {
+        niche: "ru_cosmetics",
+        platform_brains: {
+          tiktok: { total_videos: 64, analyzed_videos: 34, patterns: 3, generator_ready_patterns: 2 },
+        },
+      },
+    ],
+    segmentTrust: {
+      by_niche: [
+        { niche: "ru_toys", score: 80, status: "ready" },
+        { niche: "ru_cosmetics", score: 58, status: "warming" },
+      ],
+      by_platform: [
+        { platform: "youtube", score: 74, status: "ready" },
+        { platform: "tiktok", score: 61, status: "warming" },
+      ],
+    },
+    patterns: [
+      {
+        id: "yt_toys_best",
+        title: "YT Toys Best",
+        hook: "Смотри быстро",
+        retention: "open loop",
+        format: "demo",
+        op_score: 95,
+        confidence: "high",
+        quality_gate: "high_confidence",
+        final_decision: "scale",
+        niches: ["ru_toys"],
+        platforms: ["youtube"],
+        market_signal: { status: "proven", confidence: "high", winners: 4, total_posts: 6 },
+      },
+      {
+        id: "tt_cosmetics_good",
+        title: "TT Cosmetics Good",
+        hook: "Смотри эффект",
+        retention: "proof",
+        format: "ugc",
+        op_score: 84,
+        confidence: "medium",
+        quality_gate: "medium_confidence",
+        final_decision: "control",
+        niches: ["ru_cosmetics"],
+        platforms: ["tiktok"],
+        market_signal: { status: "promising", confidence: "medium", winners: 1, total_posts: 2 },
+      },
+    ],
+    segmentPriorityQueue: [
+      {
+        niche: "ru_cosmetics",
+        platform: "tiktok",
+        decision_priority_score: 96,
+        policy_mode: "primary",
+        ready_for_generation: true,
+        recommended_upgrade: {
+          projected_trust_gain_score: 26,
+          projected_production_state: "decision_ready",
+          unlocked_output: "segment atlas candidates",
+        },
+      },
+      {
+        niche: "ru_toys",
+        platform: "youtube",
+        decision_priority_score: 42,
+        policy_mode: "research_only",
+      },
+    ],
+    segmentLimit: 6,
+    patternLimit: 2,
+  });
+
+  assert.equal(result.by_segment[0]?.niche, "ru_cosmetics");
+  assert.equal(result.by_segment[0]?.platform, "tiktok");
+  assert.equal(result.by_segment[0]?.segment_priority_mode, "primary");
+  assert.equal(result.summary.primary_priority_segments, 1);
+}
+
 function run() {
   testBuildReelsBrainPatternAtlasFindsStableSegments();
+  testPatternAtlasPrioritizesHighPayoffSegment();
   console.log("reelsBrainPatternAtlas.test: ok");
 }
 
