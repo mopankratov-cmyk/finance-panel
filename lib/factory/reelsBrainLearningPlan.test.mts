@@ -688,4 +688,45 @@ assert.equal((upgradeDrivenAnalyzeTick.priority_segment as Record<string, unknow
 assert.match(upgradeDrivenAnalyzeTick.label, /ru_clothing × instagram/);
 assert.match(upgradeDrivenAnalyzeTick.reason, /usable creative export/i);
 
+const generationUpgradeTick = buildReelsBrainNextTick({
+  target: 10000,
+  totalVideos: 5400,
+  analyzedVideos: 5340,
+  backlogLimit: 180,
+  canRunPaidCollection: true,
+  portfolioReadiness: {
+    summary: {
+      high_trust_coverage_pct: 68,
+      publishable_exact_coverage_pct: 61,
+      verdict: "forming",
+    },
+    missing_segments: [],
+  },
+  generationReadiness: {
+    summary: {
+      segment_specific_ready_pct: 18,
+      niche_specific_ready_pct: 33,
+      platform_specific_ready_pct: 33,
+    },
+    upgrade_needed_segments: [
+      {
+        niche: "ru_cosmetics",
+        platform: "instagram",
+        label: "ru_cosmetics × instagram",
+        publishable_exact: true,
+        blockers: ["brief bundle still incomplete"],
+      },
+    ],
+  },
+});
+
+assert.equal(generationUpgradeTick.task, "analyze_backlog");
+assert.equal((generationUpgradeTick.params as Record<string, unknown>).focus, "high_trust_generation_upgrade");
+assert.equal((generationUpgradeTick.params as Record<string, unknown>).build_patterns, "true");
+assert.equal((generationUpgradeTick.params as Record<string, unknown>).niche, "ru_cosmetics");
+assert.equal((generationUpgradeTick.params as Record<string, unknown>).platform, "instagram");
+assert.match(generationUpgradeTick.label, /high-trust output/i);
+assert.match(generationUpgradeTick.reason, /generation-ready coverage пока только 18%/);
+assert.equal((generationUpgradeTick.generation_readiness_focus as Record<string, unknown>)?.label, "ru_cosmetics × instagram");
+
 console.log("reelsBrainLearningPlan: passed");

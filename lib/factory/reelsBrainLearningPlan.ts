@@ -56,6 +56,12 @@ type BriefGapProgressSummary = {
   summary?: JsonRecord | null;
 };
 
+type GenerationReadinessSummary = {
+  summary?: JsonRecord | null;
+  upgrade_needed_segments?: Array<JsonRecord>;
+  research_segments?: Array<JsonRecord>;
+};
+
 function num(value: unknown): number {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
@@ -285,10 +291,11 @@ function selectUpgradePrioritySegment(input: {
   briefGapCandidates: JsonRecord[];
   shipReadyTopCandidates: JsonRecord[];
   shipReadyItems: JsonRecord[];
+  generationUpgradeCandidates?: JsonRecord[];
   generationPolicy?: JsonRecord | null;
 }) {
   const uniqueCandidates = new Map<string, FocusSegment>();
-  for (const source of [...input.briefGapCandidates, ...input.shipReadyTopCandidates, ...input.shipReadyItems]) {
+  for (const source of [...(input.generationUpgradeCandidates || []), ...input.briefGapCandidates, ...input.shipReadyTopCandidates, ...input.shipReadyItems]) {
     const candidate = safeSegment(source);
     if (!candidate) continue;
     uniqueCandidates.set(`${candidate.niche}__${candidate.platform}`, candidate);
@@ -346,6 +353,7 @@ export function buildReelsBrainNextTick(input: {
   briefCoverageAudit?: BriefCoverageAuditSummary | JsonRecord | null;
   shipReadyQueue?: ShipReadyQueueSummary | JsonRecord | null;
   briefGapProgress?: BriefGapProgressSummary | JsonRecord | null;
+  generationReadiness?: GenerationReadinessSummary | JsonRecord | null;
 }) {
   const backlog = Math.max(0, input.totalVideos - input.analyzedVideos);
   const portfolio = (input.portfolioReadiness || {}) as JsonRecord;
@@ -396,6 +404,10 @@ export function buildReelsBrainNextTick(input: {
       : null,
   );
   const shipReadySummary = ((shipReadyQueue as ShipReadyQueueSummary | null | undefined)?.summary || {}) as JsonRecord;
+  const generationReadiness = (input.generationReadiness || {}) as GenerationReadinessSummary | JsonRecord;
+  const generationSummary = (((generationReadiness as GenerationReadinessSummary).summary) || {}) as JsonRecord;
+  const generationUpgradeCandidates = records((generationReadiness as GenerationReadinessSummary).upgrade_needed_segments);
+  const generationUpgradeFocusSegment = safeSegment(generationUpgradeCandidates[0] || null);
   const publishableExactGapSegment = pickPublishableExactFocusSegment({
     portfolioReadiness: portfolio,
     generationPolicy: input.generationPolicy,
@@ -406,6 +418,7 @@ export function buildReelsBrainNextTick(input: {
     briefGapCandidates,
     shipReadyTopCandidates,
     shipReadyItems,
+    generationUpgradeCandidates,
     generationPolicy: input.generationPolicy,
   });
   const executionPrioritySegment = upgradePrioritySegment || prioritySegment;
@@ -452,6 +465,12 @@ export function buildReelsBrainNextTick(input: {
   const activePolicyMode = text(activePolicy?.policy_mode, "research_only");
   const patternGainTrend = learningEconomics.pattern_gain_cost_trend;
   const expensivePatternGain = patternGainTrend === "more_expensive" || learningEconomics.weak_pattern_gain;
+  const generationReadyPct = num(generationSummary.segment_specific_ready_pct);
+  const generationNicheReadyPct = num(generationSummary.niche_specific_ready_pct);
+  const generationPlatformReadyPct = num(generationSummary.platform_specific_ready_pct);
+  const lowGenerationReadiness = portfolioCoverage >= 60
+    && (generationReadyPct < 35 || generationNicheReadyPct < 50 || generationPlatformReadyPct < 50)
+    && Boolean(generationUpgradeFocusSegment);
   const dynamicBacklogLimit = expensivePatternGain
     ? clamp(Math.round(input.backlogLimit * (learningEconomics.weak_pattern_gain ? 0.45 : 0.65)), 24, input.backlogLimit)
     : input.backlogLimit;
@@ -504,6 +523,30 @@ export function buildReelsBrainNextTick(input: {
       brief_coverage_focus: briefCoverageFocusSegment,
       brief_gap_progress_focus: briefGapProgressFocusSegment,
       ship_ready_focus: shipReadyFocusSegment,
+    };
+  }
+
+  if (lowGenerationReadiness && backlog > 0) {
+    return {
+      task: "analyze_backlog",
+      label: `Довести ${segmentLabel(generationUpgradeFocusSegment)} до high-trust output`,
+      reason: `${segmentLabel(generationUpgradeFocusSegment)} уже близок к publishable exact, но generation-ready coverage пока только ${generationReadyPct}% по сегментам, ${generationNicheReadyPct}% по нишам и ${generationPlatformReadyPct}% по платформам. Следующий цикл лучше потратить на analyze + pattern compaction по этому сегменту, чтобы перевести знание в реально usable brief/hypothesis/content solution, а не просто добирать общий корпус.`,
+      endpoint: "/api/factory/jobs/reels-brain-learning",
+      params: {
+        strategy: "analyze",
+        limit: "80",
+        build_patterns: "true",
+        focus: "high_trust_generation_upgrade",
+        ...(generationUpgradeFocusSegment ? {
+          niche: String(generationUpgradeFocusSegment.niche || ""),
+          platform: String(generationUpgradeFocusSegment.platform || ""),
+        } : {}),
+      },
+      paid_collection: false,
+      priority_segment: generationUpgradeFocusSegment,
+      portfolio_priority_segment: portfolioFocusSegment,
+      learning_economics: learningEconomics,
+      generation_readiness_focus: generationUpgradeFocusSegment,
     };
   }
 
@@ -572,6 +615,8 @@ export function buildReelsBrainNextTick(input: {
     const shouldClosePortfolioGaps = (!shouldSupportDecisionSegment || marketBlockedDecisionSupport || readinessBlockedDecisionSupport) && portfolioCoverage < 70;
     const collectionSegment = shouldClosePublishableExactPortfolioGaps
       ? publishableExactGapSegment
+      : lowGenerationReadiness
+        ? generationUpgradeFocusSegment
       : shouldClosePortfolioGaps
         ? collectionFocusSegment
         : executionPrioritySegment;
@@ -585,7 +630,7 @@ export function buildReelsBrainNextTick(input: {
         ? marketBlockedDecisionSupport || readinessBlockedDecisionSupport
           ? "collect_portfolio_gaps"
           : "collect_support_for_decision_segment"
-        : shouldClosePublishableExactPortfolioGaps || shouldClosePortfolioGaps
+        : shouldClosePublishableExactPortfolioGaps || lowGenerationReadiness || shouldClosePortfolioGaps
           ? "collect_portfolio_gaps"
           : "collect_smart_batch",
       label: shouldSupportDecisionSegment
@@ -608,6 +653,10 @@ export function buildReelsBrainNextTick(input: {
           ? collectionSegment
             ? `Поднимать ${collectionSegment.label} до publishable exact`
             : "Поднимать portfolio до publishable exact"
+        : lowGenerationReadiness
+          ? collectionSegment
+            ? `Доводить ${collectionSegment.label} до high-trust output`
+            : "Доводить strongest segments до high-trust output"
         : shouldClosePortfolioGaps
           ? collectionSegment
             ? `Закрывать дыру ${collectionSegment.label} в portfolio coverage`
@@ -629,6 +678,10 @@ export function buildReelsBrainNextTick(input: {
           ? collectionSegment
             ? `High-trust coverage уже ${portfolioCoverage}%, но publishable exact coverage всё ещё ${portfolioExactCoverage}% (${portfolioVerdict}). Следующий сбор направляем в ${collectionSegment.label}, чтобы переводить knowledge-layer в реально publishable exact сегменты.${policyLine}`
             : `High-trust coverage уже ${portfolioCoverage}%, но publishable exact coverage всё ещё ${portfolioExactCoverage}%. Следующий сбор лучше тратить на сегменты, где exact-ready bundle ещё не доведён до publishable состояния.${policyLine}`
+        : lowGenerationReadiness
+          ? collectionSegment
+            ? `Портфель уже набирает trust coverage, но generation-ready coverage всё ещё низкая: ${generationReadyPct}% сегментов, ${generationNicheReadyPct}% ниш и ${generationPlatformReadyPct}% платформ реально дают high-trust output. Следующий сбор направляем в ${collectionSegment.label}, чтобы довести publishable exact знание до usable brief/hypothesis/content solution.${policyLine}`
+            : `Портфель уже набирает trust coverage, но generation-ready coverage всё ещё низкая. Следующий сбор лучше тратить на сегменты, где publishable exact ещё не доведён до real high-trust output.${policyLine}`
         : shouldClosePortfolioGaps
           ? collectionSegment
             ? `High-trust coverage матрицы пока ${portfolioCoverage}% (${portfolioVerdict}); следующий сбор направляем в сегмент ${collectionSegment.label}, потому что он ещё не закрыт по доверию.${policyLine}`
@@ -657,6 +710,7 @@ export function buildReelsBrainNextTick(input: {
       portfolio_priority_segment: portfolioFocusSegment,
       portfolio_readiness: portfolio,
       generation_policy: activePolicy,
+      generation_readiness: generationReadiness,
       learning_economics: learningEconomics,
     };
   }

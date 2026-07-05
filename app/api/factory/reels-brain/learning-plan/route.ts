@@ -136,6 +136,7 @@ export async function GET(req: NextRequest) {
     const portfolioReadiness = (learning.portfolio_readiness || {}) as JsonRecord;
     const portfolioSummary = (portfolioReadiness.summary || {}) as JsonRecord;
     const exactSegmentQueue = (learning.exact_segment_queue || {}) as JsonRecord;
+    const generationReadiness = (learning.generation_readiness || {}) as JsonRecord;
     const exactQueueItems = Array.isArray(exactSegmentQueue.items) ? exactSegmentQueue.items as JsonRecord[] : [];
     const briefCoverageAudit = (learning.brief_coverage_audit || {}) as JsonRecord;
     const briefCoverageGapQueue = Array.isArray(briefCoverageAudit.gap_queue) ? briefCoverageAudit.gap_queue as JsonRecord[] : [];
@@ -175,6 +176,7 @@ export async function GET(req: NextRequest) {
       briefCoverageAudit,
       shipReadyQueue,
       briefGapProgress,
+      generationReadiness,
       learningEconomics: {
         pattern_gain_cost_trend: totals.pattern_gain_cost_trend,
         pattern_gain_proxy_total: totals.pattern_gain_proxy_total,
@@ -268,6 +270,19 @@ export async function GET(req: NextRequest) {
           publishable_exact_coverage_pct: num(portfolioSummary.publishable_exact_coverage_pct),
           known_coverage_pct: num(portfolioSummary.known_coverage_pct),
           verdict: String(portfolioSummary.verdict || "still_building"),
+        },
+        generation_readiness: {
+          high_trust_generation_ready_segments: num((generationReadiness.summary as JsonRecord | undefined)?.high_trust_generation_ready_segments),
+          publishable_exact_segments: num((generationReadiness.summary as JsonRecord | undefined)?.publishable_exact_segments),
+          hypothesis_ready_segments: num((generationReadiness.summary as JsonRecord | undefined)?.hypothesis_ready_segments),
+          brief_ready_segments: num((generationReadiness.summary as JsonRecord | undefined)?.brief_ready_segments),
+          content_solution_ready_segments: num((generationReadiness.summary as JsonRecord | undefined)?.content_solution_ready_segments),
+          segment_specific_ready_pct: num((generationReadiness.summary as JsonRecord | undefined)?.segment_specific_ready_pct),
+          niche_specific_ready_pct: num((generationReadiness.summary as JsonRecord | undefined)?.niche_specific_ready_pct),
+          platform_specific_ready_pct: num((generationReadiness.summary as JsonRecord | undefined)?.platform_specific_ready_pct),
+          verdict: String((generationReadiness.summary as JsonRecord | undefined)?.verdict || "research_heavy"),
+          top_ready_segments: Array.isArray(generationReadiness.top_ready_segments) ? (generationReadiness.top_ready_segments as JsonRecord[]).slice(0, 3) : [],
+          upgrade_needed_segments: Array.isArray(generationReadiness.upgrade_needed_segments) ? (generationReadiness.upgrade_needed_segments as JsonRecord[]).slice(0, 3) : [],
         },
         feedback_coverage: {
           coverage_rate: num(learning.outcome_memory_brain?.pattern_memory?.coverage_rate),
