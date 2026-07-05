@@ -112,6 +112,7 @@ ok(/buildReelsBrainFeedbackLoop/.test(feedback), "feedback route summarizes publ
 ok(/\/api\/factory\/post-metrics/.test(feedback), "feedback route writes through post-metrics");
 ok(/loadReelsBrainFeedbackRows/.test(feedbackRoute) && /segment_label/.test(feedbackRows) && /segment_outcome_memory/.test(operatingSystem), "feedback loop enriches post metrics with segment context and exposes segment outcome memory");
 ok(/buildReelsBrainOutcomeAntiPatternMemory/.test(economics) && /outcome_writeback/.test(economics) && /segment_outcome_memory/.test(outcomeAntiPatternMemory), "learning-economics writes segment outcome memory back into anti-pattern brain");
+ok(/effective_quality_gate/.test(economics) && /decision_priority_score/.test(economics) && /quality_gate_override/.test(economics), "pattern decision layer writes outcome-adjusted gate and priority back into pattern details");
 ok(/function loadAutopilotGuard/.test(cron), "cron has an autopilot guard");
 ok(/original_task/.test(cron) && /can_run_paid_collection/.test(cron), "cron reports guard enforcement");
 ok(/loadLearningPlan/.test(cron) && /planned_task/.test(cron) && /collect_portfolio_gaps/.test(cron) && /planned_portfolio_segment/.test(cron), "cron consumes learning-plan and can execute portfolio-aware next ticks");

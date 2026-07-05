@@ -16,6 +16,7 @@ type PatternRow = {
   op_score?: number;
   confidence?: "high" | "medium" | "low" | string;
   quality_gate?: "high_confidence" | "medium_confidence" | "experimental" | "noise" | "banned" | string;
+  effective_quality_gate?: "high_confidence" | "medium_confidence" | "experimental" | "noise" | "banned" | string;
   final_decision?: "scale" | "control" | "watch" | string;
   niches?: string[];
   platforms?: string[];
@@ -36,6 +37,10 @@ type PatternRow = {
     do_not_copy?: string[];
   } | null;
 };
+
+function liveQualityGate(pattern: PatternRow) {
+  return text(pattern.effective_quality_gate || pattern.quality_gate);
+}
 
 type SegmentSummaryRow = {
   niche: string;
@@ -107,7 +112,7 @@ function atlasStatus(avgScore: number, stableCount: number, analyzed: number) {
 function patternStabilityScore(pattern: PatternRow) {
   return clamp(
     Math.min(34, num(pattern.op_score) * 0.34)
-    + qualityWeight(text(pattern.quality_gate))
+    + qualityWeight(liveQualityGate(pattern))
     + decisionWeight(text(pattern.final_decision))
     + confidenceWeight(text(pattern.market_signal?.confidence || pattern.confidence))
     + marketWeight(text(pattern.market_signal?.status))
@@ -151,7 +156,7 @@ export function buildReelsBrainPatternAtlas(input: {
             format: text(pattern.format),
             op_score: num(pattern.op_score),
             stability_score: stability,
-            quality_gate: text(pattern.quality_gate),
+            quality_gate: liveQualityGate(pattern),
             final_decision: text(pattern.final_decision),
             confidence: text(pattern.market_signal?.confidence || pattern.confidence),
             market_status: text(pattern.market_signal?.status),

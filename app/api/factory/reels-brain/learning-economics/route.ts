@@ -1181,6 +1181,50 @@ function buildPatternDecisionLayer(insightPayload: ReturnType<typeof buildInsigh
   return { pattern_details, quality_gate };
 }
 
+function outcomeAdjustedGate(baseGate: string, outcomeStatus: string) {
+  if (outcomeStatus === "weak") {
+    if (baseGate === "high_confidence") return "medium_confidence";
+    if (baseGate === "medium_confidence") return "experimental";
+    return baseGate;
+  }
+  if (outcomeStatus === "proven" && baseGate === "experimental") return "medium_confidence";
+  return baseGate;
+}
+
+function patternDecisionPriority(input: {
+  opScore: number;
+  effectiveGate: string;
+  outcomeStatus: string;
+  finalDecision: string;
+  confidence: string;
+}) {
+  const gateBoost = input.effectiveGate === "high_confidence"
+    ? 16
+    : input.effectiveGate === "medium_confidence"
+      ? 10
+      : input.effectiveGate === "experimental"
+        ? 4
+        : 0;
+  const outcomeBoost = input.outcomeStatus === "proven"
+    ? 18
+    : input.outcomeStatus === "promising"
+      ? 8
+      : input.outcomeStatus === "weak"
+        ? -18
+        : 0;
+  const decisionBoost = input.finalDecision === "scale"
+    ? 14
+    : input.finalDecision === "control"
+      ? 6
+      : -6;
+  const confidenceBoost = input.confidence === "high"
+    ? 8
+    : input.confidence === "medium"
+      ? 4
+      : 0;
+  return Math.max(0, Math.min(100, Math.round(input.opScore + gateBoost + outcomeBoost + decisionBoost + confidenceBoost)));
+}
+
 function attachPatternOutcomes(
   patternDecisionLayer: ReturnType<typeof buildPatternDecisionLayer>,
   feedbackRows: ReelsBrainMetricRow[],
@@ -1198,17 +1242,47 @@ function attachPatternOutcomes(
   const outcomeById = new Map(outcomeRows.map((row) => [row.pattern_id, row]));
   const pattern_details = patternDecisionLayer.pattern_details.map((row) => {
     const outcome = outcomeById.get(row.id) || null;
+    const effectiveGate = outcomeAdjustedGate(
+      String(row.quality_gate || ""),
+      String(outcome?.status || "no_feedback"),
+    );
+    const finalDecision = outcome?.final_decision || (row.quality_gate === "high_confidence" ? "control" : "watch");
+    const priority = patternDecisionPriority({
+      opScore: Number(row.op_score || 0),
+      effectiveGate,
+      outcomeStatus: String(outcome?.status || "no_feedback"),
+      finalDecision,
+      confidence: String(outcome?.confidence || row.confidence || "low"),
+    });
     return {
       ...row,
       market_signal: outcome,
-      final_decision: outcome?.final_decision || (row.quality_gate === "high_confidence" ? "control" : "watch"),
+      final_decision: finalDecision,
+      effective_quality_gate: effectiveGate,
+      decision_priority_score: priority,
+      outcome_writeback: {
+        outcome_status: outcome?.status || "no_feedback",
+        quality_gate_override: effectiveGate !== row.quality_gate ? effectiveGate : null,
+        final_decision: finalDecision,
+        trust_write: outcome?.status === "proven"
+          ? "promote_pattern_priority"
+          : outcome?.status === "weak"
+            ? "degrade_pattern_priority"
+            : outcome?.status === "promising"
+              ? "keep_validating_pattern"
+              : "wait_for_feedback",
+      },
       warnings: [
         ...(row.warnings || []),
         outcome?.status === "weak" ? "Рынок пока не подтверждает этот паттерн: держать в watch." : "",
         outcome?.status === "proven" ? "Есть market confirmation: паттерн можно поднимать выше." : "",
       ].filter(Boolean),
     };
-  });
+  }).sort((a, b) =>
+    Number((b as Record<string, unknown>).decision_priority_score || 0) - Number((a as Record<string, unknown>).decision_priority_score || 0)
+    || Number(b.op_score || 0) - Number(a.op_score || 0)
+    || String(a.title || "").localeCompare(String(b.title || "")),
+  );
   return {
     ...patternDecisionLayer,
     pattern_details,
@@ -2328,12 +2402,15 @@ export async function GET(req: NextRequest) {
           format: row.format,
           op_score: row.op_score,
           quality_gate: row.quality_gate,
+          effective_quality_gate: record.effective_quality_gate,
           final_decision: record.final_decision,
+          decision_priority_score: record.decision_priority_score,
           examples_count: row.examples_count,
           platforms: takeRecordList(record.platforms as string[] | undefined, 4),
           niches: takeRecordList(record.niches as string[] | undefined, 4),
           warnings: takeRecordList(record.warnings as string[] | undefined, 4),
           market_signal: record.market_signal,
+          outcome_writeback: record.outcome_writeback,
           audio_logic: takeRecordList(record.audio_logic as string[] | undefined, 4),
           creative_brief: row.creative_brief,
         };

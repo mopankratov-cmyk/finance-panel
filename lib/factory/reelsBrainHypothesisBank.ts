@@ -17,6 +17,7 @@ export type ReelsBrainDecisionPattern = {
   op_score?: number;
   confidence?: "high" | "medium" | "low" | string;
   quality_gate?: string;
+  effective_quality_gate?: string;
   final_decision?: "scale" | "control" | "watch" | string;
   niches?: string[];
   platforms?: string[];
@@ -33,6 +34,10 @@ export type ReelsBrainDecisionPattern = {
   } | null;
   market_signal?: PatternMarketSignal | null;
 };
+
+function liveQualityGate(pattern: ReelsBrainDecisionPattern) {
+  return text(pattern.effective_quality_gate || pattern.quality_gate, "unknown");
+}
 
 export type ReelsBrainHypothesisCard = {
   id: string;
@@ -134,7 +139,7 @@ function hypothesisText(pattern: ReelsBrainDecisionPattern) {
 
 function whyNow(pattern: ReelsBrainDecisionPattern): string[] {
   const out = [
-    `OP score ${num(pattern.op_score)} и gate ${text(pattern.quality_gate, "unknown")}.`,
+    `OP score ${num(pattern.op_score)} и gate ${liveQualityGate(pattern)}.`,
   ];
   const market = pattern.market_signal;
   if (market && normalizeMarketStatus(market.status) !== "no_feedback") {

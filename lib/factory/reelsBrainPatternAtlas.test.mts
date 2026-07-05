@@ -89,6 +89,21 @@ function testBuildReelsBrainPatternAtlasFindsStableSegments() {
         platforms: ["youtube"],
         market_signal: { status: "weak", confidence: "low", best_platform: "youtube", winners: 0, total_posts: 3 },
       },
+      {
+        id: "p5",
+        title: "Demoted by weak market",
+        hook: "Смотри быстро",
+        retention: "fast payoff",
+        format: "demo",
+        op_score: 86,
+        confidence: "high",
+        quality_gate: "high_confidence",
+        effective_quality_gate: "experimental",
+        final_decision: "watch",
+        niches: ["ru_cosmetics"],
+        platforms: ["youtube"],
+        market_signal: { status: "weak", confidence: "low", best_platform: "youtube", winners: 0, total_posts: 3 },
+      },
     ],
     segmentLimit: 6,
     patternLimit: 3,
@@ -103,6 +118,7 @@ function testBuildReelsBrainPatternAtlasFindsStableSegments() {
   assert.equal(result.by_segment[0]?.top_patterns[0]?.title, "Fast demo surprise");
   assert.equal(result.by_niche[0]?.niche, "ru_toys");
   assert.equal(result.by_platform[0]?.platform, "tiktok");
+  assert.ok(!result.by_segment.find((row) => row.niche === "ru_cosmetics" && row.platform === "youtube")?.top_patterns.some((pattern) => pattern.title === "Demoted by weak market"));
   assert.equal(result.lookup.hasStableAtlas, true);
 }
 

@@ -7,6 +7,7 @@ export type ReelsBrainActionPattern = {
   op_score?: number;
   confidence?: "high" | "medium" | "low" | string;
   quality_gate?: string;
+  effective_quality_gate?: string;
   final_decision?: "scale" | "control" | "watch" | string;
   niches?: string[];
   platforms?: string[];
@@ -31,6 +32,10 @@ export type ReelsBrainActionPattern = {
     why?: string[] | null;
   } | null;
 };
+
+function liveQualityGate(pattern: ReelsBrainActionPattern) {
+  return text(pattern.effective_quality_gate || pattern.quality_gate, "unknown");
+}
 
 export type ReelsBrainActionCard = {
   rank: number;
@@ -129,7 +134,7 @@ function priorityScore(pattern: ReelsBrainActionPattern) {
 
 function whyNow(pattern: ReelsBrainActionPattern): string[] {
   const reasons = [
-    `OP ${num(pattern.op_score)} · gate ${text(pattern.quality_gate, "unknown")}.`,
+    `OP ${num(pattern.op_score)} · gate ${liveQualityGate(pattern)}.`,
   ];
   if (normalizeMarketStatus(pattern.market_signal?.status) !== "no_feedback") {
     reasons.push(`Market ${normalizeMarketStatus(pattern.market_signal?.status)} · winners ${num(pattern.market_signal?.winners)} / posts ${num(pattern.market_signal?.total_posts)}.`);
