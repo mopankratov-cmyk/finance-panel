@@ -619,4 +619,73 @@ assert.match(shipReadyBundleCompletionTick.reason, /publishable exact brief/i);
 assert.match(shipReadyBundleCompletionTick.reason, /Главный пробел сейчас: visual_recipe/);
 assert.match(shipReadyBundleCompletionTick.reason, /Что откроется после фикса:/);
 
+const upgradeDrivenAnalyzeTick = buildReelsBrainNextTick({
+  target: 10000,
+  totalVideos: 3200,
+  analyzedVideos: 3140,
+  backlogLimit: 180,
+  canRunPaidCollection: true,
+  prioritySegment: {
+    niche: "ru_toys",
+    platform: "tiktok",
+    label: "ru_toys × tiktok",
+    action: "watch_segment",
+  },
+  generationPolicy: {
+    by_segment: [
+      {
+        niche: "ru_clothing",
+        platform: "instagram",
+        label: "ru_clothing × instagram",
+        policy_mode: "primary",
+        trust_band: "high",
+        evidence_band: "stable",
+        readiness_score: 95,
+        policy_reason: "segment has the highest publishable exact payoff now",
+      },
+    ],
+  },
+  briefCoverageAudit: {
+    summary: {
+      blocked_or_incomplete_segments: 1,
+    },
+    gap_queue: [
+      {
+        niche: "ru_clothing",
+        platform: "instagram",
+        label: "ru_clothing × instagram",
+        lane: "ship",
+        proof_quality: "exact_segment",
+        missing_fields: ["visual_recipe"],
+        missing_field_families: ["visual"],
+        blocked_reasons: [],
+      },
+    ],
+  },
+  briefGapProgress: {
+    top_candidates: [
+      {
+        niche: "ru_clothing",
+        platform: "instagram",
+        label: "ru_clothing × instagram",
+        lane: "ship",
+        proof_quality: "exact_segment",
+        missing_fields: ["visual_recipe"],
+        missing_field_families: ["visual"],
+        unlocked_output: "publishable_visual_brief",
+        projected_trust_gain_score: 34,
+        projected_trust_gain_band: "high",
+        projected_production_state: "publishable_exact",
+      },
+    ],
+  },
+});
+
+assert.equal(upgradeDrivenAnalyzeTick.task, "analyze_backlog");
+assert.equal((upgradeDrivenAnalyzeTick.params as Record<string, unknown>).niche, "ru_clothing");
+assert.equal((upgradeDrivenAnalyzeTick.params as Record<string, unknown>).platform, "instagram");
+assert.equal((upgradeDrivenAnalyzeTick.priority_segment as Record<string, unknown>)?.label, "ru_clothing × instagram");
+assert.match(upgradeDrivenAnalyzeTick.label, /ru_clothing × instagram/);
+assert.match(upgradeDrivenAnalyzeTick.reason, /usable creative export/i);
+
 console.log("reelsBrainLearningPlan: passed");
