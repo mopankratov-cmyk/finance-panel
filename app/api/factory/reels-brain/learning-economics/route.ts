@@ -3115,6 +3115,45 @@ export async function GET(req: NextRequest) {
       shipReadyQueue: prioritizedShipReadyQueue,
       limit: compactMode ? 6 : 10,
     });
+    const prioritizedSegmentReadinessAudit = buildReelsBrainSegmentReadinessAudit({
+      segmentGenerationPacks: prioritizedSegmentGenerationPacks,
+      limit: compactMode ? 6 : 10,
+    });
+    const prioritizedSegmentDecisionSnapshot = {
+      summary: {
+        exports: prioritizedSegmentCreativeExports.summary || null,
+        audit: prioritizedSegmentReadinessAudit.summary || null,
+        filtered_total: Array.isArray(prioritizedSegmentCreativeExports.items) ? prioritizedSegmentCreativeExports.items.length : 0,
+      },
+      ship_now: prioritizedSegmentCreativeExports.ship_now || [],
+      validate_next: prioritizedSegmentCreativeExports.validate_next || [],
+      research_queue: prioritizedSegmentCreativeExports.research_queue || [],
+      items: (prioritizedSegmentCreativeExports.items || []).map((row) => {
+        const audit = (prioritizedSegmentReadinessAudit.items || []).find((auditRow) =>
+          String(auditRow.niche || "") === String((row as Record<string, unknown>).niche || "")
+          && String(auditRow.platform || "") === String((row as Record<string, unknown>).platform || ""),
+        ) || null;
+        return {
+          ...row,
+          audit,
+        };
+      }),
+    };
+    const prioritizedSegmentStabilityAudit = buildReelsBrainSegmentStabilityAudit({
+      decisionSnapshot: prioritizedSegmentDecisionSnapshot,
+      limit: compactMode ? 6 : 10,
+    });
+    const prioritizedSegmentSolutions = buildReelsBrainSegmentSolutions({
+      decisionSnapshot: prioritizedSegmentDecisionSnapshot,
+      limit: compactMode ? 6 : 10,
+    });
+    const prioritizedSegmentSolutionMatrix = buildReelsBrainSegmentSolutionMatrix({
+      segmentSolutions: prioritizedSegmentSolutions,
+      briefGapProgress: prioritizedBriefGapProgress,
+      niches: nicheSummaries.map((row) => row.niche),
+      platforms: ["tiktok", "instagram", "youtube"],
+      limit: compactMode ? 6 : 10,
+    });
     const dailyReport = buildDailyReport({
       totals,
       today,
@@ -3184,10 +3223,10 @@ export async function GET(req: NextRequest) {
       brief_coverage_audit: prioritizedBriefCoverageAudit,
       ship_ready_queue: prioritizedShipReadyQueue,
       brief_gap_progress: prioritizedBriefGapProgress,
-      segment_readiness_audit: segmentReadinessAudit,
-      segment_stability_audit: segmentStabilityAudit,
-      segment_solutions: segmentSolutions,
-      segment_solution_matrix: segmentSolutionMatrix,
+      segment_readiness_audit: prioritizedSegmentReadinessAudit,
+      segment_stability_audit: prioritizedSegmentStabilityAudit,
+      segment_solutions: prioritizedSegmentSolutions,
+      segment_solution_matrix: prioritizedSegmentSolutionMatrix,
       generation_policy: generationPolicy,
       portfolio_readiness: portfolioReadiness,
       evidence_ledger: evidenceLedger,

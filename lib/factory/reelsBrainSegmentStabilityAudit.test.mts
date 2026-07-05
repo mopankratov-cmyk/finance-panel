@@ -76,3 +76,53 @@ test("buildReelsBrainSegmentStabilityAudit surfaces blockers on weak segment", (
   assert.ok(result.items[0]?.blockers.includes("trust floor below 85"));
   assert.ok(result.items[0]?.blockers.includes("fewer than 3 stable patterns"));
 });
+
+test("buildReelsBrainSegmentStabilityAudit prioritizes high-payoff segment", () => {
+  const result = buildReelsBrainSegmentStabilityAudit({
+    decisionSnapshot: {
+      items: [
+        {
+          niche: "ru_toys",
+          platform: "youtube",
+          lane: "ship",
+          readiness_score: 94,
+          trust: {
+            corpus_score: 88,
+            market_score: 70,
+            stable_pattern_count: 4,
+            evidence_refs: 4,
+          },
+          brief: { title: "Brief", hook: "Hook", retention: "Retention", structure: "Structure" },
+          hypothesis: { title: "Hypothesis", text: "Hypothesis text", success_metric: "Hold" },
+          content_solution: { action_title: "Decision", action_decision: "scale", success_metric: "CTR" },
+          audit: { verdict: "ship" },
+          segment_priority_score: 41,
+          segment_priority_mode: "research_only",
+        },
+        {
+          niche: "ru_cosmetics",
+          platform: "tiktok",
+          lane: "validate",
+          readiness_score: 72,
+          trust: {
+            corpus_score: 68,
+            market_score: 54,
+            stable_pattern_count: 2,
+            evidence_refs: 2,
+          },
+          brief: { title: "Brief", hook: "Hook", retention: "Retention", structure: "Structure" },
+          hypothesis: { title: "Hypothesis", text: "Hypothesis text", success_metric: "Hold" },
+          content_solution: { action_title: "Decision", action_decision: "control", success_metric: "CTR" },
+          audit: { verdict: "validate" },
+          segment_priority_score: 95,
+          segment_priority_mode: "primary",
+          segment_ready_for_generation: true,
+        },
+      ],
+    },
+  });
+
+  assert.equal(result.items[0]?.platform, "tiktok");
+  assert.equal(result.items[0]?.segment_priority_mode, "primary");
+  assert.equal(result.summary.primary_priority_segments, 1);
+});

@@ -66,8 +66,43 @@ function testBuildReelsBrainSegmentReadinessAuditExplainsVerdicts() {
   assert.equal(result.items[1]?.blockers[0], "корпус сегмента ещё недостаточно плотный");
 }
 
+function testSegmentReadinessAuditPrioritizesHighPayoffSegment() {
+  const result = buildReelsBrainSegmentReadinessAudit({
+    segmentGenerationPacks: {
+      items: [
+        {
+          niche: "ru_toys",
+          platform: "youtube",
+          label: "ru_toys × youtube",
+          readiness_score: 95,
+          ready_for_generation: true,
+          quality_gate: { status: "ready", min_trust_score: 82, blocked_reasons: [] },
+          segment_priority_score: 42,
+          segment_priority_mode: "research_only",
+        },
+        {
+          niche: "ru_cosmetics",
+          platform: "tiktok",
+          label: "ru_cosmetics × tiktok",
+          readiness_score: 74,
+          ready_for_generation: true,
+          quality_gate: { status: "needs_validation", min_trust_score: 66, blocked_reasons: [] },
+          segment_priority_score: 96,
+          segment_priority_mode: "primary",
+          segment_ready_for_generation: true,
+        },
+      ],
+    },
+  });
+
+  assert.equal(result.items[0]?.platform, "tiktok");
+  assert.equal(result.items[0]?.segment_priority_mode, "primary");
+  assert.equal(result.summary.primary_priority_segments, 1);
+}
+
 function run() {
   testBuildReelsBrainSegmentReadinessAuditExplainsVerdicts();
+  testSegmentReadinessAuditPrioritizesHighPayoffSegment();
   console.log("reelsBrainSegmentReadinessAudit.test: ok");
 }
 

@@ -42,6 +42,13 @@ function productionRank(value: unknown) {
   return 1;
 }
 
+function policyModeRank(value: unknown) {
+  const mode = text(value, "research_only");
+  if (mode === "primary") return 3;
+  if (mode === "control_only") return 2;
+  return 1;
+}
+
 function publishableExact(row: JsonRecord | null | undefined) {
   if (!row) return false;
   const trustSummary = (row.trust_summary && typeof row.trust_summary === "object" ? row.trust_summary : {}) as JsonRecord;
@@ -50,7 +57,9 @@ function publishableExact(row: JsonRecord | null | undefined) {
 }
 
 function itemSort(a: JsonRecord, b: JsonRecord) {
-  return Number(publishableExact(b)) - Number(publishableExact(a))
+  return policyModeRank(b.segment_priority_mode) - policyModeRank(a.segment_priority_mode)
+    || num(b.segment_priority_score) - num(a.segment_priority_score)
+    || Number(publishableExact(b)) - Number(publishableExact(a))
     || productionRank(b.production_state) - productionRank(a.production_state)
     || trustRank(b.trust_band) - trustRank(a.trust_band)
     || evidenceRank((b.trust_summary as JsonRecord | null)?.evidence_band) - evidenceRank((a.trust_summary as JsonRecord | null)?.evidence_band)
@@ -208,6 +217,7 @@ export function buildReelsBrainSegmentSolutionMatrix(input: {
       ready_now: items.filter((row) => text(row.production_state) === "ready_now").length,
       controlled_test: items.filter((row) => text(row.production_state) === "controlled_test").length,
       research_only: items.filter((row) => text(row.production_state) === "research_only").length,
+      primary_priority_segments: items.filter((row) => text(row.segment_priority_mode) === "primary").length,
       high_trust_segments: items.filter((row) => text(row.trust_band) === "high").length,
       publishable_exact_segments: items.filter((row) => publishableExact(row)).length,
       groups_with_upgrade_forecast: byNiche.filter((row) => Boolean(row.next_upgrade)).length,

@@ -155,3 +155,41 @@ test("buildReelsBrainSegmentSolutions keeps lane buckets", () => {
   assert.equal(result.validate_next.length, 1);
   assert.equal(result.research_queue.length, 1);
 });
+
+test("buildReelsBrainSegmentSolutions prioritizes high-payoff segment", () => {
+  const result = buildReelsBrainSegmentSolutions({
+    decisionSnapshot: {
+      items: [
+        {
+          niche: "ru_toys",
+          platform: "youtube",
+          lane: "ship",
+          readiness_score: 94,
+          trust: { corpus_score: 88, market_score: 72, stable_pattern_count: 4, evidence_refs: 4, proof_quality: "exact_segment" },
+          brief: { hook: "A" },
+          content_solution: { action_title: "A" },
+          audit: { verdict: "ship" },
+          segment_priority_score: 40,
+          segment_priority_mode: "research_only",
+        },
+        {
+          niche: "ru_cosmetics",
+          platform: "tiktok",
+          lane: "validate",
+          readiness_score: 71,
+          trust: { corpus_score: 70, market_score: 56, stable_pattern_count: 2, evidence_refs: 2, proof_quality: "traced_transfer_only" },
+          brief: { hook: "B" },
+          content_solution: { action_title: "B" },
+          audit: { verdict: "validate" },
+          segment_priority_score: 96,
+          segment_priority_mode: "primary",
+          segment_ready_for_generation: true,
+        },
+      ],
+    },
+  });
+
+  assert.equal(result.items[0]?.platform, "tiktok");
+  assert.equal(result.items[0]?.segment_priority_mode, "primary");
+  assert.equal(result.summary.primary_priority_segments, 1);
+});

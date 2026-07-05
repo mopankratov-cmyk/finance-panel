@@ -26,6 +26,13 @@ function productionState(lane: string, evidenceBand: string) {
   return "research_only";
 }
 
+function policyModeScore(value: unknown) {
+  const raw = text(value).toLowerCase();
+  if (raw === "primary") return 3;
+  if (raw === "control_only") return 2;
+  return 1;
+}
+
 function upgradeForecast(row: JsonRecord | null | undefined) {
   if (!row) return null;
   return {
@@ -96,6 +103,12 @@ export function buildReelsBrainSegmentSolutions(input: {
         platform: text(row.platform),
         label: text(row.label || `${row.niche} × ${row.platform}`),
         lane,
+        segment_priority_score: num(row.segment_priority_score),
+        segment_priority_mode: text(row.segment_priority_mode, "research_only"),
+        segment_ready_for_generation: Boolean(row.segment_ready_for_generation),
+        projected_trust_gain_score: num(row.projected_trust_gain_score),
+        projected_production_state: text(row.projected_production_state),
+        unlocked_output: text(row.unlocked_output),
         verdict,
         readiness_score: readinessScore,
         trust_band: trust,
@@ -152,7 +165,9 @@ export function buildReelsBrainSegmentSolutions(input: {
     })
     .filter((row) => row.niche && row.platform && (row.creative_brief.hook || row.hypothesis.text || row.content_decision.title))
     .sort((a, b) =>
-      Number(b.ready_for_production) - Number(a.ready_for_production)
+      policyModeScore(b.segment_priority_mode) - policyModeScore(a.segment_priority_mode)
+      || b.segment_priority_score - a.segment_priority_score
+      || Number(b.ready_for_production) - Number(a.ready_for_production)
       || b.readiness_score - a.readiness_score
       || a.niche.localeCompare(b.niche)
       || a.platform.localeCompare(b.platform),
@@ -171,6 +186,7 @@ export function buildReelsBrainSegmentSolutions(input: {
       high_trust: rows.filter((row) => row.trust_band === "high").length,
       medium_trust: rows.filter((row) => row.trust_band === "medium").length,
       low_trust: rows.filter((row) => row.trust_band === "low").length,
+      primary_priority_segments: rows.filter((row) => row.segment_priority_mode === "primary").length,
     },
     ship_now: items.filter((row) => row.lane === "ship"),
     validate_next: items.filter((row) => row.lane === "validate"),

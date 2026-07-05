@@ -138,3 +138,48 @@ test("buildReelsBrainSegmentSolutionMatrix prefers publishable exact primary ins
   assert.equal(result.summary.publishable_exact_segments, 1);
   assert.equal((result.by_niche[0]?.next_upgrade as Record<string, unknown> | undefined)?.label, "ru_toys × youtube");
 });
+
+test("buildReelsBrainSegmentSolutionMatrix prioritizes high-payoff segment", () => {
+  const result = buildReelsBrainSegmentSolutionMatrix({
+    segmentSolutions: {
+      items: [
+        {
+          niche: "ru_toys",
+          platform: "youtube",
+          label: "ru_toys × youtube",
+          readiness_score: 94,
+          trust_band: "high",
+          production_state: "ready_now",
+          segment_priority_score: 41,
+          segment_priority_mode: "research_only",
+          creative_brief: { hook: "YT hook" },
+          content_decision: { next_step: "Scale yt" },
+          trust_summary: { evidence_band: "stable", stability_score: 88, blockers: [], proof_quality: "exact_segment" },
+        },
+        {
+          niche: "ru_cosmetics",
+          platform: "tiktok",
+          label: "ru_cosmetics × tiktok",
+          readiness_score: 72,
+          trust_band: "medium",
+          production_state: "controlled_test",
+          segment_priority_score: 97,
+          segment_priority_mode: "primary",
+          segment_ready_for_generation: true,
+          creative_brief: { hook: "TT hook" },
+          content_decision: { next_step: "Validate tt" },
+          trust_summary: { evidence_band: "forming", stability_score: 61, blockers: [], proof_quality: "traced_transfer_only" },
+        },
+      ],
+    },
+    briefGapProgress: {
+      top_candidates: [],
+    },
+    niches: ["ru_toys", "ru_cosmetics"],
+    platforms: ["youtube", "tiktok"],
+  });
+
+  assert.equal(result.by_segment[0]?.platform, "tiktok");
+  assert.equal(result.by_segment[0]?.segment_priority_mode, "primary");
+  assert.equal(result.summary.primary_priority_segments, 1);
+});

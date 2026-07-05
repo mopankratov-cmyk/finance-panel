@@ -55,6 +55,13 @@ function evidenceBand(input: {
   return "thin";
 }
 
+function policyModeScore(value: unknown) {
+  const raw = text(value).toLowerCase();
+  if (raw === "primary") return 3;
+  if (raw === "control_only") return 2;
+  return 1;
+}
+
 export function buildReelsBrainSegmentStabilityAudit(input: {
   decisionSnapshot?: {
     summary?: JsonRecord | null;
@@ -108,6 +115,12 @@ export function buildReelsBrainSegmentStabilityAudit(input: {
         platform: text(row.platform),
         label: text(row.label || `${row.niche} × ${row.platform}`),
         lane: text(row.lane, "research"),
+        segment_priority_score: num(row.segment_priority_score),
+        segment_priority_mode: text(row.segment_priority_mode, "research_only"),
+        segment_ready_for_generation: Boolean(row.segment_ready_for_generation),
+        projected_trust_gain_score: num(row.projected_trust_gain_score),
+        projected_production_state: text(row.projected_production_state),
+        unlocked_output: text(row.unlocked_output),
         verdict: text(audit.verdict || row.lane, "research"),
         stability_score: score,
         evidence_band: band,
@@ -129,7 +142,9 @@ export function buildReelsBrainSegmentStabilityAudit(input: {
     })
     .filter((row) => row.niche && row.platform)
     .sort((a, b) =>
-      Number(b.high_trust_segment) - Number(a.high_trust_segment)
+      policyModeScore(b.segment_priority_mode) - policyModeScore(a.segment_priority_mode)
+      || b.segment_priority_score - a.segment_priority_score
+      || Number(b.high_trust_segment) - Number(a.high_trust_segment)
       || b.stability_score - a.stability_score
       || b.stable_pattern_count - a.stable_pattern_count
       || a.niche.localeCompare(b.niche)
@@ -145,6 +160,7 @@ export function buildReelsBrainSegmentStabilityAudit(input: {
       forming: items.filter((row) => row.evidence_band === "forming").length,
       thin: items.filter((row) => row.evidence_band === "thin").length,
       high_trust_segments: items.filter((row) => row.high_trust_segment).length,
+      primary_priority_segments: items.filter((row) => row.segment_priority_mode === "primary").length,
       brief_ready: items.filter((row) => row.can_generate_brief).length,
       hypothesis_ready: items.filter((row) => row.can_generate_hypothesis).length,
       decision_ready: items.filter((row) => row.can_generate_content_decision).length,
