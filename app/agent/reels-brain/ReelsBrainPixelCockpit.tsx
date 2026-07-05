@@ -693,6 +693,8 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
       validate: num(segmentPlaybook.summary?.validate_and_ship),
       prepare: num(segmentPlaybook.summary?.prepare),
       research: num(segmentPlaybook.summary?.research),
+      exactProof: num(segmentPlaybook.summary?.exact_proof_ready),
+      generationReady: num(segmentPlaybook.summary?.generation_ready),
     };
     const segmentOutputCards = ((segmentOutputBanks.briefs || []) as JsonRecord[]).slice(0, 6).map((row, index) => {
       const primary = (row.primary || {}) as JsonRecord;
@@ -1916,6 +1918,17 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
                   <b>Leading hook</b>
                   <p>{item.brief?.hook || item.leading_pattern?.hook || item.rollout?.next_step}</p>
                 </div>
+                <div className="rb-three" style={{ marginTop: 12 }}>
+                  <div className="rb-brief-block"><b>Proof</b><p>{item.segment_outcome_proof_quality || "untraced"}</p></div>
+                  <div className="rb-brief-block"><b>Trust</b><p>{item.trust_band || "unknown"} · {item.evidence_band || "unknown"}</p></div>
+                  <div className="rb-brief-block"><b>Readiness</b><p>{item.high_trust_generation_ready ? "gen-ready" : item.publishable_exact ? "exact-ready" : "building"}</p></div>
+                </div>
+                {(item.policy_reason || item.segment_outcome_trust_action) ? (
+                  <div className="rb-brief-block" style={{ marginTop: 12 }}>
+                    <b>Почему это в playbook</b>
+                    <p>{[item.policy_reason, item.segment_outcome_trust_action ? `trust action: ${item.segment_outcome_trust_action}` : ""].filter(Boolean).join(" · ")}</p>
+                  </div>
+                ) : null}
                 <p style={{ marginTop: 12, color: "#475569", lineHeight: 1.55 }}>
                   {item.hypothesis?.text || item.rollout?.why_now}
                 </p>
@@ -1929,6 +1942,23 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
               </div>
             )}
           </div>
+          {vm.playbookCards.length ? (
+            <div className="rb-summary-grid" style={{ marginTop: 14 }}>
+              {[
+                ["Total", compact(vm.playbookSummary.total)],
+                ["Ship now", compact(vm.playbookSummary.shipNow)],
+                ["Validate", compact(vm.playbookSummary.validate)],
+                ["Prepare", compact(vm.playbookSummary.prepare)],
+                ["Exact proof", compact(vm.playbookSummary.exactProof)],
+                ["Gen-ready", compact(vm.playbookSummary.generationReady)],
+              ].map(([label, value]) => (
+                <div className="rb-summary-card" key={label}>
+                  <div className="rb-overline" style={{ color: "#0891b2" }}>{label}</div>
+                  <strong>{value}</strong>
+                </div>
+              ))}
+            </div>
+          ) : null}
         </section>
 
         <section>

@@ -78,6 +78,14 @@ type SegmentPolicyRow = {
   niche?: string;
   platform?: string;
   policy_mode?: string;
+  trust_band?: string;
+  evidence_band?: string;
+  high_trust_generation_ready?: boolean;
+  proof_quality?: string;
+  publishable_exact?: boolean;
+  outcome_status?: string;
+  outcome_confidence?: string;
+  policy_reason?: string;
   decision_priority_score?: number;
   recommended_upgrade?: {
     projected_trust_gain_score?: number;
@@ -150,6 +158,12 @@ function segmentPrioritySignal(
     ),
     segment_priority_mode: text(priority?.policy_mode || policy?.policy_mode) || "research_only",
     segment_ready_for_generation: Boolean(priority?.ready_for_generation),
+    trust_band: text(policy?.trust_band || "unknown"),
+    evidence_band: text(policy?.evidence_band || "unknown"),
+    high_trust_generation_ready: Boolean(policy?.high_trust_generation_ready),
+    publishable_exact: Boolean(policy?.publishable_exact),
+    proof_quality: text(policy?.proof_quality || "untraced"),
+    policy_reason: text(policy?.policy_reason),
     projected_trust_gain_score: num(upgrade?.projected_trust_gain_score),
     projected_production_state: text(upgrade?.projected_production_state),
     unlocked_output: text(upgrade?.unlocked_output),
@@ -186,19 +200,22 @@ export function buildReelsBrainSegmentPlaybook(input: {
       const topPattern = segment.top_patterns?.[0] || {};
       const outcomeStatus = text(outcome.status || topPattern.market_status || "no_feedback");
       const proofQuality = normalizeProofQuality(outcome.proof_quality);
+      const priority = segmentPrioritySignal(niche, platform, segmentPriorityMap, segmentPolicyMap);
+      const resolvedProofQuality = priority.proof_quality && priority.proof_quality !== "untraced"
+        ? priority.proof_quality
+        : proofQuality;
       const baseStatus = playbookStatus(text(opportunity.status), text(segment.status), outcomeStatus);
-      const status = baseStatus === "ship_now" && proofQuality !== "exact_segment"
+      const status = baseStatus === "ship_now" && resolvedProofQuality !== "exact_segment"
         ? "validate_and_ship"
         : baseStatus;
       const mode = outcomeStatus === "weak"
         ? "research_only"
-        : proofQuality === "untraced" && text(opportunity.recommended_mode || segment.recommended_mode || "research_only") === "primary"
+        : resolvedProofQuality === "untraced" && text(opportunity.recommended_mode || segment.recommended_mode || "research_only") === "primary"
           ? "control_only"
         : text(opportunity.recommended_mode || segment.recommended_mode || "research_only");
       const coverage = num(segment.total_videos) > 0
         ? Math.round((num(segment.analyzed_videos) / num(segment.total_videos)) * 100)
         : 0;
-      const priority = segmentPrioritySignal(niche, platform, segmentPriorityMap, segmentPolicyMap);
 
       return {
         niche,
@@ -208,6 +225,11 @@ export function buildReelsBrainSegmentPlaybook(input: {
         segment_priority_score: priority.segment_priority_score,
         segment_priority_mode: priority.segment_priority_mode,
         segment_ready_for_generation: priority.segment_ready_for_generation,
+        trust_band: priority.trust_band || "unknown",
+        evidence_band: priority.evidence_band || "unknown",
+        high_trust_generation_ready: priority.high_trust_generation_ready,
+        publishable_exact: priority.publishable_exact,
+        policy_reason: priority.policy_reason || "",
         projected_trust_gain_score: priority.projected_trust_gain_score,
         projected_production_state: priority.projected_production_state,
         unlocked_output: priority.unlocked_output,
@@ -223,7 +245,7 @@ export function buildReelsBrainSegmentPlaybook(input: {
         segment_outcome_exact_posts: num(outcome.exact_segment_posts),
         segment_outcome_pattern_feedback_posts: num(outcome.pattern_feedback_posts),
         segment_outcome_unscoped_posts: num(outcome.unscoped_posts),
-        segment_outcome_proof_quality: proofQuality,
+        segment_outcome_proof_quality: resolvedProofQuality,
         segment_outcome_trust_action: text(outcome.trust_action),
         leading_pattern: {
           title: text(topPattern.title),
@@ -252,6 +274,7 @@ export function buildReelsBrainSegmentPlaybook(input: {
         rollout: {
           title: text(opportunity.best_action_title),
           why_now: [
+            text(priority.policy_reason),
             status === "ship_now"
               ? "Сегмент уже имеет stable atlas + scale-level opportunity."
               : status === "validate_and_ship"
@@ -260,15 +283,15 @@ export function buildReelsBrainSegmentPlaybook(input: {
                   ? "Сегмент почти готов, но ему нужен ещё один цикл анализа и сборки."
                   : "Пока это исследовательский сегмент: строим знания, а не масштаб.",
             outcomeStatus === "proven" ? "Outcome-публикации подтвердили сегмент." : "",
-            proofQuality === "exact_segment" ? "Есть exact-segment proof по этому niche × platform." : "",
-            proofQuality === "traced_transfer_only" ? "Пока есть только traced feedback без exact-segment proof." : "",
-            proofQuality === "untraced" && outcomeStatus !== "no_feedback" ? "Публикации есть, но они ещё не привязаны к exact validation loop." : "",
+            resolvedProofQuality === "exact_segment" ? "Есть exact-segment proof по этому niche × platform." : "",
+            resolvedProofQuality === "traced_transfer_only" ? "Пока есть только traced feedback без exact-segment proof." : "",
+            resolvedProofQuality === "untraced" && outcomeStatus !== "no_feedback" ? "Публикации есть, но они ещё не привязаны к exact validation loop." : "",
             outcomeStatus === "promising" ? "Есть первые outcome-сигналы, но ещё нужен контроль." : "",
             outcomeStatus === "weak" ? "Outcome-публикации пока не подтверждают сегмент." : "",
           ].filter(Boolean).join(" "),
           next_step: [
             text(segment.next_step || opportunity.niche_note || opportunity.platform_note),
-            proofQuality !== "exact_segment" && outcomeStatus !== "weak" ? "Добрать exact-segment proof before full-scale promotion." : "",
+            resolvedProofQuality !== "exact_segment" && outcomeStatus !== "weak" ? "Добрать exact-segment proof before full-scale promotion." : "",
             outcomeStatus === "weak" ? "Не масштабировать, пока не пересобран hook/structure." : "",
           ].filter(Boolean).join(" "),
         },
@@ -277,6 +300,9 @@ export function buildReelsBrainSegmentPlaybook(input: {
     .filter((row) => row.leading_pattern.title || row.brief.title || row.hypothesis.text || row.rollout.title)
     .sort((a, b) =>
       modeRank(b.segment_priority_mode || b.recommended_mode) - modeRank(a.segment_priority_mode || a.recommended_mode)
+      || Number(Boolean(b.high_trust_generation_ready)) - Number(Boolean(a.high_trust_generation_ready))
+      || Number(Boolean(b.publishable_exact)) - Number(Boolean(a.publishable_exact))
+      || Number(b.segment_outcome_proof_quality === "exact_segment") - Number(a.segment_outcome_proof_quality === "exact_segment")
       || b.segment_priority_score - a.segment_priority_score
       || modeRank(b.recommended_mode) - modeRank(a.recommended_mode)
       || b.opportunity_score - a.opportunity_score
@@ -298,6 +324,8 @@ export function buildReelsBrainSegmentPlaybook(input: {
       research_only: rows.filter((row) => row.recommended_mode === "research_only").length,
       primary_priority_segments: rows.filter((row) => row.segment_priority_mode === "primary").length,
       ready_for_generation: rows.filter((row) => row.segment_ready_for_generation).length,
+      exact_proof_ready: rows.filter((row) => row.segment_outcome_proof_quality === "exact_segment").length,
+      generation_ready: rows.filter((row) => row.high_trust_generation_ready).length,
     },
     items: rows.slice(0, Math.max(4, input.limit || 8)),
   };

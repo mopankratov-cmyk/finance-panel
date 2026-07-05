@@ -304,9 +304,128 @@ function testSegmentPlaybookPrioritizesHighPayoffSegment() {
   assert.equal(result.summary.primary_priority_segments, 1);
 }
 
+function testSegmentPlaybookSurfacesTrustAwareMemoryContext() {
+  const result = buildReelsBrainSegmentPlaybook({
+    opportunities: {
+      top: [
+        {
+          niche: "ru_clothing",
+          platform: "instagram",
+          opportunity_score: 82,
+          status: "build_next",
+          recommended_mode: "primary",
+          best_brief_title: "IG Clothing brief",
+          best_action_title: "Validate IG clothing",
+          best_hypothesis_title: "IG Clothing hypothesis",
+          best_hypothesis: "точный сегмент должен конвертить лучше",
+        },
+        {
+          niche: "ru_clothing",
+          platform: "youtube",
+          opportunity_score: 93,
+          status: "scale_now",
+          recommended_mode: "primary",
+          best_brief_title: "YT Clothing brief",
+          best_action_title: "Scale YT clothing",
+          best_hypothesis_title: "YT Clothing hypothesis",
+          best_hypothesis: "transfer сегмент должен удерживать",
+        },
+      ],
+    },
+    patternAtlas: {
+      by_segment: [
+        {
+          niche: "ru_clothing",
+          platform: "instagram",
+          status: "stable",
+          recommended_mode: "primary",
+          avg_stability_score: 76,
+          stable_pattern_count: 3,
+          analyzed_videos: 54,
+          total_videos: 73,
+          top_patterns: [{ title: "IG pattern", hook: "Смотри посадку", retention: "try-on proof", format: "ugc", final_decision: "control" }],
+        },
+        {
+          niche: "ru_clothing",
+          platform: "youtube",
+          status: "stable",
+          recommended_mode: "primary",
+          avg_stability_score: 89,
+          stable_pattern_count: 4,
+          analyzed_videos: 85,
+          total_videos: 118,
+          top_patterns: [{ title: "YT pattern", hook: "Смотри материал", retention: "review proof", format: "review", final_decision: "scale" }],
+        },
+      ],
+    },
+    feedbackLoop: {
+      by_segment: [
+        {
+          niche: "ru_clothing",
+          platform: "instagram",
+          status: "proven",
+          posts: 4,
+          winners: 2,
+          proof_quality: "traced_transfer_only",
+          trust_action: "keep_validating_segment",
+        },
+        {
+          niche: "ru_clothing",
+          platform: "youtube",
+          status: "proven",
+          posts: 6,
+          winners: 3,
+          proof_quality: "traced_transfer_only",
+          trust_action: "promote_segment_trust",
+        },
+      ],
+    },
+    generationPolicy: {
+      by_segment: [
+        {
+          niche: "ru_clothing",
+          platform: "instagram",
+          policy_mode: "primary",
+          trust_band: "high_trust",
+          evidence_band: "exact",
+          high_trust_generation_ready: true,
+          proof_quality: "exact_segment",
+          publishable_exact: true,
+          policy_reason: "Exact proof already closed for this segment.",
+          decision_priority_score: 88,
+        },
+        {
+          niche: "ru_clothing",
+          platform: "youtube",
+          policy_mode: "primary",
+          trust_band: "transfer_only",
+          evidence_band: "borrowed",
+          high_trust_generation_ready: false,
+          proof_quality: "traced_transfer_only",
+          publishable_exact: false,
+          policy_reason: "Still borrowed from transfer evidence.",
+          decision_priority_score: 95,
+        },
+      ],
+    },
+    limit: 6,
+  });
+
+  assert.equal(result.items[0]?.platform, "instagram");
+  assert.equal(result.items[0]?.segment_outcome_proof_quality, "exact_segment");
+  assert.equal(result.items[0]?.high_trust_generation_ready, true);
+  assert.equal(result.items[0]?.publishable_exact, true);
+  assert.equal(result.items[0]?.trust_band, "high_trust");
+  assert.equal(result.items[0]?.evidence_band, "exact");
+  assert.match(String(result.items[0]?.policy_reason), /Exact proof/i);
+  assert.equal(result.summary.exact_proof_ready, 1);
+  assert.equal(result.summary.generation_ready, 1);
+}
+
 function run() {
   testBuildReelsBrainSegmentPlaybookRanksReadySegments();
   testSegmentPlaybookPrioritizesHighPayoffSegment();
+  testSegmentPlaybookSurfacesTrustAwareMemoryContext();
   console.log("reelsBrainSegmentPlaybook.test: ok");
 }
 
