@@ -46,4 +46,26 @@ test("tuneAnalyzeLaneByExecutionIntent keeps research compaction wider", () => {
   assert.equal(result.analyze_limit, 14);
 });
 
+test("tuneAnalyzeLaneByExecutionIntent focuses exact-proof compaction tighter than portfolio gap mode", () => {
+  const intent = parseAnalyzeExecutionIntent({
+    mode: "close_exact_segment_gap",
+    task: "analyze",
+    focus_segment: "ru_toys × instagram",
+    policy_mode: "primary",
+    explanation: "exact proof",
+  });
+  const result = tuneAnalyzeLaneByExecutionIntent({
+    intent,
+    lane: { niche: "ru_toys", platform: "instagram", unanalyzed: 20 },
+    analyzeLimit: 18,
+    buildPatterns: false,
+  });
+
+  assert.equal(result.strategy, "close_exact_segment_gap");
+  assert.equal(result.build_patterns, true);
+  assert.equal(result.focus_platform, "instagram");
+  assert.equal(result.pattern_limit, 300);
+  assert.equal(result.analyze_limit, 10);
+});
+
 console.log("reelsBrainAnalyzeCompactionPolicy: passed");

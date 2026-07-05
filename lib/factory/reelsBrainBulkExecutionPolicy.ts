@@ -93,6 +93,16 @@ export function tuneBulkLaneByExecutionIntent(input: {
     providers = input.preferredProvider && providers.includes(input.preferredProvider)
       ? uniqueProviders([input.preferredProvider, ...providers]).slice(0, providerCap)
       : providers.slice(0, providerCap);
+  } else if (intent?.mode === "close_exact_segment_gap" && focused) {
+    strategy = "close_exact_segment_gap";
+    queryCap = 1;
+    providerCap = 1;
+    limit = Math.max(10, Math.min(limit, 18));
+    providerTimeoutMs = Math.min(providerTimeoutMs, 14000);
+    queries = queries.slice(0, 1);
+    providers = input.preferredProvider && providers.includes(input.preferredProvider)
+      ? [input.preferredProvider]
+      : providers.slice(0, 1);
   } else if (intent?.mode === "close_portfolio_gap" && focused) {
     strategy = "close_portfolio_gap";
     queryCap = 1;
@@ -125,7 +135,7 @@ export function tuneBulkBudgetByExecutionIntent(input: {
   maxProviderCalls: number;
   maxCostUnits: number;
 }) {
-  if (input.intent?.mode === "support_primary_segment") {
+  if (input.intent?.mode === "support_primary_segment" || input.intent?.mode === "close_exact_segment_gap") {
     return {
       max_provider_calls: Math.max(1, Math.min(input.maxProviderCalls, 2)),
       max_cost_units: Math.max(1, Math.min(input.maxCostUnits, 6)),

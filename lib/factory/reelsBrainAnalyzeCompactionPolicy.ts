@@ -49,6 +49,13 @@ export function tuneAnalyzeLaneByExecutionIntent(input: {
     taxonomyLimit = Math.max(20, Math.min(42, analyzeLimit * 3));
     patternLimit = 420;
     focusPlatform = input.lane.platform;
+  } else if (mode === "close_exact_segment_gap" && focused) {
+    strategy = "close_exact_segment_gap";
+    analyzeLimit = Math.max(8, Math.min(analyzeLimit, 10, input.lane.unanalyzed));
+    buildPatterns = true;
+    taxonomyLimit = Math.max(18, Math.min(30, analyzeLimit * 3));
+    patternLimit = 300;
+    focusPlatform = input.lane.platform;
   } else if (mode === "close_portfolio_gap" && focused) {
     strategy = "close_portfolio_gap";
     analyzeLimit = Math.max(8, Math.min(analyzeLimit, 14, input.lane.unanalyzed));

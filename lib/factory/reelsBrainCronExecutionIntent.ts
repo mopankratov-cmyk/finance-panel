@@ -33,6 +33,7 @@ export type ReelsBrainCronExecutionIntent = {
   mode:
     | "generic_bulk"
     | "close_portfolio_gap"
+    | "close_exact_segment_gap"
     | "support_primary_segment"
     | "support_control_segment"
     | "explore_research_segment"
@@ -76,6 +77,7 @@ export function buildReelsBrainCronExecutionIntent(input: {
   const policyMode = (policyModeRaw === "primary" || policyModeRaw === "control_only")
     ? policyModeRaw
     : "research_only";
+  const exactProofFocus = text(rec(nextTick.params).focus) === "exact_segment_proof";
   const learningEconomics = safeLearningEconomics(nextTick.learning_economics);
   const expensivePatternGain = learningEconomics.weak_pattern_gain
     || learningEconomics.pattern_gain_cost_trend === "more_expensive";
@@ -130,26 +132,53 @@ export function buildReelsBrainCronExecutionIntent(input: {
 
   if (taskName === "collect_portfolio_gaps") {
     return {
-      mode: "close_portfolio_gap",
+      mode: exactProofFocus ? "close_exact_segment_gap" : "close_portfolio_gap",
       task: "bulk",
       focus_segment: portfolioLabel || focusSegment,
       policy_mode: policyMode,
-      explanation: portfolioLabel
-        ? `Close portfolio gap for ${portfolioLabel}: добираем именно недостающий niche/platform сегмент.`
-        : "Close portfolio gap: добираем недостающий niche/platform сегмент.",
+      explanation: exactProofFocus
+        ? portfolioLabel
+          ? `Close exact-proof gap for ${portfolioLabel}: добираем точное niche/platform доказательство, а не общий portfolio coverage.`
+          : "Close exact-proof gap: добираем точное niche/platform доказательство."
+        : portfolioLabel
+          ? `Close portfolio gap for ${portfolioLabel}: добираем именно недостающий niche/platform сегмент.`
+          : "Close portfolio gap: добираем недостающий niche/platform сегмент.",
       bulk_overrides: {
         max_lanes: 1,
-        limit: 24,
+        limit: exactProofFocus ? 18 : 24,
         providers_per_lane: 1,
         query_variants_per_lane: 1,
-        max_provider_calls: 3,
-        max_cost_units: 8,
-        hours: 96,
+        provider_timeout_ms: exactProofFocus ? 14000 : undefined,
+        max_provider_calls: exactProofFocus ? 2 : 3,
+        max_cost_units: exactProofFocus ? 6 : 8,
+        hours: exactProofFocus ? 48 : 96,
       },
     };
   }
 
   if (taskName === "collect_support_for_decision_segment") {
+    if (exactProofFocus) {
+      return {
+        mode: "close_exact_segment_gap",
+        task: "bulk",
+        focus_segment: focusSegment,
+        policy_mode: policyMode,
+        explanation: focusSegment
+          ? `Close exact-proof gap for ${focusSegment}: сегмент уже силён по transfer/pattern layer, теперь добираем именно exact niche × platform proof.`
+          : "Close exact-proof gap: добираем именно exact niche × platform proof.",
+        bulk_overrides: {
+          max_lanes: 1,
+          limit: 18,
+          providers_per_lane: 1,
+          query_variants_per_lane: 1,
+          provider_timeout_ms: 14000,
+          max_provider_calls: 2,
+          max_cost_units: 6,
+          hours: 48,
+        },
+      };
+    }
+
     if (policyMode === "primary") {
       return {
         mode: "support_primary_segment",

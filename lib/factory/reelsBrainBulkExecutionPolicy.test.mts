@@ -70,4 +70,31 @@ test("tuneBulkBudgetByExecutionIntent lowers budget for primary support", () => 
   assert.deepEqual(result, { max_provider_calls: 2, max_cost_units: 6 });
 });
 
+test("tuneBulkLaneByExecutionIntent narrows exact-proof collection to one provider and one query", () => {
+  const intent = parseBulkExecutionIntent({
+    mode: "close_exact_segment_gap",
+    task: "bulk",
+    focus_segment: "ru_toys × instagram",
+    policy_mode: "primary",
+    explanation: "exact proof",
+  });
+  const result = tuneBulkLaneByExecutionIntent({
+    intent,
+    lane: { niche: "ru_toys", platform: "instagram", progress_pct: 68 },
+    queries: ["q1", "q2", "q3"],
+    providers: ["apify_instagram", "bright_instagram"],
+    preferredProvider: "bright_instagram",
+    providersPerLane: 2,
+    queryVariantsPerLane: 2,
+    limit: 30,
+    providerTimeoutMs: 18000,
+  });
+
+  assert.equal(result.strategy, "close_exact_segment_gap");
+  assert.deepEqual(result.queries, ["q1"]);
+  assert.deepEqual(result.providers, ["bright_instagram"]);
+  assert.equal(result.limit, 18);
+  assert.equal(result.provider_timeout_ms, 14000);
+});
+
 console.log("reelsBrainBulkExecutionPolicy: passed");

@@ -43,6 +43,31 @@ test("buildReelsBrainCronExecutionIntent keeps research collection wider", () =>
   assert.equal(result.bulk_overrides?.hours, 96);
 });
 
+test("buildReelsBrainCronExecutionIntent creates dedicated exact-proof mode for decision support", () => {
+  const result = buildReelsBrainCronExecutionIntent({
+    task: "bulk",
+    nextTick: {
+      task: "collect_support_for_decision_segment",
+      params: {
+        focus: "exact_segment_proof",
+      },
+      priority_segment: {
+        label: "ru_toys × instagram",
+      },
+      generation_policy: {
+        policy_mode: "primary",
+      },
+    },
+  });
+
+  assert.equal(result.mode, "close_exact_segment_gap");
+  assert.equal(result.focus_segment, "ru_toys × instagram");
+  assert.equal(result.bulk_overrides?.providers_per_lane, 1);
+  assert.equal(result.bulk_overrides?.query_variants_per_lane, 1);
+  assert.equal(result.bulk_overrides?.max_cost_units, 6);
+  assert.equal(result.bulk_overrides?.hours, 48);
+});
+
 test("buildReelsBrainCronExecutionIntent narrows research collection when pattern gain gets expensive", () => {
   const result = buildReelsBrainCronExecutionIntent({
     task: "bulk",
