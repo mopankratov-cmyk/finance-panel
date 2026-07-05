@@ -694,12 +694,19 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
     };
     const segmentOutputCards = ((segmentOutputBanks.briefs || []) as JsonRecord[]).slice(0, 6).map((row, index) => {
       const primary = (row.primary || {}) as JsonRecord;
+      const briefTrust = (primary.trust || {}) as JsonRecord;
       const actionRow = (((segmentOutputBanks.actions || []) as JsonRecord[]).find((item) =>
         String(item.niche || "") === String(row.niche || "") && String(item.platform || "") === String(row.platform || "")) || {}) as JsonRecord;
       const hypothesisRow = (((segmentOutputBanks.hypotheses || []) as JsonRecord[]).find((item) =>
         String(item.niche || "") === String(row.niche || "") && String(item.platform || "") === String(row.platform || "")) || {}) as JsonRecord;
       const actionPrimary = (actionRow.primary || {}) as JsonRecord;
       const topHypothesis = (((hypothesisRow.cards || []) as JsonRecord[])[0] || {}) as JsonRecord;
+      const proofQuality = String(briefTrust.proof_quality || actionPrimary.proof_quality || topHypothesis.proof_quality || "untraced");
+      const publishableExact = Boolean(briefTrust.publishable_exact || actionPrimary.publishable_exact || topHypothesis.publishable_exact);
+      const generationReady = Boolean(briefTrust.high_trust_generation_ready || actionPrimary.high_trust_generation_ready || topHypothesis.high_trust_generation_ready);
+      const trustBand = String(briefTrust.trust_band || actionPrimary.trust_band || topHypothesis.trust_band || "unknown");
+      const evidenceBand = String(briefTrust.evidence_band || actionPrimary.evidence_band || topHypothesis.evidence_band || "unknown");
+      const policyReason = String(briefTrust.policy_reason || actionPrimary.policy_reason || topHypothesis.policy_reason || "");
       const confidence = statusTone(Math.min(100,
         num(primary.op_score)
         + (String(primary.confidence || "") === "high" ? 12 : String(primary.confidence || "") === "medium" ? 6 : 0)
@@ -719,12 +726,21 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
         hypothesisTitle: topHypothesis.title || "next hypothesis",
         hypothesisText: topHypothesis.hypothesis || "сегменту нужен ещё один цикл сигнала",
         evidenceRefs: num(primary.evidence?.references),
+        proofQuality,
+        publishableExact,
+        generationReady,
+        trustBand,
+        evidenceBand,
+        policyReason,
       };
     });
     const segmentOutputSummary = {
       briefs: num(((segmentOutputBanks.briefs || []) as JsonRecord[]).length),
       actions: num(((segmentOutputBanks.actions || []) as JsonRecord[]).length),
       hypotheses: num(((segmentOutputBanks.hypotheses || []) as JsonRecord[]).length),
+      exactReady: segmentOutputCards.filter((item) => item.publishableExact).length,
+      generationReady: segmentOutputCards.filter((item) => item.generationReady).length,
+      exactProof: segmentOutputCards.filter((item) => item.proofQuality === "exact_segment").length,
     };
     const segmentDecisionCards = ((segmentDecisionDeck.items || []) as JsonRecord[]).slice(0, 6).map((row) => {
       const grade = playbookTone(String(row.decision_grade === "ship" ? "ship_now" : row.decision_grade === "validate" ? "validate_and_ship" : row.decision_grade === "prepare" ? "prepare" : "research"));
@@ -1923,6 +1939,17 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
                   <div className="rb-brief-block"><b>Decision</b><p>{String(item.actionDecision || "watch").toUpperCase()}</p></div>
                   <div className="rb-brief-block"><b>Hypothesis</b><p>{item.hypothesisTitle}</p></div>
                 </div>
+                <div className="rb-three" style={{ marginTop: 12 }}>
+                  <div className="rb-brief-block"><b>Proof</b><p>{item.proofQuality}</p></div>
+                  <div className="rb-brief-block"><b>Trust</b><p>{item.trustBand} · {item.evidenceBand}</p></div>
+                  <div className="rb-brief-block"><b>Readiness</b><p>{item.generationReady ? "gen-ready" : item.publishableExact ? "exact-ready" : "building"}</p></div>
+                </div>
+                {item.policyReason ? (
+                  <div className="rb-brief-block" style={{ marginTop: 12 }}>
+                    <b>Почему мозг верит</b>
+                    <p>{item.policyReason}</p>
+                  </div>
+                ) : null}
                 <p style={{ marginTop: 12, color: "#475569", lineHeight: 1.55 }}>
                   {item.hypothesisText}
                 </p>
@@ -1936,6 +1963,23 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
               </div>
             )}
           </div>
+          {vm.segmentOutputCards.length ? (
+            <div className="rb-summary-grid" style={{ marginTop: 14 }}>
+              {[
+                ["Segment briefs", compact(vm.segmentOutputSummary.briefs)],
+                ["Action packs", compact(vm.segmentOutputSummary.actions)],
+                ["Hypothesis banks", compact(vm.segmentOutputSummary.hypotheses)],
+                ["Exact proof", compact(vm.segmentOutputSummary.exactProof)],
+                ["Exact-ready", compact(vm.segmentOutputSummary.exactReady)],
+                ["Gen-ready", compact(vm.segmentOutputSummary.generationReady)],
+              ].map(([label, value]) => (
+                <div className="rb-summary-card" key={label}>
+                  <div className="rb-overline" style={{ color: "#0891b2" }}>{label}</div>
+                  <strong>{value}</strong>
+                </div>
+              ))}
+            </div>
+          ) : null}
         </section>
 
         <section>
