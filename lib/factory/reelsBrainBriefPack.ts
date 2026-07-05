@@ -59,6 +59,14 @@ type SegmentPolicyRow = {
   platform?: string;
   policy_mode?: string;
   decision_priority_score?: number;
+  trust_band?: string;
+  evidence_band?: string;
+  high_trust_generation_ready?: boolean;
+  proof_quality?: string;
+  publishable_exact?: boolean;
+  outcome_status?: string;
+  outcome_confidence?: string;
+  policy_reason?: string;
   recommended_upgrade?: {
     projected_trust_gain_score?: number;
     projected_production_state?: string;
@@ -106,6 +114,13 @@ function confidenceScore(value: unknown) {
   return 1;
 }
 
+function proofQualityRank(value: unknown) {
+  const raw = text(value).toLowerCase();
+  if (raw === "exact_segment") return 3;
+  if (raw === "traced_transfer_only") return 2;
+  return 1;
+}
+
 function policyModeScore(value: unknown) {
   const raw = text(value).toLowerCase();
   if (raw === "primary") return 3;
@@ -118,10 +133,16 @@ function sortPackRows<T extends {
   segment_priority_mode?: string;
   effective_op_score?: number;
   confidence?: string;
+  high_trust_generation_ready?: boolean;
+  publishable_exact?: boolean;
+  proof_quality?: string;
   title?: string;
 }>(rows: T[]) {
   return rows.sort((a, b) =>
     policyModeScore(b.segment_priority_mode) - policyModeScore(a.segment_priority_mode)
+    || Number(Boolean(b.high_trust_generation_ready)) - Number(Boolean(a.high_trust_generation_ready))
+    || Number(Boolean(b.publishable_exact)) - Number(Boolean(a.publishable_exact))
+    || proofQualityRank(b.proof_quality) - proofQualityRank(a.proof_quality)
     || num(b.segment_priority_score) - num(a.segment_priority_score)
     || num(b.effective_op_score) - num(a.effective_op_score)
     || confidenceScore(b.confidence) - confidenceScore(a.confidence)
@@ -172,12 +193,21 @@ function normalizeRecipe(
       projected_trust_gain_score: num(upgrade?.projected_trust_gain_score),
       projected_production_state: text(upgrade?.projected_production_state),
       unlocked_output: text(upgrade?.unlocked_output),
+      trust_band: text(policy?.trust_band, "low"),
+      evidence_band: text(policy?.evidence_band, "missing"),
+      proof_quality: text(policy?.proof_quality, "untraced"),
+      outcome_status: text(policy?.outcome_status, "no_feedback"),
+      outcome_confidence: text(policy?.outcome_confidence, "none"),
+      high_trust_generation_ready: Boolean(policy?.high_trust_generation_ready),
+      publishable_exact: Boolean(policy?.publishable_exact),
+      policy_reason: text(policy?.policy_reason),
     };
   }).sort((a, b) =>
     policyModeScore(b.priority_mode) - policyModeScore(a.priority_mode)
     || b.priority_score - a.priority_score
     || Number(b.ready_for_generation) - Number(a.ready_for_generation)
     || b.projected_trust_gain_score - a.projected_trust_gain_score
+    || proofQualityRank(b.proof_quality) - proofQualityRank(a.proof_quality)
     || a.label.localeCompare(b.label),
   );
   const primarySegmentSignal = segmentSignals[0] || null;
@@ -202,6 +232,14 @@ function normalizeRecipe(
     projected_trust_gain_score: primarySegmentSignal?.projected_trust_gain_score || 0,
     projected_production_state: primarySegmentSignal?.projected_production_state || "",
     unlocked_output: primarySegmentSignal?.unlocked_output || "",
+    trust_band: primarySegmentSignal?.trust_band || "low",
+    evidence_band: primarySegmentSignal?.evidence_band || "missing",
+    proof_quality: primarySegmentSignal?.proof_quality || "untraced",
+    outcome_status: primarySegmentSignal?.outcome_status || "no_feedback",
+    outcome_confidence: primarySegmentSignal?.outcome_confidence || "none",
+    high_trust_generation_ready: primarySegmentSignal?.high_trust_generation_ready || false,
+    publishable_exact: primarySegmentSignal?.publishable_exact || false,
+    policy_reason: primarySegmentSignal?.policy_reason || "",
     confidence: text(recipe.confidence, "low"),
     readiness_status: readinessStatus,
     readiness_flags: readinessFlags,
@@ -223,6 +261,16 @@ function normalizeRecipe(
     evidence: {
       references: Array.isArray(recipe.examples) ? recipe.examples.length : 0,
       top_reference: Array.isArray(recipe.examples) ? recipe.examples[0] || null : null,
+    },
+    trust: {
+      trust_band: primarySegmentSignal?.trust_band || "low",
+      evidence_band: primarySegmentSignal?.evidence_band || "missing",
+      proof_quality: primarySegmentSignal?.proof_quality || "untraced",
+      outcome_status: primarySegmentSignal?.outcome_status || "no_feedback",
+      outcome_confidence: primarySegmentSignal?.outcome_confidence || "none",
+      high_trust_generation_ready: primarySegmentSignal?.high_trust_generation_ready || false,
+      publishable_exact: primarySegmentSignal?.publishable_exact || false,
+      policy_reason: primarySegmentSignal?.policy_reason || "",
     },
   };
 }
@@ -259,6 +307,9 @@ export function buildReelsBrainBriefPack(
       high_confidence: normalizedRanked.filter((item) => item.confidence === "high").length,
       medium_confidence: normalizedRanked.filter((item) => item.confidence === "medium").length,
       low_confidence: normalizedRanked.filter((item) => item.confidence !== "high" && item.confidence !== "medium").length,
+      exact_proof_ready: normalizedRanked.filter((item) => item.proof_quality === "exact_segment").length,
+      generation_ready: normalizedRanked.filter((item) => item.high_trust_generation_ready).length,
+      weak_outcomes: normalizedRanked.filter((item) => item.outcome_status === "weak").length,
       readiness_backed: normalizedRanked.filter((item) => item.readiness_status === "backed").length,
       readiness_watch: normalizedRanked.filter((item) => item.readiness_status === "watch").length,
       readiness_thin: normalizedRanked.filter((item) => item.readiness_status === "thin").length,
@@ -292,6 +343,9 @@ export function buildGroupedReelsBrainBriefPacks(input: {
   const sortGroups = <T extends { primary?: { segment_priority_mode?: string; segment_priority_score?: number; effective_op_score?: number; confidence?: string; title?: string } | null }>(rows: T[]) =>
     rows.sort((a, b) =>
       policyModeScore(b.primary?.segment_priority_mode) - policyModeScore(a.primary?.segment_priority_mode)
+      || Number(Boolean(b.primary?.high_trust_generation_ready)) - Number(Boolean(a.primary?.high_trust_generation_ready))
+      || Number(Boolean(b.primary?.publishable_exact)) - Number(Boolean(a.primary?.publishable_exact))
+      || proofQualityRank(b.primary?.proof_quality) - proofQualityRank(a.primary?.proof_quality)
       || num(b.primary?.segment_priority_score) - num(a.primary?.segment_priority_score)
       || num(b.primary?.effective_op_score) - num(a.primary?.effective_op_score)
       || confidenceScore(b.primary?.confidence) - confidenceScore(a.primary?.confidence)

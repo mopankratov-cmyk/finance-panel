@@ -212,6 +212,7 @@ function testBriefPackPrioritizesHighPayoffSegment() {
   assert.equal(pack.primary?.segment_priority_mode, "primary");
   assert.equal(pack.primary?.segment_ready_for_generation, true);
   assert.equal(pack.primary?.projected_production_state, "decision_ready");
+  assert.equal(pack.primary?.trust.proof_quality, "untraced");
   assert.equal(pack.summary.primary_policy_mode, "primary");
 }
 
@@ -260,12 +261,102 @@ function testGroupedBriefPacksSortBySegmentPriority() {
   assert.equal(grouped.by_segment[0]?.platform, "tiktok");
 }
 
+function testBriefPackSurfacesTrustAwarePolicyContext() {
+  const pack = buildReelsBrainBriefPack([
+    {
+      id: "exact_ready_recipe",
+      title: "Exact Ready Recipe",
+      op_score: 86,
+      confidence: "medium",
+      niches: ["ru_clothing"],
+      platforms: ["instagram"],
+      creative_brief: {
+        hook: "Показываю посадку",
+        retention_mechanic: "proof frame",
+      },
+    },
+    {
+      id: "transfer_only_recipe",
+      title: "Transfer Only Recipe",
+      op_score: 91,
+      confidence: "high",
+      niches: ["ru_clothing"],
+      platforms: ["youtube"],
+      creative_brief: {
+        hook: "Смотри материал",
+        retention_mechanic: "open loop",
+      },
+    },
+  ], 3, {
+    generationPolicy: {
+      by_segment: [
+        {
+          niche: "ru_clothing",
+          platform: "instagram",
+          policy_mode: "primary",
+          decision_priority_score: 88,
+          trust_band: "high",
+          evidence_band: "stable",
+          high_trust_generation_ready: true,
+          proof_quality: "exact_segment",
+          publishable_exact: true,
+          outcome_status: "proven",
+          outcome_confidence: "high",
+          policy_reason: "exact proof already closed",
+        },
+        {
+          niche: "ru_clothing",
+          platform: "youtube",
+          policy_mode: "primary",
+          decision_priority_score: 93,
+          trust_band: "medium",
+          evidence_band: "forming",
+          high_trust_generation_ready: false,
+          proof_quality: "traced_transfer_only",
+          publishable_exact: false,
+          outcome_status: "promising",
+          outcome_confidence: "medium",
+          policy_reason: "still borrowed from transfer evidence",
+        },
+      ],
+    },
+    segmentPriorityQueue: [
+      {
+        niche: "ru_clothing",
+        platform: "instagram",
+        decision_priority_score: 88,
+        policy_mode: "primary",
+        ready_for_generation: true,
+      },
+      {
+        niche: "ru_clothing",
+        platform: "youtube",
+        decision_priority_score: 93,
+        policy_mode: "primary",
+        ready_for_generation: true,
+      },
+    ],
+  });
+
+  assert.equal(pack.primary?.recipe_id, "exact_ready_recipe");
+  assert.equal(pack.primary?.trust.proof_quality, "exact_segment");
+  assert.equal(pack.primary?.trust.high_trust_generation_ready, true);
+  assert.equal(pack.primary?.trust.publishable_exact, true);
+  assert.equal(pack.primary?.trust.outcome_status, "proven");
+  assert.match(String(pack.primary?.trust.policy_reason), /exact proof/i);
+  assert.equal(pack.alternatives[0]?.trust.proof_quality, "traced_transfer_only");
+  assert.equal(pack.summary.exact_proof_ready, 1);
+  assert.equal(pack.summary.generation_ready, 1);
+  assert.equal(pack.summary.weak_outcomes, 0);
+}
+
 function run() {
   testBuildBriefPackRanksByOpScoreAndConfidence();
   testBuildBriefPackDemotesReadinessThinRecipe();
   testGroupedBriefPacksSplitByNicheAndPlatform();
   testBriefPackPrioritizesHighPayoffSegment();
   testGroupedBriefPacksSortBySegmentPriority();
+  testBriefPackSurfacesTrustAwarePolicyContext();
   console.log("reelsBrainBriefPack.test: ok");
 }
 
