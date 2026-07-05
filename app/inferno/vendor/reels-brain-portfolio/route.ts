@@ -30,6 +30,13 @@ export async function GET(req: NextRequest) {
   const rows = Array.isArray((data as { niches?: unknown[] }).niches) ? (data as { niches: Record<string, any>[] }).niches : [];
   const portfolio = (data as { portfolio?: Record<string, any> }).portfolio || {};
   const pipeline = (portfolio.pipeline_progress || (health as any)?.health?.pipeline || {}) as Record<string, any>;
+  const sourceAudit = (portfolio.source_mix_audit || (health as any)?.health?.source_mix_audit || {}) as Record<string, any>;
+  const sourceAuditSummary = (sourceAudit.summary && typeof sourceAudit.summary === "object") ? sourceAudit.summary : {};
+  const sourceAuditRiskClass = sourceAuditSummary.fallback_dependency_risk === "low"
+    ? "ready"
+    : sourceAuditSummary.fallback_dependency_risk === "medium"
+      ? "watch"
+      : "weak";
 
   const html = `<!DOCTYPE html>
   <html lang="ru">
@@ -79,6 +86,21 @@ export async function GET(req: NextRequest) {
         <div class="metric"><div class="v">${escapeHtml(pipeline?.throughput_24h?.analyzed || 0)}</div><div class="k">Analyzed 24h</div></div>
         <div class="metric"><div class="v">${escapeHtml(pipeline?.totals?.media_backlog || 0)}</div><div class="k">Media backlog</div></div>
         <div class="metric"><div class="v">${escapeHtml((health as any)?.health?.worker?.issue?.level || "—")}</div><div class="k">Worker state</div></div>
+      </div>
+      <div class="card" style="margin-top:16px">
+        <div class="eyebrow">Trust migration</div>
+        <h2 class="title">How much portfolio already escaped legacy fallback</h2>
+        <div class="meta" style="margin-top:10px">
+          <span>risk <span class="status ${sourceAuditRiskClass}">${escapeHtml(sourceAuditSummary.fallback_dependency_risk || "high")}</span></span>
+          <span>exact-ready ${escapeHtml(sourceAuditSummary.exact_ready_solutions || 0)}</span>
+          <span>transfer-only ${escapeHtml(sourceAuditSummary.transfer_only_solutions || 0)}</span>
+          <span>untraced ${escapeHtml(sourceAuditSummary.untraced_solutions || 0)}</span>
+          <span>coverage ${escapeHtml(sourceAuditSummary.exact_ready_coverage_pct || 0)}%</span>
+          <span>gap ${escapeHtml(sourceAuditSummary.exact_gap_segments || 0)}</span>
+        </div>
+        <div class="meta" style="margin-top:10px">
+          <span>${escapeHtml(sourceAudit.next_step || "Portfolio-level source mix guidance will appear here once all lanes expose segment solutions.")}</span>
+        </div>
       </div>
       <div class="card" style="margin-top:16px">
         <div class="eyebrow">10k Corpus Goal</div>

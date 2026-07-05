@@ -1952,6 +1952,7 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
                 <div className="rb-brief-block" style={{ marginTop: 12 }}>
                   <b>Export endpoint</b>
                   <p>/api/factory/reels-brain/creative-exports?lane={item.generator_bundle?.lane || "research"}&niche={item.niche}&platform={item.platform}</p>
+                  <p style={{ marginTop: 6, color: "#0891b2" }}>/api/factory/reels-brain/creative-exports?lane=ship&niche={item.niche}&platform={item.platform}&exact_ready_only=1</p>
                 </div>
                 <div className="rb-brief-block" style={{ marginTop: 12 }}>
                   <b>Decision snapshot</b>
@@ -1964,6 +1965,7 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
                 <div className="rb-brief-block" style={{ marginTop: 12 }}>
                   <b>Creative solution</b>
                   <p>/api/factory/reels-brain/creative-solution?niche={item.niche}&platform={item.platform}</p>
+                  <p style={{ marginTop: 6, color: "#0891b2" }}>/api/factory/reels-brain/creative-solution?niche={item.niche}&platform={item.platform}&strict_exact=1</p>
                 </div>
                 <div className="rb-brief-block" style={{ marginTop: 12 }}>
                   <b>Stability audit</b>

@@ -37,6 +37,14 @@ export async function GET(req: NextRequest) {
     : [];
   const pipeline = ((report as { pipeline_progress?: Record<string, any> }).pipeline_progress) || {};
   const pipelinePlatforms = Array.isArray(pipeline.platforms) ? pipeline.platforms : [];
+  const sourceMixAudit = ((report as { source_mix_audit?: Record<string, any> }).source_mix_audit) || {};
+  const sourceMixSummary = (sourceMixAudit.summary && typeof sourceMixAudit.summary === "object") ? sourceMixAudit.summary : {};
+  const sourceMixPlatforms = Array.isArray(sourceMixAudit.by_platform) ? sourceMixAudit.by_platform : [];
+  const sourceMixRiskClass = sourceMixSummary.fallback_dependency_risk === "low"
+    ? "ready"
+    : sourceMixSummary.fallback_dependency_risk === "medium"
+      ? "watch"
+      : "weak";
   const html = `<!DOCTYPE html>
   <html lang="ru">
   <head>
@@ -113,6 +121,51 @@ export async function GET(req: NextRequest) {
             `).join("")}
           </div>
         </div>
+        <div class="card">
+          <div class="eyebrow">Trust layer</div>
+          <h2 class="title">Source mix audit</h2>
+          <div class="list" style="margin-top:16px">
+            <div class="row">
+              <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start">
+                <div>
+                  <div style="font-weight:900;font-size:18px">How much brain already thinks through exact-proof</div>
+                  <div class="meta" style="margin-top:8px">
+                    <span>exact-ready ${escapeHtml(sourceMixSummary.exact_ready_solutions || 0)}</span>
+                    <span>transfer-only ${escapeHtml(sourceMixSummary.transfer_only_solutions || 0)}</span>
+                    <span>untraced ${escapeHtml(sourceMixSummary.untraced_solutions || 0)}</span>
+                    <span>coverage ${escapeHtml(sourceMixSummary.exact_ready_coverage_pct || 0)}%</span>
+                  </div>
+                </div>
+                <span class="status ${sourceMixRiskClass}">${escapeHtml(sourceMixSummary.fallback_dependency_risk || "high")} risk</span>
+              </div>
+              <div class="meta" style="margin-top:10px">
+                <span>exact gap ${escapeHtml(sourceMixSummary.exact_gap_segments || 0)}</span>
+                <span>validation traced ${escapeHtml(sourceMixSummary.validation_traced_posts || 0)}</span>
+                <span>validation exact ${escapeHtml(sourceMixSummary.validation_exact_posts || 0)}</span>
+                <span>legacy ${escapeHtml(sourceMixSummary.legacy_fallback_policy || "guarded")}</span>
+              </div>
+              <div class="meta" style="margin-top:10px">
+                <span>${escapeHtml(sourceMixAudit.next_step || "Source mix guidance will appear here once the report is ready.")}</span>
+              </div>
+            </div>
+            ${sourceMixPlatforms.length ? sourceMixPlatforms.map((row) => `
+              <div class="row">
+                <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start">
+                  <div style="font-weight:900">${escapeHtml(row.platform)}</div>
+                  <span class="status ${escapeHtml(Number(row.exact_ready_pct || 0) >= 50 ? "ready" : Number(row.exact_ready_pct || 0) >= 20 ? "watch" : "weak")}">${escapeHtml(row.exact_ready_pct || 0)}% exact-ready</span>
+                </div>
+                <div class="meta" style="margin-top:8px">
+                  <span>segments ${escapeHtml(row.total || 0)}</span>
+                  <span>exact ${escapeHtml(row.exact_ready || 0)}</span>
+                  <span>transfer ${escapeHtml(row.transfer_only || 0)}</span>
+                  <span>untraced ${escapeHtml(row.untraced || 0)}</span>
+                </div>
+              </div>
+            `).join("") : `<div class="row"><div style="font-weight:800">Source mix audit пока пустой</div><div class="meta" style="margin-top:8px">Сначала мозгу нужно собрать segment solutions и generation packs.</div></div>`}
+          </div>
+        </div>
+      </div>
+      <div class="grid two" style="margin-top:16px">
         <div class="card">
           <div class="eyebrow">Pipeline</div>
           <h2 class="title">Backlog by platform</h2>

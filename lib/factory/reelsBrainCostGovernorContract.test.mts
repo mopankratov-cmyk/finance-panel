@@ -41,6 +41,8 @@ const feedback = readFileSync("app/api/factory/reels-brain/feedback/route.ts", "
 const cron = readFileSync("app/api/factory/jobs/reels-brain-cron/route.ts", "utf8");
 const cronIntent = readFileSync("lib/factory/reelsBrainCronExecutionIntent.ts", "utf8");
 const scheduler = readFileSync("lib/factory/reelsBrainScheduler.ts", "utf8");
+const vendorReport = readFileSync("app/inferno/vendor/reels-brain-report/route.ts", "utf8");
+const vendorPortfolio = readFileSync("app/inferno/vendor/reels-brain-portfolio/route.ts", "utf8");
 
 ok(/function buildCostGovernor/.test(economics), "learning-economics builds a cost governor");
 ok(/REELS_BRAIN_MAX_DAILY_SPEND_USD/.test(economics), "cost governor has daily spend env guard");
@@ -73,9 +75,12 @@ ok(/buildReelsBrainValidationRunbook/.test(validationQueueRoute) && /validation_
 
 ok(/internalFetch/.test(creativeExports) && /segment_creative_exports/.test(creativeExports), "creative-exports route reads creative export bundles from learning-economics");
 ok(/lane/.test(creativeExports) && /niche/.test(creativeExports) && /platform/.test(creativeExports), "creative-exports route supports lane, niche and platform filters");
+ok(/exact_ready_only/.test(creativeExports) && /proof_quality/.test(creativeExports), "creative-exports route supports exact-ready only filtering for high-trust generation");
 ok(!/POST\s*\(/.test(creativeExports), "creative-exports route is read-only");
 ok(/internalFetch/.test(creativeBrief) && /segment_solution_matrix/.test(creativeBrief) && /segment_generation_packs/.test(creativeBrief) && /selectCreativeBriefFromSegmentLayers/.test(creativeBrief) && /platform_matrix/.test(creativeBriefSourceBuilder), "creative-brief route prefers trust-aware segment layers and pulls generation gates before old playbook fallback");
+ok(/strictExact/.test(creativeBrief) && /strict_exact/.test(creativeBrief) && /quality_gate:\s*\{/.test(creativeBrief), "creative-brief route supports strict exact-only mode instead of silently falling back");
 ok(/internalFetch/.test(creativeSolution) && /creative-brief/.test(creativeSolution) && /segment_generation_packs/.test(creativeSolution) && /selectCreativeBriefFromSegmentLayers/.test(creativeSolution), "creative-solution route exposes unified trust-aware brief/hypothesis/action endpoint");
+ok(/strictExact/.test(creativeSolution) && /strict_exact/.test(creativeSolution) && /quality_gate:\s*\{/.test(creativeSolution), "creative-solution route supports strict exact-only mode instead of silent transfer fallback");
 ok(/fit_summary/.test(creativeBriefSourceBuilder) && /quality_gate/.test(creativeBriefSourceBuilder) && /exact_segment/.test(creativeBriefSourceBuilder), "creative brief source marks exact-vs-transfer fit and degrades quality gate for borrowed evidence");
 ok(/internalFetch/.test(generationPolicy) && /generation_policy/.test(generationPolicy) && /segment_solution_matrix/.test(generationPolicy), "generation-policy route exposes unified trust-aware generation policy");
 
@@ -179,5 +184,7 @@ ok(/selectedPattern/.test(cockpit) && /rb-drawer/.test(cockpit), "cockpit expose
 ok(/rb-click/.test(cockpit) && /setSelectedPattern/.test(cockpit), "cockpit pattern cards are inspectable");
 ok(/sort\(\(a, b\) => String\(a\.created_at \|\| \"\"\)\.localeCompare\(String\(b\.created_at \|\| \"\"\)\)\)\s*\.slice\(-8\)\s*\.reverse\(\)/.test(cockpit), "cockpit stores latest learning runs first");
 ok(/vm\.runTimeline\.slice\(0, 6\)/.test(cockpit), "cockpit renders newest six live run events instead of stale tail");
+ok(/Source mix audit/.test(vendorReport) && /source_mix_audit/.test(vendorReport) && /fallback_dependency_risk/.test(vendorReport), "vendor live report surfaces source-mix audit and exact-proof fallback risk");
+ok(/escaped legacy fallback/.test(vendorPortfolio) && /source_mix_audit/.test(vendorPortfolio) && /exact-ready/.test(vendorPortfolio), "vendor portfolio surfaces portfolio-level trust migration away from legacy fallback");
 
 console.log("reelsBrainCostGovernorContract: passed");

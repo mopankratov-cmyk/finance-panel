@@ -277,3 +277,36 @@ test("selectCreativeBriefFromSegmentLayers avoids exact weak segment when health
   assert.equal(result?.source_trace?.[0]?.outcome_status, "proven");
   assert.equal(result?.alternatives?.[0]?.outcome_status, "weak");
 });
+
+test("selectCreativeBriefFromSegmentLayers returns null in strict-exact mode when only transfer fallback exists", () => {
+  const result = selectCreativeBriefFromSegmentLayers({
+    niche: "ru_toys",
+    platform: "youtube",
+    strictExact: true,
+    segmentSolutions: { items: [] },
+    segmentSolutionMatrix: {
+      by_platform: [
+        {
+          platform: "youtube",
+          primary: {
+            niche: "ru_cosmetics",
+            platform: "youtube",
+            label: "ru_cosmetics × youtube",
+            readiness_score: 79,
+            trust_band: "high",
+            production_state: "ready_now",
+            creative_brief: { hook: "Borrowed winner" },
+            trust_summary: {
+              evidence_band: "stable",
+              stability_score: 82,
+              outcome_status: "proven",
+            },
+          },
+        },
+      ],
+      by_niche: [],
+    },
+  });
+
+  assert.equal(result, null);
+});

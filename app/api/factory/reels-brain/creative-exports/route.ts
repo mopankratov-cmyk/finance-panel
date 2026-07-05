@@ -14,6 +14,10 @@ function list(value: unknown) {
   return Array.isArray(value) ? value as JsonRecord[] : [];
 }
 
+function boolFlag(value: string) {
+  return value === "1" || value === "true" || value === "yes";
+}
+
 export async function GET(req: NextRequest) {
   try {
     const url = new URL("/api/factory/reels-brain/learning-economics", req.nextUrl.origin);
@@ -26,12 +30,14 @@ export async function GET(req: NextRequest) {
     const lane = text(req.nextUrl.searchParams.get("lane"));
     const niche = text(req.nextUrl.searchParams.get("niche"));
     const platform = text(req.nextUrl.searchParams.get("platform"));
+    const exactReadyOnly = boolFlag(text(req.nextUrl.searchParams.get("exact_ready_only")).toLowerCase());
     const exportsRoot = ((body as JsonRecord).segment_creative_exports || {}) as JsonRecord;
     const matches = (row: JsonRecord) => {
       const laneOk = !lane || text(row.lane) === lane;
       const nicheOk = !niche || text(row.niche) === niche;
       const platformOk = !platform || text(row.platform) === platform;
-      return laneOk && nicheOk && platformOk;
+      const exactOk = !exactReadyOnly || (text((row.trust as JsonRecord).proof_quality) === "exact_segment" && text(row.lane) === "ship");
+      return laneOk && nicheOk && platformOk && exactOk;
     };
     const allItems = list(exportsRoot.items);
     const filtered = allItems.filter(matches);
@@ -47,6 +53,7 @@ export async function GET(req: NextRequest) {
         filtered_ship: filtered.filter((row) => text(row.lane) === "ship").length,
         filtered_validate: filtered.filter((row) => text(row.lane) === "validate").length,
         filtered_research: filtered.filter((row) => text(row.lane) === "research").length,
+        exact_ready_only: exactReadyOnly,
       },
       ship_now: list(exportsRoot.ship_now).filter(matches),
       validate_next: list(exportsRoot.validate_next).filter(matches),

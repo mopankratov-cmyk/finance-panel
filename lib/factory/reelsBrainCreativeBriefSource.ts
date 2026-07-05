@@ -339,6 +339,7 @@ export function selectCreativeBriefFromSegmentLayers(input: {
   segmentSolutions?: { items?: JsonRecord[] } | null;
   segmentSolutionMatrix?: { by_niche?: JsonRecord[]; by_platform?: JsonRecord[] } | null;
   segmentGenerationPacks?: { items?: JsonRecord[] } | null;
+  strictExact?: boolean;
 }) {
   const niche = text(input.niche);
   const platform = text(input.platform).toLowerCase();
@@ -371,11 +372,15 @@ export function selectCreativeBriefFromSegmentLayers(input: {
   const selected = rankedCandidates[0] || null;
 
   if (selected) {
-    return buildResponseFromSolution(selected.row, selected.source, rankedCandidates, {
+    const response = buildResponseFromSolution(selected.row, selected.source, rankedCandidates, {
       requestedNiche: niche,
       requestedPlatform: platform,
       segmentGenerationPacks: input.segmentGenerationPacks || null,
     });
+    if (input.strictExact && !response.quality_gate?.exact_segment_ready) {
+      return null;
+    }
+    return response;
   }
 
   return null;

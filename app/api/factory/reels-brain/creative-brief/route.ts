@@ -70,6 +70,10 @@ function text(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function boolFlag(value: string) {
+  return value === "1" || value === "true" || value === "yes";
+}
+
 export async function GET(req: NextRequest) {
   try {
     const db = getSupabaseAdmin();
@@ -77,6 +81,7 @@ export async function GET(req: NextRequest) {
     const niche = text(req.nextUrl.searchParams.get("niche")) || "ru_toys";
     const productType = text(req.nextUrl.searchParams.get("product_type"));
     const platform = text(req.nextUrl.searchParams.get("platform")).toLowerCase();
+    const strictExact = boolFlag(text(req.nextUrl.searchParams.get("strict_exact")).toLowerCase());
 
     const { data, error } = await db
       .from("niche_playbooks")
@@ -101,9 +106,28 @@ export async function GET(req: NextRequest) {
         segmentSolutions: reportBody.segment_solutions || null,
         segmentSolutionMatrix: reportBody.segment_solution_matrix || null,
         segmentGenerationPacks: reportBody.segment_generation_packs || null,
+        strictExact,
       });
       if (segmentBrief) {
         return NextResponse.json(segmentBrief, { headers: { "Cache-Control": "no-store" } });
+      }
+      if (strictExact) {
+        return NextResponse.json({
+          ok: false,
+          error: `Нет exact-ready brief для ${niche} × ${platform || "unknown"}`,
+          requested_segment: {
+            niche,
+            platform,
+          },
+          quality_gate: {
+            status: "not_ready",
+            exact_segment_ready: false,
+            allowed_generation_modes: ["brief_only", "research_only"],
+            blocked_reasons: [
+              `Для ${niche} × ${platform || "unknown"} пока нет exact-proof segment brief. Сначала закрой exact segment queue и validation loop.`,
+            ],
+          },
+        }, { status: 409, headers: { "Cache-Control": "no-store" } });
       }
     }
 

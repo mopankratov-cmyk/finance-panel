@@ -79,6 +79,7 @@ function testBuildReelsBrainSegmentCreativeExportsSplitsShipAndValidateLanes() {
   assert.ok(result.items[1]?.content_solution.guardrails.some((item: string) => item.includes("Не пускать текущую механику")));
   assert.ok(result.items[1]?.brief.do_not_copy.some((item: string) => item.includes("weak")));
   assert.equal(result.items[1]?.trust.outcome_anti_patterns?.[0]?.label, "Weak segment outcome");
+  assert.equal(result.items[0]?.trust.proof_quality, "untraced");
 }
 
 function run() {
