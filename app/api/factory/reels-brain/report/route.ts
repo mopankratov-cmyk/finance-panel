@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { internalFetch } from "@/lib/internalFetch";
+import { buildReelsBrainValidationRunbook } from "@/lib/factory/reelsBrainValidationRunbook";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 20;
@@ -80,6 +81,11 @@ export async function GET(req: NextRequest) {
     const body = await response.json().catch(() => ({}));
     const progressBody = await progressResponse.json().catch(() => ({}));
     if (!response.ok) return NextResponse.json(body, { status: response.status });
+    const validationRunbook = buildReelsBrainValidationRunbook({
+      validationQueue: body.autopilot_actions?.validation_queue || null,
+      measurementPlan: body.measurement_plan || null,
+      limit: 4,
+    });
     return NextResponse.json({
       ok: true,
       report_type: req.nextUrl.searchParams.get("type") || "daily",
@@ -104,6 +110,7 @@ export async function GET(req: NextRequest) {
       segment_solution_matrix: body.segment_solution_matrix || null,
       generation_policy: body.generation_policy || null,
       measurement_plan: body.measurement_plan || null,
+      validation_runbook: validationRunbook,
       exact_segment_queue: body.exact_segment_queue || null,
       portfolio_readiness: body.portfolio_readiness || null,
       evidence_ledger: body.evidence_ledger || null,

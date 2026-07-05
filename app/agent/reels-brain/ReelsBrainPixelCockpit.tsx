@@ -291,6 +291,7 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
     const segmentSolutionMatrix = (learning?.segment_solution_matrix || {}) as JsonRecord;
     const generationPolicy = (learning?.generation_policy || {}) as JsonRecord;
     const measurementPlan = (learning?.measurement_plan || {}) as JsonRecord;
+    const validationRunbook = (((autopilotActions.validation_runbook || learning?.validation_runbook || {}) as JsonRecord));
     const portfolioReadiness = (learning?.portfolio_readiness || mission.portfolio_readiness || {}) as JsonRecord;
     const exactSegmentQueue = ((mission.exact_segment_queue || learning?.exact_segment_queue || {}) as JsonRecord);
     const evidenceLedger = (learning?.evidence_ledger || {}) as JsonRecord;
@@ -1006,6 +1007,7 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
       generationPolicyPlatformCards,
       generationPolicySummary,
       measurementPlan,
+      validationRunbook,
       exactSegmentQueue,
       missionPriorityCards,
       portfolioCoverageCards,
@@ -3422,6 +3424,13 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
                 <p><strong>Raw market metrics:</strong> /api/factory/post-metrics</p>
                 <p><strong>Measurement endpoint:</strong> /api/factory/reels-brain/measurement-plan</p>
               </div>
+              {((vm.validationRunbook.items || []) as JsonRecord[]).length ? (
+                <div className="rb-pattern" style={{ marginTop: 12 }}>
+                  <p><strong>Top runbook:</strong> {String(((vm.validationRunbook.items || [])[0] as JsonRecord | undefined)?.task_type || "validation")}</p>
+                  <p><strong>Creative endpoint:</strong> {String(((vm.validationRunbook.items || [])[0] as JsonRecord | undefined)?.creative_solution_endpoint || "/api/factory/reels-brain/creative-solution")}</p>
+                  <p><strong>Writeback:</strong> {String(((vm.validationRunbook.items || [])[0] as JsonRecord | undefined)?.feedback_endpoint || "/api/factory/reels-brain/feedback")} → {String(((vm.validationRunbook.items || [])[0] as JsonRecord | undefined)?.post_metrics_endpoint || "/api/factory/post-metrics")}</p>
+                </div>
+              ) : null}
             </div>
           </div>
         </section>

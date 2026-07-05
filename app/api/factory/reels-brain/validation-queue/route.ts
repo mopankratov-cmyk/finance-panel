@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { internalFetch } from "@/lib/internalFetch";
+import { buildReelsBrainValidationRunbook } from "@/lib/factory/reelsBrainValidationRunbook";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 20;
@@ -12,10 +13,16 @@ export async function GET(req: NextRequest) {
     const response = await internalFetch(url);
     const body = await response.json().catch(() => ({}));
     if (!response.ok) return NextResponse.json(body, { status: response.status });
+    const runbook = buildReelsBrainValidationRunbook({
+      validationQueue: body.autopilot_actions?.validation_queue || null,
+      measurementPlan: body.measurement_plan || null,
+      limit: 4,
+    });
     return NextResponse.json({
       ok: true,
       validation_queue: body.autopilot_actions?.validation_queue || null,
       measurement_plan: body.measurement_plan || null,
+      validation_runbook: runbook,
       autopilot_actions: body.autopilot_actions || null,
     }, { headers: { "Cache-Control": "no-store" } });
   } catch (e) {

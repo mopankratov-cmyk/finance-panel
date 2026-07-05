@@ -13,6 +13,7 @@ const bulk = readFileSync("app/api/factory/jobs/reels-brain-bulk-ingest/route.ts
 const bulkExecutionPolicy = readFileSync("lib/factory/reelsBrainBulkExecutionPolicy.ts", "utf8");
 const generationPolicy = readFileSync("app/api/factory/reels-brain/generation-policy/route.ts", "utf8");
 const measurementPlanRoute = readFileSync("app/api/factory/reels-brain/measurement-plan/route.ts", "utf8");
+const validationQueueRoute = readFileSync("app/api/factory/reels-brain/validation-queue/route.ts", "utf8");
 const creativeSolution = readFileSync("app/api/factory/reels-brain/creative-solution/route.ts", "utf8");
 const creativeExports = readFileSync("app/api/factory/reels-brain/creative-exports/route.ts", "utf8");
 const creativeBrief = readFileSync("app/api/factory/reels-brain/creative-brief/route.ts", "utf8");
@@ -25,6 +26,7 @@ const segmentSolutionMatrixBuilder = readFileSync("lib/factory/reelsBrainSegment
 const generationPolicyBuilder = readFileSync("lib/factory/reelsBrainGenerationPolicy.ts", "utf8");
 const creativeBriefSourceBuilder = readFileSync("lib/factory/reelsBrainCreativeBriefSource.ts", "utf8");
 const measurementPlanBuilder = readFileSync("lib/factory/reelsBrainMeasurementPlan.ts", "utf8");
+const validationRunbookBuilder = readFileSync("lib/factory/reelsBrainValidationRunbook.ts", "utf8");
 const segmentStabilityAudit = readFileSync("app/api/factory/reels-brain/stability-audit/route.ts", "utf8");
 const segmentStabilityAuditBuilder = readFileSync("lib/factory/reelsBrainSegmentStabilityAudit.ts", "utf8");
 const analyzeBacklog = readFileSync("app/api/factory/jobs/reels-brain-analyze-backlog/route.ts", "utf8");
@@ -67,6 +69,7 @@ ok(/internalFetch/.test(governor) && /cost_governor/.test(governor), "cost-gover
 ok(/daily_costs/.test(governor) && /totals/.test(governor), "cost-governor route includes cost context");
 ok(!/POST\s*\(/.test(governor), "cost-governor route is read-only");
 ok(/internalFetch/.test(measurementPlanRoute) && /measurement_plan/.test(measurementPlanRoute) && /outcome_memory_brain/.test(measurementPlanRoute), "measurement-plan route exposes read-only validation queue on top of report");
+ok(/buildReelsBrainValidationRunbook/.test(validationQueueRoute) && /validation_runbook/.test(validationQueueRoute) && /feedback_payload_template/.test(validationRunbookBuilder), "validation-queue route exposes execution-ready runbook with writeback template");
 
 ok(/internalFetch/.test(creativeExports) && /segment_creative_exports/.test(creativeExports), "creative-exports route reads creative export bundles from learning-economics");
 ok(/lane/.test(creativeExports) && /niche/.test(creativeExports) && /platform/.test(creativeExports), "creative-exports route supports lane, niche and platform filters");
@@ -94,7 +97,7 @@ ok(!/POST\s*\(/.test(segmentStabilityAudit), "stability-audit route is read-only
 ok(/daily_report/.test(report) && /autopilot_actions/.test(report), "report route exposes operator report fields");
 ok(/anti_pattern_brain/.test(report) && /discovery_brain/.test(report), "report route includes learning context");
 ok(/top_opportunities/.test(report) && /pattern_atlas/.test(report) && /segment_playbook/.test(report) && /evidence_ledger/.test(report), "report route exposes segment decision layers");
-ok(/measurement_plan/.test(report) && /buildReelsBrainMeasurementPlan/.test(economics) && /measurement_plan: measurementPlan/.test(economics) && /exactSegmentQueue/.test(economics), "report route exposes measurement plan built from strong no-feedback patterns and exact-segment proof gaps");
+ok(/measurement_plan/.test(report) && /validation_runbook/.test(report) && /buildReelsBrainMeasurementPlan/.test(economics) && /measurement_plan: measurementPlan/.test(economics) && /exactSegmentQueue/.test(economics), "report route exposes measurement plan plus validation runbook for strong no-feedback patterns and exact-segment proof gaps");
 ok(/exact_segment_queue/.test(report) && /buildReelsBrainExactSegmentQueue/.test(economics), "report route exposes exact-segment proof queue for borrowed-brief gaps");
 ok(/segment_output_banks/.test(report), "report route exposes segment-specific output banks");
 ok(/segment_decision_deck/.test(report), "report route exposes segment decision deck");
@@ -135,7 +138,7 @@ ok(/use_autopilot_guard/.test(scheduler), "scheduler marks paid collection as gu
 
 ok(/costGovernor/.test(cockpit) && /autopilotActions/.test(cockpit), "cockpit reads cost governor and autopilot actions");
 ok(/Feedback coverage queue/.test(cockpit) && /pattern_memory\?\.no_feedback_queue/.test(cockpit), "cockpit surfaces strong patterns waiting for market validation");
-ok(/Measurement Plan/.test(cockpit) && /measurementPlan/.test(cockpit) && /measurement-plan/.test(cockpit), "cockpit surfaces operator-ready measurement plan");
+ok(/Measurement Plan/.test(cockpit) && /measurementPlan/.test(cockpit) && /validationRunbook/.test(cockpit) && /measurement-plan/.test(cockpit), "cockpit surfaces operator-ready measurement plan and validation runbook");
 ok(/learningPlan/.test(cockpit) && /Learning Mission/.test(cockpit), "cockpit exposes the standalone learning mission");
 ok(/segment_plan/.test(cockpit) && /segment-gap:/.test(cockpit), "cockpit surfaces segment-level training gaps inside learning mission");
 ok(/segment-priority:/.test(cockpit) && /missionPriorityCards/.test(cockpit), "cockpit surfaces priority segment lane inside learning mission");
