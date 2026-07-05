@@ -51,6 +51,11 @@ type ShipReadyQueueSummary = {
   summary?: JsonRecord | null;
 };
 
+type BriefGapProgressSummary = {
+  top_candidates?: Array<JsonRecord>;
+  summary?: JsonRecord | null;
+};
+
 function num(value: unknown): number {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
@@ -259,6 +264,7 @@ export function buildReelsBrainNextTick(input: {
   exactSegmentQueue?: ExactSegmentQueueSummary | JsonRecord | null;
   briefCoverageAudit?: BriefCoverageAuditSummary | JsonRecord | null;
   shipReadyQueue?: ShipReadyQueueSummary | JsonRecord | null;
+  briefGapProgress?: BriefGapProgressSummary | JsonRecord | null;
 }) {
   const backlog = Math.max(0, input.totalVideos - input.analyzedVideos);
   const portfolio = (input.portfolioReadiness || {}) as JsonRecord;
@@ -288,13 +294,20 @@ export function buildReelsBrainNextTick(input: {
   const shipReadyQueue = (input.shipReadyQueue || {}) as ShipReadyQueueSummary | JsonRecord;
   const shipReadyItems = records((shipReadyQueue as ShipReadyQueueSummary | null | undefined)?.items);
   const shipReadyTopCandidates = records((shipReadyQueue as ShipReadyQueueSummary | null | undefined)?.top_ship_candidates);
+  const briefGapProgress = (input.briefGapProgress || {}) as BriefGapProgressSummary | JsonRecord;
+  const briefGapCandidates = records((briefGapProgress as BriefGapProgressSummary | null | undefined)?.top_candidates);
+  const briefGapProgressFocusSegment = safeSegment(briefGapCandidates[0] || null);
   const shipReadyFocusSegment = safeSegment(
     shipReadyTopCandidates[0]
     || shipReadyItems[0]
     || null,
   );
-  const briefGapFocus = firstGapFocus(records((input.briefCoverageAudit as BriefCoverageAuditSummary | null | undefined)?.gap_queue)[0] || null);
-  const shipGapFocus = firstGapFocus(shipReadyTopCandidates[0] || shipReadyItems[0] || null);
+  const briefGapFocus = firstGapFocus(briefGapCandidates[0] || records((input.briefCoverageAudit as BriefCoverageAuditSummary | null | undefined)?.gap_queue)[0] || null);
+  const shipGapFocus = firstGapFocus(
+    briefGapProgressFocusSegment && text((briefGapProgressFocusSegment as JsonRecord).lane) === "ship"
+      ? briefGapProgressFocusSegment
+      : shipReadyTopCandidates[0] || shipReadyItems[0] || null,
+  );
   const shipReadySummary = ((shipReadyQueue as ShipReadyQueueSummary | null | undefined)?.summary || {}) as JsonRecord;
   const publishableExactGapSegment = pickPublishableExactFocusSegment({
     portfolioReadiness: portfolio,
@@ -320,16 +333,20 @@ export function buildReelsBrainNextTick(input: {
     && !marketBlockedDecisionSupport
     && !readinessBlockedDecisionSupport
     && !exactProofMissingForDecisionSegment
-    && sameSegment(prioritySegment, briefCoverageFocusSegment)
+    && sameSegment(prioritySegment, briefGapProgressFocusSegment || briefCoverageFocusSegment)
     && (
-      records((input.briefCoverageAudit as BriefCoverageAuditSummary | null | undefined)?.gap_queue).length > 0
+      briefGapCandidates.length > 0
+      || records((input.briefCoverageAudit as BriefCoverageAuditSummary | null | undefined)?.gap_queue).length > 0
+      || num(((input.briefGapProgress as BriefGapProgressSummary | null | undefined)?.summary || {})["total"]) > 0
       || num(((input.briefCoverageAudit as BriefCoverageAuditSummary | null | undefined)?.summary || {})["blocked_or_incomplete_segments"]) > 0
     );
   const shipReadyDecisionSegment = shouldSupportDecisionSegment
     && !marketBlockedDecisionSupport
     && !readinessBlockedDecisionSupport
     && !exactProofMissingForDecisionSegment
-    && sameSegment(prioritySegment, shipReadyFocusSegment)
+    && sameSegment(prioritySegment, briefGapProgressFocusSegment && text((briefGapProgressFocusSegment as JsonRecord).lane) === "ship"
+      ? briefGapProgressFocusSegment
+      : shipReadyFocusSegment)
     && num(shipReadySummary.ship_candidates) > 0;
   const shouldClosePublishableExactPortfolioGaps = (!shouldSupportDecisionSegment || marketBlockedDecisionSupport || readinessBlockedDecisionSupport)
     && portfolioCoverage >= 60
@@ -383,6 +400,7 @@ export function buildReelsBrainNextTick(input: {
       portfolio_priority_segment: portfolioFocusSegment,
       learning_economics: learningEconomics,
       brief_coverage_focus: briefCoverageFocusSegment,
+      brief_gap_progress_focus: briefGapProgressFocusSegment,
       ship_ready_focus: shipReadyFocusSegment,
     };
   }

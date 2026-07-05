@@ -503,6 +503,18 @@ const briefBundleCompletionTick = buildReelsBrainNextTick({
       },
     ],
   },
+  briefGapProgress: {
+    top_candidates: [
+      {
+        niche: "ru_toys",
+        platform: "tiktok",
+        label: "ru_toys × tiktok",
+        lane: "ship",
+        missing_fields: ["visual recipe"],
+        missing_field_families: ["visual"],
+      },
+    ],
+  },
 });
 
 assert.equal(briefBundleCompletionTick.task, "analyze_backlog");
@@ -510,11 +522,12 @@ assert.equal((briefBundleCompletionTick.params as Record<string, unknown>).focus
 assert.equal((briefBundleCompletionTick.params as Record<string, unknown>).build_patterns, "true");
 assert.equal((briefBundleCompletionTick.params as Record<string, unknown>).niche, "ru_toys");
 assert.equal((briefBundleCompletionTick.params as Record<string, unknown>).platform, "tiktok");
-assert.equal((briefBundleCompletionTick.params as Record<string, unknown>).field_focus, "structure");
-assert.equal((briefBundleCompletionTick.params as Record<string, unknown>).family_focus, "structure");
+assert.equal((briefBundleCompletionTick.params as Record<string, unknown>).field_focus, "visual recipe");
+assert.equal((briefBundleCompletionTick.params as Record<string, unknown>).family_focus, "visual");
 assert.match(briefBundleCompletionTick.label, /usable brief/i);
 assert.match(briefBundleCompletionTick.reason, /usable creative export/i);
-assert.match(briefBundleCompletionTick.reason, /Главный пробел сейчас: structure/);
+assert.match(briefBundleCompletionTick.reason, /Главный пробел сейчас: visual recipe/);
+assert.equal((briefBundleCompletionTick.brief_gap_progress_focus as Record<string, unknown>)?.label, "ru_toys × tiktok");
 
 const shipReadyBundleCompletionTick = buildReelsBrainNextTick({
   target: 10000,

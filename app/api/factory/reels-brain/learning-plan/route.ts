@@ -11,6 +11,7 @@ import {
 import { buildReelsBrainNextTick } from "@/lib/factory/reelsBrainLearningPlan";
 import { buildReelsBrainSegmentGapPlanner } from "@/lib/factory/reelsBrainSegmentGapPlanner";
 import { buildReelsBrainSegmentPriorityQueue } from "@/lib/factory/reelsBrainSegmentPriorityQueue";
+import { buildReelsBrainBriefGapProgress } from "@/lib/factory/reelsBrainBriefGapProgress";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 20;
@@ -140,6 +141,11 @@ export async function GET(req: NextRequest) {
     const shipReadyQueue = (learning.ship_ready_queue || {}) as JsonRecord;
     const shipReadyItems = Array.isArray(shipReadyQueue.items) ? shipReadyQueue.items as JsonRecord[] : [];
     const topShipCandidates = Array.isArray(shipReadyQueue.top_ship_candidates) ? shipReadyQueue.top_ship_candidates as JsonRecord[] : [];
+    const briefGapProgress = buildReelsBrainBriefGapProgress({
+      briefCoverageAudit,
+      shipReadyQueue,
+      limit: 6,
+    });
 
     const costGovernor = autopilot.cost_governor || learning.cost_governor || {};
     const autopilotActions = autopilot.autopilot_actions || learning.autopilot_actions || {};
@@ -167,6 +173,7 @@ export async function GET(req: NextRequest) {
       exactSegmentQueue,
       briefCoverageAudit,
       shipReadyQueue,
+      briefGapProgress,
       learningEconomics: {
         pattern_gain_cost_trend: totals.pattern_gain_cost_trend,
         pattern_gain_proxy_total: totals.pattern_gain_proxy_total,
@@ -241,6 +248,7 @@ export async function GET(req: NextRequest) {
           top_ship_candidates: topShipCandidates.slice(0, 3),
           items: shipReadyItems.slice(0, 6),
         },
+        brief_gap_progress: briefGapProgress,
         segment_stability: {
           stable: num(stabilitySummary.stable),
           forming: num(stabilitySummary.forming),
