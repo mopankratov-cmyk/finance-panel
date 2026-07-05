@@ -43,7 +43,18 @@ function testBuildReelsBrainOpportunitiesRanksBestSegments() {
       by_platform: [{ platform: "tiktok", primary: { title: "TikTok hypothesis", hypothesis: "test tiktok" } }],
     },
     segmentOutputBanks: {
-      briefs: [{ niche: "ru_toys", platform: "tiktok", primary: { title: "Exact TikTok brief", creative_brief: { hook: "Точный сегментный hook" } } }],
+      briefs: [{ niche: "ru_toys", platform: "tiktok", primary: {
+        title: "Exact TikTok brief",
+        creative_brief: { hook: "Точный сегментный hook" },
+        trust: {
+          trust_band: "high_trust",
+          evidence_band: "exact",
+          proof_quality: "exact_segment",
+          high_trust_generation_ready: true,
+          publishable_exact: true,
+          policy_reason: "exact proof already closed",
+        },
+      } }],
       actions: [{ niche: "ru_toys", platform: "tiktok", primary: { title: "Exact TikTok action", decision: "scale" } }],
       hypotheses: [{ niche: "ru_toys", platform: "tiktok", cards: [{ title: "Exact TikTok hypothesis", hypothesis: "test exact tiktok" }] }],
     },
@@ -57,6 +68,13 @@ function testBuildReelsBrainOpportunitiesRanksBestSegments() {
   assert.equal(result.top[0]?.best_brief_title, "Exact TikTok brief");
   assert.equal(result.top[0]?.best_action_title, "Exact TikTok action");
   assert.equal(result.top[0]?.best_hypothesis, "test exact tiktok");
+  assert.equal(result.top[0]?.proof_quality, "exact_segment");
+  assert.equal(result.top[0]?.publishable_exact, true);
+  assert.equal(result.top[0]?.high_trust_generation_ready, true);
+  assert.equal(result.top[0]?.trust_band, "high_trust");
+  assert.match(String(result.top[0]?.policy_reason), /exact proof/i);
+  assert.equal(result.summary.exact_proof_ready, 1);
+  assert.equal(result.summary.generation_ready, 1);
   assert.equal(result.top.at(-1)?.platform, "youtube");
 }
 

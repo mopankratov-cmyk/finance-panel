@@ -169,6 +169,7 @@ ok(/segment_plan/.test(cockpit) && /segment-gap:/.test(cockpit), "cockpit surfac
 ok(/segment-priority:/.test(cockpit) && /missionPriorityCards/.test(cockpit), "cockpit surfaces priority segment lane inside learning mission");
 ok(/nextLayers/.test(cockpit), "cockpit reads next intelligence layers");
 ok(/Top Opportunities/.test(cockpit) && /Pattern Atlas/.test(cockpit) && /Segment Playbook/.test(cockpit) && /Evidence Ledger/.test(cockpit), "cockpit surfaces segment opportunity, atlas, playbook and evidence layers");
+ok(/proof_quality/.test(cockpit) && /trust_band/.test(cockpit) && /Почему в приоритете/.test(cockpit) && /exactProof/.test(cockpit), "cockpit turns top opportunities into trust-readable shortlist cards with proof, trust, readiness, and rationale");
 ok(/segment_output_banks/.test(economics) && /Segment Output Banks/.test(cockpit) && /segment-output:/.test(cockpit), "learning-economics and cockpit expose segment-specific brief/action/hypothesis outputs");
 ok(/proofQuality/.test(cockpit) && /trustBand/.test(cockpit) && /policyReason/.test(cockpit) && /Почему мозг верит/.test(cockpit), "cockpit turns segment output banks into trust-readable operator cards with proof, trust band, and policy rationale");
 ok(/buildReelsBrainSegmentDecisionDeck/.test(economics) && /segment_decision_deck/.test(economics) && /Segment Decision Deck/.test(cockpit) && /segment-decision:/.test(cockpit), "learning-economics and cockpit expose a trust-ranked segment decision deck");

@@ -34,10 +34,24 @@ type SegmentOutputRow = {
     creative_brief?: {
       hook?: string;
     };
+    trust?: {
+      trust_band?: string;
+      evidence_band?: string;
+      proof_quality?: string;
+      high_trust_generation_ready?: boolean;
+      publishable_exact?: boolean;
+      policy_reason?: string;
+    } | null;
   } | null;
   cards?: Array<{
     title?: string;
     hypothesis?: string;
+    trust_band?: string;
+    evidence_band?: string;
+    proof_quality?: string;
+    high_trust_generation_ready?: boolean;
+    publishable_exact?: boolean;
+    policy_reason?: string;
   }>;
 };
 
@@ -82,6 +96,13 @@ function opportunityStatus(score: number, readyPatterns: number, analyzed: numbe
   if (score >= 78 && readyPatterns >= 4 && analyzed >= 40) return "scale_now";
   if (score >= 52 && readyPatterns >= 1 && analyzed >= 15) return "build_next";
   return "collect_more";
+}
+
+function proofQualityRank(value: unknown) {
+  const raw = text(value);
+  if (raw === "exact_segment") return 3;
+  if (raw === "traced_transfer_only" || raw === "transfer") return 2;
+  return 1;
 }
 
 export function buildReelsBrainOpportunities(input: {
@@ -152,6 +173,36 @@ export function buildReelsBrainOpportunities(input: {
       const actionSegment = actionBySegment.get(segmentKey);
       const hypothesisSegment = hypothesisBySegment.get(segmentKey);
       const primaryHypothesisCard = (hypothesisSegment?.cards || [])[0] || null;
+      const briefTrust = briefSegment?.primary?.trust || null;
+      const proofQuality = text(
+        briefTrust?.proof_quality
+        || primaryHypothesisCard?.proof_quality
+        || "untraced",
+      );
+      const publishableExact = Boolean(
+        briefTrust?.publishable_exact
+        || primaryHypothesisCard?.publishable_exact,
+      );
+      const highTrustGenerationReady = Boolean(
+        briefTrust?.high_trust_generation_ready
+        || primaryHypothesisCard?.high_trust_generation_ready,
+      );
+      const trustBand = text(
+        briefTrust?.trust_band
+        || primaryHypothesisCard?.trust_band
+        || nicheTrust.status
+        || "unknown",
+      );
+      const evidenceBand = text(
+        briefTrust?.evidence_band
+        || primaryHypothesisCard?.evidence_band
+        || "unknown",
+      );
+      const policyReason = text(
+        briefTrust?.policy_reason
+        || primaryHypothesisCard?.policy_reason
+        || "",
+      );
       return {
         niche,
         platform,
@@ -181,12 +232,21 @@ export function buildReelsBrainOpportunities(input: {
         best_action_title: text(actionSegment?.primary?.title || actionPlatform?.primary?.title || actionNiche?.primary?.title),
         best_hypothesis_title: text(primaryHypothesisCard?.title || hypothesisPlatform?.primary?.title || hypothesisNiche?.primary?.title),
         best_hypothesis: text(primaryHypothesisCard?.hypothesis || hypothesisPlatform?.primary?.hypothesis || hypothesisNiche?.primary?.hypothesis),
+        proof_quality: proofQuality,
+        publishable_exact: publishableExact,
+        high_trust_generation_ready: highTrustGenerationReady,
+        trust_band: trustBand,
+        evidence_band: evidenceBand,
+        policy_reason: policyReason,
       };
     }),
   )
     .filter((row) => row.total_videos > 0 || row.analyzed_videos > 0 || row.generator_ready_patterns > 0)
     .sort((a, b) =>
-      b.opportunity_score - a.opportunity_score
+      Number(b.high_trust_generation_ready) - Number(a.high_trust_generation_ready)
+      || Number(b.publishable_exact) - Number(a.publishable_exact)
+      || proofQualityRank(b.proof_quality) - proofQualityRank(a.proof_quality)
+      || b.opportunity_score - a.opportunity_score
       || b.generator_ready_patterns - a.generator_ready_patterns
       || b.analyzed_videos - a.analyzed_videos
       || a.niche.localeCompare(b.niche)
@@ -203,6 +263,8 @@ export function buildReelsBrainOpportunities(input: {
       primary: opportunities.filter((row) => row.recommended_mode === "primary").length,
       control_only: opportunities.filter((row) => row.recommended_mode === "control_only").length,
       research_only: opportunities.filter((row) => row.recommended_mode === "research_only").length,
+      exact_proof_ready: opportunities.filter((row) => row.proof_quality === "exact_segment").length,
+      generation_ready: opportunities.filter((row) => row.high_trust_generation_ready).length,
     },
   };
 }

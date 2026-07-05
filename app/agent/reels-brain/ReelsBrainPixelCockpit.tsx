@@ -657,6 +657,8 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
       primary: num(topOpportunities.summary?.primary),
       controlOnly: num(topOpportunities.summary?.control_only),
       researchOnly: num(topOpportunities.summary?.research_only),
+      exactProof: num(topOpportunities.summary?.exact_proof_ready),
+      generationReady: num(topOpportunities.summary?.generation_ready),
     };
     const atlasCards = ((patternAtlas.by_segment || []) as JsonRecord[]).slice(0, 6).map((row) => {
       const status = atlasTone(String(row.status || "thin"));
@@ -1789,10 +1791,21 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
                   <div className="rb-brief-block"><b>Память</b><p>{compact(item.generator_ready_patterns)} ready · {compact(item.patterns)} total</p></div>
                   <div className="rb-brief-block"><b>Trust blend</b><p>{compact(item.trustBlend)}%</p></div>
                 </div>
+                <div className="rb-three" style={{ marginTop: 12 }}>
+                  <div className="rb-brief-block"><b>Proof</b><p>{item.proof_quality || "untraced"}</p></div>
+                  <div className="rb-brief-block"><b>Trust</b><p>{item.trust_band || "unknown"} · {item.evidence_band || "unknown"}</p></div>
+                  <div className="rb-brief-block"><b>Readiness</b><p>{item.high_trust_generation_ready ? "gen-ready" : item.publishable_exact ? "exact-ready" : "building"}</p></div>
+                </div>
                 <div className="rb-brief-block" style={{ marginTop: 12 }}>
                   <b>Лучший brief / hypothesis</b>
                   <p>{item.best_brief_title || item.best_action_title || item.best_hypothesis_title || "Сегмент ещё дозревает"}</p>
                 </div>
+                {item.policy_reason ? (
+                  <div className="rb-brief-block" style={{ marginTop: 12 }}>
+                    <b>Почему в приоритете</b>
+                    <p>{item.policy_reason}</p>
+                  </div>
+                ) : null}
                 <p style={{ marginTop: 12, color: "#475569", lineHeight: 1.55 }}>
                   {item.best_brief_hook || item.best_hypothesis || item.niche_note || item.platform_note}
                 </p>
@@ -1813,6 +1826,8 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
                 ["Scale now", compact(vm.opportunitySummary.scaleNow)],
                 ["Build next", compact(vm.opportunitySummary.buildNext)],
                 ["Collect more", compact(vm.opportunitySummary.collectMore)],
+                ["Exact proof", compact(vm.opportunitySummary.exactProof)],
+                ["Gen-ready", compact(vm.opportunitySummary.generationReady)],
                 ["Primary / Control / Research", `${compact(vm.opportunitySummary.primary)} / ${compact(vm.opportunitySummary.controlOnly)} / ${compact(vm.opportunitySummary.researchOnly)}`],
               ].map(([label, value]) => (
                 <div className="rb-summary-card" key={label}>
