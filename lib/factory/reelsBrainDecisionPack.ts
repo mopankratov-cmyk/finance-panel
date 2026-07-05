@@ -64,6 +64,14 @@ export type ReelsBrainDecisionTrust = {
   };
 };
 
+type LegacyDecisionQualityGate = {
+  status: "needs_validation" | "not_ready";
+  source: "legacy_decision_pack";
+  allowed_generation_modes: Array<"control_ready" | "brief_only" | "research_only">;
+  blocked_reasons: string[];
+  exact_segment_ready: false;
+};
+
 function num(value: unknown): number {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
@@ -236,6 +244,28 @@ function antiPatternWarnings(antiPatterns: ReelsBrainDecisionPackAntiPattern[]) 
   }));
 }
 
+function legacyGuard(input: {
+  trustDecision: ReelsBrainDecisionTrust;
+  platform: string;
+  niche: string;
+}): LegacyDecisionQualityGate {
+  const recommendedMode = input.trustDecision.recommended_mode;
+  return {
+    status: recommendedMode === "research_only" ? "not_ready" : "needs_validation",
+    source: "legacy_decision_pack",
+    allowed_generation_modes: recommendedMode === "research_only"
+      ? ["research_only", "brief_only"]
+      : ["control_ready", "brief_only"],
+    blocked_reasons: [
+      `Legacy decision-pack не доказывает exact segment ${input.niche} × ${input.platform || "mixed"} и не должен идти в primary lane.`,
+      ...(recommendedMode === "research_only"
+        ? ["Даже trust-layer пока не разрешает blind запуск; сначала нужен research/control цикл."]
+        : ["Нужен control-ready тест и exact-segment proof перед production rollout."]),
+    ],
+    exact_segment_ready: false,
+  };
+}
+
 export function buildDecisionBrief(
   pattern: ReelsBrainDecisionPackPattern,
   input: {
@@ -326,6 +356,11 @@ export function buildDecisionBrief(
         ? `На платформе ${input.platform} этот паттерн стоит тестировать как ${input.rank === 1 ? "primary" : "control"}-вариант.`
         : "Этот паттерн стоит использовать как control-вариант для следующего креативного теста.",
     ],
+    quality_gate: legacyGuard({
+      trustDecision: input.trustDecision,
+      platform: input.platform || "mixed",
+      niche: input.niche,
+    }),
   };
 }
 
@@ -367,6 +402,11 @@ export function buildReelsBrainDecisionPack(input: {
       trust_scope: input.trustDecision.selected_scope,
       recommended_mode: input.trustDecision.recommended_mode,
       allow_primary_use: input.trustDecision.allow_primary_use,
+      quality_gate: legacyGuard({
+        trustDecision: input.trustDecision,
+        platform: input.platform || "mixed",
+        niche: input.niche,
+      }),
       rollout_order: options.map((item) => ({
         rank: item.rank,
         pattern_id: item.pattern_id,

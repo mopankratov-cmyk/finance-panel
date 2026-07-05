@@ -60,6 +60,10 @@ function testDecisionPackBuildsPrimaryAndAlternatives() {
   assert.equal(pack.alternatives[0]?.pattern_id, "p-alt");
   assert.equal(pack.decision_pack.options_total, 2);
   assert.equal(pack.decision_pack.recommended_mode, "primary");
+  assert.equal(pack.primary?.quality_gate?.status, "needs_validation");
+  assert.equal(pack.primary?.quality_gate?.exact_segment_ready, false);
+  assert.deepEqual(pack.primary?.quality_gate?.allowed_generation_modes, ["control_ready", "brief_only"]);
+  assert.equal(pack.decision_pack.quality_gate?.source, "legacy_decision_pack");
   assert.ok(pack.primary?.creative_brief.hook.includes("Смотри"));
 }
 
