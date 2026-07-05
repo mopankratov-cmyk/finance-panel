@@ -125,6 +125,8 @@ test("buildReelsBrainCronExecutionIntent creates dedicated ship-ready analyze mo
       task: "analyze_backlog",
       params: {
         focus: "ship_ready_bundle_completion",
+        field_focus: "visual_recipe",
+        family_focus: "visual",
       },
       priority_segment: {
         label: "ru_clothing × instagram",
@@ -140,6 +142,8 @@ test("buildReelsBrainCronExecutionIntent creates dedicated ship-ready analyze mo
   assert.equal(result.analyze_overrides?.build_patterns, true);
   assert.equal(result.analyze_overrides?.max_lanes, 1);
   assert.equal(result.analyze_overrides?.limit, 10);
+  assert.equal(result.field_focus, "visual_recipe");
+  assert.equal(result.family_focus, "visual");
 });
 
 test("buildReelsBrainCronExecutionIntent forces build_patterns when corpus target is already reached", () => {

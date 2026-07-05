@@ -47,6 +47,8 @@ export type ReelsBrainCronExecutionIntent = {
   preferred_provider?: string | null;
   source_discovery_mode?: string | null;
   source_provider_reason?: string | null;
+  field_focus?: string | null;
+  family_focus?: string | null;
   bulk_overrides?: Partial<BulkProfile> & { hours?: number };
   analyze_overrides?: Partial<AnalyzeProfile>;
 };
@@ -87,6 +89,8 @@ export function buildReelsBrainCronExecutionIntent(input: {
   const preferredProvider = text(params.preferred_provider) || null;
   const sourceDiscoveryMode = text(params.source_discovery_mode) || null;
   const sourceProviderReason = text(params.source_provider_reason) || null;
+  const fieldFocus = text(params.field_focus) || null;
+  const familyFocus = text(params.family_focus) || null;
   const learningEconomics = safeLearningEconomics(nextTick.learning_economics);
   const expensivePatternGain = learningEconomics.weak_pattern_gain
     || learningEconomics.pattern_gain_cost_trend === "more_expensive";
@@ -112,6 +116,8 @@ export function buildReelsBrainCronExecutionIntent(input: {
         preferred_provider: preferredProvider,
         source_discovery_mode: sourceDiscoveryMode,
         source_provider_reason: sourceProviderReason,
+        field_focus: fieldFocus,
+        family_focus: familyFocus,
       };
     }
 
@@ -132,6 +138,8 @@ export function buildReelsBrainCronExecutionIntent(input: {
         preferred_provider: preferredProvider,
         source_discovery_mode: sourceDiscoveryMode,
         source_provider_reason: sourceProviderReason,
+        field_focus: fieldFocus,
+        family_focus: familyFocus,
       };
     }
 
@@ -162,6 +170,8 @@ export function buildReelsBrainCronExecutionIntent(input: {
       preferred_provider: preferredProvider,
       source_discovery_mode: sourceDiscoveryMode,
       source_provider_reason: sourceProviderReason,
+      field_focus: fieldFocus,
+      family_focus: familyFocus,
     };
   }
 
@@ -191,6 +201,8 @@ export function buildReelsBrainCronExecutionIntent(input: {
       preferred_provider: preferredProvider,
       source_discovery_mode: sourceDiscoveryMode,
       source_provider_reason: sourceProviderReason,
+      field_focus: fieldFocus,
+      family_focus: familyFocus,
     };
   }
 
@@ -217,6 +229,8 @@ export function buildReelsBrainCronExecutionIntent(input: {
         preferred_provider: preferredProvider,
         source_discovery_mode: sourceDiscoveryMode,
         source_provider_reason: sourceProviderReason,
+        field_focus: fieldFocus,
+        family_focus: familyFocus,
       };
     }
 
@@ -242,6 +256,8 @@ export function buildReelsBrainCronExecutionIntent(input: {
         preferred_provider: preferredProvider,
         source_discovery_mode: sourceDiscoveryMode,
         source_provider_reason: sourceProviderReason,
+        field_focus: fieldFocus,
+        family_focus: familyFocus,
       };
     }
 
@@ -266,6 +282,8 @@ export function buildReelsBrainCronExecutionIntent(input: {
         preferred_provider: preferredProvider,
         source_discovery_mode: sourceDiscoveryMode,
         source_provider_reason: sourceProviderReason,
+        field_focus: fieldFocus,
+        family_focus: familyFocus,
       };
     }
   }
@@ -295,6 +313,8 @@ export function buildReelsBrainCronExecutionIntent(input: {
       preferred_provider: preferredProvider,
       source_discovery_mode: sourceDiscoveryMode,
       source_provider_reason: sourceProviderReason,
+      field_focus: fieldFocus,
+      family_focus: familyFocus,
     };
   }
 
@@ -306,8 +326,10 @@ export function buildReelsBrainCronExecutionIntent(input: {
     explanation: focusSegment
       ? `Generic bulk around ${focusSegment}: corpus growth without narrow execution overrides.`
       : "Generic bulk: corpus growth without narrow execution overrides.",
-    preferred_provider: preferredProvider,
-    source_discovery_mode: sourceDiscoveryMode,
-    source_provider_reason: sourceProviderReason,
-  };
+      preferred_provider: preferredProvider,
+      source_discovery_mode: sourceDiscoveryMode,
+      source_provider_reason: sourceProviderReason,
+      field_focus: fieldFocus,
+      family_focus: familyFocus,
+    };
 }

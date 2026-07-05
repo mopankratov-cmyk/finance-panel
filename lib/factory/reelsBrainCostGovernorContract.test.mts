@@ -148,7 +148,7 @@ ok(/focus_platform/.test(patternBuild) && /compaction_context/.test(patternBuild
 ok(/source_discovery_mode/.test(patternBuild) && /exact_proof_biased/.test(patternBuild) && /focusPlatformFromIntent/.test(patternBuild), "patterns/build derives exact-proof-biased compaction context from execution intent");
 ok(/function loadPipelineProgress/.test(cron) && /pipeline_preflight/.test(cron) && /reels-brain-audio-backfill/.test(cron), "cron runs pipeline preflight for media and audio backlog");
 ok(/media_ticks/.test(cron) && /audio_ticks/.test(cron) && /platform\",\s*String\(target\.platform/.test(cron), "cron preflight fans out media and audio backlog across top platforms");
-ok(/focus_niche/.test(cron) && /focus_platform/.test(cron) && /source_discovery_mode/.test(cron) && /prioritizeFocusTargets/.test(cron), "cron preflight forwards focused exact-proof segment context into readiness backfill");
+ok(/focus_niche/.test(cron) && /focus_platform/.test(cron) && /source_discovery_mode/.test(cron) && /field_focus/.test(cron) && /family_focus/.test(cron) && /prioritizeFocusTargets/.test(cron), "cron preflight forwards focused exact-proof and brief-gap context into readiness backfill");
 ok(/use_autopilot_guard/.test(scheduler), "scheduler marks paid collection as guarded");
 
 ok(/costGovernor/.test(cockpit) && /autopilotActions/.test(cockpit), "cockpit reads cost governor and autopilot actions");
@@ -186,6 +186,7 @@ ok(/generationPolicy/.test(learningPlan) && /generation_policy/.test(learningPla
 ok(/feedback_coverage/.test(learningPlan) && /improve_feedback_coverage/.test(learningPlanBuilder) && /no_feedback_queue/.test(learningPlanBuilder), "learning-plan can pivot from corpus growth to strong-pattern feedback coverage");
 ok(/brief_bundle_completion/.test(learningPlanBuilder) && /briefCoverageAudit/.test(learningPlanBuilder) && /field_focus/.test(learningPlanBuilder) && /family_focus/.test(learningPlanBuilder), "learning-plan can pivot from corpus growth to closing usable brief bundle gaps with field-focused guidance");
 ok(/ship_ready_bundle_completion/.test(learningPlanBuilder) && /shipReadyQueue/.test(learningPlanBuilder) && /field_focus/.test(learningPlanBuilder), "learning-plan can pivot from corpus growth to ship-ready exact brief completion with field-focused guidance");
+ok(/field_focus/.test(cronIntent) && /family_focus/.test(cronIntent), "cron execution intent preserves field and family focus from the learning plan");
 ok(/\/api\/factory\/reels-brain\/readiness-audit\?verdict=/.test(cockpit), "cockpit exposes standalone readiness-audit endpoint per segment");
 ok(/\/api\/factory\/reels-brain\/decision-snapshot\?lane=/.test(cockpit), "cockpit exposes unified decision-snapshot endpoint per segment");
 ok(/\/api\/factory\/reels-brain\/segment-solutions\?lane=/.test(cockpit), "cockpit exposes operator-ready segment-solutions endpoint per segment");

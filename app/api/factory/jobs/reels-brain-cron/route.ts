@@ -168,7 +168,12 @@ async function runPipelinePreflight(req: NextRequest, input: {
   niches: string;
   progress: { ok: boolean; data: Record<string, unknown> | null };
   profile: { media_limit: number; media_scan: number; audio_limit: number; audio_scan: number; deep_only: boolean };
-  executionIntent: { focus_segment?: string | null; source_discovery_mode?: string | null } | null;
+  executionIntent: {
+    focus_segment?: string | null;
+    source_discovery_mode?: string | null;
+    field_focus?: string | null;
+    family_focus?: string | null;
+  } | null;
 }) {
   const totals = rec(input.progress.data?.totals);
   const platforms = Array.isArray(input.progress.data?.platforms) ? input.progress.data?.platforms.map((row) => rec(row)) : [];
@@ -222,6 +227,12 @@ async function runPipelinePreflight(req: NextRequest, input: {
       if (input.executionIntent?.source_discovery_mode) {
         mediaUrl.searchParams.set("source_discovery_mode", String(input.executionIntent.source_discovery_mode));
       }
+      if (input.executionIntent?.field_focus) {
+        mediaUrl.searchParams.set("field_focus", String(input.executionIntent.field_focus));
+      }
+      if (input.executionIntent?.family_focus) {
+        mediaUrl.searchParams.set("family_focus", String(input.executionIntent.family_focus));
+      }
       const response = await internalFetch(mediaUrl);
       const body = await response.json().catch(() => ({}));
       mediaTicks.push({
@@ -257,9 +268,22 @@ async function runPipelinePreflight(req: NextRequest, input: {
       if (input.executionIntent?.source_discovery_mode) {
         audioUrl.searchParams.set("source_discovery_mode", String(input.executionIntent.source_discovery_mode));
       }
+      if (input.executionIntent?.field_focus) {
+        audioUrl.searchParams.set("field_focus", String(input.executionIntent.field_focus));
+      }
+      if (input.executionIntent?.family_focus) {
+        audioUrl.searchParams.set("family_focus", String(input.executionIntent.family_focus));
+      }
+      const familyFocus = String(input.executionIntent?.family_focus || "").trim().toLowerCase();
+      const fieldFocus = String(input.executionIntent?.field_focus || "").trim().toLowerCase();
+      const fieldFocusedDeepAudio = ["audio", "retention"].includes(familyFocus)
+        || fieldFocus.includes("audio")
+        || fieldFocus.includes("retention")
+        || fieldFocus.includes("transcript")
+        || fieldFocus.includes("speech");
       const focusedDeepOnly = sameTargetFocus(target, focus)
         && ["close_exact_proof", "pin_winner_provider"].includes(String(input.executionIntent?.source_discovery_mode || ""));
-      audioUrl.searchParams.set("deep_only", input.profile.deep_only || focusedDeepOnly ? "1" : "0");
+      audioUrl.searchParams.set("deep_only", input.profile.deep_only || focusedDeepOnly || fieldFocusedDeepAudio ? "1" : "0");
       const response = await internalFetch(audioUrl);
       const body = await response.json().catch(() => ({}));
       audioTicks.push({

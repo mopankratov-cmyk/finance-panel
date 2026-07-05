@@ -145,6 +145,42 @@ function hasRecoverablePageFallback(state: ReturnType<typeof seedState>, platfor
   return state.mediaLocators.some((item) => isPlayableMediaLocator(item, platform) && !isDirectVideoLocator(item));
 }
 
+function audioFocusNeedsTranscript(fieldFocus: string, familyFocus: string) {
+  return ["audio", "retention", "hook", "structure"].includes(familyFocus)
+    || fieldFocus.includes("audio")
+    || fieldFocus.includes("retention")
+    || fieldFocus.includes("transcript")
+    || fieldFocus.includes("speech")
+    || fieldFocus.includes("hook")
+    || fieldFocus.includes("structure");
+}
+
+function audioFocusNeedsExtraction(fieldFocus: string, familyFocus: string) {
+  return ["audio", "retention"].includes(familyFocus)
+    || fieldFocus.includes("audio")
+    || fieldFocus.includes("retention")
+    || fieldFocus.includes("speech");
+}
+
+function audioFocusBonus(input: {
+  fieldFocus: string;
+  familyFocus: string;
+  state: ReturnType<typeof seedState>;
+  mediaUrl: string;
+}) {
+  const wantsTranscript = audioFocusNeedsTranscript(input.fieldFocus, input.familyFocus);
+  const wantsExtraction = audioFocusNeedsExtraction(input.fieldFocus, input.familyFocus);
+  const hasDirectMedia = Boolean(input.mediaUrl && isDirectVideoLocator(input.mediaUrl));
+  let boost = 0;
+  if (wantsExtraction && input.state.audioStatus !== "audio_extracted") {
+    boost += hasDirectMedia ? 18 : 10;
+  }
+  if (wantsTranscript && input.state.transcriptStatus !== "transcript_ready") {
+    boost += input.state.audioStatus === "audio_extracted" ? 20 : 12;
+  }
+  return boost;
+}
+
 export async function GET(req: NextRequest) {
   try {
     if (!(await isAuthorizedReelsBrainJobRequest(req))) {
@@ -166,6 +202,8 @@ export async function GET(req: NextRequest) {
     const focusNiche = String(req.nextUrl.searchParams.get("focus_niche") || "").trim().toLowerCase();
     const focusPlatform = String(req.nextUrl.searchParams.get("focus_platform") || "").trim().toLowerCase();
     const sourceDiscoveryMode = String(req.nextUrl.searchParams.get("source_discovery_mode") || "").trim().toLowerCase();
+    const fieldFocus = String(req.nextUrl.searchParams.get("field_focus") || "").trim().toLowerCase();
+    const familyFocus = String(req.nextUrl.searchParams.get("family_focus") || "").trim().toLowerCase();
     const { shardIndex, shardCount } = parseShardConfig({
       shardIndex: req.nextUrl.searchParams.get("shard_index"),
       shardCount: req.nextUrl.searchParams.get("shard_count"),
@@ -227,12 +265,13 @@ export async function GET(req: NextRequest) {
               ? 24
               : 18
           : 0;
+        const fieldBoost = focusMatch ? audioFocusBonus({ fieldFocus, familyFocus, state, mediaUrl }) : 0;
         return {
           row,
           state,
           mediaUrl,
           focusMatch,
-          priority: Math.round((baseScore + focusBoost) * 10) / 10,
+          priority: Math.round((baseScore + focusBoost + fieldBoost) * 10) / 10,
         };
       })
       .sort((a, b) =>
@@ -248,7 +287,8 @@ export async function GET(req: NextRequest) {
       : [];
     const deepRanked = ranked.filter((entry) => Number(entry.row.virality_score || 0) >= 45);
     const deepFocusedRanked = deepRanked.filter((entry) => entry.focusMatch);
-    const selectedRanked = deepOnly
+    const fieldFocusedDeepOnly = audioFocusNeedsExtraction(fieldFocus, familyFocus) || audioFocusNeedsTranscript(fieldFocus, familyFocus);
+    const selectedRanked = deepOnly || fieldFocusedDeepOnly
       ? deepFocusedRanked.length
         ? deepFocusedRanked
         : deepRanked.length
@@ -362,10 +402,13 @@ export async function GET(req: NextRequest) {
       shard_count: shardCount,
       priority: priorityMode,
       deep_only: deepOnly,
+      field_focused_deep_only: fieldFocusedDeepOnly,
       deep_only_relaxed: deepOnlyRelaxed,
       focus_niche: focusNiche || null,
       focus_platform: focusPlatform || null,
       source_discovery_mode: sourceDiscoveryMode || null,
+      field_focus: fieldFocus || null,
+      family_focus: familyFocus || null,
       scanned: queryScan,
       attempted: rows.length,
       extracted,

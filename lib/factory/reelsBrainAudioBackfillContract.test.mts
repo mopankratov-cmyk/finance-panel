@@ -42,6 +42,7 @@ ok(/scoreAudioCandidate/.test(route) && /priority/.test(route), "audio backfill 
 ok(/deepOnly/.test(route) && /virality_score/.test(route), "audio backfill route supports deep-only gating for expensive analysis");
 ok(/focus_niche/.test(route) && /focus_platform/.test(route) && /source_discovery_mode/.test(route), "audio backfill route accepts focused segment context from the learning loop");
 ok(/focusMatch/.test(route) && /close_exact_proof/.test(route) && /deepFocusedRanked/.test(route), "audio backfill route prioritizes exact-proof focused rows before generic backlog");
+ok(/field_focus/.test(route) && /family_focus/.test(route) && /audioFocusBonus/.test(route) && /field_focused_deep_only/.test(route), "audio backfill route accepts brief-gap focus and deepens audio/transcript extraction when the brief gap requires it");
 
 if (failed) process.exit(1);
 console.log(`reelsBrainAudioBackfillContract: ${passed} passed, ${failed} failed`);

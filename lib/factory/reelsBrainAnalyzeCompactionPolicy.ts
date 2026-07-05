@@ -111,6 +111,8 @@ export function parseAnalyzeExecutionIntent(value: unknown): ReelsBrainCronExecu
     focus_segment: text(row.focus_segment) || null,
     policy_mode: policyMode === "primary" || policyMode === "control_only" ? policyMode : "research_only",
     explanation: text(row.explanation),
+    field_focus: text(row.field_focus) || null,
+    family_focus: text(row.family_focus) || null,
     bulk_overrides: row.bulk_overrides && typeof row.bulk_overrides === "object" && !Array.isArray(row.bulk_overrides)
       ? row.bulk_overrides as NonNullable<ReelsBrainCronExecutionIntent["bulk_overrides"]>
       : undefined,

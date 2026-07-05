@@ -26,6 +26,7 @@ ok(/const syntheticFallback = syntheticDirectInput\(query, platform\);/.test(rou
 ok(/if \(!matched\.length && syntheticFallback\.length\)/.test(route), "media backfill route keeps direct page-url rows alive even without provider media");
 ok(/focus_niche/.test(route) && /focus_platform/.test(route) && /source_discovery_mode/.test(route), "media backfill route accepts focused segment context from the learning loop");
 ok(/focusMatch/.test(route) && /close_exact_proof/.test(route), "media backfill route prioritizes exact-proof focused rows before generic backlog");
+ok(/field_focus/.test(route) && /family_focus/.test(route) && /mediaFocusBonus/.test(route), "media backfill route accepts brief-gap focus and boosts visual/timeline evidence candidates");
 
 if (failed) process.exit(1);
 console.log(`reelsBrainMediaBackfillContract: ${passed} passed, ${failed} failed`);

@@ -29,6 +29,10 @@ function splitList(value: string): string[] {
   return value.split(",").map((row) => row.trim()).filter(Boolean);
 }
 
+function text(value: unknown, fallback = "") {
+  return typeof value === "string" ? value.trim() || fallback : fallback;
+}
+
 function isImageLikeLocator(value: string): boolean {
   const target = value.trim().toLowerCase();
   if (!target) return false;
@@ -102,6 +106,39 @@ function mediaLocator(video: Record<string, unknown> | null | undefined): string
     if (typeof item === "string" && isPlayableMediaLocator(item)) return item.trim();
   }
   return "";
+}
+
+function mediaLocatorCandidates(row: CorpusRow): string[] {
+  const analyzedFull = rec(row.analyzed_full);
+  const reelsSeed = rec(analyzedFull.reels_seed);
+  return Array.isArray(reelsSeed.media_locator_candidates)
+    ? reelsSeed.media_locator_candidates.filter((item) => typeof item === "string" && item.trim()) as string[]
+    : [];
+}
+
+function mediaFocusNeedsDirectEvidence(fieldFocus: string, familyFocus: string) {
+  return ["visual", "timeline", "hook", "mechanic", "guardrails", "positioning"].includes(familyFocus)
+    || fieldFocus.includes("visual")
+    || fieldFocus.includes("timeline")
+    || fieldFocus.includes("second-by-second")
+    || fieldFocus.includes("hook")
+    || fieldFocus.includes("copy")
+    || fieldFocus.includes("guardrail");
+}
+
+function mediaFocusBonus(input: {
+  fieldFocus: string;
+  familyFocus: string;
+  row: CorpusRow;
+}) {
+  if (!mediaFocusNeedsDirectEvidence(input.fieldFocus, input.familyFocus)) return 0;
+  const candidates = mediaLocatorCandidates(input.row);
+  const hasDirect = candidates.some((item) => isDirectVideoLocator(item));
+  const hasPlayable = candidates.some((item) => isPlayableMediaLocator(item));
+  if (hasDirect) return 18;
+  if (hasPlayable) return 10;
+  if (/instagram\.com\/(reel|reels|tv|p)\//i.test(String(input.row.url || ""))) return 6;
+  return 0;
 }
 
 function numberParam(req: NextRequest, name: string, fallback: number, min: number, max: number): number {
@@ -200,6 +237,8 @@ export async function GET(req: NextRequest) {
     const focusNiche = String(req.nextUrl.searchParams.get("focus_niche") || "").trim().toLowerCase();
     const focusPlatform = String(req.nextUrl.searchParams.get("focus_platform") || "").trim().toLowerCase();
     const sourceDiscoveryMode = String(req.nextUrl.searchParams.get("source_discovery_mode") || "").trim().toLowerCase();
+    const fieldFocus = String(req.nextUrl.searchParams.get("field_focus") || "").trim().toLowerCase();
+    const familyFocus = String(req.nextUrl.searchParams.get("family_focus") || "").trim().toLowerCase();
     const { shardIndex, shardCount } = parseShardConfig({
       shardIndex: req.nextUrl.searchParams.get("shard_index"),
       shardCount: req.nextUrl.searchParams.get("shard_count"),
@@ -236,10 +275,11 @@ export async function GET(req: NextRequest) {
               ? 22
               : 16
           : 0;
+        const fieldBoost = focusMatch ? mediaFocusBonus({ fieldFocus, familyFocus, row }) : 0;
         return {
           row,
           focusMatch,
-          priority: Math.round((baseScore + focusBoost) * 10) / 10,
+          priority: Math.round((baseScore + focusBoost + fieldBoost) * 10) / 10,
         };
       })
       .sort((a, b) =>
@@ -368,6 +408,8 @@ export async function GET(req: NextRequest) {
       focus_niche: focusNiche || null,
       focus_platform: focusPlatform || null,
       source_discovery_mode: sourceDiscoveryMode || null,
+      field_focus: fieldFocus || null,
+      family_focus: familyFocus || null,
       scanned: queryScan,
       attempted: corpusRows.length,
       rows_with_media: withMedia,
