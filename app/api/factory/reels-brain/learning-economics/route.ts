@@ -23,6 +23,7 @@ import { buildReelsBrainSegmentStabilityAudit } from "@/lib/factory/reelsBrainSe
 import { buildReelsBrainPortfolioReadiness } from "@/lib/factory/reelsBrainPortfolioReadiness";
 import { REELS_BRAIN_CORPUS_TARGET_TOTAL } from "@/lib/factory/reelsBrainCorpusTargets";
 import { buildReelsBrainSegmentGapPlanner } from "@/lib/factory/reelsBrainSegmentGapPlanner";
+import { loadReelsBrainFeedbackRows } from "@/lib/factory/reelsBrainFeedbackRows";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 20;
@@ -191,16 +192,7 @@ type TaxonomyBrain = {
 };
 
 async function loadFeedbackRows(db: NonNullable<ReturnType<typeof getSupabaseAdmin>>): Promise<{ rows: ReelsBrainMetricRow[]; warning: string | null }> {
-  try {
-    const { data, error } = await db
-      .from("post_metrics")
-      .select("recipe_id,platform,views,watch_rate,hook_rate,hold_rate,completion_rate,ctr_card,saves,marketplace_orders,revenue,posted_at,pulled_at")
-      .limit(300);
-    if (error) return { rows: [], warning: `post_metrics: ${error.message}` };
-    return { rows: ((data || []) as ReelsBrainMetricRow[]), warning: null };
-  } catch (error) {
-    return { rows: [], warning: `post_metrics exception: ${String((error as Error)?.message || error).slice(0, 140)}` };
-  }
+  return loadReelsBrainFeedbackRows(db as any, 300) as Promise<{ rows: ReelsBrainMetricRow[]; warning: string | null }>;
 }
 
 function splitList(value: unknown): string[] {
@@ -593,6 +585,7 @@ function buildOutcomeMemoryBrain(
     mapping_ready: {
       recipe_id: true,
       platform: true,
+      segment: Boolean(feedbackLoop.segment_outcome_memory?.ready),
       top_funnel: true,
       retention: true,
       commerce: true,
@@ -602,8 +595,9 @@ function buildOutcomeMemoryBrain(
       medium_confidence_patterns: mediumPatterns,
       winner_memory_write: highConfidencePatterns + mediumPatterns > 0 ? "ready" : "waiting_patterns",
     },
+    segment_memory: feedbackLoop.segment_outcome_memory || null,
     next_step: feedbackLoop.total_posts
-      ? "Начать писать market outcomes обратно в pattern/anti-pattern brain после каждого ролика."
+      ? "Начать писать market outcomes обратно в segment trust + pattern/anti-pattern brain после каждого ролика."
       : "Схема готова: как только пойдут публикации, писать outcomes через post-metrics и reels-brain/feedback.",
   };
 }

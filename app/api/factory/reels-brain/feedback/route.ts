@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { internalFetch } from "@/lib/internalFetch";
 import { buildReelsBrainFeedbackLoop, type ReelsBrainMetricRow } from "@/lib/factory/reelsBrainOperatingSystem";
+import { loadReelsBrainFeedbackRows } from "@/lib/factory/reelsBrainFeedbackRows";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
@@ -9,16 +10,7 @@ export const maxDuration = 30;
 async function loadRows(): Promise<{ rows: ReelsBrainMetricRow[]; warning: string | null }> {
   const db = getSupabaseAdmin();
   if (!db) return { rows: [], warning: "Supabase не настроен" };
-  try {
-    const { data, error } = await db
-      .from("post_metrics")
-      .select("recipe_id,platform,views,watch_rate,hook_rate,hold_rate,completion_rate,ctr_card,saves,marketplace_orders,revenue,posted_at,pulled_at")
-      .limit(300);
-    if (error) return { rows: [], warning: error.message };
-    return { rows: ((data || []) as ReelsBrainMetricRow[]), warning: null };
-  } catch (error) {
-    return { rows: [], warning: String((error as Error)?.message || error).slice(0, 160) };
-  }
+  return loadReelsBrainFeedbackRows(db as any, 300) as Promise<{ rows: ReelsBrainMetricRow[]; warning: string | null }>;
 }
 
 export async function GET() {

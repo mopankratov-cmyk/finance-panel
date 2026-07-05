@@ -15,6 +15,10 @@ export type ReelsBrainMetricRow = {
   publication_id?: string | null;
   external_post_id?: string | null;
   source?: string | null;
+  niche?: string | null;
+  article?: string | null;
+  target_platform?: string | null;
+  segment_label?: string | null;
 };
 
 type PatternLike = {
@@ -75,10 +79,31 @@ function audienceFromText(value: string): string {
   return "широкая аудитория";
 }
 
+function segmentStatus(input: {
+  posts: number;
+  winners: number;
+  losers: number;
+  orders: number;
+  revenue: number;
+  avgCompletion: number | null;
+  avgCtr: number | null;
+}) {
+  if (input.posts === 0) return "no_feedback" as const;
+  const score = (input.winners * 18)
+    + Math.min(20, (input.avgCompletion || 0) * 40)
+    + Math.min(16, (input.avgCtr || 0) * 400)
+    + Math.min(18, input.orders * 4)
+    + Math.min(12, input.revenue > 0 ? Math.log10(Math.max(1, input.revenue + 1)) * 8 : 0)
+    - (input.losers * 12);
+  if (score >= 65) return "proven" as const;
+  if (score >= 34) return "promising" as const;
+  return "weak" as const;
+}
+
 export function buildReelsBrainFeedbackLoop(metrics: ReelsBrainMetricRow[]) {
   const rows = metrics.map((row) => ({
     ...row,
-    platform: normalizePlatform(row.platform),
+    platform: normalizePlatform(row.target_platform || row.platform),
     views: num(row.views),
     watch_rate: num(row.watch_rate),
     hook_rate: num(row.hook_rate),
@@ -88,6 +113,8 @@ export function buildReelsBrainFeedbackLoop(metrics: ReelsBrainMetricRow[]) {
     saves: num(row.saves),
     marketplace_orders: num(row.marketplace_orders),
     revenue: num(row.revenue),
+    niche: typeof row.niche === "string" ? row.niche.trim() : "",
+    segment_label: typeof row.segment_label === "string" ? row.segment_label.trim() : "",
   }));
   const winners = rows.filter((row) =>
     row.views >= 10000
@@ -113,6 +140,96 @@ export function buildReelsBrainFeedbackLoop(metrics: ReelsBrainMetricRow[]) {
   }, new Map<string, { platform: string; posts: number; views: number; orders: number; revenue: number }>()).values())
     .sort((a, b) => b.views - a.views);
 
+  const bySegment = Array.from(rows.reduce((map, row) => {
+    const segmentLabel = row.segment_label || (row.niche && row.platform !== "unknown" ? `${row.niche} × ${row.platform}` : "");
+    if (!segmentLabel) return map;
+    const current = map.get(segmentLabel) || {
+      segment: segmentLabel,
+      niche: row.niche || "",
+      platform: row.platform,
+      posts: 0,
+      views: 0,
+      winners: 0,
+      losers: 0,
+      orders: 0,
+      revenue: 0,
+      completion: [] as number[],
+      ctr: [] as number[],
+    };
+    current.posts += 1;
+    current.views += row.views;
+    current.orders += row.marketplace_orders;
+    current.revenue += row.revenue;
+    if (winners.includes(row)) current.winners += 1;
+    if (losers.includes(row)) current.losers += 1;
+    if (row.completion_rate > 0) current.completion.push(row.completion_rate);
+    if (row.ctr_card > 0) current.ctr.push(row.ctr_card);
+    map.set(segmentLabel, current);
+    return map;
+  }, new Map<string, {
+    segment: string;
+    niche: string;
+    platform: string;
+    posts: number;
+    views: number;
+    winners: number;
+    losers: number;
+    orders: number;
+    revenue: number;
+    completion: number[];
+    ctr: number[];
+  }>()).values()).map((row) => {
+    const avgCompletion = avg(row.completion);
+    const avgCtr = avg(row.ctr);
+    const status = segmentStatus({
+      posts: row.posts,
+      winners: row.winners,
+      losers: row.losers,
+      orders: row.orders,
+      revenue: row.revenue,
+      avgCompletion,
+      avgCtr,
+    });
+    return {
+      segment: row.segment,
+      niche: row.niche,
+      platform: row.platform,
+      posts: row.posts,
+      views: row.views,
+      winners: row.winners,
+      losers: row.losers,
+      orders: row.orders,
+      revenue: Math.round(row.revenue * 100) / 100,
+      avg_completion_rate: avgCompletion,
+      avg_ctr: avgCtr,
+      status,
+      trust_action: status === "proven"
+        ? "promote_segment_trust"
+        : status === "promising"
+          ? "keep_validating_segment"
+          : status === "weak"
+            ? "review_or_penalize_segment"
+            : "wait_for_feedback",
+    };
+  }).sort((a, b) =>
+    b.winners - a.winners
+    || b.orders - a.orders
+    || b.views - a.views
+    || a.segment.localeCompare(b.segment),
+  );
+
+  const trustUpdateQueue = bySegment
+    .filter((row) => row.status !== "no_feedback")
+    .slice(0, 8)
+    .map((row) => ({
+      segment: row.segment,
+      niche: row.niche,
+      platform: row.platform,
+      status: row.status,
+      trust_action: row.trust_action,
+      evidence: `${row.winners} winners / ${row.posts} posts · orders ${row.orders} · revenue ${row.revenue}`,
+    }));
+
   return {
     status: rows.length ? "live" : "ready_for_metrics",
     total_posts: rows.length,
@@ -124,6 +241,14 @@ export function buildReelsBrainFeedbackLoop(metrics: ReelsBrainMetricRow[]) {
     total_orders: rows.reduce((sum, row) => sum + row.marketplace_orders, 0),
     total_revenue: Math.round(rows.reduce((sum, row) => sum + row.revenue, 0) * 100) / 100,
     by_platform: byPlatform,
+    by_segment: bySegment,
+    segment_outcome_memory: {
+      ready: bySegment.length > 0,
+      strongest_segments: bySegment.filter((row) => row.status === "proven").slice(0, 5),
+      promising_segments: bySegment.filter((row) => row.status === "promising").slice(0, 5),
+      weak_segments: bySegment.filter((row) => row.status === "weak").slice(0, 5),
+      trust_update_queue: trustUpdateQueue,
+    },
     outcome_schema: {
       schema_ready: true,
       required_fields: ["recipe_id", "platform", "views", "posted_at"],
@@ -132,7 +257,7 @@ export function buildReelsBrainFeedbackLoop(metrics: ReelsBrainMetricRow[]) {
       ingestion_endpoints: ["/api/factory/post-metrics", "/api/factory/reels-brain/feedback"],
     },
     next_step: rows.length
-      ? "Писать winner/loser outcomes в Pattern Brain и Anti-Pattern Brain после каждого опубликованного ролика."
+      ? "Писать winner/loser outcomes обратно в segment trust и Pattern Brain после каждого опубликованного ролика."
       : "Начать отправлять метрики через /api/factory/reels-brain/feedback или /api/factory/post-metrics.",
   };
 }
