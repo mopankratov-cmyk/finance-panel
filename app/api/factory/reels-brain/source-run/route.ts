@@ -9,6 +9,7 @@ import {
   type TrendProvider,
 } from "@/lib/factory/trendSources";
 import { makeViralVideoRows, type ReelsBrainInput } from "@/lib/factory/reelsBrain";
+import { buildDiscoveryPlan } from "@/lib/factory/reelsBrainDiscovery";
 import {
   recoverableSourceQueries,
   nextRecommendedSourceQueries,
@@ -282,6 +283,13 @@ export async function POST(req: NextRequest) {
     if (memoryUpdated) {
       playbook = nextPlaybook;
     }
+    const discoveryPlan = buildDiscoveryPlan(playbook || { niche }, {
+      niche,
+      platform: targetPlatform,
+      max_items: 4,
+      source_limit: limit,
+      provider_hint: providerHint ? providerHint as ReelsBrainProvider : null,
+    });
 
     return NextResponse.json({
       ok: true,
@@ -296,6 +304,9 @@ export async function POST(req: NextRequest) {
       suppressed_queries: suppressedQueries,
       recovery_queries: recoveryQueries,
       source_provider_history: sourceProviderHistory(playbook, targetPlatform).slice(0, 8),
+      segment_outcome_status: discoveryPlan.outcome_status,
+      segment_outcome_confidence: discoveryPlan.outcome_confidence,
+      discovery_budget_split: discoveryPlan.budget_split,
       target_platform: targetPlatform,
       niche,
       query,

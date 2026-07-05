@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { internalFetch } from "@/lib/internalFetch";
 import { normalizeTargetPlatform } from "@/lib/factory/reelsBrainPlaybook";
-import { assessSourceRunHealth, chooseRetryProviderPlan } from "@/lib/factory/reelsBrainSourceLearning";
+import { assessSourceRunHealth, chooseRetryProviderPlan, chooseRetryQueryPivot } from "@/lib/factory/reelsBrainSourceLearning";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -69,12 +69,19 @@ export async function POST(req: NextRequest) {
         );
         if (health.should_relearn) {
           log.push(`relearn ${query}: ${health.reasons.join(" | ")}`);
+          const retryQueryPlan = chooseRetryQueryPivot(j as Record<string, unknown>, {
+            should_relearn: health.should_relearn,
+          });
+          const relearnQueries = Array.from(new Set([query, retryQueryPlan.retry_query].filter(Boolean))) as string[];
+          if (retryQueryPlan.retry_query) {
+            log.push(`pivot-query ${query}: -> ${retryQueryPlan.retry_query}`);
+          }
           const bakeOffRes = await internalFetch(`${origin}/api/factory/reels-brain/bake-off`, {
             method: "POST",
             headers: fanoutHeaders,
             body: JSON.stringify({
               niche,
-              queries: [query],
+              queries: relearnQueries.length ? relearnQueries : [query],
               limit: Math.min(30, Math.max(Number(policy?.bake_off_limit || sourceLimit + 5), sourceLimit)),
               target_platform: targetPlatform,
               persist: false,
@@ -96,9 +103,11 @@ export async function POST(req: NextRequest) {
               should_relearn: health.should_relearn,
               bake_off_provider: bakeOffWinner,
             });
+            const retryQuery = retryQueryPlan.retry_query || query;
             if (retryPlan.retry_provider) {
               providerShifts.push({
                 query,
+                retry_query: retryQuery,
                 from_provider: (j as { remembered_provider?: string | null }).remembered_provider || null,
                 to_provider: retryPlan.retry_provider,
                 reasons: retryPlan.reasons,
@@ -110,7 +119,7 @@ export async function POST(req: NextRequest) {
               headers: fanoutHeaders,
               body: JSON.stringify({
                 niche,
-                query,
+                query: retryQuery,
                 limit: sourceLimit,
                 target_platform: targetPlatform,
                 provider_hint: retryPlan.retry_provider || undefined,

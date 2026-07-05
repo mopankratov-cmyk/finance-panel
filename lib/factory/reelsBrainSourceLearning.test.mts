@@ -1,4 +1,4 @@
-import { assessSourceRunHealth, chooseRetryProviderPlan } from "./reelsBrainSourceLearning";
+import { assessSourceRunHealth, chooseRetryProviderPlan, chooseRetryQueryPivot } from "./reelsBrainSourceLearning";
 
 let pass = 0, fail = 0;
 function ok(c: boolean, m: string) { if (c) pass++; else { fail++; console.error("✗", m); } }
@@ -25,9 +25,11 @@ function eq(a: unknown, b: unknown, m: string) { ok(JSON.stringify(a) === JSON.s
     remembered_provider: "apify_tiktok",
     learned_provider: "virlo",
     target_platform: "tiktok",
+    segment_outcome_status: "weak",
   });
   eq(report.should_relearn, true, "health: winner shift forces relearn");
   ok(report.reasons.some((reason) => reason.includes("winner changed")), "health: shift reason present");
+  eq(report.segment_outcome_status, "weak", "health: weak outcome is exposed");
 }
 
 {
@@ -71,6 +73,28 @@ function eq(a: unknown, b: unknown, m: string) { ok(JSON.stringify(a) === JSON.s
     should_relearn: false,
   });
   eq(plan.retry_provider, null, "retry-plan: healthy run keeps current provider");
+}
+
+{
+  const pivot = chooseRetryQueryPivot({
+    query: "косметика обзор",
+    recommended_queries: ["косметика обзор", "до и после косметика", "ugc косметика"],
+    segment_outcome_status: "weak",
+  }, {
+    should_relearn: true,
+  });
+  eq(pivot.retry_query, "до и после косметика", "retry-query: weak segment pivots to the next recommended query");
+}
+
+{
+  const pivot = chooseRetryQueryPivot({
+    query: "игрушки обзор",
+    recommended_queries: ["игрушки обзор", "детские игрушки"],
+    segment_outcome_status: "proven",
+  }, {
+    should_relearn: true,
+  });
+  eq(pivot.retry_query, null, "retry-query: proven segment keeps current query");
 }
 
 console.log(`\nreelsBrainSourceLearning: ${pass} passed, ${fail} failed`);

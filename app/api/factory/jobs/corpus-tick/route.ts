@@ -3,7 +3,7 @@ import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { virloMonitorData, virloListMonitors, virloAnalyzeVideo } from "@/lib/factory/trendSources";
 import { nicheFromArticle } from "@/lib/factory/rubric";
 import { internalFetch } from "@/lib/internalFetch";
-import { assessSourceRunHealth } from "@/lib/factory/reelsBrainSourceLearning";
+import { assessSourceRunHealth, chooseRetryQueryPivot } from "@/lib/factory/reelsBrainSourceLearning";
 import { normalizeTargetPlatform } from "@/lib/factory/reelsBrainPlaybook";
 
 export const dynamic = "force-dynamic";
@@ -204,12 +204,19 @@ export async function POST(req: NextRequest) {
             },
           );
           if (health.should_relearn) {
+            const retryQueryPlan = chooseRetryQueryPivot(sourceJson as Record<string, unknown>, {
+              should_relearn: health.should_relearn,
+            });
+            const relearnQueries = Array.from(new Set([niche, retryQueryPlan.retry_query].filter(Boolean))) as string[];
+            if (retryQueryPlan.retry_query) {
+              log.push(`fallback pivot ${niche}: -> ${retryQueryPlan.retry_query}`);
+            }
             const bakeOffRes = await internalFetch(`${origin}/api/factory/reels-brain/bake-off`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
                 niche,
-                queries: [niche],
+                queries: relearnQueries.length ? relearnQueries : [niche],
                 limit: Math.max(15, Number(policy?.bake_off_limit || 15)),
                 target_platform: targetPlatform,
                 persist: false,
