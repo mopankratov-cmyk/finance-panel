@@ -11,6 +11,11 @@ type PlaybookItem = {
   segment_outcome_posts?: number;
   segment_outcome_winners?: number;
   segment_outcome_losers?: number;
+  segment_outcome_traced_posts?: number;
+  segment_outcome_exact_posts?: number;
+  segment_outcome_pattern_feedback_posts?: number;
+  segment_outcome_unscoped_posts?: number;
+  segment_outcome_proof_quality?: "exact_segment" | "traced_transfer_only" | "untraced" | string;
   segment_outcome_trust_action?: string;
   leading_pattern?: {
     title?: string;
@@ -69,9 +74,10 @@ function marketScore(status: string) {
   return 8;
 }
 
-function trustStatus(corpus: number, market: number, mode: string) {
+function trustStatus(corpus: number, market: number, mode: string, proofQuality: string, exactPosts: number, tracedPosts: number) {
   if (market <= 24) return "research";
-  if (corpus >= 78 && market >= 72 && mode === "primary") return "high_trust";
+  if (corpus >= 78 && market >= 72 && mode === "primary" && proofQuality === "exact_segment" && exactPosts > 0) return "high_trust";
+  if (corpus >= 72 && market >= 62 && tracedPosts > 0) return "validated";
   if (corpus >= 62 && market >= 38) return "validated";
   if (corpus >= 58) return "corpus_strong_market_thin";
   return "research";
@@ -91,7 +97,10 @@ export function buildReelsBrainEvidenceLedger(input: {
       );
       const marketStatus = text(item.segment_outcome_status || item.leading_pattern?.market_status || "no_feedback");
       const marketTrust = marketScore(marketStatus);
-      const evidenceStatus = trustStatus(corpusScore, marketTrust, text(item.recommended_mode));
+      const proofQuality = text(item.segment_outcome_proof_quality) || "untraced";
+      const exactPosts = num(item.segment_outcome_exact_posts);
+      const tracedPosts = num(item.segment_outcome_traced_posts);
+      const evidenceStatus = trustStatus(corpusScore, marketTrust, text(item.recommended_mode), proofQuality, exactPosts, tracedPosts);
       return {
         niche: text(item.niche),
         platform: text(item.platform),
@@ -104,6 +113,11 @@ export function buildReelsBrainEvidenceLedger(input: {
         market_posts: num(item.segment_outcome_posts),
         market_winners: num(item.segment_outcome_winners),
         market_losers: num(item.segment_outcome_losers),
+        traced_posts: tracedPosts,
+        exact_segment_posts: exactPosts,
+        pattern_feedback_posts: num(item.segment_outcome_pattern_feedback_posts),
+        unscoped_posts: num(item.segment_outcome_unscoped_posts),
+        proof_quality: proofQuality,
         market_trust_action: text(item.segment_outcome_trust_action),
         opportunity_score: num(item.opportunity_score),
         stability_score: num(item.stability_score),

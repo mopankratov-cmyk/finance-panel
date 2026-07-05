@@ -52,6 +52,11 @@ type SegmentOutcomeRow = {
   posts?: number;
   winners?: number;
   losers?: number;
+  traced_posts?: number;
+  exact_segment_posts?: number;
+  pattern_feedback_posts?: number;
+  unscoped_posts?: number;
+  proof_quality?: "exact_segment" | "traced_transfer_only" | "untraced" | string;
   trust_action?: string;
 };
 
@@ -88,6 +93,13 @@ function playbookStatus(opportunityStatus: string, atlasStatus: string, outcomeS
   return "research";
 }
 
+function normalizeProofQuality(value: unknown) {
+  const raw = text(value);
+  if (raw === "exact_segment") return "exact_segment";
+  if (raw === "traced_transfer_only") return "traced_transfer_only";
+  return "untraced";
+}
+
 export function buildReelsBrainSegmentPlaybook(input: {
   opportunities?: { top?: OpportunityRow[] };
   patternAtlas?: { by_segment?: AtlasSegment[] };
@@ -111,9 +123,15 @@ export function buildReelsBrainSegmentPlaybook(input: {
       const outcome = outcomeMap.get(joinKey(niche, platform)) || {};
       const topPattern = segment.top_patterns?.[0] || {};
       const outcomeStatus = text(outcome.status || topPattern.market_status || "no_feedback");
-      const status = playbookStatus(text(opportunity.status), text(segment.status), outcomeStatus);
+      const proofQuality = normalizeProofQuality(outcome.proof_quality);
+      const baseStatus = playbookStatus(text(opportunity.status), text(segment.status), outcomeStatus);
+      const status = baseStatus === "ship_now" && proofQuality !== "exact_segment"
+        ? "validate_and_ship"
+        : baseStatus;
       const mode = outcomeStatus === "weak"
         ? "research_only"
+        : proofQuality === "untraced" && text(opportunity.recommended_mode || segment.recommended_mode || "research_only") === "primary"
+          ? "control_only"
         : text(opportunity.recommended_mode || segment.recommended_mode || "research_only");
       const coverage = num(segment.total_videos) > 0
         ? Math.round((num(segment.analyzed_videos) / num(segment.total_videos)) * 100)
@@ -132,6 +150,11 @@ export function buildReelsBrainSegmentPlaybook(input: {
         segment_outcome_posts: num(outcome.posts),
         segment_outcome_winners: num(outcome.winners),
         segment_outcome_losers: num(outcome.losers),
+        segment_outcome_traced_posts: num(outcome.traced_posts),
+        segment_outcome_exact_posts: num(outcome.exact_segment_posts),
+        segment_outcome_pattern_feedback_posts: num(outcome.pattern_feedback_posts),
+        segment_outcome_unscoped_posts: num(outcome.unscoped_posts),
+        segment_outcome_proof_quality: proofQuality,
         segment_outcome_trust_action: text(outcome.trust_action),
         leading_pattern: {
           title: text(topPattern.title),
@@ -168,11 +191,15 @@ export function buildReelsBrainSegmentPlaybook(input: {
                   ? "Сегмент почти готов, но ему нужен ещё один цикл анализа и сборки."
                   : "Пока это исследовательский сегмент: строим знания, а не масштаб.",
             outcomeStatus === "proven" ? "Outcome-публикации подтвердили сегмент." : "",
+            proofQuality === "exact_segment" ? "Есть exact-segment proof по этому niche × platform." : "",
+            proofQuality === "traced_transfer_only" ? "Пока есть только traced feedback без exact-segment proof." : "",
+            proofQuality === "untraced" && outcomeStatus !== "no_feedback" ? "Публикации есть, но они ещё не привязаны к exact validation loop." : "",
             outcomeStatus === "promising" ? "Есть первые outcome-сигналы, но ещё нужен контроль." : "",
             outcomeStatus === "weak" ? "Outcome-публикации пока не подтверждают сегмент." : "",
           ].filter(Boolean).join(" "),
           next_step: [
             text(segment.next_step || opportunity.niche_note || opportunity.platform_note),
+            proofQuality !== "exact_segment" && outcomeStatus !== "weak" ? "Добрать exact-segment proof before full-scale promotion." : "",
             outcomeStatus === "weak" ? "Не масштабировать, пока не пересобран hook/structure." : "",
           ].filter(Boolean).join(" "),
         },

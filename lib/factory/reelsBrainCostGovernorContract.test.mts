@@ -108,7 +108,7 @@ ok(/segment_readiness_audit/.test(report), "report route exposes segment readine
 ok(/segment_stability_audit/.test(report) && /segment_solutions/.test(report), "report route exposes segment stability audit and operator-ready solutions");
 ok(/segment_solution_matrix/.test(report), "report route exposes segment solution matrix");
 ok(/portfolio_readiness/.test(report), "report route exposes portfolio readiness coverage");
-ok(/feedback_loop/.test(report) && /portfolio_manager/.test(report) && /audio_visual_readiness/.test(report) && /outcome_memory_brain/.test(report), "report route exposes operating-system intelligence, audio readiness and outcome memory");
+ok(/feedback_loop/.test(report) && /validation_trace/.test(operatingSystem) && /portfolio_manager/.test(report) && /audio_visual_readiness/.test(report) && /outcome_memory_brain/.test(report), "report route exposes operating-system intelligence, validation trace, audio readiness and outcome memory");
 ok(/\/api\/factory\/reels-brain\/progress/.test(report) && /pipeline_progress/.test(report), "report route exposes compact pipeline progress");
 ok(!/POST\s*\(/.test(report), "report route is read-only");
 
@@ -122,7 +122,7 @@ ok(!/POST\s*\(/.test(learningPlan), "learning-plan route is read-only");
 
 ok(/buildReelsBrainFeedbackLoop/.test(feedback), "feedback route summarizes publication metrics");
 ok(/\/api\/factory\/post-metrics/.test(feedback), "feedback route writes through post-metrics");
-ok(/loadReelsBrainFeedbackRows/.test(feedbackRoute) && /segment_label/.test(feedbackRows) && /segment_outcome_memory/.test(operatingSystem), "feedback loop enriches post metrics with segment context and exposes segment outcome memory");
+ok(/loadReelsBrainFeedbackRows/.test(feedbackRoute) && /segment_label/.test(feedbackRows) && /segment_outcome_memory/.test(operatingSystem) && /validation_trace/.test(operatingSystem), "feedback loop enriches post metrics with segment context and exposes segment outcome memory plus validation trace");
 ok(/buildReelsBrainOutcomeAntiPatternMemory/.test(economics) && /outcome_writeback/.test(economics) && /segment_outcome_memory/.test(outcomeAntiPatternMemory), "learning-economics writes segment outcome memory back into anti-pattern brain");
 ok(/effective_quality_gate/.test(economics) && /decision_priority_score/.test(economics) && /quality_gate_override/.test(economics), "pattern decision layer writes outcome-adjusted gate and priority back into pattern details");
 ok(/function loadAutopilotGuard/.test(cron), "cron has an autopilot guard");

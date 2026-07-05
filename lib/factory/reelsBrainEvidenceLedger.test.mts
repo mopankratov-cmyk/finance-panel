@@ -17,6 +17,10 @@ function testBuildReelsBrainEvidenceLedgerSeparatesCorpusAndMarketTrust() {
           segment_outcome_posts: 6,
           segment_outcome_winners: 3,
           segment_outcome_losers: 0,
+          segment_outcome_traced_posts: 4,
+          segment_outcome_exact_posts: 2,
+          segment_outcome_pattern_feedback_posts: 2,
+          segment_outcome_proof_quality: "exact_segment",
           segment_outcome_trust_action: "promote_segment_trust",
           brief: { title: "Toys TT brief", hook: "Смотри что внутри" },
           hypothesis: { title: "Reveal hypothesis", text: "Reveal lifts hold" },
@@ -35,6 +39,10 @@ function testBuildReelsBrainEvidenceLedgerSeparatesCorpusAndMarketTrust() {
           segment_outcome_posts: 3,
           segment_outcome_winners: 0,
           segment_outcome_losers: 2,
+          segment_outcome_traced_posts: 1,
+          segment_outcome_exact_posts: 0,
+          segment_outcome_pattern_feedback_posts: 1,
+          segment_outcome_proof_quality: "traced_transfer_only",
           segment_outcome_trust_action: "review_or_penalize_segment",
           brief: { title: "Beauty IG brief", hook: "До и после" },
           rollout: { title: "Validate beauty", why_now: "good corpus", next_step: "control test" },
@@ -50,6 +58,7 @@ function testBuildReelsBrainEvidenceLedgerSeparatesCorpusAndMarketTrust() {
   assert.equal(result.summary.research, 1);
   assert.equal(result.items[0]?.evidence_status, "high_trust");
   assert.equal(result.items[0]?.market_status, "proven");
+  assert.equal(result.items[0]?.proof_quality, "exact_segment");
   assert.equal(result.items[1]?.evidence_status, "research");
   assert.equal(result.items[1]?.market_status, "weak");
 }

@@ -170,11 +170,20 @@ export function buildReelsBrainFeedbackLoop(metrics: ReelsBrainMetricRow[]) {
       revenue: 0,
       completion: [] as number[],
       ctr: [] as number[],
+      traced_posts: 0,
+      exact_segment_posts: 0,
+      pattern_feedback_posts: 0,
+      unscoped_posts: 0,
     };
     current.posts += 1;
     current.views += row.views;
     current.orders += row.marketplace_orders;
     current.revenue += row.revenue;
+    const proofScope = normalizeProofScope(row.proof_scope);
+    if (proofScope !== "unscoped" || row.measurement_id || row.validation_task_id) current.traced_posts += 1;
+    if (proofScope === "exact_segment") current.exact_segment_posts += 1;
+    if (proofScope === "pattern_feedback") current.pattern_feedback_posts += 1;
+    if (proofScope === "unscoped" && (row.measurement_id || row.validation_task_id)) current.unscoped_posts += 1;
     if (winners.includes(row)) current.winners += 1;
     if (losers.includes(row)) current.losers += 1;
     if (row.completion_rate > 0) current.completion.push(row.completion_rate);
@@ -193,6 +202,10 @@ export function buildReelsBrainFeedbackLoop(metrics: ReelsBrainMetricRow[]) {
     revenue: number;
     completion: number[];
     ctr: number[];
+    traced_posts: number;
+    exact_segment_posts: number;
+    pattern_feedback_posts: number;
+    unscoped_posts: number;
   }>()).values()).map((row) => {
     const avgCompletion = avg(row.completion);
     const avgCtr = avg(row.ctr);
@@ -215,6 +228,15 @@ export function buildReelsBrainFeedbackLoop(metrics: ReelsBrainMetricRow[]) {
       losers: row.losers,
       orders: row.orders,
       revenue: Math.round(row.revenue * 100) / 100,
+      traced_posts: row.traced_posts,
+      exact_segment_posts: row.exact_segment_posts,
+      pattern_feedback_posts: row.pattern_feedback_posts,
+      unscoped_posts: row.unscoped_posts,
+      proof_quality: row.exact_segment_posts > 0
+        ? "exact_segment"
+        : row.traced_posts > 0
+          ? "traced_transfer_only"
+          : "untraced",
       avg_completion_rate: avgCompletion,
       avg_ctr: avgCtr,
       status,
@@ -242,7 +264,7 @@ export function buildReelsBrainFeedbackLoop(metrics: ReelsBrainMetricRow[]) {
       platform: row.platform,
       status: row.status,
       trust_action: row.trust_action,
-      evidence: `${row.winners} winners / ${row.posts} posts · orders ${row.orders} · revenue ${row.revenue}`,
+      evidence: `${row.winners} winners / ${row.posts} posts · exact ${row.exact_segment_posts} · traced ${row.traced_posts} · orders ${row.orders} · revenue ${row.revenue}`,
     }));
 
   const validationTraceRows = rows.filter((row) =>
