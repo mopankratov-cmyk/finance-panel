@@ -279,4 +279,37 @@ assert.equal((feedbackCoverageTick.params as Record<string, unknown>).focus, "fe
 assert.equal((feedbackCoverageTick.params as Record<string, unknown>).pattern_ids, "p1,p2,p3");
 assert.match(feedbackCoverageTick.reason, /high-confidence паттернов всё ещё без market proof/);
 
+const exactProofTick = buildReelsBrainNextTick({
+  target: 10000,
+  totalVideos: 3200,
+  analyzedVideos: 3150,
+  backlogLimit: 180,
+  canRunPaidCollection: true,
+  portfolioReadiness: {
+    summary: {
+      high_trust_coverage_pct: 42,
+      verdict: "still_building",
+    },
+    missing_segments: [
+      { niche: "ru_cosmetics", platform: "youtube", label: "ru_cosmetics × youtube", evidence_band: "missing", stability_score: 0, missing: true },
+    ],
+  },
+  exactSegmentQueue: {
+    items: [
+      {
+        niche: "ru_toys",
+        platform: "instagram",
+        label: "ru_toys × instagram",
+        evidence_band: "forming",
+        stability_score: 61,
+        exact_proof_missing: true,
+      },
+    ],
+  },
+});
+
+assert.equal(exactProofTick.task, "collect_portfolio_gaps");
+assert.equal((exactProofTick.params as Record<string, unknown>).niche, "ru_toys");
+assert.equal((exactProofTick.params as Record<string, unknown>).platform, "instagram");
+
 console.log("reelsBrainLearningPlan: passed");

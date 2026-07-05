@@ -36,6 +36,10 @@ type OutcomeMemorySummary = {
   };
 };
 
+type ExactSegmentQueueSummary = {
+  items?: Array<JsonRecord>;
+};
+
 function num(value: unknown): number {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
@@ -43,6 +47,10 @@ function num(value: unknown): number {
 
 function text(value: unknown, fallback = ""): string {
   return typeof value === "string" ? value.trim() || fallback : fallback;
+}
+
+function records(value: unknown): JsonRecord[] {
+  return Array.isArray(value) ? value.filter((item) => item && typeof item === "object") as JsonRecord[] : [];
 }
 
 function clamp(value: number, min: number, max: number) {
@@ -163,6 +171,7 @@ export function buildReelsBrainNextTick(input: {
   generationPolicy?: JsonRecord | null;
   learningEconomics?: JsonRecord | null;
   outcomeMemory?: OutcomeMemorySummary | JsonRecord | null;
+  exactSegmentQueue?: ExactSegmentQueueSummary | JsonRecord | null;
 }) {
   const backlog = Math.max(0, input.totalVideos - input.analyzedVideos);
   const portfolio = (input.portfolioReadiness || {}) as JsonRecord;
@@ -182,7 +191,10 @@ export function buildReelsBrainNextTick(input: {
   const feedbackCoverageRate = num(patternMemory.coverage_rate);
   const prioritySegment = safeSegment(input.prioritySegment);
   const portfolioFocusSegment = pickPortfolioFocusSegment(portfolio);
-  const collectionFocusSegment = portfolioFocusSegment || prioritySegment;
+  const exactFocusSegment = safeSegment(
+    records((input.exactSegmentQueue as ExactSegmentQueueSummary | null | undefined)?.items)[0] || null,
+  );
+  const collectionFocusSegment = exactFocusSegment || portfolioFocusSegment || prioritySegment;
   const directSegmentPolicy = selectPolicyForSegment(input.generationPolicy, prioritySegment);
   const directPolicyMode = text(directSegmentPolicy?.policy_mode, "research_only");
   const directOutcomeStatus = text((directSegmentPolicy as JsonRecord | null)?.outcome_status, "no_feedback");

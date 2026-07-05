@@ -292,6 +292,7 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
     const generationPolicy = (learning?.generation_policy || {}) as JsonRecord;
     const measurementPlan = (learning?.measurement_plan || {}) as JsonRecord;
     const portfolioReadiness = (learning?.portfolio_readiness || mission.portfolio_readiness || {}) as JsonRecord;
+    const exactSegmentQueue = ((mission.exact_segment_queue || learning?.exact_segment_queue || {}) as JsonRecord);
     const evidenceLedger = (learning?.evidence_ledger || {}) as JsonRecord;
     const actionPack = (learning?.action_pack || {}) as JsonRecord;
     const actionPackGroups = (learning?.action_pack_groups || {}) as JsonRecord;
@@ -804,6 +805,11 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
       ...row,
       label: `${NICHE_LABELS[String(row.niche)] || row.niche} × ${String(row.platform || "mixed").toUpperCase()}`,
     }));
+    const exactEvidenceCards = ((exactSegmentQueue.items || []) as JsonRecord[]).slice(0, 4).map((row) => ({
+      ...row,
+      label: `${NICHE_LABELS[String(row.niche)] || row.niche} × ${String(row.platform || "mixed").toUpperCase()}`,
+      statusTone: playbookTone(String(row.status || "research")),
+    }));
     const evidenceCards = ((evidenceLedger.items || []) as JsonRecord[]).slice(0, 6).map((row) => {
       const status = marketSignalTone(String(row.market_status || "no_feedback"));
       const mode = decisionTone(String(row.recommended_mode || "research_only"));
@@ -1000,9 +1006,11 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
       generationPolicyPlatformCards,
       generationPolicySummary,
       measurementPlan,
+      exactSegmentQueue,
       missionPriorityCards,
       portfolioCoverageCards,
       portfolioGapCards,
+      exactEvidenceCards,
       evidenceCards,
       evidenceSummary,
       trustMatrix,
@@ -3541,6 +3549,37 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
                   </div>
                 )}
               </div>
+            </div>
+          </div>
+          <div className="rb-card" style={{ marginTop: 16 }}>
+            <div className="rb-overline" style={{ color: "#0891b2" }}>Exact Proof Queue</div>
+            <h3 style={{ font: "700 26px/1.08 'Space Grotesk'", margin: "10px 0" }}>Где мозг ещё живёт на transfer, а не на exact proof</h3>
+            <div className="rb-three">
+              <div className="rb-brief-block"><b>Exact proof</b><p>{compact(vm.exactSegmentQueue.exact_proof_coverage_pct || 0)}%</p></div>
+              <div className="rb-brief-block"><b>Borrowed briefs</b><p>{compact(vm.exactSegmentQueue.borrowed_brief_segments || 0)}</p></div>
+              <div className="rb-brief-block"><b>Weak exact</b><p>{compact(vm.exactSegmentQueue.weak_exact_outcome_segments || 0)}</p></div>
+            </div>
+            <div style={{ display: "grid", gap: 10, marginTop: 14 }}>
+              {vm.exactEvidenceCards.length ? vm.exactEvidenceCards.map((row: JsonRecord) => (
+                <div className="rb-pattern" key={`exact-evidence:${row.niche}:${row.platform}`}>
+                  <div className="rb-two" style={{ gridTemplateColumns: "1fr auto", gap: 14 }}>
+                    <h3>{row.label}</h3>
+                    <div className="rb-live-pill" style={{ background: row.statusTone.bg, borderColor: row.statusTone.bd, color: row.statusTone.fg }}>
+                      <i style={{ background: row.statusTone.fg }} />
+                      {row.status || "watch"}
+                    </div>
+                  </div>
+                  <p style={{ color: "#475569", lineHeight: 1.5 }}>
+                    transfer {compact(row.transfer_count || 0)} · urgency {compact(row.urgency_score || 0)} · {row.policy_mode || "research_only"}
+                  </p>
+                  <p style={{ color: "#0f172a", fontWeight: 600 }}>{row.desired_proof || "Нужно добрать exact proof по сегменту."}</p>
+                </div>
+              )) : (
+                <div className="rb-pattern">
+                  <h3>Transfer-рисков почти не осталось</h3>
+                  <p>Мозг всё чаще опирается на exact segment proof, а не на соседние переносы.</p>
+                </div>
+              )}
             </div>
           </div>
           <div className="rb-three" style={{ marginTop: 16 }}>

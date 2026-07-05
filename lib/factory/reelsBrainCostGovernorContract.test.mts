@@ -95,6 +95,7 @@ ok(/daily_report/.test(report) && /autopilot_actions/.test(report), "report rout
 ok(/anti_pattern_brain/.test(report) && /discovery_brain/.test(report), "report route includes learning context");
 ok(/top_opportunities/.test(report) && /pattern_atlas/.test(report) && /segment_playbook/.test(report) && /evidence_ledger/.test(report), "report route exposes segment decision layers");
 ok(/measurement_plan/.test(report) && /buildReelsBrainMeasurementPlan/.test(economics) && /measurement_plan: measurementPlan/.test(economics), "report route exposes measurement plan built from strong no-feedback patterns");
+ok(/exact_segment_queue/.test(report) && /buildReelsBrainExactSegmentQueue/.test(economics), "report route exposes exact-segment proof queue for borrowed-brief gaps");
 ok(/segment_output_banks/.test(report), "report route exposes segment-specific output banks");
 ok(/segment_decision_deck/.test(report), "report route exposes segment decision deck");
 ok(/segment_priority_queue/.test(report), "report route exposes segment priority queue");
@@ -112,6 +113,7 @@ ok(/corpusProgress/.test(learningPlan) && /corpusExecutionPlan/.test(learningPla
 ok(/next_tick/.test(learningPlan) && /max_backlog_before_analyze/.test(learningPlan), "learning-plan chooses the next safe training tick");
 ok(/buildReelsBrainSegmentGapPlanner/.test(learningPlan) && /segment_plan/.test(learningPlan), "learning-plan exposes segment-level gap planner toward stable trust");
 ok(/buildReelsBrainSegmentPriorityQueue/.test(learningPlan) && /segment_priority_queue/.test(learningPlan), "learning-plan exposes segment priority queue on top of gap plan");
+ok(/exact_segment_queue/.test(learningPlan) && /exact_proof_coverage_pct/.test(learningPlan), "learning-plan exposes exact segment proof queue inside the mission loop");
 ok(/can_run_paid_collection/.test(learningPlan) && /cost_governor/.test(learningPlan), "learning-plan respects paid collection guard");
 ok(!/POST\s*\(/.test(learningPlan), "learning-plan route is read-only");
 
@@ -151,6 +153,7 @@ ok(/buildReelsBrainSegmentSolutionMatrix/.test(economics) && /segment_solution_m
 ok(/buildReelsBrainGenerationPolicy/.test(economics) && /generation_policy/.test(economics) && /policy_mode/.test(generationPolicyBuilder), "learning-economics exposes unified generation policy on top of segment solutions");
 ok(/buildReelsBrainMeasurementPlan/.test(economics) && /measurement_plan/.test(economics) && /validation_goal/.test(measurementPlanBuilder), "learning-economics exposes reusable market-validation plan for strong patterns without proof");
 ok(/buildReelsBrainPortfolioReadiness/.test(economics) && /portfolio_readiness/.test(economics), "learning-economics exposes portfolio readiness for 10k coverage tracking");
+ok(/exact_segment_evidence/.test(economics) && /prove_exact_segment/.test(economics), "learning-economics exposes exact-segment evidence actions when briefs still depend on transfer");
 ok(/portfolioReadiness/.test(economics) && /close_portfolio_gap/.test(economics), "autopilot uses portfolio readiness to close high-trust coverage gaps");
 ok(/generationPolicy/.test(economics) && /ship_policy_segment/.test(economics) && /validate_policy_segment/.test(economics), "autopilot actions consume generation policy and expose production-aware segment moves");
 ok(/review_pattern_gain_economics/.test(economics) && /pattern_gain_cost_trend/.test(economics), "autopilot reacts when pattern-gain economics degrade");
@@ -165,6 +168,7 @@ ok(/\/api\/factory\/reels-brain\/segment-solutions\?lane=/.test(cockpit), "cockp
 ok(/\/api\/factory\/reels-brain\/creative-solution\?niche=/.test(cockpit), "cockpit exposes unified creative-solution endpoint per segment");
 ok(/\/api\/factory\/reels-brain\/stability-audit\?lane=/.test(cockpit), "cockpit exposes segment stability-audit endpoint per segment");
 ok(/Portfolio readiness/.test(cockpit) && /high-trust coverage/.test(cockpit), "cockpit surfaces portfolio readiness toward full niche/platform coverage");
+ok(/Exact Proof Queue/.test(cockpit) && /borrowed_brief_segments/.test(cockpit) && /exactEvidenceCards/.test(cockpit), "cockpit surfaces where briefs still depend on transfer instead of exact segment proof");
 ok(/Segment Solution Matrix/.test(cockpit) && /segment_solution_matrix/.test(cockpit), "cockpit surfaces grouped niche/platform segment solution matrix");
 ok(/Generation Policy/.test(cockpit) && /generation-policy/.test(cockpit), "cockpit surfaces unified generation policy endpoint and cards");
 ok(/selectedPattern/.test(cockpit) && /rb-drawer/.test(cockpit), "cockpit exposes pattern creative brief drawer");

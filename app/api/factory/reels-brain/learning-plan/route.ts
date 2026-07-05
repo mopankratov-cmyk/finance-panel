@@ -133,6 +133,8 @@ export async function GET(req: NextRequest) {
     const stabilitySummary = (learning.segment_stability_audit?.summary || {}) as JsonRecord;
     const portfolioReadiness = (learning.portfolio_readiness || {}) as JsonRecord;
     const portfolioSummary = (portfolioReadiness.summary || {}) as JsonRecord;
+    const exactSegmentQueue = (learning.exact_segment_queue || {}) as JsonRecord;
+    const exactQueueItems = Array.isArray(exactSegmentQueue.items) ? exactSegmentQueue.items as JsonRecord[] : [];
 
     const costGovernor = autopilot.cost_governor || learning.cost_governor || {};
     const autopilotActions = autopilot.autopilot_actions || learning.autopilot_actions || {};
@@ -142,6 +144,9 @@ export async function GET(req: NextRequest) {
     const relevantSpeed = firstPositive(velocity.inserted_per_tick, velocity.analyzed_per_tick, 25);
     const etaTicksToTarget = progress.gap > 0 ? Math.ceil(progress.gap / Math.max(1, relevantSpeed)) : 0;
     const etaTicksToAnalyzed = backlog > 0 ? Math.ceil(backlog / Math.max(1, firstPositive(velocity.analyzed_per_tick, 40))) : 0;
+    const preferredPrioritySegment = (exactQueueItems[0] as JsonRecord | undefined)?.exact_proof_missing
+      ? ((segmentPriorityQueue.items || [])[0] || exactQueueItems[0] || null) as JsonRecord | null
+      : prioritySegment;
     const nextTick = buildReelsBrainNextTick({
       target,
       totalVideos,
@@ -149,10 +154,11 @@ export async function GET(req: NextRequest) {
       backlogLimit,
       canRunPaidCollection,
       guardStatus: String(costGovernor.status || ""),
-      prioritySegment,
+      prioritySegment: preferredPrioritySegment,
       portfolioReadiness,
       generationPolicy: (learning.generation_policy || null) as JsonRecord | null,
       outcomeMemory: (learning.outcome_memory_brain || null) as JsonRecord | null,
+      exactSegmentQueue,
       learningEconomics: {
         pattern_gain_cost_trend: totals.pattern_gain_cost_trend,
         pattern_gain_proxy_total: totals.pattern_gain_proxy_total,
@@ -181,6 +187,13 @@ export async function GET(req: NextRequest) {
         execution_plan: executionPlan,
         segment_plan: segmentPlan,
         segment_priority_queue: segmentPriorityQueue,
+        exact_segment_queue: {
+          exact_proof_coverage_pct: num((exactSegmentQueue.summary as JsonRecord | undefined)?.exact_proof_coverage_pct),
+          exact_gap_segments: num((exactSegmentQueue.summary as JsonRecord | undefined)?.exact_gap_segments),
+          borrowed_brief_segments: num((exactSegmentQueue.summary as JsonRecord | undefined)?.borrowed_brief_segments),
+          weak_exact_outcome_segments: num((exactSegmentQueue.summary as JsonRecord | undefined)?.weak_exact_outcome_segments),
+          items: exactQueueItems.slice(0, 6),
+        },
         segment_stability: {
           stable: num(stabilitySummary.stable),
           forming: num(stabilitySummary.forming),

@@ -28,6 +28,7 @@ import { buildReelsBrainOutcomeAntiPatternMemory } from "@/lib/factory/reelsBrai
 import { buildReelsBrainPatternOutcomeMemory } from "@/lib/factory/reelsBrainPatternOutcomeMemory";
 import { buildReelsBrainMeasurementPlan } from "@/lib/factory/reelsBrainMeasurementPlan";
 import { buildReelsBrainValidationQueue } from "@/lib/factory/reelsBrainValidationQueue";
+import { buildReelsBrainExactSegmentQueue } from "@/lib/factory/reelsBrainExactSegmentQueue";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 20;
@@ -1544,6 +1545,10 @@ function buildAutopilotActions(input: {
     summary?: Record<string, unknown>;
     missing_segments?: Array<Record<string, unknown>>;
   } | null;
+  exactSegmentQueue?: {
+    summary?: Record<string, unknown>;
+    items?: Array<Record<string, unknown>>;
+  } | null;
 }) {
   const weakNiches = input.niches
     .filter((niche) => niche.understanding_score < 85 || niche.generator_ready_patterns < 12)
@@ -1579,6 +1584,16 @@ function buildAutopilotActions(input: {
     measurementPlan: input.measurementPlan || null,
     limit: 4,
   });
+  const exactEvidenceQueue = ((input.exactSegmentQueue?.items || []) as Array<Record<string, unknown>>).slice(0, 4).map((row) => ({
+    niche: String(row.niche || ""),
+    platform: String(row.platform || ""),
+    label: String(row.label || `${String(row.niche || "")} × ${String(row.platform || "")}`),
+    status: String(row.status || "forming_exact_segment"),
+    urgency_score: num(row.urgency_score),
+    policy_mode: String(row.policy_mode || "research_only"),
+    transfer_count: num(row.transfer_count),
+    desired_proof: String(row.desired_proof || ""),
+  }));
   const segmentActions = (input.segmentPriorityQueue?.items || []).slice(0, 4).map((segment) => ({
     type: String(segment.action || "watch_segment"),
     priority: Boolean(segment.ready_for_generation) || Number(segment.urgency_score || 0) >= 80 ? "high" : "medium",
@@ -1628,6 +1643,14 @@ function buildAutopilotActions(input: {
       action: `Закрыть portfolio gap для ${String(segment.niche || "")} × ${String(segment.platform || "")}`,
       reason: `${String(segment.evidence_band || "missing")} · stability ${num(segment.stability_score)} · ${Array.isArray(segment.blockers) ? segment.blockers.slice(0, 2).join(" · ") : ""}`.trim(),
     })) : []),
+    ...exactEvidenceQueue.map((segment) => ({
+      type: "prove_exact_segment",
+      priority: segment.status === "missing_exact_segment" || segment.status === "borrowed_brief_only" ? "high" : "medium",
+      niche: segment.niche,
+      platform: segment.platform,
+      action: `Доказать exact segment для ${segment.label}`,
+      reason: `${segment.status} · policy ${segment.policy_mode} · transfer ${segment.transfer_count} · ${segment.desired_proof}`,
+    })),
     ...feedbackCoverageQueue.map((pattern) => ({
       type: "validate_pattern_feedback",
       priority: pattern.quality_gate === "high_confidence" ? "high" : "medium",
@@ -1676,6 +1699,13 @@ function buildAutopilotActions(input: {
       stable_segments: num(portfolioSummary.stable_segments),
       expected_segments: num(portfolioSummary.expected_segments),
       verdict: String(portfolioSummary.verdict || "still_building"),
+    },
+    exact_segment_evidence: {
+      exact_proof_coverage_pct: num((input.exactSegmentQueue?.summary as Record<string, unknown> | undefined)?.exact_proof_coverage_pct),
+      exact_gap_segments: num((input.exactSegmentQueue?.summary as Record<string, unknown> | undefined)?.exact_gap_segments),
+      borrowed_brief_segments: num((input.exactSegmentQueue?.summary as Record<string, unknown> | undefined)?.borrowed_brief_segments),
+      weak_exact_outcome_segments: num((input.exactSegmentQueue?.summary as Record<string, unknown> | undefined)?.weak_exact_outcome_segments),
+      queue: exactEvidenceQueue,
     },
     feedback_coverage: {
       coverage_rate: num(patternMemory.coverage_rate),
@@ -2847,6 +2877,13 @@ export async function GET(req: NextRequest) {
       niches: nicheSummaries.map((row) => row.niche),
       platforms: ["tiktok", "instagram", "youtube"],
     });
+    const exactSegmentQueue = buildReelsBrainExactSegmentQueue({
+      portfolioReadiness,
+      segmentSolutionMatrix,
+      generationPolicy,
+      segmentPriorityQueue,
+      limit: compactMode ? 6 : 10,
+    });
     const dailyReport = buildDailyReport({
       totals,
       today,
@@ -2864,6 +2901,7 @@ export async function GET(req: NextRequest) {
       totals,
       outcomeMemory: outcomeMemoryBrain,
       measurementPlan,
+      exactSegmentQueue,
       segmentPriorityQueue,
       generationPolicy,
       portfolioReadiness,
@@ -2885,6 +2923,7 @@ export async function GET(req: NextRequest) {
       feedback_loop: operatingSystem.feedback_loop,
       outcome_memory_brain: outcomeMemoryBrain,
       measurement_plan: measurementPlan,
+      exact_segment_queue: exactSegmentQueue,
       audio_visual_intelligence: nextIntelligenceLayers.audio_visual_intelligence,
       product_brain: operatingSystem.product_brain,
       audience_brain: operatingSystem.audience_brain,
