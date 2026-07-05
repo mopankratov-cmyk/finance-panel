@@ -59,6 +59,8 @@ export interface ReelsDiscoveryPlan {
   platform: Exclude<ReelsPlatform, "unknown">;
   outcome_status: "proven" | "promising" | "weak" | "no_feedback";
   outcome_confidence: "high" | "medium" | "low" | "none";
+  proof_quality: "exact_segment" | "traced_transfer_only" | "untraced";
+  trust_action: string;
   budget_split: Record<ReelsDiscoveryLane, number>;
   items: ReelsDiscoveryPlanItem[];
   source_count: number;
@@ -247,10 +249,25 @@ function segmentOutcomeFromPlaybook(playbook: unknown, niche: string, platform: 
     .filter((item) => item && typeof item === "object")
     .map((item) => rec(item))
     .find((row) => clean(row.niche, 80) === niche && normalizeShortPlatform(row.platform) === platform);
-  if (!hit) return { status: "no_feedback" as const, confidence: "none" as const };
+  const trustQueue = Array.isArray(memory.trust_update_queue)
+    ? memory.trust_update_queue
+      .filter((item) => item && typeof item === "object")
+      .map((item) => rec(item))
+      .find((row) => clean(row.segment, 120) === `${niche} × ${platform}`)
+    : null;
+  if (!hit) return {
+    status: "no_feedback" as const,
+    confidence: "none" as const,
+    proof_quality: "untraced" as const,
+    trust_action: trustQueue ? clean(trustQueue.trust_action, 60) : "wait_for_feedback",
+  };
   const status = clean(hit.status || "no_feedback", 40) as "proven" | "promising" | "weak" | "no_feedback";
   const posts = Math.max(0, num(hit.posts));
   const winners = Math.max(0, num(hit.winners));
+  const proofQualityRaw = clean(hit.proof_quality || "untraced", 40);
+  const proofQuality = (proofQualityRaw === "exact_segment" || proofQualityRaw === "traced_transfer_only"
+    ? proofQualityRaw
+    : "untraced") as "exact_segment" | "traced_transfer_only" | "untraced";
   const confidence: "high" | "medium" | "low" | "none" = posts >= 6 || winners >= 3
     ? "high"
     : posts >= 3 || winners >= 1
@@ -258,7 +275,12 @@ function segmentOutcomeFromPlaybook(playbook: unknown, niche: string, platform: 
       : posts > 0
         ? "low"
         : "none";
-  return { status, confidence };
+  return {
+    status,
+    confidence,
+    proof_quality: proofQuality,
+    trust_action: clean(trustQueue?.trust_action, 60) || "wait_for_feedback",
+  };
 }
 
 export function discoverySources(playbook: unknown, filters?: {
@@ -630,23 +652,33 @@ function lanePriorityByOutcome(input: {
   source: ReelsDiscoverySource;
   lane: ReelsDiscoveryLane;
   outcomeStatus: "proven" | "promising" | "weak" | "no_feedback";
+  proofQuality?: "exact_segment" | "traced_transfer_only" | "untraced";
+  trustAction?: string;
 }) {
   const base = input.source.yield_score * 1.3 + input.source.breakout_rate * 25 + input.source.relevance_rate * 20 - input.source.runs * 0.8;
+  const proofQuality = input.proofQuality || "untraced";
+  const trustAction = clean(input.trustAction, 60);
   if (input.outcomeStatus === "proven") {
     return base
-      + (input.lane === "exploit" ? 24 : input.lane === "refresh" ? 8 : 0)
-      + (input.source.type === "account" || input.source.type === "query" ? 6 : 0);
+      + (proofQuality === "exact_segment"
+        ? input.lane === "exploit" ? 24 : input.lane === "refresh" ? 8 : 0
+        : input.lane === "refresh" ? 24 : input.lane === "explore" ? 14 : -10)
+      + (input.source.type === "account" || input.source.type === "query" ? 6 : 0)
+      + (trustAction === "promote_segment_trust" ? 6 : trustAction === "keep_validating_segment" ? 2 : 0);
   }
   if (input.outcomeStatus === "promising") {
     return base
       + (input.lane === "refresh" ? 18 : input.lane === "explore" ? 10 : 4)
-      + (input.source.runs <= 1 ? 8 : 0);
+      + (input.source.runs <= 1 ? 8 : 0)
+      + (proofQuality === "traced_transfer_only" ? 5 : 0)
+      + (trustAction === "keep_validating_segment" ? 4 : 0);
   }
   if (input.outcomeStatus === "weak") {
     return base
       + (input.lane === "explore" ? 26 : input.lane === "refresh" ? 14 : -40)
       + (input.source.runs <= 1 ? 12 : 0)
-      - (input.source.type === "account" ? 8 : 0);
+      - (input.source.type === "account" ? 8 : 0)
+      + (trustAction === "review_or_penalize_segment" ? 6 : 0);
   }
   return base + (input.lane === "exploit" ? 8 : input.lane === "explore" ? 4 : 0);
 }
@@ -670,31 +702,39 @@ export function buildDiscoveryPlan(playbook: unknown, input: {
   const sources = Array.from(byId.values());
   const activeSources = sources.filter((source) => source.status === "active");
   const budgetSplit = segmentOutcome.status === "proven"
-    ? { explore: 15, exploit: 70, refresh: 15 }
+    ? segmentOutcome.proof_quality === "exact_segment"
+      ? { explore: 15, exploit: 70, refresh: 15 }
+      : { explore: 25, exploit: 30, refresh: 45 }
     : segmentOutcome.status === "promising"
       ? { explore: 35, exploit: 35, refresh: 30 }
       : segmentOutcome.status === "weak"
         ? { explore: 55, exploit: 10, refresh: 35 }
         : { explore: 20, exploit: 70, refresh: 10 };
-  const exploitMinYield = segmentOutcome.status === "weak" ? 70 : segmentOutcome.status === "promising" ? 52 : 45;
+  const exploitMinYield = segmentOutcome.status === "weak"
+    ? 70
+    : segmentOutcome.status === "promising"
+      ? 52
+      : segmentOutcome.proof_quality === "exact_segment"
+        ? 45
+        : 62;
   const exploit = activeSources
     .filter((source) => source.yield_score >= exploitMinYield)
     .sort((a, b) =>
-      lanePriorityByOutcome({ source: b, lane: "exploit", outcomeStatus: segmentOutcome.status })
-      - lanePriorityByOutcome({ source: a, lane: "exploit", outcomeStatus: segmentOutcome.status }))
+      lanePriorityByOutcome({ source: b, lane: "exploit", outcomeStatus: segmentOutcome.status, proofQuality: segmentOutcome.proof_quality, trustAction: segmentOutcome.trust_action })
+      - lanePriorityByOutcome({ source: a, lane: "exploit", outcomeStatus: segmentOutcome.status, proofQuality: segmentOutcome.proof_quality, trustAction: segmentOutcome.trust_action }))
     .slice(0, Math.ceil(maxItems * (budgetSplit.exploit / 100)));
   const refresh = activeSources
     .filter((source) => source.runs > 0 && source.yield_score >= 20 && !exploit.some((row) => row.id === source.id))
     .sort((a, b) =>
-      lanePriorityByOutcome({ source: b, lane: "refresh", outcomeStatus: segmentOutcome.status })
-      - lanePriorityByOutcome({ source: a, lane: "refresh", outcomeStatus: segmentOutcome.status }))
+      lanePriorityByOutcome({ source: b, lane: "refresh", outcomeStatus: segmentOutcome.status, proofQuality: segmentOutcome.proof_quality, trustAction: segmentOutcome.trust_action })
+      - lanePriorityByOutcome({ source: a, lane: "refresh", outcomeStatus: segmentOutcome.status, proofQuality: segmentOutcome.proof_quality, trustAction: segmentOutcome.trust_action }))
     .slice(0, Math.max(1, Math.floor(maxItems * (budgetSplit.refresh / 100))));
   const used = new Set([...exploit, ...refresh].map((source) => source.id));
   const explore = activeSources
     .filter((source) => !used.has(source.id))
     .sort((a, b) =>
-      lanePriorityByOutcome({ source: b, lane: "explore", outcomeStatus: segmentOutcome.status })
-      - lanePriorityByOutcome({ source: a, lane: "explore", outcomeStatus: segmentOutcome.status })
+      lanePriorityByOutcome({ source: b, lane: "explore", outcomeStatus: segmentOutcome.status, proofQuality: segmentOutcome.proof_quality, trustAction: segmentOutcome.trust_action })
+      - lanePriorityByOutcome({ source: a, lane: "explore", outcomeStatus: segmentOutcome.status, proofQuality: segmentOutcome.proof_quality, trustAction: segmentOutcome.trust_action })
       || a.runs - b.runs
       || b.yield_score - a.yield_score)
     .slice(0, Math.max(1, maxItems - exploit.length - refresh.length));
@@ -722,6 +762,8 @@ export function buildDiscoveryPlan(playbook: unknown, input: {
     platform,
     outcome_status: segmentOutcome.status,
     outcome_confidence: segmentOutcome.confidence,
+    proof_quality: segmentOutcome.proof_quality,
+    trust_action: segmentOutcome.trust_action,
     budget_split: budgetSplit,
     items,
     source_count: sources.length,
@@ -734,7 +776,9 @@ export function buildDiscoveryPlan(playbook: unknown, input: {
         : segmentOutcome.status === "promising"
           ? "Segment outcome is promising: keep balanced explore/refresh until winners stabilize."
           : segmentOutcome.status === "proven"
-            ? "Segment outcome is proven: exploit top sources while keeping a light refresh lane."
+            ? segmentOutcome.proof_quality === "exact_segment"
+              ? "Segment outcome is proven with exact proof: exploit top sources while keeping a light refresh lane."
+              : "Segment outcome is proven only via transfer/traced proof: keep a heavier refresh lane until exact proof catches up."
             : "No segment outcome feedback yet: default discovery split remains active.",
     ],
   };

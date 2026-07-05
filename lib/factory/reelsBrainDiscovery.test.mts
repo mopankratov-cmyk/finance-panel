@@ -205,6 +205,8 @@ import {
   });
 
   assert.equal(plan.outcome_status, "weak");
+  assert.equal(plan.proof_quality, "untraced");
+  assert.equal(plan.trust_action, "wait_for_feedback");
   assert.deepEqual(plan.budget_split, { explore: 55, exploit: 10, refresh: 35 });
   assert.ok(plan.notes.some((note) => note.includes("weak")));
 }
@@ -245,7 +247,68 @@ import {
 
   assert.equal(plan.outcome_status, "proven");
   assert.equal(plan.outcome_confidence, "high");
-  assert.deepEqual(plan.budget_split, { explore: 15, exploit: 70, refresh: 15 });
+  assert.equal(plan.proof_quality, "untraced");
+  assert.deepEqual(plan.budget_split, { explore: 25, exploit: 30, refresh: 45 });
+}
+
+{
+  let playbook: Record<string, unknown> = {
+    niche: "ru_clothing",
+    feedback_loop: {
+      by_segment: [
+        {
+          niche: "ru_clothing",
+          platform: "instagram",
+          status: "proven",
+          proof_quality: "traced_transfer_only",
+          posts: 4,
+          winners: 2,
+        },
+      ],
+      segment_outcome_memory: {
+        trust_update_queue: [
+          {
+            segment: "ru_clothing × instagram",
+            trust_action: "keep_validating_segment",
+            evidence: "2 winners / 4 posts · exact 0",
+          },
+        ],
+      },
+    },
+  };
+  playbook = rememberDiscoverySourceRun(playbook, {
+    niche: "ru_clothing",
+    platform: "instagram",
+    type: "query",
+    value: "обзор одежды",
+    found: 90,
+    relevant: 40,
+    breakout: 14,
+    inserted: 25,
+    cost_units: 3,
+  });
+  playbook = rememberDiscoverySourceRun(playbook, {
+    niche: "ru_clothing",
+    platform: "instagram",
+    type: "account",
+    value: "@style_lab",
+    found: 50,
+    relevant: 26,
+    breakout: 9,
+    inserted: 16,
+    cost_units: 2,
+  });
+  const plan = buildDiscoveryPlan(playbook, {
+    niche: "ru_clothing",
+    platform: "instagram",
+    max_items: 4,
+  });
+
+  assert.equal(plan.outcome_status, "proven");
+  assert.equal(plan.proof_quality, "traced_transfer_only");
+  assert.equal(plan.trust_action, "keep_validating_segment");
+  assert.deepEqual(plan.budget_split, { explore: 25, exploit: 30, refresh: 45 });
+  assert.ok(plan.notes.some((note) => note.includes("transfer")));
 }
 
 console.log("reelsBrainDiscovery: ok");

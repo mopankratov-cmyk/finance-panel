@@ -18,6 +18,7 @@ const cron = readFileSync("app/api/factory/jobs/reels-brain-cron/route.ts", "utf
 const bulk = readFileSync("app/api/factory/jobs/reels-brain-bulk-ingest/route.ts", "utf8");
 const analyze = readFileSync("app/api/factory/jobs/reels-brain-analyze-backlog/route.ts", "utf8");
 const feedback = readFileSync("app/api/factory/reels-brain/feedback/route.ts", "utf8");
+const sourceRun = readFileSync("app/api/factory/reels-brain/source-run/route.ts", "utf8");
 
 ok(/\/api\/factory\/reels-brain\/progress/.test(route) && /\/api\/factory\/reels-brain\/providers/.test(route) && /\/api\/factory\/worker-state/.test(route), "health route aggregates progress, providers and worker-state");
 ok(/primary_bottleneck/.test(route) && /source_intelligence/.test(route) && /source_mix_audit/.test(route), "health route exposes bottleneck, source intelligence and legacy-vs-segment source audit");
@@ -27,6 +28,7 @@ ok(/adaptiveCronProfile/.test(cron) && /adaptive_profile/.test(cron), "cron expo
 ok(/providerCapForLane/.test(bulk) && /preferredSourceProvider/.test(bulk) && /execution_intent/.test(bulk) && /tuneBulkLaneByExecutionIntent/.test(bulk), "bulk ingest uses preferred provider memory, adaptive caps and execution intent");
 ok(/execution_intent/.test(analyze) && /tuned_build_patterns/.test(analyze) && /pattern_limit/.test(analyze), "analyze backlog exposes compaction tuning and execution intent");
 ok(/feedback_loop/.test(feedback) && /rows: rows.slice\(0, 50\)/.test(feedback), "feedback route exposes live feedback loop snapshot");
+ok(/buildDiscoveryPlan/.test(sourceRun) && /segment_outcome_proof_quality/.test(sourceRun) && /segment_outcome_trust_action/.test(sourceRun), "source-run exposes proof-aware discovery state for exact-vs-transfer collection decisions");
 ok(/Pipeline/.test(reportHtml) && /Backlog by platform/.test(reportHtml), "public niche report shows pipeline backlog");
 ok(/Pipeline truth/.test(portfolioHtml) && /worker state/i.test(portfolioHtml), "portfolio report shows pipeline truth and worker state");
 

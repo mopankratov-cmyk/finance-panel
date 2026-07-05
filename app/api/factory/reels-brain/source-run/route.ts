@@ -306,6 +306,8 @@ export async function POST(req: NextRequest) {
       source_provider_history: sourceProviderHistory(playbook, targetPlatform).slice(0, 8),
       segment_outcome_status: discoveryPlan.outcome_status,
       segment_outcome_confidence: discoveryPlan.outcome_confidence,
+      segment_outcome_proof_quality: discoveryPlan.proof_quality,
+      segment_outcome_trust_action: discoveryPlan.trust_action,
       discovery_budget_split: discoveryPlan.budget_split,
       target_platform: targetPlatform,
       niche,
