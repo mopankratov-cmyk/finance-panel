@@ -119,3 +119,26 @@ test("buildReelsBrainPortfolioReadiness distinguishes high trust from publishabl
   assert.equal(result.summary.verdict, "high_trust_but_exact_gaps");
   assert.equal(result.publishable_exact_gaps[0]?.platform, "instagram");
 });
+
+test("buildReelsBrainPortfolioReadiness prioritizes exact gaps that are closest to publishable exact", () => {
+  const result = buildReelsBrainPortfolioReadiness({
+    niches: ["ru_toys", "ru_cosmetics"],
+    platforms: ["tiktok", "instagram"],
+    segmentStabilityAudit: {
+      items: [
+        { niche: "ru_toys", platform: "tiktok", evidence_band: "stable", stability_score: 93, high_trust_segment: true },
+        { niche: "ru_toys", platform: "instagram", evidence_band: "stable", stability_score: 88, high_trust_segment: true },
+        { niche: "ru_cosmetics", platform: "tiktok", evidence_band: "forming", stability_score: 55, high_trust_segment: false },
+      ],
+    },
+    segmentSolutionMatrix: {
+      by_segment: [
+        { niche: "ru_toys", platform: "tiktok", publishable_exact: true },
+      ],
+    },
+  });
+
+  assert.equal(result.publishable_exact_gaps[0]?.niche, "ru_toys");
+  assert.equal(result.publishable_exact_gaps[0]?.platform, "instagram");
+  assert.equal(result.publishable_exact_gaps[1]?.niche, "ru_cosmetics");
+});

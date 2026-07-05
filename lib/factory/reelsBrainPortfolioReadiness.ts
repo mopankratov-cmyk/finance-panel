@@ -18,6 +18,15 @@ function pct(current: number, total: number) {
   return Math.max(0, Math.min(100, Math.round((current / total) * 100)));
 }
 
+function evidenceRank(value: unknown) {
+  const band = text(value, "missing");
+  if (band === "stable") return 4;
+  if (band === "forming") return 3;
+  if (band === "thin") return 2;
+  if (band === "missing") return 1;
+  return 0;
+}
+
 export function buildReelsBrainPortfolioReadiness(input: {
   segmentStabilityAudit?: {
     items?: JsonRecord[];
@@ -174,7 +183,16 @@ export function buildReelsBrainPortfolioReadiness(input: {
     by_niche: byNiche,
     by_platform: byPlatform,
     missing_segments: bySegment.filter((row) => row.missing || !row.high_trust_segment).slice(0, 12),
-    publishable_exact_gaps: bySegment.filter((row) => !row.publishable_exact).slice(0, 12),
+    publishable_exact_gaps: bySegment
+      .filter((row) => !row.publishable_exact)
+      .sort((a, b) =>
+        Number(Boolean(b.high_trust_segment)) - Number(Boolean(a.high_trust_segment))
+        || evidenceRank(b.evidence_band) - evidenceRank(a.evidence_band)
+        || b.stability_score - a.stability_score
+        || Number(Boolean(a.missing)) - Number(Boolean(b.missing))
+        || a.label.localeCompare(b.label),
+      )
+      .slice(0, 12),
     strongest_segments: bySegment
       .filter((row) => row.high_trust_segment)
       .sort((a, b) => b.stability_score - a.stability_score || a.label.localeCompare(b.label))
