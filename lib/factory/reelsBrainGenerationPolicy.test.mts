@@ -20,6 +20,12 @@ test("buildReelsBrainGenerationPolicy maps solution matrix into generation modes
           publishable_exact: true,
           coverage_labels: ["instagram", "tiktok"],
           next_gap: { label: "ru_toys × youtube" },
+          next_upgrade: {
+            unlocked_output: "publishable_visual_brief",
+            projected_trust_gain_score: 22,
+            projected_production_state: "near_publishable",
+            recommended_loop: "media_backfill",
+          },
           primary: {
             label: "ru_toys × instagram",
             readiness_score: 90,
@@ -79,6 +85,8 @@ test("buildReelsBrainGenerationPolicy maps solution matrix into generation modes
   assert.equal(result.by_niche[0]?.publishable_exact, true);
   assert.equal(result.by_niche[0]?.brief_hook, "Смотри что внутри");
   assert.match(String(result.by_niche[0]?.policy_reason), /publishable exact policy/i);
+  assert.match(String(result.by_niche[0]?.policy_reason), /Следующий лучший апгрейд: publishable_visual_brief/i);
+  assert.equal((result.by_niche[0]?.next_upgrade as Record<string, unknown> | undefined)?.projected_trust_gain_score, 22);
   assert.equal(result.by_platform[0]?.policy_mode, "control_only");
 });
 

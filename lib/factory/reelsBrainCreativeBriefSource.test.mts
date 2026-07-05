@@ -40,6 +40,20 @@ test("selectCreativeBriefFromSegmentLayers prefers exact segment solution over g
       ],
     },
     segmentSolutionMatrix: {
+      by_segment: [
+        {
+          niche: "ru_toys",
+          platform: "instagram",
+          label: "ru_toys × instagram",
+          upgrade_forecast: {
+            unlocked_output: "publishable_exact_brief",
+            projected_production_state: "publishable_exact",
+            projected_trust_gain_score: 29,
+            projected_trust_gain_band: "high",
+            recommended_loop: "analyze_and_compact",
+          },
+        },
+      ],
       by_platform: [
         {
           platform: "instagram",
@@ -75,6 +89,8 @@ test("selectCreativeBriefFromSegmentLayers prefers exact segment solution over g
   assert.equal(result?.quality_gate?.status, "ready");
   assert.equal(result?.quality_gate?.exact_segment_ready, true);
   assert.equal(result?.source_trace?.[0]?.source, "segment_solution");
+  assert.equal(result?.upgrade_forecast?.unlocked_output, "publishable_exact_brief");
+  assert.equal(result?.decision_pack?.recommended_upgrade?.projected_trust_gain_score, 29);
 });
 
 test("selectCreativeBriefFromSegmentLayers falls back to platform then niche matrix", () => {
@@ -356,6 +372,80 @@ test("selectCreativeBriefFromSegmentLayers avoids exact weak segment when health
   assert.ok((result?.quality_gate?.blocked_reasons || []).some((item: string) => item.includes("exact segment")));
   assert.equal(result?.source_trace?.[0]?.outcome_status, "proven");
   assert.equal(result?.alternatives?.[0]?.outcome_status, "weak");
+});
+
+test("selectCreativeBriefFromSegmentLayers can prefer exact candidate with strong upgrade forecast over transfer fallback", () => {
+  const result = selectCreativeBriefFromSegmentLayers({
+    niche: "ru_toys",
+    platform: "instagram",
+    segmentSolutions: {
+      items: [
+        {
+          niche: "ru_toys",
+          platform: "instagram",
+          label: "ru_toys × instagram",
+          readiness_score: 71,
+          trust_band: "medium",
+          production_state: "controlled_test",
+          creative_brief: { hook: "Exact but improving" },
+          trust_summary: {
+            evidence_band: "forming",
+            stability_score: 67,
+            outcome_status: "promising",
+            outcome_confidence: "medium",
+            outcome_posts: 3,
+            outcome_winners: 1,
+            outcome_losers: 0,
+          },
+        },
+      ],
+    },
+    segmentSolutionMatrix: {
+      by_segment: [
+        {
+          niche: "ru_toys",
+          platform: "instagram",
+          label: "ru_toys × instagram",
+          upgrade_forecast: {
+            unlocked_output: "publishable_exact_brief",
+            projected_production_state: "publishable_exact",
+            projected_trust_gain_score: 34,
+            projected_trust_gain_band: "high",
+            recommended_loop: "analyze_and_compact",
+          },
+        },
+      ],
+      by_platform: [
+        {
+          platform: "instagram",
+          primary: {
+            niche: "ru_cosmetics",
+            platform: "instagram",
+            label: "ru_cosmetics × instagram",
+            readiness_score: 78,
+            trust_band: "medium",
+            production_state: "controlled_test",
+            creative_brief: { hook: "Healthy fallback" },
+            trust_summary: {
+              evidence_band: "forming",
+              stability_score: 70,
+              outcome_status: "proven",
+              outcome_confidence: "high",
+              outcome_posts: 6,
+              outcome_winners: 3,
+              outcome_losers: 0,
+            },
+          },
+        },
+      ],
+      by_niche: [],
+    },
+  });
+
+  assert.equal(result?.source, "segment_solution");
+  assert.equal(result?.creative_brief.hook, "Exact but improving");
+  assert.equal(result?.upgrade_forecast?.projected_production_state, "publishable_exact");
+  assert.equal(result?.source_trace?.[0]?.projected_trust_gain_score, 34);
 });
 
 test("selectCreativeBriefFromSegmentLayers returns null in strict-exact mode when only transfer fallback exists", () => {

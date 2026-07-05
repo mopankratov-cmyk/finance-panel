@@ -47,9 +47,24 @@ function defaultPolicyReason(primary: JsonRecord | null, nextGap: JsonRecord | n
   return `${label} пока остаётся исследовательским policy. Главный пробел: ${gapLabel || "не хватает стабильного сигнала"}.`;
 }
 
+function summarizeUpgrade(nextUpgrade: JsonRecord | null) {
+  if (!nextUpgrade) return "";
+  const unlocked = text(nextUpgrade.unlocked_output);
+  const trustGain = num(nextUpgrade.projected_trust_gain_score);
+  const productionState = text(nextUpgrade.projected_production_state);
+  const loop = text(nextUpgrade.recommended_loop);
+  return [
+    unlocked ? ` Следующий лучший апгрейд: ${unlocked}.` : "",
+    trustGain > 0 ? ` Потенциальный trust uplift: +${trustGain}.` : "",
+    productionState ? ` После закрытия gap-а состояние станет ${productionState}.` : "",
+    loop ? ` Рекомендуемый loop: ${loop}.` : "",
+  ].filter(Boolean).join("");
+}
+
 function buildPolicyRow(row: JsonRecord, scope: "niche" | "platform") {
   const primary = (row.primary && typeof row.primary === "object" ? row.primary : null) as JsonRecord | null;
   const nextGap = (row.next_gap && typeof row.next_gap === "object" ? row.next_gap : null) as JsonRecord | null;
+  const nextUpgrade = (row.next_upgrade && typeof row.next_upgrade === "object" ? row.next_upgrade : null) as JsonRecord | null;
   const trustSummary = (primary?.trust_summary && typeof primary.trust_summary === "object" ? primary.trust_summary : {}) as JsonRecord;
   const outcomeStatus = text(trustSummary.outcome_status, "no_feedback");
   const policyMode = outcomeAdjustedPolicyMode(modeFromProductionState(primary?.production_state), outcomeStatus);
@@ -85,9 +100,11 @@ function buildPolicyRow(row: JsonRecord, scope: "niche" | "platform") {
     why: list(primary?.trust_why, 4),
     blockers: list(trustSummary.blockers, 4),
     next_gap: nextGap,
+    next_upgrade: nextUpgrade,
     coverage_labels: list(row.coverage_labels, 20),
     policy_reason: [
       defaultPolicyReason(primary, nextGap, scope),
+      summarizeUpgrade(nextUpgrade),
       outcomeStatus === "weak" ? "Market outcome слабый: policy принудительно опущен в research_only." : "",
       outcomeStatus === "promising" && modeFromProductionState(primary?.production_state) === "primary"
         ? "Market outcome ещё только формируется: primary policy понижен до control_only."
@@ -122,6 +139,7 @@ export function buildReelsBrainGenerationPolicy(input: {
         proof_quality: text(((row.trust_summary as JsonRecord | null)?.proof_quality), "untraced"),
         publishable_exact: text(row.production_state) === "ready_now" && text(((row.trust_summary as JsonRecord | null)?.proof_quality), "untraced") === "exact_segment",
         readiness_score: num(row.readiness_score),
+        upgrade_forecast: (row.upgrade_forecast && typeof row.upgrade_forecast === "object" ? row.upgrade_forecast : null) as JsonRecord | null,
         brief_hook: text(((row.creative_brief as JsonRecord | null)?.hook)),
         decision: text(((row.content_decision as JsonRecord | null)?.decision)),
         hypothesis: text(((row.hypothesis as JsonRecord | null)?.text)),
