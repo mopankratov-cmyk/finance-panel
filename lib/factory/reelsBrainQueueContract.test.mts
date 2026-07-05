@@ -21,6 +21,7 @@ ok(/export function stableBucketMatch/.test(queue), "queue helper exposes string
 ok(/export function scoreAudioCandidate/.test(queue) && /export function scoreMediaCandidate/.test(queue), "queue helper exposes priority scoring helpers");
 ok(/parseShardConfig/.test(mediaRoute) && /stableShardMatch/.test(mediaRoute), "media backfill route supports sharded workers");
 ok(/scoreMediaCandidate/.test(mediaRoute) && /priority/.test(mediaRoute), "media backfill route supports smart priority ordering");
+ok(/focus_niche/.test(mediaRoute) && /focus_platform/.test(mediaRoute) && /source_discovery_mode/.test(mediaRoute), "media backfill route accepts focused exact-proof context");
 ok(/parseShardConfig/.test(analyzeRoute) && /stableBucketMatch/.test(analyzeRoute), "analyze backlog route supports sharded lanes");
 
 if (failed) process.exit(1);

@@ -215,6 +215,13 @@ async function runPipelinePreflight(req: NextRequest, input: {
       mediaUrl.searchParams.set("scan", String(input.profile.media_scan));
       mediaUrl.searchParams.set("use_local_resolver", "1");
       mediaUrl.searchParams.set("priority", "smart");
+      if (sameTargetFocus(target, focus)) {
+        mediaUrl.searchParams.set("focus_niche", focus.niche);
+        mediaUrl.searchParams.set("focus_platform", focus.platform);
+      }
+      if (input.executionIntent?.source_discovery_mode) {
+        mediaUrl.searchParams.set("source_discovery_mode", String(input.executionIntent.source_discovery_mode));
+      }
       const response = await internalFetch(mediaUrl);
       const body = await response.json().catch(() => ({}));
       mediaTicks.push({

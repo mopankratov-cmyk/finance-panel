@@ -110,6 +110,12 @@ function numberParam(req: NextRequest, name: string, fallback: number, min: numb
   return Math.max(min, Math.min(max, value));
 }
 
+function sameFocusSegment(row: CorpusRow, focusNiche: string, focusPlatform: string) {
+  if (!focusNiche || !focusPlatform) return false;
+  return String(row.niche || "").trim().toLowerCase() === focusNiche
+    && String(row.platform || "").trim().toLowerCase() === focusPlatform;
+}
+
 function hasConfiguredYtDlpCookies(): boolean {
   if (String(process.env.YT_DLP_COOKIES_PATH || "").trim()) return true;
   if (String(process.env.YT_DLP_COOKIES_TXT || "").trim()) return true;
@@ -191,6 +197,9 @@ export async function GET(req: NextRequest) {
     const ytDlpAvailable = allowLocalResolver ? await hasYtDlpBinary() : false;
     const deferTerminalMark = allowLocalResolverRequested && !ytDlpAvailable;
     const priorityMode = String(req.nextUrl.searchParams.get("priority") || "smart").trim().toLowerCase();
+    const focusNiche = String(req.nextUrl.searchParams.get("focus_niche") || "").trim().toLowerCase();
+    const focusPlatform = String(req.nextUrl.searchParams.get("focus_platform") || "").trim().toLowerCase();
+    const sourceDiscoveryMode = String(req.nextUrl.searchParams.get("source_discovery_mode") || "").trim().toLowerCase();
     const { shardIndex, shardCount } = parseShardConfig({
       shardIndex: req.nextUrl.searchParams.get("shard_index"),
       shardCount: req.nextUrl.searchParams.get("shard_count"),
@@ -209,9 +218,9 @@ export async function GET(req: NextRequest) {
     const corpusRows = ((data || []) as CorpusRow[])
       .filter((row) => stableShardMatch(row.id, shardIndex, shardCount))
       .filter((row) => row.url && !hasResolvedMediaLocators(row) && !hasTerminalMediaFailure(row))
-      .map((row) => ({
-        row,
-        priority: priorityMode === "fifo"
+      .map((row) => {
+        const focusMatch = sameFocusSegment(row, focusNiche, focusPlatform);
+        const baseScore = priorityMode === "fifo"
           ? 0
           : scoreMediaCandidate({
             id: row.id,
@@ -219,10 +228,23 @@ export async function GET(req: NextRequest) {
             views: row.views,
             createdAt: row.created_at,
             hasPageFallback: /instagram\.com\/(reel|reels|tv|p)\//i.test(String(row.url || "")),
-          }),
-      }))
+          });
+        const focusBoost = focusMatch
+          ? sourceDiscoveryMode === "close_exact_proof" || sourceDiscoveryMode === "pin_winner_provider"
+            ? 28
+            : sourceDiscoveryMode === "seed_and_collect"
+              ? 22
+              : 16
+          : 0;
+        return {
+          row,
+          focusMatch,
+          priority: Math.round((baseScore + focusBoost) * 10) / 10,
+        };
+      })
       .sort((a, b) =>
-        b.priority - a.priority
+        Number(b.focusMatch) - Number(a.focusMatch)
+        || b.priority - a.priority
         || Number(b.row.virality_score || 0) - Number(a.row.virality_score || 0)
         || Number(b.row.views || 0) - Number(a.row.views || 0)
         || Number(b.row.id || 0) - Number(a.row.id || 0),
@@ -343,6 +365,9 @@ export async function GET(req: NextRequest) {
       shard_index: shardIndex,
       shard_count: shardCount,
       priority: priorityMode,
+      focus_niche: focusNiche || null,
+      focus_platform: focusPlatform || null,
+      source_discovery_mode: sourceDiscoveryMode || null,
       scanned: queryScan,
       attempted: corpusRows.length,
       rows_with_media: withMedia,
