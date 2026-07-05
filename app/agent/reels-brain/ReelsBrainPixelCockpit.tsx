@@ -676,6 +676,8 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
       forming: num(patternAtlas.summary?.forming_segments),
       thin: num(patternAtlas.summary?.thin_segments),
       patterns: num(patternAtlas.summary?.atlas_ready_patterns),
+      exactProof: num(patternAtlas.summary?.exact_proof_ready),
+      generationReady: num(patternAtlas.summary?.generation_ready),
     };
     const playbookCards = ((segmentPlaybook.items || []) as JsonRecord[]).slice(0, 6).map((row) => {
       const status = playbookTone(String(row.status || "research"));
@@ -1869,10 +1871,21 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
                   <div className="rb-brief-block"><b>Coverage</b><p>{compact(item.analyzed_videos)} / {compact(item.total_videos)} · {compact(item.analyzed_rate)}%</p></div>
                   <div className="rb-brief-block"><b>Ready</b><p>{compact(item.generator_ready_patterns)} generator-ready</p></div>
                 </div>
+                <div className="rb-three" style={{ marginTop: 12 }}>
+                  <div className="rb-brief-block"><b>Proof</b><p>{item.proof_quality || "untraced"}</p></div>
+                  <div className="rb-brief-block"><b>Trust</b><p>{item.trust_band || "unknown"} · {item.evidence_band || "unknown"}</p></div>
+                  <div className="rb-brief-block"><b>Readiness</b><p>{item.high_trust_generation_ready ? "gen-ready" : item.publishable_exact ? "exact-ready" : "building"}</p></div>
+                </div>
                 <div className="rb-brief-block" style={{ marginTop: 12 }}>
                   <b>Leading pattern</b>
                   <p>{item.top_patterns?.[0]?.title || "Паттерн ещё не стабилизировался"}</p>
                 </div>
+                {item.policy_reason ? (
+                  <div className="rb-brief-block" style={{ marginTop: 12 }}>
+                    <b>Почему этот atlas силён</b>
+                    <p>{item.policy_reason}</p>
+                  </div>
+                ) : null}
                 <p style={{ marginTop: 12, color: "#475569", lineHeight: 1.55 }}>
                   {item.top_patterns?.[0]?.hook || item.next_step}
                 </p>
@@ -1886,6 +1899,22 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
               </div>
             )}
           </div>
+          {vm.atlasCards.length ? (
+            <div className="rb-summary-grid" style={{ marginTop: 14 }}>
+              {[
+                ["Segments", compact(vm.atlasSummary.segments)],
+                ["Stable / Forming / Thin", `${compact(vm.atlasSummary.stable)} / ${compact(vm.atlasSummary.forming)} / ${compact(vm.atlasSummary.thin)}`],
+                ["Atlas-ready patterns", compact(vm.atlasSummary.patterns)],
+                ["Exact proof", compact(vm.atlasSummary.exactProof)],
+                ["Gen-ready", compact(vm.atlasSummary.generationReady)],
+              ].map(([label, value]) => (
+                <div className="rb-summary-card" key={label}>
+                  <div className="rb-overline" style={{ color: "#0891b2" }}>{label}</div>
+                  <strong>{value}</strong>
+                </div>
+              ))}
+            </div>
+          ) : null}
         </section>
 
         <section>

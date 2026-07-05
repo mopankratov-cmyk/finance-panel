@@ -84,6 +84,12 @@ type SegmentPolicyRow = {
   niche?: string;
   platform?: string;
   policy_mode?: string;
+  trust_band?: string;
+  evidence_band?: string;
+  high_trust_generation_ready?: boolean;
+  proof_quality?: string;
+  publishable_exact?: boolean;
+  policy_reason?: string;
   decision_priority_score?: number;
   recommended_upgrade?: {
     projected_trust_gain_score?: number;
@@ -193,17 +199,23 @@ function segmentPrioritySignal(
   const priority = segmentPriorityMap.get(key);
   const policy = segmentPolicyMap.get(key);
   const upgrade = policy?.recommended_upgrade || policy?.next_upgrade || priority?.recommended_upgrade || null;
-    return {
-      segment_priority_score: Math.max(
-        num(priority?.decision_priority_score),
-        num(priority?.urgency_score),
-        num(policy?.decision_priority_score),
-        num(upgrade?.projected_trust_gain_score),
-      ),
-      segment_priority_mode: text(priority?.policy_mode || policy?.policy_mode) || "research_only",
-      segment_ready_for_generation: Boolean(priority?.ready_for_generation),
-      projected_trust_gain_score: num(upgrade?.projected_trust_gain_score),
-      projected_production_state: text(upgrade?.projected_production_state),
+  return {
+    segment_priority_score: Math.max(
+      num(priority?.decision_priority_score),
+      num(priority?.urgency_score),
+      num(policy?.decision_priority_score),
+      num(upgrade?.projected_trust_gain_score),
+    ),
+    segment_priority_mode: text(priority?.policy_mode || policy?.policy_mode) || "research_only",
+    segment_ready_for_generation: Boolean(priority?.ready_for_generation),
+    trust_band: text(policy?.trust_band || "unknown"),
+    evidence_band: text(policy?.evidence_band || "unknown"),
+    high_trust_generation_ready: Boolean(policy?.high_trust_generation_ready),
+    publishable_exact: Boolean(policy?.publishable_exact),
+    proof_quality: text(policy?.proof_quality || "untraced"),
+    policy_reason: text(policy?.policy_reason),
+    projected_trust_gain_score: num(upgrade?.projected_trust_gain_score),
+    projected_production_state: text(upgrade?.projected_production_state),
     unlocked_output: text(upgrade?.unlocked_output),
   };
 }
@@ -302,6 +314,12 @@ export function buildReelsBrainPatternAtlas(input: {
         segment_priority_score: priority.segment_priority_score,
         segment_priority_mode: priority.segment_priority_mode,
         segment_ready_for_generation: priority.segment_ready_for_generation,
+        trust_band: priority.trust_band || "unknown",
+        evidence_band: priority.evidence_band || "unknown",
+        high_trust_generation_ready: priority.high_trust_generation_ready,
+        publishable_exact: priority.publishable_exact,
+        proof_quality: priority.proof_quality || "untraced",
+        policy_reason: priority.policy_reason || "",
         projected_trust_gain_score: priority.projected_trust_gain_score,
         projected_production_state: priority.projected_production_state,
         unlocked_output: priority.unlocked_output,
@@ -354,6 +372,9 @@ export function buildReelsBrainPatternAtlas(input: {
     )
     .sort((a, b) =>
       policyModeScore(b.segment_priority_mode) - policyModeScore(a.segment_priority_mode)
+      || Number(Boolean(b.high_trust_generation_ready)) - Number(Boolean(a.high_trust_generation_ready))
+      || Number(Boolean(b.publishable_exact)) - Number(Boolean(a.publishable_exact))
+      || Number(b.proof_quality === "exact_segment") - Number(a.proof_quality === "exact_segment")
       || b.segment_priority_score - a.segment_priority_score
       || b.avg_stability_score - a.avg_stability_score
       || b.stable_pattern_count - a.stable_pattern_count
@@ -396,6 +417,8 @@ export function buildReelsBrainPatternAtlas(input: {
     atlas_ready_patterns: bySegment.reduce((sum, row) => sum + row.stable_pattern_count, 0),
     primary_priority_segments: bySegment.filter((row) => row.segment_priority_mode === "primary").length,
     ready_for_generation: bySegment.filter((row) => row.segment_ready_for_generation).length,
+    exact_proof_ready: bySegment.filter((row) => row.proof_quality === "exact_segment").length,
+    generation_ready: bySegment.filter((row) => row.high_trust_generation_ready).length,
   };
 
   const topSegments = bySegment.slice(0, segmentLimit);
