@@ -41,6 +41,7 @@ const scheduler = readFileSync("lib/factory/reelsBrainScheduler.ts", "utf8");
 ok(/function buildCostGovernor/.test(economics), "learning-economics builds a cost governor");
 ok(/REELS_BRAIN_MAX_DAILY_SPEND_USD/.test(economics), "cost governor has daily spend env guard");
 ok(/REELS_BRAIN_MAX_USEFUL_VIDEO_USD/.test(economics), "cost governor has useful-video cost env guard");
+ok(/REELS_BRAIN_MAX_PATTERN_GAIN_USD/.test(economics), "cost governor has pattern-gain cost env guard");
 ok(/low_signal_rate > 20/.test(economics), "cost governor pauses on low-signal corpus");
 ok(/cost_governor: costGovernor/.test(economics), "learning-economics returns cost_governor");
 ok(/autopilot_actions: autopilotActions/.test(economics), "learning-economics returns autopilot_actions");
@@ -143,6 +144,7 @@ ok(/buildReelsBrainGenerationPolicy/.test(economics) && /generation_policy/.test
 ok(/buildReelsBrainPortfolioReadiness/.test(economics) && /portfolio_readiness/.test(economics), "learning-economics exposes portfolio readiness for 10k coverage tracking");
 ok(/portfolioReadiness/.test(economics) && /close_portfolio_gap/.test(economics), "autopilot uses portfolio readiness to close high-trust coverage gaps");
 ok(/generationPolicy/.test(economics) && /ship_policy_segment/.test(economics) && /validate_policy_segment/.test(economics), "autopilot actions consume generation policy and expose production-aware segment moves");
+ok(/review_pattern_gain_economics/.test(economics) && /pattern_gain_cost_trend/.test(economics), "autopilot reacts when pattern-gain economics degrade");
 ok(/segmentStabilityAudit/.test(learningPlan) && /segment_stability/.test(learningPlan), "learning-plan uses segment stability audit in the main loop");
 ok(/portfolio_readiness/.test(learningPlan), "learning-plan exposes portfolio readiness in the mission loop");
 ok(/buildReelsBrainNextTick/.test(learningPlan) && /portfolio_priority_segment/.test(learningPlan), "learning-plan delegates portfolio-aware next tick selection and preserves focused gap segment");

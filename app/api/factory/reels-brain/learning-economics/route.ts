@@ -1363,10 +1363,18 @@ function buildCostGovernor(input: {
   today: Record<string, unknown> | null;
 }) {
   const usefulCost = firstPositive(input.today?.usd_per_relevant, input.today?.usd_per_analyzed, input.today?.usd_per_inserted, input.totals.today_usd_per_useful_video);
+  const patternGainUsd = firstPositive(input.today?.usd_per_pattern_gain, input.totals.cost_units_per_pattern_gain_recent ? num(input.totals.cost_units_per_pattern_gain_recent) * estimatedUsdFromCostUnits(1) : 0);
+  const patternGainCostUnits = firstPositive(input.today?.cost_units_per_pattern_gain, input.totals.cost_units_per_pattern_gain_recent);
   const dailySpend = num(input.today?.spend_usd);
   const maxDailySpend = Number(process.env.REELS_BRAIN_MAX_DAILY_SPEND_USD || 12);
   const maxUsefulCost = Number(process.env.REELS_BRAIN_MAX_USEFUL_VIDEO_USD || 0.08);
-  const shouldPause = dailySpend > maxDailySpend || usefulCost > maxUsefulCost || input.corpusAudit.low_signal_rate > 20;
+  const maxPatternGainUsd = Number(process.env.REELS_BRAIN_MAX_PATTERN_GAIN_USD || 0.18);
+  const weakPatternGain = num(input.totals.pattern_gain_proxy_total) <= 0 && dailySpend > 0;
+  const shouldPause = dailySpend > maxDailySpend
+    || usefulCost > maxUsefulCost
+    || patternGainUsd > maxPatternGainUsd
+    || weakPatternGain
+    || input.corpusAudit.low_signal_rate > 20;
   const providerLimits = (input.discoveryBrain.providers || []).map((provider) => ({
     provider: provider.provider,
     decision: provider.decision,
@@ -1377,11 +1385,17 @@ function buildCostGovernor(input: {
     status: shouldPause ? "pause_or_review" : "ok_to_continue",
     max_daily_spend_usd: maxDailySpend,
     max_useful_video_usd: maxUsefulCost,
+    max_pattern_gain_usd: maxPatternGainUsd,
     today_spend_usd: dailySpend || null,
     current_useful_video_usd: usefulCost || null,
+    current_pattern_gain_usd: patternGainUsd || null,
+    current_pattern_gain_cost_units: patternGainCostUnits || null,
+    weak_pattern_gain: weakPatternGain,
     rules: [
       "stop if daily spend exceeds max_daily_spend_usd",
       "stop if useful video cost exceeds max_useful_video_usd",
+      "stop if pattern gain cost exceeds max_pattern_gain_usd",
+      "stop if paid collection produces near-zero pattern gain",
       "stop/inspect if low_signal corpus rate exceeds 20%",
       "scale only providers with discovery decision=scale",
     ],
@@ -1394,6 +1408,7 @@ function buildAutopilotActions(input: {
   discoveryBrain: ReturnType<typeof buildDiscoveryBrain>;
   antiPatternBrain: ReturnType<typeof buildAntiPatternBrain>;
   costGovernor: ReturnType<typeof buildCostGovernor>;
+  totals?: Record<string, unknown>;
   segmentPriorityQueue?: { items?: Array<Record<string, unknown>> };
   generationPolicy?: {
     by_niche?: Array<Record<string, unknown>>;
@@ -1410,6 +1425,9 @@ function buildAutopilotActions(input: {
     .sort((a, b) => a.understanding_score - b.understanding_score)
     .slice(0, 3);
   const providers = input.discoveryBrain.providers || [];
+  const patternGainCostTrend = String(input.totals?.pattern_gain_cost_trend || "not_enough_data");
+  const patternGainProxyTotal = num(input.totals?.pattern_gain_proxy_total);
+  const patternGainRecent = num(input.totals?.cost_units_per_pattern_gain_recent);
   const segmentPolicies = (input.generationPolicy?.by_segment || []).slice(0, 8).map((row) => ({
     niche: String(row.niche || ""),
     platform: String(row.platform || ""),
@@ -1454,6 +1472,14 @@ function buildAutopilotActions(input: {
     reason: `${segment.policy_mode} · trust ${segment.trust_band} · evidence ${segment.evidence_band} · readiness ${segment.readiness_score}`,
   }));
   const actions = [
+    ...(input.costGovernor.weak_pattern_gain || patternGainCostTrend === "more_expensive" ? [{
+      type: "review_pattern_gain_economics",
+      priority: "high",
+      niche: "mixed",
+      platform: "mixed",
+      action: "Снизить paid intake и пересобрать discovery angles с лучшим pattern gain",
+      reason: `pattern gain total ${patternGainProxyTotal} · recent cost ${patternGainRecent || "n/a"} · trend ${patternGainCostTrend}`,
+    }] : []),
     ...(num(portfolioSummary.high_trust_coverage_pct) < 85 ? portfolioGaps.map((segment) => ({
       type: "close_portfolio_gap",
       priority: num(portfolioSummary.high_trust_coverage_pct) < 60 ? "high" : "medium",
@@ -1506,6 +1532,10 @@ function buildAutopilotActions(input: {
       primary_segments: segmentPolicies.filter((segment) => segment.policy_mode === "primary").length,
       control_segments: segmentPolicies.filter((segment) => segment.policy_mode === "control_only").length,
       research_segments: segmentPolicies.filter((segment) => segment.policy_mode === "research_only").length,
+    },
+    learning_economics: {
+      pattern_gain_proxy_total: patternGainProxyTotal,
+      pattern_gain_cost_trend: patternGainCostTrend,
     },
     actions: actions.slice(0, 10),
   };
@@ -2660,6 +2690,7 @@ export async function GET(req: NextRequest) {
       discoveryBrain,
       antiPatternBrain,
       costGovernor,
+      totals,
       segmentPriorityQueue,
       generationPolicy,
       portfolioReadiness,
