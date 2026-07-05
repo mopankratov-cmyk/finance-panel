@@ -32,10 +32,20 @@ export type ReelsBrainFeedbackMetricRow = {
   measurement_id?: string | null;
   validation_task_id?: string | null;
   proof_scope?: string | null;
+  high_trust_generation_ready?: boolean | null;
 };
 
 function text(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function bool(value: unknown): boolean | null {
+  if (typeof value === "boolean") return value;
+  const raw = text(value).toLowerCase();
+  if (!raw) return null;
+  if (["1", "true", "yes", "ready", "high"].includes(raw)) return true;
+  if (["0", "false", "no", "not_ready", "low"].includes(raw)) return false;
+  return null;
 }
 
 function recipeNiche(runPlan: Record<string, unknown> | null | undefined, fallback?: string | null) {
@@ -129,6 +139,7 @@ export async function loadReelsBrainFeedbackRows(
         measurement_id: text(rawMetrics.measurement_id) || null,
         validation_task_id: text(rawMetrics.validation_task_id) || null,
         proof_scope: text(rawMetrics.proof_scope) || null,
+        high_trust_generation_ready: bool(rawMetrics.high_trust_generation_ready),
       };
     });
 

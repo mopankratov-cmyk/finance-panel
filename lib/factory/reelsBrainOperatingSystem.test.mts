@@ -19,6 +19,7 @@ test("buildReelsBrainFeedbackLoop aggregates segment outcome memory", () => {
       measurement_id: "exact__ru_toys__tiktok",
       validation_task_id: "exact__ru_toys__tiktok",
       proof_scope: "exact_segment",
+      high_trust_generation_ready: true,
     },
     {
       recipe_id: 2,
@@ -58,14 +59,19 @@ test("buildReelsBrainFeedbackLoop aggregates segment outcome memory", () => {
   assert.equal(result.validation_trace.traced_coverage_rate, 67);
   assert.equal(result.validation_trace.exact_segment_posts, 1);
   assert.equal(result.validation_trace.pattern_feedback_posts, 1);
+  assert.equal(result.validation_trace.generation_ready_traced_posts, 1);
   assert.equal(result.validation_trace.by_proof_scope[0]?.proof_scope, "exact_segment");
+  assert.equal(result.validation_trace.by_proof_scope[0]?.generation_ready_posts, 1);
   assert.equal(result.validation_trace.top_tasks[0]?.task_id, "exact__ru_toys__tiktok");
+  assert.equal(result.validation_trace.top_tasks[0]?.generation_ready_posts, 1);
   assert.equal(result.by_segment[0]?.segment, "ru_toys × tiktok");
   assert.equal(result.by_segment[0]?.status, "proven");
   assert.equal(result.by_segment[0]?.exact_segment_posts, 1);
+  assert.equal(result.by_segment[0]?.generation_ready_posts, 1);
   assert.equal(result.by_segment[0]?.proof_quality, "exact_segment");
   assert.equal(result.segment_outcome_memory.strongest_segments[0]?.segment, "ru_toys × tiktok");
-  assert.match(result.segment_outcome_memory.trust_update_queue[0]?.evidence || "", /exact 1/);
+  assert.equal(result.segment_outcome_memory.generation_ready_segments[0]?.segment, "ru_toys × tiktok");
+  assert.match(result.segment_outcome_memory.trust_update_queue[0]?.evidence || "", /gen-ready 1/);
   assert.equal(result.segment_outcome_memory.weak_segments[0]?.segment, "ru_cosmetics × instagram");
   assert.match(result.next_step, /segment trust/i);
 });

@@ -27,6 +27,7 @@ export type ReelsBrainMetricRow = {
   measurement_id?: string | null;
   validation_task_id?: string | null;
   proof_scope?: string | null;
+  high_trust_generation_ready?: boolean | null;
 };
 
 type PatternLike = {
@@ -74,6 +75,12 @@ function normalizeProofScope(value: unknown): string {
   if (raw === "exact_segment") return "exact_segment";
   if (raw === "pattern_feedback") return "pattern_feedback";
   return raw || "unscoped";
+}
+
+function normalizeBool(value: unknown): boolean {
+  if (typeof value === "boolean") return value;
+  const raw = String(value || "").trim().toLowerCase();
+  return raw === "true" || raw === "1" || raw === "yes" || raw === "ready" || raw === "high";
 }
 
 function productTypeFromText(value: string): string {
@@ -130,6 +137,7 @@ export function buildReelsBrainFeedbackLoop(metrics: ReelsBrainMetricRow[]) {
     revenue: num(row.revenue),
     niche: typeof row.niche === "string" ? row.niche.trim() : "",
     segment_label: typeof row.segment_label === "string" ? row.segment_label.trim() : "",
+    high_trust_generation_ready: normalizeBool(row.high_trust_generation_ready),
   }));
   const winners = rows.filter((row) =>
     row.views >= 10000
@@ -174,6 +182,8 @@ export function buildReelsBrainFeedbackLoop(metrics: ReelsBrainMetricRow[]) {
       exact_segment_posts: 0,
       pattern_feedback_posts: 0,
       unscoped_posts: 0,
+      generation_ready_posts: 0,
+      generation_ready_winners: 0,
     };
     current.posts += 1;
     current.views += row.views;
@@ -184,7 +194,9 @@ export function buildReelsBrainFeedbackLoop(metrics: ReelsBrainMetricRow[]) {
     if (proofScope === "exact_segment") current.exact_segment_posts += 1;
     if (proofScope === "pattern_feedback") current.pattern_feedback_posts += 1;
     if (proofScope === "unscoped" && (row.measurement_id || row.validation_task_id)) current.unscoped_posts += 1;
+    if (row.high_trust_generation_ready) current.generation_ready_posts += 1;
     if (winners.includes(row)) current.winners += 1;
+    if (row.high_trust_generation_ready && winners.includes(row)) current.generation_ready_winners += 1;
     if (losers.includes(row)) current.losers += 1;
     if (row.completion_rate > 0) current.completion.push(row.completion_rate);
     if (row.ctr_card > 0) current.ctr.push(row.ctr_card);
@@ -206,6 +218,8 @@ export function buildReelsBrainFeedbackLoop(metrics: ReelsBrainMetricRow[]) {
     exact_segment_posts: number;
     pattern_feedback_posts: number;
     unscoped_posts: number;
+    generation_ready_posts: number;
+    generation_ready_winners: number;
   }>()).values()).map((row) => {
     const avgCompletion = avg(row.completion);
     const avgCtr = avg(row.ctr);
@@ -232,6 +246,8 @@ export function buildReelsBrainFeedbackLoop(metrics: ReelsBrainMetricRow[]) {
       exact_segment_posts: row.exact_segment_posts,
       pattern_feedback_posts: row.pattern_feedback_posts,
       unscoped_posts: row.unscoped_posts,
+      generation_ready_posts: row.generation_ready_posts,
+      generation_ready_winners: row.generation_ready_winners,
       proof_quality: row.exact_segment_posts > 0
         ? "exact_segment"
         : row.traced_posts > 0
@@ -264,8 +280,17 @@ export function buildReelsBrainFeedbackLoop(metrics: ReelsBrainMetricRow[]) {
       platform: row.platform,
       status: row.status,
       trust_action: row.trust_action,
-      evidence: `${row.winners} winners / ${row.posts} posts · exact ${row.exact_segment_posts} · traced ${row.traced_posts} · orders ${row.orders} · revenue ${row.revenue}`,
+      evidence: `${row.winners} winners / ${row.posts} posts · exact ${row.exact_segment_posts} · traced ${row.traced_posts} · gen-ready ${row.generation_ready_posts} · orders ${row.orders} · revenue ${row.revenue}`,
     }));
+  const generationReadySegments = bySegment
+    .filter((row) => row.generation_ready_posts > 0)
+    .sort((a, b) =>
+      b.generation_ready_winners - a.generation_ready_winners
+      || b.generation_ready_posts - a.generation_ready_posts
+      || b.winners - a.winners
+      || a.segment.localeCompare(b.segment),
+    )
+    .slice(0, 5);
 
   const validationTraceRows = rows.filter((row) =>
     typeof row.measurement_id === "string"
@@ -282,11 +307,13 @@ export function buildReelsBrainFeedbackLoop(metrics: ReelsBrainMetricRow[]) {
       views: 0,
       orders: 0,
       revenue: 0,
+      generation_ready_posts: 0,
     };
     current.posts += 1;
     current.views += row.views;
     current.orders += row.marketplace_orders;
     current.revenue += row.revenue;
+    if (row.high_trust_generation_ready) current.generation_ready_posts += 1;
     if (winners.includes(row)) current.winners += 1;
     if (losers.includes(row)) current.losers += 1;
     map.set(proofScope, current);
@@ -299,6 +326,7 @@ export function buildReelsBrainFeedbackLoop(metrics: ReelsBrainMetricRow[]) {
     views: number;
     orders: number;
     revenue: number;
+    generation_ready_posts: number;
   }>()).values()).map((row) => ({
     proof_scope: row.proof_scope,
     posts: row.posts,
@@ -307,6 +335,7 @@ export function buildReelsBrainFeedbackLoop(metrics: ReelsBrainMetricRow[]) {
     views: row.views,
     orders: row.orders,
     revenue: Math.round(row.revenue * 100) / 100,
+    generation_ready_posts: row.generation_ready_posts,
     trust_ratio: row.posts > 0 ? Math.round((row.winners / row.posts) * 1000) / 1000 : 0,
   })).sort((a, b) =>
     b.posts - a.posts
@@ -326,10 +355,12 @@ export function buildReelsBrainFeedbackLoop(metrics: ReelsBrainMetricRow[]) {
       posts: 0,
       winners: 0,
       views: 0,
+      generation_ready_posts: 0,
     };
     current.posts += 1;
     current.views += row.views;
     if (winners.includes(row)) current.winners += 1;
+    if (row.high_trust_generation_ready) current.generation_ready_posts += 1;
     map.set(taskId, current);
     return map;
   }, new Map<string, {
@@ -338,8 +369,10 @@ export function buildReelsBrainFeedbackLoop(metrics: ReelsBrainMetricRow[]) {
     posts: number;
     winners: number;
     views: number;
+    generation_ready_posts: number;
   }>()).values()).sort((a, b) =>
     b.posts - a.posts
+    || b.generation_ready_posts - a.generation_ready_posts
     || b.winners - a.winners
     || b.views - a.views
     || a.task_id.localeCompare(b.task_id),
@@ -362,6 +395,7 @@ export function buildReelsBrainFeedbackLoop(metrics: ReelsBrainMetricRow[]) {
       strongest_segments: bySegment.filter((row) => row.status === "proven").slice(0, 5),
       promising_segments: bySegment.filter((row) => row.status === "promising").slice(0, 5),
       weak_segments: bySegment.filter((row) => row.status === "weak").slice(0, 5),
+      generation_ready_segments: generationReadySegments,
       trust_update_queue: trustUpdateQueue,
     },
     validation_trace: {
@@ -371,10 +405,13 @@ export function buildReelsBrainFeedbackLoop(metrics: ReelsBrainMetricRow[]) {
       exact_segment_posts: validationTraceRows.filter((row) => normalizeProofScope(row.proof_scope) === "exact_segment").length,
       pattern_feedback_posts: validationTraceRows.filter((row) => normalizeProofScope(row.proof_scope) === "pattern_feedback").length,
       unscoped_posts: validationTraceRows.filter((row) => normalizeProofScope(row.proof_scope) === "unscoped").length,
+      generation_ready_traced_posts: validationTraceRows.filter((row) => row.high_trust_generation_ready).length,
       by_proof_scope: traceByProofScope,
       top_tasks: traceTopTasks,
       next_step: validationTraceRows.length === 0
         ? "Начать писать measurement_id / validation_task_id в каждый feedback-post, иначе trust не будет доказательным."
+        : validationTraceRows.some((row) => row.high_trust_generation_ready) === false
+          ? "Добавить writeback high_trust_generation_ready в feedback-post, чтобы production-ready сегменты не терялись после публикации."
         : traceByProofScope.some((row) => row.proof_scope === "exact_segment") === false
           ? "Добавить exact-segment публикации, иначе брифы останутся на transfer-доказательстве."
           : "Сравнивать trust по exact_segment против pattern_feedback и поднимать только доказанные сегменты.",

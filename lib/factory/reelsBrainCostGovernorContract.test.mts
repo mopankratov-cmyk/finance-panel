@@ -141,7 +141,7 @@ ok(!/POST\s*\(/.test(learningPlan), "learning-plan route is read-only");
 
 ok(/buildReelsBrainFeedbackLoop/.test(feedback), "feedback route summarizes publication metrics");
 ok(/\/api\/factory\/post-metrics/.test(feedback), "feedback route writes through post-metrics");
-ok(/loadReelsBrainFeedbackRows/.test(feedbackRoute) && /segment_label/.test(feedbackRows) && /segment_outcome_memory/.test(operatingSystem) && /validation_trace/.test(operatingSystem), "feedback loop enriches post metrics with segment context and exposes segment outcome memory plus validation trace");
+ok(/loadReelsBrainFeedbackRows/.test(feedbackRoute) && /segment_label/.test(feedbackRows) && /high_trust_generation_ready/.test(feedbackRows) && /generation_ready_segments/.test(operatingSystem) && /generation_ready_traced_posts/.test(operatingSystem), "feedback loop enriches post metrics with segment context, preserves generation-ready writeback, and exposes segment outcome memory plus validation trace");
 ok(/buildReelsBrainOutcomeAntiPatternMemory/.test(economics) && /outcome_writeback/.test(economics) && /segment_outcome_memory/.test(outcomeAntiPatternMemory), "learning-economics writes segment outcome memory back into anti-pattern brain");
 ok(/effective_quality_gate/.test(economics) && /decision_priority_score/.test(economics) && /quality_gate_override/.test(economics), "pattern decision layer writes outcome-adjusted gate and priority back into pattern details");
 ok(/function loadAutopilotGuard/.test(cron), "cron has an autopilot guard");
