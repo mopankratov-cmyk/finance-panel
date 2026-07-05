@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { parseBulkExecutionIntent, tuneBulkBudgetByExecutionIntent, tuneBulkLaneByExecutionIntent } from "./reelsBrainBulkExecutionPolicy";
+import { parseAnalyzeExecutionIntent, tuneAnalyzeLaneByExecutionIntent } from "./reelsBrainAnalyzeCompactionPolicy";
 
 test("tuneBulkLaneByExecutionIntent narrows primary segment collection to one provider and one query", () => {
   const intent = parseBulkExecutionIntent({
@@ -98,6 +99,29 @@ test("tuneBulkLaneByExecutionIntent narrows exact-proof collection to one provid
   assert.deepEqual(result.providers, ["apify_instagram"]);
   assert.equal(result.limit, 18);
   assert.equal(result.provider_timeout_ms, 14000);
+});
+
+test("tuneAnalyzeLaneByExecutionIntent narrows ship-ready completion to one exact-focused lane", () => {
+  const intent = parseAnalyzeExecutionIntent({
+    mode: "ship_ready_bundle_completion",
+    task: "analyze",
+    focus_segment: "ru_clothing × instagram",
+    policy_mode: "primary",
+    explanation: "ship ready",
+  });
+  const result = tuneAnalyzeLaneByExecutionIntent({
+    intent,
+    lane: { niche: "ru_clothing", platform: "instagram", unanalyzed: 19 },
+    analyzeLimit: 14,
+    buildPatterns: false,
+  });
+
+  assert.equal(result.strategy, "ship_ready_bundle_completion");
+  assert.equal(result.analyze_limit, 8);
+  assert.equal(result.build_patterns, true);
+  assert.equal(result.taxonomy_limit, 16);
+  assert.equal(result.pattern_limit, 240);
+  assert.equal(result.focus_platform, "instagram");
 });
 
 console.log("reelsBrainBulkExecutionPolicy: passed");

@@ -142,6 +142,7 @@ export function buildReelsBrainSegmentCreativeExports(input: {
           evidence_status: text(row.evidence_status),
           outcome_status: text(row.outcome_status, "no_feedback"),
           proof_quality: text(row.proof_quality, "untraced"),
+          exact_segment_ready: text(row.proof_quality) === "exact_segment" && lane === "ship",
           outcome_exact_segment_posts: num(row.outcome_exact_segment_posts),
           outcome_traced_posts: num(row.outcome_traced_posts),
           outcome_confidence: text(row.outcome_confidence, "none"),
@@ -158,6 +159,7 @@ export function buildReelsBrainSegmentCreativeExports(input: {
         },
         generator_bundle: {
           lane,
+          exact_segment_ready: text(row.proof_quality) === "exact_segment" && lane === "ship",
           allowed_modes: list(row.quality_gate?.allowed_generation_modes, 4),
           blocked_reasons: list(row.quality_gate?.blocked_reasons, 5),
           payload: {
@@ -178,6 +180,7 @@ export function buildReelsBrainSegmentCreativeExports(input: {
         },
         why_now: text(row.why_now),
         next_step: text(row.next_step),
+        publishable_exact: text(row.proof_quality) === "exact_segment" && lane === "ship",
       };
     })
     .sort((a, b) =>

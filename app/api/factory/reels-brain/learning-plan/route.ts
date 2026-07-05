@@ -137,6 +137,9 @@ export async function GET(req: NextRequest) {
     const exactQueueItems = Array.isArray(exactSegmentQueue.items) ? exactSegmentQueue.items as JsonRecord[] : [];
     const briefCoverageAudit = (learning.brief_coverage_audit || {}) as JsonRecord;
     const briefCoverageGapQueue = Array.isArray(briefCoverageAudit.gap_queue) ? briefCoverageAudit.gap_queue as JsonRecord[] : [];
+    const shipReadyQueue = (learning.ship_ready_queue || {}) as JsonRecord;
+    const shipReadyItems = Array.isArray(shipReadyQueue.items) ? shipReadyQueue.items as JsonRecord[] : [];
+    const topShipCandidates = Array.isArray(shipReadyQueue.top_ship_candidates) ? shipReadyQueue.top_ship_candidates as JsonRecord[] : [];
 
     const costGovernor = autopilot.cost_governor || learning.cost_governor || {};
     const autopilotActions = autopilot.autopilot_actions || learning.autopilot_actions || {};
@@ -162,6 +165,7 @@ export async function GET(req: NextRequest) {
       outcomeMemory: (learning.outcome_memory_brain || null) as JsonRecord | null,
       exactSegmentQueue,
       briefCoverageAudit,
+      shipReadyQueue,
       learningEconomics: {
         pattern_gain_cost_trend: totals.pattern_gain_cost_trend,
         pattern_gain_proxy_total: totals.pattern_gain_proxy_total,
@@ -214,6 +218,15 @@ export async function GET(req: NextRequest) {
           usable_exact_ready_pct: num((briefCoverageAudit.summary as JsonRecord | undefined)?.usable_exact_ready_pct),
           blocked_or_incomplete_segments: num((briefCoverageAudit.summary as JsonRecord | undefined)?.blocked_or_incomplete_segments),
           items: briefCoverageGapQueue.slice(0, 6),
+        },
+        ship_ready_queue: {
+          ship_candidates: num((shipReadyQueue.summary as JsonRecord | undefined)?.ship_candidates),
+          validate_candidates: num((shipReadyQueue.summary as JsonRecord | undefined)?.validate_candidates),
+          exact_ready_gaps: num((shipReadyQueue.summary as JsonRecord | undefined)?.exact_ready_gaps),
+          avg_ship_readiness_score: num((shipReadyQueue.summary as JsonRecord | undefined)?.avg_ship_readiness_score),
+          top_ship_ready_pct: num((shipReadyQueue.summary as JsonRecord | undefined)?.top_ship_ready_pct),
+          top_ship_candidates: topShipCandidates.slice(0, 3),
+          items: shipReadyItems.slice(0, 6),
         },
         segment_stability: {
           stable: num(stabilitySummary.stable),

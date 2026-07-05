@@ -12,6 +12,7 @@ function testBuildReelsBrainSegmentCreativeExportsSplitsShipAndValidateLanes() {
           readiness_score: 94,
           ready_for_generation: true,
           quality_gate: { status: "ready", allowed_generation_modes: ["decision_ready"], blocked_reasons: [] },
+          proof_quality: "exact_segment",
           payload: {
             hook: "Смотри что внутри",
             retention: "payoff",
@@ -79,7 +80,10 @@ function testBuildReelsBrainSegmentCreativeExportsSplitsShipAndValidateLanes() {
   assert.ok(result.items[1]?.content_solution.guardrails.some((item: string) => item.includes("Не пускать текущую механику")));
   assert.ok(result.items[1]?.brief.do_not_copy.some((item: string) => item.includes("weak")));
   assert.equal(result.items[1]?.trust.outcome_anti_patterns?.[0]?.label, "Weak segment outcome");
-  assert.equal(result.items[0]?.trust.proof_quality, "untraced");
+  assert.equal(result.items[0]?.trust.proof_quality, "exact_segment");
+  assert.equal(result.items[0]?.trust.exact_segment_ready, true);
+  assert.equal(result.items[0]?.generator_bundle.exact_segment_ready, true);
+  assert.equal(result.items[0]?.publishable_exact, true);
 }
 
 function run() {

@@ -77,7 +77,7 @@ ok(/buildReelsBrainValidationRunbook/.test(validationQueueRoute) && /validation_
 
 ok(/internalFetch/.test(creativeExports) && /segment_creative_exports/.test(creativeExports), "creative-exports route reads creative export bundles from learning-economics");
 ok(/lane/.test(creativeExports) && /niche/.test(creativeExports) && /platform/.test(creativeExports), "creative-exports route supports lane, niche and platform filters");
-ok(/exact_ready_only/.test(creativeExports) && /proof_quality/.test(creativeExports), "creative-exports route supports exact-ready only filtering for high-trust generation");
+ok(/exact_ready_only/.test(creativeExports) && /publishable_exact/.test(creativeExports) && /proof_quality/.test(creativeExports), "creative-exports route supports strict publishable exact-ready filtering for high-trust generation");
 ok(!/POST\s*\(/.test(creativeExports), "creative-exports route is read-only");
 ok(/internalFetch/.test(creativeBrief) && /segment_solution_matrix/.test(creativeBrief) && /segment_generation_packs/.test(creativeBrief) && /selectCreativeBriefFromSegmentLayers/.test(creativeBrief) && /platform_matrix/.test(creativeBriefSourceBuilder), "creative-brief route prefers trust-aware segment layers and pulls generation gates before old playbook fallback");
 ok(/strictExact/.test(creativeBrief) && /strict_exact/.test(creativeBrief) && /quality_gate:\s*\{/.test(creativeBrief), "creative-brief route supports strict exact-only mode instead of silently falling back");
@@ -128,6 +128,7 @@ ok(/buildReelsBrainSegmentGapPlanner/.test(learningPlan) && /segment_plan/.test(
 ok(/buildReelsBrainSegmentPriorityQueue/.test(learningPlan) && /segment_priority_queue/.test(learningPlan), "learning-plan exposes segment priority queue on top of gap plan");
 ok(/exact_segment_queue/.test(learningPlan) && /exact_proof_coverage_pct/.test(learningPlan) && /avg_expected_trust_gain/.test(learningPlan) && /avg_eta_ticks/.test(learningPlan) && /avg_data_readiness_score/.test(learningPlan) && /provider_recommendations/.test(learningPlan), "learning-plan exposes exact segment proof queue inside the mission loop with trust-gain, data-readiness and provider strategy");
 ok(/brief_coverage_audit/.test(learningPlan) && /usable_exact_ready_briefs/.test(learningPlan) && /blocked_or_incomplete_segments/.test(learningPlan), "learning-plan exposes usable exact-ready brief coverage inside the mission loop");
+ok(/ship_ready_queue/.test(learningPlan) && /top_ship_candidates/.test(learningPlan) && /avg_ship_readiness_score/.test(learningPlan), "learning-plan exposes ship-ready queue inside the mission loop");
 ok(/can_run_paid_collection/.test(learningPlan) && /cost_governor/.test(learningPlan), "learning-plan respects paid collection guard");
 ok(!/POST\s*\(/.test(learningPlan), "learning-plan route is read-only");
 
@@ -142,6 +143,7 @@ ok(/loadLearningPlan/.test(cron) && /planned_task/.test(cron) && /collect_portfo
 ok(/buildReelsBrainCronExecutionIntent/.test(cron) && /execution_intent/.test(cron) && /support_primary_segment/.test(cronIntent) && /close_exact_segment_gap/.test(cronIntent), "cron executes learning-plan with policy-aware execution intent including exact-proof gap mode");
 ok(/execution_intent/.test(cron) && /execution_intent/.test(bulk) && /tuneBulkLaneByExecutionIntent/.test(bulk) && /support_primary_segment/.test(bulkExecutionPolicy) && /close_exact_segment_gap/.test(bulkExecutionPolicy), "bulk ingest consumes cron execution intent and tunes discovery lanes by policy including exact-proof gap mode");
 ok(/execution_intent/.test(cron) && /execution_intent/.test(analyzeBacklog) && /tuneAnalyzeLaneByExecutionIntent/.test(analyzeBacklog) && /support_primary_segment/.test(analyzeCompactionPolicy) && /close_exact_segment_gap/.test(analyzeCompactionPolicy), "analyze backlog consumes execution intent and tunes compaction depth by policy including exact-proof gap mode");
+ok(/ship_ready_bundle_completion/.test(cronIntent) && /ship_ready_bundle_completion/.test(analyzeCompactionPolicy), "cron execution intent and analyze policy preserve ship-ready exact brief completion focus");
 ok(/focus_platform/.test(patternBuild) && /compaction_context/.test(patternBuild) && /loadPatternSourceVideos/.test(patternBuild), "patterns/build exposes platform-biased compaction context for policy-aware memory rebuilds");
 ok(/source_discovery_mode/.test(patternBuild) && /exact_proof_biased/.test(patternBuild) && /focusPlatformFromIntent/.test(patternBuild), "patterns/build derives exact-proof-biased compaction context from execution intent");
 ok(/function loadPipelineProgress/.test(cron) && /pipeline_preflight/.test(cron) && /reels-brain-audio-backfill/.test(cron), "cron runs pipeline preflight for media and audio backlog");
@@ -181,6 +183,7 @@ ok(/buildReelsBrainNextTick/.test(learningPlan) && /portfolio_priority_segment/.
 ok(/generationPolicy/.test(learningPlan) && /generation_policy/.test(learningPlanBuilder) && /policyLine/.test(learningPlanBuilder), "learning-plan uses generation policy when choosing the next collection move");
 ok(/feedback_coverage/.test(learningPlan) && /improve_feedback_coverage/.test(learningPlanBuilder) && /no_feedback_queue/.test(learningPlanBuilder), "learning-plan can pivot from corpus growth to strong-pattern feedback coverage");
 ok(/brief_bundle_completion/.test(learningPlanBuilder) && /briefCoverageAudit/.test(learningPlanBuilder), "learning-plan can pivot from corpus growth to closing usable brief bundle gaps");
+ok(/ship_ready_bundle_completion/.test(learningPlanBuilder) && /shipReadyQueue/.test(learningPlanBuilder), "learning-plan can pivot from corpus growth to ship-ready exact brief completion");
 ok(/\/api\/factory\/reels-brain\/readiness-audit\?verdict=/.test(cockpit), "cockpit exposes standalone readiness-audit endpoint per segment");
 ok(/\/api\/factory\/reels-brain\/decision-snapshot\?lane=/.test(cockpit), "cockpit exposes unified decision-snapshot endpoint per segment");
 ok(/\/api\/factory\/reels-brain\/segment-solutions\?lane=/.test(cockpit), "cockpit exposes operator-ready segment-solutions endpoint per segment");

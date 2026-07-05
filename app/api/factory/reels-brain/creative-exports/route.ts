@@ -36,7 +36,15 @@ export async function GET(req: NextRequest) {
       const laneOk = !lane || text(row.lane) === lane;
       const nicheOk = !niche || text(row.niche) === niche;
       const platformOk = !platform || text(row.platform) === platform;
-      const exactOk = !exactReadyOnly || (text((row.trust as JsonRecord).proof_quality) === "exact_segment" && text(row.lane) === "ship");
+      const exactOk = !exactReadyOnly || Boolean(
+        row.publishable_exact
+        || ((row.generator_bundle as JsonRecord | null)?.exact_segment_ready === true)
+        || (
+          text((row.trust as JsonRecord).proof_quality) === "exact_segment"
+          && text(row.lane) === "ship"
+          && ((row.trust as JsonRecord | null)?.exact_segment_ready === true)
+        ),
+      );
       return laneOk && nicheOk && platformOk && exactOk;
     };
     const allItems = list(exportsRoot.items);

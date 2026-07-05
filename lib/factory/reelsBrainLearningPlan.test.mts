@@ -434,4 +434,59 @@ assert.equal((briefBundleCompletionTick.params as Record<string, unknown>).platf
 assert.match(briefBundleCompletionTick.label, /usable brief/i);
 assert.match(briefBundleCompletionTick.reason, /usable creative export/i);
 
+const shipReadyBundleCompletionTick = buildReelsBrainNextTick({
+  target: 10000,
+  totalVideos: 3200,
+  analyzedVideos: 3140,
+  backlogLimit: 180,
+  canRunPaidCollection: true,
+  prioritySegment: {
+    niche: "ru_clothing",
+    platform: "instagram",
+    label: "ru_clothing × instagram",
+    action: "promote_segment_briefs",
+    ready_for_generation: true,
+  },
+  generationPolicy: {
+    by_segment: [
+      {
+        niche: "ru_clothing",
+        platform: "instagram",
+        label: "ru_clothing × instagram",
+        policy_mode: "primary",
+        trust_band: "high",
+        evidence_band: "stable",
+        readiness_score: 94,
+        policy_reason: "segment is one gap away from a publishable exact brief",
+      },
+    ],
+  },
+  exactSegmentQueue: {
+    items: [],
+  },
+  shipReadyQueue: {
+    summary: {
+      ship_candidates: 3,
+    },
+    top_ship_candidates: [
+      {
+        niche: "ru_clothing",
+        platform: "instagram",
+        label: "ru_clothing × instagram",
+        lane: "ship",
+        ship_readiness_score: 92,
+        missing_fields: ["visual_recipe"],
+      },
+    ],
+  },
+});
+
+assert.equal(shipReadyBundleCompletionTick.task, "analyze_backlog");
+assert.equal((shipReadyBundleCompletionTick.params as Record<string, unknown>).focus, "ship_ready_bundle_completion");
+assert.equal((shipReadyBundleCompletionTick.params as Record<string, unknown>).build_patterns, "true");
+assert.equal((shipReadyBundleCompletionTick.params as Record<string, unknown>).niche, "ru_clothing");
+assert.equal((shipReadyBundleCompletionTick.params as Record<string, unknown>).platform, "instagram");
+assert.match(shipReadyBundleCompletionTick.label, /ship-ready bundle/i);
+assert.match(shipReadyBundleCompletionTick.reason, /publishable exact brief/i);
+
 console.log("reelsBrainLearningPlan: passed");

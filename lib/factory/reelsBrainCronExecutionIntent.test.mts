@@ -118,6 +118,30 @@ test("buildReelsBrainCronExecutionIntent pushes analyze toward compaction when p
   assert.equal(result.analyze_overrides?.limit, 16);
 });
 
+test("buildReelsBrainCronExecutionIntent creates dedicated ship-ready analyze mode", () => {
+  const result = buildReelsBrainCronExecutionIntent({
+    task: "analyze",
+    nextTick: {
+      task: "analyze_backlog",
+      params: {
+        focus: "ship_ready_bundle_completion",
+      },
+      priority_segment: {
+        label: "ru_clothing × instagram",
+      },
+      generation_policy: {
+        policy_mode: "primary",
+      },
+    },
+  });
+
+  assert.equal(result.mode, "ship_ready_bundle_completion");
+  assert.equal(result.focus_segment, "ru_clothing × instagram");
+  assert.equal(result.analyze_overrides?.build_patterns, true);
+  assert.equal(result.analyze_overrides?.max_lanes, 1);
+  assert.equal(result.analyze_overrides?.limit, 10);
+});
+
 test("buildReelsBrainCronExecutionIntent forces build_patterns when corpus target is already reached", () => {
   const result = buildReelsBrainCronExecutionIntent({
     task: "analyze",

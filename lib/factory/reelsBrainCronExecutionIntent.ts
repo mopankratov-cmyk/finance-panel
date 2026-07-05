@@ -38,6 +38,7 @@ export type ReelsBrainCronExecutionIntent = {
     | "support_control_segment"
     | "explore_research_segment"
     | "generic_analyze"
+    | "ship_ready_bundle_completion"
     | "pattern_compaction";
   task: "bulk" | "analyze";
   focus_segment: string | null;
@@ -82,6 +83,7 @@ export function buildReelsBrainCronExecutionIntent(input: {
     : "research_only";
   const params = rec(nextTick.params);
   const exactProofFocus = text(params.focus) === "exact_segment_proof";
+  const shipReadyFocus = text(params.focus) === "ship_ready_bundle_completion";
   const preferredProvider = text(params.preferred_provider) || null;
   const sourceDiscoveryMode = text(params.source_discovery_mode) || null;
   const sourceProviderReason = text(params.source_provider_reason) || null;
@@ -104,6 +106,26 @@ export function buildReelsBrainCronExecutionIntent(input: {
           : "Pattern compaction: корпус уже собран, надо сжать память в стабильные паттерны.",
         analyze_overrides: {
           max_lanes: 2,
+          limit: 10,
+          build_patterns: true,
+        },
+        preferred_provider: preferredProvider,
+        source_discovery_mode: sourceDiscoveryMode,
+        source_provider_reason: sourceProviderReason,
+      };
+    }
+
+    if (shipReadyFocus) {
+      return {
+        mode: "ship_ready_bundle_completion",
+        task: "analyze",
+        focus_segment: focusSegment,
+        policy_mode: policyMode,
+        explanation: focusSegment
+          ? `Ship-ready bundle completion for ${focusSegment}: дожимаем publishable exact brief, а не просто общий backlog analyze.`
+          : "Ship-ready bundle completion: дожимаем publishable exact brief.",
+        analyze_overrides: {
+          max_lanes: 1,
           limit: 10,
           build_patterns: true,
         },

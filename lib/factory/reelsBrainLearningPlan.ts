@@ -45,6 +45,12 @@ type BriefCoverageAuditSummary = {
   summary?: JsonRecord | null;
 };
 
+type ShipReadyQueueSummary = {
+  items?: Array<JsonRecord>;
+  top_ship_candidates?: Array<JsonRecord>;
+  summary?: JsonRecord | null;
+};
+
 function num(value: unknown): number {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
@@ -200,6 +206,7 @@ export function buildReelsBrainNextTick(input: {
   outcomeMemory?: OutcomeMemorySummary | JsonRecord | null;
   exactSegmentQueue?: ExactSegmentQueueSummary | JsonRecord | null;
   briefCoverageAudit?: BriefCoverageAuditSummary | JsonRecord | null;
+  shipReadyQueue?: ShipReadyQueueSummary | JsonRecord | null;
 }) {
   const backlog = Math.max(0, input.totalVideos - input.analyzedVideos);
   const portfolio = (input.portfolioReadiness || {}) as JsonRecord;
@@ -225,6 +232,15 @@ export function buildReelsBrainNextTick(input: {
   const briefCoverageFocusSegment = safeSegment(
     records((input.briefCoverageAudit as BriefCoverageAuditSummary | null | undefined)?.gap_queue)[0] || null,
   );
+  const shipReadyQueue = (input.shipReadyQueue || {}) as ShipReadyQueueSummary | JsonRecord;
+  const shipReadyItems = records((shipReadyQueue as ShipReadyQueueSummary | null | undefined)?.items);
+  const shipReadyTopCandidates = records((shipReadyQueue as ShipReadyQueueSummary | null | undefined)?.top_ship_candidates);
+  const shipReadyFocusSegment = safeSegment(
+    shipReadyTopCandidates[0]
+    || shipReadyItems[0]
+    || null,
+  );
+  const shipReadySummary = ((shipReadyQueue as ShipReadyQueueSummary | null | undefined)?.summary || {}) as JsonRecord;
   const collectionFocusSegment = exactFocusSegment || portfolioFocusSegment || prioritySegment;
   const directSegmentPolicy = selectPolicyForSegment(input.generationPolicy, prioritySegment);
   const directPolicyMode = text(directSegmentPolicy?.policy_mode, "research_only");
@@ -249,6 +265,12 @@ export function buildReelsBrainNextTick(input: {
       records((input.briefCoverageAudit as BriefCoverageAuditSummary | null | undefined)?.gap_queue).length > 0
       || num(((input.briefCoverageAudit as BriefCoverageAuditSummary | null | undefined)?.summary || {})["blocked_or_incomplete_segments"]) > 0
     );
+  const shipReadyDecisionSegment = shouldSupportDecisionSegment
+    && !marketBlockedDecisionSupport
+    && !readinessBlockedDecisionSupport
+    && !exactProofMissingForDecisionSegment
+    && sameSegment(prioritySegment, shipReadyFocusSegment)
+    && num(shipReadySummary.ship_candidates) > 0;
   const activePolicySegment = shouldSupportDecisionSegment ? prioritySegment : collectionFocusSegment || prioritySegment;
   const activePolicy = selectPolicyForSegment(input.generationPolicy, activePolicySegment);
   const activePolicyMode = text(activePolicy?.policy_mode, "research_only");
@@ -263,17 +285,21 @@ export function buildReelsBrainNextTick(input: {
     && highConfidenceNoFeedback >= 2
     && feedbackCoverageRate < 75;
 
-  if (briefBundleGapForDecisionSegment && backlog > 0) {
+  if ((briefBundleGapForDecisionSegment || shipReadyDecisionSegment) && backlog > 0) {
     return {
       task: "analyze_backlog",
-      label: `Дожать usable brief для ${String(prioritySegment?.label || "")}`,
-      reason: `${String(prioritySegment?.label || "")} уже выглядит достаточно сильным по trust и exact-proof, но usable creative export ещё не собран до конца. Следующий цикл лучше потратить на analyze + pattern compaction по этому сегменту, чтобы закрыть missing fields и собрать production-usable brief bundle.`,
+      label: shipReadyDecisionSegment
+        ? `Дожать ship-ready bundle для ${String(prioritySegment?.label || "")}`
+        : `Дожать usable brief для ${String(prioritySegment?.label || "")}`,
+      reason: shipReadyDecisionSegment
+        ? `${String(prioritySegment?.label || "")} уже попал в ship-ready очередь: trust и exact-proof на месте, но production-grade brief bundle ещё не закрыт. Следующий цикл лучше потратить на analyze + pattern compaction по этому сегменту, чтобы добить missing fields и перевести его в реально publishable exact brief.`
+        : `${String(prioritySegment?.label || "")} уже выглядит достаточно сильным по trust и exact-proof, но usable creative export ещё не собран до конца. Следующий цикл лучше потратить на analyze + pattern compaction по этому сегменту, чтобы закрыть missing fields и собрать production-usable brief bundle.`,
       endpoint: "/api/factory/jobs/reels-brain-learning",
       params: {
         strategy: "analyze",
         limit: "80",
         build_patterns: "true",
-        focus: "brief_bundle_completion",
+        focus: shipReadyDecisionSegment ? "ship_ready_bundle_completion" : "brief_bundle_completion",
         ...(prioritySegment ? {
           niche: String(prioritySegment.niche || ""),
           platform: String(prioritySegment.platform || ""),
@@ -284,6 +310,7 @@ export function buildReelsBrainNextTick(input: {
       portfolio_priority_segment: portfolioFocusSegment,
       learning_economics: learningEconomics,
       brief_coverage_focus: briefCoverageFocusSegment,
+      ship_ready_focus: shipReadyFocusSegment,
     };
   }
 
@@ -375,6 +402,8 @@ export function buildReelsBrainNextTick(input: {
               : "Не усиливать weak сегмент; закрывать portfolio gaps"
           : exactProofMissingForDecisionSegment
             ? `Добрать exact proof для ${String(prioritySegment?.label || "")}`
+          : shipReadyDecisionSegment
+            ? `Дожать ship-ready bundle для ${String(prioritySegment?.label || "")}`
           : briefBundleGapForDecisionSegment
             ? `Дожать usable brief для ${String(prioritySegment?.label || "")}`
           : `Поддержать decision-ready сегмент ${String(prioritySegment?.label || "")}`
@@ -390,6 +419,8 @@ export function buildReelsBrainNextTick(input: {
             ? `${String(prioritySegment?.label || activePolicy?.label || "")} силён по trust, но ещё не дозрел по learning-layer (${String(prioritySegment?.readiness_dominant_gap || "readiness")} backlog ${num(prioritySegment?.readiness_total_backlog)}). Сначала закрываем readiness gap и только потом усиливаем segment briefs.${policyLine}`
             : exactProofMissingForDecisionSegment
             ? `${String(prioritySegment?.label || activePolicy?.label || "")} уже выглядит strong по briefs/patterns, но exact-segment proof ещё не закрыт. Следующий сбор лучше направить в этот же niche × platform, чтобы добрать доказательный слой, а не масштабировать на transfer-evidence.${policyLine}`
+            : shipReadyDecisionSegment
+              ? `${String(prioritySegment?.label || activePolicy?.label || "")} уже попал в ship-ready очередь: сегмент силён по exact-proof и policy, но production-grade bundle ещё не закрыт. Если analyze backlog уже не даёт новых missing fields, следующий цикл может добрать узкий exact material именно под publishable brief completion.${policyLine}`
             : briefBundleGapForDecisionSegment
               ? `${String(prioritySegment?.label || activePolicy?.label || "")} уже strong по evidence, но usable creative brief ещё неполный. Если backlog уже вычищен, следующий цикл может добрать точечный сегментный материал для закрытия output-gap и сборки production-usable bundle.${policyLine}`
             : `${String(prioritySegment?.label || activePolicy?.label || "")} уже близок к рабочим briefs/hypotheses; следующий сбор лучше направить в этот сегмент.${policyLine}`
@@ -407,7 +438,13 @@ export function buildReelsBrainNextTick(input: {
           niche: String(collectionSegment.niche || ""),
           platform: String(collectionSegment.platform || ""),
         } : {}),
-        ...(exactProofMissingForDecisionSegment ? { focus: "exact_segment_proof" } : briefBundleGapForDecisionSegment ? { focus: "brief_bundle_completion" } : {}),
+        ...(exactProofMissingForDecisionSegment
+          ? { focus: "exact_segment_proof" }
+          : shipReadyDecisionSegment
+            ? { focus: "ship_ready_bundle_completion" }
+            : briefBundleGapForDecisionSegment
+              ? { focus: "brief_bundle_completion" }
+              : {}),
         ...exactSourceParams(exactProofMissingForDecisionSegment ? exactFocusSegment : collectionSegment),
       },
       paid_collection: true,
