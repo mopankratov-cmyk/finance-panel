@@ -12,6 +12,9 @@ type SegmentDecisionItem = {
   market_score?: number;
   stable_pattern_count?: number;
   outcome_status?: string;
+  proof_quality?: "exact_segment" | "traced_transfer_only" | "untraced" | string;
+  outcome_exact_segment_posts?: number;
+  outcome_traced_posts?: number;
   outcome_confidence?: string;
   outcome_boost?: number;
   outcome_posts?: number;
@@ -79,8 +82,9 @@ function clamp(value: number, min = 0, max = 100) {
 
 function gateStatus(item: SegmentDecisionItem) {
   const grade = text(item.decision_grade);
-  if (grade === "ship") return "ready";
+  if (grade === "ship" && text(item.proof_quality) === "exact_segment") return "ready";
   if (grade === "validate") return "needs_validation";
+  if (grade === "ship") return "needs_validation";
   return "not_ready";
 }
 
@@ -93,6 +97,7 @@ function blockedReasons(item: SegmentDecisionItem) {
   if (text(item.generator_payload?.hook).length < 4) out.push("hook ещё не нормализован");
   if (text(item.generator_payload?.structure).length < 3) out.push("structure ещё не нормализована");
   if (text(item.outcome_status) === "weak") out.push("рынок пока не подтверждает сегмент outcome-постами");
+  if (text(item.decision_grade) === "ship" && text(item.proof_quality) !== "exact_segment") out.push("нет exact-segment proof для production-ready запуска");
   return out;
 }
 
@@ -158,6 +163,9 @@ export function buildReelsBrainSegmentGenerationPacks(input: {
         hypothesis_success_metric: text(item.hypothesis?.success_metric),
         evidence_status: text(item.evidence_status),
         outcome_status: text(item.outcome_status, "no_feedback"),
+        proof_quality: text(item.proof_quality, "untraced"),
+        outcome_exact_segment_posts: num(item.outcome_exact_segment_posts),
+        outcome_traced_posts: num(item.outcome_traced_posts),
         outcome_confidence: text(item.outcome_confidence, "none"),
         outcome_posts: num(item.outcome_posts),
         outcome_winners: num(item.outcome_winners),
@@ -188,6 +196,7 @@ export function buildReelsBrainSegmentGenerationPacks(input: {
       not_ready: items.filter((item) => item.quality_gate.status === "not_ready").length,
       decision_ready: items.filter((item) => item.generation_mode === "decision_ready").length,
       control_ready: items.filter((item) => item.generation_mode === "control_ready").length,
+      exact_proof_ready: items.filter((item) => item.proof_quality === "exact_segment").length,
       avg_readiness_score: items.length ? Math.round(items.reduce((sum, item) => sum + item.readiness_score, 0) / items.length) : 0,
     },
     items: items.slice(0, Math.max(4, input.limit || 8)),

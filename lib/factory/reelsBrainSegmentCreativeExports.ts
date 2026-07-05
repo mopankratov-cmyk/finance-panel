@@ -36,6 +36,9 @@ type GenerationPackRow = {
   next_step?: string;
   evidence_status?: string;
   outcome_status?: string;
+  proof_quality?: string;
+  outcome_exact_segment_posts?: number;
+  outcome_traced_posts?: number;
   outcome_confidence?: string;
   outcome_posts?: number;
   outcome_winners?: number;
@@ -128,7 +131,9 @@ export function buildReelsBrainSegmentCreativeExports(input: {
             ...outcomeGuardrails.guardrails,
           ], 6),
           execution_note: lane === "ship"
-            ? "Можно идти в основной generation lane."
+            ? text(row.proof_quality) === "exact_segment"
+              ? "Можно идти в основной generation lane."
+              : "Ship lane формально достигнут, но без exact-proof лучше запускать только как ограниченный rollout."
             : lane === "validate"
               ? "Запускать только как control-ready тест."
               : "Пока только исследовательский сегмент без продового запуска.",
@@ -136,6 +141,9 @@ export function buildReelsBrainSegmentCreativeExports(input: {
         trust: {
           evidence_status: text(row.evidence_status),
           outcome_status: text(row.outcome_status, "no_feedback"),
+          proof_quality: text(row.proof_quality, "untraced"),
+          outcome_exact_segment_posts: num(row.outcome_exact_segment_posts),
+          outcome_traced_posts: num(row.outcome_traced_posts),
           outcome_confidence: text(row.outcome_confidence, "none"),
           outcome_posts: num(row.outcome_posts),
           outcome_winners: num(row.outcome_winners),

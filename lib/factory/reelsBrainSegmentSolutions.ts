@@ -57,11 +57,18 @@ export function buildReelsBrainSegmentSolutions(input: {
       const trust = evidenceBand === "stable" ? "high" : evidenceBand === "forming" ? "medium" : "low";
       const trustRow = (row.trust && typeof row.trust === "object" ? row.trust : {}) as JsonRecord;
       const outcomeStatus = text(trustRow.outcome_status, "no_feedback");
+      const proofQuality = text(trustRow.proof_quality, "untraced");
       const outcomePosts = num(trustRow.outcome_posts);
       const outcomeWinners = num(trustRow.outcome_winners);
       const outcomeLosers = num(trustRow.outcome_losers);
-      const production = productionState(lane, evidenceBand);
+      const production = proofQuality === "exact_segment"
+        ? productionState(lane, evidenceBand)
+        : lane === "ship" || lane === "validate" || evidenceBand === "forming"
+          ? "controlled_test"
+          : "research_only";
       const trustWhy = [
+        proofQuality === "exact_segment" ? "exact-proof уже закрыт для этого niche × platform" : "",
+        proofQuality === "traced_transfer_only" ? "есть только transfer-level proof, поэтому продовый rollout ещё рано" : "",
         outcomeStatus === "proven" ? `рынок уже подтвердил сегмент: ${outcomeWinners}/${Math.max(outcomePosts, 1)} winner-posts` : "",
         outcomeStatus === "promising" ? `есть первые outcome-сигналы: ${outcomePosts} постов в обратной связи` : "",
         outcomeStatus === "weak" ? `обратная связь слабая: ${outcomeLosers}/${Math.max(outcomePosts, 1)} loser-posts` : "",
@@ -108,6 +115,7 @@ export function buildReelsBrainSegmentSolutions(input: {
           band: trust,
           score: readinessScore,
           evidence_band: evidenceBand,
+          proof_quality: proofQuality,
           outcome_status: outcomeStatus,
           outcome_confidence: text(trustRow.outcome_confidence, "none"),
           outcome_posts: outcomePosts,

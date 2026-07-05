@@ -18,6 +18,7 @@ test("buildReelsBrainSegmentSolutions maps decision snapshot into operator-ready
             market_score: 71,
             stable_pattern_count: 4,
             evidence_refs: 5,
+            proof_quality: "exact_segment",
             outcome_status: "proven",
             outcome_confidence: "high",
             outcome_posts: 6,
@@ -64,6 +65,7 @@ test("buildReelsBrainSegmentSolutions maps decision snapshot into operator-ready
           readiness_score: 44,
           brief: { hook: "До/после за 5 сек" },
           trust: {
+            proof_quality: "traced_transfer_only",
             outcome_status: "weak",
             outcome_confidence: "medium",
             outcome_posts: 3,
@@ -89,10 +91,12 @@ test("buildReelsBrainSegmentSolutions maps decision snapshot into operator-ready
   assert.equal(result.items[0]?.production_state, "ready_now");
   assert.equal(result.items[0]?.trust_band, "high");
   assert.equal(result.items[0]?.trust_summary.evidence_band, "stable");
+  assert.equal(result.items[0]?.trust_summary.proof_quality, "exact_segment");
   assert.equal(result.items[0]?.trust_summary.outcome_status, "proven");
   assert.equal(result.items[0]?.trust_summary.outcome_winners, 3);
   assert.deepEqual(result.items[0]?.creative_brief.second_by_second, ["0-2 hook", "2-5 reveal"]);
   assert.equal(result.items[1]?.production_state, "research_only");
+  assert.equal(result.items[1]?.trust_summary.proof_quality, "traced_transfer_only");
   assert.equal(result.items[1]?.trust_summary.outcome_status, "weak");
   assert.ok(result.items[1]?.trust_why.some((item) => item.includes("обратная связь слабая")));
   assert.ok(result.items[1]?.trust_summary.blockers.includes("trust floor below 85"));

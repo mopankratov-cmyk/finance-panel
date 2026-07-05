@@ -14,6 +14,9 @@ function testBuildReelsBrainSegmentGenerationPacksProducesQualityGatedPayloads()
           ready_for_generation: true,
           evidence_status: "high_trust",
           outcome_status: "proven",
+          proof_quality: "exact_segment",
+          outcome_exact_segment_posts: 2,
+          outcome_traced_posts: 4,
           outcome_confidence: "high",
           outcome_boost: 18,
           outcome_posts: 6,
@@ -66,6 +69,9 @@ function testBuildReelsBrainSegmentGenerationPacksProducesQualityGatedPayloads()
           ready_for_generation: true,
           evidence_status: "validated",
           outcome_status: "weak",
+          proof_quality: "traced_transfer_only",
+          outcome_exact_segment_posts: 0,
+          outcome_traced_posts: 1,
           outcome_confidence: "medium",
           outcome_boost: -18,
           outcome_posts: 3,
@@ -99,11 +105,14 @@ function testBuildReelsBrainSegmentGenerationPacksProducesQualityGatedPayloads()
   assert.equal(result.summary.total, 2);
   assert.equal(result.summary.ready, 1);
   assert.equal(result.summary.needs_validation, 1);
+  assert.equal(result.summary.exact_proof_ready, 1);
   assert.equal(result.items[0]?.quality_gate.status, "ready");
+  assert.equal(result.items[0]?.proof_quality, "exact_segment");
   assert.equal(result.items[0]?.payload.structure, "demo");
   assert.equal(result.items[0]?.outcome_status, "proven");
   assert.equal(result.items[0]?.quality_gate.blocked_reasons.length, 0);
   assert.equal(result.items[1]?.quality_gate.status, "needs_validation");
+  assert.equal(result.items[1]?.proof_quality, "traced_transfer_only");
   assert.equal(result.items[1]?.outcome_status, "weak");
   assert.ok(result.items[1]?.quality_gate.blocked_reasons.includes("рынок пока не подтверждает сегмент outcome-постами"));
 }
