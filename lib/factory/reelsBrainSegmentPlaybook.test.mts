@@ -82,6 +82,28 @@ function testBuildReelsBrainSegmentPlaybookRanksReadySegments() {
         },
       ],
     },
+    feedbackLoop: {
+      by_segment: [
+        {
+          niche: "ru_toys",
+          platform: "tiktok",
+          status: "proven",
+          posts: 6,
+          winners: 3,
+          losers: 0,
+          trust_action: "promote_segment_trust",
+        },
+        {
+          niche: "ru_cosmetics",
+          platform: "instagram",
+          status: "weak",
+          posts: 3,
+          winners: 0,
+          losers: 2,
+          trust_action: "review_or_penalize_segment",
+        },
+      ],
+    },
     limit: 6,
   });
 
@@ -92,7 +114,10 @@ function testBuildReelsBrainSegmentPlaybookRanksReadySegments() {
   assert.equal(result.items[0]?.platform, "tiktok");
   assert.equal(result.items[0]?.brief.title, "Toys TikTok brief");
   assert.equal(result.items[0]?.leading_pattern.title, "Fast demo surprise");
-  assert.equal(result.items[1]?.status, "validate_and_ship");
+  assert.equal(result.items[0]?.segment_outcome_status, "proven");
+  assert.equal(result.items[1]?.status, "research");
+  assert.equal(result.items[1]?.recommended_mode, "research_only");
+  assert.equal(result.items[1]?.segment_outcome_status, "weak");
 }
 
 function run() {

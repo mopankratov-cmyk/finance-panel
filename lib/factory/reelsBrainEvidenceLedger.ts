@@ -7,6 +7,11 @@ type PlaybookItem = {
   stability_score?: number;
   stable_pattern_count?: number;
   coverage_rate?: number;
+  segment_outcome_status?: "proven" | "promising" | "weak" | "no_feedback" | string;
+  segment_outcome_posts?: number;
+  segment_outcome_winners?: number;
+  segment_outcome_losers?: number;
+  segment_outcome_trust_action?: string;
   leading_pattern?: {
     title?: string;
     hook?: string;
@@ -65,6 +70,7 @@ function marketScore(status: string) {
 }
 
 function trustStatus(corpus: number, market: number, mode: string) {
+  if (market <= 24) return "research";
   if (corpus >= 78 && market >= 72 && mode === "primary") return "high_trust";
   if (corpus >= 62 && market >= 38) return "validated";
   if (corpus >= 58) return "corpus_strong_market_thin";
@@ -83,7 +89,7 @@ export function buildReelsBrainEvidenceLedger(input: {
         + Math.min(12, num(item.coverage_rate) * 0.12)
         + Math.min(10, num(item.stable_pattern_count) * 2),
       );
-      const marketStatus = text(item.leading_pattern?.market_status || "no_feedback");
+      const marketStatus = text(item.segment_outcome_status || item.leading_pattern?.market_status || "no_feedback");
       const marketTrust = marketScore(marketStatus);
       const evidenceStatus = trustStatus(corpusScore, marketTrust, text(item.recommended_mode));
       return {
@@ -95,6 +101,10 @@ export function buildReelsBrainEvidenceLedger(input: {
         corpus_score: corpusScore,
         market_score: marketTrust,
         market_status: marketStatus,
+        market_posts: num(item.segment_outcome_posts),
+        market_winners: num(item.segment_outcome_winners),
+        market_losers: num(item.segment_outcome_losers),
+        market_trust_action: text(item.segment_outcome_trust_action),
         opportunity_score: num(item.opportunity_score),
         stability_score: num(item.stability_score),
         stable_pattern_count: num(item.stable_pattern_count),

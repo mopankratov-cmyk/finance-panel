@@ -44,6 +44,17 @@ type AtlasSegment = {
   top_patterns?: AtlasPattern[];
 };
 
+type SegmentOutcomeRow = {
+  niche?: string;
+  platform?: string;
+  segment?: string;
+  status?: "proven" | "promising" | "weak" | "no_feedback" | string;
+  posts?: number;
+  winners?: number;
+  losers?: number;
+  trust_action?: string;
+};
+
 function num(value: unknown) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
@@ -69,7 +80,8 @@ function modeRank(mode: string) {
   return 1;
 }
 
-function playbookStatus(opportunityStatus: string, atlasStatus: string) {
+function playbookStatus(opportunityStatus: string, atlasStatus: string, outcomeStatus: string) {
+  if (outcomeStatus === "weak") return opportunityStatus === "scale_now" ? "prepare" : "research";
   if (opportunityStatus === "scale_now" && atlasStatus === "stable") return "ship_now";
   if ((opportunityStatus === "scale_now" || opportunityStatus === "build_next") && (atlasStatus === "stable" || atlasStatus === "forming")) return "validate_and_ship";
   if (opportunityStatus === "build_next") return "prepare";
@@ -79,10 +91,15 @@ function playbookStatus(opportunityStatus: string, atlasStatus: string) {
 export function buildReelsBrainSegmentPlaybook(input: {
   opportunities?: { top?: OpportunityRow[] };
   patternAtlas?: { by_segment?: AtlasSegment[] };
+  feedbackLoop?: { by_segment?: SegmentOutcomeRow[] };
   limit?: number;
 }) {
   const opportunityMap = new Map(
     (input.opportunities?.top || [])
+      .map((row) => [joinKey(text(row.niche), text(row.platform)), row] as const),
+  );
+  const outcomeMap = new Map(
+    (input.feedbackLoop?.by_segment || [])
       .map((row) => [joinKey(text(row.niche), text(row.platform)), row] as const),
   );
 
@@ -91,9 +108,13 @@ export function buildReelsBrainSegmentPlaybook(input: {
       const niche = text(segment.niche);
       const platform = text(segment.platform);
       const opportunity = opportunityMap.get(joinKey(niche, platform)) || {};
+      const outcome = outcomeMap.get(joinKey(niche, platform)) || {};
       const topPattern = segment.top_patterns?.[0] || {};
-      const status = playbookStatus(text(opportunity.status), text(segment.status));
-      const mode = text(opportunity.recommended_mode || segment.recommended_mode || "research_only");
+      const outcomeStatus = text(outcome.status || topPattern.market_status || "no_feedback");
+      const status = playbookStatus(text(opportunity.status), text(segment.status), outcomeStatus);
+      const mode = outcomeStatus === "weak"
+        ? "research_only"
+        : text(opportunity.recommended_mode || segment.recommended_mode || "research_only");
       const coverage = num(segment.total_videos) > 0
         ? Math.round((num(segment.analyzed_videos) / num(segment.total_videos)) * 100)
         : 0;
@@ -107,13 +128,18 @@ export function buildReelsBrainSegmentPlaybook(input: {
         stability_score: num(segment.avg_stability_score),
         stable_pattern_count: num(segment.stable_pattern_count),
         coverage_rate: coverage,
+        segment_outcome_status: outcomeStatus,
+        segment_outcome_posts: num(outcome.posts),
+        segment_outcome_winners: num(outcome.winners),
+        segment_outcome_losers: num(outcome.losers),
+        segment_outcome_trust_action: text(outcome.trust_action),
         leading_pattern: {
           title: text(topPattern.title),
           hook: text(topPattern.hook),
           retention: text(topPattern.retention),
           format: text(topPattern.format),
           decision: text(topPattern.final_decision),
-          market_status: text(topPattern.market_status),
+          market_status: outcomeStatus,
           brief_seed: {
             hook: text(topPattern.brief_seed?.hook || topPattern.hook),
             retention: text(topPattern.brief_seed?.retention || topPattern.retention),
@@ -133,14 +159,22 @@ export function buildReelsBrainSegmentPlaybook(input: {
         },
         rollout: {
           title: text(opportunity.best_action_title),
-          why_now: status === "ship_now"
-            ? "Сегмент уже имеет stable atlas + scale-level opportunity."
-            : status === "validate_and_ship"
-              ? "Сигнал сильный, но лучше пройти control-валидацию перед масштабом."
-              : status === "prepare"
-                ? "Сегмент почти готов, но ему нужен ещё один цикл анализа и сборки."
-                : "Пока это исследовательский сегмент: строим знания, а не масштаб.",
-          next_step: text(segment.next_step || opportunity.niche_note || opportunity.platform_note),
+          why_now: [
+            status === "ship_now"
+              ? "Сегмент уже имеет stable atlas + scale-level opportunity."
+              : status === "validate_and_ship"
+                ? "Сигнал сильный, но лучше пройти control-валидацию перед масштабом."
+                : status === "prepare"
+                  ? "Сегмент почти готов, но ему нужен ещё один цикл анализа и сборки."
+                  : "Пока это исследовательский сегмент: строим знания, а не масштаб.",
+            outcomeStatus === "proven" ? "Outcome-публикации подтвердили сегмент." : "",
+            outcomeStatus === "promising" ? "Есть первые outcome-сигналы, но ещё нужен контроль." : "",
+            outcomeStatus === "weak" ? "Outcome-публикации пока не подтверждают сегмент." : "",
+          ].filter(Boolean).join(" "),
+          next_step: [
+            text(segment.next_step || opportunity.niche_note || opportunity.platform_note),
+            outcomeStatus === "weak" ? "Не масштабировать, пока не пересобран hook/structure." : "",
+          ].filter(Boolean).join(" "),
         },
       };
     })

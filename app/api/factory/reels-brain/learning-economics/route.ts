@@ -2445,6 +2445,7 @@ export async function GET(req: NextRequest) {
     const segmentPlaybook = buildReelsBrainSegmentPlaybook({
       opportunities: topOpportunities,
       patternAtlas,
+      feedbackLoop: operatingSystem.feedback_loop,
       limit: compactMode ? 6 : 10,
     });
     const evidenceLedger = buildReelsBrainEvidenceLedger({
