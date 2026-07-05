@@ -17,6 +17,14 @@ function asRecord(value: unknown) {
   return value && typeof value === "object" ? value as SnapshotRow : null;
 }
 
+function scoreRow(row: SnapshotRowWithAudit) {
+  return Number(Boolean(row.high_trust_generation_ready)) * 1000
+    + Number(Boolean(row.publishable_exact)) * 300
+    + Number(Boolean(row.upgrade_forecast)) * 100
+    + Number(row.segment_priority_score || 0) * 10
+    + Number(row.readiness_score || 0);
+}
+
 function upgradeForecastForRow(
   row: SnapshotRow,
   matrix?: {
@@ -95,7 +103,8 @@ export function buildReelsBrainDecisionSnapshot(input: {
         ...row,
         audit: auditMap.get(keyOf(row.niche, row.platform)) || null,
         upgrade_forecast: upgradeForecastForRow(row, input.segmentSolutionMatrix || null),
-      }));
+      }))
+      .sort((a, b) => scoreRow(b) - scoreRow(a));
 
   return {
     lane: lane || null,
@@ -106,10 +115,12 @@ export function buildReelsBrainDecisionSnapshot(input: {
       audit: input.readinessAudit?.summary || null,
       filtered_total: items.length,
       upgrade_forecast_segments: items.filter((row) => Boolean(row.upgrade_forecast)).length,
+      generation_ready_segments: items.filter((row) => Boolean(row.high_trust_generation_ready)).length,
+      publishable_exact_segments: items.filter((row) => Boolean(row.publishable_exact)).length,
     },
     ship_now: attachAudit(list(input.creativeExports?.ship_now)),
     validate_next: attachAudit(list(input.creativeExports?.validate_next)),
     research_queue: attachAudit(list(input.creativeExports?.research_queue)),
-    items,
+    items: [...items].sort((a, b) => scoreRow(b) - scoreRow(a)),
   };
 }

@@ -7,14 +7,14 @@ test("buildReelsBrainDecisionSnapshot merges readiness audit into export items",
     creativeExports: {
       summary: { total: 2 },
       ship_now: [
-        { lane: "ship", niche: "ru_toys", platform: "instagram", score: 91 },
+        { lane: "ship", niche: "ru_toys", platform: "instagram", score: 91, high_trust_generation_ready: true, publishable_exact: true },
       ],
       validate_next: [
         { lane: "validate", niche: "ru_cosmetics", platform: "tiktok", score: 77 },
       ],
       research_queue: [],
       items: [
-        { lane: "ship", niche: "ru_toys", platform: "instagram", score: 91 },
+        { lane: "ship", niche: "ru_toys", platform: "instagram", score: 91, high_trust_generation_ready: true, publishable_exact: true },
         { lane: "validate", niche: "ru_cosmetics", platform: "tiktok", score: 77 },
       ],
     },
@@ -50,6 +50,8 @@ test("buildReelsBrainDecisionSnapshot merges readiness audit into export items",
 
   assert.equal(snapshot.summary.filtered_total, 2);
   assert.equal(snapshot.summary.upgrade_forecast_segments, 2);
+  assert.equal(snapshot.summary.generation_ready_segments, 1);
+  assert.equal(snapshot.summary.publishable_exact_segments, 1);
   assert.equal(snapshot.items.length, 2);
   assert.deepEqual(snapshot.items[0]?.audit, {
     niche: "ru_toys",
@@ -65,6 +67,34 @@ test("buildReelsBrainDecisionSnapshot merges readiness audit into export items",
   });
   assert.equal((snapshot.items[0]?.upgrade_forecast as Record<string, unknown> | undefined)?.unlocked_output, "publishable_exact_brief");
   assert.equal((snapshot.items[1]?.upgrade_forecast as Record<string, unknown> | undefined)?.unlocked_output, "performance_tuned_brief");
+});
+
+test("buildReelsBrainDecisionSnapshot prioritizes high-trust generation-ready items", () => {
+  const snapshot = buildReelsBrainDecisionSnapshot({
+    creativeExports: {
+      items: [
+        {
+          lane: "ship",
+          niche: "ru_clothing",
+          platform: "instagram",
+          readiness_score: 98,
+          segment_priority_score: 88,
+        },
+        {
+          lane: "ship",
+          niche: "ru_toys",
+          platform: "tiktok",
+          readiness_score: 72,
+          segment_priority_score: 31,
+          high_trust_generation_ready: true,
+          publishable_exact: true,
+        },
+      ],
+    },
+  });
+
+  assert.equal(snapshot.items[0]?.niche, "ru_toys");
+  assert.equal(snapshot.items[0]?.high_trust_generation_ready, true);
 });
 
 test("buildReelsBrainDecisionSnapshot respects lane filter", () => {

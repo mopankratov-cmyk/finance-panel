@@ -79,7 +79,7 @@ ok(/buildReelsBrainValidationRunbook/.test(validationQueueRoute) && /validation_
 
 ok(/internalFetch/.test(creativeExports) && /segment_creative_exports/.test(creativeExports), "creative-exports route reads creative export bundles from learning-economics");
 ok(/lane/.test(creativeExports) && /niche/.test(creativeExports) && /platform/.test(creativeExports), "creative-exports route supports lane, niche and platform filters");
-ok(/exact_ready_only/.test(creativeExports) && /publishable_exact/.test(creativeExports) && /proof_quality/.test(creativeExports), "creative-exports route supports strict publishable exact-ready filtering for high-trust generation");
+ok(/exact_ready_only/.test(creativeExports) && /publishable_exact/.test(creativeExports) && /proof_quality/.test(creativeExports) && /generation_readiness/.test(creativeExports), "creative-exports route supports strict publishable exact-ready filtering and carries generation-readiness overlays for high-trust generation");
 ok(!/POST\s*\(/.test(creativeExports), "creative-exports route is read-only");
 ok(/internalFetch/.test(creativeBrief) && /segment_solution_matrix/.test(creativeBrief) && /segment_generation_packs/.test(creativeBrief) && /generation_readiness/.test(creativeBrief) && /selectCreativeBriefFromSegmentLayers/.test(creativeBrief) && /platform_matrix/.test(creativeBriefSourceBuilder), "creative-brief route prefers trust-aware segment layers, generation-readiness signals, and pulls generation gates before old playbook fallback");
 ok(/strictExact/.test(creativeBrief) && /strict_exact/.test(creativeBrief) && /quality_gate:\s*\{/.test(creativeBrief), "creative-brief route supports strict exact-only mode instead of silently falling back");
@@ -94,7 +94,7 @@ ok(!/POST\s*\(/.test(readinessAudit), "readiness-audit route is read-only");
 
 ok(/creative-exports/.test(decisionSnapshot) && /readiness-audit/.test(decisionSnapshot) && /segment_solution_matrix/.test(decisionSnapshot), "decision-snapshot route combines creative exports, readiness audit and upgrade-aware solution matrix");
 ok(/lane/.test(decisionSnapshot) && /niche/.test(decisionSnapshot) && /platform/.test(decisionSnapshot), "decision-snapshot route supports lane, niche and platform filters");
-ok(/buildReelsBrainDecisionSnapshot/.test(decisionSnapshot) && /filtered_total/.test(decisionSnapshotBuilder) && /upgrade_forecast_segments/.test(decisionSnapshotBuilder), "decision-snapshot route delegates merge logic to a reusable builder with upgrade forecasts");
+ok(/buildReelsBrainDecisionSnapshot/.test(decisionSnapshot) && /filtered_total/.test(decisionSnapshotBuilder) && /upgrade_forecast_segments/.test(decisionSnapshotBuilder) && /generation_ready_segments/.test(decisionSnapshotBuilder), "decision-snapshot route delegates merge logic to a reusable builder with upgrade forecasts and generation-ready prioritization");
 ok(!/POST\s*\(/.test(decisionSnapshot), "decision-snapshot route is read-only");
 ok(/decision-snapshot/.test(segmentSolutions) && /buildReelsBrainSegmentSolutions/.test(segmentSolutions), "segment-solutions route derives operator outputs from the decision snapshot");
 ok(/buildReelsBrainSegmentStabilityAudit/.test(segmentSolutionsBuilder) && /creative_brief/.test(segmentSolutionsBuilder) && /content_decision/.test(segmentSolutionsBuilder) && /trust_summary/.test(segmentSolutionsBuilder), "segment-solutions builder produces brief, content decision and trust layers on top of a stability audit");

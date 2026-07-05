@@ -14,6 +14,10 @@ function list(value: unknown) {
   return Array.isArray(value) ? value as JsonRecord[] : [];
 }
 
+function keyOf(niche: unknown, platform: unknown) {
+  return `${text(niche)}__${text(platform).toLowerCase()}`;
+}
+
 function boolFlag(value: string) {
   return value === "1" || value === "true" || value === "yes";
 }
@@ -32,6 +36,22 @@ export async function GET(req: NextRequest) {
     const platform = text(req.nextUrl.searchParams.get("platform"));
     const exactReadyOnly = boolFlag(text(req.nextUrl.searchParams.get("exact_ready_only")).toLowerCase());
     const exportsRoot = ((body as JsonRecord).segment_creative_exports || {}) as JsonRecord;
+    const generationRows = list((body as JsonRecord).generation_readiness && ((body as JsonRecord).generation_readiness as JsonRecord).items);
+    const generationMap = new Map(generationRows.map((row) => [keyOf(row.niche, row.platform), row] as const));
+    const withGenerationReadiness = (row: JsonRecord): JsonRecord => {
+      const generation = generationMap.get(keyOf(row.niche, row.platform)) || null;
+      return {
+        ...row,
+        generation_readiness: generation,
+        high_trust_generation_ready: Boolean(generation?.high_trust_generation_ready),
+        brief_ready: Boolean(generation?.brief_ready),
+        content_solution_ready: Boolean(generation?.content_solution_ready),
+        publishable_exact: Boolean(
+          row.publishable_exact
+          || generation?.publishable_exact,
+        ),
+      };
+    };
     const matches = (row: JsonRecord) => {
       const laneOk = !lane || text(row.lane) === lane;
       const nicheOk = !niche || text(row.niche) === niche;
@@ -47,7 +67,7 @@ export async function GET(req: NextRequest) {
       );
       return laneOk && nicheOk && platformOk && exactOk;
     };
-    const allItems = list(exportsRoot.items);
+    const allItems = list(exportsRoot.items).map(withGenerationReadiness);
     const filtered = allItems.filter(matches);
 
     return NextResponse.json({
@@ -61,11 +81,13 @@ export async function GET(req: NextRequest) {
         filtered_ship: filtered.filter((row) => text(row.lane) === "ship").length,
         filtered_validate: filtered.filter((row) => text(row.lane) === "validate").length,
         filtered_research: filtered.filter((row) => text(row.lane) === "research").length,
+        filtered_generation_ready: filtered.filter((row) => Boolean(row.high_trust_generation_ready)).length,
+        filtered_publishable_exact: filtered.filter((row) => Boolean(row.publishable_exact)).length,
         exact_ready_only: exactReadyOnly,
       },
-      ship_now: list(exportsRoot.ship_now).filter(matches),
-      validate_next: list(exportsRoot.validate_next).filter(matches),
-      research_queue: list(exportsRoot.research_queue).filter(matches),
+      ship_now: list(exportsRoot.ship_now).map(withGenerationReadiness).filter(matches),
+      validate_next: list(exportsRoot.validate_next).map(withGenerationReadiness).filter(matches),
+      research_queue: list(exportsRoot.research_queue).map(withGenerationReadiness).filter(matches),
       items: filtered,
     }, { headers: { "Cache-Control": "no-store" } });
   } catch (e) {
