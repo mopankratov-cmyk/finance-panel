@@ -106,6 +106,7 @@ export async function GET(req: NextRequest) {
         segmentSolutions: reportBody.segment_solutions || null,
         segmentSolutionMatrix: reportBody.segment_solution_matrix || null,
         segmentGenerationPacks: reportBody.segment_generation_packs || null,
+        generationReadiness: reportBody.generation_readiness || null,
         strictExact,
       });
       if (segmentBrief) {

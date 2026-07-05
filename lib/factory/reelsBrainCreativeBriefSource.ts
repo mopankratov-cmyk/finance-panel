@@ -123,6 +123,29 @@ function packGateScore(input: {
   return 0;
 }
 
+function findGenerationReadinessRow(
+  rows: JsonRecord[] | undefined,
+  row: JsonRecord,
+) {
+  return (rows || []).find((item) =>
+    text(item.niche) === text(row.niche)
+    && text(item.platform).toLowerCase() === text(row.platform).toLowerCase(),
+  ) || null;
+}
+
+function generationReadinessBoost(input: {
+  mode: string;
+  generationReadinessRow: JsonRecord | null;
+}) {
+  if (!input.generationReadinessRow) return 0;
+  const row = input.generationReadinessRow;
+  const exactReady = input.mode === "exact_segment" && Boolean(row.high_trust_generation_ready);
+  if (exactReady) return 28;
+  if (input.mode === "exact_segment" && Boolean(row.publishable_exact) && Boolean(row.brief_ready) && Boolean(row.content_solution_ready)) return 14;
+  if (input.mode === "exact_segment" && Boolean(row.publishable_exact)) return 6;
+  return 0;
+}
+
 function rowUpgradeForecast(
   row: JsonRecord,
   source: "segment_solution" | "platform_matrix" | "niche_matrix",
@@ -156,6 +179,7 @@ function candidateScore(candidate: {
   requestedPlatform: string;
   packRow?: JsonRecord | null;
   upgradeForecast?: JsonRecord | null;
+  generationReadinessRow?: JsonRecord | null;
 }) {
   const trustSummary = (candidate.row.trust_summary || {}) as JsonRecord;
   const mode = fitMode({
@@ -173,6 +197,10 @@ function candidateScore(candidate: {
       mode,
       row: candidate.row,
       packRow: candidate.packRow || null,
+    })
+    + generationReadinessBoost({
+      mode,
+      generationReadinessRow: candidate.generationReadinessRow || null,
     })
     + upgradeBoost(candidate.upgradeForecast, mode)
     + fitPenalty(mode);
@@ -233,6 +261,7 @@ function buildResponseFromSolution(
     requestedPlatform: string;
     packRow?: JsonRecord | null;
     upgradeForecast?: JsonRecord | null;
+    generationReadinessRow?: JsonRecord | null;
   }>,
   input: {
     requestedNiche: string;
@@ -310,6 +339,8 @@ function buildResponseFromSolution(
     ),
     projected_trust_gain_score: num(candidate.upgradeForecast?.projected_trust_gain_score),
     projected_production_state: text(candidate.upgradeForecast?.projected_production_state),
+    high_trust_generation_ready: Boolean(candidate.generationReadinessRow?.high_trust_generation_ready),
+    generation_publishable_exact: Boolean(candidate.generationReadinessRow?.publishable_exact),
     candidate_score: Math.round(candidateScore(candidate) * 10) / 10,
     chosen: candidate.row === row && candidate.source === source,
   }));
@@ -376,6 +407,7 @@ function buildResponseFromSolution(
       matched_niche: text(row.niche),
       matched_platform: text(row.platform),
       is_exact_match: mode === "exact_segment",
+      high_trust_generation_ready: Boolean((candidates.find((candidate) => candidate.row === row && candidate.source === source)?.generationReadinessRow || {}).high_trust_generation_ready),
       transfer_note: transferReasons[0] || "",
     },
     selected_pattern: {
@@ -464,6 +496,7 @@ export function selectCreativeBriefFromSegmentLayers(input: {
   segmentSolutions?: { items?: JsonRecord[] } | null;
   segmentSolutionMatrix?: { by_niche?: JsonRecord[]; by_platform?: JsonRecord[]; by_segment?: JsonRecord[] } | null;
   segmentGenerationPacks?: { items?: JsonRecord[] } | null;
+  generationReadiness?: { items?: JsonRecord[] } | null;
   strictExact?: boolean;
 }) {
   const niche = text(input.niche);
@@ -472,6 +505,7 @@ export function selectCreativeBriefFromSegmentLayers(input: {
     .filter((row) => text(row.niche) === niche && text(row.platform).toLowerCase() === platform)
     .sort(itemSort)[0];
   const packs = records(input.segmentGenerationPacks?.items);
+  const generationRows = records(input.generationReadiness?.items);
 
   const platformRow = records(input.segmentSolutionMatrix?.by_platform)
     .find((row) => text(row.platform).toLowerCase() === platform);
@@ -488,6 +522,7 @@ export function selectCreativeBriefFromSegmentLayers(input: {
       requestedPlatform: platform,
       packRow: findPackRow(packs, exact),
       upgradeForecast: rowUpgradeForecast(exact, "segment_solution", input.segmentSolutionMatrix || null),
+      generationReadinessRow: findGenerationReadinessRow(generationRows, exact),
     } : null,
     platformPrimary ? {
       source: "platform_matrix" as const,
@@ -496,6 +531,7 @@ export function selectCreativeBriefFromSegmentLayers(input: {
       requestedPlatform: platform,
       packRow: findPackRow(packs, platformPrimary),
       upgradeForecast: rowUpgradeForecast(platformPrimary, "platform_matrix", input.segmentSolutionMatrix || null),
+      generationReadinessRow: findGenerationReadinessRow(generationRows, platformPrimary),
     } : null,
     nichePrimary ? {
       source: "niche_matrix" as const,
@@ -504,6 +540,7 @@ export function selectCreativeBriefFromSegmentLayers(input: {
       requestedPlatform: platform,
       packRow: findPackRow(packs, nichePrimary),
       upgradeForecast: rowUpgradeForecast(nichePrimary, "niche_matrix", input.segmentSolutionMatrix || null),
+      generationReadinessRow: findGenerationReadinessRow(generationRows, nichePrimary),
     } : null,
   ].filter(Boolean) as Array<{
     source: "segment_solution" | "platform_matrix" | "niche_matrix";
@@ -512,6 +549,7 @@ export function selectCreativeBriefFromSegmentLayers(input: {
     requestedPlatform: string;
     packRow?: JsonRecord | null;
     upgradeForecast?: JsonRecord | null;
+    generationReadinessRow?: JsonRecord | null;
   }>;
   const rankedCandidates = [...candidates].sort((a, b) =>
     candidateScore(b) - candidateScore(a)

@@ -448,6 +448,87 @@ test("selectCreativeBriefFromSegmentLayers can prefer exact candidate with stron
   assert.equal(result?.source_trace?.[0]?.projected_trust_gain_score, 34);
 });
 
+test("selectCreativeBriefFromSegmentLayers prefers exact candidate that is already high-trust generation ready", () => {
+  const result = selectCreativeBriefFromSegmentLayers({
+    niche: "ru_toys",
+    platform: "instagram",
+    segmentSolutions: {
+      items: [
+        {
+          niche: "ru_toys",
+          platform: "instagram",
+          label: "ru_toys × instagram",
+          readiness_score: 77,
+          trust_band: "medium",
+          production_state: "ready_now",
+          creative_brief: { hook: "Exact and production-usable" },
+          trust_summary: {
+            evidence_band: "stable",
+            stability_score: 70,
+            outcome_status: "promising",
+            outcome_confidence: "medium",
+          },
+        },
+      ],
+    },
+    segmentSolutionMatrix: {
+      by_platform: [
+        {
+          platform: "instagram",
+          primary: {
+            niche: "ru_cosmetics",
+            platform: "instagram",
+            label: "ru_cosmetics × instagram",
+            readiness_score: 93,
+            trust_band: "high",
+            production_state: "ready_now",
+            creative_brief: { hook: "Transfer trust leader" },
+            trust_summary: {
+              evidence_band: "stable",
+              stability_score: 90,
+              outcome_status: "proven",
+              outcome_confidence: "high",
+            },
+          },
+        },
+      ],
+      by_niche: [],
+    },
+    segmentGenerationPacks: {
+      items: [
+        {
+          niche: "ru_toys",
+          platform: "instagram",
+          proof_quality: "exact_segment",
+          quality_gate: {
+            status: "ready",
+            allowed_generation_modes: ["decision_ready"],
+            blocked_reasons: [],
+          },
+        },
+      ],
+    },
+    generationReadiness: {
+      items: [
+        {
+          niche: "ru_toys",
+          platform: "instagram",
+          high_trust_generation_ready: true,
+          publishable_exact: true,
+          brief_ready: true,
+          content_solution_ready: true,
+        },
+      ],
+    },
+  });
+
+  assert.equal(result?.source, "segment_solution");
+  assert.equal(result?.creative_brief.hook, "Exact and production-usable");
+  assert.equal(result?.fit_summary?.high_trust_generation_ready, true);
+  assert.equal(result?.source_trace?.[0]?.high_trust_generation_ready, true);
+  assert.equal(result?.source_trace?.[1]?.source, "platform_matrix");
+});
+
 test("selectCreativeBriefFromSegmentLayers returns null in strict-exact mode when only transfer fallback exists", () => {
   const result = selectCreativeBriefFromSegmentLayers({
     niche: "ru_toys",
