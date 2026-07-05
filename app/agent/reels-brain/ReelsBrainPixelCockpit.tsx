@@ -265,6 +265,7 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
     const healthState = health?.health || {};
     const workerState = healthState?.worker || {};
     const providerState = healthState?.providers || {};
+    const sourceMixAudit = (healthState?.source_mix_audit || learning?.source_mix_audit || {}) as JsonRecord;
     const workerIssue = workerState?.issue || {};
     const workerWarnings = Array.isArray(workerState?.warnings) ? workerState.warnings : [];
     const mission = learningPlan?.learning_plan || {};
@@ -811,6 +812,22 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
       label: `${NICHE_LABELS[String(row.niche)] || row.niche} × ${String(row.platform || "mixed").toUpperCase()}`,
       statusTone: playbookTone(String(row.status || "research")),
     }));
+    const sourceMixNicheCards = ((sourceMixAudit.by_niche || []) as JsonRecord[]).slice(0, 4).map((row) => ({
+      ...row,
+      label: NICHE_LABELS[String(row.niche)] || row.niche,
+      trustTone: statusTone(
+        Math.round(
+          num(row.exact_ready_pct) * 0.7
+          + Math.max(0, 20 - Math.min(20, num(row.untraced) * 6))
+          + Math.max(0, 10 - Math.min(10, num(row.transfer_only) * 3)),
+        ),
+      ),
+    }));
+    const sourceMixWatchCards = ((sourceMixAudit.exact_gap_watchlist || []) as JsonRecord[]).slice(0, 4).map((row) => ({
+      ...row,
+      label: `${NICHE_LABELS[String(row.niche)] || row.niche} × ${String(row.platform || "mixed").toUpperCase()}`,
+      statusTone: playbookTone(String(row.status || "research")),
+    }));
     const evidenceCards = ((evidenceLedger.items || []) as JsonRecord[]).slice(0, 6).map((row) => {
       const status = marketSignalTone(String(row.market_status || "no_feedback"));
       const mode = decisionTone(String(row.recommended_mode || "research_only"));
@@ -1013,6 +1030,9 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
       portfolioCoverageCards,
       portfolioGapCards,
       exactEvidenceCards,
+      sourceMixNicheCards,
+      sourceMixWatchCards,
+      sourceMixAudit,
       evidenceCards,
       evidenceSummary,
       trustMatrix,
@@ -3545,6 +3565,36 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
               </div>
             </div>
             <div className="rb-card">
+              <div className="rb-overline" style={{ color: "#0891b2" }}>Niche trust migration</div>
+              <h3 style={{ font: "700 26px/1.08 'Space Grotesk'", margin: "10px 0" }}>
+                {compact(vm.sourceMixAudit?.summary?.exact_ready_coverage_pct || 0)}% exact-ready coverage
+              </h3>
+              <p style={{ color: "#64748b", lineHeight: 1.5 }}>
+                fallback risk {String(vm.sourceMixAudit?.summary?.fallback_dependency_risk || "high")} · exact gap {compact(vm.sourceMixAudit?.summary?.exact_gap_segments || 0)}
+              </p>
+              <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
+                {vm.sourceMixNicheCards.length ? vm.sourceMixNicheCards.map((row: JsonRecord) => (
+                  <div className="rb-pattern" key={`source-mix-niche:${row.niche}`}>
+                    <div className="rb-two" style={{ gridTemplateColumns: "1fr auto", gap: 14 }}>
+                      <h3>{row.label}</h3>
+                      <div className="rb-live-pill" style={{ background: row.trustTone.bg, borderColor: row.trustTone.bd, color: row.trustTone.fg }}>
+                        <i style={{ background: row.trustTone.dot }} />
+                        {compact(row.exact_ready_pct || 0)}% exact
+                      </div>
+                    </div>
+                    <p>{compact(row.exact_ready || 0)} exact · {compact(row.transfer_only || 0)} transfer · {compact(row.untraced || 0)} untraced</p>
+                  </div>
+                )) : (
+                  <div className="rb-pattern">
+                    <h3>Niche trust layer пока пустой</h3>
+                    <p>Сначала мозгу нужно собрать segment solutions и generation packs по нишам.</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+          <div className="rb-two" style={{ marginTop: 16 }}>
+            <div className="rb-card">
               <div className="rb-overline" style={{ color: "#0891b2" }}>Main gaps</div>
               <h3 style={{ font: "700 26px/1.08 'Space Grotesk'", margin: "10px 0" }}>Какие сегменты ещё не закрыты</h3>
               <div style={{ display: "grid", gap: 10 }}>
@@ -3557,6 +3607,30 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
                   <div className="rb-pattern">
                     <h3>Все сегменты уже закрыты</h3>
                     <p>Портфель выглядит достаточно плотным для high-trust генерации.</p>
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="rb-card">
+              <div className="rb-overline" style={{ color: "#0891b2" }}>Exact-gap watchlist</div>
+              <h3 style={{ font: "700 26px/1.08 'Space Grotesk'", margin: "10px 0" }}>Какие niche × platform ещё не доказаны</h3>
+              <div style={{ display: "grid", gap: 10 }}>
+                {vm.sourceMixWatchCards.length ? vm.sourceMixWatchCards.map((row: JsonRecord) => (
+                  <div className="rb-pattern" key={`source-mix-watch:${row.niche}:${row.platform}`}>
+                    <div className="rb-two" style={{ gridTemplateColumns: "1fr auto", gap: 14 }}>
+                      <h3>{row.label}</h3>
+                      <div className="rb-live-pill" style={{ background: row.statusTone.bg, borderColor: row.statusTone.bd, color: row.statusTone.fg }}>
+                        <i style={{ background: row.statusTone.fg }} />
+                        {row.status || "watch"}
+                      </div>
+                    </div>
+                    <p>urgency {compact(row.urgency_score || 0)} · transfer {compact(row.transfer_count || 0)} · {row.current_action || "watch_segment"}</p>
+                    <p style={{ color: "#0f172a", fontWeight: 600 }}>{row.desired_proof || "Нужно exact-proof подтверждение по сегменту."}</p>
+                  </div>
+                )) : (
+                  <div className="rb-pattern">
+                    <h3>Exact-gap watchlist пока пуст</h3>
+                    <p>Когда появятся borrowed или missing exact segments, они появятся здесь первыми.</p>
                   </div>
                 )}
               </div>

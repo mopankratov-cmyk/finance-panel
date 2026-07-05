@@ -178,6 +178,8 @@ ok(/\/api\/factory\/reels-brain\/creative-solution\?niche=/.test(cockpit), "cock
 ok(/\/api\/factory\/reels-brain\/stability-audit\?lane=/.test(cockpit), "cockpit exposes segment stability-audit endpoint per segment");
 ok(/Portfolio readiness/.test(cockpit) && /high-trust coverage/.test(cockpit), "cockpit surfaces portfolio readiness toward full niche/platform coverage");
 ok(/Exact Proof Queue/.test(cockpit) && /borrowed_brief_segments/.test(cockpit) && /exactEvidenceCards/.test(cockpit), "cockpit surfaces where briefs still depend on transfer instead of exact segment proof");
+ok(/Niche trust migration/.test(cockpit) && /source_mix_audit/.test(cockpit) && /sourceMixNicheCards/.test(cockpit), "cockpit surfaces niche-level exact-proof trust migration from source mix audit");
+ok(/Exact-gap watchlist/.test(cockpit) && /sourceMixWatchCards/.test(cockpit), "cockpit surfaces exact-gap watchlist for niche x platform proof holes");
 ok(/Segment Solution Matrix/.test(cockpit) && /segment_solution_matrix/.test(cockpit), "cockpit surfaces grouped niche/platform segment solution matrix");
 ok(/Generation Policy/.test(cockpit) && /generation-policy/.test(cockpit), "cockpit surfaces unified generation policy endpoint and cards");
 ok(/selectedPattern/.test(cockpit) && /rb-drawer/.test(cockpit), "cockpit exposes pattern creative brief drawer");
