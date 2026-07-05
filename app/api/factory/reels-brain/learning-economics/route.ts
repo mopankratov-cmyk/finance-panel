@@ -1720,6 +1720,12 @@ function buildAutopilotActions(input: {
       reason: item.evidence,
     })),
   ];
+  const topValidationTask = (validationQueue?.queue || [])[0] || null;
+  const topMeasurementTask = ((input.measurementPlan?.items || []) as Array<Record<string, unknown>>)[0] || null;
+  const topUpgradeSource = (topValidationTask || topMeasurementTask || {}) as Record<string, unknown>;
+  const topUpgrade = (topUpgradeSource.recommended_upgrade && typeof topUpgradeSource.recommended_upgrade === "object"
+    ? topUpgradeSource.recommended_upgrade
+    : {}) as Record<string, unknown>;
   return {
     mode: input.costGovernor.status === "ok_to_continue" ? "autopilot_ready" : "budget_guarded",
     can_run_paid_collection: input.costGovernor.status === "ok_to_continue",
@@ -1747,6 +1753,19 @@ function buildAutopilotActions(input: {
       queue: feedbackCoverageQueue,
     },
     validation_queue: validationQueue,
+    top_upgrade_action: {
+      task_type: String(topValidationTask?.type || topMeasurementTask?.task_type || ""),
+      title: String(topValidationTask?.title || topMeasurementTask?.title || ""),
+      niche: String(topValidationTask?.niche || topMeasurementTask?.niche || ""),
+      platform: String(topValidationTask?.platform || topMeasurementTask?.platform || ""),
+      action: String(topValidationTask?.action || topMeasurementTask?.action || ""),
+      reason: String(topUpgradeSource.reason || topUpgradeSource.validation_goal || ""),
+      unlocked_output: String(topUpgrade.unlocked_output || ""),
+      projected_trust_gain_score: Number(topUpgrade.projected_trust_gain_score || 0),
+      projected_trust_gain_band: String(topUpgrade.projected_trust_gain_band || ""),
+      recommended_loop: String(topUpgrade.recommended_loop || ""),
+      projected_production_state: String(topUpgrade.projected_production_state || ""),
+    },
     generation_policy: {
       primary_segments: segmentPolicies.filter((segment) => segment.policy_mode === "primary").length,
       control_segments: segmentPolicies.filter((segment) => segment.policy_mode === "control_only").length,

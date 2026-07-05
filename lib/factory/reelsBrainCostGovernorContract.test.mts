@@ -53,7 +53,7 @@ ok(/REELS_BRAIN_MAX_USEFUL_VIDEO_USD/.test(economics), "cost governor has useful
 ok(/REELS_BRAIN_MAX_PATTERN_GAIN_USD/.test(economics), "cost governor has pattern-gain cost env guard");
 ok(/low_signal_rate > 20/.test(economics), "cost governor pauses on low-signal corpus");
 ok(/cost_governor: costGovernor/.test(economics), "learning-economics returns cost_governor");
-ok(/autopilot_actions: autopilotActions/.test(economics), "learning-economics returns autopilot_actions");
+ok(/autopilot_actions: autopilotActions/.test(economics) && /top_upgrade_action/.test(economics), "learning-economics returns autopilot_actions with top upgrade action summary");
 ok(/next_intelligence_layers: nextIntelligenceLayers/.test(economics), "learning-economics returns next intelligence layers");
 ok(/buildReelsBrainOperatingSystem/.test(economics), "learning-economics builds the operating-system layers");
 ok(/feedback_loop/.test(economics) && /product_brain/.test(economics) && /experiment_brain/.test(economics), "learning-economics returns advanced intelligence layers");
@@ -66,7 +66,7 @@ ok(/\/api\/factory\/reels-brain\/health/.test(cockpit) && /Live Ops/.test(cockpi
 
 ok(/internalFetch/.test(actions), "autopilot-actions reads learning-economics internally");
 ok(/\/api\/factory\/reels-brain\/learning-economics/.test(actions), "autopilot-actions points at learning-economics route");
-ok(/autopilot_actions/.test(actions) && /cost_governor/.test(actions), "autopilot-actions exposes operator-ready fields");
+ok(/autopilot_actions/.test(actions) && /cost_governor/.test(actions) && /measurement_plan/.test(actions), "autopilot-actions exposes operator-ready fields");
 ok(/outcome_memory_brain/.test(actions) && /feedback_coverage/.test(economics) && /validate_pattern_feedback/.test(economics), "autopilot-actions exposes strong-pattern feedback coverage queue");
 ok(!/POST\s*\(/.test(actions), "autopilot-actions is read-only");
 

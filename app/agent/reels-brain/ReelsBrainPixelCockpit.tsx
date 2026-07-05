@@ -295,6 +295,7 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
     const generationPolicy = (learning?.generation_policy || {}) as JsonRecord;
     const measurementPlan = (learning?.measurement_plan || {}) as JsonRecord;
     const validationRunbook = (((autopilotActions.validation_runbook || learning?.validation_runbook || {}) as JsonRecord));
+    const topUpgradeAction = (autopilotActions.top_upgrade_action || {}) as JsonRecord;
     const portfolioReadiness = (learning?.portfolio_readiness || mission.portfolio_readiness || {}) as JsonRecord;
     const exactSegmentQueue = ((mission.exact_segment_queue || learning?.exact_segment_queue || {}) as JsonRecord);
     const evidenceLedger = (learning?.evidence_ledger || {}) as JsonRecord;
@@ -998,6 +999,16 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
       command: mission.next_tick?.endpoint || (backlogRemaining > 0 ? "/api/factory/jobs/reels-brain-cron?task=analyze" : "/api/factory/jobs/reels-brain-cron"),
       status: autopilotActions.can_run_paid_collection ? "можно без ручного пинка" : "сначала добить backlog",
     };
+    const nextUpgradeAction = {
+      title: String(topUpgradeAction.action || topUpgradeAction.title || "Следующий лучший upgrade ещё формируется"),
+      reason: String(topUpgradeAction.reason || "Как только в measurement / validation queue появится явный лидер, мозг покажет самый ценный апгрейд."),
+      unlocked: String(topUpgradeAction.unlocked_output || ""),
+      trustGain: num(topUpgradeAction.projected_trust_gain_score),
+      trustBand: String(topUpgradeAction.projected_trust_gain_band || "low"),
+      loop: String(topUpgradeAction.recommended_loop || ""),
+      state: String(topUpgradeAction.projected_production_state || ""),
+      segment: `${NICHE_LABELS[String(topUpgradeAction.niche)] || String(topUpgradeAction.niche || "mixed")} × ${String(topUpgradeAction.platform || "mixed").toUpperCase()}`,
+    };
 
     return {
       totals,
@@ -1091,6 +1102,7 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
       generationPolicySummary,
       measurementPlan,
       validationRunbook,
+      topUpgradeAction,
       exactSegmentQueue,
       missionPriorityCards,
       portfolioCoverageCards,
@@ -1107,6 +1119,7 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
       economicsCards,
       readinessCards,
       nextAction,
+      nextUpgradeAction,
       usefulCost,
       delta,
       progressTotals,
@@ -3820,6 +3833,7 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
                   <p><strong>Top runbook:</strong> {String(((vm.validationRunbook.items || [])[0] as JsonRecord | undefined)?.task_type || "validation")}</p>
                   <p><strong>Creative endpoint:</strong> {String(((vm.validationRunbook.items || [])[0] as JsonRecord | undefined)?.creative_solution_endpoint || "/api/factory/reels-brain/creative-solution")}</p>
                   <p><strong>Writeback:</strong> {String(((vm.validationRunbook.items || [])[0] as JsonRecord | undefined)?.feedback_endpoint || "/api/factory/reels-brain/feedback")} → {String(((vm.validationRunbook.items || [])[0] as JsonRecord | undefined)?.post_metrics_endpoint || "/api/factory/post-metrics")}</p>
+                  <p><strong>Upgrade:</strong> {String((((vm.validationRunbook.items || [])[0] as JsonRecord | undefined)?.recommended_upgrade as JsonRecord | undefined)?.unlocked_output || "pending")} · trust +{compact((((vm.validationRunbook.items || [])[0] as JsonRecord | undefined)?.recommended_upgrade as JsonRecord | undefined)?.projected_trust_gain_score || 0)}</p>
                 </div>
               ) : null}
             </div>
@@ -3880,6 +3894,33 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
                 <div className="rb-dark-card"><div className="rb-overline rb-cyan">Сбор / тик</div><h3>{compact(vm.mission.eta?.inserted_per_tick || 0)}</h3><p>новых видео</p></div>
                 <div className="rb-dark-card"><div className="rb-overline rb-cyan">Анализ / тик</div><h3>{compact(vm.mission.eta?.analyzed_per_tick || 0)}</h3><p>в память</p></div>
                 <div className="rb-dark-card"><div className="rb-overline rb-cyan">До чистого backlog</div><h3>{compact(vm.mission.eta?.ticks_to_clear_backlog || 0)}</h3><p>тиков</p></div>
+              </div>
+            </div>
+          </div>
+          <div className="rb-card" style={{ marginTop: 16 }}>
+            <div className="rb-two" style={{ gridTemplateColumns: "1.2fr 0.8fr", gap: 18 }}>
+              <div>
+                <div className="rb-overline" style={{ color: "#0891b2" }}>Top upgrade action</div>
+                <h3 style={{ font: "700 26px/1.08 'Space Grotesk'", margin: "10px 0" }}>{vm.nextUpgradeAction.title}</h3>
+                <p style={{ color: "#64748b", lineHeight: 1.6 }}>{vm.nextUpgradeAction.reason}</p>
+                <p style={{ marginTop: 10 }}><strong>Segment:</strong> {vm.nextUpgradeAction.segment}</p>
+              </div>
+              <div className="rb-three">
+                <div className="rb-kpi">
+                  <div className="label">Unlocks</div>
+                  <strong>{vm.nextUpgradeAction.unlocked || "pending"}</strong>
+                  <p>что откроется</p>
+                </div>
+                <div className="rb-kpi">
+                  <div className="label">Trust gain</div>
+                  <strong>+{compact(vm.nextUpgradeAction.trustGain || 0)}</strong>
+                  <p>{vm.nextUpgradeAction.trustBand || "low"}</p>
+                </div>
+                <div className="rb-kpi">
+                  <div className="label">Loop</div>
+                  <strong>{vm.nextUpgradeAction.loop || "watch"}</strong>
+                  <p>{vm.nextUpgradeAction.state || "forming"}</p>
+                </div>
               </div>
             </div>
           </div>
