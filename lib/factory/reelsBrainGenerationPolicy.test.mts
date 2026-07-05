@@ -11,12 +11,14 @@ test("buildReelsBrainGenerationPolicy maps solution matrix into generation modes
         controlled_test: 1,
         research_only: 1,
         high_trust_segments: 1,
+        generation_ready_segments: 1,
         publishable_exact_segments: 1,
       },
       by_niche: [
         {
           niche: "ru_toys",
           label: "ru_toys",
+          high_trust_generation_ready: true,
           publishable_exact: true,
           coverage_labels: ["instagram", "tiktok"],
           next_gap: { label: "ru_toys × youtube" },
@@ -29,6 +31,7 @@ test("buildReelsBrainGenerationPolicy maps solution matrix into generation modes
           primary: {
             label: "ru_toys × instagram",
             readiness_score: 90,
+            high_trust_generation_ready: true,
             trust_band: "high",
             production_state: "ready_now",
             trust_why: ["stable corpus"],
@@ -64,6 +67,7 @@ test("buildReelsBrainGenerationPolicy maps solution matrix into generation modes
           platform: "instagram",
           label: "ru_toys × instagram",
           readiness_score: 90,
+          high_trust_generation_ready: true,
           trust_band: "high",
           production_state: "ready_now",
           trust_summary: { evidence_band: "stable", proof_quality: "exact_segment" },
@@ -82,15 +86,20 @@ test("buildReelsBrainGenerationPolicy maps solution matrix into generation modes
   });
 
   assert.equal(result.summary.primary_niches, 1);
+  assert.equal(result.summary.generation_ready_segments, 1);
   assert.equal(result.summary.publishable_exact_segments, 1);
+  assert.equal(result.summary.primary_generation_ready_niches, 1);
   assert.equal(result.summary.primary_exact_niches, 1);
   assert.equal(result.summary.primary_platforms, 0);
+  assert.equal(result.global_default?.high_trust_generation_ready, true);
   assert.equal(result.global_default?.policy_mode, "primary");
   assert.equal(result.global_default?.publishable_exact, true);
   assert.equal(result.by_niche[0]?.policy_mode, "primary");
+  assert.equal(result.by_niche[0]?.high_trust_generation_ready, true);
   assert.equal(result.by_niche[0]?.publishable_exact, true);
   assert.equal(result.by_niche[0]?.brief_hook, "Смотри что внутри");
-  assert.match(String(result.by_niche[0]?.policy_reason), /publishable exact policy/i);
+  assert.match(String(result.by_niche[0]?.policy_reason), /generation-ready policy/i);
+  assert.match(String(result.by_niche[0]?.policy_reason), /generation-ready policy/i);
   assert.match(String(result.by_niche[0]?.policy_reason), /Следующий лучший апгрейд: publishable_visual_brief/i);
   assert.equal((result.by_niche[0]?.next_upgrade as Record<string, unknown> | undefined)?.projected_trust_gain_score, 22);
   assert.equal(result.by_platform[0]?.policy_mode, "control_only");
@@ -163,6 +172,7 @@ test("buildReelsBrainGenerationPolicy downgrades segment-level policy by outcome
           platform: "instagram",
           label: "ru_clothing × instagram",
           readiness_score: 88,
+          high_trust_generation_ready: true,
           trust_band: "high",
           production_state: "ready_now",
           trust_summary: {
@@ -187,10 +197,53 @@ test("buildReelsBrainGenerationPolicy downgrades segment-level policy by outcome
   });
 
   assert.equal(result.by_segment[0]?.policy_mode, "control_only");
+  assert.equal(result.by_segment[0]?.high_trust_generation_ready, true);
   assert.equal(result.by_segment[0]?.publishable_exact, true);
   assert.equal(result.by_segment[0]?.automation_allowed, true);
   assert.equal(result.by_segment[0]?.decision_priority_score, 100);
   assert.equal((result.by_segment[0]?.next_upgrade as Record<string, unknown> | undefined)?.unlocked_output, "publishable_visual_brief");
+  assert.match(String(result.by_segment[0]?.policy_reason), /high-trust generation-ready segment/i);
   assert.match(String(result.by_segment[0]?.policy_reason), /Следующий лучший апгрейд: publishable_visual_brief/i);
   assert.match(String(result.by_segment[0]?.policy_reason), /segment policy понижен до control_only/i);
+});
+
+test("buildReelsBrainGenerationPolicy prefers generation-ready segment as global default", () => {
+  const result = buildReelsBrainGenerationPolicy({
+    segmentSolutionMatrix: {
+      by_niche: [],
+      by_platform: [],
+      by_segment: [
+        {
+          niche: "ru_toys",
+          platform: "youtube",
+          label: "ru_toys × youtube",
+          readiness_score: 96,
+          trust_band: "high",
+          production_state: "ready_now",
+          trust_summary: {
+            evidence_band: "stable",
+            proof_quality: "exact_segment",
+            outcome_status: "proven",
+          },
+        },
+        {
+          niche: "ru_cosmetics",
+          platform: "instagram",
+          label: "ru_cosmetics × instagram",
+          readiness_score: 72,
+          high_trust_generation_ready: true,
+          trust_band: "medium",
+          production_state: "controlled_test",
+          trust_summary: {
+            evidence_band: "forming",
+            proof_quality: "traced_transfer_only",
+            outcome_status: "proven",
+          },
+        },
+      ],
+    },
+  });
+
+  assert.equal(result.global_default?.label, "ru_cosmetics × instagram");
+  assert.equal(result.global_default?.high_trust_generation_ready, true);
 });

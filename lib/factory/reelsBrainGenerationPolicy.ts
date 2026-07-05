@@ -28,6 +28,10 @@ function outcomeAdjustedPolicyMode(baseMode: string, outcomeStatus: string) {
   return baseMode;
 }
 
+function generationReady(value: unknown) {
+  return Boolean(value);
+}
+
 function defaultPolicyReason(primary: JsonRecord | null, nextGap: JsonRecord | null, scope: "niche" | "platform") {
   const readiness = num(primary?.readiness_score);
   const trustBand = text(primary?.trust_band, "low");
@@ -35,6 +39,9 @@ function defaultPolicyReason(primary: JsonRecord | null, nextGap: JsonRecord | n
   const proofQuality = text((primary?.trust_summary as JsonRecord | null)?.proof_quality, "untraced");
   const label = text(primary?.label, scope === "niche" ? "niche segment" : "platform segment");
   const gapLabel = text(nextGap?.label || nextGap?.platform || nextGap?.niche);
+  if (generationReady(primary?.high_trust_generation_ready)) {
+    return `${label} уже generation-ready policy: high-trust signal закрыт, evidence ${evidenceBand}, readiness ${readiness}.`;
+  }
   if (modeFromProductionState(primary?.production_state) === "primary" && proofQuality === "exact_segment") {
     return `${label} уже publishable exact policy: trust ${trustBand}, evidence ${evidenceBand}, readiness ${readiness}.`;
   }
@@ -69,6 +76,7 @@ function buildPolicyRow(row: JsonRecord, scope: "niche" | "platform") {
   const outcomeStatus = text(trustSummary.outcome_status, "no_feedback");
   const policyMode = outcomeAdjustedPolicyMode(modeFromProductionState(primary?.production_state), outcomeStatus);
   const proofQuality = text(trustSummary.proof_quality, "untraced");
+  const highTrustGenerationReady = generationReady(primary?.high_trust_generation_ready);
   const publishableExact = text(primary?.production_state) === "ready_now" && proofQuality === "exact_segment";
   const brief = (primary?.creative_brief && typeof primary.creative_brief === "object" ? primary.creative_brief : {}) as JsonRecord;
   const hypothesis = (primary?.hypothesis && typeof primary.hypothesis === "object" ? primary.hypothesis : {}) as JsonRecord;
@@ -80,6 +88,7 @@ function buildPolicyRow(row: JsonRecord, scope: "niche" | "platform") {
     automation_allowed: policyMode !== "research_only",
     trust_band: text(primary?.trust_band, "low"),
     evidence_band: text(trustSummary.evidence_band, "missing"),
+    high_trust_generation_ready: highTrustGenerationReady,
     publishable_exact: publishableExact,
     proof_quality: proofQuality,
     outcome_status: outcomeStatus,
@@ -109,6 +118,7 @@ function buildPolicyRow(row: JsonRecord, scope: "niche" | "platform") {
       outcomeStatus === "promising" && modeFromProductionState(primary?.production_state) === "primary"
         ? "Market outcome ещё только формируется: primary policy понижен до control_only."
         : "",
+      highTrustGenerationReady ? "Это high-trust generation-ready segment: его нужно предпочитать даже publishable exact, если нужен прямой production lane." : "",
       publishableExact ? "Это publishable exact segment: его нужно предпочитать transfer-ready альтернативам." : "",
     ].filter(Boolean).join(" "),
   };
@@ -121,6 +131,7 @@ function buildSegmentPolicyRow(row: JsonRecord) {
   const baseMode = modeFromProductionState(row.production_state);
   const policyMode = outcomeAdjustedPolicyMode(baseMode, outcomeStatus);
   const proofQuality = text(trustSummary.proof_quality, "untraced");
+  const highTrustGenerationReady = generationReady(row.high_trust_generation_ready);
   const publishableExact = text(row.production_state) === "ready_now" && proofQuality === "exact_segment";
   const decisionPriorityScore = Math.round(
     Math.min(100,
@@ -128,6 +139,7 @@ function buildSegmentPolicyRow(row: JsonRecord) {
       + (text(row.trust_band) === "high" ? 18 : text(row.trust_band) === "medium" ? 10 : 4)
       + (text(trustSummary.evidence_band) === "stable" ? 16 : text(trustSummary.evidence_band) === "forming" ? 8 : 0)
       + Math.min(20, num(upgradeForecast?.projected_trust_gain_score) * 0.6)
+      + (highTrustGenerationReady ? 16 : 0)
       + (publishableExact ? 10 : 0)
     ),
   );
@@ -140,6 +152,7 @@ function buildSegmentPolicyRow(row: JsonRecord) {
     automation_allowed: policyMode !== "research_only",
     trust_band: text(row.trust_band, "low"),
     evidence_band: text(trustSummary.evidence_band, "missing"),
+    high_trust_generation_ready: highTrustGenerationReady,
     proof_quality: proofQuality,
     publishable_exact: publishableExact,
     outcome_status: outcomeStatus,
@@ -158,6 +171,7 @@ function buildSegmentPolicyRow(row: JsonRecord) {
       outcomeStatus === "promising" && baseMode === "primary"
         ? "Market outcome ещё только формируется: segment policy понижен до control_only."
         : "",
+      highTrustGenerationReady ? "Это high-trust generation-ready segment: его нужно поднимать выше publishable exact-only альтернатив." : "",
       publishableExact ? "Это publishable exact segment: его нужно поднимать выше transfer-ready альтернатив." : "",
     ].filter(Boolean).join(" "),
   };
@@ -180,6 +194,13 @@ export function buildReelsBrainGenerationPolicy(input: {
   const bySegment = Array.isArray(input.segmentSolutionMatrix?.by_segment)
       ? input.segmentSolutionMatrix?.by_segment.slice(0, 12).map((row) => buildSegmentPolicyRow(row))
     : [];
+  const sortedSegments = [...bySegment].sort((a, b) =>
+    Number(Boolean(b.high_trust_generation_ready)) - Number(Boolean(a.high_trust_generation_ready))
+    || Number(Boolean(b.publishable_exact)) - Number(Boolean(a.publishable_exact))
+    || num(b.decision_priority_score) - num(a.decision_priority_score)
+    || num(b.readiness_score) - num(a.readiness_score)
+    || text(a.label).localeCompare(text(b.label)),
+  );
 
   return {
     summary: {
@@ -188,15 +209,18 @@ export function buildReelsBrainGenerationPolicy(input: {
       controlled_test: num(input.segmentSolutionMatrix?.summary?.controlled_test),
       research_only: num(input.segmentSolutionMatrix?.summary?.research_only),
       high_trust_segments: num(input.segmentSolutionMatrix?.summary?.high_trust_segments),
+      generation_ready_segments: num(input.segmentSolutionMatrix?.summary?.generation_ready_segments),
       publishable_exact_segments: num(input.segmentSolutionMatrix?.summary?.publishable_exact_segments),
       primary_niches: byNiche.filter((row) => row.policy_mode === "primary").length,
+      primary_generation_ready_niches: byNiche.filter((row) => row.policy_mode === "primary" && row.high_trust_generation_ready).length,
       primary_exact_niches: byNiche.filter((row) => row.policy_mode === "primary" && row.publishable_exact).length,
       primary_platforms: byPlatform.filter((row) => row.policy_mode === "primary").length,
+      primary_generation_ready_platforms: byPlatform.filter((row) => row.policy_mode === "primary" && row.high_trust_generation_ready).length,
       primary_exact_platforms: byPlatform.filter((row) => row.policy_mode === "primary" && row.publishable_exact).length,
     },
-    global_default: bySegment[0] || null,
+    global_default: sortedSegments[0] || null,
     by_niche: byNiche,
     by_platform: byPlatform,
-    by_segment: bySegment,
+    by_segment: sortedSegments,
   };
 }

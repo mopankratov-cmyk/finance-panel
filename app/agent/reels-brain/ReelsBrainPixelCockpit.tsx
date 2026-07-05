@@ -861,6 +861,9 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
       primaryNiches: num(generationPolicy.summary?.primary_niches),
       primaryPlatforms: num(generationPolicy.summary?.primary_platforms),
       highTrust: num(generationPolicy.summary?.high_trust_segments),
+      generationReady: num(generationPolicy.summary?.generation_ready_segments),
+      primaryGenerationReadyNiches: num(generationPolicy.summary?.primary_generation_ready_niches),
+      primaryGenerationReadyPlatforms: num(generationPolicy.summary?.primary_generation_ready_platforms),
     };
     const missionPriorityCards = ((segmentPriorityQueue.items || []) as JsonRecord[]).slice(0, 4).map((row) => ({
       ...row,
@@ -2611,7 +2614,7 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
                 {vm.generationPolicyPlatformCards.length ? vm.generationPolicyPlatformCards.map((row: JsonRecord) => (
                   <div className="rb-pattern" key={`policy-platform:${row.platform}`}>
                     <h3>{String(row.platform || "mixed").toUpperCase()}</h3>
-                    <p>{row.policy_mode} · trust {row.trust_band} · evidence {row.evidence_band}</p>
+                    <p>{row.policy_mode} · trust {row.trust_band} · evidence {row.evidence_band} · {row.high_trust_generation_ready ? "gen-ready" : row.publishable_exact ? "exact-ready" : "building"}</p>
                     <p>{row.brief_hook || row.hypothesis || row.decision_title || "policy pending"}</p>
                     <p>{row.policy_reason}</p>
                   </div>
@@ -2625,8 +2628,13 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
               <h3 style={{ font: "700 26px/1.08 'Space Grotesk'", margin: "10px 0" }}>Где это забирать генератору</h3>
               <div className="rb-three" style={{ marginTop: 14 }}>
                 <div className="rb-brief-block"><b>High trust</b><p>{compact(vm.generationPolicySummary.highTrust)}</p></div>
+                <div className="rb-brief-block"><b>Gen-ready</b><p>{compact(vm.generationPolicySummary.generationReady)}</p></div>
                 <div className="rb-brief-block"><b>Niche primary</b><p>{compact(vm.generationPolicySummary.primaryNiches)}</p></div>
+              </div>
+              <div className="rb-three" style={{ marginTop: 12 }}>
+                <div className="rb-brief-block"><b>Gen-ready niches</b><p>{compact(vm.generationPolicySummary.primaryGenerationReadyNiches)}</p></div>
                 <div className="rb-brief-block"><b>Platform primary</b><p>{compact(vm.generationPolicySummary.primaryPlatforms)}</p></div>
+                <div className="rb-brief-block"><b>Gen-ready platforms</b><p>{compact(vm.generationPolicySummary.primaryGenerationReadyPlatforms)}</p></div>
               </div>
               <div className="rb-brief-block" style={{ marginTop: 12 }}>
                 <b>Endpoint</b>
