@@ -29,6 +29,28 @@ export function buildReelsBrainOutcomeAntiPatternMemory(input: {
       promising_segments?: SegmentOutcomeRow[];
     };
   } | null;
+  patternOutcomeMemory?: {
+    decaying_patterns?: Array<{
+      pattern_id?: string;
+      title?: string;
+      quality_gate?: string;
+      total_posts?: number;
+      winners?: number;
+      losers?: number;
+      best_segment?: string | null;
+      trust_write?: string;
+    }>;
+    promotion_queue?: Array<{
+      pattern_id?: string;
+      title?: string;
+      quality_gate?: string;
+      total_posts?: number;
+      winners?: number;
+      losers?: number;
+      best_segment?: string | null;
+      trust_write?: string;
+    }>;
+  } | null;
   limit?: number;
 }) {
   const directRows = Array.isArray(input.feedbackLoop?.by_segment) ? input.feedbackLoop?.by_segment || [] : [];
@@ -78,6 +100,22 @@ export function buildReelsBrainOutcomeAntiPatternMemory(input: {
         source: "segment_outcome_memory",
       };
     }),
+    ...((input.patternOutcomeMemory?.decaying_patterns || []).map((row) => ({
+      code: `weak_pattern_${text(row.pattern_id)}`,
+      label: `Weak pattern outcome: ${text(row.title, text(row.pattern_id, "pattern"))}`,
+      evidence: `${num(row.winners)} winners / ${num(row.total_posts)} posts · losers ${num(row.losers)}${text(row.best_segment) ? ` · ${text(row.best_segment)}` : ""}`,
+      action: text(row.trust_write, "degrade_pattern_priority"),
+      severity: num(row.losers) >= 2 ? "high" : "medium",
+      source: "pattern_outcome_memory",
+    }))),
+    ...((input.patternOutcomeMemory?.promotion_queue || []).map((row) => ({
+      code: `promising_pattern_${text(row.pattern_id)}`,
+      label: `Pattern still validating: ${text(row.title, text(row.pattern_id, "pattern"))}`,
+      evidence: `${num(row.winners)} winners / ${num(row.total_posts)} posts${text(row.best_segment) ? ` · ${text(row.best_segment)}` : ""}`,
+      action: text(row.trust_write, "keep_validating_pattern"),
+      severity: "medium",
+      source: "pattern_outcome_memory",
+    }))),
   ]
     .filter((row) => row.label && row.action)
     .sort((a, b) =>
@@ -94,4 +132,3 @@ export function buildReelsBrainOutcomeAntiPatternMemory(input: {
       : "Outcome anti-pattern writeback пока пуст: ждём segment feedback.",
   };
 }
-

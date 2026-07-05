@@ -25,6 +25,7 @@ import { REELS_BRAIN_CORPUS_TARGET_TOTAL } from "@/lib/factory/reelsBrainCorpusT
 import { buildReelsBrainSegmentGapPlanner } from "@/lib/factory/reelsBrainSegmentGapPlanner";
 import { loadReelsBrainFeedbackRows } from "@/lib/factory/reelsBrainFeedbackRows";
 import { buildReelsBrainOutcomeAntiPatternMemory } from "@/lib/factory/reelsBrainOutcomeAntiPatternMemory";
+import { buildReelsBrainPatternOutcomeMemory } from "@/lib/factory/reelsBrainPatternOutcomeMemory";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 20;
@@ -596,8 +597,16 @@ function buildOutcomeMemoryBrain(
 ) {
   const highConfidencePatterns = patternDetails.filter((row) => String(row.quality_gate || "") === "high_confidence").length;
   const mediumPatterns = patternDetails.filter((row) => String(row.quality_gate || "") === "medium_confidence").length;
+  const pattern_memory = buildReelsBrainPatternOutcomeMemory({
+    patterns: patternDetails,
+    limit: 6,
+  });
   return {
-    status: feedbackLoop.outcome_schema?.schema_ready ? "schema_ready" : "planned",
+    status: feedbackLoop.outcome_schema?.schema_ready
+      ? pattern_memory.rows_live > 0
+        ? "learning_live"
+        : "schema_ready"
+      : "planned",
     rows_live: feedbackLoop.total_posts || 0,
     schema: feedbackLoop.outcome_schema || null,
     mapping_ready: {
@@ -607,6 +616,7 @@ function buildOutcomeMemoryBrain(
       top_funnel: true,
       retention: true,
       commerce: true,
+      pattern_signature: true,
     },
     attach_targets: {
       high_confidence_patterns: highConfidencePatterns,
@@ -614,8 +624,9 @@ function buildOutcomeMemoryBrain(
       winner_memory_write: highConfidencePatterns + mediumPatterns > 0 ? "ready" : "waiting_patterns",
     },
     segment_memory: feedbackLoop.segment_outcome_memory || null,
+    pattern_memory,
     next_step: feedbackLoop.total_posts
-      ? "Начать писать market outcomes обратно в segment trust + pattern/anti-pattern brain после каждого ролика."
+      ? pattern_memory.next_step
       : "Схема готова: как только пойдут публикации, писать outcomes через post-metrics и reels-brain/feedback.",
   };
 }
@@ -1119,11 +1130,15 @@ function buildAntiPatternBrain(
   insightPayload: ReturnType<typeof buildInsights>,
   audioBrain?: ReturnType<typeof buildAudioBrain>,
   feedbackLoop?: ReturnType<typeof buildReelsBrainOperatingSystem>["feedback_loop"],
+  patternDecisionLayer?: { pattern_details?: Array<Record<string, unknown>> },
 ) {
   const weakHooks = (insightPayload.top_hooks || []).filter((hook) => hook.confidence === "low" || hook.op_score < 60).slice(0, 4);
   const weakFormats = (insightPayload.winning_formats || []).filter((format) => num(format.avg_score) < 55).slice(0, 4);
   const outcomeWriteback = buildReelsBrainOutcomeAntiPatternMemory({
     feedbackLoop: feedbackLoop || null,
+    patternOutcomeMemory: (feedbackLoop && patternDecisionLayer)
+      ? buildReelsBrainPatternOutcomeMemory({ patterns: patternDecisionLayer.pattern_details as Record<string, unknown>[], limit: 4 })
+      : null,
     limit: 4,
   });
   const rows = [
@@ -2512,7 +2527,7 @@ export async function GET(req: NextRequest) {
       insights: insightPayload,
       feedbackRows: feedbackRows.rows,
     });
-    const antiPatternBrain = buildAntiPatternBrain(corpusAudit, insightPayload, audioBrain, operatingSystem.feedback_loop);
+    const antiPatternBrain = buildAntiPatternBrain(corpusAudit, insightPayload, audioBrain, operatingSystem.feedback_loop, patternDecisionLayer);
     const outcomeMemoryBrain = buildOutcomeMemoryBrain(operatingSystem.feedback_loop, patternDecisionLayer.pattern_details as Record<string, unknown>[]);
     const baseNextLayers = buildNextIntelligenceLayers({ insightPayload, patternDecisionLayer, corpusAudit, audioVisualReadiness });
     const nextIntelligenceLayers = {
