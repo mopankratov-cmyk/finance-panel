@@ -77,6 +77,8 @@ export function tuneBulkLaneByExecutionIntent(input: {
   const focused = sameSegment(intent, input.lane);
   const queryCapBase = Math.max(1, input.queryVariantsPerLane);
   const providerCapBase = Math.max(1, input.providersPerLane);
+  const projectedTrustGainScore = num(intent?.projected_trust_gain_score);
+  const highValueUpgrade = projectedTrustGainScore >= 30;
   let queries = [...input.queries];
   let providers = [...input.providers];
   let queryCap = queryCapBase;
@@ -94,7 +96,7 @@ export function tuneBulkLaneByExecutionIntent(input: {
     strategy = "support_primary_segment";
     queryCap = 1;
     providerCap = pinnedProvider ? 1 : Math.min(1, providerCapBase);
-    limit = Math.max(10, Math.min(limit, 18));
+    limit = Math.max(10, Math.min(limit, highValueUpgrade ? 14 : 18));
     providerTimeoutMs = Math.min(providerTimeoutMs, 14000);
     queries = queries.slice(0, 1);
     providers = pinnedProvider
@@ -115,7 +117,7 @@ export function tuneBulkLaneByExecutionIntent(input: {
       : "close_exact_segment_gap";
     queryCap = 1;
     providerCap = 1;
-    limit = Math.max(10, Math.min(limit, 18));
+    limit = Math.max(10, Math.min(limit, highValueUpgrade ? 14 : 18));
     providerTimeoutMs = Math.min(providerTimeoutMs, 14000);
     queries = queries.slice(0, 1);
     providers = pinnedProvider
@@ -154,9 +156,10 @@ export function tuneBulkBudgetByExecutionIntent(input: {
   maxCostUnits: number;
 }) {
   if (input.intent?.mode === "support_primary_segment" || input.intent?.mode === "close_exact_segment_gap") {
+    const highValueUpgrade = num(input.intent?.projected_trust_gain_score) >= 30;
     return {
-      max_provider_calls: Math.max(1, Math.min(input.maxProviderCalls, 2)),
-      max_cost_units: Math.max(1, Math.min(input.maxCostUnits, 6)),
+      max_provider_calls: Math.max(1, Math.min(input.maxProviderCalls, highValueUpgrade ? 1 : 2)),
+      max_cost_units: Math.max(1, Math.min(input.maxCostUnits, highValueUpgrade ? 4 : 6)),
     };
   }
   if (input.intent?.mode === "support_control_segment" || input.intent?.mode === "close_portfolio_gap") {
