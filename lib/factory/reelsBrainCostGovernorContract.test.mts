@@ -183,6 +183,7 @@ ok(/exact_segment_evidence/.test(economics) && /prove_exact_segment/.test(econom
 ok(/portfolioReadiness/.test(economics) && /close_portfolio_gap/.test(economics), "autopilot uses portfolio readiness to close high-trust coverage gaps");
 ok(/publishable_exact_gaps/.test(economics) && /close_publishable_exact_gap/.test(economics) && /publishable_exact_gap_segments/.test(economics), "autopilot escalates publishable exact portfolio gaps once high-trust coverage exists");
 ok(/generationPolicy/.test(economics) && /ship_policy_segment/.test(economics) && /validate_policy_segment/.test(economics), "autopilot actions consume generation policy and expose production-aware segment moves");
+ok(/top_ready_segments/.test(economics) && /ship_generation_ready_segment/.test(economics), "autopilot can elevate already generation-ready segments into direct production actions");
 ok(/review_pattern_gain_economics/.test(economics) && /pattern_gain_cost_trend/.test(economics), "autopilot reacts when pattern-gain economics degrade");
 ok(/segmentStabilityAudit/.test(learningPlan) && /segment_stability/.test(learningPlan), "learning-plan uses segment stability audit in the main loop");
 ok(/portfolio_readiness/.test(learningPlan) && /publishable_exact_coverage_pct/.test(learningPlan) && /generation_ready_coverage_pct/.test(learningPlan), "learning-plan exposes portfolio readiness in the mission loop including generation-ready and publishable exact coverage");
