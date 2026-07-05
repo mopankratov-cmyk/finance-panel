@@ -23,6 +23,7 @@ export async function GET(req: NextRequest) {
       cost_governor: data.cost_governor || null,
       discovery_brain: data.discovery_brain || null,
       outcome_memory_brain: data.outcome_memory_brain || null,
+      measurement_plan: data.measurement_plan || null,
     }, { headers: { "Cache-Control": "no-store" } });
   } catch (e) {
     return NextResponse.json({ error: "autopilot-actions reels-brain упал: " + String((e as Error)?.message || e).slice(0, 180) }, { status: 500 });

@@ -27,6 +27,7 @@ import { loadReelsBrainFeedbackRows } from "@/lib/factory/reelsBrainFeedbackRows
 import { buildReelsBrainOutcomeAntiPatternMemory } from "@/lib/factory/reelsBrainOutcomeAntiPatternMemory";
 import { buildReelsBrainPatternOutcomeMemory } from "@/lib/factory/reelsBrainPatternOutcomeMemory";
 import { buildReelsBrainMeasurementPlan } from "@/lib/factory/reelsBrainMeasurementPlan";
+import { buildReelsBrainValidationQueue } from "@/lib/factory/reelsBrainValidationQueue";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 20;
@@ -1527,6 +1528,12 @@ function buildAutopilotActions(input: {
   outcomeMemory?: {
     pattern_memory?: Record<string, unknown>;
   } | null;
+  measurementPlan?: {
+    items?: Array<Record<string, unknown>>;
+    coverage_rate?: number;
+    total_candidates?: number;
+    high_confidence_no_feedback?: number;
+  } | null;
   segmentPriorityQueue?: { items?: Array<Record<string, unknown>> };
   generationPolicy?: {
     by_niche?: Array<Record<string, unknown>>;
@@ -1568,6 +1575,10 @@ function buildAutopilotActions(input: {
     niches: Array.isArray(row.niches) ? row.niches.slice(0, 3) : [],
     platforms: Array.isArray(row.platforms) ? row.platforms.slice(0, 3) : [],
   }));
+  const validationQueue = buildReelsBrainValidationQueue({
+    measurementPlan: input.measurementPlan || null,
+    limit: 4,
+  });
   const segmentActions = (input.segmentPriorityQueue?.items || []).slice(0, 4).map((segment) => ({
     type: String(segment.action || "watch_segment"),
     priority: Boolean(segment.ready_for_generation) || Number(segment.urgency_score || 0) >= 80 ? "high" : "medium",
@@ -1673,6 +1684,7 @@ function buildAutopilotActions(input: {
       total_no_feedback_queue: num((patternMemory.coverage_gaps as Record<string, unknown> | undefined)?.total_no_feedback_queue),
       queue: feedbackCoverageQueue,
     },
+    validation_queue: validationQueue,
     generation_policy: {
       primary_segments: segmentPolicies.filter((segment) => segment.policy_mode === "primary").length,
       control_segments: segmentPolicies.filter((segment) => segment.policy_mode === "control_only").length,
@@ -2851,6 +2863,7 @@ export async function GET(req: NextRequest) {
       costGovernor,
       totals,
       outcomeMemory: outcomeMemoryBrain,
+      measurementPlan,
       segmentPriorityQueue,
       generationPolicy,
       portfolioReadiness,
