@@ -114,6 +114,55 @@ function buildPolicyRow(row: JsonRecord, scope: "niche" | "platform") {
   };
 }
 
+function buildSegmentPolicyRow(row: JsonRecord) {
+  const trustSummary = (row.trust_summary && typeof row.trust_summary === "object" ? row.trust_summary : {}) as JsonRecord;
+  const upgradeForecast = (row.upgrade_forecast && typeof row.upgrade_forecast === "object" ? row.upgrade_forecast : null) as JsonRecord | null;
+  const outcomeStatus = text(trustSummary.outcome_status, "no_feedback");
+  const baseMode = modeFromProductionState(row.production_state);
+  const policyMode = outcomeAdjustedPolicyMode(baseMode, outcomeStatus);
+  const proofQuality = text(trustSummary.proof_quality, "untraced");
+  const publishableExact = text(row.production_state) === "ready_now" && proofQuality === "exact_segment";
+  const decisionPriorityScore = Math.round(
+    Math.min(100,
+      num(row.readiness_score) * 0.55
+      + (text(row.trust_band) === "high" ? 18 : text(row.trust_band) === "medium" ? 10 : 4)
+      + (text(trustSummary.evidence_band) === "stable" ? 16 : text(trustSummary.evidence_band) === "forming" ? 8 : 0)
+      + Math.min(20, num(upgradeForecast?.projected_trust_gain_score) * 0.6)
+      + (publishableExact ? 10 : 0)
+    ),
+  );
+  const label = text(row.label, `${text(row.niche)} × ${text(row.platform)}`);
+  return {
+    label,
+    niche: text(row.niche),
+    platform: text(row.platform),
+    policy_mode: policyMode,
+    automation_allowed: policyMode !== "research_only",
+    trust_band: text(row.trust_band, "low"),
+    evidence_band: text(trustSummary.evidence_band, "missing"),
+    proof_quality: proofQuality,
+    publishable_exact: publishableExact,
+    outcome_status: outcomeStatus,
+    outcome_confidence: text(trustSummary.outcome_confidence, "none"),
+    readiness_score: num(row.readiness_score),
+    decision_priority_score: decisionPriorityScore,
+    upgrade_forecast: upgradeForecast,
+    next_upgrade: upgradeForecast,
+    brief_hook: text(((row.creative_brief as JsonRecord | null)?.hook)),
+    decision: text(((row.content_decision as JsonRecord | null)?.decision)),
+    hypothesis: text(((row.hypothesis as JsonRecord | null)?.text)),
+    policy_reason: [
+      defaultPolicyReason(row, upgradeForecast, "niche"),
+      summarizeUpgrade(upgradeForecast),
+      outcomeStatus === "weak" ? "Market outcome слабый: segment policy принудительно опущен в research_only." : "",
+      outcomeStatus === "promising" && baseMode === "primary"
+        ? "Market outcome ещё только формируется: segment policy понижен до control_only."
+        : "",
+      publishableExact ? "Это publishable exact segment: его нужно поднимать выше transfer-ready альтернатив." : "",
+    ].filter(Boolean).join(" "),
+  };
+}
+
 export function buildReelsBrainGenerationPolicy(input: {
   segmentSolutionMatrix?: {
     summary?: JsonRecord | null;
@@ -129,21 +178,7 @@ export function buildReelsBrainGenerationPolicy(input: {
     ? input.segmentSolutionMatrix?.by_platform.map((row) => buildPolicyRow(row, "platform"))
     : [];
   const bySegment = Array.isArray(input.segmentSolutionMatrix?.by_segment)
-      ? input.segmentSolutionMatrix?.by_segment.slice(0, 12).map((row) => ({
-        label: text(row.label),
-        niche: text(row.niche),
-        platform: text(row.platform),
-        policy_mode: modeFromProductionState(row.production_state),
-        trust_band: text(row.trust_band, "low"),
-        evidence_band: text(((row.trust_summary as JsonRecord | null)?.evidence_band), "missing"),
-        proof_quality: text(((row.trust_summary as JsonRecord | null)?.proof_quality), "untraced"),
-        publishable_exact: text(row.production_state) === "ready_now" && text(((row.trust_summary as JsonRecord | null)?.proof_quality), "untraced") === "exact_segment",
-        readiness_score: num(row.readiness_score),
-        upgrade_forecast: (row.upgrade_forecast && typeof row.upgrade_forecast === "object" ? row.upgrade_forecast : null) as JsonRecord | null,
-        brief_hook: text(((row.creative_brief as JsonRecord | null)?.hook)),
-        decision: text(((row.content_decision as JsonRecord | null)?.decision)),
-        hypothesis: text(((row.hypothesis as JsonRecord | null)?.text)),
-      }))
+      ? input.segmentSolutionMatrix?.by_segment.slice(0, 12).map((row) => buildSegmentPolicyRow(row))
     : [];
 
   return {

@@ -67,6 +67,12 @@ test("buildReelsBrainGenerationPolicy maps solution matrix into generation modes
           trust_band: "high",
           production_state: "ready_now",
           trust_summary: { evidence_band: "stable", proof_quality: "exact_segment" },
+          upgrade_forecast: {
+            unlocked_output: "publishable_visual_brief",
+            projected_trust_gain_score: 22,
+            projected_production_state: "near_publishable",
+            recommended_loop: "media_backfill",
+          },
           creative_brief: { hook: "Segment hook" },
           hypothesis: { text: "Segment hypothesis" },
           content_decision: { decision: "scale" },
@@ -88,6 +94,11 @@ test("buildReelsBrainGenerationPolicy maps solution matrix into generation modes
   assert.match(String(result.by_niche[0]?.policy_reason), /Следующий лучший апгрейд: publishable_visual_brief/i);
   assert.equal((result.by_niche[0]?.next_upgrade as Record<string, unknown> | undefined)?.projected_trust_gain_score, 22);
   assert.equal(result.by_platform[0]?.policy_mode, "control_only");
+  assert.equal(result.by_segment[0]?.policy_mode, "primary");
+  assert.equal(result.by_segment[0]?.automation_allowed, true);
+  assert.equal(result.by_segment[0]?.decision_priority_score, 100);
+  assert.equal((result.by_segment[0]?.next_upgrade as Record<string, unknown> | undefined)?.projected_trust_gain_score, 22);
+  assert.match(String(result.by_segment[0]?.policy_reason), /publishable exact segment/i);
 });
 
 test("buildReelsBrainGenerationPolicy downgrades weak and promising market outcomes", () => {
@@ -139,4 +150,47 @@ test("buildReelsBrainGenerationPolicy downgrades weak and promising market outco
   assert.equal(result.by_niche[0]?.outcome_status, "promising");
   assert.equal(result.by_platform[0]?.policy_mode, "research_only");
   assert.equal(result.by_platform[0]?.automation_allowed, false);
+});
+
+test("buildReelsBrainGenerationPolicy downgrades segment-level policy by outcome and preserves upgrade guidance", () => {
+  const result = buildReelsBrainGenerationPolicy({
+    segmentSolutionMatrix: {
+      by_niche: [],
+      by_platform: [],
+      by_segment: [
+        {
+          niche: "ru_clothing",
+          platform: "instagram",
+          label: "ru_clothing × instagram",
+          readiness_score: 88,
+          trust_band: "high",
+          production_state: "ready_now",
+          trust_summary: {
+            evidence_band: "stable",
+            proof_quality: "exact_segment",
+            outcome_status: "promising",
+            outcome_confidence: "medium",
+          },
+          upgrade_forecast: {
+            unlocked_output: "publishable_visual_brief",
+            projected_trust_gain_score: 31,
+            projected_trust_gain_band: "high",
+            projected_production_state: "publishable_exact",
+            recommended_loop: "media_backfill",
+          },
+          creative_brief: { hook: "Segment hook" },
+          hypothesis: { text: "Segment hypothesis" },
+          content_decision: { decision: "scale" },
+        },
+      ],
+    },
+  });
+
+  assert.equal(result.by_segment[0]?.policy_mode, "control_only");
+  assert.equal(result.by_segment[0]?.publishable_exact, true);
+  assert.equal(result.by_segment[0]?.automation_allowed, true);
+  assert.equal(result.by_segment[0]?.decision_priority_score, 100);
+  assert.equal((result.by_segment[0]?.next_upgrade as Record<string, unknown> | undefined)?.unlocked_output, "publishable_visual_brief");
+  assert.match(String(result.by_segment[0]?.policy_reason), /Следующий лучший апгрейд: publishable_visual_brief/i);
+  assert.match(String(result.by_segment[0]?.policy_reason), /segment policy понижен до control_only/i);
 });
