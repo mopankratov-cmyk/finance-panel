@@ -392,9 +392,129 @@ function testSegmentDecisionDeckPrioritizesHighPayoffSegment() {
   assert.equal(result.summary.primary_priority_segments, 1);
 }
 
+function testSegmentDecisionDeckSurfacesTrustAwareDecisionContext() {
+  const result = buildReelsBrainSegmentDecisionDeck({
+    segmentOutputBanks: {
+      briefs: [
+        {
+          niche: "ru_clothing",
+          platform: "instagram",
+          recommended_mode: "primary",
+          trust_score: 82,
+          primary: {
+            title: "Clothing IG brief",
+            confidence: "high",
+            evidence: { references: 3 },
+            creative_brief: { hook: "Смотри посадку", retention_mechanic: "try-on proof" },
+          },
+        },
+        {
+          niche: "ru_clothing",
+          platform: "youtube",
+          recommended_mode: "primary",
+          trust_score: 91,
+          primary: {
+            title: "Clothing YT brief",
+            confidence: "high",
+            evidence: { references: 4 },
+            creative_brief: { hook: "Смотри материал", retention_mechanic: "review proof" },
+          },
+        },
+      ],
+      actions: [
+        {
+          niche: "ru_clothing",
+          platform: "instagram",
+          primary: { title: "IG action", decision: "control", priority_score: 80, brief_seed: { structure: "ugc" } },
+        },
+        {
+          niche: "ru_clothing",
+          platform: "youtube",
+          primary: { title: "YT action", decision: "scale", priority_score: 92, brief_seed: { structure: "review" } },
+        },
+      ],
+      hypotheses: [
+        {
+          niche: "ru_clothing",
+          platform: "instagram",
+          cards: [{ title: "IG hypothesis", hypothesis: "exact segment should convert", priority_score: 74 }],
+        },
+        {
+          niche: "ru_clothing",
+          platform: "youtube",
+          cards: [{ title: "YT hypothesis", hypothesis: "transfer segment should hold", priority_score: 88 }],
+        },
+      ],
+    },
+    segmentPlaybook: {
+      items: [
+        { niche: "ru_clothing", platform: "instagram", status: "validate_and_ship", recommended_mode: "primary", opportunity_score: 81, stability_score: 73, stable_pattern_count: 3 },
+        { niche: "ru_clothing", platform: "youtube", status: "ship_now", recommended_mode: "primary", opportunity_score: 92, stability_score: 88, stable_pattern_count: 4 },
+      ],
+    },
+    evidenceLedger: {
+      items: [
+        { niche: "ru_clothing", platform: "instagram", evidence_status: "validated", corpus_score: 80, market_score: 74, proof_quality: "traced_transfer_only", traced_posts: 3 },
+        { niche: "ru_clothing", platform: "youtube", evidence_status: "high_trust", corpus_score: 92, market_score: 85, proof_quality: "traced_transfer_only", traced_posts: 4 },
+      ],
+    },
+    patternAtlas: {
+      by_segment: [
+        { niche: "ru_clothing", platform: "instagram", status: "stable", stable_pattern_count: 3, analyzed_videos: 58 },
+        { niche: "ru_clothing", platform: "youtube", status: "stable", stable_pattern_count: 4, analyzed_videos: 76 },
+      ],
+    },
+    feedbackLoop: {
+      by_segment: [
+        { niche: "ru_clothing", platform: "instagram", segment: "ru_clothing × instagram", posts: 4, winners: 2, status: "proven", proof_quality: "traced_transfer_only" },
+        { niche: "ru_clothing", platform: "youtube", segment: "ru_clothing × youtube", posts: 6, winners: 3, status: "proven", proof_quality: "traced_transfer_only" },
+      ],
+    },
+    generationPolicy: {
+      by_segment: [
+        {
+          niche: "ru_clothing",
+          platform: "instagram",
+          policy_mode: "primary",
+          trust_band: "high_trust",
+          evidence_band: "exact",
+          high_trust_generation_ready: true,
+          proof_quality: "exact_segment",
+          publishable_exact: true,
+          policy_reason: "Exact proof already closed for this segment.",
+          decision_priority_score: 88,
+        },
+        {
+          niche: "ru_clothing",
+          platform: "youtube",
+          policy_mode: "primary",
+          trust_band: "transfer_only",
+          evidence_band: "borrowed",
+          high_trust_generation_ready: false,
+          proof_quality: "traced_transfer_only",
+          publishable_exact: false,
+          policy_reason: "Still borrowed from transfer evidence.",
+          decision_priority_score: 95,
+        },
+      ],
+    },
+  });
+
+  assert.equal(result.items[0]?.platform, "instagram");
+  assert.equal(result.items[0]?.proof_quality, "exact_segment");
+  assert.equal(result.items[0]?.high_trust_generation_ready, true);
+  assert.equal(result.items[0]?.publishable_exact, true);
+  assert.equal(result.items[0]?.trust_band, "high_trust");
+  assert.equal(result.items[0]?.evidence_band, "exact");
+  assert.match(String(result.items[0]?.policy_reason), /Exact proof/i);
+  assert.equal(result.summary.exact_proof_ready, 1);
+  assert.equal(result.summary.generation_ready, 1);
+}
+
 function run() {
   testBuildReelsBrainSegmentDecisionDeckRanksDecisionReadySegments();
   testSegmentDecisionDeckPrioritizesHighPayoffSegment();
+  testSegmentDecisionDeckSurfacesTrustAwareDecisionContext();
   console.log("reelsBrainSegmentDecisionDeck.test: ok");
 }
 

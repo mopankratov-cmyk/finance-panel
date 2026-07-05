@@ -761,6 +761,8 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
       prepare: num(segmentDecisionDeck.summary?.prepare),
       research: num(segmentDecisionDeck.summary?.research),
       ready: num(segmentDecisionDeck.summary?.ready_for_generation),
+      exactProof: num(segmentDecisionDeck.summary?.exact_proof_ready),
+      generationReady: num(segmentDecisionDeck.summary?.generation_ready),
     };
     const segmentGenerationCards = ((segmentGenerationPacks.items || []) as JsonRecord[]).slice(0, 6).map((row) => {
       const status = playbookTone(String(row.quality_gate?.status === "ready" ? "ship_now" : row.quality_gate?.status === "needs_validation" ? "validate_and_ship" : "research"));
@@ -2033,6 +2035,23 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
                   <div className="rb-brief-block"><b>Stable patterns</b><p>{compact(item.stable_pattern_count)}</p></div>
                   <div className="rb-brief-block"><b>Evidence refs</b><p>{compact(item.brief?.evidence_refs)}</p></div>
                 </div>
+                <div className="rb-three" style={{ marginTop: 12 }}>
+                  <div className="rb-brief-block"><b>Proof</b><p>{item.proof_quality || "untraced"}</p></div>
+                  <div className="rb-brief-block"><b>Trust</b><p>{item.trust_band || "unknown"} · {item.evidence_band || "unknown"}</p></div>
+                  <div className="rb-brief-block"><b>Readiness</b><p>{item.high_trust_generation_ready ? "gen-ready" : item.publishable_exact ? "exact-ready" : "building"}</p></div>
+                </div>
+                {(item.policy_reason || item.outcome_trust_action || item.outcome_confidence) ? (
+                  <div className="rb-brief-block" style={{ marginTop: 12 }}>
+                    <b>Почему мозг доверяет</b>
+                    <p>
+                      {[
+                        item.policy_reason,
+                        item.outcome_trust_action ? `trust action: ${item.outcome_trust_action}` : "",
+                        item.outcome_confidence ? `outcome confidence: ${item.outcome_confidence}` : "",
+                      ].filter(Boolean).join(" · ")}
+                    </p>
+                  </div>
+                ) : null}
                 <p style={{ marginTop: 12, color: "#475569", lineHeight: 1.55 }}>
                   {item.why_now || item.hypothesis?.text || item.next_step}
                 </p>
@@ -2046,6 +2065,23 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
               </div>
             )}
           </div>
+          {vm.segmentDecisionCards.length ? (
+            <div className="rb-summary-grid" style={{ marginTop: 14 }}>
+              {[
+                ["Total", compact(vm.segmentDecisionSummary.total)],
+                ["Ship / Validate / Prepare", `${compact(vm.segmentDecisionSummary.ship)} / ${compact(vm.segmentDecisionSummary.validate)} / ${compact(vm.segmentDecisionSummary.prepare)}`],
+                ["Research", compact(vm.segmentDecisionSummary.research)],
+                ["Ready", compact(vm.segmentDecisionSummary.ready)],
+                ["Exact proof", compact(vm.segmentDecisionSummary.exactProof)],
+                ["Gen-ready", compact(vm.segmentDecisionSummary.generationReady)],
+              ].map(([label, value]) => (
+                <div className="rb-summary-card" key={label}>
+                  <div className="rb-overline" style={{ color: "#0891b2" }}>{label}</div>
+                  <strong>{value}</strong>
+                </div>
+              ))}
+            </div>
+          ) : null}
         </section>
 
         <section>

@@ -127,6 +127,14 @@ type SegmentPolicyRow = {
   niche?: string;
   platform?: string;
   policy_mode?: string;
+  trust_band?: string;
+  evidence_band?: string;
+  high_trust_generation_ready?: boolean;
+  proof_quality?: string;
+  publishable_exact?: boolean;
+  outcome_status?: string;
+  outcome_confidence?: string;
+  policy_reason?: string;
   decision_priority_score?: number;
   recommended_upgrade?: {
     projected_trust_gain_score?: number;
@@ -263,6 +271,12 @@ function segmentPrioritySignal(
     ),
     segment_priority_mode: text(priority?.policy_mode || policy?.policy_mode) || "research_only",
     segment_ready_for_generation: Boolean(priority?.ready_for_generation),
+    trust_band: text(policy?.trust_band || "unknown"),
+    evidence_band: text(policy?.evidence_band || "unknown"),
+    high_trust_generation_ready: Boolean(policy?.high_trust_generation_ready),
+    publishable_exact: Boolean(policy?.publishable_exact),
+    proof_quality: text(policy?.proof_quality || "untraced"),
+    policy_reason: text(policy?.policy_reason),
     projected_trust_gain_score: num(upgrade?.projected_trust_gain_score),
     projected_production_state: text(upgrade?.projected_production_state),
     unlocked_output: text(upgrade?.unlocked_output),
@@ -352,6 +366,9 @@ export function buildReelsBrainSegmentDecisionDeck(input: {
       const proofQuality = normalizeProofQuality(outcomeRow.proof_quality || evidenceRow.proof_quality);
       const queuedOutcome = trustActionMap.get(segmentLabel) || null;
       const priority = segmentPrioritySignal(niche, platform, segmentPriorityMap, segmentPolicyMap);
+      const resolvedProofQuality = priority.proof_quality && priority.proof_quality !== "untraced"
+        ? priority.proof_quality
+        : proofQuality;
       const score = clamp(
         num(briefRow.trust_score) * 0.18
         + num(evidenceRow.corpus_score) * 0.28
@@ -377,6 +394,11 @@ export function buildReelsBrainSegmentDecisionDeck(input: {
         segment_priority_score: priority.segment_priority_score,
         segment_priority_mode: priority.segment_priority_mode,
         segment_ready_for_generation: priority.segment_ready_for_generation,
+        trust_band: priority.trust_band || "unknown",
+        evidence_band: priority.evidence_band || "unknown",
+        high_trust_generation_ready: priority.high_trust_generation_ready,
+        publishable_exact: priority.publishable_exact,
+        policy_reason: priority.policy_reason || "",
         projected_trust_gain_score: priority.projected_trust_gain_score,
         projected_production_state: priority.projected_production_state,
         unlocked_output: priority.unlocked_output,
@@ -388,7 +410,7 @@ export function buildReelsBrainSegmentDecisionDeck(input: {
         playbook_status: playbookStatus,
         atlas_status: text(atlasRow.status),
         outcome_status: outcomeStatus,
-        proof_quality: proofQuality,
+        proof_quality: resolvedProofQuality,
         outcome_confidence: outcomeConfidence(num(outcomeRow.posts), num(outcomeRow.winners)),
         outcome_boost: outcomeBoost(outcomeStatus),
         outcome_posts: num(outcomeRow.posts),
@@ -444,16 +466,17 @@ export function buildReelsBrainSegmentDecisionDeck(input: {
         },
         why_now: [
           text(playbookRow.rollout?.why_now),
-          proofQuality === "exact_segment" ? "Сегмент подтверждён exact-proof слоем." : "",
-          proofQuality === "traced_transfer_only" ? "Есть только transfer-level proof, поэтому нужен ещё один точный validation pass." : "",
-          proofQuality === "untraced" && outcomeStatus !== "no_feedback" ? "Outcome уже есть, но он ещё не оформлен как доказательный validation trace." : "",
+          text(priority.policy_reason),
+          resolvedProofQuality === "exact_segment" ? "Сегмент подтверждён exact-proof слоем." : "",
+          resolvedProofQuality === "traced_transfer_only" ? "Есть только transfer-level proof, поэтому нужен ещё один точный validation pass." : "",
+          resolvedProofQuality === "untraced" && outcomeStatus !== "no_feedback" ? "Outcome уже есть, но он ещё не оформлен как доказательный validation trace." : "",
           outcomeStatus === "proven" ? "Сегмент уже подтвержден outcome-постами." : "",
           outcomeStatus === "promising" ? "Появились первые market outcome сигналы, можно валидировать дальше." : "",
           outcomeStatus === "weak" ? "Рынок пока не подтверждает сегмент, нужен пересмотр before scaling." : "",
         ].filter(Boolean).join(" "),
         next_step: [
           text(playbookRow.rollout?.next_step),
-          proofQuality !== "exact_segment" && outcomeStatus !== "weak" ? "Добрать exact-segment proof перед переводом в fully decision-ready lane." : "",
+          resolvedProofQuality !== "exact_segment" && outcomeStatus !== "weak" ? "Добрать exact-segment proof перед переводом в fully decision-ready lane." : "",
           outcomeStatus === "proven" ? "Поднимать в основной generation lane и масштабировать вариации." : "",
           outcomeStatus === "promising" ? "Сделать controlled test, чтобы добрать winner/loser signal." : "",
           outcomeStatus === "weak" ? "Пересобрать hook/structure и не пускать в основной lane." : "",
@@ -463,6 +486,9 @@ export function buildReelsBrainSegmentDecisionDeck(input: {
     .filter((item) => item.niche && item.platform && (item.brief.title || item.action.title || item.hypothesis.title))
     .sort((a, b) =>
       policyModeScore(b.segment_priority_mode) - policyModeScore(a.segment_priority_mode)
+      || Number(Boolean(b.high_trust_generation_ready)) - Number(Boolean(a.high_trust_generation_ready))
+      || Number(Boolean(b.publishable_exact)) - Number(Boolean(a.publishable_exact))
+      || Number(b.proof_quality === "exact_segment") - Number(a.proof_quality === "exact_segment")
       || b.segment_priority_score - a.segment_priority_score
       || b.trust_score - a.trust_score
       || Number(b.ready_for_generation) - Number(a.ready_for_generation)
@@ -484,6 +510,7 @@ export function buildReelsBrainSegmentDecisionDeck(input: {
       decision_ready: items.filter((item) => item.generation_mode === "decision_ready").length,
       control_ready: items.filter((item) => item.generation_mode === "control_ready").length,
       exact_proof_ready: items.filter((item) => item.proof_quality === "exact_segment").length,
+      generation_ready: items.filter((item) => item.high_trust_generation_ready).length,
       proven_outcomes: items.filter((item) => item.outcome_status === "proven").length,
       weak_outcomes: items.filter((item) => item.outcome_status === "weak").length,
     },
