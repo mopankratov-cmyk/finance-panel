@@ -528,6 +528,10 @@ assert.equal((briefBundleCompletionTick.params as Record<string, unknown>).niche
 assert.equal((briefBundleCompletionTick.params as Record<string, unknown>).platform, "tiktok");
 assert.equal((briefBundleCompletionTick.params as Record<string, unknown>).field_focus, "visual recipe");
 assert.equal((briefBundleCompletionTick.params as Record<string, unknown>).family_focus, "visual");
+assert.equal((briefBundleCompletionTick.params as Record<string, unknown>).projected_trust_gain_score, "33");
+assert.equal((briefBundleCompletionTick.params as Record<string, unknown>).projected_trust_gain_band, "high");
+assert.equal((briefBundleCompletionTick.params as Record<string, unknown>).unlocked_output, "publishable_visual_brief");
+assert.equal((briefBundleCompletionTick.params as Record<string, unknown>).projected_production_state, "publishable_exact");
 assert.match(briefBundleCompletionTick.label, /usable brief/i);
 assert.match(briefBundleCompletionTick.reason, /usable creative export/i);
 assert.match(briefBundleCompletionTick.reason, /Главный пробел сейчас: visual recipe/);
@@ -606,6 +610,10 @@ assert.equal((shipReadyBundleCompletionTick.params as Record<string, unknown>).n
 assert.equal((shipReadyBundleCompletionTick.params as Record<string, unknown>).platform, "instagram");
 assert.equal((shipReadyBundleCompletionTick.params as Record<string, unknown>).field_focus, "visual_recipe");
 assert.equal((shipReadyBundleCompletionTick.params as Record<string, unknown>).family_focus, "visual");
+assert.equal((shipReadyBundleCompletionTick.params as Record<string, unknown>).projected_trust_gain_score, "31");
+assert.equal((shipReadyBundleCompletionTick.params as Record<string, unknown>).projected_trust_gain_band, "high");
+assert.equal((shipReadyBundleCompletionTick.params as Record<string, unknown>).unlocked_output, "publishable_visual_brief");
+assert.equal((shipReadyBundleCompletionTick.params as Record<string, unknown>).projected_production_state, "publishable_exact");
 assert.match(shipReadyBundleCompletionTick.label, /ship-ready bundle/i);
 assert.match(shipReadyBundleCompletionTick.reason, /publishable exact brief/i);
 assert.match(shipReadyBundleCompletionTick.reason, /Главный пробел сейчас: visual_recipe/);

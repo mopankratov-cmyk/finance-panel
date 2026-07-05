@@ -6,6 +6,11 @@ function text(value: unknown, fallback = "") {
   return typeof value === "string" ? value.trim() || fallback : fallback;
 }
 
+function num(value: unknown, fallback = 0) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
 function focusSegment(intent: ReelsBrainCronExecutionIntent | null | undefined) {
   const label = text(intent?.focus_segment);
   const [niche = "", platform = ""] = label.split("×").map((part) => part.trim());
@@ -28,6 +33,8 @@ export function tuneAnalyzeLaneByExecutionIntent(input: {
 }) {
   const focused = sameSegment(input.intent, input.lane);
   const mode = input.intent?.mode || "generic_analyze";
+  const projectedTrustGainScore = num(input.intent?.projected_trust_gain_score);
+  const highValueUpgrade = projectedTrustGainScore >= 30;
   let analyzeLimit = input.analyzeLimit;
   let buildPatterns = input.buildPatterns;
   let taxonomyLimit = Math.max(12, Math.min(50, analyzeLimit * 4));
@@ -37,31 +44,31 @@ export function tuneAnalyzeLaneByExecutionIntent(input: {
 
   if ((mode === "support_primary_segment" || mode === "pattern_compaction") && focused) {
     strategy = mode === "pattern_compaction" ? "pattern_compaction" : "support_primary_segment";
-    analyzeLimit = Math.max(6, Math.min(analyzeLimit, 10, input.lane.unanalyzed));
+    analyzeLimit = Math.max(6, Math.min(analyzeLimit, highValueUpgrade ? 8 : 10, input.lane.unanalyzed));
     buildPatterns = true;
-    taxonomyLimit = Math.max(16, Math.min(36, analyzeLimit * 3));
-    patternLimit = 360;
+    taxonomyLimit = Math.max(16, Math.min(highValueUpgrade ? 28 : 36, analyzeLimit * (highValueUpgrade ? 2 : 3)));
+    patternLimit = highValueUpgrade ? 240 : 360;
     focusPlatform = input.lane.platform;
   } else if (mode === "ship_ready_bundle_completion" && focused) {
     strategy = "ship_ready_bundle_completion";
-    analyzeLimit = Math.max(6, Math.min(analyzeLimit, 8, input.lane.unanalyzed));
+    analyzeLimit = Math.max(6, Math.min(analyzeLimit, highValueUpgrade ? 6 : 8, input.lane.unanalyzed));
     buildPatterns = true;
-    taxonomyLimit = Math.max(12, Math.min(24, analyzeLimit * 2));
-    patternLimit = 240;
+    taxonomyLimit = Math.max(12, Math.min(highValueUpgrade ? 18 : 24, analyzeLimit * 2));
+    patternLimit = highValueUpgrade ? 180 : 240;
     focusPlatform = input.lane.platform;
   } else if (mode === "support_control_segment" && focused) {
     strategy = "support_control_segment";
-    analyzeLimit = Math.max(8, Math.min(analyzeLimit, 12, input.lane.unanalyzed));
+    analyzeLimit = Math.max(8, Math.min(analyzeLimit, highValueUpgrade ? 10 : 12, input.lane.unanalyzed));
     buildPatterns = true;
-    taxonomyLimit = Math.max(20, Math.min(42, analyzeLimit * 3));
-    patternLimit = 420;
+    taxonomyLimit = Math.max(18, Math.min(highValueUpgrade ? 32 : 42, analyzeLimit * 3));
+    patternLimit = highValueUpgrade ? 300 : 420;
     focusPlatform = input.lane.platform;
   } else if (mode === "close_exact_segment_gap" && focused) {
     strategy = "close_exact_segment_gap";
-    analyzeLimit = Math.max(8, Math.min(analyzeLimit, 10, input.lane.unanalyzed));
+    analyzeLimit = Math.max(6, Math.min(analyzeLimit, highValueUpgrade ? 8 : 10, input.lane.unanalyzed));
     buildPatterns = true;
-    taxonomyLimit = Math.max(18, Math.min(30, analyzeLimit * 3));
-    patternLimit = 300;
+    taxonomyLimit = Math.max(16, Math.min(highValueUpgrade ? 24 : 30, analyzeLimit * 3));
+    patternLimit = highValueUpgrade ? 220 : 300;
     focusPlatform = input.lane.platform;
   } else if (mode === "close_portfolio_gap" && focused) {
     strategy = "close_portfolio_gap";
@@ -119,5 +126,10 @@ export function parseAnalyzeExecutionIntent(value: unknown): ReelsBrainCronExecu
     analyze_overrides: row.analyze_overrides && typeof row.analyze_overrides === "object" && !Array.isArray(row.analyze_overrides)
       ? row.analyze_overrides as NonNullable<ReelsBrainCronExecutionIntent["analyze_overrides"]>
       : undefined,
+    recommended_loop: text(row.recommended_loop) || null,
+    unlocked_output: text(row.unlocked_output) || null,
+    projected_production_state: text(row.projected_production_state) || null,
+    projected_trust_gain_score: num(row.projected_trust_gain_score),
+    projected_trust_gain_band: text(row.projected_trust_gain_band) || null,
   };
 }

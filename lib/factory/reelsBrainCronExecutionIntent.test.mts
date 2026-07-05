@@ -127,6 +127,10 @@ test("buildReelsBrainCronExecutionIntent creates dedicated ship-ready analyze mo
         focus: "ship_ready_bundle_completion",
         field_focus: "visual_recipe",
         family_focus: "visual",
+        projected_trust_gain_score: "31",
+        projected_trust_gain_band: "high",
+        unlocked_output: "publishable_visual_brief",
+        projected_production_state: "publishable_exact",
       },
       priority_segment: {
         label: "ru_clothing × instagram",
@@ -144,6 +148,10 @@ test("buildReelsBrainCronExecutionIntent creates dedicated ship-ready analyze mo
   assert.equal(result.analyze_overrides?.limit, 10);
   assert.equal(result.field_focus, "visual_recipe");
   assert.equal(result.family_focus, "visual");
+  assert.equal(result.projected_trust_gain_score, 31);
+  assert.equal(result.projected_trust_gain_band, "high");
+  assert.equal(result.unlocked_output, "publishable_visual_brief");
+  assert.match(result.explanation, /\+31/);
 });
 
 test("buildReelsBrainCronExecutionIntent forces build_patterns when corpus target is already reached", () => {

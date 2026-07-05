@@ -173,6 +173,8 @@ async function runPipelinePreflight(req: NextRequest, input: {
     source_discovery_mode?: string | null;
     field_focus?: string | null;
     family_focus?: string | null;
+    recommended_loop?: string | null;
+    projected_trust_gain_score?: number;
   } | null;
 }) {
   const totals = rec(input.progress.data?.totals);
@@ -276,14 +278,20 @@ async function runPipelinePreflight(req: NextRequest, input: {
       }
       const familyFocus = String(input.executionIntent?.family_focus || "").trim().toLowerCase();
       const fieldFocus = String(input.executionIntent?.field_focus || "").trim().toLowerCase();
+      const recommendedLoop = String(input.executionIntent?.recommended_loop || "").trim().toLowerCase();
+      const projectedTrustGainScore = Number(input.executionIntent?.projected_trust_gain_score || 0);
       const fieldFocusedDeepAudio = ["audio", "retention"].includes(familyFocus)
         || fieldFocus.includes("audio")
         || fieldFocus.includes("retention")
         || fieldFocus.includes("transcript")
-        || fieldFocus.includes("speech");
+        || fieldFocus.includes("speech")
+        || recommendedLoop === "audio_backfill";
       const focusedDeepOnly = sameTargetFocus(target, focus)
         && ["close_exact_proof", "pin_winner_provider"].includes(String(input.executionIntent?.source_discovery_mode || ""));
-      audioUrl.searchParams.set("deep_only", input.profile.deep_only || focusedDeepOnly || fieldFocusedDeepAudio ? "1" : "0");
+      const trustFocusedDeepOnly = sameTargetFocus(target, focus)
+        && projectedTrustGainScore >= 30
+        && ["audio_backfill", "analyze_backlog", "pattern_compaction"].includes(recommendedLoop);
+      audioUrl.searchParams.set("deep_only", input.profile.deep_only || focusedDeepOnly || fieldFocusedDeepAudio || trustFocusedDeepOnly ? "1" : "0");
       const response = await internalFetch(audioUrl);
       const body = await response.json().catch(() => ({}));
       audioTicks.push({

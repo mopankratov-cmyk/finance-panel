@@ -68,4 +68,29 @@ test("tuneAnalyzeLaneByExecutionIntent focuses exact-proof compaction tighter th
   assert.equal(result.analyze_limit, 10);
 });
 
+test("tuneAnalyzeLaneByExecutionIntent tightens ship-ready compaction for high trust-gain upgrades", () => {
+  const intent = parseAnalyzeExecutionIntent({
+    mode: "ship_ready_bundle_completion",
+    task: "analyze",
+    focus_segment: "ru_clothing × instagram",
+    policy_mode: "primary",
+    explanation: "ship ready",
+    projected_trust_gain_score: 31,
+    projected_trust_gain_band: "high",
+    unlocked_output: "publishable_visual_brief",
+  });
+  const result = tuneAnalyzeLaneByExecutionIntent({
+    intent,
+    lane: { niche: "ru_clothing", platform: "instagram", unanalyzed: 19 },
+    analyzeLimit: 14,
+    buildPatterns: false,
+  });
+
+  assert.equal(result.strategy, "ship_ready_bundle_completion");
+  assert.equal(result.analyze_limit, 6);
+  assert.equal(result.build_patterns, true);
+  assert.equal(result.taxonomy_limit, 12);
+  assert.equal(result.pattern_limit, 180);
+});
+
 console.log("reelsBrainAnalyzeCompactionPolicy: passed");

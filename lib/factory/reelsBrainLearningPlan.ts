@@ -204,6 +204,21 @@ function gapOutcomeLine(row: JsonRecord | null | undefined) {
   return parts.join("");
 }
 
+function upgradeParams(row: JsonRecord | null | undefined) {
+  const trustScore = num(row?.projected_trust_gain_score);
+  const trustBand = text(row?.projected_trust_gain_band);
+  const unlockedOutput = text(row?.unlocked_output);
+  const productionState = text(row?.projected_production_state);
+  const recommendedLoop = text(row?.recommended_loop);
+  return {
+    ...(trustScore > 0 ? { projected_trust_gain_score: String(trustScore) } : {}),
+    ...(trustBand ? { projected_trust_gain_band: trustBand } : {}),
+    ...(unlockedOutput ? { unlocked_output: unlockedOutput } : {}),
+    ...(productionState ? { projected_production_state: productionState } : {}),
+    ...(recommendedLoop ? { recommended_loop: recommendedLoop } : {}),
+  };
+}
+
 export function pickPortfolioFocusSegment(portfolioReadiness?: JsonRecord | null) {
   const candidates = Array.isArray(portfolioReadiness?.missing_segments)
     ? (portfolioReadiness?.missing_segments as JsonRecord[])
@@ -409,6 +424,13 @@ export function buildReelsBrainNextTick(input: {
             field_focus: briefGapFocus.field || "",
             family_focus: briefGapFocus.family || "",
           }),
+        ...upgradeParams(
+          shipReadyDecisionSegment
+            ? (briefGapProgressFocusSegment && text((briefGapProgressFocusSegment as JsonRecord).lane) === "ship"
+                ? briefGapProgressFocusSegment
+                : shipReadyTopCandidates[0] || shipReadyItems[0] || null)
+            : briefGapCandidates[0] || null,
+        ),
         ...(prioritySegment ? {
           niche: String(prioritySegment.niche || ""),
           platform: String(prioritySegment.platform || ""),

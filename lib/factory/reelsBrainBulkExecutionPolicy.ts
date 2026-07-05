@@ -47,6 +47,11 @@ export function parseBulkExecutionIntent(value: unknown): ReelsBrainCronExecutio
     source_provider_reason: text(row.source_provider_reason) || null,
     field_focus: text(row.field_focus) || null,
     family_focus: text(row.family_focus) || null,
+    recommended_loop: text(row.recommended_loop) || null,
+    unlocked_output: text(row.unlocked_output) || null,
+    projected_production_state: text(row.projected_production_state) || null,
+    projected_trust_gain_score: num(row.projected_trust_gain_score),
+    projected_trust_gain_band: text(row.projected_trust_gain_band) || null,
     bulk_overrides: row.bulk_overrides && typeof row.bulk_overrides === "object" && !Array.isArray(row.bulk_overrides)
       ? row.bulk_overrides as NonNullable<ReelsBrainCronExecutionIntent["bulk_overrides"]>
       : undefined,

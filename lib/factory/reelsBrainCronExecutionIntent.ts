@@ -49,6 +49,11 @@ export type ReelsBrainCronExecutionIntent = {
   source_provider_reason?: string | null;
   field_focus?: string | null;
   family_focus?: string | null;
+  recommended_loop?: string | null;
+  unlocked_output?: string | null;
+  projected_production_state?: string | null;
+  projected_trust_gain_score?: number;
+  projected_trust_gain_band?: string | null;
   bulk_overrides?: Partial<BulkProfile> & { hours?: number };
   analyze_overrides?: Partial<AnalyzeProfile>;
 };
@@ -91,9 +96,17 @@ export function buildReelsBrainCronExecutionIntent(input: {
   const sourceProviderReason = text(params.source_provider_reason) || null;
   const fieldFocus = text(params.field_focus) || null;
   const familyFocus = text(params.family_focus) || null;
+  const recommendedLoop = text(params.recommended_loop) || null;
+  const unlockedOutput = text(params.unlocked_output) || null;
+  const projectedProductionState = text(params.projected_production_state) || null;
+  const projectedTrustGainScore = num(params.projected_trust_gain_score);
+  const projectedTrustGainBand = text(params.projected_trust_gain_band) || null;
   const learningEconomics = safeLearningEconomics(nextTick.learning_economics);
   const expensivePatternGain = learningEconomics.weak_pattern_gain
     || learningEconomics.pattern_gain_cost_trend === "more_expensive";
+  const projectedGainLine = projectedTrustGainScore > 0
+    ? ` Апгрейд даёт около +${projectedTrustGainScore}${projectedTrustGainBand ? ` trust (${projectedTrustGainBand})` : " trust"}.`
+    : "";
   const priorityLabel = text(prioritySegment.label);
   const portfolioLabel = text(portfolioSegment.label);
   const focusSegment = priorityLabel || portfolioLabel || text(policy.label) || null;
@@ -118,6 +131,11 @@ export function buildReelsBrainCronExecutionIntent(input: {
         source_provider_reason: sourceProviderReason,
         field_focus: fieldFocus,
         family_focus: familyFocus,
+        recommended_loop: recommendedLoop,
+        unlocked_output: unlockedOutput,
+        projected_production_state: projectedProductionState,
+        projected_trust_gain_score: projectedTrustGainScore,
+        projected_trust_gain_band: projectedTrustGainBand,
       };
     }
 
@@ -128,8 +146,8 @@ export function buildReelsBrainCronExecutionIntent(input: {
         focus_segment: focusSegment,
         policy_mode: policyMode,
         explanation: focusSegment
-          ? `Ship-ready bundle completion for ${focusSegment}: дожимаем publishable exact brief, а не просто общий backlog analyze.`
-          : "Ship-ready bundle completion: дожимаем publishable exact brief.",
+          ? `Ship-ready bundle completion for ${focusSegment}: дожимаем publishable exact brief, а не просто общий backlog analyze.${projectedGainLine}`
+          : `Ship-ready bundle completion: дожимаем publishable exact brief.${projectedGainLine}`,
         analyze_overrides: {
           max_lanes: 1,
           limit: 10,
@@ -140,6 +158,11 @@ export function buildReelsBrainCronExecutionIntent(input: {
         source_provider_reason: sourceProviderReason,
         field_focus: fieldFocus,
         family_focus: familyFocus,
+        recommended_loop: recommendedLoop,
+        unlocked_output: unlockedOutput,
+        projected_production_state: projectedProductionState,
+        projected_trust_gain_score: projectedTrustGainScore,
+        projected_trust_gain_band: projectedTrustGainBand,
       };
     }
 
@@ -172,6 +195,11 @@ export function buildReelsBrainCronExecutionIntent(input: {
       source_provider_reason: sourceProviderReason,
       field_focus: fieldFocus,
       family_focus: familyFocus,
+      recommended_loop: recommendedLoop,
+      unlocked_output: unlockedOutput,
+      projected_production_state: projectedProductionState,
+      projected_trust_gain_score: projectedTrustGainScore,
+      projected_trust_gain_band: projectedTrustGainBand,
     };
   }
 
@@ -203,6 +231,11 @@ export function buildReelsBrainCronExecutionIntent(input: {
       source_provider_reason: sourceProviderReason,
       field_focus: fieldFocus,
       family_focus: familyFocus,
+      recommended_loop: recommendedLoop,
+      unlocked_output: unlockedOutput,
+      projected_production_state: projectedProductionState,
+      projected_trust_gain_score: projectedTrustGainScore,
+      projected_trust_gain_band: projectedTrustGainBand,
     };
   }
 
@@ -231,6 +264,11 @@ export function buildReelsBrainCronExecutionIntent(input: {
         source_provider_reason: sourceProviderReason,
         field_focus: fieldFocus,
         family_focus: familyFocus,
+        recommended_loop: recommendedLoop,
+        unlocked_output: unlockedOutput,
+        projected_production_state: projectedProductionState,
+        projected_trust_gain_score: projectedTrustGainScore,
+        projected_trust_gain_band: projectedTrustGainBand,
       };
     }
 
@@ -258,6 +296,11 @@ export function buildReelsBrainCronExecutionIntent(input: {
         source_provider_reason: sourceProviderReason,
         field_focus: fieldFocus,
         family_focus: familyFocus,
+        recommended_loop: recommendedLoop,
+        unlocked_output: unlockedOutput,
+        projected_production_state: projectedProductionState,
+        projected_trust_gain_score: projectedTrustGainScore,
+        projected_trust_gain_band: projectedTrustGainBand,
       };
     }
 
@@ -284,6 +327,11 @@ export function buildReelsBrainCronExecutionIntent(input: {
         source_provider_reason: sourceProviderReason,
         field_focus: fieldFocus,
         family_focus: familyFocus,
+        recommended_loop: recommendedLoop,
+        unlocked_output: unlockedOutput,
+        projected_production_state: projectedProductionState,
+        projected_trust_gain_score: projectedTrustGainScore,
+        projected_trust_gain_band: projectedTrustGainBand,
       };
     }
   }
@@ -315,6 +363,11 @@ export function buildReelsBrainCronExecutionIntent(input: {
       source_provider_reason: sourceProviderReason,
       field_focus: fieldFocus,
       family_focus: familyFocus,
+      recommended_loop: recommendedLoop,
+      unlocked_output: unlockedOutput,
+      projected_production_state: projectedProductionState,
+      projected_trust_gain_score: projectedTrustGainScore,
+      projected_trust_gain_band: projectedTrustGainBand,
     };
   }
 
@@ -331,5 +384,10 @@ export function buildReelsBrainCronExecutionIntent(input: {
       source_provider_reason: sourceProviderReason,
       field_focus: fieldFocus,
       family_focus: familyFocus,
+      recommended_loop: recommendedLoop,
+      unlocked_output: unlockedOutput,
+      projected_production_state: projectedProductionState,
+      projected_trust_gain_score: projectedTrustGainScore,
+      projected_trust_gain_band: projectedTrustGainBand,
     };
 }
