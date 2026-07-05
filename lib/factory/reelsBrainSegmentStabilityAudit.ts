@@ -71,6 +71,8 @@ export function buildReelsBrainSegmentStabilityAudit(input: {
       const marketScore = num(trust.market_score);
       const stablePatterns = num(trust.stable_pattern_count);
       const evidenceRefs = num(trust.evidence_refs);
+      const outcomeStatus = text(trust.outcome_status, "no_feedback");
+      const outcomeConfidence = text(trust.outcome_confidence, "none");
       const completeness = completenessScore(row);
       const blockers = [
         readinessScore < 85 ? "trust floor below 85" : "",
@@ -78,6 +80,7 @@ export function buildReelsBrainSegmentStabilityAudit(input: {
         marketScore < 55 ? "market score below 55" : "",
         stablePatterns < 3 ? "fewer than 3 stable patterns" : "",
         evidenceRefs < 3 ? "fewer than 3 evidence references" : "",
+        outcomeStatus === "weak" ? "market outcome remains weak" : "",
         completeness < 70 ? "brief/hypothesis/content decision still incomplete" : "",
       ].filter(Boolean);
       const strengths = [
@@ -86,6 +89,8 @@ export function buildReelsBrainSegmentStabilityAudit(input: {
         marketScore >= 55 ? "market evidence is usable" : "",
         stablePatterns >= 3 ? "segment has enough stable patterns" : "",
         evidenceRefs >= 3 ? "enough evidence references accumulated" : "",
+        outcomeStatus === "proven" ? "market outcome already confirmed by winners" : "",
+        outcomeStatus === "promising" ? "market outcome is forming with early wins" : "",
         text(audit.verdict) === "ship" ? "readiness audit already says ship" : "",
         completeness >= 70 ? "operator outputs are complete enough for downstream use" : "",
       ].filter(Boolean);
@@ -106,6 +111,8 @@ export function buildReelsBrainSegmentStabilityAudit(input: {
         verdict: text(audit.verdict || row.lane, "research"),
         stability_score: score,
         evidence_band: band,
+        outcome_status: outcomeStatus,
+        outcome_confidence: outcomeConfidence,
         readiness_score: readinessScore,
         corpus_score: corpusScore,
         market_score: marketScore,
@@ -115,7 +122,7 @@ export function buildReelsBrainSegmentStabilityAudit(input: {
         can_generate_brief: completeness >= 35 && Boolean(text((row.brief as JsonRecord | undefined)?.hook)),
         can_generate_hypothesis: Boolean(text((row.hypothesis as JsonRecord | undefined)?.text)),
         can_generate_content_decision: Boolean(text((row.content_solution as JsonRecord | undefined)?.action_title)),
-        high_trust_segment: band === "stable",
+        high_trust_segment: band === "stable" && outcomeStatus !== "weak",
         strengths: strengths.slice(0, 5),
         blockers: blockers.slice(0, 6),
       };

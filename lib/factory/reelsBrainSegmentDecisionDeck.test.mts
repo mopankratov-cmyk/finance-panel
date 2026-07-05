@@ -185,6 +185,8 @@ function testBuildReelsBrainSegmentDecisionDeckRanksDecisionReadySegments() {
   assert.equal(result.summary.validate, 1);
   assert.equal(result.summary.research, 0);
   assert.equal(result.summary.ready_for_generation, 1);
+  assert.equal(result.summary.proven_outcomes, 1);
+  assert.equal(result.summary.weak_outcomes, 1);
   assert.equal(result.items[0]?.niche, "ru_toys");
   assert.equal(result.items[0]?.decision_grade, "ship");
   assert.equal(result.items[0]?.generation_mode, "decision_ready");

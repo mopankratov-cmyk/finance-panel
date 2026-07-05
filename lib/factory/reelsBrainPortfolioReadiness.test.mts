@@ -41,3 +41,38 @@ test("buildReelsBrainPortfolioReadiness marks fully stable matrix as ready", () 
   assert.equal(result.summary.high_trust_coverage_pct, 100);
   assert.equal(result.missing_segments.length, 0);
 });
+
+test("buildReelsBrainPortfolioReadiness keeps weak-outcome stable segments out of high-trust coverage", () => {
+  const result = buildReelsBrainPortfolioReadiness({
+    niches: ["ru_toys"],
+    platforms: ["tiktok", "instagram"],
+    segmentStabilityAudit: {
+      items: [
+        {
+          niche: "ru_toys",
+          platform: "tiktok",
+          evidence_band: "stable",
+          stability_score: 90,
+          high_trust_segment: false,
+          outcome_status: "weak",
+          blockers: ["market outcome remains weak"],
+        },
+        {
+          niche: "ru_toys",
+          platform: "instagram",
+          evidence_band: "stable",
+          stability_score: 88,
+          high_trust_segment: true,
+          outcome_status: "proven",
+        },
+      ],
+    },
+  });
+
+  assert.equal(result.summary.stable_segments, 2);
+  assert.equal(result.summary.market_confirmed_segments, 1);
+  assert.equal(result.summary.weak_outcome_segments, 1);
+  assert.equal(result.summary.high_trust_coverage_pct, 50);
+  assert.equal(result.summary.verdict, "still_building");
+  assert.equal(result.missing_segments[0]?.platform, "tiktok");
+});

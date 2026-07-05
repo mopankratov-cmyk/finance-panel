@@ -376,6 +376,8 @@ export function buildReelsBrainSegmentDecisionDeck(input: {
       ready_for_generation: items.filter((item) => item.ready_for_generation).length,
       decision_ready: items.filter((item) => item.generation_mode === "decision_ready").length,
       control_ready: items.filter((item) => item.generation_mode === "control_ready").length,
+      proven_outcomes: items.filter((item) => item.outcome_status === "proven").length,
+      weak_outcomes: items.filter((item) => item.outcome_status === "weak").length,
     },
     items: items.slice(0, Math.max(4, input.limit || 8)),
   };
