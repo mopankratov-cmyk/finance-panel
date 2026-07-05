@@ -1329,6 +1329,7 @@ function attachPatternOutcomes(
       title: row.title,
       quality_gate: row.quality_gate,
       confidence: row.confidence,
+      niches: Array.isArray((row as Record<string, unknown>).niches) ? (row as Record<string, unknown>).niches as string[] : [],
       platforms: Array.isArray((row as Record<string, unknown>).platforms) ? (row as Record<string, unknown>).platforms as string[] : [],
     })),
     feedbackRows,
