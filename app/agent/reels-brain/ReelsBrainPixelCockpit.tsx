@@ -3693,6 +3693,9 @@ export default function ReelsBrainPixelCockpit({ initialData }: { initialData?: 
               <p style={{ color: "#64748b", lineHeight: 1.5 }}>
                 Portfolio: {compact(vm.autopilotActions.portfolio_readiness?.high_trust_coverage_pct || 0)}% high-trust · {compact(vm.autopilotActions.portfolio_readiness?.publishable_exact_coverage_pct || 0)}% publishable exact.
               </p>
+              <p style={{ color: "#64748b", lineHeight: 1.5, marginTop: 8 }}>
+                Generation ready: {compact(vm.autopilotActions.generation_readiness?.segment_specific_ready_pct || 0)}% сегментов · {compact(vm.autopilotActions.generation_readiness?.niche_specific_ready_pct || 0)}% ниш · {compact(vm.autopilotActions.generation_readiness?.platform_specific_ready_pct || 0)}% платформ уже дают high-trust output.
+              </p>
               {((vm.autopilotActions.actions || []) as JsonRecord[]).length ? ((vm.autopilotActions.actions || []) as JsonRecord[]).slice(0, 6).map((action, index) => (
                 <div className="rb-pattern" key={`${action.type}:${action.provider || action.niche || index}`} style={{ marginTop: index ? 10 : 0 }}>
                   <div className="rb-pill">{action.priority || "medium"} · {action.type || "action"}</div>

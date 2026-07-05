@@ -129,6 +129,9 @@ export function buildReelsBrainGenerationReadiness(input: {
       const lane = truthyText(exp.lane, verdict === "ship" ? "ship" : verdict === "validate" ? "validate" : "research");
       const policyMode = truthyText(policy.policy_mode, matrix.segment_priority_mode, readiness.segment_priority_mode, exp.segment_priority_mode, "research_only");
       const publishableExact = Boolean(matrix.publishable_exact || exp.publishable_exact);
+      const upgradeForecast = (matrix.upgrade_forecast && typeof matrix.upgrade_forecast === "object")
+        ? matrix.upgrade_forecast as JsonRecord
+        : {};
       const briefHook = truthyText((exp.brief as JsonRecord | null)?.hook, (exp.generator_bundle as JsonRecord | null)?.payload && ((exp.generator_bundle as JsonRecord).payload as JsonRecord).hook);
       const briefStructure = truthyText((exp.brief as JsonRecord | null)?.structure, (exp.generator_bundle as JsonRecord | null)?.payload && ((exp.generator_bundle as JsonRecord).payload as JsonRecord).structure);
       const hypothesisTitle = truthyText((exp.hypothesis as JsonRecord | null)?.title);
@@ -156,6 +159,7 @@ export function buildReelsBrainGenerationReadiness(input: {
           num(readiness.segment_priority_score),
           num(exp.segment_priority_score),
           num(policy.decision_priority_score),
+          num(upgradeForecast.projected_trust_gain_score),
         ),
         readiness_score: Math.max(num(matrix.avg_readiness_score), num(readiness.readiness_score), num(exp.readiness_score)),
         publishable_exact: publishableExact,
@@ -163,6 +167,13 @@ export function buildReelsBrainGenerationReadiness(input: {
         brief_ready: briefReady,
         content_solution_ready: contentSolutionReady,
         high_trust_generation_ready: highTrustGenerationReady,
+        recommended_loop: text(upgradeForecast.recommended_loop),
+        unlocked_output: text(upgradeForecast.unlocked_output),
+        projected_production_state: text(upgradeForecast.projected_production_state),
+        projected_trust_gain_score: num(upgradeForecast.projected_trust_gain_score),
+        projected_trust_gain_band: text(upgradeForecast.projected_trust_gain_band),
+        primary_missing_family: text(upgradeForecast.primary_missing_family),
+        next_step: truthyText(upgradeForecast.next_step),
         blockers,
       };
     })

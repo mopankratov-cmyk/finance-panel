@@ -1556,6 +1556,10 @@ function buildAutopilotActions(input: {
     missing_segments?: Array<Record<string, unknown>>;
     publishable_exact_gaps?: Array<Record<string, unknown>>;
   } | null;
+  generationReadiness?: {
+    summary?: Record<string, unknown>;
+    upgrade_needed_segments?: Array<Record<string, unknown>>;
+  } | null;
   exactSegmentQueue?: {
     summary?: Record<string, unknown>;
     items?: Array<Record<string, unknown>>;
@@ -1581,6 +1585,20 @@ function buildAutopilotActions(input: {
   const portfolioSummary = (input.portfolioReadiness?.summary || {}) as Record<string, unknown>;
   const portfolioGaps = ((input.portfolioReadiness?.missing_segments || []) as Array<Record<string, unknown>>).slice(0, 3);
   const publishableExactCoverage = num(portfolioSummary.publishable_exact_coverage_pct);
+  const generationSummary = (input.generationReadiness?.summary || {}) as Record<string, unknown>;
+  const generationUpgradeQueue = ((input.generationReadiness?.upgrade_needed_segments || []) as Array<Record<string, unknown>>)
+    .slice(0, 3)
+    .map((segment) => ({
+      niche: String(segment.niche || ""),
+      platform: String(segment.platform || "mixed"),
+      label: String(segment.label || `${String(segment.niche || "")} × ${String(segment.platform || "mixed")}`),
+      blockers: Array.isArray(segment.blockers) ? segment.blockers.slice(0, 2).map((item) => String(item)) : [],
+      projected_trust_gain_score: num(segment.projected_trust_gain_score),
+      projected_trust_gain_band: String(segment.projected_trust_gain_band || ""),
+      unlocked_output: String(segment.unlocked_output || ""),
+      projected_production_state: String(segment.projected_production_state || ""),
+      recommended_loop: String(segment.recommended_loop || ""),
+    }));
   const publishableExactGapQueue = ((input.portfolioReadiness?.publishable_exact_gaps || []) as Array<Record<string, unknown>>)
     .slice(0, 3)
     .map((segment) => ({
@@ -1678,6 +1696,17 @@ function buildAutopilotActions(input: {
           : `${segment.evidence_band} · stability ${segment.stability_score} · сначала закрепить segment proof, потом exact-ready bundle`,
       }))
       : []),
+    ...(num(portfolioSummary.high_trust_coverage_pct) >= 60
+      && num(generationSummary.segment_specific_ready_pct) < 50
+      ? generationUpgradeQueue.map((segment) => ({
+        type: "upgrade_high_trust_generation",
+        priority: num(generationSummary.segment_specific_ready_pct) < 25 ? "high" : "medium",
+        niche: segment.niche,
+        platform: segment.platform,
+        action: `Довести ${segment.label} до high-trust output`,
+        reason: `${num(generationSummary.segment_specific_ready_pct)}% ready · ${segment.projected_trust_gain_score ? `+${segment.projected_trust_gain_score} trust` : "upgrade needed"}${segment.projected_trust_gain_band ? ` (${segment.projected_trust_gain_band})` : ""} · ${segment.unlocked_output || segment.blockers.join(" · ") || "usable brief/hypothesis/content solution ещё не собран"}`,
+      }))
+      : []),
     ...exactEvidenceQueue.map((segment) => ({
       type: "prove_exact_segment",
       priority: segment.status === "missing_exact_segment" || segment.status === "borrowed_brief_only" ? "high" : "medium",
@@ -1728,7 +1757,8 @@ function buildAutopilotActions(input: {
   ];
   const topValidationTask = (validationQueue?.queue || [])[0] || null;
   const topMeasurementTask = ((input.measurementPlan?.items || []) as Array<Record<string, unknown>>)[0] || null;
-  const topUpgradeSource = (topValidationTask || topMeasurementTask || {}) as Record<string, unknown>;
+  const topGenerationUpgrade = generationUpgradeQueue[0] || null;
+  const topUpgradeSource = (topGenerationUpgrade || topValidationTask || topMeasurementTask || {}) as Record<string, unknown>;
   const topUpgrade = (topUpgradeSource.recommended_upgrade && typeof topUpgradeSource.recommended_upgrade === "object"
     ? topUpgradeSource.recommended_upgrade
     : {}) as Record<string, unknown>;
@@ -1743,6 +1773,16 @@ function buildAutopilotActions(input: {
       stable_segments: num(portfolioSummary.stable_segments),
       expected_segments: num(portfolioSummary.expected_segments),
       verdict: String(portfolioSummary.verdict || "still_building"),
+    },
+    generation_readiness: {
+      high_trust_generation_ready_segments: num(generationSummary.high_trust_generation_ready_segments),
+      publishable_exact_segments: num(generationSummary.publishable_exact_segments),
+      segment_specific_ready_pct: num(generationSummary.segment_specific_ready_pct),
+      niche_specific_ready_pct: num(generationSummary.niche_specific_ready_pct),
+      platform_specific_ready_pct: num(generationSummary.platform_specific_ready_pct),
+      verdict: String(generationSummary.verdict || "research_heavy"),
+      upgrade_needed_segments: generationUpgradeQueue.length,
+      queue: generationUpgradeQueue,
     },
     exact_segment_evidence: {
       exact_proof_coverage_pct: num((input.exactSegmentQueue?.summary as Record<string, unknown> | undefined)?.exact_proof_coverage_pct),
@@ -1760,17 +1800,17 @@ function buildAutopilotActions(input: {
     },
     validation_queue: validationQueue,
     top_upgrade_action: {
-      task_type: String(topValidationTask?.type || topMeasurementTask?.task_type || ""),
-      title: String(topValidationTask?.title || topMeasurementTask?.title || ""),
-      niche: String(topValidationTask?.niche || topMeasurementTask?.niche || ""),
-      platform: String(topValidationTask?.platform || topMeasurementTask?.platform || ""),
-      action: String(topValidationTask?.action || topMeasurementTask?.action || ""),
+      task_type: topGenerationUpgrade ? "high_trust_generation_upgrade" : String(topValidationTask?.type || topMeasurementTask?.task_type || ""),
+      title: topGenerationUpgrade ? String(topGenerationUpgrade.label || "") : String(topValidationTask?.title || topMeasurementTask?.title || ""),
+      niche: topGenerationUpgrade ? String(topGenerationUpgrade.niche || "") : String(topValidationTask?.niche || topMeasurementTask?.niche || ""),
+      platform: topGenerationUpgrade ? String(topGenerationUpgrade.platform || "") : String(topValidationTask?.platform || topMeasurementTask?.platform || ""),
+      action: topGenerationUpgrade ? `Довести ${String(topGenerationUpgrade.label || "")} до high-trust output` : String(topValidationTask?.action || topMeasurementTask?.action || ""),
       reason: String(topUpgradeSource.reason || topUpgradeSource.validation_goal || ""),
-      unlocked_output: String(topUpgrade.unlocked_output || ""),
-      projected_trust_gain_score: Number(topUpgrade.projected_trust_gain_score || 0),
-      projected_trust_gain_band: String(topUpgrade.projected_trust_gain_band || ""),
-      recommended_loop: String(topUpgrade.recommended_loop || ""),
-      projected_production_state: String(topUpgrade.projected_production_state || ""),
+      unlocked_output: String(topGenerationUpgrade?.unlocked_output || topUpgrade.unlocked_output || ""),
+      projected_trust_gain_score: Number(topGenerationUpgrade?.projected_trust_gain_score || topUpgrade.projected_trust_gain_score || 0),
+      projected_trust_gain_band: String(topGenerationUpgrade?.projected_trust_gain_band || topUpgrade.projected_trust_gain_band || ""),
+      recommended_loop: String(topGenerationUpgrade?.recommended_loop || topUpgrade.recommended_loop || ""),
+      projected_production_state: String(topGenerationUpgrade?.projected_production_state || topUpgrade.projected_production_state || ""),
     },
     generation_policy: {
       primary_segments: segmentPolicies.filter((segment) => segment.policy_mode === "primary").length,
@@ -3205,6 +3245,7 @@ export async function GET(req: NextRequest) {
       segmentPriorityQueue,
       generationPolicy,
       portfolioReadiness: prioritizedPortfolioReadiness,
+      generationReadiness,
     });
 
     const timelineResponse = compactMode ? takeRecordList(timeline, 12) : timeline;

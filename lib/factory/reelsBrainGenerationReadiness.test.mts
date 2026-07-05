@@ -19,6 +19,13 @@ test("buildReelsBrainGenerationReadiness measures high-trust output coverage by 
           label: "ru_cosmetics × tiktok",
           publishable_exact: true,
           segment_priority_score: 91,
+          upgrade_forecast: {
+            projected_trust_gain_score: 27,
+            projected_trust_gain_band: "medium",
+            projected_production_state: "high_trust_generation_ready",
+            unlocked_output: "usable_segment_bundle",
+            recommended_loop: "analyze_backlog",
+          },
         },
       ],
     },
@@ -102,5 +109,7 @@ test("buildReelsBrainGenerationReadiness measures high-trust output coverage by 
   assert.equal(result.top_ready_segments[0]?.platform, "youtube");
   assert.equal(result.by_niche[0]?.niche, "ru_toys");
   assert.equal(result.upgrade_needed_segments[0]?.platform, "tiktok");
+  assert.equal(result.upgrade_needed_segments[0]?.projected_trust_gain_score, 27);
+  assert.equal(result.upgrade_needed_segments[0]?.unlocked_output, "usable_segment_bundle");
   assert.equal(result.summary.top_blockers[0]?.blocker, "нет exact-segment proof для production-ready запуска");
 });

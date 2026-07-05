@@ -68,6 +68,7 @@ ok(/internalFetch/.test(actions), "autopilot-actions reads learning-economics in
 ok(/\/api\/factory\/reels-brain\/learning-economics/.test(actions), "autopilot-actions points at learning-economics route");
 ok(/autopilot_actions/.test(actions) && /cost_governor/.test(actions) && /measurement_plan/.test(actions), "autopilot-actions exposes operator-ready fields");
 ok(/outcome_memory_brain/.test(actions) && /feedback_coverage/.test(economics) && /validate_pattern_feedback/.test(economics), "autopilot-actions exposes strong-pattern feedback coverage queue");
+ok(/generation_readiness/.test(economics) && /upgrade_high_trust_generation/.test(economics) && /Generation ready:/.test(cockpit), "autopilot and cockpit expose generation-readiness driven upgrade actions");
 ok(!/POST\s*\(/.test(actions), "autopilot-actions is read-only");
 
 ok(/internalFetch/.test(governor) && /cost_governor/.test(governor), "cost-governor route exposes budget state");
