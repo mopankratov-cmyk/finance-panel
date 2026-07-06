@@ -129,7 +129,7 @@ export default function LossesPage() {
               <div className="text-sm text-gray-500">
                 Текущая локализация <b className={loc.localizationPct >= 60 ? "text-emerald-600" : "text-amber-600"}>{loc.localizationPct}%</b> ·
                 ИЛ (множитель логистики) <b>{loc.il}</b> · ИРП <b className={loc.irp === 0 ? "text-emerald-600" : "text-red-600"}>{loc.irp}%</b>.
-                Чем выше локализация — тем ниже логистика. Раскладку «что грузить» смотри в разделе <a href="/inferno/wb.html" className="text-violet-600 hover:underline">Поставки</a>.
+                Чем выше локализация — тем ниже логистика. Раскладку «что грузить» смотри в разделе <a href="/supplies" className="text-violet-600 hover:underline">Поставки</a>.
               </div>
             </div>
           )}

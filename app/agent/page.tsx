@@ -8,7 +8,8 @@ export default function Page() {
   return (
     <div className="space-y-5">
       <Link
-        href="/agent/reels-brain"
+        href="https://content-factory-eight-wheat.vercel.app/agent/reels-brain"
+        target="_blank"
         className="group flex flex-col gap-3 rounded-2xl border border-cyan-200 bg-cyan-50 p-4 text-cyan-950 transition hover:border-cyan-300 hover:bg-cyan-100 sm:flex-row sm:items-center sm:justify-between"
       >
         <span className="flex items-start gap-3">
@@ -28,7 +29,8 @@ export default function Page() {
         </span>
       </Link>
       <Link
-        href="/inferno/product-twins"
+        href="https://content-factory-eight-wheat.vercel.app/inferno/product-twins"
+        target="_blank"
         className="group flex flex-col gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-emerald-950 transition hover:border-emerald-300 hover:bg-emerald-100 sm:flex-row sm:items-center sm:justify-between"
       >
         <span className="flex items-start gap-3">
@@ -48,7 +50,8 @@ export default function Page() {
         </span>
       </Link>
       <Link
-        href="/inferno/vendor/reels-brain-demo"
+        href="https://content-factory-eight-wheat.vercel.app/inferno/vendor/reels-brain-demo"
+        target="_blank"
         className="group flex flex-col gap-3 rounded-2xl border border-violet-200 bg-violet-50 p-4 text-violet-950 transition hover:border-violet-300 hover:bg-violet-100 sm:flex-row sm:items-center sm:justify-between"
       >
         <span className="flex items-start gap-3">

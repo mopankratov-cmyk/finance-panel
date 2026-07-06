@@ -17,7 +17,7 @@ interface ModuleCard {
 }
 
 const MODULES: ModuleCard[] = [
-  { title: "WB Аналитика", description: "РНП, воронка, реклама, склейки, SEO, остатки", href: "/inferno/wb.html", icon: BarChart3, agent: "Андер", zone: "Аналитика", color: ["bg-violet-100", "text-violet-700"] },
+  { title: "WB Аналитика", description: "РНП, воронка, реклама, склейки, SEO, остатки", href: "https://content-factory-eight-wheat.vercel.app/inferno/wb.html", icon: BarChart3, agent: "Андер", zone: "Аналитика", color: ["bg-violet-100", "text-violet-700"] },
   { title: "Ozon Аналитика", description: "РНП, воронка, юнит, остатки, удержания", href: "/ozon", icon: BarChart3, agent: "Озар", zone: "Аналитика", color: ["bg-sky-100", "text-sky-700"] },
 
   { title: "Финансы", description: "Календарь ДДС, платежи, счета, кредиты", href: "/calendar", icon: Wallet, agent: "Нано", zone: "Финансы", color: ["bg-emerald-100", "text-emerald-700"] },
@@ -29,8 +29,8 @@ const MODULES: ModuleCard[] = [
   { title: "Кабинеты", description: "Подключение WB и Ozon аккаунтов", href: "/cabinets", icon: Building2, zone: "Операции", color: ["bg-slate-100", "text-slate-700"] },
 
   { title: "AI-агент", description: "Анализ данных, аномалии, рекомендации", href: "/agent", icon: Bot, agent: "Мэнси", zone: "AI", color: ["bg-fuchsia-100", "text-fuchsia-700"] },
-  { title: "Контент-лаборатория", description: "AI-генерация фото и видео (Higgsfield)", href: "/inferno/wb.html#lab", icon: FlaskConical, agent: "Лекси", zone: "AI", color: ["bg-pink-100", "text-pink-700"] },
-  { title: "Контент-завод", description: "Соцсети, AI-блогеры, переходы на WB", href: "/inferno/patrick.html", icon: Megaphone, agent: "Патрик", zone: "AI", color: ["bg-rose-100", "text-rose-700"] },
+  { title: "Контент-лаборатория", description: "AI-генерация фото и видео (Higgsfield)", href: "https://content-factory-eight-wheat.vercel.app/inferno/wb.html#lab", icon: FlaskConical, agent: "Лекси", zone: "AI", color: ["bg-pink-100", "text-pink-700"] },
+  { title: "Контент-завод", description: "Соцсети, AI-блогеры, переходы на WB", href: "https://content-factory-eight-wheat.vercel.app/inferno/patrick.html", icon: Megaphone, agent: "Патрик", zone: "AI", color: ["bg-rose-100", "text-rose-700"] },
 ];
 
 const ZONES = ["Аналитика", "Финансы", "Операции", "AI"] as const;
@@ -68,7 +68,7 @@ export function ModulesHome() {
   }, []);
 
   const logout = async () => { await fetch("/api/auth/logout", { method: "POST" }).catch(() => {}); router.push("/login"); router.refresh(); };
-  const visible = MODULES.filter((m) => !me || canAccess(me.role, m.href.startsWith("/inferno") ? "/inferno" : m.href));
+  const visible = MODULES.filter((m) => !me || m.href.startsWith("http") || canAccess(me.role, m.href));
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] text-gray-900">
@@ -113,8 +113,8 @@ export function ModulesHome() {
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 {items.map((m) => {
                   const inner = <Card m={m} badge={m.title === "AI-агент" ? unread : undefined} />;
-                  return m.href.startsWith("/inferno/")
-                    ? <a key={m.title} href={m.href}>{inner}</a>
+                  return m.href.startsWith("http")
+                    ? <a key={m.title} href={m.href} target="_blank" rel="noreferrer">{inner}</a>
                     : <Link key={m.title} href={m.href}>{inner}</Link>;
                 })}
               </div>

@@ -48,7 +48,6 @@ const NAV_GROUPS: NavGroup[] = [
     id: "analytics",
     label: "Аналитика МП",
     items: [
-      { href: "/inferno/wb.html", label: "WB Аналитика", icon: BarChart3 },
       { href: "/ozon", label: "Ozon Аналитика", icon: BarChart3 },
       { href: "/abc", label: "ABC прибыли", icon: PieChart },
       { href: "/trends", label: "Динамика", icon: TrendingUp },
@@ -202,24 +201,17 @@ export function Sidebar() {
               </button>
               {expanded && (
                 <div className="mt-1 space-y-0.5 pl-1">
-                  {group.items.map(({ href, label, icon: Icon }) =>
-                    href.startsWith("/inferno/") ? (
-                      <a key={href} href={href} className={linkClass(false)}>
-                        <Icon className="h-4 w-4 shrink-0" />
-                        {label}
-                      </a>
-                    ) : (
-                      <Link
-                        key={href}
-                        href={href}
-                        onClick={() => setMobileOpen(false)}
-                        className={linkClass(isActive(pathname, href))}
-                      >
-                        <Icon className="h-4 w-4 shrink-0" />
-                        {label}
-                      </Link>
-                    ),
-                  )}
+                  {group.items.map(({ href, label, icon: Icon }) => (
+                    <Link
+                      key={href}
+                      href={href}
+                      onClick={() => setMobileOpen(false)}
+                      className={linkClass(isActive(pathname, href))}
+                    >
+                      <Icon className="h-4 w-4 shrink-0" />
+                      {label}
+                    </Link>
+                  ))}
                 </div>
               )}
             </div>
