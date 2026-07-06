@@ -48,14 +48,13 @@ jobs:
           url=$(printf '%s\n' "$deploy_output" | grep -Eo 'https://[^ ]+\.vercel\.app' | tail -n 1)
           test -n "$url"
 
-          # Canary: discovery routes are load-bearing for the Reels Brain search layer.
-          # Unauthenticated 401 is OK: it proves the route exists behind auth. 404 means
-          # a stale/wrong build was promoted and must not own the production alias.
-          code=$(curl -sS -o /tmp/reels-discovery-canary.json -w "%{http_code}" \
-            "$url/api/factory/reels-brain/discovery/replay?niche=ru_toys&limit=10")
-          if [ "$code" != "200" ] && [ "$code" != "401" ]; then
-            echo "Discovery canary failed: HTTP $code"
-            cat /tmp/reels-discovery-canary.json || true
+          # Canary: /api/auth/status всегда доступен без сессии и не требует БД-состояния.
+          # 404 значит, что промоутнулась чужая/устаревшая сборка — не должна владеть прод-алиасом.
+          code=$(curl -sS -o /tmp/auth-status-canary.json -w "%{http_code}" \
+            "$url/api/auth/status")
+          if [ "$code" != "200" ]; then
+            echo "Auth-status canary failed: HTTP $code"
+            cat /tmp/auth-status-canary.json || true
             exit 1
           fi
 
