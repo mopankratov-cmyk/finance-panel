@@ -2,9 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { SESSION_COOKIE, verifySession } from "@/lib/auth/session";
 import { canAccess, ROLE_HOME } from "@/lib/auth/roles";
 
-// Защищаем всё, кроме /login, /api/auth/*, статики и публичных шар-доков (/share/*).
+// Защищаем всё, кроме /login, /privacy, /api/auth/*, статики и публичных шар-доков (/share/*).
 export const config = {
-  matcher: ["/((?!_next/|favicon.ico|login|api/auth|inferno/vendor|share).*)"],
+  matcher: ["/((?!_next/|favicon.ico|login|privacy|api/auth|inferno/vendor|share).*)"],
 };
 
 // /api/*-эндпоинты, доступные БЕЗ сессии и БЕЗ cron-секрета (явный allowlist).
