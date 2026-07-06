@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
+import { DEMO_MODE_ENABLED } from "@/lib/auth/demoMode";
 import { SESSION_COOKIE, verifySession } from "@/lib/auth/session";
 import { canAccess, ROLE_HOME } from "@/lib/auth/roles";
 
 // Защищаем всё, кроме /login, /api/auth/*, статики и публичных шар-доков (/share/*).
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|login|api/auth|inferno/vendor|share).*)"],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|login|privacy|api/auth|inferno/vendor|share).*)"],
 };
 
 // /api/*-эндпоинты, доступные БЕЗ сессии и БЕЗ cron-секрета (явный allowlist).
@@ -19,6 +20,13 @@ export const config = {
 // Подпись им выдаёт сервер при отдаче URL внешнему рендеру (см. disk-source). Прод-инвариант:
 // задан SIGN_SECRET или AUTH_SECRET, иначе подпись на небезопасном дефолте.
 const PUBLIC_API: { prefix: string; methods?: string[] }[] = [
+  { prefix: "/api/factory/publishing-cockpit", methods: ["GET"] },
+  { prefix: "/api/factory/studio", methods: ["GET"] },
+  { prefix: "/api/factory/learning", methods: ["GET"] },
+  { prefix: "/api/factory/status", methods: ["GET"] },
+  { prefix: "/api/factory/publish", methods: ["POST"] },
+  { prefix: "/api/factory/post-metrics", methods: ["POST"] },
+  { prefix: "/api/factory/winners", methods: ["GET", "POST"] },
   { prefix: "/api/factory/telegram", methods: ["POST"] }, // вебхук Telegram (валидирует свой секрет сам)
   { prefix: "/api/lab/img-proxy" }, // CORS-прокси картинок (само-гард: подпись/сессия + host-allowlist WB)
   { prefix: "/api/lab/media-proxy" }, // CORS-прокси видео/аудио (само-гард: подпись/сессия)
@@ -37,6 +45,19 @@ function isPublicApi(pathname: string, method: string): boolean {
 
 export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
+
+  if (DEMO_MODE_ENABLED) {
+    return NextResponse.next();
+  }
+
+  if (pathname.startsWith("/inferno/publishing")) {
+    return NextResponse.next();
+  }
+
+  if (pathname === "/privacy" || pathname.startsWith("/privacy/")) {
+    return NextResponse.next();
+  }
+
   const session = await verifySession(req.cookies.get(SESSION_COOKIE)?.value);
 
   // ── API: явная авторизация на уровне приложения ──

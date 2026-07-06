@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { getSupabaseAdmin, getSupabaseReadClient } from "@/lib/supabaseAdmin";
+import { learningHints } from "@/lib/factory/learningHints";
 import { nicheFromArticle } from "@/lib/factory/rubric";
 
 export const dynamic = "force-dynamic";
@@ -14,21 +15,37 @@ export async function POST(req: NextRequest) {
   if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 500 });
   const body = await req.json().catch(() => ({}));
   const assetId = Number(body.asset_id) || 0;
+  const recipeId = Number(body.recipe_id) || 0;
   const url: string = (body.url || "").toString().trim();
-  if (!assetId && !url) return NextResponse.json({ error: "нужен asset_id или url" }, { status: 400 });
+  if (!assetId && !url && !recipeId) return NextResponse.json({ error: "нужен asset_id, url или recipe_id" }, { status: 400 });
 
   // читаем текущую запись: по id или по url (url — из bank-карточки кокпита, сохранён в content_assets disk='gen')
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let assetQ: any = db.from("content_assets").select("*");
   if (assetId) assetQ = assetQ.eq("id", assetId);
   else assetQ = assetQ.eq("url", url).eq("disk", "gen");
-  const { data: asset } = await assetQ.maybeSingle();
-  if (!asset) return NextResponse.json({ error: "контент не найден в БД (применить миграцию 20260622?)" }, { status: 404 });
+  const { data: asset } = (assetId || url) ? await assetQ.maybeSingle() : { data: null };
 
-  const analysis = (asset.analysis || {}) as Record<string, unknown>;
+  let recipe: Record<string, unknown> | null = null;
+  if (!asset && recipeId) {
+    const { data } = await db.from("node_recipes")
+      .select("id,article,niche,run_plan,format_detected,output_url")
+      .eq("id", recipeId)
+      .limit(1)
+      .maybeSingle();
+    recipe = (data || null) as Record<string, unknown> | null;
+  }
+  if (!asset && !recipe) {
+    return NextResponse.json({ error: "контент не найден в БД (применить миграцию 20260622?)" }, { status: 404 });
+  }
+
+  const analysis = ((asset?.analysis || (recipe?.run_plan as Record<string, unknown>) || {}) as Record<string, unknown>);
+  const assetArticle = String(asset?.article || recipe?.article || "");
+  const assetName = String(asset?.name || body.hook || assetArticle || `recipe-${recipeId}`);
+  const niche = String(asset?.niche || recipe?.niche || nicheFromArticle(assetArticle, assetName) || "").slice(0, 80);
   const learnings: Record<string, unknown> = {
-    hook: String(body.hook || analysis.hook || asset.name || "").slice(0, 120),
-    format: String(body.format || analysis.route || "").slice(0, 40),
+    hook: String(body.hook || analysis.hook || analysis.title || assetName || "").slice(0, 120),
+    format: String(body.format || analysis.route || recipe?.format_detected || "").slice(0, 40),
     route: String(analysis.route || "").slice(0, 40),
     engine: String(analysis.engine || "").slice(0, 20),
     otk_score: analysis.otk ?? null,
@@ -37,18 +54,18 @@ export async function POST(req: NextRequest) {
   if (body.followers) learnings.followers = Number(body.followers);
   if (body.note) learnings.note = String(body.note).slice(0, 200);
 
-  const { error } = await db.from("content_assets").update({
-    is_winner: true,
-    winner_at: new Date().toISOString(),
-    winner_learnings: learnings,
-  }).eq("id", asset.id);
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (asset?.id) {
+    const { error } = await db.from("content_assets").update({
+      is_winner: true,
+      winner_at: new Date().toISOString(),
+      winner_learnings: learnings,
+    }).eq("id", asset.id);
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  }
 
   // Замыкаем петлю: победивший хук → viral_hooks с максимальным весом (viability_score=5)
   // Так hook-judge автоматически поднимает наши проверенные хуки в следующем цикле генерации
   if (learnings.hook) {
-    const niche = nicheFromArticle(asset.article || "", asset.name || "");
     const note = `winner: ${learnings.format || "unknown"} | otk: ${learnings.otk_score ?? "?"} | ${learnings.note || ""}`.slice(0, 200);
     try {
       await db.from("viral_hooks").upsert(
@@ -66,15 +83,35 @@ export async function POST(req: NextRequest) {
 
   // V14 · снимок ПРОИЗВОДСТВЕННЫХ настроек победителя в пресет (если знаем рецепт-первоисточник)
   let preset_id: number | null = null;
-  const recipeId = Number(body.recipe_id) || 0;
   if (recipeId) {
     try {
-      const wniche = nicheFromArticle(asset.article || "", asset.name || "");
-      preset_id = await snapshotWinnerPreset(db, recipeId, wniche, String(learnings.format || ""), String((learnings.note as string) || `otk ${learnings.otk_score ?? "?"} · ${learnings.views ?? "?"} просм`).slice(0, 180));
+      preset_id = await snapshotWinnerPreset(db, recipeId, niche, String(learnings.format || ""), String((learnings.note as string) || `otk ${learnings.otk_score ?? "?"} · ${learnings.views ?? "?"} просм`).slice(0, 180));
     } catch { /* пресет best-effort */ }
   }
 
-  return NextResponse.json({ ok: true, learnings, preset_id });
+  let hints = "";
+  let winnerPresetCount = 0;
+  try {
+    hints = await learningHints(db, niche);
+  } catch { /* hints best-effort */ }
+  try {
+    const { count } = await db.from("node_templates")
+      .select("id", { count: "exact", head: true })
+      .eq("from_winner", true)
+      .eq("niche", niche);
+    winnerPresetCount = Number(count) || 0;
+  } catch { /* count best-effort */ }
+
+  const improvement_loop = {
+    niche,
+    winner_promoted: Boolean(learnings.hook),
+    preset_id,
+    winner_preset_count: winnerPresetCount,
+    learning_hints: hints,
+    next_cycle_ready: Boolean(hints || preset_id || learnings.hook),
+  };
+
+  return NextResponse.json({ ok: true, learnings, preset_id, improvement_loop, winner_source: asset?.id ? "content_asset" : "recipe_fallback" });
 }
 
 // V14 · из run_plan победившего рецепта собираем переиспользуемый пресет в node_templates:
@@ -124,7 +161,7 @@ async function snapshotWinnerPreset(db: any, recipeId: number, niche: string, fo
 }
 
 export async function GET(req: NextRequest) {
-  const db = getSupabaseAdmin();
+  const db = getSupabaseAdmin() || getSupabaseReadClient();
   if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 500 });
   const { searchParams } = req.nextUrl;
   const article = searchParams.get("article") || "";

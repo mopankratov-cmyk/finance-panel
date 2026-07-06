@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { getSupabaseReadClient } from "@/lib/supabaseAdmin";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 20;
@@ -29,8 +29,8 @@ async function count(db: any, table: string, niche: string, extra?: (q: any) => 
 
 export async function GET(req: NextRequest) {
   try {
-    const db = getSupabaseAdmin();
-    if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 500 });
+    const db = getSupabaseReadClient();
+    if (!db) return NextResponse.json({ ok: false, configured: false, error: "Supabase не настроен" }, { status: 500 });
     const niche = (req.nextUrl.searchParams.get("niche") || "").trim();
 
     // ── режим одной ниши: лента виральных + шаблоны + рецепты ──
@@ -50,7 +50,7 @@ export async function GET(req: NextRequest) {
         const { data } = await db.from("node_recipes").select("id,article,niche,mode,status,otk_score,output_url,format_detected,created_at").eq("niche", niche).order("created_at", { ascending: false }).limit(20);
         recipes = data || [];
       } catch { /* нет рецептов */ }
-      return NextResponse.json({ ok: true, niche, feed, templates, recipes }, { headers: { "Cache-Control": "no-store" } });
+      return NextResponse.json({ ok: true, configured: true, niche, feed, templates, recipes }, { headers: { "Cache-Control": "no-store" } });
     }
 
     // ── обзор всех ниш ──
@@ -77,8 +77,8 @@ export async function GET(req: NextRequest) {
       recipes = data || [];
     } catch { /* нет рецептов */ }
 
-    return NextResponse.json({ ok: true, niches, generations, recipes }, { headers: { "Cache-Control": "no-store" } });
+    return NextResponse.json({ ok: true, configured: true, niches, generations, recipes }, { headers: { "Cache-Control": "no-store" } });
   } catch (e) {
-    return NextResponse.json({ error: "studio crash: " + String((e as Error)?.message || e).slice(0, 160) }, { status: 500 });
+    return NextResponse.json({ ok: false, configured: true, error: "studio crash: " + String((e as Error)?.message || e).slice(0, 160) }, { status: 500 });
   }
 }

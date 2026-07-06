@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { getSupabaseReadClient } from "@/lib/supabaseAdmin";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 25;
@@ -12,8 +12,8 @@ export const maxDuration = 25;
 type Row = Record<string, unknown>;
 
 export async function GET(req: NextRequest) {
-  const db = getSupabaseAdmin();
-  if (!db) return NextResponse.json({ ok: false, error: "Supabase не настроен" }, { status: 500 });
+  const db = getSupabaseReadClient();
+  if (!db) return NextResponse.json({ ok: false, configured: false, error: "Supabase не настроен" }, { status: 500 });
   const sp = req.nextUrl.searchParams;
   const days = Math.min(90, Math.max(1, Number(sp.get("days")) || 7));
   const nicheF = (sp.get("niche") || "").trim();
@@ -92,5 +92,5 @@ export async function GET(req: NextRequest) {
     return ((data as Row[]) || []).map((r) => ({ name: r.name, niche: r.niche, learnings: r.winner_learnings, winner_at: r.winner_at, url: r.url }));
   }, []);
 
-  return NextResponse.json({ ok: true, days, niche: nicheF || null, signals, hooks_by_niche, recent_generations, otk_trend, winner_presets, winners });
+  return NextResponse.json({ ok: true, configured: true, days, niche: nicheF || null, signals, hooks_by_niche, recent_generations, otk_trend, winner_presets, winners });
 }

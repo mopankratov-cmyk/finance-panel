@@ -2,16 +2,35 @@
 
 import { usePathname } from "next/navigation";
 import { Sidebar } from "./Sidebar";
-import { useFinance } from "./providers/FinanceProvider";
+import { FinanceProvider, useFinance } from "./providers/FinanceProvider";
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
-  const { hydrated, loadError } = useFinance();
   const pathname = usePathname();
-  // Страница входа — без сайдбара и без гейта загрузки финансов
-  if (pathname === "/login") return <>{children}</>;
-  // Главная + Ozon-аналитика — полноэкранные, без финансового сайдбара (как infernoff.ru)
+  const isLogin = pathname === "/login";
   const isLauncher = pathname === "/";
-  const isFullscreen = isLauncher || pathname.startsWith("/ozon");
+  const isPublishingCockpit = pathname.startsWith("/inferno/publishing");
+  const isPrivacy = pathname === "/privacy" || pathname.startsWith("/privacy/");
+  const isFullscreen = isLauncher || pathname.startsWith("/ozon") || isPublishingCockpit || isPrivacy;
+
+  if (isPublishingCockpit || isPrivacy || isLogin) {
+    return <>{children}</>;
+  }
+
+  return (
+    <FinanceProvider>
+      <AppChrome isFullscreen={isFullscreen}>{children}</AppChrome>
+    </FinanceProvider>
+  );
+}
+
+function AppChrome({
+  children,
+  isFullscreen,
+}: {
+  children: React.ReactNode;
+  isFullscreen: boolean;
+}) {
+  const { hydrated, loadError } = useFinance();
 
   if (!hydrated) {
     return (

@@ -10,6 +10,7 @@ import React, {
   useState,
   type ReactNode,
 } from "react";
+import { usePathname } from "next/navigation";
 import { loadFinanceState, persistFinanceAction } from "@/lib/db";
 import { financeReducer } from "@/lib/reducer";
 import type { FinanceAction, FinanceState } from "@/lib/types";
@@ -24,6 +25,8 @@ interface FinanceContextValue {
 const FinanceContext = createContext<FinanceContextValue | null>(null);
 
 export function FinanceProvider({ children }: { children: ReactNode }) {
+  const pathname = usePathname();
+  const skipFinanceBootstrap = pathname.startsWith("/inferno/publishing");
   const [state, baseDispatch] = useReducer(financeReducer, {
     accounts: [],
     payments: [],
@@ -35,6 +38,12 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
   stateRef.current = state;
 
   useEffect(() => {
+    if (skipFinanceBootstrap) {
+      setHydrated(true);
+      setLoadError(null);
+      return;
+    }
+
     let cancelled = false;
 
     async function load() {
@@ -65,9 +74,13 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [skipFinanceBootstrap]);
 
   const dispatch = useCallback((action: FinanceAction) => {
+    if (skipFinanceBootstrap) {
+      baseDispatch(action);
+      return;
+    }
     const prevState = stateRef.current;
     const nextState = financeReducer(prevState, action);
     stateRef.current = nextState;
@@ -78,7 +91,7 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
         console.error("Failed to persist finance action:", action.type, error);
       });
     }
-  }, []);
+  }, [skipFinanceBootstrap]);
 
   return (
     <FinanceContext.Provider
