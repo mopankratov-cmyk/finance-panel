@@ -4,10 +4,9 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { Grid3x3, ChevronDown } from "lucide-react";
 
-// Сквозное меню модулей — убирает тупики на полноэкранных страницах (inferno WB, Ozon).
+// Сквозное меню модулей — убирает тупики на полноэкранных страницах (Ozon и др.).
 const MODULES: { href: string; label: string; group: string }[] = [
   { href: "/", label: "Все модули", group: "" },
-  { href: "/inferno/wb.html", label: "WB Аналитика", group: "Аналитика" },
   { href: "/ozon", label: "Ozon Аналитика", group: "Аналитика" },
   { href: "/pnl", label: "ОПиУ WB+Ozon", group: "Финансы" },
   { href: "/losses", label: "Где теряем", group: "Финансы" },
@@ -39,9 +38,7 @@ export function ModuleMenu({ accent = "violet" }: { accent?: "violet" | "sky" })
           {MODULES.map((m, i) => {
             const prevGroup = MODULES[i - 1]?.group;
             const showHdr = m.group && m.group !== prevGroup;
-            const inner = m.href.startsWith("/inferno/")
-              ? <a href={m.href} className="block px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50">{m.label}</a>
-              : <Link href={m.href} onClick={() => setOpen(false)} className="block px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50">{m.label}</Link>;
+            const inner = <Link href={m.href} onClick={() => setOpen(false)} className="block px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50">{m.label}</Link>;
             return (
               <div key={m.href}>
                 {showHdr && <div className="px-3 pb-0.5 pt-2 text-[10px] font-semibold uppercase tracking-wide text-gray-400">{m.group}</div>}
