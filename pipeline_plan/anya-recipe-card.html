@@ -1,0 +1,139 @@
+<title>Рецепт Ани — карта эпизода</title>
+<style>
+  :root {
+    --paper: #FAFAF8;
+    --ink: #1B1B1A;
+    --ink-soft: #55534E;
+    --line: #E4E2DC;
+    --marker: #E8590C;
+    --marker-soft: #FFF0E6;
+    --ok: #2B8A3E; --ok-soft: #EBFBEE;
+    --wait: #E67700; --wait-soft: #FFF4E0;
+    --hand: #C2255C; --hand-soft: #FFF0F6;
+    --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  body { background: var(--paper); color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    line-height: 1.55; margin: 0; padding: 44px 20px 80px; }
+  .wrap { max-width: 840px; margin: 0 auto; }
+  .eyebrow { font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--marker); font-weight: 700; margin-bottom: 10px; }
+  h1 { font-size: clamp(26px, 5vw, 36px); line-height: 1.12; margin: 0 0 12px;
+    font-weight: 800; letter-spacing: -0.02em; text-wrap: balance; }
+  .lede { font-size: 16px; color: var(--ink-soft); max-width: 620px; margin: 0 0 8px; }
+  .hl { background: linear-gradient(180deg, transparent 55%, var(--marker-soft) 55%, var(--marker-soft) 92%, transparent 92%); padding: 0 2px; }
+  h2 { font-size: 20px; font-weight: 800; margin: 44px 0 6px; letter-spacing: -0.01em; }
+  h2 .n { font-family: var(--mono); font-size: 13px; color: var(--marker); margin-right: 8px; font-weight: 700; }
+  .sub { color: var(--ink-soft); font-size: 14px; margin: 0 0 16px; max-width: 620px; }
+  code { font-family: var(--mono); font-size: 0.85em; background: #F1F0EC; border-radius: 4px; padding: 1px 5px; }
+  .tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; background: #fff; }
+  table { border-collapse: collapse; width: 100%; font-size: 13.5px; min-width: 600px; }
+  th { text-align: left; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--ink-soft); font-weight: 700; padding: 9px 13px; border-bottom: 1px solid var(--line); background: #F6F5F1; }
+  td { padding: 9px 13px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-soft); white-space: nowrap; }
+  .pill { display: inline-block; font-size: 11px; font-weight: 700; border-radius: 99px; padding: 2px 8px; white-space: nowrap; }
+  .pill.ok { background: var(--ok-soft); color: var(--ok); }
+  .pill.wait { background: var(--wait-soft); color: var(--wait); }
+  .pill.hand { background: var(--hand-soft); color: var(--hand); }
+  .persona { border: 1px solid var(--line); border-radius: 12px; background: #fff; padding: 20px 24px; margin-top: 14px; }
+  .persona p { margin: 0 0 10px; max-width: 640px; }
+  .persona p:last-child { margin: 0; }
+  .no { color: var(--hand); font-weight: 700; }
+  .script {
+    border-left: 3px solid var(--marker); background: #fff; border-radius: 0 10px 10px 0;
+    padding: 16px 20px; margin: 14px 0; font-size: 14.5px; color: var(--ink);
+    font-style: italic; max-width: 640px;
+  }
+  .formula { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; margin-top: 14px; }
+  .f-item { border: 1px solid var(--line); border-radius: 10px; background: #fff; padding: 14px 16px; }
+  .f-item b { display: block; font-size: 13px; margin-bottom: 4px; }
+  .f-item span { font-size: 12.5px; color: var(--ink-soft); }
+  .qc { border: 1px solid var(--line); border-radius: 12px; background: #fff; padding: 18px 22px; }
+  .qc ol { margin: 0; padding-left: 20px; }
+  .qc li { margin-bottom: 7px; font-size: 14px; }
+  .qc li:last-child { margin: 0; }
+  footer { margin-top: 52px; padding-top: 16px; border-top: 1px solid var(--line); font-size: 12.5px; color: var(--ink-soft); }
+</style>
+
+<div class="wrap">
+<header>
+  <div class="eyebrow">Контент-завод · канон v1 · 5 июля 2026</div>
+  <h1>Рецепт Ани: карта одного эпизода</h1>
+  <p class="lede">Единственный источник правды, как собирается каждый ролик — <span class="hl">от темы до вердикта, с точными ID и гейтами</span>. Полная версия с константами: <code>docs/factory-anya-recipe.md</code>.</p>
+</header>
+
+<h2><span class="n">01</span>Кто говорит</h2>
+<div class="persona">
+  <p><b>Аня — экономист закупок.</b> 6 лет считает, сколько вещи стоят на самом деле. Подпись-бренд: <b>«я посчитала»</b>. Спокойная уверенность, вердикты цифрами, короткие фразы, лёгкая усталая ирония. В био — «виртуальный блогер» с первого дня.</p>
+  <p><span class="no">Никогда:</span> NORVIA не упоминается; анти-обзор только с видеофиксацией дефекта и не про прямых конкурентов NORVIA; никаких мед/БАД-обещаний; никакого «ВАУ СКИДКА».</p>
+</div>
+
+<h2><span class="n">02</span>Рубрики</h2>
+<div class="tablewrap">
+<table>
+  <tr><th></th><th>Рубрика</th><th>Хук-формула</th><th>Когда</th></tr>
+  <tr><td class="num">R1</td><td>«Что вам не говорят» — механики WB</td><td>«Смотрите, что вам не говорят на Вайлдберриз…»</td><td>костяк недели 1</td></tr>
+  <tr><td class="num">R2</td><td>«Я посчитала» — честная цена одного товара</td><td>«Эта штука стоит N. Я посчитала, сколько на самом деле»</td><td>костяк недели 1</td></tr>
+  <tr><td class="num">R3</td><td>«Проверила отзывы» — вердикт по отзывам</td><td>«N тысяч отзывов. Вот что скрывают»</td><td>после 5 эпизодов</td></tr>
+  <tr><td class="num">R4</td><td>Анти-обзор (редко)</td><td>«Не покупайте это. Показываю почему»</td><td>неделя 3+, только с видеофиксацией</td></tr>
+</table>
+</div>
+
+<h2><span class="n">03</span>Сценарная формула — 30 секунд</h2>
+<div class="formula">
+  <div class="f-item"><b>75–85 слов</b><span>эп.1 = 9с/16 слов, эп.2 = 30с/78 слов</span></div>
+  <div class="f-item"><b>Хук ≤2 секунд</b><span>«Так.» или сразу цифра. Без «привет, я Аня»</span></div>
+  <div class="f-item"><b>Одна мысль</b><span>одна механика ИЛИ один товар, не смешивать</span></div>
+  <div class="f-item"><b>Числа прописью</b><span>«Семьдесят один рубль», не «71 рублей» — TTS-ловушка</span></div>
+  <div class="f-item"><b>Финал-loop</b><span>«Сохраните, потом пригодится» / «Артикулы в описании»</span></div>
+  <div class="f-item"><b>Гейт: OK по тексту</b><span>убить текст = 0₽, готовый ролик = кредиты</span></div>
+</div>
+<p class="sub" style="margin-top:16px">Эталон (эпизод 2, рубрика R1):</p>
+<div class="script">Так. Смотрите, что вам не говорят на Вайлдберриз. Цена в карточке товара — это не та цена, что вы заплатите. Есть СПП — скидка постоянного покупателя. Маркетплейс решает сам, сколько скинуть именно вам, и показывает это только в корзине. Поэтому у меня и у вас цена на одну и ту же вещь — разная. Иногда минус двадцать, иногда минус сорок. Я посчитала: если сравнивать цены по скриншотам с витрины — вы каждый раз промахиваетесь. Смотрите только корзину. Сохраните, потом пригодится.</div>
+
+<h2><span class="n">04</span>12 шагов производства</h2>
+<p class="sub">Точные ID (look, голос, пресет) — в паспорте констант внутри repo-дока. Пресет стилизации <b>заморожен</b>: пересборка вошьёт EN-подписи.</p>
+<div class="tablewrap">
+<table>
+  <tr><th>#</th><th>Шаг</th><th>Чем</th><th>Гейт</th></tr>
+  <tr><td class="num">1</td><td>Тема</td><td>недельный бэклог (ты утверждаешь раз в неделю) <span class="pill wait">полуавто</span></td><td>правила персоны</td></tr>
+  <tr><td class="num">2</td><td>Сценарий</td><td>Claude по формуле §03 <span class="pill hand">гейт</span></td><td><b>твой OK по тексту</b></td></tr>
+  <tr><td class="num">3</td><td>Озвучка</td><td>Higgsfield TTS, голос ManyaRef1 — единственный канон <span class="pill wait">MCP</span></td><td>25–35с, прослушать ударения</td></tr>
+  <tr><td class="num">4</td><td>Говорящая голова</td><td><code>render.sh</code> → HeyGen avatar_iv, look car_close <span class="pill ok">авто</span></td><td>чек баланса ДО; липсинк в 3 точках</td></tr>
+  <tr><td class="num">5</td><td>Стилизация</td><td>Shorts Studio, пресет Marker Doodle Clean, ~27 кр <span class="pill wait">MCP</span></td><td>кросс-корреляция: лаг стабилен ~40мс; 0 вшитых подписей</td></tr>
+  <tr><td class="num">6</td><td>Нарезка кадров</td><td><code>frames.sh</code> (Remotion-ffmpeg) <span class="pill ok">авто</span></td><td>кадры = длит.×fps</td></tr>
+  <tr><td class="num">7</td><td>Тайминги подписей</td><td>BLOCKS: onset речи +0.04с +40мс; зоны без лица <span class="pill hand">руками</span> до blocks_gen</td><td>TEST-контактлист зон</td></tr>
+  <tr><td class="num">8</td><td>Подписи</td><td><code>mc_captions.py</code>, Molli Writes, CAPS, pop-in <span class="pill ok">авто</span></td><td>—</td></tr>
+  <tr><td class="num">9</td><td>Сборка</td><td><code>assemble.sh</code>: кадры + оригинальный голос <span class="pill ok">авто</span></td><td>—</td></tr>
+  <tr><td class="num">10</td><td>Полный QC</td><td>контакт-лист ВСЕХ кадров + чеклист §05 <span class="pill wait">полуавто</span></td><td>ни один пункт не нарушен</td></tr>
+  <tr><td class="num">11</td><td>Вердикт</td><td>видео тебе в TG с меткой epNN <span class="pill hand">ты</span></td><td>каждый ролик</td></tr>
+  <tr><td class="num">12</td><td>Публикация + цифры</td><td>ты постишь; факт и досмотр% → леджер <span class="pill hand">ты</span></td><td>досмотр% валиден при ≥100 просмотров</td></tr>
+</table>
+</div>
+
+<h2><span class="n">05</span>QC-чеклист — полный, не выборочный</h2>
+<div class="qc">
+  <ol>
+    <li>Контакт-лист <b>всех</b> кадров построен и просмотрен (выборка пропускает реальный брак — проверено).</li>
+    <li>Нет EN-текста, вшитых подписей, тофу-квадратов от спецсимволов.</li>
+    <li>Подписи не задевают лицо ни в одном кадре.</li>
+    <li>Липсинк: кросс-корреляция стабильна + 3 визуальные точки.</li>
+    <li>Длительность = аудио ±0.5с; звук живой (RMS&gt;800); файл не битый.</li>
+    <li>Руки, зубы, артефакты лица — глазами по контакт-листу.</li>
+  </ol>
+</div>
+
+<h2><span class="n">06</span>Правила подписей (фактура эпизода 1)</h2>
+<div class="formula">
+  <div class="f-item"><b>CAPS, Molli Writes</b><span>кегль 70–112, акцент крупнее</span></div>
+  <div class="f-item"><b>1–3 слова в группе</b><span>≤2 строки на блок, поворот ±1.2–1.6°</span></div>
+  <div class="f-item"><b>Зоны без лица</b><span>грудь (cy 0.64–0.78) или свободная полоса</span></div>
+  <div class="f-item"><b>Чернила по сцене</b><span>тёмные на светлом; светлые + обводка на тёмном</span></div>
+  <div class="f-item"><b>Ключевые слова</b><span>не каждое: ~16 на 9с → ~45–55 на 30с</span></div>
+  <div class="f-item"><b>Pop-in 0.18с</b><span>овершут 1.06, слово живёт до конца сцены</span></div>
+</div>
+
+<footer>Канон: docs/factory-anya-recipe.md · План запуска: docs/factory-anya-autopipeline-plan.md · Стратегия: factory-anya-hypothesis-ledger.md</footer>
+</div>

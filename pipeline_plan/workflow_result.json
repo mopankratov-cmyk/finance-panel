@@ -1,0 +1,1248 @@
+{
+ "summary": "Разведка всех кусков конвейера ИИ-блогеров и сборка плана автопайплайна",
+ "agentCount": 9,
+ "logs": [
+  "Разведка: 5/5 читателей вернулись",
+  "Дизайн: 3/3 варианта готовы"
+ ],
+ "result": {
+  "readers": [
+   {
+    "summary": "Путь рендера говорящего блогера существует и РЕАЛЬНО работает, но живёт целиком в ручных CLI (npx tsx), а не в продукте. Боевой канал — bloggerDrillRunner.mjs: полный цикл «скрипт→TTS (ElevenLabs eleven-v3, голос NASTYA)→деглянц-стилл (Seedream v4.5 + анти-бейзел люма-гейт)→заливка лука в HeyGen-группу→рендер HeyGen Avatar IV 1080p (/v3/videos, audio_url)→анти-AI пост (2 прохода ffmpeg)→кадровая полоса». Леджер в репо (docs/factory-blogger-drill-ledger.json): 115 клипов, все post_done, 0 ошибок, есть owner_verdicts — конвейер прогонялся многократно. Захардкожен под Маню (group fc29c149…, voice YjESejviApN7SHrbfnA2). Telegram используется только как файл-хостинг аудио, финал в TG НЕ шлётся.\n\nВажное открытие про bloggerReelRunner («конвейер одной командой», спринт Д2): он НЕ рендерит говорящую голову через HeyGen. HeyGen там нужен только чтобы забрать image_url лука; сам рендер — fal OmniHuman v1.5 (композит товара Seedream + TTS MiniMax speech-02-hd). Это конвейер «артикул-в-руках»-сегмента с опциональной отправкой видео в TG; state в /tmp (эфемерно). Полный рилс собирает третий CLI — bloggerReelAssembly.mjs (лицо-хук ≤4с из drill-клипов + Kling i2v b-roll + полный голос хука), state в docs/.\n\nВесь TypeScript-слой heygenBlogger/heygenAgentTool/heygenVideo/ugcStoryboard + роуты /api/factory/{heygen-smoke,ugc-storyboard} и панель app/inferno/heygen-blogger — это dry-run/спека: строят тела запросов, но платный рендер оттуда не запускается никогда (paidBlocked=true жёстко). Канон анти-AI поста (antiAiPost.ts) продублирован инлайном в drill runner и УЖЕ разошёлся (адаптивные curves/gamma по YAVG есть только в инлайне). Персоны «Аня» в коде нет вообще — только Manya/Vika/Olya (+легаси Катя в learning-loop раннерах). Два разных TTS-стека и три раннера означают: для конвейера Ани нужно выбрать голос, завести группу/луки и склеить drill-качество с reel-доставкой — код-кирпичи есть, единого end-to-end «сценарий→рендер→TG» одной командой под HeyGen нет.",
+    "inventory": [
+     {
+      "item": "bloggerDrillRunner.mjs — Drill Loop раннер (боевой HeyGen-путь)",
+      "path": "/Users/maksimpankratov/Projects/finance-panel/finance-panel/lib/factory/bloggerDrillRunner.mjs",
+      "status": "runnable-CLI",
+      "role": "TTS (ElevenLabs через fal) → деглянц-стилл (Seedream) → лук в HeyGen-группу → рендер Avatar IV 1080p → анти-AI пост (инлайн-копия) → ревью-полоса. TG только как хостинг аудио, НЕ доставка. Env: FAL_KEY|FAL_BILLING_KEY, HEYGEN_API_KEY, FACTORY_TG_BOT_TOKEN, FACTORY_TG_CHAT_ID, --ffmpeg. Артефакты: /tmp/ugc-factory-drill/b{N}/; леджер В РЕПО docs/factory-blogger-drill-ledger.json (115 клипов, все post_done). Хардкод: Manya group fc29c149d7994673b254dd121c1dc516, голос NASTYA YjESejviApN7SHrbfnA2"
+     },
+     {
+      "item": "bloggerReelRunner.mjs — «конвейер одной командой» (спринт Д2)",
+      "path": "/Users/maksimpankratov/Projects/finance-panel/finance-panel/lib/factory/bloggerReelRunner.mjs",
+      "status": "runnable-CLI",
+      "role": "Товарный сегмент: HeyGen ТОЛЬКО для image_url лука → композит товара Seedream v4.5 → TTS MiniMax speech-02-hd (Calm_Woman) → анимация OmniHuman v1.5 (НЕ HeyGen-рендер!) → канон antiAiPost 2-pass → опц. sendVideo в TG (--send-tg). Env: FAL_KEY|FAL_BILLING_KEY, HEYGEN_API_KEY, FACTORY_TG_BOT_TOKEN/CHAT_ID. State/артефакты: /tmp/ugc-factory-reels/{runId}/ (эфемерно, вопреки уроку «/tmp — кладбище»). Хардкод: GROUPS manya/vika/olya"
+     },
+     {
+      "item": "bloggerReelAssembly.mjs — сборка полного рилса",
+      "path": "/Users/maksimpankratov/Projects/finance-panel/finance-panel/lib/factory/bloggerReelAssembly.mjs",
+      "status": "runnable-CLI",
+      "role": "Монтаж: лицо-хук ≤4с (из drill-клипа) + Kling v2.1 i2v b-roll из деглянц-стиллов + опц. хвост лица; аудио = полный голос хука; b-roll через канон buildAntiAiVideoFilter. Вход — ручной plan.json. State В РЕПО docs/factory-blogger-reel-assembly-state.json; выход /tmp/ugc-factory-reels/{id}.mp4 + strip. Env: FAL_KEY, --ffmpeg. Нет TG/публикации"
+     },
+     {
+      "item": "antiAiPost.ts — канон анти-AI пост-обработки",
+      "path": "/Users/maksimpankratov/Projects/finance-panel/finance-panel/lib/factory/antiAiPost.ts",
+      "status": "library",
+      "role": "Пост-обработка: buildAntiAiPassArgs (2 прохода: грейд+зерно → телефонный битрейт-краш), adaptGradeToLuma. Потребители: bloggerReelRunner, bloggerReelAssembly. ДУБЛЬ: bloggerDrillRunner несёт инлайн-копию, которая уже разошлась (адаптивные curves/gamma по YAVG только в инлайне, канон — фикс. gamma=1.0)"
+     },
+     {
+      "item": "bloggerDrillLoop.ts — планировщик drill-батчей + канон-параметры",
+      "path": "/Users/maksimpankratov/Projects/finance-panel/finance-panel/lib/factory/bloggerDrillLoop.ts",
+      "status": "library",
+      "role": "Стадия «сценарий/план»: buildDrillBatch, DRILL_BEST_KNOWN (лучший лук/свет/поза/моушен Мани), деглянц-промпты. Потребитель — только bloggerDrillRunner"
+     },
+     {
+      "item": "ugcStoryboard.ts + /api/factory/ugc-storyboard",
+      "path": "/Users/maksimpankratov/Projects/finance-panel/finance-panel/lib/factory/ugcStoryboard.ts",
+      "status": "product-route",
+      "role": "Сценарная стадия (dry-run only): раскадровка лицо≤4с + proof-b-roll + CTA-оверлей; НИЧЕГО не рендерит. Хардкод-реестр RUSSIAN_HEYGEN_BLOGGERS: katya/alina/sergey/manya/vika/olya (look_id + один общий voiceId 37832e32… на всех). Полные паспорта — docs/factory-blogger-passports.json"
+     },
+     {
+      "item": "heygenBlogger.ts — Metric Registry конфига блогера",
+      "path": "/Users/maksimpankratov/Projects/finance-panel/finance-panel/lib/factory/heygenBlogger.ts",
+      "status": "library",
+      "role": "Спека-слой конфигурации (identity/voice/render/motion/broll/budget), валидатор, без сети. Потребители: панель app/inferno/heygen-blogger и heygenAgentTool. Дефолт-персона «Yoyo/Alina» — с боевыми раннерами НЕ связан"
+     },
+     {
+      "item": "heygenAgentTool.ts — agent-tool поверх реестра",
+      "path": "/Users/maksimpankratov/Projects/finance-panel/finance-panel/lib/factory/heygenAgentTool.ts",
+      "status": "library",
+      "role": "Tool-схема для function-calling + patch конфига + маппинг в ФОРМЫ тел HeyGen-запросов (endpoint-строки, без fetch). Никакой раннер/флот его реально не вызывает для рендера — потребитель только UI-панель и тесты"
+     },
+     {
+      "item": "heygenVideo.ts + /api/factory/heygen-smoke",
+      "path": "/Users/maksimpankratov/Projects/finance-panel/finance-panel/lib/factory/heygenVideo.ts",
+      "status": "product-route",
+      "role": "Smoke-план рендера: анти-рекламный софтенер скрипта + realism-директивы + dry-run тело /v3/videos. paidBlocked=true жёстко — роут никогда не рендерит, только строит план"
+     },
+     {
+      "item": "heygen.ts — HeyGen API-клиент с платными гейтами",
+      "path": "/Users/maksimpankratov/Projects/finance-panel/finance-panel/lib/factory/heygen.ts",
+      "status": "library",
+      "role": "Живые GET (группы/луки/голоса /v3/avatars, /v3/voices — используется heygen-readiness) + heygenCreateVideo/CreateAvatar, заблокированные без confirmPaid/confirmCreate. Env: HEYGEN_API_KEY"
+     },
+     {
+      "item": "app/inferno/heygen-blogger — панель Studio",
+      "path": "/Users/maksimpankratov/Projects/finance-panel/finance-panel/app/inferno/heygen-blogger/HeygenBloggerStudio.tsx",
+      "status": "product-route",
+      "role": "UI: каталог (heygen-readiness live), identity-план, smoke-план. Все кнопки → dry-run роуты; платного рендера из UI нет"
+     },
+     {
+      "item": "bloggerLearningLoopRunner.mjs (+ bloggerAnchorExpansion*Runner.mjs)",
+      "path": "/Users/maksimpankratov/Projects/finance-panel/finance-panel/lib/factory/bloggerLearningLoopRunner.mjs",
+      "status": "runnable-CLI",
+      "role": "Легаси-петля Кати: пакетные HeyGen-рендеры /v3/videos avatar_iv 720p поколениями, выход /tmp/ugc-factory-katya-learning-loop. Экспортирует buildHeyGenPayload, который переиспользуют anchor-expansion раннеры. Персона Катя; для Ани — только как референс кода"
+     },
+     {
+      "item": "heygenAvatarGroupRunner.mjs — Face Foundry фаза 2",
+      "path": "/Users/maksimpankratov/Projects/finance-panel/finance-panel/lib/factory/heygenAvatarGroupRunner.mjs",
+      "status": "runnable-CLI",
+      "role": "Создание avatar group / добавление луков / тренировка через HeyGen v2 photo_avatar API (тот стек, что HeyGen хоронит 31.10.2026). Выход /tmp/ugc-factory-face-foundry/heygen. Env: HEYGEN_API_KEY"
+     },
+     {
+      "item": "scripts/creatify-ugc.mjs — альтернативный UGC-провайдер",
+      "path": "/Users/maksimpankratov/Projects/finance-panel/finance-panel/scripts/creatify-ugc.mjs",
+      "status": "runnable-CLI",
+      "role": "Одноразовый Creatify link_to_videos (актёр+b-roll) под артикул TT04101, скрипт захардкожен. Env: CREATIFY_API_ID/KEY. Выход out/creatify-ugc.mp4. Параллельная ветка, с HeyGen-путём не связана; DB-учёт таких джобов — ugcJobs.ts + роуты /api/factory/ugc-creatify*"
+     },
+     {
+      "item": "ugcJobs.ts — DB-леджер UGC-джобов + consent-гейт персон",
+      "path": "/Users/maksimpankratov/Projects/finance-panel/finance-panel/lib/factory/ugcJobs.ts",
+      "status": "library",
+      "role": "Учёт джобов (queued→done/dlq) и checkPersonaConsent; потребители: ugc-creatify роуты, graphRun.ts. Раннеры HeyGen-пути его НЕ используют — их леджеры файловые"
+     }
+    ],
+    "gaps": [
+     "Персоны «Аня» в коде НЕТ нигде: захардкожены Manya/Vika/Olya (group_id в bloggerReelRunner/bloggerDrillRunner) и легаси Катя (learning-loop). Для Ани нужно завести HeyGen-группу, луки и голос — кода/паспорта под неё ноль",
+     "Нет единого end-to-end «сценарий→TTS→HeyGen-рендер→пост→TG» одной командой: drill runner делает рендер+пост, но НЕ шлёт финал в TG; reel runner шлёт в TG, но говорящую голову рендерит OmniHuman (HeyGen не участвует в рендере); полный рилс — третий ручной шаг (assembly) с рукописным plan.json",
+     "Дубль анти-AI фильтра: инлайн-копия в bloggerDrillRunner (строки 285-291) УЖЕ разошлась с каноном antiAiPost.buildAntiAiVideoFilter — адаптивные curves и gamma/brightness по YAVG есть только в инлайне, канон держит фикс. gamma=1.0 и curves '0/0.02…1/0.97'. Комментарий «держать синхронно» не работает",
+     "Два несогласованных TTS-стека: ElevenLabs eleven-v3 (голос NASTYA, drill) vs MiniMax speech-02-hd (Calm_Woman, reel runner) — единого голоса персоны для конвейера нет",
+     "Артефакты bloggerReelRunner (state.json, final.mp4) и выходы assembly лежат в /tmp — теряются при ребуте, вопреки собственному уроку «/tmp — кладбище» (в репо живут только леджеры drill/assembly)",
+     "Весь продуктовый слой (роуты heygen-smoke/ugc-storyboard, панель inferno/heygen-blogger, heygenAgentTool) — строго dry-run: ни один платный рендер не запускается из веб-продукта, только руками через npx tsx; heygenAgentTool как «agent-tool» реального агент-потребителя не имеет",
+     "Публикации нет: Telegram используется как ревью-канал (и как файл-хостинг аудио в drill), Wibes/VK в рендер-пути не подключены",
+     "Заливка луков идёт через HeyGen v2 photo_avatar API (upload.heygen.com/v1/asset + /v2/photo_avatar/avatar_group/add) — стек, который по паспорту UGC умирает 31.10.2026; миграционного плана в коде нет",
+     "bloggerReelAssembly.mjs не отправляет результат никуда — вручную забирать из /tmp; кадровый QC (Kling разворачивает позы) остаётся глазами"
+    ],
+    "env_or_blockers": [
+     "HEYGEN_API_KEY — обязателен для drill/learning/avatar-group раннеров и для fetch лука в reel runner; по task#18 кредиты HeyGen API исчерпаны — рендер Avatar IV сейчас заблокирован деньгами, не кодом",
+     "FAL_KEY или FAL_BILLING_KEY — TTS (ElevenLabs/MiniMax), Seedream, OmniHuman, Kling; без него встаёт всё, кроме чистого HeyGen-рендера",
+     "FACTORY_TG_BOT_TOKEN + FACTORY_TG_CHAT_ID — в drill runner это НЕ доставка, а обязательный файл-хостинг TTS-аудио (без них рендер с audio_url не стартует); в reel runner — опциональная отправка финала",
+     "ffmpeg передаётся путём через --ffmpeg (в PATH не ищется); без него drill runner пропускает пост-обработку и анти-бейзел гейт",
+     "Раннеры читают .env.production.local и .env.local из CWD репо — запуск строго из корня finance-panel",
+     "CREATIFY_API_ID/CREATIFY_API_KEY — только для параллельной ветки creatify-ugc.mjs"
+    ]
+   },
+   {
+    "summary": "Рецепт «Тир B» реален и подтверждён артефактами эпизода 1 (manya_reel1_doodle_RU.mp4, 9с, 216 кадров), но это гибрид: 2 куска кода + 2 ручных MCP-вызова Higgsfield + несохранённые ffmpeg-команды. Шаги эпизода: (1) Сценарий — ручная работа (Claude пишет в чате, владелец одобряет; anya_ep2/script.txt готов). (2) TTS — ручной MCP-вызов Higgsfield generate_audio голосом-клоном ManyaRef1 → mp3 с публичным CloudFront-URL (voice_ep2.mp3, 30.24с, готов). (3) Говорящая голова — КОД: anya_ep2/render.sh (curl → POST api.heygen.com/v3/videos, engine avatar_iv, avatar_id f3d97943…= look__manya__10__car_close из lib/factory/ugcStoryboard.ts, липсинк по audio_url, поллинг → raw_ep2.mp4); одна команда, блокирован только балансом HeyGen. (4) Стилизация — ручной MCP-вызов shorts_studio_create с кастом-пресетом «Marker Doodle Clean» 97c2b9e9-f39e-4330-b875-d94ce548610c; критично: пресет собран из референса БЕЗ текста, иначе движок копирует EN-подписи из референса (доказано тестами, tg_doodle.json); 27 кр/прогон; сдвиг таймлайна +40мс константа. (5) Нарезка кадров — ручная ffmpeg-команда (бинарь Remotion), скрипта нет. (6) RU-подписи — КОД: manya_ru/mc_captions.py (PIL, шрифт Molli Writes, pop-in слов, TEST_ONLY-контактлист). (7) Сборка кадров + mux аудио — ручная ffmpeg-команда, не сохранена. (8) Вердикт — отправка владельцу в TG (FACTORY_TG_BOT, tg_*.json); публикаций 0. Таблица BLOCKS в mc_captions.py — на 100% per-episode ручная: текст (редакторская нарезка сценария на слова), t_pop каждого слова (полуручное: старты voiced-сегментов из огибающей аудио +0.04с, анализ делался ad-hoc в чате и как инструмент не сохранён), t0/t1 сцен (склейки 2.167/3.458/4.0/5.083/6.375 найдены глазами по кадрам), cy/ink/rot/size (зоны без лица подбирались по контакт-листам check/mc_zones.jpg). Для автогенерации нужно: forced-alignment/whisper по известному сценарию → t_pop (+40мс константа уже измерена кросс-корреляцией); PySceneDetect/ffmpeg scdet → t0/t1; face-detect + яркость фона в зоне → cy и выбор dark/light чернил; автоподгон ширины строки уже есть в коде (shrink). Редакторским останется только разбивка на строки и акценты размером. Из убитого Тира A переиспользуемы утилиты builder.py: curl-обёртка http() (framework-python без SSL-цепочки), wb_catalog(shard,cat), wb_card_v4(nm), basket_url (таблица vol→basket-NN + перебор 01–32), машинный qc(). На эпизод 2 (30с ≈ 3× длиннее) ручной объём BLOCKS вырастет втрое — это главное узкое место масштабирования до 1–2/день.",
+    "inventory": [
+     {
+      "item": "mc_captions.py — RU-подписи Molli Writes поверх стилизованных кадров (BLOCKS: 7 блоков, ~19 слов, pop-in; TEST_ONLY=1 → контакт-лист check/sheet_mc.jpg)",
+      "path": "/Users/maksimpankratov/Projects/finance-panel/claude-scratch/manya_ru/mc_captions.py",
+      "status": "runnable-CLI",
+      "role": "Шаг 6: наложение русских подписей на кадры после Shorts Studio; таблица BLOCKS вшита под эпизод 1 — на новый эпизод переписывается вручную"
+     },
+     {
+      "item": "render.sh — рендер говорящей головы HeyGen (POST /v3/videos, engine avatar_iv, avatar_id f3d97943d5854f28bda126ad03f02bab, липсинк по audio_url, поллинг до raw_ep2.mp4)",
+      "path": "/Users/maksimpankratov/Projects/finance-panel/claude-scratch/anya_ep2/render.sh",
+      "status": "runnable-CLI",
+      "role": "Шаг 3: базовое видео эпизода 2; готов к запуску одной командой, блокер — только API-кредиты HeyGen"
+     },
+     {
+      "item": "script.txt — сценарий эпизода 2 (механика СПП на WB, «я посчитала», без NORVIA)",
+      "path": "/Users/maksimpankratov/Projects/finance-panel/claude-scratch/anya_ep2/script.txt",
+      "status": "manual-recipe",
+      "role": "Шаг 1: текст пишется вручную (Claude в чате + вердикт владельца)"
+     },
+     {
+      "item": "voice_ep2.mp3 — готовая озвучка эпизода 2 (голос-клон ManyaRef1, 30.24с; публичный CloudFront-URL зашит в render.sh)",
+      "path": "/Users/maksimpankratov/Projects/finance-panel/claude-scratch/anya_ep2/voice_ep2.mp3",
+      "status": "manual-recipe",
+      "role": "Шаг 2: TTS — ручной MCP-вызов Higgsfield generate_audio в чате, кода нет"
+     },
+     {
+      "item": "Стилизация Shorts Studio: кастом-пресет «Marker Doodle Clean» id 97c2b9e9-f39e-4330-b875-d94ce548610c (создан 1 раз из чистого референса без текста; 27кр/прогон; сдвиг +40мс константа) — свидетельство: tg_doodle.json с описанием рецепта",
+      "path": "/Users/maksimpankratov/Projects/finance-panel/claude-scratch/manya_ru/tg_doodle.json",
+      "status": "manual-recipe",
+      "role": "Шаг 4: ручной MCP-вызов shorts_studio_create в чате; кодового/API-пути нет"
+     },
+     {
+      "item": "ffmpeg нарезка mc_video.mp4 → mc_frames/0001-0216.jpg и обратная сборка out_mc/ + mux аудио → manya_reel1_doodle_RU.mp4 (бинарь node_modules/@remotion/compositor-darwin-arm64/ffmpeg с DYLD_LIBRARY_PATH)",
+      "path": "/Users/maksimpankratov/Projects/finance-panel/claude-scratch/manya_ru/mc_frames",
+      "status": "manual-recipe",
+      "role": "Шаги 5 и 7: команды выполнялись в чате и НЕ сохранены как скрипт — рецепт живёт в истории сессии"
+     },
+     {
+      "item": "builder.py — убитый конвейер Тира A; переиспользуемые утилиты: http() curl-обёртка (строки 47-64, UA+backoff 429, вместо urllib из-за отсутствия SSL-цепочки у framework-python), wb_catalog(shard,cat) — catalog.wb.ru v4 с фильтром рейтинг≥4.6/отзывы≥300, wb_card_v4(nms) — card.wb.ru v4 detail, basket_url(nm) — таблица vol→basket-NN + перебор basket-01..32 wbbasket.ru, qc() — машинный QC (длительность/RMS>800/размер), tts() через queue.fal.run ElevenLabs eleven-v3",
+      "path": "/Users/maksimpankratov/Projects/finance-panel/claude-scratch/anya_tierA_killed/builder.py",
+      "status": "dead",
+      "role": "Конвейер мёртв (вердикт владельца «это говно»), но 6 утилит — готовая библиотека для товарных вставок/QC будущего конвейера Ани"
+     },
+     {
+      "item": "native_ru.py — вариант подписей со стиранием EN-букв (маска штрихов + вертикальная интерполяция фона + перерисовка линеек)",
+      "path": "/Users/maksimpankratov/Projects/finance-panel/claude-scratch/manya_ru/native_ru.py",
+      "status": "dead",
+      "role": "Вытеснен путём «чистый пресет без текста» (mc_captions.py); техника стирания рабочая, но не нужна"
+     },
+     {
+      "item": "ru_captions.py — первый вариант подписей на mute-trick источнике notext_muted.mp4",
+      "path": "/Users/maksimpankratov/Projects/finance-panel/claude-scratch/manya_ru/ru_captions.py",
+      "status": "dead",
+      "role": "Superseded; в docstring зафиксирован метод таймингов: «Word pop times = voiced-segment starts from source audio envelope + 0.04s»"
+     },
+     {
+      "item": "Шрифты owner_picks: ofont.ru_Molli Writes.ttf (боевой), Zaychik, spritegraffiti + папки playlist-caps, richie_brusher",
+      "path": "/Users/maksimpankratov/Projects/finance-panel/claude-scratch/manya_ru/fonts/owner_picks/ofont.ru_Molli Writes.ttf",
+      "status": "library",
+      "role": "Ассет шага 6: шрифт подписей, выбран владельцем"
+     },
+     {
+      "item": "ugcStoryboard.ts — источник avatar/voice id: manya_ugc_wb_v1 → avatarLookId f3d97943… (look__manya__10__car_close), voiceId 37832e32… (не используется — липсинк по audio_url)",
+      "path": "/Users/maksimpankratov/Projects/finance-panel/finance-panel/lib/factory/ugcStoryboard.ts",
+      "status": "library",
+      "role": "Реестр идентичности Мани/Ани для шага 3; render.sh ссылается на него"
+     },
+     {
+      "item": "factory-anya-hypothesis-ledger.md — гипотеза, стоп-правила (день 14), бюджет, журнал: история убийства Тира A, поиска HeyGen-ключа и падения по кредитам",
+      "path": "/Users/maksimpankratov/Projects/finance-panel/finance-panel/docs/factory-anya-hypothesis-ledger.md",
+      "status": "spec-only",
+      "role": "Единственный документ рецепта в репо; сам конвейер в репо НЕ представлен — весь код в claude-scratch вне git"
+     },
+     {
+      "item": "Пробные пресеты tests/: test_markerclean/comicburst/comicpop/pinkscribble.mp4 + покадровые контакт-листы — журнал отбора пресета",
+      "path": "/Users/maksimpankratov/Projects/finance-panel/claude-scratch/manya_ru/tests",
+      "status": "manual-recipe",
+      "role": "Свидетельство итераций шага 4 (выбор Marker Doodle Clean); переиспользовать не нужно"
+     }
+    ],
+    "gaps": [
+     "Автогенерации BLOCKS нет нигде: ни whisper/forced-alignment (для t_pop слов), ни scene-detect (для t0/t1), ни face/зоны-детекта (для cy и dark/light) — всё подбирается вручную per-episode; для 30-секундного эпизода 2 это ~3x ручной работы против эпизода 1 (9с)",
+     "Анализ огибающей аудио для стартов слов делался ad-hoc в чате и не сохранён как инструмент — воспроизвести можно только переписав заново",
+     "ffmpeg-команды нарезки кадров (шаг 5) и сборки+mux (шаг 7) не сохранены как скрипты — половина рецепта живёт только в истории чат-сессии",
+     "Шаги 2 (TTS ManyaRef1) и 4 (Shorts Studio) существуют ТОЛЬКО как ручные MCP-вызовы в чате Claude — кодового/API-пути нет, автономный конвейер без человека-оператора Claude невозможен",
+     "Публикация (шаг 9) отсутствует полностью: 0 публикаций, аккаунты не заведены (задачи #11/#12/#15 pending)",
+     "Оркестратора шагов 3→7 нет: после raw_ep2.mp4 никто автоматически не прогонит стилизацию, не нарежет кадры и не соберёт BLOCKS — каждый эпизод собирается руками в сессии",
+     "Двойственность голоса: фактический TTS — Higgsfield-клон ManyaRef1, а builder.py объявляет NASTYA=YjESejviApN7SHrbfnA2 (ElevenLabs) «эксклюзивом Тира B» — два разных маршрута голоса не консолидированы",
+     "Весь рабочий код рецепта лежит в claude-scratch (вне git-репозитория finance-panel) — не версионируется, в репо только док-ledger",
+     "Зависимость от HeyGen сохраняется при известном риске: v2 photo_avatar API умирает 31.10.2026 (render.sh уже на v3/videos, но аватар-группа собиралась на v2)"
+    ],
+    "env_or_blockers": [
+     "HeyGen: ключ НАЙДЕН и рабочий (GET avatar_group → HTTP 200, 112 луков), лежит plaintext в /Users/maksimpankratov/Projects/finance-panel/claude-scratch/anya_ep2/.heygen_key_candidate (54 байта); БЛОКЕР — API-кредиты кончились (MOVIO_PAYMENT_INSUFFICIENT_CREDIT), пополнение = платёжное действие владельца (задача #18)",
+     "FAL_KEY локально отсутствует (есть только в Railway reels-brain) — tts() из builder.py на этой машине не заведётся",
+     "Higgsfield: лимит Plus 1000 кр/мес против 27 кр/прогон Shorts Studio + TTS-генерации; темп 2/день (~1620 кр) превышает лимит почти вдвое (расчёт в ledger)",
+     "ffmpeg — не системный, а бинарь Remotion: node_modules/@remotion/compositor-darwin-arm64/ffmpeg с обязательным DYLD_LIBRARY_PATH на ту же папку",
+     "macOS framework-python без цепочки SSL-сертификатов — все HTTP-вызовы в скриптах идут через curl-обёртку, urllib не работает",
+     "Публичный CloudFront-URL озвучки (d8j0ntlcm91z4.cloudfront.net/...) захардкожен в render.sh — для каждого нового эпизода нужен новый ручной MCP-вызов generate_audio, дающий новый URL"
+    ]
+   },
+   {
+    "summary": "Слой публикации — «спека огромная, код догоняет, но незакоммичен». Четыре дока публикации в текущей ветке ОТСУТСТВУЮТ: живут в ветке feat/publishing-system-spec (коммит c5a65c86), читал через git show. На HEAD реально есть: леджер recordFactoryPublication + валидатор buildPublicationPlan (paid без ad_token=402), авто-draft в factory_publications при OTK-банке (graphRun.ts:1579), живая ручная половина петли V5 (post-metrics → winners → improvementLoop; classifyVerdict:262: winner при market_views>=5000, либо >=2500 при watch_rate>=0.22 ИЛИ watch_rate==null, либо otk_score>=8 && warnings<=1; marketplace_orders/ctr_card/saves НЕ читает — это фича, не баг). Все три бага из спеки подтверждены на HEAD дословно: (1) distribution.ts — normalizeDistributionPlatform без wibes/vk_clips, всё неизвестное → «tiktok» (Wibes-публикация молча мислейблится); (2) metricsPoll.ts — жёсткий union platform: \"tiktok\"|\"instagram\"|\"youtube\"|\"unknown\"; (3) publications.ts:140 — `...(status === \"published\" ? { published_at: now, last_metrics_pull_at: now } : {})` — ложный last_metrics_pull_at, а next_metrics_pull_at никогда не пишется → планировщик опроса метрик мёртв. ВСЕ ТРИ ПОЧИНЕНЫ, но только в НЕЗАКОММИЧЕННОМ рабочем дереве (файлы 05.07 21:51): там же появились контракт ChannelAdapter, полный Pinterest-адаптер (upload→pin→analytics с настоящим watch-time), fleet-модель config jsonb (distributionTargets.ts), диспетч transport=\"api\" в publish route (legacy record-only сохранён) и API-ветка metrics-poll через adapter.pullMetrics — 6/6 новых тестов PASS. Порядок каналов: «TG→VK→Wibes» = старый TL;DR ресёрча; 2026-07-05 владелец реприоритизировал: Pinterest №1 → Telegram «потом» вторым → волна 2 все видео-каналы пачкой (VK/OK/RUTUBE/Дзен/Wibes/TikTok/YT/IG/Threads) → волна 3 текст; гейт выживаемости G2 не снят. reelFormats.ts: 6+1 форматов, REEL_PLATFORM_RULES (wibes 15-30с/хук≤2с/читаемо без звука/артикул со 2с/3-5 постов-нед; vk_clips 15-60с/хук≤3с/3-7; telegram 15-60с/2-5) — в прод-коде НЕ импортируется никем (только тест и комментарий). Критично для Ани: «лицо ≤4с» — НЕ правило платформ, а инвариант товарных UGC-форматов: validateReelFormat даёт ошибку только при requires_blogger=true (лицо = вставка-хук/вердикт, тело = b-roll товара); ugcStoryboard клампит faceDurationSec в 2-4с («keep AI talking-head short» — анти-палево AI-лица); bloggerReelAssembly.mjs режет face_cut_s≈3.5с. Говорящая голова на весь ролик платформами не запрещена, но все текущие сборочные конвейеры её зарежут — для Ани нужен формат в обход инварианта, осознанным решением. Не построено вообще (spec-only): планировщик, claim/callback-мост, autopost-tick, адаптеры TG/VK/Wibes, warmup, кокпит, due-scan по next_metrics_pull_at; runner.py умеет только smoke.",
+    "inventory": [
+     {
+      "item": "Доки публикации (architecture / research / cockpit-TZ / task-pipeline)",
+      "path": "docs/factory-publishing-*.md — только в ветке feat/publishing-system-spec (c5a65c86); в рабочем дереве текущей ветки их НЕТ",
+      "status": "spec-only",
+      "role": "целевая архитектура split-brain, ресёрч каналов, дизайн-ТЗ кокпита (8 экранов), конвейер фаз 0-9 с гейтами G1-G8"
+     },
+     {
+      "item": "buildPublicationPlan + normalizeDistributionPlatform",
+      "path": "/Users/maksimpankratov/Projects/finance-panel/finance-panel/lib/factory/distribution.ts",
+      "status": "library",
+      "role": "валидация плана публикации (paid без ad_token → 402) + словарь платформ; баг wibes/vk_clips→tiktok починен только в незакоммиченном дереве"
+     },
+     {
+      "item": "recordFactoryPublication (леджер публикаций)",
+      "path": "/Users/maksimpankratov/Projects/finance-panel/finance-panel/lib/factory/publications.ts",
+      "status": "library",
+      "role": "единый сток записи в factory_publications + бэк-апдейт node_recipes; фикс next_metrics_pull_at=now+1h / last_metrics_pull_at=NULL — незакоммичен"
+     },
+     {
+      "item": "POST /api/factory/publish",
+      "path": "/Users/maksimpankratov/Projects/finance-panel/finance-panel/app/api/factory/publish/route.ts",
+      "status": "product-route",
+      "role": "на HEAD — record-only стаб; в незакоммиченном дереве — реальный диспетч адаптера за флагом transport=\"api\" (auth→publish→record), legacy record-only сохранён"
+     },
+     {
+      "item": "Контракт ChannelAdapter + Pinterest-адаптер",
+      "path": "/Users/maksimpankratov/Projects/finance-panel/finance-panel/lib/factory/publishAdapters/{types,shared,index,pinterest}.ts (untracked, НЕ закоммичено)",
+      "status": "library",
+      "role": "Phase 1.1 + 3.0.1: единственный реализованный канал; authSession/publish (media upload→wait ready→create pin)/pullMetrics (VIDEO_MRC_VIEW→views, VIDEO_AVG_WATCH_TIME→watch_rate); registry ADAPTERS={pinterest} — TG/VK/Wibes отсутствуют"
+     },
+     {
+      "item": "Pinterest v5 API-клиент",
+      "path": "/Users/maksimpankratov/Projects/finance-panel/finance-panel/lib/factory/pinterestApi.ts (untracked)",
+      "status": "library",
+      "role": "реальные вызовы: register upload, upload asset, wait media, create pin, pin analytics"
+     },
+     {
+      "item": "Fleet-модель + compliance metadata",
+      "path": "/Users/maksimpankratov/Projects/finance-panel/finance-panel/lib/factory/distributionTargets.ts (untracked)",
+      "status": "library",
+      "role": "Phase 1.4/1.5: типизированные хелперы config jsonb (proxy_sid, warmup_stage, health_state, daily_cap, worker_box_id) + erid/is_self_promo; сама таблица factory_distribution_targets не засеяна"
+     },
+     {
+      "item": "jobs/metrics-poll",
+      "path": "/Users/maksimpankratov/Projects/finance-panel/finance-panel/app/api/factory/jobs/metrics-poll/route.ts",
+      "status": "product-route",
+      "role": "на HEAD — пересдача чисел из node_recipes.run_plan (не живые платформы); в дереве добавлен loadPublishedApiMetrics: скан published-рядов → adapter.pullMetrics → post-metrics; НО это не due-scan по next_metrics_pull_at и без затухающего расписания (Phase 8.1 не сделана)"
+     },
+     {
+      "item": "summarizeMetricsPoll (нормализатор)",
+      "path": "/Users/maksimpankratov/Projects/finance-panel/finance-panel/lib/factory/metricsPoll.ts",
+      "status": "library",
+      "role": "нормализация снапшотов метрик; на HEAD union tiktok|instagram|youtube|unknown (баг 1.2b), в дереве расширен до telegram/pinterest/wibes/vk_clips/vk/manual через normalizeDistributionPlatform"
+     },
+     {
+      "item": "post-metrics → winners → improvementLoop (петля V5)",
+      "path": "/Users/maksimpankratov/Projects/finance-panel/finance-panel/app/api/factory/post-metrics/route.ts + app/api/factory/winners + lib/factory/improvementLoop.ts:262",
+      "status": "product-route",
+      "role": "живой ручной ввод метрик → post_metrics + forward в /winners (viral_hooks viability=5); classifyVerdict: winner при market_views>=5000 | >=2500 && (watch_rate null или >=0.22) | otk_score>=8 && warnings<=1; пост на 2600 просмотров-winner = ожидаемо, не баг; marketplace_orders собираются, но НЕ гейтят (расширение = OWNER 9.7)"
+     },
+     {
+      "item": "Авто-draft публикаций при OTK-банке",
+      "path": "/Users/maksimpankratov/Projects/finance-panel/finance-panel/lib/factory/graphRun.ts:1579",
+      "status": "runnable-CLI",
+      "role": "вход контента в очередь: каждый забанкованный рецепт → factory_publications(status='draft', source='graph_run_bank'); но никто не флипает draft→scheduled (планировщика нет)"
+     },
+     {
+      "item": "Telegram-примитивы",
+      "path": "/Users/maksimpankratov/Projects/finance-panel/finance-panel/lib/factory/telegram.ts",
+      "status": "library",
+      "role": "рабочие tgApi('sendVideo')/tgMultipart/tgSendReview — сейчас шлют владельцу на ревью; канального адаптера НЕТ (нет 'telegram' в ADAPTERS); Bot API не читает views — коллектор t.me/s не написан"
+     },
+     {
+      "item": "Реестр рилс-форматов + правила платформ",
+      "path": "/Users/maksimpankratov/Projects/finance-panel/finance-panel/lib/factory/reelFormats.ts",
+      "status": "library",
+      "role": "6 форматов (skeptic_proof, before_after, versus_test, wb_unboxing, silent_test_drive, top_n_finds) + street_interview; REEL_PLATFORM_RULES: wibes 15-30с/хук≤2с/без звука/артикул со 2с/3-5 нед, vk_clips 15-60с/хук≤3с/3-7, telegram 15-60с/3с/2-5; в прод-коде НЕ импортируется никем — «библиотека без вызова», готова кормить планировщик"
+     },
+     {
+      "item": "Правило «лицо ≤4с» (3 точки зашивки)",
+      "path": "reelFormats.ts:318-322 (validateReelFormat, только при requires_blogger) + lib/factory/ugcStoryboard.ts:156-160,216 (clamp 2-4с, 'keep AI talking-head short') + lib/factory/bloggerReelAssembly.mjs:147 (face_cut_s≈3.5)",
+      "status": "library",
+      "role": "инвариант ТОВАРНЫХ/UGC форматов (лицо = вставка-хук, тело = b-roll), анти-палево AI-лица; НЕ платформенное правило — для Ани-говорящей-головы на весь ролик все текущие сборщики зарежут лицо, нужен формат в обход инварианта осознанным решением"
+     },
+     {
+      "item": "Локальный воркер антидетект",
+      "path": "/Users/maksimpankratov/Projects/finance-panel/finance-panel/tools/account-runner/runner.py",
+      "status": "runnable-CLI",
+      "role": "только smoke: ProxyShard sticky-прокси + ShardBrowser профиль + проверка egress-IP; post()/логина/аплоада/heartbeat НЕТ (~10% системы) — блокер Wibes-автопоста"
+     },
+     {
+      "item": "Планировщик, claim/callback, autopost-tick, кокпит, warmup, адаптеры TG/VK/Wibes",
+      "path": "lib/factory/publishScheduler.ts, app/api/factory/publish/{claim,callback}, app/api/factory/jobs/autopost-tick, app/inferno/publishing/ — НЕ СУЩЕСТВУЮТ",
+      "status": "spec-only",
+      "role": "вся автоматическая половина (draft→scheduled→published, флот, календарь, живой монитор) описана в фазах 2,4,5,6,7 и не начата"
+     },
+     {
+      "item": "Контракт-тесты нового слоя публикации",
+      "path": "lib/factory/publishingPhase3Contract.test.mts, distributionPublishContract.test.mts, metricsPoll.test.mts, publications.test.mts, distributionTargets.test.mts, publishAdapters/pinterest.test.mts",
+      "status": "runnable-CLI",
+      "role": "проверял: все 6 PASS (node --import tsx); фиксируют диспетч по transport, скан published-рядов, маппинг Pinterest-метрик"
+     }
+    ],
+    "gaps": [
+     "ВСЯ реализация Phase 1 + Phase 3.0 (фиксы трёх багов, контракт, Pinterest, publish-диспетч, metrics-poll API-ветка) существует ТОЛЬКО как незакоммиченные изменения рабочего дерева ветки feat/product-broll-operator-get-clean (файлы 05.07 21:51, вероятно параллельная сессия) — ни одного коммита, риск потери/затирания при известной проблеме конкурентных редакторов в этом дереве",
+     "4 дока публикации не существуют в текущей ветке (git-status-снапшот сессии показывал их untracked, сейчас в дереве их нет) — канон только в ветке feat/publishing-system-spec",
+     "На HEAD все три бага живы: distribution.ts wibes→'tiktok' (мислейбл Wibes-публикаций), metricsPoll.ts union без telegram/wibes/vk_clips, publications.ts:140 ложный last_metrics_pull_at + мёртвый next_metrics_pull_at — до мёржа рабочего дерева прод работает по-старому",
+     "Поллер метрик даже в дереве НЕ читает next_metrics_pull_at: колонка теперь пишется, но due-scan и затухающее расписание T+1h…T+7d (Phase 8.1) не реализованы — опрос только «последние N published-рядов» при ручном дёргании роута",
+     "Каналов для публикации фактически 1 (Pinterest, ещё не проверен вживую): telegram/vk_clips/wibes адаптеров нет; в ADAPTERS только pinterest; у Telegram есть готовые sendVideo-примитивы, у VK кода нет вообще, Wibes невозможен без локального воркера (нет API, WB-app push 2FA)",
+     "0 реальных публикаций через новый путь — петля V5 по-прежнему голодает (M2 не взят); первый external_post_id ещё не получен",
+     "Планировщика/очереди нет: graphRun создаёт draft-ряды, но draft→scheduled→published никто не флипает; REEL_PLATFORM_RULES (каденсы) не импортируется никем",
+     "Кокпит app/inferno/publishing не существует (Phase 0 дизайн-гейт + Phase 7); операторской «кнопки» нет — только curl/API",
+     "runner.py = smoke-only; claim/callback-моста нет; heartbeat нет; selector-map нет — вся браузерная ветка (Wibes/TikTok/YT/IG/Threads) spec-only",
+     "classifyVerdict не учитывает marketplace_orders (WB-заказы будут собираться, но не гейтить победителя) — сознательный out-of-scope, расширение только через OWNER (Phase 9.7)",
+     "Порядок каналов в памяти «TG→VK→Wibes» устарел: канон после 2026-07-05 — Pinterest №1, Telegram вторым, затем волна 2 (все видео-каналы пачкой), волна 3 текст; при этом research-док внутри себя всё ещё несёт старый TL;DR — читать с поправкой на §1.1 task-pipeline",
+     "Правило «лицо ≤4с» относится к товарным/UGC форматам (requires_blogger-вставки) и качеству AI-лица, НЕ к платформам — но зашито в 3 сборочных места; конвейер Ани-говорящей-головы на весь ролик потребует явного обхода (отдельный формат вне validateReelFormat/ugcStoryboard) — иначе валидатор/кламп зарежут",
+     "Открытый вопрос VK: video.save может класть ролик во вкладку «Видео», а не в ленту Клипов — подтверждать вживую до ставки на канал",
+     "Минимальный путь до полуавтомата «кнопка → TG+VK+Wibes» (~3-4 in-zone PR, без OWNER-cron): (1) закоммитить/влить рабочее дерево; (2) telegramAdapter поверх tgApi('sendVideo', chat_id канала) + регистрация в ADAPTERS + target-ряд — диспетч в publish route уже готов; (3) vkClipsAdapter (video.save 2-фазный + video.get); (4) мини-страница очереди в inferno: список draft-рядов + кнопка «опубликовать» (transport=api для TG/VK) + для Wibes «скачать видео/скопировать описание» → человек постит руками → «отметить опубликованным» (record-only путь publish route уже живой) + просмотры руками через post-metrics (уже живой). Cron не нужен: кнопка = триггер, metrics-poll дёргать вручную"
+    ],
+    "env_or_blockers": [
+     "Pinterest: нужен FACTORY_PINTEREST_ACCESS_TOKEN (или token в config таргета) + board_id + верифицированный Business-аккаунт + аппрув Trial→Standard — разовый онбординг до первого пина",
+     "Telegram: bot token уже используется (ревью владельцу), но нужен публичный канал + бот-админ + chat_id канала в target-ряде; просмотры Bot API не отдаёт — коллектор t.me/s ещё писать",
+     "VK: community-токен со scope video — в кодовой базе VK-кода ноль",
+     "factory_distribution_targets надо засеять вручную (target_id обязателен для transport=api в publish route)",
+     "Vercel cron для scheduler/autopost-tick/metrics-poll — вне зоны контент-завода, OWNER-согласование (vercel.json); для полуавтомата не блокер",
+     "railway_worker_states миграция возможно не применена в целевой БД (ops route несёт p0-action apply_worker_state_table) — блокер heartbeat локального воркера в будущем",
+     "CRON_SECRET/reelsBrainJobAuth для jobs-роутов существует — не блокер",
+     "Конкурентные сессии в одном рабочем дереве (подтверждено памятью deploy-topology и датами файлов) — до любых новых правок слоя публикации сначала закоммитить текущее незакоммиченное состояние"
+    ]
+   },
+   {
+    "summary": "Состояние конвейера ИИ-блогера двухэтажное и несшитое. Внизу — зрелая петля вердикта для «графового» завода V5: graphRun.ts (строка 1597) после банковки ролика зовёт tgSendReview (lib/factory/telegram.ts) — sendVideo владельцу с inline-кнопками «✓ Беру / ✕ Не то» (callback win:/rej:<recipe_id>) и меткой #r<id> в подписи. Вебхук app/api/factory/telegram/route.ts (fail-closed по секрету из токена, только chat_id владельца) принимает кнопки, голос (getFile → fal-whisper → классификация claude-haiku-4-5 с regex-фолбэком) и текст-ответы, маппит на рецепт через #r<id> в reply-to и применяет вердикт: approve → POST /api/factory/winners (content_assets.is_winner + winner_learnings + upsert viral_hooks score=5), reject → /api/factory/reject (cf_signals event='rejected' + generation_history status='rejected'). Голосовой шорт-лист озвучек тоже замкнут (vwin-кнопки/цифры → cf_signals voice_review_selected). Это runnable и задеплоено.\n\nНаверху — блогерский слой (Маня/Аня), и он в эту петлю НЕ включён. bloggerReelRunner.mjs (CLI, dry-run по умолчанию, resume через state.json) при --send-tg шлёт голый sendVideo без кнопок и без #r-метки — ответ владельца некуда парсить, вердикт остаётся устным в чате с Claude. Состояние эпизода/рилса живёт не в БД: паспорта блогеров и look_id — docs/factory-blogger-passports.json, дрилл-петля — docs/factory-blogger-drill-ledger.json (252KB: планы клипов, heygen_video_id, критик-скоры, кэши TTS/degloss), сборка рилсов — docs/factory-blogger-reel-assembly-state.json, а по-рилсовый state.json — в /tmp (вопреки собственному уроку «/tmp — кладбище»). Понятия «episode» в коде нет вообще (grep — 0 hits). bloggerRegistry.ts — статический массив в памяти, роут честно пишет «static until we wire persistent storage».\n\nСтатусные модели в Supabase есть, но чужие: content_assets (analysis.memory_label winner/usable/trash + is_winner) с очередью ревью через /api/factory/feedback-queue (headless, без UI), и factory_publications со статус-машиной draft/scheduled/publishing/published/failed/cancelled (/api/factory/publish). Универсальная очередь задач выключена: jobs/enqueue и jobs/tick — заглушки «disabled for Sprint 1 stability». Итог: для Ани нужно склеить три готовых куска (runner → строка эпизода в БД → tgSendReview → factory_publications); сами куски по отдельности рабочие.",
+    "inventory": [
+     {
+      "item": "HeygenBloggerStudio — schema-driven панель конфига блогера (метрики identity/voice/render/motion, smoke-рендер)",
+      "path": "/Users/maksimpankratov/Projects/finance-panel/finance-panel/app/inferno/heygen-blogger/HeygenBloggerStudio.tsx",
+      "status": "product-route",
+      "role": "поверхность настройки персонажа; не очередь и не ОТК"
+     },
+     {
+      "item": "ProductTwinStudio — студия товарных твинов (1104 строки)",
+      "path": "/Users/maksimpankratov/Projects/finance-panel/finance-panel/app/inferno/product-twins/ProductTwinStudio.tsx",
+      "status": "product-route",
+      "role": "подготовка товарных ассетов; к циклу вердикта блогера не подключена"
+     },
+     {
+      "item": "vendor reels-brain demo/report/portfolio (3 route.ts)",
+      "path": "/Users/maksimpankratov/Projects/finance-panel/finance-panel/app/inferno/vendor/",
+      "status": "product-route",
+      "role": "витринные вендор-страницы, вне конвейера Ани"
+     },
+     {
+      "item": "Telegram-адаптер заводского бота: tgSendReview (sendVideo + кнопки ✓Беру/✕Не то + #r<id>), sendAudio-батчи голосов, вебхук-секрет из токена",
+      "path": "/Users/maksimpankratov/Projects/finance-panel/finance-panel/lib/factory/telegram.ts",
+      "status": "library",
+      "role": "отправка на вердикт; требует numeric recipe_id из node_recipes"
+     },
+     {
+      "item": "Telegram-вебхук: кнопки + голос (fal-whisper → claude-haiku-4-5 parseIntent → applyVerdict) + текст-ответы; fail-closed секрет, только owner chat",
+      "path": "/Users/maksimpankratov/Projects/finance-panel/finance-panel/app/api/factory/telegram/route.ts",
+      "status": "product-route",
+      "role": "приём вердикта владельца — ЗАМКНУТАЯ петля, но только для рецептов V5 (#r<id>)"
+     },
+     {
+      "item": "winners: is_winner + winner_learnings в content_assets + upsert viral_hooks score=5",
+      "path": "/Users/maksimpankratov/Projects/finance-panel/finance-panel/app/api/factory/winners/route.ts",
+      "status": "product-route",
+      "role": "фиксация approve-вердикта в БД + обучение хуков"
+     },
+     {
+      "item": "reject: cf_signals event='rejected' + generation_history status='rejected'",
+      "path": "/Users/maksimpankratov/Projects/finance-panel/finance-panel/app/api/factory/reject/route.ts",
+      "status": "product-route",
+      "role": "фиксация reject-вердикта + анти-паттерн ниши"
+     },
+     {
+      "item": "feedback-queue: приоритизированная очередь ревью из content_assets (disk='gen', analysis.memory_label winner/usable/trash)",
+      "path": "/Users/maksimpankratov/Projects/finance-panel/finance-panel/app/api/factory/feedback-queue/route.ts",
+      "status": "product-route",
+      "role": "единственная существующая «очередь вердикта»; headless API, UI в inferno нет"
+     },
+     {
+      "item": "bloggerReelRunner: артикул → композит (Seedream) → TTS (minimax) → анимация (OmniHuman) → анти-AI ffmpeg → Telegram; dry-run по умолчанию, resume через state.json",
+      "path": "/Users/maksimpankratov/Projects/finance-panel/finance-panel/lib/factory/bloggerReelRunner.mjs",
+      "status": "runnable-CLI",
+      "role": "производство рилса Ани одной командой; state.json в /tmp/ugc-factory-reels/<runId>/, sendVideo БЕЗ кнопок и без #r-метки"
+     },
+     {
+      "item": "bloggerDrillRunner: дрилл-петля качества, кэши TTS/degloss/look, критик-скоры; Telegram sendAudio используется как файлохостинг (send+getFile+delete)",
+      "path": "/Users/maksimpankratov/Projects/finance-panel/finance-panel/lib/factory/bloggerDrillRunner.mjs",
+      "status": "runnable-CLI",
+      "role": "итерации реализма; пишет леджер в репо-файл, вердикт — LLM-критик, не владелец"
+     },
+     {
+      "item": "bloggerReelAssembly: сборка рилсов, b-roll кэш в docs/factory-blogger-reel-assembly-state.json",
+      "path": "/Users/maksimpankratov/Projects/finance-panel/finance-panel/lib/factory/bloggerReelAssembly.mjs",
+      "status": "runnable-CLI",
+      "role": "монтаж эпизода; состояние — файл в репо"
+     },
+     {
+      "item": "voiceTelegramReviewSend: отправка батча озвучек владельцу на выбор",
+      "path": "/Users/maksimpankratov/Projects/finance-panel/finance-panel/lib/factory/voiceTelegramReviewSend.mjs",
+      "status": "runnable-CLI",
+      "role": "голосовой шорт-лист; ответ (vwin-кнопка/цифра) замыкается вебхуком в cf_signals"
+     },
+     {
+      "item": "Паспорта блогеров: voice_id Ани, HeyGen group_id Маня/Вика/Оля, все look_id со статусами",
+      "path": "/Users/maksimpankratov/Projects/finance-panel/finance-panel/docs/factory-blogger-passports.json",
+      "status": "manual-recipe",
+      "role": "хранилище идентичности персонажей — файл в репо, НЕ БД; group_id продублированы хардкодом в раннере"
+     },
+     {
+      "item": "Дрилл-леджер (252KB): планы клипов, heygen_video_id, critic_scores, кэши TTS/degloss/look",
+      "path": "/Users/maksimpankratov/Projects/finance-panel/finance-panel/docs/factory-blogger-drill-ledger.json",
+      "status": "manual-recipe",
+      "role": "фактическое состояние итераций качества — файл в репо, пишется CLI-раннером"
+     },
+     {
+      "item": "bloggerRegistry: статический массив вариантов блогеров, POST роута не персистит («dry-run until persistent storage»)",
+      "path": "/Users/maksimpankratov/Projects/finance-panel/finance-panel/lib/factory/bloggerRegistry.ts",
+      "status": "library",
+      "role": "реестр вариантов блогера — in-memory, состояние теряется на каждом запросе"
+     },
+     {
+      "item": "publish + distribution: леджер factory_publications со статус-машиной draft/scheduled/publishing/published/failed/cancelled",
+      "path": "/Users/maksimpankratov/Projects/finance-panel/finance-panel/lib/factory/distribution.ts",
+      "status": "product-route",
+      "role": "единственная готовая статус-машина публикации; блогерские рилсы в неё не заведены"
+     },
+     {
+      "item": "jobs/enqueue и jobs/tick — заглушки «disabled for Sprint 1 stability»",
+      "path": "/Users/maksimpankratov/Projects/finance-panel/finance-panel/app/api/factory/jobs/enqueue/route.ts",
+      "status": "dead",
+      "role": "универсальная очередь задач — выключена; живы только специализированные cron-тики (reels-brain-*, balances, metrics-poll)"
+     },
+     {
+      "item": "worker-state: heartbeat Railway-воркера из Supabase (WORKER_STATE_TABLE) + диагностика",
+      "path": "/Users/maksimpankratov/Projects/finance-panel/finance-panel/app/api/factory/worker-state/route.ts",
+      "status": "product-route",
+      "role": "мониторинг воркера, не очередь контента"
+     },
+     {
+      "item": "Реально используемые Supabase-таблицы (grep .from()): content_assets (83 вызова суммарно), viral_videos, node_recipes, niche_playbooks, viral_hooks, cf_signals, generation_history, factory_publications, post_metrics, factory_ugc_jobs, factory_personas, reel_variants, brand_kits, service_balances и др.",
+      "path": "/Users/maksimpankratov/Projects/finance-panel/finance-panel/lib/factory/",
+      "status": "library",
+      "role": "хранение состояния завода V5; блогерского/эпизодного состояния среди таблиц НЕТ"
+     }
+    ],
+    "gaps": [
+     "Сущности «эпизод/рилс Ани» нет нигде: ни таблицы в Supabase, ни статус-машины (idea→script→render→review→publish). Состояние размазано: repo-JSON (passports, drill-ledger, assembly-state) + эфемерный /tmp/ugc-factory-reels/<runId>/state.json. Понятие 'episode' в коде отсутствует (grep 0 hits).",
+     "Вердикт по блогерским рилсам НЕ замыкается: bloggerReelRunner --send-tg шлёт голый sendVideo без inline-кнопок и без #r<id> (lib/factory/bloggerReelRunner.mjs:220-232), поэтому ответ владельца не парсится вебхуком — всё устно в чате. Готовая петля tgSendReview→webhook→winners/reject работает только для node_recipes завода V5.",
+     "tgSendReview требует numeric recipe_id из node_recipes — блогерский рилс без строки-рецепта физически не может войти в петлю; нужен мост (строка в node_recipes/content_assets или отдельный тип callback_data).",
+     "Универсальная очередь jobs/enqueue + jobs/tick — мёртвые заглушки; очередь публикации Wibes+TG (задача #15) не построена; factory_publications есть, но блогерский поток в publish не заведён.",
+     "bloggerRegistry — in-memory, эволюция вариантов блогера не персистится (роут сам это декларирует).",
+     "В app/inferno нет ни одной страницы очереди/ОТК/вердикта: только конфиг-панель heygen-blogger, product-twins и vendor-витрины. feedback-queue API — headless, без UI.",
+     "Паспортные group_id захардкожены вторым экземпляром в bloggerReelRunner.mjs (const GROUPS) — расхождение с docs/factory-blogger-passports.json при ротации персонажа никем не ловится.",
+     "Дефолтный out-dir раннера — /tmp (кладбище по их же уроку): при чистке /tmp теряется resume-состояние оплаченных стадий (response_url fal-очередей)."
+    ],
+    "env_or_blockers": [
+     "FACTORY_TG_BOT_TOKEN + FACTORY_TG_CHAT_ID (Vercel) — без них telegram.ts мягко деградирует, вебхук fail-closed игнорит апдейты; секрет вебхука выводится из токена, регистрация — GET /api/factory/telegram?setup=<prod-url>.",
+     "HEYGEN_API_KEY (луки из avatar_group) и FAL_KEY/FAL_BILLING_KEY (Seedream/minimax-TTS/OmniHuman/whisper) — обязательны для bloggerReelRunner; раннер читает .env.production.local/.env.local.",
+     "Supabase admin (getSupabaseAdmin) — вся петля winners/reject/feedback-queue без него отвечает 500 «Supabase не настроен».",
+     "Классификация голос/текст-вердикта использует claude-haiku-4-5 через lib/agent/client; без ключа — regex-фолбэк по русским ключевым словам (работает, но грубее).",
+     "jobs/enqueue и jobs/tick намеренно отключены — любой план «поставить рилс в очередь» упрётся в отсутствие generic-очереди; либо включать их, либо строить на factory_publications/content_assets."
+    ]
+   },
+   {
+    "summary": "Канон принятых решений — docs/factory-anya-hypothesis-ledger.md (подписан 07-05, журнал доведён до записей «07-06»). Зафиксировано владельцем: (1) Тир A (безличный конвейер) убит НАВСЕГДА после первого ролика («это говно»); владелец отклонил даже компромисс совета советов «оставить, но перепозиционировать». (2) Темп: 1–2 рилса/день, ВСЕ с живой Аней (Тир B), без исключений; неделя 1 = 1/день, переход на 2/день с недели 2 только если не сработали стоп-правила. (3) Вердикт владельца на КАЖДЫЙ ролик; его пропускная способность (1–2/день) = весь темп производства, «конвейера без вердикта» больше нет. (4) Главная метрика — досмотр% (норма 20–35%; стабильно >35% у формата → удвоить его долю; <15% у всех — тревога); подписчиков не смотрим 2 недели, продажи не смотрим месяц, монетизация — не цель месяца 1. (5) Стоп-правила дня 14 (~07-19): медиана просмотров <30, ИЛИ ноль попаданий в рекомендации, ИЛИ любой страйк → стоп темпа, откат на 1/день/паузу, пересбор в другой стиль Тира B или «Аня-советчица» (сообщество). (6) Правила Аня↔NORVIA: взаимное неупоминание, никаких общих реквизитов, артикулы NORVIA на общих основаниях, анти-обзоры только с видеофиксацией дефекта и не на прямых конкурентов NORVIA; «виртуальный блогер» в био с первого дня («ок» 07-05). (7) Идентичность: лицо/голос «Manya» продолжаются под именем «Аня» без переобучения (владелец: «сам решай»; эпизод 1 одобрен на этом лице). Ограничения: Higgsfield Plus 1000 кр/мес — 1/день (~810 кр) влезает, 2/день (~1620 кр) требует топ-апа; HeyGen-ключ найден и рабочий (112 луков), но API-кредиты кончились (MOVIO_PAYMENT_INSUFFICIENT_CREDIT) — пополнение = платёжное действие владельца, эпизод 2 стоит ровно на этом; HeyGen v2 photo_avatar API умирает 31.10.2026, интеграционная спека — reference-shape v2; старый потолок 35 000₽/мес невалиден (считан под Тир A+B+C). Manya-план (3/день, TikTok/Reels/Shorts) — предыдущая итерация, конфликтует с ledger по темпу и площадкам; из него живы алгоритмические правила (loop, субтитры, результат-вперёд, ОТК-ворота с запасом кандидатов).",
+    "inventory": [
+     {
+      "item": "Ledger гипотезы Ани — канон решений (гипотеза, темп 1–2/день Тир B, стоп-правила дня 14, бюджет, правила Аня↔NORVIA, журнал вердиктов владельца)",
+      "path": "/Users/maksimpankratov/Projects/finance-panel/finance-panel/docs/factory-anya-hypothesis-ledger.md",
+      "status": "spec-only",
+      "role": "управляющий контракт всего конвейера: темп, метрика, гейты, kill-правила"
+     },
+     {
+      "item": "Контент-план Мани reels-only (3/день, TikTok/Shorts/Reels, 6 рубрик, алгоритмические правила рилсов, смета ~$100-135/мес)",
+      "path": "/Users/maksimpankratov/Projects/finance-panel/finance-panel/docs/factory-manya-content-plan.md",
+      "status": "spec-only",
+      "role": "контент-сетка/форматы; УСТАРЕЛ по темпу и площадкам после пивота на Аню, живы правила спеки рилса (loop, субтитры, результат-вперёд, ОТК-ворота)"
+     },
+     {
+      "item": "ТЗ интеграции HeyGen: пайплайн S0(bootstrap)–S1(identity)–S2(looks)–S3(video)–S4(status/download) + Control Plane (Metric Registry → UI + agent-tool), budget-guard, consent-гейт, идемпотентность",
+      "path": "/Users/maksimpankratov/Projects/finance-panel/finance-panel/docs/factory-ugc-heygen-integration-spec.md",
+      "status": "spec-only",
+      "role": "рендер-стадия говорящей головы; частично реализовано в коде (см. следующую строку)"
+     },
+     {
+      "item": "Реализация HeyGen-контура в коде: heygenBlogger.ts (registry), heygenAgentTool.ts, heygenIdentity.ts, heygenVideo.ts, heygenAvatarGroup.ts + контрактные тесты; структура НЕ совпадает со спекой (нет lib/factory/heygen/stages/, всё плоско)",
+      "path": "/Users/maksimpankratov/Projects/finance-panel/finance-panel/lib/factory/heygenBlogger.ts",
+      "status": "library",
+      "role": "типизированный конфиг блогера + маппинг в HeyGen API (S1–S4)"
+     },
+     {
+      "item": "Runner сборки avatar group (использовался в Фазе 2, когда ключ был живой)",
+      "path": "/Users/maksimpankratov/Projects/finance-panel/finance-panel/lib/factory/heygenAvatarGroupRunner.mjs",
+      "status": "runnable-CLI",
+      "role": "S1 identity: создание/тренировка группы аватара"
+     },
+     {
+      "item": "6-месячный roadmap живости блогера: северная метрика first_2s_human_believability, правило «лицо 2–4с → proof B-roll», rubric/registry/motion loop/market feedback по месяцам",
+      "path": "/Users/maksimpankratov/Projects/finance-panel/finance-panel/docs/factory-ugc-living-blogger-6mo-roadmap-2026-07-01.md",
+      "status": "spec-only",
+      "role": "learning loop качества/анти-AI-эффекта; ограничение «не делать длинные talking-head»"
+     },
+     {
+      "item": "HeyGen-first TZ блогера: пути создания v3 (photo/prompt/digital_twin), карта персонажа Alina, look-матрица 8–12 сцен, QC-рубрика с жёсткими блокерами (лицо ≤2.5с, first-2s AI detection <40), fallback-цепочка HeyGen→Creatify→Tavus",
+      "path": "/Users/maksimpankratov/Projects/finance-panel/finance-panel/docs/factory-ugc-heygen-blogger-tz.md",
+      "status": "spec-only",
+      "role": "стандарты идентичности/луков/QC для говорящей головы (персонаж Alina — предшественник, принципы переносимы на Аню)"
+     },
+     {
+      "item": "Скрипт рендера эпизода 2 (по журналу ledger: «собран и ждёт HEYGEN_API_KEY») — в текущем working tree ОТСУТСТВУЕТ, как и claude-scratch/anya_tierA_killed/",
+      "path": "/Users/maksimpankratov/Projects/finance-panel/finance-panel/claude-scratch/anya_ep2/render.sh",
+      "status": "dead",
+      "role": "запуск рендера эпизода 2; заявленная готовность «одна команда» не верифицируется из этой ветки (claude-scratch не в дереве)"
+     }
+    ],
+    "gaps": [
+     "Точная себестоимость месяца при 100% Тир B не пересчитана — ledger прямо требует «считать заново перед стартом продакшена»; старый потолок 35 000₽/мес невалиден. Не подтверждён владельцем рендер-путь: полный аватар-рендер (~$8–15/видео) vs Higgsfield-стилизация поверх готового липсинка — от этого цифра меняется в разы.",
+     "HeyGen API-кредиты на нуле (MOVIO_PAYMENT_INSUFFICIENT_CREDIT) — производство эпизода 2 остановлено на платёжном действии владельца; план обязан заложить процедуру пополнения/мониторинга баланса, иначе конвейер встаёт молча.",
+     "При темпе 2/день Higgsfield ~1620 кр/мес превышает лимит Plus (1000) почти вдвое — решение топ-ап vs удержание 1/день владельцем не принято.",
+     "Смерть HeyGen v2 photo_avatar API 31.10.2026: интеграционная спека — reference-shape v2, blogger-TZ уже описывает v3-пути, но существующий runner собран на v2; плана миграции v2→v3 с датой нет.",
+     "claude-scratch/anya_ep2/render.sh и claude-scratch/anya_tierA_killed/ не существуют в текущем working tree (ветка feat/product-broll-operator-get-clean) — заявленная в журнале готовность эпизода 2 «одна команда» и факт переноса файлов Тира A не проверяемы; артефакты живут вне git.",
+     "Статус docs/factory-manya-content-plan.md не помечен как устаревший: он предписывает 3/день и TikTok/Reels/Shorts, что противоречит ledger (1–2/день, Wibes/VK) и известным блокировкам каналов (IG запрещён, YT заблокирован, TikTok не грузится); открытый вопрос §11 (язык/аудитория) владельцем так и не решён. План Ани должен явно унаследовать из него только спеку рилса и ОТК-ворота.",
+     "Механизм замера главной метрики (досмотр% на Wibes/VK) не описан ни в одном из четырёх документов — без него стоп-правила дня 14 непроверяемы.",
+     "Открытые вопросы HeyGen-спеки не закрыты: точные v2/v3 пути и фикстуры, политика consent для синтетического лица, лимиты free-плана (720p), реальная цена Avatar IV на текущем тарифе, A/B стабильности идентичности (1 фото vs train-группа).",
+     "Ledger не переносит стандарты качества из roadmap/TZ (лицо ≤2.5–4с, first-2s AI detection <40, запрет длинных talking-head) в явные ворота ОТК Ани — план должен решить, действуют ли они для Тира B формально или остаются на глаз владельца.",
+     "Мелкая аномалия дат: журнал ledger содержит записи «2026-07-06» при текущей дате 2026-07-05 — либо опечатка, либо документ правился с опережением; для аудита хронологии решений стоит уточнить."
+    ],
+    "env_or_blockers": [
+     "HEYGEN_API_KEY: ключ найден и проверен (HTTP 200, 112 луков Мани), но НЕ осел ни в одном .env — локально, в Vercel prod и в обоих Railway-проектах пусто; нужно положить в env.",
+     "HeyGen API-кредиты исчерпаны — рендер падает с MOVIO_PAYMENT_INSUFFICIENT_CREDIT; пополнение биллинга = действие владельца.",
+     "FAL_KEY / ELEVENLABS_API_KEY / HF_CREDENTIALS пустые локально и в Vercel prod (по журналу ledger от 07-06); единственный живой смежный ключ — FAL_KEY в Railway reels-brain (для другой системы).",
+     "Higgsfield Plus: лимит 1000 кр/мес — жёсткая планка для темпа 2/день (~1620 кр).",
+     "Нативные возможности Higgsfield-аккаунта НЕ включают lipsync/avatar-модель (только рестайлинг готового видео и анимация фото) — липсинк остаётся на HeyGen."
+    ]
+   }
+  ],
+  "designs": [
+   {
+    "summary": "Скотч-подход: не строим новую систему, а превращаем уже доказанный рецепт эпизода 1 (manya_reel1_doodle_RU.mp4) в повторяемый ежедневный ритуал, где оператор конвейера — Claude-сессия, а владелец делает только три вещи: вердикт, платежи, публикацию руками. Ни одной новой таблицы в БД, ни одного нового сервиса, ни одного адаптера публикации на старте. Новый код — только четыре маленьких вещи: (1) сохранить в git несохранённые ffmpeg-команды шагов 5 и 7 как скрипты; (2) параметризовать уже рабочие render.sh и mc_captions.py (audio_url и blocks.json аргументами вместо хардкода); (3) mini-тул make_blocks.py (огибающая аудио → t_pop, ffmpeg scdet → склейки сцен, контакт-лист зон) — единственная настоящая инвестиция, без неё 30-секундный эпизод = ~3× ручного тайминга и темп 2/день недостижим; (4) файловый эпизод-леджер в docs/ по образцу drill-ledger. TTS и стилизация остаются ручными MCP-вызовами Higgsfield в сессии (generate_audio голосом ManyaRef1 и shorts_studio_create с пресетом Marker Doodle Clean) — это дёшево, работает и не требует кода. Вердикт недели 1 — обычный sendVideo владельцу и запись словесного ответа в леджер; готовая петля tgSendReview→webhook подключается мостом через строку node_recipes только на неделе 2, если ритм устоялся. Публикация — руками владельца (аккаунтов ещё нет), досмотр% переносится в леджер вручную, петля обучения — еженедельный разбор Claude-сессией по стоп-правилам дня 14. Критический путь до первого опубликованного ролика — не код, а два действия владельца: пополнить кредиты HeyGen и завести аккаунт хотя бы одной площадки.",
+    "pipeline_stages": [
+     {
+      "stage": "1. Выбор темы",
+      "tool": "Claude-сессия предлагает 3–5 тем; фактура WB — утилиты из claude-scratch/anya_tierA_killed/builder.py (wb_catalog, wb_card_v4, basket_url — переносим в git как lib/factory/anya/wb_utils.py)",
+      "automation": "полуавто (Claude предлагает, владелец выбирает в TG/чате)",
+      "notes": "Правила из docs/factory-anya-hypothesis-ledger.md: без NORVIA, артикулы на общих основаниях, анти-обзор только с видеофиксацией дефекта"
+     },
+     {
+      "stage": "2. Сценарий ~30с (75–85 слов)",
+      "tool": "Claude пишет в чате по шаблону claude-scratch/anya_ep2/script.txt; правила рилса из factory-manya-content-plan (результат-вперёд, loop) — наследуем только их",
+      "automation": "ручной (Claude пишет, владелец одобряет)",
+      "notes": "Одобрение сценария ДО трат кредитов — самый дешёвый гейт конвейера"
+     },
+     {
+      "stage": "3. TTS",
+      "tool": "MCP-вызов Higgsfield generate_audio, голос-клон ManyaRef1 (element 15f70843-…) → mp3 + публичный CloudFront-URL",
+      "automation": "полуавто (Claude-сессия, 1 MCP-вызов)",
+      "notes": "Кода не пишем — вызов дёшев и проверен (voice_ep2.mp3 уже готов). URL уходит аргументом в render.sh"
+     },
+     {
+      "stage": "4. Рендер говорящей головы",
+      "tool": "claude-scratch/anya_ep2/render.sh → POST api.heygen.com/v3/videos, engine avatar_iv, look f3d97943d5854f28bda126ad03f02bab, липсинк по audio_url, поллинг → raw.mp4. Параметризовать: audio_url и out-путь аргументами",
+      "automation": "авто (скрипт, запускает Claude-сессия)",
+      "notes": "БЛОКЕР: кредиты HeyGen = 0 (MOVIO_PAYMENT_INSUFFICIENT_CREDIT). Перед рендером — проверка баланса GET-запросом, при нуле — пинг владельцу, а не молчаливый стоп. Говорящая голова на весь ролик — осознанно МИМО validateReelFormat/ugcStoryboard (они клампят лицо до 4с — это инвариант товарных форматов, не Ани)"
+     },
+     {
+      "stage": "5. Стилизация",
+      "tool": "MCP-вызов shorts_studio_create с кастом-пресетом «Marker Doodle Clean» 97c2b9e9-f39e-4330-b875-d94ce548610c (~27 кр)",
+      "automation": "полуавто (Claude-сессия, 1 MCP-вызов)",
+      "notes": "Пресет НЕ пересобирать (собран из референса без текста — иначе движок вошьёт EN-подписи). Сдвиг таймлайна +40мс — константа, учтена в BLOCKS"
+     },
+     {
+      "stage": "6. Нарезка кадров",
+      "tool": "НОВЫЙ frames_cut.sh (восстановить команду из истории эпизода 1): ffmpeg-бинарь node_modules/@remotion/compositor-darwin-arm64/ffmpeg + DYLD_LIBRARY_PATH → mc_frames/NNNN.jpg",
+      "automation": "авто (скрипт)",
+      "notes": "Сейчас команда живёт только в истории чат-сессии — половина рецепта не воспроизводима без этого шага"
+     },
+     {
+      "stage": "7. Тайминги BLOCKS",
+      "tool": "НОВЫЙ make_blocks.py: старты voiced-сегментов из огибающей аудио +0.04с (+40мс сдвиг пресета) → t_pop; ffmpeg scdet → t0/t1 сцен; контакт-лист зон (яркость фона → dark/light чернила, cy) → черновик blocks.json",
+      "automation": "полуавто (скрипт даёт черновик, Claude-сессия редактирует: разбивка на строки, акценты размером)",
+      "notes": "Единственная настоящая инвестиция в код. Без него BLOCKS на 30с = ~3× ручной работы эпизода 1 (9с) — узкое место темпа 1–2/день"
+     },
+     {
+      "stage": "8. RU-подписи",
+      "tool": "claude-scratch/manya_ru/mc_captions.py (шрифт Molli Writes из fonts/owner_picks). Параметризовать: BLOCKS из blocks.json аргументом; TEST_ONLY=1 → контакт-лист для проверки зон перед полным прогоном",
+      "automation": "авто (скрипт)",
+      "notes": "Автоподгон ширины строки (shrink) уже есть в коде"
+     },
+     {
+      "stage": "9. Сборка + mux аудио",
+      "tool": "НОВЫЙ assemble_mux.sh (восстановить из истории): кадры out_mc/ → видео + mux voice.mp3 → final.mp4",
+      "automation": "авто (скрипт)",
+      "notes": "Артефакты — в claude-scratch/anya_epN/ (НЕ /tmp: кладбище), финал дублировать на Я.Диск"
+     },
+     {
+      "stage": "10. Покадровый QC",
+      "tool": "Машинный qc() из builder.py (длительность/RMS>800/размер) + Claude-сессия смотрит контакт-лист (sheet.jpg): артефакты стилизации, подписи не на лице, липсинк",
+      "automation": "полуавто (скрипт + глаза Claude)",
+      "notes": "Полный покадровый QC — часть проверенного рецепта, не срезать (урок Kling: движки врут кадрами)"
+     },
+     {
+      "stage": "11. Вердикт владельца",
+      "tool": "Неделя 1: tgApi('sendVideo') из lib/factory/telegram.ts (FACTORY_TG_BOT_TOKEN/CHAT_ID) с меткой эпизода в подписи; ответ словами → Claude пишет в эпизод-леджер. Неделя 2+: мост в готовую петлю tgSendReview (кнопки ✓/✕) через мини-скрипт, создающий строку node_recipes",
+      "automation": "ручной (владелец), доставка — авто",
+      "notes": "Вердикт на КАЖДЫЙ ролик — решение владельца; его пропускная способность = темп конвейера. Петля webhook→winners/reject уже задеплоена и работает для #r<id>"
+     },
+     {
+      "stage": "12. Публикация",
+      "tool": "Владелец руками (аккаунты Wibes/TG/VK — его pending-задача, канон каналов 07-05: Pinterest №1, TG вторым). Claude готовит пакет: final.mp4 + описание + каденс-подсказка из reelFormats.ts REEL_PLATFORM_RULES (как справка)",
+      "automation": "ручной (владелец)",
+      "notes": "Факт публикации — строка в эпизод-леджере; опционально record-only POST /api/factory/publish (живой на HEAD). Адаптеры/планировщик НЕ строим — незакоммиченный Pinterest-слой параллельной сессии не трогаем"
+     },
+     {
+      "stage": "13. Метрики (досмотр%)",
+      "tool": "Владелец скидывает скрин/цифры натив-аналитики площадки (или Claude читает при доступе) → Claude пишет views + досмотр% в эпизод-леджер; опционально дублирует в живой POST /api/factory/post-metrics",
+      "automation": "ручной ввод (владелец/Claude), запись — Claude",
+      "notes": "Досмотр% — главная метрика обучения (норма 20–35%). Без этого шага стоп-правила дня 14 непроверяемы — механизм замера нигде не был описан, теперь он тут"
+     },
+     {
+      "stage": "14. Петля обучения",
+      "tool": "Еженедельный разбор Claude-сессией по эпизод-леджеру: досмотр% по рубрикам/форматам; >35% стабильно → удвоить долю формата; <15% у всех → тревога; чек стоп-правил дня 14 (медиана <30 просмотров / 0 рекомендаций / страйк → откат на 1/день, пересбор стиля)",
+      "automation": "полуавто (Claude считает и предлагает, владелец решает)",
+      "notes": "Подписчиков не смотрим 2 недели, продажи — месяц. Выводы — записью в docs/factory-anya-hypothesis-ledger.md (канон решений)"
+     }
+    ],
+    "build_order": [
+     {
+      "step": 1,
+      "what": "ВЛАДЕЛЕЦ (параллельно всему): пополнить API-кредиты HeyGen; положить HEYGEN_API_KEY в .env.local (сейчас plaintext-файл в claude-scratch); завести аккаунт хотя бы одной площадки; решить топ-ап Higgsfield (2/день ≈ 1620 кр/мес > лимита Plus 1000)",
+      "effort": "30–60 мин действий владельца; календарно — блокер №1",
+      "unblocks": "стадии 4 (рендер) и 12 (публикация) — весь критический путь до первого ролика"
+     },
+     {
+      "step": 2,
+      "what": "Зафиксировать рецепт в git (ветка feat/anya-episode-pipeline, зона lib/factory/): перенести mc_captions.py, render.sh, wb_utils+qc из builder.py; восстановить из истории и сохранить frames_cut.sh и assemble_mux.sh; README-чеклист прогона эпизода",
+      "effort": "3–5 часов",
+      "unblocks": "воспроизводимость: рецепт перестаёт жить в истории чат-сессии и в неверсионируемом claude-scratch"
+     },
+     {
+      "step": 3,
+      "what": "Параметризовать render.sh (audio_url, look_id, out-путь — аргументы; предполётная проверка баланса HeyGen с пингом владельцу в TG при нуле) и mc_captions.py (blocks.json + пути кадров аргументами)",
+      "effort": "2–3 часа",
+      "unblocks": "запуск нового эпизода без правки кода; конвейер перестаёт вставать молча по деньгам"
+     },
+     {
+      "step": 4,
+      "what": "Эпизод-леджер docs/factory-anya-episode-ledger.json (по образцу drill-ledger): id, тема, сценарий, ссылки артефактов, кредиты HeyGen/Higgsfield, вердикт, ссылка публикации, views, досмотр%. Конвенция артефактов: claude-scratch/anya_epN/ + копия финала на Я.Диск",
+      "effort": "1–2 часа",
+      "unblocks": "стадии 11, 13, 14 (вердикт, метрики, петля обучения) и честный пересчёт себестоимости Тир B, который требует ledger"
+     },
+     {
+      "step": 5,
+      "what": "Прогнать эпизод 2 end-to-end по чеклисту (script.txt и voice_ep2.mp3 уже готовы): рендер → стилизация → подписи → QC → вердикт → владелец публикует руками. Это НЕ демо, а первый боевой прогон процесса",
+      "effort": "0.5–1 день оператора Claude (после шага 1)",
+      "unblocks": "M2: первый опубликованный ролик; первая точка досмотр%; замер фактических кредитов/эпизод"
+     },
+     {
+      "step": 6,
+      "what": "make_blocks.py: огибающая аудио → t_pop (+0.04с +40мс), ffmpeg scdet → t0/t1, контакт-лист зон с яркостью → cy и dark/light. Выход — черновик blocks.json для редакторской правки",
+      "effort": "1–1.5 дня",
+      "unblocks": "темп: BLOCKS на 30с сжимается с ~2–3 часов ручного тыканья до ~20–30 мин правки — без этого 2/день недостижимы"
+     },
+     {
+      "step": 7,
+      "what": "(неделя 2, если ритм устоялся) Мост вердикта: мини-скрипт создаёт строку node_recipes для эпизода → tgSendReview с кнопками ✓Беру/✕Не то → готовый webhook сам пишет winners/reject в БД",
+      "effort": "0.5–1 день",
+      "unblocks": "вердикт перестаёт быть устным; эпизоды Ани входят в существующую БД-петлю V5 без нового UI"
+     },
+     {
+      "step": 8,
+      "what": "(по потребности, не раньше недели 3) Дублирование метрик в post-metrics API + разбор классификатором classifyVerdict; автоматизацию публикации НЕ начинать, пока владелец публикует руками без боли",
+      "effort": "2–4 часа",
+      "unblocks": "эпизоды Ани попадают в winners/viral_hooks — обучение хуков на общих основаниях с заводом V5"
+     }
+    ],
+    "risks": [
+     "Кредиты HeyGen = 0 — конвейер стоит на платёжном действии владельца, и без предполётной проверки баланса (шаг 3) он и дальше будет вставать молча посреди прогона",
+     "Лимит Higgsfield Plus 1000 кр/мес: темп 2/день (~1620 кр) не влезает — решение владельца (топ-ап vs держать 1/день) не принято; при 1/день лимита хватает (~810 кр)",
+     "Bus-factor = Claude-сессия: TTS и стилизация — ручные MCP-вызовы, без оператора-Claude конвейер не едет вообще; для скотч-фазы приемлемо, но рецепты обязаны жить в git (шаг 2), иначе смена сессии = потеря половины пайплайна (уже случилось: аудитор №5 не нашёл anya_ep2 в своём дереве)",
+     "Рабочее дерево ветки feat/product-broll-operator-get-clean содержит чужие незакоммиченные правки слоя публикации (параллельная сессия, файлы 05.07 21:51) — код Ани класть только в отдельную ветку и не трогать publishAdapters/distribution/publications, иначе риск затереть чужую работу",
+     "Пресет «Marker Doodle Clean» — единая точка отказа стилизации: пересборка из референса с текстом вошьёт EN-подписи; между прогонами возможен дрейф стилизации → покадровый QC не срезать",
+     "HeyGen v2 photo_avatar API умирает 31.10.2026: рендер уже на v3/videos, но добавление НОВЫХ луков — на v2; не плодить луки без нужды, план миграции v2→v3 — отдельная задача с дедлайном ~сентябрь",
+     "Аккаунтов площадок нет → досмотр% недоступен до первых публикаций → стоп-правила дня 14 (~07-19) рискуют оказаться непроверяемыми; каждый день без аккаунта сдвигает всю гипотезу",
+     "Себестоимость месяца при 100% Тир B не пересчитана (требование ledger); реальная цена HeyGen avatar_iv 1080p×30с на текущем тарифе неизвестна — замерить на эпизоде 2 и записать в эпизод-леджер до перехода на 2/день",
+     "Все существующие сборщики (validateReelFormat, ugcStoryboard clamp 2–4с, bloggerReelAssembly face_cut 3.5с) режут лицо до 4с — конвейер Ани идёт осознанно МИМО них отдельным путём; попытка «встроить Аню» в bloggerReelRunner сломает формат говорящей головы и потратит дни впустую",
+     "Вердикт недели 1 — устный: до шага 7 история вердиктов живёт только в леджере, который заполняет Claude; пропуск записи = потеря данных для стоп-правил",
+     "30-секундный эпизод без make_blocks.py = ~3× ручного тайминга против 9с эпизода 1 — если шаг 6 отложить, оператор станет узким местом раньше, чем владелец"
+    ]
+   },
+   {
+    "summary": "Конвейер Ани строим как продукт вокруг одной сущности — строки эпизода в Supabase (таблица factory_anya_episodes) со статус-машиной draft→tts→base_render→stylize→captions→qc→verdict→published→metrics. Каждая стадия либо уже существует как проверенный кусок (render.sh на HeyGen v3, mc_captions.py, qc-утилиты builder.py), либо это ручной MCP-вызов Higgsfield (TTS голосом ManyaRef1, Shorts Studio с пресетом Marker Doodle Clean) — для них честный статус «полуавто через Claude-оператора», API-пути нет и притворяться не будем. Оркестратор — anyaEpisodeRunner.mjs по паттерну bloggerDrillRunner: одна команда на эпизод, resume по статусу из БД, паузы awaiting_tts/awaiting_stylize на MCP-стадиях, артефакты в Supabase Storage вместо /tmp. Вердикт владельца на каждый ролик — через уже замкнутую петлю telegram.ts→вебхук: добавляем callback-префикс ep:<id> рядом с win:/rej:, ничего не изобретая. Публикация — руками (аккаунтов нет, решение владельца), кокпит app/inferno/anya даёт «скачать+описание+отметить опубликованным» через живой record-only путь /api/factory/publish и форму досмотра% через живой /api/factory/post-metrics. Главное узкое место масштабирования до 30с эпизодов — ручная таблица BLOCKS для подписей; её закрываем автогенерацией: fal-whisper forced-alignment (+40мс константа уже измерена) + ffmpeg scdet + зоны/чернила. Порядок строительства: сначала закоммитить чужое незакоммиченное дерево publishing-фиксов, потом таблица+перенос рецепта в репо, потом раннер, подписи, вердикт-петля, QC, кокпит, метрики. Итого 8–11 рабочих дней до полного полуавтомата; первый эпизод можно выпустить уже после шага 3, как только владелец пополнит кредиты HeyGen — это единственный жёсткий внешний блокер.",
+    "pipeline_stages": [
+     {
+      "stage": "0. Выбор темы + сценарий (draft)",
+      "tool": "Claude-оператор + утилиты из claude-scratch/anya_tierA_killed/builder.py (wb_catalog/wb_card_v4/basket_url — перенести в lib/factory/anya/wbData.mjs) + правила из docs/factory-anya-hypothesis-ledger.md (без NORVIA, анти-обзор только с видеофиксацией)",
+      "automation": "полуавто (Claude пишет, владелец даёт текст-OK в TG до траты кредитов)",
+      "notes": "Строка в factory_anya_episodes: topic, script_text, format_tag. Дешёвый гейт перед платным рендером: сценарий 30с ≈ 75-85 слов. Эпизоды Ани НЕ проходят через ugcStoryboard/validateReelFormat — инвариант «лицо ≤4с» относится к товарным форматам, говорящая голова на весь ролик идёт своим форматом anya_talking_review осознанно."
+     },
+     {
+      "stage": "1. TTS (tts)",
+      "tool": "MCP-вызов Higgsfield generate_audio, голос-клон ManyaRef1 (element 15f70843-…) → публичный CloudFront-URL → POST /api/factory/anya/stage-result (voice_url, длительность)",
+      "automation": "полуавто (Claude через MCP — кодового/API-пути у Higgsfield-клона нет, проверено)",
+      "notes": "Дёшево. mp3 сразу дублируется в Supabase Storage (урок «/tmp — кладбище», CloudFront-URL временный). Машинный QC аудио — qc() из builder.py: длительность/RMS>800/размер."
+     },
+     {
+      "stage": "2. Говорящая голова (base_render)",
+      "tool": "lib/factory/anyaHeygenRender.mjs — параметризованный перенос claude-scratch/anya_ep2/render.sh: POST api.heygen.com/v3/videos, engine avatar_iv, avatar_id f3d97943d5854f28bda126ad03f02bab (car_close), audio_url, поллинг → raw.mp4",
+      "automation": "авто (скрипт одной командой; запускает runner)",
+      "notes": "БЛОКЕР сейчас: кредиты HeyGen API = 0 (MOVIO_PAYMENT_INSUFFICIENT_CREDIT), ключ рабочий (200 на чтении), пополнение — платёжное действие владельца. Ключ положить в .env.local — сейчас он plaintext в claude-scratch. Рендер уже на v3 (v2-смерть 31.10.2026 бьёт только по заливке новых луков)."
+     },
+     {
+      "stage": "3. Стилизация (stylize)",
+      "tool": "MCP-вызов shorts_studio_create с кастом-пресетом «Marker Doodle Clean» 97c2b9e9-f39e-4330-b875-d94ce548610c → результат-URL → stage-result",
+      "automation": "полуавто (Claude через MCP; API-пути нет)",
+      "notes": "~27 кр/прогон, сдвиг таймлайна +40мс — константа. Пресет собран из референса БЕЗ текста — это спасает от вшитых EN-подписей, не пересоздавать. Бюджет-гвард: runner отказывает, если проекция месяца > лимита Plus 1000 кр (1/день ≈ 810 кр влезает, 2/день ≈ 1620 — нет)."
+     },
+     {
+      "stage": "4. RU-подписи + сборка (captions)",
+      "tool": "lib/factory/anyaCaptions/: (а) генератор BLOCKS — fal-whisper forced-alignment по известному сценарию (+40мс) для t_pop, ffmpeg scdet для t0/t1 сцен, face-detect+яркость зоны для cy и dark/light чернил; (б) mc_captions.py (перенос из claude-scratch/manya_ru/, шрифт Molli Writes); (в) сохранённые ffmpeg-скрипты нарезки кадров и сборки+mux (Remotion-бинарь, DYLD_LIBRARY_PATH)",
+      "automation": "авто после постройки генератора; редакторская разбивка на строки/акценты — Claude-оператор с превью-контактлистом",
+      "notes": "Сегодня BLOCKS на 100% ручной — это главное узкое место (30с эпизод = 3x ручной работы против эпизода 1). Автогенерация обязательна до темпа 1/день. Шаги 5 и 7 старого рецепта (ffmpeg-команды) жили только в истории чата — зафиксировать как скрипты в репо."
+     },
+     {
+      "stage": "5. Покадровый QC (qc)",
+      "tool": "lib/factory/anyaQc.mjs: кадровая полоса (паттерн bloggerDrillRunner) + машинные проверки qc() из builder.py + vision-чеклист Claude (EN-текст, артефакты рук/лица, дрейф липсинка, читаемость подписей)",
+      "automation": "полуавто (скрипт + Claude-оператор; qc_report_json в строку эпизода)",
+      "notes": "Гейт перед отправкой владельцу — не тратить его пропускную способность (1-2 вердикта/день = весь темп) на брак. qc_failed → откат на нужную стадию с сохранением оплаченных артефактов."
+     },
+     {
+      "stage": "6. Вердикт владельца (verdict)",
+      "tool": "tgSendEpisodeReview в lib/factory/telegram.ts (sendVideo + inline-кнопки ✓Беру/✕Не то, callback ep:<episode_id> рядом с win:/rej:) + ветка в app/api/factory/telegram/route.ts → approved/rejected в factory_anya_episodes; approve дополнительно форвардит хук в /api/factory/winners (viral_hooks)",
+      "automation": "авто-доставка и парсинг; решение — только владелец, на КАЖДЫЙ ролик (зафиксировано)",
+      "notes": "Петля кнопки+голос+текст уже замкнута для node_recipes (#r<id>) — переиспользуем вебхук, tgSendReview требует numeric recipe_id, поэтому эпизодам нужен свой префикс. Голосовой вердикт (fal-whisper → haiku parseIntent) достаётся бесплатно."
+     },
+     {
+      "stage": "7. Публикация (published)",
+      "tool": "Кокпит app/inferno/anya: кнопка «скачать видео + скопировать описание» → владелец/оператор постит руками (аккаунтов Wibes/TG/VK ещё нет — задача владельца) → «отметить опубликованным» → POST /api/factory/publish (живой record-only путь) → factory_publications",
+      "automation": "ручной (решение владельца: первые публикации руками; автопост Wibes невозможен — нет API)",
+      "notes": "До этого — закоммитить незакоммиченные фиксы: на HEAD normalizeDistributionPlatform мапит wibes→'tiktok' (мислейбл), publications.ts пишет ложный last_metrics_pull_at. Адаптеры каналов (TG sendVideo и далее) — следующая очередь после появления аккаунтов, диспетч transport=api уже готов в дереве."
+     },
+     {
+      "stage": "8. Метрики + петля обучения (metrics)",
+      "tool": "Форма в кокпите → живой /api/factory/post-metrics (market_views, watch_rate=досмотр%) → post_metrics; rollup-дашборд в кокпите: досмотр по форматам (норма 20-35%, >35% стабильно → удвоить долю формата, <15% у всех → тревога) + гейдж стоп-правил дня 14 (медиана <30 просмотров / 0 рекомендаций / страйк)",
+      "automation": "полуавто (цифры вводятся руками — у Wibes/VK нет API собственной статистики на старте; classifyVerdict уже учитывает watch_rate>=0.22)",
+      "notes": "Подписчиков не смотрим 2 недели, продажи — месяц (решения владельца). Недельный дайджест владельцу в TG через готовый tgApi."
+     }
+    ],
+    "build_order": [
+     {
+      "step": 0,
+      "what": "Закоммитить незакоммиченное рабочее дерево publishing-слоя (фиксы distribution.ts/metricsPoll.ts/publications.ts + publishAdapters/pinterest + distributionTargets) отдельным PR — 6 контракт-тестов уже PASS",
+      "effort": "2-4 часа",
+      "unblocks": "Безопасная база: конкурентная сессия уже сталкивалась в этом дереве, риск затирания реален; фикс wibes→tiktok нужен до первой записи публикации Ани"
+     },
+     {
+      "step": 1,
+      "what": "Таблица factory_anya_episodes + bucket в Supabase Storage (через Supabase MCP, с явного OK владельца — миграции вне мандата зоны) + lib/factory/anyaEpisodes.ts: типизированные CRUD/статус-переходы по паттерну distributionTargets.ts",
+      "effort": "0.5-1 день",
+      "unblocks": "Спина конвейера; всё остальное пишет в неё; конец эпохи state в /tmp и repo-JSON"
+     },
+     {
+      "step": 2,
+      "what": "Перенос проверенного рецепта из claude-scratch в репо: render.sh → anyaHeygenRender.mjs (параметризован), mc_captions.py + шрифт Molli Writes, восстановленные ffmpeg-скрипты нарезки/сборки/mux, qc()+wb_* утилиты из builder.py; HEYGEN_API_KEY → .env.local",
+      "effort": "1 день",
+      "unblocks": "Рецепт версионируется и воспроизводим не из истории чата; эпизод 2 запускается одной командой сразу после пополнения HeyGen"
+     },
+     {
+      "step": 3,
+      "what": "anyaEpisodeRunner.mjs — оркестратор по паттерну bloggerDrillRunner: читает эпизод из БД, гонит стадии 2→7, паузы awaiting_tts/awaiting_stylize под MCP-вызовы, stage-result роут для возврата URL, артефакты в Storage, resume после падений",
+      "effort": "1-2 дня",
+      "unblocks": "Эпизод = одна команда + два MCP-вызова; можно выпускать 1/день недели 1 руками Claude-оператора"
+     },
+     {
+      "step": 4,
+      "what": "Автогенерация BLOCKS: fal-whisper forced-alignment (t_pop, +40мс) + ffmpeg scdet (t0/t1) + зоны/чернила (cy, dark/light); mc_captions.py читает сгенерированный blocks.json",
+      "effort": "1-2 дня",
+      "unblocks": "Главное узкое место: без этого 30с эпизод = 3x ручной работы и темп 1-2/день недостижим"
+     },
+     {
+      "step": 5,
+      "what": "Вердикт-петля эпизодов: tgSendEpisodeReview (callback ep:<id>) в lib/factory/telegram.ts + ветка в вебхуке app/api/factory/telegram/route.ts → статус в БД + форвард approve-хука в winners",
+      "effort": "0.5-1 день",
+      "unblocks": "Вердикт владельца на каждый ролик фиксируется в БД, а не устно в чате; кнопки/голос/текст работают из коробки"
+     },
+     {
+      "step": 6,
+      "what": "anyaQc.mjs: кадровая полоса + машинные проверки + vision-чеклист, qc_report_json, откат qc_failed на нужную стадию",
+      "effort": "1 день",
+      "unblocks": "Брак не доходит до владельца; его 1-2 вердикта/день тратятся только на кандидатов"
+     },
+     {
+      "step": 7,
+      "what": "Кокпит app/inferno/anya: паспорт Ани (group fc29c149, look f3d97943, голос ManyaRef1, пресет 97c2b9e9), очередь эпизодов по статусам, деталка с артефактами и QC, publish-чеклист (скачать/описание/отметить), форма метрик, дашборд стоп-правил дня 14, бюджет-панель кредитов HeyGen+Higgsfield",
+      "effort": "2-3 дня",
+      "unblocks": "Операторская поверхность вместо curl; стоп-правила дня 14 становятся проверяемыми; видно, где конвейер встал (кредиты/вердикт)"
+     },
+     {
+      "step": 8,
+      "what": "Rollup петли обучения: агрегация досмотра% по форматам из post_metrics, правило «>35% → удвоить долю», недельный TG-дайджест владельцу",
+      "effort": "1 день",
+      "unblocks": "Метрика обучения (досмотр%) реально управляет контент-планом, а не лежит в таблице"
+     }
+    ],
+    "risks": [
+     "HeyGen кредиты = 0 — единственный жёсткий блокер производства (эпизод 2 стоит ровно на этом); пополнение = платёжное действие владельца; без монитора баланса в кокпите конвейер будет вставать молча",
+     "Две стадии (TTS ManyaRef1, Shorts Studio) существуют только как MCP-вызовы — полный автопилот без Claude-оператора невозможен; если Higgsfield API откроет их программно, заменить, но не закладываться на это",
+     "Higgsfield Plus 1000 кр/мес: темп 2/день (~1620 кр) с недели 2 требует топ-апа — решение владельца не принято; бюджет-гвард в раннере обязателен, иначе стилизация упрётся в лимит посреди месяца",
+     "Таблица factory_anya_episodes = миграция БД, формально вне мандата контент-завода — нужно явное OK владельца до шага 1; fallback (repo-JSON леджер) хуже, но не блокирует шаги 2-4",
+     "Незакоммиченное рабочее дерево publishing-фиксов от параллельной сессии — риск затирания при любой правке слоя; шаг 0 строго первым",
+     "Аккаунтов Wibes/TG/VK нет (задача владельца) — без них стадии published/metrics пусты и стоп-правила дня 14 (~07-19) не могут начать отсчёт; конвейер готов раньше каналов — эскалировать владельцу как критический путь",
+     "Пропускная способность владельца (вердикт на каждый ролик) = весь темп; очередь >2 эпизодов в verdict_pending бессмысленна — раннер не должен разгонять генерацию впереди вердиктов",
+     "Стоп-правила дня 14 могут пересобрать формат (другой стиль Тира B / «Аня-советчица») — не инвестировать в автоматизацию сверх шагов 0-8 до прохождения гейта; статус-машина переживёт смену формата, стилизация/подписи — возможно нет",
+     "HeyGen v2 photo_avatar API умирает 31.10.2026: рендер уже на v3, но заливка новых луков Ани — на v2; если понадобятся новые луки после октября, нужна миграция на v3-пути заранее",
+     "ffmpeg = бинарь Remotion с DYLD_LIBRARY_PATH, python = framework без SSL (всё через curl-обёртку) — конвейер привязан к этому Mac; перенос на Railway-воркер потребует ревизии окружения",
+     "Правило «лицо ≤4с» зашито в validateReelFormat/ugcStoryboard/bloggerReelAssembly — эпизоды Ани идут строго мимо этих сборщиков; случайное прогонение через них зарежет говорящую голову",
+     "Метрики досмотра вводятся руками (у Wibes/VK нет API статистики) — при 2/день на 3+ каналах ручной ввод начнёт проседать; коллектор t.me/s для TG-просмотров — кандидат на автоматизацию после гейта дня 14"
+    ]
+   },
+   {
+    "summary": "Подход: не «автозавод», а операторский конвейер с двумя несжимаемыми ручными точками (вердикт владельца, покадровый QC) и максимальной автоматизацией всего между ними. Основа — уже доказанный рецепт эпизода 1: сценарий → TTS (Higgsfield ManyaRef1) → HeyGen avatar_iv → Shorts Studio «Marker Doodle Clean» → RU-подписи mc_captions.py → QC → TG владельцу. Первый шаг — не строить новое, а «захватить» рецепт: половина шагов живёт как несохранённые ffmpeg-команды и ручные MCP-вызовы в истории чата; их надо превратить в параметризованные скрипты в lib/factory/anya/ (зона контент-завода), с manifest.json на эпизод и pre-flight чеком баланса HeyGen (уже упёрлись в MOVIO_PAYMENT_INSUFFICIENT_CREDIT молча). Затем 2-4 эпизода прогоняются руками по захваченному рецепту — это gate для любых инвестиций: формат может умереть от вердикта, как Тир A. Единственная большая автоматизация месяца — blocks_gen.py (forced-alignment по известному тексту + scene-detect + face/luma-зоны → авто-драфт BLOCKS), потому что ручные тайминги подписей — это ×3 на 30-секундном эпизоде и главный убийца темпа 2/день. Публикация и метрики — руками (аккаунтов нет, свежие аккаунты = warmup-период), но факт публикации и досмотр% с первого дня пишутся в живые роуты publish (record-only) и post-metrics — иначе стоп-правила дня 14 непроверяемы. Планировщик, адаптеры каналов, автопост и кокпит сознательно НЕ строятся до 14 дней выживших ручных публикаций. Страховка липсинка — OmniHuman-1.5 через fal (код уже в репо), активируется только по экономике или к смерти HeyGen v2 (луки залить пачкой до сентября). Outside view: такие конвейеры умирают не от рендера, а от «производство без дистрибуции» — собственная история завода (237 генераций/день, 0 публикаций) это уже доказала.",
+    "pipeline_stages": [
+     {
+      "stage": "1. Выбор темы",
+      "tool": "Бэклог тем в docs/factory-anya-hypothesis-ledger.md + фактура из утилит builder.py (wb_catalog/wb_card_v4 — переиспользовать из убитого Тира A как библиотеку, не как конвейер)",
+      "automation": "полуавто (Claude предлагает 5-7 тем пачкой, владелец выбирает раз в неделю — не грузить его каждый день)",
+      "notes": "Правила ledger жёсткие: без NORVIA, анти-обзоры только с видеофиксацией. Пачка тем на неделю экономит пропускную способность владельца для вердиктов по видео."
+     },
+     {
+      "stage": "2. Сценарий (~75-80 слов на 30с)",
+      "tool": "Claude в сессии; референс claude-scratch/anya_ep2/script.txt; правила из factory-manya-content-plan.md (loop, результат-вперёд, хук ≤2с) — унаследовать только спеку рилса",
+      "automation": "полуавто (Claude пишет, владелец одобряет ТЕКСТ до рендера)",
+      "notes": "Вердикт по тексту дешевле вердикта по видео: убить сценарий = 0₽, убить готовый ролик = ~810 кр Higgsfield + кредиты HeyGen. Не автоматизировать тон: вкус владельца ещё не откалиброван (Тир A убит именно вкусом)."
+     },
+     {
+      "stage": "3. TTS",
+      "tool": "MCP Higgsfield generate_audio, голос-клон ManyaRef1 (element 15f70843-…) → mp3 + публичный CloudFront-URL",
+      "automation": "полуавто (Claude-оператор в сессии; headless-пути нет — MCP живёт только в чате)",
+      "notes": "Зафиксировать ManyaRef1 как ЕДИНСТВЕННЫЙ канон голоса Ани — сейчас два стека (ElevenLabs NASTYA в drill vs Higgsfield-клон) и дрейф идентичности. URL озвучки писать в manifest эпизода."
+     },
+     {
+      "stage": "4. Липсинк-рендер (говорящая голова)",
+      "tool": "claude-scratch/anya_ep2/render.sh → параметризовать в lib/factory/anyaEpisodeRunner.mjs (HeyGen POST /v3/videos, engine avatar_iv, look f3d97943…, audio_url, поллинг). Референс кода: buildHeyGenPayload из bloggerLearningLoopRunner.mjs",
+      "automation": "авто (одна команда), но с обязательным pre-flight: GET remaining_quota перед рендером + TG-алерт при низком балансе",
+      "notes": "СЕЙЧАС ЗАБЛОКИРОВАН: кредиты HeyGen = 0, пополнение = платёжное действие владельца. Рендер уже на v3 — смерть v2 API 31.10.2026 бьёт только по заливке НОВЫХ луков (heygenAvatarGroupRunner.mjs собран на v2)."
+     },
+     {
+      "stage": "5. Стилизация",
+      "tool": "MCP shorts_studio_create, кастом-пресет «Marker Doodle Clean» 97c2b9e9-f39e-4330-b875-d94ce548610c; константа сдвига +40мс",
+      "automation": "полуавто (Claude-оператор; API-пути в коде нет)",
+      "notes": "27 кр/прогон. Пресет НЕ пересоздавать — он собран из референса без текста, иначе движок копирует EN-подписи (доказано тестами). Лимит Plus 1000 кр/мес: 1/день влезает, 2/день (~1620 кр) требует решения владельца о топ-апе."
+     },
+     {
+      "stage": "6. Нарезка кадров",
+      "tool": "ПОСТРОИТЬ frames.sh: обёртка над Remotion-ffmpeg (node_modules/@remotion/compositor-darwin-arm64/ffmpeg + DYLD_LIBRARY_PATH)",
+      "automation": "авто после захвата (сейчас — несохранённые команды в истории чата, рецепт живёт в памяти сессии)",
+      "notes": "Часть шага 1 плана строительства. Команды уже выполнялись для эпизода 1 — работа = записать их в скрипт, не изобрести."
+     },
+     {
+      "stage": "7. RU-подписи",
+      "tool": "claude-scratch/manya_ru/mc_captions.py (PIL, Molli Writes, pop-in) + ПОСТРОИТЬ blocks_gen.py: whisper/forced-alignment по ИЗВЕСТНОМУ тексту сценария → t_pop (+40мс); ffmpeg scdet → t0/t1 сцен; face-detect + яркость зоны → cy и dark/light чернил",
+      "automation": "сейчас ручной (BLOCKS per-episode руками — главное узкое место); после blocks_gen.py — полуавто (авто-драфт, Claude правит разбивку строк и акценты)",
+      "notes": "На 30с эпизоде ручные BLOCKS = ×3 против эпизода 1 (9с). Это стадия, которая физически не даёт выйти на 2/день. Автоподгон ширины строк (shrink) уже в коде."
+     },
+     {
+      "stage": "8. Сборка кадров + mux аудио",
+      "tool": "ПОСТРОИТЬ assemble.sh (тот же Remotion-ffmpeg)",
+      "automation": "авто после захвата",
+      "notes": "Вторая несохранённая половина рецепта. Выход — финальный mp4 в claude-scratch/anya_epN/ (не /tmp — кладбище)."
+     },
+     {
+      "stage": "9. Машинный QC",
+      "tool": "qc() из claude-scratch/anya_tierA_killed/builder.py (длительность/RMS>800/размер) + авто-генерация контакт-листов (паттерн check/sheet_mc.jpg)",
+      "automation": "авто",
+      "notes": "Ловит только грубый брак (тишина, обрыв, битый файл). Утилиты Тира A переиспользуются как библиотека — сам Тир A мёртв, код-кирпичи живы."
+     },
+     {
+      "stage": "10. Покадровый QC",
+      "tool": "Claude-оператор глазами по контакт-листам + выборочный просмотр",
+      "automation": "полуавто. НЕ автоматизировать сейчас",
+      "notes": "Причина: таксономия дефектов не накоплена (EN-подписи из пресета, doodle-артефакты, липсинк-дрейф, AI-руки/зубы, развороты как у Kling). Автоматический классификатор без размеченных примеров = пропущенный брак у владельца = подрыв доверия к конвейеру. Пересмотреть после ~30 эпизодов как pre-filter, не замену."
+     },
+     {
+      "stage": "11. Вердикт владельца",
+      "tool": "Сейчас: sendVideo через FACTORY_TG_BOT. Позже (шаг 6 плана): мост в готовую петлю tgSendReview (lib/factory/telegram.ts) — inline-кнопки ✓Беру/✕Не то + #r-метка → вебхук app/api/factory/telegram → winners/reject",
+      "automation": "ручной НАВСЕГДА — решение владельца (вердикт на КАЖДЫЙ ролик), это не долг, а механизм калибровки вкуса; его пропускная способность = весь темп конвейера",
+      "notes": "Петля кнопок уже построена и задеплоена для рецептов V5 — блогерский рилс в неё не заведён (нужен numeric recipe_id). До моста вердикты фиксировать в журнале ledger руками, иначе теряются в чате."
+     },
+     {
+      "stage": "12. Публикация",
+      "tool": "Руками владельца/оператора (аккаунтов Wibes/TG/VK ещё НЕТ — задача владельца). Факт публикации сразу писать: POST /api/factory/publish record-only → factory_publications (путь на HEAD живой)",
+      "automation": "ручной по решению владельца («первые публикации руками») + авто-леджер факта",
+      "notes": "Ручной период = не долг, а warmup свежих аккаунтов: автопост AI-контента с нулевого аккаунта = бан-риск. «Виртуальный блогер» в био с первого дня (ок владельца 07-05). Любой страйк = стоп-правило дня 14."
+     },
+     {
+      "stage": "13. Метрики (досмотр%)",
+      "tool": "Владелец/оператор снимает цифры из студии площадки → POST /api/factory/post-metrics (живой роут, watch_rate уже в модели; classifyVerdict учитывает watch_rate>=0.22)",
+      "automation": "полуавто (человек читает цифры — API площадок нет; Claude постит в роут и считает медианы)",
+      "notes": "Без этого стоп-правила дня 14 (медиана <30 просмотров, ноль рекомендаций, страйк) непроверяемы. Норма досмотра 20-35%; >35% у формата → удвоить долю; <15% у всех — тревога."
+     },
+     {
+      "stage": "14. Петля обучения",
+      "tool": "Еженедельный разбор: watch% по форматам из post_metrics → правки бэклога тем и сценарной спеки; победители → /api/factory/winners (viral_hooks score=5); журнал в factory-anya-hypothesis-ledger.md",
+      "automation": "полуавто (Claude считает и предлагает, владелец решает про доли форматов)",
+      "notes": "Подписчиков не смотрим 2 недели, продажи — месяц (решение владельца). Единственная метрика обучения месяца 1 — досмотр%."
+     }
+    ],
+    "build_order": [
+     {
+      "step": 0,
+      "what": "Гигиена дерева и секретов: забэкапить незакоммиченный publishing-слой рабочего дерева (ветка/коммит — там единственные копии фиксов distribution/metricsPoll/publications и Pinterest-адаптера), перенести HeyGen-ключ из plaintext-файла .heygen_key_candidate в .env.production.local",
+      "effort": "~1 час",
+      "unblocks": "Безопасную работу в дереве с подтверждённой проблемой конкурентных сессий; ключ перестаёт лежать открытым текстом"
+     },
+     {
+      "step": 1,
+      "what": "Захват рецепта в код: несохранённые ffmpeg-команды (нарезка, сборка+mux) → frames.sh/assemble.sh; параметризация render.sh (audio_url/look/out как аргументы) → lib/factory/anyaEpisodeRunner.mjs; конвенция папки claude-scratch/anya_epN/ с manifest.json (сценарий, URL озвучки, id рендеров, статусы стадий); перенос mc_captions.py и утилит builder.py в репо-зону контент-завода",
+      "effort": "0.5-1 день",
+      "unblocks": "Эпизод воспроизводим без истории чат-сессии; следующий эпизод = ~5 команд вместо археологии; код версионируется"
+     },
+     {
+      "step": 2,
+      "what": "Pre-flight и деньги: чек баланса HeyGen (GET remaining_quota) перед каждым рендером + TG-алерт при низком балансе; аналогичный учёт кредитов Higgsfield в manifest. ПАРАЛЛЕЛЬНО владелец: пополнить кредиты HeyGen (эпизод 2 стоит ровно на этом) и завести аккаунты площадок",
+      "effort": "2-3 часа кода + платёжное/аккаунт-действия владельца (вне нашего контроля)",
+      "unblocks": "Рендер эпизода 2; конвейер перестаёт вставать молча — падение по деньгам становится алертом, а не археологией"
+     },
+     {
+      "step": 3,
+      "what": "Эпизоды 2-4 руками по захваченному рецепту, темп 1/день, все через полный QC и вердикт владельца; вердикты и досмотр% — в журнал ledger. GATE для всего дальнейшего: формат «Marker Doodle» должен пережить вердикты (Тир A умер именно здесь)",
+      "effort": "3-4 календарных дня, ~1-1.5 часа операторской работы на эпизод (BLOCKS вручную — терпим на 3 эпизодах)",
+      "unblocks": "Доказательство формата до инвестиций в автоматизацию; накопление таксономии дефектов для QC; первые публикации (если аккаунты готовы)"
+     },
+     {
+      "step": 4,
+      "what": "blocks_gen.py — авто-драфт BLOCKS: forced-alignment по известному тексту сценария → t_pop слов (+40мс константа), ffmpeg scdet → t0/t1 сцен, face-detect+luma → cy и выбор чернил; Claude правит только разбивку строк и акценты. GATE: строить только если эпизоды 2-3 прошли вердикт",
+      "effort": "1-2 дня (честно: alignment на русском + подбор порогов scdet потребуют итераций на реальных эпизодах)",
+      "unblocks": "Снимает ×3 ручной работы на 30с эпизоде — единственный шаг, который делает темп 2/день физически возможным"
+     },
+     {
+      "step": 5,
+      "what": "Леджер публикаций и метрик: запись каждой ручной публикации через publish record-only в factory_publications + ввод досмотра% через post-metrics + скриптик проверки стоп-правил дня 14 (медиана просмотров, рекомендации, страйки). GATE: аккаунты созданы владельцем и есть ≥1 публикация",
+      "effort": "0.5 дня (оба роута уже живые, работа = обвязка и дисциплина ввода)",
+      "unblocks": "Стоп-правила дня 14 становятся проверяемыми данными, а не ощущениями; петля обучения получает первые цифры"
+     },
+     {
+      "step": 6,
+      "what": "Мост вердикта в TG-кнопки: строка эпизода в БД (node_recipes или content_assets) → tgSendReview с ✓/✕ и #r-меткой → существующий вебхук → winners/reject. GATE: ≥5 эпизодов (раньше устный вердикт в чате дешевле кода)",
+      "effort": "~1 день (петля целиком построена для V5, работа = завести блогерский рилс в неё)",
+      "unblocks": "Вердикты перестают теряться в чате, пишутся в БД, кормят viral_hooks; владелец жмёт кнопку за 5 секунд"
+     },
+     {
+      "step": 7,
+      "what": "Страховка липсинка: (а) до 01.09.2026 залить пачкой все нужные луки Ани через v2-путь (heygenAvatarGroupRunner.mjs), пока v2 жив; (б) A/B-тест OmniHuman-1.5 через fal (код уже в bloggerReelRunner.mjs) на одном готовом аудио против HeyGen-рендера. GATE активации: экономика HeyGen ломается (кредиты дороже плана) ИЛИ календарь 01.09; внешние Hedra/Sync/D-ID — только если и OmniHuman провалит A/B",
+      "effort": "0.5-1 день (код есть; нужен FAL_KEY локально — сейчас только в Railway)",
+      "unblocks": "Независимость от единственного платного горлышка (HeyGen-кредиты уже останавливали конвейер) и от смерти v2 API"
+     },
+     {
+      "step": 8,
+      "what": "СОЗНАТЕЛЬНО НЕ СТРОИТЬ: планировщик публикаций, адаптеры каналов (TG/VK/Wibes), autopost-tick, кокпит inferno/publishing, автоматический QC-классификатор. GATE снятия: 14 дней ручных публикаций без страйков + медиана просмотров ≥30 + решение владельца о темпе 2/день (топ-ап Higgsfield) + ≥30 эпизодов для таксономии дефектов QC",
+      "effort": "0 сейчас (в этом и смысл)",
+      "unblocks": "Защита от главной смерти таких конвейеров — автоматизации производства при нулевой дистрибуции (собственный прецедент: 237 генераций/день, 0 опубликовано)"
+     }
+    ],
+    "risks": [
+     "Кредиты HeyGen = 0 ПРЯМО СЕЙЧАС (MOVIO_PAYMENT_INSUFFICIENT_CREDIT) — конвейер уже один раз встал молча; без pre-flight чека баланса и TG-алерта это повторится на каждом пополнении-исчерпании. Первое, что ломается — всегда деньги провайдера, не код",
+     "Смерть HeyGen v2 photo_avatar API 31.10.2026: рендер уже на v3, но заливка НОВЫХ луков Ани — на v2 (heygenAvatarGroupRunner.mjs). Если не залить луки пачкой до сентября, после октября добавление лука = срочная миграция на v3 под давлением",
+     "Горлышко вердиктов владельца: 1-2 вердикта/день = весь темп конвейера ПО ДИЗАЙНУ. Болезнь/поездка/усталость владельца = полный стоп. Смягчение — буфер из 2-3 готовых эпизодов в очереди на вердикт, НЕ расширение автономии (противоречит решению)",
+     "Бан/теневой бан свежих аккаунтов: 1-2 AI-ролика в день с нулевого аккаунта — типичный триггер антиспама Wibes/VK. Ручной период публикаций = warmup, не временное неудобство; любой страйк по стоп-правилам = откат темпа. Плюс «виртуальный блогер» в био снижает жалобы, но не алгоритмический риск",
+     "Ручные BLOCKS подписей: на 30с эпизоде ×3 работы против эпизода 1 — при 2/день это ~2-3 часа/день чистой ручной разметки. Если blocks_gen.py (шаг 4) не взлетит (русский forced-alignment капризен), темп 2/день недостижим — честный запасной план: подписи крупнее и реже (меньше слов = меньше таймингов)",
+     "Higgsfield Plus 1000 кр/мес против ~1620 кр при 2/день — переход на 2/день без решения владельца о топ-апе невозможен арифметически; решение не принято",
+     "Половина рецепта живёт вне git (claude-scratch) и в истории чат-сессий (несохранённые ffmpeg-команды, ad-hoc анализ огибающей аудио) — потеря сессии/машины = потеря рецепта. Плюс HeyGen-ключ лежит plaintext в .heygen_key_candidate",
+     "Незакоммиченный publishing-слой в рабочем дереве (фиксы 3 багов + Pinterest-адаптер, файлы 05.07 21:51) при подтверждённой проблеме конкурентных сессий — риск молчаливого затирания чужой работой до бэкапа",
+     "Двойственность голоса (Higgsfield ManyaRef1 vs ElevenLabs NASTYA в drill-раннере) и дубль group_id (хардкод в раннерах vs docs/factory-blogger-passports.json) — дрейф идентичности персоны, который никто не ловит; нужен один канон в паспорте",
+     "MCP-стадии (TTS, Shorts Studio) существуют только внутри чат-сессии Claude — конвейер принципиально не headless: без Claude-оператора эпизод не собрать. Это приемлемо при 1-2/день, но это потолок архитектуры, не временный долг",
+     "Пересоздание/правка пресета Marker Doodle Clean = риск регрессии EN-подписей (движок копирует текст из референса) — пресет 97c2b9e9 заморозить, эксперименты только новыми пресетами",
+     "Outside view — от чего умирают такие конвейеры: (1) производство без дистрибуции — контент копится, публикаций ноль (собственный прецедент завода V5: 237/день, 0 прошло); (2) деградация качества после автоматизации QC — алгоритм площадки хоронит канал раньше, чем автор замечает; (3) зависимость от одного провайдера — деprecation/цены/кредиты (уже дважды: кредиты HeyGen, смерть v2); (4) выгорание единственного человека-гейта; (5) энтропия состояния (/tmp-кладбища, невоспроизводимые рецепты) — конвейер невозможно перезапустить через месяц. План адресует все пять: gate «сначала публикации», ручной QC до таксономии, страховка OmniHuman, буфер эпизодов, захват рецепта в git первым шагом"
+    ]
+   }
+  ],
+  "critic": {
+   "strongest_failure": "Сценарий «день 14 убивает формат на шуме, инженерия уже потрачена». Хронология: 06-07 июля владелец пополняет HeyGen, команда параллельно жжёт 5-8 дней на конвергентную инженерию (захват рецепта в git, параметризация render.sh, blocks_gen/make_blocks.py — все три проекта сошлись, что это «единственная настоящая инвестиция»). Эпизоды 2-5 выходят на СВЕЖИЙ Wibes-аккаунт с 0 подписчиков, заведённый ~10 июля (никто не поставил заведение аккаунтов на календарь — это «pending владельца» без дедлайна во всех трёх). К ~19-20 июля (день 14 гипотезы): медиана 8-15 просмотров — не потому что контент плох, а потому что свежий аккаунт в warmup не получает дистрибуции по определению; досмотр% посчитан по 10-15 просмотрам = статистический шум (ни один проект не задал минимальный размер выборки для валидности метрики); стоп-правило «медиана <30 просмотров» срабатывает ГАРАНТИРОВАННО на любом свежем аккаунте. Параллельно ломается экономика: все трое считают Higgsfield как 27 кр × 30 = 810/мес, но урок Kling («движки врут кадрами», покадровый QC обязателен) означает ретраи стилизации; при консервативных 30-40% брака это 1050-1150 кр — лимит Plus 1000 пробит к ~25-му числу даже при 1/день, конвейер встаёт второй раз посреди месяца. Владелец, уже уставший от 4 ежедневных ручных касаний (вердикт + публикация + ввод метрик + платежи — никто не посчитал его суммарные ~40-60 мин/день), видит 12 просмотров и говорит «это говно» — ровно как с Тиром A. Формат убит без единой валидной точки данных, blocks_gen.py и раннер списаны. Корневая причина: все три проекта строят производство под метрику (досмотр%), которую негде и не на чем измерить — при этом ГОТОВЫЙ эпизод 1 (manya_reel1_doodle_RU.mp4) можно было опубликовать в TG-канал (заводится за 5 минут, warmup не нужен) в день 0 и получить первый сигнал до единой строки кода. Дополнительный усилитель: «проверенный рецепт» проверен ровно один раз на 9-секундном ролике; никто не проверил, что липсинк avatar_iv и стилизация Marker Doodle не разваливаются на 30с (дрейф стиля между сценами, накопление рассинхрона) — blocks_gen строится под 30с-формат, который ни разу не существовал.",
+   "missing_pieces": [
+    "Тест 30-секундного формата как таковой: эпизод 1 = 9с, эпизод 2 не отрендерен (кредиты=0). Все три экстраполируют рецепт ×3.3 по длине без единой проверки, что HeyGen avatar_iv держит липсинк 30с и что Marker Doodle Clean не дрейфует по стилю между сценами на длинном клипе. Нужен один ручной 30с-прогон с вердиктом владельца ДО инвестиций в make_blocks/blocks_gen (1-2 дня кода под непроверенный формат).",
+    "Критерий валидности досмотр% и разделение «провал дистрибуции» vs «провал контента»: при <100 просмотров watch_rate — шум; стоп-правило «медиана <30 просмотров» на свежем аккаунте срабатывает всегда. Нужен порог (напр., досмотр% учитывается только при ≥100 просмотров; день-14 отсчитывается от первой публикации на прогретый аккаунт, не от старта проекта). Плюс никто не проверил, отдаёт ли Wibes досмотр% вообще — вся петля обучения висит на метрике, доступность которой на главной площадке не подтверждена.",
+    "Бюджет ретраев и себестоимость эпизода: 810 кр/мес у всех — это 0% брака, что противоречит их же уроку Kling. Нужна строка «retry budget» (заложить 1.3-1.5× на стилизацию) и замер фактической цены HeyGen за 30с 1080p на эпизоде 2 — до этого разговор о 2/день беспредметен. Также TTS-кредиты Higgsfield нигде не учтены в месячной арифметике.",
+    "Календарь и план warmup аккаунтов: у всех «аккаунты = pending владельца» без дедлайна и без плана прогрева (что постить первые 7-10 дней, каденс наращивания). TG-канал не требует прогрева и заводится сегодня — никто не сделал его шагом 0 с публикацией готового эпизода 1.",
+    "Бюджет времени владельца: вердикт на каждый ролик + публикация руками + ввод метрик + платежи = 4 ежедневных касания, ~40-60 мин/день. Ни один проект не посчитал это и не описал протокол «владелец молчит 48ч» (буфер эпизодов упоминается, но без правила остановки генерации — только проект 2 вскользь про очередь >2).",
+    "Связь досмотр% со структурой сценария: метрика обучения есть, но механизма «где именно в 30с падает удержание → что менять в сценарной спеке» нет ни у кого; без per-second retention (которого у Wibes может не быть) петля обучения сводится к «формат хороший/плохой» — это вердикт владельца, а не обучение.",
+    "Единый канон паспорта Ани: проект 3 фиксирует дрейф (ElevenLabs NASTYA vs ManyaRef1, дубль group_id в раннерах vs docs/factory-blogger-passports.json), но шага «один паспорт-файл, все раннеры читают из него» нет ни в одном build_order."
+   ],
+   "sequencing_fixes": [
+    "Публикация раньше любого кода: день 0 = завести TG-канал (5 минут, без warmup) и опубликовать УЖЕ ГОТОВЫЙ manya_reel1_doodle_RU.mp4. Первая точка данных существует до захвата рецепта в git. Все три проекта ставят публикацию после 3-8 шагов строительства — повторение прецедента «237 генераций/день, 0 публикаций», который проект 3 сам же цитирует как главную смерть.",
+    "30с-валидация раньше blocks_gen: один эпизод на 30с вручную (терпим ×3 тайминг один раз) → вердикт владельца на длинный формат → только потом make_blocks.py/blocks_gen.py. Сейчас у проектов 1 и 2 генератор BLOCKS стоит до/параллельно первым вердиктам (шаг 6 и шаг 4 соответственно); гейт проекта 3 («строить только после вердиктов на эп.2-3») — правильный, взять его как общий.",
+    "Замер себестоимости раньше решения о темпе: эпизод 2 = обязательный замер кредитов HeyGen+Higgsfield С УЧЁТОМ ретраев, записанный в леджер, до любого обсуждения 2/день и топ-апа Higgsfield.",
+    "Дедлайн на аккаунты: заведение Wibes/VK-аккаунтов — не «параллельно», а с датой (к дню 3), иначе день-14 гейт формально сдвигается; отсчёт стоп-правил — от первой публикации на площадку, а не от старта проекта.",
+    "Проект 2 переставить целиком за гейт: таблица factory_anya_episodes + anyaEpisodeRunner + кокпит (шаги 1, 3, 7 = 4-6 дней) — только после того как формат пережил ≥3 вердикта и ≥1 публикацию; вдобавок миграция БД вне мандата зоны и требует OK владельца — ставить её первым шагом значит блокироваться об владельца дважды (кредиты + миграция).",
+    "Шаг 0 «закоммитить чужое publishing-дерево» (проекты 2 и 3) — внести в объединённый план обязательно: у проекта 1 он отсутствует, а риск затирания конкурентной сессией подтверждён 07-05; и перенос HEYGEN_API_KEY из plaintext в .env.local — в день 0, не в шаге 2-3."
+   ],
+   "what_to_cut": [
+    "Кокпит app/inferno/anya (проект 2, шаг 7, 2-3 дня): при 1-2 эпизодах/день и одном Claude-операторе весь «кокпит» — это файловый леджер + TG. Строить UI до 14 дней выживших публикаций — прямое нарушение гейта, который проект 3 формулирует, а объединённый план рискует потерять при сведении.",
+    "Таблица factory_anya_episodes + статус-машина + anyaEpisodeRunner.mjs (проект 2, шаги 1+3): вычеркнуть до прохождения гейта «формат выжил». Файлового леджера (проекты 1, 3) достаточно для 10-20 эпизодов; статус-машина под формат, который может быть пересобран стоп-правилами дня 14, — преждевременная кристаллизация.",
+    "Мост вердикта в tgSendReview/node_recipes на неделе 2 (проекты 1 и 2): при 7-14 эпизодах устный вердикт + запись в леджер дешевле дня кода; гейт проекта 3 «≥5 эпизодов» слишком мягкий — резать до ≥20 эпизодов или до момента, когда вердикты реально теряются.",
+    "Форвард approve-хуков в winners/viral_hooks и разбор classifyVerdict (проекты 1 шаг 8, 2 шаги 5+8): обучение хуков на <10 валидных точках досмотра = шум, оформленный как данные. После месяца — может быть.",
+    "OmniHuman-1.5 A/B-страховка липсинка (проект 3, шаг 7б): резать до того, как HeyGen хотя бы раз отработал 30с и экономика замерена. Заливку луков через v2 до сентября оставить как календарную задачу-напоминание (0 кода сейчас), сам A/B — нет.",
+    "Полный blocks_gen с face-detect+luma-зонами (все три): сократить MVP до forced-alignment (t_pop) + scdet (t0/t1); выбор зон/чернил остаётся редакторской правкой Claude — face-detect добавлять после ~10 эпизодов, когда накопится статистика, где подписи реально конфликтуют с лицом.",
+    "Rollup-дашборд и недельный TG-дайджест (проект 2, шаг 8): медиану по 5-10 числам Claude считает в чате за минуту; автоматизация агрегации до появления агрегируемого объёма — работа ради работы."
+   ]
+  }
+ },
+ "workflowProgress": [
+  {
+   "type": "workflow_phase",
+   "index": 1,
+   "title": "Разведка"
+  },
+  {
+   "type": "workflow_phase",
+   "index": 2,
+   "title": "Дизайн"
+  },
+  {
+   "type": "workflow_phase",
+   "index": 3,
+   "title": "Критика"
+  },
+  {
+   "type": "workflow_agent",
+   "index": 1,
+   "label": "read:render-path",
+   "phaseIndex": 1,
+   "phaseTitle": "Разведка",
+   "agentId": "a4e574f9daaf2079f",
+   "model": "claude-fable-5",
+   "state": "done",
+   "startedAt": 1783282292982,
+   "queuedAt": 1783282292961,
+   "attempt": 1,
+   "lastToolName": "StructuredOutput",
+   "lastToolSummary": "Путь рендера говорящего блогера существует и РЕАЛЬНО работа…",
+   "promptPreview": "Ты аудитор в репозитории /Users/maksimpankratov/Projects/finance-panel/finance-panel (Next.js контент-завод для WB-селлера). Отвечай ПО-РУССКИ. Читай реальные файлы (Read/Grep/Glob), не выдумывай — если файла нет, так и пиши в gaps. Твой результат пойдёт архитекторам конвейера ИИ-блогеров (виртуальная обзорщица WB «Аня», говорящая голова, 1-2 рилса/день), поэтому важно отличать: runnable-код vs би…",
+   "lastProgressAt": 1783282581117,
+   "tokens": 136239,
+   "toolCalls": 22,
+   "durationMs": 288135,
+   "resultPreview": "{\"summary\":\"Путь рендера говорящего блогера существует и РЕАЛЬНО работает, но живёт целиком в ручных CLI (npx tsx), а не в продукте. Боевой канал — bloggerDrillRunner.mjs: полный цикл «скрипт→TTS (ElevenLabs eleven-v3, голос NASTYA)→деглянц-стилл (Seedream v4.5 + анти-бейзел люма-гейт)→заливка лука в HeyGen-группу→рендер HeyGen Avatar IV 1080p (/v3/videos, audio_url)→анти-AI пост (2 прохода ffmpeg…"
+  },
+  {
+   "type": "workflow_agent",
+   "index": 2,
+   "label": "read:recipe-scratch",
+   "phaseIndex": 1,
+   "phaseTitle": "Разведка",
+   "agentId": "a58db2c1c4d0509f1",
+   "model": "claude-fable-5",
+   "state": "done",
+   "startedAt": 1783282292984,
+   "queuedAt": 1783282292961,
+   "attempt": 1,
+   "lastToolName": "StructuredOutput",
+   "lastToolSummary": "Рецепт «Тир B» реален и подтверждён артефактами эпизода 1 (…",
+   "promptPreview": "Ты аудитор в репозитории /Users/maksimpankratov/Projects/finance-panel/finance-panel (Next.js контент-завод для WB-селлера). Отвечай ПО-РУССКИ. Читай реальные файлы (Read/Grep/Glob), не выдумывай — если файла нет, так и пиши в gaps. Твой результат пойдёт архитекторам конвейера ИИ-блогеров (виртуальная обзорщица WB «Аня», говорящая голова, 1-2 рилса/день), поэтому важно отличать: runnable-код vs би…",
+   "lastProgressAt": 1783282490717,
+   "tokens": 78967,
+   "toolCalls": 12,
+   "durationMs": 197733,
+   "resultPreview": "{\"summary\":\"Рецепт «Тир B» реален и подтверждён артефактами эпизода 1 (manya_reel1_doodle_RU.mp4, 9с, 216 кадров), но это гибрид: 2 куска кода + 2 ручных MCP-вызова Higgsfield + несохранённые ffmpeg-команды. Шаги эпизода: (1) Сценарий — ручная работа (Claude пишет в чате, владелец одобряет; anya_ep2/script.txt готов). (2) TTS — ручной MCP-вызов Higgsfield generate_audio голосом-клоном ManyaRef1 → …"
+  },
+  {
+   "type": "workflow_agent",
+   "index": 3,
+   "label": "read:publishing",
+   "phaseIndex": 1,
+   "phaseTitle": "Разведка",
+   "agentId": "a0bd01472e7705876",
+   "model": "claude-fable-5",
+   "state": "done",
+   "startedAt": 1783282292985,
+   "queuedAt": 1783282292961,
+   "attempt": 1,
+   "lastToolName": "StructuredOutput",
+   "lastToolSummary": "Слой публикации — «спека огромная, код догоняет, но незаком…",
+   "promptPreview": "Ты аудитор в репозитории /Users/maksimpankratov/Projects/finance-panel/finance-panel (Next.js контент-завод для WB-селлера). Отвечай ПО-РУССКИ. Читай реальные файлы (Read/Grep/Glob), не выдумывай — если файла нет, так и пиши в gaps. Твой результат пойдёт архитекторам конвейера ИИ-блогеров (виртуальная обзорщица WB «Аня», говорящая голова, 1-2 рилса/день), поэтому важно отличать: runnable-код vs би…",
+   "lastProgressAt": 1783282720319,
+   "tokens": 156846,
+   "toolCalls": 33,
+   "durationMs": 427334,
+   "resultPreview": "{\"summary\":\"Слой публикации — «спека огромная, код догоняет, но незакоммичен». Четыре дока публикации в текущей ветке ОТСУТСТВУЮТ: живут в ветке feat/publishing-system-spec (коммит c5a65c86), читал через git show. На HEAD реально есть: леджер recordFactoryPublication + валидатор buildPublicationPlan (paid без ad_token=402), авто-draft в factory_publications при OTK-банке (graphRun.ts:1579), живая …"
+  },
+  {
+   "type": "workflow_agent",
+   "index": 4,
+   "label": "read:product-state",
+   "phaseIndex": 1,
+   "phaseTitle": "Разведка",
+   "agentId": "a75bedee15124b360",
+   "model": "claude-fable-5",
+   "state": "done",
+   "startedAt": 1783282292986,
+   "queuedAt": 1783282292961,
+   "attempt": 1,
+   "lastToolName": "StructuredOutput",
+   "lastToolSummary": "Состояние конвейера ИИ-блогера двухэтажное и несшитое. Вниз…",
+   "promptPreview": "Ты аудитор в репозитории /Users/maksimpankratov/Projects/finance-panel/finance-panel (Next.js контент-завод для WB-селлера). Отвечай ПО-РУССКИ. Читай реальные файлы (Read/Grep/Glob), не выдумывай — если файла нет, так и пиши в gaps. Твой результат пойдёт архитекторам конвейера ИИ-блогеров (виртуальная обзорщица WB «Аня», говорящая голова, 1-2 рилса/день), поэтому важно отличать: runnable-код vs би…",
+   "lastProgressAt": 1783282568991,
+   "tokens": 98754,
+   "toolCalls": 30,
+   "durationMs": 276005,
+   "resultPreview": "{\"summary\":\"Состояние конвейера ИИ-блогера двухэтажное и несшитое. Внизу — зрелая петля вердикта для «графового» завода V5: graphRun.ts (строка 1597) после банковки ролика зовёт tgSendReview (lib/factory/telegram.ts) — sendVideo владельцу с inline-кнопками «✓ Беру / ✕ Не то» (callback win:/rej:<recipe_id>) и меткой #r<id> в подписи. Вебхук app/api/factory/telegram/route.ts (fail-closed по секрету …"
+  },
+  {
+   "type": "workflow_agent",
+   "index": 5,
+   "label": "read:decisions",
+   "phaseIndex": 1,
+   "phaseTitle": "Разведка",
+   "agentId": "ad56d8e287fa90765",
+   "model": "claude-fable-5",
+   "state": "done",
+   "startedAt": 1783282292987,
+   "queuedAt": 1783282292961,
+   "attempt": 1,
+   "lastToolName": "StructuredOutput",
+   "lastToolSummary": "Канон принятых решений — docs/factory-anya-hypothesis-ledge…",
+   "promptPreview": "Ты аудитор в репозитории /Users/maksimpankratov/Projects/finance-panel/finance-panel (Next.js контент-завод для WB-селлера). Отвечай ПО-РУССКИ. Читай реальные файлы (Read/Grep/Glob), не выдумывай — если файла нет, так и пиши в gaps. Твой результат пойдёт архитекторам конвейера ИИ-блогеров (виртуальная обзорщица WB «Аня», говорящая голова, 1-2 рилса/день), поэтому важно отличать: runnable-код vs би…",
+   "lastProgressAt": 1783282422890,
+   "tokens": 75176,
+   "toolCalls": 9,
+   "durationMs": 129903,
+   "resultPreview": "{\"summary\":\"Канон принятых решений — docs/factory-anya-hypothesis-ledger.md (подписан 07-05, журнал доведён до записей «07-06»). Зафиксировано владельцем: (1) Тир A (безличный конвейер) убит НАВСЕГДА после первого ролика («это говно»); владелец отклонил даже компромисс совета советов «оставить, но перепозиционировать». (2) Темп: 1–2 рилса/день, ВСЕ с живой Аней (Тир B), без исключений; неделя 1 = …"
+  },
+  {
+   "type": "workflow_agent",
+   "index": 6,
+   "label": "design:minimal-glue",
+   "phaseIndex": 2,
+   "phaseTitle": "Дизайн",
+   "agentId": "ab1af59d58420986a",
+   "model": "claude-fable-5",
+   "state": "done",
+   "startedAt": 1783282720333,
+   "queuedAt": 1783282720322,
+   "attempt": 1,
+   "lastToolName": "StructuredOutput",
+   "lastToolSummary": "Скотч-подход: не строим новую систему, а превращаем уже док…",
+   "promptPreview": "Ты архитектор контент-конвейера. Отвечай ПО-РУССКИ. Спроектируй автопайплайн производства контента ИИ-блогеров (виртуальная обзорщица WB «Аня», говорящая голова, эпизод ~30с, 1-2/день) для этого репозитория.\n\nФАКТЫ, ПРОВЕРЕННЫЕ ЖИВЫМИ ВЫЗОВАМИ В ЭТОЙ СЕССИИ (не пересматривать):\n- Персона «Аня» = технически Manya. HeyGen: группа fc29c149d7994673b254dd121c1dc516, одобренный look f3d97943d5854f28bda1…",
+   "lastProgressAt": 1783282875902,
+   "tokens": 66119,
+   "toolCalls": 1,
+   "durationMs": 155569,
+   "resultPreview": "{\"summary\":\"Скотч-подход: не строим новую систему, а превращаем уже доказанный рецепт эпизода 1 (manya_reel1_doodle_RU.mp4) в повторяемый ежедневный ритуал, где оператор конвейера — Claude-сессия, а владелец делает только три вещи: вердикт, платежи, публикацию руками. Ни одной новой таблицы в БД, ни одного нового сервиса, ни одного адаптера публикации на старте. Новый код — только четыре маленьких…"
+  },
+  {
+   "type": "workflow_agent",
+   "index": 7,
+   "label": "design:product",
+   "phaseIndex": 2,
+   "phaseTitle": "Дизайн",
+   "agentId": "a72c39e52008d8487",
+   "model": "claude-fable-5",
+   "state": "done",
+   "startedAt": 1783282720334,
+   "queuedAt": 1783282720322,
+   "attempt": 1,
+   "lastToolName": "StructuredOutput",
+   "lastToolSummary": "Конвейер Ани строим как продукт вокруг одной сущности — стр…",
+   "promptPreview": "Ты архитектор контент-конвейера. Отвечай ПО-РУССКИ. Спроектируй автопайплайн производства контента ИИ-блогеров (виртуальная обзорщица WB «Аня», говорящая голова, эпизод ~30с, 1-2/день) для этого репозитория.\n\nФАКТЫ, ПРОВЕРЕННЫЕ ЖИВЫМИ ВЫЗОВАМИ В ЭТОЙ СЕССИИ (не пересматривать):\n- Персона «Аня» = технически Manya. HeyGen: группа fc29c149d7994673b254dd121c1dc516, одобренный look f3d97943d5854f28bda1…",
+   "lastProgressAt": 1783282940728,
+   "tokens": 76844,
+   "toolCalls": 2,
+   "durationMs": 220394,
+   "resultPreview": "{\"summary\":\"Конвейер Ани строим как продукт вокруг одной сущности — строки эпизода в Supabase (таблица factory_anya_episodes) со статус-машиной draft→tts→base_render→stylize→captions→qc→verdict→published→metrics. Каждая стадия либо уже существует как проверенный кусок (render.sh на HeyGen v3, mc_captions.py, qc-утилиты builder.py), либо это ручной MCP-вызов Higgsfield (TTS голосом ManyaRef1, Short…"
+  },
+  {
+   "type": "workflow_agent",
+   "index": 8,
+   "label": "design:risk-sequencing",
+   "phaseIndex": 2,
+   "phaseTitle": "Дизайн",
+   "agentId": "a063bd8292ed5971f",
+   "model": "claude-fable-5",
+   "state": "done",
+   "startedAt": 1783282720335,
+   "queuedAt": 1783282720323,
+   "attempt": 1,
+   "lastToolName": "StructuredOutput",
+   "lastToolSummary": "Подход: не «автозавод», а операторский конвейер с двумя нес…",
+   "promptPreview": "Ты архитектор контент-конвейера. Отвечай ПО-РУССКИ. Спроектируй автопайплайн производства контента ИИ-блогеров (виртуальная обзорщица WB «Аня», говорящая голова, эпизод ~30с, 1-2/день) для этого репозитория.\n\nФАКТЫ, ПРОВЕРЕННЫЕ ЖИВЫМИ ВЫЗОВАМИ В ЭТОЙ СЕССИИ (не пересматривать):\n- Персона «Аня» = технически Manya. HeyGen: группа fc29c149d7994673b254dd121c1dc516, одобренный look f3d97943d5854f28bda1…",
+   "lastProgressAt": 1783282962526,
+   "tokens": 66186,
+   "toolCalls": 1,
+   "durationMs": 242191,
+   "resultPreview": "{\"summary\":\"Подход: не «автозавод», а операторский конвейер с двумя несжимаемыми ручными точками (вердикт владельца, покадровый QC) и максимальной автоматизацией всего между ними. Основа — уже доказанный рецепт эпизода 1: сценарий → TTS (Higgsfield ManyaRef1) → HeyGen avatar_iv → Shorts Studio «Marker Doodle Clean» → RU-подписи mc_captions.py → QC → TG владельцу. Первый шаг — не строить новое, а «…"
+  },
+  {
+   "type": "workflow_agent",
+   "index": 9,
+   "label": "critic:devils-advocate",
+   "phaseIndex": 3,
+   "phaseTitle": "Критика",
+   "agentId": "a55d6cd3b10eb2eb1",
+   "model": "claude-fable-5",
+   "state": "done",
+   "startedAt": 1783282962541,
+   "queuedAt": 1783282962527,
+   "attempt": 1,
+   "lastToolName": "StructuredOutput",
+   "lastToolSummary": "Сценарий «день 14 убивает формат на шуме, инженерия уже пот…",
+   "promptPreview": "Ты адвокат дьявола. Отвечай ПО-РУССКИ. Три архитектора независимо спроектировали автопайплайн контента для ИИ-блогера «Аня» (WB-обзорщица, 1-2 рилса/день, говорящая голова HeyGen → стилизация Higgsfield → RU-подписи → вердикт владельца → публикация Wibes/TG/VK). Сейчас их предложения сведут в один план, по которому владелец пойдёт.\n\nФАКТЫ, ПРОВЕРЕННЫЕ ЖИВЫМИ ВЫЗОВАМИ В ЭТОЙ СЕССИИ (не пересматрива…",
+   "lastProgressAt": 1783283100463,
+   "tokens": 66203,
+   "toolCalls": 3,
+   "durationMs": 137922,
+   "resultPreview": "{\"strongest_failure\":\"Сценарий «день 14 убивает формат на шуме, инженерия уже потрачена». Хронология: 06-07 июля владелец пополняет HeyGen, команда параллельно жжёт 5-8 дней на конвергентную инженерию (захват рецепта в git, параметризация render.sh, blocks_gen/make_blocks.py — все три проекта сошлись, что это «единственная настоящая инвестиция»). Эпизоды 2-5 выходят на СВЕЖИЙ Wibes-аккаунт с 0 под…"
+  }
+ ],
+ "totalTokens": 821334,
+ "totalToolCalls": 113
+}

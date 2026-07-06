@@ -1,0 +1,266 @@
+<title>Автоконвейер Ани — план запуска</title>
+<style>
+  :root {
+    --paper: #FAFAF8;
+    --ink: #1B1B1A;
+    --ink-soft: #55534E;
+    --line: #E4E2DC;
+    --marker: #E8590C;
+    --marker-soft: #FFF0E6;
+    --ok: #2B8A3E;
+    --ok-soft: #EBFBEE;
+    --wait: #E67700;
+    --wait-soft: #FFF4E0;
+    --later: #868E96;
+    --later-soft: #F1F3F5;
+    --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    line-height: 1.55;
+    margin: 0;
+    padding: 48px 20px 80px;
+  }
+  .wrap { max-width: 860px; margin: 0 auto; }
+  header { margin-bottom: 40px; }
+  .eyebrow {
+    font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--marker); font-weight: 700; margin-bottom: 10px;
+  }
+  h1 {
+    font-size: clamp(28px, 5vw, 40px); line-height: 1.12; margin: 0 0 14px;
+    font-weight: 800; letter-spacing: -0.02em; text-wrap: balance;
+  }
+  .lede { font-size: 17px; color: var(--ink-soft); max-width: 640px; margin: 0; }
+  .hl {
+    background: linear-gradient(180deg, transparent 55%, var(--marker-soft) 55%, var(--marker-soft) 92%, transparent 92%);
+    padding: 0 2px;
+  }
+  h2 {
+    font-size: 21px; font-weight: 800; letter-spacing: -0.01em;
+    margin: 52px 0 6px; text-wrap: balance;
+  }
+  h2 .n {
+    display: inline-block; font-family: var(--mono); font-size: 13px;
+    color: var(--marker); margin-right: 8px; font-weight: 700;
+  }
+  .sub { color: var(--ink-soft); font-size: 14.5px; margin: 0 0 18px; max-width: 640px; }
+  p { max-width: 680px; }
+  code {
+    font-family: var(--mono); font-size: 0.86em;
+    background: #F1F0EC; border-radius: 4px; padding: 1px 5px;
+  }
+  .tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; min-width: 640px; }
+  th {
+    text-align: left; font-size: 11.5px; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--ink-soft); font-weight: 700; padding: 10px 14px;
+    border-bottom: 1px solid var(--line); background: #F6F5F1;
+  }
+  td { padding: 10px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  td.num { font-family: var(--mono); font-size: 12.5px; color: var(--ink-soft); white-space: nowrap; }
+  .pill {
+    display: inline-block; font-size: 11.5px; font-weight: 700; border-radius: 99px;
+    padding: 2px 9px; white-space: nowrap;
+  }
+  .pill.ok { background: var(--ok-soft); color: var(--ok); }
+  .pill.wait { background: var(--wait-soft); color: var(--wait); }
+  .pill.hand { background: var(--marker-soft); color: var(--marker); }
+  .pill.later { background: var(--later-soft); color: var(--later); }
+  .fail {
+    border: 1px solid #F3C5A8; background: #FFF9F5; border-radius: 12px;
+    padding: 20px 24px; margin: 20px 0;
+  }
+  .fail b { color: var(--marker); }
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px; }
+  @media (max-width: 620px) { .cols { grid-template-columns: 1fr; } }
+  .card {
+    border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px;
+    background: #fff;
+  }
+  .card h3 {
+    margin: 0 0 10px; font-size: 13px; letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--ink-soft); font-weight: 700;
+  }
+  .card ul { margin: 0; padding-left: 18px; }
+  .card li { margin-bottom: 8px; font-size: 14.5px; }
+  .card li:last-child { margin-bottom: 0; }
+  .stage {
+    display: grid; grid-template-columns: 74px 1fr; gap: 14px;
+    padding: 16px 0; border-bottom: 1px solid var(--line);
+  }
+  .stage:last-child { border-bottom: none; }
+  .stage .when {
+    font-family: var(--mono); font-size: 12px; color: var(--marker);
+    font-weight: 700; padding-top: 3px;
+  }
+  .stage h3 { margin: 0 0 6px; font-size: 16.5px; font-weight: 750; }
+  .stage p, .stage ul { margin: 0; color: var(--ink-soft); font-size: 14.5px; max-width: 640px; }
+  .stage ul { padding-left: 18px; margin-top: 4px; }
+  .stage li { margin-bottom: 5px; }
+  .gate {
+    display: inline-block; font-size: 11px; font-weight: 800; letter-spacing: 0.08em;
+    text-transform: uppercase; color: #fff; background: var(--ink);
+    border-radius: 4px; padding: 2px 8px; margin-left: 8px; vertical-align: 2px;
+  }
+  .rule {
+    border-left: 3px solid var(--marker); padding: 4px 0 4px 16px; margin: 14px 0;
+    color: var(--ink); font-size: 15px; max-width: 640px;
+  }
+  .cut li { color: var(--ink-soft); }
+  footer {
+    margin-top: 56px; padding-top: 18px; border-top: 1px solid var(--line);
+    font-size: 13px; color: var(--ink-soft);
+  }
+</style>
+
+<div class="wrap">
+<header>
+  <div class="eyebrow">Контент-завод · Аня · 5 июля 2026</div>
+  <h1>Автоконвейер Ани: сначала публикуем, потом строим</h1>
+  <p class="lede">План после полного аудита: 5 читателей по подсистемам → 3 независимых архитектуры → адвокат дьявола. Канон решений — hypothesis-ledger; здесь — <span class="hl">как их исполняем и в каком порядке</span>.</p>
+</header>
+
+<div class="fail">
+  <b>Главный найденный сценарий провала.</b> Все архитектуры сходились на «сначала инженерия, потом публикации» — это повторяет прецедент завода V5 (237 генераций/день, 0 публикаций). Хронология провала: неделя кода → эпизоды выходят на свежий Wibes с нулевой дистрибуцией → к дню 14 медиана 8–15 просмотров (это warmup, не качество) → досмотр% на 10 просмотрах = шум → стоп-правило срабатывает гарантированно → «это говно» → формат убит без единой валидной точки данных. <b>Лекарство ниже вшито в план:</b> публикация в день 0, отсчёт стоп-правил от первой публикации на площадке, порог валидности метрики, 30с-валидация до любого тулинга.
+</div>
+
+<h2><span class="n">01</span>День 0 — сегодня, без единой строчки кода</h2>
+<p class="sub">TG-канал не требует прогрева и заводится за 5 минут. Эпизод 1 готов и одобрен — он выходит сегодня.</p>
+<div class="cols">
+  <div class="card">
+    <h3>Ты (3 действия)</h3>
+    <ul>
+      <li><b>Пополнить API-кредиты HeyGen</b> — единственный жёсткий блокер эпизода 2 (ключ найден, рабочий).</li>
+      <li><b>Завести TG-канал Ани</b> и опубликовать готовый эпизод 1 (файл дам). «Виртуальный блогер» в био с первого дня.</li>
+      <li>Дедлайн <b>день 3</b>: аккаунты Wibes + VK. Стоп-правила каждой площадки отсчитываются от первой публикации на ней.</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h3>Я (уже в работе)</h3>
+    <ul>
+      <li>Бэкап чужих незакоммиченных publishing-правок ✓ (45 файлов, отдельная папка).</li>
+      <li>Код Ани — только в отдельной ветке; publishing/distribution не трогаю.</li>
+      <li>Единый паспорт Ани: группа, look, голос ManyaRef1, пресет — один файл-канон, дубли из раннеров убрать.</li>
+    </ul>
+  </div>
+</div>
+
+<h2><span class="n">02</span>Конвейер: 12 стадий</h2>
+<p class="sub">Эпизоды Ани идут <b>мимо</b> validateReelFormat / ugcStoryboard — там инвариант «лицо ≤4с» для товарных форматов. Говорящая голова на весь ролик — свой формат, осознанно.</p>
+<div class="tablewrap">
+<table>
+  <tr><th>#</th><th>Стадия</th><th>Инструмент</th><th>Режим</th></tr>
+  <tr><td class="num">1</td><td>Темы (пачка на неделю)</td><td>Claude + WB-утилиты из builder.py</td><td><span class="pill wait">полуавто</span> ты выбираешь раз в неделю</td></tr>
+  <tr><td class="num">2</td><td>Сценарий ~80 слов</td><td>Claude пишет → твой OK по тексту</td><td><span class="pill hand">гейт</span> убить текст = 0₽, ролик = кредиты</td></tr>
+  <tr><td class="num">3</td><td>TTS</td><td>Higgsfield, голос ManyaRef1 (единый канон)</td><td><span class="pill wait">полуавто</span> MCP-вызов</td></tr>
+  <tr><td class="num">4</td><td>Говорящая голова</td><td><code>render.sh</code> → HeyGen avatar_iv</td><td><span class="pill ok">авто</span> + чек баланса до рендера</td></tr>
+  <tr><td class="num">5</td><td>Стилизация</td><td>Shorts Studio, пресет Marker Doodle Clean — <b>заморожен</b></td><td><span class="pill wait">полуавто</span> MCP-вызов, ~27 кр</td></tr>
+  <tr><td class="num">6</td><td>Нарезка кадров</td><td><code>frames.sh</code> (восстановить из истории)</td><td><span class="pill ok">авто</span></td></tr>
+  <tr><td class="num">7</td><td>RU-подписи</td><td><code>mc_captions.py</code> + BLOCKS</td><td><span class="pill wait">полуавто</span> узкое место → этап 3</td></tr>
+  <tr><td class="num">8</td><td>Сборка + mux</td><td><code>assemble.sh</code> (восстановить)</td><td><span class="pill ok">авто</span></td></tr>
+  <tr><td class="num">9</td><td>QC покадровый</td><td>машинный qc() + контакт-лист глазами</td><td><span class="pill wait">полуавто</span> классификатор — не раньше ~30 эп.</td></tr>
+  <tr><td class="num">10</td><td>Вердикт</td><td>видео тебе в TG → ответ в леджер</td><td><span class="pill hand">ручной навсегда</span> твоё решение</td></tr>
+  <tr><td class="num">11</td><td>Публикация</td><td>руками + record-only <code>/api/factory/publish</code></td><td><span class="pill hand">ручной</span> = warmup аккаунтов, не долг</td></tr>
+  <tr><td class="num">12</td><td>Метрики</td><td>досмотр% в леджер; валидно при ≥100 просмотров</td><td><span class="pill wait">полуавто</span></td></tr>
+</table>
+</div>
+
+<h2><span class="n">03</span>Этапы строительства</h2>
+<div class="stage">
+  <div class="when">дни 1–2</div>
+  <div>
+    <h3>Захват рецепта в git</h3>
+    <p>Половина рецепта живёт в истории чат-сессий и неверсионируемом claude-scratch — потеря сессии = потеря пайплайна.</p>
+    <ul>
+      <li>Ветка <code>feat/anya-episode-pipeline</code>: параметризованный render.sh, mc_captions.py + шрифт, восстановленные frames.sh / assemble.sh, qc- и WB-утилиты.</li>
+      <li>Pre-flight чек баланса HeyGen + TG-алерт (конвейер уже один раз встал молча по деньгам).</li>
+      <li>Эпизод-леджер <code>docs/factory-anya-episode-ledger.json</code>: тема, кредиты факт, вердикт, ссылка, досмотр%.</li>
+    </ul>
+  </div>
+</div>
+<div class="stage">
+  <div class="when">дни 2–5</div>
+  <div>
+    <h3>Валидация 30-секундного формата <span class="gate">гейт</span></h3>
+    <p>Рецепт проверен ровно один раз — на 9 секундах. 30с-эпизод ещё ни разу не существовал: липсинк на длине и дрейф стиля между сценами не проверены.</p>
+    <ul>
+      <li>Эпизод 2 end-to-end вручную (BLOCKS руками — терпим ×3 один раз) → твой вердикт.</li>
+      <li>Замер фактической себестоимости с ретраями → в леджер. До этого разговор о 2/день беспредметен.</li>
+      <li>Эпизоды 3–4 так же, темп 1/день.</li>
+    </ul>
+  </div>
+</div>
+<div class="stage">
+  <div class="when">после 2×«беру»</div>
+  <div>
+    <h3>Снятие узкого места: blocks_gen MVP</h3>
+    <p>Тайминги подписей на 30с — это 2–3 часа руками на эпизод; единственная инвестиция, делающая 2/день физически возможным.</p>
+    <ul>
+      <li>MVP: forced-alignment по известному тексту → t_pop (+40мс) + scene-detect → границы сцен. Зоны и чернила — редакторская правка (face-detect — после ~10 эпизодов).</li>
+    </ul>
+  </div>
+</div>
+<div class="stage">
+  <div class="when">недели 1–2</div>
+  <div>
+    <h3>Ритм</h3>
+    <ul>
+      <li>Твой ежедневный ритуал ≈ 15–25 мин: вердикт в TG + публикация руками + скинуть цифры. Всё остальное — я.</li>
+      <li>Буфер максимум 2 эпизода на вердикте; <b>молчание 48ч → генерация стоит</b>.</li>
+      <li>В день первой Wibes-публикации проверяем: отдаёт ли Wibes досмотр% вообще (не подтверждено). Если нет — главная метрика пересматривается.</li>
+    </ul>
+  </div>
+</div>
+<div class="stage">
+  <div class="when">за днём 14</div>
+  <div>
+    <h3>Продуктизация <span class="gate">гейт: формат выжил</span></h3>
+    <p>Только если медиана ≥30 на прогретой площадке, 0 страйков: Supabase-таблица эпизодов + оркестратор, кокпит inferno/anya, вердикт-кнопки (при ≥20 эпизодах), TG-адаптер публикации первым.</p>
+    <ul>
+      <li>Календарная задача, дедлайн ~01.09: залить пачкой нужные луки через v2-путь, пока HeyGen v2 API жив (умирает 31.10.2026).</li>
+    </ul>
+  </div>
+</div>
+
+<h2><span class="n">04</span>Экономика — честная, с ретраями</h2>
+<p class="sub">Все прежние расчёты предполагали 0% брака — вопреки собственному уроку «движки врут кадрами».</p>
+<div class="tablewrap">
+<table>
+  <tr><th>Статья</th><th>1/день (30 эп/мес)</th><th>2/день (60 эп/мес)</th></tr>
+  <tr><td>Higgsfield стилизация, 27 кр × 1.3 ретрая</td><td><b>~1050 кр — уже выше лимита Plus 1000</b></td><td>~2100 кр — топ-ап обязателен</td></tr>
+  <tr><td>Higgsfield TTS</td><td colspan="2">не замерено — замеряем на эпизоде 2</td></tr>
+  <tr><td>HeyGen avatar_iv, 30с</td><td>~$2/эп ≈ $60/мес (ориентир — замерить)</td><td>~$120/мес</td></tr>
+</table>
+</div>
+<div class="rule">Решение о топ-апе Higgsfield нужно к неделе 2 — даже 1/день впритык. Все цифры уточняются фактом эпизода 2 и пишутся в леджер, не задним числом.</div>
+
+<h2><span class="n">05</span>Что сознательно НЕ строим сейчас</h2>
+<p class="sub">Это решение, а не забывчивость. Гейт снятия: 14 дней живых публикаций + выжившие вердикты + решение о темпе.</p>
+<div class="card cut">
+  <ul>
+    <li>Кокпит inferno/anya, Supabase-статус-машина, раннер-оркестратор — файлового леджера хватает на 10–20 эпизодов.</li>
+    <li>Вердикт-кнопки в TG — устный вердикт + леджер дешевле дня кода до ~20 эпизодов.</li>
+    <li>Адаптеры каналов, autopost, планировщик — до 14 дней ручных публикаций без страйков.</li>
+    <li>Автоматический QC-классификатор — до таксономии дефектов (~30 эпизодов).</li>
+    <li>OmniHuman-страховка липсинка — до того, как HeyGen хоть раз отработал 30с и экономика замерена.</li>
+    <li>Форвард в winners/viral_hooks, rollup-дашборды — обучение на &lt;10 валидных точках = шум, оформленный как данные.</li>
+  </ul>
+</div>
+
+<h2><span class="n">06</span>Топ-5 рисков</h2>
+<div class="card">
+  <ul>
+    <li><b>Деньги провайдера, не код.</b> Кредиты HeyGen уже остановили конвейер молча — pre-flight чек с алертом обязателен.</li>
+    <li><b>Свежие аккаунты.</b> Медиана &lt;30 в warmup — не провал контента; стоп-правила считаем от первой публикации на площадке.</li>
+    <li><b>Горлышко-владелец по дизайну.</b> Твоя пропускная способность = весь темп; буфер 2 эпизода, не расширение автономии.</li>
+    <li><b>30с-формат не существовал.</b> Гейт этапа 2 — до любых инвестиций в тулинг.</li>
+    <li><b>Bus-factor = Claude-сессия.</b> TTS и стилизация — только MCP в чате; потолок архитектуры, принимаем осознанно при 1–2/день, рецепт обязан жить в git.</li>
+  </ul>
+</div>
+
+<footer>Канон решений: docs/factory-anya-hypothesis-ledger.md · Этот план: docs/factory-anya-autopipeline-plan.md · Аудит: 9 агентов, 2026-07-05</footer>
+</div>

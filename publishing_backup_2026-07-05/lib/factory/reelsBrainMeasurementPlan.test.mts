@@ -1,0 +1,280 @@
+import assert from "node:assert/strict";
+import { buildReelsBrainMeasurementPlan } from "./reelsBrainMeasurementPlan";
+
+const plan = buildReelsBrainMeasurementPlan({
+  exactSegmentQueue: {
+    items: [
+      {
+        niche: "ru_clothing",
+        platform: "instagram",
+        status: "borrowed_brief_only",
+        urgency_score: 95,
+        policy_mode: "primary",
+        transfer_support: [{ label: "ru_clothing × tiktok" }],
+      },
+    ],
+  },
+  outcomeMemory: {
+    pattern_memory: {
+      coverage_rate: 58,
+      coverage_gaps: {
+        high_confidence_no_feedback: 2,
+      },
+      no_feedback_queue: [
+        {
+          pattern_id: "p1",
+          title: "Proof opener",
+          quality_gate: "high_confidence",
+          decision_priority_score: 91,
+          hook_type: "warning_pattern_break",
+          structure_type: "demo",
+          niches: ["ru_toys"],
+          platforms: ["tiktok"],
+        },
+      ],
+    },
+  },
+  segmentSolutionMatrix: {
+    by_segment: [
+      {
+        niche: "ru_toys",
+        platform: "tiktok",
+        production_state: "controlled_test",
+        readiness_score: 82,
+        recommended_upgrade: {
+          unlocked_output: "performance_tuned_brief",
+          projected_production_state: "near_publishable",
+          projected_trust_gain_score: 21,
+          projected_trust_gain_band: "medium",
+          recommended_loop: "audio_backfill",
+          unlocked_next_step: "После аудио-добора сегмент станет retention-tuned.",
+        },
+        creative_brief: {
+          hook: "Не покупай пока не увидишь",
+          retention: "proof first",
+          structure: "demo",
+        },
+        content_decision: {
+          next_step: "Собрать 3 публикации и сравнить completion.",
+        },
+      },
+    ],
+  },
+  generationPolicy: {
+    by_segment: [
+      {
+        niche: "ru_toys",
+        platform: "tiktok",
+        policy_mode: "control_only",
+        readiness_score: 82,
+      },
+    ],
+  },
+  segmentPriorityQueue: {
+    items: [
+      {
+        niche: "ru_clothing",
+        platform: "instagram",
+        decision_priority_score: 98,
+        policy_reason: "segment has the strongest exact-proof payoff",
+      },
+      {
+        niche: "ru_toys",
+        platform: "tiktok",
+        decision_priority_score: 94,
+        policy_reason: "segment is the best control-ready test lane",
+      },
+    ],
+  },
+});
+
+assert.equal(plan.status, "ready");
+assert.equal(plan.items[0]?.task_type, "prove_exact_segment");
+assert.equal(plan.items[0]?.niche, "ru_clothing");
+assert.equal(plan.items[0]?.platform, "instagram");
+assert.equal(plan.items[0]?.policy_mode, "primary");
+assert.equal(plan.items[0]?.decision_priority_score, 98);
+assert.match(plan.items[0]?.action || "", /exact-proof run/);
+assert.match(plan.items[0]?.reason || "", /strongest exact-proof payoff/);
+assert.equal(plan.items[1]?.pattern_id, "p1");
+assert.equal(plan.items[1]?.niche, "ru_toys");
+assert.equal(plan.items[1]?.platform, "tiktok");
+assert.equal(plan.items[1]?.policy_mode, "control_only");
+assert.equal(plan.items[1]?.decision_priority_score, 100);
+assert.equal(plan.items[1]?.publish_brief.hook, "Не покупай пока не увидишь");
+assert.equal(plan.items[1]?.recommended_upgrade?.unlocked_output, "performance_tuned_brief");
+assert.match(plan.items[1]?.reason || "", /upgrade performance_tuned_brief/);
+assert.match(plan.items[1]?.reason || "", /best control-ready test lane/);
+assert.match(plan.items[1]?.action || "", /measurement-run/);
+assert.equal(plan.items[1]?.endpoints.feedback_writeback, "/api/factory/reels-brain/feedback");
+assert.equal(plan.exact_gap_candidates, 1);
+assert.equal(plan.audio_weak_candidates, 0);
+assert.equal(plan.audio_ready_candidates, 2);
+
+const priorityDrivenPlan = buildReelsBrainMeasurementPlan({
+  outcomeMemory: {
+    pattern_memory: {
+      no_feedback_queue: [
+        {
+          pattern_id: "p2",
+          title: "Cross-platform proof",
+          quality_gate: "high_confidence",
+          decision_priority_score: 84,
+          hook_type: "demo",
+          structure_type: "review",
+          niches: ["ru_toys"],
+          platforms: ["tiktok", "instagram"],
+        },
+      ],
+    },
+  },
+  segmentSolutionMatrix: {
+    by_segment: [
+      {
+        niche: "ru_toys",
+        platform: "tiktok",
+        production_state: "controlled_test",
+        readiness_score: 78,
+        upgrade_forecast: {
+          unlocked_output: "performance_tuned_brief",
+          projected_production_state: "near_publishable",
+          projected_trust_gain_score: 18,
+          projected_trust_gain_band: "medium",
+          recommended_loop: "audio_backfill",
+        },
+        creative_brief: {
+          hook: "TT hook",
+          retention: "fast proof",
+          structure: "demo",
+        },
+        content_decision: {
+          next_step: "Run TT batch",
+        },
+      },
+      {
+        niche: "ru_toys",
+        platform: "instagram",
+        production_state: "controlled_test",
+        readiness_score: 76,
+        upgrade_forecast: {
+          unlocked_output: "publishable_visual_brief",
+          projected_production_state: "publishable_exact",
+          projected_trust_gain_score: 31,
+          projected_trust_gain_band: "high",
+          recommended_loop: "media_backfill",
+        },
+        creative_brief: {
+          hook: "IG hook",
+          retention: "visual payoff",
+          structure: "review",
+        },
+        content_decision: {
+          next_step: "Run IG batch",
+        },
+      },
+    ],
+  },
+  generationPolicy: {
+    by_segment: [
+      {
+        niche: "ru_toys",
+        platform: "tiktok",
+        policy_mode: "control_only",
+      },
+      {
+        niche: "ru_toys",
+        platform: "instagram",
+        policy_mode: "control_only",
+      },
+    ],
+  },
+  segmentPriorityQueue: {
+    items: [
+      {
+        niche: "ru_toys",
+        platform: "tiktok",
+        decision_priority_score: 78,
+        policy_reason: "tiktok is still useful but not top payoff",
+      },
+      {
+        niche: "ru_toys",
+        platform: "instagram",
+        decision_priority_score: 96,
+        policy_reason: "instagram is the strongest control-ready payoff now",
+      },
+    ],
+  },
+});
+
+assert.equal(priorityDrivenPlan.items[0]?.pattern_id, "p2");
+assert.equal(priorityDrivenPlan.items[0]?.platform, "instagram");
+assert.equal(priorityDrivenPlan.items[0]?.publish_brief.hook, "IG hook");
+assert.match(priorityDrivenPlan.items[0]?.reason || "", /strongest control-ready payoff now/);
+
+const audioBlockedPlan = buildReelsBrainMeasurementPlan({
+  outcomeMemory: {
+    pattern_memory: {
+      no_feedback_queue: [
+        {
+          pattern_id: "p3",
+          title: "Audio-sensitive proof",
+          quality_gate: "high_confidence",
+          decision_priority_score: 88,
+          hook_type: "demo",
+          structure_type: "ugc",
+          niches: ["ru_toys"],
+          platforms: ["youtube"],
+        },
+      ],
+    },
+  },
+  segmentSolutionMatrix: {
+    by_segment: [
+      {
+        niche: "ru_toys",
+        platform: "youtube",
+        high_trust_generation_ready: true,
+        trust_summary: {
+          audio_foundation_status: "weak",
+          audio_foundation_note: "audio/transcript foundation ещё не закрыт",
+        },
+        creative_brief: {
+          hook: "Audio hook",
+          retention: "proof",
+          structure: "ugc",
+        },
+      },
+    ],
+  },
+  generationPolicy: {
+    by_segment: [
+      {
+        niche: "ru_toys",
+        platform: "youtube",
+        policy_mode: "primary",
+        high_trust_generation_ready: true,
+      },
+    ],
+  },
+  segmentPriorityQueue: {
+    items: [
+      {
+        niche: "ru_toys",
+        platform: "youtube",
+        decision_priority_score: 91,
+        policy_reason: "youtube segment is otherwise ready",
+      },
+    ],
+  },
+});
+
+assert.equal(audioBlockedPlan.items[0]?.pattern_id, "p3");
+assert.equal(audioBlockedPlan.items[0]?.high_trust_generation_ready, false);
+assert.equal(audioBlockedPlan.items[0]?.audio_foundation_status, "weak");
+assert.match(audioBlockedPlan.items[0]?.validation_goal || "", /audio\/transcript foundation/i);
+assert.match(audioBlockedPlan.items[0]?.publish_brief.next_step || "", /audio\/transcript foundation/i);
+assert.match(audioBlockedPlan.items[0]?.reason || "", /audio weak/);
+assert.equal(audioBlockedPlan.audio_weak_candidates, 1);
+assert.equal(audioBlockedPlan.audio_ready_candidates, 0);
+
+console.log("reelsBrainMeasurementPlan.test: ok");
