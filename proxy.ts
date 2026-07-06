@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { DEMO_MODE_ENABLED } from "@/lib/auth/demoMode";
 import { SESSION_COOKIE, verifySession } from "@/lib/auth/session";
 import { canAccess, ROLE_HOME } from "@/lib/auth/roles";
 
@@ -37,6 +38,11 @@ function isPublicApi(pathname: string, method: string): boolean {
 
 export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
+
+  if (DEMO_MODE_ENABLED) {
+    return NextResponse.next();
+  }
+
   const session = await verifySession(req.cookies.get(SESSION_COOKIE)?.value);
 
   // ── API: явная авторизация на уровне приложения ──

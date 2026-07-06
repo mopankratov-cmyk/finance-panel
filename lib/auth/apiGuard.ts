@@ -1,3 +1,4 @@
+import { DEMO_MODE_ENABLED } from "./demoMode";
 import { NextResponse } from "next/server";
 import { getServerSession } from "./server";
 import type { Role } from "./session";
@@ -9,6 +10,7 @@ import type { Role } from "./session";
 //
 // Возвращает NextResponse (401/403) для короткого замыкания, либо null если пускаем дальше.
 export async function requireApiSession(roles?: Role[]): Promise<NextResponse | null> {
+  if (DEMO_MODE_ENABLED) return null;
   const s = await getServerSession();
   if (!s) return NextResponse.json({ error: "Требуется вход" }, { status: 401 });
   if (roles && !roles.includes(s.role)) {
