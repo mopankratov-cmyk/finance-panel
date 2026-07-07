@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { cabinetIdFromParam } from "@/lib/rnp/resolveShop";
 
@@ -26,12 +27,43 @@ export interface WarehouseSummary {
   skus: number;
 }
 
+export interface StockCatalogRow {
+  nmId: number;
+  /** "" — nm_id не встретился в rnp_report (нет заказов за 30д окно) */
+  article: string;
+  name: string | null;
+  quantity: number;
+  inWayToClient: number;
+  inWayFromClient: number;
+  daysLeft: number | null;
+  warehouseCount: number;
+  topWarehouses: { warehouse: string; quantity: number }[];
+}
+
 interface RpcRow {
   nm_id: number;
   article: string;
   orders_month: number;
   stock: number;
   in_way_to_client: number;
+}
+
+// Полный (не усечённый .limit(2000)) постраничный фетч wb_stocks — отдельно от
+// stockQ ниже, чтобы не менять числа, которыми уже питается warehouses/whInferno/splitNeed.
+async function fetchAllStocks(db: SupabaseClient, p_cabinet: string | null) {
+  const rows: { nm_id: number; warehouse: string; quantity: number | null; in_way_to_client: number | null; in_way_from_client: number | null }[] = [];
+  for (let page = 0; page < 30; page++) {
+    let q = db.from("wb_stocks")
+      .select("nm_id, warehouse, quantity, in_way_to_client, in_way_from_client")
+      .range(page * 1000, page * 1000 + 999);
+    if (p_cabinet) q = q.eq("cabinet_id", p_cabinet);
+    const { data, error } = await q;
+    if (error) throw new Error(error.message);
+    if (!data?.length) break;
+    rows.push(...(data as typeof rows));
+    if (data.length < 1000) break;
+  }
+  return rows;
 }
 
 export async function GET(req: NextRequest) {
@@ -44,9 +76,11 @@ export async function GET(req: NextRequest) {
   try {
     let stockQ = db.from("wb_stocks").select("warehouse, quantity, in_way_to_client").limit(2000);
     if (p_cabinet) stockQ = stockQ.eq("cabinet_id", p_cabinet);
-    const [reportRes, stocksRes] = await Promise.all([
+    const [reportRes, stocksRes, allStockRows, costsRes] = await Promise.all([
       db.rpc("rnp_report", { p_cabinet }),
       stockQ,
+      fetchAllStocks(db, p_cabinet),
+      db.from("product_costs").select("article, name"),
     ]);
 
     if (reportRes.error) throw new Error(reportRes.error.message);
@@ -86,6 +120,35 @@ export async function GET(req: NextRequest) {
     const warehouses = [...whMap.values()].sort((a, b) => b.quantity - a.quantity);
 
     skus.sort((a, b) => b.need45 - a.need45);
+
+    // мастер-каталог остатков — полный список SKU (не только те, что нужно дозаказать)
+    const nameByArticle = new Map((costsRes.data ?? []).map((c) => [c.article as string, c.name as string | null]));
+    const daysLeftByNm = new Map(skus.map((s) => [s.nmId, s.daysLeft]));
+    const articleByNm = new Map(skus.map((s) => [s.nmId, s.article]));
+
+    const byNm = new Map<number, { quantity: number; toClient: number; fromClient: number; wh: Map<string, number> }>();
+    for (const s of allStockRows) {
+      const e = byNm.get(s.nm_id) ?? { quantity: 0, toClient: 0, fromClient: 0, wh: new Map<string, number>() };
+      const qty = Number(s.quantity ?? 0);
+      e.quantity += qty;
+      e.toClient += Number(s.in_way_to_client ?? 0);
+      e.fromClient += Number(s.in_way_from_client ?? 0);
+      if (qty > 0) e.wh.set(s.warehouse, (e.wh.get(s.warehouse) ?? 0) + qty);
+      byNm.set(s.nm_id, e);
+    }
+
+    const catalog: StockCatalogRow[] = [...byNm.entries()].map(([nmId, e]) => {
+      const article = articleByNm.get(nmId) || "";
+      const top = [...e.wh.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5)
+        .map(([warehouse, quantity]) => ({ warehouse, quantity }));
+      return {
+        nmId, article,
+        name: article ? (nameByArticle.get(article) ?? null) : null,
+        quantity: e.quantity, inWayToClient: e.toClient, inWayFromClient: e.fromClient,
+        daysLeft: daysLeftByNm.get(nmId) ?? null,
+        warehouseCount: e.wh.size, topWarehouses: top,
+      };
+    }).sort((a, b) => b.quantity - a.quantity);
 
     // --- Контракт inferno-вкладки «Поставки» (top-level) ---
     // Юрин дизайн раскладывает «готовую тару» (xlsx). Тара/WMS — отложено (docs/отложено.md),
@@ -130,7 +193,7 @@ export async function GET(req: NextRequest) {
     const wbStockTotal = warehouses.reduce((a, w) => a + w.quantity, 0);
 
     return NextResponse.json({
-      data: { skus, warehouses },
+      data: { skus, warehouses, catalog },
       error: null,
       // inferno top-level
       warehouses: whInferno,
