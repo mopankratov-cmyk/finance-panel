@@ -5,8 +5,8 @@ import { resolveShopCabinet } from "@/lib/rnp/resolveShop";
 import { getWbCabinet, resolveWbToken } from "@/lib/wb/cabinetTokens";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
-const ENV_ADV_TOKEN = process.env.WB_TOKEN_ADVERT;
 const ADV_BASE = "https://advert-api.wildberries.ru";
 
 interface RpcRow {
@@ -34,13 +34,30 @@ export async function GET(request: NextRequest) {
   let statQ = db.from("wb_advert_stats").select("advert_id, date, sum_spent, views, clicks, sum_orders").gte("date", new Date(Date.now() - 14 * 86400000).toISOString().slice(0, 10)).limit(5000);
   if (cabinetId) { advQ = advQ.eq("cabinet_id", cabinetId); statQ = statQ.eq("cabinet_id", cabinetId); }
 
-  const [advRes, statRes, rpcRes] = await Promise.all([advQ, statQ, db.rpc("rnp_report", { p_cabinet: cabinetId })]);
+  // Баланс продвижения зависит только от cabinetId — считаем его цепочку параллельно
+  // с тяжёлыми БД-запросами, а не после них (иначе латентность складывается).
+  const balancePromise: Promise<number | null> = cabinetId
+    ? getWbCabinet(cabinetId).then(async (cab) => {
+        const advToken = cab ? resolveWbToken(cab, "advert") : null;
+        if (!advToken) return null;
+        try {
+          const res = await fetch(`${ADV_BASE}/adv/v1/balance`, { headers: { Authorization: advToken }, cache: "no-store" });
+          if (!res.ok) return null;
+          const j = await res.json();
+          return (j.balance ?? 0) + (j.net ?? 0);
+        } catch {
+          return null;
+        }
+      })
+    : Promise.resolve(null);
+
+  const [advRes, statRes, rpcRes, balance] = await Promise.all([advQ, statQ, db.rpc("rnp_report", { p_cabinet: cabinetId }), balancePromise]);
   if (advRes.error) return NextResponse.json({ ok: false, error: advRes.error.message });
 
-  // даты «сегодня/вчера» по последним данным
-  const dates = [...new Set((statRes.data ?? []).map((s) => String(s.date).slice(0, 10)))].sort();
-  const today = dates[dates.length - 1] ?? "";
-  const yest = dates[dates.length - 2] ?? "";
+  // «Сегодня/вчера» — календарные даты, а не последняя синканная. Если сегодняшний
+  // синк рекламы ещё не прошёл — покажем 0 за реальное сегодня, а не подменим его вчерашним днём.
+  const today = new Date().toISOString().slice(0, 10);
+  const yest = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
 
   // агрегаты по кампании за 14д + spend today/yest
   const byAdv = new Map<number, { spent14: number; views: number; clicks: number; ordSum: number; today: number; yest: number }>();
@@ -76,12 +93,16 @@ export async function GET(request: NextRequest) {
 
   const cabLabel = label || "Все кабинеты";
 
-  // группируем кампании по основному nm → article
+  // группируем кампании по основному nm → article. spendYestTotal считаем в ТОМ ЖЕ
+  // проходе и над той же популяцией (только кампании с nm), что и spendTodayTotal —
+  // иначе «% к вчера» сравнивает разные множества кампаний.
   const artMap = new Map<number, { nm: number; art: string; photo: string; spend: number; campaigns: Record<string, unknown>[] }>();
+  let spendYestTotal = 0;
   for (const a of advRes.data ?? []) {
     const nm = (a.nm_ids as number[])?.[0];
     if (!nm) continue;
     const st = byAdv.get(a.advert_id) ?? { spent14: 0, views: 0, clicks: 0, ordSum: 0, today: 0, yest: 0 };
+    spendYestTotal += st.yest;
     const drr = st.ordSum > 0 ? Math.round((st.spent14 / st.ordSum) * 1000) / 10 : null;
     const campaign = {
       id: a.advert_id,
@@ -112,29 +133,13 @@ export async function GET(request: NextRequest) {
 
   const articles = [...artMap.values()].sort((a, b) => b.spend - a.spend);
   const spendTodayTotal = articles.reduce((s, a) => s + a.spend, 0);
-  const spendYestTotal = [...byAdv.values()].reduce((s, a) => s + a.yest, 0);
-
-  // баланс — только для конкретного кабинета (его токеном Продвижения); для «всех» неоднозначен
-  let balance: number | null = null;
-  const cab = cabinetId ? await getWbCabinet(cabinetId) : null;
-  const advToken = cab ? resolveWbToken(cab, "advert") : null;
-  if (cabinetId && advToken) {
-    try {
-      const res = await fetch(`${ADV_BASE}/adv/v1/balance`, { headers: { Authorization: advToken }, cache: "no-store" });
-      if (res.ok) {
-        const j = await res.json();
-        balance = (j.balance ?? 0) + (j.net ?? 0);
-      }
-    } catch {
-      /* необязательно */
-    }
-  }
 
   return NextResponse.json({
     ok: true,
     cabinet: cabLabel,
     articles,
-    count: advRes.data?.length ?? 0,
+    // «Активных» = именно статус 9 (11 — на паузе, но остаётся в выборке для истории/аналитики)
+    count: (advRes.data ?? []).filter((a) => a.status === 9).length,
     cap_rub: 5000,
     balance,
     spend_today_total: spendTodayTotal,
