@@ -8,6 +8,8 @@ import { LoadingBanner, SkeletonKpiRow, SkeletonCards, useElapsedSeconds } from 
 import { CategoryFilter, filterByCategory } from "@/components/ui/CategoryFilter";
 import { useCategoryMap } from "@/lib/useCategoryMap";
 import { useSort } from "@/lib/useSort";
+import { formatTime } from "@/lib/analytics/format";
+import type { AdvertChange } from "@/app/api/adverts/changes/route";
 
 interface Day { ts: string; spend: number; clicks: number; views: number; orders: number }
 interface Campaign {
@@ -105,7 +107,12 @@ export default function AdvertsPage() {
   const [data, setData] = useState<AdvData | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
+  const [changes, setChanges] = useState<AdvertChange[]>([]);
   const elapsed = useElapsedSeconds(loading);
+
+  useEffect(() => {
+    fetch("/api/adverts/changes", { cache: "no-store" }).then((r) => r.json()).then((j) => setChanges(j.changes ?? [])).catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (!cabReady) return;
@@ -181,6 +188,31 @@ export default function AdvertsPage() {
             ) : (
               <div className="space-y-2">
                 {articles.map((a) => <ArticleCard key={a.nm} a={a} />)}
+              </div>
+            )}
+
+            {changes.length > 0 && (
+              <div className="mt-8">
+                <h2 className="mb-2 text-xs font-bold uppercase tracking-wider text-gray-400">История изменений ставок</h2>
+                <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50 text-xs text-gray-500">
+                      <tr><th className="px-3 py-2 text-left">Кампания</th><th className="px-3 py-2 text-right">Было → Стало</th><th className="px-3 py-2 text-left">Статус</th><th className="px-3 py-2 text-left">Когда</th></tr>
+                    </thead>
+                    <tbody>
+                      {changes.map((c) => (
+                        <tr key={c.id} className="border-t border-gray-100">
+                          <td className="px-3 py-2 text-gray-700">{c.advertId}</td>
+                          <td className="px-3 py-2 text-right tabular-nums text-gray-500">{c.oldBid ?? "—"} → {c.newBid ?? "—"} ₽</td>
+                          <td className="px-3 py-2">
+                            <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${c.status === "ok" ? "bg-emerald-100 text-emerald-700" : c.status === "rejected" ? "bg-amber-100 text-amber-700" : "bg-red-100 text-red-700"}`}>{c.status}</span>
+                          </td>
+                          <td className="px-3 py-2 text-gray-400">{formatTime(c.createdAt)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             )}
           </>
