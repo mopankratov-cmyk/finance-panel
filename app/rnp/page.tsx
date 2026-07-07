@@ -32,8 +32,9 @@ const COLS: { field: string; label: string; kind: string }[] = [
   { field: "gmroi", label: "GMROI, %", kind: "pct" },
 ];
 
-function toneDrr(v: number | null) { if (v == null) return ""; return v <= 10 ? "text-emerald-600" : v <= 20 ? "text-amber-600" : "text-rose-600"; }
-function toneMargin(v: number | null) { if (v == null) return ""; return v >= 20 ? "text-emerald-600" : v >= 10 ? "text-amber-600" : "text-rose-600"; }
+// [className, glyph] — глиф даёт сигнал не только цветом (важно для дальтоников/ч-б экранов).
+function toneDrr(v: number | null): [string, string] { if (v == null) return ["", ""]; return v <= 10 ? ["text-emerald-600", ""] : v <= 20 ? ["text-amber-600", "△ "] : ["text-rose-600", "▲ "]; }
+function toneMargin(v: number | null): [string, string] { if (v == null) return ["", ""]; return v >= 20 ? ["text-emerald-600", ""] : v >= 10 ? ["text-amber-600", "△ "] : ["text-rose-600", "▲ "]; }
 
 export default function RnpPage() {
   const [cabId, setCabId, cabReady] = useActiveCabinet("wb");
@@ -61,9 +62,9 @@ export default function RnpPage() {
   const sumCell = (field: string, kind: string) => fmtKind(total(data?.summary ?? [], field), kind);
 
   return (
-    <div className="min-h-screen bg-gray-50 text-gray-900">
+    <div className="bg-gray-50 text-gray-900">
       <header className="border-b border-gray-200 bg-white">
-        <div className="mx-auto flex max-w-7xl items-center gap-3 px-6 py-4">
+        <div className="mx-auto flex max-w-7xl items-center gap-3 px-4 py-4 sm:px-6">
           <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-violet-100 text-violet-700"><Table2 className="h-5 w-5" /></div>
           <div>
             <h1 className="text-lg font-extrabold tracking-tight">РНП по SKU</h1>
@@ -80,7 +81,7 @@ export default function RnpPage() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-7xl px-6 py-6">
+      <main className="mx-auto max-w-7xl px-3 py-6 sm:px-6">
         {loading ? (
           <>
             <LoadingBanner seconds={elapsed} hint="РНП по SKU" />
@@ -111,14 +112,14 @@ export default function RnpPage() {
               <table className="min-w-full text-sm">
                 <thead>
                   <tr className="border-b border-gray-200 text-left text-xs text-gray-500">
-                    <th className="sticky left-0 z-10 bg-white px-3 py-2 font-semibold">Артикул</th>
+                    <th className="sticky left-0 z-10 bg-white px-3 py-2 font-semibold shadow-[2px_0_4px_-2px_rgba(0,0,0,0.08)]">Артикул</th>
                     {COLS.map((c) => <th key={c.field} className="px-3 py-2 text-right font-semibold whitespace-nowrap">{c.label}</th>)}
                   </tr>
                 </thead>
                 <tbody>
                   {data.skus.map((s) => (
-                    <tr key={s.nm} className="border-b border-gray-100 last:border-0 hover:bg-gray-50">
-                      <td className="sticky left-0 z-10 bg-white px-3 py-2">
+                    <tr key={s.nm} className="group border-b border-gray-100 last:border-0 hover:bg-gray-50">
+                      <td className="sticky left-0 z-10 bg-white px-3 py-2 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.08)] group-hover:bg-gray-50">
                         <div className="flex items-center gap-2">
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img src={s.img_url} alt="" loading="lazy" className="h-8 w-8 shrink-0 rounded bg-gray-100 object-cover" onError={(e) => { (e.currentTarget as HTMLImageElement).style.visibility = "hidden"; }} />
@@ -127,8 +128,8 @@ export default function RnpPage() {
                       </td>
                       {COLS.map((c) => {
                         const v = total(s.metrics, c.field);
-                        const tone = c.field === "drr" ? toneDrr(v) : c.field === "margin_pct" ? toneMargin(v) : "";
-                        return <td key={c.field} className={`px-3 py-2 text-right tabular-nums whitespace-nowrap ${tone}`}>{fmtKind(v, c.kind)}</td>;
+                        const [tone, glyph] = c.field === "drr" ? toneDrr(v) : c.field === "margin_pct" ? toneMargin(v) : ["", ""];
+                        return <td key={c.field} className={`px-3 py-2 text-right tabular-nums whitespace-nowrap ${tone}`}>{glyph}{fmtKind(v, c.kind)}</td>;
                       })}
                     </tr>
                   ))}

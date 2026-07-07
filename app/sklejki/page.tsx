@@ -16,7 +16,8 @@ interface SklData { groups_multi: Group[]; groups_solo: Group[]; total_sku: numb
 
 const num = (v: number) => Math.round(v).toLocaleString("ru-RU");
 const pc = (v: number | null) => (v == null ? "—" : v + "%");
-const toneDrr = (v: number | null) => (v == null ? "text-gray-400" : v <= 10 ? "text-emerald-600" : v <= 20 ? "text-amber-600" : "text-rose-600");
+// [className, glyph] — глиф даёт сигнал не только цветом (важно для дальтоников/ч-б экранов).
+const toneDrr = (v: number | null): [string, string] => (v == null ? ["text-gray-400", ""] : v <= 10 ? ["text-emerald-600", ""] : v <= 20 ? ["text-amber-600", "△ "] : ["text-rose-600", "▲ "]);
 
 function GroupCard({ g }: { g: Group }) {
   return (
@@ -55,7 +56,7 @@ function GroupCard({ g }: { g: Group }) {
                 <td className="px-3 py-1.5 text-right tabular-nums">{num(s.shows_7d)}</td>
                 <td className="px-3 py-1.5 text-right tabular-nums">{num(s.orders_sum_7d)}</td>
                 <td className="px-3 py-1.5 text-right tabular-nums">{num(s.adv_spend_7d)}</td>
-                <td className={`px-3 py-1.5 text-right tabular-nums ${toneDrr(s.drr_7d)}`}>{pc(s.drr_7d)}</td>
+                <td className={`px-3 py-1.5 text-right tabular-nums ${toneDrr(s.drr_7d)[0]}`}>{toneDrr(s.drr_7d)[1]}{pc(s.drr_7d)}</td>
                 <td className="px-3 py-1.5 text-right tabular-nums">{pc(s.margin_before_drr)}</td>
                 <td className="px-3 py-1.5 text-right tabular-nums">{num(s.stock)}</td>
               </tr>
@@ -87,9 +88,9 @@ export default function SklejkiPage() {
   }, [cabId, cabReady]);
 
   return (
-    <div className="min-h-screen bg-gray-50 text-gray-900">
+    <div className="bg-gray-50 text-gray-900">
       <header className="border-b border-gray-200 bg-white">
-        <div className="mx-auto flex max-w-6xl items-center gap-3 px-6 py-4">
+        <div className="mx-auto flex max-w-6xl items-center gap-3 px-4 py-4 sm:px-6">
           <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-violet-100 text-violet-700"><Layers className="h-5 w-5" /></div>
           <div>
             <h1 className="text-lg font-extrabold tracking-tight">Склейки</h1>
@@ -99,7 +100,7 @@ export default function SklejkiPage() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-6xl px-6 py-6">
+      <main className="mx-auto max-w-6xl px-3 py-6 sm:px-6">
         {loading ? (
           <>
             <LoadingBanner seconds={elapsed} hint="карточки WB по каждому кабинету" />

@@ -20,11 +20,12 @@ interface AdvData {
 
 const rub = (n: number) => Math.round(n).toLocaleString("ru-RU") + " ₽";
 
-function drrTone(drr: number | null): [string, string] {
-  if (drr == null) return ["bg-gray-100", "text-gray-400"];
-  if (drr <= 10) return ["bg-emerald-100", "text-emerald-700"];
-  if (drr <= 20) return ["bg-amber-100", "text-amber-700"];
-  return ["bg-rose-100", "text-rose-700"];
+// [bg, fg, glyph] — глиф даёт сигнал не только цветом бейджа (важно для дальтоников/ч-б экранов).
+function drrTone(drr: number | null): [string, string, string] {
+  if (drr == null) return ["bg-gray-100", "text-gray-400", ""];
+  if (drr <= 10) return ["bg-emerald-100", "text-emerald-700", ""];
+  if (drr <= 20) return ["bg-amber-100", "text-amber-700", "△ "];
+  return ["bg-rose-100", "text-rose-700", "▲ "];
 }
 
 function Spark({ data }: { data: number[] }) {
@@ -54,7 +55,7 @@ function ArticleCard({ a }: { a: Article }) {
   const [open, setOpen] = useState(false);
   return (
     <div className="rounded-2xl border border-gray-200 bg-white">
-      <button onClick={() => setOpen((v) => !v)} className="flex w-full items-center gap-3 p-3 text-left">
+      <button onClick={() => setOpen((v) => !v)} aria-expanded={open} aria-label={`${a.art}: ${open ? "свернуть" : "развернуть"} кампании`} className="flex w-full items-center gap-3 p-3 text-left">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={a.photo} alt="" loading="lazy" className="h-12 w-12 shrink-0 rounded-lg bg-gray-100 object-cover"
           onError={(e) => { (e.currentTarget as HTMLImageElement).style.visibility = "hidden"; }} />
@@ -71,10 +72,13 @@ function ArticleCard({ a }: { a: Article }) {
       {open && (
         <div className="space-y-1 border-t border-gray-100 px-3 py-2">
           {a.campaigns.map((c) => {
-            const [bg, fg] = drrTone(c.drr);
+            const [bg, fg, glyph] = drrTone(c.drr);
             return (
               <div key={c.id} className="flex items-center gap-3 rounded-lg px-2 py-2 hover:bg-gray-50">
-                <span className={`h-2 w-2 shrink-0 rounded-full ${c.enabled ? "bg-emerald-500" : "bg-gray-300"}`} title={c.enabled ? "Активна" : "Пауза"} />
+                <span className="flex shrink-0 items-center gap-1">
+                  <span className={`h-2 w-2 rounded-full ${c.enabled ? "bg-emerald-500" : "bg-gray-300"}`} aria-hidden="true" />
+                  <span className={`text-[10px] ${c.enabled ? "text-emerald-600" : "text-gray-400"}`}>{c.enabled ? "Активна" : "Пауза"}</span>
+                </span>
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-sm text-gray-800">{c.name}</div>
                   <div className="text-[11px] text-gray-400">бюджет {rub(c.budget)}</div>
@@ -82,7 +86,7 @@ function ArticleCard({ a }: { a: Article }) {
                 <Spark data={c.days.map((d) => d.spend)} />
                 <div className="w-20 text-right text-sm font-semibold tabular-nums text-gray-900">{rub(c.spend_today)}</div>
                 <span className={`w-16 rounded-md px-2 py-0.5 text-center text-xs font-semibold tabular-nums ${bg} ${fg}`}>
-                  {c.drr == null ? "—" : `${c.drr}%`}
+                  {c.drr == null ? "—" : `${glyph}${c.drr}%`}
                 </span>
               </div>
             );
@@ -117,9 +121,9 @@ export default function AdvertsPage() {
     : null;
 
   return (
-    <div className="min-h-screen bg-gray-50 text-gray-900">
+    <div className="bg-gray-50 text-gray-900">
       <header className="border-b border-gray-200 bg-white">
-        <div className="mx-auto flex max-w-6xl items-center gap-3 px-6 py-4">
+        <div className="mx-auto flex max-w-6xl items-center gap-3 px-4 py-4 sm:px-6">
           <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-violet-100 text-violet-700"><Megaphone className="h-5 w-5" /></div>
           <div>
             <h1 className="text-lg font-extrabold tracking-tight">Реклама WB</h1>
@@ -131,7 +135,7 @@ export default function AdvertsPage() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-6xl px-6 py-6">
+      <main className="mx-auto max-w-6xl px-3 py-6 sm:px-6">
         {loading ? (
           <>
             <LoadingBanner seconds={elapsed} hint="реклама WB" />

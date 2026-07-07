@@ -40,9 +40,9 @@ export default function UnitPage() {
   }, [cabId, cabReady]);
 
   return (
-    <div className="min-h-screen bg-gray-50 text-gray-900">
+    <div className="bg-gray-50 text-gray-900">
       <header className="border-b border-gray-200 bg-white">
-        <div className="mx-auto flex max-w-[110rem] items-center gap-3 px-6 py-4">
+        <div className="mx-auto flex max-w-[110rem] items-center gap-3 px-4 py-4 sm:px-6">
           <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-violet-100 text-violet-700"><Sigma className="h-5 w-5" /></div>
           <div>
             <h1 className="text-lg font-extrabold tracking-tight">Юнит-экономика WB</h1>
@@ -52,7 +52,7 @@ export default function UnitPage() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-[110rem] px-6 py-6">
+      <main className="mx-auto max-w-[110rem] px-3 py-6 sm:px-6">
         {loading ? (
           <>
             <LoadingBanner seconds={elapsed} hint="юнит-экономика WB" />
@@ -65,7 +65,7 @@ export default function UnitPage() {
             <table className="min-w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-200 text-left text-xs text-gray-500">
-                  <th className="sticky left-0 z-10 bg-white px-3 py-2 font-semibold">Артикул</th>
+                  <th className="sticky left-0 z-10 bg-white px-3 py-2 font-semibold shadow-[2px_0_4px_-2px_rgba(0,0,0,0.08)]">Артикул</th>
                   {data.headers.slice(FIRST_DATA_COL).map((h, i) => (
                     <th key={i} className="px-3 py-2 text-right font-semibold whitespace-nowrap">{h}</th>
                   ))}
@@ -73,8 +73,8 @@ export default function UnitPage() {
               </thead>
               <tbody>
                 {data.rows.map((row, ri) => (
-                  <tr key={ri} className="border-b border-gray-100 last:border-0 hover:bg-gray-50">
-                    <td className="sticky left-0 z-10 bg-white px-3 py-2">
+                  <tr key={ri} className="group border-b border-gray-100 last:border-0 hover:bg-gray-50">
+                    <td className="sticky left-0 z-10 bg-white px-3 py-2 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.08)] group-hover:bg-gray-50">
                       <div className="flex items-center gap-2">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img src={data.img_urls[ri]} alt="" loading="lazy" className="h-8 w-8 shrink-0 rounded bg-gray-100 object-cover" onError={(e) => { (e.currentTarget as HTMLImageElement).style.visibility = "hidden"; }} />

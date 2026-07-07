@@ -18,8 +18,9 @@ interface SeoData { skus: SeoSku[]; metrics_period: string; count: number }
 
 const num = (v: number | null) => (v == null ? "—" : Math.round(v).toLocaleString("ru-RU"));
 const pc = (v: number | null) => (v == null ? "—" : v + "%");
-const toneDrr = (v: number | null) => (v == null ? "" : v <= 10 ? "text-emerald-600" : v <= 20 ? "text-amber-600" : "text-rose-600");
-const toneMargin = (v: number | null) => (v == null ? "" : v >= 20 ? "text-emerald-600" : v >= 10 ? "text-amber-600" : "text-rose-600");
+// [className, glyph] — глиф даёт сигнал не только цветом (важно для дальтоников/ч-б экранов).
+const toneDrr = (v: number | null): [string, string] => (v == null ? ["", ""] : v <= 10 ? ["text-emerald-600", ""] : v <= 20 ? ["text-amber-600", "△ "] : ["text-rose-600", "▲ "]);
+const toneMargin = (v: number | null): [string, string] => (v == null ? ["", ""] : v >= 20 ? ["text-emerald-600", ""] : v >= 10 ? ["text-amber-600", "△ "] : ["text-rose-600", "▲ "]);
 
 const COLS: { key: keyof SeoSku; label: string; kind: "num" | "pct" | "drr" | "margin" }[] = [
   { key: "shows_window", label: "Показы", kind: "num" },
@@ -57,15 +58,15 @@ export default function SeoPage() {
   const cell = (s: SeoSku, key: keyof SeoSku, kind: string) => {
     const v = s[key] as number | null;
     if (kind === "pct") return pc(v);
-    if (kind === "drr") return <span className={toneDrr(v)}>{pc(v)}</span>;
-    if (kind === "margin") return <span className={toneMargin(v)}>{pc(v)}</span>;
+    if (kind === "drr") { const [cls, glyph] = toneDrr(v); return <span className={cls}>{glyph}{pc(v)}</span>; }
+    if (kind === "margin") { const [cls, glyph] = toneMargin(v); return <span className={cls}>{glyph}{pc(v)}</span>; }
     return num(v);
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 text-gray-900">
+    <div className="bg-gray-50 text-gray-900">
       <header className="border-b border-gray-200 bg-white">
-        <div className="mx-auto flex max-w-7xl items-center gap-3 px-6 py-4">
+        <div className="mx-auto flex max-w-7xl items-center gap-3 px-4 py-4 sm:px-6">
           <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-violet-100 text-violet-700"><Search className="h-5 w-5" /></div>
           <div>
             <h1 className="text-lg font-extrabold tracking-tight">SEO / Воронка</h1>
@@ -82,7 +83,7 @@ export default function SeoPage() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-7xl px-6 py-6">
+      <main className="mx-auto max-w-7xl px-3 py-6 sm:px-6">
         {loading ? (
           <>
             <LoadingBanner seconds={elapsed} hint="SEO-воронка" />
@@ -95,14 +96,14 @@ export default function SeoPage() {
             <table className="min-w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-200 text-left text-xs text-gray-500">
-                  <th className="sticky left-0 z-10 bg-white px-3 py-2 font-semibold">Артикул</th>
+                  <th className="sticky left-0 z-10 bg-white px-3 py-2 font-semibold shadow-[2px_0_4px_-2px_rgba(0,0,0,0.08)]">Артикул</th>
                   {COLS.map((c) => <th key={String(c.key)} className="px-3 py-2 text-right font-semibold whitespace-nowrap">{c.label}</th>)}
                 </tr>
               </thead>
               <tbody>
                 {data.skus.map((s) => (
-                  <tr key={s.nm} className="border-b border-gray-100 last:border-0 hover:bg-gray-50">
-                    <td className="sticky left-0 z-10 bg-white px-3 py-2">
+                  <tr key={s.nm} className="group border-b border-gray-100 last:border-0 hover:bg-gray-50">
+                    <td className="sticky left-0 z-10 bg-white px-3 py-2 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.08)] group-hover:bg-gray-50">
                       <div className="flex items-center gap-2">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img src={s.img_url} alt="" loading="lazy" className="h-8 w-8 shrink-0 rounded bg-gray-100 object-cover" onError={(e) => { (e.currentTarget as HTMLImageElement).style.visibility = "hidden"; }} />

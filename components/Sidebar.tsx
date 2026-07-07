@@ -34,7 +34,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { allowedNav, ROLE_LABEL } from "@/lib/auth/roles";
 import type { Role } from "@/lib/auth/session";
 
@@ -123,6 +123,31 @@ export function Sidebar() {
   const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [me, setMe] = useState<{ email: string; role: Role } | null>(null);
+  const asideRef = useRef<HTMLElement>(null);
+  const previouslyFocused = useRef<HTMLElement | null>(null);
+
+  // Мобильный drawer: focus-trap + Escape + возврат фокуса на триггер при закрытии —
+  // без этого клавиатурный/скринридер-пользователь мог провалиться фокусом за drawer.
+  useEffect(() => {
+    if (!mobileOpen) return;
+    previouslyFocused.current = document.activeElement as HTMLElement;
+    const focusables = asideRef.current?.querySelectorAll<HTMLElement>("a[href], button:not([disabled])");
+    focusables?.[0]?.focus();
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") { setMobileOpen(false); return; }
+      if (e.key !== "Tab" || !focusables || focusables.length === 0) return;
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      previouslyFocused.current?.focus();
+    };
+  }, [mobileOpen]);
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
     analytics: true,
     finres: true,
@@ -178,6 +203,7 @@ export function Sidebar() {
         <button
           className="ml-auto text-slate-400 hover:text-white lg:hidden"
           onClick={() => setMobileOpen(false)}
+          aria-label="Закрыть меню"
         >
           <X className="h-5 w-5" />
         </button>
@@ -260,6 +286,8 @@ export function Sidebar() {
       <button
         className="fixed left-4 top-4 z-40 flex h-10 w-10 items-center justify-center rounded-lg bg-[#1a1a2e] text-white shadow-lg lg:hidden"
         onClick={() => setMobileOpen(true)}
+        aria-label="Открыть меню"
+        aria-expanded={mobileOpen}
       >
         <Menu className="h-5 w-5" />
       </button>
@@ -272,6 +300,10 @@ export function Sidebar() {
       )}
 
       <aside
+        ref={asideRef}
+        role={mobileOpen ? "dialog" : undefined}
+        aria-modal={mobileOpen || undefined}
+        aria-label={mobileOpen ? "Навигация" : undefined}
         className={`fixed inset-y-0 left-0 z-50 flex w-64 flex-col bg-[#1a1a2e] transition-transform lg:translate-x-0 ${
           mobileOpen ? "translate-x-0" : "-translate-x-full"
         }`}
