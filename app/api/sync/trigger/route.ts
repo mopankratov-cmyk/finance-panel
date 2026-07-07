@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 // Пользовательский триггер синков из UI: секрет подставляется на сервере,
 // клиент его не видит. Допустимые задания фиксированы.
-const ALLOWED = ["orders", "sales", "stocks", "adverts", "advert-stats", "funnel", "all"];
+const ALLOWED = ["orders", "sales", "stocks", "adverts", "advert-stats", "funnel", "commissions", "all"];
 
 export const maxDuration = 60;
 

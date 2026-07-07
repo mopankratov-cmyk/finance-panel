@@ -6,6 +6,7 @@
 // Кэш через Next fetch revalidate (отчёт тяжёлый ~12с) — тянется раз в 6ч на весь сервер.
 
 import { getActiveWbCabinets } from "./cabinetTokens";
+import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
 const WB_STATS_TOKEN = process.env.WB_STATS_TOKEN || process.env.WB_TOKEN_STATISTICS;
 
@@ -109,9 +110,50 @@ export async function getWbCommission(days = 30, opts?: { token?: string; cacheK
   return val;
 }
 
-// Факт-ставки по nm со ВСЕХ активных кабинетов (каждый nm — из финотчёта своего кабинета).
-// Для кросс-кабинетных таблиц (юнит/РНП): ENV-токен пуст/неактуален → токены кабинетов из БД.
+// Факт-ставки по nm со ВСЕХ активных кабинетов — читает кэш-таблицу (см. миграцию
+// wb_nm_commissions, наполняется app/api/sync/commissions раз в сутки). Кэш пуст
+// (первый запуск/синк ещё не прошёл) → фолбэк на live-запрос ко всем кабинетам, как раньше.
 export async function getWbCommissionMerged(days = 30): Promise<WbCommission> {
+  const cached = await getWbCommissionFromCache();
+  if (cached) return cached;
+  return getWbCommissionMergedLive(days);
+}
+
+async function getWbCommissionFromCache(): Promise<WbCommission | null> {
+  const db = getSupabaseAdmin();
+  if (!db) return null;
+  const [nmRes, ohRes] = await Promise.all([
+    db.from("wb_nm_commissions").select("cabinet_id, nm_id, pct, acq_pct, extra_pct, rev"),
+    db.from("wb_cabinet_commission_overhead").select("cabinet_id, overhead_pct, rev"),
+  ]);
+  const nmRows = nmRes.data ?? [];
+  if (!nmRows.length) return null; // кэш ещё не наполнен синком
+
+  // один nm в нескольких кабинетах — берём строку с большей выручкой (как в live-мердже)
+  const byNm = new Map<number, NmRates>();
+  for (const r of nmRows as { nm_id: number; pct: number; acq_pct: number; extra_pct: number; rev: number }[]) {
+    const nm = Number(r.nm_id);
+    const rev = Number(r.rev ?? 0);
+    const ex = byNm.get(nm);
+    if (!ex || rev > ex.rev) byNm.set(nm, { pct: Number(r.pct ?? 0), acqPct: Number(r.acq_pct ?? 0), extraPct: Number(r.extra_pct ?? 0), rev });
+  }
+  let totW = 0, totAcq = 0, totExtra = 0, totRev = 0;
+  for (const e of byNm.values()) { totW += e.pct * e.rev; totAcq += e.acqPct * e.rev; totExtra += e.extraPct * e.rev; totRev += e.rev; }
+
+  const ohRows = (ohRes.data ?? []) as { overhead_pct: number; rev: number }[];
+  let totOverheadW = 0, totOverheadRev = 0;
+  for (const o of ohRows) { const rev = Number(o.rev ?? 0); totOverheadW += Number(o.overhead_pct ?? 0) * rev; totOverheadRev += rev; }
+
+  return {
+    byNm,
+    avgPct: totRev > 0 ? r1(totW / totRev) : 0,
+    avgAcqPct: totRev > 0 ? r1(totAcq / totRev) : 0,
+    avgExtraPct: totRev > 0 ? r1(totExtra / totRev) : 0,
+    overheadPct: totOverheadRev > 0 ? r1(totOverheadW / totOverheadRev) : 0,
+  };
+}
+
+async function getWbCommissionMergedLive(days: number): Promise<WbCommission> {
   const cabs = await getActiveWbCabinets();
   if (!cabs.length) return getWbCommission(days); // фолбэк на ENV
   const parts = await Promise.all(cabs.map((c) => getWbCommission(days, { token: c.token, cacheKey: c.id })));

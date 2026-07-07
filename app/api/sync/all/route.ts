@@ -8,7 +8,9 @@ import { generateInsights } from "@/lib/agent/rules";
 //  - adverts до advert-stats (статистика читает живые кампании из wb_adverts);
 //  - funnel ПЕРЕД advert-stats: у advert-stats паузы 61с/батч (WB 1 req/min), они съедают
 //    60с-бюджет функции, и воронка не доходит. Воронка аналитически важнее → идёт раньше.
-const JOBS = ["orders", "sales", "stocks", "adverts", "funnel", "advert-stats"] as const;
+//  - commissions ПОСЛЕДНИЙ и best-effort: это чистый перф-кэш (см. lib/wb/commissions.ts),
+//    если не влезет в бюджет — не страшно, РНП/юнит просто посчитают комиссию live в этот раз.
+const JOBS = ["orders", "sales", "stocks", "adverts", "funnel", "advert-stats", "commissions"] as const;
 
 export const maxDuration = 60;
 
