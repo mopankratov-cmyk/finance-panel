@@ -10,6 +10,7 @@ import { LoadingBanner, SkeletonKpiRow, SkeletonTableRows, useElapsedSeconds } f
 import { StockCatalogTab } from "@/components/supplies/StockCatalogTab";
 import { ReceivingTab } from "@/components/supplies/ReceivingTab";
 import { MoySkladSourceTab } from "@/components/supplies/MoySkladSourceTab";
+import { RestrictionsPanel } from "@/components/supplies/RestrictionsPanel";
 import { Tour, TourReplayButton, type TourStep } from "@/components/ui/Tour";
 import type { SupplyRow, WarehouseSummary, StockCatalogRow } from "@/app/api/supplies/route";
 
@@ -175,6 +176,7 @@ export function SuppliesPage() {
                 ))}
               </div>
             </div>
+            {cabId && !cabId.startsWith("group:") && <RestrictionsPanel cabinetId={cabId} />}
           </div>
 
           {/* Управление */}
