@@ -85,6 +85,16 @@ export async function GET(request: NextRequest) {
 
   const nmIds = [...new Set([...funnel.map((r) => r.nm_id), ...ad.map((r) => r.nm_id), ...totals.map((t) => t.nm_id)])];
 
+  // рейтинг/отзывы по SKU — уже наполненная wb_feedbacks (см. раздел /reviews), просто джойн
+  const { data: fbRows } = await db.from("wb_feedbacks").select("nm_id, rating").in("nm_id", nmIds.length ? nmIds : [-1]);
+  const ratingAgg = new Map<number, { sum: number; count: number }>();
+  for (const r of fbRows ?? []) {
+    const nm = r.nm_id as number;
+    const e = ratingAgg.get(nm) ?? { sum: 0, count: 0 };
+    e.sum += Number(r.rating ?? 0); e.count += 1;
+    ratingAgg.set(nm, e);
+  }
+
   const agg = (nm: number, days: Set<string> | "yest") => {
     let views = 0, clicks = 0, spent = 0, cart = 0, oc = 0, os = 0, open = 0;
     const has = (d: string) => (days === "yest" ? d === yest : days.has(d));
@@ -132,7 +142,9 @@ export async function GET(request: NextRequest) {
       margin_pct_4d: mb4, sae_4d: drr4, profitability_4d: mb4 != null && drr4 != null ? r2(mb4 - drr4) : null,
       // общие
       price_before_spp_unit: priceUnit(w) || priceUnit(y),
-      stock, turnover_4d: turn, rating: null, reviews: null,
+      stock, turnover_4d: turn,
+      rating: (() => { const fb = ratingAgg.get(nm); return fb ? Math.round((fb.sum / fb.count) * 10) / 10 : null; })(),
+      reviews: ratingAgg.get(nm)?.count ?? null,
     };
   }).filter((s) => s.shows_7d > 0 || s.orders_count_7d > 0 || s.stock > 0)
     .sort((a, b) => b.orders_sum_7d - a.orders_sum_7d);

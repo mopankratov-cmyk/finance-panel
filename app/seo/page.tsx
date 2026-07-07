@@ -17,6 +17,7 @@ interface SeoSku {
   orders_count_window: number; orders_sum_window: number;
   drr_window: number | null; margin_before_drr_window: number | null;
   stock: number; turnover_4d: number | null;
+  rating: number | null; reviews: number | null;
 }
 interface SeoData { skus: SeoSku[]; metrics_period: string; count: number }
 
@@ -112,6 +113,7 @@ export default function SeoPage() {
               <thead>
                 <tr className="border-b border-gray-200 text-left text-xs text-gray-500">
                   <th onClick={() => toggleSort("art")} className="sticky left-0 z-10 cursor-pointer select-none bg-white px-3 py-2 font-semibold shadow-[2px_0_4px_-2px_rgba(0,0,0,0.08)] hover:text-violet-700">Артикул{sortGlyph(sortField === "art", sortDir)}</th>
+                  <th onClick={() => toggleSort("rating")} className="cursor-pointer select-none px-3 py-2 text-right font-semibold whitespace-nowrap hover:text-violet-700">Рейтинг{sortGlyph(sortField === "rating", sortDir)}</th>
                   {COLS.map((c) => (
                     <th key={String(c.key)} onClick={() => toggleSort(c.key)} className="cursor-pointer select-none px-3 py-2 text-right font-semibold whitespace-nowrap hover:text-violet-700">
                       {c.label}{sortGlyph(sortField === c.key, sortDir)}
@@ -128,6 +130,9 @@ export default function SeoPage() {
                         <img src={s.img_url} alt="" loading="lazy" className="h-8 w-8 shrink-0 rounded bg-gray-100 object-cover" onError={(e) => { (e.currentTarget as HTMLImageElement).style.visibility = "hidden"; }} />
                         <div className="min-w-0"><div className="truncate text-xs font-semibold">{s.art}</div><div className="truncate text-[10px] text-gray-400">{s.name}</div></div>
                       </div>
+                    </td>
+                    <td className="px-3 py-2 text-right tabular-nums whitespace-nowrap text-gray-500">
+                      {s.rating != null ? <>★ {s.rating}{s.reviews != null && <span className="text-gray-400"> ({s.reviews})</span>}</> : "—"}
                     </td>
                     {COLS.map((c) => <td key={String(c.key)} className="px-3 py-2 text-right tabular-nums whitespace-nowrap">{cell(s, c.key, c.kind)}</td>)}
                   </tr>

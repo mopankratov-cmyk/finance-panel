@@ -82,6 +82,19 @@ export async function GET(request: NextRequest) {
   ]);
   const cards = cardsBySource.flat();
 
+  // рейтинг/отзывы по SKU — уже наполненная wb_feedbacks (см. раздел /reviews), просто джойн
+  const ratingAgg = new Map<number, { sum: number; count: number }>();
+  if (db && cards.length) {
+    const nmIds = [...new Set(cards.map((c) => c.nmID))];
+    const { data: fbRows } = await db.from("wb_feedbacks").select("nm_id, rating").in("nm_id", nmIds);
+    for (const r of fbRows ?? []) {
+      const nm = r.nm_id as number;
+      const e = ratingAgg.get(nm) ?? { sum: 0, count: 0 };
+      e.sum += Number(r.rating ?? 0); e.count += 1;
+      ratingAgg.set(nm, e);
+    }
+  }
+
   const m7 = new Map<number, { views: number; spent: number; cart: number; oc: number; os: number }>();
   const spent14 = new Map<number, number>();
   const totals = new Map<number, RpcTotal>();
@@ -118,8 +131,8 @@ export async function GET(request: NextRequest) {
       drr_7d: os > 0 ? r1((spent / os) * 100) : (spent > 0 ? null : 0),
       margin_before_drr: price > 0 && cost > 0 ? r1(((price - cost) / price) * 100) : null,
       stock: Number(t?.stock ?? 0),
-      nm_rating: null,
-      nm_feedbacks: undefined,
+      nm_rating: ratingAgg.get(c.nmID) ? Math.round((ratingAgg.get(c.nmID)!.sum / ratingAgg.get(c.nmID)!.count) * 10) / 10 : null,
+      nm_feedbacks: ratingAgg.get(c.nmID)?.count ?? null,
       signal: views === 0 && oc === 0 ? "Без трафика" : null,
     };
   };

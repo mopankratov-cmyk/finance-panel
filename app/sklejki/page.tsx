@@ -13,6 +13,7 @@ interface GSku {
   nm: number; art: string; name: string; img_url: string; shop: string;
   shows_7d: number; orders_sum_7d: number; adv_spend_7d: number;
   drr_7d: number | null; margin_before_drr: number | null; stock: number; signal: string | null;
+  nm_rating: number | null; nm_feedbacks: number | null;
 }
 interface Group { imt_id: number; shop_label: string; category_label: string; skus: GSku[] }
 interface SklData { groups_multi: Group[]; groups_solo: Group[]; total_sku: number; multi_groups: number; solo_skus: number; covered: number; error?: string }
@@ -39,6 +40,7 @@ function GroupCard({ g }: { g: Group }) {
           <thead>
             <tr className="text-left text-[11px] text-gray-400">
               <th onClick={() => toggleSort("art")} className="cursor-pointer select-none px-4 py-1.5 font-medium hover:text-violet-600">Артикул{sortGlyph(sortField === "art", sortDir)}</th>
+              <th onClick={() => toggleSort("nm_rating")} className="cursor-pointer select-none px-3 py-1.5 text-right font-medium hover:text-violet-600">Рейтинг{sortGlyph(sortField === "nm_rating", sortDir)}</th>
               {([["shows_7d", "Показы"], ["orders_sum_7d", "Выручка ₽"], ["adv_spend_7d", "Реклама ₽"], ["drr_7d", "ДРР"], ["margin_before_drr", "Маржа"], ["stock", "Остаток"]] as const).map(([field, label]) => (
                 <th key={field} onClick={() => toggleSort(field)} className="cursor-pointer select-none px-3 py-1.5 text-right font-medium hover:text-violet-600">{label}{sortGlyph(sortField === field, sortDir)}</th>
               ))}
@@ -54,6 +56,9 @@ function GroupCard({ g }: { g: Group }) {
                     <span className="truncate text-xs font-medium">{s.art}</span>
                     {s.signal && <span className="rounded bg-rose-50 px-1.5 py-0.5 text-[10px] text-rose-600">{s.signal}</span>}
                   </div>
+                </td>
+                <td className="px-3 py-1.5 text-right tabular-nums text-gray-500">
+                  {s.nm_rating != null ? <>★ {s.nm_rating}{s.nm_feedbacks != null && <span className="text-gray-400"> ({s.nm_feedbacks})</span>}</> : "—"}
                 </td>
                 <td className="px-3 py-1.5 text-right tabular-nums">{num(s.shows_7d)}</td>
                 <td className="px-3 py-1.5 text-right tabular-nums">{num(s.orders_sum_7d)}</td>
