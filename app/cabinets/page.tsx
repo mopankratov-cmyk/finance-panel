@@ -16,15 +16,17 @@ interface Cabinet {
   token_mask: string;
   has_advert: boolean;
   has_content: boolean;
+  has_feedbacks: boolean;
 }
 
-type Scope = "statistics" | "analytics" | "advert" | "content" | "prices";
+type Scope = "statistics" | "analytics" | "advert" | "content" | "prices" | "feedbacks";
 const SCOPE_LABEL: Record<Scope, string> = {
   statistics: "Статистика",
   analytics: "Аналитика",
   advert: "Продвижение",
   content: "Контент",
   prices: "Цены и скидки",
+  feedbacks: "Вопросы и отзывы",
 };
 interface ScopeReport {
   scopes: Record<Scope, boolean | null>;
@@ -44,6 +46,7 @@ export default function CabinetsPage() {
   const [name, setName] = useState("");
   const [advert, setAdvert] = useState("");
   const [content, setContent] = useState("");
+  const [feedbacks, setFeedbacks] = useState("");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [showAdv, setShowAdv] = useState(false);
@@ -71,7 +74,7 @@ export default function CabinetsPage() {
       const r = await fetch("/api/cabinets", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ marketplace: mp, token, client_id: clientId, name, token_advert: advert, token_content: content, perf_client_id: perfId, perf_secret: perfSecret }),
+        body: JSON.stringify({ marketplace: mp, token, client_id: clientId, name, token_advert: advert, token_content: content, token_feedbacks: feedbacks, perf_client_id: perfId, perf_secret: perfSecret }),
       });
       const j = await r.json();
       if (!r.ok || j.error) {
@@ -79,7 +82,7 @@ export default function CabinetsPage() {
       } else {
         setMsg({ ok: true, text: `Кабинет «${j.cabinet?.name}» добавлен` });
         if (mp === "wb" && j.scopes) setScopeRep({ scopes: j.scopes, expiresAt: j.expiresAt ?? null, daysLeft: j.daysLeft ?? null, isTest: !!j.isTest });
-        setToken(""); setClientId(""); setPerfId(""); setPerfSecret(""); setName(""); setAdvert(""); setContent("");
+        setToken(""); setClientId(""); setPerfId(""); setPerfSecret(""); setName(""); setAdvert(""); setContent(""); setFeedbacks("");
         await load();
       }
     } catch (e) {
@@ -180,6 +183,7 @@ export default function CabinetsPage() {
           <div className="mb-2 grid grid-cols-1 gap-2">
             <input value={advert} onChange={(e) => setAdvert(e.target.value)} placeholder="Токен Продвижение (если отдельный)" className="rounded-lg border border-gray-300 px-3 py-2 font-mono text-xs focus:border-violet-500 focus:outline-none" />
             <input value={content} onChange={(e) => setContent(e.target.value)} placeholder="Токен Контент (если отдельный)" className="rounded-lg border border-gray-300 px-3 py-2 font-mono text-xs focus:border-violet-500 focus:outline-none" />
+            <input value={feedbacks} onChange={(e) => setFeedbacks(e.target.value)} placeholder="Токен Вопросы и Отзывы (если отдельный)" className="rounded-lg border border-gray-300 px-3 py-2 font-mono text-xs focus:border-violet-500 focus:outline-none" />
           </div>
         )}
         <div className="flex items-center gap-3">
@@ -202,7 +206,7 @@ export default function CabinetsPage() {
           <div className="mt-3 rounded-lg border border-gray-200 bg-gray-50 p-3">
             <div className="mb-2 flex flex-wrap items-center gap-2 text-xs">
               <span className="font-semibold text-gray-600">Доступ токена:</span>
-              {(["statistics", "analytics", "advert", "content", "prices"] as Scope[]).map((s) => {
+              {(["statistics", "analytics", "advert", "content", "prices", "feedbacks"] as Scope[]).map((s) => {
                 const ok = scopeRep.scopes[s];
                 return (
                   <span
@@ -221,9 +225,9 @@ export default function CabinetsPage() {
                 </span>
               )}
             </div>
-            {(["statistics", "analytics", "advert", "content", "prices"] as Scope[]).some((s) => scopeRep.scopes[s] === false) && (
+            {(["statistics", "analytics", "advert", "content", "prices", "feedbacks"] as Scope[]).some((s) => scopeRep.scopes[s] === false) && (
               <p className="text-[11px] text-red-600">
-                Не хватает категорий: {(["statistics", "analytics", "advert", "content", "prices"] as Scope[]).filter((s) => scopeRep.scopes[s] === false).map((s) => SCOPE_LABEL[s]).join(", ")}.
+                Не хватает категорий: {(["statistics", "analytics", "advert", "content", "prices", "feedbacks"] as Scope[]).filter((s) => scopeRep.scopes[s] === false).map((s) => SCOPE_LABEL[s]).join(", ")}.
                 Перевыпустите токен в WB, отметив эти категории. Продвижение и Контент можно дать отдельным токеном в «расширенном».
               </p>
             )}
@@ -256,7 +260,7 @@ export default function CabinetsPage() {
                   </div>
                   <div className="text-xs text-gray-400">
                     {c.marketplace === "ozon" ? `Client-Id ${c.client_id} · Api-Key ${c.token_mask}` : `sid ${c.seller_id?.slice(0, 8)}… · ${c.inn ? `ИНН ${c.inn} · ` : ""}токен ${c.token_mask}`}
-                    {c.has_advert && " · +Продвижение"}{c.has_content && " · +Контент"}
+                    {c.has_advert && " · +Продвижение"}{c.has_content && " · +Контент"}{c.has_feedbacks && " · +Отзывы"}
                   </div>
                 </div>
                 <button onClick={() => toggle(c)} className="rounded-md px-2 py-1 text-xs font-medium text-gray-500 hover:bg-gray-100">

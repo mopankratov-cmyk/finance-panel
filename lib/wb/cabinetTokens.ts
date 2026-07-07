@@ -13,10 +13,11 @@ export interface WbCabinet {
   token: string;
   token_advert: string | null;
   token_content: string | null;
+  token_feedbacks: string | null;
   is_active: boolean;
 }
 
-const CABINET_COLS = "id, name, seller_id, inn, token, token_advert, token_content, is_active";
+const CABINET_COLS = "id, name, seller_id, inn, token, token_advert, token_content, token_feedbacks, is_active";
 
 // Активные WB-кабинеты (для цикла синка по всем юрлицам).
 export async function getActiveWbCabinets(): Promise<WbCabinet[]> {
@@ -48,6 +49,8 @@ export function resolveWbToken(cabinet: WbCabinet, scope: WbScope): string {
       return cabinet.token_advert || cabinet.token;
     case "content":
       return cabinet.token_content || cabinet.token;
+    case "feedbacks":
+      return cabinet.token_feedbacks || cabinet.token;
     case "statistics":
     case "analytics":
     default:
@@ -79,6 +82,7 @@ export async function getWbCabinetSources(cabinetId: string | null, scope: WbSco
   const env =
     scope === "content" ? process.env.WB_TOKEN_CONTENT :
     scope === "advert" ? process.env.WB_TOKEN_ADVERT :
+    scope === "feedbacks" ? process.env.WB_TOKEN_FEEDBACKS :
     (process.env.WB_STATS_TOKEN || process.env.WB_TOKEN_STATISTICS);
   return env ? [{ id: null, name: "Магазин", token: env }] : [];
 }

@@ -15,7 +15,7 @@ export async function GET() {
   if (!db) return NextResponse.json({ cabinets: [] });
   const { data, error } = await db
     .from("wb_cabinets")
-    .select("id, name, marketplace, trade_mark, seller_id, client_id, inn, token, token_advert, token_content, is_active, created_at")
+    .select("id, name, marketplace, trade_mark, seller_id, client_id, inn, token, token_advert, token_content, token_feedbacks, is_active, created_at")
     .order("created_at", { ascending: true });
   if (error) return NextResponse.json({ cabinets: [], error: error.message });
   const cabinets = (data ?? []).map((c) => ({
@@ -31,6 +31,7 @@ export async function GET() {
     token_mask: mask(c.token as string),
     has_advert: !!c.token_advert,
     has_content: !!c.token_content,
+    has_feedbacks: !!c.token_feedbacks,
   }));
   return NextResponse.json({ cabinets, count: cabinets.length });
 }
@@ -40,7 +41,7 @@ export async function POST(request: NextRequest) {
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 500 });
   const b = (await request.json().catch(() => ({}))) as {
-    marketplace?: string; token?: string; name?: string; client_id?: string; token_advert?: string; token_content?: string;
+    marketplace?: string; token?: string; name?: string; client_id?: string; token_advert?: string; token_content?: string; token_feedbacks?: string;
     perf_client_id?: string; perf_secret?: string;
   };
   const marketplace = b.marketplace === "ozon" ? "ozon" : "wb";
@@ -77,10 +78,12 @@ export async function POST(request: NextRequest) {
     if (!v.ok) return NextResponse.json({ error: v.error }, { status: 400 });
     const advTok = (b.token_advert || "").trim();
     const contTok = (b.token_content || "").trim();
+    const feedbTok = (b.token_feedbacks || "").trim();
     // Категории основного токена + добор из отдельных токенов, если их указали.
     const scopes = await probeWbScopes(token);
     if (!scopes.advert && advTok) scopes.advert = await probeWbScope(advTok, "advert");
     if (!scopes.content && contTok) scopes.content = await probeWbScope(contTok, "content");
+    if (!scopes.feedbacks && feedbTok) scopes.feedbacks = await probeWbScope(feedbTok, "feedbacks");
     const info = decodeWbToken(token);
     scopeReport = { scopes, expiresAt: info.expiresAt, daysLeft: info.daysLeft, isTest: info.isTest };
     row = {
@@ -92,6 +95,7 @@ export async function POST(request: NextRequest) {
       token,
       token_advert: advTok || null,
       token_content: contTok || null,
+      token_feedbacks: feedbTok || null,
       is_active: true,
     };
   }
