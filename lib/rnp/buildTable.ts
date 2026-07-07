@@ -21,6 +21,26 @@ interface RpcTotal {
   stock: number;
   cost: number | null;
 }
+interface AdNmRow { nm_id: number; date: string; views: number | null; clicks: number | null }
+interface FunnelCartRow { nm_id: number; date: string; add_to_cart: number | null }
+
+// Показы/клики/CTR/корзины по SKU по дням — отдельный источник (wb_advert_nm_daily +
+// wb_funnel_daily), не трогаем rnp_daily(_sku) RPC (общий для многих потребителей).
+// Вклеивается в начало metrics[] построчно, тем же способом, что gross/margin_pct — сводкой.
+function buildFunnelMetrics(days: string[], viewsByDate: Map<string, number>, clicksByDate: Map<string, number>, cartByDate: Map<string, number>): Metric[] {
+  const views = days.map((d) => viewsByDate.get(d) ?? 0);
+  const clicks = days.map((d) => clicksByDate.get(d) ?? 0);
+  const cart = days.map((d) => cartByDate.get(d) ?? 0);
+  const ctr = days.map((_, i) => (views[i] > 0 ? Math.round((clicks[i] / views[i]) * 1000) / 10 : null));
+  const s = (a: number[]) => a.reduce((x, v) => x + v, 0);
+  const totViews = s(views), totClicks = s(clicks);
+  return [
+    { field: "views", label: "Показы", kind: "int", daily: views, total: totViews, forecast: totViews, group_start: true },
+    { field: "clicks", label: "Клики", kind: "int", daily: clicks, total: totClicks, forecast: totClicks },
+    { field: "ctr", label: "CTR, %", kind: "pct", daily: ctr, total: totViews > 0 ? Math.round((totClicks / totViews) * 1000) / 10 : 0, forecast: null },
+    { field: "cart", label: "В корзину", kind: "int", daily: cart, total: s(cart), forecast: s(cart) },
+  ];
+}
 
 export interface Metric {
   field: string;
@@ -91,14 +111,46 @@ export async function buildRnpTable(from: string, to: string, cabinetId?: string
   if (!db) return { error: "Supabase не настроен" };
 
   const p_cabinet = cabinetId || null; // null = все кабинеты
-  const [dailyRes, skuRes, totalsRes, costsRes, comm] = await Promise.all([
+  let adQ = db.from("wb_advert_nm_daily").select("nm_id, date, views, clicks").gte("date", from).lte("date", to);
+  let funnelQ = db.from("wb_funnel_daily").select("nm_id, date, add_to_cart").gte("date", from).lte("date", to);
+  if (p_cabinet) { adQ = adQ.eq("cabinet_id", p_cabinet); funnelQ = funnelQ.eq("cabinet_id", p_cabinet); }
+  const [dailyRes, skuRes, totalsRes, costsRes, comm, adRes, funnelRes] = await Promise.all([
     db.rpc("rnp_daily", { p_from: from, p_to: to, p_cabinet }),
     db.rpc("rnp_daily_sku", { p_from: from, p_to: to, p_cabinet }),
     db.rpc("rnp_report", { p_cabinet }),
     db.from("product_costs").select("article, name"),
     getWbCommissionMerged(30), // факт комиссия%+эквайринг% по nm (мердж по кабинетам; ENV пуст)
+    adQ,
+    funnelQ,
   ]);
   if (dailyRes.error) return { error: dailyRes.error.message };
+
+  // показы/клики/корзины по (nm_id, date) — отдельно от rnp_daily(_sku) RPC
+  const viewsByNm = new Map<number, Map<string, number>>();
+  const clicksByNm = new Map<number, Map<string, number>>();
+  const cartByNm = new Map<number, Map<string, number>>();
+  for (const r of (adRes.data ?? []) as AdNmRow[]) {
+    const d = String(r.date).slice(0, 10);
+    if (!viewsByNm.has(r.nm_id)) { viewsByNm.set(r.nm_id, new Map()); clicksByNm.set(r.nm_id, new Map()); }
+    viewsByNm.get(r.nm_id)!.set(d, (viewsByNm.get(r.nm_id)!.get(d) ?? 0) + Number(r.views ?? 0));
+    clicksByNm.get(r.nm_id)!.set(d, (clicksByNm.get(r.nm_id)!.get(d) ?? 0) + Number(r.clicks ?? 0));
+  }
+  for (const r of (funnelRes.data ?? []) as FunnelCartRow[]) {
+    const d = String(r.date).slice(0, 10);
+    if (!cartByNm.has(r.nm_id)) cartByNm.set(r.nm_id, new Map());
+    cartByNm.get(r.nm_id)!.set(d, (cartByNm.get(r.nm_id)!.get(d) ?? 0) + Number(r.add_to_cart ?? 0));
+  }
+  // агрегат по всем nm — для сводки строки
+  const viewsByDateAll = new Map<string, number>(), clicksByDateAll = new Map<string, number>(), cartByDateAll = new Map<string, number>();
+  for (const r of (adRes.data ?? []) as AdNmRow[]) {
+    const d = String(r.date).slice(0, 10);
+    viewsByDateAll.set(d, (viewsByDateAll.get(d) ?? 0) + Number(r.views ?? 0));
+    clicksByDateAll.set(d, (clicksByDateAll.get(d) ?? 0) + Number(r.clicks ?? 0));
+  }
+  for (const r of (funnelRes.data ?? []) as FunnelCartRow[]) {
+    const d = String(r.date).slice(0, 10);
+    cartByDateAll.set(d, (cartByDateAll.get(d) ?? 0) + Number(r.add_to_cart ?? 0));
+  }
   // полный расход МП на nm = комиссия + эквайринг + прочие удержания (логистика/хранение/штрафы/…) + account-overhead
   const wbCostForNm = (nm: number) => {
     const e = comm.byNm.get(nm);
@@ -130,13 +182,16 @@ export async function buildRnpTable(from: string, to: string, cabinetId?: string
     .map((t) => {
       const dmap = byNm.get(t.nm_id) ?? new Map<string, DailyRow>();
       const metrics = buildMetrics(days, dmap, Number(t.stock ?? 0), Math.round(Number(t.stock ?? 0) * Number(t.cost ?? 0)), Number(t.cost ?? 0), wbCostForNm(t.nm_id));
-      return { nm: t.nm_id, art: t.article || String(t.nm_id), name: nameByArt.get(t.article) || t.article || String(t.nm_id), img_url: wbCardImageUrl(t.nm_id), metrics, _o: metrics[0]?.total ?? 0 };
+      metrics.unshift(...buildFunnelMetrics(days, viewsByNm.get(t.nm_id) ?? new Map(), clicksByNm.get(t.nm_id) ?? new Map(), cartByNm.get(t.nm_id) ?? new Map()));
+      const orders = metrics.find((m) => m.field === "orders_count")?.total ?? 0;
+      return { nm: t.nm_id, art: t.article || String(t.nm_id), name: nameByArt.get(t.article) || t.article || String(t.nm_id), img_url: wbCardImageUrl(t.nm_id), metrics, _o: orders };
     })
     .sort((a, b) => b._o - a._o)
     .map(({ _o, ...rest }) => { void _o; return rest; });
 
   // Сводка: базовые метрики из дневной агрегации + Валовая/Маржа вклеиваем суммой по SKU (себес разный)
   const summary = buildMetrics(days, dailyByDate, stockTotal, Math.round(stockMoneyTotal));
+  summary.unshift(...buildFunnelMetrics(days, viewsByDateAll, clicksByDateAll, cartByDateAll));
   const sumDaily = (field: string) => days.map((_, i) => {
     let acc = 0, any = false;
     for (const sk of skus) { const m = sk.metrics.find((x) => x.field === field); const v = m?.daily[i]; if (v != null) { acc += Number(v); any = true; } }

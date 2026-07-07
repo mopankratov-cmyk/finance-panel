@@ -24,6 +24,10 @@ const total = (m: Metric[], field: string) => m.find((x) => x.field === field)?.
 
 // колонки SKU-таблицы РНП
 const COLS: { field: string; label: string; kind: string }[] = [
+  { field: "views", label: "Показы", kind: "int" },
+  { field: "clicks", label: "Клики", kind: "int" },
+  { field: "ctr", label: "CTR, %", kind: "pct" },
+  { field: "cart", label: "В корзину", kind: "int" },
   { field: "orders_count", label: "Заказы, шт", kind: "int" },
   { field: "orders_sum", label: "Заказы, ₽", kind: "money" },
   { field: "buyouts_sum", label: "Выкупы, ₽", kind: "money" },
@@ -100,7 +104,7 @@ export default function RnpPage() {
           <>
             <LoadingBanner seconds={elapsed} hint="РНП по SKU" />
             <SkeletonKpiRow count={6} />
-            <SkeletonTableRows rows={10} cols={9} />
+            <SkeletonTableRows rows={10} cols={13} />
           </>
         ) : err ? (
           <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">{err}</div>
