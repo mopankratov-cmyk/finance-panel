@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Building2, Plus, Trash2, CheckCircle2, XCircle, Loader2 } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { Building2, Layers3, Plus, Trash2, CheckCircle2, XCircle, Loader2 } from "lucide-react";
+import type { CabinetGroup } from "@/app/api/cabinet-groups/route";
 
 interface Cabinet {
   id: string;
@@ -52,6 +53,13 @@ export default function CabinetsPage() {
   const [showAdv, setShowAdv] = useState(false);
   const [scopeRep, setScopeRep] = useState<ScopeReport | null>(null);
 
+  const [groups, setGroups] = useState<CabinetGroup[]>([]);
+  const [groupMp, setGroupMp] = useState<"wb" | "ozon">("wb");
+  const [groupName, setGroupName] = useState("");
+  const [groupMembers, setGroupMembers] = useState<string[]>([]);
+  const [groupBusy, setGroupBusy] = useState(false);
+  const [groupMsg, setGroupMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
   const load = async () => {
     setLoading(true);
     try {
@@ -64,6 +72,40 @@ export default function CabinetsPage() {
     setLoading(false);
   };
   useEffect(() => { load(); }, []);
+
+  const loadGroups = useCallback(async () => {
+    try {
+      const r = await fetch(`/api/cabinet-groups?mp=${groupMp}`, { cache: "no-store" });
+      const j = await r.json();
+      setGroups(j.groups ?? []);
+    } catch { /* ignore */ }
+  }, [groupMp]);
+  useEffect(() => { loadGroups(); }, [loadGroups]);
+
+  const toggleMember = (id: string) => setGroupMembers((ms) => ms.includes(id) ? ms.filter((m) => m !== id) : [...ms, id]);
+
+  const createGroup = async () => {
+    if (!groupName.trim() || groupMembers.length < 2) return;
+    setGroupBusy(true); setGroupMsg(null);
+    try {
+      const r = await fetch("/api/cabinet-groups", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: groupName, marketplace: groupMp, memberIds: groupMembers }),
+      });
+      const j = await r.json();
+      if (!r.ok || j.error) setGroupMsg({ ok: false, text: j.error || `Ошибка ${r.status}` });
+      else { setGroupMsg({ ok: true, text: `Группа «${groupName}» создана` }); setGroupName(""); setGroupMembers([]); await loadGroups(); }
+    } catch (e) {
+      setGroupMsg({ ok: false, text: "Сеть: " + String(e) });
+    }
+    setGroupBusy(false);
+  };
+
+  const removeGroup = async (id: number, label: string) => {
+    if (!confirm(`Удалить группу «${label}»?`)) return;
+    await fetch(`/api/cabinet-groups/${id}`, { method: "DELETE" });
+    await loadGroups();
+  };
 
   const add = async () => {
     if (!token.trim()) return;
@@ -273,6 +315,59 @@ export default function CabinetsPage() {
             ))}
           </div>
         )}
+      </div>
+
+      {/* Группы кабинетов (комбо) */}
+      <div className="mt-6 rounded-xl border border-gray-200 bg-white p-5">
+        <div className="mb-3 flex items-center gap-3">
+          <Layers3 className="h-4 w-4 text-gray-400" />
+          <span className="text-sm font-semibold text-gray-700">Группы кабинетов</span>
+          <div className="flex gap-1 rounded-lg bg-gray-100 p-0.5">
+            <button type="button" onClick={() => { setGroupMp("wb"); setGroupMembers([]); }} className={`rounded px-3 py-1 text-xs font-semibold ${groupMp === "wb" ? "bg-white text-violet-700 shadow" : "text-gray-500"}`}>Wildberries</button>
+            <button type="button" onClick={() => { setGroupMp("ozon"); setGroupMembers([]); }} className={`rounded px-3 py-1 text-xs font-semibold ${groupMp === "ozon" ? "bg-white text-sky-700 shadow" : "text-gray-500"}`}>Ozon</button>
+          </div>
+        </div>
+        <p className="mb-3 text-xs text-gray-400">Объедини несколько кабинетов в один пункт свитчера (например «Опт+Розница») — аналитика Закупок покажет их сумму.</p>
+
+        {groups.length > 0 && (
+          <div className="mb-3 space-y-1.5">
+            {groups.map((g) => (
+              <div key={g.id} className="flex items-center gap-2 rounded-lg bg-gray-50 px-3 py-2 text-sm">
+                <Layers3 className="h-3.5 w-3.5 text-gray-400" />
+                <span className="font-medium text-gray-800">{g.name}</span>
+                <span className="text-xs text-gray-400">{g.memberIds.length} кабинета</span>
+                <button onClick={() => removeGroup(g.id, g.name)} className="ml-auto rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-600" title="Удалить"><Trash2 className="h-3.5 w-3.5" /></button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="grid grid-cols-2 gap-2">
+          {cabinets.filter((c) => c.marketplace === groupMp).map((c) => (
+            <label key={c.id} className="flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm">
+              <input type="checkbox" checked={groupMembers.includes(c.id)} onChange={() => toggleMember(c.id)} />
+              {c.name}
+            </label>
+          ))}
+        </div>
+        {cabinets.filter((c) => c.marketplace === groupMp).length < 2 && (
+          <p className="mt-2 text-xs text-gray-400">Нужно минимум 2 подключённых кабинета {groupMp === "wb" ? "WB" : "Ozon"}, чтобы собрать группу.</p>
+        )}
+
+        <div className="mt-3 flex items-center gap-3">
+          <input value={groupName} onChange={(e) => setGroupName(e.target.value)} placeholder="Название группы"
+            className="w-56 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-violet-500 focus:outline-none" />
+          <button onClick={createGroup} disabled={groupBusy || !groupName.trim() || groupMembers.length < 2}
+            className="inline-flex items-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50">
+            {groupBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />} Создать группу
+          </button>
+          {groupMsg && (
+            <span className={`inline-flex items-center gap-1 text-sm ${groupMsg.ok ? "text-emerald-600" : "text-red-600"}`}>
+              {groupMsg.ok ? <CheckCircle2 className="h-4 w-4" /> : <XCircle className="h-4 w-4" />}
+              {groupMsg.text}
+            </span>
+          )}
+        </div>
       </div>
     </div>
   );

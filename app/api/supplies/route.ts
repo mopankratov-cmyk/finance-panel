@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
-import { cabinetIdFromParam } from "@/lib/rnp/resolveShop";
+import { resolveCabinetSelection } from "@/lib/cabinetGroups";
 
 export const dynamic = "force-dynamic";
 
@@ -50,13 +50,15 @@ interface RpcRow {
 
 // Полный (не усечённый .limit(2000)) постраничный фетч wb_stocks — отдельно от
 // stockQ ниже, чтобы не менять числа, которыми уже питается warehouses/whInferno/splitNeed.
-async function fetchAllStocks(db: SupabaseClient, p_cabinet: string | null) {
+// members (комбо-группа) → .in(), single → .eq(), оба null → без фильтра (все кабинеты).
+async function fetchAllStocks(db: SupabaseClient, single: string | null, members: string[] | null) {
   const rows: { nm_id: number; warehouse: string; quantity: number | null; in_way_to_client: number | null; in_way_from_client: number | null }[] = [];
   for (let page = 0; page < 30; page++) {
     let q = db.from("wb_stocks")
       .select("nm_id, warehouse, quantity, in_way_to_client, in_way_from_client")
       .range(page * 1000, page * 1000 + 999);
-    if (p_cabinet) q = q.eq("cabinet_id", p_cabinet);
+    if (members) q = q.in("cabinet_id", members);
+    else if (single) q = q.eq("cabinet_id", single);
     const { data, error } = await q;
     if (error) throw new Error(error.message);
     if (!data?.length) break;
@@ -66,26 +68,48 @@ async function fetchAllStocks(db: SupabaseClient, p_cabinet: string | null) {
   return rows;
 }
 
+// rnp_report принимает один p_cabinet — для группы вызываем по каждому участнику
+// и суммируем аддитивные поля по nm_id (заказы/остаток/в пути — простые суммы,
+// без пересчёта долей/ставок, поэтому merge безопасен).
+async function fetchRpcRows(db: SupabaseClient, single: string | null, members: string[] | null): Promise<RpcRow[]> {
+  if (!members) {
+    const res = await db.rpc("rnp_report", { p_cabinet: single });
+    if (res.error) throw new Error(res.error.message);
+    return (res.data ?? []) as RpcRow[];
+  }
+  const results = await Promise.all(members.map((m) => db.rpc("rnp_report", { p_cabinet: m })));
+  const bad = results.find((r) => r.error);
+  if (bad?.error) throw new Error(bad.error.message);
+  const merged = new Map<number, RpcRow>();
+  for (const res of results) {
+    for (const r of (res.data ?? []) as RpcRow[]) {
+      const cur = merged.get(r.nm_id);
+      if (!cur) { merged.set(r.nm_id, { ...r }); continue; }
+      cur.orders_month += r.orders_month;
+      cur.stock += r.stock;
+      cur.in_way_to_client += r.in_way_to_client;
+    }
+  }
+  return [...merged.values()];
+}
+
 export async function GET(req: NextRequest) {
   const db = getSupabaseAdmin();
   if (!db) {
     return NextResponse.json({ data: null, error: "Supabase не настроен" }, { status: 500 });
   }
-  const p_cabinet = cabinetIdFromParam(new URL(req.url).searchParams.get("cabinet"));
+  const { single: p_cabinet, members } = await resolveCabinetSelection(new URL(req.url).searchParams.get("cabinet"));
 
   try {
     let stockQ = db.from("wb_stocks").select("warehouse, quantity, in_way_to_client").limit(2000);
-    if (p_cabinet) stockQ = stockQ.eq("cabinet_id", p_cabinet);
-    const [reportRes, stocksRes, allStockRows, costsRes] = await Promise.all([
-      db.rpc("rnp_report", { p_cabinet }),
+    if (members) stockQ = stockQ.in("cabinet_id", members);
+    else if (p_cabinet) stockQ = stockQ.eq("cabinet_id", p_cabinet);
+    const [rpcRows, stocksRes, allStockRows, costsRes] = await Promise.all([
+      fetchRpcRows(db, p_cabinet, members),
       stockQ,
-      fetchAllStocks(db, p_cabinet),
+      fetchAllStocks(db, p_cabinet, members),
       db.from("product_costs").select("article, name"),
     ]);
-
-    if (reportRes.error) throw new Error(reportRes.error.message);
-
-    const rpcRows = (reportRes.data ?? []) as RpcRow[];
 
     const need = (avgDaily: number, stock: number, inWay: number, horizon: number) =>
       Math.max(0, Math.ceil(avgDaily * horizon - stock - inWay));

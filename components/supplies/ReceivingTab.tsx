@@ -42,7 +42,9 @@ export function ReceivingTab({ skus, cabId, warehouses }: { skus: SupplyRow[]; c
   }, []);
 
   const wbCabinets = cabinets;
-  const resolvedCabinetId = cabId || (wbCabinets.length === 1 ? wbCabinets[0].id : "");
+  // группа кабинетов (комбо) сюда не годится — приёмка всегда по одному реальному кабинету.
+  const singleCabId = cabId.startsWith("group:") ? "" : cabId;
+  const resolvedCabinetId = singleCabId || (wbCabinets.length === 1 ? wbCabinets[0].id : "");
 
   const load = useCallback(async () => {
     if (!resolvedCabinetId) { setLoading(false); return; }
