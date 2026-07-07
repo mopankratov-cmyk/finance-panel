@@ -9,9 +9,10 @@ import { useActiveCabinet } from "@/lib/useActiveCabinet";
 import { LoadingBanner, SkeletonKpiRow, SkeletonTableRows, useElapsedSeconds } from "@/components/ui/LoadingState";
 import { StockCatalogTab } from "@/components/supplies/StockCatalogTab";
 import { ReceivingTab } from "@/components/supplies/ReceivingTab";
+import { MoySkladSourceTab } from "@/components/supplies/MoySkladSourceTab";
 import type { SupplyRow, WarehouseSummary, StockCatalogRow } from "@/app/api/supplies/route";
 
-type Tab = "reorder" | "stock" | "receiving";
+type Tab = "reorder" | "stock" | "receiving" | "source";
 
 type Horizon = 30 | 45 | 60;
 
@@ -118,7 +119,7 @@ export function SuppliesPage() {
 
       {/* Таб-бар */}
       <div className="flex gap-1 rounded-lg bg-slate-100 p-1 w-fit">
-        {([["reorder", "К поставке"], ["stock", "Остатки"], ["receiving", "Приёмка"]] as const).map(([key, label]) => (
+        {([["reorder", "К поставке"], ["stock", "Остатки"], ["receiving", "Приёмка"], ["source", "Источник"]] as const).map(([key, label]) => (
           <button
             key={key}
             onClick={() => setTab(key)}
@@ -202,8 +203,10 @@ export function SuppliesPage() {
         </>
       ) : tab === "stock" ? (
         <StockCatalogTab rows={catalog} />
-      ) : (
+      ) : tab === "receiving" ? (
         <ReceivingTab skus={skus} cabId={cabId} warehouses={warehouses} />
+      ) : (
+        <MoySkladSourceTab />
       )}
     </div>
   );
