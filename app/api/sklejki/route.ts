@@ -33,9 +33,11 @@ export async function GET(request: NextRequest) {
   const sources = await getWbCabinetSources(cabinetId, "content");
   if (!sources.length) return NextResponse.json(EMPTY);
 
-  // 1) карточки из Content API — по каждому кабинету своим токеном, с тегом кабинета
-  const cards: WbCard[] = [];
-  for (const src of sources) {
+  // 1) карточки из Content API — по каждому кабинету своим токеном, с тегом кабинета.
+  //    Кабинеты независимы (свой токен, свой курсор) — тянем их ПАРАЛЛЕЛЬНО; внутри
+  //    одного кабинета страницы курсора остаются последовательными (так требует API).
+  const fetchCabinetCards = async (src: { token: string; name: string }): Promise<WbCard[]> => {
+    const out: WbCard[] = [];
     let cursor: { updatedAt?: string; nmID?: number } = {};
     try {
       for (let page = 0; page < 10; page++) {
@@ -48,29 +50,43 @@ export async function GET(request: NextRequest) {
         if (!res.ok) break;
         const json = (await res.json()) as { cards?: WbCard[]; cursor?: { updatedAt?: string; nmID?: number } };
         const batch = json.cards ?? [];
-        for (const c of batch) cards.push({ ...c, _shop: src.name });
+        for (const c of batch) out.push({ ...c, _shop: src.name });
         if (batch.length < 100) break;
         cursor = { updatedAt: json.cursor?.updatedAt, nmID: json.cursor?.nmID };
       }
     } catch {
       /* ignore */
     }
-  }
+    return out;
+  };
 
-  // 2) метрики воронки/рекламы по nm (7д и 14д) из синка — в разрезе кабинета
+  // 2) метрики воронки/рекламы по nm (7д и 14д) из синка — не зависят от карточек,
+  //    запускаем ОДНОВРЕМЕННО с их фетчем, а не после.
   const db = getSupabaseAdmin();
+  const since = new Date(Date.now() - 14 * 86400000).toISOString().slice(0, 10);
+  const week = new Set(
+    Array.from({ length: 7 }, (_, i) => new Date(Date.now() - i * 86400000).toISOString().slice(0, 10)),
+  );
+  const metricsPromise = db
+    ? (() => {
+        let fQ = db.from("wb_funnel_daily").select("nm_id, date, add_to_cart, orders, orders_sum").gte("date", since);
+        let aQ = db.from("wb_advert_nm_daily").select("nm_id, date, views, spent").gte("date", since);
+        if (cabinetId) { fQ = fQ.eq("cabinet_id", cabinetId); aQ = aQ.eq("cabinet_id", cabinetId); }
+        return Promise.all([fQ, aQ, db.rpc("rnp_report", { p_cabinet: cabinetId })]);
+      })()
+    : null;
+
+  const [cardsBySource, metricsRes] = await Promise.all([
+    Promise.all(sources.map(fetchCabinetCards)),
+    metricsPromise,
+  ]);
+  const cards = cardsBySource.flat();
+
   const m7 = new Map<number, { views: number; spent: number; cart: number; oc: number; os: number }>();
   const spent14 = new Map<number, number>();
   const totals = new Map<number, RpcTotal>();
-  if (db) {
-    const since = new Date(Date.now() - 14 * 86400000).toISOString().slice(0, 10);
-    const week = new Set(
-      Array.from({ length: 7 }, (_, i) => new Date(Date.now() - i * 86400000).toISOString().slice(0, 10)),
-    );
-    let fQ = db.from("wb_funnel_daily").select("nm_id, date, add_to_cart, orders, orders_sum").gte("date", since);
-    let aQ = db.from("wb_advert_nm_daily").select("nm_id, date, views, spent").gte("date", since);
-    if (cabinetId) { fQ = fQ.eq("cabinet_id", cabinetId); aQ = aQ.eq("cabinet_id", cabinetId); }
-    const [fRes, aRes, tRes] = await Promise.all([fQ, aQ, db.rpc("rnp_report", { p_cabinet: cabinetId })]);
+  if (metricsRes) {
+    const [fRes, aRes, tRes] = metricsRes;
     const g7 = (nm: number) => { let x = m7.get(nm); if (!x) { x = { views: 0, spent: 0, cart: 0, oc: 0, os: 0 }; m7.set(nm, x); } return x; };
     for (const f of (fRes.data ?? []) as FunnelRow[]) {
       if (week.has(String(f.date).slice(0, 10))) { const x = g7(f.nm_id); x.cart += f.add_to_cart || 0; x.oc += f.orders || 0; x.os += Number(f.orders_sum || 0); }
@@ -134,12 +150,16 @@ export async function GET(request: NextRequest) {
   }
   groups_multi.sort((a, b) => b.skus.length - a.skus.length);
 
+  // «Покрыто данными» = карточки, для которых реально нашлись метрики воронки/рекламы
+  // или остатков — а не просто общее число карточек (иначе KPI всегда = total_sku).
+  const covered = cards.filter((c) => m7.has(c.nmID) || totals.has(c.nmID)).length;
+
   return NextResponse.json({
     groups_multi,
     groups_solo,
     total_sku: cards.length,
     multi_groups: groups_multi.length,
     solo_skus: groups_solo.length,
-    covered: cards.length,
+    covered,
   });
 }
