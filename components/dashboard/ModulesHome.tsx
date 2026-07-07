@@ -3,13 +3,19 @@
 import {
   BarChart3, Bot, Coins, LineChart, Megaphone, Table2, Search, Layers, Sigma,
   MousePointerClick, CalendarRange,
-  Package, TrendingDown, Wallet, Building2, ArrowUpRight, LogOut, type LucideIcon,
+  Package, TrendingDown, Wallet, Building2, ArrowUpRight, LogOut, AlertTriangle, Info, XCircle, type LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { canAccess, ROLE_LABEL } from "@/lib/auth/roles";
 import type { Role } from "@/lib/auth/session";
+import { normalizeSeverity, type SeverityTier } from "@/lib/agent/severity";
+import type { AgentInsight } from "@/app/api/agent/insights/route";
+
+const SEVERITY_RANK: Record<SeverityTier, number> = { critical: 0, warning: 1, info: 2 };
+const SEVERITY_ICON: Record<SeverityTier, LucideIcon> = { critical: XCircle, warning: AlertTriangle, info: Info };
+const SEVERITY_COLOR: Record<SeverityTier, string> = { critical: "text-red-600", warning: "text-amber-600", info: "text-slate-400" };
 
 interface ModuleCard {
   title: string; description: string; href: string; icon: LucideIcon; agent?: string;
@@ -65,12 +71,25 @@ function Card({ m, badge }: { m: ModuleCard; badge?: number }) {
 export function ModulesHome() {
   const router = useRouter();
   const [unread, setUnread] = useState(0);
+  const [insights, setInsights] = useState<AgentInsight[]>([]);
   const [me, setMe] = useState<{ email: string; role: Role } | null>(null);
 
   useEffect(() => {
-    fetch("/api/agent/insights", { cache: "no-store" }).then((r) => r.json()).then((j) => setUnread(j.unread ?? 0)).catch(() => {});
+    fetch("/api/agent/insights?limit=50", { cache: "no-store" }).then((r) => r.json()).then((j) => {
+      setUnread(j.unread ?? 0);
+      setInsights(j.data ?? []);
+    }).catch(() => {});
     fetch("/api/auth/me", { cache: "no-store" }).then((r) => r.json()).then((j) => setMe(j.user)).catch(() => {});
   }, []);
+
+  // топ-5 непрочитанных, сначала критичные — компактный превью «что требует внимания»
+  const attention = useMemo(() => {
+    return insights
+      .filter((i) => !i.is_read)
+      .map((i) => ({ ...i, tier: normalizeSeverity(i.severity) }))
+      .sort((a, b) => SEVERITY_RANK[a.tier] - SEVERITY_RANK[b.tier] || b.created_at.localeCompare(a.created_at))
+      .slice(0, 5);
+  }, [insights]);
 
   const logout = async () => { await fetch("/api/auth/logout", { method: "POST" }).catch(() => {}); router.push("/login"); router.refresh(); };
   const visible = MODULES.filter((m) => !me || m.href.startsWith("http") || canAccess(me.role, m.href));
@@ -109,6 +128,29 @@ export function ModulesHome() {
       </div>
 
       <main className="mx-auto max-w-6xl px-6 py-8">
+        {attention.length > 0 && (
+          <section className="mb-8 rounded-2xl border border-gray-200 bg-white p-5">
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="text-xs font-bold uppercase tracking-wider text-gray-400">Что требует внимания</h2>
+              <Link href="/agent" className="text-xs font-medium text-blue-600 hover:underline">Все инсайты →</Link>
+            </div>
+            <div className="space-y-1">
+              {attention.map((i) => {
+                const Icon = SEVERITY_ICON[i.tier];
+                return (
+                  <Link key={i.id} href="/agent" className="flex items-start gap-2 rounded-lg p-2 -mx-2 hover:bg-gray-50">
+                    <Icon className={`mt-0.5 h-4 w-4 shrink-0 ${SEVERITY_COLOR[i.tier]}`} />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium text-gray-900">{i.title}</p>
+                      <p className="truncate text-xs text-gray-500">{i.body}</p>
+                    </div>
+                  </Link>
+                );
+              })}
+            </div>
+          </section>
+        )}
+
         {ZONES.map((zone) => {
           const items = visible.filter((m) => m.zone === zone);
           if (!items.length) return null;
