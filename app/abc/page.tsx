@@ -8,6 +8,7 @@ import { useActiveCabinet } from "@/lib/useActiveCabinet";
 import { CategoryFilter, filterByCategory } from "@/components/ui/CategoryFilter";
 import { useCategoryMap } from "@/lib/useCategoryMap";
 import { useSort, sortGlyph } from "@/lib/useSort";
+import { heat } from "@/lib/analytics/heat";
 
 interface AbcRow {
   nm: number; art: string; name: string; img_url: string | null;
@@ -103,7 +104,7 @@ export default function AbcPage() {
                 </thead>
                 <tbody>
                   {rows.map((r) => (
-                    <tr key={r.nm} className={`border-t border-gray-100 hover:bg-gray-50 ${r.cls === "D" ? "bg-red-50/40" : ""}`}>
+                    <tr key={r.nm} className={`border-t border-gray-100 hover:bg-violet-50 ${r.cls === "D" ? "bg-red-50/40" : ""}`}>
                       <td className="px-3 py-2"><span className={`inline-flex h-6 w-6 items-center justify-center rounded-lg text-xs font-bold ${CLS[r.cls].bg} ${CLS[r.cls].text}`}>{r.cls}</span></td>
                       <td className="px-3 py-2">
                         <div className="flex items-center gap-2">
@@ -114,7 +115,7 @@ export default function AbcPage() {
                       <td className={`px-3 py-2 text-right font-semibold tabular-nums ${r.profit < 0 ? "text-red-600" : "text-emerald-700"}`}>{fmt(r.profit)}</td>
                       <td className="px-3 py-2 text-right tabular-nums text-gray-500">{r.share != null ? r.share + "%" : "—"}</td>
                       <td className="px-3 py-2 text-right tabular-nums text-gray-500">{r.cumPct != null ? r.cumPct + "%" : "—"}</td>
-                      <td className={`px-3 py-2 text-right tabular-nums ${(r.margin ?? 0) < 0 ? "text-red-600" : "text-gray-600"}`}>{r.margin != null ? r.margin + "%" : "—"}</td>
+                      <td className={`px-3 py-2 text-right font-medium tabular-nums ${(r.margin ?? 0) < 0 ? "text-red-700" : "text-gray-700"}`} style={{ background: heat("margin", r.margin) }}>{r.margin != null ? r.margin + "%" : "—"}</td>
                       <td className="px-3 py-2 text-right tabular-nums text-gray-400">{fmt(r.revenue)}</td>
                     </tr>
                   ))}

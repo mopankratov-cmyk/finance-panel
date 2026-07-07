@@ -9,6 +9,7 @@ import { CategoryFilter, filterByCategory } from "@/components/ui/CategoryFilter
 import { useCategoryMap } from "@/lib/useCategoryMap";
 import { DateRangePicker } from "@/components/ui/DateRangePicker";
 import { useSort, sortGlyph } from "@/lib/useSort";
+import { heat } from "@/lib/analytics/heat";
 
 interface Metric { field: string; label: string; kind: string; daily: (number | null)[]; total: number; forecast: number | null }
 interface Sku { nm: number; art: string; name: string; img_url: string; metrics: Metric[] }
@@ -140,8 +141,8 @@ export default function RnpPage() {
                 </thead>
                 <tbody>
                   {skus.map((s) => (
-                    <tr key={s.nm} className="group border-b border-gray-100 last:border-0 hover:bg-gray-50">
-                      <td className="sticky left-0 z-10 bg-white px-3 py-2 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.08)] group-hover:bg-gray-50">
+                    <tr key={s.nm} className="group border-b border-gray-100 last:border-0 hover:bg-violet-50">
+                      <td className="sticky left-0 z-10 bg-white px-3 py-2 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.08)] group-hover:bg-violet-50">
                         <div className="flex items-center gap-2">
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img src={s.img_url} alt="" loading="lazy" className="h-8 w-8 shrink-0 rounded bg-gray-100 object-cover" onError={(e) => { (e.currentTarget as HTMLImageElement).style.visibility = "hidden"; }} />
@@ -151,7 +152,8 @@ export default function RnpPage() {
                       {COLS.map((c) => {
                         const v = total(s.metrics, c.field);
                         const [tone, glyph] = c.field === "drr" ? toneDrr(v) : c.field === "margin_pct" ? toneMargin(v) : ["", ""];
-                        return <td key={c.field} className={`px-3 py-2 text-right tabular-nums whitespace-nowrap ${tone}`}>{glyph}{fmtKind(v, c.kind)}</td>;
+                        const heatField = c.field === "margin_pct" ? "margin" : c.field === "drr" ? "drr" : "";
+                        return <td key={c.field} className={`px-3 py-2 text-right tabular-nums whitespace-nowrap ${tone}`} style={heatField ? { background: heat(heatField, v) } : undefined}>{glyph}{fmtKind(v, c.kind)}</td>;
                       })}
                     </tr>
                   ))}

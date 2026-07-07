@@ -9,28 +9,12 @@ import { useActiveCabinet } from "@/lib/useActiveCabinet";
 import { CategoryFilter } from "@/components/ui/CategoryFilter";
 import { useCategoryMap } from "@/lib/useCategoryMap";
 import { useSort, sortGlyph } from "@/lib/useSort";
+import { HEAT, heat } from "@/lib/analytics/heat";
 
 type Tab = "rnp" | "funnel" | "unit" | "stocks";
 const fmt = (n: number | null | undefined) => (n == null ? "—" : Math.round(n).toLocaleString("ru-RU"));
 const fmtMoney = (n: number) => (n >= 1000 ? Math.round(n).toLocaleString("ru-RU") : String(Math.round(n)));
 const pct = (n: number | null | undefined) => (n == null ? "—" : n + "%");
-
-// Условное форматирование (пороги в стиле infernoff): тёмно-зел/зел/жёлт/красный
-const HEAT = { dg: "#22c55e", g: "#86efac", y: "#fef08a", r: "#fca5a5" };
-function heat(field: string, v: number | null | undefined): string {
-  if (v == null || !isFinite(v)) return "";
-  switch (field) {
-    case "drr": // ниже — лучше
-      if (v <= 0) return ""; if (v < 10) return HEAT.dg; if (v < 20) return HEAT.g; if (v < 30) return HEAT.y; return HEAT.r;
-    case "margin": // чистая маржа (после ДРР+налог)
-      if (v < 0) return HEAT.r; if (v < 10) return HEAT.y; if (v < 25) return HEAT.g; return HEAT.dg;
-    case "cr_cart": // показы(охват)→корзина на Ozon мал по природе
-      if (v <= 0) return ""; if (v < 0.3) return HEAT.r; if (v < 0.8) return HEAT.y; if (v < 1.5) return HEAT.g; return HEAT.dg;
-    case "cr_order":
-      if (v <= 0) return ""; if (v < 5) return HEAT.r; if (v < 15) return HEAT.y; if (v < 30) return HEAT.g; return HEAT.dg;
-    default: return "";
-  }
-}
 
 interface Metric { field: string; label: string; kind: string; daily: number[]; total: number; group_start?: boolean }
 interface RnpSku { sku: string; name: string; img_url: string | null; metrics: Metric[] }
@@ -175,7 +159,7 @@ export default function OzonPage() {
             </div>
             <div className="overflow-auto rounded-xl border border-gray-200 bg-white">
             <table className="border-collapse text-xs">
-              <thead>
+              <thead className="sticky top-0 z-20 bg-gray-800">
                 <tr className="bg-gray-800 text-gray-100">
                   <th className="sticky left-0 z-20 bg-gray-800 px-3 py-2 text-left font-semibold" style={{ minWidth: 240 }}>Товар / Метрика</th>
                   {rnp.period.map((p, i) => (
@@ -218,7 +202,7 @@ export default function OzonPage() {
               </thead>
               <tbody>
                 {funnelSort.sorted.map((r) => (
-                  <tr key={r.sku} className="border-t border-gray-100 hover:bg-gray-50">
+                  <tr key={r.sku} className="border-t border-gray-100 hover:bg-violet-50">
                     <td className="px-3 py-2"><div className="flex items-center gap-2"><Thumb src={r.img_url} /><div className="min-w-0"><div className="max-w-md truncate text-gray-800">{r.name}</div><div className="text-[11px] text-gray-400">sku {r.sku}</div></div></div></td>
                     <td className="px-3 py-2 text-right tabular-nums text-gray-400">{funnelAvail ? fmt(r.hits_view) : "—"}</td>
                     <td className="px-3 py-2 text-right tabular-nums text-gray-400">{funnelAvail ? fmt(r.hits_tocart) : "—"}</td>
@@ -250,7 +234,7 @@ export default function OzonPage() {
               </thead>
               <tbody>
                 {unitSort.sorted.map((r) => (
-                  <tr key={r.art} className={`border-t border-gray-100 hover:bg-gray-50 ${(r.margin ?? 0) < 0 ? "bg-red-50/50" : ""}`}>
+                  <tr key={r.art} className={`border-t border-gray-100 hover:bg-violet-50 ${(r.margin ?? 0) < 0 ? "bg-red-50/50" : ""}`}>
                     <td className="px-3 py-2"><div className="flex items-center gap-2"><Thumb src={r.img_url} size={40} /><div className="min-w-0"><div className="font-medium text-gray-800">{r.art}</div><div className="max-w-xs truncate text-[11px] text-gray-400">{r.name}</div></div></div></td>
                     <td className="px-3 py-2 text-right tabular-nums">{fmt(r.price)}{r.units > 0 && <div className="text-[10px] font-normal text-gray-400">{r.units} зак.</div>}</td>
                     <td className={`px-3 py-2 text-right tabular-nums ${r.cost === 0 ? "text-amber-500" : ""}`}>{r.cost === 0 ? "нет" : fmt(r.cost)}</td>
@@ -282,7 +266,7 @@ export default function OzonPage() {
                 {stocksSort.sorted.map((r) => {
                   const top = Object.entries(r.byWh).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]).slice(0, 4);
                   return (
-                    <tr key={r.art} className="border-t border-gray-100 hover:bg-gray-50">
+                    <tr key={r.art} className="border-t border-gray-100 hover:bg-violet-50">
                       <td className="px-3 py-2"><div className="flex items-center gap-2"><Thumb src={r.img_url} /><div className="min-w-0"><div className="font-medium text-gray-800">{r.art}</div><div className="max-w-xs truncate text-[11px] text-gray-400">{r.name}</div></div></div></td>
                       <td className={`px-3 py-2 text-right font-semibold tabular-nums ${r.free < 10 ? "text-red-600" : ""}`}>{fmt(r.free)}</td>
                       <td className="px-3 py-2 text-right tabular-nums text-gray-500">{fmt(r.reserved)}</td>
@@ -367,7 +351,7 @@ function RnpGroup({ title, sub, img, metrics, period, cell, highlight }: {
         </td>
       </tr>
       {metrics.map((m) => (
-        <tr key={m.field} className={`border-t hover:bg-gray-50/50 ${m.group_start ? "border-gray-300" : "border-gray-100"}`}>
+        <tr key={m.field} className={`border-t hover:bg-violet-50/50 ${m.group_start ? "border-gray-300" : "border-gray-100"}`}>
           <td className="sticky left-0 z-10 bg-white px-3 py-1 text-gray-500" style={{ minWidth: 240 }}>{m.label}</td>
           {m.daily.map((v, i) => (
             <td key={i} className={`px-2 py-1 text-center tabular-nums ${v ? "text-gray-800" : "text-gray-300"}`} style={{ background: heat(m.field, v) }}>{cell(m, v) || "·"}</td>
