@@ -7,6 +7,8 @@ import { useActiveCabinet } from "@/lib/useActiveCabinet";
 import { LoadingBanner, SkeletonTableRows, useElapsedSeconds } from "@/components/ui/LoadingState";
 import { CategoryFilter, filterByCategory } from "@/components/ui/CategoryFilter";
 import { useCategoryMap } from "@/lib/useCategoryMap";
+import { DateRangePicker } from "@/components/ui/DateRangePicker";
+import { useSort, sortGlyph } from "@/lib/useSort";
 
 interface Item { nm: number; art: string; views: number; spend: number; ctr: number | null; cpc: number | null; drr: number | null; stock: number }
 interface AdvData { items: Item[]; count: number; days: number }
@@ -21,6 +23,8 @@ const toneDrr = (v: number | null): [string, string] => (v == null ? ["", ""] : 
 export default function CtrTestPage() {
   const [cabId, setCabId, cabReady] = useActiveCabinet("wb");
   const [days, setDays] = useState(7);
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
   const [data, setData] = useState<AdvData | null>(null);
   const [testsCount, setTestsCount] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
@@ -31,8 +35,9 @@ export default function CtrTestPage() {
     if (!cabReady) return;
     let ignore = false;
     setLoading(true); setErr(null);
+    const range = customFrom && customTo ? `&date_from=${customFrom}&date_to=${customTo}` : "";
     Promise.all([
-      fetch(`/api/ctrtest/adv-analysis?days=${days}${cabId ? `&cabinet=${cabId}` : ""}`, { cache: "no-store" }).then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); }),
+      fetch(`/api/ctrtest/adv-analysis?days=${days}${cabId ? `&cabinet=${cabId}` : ""}${range}`, { cache: "no-store" }).then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); }),
       fetch(`/api/ctrtest/list`, { cache: "no-store" }).then((r) => r.json()).catch(() => ({ tests: [] })),
     ]).then(([d, l]: [AdvData & { error?: string }, { tests: unknown[] }]) => {
       if (ignore) return;
@@ -40,11 +45,13 @@ export default function CtrTestPage() {
       setTestsCount(Array.isArray(l.tests) ? l.tests.length : 0);
     }).catch((e) => { if (!ignore) setErr(String(e)); }).finally(() => { if (!ignore) setLoading(false); });
     return () => { ignore = true; };
-  }, [cabId, days, cabReady]);
+  }, [cabId, days, cabReady, customFrom, customTo]);
 
   const { categories, byArticle } = useCategoryMap();
   const [category, setCategory] = useState("");
-  const items = filterByCategory(data?.items ?? [], (it) => it.art, byArticle, category);
+  const filtered = filterByCategory(data?.items ?? [], (it) => it.art, byArticle, category);
+  const { sorted: items, sortField, sortDir, toggleSort } = useSort(filtered, (it, field) =>
+    field === "art" ? it.art : (it[field as keyof Item] as number | null));
 
   return (
     <div className="bg-gray-50 text-gray-900">
@@ -60,9 +67,10 @@ export default function CtrTestPage() {
             <CategoryFilter categories={categories} value={category} onChange={setCategory} />
             <div className="flex gap-1 rounded-md bg-gray-100 p-0.5">
               {[7, 14, 30].map((d) => (
-                <button key={d} onClick={() => setDays(d)} className={`rounded px-3 py-1 text-xs font-semibold ${days === d ? "bg-white text-violet-700 shadow" : "text-gray-500"}`}>{d}д</button>
+                <button key={d} onClick={() => { setDays(d); setCustomFrom(""); setCustomTo(""); }} className={`rounded px-3 py-1 text-xs font-semibold ${days === d && !customFrom ? "bg-white text-violet-700 shadow" : "text-gray-500"}`}>{d}д</button>
               ))}
             </div>
+            <DateRangePicker from={customFrom} to={customTo} onChange={(f, t) => { setCustomFrom(f); setCustomTo(t); }} />
           </div>
         </div>
       </header>
@@ -87,13 +95,12 @@ export default function CtrTestPage() {
                 <table className="min-w-full text-sm">
                   <thead>
                     <tr className="border-b border-gray-200 text-left text-xs text-gray-500">
-                      <th className="sticky left-0 z-10 bg-white px-3 py-2 font-semibold shadow-[2px_0_4px_-2px_rgba(0,0,0,0.08)]">Артикул</th>
-                      <th className="px-3 py-2 text-right font-semibold">Показы</th>
-                      <th className="px-3 py-2 text-right font-semibold">Расход, ₽</th>
-                      <th className="px-3 py-2 text-right font-semibold">CTR</th>
-                      <th className="px-3 py-2 text-right font-semibold">CPC, ₽</th>
-                      <th className="px-3 py-2 text-right font-semibold">ДРР</th>
-                      <th className="px-3 py-2 text-right font-semibold">Остаток</th>
+                      <th onClick={() => toggleSort("art")} className="sticky left-0 z-10 cursor-pointer select-none bg-white px-3 py-2 font-semibold shadow-[2px_0_4px_-2px_rgba(0,0,0,0.08)] hover:text-violet-700">Артикул{sortGlyph(sortField === "art", sortDir)}</th>
+                      {([["views", "Показы"], ["spend", "Расход, ₽"], ["ctr", "CTR"], ["cpc", "CPC, ₽"], ["drr", "ДРР"], ["stock", "Остаток"]] as const).map(([field, label]) => (
+                        <th key={field} onClick={() => toggleSort(field)} className="cursor-pointer select-none px-3 py-2 text-right font-semibold hover:text-violet-700">
+                          {label}{sortGlyph(sortField === field, sortDir)}
+                        </th>
+                      ))}
                     </tr>
                   </thead>
                   <tbody>

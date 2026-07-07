@@ -7,6 +7,7 @@ import { useActiveCabinet } from "@/lib/useActiveCabinet";
 import { LoadingBanner, SkeletonKpiRow, SkeletonCards, useElapsedSeconds } from "@/components/ui/LoadingState";
 import { CategoryFilter, filterByCategory } from "@/components/ui/CategoryFilter";
 import { useCategoryMap } from "@/lib/useCategoryMap";
+import { useSort } from "@/lib/useSort";
 
 interface Day { ts: string; spend: number; clicks: number; views: number; orders: number }
 interface Campaign {
@@ -120,7 +121,9 @@ export default function AdvertsPage() {
 
   const { categories, byArticle } = useCategoryMap();
   const [category, setCategory] = useState("");
-  const articles = filterByCategory(data?.articles ?? [], (a) => a.art, byArticle, category);
+  const filtered = filterByCategory(data?.articles ?? [], (a) => a.art, byArticle, category);
+  const { sorted: articles, sortField, toggleSort } = useSort(filtered, (a, field) =>
+    field === "art" ? a.art : a.spend);
 
   const deltaPct = data && data.spend_yest_total > 0
     ? Math.round(((data.spend_today_total - data.spend_yest_total) / data.spend_yest_total) * 100)
@@ -138,6 +141,10 @@ export default function AdvertsPage() {
           <div className="ml-auto flex flex-wrap items-center gap-2">
             <CabinetSwitcher mp="wb" accent="violet" onChange={setCabId} />
             <CategoryFilter categories={categories} value={category} onChange={setCategory} />
+            <div className="flex gap-1 rounded-md bg-gray-100 p-0.5">
+              <button onClick={() => toggleSort("spend")} className={`rounded px-2.5 py-1 text-xs font-semibold ${sortField === "spend" ? "bg-white text-violet-700 shadow" : "text-gray-500"}`}>по расходу</button>
+              <button onClick={() => toggleSort("art")} className={`rounded px-2.5 py-1 text-xs font-semibold ${sortField === "art" ? "bg-white text-violet-700 shadow" : "text-gray-500"}`}>А-Я</button>
+            </div>
           </div>
         </div>
       </header>

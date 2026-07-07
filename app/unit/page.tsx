@@ -7,6 +7,7 @@ import { useActiveCabinet } from "@/lib/useActiveCabinet";
 import { LoadingBanner, SkeletonTableRows, useElapsedSeconds } from "@/components/ui/LoadingState";
 import { CategoryFilter, filterByCategory } from "@/components/ui/CategoryFilter";
 import { useCategoryMap } from "@/lib/useCategoryMap";
+import { useSort, sortGlyph } from "@/lib/useSort";
 
 interface UnitData {
   headers: string[];
@@ -45,10 +46,16 @@ export default function UnitPage() {
   // списку допустимых индексов, чтобы не разъехались местами при фильтре категории.
   const { categories, byArticle } = useCategoryMap();
   const [category, setCategory] = useState("");
-  const indices = (data?.rows ?? []).map((_, i) => i).filter((i) => {
+  const filteredIndices = (data?.rows ?? []).map((_, i) => i).filter((i) => {
     if (!category) return true;
     const art = String(data!.rows[i][2]);
     return category === "__none" ? !byArticle[art] : byArticle[art] === category;
+  });
+  // сортировка по абсолютному индексу колонки в row (field = String(колонка))
+  const { sorted: indices, sortField, sortDir, toggleSort } = useSort(filteredIndices, (ri, field) => {
+    const v = data?.rows[ri]?.[Number(field)];
+    if (v == null || v === "") return null;
+    return typeof v === "number" ? v : (isFinite(Number(v)) ? Number(v) : String(v));
   });
 
   return (
@@ -80,10 +87,15 @@ export default function UnitPage() {
             <table className="min-w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-200 text-left text-xs text-gray-500">
-                  <th className="sticky left-0 z-10 bg-white px-3 py-2 font-semibold shadow-[2px_0_4px_-2px_rgba(0,0,0,0.08)]">Артикул</th>
-                  {data.headers.slice(FIRST_DATA_COL).map((h, i) => (
-                    <th key={i} className="px-3 py-2 text-right font-semibold whitespace-nowrap">{h}</th>
-                  ))}
+                  <th onClick={() => toggleSort("2")} className="sticky left-0 z-10 cursor-pointer select-none bg-white px-3 py-2 font-semibold shadow-[2px_0_4px_-2px_rgba(0,0,0,0.08)] hover:text-violet-700">Артикул{sortGlyph(sortField === "2", sortDir)}</th>
+                  {data.headers.slice(FIRST_DATA_COL).map((h, i) => {
+                    const field = String(FIRST_DATA_COL + i);
+                    return (
+                      <th key={i} onClick={() => toggleSort(field)} className="cursor-pointer select-none px-3 py-2 text-right font-semibold whitespace-nowrap hover:text-violet-700">
+                        {h}{sortGlyph(sortField === field, sortDir)}
+                      </th>
+                    );
+                  })}
                 </tr>
               </thead>
               <tbody>

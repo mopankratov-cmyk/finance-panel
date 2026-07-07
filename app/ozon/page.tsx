@@ -8,6 +8,7 @@ import { CabinetSwitcher } from "@/components/CabinetSwitcher";
 import { useActiveCabinet } from "@/lib/useActiveCabinet";
 import { CategoryFilter } from "@/components/ui/CategoryFilter";
 import { useCategoryMap } from "@/lib/useCategoryMap";
+import { useSort, sortGlyph } from "@/lib/useSort";
 
 type Tab = "rnp" | "funnel" | "unit" | "stocks";
 const fmt = (n: number | null | undefined) => (n == null ? "—" : Math.round(n).toLocaleString("ru-RU"));
@@ -109,6 +110,12 @@ export default function OzonPage() {
     return out;
   };
 
+  // сортировка по колонкам — по одному хуку на таб (funnel/unit/stocks; rnp
+  // транспонирован метрика×день, там сортировка построчно неприменима так же).
+  const funnelSort = useSort(flt(funnel), (r, f) => r[f as keyof FunnelRow] as number | null);
+  const unitSort = useSort(flt(unit), (r, f) => r[f as keyof UnitRow] as number | string | null);
+  const stocksSort = useSort(flt(stocks.rows), (r, f) => (f === "art" ? r.art : r[f as keyof StockRow] as number | null));
+
   const TABS: { key: Tab; label: string }[] = [
     { key: "rnp", label: "РНП" }, { key: "funnel", label: "Воронка" },
     { key: "unit", label: "Юнит-экономика" }, { key: "stocks", label: "Остатки" },
@@ -203,11 +210,14 @@ export default function OzonPage() {
             <div className="overflow-auto rounded-xl border border-gray-200 bg-white">
             <table className="w-full text-sm">
               <thead className="sticky top-0 bg-gray-50 text-xs text-gray-500">
-                <tr>{["Товар", "Показы", "В корзину", "CR корзина", "Заказы шт", "CR заказ", "Выручка ₽"].map((h, i) => (
-                  <th key={h} className={`px-3 py-2 ${i === 0 ? "text-left" : "text-right"}`}>{h}</th>))}</tr>
+                <tr>
+                  {([["name", "Товар", "left"], ["hits_view", "Показы", "right"], ["hits_tocart", "В корзину", "right"], ["cr_cart", "CR корзина", "right"], ["ordered_units", "Заказы шт", "right"], ["cr_order", "CR заказ", "right"], ["revenue", "Выручка ₽", "right"]] as const).map(([field, label, align]) => (
+                    <th key={field} onClick={() => funnelSort.toggleSort(field)} className={`cursor-pointer select-none px-3 py-2 hover:text-sky-700 ${align === "left" ? "text-left" : "text-right"}`}>{label}{sortGlyph(funnelSort.sortField === field, funnelSort.sortDir)}</th>
+                  ))}
+                </tr>
               </thead>
               <tbody>
-                {flt(funnel).map((r) => (
+                {funnelSort.sorted.map((r) => (
                   <tr key={r.sku} className="border-t border-gray-100 hover:bg-gray-50">
                     <td className="px-3 py-2"><div className="flex items-center gap-2"><Thumb src={r.img_url} /><div className="min-w-0"><div className="max-w-md truncate text-gray-800">{r.name}</div><div className="text-[11px] text-gray-400">sku {r.sku}</div></div></div></td>
                     <td className="px-3 py-2 text-right tabular-nums text-gray-400">{funnelAvail ? fmt(r.hits_view) : "—"}</td>
@@ -232,11 +242,14 @@ export default function OzonPage() {
             <div className="overflow-auto rounded-xl border border-gray-200 bg-white">
             <table className="w-full text-sm">
               <thead className="sticky top-0 bg-gray-50 text-xs text-gray-500">
-                <tr>{["Артикул", "Цена ₽", "Себес ₽", "Комиссия ₽", "Логистика ₽", "Эквайринг ₽", "Реклама ₽", "Налог ₽", "Прибыль/ед ₽", "Маржа %"].map((h, i) => (
-                  <th key={h} className={`px-3 py-2 ${i === 0 ? "text-left" : "text-right"}`}>{h}</th>))}</tr>
+                <tr>
+                  {([["art", "Артикул", "left"], ["price", "Цена ₽", "right"], ["cost", "Себес ₽", "right"], ["commission_rub", "Комиссия ₽", "right"], ["logistics", "Логистика ₽", "right"], ["acquiring", "Эквайринг ₽", "right"], ["ad", "Реклама ₽", "right"], ["tax", "Налог ₽", "right"], ["profit", "Прибыль/ед ₽", "right"], ["margin", "Маржа %", "right"]] as const).map(([field, label, align]) => (
+                    <th key={field} onClick={() => unitSort.toggleSort(field)} className={`cursor-pointer select-none px-3 py-2 hover:text-sky-700 ${align === "left" ? "text-left" : "text-right"}`}>{label}{sortGlyph(unitSort.sortField === field, unitSort.sortDir)}</th>
+                  ))}
+                </tr>
               </thead>
               <tbody>
-                {flt(unit).map((r) => (
+                {unitSort.sorted.map((r) => (
                   <tr key={r.art} className={`border-t border-gray-100 hover:bg-gray-50 ${(r.margin ?? 0) < 0 ? "bg-red-50/50" : ""}`}>
                     <td className="px-3 py-2"><div className="flex items-center gap-2"><Thumb src={r.img_url} size={40} /><div className="min-w-0"><div className="font-medium text-gray-800">{r.art}</div><div className="max-w-xs truncate text-[11px] text-gray-400">{r.name}</div></div></div></td>
                     <td className="px-3 py-2 text-right tabular-nums">{fmt(r.price)}{r.units > 0 && <div className="text-[10px] font-normal text-gray-400">{r.units} зак.</div>}</td>
@@ -258,10 +271,15 @@ export default function OzonPage() {
           <div className="overflow-auto rounded-xl border border-gray-200 bg-white">
             <table className="w-full text-sm">
               <thead className="sticky top-0 bg-gray-50 text-xs text-gray-500">
-                <tr><th className="px-3 py-2 text-left">Товар</th><th className="px-3 py-2 text-right">Свободно</th><th className="px-3 py-2 text-right">Резерв</th><th className="px-3 py-2 text-left">Топ складов</th></tr>
+                <tr>
+                  <th onClick={() => stocksSort.toggleSort("art")} className="cursor-pointer select-none px-3 py-2 text-left hover:text-sky-700">Товар{sortGlyph(stocksSort.sortField === "art", stocksSort.sortDir)}</th>
+                  <th onClick={() => stocksSort.toggleSort("free")} className="cursor-pointer select-none px-3 py-2 text-right hover:text-sky-700">Свободно{sortGlyph(stocksSort.sortField === "free", stocksSort.sortDir)}</th>
+                  <th onClick={() => stocksSort.toggleSort("reserved")} className="cursor-pointer select-none px-3 py-2 text-right hover:text-sky-700">Резерв{sortGlyph(stocksSort.sortField === "reserved", stocksSort.sortDir)}</th>
+                  <th className="px-3 py-2 text-left">Топ складов</th>
+                </tr>
               </thead>
               <tbody>
-                {flt(stocks.rows).map((r) => {
+                {stocksSort.sorted.map((r) => {
                   const top = Object.entries(r.byWh).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]).slice(0, 4);
                   return (
                     <tr key={r.art} className="border-t border-gray-100 hover:bg-gray-50">

@@ -17,11 +17,17 @@ export async function GET(request: NextRequest) {
   if (!db) return NextResponse.json({ items: [] });
   const sp = new URL(request.url).searchParams;
   const days = Number(sp.get("days")) || 7;
-  const since = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
+  // Произвольный диапазон (?date_from=&date_to=) в дополнение к пресету ?days=.
+  const dateFrom = sp.get("date_from");
+  const dateTo = sp.get("date_to");
+  const ISO_RE = /^\d{4}-\d{2}-\d{2}$/;
+  const useCustom = dateFrom && dateTo && ISO_RE.test(dateFrom) && ISO_RE.test(dateTo) && dateFrom <= dateTo;
+  const since = useCustom ? dateFrom : new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
   const { cabinetId } = await resolveShopCabinet(sp.get("cabinet") ?? undefined);
 
   let adQ = db.from("wb_advert_nm_daily").select("nm_id, date, views, clicks, spent").gte("date", since);
   let funnelQ = db.from("wb_funnel_daily").select("nm_id, date, orders_sum").gte("date", since);
+  if (useCustom) { adQ = adQ.lte("date", dateTo); funnelQ = funnelQ.lte("date", dateTo); }
   if (cabinetId) { adQ = adQ.eq("cabinet_id", cabinetId); funnelQ = funnelQ.eq("cabinet_id", cabinetId); }
   const [adRes, funnelRes, totalsRes] = await Promise.all([adQ, funnelQ, db.rpc("rnp_report", { p_cabinet: cabinetId })]);
 

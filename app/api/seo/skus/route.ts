@@ -29,6 +29,13 @@ function selectedPeriod(days: number) {
   return { start: iso(start), end: iso(end), label: days === 1 ? ruDate(iso(end)) : `${ruDate(iso(start))}-${ruDate(iso(end))}` };
 }
 
+const ISO_RE = /^\d{4}-\d{2}-\d{2}$/;
+// Произвольный диапазон (?date_from=&date_to=) в дополнение к пресетам ?window=1|7|30.
+function customPeriod(from: string | null, to: string | null) {
+  if (!from || !to || !ISO_RE.test(from) || !ISO_RE.test(to) || from > to) return null;
+  return { start: from, end: to, label: `${ruDate(from)}-${ruDate(to)}` };
+}
+
 // Источник SKU для дизайн/«Воронка» (inferno loadDesign). Поля с суффиксом _7d (окно 7д) и _4d (вчера).
 export async function GET(request: NextRequest) {
   const db = getSupabaseAdmin();
@@ -38,7 +45,7 @@ export async function GET(request: NextRequest) {
   // Кабинет из ?cabinet=<uuid|all> — фильтруем все источники по нему (или все, если "all").
   const { cabinetId, label } = await resolveShopCabinet(params.get("cabinet") ?? undefined);
   const days = windowDays(params.get("window"));
-  const period = selectedPeriod(days);
+  const period = customPeriod(params.get("date_from"), params.get("date_to")) ?? selectedPeriod(days);
 
   let funnelQ = db.from("wb_funnel_daily").select("nm_id, date, open_card, add_to_cart, orders, orders_sum").gte("date", period.start).lte("date", period.end);
   let adQ = db.from("wb_advert_nm_daily").select("nm_id, date, views, clicks, spent").gte("date", period.start).lte("date", period.end);

@@ -7,6 +7,8 @@ import { useActiveCabinet } from "@/lib/useActiveCabinet";
 import { LoadingBanner, SkeletonTableRows, useElapsedSeconds } from "@/components/ui/LoadingState";
 import { CategoryFilter, filterByCategory } from "@/components/ui/CategoryFilter";
 import { useCategoryMap } from "@/lib/useCategoryMap";
+import { DateRangePicker } from "@/components/ui/DateRangePicker";
+import { useSort, sortGlyph } from "@/lib/useSort";
 
 interface SeoSku {
   nm: number; art: string; name: string; img_url: string;
@@ -40,6 +42,8 @@ const COLS: { key: keyof SeoSku; label: string; kind: "num" | "pct" | "drr" | "m
 export default function SeoPage() {
   const [cabId, setCabId, cabReady] = useActiveCabinet("wb");
   const [win, setWin] = useState(7);
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
   const [data, setData] = useState<SeoData | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
@@ -49,17 +53,20 @@ export default function SeoPage() {
     if (!cabReady) return;
     let ignore = false;
     setLoading(true); setErr(null);
-    fetch(`/api/seo/skus?window=${win}${cabId ? `&cabinet=${cabId}` : ""}`, { cache: "no-store" })
+    const range = customFrom && customTo ? `&date_from=${customFrom}&date_to=${customTo}` : "";
+    fetch(`/api/seo/skus?window=${win}${cabId ? `&cabinet=${cabId}` : ""}${range}`, { cache: "no-store" })
       .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
       .then((d: SeoData & { error?: string }) => { if (ignore) return; if (d.error) setErr(d.error); else setData(d); })
       .catch((e) => { if (!ignore) setErr(String(e)); })
       .finally(() => { if (!ignore) setLoading(false); });
     return () => { ignore = true; };
-  }, [cabId, win, cabReady]);
+  }, [cabId, win, cabReady, customFrom, customTo]);
 
   const { categories, byArticle } = useCategoryMap();
   const [category, setCategory] = useState("");
-  const skus = filterByCategory(data?.skus ?? [], (s) => s.art, byArticle, category);
+  const filtered = filterByCategory(data?.skus ?? [], (s) => s.art, byArticle, category);
+  const { sorted: skus, sortField, sortDir, toggleSort } = useSort(filtered, (s, field) =>
+    field === "art" ? s.art : (s[field as keyof SeoSku] as number | null));
 
   const cell = (s: SeoSku, key: keyof SeoSku, kind: string) => {
     const v = s[key] as number | null;
@@ -83,9 +90,10 @@ export default function SeoPage() {
             <CategoryFilter categories={categories} value={category} onChange={setCategory} />
             <div className="flex gap-1 rounded-md bg-gray-100 p-0.5">
               {[1, 7, 30].map((d) => (
-                <button key={d} onClick={() => setWin(d)} className={`rounded px-3 py-1 text-xs font-semibold ${win === d ? "bg-white text-violet-700 shadow" : "text-gray-500"}`}>{d === 1 ? "вчера" : d + "д"}</button>
+                <button key={d} onClick={() => { setWin(d); setCustomFrom(""); setCustomTo(""); }} className={`rounded px-3 py-1 text-xs font-semibold ${win === d && !customFrom ? "bg-white text-violet-700 shadow" : "text-gray-500"}`}>{d === 1 ? "вчера" : d + "д"}</button>
               ))}
             </div>
+            <DateRangePicker from={customFrom} to={customTo} onChange={(f, t) => { setCustomFrom(f); setCustomTo(t); }} />
           </div>
         </div>
       </header>
@@ -103,8 +111,12 @@ export default function SeoPage() {
             <table className="min-w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-200 text-left text-xs text-gray-500">
-                  <th className="sticky left-0 z-10 bg-white px-3 py-2 font-semibold shadow-[2px_0_4px_-2px_rgba(0,0,0,0.08)]">Артикул</th>
-                  {COLS.map((c) => <th key={String(c.key)} className="px-3 py-2 text-right font-semibold whitespace-nowrap">{c.label}</th>)}
+                  <th onClick={() => toggleSort("art")} className="sticky left-0 z-10 cursor-pointer select-none bg-white px-3 py-2 font-semibold shadow-[2px_0_4px_-2px_rgba(0,0,0,0.08)] hover:text-violet-700">Артикул{sortGlyph(sortField === "art", sortDir)}</th>
+                  {COLS.map((c) => (
+                    <th key={String(c.key)} onClick={() => toggleSort(c.key)} className="cursor-pointer select-none px-3 py-2 text-right font-semibold whitespace-nowrap hover:text-violet-700">
+                      {c.label}{sortGlyph(sortField === c.key, sortDir)}
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody>

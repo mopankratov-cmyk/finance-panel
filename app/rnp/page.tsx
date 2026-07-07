@@ -7,6 +7,8 @@ import { useActiveCabinet } from "@/lib/useActiveCabinet";
 import { LoadingBanner, SkeletonKpiRow, SkeletonTableRows, useElapsedSeconds } from "@/components/ui/LoadingState";
 import { CategoryFilter, filterByCategory } from "@/components/ui/CategoryFilter";
 import { useCategoryMap } from "@/lib/useCategoryMap";
+import { DateRangePicker } from "@/components/ui/DateRangePicker";
+import { useSort, sortGlyph } from "@/lib/useSort";
 
 interface Metric { field: string; label: string; kind: string; daily: (number | null)[]; total: number; forecast: number | null }
 interface Sku { nm: number; art: string; name: string; img_url: string; metrics: Metric[] }
@@ -41,6 +43,8 @@ function toneMargin(v: number | null): [string, string] { if (v == null) return 
 export default function RnpPage() {
   const [cabId, setCabId, cabReady] = useActiveCabinet("wb");
   const [win, setWin] = useState(30);
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
   const [data, setData] = useState<RnpTable | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
@@ -50,8 +54,8 @@ export default function RnpPage() {
     if (!cabReady) return;
     let ignore = false;
     setLoading(true); setErr(null);
-    const to = new Date().toISOString().slice(0, 10);
-    const from = new Date(Date.now() - (win - 1) * 86400000).toISOString().slice(0, 10);
+    const to = customTo || new Date().toISOString().slice(0, 10);
+    const from = customFrom || new Date(Date.now() - (win - 1) * 86400000).toISOString().slice(0, 10);
     const shop = cabId || "all";
     fetch(`/api/rnp/${shop}/table?date_from=${from}&date_to=${to}`, { cache: "no-store" })
       .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
@@ -59,11 +63,13 @@ export default function RnpPage() {
       .catch((e) => { if (!ignore) setErr(String(e)); })
       .finally(() => { if (!ignore) setLoading(false); });
     return () => { ignore = true; };
-  }, [cabId, win, cabReady]);
+  }, [cabId, win, cabReady, customFrom, customTo]);
 
   const { categories, byArticle } = useCategoryMap();
   const [category, setCategory] = useState("");
-  const skus = filterByCategory(data?.skus ?? [], (s) => s.art, byArticle, category);
+  const filtered = filterByCategory(data?.skus ?? [], (s) => s.art, byArticle, category);
+  const { sorted: skus, sortField, sortDir, toggleSort } = useSort(filtered, (s, field) =>
+    field === "art" ? s.art : total(s.metrics, field));
 
   const sumCell = (field: string, kind: string) => fmtKind(total(data?.summary ?? [], field), kind);
 
@@ -81,9 +87,10 @@ export default function RnpPage() {
             <CategoryFilter categories={categories} value={category} onChange={setCategory} />
             <div className="flex gap-1 rounded-md bg-gray-100 p-0.5">
               {[7, 14, 30].map((d) => (
-                <button key={d} onClick={() => setWin(d)} className={`rounded px-3 py-1 text-xs font-semibold ${win === d ? "bg-white text-violet-700 shadow" : "text-gray-500"}`}>{d}д</button>
+                <button key={d} onClick={() => { setWin(d); setCustomFrom(""); setCustomTo(""); }} className={`rounded px-3 py-1 text-xs font-semibold ${win === d && !customFrom ? "bg-white text-violet-700 shadow" : "text-gray-500"}`}>{d}д</button>
               ))}
             </div>
+            <DateRangePicker from={customFrom} to={customTo} onChange={(f, t) => { setCustomFrom(f); setCustomTo(t); }} />
           </div>
         </div>
       </header>
@@ -119,8 +126,12 @@ export default function RnpPage() {
               <table className="min-w-full text-sm">
                 <thead>
                   <tr className="border-b border-gray-200 text-left text-xs text-gray-500">
-                    <th className="sticky left-0 z-10 bg-white px-3 py-2 font-semibold shadow-[2px_0_4px_-2px_rgba(0,0,0,0.08)]">Артикул</th>
-                    {COLS.map((c) => <th key={c.field} className="px-3 py-2 text-right font-semibold whitespace-nowrap">{c.label}</th>)}
+                    <th onClick={() => toggleSort("art")} className="sticky left-0 z-10 cursor-pointer select-none bg-white px-3 py-2 font-semibold shadow-[2px_0_4px_-2px_rgba(0,0,0,0.08)] hover:text-violet-700">Артикул{sortGlyph(sortField === "art", sortDir)}</th>
+                    {COLS.map((c) => (
+                      <th key={c.field} onClick={() => toggleSort(c.field)} className="cursor-pointer select-none px-3 py-2 text-right font-semibold whitespace-nowrap hover:text-violet-700">
+                        {c.label}{sortGlyph(sortField === c.field, sortDir)}
+                      </th>
+                    ))}
                   </tr>
                 </thead>
                 <tbody>

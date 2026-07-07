@@ -7,6 +7,7 @@ import { CabinetSwitcher } from "@/components/CabinetSwitcher";
 import { useActiveCabinet } from "@/lib/useActiveCabinet";
 import { CategoryFilter, filterByCategory } from "@/components/ui/CategoryFilter";
 import { useCategoryMap } from "@/lib/useCategoryMap";
+import { useSort, sortGlyph } from "@/lib/useSort";
 
 interface AbcRow {
   nm: number; art: string; name: string; img_url: string | null;
@@ -45,7 +46,9 @@ export default function AbcPage() {
 
   const { categories, byArticle } = useCategoryMap();
   const [category, setCategory] = useState("");
-  const rows = filterByCategory(data?.rows ?? [], (r) => r.art, byArticle, category);
+  const filtered = filterByCategory(data?.rows ?? [], (r) => r.art, byArticle, category);
+  const { sorted: rows, sortField, sortDir, toggleSort } = useSort(filtered, (r, field) =>
+    field === "art" ? r.art : (r[field as keyof AbcRow] as number | null));
 
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900">
@@ -90,8 +93,13 @@ export default function AbcPage() {
             <div className="overflow-auto rounded-xl border border-gray-200 bg-white">
               <table className="w-full text-sm">
                 <thead className="sticky top-0 bg-gray-50 text-xs text-gray-500">
-                  <tr>{["Класс", "Товар", "Прибыль 30д ₽", "Доля %", "Накоп. %", "Маржа %", "Выручка ₽"].map((h, i) => (
-                    <th key={h} className={`px-3 py-2 ${i <= 1 ? "text-left" : "text-right"}`}>{h}</th>))}</tr>
+                  <tr>
+                    <th className="px-3 py-2 text-left">Класс</th>
+                    <th onClick={() => toggleSort("art")} className="cursor-pointer select-none px-3 py-2 text-left hover:text-violet-700">Товар{sortGlyph(sortField === "art", sortDir)}</th>
+                    {([["profit", "Прибыль 30д ₽"], ["share", "Доля %"], ["cumPct", "Накоп. %"], ["margin", "Маржа %"], ["revenue", "Выручка ₽"]] as const).map(([field, label]) => (
+                      <th key={field} onClick={() => toggleSort(field)} className="cursor-pointer select-none px-3 py-2 text-right hover:text-violet-700">{label}{sortGlyph(sortField === field, sortDir)}</th>
+                    ))}
+                  </tr>
                 </thead>
                 <tbody>
                   {rows.map((r) => (

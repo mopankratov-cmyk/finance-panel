@@ -7,6 +7,7 @@ import { useActiveCabinet } from "@/lib/useActiveCabinet";
 import { LoadingBanner, SkeletonKpiRow, SkeletonTableRows, useElapsedSeconds } from "@/components/ui/LoadingState";
 import { CategoryFilter, filterByCategory } from "@/components/ui/CategoryFilter";
 import { useCategoryMap } from "@/lib/useCategoryMap";
+import { useSort, sortGlyph } from "@/lib/useSort";
 
 interface GSku {
   nm: number; art: string; name: string; img_url: string; shop: string;
@@ -22,6 +23,8 @@ const pc = (v: number | null) => (v == null ? "—" : v + "%");
 const toneDrr = (v: number | null): [string, string] => (v == null ? ["text-gray-400", ""] : v <= 10 ? ["text-emerald-600", ""] : v <= 20 ? ["text-amber-600", "△ "] : ["text-rose-600", "▲ "]);
 
 function GroupCard({ g }: { g: Group }) {
+  const { sorted: skus, sortField, sortDir, toggleSort } = useSort(g.skus, (s, field) =>
+    field === "art" ? s.art : (s[field as keyof GSku] as number | null));
   return (
     <div className="rounded-2xl border border-gray-200 bg-white">
       <div className="flex items-center gap-2 border-b border-gray-100 px-4 py-2.5">
@@ -35,17 +38,14 @@ function GroupCard({ g }: { g: Group }) {
         <table className="min-w-full text-sm">
           <thead>
             <tr className="text-left text-[11px] text-gray-400">
-              <th className="px-4 py-1.5 font-medium">Артикул</th>
-              <th className="px-3 py-1.5 text-right font-medium">Показы</th>
-              <th className="px-3 py-1.5 text-right font-medium">Выручка ₽</th>
-              <th className="px-3 py-1.5 text-right font-medium">Реклама ₽</th>
-              <th className="px-3 py-1.5 text-right font-medium">ДРР</th>
-              <th className="px-3 py-1.5 text-right font-medium">Маржа</th>
-              <th className="px-3 py-1.5 text-right font-medium">Остаток</th>
+              <th onClick={() => toggleSort("art")} className="cursor-pointer select-none px-4 py-1.5 font-medium hover:text-violet-600">Артикул{sortGlyph(sortField === "art", sortDir)}</th>
+              {([["shows_7d", "Показы"], ["orders_sum_7d", "Выручка ₽"], ["adv_spend_7d", "Реклама ₽"], ["drr_7d", "ДРР"], ["margin_before_drr", "Маржа"], ["stock", "Остаток"]] as const).map(([field, label]) => (
+                <th key={field} onClick={() => toggleSort(field)} className="cursor-pointer select-none px-3 py-1.5 text-right font-medium hover:text-violet-600">{label}{sortGlyph(sortField === field, sortDir)}</th>
+              ))}
             </tr>
           </thead>
           <tbody>
-            {g.skus.map((s) => (
+            {skus.map((s) => (
               <tr key={s.nm} className="border-t border-gray-50">
                 <td className="px-4 py-1.5">
                   <div className="flex items-center gap-2">
