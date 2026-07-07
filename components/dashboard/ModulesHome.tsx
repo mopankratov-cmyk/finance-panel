@@ -12,6 +12,7 @@ import { canAccess, ROLE_LABEL } from "@/lib/auth/roles";
 import type { Role } from "@/lib/auth/session";
 import { normalizeSeverity, type SeverityTier } from "@/lib/agent/severity";
 import type { AgentInsight } from "@/app/api/agent/insights/route";
+import { Tour, TourReplayButton, type TourStep } from "@/components/ui/Tour";
 
 const SEVERITY_RANK: Record<SeverityTier, number> = { critical: 0, warning: 1, info: 2 };
 const SEVERITY_ICON: Record<SeverityTier, LucideIcon> = { critical: XCircle, warning: AlertTriangle, info: Info };
@@ -94,6 +95,12 @@ export function ModulesHome() {
   const logout = async () => { await fetch("/api/auth/logout", { method: "POST" }).catch(() => {}); router.push("/login"); router.refresh(); };
   const visible = MODULES.filter((m) => !me || m.href.startsWith("http") || canAccess(me.role, m.href));
 
+  const tourSteps: TourStep[] = [
+    ...(attention.length > 0 ? [{ selector: '[data-tour="attention"]', title: "Что требует внимания", text: "Топ-5 самых срочных сигналов из правил и WB-аналитики — критичные вверху. Клик открывает полный список в AI-агенте." }] : []),
+    { selector: '[data-tour="modules"]', title: "Модули", text: "Каждая карточка — свой раздел: аналитика, финансы, операции или AI-агент. Сгруппированы по зонам." },
+    { selector: '[data-tour="user"]', title: "Ваш аккаунт", text: "Email и роль видны здесь же — тут и кнопка выхода." },
+  ];
+
   return (
     <div className="min-h-screen bg-[#F8FAFC] text-gray-900">
       {/* Шапка */}
@@ -108,8 +115,9 @@ export function ModulesHome() {
           </div>
           <div className="flex items-center gap-3">
             <span className="hidden items-center gap-1.5 text-xs text-gray-500 sm:flex"><span className="h-2 w-2 rounded-full bg-emerald-400" /> система работает</span>
+            <TourReplayButton tourId="dashboard" />
             {me && (
-              <div className="flex items-center gap-2 rounded-full border border-gray-200 bg-white py-1 pl-1 pr-2">
+              <div data-tour="user" className="flex items-center gap-2 rounded-full border border-gray-200 bg-white py-1 pl-1 pr-2">
                 <span className="flex h-7 w-7 items-center justify-center rounded-full bg-blue-100 text-xs font-bold text-blue-700">{me.email.slice(0, 2).toUpperCase()}</span>
                 <div className="hidden leading-tight sm:block"><div className="text-xs font-semibold">{me.email.split("@")[0]}</div><div className="text-[10px] text-gray-400">{ROLE_LABEL[me.role]}</div></div>
                 <button onClick={logout} title="Выйти" className="ml-1 text-gray-400 hover:text-gray-700"><LogOut className="h-4 w-4" /></button>
@@ -129,7 +137,7 @@ export function ModulesHome() {
 
       <main className="mx-auto max-w-6xl px-6 py-8">
         {attention.length > 0 && (
-          <section className="mb-8 rounded-2xl border border-gray-200 bg-white p-5">
+          <section data-tour="attention" className="mb-8 rounded-2xl border border-gray-200 bg-white p-5">
             <div className="mb-3 flex items-center justify-between">
               <h2 className="text-xs font-bold uppercase tracking-wider text-gray-400">Что требует внимания</h2>
               <Link href="/agent" className="text-xs font-medium text-blue-600 hover:underline">Все инсайты →</Link>
@@ -151,28 +159,32 @@ export function ModulesHome() {
           </section>
         )}
 
-        {ZONES.map((zone) => {
-          const items = visible.filter((m) => m.zone === zone);
-          if (!items.length) return null;
-          return (
-            <section key={zone} className="mb-8">
-              <h2 className="mb-3 text-xs font-bold uppercase tracking-wider text-gray-400">{zone}</h2>
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                {items.map((m) => {
-                  const inner = <Card m={m} badge={m.title === "AI-агент" ? unread : undefined} />;
-                  return m.href.startsWith("http")
-                    ? <a key={m.title} href={m.href} target="_blank" rel="noreferrer">{inner}</a>
-                    : <Link key={m.title} href={m.href}>{inner}</Link>;
-                })}
-              </div>
-            </section>
-          );
-        })}
+        <div data-tour="modules">
+          {ZONES.map((zone) => {
+            const items = visible.filter((m) => m.zone === zone);
+            if (!items.length) return null;
+            return (
+              <section key={zone} className="mb-8">
+                <h2 className="mb-3 text-xs font-bold uppercase tracking-wider text-gray-400">{zone}</h2>
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                  {items.map((m) => {
+                    const inner = <Card m={m} badge={m.title === "AI-агент" ? unread : undefined} />;
+                    return m.href.startsWith("http")
+                      ? <a key={m.title} href={m.href} target="_blank" rel="noreferrer">{inner}</a>
+                      : <Link key={m.title} href={m.href}>{inner}</Link>;
+                  })}
+                </div>
+              </section>
+            );
+          })}
+        </div>
       </main>
 
       <footer className="mx-auto max-w-6xl border-t border-gray-200 px-6 py-6 text-xs text-gray-400">
         Финансы МП · WB + Ozon · команда AI-агентов
       </footer>
+
+      <Tour tourId="dashboard" steps={tourSteps} />
     </div>
   );
 }

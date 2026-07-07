@@ -10,6 +10,7 @@ import { LoadingBanner, SkeletonKpiRow, SkeletonTableRows, useElapsedSeconds } f
 import { StockCatalogTab } from "@/components/supplies/StockCatalogTab";
 import { ReceivingTab } from "@/components/supplies/ReceivingTab";
 import { MoySkladSourceTab } from "@/components/supplies/MoySkladSourceTab";
+import { Tour, TourReplayButton, type TourStep } from "@/components/ui/Tour";
 import type { SupplyRow, WarehouseSummary, StockCatalogRow } from "@/app/api/supplies/route";
 
 type Tab = "reorder" | "stock" | "receiving" | "source";
@@ -93,6 +94,12 @@ export function SuppliesPage() {
     ), csv: (r) => String(r.need) },
   ];
 
+  const tourSteps: TourStep[] = [
+    { selector: '[data-tour="supplies-tabs"]', title: "4 раздела Закупок", text: "«К поставке» — сколько дозаказать по темпу продаж, «Остатки» — полный каталог по складам, «Приёмка» — учёт поступивших партий, «Источник» — подключение МойСклад." },
+    { selector: '[data-tour="supplies-cabinet"]', title: "Кабинет", text: "Переключай юрлицо здесь — вся вкладка пересчитается под него. Можно выбрать и объединённую группу кабинетов, если она создана на /cabinets." },
+    ...(tab === "reorder" ? [{ selector: '[data-tour="supplies-kpi"]', title: "Сводка", text: "Быстрый обзор: сколько всего на складах, что нужно дозаказать и куда." }] : []),
+  ];
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -101,7 +108,10 @@ export function SuppliesPage() {
           <p className="text-sm text-slate-400 mt-1">Потребность к поставке по темпу заказов</p>
         </div>
         <div className="flex items-center gap-2">
-        <CabinetSwitcher mp="wb" accent="violet" onChange={setCabId} />
+        <TourReplayButton tourId="supplies" />
+        <div data-tour="supplies-cabinet">
+          <CabinetSwitcher mp="wb" accent="violet" onChange={setCabId} />
+        </div>
         <button
           onClick={load}
           disabled={loading}
@@ -118,7 +128,7 @@ export function SuppliesPage() {
       )}
 
       {/* Таб-бар */}
-      <div className="flex gap-1 rounded-lg bg-slate-100 p-1 w-fit">
+      <div data-tour="supplies-tabs" className="flex gap-1 rounded-lg bg-slate-100 p-1 w-fit">
         {([["reorder", "К поставке"], ["stock", "Остатки"], ["receiving", "Приёмка"], ["source", "Источник"]] as const).map(([key, label]) => (
           <button
             key={key}
@@ -141,7 +151,7 @@ export function SuppliesPage() {
       ) : tab === "reorder" ? (
         <>
           {/* Сводка по складам */}
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div data-tour="supplies-kpi" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
               <p className="text-xs text-slate-400">Всего на складах</p>
               <p className="text-xl font-bold text-slate-900">{formatNumber(totalStock)}</p>
@@ -208,6 +218,8 @@ export function SuppliesPage() {
       ) : (
         <MoySkladSourceTab />
       )}
+
+      <Tour tourId="supplies" steps={tourSteps} />
     </div>
   );
 }
