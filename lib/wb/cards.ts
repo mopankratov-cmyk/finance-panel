@@ -5,17 +5,19 @@ const CARDS_URL = "https://content-api.wildberries.ru/content/v2/get/cards/list"
 
 interface Characteristic { name?: string; value?: string | string[] }
 interface RawDimensions { length?: number; width?: number; height?: number; weightBrutto?: number }
+interface RawPhoto { big?: string; c246x328?: string }
 interface RawCard {
   nmID: number; vendorCode: string; title?: string; subjectName?: string; brand?: string;
-  characteristics?: Characteristic[]; dimensions?: RawDimensions; photos?: unknown[];
+  characteristics?: Characteristic[]; dimensions?: RawDimensions; photos?: RawPhoto[];
 }
 
 export interface CabinetCard { article: string; nm_id: number; name: string; color: string; subject: string; shop: string }
 
 export interface PimRow {
   nmId: number; article: string; name: string; brand: string; subject: string; shop: string;
+  cabinetId: string | null;
   length: number | null; width: number | null; height: number | null; weightBrutto: number | null;
-  materials: string; photosCount: number; wbUrl: string;
+  materials: string; photosCount: number; photos: string[]; wbUrl: string;
 }
 
 const characteristicOf = (c: RawCard, re: RegExp): string => {
@@ -73,6 +75,7 @@ export async function fetchCabinetPimRows(cabinetId: string | null): Promise<Pim
         const json = (await res.json()) as { cards?: RawCard[]; cursor?: { updatedAt?: string; nmID?: number } };
         const batch = json.cards ?? [];
         for (const c of batch) {
+          const photos = (c.photos || []).map((p) => p.c246x328 || p.big || "").filter(Boolean);
           out.push({
             nmId: c.nmID,
             article: c.vendorCode || String(c.nmID),
@@ -80,12 +83,14 @@ export async function fetchCabinetPimRows(cabinetId: string | null): Promise<Pim
             brand: c.brand || "",
             subject: c.subjectName || "",
             shop: src.name,
+            cabinetId: src.id,
             length: c.dimensions?.length ?? null,
             width: c.dimensions?.width ?? null,
             height: c.dimensions?.height ?? null,
             weightBrutto: c.dimensions?.weightBrutto ?? null,
             materials: characteristicOf(c, /материал|состав/i),
-            photosCount: (c.photos || []).length,
+            photosCount: photos.length,
+            photos,
             wbUrl: `https://www.wildberries.ru/catalog/${c.nmID}/detail.aspx`,
           });
         }

@@ -1,14 +1,19 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { PackageSearch, ExternalLink } from "lucide-react";
+import { PackageSearch, ExternalLink, Images } from "lucide-react";
 import { AnalyticsTable, type Column } from "@/components/analytics/AnalyticsTable";
 import { CabinetSwitcher } from "@/components/CabinetSwitcher";
 import { useActiveCabinet } from "@/lib/useActiveCabinet";
 import { CategoryFilter, filterByCategory } from "@/components/ui/CategoryFilter";
 import { useCategoryMap } from "@/lib/useCategoryMap";
 import { LoadingBanner, SkeletonKpiRow, SkeletonTableRows, useElapsedSeconds } from "@/components/ui/LoadingState";
+import { formatTime } from "@/lib/analytics/format";
+import { CoverTestModal } from "@/components/pim/CoverTestModal";
 import type { PimRow } from "@/lib/wb/cards";
+import type { CoverTestRow } from "@/app/api/cover-test/route";
+
+const WINDOW_LABEL = "14 дней";
 
 function isComplete(r: PimRow): boolean {
   return !!(r.length && r.width && r.height && r.weightBrutto && r.materials && r.photosCount > 0);
@@ -39,6 +44,17 @@ export function PimPage() {
   }, [cabId, cabReady]);
 
   useEffect(() => { load(); }, [load]);
+
+  const [testRow, setTestRow] = useState<PimRow | null>(null);
+  const [tests, setTests] = useState<CoverTestRow[]>([]);
+  const loadTests = useCallback(async () => {
+    try {
+      const res = await fetch("/api/cover-test", { cache: "no-store" });
+      const json = await res.json();
+      if (json.ok) setTests(json.rows ?? []);
+    } catch { /* ignore */ }
+  }, []);
+  useEffect(() => { loadTests(); }, [loadTests]);
 
   const { categories, byArticle } = useCategoryMap();
   const [category, setCategory] = useState("");
@@ -75,6 +91,13 @@ export function PimPage() {
         Открыть на WB <ExternalLink className="h-3 w-3" />
       </a>
     ), csv: (r) => r.wbUrl },
+    { key: "coverTest", label: "", render: (r) => (
+      r.photos.length >= 2 && r.cabinetId ? (
+        <button onClick={() => setTestRow(r)} className="inline-flex items-center gap-1 text-xs text-slate-500 hover:text-violet-600">
+          <Images className="h-3 w-3" /> Тест обложки
+        </button>
+      ) : null
+    ), csv: () => "" },
   ];
 
   return (
@@ -118,9 +141,49 @@ export function PimPage() {
             </div>
 
             <AnalyticsTable columns={columns} data={filtered} filename="pim.csv" emptyMessage="Нет карточек по фильтру." />
+
+            {tests.length > 0 && (
+              <div className="mt-8">
+                <h2 className="mb-2 text-xs font-bold uppercase tracking-wider text-gray-400">История тестов обложек</h2>
+                <p className="mb-3 text-xs text-gray-400">Конверсия открытие→корзина за {WINDOW_LABEL} до/после смены главного фото — официальный API не даёт CTR показа в поиске, это честный измеримый proxy.</p>
+                <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50 text-xs text-gray-500">
+                      <tr>
+                        <th className="px-3 py-2 text-left">Товар</th>
+                        <th className="px-3 py-2 text-left">Переключено</th>
+                        <th className="px-3 py-2 text-right">Конверсия до</th>
+                        <th className="px-3 py-2 text-right">Конверсия после</th>
+                        <th className="px-3 py-2 text-right">Δ</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {tests.map((t) => {
+                        const delta = t.before.cartConvPct != null && t.after.cartConvPct != null ? Math.round((t.after.cartConvPct - t.before.cartConvPct) * 10) / 10 : null;
+                        return (
+                          <tr key={t.id} className="border-t border-gray-100">
+                            <td className="px-3 py-2 font-medium text-gray-800">{t.article}</td>
+                            <td className="px-3 py-2 text-gray-500">{formatTime(t.switchedAt)}</td>
+                            <td className="px-3 py-2 text-right tabular-nums text-gray-500">{t.before.cartConvPct != null ? `${t.before.cartConvPct}%` : "—"} <span className="text-[10px] text-gray-400">({t.before.days}д)</span></td>
+                            <td className="px-3 py-2 text-right tabular-nums text-gray-500">{t.after.cartConvPct != null ? `${t.after.cartConvPct}%` : "—"} <span className="text-[10px] text-gray-400">({t.after.days}д)</span></td>
+                            <td className={`px-3 py-2 text-right font-semibold tabular-nums ${delta == null ? "text-gray-400" : delta > 0 ? "text-emerald-600" : delta < 0 ? "text-red-600" : "text-gray-500"}`}>
+                              {delta == null ? "—" : `${delta > 0 ? "+" : ""}${delta}%`}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
           </>
         )}
       </main>
+
+      {testRow && (
+        <CoverTestModal row={testRow} onClose={() => setTestRow(null)} onDone={() => { setTestRow(null); loadTests(); }} />
+      )}
     </div>
   );
 }
