@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { getWbCabinet, resolveWbToken } from "@/lib/wb/cabinetTokens";
 import { saveCardMediaOrder } from "@/lib/wb/media";
+import { checkCardHasVideo } from "@/lib/wb/cards";
 import { requireApiSession } from "@/lib/auth/apiGuard";
 import { getServerSession } from "@/lib/auth/server";
 
@@ -74,6 +75,14 @@ export async function POST(req: NextRequest) {
   const cab = await getWbCabinet(cabinetId);
   if (!cab) return NextResponse.json({ ok: false, error: "Кабинет не найден" }, { status: 404 });
   const token = resolveWbToken(cab, "content");
+
+  // WB документирует, что media/save полностью заменяет прежний набор медиафайлов
+  // карточки; неясно, живёт ли видео в том же наборе — не проверено эмпирически,
+  // поэтому не рискуем и блокируем запись для карточек с видео (см. lib/wb/cards.ts).
+  const hasVideo = await checkCardHasVideo(token, nmId);
+  if (hasVideo) {
+    return NextResponse.json({ ok: false, error: "У карточки есть видео — автосмена обложки временно отключена для таких карточек: не проверено, сохраняет ли WB видео после этого запроса. Смените фото вручную через личный кабинет WB." }, { status: 409 });
+  }
 
   const write = await saveCardMediaOrder(token, nmId, photosAfter);
   if (!write.ok) return NextResponse.json({ ok: false, error: write.error }, { status: 502 });

@@ -93,9 +93,15 @@ export function PimPage() {
     ), csv: (r) => r.wbUrl },
     { key: "coverTest", label: "", render: (r) => (
       r.photos.length >= 2 && r.cabinetId ? (
-        <button onClick={() => setTestRow(r)} className="inline-flex items-center gap-1 text-xs text-slate-500 hover:text-violet-600">
-          <Images className="h-3 w-3" /> Тест обложки
-        </button>
+        r.hasVideo ? (
+          <span title="У карточки есть видео — тест обложки отключён (не проверено, сохраняет ли WB видео после смены фото)" className="inline-flex cursor-not-allowed items-center gap-1 text-xs text-slate-300">
+            <Images className="h-3 w-3" /> Тест обложки
+          </span>
+        ) : (
+          <button onClick={() => setTestRow(r)} className="inline-flex items-center gap-1 text-xs text-slate-500 hover:text-violet-600">
+            <Images className="h-3 w-3" /> Тест обложки
+          </button>
+        )
       ) : null
     ), csv: () => "" },
   ];

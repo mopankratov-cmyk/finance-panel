@@ -9,6 +9,15 @@ interface RawPhoto { big?: string; c246x328?: string }
 interface RawCard {
   nmID: number; vendorCode: string; title?: string; subjectName?: string; brand?: string;
   characteristics?: Characteristic[]; dimensions?: RawDimensions; photos?: RawPhoto[];
+  // Точное поле WB под видео не подтверждено документацией (сайт блокирует прямой
+  // fetch спецификации) — проверяем оба правдоподобных места best-effort. См.
+  // hasVideoOn() ниже и lib/wb/media.ts за причиной, почему это важно.
+  video?: unknown;
+  media?: { video?: unknown };
+}
+
+function hasVideoOn(c: RawCard): boolean {
+  return c.video != null || c.media?.video != null;
 }
 
 export interface CabinetCard { article: string; nm_id: number; name: string; color: string; subject: string; shop: string }
@@ -17,7 +26,7 @@ export interface PimRow {
   nmId: number; article: string; name: string; brand: string; subject: string; shop: string;
   cabinetId: string | null;
   length: number | null; width: number | null; height: number | null; weightBrutto: number | null;
-  materials: string; photosCount: number; photos: string[]; wbUrl: string;
+  materials: string; photosCount: number; photos: string[]; hasVideo: boolean; wbUrl: string;
 }
 
 const characteristicOf = (c: RawCard, re: RegExp): string => {
@@ -91,6 +100,7 @@ export async function fetchCabinetPimRows(cabinetId: string | null): Promise<Pim
             materials: characteristicOf(c, /материал|состав/i),
             photosCount: photos.length,
             photos,
+            hasVideo: hasVideoOn(c),
             wbUrl: `https://www.wildberries.ru/catalog/${c.nmID}/detail.aspx`,
           });
         }
@@ -100,4 +110,30 @@ export async function fetchCabinetPimRows(cabinetId: string | null): Promise<Pim
     } catch { /* пропускаем кабинет при ошибке */ }
   }
   return out;
+}
+
+// Свежая (не из кэша страницы) проверка конкретной карточки перед записью
+// в media/save — WB документирует, что data[] ПОЛНОСТЬЮ заменяет прежний
+// набор медиафайлов карточки; видео грузится отдельным методом
+// (content/v3/media/file), но не подтверждено, живёт ли оно в том же
+// наборе, что перетирает media/save. Пока не проверено эмпирически —
+// не рискуем и блокируем запись, если видео обнаружено (см. app/api/cover-test).
+export async function checkCardHasVideo(token: string, nmId: number): Promise<boolean> {
+  let cursor: { updatedAt?: string; nmID?: number } = {};
+  for (let page = 0; page < 30; page++) {
+    const res = await fetch(CARDS_URL, {
+      method: "POST",
+      headers: { Authorization: token, "Content-Type": "application/json" },
+      body: JSON.stringify({ settings: { cursor: { limit: 100, ...cursor }, filter: { withPhoto: -1 } } }),
+      cache: "no-store",
+    });
+    if (!res.ok) return true; // не смогли проверить — считаем небезопасным по умолчанию
+    const json = (await res.json()) as { cards?: RawCard[]; cursor?: { updatedAt?: string; nmID?: number } };
+    const batch = json.cards ?? [];
+    const found = batch.find((c) => c.nmID === nmId);
+    if (found) return hasVideoOn(found);
+    if (batch.length < 100) return true; // карточку не нашли — тоже не рискуем
+    cursor = { updatedAt: json.cursor?.updatedAt, nmID: json.cursor?.nmID };
+  }
+  return true;
 }
