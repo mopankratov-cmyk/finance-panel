@@ -32,13 +32,20 @@ export function Tour({ tourId, steps }: { tourId: string; steps: TourStep[] }) {
     if (!active) return;
     const step = steps[idx];
     const el = step ? document.querySelector(step.selector) : null;
-    if (el) {
-      el.scrollIntoView({ block: "center", behavior: "smooth" });
-      // небольшая пауза, чтобы scrollIntoView успел отработать перед замером rect
-      const t = setTimeout(() => setRect(el.getBoundingClientRect()), 250);
-      return () => clearTimeout(t);
-    }
-    setRect(null);
+    if (!el) { setRect(null); return; }
+
+    // rect — координаты вьюпорта, а плавающий скролл (наш scrollIntoView ИЛИ ручной
+    // скролл пользователя) их меняет непрерывно, пока не осядет — без слушателя
+    // scroll/resize подсветка и тултип "отклеиваются" от реального элемента.
+    const update = () => setRect(el.getBoundingClientRect());
+    el.scrollIntoView({ block: "center", behavior: "smooth" });
+    update();
+    window.addEventListener("scroll", update, true);
+    window.addEventListener("resize", update);
+    return () => {
+      window.removeEventListener("scroll", update, true);
+      window.removeEventListener("resize", update);
+    };
   }, [active, idx, steps]);
 
   if (!active || !steps.length) return null;
