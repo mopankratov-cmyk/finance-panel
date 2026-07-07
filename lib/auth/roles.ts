@@ -16,8 +16,8 @@ export const ROLE_LABEL: Record<Role, string> = {
 // Доступные префиксы путей по роли. director — всё.
 const ACCESS: Record<Role, string[]> = {
   director: ["*"],
-  finance: ["/", "/calendar", "/payments", "/accounts", "/loans", "/opiu", "/pnl", "/summary", "/losses", "/costs", "/supplies", "/repricer", "/price-solver", "/agent", "/sync", "/ozon", "/abc", "/trends", "/market", "/card-editor", "/uniquizer"],
-  manager: ["/", "/ozon", "/costs", "/agent", "/abc", "/trends", "/market", "/card-editor", "/uniquizer"],
+  finance: ["/", "/calendar", "/payments", "/accounts", "/loans", "/opiu", "/pnl", "/summary", "/losses", "/costs", "/supplies", "/repricer", "/price-solver", "/agent", "/sync", "/ozon", "/adverts", "/abc", "/trends", "/market", "/card-editor", "/uniquizer"],
+  manager: ["/", "/ozon", "/adverts", "/costs", "/agent", "/abc", "/trends", "/market", "/card-editor", "/uniquizer"],
 };
 
 export function canAccess(role: Role, path: string): boolean {

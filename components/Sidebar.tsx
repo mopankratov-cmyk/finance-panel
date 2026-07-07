@@ -12,6 +12,7 @@ import {
   Landmark,
   LayoutDashboard,
   LineChart,
+  Megaphone,
   Menu,
   LogOut,
   PieChart,
@@ -48,6 +49,7 @@ const NAV_GROUPS: NavGroup[] = [
     id: "analytics",
     label: "Аналитика МП",
     items: [
+      { href: "/adverts", label: "Реклама WB", icon: Megaphone },
       { href: "/ozon", label: "Ozon Аналитика", icon: BarChart3 },
       { href: "/abc", label: "ABC прибыли", icon: PieChart },
       { href: "/trends", label: "Динамика", icon: TrendingUp },
