@@ -93,19 +93,22 @@ function ArticleCard({ a }: { a: Article }) {
 }
 
 export default function AdvertsPage() {
-  const [cabId, setCabId] = useActiveCabinet("wb");
+  const [cabId, setCabId, cabReady] = useActiveCabinet("wb");
   const [data, setData] = useState<AdvData | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!cabReady) return;
+    let ignore = false;
     setLoading(true); setErr(null);
     fetch(`/api/adverts/list${cabId ? `?cabinet=${cabId}` : ""}`, { cache: "no-store" })
-      .then((r) => r.json())
-      .then((d: AdvData) => { if (!d.ok) setErr(d.error || "Ошибка загрузки"); else setData(d); })
-      .catch((e) => setErr(String(e)))
-      .finally(() => setLoading(false));
-  }, [cabId]);
+      .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
+      .then((d: AdvData) => { if (ignore) return; if (!d.ok) setErr(d.error || "Ошибка загрузки"); else setData(d); })
+      .catch((e) => { if (!ignore) setErr(String(e)); })
+      .finally(() => { if (!ignore) setLoading(false); });
+    return () => { ignore = true; };
+  }, [cabId, cabReady]);
 
   const deltaPct = data && data.spend_yest_total > 0
     ? Math.round(((data.spend_today_total - data.spend_yest_total) / data.spend_yest_total) * 100)

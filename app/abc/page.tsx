@@ -25,17 +25,21 @@ const CLS: Record<string, { bg: string; text: string; label: string }> = {
 };
 
 export default function AbcPage() {
-  const [cabId, setCabId] = useActiveCabinet("wb");
+  const [cabId, setCabId, cabReady] = useActiveCabinet("wb");
   const [data, setData] = useState<AbcData | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!cabReady) return;
+    let ignore = false;
     setLoading(true); setErr(null);
-    fetch(`/api/abc${cabId ? `?cabinet=${cabId}` : ""}`, { cache: "no-store" }).then((r) => r.json()).then((d) => {
+    fetch(`/api/abc${cabId ? `?cabinet=${cabId}` : ""}`, { cache: "no-store" }).then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); }).then((d) => {
+      if (ignore) return;
       if (d.error) setErr(d.error); else setData(d);
-    }).catch((e) => setErr(String(e))).finally(() => setLoading(false));
-  }, [cabId]);
+    }).catch((e) => { if (!ignore) setErr(String(e)); }).finally(() => { if (!ignore) setLoading(false); });
+    return () => { ignore = true; };
+  }, [cabId, cabReady]);
 
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900">

@@ -15,7 +15,7 @@ const toneCtr = (v: number | null) => (v == null ? "" : v >= 5 ? "text-emerald-6
 const toneDrr = (v: number | null) => (v == null ? "" : v <= 10 ? "text-emerald-600" : v <= 20 ? "text-amber-600" : "text-rose-600");
 
 export default function CtrTestPage() {
-  const [cabId, setCabId] = useActiveCabinet("wb");
+  const [cabId, setCabId, cabReady] = useActiveCabinet("wb");
   const [days, setDays] = useState(7);
   const [data, setData] = useState<AdvData | null>(null);
   const [testsCount, setTestsCount] = useState<number | null>(null);
@@ -23,15 +23,19 @@ export default function CtrTestPage() {
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!cabReady) return;
+    let ignore = false;
     setLoading(true); setErr(null);
     Promise.all([
-      fetch(`/api/ctrtest/adv-analysis?days=${days}${cabId ? `&cabinet=${cabId}` : ""}`, { cache: "no-store" }).then((r) => r.json()),
+      fetch(`/api/ctrtest/adv-analysis?days=${days}${cabId ? `&cabinet=${cabId}` : ""}`, { cache: "no-store" }).then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); }),
       fetch(`/api/ctrtest/list`, { cache: "no-store" }).then((r) => r.json()).catch(() => ({ tests: [] })),
     ]).then(([d, l]: [AdvData & { error?: string }, { tests: unknown[] }]) => {
+      if (ignore) return;
       if (d.error) setErr(d.error); else setData(d);
       setTestsCount(Array.isArray(l.tests) ? l.tests.length : 0);
-    }).catch((e) => setErr(String(e))).finally(() => setLoading(false));
-  }, [cabId, days]);
+    }).catch((e) => { if (!ignore) setErr(String(e)); }).finally(() => { if (!ignore) setLoading(false); });
+    return () => { ignore = true; };
+  }, [cabId, days, cabReady]);
 
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900">

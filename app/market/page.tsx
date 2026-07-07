@@ -20,7 +20,7 @@ const fmt = (n: number) => Math.round(n).toLocaleString("ru-RU");
 const wk = (s: string) => { const [, m, d] = s.split("-"); return `${d}.${m}`; };
 
 export default function MarketPage() {
-  const [wbCab] = useActiveCabinet("wb");
+  const [wbCab, , wbReady] = useActiveCabinet("wb");
   const [niches, setNiches] = useState<Niche[]>([]);
   const [nicheSel, setNicheSel] = useState(""); // "id:<num>" (авто-ниша) или "__custom"
   const [subject, setSubject] = useState(""); // путь предмета для custom
@@ -43,6 +43,7 @@ export default function MarketPage() {
   }, []);
 
   const load = useCallback(async () => {
+    if (!wbReady) return;
     const isId = nicheSel.startsWith("id:");
     if (!isId && !subject.trim()) return;
     setLoading(true); setErr("");
@@ -56,7 +57,7 @@ export default function MarketPage() {
       else setData(j);
     } catch (e) { setErr("Сеть: " + String(e)); }
     setLoading(false);
-  }, [nicheSel, subject, wbCab, gran, dateFrom, dateTo]);
+  }, [nicheSel, subject, wbCab, wbReady, gran, dateFrom, dateTo]);
 
   useEffect(() => { if (nicheSel) load(); }, [load, nicheSel]);
 

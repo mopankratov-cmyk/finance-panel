@@ -26,17 +26,21 @@ function Spark({ data, up }: { data: number[]; up: boolean }) {
 
 export default function TrendsPage() {
   const [win, setWin] = useState(7);
-  const [cabId, setCabId] = useActiveCabinet("wb");
+  const [cabId, setCabId, cabReady] = useActiveCabinet("wb");
   const [data, setData] = useState<TrendsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!cabReady) return;
+    let ignore = false;
     setLoading(true); setErr(null);
-    fetch(`/api/trends?window=${win}${cabId ? `&cabinet=${cabId}` : ""}`, { cache: "no-store" }).then((r) => r.json()).then((d) => {
+    fetch(`/api/trends?window=${win}${cabId ? `&cabinet=${cabId}` : ""}`, { cache: "no-store" }).then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); }).then((d) => {
+      if (ignore) return;
       if (d.error) setErr(d.error); else setData(d);
-    }).catch((e) => setErr(String(e))).finally(() => setLoading(false));
-  }, [win, cabId]);
+    }).catch((e) => { if (!ignore) setErr(String(e)); }).finally(() => { if (!ignore) setLoading(false); });
+    return () => { ignore = true; };
+  }, [win, cabId, cabReady]);
 
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900">

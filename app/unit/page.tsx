@@ -20,19 +20,22 @@ const FIRST_DATA_COL = 3;
 const show = (v: string | number) => (v === "" || v == null ? "—" : typeof v === "number" ? v.toLocaleString("ru-RU") : v);
 
 export default function UnitPage() {
-  const [cabId, setCabId] = useActiveCabinet("wb");
+  const [cabId, setCabId, cabReady] = useActiveCabinet("wb");
   const [data, setData] = useState<UnitData | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!cabReady) return;
+    let ignore = false;
     setLoading(true); setErr(null);
     fetch(`/api/unit/table${cabId ? `?cabinet=${cabId}` : ""}`, { cache: "no-store" })
-      .then((r) => r.json())
-      .then((d: UnitData) => { if (d.error) setErr(d.error); else setData(d); })
-      .catch((e) => setErr(String(e)))
-      .finally(() => setLoading(false));
-  }, [cabId]);
+      .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
+      .then((d: UnitData) => { if (ignore) return; if (d.error) setErr(d.error); else setData(d); })
+      .catch((e) => { if (!ignore) setErr(String(e)); })
+      .finally(() => { if (!ignore) setLoading(false); });
+    return () => { ignore = true; };
+  }, [cabId, cabReady]);
 
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900">

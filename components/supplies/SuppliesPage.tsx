@@ -24,13 +24,15 @@ export function SuppliesPage() {
   const [error, setError] = useState<string | null>(null);
   const [horizon, setHorizon] = useState<Horizon>(45);
   const [minBatch, setMinBatch] = useState<number>(0);
-  const [cabId, setCabId] = useActiveCabinet("wb");
+  const [cabId, setCabId, cabReady] = useActiveCabinet("wb");
 
   const load = useCallback(async () => {
+    if (!cabReady) return;
     setLoading(true);
     setError(null);
     try {
       const res = await fetch(`/api/supplies${cabId ? `?cabinet=${cabId}` : ""}`, { cache: "no-store" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json();
       if (json.error) setError(json.error);
       else {
@@ -42,7 +44,7 @@ export function SuppliesPage() {
     } finally {
       setLoading(false);
     }
-  }, [cabId]);
+  }, [cabId, cabReady]);
 
   useEffect(() => {
     load();

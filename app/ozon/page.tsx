@@ -45,7 +45,7 @@ function Thumb({ src, size = 36 }: { src: string | null; size?: number }) {
 export default function OzonPage() {
   const [tab, setTab] = useState<Tab>("rnp");
   const [days, setDays] = useState(14);
-  const [cabId, setCabId] = useActiveCabinet("ozon");
+  const [cabId, setCabId, cabReady] = useActiveCabinet("ozon");
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [noCab, setNoCab] = useState(false);
@@ -62,28 +62,35 @@ export default function OzonPage() {
 
   // подогрев кэша per-SKU рекламы при заходе на РНП (фоном) — ключ включает кабинет
   useEffect(() => {
+    if (!cabReady) return;
     const warmKey = `${cabId}|${days}`;
     if (tab !== "rnp" || adWarmed.has(warmKey)) return;
+    let ignore = false;
     setAdWarmed((s) => new Set(s).add(warmKey));
     fetch(`/api/ozon/ad-sku?days=${days}${cabId ? `&cabinet=${cabId}` : ""}`, { cache: "no-store" })
       .then((r) => r.json())
-      .then((d) => { if (d.refreshed && Object.keys(d.bySku || {}).length) setReload((n) => n + 1); })
+      .then((d) => { if (!ignore && d.refreshed && Object.keys(d.bySku || {}).length) setReload((n) => n + 1); })
       .catch(() => {});
-  }, [tab, days, adWarmed, cabId]);
+    return () => { ignore = true; };
+  }, [tab, days, adWarmed, cabId, cabReady]);
 
   useEffect(() => {
+    if (!cabReady) return;
+    let ignore = false;
     setLoading(true); setErr(null); setNoCab(false);
     const cab = cabId ? `${tab === "unit" || tab === "stocks" ? "?" : "&"}cabinet=${cabId}` : "";
     const url = (tab === "rnp" ? `/api/ozon/rnp?days=${days}` : tab === "funnel" ? `/api/ozon/analytics?days=${days}` : tab === "unit" ? "/api/ozon/unit" : "/api/ozon/stocks") + cab;
-    fetch(url, { cache: "no-store" }).then((r) => r.json()).then((d) => {
+    fetch(url, { cache: "no-store" }).then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); }).then((d) => {
+      if (ignore) return;
       if (d.noCabinet) { setNoCab(true); return; }
       if (d.error) { setErr(d.error); return; }
       if (tab === "rnp") setRnp({ period: d.period ?? [], summary: d.summary ?? [], skus: d.skus ?? [] });
       else if (tab === "funnel") { setFunnel(d.rows ?? []); setFunnelAvail(d.funnel !== false); }
       else if (tab === "unit") { setUnit(d.rows ?? []); setUnitTax(d.taxPct ?? 7); }
       else setStocks({ rows: d.rows ?? [], warehouses: d.warehouses ?? [], totalFree: d.totalFree ?? 0 });
-    }).catch((e) => setErr(String(e))).finally(() => setLoading(false));
-  }, [tab, days, reload, cabId]);
+    }).catch((e) => { if (!ignore) setErr(String(e)); }).finally(() => { if (!ignore) setLoading(false); });
+    return () => { ignore = true; };
+  }, [tab, days, reload, cabId, cabReady]);
 
   const flt = <T extends { name: string; art?: string; sku?: string }>(rows: T[]) => {
     const s = q.toLowerCase().trim();
