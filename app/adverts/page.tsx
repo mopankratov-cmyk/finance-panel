@@ -5,6 +5,8 @@ import { Megaphone, Wallet, ArrowDown, ArrowUp, ChevronRight } from "lucide-reac
 import { CabinetSwitcher } from "@/components/CabinetSwitcher";
 import { useActiveCabinet } from "@/lib/useActiveCabinet";
 import { LoadingBanner, SkeletonKpiRow, SkeletonCards, useElapsedSeconds } from "@/components/ui/LoadingState";
+import { CategoryFilter, filterByCategory } from "@/components/ui/CategoryFilter";
+import { useCategoryMap } from "@/lib/useCategoryMap";
 
 interface Day { ts: string; spend: number; clicks: number; views: number; orders: number }
 interface Campaign {
@@ -116,6 +118,10 @@ export default function AdvertsPage() {
     return () => { ignore = true; };
   }, [cabId, cabReady]);
 
+  const { categories, byArticle } = useCategoryMap();
+  const [category, setCategory] = useState("");
+  const articles = filterByCategory(data?.articles ?? [], (a) => a.art, byArticle, category);
+
   const deltaPct = data && data.spend_yest_total > 0
     ? Math.round(((data.spend_today_total - data.spend_yest_total) / data.spend_yest_total) * 100)
     : null;
@@ -129,8 +135,9 @@ export default function AdvertsPage() {
             <h1 className="text-lg font-extrabold tracking-tight">Реклама WB</h1>
             <p className="text-xs text-gray-500">{data ? `${data.cabinet} · расход за ${data.today || "сегодня"}` : "рекламный кабинет"}</p>
           </div>
-          <div className="ml-auto">
+          <div className="ml-auto flex flex-wrap items-center gap-2">
             <CabinetSwitcher mp="wb" accent="violet" onChange={setCabId} />
+            <CategoryFilter categories={categories} value={category} onChange={setCategory} />
           </div>
         </div>
       </header>
@@ -159,14 +166,14 @@ export default function AdvertsPage() {
               <Kpi label="Активных кампаний" value={String(data.count)} />
             </div>
 
-            {data.articles.length === 0 ? (
+            {articles.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-gray-300 bg-white p-10 text-center">
                 <Wallet className="mx-auto mb-2 h-6 w-6 text-gray-300" />
                 <div className="text-sm text-gray-500">Нет активных РК за период. Проверьте, что реклама синхронизирована по кабинету.</div>
               </div>
             ) : (
               <div className="space-y-2">
-                {data.articles.map((a) => <ArticleCard key={a.nm} a={a} />)}
+                {articles.map((a) => <ArticleCard key={a.nm} a={a} />)}
               </div>
             )}
           </>

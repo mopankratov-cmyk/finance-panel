@@ -5,6 +5,8 @@ import { Table2 } from "lucide-react";
 import { CabinetSwitcher } from "@/components/CabinetSwitcher";
 import { useActiveCabinet } from "@/lib/useActiveCabinet";
 import { LoadingBanner, SkeletonKpiRow, SkeletonTableRows, useElapsedSeconds } from "@/components/ui/LoadingState";
+import { CategoryFilter, filterByCategory } from "@/components/ui/CategoryFilter";
+import { useCategoryMap } from "@/lib/useCategoryMap";
 
 interface Metric { field: string; label: string; kind: string; daily: (number | null)[]; total: number; forecast: number | null }
 interface Sku { nm: number; art: string; name: string; img_url: string; metrics: Metric[] }
@@ -59,6 +61,10 @@ export default function RnpPage() {
     return () => { ignore = true; };
   }, [cabId, win, cabReady]);
 
+  const { categories, byArticle } = useCategoryMap();
+  const [category, setCategory] = useState("");
+  const skus = filterByCategory(data?.skus ?? [], (s) => s.art, byArticle, category);
+
   const sumCell = (field: string, kind: string) => fmtKind(total(data?.summary ?? [], field), kind);
 
   return (
@@ -70,8 +76,9 @@ export default function RnpPage() {
             <h1 className="text-lg font-extrabold tracking-tight">РНП по SKU</h1>
             <p className="text-xs text-gray-500">{data ? `${data.shop_label} · ${data.sku_count} SKU · ${win} дней` : "расход / выручка / маржа"}</p>
           </div>
-          <div className="ml-auto flex items-center gap-2">
+          <div className="ml-auto flex flex-wrap items-center gap-2">
             <CabinetSwitcher mp="wb" accent="violet" onChange={setCabId} />
+            <CategoryFilter categories={categories} value={category} onChange={setCategory} />
             <div className="flex gap-1 rounded-md bg-gray-100 p-0.5">
               {[7, 14, 30].map((d) => (
                 <button key={d} onClick={() => setWin(d)} className={`rounded px-3 py-1 text-xs font-semibold ${win === d ? "bg-white text-violet-700 shadow" : "text-gray-500"}`}>{d}д</button>
@@ -117,7 +124,7 @@ export default function RnpPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {data.skus.map((s) => (
+                  {skus.map((s) => (
                     <tr key={s.nm} className="group border-b border-gray-100 last:border-0 hover:bg-gray-50">
                       <td className="sticky left-0 z-10 bg-white px-3 py-2 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.08)] group-hover:bg-gray-50">
                         <div className="flex items-center gap-2">

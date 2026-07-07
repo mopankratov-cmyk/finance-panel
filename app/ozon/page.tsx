@@ -6,6 +6,8 @@ import { Loader2 } from "lucide-react";
 import { ModuleMenu } from "@/components/ModuleMenu";
 import { CabinetSwitcher } from "@/components/CabinetSwitcher";
 import { useActiveCabinet } from "@/lib/useActiveCabinet";
+import { CategoryFilter } from "@/components/ui/CategoryFilter";
+import { useCategoryMap } from "@/lib/useCategoryMap";
 
 type Tab = "rnp" | "funnel" | "unit" | "stocks";
 const fmt = (n: number | null | undefined) => (n == null ? "—" : Math.round(n).toLocaleString("ru-RU"));
@@ -92,9 +94,19 @@ export default function OzonPage() {
     return () => { ignore = true; };
   }, [tab, days, reload, cabId, cabReady]);
 
+  const { categories, byArticle } = useCategoryMap();
+  const [category, setCategory] = useState("");
+
   const flt = <T extends { name: string; art?: string; sku?: string }>(rows: T[]) => {
     const s = q.toLowerCase().trim();
-    return s ? rows.filter((r) => r.name.toLowerCase().includes(s) || (r.art || r.sku || "").toLowerCase().includes(s)) : rows;
+    let out = s ? rows.filter((r) => r.name.toLowerCase().includes(s) || (r.art || r.sku || "").toLowerCase().includes(s)) : rows;
+    if (category) {
+      out = out.filter((r) => {
+        const art = r.art || r.sku || "";
+        return category === "__none" ? !byArticle[art] : byArticle[art] === category;
+      });
+    }
+    return out;
   };
 
   const TABS: { key: Tab; label: string }[] = [
@@ -136,6 +148,7 @@ export default function OzonPage() {
               ))}
             </div>
           )}
+          <CategoryFilter categories={categories} value={category} onChange={setCategory} />
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="поиск по артикулу/названию"
             className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-sky-500 focus:outline-none sm:ml-auto sm:w-64" />
         </div>

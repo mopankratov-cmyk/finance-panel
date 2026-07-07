@@ -5,6 +5,8 @@ import { useEffect, useState } from "react";
 import { Loader2, BarChart3 } from "lucide-react";
 import { CabinetSwitcher } from "@/components/CabinetSwitcher";
 import { useActiveCabinet } from "@/lib/useActiveCabinet";
+import { CategoryFilter, filterByCategory } from "@/components/ui/CategoryFilter";
+import { useCategoryMap } from "@/lib/useCategoryMap";
 
 interface AbcRow {
   nm: number; art: string; name: string; img_url: string | null;
@@ -41,6 +43,10 @@ export default function AbcPage() {
     return () => { ignore = true; };
   }, [cabId, cabReady]);
 
+  const { categories, byArticle } = useCategoryMap();
+  const [category, setCategory] = useState("");
+  const rows = filterByCategory(data?.rows ?? [], (r) => r.art, byArticle, category);
+
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900">
       <header className="border-b border-gray-200 bg-white">
@@ -50,7 +56,10 @@ export default function AbcPage() {
             <h1 className="text-lg font-extrabold tracking-tight">ABC-анализ прибыли</h1>
             <p className="text-xs text-gray-500">Где сосредоточена чистая прибыль — за 30 дней</p>
           </div>
-          <div className="ml-auto"><CabinetSwitcher mp="wb" accent="violet" onChange={setCabId} /></div>
+          <div className="ml-auto flex flex-wrap items-center gap-2">
+            <CabinetSwitcher mp="wb" accent="violet" onChange={setCabId} />
+            <CategoryFilter categories={categories} value={category} onChange={setCategory} />
+          </div>
         </div>
       </header>
 
@@ -85,7 +94,7 @@ export default function AbcPage() {
                     <th key={h} className={`px-3 py-2 ${i <= 1 ? "text-left" : "text-right"}`}>{h}</th>))}</tr>
                 </thead>
                 <tbody>
-                  {data.rows.map((r) => (
+                  {rows.map((r) => (
                     <tr key={r.nm} className={`border-t border-gray-100 hover:bg-gray-50 ${r.cls === "D" ? "bg-red-50/40" : ""}`}>
                       <td className="px-3 py-2"><span className={`inline-flex h-6 w-6 items-center justify-center rounded-lg text-xs font-bold ${CLS[r.cls].bg} ${CLS[r.cls].text}`}>{r.cls}</span></td>
                       <td className="px-3 py-2">

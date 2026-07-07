@@ -5,6 +5,8 @@ import { Layers } from "lucide-react";
 import { CabinetSwitcher } from "@/components/CabinetSwitcher";
 import { useActiveCabinet } from "@/lib/useActiveCabinet";
 import { LoadingBanner, SkeletonKpiRow, SkeletonTableRows, useElapsedSeconds } from "@/components/ui/LoadingState";
+import { CategoryFilter, filterByCategory } from "@/components/ui/CategoryFilter";
+import { useCategoryMap } from "@/lib/useCategoryMap";
 
 interface GSku {
   nm: number; art: string; name: string; img_url: string; shop: string;
@@ -87,6 +89,14 @@ export default function SklejkiPage() {
     return () => { ignore = true; };
   }, [cabId, cabReady]);
 
+  // фильтруем SKU внутри каждой группы; группы, у которых после фильтра не осталось
+  // ни одного SKU, скрываем целиком.
+  const { categories, byArticle } = useCategoryMap();
+  const [category, setCategory] = useState("");
+  const groupsMulti = (data?.groups_multi ?? [])
+    .map((g) => ({ ...g, skus: filterByCategory(g.skus, (s) => s.art, byArticle, category) }))
+    .filter((g) => g.skus.length > 0);
+
   return (
     <div className="bg-gray-50 text-gray-900">
       <header className="border-b border-gray-200 bg-white">
@@ -96,7 +106,10 @@ export default function SklejkiPage() {
             <h1 className="text-lg font-extrabold tracking-tight">Склейки</h1>
             <p className="text-xs text-gray-500">объединённые карточки по imtID · воронка за 7 дней</p>
           </div>
-          <div className="ml-auto"><CabinetSwitcher mp="wb" accent="violet" onChange={setCabId} /></div>
+          <div className="ml-auto flex flex-wrap items-center gap-2">
+            <CabinetSwitcher mp="wb" accent="violet" onChange={setCabId} />
+            <CategoryFilter categories={categories} value={category} onChange={setCategory} />
+          </div>
         </div>
       </header>
 
@@ -124,8 +137,8 @@ export default function SklejkiPage() {
                 </div>
               ))}
             </div>
-            {data.groups_multi.length ? (
-              <div className="space-y-3">{data.groups_multi.map((g) => <GroupCard key={g.imt_id} g={g} />)}</div>
+            {groupsMulti.length ? (
+              <div className="space-y-3">{groupsMulti.map((g) => <GroupCard key={g.imt_id} g={g} />)}</div>
             ) : (
               <div className="rounded-2xl border border-dashed border-gray-300 bg-white p-10 text-center text-sm text-gray-500">
                 Нет объединённых карточек (2+ SKU). Одиночных: {data.solo_skus}.

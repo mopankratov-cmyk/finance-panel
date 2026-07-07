@@ -5,6 +5,8 @@ import { Sigma } from "lucide-react";
 import { CabinetSwitcher } from "@/components/CabinetSwitcher";
 import { useActiveCabinet } from "@/lib/useActiveCabinet";
 import { LoadingBanner, SkeletonTableRows, useElapsedSeconds } from "@/components/ui/LoadingState";
+import { CategoryFilter, filterByCategory } from "@/components/ui/CategoryFilter";
+import { useCategoryMap } from "@/lib/useCategoryMap";
 
 interface UnitData {
   headers: string[];
@@ -39,6 +41,16 @@ export default function UnitPage() {
     return () => { ignore = true; };
   }, [cabId, cabReady]);
 
+  // rows/img_urls/names — параллельные массивы по индексу; фильтруем по общему
+  // списку допустимых индексов, чтобы не разъехались местами при фильтре категории.
+  const { categories, byArticle } = useCategoryMap();
+  const [category, setCategory] = useState("");
+  const indices = (data?.rows ?? []).map((_, i) => i).filter((i) => {
+    if (!category) return true;
+    const art = String(data!.rows[i][2]);
+    return category === "__none" ? !byArticle[art] : byArticle[art] === category;
+  });
+
   return (
     <div className="bg-gray-50 text-gray-900">
       <header className="border-b border-gray-200 bg-white">
@@ -48,7 +60,10 @@ export default function UnitPage() {
             <h1 className="text-lg font-extrabold tracking-tight">Юнит-экономика WB</h1>
             <p className="text-xs text-gray-500">{data?.meta_text || "прибыль/ед: цена до СПП − себес − комиссия − эквайринг − ДРР − налог"}</p>
           </div>
-          <div className="ml-auto"><CabinetSwitcher mp="wb" accent="violet" onChange={setCabId} /></div>
+          <div className="ml-auto flex flex-wrap items-center gap-2">
+            <CabinetSwitcher mp="wb" accent="violet" onChange={setCabId} />
+            <CategoryFilter categories={categories} value={category} onChange={setCategory} />
+          </div>
         </div>
       </header>
 
@@ -60,7 +75,7 @@ export default function UnitPage() {
           </>
         ) : err ? (
           <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">{err}</div>
-        ) : data && data.rows.length ? (
+        ) : data && indices.length ? (
           <div className="overflow-x-auto rounded-2xl border border-gray-200 bg-white">
             <table className="min-w-full text-sm">
               <thead>
@@ -72,20 +87,23 @@ export default function UnitPage() {
                 </tr>
               </thead>
               <tbody>
-                {data.rows.map((row, ri) => (
-                  <tr key={ri} className="group border-b border-gray-100 last:border-0 hover:bg-gray-50">
-                    <td className="sticky left-0 z-10 bg-white px-3 py-2 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.08)] group-hover:bg-gray-50">
-                      <div className="flex items-center gap-2">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={data.img_urls[ri]} alt="" loading="lazy" className="h-8 w-8 shrink-0 rounded bg-gray-100 object-cover" onError={(e) => { (e.currentTarget as HTMLImageElement).style.visibility = "hidden"; }} />
-                        <div className="min-w-0"><div className="truncate text-xs font-semibold">{show(row[2])}</div><div className="truncate text-[10px] text-gray-400">{data.names[ri]}</div></div>
-                      </div>
-                    </td>
-                    {row.slice(FIRST_DATA_COL).map((v, ci) => (
-                      <td key={ci} className="px-3 py-2 text-right tabular-nums whitespace-nowrap">{show(v)}</td>
-                    ))}
-                  </tr>
-                ))}
+                {indices.map((ri) => {
+                  const row = data.rows[ri];
+                  return (
+                    <tr key={ri} className="group border-b border-gray-100 last:border-0 hover:bg-gray-50">
+                      <td className="sticky left-0 z-10 bg-white px-3 py-2 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.08)] group-hover:bg-gray-50">
+                        <div className="flex items-center gap-2">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={data.img_urls[ri]} alt="" loading="lazy" className="h-8 w-8 shrink-0 rounded bg-gray-100 object-cover" onError={(e) => { (e.currentTarget as HTMLImageElement).style.visibility = "hidden"; }} />
+                          <div className="min-w-0"><div className="truncate text-xs font-semibold">{show(row[2])}</div><div className="truncate text-[10px] text-gray-400">{data.names[ri]}</div></div>
+                        </div>
+                      </td>
+                      {row.slice(FIRST_DATA_COL).map((v, ci) => (
+                        <td key={ci} className="px-3 py-2 text-right tabular-nums whitespace-nowrap">{show(v)}</td>
+                      ))}
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

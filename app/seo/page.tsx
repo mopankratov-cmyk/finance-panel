@@ -5,6 +5,8 @@ import { Search } from "lucide-react";
 import { CabinetSwitcher } from "@/components/CabinetSwitcher";
 import { useActiveCabinet } from "@/lib/useActiveCabinet";
 import { LoadingBanner, SkeletonTableRows, useElapsedSeconds } from "@/components/ui/LoadingState";
+import { CategoryFilter, filterByCategory } from "@/components/ui/CategoryFilter";
+import { useCategoryMap } from "@/lib/useCategoryMap";
 
 interface SeoSku {
   nm: number; art: string; name: string; img_url: string;
@@ -55,6 +57,10 @@ export default function SeoPage() {
     return () => { ignore = true; };
   }, [cabId, win, cabReady]);
 
+  const { categories, byArticle } = useCategoryMap();
+  const [category, setCategory] = useState("");
+  const skus = filterByCategory(data?.skus ?? [], (s) => s.art, byArticle, category);
+
   const cell = (s: SeoSku, key: keyof SeoSku, kind: string) => {
     const v = s[key] as number | null;
     if (kind === "pct") return pc(v);
@@ -72,8 +78,9 @@ export default function SeoPage() {
             <h1 className="text-lg font-extrabold tracking-tight">SEO / Воронка</h1>
             <p className="text-xs text-gray-500">{data ? `${data.count} SKU · ${data.metrics_period}` : "показы → CTR → корзина → заказ"}</p>
           </div>
-          <div className="ml-auto flex items-center gap-2">
+          <div className="ml-auto flex flex-wrap items-center gap-2">
             <CabinetSwitcher mp="wb" accent="violet" onChange={setCabId} />
+            <CategoryFilter categories={categories} value={category} onChange={setCategory} />
             <div className="flex gap-1 rounded-md bg-gray-100 p-0.5">
               {[1, 7, 30].map((d) => (
                 <button key={d} onClick={() => setWin(d)} className={`rounded px-3 py-1 text-xs font-semibold ${win === d ? "bg-white text-violet-700 shadow" : "text-gray-500"}`}>{d === 1 ? "вчера" : d + "д"}</button>
@@ -91,7 +98,7 @@ export default function SeoPage() {
           </>
         ) : err ? (
           <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">{err}</div>
-        ) : data && data.skus.length ? (
+        ) : data && skus.length ? (
           <div className="overflow-x-auto rounded-2xl border border-gray-200 bg-white">
             <table className="min-w-full text-sm">
               <thead>
@@ -101,7 +108,7 @@ export default function SeoPage() {
                 </tr>
               </thead>
               <tbody>
-                {data.skus.map((s) => (
+                {skus.map((s) => (
                   <tr key={s.nm} className="group border-b border-gray-100 last:border-0 hover:bg-gray-50">
                     <td className="sticky left-0 z-10 bg-white px-3 py-2 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.08)] group-hover:bg-gray-50">
                       <div className="flex items-center gap-2">

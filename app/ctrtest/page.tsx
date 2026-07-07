@@ -5,6 +5,8 @@ import { MousePointerClick } from "lucide-react";
 import { CabinetSwitcher } from "@/components/CabinetSwitcher";
 import { useActiveCabinet } from "@/lib/useActiveCabinet";
 import { LoadingBanner, SkeletonTableRows, useElapsedSeconds } from "@/components/ui/LoadingState";
+import { CategoryFilter, filterByCategory } from "@/components/ui/CategoryFilter";
+import { useCategoryMap } from "@/lib/useCategoryMap";
 
 interface Item { nm: number; art: string; views: number; spend: number; ctr: number | null; cpc: number | null; drr: number | null; stock: number }
 interface AdvData { items: Item[]; count: number; days: number }
@@ -40,6 +42,10 @@ export default function CtrTestPage() {
     return () => { ignore = true; };
   }, [cabId, days, cabReady]);
 
+  const { categories, byArticle } = useCategoryMap();
+  const [category, setCategory] = useState("");
+  const items = filterByCategory(data?.items ?? [], (it) => it.art, byArticle, category);
+
   return (
     <div className="bg-gray-50 text-gray-900">
       <header className="border-b border-gray-200 bg-white">
@@ -49,8 +55,9 @@ export default function CtrTestPage() {
             <h1 className="text-lg font-extrabold tracking-tight">CTR / Реклама по SKU</h1>
             <p className="text-xs text-gray-500">{data ? `${data.count} SKU · ${data.days} дней` : "CTR, CPC и ДРР по артикулам"}</p>
           </div>
-          <div className="ml-auto flex items-center gap-2">
+          <div className="ml-auto flex flex-wrap items-center gap-2">
             <CabinetSwitcher mp="wb" accent="violet" onChange={setCabId} />
+            <CategoryFilter categories={categories} value={category} onChange={setCategory} />
             <div className="flex gap-1 rounded-md bg-gray-100 p-0.5">
               {[7, 14, 30].map((d) => (
                 <button key={d} onClick={() => setDays(d)} className={`rounded px-3 py-1 text-xs font-semibold ${days === d ? "bg-white text-violet-700 shadow" : "text-gray-500"}`}>{d}д</button>
@@ -75,7 +82,7 @@ export default function CtrTestPage() {
                 Сохранённых A/B-тестов нет (per-variant замер отложен). Ниже — фактическая рекламная эффективность по SKU за период.
               </div>
             )}
-            {data.items.length ? (
+            {items.length ? (
               <div className="overflow-x-auto rounded-2xl border border-gray-200 bg-white">
                 <table className="min-w-full text-sm">
                   <thead>
@@ -90,7 +97,7 @@ export default function CtrTestPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {data.items.map((it) => (
+                    {items.map((it) => (
                       <tr key={it.nm} className="group border-b border-gray-100 last:border-0 hover:bg-gray-50">
                         <td className="sticky left-0 z-10 bg-white px-3 py-2 text-xs font-semibold shadow-[2px_0_4px_-2px_rgba(0,0,0,0.08)] group-hover:bg-gray-50">{it.art}</td>
                         <td className="px-3 py-2 text-right tabular-nums">{nf(it.views)}</td>
