@@ -2,6 +2,7 @@
 
 import {
   BarChart3, Bot, Coins, LineChart, Megaphone, Table2, Search, Layers, Sigma,
+  MousePointerClick, CalendarRange,
   Package, TrendingDown, Wallet, Building2, ArrowUpRight, LogOut, type LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
@@ -22,6 +23,8 @@ const MODULES: ModuleCard[] = [
   { title: "SEO / Воронка", description: "Показы → CTR → корзина → заказ, ДРР и маржа по SKU", href: "/seo", icon: Search, zone: "Аналитика", color: ["bg-fuchsia-100", "text-fuchsia-700"] },
   { title: "Склейки", description: "Объединённые карточки по imtID с воронкой и рекламой", href: "/sklejki", icon: Layers, zone: "Аналитика", color: ["bg-purple-100", "text-purple-700"] },
   { title: "Юнит-экономика", description: "Прибыль/ед: цена до СПП минус все расходы МП", href: "/unit", icon: Sigma, zone: "Аналитика", color: ["bg-indigo-100", "text-indigo-700"] },
+  { title: "CTR по SKU", description: "CTR, CPC и ДРР рекламы по артикулам за период", href: "/ctrtest", icon: MousePointerClick, zone: "Аналитика", color: ["bg-violet-100", "text-violet-700"] },
+  { title: "Планирование", description: "Годовой план заказов по месяцам и остатки по SKU", href: "/planning", icon: CalendarRange, zone: "Аналитика", color: ["bg-emerald-100", "text-emerald-700"] },
   { title: "Ozon Аналитика", description: "РНП, воронка, юнит, остатки, удержания", href: "/ozon", icon: BarChart3, agent: "Озар", zone: "Аналитика", color: ["bg-sky-100", "text-sky-700"] },
 
   { title: "Финансы", description: "Календарь ДДС, платежи, счета, кредиты", href: "/calendar", icon: Wallet, agent: "Нано", zone: "Финансы", color: ["bg-emerald-100", "text-emerald-700"] },
