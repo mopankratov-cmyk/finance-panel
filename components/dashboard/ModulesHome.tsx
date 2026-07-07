@@ -1,8 +1,8 @@
 "use client";
 
 import {
-  BarChart3, Bot, Coins, FlaskConical, LineChart,
-  Package, TrendingDown, Wallet, Building2, ArrowUpRight, LogOut, Megaphone, type LucideIcon,
+  BarChart3, Bot, Coins, LineChart,
+  Package, TrendingDown, Wallet, Building2, ArrowUpRight, LogOut, type LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -17,7 +17,6 @@ interface ModuleCard {
 }
 
 const MODULES: ModuleCard[] = [
-  { title: "WB Аналитика", description: "РНП, воронка, реклама, склейки, SEO, остатки", href: "https://content-factory-eight-wheat.vercel.app/inferno/wb.html", icon: BarChart3, agent: "Андер", zone: "Аналитика", color: ["bg-violet-100", "text-violet-700"] },
   { title: "Ozon Аналитика", description: "РНП, воронка, юнит, остатки, удержания", href: "/ozon", icon: BarChart3, agent: "Озар", zone: "Аналитика", color: ["bg-sky-100", "text-sky-700"] },
 
   { title: "Финансы", description: "Календарь ДДС, платежи, счета, кредиты", href: "/calendar", icon: Wallet, agent: "Нано", zone: "Финансы", color: ["bg-emerald-100", "text-emerald-700"] },
@@ -29,8 +28,6 @@ const MODULES: ModuleCard[] = [
   { title: "Кабинеты", description: "Подключение WB и Ozon аккаунтов", href: "/cabinets", icon: Building2, zone: "Операции", color: ["bg-slate-100", "text-slate-700"] },
 
   { title: "AI-агент", description: "Анализ данных, аномалии, рекомендации", href: "/agent", icon: Bot, agent: "Мэнси", zone: "AI", color: ["bg-fuchsia-100", "text-fuchsia-700"] },
-  { title: "Контент-лаборатория", description: "AI-генерация фото и видео (Higgsfield)", href: "https://content-factory-eight-wheat.vercel.app/inferno/wb.html#lab", icon: FlaskConical, agent: "Лекси", zone: "AI", color: ["bg-pink-100", "text-pink-700"] },
-  { title: "Контент-завод", description: "Соцсети, AI-блогеры, переходы на WB", href: "https://content-factory-eight-wheat.vercel.app/inferno/patrick.html", icon: Megaphone, agent: "Патрик", zone: "AI", color: ["bg-rose-100", "text-rose-700"] },
 ];
 
 const ZONES = ["Аналитика", "Финансы", "Операции", "AI"] as const;
