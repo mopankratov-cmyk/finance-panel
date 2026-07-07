@@ -35,23 +35,26 @@ function toneDrr(v: number | null) { if (v == null) return ""; return v <= 10 ? 
 function toneMargin(v: number | null) { if (v == null) return ""; return v >= 20 ? "text-emerald-600" : v >= 10 ? "text-amber-600" : "text-rose-600"; }
 
 export default function RnpPage() {
-  const [cabId, setCabId] = useActiveCabinet("wb");
+  const [cabId, setCabId, cabReady] = useActiveCabinet("wb");
   const [win, setWin] = useState(30);
   const [data, setData] = useState<RnpTable | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!cabReady) return;
+    let ignore = false;
     setLoading(true); setErr(null);
     const to = new Date().toISOString().slice(0, 10);
     const from = new Date(Date.now() - (win - 1) * 86400000).toISOString().slice(0, 10);
     const shop = cabId || "all";
     fetch(`/api/rnp/${shop}/table?date_from=${from}&date_to=${to}`, { cache: "no-store" })
-      .then((r) => r.json())
-      .then((d: RnpTable) => { if (d.error) setErr(d.error); else setData(d); })
-      .catch((e) => setErr(String(e)))
-      .finally(() => setLoading(false));
-  }, [cabId, win]);
+      .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
+      .then((d: RnpTable) => { if (ignore) return; if (d.error) setErr(d.error); else setData(d); })
+      .catch((e) => { if (!ignore) setErr(String(e)); })
+      .finally(() => { if (!ignore) setLoading(false); });
+    return () => { ignore = true; };
+  }, [cabId, win, cabReady]);
 
   const sumCell = (field: string, kind: string) => fmtKind(total(data?.summary ?? [], field), kind);
 

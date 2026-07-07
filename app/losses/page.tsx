@@ -23,19 +23,27 @@ export default function LossesPage() {
   const [data, setData] = useState<LossData | null>(null);
   const [loading, setLoading] = useState(true);
   const [loc, setLoc] = useState<{ localizationPct: number; il: number; irp: number } | null>(null);
-  const [ozonCab, setOzonCab] = useActiveCabinet("ozon");
-  const [wbCab, setWbCab] = useActiveCabinet("wb");
+  const [ozonCab, setOzonCab, ozonReady] = useActiveCabinet("ozon");
+  const [wbCab, setWbCab, wbReady] = useActiveCabinet("wb");
 
   useEffect(() => {
+    if (!ozonReady || !wbReady) return;
+    let ignore = false;
     setLoading(true);
     const url = mp === "ozon"
       ? `/api/ozon/losses?weeks=${weeks}${ozonCab ? `&cabinet=${ozonCab}` : ""}`
       : `/api/wb/losses?weeks=${weeks}${wbCab ? `&cabinet=${wbCab}` : ""}`;
     fetch(url, { cache: "no-store" })
-      .then((r) => r.json()).then(setData).catch(() => setData(null)).finally(() => setLoading(false));
-  }, [weeks, mp, ozonCab, wbCab]);
+      .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
+      .then((d) => { if (!ignore) setData(d); })
+      .catch(() => { if (!ignore) setData(null); })
+      .finally(() => { if (!ignore) setLoading(false); });
+    return () => { ignore = true; };
+  }, [weeks, mp, ozonCab, wbCab, ozonReady, wbReady]);
   useEffect(() => {
-    fetch("/api/supplies/localization").then((r) => r.json()).then(setLoc).catch(() => {});
+    let ignore = false;
+    fetch("/api/supplies/localization").then((r) => r.json()).then((d) => { if (!ignore) setLoc(d); }).catch(() => {});
+    return () => { ignore = true; };
   }, []);
 
   const max = data?.items?.[0]?.rub || 1;
