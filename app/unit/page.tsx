@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Loader2, Sigma } from "lucide-react";
+import { Sigma } from "lucide-react";
 import { CabinetSwitcher } from "@/components/CabinetSwitcher";
 import { useActiveCabinet } from "@/lib/useActiveCabinet";
+import { LoadingBanner, SkeletonTableRows, useElapsedSeconds } from "@/components/ui/LoadingState";
 
 interface UnitData {
   headers: string[];
@@ -24,6 +25,7 @@ export default function UnitPage() {
   const [data, setData] = useState<UnitData | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
+  const elapsed = useElapsedSeconds(loading);
 
   useEffect(() => {
     if (!cabReady) return;
@@ -52,7 +54,10 @@ export default function UnitPage() {
 
       <main className="mx-auto max-w-[110rem] px-6 py-6">
         {loading ? (
-          <div className="py-20 text-center text-gray-400"><Loader2 className="mx-auto h-6 w-6 animate-spin" /></div>
+          <>
+            <LoadingBanner seconds={elapsed} hint="юнит-экономика WB" />
+            <SkeletonTableRows rows={10} cols={10} />
+          </>
         ) : err ? (
           <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">{err}</div>
         ) : data && data.rows.length ? (

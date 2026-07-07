@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Loader2, Search } from "lucide-react";
+import { Search } from "lucide-react";
 import { CabinetSwitcher } from "@/components/CabinetSwitcher";
 import { useActiveCabinet } from "@/lib/useActiveCabinet";
+import { LoadingBanner, SkeletonTableRows, useElapsedSeconds } from "@/components/ui/LoadingState";
 
 interface SeoSku {
   nm: number; art: string; name: string; img_url: string;
@@ -39,6 +40,7 @@ export default function SeoPage() {
   const [data, setData] = useState<SeoData | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
+  const elapsed = useElapsedSeconds(loading);
 
   useEffect(() => {
     if (!cabReady) return;
@@ -82,7 +84,10 @@ export default function SeoPage() {
 
       <main className="mx-auto max-w-7xl px-6 py-6">
         {loading ? (
-          <div className="py-20 text-center text-gray-400"><Loader2 className="mx-auto h-6 w-6 animate-spin" /></div>
+          <>
+            <LoadingBanner seconds={elapsed} hint="SEO-воронка" />
+            <SkeletonTableRows rows={10} cols={8} />
+          </>
         ) : err ? (
           <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">{err}</div>
         ) : data && data.skus.length ? (

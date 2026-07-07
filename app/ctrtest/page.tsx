@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Loader2, MousePointerClick } from "lucide-react";
+import { MousePointerClick } from "lucide-react";
 import { CabinetSwitcher } from "@/components/CabinetSwitcher";
 import { useActiveCabinet } from "@/lib/useActiveCabinet";
+import { LoadingBanner, SkeletonTableRows, useElapsedSeconds } from "@/components/ui/LoadingState";
 
 interface Item { nm: number; art: string; views: number; spend: number; ctr: number | null; cpc: number | null; drr: number | null; stock: number }
 interface AdvData { items: Item[]; count: number; days: number }
@@ -21,6 +22,7 @@ export default function CtrTestPage() {
   const [testsCount, setTestsCount] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
+  const elapsed = useElapsedSeconds(loading);
 
   useEffect(() => {
     if (!cabReady) return;
@@ -59,7 +61,10 @@ export default function CtrTestPage() {
 
       <main className="mx-auto max-w-6xl px-6 py-6">
         {loading ? (
-          <div className="py-20 text-center text-gray-400"><Loader2 className="mx-auto h-6 w-6 animate-spin" /></div>
+          <>
+            <LoadingBanner seconds={elapsed} hint="CTR по SKU" />
+            <SkeletonTableRows rows={8} cols={6} />
+          </>
         ) : err ? (
           <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">{err}</div>
         ) : data ? (
@@ -74,7 +79,7 @@ export default function CtrTestPage() {
                 <table className="min-w-full text-sm">
                   <thead>
                     <tr className="border-b border-gray-200 text-left text-xs text-gray-500">
-                      <th className="px-3 py-2 font-semibold">Артикул</th>
+                      <th className="sticky left-0 z-10 bg-white px-3 py-2 font-semibold">Артикул</th>
                       <th className="px-3 py-2 text-right font-semibold">Показы</th>
                       <th className="px-3 py-2 text-right font-semibold">Расход, ₽</th>
                       <th className="px-3 py-2 text-right font-semibold">CTR</th>
@@ -86,7 +91,7 @@ export default function CtrTestPage() {
                   <tbody>
                     {data.items.map((it) => (
                       <tr key={it.nm} className="border-b border-gray-100 last:border-0 hover:bg-gray-50">
-                        <td className="px-3 py-2 text-xs font-semibold">{it.art}</td>
+                        <td className="sticky left-0 z-10 bg-white px-3 py-2 text-xs font-semibold">{it.art}</td>
                         <td className="px-3 py-2 text-right tabular-nums">{nf(it.views)}</td>
                         <td className="px-3 py-2 text-right tabular-nums">{nf(it.spend)}</td>
                         <td className={`px-3 py-2 text-right tabular-nums ${toneCtr(it.ctr)}`}>{pc(it.ctr)}</td>

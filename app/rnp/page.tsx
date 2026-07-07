@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Loader2, Table2 } from "lucide-react";
+import { Table2 } from "lucide-react";
 import { CabinetSwitcher } from "@/components/CabinetSwitcher";
 import { useActiveCabinet } from "@/lib/useActiveCabinet";
+import { LoadingBanner, SkeletonKpiRow, SkeletonTableRows, useElapsedSeconds } from "@/components/ui/LoadingState";
 
 interface Metric { field: string; label: string; kind: string; daily: (number | null)[]; total: number; forecast: number | null }
 interface Sku { nm: number; art: string; name: string; img_url: string; metrics: Metric[] }
@@ -40,6 +41,7 @@ export default function RnpPage() {
   const [data, setData] = useState<RnpTable | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
+  const elapsed = useElapsedSeconds(loading);
 
   useEffect(() => {
     if (!cabReady) return;
@@ -80,7 +82,11 @@ export default function RnpPage() {
 
       <main className="mx-auto max-w-7xl px-6 py-6">
         {loading ? (
-          <div className="py-20 text-center text-gray-400"><Loader2 className="mx-auto h-6 w-6 animate-spin" /></div>
+          <>
+            <LoadingBanner seconds={elapsed} hint="РНП по SKU" />
+            <SkeletonKpiRow count={6} />
+            <SkeletonTableRows rows={10} cols={9} />
+          </>
         ) : err ? (
           <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">{err}</div>
         ) : data ? (

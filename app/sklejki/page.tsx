@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Loader2, Layers } from "lucide-react";
+import { Layers } from "lucide-react";
 import { CabinetSwitcher } from "@/components/CabinetSwitcher";
 import { useActiveCabinet } from "@/lib/useActiveCabinet";
+import { LoadingBanner, SkeletonKpiRow, SkeletonTableRows, useElapsedSeconds } from "@/components/ui/LoadingState";
 
 interface GSku {
   nm: number; art: string; name: string; img_url: string; shop: string;
@@ -71,6 +72,7 @@ export default function SklejkiPage() {
   const [data, setData] = useState<SklData | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
+  const elapsed = useElapsedSeconds(loading);
 
   useEffect(() => {
     if (!cabReady) return;
@@ -99,7 +101,11 @@ export default function SklejkiPage() {
 
       <main className="mx-auto max-w-6xl px-6 py-6">
         {loading ? (
-          <div className="py-20 text-center text-gray-400"><Loader2 className="mx-auto h-6 w-6 animate-spin" /></div>
+          <>
+            <LoadingBanner seconds={elapsed} hint="карточки WB по каждому кабинету" />
+            <SkeletonKpiRow count={4} />
+            <SkeletonTableRows rows={6} cols={6} />
+          </>
         ) : err ? (
           <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">{err}</div>
         ) : data ? (

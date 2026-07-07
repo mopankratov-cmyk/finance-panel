@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Loader2, CalendarRange, Check } from "lucide-react";
+import { LoadingBanner, SkeletonKpiRow, SkeletonTableRows, useElapsedSeconds } from "@/components/ui/LoadingState";
 
 interface Pl { orders: number[]; norms: Record<string, unknown>; sku_orders: Record<string, number[]> }
 interface Sku { art: string; name: string; cat: string; wb_stock: number }
@@ -19,6 +20,7 @@ export default function PlanningPage() {
   const [err, setErr] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const elapsed = useElapsedSeconds(loading);
 
   useEffect(() => {
     setLoading(true); setErr(null); setSaved(false);
@@ -79,7 +81,11 @@ export default function PlanningPage() {
 
       <main className="mx-auto max-w-6xl px-6 py-6">
         {loading ? (
-          <div className="py-20 text-center text-gray-400"><Loader2 className="mx-auto h-6 w-6 animate-spin" /></div>
+          <>
+            <LoadingBanner seconds={elapsed} hint="план и остатки" />
+            <SkeletonKpiRow count={3} />
+            <SkeletonTableRows rows={6} cols={3} />
+          </>
         ) : err ? (
           <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">{err}</div>
         ) : pl ? (
