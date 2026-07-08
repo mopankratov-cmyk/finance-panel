@@ -1,17 +1,27 @@
 import { wbFetch } from "@/lib/wb/fetch";
 import { fetchSalesReport } from "@/lib/wb/fetchSalesReport";
+import { getWbCabinet, resolveWbToken } from "@/lib/wb/cabinetTokens";
 import type { WbAdStat, WbOrder } from "@/lib/wb/types";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { supabase } from "@/lib/supabase";
-import { OPIU_ENTITY } from "./constants";
+import { OPIU_ENTITY, OPIU_WB_CABINET_ID } from "./constants";
 import { buildOpiuReport, type OpiuReport } from "./buildReport";
 import { weeksInMonth, type MonthWeek } from "./weeks";
 import type { ProductCostRow } from "./metrics";
+
+// Токен статистики для отчёта ОПиУ — из wb_cabinets (кабинет ИП ПАНКРАТОВ), а не из
+// протухшего ENV. Кабинет удалили/не нашли в БД → null (fetchOrders/fetchSalesReport
+// сами упадут на ENV-фолбэк внутри wbFetch, как было раньше).
+async function resolveOpiuWbToken(): Promise<string | undefined> {
+  const cab = await getWbCabinet(OPIU_WB_CABINET_ID);
+  return cab ? resolveWbToken(cab, "statistics") : undefined;
+}
 
 async function fetchOrders(
   dateFrom: string,
   dateTo: string,
   refresh: boolean,
+  token?: string,
 ): Promise<WbOrder[]> {
   const url = new URL(
     "https://statistics-api.wildberries.ru/api/v1/supplier/orders",
@@ -19,7 +29,7 @@ async function fetchOrders(
   url.searchParams.set("dateFrom", dateFrom);
   url.searchParams.set("flag", "0");
 
-  const res = await wbFetch<WbOrder[]>(url.toString(), { method: "GET" }, { refresh });
+  const res = await wbFetch<WbOrder[]>(url.toString(), { method: "GET" }, { refresh, token });
   if (res.error) throw new Error(res.error);
   return (res.data ?? []).filter((o) => {
     const d = String(o.date ?? "").slice(0, 10);
@@ -121,10 +131,11 @@ export async function loadOpiuMonth(
 
   const dateFrom = weeks[0]!.rangeFrom;
   const dateTo = weeks[weeks.length - 1]!.rangeTo;
+  const token = await resolveOpiuWbToken();
 
   const [sales, orders, adStats, costs, warehouseByWeek] = await Promise.all([
-    fetchSalesReport(dateFrom, dateTo, refresh),
-    fetchOrders(dateFrom, dateTo, refresh),
+    fetchSalesReport(dateFrom, dateTo, refresh, token),
+    fetchOrders(dateFrom, dateTo, refresh, token),
     fetchAdStats(dateFrom, dateTo),
     fetchProductCosts(),
     fetchWarehouseCosts(month, weeks),

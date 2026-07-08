@@ -25,13 +25,6 @@ function tokenEnvName(url: string): string {
   return isAdvertApi(url) ? "WB_TOKEN_ADVERT" : "WB_TOKEN_STATISTICS";
 }
 
-export function wbHeaders(url: string): HeadersInit {
-  return {
-    Authorization: getWbToken(url) ?? "",
-    "Content-Type": "application/json",
-  };
-}
-
 async function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -76,6 +69,8 @@ async function fetchWithRetry(
 export interface WbFetchOptions {
   /** Обойти Next.js Data Cache (кнопка «Обновить») */
   refresh?: boolean;
+  /** Явный токен (кабинет из wb_cabinets) — в обход ENV-токена по умолчанию */
+  token?: string;
 }
 
 export async function wbFetch<T>(
@@ -84,7 +79,7 @@ export async function wbFetch<T>(
   fetchOptions: WbFetchOptions = {},
 ): Promise<WbApiResponse<T>> {
   const timestamp = new Date().toISOString();
-  const token = getWbToken(url);
+  const token = fetchOptions.token || getWbToken(url);
 
   if (!token) {
     const envName = tokenEnvName(url);
@@ -103,7 +98,7 @@ export async function wbFetch<T>(
     const res = await fetchWithRetry(url, {
       ...options,
       ...cacheInit,
-      headers: { ...wbHeaders(url), ...options.headers },
+      headers: { Authorization: token, "Content-Type": "application/json", ...options.headers },
     });
 
     if (!res.ok) {

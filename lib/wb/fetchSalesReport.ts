@@ -19,6 +19,7 @@ export async function fetchSalesReport(
   dateFrom: string,
   dateTo: string,
   refresh = false,
+  token?: string,
 ): Promise<WbReportRow[]> {
   const all: WbReportRow[] = [];
   let rrdid = 0;
@@ -31,7 +32,7 @@ export async function fetchSalesReport(
     url.searchParams.set("limit", SALES_LIMIT);
     url.searchParams.set("rrdid", String(rrdid));
 
-    const res = await wbFetch<WbReportRow[]>(url.toString(), { method: "GET" }, { refresh });
+    const res = await wbFetch<WbReportRow[]>(url.toString(), { method: "GET" }, { refresh, token });
     if (res.error) throw new Error(res.error);
 
     const chunk = res.data ?? [];
