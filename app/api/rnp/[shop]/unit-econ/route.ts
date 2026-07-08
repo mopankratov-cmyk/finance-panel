@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { resolveShopCabinet } from "@/lib/rnp/resolveShop";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -7,10 +8,12 @@ export const maxDuration = 60;
 interface RpcRow { nm_id: number; article: string; orders_month: number; orders_sum_month: number; cost: number | null }
 
 // Юнит-экономика по SKU для режима планирования РНП. {econ:{<nm>:{cost,price,margin}}}.
-export async function GET() {
+export async function GET(_request: Request, ctx: { params: Promise<{ shop: string }> }) {
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ econ: {} });
-  const { data } = await db.rpc("rnp_report");
+  const { shop } = await ctx.params;
+  const { cabinetId } = await resolveShopCabinet(shop);
+  const { data } = await db.rpc("rnp_report", { p_cabinet: cabinetId });
   const econ: Record<string, { cost: number; price: number; margin: number | null }> = {};
   for (const r of (data ?? []) as RpcRow[]) {
     const orders = r.orders_month || 0;
