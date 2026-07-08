@@ -60,6 +60,11 @@ export async function chunkedUpsert(
   return flush();
 }
 
+// Найдено аудитом данных/API 2026-07-08: апсерт в целевую таблицу проходил, а сама
+// запись в sync_log — нет (эта функция не проверяла { error } от Supabase и не
+// ретраила транзиентные сбои), из-за чего страница /sync врала про "остановку" синка,
+// когда данные на самом деле шли. Ретраим как chunkedUpsert + логируем в консоль
+// (видно в логах Vercel), если после ретраев всё равно не удалось записать.
 export async function writeSyncLog(
   job: string,
   status: "ok" | "error",
@@ -69,11 +74,17 @@ export async function writeSyncLog(
 ) {
   const db = getSupabaseAdmin();
   if (!db) return;
-  await db.from("sync_log").insert({
+  const row = {
     job,
     status,
     rows_affected: rowsAffected,
     error,
     started_at: startedAt.toISOString(),
-  });
+  };
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (attempt > 0) await new Promise((r) => setTimeout(r, 1000 * attempt));
+    const { error: insertError } = await db.from("sync_log").insert(row);
+    if (!insertError) return;
+    if (attempt === 2) console.error(`[sync_log] insert failed for job=${job}:`, insertError.message);
+  }
 }
