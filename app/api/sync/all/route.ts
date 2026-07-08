@@ -3,16 +3,14 @@ import { checkCronAuth } from "@/lib/sync/helpers";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { generateInsights } from "@/lib/agent/rules";
 
-// Последовательный прогон всех синков — один cron-слот (Hobby) и кнопка «обновить всё».
-// Порядок важен:
-//  - adverts до advert-stats (статистика читает живые кампании из wb_adverts);
-//  - funnel ПЕРЕД advert-stats: у advert-stats паузы 61с/батч (WB 1 req/min), они съедают
-//    60с-бюджет функции, и воронка не доходит. Воронка аналитически важнее → идёт раньше.
-//  - commissions ПЕРЕД feedbacks и best-effort: это чистый перф-кэш (см. lib/wb/commissions.ts),
-//    если не влезет в бюджет — не страшно, РНП/юнит просто посчитают комиссию live в этот раз;
-//  - feedbacks ПОСЛЕДНИЙ: новее и менее критично остальных — если 60с-бюджет исчерпан раньше,
-//    пропускается в этот прогон и самоисцеляется на следующем суточном (upsert идемпотентен).
-const JOBS = ["orders", "sales", "stocks", "adverts", "funnel", "advert-stats", "commissions", "feedbacks"] as const;
+// Последовательный прогон быстрых синков — один cron-слот (Hobby, 60с/вызов) и кнопка
+// «обновить всё». funnel/commissions/feedbacks сюда НЕ входят — funnel сама по себе
+// таймбоксится на 50с (21с-паузы между батчами analytics-API), и раньше съедала весь
+// бюджет функции, из-за чего commissions/feedbacks не запускались НИ РАЗУ (см. аудит
+// данных/API 2026-07-08). Вынесены в отдельные cron-слоты: /api/sync/funnel напрямую
+// и /api/sync/all-2 (commissions+feedbacks) — см. vercel.json.
+// Порядок важен: adverts до advert-stats (статистика читает живые кампании из wb_adverts).
+const JOBS = ["orders", "sales", "stocks", "adverts", "advert-stats"] as const;
 
 export const maxDuration = 60;
 

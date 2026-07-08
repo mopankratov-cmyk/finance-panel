@@ -1,6 +1,8 @@
 {
   "crons": [
     { "path": "/api/sync/all", "schedule": "0 6 * * *" },
+    { "path": "/api/sync/funnel", "schedule": "20 6 * * *" },
+    { "path": "/api/sync/all-2", "schedule": "25 6 * * *" },
     { "path": "/api/repricer/run/cron", "schedule": "30 6 * * *" },
     { "path": "/api/signals?persist=1", "schedule": "40 6 * * *" }
   ]
