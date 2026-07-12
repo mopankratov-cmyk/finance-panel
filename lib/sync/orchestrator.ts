@@ -8,6 +8,41 @@ export interface SyncOrchestratorResult {
   results: Record<string, unknown>;
 }
 
+export async function runIndependentSyncJobs(
+  jobs: readonly string[],
+  base: string,
+  headers: Record<string, string>,
+  fetchImpl: typeof fetch = fetch,
+): Promise<SyncOrchestratorResult> {
+  const results: Record<string, unknown> = {};
+  let ok = true;
+
+  await Promise.all(jobs.map(async (job) => {
+    try {
+      const res = await fetchImpl(`${base}/api/sync/${job}`, {
+        headers,
+        cache: "no-store",
+      });
+      const raw = await res.json().catch(() => null);
+      const validPayload = raw !== null && typeof raw === "object" && !Array.isArray(raw);
+      const payload = objectPayload(raw);
+      const jobOk = res.ok && validPayload && payload.ok === true && !payload.error;
+      if (!jobOk) ok = false;
+      results[job] = {
+        ...payload,
+        ...(!validPayload ? { error: "Некорректный JSON-ответ дочерней синхронизации" } : {}),
+        ...(validPayload && payload.ok !== true && !payload.error ? { error: "Дочерняя синхронизация не подтвердила успех" } : {}),
+        status: res.status,
+      };
+    } catch (error) {
+      ok = false;
+      results[job] = { error: error instanceof Error ? error.message : "Unknown error" };
+    }
+  }));
+
+  return { ok, results };
+}
+
 function objectPayload(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
     ? value as Record<string, unknown>
@@ -28,10 +63,17 @@ export async function runCoreSyncJobs(
         headers,
         cache: "no-store",
       });
-      const payload = objectPayload(await res.json().catch(() => ({})));
-      const jobOk = res.ok && payload.ok !== false && !payload.error;
+      const raw = await res.json().catch(() => null);
+      const validPayload = raw !== null && typeof raw === "object" && !Array.isArray(raw);
+      const payload = objectPayload(raw);
+      const jobOk = res.ok && validPayload && payload.ok === true && !payload.error;
       if (!jobOk) ok = false;
-      results[job] = { ...payload, status: res.status };
+      results[job] = {
+        ...payload,
+        ...(!validPayload ? { error: "Некорректный JSON-ответ дочерней синхронизации" } : {}),
+        ...(validPayload && payload.ok !== true && !payload.error ? { error: "Дочерняя синхронизация не подтвердила успех" } : {}),
+        status: res.status,
+      };
     } catch (error) {
       ok = false;
       results[job] = { error: error instanceof Error ? error.message : "Unknown error" };

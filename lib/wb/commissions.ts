@@ -3,7 +3,9 @@
 // extraPct: ВСЕ прочие удержания МП (логистика+хранение+штрафы+приёмка+прочие, КРОМЕ рекламы —
 // она вычитается отдельно как ad_spent) / выручка — для «маржи после всех расходов МП».
 // overheadPct: удержания без nm_id (account-level) → плоская надбавка ко всем SKU.
-// Кэш через Next fetch revalidate (отчёт тяжёлый ~12с) — тянется раз в 6ч на весь сервер.
+// Отчёт может занимать десятки мегабайт. Держим только компактный in-memory итог,
+// но никогда не кладём сырой ответ в Next Data Cache: на больших кабинетах попытка
+// кэширования нескольких JSON подряд переполняет память Vercel.
 
 import { cabinetProductScope, getActiveWbCabinets } from "./cabinetTokens";
 import { allowsProduct, type WbProductScope } from "./productScope";
@@ -58,7 +60,7 @@ export async function getWbCommission(days = 30, opts?: { token?: string; cacheK
 
   let rows: ReportRow[];
   try {
-    const res = await fetch(url, { headers: { Authorization: token }, next: { revalidate: 21600 } });
+    const res = await fetch(url, { headers: { Authorization: token }, cache: "no-store" });
     if (!res.ok) return empty;
     rows = (await res.json()) as ReportRow[];
   } catch {
