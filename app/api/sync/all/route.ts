@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { checkCronAuth } from "@/lib/sync/helpers";
 import { runCoreSyncJobs } from "@/lib/sync/orchestrator";
+import { runWbHistoryRecovery } from "@/lib/wb/syncRecovery";
+
+export const maxDuration = 60;
 
 // Оркестратор быстрых синков — один cron-слот (Hobby, 60с/вызов) и кнопка
 // «обновить всё». funnel/commissions/feedbacks сюда НЕ входят — funnel сама по себе
@@ -22,6 +25,13 @@ export async function GET(request: NextRequest) {
   const base = new URL(request.url).origin;
   const headers: Record<string, string> = secret ? { Authorization: `Bearer ${secret}` } : {};
 
-  const result = await runCoreSyncJobs(base, headers);
-  return NextResponse.json(result, { status: result.ok ? 200 : 502 });
+  const [result, history] = await Promise.all([
+    runCoreSyncJobs(base, headers),
+    runWbHistoryRecovery(),
+  ]);
+  const ok = result.ok && history.ok;
+  return NextResponse.json(
+    { ok, results: { ...result.results, history } },
+    { status: ok ? 200 : 502 },
+  );
 }

@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { checkCronAuth, chunkedUpsert, writeSyncLog } from "@/lib/sync/helpers";
-import { getWbSyncTargets, lastSyncDate, rememberScopedProducts } from "@/lib/sync/cabinets";
+import { getWbSyncTargets, rememberScopedProducts } from "@/lib/sync/cabinets";
+import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { allowsProduct } from "@/lib/wb/productScope";
+import { initialStatisticsCursor, readWbSyncState, statisticsCursor, writeWbSyncState } from "@/lib/wb/syncRecovery";
 
 export const maxDuration = 60; // глубокий бэкфилл (?from=) пишет десятки тысяч строк
 
@@ -28,16 +30,19 @@ export async function GET(request: NextRequest) {
   }
 
   let total = 0;
+  let scanned = 0;
   const errors: string[] = [];
+  const progress: Array<Record<string, unknown>> = [];
+  const db = getSupabaseAdmin();
 
   try {
     for (const t of targets) {
-      const last = forceFrom ? null : await lastSyncDate("wb_sales", t.cabinetId);
+      const saved = !forceFrom && db && t.cabinetId
+        ? await readWbSyncState(db, t.cabinetId, "sales")
+        : null;
       const dateFrom = forceFrom
         ? new Date(forceFrom).toISOString().slice(0, 19)
-        : last
-          ? new Date(last).toISOString().slice(0, 19)
-          : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 19);
+        : saved?.cursor ?? initialStatisticsCursor();
 
       const url = new URL("https://statistics-api.wildberries.ru/api/v1/supplier/sales");
       url.searchParams.set("dateFrom", dateFrom);
@@ -50,8 +55,8 @@ export async function GET(request: NextRequest) {
       }
 
       const sales: Record<string, unknown>[] = await res.json();
-      if (!sales.length) continue;
-      await rememberScopedProducts(t, sales);
+      scanned += sales.length;
+      if (sales.length) await rememberScopedProducts(t, sales);
 
       const rows = sales
         .filter((s) => allowsProduct(t.productScope, s.nmId, s.brand))
@@ -75,11 +80,28 @@ export async function GET(request: NextRequest) {
         continue;
       }
       total += rows.length;
+
+      const nextCursor = sales.length
+        ? statisticsCursor(sales, dateFrom)
+        : new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+      const caughtUp = sales.length < 80_000;
+      let stateError: string | null = null;
+      if (!forceFrom && db && t.cabinetId) {
+        stateError = await writeWbSyncState(db, t.cabinetId, "sales", {
+          cursor: nextCursor,
+          status: caughtUp ? "caught_up" : "backfill",
+          attempts: 0,
+          lastError: null,
+          state: { scanned: sales.length, caughtUp, lastRunAt: new Date().toISOString() },
+        });
+      }
+      if (stateError) errors.push(`${t.name}: состояние sales: ${stateError}`);
+      progress.push({ cabinet: t.name, scanned: sales.length, matched: rows.length, cursor: nextCursor, caughtUp, stateError });
     }
 
     const ok = errors.length === 0;
     await writeSyncLog("sales", ok ? "ok" : "error", total, errors.join("; ") || null, startedAt);
-    return NextResponse.json({ ok, rows: total, cabinets: targets.length, errors });
+    return NextResponse.json({ ok, rows: total, scanned, cabinets: targets.length, progress, errors });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Unknown error";
     await writeSyncLog("sales", "error", null, msg, startedAt);

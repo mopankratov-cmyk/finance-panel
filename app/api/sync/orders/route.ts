@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { checkCronAuth, chunkedUpsert, writeSyncLog } from "@/lib/sync/helpers";
-import { getWbSyncTargets, lastSyncDate, rememberScopedProducts } from "@/lib/sync/cabinets";
+import { getWbSyncTargets, rememberScopedProducts } from "@/lib/sync/cabinets";
+import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { allowsProduct } from "@/lib/wb/productScope";
+import { initialStatisticsCursor, readWbSyncState, statisticsCursor, writeWbSyncState } from "@/lib/wb/syncRecovery";
 
 export const maxDuration = 60; // глубокий бэкфилл (?from=) пишет десятки тысяч строк
 
@@ -17,7 +19,7 @@ export async function GET(request: NextRequest) {
 
   const sp = new URL(request.url).searchParams;
   // ?from=YYYY-MM-DD — принудительный бэкфилл истории заказов с даты.
-  // Без него — инкрементально от последней даты в таблице, иначе 30 дней назад (первый синк).
+  // Без него продолжаем по lastChangeDate — это единственный корректный курсор WB.
   const forceFrom = sp.get("from");
   // ?to=YYYY-MM-DD — верхняя граница (WB не умеет dateTo, режем на своей стороне): окно [from, to).
   const toDate = sp.get("to");
@@ -29,16 +31,19 @@ export async function GET(request: NextRequest) {
   }
 
   let total = 0;
+  let scanned = 0;
   const errors: string[] = [];
+  const progress: Array<Record<string, unknown>> = [];
+  const db = getSupabaseAdmin();
 
   try {
     for (const t of targets) {
-      const last = forceFrom ? null : await lastSyncDate("wb_orders", t.cabinetId);
+      const saved = !forceFrom && db && t.cabinetId
+        ? await readWbSyncState(db, t.cabinetId, "orders")
+        : null;
       const dateFrom = forceFrom
         ? new Date(forceFrom).toISOString().slice(0, 19)
-        : last
-          ? new Date(last).toISOString().slice(0, 19)
-          : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 19);
+        : saved?.cursor ?? initialStatisticsCursor();
 
       const url = new URL("https://statistics-api.wildberries.ru/api/v1/supplier/orders");
       url.searchParams.set("dateFrom", dateFrom);
@@ -51,8 +56,8 @@ export async function GET(request: NextRequest) {
       }
 
       const orders: Record<string, unknown>[] = await res.json();
-      if (!orders.length) continue;
-      await rememberScopedProducts(t, orders);
+      scanned += orders.length;
+      if (orders.length) await rememberScopedProducts(t, orders);
 
       const rows = orders
         .filter((o) => allowsProduct(t.productScope, o.nmId, o.brand))
@@ -79,11 +84,28 @@ export async function GET(request: NextRequest) {
         continue;
       }
       total += rows.length;
+
+      const nextCursor = orders.length
+        ? statisticsCursor(orders, dateFrom)
+        : new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+      const caughtUp = orders.length < 80_000;
+      let stateError: string | null = null;
+      if (!forceFrom && db && t.cabinetId) {
+        stateError = await writeWbSyncState(db, t.cabinetId, "orders", {
+          cursor: nextCursor,
+          status: caughtUp ? "caught_up" : "backfill",
+          attempts: 0,
+          lastError: null,
+          state: { scanned: orders.length, caughtUp, lastRunAt: new Date().toISOString() },
+        });
+      }
+      if (stateError) errors.push(`${t.name}: состояние orders: ${stateError}`);
+      progress.push({ cabinet: t.name, scanned: orders.length, matched: rows.length, cursor: nextCursor, caughtUp, stateError });
     }
 
     const ok = errors.length === 0;
     await writeSyncLog("orders", ok ? "ok" : "error", total, errors.join("; ") || null, startedAt);
-    return NextResponse.json({ ok, rows: total, cabinets: targets.length, errors });
+    return NextResponse.json({ ok, rows: total, scanned, cabinets: targets.length, progress, errors });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Unknown error";
     await writeSyncLog("orders", "error", null, msg, startedAt);

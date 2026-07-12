@@ -1,0 +1,340 @@
+import { inflateRawSync } from "node:zlib";
+import type { SupabaseClient } from "@supabase/supabase-js";
+
+import { chunkedUpsert } from "@/lib/sync/helpers";
+import { getWbSyncTargets } from "@/lib/sync/cabinets";
+import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+
+const REPORTS_URL = "https://seller-analytics-api.wildberries.ru/api/v2/nm-report/downloads";
+const HISTORY_JOB = "history-365";
+const HISTORY_REFRESH_MS = 7 * 24 * 60 * 60 * 1000;
+
+export interface WbSyncState<T extends Record<string, unknown> = Record<string, unknown>> {
+  cursor: string | null;
+  status: string;
+  attempts: number;
+  lastError: string | null;
+  state: T;
+  updatedAt: string | null;
+}
+
+export interface WbHistoryState extends Record<string, unknown> {
+  reportId: string;
+  periodStart: string;
+  periodEnd: string;
+  createdAt: string;
+  completedAt?: string;
+  rows?: number;
+}
+
+export interface WbHistoryResult {
+  ok: boolean;
+  cabinets: number;
+  rows: number;
+  results: Array<Record<string, unknown>>;
+  errors: string[];
+}
+
+export interface WbHistoryRow {
+  nm_id: number;
+  date: string;
+  open_card: number;
+  add_to_cart: number;
+  orders: number;
+  orders_sum: number;
+  buyouts: number;
+  buyout_sum: number;
+  cabinet_id?: string | null;
+}
+
+export async function readWbSyncState<T extends Record<string, unknown>>(
+  db: SupabaseClient,
+  cabinetId: string,
+  job: string,
+): Promise<WbSyncState<T> | null> {
+  const { data, error } = await db
+    .from("wb_sync_state")
+    .select("cursor, status, attempts, last_error, state, updated_at")
+    .eq("cabinet_id", cabinetId)
+    .eq("job", job)
+    .maybeSingle();
+  if (error || !data) return null;
+  return {
+    cursor: data.cursor as string | null,
+    status: String(data.status ?? "pending"),
+    attempts: Number(data.attempts ?? 0),
+    lastError: data.last_error as string | null,
+    state: (data.state ?? {}) as T,
+    updatedAt: data.updated_at as string | null,
+  };
+}
+
+export async function writeWbSyncState<T extends Record<string, unknown>>(
+  db: SupabaseClient,
+  cabinetId: string,
+  job: string,
+  values: Partial<WbSyncState<T>>,
+): Promise<string | null> {
+  const row = {
+    cabinet_id: cabinetId,
+    job,
+    cursor: values.cursor ?? null,
+    status: values.status ?? "pending",
+    attempts: values.attempts ?? 0,
+    last_error: values.lastError ?? null,
+    state: values.state ?? {},
+    updated_at: new Date().toISOString(),
+  };
+  const { error } = await db.from("wb_sync_state").upsert(row, { onConflict: "cabinet_id,job" });
+  return error?.message ?? null;
+}
+
+export function statisticsCursor(rows: Record<string, unknown>[], fallback: string): string {
+  let latest = fallback;
+  for (const row of rows) {
+    const value = String(row.lastChangeDate ?? "");
+    if (value && value > latest) latest = value;
+  }
+  return latest;
+}
+
+export function initialStatisticsCursor(now = new Date()): string {
+  return new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000).toISOString().slice(0, 19);
+}
+
+export function historyPeriod(now = new Date()): { start: string; end: string } {
+  const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 1));
+  const start = new Date(end);
+  start.setUTCDate(start.getUTCDate() - 364);
+  return { start: start.toISOString().slice(0, 10), end: end.toISOString().slice(0, 10) };
+}
+
+export function historyReportPayload(
+  reportId: string,
+  cabinetId: string,
+  nmIds: number[],
+  period: { start: string; end: string },
+): Record<string, unknown> {
+  return {
+    id: reportId,
+    reportType: "DETAIL_HISTORY_REPORT",
+    userReportName: `finance-panel-${cabinetId.slice(0, 8)}-${period.end}`,
+    params: {
+      nmIDs: nmIds,
+      subjectIds: [],
+      brandNames: [],
+      tagIds: [],
+      startDate: period.start,
+      endDate: period.end,
+      timezone: "Europe/Moscow",
+      aggregationLevel: "day",
+      skipDeletedNm: false,
+    },
+  };
+}
+
+function csvCells(line: string): string[] {
+  const cells: string[] = [];
+  let value = "";
+  let quoted = false;
+  for (let index = 0; index < line.length; index++) {
+    const char = line[index];
+    if (char === '"') {
+      if (quoted && line[index + 1] === '"') {
+        value += '"';
+        index++;
+      } else {
+        quoted = !quoted;
+      }
+    } else if (char === "," && !quoted) {
+      cells.push(value.trim());
+      value = "";
+    } else {
+      value += char;
+    }
+  }
+  cells.push(value.trim());
+  return cells;
+}
+
+function numberCell(value: string | undefined): number {
+  const parsed = Number(String(value ?? "0").replace(/\s/g, "").replace(",", "."));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+export function parseHistoryCsv(csv: string): WbHistoryRow[] {
+  const lines = csv.replace(/^\uFEFF/, "").split(/\r?\n/).filter((line) => line.trim());
+  if (lines.length < 2) return [];
+  const headers = csvCells(lines[0]);
+  const index = new Map(headers.map((header, position) => [header, position]));
+  const required = ["nmID", "dt", "openCardCount", "addToCartCount", "ordersCount", "ordersSumRub", "buyoutsCount", "buyoutsSumRub"];
+  const missing = required.filter((header) => !index.has(header));
+  if (missing.length) throw new Error(`WB history CSV: нет колонок ${missing.join(", ")}`);
+  const cell = (values: string[], name: string) => values[index.get(name)!];
+
+  return lines.slice(1).map(csvCells).map((values) => ({
+    nm_id: numberCell(cell(values, "nmID")),
+    date: String(cell(values, "dt") ?? "").slice(0, 10),
+    open_card: numberCell(cell(values, "openCardCount")),
+    add_to_cart: numberCell(cell(values, "addToCartCount")),
+    orders: numberCell(cell(values, "ordersCount")),
+    orders_sum: numberCell(cell(values, "ordersSumRub")),
+    buyouts: numberCell(cell(values, "buyoutsCount")),
+    buyout_sum: numberCell(cell(values, "buyoutsSumRub")),
+  })).filter((row) => row.nm_id > 0 && /^\d{4}-\d{2}-\d{2}$/.test(row.date));
+}
+
+function findEndOfCentralDirectory(view: DataView): number {
+  const minimum = Math.max(0, view.byteLength - 65_557);
+  for (let offset = view.byteLength - 22; offset >= minimum; offset--) {
+    if (view.getUint32(offset, true) === 0x06054b50) return offset;
+  }
+  throw new Error("WB history ZIP: центральный каталог не найден");
+}
+
+export function unzipCsvFiles(input: ArrayBuffer): string[] {
+  const bytes = new Uint8Array(input);
+  const view = new DataView(input);
+  const eocd = findEndOfCentralDirectory(view);
+  const entries = view.getUint16(eocd + 10, true);
+  let offset = view.getUint32(eocd + 16, true);
+  const decoder = new TextDecoder("utf-8");
+  const result: string[] = [];
+
+  for (let entry = 0; entry < entries; entry++) {
+    if (view.getUint32(offset, true) !== 0x02014b50) throw new Error("WB history ZIP: повреждён каталог");
+    const method = view.getUint16(offset + 10, true);
+    const compressedSize = view.getUint32(offset + 20, true);
+    const fileNameLength = view.getUint16(offset + 28, true);
+    const extraLength = view.getUint16(offset + 30, true);
+    const commentLength = view.getUint16(offset + 32, true);
+    const localOffset = view.getUint32(offset + 42, true);
+    const fileName = decoder.decode(bytes.slice(offset + 46, offset + 46 + fileNameLength));
+
+    if (fileName.toLowerCase().endsWith(".csv")) {
+      if (view.getUint32(localOffset, true) !== 0x04034b50) throw new Error("WB history ZIP: повреждён файл");
+      const localNameLength = view.getUint16(localOffset + 26, true);
+      const localExtraLength = view.getUint16(localOffset + 28, true);
+      const dataOffset = localOffset + 30 + localNameLength + localExtraLength;
+      const compressed = bytes.slice(dataOffset, dataOffset + compressedSize);
+      const content = method === 0
+        ? compressed
+        : method === 8
+          ? new Uint8Array(inflateRawSync(compressed))
+          : null;
+      if (!content) throw new Error(`WB history ZIP: метод сжатия ${method} не поддерживается`);
+      result.push(decoder.decode(content));
+    }
+
+    offset += 46 + fileNameLength + extraLength + commentLength;
+  }
+  if (!result.length) throw new Error("WB history ZIP: CSV-файлы не найдены");
+  return result;
+}
+
+async function wbRequest(url: string, token: string, init: RequestInit = {}): Promise<Response> {
+  return fetch(url, {
+    ...init,
+    headers: { Authorization: token, "Content-Type": "application/json", ...init.headers },
+    cache: "no-store",
+  });
+}
+
+function stateIsFresh(state: WbSyncState<WbHistoryState>, now: Date): boolean {
+  if (state.status !== "complete" || !state.state.completedAt) return false;
+  return now.getTime() - new Date(state.state.completedAt).getTime() < HISTORY_REFRESH_MS;
+}
+
+export async function runWbHistoryRecovery(now = new Date()): Promise<WbHistoryResult> {
+  const db = getSupabaseAdmin();
+  if (!db) return { ok: false, cabinets: 0, rows: 0, results: [], errors: ["Supabase не настроен"] };
+  const targets = (await getWbSyncTargets()).filter((target) => target.cabinetId && target.productScope.allowedNmIds?.length);
+  const period = historyPeriod(now);
+  const results: Array<Record<string, unknown>> = [];
+  const errors: string[] = [];
+  let totalRows = 0;
+
+  for (const target of targets) {
+    const cabinetId = target.cabinetId!;
+    const nmIds = target.productScope.allowedNmIds!;
+    let state = await readWbSyncState<WbHistoryState>(db, cabinetId, HISTORY_JOB);
+
+    try {
+      if (state && stateIsFresh(state, now)) {
+        results.push({ cabinet: target.name, status: "complete", rows: state.state.rows ?? 0, periodEnd: state.state.periodEnd });
+        continue;
+      }
+
+      if (!state || state.status === "complete" || state.attempts >= 3) {
+        const reportId = crypto.randomUUID();
+        const response = await wbRequest(REPORTS_URL, target.statsToken, {
+          method: "POST",
+          body: JSON.stringify(historyReportPayload(reportId, cabinetId, nmIds, period)),
+        });
+        if (!response.ok) throw new Error(`создание отчёта: WB ${response.status}: ${(await response.text()).slice(0, 180)}`);
+        const historyState: WbHistoryState = { reportId, periodStart: period.start, periodEnd: period.end, createdAt: now.toISOString() };
+        const stateError = await writeWbSyncState(db, cabinetId, HISTORY_JOB, { status: "pending", attempts: 0, state: historyState });
+        if (stateError) throw new Error(`состояние истории: ${stateError}`);
+        results.push({ cabinet: target.name, status: "created", reportId, period });
+        continue;
+      }
+
+      const reportId = state.state.reportId;
+      if (state.status === "failed") {
+        const retry = await wbRequest(`${REPORTS_URL}/retry`, target.statsToken, {
+          method: "POST",
+          body: JSON.stringify({ downloadId: reportId }),
+        });
+        if (!retry.ok) throw new Error(`повтор отчёта: WB ${retry.status}: ${(await retry.text()).slice(0, 180)}`);
+        await writeWbSyncState(db, cabinetId, HISTORY_JOB, { ...state, status: "pending", attempts: state.attempts + 1, lastError: null });
+        results.push({ cabinet: target.name, status: "retry", reportId });
+        continue;
+      }
+
+      const listUrl = new URL(REPORTS_URL);
+      listUrl.searchParams.append("filter[downloadIds]", reportId);
+      const statusResponse = await wbRequest(listUrl.toString(), target.statsToken);
+      if (!statusResponse.ok) throw new Error(`статус отчёта: WB ${statusResponse.status}: ${(await statusResponse.text()).slice(0, 180)}`);
+      const statusJson = await statusResponse.json() as { data?: Array<{ id?: string; status?: string }> };
+      const report = statusJson.data?.find((item) => item.id === reportId);
+      if (!report || !report.status || ["PENDING", "PROCESSING", "NEW"].includes(report.status)) {
+        results.push({ cabinet: target.name, status: "pending", reportId });
+        continue;
+      }
+      if (report.status === "FAILED") {
+        await writeWbSyncState(db, cabinetId, HISTORY_JOB, { ...state, status: "failed", attempts: state.attempts + 1, lastError: "WB report FAILED" });
+        results.push({ cabinet: target.name, status: "failed", reportId });
+        continue;
+      }
+      if (report.status !== "SUCCESS") throw new Error(`неизвестный статус отчёта: ${report.status}`);
+
+      const download = await wbRequest(`${REPORTS_URL}/file/${reportId}`, target.statsToken);
+      if (!download.ok) throw new Error(`скачивание отчёта: WB ${download.status}: ${(await download.text()).slice(0, 180)}`);
+      const allowed = new Set(nmIds);
+      const rows = unzipCsvFiles(await download.arrayBuffer())
+        .flatMap(parseHistoryCsv)
+        .filter((row) => allowed.has(row.nm_id))
+        .map((row) => ({ ...row, cabinet_id: cabinetId }));
+      const upsertError = await chunkedUpsert("wb_funnel_daily", rows, "nm_id,date", 100_000);
+      if (upsertError) throw new Error(`запись истории: ${upsertError}`);
+
+      totalRows += rows.length;
+      const completedState: WbHistoryState = { ...state.state, completedAt: now.toISOString(), rows: rows.length };
+      const completeStateError = await writeWbSyncState(db, cabinetId, HISTORY_JOB, {
+        status: "complete",
+        attempts: 0,
+        lastError: null,
+        state: completedState,
+      });
+      if (completeStateError) throw new Error(`фиксация состояния истории: ${completeStateError}`);
+      results.push({ cabinet: target.name, status: "complete", reportId, rows: rows.length, period: { start: state.state.periodStart, end: state.state.periodEnd } });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      errors.push(`${target.name}: ${message}`);
+      if (state) await writeWbSyncState(db, cabinetId, HISTORY_JOB, { ...state, status: "failed", attempts: state.attempts + 1, lastError: message });
+      results.push({ cabinet: target.name, status: "error", error: message });
+    }
+  }
+
+  return { ok: errors.length === 0, cabinets: targets.length, rows: totalRows, results, errors };
+}
