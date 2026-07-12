@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   historyPeriod,
+  historyFirstActiveDate,
   historyReportPayload,
   initialStatisticsCursor,
   parseHistoryCsv,
@@ -56,6 +57,14 @@ test("history report requests exactly 365 days and exact scoped nmIDs", () => {
   const payload = historyReportPayload("00000000-0000-4000-8000-000000000001", "cabinet-123", [11, 22], period);
   assert.deepEqual((payload.params as Record<string, unknown>).nmIDs, [11, 22]);
   assert.equal((payload.params as Record<string, unknown>).aggregationLevel, "day");
+});
+
+test("history bootstrap starts detail sync from first relevant sale", () => {
+  assert.equal(historyFirstActiveDate([
+    { nm_id: 1, date: "2026-07-10", open_card: 2, add_to_cart: 1, orders: 0, orders_sum: 0, buyouts: 0, buyout_sum: 0 },
+    { nm_id: 1, date: "2026-07-12", open_card: 2, add_to_cart: 1, orders: 1, orders_sum: 500, buyouts: 0, buyout_sum: 0 },
+    { nm_id: 2, date: "2026-07-11", open_card: 2, add_to_cart: 1, orders: 0, orders_sum: 0, buyouts: 1, buyout_sum: 400 },
+  ]), "2026-07-11");
 });
 
 test("unzips and parses the documented WB DETAIL_HISTORY_REPORT columns", () => {

@@ -24,6 +24,7 @@ export interface WbHistoryState extends Record<string, unknown> {
   periodEnd: string;
   createdAt: string;
   completedAt?: string;
+  firstActiveDate?: string;
   rows?: number;
 }
 
@@ -194,6 +195,12 @@ export function parseHistoryCsv(csv: string): WbHistoryRow[] {
   })).filter((row) => row.nm_id > 0 && /^\d{4}-\d{2}-\d{2}$/.test(row.date));
 }
 
+export function historyFirstActiveDate(rows: WbHistoryRow[]): string | null {
+  return rows
+    .filter((row) => row.orders > 0 || row.buyouts > 0)
+    .reduce<string | null>((earliest, row) => !earliest || row.date < earliest ? row.date : earliest, null);
+}
+
 function findEndOfCentralDirectory(view: DataView): number {
   const minimum = Math.max(0, view.byteLength - 65_557);
   for (let offset = view.byteLength - 22; offset >= minimum; offset--) {
@@ -255,6 +262,50 @@ function stateIsFresh(state: WbSyncState<WbHistoryState>, now: Date): boolean {
   return now.getTime() - new Date(state.state.completedAt).getTime() < HISTORY_REFRESH_MS;
 }
 
+async function storedFirstActiveDate(
+  db: SupabaseClient,
+  cabinetId: string,
+  nmIds: number[],
+): Promise<string | null> {
+  const { data, error } = await db
+    .from("wb_funnel_daily")
+    .select("date")
+    .eq("cabinet_id", cabinetId)
+    .in("nm_id", nmIds)
+    .or("orders.gt.0,buyouts.gt.0")
+    .order("date", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw new Error(`поиск первой активности: ${error.message}`);
+  return data?.date ? String(data.date) : null;
+}
+
+async function bootstrapDetailCursors(
+  db: SupabaseClient,
+  cabinetId: string,
+  firstActiveDate: string | null,
+  now: Date,
+): Promise<void> {
+  if (!firstActiveDate) return;
+  const cursor = `${firstActiveDate}T00:00:00`;
+  for (const job of ["orders", "sales"]) {
+    const current = await readWbSyncState(db, cabinetId, job);
+    if (current?.status === "caught_up" || (current?.cursor && current.cursor >= cursor)) continue;
+    const error = await writeWbSyncState(db, cabinetId, job, {
+      cursor,
+      status: "backfill",
+      attempts: 0,
+      lastError: null,
+      state: {
+        ...(current?.state ?? {}),
+        bootstrapFromHistory: firstActiveDate,
+        bootstrappedAt: now.toISOString(),
+      },
+    });
+    if (error) throw new Error(`ускорение ${job}: ${error}`);
+  }
+}
+
 export async function runWbHistoryRecovery(now = new Date()): Promise<WbHistoryResult> {
   const db = getSupabaseAdmin();
   if (!db) return { ok: false, cabinets: 0, rows: 0, results: [], errors: ["Supabase не настроен"] };
@@ -271,7 +322,17 @@ export async function runWbHistoryRecovery(now = new Date()): Promise<WbHistoryR
 
     try {
       if (state && stateIsFresh(state, now)) {
-        results.push({ cabinet: target.name, status: "complete", rows: state.state.rows ?? 0, periodEnd: state.state.periodEnd });
+        const firstActiveDate = state.state.firstActiveDate
+          ?? await storedFirstActiveDate(db, cabinetId, nmIds);
+        await bootstrapDetailCursors(db, cabinetId, firstActiveDate, now);
+        if (firstActiveDate && !state.state.firstActiveDate) {
+          const stateError = await writeWbSyncState(db, cabinetId, HISTORY_JOB, {
+            ...state,
+            state: { ...state.state, firstActiveDate },
+          });
+          if (stateError) throw new Error(`фиксация первой активности: ${stateError}`);
+        }
+        results.push({ cabinet: target.name, status: "complete", rows: state.state.rows ?? 0, periodEnd: state.state.periodEnd, firstActiveDate });
         continue;
       }
 
@@ -329,7 +390,14 @@ export async function runWbHistoryRecovery(now = new Date()): Promise<WbHistoryR
       if (upsertError) throw new Error(`запись истории: ${upsertError}`);
 
       totalRows += rows.length;
-      const completedState: WbHistoryState = { ...state.state, completedAt: now.toISOString(), rows: rows.length };
+      const firstActiveDate = historyFirstActiveDate(rows);
+      await bootstrapDetailCursors(db, cabinetId, firstActiveDate, now);
+      const completedState: WbHistoryState = {
+        ...state.state,
+        completedAt: now.toISOString(),
+        firstActiveDate: firstActiveDate ?? undefined,
+        rows: rows.length,
+      };
       const completeStateError = await writeWbSyncState(db, cabinetId, HISTORY_JOB, {
         status: "complete",
         attempts: 0,
@@ -337,7 +405,7 @@ export async function runWbHistoryRecovery(now = new Date()): Promise<WbHistoryR
         state: completedState,
       });
       if (completeStateError) throw new Error(`фиксация состояния истории: ${completeStateError}`);
-      results.push({ cabinet: target.name, status: "complete", reportId, rows: rows.length, period: { start: state.state.periodStart, end: state.state.periodEnd } });
+      results.push({ cabinet: target.name, status: "complete", reportId, rows: rows.length, firstActiveDate, period: { start: state.state.periodStart, end: state.state.periodEnd } });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";
       errors.push(`${target.name}: ${message}`);
