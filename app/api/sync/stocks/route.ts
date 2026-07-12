@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { checkCronAuth, chunkedUpsert, writeSyncLog } from "@/lib/sync/helpers";
-import { getWbSyncTargets } from "@/lib/sync/cabinets";
+import { getWbSyncTargets, rememberScopedProducts } from "@/lib/sync/cabinets";
+import { allowsProduct } from "@/lib/wb/productScope";
 
 export async function GET(request: NextRequest) {
   const authError = checkCronAuth(request);
@@ -31,6 +32,7 @@ export async function GET(request: NextRequest) {
 
       const stocks: Record<string, unknown>[] = await res.json();
       if (!stocks.length) continue;
+      await rememberScopedProducts(t, stocks);
 
       // WB отдаёт остаток по каждому размеру → один (nm_id, warehouse) встречается
       // несколько раз. Схлопываем по ключу апсёрта, суммируя количества (иначе
@@ -38,6 +40,7 @@ export async function GET(request: NextRequest) {
       const agg = new Map<string, { nm_id: number; warehouse: string; quantity: number; in_way_to_client: number; in_way_from_client: number; cabinet_id: string | null; synced_at: string }>();
       const stamp = new Date().toISOString();
       for (const s of stocks) {
+        if (!allowsProduct(t.productScope, s.nmId, s.brand)) continue;
         const nm_id = s.nmId as number;
         const warehouse = s.warehouseName as string;
         if (!nm_id || !warehouse) continue;

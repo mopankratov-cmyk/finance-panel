@@ -3,6 +3,7 @@ import { wbCardImageUrl } from "@/lib/wb/cardImage";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { getWbCabinetSources } from "@/lib/wb/cabinetTokens";
 import { resolveShopCabinet } from "@/lib/rnp/resolveShop";
+import { allowsProduct, type WbProductScope } from "@/lib/wb/productScope";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -15,6 +16,7 @@ interface WbCard {
   vendorCode: string;
   title?: string;
   subjectName?: string;
+  brand?: string;
   _shop?: string;
 }
 
@@ -36,7 +38,7 @@ export async function GET(request: NextRequest) {
   // 1) карточки из Content API — по каждому кабинету своим токеном, с тегом кабинета.
   //    Кабинеты независимы (свой токен, свой курсор) — тянем их ПАРАЛЛЕЛЬНО; внутри
   //    одного кабинета страницы курсора остаются последовательными (так требует API).
-  const fetchCabinetCards = async (src: { token: string; name: string }): Promise<WbCard[]> => {
+  const fetchCabinetCards = async (src: { token: string; name: string; productScope: WbProductScope }): Promise<WbCard[]> => {
     const out: WbCard[] = [];
     let cursor: { updatedAt?: string; nmID?: number } = {};
     try {
@@ -50,7 +52,10 @@ export async function GET(request: NextRequest) {
         if (!res.ok) break;
         const json = (await res.json()) as { cards?: WbCard[]; cursor?: { updatedAt?: string; nmID?: number } };
         const batch = json.cards ?? [];
-        for (const c of batch) out.push({ ...c, _shop: src.name });
+        for (const c of batch) {
+          if (!allowsProduct(src.productScope, c.nmID, c.brand)) continue;
+          out.push({ ...c, _shop: src.name });
+        }
         if (batch.length < 100) break;
         cursor = { updatedAt: json.cursor?.updatedAt, nmID: json.cursor?.nmID };
       }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { checkCronAuth, chunkedUpsert, writeSyncLog } from "@/lib/sync/helpers";
 import { getWbSyncTargets } from "@/lib/sync/cabinets";
+import { allowsNm, isScoped } from "@/lib/wb/productScope";
 
 // Информация о кампаниях: отдаёт все кампании продавца разом
 const ADVERTS_URL = "https://advert-api.wildberries.ru/api/advert/v2/adverts";
@@ -45,13 +46,14 @@ export async function GET(request: NextRequest) {
       const rows = adverts
         .filter((a) => a.id)
         .map((a) => {
-          const nmIds = [
+          const allNmIds = [
             ...new Set(
               (a.nm_settings ?? [])
                 .map((n) => n.nm_id)
                 .filter((n): n is number => typeof n === "number"),
             ),
           ];
+          const nmIds = allNmIds.filter((nm) => allowsNm(t.productScope, nm));
           // дневной бюджет API больше не отдаёт в этом методе — оставляем ставку CPM как ориентир
           const bid = a.nm_settings?.[0]?.bids_kopecks?.search;
           return {
@@ -64,7 +66,8 @@ export async function GET(request: NextRequest) {
             cabinet_id: t.cabinetId,
             synced_at: new Date().toISOString(),
           };
-        });
+        })
+        .filter((row) => !isScoped(t.productScope) || (row.nm_ids?.length ?? 0) > 0);
 
       if (!rows.length) continue;
 

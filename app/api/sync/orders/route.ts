@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { checkCronAuth, chunkedUpsert, writeSyncLog } from "@/lib/sync/helpers";
-import { getWbSyncTargets, lastSyncDate } from "@/lib/sync/cabinets";
+import { getWbSyncTargets, lastSyncDate, rememberScopedProducts } from "@/lib/sync/cabinets";
+import { allowsProduct } from "@/lib/wb/productScope";
 
 export const maxDuration = 60; // глубокий бэкфилл (?from=) пишет десятки тысяч строк
 
@@ -51,8 +52,10 @@ export async function GET(request: NextRequest) {
 
       const orders: Record<string, unknown>[] = await res.json();
       if (!orders.length) continue;
+      await rememberScopedProducts(t, orders);
 
       const rows = orders
+        .filter((o) => allowsProduct(t.productScope, o.nmId, o.brand))
         .map((o) => ({
           srid: o.srid as string,
           nm_id: o.nmId as number,

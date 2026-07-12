@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { validateWbToken } from "@/lib/wb/sellerInfo";
 import { decodeWbToken, probeWbScope, probeWbScopes, type ScopeStatus } from "@/lib/wb/token";
 import { validateOzon } from "@/lib/ozon/api";
+import { normalizeBrandFilters } from "@/lib/wb/productScope";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
@@ -15,9 +16,15 @@ export async function GET() {
   if (!db) return NextResponse.json({ cabinets: [] });
   const { data, error } = await db
     .from("wb_cabinets")
-    .select("id, name, marketplace, trade_mark, seller_id, client_id, inn, token, token_advert, token_content, token_feedbacks, is_active, created_at")
+    .select("id, name, marketplace, trade_mark, seller_id, client_id, inn, token, token_advert, token_content, token_feedbacks, brand_filters, is_active, created_at")
     .order("created_at", { ascending: true });
   if (error) return NextResponse.json({ cabinets: [], error: error.message });
+  const { data: scopeRows } = await db.from("wb_cabinet_product_scope").select("cabinet_id, nm_id").limit(10_000);
+  const scopeCount = new Map<string, number>();
+  for (const row of scopeRows ?? []) {
+    const id = String(row.cabinet_id);
+    scopeCount.set(id, (scopeCount.get(id) ?? 0) + 1);
+  }
   const cabinets = (data ?? []).map((c) => ({
     id: c.id,
     name: c.name,
@@ -32,6 +39,8 @@ export async function GET() {
     has_advert: !!c.token_advert,
     has_content: !!c.token_content,
     has_feedbacks: !!c.token_feedbacks,
+    brand_filters: normalizeBrandFilters(c.brand_filters),
+    product_scope_count: scopeCount.get(String(c.id)) ?? 0,
   }));
   return NextResponse.json({ cabinets, count: cabinets.length });
 }
@@ -43,6 +52,8 @@ export async function POST(request: NextRequest) {
   const b = (await request.json().catch(() => ({}))) as {
     marketplace?: string; token?: string; name?: string; client_id?: string; token_advert?: string; token_content?: string; token_feedbacks?: string;
     perf_client_id?: string; perf_secret?: string;
+    brand_filters?: string[];
+    allowed_products?: Array<{ nm_id?: number; article?: string; brand?: string }>;
   };
   const marketplace = b.marketplace === "ozon" ? "ozon" : "wb";
   const token = (b.token || "").trim();
@@ -98,6 +109,7 @@ export async function POST(request: NextRequest) {
       token_feedbacks: feedbTok || null,
       is_active: true,
     };
+    if (b.brand_filters !== undefined) row.brand_filters = normalizeBrandFilters(b.brand_filters);
   }
 
   // без ON CONFLICT (уникальный индекс частичный): проверяем существование и обновляем/вставляем
@@ -118,6 +130,34 @@ export async function POST(request: NextRequest) {
       .from("wb_cabinets").insert(row)
       .select("id, name, marketplace, seller_id, is_active, created_at").single());
   }
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ ok: true, cabinet: data, ...scopeReport });
+  if (error || !data) return NextResponse.json({ error: error?.message ?? "Кабинет не сохранён" }, { status: 500 });
+
+  let productScopeCount: number | undefined;
+  if (marketplace === "wb" && b.allowed_products !== undefined) {
+    const products = [...new Map(
+      b.allowed_products
+        .map((p) => ({
+          nm_id: Number(p.nm_id),
+          article: String(p.article ?? "").trim() || null,
+          brand: String(p.brand ?? "").trim() || null,
+        }))
+        .filter((p) => Number.isInteger(p.nm_id) && p.nm_id > 0)
+        .map((p) => [p.nm_id, p]),
+    ).values()];
+    if (products.length > 10_000) {
+      return NextResponse.json({ error: "Слишком большой товарный scope" }, { status: 400 });
+    }
+    const cabinetId = String(data.id);
+    const { error: clearError } = await db.from("wb_cabinet_product_scope").delete().eq("cabinet_id", cabinetId);
+    if (clearError) return NextResponse.json({ error: clearError.message }, { status: 500 });
+    if (products.length) {
+      const { error: scopeError } = await db.from("wb_cabinet_product_scope").insert(
+        products.map((p) => ({ cabinet_id: cabinetId, ...p })),
+      );
+      if (scopeError) return NextResponse.json({ error: scopeError.message }, { status: 500 });
+    }
+    productScopeCount = products.length;
+  }
+
+  return NextResponse.json({ ok: true, cabinet: data, product_scope_count: productScopeCount, ...scopeReport });
 }

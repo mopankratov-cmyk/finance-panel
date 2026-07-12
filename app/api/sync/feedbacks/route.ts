@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { checkCronAuth, chunkedUpsert, writeSyncLog } from "@/lib/sync/helpers";
-import { getActiveWbCabinets, resolveWbToken } from "@/lib/wb/cabinetTokens";
+import { cabinetProductScope, getActiveWbCabinets, resolveWbToken } from "@/lib/wb/cabinetTokens";
 import { fetchWbFeedbacksPage, WbFeedbacksScopeError } from "@/lib/wb/feedbacksApi";
+import { allowsProduct } from "@/lib/wb/productScope";
 
 export const maxDuration = 60;
 
@@ -29,6 +30,7 @@ export async function GET(request: NextRequest) {
 
   for (const cab of cabs) {
     const token = resolveWbToken(cab, "feedbacks");
+    const productScope = cabinetProductScope(cab);
     const stamp = new Date().toISOString();
     const rows: Record<string, unknown>[] = [];
     try {
@@ -40,6 +42,7 @@ export async function GET(request: NextRequest) {
           let hitCutoff = false;
           for (const f of list) {
             if (!f.id || !f.productDetails?.nmId) continue;
+            if (!allowsProduct(productScope, f.productDetails.nmId, f.productDetails.brandName)) continue;
             const created = f.createdDate ?? null;
             if (isAnswered && created && new Date(created).getTime() < cutoff) { hitCutoff = true; continue; }
             rows.push({

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { checkCronAuth, chunkedUpsert, writeSyncLog } from "@/lib/sync/helpers";
 import { getWbSyncTargets } from "@/lib/sync/cabinets";
+import { allowsNm, isScoped } from "@/lib/wb/productScope";
 
 const FULLSTATS_URL = "https://advert-api.wildberries.ru/adv/v3/fullstats";
 // fullstats: лимит 1 запрос/мин на токен, до 50 кампаний за раз (WB 400 при >50).
@@ -117,22 +118,19 @@ export async function GET(request: NextRequest) {
           for (const day of adv.days) {
             if (!day.date) continue;
             const date = day.date.slice(0, 10);
-            dayRows.push({
-              advert_id: adv.advertId,
-              date,
-              views: day.views ?? 0,
-              clicks: day.clicks ?? 0,
-              ctr: day.ctr ?? null,
-              cpc: day.cpc ?? null,
-              sum_spent: day.sum ?? 0,
-              orders: day.orders ?? 0,
-              sum_orders: day.sum_price ?? 0,
-              cabinet_id: t.cabinetId,
-            });
+            let scopedViews = 0, scopedClicks = 0, scopedSpent = 0, scopedOrders = 0, scopedOrdersSum = 0;
+            let hasAllowedNm = false;
 
             for (const app of day.apps ?? []) {
               for (const nm of app.nms ?? []) {
                 if (!nm.nmId) continue;
+                if (!allowsNm(t.productScope, nm.nmId)) continue;
+                hasAllowedNm = true;
+                scopedViews += nm.views ?? 0;
+                scopedClicks += nm.clicks ?? 0;
+                scopedSpent += nm.sum ?? 0;
+                scopedOrders += nm.orders ?? 0;
+                scopedOrdersSum += nm.sum_price ?? 0;
                 const key = `${nm.nmId}|${date}`;
                 const agg = nmDaily.get(key) ?? {
                   nm_id: nm.nmId,
@@ -152,6 +150,23 @@ export async function GET(request: NextRequest) {
                 nmDaily.set(key, agg);
               }
             }
+
+            if (isScoped(t.productScope) && !hasAllowedNm) continue;
+            const views = isScoped(t.productScope) ? scopedViews : (day.views ?? 0);
+            const clicks = isScoped(t.productScope) ? scopedClicks : (day.clicks ?? 0);
+            const spent = isScoped(t.productScope) ? scopedSpent : (day.sum ?? 0);
+            dayRows.push({
+              advert_id: adv.advertId,
+              date,
+              views,
+              clicks,
+              ctr: isScoped(t.productScope) ? (views > 0 ? clicks / views * 100 : 0) : (day.ctr ?? null),
+              cpc: isScoped(t.productScope) ? (clicks > 0 ? spent / clicks : 0) : (day.cpc ?? null),
+              sum_spent: spent,
+              orders: isScoped(t.productScope) ? scopedOrders : (day.orders ?? 0),
+              sum_orders: isScoped(t.productScope) ? scopedOrdersSum : (day.sum_price ?? 0),
+              cabinet_id: t.cabinetId,
+            });
           }
         }
       }

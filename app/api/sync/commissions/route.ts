@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { checkCronAuth, chunkedUpsert, writeSyncLog } from "@/lib/sync/helpers";
-import { getActiveWbCabinets } from "@/lib/wb/cabinetTokens";
+import { cabinetProductScope, getActiveWbCabinets } from "@/lib/wb/cabinetTokens";
 import { getWbCommission } from "@/lib/wb/commissions";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
@@ -24,7 +24,11 @@ export async function GET(request: NextRequest) {
 
   for (const cab of cabs) {
     try {
-      const comm = await getWbCommission(30, { token: cab.token, cacheKey: cab.id });
+      const comm = await getWbCommission(30, {
+        token: cab.token,
+        cacheKey: cab.id,
+        scope: cabinetProductScope(cab),
+      });
       if (!comm.byNm.size) continue; // токен без прав/пусто — не затираем прошлый кэш нулями
       const synced_at = new Date().toISOString();
       const rows = [...comm.byNm.entries()].map(([nm_id, r]) => ({

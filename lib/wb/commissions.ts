@@ -5,13 +5,15 @@
 // overheadPct: удержания без nm_id (account-level) → плоская надбавка ко всем SKU.
 // Кэш через Next fetch revalidate (отчёт тяжёлый ~12с) — тянется раз в 6ч на весь сервер.
 
-import { getActiveWbCabinets } from "./cabinetTokens";
+import { cabinetProductScope, getActiveWbCabinets } from "./cabinetTokens";
+import { allowsProduct, type WbProductScope } from "./productScope";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
 const WB_STATS_TOKEN = process.env.WB_STATS_TOKEN || process.env.WB_TOKEN_STATISTICS;
 
 interface ReportRow {
   nm_id?: number;
+  brand_name?: string;
   supplier_oper_name?: string;
   bonus_type_name?: string;
   commission_percent?: number;
@@ -42,9 +44,10 @@ const _memo = new Map<string, { ts: number; val: WbCommission }>();
 const MEMO_TTL = 6 * 3600 * 1000;
 
 // opts.token — токен конкретного кабинета (per-cabinet факт-комиссия); opts.cacheKey — id кабинета.
-export async function getWbCommission(days = 30, opts?: { token?: string; cacheKey?: string }): Promise<WbCommission> {
+export async function getWbCommission(days = 30, opts?: { token?: string; cacheKey?: string; scope?: WbProductScope }): Promise<WbCommission> {
   const token = opts?.token || WB_STATS_TOKEN;
-  const key = `${opts?.cacheKey || "env"}|${days}`;
+  const scope = opts?.scope ?? { brandFilters: [], allowedNmIds: null };
+  const key = `${opts?.cacheKey || "env"}|${days}|${scope.allowedNmIds?.join(",") ?? "all"}`;
   const hit = _memo.get(key);
   if (hit && Date.now() - hit.ts < MEMO_TTL) return hit.val;
   const empty: WbCommission = { byNm: new Map(), avgPct: 0, avgAcqPct: 0, avgExtraPct: 0, overheadPct: 0 };
@@ -67,6 +70,7 @@ export async function getWbCommission(days = 30, opts?: { token?: string; cacheK
   const acc = new Map<number, { wpct: number; acq: number; extra: number; rev: number }>();
   let totW = 0, totAcq = 0, totRev = 0, totExtra = 0, noNmExtra = 0;
   for (const r of rows) {
+    if (!allowsProduct(scope, r.nm_id, r.brand_name)) continue;
     const op = r.supplier_oper_name ?? "";
     const nm = Number(r.nm_id ?? 0);
     const isSale = !op || op === "Продажа";
@@ -156,7 +160,11 @@ async function getWbCommissionFromCache(): Promise<WbCommission | null> {
 async function getWbCommissionMergedLive(days: number): Promise<WbCommission> {
   const cabs = await getActiveWbCabinets();
   if (!cabs.length) return getWbCommission(days); // фолбэк на ENV
-  const parts = await Promise.all(cabs.map((c) => getWbCommission(days, { token: c.token, cacheKey: c.id })));
+  const parts = await Promise.all(cabs.map((c) => getWbCommission(days, {
+    token: c.token,
+    cacheKey: c.id,
+    scope: cabinetProductScope(c),
+  })));
   const byNm = new Map<number, NmRates>();
   for (const p of parts) {
     for (const [nm, e] of p.byNm) {

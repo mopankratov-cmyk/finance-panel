@@ -1,5 +1,6 @@
 // Карточки товаров кабинета(ов) через WB Content API: article + nm_id + name + цвет + ниша(subject).
 import { getWbCabinetSources } from "@/lib/wb/cabinetTokens";
+import { allowsProduct } from "@/lib/wb/productScope";
 
 const CARDS_URL = "https://content-api.wildberries.ru/content/v2/get/cards/list";
 
@@ -56,7 +57,10 @@ export async function fetchCabinetCards(cabinetId: string | null): Promise<Cabin
         if (!res.ok) break;
         const json = (await res.json()) as { cards?: RawCard[]; cursor?: { updatedAt?: string; nmID?: number } };
         const batch = json.cards ?? [];
-        for (const c of batch) out.push({ article: c.vendorCode || String(c.nmID), nm_id: c.nmID, name: c.title || "", color: colorOf(c), subject: c.subjectName || "", shop: src.name });
+        for (const c of batch) {
+          if (!allowsProduct(src.productScope, c.nmID, c.brand)) continue;
+          out.push({ article: c.vendorCode || String(c.nmID), nm_id: c.nmID, name: c.title || "", color: colorOf(c), subject: c.subjectName || "", shop: src.name });
+        }
         if (batch.length < 100) break;
         cursor = { updatedAt: json.cursor?.updatedAt, nmID: json.cursor?.nmID };
       }
@@ -84,6 +88,7 @@ export async function fetchCabinetPimRows(cabinetId: string | null): Promise<Pim
         const json = (await res.json()) as { cards?: RawCard[]; cursor?: { updatedAt?: string; nmID?: number } };
         const batch = json.cards ?? [];
         for (const c of batch) {
+          if (!allowsProduct(src.productScope, c.nmID, c.brand)) continue;
           const photos = (c.photos || []).map((p) => p.c246x328 || p.big || "").filter(Boolean);
           out.push({
             nmId: c.nmID,

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { resolveShopCabinet } from "@/lib/rnp/resolveShop";
-import { getWbCabinet, resolveWbToken } from "@/lib/wb/cabinetTokens";
+import { cabinetProductScope, getWbCabinet, resolveWbToken } from "@/lib/wb/cabinetTokens";
 import { getWbCommission, getWbCommissionMerged } from "@/lib/wb/commissions";
 
 export const dynamic = "force-dynamic";
@@ -25,7 +25,11 @@ export async function GET(request: NextRequest) {
     db.rpc("rnp_report", { p_cabinet: cabinetId }),
     db.from("product_costs").select("article, name"),
     // конкретный кабинет → его финотчёт; «Все» → мердж по всем кабинетам (ENV пуст)
-    cabinetId ? getWbCommission(30, { token: commToken, cacheKey: cabinetId }) : getWbCommissionMerged(30),
+    cabinetId ? getWbCommission(30, {
+      token: commToken,
+      cacheKey: cabinetId,
+      scope: cab ? cabinetProductScope(cab) : undefined,
+    }) : getWbCommissionMerged(30),
   ]);
   const nameByArt = new Map<string, string>();
   for (const c of costsRes.data ?? []) nameByArt.set(c.article as string, (c.name as string) ?? "");
