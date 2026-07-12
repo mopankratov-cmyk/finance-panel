@@ -106,7 +106,14 @@ export function initialStatisticsCursor(now = new Date()): string {
 }
 
 export function historyPeriod(now = new Date()): { start: string; end: string } {
-  const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 1));
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Moscow",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(now);
+  const value = (type: Intl.DateTimeFormatPartTypes) => Number(parts.find((part) => part.type === type)?.value);
+  const end = new Date(Date.UTC(value("year"), value("month") - 1, value("day") - 1));
   const start = new Date(end);
   start.setUTCDate(start.getUTCDate() - 364);
   return { start: start.toISOString().slice(0, 10), end: end.toISOString().slice(0, 10) };

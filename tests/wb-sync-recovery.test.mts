@@ -52,6 +52,7 @@ test("statistics cursor advances by lastChangeDate, not business event date", ()
 test("history report requests exactly 365 days and exact scoped nmIDs", () => {
   const period = historyPeriod(new Date("2026-07-13T12:00:00Z"));
   assert.deepEqual(period, { start: "2025-07-13", end: "2026-07-12" });
+  assert.deepEqual(historyPeriod(new Date("2026-07-12T22:30:00Z")), period);
   const payload = historyReportPayload("00000000-0000-4000-8000-000000000001", "cabinet-123", [11, 22], period);
   assert.deepEqual((payload.params as Record<string, unknown>).nmIDs, [11, 22]);
   assert.equal((payload.params as Record<string, unknown>).aggregationLevel, "day");
