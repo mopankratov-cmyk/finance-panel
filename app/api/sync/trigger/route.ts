@@ -3,7 +3,7 @@ import { asSyncPayload, syncPayloadOk } from "@/lib/sync/result";
 
 // Пользовательский триггер синков из UI: секрет подставляется на сервере,
 // клиент его не видит. Допустимые задания фиксированы.
-const ALLOWED = ["orders", "sales", "stocks", "adverts", "advert-stats", "funnel", "commissions", "feedbacks", "moysklad", "all"];
+const ALLOWED = ["orders", "sales", "stocks", "adverts", "advert-stats", "funnel", "commissions", "feedbacks", "moysklad", "history", "all"];
 
 export const maxDuration = 60;
 

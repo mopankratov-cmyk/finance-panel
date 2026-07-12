@@ -46,7 +46,7 @@ test("statistics cursor advances by lastChangeDate, not business event date", ()
     { date: "2026-01-01T00:00:00", lastChangeDate: "2026-07-13T01:05:00" },
   ], "2026-04-01T00:00:00");
   assert.equal(cursor, "2026-07-13T01:05:00");
-  assert.equal(initialStatisticsCursor(new Date("2026-07-13T00:00:00Z")), "2026-04-14T00:00:00");
+  assert.equal(initialStatisticsCursor(new Date("2026-07-13T00:00:00Z")), "2026-07-12T22:00:00");
 });
 
 test("history report requests exactly 365 days and exact scoped nmIDs", () => {

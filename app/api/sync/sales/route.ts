@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { checkCronAuth, chunkedUpsert, writeSyncLog } from "@/lib/sync/helpers";
-import { getWbSyncTargets, rememberScopedProducts } from "@/lib/sync/cabinets";
+import { getWbSyncTargets, lastSyncDate, rememberScopedProducts } from "@/lib/sync/cabinets";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { allowsProduct } from "@/lib/wb/productScope";
 import { initialStatisticsCursor, readWbSyncState, statisticsCursor, writeWbSyncState } from "@/lib/wb/syncRecovery";
@@ -40,9 +40,13 @@ export async function GET(request: NextRequest) {
       const saved = !forceFrom && db && t.cabinetId
         ? await readWbSyncState(db, t.cabinetId, "sales")
         : null;
+      const existingDate = !forceFrom && !saved
+        ? await lastSyncDate("wb_sales", t.cabinetId)
+        : null;
       const dateFrom = forceFrom
         ? new Date(forceFrom).toISOString().slice(0, 19)
-        : saved?.cursor ?? initialStatisticsCursor();
+        : saved?.cursor
+          ?? (existingDate ? new Date(existingDate).toISOString().slice(0, 19) : initialStatisticsCursor());
 
       const url = new URL("https://statistics-api.wildberries.ru/api/v1/supplier/sales");
       url.searchParams.set("dateFrom", dateFrom);

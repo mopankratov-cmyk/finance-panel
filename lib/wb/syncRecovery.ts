@@ -99,7 +99,10 @@ export function statisticsCursor(rows: Record<string, unknown>[], fallback: stri
 }
 
 export function initialStatisticsCursor(now = new Date()): string {
-  return new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000).toISOString().slice(0, 19);
+  // Полную историю scoped-кабинета забирает фильтрованный DETAIL_HISTORY_REPORT.
+  // Синхронный statistics API для большого кабинета не успевает вернуть 90 дней
+  // событий за лимит функции, поэтому live-ленту начинаем с безопасного окна.
+  return new Date(now.getTime() - 2 * 60 * 60 * 1000).toISOString().slice(0, 19);
 }
 
 export function historyPeriod(now = new Date()): { start: string; end: string } {
