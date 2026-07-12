@@ -3,8 +3,6 @@ import { checkCronAuth } from "@/lib/sync/helpers";
 import { runCoreSyncJobs } from "@/lib/sync/orchestrator";
 import { runWbHistoryRecovery } from "@/lib/wb/syncRecovery";
 
-export const maxDuration = 60;
-
 // Оркестратор быстрых синков — один cron-слот (Hobby, 60с/вызов) и кнопка
 // «обновить всё». funnel/commissions/feedbacks сюда НЕ входят — funnel сама по себе
 // таймбоксится на 50с (21с-паузы между батчами analytics-API), и раньше съедала весь
