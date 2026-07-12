@@ -168,6 +168,7 @@
 
     .grid-2 { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 14px; }
     .grid-3 { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 14px; }
+    .grid-2 > *, .grid-3 > * { min-width: 0; }
     .card { padding: 20px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); box-shadow: 0 1px 2px rgba(17,24,39,.02); }
     .card h3 { margin: 0 0 6px; font-size: 16px; }
     .card p { margin: 0; color: var(--muted); }
@@ -265,13 +266,39 @@
     .gate b { display: block; font-size: 12px; }
     .gate span { color: var(--muted); font-size: 11px; }
 
+    .route-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; }
+    .route-card { display: grid; grid-template-columns: 38px 1fr; gap: 12px; padding: 15px; border: 1px solid var(--line); border-radius: 12px; background: #fff; }
+    .route-num { display: grid; width: 36px; height: 36px; place-items: center; border-radius: 10px; color: var(--violet-2); background: var(--violet-soft); font-size: 10px; font-weight: 850; }
+    .route-card h3 { margin: 0 0 4px; font-size: 13px; }
+    .route-card p { margin: 0; color: var(--muted); font-size: 11px; }
+    .route-meta { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 9px; }
+    .route-meta code { font-size: 9px; }
+
+    .cabinet-demo { overflow: hidden; border: 1px solid var(--line); border-radius: 14px; background: #fff; box-shadow: var(--shadow); }
+    .cabinet-bar { display: flex; align-items: center; gap: 9px; min-height: 58px; padding: 0 16px; border-bottom: 1px solid var(--line); }
+    .cabinet-bar b { margin-right: auto; }
+    .cab-pill { display: inline-flex; align-items: center; gap: 7px; min-height: 32px; padding: 6px 10px; border: 1px solid var(--violet-line); border-radius: 8px; color: var(--violet-2); background: var(--violet-soft); font-size: 11px; font-weight: 750; }
+    .cab-pill::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--green); }
+    .cabinet-body { display: grid; grid-template-columns: 1.1fr .9fr; }
+    .cabinet-body > div { padding: 16px; }
+    .cabinet-body > div + div { border-left: 1px solid var(--line); background: #fafafa; }
+    .rule-list { display: grid; gap: 8px; margin: 10px 0 0; padding: 0; list-style: none; }
+    .rule-list li { position: relative; padding-left: 18px; color: #4b5563; font-size: 11px; }
+    .rule-list li::before { content: "✓"; position: absolute; left: 0; color: var(--green); font-weight: 900; }
+
+    .code-contract { overflow: auto; margin: 10px 0 0; padding: 14px; border: 1px solid #283548; border-radius: 10px; color: #dbeafe; background: var(--navy); font: 11px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre; }
+    .phase-line { display: grid; grid-template-columns: 84px 1fr auto; gap: 12px; align-items: center; padding: 13px 0; border-bottom: 1px solid var(--line); }
+    .phase-line:last-child { border-bottom: 0; }
+    .phase-line b { display: block; font-size: 12px; }
+    .phase-line p { margin: 2px 0 0; color: var(--muted); font-size: 11px; }
+
     .wireframe { overflow: hidden; border: 1px solid var(--line); border-radius: 14px; background: #fff; box-shadow: var(--shadow); }
     .wf-head { display: flex; align-items: center; justify-content: space-between; min-height: 54px; padding: 0 16px; border-bottom: 1px solid var(--line); }
     .wf-body { display: grid; grid-template-columns: 54px 1fr; min-height: 410px; }
     .wf-rail { display: grid; align-content: start; gap: 10px; padding: 12px 10px; border-right: 1px solid var(--line); background: #fff; }
     .wf-icon { height: 30px; border-radius: 8px; background: #f3f4f6; }
     .wf-icon.on { background: var(--violet-soft); box-shadow: inset 3px 0 var(--violet); }
-    .wf-main { padding: 16px; background: #fafafa; }
+    .wf-main { min-width: 0; padding: 16px; background: #fafafa; }
     .wf-filter { display: flex; gap: 7px; margin-bottom: 12px; }
     .wf-pill { width: 82px; height: 30px; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
     .wf-pill.primary { width: 108px; background: var(--violet); }
@@ -293,6 +320,9 @@
       .nav a { justify-content: center; padding: 8px; }
       .shell { margin-left: 58px; }
       .hero-grid, .tokens { grid-template-columns: repeat(3,minmax(0,1fr)); }
+      .route-grid { grid-template-columns: 1fr; }
+      .cabinet-body { grid-template-columns: 1fr; }
+      .cabinet-body > div + div { border-left: 0; border-top: 1px solid var(--line); }
       .epic { grid-template-columns: 50px 1fr; }
       .epic > :nth-child(3), .epic > :nth-child(4) { grid-column: 2; }
       .flow { grid-template-columns: repeat(3,minmax(0,1fr)); }
@@ -309,6 +339,8 @@
       .shot-frame { height: 230px; }
       .epic { grid-template-columns: 1fr; }
       .epic > :nth-child(3), .epic > :nth-child(4) { grid-column: 1; }
+      .cabinet-bar { align-items: flex-start; flex-direction: column; padding: 12px; }
+      .phase-line { grid-template-columns: 1fr; }
     }
     @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } * { transition: none !important; } }
   </style>
@@ -323,16 +355,21 @@
       <div class="nav-label">Решение</div>
       <a href="#verdict"><span class="nav-dot">01</span><span>Вердикт</span></a>
       <a href="#scope"><span class="nav-dot">02</span><span>Границы</span></a>
-      <a href="#visual"><span class="nav-dot">03</span><span>Визуал 1:1</span></a>
+      <a href="#ia"><span class="nav-dot">03</span><span>Навигация</span></a>
+      <a href="#cabinets"><span class="nav-dot">04</span><span>Кабинеты</span></a>
+      <a href="#screens"><span class="nav-dot">05</span><span>14 экранов</span></a>
+      <a href="#visual"><span class="nav-dot">06</span><span>Визуал 1:1</span></a>
       <div class="nav-label">Аудит</div>
-      <a href="#evidence"><span class="nav-dot">04</span><span>Экраны</span></a>
-      <a href="#matrix"><span class="nav-dot">05</span><span>Сравнение</span></a>
-      <a href="#gaps"><span class="nav-dot">06</span><span>Пробелы Inferno</span></a>
+      <a href="#evidence"><span class="nav-dot">07</span><span>Доказательства</span></a>
+      <a href="#matrix"><span class="nav-dot">08</span><span>Сравнение</span></a>
+      <a href="#gaps"><span class="nav-dot">09</span><span>Пробелы Inferno</span></a>
       <div class="nav-label">Разработка</div>
-      <a href="#architecture"><span class="nav-dot">07</span><span>Архитектура</span></a>
-      <a href="#epics"><span class="nav-dot">08</span><span>Эпики</span></a>
-      <a href="#acceptance"><span class="nav-dot">09</span><span>Приёмка</span></a>
-      <a href="#plan"><span class="nav-dot">10</span><span>Порядок</span></a>
+      <a href="#architecture"><span class="nav-dot">10</span><span>Архитектура</span></a>
+      <a href="#contracts"><span class="nav-dot">11</span><span>API-контракты</span></a>
+      <a href="#cleanup"><span class="nav-dot">12</span><span>Объединить</span></a>
+      <a href="#epics"><span class="nav-dot">13</span><span>Эпики</span></a>
+      <a href="#acceptance"><span class="nav-dot">14</span><span>Приёмка</span></a>
+      <a href="#plan"><span class="nav-dot">15</span><span>Порядок</span></a>
     </nav>
     <div class="rail-foot">Аудит: 13.07.2026 · desktop 1338×768</div>
   </aside>
@@ -340,7 +377,7 @@
   <div class="shell">
     <header class="topbar">
       <div class="crumbs">ТЗ / <b>перенос Inferno 1:1</b></div>
-      <div class="status">артефакт готов к ревью</div>
+      <div class="status">редакция 2 · готово к ревью</div>
     </header>
 
     <main>
@@ -350,8 +387,8 @@
         <p>Переносим интерфейс и пользовательские сценарии Inferno максимально близко к оригиналу для всех нефинансовых WB-модулей. Наши API, мультикабинетность, расчёты, защита действий и данные сохраняются. Финансы и Ozon заморожены.</p>
         <div class="hero-grid">
           <div class="hero-stat"><strong>1:1</strong><span>цель по визуальной геометрии и поведению</span></div>
-          <div class="hero-stat"><strong>13</strong><span>зафиксированных экранов в артефакте</span></div>
-          <div class="hero-stat"><strong>15+</strong><span>наших маршрутов проверено</span></div>
+          <div class="hero-stat"><strong>14</strong><span>целевых WB-экранов зафиксировано</span></div>
+          <div class="hero-stat"><strong>100</strong><span>API-путей найдено в клиенте Inferno</span></div>
           <div class="hero-stat"><strong>0</strong><span>изменений в Финансах и Ozon</span></div>
         </div>
       </header>
@@ -395,6 +432,89 @@
         <div class="card danger callout" style="margin-top:14px">
           <h3>Предварительный блокер перед разработкой</h3>
           <p>Деплой <code>finance-panel-two.vercel.app</code> содержит WB-страницы, которых нет в текущем локальном <code>main</code>. Их история видна в ветках <code>deploy-main</code>/<code>work-main</code> и feature-ветках. До первого PR владелец должен подтвердить каноническую базовую ветку; иначе можно переделать устаревший код.</p>
+        </div>
+      </section>
+
+      <section id="ia">
+        <div class="section-head"><div><div class="kicker">Information architecture</div><h2>Одна главная и один WB-кокпит</h2><p>Убираем конкурирующие меню. Пользователь видит одну глобальную навигацию, а все инструменты WB живут внутри единого пространства <code>/wb</code> с интерфейсом Inferno.</p></div></div>
+        <div class="spec-table-wrap">
+          <table>
+            <thead><tr><th>Текущая поверхность</th><th>Целевая поверхность</th><th>Решение</th><th>Совместимость</th></tr></thead>
+            <tbody>
+              <tr><td><code>/</code> + <code>ModulesHome</code> + sidebar</td><td><strong>Главный дашборд</strong></td><td>Каталог модулей больше не дублирует меню. Главная показывает показатели, проблемы, фоновые задачи и быстрые действия.</td><td>Маршрут <code>/</code> сохраняется.</td></tr>
+              <tr><td><code>/abc</code>, <code>/trends</code>, <code>/market</code></td><td><strong><code>/wb</code> → Аналитика</strong></td><td>Три экрана становятся внутренними вкладками WB, а не тремя верхнеуровневыми пунктами.</td><td>Старые URL сначала работают, затем получают redirect.</td></tr>
+              <tr><td><code>/costs</code>, <code>/price-solver</code>, <code>/repricer</code></td><td><strong><code>/wb/pricing</code></strong></td><td>Вкладки «Себестоимость», «Решатель цены», «Репрайсер». Серверные домены остаются отдельными.</td><td>Никакой миграции данных.</td></tr>
+              <tr><td><code>/cabinets</code>, <code>/users</code>, <code>/sync</code></td><td><strong><code>/settings</code></strong></td><td>Один системный раздел с вкладками. В основном меню остаётся один пункт.</td><td>Права ролей сохраняются.</td></tr>
+              <tr><td><code>/card-editor</code>, <code>/uniquizer</code></td><td><strong><code>/wb/lab</code> → Инструменты</strong></td><td>Скрытые утилиты получают понятный вход из лаборатории контента.</td><td>Старые deep-link URL не ломаются.</td></tr>
+              <tr><td><code>FinanceTabs</code> и финансовые маршруты</td><td><strong>Без изменений</strong></td><td>Финансы остаются самостоятельным разделом и не переезжают в WB-кокпит.</td><td>Обязательный frozen-route regression.</td></tr>
+              <tr><td><code>/ozon</code></td><td><strong>Без изменений</strong></td><td>Ozon не участвует в редизайне и не наследует новые WB-компоненты.</td><td>Обязательный visual regression.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="grid-3" style="margin-top:14px">
+          <article class="card callout good"><h3>Верхний уровень</h3><p>Дашборд, Управление WB, Ozon, Финансы, Закупки, Лаборатория, Настройки. Не более 7–9 постоянных пунктов.</p></article>
+          <article class="card callout"><h3>Внутри WB</h3><p>РНП, планирование, Unit, SEO, склейки, реклама, CTR, воронка, товары и поставки переключаются без смены общей оболочки.</p></article>
+          <article class="card callout warn"><h3>Удаление только после parity</h3><p>Старый маршрут удаляется не раньше, чем новый экран прошёл функциональное сравнение и один релиз отработал с redirect.</p></article>
+        </div>
+      </section>
+
+      <section id="cabinets">
+        <div class="section-head"><div><div class="kicker">Multi-cabinet foundation</div><h2>Несколько кабинетов — на каждом WB-экране</h2><p>Это не локальный dropdown. Кабинет становится обязательным контекстом данных, разрешений, настроек, фоновых задач и write-действий.</p></div></div>
+        <div class="cabinet-demo">
+          <div class="cabinet-bar"><b>РНП · Wildberries</b><span class="badge">данные 4 мин назад</span><span class="cab-pill">CLERIN · основной</span></div>
+          <div class="cabinet-body">
+            <div>
+              <span class="state copy">ПОВЕДЕНИЕ 1:1</span>
+              <ul class="rule-list">
+                <li>Переключатель виден в topbar на всех 14 WB-экранах и не меняет своё положение.</li>
+                <li>Приоритет выбора: URL <code>?cabinet=uuid</code> → сохранённый WB-кабинет → первый разрешённый кабинет.</li>
+                <li>Смена кабинета отменяет старые запросы, сбрасывает выбранные строки и загружает новый срез.</li>
+                <li>Период, сортировка и тип метрики сохраняются, если они допустимы для нового кабинета.</li>
+                <li>В URL находится ID, в интерфейсе — название, юрлицо, статус токена и свежесть данных.</li>
+              </ul>
+            </div>
+            <div>
+              <span class="state keep">ИЗОЛЯЦИЯ</span>
+              <ul class="rule-list">
+                <li>Сервер проверяет, что текущий пользователь имеет доступ к переданному <code>cabinet_id</code>.</li>
+                <li>Настройки именуются по кабинету: налоги, FF, планы, рекламные caps, склады и исключения SKU.</li>
+                <li>Фоновые job/task IDs всегда содержат кабинет и не восстанавливаются в другом контексте.</li>
+                <li>Кэш, query keys и optimistic updates включают <code>cabinet_id</code>.</li>
+                <li>Ответ другого кабинета, пришедший после переключения, игнорируется и не перерисовывает экран.</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+        <div class="spec-table-wrap" style="margin-top:14px">
+          <table>
+            <thead><tr><th>Режим</th><th>Разрешён</th><th>Поведение</th><th>Запрет</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Один кабинет</strong></td><td>На всех WB-экранах.</td><td>Полное чтение и разрешённые ролью действия.</td><td>Нет доступа → 403 + возврат к первому разрешённому кабинету.</td></tr>
+              <tr><td><strong>Все кабинеты</strong></td><td>Дашборд, агрегированная аналитика, ABC, trends и read-only РНП.</td><td>API явно поддерживает агрегацию; строки маркируются кабинетом, если смешиваются.</td><td>Нельзя менять ставки, цены, бюджеты, поставки, статусы и контент.</td></tr>
+              <tr><td><strong>Несколько выбранных</strong></td><td>Только будущие сравнительные отчёты.</td><td>Мультиселект не входит в P0; не имитировать его через «Все».</td><td>Никаких массовых write-действий между кабинетами.</td></tr>
+              <tr><td><strong>Недоступный токен</strong></td><td>Экран доступен в диагностическом режиме.</td><td>Показывается отсутствующий scope, срок токена и ссылка в настройки кабинета.</td><td>Не заменять ошибку пустой таблицей.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="screens">
+        <div class="section-head"><div><div class="kicker">Screen contract</div><h2>Карта 14 целевых экранов</h2><p>Каждый экран получает одинаковый shell, кабинет, свежесть данных, загрузку, пустое состояние, ошибку, retry и роль. Отличается только рабочая область.</p></div></div>
+        <div class="route-grid">
+          <article class="route-card"><span class="route-num">01</span><div><h3>Дашборд</h3><p>Показатели бизнеса, проблемы, незавершённые задачи, последние синки и быстрые переходы. Внешний вид Inferno, содержание наше.</p><div class="route-meta"><code>/</code><span class="state copy">COPY+</span></div></div></article>
+          <article class="route-card"><span class="route-num">02</span><div><h3>РНП</h3><p>Матрица SKU × дни, планы, прогноз, остатки, оборачиваемость, GMROI и ДРР. Первый эталонный экран для pixel parity.</p><div class="route-meta"><code>/wb/rnp</code><code>/api/rnp/*</code><span class="priority p0">P0</span></div></div></article>
+          <article class="route-card"><span class="route-num">03</span><div><h3>Планирование</h3><p>Год, категории, SKU, месячные объёмы, нормы и autosave. Финансовые страницы не меняются, здесь только WB-план.</p><div class="route-meta"><code>/wb/planning</code><code>/api/planning/*</code></div></div></article>
+          <article class="route-card"><span class="route-num">04</span><div><h3>Задачи / Roadmap</h3><p>Канбан сигналов и задач, drag-and-drop, причины, архив и актуализация. Кабинет обязателен для операционных задач.</p><div class="route-meta"><code>/wb/tasks</code><code>/api/roadmap/*</code></div></div></article>
+          <article class="route-card"><span class="route-num">05</span><div><h3>Unit</h3><p>Цена → маржа и целевая маржа → цена, текущая комиссия, себестоимость, налог, FF, ДРР и обновление источников.</p><div class="route-meta"><code>/wb/unit</code><code>/api/unit/*</code><span class="priority p0">P0</span></div></div></article>
+          <article class="route-card"><span class="route-num">06</span><div><h3>SEO</h3><p>SKU, ключи, позиции и динамические дни. Плотная таблица Inferno, поиск и раскрытие без отдельного верхнего маршрута.</p><div class="route-meta"><code>/wb/seo</code><code>/api/seo/*</code></div></div></article>
+          <article class="route-card"><span class="route-num">07</span><div><h3>Склейки</h3><p>Группы карточек, переток, дорогой участник, балласт и решение по группе на данных РНП за выбранное окно.</p><div class="route-meta"><code>/wb/sklejki</code><code>/api/sklejki</code></div></div></article>
+          <article class="route-card"><span class="route-num">08</span><div><h3>Реклама</h3><p>Кампании по товарам, расписание, депозиты, ставки, история и безопасные массовые действия через preview → execute.</p><div class="route-meta"><code>/wb/adverts</code><code>/api/adverts/*</code><span class="priority p0">P0</span></div></div></article>
+          <article class="route-card"><span class="route-num">09</span><div><h3>CTR-тесты</h3><p>Новый тест, варианты, ротация, показы, анализ рекламы, CPM-рекомендация, победитель, пауза и отмена.</p><div class="route-meta"><code>/wb/ctr</code><code>/api/ctrtest/*</code></div></div></article>
+          <article class="route-card"><span class="route-num">10</span><div><h3>Воронка / Репрайсер</h3><p>30-дневная heatmap, переключатель метрик, отметки событий, эффекты и переход к решениям цены.</p><div class="route-meta"><code>/wb/funnel</code><code>/api/design/*</code><code>/api/repricer/*</code></div></div></article>
+          <article class="route-card"><span class="route-num">11</span><div><h3>Лаборатория контента</h3><p>Товар, референсы, конкуренты, промпт, изображения, 6 слайдов, storyboard, видео и сохранение в папку артикула.</p><div class="route-meta"><code>/wb/lab</code><code>/api/lab/*</code><span class="priority p1">P1</span></div></div></article>
+          <article class="route-card"><span class="route-num">12</span><div><h3>Товар / SKU</h3><p>Мастер-данные, медиа, completeness, комментарий, готовность, кабинет, Drive и ссылки на WB.</p><div class="route-meta"><code>/wb/product</code><span class="state new">BUILD</span></div></div></article>
+          <article class="route-card"><span class="route-num">13</span><div><h3>Поставки</h3><p>Потребность, проценты складов, минимальная партия, ограничения, исключения, тара, WMS, export и healthcheck.</p><div class="route-meta"><code>/wb/supplies</code><code>/api/supplies/*</code><span class="priority p0">P0</span></div></div></article>
+          <article class="route-card"><span class="route-num">14</span><div><h3>Настройки WB</h3><p>Кабинеты, API scopes, пользователи, синхронизация, свежесть источников и настройки конкретного кабинета.</p><div class="route-meta"><code>/settings</code><code>/api/cabinets/*</code></div></div></article>
         </div>
       </section>
 
@@ -504,6 +624,19 @@
           <article class="card callout warn"><h3>Слабая доступность</h3><p>Много icon-only элементов, мелкие цели, контрастный смысл часто передаётся только цветом.</p></article>
           <article class="card callout warn"><h3>Зависимость от внешних ручных файлов</h3><p>Google Drive, готовая тара, WMS и часть ограничений требуют внешних интеграций и не могут считаться обычным WB API.</p></article>
         </div>
+        <div class="spec-table-wrap" style="margin-top:14px">
+          <table>
+            <thead><tr><th>Кодовый факт</th><th>Inferno snapshot 13.07.2026</th><th>Вывод для нашей реализации</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Клиент</strong></td><td>Один HTML-файл 613 915 bytes, Alpine.js + Tailwind runtime.</td><td>Поведение повторяем, монолитный компонент не копируем.</td></tr>
+              <tr><td><strong>Сетевой слой</strong></td><td>139 вхождений <code>fetch()</code>, около 100 уникальных API paths.</td><td>Нужен общий request client, query keys и единая классификация ошибок.</td></tr>
+              <tr><td><strong>Асинхронность</strong></td><td>58 <code>setTimeout</code>, 6 <code>setInterval</code>, WebSocket/SSE отсутствуют.</td><td>Task polling централизуется; каждый poll имеет deadline и cancel.</td></tr>
+              <tr><td><strong>Состояние</strong></td><td>Один <code>app()</code>, около 341 методов, 32 обращения к localStorage.</td><td>Модули изолируются; localStorage ключи включают пользователя и кабинет.</td></tr>
+              <tr><td><strong>Ошибки</strong></td><td>43 пустых catch; часть fetch не проверяет HTTP status.</td><td>Пустые catch запрещены; error boundary и typed result обязательны.</td></tr>
+              <tr><td><strong>Быстрый рендер</strong></td><td>Большая РНП строится через <code>innerHTML</code>.</td><td>Использовать virtualized React table; не переносить inline onclick/XSS-риск.</td></tr>
+            </tbody>
+          </table>
+        </div>
       </section>
 
       <section id="architecture">
@@ -537,6 +670,80 @@
         </div>
       </section>
 
+      <section id="contracts">
+        <div class="section-head"><div><div class="kicker">Data contracts</div><h2>Как UI получает данные и не смешивает кабинеты</h2><p>В существующем репозитории уже 115 Route Handlers. Массово переписывать их ответы нельзя: новый WB-shell использует адаптеры, а единый envelope обязателен только для новых endpoints.</p></div></div>
+        <div class="grid-2">
+          <article class="card">
+            <span class="state keep">СУЩЕСТВУЮЩИЕ API</span>
+            <h3 style="margin-top:10px">Адаптировать, не ломать</h3>
+            <ul class="rule-list">
+              <li>Каждый query key: <code>[domain, cabinetId, filters]</code>.</li>
+              <li>Read-запрос получает кабинет существующим способом: path или query.</li>
+              <li>Write-запрос всегда содержит один конкретный <code>cabinet_id</code>.</li>
+              <li>View-model adapter приводит разные ответы к таблице Inferno.</li>
+              <li><code>AbortController</code> и request sequence защищают от устаревшего ответа.</li>
+            </ul>
+          </article>
+          <article class="card">
+            <span class="state new">НОВЫЕ API</span>
+            <h3 style="margin-top:10px">Стандартный envelope</h3>
+            <div class="code-contract">{
+  "meta": {
+    "cabinetId": "uuid",
+    "cabinetName": "CLERIN",
+    "generatedAt": "ISO-8601",
+    "sourceUpdatedAt": "ISO-8601",
+    "status": "ready|preparing|partial|error",
+    "warnings": []
+  },
+  "data": {},
+  "error": null
+}</div>
+          </article>
+        </div>
+        <div class="spec-table-wrap" style="margin-top:14px">
+          <table>
+            <thead><tr><th>Операция</th><th>Контракт</th><th>UI-состояние</th><th>Защита</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Обычное чтение</strong></td><td>200 + data/meta; stale data может оставаться на экране.</td><td>Фоновый progress рядом со свежестью данных.</td><td>Отмена при cabinet/filter change.</td></tr>
+              <tr><td><strong>Подготовка</strong></td><td>202 или <code>status=preparing</code> + task ID + progress.</td><td>0–10 сек skeleton; 10–60 сек объяснение; после 60 сек retry/cancel.</td><td>Максимальный срок и прекращение polling.</td></tr>
+              <tr><td><strong>Частичные данные</strong></td><td><code>status=partial</code> + список недоступных источников.</td><td>Таблица показывается, отсутствующие метрики отмечены.</td><td>Не подменять null нулём.</td></tr>
+              <tr><td><strong>Write preview</strong></td><td>Расчёт изменений без применения.</td><td>Modal показывает количество SKU, суммы, старое → новое.</td><td>Один кабинет, роль, cap и server validation.</td></tr>
+              <tr><td><strong>Write execute</strong></td><td>Idempotency key + audit ID + результат по каждой строке.</td><td>Успехи и ошибки отображаются раздельно.</td><td>Повтор запроса не создаёт второе действие.</td></tr>
+              <tr><td><strong>Ошибка доступа</strong></td><td>401 → login; 403 → кабинет/роль; 409 → конфликт; 429 → retry-after.</td><td>Понятная причина и следующий шаг.</td><td>Никаких пустых catch и пустых таблиц.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="card warn callout" style="margin-top:14px">
+          <h3>Зафиксированный дефект оригинала</h3>
+          <p>В Inferno <code>loadTable()</code> повторяет RNP-запрос каждые 5 секунд без лимита, пока сервер отвечает <code>preparing</code>. В нашей реализации polling имеет deadline, cancel, retry и диагностический task ID.</p>
+        </div>
+      </section>
+
+      <section id="cleanup">
+        <div class="section-head"><div><div class="kicker">Consolidation</div><h2>Что объединяем, скрываем и удаляем</h2><p>Удаление не является первым шагом. Сначала новый экран получает parity, затем старый маршрут становится redirect, и только после стабильного релиза удаляется дублирующий UI.</p></div></div>
+        <div class="grid-3">
+          <article class="card callout good"><h3>Удалить после замены</h3><p>Один из двух главных экранов: <code>ModulesHome</code> или неиспользуемый <code>DashboardPage</code>. После единого shell также удаляется дублирующий <code>ModuleMenu</code>.</p></article>
+          <article class="card callout"><h3>Объединить UI</h3><p>ABC + trends + market; costs + price solver + repricer; cabinets + users + sync. API и расчёты остаются отдельными.</p></article>
+          <article class="card callout warn"><h3>Пока сохранить</h3><p>31 Inferno-style Route Handler без текущего UI и большинство <code>/api/lab</code>. Они являются заготовкой нового WB-кокпита, а не мусором.</p></article>
+        </div>
+        <div class="spec-table-wrap" style="margin-top:14px">
+          <table>
+            <thead><tr><th>Объект</th><th>Сейчас</th><th>Действие</th><th>Условие удаления</th></tr></thead>
+            <tbody>
+              <tr><td><code>ModulesHome</code></td><td>Текущая главная-каталог, дублирует sidebar.</td><td>Заменить рабочим дашбордом Inferno-style.</td><td>Главная прошла role/access E2E.</td></tr>
+              <tr><td><code>DashboardPage</code></td><td>Не импортируется ни одной страницей.</td><td>Использовать как основу либо удалить.</td><td>Выбран канонический дашборд.</td></tr>
+              <tr><td><code>ModuleMenu</code></td><td>Отдельное меню внутри Ozon.</td><td>Не трогать Ozon в P0; удалить только при отдельном согласовании общей оболочки.</td><td>Ozon больше не зависит от компонента.</td></tr>
+              <tr><td>Старые WB routes</td><td>Разрозненные самостоятельные страницы.</td><td>Redirect на соответствующую вкладку <code>/wb</code>.</td><td>Один стабильный релиз + отсутствие внешних ссылок.</td></tr>
+              <tr><td>Inferno API namespaces</td><td>Часть не имеет видимого UI.</td><td>Промаркировать владельца и связать с экраном.</td><td>Удалять только endpoint без caller, job и внешнего потребителя.</td></tr>
+              <tr><td>Creatify/post utilities</td><td>Нет видимых UI-caller.</td><td>Отдельный cleanup-аудит по логам.</td><td>30 дней без внешних вызовов.</td></tr>
+              <tr><td>SQL migrations</td><td>История состояния БД.</td><td><span class="state keep">НЕ УДАЛЯТЬ</span></td><td>Не применимо.</td></tr>
+              <tr><td>Финансы и Ozon</td><td>Рабочие самостоятельные продукты.</td><td><span class="state hold">FROZEN</span></td><td>Только отдельное новое ТЗ.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
       <section id="epics">
         <div class="section-head"><div><div class="kicker">Backlog</div><h2>Эпики разработки</h2><p>Фильтр позволяет посмотреть только нужный приоритет. Каждый эпик — отдельная ветка и PR.</p></div></div>
         <div class="gallery-tools">
@@ -546,9 +753,9 @@
           <button class="filter-btn" data-priority="p2">P2</button>
         </div>
         <div class="epic-grid">
-          <article class="epic" data-priority="p0"><div class="epic-id">P0.1</div><div><h3>Inferno shell</h3><p>Sidebar, topbar, cabinet switcher, filters, dense table, drawer, status, empty/error/loading states.</p></div><ul><li>Только нефинансовые маршруты.</li><li>Visual regression 1440/1024/375.</li><li>Finances/Ozon не затронуты.</li></ul><span class="priority p0">P0</span></article>
-          <article class="epic" data-priority="p0"><div class="epic-id">P0.2</div><div><h3>Главная модулей 1:1</h3><p>Убираем синий hero, переносим сетку Inferno, сохраняем роли, кабинеты, health и attention cards.</p></div><ul><li>Карточки 3×N desktop.</li><li>Статус модуля и агент.</li><li>Deep links без тупиков.</li></ul><span class="priority p0">P0</span></article>
-          <article class="epic" data-priority="p0"><div class="epic-id">P0.3</div><div><h3>WB analytics visual parity</h3><p>РНП, SEO, склейки, Unit, ABC, trends, market, reviews и product в единой системе.</p></div><ul><li>Плотность таблиц Inferno.</li><li>Наши кабинеты/экспорты.</li><li>Loading/error лучше оригинала.</li></ul><span class="priority p0">P0</span></article>
+          <article class="epic" data-priority="p0"><div class="epic-id">P0.1</div><div><h3>Inferno shell + cabinet context</h3><p>Sidebar, topbar, глобальный cabinet provider, URL/deep-link, scopes, свежесть данных, общие loading/error/empty states.</p></div><ul><li>Только нефинансовые WB-маршруты.</li><li>Все query keys содержат cabinet ID.</li><li>Finances/Ozon не затронуты.</li></ul><span class="priority p0">P0</span></article>
+          <article class="epic" data-priority="p0"><div class="epic-id">P0.2</div><div><h3>РНП как эталон 1:1</h3><p>Первый production-экран: toolbar, кабинет, периоды, планы, sticky matrix, mobile cards, подготовка данных и восстановление.</p></div><ul><li>Overlay 1440/1024/375.</li><li>Два кабинета + «Все» read-only.</li><li>Deadline вместо вечного polling.</li></ul><span class="priority p0">P0</span></article>
+          <article class="epic" data-priority="p0"><div class="epic-id">P0.3</div><div><h3>WB analytics visual parity</h3><p>Planning, tasks, SEO, склейки, Unit, ABC, trends, market, reviews и product в едином <code>/wb</code>.</p></div><ul><li>Плотность таблиц Inferno.</li><li>Старые URL → redirect после parity.</li><li>Loading/error лучше оригинала.</li></ul><span class="priority p0">P0</span></article>
           <article class="epic" data-priority="p0"><div class="epic-id">P0.4</div><div><h3>Воронка + Репрайсер</h3><p>Один UI с вкладками, category benchmark, metric switcher, day heatmap, bulk price/status.</p></div><ul><li>Репрайсер остаётся safe.</li><li>Цена через solver.</li><li>Все изменения объяснимы.</li></ul><span class="priority p0">P0</span></article>
           <article class="epic" data-priority="p0"><div class="epic-id">P0.5</div><div><h3>Реклама</h3><p>Visual parity списка РК и SKU: ставки, баланс, расход, массовые действия и история.</p></div><ul><li>Confirm перед деньгами.</li><li>Role guard.</li><li>Audit log.</li></ul><span class="priority p0">P0</span></article>
           <article class="epic" data-priority="p0"><div class="epic-id">P0.6</div><div><h3>Заказ фабрике</h3><p>Полный drawer Inferno: дата, срок производства, поставщик, оплаты, логистика, допрасходы, позиции и статусы.</p></div><ul><li>Черновик/autosave.</li><li>История изменений.</li><li>Расчёт себестоимости/шт.</li></ul><span class="priority p0">P0</span></article>
@@ -580,6 +787,31 @@
             <div class="gate"><span class="num">4</span><div><b>Frozen routes</b><span>Visual regression Финансов и Ozon подтверждает отсутствие изменений.</span></div><span class="state keep">must</span></div>
           </article>
         </div>
+        <div class="spec-table-wrap" style="margin-top:14px">
+          <table>
+            <thead><tr><th>Проверка 1:1</th><th>Размер</th><th>Pass</th><th>Маскирование</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Desktop reference</strong></td><td>1440×900 и 1280×800</td><td>Ключевая геометрия shell/toolbar/table ≤2 px; общий pixel diff ≤6%.</td><td>Только динамические фото, даты, суммы и scrollbar.</td></tr>
+              <tr><td><strong>Compact desktop</strong></td><td>1024×768</td><td>Rail схлопнут; рабочая таблица не перекрывается; все действия доступны.</td><td>Динамические данные.</td></tr>
+              <tr><td><strong>Mobile reference</strong></td><td>375×812</td><td>Drawer navigation, карточки вместо широкой матрицы, нет горизонтального scroll body.</td><td>Динамические данные и системная строка браузера.</td></tr>
+              <tr><td><strong>Typography</strong></td><td>Все размеры</td><td>Font family, weight, line-height, tabular numerals и casing совпадают с токенами.</td><td>Нет.</td></tr>
+              <tr><td><strong>Interaction parity</strong></td><td>Mouse + keyboard</td><td>Одинаковые порядок фильтров, раскрытия, sort direction, modal/drawer и возврат назад.</td><td>Нет.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="spec-table-wrap" style="margin-top:14px">
+          <table>
+            <thead><tr><th>Multi-cabinet E2E</th><th>Начальное условие</th><th>Действие</th><th>Ожидаемый результат</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Переключение A → B</strong></td><td>Пользователь имеет два WB-кабинета.</td><td>Переключить кабинет во время незавершённой загрузки РНП.</td><td>Запрос A отменён/игнорирован; URL и таблица показывают только B.</td></tr>
+              <tr><td><strong>Deep link</strong></td><td>Сохранён кабинет A, URL содержит B.</td><td>Открыть ссылку <code>/wb/seo?cabinet=B</code>.</td><td>Открывается SEO кабинета B; URL имеет приоритет.</td></tr>
+              <tr><td><strong>Forbidden cabinet</strong></td><td>Менеджеру разрешён только A.</td><td>Подставить ID кабинета B вручную.</td><td>403, данные B не попадают в HTML/JSON; UI возвращает A.</td></tr>
+              <tr><td><strong>All + write</strong></td><td>Выбран режим «Все кабинеты».</td><td>Открыть deposit/bid/supply action.</td><td>Действие заблокировано до выбора одного кабинета.</td></tr>
+              <tr><td><strong>Cabinet settings</strong></td><td>У A и B разные tax/cap/warehouse settings.</td><td>Переключаться между Unit, Ads и Supplies.</td><td>На каждом экране используются настройки текущего кабинета.</td></tr>
+              <tr><td><strong>Task recovery</strong></td><td>В A запущена генерация, затем выбран B.</td><td>Обновить страницу и вернуться в лабораторию.</td><td>Задача A не показывается в B; после возврата в A восстанавливается.</td></tr>
+            </tbody>
+          </table>
+        </div>
         <div class="card" style="margin-top:14px">
           <h3>Performance budgets</h3>
           <div class="grid-3" style="margin-top:12px">
@@ -588,18 +820,27 @@
             <div><span class="badge">LOAD</span><p style="margin-top:7px">Skeleton сразу; stale data сохраняется при фоновом refresh.</p></div>
           </div>
         </div>
+        <div class="card" style="margin-top:14px">
+          <h3>Минимальная тестовая пирамида программы</h3>
+          <div class="phase-line"><span class="badge">UNIT · 12+</span><div><b>Контекст кабинета и view-model adapters</b><p>URL priority, permissions, query keys, settings namespace, formatters и metric thresholds.</p></div><span class="state copy">CI</span></div>
+          <div class="phase-line"><span class="badge">INT · 10+</span><div><b>API isolation и write safety</b><p>Два кабинета, 403, aggregate allowlist, preview/execute, idempotency и audit.</p></div><span class="state copy">CI</span></div>
+          <div class="phase-line"><span class="badge">E2E · 20+</span><div><b>14 screen smoke + критические сценарии</b><p>Каждый экран открывается с кабинетом; РНП, реклама, поставка, CTR, deep-link и switch-race проходят полностью.</p></div><span class="state copy">PR</span></div>
+          <div class="phase-line"><span class="badge">VIS · 42</span><div><b>14 экранов × 3 viewport</b><p>Reference screenshots хранятся по экрану и кабинету с масками динамических зон.</p></div><span class="state copy">PR</span></div>
+          <div class="phase-line"><span class="badge">FROZEN</span><div><b>Финансы и Ozon</b><p>Маршруты и reference screenshots подтверждают отсутствие изменений.</p></div><span class="state keep">must</span></div>
+        </div>
       </section>
 
       <section id="plan">
         <div class="section-head"><div><div class="kicker">Delivery</div><h2>Рекомендуемый порядок</h2><p>Не начинать со сложной WMS. Сначала закрепить визуальный shell и перенести уже существующие данные, затем достроить операционный домен.</p></div></div>
         <div class="card">
           <div class="decision"><span class="priority p0">Шаг 0</span><div><b>Выбрать каноническую ветку</b><p>Подтвердить, что разработка идёт от ветки, содержащей актуальные WB-страницы деплоя, и синхронизировать её с защищённым main.</p></div></div>
-          <div class="decision"><span class="priority p0">Шаг 1</span><div><b>Shell + главная</b><p>Один PR без новых таблиц. Финансы и Ozon исключены тестом маршрутов.</p></div></div>
-          <div class="decision"><span class="priority p0">Шаг 2</span><div><b>Analytics parity</b><p>РНП → воронка/репрайсер → реклама → SKU → SEO/склейки/Unit. Переиспользовать API.</p></div></div>
-          <div class="decision"><span class="priority p0">Шаг 3</span><div><b>Заказ → приёмка</b><p>Отдельное согласование миграций. Сначала ручной жизненный цикл, затем внешние интеграции.</p></div></div>
-          <div class="decision"><span class="priority p1">Шаг 4</span><div><b>Поставка → WMS</b><p>Распределение складов и restrictions; потом тара, МойСклад и healthcheck.</p></div></div>
-          <div class="decision"><span class="priority p1">Шаг 5</span><div><b>CTR automation</b><p>UI и dry-run сначала; живой photo-swap и рекламный расход — только в совместной контролируемой сессии.</p></div></div>
-          <div class="decision"><span class="priority p2">Шаг 6</span><div><b>UGC Studio</b><p>После завершения ядра WB и отдельного подтверждения продуктовой границы.</p></div></div>
+          <div class="decision"><span class="priority p0">Шаг 1</span><div><b>Shell + global cabinet context</b><p>Один PR: <code>/wb</code>, sidebar, topbar, cabinet URL/state, permissions, freshness и общие состояния. Без новых таблиц.</p></div></div>
+          <div class="decision"><span class="priority p0">Шаг 2</span><div><b>РНП как эталон</b><p>Довести один экран до visual/functional parity на desktop, compact и mobile. Стиль фиксируется только после ревью владельца.</p></div></div>
+          <div class="decision"><span class="priority p0">Шаг 3</span><div><b>Read-only WB parity</b><p>Planning → tasks → Unit → SEO → склейки → воронка → product. Переиспользовать API и утверждённые компоненты РНП.</p></div></div>
+          <div class="decision"><span class="priority p0">Шаг 4</span><div><b>Write-модули</b><p>Реклама → репрайсер → поставки. Preview/execute, один кабинет, guards, idempotency и audit обязательны.</p></div></div>
+          <div class="decision"><span class="priority p1">Шаг 5</span><div><b>CTR + лаборатория</b><p>Сначала UI, task recovery и dry-run; живой photo-swap и рекламный расход включаются отдельным гейтом.</p></div></div>
+          <div class="decision"><span class="priority p1">Шаг 6</span><div><b>Заказ → приёмка → WMS</b><p>Отдельное согласование миграций и credentials. Сначала ручной жизненный цикл, затем внешние интеграции.</p></div></div>
+          <div class="decision"><span class="priority p2">Шаг 7</span><div><b>Redirect + cleanup</b><p>Старые UI-маршруты переводятся на <code>/wb</code>; дублирующие компоненты удаляются только после стабильного релиза.</p></div></div>
         </div>
       </section>
 
