@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build --webpack",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test": "find lib tests -name '*.test.mts' -type f -print0 | xargs -0 node --import tsx --test"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.104.1",
@@ -19,7 +20,7 @@
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "recharts": "^3.8.1",
-    "undici": "^8.4.1"
+    "undici": "^8.7.0"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

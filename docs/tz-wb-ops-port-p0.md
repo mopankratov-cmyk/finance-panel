@@ -1,13 +1,13 @@
 # ТЗ: порт WB-операционки на наш бэкенд (P0)
 
 Автор: Claude (по итогам разбора infernoff.ru vs finance-panel). Дата: 2026-06-23.
-Связанные доки: `docs/inferno-vs-ours.html` (сравнение), `docs/factory-*` (завод).
+Связанный документ: `docs/отложено.md` (ограничения официального API WB).
 
 ## 0. Контекст и принцип
 
-Наша платформа и `infernoff.ru` Юры — две ветки одного «Inferno»-ядра (совпадают имена эндпоинтов
-`/api/sklejki`, `/api/ctrtest/*`, `/api/adverts/deposit`, `/api/unit/*`, `/api/design/effects`, `public/inferno/studio.html`).
-Мы ушли в контент-завод + крепкий бэкенд (Supabase, Next 16); Юра — в WB-операционку.
+Наша платформа и `infernoff.ru` Юры используют похожие контракты WB-операционки (совпадают имена эндпоинтов
+`/api/sklejki`, `/api/ctrtest/*`, `/api/adverts/deposit`, `/api/unit/*`, `/api/design/effects`).
+Наша реализация работает на Supabase и Next 16 и использует только поддерживаемые продуктовые модули.
 
 **Принцип ТЗ: не изобретать, а портировать готовую логику Юры на наш бэкенд, максимально переиспользуя
 существующее.** У нас уже есть БД-скелет под всё P0 — нужно дописать движки и UI, а не строить с нуля.
@@ -17,7 +17,7 @@
 - Себестоимость: `product_costs(entity, article, wb_barcode, cost_rub)`.
 - Цены: `lib/wb/prices.ts` (`fetchWbCatalogPrices`) + экспорт XLSX `±5/10%` в `app/api/design/price-update/route.ts` (через `lib/xlsx/write.ts`).
 - Таблицы: `agent_insights`, `card_changes`, `advert_bid_changes`, `ctr_tests`/`ctr_variants`, `wb_stocks`, `wb_funnel_daily`.
-- Кроны: `vercel.json` + проверка `CRON_SECRET` (паттерн в `app/api/sync/all`, `app/api/factory/jobs/*`).
+- Кроны: `vercel.json` + проверка `CRON_SECRET` (паттерн в `app/api/sync/all`).
 - Гард денег: `apiGuard`/`proxyAuth` (`app/api/adverts/bid`, `app/api/costs`).
 
 Правила работы (из AGENTS.md): не писать в `main`; ветка + PR на задачу; миграции/секреты/деньги → ручное

@@ -23,7 +23,7 @@ test("proxy matcher skips Next internals but protects app routes", () => {
   );
 
   assert.equal(
-    regex.test("/_next/data/build-id/agent/reels-brain.json"),
+    regex.test("/_next/data/build-id/private-report.json"),
     false,
   );
 
@@ -33,7 +33,7 @@ test("proxy matcher skips Next internals but protects app routes", () => {
   );
 
   assert.equal(
-    regex.test("/agent/reels-brain"),
+    regex.test("/reports/private"),
     true,
   );
 });
