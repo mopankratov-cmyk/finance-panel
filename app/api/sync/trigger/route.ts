@@ -17,14 +17,15 @@ export async function POST(request: NextRequest) {
   const secret = process.env.CRON_SECRET;
   const base = new URL(request.url).origin;
   const headers: Record<string, string> = secret ? { Authorization: `Bearer ${secret}` } : {};
-  // from/cabinet — только для бэкфилла заказов/продаж (по одному кабинету за вызов, чтобы влезть в 60с)
+  // from/to — только для бэкфилла заказов/продаж.
+  // cabinet также поддерживается остатками, чтобы тяжёлый кабинет синхронизировать отдельно.
   const from = searchParams.get("from");
   const to = searchParams.get("to");
   const cabinet = searchParams.get("cabinet");
   const params = new URLSearchParams();
   if (from && (job === "sales" || job === "orders")) params.set("from", from);
   if (to && (job === "sales" || job === "orders")) params.set("to", to);
-  if (cabinet && (job === "sales" || job === "orders")) params.set("cabinet", cabinet);
+  if (cabinet && (job === "sales" || job === "orders" || job === "stocks")) params.set("cabinet", cabinet);
   const qs = params.toString() ? `?${params.toString()}` : "";
 
   try {
