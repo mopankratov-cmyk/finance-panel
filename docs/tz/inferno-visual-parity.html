@@ -1,0 +1,635 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ТЗ · Inferno → Finance Panel · визуальный и функциональный паритет</title>
+  <style>
+    :root {
+      --violet: #7c3aed;
+      --violet-2: #6d28d9;
+      --violet-soft: #f3e8ff;
+      --violet-line: #ddd6fe;
+      --ink: #111827;
+      --muted: #6b7280;
+      --faint: #9ca3af;
+      --canvas: #f7f8fa;
+      --surface: #ffffff;
+      --line: #e5e7eb;
+      --line-2: #edf0f4;
+      --navy: #101827;
+      --green: #059669;
+      --green-soft: #ecfdf5;
+      --amber: #d97706;
+      --amber-soft: #fffbeb;
+      --red: #dc2626;
+      --red-soft: #fef2f2;
+      --blue: #2563eb;
+      --shadow: 0 8px 28px rgba(17, 24, 39, .07);
+      --radius: 13px;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: var(--canvas);
+      font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+    button, input { font: inherit; }
+    button { cursor: pointer; }
+    a { color: inherit; }
+
+    .rail {
+      position: fixed;
+      inset: 0 auto 0 0;
+      z-index: 20;
+      width: 236px;
+      display: flex;
+      flex-direction: column;
+      background: #fff;
+      border-right: 1px solid var(--line);
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-height: 66px;
+      padding: 0 18px;
+      border-bottom: 1px solid var(--line);
+    }
+    .brand-mark {
+      display: grid;
+      width: 32px;
+      height: 32px;
+      place-items: center;
+      border-radius: 9px;
+      color: #fff;
+      background: linear-gradient(145deg, #9333ea, #6d28d9);
+      font-size: 12px;
+      font-weight: 800;
+      box-shadow: 0 6px 14px rgba(124, 58, 237, .25);
+    }
+    .brand b { display: block; font-size: 13px; }
+    .brand small { color: var(--faint); font-size: 10px; }
+    .nav { padding: 14px 10px; overflow-y: auto; }
+    .nav-label {
+      margin: 13px 9px 6px;
+      color: var(--faint);
+      font-size: 9px;
+      font-weight: 800;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+    }
+    .nav a {
+      display: flex;
+      align-items: center;
+      min-height: 38px;
+      gap: 10px;
+      padding: 8px 10px;
+      border-radius: 9px;
+      color: #4b5563;
+      text-decoration: none;
+      font-size: 12px;
+      font-weight: 600;
+      transition: 160ms ease;
+    }
+    .nav a:hover, .nav a.active { color: var(--violet-2); background: var(--violet-soft); }
+    .nav-dot {
+      display: grid;
+      width: 20px;
+      height: 20px;
+      place-items: center;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      color: var(--violet);
+      background: #fff;
+      font-size: 9px;
+      font-weight: 800;
+    }
+    .rail-foot { margin-top: auto; padding: 13px 16px; border-top: 1px solid var(--line); color: var(--faint); font-size: 10px; }
+
+    .shell { margin-left: 236px; min-width: 0; }
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      min-height: 58px;
+      padding: 0 28px;
+      background: rgba(255,255,255,.94);
+      border-bottom: 1px solid var(--line);
+      backdrop-filter: blur(12px);
+    }
+    .crumbs { color: var(--muted); font-size: 12px; }
+    .crumbs b { color: var(--ink); }
+    .status { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 11px; }
+    .status::before { content: ""; width: 7px; height: 7px; border-radius: 999px; background: #10b981; box-shadow: 0 0 0 4px #d1fae5; }
+    main { width: min(1440px, 100%); margin: 0 auto; padding: 34px 34px 72px; }
+
+    .hero {
+      position: relative;
+      overflow: hidden;
+      padding: 34px;
+      border: 1px solid var(--violet-line);
+      border-radius: 18px;
+      color: #fff;
+      background: linear-gradient(135deg, #111827 0%, #17142a 48%, #4c1d95 100%);
+      box-shadow: 0 18px 46px rgba(17,24,39,.16);
+    }
+    .hero::after {
+      content: "";
+      position: absolute;
+      width: 430px;
+      height: 430px;
+      right: -145px;
+      top: -230px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(168,85,247,.48), rgba(168,85,247,0) 70%);
+    }
+    .eyebrow { color: #c4b5fd; font-size: 10px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+    h1 { max-width: 940px; margin: 9px 0 12px; font-size: clamp(28px, 4vw, 48px); line-height: 1.08; letter-spacing: -.04em; }
+    .hero p { max-width: 840px; margin: 0; color: #ddd6fe; font-size: 15px; }
+    .hero-grid { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 10px; margin-top: 28px; }
+    .hero-stat { min-height: 82px; padding: 14px; border: 1px solid rgba(255,255,255,.13); border-radius: 11px; background: rgba(255,255,255,.07); }
+    .hero-stat strong { display: block; font-size: 23px; }
+    .hero-stat span { color: #c4b5fd; font-size: 10px; }
+
+    section { scroll-margin-top: 76px; margin-top: 42px; }
+    .section-head { display: flex; align-items: end; justify-content: space-between; gap: 24px; margin-bottom: 16px; }
+    .section-head h2 { margin: 0; font-size: 24px; letter-spacing: -.025em; }
+    .section-head p { max-width: 720px; margin: 4px 0 0; color: var(--muted); }
+    .kicker { color: var(--violet); font-size: 10px; font-weight: 800; letter-spacing: .09em; text-transform: uppercase; }
+
+    .grid-2 { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 14px; }
+    .grid-3 { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 14px; }
+    .card { padding: 20px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); box-shadow: 0 1px 2px rgba(17,24,39,.02); }
+    .card h3 { margin: 0 0 6px; font-size: 16px; }
+    .card p { margin: 0; color: var(--muted); }
+    .callout { border-left: 4px solid var(--violet); }
+    .callout.good { border-left-color: var(--green); }
+    .callout.warn { border-left-color: var(--amber); }
+    .callout.danger { border-left-color: var(--red); }
+
+    .badge, .priority, .state {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      min-height: 23px;
+      padding: 3px 8px;
+      border-radius: 999px;
+      font-size: 10px;
+      font-weight: 750;
+      white-space: nowrap;
+    }
+    .badge { color: var(--violet-2); background: var(--violet-soft); }
+    .priority.p0 { color: #991b1b; background: #fee2e2; }
+    .priority.p1 { color: #92400e; background: #fef3c7; }
+    .priority.p2 { color: #1e40af; background: #dbeafe; }
+    .state.keep { color: #065f46; background: #d1fae5; }
+    .state.copy { color: #5b21b6; background: #ede9fe; }
+    .state.new { color: #9a3412; background: #ffedd5; }
+    .state.hold { color: #4b5563; background: #f3f4f6; }
+
+    .scope-list { display: grid; gap: 9px; margin: 14px 0 0; padding: 0; list-style: none; }
+    .scope-list li { display: grid; grid-template-columns: 22px 1fr; gap: 9px; color: #374151; }
+    .check { display: grid; width: 20px; height: 20px; place-items: center; border-radius: 6px; color: #fff; background: var(--green); font-size: 11px; font-weight: 900; }
+    .x { background: var(--red); }
+
+    .tokens { display: grid; grid-template-columns: repeat(6,minmax(0,1fr)); gap: 10px; }
+    .token { overflow: hidden; border: 1px solid var(--line); border-radius: 11px; background: #fff; }
+    .swatch { height: 54px; }
+    .token-info { padding: 9px; font-size: 10px; }
+    .token-info b { display: block; }
+    .token-info code { color: var(--muted); }
+
+    .spec-table-wrap { overflow: auto; border: 1px solid var(--line); border-radius: var(--radius); background: #fff; box-shadow: var(--shadow); }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 12px 13px; border-bottom: 1px solid var(--line-2); text-align: left; vertical-align: top; }
+    th { position: sticky; top: 0; color: #fff; background: var(--navy); font-size: 10px; letter-spacing: .04em; text-transform: uppercase; }
+    td { color: #374151; font-size: 12px; }
+    tr:last-child td { border-bottom: 0; }
+    tbody tr:hover { background: #faf8ff; }
+    td strong { color: var(--ink); }
+    code { padding: 2px 5px; border-radius: 5px; color: #4c1d95; background: #f5f3ff; font-size: 11px; }
+
+    .gallery-tools { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+    .tab-btn, .filter-btn {
+      min-height: 34px;
+      padding: 7px 11px;
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      color: #4b5563;
+      background: #fff;
+      font-size: 11px;
+      font-weight: 700;
+    }
+    .tab-btn.active, .filter-btn.active { border-color: var(--violet); color: #fff; background: var(--violet); }
+    .gallery-panel { display: none; }
+    .gallery-panel.active { display: grid; }
+    .shot { overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius); background: #fff; box-shadow: var(--shadow); }
+    .shot-frame { position: relative; height: 300px; overflow: hidden; background: #f3f4f6; }
+    .shot-frame img { display: block; width: 100%; height: auto; margin-top: -48px; }
+    .shot figcaption { padding: 13px 15px 15px; border-top: 1px solid var(--line); }
+    .shot figcaption b { display: block; margin-bottom: 3px; }
+    .shot figcaption span { color: var(--muted); font-size: 11px; }
+
+    .decision { display: grid; grid-template-columns: 74px 1fr; gap: 13px; padding: 14px 0; border-bottom: 1px solid var(--line); }
+    .decision:last-child { border-bottom: 0; }
+    .decision b { font-size: 12px; }
+    .decision p { margin: 2px 0 0; color: var(--muted); font-size: 12px; }
+
+    .epic-grid { display: grid; gap: 12px; }
+    .epic { display: grid; grid-template-columns: 58px minmax(0,1.1fr) minmax(0,1.25fr) auto; gap: 14px; align-items: start; padding: 16px; border: 1px solid var(--line); border-radius: 12px; background: #fff; }
+    .epic.hidden { display: none; }
+    .epic-id { display: grid; width: 46px; height: 46px; place-items: center; border-radius: 11px; color: #fff; background: var(--navy); font-size: 11px; font-weight: 850; }
+    .epic h3 { margin: 0 0 4px; font-size: 14px; }
+    .epic p, .epic ul { margin: 0; color: var(--muted); font-size: 11px; }
+    .epic ul { padding-left: 17px; }
+
+    .flow { display: grid; grid-template-columns: repeat(6,minmax(0,1fr)); gap: 8px; }
+    .flow-step { position: relative; min-height: 108px; padding: 13px; border: 1px solid var(--line); border-radius: 11px; background: #fff; }
+    .flow-step:not(:last-child)::after { content: "→"; position: absolute; right: -9px; top: 41px; z-index: 2; color: var(--violet); font-weight: 900; }
+    .flow-step small { color: var(--violet); font-weight: 800; }
+    .flow-step b { display: block; margin: 8px 0 4px; font-size: 12px; }
+    .flow-step span { color: var(--muted); font-size: 10px; }
+
+    .gate { display: grid; grid-template-columns: 24px 1fr auto; gap: 10px; align-items: start; padding: 12px 0; border-bottom: 1px solid var(--line); }
+    .gate:last-child { border-bottom: 0; }
+    .gate .num { display: grid; width: 22px; height: 22px; place-items: center; border-radius: 7px; color: var(--violet-2); background: var(--violet-soft); font-size: 10px; font-weight: 800; }
+    .gate b { display: block; font-size: 12px; }
+    .gate span { color: var(--muted); font-size: 11px; }
+
+    .wireframe { overflow: hidden; border: 1px solid var(--line); border-radius: 14px; background: #fff; box-shadow: var(--shadow); }
+    .wf-head { display: flex; align-items: center; justify-content: space-between; min-height: 54px; padding: 0 16px; border-bottom: 1px solid var(--line); }
+    .wf-body { display: grid; grid-template-columns: 54px 1fr; min-height: 410px; }
+    .wf-rail { display: grid; align-content: start; gap: 10px; padding: 12px 10px; border-right: 1px solid var(--line); background: #fff; }
+    .wf-icon { height: 30px; border-radius: 8px; background: #f3f4f6; }
+    .wf-icon.on { background: var(--violet-soft); box-shadow: inset 3px 0 var(--violet); }
+    .wf-main { padding: 16px; background: #fafafa; }
+    .wf-filter { display: flex; gap: 7px; margin-bottom: 12px; }
+    .wf-pill { width: 82px; height: 30px; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+    .wf-pill.primary { width: 108px; background: var(--violet); }
+    .wf-dark { height: 60px; margin-bottom: 10px; border-radius: 10px; background: var(--navy); }
+    .wf-table { display: grid; grid-template-columns: 1.4fr repeat(6, 1fr); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+    .wf-cell { min-height: 37px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); background: #fff; }
+    .wf-cell:nth-child(7n) { border-right: 0; }
+    .wf-cell.head { min-height: 33px; background: #f9fafb; }
+    .wf-cell.good { background: #d1fae5; }
+    .wf-cell.warn { background: #fef3c7; }
+    .wf-cell.bad { background: #fee2e2; }
+
+    footer { margin-top: 48px; padding-top: 22px; border-top: 1px solid var(--line); color: var(--faint); font-size: 11px; }
+
+    @media (max-width: 1100px) {
+      .rail { width: 58px; }
+      .brand { padding: 0 13px; }
+      .brand div:last-child, .nav-label, .nav a span:last-child, .rail-foot { display: none; }
+      .nav a { justify-content: center; padding: 8px; }
+      .shell { margin-left: 58px; }
+      .hero-grid, .tokens { grid-template-columns: repeat(3,minmax(0,1fr)); }
+      .epic { grid-template-columns: 50px 1fr; }
+      .epic > :nth-child(3), .epic > :nth-child(4) { grid-column: 2; }
+      .flow { grid-template-columns: repeat(3,minmax(0,1fr)); }
+      .flow-step:nth-child(3)::after { display: none; }
+    }
+    @media (max-width: 760px) {
+      .rail { display: none; }
+      .shell { margin-left: 0; }
+      .topbar { padding: 0 16px; }
+      main { padding: 22px 14px 48px; }
+      .hero { padding: 24px 20px; }
+      .hero-grid, .grid-2, .grid-3, .tokens, .flow { grid-template-columns: 1fr; }
+      .flow-step::after { display: none; }
+      .shot-frame { height: 230px; }
+      .epic { grid-template-columns: 1fr; }
+      .epic > :nth-child(3), .epic > :nth-child(4) { grid-column: 1; }
+    }
+    @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } * { transition: none !important; } }
+  </style>
+</head>
+<body>
+  <aside class="rail" aria-label="Навигация по ТЗ">
+    <div class="brand">
+      <div class="brand-mark">WB</div>
+      <div><b>Visual parity</b><small>Inferno → Finance Panel</small></div>
+    </div>
+    <nav class="nav">
+      <div class="nav-label">Решение</div>
+      <a href="#verdict"><span class="nav-dot">01</span><span>Вердикт</span></a>
+      <a href="#scope"><span class="nav-dot">02</span><span>Границы</span></a>
+      <a href="#visual"><span class="nav-dot">03</span><span>Визуал 1:1</span></a>
+      <div class="nav-label">Аудит</div>
+      <a href="#evidence"><span class="nav-dot">04</span><span>Экраны</span></a>
+      <a href="#matrix"><span class="nav-dot">05</span><span>Сравнение</span></a>
+      <a href="#gaps"><span class="nav-dot">06</span><span>Пробелы Inferno</span></a>
+      <div class="nav-label">Разработка</div>
+      <a href="#architecture"><span class="nav-dot">07</span><span>Архитектура</span></a>
+      <a href="#epics"><span class="nav-dot">08</span><span>Эпики</span></a>
+      <a href="#acceptance"><span class="nav-dot">09</span><span>Приёмка</span></a>
+      <a href="#plan"><span class="nav-dot">10</span><span>Порядок</span></a>
+    </nav>
+    <div class="rail-foot">Аудит: 13.07.2026 · desktop 1338×768</div>
+  </aside>
+
+  <div class="shell">
+    <header class="topbar">
+      <div class="crumbs">ТЗ / <b>перенос Inferno 1:1</b></div>
+      <div class="status">артефакт готов к ревью</div>
+    </header>
+
+    <main>
+      <header class="hero" id="verdict">
+        <div class="eyebrow">Product + UX + engineering specification</div>
+        <h1>Inferno как визуальная оболочка. Наша панель — как движок.</h1>
+        <p>Переносим интерфейс и пользовательские сценарии Inferno максимально близко к оригиналу для всех нефинансовых WB-модулей. Наши API, мультикабинетность, расчёты, защита действий и данные сохраняются. Финансы и Ozon заморожены.</p>
+        <div class="hero-grid">
+          <div class="hero-stat"><strong>1:1</strong><span>цель по визуальной геометрии и поведению</span></div>
+          <div class="hero-stat"><strong>13</strong><span>зафиксированных экранов в артефакте</span></div>
+          <div class="hero-stat"><strong>15+</strong><span>наших маршрутов проверено</span></div>
+          <div class="hero-stat"><strong>0</strong><span>изменений в Финансах и Ozon</span></div>
+        </div>
+      </header>
+
+      <section>
+        <div class="section-head"><div><div class="kicker">Решение</div><h2>Что именно значит «перенести 1 в 1»</h2></div></div>
+        <div class="grid-3">
+          <article class="card callout"><h3>Копируем визуальный язык</h3><p>Белый интерфейс, фиолетовый акцент, узкая иконная боковая панель, 54–58 px шапка, компактные фильтры, тёмные управляющие панели, плотные таблицы и семантическая заливка ячеек.</p></article>
+          <article class="card callout"><h3>Копируем сценарии</h3><p>РНП, воронка/репрайсер, рекламные действия, CTR-тесты, карточка SKU, заказ фабрике, поставка, приёмка, распределение по складам и healthcheck.</p></article>
+          <article class="card callout good"><h3>Не копируем слабые места</h3><p>Зависшие расчёты, пустой дашборд, битые hash-переходы, недоступные разделы без восстановления, мелкие hit-area и действия без аудита не переносим.</p></article>
+        </div>
+        <div class="card warn callout" style="margin-top:14px">
+          <h3>Техническая трактовка «1:1»</h3>
+          <p>Воспроизводим наблюдаемую компоновку, размеры, состояния и поведение на нашем коде. Не переносим чужие исходники, закрытые ассеты, бренд Inferno или секреты. Там, где Inferno слабее нашей панели, сохраняем нашу функциональность внутри внешнего вида Inferno.</p>
+        </div>
+      </section>
+
+      <section id="scope">
+        <div class="section-head"><div><div class="kicker">Границы</div><h2>Что меняется, а что заморожено</h2><p>Это жёсткая граница реализации. Она предотвращает случайную переделку уже развиваемого финансового блока.</p></div></div>
+        <div class="grid-2">
+          <article class="card">
+            <span class="state copy">ПЕРЕДЕЛАТЬ ПОД INFERNO</span>
+            <ul class="scope-list">
+              <li><span class="check">✓</span><span>Главная модулей и нефинансовая оболочка приложения.</span></li>
+              <li><span class="check">✓</span><span>WB: РНП, реклама, SEO, склейки, SKU, Unit, CTR, ABC, динамика, рынок, отзывы.</span></li>
+              <li><span class="check">✓</span><span>Операции: закупки, заказы фабрике, приёмка, поставки, себестоимость, репрайсер, решатель цены.</span></li>
+              <li><span class="check">✓</span><span>Система: кабинеты, пользователи, синхронизация — в том же светлом shell.</span></li>
+              <li><span class="check">✓</span><span>Контент/UGC — отдельный P2 после WB-операционки.</span></li>
+            </ul>
+          </article>
+          <article class="card">
+            <span class="state keep">НЕ МЕНЯТЬ</span>
+            <ul class="scope-list">
+              <li><span class="check x">×</span><span><b>Финансы:</b> <code>/calendar</code>, <code>/payments</code>, <code>/accounts</code>, <code>/loans</code>, <code>/pnl</code>, <code>/opiu</code>, <code>/losses</code>, <code>/summary</code>.</span></li>
+              <li><span class="check x">×</span><span><b>Ozon:</b> содержимое и сценарии <code>/ozon</code>.</span></li>
+              <li><span class="check x">×</span><span>Формулы, кабинетная изоляция, источники данных и аудит write-действий.</span></li>
+              <li><span class="check x">×</span><span>Существующие безопасные ограничения: подтверждения рекламы, XLSX для цен, серверные guards.</span></li>
+            </ul>
+          </article>
+        </div>
+        <div class="card danger callout" style="margin-top:14px">
+          <h3>Предварительный блокер перед разработкой</h3>
+          <p>Деплой <code>finance-panel-two.vercel.app</code> содержит WB-страницы, которых нет в текущем локальном <code>main</code>. Их история видна в ветках <code>deploy-main</code>/<code>work-main</code> и feature-ветках. До первого PR владелец должен подтвердить каноническую базовую ветку; иначе можно переделать устаревший код.</p>
+        </div>
+      </section>
+
+      <section id="visual">
+        <div class="section-head"><div><div class="kicker">Pixel spec</div><h2>Визуальная система Inferno</h2><p>Значения сняты по наблюдаемым экранам и используются как целевые токены. Допуск при desktop-сравнении — до 2 px по основной геометрии.</p></div></div>
+        <div class="tokens">
+          <div class="token"><div class="swatch" style="background:#7c3aed"></div><div class="token-info"><b>Primary</b><code>#7C3AED</code></div></div>
+          <div class="token"><div class="swatch" style="background:#101827"></div><div class="token-info"><b>Table control</b><code>#101827</code></div></div>
+          <div class="token"><div class="swatch" style="background:#f7f8fa"></div><div class="token-info"><b>Canvas</b><code>#F7F8FA</code></div></div>
+          <div class="token"><div class="swatch" style="background:#ffffff"></div><div class="token-info"><b>Surface</b><code>#FFFFFF</code></div></div>
+          <div class="token"><div class="swatch" style="background:#d1fae5"></div><div class="token-info"><b>Positive</b><code>#D1FAE5</code></div></div>
+          <div class="token"><div class="swatch" style="background:#fee2e2"></div><div class="token-info"><b>Negative</b><code>#FEE2E2</code></div></div>
+        </div>
+        <div class="spec-table-wrap" style="margin-top:14px">
+          <table>
+            <thead><tr><th>Элемент</th><th>Целевой вид</th><th>Поведение</th><th>Обязательное улучшение</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Sidebar</strong></td><td>50–56 px collapsed; 210–220 px expanded; белый; иконки 18–20 px.</td><td>Состояние сохраняется; активный пункт — violet-soft + левый индикатор.</td><td>Tooltip и aria-label; touch target ≥ 40×40.</td></tr>
+              <tr><td><strong>Topbar</strong></td><td>54–58 px; белый; тонкая граница; заголовок слева, кабинет справа.</td><td>Sticky; не прыгает при загрузке данных.</td><td>Статус синка и время свежести данных.</td></tr>
+              <tr><td><strong>Filters</strong></td><td>30–34 px; radius 7–8; расстояние 6–8 px; active violet.</td><td>Выбор обновляет URL/query и сохраняется при back.</td><td>Keyboard focus и отмена предыдущего fetch.</td></tr>
+              <tr><td><strong>Table</strong></td><td>Header 10–11 px uppercase; body 11–13 px; row 42–48 px; sticky first column.</td><td>Сортировка, resize/scroll, row hover, копирование nm.</td><td>Виртуализация 100+ строк, aria-sort, CSV.</td></tr>
+              <tr><td><strong>Semantic cells</strong></td><td>Зелёный/жёлтый/красный фон; tabular numerals.</td><td>Порог зависит от метрики и категории.</td><td>Иконка/текст вместе с цветом.</td></tr>
+              <tr><td><strong>Modal</strong></td><td>Широкий drawer/modal с фиксированным footer; scrim 50%.</td><td>Esc/close; предупреждение о несохранённых данных.</td><td>Focus trap; серверная валидация рядом с полем.</td></tr>
+              <tr><td><strong>Loading</strong></td><td>Skeleton в форме будущего контента + строка прогресса.</td><td>0–10 сек обычное; 10–60 сек объяснение; после 60 сек retry/cancel.</td><td>Inferno зависал >99 сек — это запрещено.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="wireframe" style="margin-top:16px" aria-label="Целевой макет WB-страницы">
+          <div class="wf-head"><b>Воронка / Репрайсер</b><span class="badge">Кабинет · CLERIN</span></div>
+          <div class="wf-body">
+            <div class="wf-rail"><div class="wf-icon"></div><div class="wf-icon"></div><div class="wf-icon on"></div><div class="wf-icon"></div><div class="wf-icon"></div><div class="wf-icon"></div></div>
+            <div class="wf-main">
+              <div class="wf-filter"><div class="wf-pill"></div><div class="wf-pill primary"></div><div class="wf-pill"></div><div class="wf-pill"></div></div>
+              <div class="wf-dark"></div>
+              <div class="wf-table">
+                <div class="wf-cell head"></div><div class="wf-cell head"></div><div class="wf-cell head"></div><div class="wf-cell head"></div><div class="wf-cell head"></div><div class="wf-cell head"></div><div class="wf-cell head"></div>
+                <div class="wf-cell"></div><div class="wf-cell good"></div><div class="wf-cell"></div><div class="wf-cell warn"></div><div class="wf-cell good"></div><div class="wf-cell good"></div><div class="wf-cell good"></div>
+                <div class="wf-cell"></div><div class="wf-cell good"></div><div class="wf-cell"></div><div class="wf-cell bad"></div><div class="wf-cell good"></div><div class="wf-cell warn"></div><div class="wf-cell good"></div>
+                <div class="wf-cell"></div><div class="wf-cell warn"></div><div class="wf-cell"></div><div class="wf-cell good"></div><div class="wf-cell bad"></div><div class="wf-cell good"></div><div class="wf-cell warn"></div>
+                <div class="wf-cell"></div><div class="wf-cell good"></div><div class="wf-cell"></div><div class="wf-cell good"></div><div class="wf-cell good"></div><div class="wf-cell good"></div><div class="wf-cell good"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="evidence">
+        <div class="section-head"><div><div class="kicker">Evidence</div><h2>Что было осмотрено</h2><p>Скриншоты сняты из авторизованной сессии Chrome. Переключатели показывают исходный Inferno и текущее состояние нашей панели.</p></div></div>
+        <div class="gallery-tools" role="tablist">
+          <button class="tab-btn active" data-tab="inferno">Inferno</button>
+          <button class="tab-btn" data-tab="ours">Наша панель</button>
+          <button class="tab-btn" data-tab="ops">Главный разрыв: операции</button>
+        </div>
+        <div class="gallery-panel grid-2 active" id="tab-inferno">
+          <figure class="shot"><div class="shot-frame"><img loading="lazy" src="assets/inferno-visual-parity/inferno_home.jpg" alt="Главная Inferno" /></div><figcaption><b>Главная модулей</b><span>Нейтральная сетка карточек без тяжёлого hero. Этот вид переносим.</span></figcaption></figure>
+          <figure class="shot"><div class="shot-frame"><img loading="lazy" src="assets/inferno-visual-parity/inferno_funnel.jpg" alt="Воронка и репрайсер Inferno" /></div><figcaption><b>Воронка / Репрайсер</b><span>Эталон плотности, фильтров и heatmap. Основная visual reference.</span></figcaption></figure>
+          <figure class="shot"><div class="shot-frame"><img loading="lazy" src="assets/inferno-visual-parity/inferno_ctr.jpg" alt="CTR тесты Inferno" /></div><figcaption><b>CTR-тесты</b><span>Список тестов, режимы CTR/CR/Video, лаборатория и маховик.</span></figcaption></figure>
+          <figure class="shot"><div class="shot-frame"><img loading="lazy" src="assets/inferno-visual-parity/inferno_sku.jpg" alt="Информация по SKU Inferno" /></div><figcaption><b>Информация по SKU</b><span>Фото, себестоимость, размеры, материалы, Drive, комментарий и ручная готовность.</span></figcaption></figure>
+          <figure class="shot"><div class="shot-frame"><img loading="lazy" src="assets/inferno-visual-parity/inferno_health.jpg" alt="Операционный цикл Inferno" /></div><figcaption><b>Операционный цикл</b><span>Сроки производства, логистики, продажи и возврата партии в деньги. В этом ТЗ используем только операционную часть.</span></figcaption></figure>
+        </div>
+        <div class="gallery-panel grid-2" id="tab-ours">
+          <figure class="shot"><div class="shot-frame"><img loading="lazy" src="assets/inferno-visual-parity/ours_home.jpg" alt="Главная нашей панели" /></div><figcaption><b>Наша главная</b><span>Сильная структура, но hero и синий бренд расходятся с целевым Inferno.</span></figcaption></figure>
+          <figure class="shot"><div class="shot-frame"><img loading="lazy" src="assets/inferno-visual-parity/ours_product.jpg" alt="Информация по SKU в нашей панели" /></div><figcaption><b>Наша карточка SKU</b><span>Данные сильнее: заполненность, бренд, вес и переходы. Их сохраняем в новом виде.</span></figcaption></figure>
+          <figure class="shot"><div class="shot-frame"><img loading="lazy" src="assets/inferno-visual-parity/ours_supplies.jpg" alt="Закупки в нашей панели" /></div><figcaption><b>Наши закупки</b><span>Хорошая потребность 30/45/60 дней и мультикабинетность, но нет полного заказа фабрике.</span></figcaption></figure>
+          <figure class="shot"><div class="shot-frame"><img loading="lazy" src="assets/inferno-visual-parity/ours_rnp.jpg" alt="Загрузка РНП в нашей панели" /></div><figcaption><b>Наш loading-state</b><span>Лучше Inferno: skeleton и честное сообщение. Это сохраняем.</span></figcaption></figure>
+        </div>
+        <div class="gallery-panel grid-2" id="tab-ops">
+          <figure class="shot"><div class="shot-frame"><img loading="lazy" src="assets/inferno-visual-parity/inferno_order.jpg" alt="Заказ фабрике Inferno" /></div><figcaption><b>Inferno: заказ фабрике</b><span>Оплаты, логистика, допрасходы, позиции, цикл заказа и история.</span></figcaption></figure>
+          <figure class="shot"><div class="shot-frame"><img loading="lazy" src="assets/inferno-visual-parity/ours_supply_form.jpg" alt="Новая поставка в нашей панели" /></div><figcaption><b>У нас: новая поставка</b><span>Дата, склад, комментарий и позиции. Это начало, но не эквивалент заказа.</span></figcaption></figure>
+          <figure class="shot"><div class="shot-frame"><img loading="lazy" src="assets/inferno-visual-parity/inferno_receiving.jpg" alt="Приёмка Inferno" /></div><figcaption><b>Inferno: журнал приёмки</b><span>Проведённые документы, склад, количество, сумма и автор.</span></figcaption></figure>
+          <figure class="shot"><div class="shot-frame"><img loading="lazy" src="assets/inferno-visual-parity/inferno_supply_planning.jpg" alt="Распределение поставок Inferno" /></div><figcaption><b>Inferno: поставки по складам</b><span>Готовая тара, ограничения, проценты по складам, healthcheck и сброс цикла.</span></figcaption></figure>
+        </div>
+      </section>
+
+      <section id="matrix">
+        <div class="section-head"><div><div class="kicker">Gap analysis</div><h2>Inferno против нашей панели</h2><p>Цель не «выкинуть наше», а надеть интерфейс Inferno на более сильные части нашей архитектуры.</p></div></div>
+        <div class="spec-table-wrap">
+          <table>
+            <thead><tr><th>Зона</th><th>Inferno</th><th>Наша панель</th><th>Решение</th><th>Приоритет</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Shell / навигация</strong></td><td>Компактная иконная панель, много места данным.</td><td>Тёмный широкий sidebar, понятнее, но тяжелее.</td><td><span class="state copy">COPY</span> В нефинансовых разделах — Inferno 1:1.</td><td><span class="priority p0">P0</span></td></tr>
+              <tr><td><strong>Главная</strong></td><td>Спокойная сетка модулей.</td><td>Сетка хорошая, но большой синий hero.</td><td><span class="state copy">COPY</span> Убрать hero, сохранить наши модули и роли.</td><td><span class="priority p0">P0</span></td></tr>
+              <tr><td><strong>РНП</strong></td><td>Плотная рабочая матрица, фильтры, сортировка.</td><td>Наши расчёты и loading лучше; UI менее плотный.</td><td><span class="state copy">COPY</span> Визуал Inferno + наши данные/состояния.</td><td><span class="priority p0">P0</span></td></tr>
+              <tr><td><strong>Воронка / Репрайсер</strong></td><td>Один экран: метрики, heatmap, массовые цены/статусы.</td><td>Движок, решатель и экспорт уже есть, но разделены.</td><td><span class="state copy">COPY</span> Объединить UI, не объединяя серверные домены.</td><td><span class="priority p0">P0</span></td></tr>
+              <tr><td><strong>Реклама</strong></td><td>Операционные кнопки, но hash-переход дал сбой в аудите.</td><td>Есть list/action/bid/bulk/deposit и guards.</td><td><span class="state copy">COPY</span> Внешний вид Inferno, наша безопасность.</td><td><span class="priority p0">P0</span></td></tr>
+              <tr><td><strong>CTR</strong></td><td>Зрелый журнал тестов, CTR/CR/Video, лаборатория.</td><td>API/данные частично есть; живой photo-swap ограничен.</td><td><span class="state new">BUILD</span> Паритет UI, live включать отдельно.</td><td><span class="priority p1">P1</span></td></tr>
+              <tr><td><strong>SKU / продукт</strong></td><td>Drive, комментарии, статус готовности.</td><td>Лучше мастер-данные, заполненность и кабинет.</td><td><span class="state copy">COPY+</span> Их вид + наши колонки + комментарии/статус.</td><td><span class="priority p0">P0</span></td></tr>
+              <tr><td><strong>Закупки</strong></td><td>Товары → заказ → приёмка → остатки.</td><td>Потребность и простая поставка; нет заказа фабрике.</td><td><span class="state new">BUILD</span> Новый операционный домен.</td><td><span class="priority p0">P0</span></td></tr>
+              <tr><td><strong>Поставки по складам</strong></td><td>Тара, WMS, ограничения, проценты, healthcheck.</td><td>Рекомендованная потребность и ограничения WB.</td><td><span class="state new">BUILD</span> Этапами; WMS/файлы требуют согласования.</td><td><span class="priority p1">P1</span></td></tr>
+              <tr><td><strong>Дашборд</strong></td><td>Фактически заглушка.</td><td>Рабочие модули и зона внимания.</td><td><span class="state keep">KEEP+</span> Только визуальная оболочка Inferno.</td><td><span class="priority p0">P0</span></td></tr>
+              <tr><td><strong>Финансы</strong></td><td>Health/цикл интересны, общий дашборд пуст.</td><td>Полноценный ДДС, P&amp;L, платежи, кредиты.</td><td><span class="state hold">FROZEN</span> Не менять в этой программе.</td><td>—</td></tr>
+              <tr><td><strong>Ozon</strong></td><td>Нет сопоставимого зрелого блока.</td><td>Самостоятельный аналитический модуль.</td><td><span class="state hold">FROZEN</span> Идеи — отдельным ТЗ позже.</td><td>—</td></tr>
+              <tr><td><strong>UGC Studio</strong></td><td>5 шагов: avatar → product → script → generation → publish.</td><td>Контентные API/лаборатория есть, но другой продуктовый контур.</td><td><span class="state new">OPTION</span> После WB-ядра.</td><td><span class="priority p2">P2</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="gaps">
+        <div class="section-head"><div><div class="kicker">Не переносить</div><h2>Пробелы Inferno, найденные в живом проходе</h2></div></div>
+        <div class="grid-3">
+          <article class="card callout danger"><h3>Зависание РНП</h3><p>Экран обещал 30–60 секунд, но оставался в расчёте после 99 секунд. Нет retry, cancel и диагностического статуса.</p></article>
+          <article class="card callout danger"><h3>Битый переход «Реклама»</h3><p>При прямом переходе на <code>#adverts</code> UI оставался на воронке. URL и фактический экран расходятся.</p></article>
+          <article class="card callout danger"><h3>Недоступный ABC закупок</h3><p>Навигация видна, но пользователь получает «нет доступа» и откатывается к главной без понятного пути восстановления.</p></article>
+          <article class="card callout warn"><h3>Пустой дашборд</h3><p>Раздел помечен MVP и содержит заглушку. Наша главная функционально сильнее.</p></article>
+          <article class="card callout warn"><h3>Слабая доступность</h3><p>Много icon-only элементов, мелкие цели, контрастный смысл часто передаётся только цветом.</p></article>
+          <article class="card callout warn"><h3>Зависимость от внешних ручных файлов</h3><p>Google Drive, готовая тара, WMS и часть ограничений требуют внешних интеграций и не могут считаться обычным WB API.</p></article>
+        </div>
+      </section>
+
+      <section id="architecture">
+        <div class="section-head"><div><div class="kicker">Architecture</div><h2>Как посадить Inferno на нашу архитектуру</h2><p>Visual parity не должен порождать второй бэкенд. UI собирается вокруг уже существующих API; новые модели появляются только для заказов и приёмки.</p></div></div>
+        <div class="flow">
+          <div class="flow-step"><small>01</small><b>WB sync</b><span>orders, sales, stock, adverts, funnel</span></div>
+          <div class="flow-step"><small>02</small><b>Existing APIs</b><span>RNP, SEO, ads, unit, trends, supplies</span></div>
+          <div class="flow-step"><small>03</small><b>View models</b><span>единые DTO под плотные Inferno-таблицы</span></div>
+          <div class="flow-step"><small>04</small><b>Inferno shell</b><span>sidebar, topbar, filters, table, drawer</span></div>
+          <div class="flow-step"><small>05</small><b>Safe actions</b><span>guards, confirm, audit, XLSX, permissions</span></div>
+          <div class="flow-step"><small>06</small><b>Ops domain</b><span>orders, stages, receipts, WMS adapters</span></div>
+        </div>
+        <div class="spec-table-wrap" style="margin-top:16px">
+          <table>
+            <thead><tr><th>Целевой экран</th><th>Что переиспользуем</th><th>Чего не хватает</th><th>Ограничение</th></tr></thead>
+            <tbody>
+              <tr><td><strong>РНП</strong></td><td><code>/api/rnp/[shop]/table</code>, <code>plan</code>, <code>unit-econ</code></td><td>Единый плотный view-model и sticky matrix.</td><td>Без миграции.</td></tr>
+              <tr><td><strong>Воронка</strong></td><td><code>/api/seo/skus</code>, <code>/api/design/day-metrics</code>, <code>/api/signals</code></td><td>Категорийные бенчмарки и сохранённые фильтры.</td><td>Возможна существующая таблица настроек.</td></tr>
+              <tr><td><strong>Репрайсер</strong></td><td><code>/api/repricer/*</code>, <code>/api/unit/price-solver</code>, XLSX export</td><td>Inline bulk actions и объяснимость в матрице.</td><td>Живые цены остаются human-in-the-loop.</td></tr>
+              <tr><td><strong>Реклама</strong></td><td><code>/api/adverts/list</code>, <code>action</code>, <code>bid</code>, <code>bulk</code>, <code>deposit</code></td><td>UI parity и единый журнал действий.</td><td>Write-token и подтверждение денег.</td></tr>
+              <tr><td><strong>CTR</strong></td><td><code>/api/ctrtest/*</code>, <code>/api/lab/*</code></td><td>Оркестратор вариантов, экраны CR/Video/Маховик.</td><td>Photo swap live — отдельный гейт.</td></tr>
+              <tr><td><strong>SKU</strong></td><td>Content/SEO/Drive/Yandex/Lab источники.</td><td>Комментарий, ручной статус, единая полнота.</td><td>Drive OAuth — отдельная интеграция.</td></tr>
+              <tr><td><strong>Закупки</strong></td><td><code>/api/supplies</code>, restrictions, localization, healthcheck</td><td>Заказ фабрике, этапы, расходы, позиции, receipt ledger.</td><td>Новые таблицы → ручное одобрение владельца.</td></tr>
+              <tr><td><strong>WMS / тара</strong></td><td><code>wms-ready</code> и существующие заглушки-контракты.</td><td>МойСклад adapter, XLSX parser, idempotency, retries.</td><td>Ключи и внешняя система; отдельный PR.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="card warn callout" style="margin-top:14px">
+          <h3>Новые модели P0 Operations</h3>
+          <p><code>purchase_orders</code>, <code>purchase_order_items</code>, <code>purchase_payment_stages</code>, <code>purchase_logistics_stages</code>, <code>purchase_expenses</code>, <code>receipts</code>, <code>receipt_items</code>, <code>operation_audit_log</code>. Все записи получают <code>cabinet_id</code>, автора, статус, timestamps и idempotency key.</p>
+        </div>
+      </section>
+
+      <section id="epics">
+        <div class="section-head"><div><div class="kicker">Backlog</div><h2>Эпики разработки</h2><p>Фильтр позволяет посмотреть только нужный приоритет. Каждый эпик — отдельная ветка и PR.</p></div></div>
+        <div class="gallery-tools">
+          <button class="filter-btn active" data-priority="all">Все</button>
+          <button class="filter-btn" data-priority="p0">P0</button>
+          <button class="filter-btn" data-priority="p1">P1</button>
+          <button class="filter-btn" data-priority="p2">P2</button>
+        </div>
+        <div class="epic-grid">
+          <article class="epic" data-priority="p0"><div class="epic-id">P0.1</div><div><h3>Inferno shell</h3><p>Sidebar, topbar, cabinet switcher, filters, dense table, drawer, status, empty/error/loading states.</p></div><ul><li>Только нефинансовые маршруты.</li><li>Visual regression 1440/1024/375.</li><li>Finances/Ozon не затронуты.</li></ul><span class="priority p0">P0</span></article>
+          <article class="epic" data-priority="p0"><div class="epic-id">P0.2</div><div><h3>Главная модулей 1:1</h3><p>Убираем синий hero, переносим сетку Inferno, сохраняем роли, кабинеты, health и attention cards.</p></div><ul><li>Карточки 3×N desktop.</li><li>Статус модуля и агент.</li><li>Deep links без тупиков.</li></ul><span class="priority p0">P0</span></article>
+          <article class="epic" data-priority="p0"><div class="epic-id">P0.3</div><div><h3>WB analytics visual parity</h3><p>РНП, SEO, склейки, Unit, ABC, trends, market, reviews и product в единой системе.</p></div><ul><li>Плотность таблиц Inferno.</li><li>Наши кабинеты/экспорты.</li><li>Loading/error лучше оригинала.</li></ul><span class="priority p0">P0</span></article>
+          <article class="epic" data-priority="p0"><div class="epic-id">P0.4</div><div><h3>Воронка + Репрайсер</h3><p>Один UI с вкладками, category benchmark, metric switcher, day heatmap, bulk price/status.</p></div><ul><li>Репрайсер остаётся safe.</li><li>Цена через solver.</li><li>Все изменения объяснимы.</li></ul><span class="priority p0">P0</span></article>
+          <article class="epic" data-priority="p0"><div class="epic-id">P0.5</div><div><h3>Реклама</h3><p>Visual parity списка РК и SKU: ставки, баланс, расход, массовые действия и история.</p></div><ul><li>Confirm перед деньгами.</li><li>Role guard.</li><li>Audit log.</li></ul><span class="priority p0">P0</span></article>
+          <article class="epic" data-priority="p0"><div class="epic-id">P0.6</div><div><h3>Заказ фабрике</h3><p>Полный drawer Inferno: дата, срок производства, поставщик, оплаты, логистика, допрасходы, позиции и статусы.</p></div><ul><li>Черновик/autosave.</li><li>История изменений.</li><li>Расчёт себестоимости/шт.</li></ul><span class="priority p0">P0</span></article>
+          <article class="epic" data-priority="p0"><div class="epic-id">P0.7</div><div><h3>Приёмка и остатки</h3><p>Журнал документов, проведение партий, расхождения plan/fact, обновление доступного остатка.</p></div><ul><li>Частичная приёмка.</li><li>Повторное проведение запрещено.</li><li>Автор и источник.</li></ul><span class="priority p0">P0</span></article>
+          <article class="epic" data-priority="p1"><div class="epic-id">P1.1</div><div><h3>Распределение поставки</h3><p>Проценты складов, минимальная паллета, ограничения, исключения SKU и экспорт.</p></div><ul><li>WB restrictions API.</li><li>Сумма процентов = 100.</li><li>Пояснение рекомендации.</li></ul><span class="priority p1">P1</span></article>
+          <article class="epic" data-priority="p1"><div class="epic-id">P1.2</div><div><h3>WMS + готовая тара</h3><p>Парсер containerscontent.xlsx, МойСклад adapter, dry-run, healthcheck и idempotent create.</p></div><ul><li>Отдельные credentials.</li><li>Dry-run обязателен.</li><li>Retry без дублей.</li></ul><span class="priority p1">P1</span></article>
+          <article class="epic" data-priority="p1"><div class="epic-id">P1.3</div><div><h3>CTR / CR / Video tests</h3><p>Список Inferno, мастер теста, variant rotation, метрики, победитель, отмена и маховик.</p></div><ul><li>Live swap выключен default.</li><li>Расходы ограничены cap.</li><li>Победитель объясним.</li></ul><span class="priority p1">P1</span></article>
+          <article class="epic" data-priority="p1"><div class="epic-id">P1.4</div><div><h3>Информация по SKU+</h3><p>Вид Inferno с нашими мастер-данными, комментариями, readiness, фото completeness и Drive link.</p></div><ul><li>Inline edit.</li><li>Bulk filter incomplete.</li><li>Изменения с автором.</li></ul><span class="priority p1">P1</span></article>
+          <article class="epic" data-priority="p2"><div class="epic-id">P2.1</div><div><h3>UGC Studio</h3><p>Пятишаговый flow Inferno поверх существующих lab/content API.</p></div><ul><li>Avatar → SKU → script.</li><li>Generation queue.</li><li>Publish — отдельные подтверждения.</li></ul><span class="priority p2">P2</span></article>
+          <article class="epic" data-priority="p2"><div class="epic-id">P2.2</div><div><h3>Operational health</h3><p>Цикл заказа как timeline и healthcheck сервисов без изменения финансового блока.</p></div><ul><li>Только операционные сроки.</li><li>Без P&amp;L/ДДС в scope.</li><li>Alert по задержкам.</li></ul><span class="priority p2">P2</span></article>
+        </div>
+      </section>
+
+      <section id="acceptance">
+        <div class="section-head"><div><div class="kicker">Definition of done</div><h2>Критерии приёмки</h2></div></div>
+        <div class="grid-2">
+          <article class="card">
+            <h3>Визуальная приёмка</h3>
+            <div class="gate"><span class="num">1</span><div><b>Desktop parity</b><span>Overlay-сравнение 1440×900: sidebar, topbar, фильтры и таблица отклоняются не более чем на 2 px по ключевой геометрии.</span></div><span class="state copy">must</span></div>
+            <div class="gate"><span class="num">2</span><div><b>Responsive</b><span>1024 px — collapsed rail; 375 px — drawer navigation, без горизонтального скролла страницы.</span></div><span class="state copy">must</span></div>
+            <div class="gate"><span class="num">3</span><div><b>States</b><span>Hover, focus, selected, disabled, loading, empty, warning и error визуально определены.</span></div><span class="state copy">must</span></div>
+            <div class="gate"><span class="num">4</span><div><b>Accessibility</b><span>Контраст AA, aria-label для icon-only, aria-sort, focus trap, reduced motion.</span></div><span class="state copy">must</span></div>
+          </article>
+          <article class="card">
+            <h3>Функциональная приёмка</h3>
+            <div class="gate"><span class="num">1</span><div><b>Изоляция кабинетов</b><span>Каждый запрос и новая запись привязаны к cabinet_id; переключение не показывает данные другого кабинета.</span></div><span class="state keep">must</span></div>
+            <div class="gate"><span class="num">2</span><div><b>Безопасные действия</b><span>Деньги/ставки/статусы/экспорт цен проходят guards, confirm и audit log.</span></div><span class="state keep">must</span></div>
+            <div class="gate"><span class="num">3</span><div><b>Восстановление</b><span>После 60 сек — retry/cancel; ошибки показывают причину и следующий шаг; повтор не создаёт дубль.</span></div><span class="state keep">must</span></div>
+            <div class="gate"><span class="num">4</span><div><b>Frozen routes</b><span>Visual regression Финансов и Ozon подтверждает отсутствие изменений.</span></div><span class="state keep">must</span></div>
+          </article>
+        </div>
+        <div class="card" style="margin-top:14px">
+          <h3>Performance budgets</h3>
+          <div class="grid-3" style="margin-top:12px">
+            <div><span class="badge">UI</span><p style="margin-top:7px">Фильтр/сортировка дают feedback ≤100 ms; 150–300 ms transition.</p></div>
+            <div><span class="badge">DATA</span><p style="margin-top:7px">100+ строк виртуализируются; предыдущий fetch отменяется.</p></div>
+            <div><span class="badge">LOAD</span><p style="margin-top:7px">Skeleton сразу; stale data сохраняется при фоновом refresh.</p></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="plan">
+        <div class="section-head"><div><div class="kicker">Delivery</div><h2>Рекомендуемый порядок</h2><p>Не начинать со сложной WMS. Сначала закрепить визуальный shell и перенести уже существующие данные, затем достроить операционный домен.</p></div></div>
+        <div class="card">
+          <div class="decision"><span class="priority p0">Шаг 0</span><div><b>Выбрать каноническую ветку</b><p>Подтвердить, что разработка идёт от ветки, содержащей актуальные WB-страницы деплоя, и синхронизировать её с защищённым main.</p></div></div>
+          <div class="decision"><span class="priority p0">Шаг 1</span><div><b>Shell + главная</b><p>Один PR без новых таблиц. Финансы и Ozon исключены тестом маршрутов.</p></div></div>
+          <div class="decision"><span class="priority p0">Шаг 2</span><div><b>Analytics parity</b><p>РНП → воронка/репрайсер → реклама → SKU → SEO/склейки/Unit. Переиспользовать API.</p></div></div>
+          <div class="decision"><span class="priority p0">Шаг 3</span><div><b>Заказ → приёмка</b><p>Отдельное согласование миграций. Сначала ручной жизненный цикл, затем внешние интеграции.</p></div></div>
+          <div class="decision"><span class="priority p1">Шаг 4</span><div><b>Поставка → WMS</b><p>Распределение складов и restrictions; потом тара, МойСклад и healthcheck.</p></div></div>
+          <div class="decision"><span class="priority p1">Шаг 5</span><div><b>CTR automation</b><p>UI и dry-run сначала; живой photo-swap и рекламный расход — только в совместной контролируемой сессии.</p></div></div>
+          <div class="decision"><span class="priority p2">Шаг 6</span><div><b>UGC Studio</b><p>После завершения ядра WB и отдельного подтверждения продуктовой границы.</p></div></div>
+        </div>
+      </section>
+
+      <footer>
+        Основание: живой проход infernoff.ru, finance-panel-two.vercel.app, локальная инвентаризация маршрутов/API и существующие документы миграции. Артефакт не изменяет приложение и не затрагивает финансовый код.
+      </footer>
+    </main>
+  </div>
+
+  <script>
+    const tabButtons = [...document.querySelectorAll('.tab-btn')];
+    tabButtons.forEach((button) => button.addEventListener('click', () => {
+      tabButtons.forEach((item) => item.classList.toggle('active', item === button));
+      document.querySelectorAll('.gallery-panel').forEach((panel) => panel.classList.toggle('active', panel.id === `tab-${button.dataset.tab}`));
+    }));
+
+    const filterButtons = [...document.querySelectorAll('.filter-btn')];
+    filterButtons.forEach((button) => button.addEventListener('click', () => {
+      filterButtons.forEach((item) => item.classList.toggle('active', item === button));
+      document.querySelectorAll('.epic').forEach((epic) => epic.classList.toggle('hidden', button.dataset.priority !== 'all' && epic.dataset.priority !== button.dataset.priority));
+    }));
+
+    const navLinks = [...document.querySelectorAll('.nav a')];
+    const sections = navLinks.map((link) => document.querySelector(link.getAttribute('href'))).filter(Boolean);
+    const observer = new IntersectionObserver((entries) => {
+      const visible = entries.filter((entry) => entry.isIntersecting).sort((a,b) => b.intersectionRatio - a.intersectionRatio)[0];
+      if (!visible) return;
+      navLinks.forEach((link) => link.classList.toggle('active', link.getAttribute('href') === `#${visible.target.id}`));
+    }, { rootMargin: '-20% 0px -70% 0px', threshold: [0, .2, .5] });
+    sections.forEach((section) => observer.observe(section));
+  </script>
+</body>
+</html>
