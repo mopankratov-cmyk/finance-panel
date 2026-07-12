@@ -33,6 +33,7 @@ export function ReceivingTab({ skus, cabId, warehouses }: { skus: SupplyRow[]; c
   const [error, setError] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [receivedInputs, setReceivedInputs] = useState<Record<number, string>>({});
+  const [now, setNow] = useState(Date.now);
   const elapsed = useElapsedSeconds(loading);
 
   useEffect(() => {
@@ -58,6 +59,7 @@ export function ReceivingTab({ skus, cabId, warehouses }: { skus: SupplyRow[]; c
     } catch {
       setError("Не удалось загрузить приёмку");
     } finally {
+      setNow(Date.now());
       setLoading(false);
     }
   }, [resolvedCabinetId]);
@@ -94,7 +96,6 @@ export function ReceivingTab({ skus, cabId, warehouses }: { skus: SupplyRow[]; c
     }));
   };
 
-  const now = Date.now();
   const totalExpectedQty = expected.reduce((s, r) => s + r.expectedQty, 0);
   const suggestedCount = skus.filter((s) => s.need45 > 0 && !openNmIds.has(s.nmId)).length;
   const receivedRecent = received.filter((r) => r.receivedAt && now - new Date(r.receivedAt).getTime() < 30 * 86400000);

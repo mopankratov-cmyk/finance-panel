@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { getActiveWbCabinets } from "@/lib/wb/cabinetTokens";
-import { hasMpstats, itemSubject } from "@/lib/mpstats/client";
+import { hasMpstats, itemSubject, mpstatsRouteError } from "@/lib/mpstats/client";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -14,6 +14,15 @@ const TTL = 24 * 3600 * 1000;
 const PER_CAB = 12; // топ-SKU на кабинет (бережём квоту)
 
 export async function GET() {
+  try {
+    return await loadNiches();
+  } catch (error) {
+    const failure = mpstatsRouteError(error);
+    return NextResponse.json({ error: failure.message }, { status: failure.status });
+  }
+}
+
+async function loadNiches() {
   if (!hasMpstats()) return NextResponse.json({ error: "MPSTATS_TOKEN не настроен" }, { status: 501 });
   if (_memo && Date.now() - _memo.ts < TTL) return NextResponse.json(_memo.val);
   const db = getSupabaseAdmin();

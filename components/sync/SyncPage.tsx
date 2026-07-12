@@ -3,15 +3,16 @@
 import { CheckCircle2, Play, RefreshCw, XCircle } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { formatNumber, formatTime } from "@/lib/analytics/format";
+import { asSyncPayload, syncErrorMessage, syncPayloadOk } from "@/lib/sync/result";
 import type { SyncLogRow } from "@/app/api/sync-log/route";
 
 const JOBS: { key: string; label: string; schedule: string }[] = [
-  { key: "orders", label: "Заказы", schedule: "каждые 30 мин" },
-  { key: "sales", label: "Продажи", schedule: "каждые 30 мин" },
-  { key: "stocks", label: "Остатки", schedule: "каждый час" },
-  { key: "adverts", label: "Кампании", schedule: "каждый час" },
-  { key: "advert-stats", label: "Статистика рекламы", schedule: "каждый час" },
-  { key: "funnel", label: "Воронка", schedule: "каждые 2 часа" },
+  { key: "orders", label: "Заказы", schedule: "ежедневно в 06:00" },
+  { key: "sales", label: "Продажи", schedule: "ежедневно в 06:00" },
+  { key: "stocks", label: "Остатки", schedule: "ежедневно в 06:00" },
+  { key: "adverts", label: "Кампании", schedule: "ежедневно в 06:00" },
+  { key: "advert-stats", label: "Статистика рекламы", schedule: "ежедневно в 06:00" },
+  { key: "funnel", label: "Воронка", schedule: "ежедневно в 06:20" },
 ];
 
 function durationMs(r: SyncLogRow): number | null {
@@ -44,13 +45,21 @@ export function SyncPage() {
     loadLog();
   }, [loadLog]);
 
+  const requestSync = async (url: string) => {
+    const res = await fetch(url, { method: "POST" });
+    const body = asSyncPayload(await res.json().catch(() => ({})));
+    if (!syncPayloadOk(res.ok, body)) {
+      throw new Error(syncErrorMessage(body, `HTTP ${res.status}`));
+    }
+  };
+
   const runJob = async (job: string) => {
     setRunning(job);
     setError(null);
     try {
-      await fetch(`/api/sync/trigger?job=${job}`, { method: "POST" });
-    } catch {
-      setError("Ошибка запуска синхронизации");
+      await requestSync(`/api/sync/trigger?job=${job}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Ошибка запуска синхронизации");
     } finally {
       setRunning(null);
       loadLog();
@@ -68,12 +77,12 @@ export function SyncPage() {
       const cabs = shops.map((s) => s.key).filter((k) => k && k !== "all");
       const from = encodeURIComponent(backfillFrom);
       for (const cab of cabs) {
-        await fetch(`/api/sync/trigger?job=orders&from=${from}&cabinet=${cab}`, { method: "POST" });
-        await fetch(`/api/sync/trigger?job=sales&from=${from}&cabinet=${cab}`, { method: "POST" });
+        await requestSync(`/api/sync/trigger?job=orders&from=${from}&cabinet=${cab}`);
+        await requestSync(`/api/sync/trigger?job=sales&from=${from}&cabinet=${cab}`);
         loadLog();
       }
-    } catch {
-      setError("Ошибка догрузки истории");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Ошибка догрузки истории");
     } finally {
       setRunning(null);
       loadLog();

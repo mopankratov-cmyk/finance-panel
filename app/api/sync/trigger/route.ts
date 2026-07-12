@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { asSyncPayload, syncPayloadOk } from "@/lib/sync/result";
 
 // Пользовательский триггер синков из UI: секрет подставляется на сервере,
 // клиент его не видит. Допустимые задания фиксированы.
@@ -28,8 +29,12 @@ export async function POST(request: NextRequest) {
 
   try {
     const res = await fetch(`${base}/api/sync/${job}${qs}`, { headers, cache: "no-store" });
-    const body = await res.json().catch(() => ({}));
-    return NextResponse.json({ ok: res.ok, status: res.status, result: body });
+    const body = asSyncPayload(await res.json().catch(() => ({})));
+    const ok = syncPayloadOk(res.ok, body);
+    return NextResponse.json(
+      { ok, status: res.status, result: body },
+      { status: ok ? 200 : res.ok ? 502 : res.status },
+    );
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Unknown error";
     return NextResponse.json({ error: msg }, { status: 500 });

@@ -15,7 +15,7 @@ const STATUS_LABEL: Record<RestrictionRow["status"], string> = {
   free: "бесплатно",
 };
 
-// Официальный WB Supplies API (не WMS/МойСклад) — коэффициенты приёмки складов.
+// Официальный WB Tariffs API (не WMS/МойСклад) — коэффициенты приёмки складов.
 export function RestrictionsPanel({ cabinetId }: { cabinetId: string }) {
   const [rows, setRows] = useState<RestrictionRow[] | null>(null);
   const [loading, setLoading] = useState(false);
@@ -56,7 +56,7 @@ export function RestrictionsPanel({ cabinetId }: { cabinetId: string }) {
           </div>
         ) : <p className="text-xs text-slate-400">Нет данных.</p>
       )}
-      {!rows && !error && <p className="text-xs text-slate-400">Нажми «Проверить» — реальный запрос к WB Supplies API.</p>}
+      {!rows && !error && <p className="text-xs text-slate-400">Нажми «Проверить» — реальный запрос к тарифам WB.</p>}
     </div>
   );
 }

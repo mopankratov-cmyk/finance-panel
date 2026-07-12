@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getWbCabinet, resolveWbToken } from "@/lib/wb/cabinetTokens";
-import { fetchAcceptanceCoefficients, WbSuppliesScopeError } from "@/lib/wb/supplies";
+import { fetchAcceptanceCoefficients, WbSuppliesAuthError } from "@/lib/wb/supplies";
 
 export const dynamic = "force-dynamic";
 
@@ -12,7 +12,7 @@ export interface RestrictionRow {
   date: string;
 }
 
-// GET ?cabinet=<uuid> — реальный вызов официального WB Supplies API (не WMS/МойСклад,
+// GET ?cabinet=<uuid> — реальный вызов официального WB Tariffs API (не WMS/МойСклад,
 // см. lib/wb/supplies.ts). Ближайший коэффициент на склад (не вся 2-недельная сетка).
 export async function GET(req: NextRequest) {
   const cabinetId = new URL(req.url).searchParams.get("cabinet");
@@ -40,7 +40,7 @@ export async function GET(req: NextRequest) {
     const rows = [...byWarehouse.values()].sort((a, b) => a.warehouse.localeCompare(b.warehouse, "ru"));
     return NextResponse.json({ ok: true, rows });
   } catch (err) {
-    if (err instanceof WbSuppliesScopeError) {
+    if (err instanceof WbSuppliesAuthError) {
       return NextResponse.json({ ok: false, error: err.message }, { status: 403 });
     }
     return NextResponse.json({ ok: false, error: err instanceof Error ? err.message : "Unknown error" }, { status: 500 });

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { resolveShopCabinet } from "@/lib/rnp/resolveShop";
-import { hasMpstats, subjectByDate, subjectKeywords, subjectByDateId, subjectKeywordsId, itemKeywords } from "@/lib/mpstats/client";
+import { hasMpstats, subjectByDate, subjectKeywords, subjectByDateId, subjectKeywordsId, itemKeywords, mpstatsRouteError } from "@/lib/mpstats/client";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -17,6 +17,15 @@ const isoWeek = (s: string) => { const [y, m, dd] = s.split("-").map(Number); co
 // MPStats — оценочные данные (для тренда/направления, не абсолюта).
 // Параметры: subject (путь предмета), cabinet, gran=day|week, date_from/date_to (или weeks).
 export async function GET(request: NextRequest) {
+  try {
+    return await loadPulse(request);
+  } catch (error) {
+    const failure = mpstatsRouteError(error);
+    return NextResponse.json({ error: failure.message }, { status: failure.status });
+  }
+}
+
+async function loadPulse(request: NextRequest) {
   if (!hasMpstats()) return NextResponse.json({ error: "MPSTATS_TOKEN не настроен в окружении" }, { status: 501 });
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 500 });
