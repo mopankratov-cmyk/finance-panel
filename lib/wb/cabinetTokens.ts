@@ -23,6 +23,7 @@ export interface WbCabinet {
 type RawWbCabinet = Omit<WbCabinet, "brand_filters" | "allowed_nm_ids"> & { brand_filters?: unknown };
 
 const CABINET_COLS = "id, name, seller_id, inn, token, token_advert, token_content, token_feedbacks, brand_filters, is_active";
+const LEGACY_CABINET_COLS = "id, name, seller_id, inn, token, token_advert, token_content, token_feedbacks, is_active";
 
 async function attachProductScopes(cabinets: RawWbCabinet[]): Promise<WbCabinet[]> {
   const db = getSupabaseAdmin();
@@ -67,12 +68,26 @@ export function cabinetProductScope(cabinet: WbCabinet): WbProductScope {
 export async function getActiveWbCabinets(): Promise<WbCabinet[]> {
   const db = getSupabaseAdmin();
   if (!db) return [];
-  const { data, error } = await db
+  const primary = await db
     .from("wb_cabinets")
     .select(CABINET_COLS)
     .eq("marketplace", "wb")
     .eq("is_active", true)
     .order("created_at", { ascending: true });
+  let data = primary.data as RawWbCabinet[] | null;
+  let error = primary.error;
+  // Deploy кода и SQL-миграции могут разойтись на несколько минут. Пока
+  // brand_filters ещё нет, сохраняем старое поведение вместо пустого списка кабинетов.
+  if (error?.code === "42703") {
+    const legacy = await db
+      .from("wb_cabinets")
+      .select(LEGACY_CABINET_COLS)
+      .eq("marketplace", "wb")
+      .eq("is_active", true)
+      .order("created_at", { ascending: true });
+    data = legacy.data as RawWbCabinet[] | null;
+    error = legacy.error;
+  }
   if (error || !data) return [];
   return attachProductScopes(data as RawWbCabinet[]);
 }
@@ -80,7 +95,15 @@ export async function getActiveWbCabinets(): Promise<WbCabinet[]> {
 export async function getWbCabinet(id: string): Promise<WbCabinet | null> {
   const db = getSupabaseAdmin();
   if (!db) return null;
-  const { data } = await db.from("wb_cabinets").select(CABINET_COLS).eq("id", id).maybeSingle();
+  const primary = await db.from("wb_cabinets").select(CABINET_COLS).eq("id", id).maybeSingle();
+  let data = primary.data as RawWbCabinet | null;
+  let error = primary.error;
+  if (error?.code === "42703") {
+    const legacy = await db.from("wb_cabinets").select(LEGACY_CABINET_COLS).eq("id", id).maybeSingle();
+    data = legacy.data as RawWbCabinet | null;
+    error = legacy.error;
+  }
+  if (error) return null;
   if (!data) return null;
   return (await attachProductScopes([data as RawWbCabinet]))[0] ?? null;
 }

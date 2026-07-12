@@ -14,10 +14,20 @@ const mask = (t: string) => (t ? "••••" + t.slice(-4) : "");
 export async function GET() {
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ cabinets: [] });
-  const { data, error } = await db
+  const cols = "id, name, marketplace, trade_mark, seller_id, client_id, inn, token, token_advert, token_content, token_feedbacks, brand_filters, is_active, created_at";
+  const legacyCols = "id, name, marketplace, trade_mark, seller_id, client_id, inn, token, token_advert, token_content, token_feedbacks, is_active, created_at";
+  type CabinetRow = Record<string, unknown> & { brand_filters?: unknown };
+  const primary = await db
     .from("wb_cabinets")
-    .select("id, name, marketplace, trade_mark, seller_id, client_id, inn, token, token_advert, token_content, token_feedbacks, brand_filters, is_active, created_at")
+    .select(cols)
     .order("created_at", { ascending: true });
+  let data = primary.data as CabinetRow[] | null;
+  let error = primary.error;
+  if (error?.code === "42703") {
+    const legacy = await db.from("wb_cabinets").select(legacyCols).order("created_at", { ascending: true });
+    data = legacy.data as CabinetRow[] | null;
+    error = legacy.error;
+  }
   if (error) return NextResponse.json({ cabinets: [], error: error.message });
   const { data: scopeRows } = await db.from("wb_cabinet_product_scope").select("cabinet_id, nm_id").limit(10_000);
   const scopeCount = new Map<string, number>();
