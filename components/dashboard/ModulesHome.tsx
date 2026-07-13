@@ -3,7 +3,8 @@
 import {
   BarChart3, Bot, Coins, LineChart, Megaphone, Table2, Search, Layers, Sigma,
   MousePointerClick, CalendarRange, Clapperboard, HeartPulse,
-  Package, TrendingDown, Wallet, Building2, ArrowUpRight, LogOut, AlertTriangle, Info, XCircle, type LucideIcon,
+  Package, TrendingDown, Wallet, Building2, ArrowUpRight, ChevronDown, LayoutDashboard,
+  LogOut, AlertTriangle, Info, XCircle, type LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -32,7 +33,7 @@ const MODULES: ModuleCard[] = [
   { title: "Юнит-экономика", description: "Прибыль/ед: цена до СПП минус все расходы МП", href: "/wb/unit", icon: Sigma, zone: "Аналитика", color: ["bg-indigo-100", "text-indigo-700"] },
   { title: "CTR по SKU", description: "CTR, CPC и ДРР рекламы по артикулам за период", href: "/wb/ctr", icon: MousePointerClick, zone: "Аналитика", color: ["bg-violet-100", "text-violet-700"] },
   { title: "Планирование", description: "Годовой план заказов по месяцам и остатки по SKU", href: "/wb/planning", icon: CalendarRange, zone: "Аналитика", color: ["bg-emerald-100", "text-emerald-700"] },
-  { title: "Ozon Аналитика", description: "РНП, воронка, юнит, остатки, удержания", href: "/ozon", icon: BarChart3, agent: "Озар", zone: "Аналитика", color: ["bg-sky-100", "text-sky-700"] },
+  { title: "Ozon Cockpit", description: "Обзор, продажи, реклама, остатки, заказы и экономика", href: "/ozon", icon: BarChart3, agent: "Озар", zone: "Аналитика", color: ["bg-sky-100", "text-sky-700"] },
 
   { title: "Финансы", description: "Календарь ДДС, платежи, счета, кредиты", href: "/calendar", icon: Wallet, agent: "Нано", zone: "Финансы", color: ["bg-emerald-100", "text-emerald-700"] },
   { title: "ОПиУ WB+Ozon", description: "P&L до СПП + соинвест, маржа, налог", href: "/pnl", icon: LineChart, zone: "Финансы", color: ["bg-blue-100", "text-blue-700"] },
@@ -48,6 +49,16 @@ const MODULES: ModuleCard[] = [
 ];
 
 const ZONES = ["Аналитика", "Финансы", "Операции", "AI"] as const;
+type Zone = (typeof ZONES)[number];
+
+const PRIMARY_MODULES: ModuleCard[] = [
+  { title: "Wildberries Cockpit", description: "Единый центр управления WB: обзор, продажи, реклама и операции", href: "/wb", icon: LayoutDashboard, zone: "Аналитика", color: ["bg-violet-100", "text-violet-700"] },
+  { title: "Ozon Cockpit", description: "Продажи, реклама, остатки, заказы и здоровье интеграций", href: "/ozon", icon: BarChart3, agent: "Озар", zone: "Аналитика", color: ["bg-sky-100", "text-sky-700"] },
+  { title: "Финансы", description: "Календарь ДДС, платежи, счета и кредиты", href: "/calendar", icon: Wallet, agent: "Нано", zone: "Финансы", color: ["bg-emerald-100", "text-emerald-700"] },
+];
+
+const PRIMARY_HREFS = new Set(PRIMARY_MODULES.map((module) => module.href));
+const DISCLOSURE_STORAGE_KEY = "fp_dashboard_disclosure_v1";
 
 function Card({ m, badge }: { m: ModuleCard; badge?: number }) {
   const Icon = m.icon;
@@ -76,6 +87,9 @@ export function ModulesHome() {
   const [unread, setUnread] = useState(0);
   const [insights, setInsights] = useState<AgentInsight[]>([]);
   const [me, setMe] = useState<{ email: string; role: Role } | null>(null);
+  const [openZones, setOpenZones] = useState<Set<Zone>>(new Set());
+  const [attentionOpen, setAttentionOpen] = useState(false);
+  const [disclosureReady, setDisclosureReady] = useState(false);
 
   useEffect(() => {
     fetch("/api/agent/insights?limit=50", { cache: "no-store" }).then((r) => r.json()).then((j) => {
@@ -84,6 +98,26 @@ export function ModulesHome() {
     }).catch(() => {});
     fetch("/api/auth/me", { cache: "no-store" }).then((r) => r.json()).then((j) => setMe(j.user)).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(DISCLOSURE_STORAGE_KEY) || "{}") as { zones?: string[]; attention?: boolean };
+      setOpenZones(new Set((saved.zones ?? []).filter((zone): zone is Zone => ZONES.includes(zone as Zone))));
+      setAttentionOpen(Boolean(saved.attention));
+    } catch {
+      // Повреждённое локальное состояние не должно ломать главную страницу.
+    }
+    setDisclosureReady(true);
+  }, []);
+
+  useEffect(() => {
+    if (!disclosureReady) return;
+    try {
+      localStorage.setItem(DISCLOSURE_STORAGE_KEY, JSON.stringify({ zones: [...openZones], attention: attentionOpen }));
+    } catch {
+      // В приватном режиме состояние просто не запомнится.
+    }
+  }, [attentionOpen, disclosureReady, openZones]);
 
   // топ-5 непрочитанных, сначала критичные — компактный превью «что требует внимания»
   const attention = useMemo(() => {
@@ -96,10 +130,19 @@ export function ModulesHome() {
 
   const logout = async () => { await fetch("/api/auth/logout", { method: "POST" }).catch(() => {}); router.push("/login"); router.refresh(); };
   const visible = MODULES.filter((m) => !me || m.href.startsWith("http") || canAccess(me.role, m.href));
+  const visiblePrimary = PRIMARY_MODULES.filter((m) => !me || canAccess(me.role, m.href));
+  const secondary = visible.filter((module) => !PRIMARY_HREFS.has(module.href));
+  const setZoneOpen = (zone: Zone, open: boolean) => {
+    setOpenZones((current) => {
+      const next = new Set(current);
+      if (open) next.add(zone); else next.delete(zone);
+      return next;
+    });
+  };
 
   const tourSteps: TourStep[] = [
     ...(attention.length > 0 ? [{ selector: '[data-tour="attention"]', title: "Что требует внимания", text: "Топ-5 самых срочных сигналов из правил и WB-аналитики — критичные вверху. Клик открывает полный список в AI-агенте." }] : []),
-    { selector: '[data-tour="modules"]', title: "Модули", text: "Каждая карточка — свой раздел: аналитика, финансы, операции или AI-агент. Сгруппированы по зонам." },
+    { selector: '[data-tour="modules"]', title: "Модули", text: "Основные кабинеты доступны сразу. Остальные инструменты сгруппированы в компактные раскрывающиеся разделы." },
     { selector: '[data-tour="user"]', title: "Ваш аккаунт", text: "Email и роль видны здесь же — тут и кнопка выхода." },
   ];
 
@@ -139,44 +182,75 @@ export function ModulesHome() {
 
       <main className="mx-auto max-w-6xl px-6 py-8">
         {attention.length > 0 && (
-          <section data-tour="attention" className="mb-8 rounded-2xl border border-gray-200 bg-white p-5">
-            <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-xs font-bold uppercase tracking-wider text-gray-400">Что требует внимания</h2>
-              <Link href="/agent" className="text-xs font-medium text-blue-600 hover:underline">Все инсайты →</Link>
-            </div>
-            <div className="space-y-1">
-              {attention.map((i) => {
-                const Icon = SEVERITY_ICON[i.tier];
-                return (
-                  <Link key={i.id} href="/agent" className="flex items-start gap-2 rounded-lg p-2 -mx-2 hover:bg-gray-50">
-                    <Icon className={`mt-0.5 h-4 w-4 shrink-0 ${SEVERITY_COLOR[i.tier]}`} />
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium text-gray-900">{i.title}</p>
-                      <p className="truncate text-xs text-gray-500">{i.body}</p>
-                    </div>
-                  </Link>
-                );
-              })}
-            </div>
-          </section>
+          <details
+            data-tour="attention"
+            open={attentionOpen}
+            onToggle={(event) => setAttentionOpen(event.currentTarget.open)}
+            className="group mb-6 overflow-hidden rounded-2xl border border-gray-200 bg-white"
+          >
+            <summary className="flex min-h-14 cursor-pointer list-none items-center gap-3 px-4 py-3 outline-none transition-colors hover:bg-gray-50 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500 sm:px-5 [&::-webkit-details-marker]:hidden">
+              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-amber-50 text-amber-600"><AlertTriangle className="h-4 w-4" /></span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-bold text-gray-900">Что требует внимания</span>
+                <span className="block truncate text-xs text-gray-500">{attention.length} непрочитанных сигналов · нажмите, чтобы посмотреть</span>
+              </span>
+              <span className="rounded-full bg-rose-500 px-2 py-0.5 text-xs font-bold text-white">{attention.length}</span>
+              <ChevronDown className="h-4 w-4 shrink-0 text-gray-400 transition-transform duration-200 motion-reduce:transition-none group-open:rotate-180" />
+            </summary>
+            {attentionOpen && (
+              <div className="border-t border-gray-100 px-4 py-3 sm:px-5">
+                <div className="mb-2 flex justify-end"><Link href="/agent" className="min-h-11 px-2 text-xs font-semibold text-blue-600 hover:underline sm:min-h-8">Все инсайты →</Link></div>
+                <div className="space-y-1">
+                  {attention.map((i) => {
+                    const Icon = SEVERITY_ICON[i.tier];
+                    return (
+                      <Link key={i.id} href="/agent" className="-mx-2 flex min-h-11 items-start gap-2 rounded-lg p-2 hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
+                        <Icon className={`mt-0.5 h-4 w-4 shrink-0 ${SEVERITY_COLOR[i.tier]}`} />
+                        <span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium text-gray-900">{i.title}</span><span className="block truncate text-xs text-gray-500">{i.body}</span></span>
+                      </Link>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </details>
         )}
 
         <div data-tour="modules">
+          <section className="mb-6">
+            <div className="mb-3 flex items-end justify-between gap-4">
+              <div><h2 className="text-xs font-bold uppercase tracking-wider text-gray-400">Основное</h2><p className="mt-1 text-xs text-gray-500">Главные рабочие кабинеты без лишней навигации</p></div>
+              <span className="text-xs tabular-nums text-gray-400">{visiblePrimary.length} модуля</span>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {visiblePrimary.map((module) => <Link key={module.href} href={module.href} className="rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"><Card m={module} /></Link>)}
+            </div>
+          </section>
+
+          <div className="mb-3 mt-8"><h2 className="text-xs font-bold uppercase tracking-wider text-gray-400">Остальные инструменты</h2><p className="mt-1 text-xs text-gray-500">Раскройте только тот раздел, который нужен сейчас</p></div>
           {ZONES.map((zone) => {
-            const items = visible.filter((m) => m.zone === zone);
+            const items = secondary.filter((m) => m.zone === zone);
             if (!items.length) return null;
+            const isOpen = openZones.has(zone);
             return (
-              <section key={zone} className="mb-8">
-                <h2 className="mb-3 text-xs font-bold uppercase tracking-wider text-gray-400">{zone}</h2>
-                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                  {items.map((m) => {
-                    const inner = <Card m={m} badge={m.title === "AI-агент" ? unread : undefined} />;
-                    return m.href.startsWith("http")
-                      ? <a key={m.title} href={m.href} target="_blank" rel="noreferrer">{inner}</a>
-                      : <Link key={m.title} href={m.href}>{inner}</Link>;
-                  })}
-                </div>
-              </section>
+              <details key={zone} open={isOpen} onToggle={(event) => setZoneOpen(zone, event.currentTarget.open)} className="group mb-3 overflow-hidden rounded-2xl border border-gray-200 bg-white">
+                <summary className="flex min-h-14 cursor-pointer list-none items-center gap-3 px-4 py-3 outline-none transition-colors hover:bg-gray-50 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500 sm:px-5 [&::-webkit-details-marker]:hidden">
+                  <span className="min-w-0 flex-1"><span className="block text-sm font-bold text-gray-900">{zone}</span><span className="block text-xs text-gray-500">{items.length} {items.length === 1 ? "инструмент" : items.length < 5 ? "инструмента" : "инструментов"}</span></span>
+                  {zone === "AI" && unread > 0 && <span className="rounded-full bg-rose-500 px-2 py-0.5 text-xs font-bold text-white">{unread}</span>}
+                  <ChevronDown className="h-4 w-4 shrink-0 text-gray-400 transition-transform duration-200 motion-reduce:transition-none group-open:rotate-180" />
+                </summary>
+                {isOpen && (
+                  <div className="grid gap-4 border-t border-gray-100 bg-gray-50/60 p-4 sm:grid-cols-2 lg:grid-cols-3">
+                    {items.map((m) => {
+                      const inner = <Card m={m} badge={m.title === "AI-агент" ? unread : undefined} />;
+                      const focusClass = "rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2";
+                      return m.href.startsWith("http")
+                        ? <a key={m.title} href={m.href} target="_blank" rel="noreferrer" className={focusClass}>{inner}</a>
+                        : <Link key={m.title} href={m.href} className={focusClass}>{inner}</Link>;
+                    })}
+                  </div>
+                )}
+              </details>
             );
           })}
         </div>
