@@ -2,12 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { checkCronAuth, chunkedUpsert, writeSyncLog } from "@/lib/sync/helpers";
 import { getWbSyncTargets } from "@/lib/sync/cabinets";
+import { rotateFunnelTargets, syncFunnelPeriod } from "@/lib/wb/funnelPeriod";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 const HISTORY_URL =
   "https://seller-analytics-api.wildberries.ru/api/analytics/v3/sales-funnel/products/history";
 const NM_BATCH = 20;
-const MSK_OFFSET_MS = 3 * 60 * 60 * 1000;
+const RATE_LIMIT_WAIT_MS = 21_000;
+const REQUEST_RESERVE_MS = 5_000;
 
 // воронка с паузами 21с между батчами (на кабинет) может идти дольше дефолта
 export const maxDuration = 60;
@@ -25,41 +27,6 @@ interface HistoryDay {
 interface HistoryItem {
   product?: { nmId?: number };
   history?: HistoryDay[];
-}
-
-function dateOnly(d: Date): string {
-  return d.toISOString().slice(0, 10);
-}
-
-function mskDate(offsetDays = 0): Date {
-  const d = new Date(Date.now() + MSK_OFFSET_MS);
-  d.setUTCDate(d.getUTCDate() + offsetDays);
-  return d;
-}
-
-function syncPeriod(request: NextRequest): { begin: string; end: string; mode: string } {
-  const params = new URL(request.url).searchParams;
-  const forcedFrom = params.get("from");
-  const forcedTo = params.get("to");
-  if (forcedFrom && forcedTo) return { begin: forcedFrom, end: forcedTo, mode: "manual" };
-
-  const yesterday = mskDate(-1);
-  const todayMsk = mskDate();
-  const mode = params.get("period") ?? "auto";
-  const weeklyMonthRefresh = mode === "month" || (mode === "auto" && todayMsk.getUTCDay() === 1);
-
-  if (weeklyMonthRefresh) {
-    const begin = new Date(Date.UTC(todayMsk.getUTCFullYear(), todayMsk.getUTCMonth(), 1));
-    if (dateOnly(begin) <= dateOnly(yesterday)) return { begin: dateOnly(begin), end: dateOnly(yesterday), mode: "month" };
-  }
-
-  if (mode === "7d") {
-    const begin = new Date(yesterday);
-    begin.setUTCDate(begin.getUTCDate() - 6);
-    return { begin: dateOnly(begin), end: dateOnly(yesterday), mode: "7d" };
-  }
-
-  return { begin: dateOnly(yesterday), end: dateOnly(yesterday), mode: "yesterday" };
 }
 
 // nm_id, по которым тянем воронку, в разрезе кабинета (остатки + заказы за 30 дней).
@@ -97,20 +64,24 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Нет активных кабинетов и WB_STATS_TOKEN не настроен" }, { status: 500 });
   }
 
-  const period = syncPeriod(request); // история доступна до вчера; auto: вчера ежедневно, текущий месяц по понедельникам.
+  const period = syncFunnelPeriod(request.url); // история доступна до вчера; по понедельникам восстанавливаем последние 7 дней.
 
   let total = 0;
   const errors: string[] = [];
   const rotated: string[] = [];
 
   // Бюджет на джобу (60с-функция): успеть upsert и лог. Внутри окна — несколько батчей.
-  const deadline = Date.now() + 50_000;
+  // Оставляем 15с от Vercel maxDuration на финальный upsert и sync_log.
+  const deadline = Date.now() + 45_000;
   // Срез дня для ротации (разные SKU в разные дни — полное покрытие за неск. прогонов).
   const dayOfYear = Math.floor((Date.now() - Date.UTC(new Date().getUTCFullYear(), 0, 0)) / 86_400_000);
+  // В 60с обычно помещаются не все кабинеты. Меняем стартовый кабинет каждый день,
+  // чтобы поздние в списке не голодали и автоматически догружались в следующем цикле.
+  const rotatedTargets = rotateFunnelTargets(targets, dayOfYear);
 
   try {
-    for (const t of targets) {
-      if (Date.now() > deadline) { rotated.push(`${t.name}: пропущен (бюджет)`); break; } // докрутим следующим прогоном
+    for (const t of rotatedTargets) {
+      if (Date.now() + REQUEST_RESERVE_MS > deadline) { rotated.push(`${t.name}: пропущен (бюджет)`); break; } // докрутим следующим прогоном
       const nmIds = await nmIdsForCabinet(db, t.cabinetId);
       if (!nmIds.length) continue;
 
@@ -123,8 +94,11 @@ export async function GET(request: NextRequest) {
       const rows: Record<string, unknown>[] = [];
       let processed = 0;
       for (let k = 0; k < batches.length; k++) {
-        if (Date.now() > deadline) break; // тайм-бокс: остальное доберём следующим прогоном
-        if (processed > 0) await new Promise((r) => setTimeout(r, 21000)); // analytics: 3 req/мин (тот же токен)
+        if (Date.now() + REQUEST_RESERVE_MS > deadline) break; // тайм-бокс: остальное доберём следующим прогоном
+        if (processed > 0) {
+          if (Date.now() + RATE_LIMIT_WAIT_MS + REQUEST_RESERVE_MS > deadline) break;
+          await new Promise((r) => setTimeout(r, RATE_LIMIT_WAIT_MS)); // analytics: 3 req/мин (тот же токен)
+        }
         const batch = batches[(startB + k) % batches.length];
 
         const res = await fetch(HISTORY_URL, {

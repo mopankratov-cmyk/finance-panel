@@ -3,6 +3,7 @@ import test from "node:test";
 
 import { runIndependentSyncJobs } from "../lib/sync/orchestrator";
 import { getWbCommission } from "../lib/wb/commissions";
+import { rotateFunnelTargets, syncFunnelPeriod } from "../lib/wb/funnelPeriod";
 
 test("secondary sync jobs run concurrently and propagate a nested failure", async () => {
   let active = 0;
@@ -83,4 +84,22 @@ test("secondary sync rejects an empty JSON object disguised as success", async (
     error: "Дочерняя синхронизация не подтвердила успех",
     status: 200,
   });
+});
+test("Monday funnel recovery stays inside the WB seven-day limit", () => {
+  const period = syncFunnelPeriod(
+    "https://example.test/api/sync/funnel",
+    new Date("2026-07-13T09:00:00+03:00").getTime(),
+  );
+  assert.deepEqual(period, {
+    begin: "2026-07-06",
+    end: "2026-07-12",
+    mode: "7d-recovery",
+  });
+});
+
+test("funnel cabinet order rotates so later cabinets cannot starve", () => {
+  const cabinets = ["CLERIN", "COSMOS", "Retail", "Optima"];
+  assert.deepEqual(rotateFunnelTargets(cabinets, 0), cabinets);
+  assert.deepEqual(rotateFunnelTargets(cabinets, 1), ["COSMOS", "Retail", "Optima", "CLERIN"]);
+  assert.deepEqual(rotateFunnelTargets(cabinets, 3), ["Optima", "CLERIN", "COSMOS", "Retail"]);
 });
