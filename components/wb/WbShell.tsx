@@ -27,40 +27,59 @@ import {
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
+import {
+  WB_MOBILE_NAVIGATION,
+  WB_NAVIGATION_SCENARIOS,
+  isWbNavigationItemActive,
+  type WbNavigationScenario,
+} from "@/lib/wb/navigation";
 import { WbCabinetSwitcher } from "./WbCabinetSwitcher";
 import { useWbCabinet } from "./WbCabinetContext";
+
+type IconComponent = React.ComponentType<{ className?: string }>;
 
 interface NavItem {
   label: string;
   href: string;
-  icon: React.ComponentType<{ className?: string }>;
+  icon: IconComponent;
   target?: boolean;
 }
 
-const WORK_NAV: NavItem[] = [
-  { label: "РНП", href: "/wb/rnp", icon: BarChart3, target: true },
-  { label: "Воронка / Репрайсер", href: "/wb/funnel", icon: Filter, target: true },
-  { label: "Планирование", href: "/wb/planning", icon: Target, target: true },
-  { label: "Задачи", href: "/wb/tasks", icon: KanbanSquare, target: true },
-  { label: "Здоровье", href: "/wb/health", icon: HeartPulse, target: true },
-  { label: "Юнит-экономика", href: "/wb/unit", icon: Calculator, target: true },
-  { label: "SEO", href: "/wb/seo", icon: Search, target: true },
-  { label: "Склейки", href: "/wb/sklejki", icon: Link2, target: true },
-  { label: "Реклама", href: "/wb/adverts", icon: Megaphone, target: true },
-  { label: "CTR-тесты", href: "/wb/ctr", icon: FlaskConical, target: true },
-  { label: "UGC Studio", href: "/wb/ugc", icon: Clapperboard, target: true },
-  { label: "ABC-анализ", href: "/wb/abc", icon: BarChart3, target: true },
-  { label: "Динамика", href: "/wb/trends", icon: TrendingUp, target: true },
-  { label: "Рынок", href: "/wb/market", icon: ChartNoAxesCombined, target: true },
-  { label: "Поставки", href: "/wb/supplies", icon: Truck, target: true },
-  { label: "Товары", href: "/wb/product", icon: PackageSearch, target: true },
-  { label: "Отзывы", href: "/wb/reviews", icon: MessageSquareText, target: true },
-];
+const ITEM_ICONS: Record<string, IconComponent> = {
+  "/wb/rnp": BarChart3,
+  "/wb/funnel": Filter,
+  "/wb/planning": Target,
+  "/wb/tasks": KanbanSquare,
+  "/wb/health": HeartPulse,
+  "/wb/unit": Calculator,
+  "/wb/seo": Search,
+  "/wb/sklejki": Link2,
+  "/wb/adverts": Megaphone,
+  "/wb/ctr": FlaskConical,
+  "/wb/ugc": Clapperboard,
+  "/wb/abc": BarChart3,
+  "/wb/trends": TrendingUp,
+  "/wb/market": ChartNoAxesCombined,
+  "/wb/supplies": Truck,
+  "/wb/product": PackageSearch,
+  "/wb/reviews": MessageSquareText,
+};
 
-function isWorkItemActive(pathname: string, item: NavItem) {
-  if (item.href === "/wb/rnp") return pathname === "/wb" || pathname.startsWith("/wb/rnp");
-  return pathname === item.href || pathname.startsWith(`${item.href}/`);
-}
+const SCENARIO_ICONS: Record<WbNavigationScenario["id"], IconComponent> = {
+  sales: BarChart3,
+  operations: Truck,
+  product: PackageSearch,
+  experiments: FlaskConical,
+  analytics: ChartNoAxesCombined,
+};
+
+const WORK_GROUPS = WB_NAVIGATION_SCENARIOS.map((scenario) => ({
+  ...scenario,
+  icon: SCENARIO_ICONS[scenario.id],
+  items: scenario.items.map((item) => ({ ...item, icon: ITEM_ICONS[item.href] ?? BarChart3, target: true })),
+}));
+
+const MOBILE_NAV = WB_MOBILE_NAVIGATION.map((item) => ({ ...item, icon: ITEM_ICONS[item.href] ?? BarChart3, target: true }));
 
 const SYSTEM_NAV: NavItem[] = [
   { label: "Главная", href: "/", icon: Home },
@@ -75,6 +94,7 @@ function RailLink({ item, active, cabinetId }: { item: NavItem; active: boolean;
     <Link
       href={href}
       aria-label={item.label}
+      aria-current={active ? "page" : undefined}
       title={item.label}
       className={`group relative mx-2 flex h-11 items-center justify-center rounded-[9px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 md:h-9 ${
         active ? "bg-violet-50 text-violet-700" : "text-slate-500 hover:bg-slate-50 hover:text-slate-800"
@@ -89,13 +109,79 @@ function RailLink({ item, active, cabinetId }: { item: NavItem; active: boolean;
   );
 }
 
+function ScenarioMenu({
+  scenario,
+  active,
+  open,
+  pathname,
+  cabinetId,
+  onOpen,
+  onClose,
+}: {
+  scenario: (typeof WORK_GROUPS)[number];
+  active: boolean;
+  open: boolean;
+  pathname: string;
+  cabinetId: string;
+  onOpen: () => void;
+  onClose: () => void;
+}) {
+  const Icon = scenario.icon;
+  const menuId = `wb-scenario-${scenario.id}`;
+  return (
+    <div className="relative" onMouseEnter={onOpen} onMouseLeave={onClose}>
+      <button
+        type="button"
+        onClick={onOpen}
+        aria-label={scenario.label}
+        aria-current={active ? "page" : undefined}
+        aria-expanded={open}
+        aria-controls={menuId}
+        title={scenario.label}
+        className={`group relative mx-2 flex h-11 w-[39px] items-center justify-center rounded-[9px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 md:h-9 ${
+          active || open ? "bg-violet-50 text-violet-700" : "text-slate-500 hover:bg-slate-50 hover:text-slate-800"
+        }`}
+      >
+        {active && <span className="absolute -left-2 h-6 w-[3px] rounded-r bg-violet-600" />}
+        <Icon className="h-[17px] w-[17px]" />
+        {!open && <span className="pointer-events-none absolute left-[43px] z-[90] hidden whitespace-nowrap rounded-md bg-slate-900 px-2 py-1 text-[10px] font-semibold text-white shadow-lg group-hover:block group-focus-visible:block">{scenario.label}</span>}
+      </button>
+      {open ? (
+        <div id={menuId} className="absolute left-full top-0 z-[95] ml-1 w-64 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl">
+          <div className="border-b border-slate-100 px-3 py-3">
+            <div className="text-xs font-bold text-slate-800">{scenario.label}</div>
+            <div className="mt-1 text-[10px] leading-4 text-slate-400">{scenario.description}</div>
+          </div>
+          <div className="p-1.5">
+            {scenario.items.map((item) => {
+              const ItemIcon = item.icon;
+              const itemActive = isWbNavigationItemActive(pathname, item.href);
+              const href = `${item.href}?cabinet=${encodeURIComponent(cabinetId)}`;
+              return (
+                <Link key={item.href} href={href} onClick={onClose} aria-current={itemActive ? "page" : undefined} className={`flex min-h-10 items-center gap-2 rounded-lg px-2.5 text-xs font-medium transition-colors ${itemActive ? "bg-violet-50 text-violet-700" : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"}`}>
+                  <ItemIcon className="h-4 w-4 shrink-0" />
+                  <span>{item.label}</span>
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export function WbShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const { cabinetId, user } = useWbCabinet();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [openScenario, setOpenScenario] = useState<WbNavigationScenario["id"] | null>(null);
 
-  useEffect(() => setMenuOpen(false), [pathname]);
+  useEffect(() => {
+    setMenuOpen(false);
+    setOpenScenario(null);
+  }, [pathname]);
 
   const initials = useMemo(() => {
     const email = user?.email ?? "";
@@ -131,14 +217,18 @@ export function WbShell({ children }: { children: React.ReactNode }) {
         </button>
       </div>
 
-      <nav aria-label="Инструменты Wildberries" className="flex-1 overflow-y-auto py-2">
+      <nav aria-label="Инструменты Wildberries" className="flex-1 overflow-visible py-2">
         <div className="space-y-0.5">
-          {WORK_NAV.map((item) => (
-            <RailLink
-              key={`${item.label}-${item.href}`}
-              item={item}
+          {WORK_GROUPS.map((scenario) => (
+            <ScenarioMenu
+              key={scenario.id}
+              scenario={scenario}
+              pathname={pathname}
               cabinetId={cabinetId || "all"}
-              active={isWorkItemActive(pathname, item)}
+              active={scenario.items.some((item) => isWbNavigationItemActive(pathname, item.href))}
+              open={openScenario === scenario.id}
+              onOpen={() => setOpenScenario(scenario.id)}
+              onClose={() => setOpenScenario(null)}
             />
           ))}
         </div>
@@ -218,12 +308,12 @@ export function WbShell({ children }: { children: React.ReactNode }) {
       <main className="min-h-screen pt-[54px] md:ml-[55px]">{children}</main>
 
       <nav className="fixed bottom-0 left-0 right-0 z-50 flex h-14 items-center justify-around border-t border-slate-200 bg-white md:hidden" aria-label="Быстрая навигация">
-        {WORK_NAV.slice(0, 4).map((item) => {
+        {MOBILE_NAV.map((item) => {
           const Icon = item.icon;
           const href = item.target ? `${item.href}?cabinet=${encodeURIComponent(cabinetId || "all")}` : item.href;
-          const active = isWorkItemActive(pathname, item);
+          const active = isWbNavigationItemActive(pathname, item.href);
           return (
-            <Link key={item.label} href={href} className={`flex h-full min-w-14 flex-col items-center justify-center gap-0.5 text-[9px] ${active ? "text-violet-700" : "text-slate-400"}`}>
+            <Link key={item.label} href={href} aria-current={active ? "page" : undefined} className={`flex h-full min-w-14 flex-col items-center justify-center gap-0.5 text-[9px] ${active ? "text-violet-700" : "text-slate-400"}`}>
               <Icon className="h-4 w-4" />
               {item.label}
             </Link>
