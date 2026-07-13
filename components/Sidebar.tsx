@@ -58,7 +58,7 @@ const NAV_GROUPS: NavGroup[] = [
     label: "Аналитика МП",
     items: [
       { href: "/adverts", label: "Реклама WB", icon: Megaphone },
-      { href: "/rnp", label: "РНП по SKU", icon: Table2 },
+      { href: "/wb/rnp", label: "РНП по SKU", icon: Table2 },
       { href: "/seo", label: "SEO / Воронка", icon: Search },
       { href: "/sklejki", label: "Склейки", icon: Layers },
       { href: "/reviews", label: "Отзывы", icon: MessageSquare },

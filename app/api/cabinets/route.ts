@@ -4,6 +4,7 @@ import { validateWbToken } from "@/lib/wb/sellerInfo";
 import { decodeWbToken, probeWbScope, probeWbScopes, type ScopeStatus } from "@/lib/wb/token";
 import { validateOzon } from "@/lib/ozon/api";
 import { normalizeBrandFilters } from "@/lib/wb/productScope";
+import { getServerSession } from "@/lib/auth/server";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
@@ -11,7 +12,7 @@ export const maxDuration = 30;
 const mask = (t: string) => (t ? "••••" + t.slice(-4) : "");
 
 // GET — список кабинетов (токены замаскированы).
-export async function GET() {
+export async function GET(request: NextRequest) {
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ cabinets: [] });
   const cols = "id, name, marketplace, trade_mark, seller_id, client_id, inn, token, token_advert, token_content, token_feedbacks, brand_filters, is_active, created_at";
@@ -35,7 +36,7 @@ export async function GET() {
     const id = String(row.cabinet_id);
     scopeCount.set(id, (scopeCount.get(id) ?? 0) + 1);
   }
-  const cabinets = (data ?? []).map((c) => ({
+  const allCabinets = (data ?? []).map((c) => ({
     id: c.id,
     name: c.name,
     marketplace: c.marketplace ?? "wb",
@@ -52,6 +53,11 @@ export async function GET() {
     brand_filters: normalizeBrandFilters(c.brand_filters),
     product_scope_count: scopeCount.get(String(c.id)) ?? 0,
   }));
+  const accessibleOnly = new URL(request.url).searchParams.get("accessible") === "1";
+  const session = accessibleOnly ? await getServerSession() : null;
+  const cabinets = accessibleOnly && session?.role === "manager" && session.cabinet_ids.length > 0
+    ? allCabinets.filter((cabinet) => session.cabinet_ids.includes(String(cabinet.id)))
+    : allCabinets;
   return NextResponse.json({ cabinets, count: cabinets.length });
 }
 

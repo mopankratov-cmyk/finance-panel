@@ -26,7 +26,7 @@ interface ModuleCard {
 
 const MODULES: ModuleCard[] = [
   { title: "Реклама WB", description: "Активные РК, расход по SKU, ДРР и баланс продвижения", href: "/adverts", icon: Megaphone, agent: "Андер", zone: "Аналитика", color: ["bg-violet-100", "text-violet-700"] },
-  { title: "РНП по SKU", description: "Расход, выручка, выкуп, ДРР, маржа и GMROI по артикулам", href: "/rnp", icon: Table2, zone: "Аналитика", color: ["bg-violet-100", "text-violet-700"] },
+  { title: "РНП по SKU", description: "Расход, выручка, выкуп, ДРР, маржа и GMROI по артикулам", href: "/wb/rnp", icon: Table2, zone: "Аналитика", color: ["bg-violet-100", "text-violet-700"] },
   { title: "SEO / Воронка", description: "Показы → CTR → корзина → заказ, ДРР и маржа по SKU", href: "/seo", icon: Search, zone: "Аналитика", color: ["bg-fuchsia-100", "text-fuchsia-700"] },
   { title: "Склейки", description: "Объединённые карточки по imtID с воронкой и рекламой", href: "/sklejki", icon: Layers, zone: "Аналитика", color: ["bg-purple-100", "text-purple-700"] },
   { title: "Юнит-экономика", description: "Прибыль/ед: цена до СПП минус все расходы МП", href: "/unit", icon: Sigma, zone: "Аналитика", color: ["bg-indigo-100", "text-indigo-700"] },

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { resolveShopCabinet } from "@/lib/rnp/resolveShop";
+import { hasCabinetAccess } from "@/lib/auth/cabinetAccess";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -13,6 +14,10 @@ export async function GET(_request: Request, ctx: { params: Promise<{ shop: stri
   if (!db) return NextResponse.json({ econ: {} });
   const { shop } = await ctx.params;
   const { cabinetId } = await resolveShopCabinet(shop);
+  if (shop !== "all" && !cabinetId) return NextResponse.json({ error: "WB-кабинет не найден" }, { status: 404 });
+  if (!(await hasCabinetAccess(cabinetId))) {
+    return NextResponse.json({ error: "Нет доступа к выбранному WB-кабинету" }, { status: 403 });
+  }
   const { data } = await db.rpc("rnp_report", { p_cabinet: cabinetId });
   const econ: Record<string, { cost: number; price: number; margin: number | null }> = {};
   for (const r of (data ?? []) as RpcRow[]) {
