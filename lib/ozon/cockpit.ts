@@ -1,4 +1,5 @@
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { calculateAdvertProfitGuardrail } from "@/lib/adverts/profitGuardrails";
 import type { OzonCabinetScope } from "@/lib/ozon/cabinet";
 import {
   ozonAnalytics,
@@ -554,28 +555,65 @@ export async function loadStocks(scope: OzonCabinetScope, days: number) {
 export async function loadAdverts(scope: OzonCabinetScope) {
   const days = 14;
   const range = period(days);
-  const cache = await loadAdCache(scope, days);
+  const [cache, costs] = await Promise.all([loadAdCache(scope, days), loadCosts()]);
   const rows: Record<string, unknown>[] = [];
   const warnings: string[] = [];
-  for (const cabinet of scope.cabinets) {
-    if (!cabinet.perf) warnings.push(`${cabinet.name}: Performance API не подключён`);
-    const [analytics, images] = await Promise.all([
+  const cabinetData = await Promise.all(scope.cabinets.map(async (cabinet) => {
+    const [analytics, images, prices, stocks] = await Promise.all([
       ozonAnalytics(cabinet.creds, range.from, range.to),
       ozonImages(cabinet.creds),
+      ozonPrices(cabinet.creds),
+      ozonStocks(cabinet.creds),
     ]);
+    return { cabinet, analytics, images, prices, stocks };
+  }));
+  for (const { cabinet, analytics, images, prices, stocks } of cabinetData) {
+    if (!cabinet.perf) warnings.push(`${cabinet.name}: Performance API не подключён`);
     if (!analytics.ok) warnings.push(`${cabinet.name}: ${analytics.error}`);
+    if (!prices.ok) warnings.push(`${cabinet.name}: цены и комиссии — ${prices.error}`);
+    if (!stocks.ok) warnings.push(`${cabinet.name}: остатки — ${stocks.error}`);
     const sales = new Map((analytics.ok ? analytics.rows : []).map((row) => [row.sku, row]));
+    const pricesByOffer = new Map((prices.ok ? prices.rows : []).map((row) => [row.offer_id, row]));
+    const stockByOffer = new Map<string, number>();
+    if (stocks.ok) for (const stock of stocks.rows) {
+      stockByOffer.set(stock.article, (stockByOffer.get(stock.article) ?? 0) + stock.free);
+    }
     for (const [key, ad] of cache) {
       if (!key.startsWith(`${cabinet.clientId}:`)) continue;
       const sku = key.slice(cabinet.clientId.length + 1);
       const sale = sales.get(sku);
+      const offerId = images.skuToOffer[sku] ?? "";
+      const priceRow = pricesByOffer.get(offerId);
+      const units = Number(sale?.ordered_units ?? 0);
+      const actualPrice = units > 0 ? Number(sale?.revenue ?? 0) / units : Number(priceRow?.price ?? 0);
+      const cost = costs.get(offerId)?.cost ?? 0;
+      const stock = stockByOffer.has(offerId) ? Number(stockByOffer.get(offerId)) : null;
+      const attributionCompatible = ad.ordersMoney <= Math.max(1, Number(sale?.revenue ?? 0)) * 1.2;
+      const dataAgeHours = ad.updatedAt ? Math.max(0, (Date.now() - new Date(ad.updatedAt).getTime()) / 3_600_000) : null;
+      const economics = calculateAdvertProfitGuardrail({
+        price: actualPrice,
+        cost: cost > 0 ? cost : null,
+        revenue: Number(sale?.revenue ?? 0),
+        spent: ad.spent,
+        units,
+        commissionPct: Number(priceRow?.commissionPct ?? 0),
+        acquiringPct: actualPrice > 0 ? Number(priceRow?.acquiring ?? 0) / actualPrice * 100 : 0,
+        extraPct: 0,
+        taxPct: 7,
+        logisticsPerUnit: Number(priceRow?.logistics ?? 0),
+        feesComplete: Boolean(prices.ok && priceRow),
+        stock,
+        dailyUnits: units / days,
+        attributionCompatible,
+        dataAgeHours,
+      });
       rows.push({
         key: `${cabinet.id}:${sku}`,
         cabinetId: cabinet.id,
         cabinet: cabinet.name,
         sku,
-        offerId: images.skuToOffer[sku] ?? "",
-        name: sale?.name || images.skuToOffer[sku] || sku,
+        offerId,
+        name: sale?.name || offerId || sku,
         image: images.bySku[sku] ?? null,
         spent: r0(ad.spent),
         adRevenue: r0(ad.ordersMoney),
@@ -583,7 +621,9 @@ export async function loadAdverts(scope: OzonCabinetScope) {
         orders: r0(sale?.ordered_units ?? 0),
         drr: pct(ad.spent, sale?.revenue ?? 0),
         adDrr: pct(ad.spent, ad.ordersMoney),
-        roas: ad.spent > 0 ? r1(ad.ordersMoney / ad.spent) : 0,
+        roas: ad.spent > 0 ? r1(ad.ordersMoney / ad.spent) : null,
+        attributionCompatible,
+        economics,
         updatedAt: ad.updatedAt,
       });
     }
@@ -591,6 +631,11 @@ export async function loadAdverts(scope: OzonCabinetScope) {
   const spent = sum(rows.map((row) => Number(row.spent ?? 0)));
   const adRevenue = sum(rows.map((row) => Number(row.adRevenue ?? 0)));
   const revenue = sum(rows.map((row) => Number(row.revenue ?? 0)));
+  const knownProfitRows = rows.filter((row) => (row.economics as { profitAfterAds?: number | null } | undefined)?.profitAfterAds != null);
+  const calculatedProfit = sum(knownProfitRows.map((row) => Number((row.economics as { profitAfterAds: number }).profitAfterAds)));
+  const knownProfitRevenue = sum(knownProfitRows.map((row) => Number(row.revenue ?? 0)));
+  const unavailableEconomics = rows.length - knownProfitRows.length;
+  if (unavailableEconomics > 0) warnings.push(`Рекомендации недоступны для ${unavailableEconomics} SKU без полной себестоимости, комиссии или логистики.`);
   return {
     view: "adverts",
     scope: publicScope(scope),
@@ -602,7 +647,12 @@ export async function loadAdverts(scope: OzonCabinetScope) {
       revenue: r0(revenue),
       drr: pct(spent, revenue),
       adDrr: pct(spent, adRevenue),
-      roas: spent > 0 ? r1(adRevenue / spent) : 0,
+      roas: spent > 0 ? r1(adRevenue / spent) : null,
+      calculatedProfit: knownProfitRows.length ? r0(calculatedProfit) : null,
+      profitCoveragePct: revenue > 0
+        ? r1(knownProfitRevenue / revenue * 100)
+        : (rows.length ? r1(knownProfitRows.length / rows.length * 100) : 0),
+      recommendations: rows.filter((row) => ["increase", "decrease", "pause"].includes(String((row.economics as { action?: string } | undefined)?.action))).length,
       sku: rows.length,
     },
     rows: rows.sort((left, right) => Number(right.spent ?? 0) - Number(left.spent ?? 0)),

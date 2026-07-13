@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
+import { calculateAdvertProfitGuardrail, compareAdvertBeforeAfter } from "@/lib/adverts/profitGuardrails";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { wbCardImageUrl } from "@/lib/wb/cardImage";
+import { getWbCommissionForCabinet } from "@/lib/wb/commissions";
 import { resolveShopCabinet } from "@/lib/rnp/resolveShop";
-import { getWbCabinet, resolveWbToken } from "@/lib/wb/cabinetTokens";
+import { getActiveWbCabinets, getWbCabinet, resolveWbToken } from "@/lib/wb/cabinetTokens";
 import { hasCabinetAccess } from "@/lib/auth/cabinetAccess";
 import { requestAllowedNmIds, requestAllowsNm } from "@/lib/wb/requestProductScope";
 
@@ -14,6 +16,11 @@ const ADV_BASE = "https://advert-api.wildberries.ru";
 interface RpcRow {
   nm_id: number;
   article: string;
+  orders_month: number;
+  orders_sum_month: number;
+  stock: number;
+  in_way_to_client: number;
+  cost: number | null;
 }
 interface StatRow {
   advert_id: number;
@@ -22,6 +29,13 @@ interface StatRow {
   views: number;
   clicks: number;
   sum_orders: number;
+}
+interface ChangeRow {
+  advert_id: number;
+  old_bid: number | null;
+  new_bid: number | null;
+  status: string;
+  created_at: string;
 }
 
 // Контракт inferno: {ok, articles:[{nm,art,photo,spend,campaigns:[{...}]}], balance, count, spend_today_total, spend_yest_total, today, yest, cap_rub}
@@ -34,10 +48,17 @@ export async function GET(request: NextRequest) {
   if (!(await hasCabinetAccess(cabinetId))) {
     return NextResponse.json({ ok: false, error: "Нет доступа к кабинету" }, { status: 403 });
   }
-  const allowedNmIds = await requestAllowedNmIds(cabinetId);
+  const [allowedNmIds, activeCabinets] = await Promise.all([
+    requestAllowedNmIds(cabinetId),
+    cabinetId ? Promise.resolve([]) : getActiveWbCabinets(),
+  ]);
+  const allowedByCabinet = new Map(activeCabinets
+    .filter((cabinet) => cabinet.allowed_nm_ids !== null)
+    .map((cabinet) => [cabinet.id, new Set(cabinet.allowed_nm_ids ?? [])]));
 
-  let advQ = db.from("wb_adverts").select("advert_id, name, status, daily_budget, nm_ids").in("status", [9, 11]);
+  let advQ = db.from("wb_adverts").select("advert_id, cabinet_id, name, status, daily_budget, nm_ids").in("status", [9, 11]);
   let statQ = db.from("wb_advert_stats").select("advert_id, date, sum_spent, views, clicks, sum_orders").gte("date", new Date(Date.now() - 14 * 86400000).toISOString().slice(0, 10)).limit(5000);
+  const changesQ = db.from("advert_bid_changes").select("advert_id, old_bid, new_bid, status, created_at").order("created_at", { ascending: false }).limit(500);
   if (cabinetId) { advQ = advQ.eq("cabinet_id", cabinetId); statQ = statQ.eq("cabinet_id", cabinetId); }
 
   // Баланс продвижения зависит только от cabinetId — считаем его цепочку параллельно
@@ -57,7 +78,14 @@ export async function GET(request: NextRequest) {
       })
     : Promise.resolve(null);
 
-  const [advRes, statRes, rpcRes, balance] = await Promise.all([advQ, statQ, db.rpc("rnp_report", { p_cabinet: cabinetId }), balancePromise]);
+  const [advRes, statRes, rpcRes, changesRes, commission, balance] = await Promise.all([
+    advQ,
+    statQ,
+    db.rpc("rnp_report", { p_cabinet: cabinetId }),
+    changesQ,
+    getWbCommissionForCabinet(cabinetId, 30),
+    balancePromise,
+  ]);
   if (advRes.error) return NextResponse.json({ ok: false, error: advRes.error.message });
 
   // «Сегодня/вчера» — календарные даты, а не последняя синканная. Если сегодняшний
@@ -95,8 +123,18 @@ export async function GET(request: NextRequest) {
   for (const arr of daysByAdv.values()) arr.sort((a, b) => a.ts.localeCompare(b.ts));
 
   const artByNm = new Map<number, string>();
-  for (const r of (rpcRes.data ?? []) as RpcRow[]) {
-    if (requestAllowsNm(allowedNmIds, r.nm_id)) artByNm.set(r.nm_id, r.article);
+  const reportByNm = new Map<number, RpcRow>();
+  for (const row of (rpcRes.data ?? []) as RpcRow[]) {
+    if (!requestAllowsNm(allowedNmIds, row.nm_id)) continue;
+    artByNm.set(row.nm_id, row.article);
+    reportByNm.set(row.nm_id, row);
+  }
+
+  const latestChangeByAdvert = new Map<number, ChangeRow>();
+  for (const change of (changesRes.data ?? []) as ChangeRow[]) {
+    if (!latestChangeByAdvert.has(change.advert_id) && change.status === "success") {
+      latestChangeByAdvert.set(change.advert_id, change);
+    }
   }
 
   const cabLabel = label || "Все кабинеты";
@@ -107,11 +145,47 @@ export async function GET(request: NextRequest) {
   const artMap = new Map<number, { nm: number; art: string; photo: string; spend: number; campaigns: Record<string, unknown>[] }>();
   let spendYestTotal = 0;
   for (const a of advRes.data ?? []) {
-    const nm = (a.nm_ids as number[])?.[0];
-    if (!nm || !requestAllowsNm(allowedNmIds, nm)) continue;
+    const nmIds = (a.nm_ids as number[]) ?? [];
+    const nm = nmIds[0];
+    const rowAllowedNmIds = cabinetId
+      ? allowedNmIds
+      : (allowedByCabinet.get(String(a.cabinet_id ?? "")) ?? null);
+    if (!nm || !requestAllowsNm(rowAllowedNmIds, nm)) continue;
     const st = byAdv.get(a.advert_id) ?? { spent14: 0, views: 0, clicks: 0, ordSum: 0, today: 0, yest: 0 };
     spendYestTotal += st.yest;
-    const drr = st.ordSum > 0 ? Math.round((st.spent14 / st.ordSum) * 1000) / 10 : null;
+    const report = reportByNm.get(nm);
+    const rate = commission.byNm.get(nm);
+    const price = Number(report?.orders_month ?? 0) > 0
+      ? Number(report?.orders_sum_month ?? 0) / Number(report?.orders_month ?? 0)
+      : 0;
+    const latestStatDate = (daysByAdv.get(a.advert_id) ?? []).at(-1)?.ts ?? null;
+    const dataAgeHours = latestStatDate
+      ? Math.max(0, (Date.now() - new Date(`${latestStatDate}T23:59:59.999Z`).getTime()) / 3_600_000)
+      : null;
+    const attributionCompatible = nmIds.length === 1
+      && st.ordSum <= Math.max(1, Number(report?.orders_sum_month ?? 0)) * 1.2;
+    const economics = calculateAdvertProfitGuardrail({
+      price,
+      cost: Number(report?.cost ?? 0) > 0 ? Number(report?.cost) : null,
+      revenue: st.ordSum,
+      spent: st.spent14,
+      commissionPct: rate?.pct ?? commission.avgPct,
+      acquiringPct: rate?.acqPct ?? commission.avgAcqPct,
+      extraPct: (rate?.extraPct ?? commission.avgExtraPct) + commission.overheadPct,
+      taxPct: 7,
+      feesComplete: Boolean(rate || commission.avgPct > 0),
+      stock: report ? Number(report.stock ?? 0) : null,
+      dailyUnits: report ? Number(report.orders_month ?? 0) / 30 : null,
+      attributionCompatible,
+      dataAgeHours,
+    });
+    const latestChange = latestChangeByAdvert.get(Number(a.advert_id)) ?? null;
+    const comparison = latestChange
+      ? compareAdvertBeforeAfter(
+        (daysByAdv.get(a.advert_id) ?? []).map((day) => ({ date: day.ts, spent: day.spend, revenue: day.orders })),
+        latestChange.created_at,
+      )
+      : null;
     const campaign = {
       id: a.advert_id,
       name: a.name ?? `Кампания ${a.advert_id}`,
@@ -122,13 +196,23 @@ export async function GET(request: NextRequest) {
       bid_type: "unified",
       budget: a.daily_budget ?? 0,
       spend_today: Math.round(st.today),
-      drr,
+      spent_14: Math.round(st.spent14),
+      ad_revenue_14: Math.round(st.ordSum),
+      drr: economics.currentDrr,
       photo: wbCardImageUrl(nm),
       category: "",
       hours: [],
       payment: "cpm",
       cab: cabLabel,
       days: daysByAdv.get(a.advert_id) ?? [],
+      economics,
+      attribution_compatible: attributionCompatible,
+      last_change: latestChange ? {
+        old_bid: latestChange.old_bid,
+        new_bid: latestChange.new_bid,
+        created_at: latestChange.created_at,
+      } : null,
+      comparison,
     };
     let g = artMap.get(nm);
     if (!g) {

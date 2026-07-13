@@ -14,16 +14,45 @@ interface DayPoint {
   orders: number;
 }
 
+interface AdvertEconomics {
+  breakEvenDrr: number | null;
+  breakEvenRoas: number | null;
+  profitAfterAds: number | null;
+  currentDrr: number | null;
+  currentRoas: number | null;
+  daysCover: number | null;
+  stockRisk: "out" | "critical" | "warning" | "ok" | "unknown";
+  action: "increase" | "hold" | "decrease" | "pause" | "insufficient";
+  budgetChangePct: number | null;
+  expectedProfitEffect: number | null;
+  reason: string;
+  confidence: "high" | "medium" | "low" | "unavailable";
+  confidencePct: number;
+}
+
+interface BeforeAfter {
+  changedAt: string;
+  before: { days: number; spent: number; revenue: number; drr: number | null };
+  after: { days: number; spent: number; revenue: number; drr: number | null };
+  drrDelta: number | null;
+}
+
 interface Campaign {
   id: number;
   name: string;
   enabled: boolean;
   budget: number;
   spend_today: number;
+  spent_14: number;
+  ad_revenue_14: number;
   drr: number | null;
   bid_type?: string;
   payment?: string;
   days: DayPoint[];
+  economics: AdvertEconomics;
+  attribution_compatible: boolean;
+  last_change: { old_bid: number | null; new_bid: number | null; created_at: string } | null;
+  comparison: BeforeAfter | null;
 }
 
 interface Article {
@@ -60,6 +89,21 @@ function drrTone(value: number | null) {
   if (value <= 10) return "bg-emerald-50 text-emerald-700";
   if (value <= 20) return "bg-amber-50 text-amber-700";
   return "bg-rose-50 text-rose-700";
+}
+
+function actionLabel(economics: AdvertEconomics) {
+  if (economics.action === "increase") return `Увеличить ${economics.budgetChangePct}%`;
+  if (economics.action === "decrease") return `Снизить ${Math.abs(economics.budgetChangePct ?? 0)}%`;
+  if (economics.action === "pause") return "Поставить на паузу";
+  if (economics.action === "insufficient") return "Недостаточно данных";
+  return "Оставить без изменений";
+}
+
+function actionTone(action: AdvertEconomics["action"]) {
+  if (action === "increase") return "border-emerald-200 bg-emerald-50 text-emerald-800";
+  if (action === "decrease" || action === "pause") return "border-rose-200 bg-rose-50 text-rose-800";
+  if (action === "insufficient") return "border-amber-200 bg-amber-50 text-amber-800";
+  return "border-slate-200 bg-slate-50 text-slate-700";
 }
 
 function Sparkline({ values }: { values: number[] }) {
@@ -211,15 +255,38 @@ export function WbAdvertsPage() {
               </div>
 
               <div className="grid grid-cols-2 gap-2 py-4 sm:grid-cols-4">
-                {[["Расход сегодня", rub(selected.campaign.spend_today)], ["Дневной бюджет", rub(selected.campaign.budget)], ["ДРР 14 дней", pct(selected.campaign.drr)], ["Баланс", rub(data?.balance ?? null)]].map(([label, value]) => <div key={label} className="rounded-lg border border-slate-200 bg-slate-50/60 p-3"><div className="text-[9px] uppercase tracking-wide text-slate-400">{label}</div><div className="mt-1 text-sm font-semibold tabular-nums text-slate-700">{value}</div></div>)}
+                {[
+                  ["Расход 14 дней", rub(selected.campaign.spent_14)],
+                  ["Выручка с рекламы", rub(selected.campaign.ad_revenue_14)],
+                  ["ДРР / break-even", `${pct(selected.campaign.economics.currentDrr)} / ${pct(selected.campaign.economics.breakEvenDrr)}`],
+                  ["Прибыль после рекламы", rub(selected.campaign.economics.profitAfterAds)],
+                  ["ROAS / break-even", `${selected.campaign.economics.currentRoas ?? "—"}× / ${selected.campaign.economics.breakEvenRoas ?? "—"}×`],
+                  ["Запас", selected.campaign.economics.daysCover == null ? "—" : `${selected.campaign.economics.daysCover} дн.`],
+                  ["Дневной бюджет", rub(selected.campaign.budget)],
+                  ["Уверенность", `${selected.campaign.economics.confidencePct}%`],
+                ].map(([label, value]) => <div key={label} className="rounded-lg border border-slate-200 bg-slate-50/60 p-3"><div className="text-[9px] uppercase tracking-wide text-slate-400">{label}</div><div className="mt-1 text-sm font-semibold tabular-nums text-slate-700">{value}</div></div>)}
               </div>
+
+              <section className={`mb-3 rounded-xl border p-3 ${actionTone(selected.campaign.economics.action)}`}>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div><div className="text-[9px] font-semibold uppercase tracking-wide opacity-70">Рекомендация</div><div className="mt-1 text-sm font-bold">{actionLabel(selected.campaign.economics)}</div></div>
+                  <div className="text-right"><div className="text-[9px] opacity-70">Ожидаемый эффект за 14 дней</div><div className="mt-1 text-sm font-bold tabular-nums">{rub(selected.campaign.economics.expectedProfitEffect)}</div></div>
+                </div>
+                <p className="mt-2 text-[11px] leading-5">{selected.campaign.economics.reason}</p>
+                {!selected.campaign.attribution_compatible && <p className="mt-1 text-[10px] font-semibold">Модели атрибуции или состав кампании не совпадают — рекомендация понижена по уверенности.</p>}
+              </section>
 
               <div className="rounded-xl border border-slate-200 p-3"><div className="mb-2 flex items-center justify-between"><h2 className="text-xs font-bold text-slate-700">Расход по дням</h2><span className="text-[10px] text-slate-400">последние 14 дней</span></div><Sparkline values={selected.campaign.days.map((day) => day.spend)} /></div>
 
+              <section className="mt-3 rounded-xl border border-slate-200 p-3">
+                <div className="flex items-center justify-between gap-2"><h2 className="text-xs font-bold text-slate-700">До / после изменения ставки</h2>{selected.campaign.last_change && <span className="text-[9px] text-slate-400">{new Date(selected.campaign.last_change.created_at).toLocaleDateString("ru-RU")}</span>}</div>
+                {selected.campaign.comparison ? <div className="mt-3 grid grid-cols-3 gap-2 text-center"><div className="rounded-lg bg-slate-50 p-2"><div className="text-[9px] text-slate-400">До</div><div className="mt-1 font-semibold">ДРР {pct(selected.campaign.comparison.before.drr)}</div><div className="text-[9px] text-slate-400">{selected.campaign.comparison.before.days} дн.</div></div><div className="rounded-lg bg-violet-50 p-2"><div className="text-[9px] text-violet-500">Изменение</div><div className="mt-1 font-semibold text-violet-700">{selected.campaign.last_change?.old_bid ?? "—"} → {selected.campaign.last_change?.new_bid ?? "—"}</div><div className="text-[9px] text-violet-500">ставка</div></div><div className="rounded-lg bg-slate-50 p-2"><div className="text-[9px] text-slate-400">После</div><div className="mt-1 font-semibold">ДРР {pct(selected.campaign.comparison.after.drr)}</div><div className={`text-[9px] ${Number(selected.campaign.comparison.drrDelta) <= 0 ? "text-emerald-600" : "text-rose-600"}`}>{selected.campaign.comparison.drrDelta == null ? "—" : `${selected.campaign.comparison.drrDelta > 0 ? "+" : ""}${selected.campaign.comparison.drrDelta} п.п.`}</div></div></div> : <p className="mt-2 text-[10px] leading-4 text-slate-400">Нужны минимум два дня статистики до и после последнего зафиксированного изменения ставки.</p>}
+              </section>
+
               <div className="mt-3 overflow-x-auto rounded-xl border border-slate-200">
                 <table className="min-w-full border-collapse text-[10px]">
-                  <thead><tr className="h-8 bg-slate-50 text-slate-500"><th className="px-3 text-left">Дата</th><th className="px-3 text-right">Показы</th><th className="px-3 text-right">Клики</th><th className="px-3 text-right">Расход</th><th className="px-3 text-right">Заказы</th></tr></thead>
-                  <tbody>{selected.campaign.days.slice().reverse().map((day) => <tr key={day.ts} className="h-8 border-t border-slate-100"><td className="px-3 text-slate-500">{day.ts}</td><td className="px-3 text-right tabular-nums">{day.views.toLocaleString("ru-RU")}</td><td className="px-3 text-right tabular-nums">{day.clicks.toLocaleString("ru-RU")}</td><td className="px-3 text-right font-medium tabular-nums">{rub(day.spend)}</td><td className="px-3 text-right tabular-nums">{day.orders.toLocaleString("ru-RU")}</td></tr>)}</tbody>
+                  <thead><tr className="h-8 bg-slate-50 text-slate-500"><th className="px-3 text-left">Дата</th><th className="px-3 text-right">Показы</th><th className="px-3 text-right">Клики</th><th className="px-3 text-right">Расход</th><th className="px-3 text-right">Выручка с рекламы</th></tr></thead>
+                  <tbody>{selected.campaign.days.slice().reverse().map((day) => <tr key={day.ts} className="h-8 border-t border-slate-100"><td className="px-3 text-slate-500">{day.ts}</td><td className="px-3 text-right tabular-nums">{day.views.toLocaleString("ru-RU")}</td><td className="px-3 text-right tabular-nums">{day.clicks.toLocaleString("ru-RU")}</td><td className="px-3 text-right font-medium tabular-nums">{rub(day.spend)}</td><td className="px-3 text-right tabular-nums">{rub(day.orders)}</td></tr>)}</tbody>
                 </table>
                 {selected.campaign.days.length === 0 ? <div className="border-t border-slate-100 px-3 py-8 text-center text-xs text-slate-400">Посуточная статистика ещё не синхронизирована.</div> : null}
               </div>

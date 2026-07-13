@@ -8,7 +8,7 @@ import {
 import { loadOzonCockpit, type OzonCockpitView } from "@/lib/ozon/cockpit";
 
 export const OZON_COCKPIT_CACHE_SECONDS = 60 * 60;
-export const OZON_COCKPIT_CACHE_VERSION = "v3";
+export const OZON_COCKPIT_CACHE_VERSION = "v4";
 
 export interface OzonCockpitCacheRequest {
   view: OzonCockpitView;
