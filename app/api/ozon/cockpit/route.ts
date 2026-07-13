@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getOzonCabinetScope } from "@/lib/ozon/cabinet";
-import { loadOzonCockpit, type OzonCockpitView } from "@/lib/ozon/cockpit";
+import { describeOzonScope, getOzonCabinetScope } from "@/lib/ozon/cabinet";
+import type { OzonCockpitView } from "@/lib/ozon/cockpit";
+import { loadCachedOzonCockpit } from "@/lib/ozon/cockpitCache";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -20,8 +21,13 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: resolved.error, noCabinet: true }, { status: 404 });
   }
   try {
-    const data = await loadOzonCockpit(rawView as OzonCockpitView, resolved.scope, days, taxPct);
-    return NextResponse.json(data);
+    const data = await loadCachedOzonCockpit({
+      view: rawView as OzonCockpitView,
+      scope: describeOzonScope(resolved.scope),
+      days,
+      taxPct,
+    }, { forceRefresh: params.get("refresh") === "1" });
+    return NextResponse.json(data, { headers: { "X-Dashboard-Cache": "hourly-snapshot" } });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Не удалось собрать Ozon Cockpit" },

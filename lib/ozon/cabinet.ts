@@ -16,6 +16,12 @@ export interface OzonCabinetScope {
   cabinets: OzonCabinetAccess[];
 }
 
+export interface OzonCabinetScopeDescriptor {
+  mode: OzonCabinetScope["mode"];
+  label: string;
+  cabinetIds: string[];
+}
+
 interface OzonCabinetRow {
   id: string;
   name: string;
@@ -23,6 +29,26 @@ interface OzonCabinetRow {
   token: string;
   perf_client_id: string | null;
   perf_secret: string | null;
+}
+
+function cabinetAccess(row: OzonCabinetRow): OzonCabinetAccess {
+  return {
+    id: row.id,
+    name: row.name,
+    clientId: row.client_id,
+    creds: { clientId: row.client_id, apiKey: row.token },
+    perf: row.perf_client_id && row.perf_secret
+      ? { clientId: row.perf_client_id, secret: row.perf_secret }
+      : null,
+  };
+}
+
+export function describeOzonScope(scope: OzonCabinetScope): OzonCabinetScopeDescriptor {
+  return {
+    mode: scope.mode,
+    label: scope.label,
+    cabinetIds: scope.cabinets.map((cabinet) => cabinet.id).sort(),
+  };
 }
 
 /** Pure scope selection used by the server resolver and regression tests. */
@@ -64,15 +90,7 @@ export async function getOzonCabinetScope(requested?: string | null): Promise<
     : null;
   const cabinets = ((data ?? []) as OzonCabinetRow[])
     .filter((row) => row.client_id && row.token && (!allowedIds || allowedIds.has(row.id)))
-    .map((row) => ({
-      id: row.id,
-      name: row.name,
-      clientId: row.client_id,
-      creds: { clientId: row.client_id, apiKey: row.token },
-      perf: row.perf_client_id && row.perf_secret
-        ? { clientId: row.perf_client_id, secret: row.perf_secret }
-        : null,
-    }));
+    .map(cabinetAccess);
 
   let groupMemberIds: string[] = [];
   let groupName = "Группа кабинетов";
@@ -95,6 +113,69 @@ export async function getOzonCabinetScope(requested?: string | null): Promise<
   if (!scope) return { ok: false, error: "Нет доступного Ozon-кабинета" };
   if (scope.mode === "group") scope.label = groupName;
   return { ok: true, scope };
+}
+
+// Внутренний резолвер для серверного snapshot-кэша. Дескриптор формируется только
+// после пользовательской проверки доступа либо самим защищённым cron-роутом;
+// в ключ кэша попадают UUID кабинетов, но никогда API-токены.
+export async function resolveOzonScopeDescriptor(
+  descriptor: OzonCabinetScopeDescriptor,
+): Promise<OzonCabinetScope | null> {
+  const cabinetIds = [...new Set(descriptor.cabinetIds)].filter(Boolean).sort();
+  if (!cabinetIds.length) return null;
+  const db = getSupabaseAdmin();
+  if (!db) return null;
+  const { data, error } = await db
+    .from("wb_cabinets")
+    .select("id, name, client_id, token, perf_client_id, perf_secret")
+    .eq("marketplace", "ozon")
+    .eq("is_active", true)
+    .in("id", cabinetIds);
+  if (error) throw new Error(error.message);
+  const byId = new Map(
+    ((data ?? []) as OzonCabinetRow[])
+      .filter((row) => row.client_id && row.token)
+      .map((row) => [row.id, cabinetAccess(row)]),
+  );
+  const cabinets = cabinetIds.map((id) => byId.get(id)).filter((cabinet): cabinet is OzonCabinetAccess => Boolean(cabinet));
+  if (cabinets.length !== cabinetIds.length) return null;
+  return { mode: descriptor.mode, label: descriptor.label, cabinets };
+}
+
+// Набор представлений, которые cron заранее прогревает: общий, каждый отдельный
+// кабинет и сохранённые группы. Если таблицы групп ещё нет, базовые представления
+// всё равно прогреваются.
+export async function listOzonScopeDescriptors(): Promise<OzonCabinetScopeDescriptor[]> {
+  const db = getSupabaseAdmin();
+  if (!db) return [];
+  const { data, error } = await db
+    .from("wb_cabinets")
+    .select("id, name")
+    .eq("marketplace", "ozon")
+    .eq("is_active", true)
+    .order("created_at", { ascending: true });
+  if (error) throw new Error(error.message);
+  const cabinets = (data ?? []).map((row) => ({ id: String(row.id), name: String(row.name || "Ozon") }));
+  if (!cabinets.length) return [];
+  const activeIds = new Set(cabinets.map((cabinet) => cabinet.id));
+  const result: OzonCabinetScopeDescriptor[] = [
+    { mode: "all", label: "Все кабинеты", cabinetIds: [...activeIds].sort() },
+    ...cabinets.map((cabinet) => ({ mode: "single" as const, label: cabinet.name, cabinetIds: [cabinet.id] })),
+  ];
+  const groups = await db
+    .from("cabinet_groups")
+    .select("name, member_ids")
+    .eq("marketplace", "ozon")
+    .order("id", { ascending: true });
+  if (!groups.error) {
+    for (const group of groups.data ?? []) {
+      const cabinetIds = ((group.member_ids as string[] | null) ?? [])
+        .filter((id) => activeIds.has(id))
+        .sort();
+      if (cabinetIds.length) result.push({ mode: "group", label: String(group.name || "Группа кабинетов"), cabinetIds });
+    }
+  }
+  return result;
 }
 
 // Креды активного Ozon-кабинета из БД (общий для всех Ozon-эндпоинтов).

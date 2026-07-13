@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { buildRnpTable } from "@/lib/rnp/buildTable";
 import { resolveShopCabinet } from "@/lib/rnp/resolveShop";
 import { hasCabinetAccess } from "@/lib/auth/cabinetAccess";
+import { loadCachedWbRnp } from "@/lib/rnp/tableCache";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -18,7 +18,16 @@ export async function GET(request: NextRequest, ctx: { params: Promise<{ shop: s
   if (!(await hasCabinetAccess(cabinetId))) {
     return NextResponse.json({ error: "Нет доступа к выбранному WB-кабинету" }, { status: 403 });
   }
-  const res = await buildRnpTable(from, to, cabinetId, label);
-  if ("error" in res) return NextResponse.json({ error: res.error }, { status: 500 });
-  return NextResponse.json(res);
+  try {
+    const data = await loadCachedWbRnp(
+      { from, to, cabinetId, label },
+      { forceRefresh: sp.get("refresh") === "1" },
+    );
+    return NextResponse.json(data, { headers: { "X-Dashboard-Cache": "hourly-snapshot" } });
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Не удалось собрать РНП" },
+      { status: 500 },
+    );
+  }
 }
