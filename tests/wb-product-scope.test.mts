@@ -21,7 +21,7 @@ test("unscoped cabinet allows every product", () => {
   assert.equal(allowsProduct(scope, 999, "Чужой бренд"), true);
 });
 
-test("scoped cabinet allows exact nmID or exact normalized brand", () => {
+test("scoped cabinet prefers an exact normalized brand over a stale nmID", () => {
   const scope: WbProductScope = {
     brandFilters: normalizeBrandFilters(["NORVIA", "RIOBOX"]),
     allowedNmIds: [1244157227, 1239272673],
@@ -30,6 +30,8 @@ test("scoped cabinet allows exact nmID or exact normalized brand", () => {
   assert.equal(allowsProduct(scope, 555, "Rio Box"), true);
   assert.equal(allowsBrand(scope, "SIBERION"), false);
   assert.equal(allowsProduct(scope, 555, "SIBERION"), false);
+  assert.equal(allowsProduct(scope, 1244157227, "SIBERION"), false);
+  assert.equal(allowsProduct(scope, 1244157227, undefined), true);
 });
 
 test("empty allowlist remains restricted to configured brands", () => {

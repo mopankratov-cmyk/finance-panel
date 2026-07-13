@@ -49,5 +49,8 @@ export function allowsBrand(scope: WbProductScope, brand: unknown): boolean {
 
 export function allowsProduct(scope: WbProductScope, nmId: unknown, brand?: unknown): boolean {
   if (!isScoped(scope)) return true;
-  return allowsNm(scope, nmId) || allowsBrand(scope, brand);
+  // Если источник вернул бренд, он важнее исторического allowlist nmID:
+  // устаревшая строка scope не должна открыть товар уже чужого бренда.
+  // Для источников без поля brand сохраняем безопасный fallback на nmID.
+  return normalizeWbBrand(brand) ? allowsBrand(scope, brand) : allowsNm(scope, nmId);
 }

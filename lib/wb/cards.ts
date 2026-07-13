@@ -1,6 +1,7 @@
 // Карточки товаров кабинета(ов) через WB Content API: article + nm_id + name + цвет + ниша(subject).
 import { getWbCabinetSources } from "@/lib/wb/cabinetTokens";
 import { allowsProduct } from "@/lib/wb/productScope";
+import type { ProductReadinessStatus } from "@/lib/wb/productReadiness";
 
 const CARDS_URL = "https://content-api.wildberries.ru/content/v2/get/cards/list";
 
@@ -28,6 +29,11 @@ export interface PimRow {
   cabinetId: string | null;
   length: number | null; width: number | null; height: number | null; weightBrutto: number | null;
   materials: string; photosCount: number; photos: string[]; hasVideo: boolean; wbUrl: string;
+  readinessStatus?: ProductReadinessStatus;
+  comment?: string;
+  driveUrl?: string | null;
+  noteUpdatedBy?: string | null;
+  noteUpdatedAt?: string | null;
 }
 
 const characteristicOf = (c: RawCard, re: RegExp): string => {
@@ -74,6 +80,8 @@ export async function fetchCabinetCards(cabinetId: string | null): Promise<Cabin
 export async function fetchCabinetPimRows(cabinetId: string | null): Promise<PimRow[]> {
   const sources = await getWbCabinetSources(cabinetId, "content");
   const out: PimRow[] = [];
+  const failures: string[] = [];
+  let successfulSources = 0;
   for (const src of sources) {
     let cursor: { updatedAt?: string; nmID?: number } = {};
     try {
@@ -84,7 +92,7 @@ export async function fetchCabinetPimRows(cabinetId: string | null): Promise<Pim
           body: JSON.stringify({ settings: { cursor: { limit: 100, ...cursor }, filter: { withPhoto: -1 } } }),
           cache: "no-store",
         });
-        if (!res.ok) break;
+        if (!res.ok) throw new Error(`Content API ${res.status}: ${(await res.text()).slice(0, 180)}`);
         const json = (await res.json()) as { cards?: RawCard[]; cursor?: { updatedAt?: string; nmID?: number } };
         const batch = json.cards ?? [];
         for (const c of batch) {
@@ -112,8 +120,12 @@ export async function fetchCabinetPimRows(cabinetId: string | null): Promise<Pim
         if (batch.length < 100) break;
         cursor = { updatedAt: json.cursor?.updatedAt, nmID: json.cursor?.nmID };
       }
-    } catch { /* пропускаем кабинет при ошибке */ }
+      successfulSources++;
+    } catch (error) {
+      failures.push(`${src.name}: ${error instanceof Error ? error.message : "не удалось загрузить карточки"}`);
+    }
   }
+  if (sources.length && successfulSources === 0) throw new Error(failures[0] || "Content API не вернул карточки");
   return out;
 }
 
