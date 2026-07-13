@@ -21,6 +21,7 @@ import {
   MousePointerClick,
   PieChart,
   Search,
+  Settings2,
   Sigma,
   Table2,
   Tag,
@@ -38,7 +39,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { allowedNav, ROLE_LABEL } from "@/lib/auth/roles";
 import type { Role } from "@/lib/auth/session";
-import { isFinanceSidebarPath } from "@/lib/navigation/sidebar";
+import { isFinanceSidebarPath, isSystemSidebarPath } from "@/lib/navigation/sidebar";
 
 interface NavLink {
   href: string;
@@ -138,6 +139,18 @@ const FINANCE_NAV_GROUPS: NavGroup[] = [
   },
 ];
 
+const SYSTEM_NAV_GROUPS: NavGroup[] = [
+  {
+    id: "system",
+    label: "Настройки",
+    items: [
+      { href: "/cabinets", label: "Кабинеты", icon: Building2 },
+      { href: "/users", label: "Сотрудники", icon: Users },
+      { href: "/sync", label: "Синхронизация", icon: RefreshCw },
+    ],
+  },
+];
+
 const DASHBOARD: NavLink = {
   href: "/",
   label: "Дашборд",
@@ -152,6 +165,7 @@ function isActive(pathname: string, href: string): boolean {
 export function Sidebar() {
   const pathname = usePathname();
   const financeOnly = isFinanceSidebarPath(pathname);
+  const systemOnly = isSystemSidebarPath(pathname);
   const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [me, setMe] = useState<{ email: string; role: Role } | null>(null);
@@ -199,7 +213,11 @@ export function Sidebar() {
   };
 
   // группы с фильтром по роли (пустые группы скрываем)
-  const sourceGroups = financeOnly ? FINANCE_NAV_GROUPS : NAV_GROUPS;
+  const sourceGroups = financeOnly
+    ? FINANCE_NAV_GROUPS
+    : systemOnly
+      ? SYSTEM_NAV_GROUPS
+      : NAV_GROUPS;
   const groups = sourceGroups
     .map((g) => ({ ...g, items: g.items.filter((i) => (me ? allowedNav(me.role, i.href.split(/[?#]/, 1)[0] || i.href) : true)) }))
     .filter((g) => g.items.length > 0);
@@ -217,24 +235,32 @@ export function Sidebar() {
   };
 
   const linkClass = (active: boolean) =>
-    `flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+    `flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#1a1a2e] ${
       active
         ? "bg-violet-600/20 text-violet-300"
         : "text-slate-300 hover:bg-white/10 hover:text-white"
     }`;
 
+  const BrandIcon = systemOnly ? Settings2 : BarChart3;
+  const brandTitle = systemOnly ? "Настройки" : "Финансы МП";
+  const brandSubtitle = systemOnly
+    ? "Кабинеты и доступы"
+    : financeOnly
+      ? "Финансовый контур"
+      : "WB Analytics & Finance";
+
   const nav = (
     <>
       <div className="flex items-center gap-3 border-b border-white/10 px-4 py-6">
         <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-violet-600/25">
-          <BarChart3 className="h-5 w-5 text-violet-400" />
+          <BrandIcon className="h-5 w-5 text-violet-400" />
         </div>
         <div>
-          <p className="text-sm font-semibold text-white">Финансы МП</p>
-          <p className="text-xs text-slate-400">{financeOnly ? "Финансовый контур" : "WB Analytics & Finance"}</p>
+          <p className="text-sm font-semibold text-white">{brandTitle}</p>
+          <p className="text-xs text-slate-400">{brandSubtitle}</p>
         </div>
         <button
-          className="ml-auto text-slate-400 hover:text-white lg:hidden"
+          className="ml-auto rounded-md p-1 text-slate-400 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 lg:hidden"
           onClick={() => setMobileOpen(false)}
           aria-label="Закрыть меню"
         >
@@ -248,6 +274,7 @@ export function Sidebar() {
             href={DASHBOARD.href}
             onClick={() => setMobileOpen(false)}
             className={linkClass(isActive(pathname, DASHBOARD.href))}
+            aria-current={isActive(pathname, DASHBOARD.href) ? "page" : undefined}
           >
             <DASHBOARD.icon className="h-5 w-5 shrink-0" />
             {DASHBOARD.label}
@@ -265,7 +292,8 @@ export function Sidebar() {
               <button
                 type="button"
                 onClick={() => toggleGroup(group.id)}
-                className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-xs font-semibold uppercase tracking-wider transition-colors ${
+                aria-expanded={expanded}
+                className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-xs font-semibold uppercase tracking-wider transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 ${
                   groupActive ? "text-violet-400" : "text-slate-500"
                 } hover:text-slate-300`}
               >
@@ -276,17 +304,21 @@ export function Sidebar() {
               </button>
               {expanded && (
                 <div className="mt-1 space-y-0.5 pl-1">
-                  {group.items.map(({ href, label, icon: Icon }) => (
-                    <Link
-                      key={href}
-                      href={href}
-                      onClick={() => setMobileOpen(false)}
-                      className={linkClass(isActive(pathname, href))}
-                    >
-                      <Icon className="h-4 w-4 shrink-0" />
-                      {label}
-                    </Link>
-                  ))}
+                  {group.items.map(({ href, label, icon: Icon }) => {
+                    const active = isActive(pathname, href);
+                    return (
+                      <Link
+                        key={href}
+                        href={href}
+                        onClick={() => setMobileOpen(false)}
+                        className={linkClass(active)}
+                        aria-current={active ? "page" : undefined}
+                      >
+                        <Icon className="h-4 w-4 shrink-0" />
+                        {label}
+                      </Link>
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -305,7 +337,7 @@ export function Sidebar() {
               <div className="truncate text-xs font-medium text-white">{me.email}</div>
               <div className="text-[10px] text-slate-400">{ROLE_LABEL[me.role]}</div>
             </div>
-            <button onClick={logout} title="Выйти" className="rounded-md p-1.5 text-slate-400 hover:bg-white/10 hover:text-white">
+            <button onClick={logout} title="Выйти" aria-label="Выйти" className="rounded-md p-1.5 text-slate-400 hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400">
               <LogOut className="h-4 w-4" />
             </button>
           </div>
@@ -319,7 +351,7 @@ export function Sidebar() {
   return (
     <>
       <button
-        className="fixed left-4 top-4 z-40 flex h-10 w-10 items-center justify-center rounded-lg bg-[#1a1a2e] text-white shadow-lg lg:hidden"
+        className="fixed left-4 top-4 z-40 flex h-10 w-10 items-center justify-center rounded-lg bg-[#1a1a2e] text-white shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:ring-offset-2 lg:hidden"
         onClick={() => setMobileOpen(true)}
         aria-label="Открыть меню"
         aria-expanded={mobileOpen}
