@@ -4,24 +4,20 @@ import {
   BarChart3,
   Calculator,
   ChartNoAxesCombined,
+  ChevronLeft,
   ChevronRight,
-  Clapperboard,
   Filter,
   FlaskConical,
   Home,
-  HeartPulse,
   Link2,
   LogOut,
-  KanbanSquare,
   Megaphone,
   MessageSquareText,
   PackageSearch,
   Search,
   Settings,
   Sparkles,
-  Target,
   Truck,
-  TrendingUp,
   Users,
 } from "lucide-react";
 import Link from "next/link";
@@ -29,9 +25,8 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import {
   WB_MOBILE_NAVIGATION,
-  WB_NAVIGATION_SCENARIOS,
+  WB_NAVIGATION_ITEMS,
   isWbNavigationItemActive,
-  type WbNavigationScenario,
 } from "@/lib/wb/navigation";
 import { WbCabinetSwitcher } from "./WbCabinetSwitcher";
 import { useWbCabinet } from "./WbCabinetContext";
@@ -48,36 +43,18 @@ interface NavItem {
 const ITEM_ICONS: Record<string, IconComponent> = {
   "/wb/rnp": BarChart3,
   "/wb/funnel": Filter,
-  "/wb/planning": Target,
-  "/wb/tasks": KanbanSquare,
-  "/wb/health": HeartPulse,
   "/wb/unit": Calculator,
   "/wb/seo": Search,
   "/wb/sklejki": Link2,
   "/wb/adverts": Megaphone,
   "/wb/ctr": FlaskConical,
-  "/wb/ugc": Clapperboard,
-  "/wb/abc": BarChart3,
-  "/wb/trends": TrendingUp,
   "/wb/market": ChartNoAxesCombined,
   "/wb/supplies": Truck,
   "/wb/product": PackageSearch,
   "/wb/reviews": MessageSquareText,
 };
 
-const SCENARIO_ICONS: Record<WbNavigationScenario["id"], IconComponent> = {
-  sales: BarChart3,
-  operations: Truck,
-  product: PackageSearch,
-  experiments: FlaskConical,
-  analytics: ChartNoAxesCombined,
-};
-
-const WORK_GROUPS = WB_NAVIGATION_SCENARIOS.map((scenario) => ({
-  ...scenario,
-  icon: SCENARIO_ICONS[scenario.id],
-  items: scenario.items.map((item) => ({ ...item, icon: ITEM_ICONS[item.href] ?? BarChart3, target: true })),
-}));
+const WORK_NAV = WB_NAVIGATION_ITEMS.map((item) => ({ ...item, icon: ITEM_ICONS[item.href] ?? BarChart3, target: true }));
 
 const MOBILE_NAV = WB_MOBILE_NAVIGATION.map((item) => ({ ...item, icon: ITEM_ICONS[item.href] ?? BarChart3, target: true }));
 
@@ -87,7 +64,7 @@ const SYSTEM_NAV: NavItem[] = [
   { label: "Сотрудники", href: "/users", icon: Users },
 ];
 
-function RailLink({ item, active, cabinetId }: { item: NavItem; active: boolean; cabinetId: string }) {
+function RailLink({ item, active, cabinetId, expanded, onNavigate }: { item: NavItem; active: boolean; cabinetId: string; expanded: boolean; onNavigate?: () => void }) {
   const Icon = item.icon;
   const href = item.target ? `${item.href}?cabinet=${encodeURIComponent(cabinetId)}` : item.href;
   return (
@@ -96,78 +73,19 @@ function RailLink({ item, active, cabinetId }: { item: NavItem; active: boolean;
       aria-label={item.label}
       aria-current={active ? "page" : undefined}
       title={item.label}
-      className={`group relative mx-2 flex h-11 items-center justify-center rounded-[9px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 md:h-9 ${
+      onClick={onNavigate}
+      className={`group relative mx-2 flex h-11 items-center rounded-[9px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 md:h-9 ${expanded ? "gap-3 px-3" : "justify-center"} ${
         active ? "bg-violet-50 text-violet-700" : "text-slate-500 hover:bg-slate-50 hover:text-slate-800"
       }`}
     >
       {active && <span className="absolute -left-2 h-6 w-[3px] rounded-r bg-violet-600" />}
-      <Icon className="h-[17px] w-[17px]" />
-      <span className="pointer-events-none absolute left-[43px] z-[90] hidden whitespace-nowrap rounded-md bg-slate-900 px-2 py-1 text-[10px] font-semibold text-white shadow-lg group-hover:block group-focus-visible:block">
-        {item.label}
-      </span>
+      <Icon className="h-[17px] w-[17px] shrink-0" />
+      {expanded ? <span className="truncate text-xs font-medium">{item.label}</span> : (
+        <span className="pointer-events-none absolute left-[43px] z-[90] hidden whitespace-nowrap rounded-md bg-slate-900 px-2 py-1 text-[10px] font-semibold text-white shadow-lg group-hover:block group-focus-visible:block">
+          {item.label}
+        </span>
+      )}
     </Link>
-  );
-}
-
-function ScenarioMenu({
-  scenario,
-  active,
-  open,
-  pathname,
-  cabinetId,
-  onOpen,
-  onClose,
-}: {
-  scenario: (typeof WORK_GROUPS)[number];
-  active: boolean;
-  open: boolean;
-  pathname: string;
-  cabinetId: string;
-  onOpen: () => void;
-  onClose: () => void;
-}) {
-  const Icon = scenario.icon;
-  const menuId = `wb-scenario-${scenario.id}`;
-  return (
-    <div className="relative" onMouseEnter={onOpen} onMouseLeave={onClose}>
-      <button
-        type="button"
-        onClick={onOpen}
-        aria-label={scenario.label}
-        aria-current={active ? "page" : undefined}
-        aria-expanded={open}
-        aria-controls={menuId}
-        title={scenario.label}
-        className={`group relative mx-2 flex h-11 w-[39px] items-center justify-center rounded-[9px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 md:h-9 ${
-          active || open ? "bg-violet-50 text-violet-700" : "text-slate-500 hover:bg-slate-50 hover:text-slate-800"
-        }`}
-      >
-        {active && <span className="absolute -left-2 h-6 w-[3px] rounded-r bg-violet-600" />}
-        <Icon className="h-[17px] w-[17px]" />
-        {!open && <span className="pointer-events-none absolute left-[43px] z-[90] hidden whitespace-nowrap rounded-md bg-slate-900 px-2 py-1 text-[10px] font-semibold text-white shadow-lg group-hover:block group-focus-visible:block">{scenario.label}</span>}
-      </button>
-      {open ? (
-        <div id={menuId} className="absolute left-full top-0 z-[95] ml-1 w-64 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl">
-          <div className="border-b border-slate-100 px-3 py-3">
-            <div className="text-xs font-bold text-slate-800">{scenario.label}</div>
-            <div className="mt-1 text-[10px] leading-4 text-slate-400">{scenario.description}</div>
-          </div>
-          <div className="p-1.5">
-            {scenario.items.map((item) => {
-              const ItemIcon = item.icon;
-              const itemActive = isWbNavigationItemActive(pathname, item.href);
-              const href = `${item.href}?cabinet=${encodeURIComponent(cabinetId)}`;
-              return (
-                <Link key={item.href} href={href} onClick={onClose} aria-current={itemActive ? "page" : undefined} className={`flex min-h-10 items-center gap-2 rounded-lg px-2.5 text-xs font-medium transition-colors ${itemActive ? "bg-violet-50 text-violet-700" : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"}`}>
-                  <ItemIcon className="h-4 w-4 shrink-0" />
-                  <span>{item.label}</span>
-                </Link>
-              );
-            })}
-          </div>
-        </div>
-      ) : null}
-    </div>
   );
 }
 
@@ -176,12 +94,24 @@ export function WbShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const { cabinetId, user } = useWbCabinet();
   const [menuOpen, setMenuOpen] = useState(false);
-  const [openScenario, setOpenScenario] = useState<WbNavigationScenario["id"] | null>(null);
+  const [sidebarExpanded, setSidebarExpanded] = useState(true);
 
   useEffect(() => {
     setMenuOpen(false);
-    setOpenScenario(null);
   }, [pathname]);
+
+  useEffect(() => {
+    const saved = window.localStorage.getItem("wb-sidebar-expanded");
+    if (saved !== null) setSidebarExpanded(saved !== "false");
+  }, []);
+
+  const toggleSidebar = () => {
+    setSidebarExpanded((current) => {
+      const next = !current;
+      window.localStorage.setItem("wb-sidebar-expanded", String(next));
+      return next;
+    });
+  };
 
   const initials = useMemo(() => {
     const email = user?.email ?? "";
@@ -194,9 +124,9 @@ export function WbShell({ children }: { children: React.ReactNode }) {
     router.refresh();
   };
 
-  const nav = (
+  const renderNav = (expanded: boolean, mobile = false) => (
     <>
-      <div className="flex h-[54px] shrink-0 items-center justify-center border-b border-slate-200">
+      <div className={`flex h-[54px] shrink-0 items-center border-b border-slate-200 ${expanded ? "gap-2.5 px-3" : "justify-center"}`}>
         <Link
           href="/"
           aria-label="Управление WB"
@@ -204,31 +134,31 @@ export function WbShell({ children }: { children: React.ReactNode }) {
         >
           WB
         </Link>
+        {expanded ? <span className="truncate text-xs font-bold text-slate-700">Управление WB</span> : null}
       </div>
 
-      <div className="flex h-[58px] shrink-0 items-center justify-center border-b border-slate-200">
+      <div className={`flex h-[46px] shrink-0 items-center border-b border-slate-200 ${expanded ? "justify-between px-3" : "justify-center"}`}>
+        {expanded ? <span className="text-[9px] font-bold uppercase tracking-[0.14em] text-slate-400">Инструменты</span> : null}
         <button
           type="button"
-          onClick={() => setMenuOpen(false)}
-          aria-label="Свернуть навигацию"
+          onClick={mobile ? () => setMenuOpen(false) : toggleSidebar}
+          aria-label={mobile ? "Закрыть навигацию" : expanded ? "Свернуть навигацию" : "Развернуть навигацию"}
           className="grid h-8 w-8 place-items-center rounded-lg text-slate-400 hover:bg-slate-50 hover:text-slate-700"
         >
-          <ChevronRight className="h-4 w-4" />
+          {expanded ? <ChevronLeft className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
         </button>
       </div>
 
-      <nav aria-label="Инструменты Wildberries" className="flex-1 overflow-visible py-2">
+      <nav aria-label="Инструменты Wildberries" className="flex-1 overflow-y-auto overflow-x-visible py-2">
         <div className="space-y-0.5">
-          {WORK_GROUPS.map((scenario) => (
-            <ScenarioMenu
-              key={scenario.id}
-              scenario={scenario}
-              pathname={pathname}
+          {WORK_NAV.map((item) => (
+            <RailLink
+              key={item.href}
+              item={item}
               cabinetId={cabinetId || "all"}
-              active={scenario.items.some((item) => isWbNavigationItemActive(pathname, item.href))}
-              open={openScenario === scenario.id}
-              onOpen={() => setOpenScenario(scenario.id)}
-              onClose={() => setOpenScenario(null)}
+              expanded={expanded}
+              onNavigate={mobile ? () => setMenuOpen(false) : undefined}
+              active={isWbNavigationItemActive(pathname, item.href)}
             />
           ))}
         </div>
@@ -239,6 +169,8 @@ export function WbShell({ children }: { children: React.ReactNode }) {
               key={`${item.label}-${item.href}`}
               item={item}
               cabinetId={cabinetId || "all"}
+              expanded={expanded}
+              onNavigate={mobile ? () => setMenuOpen(false) : undefined}
               active={pathname === item.href}
             />
           ))}
@@ -253,8 +185,8 @@ export function WbShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen bg-[#f6f7f9] text-slate-800">
-      <aside className="fixed inset-y-0 left-0 z-[70] hidden w-[55px] flex-col border-r border-slate-200 bg-white md:flex">
-        {nav}
+      <aside className={`fixed inset-y-0 left-0 z-[70] hidden flex-col border-r border-slate-200 bg-white transition-[width] duration-200 md:flex ${sidebarExpanded ? "w-[216px]" : "w-[55px]"}`}>
+        {renderNav(sidebarExpanded)}
       </aside>
 
       {menuOpen && (
@@ -265,13 +197,13 @@ export function WbShell({ children }: { children: React.ReactNode }) {
             className="fixed inset-0 z-[69] bg-slate-950/25 md:hidden"
             onClick={() => setMenuOpen(false)}
           />
-          <aside className="fixed inset-y-0 left-0 z-[70] flex w-[55px] flex-col border-r border-slate-200 bg-white md:hidden">
-            {nav}
+          <aside className="fixed inset-y-0 left-0 z-[70] flex w-[216px] flex-col border-r border-slate-200 bg-white md:hidden">
+            {renderNav(true, true)}
           </aside>
         </>
       )}
 
-      <header className="fixed left-0 right-0 top-0 z-[60] flex h-[54px] items-center border-b border-slate-200 bg-white px-3 md:left-[55px] md:px-5">
+      <header className={`fixed left-0 right-0 top-0 z-[60] flex h-[54px] items-center border-b border-slate-200 bg-white px-3 transition-[left] duration-200 md:px-5 ${sidebarExpanded ? "md:left-[216px]" : "md:left-[55px]"}`}>
         <button
           type="button"
           onClick={() => setMenuOpen(true)}
@@ -305,7 +237,7 @@ export function WbShell({ children }: { children: React.ReactNode }) {
         </div>
       </header>
 
-      <main className="min-h-screen pt-[54px] md:ml-[55px]">{children}</main>
+      <main className={`min-h-screen pt-[54px] transition-[margin] duration-200 ${sidebarExpanded ? "md:ml-[216px]" : "md:ml-[55px]"}`}>{children}</main>
 
       <nav className="fixed bottom-0 left-0 right-0 z-50 flex h-14 items-center justify-around border-t border-slate-200 bg-white md:hidden" aria-label="Быстрая навигация">
         {MOBILE_NAV.map((item) => {

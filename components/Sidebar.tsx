@@ -38,6 +38,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { allowedNav, ROLE_LABEL } from "@/lib/auth/roles";
 import type { Role } from "@/lib/auth/session";
+import { isFinanceSidebarPath } from "@/lib/navigation/sidebar";
 
 interface NavLink {
   href: string;
@@ -64,10 +65,7 @@ const NAV_GROUPS: NavGroup[] = [
       { href: "/wb/product", label: "Инфо по SKU", icon: PackageSearch },
       { href: "/wb/unit", label: "Юнит-экономика", icon: Sigma },
       { href: "/wb/ctr", label: "CTR по SKU", icon: MousePointerClick },
-      { href: "/wb/planning", label: "Планирование", icon: CalendarRange },
       { href: "/ozon", label: "Ozon Аналитика", icon: BarChart3 },
-      { href: "/wb/abc", label: "ABC прибыли", icon: PieChart },
-      { href: "/wb/trends", label: "Динамика", icon: TrendingUp },
       { href: "/wb/market", label: "Рынок", icon: Target },
     ],
   },
@@ -110,6 +108,36 @@ const NAV_GROUPS: NavGroup[] = [
   },
 ];
 
+const FINANCE_NAV_GROUPS: NavGroup[] = [
+  {
+    id: "finres",
+    label: "Финрезультат",
+    items: [
+      { href: "/summary", label: "Сводка WB · Ozon", icon: LayoutDashboard },
+      { href: "/pnl", label: "ОПиУ (до СПП)", icon: LineChart },
+      { href: "/losses", label: "Где теряем", icon: TrendingDown },
+      { href: "/opiu", label: "WB недельный", icon: Table2 },
+    ],
+  },
+  {
+    id: "money",
+    label: "Деньги (ДДС)",
+    items: [
+      { href: "/calendar", label: "Календарь", icon: Calendar },
+      { href: "/payments", label: "Платежи", icon: CreditCard },
+      { href: "/accounts", label: "Счета", icon: Wallet },
+      { href: "/loans", label: "Кредиты", icon: Landmark },
+    ],
+  },
+  {
+    id: "finance-data",
+    label: "Учёт",
+    items: [
+      { href: "/costs", label: "Себестоимость", icon: Coins },
+    ],
+  },
+];
+
 const DASHBOARD: NavLink = {
   href: "/",
   label: "Дашборд",
@@ -123,6 +151,7 @@ function isActive(pathname: string, href: string): boolean {
 
 export function Sidebar() {
   const pathname = usePathname();
+  const financeOnly = isFinanceSidebarPath(pathname);
   const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [me, setMe] = useState<{ email: string; role: Role } | null>(null);
@@ -170,17 +199,18 @@ export function Sidebar() {
   };
 
   // группы с фильтром по роли (пустые группы скрываем)
-  const groups = NAV_GROUPS
+  const sourceGroups = financeOnly ? FINANCE_NAV_GROUPS : NAV_GROUPS;
+  const groups = sourceGroups
     .map((g) => ({ ...g, items: g.items.filter((i) => (me ? allowedNav(me.role, i.href.split(/[?#]/, 1)[0] || i.href) : true)) }))
     .filter((g) => g.items.length > 0);
 
   useEffect(() => {
-    for (const group of NAV_GROUPS) {
+    for (const group of sourceGroups) {
       if (group.items.some((item) => isActive(pathname, item.href))) {
         setOpenGroups((prev) => ({ ...prev, [group.id]: true }));
       }
     }
-  }, [pathname]);
+  }, [pathname, sourceGroups]);
 
   const toggleGroup = (id: string) => {
     setOpenGroups((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -201,7 +231,7 @@ export function Sidebar() {
         </div>
         <div>
           <p className="text-sm font-semibold text-white">Финансы МП</p>
-          <p className="text-xs text-slate-400">WB Analytics & Finance</p>
+          <p className="text-xs text-slate-400">{financeOnly ? "Финансовый контур" : "WB Analytics & Finance"}</p>
         </div>
         <button
           className="ml-auto text-slate-400 hover:text-white lg:hidden"
@@ -213,14 +243,16 @@ export function Sidebar() {
       </div>
 
       <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
-        <Link
-          href={DASHBOARD.href}
-          onClick={() => setMobileOpen(false)}
-          className={linkClass(isActive(pathname, DASHBOARD.href))}
-        >
-          <DASHBOARD.icon className="h-5 w-5 shrink-0" />
-          {DASHBOARD.label}
-        </Link>
+        {!financeOnly ? (
+          <Link
+            href={DASHBOARD.href}
+            onClick={() => setMobileOpen(false)}
+            className={linkClass(isActive(pathname, DASHBOARD.href))}
+          >
+            <DASHBOARD.icon className="h-5 w-5 shrink-0" />
+            {DASHBOARD.label}
+          </Link>
+        ) : null}
 
         {groups.map((group) => {
           const groupActive = group.items.some((item) =>

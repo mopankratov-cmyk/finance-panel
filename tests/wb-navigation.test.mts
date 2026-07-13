@@ -1,20 +1,30 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { WB_MOBILE_NAVIGATION, WB_NAVIGATION_SCENARIOS, isWbNavigationItemActive } from "../lib/wb/navigation";
+import { WB_MOBILE_NAVIGATION, WB_NAVIGATION_ITEMS, isWbNavigationItemActive } from "../lib/wb/navigation";
 
-test("WB navigation exposes every dashboard once through five scenarios", () => {
-  const items = WB_NAVIGATION_SCENARIOS.flatMap((scenario) => scenario.items);
-  assert.equal(WB_NAVIGATION_SCENARIOS.length, 5);
-  assert.equal(items.length, 17);
-  assert.equal(new Set(items.map((item) => item.href)).size, items.length);
+test("WB navigation exposes only the approved dashboards as direct links", () => {
+  assert.deepEqual(WB_NAVIGATION_ITEMS.map((item) => item.href), [
+    "/wb/rnp",
+    "/wb/funnel",
+    "/wb/adverts",
+    "/wb/supplies",
+    "/wb/unit",
+    "/wb/product",
+    "/wb/seo",
+    "/wb/sklejki",
+    "/wb/reviews",
+    "/wb/ctr",
+    "/wb/market",
+  ]);
+  assert.equal(new Set(WB_NAVIGATION_ITEMS.map((item) => item.href)).size, WB_NAVIGATION_ITEMS.length);
 });
 
 test("WB mobile navigation keeps four operational shortcuts", () => {
   assert.deepEqual(WB_MOBILE_NAVIGATION.map((item) => item.href), [
     "/wb/rnp",
     "/wb/adverts",
-    "/wb/planning",
     "/wb/supplies",
+    "/wb/sklejki",
   ]);
 });
 
