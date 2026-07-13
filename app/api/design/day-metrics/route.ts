@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { cabinetIdFromParam } from "@/lib/rnp/resolveShop";
+import { hasCabinetAccess } from "@/lib/auth/cabinetAccess";
+import { requestAllowedNmIds, requestAllowsNm } from "@/lib/wb/requestProductScope";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -16,10 +18,19 @@ export async function GET(req: NextRequest) {
   if (!db) return NextResponse.json({ metrics: {} });
 
   const p_cabinet = cabinetIdFromParam(new URL(req.url).searchParams.get("cabinet")); // null → все кабинеты
+  if (!(await hasCabinetAccess(p_cabinet))) {
+    return NextResponse.json({ error: "Нет доступа к кабинету" }, { status: 403 });
+  }
+  const allowedNmIds = await requestAllowedNmIds(p_cabinet);
   const since = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
   let funnelQ = db.from("wb_funnel_daily").select("nm_id, date, open_card, add_to_cart, orders, orders_sum").gte("date", since);
   let adQ = db.from("wb_advert_nm_daily").select("nm_id, date, views, clicks, spent").gte("date", since);
   if (p_cabinet) { funnelQ = funnelQ.eq("cabinet_id", p_cabinet); adQ = adQ.eq("cabinet_id", p_cabinet); }
+  if (allowedNmIds) {
+    const nmIds = allowedNmIds.size ? [...allowedNmIds] : [-1];
+    funnelQ = funnelQ.in("nm_id", nmIds);
+    adQ = adQ.in("nm_id", nmIds);
+  }
   const [funnelRes, adRes] = await Promise.all([funnelQ, adQ]);
 
   const metrics: Record<number, Record<string, Record<string, number | null>>> = {};
@@ -29,6 +40,7 @@ export async function GET(req: NextRequest) {
   };
 
   for (const a of (adRes.data ?? []) as AdRow[]) {
+    if (!requestAllowsNm(allowedNmIds, a.nm_id)) continue;
     const iso = String(a.date).slice(0, 10);
     const c = cell(a.nm_id, iso);
     c.views = a.views || 0;
@@ -38,6 +50,7 @@ export async function GET(req: NextRequest) {
     c._spent = Number(a.spent || 0);
   }
   for (const f of (funnelRes.data ?? []) as FunnelRow[]) {
+    if (!requestAllowsNm(allowedNmIds, f.nm_id)) continue;
     const iso = String(f.date).slice(0, 10);
     const c = cell(f.nm_id, iso);
     c.carts = f.add_to_cart || 0;

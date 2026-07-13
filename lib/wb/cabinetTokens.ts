@@ -4,11 +4,12 @@
 
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import type { WbScope } from "@/lib/wb/token";
-import { normalizeBrandFilters, type WbProductScope } from "@/lib/wb/productScope";
+import { cabinetBrandFilters, type WbProductScope } from "@/lib/wb/productScope";
 
 export interface WbCabinet {
   id: string;
   name: string;
+  trade_mark: string | null;
   seller_id: string | null;
   inn: string | null;
   token: string;
@@ -22,14 +23,14 @@ export interface WbCabinet {
 
 type RawWbCabinet = Omit<WbCabinet, "brand_filters" | "allowed_nm_ids"> & { brand_filters?: unknown };
 
-const CABINET_COLS = "id, name, seller_id, inn, token, token_advert, token_content, token_feedbacks, brand_filters, is_active";
-const LEGACY_CABINET_COLS = "id, name, seller_id, inn, token, token_advert, token_content, token_feedbacks, is_active";
+const CABINET_COLS = "id, name, trade_mark, seller_id, inn, token, token_advert, token_content, token_feedbacks, brand_filters, is_active";
+const LEGACY_CABINET_COLS = "id, name, trade_mark, seller_id, inn, token, token_advert, token_content, token_feedbacks, is_active";
 
 async function attachProductScopes(cabinets: RawWbCabinet[]): Promise<WbCabinet[]> {
   const db = getSupabaseAdmin();
   const normalized = cabinets.map((cab) => ({
     ...cab,
-    brand_filters: normalizeBrandFilters(cab.brand_filters),
+    brand_filters: cabinetBrandFilters(`${cab.name} ${cab.trade_mark ?? ""}`, cab.brand_filters),
     allowed_nm_ids: null,
   }));
   const scopedIds = normalized.filter((cab) => cab.brand_filters.length > 0).map((cab) => cab.id);

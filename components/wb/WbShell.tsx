@@ -3,11 +3,14 @@
 import {
   BarChart3,
   Calculator,
+  ChartNoAxesCombined,
   ChevronRight,
+  Filter,
   FlaskConical,
   Home,
   Link2,
   LogOut,
+  KanbanSquare,
   Megaphone,
   MessageSquareText,
   PackageSearch,
@@ -16,6 +19,7 @@ import {
   Sparkles,
   Target,
   Truck,
+  TrendingUp,
   Users,
 } from "lucide-react";
 import Link from "next/link";
@@ -33,13 +37,18 @@ interface NavItem {
 
 const WORK_NAV: NavItem[] = [
   { label: "РНП", href: "/wb/rnp", icon: BarChart3, target: true },
+  { label: "Воронка", href: "/wb/funnel", icon: Filter, target: true },
   { label: "Планирование", href: "/wb/planning", icon: Target, target: true },
+  { label: "Задачи", href: "/wb/tasks", icon: KanbanSquare, target: true },
   { label: "Юнит-экономика", href: "/wb/unit", icon: Calculator, target: true },
   { label: "SEO", href: "/wb/seo", icon: Search, target: true },
   { label: "Склейки", href: "/wb/sklejki", icon: Link2, target: true },
-  { label: "Поставки", href: "/wb/supplies", icon: Truck, target: true },
   { label: "Реклама", href: "/wb/adverts", icon: Megaphone, target: true },
   { label: "CTR-тесты", href: "/wb/ctr", icon: FlaskConical, target: true },
+  { label: "ABC-анализ", href: "/wb/abc", icon: BarChart3, target: true },
+  { label: "Динамика", href: "/wb/trends", icon: TrendingUp, target: true },
+  { label: "Рынок", href: "/wb/market", icon: ChartNoAxesCombined, target: true },
+  { label: "Поставки", href: "/wb/supplies", icon: Truck, target: true },
   { label: "Товары", href: "/wb/product", icon: PackageSearch, target: true },
   { label: "Отзывы", href: "/wb/reviews", icon: MessageSquareText, target: true },
 ];

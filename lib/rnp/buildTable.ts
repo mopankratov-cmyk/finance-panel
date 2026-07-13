@@ -1,6 +1,7 @@
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { wbCardImageUrl } from "@/lib/wb/cardImage";
-import { getWbCommissionMerged } from "@/lib/wb/commissions";
+import { getWbCommissionForCabinet } from "@/lib/wb/commissions";
+import { requestAllowedNmIds, requestAllowsNm } from "@/lib/wb/requestProductScope";
 
 const WEEKDAY = ["вс", "пн", "вт", "ср", "чт", "пт", "сб"];
 
@@ -111,15 +112,21 @@ export async function buildRnpTable(from: string, to: string, cabinetId?: string
   if (!db) return { error: "Supabase не настроен" };
 
   const p_cabinet = cabinetId || null; // null = все кабинеты
+  const allowedNmIds = await requestAllowedNmIds(p_cabinet);
   let adQ = db.from("wb_advert_nm_daily").select("nm_id, date, views, clicks").gte("date", from).lte("date", to);
   let funnelQ = db.from("wb_funnel_daily").select("nm_id, date, add_to_cart").gte("date", from).lte("date", to);
   if (p_cabinet) { adQ = adQ.eq("cabinet_id", p_cabinet); funnelQ = funnelQ.eq("cabinet_id", p_cabinet); }
+  if (allowedNmIds) {
+    const nmIds = allowedNmIds.size ? [...allowedNmIds] : [-1];
+    adQ = adQ.in("nm_id", nmIds);
+    funnelQ = funnelQ.in("nm_id", nmIds);
+  }
   const [dailyRes, skuRes, totalsRes, costsRes, comm, adRes, funnelRes] = await Promise.all([
     db.rpc("rnp_daily", { p_from: from, p_to: to, p_cabinet }),
     db.rpc("rnp_daily_sku", { p_from: from, p_to: to, p_cabinet }),
     db.rpc("rnp_report", { p_cabinet }),
     db.from("product_costs").select("article, name"),
-    getWbCommissionMerged(30), // факт комиссия%+эквайринг% по nm (мердж по кабинетам; ENV пуст)
+    getWbCommissionForCabinet(p_cabinet, 30),
     adQ,
     funnelQ,
   ]);
@@ -130,12 +137,14 @@ export async function buildRnpTable(from: string, to: string, cabinetId?: string
   const clicksByNm = new Map<number, Map<string, number>>();
   const cartByNm = new Map<number, Map<string, number>>();
   for (const r of (adRes.data ?? []) as AdNmRow[]) {
+    if (!requestAllowsNm(allowedNmIds, r.nm_id)) continue;
     const d = String(r.date).slice(0, 10);
     if (!viewsByNm.has(r.nm_id)) { viewsByNm.set(r.nm_id, new Map()); clicksByNm.set(r.nm_id, new Map()); }
     viewsByNm.get(r.nm_id)!.set(d, (viewsByNm.get(r.nm_id)!.get(d) ?? 0) + Number(r.views ?? 0));
     clicksByNm.get(r.nm_id)!.set(d, (clicksByNm.get(r.nm_id)!.get(d) ?? 0) + Number(r.clicks ?? 0));
   }
   for (const r of (funnelRes.data ?? []) as FunnelCartRow[]) {
+    if (!requestAllowsNm(allowedNmIds, r.nm_id)) continue;
     const d = String(r.date).slice(0, 10);
     if (!cartByNm.has(r.nm_id)) cartByNm.set(r.nm_id, new Map());
     cartByNm.get(r.nm_id)!.set(d, (cartByNm.get(r.nm_id)!.get(d) ?? 0) + Number(r.add_to_cart ?? 0));
@@ -143,11 +152,13 @@ export async function buildRnpTable(from: string, to: string, cabinetId?: string
   // агрегат по всем nm — для сводки строки
   const viewsByDateAll = new Map<string, number>(), clicksByDateAll = new Map<string, number>(), cartByDateAll = new Map<string, number>();
   for (const r of (adRes.data ?? []) as AdNmRow[]) {
+    if (!requestAllowsNm(allowedNmIds, r.nm_id)) continue;
     const d = String(r.date).slice(0, 10);
     viewsByDateAll.set(d, (viewsByDateAll.get(d) ?? 0) + Number(r.views ?? 0));
     clicksByDateAll.set(d, (clicksByDateAll.get(d) ?? 0) + Number(r.clicks ?? 0));
   }
   for (const r of (funnelRes.data ?? []) as FunnelCartRow[]) {
+    if (!requestAllowsNm(allowedNmIds, r.nm_id)) continue;
     const d = String(r.date).slice(0, 10);
     cartByDateAll.set(d, (cartByDateAll.get(d) ?? 0) + Number(r.add_to_cart ?? 0));
   }
@@ -162,9 +173,19 @@ export async function buildRnpTable(from: string, to: string, cabinetId?: string
   while (cur <= end) { days.push(cur.toISOString().slice(0, 10)); cur.setDate(cur.getDate() + 1); }
   const period = days.map((d) => { const dt = new Date(d); return { label: `${String(dt.getDate()).padStart(2, "0")}.${String(dt.getMonth() + 1).padStart(2, "0")}`, period_type: WEEKDAY[dt.getDay()] }; });
 
+  const skuDailyRows = ((skuRes.data ?? []) as SkuDailyRow[]).filter((row) => requestAllowsNm(allowedNmIds, row.nm_id));
   const dailyByDate = new Map<string, DailyRow>();
-  for (const r of (dailyRes.data ?? []) as DailyRow[]) dailyByDate.set(String(r.d).slice(0, 10), r);
-  const totals = (totalsRes.data ?? []) as RpcTotal[];
+  for (const r of skuDailyRows) {
+    const date = String(r.d).slice(0, 10);
+    const current = dailyByDate.get(date) ?? { d: date, orders_count: 0, orders_sum: 0, buyouts_count: 0, buyouts_sum: 0, ad_spent: 0 };
+    current.orders_count += Number(r.orders_count ?? 0);
+    current.orders_sum += Number(r.orders_sum ?? 0);
+    current.buyouts_count += Number(r.buyouts_count ?? 0);
+    current.buyouts_sum += Number(r.buyouts_sum ?? 0);
+    current.ad_spent += Number(r.ad_spent ?? 0);
+    dailyByDate.set(date, current);
+  }
+  const totals = ((totalsRes.data ?? []) as RpcTotal[]).filter((row) => requestAllowsNm(allowedNmIds, row.nm_id));
   const stockTotal = totals.reduce((a, r) => a + Number(r.stock ?? 0), 0);
   const stockMoneyTotal = totals.reduce((a, r) => a + Number(r.stock ?? 0) * Number(r.cost ?? 0), 0);
 
@@ -173,7 +194,7 @@ export async function buildRnpTable(from: string, to: string, cabinetId?: string
   const totalByNm = new Map<number, RpcTotal>();
   for (const t of totals) totalByNm.set(t.nm_id, t);
   const byNm = new Map<number, Map<string, DailyRow>>();
-  for (const r of (skuRes.data ?? []) as SkuDailyRow[]) {
+  for (const r of skuDailyRows) {
     if (!byNm.has(r.nm_id)) byNm.set(r.nm_id, new Map());
     byNm.get(r.nm_id)!.set(String(r.d).slice(0, 10), r);
   }

@@ -3,7 +3,7 @@ import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { validateWbToken } from "@/lib/wb/sellerInfo";
 import { decodeWbToken, probeWbScope, probeWbScopes, type ScopeStatus } from "@/lib/wb/token";
 import { validateOzon } from "@/lib/ozon/api";
-import { normalizeBrandFilters } from "@/lib/wb/productScope";
+import { cabinetBrandFilters } from "@/lib/wb/productScope";
 import { getServerSession } from "@/lib/auth/server";
 
 export const dynamic = "force-dynamic";
@@ -50,7 +50,7 @@ export async function GET(request: NextRequest) {
     has_advert: !!c.token_advert,
     has_content: !!c.token_content,
     has_feedbacks: !!c.token_feedbacks,
-    brand_filters: normalizeBrandFilters(c.brand_filters),
+    brand_filters: cabinetBrandFilters(`${String(c.name ?? "")} ${String(c.trade_mark ?? "")}`, c.brand_filters),
     product_scope_count: scopeCount.get(String(c.id)) ?? 0,
   }));
   const accessibleOnly = new URL(request.url).searchParams.get("accessible") === "1";
@@ -125,7 +125,10 @@ export async function POST(request: NextRequest) {
       token_feedbacks: feedbTok || null,
       is_active: true,
     };
-    if (b.brand_filters !== undefined) row.brand_filters = normalizeBrandFilters(b.brand_filters);
+    const cabinetName = String(row.name ?? "");
+    if (b.brand_filters !== undefined || cabinetBrandFilters(cabinetName, []).length > 0) {
+      row.brand_filters = cabinetBrandFilters(cabinetName, b.brand_filters);
+    }
   }
 
   // без ON CONFLICT (уникальный индекс частичный): проверяем существование и обновляем/вставляем

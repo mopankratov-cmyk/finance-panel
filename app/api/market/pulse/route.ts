@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { resolveShopCabinet } from "@/lib/rnp/resolveShop";
 import { hasMpstats, subjectByDate, subjectKeywords, subjectByDateId, subjectKeywordsId, itemKeywords, mpstatsRouteError } from "@/lib/mpstats/client";
+import { hasCabinetAccess } from "@/lib/auth/cabinetAccess";
+import { requestAllowedNmIds, requestAllowsNm } from "@/lib/wb/requestProductScope";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -35,6 +37,10 @@ async function loadPulse(request: NextRequest) {
   const subject = sp.get("subject") || ""; // legacy: путь категории
   if (!subjectId && !subject) return NextResponse.json({ error: "Укажите ниши (subject_id или путь)" }, { status: 400 });
   const { cabinetId, label } = await resolveShopCabinet(sp.get("cabinet") ?? undefined);
+  if (!(await hasCabinetAccess(cabinetId))) {
+    return NextResponse.json({ error: "Нет доступа к кабинету" }, { status: 403 });
+  }
+  const allowedNmIds = await requestAllowedNmIds(cabinetId);
   const gran: "day" | "week" = sp.get("gran") === "day" ? "day" : "week";
 
   // период: явные даты (d2 не позже вчера — MPStats требует d2 < сегодня) или последние N недель
@@ -54,14 +60,18 @@ async function loadPulse(request: NextRequest) {
       ? [subjectByDateId(subjectId, d1, d2), subjectKeywordsId(subjectId, d1, d2, 300)]
       : [subjectByDate(subject, d1, d2), subjectKeywords(subject, d1, d2, 300)],
   );
-  const ourDailyRes = await db.rpc("rnp_daily", { p_from: d1, p_to: d2, p_cabinet: cabinetId });
+  const ourDailyRes = await db.rpc("rnp_daily_sku", { p_from: d1, p_to: d2, p_cabinet: cabinetId });
 
   // бакетизация: день = сама дата, неделя = понедельник недели
   const bkt = (s: string) => (gran === "day" ? s.slice(0, 10) : isoWeek(s.slice(0, 10)));
   const nicheBy = new Map<string, number>();
   for (const r of nicheDays) { if (!r.period) continue; const k = bkt(String(r.period)); nicheBy.set(k, (nicheBy.get(k) ?? 0) + Number(r.revenue ?? 0)); }
   const ourBy = new Map<string, number>();
-  for (const r of (ourDailyRes.data ?? []) as { d: string; orders_sum: number }[]) { const k = bkt(String(r.d)); ourBy.set(k, (ourBy.get(k) ?? 0) + Number(r.orders_sum ?? 0)); }
+  for (const r of (ourDailyRes.data ?? []) as { d: string; nm_id: number; orders_sum: number }[]) {
+    if (!requestAllowsNm(allowedNmIds, r.nm_id)) continue;
+    const k = bkt(String(r.d));
+    ourBy.set(k, (ourBy.get(k) ?? 0) + Number(r.orders_sum ?? 0));
+  }
 
   const buckets = [...new Set([...nicheBy.keys(), ...ourBy.keys()])].sort();
   // окно сравнения — бакеты, где у НАС есть данные (история заказов короче ниши)
@@ -91,6 +101,7 @@ async function loadPulse(request: NextRequest) {
   // — топ-запросы ниши + наши позиции по топ-SKU кабинета —
   const repRes = await db.rpc("rnp_report", { p_cabinet: cabinetId });
   const ourSkus = ((repRes.data ?? []) as { nm_id: number; orders_sum_month: number }[])
+    .filter((row) => requestAllowsNm(allowedNmIds, row.nm_id))
     .slice()
     .sort((a, b) => Number(b.orders_sum_month ?? 0) - Number(a.orders_sum_month ?? 0))
     .slice(0, 15)

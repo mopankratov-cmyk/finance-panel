@@ -4,6 +4,7 @@ import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { resolveShopCabinet } from "@/lib/rnp/resolveShop";
 import { cabinetProductScope, getWbCabinet, resolveWbToken } from "@/lib/wb/cabinetTokens";
 import { getWbCommission, getWbCommissionMerged } from "@/lib/wb/commissions";
+import { requestAllowedNmIds, requestAllowsNm } from "@/lib/wb/requestProductScope";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -20,6 +21,7 @@ export async function GET(request: NextRequest) {
   if (!(await hasCabinetAccess(cabinetId))) {
     return NextResponse.json({ error: "Нет доступа к кабинету" }, { status: 403 });
   }
+  const allowedNmIds = await requestAllowedNmIds(cabinetId);
 
   // токен выбранного кабинета для факт-комиссии (иначе ENV)
   const cab = cabinetId ? await getWbCabinet(cabinetId) : null;
@@ -39,7 +41,7 @@ export async function GET(request: NextRequest) {
   for (const c of costsRes.data ?? []) nameByArt.set(c.article as string, (c.name as string) ?? "");
 
   const shopLabel = label || "Все кабинеты";
-  const skus = ((rpcRes.data ?? []) as RpcRow[]).map((r) => {
+  const skus = ((rpcRes.data ?? []) as RpcRow[]).filter((row) => requestAllowsNm(allowedNmIds, row.nm_id)).map((r) => {
     const orders = r.orders_month || 0;
     const rev = Number(r.orders_sum_month || 0);
     const factPct = comm.byNm.get(r.nm_id)?.pct ?? (comm.avgPct > 0 ? comm.avgPct : null);

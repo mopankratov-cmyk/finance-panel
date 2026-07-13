@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { cabinetIdFromParam } from "@/lib/rnp/resolveShop";
+import { hasCabinetAccess } from "@/lib/auth/cabinetAccess";
+import { requestAllowedNmIds, requestAllowsNm } from "@/lib/wb/requestProductScope";
 
 export const dynamic = "force-dynamic";
 
 interface DailyRow { d: string; orders_count: number; orders_sum: number; buyouts_count: number; buyouts_sum: number; ad_spent: number }
+interface DailySkuRow extends DailyRow { nm_id: number }
 
 // Динамика период-к-периоду (WoW/MoM): текущее окно vs предыдущее + дневной ряд для спарклайнов.
 export async function GET(req: NextRequest) {
@@ -13,16 +16,30 @@ export async function GET(req: NextRequest) {
   const sp = new URL(req.url).searchParams;
   const win = Math.min(30, Math.max(7, Number(sp.get("window")) || 7));
   const p_cabinet = cabinetIdFromParam(sp.get("cabinet"));
+  if (!(await hasCabinetAccess(p_cabinet))) {
+    return NextResponse.json({ error: "Нет доступа к кабинету" }, { status: 403 });
+  }
+  const allowedNmIds = await requestAllowedNmIds(p_cabinet);
 
   const to = new Date();
   const from = new Date(Date.now() - (win * 2 - 1) * 86400000);
   const fromStr = from.toISOString().slice(0, 10);
   const toStr = to.toISOString().slice(0, 10);
-  const { data, error } = await db.rpc("rnp_daily", { p_from: fromStr, p_to: toStr, p_cabinet });
+  const { data, error } = await db.rpc("rnp_daily_sku", { p_from: fromStr, p_to: toStr, p_cabinet });
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   const byDate = new Map<string, DailyRow>();
-  for (const r of (data ?? []) as DailyRow[]) byDate.set(String(r.d).slice(0, 10), r);
+  for (const r of (data ?? []) as DailySkuRow[]) {
+    if (!requestAllowsNm(allowedNmIds, r.nm_id)) continue;
+    const date = String(r.d).slice(0, 10);
+    const current = byDate.get(date) ?? { d: date, orders_count: 0, orders_sum: 0, buyouts_count: 0, buyouts_sum: 0, ad_spent: 0 };
+    current.orders_count += Number(r.orders_count ?? 0);
+    current.orders_sum += Number(r.orders_sum ?? 0);
+    current.buyouts_count += Number(r.buyouts_count ?? 0);
+    current.buyouts_sum += Number(r.buyouts_sum ?? 0);
+    current.ad_spent += Number(r.ad_spent ?? 0);
+    byDate.set(date, current);
+  }
 
   // полный список дней (2×окно), делим на prev | current
   const days: string[] = [];

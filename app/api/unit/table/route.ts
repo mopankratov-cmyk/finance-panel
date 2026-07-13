@@ -4,6 +4,7 @@ import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { wbCardImageUrl } from "@/lib/wb/cardImage";
 import { getWbCommissionForCabinet } from "@/lib/wb/commissions";
 import { resolveShopCabinet } from "@/lib/rnp/resolveShop";
+import { requestAllowedNmIds, requestAllowsNm } from "@/lib/wb/requestProductScope";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60; // факт-комиссия = финотчёт по каждому кабинету (тяжёлый, кэш 6ч)
@@ -39,6 +40,7 @@ export async function GET(req: NextRequest) {
   if (!(await hasCabinetAccess(p_cabinet))) {
     return NextResponse.json({ error: "Нет доступа к кабинету" }, { status: 403 });
   }
+  const allowedNmIds = await requestAllowedNmIds(p_cabinet);
 
   const [rpcRes, costsRes, comm] = await Promise.all([
     db.rpc("rnp_report", { p_cabinet }),
@@ -59,7 +61,7 @@ export async function GET(req: NextRequest) {
   const img_urls: string[] = [];
   const names: string[] = [];
 
-  const sorted = ((rpcRes.data ?? []) as RpcRow[]).slice().sort((a, b) => Number(b.orders_sum_month) - Number(a.orders_sum_month));
+  const sorted = ((rpcRes.data ?? []) as RpcRow[]).filter((row) => requestAllowsNm(allowedNmIds, row.nm_id)).slice().sort((a, b) => Number(b.orders_sum_month) - Number(a.orders_sum_month));
 
   for (const r of sorted) {
     const m = meta.get(r.article);

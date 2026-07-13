@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { cabinetIdFromParam } from "@/lib/rnp/resolveShop";
 import { hasCabinetAccess } from "@/lib/auth/cabinetAccess";
+import { requestAllowedNmIds } from "@/lib/wb/requestProductScope";
 
 export const dynamic = "force-dynamic";
 
@@ -56,6 +57,8 @@ export async function GET(req: NextRequest) {
   if (!(await hasCabinetAccess(p_cabinet))) {
     return NextResponse.json({ ok: false, error: "Нет доступа к кабинету" }, { status: 403 });
   }
+  const allowedNmIds = await requestAllowedNmIds(p_cabinet);
+  const scopedNmIds = allowedNmIds === null ? null : [...allowedNmIds];
   const ratingParam = (sp.get("rating") || "").split(",").map((s) => Number(s.trim())).filter((n) => n >= 1 && n <= 5);
   const answered = sp.get("answered") || "";
   const days = Math.max(1, Number(sp.get("days")) || 30);
@@ -69,18 +72,22 @@ export async function GET(req: NextRequest) {
 
     let listQ = db.from("wb_feedbacks").select("*", { count: "exact" }).gte("created_at_wb", since).order("created_at_wb", { ascending: false }).range(offset, offset + limit - 1);
     if (p_cabinet) listQ = listQ.eq("cabinet_id", p_cabinet);
+    if (scopedNmIds) listQ = listQ.in("nm_id", scopedNmIds.length ? scopedNmIds : [-1]);
     if (ratingParam.length) listQ = listQ.in("rating", ratingParam);
     if (answered === "answered") listQ = listQ.eq("is_answered", true);
     else if (answered === "unanswered") listQ = listQ.eq("is_answered", false);
 
     let avgQ = db.from("wb_feedbacks").select("rating").gte("created_at_wb", since30);
     if (p_cabinet) avgQ = avgQ.eq("cabinet_id", p_cabinet);
+    if (scopedNmIds) avgQ = avgQ.in("nm_id", scopedNmIds.length ? scopedNmIds : [-1]);
 
     let unansweredQ = db.from("wb_feedbacks").select("id", { count: "exact", head: true }).eq("is_answered", false);
     if (p_cabinet) unansweredQ = unansweredQ.eq("cabinet_id", p_cabinet);
+    if (scopedNmIds) unansweredQ = unansweredQ.in("nm_id", scopedNmIds.length ? scopedNmIds : [-1]);
 
     let criticalQ = db.from("wb_feedbacks").select("id", { count: "exact", head: true }).eq("is_answered", false).lte("rating", 2).gte("created_at_wb", since7);
     if (p_cabinet) criticalQ = criticalQ.eq("cabinet_id", p_cabinet);
+    if (scopedNmIds) criticalQ = criticalQ.in("nm_id", scopedNmIds.length ? scopedNmIds : [-1]);
 
     const [listRes, avgRes, unansweredRes, criticalRes] = await Promise.all([listQ, avgQ, unansweredQ, criticalQ]);
     if (listRes.error) throw new Error(listRes.error.message);

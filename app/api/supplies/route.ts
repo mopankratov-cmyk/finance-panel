@@ -3,6 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { resolveCabinetSelection } from "@/lib/cabinetGroups";
 import { hasCabinetAccess } from "@/lib/auth/cabinetAccess";
+import { requestAllowedNmIds, requestAllowsNm } from "@/lib/wb/requestProductScope";
 
 export const dynamic = "force-dynamic";
 
@@ -53,10 +54,10 @@ interface RpcRow {
 // stockQ ниже, чтобы не менять числа, которыми уже питается warehouses/whInferno/splitNeed.
 // members (комбо-группа) → .in(), single → .eq(), оба null → без фильтра (все кабинеты).
 async function fetchAllStocks(db: SupabaseClient, single: string | null, members: string[] | null) {
-  const rows: { nm_id: number; warehouse: string; quantity: number | null; in_way_to_client: number | null; in_way_from_client: number | null }[] = [];
+  const rows: { nm_id: number; cabinet_id: string | null; warehouse: string; quantity: number | null; in_way_to_client: number | null; in_way_from_client: number | null }[] = [];
   for (let page = 0; page < 30; page++) {
     let q = db.from("wb_stocks")
-      .select("nm_id, warehouse, quantity, in_way_to_client, in_way_from_client")
+      .select("nm_id, cabinet_id, warehouse, quantity, in_way_to_client, in_way_from_client")
       .range(page * 1000, page * 1000 + 999);
     if (members) q = q.in("cabinet_id", members);
     else if (single) q = q.eq("cabinet_id", single);
@@ -76,14 +77,20 @@ async function fetchRpcRows(db: SupabaseClient, single: string | null, members: 
   if (!members) {
     const res = await db.rpc("rnp_report", { p_cabinet: single });
     if (res.error) throw new Error(res.error.message);
-    return (res.data ?? []) as RpcRow[];
+    const allowedNmIds = await requestAllowedNmIds(single);
+    return ((res.data ?? []) as RpcRow[]).filter((row) => requestAllowsNm(allowedNmIds, row.nm_id));
   }
-  const results = await Promise.all(members.map((m) => db.rpc("rnp_report", { p_cabinet: m })));
-  const bad = results.find((r) => r.error);
-  if (bad?.error) throw new Error(bad.error.message);
+  const results = await Promise.all(members.map(async (member) => ({
+    member,
+    result: await db.rpc("rnp_report", { p_cabinet: member }),
+    allowedNmIds: await requestAllowedNmIds(member),
+  })));
+  const bad = results.find(({ result }) => result.error);
+  if (bad?.result.error) throw new Error(bad.result.error.message);
   const merged = new Map<number, RpcRow>();
-  for (const res of results) {
-    for (const r of (res.data ?? []) as RpcRow[]) {
+  for (const { result, allowedNmIds } of results) {
+    for (const r of (result.data ?? []) as RpcRow[]) {
+      if (!requestAllowsNm(allowedNmIds, r.nm_id)) continue;
       const cur = merged.get(r.nm_id);
       if (!cur) { merged.set(r.nm_id, { ...r }); continue; }
       cur.orders_month += r.orders_month;
@@ -108,15 +115,25 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    let stockQ = db.from("wb_stocks").select("warehouse, quantity, in_way_to_client").limit(2000);
+    const scopeCabinets = members ?? (p_cabinet ? [p_cabinet] : []);
+    const scopeEntries = await Promise.all(scopeCabinets.map(async (cabinet) => [cabinet, await requestAllowedNmIds(cabinet)] as const));
+    const scopeByCabinet = new Map(scopeEntries);
+    const stockAllowed = (row: { nm_id?: unknown; cabinet_id?: unknown }) => {
+      const rowCabinet = String(row.cabinet_id ?? "");
+      const allowedNmIds = scopeByCabinet.get(rowCabinet);
+      return allowedNmIds === undefined ? true : requestAllowsNm(allowedNmIds, row.nm_id);
+    };
+    let stockQ = db.from("wb_stocks").select("nm_id, cabinet_id, warehouse, quantity, in_way_to_client").limit(2000);
     if (members) stockQ = stockQ.in("cabinet_id", members);
     else if (p_cabinet) stockQ = stockQ.eq("cabinet_id", p_cabinet);
-    const [rpcRows, stocksRes, allStockRows, costsRes] = await Promise.all([
+    const [rpcRows, stocksRes, allStockRowsRaw, costsRes] = await Promise.all([
       fetchRpcRows(db, p_cabinet, members),
       stockQ,
       fetchAllStocks(db, p_cabinet, members),
       db.from("product_costs").select("article, name"),
     ]);
+    const stockRows = (stocksRes.data ?? []).filter(stockAllowed);
+    const allStockRows = allStockRowsRaw.filter(stockAllowed);
 
     const need = (avgDaily: number, stock: number, inWay: number, horizon: number) =>
       Math.max(0, Math.ceil(avgDaily * horizon - stock - inWay));
@@ -140,7 +157,7 @@ export async function GET(req: NextRequest) {
 
     // сводка по складам
     const whMap = new Map<string, WarehouseSummary>();
-    for (const s of stocksRes.data ?? []) {
+    for (const s of stockRows) {
       const name = (s.warehouse as string) || "—";
       const agg = whMap.get(name) ?? { warehouse: name, quantity: 0, inWay: 0, skus: 0 };
       agg.quantity += Number(s.quantity ?? 0);

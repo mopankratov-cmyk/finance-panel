@@ -67,9 +67,9 @@ const NAV_GROUPS: NavGroup[] = [
       { href: "/wb/ctr", label: "CTR по SKU", icon: MousePointerClick },
       { href: "/wb/planning", label: "Планирование", icon: CalendarRange },
       { href: "/ozon", label: "Ozon Аналитика", icon: BarChart3 },
-      { href: "/abc", label: "ABC прибыли", icon: PieChart },
-      { href: "/trends", label: "Динамика", icon: TrendingUp },
-      { href: "/market", label: "Рынок", icon: Target },
+      { href: "/wb/abc", label: "ABC прибыли", icon: PieChart },
+      { href: "/wb/trends", label: "Динамика", icon: TrendingUp },
+      { href: "/wb/market", label: "Рынок", icon: Target },
     ],
   },
   {

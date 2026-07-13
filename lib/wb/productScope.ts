@@ -3,6 +3,8 @@ export interface WbProductScope {
   allowedNmIds: number[] | null;
 }
 
+export const OPTIMA_ALLOWED_BRANDS = ["norvia", "riobox"] as const;
+
 export function normalizeWbBrand(value: unknown): string {
   return String(value ?? "")
     .normalize("NFKC")
@@ -14,6 +16,19 @@ export function normalizeWbBrand(value: unknown): string {
 export function normalizeBrandFilters(values: unknown): string[] {
   if (!Array.isArray(values)) return [];
   return [...new Set(values.map(normalizeWbBrand).filter(Boolean))];
+}
+
+/**
+ * «Оптима» is a permanently restricted cabinet. Even if the database setting
+ * is temporarily absent during deploy, its token must never become an
+ * unrestricted source.
+ */
+export function cabinetBrandFilters(cabinetName: unknown, configured: unknown): string[] {
+  const normalizedName = normalizeWbBrand(cabinetName);
+  if (normalizedName.includes("optima") || normalizedName.includes("оптима")) {
+    return [...OPTIMA_ALLOWED_BRANDS];
+  }
+  return normalizeBrandFilters(configured);
 }
 
 export function isScoped(scope: WbProductScope): boolean {

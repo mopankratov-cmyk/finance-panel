@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { hasCabinetAccess } from "@/lib/auth/cabinetAccess";
 import { resolveShopCabinet } from "@/lib/rnp/resolveShop";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { requestAllowedNmIds, requestAllowsNm } from "@/lib/wb/requestProductScope";
 
 export const dynamic = "force-dynamic";
 
@@ -19,6 +20,7 @@ export async function GET(request: NextRequest) {
   }
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ skus: [], count: 0 });
+  const allowedNmIds = await requestAllowedNmIds(cabinetId);
 
   const [rpcRes, costsRes] = await Promise.all([
     db.rpc("rnp_report", { p_cabinet: cabinetId }),
@@ -31,6 +33,7 @@ export async function GET(request: NextRequest) {
   }
 
   const skus = ((rpcRes.data ?? []) as RpcRow[])
+    .filter((row) => requestAllowsNm(allowedNmIds, row.nm_id))
     .map((r) => {
       const m = meta.get(r.article);
       const wb = Number(r.stock ?? 0);

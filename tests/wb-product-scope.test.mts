@@ -4,6 +4,7 @@ import {
   allowsBrand,
   allowsNm,
   allowsProduct,
+  cabinetBrandFilters,
   normalizeBrandFilters,
   normalizeWbBrand,
   type WbProductScope,
@@ -38,4 +39,13 @@ test("empty allowlist remains restricted to configured brands", () => {
   };
   assert.equal(allowsProduct(scope, 1, undefined), false);
   assert.equal(allowsProduct(scope, 1, "NORVIA"), true);
+});
+
+test("Optima is always restricted to NORVIA and RIOBOX", () => {
+  assert.deepEqual(cabinetBrandFilters("Optima", []), ["norvia", "riobox"]);
+  assert.deepEqual(cabinetBrandFilters("ООО Оптима", ["SIBERION"]), ["norvia", "riobox"]);
+});
+
+test("other cabinets keep their configured brand scope", () => {
+  assert.deepEqual(cabinetBrandFilters("CLERIN", ["CLERIN", "ENOUGH"]), ["clerin", "enough"]);
 });

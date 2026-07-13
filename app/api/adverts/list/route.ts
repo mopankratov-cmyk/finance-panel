@@ -4,6 +4,7 @@ import { wbCardImageUrl } from "@/lib/wb/cardImage";
 import { resolveShopCabinet } from "@/lib/rnp/resolveShop";
 import { getWbCabinet, resolveWbToken } from "@/lib/wb/cabinetTokens";
 import { hasCabinetAccess } from "@/lib/auth/cabinetAccess";
+import { requestAllowedNmIds, requestAllowsNm } from "@/lib/wb/requestProductScope";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -33,6 +34,7 @@ export async function GET(request: NextRequest) {
   if (!(await hasCabinetAccess(cabinetId))) {
     return NextResponse.json({ ok: false, error: "Нет доступа к кабинету" }, { status: 403 });
   }
+  const allowedNmIds = await requestAllowedNmIds(cabinetId);
 
   let advQ = db.from("wb_adverts").select("advert_id, name, status, daily_budget, nm_ids").in("status", [9, 11]);
   let statQ = db.from("wb_advert_stats").select("advert_id, date, sum_spent, views, clicks, sum_orders").gte("date", new Date(Date.now() - 14 * 86400000).toISOString().slice(0, 10)).limit(5000);
@@ -93,7 +95,9 @@ export async function GET(request: NextRequest) {
   for (const arr of daysByAdv.values()) arr.sort((a, b) => a.ts.localeCompare(b.ts));
 
   const artByNm = new Map<number, string>();
-  for (const r of (rpcRes.data ?? []) as RpcRow[]) artByNm.set(r.nm_id, r.article);
+  for (const r of (rpcRes.data ?? []) as RpcRow[]) {
+    if (requestAllowsNm(allowedNmIds, r.nm_id)) artByNm.set(r.nm_id, r.article);
+  }
 
   const cabLabel = label || "Все кабинеты";
 
@@ -104,7 +108,7 @@ export async function GET(request: NextRequest) {
   let spendYestTotal = 0;
   for (const a of advRes.data ?? []) {
     const nm = (a.nm_ids as number[])?.[0];
-    if (!nm) continue;
+    if (!nm || !requestAllowsNm(allowedNmIds, nm)) continue;
     const st = byAdv.get(a.advert_id) ?? { spent14: 0, views: 0, clicks: 0, ordSum: 0, today: 0, yest: 0 };
     spendYestTotal += st.yest;
     const drr = st.ordSum > 0 ? Math.round((st.spent14 / st.ordSum) * 1000) / 10 : null;
@@ -137,13 +141,14 @@ export async function GET(request: NextRequest) {
 
   const articles = [...artMap.values()].sort((a, b) => b.spend - a.spend);
   const spendTodayTotal = articles.reduce((s, a) => s + a.spend, 0);
+  const activeCampaignCount = articles.reduce((count, article) => count + article.campaigns.filter((campaign) => campaign.status === 9).length, 0);
 
   return NextResponse.json({
     ok: true,
     cabinet: cabLabel,
     articles,
     // «Активных» = именно статус 9 (11 — на паузе, но остаётся в выборке для истории/аналитики)
-    count: (advRes.data ?? []).filter((a) => a.status === 9).length,
+    count: activeCampaignCount,
     cap_rub: 5000,
     balance,
     spend_today_total: spendTodayTotal,

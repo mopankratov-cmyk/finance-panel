@@ -3,6 +3,7 @@ import { hasCabinetAccess } from "@/lib/auth/cabinetAccess";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { wbCardImageUrl } from "@/lib/wb/cardImage";
 import { resolveShopCabinet } from "@/lib/rnp/resolveShop";
+import { requestAllowedNmIds, requestAllowsNm } from "@/lib/wb/requestProductScope";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -48,12 +49,18 @@ export async function GET(request: NextRequest) {
   if (!(await hasCabinetAccess(cabinetId))) {
     return NextResponse.json({ error: "Нет доступа к кабинету" }, { status: 403 });
   }
+  const allowedNmIds = await requestAllowedNmIds(cabinetId);
   const days = windowDays(params.get("window"));
   const period = customPeriod(params.get("date_from"), params.get("date_to")) ?? selectedPeriod(days);
 
   let funnelQ = db.from("wb_funnel_daily").select("nm_id, date, open_card, add_to_cart, orders, orders_sum").gte("date", period.start).lte("date", period.end);
   let adQ = db.from("wb_advert_nm_daily").select("nm_id, date, views, clicks, spent").gte("date", period.start).lte("date", period.end);
   if (cabinetId) { funnelQ = funnelQ.eq("cabinet_id", cabinetId); adQ = adQ.eq("cabinet_id", cabinetId); }
+  if (allowedNmIds) {
+    const nmIds = allowedNmIds.size ? [...allowedNmIds] : [-1];
+    funnelQ = funnelQ.in("nm_id", nmIds);
+    adQ = adQ.in("nm_id", nmIds);
+  }
   const [funnelRes, adRes, totalsRes, costsRes] = await Promise.all([
     funnelQ,
     adQ,
@@ -67,21 +74,22 @@ export async function GET(request: NextRequest) {
   const ordersByNm = new Map<number, Map<string, { cnt: number; sum: number }>>();
   const { data: dailySku } = await db.rpc("rnp_daily_sku", { p_from: period.start, p_to: period.end, p_cabinet: cabinetId });
   for (const row of (dailySku ?? []) as { nm_id: number; d: string; orders_count: number; orders_sum: number }[]) {
+    if (!requestAllowsNm(allowedNmIds, row.nm_id)) continue;
     const nm = Number(row.nm_id);
     const d = String(row.d).slice(0, 10);
     if (!ordersByNm.has(nm)) ordersByNm.set(nm, new Map());
     ordersByNm.get(nm)!.set(d, { cnt: Number(row.orders_count ?? 0), sum: Number(row.orders_sum ?? 0) });
   }
 
-  const funnel = (funnelRes.data ?? []) as FunnelRow[];
-  const ad = (adRes.data ?? []) as AdRow[];
+  const funnel = ((funnelRes.data ?? []) as FunnelRow[]).filter((row) => requestAllowsNm(allowedNmIds, row.nm_id));
+  const ad = ((adRes.data ?? []) as AdRow[]).filter((row) => requestAllowsNm(allowedNmIds, row.nm_id));
   const orderDates: string[] = [];
   for (const m of ordersByNm.values()) for (const d of m.keys()) orderDates.push(d);
   const dates = [...new Set([...funnel.map((r) => String(r.date).slice(0, 10)), ...ad.map((r) => String(r.date).slice(0, 10)), ...orderDates])].sort();
   const yest = period.end;
   const selected = new Set(dates.filter((d) => d >= period.start && d <= period.end));
 
-  const totals = (totalsRes.data ?? []) as RpcTotal[];
+  const totals = ((totalsRes.data ?? []) as RpcTotal[]).filter((row) => requestAllowsNm(allowedNmIds, row.nm_id));
   const totalByNm = new Map<number, RpcTotal>();
   for (const t of totals) totalByNm.set(t.nm_id, t);
   const nameByArt = new Map<string, string>();

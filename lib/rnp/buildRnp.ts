@@ -1,4 +1,5 @@
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { requestAllowedNmIds, requestAllowsNm } from "@/lib/wb/requestProductScope";
 
 export interface RnpPeriodMetrics {
   ordersCount: number;
@@ -54,7 +55,8 @@ export async function buildRnpReport(cabinetId?: string | null): Promise<RnpRow[
 
   if (reportRes.error) throw new Error(reportRes.error.message);
 
-  const rpcRows = (reportRes.data ?? []) as RpcRow[];
+  const allowedNmIds = await requestAllowedNmIds(cabinetId || null);
+  const rpcRows = ((reportRes.data ?? []) as RpcRow[]).filter((row) => requestAllowsNm(allowedNmIds, row.nm_id));
 
   const rows: RnpRow[] = rpcRows.map((r) => {
     const monthSum = Number(r.orders_sum_month);
