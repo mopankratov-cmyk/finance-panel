@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, Boxes, CheckCircle2, FileSpreadsheet, HeartPulse, Loader2, PackageCheck, Play, RefreshCw, Save, ShieldCheck, Unplug, XCircle } from "lucide-react";
+import { AlertTriangle, Boxes, CheckCircle2, Download, FileSpreadsheet, HeartPulse, Link2, Loader2, PackageCheck, Play, RefreshCw, Save, ShieldCheck, Unplug, XCircle } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { formatTime } from "@/lib/analytics/format";
 
@@ -35,6 +35,22 @@ interface Health {
   selected: { organizationHref: string | null; storeHref: string | null };
 }
 
+interface SupplyComparison {
+  ok: boolean;
+  expectedTotal: number;
+  actualTotal: number;
+}
+
+interface SupplyLink {
+  id: string;
+  warehouse: string;
+  supply_id: number;
+  status_id: number;
+  goods_comparison: SupplyComparison;
+  package_comparison: SupplyComparison;
+  verified_at: string;
+}
+
 interface Run {
   id: string;
   status: "dry_run" | "creating" | "created" | "failed";
@@ -44,7 +60,8 @@ interface Run {
     excludedContainers: string[];
     orders: { warehouse: string; containers: string[]; totalQuantity: number; positions: unknown[] }[];
   };
-  external_orders: { syncId: string; warehouse: string; id: string; name: string; href: string }[];
+  external_orders: { syncId: string; warehouse: string; supplyId?: number; id: string; name: string; href: string }[];
+  wb_supply_links?: SupplyLink[];
   error?: string | null;
   created_at: string;
 }
@@ -53,6 +70,7 @@ interface Props { cabinetId: string; canWrite: boolean }
 
 const count = (value: number) => Number(value || 0).toLocaleString("ru-RU", { maximumFractionDigits: 2 });
 const messageClass = (ok: boolean) => ok ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-rose-200 bg-rose-50 text-rose-700";
+const supplyStatus = (value: number) => ({ 1: "не запланирована", 2: "запланирована", 3: "отгрузка разрешена" } as Record<number, string>)[value] ?? `статус ${value}`;
 
 async function json<T>(response: Response): Promise<T> {
   const body = await response.json().catch(() => ({})) as { data?: T; error?: string };
@@ -68,6 +86,7 @@ export function MoySkladSourceTab({ cabinetId, canWrite }: Props) {
   const [token, setToken] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
+  const [supplyInputs, setSupplyInputs] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
 
@@ -100,6 +119,11 @@ export function MoySkladSourceTab({ cabinetId, canWrite }: Props) {
       setStatus(connection);
       setActiveImport(tara.activeImport);
       setRuns(runData.runs);
+      setSupplyInputs((current) => {
+        const next = { ...current };
+        for (const run of runData.runs) for (const link of run.wb_supply_links ?? []) next[`${run.id}:${link.warehouse}`] = String(link.supply_id);
+        return next;
+      });
       if (connection.connected) void checkHealth(true);
       else setHealth(null);
     } catch (error) {
@@ -187,12 +211,33 @@ export function MoySkladSourceTab({ cabinetId, canWrite }: Props) {
     finally { setBusy(null); }
   };
 
+  const linkSupply = async (run: Run, warehouse: string) => {
+    const key = `${run.id}:${warehouse}`;
+    const supplyId = supplyInputs[key]?.trim();
+    if (!supplyId) return;
+    setBusy(`link:${warehouse}`); setMessage(null);
+    try {
+      const result = await json<{ link: SupplyLink }>(await fetch("/api/supplies/wb-supply-links", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ runId: run.id, warehouse, supplyId, confirm: "LINK_WB_SUPPLY" }),
+      }));
+      setRuns((current) => current.map((item) => item.id !== run.id ? item : {
+        ...item,
+        wb_supply_links: [...(item.wb_supply_links ?? []).filter((link) => link.warehouse !== warehouse), result.link],
+      }));
+      setMessage({ ok: true, text: result.link.package_comparison.ok ? `Поставка ${result.link.supply_id} связана: товары и упаковка совпадают` : `Поставка ${result.link.supply_id} связана: товары совпадают, упаковку нужно загрузить или перепроверить` });
+    } catch (error) { setMessage({ ok: false, text: error instanceof Error ? error.message : "Не удалось связать поставку WB" }); }
+    finally { setBusy(null); }
+  };
+
   if (!canWrite || !cabinetId || cabinetId === "all") {
     return <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs text-amber-800">Источник и WMS настраиваются отдельно для каждого кабинета. Выберите один реальный WB-кабинет в верхней панели.</div>;
   }
 
   const latestRun = runs[0] ?? null;
   const working = busy !== null;
+  const allSuppliesLinked = Boolean(latestRun?.plan_json.orders.every((order) => latestRun.wb_supply_links?.some((link) => link.warehouse === order.warehouse && link.goods_comparison.ok)));
 
   return (
     <div className="space-y-3">
@@ -225,8 +270,35 @@ export function MoySkladSourceTab({ cabinetId, canWrite }: Props) {
       </section>
 
       <section className="rounded-xl border border-slate-200 bg-white p-4" aria-labelledby="dry-run-title">
-        <div className="flex flex-wrap items-start justify-between gap-3"><div><h3 id="dry-run-title" className="text-sm font-semibold text-slate-900">3. WMS-заказы</h3><p className="mt-1 text-[11px] leading-5 text-slate-500">Dry-run обязателен и повторно проверяет ограничения WB. До подтверждения МойСклад не меняется.</p></div><button type="button" onClick={() => void dryRun()} disabled={working || !status?.connected || !activeImport} className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-slate-900 px-4 text-xs font-semibold text-white hover:bg-slate-800 disabled:opacity-50"><Play className="h-4 w-4" />{busy === "dry-run" ? "Проверяю…" : "Собрать dry-run"}</button></div>
-        {latestRun ? <div className="mt-4 space-y-3"><div className="flex flex-wrap items-center gap-2 text-[11px]"><span className={`rounded-full px-2 py-1 font-semibold ${latestRun.status === "created" ? "bg-emerald-100 text-emerald-700" : latestRun.status === "failed" ? "bg-rose-100 text-rose-700" : latestRun.status === "creating" ? "bg-amber-100 text-amber-700" : "bg-violet-100 text-violet-700"}`}>{latestRun.status === "dry_run" ? "DRY-RUN" : latestRun.status === "creating" ? "СОЗДАНИЕ" : latestRun.status === "created" ? "СОЗДАНО" : "ОШИБКА"}</span><span className="text-slate-400">{formatTime(latestRun.created_at)}</span><span className="font-semibold text-slate-700">{count(latestRun.plan_json.totalQuantity)} шт · {latestRun.plan_json.orders.length} заказов</span></div><div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">{latestRun.plan_json.orders.map((order) => <div key={order.warehouse} className="rounded-lg border border-slate-200 p-3"><div className="truncate text-[11px] font-semibold text-slate-800">{order.warehouse}</div><div className="mt-2 flex items-end justify-between"><span className="text-lg font-bold tabular-nums text-violet-700">{count(order.totalQuantity)}</span><span className="text-[10px] text-slate-400">{order.containers.length} коробов</span></div></div>)}</div>{latestRun.plan_json.excludedContainers?.length ? <div className="text-[11px] text-amber-700">Целиком исключено коробов: {latestRun.plan_json.excludedContainers.length}</div> : null}{latestRun.error ? <div role="alert" className="rounded-lg bg-rose-50 p-3 text-[11px] text-rose-700">{latestRun.error}</div> : null}{latestRun.status !== "created" ? <button type="button" onClick={() => void createOrders(latestRun)} disabled={working || latestRun.status === "creating"} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-violet-600 px-4 text-xs font-semibold text-white hover:bg-violet-700 disabled:opacity-50">{busy === "create" ? <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" /> : <Boxes className="h-4 w-4" />} Создать в МойСклад</button> : <div className="flex items-center gap-2 text-xs font-semibold text-emerald-700"><CheckCircle2 className="h-4 w-4" />Создано документов: {latestRun.external_orders?.length ?? latestRun.plan_json.orders.length}</div>}</div> : <div className="mt-4 rounded-lg bg-slate-50 p-4 text-[11px] text-slate-500">Подключите источник, активируйте XLSX и сохраните распределение. Затем dry-run покажет точные документы до создания.</div>}
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div><h3 id="dry-run-title" className="text-sm font-semibold text-slate-900">3. Поставки WB и WMS-заказы</h3><p className="mt-1 text-[11px] leading-5 text-slate-500">Dry-run → номер поставки WB для каждого склада → сверка → создание в МойСклад.</p></div>
+          <button type="button" onClick={() => void dryRun()} disabled={working || !status?.connected || !activeImport} className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-slate-900 px-4 text-xs font-semibold text-white hover:bg-slate-800 disabled:opacity-50"><Play className="h-4 w-4" />{busy === "dry-run" ? "Проверяю…" : "Собрать dry-run"}</button>
+        </div>
+        {latestRun ? <div className="mt-4 space-y-3">
+          <div className="flex flex-wrap items-center gap-2 text-[11px]"><span className={`rounded-full px-2 py-1 font-semibold ${latestRun.status === "created" ? "bg-emerald-100 text-emerald-700" : latestRun.status === "failed" ? "bg-rose-100 text-rose-700" : latestRun.status === "creating" ? "bg-amber-100 text-amber-700" : "bg-violet-100 text-violet-700"}`}>{latestRun.status === "dry_run" ? "DRY-RUN" : latestRun.status === "creating" ? "СОЗДАНИЕ" : latestRun.status === "created" ? "СОЗДАНО" : "ОШИБКА"}</span><span className="text-slate-400">{formatTime(latestRun.created_at)}</span><span className="font-semibold text-slate-700">{count(latestRun.plan_json.totalQuantity)} шт · {latestRun.plan_json.orders.length} заказов</span></div>
+          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">{latestRun.plan_json.orders.map((order) => {
+            const key = `${latestRun.id}:${order.warehouse}`;
+            const link = latestRun.wb_supply_links?.find((item) => item.warehouse === order.warehouse);
+            return <div key={order.warehouse} className={`rounded-xl border p-3 ${link?.goods_comparison.ok ? "border-emerald-200 bg-emerald-50/30" : "border-slate-200"}`}>
+              <div className="truncate text-[11px] font-semibold text-slate-800" title={order.warehouse}>{order.warehouse}</div>
+              <div className="mt-2 flex items-end justify-between"><span className="text-lg font-bold tabular-nums text-violet-700">{count(order.totalQuantity)}</span><span className="text-[10px] text-slate-400">{order.containers.length} коробов</span></div>
+              {latestRun.status !== "created" ? <div className="mt-3 space-y-2">
+                <label className="block text-[10px] font-medium text-slate-500">№ поставки WB<input aria-label={`Номер поставки WB · ${order.warehouse}`} inputMode="numeric" pattern="[0-9]*" value={supplyInputs[key] ?? ""} onChange={(event) => setSupplyInputs((current) => ({ ...current, [key]: event.target.value.replace(/\D/g, "").slice(0, 18) }))} placeholder="Например, 12345678" disabled={working} className="mt-1 min-h-11 w-full rounded-lg border border-slate-200 bg-white px-3 font-mono text-xs outline-none focus:border-violet-400 disabled:opacity-50" /></label>
+                <button type="button" onClick={() => void linkSupply(latestRun, order.warehouse)} disabled={working || !supplyInputs[key]?.trim()} className="inline-flex min-h-11 w-full items-center justify-center gap-1.5 rounded-lg border border-violet-200 bg-white px-3 text-[11px] font-semibold text-violet-700 hover:bg-violet-50 disabled:opacity-50"><Link2 className="h-3.5 w-3.5" />{busy === `link:${order.warehouse}` ? "Проверяю…" : link ? "Перепроверить" : "Связать и сверить"}</button>
+              </div> : null}
+              {link ? <div className="mt-3 space-y-1.5 border-t border-emerald-100 pt-3 text-[10px]">
+                <div className="flex items-center gap-1.5 font-semibold text-emerald-700"><CheckCircle2 className="h-3.5 w-3.5" />WB {link.supply_id} · {supplyStatus(link.status_id)}</div>
+                <div className="text-emerald-700">Товары совпадают · {count(link.goods_comparison.actualTotal)} шт.</div>
+                <div className={link.package_comparison.ok ? "text-emerald-700" : "text-amber-700"}>{link.package_comparison.ok ? "Упаковка совпадает" : link.package_comparison.actualTotal > 0 ? "Упаковка расходится — проверьте файл" : "Упаковка ещё не загружена в WB"}</div>
+                <a href={`/api/supplies/wb-supply-links/export?runId=${encodeURIComponent(latestRun.id)}&warehouse=${encodeURIComponent(order.warehouse)}`} className="inline-flex min-h-11 w-full items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 font-semibold text-slate-600 hover:border-violet-300 hover:text-violet-700"><Download className="h-3.5 w-3.5" />XLSX раскладки</a>
+              </div> : null}
+            </div>;
+          })}</div>
+          <div className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-[10px] leading-5 text-blue-700">Официальный API WB только читает упаковку. Загрузите XLSX раскладки в кабинете WB вручную, затем нажмите «Перепроверить». Создание WMS доступно после точного совпадения товаров; статус упаковки остаётся видимым отдельно.</div>
+          {latestRun.plan_json.excludedContainers?.length ? <div className="text-[11px] text-amber-700">Целиком исключено коробов: {latestRun.plan_json.excludedContainers.length}</div> : null}
+          {latestRun.error ? <div role="alert" className="rounded-lg bg-rose-50 p-3 text-[11px] text-rose-700">{latestRun.error}</div> : null}
+          {latestRun.status !== "created" ? <div className="space-y-1.5"><button type="button" onClick={() => void createOrders(latestRun)} disabled={working || latestRun.status === "creating" || !allSuppliesLinked} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-violet-600 px-4 text-xs font-semibold text-white hover:bg-violet-700 disabled:opacity-50">{busy === "create" ? <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" /> : <Boxes className="h-4 w-4" />} Создать в МойСклад</button>{!allSuppliesLinked ? <div className="text-[10px] text-amber-700">Сначала свяжите и сверьте поставку WB для каждого склада.</div> : null}</div> : <div className="flex items-center gap-2 text-xs font-semibold text-emerald-700"><CheckCircle2 className="h-4 w-4" />Создано документов: {latestRun.external_orders?.length ?? latestRun.plan_json.orders.length}</div>}
+        </div> : <div className="mt-4 rounded-lg bg-slate-50 p-4 text-[11px] text-slate-500">Подключите источник, активируйте XLSX и сохраните распределение. Затем dry-run покажет точные документы до создания.</div>}
       </section>
     </div>
   );

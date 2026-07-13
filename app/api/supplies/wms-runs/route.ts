@@ -7,9 +7,11 @@ import { createMoySkladInternalOrder, fetchMoySkladAssortmentForTara, mapTaraToA
 import { resolveShopCabinet } from "@/lib/rnp/resolveShop";
 import { normalizeDistributionSettingsPayload } from "@/lib/supplies/distribution";
 import type { TaraLine } from "@/lib/supplies/tara";
-import { allocateWholeContainers, restrictTaraLines, type WmsOrderPlan } from "@/lib/supplies/wms";
+import { compareWbSupplyGoods, compareWbSupplyPackages, supplyWarehouseMatches } from "@/lib/supplies/wbSupply";
+import { allocateWholeContainers, parseWmsOrders, restrictTaraLines } from "@/lib/supplies/wms";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { getWbCabinet, resolveWbToken } from "@/lib/wb/cabinetTokens";
+import { fetchFbwSupplySnapshot } from "@/lib/wb/fbwSupplies";
 import { requestAllowedNmIds } from "@/lib/wb/requestProductScope";
 import { fetchAcceptanceCoefficients } from "@/lib/wb/supplies";
 
@@ -52,17 +54,6 @@ function meta(href: string, type: string): MoySkladMeta {
   return { href, type, mediaType: "application/json" };
 }
 
-function parseOrders(plan: unknown): WmsOrderPlan[] | null {
-  if (!plan || typeof plan !== "object" || !Array.isArray((plan as { orders?: unknown }).orders)) return null;
-  const orders = (plan as { orders: unknown[] }).orders;
-  for (const raw of orders) {
-    const order = raw as Partial<WmsOrderPlan>;
-    if (!order || typeof order.warehouse !== "string" || typeof order.syncId !== "string" || !Array.isArray(order.containers) || !Array.isArray(order.positions) || !Number.isFinite(order.totalQuantity)) return null;
-    if (order.positions.some((position) => !position || typeof position.quantity !== "number" || !position.assortment?.href || !position.assortment?.type)) return null;
-  }
-  return orders as WmsOrderPlan[];
-}
-
 export async function GET(request: NextRequest) {
   const gate = await requireApiSession();
   if (gate) return gate;
@@ -73,7 +64,14 @@ export async function GET(request: NextRequest) {
   if (!db) return fail("Supabase не настроен", 500);
   const { data, error } = await db.from("wms_order_runs").select("id, import_id, status, settings_snapshot, plan_json, external_orders, error, created_by, created_at, updated_at").eq("cabinet_id", cabinetId).order("created_at", { ascending: false }).limit(10);
   if (error) return fail(missingMigration(error.code) ? "Примените миграцию 20260713_wms_tara.sql" : error.message, missingMigration(error.code) ? 503 : 500);
-  return NextResponse.json({ data: { runs: data ?? [] }, error: null });
+  const runIds = (data ?? []).map((run) => String(run.id));
+  const linkResult = runIds.length
+    ? await db.from("wms_wb_supply_links").select("id, run_id, warehouse, supply_id, status_id, box_type_id, goods_comparison, package_comparison, verified_at").in("run_id", runIds)
+    : { data: [], error: null };
+  if (linkResult.error) return fail(missingMigration(linkResult.error.code) ? "Примените миграцию 20260713_wb_supply_links.sql" : linkResult.error.message, missingMigration(linkResult.error.code) ? 503 : 500);
+  const links = linkResult.data ?? [];
+  const runs = (data ?? []).map((run) => ({ ...run, wb_supply_links: links.filter((link) => link.run_id === run.id) }));
+  return NextResponse.json({ data: { runs }, error: null });
 }
 
 export async function POST(request: NextRequest) {
@@ -134,7 +132,7 @@ export async function POST(request: NextRequest) {
     created_by: session?.email ?? null,
   }).select("id, import_id, status, settings_snapshot, plan_json, external_orders, error, created_by, created_at, updated_at").single();
   if (insertError) return fail(missingMigration(insertError.code) ? "Примените миграцию 20260713_wms_tara.sql" : insertError.message, missingMigration(insertError.code) ? 503 : 500);
-  return NextResponse.json({ data: { run }, error: null }, { status: 201 });
+  return NextResponse.json({ data: { run: { ...run, wb_supply_links: [] } }, error: null }, { status: 201 });
 }
 
 export async function PATCH(request: NextRequest) {
@@ -150,17 +148,56 @@ export async function PATCH(request: NextRequest) {
   const cabinetId = String(run.cabinet_id);
   if (!(await hasCabinetAccess(cabinetId))) return fail("Нет доступа к кабинету", 403);
   if (run.status === "created") return NextResponse.json({ data: { run }, error: null });
-  const orders = parseOrders(run.plan_json);
+  const orders = parseWmsOrders(run.plan_json);
   if (!orders?.length) return fail("Сохранённый dry-run повреждён", 409);
 
-  const [{ data: connection, error: connectionError }, { data: currentLines, error: currentLinesError }, allowedNmIds] = await Promise.all([
+  const [{ data: connection, error: connectionError }, { data: currentLines, error: currentLinesError }, { data: rawLinks, error: linksError }, allowedNmIds] = await Promise.all([
     db.from("moysklad_connection").select("token, organization_href, organization_name, store_href, store_name").eq("cabinet_id", cabinetId).eq("is_active", true).maybeSingle(),
-    db.from("wms_tara_lines").select("nm_id").eq("import_id", run.import_id),
+    db.from("wms_tara_lines").select("container, nm_id, article, barcode, quantity").eq("import_id", run.import_id),
+    db.from("wms_wb_supply_links").select("id, warehouse, supply_id").eq("run_id", run.id),
     requestAllowedNmIds(cabinetId),
   ]);
   if (connectionError || !connection?.token || !connection.organization_href) return fail(connectionError?.message ?? "МойСклад отключён или не настроен", 409);
   if (currentLinesError) return fail(currentLinesError.message, 500);
+  if (linksError) return fail(missingMigration(linksError.code) ? "Примените миграцию 20260713_wb_supply_links.sql" : linksError.message, missingMigration(linksError.code) ? 503 : 500);
   if (allowedNmIds !== null && (currentLines ?? []).some((line) => line.nm_id == null || !allowedNmIds.has(Number(line.nm_id)))) return fail("Товарный контур кабинета изменился после dry-run. Создайте новый dry-run", 403);
+
+  const linksByWarehouse = new Map((rawLinks ?? []).map((link) => [String(link.warehouse), link]));
+  const missingLinks = orders.filter((order) => !linksByWarehouse.has(order.warehouse)).map((order) => order.warehouse);
+  if (missingLinks.length) return fail(`Сначала привяжите поставки WB: ${missingLinks.join(", ")}`, 409);
+  const wbCabinet = await getWbCabinet(cabinetId);
+  if (!wbCabinet) return fail("WB-кабинет не найден", 404);
+  const wbToken = resolveWbToken(wbCabinet, "statistics");
+  const verifiedLinks = new Map<string, { supplyId: number }>();
+  try {
+    for (const order of orders) {
+      const link = linksByWarehouse.get(order.warehouse)!;
+      const supplyId = Number(link.supply_id);
+      const snapshot = await fetchFbwSupplySnapshot(wbToken, supplyId);
+      if (![1, 2, 3].includes(Number(snapshot.detail.statusID))) return fail(`Поставка ${supplyId} уже находится на приёмке или завершена`, 409);
+      if (!supplyWarehouseMatches(order.warehouse, snapshot.detail)) return fail(`У поставки ${supplyId} изменился склад`, 409);
+      if (allowedNmIds !== null && snapshot.goods.some((row) => !allowedNmIds.has(Number(row.nmID)))) return fail(`Поставка ${supplyId} содержит товары вне контура кабинета`, 403);
+      const containers = new Set(order.containers);
+      const selectedLines = (currentLines ?? []).filter((line) => containers.has(String(line.container)));
+      if (!selectedLines.length || selectedLines.some((line) => !String(line.barcode ?? "").trim())) return fail(`В раскладке поставки ${supplyId} отсутствуют товарные штрихкоды`, 422);
+      const goodsComparison = compareWbSupplyGoods(selectedLines.map((line) => ({ barcode: String(line.barcode), quantity: Number(line.quantity) })), snapshot.goods);
+      if (!goodsComparison.ok) return fail(`Состав поставки ${supplyId} изменился и больше не совпадает с dry-run`, 409, goodsComparison);
+      const packageComparison = compareWbSupplyPackages(selectedLines.map((line) => ({ container: String(line.container), barcode: String(line.barcode ?? ""), quantity: Number(line.quantity) })), snapshot.packages);
+      const { error: verifyError } = await db.from("wms_wb_supply_links").update({
+        status_id: Number(snapshot.detail.statusID),
+        box_type_id: Number(snapshot.detail.boxTypeID),
+        wb_snapshot: snapshot,
+        goods_comparison: goodsComparison,
+        package_comparison: packageComparison,
+        verified_at: snapshot.capturedAt,
+        updated_at: new Date().toISOString(),
+      }).eq("id", link.id);
+      if (verifyError) return fail(verifyError.message, 500);
+      verifiedLinks.set(order.warehouse, { supplyId });
+    }
+  } catch (error) {
+    return fail(error instanceof Error ? error.message : "Не удалось повторно проверить поставки WB", 502);
+  }
 
   let closed: Set<string>;
   try { closed = await closedWarehouses(cabinetId); } catch (error) { return fail(error instanceof Error ? error.message : "Не удалось повторно проверить WB", 502); }
@@ -175,15 +212,16 @@ export async function PATCH(request: NextRequest) {
   try {
     for (const order of orders) {
       if (completed.has(order.syncId)) continue;
+      const supplyId = verifiedLinks.get(order.warehouse)!.supplyId;
       const created = await createMoySkladInternalOrder(String(connection.token), {
         syncId: order.syncId,
-        name: `WMS ${order.warehouse} ${new Date().toLocaleDateString("ru-RU")}`,
-        description: `Finance Panel · WB ${order.warehouse}\nКороба: ${order.containers.join(", ")}`,
+        name: `WMS WB ${supplyId} · ${order.warehouse} · ${new Date().toLocaleDateString("ru-RU")}`,
+        description: `Finance Panel · поставка WB ${supplyId}\nСклад: ${order.warehouse}\nКороба: ${order.containers.join(", ")}`,
         organization,
         store,
         positions: order.positions.map((position) => ({ quantity: position.quantity, assortment: position.assortment })),
       });
-      completed.set(order.syncId, { syncId: order.syncId, warehouse: order.warehouse, id: created.id, name: created.name, href: created.meta.href });
+      completed.set(order.syncId, { syncId: order.syncId, warehouse: order.warehouse, supplyId, id: created.id, name: created.name, href: created.meta.href });
       await db.from("wms_order_runs").update({ external_orders: [...completed.values()], updated_at: new Date().toISOString() }).eq("id", run.id);
     }
   } catch (error) {

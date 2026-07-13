@@ -11,6 +11,17 @@ export interface WmsOrderPlan {
   positions: { nmId: number | null; article: string; barcode: string; quantity: number; assortment: MoySkladMeta }[];
 }
 
+export function parseWmsOrders(plan: unknown): WmsOrderPlan[] | null {
+  if (!plan || typeof plan !== "object" || !Array.isArray((plan as { orders?: unknown }).orders)) return null;
+  const orders = (plan as { orders: unknown[] }).orders;
+  for (const raw of orders) {
+    const order = raw as Partial<WmsOrderPlan>;
+    if (!order || typeof order.warehouse !== "string" || typeof order.syncId !== "string" || !Array.isArray(order.containers) || !Array.isArray(order.positions) || !Number.isFinite(order.totalQuantity)) return null;
+    if (order.positions.some((position) => !position || typeof position.barcode !== "string" || typeof position.quantity !== "number" || !position.assortment?.href || !position.assortment?.type)) return null;
+  }
+  return orders as WmsOrderPlan[];
+}
+
 interface Container {
   name: string;
   quantity: number;
