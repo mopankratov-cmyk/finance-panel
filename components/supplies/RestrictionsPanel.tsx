@@ -16,7 +16,7 @@ const STATUS_LABEL: Record<RestrictionRow["status"], string> = {
 };
 
 // Официальный WB Tariffs API (не WMS/МойСклад) — коэффициенты приёмки складов.
-export function RestrictionsPanel({ cabinetId }: { cabinetId: string }) {
+export function RestrictionsPanel({ cabinetId, onRows }: { cabinetId: string; onRows?: (rows: RestrictionRow[]) => void }) {
   const [rows, setRows] = useState<RestrictionRow[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -27,7 +27,11 @@ export function RestrictionsPanel({ cabinetId }: { cabinetId: string }) {
       const res = await fetch(`/api/supplies/check-restrictions?cabinet=${cabinetId}`, { cache: "no-store" });
       const json = await res.json();
       if (!json.ok) setError(json.error || "Ошибка");
-      else setRows(json.rows ?? []);
+      else {
+        const nextRows = (json.rows ?? []) as RestrictionRow[];
+        setRows(nextRows);
+        onRows?.(nextRows);
+      }
     } catch (e) {
       setError("Сеть: " + String(e));
     } finally {
