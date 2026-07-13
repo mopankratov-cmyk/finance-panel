@@ -2,7 +2,7 @@
 
 import {
   BarChart3, Bot, Coins, LineChart, Megaphone, Table2, Search, Layers, Sigma,
-  MousePointerClick, CalendarRange,
+  MousePointerClick, CalendarRange, Clapperboard,
   Package, TrendingDown, Wallet, Building2, ArrowUpRight, LogOut, AlertTriangle, Info, XCircle, type LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
@@ -43,6 +43,7 @@ const MODULES: ModuleCard[] = [
   { title: "Кабинеты", description: "Подключение WB и Ozon аккаунтов", href: "/cabinets", icon: Building2, zone: "Операции", color: ["bg-slate-100", "text-slate-700"] },
 
   { title: "AI-агент", description: "Анализ данных, аномалии, рекомендации", href: "/agent", icon: Bot, agent: "Мэнси", zone: "AI", color: ["bg-fuchsia-100", "text-fuchsia-700"] },
+  { title: "UGC Studio", description: "Персонаж → SKU → сценарий → фото/видео → публикация", href: "/wb/ugc", icon: Clapperboard, agent: "Креатор", zone: "AI", color: ["bg-violet-100", "text-violet-700"] },
 ];
 
 const ZONES = ["Аналитика", "Финансы", "Операции", "AI"] as const;
