@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   normalizeOzonCacheRequest,
+  OZON_COCKPIT_CACHE_VERSION,
   ozonCockpitCacheIdentity,
   ozonCockpitCacheTag,
 } from "../lib/ozon/cockpitCache";
@@ -32,6 +33,10 @@ test("Ozon snapshot identity isolates screens and cabinet sets", () => {
   });
   assert.notEqual(overview, sales);
   assert.notEqual(overview, single);
+});
+
+test("Ozon snapshot schema version invalidates incompatible cached payloads", () => {
+  assert.equal(OZON_COCKPIT_CACHE_VERSION, "v3");
 });
 
 test("Ozon snapshot tag is short and contains no cabinet labels", () => {

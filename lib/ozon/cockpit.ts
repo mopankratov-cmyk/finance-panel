@@ -13,6 +13,13 @@ import {
   type OzonTotals,
 } from "@/lib/ozon/api";
 import { getPerfToken, perfDailySpend, perfProductReport } from "@/lib/ozon/performance";
+import {
+  calculateOzonEconomyUnit,
+  ozonAdCacheStatus,
+  summarizeOzonEconomy,
+  summarizeOzonHealth,
+  type OzonQualityStatus,
+} from "@/lib/ozon/cockpitQuality";
 
 export type OzonCockpitView = "overview" | "sales" | "adverts" | "stocks" | "orders" | "economy" | "health";
 
@@ -660,7 +667,13 @@ export async function loadEconomy(scope: OzonCabinetScope, days: number, taxPct:
   const range = period(days);
   const cache = await loadAdCache(scope, days);
   const costs = await loadCosts();
-  const rows: Record<string, unknown>[] = [];
+  const rows: Array<Record<string, unknown> & {
+    units: number;
+    revenue: number;
+    profit: number | null;
+    margin: number | null;
+    reliability: "estimated" | "missing_cost";
+  }> = [];
   const totals = emptyTotals();
   const serviceTotals: Record<string, number> = {};
   const warnings: string[] = [];
@@ -703,7 +716,15 @@ export async function loadEconomy(scope: OzonCabinetScope, days: number, taxPct:
       const acquiring = priceRow.acquiring;
       const adPerUnit = sales.units > 0 ? (adsByOffer.get(offerId) ?? 0) / sales.units : 0;
       const tax = salePrice * taxPct / 100;
-      const profit = salePrice - cost - commission - logistics - acquiring - adPerUnit - tax;
+      const economy = calculateOzonEconomyUnit({
+        price: salePrice,
+        cost,
+        commission,
+        logistics,
+        acquiring,
+        ad: adPerUnit,
+        tax,
+      });
       rows.push({
         key: `${cabinet.id}:${offerId}`,
         cabinetId: cabinet.id,
@@ -722,13 +743,17 @@ export async function loadEconomy(scope: OzonCabinetScope, days: number, taxPct:
         ad: r0(adPerUnit),
         drr: pct(adPerUnit, salePrice),
         tax: r0(tax),
-        profit: r0(profit),
-        margin: salePrice > 0 ? pct(profit, salePrice) : null,
-        reliability: cost > 0 ? "estimated" : "missing_cost",
+        profit: economy.profit === null ? null : r0(economy.profit),
+        margin: economy.margin === null ? null : r1(economy.margin),
+        reliability: economy.reliability,
       });
     }
   }));
   const financial = financeSummary(totals);
+  const quality = summarizeOzonEconomy(rows);
+  if (quality.missingCost > 0) {
+    warnings.push(`Расчётная прибыль исключает ${quality.missingCost} SKU без себестоимости.`);
+  }
   return {
     view: "economy",
     scope: publicScope(scope),
@@ -737,9 +762,7 @@ export async function loadEconomy(scope: OzonCabinetScope, days: number, taxPct:
     taxPct,
     summary: {
       ...financial,
-      calculatedProfit: r0(sum(rows.map((row) => Number(row.profit ?? 0) * Number(row.units ?? 0)))),
-      missingCost: rows.filter((row) => row.reliability === "missing_cost").length,
-      sku: rows.length,
+      ...quality,
     },
     services: Object.entries(serviceTotals)
       .map(([name, value]) => ({ name, value: r0(Math.abs(value)) }))
@@ -748,7 +771,7 @@ export async function loadEconomy(scope: OzonCabinetScope, days: number, taxPct:
       .slice(0, 15),
     rows: rows.sort((left, right) => Number(left.margin ?? -999) - Number(right.margin ?? -999)),
     warnings,
-    note: "Прибыль по SKU — расчётная: фактические возвраты, хранение и часть услуг Ozon показываются отдельно на уровне кабинета.",
+    note: "Прибыль по SKU — расчётная и показывается только при известной себестоимости. Фактические возвраты, хранение и часть услуг Ozon вынесены на уровень кабинета.",
   };
 }
 
@@ -776,8 +799,16 @@ export async function loadHealth(scope: OzonCabinetScope) {
     if (!seller.ok) issues.push(seller.error);
     if (!cabinet.perf) issues.push("Performance API не подключён");
     else if (!performance) issues.push("Performance API не отвечает");
+    const adCacheStatus = ozonAdCacheStatus(Boolean(cabinet.perf), adAgeHours);
     if (cabinet.perf && adAgeHours === null) issues.push("Рекламный кэш ещё не создан");
-    else if (adAgeHours !== null && adAgeHours > 24) issues.push(`Реклама не обновлялась ${adAgeHours} ч.`);
+    else if (adCacheStatus !== "ok" && adAgeHours !== null) issues.push(`Реклама не обновлялась ${adAgeHours} ч.`);
+    const status: OzonQualityStatus = !seller.ok
+      || (cabinet.perf && !performance)
+      || adCacheStatus === "error"
+      ? "error"
+      : issues.length
+        ? "warning"
+        : "ok";
     return {
       id: cabinet.id,
       name: cabinet.name,
@@ -787,7 +818,8 @@ export async function loadHealth(scope: OzonCabinetScope) {
       performanceApi: Boolean(performance),
       adUpdatedAt,
       adAgeHours,
-      status: !seller.ok || (cabinet.perf && !performance) ? "error" : issues.length ? "warning" : "ok",
+      adCacheStatus,
+      status,
       issues,
     };
   }));
@@ -802,15 +834,14 @@ export async function loadHealth(scope: OzonCabinetScope) {
       .maybeSingle();
     latestSync = data as Record<string, unknown> | null;
   }
+  const health = summarizeOzonHealth(cabinets.map((cabinet) => cabinet.status), latestSync);
   return {
     view: "health",
     scope: publicScope(scope),
     generatedAt: new Date().toISOString(),
     summary: {
       total: cabinets.length,
-      healthy: cabinets.filter((cabinet) => cabinet.status === "ok").length,
-      warnings: cabinets.filter((cabinet) => cabinet.status === "warning").length,
-      errors: cabinets.filter((cabinet) => cabinet.status === "error").length,
+      ...health,
       performance: cabinets.filter((cabinet) => cabinet.performanceApi).length,
     },
     cabinets,

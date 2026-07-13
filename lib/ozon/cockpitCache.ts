@@ -8,6 +8,7 @@ import {
 import { loadOzonCockpit, type OzonCockpitView } from "@/lib/ozon/cockpit";
 
 export const OZON_COCKPIT_CACHE_SECONDS = 60 * 60;
+export const OZON_COCKPIT_CACHE_VERSION = "v3";
 
 export interface OzonCockpitCacheRequest {
   view: OzonCockpitView;
@@ -56,7 +57,7 @@ export async function loadCachedOzonCockpit(
       const data = await loadOzonCockpit(normalized.view, scope, normalized.days, normalized.taxPct);
       return encodeCompressedJson(data);
     },
-    ["ozon-cockpit-snapshot-v2-compressed", identity],
+    [`ozon-cockpit-snapshot-${OZON_COCKPIT_CACHE_VERSION}-compressed`, identity],
     { revalidate: OZON_COCKPIT_CACHE_SECONDS, tags: [tag] },
   );
   return decodeCompressedJson<OzonCockpitSnapshot>(await loadSnapshot());
