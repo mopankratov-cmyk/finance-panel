@@ -3,6 +3,7 @@
 import { ChevronRight, Loader2, Megaphone, RefreshCw, Search, WalletCards } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { LoadingBanner, SkeletonCards, useElapsedSeconds } from "@/components/ui/LoadingState";
+import { useDashboardFilter } from "@/lib/useDashboardFilter";
 import { WbEmptyState, WbErrorState, WbModuleHeader } from "./WbModuleHeader";
 import { useWbCabinet } from "./WbCabinetContext";
 
@@ -125,8 +126,8 @@ export function WbAdvertsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [retryKey, setRetryKey] = useState(0);
-  const [query, setQuery] = useState("");
-  const [kind, setKind] = useState<"all" | "cpc" | "unified">("all");
+  const [query, setQuery] = useDashboardFilter<string>("q", "", undefined, 300);
+  const [kind, setKind] = useDashboardFilter<"all" | "cpc" | "unified">("kind", "all", ["all", "cpc", "unified"]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [rowWindow, setRowWindow] = useState({ start: 0, end: 16 });
   const requestId = useRef(0);

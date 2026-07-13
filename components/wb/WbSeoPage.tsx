@@ -10,6 +10,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import { LoadingBanner, SkeletonCards, useElapsedSeconds } from "@/components/ui/LoadingState";
 import { useCategoryMap } from "@/lib/useCategoryMap";
+import { useDashboardFilter } from "@/lib/useDashboardFilter";
 import { WbEmptyState, WbErrorState, WbModuleHeader } from "./WbModuleHeader";
 import { useWbCabinet } from "./WbCabinetContext";
 
@@ -66,13 +67,15 @@ function positionTone(position: number | null) {
 
 export function WbSeoPage() {
   const { activeCabinet, cabinetId, cabinets, ready, loading: cabinetsLoading, error: cabinetsError } = useWbCabinet();
-  const [windowDays, setWindowDays] = useState(7);
+  const [windowParam, setWindowParam] = useDashboardFilter("days", "7", ["1", "7", "30"] as const);
+  const windowDays = Number(windowParam);
+  const setWindowDays = (days: number) => setWindowParam(String(days) as typeof windowParam);
   const [data, setData] = useState<SeoData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [retryKey, setRetryKey] = useState(0);
-  const [query, setQuery] = useState("");
-  const [category, setCategory] = useState("");
+  const [query, setQuery] = useDashboardFilter<string>("q", "", undefined, 300);
+  const [category, setCategory] = useDashboardFilter<string>("category", "");
   const [itemWindow, setItemWindow] = useState({ start: 0, end: 14 });
   const [selected, setSelected] = useState<SeoSku | null>(null);
   const [keywords, setKeywords] = useState<KeywordData | null>(null);

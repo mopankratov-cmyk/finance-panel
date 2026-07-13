@@ -5,6 +5,7 @@ import Image from "next/image";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { LoadingBanner, SkeletonTableRows, useElapsedSeconds } from "@/components/ui/LoadingState";
 import { useCategoryMap } from "@/lib/useCategoryMap";
+import { useDashboardFilter } from "@/lib/useDashboardFilter";
 import { WbEmptyState, WbErrorState, WbModuleHeader } from "./WbModuleHeader";
 import { useWbCabinet } from "./WbCabinetContext";
 
@@ -29,11 +30,12 @@ export function WbAbcPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [retryKey, setRetryKey] = useState(0);
-  const [query, setQuery] = useState("");
-  const [category, setCategory] = useState("");
-  const [abcClass, setAbcClass] = useState<AbcClass | "">("");
-  const [sortKey, setSortKey] = useState<SortKey>("profit");
-  const [sortAsc, setSortAsc] = useState(false);
+  const [query, setQuery] = useDashboardFilter<string>("q", "", undefined, 300);
+  const [category, setCategory] = useDashboardFilter<string>("category", "");
+  const [abcClass, setAbcClass] = useDashboardFilter<AbcClass | "">("class", "", ["", "A", "B", "C", "D"]);
+  const [sortKey, setSortKey] = useDashboardFilter<SortKey>("sort", "profit", ["profit", "share", "cumPct", "margin", "revenue", "art"]);
+  const [sortDirection, setSortDirection] = useDashboardFilter("dir", "desc", ["asc", "desc"] as const);
+  const sortAsc = sortDirection === "asc";
   const [rowWindow, setRowWindow] = useState({ start: 0, end: 18 });
   const requestId = useRef(0);
   const elapsed = useElapsedSeconds(loading);
@@ -72,7 +74,7 @@ export function WbAbcPage() {
   }, [abcClass, byArticle, category, data?.rows, query, sortAsc, sortKey]);
 
   useEffect(() => setRowWindow({ start: 0, end: Math.min(18, rows.length) }), [rows.length, query, category, abcClass]);
-  const changeSort = (key: SortKey) => { if (sortKey === key) setSortAsc((value) => !value); else { setSortKey(key); setSortAsc(false); } };
+  const changeSort = (key: SortKey) => { if (sortKey === key) setSortDirection(sortAsc ? "desc" : "asc"); else { setSortKey(key); setSortDirection("desc"); } };
   const updateWindow = (element: HTMLDivElement) => { const first = Math.floor(element.scrollTop / ROW_HEIGHT); const visible = Math.ceil(element.clientHeight / ROW_HEIGHT); const start = Math.max(0, first - 6); const end = Math.min(rows.length, first + visible + 7); setRowWindow((current) => current.start === start && current.end === end ? current : { start, end }); };
 
   return <div className="min-h-[calc(100vh-54px)] bg-[#f6f7f9] pb-16 md:pb-5">

@@ -5,6 +5,7 @@ import { CheckCircle2, Loader2, MessageSquareText, RefreshCw, Search, Star, Vide
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LoadingBanner, SkeletonCards, useElapsedSeconds } from "@/components/ui/LoadingState";
 import { useCategoryMap } from "@/lib/useCategoryMap";
+import { useDashboardFilter } from "@/lib/useDashboardFilter";
 import { formatTime } from "@/lib/analytics/format";
 import { wbCardImageUrl } from "@/lib/wb/cardImage";
 import type { ReviewRow } from "@/app/api/reviews/route";
@@ -38,15 +39,19 @@ function ratingTone(value: number) {
 
 export function WbReviewsPage() {
   const { activeCabinet, cabinetId, cabinets, ready, loading: cabinetsLoading, error: cabinetsError } = useWbCabinet();
-  const [days, setDays] = useState(30);
-  const [rating, setRating] = useState<number | null>(null);
-  const [answered, setAnswered] = useState<Answered>("");
+  const [daysParam, setDaysParam] = useDashboardFilter("days", "7", ["7", "30", "90"] as const);
+  const days = Number(daysParam);
+  const setDays = (value: number) => setDaysParam(String(value) as typeof daysParam);
+  const [ratingParam, setRatingParam] = useDashboardFilter("rating", "all", ["all", "1", "2", "3", "4", "5"] as const);
+  const rating = ratingParam === "all" ? null : Number(ratingParam);
+  const setRating = (value: number | null) => setRatingParam(value == null ? "all" : String(value) as typeof ratingParam);
+  const [answered, setAnswered] = useDashboardFilter<Answered>("answered", "", ["", "answered", "unanswered"]);
   const [data, setData] = useState<ReviewsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [retryKey, setRetryKey] = useState(0);
-  const [query, setQuery] = useState("");
-  const [category, setCategory] = useState("");
+  const [query, setQuery] = useDashboardFilter<string>("q", "", undefined, 300);
+  const [category, setCategory] = useDashboardFilter<string>("category", "");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [rowWindow, setRowWindow] = useState({ start: 0, end: 12 });
   const requestId = useRef(0);

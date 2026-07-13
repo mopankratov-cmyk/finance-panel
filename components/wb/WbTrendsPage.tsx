@@ -3,6 +3,7 @@
 import { ArrowDown, ArrowUp, TrendingUp } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { LoadingBanner, SkeletonCards, useElapsedSeconds } from "@/components/ui/LoadingState";
+import { useDashboardFilter } from "@/lib/useDashboardFilter";
 import { WbErrorState, WbModuleHeader } from "./WbModuleHeader";
 import { useWbCabinet } from "./WbCabinetContext";
 
@@ -26,7 +27,9 @@ function Sparkline({ values, positive, label }: { values: number[]; positive: bo
 
 export function WbTrendsPage() {
   const { cabinetId, activeCabinet, cabinets, ready, loading: cabinetsLoading, error: cabinetsError } = useWbCabinet();
-  const [windowDays, setWindowDays] = useState(7);
+  const [windowParam, setWindowParam] = useDashboardFilter("days", "7", ["7", "14", "30"] as const);
+  const windowDays = Number(windowParam);
+  const setWindowDays = (days: number) => setWindowParam(String(days) as typeof windowParam);
   const [data, setData] = useState<TrendsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

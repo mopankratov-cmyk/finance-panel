@@ -4,6 +4,7 @@ import { Filter, Search, X } from "lucide-react";
 import Image from "next/image";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { LoadingBanner, SkeletonTableRows, useElapsedSeconds } from "@/components/ui/LoadingState";
+import { useDashboardFilter } from "@/lib/useDashboardFilter";
 import { WbEmptyState, WbErrorState, WbModuleHeader } from "./WbModuleHeader";
 import { useWbCabinet } from "./WbCabinetContext";
 
@@ -52,11 +53,13 @@ function cellTone(metric: MetricKey, value: number | null | undefined) {
 
 export function WbFunnelPage({ embedded = false }: { embedded?: boolean }) {
   const { cabinetId, activeCabinet, cabinets, ready, loading: cabinetsLoading, error: cabinetsError } = useWbCabinet();
-  const [windowDays, setWindowDays] = useState(7);
-  const [metric, setMetric] = useState<MetricKey>("views");
+  const [windowParam, setWindowParam] = useDashboardFilter("days", "7", ["1", "7", "30"] as const);
+  const windowDays = Number(windowParam);
+  const setWindowDays = (days: number) => setWindowParam(String(days) as typeof windowParam);
+  const [metric, setMetric] = useDashboardFilter<MetricKey>("metric", "views", METRICS.map((item) => item.key));
   const [skus, setSkus] = useState<SkusData | null>(null);
   const [daily, setDaily] = useState<DayMetricsData | null>(null);
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useDashboardFilter<string>("q", "", undefined, 300);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [retryKey, setRetryKey] = useState(0);

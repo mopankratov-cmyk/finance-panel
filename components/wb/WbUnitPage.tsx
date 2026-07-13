@@ -12,6 +12,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import { LoadingBanner, SkeletonTableRows, useElapsedSeconds } from "@/components/ui/LoadingState";
 import { useCategoryMap } from "@/lib/useCategoryMap";
+import { useDashboardFilter } from "@/lib/useDashboardFilter";
 import { useSort, sortGlyph } from "@/lib/useSort";
 import { WbEmptyState, WbErrorState, WbModuleHeader } from "./WbModuleHeader";
 import { useWbCabinet } from "./WbCabinetContext";
@@ -75,7 +76,7 @@ export function WbUnitPage() {
   const [retryKey, setRetryKey] = useState(0);
   const [refreshing, setRefreshing] = useState<"prices" | "stocks" | "cogs" | null>(null);
   const [message, setMessage] = useState<string | null>(null);
-  const [category, setCategory] = useState("");
+  const [category, setCategory] = useDashboardFilter<string>("category", "");
   const [rowWindow, setRowWindow] = useState({ start: 0, end: 18 });
   const [solverOpen, setSolverOpen] = useState(false);
   const [solver, setSolver] = useState<PriceSolverData | null>(null);

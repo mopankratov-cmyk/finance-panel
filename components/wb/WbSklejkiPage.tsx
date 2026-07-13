@@ -4,6 +4,7 @@ import { Layers3, Link2, RefreshCw } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { LoadingBanner, SkeletonTableRows, useElapsedSeconds } from "@/components/ui/LoadingState";
 import { useCategoryMap } from "@/lib/useCategoryMap";
+import { useDashboardFilter } from "@/lib/useDashboardFilter";
 import { useSort, sortGlyph } from "@/lib/useSort";
 import { WbEmptyState, WbErrorState, WbModuleHeader } from "./WbModuleHeader";
 import { useWbCabinet } from "./WbCabinetContext";
@@ -116,8 +117,8 @@ export function WbSklejkiPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [retryKey, setRetryKey] = useState(0);
-  const [view, setView] = useState<"multi" | "solo">("multi");
-  const [category, setCategory] = useState("");
+  const [view, setView] = useDashboardFilter<"multi" | "solo">("view", "multi", ["multi", "solo"]);
+  const [category, setCategory] = useDashboardFilter<string>("category", "");
   const requestId = useRef(0);
   const elapsed = useElapsedSeconds(loading);
   const { categories, byArticle } = useCategoryMap();
