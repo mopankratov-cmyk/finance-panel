@@ -5,7 +5,6 @@ import {
   Bot,
   Building2,
   Calendar,
-  Calculator,
   Coins,
   ChevronDown,
   CreditCard,
@@ -96,8 +95,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: "/wb/supplies", label: "Закупки", icon: Truck },
       { href: "/costs", label: "Себестоимость", icon: Coins },
-      { href: "/repricer", label: "Репрайсер", icon: Tag },
-      { href: "/price-solver", label: "Решатель цены", icon: Calculator },
+      { href: "/wb/funnel?view=repricer", label: "Цена и маржа", icon: Tag },
     ],
   },
   {
@@ -119,7 +117,8 @@ const DASHBOARD: NavLink = {
 };
 
 function isActive(pathname: string, href: string): boolean {
-  return href === "/" ? pathname === "/" : pathname.startsWith(href);
+  const hrefPath = href.split(/[?#]/, 1)[0] || href;
+  return hrefPath === "/" ? pathname === "/" : pathname.startsWith(hrefPath);
 }
 
 export function Sidebar() {
@@ -172,7 +171,7 @@ export function Sidebar() {
 
   // группы с фильтром по роли (пустые группы скрываем)
   const groups = NAV_GROUPS
-    .map((g) => ({ ...g, items: g.items.filter((i) => (me ? allowedNav(me.role, i.href) : true)) }))
+    .map((g) => ({ ...g, items: g.items.filter((i) => (me ? allowedNav(me.role, i.href.split(/[?#]/, 1)[0] || i.href) : true)) }))
     .filter((g) => g.items.length > 0);
 
   useEffect(() => {

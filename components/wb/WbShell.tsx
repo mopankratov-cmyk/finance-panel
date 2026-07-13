@@ -37,7 +37,7 @@ interface NavItem {
 
 const WORK_NAV: NavItem[] = [
   { label: "РНП", href: "/wb/rnp", icon: BarChart3, target: true },
-  { label: "Воронка", href: "/wb/funnel", icon: Filter, target: true },
+  { label: "Воронка / Репрайсер", href: "/wb/funnel", icon: Filter, target: true },
   { label: "Планирование", href: "/wb/planning", icon: Target, target: true },
   { label: "Задачи", href: "/wb/tasks", icon: KanbanSquare, target: true },
   { label: "Юнит-экономика", href: "/wb/unit", icon: Calculator, target: true },

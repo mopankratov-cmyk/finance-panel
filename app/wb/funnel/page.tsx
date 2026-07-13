@@ -1,5 +1,5 @@
-import { WbFunnelPage } from "@/components/wb/WbFunnelPage";
+import { WbFunnelWorkspace } from "@/components/wb/WbFunnelWorkspace";
 
 export default function Page() {
-  return <WbFunnelPage />;
+  return <WbFunnelWorkspace />;
 }

@@ -6,9 +6,10 @@
 
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { buildRnpReport } from "@/lib/rnp/buildRnp";
-import { getWbCommissionMerged } from "@/lib/wb/commissions";
+import { getWbCommissionForCabinet } from "@/lib/wb/commissions";
 import { getActiveWbCabinets } from "@/lib/wb/cabinetTokens";
 import { fetchWbCatalogPrices, WbPriceScopeError } from "@/lib/wb/prices";
+import { requestAllowedNmIds, requestAllowsNm } from "@/lib/wb/requestProductScope";
 import { solvePrices } from "@/lib/unit/priceSolver";
 import { evaluateRepricer, type RepricerStrategy, type SkuMetrics, type RepricerDecision } from "./evaluate";
 
@@ -43,14 +44,16 @@ export interface RepricerRunRow {
 
 // Прогон по одному кабинету (или всем, если cabinet=null). Возвращает строки решений (без записи).
 export async function runRepricer(cabinet: string | null, strategies: RepricerStrategy[]): Promise<RepricerRunRow[]> {
-  const rnp = await buildRnpReport(cabinet);
-  const comm = await getWbCommissionMerged(30);
+  const allowedNmIds = await requestAllowedNmIds(cabinet);
+  const rnp = (await buildRnpReport(cabinet)).filter((row) => requestAllowsNm(allowedNmIds, row.nmId));
+  const comm = await getWbCommissionForCabinet(cabinet, 30);
 
   const wantNms = new Set<number>(rnp.map((r) => r.nmId));
   const priceByNm = new Map<number, number>();
   try {
     const cabs = await getActiveWbCabinets();
-    for (const c of cabs) {
+    const selectedCabinets = cabinet ? cabs.filter((candidate) => candidate.id === cabinet) : cabs;
+    for (const c of selectedCabinets) {
       try {
         const prices = await fetchWbCatalogPrices(c.token, wantNms);
         for (const [nm, p] of prices) if (!priceByNm.has(nm) && p.price > 0) priceByNm.set(nm, p.price);
