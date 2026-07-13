@@ -8,8 +8,10 @@ import {
   Loader2,
   Target,
 } from "lucide-react";
+import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { LoadingBanner, SkeletonTableRows, useElapsedSeconds } from "@/components/ui/LoadingState";
+import { summarizeOperationalPlanning } from "@/lib/planning/operational";
 import { WbEmptyState, WbErrorState, WbModuleHeader } from "./WbModuleHeader";
 import { useWbCabinet } from "./WbCabinetContext";
 
@@ -34,41 +36,11 @@ interface SkusData {
   error?: string;
 }
 
-type RowKind = "section" | "subsection" | "metric" | "total" | "muted" | "final";
-
-interface MatrixRow {
-  label: string;
-  kind: RowKind;
-  normKey?: string;
-  values?: (month: number) => number | null;
-}
-
 const MONTHS = ["Янв", "Фев", "Мар", "Апр", "Май", "Июн", "Июл", "Авг", "Сен", "Окт", "Ноя", "Дек"];
-const DEFAULT_NORMS: Record<string, number> = {
-  buyout: 80,
-  payout: 53,
-  cost: 20,
-  commission: 38.5,
-  fulfillment: 1,
-  logistics: 1,
-  acceptance: 0,
-  other: 3,
-  vat: 3,
-  ads: 6,
-  promotion: 0,
-  barter: 0,
-  storage: 0.5,
-  defects: 0.5,
-  materials: 0.5,
-};
-
 const SKU_ROW_HEIGHT = 35;
 const CURRENT_YEAR = 2026;
-
-const fmt = (value: number | null) => {
-  if (value == null || !Number.isFinite(value) || Math.abs(value) < 0.5) return "—";
-  return Math.round(value).toLocaleString("ru-RU");
-};
+const number = (value: number) => Math.round(value || 0).toLocaleString("ru-RU");
+const money = (value: number) => `${number(value)} ₽`;
 
 export function WbPlanningPage() {
   const { activeCabinet, cabinetId, cabinets, canUseAll, ready, loading: cabinetsLoading, error: cabinetsError } = useWbCabinet();
@@ -173,11 +145,6 @@ export function WbPlanningPage() {
     };
   }, [cabinetId, canEdit, dirty, plan, year]);
 
-  const norm = (key: string) => {
-    const value = Number(plan?.norms[key]);
-    return Number.isFinite(value) ? value : DEFAULT_NORMS[key] ?? 0;
-  };
-
   const touch = (next: PlanningBlock) => {
     revision.current += 1;
     setPlan(next);
@@ -192,11 +159,6 @@ export function WbPlanningPage() {
     touch({ ...plan, orders });
   };
 
-  const setNorm = (key: string, raw: string) => {
-    if (!plan || !canEdit) return;
-    touch({ ...plan, norms: { ...plan.norms, [key]: Number(raw) || 0 } });
-  };
-
   const setSkuOrder = (article: string, month: number, raw: string) => {
     if (!plan || !canEdit) return;
     const months = [...(plan.sku_orders[article] ?? Array.from({ length: 12 }, () => 0))];
@@ -204,40 +166,13 @@ export function WbPlanningPage() {
     touch({ ...plan, sku_orders: { ...plan.sku_orders, [article]: months } });
   };
 
-  const matrixRows = useMemo<MatrixRow[]>(() => {
-    if (!plan) return [];
-    const revenue = (month: number) => plan.orders[month] * norm("buyout") / 100;
-    const expense = (key: string, month: number) => -revenue(month) * norm(key) / 100;
-    const marginal = (month: number) => revenue(month) + ["cost", "commission", "fulfillment", "logistics", "acceptance", "other", "vat"].reduce((sum, key) => sum + expense(key, month), 0);
-    const gross = (month: number) => marginal(month) + ["ads", "promotion", "barter"].reduce((sum, key) => sum + expense(key, month), 0);
-    const operating = (month: number) => gross(month) + ["storage", "defects", "materials"].reduce((sum, key) => sum + expense(key, month), 0);
-
-    return [
-      { label: "ВЫРУЧКА", kind: "section" },
-      { label: "Выручка (выкуп)", kind: "metric", normKey: "buyout", values: revenue },
-      { label: "К перечислению на счёт", kind: "metric", normKey: "payout", values: (month) => revenue(month) * norm("payout") / 100 },
-      { label: "ПЕРЕМЕННЫЕ РАСХОДЫ (% ОТ ВЫРУЧКИ)", kind: "subsection" },
-      { label: "Себестоимость WB", kind: "metric", normKey: "cost", values: (month) => expense("cost", month) },
-      { label: "Комиссия WB", kind: "metric", normKey: "commission", values: (month) => expense("commission", month) },
-      { label: "Фулфилмент", kind: "metric", normKey: "fulfillment", values: (month) => expense("fulfillment", month) },
-      { label: "Логистика до МП", kind: "metric", normKey: "logistics", values: (month) => expense("logistics", month) },
-      { label: "Платная приёмка", kind: "metric", normKey: "acceptance", values: (month) => expense("acceptance", month) },
-      { label: "Прочие WB", kind: "metric", normKey: "other", values: (month) => expense("other", month) },
-      { label: "НДС", kind: "metric", normKey: "vat", values: (month) => expense("vat", month) },
-      { label: "Маржинальная прибыль", kind: "total", values: marginal },
-      { label: "Рент. по маржинальной", kind: "muted", values: (month) => revenue(month) > 0 ? marginal(month) / revenue(month) * 100 : null },
-      { label: "ОБЩЕПРОИЗВОДСТВЕННЫЕ", kind: "subsection" },
-      { label: "Реклама внутренняя", kind: "metric", normKey: "ads", values: (month) => expense("ads", month) },
-      { label: "Продвижение", kind: "metric", normKey: "promotion", values: (month) => expense("promotion", month) },
-      { label: "Бартеры и раздачи", kind: "metric", normKey: "barter", values: (month) => expense("barter", month) },
-      { label: "Валовая прибыль WB", kind: "total", values: gross },
-      { label: "Хранение", kind: "metric", normKey: "storage", values: (month) => expense("storage", month) },
-      { label: "Списание брака", kind: "metric", normKey: "defects", values: (month) => expense("defects", month) },
-      { label: "Расходные материалы", kind: "metric", normKey: "materials", values: (month) => expense("materials", month) },
-      { label: "Операционная прибыль WB", kind: "final", values: operating },
-    ];
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [plan]);
+  const operational = useMemo(() => {
+    return summarizeOperationalPlanning({
+      orders: plan?.orders ?? [],
+      skuOrders: plan?.sku_orders ?? {},
+      stocks: (skus?.skus ?? []).map((sku) => sku.wb_stock),
+    });
+  }, [plan?.orders, plan?.sku_orders, skus?.skus]);
 
   const updateSkuWindow = (element: HTMLDivElement) => {
     const first = Math.floor(element.scrollTop / SKU_ROW_HEIGHT);
@@ -265,8 +200,8 @@ export function WbPlanningPage() {
     <div className="min-h-[calc(100vh-54px)] bg-[#f6f7f9] pb-16 md:pb-5">
       <WbModuleHeader
         icon={Target}
-        title={`Планирование — ОПиУ ${year}`}
-        description="Жёлтые ячейки редактируемые: заказы по месяцам и нормативы. Остальное считается автоматически."
+        title={`План продаж и закупки WB · ${year}`}
+        description="Операционный план заказов и потребности по SKU. Финансовый ОПиУ ведётся отдельно."
         actions={headerActions}
       />
 
@@ -282,20 +217,31 @@ export function WbPlanningPage() {
         ) : !plan ? (
           <WbEmptyState>Нет данных планирования.</WbEmptyState>
         ) : (
-          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+          <div className="space-y-3">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="rounded-xl border border-slate-200 bg-white p-4"><div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">План заказов за год</div><div className="mt-2 text-xl font-bold tabular-nums text-slate-800">{money(operational.annualOrders)}</div></div>
+              <div className="rounded-xl border border-slate-200 bg-white p-4"><div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Потребность SKU за год</div><div className="mt-2 text-xl font-bold tabular-nums text-slate-800">{number(operational.annualSkuUnits)} шт.</div></div>
+              <div className="rounded-xl border border-slate-200 bg-white p-4"><div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">SKU с планом</div><div className="mt-2 text-xl font-bold tabular-nums text-slate-800">{number(operational.plannedSku)} из {number(skus?.count ?? 0)}</div></div>
+              <div className="rounded-xl border border-slate-200 bg-white p-4"><div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Остаток WB сейчас</div><div className="mt-2 text-xl font-bold tabular-nums text-slate-800">{number(operational.stock)} шт.</div><div className="mt-1 text-[10px] text-slate-400">на {skus?.wb_stock_date || "—"}</div></div>
+            </div>
+
+            <div className="flex flex-col gap-2 rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-xs leading-5 text-sky-900 sm:flex-row sm:items-center sm:justify-between">
+              <span><b>Это операционный план:</b> объём заказов, потребность по артикулам и текущие остатки. Маржа, налоги, расходы и прибыль здесь не рассчитываются.</span>
+              <Link href="/pnl" className="shrink-0 font-semibold text-sky-700 underline underline-offset-2">Открыть финансовый ОПиУ</Link>
+            </div>
+
+            <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
             <div className="overflow-x-auto overscroll-x-contain">
-              <table className="w-full min-w-[1540px] border-collapse text-[12px] leading-4 text-slate-700">
+              <table className="w-full min-w-[1450px] border-collapse text-[12px] leading-4 text-slate-700">
                 <thead>
                   <tr className="h-9 bg-slate-50 text-[11px] font-semibold text-slate-500">
-                    <th className="sticky left-0 z-30 w-[235px] min-w-[235px] border-b border-r border-slate-200 bg-slate-50 px-3 text-left">Статья</th>
-                    <th className="sticky left-[235px] z-30 w-[100px] min-w-[100px] border-b border-r border-slate-200 bg-slate-50 px-2 text-right">Норматив</th>
+                    <th className="sticky left-0 z-30 w-[235px] min-w-[235px] border-b border-r border-slate-200 bg-slate-50 px-3 text-left">Операционный показатель</th>
                     {MONTHS.map((month) => <th key={month} className="min-w-[100px] border-b border-r border-slate-200 px-2 text-right last:border-r-0">{month}</th>)}
                   </tr>
                 </thead>
                 <tbody>
                   <tr className="h-[34px] bg-white">
-                    <td className="sticky left-0 z-20 border-b border-r border-slate-200 bg-white px-3 font-medium">Заказы (₽)</td>
-                    <td className="sticky left-[235px] z-20 border-b border-r border-slate-200 bg-white" />
+                    <td className="sticky left-0 z-20 border-b border-r border-slate-200 bg-white px-3 font-medium">План заказов, ₽</td>
                     {plan.orders.map((value, month) => (
                       <td key={month} className="border-b border-r border-slate-200 bg-[#fffdf6] px-2 last:border-r-0">
                         <input
@@ -304,47 +250,29 @@ export function WbPlanningPage() {
                           value={value || 0}
                           onChange={(event) => setOrder(month, event.target.value)}
                           disabled={!canEdit}
-                          aria-label={`Заказы, ${MONTHS[month]}`}
+                          aria-label={`План заказов, ${MONTHS[month]}`}
                           className="h-10 w-full rounded-lg border border-[#f1e8d8] bg-white px-2 text-right text-[12px] font-semibold tabular-nums text-[#8d341f] outline-none transition focus:border-violet-400 focus:ring-2 focus:ring-violet-100 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400 sm:h-7"
                         />
                       </td>
                     ))}
                   </tr>
-                  <tr className="h-8 bg-indigo-50 text-indigo-700">
+                  <tr className="h-8 bg-white text-slate-600">
+                    <td className="sticky left-0 z-20 border-b border-r border-slate-200 bg-white px-3 font-medium">Потребность по SKU, шт.</td>
+                    {operational.skuUnitsByMonth.map((value, month) => <td key={MONTHS[month]} className="border-b border-r border-slate-200 px-2 text-right font-semibold tabular-nums last:border-r-0">{value ? number(value) : "—"}</td>)}
+                  </tr>
+                  <tr className="h-8 bg-white text-slate-500">
+                    <td className="sticky left-0 z-20 border-b border-r border-slate-200 bg-white px-3 font-medium">SKU с планом</td>
+                    {operational.activeSkuByMonth.map((value, month) => <td key={MONTHS[month]} className="border-b border-r border-slate-200 px-2 text-right tabular-nums last:border-r-0">{value ? number(value) : "—"}</td>)}
+                  </tr>
+                  <tr className="h-9 bg-indigo-50 text-indigo-700">
                     <td className="sticky left-0 z-20 border-b border-r border-indigo-100 bg-indigo-50 px-3 font-semibold">
                       <button type="button" onClick={() => setSkuOpen((value) => !value)} className="flex min-h-8 w-full items-center gap-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500">
                         <ChevronDown className={`h-3.5 w-3.5 transition-transform ${skuOpen ? "rotate-180" : ""}`} />
-                        SKU план ({skus?.count ?? 0})
+                        Детализация по SKU ({skus?.count ?? 0})
                       </button>
                     </td>
-                    <td className="sticky left-[235px] z-20 border-b border-r border-indigo-100 bg-indigo-50" />
-                    {MONTHS.map((month) => <td key={month} className="border-b border-r border-indigo-100 px-2 text-right last:border-r-0">—</td>)}
+                    {MONTHS.map((month, index) => <td key={month} className="border-b border-r border-indigo-100 px-2 text-right font-semibold tabular-nums last:border-r-0">{operational.skuUnitsByMonth[index] ? number(operational.skuUnitsByMonth[index]) : "—"}</td>)}
                   </tr>
-                  {matrixRows.map((row) => {
-                    const section = row.kind === "section";
-                    const subsection = row.kind === "subsection";
-                    const total = row.kind === "total" || row.kind === "final";
-                    const muted = row.kind === "muted";
-                    const background = section ? "bg-[#54dfcf]" : subsection ? "bg-slate-100" : total ? "bg-[#c9f7ef]" : muted ? "bg-[#f4fafb]" : "bg-white";
-                    return (
-                      <tr key={row.label} className={`h-[31px] ${background}`}>
-                        <td className={`sticky left-0 z-20 border-b border-r border-slate-200 px-3 ${background} ${section || total ? "font-bold text-teal-900" : subsection ? "text-[10px] font-semibold uppercase text-slate-500" : muted ? "text-[10px] text-slate-400" : "font-medium"}`}>{row.label}</td>
-                        <td className={`sticky left-[235px] z-20 border-b border-r border-slate-200 px-2 text-right ${background}`}>
-                          {row.normKey ? (
-                            <label className="inline-flex h-10 items-center rounded-lg border border-slate-200 bg-white pl-2 shadow-sm focus-within:border-violet-400 focus-within:ring-2 focus-within:ring-violet-100 sm:h-7">
-                              <input type="number" min={0} step="0.1" value={norm(row.normKey)} onChange={(event) => setNorm(row.normKey!, event.target.value)} disabled={!canEdit} aria-label={`${row.label}, норматив`} className="w-11 bg-transparent text-right text-[11px] tabular-nums text-[#8d341f] outline-none disabled:text-slate-400" />
-                              <span className="px-1.5 text-[10px] text-slate-400">%</span>
-                            </label>
-                          ) : null}
-                        </td>
-                        {MONTHS.map((month, index) => {
-                          const value = row.values?.(index) ?? null;
-                          const tone = muted ? "text-slate-400" : total ? "font-bold text-teal-800" : value != null && value < 0 ? "text-rose-500" : "text-slate-600";
-                          return <td key={month} className={`border-b border-r border-slate-200 px-2 text-right tabular-nums last:border-r-0 ${tone}`}>{muted && value != null ? `${Math.round(value * 10) / 10}%` : fmt(value)}</td>;
-                        })}
-                      </tr>
-                    );
-                  })}
                 </tbody>
               </table>
             </div>
@@ -352,7 +280,7 @@ export function WbPlanningPage() {
             {skuOpen ? (
               <div className="border-t border-indigo-100 bg-indigo-50/40 p-2">
                 <div className="mb-2 flex items-center justify-between px-1 text-[11px] text-slate-500">
-                  <span>План заказов по артикулам</span>
+                  <span>Потребность по артикулам, шт.</span>
                   <span>{activeCabinet?.name ?? "Все кабинеты"} · остатки на {skus?.wb_stock_date || "—"}</span>
                 </div>
                 <div className="max-h-[420px] overflow-auto rounded-lg border border-slate-200 bg-white" onScroll={(event) => updateSkuWindow(event.currentTarget)}>
@@ -383,6 +311,7 @@ export function WbPlanningPage() {
                 </div>
               </div>
             ) : null}
+            </div>
           </div>
         )}
       </div>
