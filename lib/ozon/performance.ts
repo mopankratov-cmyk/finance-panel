@@ -34,7 +34,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 // Per-SKU расход на рекламу за период (async-отчёт Performance по SKU-кампаниям).
 // {bySku:{sku:{spent,ordersMoney}}} — расход и продажи с рекламы по каждому товару.
 export async function perfProductReport(
-  c: PerfCreds, fromIso: string, toIso: string, maxCampaigns = 40,
+  c: PerfCreds, fromIso: string, toIso: string, maxCampaigns = 100,
 ): Promise<{ bySku: Record<string, { spent: number; ordersMoney: number }>; partial: boolean } | null> {
   const token = await getPerfToken(c);
   if (!token) return null;
@@ -50,17 +50,18 @@ export async function perfProductReport(
     if (!ids.length) return { bySku: {}, partial: false };
 
     const bySku: Record<string, { spent: number; ordersMoney: number }> = {};
-    // 2) отчёт батчами по 10 кампаний (лимит API)
-    for (let i = 0; i < ids.length; i += 10) {
-      const batch = ids.slice(i, i + 10);
+    // 2) отчёт батчами по 10 кампаний (лимит API). До пяти батчей параллельно:
+    // это покрывает крупные кабинеты и остаётся внутри серверного таймаута.
+    const batches = Array.from({ length: Math.ceil(ids.length / 10) }, (_, index) => ids.slice(index * 10, index * 10 + 10));
+    const loadBatch = async (batch: string[]) => {
       const gen = await tfetch(`${BASE}/api/client/statistics/json`, {
         method: "POST", headers: { ...auth, "Content-Type": "application/json" },
         body: JSON.stringify({ campaigns: batch, from: fromIso, to: toIso, groupBy: "NO_GROUP_BY" }),
         cache: "no-store",
       });
-      if (!gen.ok) continue;
+      if (!gen.ok) return;
       const uuid = ((await gen.json()) as { UUID?: string }).UUID;
-      if (!uuid) continue;
+      if (!uuid) return;
       // 3) поллинг (бюджет ~12с на батч)
       let ready = false;
       for (let t = 0; t < 8; t++) {
@@ -68,10 +69,10 @@ export async function perfProductReport(
         const st = await tfetch(`${BASE}/api/client/statistics/${uuid}`, { headers: auth, cache: "no-store" });
         if (st.ok && ((await st.json()) as { state?: string }).state === "OK") { ready = true; break; }
       }
-      if (!ready) continue;
+      if (!ready) return;
       // 4) скачать
       const rep = await tfetch(`${BASE}/api/client/statistics/report?UUID=${uuid}`, { headers: auth, cache: "no-store" });
-      if (!rep.ok) continue;
+      if (!rep.ok) return;
       const data = (await rep.json()) as Record<string, { report?: { rows?: { sku?: string; moneySpent?: string; ordersMoney?: string }[] } }>;
       for (const camp of Object.values(data)) {
         for (const row of camp.report?.rows ?? []) {
@@ -83,6 +84,9 @@ export async function perfProductReport(
           bySku[sku] = e;
         }
       }
+    };
+    for (let offset = 0; offset < batches.length; offset += 5) {
+      await Promise.all(batches.slice(offset, offset + 5).map(loadBatch));
     }
     return { bySku, partial };
   } catch {

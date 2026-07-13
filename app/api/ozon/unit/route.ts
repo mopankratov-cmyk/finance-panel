@@ -28,10 +28,14 @@ export async function GET(request: NextRequest) {
 
   // себес + реклама
   const db = getSupabaseAdmin();
-  // реклама по SKU за 30дн — из общего кэша ozon_ad_cache (тот же источник, что РНП)
+  // реклама по SKU за 14 дней — из общего кэша ozon_ad_cache (тот же источник, что РНП)
   const adBySku: Record<string, number> = {};
   if (db) {
-    const { data: adCache } = await db.from("ozon_ad_cache").select("sku, spent").eq("days", WINDOW_DAYS);
+    const { data: adCache } = await db
+      .from("ozon_ad_cache")
+      .select("sku, spent")
+      .eq("days", WINDOW_DAYS)
+      .eq("client_id", cab.creds.clientId);
     for (const r of adCache ?? []) adBySku[r.sku as string] = Number(r.spent ?? 0);
   }
   const costByArt = new Map<string, number>();
