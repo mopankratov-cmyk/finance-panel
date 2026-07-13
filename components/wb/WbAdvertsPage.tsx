@@ -3,6 +3,7 @@
 import { ChevronRight, Loader2, Megaphone, RefreshCw, Search, WalletCards } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { LoadingBanner, SkeletonCards, useElapsedSeconds } from "@/components/ui/LoadingState";
+import { MARKETPLACE_METRICS, METRIC_BADGE_TONE, marketplaceMetricStatus } from "@/lib/analytics/marketplaceMetrics";
 import { useDashboardFilter } from "@/lib/useDashboardFilter";
 import { WbEmptyState, WbErrorState, WbModuleHeader } from "./WbModuleHeader";
 import { useWbCabinet } from "./WbCabinetContext";
@@ -86,10 +87,7 @@ const rub = (value: number | null) => value == null ? "—" : `${Math.round(valu
 const pct = (value: number | null) => value == null ? "—" : `${Math.round(value * 10) / 10}%`;
 
 function drrTone(value: number | null) {
-  if (value == null) return "bg-slate-100 text-slate-400";
-  if (value <= 10) return "bg-emerald-50 text-emerald-700";
-  if (value <= 20) return "bg-amber-50 text-amber-700";
-  return "bg-rose-50 text-rose-700";
+  return METRIC_BADGE_TONE[marketplaceMetricStatus("drrAttributed", value)];
 }
 
 function actionLabel(economics: AdvertEconomics) {
@@ -233,7 +231,7 @@ export function WbAdvertsPage() {
                       <div className="flex items-center gap-1.5"><span className={`h-1.5 w-1.5 shrink-0 rounded-full ${campaign.enabled ? "bg-emerald-400" : "bg-amber-400"}`} /><span className="truncate text-[11px] font-medium text-slate-700">{campaign.name}</span></div>
                       <div className="mt-1 flex items-center gap-1.5 text-[9px] text-slate-400"><span className="rounded bg-sky-50 px-1.5 py-0.5 text-sky-700">CPM</span><span className="rounded bg-violet-50 px-1.5 py-0.5 text-violet-700">единая</span><span className="truncate">{article.art}</span></div>
                     </div>
-                    <div className="shrink-0 text-right"><div className="text-[10px] font-semibold tabular-nums text-slate-700">{rub(campaign.spend_today)}</div><div className={`mt-1 rounded px-1.5 py-0.5 text-[9px] font-semibold tabular-nums ${drrTone(campaign.drr)}`}>ДРР {pct(campaign.drr)}</div></div>
+                    <div className="shrink-0 text-right"><div className="text-[10px] font-semibold tabular-nums text-slate-700">{rub(campaign.spend_today)}</div><div title={MARKETPLACE_METRICS.drrAttributed.definition} className={`mt-1 rounded px-1.5 py-0.5 text-[9px] font-semibold tabular-nums ${drrTone(campaign.drr)}`}>ДРР рекламы {pct(campaign.drr)}</div></div>
                     <ChevronRight className="h-3.5 w-3.5 shrink-0 text-violet-500" />
                   </button>
                 );
@@ -259,7 +257,7 @@ export function WbAdvertsPage() {
                 {[
                   ["Расход 14 дней", rub(selected.campaign.spent_14)],
                   ["Выручка с рекламы", rub(selected.campaign.ad_revenue_14)],
-                  ["ДРР / break-even", `${pct(selected.campaign.economics.currentDrr)} / ${pct(selected.campaign.economics.breakEvenDrr)}`],
+                  ["ДРР рекламы / break-even", `${pct(selected.campaign.economics.currentDrr)} / ${pct(selected.campaign.economics.breakEvenDrr)}`],
                   ["Прибыль после рекламы", rub(selected.campaign.economics.profitAfterAds)],
                   ["ROAS / break-even", `${selected.campaign.economics.currentRoas ?? "—"}× / ${selected.campaign.economics.breakEvenRoas ?? "—"}×`],
                   ["Запас", selected.campaign.economics.daysCover == null ? "—" : `${selected.campaign.economics.daysCover} дн.`],

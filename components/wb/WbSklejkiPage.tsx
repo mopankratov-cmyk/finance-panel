@@ -3,6 +3,7 @@
 import { Layers3, Link2, RefreshCw } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { LoadingBanner, SkeletonTableRows, useElapsedSeconds } from "@/components/ui/LoadingState";
+import { MARKETPLACE_METRICS, METRIC_TEXT_TONE, marketplaceMetricStatus } from "@/lib/analytics/marketplaceMetrics";
 import { useCategoryMap } from "@/lib/useCategoryMap";
 import { useDashboardFilter } from "@/lib/useDashboardFilter";
 import { useSort, sortGlyph } from "@/lib/useSort";
@@ -47,10 +48,7 @@ const fmt = (value: number) => Math.round(value).toLocaleString("ru-RU");
 const pct = (value: number | null) => value == null ? "—" : `${Math.round(value * 10) / 10}%`;
 
 function drrTone(value: number | null) {
-  if (value == null) return "text-slate-400";
-  if (value <= 10) return "text-emerald-700";
-  if (value <= 20) return "text-amber-600";
-  return "font-semibold text-rose-600";
+  return METRIC_TEXT_TONE[marketplaceMetricStatus("drrOrders", value)];
 }
 
 function filterGroupList(groups: SkuGroup[], byArticle: Record<string, string>, category: string) {
@@ -79,8 +77,8 @@ function GroupPanel({ group }: { group: SkuGroup }) {
               <th onClick={() => toggleSort("nm_rating")} className="cursor-pointer select-none border-b border-r border-slate-100 px-2 text-right font-semibold hover:text-violet-600">Рейтинг{sortGlyph(sortField === "nm_rating", sortDir)}</th>
               {([[
                 "shows_7d", "Показы",
-              ], ["orders_sum_7d", "Выручка ₽"], ["adv_spend_7d", "Реклама ₽"], ["drr_7d", "ДРР"], ["margin_before_drr", "Маржа"], ["stock", "Остаток"]] as [keyof GroupSku, string][]).map(([field, label]) => (
-                <th key={field} onClick={() => toggleSort(field)} className="cursor-pointer select-none border-b border-r border-slate-100 px-2 text-right font-semibold last:border-r-0 hover:text-violet-600">{label}{sortGlyph(sortField === field, sortDir)}</th>
+              ], ["orders_sum_7d", "Заказы ₽"], ["adv_spend_7d", "Реклама ₽"], ["drr_7d", "ДРР к заказам"], ["margin_before_drr", MARKETPLACE_METRICS.marginBeforeAds.label], ["stock", "Остаток"]] as [keyof GroupSku, string][]).map(([field, label]) => (
+                <th key={field} title={field === "drr_7d" ? MARKETPLACE_METRICS.drrOrders.definition : field === "margin_before_drr" ? MARKETPLACE_METRICS.marginBeforeAds.definition : undefined} onClick={() => toggleSort(field)} className="cursor-pointer select-none border-b border-r border-slate-100 px-2 text-right font-semibold last:border-r-0 hover:text-violet-600">{label}{sortGlyph(sortField === field, sortDir)}</th>
               ))}
             </tr>
           </thead>
@@ -100,7 +98,7 @@ function GroupPanel({ group }: { group: SkuGroup }) {
                 <td className="border-r border-slate-100 px-2 text-right tabular-nums">{fmt(sku.orders_sum_7d)}</td>
                 <td className="border-r border-slate-100 px-2 text-right tabular-nums">{fmt(sku.adv_spend_7d)}</td>
                 <td className={`border-r border-slate-100 px-2 text-right tabular-nums ${drrTone(sku.drr_7d)}`}>{pct(sku.drr_7d)}</td>
-                <td className={`border-r border-slate-100 px-2 text-right tabular-nums ${sku.margin_before_drr != null && sku.margin_before_drr < 10 ? "text-rose-600" : "text-emerald-700"}`}>{pct(sku.margin_before_drr)}</td>
+                <td className={`border-r border-slate-100 px-2 text-right tabular-nums ${METRIC_TEXT_TONE[marketplaceMetricStatus("marginBeforeAds", sku.margin_before_drr)]}`}>{pct(sku.margin_before_drr)}</td>
                 <td className={`px-2 text-right tabular-nums ${sku.stock < 10 ? "text-rose-600" : "text-slate-600"}`}>{fmt(sku.stock)}</td>
               </tr>
             ))}

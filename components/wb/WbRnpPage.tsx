@@ -14,6 +14,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CategoryFilter, filterByCategory } from "@/components/ui/CategoryFilter";
 import { LoadingBanner, SkeletonTableRows, useElapsedSeconds } from "@/components/ui/LoadingState";
+import { MARKETPLACE_METRICS } from "@/lib/analytics/marketplaceMetrics";
 import { heat } from "@/lib/analytics/heat";
 import { useCategoryMap } from "@/lib/useCategoryMap";
 import { useWbCabinet } from "./WbCabinetContext";
@@ -85,7 +86,7 @@ const METRIC_ORDER = [
 const METRIC_FALLBACKS: Record<string, { label: string; kind: string }> = {
   views: { label: "Показы", kind: "int" },
   clicks: { label: "Клики", kind: "int" },
-  ctr: { label: "CTR, %", kind: "pct" },
+  ctr: { label: `${MARKETPLACE_METRICS.ctr.label}, %`, kind: "pct" },
   cart: { label: "Корзины", kind: "int" },
   orders_sum: { label: "Заказы, ₽", kind: "money" },
   orders_count: { label: "Заказы, шт", kind: "int" },
@@ -93,9 +94,9 @@ const METRIC_FALLBACKS: Record<string, { label: string; kind: string }> = {
   buyouts_count: { label: "Продажи, шт", kind: "int" },
   buyout_pct: { label: "Выкуп потока, %", kind: "pct" },
   gross: { label: "Прибыль после расходов МП, ₽", kind: "money" },
-  margin_pct: { label: "Расчётная маржа после рекламы, %", kind: "pct" },
+  margin_pct: { label: `${MARKETPLACE_METRICS.marginAfterMarketplace.label}, %`, kind: "pct" },
   ad_spent: { label: "Рекл. расход, ₽", kind: "money" },
-  drr: { label: "ДРР к заказам, %", kind: "pct" },
+  drr: { label: `${MARKETPLACE_METRICS.drrOrders.label}, %`, kind: "pct" },
   stock: { label: "Остаток, шт", kind: "int" },
   turnover: { label: "Оборачиваемость, дней", kind: "int" },
   money: { label: "Деньги в остатках, ₽", kind: "money" },

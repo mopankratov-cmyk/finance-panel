@@ -4,6 +4,7 @@ import { Filter, Search, X } from "lucide-react";
 import Image from "next/image";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { LoadingBanner, SkeletonTableRows, useElapsedSeconds } from "@/components/ui/LoadingState";
+import { MARKETPLACE_METRICS, METRIC_CELL_TONE, marketplaceMetricStatus, type MarketplaceMetricId } from "@/lib/analytics/marketplaceMetrics";
 import { useDashboardFilter } from "@/lib/useDashboardFilter";
 import { WbEmptyState, WbErrorState, WbModuleHeader } from "./WbModuleHeader";
 import { useWbCabinet } from "./WbCabinetContext";
@@ -29,14 +30,14 @@ type DayCell = Record<string, number | null>;
 interface DayMetricsData { metrics: Record<string, Record<string, DayCell>>; error?: string }
 type MetricKey = "views" | "ctr" | "carts" | "cr" | "orders_sum" | "advert_sum" | "drr";
 
-const METRICS: Array<{ key: MetricKey; label: string; kind: "int" | "money" | "pct" }> = [
-  { key: "views", label: "Показы", kind: "int" },
-  { key: "ctr", label: "CTR", kind: "pct" },
-  { key: "carts", label: "Корзина", kind: "int" },
-  { key: "cr", label: "Конверсия", kind: "pct" },
-  { key: "orders_sum", label: "Заказы", kind: "money" },
-  { key: "advert_sum", label: "Реклама", kind: "money" },
-  { key: "drr", label: "ДРР", kind: "pct" },
+const METRICS: Array<{ key: MetricKey; label: string; kind: "int" | "money" | "pct"; definition: string; metricId?: MarketplaceMetricId }> = [
+  { key: "views", label: MARKETPLACE_METRICS.views.label, kind: "int", definition: MARKETPLACE_METRICS.views.definition, metricId: "views" },
+  { key: "ctr", label: MARKETPLACE_METRICS.ctr.label, kind: "pct", definition: MARKETPLACE_METRICS.ctr.definition, metricId: "ctr" },
+  { key: "carts", label: "Корзины", kind: "int", definition: "Добавления товара в корзину за выбранный период." },
+  { key: "cr", label: MARKETPLACE_METRICS.cartToOrderCr.label, kind: "pct", definition: MARKETPLACE_METRICS.cartToOrderCr.definition, metricId: "cartToOrderCr" },
+  { key: "orders_sum", label: MARKETPLACE_METRICS.ordersRevenue.label, kind: "money", definition: MARKETPLACE_METRICS.ordersRevenue.definition, metricId: "ordersRevenue" },
+  { key: "advert_sum", label: MARKETPLACE_METRICS.adSpend.label, kind: "money", definition: MARKETPLACE_METRICS.adSpend.definition, metricId: "adSpend" },
+  { key: "drr", label: MARKETPLACE_METRICS.drrOrders.label, kind: "pct", definition: MARKETPLACE_METRICS.drrOrders.definition, metricId: "drrOrders" },
 ];
 
 const ROW_HEIGHT = 49;
@@ -45,10 +46,8 @@ const pct = (value: number | null | undefined) => value == null ? "—" : `${Mat
 const dayLabel = (iso: string) => `${iso.slice(8, 10)}.${iso.slice(5, 7)}`;
 
 function cellTone(metric: MetricKey, value: number | null | undefined) {
-  if (value == null || value === 0) return "bg-slate-50 text-slate-300";
-  if (metric === "drr") return value <= 10 ? "bg-emerald-50 text-emerald-700" : value <= 20 ? "bg-amber-50 text-amber-700" : "bg-rose-50 text-rose-700";
-  if (metric === "ctr" || metric === "cr") return value >= 10 ? "bg-emerald-50 text-emerald-700" : value >= 3 ? "bg-violet-50 text-violet-700" : "bg-amber-50 text-amber-700";
-  return "bg-violet-50/70 text-violet-700";
+  const metricId = METRICS.find((item) => item.key === metric)?.metricId;
+  return METRIC_CELL_TONE[metricId ? marketplaceMetricStatus(metricId, value) : value == null ? "unknown" : "neutral"];
 }
 
 export function WbFunnelPage({ embedded = false }: { embedded?: boolean }) {
@@ -131,14 +130,14 @@ export function WbFunnelPage({ embedded = false }: { embedded?: boolean }) {
       <div className="px-2 py-3 sm:px-6">
         <div className="mb-2 flex min-w-0 flex-col gap-2 rounded-xl border border-slate-200 bg-white p-2 shadow-[0_1px_2px_rgba(15,23,42,0.04)] lg:flex-row lg:items-center">
           {embedded ? <div className="flex min-h-11 shrink-0 items-center rounded-lg bg-slate-100 p-0.5 sm:min-h-8">{[1, 7, 30].map((days) => <button key={days} type="button" onClick={() => setWindowDays(days)} className={`min-h-10 rounded-md px-3 text-[10px] font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 sm:min-h-7 ${windowDays === days ? "bg-white text-violet-700 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}>{days === 1 ? "Вчера" : `${days} дней`}</button>)}</div> : null}
-          <div className="flex min-w-0 flex-1 gap-2 overflow-x-auto pb-1 sm:gap-1 lg:pb-0" role="tablist" aria-label="Метрика воронки">{METRICS.map((item) => <button key={item.key} type="button" role="tab" aria-selected={metric === item.key} onClick={() => setMetric(item.key)} className={`min-h-11 shrink-0 rounded-lg px-3 text-[10px] font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 sm:min-h-8 ${metric === item.key ? "bg-violet-600 text-white" : "text-slate-500 hover:bg-slate-50"}`}>{item.label}</button>)}</div>
+          <div className="flex min-w-0 flex-1 gap-2 overflow-x-auto pb-1 sm:gap-1 lg:pb-0" role="tablist" aria-label="Метрика воронки">{METRICS.map((item) => <button key={item.key} type="button" role="tab" aria-selected={metric === item.key} title={item.definition} onClick={() => setMetric(item.key)} className={`min-h-11 shrink-0 rounded-lg px-3 text-[10px] font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 sm:min-h-8 ${metric === item.key ? "bg-violet-600 text-white" : "text-slate-500 hover:bg-slate-50"}`}>{item.label}</button>)}</div>
           <label className="flex min-h-11 min-w-0 items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 focus-within:border-violet-400 lg:w-72 lg:min-h-8"><Search className="h-3.5 w-3.5 text-slate-400" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="nm, артикул, название" className="min-w-0 flex-1 bg-transparent text-xs outline-none" />{query ? <button type="button" aria-label="Очистить поиск" onClick={() => setQuery("")} className="grid h-7 w-7 place-items-center rounded-md text-slate-400 hover:bg-white"><X className="h-3.5 w-3.5" /></button> : null}</label>
         </div>
 
         {loading ? <><LoadingBanner seconds={elapsed} hint="Собираем посуточную воронку" /><div className="rounded-xl border border-slate-200 bg-white"><SkeletonTableRows rows={12} cols={8} /></div></> : error ? <WbErrorState message={error} onRetry={() => setRetryKey((value) => value + 1)} /> : filtered.length === 0 ? <WbEmptyState>Нет SKU с данными за выбранный период.</WbEmptyState> : (
           <div className="h-[calc(100vh-190px)] min-h-[470px] overflow-auto rounded-xl border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]" onScroll={(event) => updateWindow(event.currentTarget)}>
             <table className="min-w-max border-separate border-spacing-0 text-[10px]">
-              <thead className="sticky top-0 z-30 bg-slate-50 text-slate-500"><tr className="h-10"><th className="sticky left-0 z-40 min-w-[245px] border-b border-r border-slate-200 bg-slate-50 px-3 text-left font-semibold">Товар</th><th className="min-w-[76px] border-b border-slate-200 px-2 text-right">Показы</th><th className="min-w-[62px] border-b border-slate-200 px-2 text-right">CTR</th><th className="min-w-[72px] border-b border-slate-200 px-2 text-right">Корзины</th><th className="min-w-[68px] border-b border-slate-200 px-2 text-right">Заказы</th><th className="min-w-[92px] border-b border-slate-200 px-2 text-right">Выручка</th><th className="min-w-[64px] border-b border-r border-slate-200 px-2 text-right">ДРР</th>{dates.map((date) => <th key={date} className="min-w-[76px] border-b border-slate-200 px-1 text-center font-semibold">{dayLabel(date)}</th>)}</tr></thead>
+              <thead className="sticky top-0 z-30 bg-slate-50 text-slate-500"><tr className="h-10"><th className="sticky left-0 z-40 min-w-[245px] border-b border-r border-slate-200 bg-slate-50 px-3 text-left font-semibold">Товар</th><th title={MARKETPLACE_METRICS.views.definition} className="min-w-[76px] border-b border-slate-200 px-2 text-right">Показы</th><th title={MARKETPLACE_METRICS.ctr.definition} className="min-w-[62px] border-b border-slate-200 px-2 text-right">CTR</th><th className="min-w-[72px] border-b border-slate-200 px-2 text-right">Корзины</th><th className="min-w-[68px] border-b border-slate-200 px-2 text-right">Заказы, шт</th><th title={MARKETPLACE_METRICS.ordersRevenue.definition} className="min-w-[92px] border-b border-slate-200 px-2 text-right">Заказы, ₽</th><th title={MARKETPLACE_METRICS.drrOrders.definition} className="min-w-[86px] border-b border-r border-slate-200 px-2 text-right">ДРР к заказам</th>{dates.map((date) => <th key={date} className="min-w-[76px] border-b border-slate-200 px-1 text-center font-semibold">{dayLabel(date)}</th>)}</tr></thead>
               <tbody>
                 {rowWindow.start > 0 ? <tr aria-hidden="true" style={{ height: rowWindow.start * ROW_HEIGHT }}><td colSpan={7 + dates.length} /></tr> : null}
                 {filtered.slice(rowWindow.start, rowWindow.end).map((sku) => <tr key={sku.nm} className="h-12 hover:bg-violet-50/20"><td className="sticky left-0 z-10 border-b border-r border-slate-100 bg-white px-3"><div className="flex items-center gap-2"><Image src={sku.img_url} alt="" width={32} height={32} unoptimized className="h-8 w-8 rounded-md border border-slate-100 object-cover" /><div className="min-w-0"><div className="max-w-[185px] truncate font-semibold text-slate-700">{sku.art}</div><div className="max-w-[185px] truncate text-[9px] text-slate-400">{sku.name || `nm ${sku.nm}`}</div></div></div></td><td className="border-b border-slate-100 px-2 text-right tabular-nums">{fmt(sku.shows_window)}</td><td className="border-b border-slate-100 px-2 text-right tabular-nums">{pct(sku.ctr_window)}</td><td className="border-b border-slate-100 px-2 text-right tabular-nums">{fmt(sku.cart_window)}</td><td className="border-b border-slate-100 px-2 text-right tabular-nums">{fmt(sku.orders_count_window)}</td><td className="border-b border-slate-100 px-2 text-right font-semibold tabular-nums">{fmt(sku.orders_sum_window)} ₽</td><td className="border-b border-r border-slate-100 px-2 text-right tabular-nums">{pct(sku.drr_window)}</td>{dates.map((date) => { const value = daily?.metrics[String(sku.nm)]?.[date]?.[metric]; return <td key={date} className="border-b border-slate-100 px-1 text-center"><span className={`inline-flex min-h-7 min-w-[66px] items-center justify-center rounded-md px-1 font-semibold tabular-nums ${cellTone(metric, value)}`}>{formatCell(value)}</span></td>; })}</tr>)}

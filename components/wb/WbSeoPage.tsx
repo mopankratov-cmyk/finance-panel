@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { LoadingBanner, SkeletonCards, useElapsedSeconds } from "@/components/ui/LoadingState";
+import { MARKETPLACE_METRICS, METRIC_TEXT_TONE, marketplaceMetricStatus, type MarketplaceMetricId } from "@/lib/analytics/marketplaceMetrics";
 import { useCategoryMap } from "@/lib/useCategoryMap";
 import { useDashboardFilter } from "@/lib/useDashboardFilter";
 import { WbEmptyState, WbErrorState, WbModuleHeader } from "./WbModuleHeader";
@@ -232,7 +233,7 @@ export function WbSeoPage() {
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-[12px] font-semibold text-slate-800">{sku.art}</div>
                     <div className="mt-0.5 truncate text-[11px] text-slate-500">{sku.name}</div>
-                    <div className="mt-1 flex items-center gap-2 text-[9px] text-slate-400 sm:hidden"><span>{fmt(sku.orders_count_window)} заказов</span><span>ДРР {pct(sku.drr_window)}</span></div>
+                    <div className="mt-1 flex items-center gap-2 text-[9px] text-slate-400 sm:hidden"><span>{fmt(sku.orders_count_window)} заказов</span><span>ДРР к заказам {pct(sku.drr_window)}</span></div>
                   </div>
                   <div className="hidden items-center gap-4 sm:flex">
                     <div className="text-right"><div className="text-[8px] uppercase tracking-wide text-slate-400">показы</div><div className="text-[11px] font-medium tabular-nums text-slate-700">{fmt(sku.shows_window)}</div></div>
@@ -263,14 +264,14 @@ export function WbSeoPage() {
             </div>
 
             <div className="grid grid-cols-3 gap-2 border-b border-slate-200 p-3 sm:grid-cols-6">
-              {[
-                ["Показы", fmt(selected.shows_window)],
-                ["CTR", pct(selected.ctr_window)],
-                ["Корзины", fmt(selected.cart_window)],
-                ["Заказы", fmt(selected.orders_count_window)],
-                ["ДРР", pct(selected.drr_window)],
-                ["Маржа", pct(selected.margin_before_drr_window)],
-              ].map(([label, value]) => <div key={label} className="rounded-lg border border-slate-200 bg-white p-2"><div className="text-[8px] uppercase text-slate-400">{label}</div><div className="mt-0.5 text-xs font-semibold tabular-nums text-slate-700">{value}</div></div>)}
+              {([
+                [MARKETPLACE_METRICS.views.label, fmt(selected.shows_window), "views", selected.shows_window],
+                [MARKETPLACE_METRICS.ctr.label, pct(selected.ctr_window), "ctr", selected.ctr_window],
+                ["Корзины", fmt(selected.cart_window), null, selected.cart_window],
+                ["Заказы, шт", fmt(selected.orders_count_window), null, selected.orders_count_window],
+                [MARKETPLACE_METRICS.drrOrders.label, pct(selected.drr_window), "drrOrders", selected.drr_window],
+                [MARKETPLACE_METRICS.marginBeforeAds.label, pct(selected.margin_before_drr_window), "marginBeforeAds", selected.margin_before_drr_window],
+              ] as Array<[string, string, MarketplaceMetricId | null, number | null]>).map(([label, value, metricId, numeric]) => <div key={label} title={metricId ? MARKETPLACE_METRICS[metricId].definition : undefined} className="rounded-lg border border-slate-200 bg-white p-2"><div className="text-[8px] uppercase text-slate-400">{label}</div><div className={`mt-0.5 text-xs font-semibold tabular-nums ${metricId ? METRIC_TEXT_TONE[marketplaceMetricStatus(metricId, numeric)] : "text-slate-700"}`}>{value}</div></div>)}
             </div>
 
             <div className="min-h-0 flex-1 overflow-auto p-3">

@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { LoadingBanner, SkeletonTableRows, useElapsedSeconds } from "@/components/ui/LoadingState";
+import { METRIC_TEXT_TONE, marketplaceMetricStatus } from "@/lib/analytics/marketplaceMetrics";
 import { useCategoryMap } from "@/lib/useCategoryMap";
 import { useDashboardFilter } from "@/lib/useDashboardFilter";
 import { useSort, sortGlyph } from "@/lib/useSort";
@@ -63,8 +64,9 @@ const rub = (value: number | null | undefined) => value == null ? "—" : `${Mat
 function valueTone(header: string, value: string | number) {
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) return "text-slate-600";
-  if (/маржа|вал %|дельта/i.test(header)) return numeric < 0 ? "font-semibold text-rose-600" : "text-emerald-700";
-  if (/ддр|дрр/i.test(header)) return numeric > 25 ? "font-semibold text-rose-600" : numeric > 15 ? "text-amber-600" : "text-emerald-700";
+  if (/вал %/i.test(header)) return METRIC_TEXT_TONE[marketplaceMetricStatus("marginBeforeAds", numeric)];
+  if (/маржа|дельта/i.test(header)) return METRIC_TEXT_TONE[marketplaceMetricStatus("marginAfterMarketplace", numeric)];
+  if (/ддр|дрр/i.test(header)) return METRIC_TEXT_TONE[marketplaceMetricStatus("drrOrders", numeric)];
   return "text-slate-600";
 }
 
