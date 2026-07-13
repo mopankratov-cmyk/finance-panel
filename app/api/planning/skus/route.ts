@@ -1,4 +1,6 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { hasCabinetAccess } from "@/lib/auth/cabinetAccess";
+import { resolveShopCabinet } from "@/lib/rnp/resolveShop";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const dynamic = "force-dynamic";
@@ -10,12 +12,16 @@ interface RpcRow {
 }
 
 // Контракт inferno: {skus:[{art,name,cat,ms_stock,wb_stock,wb_own,wb_jc}], count, ...}
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const { cabinetId } = await resolveShopCabinet(new URL(request.url).searchParams.get("cabinet") ?? undefined);
+  if (!(await hasCabinetAccess(cabinetId))) {
+    return NextResponse.json({ error: "Нет доступа к кабинету" }, { status: 403 });
+  }
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ skus: [], count: 0 });
 
   const [rpcRes, costsRes] = await Promise.all([
-    db.rpc("rnp_report"),
+    db.rpc("rnp_report", { p_cabinet: cabinetId }),
     db.from("product_costs").select("article, name, brand"),
   ]);
 

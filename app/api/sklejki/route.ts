@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { hasCabinetAccess } from "@/lib/auth/cabinetAccess";
 import { wbCardImageUrl } from "@/lib/wb/cardImage";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { getWbCabinetSources } from "@/lib/wb/cabinetTokens";
@@ -32,6 +33,9 @@ const EMPTY = { groups_multi: [], groups_solo: [], total_sku: 0, multi_groups: 0
 // ?cabinet=<uuid|all> — карточки тянем токеном Контент каждого кабинета, тегируем кабинетом.
 export async function GET(request: NextRequest) {
   const { cabinetId } = await resolveShopCabinet(new URL(request.url).searchParams.get("cabinet") ?? undefined);
+  if (!(await hasCabinetAccess(cabinetId))) {
+    return NextResponse.json({ error: "Нет доступа к кабинету" }, { status: 403 });
+  }
   const sources = await getWbCabinetSources(cabinetId, "content");
   if (!sources.length) return NextResponse.json(EMPTY);
 

@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireApiSession } from "@/lib/auth/apiGuard";
+import { hasCabinetAccess } from "@/lib/auth/cabinetAccess";
 import { buildRnpReport, type RnpRow } from "@/lib/rnp/buildRnp";
-import { getWbCommissionMerged } from "@/lib/wb/commissions";
+import { resolveShopCabinet } from "@/lib/rnp/resolveShop";
+import { getWbCommissionForCabinet } from "@/lib/wb/commissions";
 import { getActiveWbCabinets } from "@/lib/wb/cabinetTokens";
 import { fetchWbCatalogPrices, WbPriceScopeError } from "@/lib/wb/prices";
 import { solvePrices } from "@/lib/unit/priceSolver";
@@ -19,7 +21,12 @@ export async function GET(request: NextRequest) {
 
   const url = new URL(request.url);
   const wantNm = url.searchParams.get("nm") ? Number(url.searchParams.get("nm")) : null;
-  const cabinet = url.searchParams.get("cabinet");
+  const cabinetParam = url.searchParams.get("cabinet");
+  const { cabinetId } = await resolveShopCabinet(cabinetParam ?? undefined);
+  if (!(await hasCabinetAccess(cabinetId))) {
+    return NextResponse.json({ error: "Нет доступа к кабинету" }, { status: 403 });
+  }
+  const cabinet = cabinetId ?? "all";
   const marginsParam = url.searchParams.get("margins");
   const parsed = (marginsParam ?? "")
     .split(",")
@@ -34,14 +41,15 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: String((e as Error)?.message || e) }, { status: 500 });
   }
 
-  const comm = await getWbCommissionMerged(30);
+  const comm = await getWbCommissionForCabinet(cabinetId, 30);
 
   // Каталожные цены — best-effort: токену кабинета может не хватать скоупа «Цены и скидки».
   const wantNms = new Set<number>(wantNm ? [wantNm] : rnp.map((r) => r.nmId));
   const priceByNm = new Map<number, number>();
   try {
     const cabs = await getActiveWbCabinets();
-    for (const c of cabs) {
+    const selectedCabinets = cabinetId ? cabs.filter((candidate) => candidate.id === cabinetId) : cabs;
+    for (const c of selectedCabinets) {
       try {
         const prices = await fetchWbCatalogPrices(c.token, wantNms);
         for (const [nm, p] of prices) if (!priceByNm.has(nm) && p.price > 0) priceByNm.set(nm, p.price);
