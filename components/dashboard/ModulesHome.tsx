@@ -2,7 +2,7 @@
 
 import {
   BarChart3, Bot, Coins, LineChart, Megaphone, Table2, Search, Layers, Sigma,
-  MousePointerClick, CalendarRange, Clapperboard, HeartPulse,
+  FlaskConical,
   Package, TrendingDown, Wallet, Building2, ArrowUpRight, ChevronDown, LayoutDashboard,
   LogOut, AlertTriangle, Info, XCircle, type LucideIcon,
 } from "lucide-react";
@@ -31,21 +31,18 @@ const MODULES: ModuleCard[] = [
   { title: "SEO / Воронка", description: "Показы → CTR → корзина → заказ, ДРР и маржа по SKU", href: "/wb/seo", icon: Search, zone: "Аналитика", color: ["bg-fuchsia-100", "text-fuchsia-700"] },
   { title: "Склейки", description: "Объединённые карточки по imtID с воронкой и рекламой", href: "/wb/sklejki", icon: Layers, zone: "Аналитика", color: ["bg-purple-100", "text-purple-700"] },
   { title: "Юнит-экономика", description: "Прибыль/ед: цена до СПП минус все расходы МП", href: "/wb/unit", icon: Sigma, zone: "Аналитика", color: ["bg-indigo-100", "text-indigo-700"] },
-  { title: "CTR по SKU", description: "CTR, CPC и ДРР рекламы по артикулам за период", href: "/wb/ctr", icon: MousePointerClick, zone: "Аналитика", color: ["bg-violet-100", "text-violet-700"] },
-  { title: "Планирование", description: "Годовой план заказов по месяцам и остатки по SKU", href: "/wb/planning", icon: CalendarRange, zone: "Аналитика", color: ["bg-emerald-100", "text-emerald-700"] },
+  { title: "CTR-тесты", description: "CTR, CR и Video-тесты по реальным метрикам кабинета", href: "/wb/ctr", icon: FlaskConical, zone: "Аналитика", color: ["bg-violet-100", "text-violet-700"] },
   { title: "Ozon Cockpit", description: "Обзор, продажи, реклама, остатки, заказы и экономика", href: "/ozon", icon: BarChart3, agent: "Озар", zone: "Аналитика", color: ["bg-sky-100", "text-sky-700"] },
 
   { title: "Финансы", description: "Календарь ДДС, платежи, счета, кредиты", href: "/calendar", icon: Wallet, agent: "Нано", zone: "Финансы", color: ["bg-emerald-100", "text-emerald-700"] },
   { title: "ОПиУ WB+Ozon", description: "P&L до СПП + соинвест, маржа, налог", href: "/pnl", icon: LineChart, zone: "Финансы", color: ["bg-blue-100", "text-blue-700"] },
   { title: "Где теряем", description: "Удержания: реклама, логистика, комиссия", href: "/losses", icon: TrendingDown, zone: "Финансы", color: ["bg-rose-100", "text-rose-700"] },
 
-  { title: "Закупки", description: "План поставок, потребность, локализация", href: "/wb/supplies", icon: Package, agent: "Саму", zone: "Операции", color: ["bg-cyan-100", "text-cyan-700"] },
-  { title: "Здоровье", description: "Сроки производства, логистика, приёмка и сервисы кабинета", href: "/wb/health", icon: HeartPulse, zone: "Операции", color: ["bg-rose-100", "text-rose-700"] },
+  { title: "Поставки", description: "Распределение по складам, тара и контроль приёмки", href: "/wb/supplies", icon: Package, agent: "Саму", zone: "Операции", color: ["bg-cyan-100", "text-cyan-700"] },
   { title: "Себестоимость", description: "Себес по артикулам — питает маржу", href: "/costs", icon: Coins, zone: "Операции", color: ["bg-amber-100", "text-amber-700"] },
   { title: "Кабинеты", description: "Подключение WB и Ozon аккаунтов", href: "/cabinets", icon: Building2, zone: "Операции", color: ["bg-slate-100", "text-slate-700"] },
 
   { title: "AI-агент", description: "Анализ данных, аномалии, рекомендации", href: "/agent", icon: Bot, agent: "Мэнси", zone: "AI", color: ["bg-fuchsia-100", "text-fuchsia-700"] },
-  { title: "UGC Studio", description: "Персонаж → SKU → сценарий → фото/видео → публикация", href: "/wb/ugc", icon: Clapperboard, agent: "Креатор", zone: "AI", color: ["bg-violet-100", "text-violet-700"] },
 ];
 
 const ZONES = ["Аналитика", "Финансы", "Операции", "AI"] as const;
@@ -58,7 +55,9 @@ const PRIMARY_MODULES: ModuleCard[] = [
 ];
 
 const PRIMARY_HREFS = new Set(PRIMARY_MODULES.map((module) => module.href));
-const DISCLOSURE_STORAGE_KEY = "fp_dashboard_disclosure_v1";
+// v2 сбрасывает старое сохранённое раскрытие: после упрощения главная должна
+// впервые открываться компактной даже у пользователей с состоянием v1.
+const DISCLOSURE_STORAGE_KEY = "fp_dashboard_disclosure_v2";
 
 function Card({ m, badge }: { m: ModuleCard; badge?: number }) {
   const Icon = m.icon;

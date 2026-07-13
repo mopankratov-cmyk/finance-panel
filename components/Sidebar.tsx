@@ -39,7 +39,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { allowedNav, ROLE_LABEL } from "@/lib/auth/roles";
 import type { Role } from "@/lib/auth/session";
-import { isFinanceSidebarPath, isSystemSidebarPath } from "@/lib/navigation/sidebar";
+import { isAgentSidebarPath, isFinanceSidebarPath, isSystemSidebarPath } from "@/lib/navigation/sidebar";
 
 interface NavLink {
   href: string;
@@ -151,6 +151,16 @@ const SYSTEM_NAV_GROUPS: NavGroup[] = [
   },
 ];
 
+const AGENT_NAV_GROUPS: NavGroup[] = [
+  {
+    id: "agent",
+    label: "Помощник",
+    items: [
+      { href: "/agent", label: "AI-агент", icon: Bot },
+    ],
+  },
+];
+
 const DASHBOARD: NavLink = {
   href: "/",
   label: "Дашборд",
@@ -166,6 +176,7 @@ export function Sidebar() {
   const pathname = usePathname();
   const financeOnly = isFinanceSidebarPath(pathname);
   const systemOnly = isSystemSidebarPath(pathname);
+  const agentOnly = isAgentSidebarPath(pathname);
   const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [me, setMe] = useState<{ email: string; role: Role } | null>(null);
@@ -200,6 +211,7 @@ export function Sidebar() {
     money: true,
     operations: true,
     system: true,
+    agent: true,
   });
 
   useEffect(() => {
@@ -217,7 +229,9 @@ export function Sidebar() {
     ? FINANCE_NAV_GROUPS
     : systemOnly
       ? SYSTEM_NAV_GROUPS
-      : NAV_GROUPS;
+      : agentOnly
+        ? AGENT_NAV_GROUPS
+        : NAV_GROUPS;
   const groups = sourceGroups
     .map((g) => ({ ...g, items: g.items.filter((i) => (me ? allowedNav(me.role, i.href.split(/[?#]/, 1)[0] || i.href) : true)) }))
     .filter((g) => g.items.length > 0);
@@ -241,13 +255,15 @@ export function Sidebar() {
         : "text-slate-300 hover:bg-white/10 hover:text-white"
     }`;
 
-  const BrandIcon = systemOnly ? Settings2 : BarChart3;
-  const brandTitle = systemOnly ? "Настройки" : "Финансы МП";
+  const BrandIcon = systemOnly ? Settings2 : agentOnly ? Bot : BarChart3;
+  const brandTitle = systemOnly ? "Настройки" : agentOnly ? "AI-агент" : "Финансы МП";
   const brandSubtitle = systemOnly
     ? "Кабинеты и доступы"
-    : financeOnly
-      ? "Финансовый контур"
-      : "WB Analytics & Finance";
+    : agentOnly
+      ? "Инсайты и рекомендации"
+      : financeOnly
+        ? "Финансовый контур"
+        : "WB Analytics & Finance";
 
   const nav = (
     <>
