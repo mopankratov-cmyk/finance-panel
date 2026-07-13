@@ -5,6 +5,7 @@ import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { getWbCabinetSources } from "@/lib/wb/cabinetTokens";
 import { resolveShopCabinet } from "@/lib/rnp/resolveShop";
 import { allowsProduct, type WbProductScope } from "@/lib/wb/productScope";
+import { closedMoscowDates } from "@/lib/wb/sklejki";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -72,10 +73,9 @@ export async function GET(request: NextRequest) {
   // 2) метрики воронки/рекламы по nm (7д и 14д) из синка — не зависят от карточек,
   //    запускаем ОДНОВРЕМЕННО с их фетчем, а не после.
   const db = getSupabaseAdmin();
-  const since = new Date(Date.now() - 14 * 86400000).toISOString().slice(0, 10);
-  const week = new Set(
-    Array.from({ length: 7 }, (_, i) => new Date(Date.now() - i * 86400000).toISOString().slice(0, 10)),
-  );
+  const closedFortnight = closedMoscowDates(14);
+  const since = closedFortnight[0];
+  const week = new Set(closedFortnight.slice(-7));
   const metricsPromise = db
     ? (() => {
         let fQ = db.from("wb_funnel_daily").select("nm_id, date, add_to_cart, orders, orders_sum").gte("date", since);

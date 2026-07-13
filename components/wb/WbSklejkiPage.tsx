@@ -1,42 +1,25 @@
 "use client";
 
-import { Layers3, Link2, RefreshCw } from "lucide-react";
+import { Copy, Link2, RefreshCw } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { LoadingBanner, SkeletonTableRows, useElapsedSeconds } from "@/components/ui/LoadingState";
-import { MARKETPLACE_METRICS, METRIC_TEXT_TONE, marketplaceMetricStatus } from "@/lib/analytics/marketplaceMetrics";
-import { useCategoryMap } from "@/lib/useCategoryMap";
 import { useDashboardFilter } from "@/lib/useDashboardFilter";
-import { useSort, sortGlyph } from "@/lib/useSort";
+import {
+  glueSortedSkus,
+  glueSummary,
+  glueTotals,
+  glueVerdict,
+  sklejkiPeriod,
+  type GlueVerdictKind,
+  type SklejkiGroup,
+  type SklejkiSkuMetrics,
+} from "@/lib/wb/sklejki";
 import { WbEmptyState, WbErrorState, WbModuleHeader } from "./WbModuleHeader";
 import { useWbCabinet } from "./WbCabinetContext";
 
-interface GroupSku {
-  nm: number;
-  art: string;
-  name: string;
-  img_url: string;
-  shop: string;
-  shows_7d: number;
-  orders_sum_7d: number;
-  adv_spend_7d: number;
-  drr_7d: number | null;
-  margin_before_drr: number | null;
-  stock: number;
-  signal: string | null;
-  nm_rating: number | null;
-  nm_feedbacks: number | null;
-}
-
-interface SkuGroup {
-  imt_id: number;
-  shop_label: string;
-  category_label: string;
-  skus: GroupSku[];
-}
-
 interface SklejkiData {
-  groups_multi: SkuGroup[];
-  groups_solo: SkuGroup[];
+  groups_multi: SklejkiGroup[];
+  groups_solo: SklejkiGroup[];
   total_sku: number;
   multi_groups: number;
   solo_skus: number;
@@ -44,69 +27,125 @@ interface SklejkiData {
   error?: string;
 }
 
+const VERDICT_STYLE: Record<GlueVerdictKind, { row: string; badge: string; action: string; dot: string }> = {
+  green: { row: "border-emerald-300 bg-emerald-50", badge: "bg-emerald-600 text-white", action: "font-semibold text-emerald-700", dot: "🟢" },
+  red: { row: "border-red-300 bg-red-50", badge: "bg-red-600 text-white", action: "font-semibold text-red-700", dot: "🔴" },
+  amber: { row: "border-amber-300 bg-amber-50", badge: "bg-amber-500 text-white", action: "font-semibold text-amber-700", dot: "🟠" },
+  gray: { row: "border-slate-200 bg-slate-100 opacity-70", badge: "bg-slate-400 text-white", action: "text-slate-400", dot: "🟡" },
+  slate: { row: "border-slate-200 bg-white", badge: "bg-slate-200 text-slate-700", action: "text-slate-500", dot: "⚪" },
+};
+
 const fmt = (value: number) => Math.round(value).toLocaleString("ru-RU");
-const pct = (value: number | null) => value == null ? "—" : `${Math.round(value * 10) / 10}%`;
+const money = (value: number, emptyDash = false) => emptyDash && !value ? "—" : `${fmt(value)}₽`;
+const percent = (value: number | null) => value == null ? "∞" : `${value}%`;
 
-function drrTone(value: number | null) {
-  return METRIC_TEXT_TONE[marketplaceMetricStatus("drrOrders", value)];
+function shopBadge(shop: string) {
+  return /joy|jc/i.test(shop)
+    ? "bg-purple-100 text-purple-700"
+    : "bg-blue-100 text-blue-700";
 }
 
-function filterGroupList(groups: SkuGroup[], byArticle: Record<string, string>, category: string) {
-  return groups.map((group) => ({
-    ...group,
-    skus: group.skus.filter((sku) => !category || (category === "__none" ? !byArticle[sku.art] : byArticle[sku.art] === category)),
-  })).filter((group) => group.skus.length > 0);
+function copyValue(value: string | number) {
+  void navigator.clipboard?.writeText(String(value));
 }
 
-function GroupPanel({ group }: { group: SkuGroup }) {
-  const { sorted: skus, sortField, sortDir, toggleSort } = useSort(group.skus, (sku, field) => field === "art" ? sku.art : sku[field as keyof GroupSku] as number | null);
+function CopyButton({ value, label }: { value: string | number; label: string }) {
   return (
-    <article className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]" style={{ contentVisibility: "auto", containIntrinsicSize: "180px" }}>
-      <div className="flex min-h-10 flex-wrap items-center gap-2 border-b border-slate-200 bg-slate-50 px-3 py-1.5">
-        <Layers3 className="h-3.5 w-3.5 text-violet-600" />
-        <span className="text-xs font-bold text-slate-700">Склейка {group.imt_id}</span>
-        <span className="rounded-md bg-violet-100 px-2 py-0.5 text-[10px] font-semibold text-violet-700">{group.skus.length} SKU</span>
-        {group.category_label ? <span className="max-w-60 truncate text-[10px] text-slate-400">{group.category_label}</span> : null}
-        <span className="ml-auto rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[10px] text-slate-500">{group.shop_label}</span>
+    <button
+      type="button"
+      onClick={() => copyValue(value)}
+      className="grid h-6 w-6 shrink-0 place-items-center rounded text-slate-400 hover:bg-white hover:text-teal-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500"
+      aria-label={label}
+      title={label}
+    >
+      <Copy className="h-3 w-3" />
+    </button>
+  );
+}
+
+function Metric({ label, value, tone = "text-slate-900", title }: { label: string; value: string; tone?: string; title?: string }) {
+  return (
+    <div>
+      <div title={title} className="mb-0.5 text-[9px] uppercase leading-none tracking-wide text-slate-400">{label}</div>
+      <div className={`whitespace-nowrap text-[15px] font-extrabold leading-none tabular-nums ${tone}`}>{value}</div>
+    </div>
+  );
+}
+
+function SkuCard({ group, sku, verdictVisible = true }: { group: SklejkiGroup; sku: SklejkiSkuMetrics; verdictVisible?: boolean }) {
+  const verdict = glueVerdict(group, sku);
+  const style = verdictVisible ? VERDICT_STYLE[verdict.kind] : VERDICT_STYLE.slate;
+  const wbUrl = `https://www.wildberries.ru/catalog/${sku.nm}/detail.aspx`;
+  return (
+    <article className={`rounded-md border p-2 ${style.row}`}>
+      <div className="flex items-start gap-2">
+        <a href={wbUrl} target="_blank" rel="noopener noreferrer" className="shrink-0 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={sku.img_url} alt="" loading="lazy" className="h-10 w-10 rounded object-cover" onError={(event) => { event.currentTarget.style.visibility = "hidden"; }} />
+        </a>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-0.5">
+            <a href={wbUrl} target="_blank" rel="noopener noreferrer" className="truncate text-xs font-medium text-teal-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500">{sku.art || sku.nm}</a>
+            <CopyButton value={sku.art || sku.nm} label="Скопировать артикул" />
+          </div>
+          <div className="flex items-center gap-1.5 text-[10px] text-slate-400">
+            <button type="button" onClick={() => copyValue(sku.nm)} className="hover:text-teal-600">{sku.nm}</button>
+            {sku.nm_feedbacks != null ? (
+              <span className={sku.nm_feedbacks === 0 ? "font-semibold text-orange-600" : undefined}>
+                <span className="text-amber-500">★</span> {sku.nm_rating || 0} ({sku.nm_feedbacks})
+              </span>
+            ) : null}
+          </div>
+        </div>
+        <span className={`shrink-0 rounded px-1 py-0 text-[9px] ${shopBadge(sku.shop)}`}>{sku.shop}</span>
+        {verdictVisible ? <span className={`shrink-0 rounded px-1.5 py-0 text-[9px] font-bold ${style.badge}`}>{verdict.tag}{verdict.share ? ` ${verdict.share}%` : ""}</span> : null}
       </div>
-      <div className="overflow-x-auto overscroll-x-contain">
-        <table className="w-full min-w-[940px] border-collapse text-[11px]">
-          <thead>
-            <tr className="h-7 bg-white text-[9px] uppercase tracking-wide text-slate-400">
-              <th onClick={() => toggleSort("art")} className="min-w-[250px] cursor-pointer select-none border-b border-r border-slate-100 px-3 text-left font-semibold hover:text-violet-600">Артикул{sortGlyph(sortField === "art", sortDir)}</th>
-              <th onClick={() => toggleSort("nm_rating")} className="cursor-pointer select-none border-b border-r border-slate-100 px-2 text-right font-semibold hover:text-violet-600">Рейтинг{sortGlyph(sortField === "nm_rating", sortDir)}</th>
-              {([[
-                "shows_7d", "Показы",
-              ], ["orders_sum_7d", "Заказы ₽"], ["adv_spend_7d", "Реклама ₽"], ["drr_7d", "ДРР к заказам"], ["margin_before_drr", MARKETPLACE_METRICS.marginBeforeAds.label], ["stock", "Остаток"]] as [keyof GroupSku, string][]).map(([field, label]) => (
-                <th key={field} title={field === "drr_7d" ? MARKETPLACE_METRICS.drrOrders.definition : field === "margin_before_drr" ? MARKETPLACE_METRICS.marginBeforeAds.definition : undefined} onClick={() => toggleSort(field)} className="cursor-pointer select-none border-b border-r border-slate-100 px-2 text-right font-semibold last:border-r-0 hover:text-violet-600">{label}{sortGlyph(sortField === field, sortDir)}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {skus.map((sku) => (
-              <tr key={sku.nm} className="group h-[43px] border-b border-slate-100 last:border-b-0 hover:bg-violet-50/25">
-                <td className="border-r border-slate-100 px-3">
-                  <div className="flex min-w-0 items-center gap-2">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={sku.img_url} alt="" loading="lazy" className="h-8 w-8 shrink-0 rounded-md border border-slate-100 bg-slate-50 object-cover" onError={(event) => { event.currentTarget.style.visibility = "hidden"; }} />
-                    <div className="min-w-0"><div className="truncate font-semibold text-slate-700">{sku.art}</div><div className="max-w-48 truncate text-[9px] text-slate-400">{sku.name}</div></div>
-                    {sku.signal ? <span className="ml-auto rounded-md bg-rose-50 px-1.5 py-0.5 text-[9px] font-medium text-rose-600">{sku.signal}</span> : null}
-                  </div>
-                </td>
-                <td className="border-r border-slate-100 px-2 text-right tabular-nums text-slate-500">{sku.nm_rating == null ? "—" : <><span className="text-amber-500">★ {sku.nm_rating}</span>{sku.nm_feedbacks != null ? <span className="text-slate-400"> ({sku.nm_feedbacks})</span> : null}</>}</td>
-                <td className="border-r border-slate-100 px-2 text-right tabular-nums">{fmt(sku.shows_7d)}</td>
-                <td className="border-r border-slate-100 px-2 text-right tabular-nums">{fmt(sku.orders_sum_7d)}</td>
-                <td className="border-r border-slate-100 px-2 text-right tabular-nums">{fmt(sku.adv_spend_7d)}</td>
-                <td className={`border-r border-slate-100 px-2 text-right tabular-nums ${drrTone(sku.drr_7d)}`}>{pct(sku.drr_7d)}</td>
-                <td className={`border-r border-slate-100 px-2 text-right tabular-nums ${METRIC_TEXT_TONE[marketplaceMetricStatus("marginBeforeAds", sku.margin_before_drr)]}`}>{pct(sku.margin_before_drr)}</td>
-                <td className={`px-2 text-right tabular-nums ${sku.stock < 10 ? "text-rose-600" : "text-slate-600"}`}>{fmt(sku.stock)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+
+      {sku.signal === "Без трафика" ? <div className="mt-1.5"><span className="inline-block rounded bg-red-200 px-1.5 py-0.5 text-[10px] font-bold text-red-800">⚠ Нет трафика</span></div> : null}
+
+      <div className="mt-2 grid grid-cols-3 gap-x-2 gap-y-2">
+        <Metric label="Показы" value={sku.shows_7d ? fmt(sku.shows_7d) : "—"} />
+        <Metric label="Заказы" value={sku.orders_sum_7d ? money(sku.orders_sum_7d) : "—"} />
+        <Metric label="Расход" value={money(sku.adv_spend_7d)} tone={sku.adv_spend_7d > 0 && !sku.orders_sum_7d ? "text-red-600" : undefined} />
+        <Metric label="ДРР" value={percent(sku.drr_7d)} tone={sku.drr_7d == null || sku.drr_7d > 10 ? "text-red-600" : undefined} />
+        <Metric label="Маржа" title="Маржа до ДРР" value={sku.margin_before_drr == null ? "—" : `${sku.margin_before_drr}%`} tone={sku.margin_before_drr != null && sku.margin_before_drr < 0 ? "text-red-600" : sku.margin_before_drr != null && sku.margin_before_drr < 15 ? "text-amber-600" : undefined} />
+        <Metric label="Остаток" value={fmt(sku.stock)} tone={sku.stock < 50 ? "text-red-600" : undefined} />
       </div>
+
+      {verdictVisible ? <div className={`mt-1 text-[10px] leading-tight ${style.action}`}>{style.dot} {verdict.action}</div> : null}
     </article>
   );
+}
+
+function GroupCard({ group }: { group: SklejkiGroup }) {
+  const totals = glueTotals(group);
+  const summary = glueSummary(group);
+  return (
+    <article className="w-[340px] shrink-0 rounded-lg border border-purple-200 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.03)]" style={{ contentVisibility: "auto", containIntrinsicSize: "340px 620px" }}>
+      <div className="mb-2 flex flex-wrap items-center gap-2">
+        <span className="text-base font-bold text-slate-900">{group.shop_label || "—"}</span>
+        {group.category_label ? <><span className="text-base font-bold text-slate-900">·</span><span className="min-w-0 truncate text-base font-bold text-slate-900">{group.category_label}</span></> : null}
+        <span className="rounded bg-purple-100 px-2 py-0.5 text-xs text-purple-700">{group.skus.length} карточек</span>
+        {summary.carry ? <span className="rounded bg-emerald-600 px-1.5 py-0 text-[10px] font-semibold text-white">🟢 несущих {summary.carry}</span> : null}
+        <button type="button" onClick={() => copyValue(group.imt_id)} className="text-[10px] text-slate-400 hover:text-teal-600 hover:underline" title="Скопировать imtID">imt {group.imt_id}</button>
+        {group.feedback_count && !group.hide_group_rating ? <span className="ml-auto text-xs"><span className="text-amber-500">★</span> <b>{group.valuation}</b> <span className="text-slate-500">({group.feedback_count} общих)</span></span> : null}
+      </div>
+
+      <div className="mb-2 grid grid-cols-4 divide-x divide-slate-100 border-b-2 border-slate-200 pb-2">
+        <div className="pr-1.5"><Metric label="Показы" value={totals.shows ? fmt(totals.shows) : "—"} /></div>
+        <div className="px-1.5"><Metric label="Заказы" value={money(totals.orders, true)} /></div>
+        <div className="px-1.5"><Metric label="Расход" value={money(totals.spend, true)} tone={totals.spend > 0 && !totals.orders ? "text-red-600" : undefined} /></div>
+        <div className="pl-1.5"><Metric label="ДРР" value={percent(totals.drr)} tone={totals.drr == null || totals.drr > 10 ? "text-red-600" : undefined} /></div>
+      </div>
+
+      <div className="space-y-1">{glueSortedSkus(group).map((sku) => <SkuCard key={sku.nm} group={group} sku={sku} />)}</div>
+    </article>
+  );
+}
+
+function SoloCard({ group }: { group: SklejkiGroup }) {
+  const sku = group.skus[0];
+  return sku ? <SkuCard group={group} sku={sku} verdictVisible={false} /> : null;
 }
 
 export function WbSklejkiPage() {
@@ -115,11 +154,9 @@ export function WbSklejkiPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [retryKey, setRetryKey] = useState(0);
-  const [view, setView] = useDashboardFilter<"multi" | "solo">("view", "multi", ["multi", "solo"]);
-  const [category, setCategory] = useDashboardFilter<string>("category", "");
+  const [shop, setShop] = useDashboardFilter<string>("shop", "");
   const requestId = useRef(0);
   const elapsed = useElapsedSeconds(loading);
-  const { categories, byArticle } = useCategoryMap();
 
   useEffect(() => {
     if (!ready || cabinetsLoading) return;
@@ -152,38 +189,36 @@ export function WbSklejkiPage() {
     return () => controller.abort();
   }, [cabinetId, cabinets.length, cabinetsError, cabinetsLoading, ready, retryKey]);
 
-  const multi = useMemo(() => filterGroupList(data?.groups_multi ?? [], byArticle, category), [byArticle, category, data?.groups_multi]);
-  const solo = useMemo(() => filterGroupList(data?.groups_solo ?? [], byArticle, category), [byArticle, category, data?.groups_solo]);
-  const groups = view === "multi" ? multi : solo;
+  const shops = useMemo(() => Array.from(new Set([...(data?.groups_multi ?? []), ...(data?.groups_solo ?? [])].map((group) => group.shop_label))).filter(Boolean), [data]);
+  useEffect(() => {
+    if (shop && data && !shops.includes(shop)) setShop("");
+  }, [data, setShop, shop, shops]);
+  const multi = useMemo(() => (data?.groups_multi ?? []).filter((group) => !shop || group.shop_label === shop), [data?.groups_multi, shop]);
+  const solo = useMemo(() => (data?.groups_solo ?? []).filter((group) => !shop || group.shop_label === shop), [data?.groups_solo, shop]);
 
   return (
     <div className="min-h-[calc(100vh-54px)] bg-[#f6f7f9] pb-16 md:pb-5">
       <WbModuleHeader
         icon={Link2}
         title="Склейки"
-        description={data ? `${data.total_sku} SKU · ${data.multi_groups} склеек · ${data.solo_skus} одиночных · покрыто ${data.covered}/${data.total_sku}` : "Объединённые карточки по imtID"}
+        description={data ? `${data.total_sku} SKU, ${data.multi_groups} склеек, ${data.solo_skus} одиночных, покрыто ${data.covered}/${data.total_sku}` : "Объединённые карточки по imtID"}
         actions={
           <>
-            <span className="hidden rounded-lg border border-violet-200 bg-violet-50 px-2.5 py-1.5 text-[10px] font-medium text-violet-600 sm:inline-flex">данные из РНП · показы / заказы / ДРР за 7 дней</span>
-            {categories.length ? (
-              <select value={category} onChange={(event) => setCategory(event.target.value)} aria-label="Категория" className="min-h-11 max-w-44 rounded-lg border border-slate-200 bg-white px-2.5 text-[11px] text-slate-600 outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100 sm:min-h-8">
-                <option value="">Все категории</option>
-                {categories.map((item) => <option key={item} value={item}>{item}</option>)}
-                <option value="__none">Без категории</option>
-              </select>
+            <span title="Показы, заказы, расход и ДРР берутся из РНП за последние 7 закрытых дней" className="rounded-lg border border-teal-200 bg-teal-50 px-2.5 py-1 text-[10px] font-medium text-teal-700">данные из РНП · показы/заказы/ДРР за {sklejkiPeriod()}</span>
+            {shops.length > 1 ? (
+              <div className="flex items-center gap-1 text-[10px]" aria-label="Фильтр кабинета">
+                <span className="text-slate-400">кабинет:</span>
+                {["", ...shops].map((value) => (
+                  <button key={value || "all"} type="button" onClick={() => setShop(value)} className={`min-h-8 rounded px-2 font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 ${shop === value ? "bg-violet-600 text-white" : value ? shopBadge(value) : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}>{value || "Все"}</button>
+                ))}
+              </div>
             ) : null}
-            <button type="button" onClick={() => setRetryKey((value) => value + 1)} disabled={loading} className="inline-flex min-h-11 items-center gap-1.5 rounded-lg px-3 text-[11px] font-medium text-slate-500 transition-colors hover:bg-white hover:text-violet-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 disabled:cursor-wait sm:min-h-8"><RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin motion-reduce:animate-none" : ""}`} /> Обновить</button>
+            <button type="button" onClick={() => setRetryKey((value) => value + 1)} disabled={loading} className="inline-flex min-h-8 items-center gap-1.5 rounded-lg px-2 text-[11px] font-medium text-slate-500 hover:text-teal-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 disabled:cursor-wait"><RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin motion-reduce:animate-none" : ""}`} /> обновить</button>
           </>
         }
       />
 
-      <div className="px-2 py-3 sm:px-6">
-        <div className="mb-3 flex flex-wrap items-center gap-2">
-          <button type="button" onClick={() => setView("multi")} className={`min-h-11 rounded-lg px-3 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 sm:min-h-8 ${view === "multi" ? "bg-violet-600 text-white shadow-sm" : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"}`}>Склейки с несколькими SKU ({multi.length})</button>
-          <button type="button" onClick={() => setView("solo")} className={`min-h-11 rounded-lg px-3 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 sm:min-h-8 ${view === "solo" ? "bg-violet-600 text-white shadow-sm" : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"}`}>Одиночные SKU ({solo.length})</button>
-          <span className="ml-auto text-[10px] text-slate-400">{activeCabinet?.name ?? "Все кабинеты"}</span>
-        </div>
-
+      <div className="px-3 py-3 sm:px-6">
         {loading ? (
           <>
             <LoadingBanner seconds={elapsed} hint={`imtID через WB · ${activeCabinet?.name ?? "все кабинеты"}`} />
@@ -191,10 +226,16 @@ export function WbSklejkiPage() {
           </>
         ) : error ? (
           <WbErrorState message={error} onRetry={() => setRetryKey((value) => value + 1)} />
-        ) : groups.length === 0 ? (
-          <WbEmptyState>{category ? "В выбранной категории нет карточек этого типа." : view === "multi" ? "Нет объединённых карточек с несколькими SKU." : "Нет одиночных SKU."}</WbEmptyState>
+        ) : !data ? null : data.total_sku === 0 ? (
+          <WbEmptyState>В выбранном кабинете нет карточек WB.</WbEmptyState>
         ) : (
-          <div className="space-y-3">{groups.map((group) => <GroupPanel key={`${group.shop_label}-${group.imt_id}`} group={group} />)}</div>
+          <>
+            <h2 className="mb-2 mt-1 text-sm font-semibold text-slate-700">Склейки с несколькими SKU ({multi.length})</h2>
+            {multi.length ? <div className="flex snap-x snap-mandatory items-start gap-3 overflow-x-auto pb-3">{multi.map((group) => <div key={`${group.shop_label}-${group.imt_id}`} className="snap-start"><GroupCard group={group} /></div>)}</div> : <div className="rounded-lg border border-dashed border-slate-300 px-4 py-8 text-center text-xs text-slate-400">Для выбранного кабинета нет склеек с несколькими SKU.</div>}
+
+            <h2 className="mb-2 mt-6 text-sm font-semibold text-slate-700">Одиночные SKU ({solo.length})</h2>
+            {solo.length ? <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">{solo.map((group) => <SoloCard key={`${group.shop_label}-${group.imt_id}`} group={group} />)}</div> : <div className="rounded-lg border border-dashed border-slate-300 px-4 py-8 text-center text-xs text-slate-400">Для выбранного кабинета нет одиночных SKU.</div>}
+          </>
         )}
       </div>
     </div>
