@@ -9,6 +9,9 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   // Страница входа и публичная политика конфиденциальности — без сайдбара и без гейта загрузки финансов
   if (pathname === "/login" || pathname === "/privacy") return <>{children}</>;
+  // Новый WB-кокпит имеет собственный shell и кабинетный контекст и не должен
+  // ждать гидрацию финансового провайдера. Финансовые и Ozon-маршруты не меняем.
+  if (pathname.startsWith("/wb")) return <div className="min-h-screen bg-gray-50">{children}</div>;
   // Главная + Ozon-аналитика — полноэкранные, без финансового сайдбара (как infernoff.ru)
   const isLauncher = pathname === "/";
   const isFullscreen = isLauncher || pathname.startsWith("/ozon");
