@@ -5,6 +5,7 @@ import { buildRnpTable, type RnpTable } from "@/lib/rnp/buildTable";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const WB_RNP_CACHE_SECONDS = 60 * 60;
+export const WB_RNP_CACHE_VERSION = "v3";
 
 export interface WbRnpCacheRequest {
   from: string;
@@ -40,7 +41,7 @@ export async function loadCachedWbRnp(
       if ("error" in result) throw new Error(result.error);
       return encodeCompressedJson(result);
     },
-    ["wb-rnp-snapshot-v2-compressed", identity],
+    [`wb-rnp-snapshot-${WB_RNP_CACHE_VERSION}-compressed`, identity],
     { revalidate: WB_RNP_CACHE_SECONDS, tags: [tag] },
   );
   return decodeCompressedJson<RnpTable>(await loadSnapshot());

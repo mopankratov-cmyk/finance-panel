@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { currentMoscowMonth, wbRnpCacheIdentity, wbRnpCacheTag } from "../lib/rnp/tableCache";
+import { currentMoscowMonth, WB_RNP_CACHE_VERSION, wbRnpCacheIdentity, wbRnpCacheTag } from "../lib/rnp/tableCache";
 
 test("WB RNP snapshot isolates cabinets and periods", () => {
   const all = wbRnpCacheIdentity({ from: "2026-07-01", to: "2026-07-31", cabinetId: null });
@@ -15,6 +15,10 @@ test("WB RNP snapshot tag is compact", () => {
   assert.match(tag, /^wb-rnp:[a-f0-9]{32}$/);
   assert.ok(tag.length < 256);
   assert.equal(tag.includes("Optima"), false);
+});
+
+test("WB RNP forecast schema invalidates the previous snapshot", () => {
+  assert.equal(WB_RNP_CACHE_VERSION, "v3");
 });
 
 test("WB RNP hourly warmup uses the Moscow calendar month", () => {

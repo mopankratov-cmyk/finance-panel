@@ -23,8 +23,16 @@ interface Metric {
   label: string;
   kind: string;
   daily: (number | null)[];
-  total: number;
+  total: number | null;
   forecast: number | null;
+  forecastLow?: number | null;
+  forecastHigh?: number | null;
+  forecastConfidencePct?: number | null;
+  forecastMethod?: string | null;
+  coveragePct?: number;
+  status?: "ready" | "partial" | "unavailable";
+  source?: string;
+  note?: string;
   group_start?: boolean;
 }
 
@@ -39,6 +47,9 @@ interface Sku {
 interface RnpTable {
   shop_label: string;
   sku_count: number;
+  generated_at: string;
+  as_of: string;
+  forecast_note: string;
   period: { label: string; period_type: string }[];
   summary: Metric[];
   skus: Sku[];
@@ -80,20 +91,32 @@ const METRIC_FALLBACKS: Record<string, { label: string; kind: string }> = {
   orders_count: { label: "Заказы, шт", kind: "int" },
   buyouts_sum: { label: "Продажи, ₽", kind: "money" },
   buyouts_count: { label: "Продажи, шт", kind: "int" },
-  buyout_pct: { label: "Выкуп, %", kind: "pct" },
-  gross: { label: "Маржа до ДРР, ₽", kind: "money" },
-  margin_pct: { label: "Маржа до ДРР, %", kind: "pct" },
+  buyout_pct: { label: "Выкуп потока, %", kind: "pct" },
+  gross: { label: "Прибыль после расходов МП, ₽", kind: "money" },
+  margin_pct: { label: "Расчётная маржа после рекламы, %", kind: "pct" },
   ad_spent: { label: "Рекл. расход, ₽", kind: "money" },
-  drr: { label: "ДРР, %", kind: "pct" },
+  drr: { label: "ДРР к заказам, %", kind: "pct" },
   stock: { label: "Остаток, шт", kind: "int" },
   turnover: { label: "Оборачиваемость, дней", kind: "int" },
   money: { label: "Деньги в остатках, ₽", kind: "money" },
   gmroi: { label: "GMROI, %", kind: "pct" },
 };
 
-const METRIC_ROW_HEIGHT = 27;
+const METRIC_ROW_HEIGHT = 34;
 const SKU_BLOCK_HEIGHT = METRIC_ORDER.length * METRIC_ROW_HEIGHT;
 const TABLE_PREFIX_HEIGHT = 38 + 34 + METRIC_ORDER.length * METRIC_ROW_HEIGHT + 34;
+const MOBILE_PAGE_SIZE = 20;
+const MONTHLY_FLOW_FIELDS = new Set([
+  "views",
+  "clicks",
+  "cart",
+  "orders_sum",
+  "orders_count",
+  "buyouts_sum",
+  "buyouts_count",
+  "gross",
+  "ad_spent",
+]);
 
 const SORTS = [
   { field: "stock", label: "Остаток" },
@@ -147,6 +170,12 @@ function fmt(value: number | null | undefined, kind: string) {
   return Math.round(value).toLocaleString("ru-RU");
 }
 
+function compactFmt(value: number | null | undefined, kind: string) {
+  if (value == null || !Number.isFinite(value)) return "—";
+  if (kind === "pct") return `${Math.round(value * 10) / 10}%`;
+  return new Intl.NumberFormat("ru-RU", { notation: "compact", maximumFractionDigits: 1 }).format(Math.round(value));
+}
+
 function findMetric(metrics: Metric[], field: string) {
   return metrics.find((metric) => metric.field === field);
 }
@@ -163,8 +192,43 @@ function completeMetrics(metrics: Metric[], periodLength: number) {
       daily: Array.from({ length: periodLength }, () => null),
       total: Number.NaN,
       forecast: null,
+      status: "unavailable",
+      coveragePct: 0,
     } satisfies Metric;
   });
+}
+
+function sumPlan(plan: Record<string, Record<string, number>>, skus: Sku[], field: string) {
+  const values = skus
+    .map((sku) => plan[String(sku.nm)]?.[field])
+    .filter((value): value is number => value != null && Number.isFinite(value));
+  return values.length ? values.reduce((sum, value) => sum + value, 0) : null;
+}
+
+function averagePlan(plan: Record<string, Record<string, number>>, skus: Sku[], field: string) {
+  const values = skus
+    .map((sku) => plan[String(sku.nm)]?.[field])
+    .filter((value): value is number => value != null && Number.isFinite(value));
+  return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
+}
+
+function aggregatePlanValue(plan: Record<string, Record<string, number>>, skus: Sku[], field: string, monthDays: number) {
+  const ratio = (numeratorField: string, denominatorField: string, multiplier = 100) => {
+    const numerator = sumPlan(plan, skus, numeratorField);
+    const denominator = sumPlan(plan, skus, denominatorField);
+    return numerator != null && denominator != null && denominator !== 0 ? numerator / denominator * multiplier : null;
+  };
+  if (field === "ctr") return ratio("clicks", "views") ?? averagePlan(plan, skus, field);
+  if (field === "buyout_pct") return ratio("buyouts_count", "orders_count") ?? averagePlan(plan, skus, field);
+  if (field === "drr") return ratio("ad_spent", "orders_sum") ?? averagePlan(plan, skus, field);
+  if (field === "margin_pct") return ratio("gross", "buyouts_sum") ?? averagePlan(plan, skus, field);
+  if (field === "turnover") {
+    const stock = sumPlan(plan, skus, "stock");
+    const buyouts = sumPlan(plan, skus, "buyouts_count");
+    return stock != null && buyouts != null && buyouts > 0 ? stock / (buyouts / monthDays) : averagePlan(plan, skus, field);
+  }
+  if (field === "gmroi") return ratio("gross", "money") ?? averagePlan(plan, skus, field);
+  return sumPlan(plan, skus, field);
 }
 
 function daysInMonth(month: string) {
@@ -204,6 +268,7 @@ export function WbRnpPage() {
   const [saving, setSaving] = useState<string | null>(null);
   const [planMessage, setPlanMessage] = useState<string | null>(null);
   const [skuWindow, setSkuWindow] = useState({ start: 0, end: 4 });
+  const [mobileLimit, setMobileLimit] = useState(MOBILE_PAGE_SIZE);
   const tableViewportRef = useRef<HTMLDivElement>(null);
   const requestId = useRef(0);
   const elapsed = useElapsedSeconds(loading);
@@ -282,7 +347,10 @@ export function WbRnpPage() {
   }, [activeCabinet, cabinetId, cabinets.length, cabinetsError, cabinetsLoading, range.from, range.to, ready, retryKey]);
 
   useEffect(() => {
-    if (!planning || !canWrite) return;
+    if (!canWrite) {
+      setPlan({});
+      return;
+    }
     const controller = new AbortController();
     setPlanMessage(null);
     fetch(`/api/rnp/${encodeURIComponent(cabinetId)}/plan?month=${encodeURIComponent(month)}`, {
@@ -298,7 +366,7 @@ export function WbRnpPage() {
         if (!controller.signal.aborted) setPlanMessage(cause instanceof Error ? cause.message : "Не удалось загрузить план");
       });
     return () => controller.abort();
-  }, [cabinetId, canWrite, month, planning]);
+  }, [cabinetId, canWrite, month]);
 
   const filteredSkus = useMemo(
     () => filterByCategory(data?.skus ?? [], (sku) => sku.art, byArticle, category),
@@ -318,10 +386,28 @@ export function WbRnpPage() {
 
   useEffect(() => {
     setSkuWindow({ start: 0, end: Math.min(4, sortedSkus.length) });
+    setMobileLimit(MOBILE_PAGE_SIZE);
     if (tableViewportRef.current) tableViewportRef.current.scrollTop = 0;
   }, [sortedSkus]);
 
   const visibleSkus = sortedSkus.slice(skuWindow.start, skuWindow.end);
+  const mobileSkus = sortedSkus.slice(0, mobileLimit);
+  const monthDayCount = daysInMonth(month);
+  const planOverview = (() => {
+    if (!data) return null;
+    const metric = findMetric(data.summary, "orders_sum") ?? null;
+    const planValue = aggregatePlanValue(plan, data.skus, "orders_sum", monthDayCount);
+    const plannedSku = data.skus.filter((sku) => Number.isFinite(plan[String(sku.nm)]?.orders_sum)).length;
+    return {
+      metric,
+      planValue,
+      planCoveragePct: data.skus.length ? Math.round(plannedSku / data.skus.length * 100) : 0,
+      progress: planValue && metric?.forecast != null ? metric.forecast / planValue * 100 : null,
+      readyMetrics: data.summary.filter((item) => item.status === "ready").length,
+      partialMetrics: data.summary.filter((item) => item.status === "partial").length,
+      unavailableMetrics: data.summary.filter((item) => item.status === "unavailable").length,
+    };
+  })();
 
   const updateSkuWindow = (element: HTMLDivElement) => {
     const offset = Math.max(0, element.scrollTop - TABLE_PREFIX_HEIGHT);
@@ -478,6 +564,49 @@ export function WbRnpPage() {
         </div>
       )}
 
+      {!loading && data && planOverview && (
+        <section className="mb-2.5 rounded-xl border border-slate-200 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.03)]" aria-label="План факт прогноз РНП">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <h2 className="text-xs font-bold text-slate-800">План · факт · прогноз заказов</h2>
+              <p className="mt-0.5 text-[10px] text-slate-400">Месячный план сравнивается с прогнозом полного месяца, а не с незавершённым фактом.</p>
+            </div>
+            <div className="text-right text-[9px] leading-4 text-slate-400">
+              <div>Факт по {data.as_of}</div>
+              <div>Снимок {new Date(data.generated_at).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</div>
+            </div>
+          </div>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+            <OverviewMetric
+              label="План месяца"
+              value={fmt(planOverview.planValue, "money")}
+              detail={planOverview.planValue == null ? "План не задан" : `Покрыто ${planOverview.planCoveragePct}% SKU`}
+              tone={planOverview.planValue == null ? "amber" : "slate"}
+            />
+            <OverviewMetric label="Факт месяца" value={fmt(planOverview.metric?.total, "money")} detail={`по ${data.as_of}`} tone="slate" />
+            <OverviewMetric
+              label="Прогноз месяца"
+              value={fmt(planOverview.metric?.forecast, "money")}
+              detail={planOverview.metric?.forecastLow != null && planOverview.metric.forecastHigh != null
+                ? `Диапазон ${compactFmt(planOverview.metric.forecastLow, "money")}–${compactFmt(planOverview.metric.forecastHigh, "money")} ₽`
+                : "Недостаточно данных"}
+              tone="violet"
+            />
+            <OverviewMetric
+              label="Выполнение плана"
+              value={fmt(planOverview.progress, "pct")}
+              detail={planOverview.planValue == null ? "Задайте план по SKU" : `Уверенность ${planOverview.metric?.forecastConfidencePct ?? 0}%`}
+              tone={planOverview.progress != null && planOverview.progress < 90 ? "rose" : "emerald"}
+            />
+          </div>
+          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg bg-slate-50 px-2.5 py-2 text-[9px] text-slate-500">
+            <span>Качество метрик: {planOverview.readyMetrics} готово · {planOverview.partialMetrics} частично · {planOverview.unavailableMetrics} недоступно</span>
+            <span>{data.forecast_note}</span>
+            <span>«Выкуп потока» не является когортным показателем и может превышать 100%.</span>
+          </div>
+        </section>
+      )}
+
       {loading ? (
         <>
           <LoadingBanner seconds={elapsed} hint="РНП по SKU" />
@@ -516,7 +645,7 @@ export function WbRnpPage() {
                   <th className="sticky left-28 top-0 z-40 h-[38px] w-[168px] min-w-[168px] border-b border-r border-slate-200 bg-[#fafbfc] px-2 text-left font-semibold text-slate-500">Метрика \\ Дата</th>
                   <PlanHeader>План день</PlanHeader>
                   <PlanHeader>План мес.</PlanHeader>
-                  <PlanHeader>Прогноз мес.</PlanHeader>
+                  <PlanHeader>Прогноз мес.<span className="mt-0.5 block text-[8px] font-normal text-slate-400">диапазон</span></PlanHeader>
                   <PlanHeader>% плана</PlanHeader>
                   <PlanHeader strong>Факт мес.</PlanHeader>
                   {data.period.map((day, index) => (
@@ -533,9 +662,9 @@ export function WbRnpPage() {
                   <MetricRow
                     key={`summary-${metric.field}`}
                     metric={metric}
-                    planValue={null}
+                    planValue={aggregatePlanValue(plan, data.skus, metric.field, monthDayCount)}
                     planEditable={false}
-                    monthDays={daysInMonth(month)}
+                    monthDays={monthDayCount}
                     firstCell={index === 0 ? <SummaryCell label={data.shop_label} rowSpan={metrics.length} /> : null}
                   />
                 ))}
@@ -553,7 +682,7 @@ export function WbRnpPage() {
                         metric={metric}
                         planValue={savedPlan}
                         planEditable={planning && canWrite}
-                        monthDays={daysInMonth(month)}
+                        monthDays={monthDayCount}
                         firstCell={index === 0 ? <ProductCell sku={sku} rowSpan={metrics.length} /> : null}
                         draftValue={displayedDraft}
                         saving={saving === key}
@@ -569,8 +698,13 @@ export function WbRnpPage() {
           </div>
 
           <div className="space-y-2.5 md:hidden">
-            {sortedSkus.map((sku) => {
+            <p className="rounded-lg bg-violet-50 px-3 py-2 text-[10px] text-violet-700">
+              Сначала показаны {Math.min(mobileLimit, sortedSkus.length)} SKU по сортировке «{SORTS.find((sort) => sort.field === sortField)?.label}».
+            </p>
+            {mobileSkus.map((sku) => {
               const selected = SORTS.map((sort) => findMetric(sku.metrics, sort.field)).filter((metric): metric is Metric => Boolean(metric));
+              const orders = findMetric(sku.metrics, "orders_sum");
+              const skuPlan = plan[String(sku.nm)]?.orders_sum ?? null;
               return (
                 <article key={sku.nm} className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
                   <div className="flex items-center gap-2.5">
@@ -582,6 +716,11 @@ export function WbRnpPage() {
                       <p className="mt-1 text-[9px] text-slate-400">WB {sku.nm}</p>
                     </div>
                   </div>
+                  <dl className="mt-3 grid grid-cols-3 gap-1 rounded-lg bg-slate-50 p-1.5">
+                    <div className="rounded-md bg-white px-2 py-1.5"><dt className="text-[8px] text-slate-400">План</dt><dd className="mt-0.5 truncate text-[10px] font-semibold text-slate-700">{compactFmt(skuPlan, "money")}</dd></div>
+                    <div className="rounded-md bg-white px-2 py-1.5"><dt className="text-[8px] text-slate-400">Факт</dt><dd className="mt-0.5 truncate text-[10px] font-semibold text-slate-700">{compactFmt(orders?.total, "money")}</dd></div>
+                    <div className="rounded-md bg-white px-2 py-1.5"><dt className="text-[8px] text-slate-400">Прогноз</dt><dd className="mt-0.5 truncate text-[10px] font-semibold text-violet-700">{compactFmt(orders?.forecast, "money")}</dd></div>
+                  </dl>
                   <dl className="mt-3 grid grid-cols-2 gap-px overflow-hidden rounded-lg bg-slate-200">
                     {selected.map((metric) => (
                       <div key={metric.field} className="bg-white px-2.5 py-2">
@@ -593,9 +732,35 @@ export function WbRnpPage() {
                 </article>
               );
             })}
+            {mobileLimit < sortedSkus.length && (
+              <button
+                type="button"
+                onClick={() => setMobileLimit((current) => Math.min(sortedSkus.length, current + MOBILE_PAGE_SIZE))}
+                className="min-h-11 w-full rounded-xl border border-violet-200 bg-white text-xs font-semibold text-violet-700"
+              >
+                Показать ещё {Math.min(MOBILE_PAGE_SIZE, sortedSkus.length - mobileLimit)} SKU
+              </button>
+            )}
           </div>
         </>
       ) : null}
+    </div>
+  );
+}
+
+function OverviewMetric({ label, value, detail, tone }: { label: string; value: string; detail: string; tone: "slate" | "violet" | "emerald" | "amber" | "rose" }) {
+  const tones = {
+    slate: "border-slate-200 bg-slate-50 text-slate-800",
+    violet: "border-violet-200 bg-violet-50 text-violet-800",
+    emerald: "border-emerald-200 bg-emerald-50 text-emerald-800",
+    amber: "border-amber-200 bg-amber-50 text-amber-800",
+    rose: "border-rose-200 bg-rose-50 text-rose-800",
+  };
+  return (
+    <div className={`rounded-lg border px-3 py-2.5 ${tones[tone]}`}>
+      <div className="text-[9px] font-semibold uppercase tracking-wide opacity-70">{label}</div>
+      <div className="mt-1 text-base font-bold tabular-nums">{value}</div>
+      <div className="mt-0.5 text-[9px] opacity-70">{detail}</div>
     </div>
   );
 }
@@ -684,18 +849,25 @@ function MetricRow({
   onDraftChange?: (value: string) => void;
   onSave?: () => void;
 }) {
-  const planDay = planValue == null ? null : planValue / monthDays;
-  const progress = planValue && metric.forecast != null ? (metric.forecast / planValue) * 100 : null;
+  const planDay = planValue == null ? null : MONTHLY_FLOW_FIELDS.has(metric.field) ? planValue / monthDays : planValue;
+  const progress = planValue != null && planValue !== 0 && metric.forecast != null ? (metric.forecast / planValue) * 100 : null;
   const groupBorder = metric.group_start ? "border-t-2 border-t-slate-300" : "";
+  const qualityTone = metric.status === "ready" ? "bg-emerald-500" : metric.status === "partial" ? "bg-amber-500" : "bg-slate-300";
+  const metricHelp = [
+    metric.source ? `Источник: ${metric.source}` : null,
+    metric.coveragePct != null ? `Покрытие: ${metric.coveragePct}%` : null,
+    metric.note,
+    metric.forecastMethod,
+  ].filter(Boolean).join(" · ");
 
   return (
     <tr className="group hover:bg-violet-50/40">
       {firstCell}
-      <td className={`sticky left-28 z-10 h-[27px] w-[168px] min-w-[168px] border-b border-r border-slate-200 bg-white px-2 font-medium group-hover:bg-violet-50 ${groupBorder}`}>
-        {metric.label}
+      <td className={`sticky left-28 z-10 h-[34px] w-[168px] min-w-[168px] border-b border-r border-slate-200 bg-white px-2 font-medium group-hover:bg-violet-50 ${groupBorder}`} title={metricHelp || undefined}>
+        <span className="inline-flex items-center gap-1.5"><span className={`h-1.5 w-1.5 rounded-full ${qualityTone}`} />{metric.label}</span>
       </td>
       <DataCell metric={metric} value={planDay} muted extraClass={groupBorder} />
-      <td className={`relative h-[27px] w-[82px] min-w-[82px] border-b border-r border-slate-200 bg-[#fbfcfd] px-1 text-right tabular-nums ${groupBorder}`}>
+      <td className={`relative h-[34px] w-[82px] min-w-[82px] border-b border-r border-slate-200 bg-[#fbfcfd] px-1 text-right tabular-nums ${groupBorder}`}>
         {planEditable ? (
           <div className="relative">
             <input
@@ -715,13 +887,28 @@ function MetricRow({
           <span className={planValue == null ? "text-slate-400" : "text-slate-600"}>{fmt(planValue, metric.kind)}</span>
         )}
       </td>
-      <DataCell metric={metric} value={metric.forecast} muted extraClass={groupBorder} />
+      <ForecastCell metric={metric} extraClass={groupBorder} />
       <DataCell metric={{ ...metric, kind: "pct" }} value={progress} muted extraClass={groupBorder} />
       <DataCell metric={metric} value={metric.total} strong extraClass={`border-l-2 border-l-slate-300 ${groupBorder}`} />
       {metric.daily.map((value, index) => (
         <DataCell key={index} metric={metric} value={value} extraClass={groupBorder} />
       ))}
     </tr>
+  );
+}
+
+function ForecastCell({ metric, extraClass = "" }: { metric: Metric; extraClass?: string }) {
+  const hasRange = metric.forecastLow != null && metric.forecastHigh != null && metric.forecast != null;
+  const title = [
+    metric.forecastMethod,
+    metric.forecastConfidencePct != null ? `Уверенность: ${metric.forecastConfidencePct}%` : null,
+    metric.coveragePct != null ? `Покрытие: ${metric.coveragePct}%` : null,
+  ].filter(Boolean).join(" · ");
+  return (
+    <td className={`h-[34px] w-[82px] min-w-[82px] border-b border-r border-slate-200 bg-[#fbfcfd] px-1.5 text-right tabular-nums ${toneClass(metric, metric.forecast ?? null)} ${extraClass}`} title={title || undefined}>
+      <span className="block font-medium">{fmt(metric.forecast, metric.kind)}</span>
+      {hasRange && <span className="mt-0.5 block text-[8px] text-slate-400">{compactFmt(metric.forecastLow, metric.kind)}–{compactFmt(metric.forecastHigh, metric.kind)}</span>}
+    </td>
   );
 }
 
@@ -741,7 +928,7 @@ function DataCell({
   const background = cellBackground(metric, value ?? null);
   return (
     <td
-      className={`h-[27px] w-[82px] min-w-[82px] border-b border-r border-slate-200 px-2 text-right tabular-nums ${
+      className={`h-[34px] w-[82px] min-w-[82px] border-b border-r border-slate-200 px-2 text-right tabular-nums ${
         strong ? "font-semibold" : "font-normal"
       } ${muted && value == null ? "bg-[#fbfcfd] text-slate-400" : toneClass(metric, value ?? null)} ${extraClass}`}
       style={background ? { backgroundColor: background } : undefined}
