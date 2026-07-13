@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
+import { hasCabinetAccess } from "@/lib/auth/cabinetAccess";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { wbCardImageUrl } from "@/lib/wb/cardImage";
-import { getWbCommissionMerged } from "@/lib/wb/commissions";
-import { cabinetIdFromParam } from "@/lib/rnp/resolveShop";
+import { getWbCommissionForCabinet } from "@/lib/wb/commissions";
+import { resolveShopCabinet } from "@/lib/rnp/resolveShop";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60; // факт-комиссия = финотчёт по каждому кабинету (тяжёлый, кэш 6ч)
@@ -34,12 +35,15 @@ export async function GET(req: NextRequest) {
   const taxPct = num("tax", 7);        // налог
   const ff = num("ff", 0);             // фулфилмент ₽/ед (нет per-SKU данных)
   const targetMargin = num("margin", 25); // целевая маржа для «цены до СПП для N% маржи»
-  const p_cabinet = cabinetIdFromParam(sp.get("cabinet")); // фильтр по выбранному кабинету (null → все)
+  const { cabinetId: p_cabinet } = await resolveShopCabinet(sp.get("cabinet") ?? undefined);
+  if (!(await hasCabinetAccess(p_cabinet))) {
+    return NextResponse.json({ error: "Нет доступа к кабинету" }, { status: 403 });
+  }
 
   const [rpcRes, costsRes, comm] = await Promise.all([
     db.rpc("rnp_report", { p_cabinet }),
     db.from("product_costs").select("article, name, entity, cost_rub, warehouse_expenses"),
-    getWbCommissionMerged(30), // факт-комиссия% по nm — финотчёт по каждому кабинету (ENV пуст)
+    getWbCommissionForCabinet(p_cabinet, 30),
   ]);
   // ставки по nm: факт из отчёта → средняя по кабинету → дефолт
   const commForNm = (nm: number) => comm.byNm.get(nm)?.pct ?? (comm.avgPct > 0 ? comm.avgPct : commDefault);

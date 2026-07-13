@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { hasCabinetAccess } from "@/lib/auth/cabinetAccess";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { wbCardImageUrl } from "@/lib/wb/cardImage";
 import { resolveShopCabinet } from "@/lib/rnp/resolveShop";
@@ -44,6 +45,9 @@ export async function GET(request: NextRequest) {
   const params = new URL(request.url).searchParams;
   // Кабинет из ?cabinet=<uuid|all> — фильтруем все источники по нему (или все, если "all").
   const { cabinetId, label } = await resolveShopCabinet(params.get("cabinet") ?? undefined);
+  if (!(await hasCabinetAccess(cabinetId))) {
+    return NextResponse.json({ error: "Нет доступа к кабинету" }, { status: 403 });
+  }
   const days = windowDays(params.get("window"));
   const period = customPeriod(params.get("date_from"), params.get("date_to")) ?? selectedPeriod(days);
 

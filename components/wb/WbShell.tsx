@@ -2,7 +2,6 @@
 
 import {
   BarChart3,
-  Boxes,
   Calculator,
   ChevronRight,
   FlaskConical,
@@ -14,7 +13,6 @@ import {
   PackageSearch,
   Search,
   Settings,
-  ShoppingCart,
   Sparkles,
   Target,
   Truck,
@@ -35,21 +33,24 @@ interface NavItem {
 
 const WORK_NAV: NavItem[] = [
   { label: "РНП", href: "/wb/rnp", icon: BarChart3, target: true },
-  { label: "Планирование", href: "/planning", icon: Target },
-  { label: "Юнит-экономика", href: "/unit", icon: Calculator },
-  { label: "SEO", href: "/seo", icon: Search },
-  { label: "Склейки", href: "/sklejki", icon: Link2 },
+  { label: "Планирование", href: "/wb/planning", icon: Target, target: true },
+  { label: "Юнит-экономика", href: "/wb/unit", icon: Calculator, target: true },
+  { label: "SEO", href: "/wb/seo", icon: Search, target: true },
+  { label: "Склейки", href: "/wb/sklejki", icon: Link2, target: true },
   { label: "Поставки", href: "/supplies", icon: Truck },
-  { label: "Воронка", href: "/seo", icon: ShoppingCart },
   { label: "Реклама", href: "/adverts", icon: Megaphone },
   { label: "CTR-тесты", href: "/ctrtest", icon: FlaskConical },
   { label: "Товары", href: "/product", icon: PackageSearch },
   { label: "Отзывы", href: "/reviews", icon: MessageSquareText },
 ];
 
+function isWorkItemActive(pathname: string, item: NavItem) {
+  if (item.href === "/wb/rnp") return pathname === "/wb" || pathname.startsWith("/wb/rnp");
+  return pathname === item.href || pathname.startsWith(`${item.href}/`);
+}
+
 const SYSTEM_NAV: NavItem[] = [
   { label: "Главная", href: "/", icon: Home },
-  { label: "Модули", href: "/", icon: Boxes },
   { label: "Кабинеты", href: "/cabinets", icon: Settings },
   { label: "Сотрудники", href: "/users", icon: Users },
 ];
@@ -62,7 +63,7 @@ function RailLink({ item, active, cabinetId }: { item: NavItem; active: boolean;
       href={href}
       aria-label={item.label}
       title={item.label}
-      className={`group relative mx-2 flex h-9 items-center justify-center rounded-[9px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 ${
+      className={`group relative mx-2 flex h-11 items-center justify-center rounded-[9px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 md:h-9 ${
         active ? "bg-violet-50 text-violet-700" : "text-slate-500 hover:bg-slate-50 hover:text-slate-800"
       }`}
     >
@@ -124,7 +125,7 @@ export function WbShell({ children }: { children: React.ReactNode }) {
               key={`${item.label}-${item.href}`}
               item={item}
               cabinetId={cabinetId || "all"}
-              active={item.target ? pathname === "/wb" || pathname.startsWith(item.href) : pathname === item.href}
+              active={isWorkItemActive(pathname, item)}
             />
           ))}
         </div>
@@ -172,7 +173,7 @@ export function WbShell({ children }: { children: React.ReactNode }) {
           type="button"
           onClick={() => setMenuOpen(true)}
           aria-label="Открыть меню"
-          className="mr-2 grid h-8 w-8 place-items-center rounded-lg bg-violet-700 text-[9px] font-black text-white md:hidden"
+          className="mr-2 grid h-11 w-11 place-items-center rounded-lg bg-violet-700 text-[9px] font-black text-white md:hidden"
         >
           WB
         </button>
@@ -194,7 +195,7 @@ export function WbShell({ children }: { children: React.ReactNode }) {
             onClick={logout}
             title="Выйти"
             aria-label="Выйти"
-            className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-slate-400 hover:bg-slate-50 hover:text-slate-700"
+            className="grid h-11 w-11 shrink-0 place-items-center rounded-lg text-slate-400 hover:bg-slate-50 hover:text-slate-700 sm:h-8 sm:w-8"
           >
             <LogOut className="h-3.5 w-3.5" />
           </button>
@@ -207,9 +208,9 @@ export function WbShell({ children }: { children: React.ReactNode }) {
         {WORK_NAV.slice(0, 4).map((item) => {
           const Icon = item.icon;
           const href = item.target ? `${item.href}?cabinet=${encodeURIComponent(cabinetId || "all")}` : item.href;
-          const active = item.target ? pathname === "/wb" || pathname.startsWith(item.href) : pathname === item.href;
+          const active = isWorkItemActive(pathname, item);
           return (
-            <Link key={item.label} href={href} className={`flex min-w-14 flex-col items-center gap-0.5 text-[9px] ${active ? "text-violet-700" : "text-slate-400"}`}>
+            <Link key={item.label} href={href} className={`flex h-full min-w-14 flex-col items-center justify-center gap-0.5 text-[9px] ${active ? "text-violet-700" : "text-slate-400"}`}>
               <Icon className="h-4 w-4" />
               {item.label}
             </Link>

@@ -42,7 +42,7 @@ export function WbCabinetSwitcher() {
         onClick={() => setOpen((value) => !value)}
         aria-haspopup="listbox"
         aria-expanded={open}
-        className="flex h-8 min-w-[154px] items-center gap-2 rounded-lg border border-violet-200 bg-violet-50 px-2.5 text-left text-[11px] font-semibold text-violet-700 transition hover:border-violet-300 hover:bg-violet-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500"
+        className="flex h-11 min-w-[140px] items-center gap-2 rounded-lg border border-violet-200 bg-violet-50 px-2.5 text-left text-[11px] font-semibold text-violet-700 transition hover:border-violet-300 hover:bg-violet-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 sm:h-8 sm:min-w-[154px]"
       >
         <span className="relative flex h-4 w-4 shrink-0 items-center justify-center">
           {cabinetId === "all" ? <Layers3 className="h-3.5 w-3.5" /> : <Building2 className="h-3.5 w-3.5" />}
@@ -73,7 +73,7 @@ export function WbCabinetSwitcher() {
                   setCabinetId("all");
                   setOpen(false);
                 }}
-                className={`flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs ${cabinetId === "all" ? "bg-violet-50 text-violet-700" : "text-slate-600 hover:bg-slate-50"}`}
+                className={`flex min-h-11 w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs ${cabinetId === "all" ? "bg-violet-50 text-violet-700" : "text-slate-600 hover:bg-slate-50"}`}
               >
                 <Layers3 className="h-4 w-4 shrink-0" />
                 <span className="flex-1 font-semibold">Все кабинеты</span>
@@ -93,7 +93,7 @@ export function WbCabinetSwitcher() {
                     setCabinetId(cabinet.id);
                     setOpen(false);
                   }}
-                  className={`flex w-full items-start gap-2 rounded-lg px-2.5 py-2 text-left ${selected ? "bg-violet-50 text-violet-700" : "text-slate-600 hover:bg-slate-50"}`}
+                  className={`flex min-h-11 w-full items-start gap-2 rounded-lg px-2.5 py-2 text-left ${selected ? "bg-violet-50 text-violet-700" : "text-slate-600 hover:bg-slate-50"}`}
                 >
                   <Building2 className="mt-0.5 h-4 w-4 shrink-0" />
                   <span className="min-w-0 flex-1">
@@ -119,7 +119,7 @@ export function WbCabinetSwitcher() {
             <button
               type="button"
               onClick={refreshCabinets}
-              className="inline-flex items-center gap-1 text-[10px] font-semibold text-slate-500 hover:text-violet-700"
+              className="inline-flex min-h-11 items-center gap-1 px-2 text-[10px] font-semibold text-slate-500 hover:text-violet-700 sm:min-h-8"
             >
               <RefreshCw className="h-3 w-3" /> Обновить
             </button>

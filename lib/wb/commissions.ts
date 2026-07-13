@@ -7,7 +7,7 @@
 // но никогда не кладём сырой ответ в Next Data Cache: на больших кабинетах попытка
 // кэширования нескольких JSON подряд переполняет память Vercel.
 
-import { cabinetProductScope, getActiveWbCabinets } from "./cabinetTokens";
+import { cabinetProductScope, getActiveWbCabinets, getWbCabinet, resolveWbToken } from "./cabinetTokens";
 import { allowsProduct, type WbProductScope } from "./productScope";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
@@ -123,6 +123,19 @@ export async function getWbCommissionMerged(days = 30): Promise<WbCommission> {
   const cached = await getWbCommissionFromCache();
   if (cached) return cached;
   return getWbCommissionMergedLive(days);
+}
+
+// Один источник выбора ставок для экранов с глобальным переключателем кабинета.
+// Конкретный кабинет не должен случайно получать среднюю комиссию другого юрлица.
+export async function getWbCommissionForCabinet(cabinetId: string | null, days = 30): Promise<WbCommission> {
+  if (!cabinetId) return getWbCommissionMerged(days);
+  const cabinet = await getWbCabinet(cabinetId);
+  if (!cabinet) return getWbCommissionMerged(days);
+  return getWbCommission(days, {
+    token: resolveWbToken(cabinet, "statistics"),
+    cacheKey: cabinet.id,
+    scope: cabinetProductScope(cabinet),
+  });
 }
 
 async function getWbCommissionFromCache(): Promise<WbCommission | null> {
