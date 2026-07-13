@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { revalidateTag, unstable_cache } from "next/cache";
-import { buildRnpTable } from "@/lib/rnp/buildTable";
+import { decodeCompressedJson, encodeCompressedJson } from "@/lib/cache/compressedJson";
+import { buildRnpTable, type RnpTable } from "@/lib/rnp/buildTable";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const WB_RNP_CACHE_SECONDS = 60 * 60;
@@ -37,12 +38,12 @@ export async function loadCachedWbRnp(
     async () => {
       const result = await buildRnpTable(input.from, input.to, input.cabinetId, input.label);
       if ("error" in result) throw new Error(result.error);
-      return result;
+      return encodeCompressedJson(result);
     },
-    ["wb-rnp-snapshot-v1", identity],
+    ["wb-rnp-snapshot-v2-compressed", identity],
     { revalidate: WB_RNP_CACHE_SECONDS, tags: [tag] },
   );
-  return loadSnapshot();
+  return decodeCompressedJson<RnpTable>(await loadSnapshot());
 }
 
 export async function listWbRnpScopes(): Promise<Array<{ cabinetId: string | null; label: string }>> {

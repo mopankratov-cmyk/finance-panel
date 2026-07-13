@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { revalidateTag, unstable_cache } from "next/cache";
+import { decodeCompressedJson, encodeCompressedJson } from "@/lib/cache/compressedJson";
 import {
   resolveOzonScopeDescriptor,
   type OzonCabinetScopeDescriptor,
@@ -14,6 +15,8 @@ export interface OzonCockpitCacheRequest {
   days: number;
   taxPct: number;
 }
+
+type OzonCockpitSnapshot = Awaited<ReturnType<typeof loadOzonCockpit>>;
 
 export function normalizeOzonCacheRequest(input: OzonCockpitCacheRequest): OzonCockpitCacheRequest {
   return {
@@ -50,10 +53,11 @@ export async function loadCachedOzonCockpit(
     async () => {
       const scope = await resolveOzonScopeDescriptor(normalized.scope);
       if (!scope) throw new Error("Ozon-кабинеты для снимка больше недоступны");
-      return loadOzonCockpit(normalized.view, scope, normalized.days, normalized.taxPct);
+      const data = await loadOzonCockpit(normalized.view, scope, normalized.days, normalized.taxPct);
+      return encodeCompressedJson(data);
     },
-    ["ozon-cockpit-snapshot-v1", identity],
+    ["ozon-cockpit-snapshot-v2-compressed", identity],
     { revalidate: OZON_COCKPIT_CACHE_SECONDS, tags: [tag] },
   );
-  return loadSnapshot();
+  return decodeCompressedJson<OzonCockpitSnapshot>(await loadSnapshot());
 }
