@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { requireApiSession } from "@/lib/auth/apiGuard";
+import { hasCabinetAccess } from "@/lib/auth/cabinetAccess";
 
 export const dynamic = "force-dynamic";
 
@@ -17,9 +18,12 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     receivedQty?: number; expectedQty?: number; expectedAt?: string; warehouse?: string; note?: string;
   };
 
-  const { data: existing, error: findErr } = await db.from("purchase_receipts").select("status").eq("id", id).maybeSingle();
+  const { data: existing, error: findErr } = await db.from("purchase_receipts").select("status, cabinet_id").eq("id", id).maybeSingle();
   if (findErr) return NextResponse.json({ data: null, error: findErr.message }, { status: 500 });
   if (!existing) return NextResponse.json({ data: null, error: "Позиция не найдена" }, { status: 404 });
+  if (!(await hasCabinetAccess(existing.cabinet_id as string))) {
+    return NextResponse.json({ data: null, error: "Нет доступа к кабинету" }, { status: 403 });
+  }
 
   if (typeof body.receivedQty === "number") {
     if (existing.status !== "expected") return NextResponse.json({ data: null, error: "Эта позиция уже принята" }, { status: 400 });
@@ -52,9 +56,12 @@ export async function DELETE(_req: NextRequest, ctx: { params: Promise<{ id: str
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ data: null, error: "Supabase не настроен" }, { status: 500 });
 
-  const { data: existing, error: findErr } = await db.from("purchase_receipts").select("status").eq("id", id).maybeSingle();
+  const { data: existing, error: findErr } = await db.from("purchase_receipts").select("status, cabinet_id").eq("id", id).maybeSingle();
   if (findErr) return NextResponse.json({ data: null, error: findErr.message }, { status: 500 });
   if (!existing) return NextResponse.json({ data: null, error: "Позиция не найдена" }, { status: 404 });
+  if (!(await hasCabinetAccess(existing.cabinet_id as string))) {
+    return NextResponse.json({ data: null, error: "Нет доступа к кабинету" }, { status: 403 });
+  }
   if (existing.status !== "expected") return NextResponse.json({ data: null, error: "Нельзя удалить принятую позицию — это история" }, { status: 409 });
 
   const { error } = await db.from("purchase_receipts").delete().eq("id", id);

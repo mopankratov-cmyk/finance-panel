@@ -5,6 +5,7 @@ import { saveCardMediaOrder } from "@/lib/wb/media";
 import { checkCardHasVideo } from "@/lib/wb/cards";
 import { requireApiSession } from "@/lib/auth/apiGuard";
 import { getServerSession } from "@/lib/auth/server";
+import { hasCabinetAccess } from "@/lib/auth/cabinetAccess";
 
 export const dynamic = "force-dynamic";
 
@@ -70,6 +71,9 @@ export async function POST(req: NextRequest) {
   const { cabinetId, nmId, article, photosBefore, photosAfter } = body;
   if (!cabinetId || !nmId || !photosAfter?.length) {
     return NextResponse.json({ ok: false, error: "Не хватает данных: cabinetId, nmId, photosAfter" }, { status: 400 });
+  }
+  if (!(await hasCabinetAccess(cabinetId))) {
+    return NextResponse.json({ ok: false, error: "Нет доступа к кабинету" }, { status: 403 });
   }
 
   const cab = await getWbCabinet(cabinetId);

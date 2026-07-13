@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { cabinetIdFromParam } from "@/lib/rnp/resolveShop";
 import { requireApiSession } from "@/lib/auth/apiGuard";
 import { getServerSession } from "@/lib/auth/server";
+import { hasCabinetAccess } from "@/lib/auth/cabinetAccess";
 
 export const dynamic = "force-dynamic";
 
@@ -66,6 +67,9 @@ export async function GET(req: NextRequest) {
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ data: null, error: "Supabase не настроен" }, { status: 500 });
   const p_cabinet = cabinetIdFromParam(new URL(req.url).searchParams.get("cabinet"));
+  if (!(await hasCabinetAccess(p_cabinet))) {
+    return NextResponse.json({ data: null, error: "Нет доступа к кабинету" }, { status: 403 });
+  }
 
   let q = db.from("purchase_receipts").select("*");
   if (p_cabinet) q = q.eq("cabinet_id", p_cabinet);
@@ -94,6 +98,9 @@ export async function POST(req: NextRequest) {
   };
   const cabinetId = cabinetIdFromParam(body.cabinetId);
   if (!cabinetId) return NextResponse.json({ data: null, error: "Укажите корректный кабинет" }, { status: 400 });
+  if (!(await hasCabinetAccess(cabinetId))) {
+    return NextResponse.json({ data: null, error: "Нет доступа к кабинету" }, { status: 403 });
+  }
   const lines = body.lines ?? [];
   if (!lines.length) return NextResponse.json({ data: null, error: "Добавьте хотя бы одну позицию" }, { status: 400 });
   for (let i = 0; i < lines.length; i++) {

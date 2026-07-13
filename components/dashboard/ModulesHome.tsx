@@ -25,12 +25,12 @@ interface ModuleCard {
 }
 
 const MODULES: ModuleCard[] = [
-  { title: "Реклама WB", description: "Активные РК, расход по SKU, ДРР и баланс продвижения", href: "/adverts", icon: Megaphone, agent: "Андер", zone: "Аналитика", color: ["bg-violet-100", "text-violet-700"] },
+  { title: "Реклама WB", description: "Активные РК, расход по SKU, ДРР и баланс продвижения", href: "/wb/adverts", icon: Megaphone, agent: "Андер", zone: "Аналитика", color: ["bg-violet-100", "text-violet-700"] },
   { title: "РНП по SKU", description: "Расход, выручка, выкуп, ДРР, маржа и GMROI по артикулам", href: "/wb/rnp", icon: Table2, zone: "Аналитика", color: ["bg-violet-100", "text-violet-700"] },
   { title: "SEO / Воронка", description: "Показы → CTR → корзина → заказ, ДРР и маржа по SKU", href: "/wb/seo", icon: Search, zone: "Аналитика", color: ["bg-fuchsia-100", "text-fuchsia-700"] },
   { title: "Склейки", description: "Объединённые карточки по imtID с воронкой и рекламой", href: "/wb/sklejki", icon: Layers, zone: "Аналитика", color: ["bg-purple-100", "text-purple-700"] },
   { title: "Юнит-экономика", description: "Прибыль/ед: цена до СПП минус все расходы МП", href: "/wb/unit", icon: Sigma, zone: "Аналитика", color: ["bg-indigo-100", "text-indigo-700"] },
-  { title: "CTR по SKU", description: "CTR, CPC и ДРР рекламы по артикулам за период", href: "/ctrtest", icon: MousePointerClick, zone: "Аналитика", color: ["bg-violet-100", "text-violet-700"] },
+  { title: "CTR по SKU", description: "CTR, CPC и ДРР рекламы по артикулам за период", href: "/wb/ctr", icon: MousePointerClick, zone: "Аналитика", color: ["bg-violet-100", "text-violet-700"] },
   { title: "Планирование", description: "Годовой план заказов по месяцам и остатки по SKU", href: "/wb/planning", icon: CalendarRange, zone: "Аналитика", color: ["bg-emerald-100", "text-emerald-700"] },
   { title: "Ozon Аналитика", description: "РНП, воронка, юнит, остатки, удержания", href: "/ozon", icon: BarChart3, agent: "Озар", zone: "Аналитика", color: ["bg-sky-100", "text-sky-700"] },
 
@@ -38,7 +38,7 @@ const MODULES: ModuleCard[] = [
   { title: "ОПиУ WB+Ozon", description: "P&L до СПП + соинвест, маржа, налог", href: "/pnl", icon: LineChart, zone: "Финансы", color: ["bg-blue-100", "text-blue-700"] },
   { title: "Где теряем", description: "Удержания: реклама, логистика, комиссия", href: "/losses", icon: TrendingDown, zone: "Финансы", color: ["bg-rose-100", "text-rose-700"] },
 
-  { title: "Закупки", description: "План поставок, потребность, локализация", href: "/supplies", icon: Package, agent: "Саму", zone: "Операции", color: ["bg-cyan-100", "text-cyan-700"] },
+  { title: "Закупки", description: "План поставок, потребность, локализация", href: "/wb/supplies", icon: Package, agent: "Саму", zone: "Операции", color: ["bg-cyan-100", "text-cyan-700"] },
   { title: "Себестоимость", description: "Себес по артикулам — питает маржу", href: "/costs", icon: Coins, zone: "Операции", color: ["bg-amber-100", "text-amber-700"] },
   { title: "Кабинеты", description: "Подключение WB и Ozon аккаунтов", href: "/cabinets", icon: Building2, zone: "Операции", color: ["bg-slate-100", "text-slate-700"] },
 

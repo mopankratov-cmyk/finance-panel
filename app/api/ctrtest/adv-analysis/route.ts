@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { resolveShopCabinet } from "@/lib/rnp/resolveShop";
+import { hasCabinetAccess } from "@/lib/auth/cabinetAccess";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -24,6 +25,9 @@ export async function GET(request: NextRequest) {
   const useCustom = dateFrom && dateTo && ISO_RE.test(dateFrom) && ISO_RE.test(dateTo) && dateFrom <= dateTo;
   const since = useCustom ? dateFrom : new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
   const { cabinetId } = await resolveShopCabinet(sp.get("cabinet") ?? undefined);
+  if (!(await hasCabinetAccess(cabinetId))) {
+    return NextResponse.json({ error: "Нет доступа к кабинету" }, { status: 403 });
+  }
 
   let adQ = db.from("wb_advert_nm_daily").select("nm_id, date, views, clicks, spent").gte("date", since);
   let funnelQ = db.from("wb_funnel_daily").select("nm_id, date, orders_sum").gte("date", since);

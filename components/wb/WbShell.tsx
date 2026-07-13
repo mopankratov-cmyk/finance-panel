@@ -37,11 +37,11 @@ const WORK_NAV: NavItem[] = [
   { label: "Юнит-экономика", href: "/wb/unit", icon: Calculator, target: true },
   { label: "SEO", href: "/wb/seo", icon: Search, target: true },
   { label: "Склейки", href: "/wb/sklejki", icon: Link2, target: true },
-  { label: "Поставки", href: "/supplies", icon: Truck },
-  { label: "Реклама", href: "/adverts", icon: Megaphone },
-  { label: "CTR-тесты", href: "/ctrtest", icon: FlaskConical },
-  { label: "Товары", href: "/product", icon: PackageSearch },
-  { label: "Отзывы", href: "/reviews", icon: MessageSquareText },
+  { label: "Поставки", href: "/wb/supplies", icon: Truck, target: true },
+  { label: "Реклама", href: "/wb/adverts", icon: Megaphone, target: true },
+  { label: "CTR-тесты", href: "/wb/ctr", icon: FlaskConical, target: true },
+  { label: "Товары", href: "/wb/product", icon: PackageSearch, target: true },
+  { label: "Отзывы", href: "/wb/reviews", icon: MessageSquareText, target: true },
 ];
 
 function isWorkItemActive(pathname: string, item: NavItem) {

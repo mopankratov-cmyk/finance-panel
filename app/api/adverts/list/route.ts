@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { wbCardImageUrl } from "@/lib/wb/cardImage";
 import { resolveShopCabinet } from "@/lib/rnp/resolveShop";
 import { getWbCabinet, resolveWbToken } from "@/lib/wb/cabinetTokens";
+import { hasCabinetAccess } from "@/lib/auth/cabinetAccess";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -29,6 +30,9 @@ export async function GET(request: NextRequest) {
 
   // ?cabinet=<uuid|all> — срез рекламы по выбранному кабинету (данные уже синканы с cabinet_id)
   const { cabinetId, label } = await resolveShopCabinet(new URL(request.url).searchParams.get("cabinet") ?? undefined);
+  if (!(await hasCabinetAccess(cabinetId))) {
+    return NextResponse.json({ ok: false, error: "Нет доступа к кабинету" }, { status: 403 });
+  }
 
   let advQ = db.from("wb_adverts").select("advert_id, name, status, daily_budget, nm_ids").in("status", [9, 11]);
   let statQ = db.from("wb_advert_stats").select("advert_id, date, sum_spent, views, clicks, sum_orders").gte("date", new Date(Date.now() - 14 * 86400000).toISOString().slice(0, 10)).limit(5000);

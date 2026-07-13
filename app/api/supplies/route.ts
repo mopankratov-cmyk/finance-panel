@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { resolveCabinetSelection } from "@/lib/cabinetGroups";
+import { hasCabinetAccess } from "@/lib/auth/cabinetAccess";
 
 export const dynamic = "force-dynamic";
 
@@ -99,6 +100,12 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ data: null, error: "Supabase не настроен" }, { status: 500 });
   }
   const { single: p_cabinet, members } = await resolveCabinetSelection(new URL(req.url).searchParams.get("cabinet"));
+  const accessAllowed = members
+    ? (await Promise.all(members.map((member) => hasCabinetAccess(member)))).every(Boolean)
+    : await hasCabinetAccess(p_cabinet);
+  if (!accessAllowed) {
+    return NextResponse.json({ data: null, error: "Нет доступа к кабинету" }, { status: 403 });
+  }
 
   try {
     let stockQ = db.from("wb_stocks").select("warehouse, quantity, in_way_to_client").limit(2000);

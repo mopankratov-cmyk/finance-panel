@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { cabinetIdFromParam } from "@/lib/rnp/resolveShop";
+import { hasCabinetAccess } from "@/lib/auth/cabinetAccess";
 
 export const dynamic = "force-dynamic";
 
@@ -52,6 +53,9 @@ export async function GET(req: NextRequest) {
 
   const sp = new URL(req.url).searchParams;
   const p_cabinet = cabinetIdFromParam(sp.get("cabinet"));
+  if (!(await hasCabinetAccess(p_cabinet))) {
+    return NextResponse.json({ ok: false, error: "Нет доступа к кабинету" }, { status: 403 });
+  }
   const ratingParam = (sp.get("rating") || "").split(",").map((s) => Number(s.trim())).filter((n) => n >= 1 && n <= 5);
   const answered = sp.get("answered") || "";
   const days = Math.max(1, Number(sp.get("days")) || 30);

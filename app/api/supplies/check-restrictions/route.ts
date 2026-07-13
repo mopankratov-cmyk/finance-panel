@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getWbCabinet, resolveWbToken } from "@/lib/wb/cabinetTokens";
 import { fetchAcceptanceCoefficients, WbSuppliesAuthError } from "@/lib/wb/supplies";
+import { cabinetIdFromParam } from "@/lib/rnp/resolveShop";
+import { hasCabinetAccess } from "@/lib/auth/cabinetAccess";
 
 export const dynamic = "force-dynamic";
 
@@ -15,8 +17,11 @@ export interface RestrictionRow {
 // GET ?cabinet=<uuid> — реальный вызов официального WB Tariffs API (не WMS/МойСклад,
 // см. lib/wb/supplies.ts). Ближайший коэффициент на склад (не вся 2-недельная сетка).
 export async function GET(req: NextRequest) {
-  const cabinetId = new URL(req.url).searchParams.get("cabinet");
+  const cabinetId = cabinetIdFromParam(new URL(req.url).searchParams.get("cabinet"));
   if (!cabinetId) return NextResponse.json({ ok: false, error: "Укажите ?cabinet=" }, { status: 400 });
+  if (!(await hasCabinetAccess(cabinetId))) {
+    return NextResponse.json({ ok: false, error: "Нет доступа к кабинету" }, { status: 403 });
+  }
 
   const cab = await getWbCabinet(cabinetId);
   if (!cab) return NextResponse.json({ ok: false, error: "Кабинет не найден" }, { status: 404 });
