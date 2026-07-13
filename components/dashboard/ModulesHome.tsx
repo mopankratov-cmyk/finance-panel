@@ -2,7 +2,7 @@
 
 import {
   BarChart3, Bot, Coins, LineChart, Megaphone, Table2, Search, Layers, Sigma,
-  MousePointerClick, CalendarRange, Clapperboard,
+  MousePointerClick, CalendarRange, Clapperboard, HeartPulse,
   Package, TrendingDown, Wallet, Building2, ArrowUpRight, LogOut, AlertTriangle, Info, XCircle, type LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
@@ -39,6 +39,7 @@ const MODULES: ModuleCard[] = [
   { title: "Где теряем", description: "Удержания: реклама, логистика, комиссия", href: "/losses", icon: TrendingDown, zone: "Финансы", color: ["bg-rose-100", "text-rose-700"] },
 
   { title: "Закупки", description: "План поставок, потребность, локализация", href: "/wb/supplies", icon: Package, agent: "Саму", zone: "Операции", color: ["bg-cyan-100", "text-cyan-700"] },
+  { title: "Здоровье", description: "Сроки производства, логистика, приёмка и сервисы кабинета", href: "/wb/health", icon: HeartPulse, zone: "Операции", color: ["bg-rose-100", "text-rose-700"] },
   { title: "Себестоимость", description: "Себес по артикулам — питает маржу", href: "/costs", icon: Coins, zone: "Операции", color: ["bg-amber-100", "text-amber-700"] },
   { title: "Кабинеты", description: "Подключение WB и Ozon аккаунтов", href: "/cabinets", icon: Building2, zone: "Операции", color: ["bg-slate-100", "text-slate-700"] },
 
