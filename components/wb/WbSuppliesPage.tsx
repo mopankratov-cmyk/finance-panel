@@ -10,8 +10,9 @@ import { RestrictionsPanel } from "@/components/supplies/RestrictionsPanel";
 import type { StockCatalogRow, SupplyRow, WarehouseSummary } from "@/app/api/supplies/route";
 import { WbEmptyState, WbErrorState, WbModuleHeader } from "./WbModuleHeader";
 import { useWbCabinet } from "./WbCabinetContext";
+import { WbPurchaseOrdersTab } from "./WbPurchaseOrdersTab";
 
-type Tab = "distribution" | "reorder" | "stock" | "receiving" | "source";
+type Tab = "orders" | "distribution" | "reorder" | "stock" | "receiving" | "source";
 type Horizon = 30 | 45 | 60;
 
 interface DistributionWarehouse {
@@ -54,7 +55,7 @@ function splitByPercent(total: number, warehouses: DistributionWarehouse[]) {
 
 export function WbSuppliesPage() {
   const { activeCabinet, cabinetId, canWrite, cabinets, ready, loading: cabinetsLoading, error: cabinetsError } = useWbCabinet();
-  const [tab, setTab] = useState<Tab>("distribution");
+  const [tab, setTab] = useState<Tab>("orders");
   const [data, setData] = useState<SuppliesResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -123,7 +124,7 @@ export function WbSuppliesPage() {
     return { available: distributionRows.reduce((sum, row) => sum + row.available, 0), wb: distributionRows.reduce((sum, row) => sum + row.wb_stock, 0), qty };
   }, [data?.warehouses, distributionRows]);
 
-  const tabs: [Tab, string][] = [["distribution", "Распределение"], ["reorder", "К поставке"], ["stock", "Остатки"], ["receiving", "Приёмка"], ["source", "Источник"]];
+  const tabs: [Tab, string][] = [["orders", "Заказы фабрике"], ["distribution", "Распределение"], ["reorder", "К поставке"], ["stock", "Остатки"], ["receiving", "Приёмка"], ["source", "Источник"]];
 
   return (
     <div className="min-h-[calc(100vh-54px)] bg-[#f6f7f9] pb-16 md:pb-5">
@@ -142,7 +143,7 @@ export function WbSuppliesPage() {
 
       <div className="space-y-3 px-2 py-3 sm:px-6">
         <div className="flex flex-col gap-2 rounded-xl border border-slate-200 bg-white p-3 xl:flex-row xl:items-center">
-          <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row">
+          <div className={`min-w-0 flex-1 flex-col gap-2 sm:flex-row ${tab === "orders" || tab === "receiving" || tab === "source" ? "hidden" : "flex"}`}>
             <label className="flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 focus-within:border-violet-400 sm:max-w-sm sm:min-h-9"><Search className="h-3.5 w-3.5 text-slate-400" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="артикул или ШК" className="min-w-0 flex-1 bg-transparent text-xs outline-none" /></label>
             <label className="flex min-h-11 items-center gap-2 text-xs text-slate-500 sm:min-h-9">Мин. партия<input type="number" min={0} step={10} value={minBatch} onChange={(event) => setMinBatch(Math.max(0, Number(event.target.value) || 0))} className="h-9 w-20 rounded-lg border border-slate-200 px-2 text-right text-xs tabular-nums outline-none focus:border-violet-400" />шт</label>
             {tab === "reorder" ? <div className="flex gap-1 rounded-lg bg-slate-100 p-0.5">{([30, 45, 60] as const).map((value) => <button key={value} type="button" onClick={() => setHorizon(value)} className={`min-h-10 rounded-md px-3 text-[10px] font-semibold sm:min-h-8 ${horizon === value ? "bg-white text-violet-700 shadow-sm" : "text-slate-500"}`}>{value} дней</button>)}</div> : null}
@@ -150,7 +151,7 @@ export function WbSuppliesPage() {
           <div className="flex max-w-full gap-1 overflow-x-auto rounded-lg bg-slate-100 p-0.5">{tabs.map(([value, label]) => <button key={value} type="button" onClick={() => setTab(value)} className={`min-h-10 shrink-0 rounded-md px-3 text-[10px] font-semibold sm:min-h-8 ${tab === value ? "bg-white text-violet-700 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}>{label}</button>)}</div>
         </div>
 
-        {loading ? <div className="rounded-xl border border-slate-200 bg-white p-3"><LoadingBanner seconds={elapsed} hint={`поставки · ${activeCabinet?.name ?? "все кабинеты"}`} /><SkeletonTableRows rows={10} cols={10} /></div> : error ? <WbErrorState message={error} onRetry={() => setRetryKey((value) => value + 1)} /> : !data?.data ? <WbEmptyState>Данные поставок ещё не синхронизированы.</WbEmptyState> : tab === "distribution" ? (
+        {loading ? <div className="rounded-xl border border-slate-200 bg-white p-3"><LoadingBanner seconds={elapsed} hint={`поставки · ${activeCabinet?.name ?? "все кабинеты"}`} /><SkeletonTableRows rows={10} cols={10} /></div> : error ? <WbErrorState message={error} onRetry={() => setRetryKey((value) => value + 1)} /> : !data?.data ? <WbEmptyState>Данные поставок ещё не синхронизированы.</WbEmptyState> : tab === "orders" ? (canWrite ? <WbPurchaseOrdersTab skus={data.data.skus} cabinetId={cabinetId} canWrite={canWrite} /> : <WbEmptyState>Заказы фабрике ведутся по одному реальному кабинету. Выберите кабинет в верхней панели.</WbEmptyState>) : tab === "distribution" ? (
           <>
             <section className="rounded-xl border border-slate-200 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
               <div className="mb-2 flex flex-wrap items-center gap-2 text-[10px] text-slate-400"><span className="font-semibold text-slate-600">Сводка по складам</span><span>паллета {data.pallet_liters ?? 1230} л</span><span>объём известен {data.vol_known ?? 0}/{data.vol_total ?? data.skus.length} SKU</span><span className="ml-auto">сумма долей {data.warehouses.reduce((sum, warehouse) => sum + (Number.parseFloat(warehouse.pct) || 0), 0)}%</span></div>
