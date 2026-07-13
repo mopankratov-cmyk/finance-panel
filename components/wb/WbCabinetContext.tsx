@@ -156,7 +156,12 @@ export function WbCabinetProvider({ children }: { children: React.ReactNode }) {
       setCabinetIdState(next);
       remember(next);
     }
-    if (requestedCabinet !== next) replaceCabinetInUrl(next);
+    if (requestedCabinet !== next) {
+      // Не ставим в очередь повторные router.replace, пока URL ещё не успел
+      // отразить первый переход (особенно заметно на холодном mobile-старте).
+      pendingCabinet.current = next;
+      replaceCabinetInUrl(next);
+    }
     setReady(true);
   }, [
     cabinetId,

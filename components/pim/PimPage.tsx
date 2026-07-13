@@ -48,12 +48,13 @@ export function PimPage() {
   const [testRow, setTestRow] = useState<PimRow | null>(null);
   const [tests, setTests] = useState<CoverTestRow[]>([]);
   const loadTests = useCallback(async () => {
+    if (!cabReady || !cabId || cabId === "all") { setTests([]); return; }
     try {
-      const res = await fetch("/api/cover-test", { cache: "no-store" });
+      const res = await fetch(`/api/cover-test?cabinet=${encodeURIComponent(cabId)}`, { cache: "no-store" });
       const json = await res.json();
       if (json.ok) setTests(json.rows ?? []);
     } catch { /* ignore */ }
-  }, []);
+  }, [cabId, cabReady]);
   useEffect(() => { loadTests(); }, [loadTests]);
 
   const { categories, byArticle } = useCategoryMap();

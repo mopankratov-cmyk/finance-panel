@@ -6,6 +6,7 @@ import { checkCardHasVideo } from "@/lib/wb/cards";
 import { requireApiSession } from "@/lib/auth/apiGuard";
 import { getServerSession } from "@/lib/auth/server";
 import { hasCabinetAccess } from "@/lib/auth/cabinetAccess";
+import { requestAllowedNmIds } from "@/lib/wb/requestProductScope";
 
 export const dynamic = "force-dynamic";
 
@@ -20,11 +21,11 @@ export interface CoverTestRow {
 
 const WINDOW_DAYS = 14;
 
-async function windowStats(nmId: number, from: Date, to: Date) {
+async function windowStats(cabinetId: string, nmId: number, from: Date, to: Date) {
   const db = getSupabaseAdmin();
   if (!db) return { opensPerDay: 0, cartConvPct: null as number | null, days: 0 };
   const { data } = await db.from("wb_funnel_daily").select("open_card, add_to_cart")
-    .eq("nm_id", nmId).gte("date", from.toISOString().slice(0, 10)).lt("date", to.toISOString().slice(0, 10));
+    .eq("cabinet_id", cabinetId).eq("nm_id", nmId).gte("date", from.toISOString().slice(0, 10)).lt("date", to.toISOString().slice(0, 10));
   const rows = data ?? [];
   const days = rows.length;
   const opens = rows.reduce((s, r) => s + Number(r.open_card ?? 0), 0);
@@ -39,17 +40,25 @@ async function windowStats(nmId: number, from: Date, to: Date) {
 // GET — история тестов + сравнение конверсии открытие→корзина до/после переключения.
 // Не «CTR показа в поиске» — этого официальный API не даёт (см. docs/отложено.md п.1),
 // это честный, измеримый proxy: как обложка влияет на решение добавить в корзину.
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const gate = await requireApiSession();
+  if (gate) return gate;
+  const cabinetId = new URL(request.url).searchParams.get("cabinet");
+  if (!cabinetId || cabinetId === "all" || cabinetId.startsWith("group:")) return NextResponse.json({ ok: false, error: "Выберите один реальный WB-кабинет" }, { status: 400 });
+  if (!(await hasCabinetAccess(cabinetId))) return NextResponse.json({ ok: false, error: "Нет доступа к кабинету" }, { status: 403 });
+  const allowedNmIds = await requestAllowedNmIds(cabinetId);
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ ok: false, error: "Supabase не настроен" }, { status: 500 });
-  const { data, error } = await db.from("cover_tests").select("id, nm_id, article, switched_at").order("switched_at", { ascending: false }).limit(30);
+  let query = db.from("cover_tests").select("id, nm_id, article, switched_at").eq("cabinet_id", cabinetId).order("switched_at", { ascending: false }).limit(30);
+  if (allowedNmIds !== null) query = query.in("nm_id", allowedNmIds.size ? [...allowedNmIds] : [-1]);
+  const { data, error } = await query;
   if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
 
   const rows: CoverTestRow[] = await Promise.all((data ?? []).map(async (t) => {
     const switchedAt = new Date(t.switched_at as string);
-    const before = await windowStats(t.nm_id as number, new Date(switchedAt.getTime() - WINDOW_DAYS * 86_400_000), switchedAt);
+    const before = await windowStats(cabinetId, t.nm_id as number, new Date(switchedAt.getTime() - WINDOW_DAYS * 86_400_000), switchedAt);
     const to = new Date(Math.min(Date.now(), switchedAt.getTime() + WINDOW_DAYS * 86_400_000));
-    const after = await windowStats(t.nm_id as number, switchedAt, to);
+    const after = await windowStats(cabinetId, t.nm_id as number, switchedAt, to);
     return { id: t.id as number, nmId: t.nm_id as number, article: t.article as string, switchedAt: t.switched_at as string, before, after };
   }));
 
@@ -74,6 +83,10 @@ export async function POST(req: NextRequest) {
   }
   if (!(await hasCabinetAccess(cabinetId))) {
     return NextResponse.json({ ok: false, error: "Нет доступа к кабинету" }, { status: 403 });
+  }
+  const allowedNmIds = await requestAllowedNmIds(cabinetId);
+  if (allowedNmIds !== null && !allowedNmIds.has(nmId)) {
+    return NextResponse.json({ ok: false, error: "SKU не входит в разрешённый товарный контур кабинета" }, { status: 403 });
   }
 
   const cab = await getWbCabinet(cabinetId);

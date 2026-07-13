@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { resolveShopCabinet } from "@/lib/rnp/resolveShop";
 import { hasCabinetAccess } from "@/lib/auth/cabinetAccess";
 import { requestAllowedNmIds, requestAllowsNm } from "@/lib/wb/requestProductScope";
+import { requireApiSession } from "@/lib/auth/apiGuard";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -15,17 +16,21 @@ const r2 = (v: number) => Math.round(v * 100) / 100;
 
 // Рекламная аналитика по SKU за N дней: {items:[{nm,art,views,spend,ctr,cpc,drr,stock}]}.
 export async function GET(request: NextRequest) {
+  const gate = await requireApiSession();
+  if (gate) return gate;
   const db = getSupabaseAdmin();
-  if (!db) return NextResponse.json({ items: [] });
+  if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 500 });
   const sp = new URL(request.url).searchParams;
-  const days = Number(sp.get("days")) || 7;
+  const days = Math.min(90, Math.max(1, Math.trunc(Number(sp.get("days")) || 7)));
   // Произвольный диапазон (?date_from=&date_to=) в дополнение к пресету ?days=.
   const dateFrom = sp.get("date_from");
   const dateTo = sp.get("date_to");
   const ISO_RE = /^\d{4}-\d{2}-\d{2}$/;
-  const useCustom = dateFrom && dateTo && ISO_RE.test(dateFrom) && ISO_RE.test(dateTo) && dateFrom <= dateTo;
+  const customDays = dateFrom && dateTo ? Math.ceil((Date.parse(`${dateTo}T00:00:00Z`) - Date.parse(`${dateFrom}T00:00:00Z`)) / 86_400_000) + 1 : 0;
+  const useCustom = Boolean(dateFrom && dateTo && ISO_RE.test(dateFrom) && ISO_RE.test(dateTo) && dateFrom <= dateTo && customDays > 0 && customDays <= 90);
   const since = useCustom ? dateFrom : new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
   const { cabinetId } = await resolveShopCabinet(sp.get("cabinet") ?? undefined);
+  if (!cabinetId) return NextResponse.json({ error: "Выберите один реальный WB-кабинет" }, { status: 400 });
   if (!(await hasCabinetAccess(cabinetId))) {
     return NextResponse.json({ error: "Нет доступа к кабинету" }, { status: 403 });
   }
@@ -33,8 +38,9 @@ export async function GET(request: NextRequest) {
 
   let adQ = db.from("wb_advert_nm_daily").select("nm_id, date, views, clicks, spent").gte("date", since);
   let funnelQ = db.from("wb_funnel_daily").select("nm_id, date, orders_sum").gte("date", since);
-  if (useCustom) { adQ = adQ.lte("date", dateTo); funnelQ = funnelQ.lte("date", dateTo); }
-  if (cabinetId) { adQ = adQ.eq("cabinet_id", cabinetId); funnelQ = funnelQ.eq("cabinet_id", cabinetId); }
+  if (useCustom) { adQ = adQ.lte("date", dateTo!); funnelQ = funnelQ.lte("date", dateTo!); }
+  adQ = adQ.eq("cabinet_id", cabinetId);
+  funnelQ = funnelQ.eq("cabinet_id", cabinetId);
   if (allowedNmIds) {
     const nmIds = allowedNmIds.size ? [...allowedNmIds] : [-1];
     adQ = adQ.in("nm_id", nmIds);
