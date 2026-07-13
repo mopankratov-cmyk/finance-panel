@@ -1,15 +1,10 @@
-import { NextResponse } from "next/server";
+import { NextRequest } from "next/server";
+import { GET as wmsHealth } from "@/app/api/supplies/wms-health/route";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 30;
 
-// WMS-проверка цепочки поставок отложена (см. docs/отложено.md). Возвращаем
-// аккуратный JSON, чтобы интерфейс показал понятное сообщение, а не падал на HTML-404.
-export async function GET() {
-  return NextResponse.json({
-    ok: false,
-    deferred: true,
-    checks: [
-      { name: "WMS-интеграция", ok: false, detail: "Проверка конвейера отложена — складская интеграция (WMS/Мандарин) пока не подключена." },
-    ],
-  });
+// Старое имя Inferno-контракта остаётся рабочим; источник истины один.
+export async function GET(request: NextRequest) {
+  return wmsHealth(request);
 }

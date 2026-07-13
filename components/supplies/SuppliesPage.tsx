@@ -218,7 +218,7 @@ export function SuppliesPage() {
       ) : tab === "receiving" ? (
         <ReceivingTab skus={skus} cabId={cabId} warehouses={warehouses} />
       ) : (
-        <MoySkladSourceTab />
+        <MoySkladSourceTab cabinetId={cabId ?? ""} canWrite={Boolean(cabId && !cabId.startsWith("group:"))} />
       )}
 
       <Tour tourId="supplies" steps={tourSteps} />
