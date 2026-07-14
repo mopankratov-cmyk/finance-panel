@@ -14,6 +14,21 @@ export interface WbRnpCacheRequest {
   label?: string;
 }
 
+export interface WbRnpCacheOptions {
+  forceRefresh?: boolean;
+  backgroundRefresh?: boolean;
+}
+
+export const WB_RNP_BACKGROUND_REFRESH = { backgroundRefresh: true } as const;
+
+export function wbRnpRevalidationProfile(
+  options: WbRnpCacheOptions,
+): "max" | { expire: 0 } | null {
+  if (options.backgroundRefresh) return "max";
+  if (options.forceRefresh) return { expire: 0 };
+  return null;
+}
+
 export function wbRnpCacheIdentity(input: WbRnpCacheRequest): string {
   return JSON.stringify({
     from: input.from,
@@ -30,11 +45,12 @@ export function wbRnpCacheTag(input: WbRnpCacheRequest): string {
 
 export async function loadCachedWbRnp(
   input: WbRnpCacheRequest,
-  options: { forceRefresh?: boolean } = {},
+  options: WbRnpCacheOptions = {},
 ) {
   const identity = wbRnpCacheIdentity(input);
   const tag = wbRnpCacheTag(input);
-  if (options.forceRefresh) revalidateTag(tag, { expire: 0 });
+  const revalidationProfile = wbRnpRevalidationProfile(options);
+  if (revalidationProfile) revalidateTag(tag, revalidationProfile);
   const loadSnapshot = unstable_cache(
     async () => {
       const result = await buildRnpTable(input.from, input.to, input.cabinetId, input.label);

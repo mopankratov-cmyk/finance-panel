@@ -1,7 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { earliestKnownDate, latestDate, latestKnownDate, loadAllPages } from "../lib/rnp/buildTable";
-import { currentMoscowMonth, WB_RNP_CACHE_VERSION, wbRnpCacheIdentity, wbRnpCacheTag } from "../lib/rnp/tableCache";
+import {
+  currentMoscowMonth,
+  WB_RNP_BACKGROUND_REFRESH,
+  WB_RNP_CACHE_VERSION,
+  wbRnpCacheIdentity,
+  wbRnpCacheTag,
+  wbRnpRevalidationProfile,
+} from "../lib/rnp/tableCache";
 
 test("WB RNP snapshot isolates cabinets and periods", () => {
   const all = wbRnpCacheIdentity({ from: "2026-07-01", to: "2026-07-31", cabinetId: null });
@@ -27,6 +34,13 @@ test("WB RNP hourly warmup uses the Moscow calendar month", () => {
     from: "2026-08-01",
     to: "2026-08-31",
   });
+});
+
+test("WB RNP hourly warmup keeps the previous snapshot while refreshing", () => {
+  assert.deepEqual(WB_RNP_BACKGROUND_REFRESH, { backgroundRefresh: true });
+  assert.equal(wbRnpRevalidationProfile(WB_RNP_BACKGROUND_REFRESH), "max");
+  assert.deepEqual(wbRnpRevalidationProfile({ forceRefresh: true }), { expire: 0 });
+  assert.equal(wbRnpRevalidationProfile({}), null);
 });
 
 test("RNP loader drains every PostgREST page instead of stopping at 1,000 rows", async () => {

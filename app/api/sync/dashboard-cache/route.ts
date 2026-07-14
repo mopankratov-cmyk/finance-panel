@@ -2,7 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { listOzonScopeDescriptors } from "@/lib/ozon/cabinet";
 import type { OzonCockpitView } from "@/lib/ozon/cockpit";
 import { loadCachedOzonCockpit } from "@/lib/ozon/cockpitCache";
-import { currentMoscowMonth, listWbRnpScopes, loadCachedWbRnp } from "@/lib/rnp/tableCache";
+import {
+  currentMoscowMonth,
+  listWbRnpScopes,
+  loadCachedWbRnp,
+  WB_RNP_BACKGROUND_REFRESH,
+} from "@/lib/rnp/tableCache";
 import { checkCronAuth } from "@/lib/sync/helpers";
 import { warmWbSecondaryDashboards } from "@/lib/wb/dashboardWarmup";
 
@@ -18,7 +23,7 @@ async function warmWbRnp() {
   const snapshots: Array<{ scope: string; ok: boolean; generatedAt?: string; error?: string }> = [];
   const warm = async (scope: (typeof scopes)[number]) => {
     try {
-      await loadCachedWbRnp({ ...period, ...scope }, { forceRefresh: true });
+      await loadCachedWbRnp({ ...period, ...scope }, WB_RNP_BACKGROUND_REFRESH);
       snapshots.push({ scope: scope.label, ok: true, generatedAt: new Date().toISOString(), error: undefined });
     } catch (error) {
       snapshots.push({ scope: scope.label, ok: false, error: error instanceof Error ? error.message : "Unknown error" });
