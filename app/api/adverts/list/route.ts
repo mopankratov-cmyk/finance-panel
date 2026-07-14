@@ -7,6 +7,7 @@ import { resolveShopCabinet } from "@/lib/rnp/resolveShop";
 import { getActiveWbCabinets, getWbCabinet, resolveWbToken } from "@/lib/wb/cabinetTokens";
 import { hasCabinetAccess } from "@/lib/auth/cabinetAccess";
 import { requestAllowedNmIds, requestAllowsNm } from "@/lib/wb/requestProductScope";
+import { loadScopedAdvertReportRows } from "@/lib/adverts/scopedReport";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -78,7 +79,11 @@ export async function GET(request: NextRequest) {
         const advToken = cab ? resolveWbToken(cab, "advert") : null;
         if (!advToken) return null;
         try {
-          const res = await fetch(`${ADV_BASE}/adv/v1/balance`, { headers: { Authorization: advToken }, cache: "no-store" });
+          const res = await fetch(`${ADV_BASE}/adv/v1/balance`, {
+            headers: { Authorization: advToken },
+            cache: "no-store",
+            signal: AbortSignal.timeout(5_000),
+          });
           if (!res.ok) return null;
           const j = await res.json();
           return (j.balance ?? 0) + (j.net ?? 0);
@@ -88,14 +93,38 @@ export async function GET(request: NextRequest) {
       })
     : Promise.resolve(null);
 
-  let [advRes, statRes, rpcRes, changesRes, commission, balance] = await Promise.all([
-    advQ,
-    statQ,
-    db.rpc("rnp_report", { p_cabinet: cabinetId }),
-    changesQ,
-    getWbCommissionForCabinet(cabinetId, 30),
-    balancePromise,
-  ]);
+  const reportPromise: Promise<RpcRow[]> = cabinetId && allowedNmIds
+    ? loadScopedAdvertReportRows(db, cabinetId, [...allowedNmIds])
+    : (async () => {
+        const res = await db.rpc("rnp_report", { p_cabinet: cabinetId });
+        if (res.error) throw new Error(res.error.message);
+        return (res.data ?? []) as RpcRow[];
+      })();
+
+  let queryResults: [
+    Awaited<typeof advQ>,
+    Awaited<typeof statQ>,
+    RpcRow[],
+    Awaited<typeof changesQ>,
+    Awaited<ReturnType<typeof getWbCommissionForCabinet>>,
+    number | null,
+  ] | null = null;
+  try {
+    queryResults = await Promise.all([
+      advQ,
+      statQ,
+      reportPromise,
+      changesQ,
+      getWbCommissionForCabinet(cabinetId, 30),
+      balancePromise,
+    ]);
+  } catch (error) {
+    return NextResponse.json(
+      { ok: false, error: error instanceof Error ? error.message : "Не удалось загрузить рекламу WB" },
+      { status: 500 },
+    );
+  }
+  const [advRes, statRes, reportRows, changesRes, commission, balance] = queryResults;
   let advertRows = (advRes.data ?? []) as AdvertRow[];
   let advertError = advRes.error;
   if (advRes.error?.code === "42703") {
@@ -143,7 +172,7 @@ export async function GET(request: NextRequest) {
 
   const artByNm = new Map<number, string>();
   const reportByNm = new Map<number, RpcRow>();
-  for (const row of (rpcRes.data ?? []) as RpcRow[]) {
+  for (const row of reportRows) {
     if (!requestAllowsNm(allowedNmIds, row.nm_id)) continue;
     artByNm.set(row.nm_id, row.article);
     reportByNm.set(row.nm_id, row);
