@@ -4,6 +4,7 @@ import { ChevronRight, Loader2, Megaphone, RefreshCw, Search, WalletCards } from
 import { useEffect, useMemo, useRef, useState } from "react";
 import { LoadingBanner, SkeletonCards, useElapsedSeconds } from "@/components/ui/LoadingState";
 import { MARKETPLACE_METRICS, METRIC_BADGE_TONE, marketplaceMetricStatus } from "@/lib/analytics/marketplaceMetrics";
+import { compareAdvertCampaigns } from "@/lib/adverts/campaignSort";
 import { useDashboardFilter } from "@/lib/useDashboardFilter";
 import { WbEmptyState, WbErrorState, WbModuleHeader } from "./WbModuleHeader";
 import { useWbCabinet } from "./WbCabinetContext";
@@ -172,11 +173,14 @@ export function WbAdvertsPage() {
 
   const rows = useMemo<CampaignRow[]>(() => {
     const needle = query.trim().toLocaleLowerCase("ru-RU");
-    return (data?.articles ?? []).flatMap((article) => article.campaigns.map((campaign) => ({ article, campaign }))).filter(({ article, campaign }) => {
-      const campaignKind = campaign.payment === "cpc" ? "cpc" : "unified";
-      if (kind !== "all" && campaignKind !== kind) return false;
-      return !needle || `${article.art} ${article.nm} ${campaign.name} ${campaign.id}`.toLocaleLowerCase("ru-RU").includes(needle);
-    });
+    return (data?.articles ?? [])
+      .flatMap((article) => article.campaigns.map((campaign) => ({ article, campaign })))
+      .filter(({ article, campaign }) => {
+        const campaignKind = campaign.payment === "cpc" ? "cpc" : "unified";
+        if (kind !== "all" && campaignKind !== kind) return false;
+        return !needle || `${article.art} ${article.nm} ${campaign.name} ${campaign.id}`.toLocaleLowerCase("ru-RU").includes(needle);
+      })
+      .sort((left, right) => compareAdvertCampaigns(left.campaign, right.campaign));
   }, [data?.articles, kind, query]);
 
   useEffect(() => {
