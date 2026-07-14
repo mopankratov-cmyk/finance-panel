@@ -5,6 +5,7 @@ import { earliestKnownDate, latestDate, latestKnownDate, loadAllPages } from "..
 import {
   currentMoscowMonth,
   WB_RNP_BACKGROUND_REFRESH,
+  WB_RNP_CACHE_SECONDS,
   WB_RNP_CACHE_VERSION,
   wbRnpCacheIdentity,
   wbRnpCacheTag,
@@ -28,6 +29,10 @@ test("WB RNP snapshot tag is compact", () => {
 
 test("WB RNP data-integrity schema invalidates the previous snapshot", () => {
   assert.equal(WB_RNP_CACHE_VERSION, "v6");
+});
+
+test("WB RNP last-good snapshot survives short cron gaps", () => {
+  assert.equal(WB_RNP_CACHE_SECONDS, 12 * 60 * 60);
 });
 
 test("WB RNP hourly warmup uses the Moscow calendar month", () => {

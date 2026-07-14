@@ -60,3 +60,11 @@ test("WB adverts route does not let live WB balance hold the page for 45 seconds
   assert.match(source, /signal:\s*AbortSignal\.timeout\(5_000\)/);
   assert.match(source, /loadScopedAdvertReportRows\(db,\s*cabinetId,\s*\[\.\.\.allowedNmIds\]\)/);
 });
+
+test("WB adverts page keeps the last-good list when a refresh times out", () => {
+  const source = readFileSync(new URL("../components/wb/WbAdvertsPage.tsx", import.meta.url), "utf8");
+  assert.match(source, /readApiResponse<AdvertsData>\(response, "Реклама WB"\)/);
+  assert.match(source, /error && activeData/);
+  assert.match(source, /Показан последний готовый список кампаний/);
+  assert.doesNotMatch(source, /\(await response\.json\(\)\) as AdvertsData/);
+});

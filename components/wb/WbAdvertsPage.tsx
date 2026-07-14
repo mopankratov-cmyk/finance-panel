@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { LoadingBanner, SkeletonCards, useElapsedSeconds } from "@/components/ui/LoadingState";
 import { MARKETPLACE_METRICS, METRIC_BADGE_TONE, marketplaceMetricStatus } from "@/lib/analytics/marketplaceMetrics";
 import { compareAdvertCampaigns } from "@/lib/adverts/campaignSort";
+import { readApiResponse } from "@/lib/http/readApiResponse";
 import { useDashboardFilter } from "@/lib/useDashboardFilter";
 import { WbProductImage } from "./WbProductImage";
 import { WbEmptyState, WbErrorState, WbModuleHeader } from "./WbModuleHeader";
@@ -127,6 +128,7 @@ function Sparkline({ values }: { values: number[] }) {
 export function WbAdvertsPage() {
   const { activeCabinet, cabinetId, cabinets, ready, loading: cabinetsLoading, error: cabinetsError } = useWbCabinet();
   const [data, setData] = useState<AdvertsData | null>(null);
+  const [dataKey, setDataKey] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [retryKey, setRetryKey] = useState(0);
@@ -135,14 +137,26 @@ export function WbAdvertsPage() {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [rowWindow, setRowWindow] = useState({ start: 0, end: 16 });
   const requestId = useRef(0);
+  const dataKeyRef = useRef<string | null>(null);
   const elapsed = useElapsedSeconds(loading);
+  const currentDataKey = cabinetId || "all";
+  const activeData = dataKey === currentDataKey ? data : null;
 
   useEffect(() => {
     if (!ready || cabinetsLoading) return;
     if (cabinets.length === 0) {
       setLoading(false);
+      setData(null);
+      dataKeyRef.current = null;
+      setDataKey(null);
       setError(cabinetsError || "Подключите хотя бы один активный WB-кабинет в настройках");
       return;
+    }
+    const requestKey = cabinetId || "all";
+    if (dataKeyRef.current !== requestKey) {
+      dataKeyRef.current = null;
+      setDataKey(null);
+      setData(null);
     }
     const controller = new AbortController();
     const current = ++requestId.current;
@@ -152,7 +166,7 @@ export function WbAdvertsPage() {
     setError(null);
     fetch(`/api/adverts/list?cabinet=${encodeURIComponent(cabinetId || "all")}`, { cache: "no-store", signal: controller.signal })
       .then(async (response) => {
-        const body = (await response.json()) as AdvertsData;
+        const body = await readApiResponse<AdvertsData>(response, "Реклама WB");
         if (!response.ok) throw new Error(body.error || `Ошибка ${response.status}`);
         return body;
       })
@@ -160,6 +174,8 @@ export function WbAdvertsPage() {
         if (current !== requestId.current) return;
         if (!body.ok) throw new Error(body.error || "Не удалось загрузить рекламу");
         setData(body);
+        dataKeyRef.current = requestKey;
+        setDataKey(requestKey);
       })
       .catch((cause: unknown) => {
         if (current !== requestId.current || (controller.signal.aborted && !timedOut)) return;
@@ -174,7 +190,7 @@ export function WbAdvertsPage() {
 
   const rows = useMemo<CampaignRow[]>(() => {
     const needle = query.trim().toLocaleLowerCase("ru-RU");
-    return (data?.articles ?? [])
+    return (activeData?.articles ?? [])
       .flatMap((article) => article.campaigns.map((campaign) => ({ article, campaign })))
       .filter(({ article, campaign }) => {
         const campaignKind = campaign.payment === "cpc" ? "cpc" : "unified";
@@ -182,7 +198,7 @@ export function WbAdvertsPage() {
         return !needle || `${article.art} ${article.nm} ${campaign.name} ${campaign.id}`.toLocaleLowerCase("ru-RU").includes(needle);
       })
       .sort((left, right) => compareAdvertCampaigns(left.campaign, right.campaign));
-  }, [data?.articles, kind, query]);
+  }, [activeData?.articles, kind, query]);
 
   useEffect(() => {
     if (!rows.some(({ campaign }) => campaign.id === selectedId)) setSelectedId(rows[0]?.campaign.id ?? null);
@@ -203,7 +219,7 @@ export function WbAdvertsPage() {
       <WbModuleHeader
         icon={Megaphone}
         title="Реклама"
-        description={data ? `${data.count} активных кампаний · расход сегодня ${rub(data.spend_today_total)}` : "Кампании, ставки, расписание и статистика"}
+        description={activeData ? `${activeData.count} активных кампаний · расход сегодня ${rub(activeData.spend_today_total)}` : "Кампании, ставки, расписание и статистика"}
         actions={
           <button type="button" onClick={() => setRetryKey((value) => value + 1)} disabled={loading} className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-[11px] font-semibold text-slate-600 shadow-sm transition-colors hover:bg-slate-50 disabled:cursor-wait disabled:opacity-60 sm:min-h-8">
             {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" /> : <RefreshCw className="h-3.5 w-3.5" />} Обновить
@@ -227,7 +243,13 @@ export function WbAdvertsPage() {
             </div>
           </div>
 
-          {loading ? <div className="p-3"><LoadingBanner seconds={elapsed} hint={`реклама · ${activeCabinet?.name ?? "все кабинеты"}`} /><SkeletonCards count={5} /></div> : error ? <div className="p-3"><WbErrorState message={error} onRetry={() => setRetryKey((value) => value + 1)} /></div> : rows.length === 0 ? <div className="p-3"><WbEmptyState>Кампаний по выбранному фильтру нет.</WbEmptyState></div> : (
+          {error && activeData ? (
+            <div className="mx-3 mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] leading-5 text-amber-900">
+              {error} Показан последний готовый список кампаний.
+            </div>
+          ) : null}
+
+          {loading && !activeData ? <div className="p-3"><LoadingBanner seconds={elapsed} hint={`реклама · ${activeCabinet?.name ?? "все кабинеты"}`} /><SkeletonCards count={5} /></div> : error && !activeData ? <div className="p-3"><WbErrorState message={error} onRetry={() => setRetryKey((value) => value + 1)} /></div> : rows.length === 0 ? <div className="p-3"><WbEmptyState>Кампаний по выбранному фильтру нет.</WbEmptyState></div> : (
             <div className="min-h-0 flex-1 overflow-auto overscroll-contain" onScroll={(event) => updateWindow(event.currentTarget)}>
               {rowWindow.start > 0 ? <div aria-hidden="true" style={{ height: rowWindow.start * ROW_HEIGHT }} /> : null}
               {rows.slice(rowWindow.start, rowWindow.end).map(({ article, campaign }) => {

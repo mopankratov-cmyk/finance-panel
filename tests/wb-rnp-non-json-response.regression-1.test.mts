@@ -33,6 +33,13 @@ test("WB RNP page does not parse table and plan responses with raw response.json
   assert.doesNotMatch(source, /const body = \\(await response\\.json\\(\\)\\) as RnpTable/);
 });
 
+test("WB RNP page keeps a same-scope last-good table when refresh times out", () => {
+  const source = readFileSync(new URL("../components/wb/WbRnpPage.tsx", import.meta.url), "utf8");
+  assert.match(source, /const activeData = dataKey === currentDataKey \? data : null;/);
+  assert.match(source, /error && activeData/);
+  assert.doesNotMatch(source, /setLoading\(true\);\s*setData\(null\);\s*setError\(null\);/);
+});
+
 test("WB RNP table API wraps cabinet resolution and access checks in JSON error handling", () => {
   const source = readFileSync(new URL("../app/api/rnp/[shop]/table/route.ts", import.meta.url), "utf8");
   assert.match(source, /try \{\n    const \{ shop \} = await ctx\.params;/);

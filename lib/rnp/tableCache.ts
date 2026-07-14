@@ -4,7 +4,10 @@ import { decodeCompressedJson, encodeCompressedJson } from "@/lib/cache/compress
 import { buildRnpTable, type RnpTable } from "@/lib/rnp/buildTable";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
-export const WB_RNP_CACHE_SECONDS = 60 * 60;
+// Пользовательский экран должен читать last-good снимок, а не становиться
+// холодным тяжёлым расчётом, если почасовой прогрев задержался из-за WB/БД.
+// Сам прогрев всё равно принудительно пересобирает снимки каждый час.
+export const WB_RNP_CACHE_SECONDS = 12 * 60 * 60;
 export const WB_RNP_CACHE_VERSION = "v6";
 
 export interface WbRnpCacheRequest {

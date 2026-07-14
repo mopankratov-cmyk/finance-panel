@@ -272,6 +272,7 @@ export function WbRnpPage() {
   const { cabinets, cabinetId, activeCabinet, ready, loading: cabinetsLoading, error: cabinetsError, canWrite } = useWbCabinet();
   const [range, setRange] = useState<DateRange>(() => rangeFor("month"));
   const [data, setData] = useState<RnpTable | null>(null);
+  const [dataKey, setDataKey] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [retryKey, setRetryKey] = useState(0);
@@ -286,10 +287,13 @@ export function WbRnpPage() {
   const [mobileLimit, setMobileLimit] = useState(MOBILE_PAGE_SIZE);
   const tableViewportRef = useRef<HTMLDivElement>(null);
   const requestId = useRef(0);
+  const dataKeyRef = useRef<string | null>(null);
   const elapsed = useElapsedSeconds(loading);
   const { categories, byArticle } = useCategoryMap();
   const [category, setCategory] = useState("");
   const month = range.from.slice(0, 7);
+  const currentDataKey = `${cabinetId || "all"}:${range.from}:${range.to}`;
+  const activeData = dataKey === currentDataKey ? data : null;
 
   useEffect(() => {
     setPlanning(false);
@@ -303,16 +307,26 @@ export function WbRnpPage() {
     if (cabinets.length === 0) {
       setLoading(false);
       setData(null);
+      dataKeyRef.current = null;
+      setDataKey(null);
       setError(cabinetsError || "Подключите хотя бы один активный WB-кабинет в настройках");
       return;
     }
     if (!activeCabinet && cabinetId !== "all") {
       setLoading(false);
       setData(null);
+      dataKeyRef.current = null;
+      setDataKey(null);
       setError(cabinetsError || "Нет доступного WB-кабинета");
       return;
     }
 
+    const requestKey = `${cabinetId || "all"}:${range.from}:${range.to}`;
+    if (dataKeyRef.current !== requestKey) {
+      dataKeyRef.current = null;
+      setDataKey(null);
+      setData(null);
+    }
     const controller = new AbortController();
     const currentRequest = ++requestId.current;
     let timedOut = false;
@@ -322,7 +336,6 @@ export function WbRnpPage() {
     }, 65_000);
 
     setLoading(true);
-    setData(null);
     setError(null);
 
     const params = new URLSearchParams({ date_from: range.from, date_to: range.to });
@@ -339,6 +352,8 @@ export function WbRnpPage() {
         if (currentRequest !== requestId.current) return;
         if (body.error) throw new Error(body.error);
         setData(body);
+        dataKeyRef.current = requestKey;
+        setDataKey(requestKey);
       })
       .catch((cause: unknown) => {
         if (currentRequest !== requestId.current || (controller.signal.aborted && !timedOut)) return;
@@ -384,8 +399,8 @@ export function WbRnpPage() {
   }, [cabinetId, canWrite, month]);
 
   const filteredSkus = useMemo(
-    () => filterByCategory(data?.skus ?? [], (sku) => sku.art, byArticle, category),
-    [byArticle, category, data?.skus],
+    () => filterByCategory(activeData?.skus ?? [], (sku) => sku.art, byArticle, category),
+    [activeData?.skus, byArticle, category],
   );
 
   const sortedSkus = useMemo(() => {
@@ -409,18 +424,18 @@ export function WbRnpPage() {
   const mobileSkus = sortedSkus.slice(0, mobileLimit);
   const monthDayCount = daysInMonth(month);
   const planOverview = (() => {
-    if (!data) return null;
-    const metric = findMetric(data.summary, "orders_sum") ?? null;
-    const planValue = aggregatePlanValue(plan, data.skus, "orders_sum", monthDayCount);
-    const plannedSku = data.skus.filter((sku) => Number.isFinite(plan[String(sku.nm)]?.orders_sum)).length;
+    if (!activeData) return null;
+    const metric = findMetric(activeData.summary, "orders_sum") ?? null;
+    const planValue = aggregatePlanValue(plan, activeData.skus, "orders_sum", monthDayCount);
+    const plannedSku = activeData.skus.filter((sku) => Number.isFinite(plan[String(sku.nm)]?.orders_sum)).length;
     return {
       metric,
       planValue,
-      planCoveragePct: data.skus.length ? Math.round(plannedSku / data.skus.length * 100) : 0,
+      planCoveragePct: activeData.skus.length ? Math.round(plannedSku / activeData.skus.length * 100) : 0,
       progress: planValue && metric?.forecast != null ? metric.forecast / planValue * 100 : null,
-      readyMetrics: data.summary.filter((item) => item.status === "ready").length,
-      partialMetrics: data.summary.filter((item) => item.status === "partial").length,
-      unavailableMetrics: data.summary.filter((item) => item.status === "unavailable").length,
+      readyMetrics: activeData.summary.filter((item) => item.status === "ready").length,
+      partialMetrics: activeData.summary.filter((item) => item.status === "partial").length,
+      unavailableMetrics: activeData.summary.filter((item) => item.status === "unavailable").length,
     };
   })();
 
@@ -472,7 +487,7 @@ export function WbRnpPage() {
     });
   };
 
-  const totalColumns = 7 + (data?.period.length ?? 0);
+  const totalColumns = 7 + (activeData?.period.length ?? 0);
 
   return (
     <div className="min-h-[calc(100vh-54px)] bg-[#f6f7f9] px-3 pb-20 pt-3 md:px-6 md:pb-6 md:pt-4">
@@ -523,7 +538,7 @@ export function WbRnpPage() {
 
         <span className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-[11px] font-medium text-slate-600">
           <Store className="h-3.5 w-3.5 text-violet-600" />
-          {data?.shop_label || activeCabinet?.name || "Все кабинеты"}
+          {activeData?.shop_label || activeCabinet?.name || "Все кабинеты"}
         </span>
 
         <button
@@ -542,9 +557,9 @@ export function WbRnpPage() {
       <section className="mb-2.5 flex flex-wrap items-center justify-between gap-2" aria-label="Сортировка и фильтры РНП">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           <CategoryFilter categories={categories} value={category} onChange={setCategory} />
-          {data && (
+          {activeData && (
             <span className="text-[10px] text-slate-400">
-              {sortedSkus.length} из {data.sku_count} SKU · {data.period.length} дн.
+              {sortedSkus.length} из {activeData.sku_count} SKU · {activeData.period.length} дн.
             </span>
           )}
         </div>
@@ -579,17 +594,17 @@ export function WbRnpPage() {
         </div>
       )}
 
-      {!loading && data?.scope_freshness && new Set(data.scope_freshness.map((item) => item.as_of)).size > 1 && (
+      {activeData?.scope_freshness && new Set(activeData.scope_freshness.map((item) => item.as_of)).size > 1 && (
         <div className="mb-2 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-900">
           <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
           <span>
-            Границы полного факта различаются: {data.scope_freshness.map((item) => `${item.label} — ${item.as_of}`).join(" · ")}.
+            Границы полного факта различаются: {activeData.scope_freshness.map((item) => `${item.label} — ${item.as_of}`).join(" · ")}.
             Сводка складывает каждый кабинет только до указанной даты.
           </span>
         </div>
       )}
 
-      {!loading && data && planOverview && (
+      {activeData && planOverview && (
         <section className="mb-2.5 rounded-xl border border-slate-200 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.03)]" aria-label="План факт прогноз РНП">
           <div className="flex flex-wrap items-start justify-between gap-2">
             <div>
@@ -597,8 +612,8 @@ export function WbRnpPage() {
               <p className="mt-0.5 text-[10px] text-slate-400">Месячный план сравнивается с прогнозом полного месяца, а не с незавершённым фактом.</p>
             </div>
             <div className="text-right text-[9px] leading-4 text-slate-400">
-              <div>Факт по {data.as_of}</div>
-              <div>Снимок {new Date(data.generated_at).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</div>
+              <div>Факт по {activeData.as_of}</div>
+              <div>Снимок {new Date(activeData.generated_at).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</div>
             </div>
           </div>
           <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
@@ -608,7 +623,7 @@ export function WbRnpPage() {
               detail={planOverview.planValue == null ? "План не задан" : `Покрыто ${planOverview.planCoveragePct}% SKU`}
               tone={planOverview.planValue == null ? "amber" : "slate"}
             />
-            <OverviewMetric label="Факт месяца" value={fmt(planOverview.metric?.total, "money")} detail={`по ${data.as_of}`} tone="slate" />
+            <OverviewMetric label="Факт месяца" value={fmt(planOverview.metric?.total, "money")} detail={`по ${activeData.as_of}`} tone="slate" />
             <OverviewMetric
               label="Прогноз месяца"
               value={fmt(planOverview.metric?.forecast, "money")}
@@ -626,18 +641,25 @@ export function WbRnpPage() {
           </div>
           <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg bg-slate-50 px-2.5 py-2 text-[9px] text-slate-500">
             <span>Качество метрик: {planOverview.readyMetrics} готово · {planOverview.partialMetrics} частично · {planOverview.unavailableMetrics} недоступно</span>
-            <span>{data.forecast_note}</span>
+            <span>{activeData.forecast_note}</span>
             <span>«Выкуп потока» не является когортным показателем и может превышать 100%.</span>
           </div>
         </section>
       )}
 
-      {loading ? (
+      {error && activeData && (
+        <div className="mb-2 flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-900">
+          <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+          <span>{error} Показан последний готовый снимок для этого кабинета и периода.</span>
+        </div>
+      )}
+
+      {loading && !activeData ? (
         <>
           <LoadingBanner seconds={elapsed} hint="РНП по SKU" />
           <SkeletonTableRows rows={12} cols={11} />
         </>
-      ) : error ? (
+      ) : error && !activeData ? (
         <div className="rounded-xl border border-rose-200 bg-white p-6 text-center shadow-sm">
           <AlertTriangle className="mx-auto h-7 w-7 text-rose-500" />
           <h2 className="mt-2 text-sm font-semibold text-slate-800">Не удалось загрузить РНП</h2>
@@ -650,13 +672,13 @@ export function WbRnpPage() {
             <RefreshCw className="h-3.5 w-3.5" /> Повторить
           </button>
         </div>
-      ) : data && data.skus.length === 0 ? (
+      ) : activeData && activeData.skus.length === 0 ? (
         <div className="rounded-xl border border-slate-200 bg-white p-8 text-center">
           <CalendarDays className="mx-auto h-7 w-7 text-slate-300" />
           <h2 className="mt-2 text-sm font-semibold text-slate-700">Нет данных за выбранный период</h2>
           <p className="mt-1 text-xs text-slate-400">Измените даты или проверьте синхронизацию кабинета.</p>
         </div>
-      ) : data ? (
+      ) : activeData ? (
         <>
           <div
             ref={tableViewportRef}
@@ -673,7 +695,7 @@ export function WbRnpPage() {
                   <PlanHeader>Прогноз мес.<span className="mt-0.5 block text-[8px] font-normal text-slate-400">диапазон</span></PlanHeader>
                   <PlanHeader>% плана</PlanHeader>
                   <PlanHeader strong>Факт мес.</PlanHeader>
-                  {data.period.map((day, index) => (
+                  {activeData.period.map((day, index) => (
                     <th key={`${day.label}-${index}`} className="sticky top-0 z-30 h-[38px] w-[82px] min-w-[82px] border-b border-r border-slate-200 bg-[#fafbfc] px-2 text-center font-medium text-slate-500">
                       <span className="block">{day.label}</span>
                       <span className="mt-0.5 block text-[9px] font-normal text-slate-400">{day.period_type}</span>
@@ -683,20 +705,20 @@ export function WbRnpPage() {
               </thead>
               <tbody>
                 <SectionRow columns={totalColumns} icon="chart" label="СВОДКА ПО МАГАЗИНУ" />
-                {completeMetrics(data.summary, data.period.length).map((metric, index, metrics) => (
+                {completeMetrics(activeData.summary, activeData.period.length).map((metric, index, metrics) => (
                   <MetricRow
                     key={`summary-${metric.field}`}
                     metric={metric}
-                    planValue={aggregatePlanValue(plan, data.skus, metric.field, monthDayCount)}
+                    planValue={aggregatePlanValue(plan, activeData.skus, metric.field, monthDayCount)}
                     planEditable={false}
                     monthDays={monthDayCount}
-                    firstCell={index === 0 ? <SummaryCell label={data.shop_label} rowSpan={metrics.length} /> : null}
+                    firstCell={index === 0 ? <SummaryCell label={activeData.shop_label} rowSpan={metrics.length} /> : null}
                   />
                 ))}
                 <SectionRow columns={totalColumns} icon="box" label={`ТОВАРЫ (${sortedSkus.length})`} />
                 {skuWindow.start > 0 && <SpacerRow columns={totalColumns} height={skuWindow.start * SKU_BLOCK_HEIGHT} />}
                 {visibleSkus.map((sku) => {
-                  const metrics = completeMetrics(sku.metrics, data.period.length);
+                  const metrics = completeMetrics(sku.metrics, activeData.period.length);
                   return metrics.map((metric, index) => {
                     const key = `${sku.nm}:${metric.field}`;
                     const savedPlan = plan[String(sku.nm)]?.[metric.field] ?? null;
