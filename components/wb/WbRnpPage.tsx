@@ -75,6 +75,7 @@ const METRIC_ORDER = [
   "views",
   "clicks",
   "ctr",
+  "open_card",
   "cart",
   "orders_sum",
   "orders_count",
@@ -92,9 +93,10 @@ const METRIC_ORDER = [
 ];
 
 const METRIC_FALLBACKS: Record<string, { label: string; kind: string }> = {
-  views: { label: "Показы", kind: "int" },
-  clicks: { label: "Клики", kind: "int" },
-  ctr: { label: `${MARKETPLACE_METRICS.ctr.label}, %`, kind: "pct" },
+  views: { label: "Рекламные показы", kind: "int" },
+  clicks: { label: "Рекламные клики", kind: "int" },
+  ctr: { label: `Рекламный ${MARKETPLACE_METRICS.ctr.label}, %`, kind: "pct" },
+  open_card: { label: "Переходы в карточку", kind: "int" },
   cart: { label: "Корзины", kind: "int" },
   orders_sum: { label: "Заказы, ₽", kind: "money" },
   orders_count: { label: "Заказы, шт", kind: "int" },
@@ -118,6 +120,7 @@ const MOBILE_PAGE_SIZE = 20;
 const MONTHLY_FLOW_FIELDS = new Set([
   "views",
   "clicks",
+  "open_card",
   "cart",
   "orders_sum",
   "orders_count",

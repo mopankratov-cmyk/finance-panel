@@ -33,7 +33,7 @@ interface RpcTotal {
   cost: number | null;
 }
 interface AdNmRow { nm_id: number; date: string; views: number | null; clicks: number | null }
-interface FunnelCartRow { nm_id: number; date: string; add_to_cart: number | null }
+interface FunnelRow { nm_id: number; date: string; open_card: number | null; add_to_cart: number | null }
 interface ProductCostRow { article: string; name: string | null }
 interface CabinetScope { cabinetId: string | null; label: string; allowedNmIds: Set<number> | null }
 interface MetricCutoffs { orders: string | null; sales: string | null; adverts: string | null }
@@ -106,8 +106,8 @@ export function applyRnpScopeCutoff<Row extends DailyRow>(rows: Row[], asOf: str
   } as Row));
 }
 
-// Показы/клики/CTR/корзины по SKU по дням — отдельный источник (wb_advert_nm_daily +
-// wb_funnel_daily), не трогаем rnp_daily(_sku) RPC (общий для многих потребителей).
+// Рекламные показы/клики/CTR и товарные переходы/корзины по SKU по дням — отдельные
+// источники (wb_advert_nm_daily + wb_funnel_daily), не трогаем rnp_daily(_sku) RPC.
 // Вклеивается в начало metrics[] построчно, тем же способом, что gross/margin_pct — сводкой.
 export interface Metric {
   field: string;
@@ -131,6 +131,7 @@ export interface Metric {
 const ADDITIVE_FORECAST_FIELDS = new Set([
   "views",
   "clicks",
+  "open_card",
   "cart",
   "orders_count",
   "orders_sum",
@@ -218,11 +219,12 @@ function knownSum(values: (number | null)[]) {
   return known.length ? known.reduce((sum, value) => sum + value, 0) : null;
 }
 
-function buildFunnelMetrics(
+export function buildFunnelMetrics(
   days: string[],
   asOf: string,
   viewsByDate: Map<string, number>,
   clicksByDate: Map<string, number>,
+  openCardByDate: Map<string, number>,
   cartByDate: Map<string, number>,
   cutoffs: FunnelCutoffs,
 ): Metric[] {
@@ -230,6 +232,7 @@ function buildFunnelMetrics(
     !cutoff || day > asOf || day > cutoff ? null : Number(source.get(day) ?? 0);
   const views = days.map((day) => read(viewsByDate, day, cutoffs.adverts));
   const clicks = days.map((day) => read(clicksByDate, day, cutoffs.adverts));
+  const openCard = days.map((day) => read(openCardByDate, day, cutoffs.funnel));
   const cart = days.map((day) => read(cartByDate, day, cutoffs.funnel));
   const ctr = days.map((_, index) => Number(views[index]) > 0 && clicks[index] != null
     ? Math.round((Number(clicks[index]) / Number(views[index])) * 1000) / 10
@@ -237,9 +240,10 @@ function buildFunnelMetrics(
   const totalViews = knownSum(views);
   const totalClicks = knownSum(clicks);
   const metrics: Metric[] = [
-    { field: "views", label: "Показы", kind: "int", daily: views, total: totalViews, forecast: null, source: "WB Реклама", group_start: true },
-    { field: "clicks", label: "Клики", kind: "int", daily: clicks, total: totalClicks, forecast: null, source: "WB Реклама" },
-    { field: "ctr", label: "CTR, %", kind: "pct", daily: ctr, total: totalViews && totalClicks != null ? Math.round((totalClicks / totalViews) * 1000) / 10 : null, forecast: null, source: "WB Реклама", note: "Клики / показы. Пустые даты источника не считаются нулём." },
+    { field: "views", label: "Рекламные показы", kind: "int", daily: views, total: totalViews, forecast: null, source: "WB Реклама", group_start: true },
+    { field: "clicks", label: "Рекламные клики", kind: "int", daily: clicks, total: totalClicks, forecast: null, source: "WB Реклама" },
+    { field: "ctr", label: "Рекламный CTR, %", kind: "pct", daily: ctr, total: totalViews && totalClicks != null ? Math.round((totalClicks / totalViews) * 1000) / 10 : null, forecast: null, source: "WB Реклама", note: "Рекламные клики / рекламные показы. Пустые даты источника не считаются нулём." },
+    { field: "open_card", label: "Переходы в карточку", kind: "int", daily: openCard, total: knownSum(openCard), forecast: null, source: "WB Воронка", group_start: true },
     { field: "cart", label: "В корзину", kind: "int", daily: cart, total: knownSum(cart), forecast: null, source: "WB Воронка" },
   ];
   return applyMetricForecasts(metrics, days, asOf);
@@ -424,7 +428,7 @@ export async function buildRnpTable(from: string, to: string, cabinetId?: string
             skuRows: [] as SkuDailyRow[],
             totals: [] as RpcTotal[],
             adRows: [] as AdNmRow[],
-            funnelRows: [] as FunnelCartRow[],
+            funnelRows: [] as FunnelRow[],
             ordersCutoff: null as string | null,
             salesCutoff: null as string | null,
             scope,
@@ -463,10 +467,10 @@ export async function buildRnpTable(from: string, to: string, cabinetId?: string
             if (allowed) query = query.in("nm_id", allowed);
             return query;
           }),
-          loadAllPages<FunnelCartRow>((start, end) => {
+          loadAllPages<FunnelRow>((start, end) => {
             let query = db
               .from("wb_funnel_daily")
-              .select("nm_id, date, add_to_cart")
+              .select("nm_id, date, open_card, add_to_cart")
               .gte("date", from)
               .lte("date", to)
               .order("date", { ascending: true })
@@ -511,9 +515,10 @@ export async function buildRnpTable(from: string, to: string, cabinetId?: string
     const advertsCutoff = latestKnownDate(scopeData.map((item) => latestDate(item.adRows, (row) => row.date)));
     const funnelCutoff = latestKnownDate(scopeData.map((item) => latestDate(item.funnelRows, (row) => row.date)));
 
-    // показы/клики/корзины по (nm_id, date) — отдельно от rnp_daily(_sku) RPC
+    // рекламный и товарный трафик по (nm_id, date) — отдельно от rnp_daily(_sku) RPC
     const viewsByNm = new Map<number, Map<string, number>>();
     const clicksByNm = new Map<number, Map<string, number>>();
+    const openCardByNm = new Map<number, Map<string, number>>();
     const cartByNm = new Map<number, Map<string, number>>();
     for (const r of adRows) {
       const d = String(r.date).slice(0, 10);
@@ -523,11 +528,16 @@ export async function buildRnpTable(from: string, to: string, cabinetId?: string
     }
     for (const r of funnelRows) {
       const d = String(r.date).slice(0, 10);
+      if (!openCardByNm.has(r.nm_id)) openCardByNm.set(r.nm_id, new Map());
       if (!cartByNm.has(r.nm_id)) cartByNm.set(r.nm_id, new Map());
+      openCardByNm.get(r.nm_id)!.set(d, (openCardByNm.get(r.nm_id)!.get(d) ?? 0) + Number(r.open_card ?? 0));
       cartByNm.get(r.nm_id)!.set(d, (cartByNm.get(r.nm_id)!.get(d) ?? 0) + Number(r.add_to_cart ?? 0));
     }
     // агрегат по всем nm — для сводки строки
-    const viewsByDateAll = new Map<string, number>(), clicksByDateAll = new Map<string, number>(), cartByDateAll = new Map<string, number>();
+    const viewsByDateAll = new Map<string, number>();
+    const clicksByDateAll = new Map<string, number>();
+    const openCardByDateAll = new Map<string, number>();
+    const cartByDateAll = new Map<string, number>();
     for (const r of adRows) {
       const d = String(r.date).slice(0, 10);
       viewsByDateAll.set(d, (viewsByDateAll.get(d) ?? 0) + Number(r.views ?? 0));
@@ -535,6 +545,7 @@ export async function buildRnpTable(from: string, to: string, cabinetId?: string
     }
     for (const r of funnelRows) {
       const d = String(r.date).slice(0, 10);
+      openCardByDateAll.set(d, (openCardByDateAll.get(d) ?? 0) + Number(r.open_card ?? 0));
       cartByDateAll.set(d, (cartByDateAll.get(d) ?? 0) + Number(r.add_to_cart ?? 0));
     }
     // полный расход МП на nm = комиссия + эквайринг + прочие удержания (логистика/хранение/штрафы/…) + account-overhead
@@ -595,7 +606,7 @@ export async function buildRnpTable(from: string, to: string, cabinetId?: string
       .map((t) => {
         const dmap = byNm.get(t.nm_id) ?? new Map<string, DailyRow>();
         const metrics = buildMetrics(days, asOf, dmap, Number(t.stock ?? 0), Math.round(Number(t.stock ?? 0) * Number(t.cost ?? 0)), metricCutoffs, Number(t.cost ?? 0), wbCostForNm(t.nm_id));
-        metrics.unshift(...buildFunnelMetrics(days, asOf, viewsByNm.get(t.nm_id) ?? new Map(), clicksByNm.get(t.nm_id) ?? new Map(), cartByNm.get(t.nm_id) ?? new Map(), funnelCutoffs));
+        metrics.unshift(...buildFunnelMetrics(days, asOf, viewsByNm.get(t.nm_id) ?? new Map(), clicksByNm.get(t.nm_id) ?? new Map(), openCardByNm.get(t.nm_id) ?? new Map(), cartByNm.get(t.nm_id) ?? new Map(), funnelCutoffs));
         const orders = metrics.find((m) => m.field === "orders_count")?.total ?? 0;
         return { nm: t.nm_id, art: t.article || String(t.nm_id), name: nameByArt.get(t.article) || t.article || String(t.nm_id), img_url: wbCardImageUrl(t.nm_id), metrics, _o: orders };
       })
@@ -604,7 +615,7 @@ export async function buildRnpTable(from: string, to: string, cabinetId?: string
 
     // Сводка: базовые метрики из дневной агрегации + Валовая/Маржа вклеиваем суммой по SKU (себес разный)
     const summary = buildMetrics(days, asOf, dailyByDate, stockTotal, Math.round(stockMoneyTotal), metricCutoffs);
-    summary.unshift(...buildFunnelMetrics(days, asOf, viewsByDateAll, clicksByDateAll, cartByDateAll, funnelCutoffs));
+    summary.unshift(...buildFunnelMetrics(days, asOf, viewsByDateAll, clicksByDateAll, openCardByDateAll, cartByDateAll, funnelCutoffs));
     const sumDaily = (field: string) => days.map((_, i) => {
       let acc = 0, any = false;
       for (const sk of skus) { const m = sk.metrics.find((x) => x.field === field); const v = m?.daily[i]; if (v != null) { acc += Number(v); any = true; } }

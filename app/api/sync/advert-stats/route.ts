@@ -5,7 +5,7 @@ import { getWbSyncTargets } from "@/lib/sync/cabinets";
 import { allowsNm, isScoped } from "@/lib/wb/productScope";
 
 const FULLSTATS_URL = "https://advert-api.wildberries.ru/adv/v3/fullstats";
-// fullstats: лимит 1 запрос/мин на токен, до 50 кампаний за раз (WB 400 при >50).
+// fullstats: до 50 кампаний за раз (WB 400 при >50).
 const ID_BATCH = 50;
 // сколько дней истории тянем
 const DAYS_BACK = 14;
@@ -62,15 +62,19 @@ export async function GET(request: NextRequest) {
   const errors: string[] = [];
   const rotated: string[] = [];
 
-  // Тайм-бокс на 60с-функцию + ротация среза кампаний по дню (полное покрытие за неск. прогонов).
+  // Тайм-бокс на 60с-функцию + почасовая ротация среза кампаний.
   const deadline = Date.now() + 50_000;
-  const dayOfYear = Math.floor((Date.now() - Date.UTC(new Date().getUTCFullYear(), 0, 0)) / 86_400_000);
+  const hourIndex = Math.floor(Date.now() / 3_600_000);
 
   try {
     for (const t of targets) {
       if (Date.now() > deadline) { rotated.push(`${t.name}: пропущен (бюджет)`); break; } // докрутим следующим прогоном
-      // Живые кампании этого кабинета (активные + на паузе); архивные не тратят бюджет.
-      let aq = db.from("wb_adverts").select("advert_id, status").in("status", [9, 11]);
+      // Fullstats отдаёт активные, приостановленные и завершённые кампании.
+      let aq = db
+        .from("wb_adverts")
+        .select("advert_id, status")
+        .in("status", [7, 9, 11])
+        .order("advert_id", { ascending: true });
       aq = t.cabinetId === null ? aq.is("cabinet_id", null) : aq.eq("cabinet_id", t.cabinetId);
       const { data: advRows, error: advErr } = await aq;
       if (advErr) {
@@ -84,10 +88,10 @@ export async function GET(request: NextRequest) {
       const dayRows: Record<string, unknown>[] = [];
       const nmDaily = new Map<string, { nm_id: number; date: string; views: number; clicks: number; spent: number; orders: number; orders_sum: number; cabinet_id: string | null }>();
 
-      // батчи кампаний; стартуем со сдвигом по дню и идём по кругу
+      // Батчи кампаний: каждый почасовой прогон берёт следующий срез.
       const idBatches: number[][] = [];
       for (let i = 0; i < ids.length; i += ID_BATCH) idBatches.push(ids.slice(i, i + ID_BATCH));
-      const startB = idBatches.length ? dayOfYear % idBatches.length : 0;
+      const startB = idBatches.length ? hourIndex % idBatches.length : 0;
       if (idBatches.length > 1) rotated.push(`${t.name}: срез ${startB + 1}/${idBatches.length}`);
 
       let failed = false;
