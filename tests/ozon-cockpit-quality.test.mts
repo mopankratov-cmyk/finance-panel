@@ -50,7 +50,7 @@ test("Ozon ad cache becomes warning after two hours and error after six", () => 
 
 test("Ozon health summary includes the latest sync failure", () => {
   assert.deepEqual(
-    summarizeOzonHealth(["ok", "warning"], { status: "error" }),
+    summarizeOzonHealth(["ok", "warning"], { status: "error", error: "Supabase timeout" }),
     { healthy: 1, warnings: 1, errors: 1, sync: "error" },
   );
 });

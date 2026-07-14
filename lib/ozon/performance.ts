@@ -67,6 +67,14 @@ export function performanceReportQuality(
   };
 }
 
+export function isOzonPerformanceReportDeferredMessage(value: unknown) {
+  const message = String(value ?? "");
+  if (!/Performance report/i.test(message)) return false;
+  return /\bHTTP 429\b/i.test(message)
+    || /status\s+(?:NOT_STARTED|IN_PROGRESS|PROCESSING|PENDING)/i.test(message)
+    || /нет готовых батчей/i.test(message);
+}
+
 // Per-SKU расход на рекламу за период (async-отчёт Performance по SKU-кампаниям).
 // {bySku:{sku:{spent,ordersMoney}}} — расход и продажи с рекламы по каждому товару.
 export async function perfProductReport(

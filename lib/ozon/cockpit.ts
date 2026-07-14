@@ -13,7 +13,7 @@ import {
   type OzonAnalyticsDailyRow,
   type OzonTotals,
 } from "@/lib/ozon/api";
-import { getPerfToken, perfDailySpend, perfProductReport } from "@/lib/ozon/performance";
+import { getPerfToken, isOzonPerformanceReportDeferredMessage, perfDailySpend, perfProductReport } from "@/lib/ozon/performance";
 import { createOzonCostResolver } from "@/lib/ozon/costs";
 import { indexOzonOfferIdsBySku, resolveOzonOfferId } from "@/lib/ozon/productIdentity";
 import {
@@ -928,6 +928,12 @@ export async function loadHealth(scope: OzonCabinetScope) {
     latestSync = data as Record<string, unknown> | null;
   }
   const health = summarizeOzonHealth(cabinets.map((cabinet) => cabinet.status), latestSync);
+  if (latestSync && health.sync === "warning" && isOzonPerformanceReportDeferredMessage(latestSync.error)) {
+    latestSync = {
+      ...latestSync,
+      error: "Ozon Performance готовит рекламный отчёт или временно ограничил частоту запросов. Повторим автоматически; это не ошибка токена или кабинета.",
+    };
+  }
   return {
     view: "health",
     scope: publicScope(scope),

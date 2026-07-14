@@ -1,3 +1,5 @@
+import { isOzonPerformanceReportDeferredMessage } from "@/lib/ozon/performance";
+
 export type OzonQualityStatus = "ok" | "warning" | "error";
 
 export const OZON_AD_CACHE_WARNING_HOURS = 2;
@@ -116,14 +118,16 @@ export function ozonAdCacheStatus(
   return "ok";
 }
 
-export function ozonSyncStatus(latestSync: { status?: unknown } | null): OzonQualityStatus {
+export function ozonSyncStatus(latestSync: { status?: unknown; error?: unknown } | null): OzonQualityStatus {
   if (!latestSync) return "warning";
-  return latestSync.status === "ok" ? "ok" : "error";
+  if (isOzonPerformanceReportDeferredMessage(latestSync.error)) return "warning";
+  if (latestSync.status === "ok") return latestSync.error ? "warning" : "ok";
+  return "error";
 }
 
 export function summarizeOzonHealth(
   cabinetStatuses: OzonQualityStatus[],
-  latestSync: { status?: unknown } | null,
+  latestSync: { status?: unknown; error?: unknown } | null,
 ) {
   const sync = ozonSyncStatus(latestSync);
   return {

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { checkCronAuth, writeSyncLog } from "@/lib/sync/helpers";
-import { perfProductReport } from "@/lib/ozon/performance";
+import { isOzonPerformanceReportDeferredMessage, perfProductReport } from "@/lib/ozon/performance";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const maxDuration = 60;
@@ -70,31 +70,36 @@ export async function GET(request: NextRequest) {
         ok: true,
         rows: rows.length,
         partial: report.partial,
+        deferred: false,
         error: report.errors.length ? report.errors.join("; ") : null,
       };
     } catch (err) {
+      const message = err instanceof Error ? err.message : "Unknown error";
       return {
         cabinet: cabinet.name,
         ok: false,
         rows: 0,
         partial: false,
-        error: err instanceof Error ? err.message : "Unknown error",
+        deferred: isOzonPerformanceReportDeferredMessage(message),
+        error: message,
       };
     }
   }));
 
-  const failures = results.filter((result) => !result.ok);
+  const deferred = results.filter((result) => !result.ok && result.deferred);
+  const failures = results.filter((result) => !result.ok && !result.deferred);
   const total = results.reduce((sum, result) => sum + result.rows, 0);
   const partial = results.filter((result) => result.partial).map((result) => result.cabinet);
   const notes = [
     ...failures.map((result) => `${result.cabinet}: ${result.error ?? "Ozon API error"}`),
+    ...deferred.map((result) => `${result.cabinet}: Ozon Performance готовит отчёт или ограничил частоту, повторим автоматически (${result.error ?? "retry later"})`),
     ...results.filter((result) => result.ok && result.error).map((result) => `${result.cabinet}: ${result.error}`),
     ...(partial.length ? [`Частичный Performance-отчёт: ${partial.join(", ")}`] : []),
   ];
   const ok = failures.length === 0;
   await writeSyncLog("ozon-adverts", ok ? "ok" : "error", total, notes.join("; ") || null, startedAt);
   return NextResponse.json(
-    { ok, rows: total, cabinets: cabinets.length, results, warnings: partial },
+    { ok, rows: total, cabinets: cabinets.length, results, warnings: [...partial, ...deferred.map((result) => result.cabinet)] },
     { status: ok ? 200 : 502 },
   );
 }
