@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { checkCronAuth, chunkedUpsert, writeSyncLog } from "@/lib/sync/helpers";
-import { getWbSyncTargets } from "@/lib/sync/cabinets";
+import { discoverCabinetProducts, getWbSyncTargets } from "@/lib/sync/cabinets";
 import { allowsProduct, isScoped } from "@/lib/wb/productScope";
 import { WbStocksApiError, wbWarehouseStockPages } from "@/lib/wb/stocksApi";
 
@@ -26,8 +26,18 @@ export async function GET(request: NextRequest) {
 
   try {
     for (const t of targets) {
-      // Новый метод WB не возвращает бренд. Для кабинета с пустым allowlist
-      // безопаснее ничего не загружать, пока orders/sales не обнаружат нужные nmId.
+      // Новый метод остатков WB не возвращает бренд. Сначала обновляем каталог
+      // карточек: так scoped-кабинет получает все SKU нужного бренда ещё до заказа.
+      try {
+        await discoverCabinetProducts(t);
+      } catch (error) {
+        if (isScoped(t.productScope) && !t.productScope.allowedNmIds?.length) {
+          errors.push(`${t.name}: ${error instanceof Error ? error.message : "не удалось определить бренды товаров"}`);
+          continue;
+        }
+      }
+
+      // При недоступном Content API сохраняем fail-closed для первого запуска.
       if (isScoped(t.productScope) && !t.productScope.allowedNmIds?.length) {
         continue;
       }

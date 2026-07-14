@@ -4,6 +4,7 @@ export interface WbProductScope {
 }
 
 export const OPTIMA_ALLOWED_BRANDS = ["norvia", "riobox"] as const;
+export const RETAIL_FAMILY_ALLOWED_BRANDS = ["norvia"] as const;
 
 export function normalizeWbBrand(value: unknown): string {
   return String(value ?? "")
@@ -27,6 +28,9 @@ export function cabinetBrandFilters(cabinetName: unknown, configured: unknown): 
   const normalizedName = normalizeWbBrand(cabinetName);
   if (normalizedName.includes("optima") || normalizedName.includes("оптима")) {
     return [...OPTIMA_ALLOWED_BRANDS];
+  }
+  if (normalizedName.includes("retailfamily")) {
+    return [...RETAIL_FAMILY_ALLOWED_BRANDS];
   }
   return normalizeBrandFilters(configured);
 }
