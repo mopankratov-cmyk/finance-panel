@@ -66,6 +66,21 @@ export function wbCardImageUrlCandidates(nmId: number, size = "c246x328", radius
   );
 }
 
+export function extractWbNmIdFromImageUrl(src: string | null | undefined): number | null {
+  const value = String(src ?? "");
+  const match = value.match(/\/(\d{5,12})\/images\//) ?? value.match(/\/catalog\/(\d{5,12})(?:\/|$)/);
+  const nmId = Number(match?.[1] ?? 0);
+  return Number.isInteger(nmId) && nmId > 0 ? nmId : null;
+}
+
+export function wbCardImageUrlsForDisplay(input: { nmId?: number | null; src?: string | null; size?: string; radius?: number }): string[] {
+  const src = String(input.src ?? "").trim();
+  const nmId = Number(input.nmId ?? extractWbNmIdFromImageUrl(src) ?? 0);
+  const urls = src ? [src] : [];
+  if (Number.isInteger(nmId) && nmId > 0) urls.push(...wbCardImageUrlCandidates(nmId, input.size ?? "c246x328", input.radius ?? 18));
+  return [...new Set(urls)];
+}
+
 /** Синхронный best-effort URL фото карточки (без HEAD-проверки) — для списков. */
 export function wbCardImageUrl(nmId: number, size = "c246x328"): string {
   const vol = Math.floor(nmId / 100000);

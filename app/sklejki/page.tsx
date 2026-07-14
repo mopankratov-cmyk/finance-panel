@@ -8,6 +8,7 @@ import { LoadingBanner, SkeletonKpiRow, SkeletonTableRows, useElapsedSeconds } f
 import { CategoryFilter, filterByCategory } from "@/components/ui/CategoryFilter";
 import { useCategoryMap } from "@/lib/useCategoryMap";
 import { useSort, sortGlyph } from "@/lib/useSort";
+import { WbProductImage } from "@/components/wb/WbProductImage";
 
 interface GSku {
   nm: number; art: string; name: string; img_url: string; shop: string;
@@ -51,8 +52,7 @@ function GroupCard({ g }: { g: Group }) {
               <tr key={s.nm} className="border-t border-gray-50">
                 <td className="px-4 py-1.5">
                   <div className="flex items-center gap-2">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={s.img_url} alt="" loading="lazy" className="h-7 w-7 shrink-0 rounded bg-gray-100 object-cover" onError={(e) => { (e.currentTarget as HTMLImageElement).style.visibility = "hidden"; }} />
+                    <WbProductImage nm={s.nm} src={s.img_url} className="h-7 w-7 shrink-0 rounded bg-gray-100 object-cover" />
                     <span className="truncate text-xs font-medium">{s.art}</span>
                     {s.signal && <span className="rounded bg-rose-50 px-1.5 py-0.5 text-[10px] text-rose-600">{s.signal}</span>}
                   </div>

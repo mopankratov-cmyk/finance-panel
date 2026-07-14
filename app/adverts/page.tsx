@@ -9,6 +9,7 @@ import { CategoryFilter, filterByCategory } from "@/components/ui/CategoryFilter
 import { useCategoryMap } from "@/lib/useCategoryMap";
 import { useSort } from "@/lib/useSort";
 import { formatTime } from "@/lib/analytics/format";
+import { WbProductImage } from "@/components/wb/WbProductImage";
 import type { AdvertChange } from "@/app/api/adverts/changes/route";
 
 interface Day { ts: string; spend: number; clicks: number; views: number; orders: number }
@@ -61,9 +62,7 @@ function ArticleCard({ a }: { a: Article }) {
   return (
     <div className="rounded-2xl border border-gray-200 bg-white">
       <button onClick={() => setOpen((v) => !v)} aria-expanded={open} aria-label={`${a.art}: ${open ? "свернуть" : "развернуть"} кампании`} className="flex w-full items-center gap-3 p-3 text-left">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={a.photo} alt="" loading="lazy" className="h-12 w-12 shrink-0 rounded-lg bg-gray-100 object-cover"
-          onError={(e) => { (e.currentTarget as HTMLImageElement).style.visibility = "hidden"; }} />
+        <WbProductImage nm={a.nm} src={a.photo} className="h-12 w-12 shrink-0 rounded-lg bg-gray-100 object-cover" />
         <div className="min-w-0 flex-1">
           <div className="truncate text-sm font-semibold text-gray-900">{a.art}</div>
           <div className="text-xs text-gray-400">{a.campaigns.length} {a.campaigns.length === 1 ? "кампания" : "кампаний"} · nm {a.nm}</div>

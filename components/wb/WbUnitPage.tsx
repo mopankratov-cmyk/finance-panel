@@ -15,6 +15,7 @@ import { METRIC_TEXT_TONE, marketplaceMetricStatus } from "@/lib/analytics/marke
 import { useCategoryMap } from "@/lib/useCategoryMap";
 import { useDashboardFilter } from "@/lib/useDashboardFilter";
 import { useSort, sortGlyph } from "@/lib/useSort";
+import { WbProductImage } from "./WbProductImage";
 import { WbEmptyState, WbErrorState, WbModuleHeader } from "./WbModuleHeader";
 import { useWbCabinet } from "./WbCabinetContext";
 
@@ -289,8 +290,7 @@ export function WbUnitPage() {
                       <tr key={`${row[2]}-${rowIndex}`} className="group h-[49px] border-b border-slate-200 hover:bg-violet-50/30">
                         <td className="sticky left-0 z-20 border-r border-slate-200 bg-white px-2 group-hover:bg-[#fbfaff]">
                           <div className="flex min-w-0 items-center gap-2">
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img src={data.img_urls[rowIndex]} alt="" loading="lazy" className="h-8 w-8 shrink-0 rounded border border-slate-100 bg-slate-50 object-cover" onError={(event) => { event.currentTarget.style.visibility = "hidden"; }} />
+                            <WbProductImage nm={Number(row[4])} src={data.img_urls[rowIndex]} className="h-8 w-8 shrink-0 rounded border border-slate-100 bg-slate-50 object-cover" />
                             <div className="min-w-0"><div className="truncate font-semibold text-slate-700">{show(row[2])}</div><div className="max-w-[185px] truncate text-[9px] text-slate-400">{data.names[rowIndex]}</div></div>
                           </div>
                         </td>
@@ -309,8 +309,7 @@ export function WbUnitPage() {
                   return (
                     <article key={`${row[2]}-${rowIndex}`} className="rounded-lg border border-slate-200 bg-white p-3">
                       <div className="flex items-center gap-2">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={data.img_urls[rowIndex]} alt="" loading="lazy" className="h-10 w-10 rounded bg-slate-50 object-cover" />
+                        <WbProductImage nm={Number(row[4])} src={data.img_urls[rowIndex]} className="h-10 w-10 shrink-0 rounded bg-slate-50 object-cover" />
                         <div className="min-w-0"><div className="truncate text-xs font-semibold text-slate-800">{show(row[2])}</div><div className="truncate text-[10px] text-slate-400">{data.names[rowIndex]}</div></div>
                       </div>
                       <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2">

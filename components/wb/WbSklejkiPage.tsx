@@ -14,6 +14,7 @@ import {
   type SklejkiGroup,
   type SklejkiSkuMetrics,
 } from "@/lib/wb/sklejki";
+import { WbProductImage } from "./WbProductImage";
 import { WbEmptyState, WbErrorState, WbModuleHeader } from "./WbModuleHeader";
 import { useWbCabinet } from "./WbCabinetContext";
 
@@ -80,8 +81,7 @@ function SkuCard({ group, sku, verdictVisible = true }: { group: SklejkiGroup; s
     <article className={`rounded-md border p-2 ${style.row}`}>
       <div className="flex items-start gap-2">
         <a href={wbUrl} target="_blank" rel="noopener noreferrer" className="shrink-0 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={sku.img_url} alt="" loading="lazy" className="h-10 w-10 rounded object-cover" onError={(event) => { event.currentTarget.style.visibility = "hidden"; }} />
+          <WbProductImage nm={sku.nm} src={sku.img_url} className="h-10 w-10 rounded bg-slate-100 object-cover" />
         </a>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-0.5">

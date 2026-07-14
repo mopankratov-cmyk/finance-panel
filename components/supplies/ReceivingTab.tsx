@@ -4,18 +4,11 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Plus } from "lucide-react";
 import { AnalyticsTable, type Column } from "@/components/analytics/AnalyticsTable";
 import { formatNumber, formatTime } from "@/lib/analytics/format";
-import { wbCardImageUrl } from "@/lib/wb/cardImage";
 import { LoadingBanner, SkeletonTableRows, useElapsedSeconds } from "@/components/ui/LoadingState";
 import { NewReceiptModal } from "@/components/supplies/NewReceiptModal";
+import { WbProductImage } from "@/components/wb/WbProductImage";
 import type { SupplyRow, WarehouseSummary } from "@/app/api/supplies/route";
 import type { PurchaseReceiptRow } from "@/app/api/supplies/receipts/route";
-
-function Thumb({ nmId }: { nmId: number }) {
-  const [broken, setBroken] = useState(false);
-  if (broken) return <div className="h-9 w-9 shrink-0 rounded bg-slate-100" />;
-  // eslint-disable-next-line @next/next/no-img-element
-  return <img src={wbCardImageUrl(nmId)} alt="" loading="lazy" className="h-9 w-9 shrink-0 rounded border border-slate-200 object-cover" onError={() => setBroken(true)} />;
-}
 
 function waitDaysColor(d: number): string {
   if (d <= 7) return "text-slate-500";
@@ -104,7 +97,7 @@ export function ReceivingTab({ skus, cabId, warehouses }: { skus: SupplyRow[]; c
   const expectedColumns: Column<PurchaseReceiptRow>[] = [
     { key: "article", label: "Товар", render: (r) => (
       <div className="flex items-center gap-2">
-        <Thumb nmId={r.nmId} />
+        <WbProductImage nm={r.nmId} className="h-9 w-9 shrink-0 rounded border border-slate-200 bg-slate-100 object-cover" />
         <p className="font-medium text-slate-900">{r.article || r.nmId}</p>
       </div>
     ), csv: (r) => r.article || String(r.nmId) },

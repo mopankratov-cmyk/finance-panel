@@ -18,6 +18,7 @@ import { MARKETPLACE_METRICS } from "@/lib/analytics/marketplaceMetrics";
 import { heat } from "@/lib/analytics/heat";
 import { readApiResponse } from "@/lib/http/readApiResponse";
 import { useCategoryMap } from "@/lib/useCategoryMap";
+import { WbProductImage } from "./WbProductImage";
 import { useWbCabinet } from "./WbCabinetContext";
 
 interface Metric {
@@ -732,8 +733,7 @@ export function WbRnpPage() {
               return (
                 <article key={sku.nm} className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
                   <div className="flex items-center gap-2.5">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={sku.img_url} alt="" className="h-12 w-12 rounded-lg bg-slate-100 object-cover" onError={(event) => { event.currentTarget.style.visibility = "hidden"; }} />
+                    <WbProductImage nm={sku.nm} src={sku.img_url} className="h-12 w-12 rounded-lg bg-slate-100 object-cover" />
                     <div className="min-w-0 flex-1">
                       <h2 className="truncate text-xs font-semibold text-violet-700">{sku.art}</h2>
                       <p className="mt-0.5 truncate text-[10px] text-slate-400">{sku.name}</p>
@@ -834,8 +834,7 @@ function ProductCell({ sku, rowSpan }: { sku: Sku; rowSpan: number }) {
   return (
     <td rowSpan={rowSpan} className="sticky left-0 z-20 w-28 min-w-28 border-b border-r border-slate-200 bg-white p-2 align-top">
       <div className="space-y-1">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={sku.img_url} alt="" loading="lazy" className="h-[74px] w-[74px] rounded-md bg-slate-100 object-cover" onError={(event) => { event.currentTarget.style.visibility = "hidden"; }} />
+        <WbProductImage nm={sku.nm} src={sku.img_url} className="h-[74px] w-[74px] rounded-md bg-slate-100 object-cover" />
         <div className="truncate text-[10px] font-semibold text-violet-700" title={sku.art}>{sku.art}</div>
         <div className="text-[9px] text-slate-400">{sku.nm}</div>
         <div className="line-clamp-2 text-[9px] leading-3 text-slate-500">{sku.name}</div>

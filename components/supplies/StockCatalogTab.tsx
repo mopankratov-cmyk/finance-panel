@@ -3,9 +3,9 @@
 import { useMemo, useState } from "react";
 import { AnalyticsTable, type Column } from "@/components/analytics/AnalyticsTable";
 import { formatNumber } from "@/lib/analytics/format";
-import { wbCardImageUrl } from "@/lib/wb/cardImage";
 import { CategoryFilter, filterByCategory } from "@/components/ui/CategoryFilter";
 import { useCategoryMap } from "@/lib/useCategoryMap";
+import { WbProductImage } from "@/components/wb/WbProductImage";
 import type { StockCatalogRow } from "@/app/api/supplies/route";
 
 function daysColor(d: number | null): string {
@@ -13,13 +13,6 @@ function daysColor(d: number | null): string {
   if (d <= 14) return "text-red-600";
   if (d <= 30) return "text-amber-500";
   return "text-emerald-600";
-}
-
-function Thumb({ nmId }: { nmId: number }) {
-  const [broken, setBroken] = useState(false);
-  if (broken) return <div className="h-9 w-9 shrink-0 rounded bg-slate-100" />;
-  // eslint-disable-next-line @next/next/no-img-element
-  return <img src={wbCardImageUrl(nmId)} alt="" loading="lazy" className="h-9 w-9 shrink-0 rounded border border-slate-200 object-cover" onError={() => setBroken(true)} />;
 }
 
 export function StockCatalogTab({ rows }: { rows: StockCatalogRow[] }) {
@@ -42,7 +35,7 @@ export function StockCatalogTab({ rows }: { rows: StockCatalogRow[] }) {
   const columns: Column<StockCatalogRow>[] = [
     { key: "article", label: "Товар", sortable: true, render: (r) => (
       <div className="flex items-center gap-2">
-        <Thumb nmId={r.nmId} />
+        <WbProductImage nm={r.nmId} className="h-9 w-9 shrink-0 rounded border border-slate-200 bg-slate-100 object-cover" />
         <div className="min-w-0">
           <p className="font-medium text-slate-900">{r.article || r.nmId}</p>
           {r.name && <p className="max-w-xs truncate text-xs text-slate-400">{r.name}</p>}

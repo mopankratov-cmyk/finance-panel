@@ -9,6 +9,7 @@ import { CategoryFilter, filterByCategory } from "@/components/ui/CategoryFilter
 import { useCategoryMap } from "@/lib/useCategoryMap";
 import { DateRangePicker } from "@/components/ui/DateRangePicker";
 import { useSort, sortGlyph } from "@/lib/useSort";
+import { WbProductImage } from "@/components/wb/WbProductImage";
 
 interface SeoSku {
   nm: number; art: string; name: string; img_url: string;
@@ -126,8 +127,7 @@ export default function SeoPage() {
                   <tr key={s.nm} className="group border-b border-gray-100 last:border-0 hover:bg-gray-50">
                     <td className="sticky left-0 z-10 bg-white px-3 py-2 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.08)] group-hover:bg-gray-50">
                       <div className="flex items-center gap-2">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={s.img_url} alt="" loading="lazy" className="h-8 w-8 shrink-0 rounded bg-gray-100 object-cover" onError={(e) => { (e.currentTarget as HTMLImageElement).style.visibility = "hidden"; }} />
+                        <WbProductImage nm={s.nm} src={s.img_url} className="h-8 w-8 shrink-0 rounded bg-gray-100 object-cover" />
                         <div className="min-w-0"><div className="truncate text-xs font-semibold">{s.art}</div><div className="truncate text-[10px] text-gray-400">{s.name}</div></div>
                       </div>
                     </td>

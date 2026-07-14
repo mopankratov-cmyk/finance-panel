@@ -12,6 +12,7 @@ import { LoadingBanner, SkeletonCards, useElapsedSeconds } from "@/components/ui
 import { MARKETPLACE_METRICS, METRIC_TEXT_TONE, marketplaceMetricStatus, type MarketplaceMetricId } from "@/lib/analytics/marketplaceMetrics";
 import { useCategoryMap } from "@/lib/useCategoryMap";
 import { useDashboardFilter } from "@/lib/useDashboardFilter";
+import { WbProductImage } from "./WbProductImage";
 import { WbEmptyState, WbErrorState, WbModuleHeader } from "./WbModuleHeader";
 import { useWbCabinet } from "./WbCabinetContext";
 
@@ -228,8 +229,7 @@ export function WbSeoPage() {
                   onClick={() => setSelected(sku)}
                   className="group flex h-[74px] w-full items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 text-left shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-colors hover:border-violet-200 hover:bg-violet-50/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500"
                 >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={sku.img_url} alt="" loading="lazy" className="h-12 w-12 shrink-0 rounded-lg border border-slate-100 bg-slate-50 object-cover" onError={(event) => { event.currentTarget.style.visibility = "hidden"; }} />
+                  <WbProductImage nm={sku.nm} src={sku.img_url} className="h-12 w-12 shrink-0 rounded-lg border border-slate-100 bg-slate-50 object-cover" />
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-[12px] font-semibold text-slate-800">{sku.art}</div>
                     <div className="mt-0.5 truncate text-[11px] text-slate-500">{sku.name}</div>
@@ -256,8 +256,7 @@ export function WbSeoPage() {
           <button type="button" aria-label="Закрыть карточку SEO" onClick={() => setSelected(null)} className="fixed inset-0 z-[79] bg-slate-950/25" />
           <aside role="dialog" aria-modal="true" aria-label={`SEO ${selected.art}`} className="fixed bottom-0 right-0 top-[54px] z-[80] flex w-full max-w-[760px] flex-col border-l border-slate-200 bg-[#f6f7f9] shadow-2xl">
             <div className="flex items-center gap-3 border-b border-slate-200 bg-white px-4 py-3">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={selected.img_url} alt="" className="h-11 w-11 rounded-lg bg-slate-50 object-cover" />
+              <WbProductImage nm={selected.nm} src={selected.img_url} loading="eager" className="h-11 w-11 shrink-0 rounded-lg bg-slate-50 object-cover" />
               <div className="min-w-0"><div className="truncate text-sm font-bold text-slate-800">{selected.art}</div><div className="truncate text-[11px] text-slate-400">{selected.name}</div></div>
               <a href={`https://www.wildberries.ru/catalog/${selected.nm}/detail.aspx`} target="_blank" rel="noreferrer" className="ml-auto hidden min-h-8 items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 text-[10px] font-semibold text-slate-500 hover:bg-slate-50 sm:inline-flex">Карточка WB <ExternalLink className="h-3 w-3" /></a>
               <button type="button" onClick={() => setSelected(null)} aria-label="Закрыть" className="grid h-11 w-11 place-items-center rounded-lg text-slate-400 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 sm:h-10 sm:w-10"><X className="h-4 w-4" /></button>

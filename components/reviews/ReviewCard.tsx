@@ -4,14 +4,11 @@ import { useState } from "react";
 import { Star, Video } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
 import { formatTime } from "@/lib/analytics/format";
-import { wbCardImageUrl } from "@/lib/wb/cardImage";
+import { WbProductImage } from "@/components/wb/WbProductImage";
 import type { ReviewRow } from "@/app/api/reviews/route";
 
 function Thumb({ nmId }: { nmId: number }) {
-  const [broken, setBroken] = useState(false);
-  if (broken) return <div className="h-11 w-11 shrink-0 rounded bg-slate-100" />;
-  // eslint-disable-next-line @next/next/no-img-element
-  return <img src={wbCardImageUrl(nmId)} alt="" loading="lazy" className="h-11 w-11 shrink-0 rounded border border-slate-200 object-cover" onError={() => setBroken(true)} />;
+  return <WbProductImage nm={nmId} className="h-11 w-11 shrink-0 rounded border border-slate-200 bg-slate-100 object-cover" />;
 }
 
 // glyph — звёзды сами по себе несут сигнал не только цветом (дальтоники/ч-б экраны)
