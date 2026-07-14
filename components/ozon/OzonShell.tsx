@@ -20,6 +20,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { OzonCabinetSwitcher } from "./OzonCabinetSwitcher";
 import { useOzonCabinet } from "./OzonCabinetContext";
+import { withOzonCabinetScope } from "@/lib/ozon/navigation";
 
 interface NavItem {
   label: string;
@@ -51,7 +52,7 @@ function isActive(pathname: string, item: NavItem) {
 
 function RailLink({ item, active, cabinetId }: { item: NavItem; active: boolean; cabinetId: string }) {
   const Icon = item.icon;
-  const href = item.scoped ? `${item.href}?cabinet=${encodeURIComponent(cabinetId)}` : item.href;
+  const href = item.scoped ? withOzonCabinetScope(item.href, cabinetId) : item.href;
   return (
     <Link
       href={href}
@@ -141,7 +142,7 @@ export function OzonShell({ children }: { children: React.ReactNode }) {
           const Icon = item.icon;
           const active = isActive(pathname, item);
           return (
-            <Link key={item.href} href={`${item.href}?cabinet=${encodeURIComponent(scopedCabinet)}`} className={`flex h-full min-w-14 flex-col items-center justify-center gap-0.5 text-[9px] ${active ? "text-sky-700" : "text-slate-400"}`}>
+            <Link key={item.href} href={withOzonCabinetScope(item.href, scopedCabinet)} className={`flex h-full min-w-14 flex-col items-center justify-center gap-0.5 text-[9px] ${active ? "text-sky-700" : "text-slate-400"}`}>
               <Icon className="h-4 w-4" />{item.label}
             </Link>
           );

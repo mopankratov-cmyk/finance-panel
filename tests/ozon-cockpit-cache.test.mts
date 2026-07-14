@@ -36,7 +36,7 @@ test("Ozon snapshot identity isolates screens and cabinet sets", () => {
 });
 
 test("Ozon snapshot schema version invalidates incompatible cached payloads", () => {
-  assert.equal(OZON_COCKPIT_CACHE_VERSION, "v4");
+  assert.equal(OZON_COCKPIT_CACHE_VERSION, "v5");
 });
 
 test("Ozon snapshot tag is short and contains no cabinet labels", () => {

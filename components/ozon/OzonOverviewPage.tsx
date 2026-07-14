@@ -4,6 +4,8 @@ import { AlertCircle, AlertTriangle, ArrowRight, BadgeRussianRuble, RotateCcw, S
 import Link from "next/link";
 import { useState } from "react";
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { withOzonCabinetScope } from "@/lib/ozon/navigation";
+import { useOzonCabinet } from "./OzonCabinetContext";
 import { OzonModuleHeader } from "./OzonModuleHeader";
 import { EmptyState, Freshness, MetricCard, OzonError, OzonLoading, OzonWarnings, ProductCell, formatMoney, formatNumber, formatPercent } from "./OzonUi";
 import { useOzonCockpit } from "./useOzonCockpit";
@@ -26,6 +28,7 @@ interface OverviewData {
 
 export function OzonOverviewPage() {
   const [days, setDays] = useState(14);
+  const { cabinetId } = useOzonCabinet();
   const { data, loading, error, refresh } = useOzonCockpit<OverviewData>("overview", days);
   return (
     <div>
@@ -77,7 +80,7 @@ export function OzonOverviewPage() {
                 </div>
                 <div className="max-h-[318px] overflow-y-auto p-2">
                   {data.attention.length ? data.attention.map((item, index) => (
-                    <Link key={`${item.title}-${index}`} href={item.href} className="flex min-h-14 items-start gap-2 rounded-lg px-2.5 py-2 hover:bg-slate-50">
+                    <Link key={`${item.title}-${index}`} href={withOzonCabinetScope(item.href, cabinetId)} className="flex min-h-14 items-start gap-2 rounded-lg px-2.5 py-2 hover:bg-slate-50">
                       {item.severity === "critical" ? <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-600" /> : <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />}
                       <span className="min-w-0 flex-1"><span className="block text-xs font-semibold text-slate-800">{item.title}</span><span className="mt-0.5 block text-[10px] text-slate-500">{item.detail}</span></span>
                       <ArrowRight className="mt-1 h-3.5 w-3.5 shrink-0 text-slate-300" />
@@ -89,7 +92,7 @@ export function OzonOverviewPage() {
 
             <div className="grid gap-4 xl:grid-cols-[minmax(0,1.45fr)_minmax(300px,0.55fr)]">
               <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-                <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3"><div><h2 className="text-sm font-bold text-slate-900">Топ SKU по выручке</h2><p className="mt-0.5 text-[10px] text-slate-400">Продажи, остаток, запас и ДРР в одном месте</p></div><Link href={`/ozon/sales`} className="inline-flex min-h-11 items-center gap-1 px-2 text-[11px] font-semibold text-sky-700 sm:min-h-8">Все продажи <ArrowRight className="h-3 w-3" /></Link></div>
+                <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3"><div><h2 className="text-sm font-bold text-slate-900">Топ SKU по выручке</h2><p className="mt-0.5 text-[10px] text-slate-400">Продажи, остаток, запас и ДРР в одном месте</p></div><Link href={withOzonCabinetScope("/ozon/sales", cabinetId)} className="inline-flex min-h-11 items-center gap-1 px-2 text-[11px] font-semibold text-sky-700 sm:min-h-8">Все продажи <ArrowRight className="h-3 w-3" /></Link></div>
                 <div className="overflow-x-auto">
                   <table className="w-full min-w-[840px] text-xs">
                     <thead className="bg-slate-50 text-[10px] uppercase tracking-wide text-slate-500"><tr><th className="px-4 py-2 text-left">Товар</th><th className="px-3 py-2 text-right">Заказы</th><th className="px-3 py-2 text-right">Выручка</th><th className="px-3 py-2 text-right">Остаток</th><th className="px-3 py-2 text-right">Запас</th><th className="px-3 py-2 text-right">Реклама</th><th className="px-4 py-2 text-right">ДРР</th></tr></thead>

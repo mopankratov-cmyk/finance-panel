@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { fetchOzonCockpitJson } from "@/lib/ozon/clientFetch";
 import { useOzonCabinet } from "./OzonCabinetContext";
 
 export function useOzonCockpit<T>(view: string, days = 14, extra: Record<string, string | number> = {}) {
@@ -24,12 +25,7 @@ export function useOzonCockpit<T>(view: string, days = 14, extra: Record<string,
     }
     const stableExtra = JSON.parse(extraKey) as Record<string, string | number>;
     for (const [key, value] of Object.entries(stableExtra)) params.set(key, String(value));
-    fetch(`/api/ozon/cockpit?${params.toString()}`, { cache: "no-store", signal: controller.signal })
-      .then(async (response) => {
-        const body = await response.json();
-        if (!response.ok) throw new Error(body.error || `Ozon ${response.status}`);
-        return body as T;
-      })
+    fetchOzonCockpitJson<T>(`/api/ozon/cockpit?${params.toString()}`, controller.signal)
       .then(setData)
       .catch((cause: unknown) => {
         if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : "Не удалось загрузить Ozon");

@@ -14,6 +14,7 @@ import {
   type OzonTotals,
 } from "@/lib/ozon/api";
 import { getPerfToken, perfDailySpend, perfProductReport } from "@/lib/ozon/performance";
+import { indexOzonOfferIdsBySku, resolveOzonOfferId } from "@/lib/ozon/productIdentity";
 import {
   calculateOzonEconomyUnit,
   ozonAdCacheStatus,
@@ -478,17 +479,28 @@ export async function loadStocks(scope: OzonCabinetScope, days: number) {
     false,
   )));
   const rows: Record<string, unknown>[] = [];
+  const identityWarnings: string[] = [];
   for (const base of bases) {
+    const stockRows = base.stocks.ok ? base.stocks.rows : [];
+    const stockOfferBySku = indexOzonOfferIdsBySku(stockRows);
     const salesByOffer = new Map<string, { orders: number; revenue: number }>();
+    let unmatchedOrders = 0;
     for (const item of base.analytics) {
-      const offerId = base.images.skuToOffer[item.sku] ?? "";
+      const offerId = resolveOzonOfferId(item.sku, base.images.skuToOffer, stockOfferBySku);
+      if (!offerId) {
+        unmatchedOrders += item.ordered_units;
+        continue;
+      }
       const entry = salesByOffer.get(offerId) ?? { orders: 0, revenue: 0 };
       entry.orders += item.ordered_units;
       entry.revenue += item.revenue;
       salesByOffer.set(offerId, entry);
     }
+    if (unmatchedOrders > 0) {
+      identityWarnings.push(`${base.cabinetName}: ${r0(unmatchedOrders)} заказов не сопоставлены с остатками`);
+    }
     const stockByOffer = new Map<string, { name: string; free: number; reserved: number; warehouses: Record<string, number> }>();
-    if (base.stocks.ok) for (const stock of base.stocks.rows) {
+    for (const stock of stockRows) {
       const entry = stockByOffer.get(stock.article) ?? { name: stock.name, free: 0, reserved: 0, warehouses: {} };
       entry.free += stock.free;
       entry.reserved += stock.reserved;
@@ -548,7 +560,7 @@ export async function loadStocks(scope: OzonCabinetScope, days: number) {
       const score = (status: unknown) => statusScores[String(status)] ?? 5;
       return score(left.status) - score(right.status) || Number(left.daysCover ?? 999_999) - Number(right.daysCover ?? 999_999);
     }),
-    warnings: bases.flatMap((base) => base.warnings),
+    warnings: [...bases.flatMap((base) => base.warnings), ...identityWarnings],
   };
 }
 

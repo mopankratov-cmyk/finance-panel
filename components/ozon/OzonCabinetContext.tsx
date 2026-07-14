@@ -1,7 +1,8 @@
 "use client";
 
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { withOzonCabinetScope } from "@/lib/ozon/navigation";
 
 export interface OzonCabinet {
   id: string;
@@ -46,7 +47,6 @@ const STORAGE_KEY = "fp_cab_ozon";
 
 export function OzonCabinetProvider({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const router = useRouter();
   const searchParams = useSearchParams();
   const requestedCabinet = searchParams.get("cabinet");
   const [cabinets, setCabinets] = useState<OzonCabinet[]>([]);
@@ -104,10 +104,9 @@ export function OzonCabinetProvider({ children }: { children: React.ReactNode })
   }, [cabinets, canUseAll, groups]);
 
   const replaceCabinetInUrl = useCallback((nextCabinetId: string) => {
-    const params = new URLSearchParams(searchParams.toString());
-    params.set("cabinet", nextCabinetId);
-    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
-  }, [pathname, router, searchParams]);
+    const href = withOzonCabinetScope(`${pathname}?${searchParams.toString()}`, nextCabinetId);
+    window.history.replaceState(null, "", href);
+  }, [pathname, searchParams]);
 
   const remember = useCallback((value: string) => {
     try { localStorage.setItem(STORAGE_KEY, value); } catch { /* URL остаётся источником контекста. */ }
