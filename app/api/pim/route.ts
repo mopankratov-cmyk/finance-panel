@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireApiSession } from "@/lib/auth/apiGuard";
 import { cabinetIdFromParam } from "@/lib/rnp/resolveShop";
-import { fetchCabinetPimRows } from "@/lib/wb/cards";
+import { fetchCabinetPimRows, loadCabinetPimRowsHourly } from "@/lib/wb/cards";
 import { hasCabinetAccess } from "@/lib/auth/cabinetAccess";
 import { getServerSession } from "@/lib/auth/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
@@ -21,7 +21,9 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ ok: false, error: "Нет доступа к кабинету" }, { status: 403 });
   }
   try {
-    const rows = await fetchCabinetPimRows(p_cabinet);
+    const forceRefresh = new URL(req.url).searchParams.get("refresh") === "1";
+    const backgroundRefresh = new URL(req.url).searchParams.get("background") === "1";
+    const rows = await loadCabinetPimRowsHourly(p_cabinet, { forceRefresh, backgroundRefresh });
     const db = getSupabaseAdmin();
     let notesReady = Boolean(db);
     const cabinetIds = [...new Set(rows.map((row) => row.cabinetId).filter((id): id is string => Boolean(id)))];

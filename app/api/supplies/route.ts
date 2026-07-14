@@ -4,6 +4,9 @@ import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { resolveCabinetSelection } from "@/lib/cabinetGroups";
 import { hasCabinetAccess } from "@/lib/auth/cabinetAccess";
 import { requestAllowedNmIds, requestAllowsNm } from "@/lib/wb/requestProductScope";
+import { loadCabinetPimRowsHourly } from "@/lib/wb/cards";
+import { buildSupplyVolumeCoverage } from "@/lib/supplies/volumeCoverage";
+import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
 
 export const dynamic = "force-dynamic";
 
@@ -50,24 +53,20 @@ interface RpcRow {
   in_way_to_client: number;
 }
 
-// Полный (не усечённый .limit(2000)) постраничный фетч wb_stocks — отдельно от
-// stockQ ниже, чтобы не менять числа, которыми уже питается warehouses/whInferno/splitNeed.
+// Полный постраничный фетч wb_stocks для каталога и складской сводки.
 // members (комбо-группа) → .in(), single → .eq(), оба null → без фильтра (все кабинеты).
 async function fetchAllStocks(db: SupabaseClient, single: string | null, members: string[] | null) {
-  const rows: { nm_id: number; cabinet_id: string | null; warehouse: string; quantity: number | null; in_way_to_client: number | null; in_way_from_client: number | null }[] = [];
-  for (let page = 0; page < 30; page++) {
+  type StockRow = { nm_id: number; cabinet_id: string | null; warehouse: string; quantity: number | null; in_way_to_client: number | null; in_way_from_client: number | null };
+  return loadAllSupabasePages<StockRow>((from, to) => {
     let q = db.from("wb_stocks")
       .select("nm_id, cabinet_id, warehouse, quantity, in_way_to_client, in_way_from_client")
-      .range(page * 1000, page * 1000 + 999);
+      .order("warehouse", { ascending: true })
+      .order("nm_id", { ascending: true })
+      .range(from, to);
     if (members) q = q.in("cabinet_id", members);
     else if (single) q = q.eq("cabinet_id", single);
-    const { data, error } = await q;
-    if (error) throw new Error(error.message);
-    if (!data?.length) break;
-    rows.push(...(data as typeof rows));
-    if (data.length < 1000) break;
-  }
-  return rows;
+    return q;
+  }, { label: "Остатки WB" });
 }
 
 // rnp_report принимает один p_cabinet — для группы вызываем по каждому участнику
@@ -123,17 +122,24 @@ export async function GET(req: NextRequest) {
       const allowedNmIds = scopeByCabinet.get(rowCabinet);
       return allowedNmIds === undefined ? true : requestAllowsNm(allowedNmIds, row.nm_id);
     };
-    let stockQ = db.from("wb_stocks").select("nm_id, cabinet_id, warehouse, quantity, in_way_to_client").limit(2000);
-    if (members) stockQ = stockQ.in("cabinet_id", members);
-    else if (p_cabinet) stockQ = stockQ.eq("cabinet_id", p_cabinet);
-    const [rpcRows, stocksRes, allStockRowsRaw, costsRes] = await Promise.all([
+    const pimRowsPromise = (members
+      ? Promise.all(members.map((member) => loadCabinetPimRowsHourly(member))).then((rows) => rows.flat())
+      : loadCabinetPimRowsHourly(p_cabinet))
+      .then((rows) => ({ rows, error: null as string | null }))
+      .catch((error: unknown) => ({
+        rows: [],
+        error: error instanceof Error ? error.message : "Габариты WB не загружены",
+      }));
+    const [rpcRows, allStockRowsRaw, costsRes, pimSnapshot] = await Promise.all([
       fetchRpcRows(db, p_cabinet, members),
-      stockQ,
       fetchAllStocks(db, p_cabinet, members),
       db.from("product_costs").select("article, name"),
+      pimRowsPromise,
     ]);
-    const stockRows = (stocksRes.data ?? []).filter(stockAllowed);
+    if (costsRes.error) throw new Error(costsRes.error.message);
+    const pimRows = pimSnapshot.rows;
     const allStockRows = allStockRowsRaw.filter(stockAllowed);
+    const stockRows = allStockRows;
 
     const need = (avgDaily: number, stock: number, inWay: number, horizon: number) =>
       Math.max(0, Math.ceil(avgDaily * horizon - stock - inWay));
@@ -235,9 +241,14 @@ export async function GET(req: NextRequest) {
           wb_wh: null,
         };
       });
+    const volumeCoverage = buildSupplyVolumeCoverage(infernoSkus.map((sku) => sku.nm), pimRows);
+    const infernoSkusWithVolume = infernoSkus.map((sku) => ({
+      ...sku,
+      volume_liters: volumeCoverage.litersByNm.get(sku.nm) ?? null,
+    }));
 
-    const totalsQty = whInferno.map((_, i) => infernoSkus.reduce((a, s) => a + (s.qty[i] || 0), 0));
-    const availableTotal = infernoSkus.reduce((a, s) => a + s.available, 0);
+    const totalsQty = whInferno.map((_, i) => infernoSkusWithVolume.reduce((a, s) => a + (s.qty[i] || 0), 0));
+    const availableTotal = infernoSkusWithVolume.reduce((a, s) => a + s.available, 0);
     const wbStockTotal = warehouses.reduce((a, w) => a + w.quantity, 0);
 
     return NextResponse.json({
@@ -245,7 +256,7 @@ export async function GET(req: NextRequest) {
       error: null,
       // inferno top-level
       warehouses: whInferno,
-      skus: infernoSkus,
+      skus: infernoSkusWithVolume,
       totals: { wb_stock: wbStockTotal, available: availableTotal, qty: totalsQty },
       threshold: 30,
       whEcon: [],
@@ -255,10 +266,16 @@ export async function GET(req: NextRequest) {
       wms: null,
       wb_supply_nums: {},
       wms_orders: {},
-      coverage: null,
+      coverage: {
+        volume: {
+          known: volumeCoverage.known,
+          total: volumeCoverage.total,
+          error: pimSnapshot.error,
+        },
+      },
       pallet_liters: 1230,
-      vol_known: 0,
-      vol_total: skus.length,
+      vol_known: volumeCoverage.known,
+      vol_total: volumeCoverage.total,
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Unknown error";

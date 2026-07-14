@@ -42,3 +42,10 @@ export function rotateFunnelTargets<T>(targets: readonly T[], dayOfYear: number)
   const start = ((dayOfYear % targets.length) + targets.length) % targets.length;
   return targets.map((_, index) => targets[(start + index) % targets.length]);
 }
+
+export async function runFunnelTargetsConcurrently<T>(
+  targets: readonly T[],
+  worker: (target: T) => Promise<void>,
+): Promise<void> {
+  await Promise.all(targets.map(worker));
+}

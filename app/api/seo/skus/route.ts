@@ -4,6 +4,9 @@ import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { wbCardImageUrl } from "@/lib/wb/cardImage";
 import { resolveShopCabinet } from "@/lib/rnp/resolveShop";
 import { requestAllowedNmIds, requestAllowsNm } from "@/lib/wb/requestProductScope";
+import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
+import { loadHourlyDashboard } from "@/lib/cache/hourlyDashboard";
+import { closedMoscowDates } from "@/lib/wb/sklejki";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -11,10 +14,12 @@ export const maxDuration = 60;
 interface FunnelRow { nm_id: number; date: string; open_card: number; add_to_cart: number; orders: number; orders_sum: number }
 interface AdRow { nm_id: number; date: string; views: number; clicks: number; spent: number }
 interface RpcTotal { nm_id: number; article: string; stock: number; cost: number | null }
+interface DailySkuRow { nm_id: number; d: string; orders_count: number; orders_sum: number }
+interface ProductCostRow { article: string; name: string | null }
+interface RatingRow { nm_id: number; rating: number }
 
 const r2 = (v: number) => Math.round(v * 100) / 100;
 const pct = (num: number, den: number) => (den > 0 ? r2((num / den) * 100) : null);
-const iso = (d: Date) => d.toISOString().slice(0, 10);
 const ruDate = (s: string) => `${s.slice(8, 10)}.${s.slice(5, 7)}`;
 
 function windowDays(raw: string | null): number {
@@ -24,11 +29,10 @@ function windowDays(raw: string | null): number {
 }
 
 function selectedPeriod(days: number) {
-  const end = new Date();
-  end.setDate(end.getDate() - 1);
-  const start = new Date(end);
-  start.setDate(start.getDate() - (days - 1));
-  return { start: iso(start), end: iso(end), label: days === 1 ? ruDate(iso(end)) : `${ruDate(iso(start))}-${ruDate(iso(end))}` };
+  const dates = closedMoscowDates(days);
+  const start = dates[0];
+  const end = dates.at(-1)!;
+  return { start, end, label: days === 1 ? ruDate(end) : `${ruDate(start)}-${ruDate(end)}` };
 }
 
 const ISO_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -53,27 +57,63 @@ export async function GET(request: NextRequest) {
   const days = windowDays(params.get("window"));
   const period = customPeriod(params.get("date_from"), params.get("date_to")) ?? selectedPeriod(days);
 
-  let funnelQ = db.from("wb_funnel_daily").select("nm_id, date, open_card, add_to_cart, orders, orders_sum").gte("date", period.start).lte("date", period.end);
-  let adQ = db.from("wb_advert_nm_daily").select("nm_id, date, views, clicks, spent").gte("date", period.start).lte("date", period.end);
-  if (cabinetId) { funnelQ = funnelQ.eq("cabinet_id", cabinetId); adQ = adQ.eq("cabinet_id", cabinetId); }
-  if (allowedNmIds) {
-    const nmIds = allowedNmIds.size ? [...allowedNmIds] : [-1];
-    funnelQ = funnelQ.in("nm_id", nmIds);
-    adQ = adQ.in("nm_id", nmIds);
-  }
-  const [funnelRes, adRes, totalsRes, costsRes] = await Promise.all([
-    funnelQ,
-    adQ,
-    db.rpc("rnp_report", { p_cabinet: cabinetId }),
-    db.from("product_costs").select("article, name"),
-  ]);
+  const payload = await loadHourlyDashboard(
+    "wb-seo-skus",
+    { cabinetId, start: period.start, end: period.end, days },
+    async () => {
+      const [funnel, ad, totals, costs, dailySku] = await Promise.all([
+        loadAllSupabasePages<FunnelRow>((from, to) => {
+          let query = db
+            .from("wb_funnel_daily")
+            .select("nm_id, date, open_card, add_to_cart, orders, orders_sum")
+            .gte("date", period.start)
+            .lte("date", period.end)
+            .order("date", { ascending: true })
+            .order("nm_id", { ascending: true })
+            .range(from, to);
+          if (cabinetId) query = query.eq("cabinet_id", cabinetId);
+          if (allowedNmIds) query = query.in("nm_id", allowedNmIds.size ? [...allowedNmIds] : [-1]);
+          return query;
+        }, { label: "SEO: воронка WB" }),
+        loadAllSupabasePages<AdRow>((from, to) => {
+          let query = db
+            .from("wb_advert_nm_daily")
+            .select("nm_id, date, views, clicks, spent")
+            .gte("date", period.start)
+            .lte("date", period.end)
+            .order("date", { ascending: true })
+            .order("nm_id", { ascending: true })
+            .range(from, to);
+          if (cabinetId) query = query.eq("cabinet_id", cabinetId);
+          if (allowedNmIds) query = query.in("nm_id", allowedNmIds.size ? [...allowedNmIds] : [-1]);
+          return query;
+        }, { label: "SEO: реклама WB" }),
+        loadAllSupabasePages<RpcTotal>((from, to) => {
+          let query = db.rpc("rnp_report", { p_cabinet: cabinetId }).order("nm_id", { ascending: true }).range(from, to);
+          if (allowedNmIds) query = query.in("nm_id", allowedNmIds.size ? [...allowedNmIds] : [-1]);
+          return query;
+        }, { label: "SEO: товары WB" }),
+        loadAllSupabasePages<ProductCostRow>((from, to) => db
+          .from("product_costs")
+          .select("article, name")
+          .order("article", { ascending: true })
+          .range(from, to), { label: "SEO: себестоимость" }),
+        loadAllSupabasePages<DailySkuRow>((from, to) => {
+          let query = db
+            .rpc("rnp_daily_sku", { p_from: period.start, p_to: period.end, p_cabinet: cabinetId })
+            .order("d", { ascending: true })
+            .order("nm_id", { ascending: true })
+            .range(from, to);
+          if (allowedNmIds) query = query.in("nm_id", allowedNmIds.size ? [...allowedNmIds] : [-1]);
+          return query;
+        }, { label: "SEO: заказы WB" }),
+      ]);
 
   // Заказы по nm/день для выручки ДО СПП — через server-side агрегат rnp_daily_sku
   // (orders_sum = coalesce(finished_price, total_price) = цена после скидки продавца = до СПП).
   // Раньше тут шёл постраничный скан wb_orders по сети — рвал соединение и вис на 70с+.
   const ordersByNm = new Map<number, Map<string, { cnt: number; sum: number }>>();
-  const { data: dailySku } = await db.rpc("rnp_daily_sku", { p_from: period.start, p_to: period.end, p_cabinet: cabinetId });
-  for (const row of (dailySku ?? []) as { nm_id: number; d: string; orders_count: number; orders_sum: number }[]) {
+  for (const row of dailySku) {
     if (!requestAllowsNm(allowedNmIds, row.nm_id)) continue;
     const nm = Number(row.nm_id);
     const d = String(row.d).slice(0, 10);
@@ -81,27 +121,34 @@ export async function GET(request: NextRequest) {
     ordersByNm.get(nm)!.set(d, { cnt: Number(row.orders_count ?? 0), sum: Number(row.orders_sum ?? 0) });
   }
 
-  const funnel = ((funnelRes.data ?? []) as FunnelRow[]).filter((row) => requestAllowsNm(allowedNmIds, row.nm_id));
-  const ad = ((adRes.data ?? []) as AdRow[]).filter((row) => requestAllowsNm(allowedNmIds, row.nm_id));
   const orderDates: string[] = [];
   for (const m of ordersByNm.values()) for (const d of m.keys()) orderDates.push(d);
   const dates = [...new Set([...funnel.map((r) => String(r.date).slice(0, 10)), ...ad.map((r) => String(r.date).slice(0, 10)), ...orderDates])].sort();
   const yest = period.end;
   const selected = new Set(dates.filter((d) => d >= period.start && d <= period.end));
 
-  const totals = ((totalsRes.data ?? []) as RpcTotal[]).filter((row) => requestAllowsNm(allowedNmIds, row.nm_id));
   const totalByNm = new Map<number, RpcTotal>();
   for (const t of totals) totalByNm.set(t.nm_id, t);
   const nameByArt = new Map<string, string>();
-  for (const c of costsRes.data ?? []) nameByArt.set(c.article as string, (c.name as string) ?? "");
+  for (const c of costs) nameByArt.set(c.article, c.name ?? "");
 
   const nmIds = [...new Set([...funnel.map((r) => r.nm_id), ...ad.map((r) => r.nm_id), ...totals.map((t) => t.nm_id)])];
 
   // рейтинг/отзывы по SKU — уже наполненная wb_feedbacks (см. раздел /reviews), просто джойн
-  const { data: fbRows } = await db.from("wb_feedbacks").select("nm_id, rating").in("nm_id", nmIds.length ? nmIds : [-1]);
+  const fbRows = (await Promise.all(
+    Array.from({ length: Math.ceil(Math.max(1, nmIds.length) / 100) }, (_, index) => {
+      const chunk = nmIds.length ? nmIds.slice(index * 100, index * 100 + 100) : [-1];
+      return loadAllSupabasePages<RatingRow>((from, to) => db
+        .from("wb_feedbacks")
+        .select("nm_id, rating")
+        .in("nm_id", chunk)
+        .order("nm_id", { ascending: true })
+        .range(from, to), { label: "SEO: отзывы WB" });
+    }),
+  )).flat();
   const ratingAgg = new Map<number, { sum: number; count: number }>();
-  for (const r of fbRows ?? []) {
-    const nm = r.nm_id as number;
+  for (const r of fbRows) {
+    const nm = r.nm_id;
     const e = ratingAgg.get(nm) ?? { sum: 0, count: 0 };
     e.sum += Number(r.rating ?? 0); e.count += 1;
     ratingAgg.set(nm, e);
@@ -130,7 +177,7 @@ export async function GET(request: NextRequest) {
 
     const priceUnit = (a: typeof w) => (a.oc > 0 ? Math.round(a.os / a.oc) : 0);
     const margin = (a: typeof w) => { const p = priceUnit(a); return p > 0 && cost > 0 ? r2(((p - cost) / p) * 100) : null; };
-    const turn = w.oc > 0 ? Math.round(stock / (w.oc / 7)) : null;
+    const turn = w.oc > 0 ? Math.round(stock / (w.oc / days)) : null;
 
     const mb7 = margin(w), drr7 = pct(w.spent, w.os);
     const mb4 = margin(y), drr4 = pct(y.spent, y.os);
@@ -161,5 +208,12 @@ export async function GET(request: NextRequest) {
   }).filter((s) => s.shows_7d > 0 || s.orders_count_7d > 0 || s.stock > 0)
     .sort((a, b) => b.orders_sum_7d - a.orders_sum_7d);
 
-  return NextResponse.json({ skus, metrics_period: period.label, window_days: days, count: skus.length });
+      return { skus, metrics_period: period.label, window_days: days, count: skus.length };
+    },
+    {
+      forceRefresh: params.get("refresh") === "1",
+      backgroundRefresh: params.get("background") === "1",
+    },
+  );
+  return NextResponse.json(payload, { headers: { "X-Dashboard-Cache": "hourly-snapshot" } });
 }

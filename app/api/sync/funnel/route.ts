@@ -2,7 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { checkCronAuth, chunkedUpsert, writeSyncLog } from "@/lib/sync/helpers";
 import { getWbSyncTargets } from "@/lib/sync/cabinets";
-import { rotateFunnelTargets, syncFunnelPeriod } from "@/lib/wb/funnelPeriod";
+import {
+  rotateFunnelTargets,
+  runFunnelTargetsConcurrently,
+  syncFunnelPeriod,
+} from "@/lib/wb/funnelPeriod";
 import { fetchWbFunnelHistory } from "@/lib/wb/funnelRequest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -76,15 +80,18 @@ export async function GET(request: NextRequest) {
   const deadline = Date.now() + 45_000;
   // Срез дня для ротации (разные SKU в разные дни — полное покрытие за неск. прогонов).
   const dayOfYear = Math.floor((Date.now() - Date.UTC(new Date().getUTCFullYear(), 0, 0)) / 86_400_000);
-  // В 60с обычно помещаются не все кабинеты. Меняем стартовый кабинет каждый день,
-  // чтобы поздние в списке не голодали и автоматически догружались в следующем цикле.
+  // Каждый кабинет — отдельный seller-account и отдельный лимит WB. Кабинеты
+  // запускаем параллельно, а батчи внутри одного кабинета оставляем с паузой 21с.
   const rotatedTargets = rotateFunnelTargets(targets, dayOfYear);
 
   try {
-    for (const t of rotatedTargets) {
-      if (Date.now() + REQUEST_RESERVE_MS > deadline) { rotated.push(`${t.name}: пропущен (бюджет)`); break; } // докрутим следующим прогоном
+    await runFunnelTargetsConcurrently(rotatedTargets, async (t) => {
+      if (Date.now() + REQUEST_RESERVE_MS > deadline) {
+        rotated.push(`${t.name}: пропущен (бюджет)`);
+        return;
+      }
       const nmIds = await nmIdsForCabinet(db, t.cabinetId);
-      if (!nmIds.length) continue;
+      if (!nmIds.length) return;
 
       // батчи SKU; стартуем со сдвигом по дню, идём по кругу
       const batches: number[][] = [];
@@ -141,11 +148,11 @@ export async function GET(request: NextRequest) {
         const upsertError = await chunkedUpsert("wb_funnel_daily", rows, "nm_id,date");
         if (upsertError) {
           errors.push(`${t.name}: ${upsertError}`);
-          continue;
+          return;
         }
         total += rows.length;
       }
-    }
+    });
 
     const ok = errors.length === 0;
     const note = rotated.length ? ` [ротация: ${rotated.join(", ")}]` : "";

@@ -9,6 +9,7 @@ import { loadOzonCockpit, type OzonCockpitView } from "@/lib/ozon/cockpit";
 
 export const OZON_COCKPIT_CACHE_SECONDS = 60 * 60;
 export const OZON_COCKPIT_CACHE_VERSION = "v5";
+const OZON_COCKPIT_RELIABILITY_VERSION = "complete-sales-v1";
 
 export interface OzonCockpitCacheRequest {
   view: OzonCockpitView;
@@ -18,6 +19,21 @@ export interface OzonCockpitCacheRequest {
 }
 
 type OzonCockpitSnapshot = Awaited<ReturnType<typeof loadOzonCockpit>>;
+
+export interface OzonCockpitCacheOptions {
+  forceRefresh?: boolean;
+  backgroundRefresh?: boolean;
+}
+
+export const OZON_COCKPIT_BACKGROUND_REFRESH = { backgroundRefresh: true } as const;
+
+export function ozonCockpitRevalidationProfile(
+  options: OzonCockpitCacheOptions,
+): "max" | { expire: 0 } | null {
+  if (options.backgroundRefresh) return "max";
+  if (options.forceRefresh) return { expire: 0 };
+  return null;
+}
 
 export function normalizeOzonCacheRequest(input: OzonCockpitCacheRequest): OzonCockpitCacheRequest {
   return {
@@ -43,12 +59,13 @@ export function ozonCockpitCacheTag(input: OzonCockpitCacheRequest): string {
 
 export async function loadCachedOzonCockpit(
   input: OzonCockpitCacheRequest,
-  options: { forceRefresh?: boolean } = {},
+  options: OzonCockpitCacheOptions = {},
 ) {
   const normalized = normalizeOzonCacheRequest(input);
   const identity = ozonCockpitCacheIdentity(normalized);
   const tag = ozonCockpitCacheTag(normalized);
-  if (options.forceRefresh) revalidateTag(tag, { expire: 0 });
+  const revalidationProfile = ozonCockpitRevalidationProfile(options);
+  if (revalidationProfile) revalidateTag(tag, revalidationProfile);
 
   const loadSnapshot = unstable_cache(
     async () => {
@@ -57,7 +74,11 @@ export async function loadCachedOzonCockpit(
       const data = await loadOzonCockpit(normalized.view, scope, normalized.days, normalized.taxPct);
       return encodeCompressedJson(data);
     },
-    [`ozon-cockpit-snapshot-${OZON_COCKPIT_CACHE_VERSION}-compressed`, identity],
+    [
+      `ozon-cockpit-snapshot-${OZON_COCKPIT_CACHE_VERSION}-compressed`,
+      OZON_COCKPIT_RELIABILITY_VERSION,
+      identity,
+    ],
     { revalidate: OZON_COCKPIT_CACHE_SECONDS, tags: [tag] },
   );
   return decodeCompressedJson<OzonCockpitSnapshot>(await loadSnapshot());

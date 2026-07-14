@@ -5,13 +5,14 @@ import { hasMpstats, subjectByDate, subjectKeywords, subjectByDateId, subjectKey
 import { hasCabinetAccess } from "@/lib/auth/cabinetAccess";
 import { requestAllowedNmIds, requestAllowsNm } from "@/lib/wb/requestProductScope";
 import { loadHourlyDashboard } from "@/lib/cache/hourlyDashboard";
+import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
+import { closedMoscowDates } from "@/lib/wb/sklejki";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 // MPStats-вызовы POST Next не кэширует автоматически: используем общий часовой снимок.
 
-const fmt = (d: Date) => d.toISOString().slice(0, 10);
 const isoWeek = (s: string) => { const [y, m, dd] = s.split("-").map(Number); const dt = new Date(Date.UTC(y, m - 1, dd)); const day = (dt.getUTCDay() + 6) % 7; dt.setUTCDate(dt.getUTCDate() - day); return dt.toISOString().slice(0, 10); };
 
 // «Пульс рынка»: ниша (MPStats) ↔ мы (свои wb_orders), и запросы ↔ наши позиции.
@@ -43,11 +44,16 @@ async function loadPulse(request: NextRequest) {
   const gran: "day" | "week" = sp.get("gran") === "day" ? "day" : "week";
 
   // период: явные даты (d2 не позже вчера — MPStats требует d2 < сегодня) или последние N недель
-  const yest = fmt(new Date(Date.now() - 86400000));
+  const yest = closedMoscowDates(1)[0];
   const dfP = sp.get("date_from"), dtP = sp.get("date_to");
   let d1: string, d2: string;
   if (dfP && dtP) { d1 = dfP; d2 = dtP > yest ? yest : dtP; }
-  else { const weeks = Math.min(16, Math.max(2, Number(sp.get("weeks")) || 8)); d2 = yest; d1 = fmt(new Date(Date.now() - weeks * 7 * 86400000)); }
+  else {
+    const weeks = Math.min(16, Math.max(2, Number(sp.get("weeks")) || 8));
+    const dates = closedMoscowDates(weeks * 7);
+    d2 = yest;
+    d1 = dates[0];
+  }
 
   const payload = await loadHourlyDashboard(
     "wb-market-pulse",
@@ -60,14 +66,22 @@ async function loadPulse(request: NextRequest) {
       ? [subjectByDateId(subjectId, d1, d2), subjectKeywordsId(subjectId, d1, d2, 300)]
       : [subjectByDate(subject, d1, d2), subjectKeywords(subject, d1, d2, 300)],
   );
-  const ourDailyRes = await db.rpc("rnp_daily_sku", { p_from: d1, p_to: d2, p_cabinet: cabinetId });
+  const ourDailyRows = await loadAllSupabasePages<{ d: string; nm_id: number; orders_sum: number }>((from, to) => {
+    let query = db
+      .rpc("rnp_daily_sku", { p_from: d1, p_to: d2, p_cabinet: cabinetId })
+      .order("d", { ascending: true })
+      .order("nm_id", { ascending: true })
+      .range(from, to);
+    if (allowedNmIds) query = query.in("nm_id", allowedNmIds.size ? [...allowedNmIds] : [-1]);
+    return query;
+  }, { label: "Пульс рынка: заказы WB" });
 
   // бакетизация: день = сама дата, неделя = понедельник недели
   const bkt = (s: string) => (gran === "day" ? s.slice(0, 10) : isoWeek(s.slice(0, 10)));
   const nicheBy = new Map<string, number>();
   for (const r of nicheDays) { if (!r.period) continue; const k = bkt(String(r.period)); nicheBy.set(k, (nicheBy.get(k) ?? 0) + Number(r.revenue ?? 0)); }
   const ourBy = new Map<string, number>();
-  for (const r of (ourDailyRes.data ?? []) as { d: string; nm_id: number; orders_sum: number }[]) {
+  for (const r of ourDailyRows) {
     if (!requestAllowsNm(allowedNmIds, r.nm_id)) continue;
     const k = bkt(String(r.d));
     ourBy.set(k, (ourBy.get(k) ?? 0) + Number(r.orders_sum ?? 0));
@@ -99,8 +113,15 @@ async function loadPulse(request: NextRequest) {
   const sharePct = nicheRevWin > 0 ? Math.round((ourRevWin / nicheRevWin) * 1000) / 10 : null;
 
   // — топ-запросы ниши + наши позиции по топ-SKU кабинета —
-  const repRes = await db.rpc("rnp_report", { p_cabinet: cabinetId });
-  const ourSkus = ((repRes.data ?? []) as { nm_id: number; orders_sum_month: number }[])
+  const reportRows = await loadAllSupabasePages<{ nm_id: number; orders_sum_month: number }>((from, to) => {
+    let query = db
+      .rpc("rnp_report", { p_cabinet: cabinetId })
+      .order("nm_id", { ascending: true })
+      .range(from, to);
+    if (allowedNmIds) query = query.in("nm_id", allowedNmIds.size ? [...allowedNmIds] : [-1]);
+    return query;
+  }, { label: "Пульс рынка: товары WB" });
+  const ourSkus = reportRows
     .filter((row) => requestAllowsNm(allowedNmIds, row.nm_id))
     .slice()
     .sort((a, b) => Number(b.orders_sum_month ?? 0) - Number(a.orders_sum_month ?? 0))
@@ -141,7 +162,10 @@ async function loadPulse(request: NextRequest) {
         note: "MPStats — оценочные данные (для тренда). Свои деньги — из кабинета.",
       };
     },
-    { forceRefresh: request.nextUrl.searchParams.get("refresh") === "1" },
+    {
+      forceRefresh: request.nextUrl.searchParams.get("refresh") === "1",
+      backgroundRefresh: request.nextUrl.searchParams.get("background") === "1",
+    },
   );
   return NextResponse.json(payload, { headers: { "X-Dashboard-Cache": "hourly-snapshot" } });
 }

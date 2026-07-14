@@ -2,12 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { hasCabinetAccess } from "@/lib/auth/cabinetAccess";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { wbCardImageUrl } from "@/lib/wb/cardImage";
-import { getWbCommissionForCabinet } from "@/lib/wb/commissions";
+import { getWbCommissionForCabinet, resolveWbRatesForNm } from "@/lib/wb/commissions";
 import { resolveShopCabinet } from "@/lib/rnp/resolveShop";
 import { requestAllowedNmIds, requestAllowsNm } from "@/lib/wb/requestProductScope";
+import { loadHourlyDashboard } from "@/lib/cache/hourlyDashboard";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 60; // факт-комиссия = финотчёт по каждому кабинету (тяжёлый, кэш 6ч)
+export const maxDuration = 60;
 
 interface RpcRow {
   nm_id: number;
@@ -22,8 +23,8 @@ interface RpcRow {
 }
 
 // Юнит-экономика WB «1 в 1» с инферноф (формула калькулятора Юры):
-// Прибыль/ед = Цена до СПП − Себес − Фулфилмент − Комиссия% − Эквайринг% − Реклама(ДРР)% − Налог%
-// Комиссия/эквайринг/налог/фулфилмент — настраиваемые дефолты «поправь под факт» (?comm=&acq=&tax=&ff=&margin=).
+// Прибыль/ед = Цена до СПП − Себес − Фулфилмент − удержания WB − Эквайринг − Реклама(ДРР) − Налог.
+// Целевые цены и маржу не публикуем, пока нет себестоимости и фактических ставок WB.
 // СПП %/Цена после СПП НЕ считаем — в БД нет (discount_percent ≠ СПП).
 export async function GET(req: NextRequest) {
   const db = getSupabaseAdmin();
@@ -31,8 +32,6 @@ export async function GET(req: NextRequest) {
 
   const sp = new URL(req.url).searchParams;
   const num = (k: string, def: number) => { const v = Number(sp.get(k)); return Number.isFinite(v) && sp.get(k) !== null ? v : def; };
-  const commDefault = num("comm", 25); // фолбэк, если фактической комиссии по nm нет
-  const acqDefault = num("acq", 1.5);  // фолбэк эквайринга
   const taxPct = num("tax", 7);        // налог
   const ff = num("ff", 0);             // фулфилмент ₽/ед (нет per-SKU данных)
   const targetMargin = num("margin", 25); // целевая маржа для «цены до СПП для N% маржи»
@@ -41,15 +40,20 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Нет доступа к кабинету" }, { status: 403 });
   }
   const allowedNmIds = await requestAllowedNmIds(p_cabinet);
+  const forceRefresh = sp.get("refresh") === "1";
+  const backgroundRefresh = sp.get("background") === "1";
 
-  const [rpcRes, costsRes, comm] = await Promise.all([
-    db.rpc("rnp_report", { p_cabinet }),
-    db.from("product_costs").select("article, name, entity, cost_rub, warehouse_expenses"),
-    getWbCommissionForCabinet(p_cabinet, 30),
-  ]);
-  // ставки по nm: факт из отчёта → средняя по кабинету → дефолт
-  const commForNm = (nm: number) => comm.byNm.get(nm)?.pct ?? (comm.avgPct > 0 ? comm.avgPct : commDefault);
-  const acqForNm = (nm: number) => comm.byNm.get(nm)?.acqPct ?? (comm.avgAcqPct > 0 ? comm.avgAcqPct : acqDefault);
+  try {
+    const payload = await loadHourlyDashboard(
+    "wb-unit-table",
+    { cabinetId: p_cabinet, taxPct, ff, targetMargin },
+    async () => {
+      const [rpcRes, costsRes, comm] = await Promise.all([
+        db.rpc("rnp_report", { p_cabinet }),
+        db.from("product_costs").select("article, name, entity, cost_rub, warehouse_expenses"),
+        getWbCommissionForCabinet(p_cabinet, 30),
+      ]);
+  if (rpcRes.error) throw new Error(rpcRes.error.message);
   const meta = new Map<string, { name: string; cat: string; storage: number }>();
   for (const c of costsRes.data ?? []) meta.set(c.article as string, { name: (c.name as string) ?? "", cat: (c.entity as string) ?? "", storage: Number(c.warehouse_expenses ?? 0) });
 
@@ -60,6 +64,8 @@ export async function GET(req: NextRequest) {
   const rows: (string | number)[][] = [];
   const img_urls: string[] = [];
   const names: string[] = [];
+  let costsKnown = 0;
+  let factualRatesKnown = 0;
 
   const sorted = ((rpcRes.data ?? []) as RpcRow[]).filter((row) => requestAllowsNm(allowedNmIds, row.nm_id)).slice().sort((a, b) => Number(b.orders_sum_month) - Number(a.orders_sum_month));
 
@@ -67,27 +73,30 @@ export async function GET(req: NextRequest) {
     const m = meta.get(r.article);
     const orders = r.orders_month;
     const rev = Number(r.orders_sum_month);
-    const cost = Number(r.cost ?? 0);
+    const costKnown = r.cost != null && Number(r.cost) > 0;
+    const cost = costKnown ? Number(r.cost) : 0;
     const ad = Number(r.ad_spend_month ?? 0);
     const stock = Number(r.stock ?? 0) + Number(r.in_way_to_client ?? 0);
     const price = orders > 0 ? rev / orders : 0;          // Цена до СПП = ср. finished_price
     const buyoutPct = orders > 0 ? (r.buyouts_month / orders) * 100 : null;
     const drr = rev > 0 ? (ad / rev) * 100 : 0;
     const adPerUnit = orders > 0 ? ad / orders : 0;
-    const commPct = commForNm(r.nm_id);
-    const acqPct = acqForNm(r.nm_id);
-    const commRub = price * commPct / 100;
-    const acqRub = price * acqPct / 100;
+    const rates = resolveWbRatesForNm(comm, r.nm_id);
+    if (costKnown) costsKnown++;
+    if (rates.factual) factualRatesKnown++;
+    const marketplaceRub = price * rates.marketplacePct / 100;
+    const acqRub = price * rates.acquiringPct / 100;
     const taxRub = price * taxPct / 100;
+    const canCalculate = price > 0 && costKnown && rates.factual;
     // Маржа ДО ДРР (без рекламы)
-    const marginBeforeDrr = price - cost - ff - commRub - acqRub - taxRub;
-    const marginBeforeDrrPct = price > 0 ? (marginBeforeDrr / price) * 100 : null;
+    const marginBeforeDrr = canCalculate ? price - cost - ff - marketplaceRub - acqRub - taxRub : null;
+    const marginBeforeDrrPct = marginBeforeDrr != null ? (marginBeforeDrr / price) * 100 : null;
     // Маржа/ед и вал % ПОСЛЕ ДРР (минус реклама)
-    const marginUnit = marginBeforeDrr - adPerUnit;
-    const valAfterDrrPct = price > 0 ? (marginUnit / price) * 100 : null;
+    const marginUnit = marginBeforeDrr != null ? marginBeforeDrr - adPerUnit : null;
+    const valAfterDrrPct = marginUnit != null ? (marginUnit / price) * 100 : null;
     // Целевая цена до СПП для N% маржи: price = (cost+ff) / (1 − (comm+acq+tax+drr+margin)/100)
-    const den = 1 - (commPct + acqPct + taxPct + drr + targetMargin) / 100;
-    const targetPrice = den > 0 ? (cost + ff) / den : null;
+    const den = 1 - (rates.marketplacePct + rates.acquiringPct + taxPct + drr + targetMargin) / 100;
+    const targetPrice = canCalculate && den > 0 ? (cost + ff) / den : null;
     const deltaPct = targetPrice && price > 0 ? ((price - targetPrice) / targetPrice) * 100 : null;
 
     rows.push([
@@ -97,18 +106,18 @@ export async function GET(req: NextRequest) {
       m?.cat || "",                         // 3 категория
       r.nm_id,                              // 4 SKU → ссылка
       stock,                                // 5 Остаток + в пути
-      r0(cost),                             // 6 Себес ₽
+      blank(costKnown ? r0(cost) : null),   // 6 Себес ₽
       blank(price > 0 ? r0(price) : null),  // 7 Цена до СПП ₽
       orders,                               // 8 Заказы/мес
       r0(rev),                              // 9 Выручка ₽
       buyoutPct != null ? r1(buyoutPct) : "", // 10 Выкуп %
-      r1(commPct),                          // 11 Комиссия % (факт из отчёта)
-      blank(price > 0 ? r0(commRub) : null),// 12 Комиссия ₽
-      blank(price > 0 ? r0(acqRub) : null), // 13 Эквайринг ₽
+      blank(rates.factual ? r1(rates.marketplacePct) : null), // 11 комиссия + логистика/хранение/прочие WB
+      blank(price > 0 && rates.factual ? r0(marketplaceRub) : null), // 12 удержания WB ₽
+      blank(price > 0 && rates.factual ? r0(acqRub) : null), // 13 Эквайринг ₽
       r0(ad),                               // 14 Реклама ₽
       r1(drr),                              // 15 ДРР %
       blank(price > 0 ? r0(taxRub) : null), // 16 Налог ₽
-      blank(price > 0 ? r0(marginUnit) : null), // 17 Маржа/ед ₽
+      blank(marginUnit != null ? r0(marginUnit) : null), // 17 Маржа/ед ₽
       marginBeforeDrrPct != null ? r1(marginBeforeDrrPct) : "", // 18 Маржа % до ДРР
       valAfterDrrPct != null ? r1(valAfterDrrPct) : "",          // 19 Вал % ПОСЛЕ ДРР
       targetPrice != null ? r0(targetPrice) : "",                // 20 Цена до СПП для N% маржи
@@ -118,11 +127,13 @@ export async function GET(req: NextRequest) {
     names.push(m?.name || "");
   }
 
-  return NextResponse.json({
+  const totalRows = rows.length;
+  const completeRows = sorted.filter((row) => row.cost != null && Number(row.cost) > 0 && resolveWbRatesForNm(comm, row.nm_id).factual).length;
+  return {
     headers: [
       "", "", "Артикул", "Юрлицо", "SKU",
       "Остаток + в пути", "Себес ₽", "Цена до СПП ₽", "Заказы/мес", "Выручка ₽",
-      "Выкуп %", "Комиссия %", "Комиссия ₽", "Эквайринг ₽", "Реклама ₽",
+      "Выкуп %", "Удержания WB %", "Удержания WB ₽", "Эквайринг ₽", "Реклама ₽",
       "ДРР %", "Налог ₽", "Маржа/ед ₽", "Маржа % до ДРР", "Вал % ПОСЛЕ ДРР",
       `Цена до СПП для ${targetMargin}% маржи`, "Дельта %",
     ],
@@ -130,6 +141,14 @@ export async function GET(req: NextRequest) {
     img_urls,
     names,
     source_url: null,
-    meta_text: `Юнит по ${rows.length} SKU · комиссия ${comm.avgPct > 0 ? `${comm.avgPct}% факт` : `${commDefault}% дефолт`} · эквайринг ${comm.avgAcqPct > 0 ? `${comm.avgAcqPct}% факт` : `${acqDefault}% дефолт`} · налог ${taxPct}% · за 30 дней`,
-  });
+    coverage: { total: totalRows, costsKnown, factualRatesKnown, complete: completeRows },
+    meta_text: `Юнит по ${totalRows} SKU · полный факт ${completeRows}/${totalRows} · себестоимость ${costsKnown}/${totalRows} · ставки WB ${factualRatesKnown}/${totalRows} · налог ${taxPct}% · за 30 дней`,
+  };
+    },
+    { forceRefresh, backgroundRefresh },
+  );
+    return NextResponse.json(payload);
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Не удалось рассчитать юнит-экономику" }, { status: 500 });
+  }
 }

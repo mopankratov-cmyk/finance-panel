@@ -6,6 +6,7 @@ import { hasCabinetAccess } from "@/lib/auth/cabinetAccess";
 import { resolveShopCabinet } from "@/lib/rnp/resolveShop";
 import { allowsProduct } from "@/lib/wb/productScope";
 import { loadHourlyDashboard } from "@/lib/cache/hourlyDashboard";
+import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -44,8 +45,11 @@ async function loadNiches(request: NextRequest) {
 
   for (const c of cabs) {
     const productScope = cabinetProductScope(c);
-    const rep = await db.rpc("rnp_report", { p_cabinet: c.id });
-    const top = ((rep.data ?? []) as { nm_id: number; orders_sum_month: number }[])
+    const reportRows = await loadAllSupabasePages<{ nm_id: number; orders_sum_month: number }>((from, to) => db
+      .rpc("rnp_report", { p_cabinet: c.id })
+      .order("nm_id", { ascending: true })
+      .range(from, to), { label: `${c.name}: товары WB` });
+    const top = reportRows
       .filter((row) => allowsProduct(productScope, row.nm_id))
       .slice()
       .sort((a, b) => Number(b.orders_sum_month ?? 0) - Number(a.orders_sum_month ?? 0))
@@ -67,7 +71,10 @@ async function loadNiches(request: NextRequest) {
 
       return { ok: true, niches, count: niches.length };
     },
-    { forceRefresh: request.nextUrl.searchParams.get("refresh") === "1" },
+    {
+      forceRefresh: request.nextUrl.searchParams.get("refresh") === "1",
+      backgroundRefresh: request.nextUrl.searchParams.get("background") === "1",
+    },
   );
   return NextResponse.json(payload, { headers: { "X-Dashboard-Cache": "hourly-snapshot" } });
 }

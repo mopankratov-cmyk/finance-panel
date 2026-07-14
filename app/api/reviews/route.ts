@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { cabinetIdFromParam } from "@/lib/rnp/resolveShop";
 import { hasCabinetAccess } from "@/lib/auth/cabinetAccess";
 import { requestAllowedNmIds } from "@/lib/wb/requestProductScope";
+import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
 
 export const dynamic = "force-dynamic";
 
@@ -77,9 +78,18 @@ export async function GET(req: NextRequest) {
     if (answered === "answered") listQ = listQ.eq("is_answered", true);
     else if (answered === "unanswered") listQ = listQ.eq("is_answered", false);
 
-    let avgQ = db.from("wb_feedbacks").select("rating").gte("created_at_wb", since30);
-    if (p_cabinet) avgQ = avgQ.eq("cabinet_id", p_cabinet);
-    if (scopedNmIds) avgQ = avgQ.in("nm_id", scopedNmIds.length ? scopedNmIds : [-1]);
+    const ratingsPromise = loadAllSupabasePages<{ rating: number }>((from, to) => {
+      let query = db
+        .from("wb_feedbacks")
+        .select("rating")
+        .gte("created_at_wb", since30)
+        .order("created_at_wb", { ascending: true })
+        .order("id", { ascending: true })
+        .range(from, to);
+      if (p_cabinet) query = query.eq("cabinet_id", p_cabinet);
+      if (scopedNmIds) query = query.in("nm_id", scopedNmIds.length ? scopedNmIds : [-1]);
+      return query;
+    }, { label: "Отзывы WB за 30 дней" });
 
     let unansweredQ = db.from("wb_feedbacks").select("id", { count: "exact", head: true }).eq("is_answered", false);
     if (p_cabinet) unansweredQ = unansweredQ.eq("cabinet_id", p_cabinet);
@@ -89,10 +99,12 @@ export async function GET(req: NextRequest) {
     if (p_cabinet) criticalQ = criticalQ.eq("cabinet_id", p_cabinet);
     if (scopedNmIds) criticalQ = criticalQ.in("nm_id", scopedNmIds.length ? scopedNmIds : [-1]);
 
-    const [listRes, avgRes, unansweredRes, criticalRes] = await Promise.all([listQ, avgQ, unansweredQ, criticalQ]);
+    const [listRes, ratingRows, unansweredRes, criticalRes] = await Promise.all([listQ, ratingsPromise, unansweredQ, criticalQ]);
     if (listRes.error) throw new Error(listRes.error.message);
+    if (unansweredRes.error) throw new Error(unansweredRes.error.message);
+    if (criticalRes.error) throw new Error(criticalRes.error.message);
 
-    const ratings = (avgRes.data ?? []).map((r) => r.rating as number);
+    const ratings = ratingRows.map((row) => Number(row.rating));
     const avgRating30d = ratings.length ? Math.round((ratings.reduce((a, b) => a + b, 0) / ratings.length) * 100) / 100 : null;
 
     const rows = (listRes.data ?? []).map((r) => toRow(r as DbRow));

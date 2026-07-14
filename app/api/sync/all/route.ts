@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { checkCronAuth } from "@/lib/sync/helpers";
-import { runCoreSyncJobs } from "@/lib/sync/orchestrator";
+import { runCoreSyncJobs, WB_HOURLY_CORE_SYNC_OPTIONS } from "@/lib/sync/orchestrator";
 import { runWbHistoryRecovery } from "@/lib/wb/syncRecovery";
 
 // Оркестратор быстрых синков — один cron-слот (Hobby, 60с/вызов) и кнопка
@@ -22,9 +22,10 @@ export async function GET(request: NextRequest) {
   const secret = process.env.CRON_SECRET;
   const base = new URL(request.url).origin;
   const headers: Record<string, string> = secret ? { Authorization: `Bearer ${secret}` } : {};
+  const hourlyCron = request.nextUrl.searchParams.get("hourly") === "1";
 
   const [result, history] = await Promise.all([
-    runCoreSyncJobs(base, headers),
+    runCoreSyncJobs(base, headers, fetch, hourlyCron ? WB_HOURLY_CORE_SYNC_OPTIONS : {}),
     runWbHistoryRecovery(),
   ]);
   const ok = result.ok && history.ok;

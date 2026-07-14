@@ -39,8 +39,45 @@ export interface WbCommission {
   overheadPct: number; // удержания без nm_id (account-level), плоско ко всем
 }
 
+export interface ResolvedWbRates {
+  commissionPct: number;
+  acquiringPct: number;
+  extraPct: number;
+  overheadPct: number;
+  marketplacePct: number;
+  factual: boolean;
+  source: "nm" | "mixed" | "avg" | "missing";
+}
+
 const num = (v: unknown) => Number(v ?? 0) || 0;
 const r1 = (n: number) => Math.round(n * 10) / 10;
+
+const positiveRate = (value: number) => Number.isFinite(value) && value > 0;
+const nonNegativeRate = (value: number) => Number.isFinite(value) && value >= 0;
+
+export function resolveWbRatesForNm(comm: WbCommission, nm: number): ResolvedWbRates {
+  const row = comm.byNm.get(nm);
+  const rowHasFact = Boolean(row && Number.isFinite(row.rev) && row.rev > 0);
+  const commissionFromNm = Boolean(rowHasFact && row && positiveRate(row.pct));
+  const acquiringFromNm = Boolean(rowHasFact && row && positiveRate(row.acqPct));
+  const extraFromNm = Boolean(rowHasFact && row && nonNegativeRate(row.extraPct));
+  const commissionPct = commissionFromNm ? row!.pct : (positiveRate(comm.avgPct) ? comm.avgPct : 0);
+  const acquiringPct = acquiringFromNm ? row!.acqPct : (positiveRate(comm.avgAcqPct) ? comm.avgAcqPct : 0);
+  const extraPct = extraFromNm ? row!.extraPct : (nonNegativeRate(comm.avgExtraPct) ? comm.avgExtraPct : 0);
+  const overheadPct = nonNegativeRate(comm.overheadPct) ? comm.overheadPct : 0;
+  const factual = positiveRate(commissionPct) && positiveRate(acquiringPct);
+  const nmParts = Number(commissionFromNm) + Number(acquiringFromNm) + Number(extraFromNm);
+
+  return {
+    commissionPct,
+    acquiringPct,
+    extraPct,
+    overheadPct,
+    marketplacePct: commissionPct + extraPct + overheadPct,
+    factual,
+    source: !factual ? "missing" : nmParts === 3 ? "nm" : nmParts > 0 ? "mixed" : "avg",
+  };
+}
 
 const _memo = new Map<string, { ts: number; val: WbCommission }>();
 const MEMO_TTL = 6 * 3600 * 1000;
@@ -129,6 +166,8 @@ export async function getWbCommissionMerged(days = 30): Promise<WbCommission> {
 // Конкретный кабинет не должен случайно получать среднюю комиссию другого юрлица.
 export async function getWbCommissionForCabinet(cabinetId: string | null, days = 30): Promise<WbCommission> {
   if (!cabinetId) return getWbCommissionMerged(days);
+  const cached = await getWbCommissionFromCache(cabinetId);
+  if (cached) return cached;
   const cabinet = await getWbCabinet(cabinetId);
   if (!cabinet) return getWbCommissionMerged(days);
   return getWbCommission(days, {
@@ -138,12 +177,18 @@ export async function getWbCommissionForCabinet(cabinetId: string | null, days =
   });
 }
 
-async function getWbCommissionFromCache(): Promise<WbCommission | null> {
+async function getWbCommissionFromCache(cabinetId: string | null = null): Promise<WbCommission | null> {
   const db = getSupabaseAdmin();
   if (!db) return null;
+  let nmQuery = db.from("wb_nm_commissions").select("cabinet_id, nm_id, pct, acq_pct, extra_pct, rev");
+  let overheadQuery = db.from("wb_cabinet_commission_overhead").select("cabinet_id, overhead_pct, rev");
+  if (cabinetId) {
+    nmQuery = nmQuery.eq("cabinet_id", cabinetId);
+    overheadQuery = overheadQuery.eq("cabinet_id", cabinetId);
+  }
   const [nmRes, ohRes] = await Promise.all([
-    db.from("wb_nm_commissions").select("cabinet_id, nm_id, pct, acq_pct, extra_pct, rev"),
-    db.from("wb_cabinet_commission_overhead").select("cabinet_id, overhead_pct, rev"),
+    nmQuery,
+    overheadQuery,
   ]);
   const nmRows = nmRes.data ?? [];
   if (!nmRows.length) return null; // кэш ещё не наполнен синком

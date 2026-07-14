@@ -8,6 +8,16 @@ export interface SyncOrchestratorResult {
   results: Record<string, unknown>;
 }
 
+export interface CoreSyncOptions {
+  includeSales?: boolean;
+  includeStocks?: boolean;
+}
+
+export const WB_HOURLY_CORE_SYNC_OPTIONS = {
+  includeSales: false,
+  includeStocks: false,
+} as const;
+
 export function resolveSyncBase(
   base: string,
   productionUrl = process.env.BASE_URL || process.env.VERCEL_PROJECT_PRODUCTION_URL,
@@ -69,6 +79,7 @@ export async function runCoreSyncJobs(
   base: string,
   headers: Record<string, string>,
   fetchImpl: typeof fetch = fetch,
+  options: CoreSyncOptions = {},
 ): Promise<SyncOrchestratorResult> {
   const results: Record<string, unknown> = {};
   let ok = true;
@@ -105,8 +116,13 @@ export async function runCoreSyncJobs(
     await run("adverts");
     for (const job of DEPENDENT_WAVE) await run(job);
   })();
+  const independentJobs = FIRST_WAVE.filter((job) => (
+    job !== "adverts"
+    && (job !== "sales" || options.includeSales !== false)
+    && (job !== "stocks" || options.includeStocks !== false)
+  ));
   await Promise.all([
-    ...FIRST_WAVE.filter((job) => job !== "adverts").map(run),
+    ...independentJobs.map(run),
     advertsChain,
   ]);
 

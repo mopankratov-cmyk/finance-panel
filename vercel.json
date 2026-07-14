@@ -1,6 +1,8 @@
 {
   "crons": [
-    { "path": "/api/sync/all", "schedule": "0 * * * *" },
+    { "path": "/api/sync/all?hourly=1", "schedule": "0 * * * *" },
+    { "path": "/api/sync/sales", "schedule": "2 * * * *" },
+    { "path": "/api/sync/stocks", "schedule": "4 * * * *" },
     { "path": "/api/sync/dashboard-cache?marketplace=wb", "schedule": "5 * * * *" },
     { "path": "/api/sync/feedbacks", "schedule": "10 * * * *" },
     { "path": "/api/sync/funnel", "schedule": "20 * * * *" },

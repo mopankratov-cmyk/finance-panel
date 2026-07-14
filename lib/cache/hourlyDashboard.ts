@@ -7,6 +7,21 @@ export const HOURLY_DASHBOARD_CACHE_VERSION = "v1";
 
 type CacheIdentity = Record<string, boolean | number | string | null | undefined>;
 
+export interface HourlyDashboardCacheOptions {
+  forceRefresh?: boolean;
+  backgroundRefresh?: boolean;
+}
+
+export const HOURLY_DASHBOARD_BACKGROUND_REFRESH = { backgroundRefresh: true } as const;
+
+export function hourlyDashboardRevalidationProfile(
+  options: HourlyDashboardCacheOptions,
+): "max" | { expire: 0 } | null {
+  if (options.backgroundRefresh) return "max";
+  if (options.forceRefresh) return { expire: 0 };
+  return null;
+}
+
 export function hourlyDashboardIdentity(input: CacheIdentity): string {
   return JSON.stringify(Object.fromEntries(
     Object.entries(input)
@@ -24,11 +39,12 @@ export async function loadHourlyDashboard<T>(
   namespace: string,
   identityInput: CacheIdentity,
   loader: () => Promise<T>,
-  options: { forceRefresh?: boolean } = {},
+  options: HourlyDashboardCacheOptions = {},
 ): Promise<T> {
   const identity = hourlyDashboardIdentity(identityInput);
   const tag = hourlyDashboardTag(namespace, identityInput);
-  if (options.forceRefresh) revalidateTag(tag, { expire: 0 });
+  const revalidationProfile = hourlyDashboardRevalidationProfile(options);
+  if (revalidationProfile) revalidateTag(tag, revalidationProfile);
   const loadSnapshot = unstable_cache(
     async () => encodeCompressedJson(await loader()),
     [`hourly-dashboard-${HOURLY_DASHBOARD_CACHE_VERSION}`, namespace, identity],

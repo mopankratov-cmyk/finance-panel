@@ -1,15 +1,16 @@
 "use client";
 
-import { CheckCircle2, Play, RefreshCw, XCircle } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Play, RefreshCw, XCircle } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { formatNumber, formatTime } from "@/lib/analytics/format";
 import { asSyncPayload, syncErrorMessage, syncPayloadOk } from "@/lib/sync/result";
 import type { SyncLogRow } from "@/app/api/sync-log/route";
+import { syncFreshness } from "@/lib/sync/freshness";
 
 const JOBS: { key: string; label: string; schedule: string }[] = [
   { key: "orders", label: "Заказы WB", schedule: "каждый час, :00" },
-  { key: "sales", label: "Продажи WB", schedule: "каждый час, :00" },
-  { key: "stocks", label: "Остатки WB", schedule: "каждый час, :00" },
+  { key: "sales", label: "Продажи WB", schedule: "каждый час, :02" },
+  { key: "stocks", label: "Остатки WB", schedule: "каждый час, :04" },
   { key: "adverts", label: "Кампании WB", schedule: "каждый час, :00" },
   { key: "advert-stats", label: "Статистика рекламы WB", schedule: "каждый час, :00" },
   { key: "funnel", label: "Воронка WB", schedule: "каждый час, :20" },
@@ -162,7 +163,9 @@ export function SyncPage() {
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {JOBS.map((j) => {
           const last = lastByJob.get(j.key);
-          const ok = last?.status === "ok";
+          const freshness = syncFreshness(last);
+          const ok = freshness.state === "ok";
+          const missed = freshness.state === "missed";
           return (
             <div key={j.key} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
               <div className="flex items-start justify-between">
@@ -184,11 +187,13 @@ export function SyncPage() {
                   <>
                     {ok ? (
                       <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                    ) : missed ? (
+                      <AlertTriangle className="h-4 w-4 text-amber-500" />
                     ) : (
                       <XCircle className="h-4 w-4 text-red-500" />
                     )}
-                    <span className={ok ? "text-emerald-700" : "text-red-700"}>
-                      {ok ? `${formatNumber(last.rows_affected ?? 0)} строк` : "ошибка"}
+                    <span className={ok ? "text-emerald-700" : missed ? "text-amber-700" : "text-red-700"}>
+                      {ok ? `${formatNumber(last.rows_affected ?? 0)} строк` : missed ? `пропущен · ${freshness.ageMinutes} мин без обновления` : "ошибка"}
                     </span>
                     {last.finished_at && (
                       <span className="ml-auto text-xs text-slate-400">{formatTime(last.finished_at)}</span>

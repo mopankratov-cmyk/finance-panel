@@ -3,7 +3,7 @@ import { requireApiSession } from "@/lib/auth/apiGuard";
 import { hasCabinetAccess } from "@/lib/auth/cabinetAccess";
 import { buildRnpReport, type RnpRow } from "@/lib/rnp/buildRnp";
 import { resolveShopCabinet } from "@/lib/rnp/resolveShop";
-import { getWbCommissionForCabinet } from "@/lib/wb/commissions";
+import { getWbCommissionForCabinet, resolveWbRatesForNm } from "@/lib/wb/commissions";
 import { getActiveWbCabinets } from "@/lib/wb/cabinetTokens";
 import { fetchWbCatalogPrices, WbPriceScopeError } from "@/lib/wb/prices";
 import { solvePrices } from "@/lib/unit/priceSolver";
@@ -42,6 +42,12 @@ export async function GET(request: NextRequest) {
   }
 
   const comm = await getWbCommissionForCabinet(cabinetId, 30);
+  if (comm.avgPct <= 0 || comm.avgAcqPct <= 0) {
+    return NextResponse.json(
+      { error: "Нет фактических комиссий и эквайринга WB. Дождитесь суточной синхронизации ставок — расчёт цены на дефолтах отключён." },
+      { status: 503 },
+    );
+  }
 
   // Каталожные цены — best-effort: токену кабинета может не хватать скоупа «Цены и скидки».
   const wantNms = new Set<number>(wantNm ? [wantNm] : rnp.map((r) => r.nmId));
@@ -62,11 +68,8 @@ export async function GET(request: NextRequest) {
   }
 
   const buildOne = (r: RnpRow) => {
-    const rates = comm.byNm.get(r.nmId);
-    const commissionPct = rates?.pct ?? comm.avgPct;
-    const acquiringPct = rates?.acqPct ?? comm.avgAcqPct;
-    const extraPct = rates?.extraPct ?? comm.avgExtraPct;
-    const feeFraction = (commissionPct + acquiringPct + extraPct + comm.overheadPct) / 100;
+    const rates = resolveWbRatesForNm(comm, r.nmId);
+    const feeFraction = (rates.marketplacePct + rates.acquiringPct) / 100;
     const month = r.periods.month;
     const currentRevenue = month.ordersCount > 0 ? month.ordersSum / month.ordersCount : 0;
     const res = solvePrices({
@@ -84,7 +87,13 @@ export async function GET(request: NextRequest) {
       drr: r.drr,
       currentRevenue: Math.round(currentRevenue),
       currentCatalogPrice: priceByNm.get(r.nmId) ?? null,
-      rates: { commissionPct, acquiringPct, extraPct, overheadPct: comm.overheadPct, ratesSource: rates ? "nm" : "avg" },
+      rates: {
+        commissionPct: rates.commissionPct,
+        acquiringPct: rates.acquiringPct,
+        extraPct: rates.extraPct,
+        overheadPct: rates.overheadPct,
+        ratesSource: rates.source,
+      },
       ...res,
     };
   };

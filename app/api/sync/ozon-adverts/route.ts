@@ -46,6 +46,8 @@ export async function GET(request: NextRequest) {
         { clientId: cabinet.perf_client_id, secret: cabinet.perf_secret },
         from,
         to,
+        60,
+        { throwOnError: true },
       );
       if (!report) throw new Error("Performance report failed");
 
@@ -68,7 +70,7 @@ export async function GET(request: NextRequest) {
         ok: true,
         rows: rows.length,
         partial: report.partial,
-        error: null,
+        error: report.errors.length ? report.errors.join("; ") : null,
       };
     } catch (err) {
       return {
@@ -86,6 +88,7 @@ export async function GET(request: NextRequest) {
   const partial = results.filter((result) => result.partial).map((result) => result.cabinet);
   const notes = [
     ...failures.map((result) => `${result.cabinet}: ${result.error ?? "Ozon API error"}`),
+    ...results.filter((result) => result.ok && result.error).map((result) => `${result.cabinet}: ${result.error}`),
     ...(partial.length ? [`Частичный Performance-отчёт: ${partial.join(", ")}`] : []),
   ];
   const ok = failures.length === 0;

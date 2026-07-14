@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { listOzonScopeDescriptors } from "@/lib/ozon/cabinet";
 import type { OzonCockpitView } from "@/lib/ozon/cockpit";
-import { loadCachedOzonCockpit } from "@/lib/ozon/cockpitCache";
+import {
+  loadCachedOzonCockpit,
+  OZON_COCKPIT_BACKGROUND_REFRESH,
+} from "@/lib/ozon/cockpitCache";
 import {
   currentMoscowMonth,
   listWbRnpScopes,
@@ -91,7 +94,7 @@ export async function GET(request: NextRequest) {
         scope,
         days: 14,
         taxPct: 7,
-      }, { forceRefresh: true });
+      }, OZON_COCKPIT_BACKGROUND_REFRESH);
       snapshots.push({ scope: scope.label, mode: scope.mode, ok: true, generatedAt: data.generatedAt });
     } catch (error) {
       snapshots.push({ scope: scope.label, mode: scope.mode, ok: false, error: error instanceof Error ? error.message : "Unknown error" });

@@ -20,6 +20,48 @@ export interface OzonEconomyQualityRow {
   reliability: "estimated" | "missing_cost";
 }
 
+export interface OzonSalesAggregateRow {
+  orders: number;
+  revenue: number;
+  previousOrders?: number;
+  previousRevenue?: number;
+}
+
+export interface OzonSalesSummary {
+  orders: number;
+  revenue: number;
+  previousOrders: number;
+  previousRevenue: number;
+}
+
+export interface OzonCabinetSourceState {
+  cabinet: string;
+  available: boolean;
+  error?: string | null;
+}
+
+export function summarizeOzonSales(rows: OzonSalesAggregateRow[]): OzonSalesSummary {
+  return rows.reduce<OzonSalesSummary>(
+    (totals, row) => ({
+      orders: totals.orders + Number(row.orders || 0),
+      revenue: totals.revenue + Number(row.revenue || 0),
+      previousOrders: totals.previousOrders + Number(row.previousOrders || 0),
+      previousRevenue: totals.previousRevenue + Number(row.previousRevenue || 0),
+    }),
+    { orders: 0, revenue: 0, previousOrders: 0, previousRevenue: 0 },
+  );
+}
+
+export function requireCompleteOzonSalesSnapshot(states: OzonCabinetSourceState[]) {
+  const unavailable = states.filter((state) => !state.available);
+  if (!unavailable.length) return;
+
+  const details = unavailable
+    .map((state) => `${state.cabinet}${state.error ? ` (${state.error})` : ""}`)
+    .join(", ");
+  throw new Error(`Неполный снимок продаж Ozon: ${details}`);
+}
+
 export function calculateOzonEconomyUnit(input: OzonEconomyUnitInput): {
   profit: number | null;
   margin: number | null;

@@ -107,7 +107,8 @@ export function WbUnitPage() {
 
     setLoading(true);
     setError(null);
-    fetch(`/api/unit/table?cabinet=${encodeURIComponent(cabinetId || "all")}`, { cache: "no-store", signal: controller.signal })
+    const refreshParam = retryKey > 0 ? "&refresh=1" : "";
+    fetch(`/api/unit/table?cabinet=${encodeURIComponent(cabinetId || "all")}${refreshParam}`, { cache: "no-store", signal: controller.signal })
       .then(async (response) => {
         const body = (await response.json()) as UnitData;
         if (!response.ok) throw new Error(body.error || `Ошибка ${response.status}`);

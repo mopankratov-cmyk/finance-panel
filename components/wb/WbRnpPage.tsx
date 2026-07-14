@@ -34,6 +34,7 @@ interface Metric {
   status?: "ready" | "partial" | "unavailable";
   source?: string;
   note?: string;
+  qualityReason?: "no_activity" | "missing_cost" | "missing_rates" | "stale_source" | "api_error";
   group_start?: boolean;
 }
 
@@ -50,6 +51,13 @@ interface RnpTable {
   sku_count: number;
   generated_at: string;
   as_of: string;
+  scope_freshness?: Array<{
+    cabinet_id: string | null;
+    label: string;
+    as_of: string;
+    orders_as_of: string | null;
+    sales_as_of: string | null;
+  }>;
   forecast_note: string;
   period: { label: string; period_type: string }[];
   summary: Metric[];
@@ -195,6 +203,7 @@ function completeMetrics(metrics: Metric[], periodLength: number) {
       forecast: null,
       status: "unavailable",
       coveragePct: 0,
+      qualityReason: ["gross", "margin_pct", "money", "gmroi"].includes(field) ? "missing_cost" : "no_activity",
     } satisfies Metric;
   });
 }
@@ -565,6 +574,16 @@ export function WbRnpPage() {
         </div>
       )}
 
+      {!loading && data?.scope_freshness && new Set(data.scope_freshness.map((item) => item.as_of)).size > 1 && (
+        <div className="mb-2 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-900">
+          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <span>
+            Границы полного факта различаются: {data.scope_freshness.map((item) => `${item.label} — ${item.as_of}`).join(" · ")}.
+            Сводка складывает каждый кабинет только до указанной даты.
+          </span>
+        </div>
+      )}
+
       {!loading && data && planOverview && (
         <section className="mb-2.5 rounded-xl border border-slate-200 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.03)]" aria-label="План факт прогноз РНП">
           <div className="flex flex-wrap items-start justify-between gap-2">
@@ -854,10 +873,16 @@ function MetricRow({
   const progress = planValue != null && planValue !== 0 && metric.forecast != null ? (metric.forecast / planValue) * 100 : null;
   const groupBorder = metric.group_start ? "border-t-2 border-t-slate-300" : "";
   const qualityTone = metric.status === "ready" ? "bg-emerald-500" : metric.status === "partial" ? "bg-amber-500" : "bg-slate-300";
+  const qualityReason = metric.qualityReason === "missing_cost" ? "Причина: нет себестоимости"
+    : metric.qualityReason === "missing_rates" ? "Причина: нет фактических ставок WB"
+      : metric.qualityReason === "stale_source" ? "Причина: источник загружен не полностью или устарел"
+        : metric.qualityReason === "api_error" ? "Причина: ошибка источника"
+          : metric.qualityReason === "no_activity" ? "Причина: активности за период нет" : null;
   const metricHelp = [
     metric.source ? `Источник: ${metric.source}` : null,
     metric.coveragePct != null ? `Покрытие: ${metric.coveragePct}%` : null,
     metric.note,
+    qualityReason,
     metric.forecastMethod,
   ].filter(Boolean).join(" · ");
 

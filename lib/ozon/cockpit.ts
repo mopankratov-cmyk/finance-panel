@@ -18,8 +18,10 @@ import { indexOzonOfferIdsBySku, resolveOzonOfferId } from "@/lib/ozon/productId
 import {
   calculateOzonEconomyUnit,
   ozonAdCacheStatus,
+  requireCompleteOzonSalesSnapshot,
   summarizeOzonEconomy,
   summarizeOzonHealth,
+  summarizeOzonSales,
   type OzonQualityStatus,
 } from "@/lib/ozon/cockpitQuality";
 
@@ -160,6 +162,8 @@ interface CabinetBase {
   cabinetName: string;
   clientId: string;
   analytics: OzonAnalyticsDailyRow[];
+  analyticsAvailable: boolean;
+  analyticsError: string | null;
   funnel: boolean;
   stocks: Awaited<ReturnType<typeof ozonStocks>>;
   images: Awaited<ReturnType<typeof ozonImages>>;
@@ -203,6 +207,8 @@ async function loadCabinetBase(
     cabinetName: cabinet.name,
     clientId: cabinet.clientId,
     analytics: analytics.ok ? analytics.rows : [],
+    analyticsAvailable: analytics.ok,
+    analyticsError: analytics.ok ? null : analytics.error,
     funnel: analytics.ok && analytics.funnel,
     stocks,
     images,
@@ -228,6 +234,11 @@ export async function loadOverview(scope: OzonCabinetScope, days: number) {
     false,
     true,
   )));
+  requireCompleteOzonSalesSnapshot(bases.map((base) => ({
+    cabinet: base.cabinetName,
+    available: base.analyticsAvailable,
+    error: base.analyticsError,
+  })));
   const adCache = await loadAdCache(scope, days);
   const dates = dateAxis(currentPeriod.from, currentPeriod.to);
   const currentByDay = new Map(dates.map((day) => [day, { orders: 0, revenue: 0, adSpend: 0 }]));
@@ -238,10 +249,6 @@ export async function loadOverview(scope: OzonCabinetScope, days: number) {
     name: string; image: string | null; orders: number; previousOrders: number; revenue: number;
     previousRevenue: number; stock: number; reserved: number; adSpend: number; adRevenue: number;
   }> = [];
-  let currentOrders = 0;
-  let previousOrders = 0;
-  let currentRevenue = 0;
-  let previousRevenue = 0;
   let stock = 0;
   let reserved = 0;
   let currentAdSpend = 0;
@@ -256,8 +263,6 @@ export async function loadOverview(scope: OzonCabinetScope, days: number) {
       if (row.day >= currentPeriod.from) {
         entry.orders += row.ordered_units;
         entry.revenue += row.revenue;
-        currentOrders += row.ordered_units;
-        currentRevenue += row.revenue;
         const day = currentByDay.get(row.day);
         if (day) {
           day.orders += row.ordered_units;
@@ -266,8 +271,6 @@ export async function loadOverview(scope: OzonCabinetScope, days: number) {
       } else if (row.day >= previousFrom && row.day <= previousTo) {
         entry.previousOrders += row.ordered_units;
         entry.previousRevenue += row.revenue;
-        previousOrders += row.ordered_units;
-        previousRevenue += row.revenue;
       }
       grouped.set(row.sku, entry);
     }
@@ -318,6 +321,13 @@ export async function loadOverview(scope: OzonCabinetScope, days: number) {
       });
     }
   }
+
+  const {
+    orders: currentOrders,
+    revenue: currentRevenue,
+    previousOrders,
+    previousRevenue,
+  } = summarizeOzonSales(skuRows);
 
   if (currentAdSpend === 0 && days === 14) currentAdSpend = sum([...adCache.values()].map((row) => row.spent));
   const financial = financeSummary(currentTotals);
@@ -400,6 +410,11 @@ export async function loadSales(scope: OzonCabinetScope, days: number) {
     true,
     false,
   )));
+  requireCompleteOzonSalesSnapshot(bases.map((base) => ({
+    cabinet: base.cabinetName,
+    available: base.analyticsAvailable,
+    error: base.analyticsError,
+  })));
   const rows: Record<string, unknown>[] = [];
   for (const base of bases) {
     const grouped = new Map<string, { name: string; views: number; carts: number; orders: number; revenue: number; daily: Record<string, { orders: number; revenue: number }> }>();
@@ -440,8 +455,10 @@ export async function loadSales(scope: OzonCabinetScope, days: number) {
       });
     }
   }
-  const totalOrders = sum(rows.map((row) => Number(row.orders ?? 0)));
-  const totalRevenue = sum(rows.map((row) => Number(row.revenue ?? 0)));
+  const { orders: totalOrders, revenue: totalRevenue } = summarizeOzonSales(rows.map((row) => ({
+    orders: Number(row.orders ?? 0),
+    revenue: Number(row.revenue ?? 0),
+  })));
   const totalViews = sum(rows.map((row) => Number(row.views ?? 0)));
   const totalCarts = sum(rows.map((row) => Number(row.carts ?? 0)));
   return {

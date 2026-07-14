@@ -2,6 +2,7 @@
 import { getWbCabinetSources } from "@/lib/wb/cabinetTokens";
 import { allowsProduct } from "@/lib/wb/productScope";
 import type { ProductReadinessStatus } from "@/lib/wb/productReadiness";
+import { loadHourlyDashboard, type HourlyDashboardCacheOptions } from "@/lib/cache/hourlyDashboard";
 
 const CARDS_URL = "https://content-api.wildberries.ru/content/v2/get/cards/list";
 
@@ -50,19 +51,23 @@ function colorOf(c: RawCard): string {
 export async function fetchCabinetCards(cabinetId: string | null): Promise<CabinetCard[]> {
   const sources = await getWbCabinetSources(cabinetId, "content");
   const out: CabinetCard[] = [];
+  const failures: string[] = [];
   for (const src of sources) {
     let cursor: { updatedAt?: string; nmID?: number } = {};
     try {
-      for (let page = 0; page < 30; page++) {
+      for (let page = 0; page <= 30; page++) {
         const res = await fetch(CARDS_URL, {
           method: "POST",
           headers: { Authorization: src.token, "Content-Type": "application/json" },
           body: JSON.stringify({ settings: { cursor: { limit: 100, ...cursor }, filter: { withPhoto: -1 } } }),
           cache: "no-store",
         });
-        if (!res.ok) break;
+        if (!res.ok) throw new Error(`Content API ${res.status}: ${(await res.text()).slice(0, 180)}`);
         const json = (await res.json()) as { cards?: RawCard[]; cursor?: { updatedAt?: string; nmID?: number } };
         const batch = json.cards ?? [];
+        if (page === 30 && batch.length) {
+          throw new Error("карточек больше безопасного лимита 3000");
+        }
         for (const c of batch) {
           if (!allowsProduct(src.productScope, c.nmID, c.brand)) continue;
           out.push({ article: c.vendorCode || String(c.nmID), nm_id: c.nmID, name: c.title || "", color: colorOf(c), subject: c.subjectName || "", shop: src.name });
@@ -70,8 +75,11 @@ export async function fetchCabinetCards(cabinetId: string | null): Promise<Cabin
         if (batch.length < 100) break;
         cursor = { updatedAt: json.cursor?.updatedAt, nmID: json.cursor?.nmID };
       }
-    } catch { /* пропускаем кабинет при ошибке */ }
+    } catch (error) {
+      failures.push(`${src.name}: ${error instanceof Error ? error.message : "не удалось загрузить карточки"}`);
+    }
   }
+  if (failures.length) throw new Error(`Карточки WB загружены не полностью: ${failures.join("; ")}`);
   return out;
 }
 
@@ -79,10 +87,8 @@ export async function fetchCabinetCards(cabinetId: string | null): Promise<Cabin
 // без МойСклад (себестоимость и остаток уже есть отдельно в Себестоимости/Остатках).
 export async function fetchCabinetPimRows(cabinetId: string | null): Promise<PimRow[]> {
   const sources = await getWbCabinetSources(cabinetId, "content");
-  const out: PimRow[] = [];
-  const failures: string[] = [];
-  let successfulSources = 0;
-  for (const src of sources) {
+  const results = await Promise.all(sources.map(async (src) => {
+    const rows: PimRow[] = [];
     let cursor: { updatedAt?: string; nmID?: number } = {};
     try {
       for (let page = 0; page < 30; page++) {
@@ -98,7 +104,7 @@ export async function fetchCabinetPimRows(cabinetId: string | null): Promise<Pim
         for (const c of batch) {
           if (!allowsProduct(src.productScope, c.nmID, c.brand)) continue;
           const photos = (c.photos || []).map((p) => p.c246x328 || p.big || "").filter(Boolean);
-          out.push({
+          rows.push({
             nmId: c.nmID,
             article: c.vendorCode || String(c.nmID),
             name: c.title || "",
@@ -120,13 +126,30 @@ export async function fetchCabinetPimRows(cabinetId: string | null): Promise<Pim
         if (batch.length < 100) break;
         cursor = { updatedAt: json.cursor?.updatedAt, nmID: json.cursor?.nmID };
       }
-      successfulSources++;
+      return { ok: true as const, rows, error: null };
     } catch (error) {
-      failures.push(`${src.name}: ${error instanceof Error ? error.message : "не удалось загрузить карточки"}`);
+      return { ok: false as const, rows: [], error: `${src.name}: ${error instanceof Error ? error.message : "не удалось загрузить карточки"}` };
     }
-  }
-  if (sources.length && successfulSources === 0) throw new Error(failures[0] || "Content API не вернул карточки");
-  return out;
+  }));
+  const failures = results.filter((result) => !result.ok).map((result) => result.error);
+  if (failures.length) throw new Error(`Карточки WB загружены не полностью: ${failures.join("; ")}`);
+  return results.flatMap((result) => result.rows);
+}
+
+// Все тяжёлые GET-экраны используют один и тот же часовой снимок карточек.
+// Это убирает повторный обход Content API при открытии PIM, поставок и других
+// модулей, а параллельный fetch выше ограничивает холодный старт самым медленным
+// кабинетом вместо суммы времени по всем кабинетам.
+export function loadCabinetPimRowsHourly(
+  cabinetId: string | null,
+  options: HourlyDashboardCacheOptions = {},
+): Promise<PimRow[]> {
+  return loadHourlyDashboard(
+    "wb-pim-cards",
+    { cabinetId },
+    () => fetchCabinetPimRows(cabinetId),
+    options,
+  );
 }
 
 // Свежая (не из кэша страницы) проверка конкретной карточки перед записью
