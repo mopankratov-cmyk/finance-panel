@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { checkCronAuth, chunkedUpsert, writeSyncLog } from "@/lib/sync/helpers";
 import { getWbSyncTargets } from "@/lib/sync/cabinets";
+import { isWbAdvertRateLimit } from "@/lib/wb/advertRateLimit";
 import { allowsNm, isScoped } from "@/lib/wb/productScope";
 import { claimWbSyncJob, readWbSyncState, writeWbSyncState } from "@/lib/wb/syncState";
 import { fetchWbStatistics } from "@/lib/wb/statisticsRequest";
@@ -125,6 +126,7 @@ export async function GET(request: NextRequest) {
       if (idBatches.length > 1) rotated.push(`${t.name}: срез ${startB + 1}/${idBatches.length}`);
 
       let failed = false;
+      let deferred = false;
       let processed = 0;
       for (let k = 0; k < idBatches.length; k++) {
         if (Date.now() > deadline) break; // тайм-бокс: остальное доберём следующим прогоном
@@ -147,6 +149,25 @@ export async function GET(request: NextRequest) {
         });
         if (!res.ok) {
           const message = `WB ${res.status}: ${(await res.text()).slice(0, 120)}`;
+          if (isWbAdvertRateLimit(res.status, message)) {
+            rotated.push(`${t.name}: лимит WB fullstats, повторим срез ${startB + 1}/${idBatches.length || 1}`);
+            if (t.cabinetId) await writeWbSyncState(db, t.cabinetId, "advert-stats", {
+              cursor: String(startB),
+              status: "running",
+              attempts: 0,
+              lastError: null,
+              state: {
+                ...(previous?.state ?? {}),
+                nextBatch: startB,
+                totalBatches: idBatches.length,
+                totalCampaigns: ids.length,
+                lastRateLimitedAt: new Date().toISOString(),
+              },
+            });
+            progress.push({ cabinet: t.name, status: "rate_limited", batch: startB + 1, batches: idBatches.length, nextBatch: startB });
+            deferred = true;
+            break;
+          }
           errors.push(`${t.name}: ${message}`);
           if (t.cabinetId) await writeWbSyncState(db, t.cabinetId, "advert-stats", {
             cursor: String(startB),
@@ -217,7 +238,7 @@ export async function GET(request: NextRequest) {
           }
         }
       }
-      if (failed) continue;
+      if (failed || deferred) continue;
 
       const nmRows = [...nmDaily.values()].map((r) => ({ ...r, synced_at: new Date().toISOString() }));
 
@@ -274,7 +295,7 @@ export async function GET(request: NextRequest) {
 
     const ok = errors.length === 0;
     const note = rotated.length ? ` [ротация: ${rotated.join(", ")}]` : "";
-    await writeSyncLog("advert-stats", ok ? "ok" : "error", advertDays, (errors.join("; ") + note).trim() || null, startedAt);
+    await writeSyncLog("advert-stats", ok ? "ok" : "error", advertDays, errors.length ? (errors.join("; ") + note).trim() : null, startedAt);
     return NextResponse.json({ ok, advertDays, nmDays, cabinets: targets.length, progress, rotated, errors });
   } catch (err) {
     const cause = err instanceof Error && err.cause instanceof Error ? ` (${err.cause.message})` : "";

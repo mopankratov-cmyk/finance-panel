@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { isWbAdvertRateLimit } from "../lib/wb/advertRateLimit";
 import { fetchWbFunnelHistory } from "../lib/wb/funnelRequest";
 import { fetchWbStatistics } from "../lib/wb/statisticsRequest";
 
@@ -28,6 +29,15 @@ test("WB funnel retries one 429 using Retry-After while time remains", async () 
   assert.equal(response.status, 200);
   assert.equal(calls, 2);
   assert.deepEqual(waits, [2_000]);
+});
+
+test("WB advert fullstats global limiter is recognized as a deferred retry", () => {
+  assert.equal(
+    isWbAdvertRateLimit(429, '{ "title": "too many requests", "detail": "Limited by global limiter, per seller 493a" }'),
+    true,
+  );
+  assert.equal(isWbAdvertRateLimit(403, "Limited by global limiter"), false);
+  assert.equal(isWbAdvertRateLimit(429, '{ "title": "validation error" }'), false);
 });
 
 test("WB funnel returns 429 without sleeping when the function budget is exhausted", async () => {
