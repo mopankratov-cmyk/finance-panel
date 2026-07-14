@@ -14,6 +14,7 @@ import {
   type OzonTotals,
 } from "@/lib/ozon/api";
 import { getPerfToken, perfDailySpend, perfProductReport } from "@/lib/ozon/performance";
+import { createOzonCostResolver } from "@/lib/ozon/costs";
 import { indexOzonOfferIdsBySku, resolveOzonOfferId } from "@/lib/ozon/productIdentity";
 import {
   calculateOzonEconomyUnit,
@@ -111,13 +112,9 @@ async function loadAdCache(scope: OzonCabinetScope, days: number) {
 
 async function loadCosts() {
   const db = getSupabaseAdmin();
-  const result = new Map<string, { cost: number; name: string }>();
-  if (!db) return result;
+  if (!db) return createOzonCostResolver([]);
   const { data } = await db.from("product_costs").select("article, name, cost_rub");
-  for (const row of data ?? []) {
-    result.set(String(row.article), { cost: Number(row.cost_rub ?? 0), name: String(row.name ?? "") });
-  }
-  return result;
+  return createOzonCostResolver(data ?? []);
 }
 
 function emptyTotals(): OzonTotals {
@@ -603,20 +600,25 @@ export async function loadAdverts(scope: OzonCabinetScope) {
     if (!stocks.ok) warnings.push(`${cabinet.name}: остатки — ${stocks.error}`);
     const sales = new Map((analytics.ok ? analytics.rows : []).map((row) => [row.sku, row]));
     const pricesByOffer = new Map((prices.ok ? prices.rows : []).map((row) => [row.offer_id, row]));
-    const stockByOffer = new Map<string, number>();
+    const stockByOffer = new Map<string, { free: number; name: string }>();
     if (stocks.ok) for (const stock of stocks.rows) {
-      stockByOffer.set(stock.article, (stockByOffer.get(stock.article) ?? 0) + stock.free);
+      const entry = stockByOffer.get(stock.article) ?? { free: 0, name: stock.name };
+      entry.free += stock.free;
+      if (!entry.name && stock.name) entry.name = stock.name;
+      stockByOffer.set(stock.article, entry);
     }
+    const stockOfferBySku = indexOzonOfferIdsBySku(stocks.ok ? stocks.rows : []);
     for (const [key, ad] of cache) {
       if (!key.startsWith(`${cabinet.clientId}:`)) continue;
       const sku = key.slice(cabinet.clientId.length + 1);
       const sale = sales.get(sku);
-      const offerId = images.skuToOffer[sku] ?? "";
+      const offerId = resolveOzonOfferId(sku, images.skuToOffer, stockOfferBySku);
       const priceRow = pricesByOffer.get(offerId);
       const units = Number(sale?.ordered_units ?? 0);
       const actualPrice = units > 0 ? Number(sale?.revenue ?? 0) / units : Number(priceRow?.price ?? 0);
-      const cost = costs.get(offerId)?.cost ?? 0;
-      const stock = stockByOffer.has(offerId) ? Number(stockByOffer.get(offerId)) : null;
+      const stockEntry = stockByOffer.get(offerId);
+      const cost = costs.resolve({ offerId, names: [sale?.name, stockEntry?.name] })?.cost ?? 0;
+      const stock = stockEntry ? stockEntry.free : null;
       const attributionCompatible = ad.ordersMoney <= Math.max(1, Number(sale?.revenue ?? 0)) * 1.2;
       const dataAgeHours = ad.updatedAt ? Math.max(0, (Date.now() - new Date(ad.updatedAt).getTime()) / 3_600_000) : null;
       const economics = calculateAdvertProfitGuardrail({
@@ -642,7 +644,7 @@ export async function loadAdverts(scope: OzonCabinetScope) {
         cabinet: cabinet.name,
         sku,
         offerId,
-        name: sale?.name || offerId || sku,
+        name: sale?.name || stockEntry?.name || offerId || sku,
         image: images.bySku[sku] ?? null,
         spent: r0(ad.spent),
         adRevenue: r0(ad.ordersMoney),
@@ -757,25 +759,34 @@ export async function loadEconomy(scope: OzonCabinetScope, days: number, taxPct:
   const serviceTotals: Record<string, number> = {};
   const warnings: string[] = [];
   await Promise.all(scope.cabinets.map(async (cabinet) => {
-    const [prices, analytics, images, finance, services] = await Promise.all([
+    const [prices, analytics, images, finance, services, stocks] = await Promise.all([
       ozonPrices(cabinet.creds),
       ozonAnalytics(cabinet.creds, range.from, range.to),
       ozonImages(cabinet.creds),
       ozonTransactionTotals(cabinet.creds, `${range.from}T00:00:00.000Z`, `${range.to}T23:59:59.999Z`),
       ozonServiceBreakdown(cabinet.creds, `${range.from}T00:00:00.000Z`, `${range.to}T23:59:59.999Z`),
+      ozonStocks(cabinet.creds),
     ]);
     if (!prices.ok) warnings.push(`${cabinet.name}: ${prices.error}`);
     if (!analytics.ok) warnings.push(`${cabinet.name}: ${analytics.error}`);
+    if (!stocks.ok) warnings.push(`${cabinet.name}: остатки — ${stocks.error}`);
     if (finance.ok) addTotals(totals, finance.totals);
     else warnings.push(`${cabinet.name}: ${finance.error}`);
     for (const [name, value] of Object.entries(services)) serviceTotals[name] = (serviceTotals[name] ?? 0) + value;
 
-    const salesByOffer = new Map<string, { units: number; revenue: number }>();
+    const stockNameByOffer = new Map<string, string>();
+    if (stocks.ok) for (const stock of stocks.rows) {
+      if (stock.article && stock.name && !stockNameByOffer.has(stock.article)) stockNameByOffer.set(stock.article, stock.name);
+    }
+    const stockOfferBySku = indexOzonOfferIdsBySku(stocks.ok ? stocks.rows : []);
+
+    const salesByOffer = new Map<string, { units: number; revenue: number; name: string }>();
     if (analytics.ok) for (const sale of analytics.rows) {
-      const offerId = images.skuToOffer[sale.sku] ?? "";
-      const entry = salesByOffer.get(offerId) ?? { units: 0, revenue: 0 };
+      const offerId = resolveOzonOfferId(sale.sku, images.skuToOffer, stockOfferBySku);
+      const entry = salesByOffer.get(offerId) ?? { units: 0, revenue: 0, name: sale.name };
       entry.units += sale.ordered_units;
       entry.revenue += sale.revenue;
+      if (!entry.name && sale.name) entry.name = sale.name;
       salesByOffer.set(offerId, entry);
     }
     const adsByOffer = new Map<string, number>();
@@ -787,9 +798,12 @@ export async function loadEconomy(scope: OzonCabinetScope, days: number, taxPct:
     }
     if (prices.ok) for (const priceRow of prices.rows) {
       const offerId = priceRow.offer_id;
-      const sales = salesByOffer.get(offerId) ?? { units: 0, revenue: 0 };
+      const sales = salesByOffer.get(offerId) ?? { units: 0, revenue: 0, name: "" };
+      const stockName = stockNameByOffer.get(offerId) ?? "";
+      const productName = sales.name || stockName || offerId;
       const salePrice = sales.units > 0 ? sales.revenue / sales.units : priceRow.price;
-      const cost = costs.get(offerId)?.cost ?? 0;
+      const costMatch = costs.resolve({ offerId, names: [sales.name, stockName] });
+      const cost = costMatch?.cost ?? 0;
       const commission = salePrice * priceRow.commissionPct / 100;
       const logistics = priceRow.logistics;
       const acquiring = priceRow.acquiring;
@@ -809,7 +823,7 @@ export async function loadEconomy(scope: OzonCabinetScope, days: number, taxPct:
         cabinetId: cabinet.id,
         cabinet: cabinet.name,
         offerId,
-        name: costs.get(offerId)?.name || offerId,
+        name: productName,
         image: images.byOffer[offerId] ?? null,
         units: r0(sales.units),
         revenue: r0(sales.revenue),
