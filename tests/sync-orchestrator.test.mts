@@ -1,7 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { runCoreSyncJobs } from "../lib/sync/orchestrator";
+import { resolveSyncBase, runCoreSyncJobs } from "../lib/sync/orchestrator";
+
+test("sync fan-out uses the public production domain instead of a protected deployment URL", () => {
+  assert.equal(
+    resolveSyncBase("https://finance-panel-two-git-fix.example.vercel.app", "finance-panel-two.vercel.app"),
+    "https://finance-panel-two.vercel.app",
+  );
+  assert.equal(resolveSyncBase("https://example.test/", "not a url"), "https://example.test");
+});
 
 test("independent sync jobs run concurrently and advert stats waits for adverts", async () => {
   let active = 0;

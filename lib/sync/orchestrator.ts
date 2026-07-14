@@ -8,6 +8,21 @@ export interface SyncOrchestratorResult {
   results: Record<string, unknown>;
 }
 
+export function resolveSyncBase(
+  base: string,
+  productionUrl = process.env.BASE_URL || process.env.VERCEL_PROJECT_PRODUCTION_URL,
+): string {
+  const fallback = base.replace(/\/$/, "");
+  const configured = productionUrl?.trim();
+  if (!configured) return fallback;
+  try {
+    const url = new URL(configured.includes("://") ? configured : `https://${configured}`);
+    return url.origin;
+  } catch {
+    return fallback;
+  }
+}
+
 export async function runIndependentSyncJobs(
   jobs: readonly string[],
   base: string,
@@ -16,10 +31,11 @@ export async function runIndependentSyncJobs(
 ): Promise<SyncOrchestratorResult> {
   const results: Record<string, unknown> = {};
   let ok = true;
+  const syncBase = resolveSyncBase(base);
 
   await Promise.all(jobs.map(async (job) => {
     try {
-      const res = await fetchImpl(`${base}/api/sync/${job}`, {
+      const res = await fetchImpl(`${syncBase}/api/sync/${job}`, {
         headers,
         cache: "no-store",
       });
@@ -56,10 +72,11 @@ export async function runCoreSyncJobs(
 ): Promise<SyncOrchestratorResult> {
   const results: Record<string, unknown> = {};
   let ok = true;
+  const syncBase = resolveSyncBase(base);
 
   const run = async (job: CoreSyncJob) => {
     try {
-      const res = await fetchImpl(`${base}/api/sync/${job}`, {
+      const res = await fetchImpl(`${syncBase}/api/sync/${job}`, {
         headers,
         cache: "no-store",
       });

@@ -5,7 +5,7 @@ import { buildRnpTable, type RnpTable } from "@/lib/rnp/buildTable";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const WB_RNP_CACHE_SECONDS = 60 * 60;
-export const WB_RNP_CACHE_VERSION = "v3";
+export const WB_RNP_CACHE_VERSION = "v4";
 
 export interface WbRnpCacheRequest {
   from: string;
