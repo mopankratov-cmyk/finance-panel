@@ -7,6 +7,7 @@ import {
   hourlyDashboardTag,
 } from "../lib/cache/hourlyDashboard";
 import { wbDashboardWarmUrl } from "../lib/wb/dashboardWarmup";
+import { WB_MARKET_DEFAULT_DAYS, WB_MARKET_DEFAULT_GRAN, wbMarketClosedDateRange } from "../lib/wb/marketDefaults";
 
 test("hourly WB snapshot identity is stable and isolates scopes and periods", () => {
   const all = hourlyDashboardIdentity({ cabinetId: null, d1: "2026-07-01", d2: "2026-07-13" });
@@ -24,6 +25,15 @@ test("hourly WB snapshot uses a compact versioned one-hour cache", () => {
   assert.match(hourlyDashboardTag("wb-sklejki", { cabinetId: "cab-a" }), /^dashboard:wb-sklejki:[a-f0-9]{32}$/);
 });
 
+test("WB market defaults to daily last 30 closed Moscow days", () => {
+  assert.equal(WB_MARKET_DEFAULT_DAYS, 30);
+  assert.equal(WB_MARKET_DEFAULT_GRAN, "day");
+  assert.deepEqual(wbMarketClosedDateRange(30, Date.parse("2026-07-14T00:30:00.000Z")), {
+    dateFrom: "2026-06-14",
+    dateTo: "2026-07-13",
+  });
+});
+
 test("hourly warmup targets every cabinet scope and the default market view", () => {
   const all = { cabinetId: null, label: "Все кабинеты" };
   const cabinet = { cabinetId: "cab-a", label: "Optima" };
@@ -32,7 +42,14 @@ test("hourly warmup targets every cabinet scope and the default market view", ()
   assert.equal(pulse.pathname, "/api/market/pulse");
   assert.equal(pulse.searchParams.get("cabinet"), "cab-a");
   assert.equal(pulse.searchParams.get("subject_id"), "123");
-  assert.equal(pulse.searchParams.get("weeks"), "4");
+  assert.equal(pulse.searchParams.get("gran"), "day");
+  assert.equal(pulse.searchParams.has("weeks"), false);
+  assert.match(pulse.searchParams.get("date_from") ?? "", /^\d{4}-\d{2}-\d{2}$/);
+  assert.match(pulse.searchParams.get("date_to") ?? "", /^\d{4}-\d{2}-\d{2}$/);
+  assert.equal(
+    (Date.parse(`${pulse.searchParams.get("date_to")}T00:00:00.000Z`) - Date.parse(`${pulse.searchParams.get("date_from")}T00:00:00.000Z`)) / 86_400_000,
+    WB_MARKET_DEFAULT_DAYS - 1,
+  );
   assert.equal(pulse.searchParams.get("refresh"), "1");
   assert.equal(pulse.searchParams.has("background"), false);
 

@@ -1,5 +1,6 @@
 import { internalFetch } from "@/lib/internalFetch";
 import { loadCabinetPimRowsHourly } from "@/lib/wb/cards";
+import { WB_MARKET_DEFAULT_GRAN, wbMarketClosedDateRange } from "@/lib/wb/marketDefaults";
 
 interface WbDashboardScope {
   cabinetId: string | null;
@@ -28,9 +29,11 @@ export function wbDashboardWarmUrl(
   url.searchParams.set("cabinet", scope.cabinetId || "all");
   url.searchParams.set("refresh", "1");
   if (endpoint === "market-pulse") {
+    const period = wbMarketClosedDateRange();
     url.searchParams.set("subject_id", String(subjectId));
-    url.searchParams.set("gran", "week");
-    url.searchParams.set("weeks", "4");
+    url.searchParams.set("gran", WB_MARKET_DEFAULT_GRAN);
+    url.searchParams.set("date_from", period.dateFrom);
+    url.searchParams.set("date_to", period.dateTo);
   }
   return url.toString();
 }
