@@ -33,14 +33,14 @@ test("hourly warmup targets every cabinet scope and the default market view", ()
   assert.equal(pulse.searchParams.get("cabinet"), "cab-a");
   assert.equal(pulse.searchParams.get("subject_id"), "123");
   assert.equal(pulse.searchParams.get("weeks"), "4");
-  assert.equal(pulse.searchParams.get("background"), "1");
-  assert.equal(pulse.searchParams.has("refresh"), false);
+  assert.equal(pulse.searchParams.get("refresh"), "1");
+  assert.equal(pulse.searchParams.has("background"), false);
 
   const seo = new URL(wbDashboardWarmUrl("https://panel.test", "seo", { cabinetId: "cab-a", label: "Cab A" }));
   assert.equal(seo.pathname, "/api/seo/skus");
-  assert.equal(seo.searchParams.get("background"), "1");
+  assert.equal(seo.searchParams.get("refresh"), "1");
 
   const funnel = new URL(wbDashboardWarmUrl("https://panel.test", "funnel-metrics", { cabinetId: "cab-a", label: "Cab A" }));
   assert.equal(funnel.pathname, "/api/design/day-metrics");
-  assert.equal(funnel.searchParams.get("background"), "1");
+  assert.equal(funnel.searchParams.get("refresh"), "1");
 });

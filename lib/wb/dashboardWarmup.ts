@@ -1,5 +1,4 @@
 import { internalFetch } from "@/lib/internalFetch";
-import { HOURLY_DASHBOARD_BACKGROUND_REFRESH } from "@/lib/cache/hourlyDashboard";
 import { loadCabinetPimRowsHourly } from "@/lib/wb/cards";
 
 interface WbDashboardScope {
@@ -27,7 +26,7 @@ export function wbDashboardWarmUrl(
         : "/api/unit/table";
   const url = new URL(pathname, origin);
   url.searchParams.set("cabinet", scope.cabinetId || "all");
-  url.searchParams.set("background", "1");
+  url.searchParams.set("refresh", "1");
   if (endpoint === "market-pulse") {
     url.searchParams.set("subject_id", String(subjectId));
     url.searchParams.set("gran", "week");
@@ -49,7 +48,7 @@ async function fetchWarmSnapshot(url: string): Promise<WarmCallResult & { body?:
 
 async function warmPimCards(scope: WbDashboardScope): Promise<WarmCallResult> {
   try {
-    await loadCabinetPimRowsHourly(scope.cabinetId, HOURLY_DASHBOARD_BACKGROUND_REFRESH);
+    await loadCabinetPimRowsHourly(scope.cabinetId, { forceRefresh: true });
     return { ok: true, status: 200 };
   } catch (error) {
     return { ok: false, status: 0, error: error instanceof Error ? error.message : "Карточки WB не загружены" };

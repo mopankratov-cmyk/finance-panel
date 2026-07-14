@@ -1,15 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { listOzonScopeDescriptors } from "@/lib/ozon/cabinet";
 import type { OzonCockpitView } from "@/lib/ozon/cockpit";
-import {
-  loadCachedOzonCockpit,
-  OZON_COCKPIT_BACKGROUND_REFRESH,
-} from "@/lib/ozon/cockpitCache";
+import { loadCachedOzonCockpit } from "@/lib/ozon/cockpitCache";
 import {
   currentMoscowMonth,
   listWbRnpScopes,
   loadCachedWbRnp,
-  WB_RNP_BACKGROUND_REFRESH,
 } from "@/lib/rnp/tableCache";
 import { checkCronAuth } from "@/lib/sync/helpers";
 import { warmWbSecondaryDashboards } from "@/lib/wb/dashboardWarmup";
@@ -18,6 +14,7 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
 const VIEWS = new Set<OzonCockpitView>(["overview", "sales", "adverts", "stocks", "orders", "economy", "health"]);
+const BLOCKING_SNAPSHOT_REFRESH = { forceRefresh: true } as const;
 
 async function warmWbRnp() {
   const startedAt = Date.now();
@@ -26,7 +23,7 @@ async function warmWbRnp() {
   const snapshots: Array<{ scope: string; ok: boolean; generatedAt?: string; error?: string }> = [];
   const warm = async (scope: (typeof scopes)[number]) => {
     try {
-      await loadCachedWbRnp({ ...period, ...scope }, WB_RNP_BACKGROUND_REFRESH);
+      await loadCachedWbRnp({ ...period, ...scope }, BLOCKING_SNAPSHOT_REFRESH);
       snapshots.push({ scope: scope.label, ok: true, generatedAt: new Date().toISOString(), error: undefined });
     } catch (error) {
       snapshots.push({ scope: scope.label, ok: false, error: error instanceof Error ? error.message : "Unknown error" });
@@ -94,7 +91,7 @@ export async function GET(request: NextRequest) {
         scope,
         days: 14,
         taxPct: 7,
-      }, OZON_COCKPIT_BACKGROUND_REFRESH);
+      }, BLOCKING_SNAPSHOT_REFRESH);
       snapshots.push({ scope: scope.label, mode: scope.mode, ok: true, generatedAt: data.generatedAt });
     } catch (error) {
       snapshots.push({ scope: scope.label, mode: scope.mode, ok: false, error: error instanceof Error ? error.message : "Unknown error" });

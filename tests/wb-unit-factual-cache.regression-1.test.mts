@@ -60,6 +60,6 @@ test("hourly warmup prepares the unit table for every cabinet scope", () => {
   const url = new URL(wbDashboardWarmUrl("https://panel.test", "unit", { cabinetId: "cab-a", label: "Cab A" }));
   assert.equal(url.pathname, "/api/unit/table");
   assert.equal(url.searchParams.get("cabinet"), "cab-a");
-  assert.equal(url.searchParams.get("background"), "1");
-  assert.equal(url.searchParams.has("refresh"), false);
+  assert.equal(url.searchParams.get("refresh"), "1");
+  assert.equal(url.searchParams.has("background"), false);
 });

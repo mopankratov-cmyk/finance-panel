@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { earliestKnownDate, latestDate, latestKnownDate, loadAllPages } from "../lib/rnp/buildTable";
 import {
@@ -41,6 +42,14 @@ test("WB RNP hourly warmup keeps the previous snapshot while refreshing", () => 
   assert.equal(wbRnpRevalidationProfile(WB_RNP_BACKGROUND_REFRESH), "max");
   assert.deepEqual(wbRnpRevalidationProfile({ forceRefresh: true }), { expire: 0 });
   assert.equal(wbRnpRevalidationProfile({}), null);
+});
+
+test("marketplace cron waits for fresh WB and Ozon snapshots before returning", async () => {
+  const source = await readFile(new URL("../app/api/sync/dashboard-cache/route.ts", import.meta.url), "utf8");
+  assert.match(source, /const BLOCKING_SNAPSHOT_REFRESH = \{ forceRefresh: true \} as const/);
+  assert.doesNotMatch(source, /WB_RNP_BACKGROUND_REFRESH|OZON_COCKPIT_BACKGROUND_REFRESH/);
+  assert.match(source, /loadCachedWbRnp\([\s\S]+?BLOCKING_SNAPSHOT_REFRESH\)/);
+  assert.match(source, /loadCachedOzonCockpit\([\s\S]+?BLOCKING_SNAPSHOT_REFRESH\)/);
 });
 
 test("RNP loader drains every PostgREST page instead of stopping at 1,000 rows", async () => {
