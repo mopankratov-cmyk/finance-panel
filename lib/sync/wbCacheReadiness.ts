@@ -1,3 +1,5 @@
+import { isWbGlobalRateLimitMessage } from "@/lib/wb/rateLimit";
+
 export interface SyncLogLike {
   job: string;
   status: string;
@@ -65,6 +67,7 @@ export function wbCacheProgressReadiness(
       const key = `${cabinet.id}:${job}`;
       const row = byKey.get(key);
       if (!row) missing.push(key);
+      else if (isWbGlobalRateLimitMessage(row.last_error)) incomplete.push(key);
       else if (row.status === "error" || row.last_error) failed.push(key);
       else if (row.status !== "caught_up" && row.status !== "complete") incomplete.push(key);
     }

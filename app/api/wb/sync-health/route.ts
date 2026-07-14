@@ -5,6 +5,7 @@ import { requireApiSession } from "@/lib/auth/apiGuard";
 import { sessionHasCabinetAccess } from "@/lib/auth/cabinetAccess";
 import { getServerSession } from "@/lib/auth/server";
 import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
+import { wbSyncHealthStatus } from "@/lib/sync/wbSyncHealthStatus";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { getActiveWbCabinets } from "@/lib/wb/cabinetTokens";
 import { normalizeWbBrand } from "@/lib/wb/productScope";
@@ -124,17 +125,17 @@ export async function GET() {
         const slaMinutes = SOURCE_SLA_MINUTES[source.job] ?? 90;
         const stale = ageMinutes !== null && ageMinutes > slaMinutes;
         const progressStatus = state?.status;
-        const status = source.error || progressStatus === "error"
-          ? "error"
-          : progressStatus === "running" || progressStatus === "pending" || progressStatus === "backfill"
-            ? progressStatus
-            : stale
-              ? "stale"
-              : lastSyncedAt ? "caught_up" : "pending";
+        const health = wbSyncHealthStatus({
+          sourceError: source.error,
+          progressStatus,
+          stateLastError: state?.last_error ?? null,
+          stale,
+          hasLastSyncedAt: Boolean(lastSyncedAt),
+        });
         return {
           ...source,
           lastSyncedAt,
-          status,
+          status: health.status,
           stale,
           ageMinutes,
           slaMinutes,
@@ -142,7 +143,7 @@ export async function GET() {
           attempts: state?.attempts ?? 0,
           coveragePct: Number(state?.state?.coveragePct ?? (source.lastSyncedAt ? 100 : 0)),
           stateUpdatedAt: state?.updated_at ?? null,
-          lastError: state?.last_error ?? source.error,
+          lastError: health.lastError,
         };
       }),
     };
