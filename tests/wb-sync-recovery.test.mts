@@ -6,6 +6,7 @@ import {
   historyFirstActiveDate,
   historyReportPayload,
   initialStatisticsCursor,
+  isUnavailableHistoryReportError,
   parseHistoryCsv,
   statisticsCursor,
   unzipCsvFiles,
@@ -57,6 +58,13 @@ test("history report requests exactly 365 days and exact scoped nmIDs", () => {
   const payload = historyReportPayload("00000000-0000-4000-8000-000000000001", "cabinet-123", [11, 22], period);
   assert.deepEqual((payload.params as Record<string, unknown>).nmIDs, [11, 22]);
   assert.equal((payload.params as Record<string, unknown>).aggregationLevel, "day");
+});
+
+test("history report unavailable 403 is classified as a non-fatal cabinet skip", () => {
+  const body = '{"title":"Authorization error","detail":"Report not available","origin":"analytics-open-api"}';
+  assert.equal(isUnavailableHistoryReportError(403, body), true);
+  assert.equal(isUnavailableHistoryReportError(401, body), false);
+  assert.equal(isUnavailableHistoryReportError(403, '{"title":"Authorization error","detail":"bad token"}'), false);
 });
 
 test("history bootstrap starts detail sync from first relevant sale", () => {

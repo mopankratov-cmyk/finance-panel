@@ -18,6 +18,7 @@ export interface WbHistoryState extends Record<string, unknown> {
   periodEnd: string;
   createdAt: string;
   completedAt?: string;
+  unavailableAt?: string;
   firstActiveDate?: string;
   rows?: number;
 }
@@ -214,6 +215,16 @@ function stateIsFresh(state: WbSyncState<WbHistoryState>, now: Date): boolean {
   return now.getTime() - new Date(state.state.completedAt).getTime() < HISTORY_REFRESH_MS;
 }
 
+function stateIsUnavailableFresh(state: WbSyncState<WbHistoryState>, now: Date): boolean {
+  if (state.status !== "unavailable" || !state.state.unavailableAt) return false;
+  return now.getTime() - new Date(state.state.unavailableAt).getTime() < HISTORY_REFRESH_MS;
+}
+
+export function isUnavailableHistoryReportError(status: number, body: string): boolean {
+  if (status !== 403) return false;
+  return /Report not available/i.test(body) || /analytics-open-api/i.test(body);
+}
+
 async function storedFirstActiveDate(
   db: SupabaseClient,
   cabinetId: string,
@@ -273,6 +284,11 @@ export async function runWbHistoryRecovery(now = new Date()): Promise<WbHistoryR
     let state = await readWbSyncState<WbHistoryState>(db, cabinetId, HISTORY_JOB);
 
     try {
+      if (state && stateIsUnavailableFresh(state, now)) {
+        results.push({ cabinet: target.name, status: "unavailable", reason: state.lastError ?? "WB history report unavailable" });
+        continue;
+      }
+
       if (state && stateIsFresh(state, now)) {
         const firstActiveDate = state.state.firstActiveDate
           ?? await storedFirstActiveDate(db, cabinetId, nmIds);
@@ -288,13 +304,35 @@ export async function runWbHistoryRecovery(now = new Date()): Promise<WbHistoryR
         continue;
       }
 
-      if (!state || state.status === "complete" || state.attempts >= 3) {
+      if (!state || state.status === "complete" || state.status === "unavailable" || state.attempts >= 3) {
         const reportId = crypto.randomUUID();
         const response = await wbRequest(REPORTS_URL, target.statsToken, {
           method: "POST",
           body: JSON.stringify(historyReportPayload(reportId, cabinetId, nmIds, period)),
         });
-        if (!response.ok) throw new Error(`создание отчёта: WB ${response.status}: ${(await response.text()).slice(0, 180)}`);
+        if (!response.ok) {
+          const body = (await response.text()).slice(0, 180);
+          if (isUnavailableHistoryReportError(response.status, body)) {
+            const reason = `создание отчёта: WB ${response.status}: ${body}`;
+            const unavailableState: WbHistoryState = {
+              reportId,
+              periodStart: period.start,
+              periodEnd: period.end,
+              createdAt: now.toISOString(),
+              unavailableAt: now.toISOString(),
+            };
+            const stateError = await writeWbSyncState(db, cabinetId, HISTORY_JOB, {
+              status: "unavailable",
+              attempts: 0,
+              lastError: reason,
+              state: unavailableState,
+            });
+            if (stateError) throw new Error(`состояние истории: ${stateError}`);
+            results.push({ cabinet: target.name, status: "unavailable", reason });
+            continue;
+          }
+          throw new Error(`создание отчёта: WB ${response.status}: ${body}`);
+        }
         const historyState: WbHistoryState = { reportId, periodStart: period.start, periodEnd: period.end, createdAt: now.toISOString() };
         const stateError = await writeWbSyncState(db, cabinetId, HISTORY_JOB, { status: "pending", attempts: 0, state: historyState });
         if (stateError) throw new Error(`состояние истории: ${stateError}`);
