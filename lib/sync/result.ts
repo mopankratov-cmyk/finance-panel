@@ -8,7 +8,7 @@ export function asSyncPayload(value: unknown): SyncPayload {
 
 export function syncPayloadOk(httpOk: boolean, payload: unknown): boolean {
   const body = asSyncPayload(payload);
-  return httpOk && body.ok !== false && !body.error;
+  return httpOk && body.ok !== false && !body.error && !hasErrorList(body);
 }
 
 export function syncErrorMessage(payload: unknown, fallback = "Ошибка синхронизации"): string {
@@ -29,4 +29,8 @@ export function syncErrorMessage(payload: unknown, fallback = "Ошибка си
     }
   }
   return fallback;
+}
+
+function hasErrorList(body: SyncPayload): boolean {
+  return Array.isArray(body.errors) && body.errors.some((value) => typeof value === "string" && !!value);
 }

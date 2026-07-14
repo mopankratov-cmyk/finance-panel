@@ -55,3 +55,21 @@ test("downstream job failures make the aggregate sync fail", async () => {
   assert.equal(result.ok, false);
   assert.deepEqual(result.results.sales, { ok: false, error: "WB 401", status: 502 });
 });
+
+test("downstream job failures keep explicit errors array details", async () => {
+  const fakeFetch = async (input: string | URL | Request) => {
+    const failed = String(input).endsWith("/advert-stats");
+    return new Response(JSON.stringify(failed ? { ok: false, errors: ["COSMOS SHOP: WB 429"] } : { ok: true }), {
+      status: failed ? 502 : 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  };
+
+  const result = await runCoreSyncJobs("https://example.test", {}, fakeFetch as typeof fetch);
+  assert.equal(result.ok, false);
+  assert.deepEqual(result.results["advert-stats"], {
+    ok: false,
+    errors: ["COSMOS SHOP: WB 429"],
+    status: 502,
+  });
+});

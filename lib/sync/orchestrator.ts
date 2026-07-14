@@ -52,12 +52,14 @@ export async function runIndependentSyncJobs(
       const raw = await res.json().catch(() => null);
       const validPayload = raw !== null && typeof raw === "object" && !Array.isArray(raw);
       const payload = objectPayload(raw);
-      const jobOk = res.ok && validPayload && payload.ok === true && !payload.error;
+      const jobOk = res.ok && validPayload && payload.ok === true && !payload.error && !hasErrorList(payload);
       if (!jobOk) ok = false;
       results[job] = {
         ...payload,
         ...(!validPayload ? { error: "Некорректный JSON-ответ дочерней синхронизации" } : {}),
-        ...(validPayload && payload.ok !== true && !payload.error ? { error: "Дочерняя синхронизация не подтвердила успех" } : {}),
+        ...(validPayload && payload.ok !== true && !payload.error && !hasErrorList(payload)
+          ? { error: "Дочерняя синхронизация не подтвердила успех" }
+          : {}),
         status: res.status,
       };
     } catch (error) {
@@ -73,6 +75,10 @@ function objectPayload(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
     ? value as Record<string, unknown>
     : {};
+}
+
+function hasErrorList(payload: Record<string, unknown>): boolean {
+  return Array.isArray(payload.errors) && payload.errors.some((value) => typeof value === "string" && value.length > 0);
 }
 
 export async function runCoreSyncJobs(
@@ -94,12 +100,14 @@ export async function runCoreSyncJobs(
       const raw = await res.json().catch(() => null);
       const validPayload = raw !== null && typeof raw === "object" && !Array.isArray(raw);
       const payload = objectPayload(raw);
-      const jobOk = res.ok && validPayload && payload.ok === true && !payload.error;
+      const jobOk = res.ok && validPayload && payload.ok === true && !payload.error && !hasErrorList(payload);
       if (!jobOk) ok = false;
       results[job] = {
         ...payload,
         ...(!validPayload ? { error: "Некорректный JSON-ответ дочерней синхронизации" } : {}),
-        ...(validPayload && payload.ok !== true && !payload.error ? { error: "Дочерняя синхронизация не подтвердила успех" } : {}),
+        ...(validPayload && payload.ok !== true && !payload.error && !hasErrorList(payload)
+          ? { error: "Дочерняя синхронизация не подтвердила успех" }
+          : {}),
         status: res.status,
       };
     } catch (error) {
