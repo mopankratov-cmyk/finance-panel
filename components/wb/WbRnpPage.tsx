@@ -16,6 +16,7 @@ import { CategoryFilter, filterByCategory } from "@/components/ui/CategoryFilter
 import { LoadingBanner, SkeletonTableRows, useElapsedSeconds } from "@/components/ui/LoadingState";
 import { MARKETPLACE_METRICS } from "@/lib/analytics/marketplaceMetrics";
 import { heat } from "@/lib/analytics/heat";
+import { readApiResponse } from "@/lib/http/readApiResponse";
 import { useCategoryMap } from "@/lib/useCategoryMap";
 import { useWbCabinet } from "./WbCabinetContext";
 
@@ -329,7 +330,7 @@ export function WbRnpPage() {
       signal: controller.signal,
     })
       .then(async (response) => {
-        const body = (await response.json()) as RnpTable;
+        const body = await readApiResponse<RnpTable>(response, "РНП");
         if (!response.ok) throw new Error(body.error || `Ошибка ${response.status}`);
         return body;
       })
@@ -371,7 +372,7 @@ export function WbRnpPage() {
       signal: controller.signal,
     })
       .then(async (response) => {
-        const body = (await response.json()) as { plan?: Record<string, Record<string, number>>; error?: string };
+        const body = await readApiResponse<{ plan?: Record<string, Record<string, number>>; error?: string }>(response, "План РНП");
         if (!response.ok) throw new Error(body.error || `Ошибка ${response.status}`);
         setPlan(body.plan ?? {});
       })
