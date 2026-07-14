@@ -61,6 +61,12 @@ test("WB adverts route does not let live WB balance hold the page for 45 seconds
   assert.match(source, /loadScopedAdvertReportRows\(db,\s*cabinetId,\s*\[\.\.\.allowedNmIds\]\)/);
 });
 
+test("WB adverts route keeps selected-cabinet loads off slow global fallbacks", () => {
+  const source = readFileSync(new URL("../app/api/adverts/list/route.ts", import.meta.url), "utf8");
+  assert.match(source, /changesQ = changesQ\.eq\("cabinet_id", cabinetId\)/);
+  assert.match(source, /getWbCommissionForCabinet\(cabinetId,\s*30,\s*\{\s*allowLiveFallback:\s*false\s*\}\)/);
+});
+
 test("WB adverts page keeps the last-good list when a refresh times out", () => {
   const source = readFileSync(new URL("../components/wb/WbAdvertsPage.tsx", import.meta.url), "utf8");
   assert.match(source, /readApiResponse<AdvertsData>\(response, "Реклама WB"\)/);

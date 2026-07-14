@@ -35,6 +35,27 @@ test("WB RNP last-good snapshot survives short cron gaps", () => {
   assert.equal(WB_RNP_CACHE_SECONDS, 12 * 60 * 60);
 });
 
+test("WB RNP interactive loader does not start slow live WB commission reports", async () => {
+  const source = await readFile(new URL("../lib/rnp/buildTable.ts", import.meta.url), "utf8");
+  assert.match(source, /getWbCommissionForCabinet\(p_cabinet,\s*30,\s*\{\s*allowLiveFallback:\s*false\s*\}\)/);
+});
+
+test("WB dashboard facts have selected-cabinet query indexes", async () => {
+  const migration = await readFile(new URL("../supabase/migrations/20260715_wb_dashboard_query_indexes.sql", import.meta.url), "utf8");
+  for (const indexName of [
+    "wb_orders_cabinet_date_nm_idx",
+    "wb_sales_cabinet_date_nm_idx",
+    "wb_advert_nm_daily_cabinet_date_nm_idx",
+    "wb_funnel_daily_cabinet_date_nm_idx",
+    "wb_stocks_cabinet_nm_idx",
+    "wb_advert_stats_cabinet_date_advert_idx",
+    "wb_adverts_cabinet_status_advert_idx",
+    "product_costs_article_idx",
+  ]) {
+    assert.match(migration, new RegExp(`create index if not exists ${indexName}`));
+  }
+});
+
 test("WB RNP hourly warmup uses the Moscow calendar month", () => {
   assert.deepEqual(currentMoscowMonth(new Date("2026-07-31T21:30:00.000Z")), {
     from: "2026-08-01",

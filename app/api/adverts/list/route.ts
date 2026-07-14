@@ -69,8 +69,8 @@ export async function GET(request: NextRequest) {
 
   let advQ = db.from("wb_adverts").select("advert_id, cabinet_id, name, status, daily_budget, bid_cpm_rub, last_stats_synced_at, nm_ids").in("status", [9, 11]);
   let statQ = db.from("wb_advert_stats").select("advert_id, date, sum_spent, views, clicks, sum_orders").gte("date", new Date(Date.now() - 14 * 86400000).toISOString().slice(0, 10)).limit(5000);
-  const changesQ = db.from("advert_bid_changes").select("advert_id, old_bid, new_bid, status, created_at").order("created_at", { ascending: false }).limit(500);
-  if (cabinetId) { advQ = advQ.eq("cabinet_id", cabinetId); statQ = statQ.eq("cabinet_id", cabinetId); }
+  let changesQ = db.from("advert_bid_changes").select("advert_id, old_bid, new_bid, status, created_at").order("created_at", { ascending: false }).limit(500);
+  if (cabinetId) { advQ = advQ.eq("cabinet_id", cabinetId); statQ = statQ.eq("cabinet_id", cabinetId); changesQ = changesQ.eq("cabinet_id", cabinetId); }
 
   // Баланс продвижения зависит только от cabinetId — считаем его цепочку параллельно
   // с тяжёлыми БД-запросами, а не после них (иначе латентность складывается).
@@ -115,7 +115,7 @@ export async function GET(request: NextRequest) {
       statQ,
       reportPromise,
       changesQ,
-      getWbCommissionForCabinet(cabinetId, 30),
+      getWbCommissionForCabinet(cabinetId, 30, { allowLiveFallback: false }),
       balancePromise,
     ]);
   } catch (error) {

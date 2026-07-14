@@ -9,6 +9,8 @@ test("unit economics reads the synchronized commission snapshot before live WB r
   const cabinetFunction = source.slice(source.indexOf("export async function getWbCommissionForCabinet"), source.indexOf("async function getWbCommissionFromCache"));
   assert.match(cabinetFunction, /getWbCommissionFromCache\(cabinetId\)/);
   assert.ok(cabinetFunction.indexOf("getWbCommissionFromCache") < cabinetFunction.indexOf("getWbCabinet"));
+  assert.match(cabinetFunction, /allowLiveFallback/);
+  assert.ok(cabinetFunction.indexOf("if (!allowLiveFallback) return emptyWbCommission();") < cabinetFunction.indexOf("getWbCabinet"));
   assert.match(source, /nmQuery = nmQuery\.eq\("cabinet_id", cabinetId\)/);
   assert.match(source, /overheadQuery = overheadQuery\.eq\("cabinet_id", cabinetId\)/);
 });

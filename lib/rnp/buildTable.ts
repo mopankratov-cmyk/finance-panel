@@ -716,7 +716,7 @@ export async function buildRnpTable(from: string, to: string, cabinetId?: string
         .select("article, name, cost_rub")
         .order("article", { ascending: true })
         .range(start, end)),
-      getWbCommissionForCabinet(p_cabinet, 30),
+      getWbCommissionForCabinet(p_cabinet, 30, { allowLiveFallback: false }),
     ]);
 
     const skuDailyRows = scopeData.flatMap((item) => applyRnpScopeCutoff(item.skuRows, item.asOf));

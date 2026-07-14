@@ -57,6 +57,10 @@ const r1 = (n: number) => Math.round(n * 10) / 10;
 const positiveRate = (value: number) => Number.isFinite(value) && value > 0;
 const nonNegativeRate = (value: number) => Number.isFinite(value) && value >= 0;
 
+export function emptyWbCommission(): WbCommission {
+  return { byNm: new Map(), avgPct: 0, avgAcqPct: 0, avgExtraPct: 0, overheadPct: 0 };
+}
+
 export function resolveWbRatesForNm(comm: WbCommission, nm: number): ResolvedWbRates {
   const row = comm.byNm.get(nm);
   const rowHasFact = Boolean(row && Number.isFinite(row.rev) && row.rev > 0);
@@ -91,7 +95,7 @@ export async function getWbCommission(days = 30, opts?: { token?: string; cacheK
   const key = `${opts?.cacheKey || "env"}|${days}|${scope.allowedNmIds?.join(",") ?? "all"}`;
   const hit = _memo.get(key);
   if (hit && Date.now() - hit.ts < MEMO_TTL) return hit.val;
-  const empty: WbCommission = { byNm: new Map(), avgPct: 0, avgAcqPct: 0, avgExtraPct: 0, overheadPct: 0 };
+  const empty = emptyWbCommission();
   if (!token) return empty;
   const to = new Date().toISOString().slice(0, 10);
   const from = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
@@ -167,10 +171,20 @@ export async function getWbCommissionMerged(days = 30): Promise<WbCommission> {
 
 // Один источник выбора ставок для экранов с глобальным переключателем кабинета.
 // Конкретный кабинет не должен случайно получать среднюю комиссию другого юрлица.
-export async function getWbCommissionForCabinet(cabinetId: string | null, days = 30): Promise<WbCommission> {
-  if (!cabinetId) return getWbCommissionMerged(days);
+export async function getWbCommissionForCabinet(
+  cabinetId: string | null,
+  days = 30,
+  options: { allowLiveFallback?: boolean } = {},
+): Promise<WbCommission> {
+  const allowLiveFallback = options.allowLiveFallback ?? true;
+  if (!cabinetId) {
+    const cached = await getWbCommissionFromCache();
+    if (cached) return cached;
+    return allowLiveFallback ? getWbCommissionMergedLive(days) : emptyWbCommission();
+  }
   const cached = await getWbCommissionFromCache(cabinetId);
   if (cached) return cached;
+  if (!allowLiveFallback) return emptyWbCommission();
   const cabinet = await getWbCabinet(cabinetId);
   if (!cabinet) return getWbCommissionMerged(days);
   return getWbCommission(days, {
