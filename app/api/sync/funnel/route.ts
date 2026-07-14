@@ -11,6 +11,7 @@ import { fetchWbFunnelHistory } from "@/lib/wb/funnelRequest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
 import { allowsNm } from "@/lib/wb/productScope";
+import { isWbGlobalRateLimit } from "@/lib/wb/rateLimit";
 import { claimWbSyncJob, readWbSyncState, writeWbSyncState } from "@/lib/wb/syncState";
 
 const HISTORY_URL =
@@ -136,6 +137,21 @@ export async function GET(request: NextRequest) {
       });
       if (!res.ok) {
         const message = `WB ${res.status}: ${(await res.text()).slice(0, 120)}`;
+        if (isWbGlobalRateLimit(res.status, message)) {
+          rotated.push(`${t.name}: лимит WB funnel, повторим срез ${startB + 1}/${batches.length || 1}`);
+          if (t.cabinetId) await writeWbSyncState(db, t.cabinetId, "funnel", {
+            cursor: String(startB), status: "running", attempts: 0, lastError: null,
+            state: {
+              ...(previous?.state ?? {}),
+              nextBatch: startB,
+              totalBatches: batches.length,
+              totalSku: nmIds.length,
+              lastRateLimitedAt: new Date().toISOString(),
+            },
+          });
+          progress.push({ cabinet: t.name, status: "rate_limited", batch: startB + 1, batches: batches.length, nextBatch: startB });
+          return;
+        }
         errors.push(`${t.name}: ${message}`);
         if (t.cabinetId) await writeWbSyncState(db, t.cabinetId, "funnel", {
           cursor: String(startB), status: "error", attempts: (previous?.attempts ?? 0) + 1, lastError: message,
@@ -203,7 +219,7 @@ export async function GET(request: NextRequest) {
 
     const ok = errors.length === 0;
     const note = rotated.length ? ` [ротация: ${rotated.join(", ")}]` : "";
-    await writeSyncLog("funnel", ok ? "ok" : "error", total, (errors.join("; ") + note).trim() || null, startedAt);
+    await writeSyncLog("funnel", ok ? "ok" : "error", total, errors.length ? (errors.join("; ") + note).trim() : null, startedAt);
     return NextResponse.json(
       { ok, rows: total, cabinets: targets.length, period, progress, rotated, errors },
       { status: ok ? 200 : 502 },

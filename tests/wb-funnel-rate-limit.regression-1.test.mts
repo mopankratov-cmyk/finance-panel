@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import { isWbAdvertRateLimit } from "../lib/wb/advertRateLimit";
 import { fetchWbFunnelHistory } from "../lib/wb/funnelRequest";
+import { isWbGlobalRateLimit } from "../lib/wb/rateLimit";
 import { fetchWbStatistics } from "../lib/wb/statisticsRequest";
 
 // Regression test for QA ISSUE-004: https://finance-panel-two.vercel.app/sync
@@ -38,6 +40,23 @@ test("WB advert fullstats global limiter is recognized as a deferred retry", () 
   );
   assert.equal(isWbAdvertRateLimit(403, "Limited by global limiter"), false);
   assert.equal(isWbAdvertRateLimit(429, '{ "title": "validation error" }'), false);
+});
+
+test("WB funnel global limiter is recognized as a deferred retry", () => {
+  assert.equal(
+    isWbGlobalRateLimit(429, '{ "title": "too many requests", "detail": "Limited by global limiter, per seller 493a" }'),
+    true,
+  );
+  assert.equal(isWbGlobalRateLimit(403, "Limited by global limiter"), false);
+  assert.equal(isWbGlobalRateLimit(429, '{ "title": "validation error" }'), false);
+});
+
+test("funnel route defers WB 429 without writing a fatal sync error", () => {
+  const source = readFileSync(new URL("../app/api/sync/funnel/route.ts", import.meta.url), "utf8");
+  assert.match(source, /isWbGlobalRateLimit\(res\.status, message\)/);
+  assert.match(source, /status: "rate_limited"/);
+  assert.match(source, /status: "running"/);
+  assert.match(source, /errors\.length \? \(errors\.join\("; "\) \+ note\)\.trim\(\) : null/);
 });
 
 test("WB funnel returns 429 without sleeping when the function budget is exhausted", async () => {
