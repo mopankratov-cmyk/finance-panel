@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { checkCronAuth, chunkedUpsert, writeSyncLog } from "@/lib/sync/helpers";
 import { getWbSyncTargets } from "@/lib/sync/cabinets";
 import { rotateFunnelTargets, syncFunnelPeriod } from "@/lib/wb/funnelPeriod";
+import { fetchWbFunnelHistory } from "@/lib/wb/funnelRequest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 const HISTORY_URL =
@@ -101,11 +102,13 @@ export async function GET(request: NextRequest) {
         }
         const batch = batches[(startB + k) % batches.length];
 
-        const res = await fetch(HISTORY_URL, {
-          method: "POST",
-          headers: { Authorization: t.statsToken, "Content-Type": "application/json" },
+        const res = await fetchWbFunnelHistory({
+          url: HISTORY_URL,
+          token: t.statsToken,
           body: JSON.stringify({ nmIds: batch, selectedPeriod: { start: period.begin, end: period.end } }),
-          cache: "no-store",
+          deadline,
+          reserveMs: REQUEST_RESERVE_MS,
+          fallbackWaitMs: RATE_LIMIT_WAIT_MS,
         });
         processed++;
         if (!res.ok) {
@@ -147,7 +150,10 @@ export async function GET(request: NextRequest) {
     const ok = errors.length === 0;
     const note = rotated.length ? ` [ротация: ${rotated.join(", ")}]` : "";
     await writeSyncLog("funnel", ok ? "ok" : "error", total, (errors.join("; ") + note).trim() || null, startedAt);
-    return NextResponse.json({ ok, rows: total, cabinets: targets.length, period, rotated, errors });
+    return NextResponse.json(
+      { ok, rows: total, cabinets: targets.length, period, rotated, errors },
+      { status: ok ? 200 : 502 },
+    );
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Unknown error";
     await writeSyncLog("funnel", "error", null, msg, startedAt);

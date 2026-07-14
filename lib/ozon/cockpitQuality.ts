@@ -76,7 +76,7 @@ export function ozonAdCacheStatus(
 
 export function ozonSyncStatus(latestSync: { status?: unknown } | null): OzonQualityStatus {
   if (!latestSync) return "warning";
-  return latestSync.status === "success" ? "ok" : "error";
+  return latestSync.status === "ok" ? "ok" : "error";
 }
 
 export function summarizeOzonHealth(

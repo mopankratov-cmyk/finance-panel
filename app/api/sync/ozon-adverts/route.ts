@@ -13,8 +13,8 @@ type OzonCabinet = {
   perf_secret: string | null;
 };
 
-// Ozon analytics/stocks читаются live при открытии страниц. Эта задача ежедневно
-// обновляет единственный сохраняемый Ozon-набор — Performance-рекламу (кэш 6ч),
+// Ozon analytics/stocks читаются из почасовых снимков. Эта задача каждый час
+// обновляет Performance-рекламу для всех активных кабинетов,
 // причём отдельно для каждого активного кабинета.
 export async function GET(request: NextRequest) {
   const authError = checkCronAuth(request);
@@ -90,5 +90,8 @@ export async function GET(request: NextRequest) {
   ];
   const ok = failures.length === 0;
   await writeSyncLog("ozon-adverts", ok ? "ok" : "error", total, notes.join("; ") || null, startedAt);
-  return NextResponse.json({ ok, rows: total, cabinets: cabinets.length, results, warnings: partial });
+  return NextResponse.json(
+    { ok, rows: total, cabinets: cabinets.length, results, warnings: partial },
+    { status: ok ? 200 : 502 },
+  );
 }

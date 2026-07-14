@@ -7,12 +7,13 @@ import { asSyncPayload, syncErrorMessage, syncPayloadOk } from "@/lib/sync/resul
 import type { SyncLogRow } from "@/app/api/sync-log/route";
 
 const JOBS: { key: string; label: string; schedule: string }[] = [
-  { key: "orders", label: "Заказы", schedule: "ежедневно в 06:00" },
-  { key: "sales", label: "Продажи", schedule: "ежедневно в 06:00" },
-  { key: "stocks", label: "Остатки", schedule: "ежедневно в 06:00" },
-  { key: "adverts", label: "Кампании", schedule: "ежедневно в 06:00" },
-  { key: "advert-stats", label: "Статистика рекламы", schedule: "ежедневно в 06:00" },
-  { key: "funnel", label: "Воронка", schedule: "ежедневно в 06:20" },
+  { key: "orders", label: "Заказы WB", schedule: "каждый час, :00" },
+  { key: "sales", label: "Продажи WB", schedule: "каждый час, :00" },
+  { key: "stocks", label: "Остатки WB", schedule: "каждый час, :00" },
+  { key: "adverts", label: "Кампании WB", schedule: "каждый час, :00" },
+  { key: "advert-stats", label: "Статистика рекламы WB", schedule: "каждый час, :00" },
+  { key: "funnel", label: "Воронка WB", schedule: "каждый час, :20" },
+  { key: "ozon-adverts", label: "Реклама Ozon", schedule: "каждый час, :25" },
 ];
 
 function durationMs(r: SyncLogRow): number | null {
@@ -101,7 +102,7 @@ export function SyncPage() {
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Синхронизация</h1>
           <p className="text-sm text-slate-400 mt-1">
-            Состояние синков WB → Supabase и журнал запусков
+            Состояние синхронизаций маркетплейсов и журнал запусков
           </p>
         </div>
         <div className="flex gap-2">
@@ -119,7 +120,7 @@ export function SyncPage() {
             className="flex items-center gap-2 rounded-lg bg-violet-600 px-3 py-2 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-50"
           >
             <Play className={`h-4 w-4 ${running === "all" ? "animate-pulse" : ""}`} />
-            Обновить всё
+            Обновить WB
           </button>
         </div>
       </div>
