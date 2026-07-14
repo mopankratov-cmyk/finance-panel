@@ -34,10 +34,44 @@ interface RpcTotal {
 }
 interface AdNmRow { nm_id: number; date: string; views: number | null; clicks: number | null }
 interface FunnelRow { nm_id: number; date: string; open_card: number | null; add_to_cart: number | null }
-interface ProductCostRow { article: string; name: string | null }
+interface ProductCostRow { article: string; name: string | null; cost_rub?: number | null }
 interface CabinetScope { cabinetId: string | null; label: string; allowedNmIds: Set<number> | null }
 interface MetricCutoffs { orders: string | null; sales: string | null; adverts: string | null }
 interface FunnelCutoffs { adverts: string | null; funnel: string | null }
+type SupabaseAdmin = NonNullable<ReturnType<typeof getSupabaseAdmin>>;
+
+export interface ScopedOrderSourceRow {
+  nm_id: number;
+  supplier_article: string | null;
+  date: string;
+  total_price: number | null;
+  discount_percent: number | null;
+  is_cancel: boolean | null;
+}
+
+export interface ScopedSaleSourceRow {
+  nm_id: number;
+  date: string;
+  price_with_disc: number | null;
+  finished_price: number | null;
+  sale_id: string | null;
+}
+
+export interface ScopedAdvertSpendRow {
+  nm_id: number;
+  date: string;
+  spent: number | null;
+}
+
+export interface ScopedStockSourceRow {
+  nm_id: number;
+  quantity: number | null;
+}
+
+export interface ScopedProductSourceRow {
+  nm_id: number;
+  article: string | null;
+}
 
 interface PageResult<Row> {
   data: Row[] | null;
@@ -372,6 +406,193 @@ export function latestKnownDate(values: Array<string | null | undefined>): strin
   return known.length ? known.reduce((latest, value) => value > latest ? value : latest) : null;
 }
 
+function scopedDailyKey(nmId: number, date: string) {
+  return `${nmId}:${date}`;
+}
+
+function readDate(value: unknown) {
+  return String(value ?? "").slice(0, 10);
+}
+
+function touchScopedDailyRow(rows: Map<string, SkuDailyRow>, nmId: number, date: string) {
+  const key = scopedDailyKey(nmId, date);
+  const current = rows.get(key) ?? {
+    d: date,
+    nm_id: nmId,
+    orders_count: 0,
+    orders_sum: 0,
+    buyouts_count: 0,
+    buyouts_sum: 0,
+    ad_spent: 0,
+  };
+  rows.set(key, current);
+  return current;
+}
+
+function writeArticle(articleByNm: Map<number, string>, nmId: number, article: string | null | undefined) {
+  const clean = String(article ?? "").trim();
+  if (clean && !articleByNm.get(nmId)) articleByNm.set(nmId, clean);
+}
+
+export function buildScopedBaseFactsFromRows(input: {
+  allowedNmIds: number[];
+  orders: ScopedOrderSourceRow[];
+  sales: ScopedSaleSourceRow[];
+  advertSpend: ScopedAdvertSpendRow[];
+  stocks: ScopedStockSourceRow[];
+  products: ScopedProductSourceRow[];
+  costs: ProductCostRow[];
+}): { skuRows: SkuDailyRow[]; totals: RpcTotal[] } {
+  const allowed = new Set(input.allowedNmIds);
+  const dailyRows = new Map<string, SkuDailyRow>();
+  const articleByNm = new Map<number, string>();
+  const stockByNm = new Map<number, number>();
+  const costByArticle = new Map<string, number | null>();
+
+  for (const product of input.products) {
+    if (!allowed.has(Number(product.nm_id))) continue;
+    writeArticle(articleByNm, Number(product.nm_id), product.article);
+  }
+  for (const cost of input.costs) {
+    const article = String(cost.article ?? "").trim();
+    if (article) costByArticle.set(article, cost.cost_rub == null ? null : Number(cost.cost_rub));
+  }
+  for (const order of input.orders) {
+    const nmId = Number(order.nm_id);
+    if (!allowed.has(nmId) || order.is_cancel === true) continue;
+    const date = readDate(order.date);
+    if (!date) continue;
+    writeArticle(articleByNm, nmId, order.supplier_article);
+    const row = touchScopedDailyRow(dailyRows, nmId, date);
+    row.orders_count += 1;
+    row.orders_sum += Number(order.total_price ?? 0) * (1 - Number(order.discount_percent ?? 0) / 100);
+  }
+  for (const sale of input.sales) {
+    const nmId = Number(sale.nm_id);
+    if (!allowed.has(nmId) || !String(sale.sale_id ?? "").startsWith("S")) continue;
+    const date = readDate(sale.date);
+    if (!date) continue;
+    const row = touchScopedDailyRow(dailyRows, nmId, date);
+    row.buyouts_count += 1;
+    row.buyouts_sum += Number(sale.price_with_disc ?? sale.finished_price ?? 0);
+  }
+  for (const advert of input.advertSpend) {
+    const nmId = Number(advert.nm_id);
+    if (!allowed.has(nmId)) continue;
+    const date = readDate(advert.date);
+    if (!date) continue;
+    const row = touchScopedDailyRow(dailyRows, nmId, date);
+    row.ad_spent += Number(advert.spent ?? 0);
+  }
+  for (const stock of input.stocks) {
+    const nmId = Number(stock.nm_id);
+    if (!allowed.has(nmId)) continue;
+    stockByNm.set(nmId, (stockByNm.get(nmId) ?? 0) + Number(stock.quantity ?? 0));
+  }
+
+  const totals = input.allowedNmIds.map((nmId) => {
+    const article = articleByNm.get(nmId) ?? "";
+    return {
+      nm_id: nmId,
+      article,
+      stock: stockByNm.get(nmId) ?? 0,
+      cost: article ? (costByArticle.get(article) ?? null) : null,
+    };
+  });
+
+  return {
+    skuRows: [...dailyRows.values()].sort((a, b) => a.d.localeCompare(b.d) || a.nm_id - b.nm_id),
+    totals,
+  };
+}
+
+async function loadScopedBaseFacts(
+  db: SupabaseAdmin,
+  scope: CabinetScope,
+  allowed: number[],
+  from: string,
+  to: string,
+) {
+  const dateFrom = `${from}T00:00:00.000Z`;
+  const dateTo = `${nextIsoDate(to)}T00:00:00.000Z`;
+  const [orders, sales, advertSpend, stocks, products] = await Promise.all([
+    loadAllPages<ScopedOrderSourceRow>((start, end) => {
+      let query = db
+        .from("wb_orders")
+        .select("nm_id, supplier_article, date, total_price, discount_percent, is_cancel")
+        .gte("date", dateFrom)
+        .lt("date", dateTo)
+        .in("nm_id", allowed)
+        .order("date", { ascending: true })
+        .order("nm_id", { ascending: true })
+        .range(start, end);
+      if (scope.cabinetId) query = query.eq("cabinet_id", scope.cabinetId);
+      return query;
+    }),
+    loadAllPages<ScopedSaleSourceRow>((start, end) => {
+      let query = db
+        .from("wb_sales")
+        .select("nm_id, date, price_with_disc, finished_price, sale_id")
+        .gte("date", dateFrom)
+        .lt("date", dateTo)
+        .in("nm_id", allowed)
+        .like("sale_id", "S%")
+        .order("date", { ascending: true })
+        .order("nm_id", { ascending: true })
+        .range(start, end);
+      if (scope.cabinetId) query = query.eq("cabinet_id", scope.cabinetId);
+      return query;
+    }),
+    loadAllPages<ScopedAdvertSpendRow>((start, end) => {
+      let query = db
+        .from("wb_advert_nm_daily")
+        .select("nm_id, date, spent")
+        .gte("date", from)
+        .lte("date", to)
+        .in("nm_id", allowed)
+        .order("date", { ascending: true })
+        .order("nm_id", { ascending: true })
+        .range(start, end);
+      if (scope.cabinetId) query = query.eq("cabinet_id", scope.cabinetId);
+      return query;
+    }),
+    loadAllPages<ScopedStockSourceRow>((start, end) => {
+      let query = db
+        .from("wb_stocks")
+        .select("nm_id, quantity")
+        .in("nm_id", allowed)
+        .order("nm_id", { ascending: true })
+        .range(start, end);
+      if (scope.cabinetId) query = query.eq("cabinet_id", scope.cabinetId);
+      return query;
+    }),
+    loadAllPages<ScopedProductSourceRow>((start, end) => {
+      let query = db
+        .from("wb_cabinet_product_scope")
+        .select("nm_id, article")
+        .in("nm_id", allowed)
+        .order("nm_id", { ascending: true })
+        .range(start, end);
+      if (scope.cabinetId) query = query.eq("cabinet_id", scope.cabinetId);
+      return query;
+    }),
+  ]);
+  const articleSet = new Set<string>();
+  for (const product of products) if (product.article) articleSet.add(product.article);
+  for (const order of orders) if (order.supplier_article) articleSet.add(order.supplier_article);
+  const articles = [...articleSet];
+  const costs = articles.length
+    ? await loadAllPages<ProductCostRow>((start, end) => db
+      .from("product_costs")
+      .select("article, name, cost_rub")
+      .in("article", articles)
+      .order("article", { ascending: true })
+      .range(start, end))
+    : [];
+
+  return buildScopedBaseFactsFromRows({ allowedNmIds: allowed, orders, sales, advertSpend, stocks, products, costs });
+}
+
 export async function buildRnpTable(from: string, to: string, cabinetId?: string | null, shopLabel?: string): Promise<RnpTable | { error: string }> {
   const db = getSupabaseAdmin();
   if (!db) return { error: "Supabase не настроен" };
@@ -436,24 +657,20 @@ export async function buildRnpTable(from: string, to: string, cabinetId?: string
           };
         }
         const allowed = scope.allowedNmIds ? [...scope.allowedNmIds] : null;
-        const [skuRows, totals, adRows, funnelRows, ordersCutoff, salesCutoff] = await Promise.all([
-          loadAllPages<SkuDailyRow>((start, end) => {
-            let query = db
-              .rpc("rnp_daily_sku", { p_from: from, p_to: to, p_cabinet: scope.cabinetId })
-              .order("d", { ascending: true })
-              .order("nm_id", { ascending: true })
-              .range(start, end);
-            if (allowed) query = query.in("nm_id", allowed);
-            return query;
-          }),
-          loadAllPages<RpcTotal>((start, end) => {
-            let query = db
-              .rpc("rnp_report", { p_cabinet: scope.cabinetId })
-              .order("nm_id", { ascending: true })
-              .range(start, end);
-            if (allowed) query = query.in("nm_id", allowed);
-            return query;
-          }),
+        const [baseFacts, adRows, funnelRows, ordersCutoff, salesCutoff] = await Promise.all([
+          allowed
+            ? loadScopedBaseFacts(db, scope, allowed, from, to)
+            : Promise.all([
+              loadAllPages<SkuDailyRow>((start, end) => db
+                .rpc("rnp_daily_sku", { p_from: from, p_to: to, p_cabinet: scope.cabinetId })
+                .order("d", { ascending: true })
+                .order("nm_id", { ascending: true })
+                .range(start, end)),
+              loadAllPages<RpcTotal>((start, end) => db
+                .rpc("rnp_report", { p_cabinet: scope.cabinetId })
+                .order("nm_id", { ascending: true })
+                .range(start, end)),
+            ]).then(([skuRows, totals]) => ({ skuRows, totals })),
           loadAllPages<AdNmRow>((start, end) => {
             let query = db
               .from("wb_advert_nm_daily")
@@ -484,8 +701,8 @@ export async function buildRnpTable(from: string, to: string, cabinetId?: string
           latestSourceDate("wb_sales", scope),
         ]);
         return {
-          skuRows,
-          totals,
+          skuRows: baseFacts.skuRows,
+          totals: baseFacts.totals,
           adRows,
           funnelRows,
           ordersCutoff,
@@ -496,7 +713,7 @@ export async function buildRnpTable(from: string, to: string, cabinetId?: string
       })),
       loadAllPages<ProductCostRow>((start, end) => db
         .from("product_costs")
-        .select("article, name")
+        .select("article, name, cost_rub")
         .order("article", { ascending: true })
         .range(start, end)),
       getWbCommissionForCabinet(p_cabinet, 30),
