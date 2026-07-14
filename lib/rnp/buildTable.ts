@@ -315,9 +315,9 @@ function nextIsoDate(value: string) {
   return date.toISOString().slice(0, 10);
 }
 
-function minimumDate(values: Array<string | null | undefined>): string | null {
+export function latestKnownDate(values: Array<string | null | undefined>): string | null {
   const known = values.filter((value): value is string => !!value);
-  return known.length ? known.reduce((earliest, value) => value < earliest ? value : earliest) : null;
+  return known.length ? known.reduce((latest, value) => value > latest ? value : latest) : null;
 }
 
 export async function buildRnpTable(from: string, to: string, cabinetId?: string | null, shopLabel?: string): Promise<RnpTable | { error: string }> {
@@ -441,10 +441,14 @@ export async function buildRnpTable(from: string, to: string, cabinetId?: string
     const totals = scopeData.flatMap((item) => item.totals);
     const adRows = scopeData.flatMap((item) => item.adRows);
     const funnelRows = scopeData.flatMap((item) => item.funnelRows);
-    const ordersCutoff = minimumDate(scopeData.map((item) => item.ordersCutoff));
-    const salesCutoff = minimumDate(scopeData.map((item) => item.salesCutoff));
-    const advertsCutoff = minimumDate(scopeData.map((item) => latestDate(item.adRows, (row) => row.date)));
-    const funnelCutoff = minimumDate(scopeData.map((item) => latestDate(item.funnelRows, (row) => row.date)));
+    // Отсутствие события в отдельном кабинете не означает, что его синк отстал:
+    // у магазина могло просто не быть заказов/выкупов в этот день. Берём последнюю
+    // дату источника по объединённому набору, а ниже asOf всё равно ограничит факт
+    // более ранним из двух обязательных источников (orders и sales).
+    const ordersCutoff = latestKnownDate(scopeData.map((item) => item.ordersCutoff));
+    const salesCutoff = latestKnownDate(scopeData.map((item) => item.salesCutoff));
+    const advertsCutoff = latestKnownDate(scopeData.map((item) => latestDate(item.adRows, (row) => row.date)));
+    const funnelCutoff = latestKnownDate(scopeData.map((item) => latestDate(item.funnelRows, (row) => row.date)));
 
     // показы/клики/корзины по (nm_id, date) — отдельно от rnp_daily(_sku) RPC
     const viewsByNm = new Map<number, Map<string, number>>();

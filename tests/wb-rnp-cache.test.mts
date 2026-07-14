@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { earliestKnownDate, latestDate, loadAllPages } from "../lib/rnp/buildTable";
+import { earliestKnownDate, latestDate, latestKnownDate, loadAllPages } from "../lib/rnp/buildTable";
 import { currentMoscowMonth, WB_RNP_CACHE_VERSION, wbRnpCacheIdentity, wbRnpCacheTag } from "../lib/rnp/tableCache";
 
 test("WB RNP snapshot isolates cabinets and periods", () => {
@@ -19,7 +19,7 @@ test("WB RNP snapshot tag is compact", () => {
 });
 
 test("WB RNP forecast schema invalidates the previous snapshot", () => {
-  assert.equal(WB_RNP_CACHE_VERSION, "v4");
+  assert.equal(WB_RNP_CACHE_VERSION, "v5");
 });
 
 test("WB RNP hourly warmup uses the Moscow calendar month", () => {
@@ -68,6 +68,7 @@ test("RNP loader retries a transient database timeout without duplicating rows",
 
 test("RNP freshness helpers choose real source dates", () => {
   assert.equal(latestDate([{ date: "2026-07-12" }, { date: "2026-07-14T09:00:00Z" }], (row) => row.date), "2026-07-14");
+  assert.equal(latestKnownDate(["2026-07-12", null, "2026-07-14"]), "2026-07-14");
   assert.equal(earliestKnownDate(["2026-07-14", null, "2026-07-13"], "2026-07-15"), "2026-07-13");
   assert.equal(earliestKnownDate([null, undefined], "2026-07-15"), "2026-07-15");
 });
