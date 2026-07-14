@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { fetchWbFunnelHistory } from "../lib/wb/funnelRequest";
+import { fetchWbStatistics } from "../lib/wb/statisticsRequest";
 
 // Regression test for QA ISSUE-004: https://finance-panel-two.vercel.app/sync
 test("WB funnel retries one 429 using Retry-After while time remains", async () => {
@@ -48,4 +49,26 @@ test("WB funnel returns 429 without sleeping when the function budget is exhaust
 
   assert.equal(response.status, 429);
   assert.equal(calls, 1);
+});
+
+test("WB statistics retries one global-limiter 429 using Retry-After", async () => {
+  let calls = 0;
+  const waits: number[] = [];
+  const response = await fetchWbStatistics({
+    url: "https://statistics-api.wildberries.ru/api/v1/supplier/sales",
+    token: "test-token",
+    deadline: 10_000,
+    fetchImpl: async () => {
+      calls += 1;
+      return calls === 1
+        ? new Response("global limiter", { status: 429, headers: { "retry-after": "2" } })
+        : Response.json([]);
+    },
+    sleep: async (ms) => { waits.push(ms); },
+    now: () => 1_000,
+  });
+
+  assert.equal(response.status, 200);
+  assert.equal(calls, 2);
+  assert.deepEqual(waits, [2_000]);
 });

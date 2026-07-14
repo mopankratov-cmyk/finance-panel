@@ -4,6 +4,7 @@ import { getWbSyncTargets, lastSyncDate, rememberScopedProducts } from "@/lib/sy
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { allowsProduct } from "@/lib/wb/productScope";
 import { initialStatisticsCursor, readWbSyncState, statisticsCursor, writeWbSyncState } from "@/lib/wb/syncRecovery";
+import { fetchWbStatistics } from "@/lib/wb/statisticsRequest";
 
 export const maxDuration = 60; // глубокий бэкфилл (?from=) пишет десятки тысяч строк
 
@@ -12,6 +13,7 @@ export async function GET(request: NextRequest) {
   if (authError) return authError;
 
   const startedAt = new Date();
+  const deadline = Date.now() + 50_000;
   const allTargets = await getWbSyncTargets();
   if (!allTargets.length) {
     return NextResponse.json({ error: "Нет активных кабинетов и WB_STATS_TOKEN не настроен" }, { status: 500 });
@@ -52,7 +54,7 @@ export async function GET(request: NextRequest) {
       url.searchParams.set("dateFrom", dateFrom);
       url.searchParams.set("flag", "0");
 
-      const res = await fetch(url.toString(), { headers: { Authorization: t.statsToken }, cache: "no-store" });
+      const res = await fetchWbStatistics({ url: url.toString(), token: t.statsToken, deadline });
       if (!res.ok) {
         errors.push(`${t.name}: WB ${res.status}: ${(await res.text()).slice(0, 120)}`);
         continue;
