@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
+import { wbRetiredRouteDestination } from "@/lib/wb/retiredRoutes";
 
 export default function Page() {
-  redirect("/wb/abc");
+  redirect(wbRetiredRouteDestination("/abc"));
 }

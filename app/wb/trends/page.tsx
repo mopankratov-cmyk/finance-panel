@@ -1,5 +1,6 @@
-import { WbTrendsPage } from "@/components/wb/WbTrendsPage";
+import { redirect } from "next/navigation";
+import { wbRetiredRouteDestination } from "@/lib/wb/retiredRoutes";
 
 export default function Page() {
-  return <WbTrendsPage />;
+  redirect(wbRetiredRouteDestination("/wb/trends"));
 }

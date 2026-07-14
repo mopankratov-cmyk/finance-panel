@@ -1,5 +1,6 @@
-import { WbHealthPage } from "@/components/wb/WbHealthPage";
+import { redirect } from "next/navigation";
+import { wbRetiredRouteDestination } from "@/lib/wb/retiredRoutes";
 
 export default function Page() {
-  return <WbHealthPage />;
+  redirect(wbRetiredRouteDestination("/wb/health"));
 }

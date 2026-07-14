@@ -1,5 +1,6 @@
-import { WbAbcPage } from "@/components/wb/WbAbcPage";
+import { redirect } from "next/navigation";
+import { wbRetiredRouteDestination } from "@/lib/wb/retiredRoutes";
 
 export default function Page() {
-  return <WbAbcPage />;
+  redirect(wbRetiredRouteDestination("/wb/abc"));
 }

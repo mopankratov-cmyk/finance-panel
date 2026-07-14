@@ -149,7 +149,7 @@ export default function CabinetsPage() {
   };
 
   return (
-    <div className="mx-auto max-w-4xl px-6 py-8">
+    <div className="mx-auto max-w-4xl px-3 py-8 sm:px-6">
       <div className="mb-6 flex items-center gap-3">
         <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-violet-100 text-violet-700">
           <Building2 className="h-5 w-5" />
@@ -162,7 +162,7 @@ export default function CabinetsPage() {
 
       {/* Форма добавления */}
       <div className="mb-6 rounded-xl border border-gray-200 bg-white p-5">
-        <div className="mb-3 flex items-center gap-3">
+        <div className="mb-3 flex flex-wrap items-center gap-3">
           <span className="text-sm font-semibold text-gray-700">Добавить кабинет</span>
           <div className="flex gap-1 rounded-lg bg-gray-100 p-0.5">
             <button type="button" onClick={() => setMp("wb")} className={`rounded px-3 py-1 text-xs font-semibold ${mp === "wb" ? "bg-white text-violet-700 shadow" : "text-gray-500"}`}>Wildberries</button>
@@ -204,12 +204,12 @@ export default function CabinetsPage() {
             <input value={perfSecret} onChange={(e) => setPerfSecret(e.target.value)} placeholder="Performance Client Secret" className="mb-2 w-full rounded-lg border border-gray-300 px-3 py-2 font-mono text-xs focus:border-sky-500 focus:outline-none" />
           </>
         )}
-        <div className="mb-2 grid grid-cols-2 gap-2">
+        <div className="mb-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="Название (необяз. — подтянем из WB)"
-            className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-violet-500 focus:outline-none"
+            className="min-w-0 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-violet-500 focus:outline-none"
           />
           {mp === "wb" ? (
             <button
@@ -228,7 +228,7 @@ export default function CabinetsPage() {
             <input value={feedbacks} onChange={(e) => setFeedbacks(e.target.value)} placeholder="Токен Вопросы и Отзывы (если отдельный)" className="rounded-lg border border-gray-300 px-3 py-2 font-mono text-xs focus:border-violet-500 focus:outline-none" />
           </div>
         )}
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <button
             onClick={add}
             disabled={busy || !token.trim() || (mp === "ozon" && !clientId.trim())}
@@ -290,7 +290,7 @@ export default function CabinetsPage() {
         ) : (
           <div className="divide-y divide-gray-100">
             {cabinets.map((c) => (
-              <div key={c.id} className="flex items-center gap-4 px-5 py-3">
+              <div key={c.id} className="flex flex-wrap items-center gap-2 px-4 py-3 sm:flex-nowrap sm:gap-4 sm:px-5">
                 <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${c.is_active ? "bg-emerald-500" : "bg-gray-300"}`} title={c.is_active ? "активен" : "выключен"} />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
@@ -319,7 +319,7 @@ export default function CabinetsPage() {
 
       {/* Группы кабинетов (комбо) */}
       <div className="mt-6 rounded-xl border border-gray-200 bg-white p-5">
-        <div className="mb-3 flex items-center gap-3">
+        <div className="mb-3 flex flex-wrap items-center gap-3">
           <Layers3 className="h-4 w-4 text-gray-400" />
           <span className="text-sm font-semibold text-gray-700">Группы кабинетов</span>
           <div className="flex gap-1 rounded-lg bg-gray-100 p-0.5">
@@ -342,11 +342,11 @@ export default function CabinetsPage() {
           </div>
         )}
 
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           {cabinets.filter((c) => c.marketplace === groupMp).map((c) => (
-            <label key={c.id} className="flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm">
+            <label key={c.id} className="flex min-w-0 items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm">
               <input type="checkbox" checked={groupMembers.includes(c.id)} onChange={() => toggleMember(c.id)} />
-              {c.name}
+              <span className="truncate">{c.name}</span>
             </label>
           ))}
         </div>
@@ -354,11 +354,11 @@ export default function CabinetsPage() {
           <p className="mt-2 text-xs text-gray-400">Нужно минимум 2 подключённых кабинета {groupMp === "wb" ? "WB" : "Ozon"}, чтобы собрать группу.</p>
         )}
 
-        <div className="mt-3 flex items-center gap-3">
+        <div className="mt-3 flex flex-col items-stretch gap-3 sm:flex-row sm:items-center">
           <input value={groupName} onChange={(e) => setGroupName(e.target.value)} placeholder="Название группы"
-            className="w-56 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-violet-500 focus:outline-none" />
+            className="w-full min-w-0 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-violet-500 focus:outline-none sm:w-56" />
           <button onClick={createGroup} disabled={groupBusy || !groupName.trim() || groupMembers.length < 2}
-            className="inline-flex items-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50">
+            className="inline-flex items-center justify-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50">
             {groupBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />} Создать группу
           </button>
           {groupMsg && (

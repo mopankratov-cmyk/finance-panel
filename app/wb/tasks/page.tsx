@@ -1,5 +1,6 @@
-import { WbTasksPage } from "@/components/wb/WbTasksPage";
+import { redirect } from "next/navigation";
+import { wbRetiredRouteDestination } from "@/lib/wb/retiredRoutes";
 
 export default function Page() {
-  return <WbTasksPage />;
+  redirect(wbRetiredRouteDestination("/wb/tasks"));
 }
