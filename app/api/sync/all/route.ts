@@ -4,7 +4,8 @@ import { runCoreSyncJobs, WB_HOURLY_CORE_SYNC_OPTIONS } from "@/lib/sync/orchest
 import { runWbHistoryRecovery } from "@/lib/wb/syncRecovery";
 
 // Оркестратор быстрых синков — один cron-слот (Hobby, 60с/вызов) и кнопка
-// «обновить всё». funnel/commissions/feedbacks сюда НЕ входят — funnel сама по себе
+// «Обновить WB». sales/stocks не запускаем здесь: у WB seller-wide limiter,
+// поэтому они идут отдельными слотами :02/:04. funnel/commissions/feedbacks сюда НЕ входят — funnel сама по себе
 // таймбоксится на 50с (21с-паузы между батчами analytics-API), и раньше съедала весь
 // бюджет функции, из-за чего commissions/feedbacks не запускались НИ РАЗУ (см. аудит
 // данных/API 2026-07-08). Вынесены в отдельные cron-слоты: /api/sync/funnel напрямую
@@ -22,10 +23,9 @@ export async function GET(request: NextRequest) {
   const secret = process.env.CRON_SECRET;
   const base = new URL(request.url).origin;
   const headers: Record<string, string> = secret ? { Authorization: `Bearer ${secret}` } : {};
-  const hourlyCron = request.nextUrl.searchParams.get("hourly") === "1";
 
   const [result, history] = await Promise.all([
-    runCoreSyncJobs(base, headers, fetch, hourlyCron ? WB_HOURLY_CORE_SYNC_OPTIONS : {}),
+    runCoreSyncJobs(base, headers, fetch, WB_HOURLY_CORE_SYNC_OPTIONS),
     runWbHistoryRecovery(),
   ]);
   const ok = result.ok && history.ok;

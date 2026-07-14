@@ -85,7 +85,7 @@ export async function runCoreSyncJobs(
   base: string,
   headers: Record<string, string>,
   fetchImpl: typeof fetch = fetch,
-  options: CoreSyncOptions = {},
+  options: CoreSyncOptions = WB_HOURLY_CORE_SYNC_OPTIONS,
 ): Promise<SyncOrchestratorResult> {
   const results: Record<string, unknown> = {};
   let ok = true;

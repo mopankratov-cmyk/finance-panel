@@ -36,7 +36,7 @@ test("Vercel runs seller statistics and stocks in separate minute slots", () => 
   assert.equal(schedules.get("/api/sync/stocks"), "4 * * * *");
 });
 
-test("manual WB refresh still includes sales and stocks", async () => {
+test("manual WB refresh also leaves sales and stocks to dedicated slots", async () => {
   const called: string[] = [];
   const result = await runCoreSyncJobs(
     "https://example.test",
@@ -48,11 +48,27 @@ test("manual WB refresh still includes sales and stocks", async () => {
   );
 
   assert.equal(result.ok, true);
+  assert.deepEqual(called.sort(), ["advert-stats", "adverts", "orders"]);
+});
+
+test("an explicit full WB refresh can still include sales and stocks", async () => {
+  const called: string[] = [];
+  const result = await runCoreSyncJobs(
+    "https://example.test",
+    {},
+    (async (input: string | URL | Request) => {
+      called.push(new URL(String(input)).pathname.split("/").pop()!);
+      return Response.json({ ok: true });
+    }) as typeof fetch,
+    { includeSales: true, includeStocks: true },
+  );
+
+  assert.equal(result.ok, true);
   assert.deepEqual(called.sort(), ["advert-stats", "adverts", "orders", "sales", "stocks"]);
 });
 
-test("only the scheduled hourly orchestrator opts out of duplicate sales and stocks", () => {
+test("the aggregate WB route always uses the rate-limit-safe core options", () => {
   const source = readFileSync(new URL("../app/api/sync/all/route.ts", import.meta.url), "utf8");
-  assert.match(source, /searchParams\.get\("hourly"\) === "1"/);
-  assert.match(source, /hourlyCron \? WB_HOURLY_CORE_SYNC_OPTIONS : \{\}/);
+  assert.doesNotMatch(source, /searchParams\.get\("hourly"\) === "1"/);
+  assert.match(source, /runCoreSyncJobs\(base, headers, fetch, WB_HOURLY_CORE_SYNC_OPTIONS\)/);
 });

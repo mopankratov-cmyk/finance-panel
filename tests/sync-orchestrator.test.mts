@@ -37,14 +37,14 @@ test("independent sync jobs run concurrently and advert stats waits for adverts"
 
   const result = await runCoreSyncJobs("https://example.test", {}, fakeFetch as typeof fetch);
   assert.equal(result.ok, true);
-  assert.equal(maxActive, 4);
-  assert.deepEqual(started.slice(0, 4).sort(), ["adverts", "orders", "sales", "stocks"]);
-  assert.equal(started[4], "advert-stats");
+  assert.equal(maxActive, 2);
+  assert.deepEqual(started.slice(0, 2).sort(), ["adverts", "orders"]);
+  assert.equal(started[2], "advert-stats");
 });
 
 test("downstream job failures make the aggregate sync fail", async () => {
   const fakeFetch = async (input: string | URL | Request) => {
-    const failed = String(input).endsWith("/sales");
+    const failed = String(input).endsWith("/orders");
     return new Response(JSON.stringify(failed ? { ok: false, error: "WB 401" } : { ok: true }), {
       status: failed ? 502 : 200,
       headers: { "Content-Type": "application/json" },
@@ -53,7 +53,7 @@ test("downstream job failures make the aggregate sync fail", async () => {
 
   const result = await runCoreSyncJobs("https://example.test", {}, fakeFetch as typeof fetch);
   assert.equal(result.ok, false);
-  assert.deepEqual(result.results.sales, { ok: false, error: "WB 401", status: 502 });
+  assert.deepEqual(result.results.orders, { ok: false, error: "WB 401", status: 502 });
 });
 
 test("downstream job failures keep explicit errors array details", async () => {
