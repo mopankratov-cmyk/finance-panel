@@ -14,8 +14,32 @@ const JOBS: { key: string; label: string; schedule: string }[] = [
   { key: "adverts", label: "Кампании WB", schedule: "каждый час, :00" },
   { key: "advert-stats", label: "Статистика рекламы WB", schedule: "каждый час, :00" },
   { key: "funnel", label: "Воронка WB", schedule: "каждый час, :20" },
+  { key: "feedbacks", label: "Отзывы WB", schedule: "каждый час, :10" },
+  { key: "token-health", label: "Токены WB", schedule: "ежедневно, 06:15" },
   { key: "ozon-adverts", label: "Реклама Ozon", schedule: "каждый час, :25" },
 ];
+
+interface CabinetHealthSource {
+  job: string;
+  status: string;
+  rows: number;
+  lastSyncedAt: string | null;
+  ageMinutes: number | null;
+  slaMinutes: number;
+  stale: boolean;
+  coveragePct: number;
+  cursor: string | null;
+  lastError: string | null;
+}
+
+interface CabinetHealth {
+  id: string;
+  name: string;
+  brands: string[];
+  scope: { restricted: boolean; total: number; allowed: number | null; norvia: number; rioBox: number; updatedAt: string | null };
+  tokens: Array<{ scope: string; label: string; available: boolean | null; daysLeft: number | null; error: string | null }>;
+  sources: CabinetHealthSource[];
+}
 
 function durationMs(r: SyncLogRow): number | null {
   if (!r.started_at || !r.finished_at) return null;
@@ -27,15 +51,26 @@ export function SyncPage() {
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [cabinetHealth, setCabinetHealth] = useState<CabinetHealth[]>([]);
+  const [healthWarnings, setHealthWarnings] = useState<string[]>([]);
   const [backfillFrom, setBackfillFrom] = useState("2026-03-01");
 
   const loadLog = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/sync-log", { cache: "no-store" });
-      const json = await res.json();
+      const [logResponse, healthResponse] = await Promise.all([
+        fetch("/api/sync-log", { cache: "no-store" }),
+        fetch("/api/wb/sync-health", { cache: "no-store" }),
+      ]);
+      const [json, health] = await Promise.all([logResponse.json(), healthResponse.json()]);
       if (json.error) setError(json.error);
       else setLog(json.data ?? []);
+      if (healthResponse.ok) {
+        setCabinetHealth(health.cabinets ?? []);
+        setHealthWarnings(health.warnings ?? []);
+      } else {
+        setHealthWarnings([health.error || "Диагностика WB недоступна"]);
+      }
     } catch {
       setError("Не удалось загрузить журнал");
     } finally {
@@ -55,11 +90,12 @@ export function SyncPage() {
     }
   };
 
-  const runJob = async (job: string) => {
-    setRunning(job);
+  const runJob = async (job: string, cabinetId?: string) => {
+    const runningKey = cabinetId ? `${job}:${cabinetId}` : job;
+    setRunning(runningKey);
     setError(null);
     try {
-      await requestSync(`/api/sync/trigger?job=${job}`);
+      await requestSync(`/api/sync/trigger?job=${job}${cabinetId ? `&cabinet=${encodeURIComponent(cabinetId)}` : ""}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Ошибка запуска синхронизации");
     } finally {
@@ -129,6 +165,40 @@ export function SyncPage() {
       {error && (
         <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div>
       )}
+
+      <section className="space-y-3">
+        <div>
+          <h2 className="text-lg font-bold text-slate-900">Кабинеты WB</h2>
+          <p className="mt-1 text-xs text-slate-400">Полнота товарного контура, токены, курсоры и свежесть источников без раскрытия секретов.</p>
+        </div>
+        {healthWarnings.length > 0 && <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">{healthWarnings.join(" · ")}</div>}
+        <div className="space-y-3">
+          {cabinetHealth.map((cabinet) => (
+            <article key={cabinet.id} className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+              <header className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-4 py-3">
+                <div><h3 className="font-semibold text-slate-900">{cabinet.name}</h3><p className="mt-0.5 text-xs text-slate-400">{cabinet.scope.restricted ? `Разрешено ${cabinet.scope.allowed ?? cabinet.scope.total} SKU · NORVIA ${cabinet.scope.norvia} · RIO BOX ${cabinet.scope.rioBox}` : `Весь кабинет · ${cabinet.scope.total} SKU в scope`}</p></div>
+                <div className="flex flex-wrap gap-1">{cabinet.brands.map((brand) => <span key={brand} className="rounded-full bg-violet-50 px-2 py-1 text-[10px] font-semibold uppercase text-violet-700">{brand}</span>)}</div>
+              </header>
+              <div className="grid gap-0 lg:grid-cols-[minmax(0,1fr)_260px]">
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[720px] text-xs">
+                    <thead className="bg-slate-50 text-left text-[10px] uppercase tracking-wide text-slate-400"><tr><th className="px-4 py-2">Источник</th><th className="px-3 py-2">Состояние</th><th className="px-3 py-2 text-right">Покрытие</th><th className="px-3 py-2 text-right">Строк</th><th className="px-3 py-2">Последнее обновление</th><th className="px-3 py-2 text-right">Действие</th></tr></thead>
+                    <tbody className="divide-y divide-slate-100">{cabinet.sources.map((source) => {
+                      const bad = source.status === "error" || source.status === "stale" || Boolean(source.lastError);
+                      const pending = source.status === "running" || source.status === "pending" || source.status === "backfill";
+                      const tone = bad ? "bg-red-50 text-red-700" : pending ? "bg-amber-50 text-amber-700" : "bg-emerald-50 text-emerald-700";
+                      const key = `${source.job}:${cabinet.id}`;
+                      const statusLabel = source.status === "stale" ? "просрочено" : bad ? "ошибка" : pending ? "догружается" : "свежо";
+                      return <tr key={source.job}><td className="px-4 py-2.5 font-medium text-slate-700">{source.job}</td><td className="px-3 py-2.5"><span className={`rounded px-1.5 py-0.5 font-semibold ${tone}`}>{statusLabel}</span>{source.lastError ? <div title={source.lastError} className="mt-1 max-w-[220px] truncate text-[10px] text-red-500">{source.lastError}</div> : null}</td><td className="px-3 py-2.5 text-right tabular-nums">{source.coveragePct}%</td><td className="px-3 py-2.5 text-right tabular-nums">{formatNumber(source.rows)}</td><td className="px-3 py-2.5 text-slate-500">{source.lastSyncedAt ? formatTime(source.lastSyncedAt) : "—"}{source.ageMinutes != null ? <div className="text-[9px] text-slate-300">возраст {source.ageMinutes} мин · SLA {source.slaMinutes} мин</div> : null}{source.cursor ? <div className="max-w-[180px] truncate text-[9px] text-slate-300" title={source.cursor}>cursor {source.cursor}</div> : null}</td><td className="px-3 py-2.5 text-right"><button onClick={() => runJob(source.job, cabinet.id)} disabled={running !== null} className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2 py-1 font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50"><Play className={`h-3 w-3 ${running === key ? "animate-pulse" : ""}`} />Повторить</button></td></tr>;
+                    })}</tbody>
+                  </table>
+                </div>
+                <aside className="border-t border-slate-100 p-4 lg:border-l lg:border-t-0"><h4 className="text-xs font-semibold text-slate-700">Токены</h4>{cabinet.tokens.length ? <div className="mt-2 space-y-2">{cabinet.tokens.map((token) => <div key={token.scope} className="flex items-center justify-between gap-2"><span className="text-[11px] text-slate-500">{token.label}</span><span title={token.error || undefined} className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${token.available === true && (token.daysLeft == null || token.daysLeft > 30) ? "bg-emerald-50 text-emerald-700" : token.available === null ? "bg-amber-50 text-amber-700" : "bg-red-50 text-red-700"}`}>{token.available === false ? "нет доступа" : token.daysLeft != null ? `${token.daysLeft} дн.` : token.available === true ? "доступен" : "не проверен"}</span></div>)}</div> : <p className="mt-2 text-[11px] text-slate-400">Ежедневная проверка ещё не запускалась.</p>}</aside>
+              </div>
+            </article>
+          ))}
+        </div>
+      </section>
 
       <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
         <div className="flex flex-wrap items-end gap-3">

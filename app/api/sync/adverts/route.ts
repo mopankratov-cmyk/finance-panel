@@ -24,7 +24,9 @@ export async function GET(request: NextRequest) {
   if (authError) return authError;
 
   const startedAt = new Date();
-  const targets = await getWbSyncTargets();
+  const allTargets = await getWbSyncTargets();
+  const onlyCabinet = request.nextUrl.searchParams.get("cabinet");
+  const targets = onlyCabinet ? allTargets.filter((target) => target.cabinetId === onlyCabinet) : allTargets;
   if (!targets.length) {
     return NextResponse.json({ error: "Нет активных кабинетов и WB_TOKEN_ADVERT не настроен" }, { status: 500 });
   }
@@ -54,14 +56,14 @@ export async function GET(request: NextRequest) {
             ),
           ];
           const nmIds = allNmIds.filter((nm) => allowsNm(t.productScope, nm));
-          // дневной бюджет API больше не отдаёт в этом методе — оставляем ставку CPM как ориентир
+          // Этот метод отдаёт ставку CPM, а не дневной бюджет.
           const bid = a.nm_settings?.[0]?.bids_kopecks?.search;
           return {
             advert_id: a.id as number,
             name: a.settings?.name ?? null,
             type: null as number | null,
             status: a.status ?? null,
-            daily_budget: bid != null ? bid / 100 : null,
+            bid_cpm_rub: bid != null ? bid / 100 : null,
             nm_ids: nmIds.length ? nmIds : null,
             cabinet_id: t.cabinetId,
             synced_at: new Date().toISOString(),
@@ -71,7 +73,14 @@ export async function GET(request: NextRequest) {
 
       if (!rows.length) continue;
 
-      const upsertError = await chunkedUpsert("wb_adverts", rows, "advert_id");
+      let upsertError = await chunkedUpsert("wb_adverts", rows, "advert_id");
+      if (upsertError && /bid_cpm_rub|schema cache|column/i.test(upsertError)) {
+        // Короткое окно совместимости, пока SQL-миграция ещё не применена.
+        upsertError = await chunkedUpsert("wb_adverts", rows.map(({ bid_cpm_rub, ...row }) => ({
+          ...row,
+          daily_budget: bid_cpm_rub,
+        })), "advert_id");
+      }
       if (upsertError) {
         errors.push(`${t.name}: ${upsertError}`);
         continue;

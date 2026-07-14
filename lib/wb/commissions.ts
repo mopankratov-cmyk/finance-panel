@@ -10,10 +10,12 @@
 import { cabinetProductScope, getActiveWbCabinets, getWbCabinet, resolveWbToken } from "./cabinetTokens";
 import { allowsProduct, type WbProductScope } from "./productScope";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { fetchWbReportPages } from "./reportPagination";
 
 const WB_STATS_TOKEN = process.env.WB_STATS_TOKEN || process.env.WB_TOKEN_STATISTICS;
 
 interface ReportRow {
+  rrd_id?: number;
   nm_id?: number;
   brand_name?: string;
   supplier_oper_name?: string;
@@ -93,13 +95,14 @@ export async function getWbCommission(days = 30, opts?: { token?: string; cacheK
   if (!token) return empty;
   const to = new Date().toISOString().slice(0, 10);
   const from = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
-  const url = `https://statistics-api.wildberries.ru/api/v5/supplier/reportDetailByPeriod?dateFrom=${from}&dateTo=${to}&limit=100000&rrdid=0&_c=${encodeURIComponent(opts?.cacheKey || "env")}`;
-
   let rows: ReportRow[];
   try {
-    const res = await fetch(url, { headers: { Authorization: token }, cache: "no-store" });
-    if (!res.ok) return empty;
-    rows = (await res.json()) as ReportRow[];
+    rows = (await fetchWbReportPages<ReportRow>({
+      token,
+      dateFrom: from,
+      dateTo: to,
+      cacheKey: opts?.cacheKey || "env",
+    })).rows;
   } catch {
     return empty;
   }

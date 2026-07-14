@@ -44,6 +44,10 @@ interface Campaign {
   name: string;
   enabled: boolean;
   budget: number;
+  bid_cpm_rub: number | null;
+  stats_synced_at: string | null;
+  stats_age_hours: number | null;
+  stats_stale: boolean;
   spend_today: number;
   spent_14: number;
   ad_revenue_14: number;
@@ -229,7 +233,7 @@ export function WbAdvertsPage() {
                     <img src={article.photo} alt="" loading="lazy" className="h-10 w-10 shrink-0 rounded-lg border border-slate-100 bg-slate-50 object-cover" onError={(event) => { event.currentTarget.style.visibility = "hidden"; }} />
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-1.5"><span className={`h-1.5 w-1.5 shrink-0 rounded-full ${campaign.enabled ? "bg-emerald-400" : "bg-amber-400"}`} /><span className="truncate text-[11px] font-medium text-slate-700">{campaign.name}</span></div>
-                      <div className="mt-1 flex items-center gap-1.5 text-[9px] text-slate-400"><span className="rounded bg-sky-50 px-1.5 py-0.5 text-sky-700">CPM</span><span className="rounded bg-violet-50 px-1.5 py-0.5 text-violet-700">единая</span><span className="truncate">{article.art}</span></div>
+                      <div className="mt-1 flex items-center gap-1.5 text-[9px] text-slate-400"><span className="rounded bg-sky-50 px-1.5 py-0.5 text-sky-700">CPM</span><span className="rounded bg-violet-50 px-1.5 py-0.5 text-violet-700">единая</span>{campaign.stats_stale ? <span title={campaign.stats_synced_at || "Статистика ещё не загружена"} className="rounded bg-rose-50 px-1.5 py-0.5 font-semibold text-rose-700">данные {campaign.stats_age_hours == null ? "нет" : `${campaign.stats_age_hours} ч.`}</span> : null}<span className="truncate">{article.art}</span></div>
                     </div>
                     <div className="shrink-0 text-right"><div className="text-[10px] font-semibold tabular-nums text-slate-700">{rub(campaign.spend_today)}</div><div title={MARKETPLACE_METRICS.drrAttributed.definition} className={`mt-1 rounded px-1.5 py-0.5 text-[9px] font-semibold tabular-nums ${drrTone(campaign.drr)}`}>ДРР рекламы {pct(campaign.drr)}</div></div>
                     <ChevronRight className="h-3.5 w-3.5 shrink-0 text-violet-500" />
@@ -250,7 +254,7 @@ export function WbAdvertsPage() {
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={selected.article.photo} alt="" className="h-14 w-14 rounded-xl border border-slate-100 bg-slate-50 object-cover" />
                 <div className="min-w-0"><div className="text-sm font-bold text-slate-800">{selected.campaign.name}</div><div className="mt-1 text-[11px] text-slate-400">{selected.article.art} · nm {selected.article.nm} · РК #{selected.campaign.id}</div></div>
-                <span className={`ml-auto rounded-full px-2 py-1 text-[10px] font-semibold ${selected.campaign.enabled ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>{selected.campaign.enabled ? "Активна" : "Пауза"}</span>
+                <div className="ml-auto flex flex-col items-end gap-1"><span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${selected.campaign.enabled ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>{selected.campaign.enabled ? "Активна" : "Пауза"}</span>{selected.campaign.stats_stale ? <span className="rounded bg-rose-50 px-2 py-1 text-[9px] font-semibold text-rose-700">статистика устарела</span> : null}</div>
               </div>
 
               <div className="grid grid-cols-2 gap-2 py-4 sm:grid-cols-4">
@@ -261,7 +265,7 @@ export function WbAdvertsPage() {
                   ["Прибыль после рекламы", rub(selected.campaign.economics.profitAfterAds)],
                   ["ROAS / break-even", `${selected.campaign.economics.currentRoas ?? "—"}× / ${selected.campaign.economics.breakEvenRoas ?? "—"}×`],
                   ["Запас", selected.campaign.economics.daysCover == null ? "—" : `${selected.campaign.economics.daysCover} дн.`],
-                  ["Дневной бюджет", rub(selected.campaign.budget)],
+                  ["Ставка CPM", rub(selected.campaign.bid_cpm_rub)],
                   ["Уверенность", `${selected.campaign.economics.confidencePct}%`],
                 ].map(([label, value]) => <div key={label} className="rounded-lg border border-slate-200 bg-slate-50/60 p-3"><div className="text-[9px] uppercase tracking-wide text-slate-400">{label}</div><div className="mt-1 text-sm font-semibold tabular-nums text-slate-700">{value}</div></div>)}
               </div>

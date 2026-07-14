@@ -5,6 +5,7 @@
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import type { WbScope } from "@/lib/wb/token";
 import { cabinetBrandFilters, type WbProductScope } from "@/lib/wb/productScope";
+import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
 
 export interface WbCabinet {
   id: string;
@@ -36,19 +37,23 @@ async function attachProductScopes(cabinets: RawWbCabinet[]): Promise<WbCabinet[
   const scopedIds = normalized.filter((cab) => cab.brand_filters.length > 0).map((cab) => cab.id);
   if (!db || !scopedIds.length) return normalized;
 
-  const { data, error } = await db
-    .from("wb_cabinet_product_scope")
-    .select("cabinet_id, nm_id")
-    .in("cabinet_id", scopedIds)
-    .limit(10_000);
-  if (error) {
+  let data: Array<{ cabinet_id: string; nm_id: number }>;
+  try {
+    data = await loadAllSupabasePages<{ cabinet_id: string; nm_id: number }>((from, to) => db
+      .from("wb_cabinet_product_scope")
+      .select("cabinet_id, nm_id")
+      .in("cabinet_id", scopedIds)
+      .order("cabinet_id", { ascending: true })
+      .order("nm_id", { ascending: true })
+      .range(from, to), { maxPages: 1_000, label: "Товарный контур WB" });
+  } catch {
     // Без allowlist пропускаем только строки, где WB явно вернул разрешённый бренд;
     // записи без nm_id/brand остаются закрытыми и не смешивают кабинет целиком.
     return normalized.map((cab) => cab.brand_filters.length ? { ...cab, allowed_nm_ids: [] } : cab);
   }
 
   const byCabinet = new Map<string, number[]>();
-  for (const row of data ?? []) {
+  for (const row of data) {
     const id = String(row.cabinet_id);
     const nm = Number(row.nm_id);
     if (!Number.isFinite(nm)) continue;

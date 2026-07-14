@@ -3,7 +3,8 @@ import { checkCronAuth, chunkedUpsert, writeSyncLog } from "@/lib/sync/helpers";
 import { getWbSyncTargets, lastSyncDate, rememberScopedProducts } from "@/lib/sync/cabinets";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { allowsProduct } from "@/lib/wb/productScope";
-import { initialStatisticsCursor, readWbSyncState, statisticsCursor, writeWbSyncState } from "@/lib/wb/syncRecovery";
+import { initialStatisticsCursor, statisticsCursor } from "@/lib/wb/syncRecovery";
+import { claimWbSyncJob, readWbSyncState, writeWbSyncState } from "@/lib/wb/syncState";
 import { fetchWbStatistics } from "@/lib/wb/statisticsRequest";
 
 export const maxDuration = 60; // глубокий бэкфилл (?from=) пишет десятки тысяч строк
@@ -49,6 +50,10 @@ export async function GET(request: NextRequest) {
         ? new Date(forceFrom).toISOString().slice(0, 19)
         : saved?.cursor
           ?? (existingDate ? new Date(existingDate).toISOString().slice(0, 19) : initialStatisticsCursor());
+      if (!forceFrom && db && t.cabinetId && !(await claimWbSyncJob(db, t.cabinetId, "sales", 15 * 60))) {
+        progress.push({ cabinet: t.name, status: "running", skipped: true });
+        continue;
+      }
 
       const url = new URL("https://statistics-api.wildberries.ru/api/v1/supplier/sales");
       url.searchParams.set("dateFrom", dateFrom);
@@ -56,7 +61,15 @@ export async function GET(request: NextRequest) {
 
       const res = await fetchWbStatistics({ url: url.toString(), token: t.statsToken, deadline });
       if (!res.ok) {
-        errors.push(`${t.name}: WB ${res.status}: ${(await res.text()).slice(0, 120)}`);
+        const message = `WB ${res.status}: ${(await res.text()).slice(0, 120)}`;
+        errors.push(`${t.name}: ${message}`);
+        if (!forceFrom && db && t.cabinetId) await writeWbSyncState(db, t.cabinetId, "sales", {
+          cursor: dateFrom,
+          status: "error",
+          attempts: (saved?.attempts ?? 0) + 1,
+          lastError: message,
+          state: { ...(saved?.state ?? {}), historyStart: saved?.state.historyStart ?? dateFrom, lastRunAt: new Date().toISOString() },
+        });
         continue;
       }
 
@@ -83,6 +96,13 @@ export async function GET(request: NextRequest) {
       const upsertError = await chunkedUpsert("wb_sales", rows, "sale_id", forceFrom ? 100_000 : undefined);
       if (upsertError) {
         errors.push(`${t.name}: ${upsertError}`);
+        if (!forceFrom && db && t.cabinetId) await writeWbSyncState(db, t.cabinetId, "sales", {
+          cursor: dateFrom,
+          status: "error",
+          attempts: (saved?.attempts ?? 0) + 1,
+          lastError: upsertError,
+          state: { ...(saved?.state ?? {}), historyStart: saved?.state.historyStart ?? dateFrom, lastRunAt: new Date().toISOString() },
+        });
         continue;
       }
       total += rows.length;
@@ -98,7 +118,15 @@ export async function GET(request: NextRequest) {
           status: caughtUp ? "caught_up" : "backfill",
           attempts: 0,
           lastError: null,
-          state: { scanned: sales.length, caughtUp, lastRunAt: new Date().toISOString() },
+          state: {
+            historyStart: saved?.state.historyStart ?? dateFrom,
+            lastRowDate: nextCursor,
+            rowsLoaded: Number(saved?.state.rowsLoaded ?? 0) + rows.length,
+            scanned: sales.length,
+            caughtUp,
+            coveragePct: caughtUp ? 100 : 0,
+            lastRunAt: new Date().toISOString(),
+          },
         });
       }
       if (stateError) errors.push(`${t.name}: состояние sales: ${stateError}`);

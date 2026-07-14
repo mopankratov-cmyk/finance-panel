@@ -1,13 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { asSyncPayload, syncPayloadOk } from "@/lib/sync/result";
+import { requireApiSession } from "@/lib/auth/apiGuard";
+import { hasCabinetAccess } from "@/lib/auth/cabinetAccess";
+import { resolveSyncBase } from "@/lib/sync/orchestrator";
 
 // Пользовательский триггер синков из UI: секрет подставляется на сервере,
 // клиент его не видит. Допустимые задания фиксированы.
-const ALLOWED = ["orders", "sales", "stocks", "adverts", "advert-stats", "funnel", "ozon-adverts", "commissions", "feedbacks", "moysklad", "history", "all"];
+const ALLOWED = ["orders", "sales", "stocks", "adverts", "advert-stats", "funnel", "ozon-adverts", "commissions", "feedbacks", "token-health", "moysklad", "history", "all"];
 
 export const maxDuration = 60;
 
 export async function POST(request: NextRequest) {
+  const gate = await requireApiSession(["director", "manager"]);
+  if (gate) return gate;
   const { searchParams } = new URL(request.url);
   const job = searchParams.get("job") ?? "";
   if (!ALLOWED.includes(job)) {
@@ -15,17 +20,20 @@ export async function POST(request: NextRequest) {
   }
 
   const secret = process.env.CRON_SECRET;
-  const base = new URL(request.url).origin;
+  const base = resolveSyncBase(new URL(request.url).origin);
   const headers: Record<string, string> = secret ? { Authorization: `Bearer ${secret}` } : {};
   // from/to — только для бэкфилла заказов/продаж.
   // cabinet также поддерживается остатками, чтобы тяжёлый кабинет синхронизировать отдельно.
   const from = searchParams.get("from");
   const to = searchParams.get("to");
   const cabinet = searchParams.get("cabinet");
+  if (cabinet && !(await hasCabinetAccess(cabinet))) {
+    return NextResponse.json({ error: "Нет доступа к кабинету" }, { status: 403 });
+  }
   const params = new URLSearchParams();
   if (from && (job === "sales" || job === "orders")) params.set("from", from);
   if (to && (job === "sales" || job === "orders")) params.set("to", to);
-  if (cabinet && (job === "sales" || job === "orders" || job === "stocks")) params.set("cabinet", cabinet);
+  if (cabinet && ["sales", "orders", "stocks", "adverts", "advert-stats", "funnel", "feedbacks", "commissions"].includes(job)) params.set("cabinet", cabinet);
   const qs = params.toString() ? `?${params.toString()}` : "";
 
   try {

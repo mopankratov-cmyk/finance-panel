@@ -3,8 +3,7 @@
 // иначе мог бы отдать чужие данные из кэша). WB игнорирует лишний query-параметр.
 
 import { allowsProduct, type WbProductScope } from "@/lib/wb/productScope";
-
-const BASE = "https://statistics-api.wildberries.ru/api/v5/supplier/reportDetailByPeriod";
+import { fetchWbReportPages } from "@/lib/wb/reportPagination";
 
 export async function fetchWbReport<T = Record<string, unknown>>(
   token: string,
@@ -12,11 +11,13 @@ export async function fetchWbReport<T = Record<string, unknown>>(
   to: string,
   cacheKey: string,
 ): Promise<T[]> {
-  const url = `${BASE}?dateFrom=${from}&dateTo=${to}&limit=100000&rrdid=0&_c=${encodeURIComponent(cacheKey)}`;
-  const res = await fetch(url, { headers: { Authorization: token }, next: { revalidate: 3600 } });
-  if (!res.ok) throw new Error(`WB ${res.status}: ${(await res.text()).slice(0, 150)}`);
-  const data = await res.json();
-  return Array.isArray(data) ? (data as T[]) : [];
+  const result = await fetchWbReportPages<Record<string, unknown>>({
+    token,
+    dateFrom: from,
+    dateTo: to,
+    cacheKey,
+  });
+  return result.rows as T[];
 }
 
 // Собрать строки финотчёта по набору токенов (кабинетов) и склеить.

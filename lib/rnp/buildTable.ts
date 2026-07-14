@@ -229,7 +229,7 @@ export function buildFunnelMetrics(
   cutoffs: FunnelCutoffs,
 ): Metric[] {
   const read = (source: Map<string, number>, day: string, cutoff: string | null) =>
-    !cutoff || day > asOf || day > cutoff ? null : Number(source.get(day) ?? 0);
+    !cutoff || day > asOf || day > cutoff || !source.has(day) ? null : Number(source.get(day));
   const views = days.map((day) => read(viewsByDate, day, cutoffs.adverts));
   const clicks = days.map((day) => read(clicksByDate, day, cutoffs.adverts));
   const openCard = days.map((day) => read(openCardByDate, day, cutoffs.funnel));
@@ -643,13 +643,28 @@ export async function buildRnpTable(from: string, to: string, cabinetId?: string
       return any ? sum : null;
     });
     const costedBuyoutsSumTotal = knownSum(costedBuyoutsSumDaily);
-    const adIdx = summary.findIndex((m) => m.field === "drr");
-    summary.splice(adIdx + 1, 0,
-      { field: "gross", label: "Прибыль после расходов МП, ₽", kind: "money", daily: grossDaily, total: grossTotal == null ? null : Math.round(grossTotal), forecast: null, source: "WB Финотчёт + себестоимость + WB Реклама", group_start: true },
-      { field: "margin_pct", label: "Расчётная маржа после рекламы, %", kind: "pct", daily: days.map((day, i) => { const buyouts = Number(costedBuyoutsSumDaily[i] ?? 0); const gross = grossDaily[i]; return day <= asOf && buyouts > 0 && gross != null ? Math.round((gross / buyouts) * 1000) / 10 : null; }), total: grossTotal != null && costedBuyoutsSumTotal != null && costedBuyoutsSumTotal > 0 ? Math.round((grossTotal / costedBuyoutsSumTotal) * 1000) / 10 : null, forecast: null, source: "WB Финотчёт + себестоимость + WB Реклама" },
-    );
-    applyMetricForecasts(summary, days, asOf);
+    const grossMetric = summary.find((metric) => metric.field === "gross");
+    if (grossMetric) Object.assign(grossMetric, {
+      daily: grossDaily,
+      total: grossTotal == null ? null : Math.round(grossTotal),
+      forecast: null,
+      source: "WB Финотчёт + себестоимость + WB Реклама",
+      group_start: true,
+    });
     const marginMetric = summary.find((metric) => metric.field === "margin_pct");
+    if (marginMetric) Object.assign(marginMetric, {
+      daily: days.map((day, index) => {
+        const buyouts = Number(costedBuyoutsSumDaily[index] ?? 0);
+        const gross = grossDaily[index];
+        return day <= asOf && buyouts > 0 && gross != null ? Math.round((gross / buyouts) * 1000) / 10 : null;
+      }),
+      total: grossTotal != null && costedBuyoutsSumTotal != null && costedBuyoutsSumTotal > 0
+        ? Math.round((grossTotal / costedBuyoutsSumTotal) * 1000) / 10
+        : null,
+      forecast: null,
+      source: "WB Финотчёт + себестоимость + WB Реклама",
+    });
+    applyMetricForecasts(summary, days, asOf);
     if (marginMetric) {
       applyForecast(
         marginMetric,

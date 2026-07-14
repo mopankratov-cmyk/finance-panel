@@ -33,9 +33,28 @@ export async function fetchWbFeedbacksPage(
   url.searchParams.set("take", String(take));
   url.searchParams.set("skip", String(skip));
   url.searchParams.set("order", "dateDesc");
-  const res = await fetch(url.toString(), { headers: { Authorization: token.trim() }, cache: "no-store" });
-  if (res.status === 401 || res.status === 403) throw new WbFeedbacksScopeError();
-  if (!res.ok) throw new Error(`WB ${res.status}: ${(await res.text()).slice(0, 120)}`);
-  const j = (await res.json().catch(() => null)) as { data?: { feedbacks?: WbFeedbackRaw[] } } | null;
-  return j?.data?.feedbacks ?? [];
+  let lastError = "WB не ответил";
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const res = await fetch(url.toString(), { headers: { Authorization: token.trim() }, cache: "no-store" });
+      if (res.status === 401 || res.status === 403) throw new WbFeedbacksScopeError();
+      if (res.ok) {
+        const j = (await res.json().catch(() => null)) as { data?: { feedbacks?: WbFeedbackRaw[] } } | null;
+        return j?.data?.feedbacks ?? [];
+      }
+      lastError = `WB ${res.status}: ${(await res.text()).slice(0, 120)}`;
+      if (![429, 500, 502, 503, 504].includes(res.status) || attempt === 2) break;
+      const retryAfter = Number(res.headers.get("retry-after"));
+      const waitMs = Number.isFinite(retryAfter) && retryAfter > 0
+        ? Math.min(retryAfter * 1_000, 10_000)
+        : 1_000 * 2 ** attempt;
+      await new Promise((resolve) => setTimeout(resolve, waitMs));
+    } catch (error) {
+      if (error instanceof WbFeedbacksScopeError) throw error;
+      lastError = error instanceof Error ? error.message : "Ошибка сети WB";
+      if (attempt === 2) break;
+      await new Promise((resolve) => setTimeout(resolve, 1_000 * 2 ** attempt));
+    }
+  }
+  throw new Error(lastError);
 }

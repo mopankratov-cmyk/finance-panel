@@ -4,8 +4,10 @@
 
 import { cabinetProductScope, getActiveWbCabinets } from "@/lib/wb/cabinetTokens";
 import type { WbProductScope } from "@/lib/wb/productScope";
-import { allowsBrand, isScoped } from "@/lib/wb/productScope";
+import { allowsBrand, isScoped, normalizeWbBrand } from "@/lib/wb/productScope";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { fetchWbCardPages, type WbCardCursor } from "@/lib/wb/cardPagination";
+import { claimWbSyncJob, readWbSyncState, writeWbSyncState } from "@/lib/wb/syncState";
 
 export interface SyncTarget {
   cabinetId: string | null; // null = ENV-кабинет (legacy-строки)
@@ -65,8 +67,6 @@ interface DiscoverCabinetProductsOptions {
   persistProducts?: (target: SyncTarget, products: CabinetProductCandidate[]) => Promise<void>;
 }
 
-const WB_CARDS_URL = "https://content-api.wildberries.ru/content/v2/get/cards/list";
-
 export function cabinetProductCandidates(
   target: SyncTarget,
   rows: Record<string, unknown>[],
@@ -122,33 +122,102 @@ export async function discoverCabinetProducts(
   if (!target.cabinetId || !isScoped(target.productScope)) return 0;
   const fetchImpl = options.fetchImpl ?? fetch;
   const persistProducts = options.persistProducts ?? persistCabinetProducts;
-  let cursor: { updatedAt?: string; nmID?: number } = {};
   const discovered = new Set<number>();
-
-  for (let page = 0; page < 30; page++) {
-    const response = await fetchImpl(WB_CARDS_URL, {
-      method: "POST",
-      headers: { Authorization: target.contentToken, "Content-Type": "application/json" },
-      body: JSON.stringify({ settings: { cursor: { limit: 100, ...cursor }, filter: { withPhoto: -1 } } }),
-      cache: "no-store",
-    });
-    if (!response.ok) {
-      throw new Error(`WB Content API ${response.status}: ${(await response.text()).slice(0, 160)}`);
-    }
-    const payload = (await response.json()) as {
-      cards?: Record<string, unknown>[];
-      cursor?: { updatedAt?: string; nmID?: number };
-    };
-    const batch = Array.isArray(payload.cards) ? payload.cards : [];
-    const products = cabinetProductCandidates(target, batch).filter((product) => {
-      if (discovered.has(product.nm_id)) return false;
-      discovered.add(product.nm_id);
-      return true;
-    });
-    if (products.length) await persistProducts(target, products);
-    if (batch.length < 100) break;
-    cursor = { updatedAt: payload.cursor?.updatedAt, nmID: payload.cursor?.nmID };
+  const db = getSupabaseAdmin();
+  const saved = db ? await readWbSyncState(db, target.cabinetId, "product-scope") : null;
+  if (db && !(await claimWbSyncJob(db, target.cabinetId, "product-scope", 15 * 60))) return 0;
+  let startCursor: WbCardCursor = {};
+  try {
+    startCursor = saved?.cursor ? JSON.parse(saved.cursor) as WbCardCursor : {};
+  } catch {
+    startCursor = {};
   }
+  let totalScanned = Number(saved?.state.totalScanned ?? 0);
+  let allowedCount = Number(saved?.state.allowedCount ?? target.productScope.allowedNmIds?.length ?? 0);
+  let norviaCount = Number(saved?.state.norviaCount ?? 0);
+  let rioBoxCount = Number(saved?.state.rioBoxCount ?? 0);
+  let currentCursor = startCursor;
 
-  return discovered.size;
+  try {
+    const result = await fetchWbCardPages<Record<string, unknown>>({
+      token: target.contentToken,
+      startCursor,
+      // В serverless-слоте обрабатываем ограниченную пачку и обязательно сохраняем
+      // continuation cursor. Локальные/тестовые вызовы без БД могут пройти весь каталог.
+      maxPagesThisRun: db ? 20 : 1_000,
+      fetchImpl,
+      onPage: async (page) => {
+        currentCursor = page.cursor;
+        if (db) {
+          // Если бренд карточки изменился на запрещённый, старый allowlist не должен
+          // продолжать пропускать этот nmID в источниках, где WB не отдаёт бренд.
+          const rejectedNmIds = [...new Set(page.rows
+            .filter((row) => !allowsBrand(target.productScope, row.brand ?? row.brandName))
+            .map((row) => Number(row.nmID ?? row.nmId ?? row.nm_id))
+            .filter((nmId) => Number.isInteger(nmId) && nmId > 0))];
+          for (let offset = 0; offset < rejectedNmIds.length; offset += 500) {
+            const rejected = rejectedNmIds.slice(offset, offset + 500);
+            const { error } = await db.from("wb_cabinet_product_scope")
+              .delete()
+              .eq("cabinet_id", target.cabinetId!)
+              .in("nm_id", rejected);
+            if (error) throw new Error(`product scope cleanup: ${error.message}`);
+          }
+          if (rejectedNmIds.length && target.productScope.allowedNmIds) {
+            const rejected = new Set(rejectedNmIds);
+            target.productScope.allowedNmIds = target.productScope.allowedNmIds.filter((nmId) => !rejected.has(nmId));
+          }
+        }
+        const products = cabinetProductCandidates(target, page.rows).filter((product) => {
+          if (discovered.has(product.nm_id)) return false;
+          discovered.add(product.nm_id);
+          return true;
+        });
+        if (products.length) await persistProducts(target, products);
+        totalScanned += page.rows.length;
+        allowedCount += products.length;
+        norviaCount += products.filter((product) => normalizeWbBrand(product.brand) === "norvia").length;
+        rioBoxCount += products.filter((product) => normalizeWbBrand(product.brand) === "riobox").length;
+        if (db) {
+          const stateError = await writeWbSyncState(db, target.cabinetId!, "product-scope", {
+            cursor: JSON.stringify(page.cursor),
+            status: page.caughtUp ? "caught_up" : "running",
+            attempts: 0,
+            lastError: null,
+            state: {
+              totalScanned,
+              allowedCount,
+              norviaCount,
+              rioBoxCount,
+              lastPageRows: page.rows.length,
+              lastRunAt: new Date().toISOString(),
+              caughtUp: page.caughtUp,
+            },
+          });
+          if (stateError) throw new Error(`product scope state: ${stateError}`);
+        }
+      },
+    });
+    if (db && !result.caughtUp) {
+      await writeWbSyncState(db, target.cabinetId, "product-scope", {
+        cursor: JSON.stringify(result.cursor),
+        status: "running",
+        attempts: 0,
+        lastError: null,
+        state: { totalScanned, allowedCount, norviaCount, rioBoxCount, lastRunAt: new Date().toISOString(), caughtUp: false },
+      });
+    }
+    return discovered.size;
+  } catch (error) {
+    if (db) {
+      await writeWbSyncState(db, target.cabinetId, "product-scope", {
+        cursor: JSON.stringify(currentCursor),
+        status: "error",
+        attempts: (saved?.attempts ?? 0) + 1,
+        lastError: error instanceof Error ? error.message : "Не удалось загрузить каталог",
+        state: { ...(saved?.state ?? {}), lastRunAt: new Date().toISOString() },
+      });
+    }
+    throw error;
+  }
 }

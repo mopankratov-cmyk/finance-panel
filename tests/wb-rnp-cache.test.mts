@@ -26,8 +26,8 @@ test("WB RNP snapshot tag is compact", () => {
   assert.equal(tag.includes("Optima"), false);
 });
 
-test("WB RNP forecast schema invalidates the previous snapshot", () => {
-  assert.equal(WB_RNP_CACHE_VERSION, "v5");
+test("WB RNP data-integrity schema invalidates the previous snapshot", () => {
+  assert.equal(WB_RNP_CACHE_VERSION, "v6");
 });
 
 test("WB RNP hourly warmup uses the Moscow calendar month", () => {

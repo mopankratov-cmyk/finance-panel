@@ -4,19 +4,13 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { chunkedUpsert } from "@/lib/sync/helpers";
 import { getWbSyncTargets } from "@/lib/sync/cabinets";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { readWbSyncState, writeWbSyncState, type WbSyncState } from "@/lib/wb/syncState";
+
+export { readWbSyncState, writeWbSyncState, type WbSyncState } from "@/lib/wb/syncState";
 
 const REPORTS_URL = "https://seller-analytics-api.wildberries.ru/api/v2/nm-report/downloads";
 const HISTORY_JOB = "history-365";
 const HISTORY_REFRESH_MS = 7 * 24 * 60 * 60 * 1000;
-
-export interface WbSyncState<T extends Record<string, unknown> = Record<string, unknown>> {
-  cursor: string | null;
-  status: string;
-  attempts: number;
-  lastError: string | null;
-  state: T;
-  updatedAt: string | null;
-}
 
 export interface WbHistoryState extends Record<string, unknown> {
   reportId: string;
@@ -46,48 +40,6 @@ export interface WbHistoryRow {
   buyouts: number;
   buyout_sum: number;
   cabinet_id?: string | null;
-}
-
-export async function readWbSyncState<T extends Record<string, unknown>>(
-  db: SupabaseClient,
-  cabinetId: string,
-  job: string,
-): Promise<WbSyncState<T> | null> {
-  const { data, error } = await db
-    .from("wb_sync_state")
-    .select("cursor, status, attempts, last_error, state, updated_at")
-    .eq("cabinet_id", cabinetId)
-    .eq("job", job)
-    .maybeSingle();
-  if (error || !data) return null;
-  return {
-    cursor: data.cursor as string | null,
-    status: String(data.status ?? "pending"),
-    attempts: Number(data.attempts ?? 0),
-    lastError: data.last_error as string | null,
-    state: (data.state ?? {}) as T,
-    updatedAt: data.updated_at as string | null,
-  };
-}
-
-export async function writeWbSyncState<T extends Record<string, unknown>>(
-  db: SupabaseClient,
-  cabinetId: string,
-  job: string,
-  values: Partial<WbSyncState<T>>,
-): Promise<string | null> {
-  const row = {
-    cabinet_id: cabinetId,
-    job,
-    cursor: values.cursor ?? null,
-    status: values.status ?? "pending",
-    attempts: values.attempts ?? 0,
-    last_error: values.lastError ?? null,
-    state: values.state ?? {},
-    updated_at: new Date().toISOString(),
-  };
-  const { error } = await db.from("wb_sync_state").upsert(row, { onConflict: "cabinet_id,job" });
-  return error?.message ?? null;
 }
 
 export function statisticsCursor(rows: Record<string, unknown>[], fallback: string): string {

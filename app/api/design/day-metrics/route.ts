@@ -29,7 +29,7 @@ export async function GET(req: NextRequest) {
   const sp = new URL(req.url).searchParams;
   const payload = await loadHourlyDashboard(
     "wb-funnel-day-metrics",
-    { cabinetId: p_cabinet, since },
+    { cabinetId: p_cabinet, since, schema: 2 },
     async () => {
       const [funnelRows, adRows] = await Promise.all([
         loadAllSupabasePages<FunnelRow>((from, to) => {
@@ -78,6 +78,7 @@ export async function GET(req: NextRequest) {
     if (!requestAllowsNm(allowedNmIds, f.nm_id)) continue;
     const iso = String(f.date).slice(0, 10);
     const c = cell(f.nm_id, iso);
+    c.open_card = f.open_card || 0;
     c.carts = f.add_to_cart || 0;
     c.orders_count = f.orders || 0;
     c.orders_sum = Math.round(Number(f.orders_sum || 0));

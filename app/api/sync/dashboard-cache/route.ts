@@ -9,6 +9,14 @@ import {
 } from "@/lib/rnp/tableCache";
 import { checkCronAuth } from "@/lib/sync/helpers";
 import { warmWbSecondaryDashboards } from "@/lib/wb/dashboardWarmup";
+import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { getActiveWbCabinets } from "@/lib/wb/cabinetTokens";
+import {
+  WB_CACHE_PROGRESS_JOBS,
+  WB_CACHE_REQUIRED_JOBS,
+  wbCacheProgressReadiness,
+  wbCacheReadiness,
+} from "@/lib/sync/wbCacheReadiness";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -50,6 +58,40 @@ export async function GET(request: NextRequest) {
   if (authError) return authError;
   if (request.nextUrl.searchParams.get("marketplace") === "wb") {
     try {
+      const db = getSupabaseAdmin();
+      if (!db) return NextResponse.json({ ok: false, marketplace: "wb", error: "Supabase не настроен" }, { status: 500 });
+      const syncLog = await db
+        .from("sync_log")
+        .select("job, status, finished_at, error")
+        .in("job", [...WB_CACHE_REQUIRED_JOBS])
+        .order("finished_at", { ascending: false })
+        .limit(200);
+      if (syncLog.error) return NextResponse.json({ ok: false, marketplace: "wb", error: syncLog.error.message }, { status: 502 });
+      const readiness = wbCacheReadiness(syncLog.data ?? []);
+      const cabinets = await getActiveWbCabinets();
+      const progressJobs = [...WB_CACHE_PROGRESS_JOBS, "product-scope"];
+      const progressRows = cabinets.length
+        ? await db.from("wb_sync_state")
+          .select("cabinet_id, job, status, last_error")
+          .in("cabinet_id", cabinets.map((cabinet) => cabinet.id))
+          .in("job", progressJobs)
+        : { data: [], error: null };
+      if (progressRows.error) {
+        return NextResponse.json({ ok: false, marketplace: "wb", error: progressRows.error.message }, { status: 502 });
+      }
+      const progressReadiness = wbCacheProgressReadiness(
+        progressRows.data ?? [],
+        cabinets.map((cabinet) => ({ id: cabinet.id, scoped: cabinet.brand_filters.length > 0 })),
+      );
+      if (!readiness.ready || !progressReadiness.ready) {
+        return NextResponse.json({
+          ok: false,
+          marketplace: "wb",
+          skipped: true,
+          error: "Кэш WB не обновлён: обязательные источники ещё не завершились успешно",
+          readiness: { jobs: readiness, progress: progressReadiness },
+        }, { status: 409 });
+      }
       const rnp = await warmWbRnp();
       const scopes = await listWbRnpScopes();
       const secondary = await warmWbSecondaryDashboards(request.nextUrl.origin, scopes);

@@ -3,6 +3,8 @@ import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { checkCronAuth, chunkedUpsert, writeSyncLog } from "@/lib/sync/helpers";
 import { getWbSyncTargets } from "@/lib/sync/cabinets";
 import { allowsNm, isScoped } from "@/lib/wb/productScope";
+import { claimWbSyncJob, readWbSyncState, writeWbSyncState } from "@/lib/wb/syncState";
+import { fetchWbStatistics } from "@/lib/wb/statisticsRequest";
 
 const FULLSTATS_URL = "https://advert-api.wildberries.ru/adv/v3/fullstats";
 // fullstats: до 50 кампаний за раз (WB 400 при >50).
@@ -48,7 +50,9 @@ export async function GET(request: NextRequest) {
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 500 });
 
-  const targets = await getWbSyncTargets();
+  const allTargets = await getWbSyncTargets();
+  const onlyCabinet = request.nextUrl.searchParams.get("cabinet");
+  const targets = onlyCabinet ? allTargets.filter((target) => target.cabinetId === onlyCabinet) : allTargets;
   if (!targets.length) {
     return NextResponse.json({ error: "Нет активных кабинетов и WB_TOKEN_ADVERT не настроен" }, { status: 500 });
   }
@@ -61,6 +65,7 @@ export async function GET(request: NextRequest) {
   let nmDays = 0;
   const errors: string[] = [];
   const rotated: string[] = [];
+  const progress: Array<Record<string, unknown>> = [];
 
   // Тайм-бокс на 60с-функцию + почасовая ротация среза кампаний.
   const deadline = Date.now() + 50_000;
@@ -69,6 +74,11 @@ export async function GET(request: NextRequest) {
   try {
     for (const t of targets) {
       if (Date.now() > deadline) { rotated.push(`${t.name}: пропущен (бюджет)`); break; } // докрутим следующим прогоном
+      const previous = t.cabinetId ? await readWbSyncState(db, t.cabinetId, "advert-stats") : null;
+      if (t.cabinetId && !(await claimWbSyncJob(db, t.cabinetId, "advert-stats", 15 * 60))) {
+        rotated.push(`${t.name}: уже выполняется`);
+        continue;
+      }
       // Fullstats отдаёт активные, приостановленные и завершённые кампании.
       let aq = db
         .from("wb_adverts")
@@ -79,11 +89,28 @@ export async function GET(request: NextRequest) {
       const { data: advRows, error: advErr } = await aq;
       if (advErr) {
         errors.push(`${t.name}: ${advErr.message}`);
+        if (t.cabinetId) await writeWbSyncState(db, t.cabinetId, "advert-stats", {
+          cursor: previous?.cursor ?? null,
+          status: "error",
+          attempts: (previous?.attempts ?? 0) + 1,
+          lastError: advErr.message,
+          state: previous?.state ?? {},
+        });
         continue;
       }
 
       const ids = (advRows ?? []).map((r) => r.advert_id as number);
-      if (!ids.length) continue;
+      if (!ids.length) {
+        if (t.cabinetId) await writeWbSyncState(db, t.cabinetId, "advert-stats", {
+          cursor: "0",
+          status: "caught_up",
+          attempts: 0,
+          lastError: null,
+          state: { nextBatch: 0, totalBatches: 0, totalCampaigns: 0, cycleProcessed: 0, coveragePct: 100, lastSyncedAt: new Date().toISOString() },
+        });
+        progress.push({ cabinet: t.name, batches: 0, campaigns: 0, coveragePct: 100, nextBatch: 0 });
+        continue;
+      }
 
       const dayRows: Record<string, unknown>[] = [];
       const nmDaily = new Map<string, { nm_id: number; date: string; views: number; clicks: number; spent: number; orders: number; orders_sum: number; cabinet_id: string | null }>();
@@ -91,7 +118,10 @@ export async function GET(request: NextRequest) {
       // Батчи кампаний: каждый почасовой прогон берёт следующий срез.
       const idBatches: number[][] = [];
       for (let i = 0; i < ids.length; i += ID_BATCH) idBatches.push(ids.slice(i, i + ID_BATCH));
-      const startB = idBatches.length ? hourIndex % idBatches.length : 0;
+      const savedBatch = Number(previous?.state.nextBatch);
+      const startB = idBatches.length
+        ? (Number.isInteger(savedBatch) && savedBatch >= 0 ? savedBatch : hourIndex) % idBatches.length
+        : 0;
       if (idBatches.length > 1) rotated.push(`${t.name}: срез ${startB + 1}/${idBatches.length}`);
 
       let failed = false;
@@ -109,9 +139,22 @@ export async function GET(request: NextRequest) {
         url.searchParams.set("beginDate", fmt(begin));
         url.searchParams.set("endDate", fmt(end));
 
-        const res = await fetch(url.toString(), { headers: { Authorization: t.advertToken }, cache: "no-store" });
+        const res = await fetchWbStatistics({
+          url: url.toString(),
+          token: t.advertToken,
+          deadline,
+          fallbackWaitMs: 1_000,
+        });
         if (!res.ok) {
-          errors.push(`${t.name}: WB ${res.status}: ${(await res.text()).slice(0, 120)}`);
+          const message = `WB ${res.status}: ${(await res.text()).slice(0, 120)}`;
+          errors.push(`${t.name}: ${message}`);
+          if (t.cabinetId) await writeWbSyncState(db, t.cabinetId, "advert-stats", {
+            cursor: String(startB),
+            status: "error",
+            attempts: (previous?.attempts ?? 0) + 1,
+            lastError: message,
+            state: { ...(previous?.state ?? {}), nextBatch: startB, totalBatches: idBatches.length, totalCampaigns: ids.length },
+          });
           failed = true;
           break;
         }
@@ -181,21 +224,58 @@ export async function GET(request: NextRequest) {
       const e1 = await chunkedUpsert("wb_advert_stats", dayRows, "advert_id,date");
       if (e1) {
         errors.push(`${t.name}: ${e1}`);
+        if (t.cabinetId) await writeWbSyncState(db, t.cabinetId, "advert-stats", {
+          cursor: String(startB), status: "error", attempts: (previous?.attempts ?? 0) + 1, lastError: e1,
+          state: { ...(previous?.state ?? {}), nextBatch: startB, totalBatches: idBatches.length, totalCampaigns: ids.length },
+        });
         continue;
       }
       const e2 = await chunkedUpsert("wb_advert_nm_daily", nmRows, "nm_id,date");
       if (e2) {
         errors.push(`${t.name}: ${e2}`);
+        if (t.cabinetId) await writeWbSyncState(db, t.cabinetId, "advert-stats", {
+          cursor: String(startB), status: "error", attempts: (previous?.attempts ?? 0) + 1, lastError: e2,
+          state: { ...(previous?.state ?? {}), nextBatch: startB, totalBatches: idBatches.length, totalCampaigns: ids.length },
+        });
         continue;
       }
       advertDays += dayRows.length;
       nmDays += nmRows.length;
+      const syncedAt = new Date().toISOString();
+      const batch = idBatches[startB] ?? [];
+      if (batch.length) {
+        let update = db.from("wb_adverts").update({ last_stats_synced_at: syncedAt }).in("advert_id", batch);
+        update = t.cabinetId === null ? update.is("cabinet_id", null) : update.eq("cabinet_id", t.cabinetId);
+        await update;
+      }
+      const nextBatch = idBatches.length ? (startB + 1) % idBatches.length : 0;
+      const previousProcessed = Number(previous?.state.cycleProcessed ?? 0);
+      const cycleProcessed = nextBatch === 0 ? ids.length : Math.min(ids.length, previousProcessed + batch.length);
+      const coveragePct = ids.length ? Math.round(cycleProcessed / ids.length * 1_000) / 10 : 100;
+      if (t.cabinetId) {
+        const stateError = await writeWbSyncState(db, t.cabinetId, "advert-stats", {
+          cursor: String(nextBatch),
+          status: nextBatch === 0 ? "caught_up" : "running",
+          attempts: 0,
+          lastError: null,
+          state: {
+            nextBatch,
+            totalBatches: idBatches.length,
+            totalCampaigns: ids.length,
+            cycleProcessed: nextBatch === 0 ? 0 : cycleProcessed,
+            coveragePct,
+            lastSyncedAt: syncedAt,
+          },
+        });
+        if (stateError) errors.push(`${t.name}: состояние advert-stats: ${stateError}`);
+      }
+      progress.push({ cabinet: t.name, batch: startB + 1, batches: idBatches.length, campaigns: batch.length, coveragePct, nextBatch });
     }
 
     const ok = errors.length === 0;
     const note = rotated.length ? ` [ротация: ${rotated.join(", ")}]` : "";
     await writeSyncLog("advert-stats", ok ? "ok" : "error", advertDays, (errors.join("; ") + note).trim() || null, startedAt);
-    return NextResponse.json({ ok, advertDays, nmDays, cabinets: targets.length, rotated, errors });
+    return NextResponse.json({ ok, advertDays, nmDays, cabinets: targets.length, progress, rotated, errors });
   } catch (err) {
     const cause = err instanceof Error && err.cause instanceof Error ? ` (${err.cause.message})` : "";
     const msg = (err instanceof Error ? err.message : "Unknown error") + cause;

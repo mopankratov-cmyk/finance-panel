@@ -37,6 +37,16 @@ interface ChangeRow {
   status: string;
   created_at: string;
 }
+interface AdvertRow {
+  advert_id: number;
+  cabinet_id: string | null;
+  name: string | null;
+  status: number;
+  daily_budget: number | null;
+  bid_cpm_rub?: number | null;
+  last_stats_synced_at?: string | null;
+  nm_ids: number[] | null;
+}
 
 // Контракт inferno: {ok, articles:[{nm,art,photo,spend,campaigns:[{...}]}], balance, count, spend_today_total, spend_yest_total, today, yest, cap_rub}
 export async function GET(request: NextRequest) {
@@ -56,7 +66,7 @@ export async function GET(request: NextRequest) {
     .filter((cabinet) => cabinet.allowed_nm_ids !== null)
     .map((cabinet) => [cabinet.id, new Set(cabinet.allowed_nm_ids ?? [])]));
 
-  let advQ = db.from("wb_adverts").select("advert_id, cabinet_id, name, status, daily_budget, nm_ids").in("status", [9, 11]);
+  let advQ = db.from("wb_adverts").select("advert_id, cabinet_id, name, status, daily_budget, bid_cpm_rub, last_stats_synced_at, nm_ids").in("status", [9, 11]);
   let statQ = db.from("wb_advert_stats").select("advert_id, date, sum_spent, views, clicks, sum_orders").gte("date", new Date(Date.now() - 14 * 86400000).toISOString().slice(0, 10)).limit(5000);
   const changesQ = db.from("advert_bid_changes").select("advert_id, old_bid, new_bid, status, created_at").order("created_at", { ascending: false }).limit(500);
   if (cabinetId) { advQ = advQ.eq("cabinet_id", cabinetId); statQ = statQ.eq("cabinet_id", cabinetId); }
@@ -78,7 +88,7 @@ export async function GET(request: NextRequest) {
       })
     : Promise.resolve(null);
 
-  const [advRes, statRes, rpcRes, changesRes, commission, balance] = await Promise.all([
+  let [advRes, statRes, rpcRes, changesRes, commission, balance] = await Promise.all([
     advQ,
     statQ,
     db.rpc("rnp_report", { p_cabinet: cabinetId }),
@@ -86,7 +96,16 @@ export async function GET(request: NextRequest) {
     getWbCommissionForCabinet(cabinetId, 30),
     balancePromise,
   ]);
-  if (advRes.error) return NextResponse.json({ ok: false, error: advRes.error.message });
+  let advertRows = (advRes.data ?? []) as AdvertRow[];
+  let advertError = advRes.error;
+  if (advRes.error?.code === "42703") {
+    let legacy = db.from("wb_adverts").select("advert_id, cabinet_id, name, status, daily_budget, nm_ids").in("status", [9, 11]);
+    if (cabinetId) legacy = legacy.eq("cabinet_id", cabinetId);
+    const legacyRes = await legacy;
+    advertRows = (legacyRes.data ?? []) as AdvertRow[];
+    advertError = legacyRes.error;
+  }
+  if (advertError) return NextResponse.json({ ok: false, error: advertError.message });
 
   // «Сегодня/вчера» — календарные даты, а не последняя синканная. Если сегодняшний
   // синк рекламы ещё не прошёл — покажем 0 за реальное сегодня, а не подменим его вчерашним днём.
@@ -144,7 +163,7 @@ export async function GET(request: NextRequest) {
   // иначе «% к вчера» сравнивает разные множества кампаний.
   const artMap = new Map<number, { nm: number; art: string; photo: string; spend: number; campaigns: Record<string, unknown>[] }>();
   let spendYestTotal = 0;
-  for (const a of advRes.data ?? []) {
+  for (const a of advertRows) {
     const nmIds = (a.nm_ids as number[]) ?? [];
     const nm = nmIds[0];
     const rowAllowedNmIds = cabinetId
@@ -159,8 +178,9 @@ export async function GET(request: NextRequest) {
       ? Number(report?.orders_sum_month ?? 0) / Number(report?.orders_month ?? 0)
       : 0;
     const latestStatDate = (daysByAdv.get(a.advert_id) ?? []).at(-1)?.ts ?? null;
-    const dataAgeHours = latestStatDate
-      ? Math.max(0, (Date.now() - new Date(`${latestStatDate}T23:59:59.999Z`).getTime()) / 3_600_000)
+    const statsSyncedAt = a.last_stats_synced_at ?? (latestStatDate ? `${latestStatDate}T23:59:59.999Z` : null);
+    const dataAgeHours = statsSyncedAt
+      ? Math.max(0, (Date.now() - new Date(statsSyncedAt).getTime()) / 3_600_000)
       : null;
     const attributionCompatible = nmIds.length === 1
       && st.ordSum <= Math.max(1, Number(report?.orders_sum_month ?? 0)) * 1.2;
@@ -203,6 +223,10 @@ export async function GET(request: NextRequest) {
       category: "",
       hours: [],
       payment: "cpm",
+      bid_cpm_rub: a.bid_cpm_rub ?? a.daily_budget ?? null,
+      stats_synced_at: statsSyncedAt,
+      stats_age_hours: dataAgeHours == null ? null : Math.round(dataAgeHours * 10) / 10,
+      stats_stale: dataAgeHours == null || dataAgeHours > 3,
       cab: cabLabel,
       days: daysByAdv.get(a.advert_id) ?? [],
       economics,

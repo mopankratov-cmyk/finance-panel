@@ -59,7 +59,7 @@ export async function GET(request: NextRequest) {
 
   const payload = await loadHourlyDashboard(
     "wb-seo-skus",
-    { cabinetId, start: period.start, end: period.end, days },
+    { cabinetId, start: period.start, end: period.end, days, schema: 2 },
     async () => {
       const [funnel, ad, totals, costs, dailySku] = await Promise.all([
         loadAllSupabasePages<FunnelRow>((from, to) => {
@@ -192,6 +192,7 @@ export async function GET(request: NextRequest) {
       margin_before_drr_7d: mb7, drr_7d: drr7,
       // выбранное окно из ?window=1|7|30
       shows_window: w.views, opens_window: w.clicks || w.open, clicks_window: w.clicks, ctr_window: pct(w.clicks, w.views), cart_window: w.cart,
+      open_card_window: w.open,
       cv_cart_window: pct(w.cart, w.clicks || w.open), cv_order_window: pct(w.oc, w.cart),
       orders_count_window: w.oc, orders_sum_window: Math.round(w.os),
       margin_before_drr_window: mb7, drr_window: drr7,

@@ -15,7 +15,9 @@ export async function GET(request: NextRequest) {
   if (authError) return authError;
 
   const startedAt = new Date();
-  const cabs = await getActiveWbCabinets();
+  const allCabs = await getActiveWbCabinets();
+  const onlyCabinet = request.nextUrl.searchParams.get("cabinet");
+  const cabs = onlyCabinet ? allCabs.filter((cabinet) => cabinet.id === onlyCabinet) : allCabs;
   if (!cabs.length) return NextResponse.json({ ok: true, rows: 0, cabinets: 0 });
 
   const db = getSupabaseAdmin();

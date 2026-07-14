@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getActiveWbCabinets } from "@/lib/wb/cabinetTokens";
 import { probeWbScope, probeWbScopes, decodeWbToken, WB_SCOPE_LABEL, type WbScope } from "@/lib/wb/token";
+import { requireApiSession } from "@/lib/auth/apiGuard";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -8,6 +9,8 @@ export const maxDuration = 60;
 // Диагностика: перепроверяет доступ (scope) каждого активного WB-кабинета
 // живой пробой токена. Токены не возвращаются — только имя/sid + флаги.
 export async function GET() {
+  const gate = await requireApiSession();
+  if (gate) return gate;
   const cabs = await getActiveWbCabinets();
   const cabinets = await Promise.all(
     cabs.map(async (c) => {

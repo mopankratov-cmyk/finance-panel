@@ -3,6 +3,7 @@ import { getWbCabinetSources } from "@/lib/wb/cabinetTokens";
 import { allowsProduct } from "@/lib/wb/productScope";
 import type { ProductReadinessStatus } from "@/lib/wb/productReadiness";
 import { loadHourlyDashboard, type HourlyDashboardCacheOptions } from "@/lib/cache/hourlyDashboard";
+import { fetchWbCardPages } from "@/lib/wb/cardPagination";
 
 const CARDS_URL = "https://content-api.wildberries.ru/content/v2/get/cards/list";
 
@@ -53,27 +54,12 @@ export async function fetchCabinetCards(cabinetId: string | null): Promise<Cabin
   const out: CabinetCard[] = [];
   const failures: string[] = [];
   for (const src of sources) {
-    let cursor: { updatedAt?: string; nmID?: number } = {};
     try {
-      for (let page = 0; page <= 30; page++) {
-        const res = await fetch(CARDS_URL, {
-          method: "POST",
-          headers: { Authorization: src.token, "Content-Type": "application/json" },
-          body: JSON.stringify({ settings: { cursor: { limit: 100, ...cursor }, filter: { withPhoto: -1 } } }),
-          cache: "no-store",
-        });
-        if (!res.ok) throw new Error(`Content API ${res.status}: ${(await res.text()).slice(0, 180)}`);
-        const json = (await res.json()) as { cards?: RawCard[]; cursor?: { updatedAt?: string; nmID?: number } };
-        const batch = json.cards ?? [];
-        if (page === 30 && batch.length) {
-          throw new Error("карточек больше безопасного лимита 3000");
-        }
-        for (const c of batch) {
-          if (!allowsProduct(src.productScope, c.nmID, c.brand)) continue;
-          out.push({ article: c.vendorCode || String(c.nmID), nm_id: c.nmID, name: c.title || "", color: colorOf(c), subject: c.subjectName || "", shop: src.name });
-        }
-        if (batch.length < 100) break;
-        cursor = { updatedAt: json.cursor?.updatedAt, nmID: json.cursor?.nmID };
+      const catalog = await fetchWbCardPages<RawCard>({ token: src.token });
+      if (!catalog.caughtUp) throw new Error("каталог не догружен до конца курсора");
+      for (const c of catalog.rows) {
+        if (!allowsProduct(src.productScope, c.nmID, c.brand)) continue;
+        out.push({ article: c.vendorCode || String(c.nmID), nm_id: c.nmID, name: c.title || "", color: colorOf(c), subject: c.subjectName || "", shop: src.name });
       }
     } catch (error) {
       failures.push(`${src.name}: ${error instanceof Error ? error.message : "не удалось загрузить карточки"}`);
@@ -89,42 +75,30 @@ export async function fetchCabinetPimRows(cabinetId: string | null): Promise<Pim
   const sources = await getWbCabinetSources(cabinetId, "content");
   const results = await Promise.all(sources.map(async (src) => {
     const rows: PimRow[] = [];
-    let cursor: { updatedAt?: string; nmID?: number } = {};
     try {
-      for (let page = 0; page < 30; page++) {
-        const res = await fetch(CARDS_URL, {
-          method: "POST",
-          headers: { Authorization: src.token, "Content-Type": "application/json" },
-          body: JSON.stringify({ settings: { cursor: { limit: 100, ...cursor }, filter: { withPhoto: -1 } } }),
-          cache: "no-store",
+      const catalog = await fetchWbCardPages<RawCard>({ token: src.token });
+      if (!catalog.caughtUp) throw new Error("каталог не догружен до конца курсора");
+      for (const c of catalog.rows) {
+        if (!allowsProduct(src.productScope, c.nmID, c.brand)) continue;
+        const photos = (c.photos || []).map((p) => p.c246x328 || p.big || "").filter(Boolean);
+        rows.push({
+          nmId: c.nmID,
+          article: c.vendorCode || String(c.nmID),
+          name: c.title || "",
+          brand: c.brand || "",
+          subject: c.subjectName || "",
+          shop: src.name,
+          cabinetId: src.id,
+          length: c.dimensions?.length ?? null,
+          width: c.dimensions?.width ?? null,
+          height: c.dimensions?.height ?? null,
+          weightBrutto: c.dimensions?.weightBrutto ?? null,
+          materials: characteristicOf(c, /материал|состав/i),
+          photosCount: photos.length,
+          photos,
+          hasVideo: hasVideoOn(c),
+          wbUrl: `https://www.wildberries.ru/catalog/${c.nmID}/detail.aspx`,
         });
-        if (!res.ok) throw new Error(`Content API ${res.status}: ${(await res.text()).slice(0, 180)}`);
-        const json = (await res.json()) as { cards?: RawCard[]; cursor?: { updatedAt?: string; nmID?: number } };
-        const batch = json.cards ?? [];
-        for (const c of batch) {
-          if (!allowsProduct(src.productScope, c.nmID, c.brand)) continue;
-          const photos = (c.photos || []).map((p) => p.c246x328 || p.big || "").filter(Boolean);
-          rows.push({
-            nmId: c.nmID,
-            article: c.vendorCode || String(c.nmID),
-            name: c.title || "",
-            brand: c.brand || "",
-            subject: c.subjectName || "",
-            shop: src.name,
-            cabinetId: src.id,
-            length: c.dimensions?.length ?? null,
-            width: c.dimensions?.width ?? null,
-            height: c.dimensions?.height ?? null,
-            weightBrutto: c.dimensions?.weightBrutto ?? null,
-            materials: characteristicOf(c, /материал|состав/i),
-            photosCount: photos.length,
-            photos,
-            hasVideo: hasVideoOn(c),
-            wbUrl: `https://www.wildberries.ru/catalog/${c.nmID}/detail.aspx`,
-          });
-        }
-        if (batch.length < 100) break;
-        cursor = { updatedAt: json.cursor?.updatedAt, nmID: json.cursor?.nmID };
       }
       return { ok: true as const, rows, error: null };
     } catch (error) {
@@ -146,7 +120,7 @@ export function loadCabinetPimRowsHourly(
 ): Promise<PimRow[]> {
   return loadHourlyDashboard(
     "wb-pim-cards",
-    { cabinetId },
+    { cabinetId, schema: 2 },
     () => fetchCabinetPimRows(cabinetId),
     options,
   );
@@ -160,7 +134,7 @@ export function loadCabinetPimRowsHourly(
 // не рискуем и блокируем запись, если видео обнаружено (см. app/api/cover-test).
 export async function checkCardHasVideo(token: string, nmId: number): Promise<boolean> {
   let cursor: { updatedAt?: string; nmID?: number } = {};
-  for (let page = 0; page < 30; page++) {
+  for (let page = 0; page < 1_000; page++) {
     const res = await fetch(CARDS_URL, {
       method: "POST",
       headers: { Authorization: token, "Content-Type": "application/json" },
