@@ -5,6 +5,7 @@ import { AlertTriangle, CheckCircle2, ExternalLink, FolderOpen, History, ImageOf
 import { useEffect, useMemo, useRef, useState } from "react";
 import { LoadingBanner, SkeletonTableRows, useElapsedSeconds } from "@/components/ui/LoadingState";
 import { formatTime } from "@/lib/analytics/format";
+import { readApiResponse } from "@/lib/http/readApiResponse";
 import { useCategoryMap } from "@/lib/useCategoryMap";
 import type { PimRow } from "@/lib/wb/cards";
 import { productReadiness, PRODUCT_READINESS_STATUSES, readinessStatusLabel, type ProductReadinessStatus } from "@/lib/wb/productReadiness";
@@ -82,7 +83,7 @@ export function WbProductPage() {
     setError(null);
     fetch(`/api/pim?cabinet=${encodeURIComponent(cabinetId || "all")}`, { cache: "no-store", signal: controller.signal })
       .then(async (response) => {
-        const body = (await response.json()) as { ok?: boolean; rows?: PimRow[]; notesReady?: boolean; error?: string };
+        const body = await readApiResponse<{ ok?: boolean; rows?: PimRow[]; notesReady?: boolean; error?: string }>(response, "Товары WB");
         if (!response.ok || !body.ok) throw new Error(body.error || `Ошибка ${response.status}`);
         return { rows: body.rows ?? [], notesReady: body.notesReady !== false };
       })
@@ -125,7 +126,7 @@ export function WbProductPage() {
     setHistoryLoading(true);
     fetch(`/api/pim/${selectedNmId}/history?cabinet=${encodeURIComponent(selectedCabinetId)}`, { cache: "no-store", signal: controller.signal })
       .then(async (response) => {
-        const body = await response.json() as { data?: { history?: ProductNoteHistory[] }; error?: string };
+        const body = await readApiResponse<{ data?: { history?: ProductNoteHistory[] }; error?: string }>(response, "История товара WB");
         if (!response.ok || body.error) throw new Error(body.error || `Ошибка ${response.status}`);
         return body.data?.history ?? [];
       })
@@ -186,7 +187,7 @@ export function WbProductPage() {
         comment: patch.comment ?? row.comment ?? "",
         driveUrl: patch.driveUrl ?? row.driveUrl ?? "",
       }) });
-      const body = await response.json() as { ok?: boolean; note?: Partial<PimRow>; error?: string };
+      const body = await readApiResponse<{ ok?: boolean; note?: Partial<PimRow>; error?: string }>(response, "Сохранение товара WB");
       if (!response.ok || !body.ok || !body.note) throw new Error(body.error || `Ошибка ${response.status}`);
       const updated = { ...row, ...body.note };
       setRows((current) => current.map((item) => item.cabinetId === row.cabinetId && item.nmId === row.nmId ? { ...item, ...body.note } : item));

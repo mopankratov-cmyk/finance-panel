@@ -20,3 +20,30 @@ test("Content API pagination continues beyond the old 30-page ceiling", async ()
   assert.equal(result.caughtUp, true);
   assert.equal(calls, 32);
 });
+
+test("Content API pagination converts plain-text upstream errors into readable errors", async () => {
+  await assert.rejects(
+    fetchWbCardPages<{ nmID: number }>({
+      token: "test-token",
+      fetchImpl: async () => new Response("An error occurred with this application.", {
+        status: 200,
+        headers: { "content-type": "text/plain; charset=utf-8" },
+      }),
+    }),
+    /WB Content API вернул не JSON: An error occurred/,
+  );
+});
+
+test("Content API pagination bounds every upstream page request", async () => {
+  let hasTimeoutSignal = false;
+  await fetchWbCardPages<{ nmID: number }>({
+    token: "test-token",
+    requestTimeoutMs: 1234,
+    fetchImpl: async (_input, init) => {
+      hasTimeoutSignal = init?.signal instanceof AbortSignal;
+      return Response.json({ cards: [] });
+    },
+  });
+
+  assert.equal(hasTimeoutSignal, true);
+});

@@ -20,6 +20,7 @@ export interface FetchWbCardPagesOptions<Row> {
   pageSize?: number;
   maxPages?: number;
   maxPagesThisRun?: number;
+  requestTimeoutMs?: number;
   fetchImpl?: FetchLike;
   onPage?: (page: WbCardPage<Row>) => Promise<void> | void;
 }
@@ -28,25 +29,47 @@ function cursorKey(cursor: WbCardCursor): string {
   return `${cursor.updatedAt ?? ""}|${cursor.nmID ?? ""}`;
 }
 
+function compactText(value: string): string {
+  return value.replace(/\s+/g, " ").trim();
+}
+
 /** Полный курсорный обход Content API без прежнего ограничения в 3 000 карточек. */
 export async function fetchWbCardPages<Row>(options: FetchWbCardPagesOptions<Row>): Promise<WbCardPage<Row>> {
   const fetchImpl = options.fetchImpl ?? fetch;
   const pageSize = options.pageSize ?? 100;
   const maxPages = options.maxPages ?? 1_000;
   const maxPagesThisRun = Math.min(options.maxPagesThisRun ?? maxPages, maxPages);
+  const requestTimeoutMs = options.requestTimeoutMs ?? 15_000;
   let cursor = options.startCursor ?? {};
   const rows: Row[] = [];
   const seenCursors = new Set<string>([cursorKey(cursor)]);
 
   for (let page = 0; page < maxPagesThisRun; page++) {
-    const response = await fetchImpl(CARDS_URL, {
-      method: "POST",
-      headers: { Authorization: options.token, "Content-Type": "application/json" },
-      body: JSON.stringify({ settings: { cursor: { limit: pageSize, ...cursor }, filter: { withPhoto: -1 } } }),
-      cache: "no-store",
-    });
+    let response: Response;
+    try {
+      response = await fetchImpl(CARDS_URL, {
+        method: "POST",
+        headers: { Authorization: options.token, "Content-Type": "application/json" },
+        body: JSON.stringify({ settings: { cursor: { limit: pageSize, ...cursor }, filter: { withPhoto: -1 } } }),
+        cache: "no-store",
+        signal: AbortSignal.timeout(requestTimeoutMs),
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "";
+      if (/timeout|timed out|aborted|abort/i.test(message)) {
+        throw new Error(`WB Content API не ответил за ${Math.round(requestTimeoutMs / 1000)} секунд`);
+      }
+      throw error;
+    }
     if (!response.ok) throw new Error(`WB Content API ${response.status}: ${(await response.text()).slice(0, 180)}`);
-    const payload = (await response.json()) as { cards?: Row[]; cursor?: WbCardCursor };
+    const text = await response.text();
+    let payload: { cards?: Row[]; cursor?: WbCardCursor };
+    try {
+      payload = JSON.parse(text) as { cards?: Row[]; cursor?: WbCardCursor };
+    } catch {
+      const snippet = compactText(text).slice(0, 180);
+      throw new Error(snippet ? `WB Content API вернул не JSON: ${snippet}` : "WB Content API вернул пустой ответ");
+    }
     const batch = Array.isArray(payload.cards) ? payload.cards : [];
     rows.push(...batch);
 
