@@ -1,3 +1,24 @@
+> ## ⚠️ СВЕРКА С РЕАЛЬНОСТЬЮ (2026-07-15, после заземления)
+>
+> Это ТЗ было заземлено в worktree `bold-margulis-1c3a67` на ветке
+> `claude/pinterest-privacy-policy-dc4ece` — **до-чисточной линии**. В живом `main`
+> finance-panel завода нет (вынесен в репо `content-factory`), пути §3/Приложения A
+> здесь больше не существуют. Живая статик-линия — в **content-factory**, и она дальше,
+> чем предполагает это ТЗ:
+>
+> - **P0 банк + SEO — СДЕЛАНО** в content-factory: `static-generate` банкует pending-строку
+>   c SEO/гейтами, `static-status` доводит до durable URL + Яндекс-архива.
+> - **P0.5 брендбук NORVIA — СДЕЛАНО**: `NORVIA_CANON.locked` в `staticCanon.ts`
+>   (lowercase-лого, #161616/#F6F6F6, photoReality).
+> - **P2 публикация — НЕ СТРОИТЬ**: паблишер Pinterest уже живёт в content-factory
+>   (Pinterest Studio: автопилот, слоты/капы/дедуп, ждёт токен владельца). Статик-финалы
+>   pin_2x3 стыкованы с ним (PR content-factory#75) + автономный доводчик processing-строк.
+> - **Остаётся** (в content-factory): статик-критик по пикселям, петля замера по заказам
+>   (deeplink — решение владельца), карусель/новые архетипы, `REMOTION_RENDER_URL` в prod.
+>
+> Живой документ линии: `content-factory/docs/factory-pinterest-studio.md`. Текст ниже
+> сохранён как стратегическая база (дропы/замер по заказам/каноны) — пути не использовать.
+
 # ТЗ: агент Pinterest / статик-линия завода
 
 > **Тип:** ТЗ для агентного исполнителя (GLM-5.2 через cc-glm / Codex).
