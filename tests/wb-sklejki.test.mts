@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { closedMoscowDates, glueTotals, glueVerdict, sklejkiPeriod, type SklejkiGroup, type SklejkiSkuMetrics } from "../lib/wb/sklejki";
+import { closedMoscowDates, glueSortedGroups, glueTotals, glueVerdict, sklejkiPeriod, type SklejkiGroup, type SklejkiSkuMetrics } from "../lib/wb/sklejki";
 
 const sku = (patch: Partial<SklejkiSkuMetrics>): SklejkiSkuMetrics => ({
   nm: 1,
@@ -50,6 +50,14 @@ test("glue totals calculate DRR from the whole group", () => {
     sku({ shows_7d: 100, orders_sum_7d: 1_000, adv_spend_7d: 100 }),
     sku({ nm: 2, shows_7d: 200, orders_sum_7d: 3_000, adv_spend_7d: 300 }),
   )), { shows: 300, orders: 4_000, spend: 400, sales: 0, drr: 10 });
+});
+
+test("active glue groups are sorted before inactive groups", () => {
+  const inactive = { ...group(sku({ nm: 1 })), imt_id: 10 };
+  const viewsOnly = { ...group(sku({ nm: 2, shows_7d: 100 })), imt_id: 20 };
+  const carrier = { ...group(sku({ nm: 3, shows_7d: 400, orders_sum_7d: 10_000, adv_spend_7d: 1_000 })), imt_id: 30 };
+
+  assert.deepEqual(glueSortedGroups([inactive, viewsOnly, carrier]).map((value) => value.imt_id), [30, 20, 10]);
 });
 
 test("sklejki period contains seven closed Moscow days", () => {

@@ -106,6 +106,50 @@ export function glueSortedSkus(group: SklejkiGroup) {
   return [...group.skus].sort((a, b) => number(b.shows_7d) - number(a.shows_7d) || number(b.orders_sum_7d) - number(a.orders_sum_7d));
 }
 
+function glueGroupSortKey(group: SklejkiGroup) {
+  const totals = glueTotals(group);
+  const summary = glueSummary(group);
+  const activeSkuCount = group.skus.filter((sku) =>
+    number(sku.shows_7d) > 0
+    || number(sku.orders_sum_7d) > 0
+    || number(sku.adv_spend_7d) > 0
+    || number(sku.adv_spend_14d) > 0
+  ).length;
+  const activityRank = summary.carry > 0
+    ? 3
+    : totals.orders > 0
+      ? 2
+      : totals.shows > 0 || totals.spend > 0
+        ? 1
+        : 0;
+  return {
+    activityRank,
+    carry: summary.carry,
+    activeSkuCount,
+    orders: totals.orders,
+    shows: totals.shows,
+    spend: totals.spend,
+    skuCount: group.skus.length,
+    imt: group.imt_id,
+  };
+}
+
+export function glueSortedGroups(groups: SklejkiGroup[]) {
+  return groups
+    .map((group) => ({ group, key: glueGroupSortKey(group) }))
+    .sort((a, b) =>
+      b.key.activityRank - a.key.activityRank
+      || b.key.carry - a.key.carry
+      || b.key.orders - a.key.orders
+      || b.key.shows - a.key.shows
+      || b.key.spend - a.key.spend
+      || b.key.activeSkuCount - a.key.activeSkuCount
+      || b.key.skuCount - a.key.skuCount
+      || a.key.imt - b.key.imt
+    )
+    .map(({ group }) => group);
+}
+
 export function closedMoscowDates(days: number, nowMs = Date.now()): string[] {
   const moscowNow = new Date(nowMs + 3 * 60 * 60 * 1_000);
   moscowNow.setUTCHours(0, 0, 0, 0);

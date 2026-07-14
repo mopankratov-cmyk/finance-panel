@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { LoadingBanner, SkeletonTableRows, useElapsedSeconds } from "@/components/ui/LoadingState";
 import { useDashboardFilter } from "@/lib/useDashboardFilter";
 import {
+  glueSortedGroups,
   glueSortedSkus,
   glueSummary,
   glueTotals,
@@ -193,8 +194,8 @@ export function WbSklejkiPage() {
   useEffect(() => {
     if (shop && data && !shops.includes(shop)) setShop("");
   }, [data, setShop, shop, shops]);
-  const multi = useMemo(() => (data?.groups_multi ?? []).filter((group) => !shop || group.shop_label === shop), [data?.groups_multi, shop]);
-  const solo = useMemo(() => (data?.groups_solo ?? []).filter((group) => !shop || group.shop_label === shop), [data?.groups_solo, shop]);
+  const multi = useMemo(() => glueSortedGroups((data?.groups_multi ?? []).filter((group) => !shop || group.shop_label === shop)), [data?.groups_multi, shop]);
+  const solo = useMemo(() => glueSortedGroups((data?.groups_solo ?? []).filter((group) => !shop || group.shop_label === shop)), [data?.groups_solo, shop]);
 
   return (
     <div className="min-h-[calc(100vh-54px)] bg-[#f6f7f9] pb-16 md:pb-5">
