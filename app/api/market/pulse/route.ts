@@ -4,13 +4,12 @@ import { resolveShopCabinet } from "@/lib/rnp/resolveShop";
 import { hasMpstats, subjectByDate, subjectKeywords, subjectByDateId, subjectKeywordsId, itemKeywords, mpstatsRouteError } from "@/lib/mpstats/client";
 import { hasCabinetAccess } from "@/lib/auth/cabinetAccess";
 import { requestAllowedNmIds, requestAllowsNm } from "@/lib/wb/requestProductScope";
+import { loadHourlyDashboard } from "@/lib/cache/hourlyDashboard";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-// In-process кэш (MPStats-вызовы POST — Next их НЕ кэширует; бережём квоту 10k).
-const _memo = new Map<string, { ts: number; val: unknown }>();
-const MEMO_TTL = 6 * 3600 * 1000;
+// MPStats-вызовы POST Next не кэширует автоматически: используем общий часовой снимок.
 
 const fmt = (d: Date) => d.toISOString().slice(0, 10);
 const isoWeek = (s: string) => { const [y, m, dd] = s.split("-").map(Number); const dt = new Date(Date.UTC(y, m - 1, dd)); const day = (dt.getUTCDay() + 6) % 7; dt.setUTCDate(dt.getUTCDate() - day); return dt.toISOString().slice(0, 10); };
@@ -50,9 +49,10 @@ async function loadPulse(request: NextRequest) {
   if (dfP && dtP) { d1 = dfP; d2 = dtP > yest ? yest : dtP; }
   else { const weeks = Math.min(16, Math.max(2, Number(sp.get("weeks")) || 8)); d2 = yest; d1 = fmt(new Date(Date.now() - weeks * 7 * 86400000)); }
 
-  const cacheKey = `${subjectId || subject}|${cabinetId || "all"}|${gran}|${d1}|${d2}`;
-  const hit = _memo.get(cacheKey);
-  if (hit && Date.now() - hit.ts < MEMO_TTL) return NextResponse.json(hit.val);
+  const payload = await loadHourlyDashboard(
+    "wb-market-pulse",
+    { subjectId: subjectId || null, subject, cabinetId, gran, d1, d2 },
+    async () => {
 
   // ниша + запросы: по subject_id (точнее) или по пути категории (legacy)
   const [nicheDays, nicheKw] = await Promise.all(
@@ -124,22 +124,24 @@ async function loadPulse(request: NextRequest) {
     .slice(0, 15)
     .map((q) => { const p = posByQuery.get(q.word); return { word: q.word, wb_count: q.wb_count, our_org: p?.org ?? null, our_ad: p?.ad ?? null }; });
 
-  const payload = {
-    ok: true,
-    subject_id: subjectId || null,
-    subject,
-    cabinet: label || "Все кабинеты",
-    gran,
-    date_from: d1,
-    date_to: d2,
-    series,
-    niche_growth_pct: nicheGrowth,
-    our_growth_pct: ourGrowth,
-    rel_growth_pct: nicheGrowth != null && ourGrowth != null ? ourGrowth - nicheGrowth : null,
-    share_pct: sharePct,
-    queries,
-    note: "MPStats — оценочные данные (для тренда). Свои деньги — из кабинета.",
-  };
-  if (series.length) _memo.set(cacheKey, { ts: Date.now(), val: payload });
-  return NextResponse.json(payload);
+      return {
+        ok: true,
+        subject_id: subjectId || null,
+        subject,
+        cabinet: label || "Все кабинеты",
+        gran,
+        date_from: d1,
+        date_to: d2,
+        series,
+        niche_growth_pct: nicheGrowth,
+        our_growth_pct: ourGrowth,
+        rel_growth_pct: nicheGrowth != null && ourGrowth != null ? ourGrowth - nicheGrowth : null,
+        share_pct: sharePct,
+        queries,
+        note: "MPStats — оценочные данные (для тренда). Свои деньги — из кабинета.",
+      };
+    },
+    { forceRefresh: request.nextUrl.searchParams.get("refresh") === "1" },
+  );
+  return NextResponse.json(payload, { headers: { "X-Dashboard-Cache": "hourly-snapshot" } });
 }

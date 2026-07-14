@@ -5,15 +5,14 @@ import { hasMpstats, itemSubject, mpstatsRouteError } from "@/lib/mpstats/client
 import { hasCabinetAccess } from "@/lib/auth/cabinetAccess";
 import { resolveShopCabinet } from "@/lib/rnp/resolveShop";
 import { allowsProduct } from "@/lib/wb/productScope";
+import { loadHourlyDashboard } from "@/lib/cache/hourlyDashboard";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 // Авто-определение ниш (предметов WB), в которых работают наши кабинеты.
 // По топ-SKU каждого кабинета берём subject из MPStats items/{nm}/full → агрегат.
-// Тяжело (N вызовов) → кэш 24ч в процессе.
-const _memo = new Map<string, { ts: number; val: unknown }>();
-const TTL = 24 * 3600 * 1000;
+// Тяжело (N вызовов) → общий часовой снимок в Next Data Cache.
 const PER_CAB = 12; // топ-SKU на кабинет (бережём квоту)
 
 export async function GET(request: NextRequest) {
@@ -31,11 +30,13 @@ async function loadNiches(request: NextRequest) {
   if (!(await hasCabinetAccess(cabinetId))) {
     return NextResponse.json({ error: "Нет доступа к кабинету" }, { status: 403 });
   }
-  const cacheKey = cabinetId ?? "all";
-  const hit = _memo.get(cacheKey);
-  if (hit && Date.now() - hit.ts < TTL) return NextResponse.json(hit.val);
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 500 });
+
+  const payload = await loadHourlyDashboard(
+    "wb-market-niches",
+    { cabinetId },
+    async () => {
 
   const allCabinets = await getActiveWbCabinets();
   const cabs = cabinetId ? allCabinets.filter((cabinet) => cabinet.id === cabinetId) : allCabinets;
@@ -64,7 +65,9 @@ async function loadNiches(request: NextRequest) {
     .map((e) => ({ id: e.id, name: e.name, sku_count: e.sku_count, cabinets: [...e.cabinets] }))
     .sort((a, b) => b.sku_count - a.sku_count);
 
-  const payload = { ok: true, niches, count: niches.length };
-  if (niches.length) _memo.set(cacheKey, { ts: Date.now(), val: payload });
-  return NextResponse.json(payload);
+      return { ok: true, niches, count: niches.length };
+    },
+    { forceRefresh: request.nextUrl.searchParams.get("refresh") === "1" },
+  );
+  return NextResponse.json(payload, { headers: { "X-Dashboard-Cache": "hourly-snapshot" } });
 }

@@ -4,6 +4,7 @@ import type { OzonCockpitView } from "@/lib/ozon/cockpit";
 import { loadCachedOzonCockpit } from "@/lib/ozon/cockpitCache";
 import { currentMoscowMonth, listWbRnpScopes, loadCachedWbRnp } from "@/lib/rnp/tableCache";
 import { checkCronAuth } from "@/lib/sync/helpers";
+import { warmWbSecondaryDashboards } from "@/lib/wb/dashboardWarmup";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -44,7 +45,15 @@ export async function GET(request: NextRequest) {
   if (authError) return authError;
   if (request.nextUrl.searchParams.get("marketplace") === "wb") {
     try {
-      const result = await warmWbRnp();
+      const rnp = await warmWbRnp();
+      const scopes = await listWbRnpScopes();
+      const secondary = await warmWbSecondaryDashboards(request.nextUrl.origin, scopes);
+      const result = {
+        ok: rnp.ok && secondary.ok,
+        marketplace: "wb",
+        views: { rnp, secondary },
+        durationMs: rnp.durationMs + secondary.durationMs,
+      };
       return NextResponse.json(result, { status: result.ok ? 200 : 502 });
     } catch (error) {
       return NextResponse.json(

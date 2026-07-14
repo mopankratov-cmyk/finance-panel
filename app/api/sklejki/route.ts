@@ -6,6 +6,7 @@ import { getWbCabinetSources } from "@/lib/wb/cabinetTokens";
 import { resolveShopCabinet } from "@/lib/rnp/resolveShop";
 import { allowsProduct, type WbProductScope } from "@/lib/wb/productScope";
 import { closedMoscowDates } from "@/lib/wb/sklejki";
+import { loadHourlyDashboard } from "@/lib/cache/hourlyDashboard";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -37,8 +38,12 @@ export async function GET(request: NextRequest) {
   if (!(await hasCabinetAccess(cabinetId))) {
     return NextResponse.json({ error: "Нет доступа к кабинету" }, { status: 403 });
   }
-  const sources = await getWbCabinetSources(cabinetId, "content");
-  if (!sources.length) return NextResponse.json(EMPTY);
+  const payload = await loadHourlyDashboard(
+    "wb-sklejki",
+    { cabinetId },
+    async () => {
+      const sources = await getWbCabinetSources(cabinetId, "content");
+      if (!sources.length) return EMPTY;
 
   // 1) карточки из Content API — по каждому кабинету своим токеном, с тегом кабинета.
   //    Кабинеты независимы (свой токен, свой курсор) — тянем их ПАРАЛЛЕЛЬНО; внутри
@@ -176,12 +181,16 @@ export async function GET(request: NextRequest) {
   // или остатков — а не просто общее число карточек (иначе KPI всегда = total_sku).
   const covered = cards.filter((c) => m7.has(c.nmID) || totals.has(c.nmID)).length;
 
-  return NextResponse.json({
-    groups_multi,
-    groups_solo,
-    total_sku: cards.length,
-    multi_groups: groups_multi.length,
-    solo_skus: groups_solo.length,
-    covered,
-  });
+      return {
+        groups_multi,
+        groups_solo,
+        total_sku: cards.length,
+        multi_groups: groups_multi.length,
+        solo_skus: groups_solo.length,
+        covered,
+      };
+    },
+    { forceRefresh: request.nextUrl.searchParams.get("refresh") === "1" },
+  );
+  return NextResponse.json(payload, { headers: { "X-Dashboard-Cache": "hourly-snapshot" } });
 }
