@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { LoadingBanner, SkeletonCards, useElapsedSeconds } from "@/components/ui/LoadingState";
 import { MARKETPLACE_METRICS, METRIC_BADGE_TONE, marketplaceMetricStatus } from "@/lib/analytics/marketplaceMetrics";
 import { compareAdvertCampaigns } from "@/lib/adverts/campaignSort";
+import { wbCardImageUrlCandidates } from "@/lib/wb/cardImage";
 import { useDashboardFilter } from "@/lib/useDashboardFilter";
 import { WbEmptyState, WbErrorState, WbModuleHeader } from "./WbModuleHeader";
 import { useWbCabinet } from "./WbCabinetContext";
@@ -123,6 +124,21 @@ function Sparkline({ values }: { values: number[] }) {
   );
 }
 
+function WbAdvertImage({ nm, src, className, loading = "lazy" }: { nm: number; src?: string; className: string; loading?: "eager" | "lazy" }) {
+  const urls = useMemo(() => [...new Set([
+    src?.trim() || "",
+    ...wbCardImageUrlCandidates(nm, "c246x328"),
+  ].filter(Boolean))], [nm, src]);
+  const [index, setIndex] = useState(0);
+
+  useEffect(() => { setIndex(0); }, [nm, src]);
+
+  if (!urls[index]) return <span aria-hidden="true" className={className} />;
+
+  // eslint-disable-next-line @next/next/no-img-element
+  return <img src={urls[index]} alt="" loading={loading} className={className} onError={() => setIndex((current) => current + 1)} />;
+}
+
 export function WbAdvertsPage() {
   const { activeCabinet, cabinetId, cabinets, ready, loading: cabinetsLoading, error: cabinetsError } = useWbCabinet();
   const [data, setData] = useState<AdvertsData | null>(null);
@@ -233,8 +249,7 @@ export function WbAdvertsPage() {
                 const active = selectedId === campaign.id;
                 return (
                   <button type="button" key={campaign.id} onClick={() => setSelectedId(campaign.id)} className={`flex h-[64px] w-full items-center gap-2 border-b border-slate-100 px-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-violet-500 ${active ? "bg-violet-50" : "hover:bg-slate-50"}`}>
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={article.photo} alt="" loading="lazy" className="h-10 w-10 shrink-0 rounded-lg border border-slate-100 bg-slate-50 object-cover" onError={(event) => { event.currentTarget.style.visibility = "hidden"; }} />
+                    <WbAdvertImage nm={article.nm} src={article.photo} loading="lazy" className="h-10 w-10 shrink-0 rounded-lg border border-slate-100 bg-slate-50 object-cover" />
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-1.5"><span className={`h-1.5 w-1.5 shrink-0 rounded-full ${campaign.enabled ? "bg-emerald-400" : "bg-amber-400"}`} /><span className="truncate text-[11px] font-medium text-slate-700">{campaign.name}</span></div>
                       <div className="mt-1 flex items-center gap-1.5 text-[9px] text-slate-400"><span className="rounded bg-sky-50 px-1.5 py-0.5 text-sky-700">CPM</span><span className="rounded bg-violet-50 px-1.5 py-0.5 text-violet-700">единая</span>{campaign.stats_stale ? <span title={campaign.stats_synced_at || "Статистика ещё не загружена"} className="rounded bg-rose-50 px-1.5 py-0.5 font-semibold text-rose-700">данные {campaign.stats_age_hours == null ? "нет" : `${campaign.stats_age_hours} ч.`}</span> : null}<span className="truncate">{article.art}</span></div>
@@ -255,8 +270,7 @@ export function WbAdvertsPage() {
           ) : (
             <div className="p-3 sm:p-5">
               <div className="flex items-start gap-3 border-b border-slate-100 pb-4">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={selected.article.photo} alt="" className="h-14 w-14 rounded-xl border border-slate-100 bg-slate-50 object-cover" />
+                <WbAdvertImage nm={selected.article.nm} src={selected.article.photo} loading="eager" className="h-14 w-14 shrink-0 rounded-xl border border-slate-100 bg-slate-50 object-cover" />
                 <div className="min-w-0"><div className="text-sm font-bold text-slate-800">{selected.campaign.name}</div><div className="mt-1 text-[11px] text-slate-400">{selected.article.art} · nm {selected.article.nm} · РК #{selected.campaign.id}</div></div>
                 <div className="ml-auto flex flex-col items-end gap-1"><span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${selected.campaign.enabled ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>{selected.campaign.enabled ? "Активна" : "Пауза"}</span>{selected.campaign.stats_stale ? <span className="rounded bg-rose-50 px-2 py-1 text-[9px] font-semibold text-rose-700">статистика устарела</span> : null}</div>
               </div>

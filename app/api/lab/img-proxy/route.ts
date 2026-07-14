@@ -24,12 +24,14 @@ export async function GET(req: NextRequest) {
 
   try {
     let r = await tryFetch(url);
-    // WB: баскет в URL угадан неверно → перебираем соседние basket-NN
+    // WB: баскет в URL угадан неверно → перебираем соседние basket-NN.
+    // 14.07.2026 видели реальный сдвиг basket-50 → basket-44, поэтому ±4 мало.
     if (!r) {
       const m = url.match(/^(https:\/\/basket-)(\d{2})(\.wbbasket\.ru\/.*)$/);
       if (m) {
         const base = parseInt(m[2], 10);
-        for (const d of [1, -1, 2, -2, 3, -3, 4, -4]) {
+        const offsets = Array.from({ length: 18 }, (_, i) => i + 1).flatMap((d) => [d, -d]);
+        for (const d of offsets) {
           const b = base + d;
           if (b < 1 || b > 99) continue;
           r = await tryFetch(`${m[1]}${String(b).padStart(2, "0")}${m[3]}`);
