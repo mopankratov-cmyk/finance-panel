@@ -358,7 +358,17 @@ export function SalesPlanPage({
 
         {loading ? <div className="flex min-h-[420px] items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white text-sm text-slate-500"><Loader2 className="h-5 w-5 animate-spin motion-reduce:animate-none" /> Загружаем план…</div>
           : loadError ? <PageError message={loadError} onRetry={() => setReloadKey((value) => value + 1)} />
-            : mode === "rnp" ? <SalesPlanFactView marketplace={marketplace} cabinetId={cabinetId} monthKey={activeMonth} approvedPlan={approvedPlan} />
+            : mode === "rnp" ? <>
+              {approvedPlan ? <section className="rounded-xl border border-slate-200 bg-white p-3" aria-label="Период план-факт">
+                <div className="flex flex-wrap gap-2" role="tablist" aria-label="Месяц план-факт">
+                  {visibleMonths.map((monthKey) => {
+                    const monthTotal = calculateSalesPlanSummary(approvedPlan, [monthKey]).orders;
+                    return <button key={monthKey} type="button" role="tab" aria-selected={activeMonth === monthKey} onClick={() => setActiveMonth(monthKey)} className={`min-h-11 rounded-lg border px-4 text-xs font-semibold transition sm:min-h-9 ${activeMonth === monthKey ? `${selectedTab} border-transparent` : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"}`}>{salesPlanMonthLabel(year, monthKey)} <span className={`ml-2 rounded-md px-1.5 py-0.5 text-[10px] ${activeMonth === monthKey ? "bg-white/20" : "bg-slate-100 text-slate-500"}`}>{number(monthTotal)} шт.</span></button>;
+                  })}
+                </div>
+              </section> : null}
+              <SalesPlanFactView marketplace={marketplace} cabinetId={cabinetId} monthKey={activeMonth} approvedPlan={approvedPlan} />
+            </>
               : !displayPlan ? <EmptyPlan mode={mode} marketplace={marketplace} onCreate={() => void createPlan()} />
                 : <>
                   {summary ? <section className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4" aria-label="Показатели плана">
