@@ -4,6 +4,7 @@ import {
   BadgeRussianRuble,
   BarChart3,
   Boxes,
+  CalendarRange,
   ChevronRight,
   HeartPulse,
   Home,
@@ -31,6 +32,7 @@ interface NavItem {
 
 const WORK_NAV: NavItem[] = [
   { label: "Обзор", href: "/ozon", icon: LayoutDashboard, scoped: true },
+  { label: "План продаж", href: "/ozon/planning", icon: CalendarRange, scoped: true },
   { label: "Продажи", href: "/ozon/sales", icon: BarChart3, scoped: true },
   { label: "Реклама", href: "/ozon/adverts", icon: Megaphone, scoped: true },
   { label: "Остатки", href: "/ozon/stocks", icon: Boxes, scoped: true },

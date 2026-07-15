@@ -1,6 +1,5 @@
-import { redirect } from "next/navigation";
-import { wbRetiredRouteDestination } from "@/lib/wb/retiredRoutes";
+import { WbSalesPlanPage } from "@/components/wb/WbSalesPlanPage";
 
 export default function Page() {
-  redirect(wbRetiredRouteDestination("/wb/planning"));
+  return <WbSalesPlanPage />;
 }

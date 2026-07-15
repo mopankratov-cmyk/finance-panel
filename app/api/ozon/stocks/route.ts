@@ -14,11 +14,11 @@ export async function GET(request: NextRequest) {
   if (!r.ok) return NextResponse.json({ rows: [], warehouses: [], error: r.error }, { status: 502 });
 
   // агрегируем по артикулу
-  const byArt = new Map<string, { art: string; name: string; free: number; reserved: number; byWh: Record<string, number> }>();
+  const byArt = new Map<string, { art: string; name: string; external_id: string; free: number; reserved: number; byWh: Record<string, number> }>();
   const whSet = new Set<string>();
   for (const s of r.rows) {
     whSet.add(s.warehouse);
-    const e = byArt.get(s.article) ?? { art: s.article, name: s.name, free: 0, reserved: 0, byWh: {} };
+    const e = byArt.get(s.article) ?? { art: s.article, name: s.name, external_id: String(s.sku), free: 0, reserved: 0, byWh: {} };
     e.free += s.free; e.reserved += s.reserved;
     e.byWh[s.warehouse] = (e.byWh[s.warehouse] ?? 0) + s.free;
     byArt.set(s.article, e);

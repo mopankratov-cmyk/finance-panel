@@ -2,6 +2,7 @@
 
 import {
   BarChart3,
+  CalendarRange,
   Calculator,
   ChartNoAxesCombined,
   ChevronLeft,
@@ -42,6 +43,7 @@ interface NavItem {
 
 const ITEM_ICONS: Record<string, IconComponent> = {
   "/wb/rnp": BarChart3,
+  "/wb/planning": CalendarRange,
   "/wb/funnel": Filter,
   "/wb/unit": Calculator,
   "/wb/seo": Search,
