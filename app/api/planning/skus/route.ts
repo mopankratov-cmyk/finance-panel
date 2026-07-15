@@ -38,6 +38,8 @@ export async function GET(request: NextRequest) {
       const m = meta.get(r.article);
       const wb = Number(r.stock ?? 0);
       return {
+        nm_id: r.nm_id,
+        external_id: String(r.nm_id),
         art: r.article || String(r.nm_id),
         name: m?.name || r.article || String(r.nm_id),
         cat: m?.cat || "Без категории",

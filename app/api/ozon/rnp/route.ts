@@ -46,13 +46,33 @@ async function fetchDaySku(c: OzonCreds, from: string, to: string) {
 // Ozon РНП: матрица метрик (Заказы шт / Выручка ₽ / Показы) × даты по каждому SKU.
 export async function GET(request: NextRequest) {
   const sp = new URL(request.url).searchParams;
-  const days = Math.min(30, Math.max(3, Number(sp.get("days")) || 14));
+  const requestedYear = Number(sp.get("year"));
+  const requestedMonth = Number(sp.get("month"));
+  const hasCalendarMonth = Number.isInteger(requestedYear)
+    && requestedYear >= 2020
+    && requestedYear <= 2100
+    && Number.isInteger(requestedMonth)
+    && requestedMonth >= 1
+    && requestedMonth <= 12;
+  const fallbackDays = Math.min(30, Math.max(3, Number(sp.get("days")) || 14));
   const cab = await getActiveOzonCreds(sp.get("cabinet"));
   if (!cab.ok) return NextResponse.json({ skus: [], period: [], error: cab.error, noCabinet: true });
 
-  const to = new Date().toISOString().slice(0, 10);
-  const fromD = new Date(Date.now() - (days - 1) * 86400000);
-  const from = fromD.toISOString().slice(0, 10);
+  const today = new Date().toISOString().slice(0, 10);
+  const requestedFrom = hasCalendarMonth
+    ? `${requestedYear}-${String(requestedMonth).padStart(2, "0")}-01`
+    : new Date(Date.now() - (fallbackDays - 1) * 86400000).toISOString().slice(0, 10);
+  const requestedTo = hasCalendarMonth
+    ? `${requestedYear}-${String(requestedMonth).padStart(2, "0")}-${String(new Date(Date.UTC(requestedYear, requestedMonth, 0)).getUTCDate()).padStart(2, "0")}`
+    : today;
+  if (requestedFrom > today) {
+    return NextResponse.json({ cabinet: cab.name, period: [], summary: [], skus: [], sku_count: 0, perfAvailable: false });
+  }
+  const from = requestedFrom;
+  const to = requestedTo < today ? requestedTo : today;
+  const fromD = new Date(`${from}T00:00:00.000Z`);
+  const toD = new Date(`${to}T00:00:00.000Z`);
+  const days = Math.floor((toD.getTime() - fromD.getTime()) / 86400000) + 1;
 
   // DEBUG: сырой ответ Ozon (analytics/data + образец postings) — понять, что реально приходит
   if (sp.get("debug") === "1") {

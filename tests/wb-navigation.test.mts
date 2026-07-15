@@ -5,6 +5,7 @@ import { WB_MOBILE_NAVIGATION, WB_NAVIGATION_ITEMS, isWbNavigationItemActive } f
 test("WB navigation exposes only the approved dashboards as direct links", () => {
   assert.deepEqual(WB_NAVIGATION_ITEMS.map((item) => item.href), [
     "/wb/rnp",
+    "/wb/planning",
     "/wb/funnel",
     "/wb/adverts",
     "/wb/supplies",
@@ -22,9 +23,9 @@ test("WB navigation exposes only the approved dashboards as direct links", () =>
 test("WB mobile navigation keeps four operational shortcuts", () => {
   assert.deepEqual(WB_MOBILE_NAVIGATION.map((item) => item.href), [
     "/wb/rnp",
+    "/wb/planning",
     "/wb/adverts",
     "/wb/supplies",
-    "/wb/sklejki",
   ]);
 });
 

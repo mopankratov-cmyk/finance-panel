@@ -7,6 +7,7 @@ export interface WbNavigationItem {
 // инструментов без наведения на группы и без промежуточных раскрывающихся меню.
 export const WB_NAVIGATION_ITEMS: WbNavigationItem[] = [
   { label: "РНП", href: "/wb/rnp" },
+  { label: "План продаж", href: "/wb/planning" },
   { label: "Воронка / Репрайсер", href: "/wb/funnel" },
   { label: "Реклама", href: "/wb/adverts" },
   { label: "Поставки", href: "/wb/supplies" },
@@ -21,9 +22,9 @@ export const WB_NAVIGATION_ITEMS: WbNavigationItem[] = [
 
 export const WB_MOBILE_NAVIGATION: WbNavigationItem[] = [
   { label: "РНП", href: "/wb/rnp" },
+  { label: "План", href: "/wb/planning" },
   { label: "Реклама", href: "/wb/adverts" },
   { label: "Поставки", href: "/wb/supplies" },
-  { label: "Склейки", href: "/wb/sklejki" },
 ];
 
 export function isWbNavigationItemActive(pathname: string, href: string) {
