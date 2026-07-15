@@ -22,6 +22,22 @@ interface FinanceContextValue {
 }
 
 const FinanceContext = createContext<FinanceContextValue | null>(null);
+const FINANCE_LOAD_TIMEOUT_MS = 12_000;
+
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      reject(new Error(`Финансовые таблицы не ответили за ${Math.round(timeoutMs / 1000)} секунд`));
+    }, timeoutMs);
+  });
+
+  try {
+    return await Promise.race([promise, timeout]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
 
 export function FinanceProvider({ children }: { children: ReactNode }) {
   const [state, baseDispatch] = useReducer(financeReducer, {
@@ -39,7 +55,7 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
 
     async function load() {
       try {
-        const data = await loadFinanceState();
+        const data = await withTimeout(loadFinanceState(), FINANCE_LOAD_TIMEOUT_MS);
         if (!cancelled) {
           baseDispatch({ type: "LOAD", payload: data });
           setLoadError(null);

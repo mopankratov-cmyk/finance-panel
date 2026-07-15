@@ -1,6 +1,7 @@
 "use client";
 
 import { usePathname } from "next/navigation";
+import { needsFinanceHydration } from "@/lib/navigation/financeHydration";
 import { Sidebar } from "./Sidebar";
 import { useFinance } from "./providers/FinanceProvider";
 
@@ -15,8 +16,9 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   // Главная — полноэкранная, без финансового сайдбара.
   const isLauncher = pathname === "/";
   const isFullscreen = isLauncher;
+  const requiresFinanceHydration = needsFinanceHydration(pathname);
 
-  if (!hydrated) {
+  if (requiresFinanceHydration && !hydrated) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-[#F5F5F5]">
         <div className="flex flex-col items-center gap-3">
@@ -27,7 +29,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (loadError) {
+  if (requiresFinanceHydration && loadError) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-[#F5F5F5] px-4">
         <div className="max-w-md rounded-xl border border-red-200 bg-white p-6 text-center shadow-sm">
