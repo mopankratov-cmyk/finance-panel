@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import { wbCacheProgressReadiness } from "../lib/sync/wbCacheReadiness";
@@ -45,4 +46,14 @@ test("cache progress treats stored WB global-limiter 429 as incomplete instead o
   assert.equal(readiness.ready, false);
   assert.deepEqual(readiness.failed, []);
   assert.deepEqual(readiness.incomplete, ["optima:funnel"]);
+});
+
+test("sales route defers WB global-limiter 429 and refreshes freshness on successful runs", () => {
+  const source = readFileSync(new URL("../app/api/sync/sales/route.ts", import.meta.url), "utf8");
+
+  assert.match(source, /isWbGlobalRateLimit\(res\.status, message\)/);
+  assert.match(source, /status: "deferred"/);
+  assert.match(source, /reason: "wb_global_rate_limit"/);
+  assert.match(source, /lastSyncedAt: syncedAt/);
+  assert.match(source, /deferred/);
 });

@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { checkCronAuth, chunkedUpsert, writeSyncLog } from "@/lib/sync/helpers";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { cabinetProductScope, getActiveWbCabinets, resolveWbToken } from "@/lib/wb/cabinetTokens";
-import { fetchWbFeedbacksPage, WbFeedbacksScopeError, type WbFeedbackRaw } from "@/lib/wb/feedbacksApi";
+import { fetchWbFeedbacksPage, WbFeedbacksCursorError, WbFeedbacksScopeError, type WbFeedbackRaw } from "@/lib/wb/feedbacksApi";
 import { allowsProduct } from "@/lib/wb/productScope";
 import { claimWbSyncJob, readWbSyncState, writeWbSyncState } from "@/lib/wb/syncState";
 
@@ -91,6 +91,7 @@ export async function GET(request: NextRequest) {
     let nextKind: "unanswered" | "answered" = previous?.state.nextKind === "answered" ? "answered" : "unanswered";
     let rowsInCycle = Number(previous?.state.rowsInCycle ?? 0);
     let pages = 0;
+    let cursorResets = 0;
 
     try {
       while (pages < MAX_PAGES_PER_RUN && Date.now() < deadline) {
@@ -102,7 +103,24 @@ export async function GET(request: NextRequest) {
 
         const isAnswered = nextKind === "answered";
         const skip = isAnswered ? answeredSkip : unansweredSkip;
-        const list = await fetchWbFeedbacksPage(token, isAnswered, skip, TAKE);
+        let list: WbFeedbackRaw[];
+        try {
+          list = await fetchWbFeedbacksPage(token, isAnswered, skip, TAKE);
+        } catch (error) {
+          if (error instanceof WbFeedbacksCursorError && skip > 0 && cursorResets < 2) {
+            cursorResets++;
+            if (isAnswered) {
+              answeredSkip = 0;
+              answeredDone = false;
+            } else {
+              unansweredSkip = 0;
+              unansweredDone = false;
+            }
+            nextKind = isAnswered ? "answered" : "unanswered";
+            continue;
+          }
+          throw error;
+        }
         let hitCutoff = false;
         const stamp = new Date().toISOString();
         const rows = list
@@ -156,7 +174,7 @@ export async function GET(request: NextRequest) {
         },
       });
       if (stateError) throw new Error(`состояние feedbacks: ${stateError}`);
-      progress.push({ cabinet: cabinet.name, status: completed ? "caught_up" : "running", pages, rows: rowsInCycle, coveragePct, unansweredSkip, answeredSkip });
+      progress.push({ cabinet: cabinet.name, status: completed ? "caught_up" : "running", pages, rows: rowsInCycle, coveragePct, unansweredSkip, answeredSkip, cursorResets });
     } catch (error) {
       const message = error instanceof WbFeedbacksScopeError
         ? "Нет категории токена «Вопросы и Отзывы»"

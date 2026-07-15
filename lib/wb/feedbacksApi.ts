@@ -10,6 +10,19 @@ export class WbFeedbacksScopeError extends Error {
   }
 }
 
+export class WbFeedbacksCursorError extends Error {
+  readonly status: number;
+
+  readonly detail: string;
+
+  constructor(status: number, detail: string) {
+    super(detail);
+    this.name = "WbFeedbacksCursorError";
+    this.status = status;
+    this.detail = detail;
+  }
+}
+
 export interface WbFeedbackRaw {
   id: string;
   text?: string;
@@ -42,7 +55,11 @@ export async function fetchWbFeedbacksPage(
         const j = (await res.json().catch(() => null)) as { data?: { feedbacks?: WbFeedbackRaw[] } } | null;
         return j?.data?.feedbacks ?? [];
       }
-      lastError = `WB ${res.status}: ${(await res.text()).slice(0, 120)}`;
+      const body = (await res.text()).slice(0, 120);
+      lastError = `WB ${res.status}: ${body}`;
+      if ((res.status === 400 || res.status === 422) && skip > 0) {
+        throw new WbFeedbacksCursorError(res.status, lastError);
+      }
       if (![429, 500, 502, 503, 504].includes(res.status) || attempt === 2) break;
       const retryAfter = Number(res.headers.get("retry-after"));
       const waitMs = Number.isFinite(retryAfter) && retryAfter > 0
@@ -50,7 +67,7 @@ export async function fetchWbFeedbacksPage(
         : 1_000 * 2 ** attempt;
       await new Promise((resolve) => setTimeout(resolve, waitMs));
     } catch (error) {
-      if (error instanceof WbFeedbacksScopeError) throw error;
+      if (error instanceof WbFeedbacksScopeError || error instanceof WbFeedbacksCursorError) throw error;
       lastError = error instanceof Error ? error.message : "Ошибка сети WB";
       if (attempt === 2) break;
       await new Promise((resolve) => setTimeout(resolve, 1_000 * 2 ** attempt));

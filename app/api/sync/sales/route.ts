@@ -3,6 +3,7 @@ import { checkCronAuth, chunkedUpsert, writeSyncLog } from "@/lib/sync/helpers";
 import { getWbSyncTargets, lastSyncDate, rememberScopedProducts } from "@/lib/sync/cabinets";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { allowsProduct } from "@/lib/wb/productScope";
+import { isWbGlobalRateLimit } from "@/lib/wb/rateLimit";
 import { initialStatisticsCursor, statisticsCursor } from "@/lib/wb/syncRecovery";
 import { claimWbSyncJob, readWbSyncState, writeWbSyncState } from "@/lib/wb/syncState";
 import { fetchWbStatistics } from "@/lib/wb/statisticsRequest";
@@ -35,6 +36,7 @@ export async function GET(request: NextRequest) {
   let total = 0;
   let scanned = 0;
   const errors: string[] = [];
+  const deferred: string[] = [];
   const progress: Array<Record<string, unknown>> = [];
   const db = getSupabaseAdmin();
 
@@ -62,6 +64,26 @@ export async function GET(request: NextRequest) {
       const res = await fetchWbStatistics({ url: url.toString(), token: t.statsToken, deadline });
       if (!res.ok) {
         const message = `WB ${res.status}: ${(await res.text()).slice(0, 120)}`;
+        if (isWbGlobalRateLimit(res.status, message)) {
+          deferred.push(`${t.name}: ${message}`);
+          if (!forceFrom && db && t.cabinetId) {
+            const nowIso = new Date().toISOString();
+            await writeWbSyncState(db, t.cabinetId, "sales", {
+              cursor: dateFrom,
+              status: "running",
+              attempts: 0,
+              lastError: message,
+              state: {
+                ...(saved?.state ?? {}),
+                historyStart: saved?.state.historyStart ?? dateFrom,
+                lastRateLimitedAt: nowIso,
+                lastRunAt: nowIso,
+              },
+            });
+          }
+          progress.push({ cabinet: t.name, status: "deferred", reason: "wb_global_rate_limit", cursor: dateFrom });
+          continue;
+        }
         errors.push(`${t.name}: ${message}`);
         if (!forceFrom && db && t.cabinetId) await writeWbSyncState(db, t.cabinetId, "sales", {
           cursor: dateFrom,
@@ -77,6 +99,7 @@ export async function GET(request: NextRequest) {
       scanned += sales.length;
       if (sales.length) await rememberScopedProducts(t, sales);
 
+      const syncedAt = new Date().toISOString();
       const rows = sales
         .filter((s) => allowsProduct(t.productScope, s.nmId, s.brand))
         .map((s) => ({
@@ -88,7 +111,7 @@ export async function GET(request: NextRequest) {
           // цена до СПП: priceWithDisc, иначе totalPrice×(1−disc%)
           price_with_disc: (s.priceWithDisc as number | null) ?? (s.totalPrice != null ? Number(s.totalPrice) * (1 - Number(s.discountPercent ?? 0) / 100) : null),
           cabinet_id: t.cabinetId,
-          synced_at: new Date().toISOString(),
+          synced_at: syncedAt,
         }))
         .filter((r) => r.sale_id)
         .filter((r) => !toDate || String(r.date) < toDate);
@@ -125,7 +148,8 @@ export async function GET(request: NextRequest) {
             scanned: sales.length,
             caughtUp,
             coveragePct: caughtUp ? 100 : 0,
-            lastRunAt: new Date().toISOString(),
+            lastSyncedAt: syncedAt,
+            lastRunAt: syncedAt,
           },
         });
       }
@@ -135,7 +159,7 @@ export async function GET(request: NextRequest) {
 
     const ok = errors.length === 0;
     await writeSyncLog("sales", ok ? "ok" : "error", total, errors.join("; ") || null, startedAt);
-    return NextResponse.json({ ok, rows: total, scanned, cabinets: targets.length, progress, errors });
+    return NextResponse.json({ ok, rows: total, scanned, cabinets: targets.length, progress, errors, deferred });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Unknown error";
     await writeSyncLog("sales", "error", null, msg, startedAt);
