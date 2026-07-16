@@ -301,6 +301,7 @@ export function SalesPlanPage({
   const displayPlan = mode === "approved" ? approvedPlan : plan;
   const readOnly = mode !== "edit" || displayPlan?.status !== "draft";
   const summary = displayPlan ? calculateSalesPlanSummary(displayPlan, visibleMonths) : null;
+  const monthCountWord = visibleMonths.length === 1 ? "месяц" : visibleMonths.length < 5 ? "месяца" : "месяцев";
   const status = plan?.status ?? "empty";
   const statusLabel = status === "draft" ? "Черновик" : status === "review" ? "На согласовании" : status === "approved" ? "Утверждён" : "Не создан";
   const statusTone = status === "draft" ? "bg-amber-500" : status === "review" ? "bg-blue-500" : status === "approved" ? "bg-emerald-500" : "bg-slate-400";
@@ -372,7 +373,7 @@ export function SalesPlanPage({
               : !displayPlan ? <EmptyPlan mode={mode} marketplace={marketplace} onCreate={() => void createPlan()} />
                 : <>
                   {summary ? <section className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4" aria-label="Показатели плана">
-                    <Metric label="План заказов" value={`${number(summary.orders)} шт.`} detail={`${summary.variants} цветов · ${visibleMonths.length} месяца`} />
+                    <Metric label="План заказов" value={`${number(summary.orders)} шт.`} detail={`${summary.variants} цветов · ${visibleMonths.length} ${monthCountWord}`} />
                     <Metric label={marketplace === "wb" ? "Ожидаемый выкуп" : "Ожидаемое завершение"} value={`${number(summary.buyouts)} шт.`} detail={`${summary.buyoutPct.toLocaleString("ru-RU", { maximumFractionDigits: 1 })}% по каждому цвету`} />
                     <Metric label="Плановая выручка" value={money(summary.revenue)} detail={`${marketplace === "wb" ? "выкуп" : "завершение"} × цена`} />
                     <Metric label="Рекламный бюджет" value={money(summary.ads)} detail={`${summary.adPct.toLocaleString("ru-RU", { maximumFractionDigits: 1 })}% от заказной выручки`} tone="amber" />

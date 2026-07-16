@@ -199,8 +199,8 @@ export function salesPlanMonthLabel(year: number, monthKey: string, long = true)
 }
 
 export function visibleSalesPlanMonths(_year: number, pivotMonth = new Date().getMonth() + 1) {
-  const start = Math.min(10, Math.max(1, pivotMonth));
-  return Array.from({ length: 3 }, (_, index) => String(start + index).padStart(2, "0"));
+  const start = Math.min(12, Math.max(1, pivotMonth));
+  return Array.from({ length: 13 - start }, (_, index) => String(start + index).padStart(2, "0"));
 }
 
 export function calculateSalesPlanDaily(row: SalesPlanRow, orders: number): SalesPlanDailyMetrics {

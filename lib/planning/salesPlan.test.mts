@@ -7,6 +7,7 @@ import {
   emptySalesPlanMonths,
   type SalesPlanRow,
   validateSalesPlan,
+  visibleSalesPlanMonths,
 } from "./salesPlan";
 
 function row(): SalesPlanRow {
@@ -51,4 +52,10 @@ test("утверждение блокируется при дубле цвета
   const issues = validateSalesPlan(plan);
   assert.ok(issues.some((issue) => issue.message.includes("Дубль вариации")));
   assert.ok(issues.some((issue) => issue.field === "price"));
+});
+
+test("план показывает все месяцы от текущего до конца года", () => {
+  assert.deepEqual(visibleSalesPlanMonths(2026, 7), ["07", "08", "09", "10", "11", "12"]);
+  assert.deepEqual(visibleSalesPlanMonths(2026, 11), ["11", "12"]);
+  assert.deepEqual(visibleSalesPlanMonths(2026, 12), ["12"]);
 });
