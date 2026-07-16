@@ -76,7 +76,9 @@ export async function GET(request: NextRequest) {
     for (const t of targets) {
       if (Date.now() > deadline) { rotated.push(`${t.name}: пропущен (бюджет)`); break; } // докрутим следующим прогоном
       const previous = t.cabinetId ? await readWbSyncState(db, t.cabinetId, "advert-stats") : null;
-      if (t.cabinetId && !(await claimWbSyncJob(db, t.cabinetId, "advert-stats", 15 * 60))) {
+      // Функция живёт максимум 60 секунд. Двухминутной аренды достаточно,
+      // чтобы не наложить два запуска и быстро восстановиться после WB 429.
+      if (t.cabinetId && !(await claimWbSyncJob(db, t.cabinetId, "advert-stats", 2 * 60))) {
         rotated.push(`${t.name}: уже выполняется`);
         continue;
       }

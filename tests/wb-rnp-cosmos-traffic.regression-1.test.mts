@@ -40,6 +40,7 @@ test("advert stats include completed campaigns and rotate every hour", () => {
   assert.match(source, /\.in\("status", \[7, 9, 11\]\)/);
   assert.match(source, /\.order\("advert_id", \{ ascending: true \}\)/);
   assert.match(source, /Math\.floor\(Date\.now\(\) \/ 3_600_000\)/);
+  assert.match(source, /claimWbSyncJob\(db, t\.cabinetId, "advert-stats", 2 \* 60\)/);
   assert.match(source, /isWbAdvertRateLimit\(res\.status, message\)/);
   assert.match(source, /status: "rate_limited"/);
   assert.match(source, /errors\.length \? \(errors\.join\("; "\) \+ note\)\.trim\(\) : null/);
