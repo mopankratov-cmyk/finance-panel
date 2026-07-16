@@ -8,6 +8,7 @@ import {
   initialStatisticsCursor,
   isUnavailableHistoryReportError,
   parseHistoryCsv,
+  resolveHistoryNmIds,
   statisticsCursor,
   unzipCsvFiles,
 } from "../lib/wb/syncRecovery";
@@ -58,6 +59,12 @@ test("history report requests exactly 365 days and exact scoped nmIDs", () => {
   const payload = historyReportPayload("00000000-0000-4000-8000-000000000001", "cabinet-123", [11, 22], period);
   assert.deepEqual((payload.params as Record<string, unknown>).nmIDs, [11, 22]);
   assert.equal((payload.params as Record<string, unknown>).aggregationLevel, "day");
+});
+
+test("deep history keeps scoped cabinets exact and includes unrestricted cabinet stock", () => {
+  assert.deepEqual(resolveHistoryNmIds([11, 22], [{ nm_id: 11 }, { nm_id: 99 }]), [11, 22]);
+  assert.deepEqual(resolveHistoryNmIds([], [{ nm_id: 11 }]), []);
+  assert.deepEqual(resolveHistoryNmIds(null, [{ nm_id: 31 }, { nm_id: 31 }, { nm_id: 32 }]), [31, 32]);
 });
 
 test("history report unavailable 403 is classified as a non-fatal cabinet skip", () => {

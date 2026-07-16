@@ -84,7 +84,9 @@ export async function GET(request: NextRequest) {
   }
 
   const defaultPeriod = syncFunnelPeriod(request.url); // история доступна до вчера; по понедельникам восстанавливаем последние 7 дней.
-  const recoveryDates = closedMoscowDates(30);
+  // Синхронный history endpoint разрешает только последние семь закрытых дней.
+  // Более старые разрывы восстанавливает DETAIL_HISTORY_REPORT в syncRecovery.
+  const recoveryDates = closedMoscowDates(7);
 
   let total = 0;
   const errors: string[] = [];

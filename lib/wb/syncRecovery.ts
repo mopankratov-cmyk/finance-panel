@@ -2,8 +2,9 @@ import { inflateRawSync } from "node:zlib";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { chunkedUpsert } from "@/lib/sync/helpers";
-import { getWbSyncTargets } from "@/lib/sync/cabinets";
+import { getWbSyncTargets, type SyncTarget } from "@/lib/sync/cabinets";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
 import { readWbSyncState, writeWbSyncState, type WbSyncState } from "@/lib/wb/syncState";
 
 export { readWbSyncState, writeWbSyncState, type WbSyncState } from "@/lib/wb/syncState";
@@ -154,6 +155,14 @@ export function historyFirstActiveDate(rows: WbHistoryRow[]): string | null {
     .reduce<string | null>((earliest, row) => !earliest || row.date < earliest ? row.date : earliest, null);
 }
 
+export function resolveHistoryNmIds(
+  configuredNmIds: number[] | null,
+  stockRows: Array<{ nm_id: number }>,
+): number[] {
+  const source = configuredNmIds === null ? stockRows.map((row) => Number(row.nm_id)) : configuredNmIds;
+  return [...new Set(source.filter((nmId) => Number.isInteger(nmId) && nmId > 0))].sort((left, right) => left - right);
+}
+
 function findEndOfCentralDirectory(view: DataView): number {
   const minimum = Math.max(0, view.byteLength - 65_557);
   for (let offset = view.byteLength - 22; offset >= minimum; offset--) {
@@ -269,10 +278,24 @@ async function bootstrapDetailCursors(
   }
 }
 
+async function historyNmIdsForTarget(db: SupabaseClient, target: SyncTarget): Promise<number[]> {
+  const configuredNmIds = target.productScope.allowedNmIds;
+  if (configuredNmIds !== null) return resolveHistoryNmIds(configuredNmIds, []);
+  if (!target.cabinetId) return [];
+
+  const stockRows = await loadAllSupabasePages<{ nm_id: number }>((from, to) => db
+    .from("wb_stocks")
+    .select("nm_id")
+    .eq("cabinet_id", target.cabinetId!)
+    .order("nm_id", { ascending: true })
+    .range(from, to), { maxPages: 1_000, label: `SKU глубокой истории ${target.name}` });
+  return resolveHistoryNmIds(null, stockRows);
+}
+
 export async function runWbHistoryRecovery(now = new Date()): Promise<WbHistoryResult> {
   const db = getSupabaseAdmin();
   if (!db) return { ok: false, cabinets: 0, rows: 0, results: [], errors: ["Supabase не настроен"] };
-  const targets = (await getWbSyncTargets()).filter((target) => target.cabinetId && target.productScope.allowedNmIds?.length);
+  const targets = (await getWbSyncTargets()).filter((target) => target.cabinetId);
   const period = historyPeriod(now);
   const results: Array<Record<string, unknown>> = [];
   const errors: string[] = [];
@@ -280,10 +303,14 @@ export async function runWbHistoryRecovery(now = new Date()): Promise<WbHistoryR
 
   for (const target of targets) {
     const cabinetId = target.cabinetId!;
-    const nmIds = target.productScope.allowedNmIds!;
     let state = await readWbSyncState<WbHistoryState>(db, cabinetId, HISTORY_JOB);
 
     try {
+      const nmIds = await historyNmIdsForTarget(db, target);
+      if (!nmIds.length) {
+        results.push({ cabinet: target.name, status: "empty", rows: 0 });
+        continue;
+      }
       if (state && stateIsUnavailableFresh(state, now)) {
         results.push({ cabinet: target.name, status: "unavailable", reason: state.lastError ?? "WB history report unavailable" });
         continue;

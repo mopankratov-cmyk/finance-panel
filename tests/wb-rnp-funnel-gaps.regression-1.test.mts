@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import { pointInTimeMetricDaily } from "../lib/rnp/buildTable";
@@ -50,4 +51,10 @@ test("manual funnel period is never replaced by automatic recovery", () => {
   const manual = { begin: "2026-05-01", end: "2026-05-07", mode: "manual" };
 
   assert.deepEqual(funnelGapRecoveryPeriod(["2026-07-01"], [1], [], manual), manual);
+});
+
+test("regular funnel recovery never asks WB for dates older than the last seven closed days", () => {
+  const route = readFileSync(new URL("../app/api/sync/funnel/route.ts", import.meta.url), "utf8");
+
+  assert.match(route, /const recoveryDates = closedMoscowDates\(7\)/);
 });
