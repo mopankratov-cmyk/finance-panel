@@ -27,6 +27,7 @@ test("PIM and supplies share an hourly card snapshot and no longer hard-code zer
   const suppliesSource = await readFile(new URL("../app/api/supplies/route.ts", import.meta.url), "utf8");
   assert.match(cardsSource, /Promise\.all\(sources\.map/);
   assert.match(cardsSource, /"wb-pim-cards"/);
+  assert.match(cardsSource, /imtId: Number\.isFinite\(c\.imtID\)/);
   assert.match(cardsSource, /Карточки WB загружены не полностью/);
   assert.match(suppliesSource, /loadCabinetPimRowsHourly/);
   assert.match(suppliesSource, /members\.map\(\(member\) => loadCabinetPimRowsHourly\(member\)\)/);
@@ -37,6 +38,10 @@ test("PIM and supplies share an hourly card snapshot and no longer hard-code zer
 
 test("sklejki paginates dashboard facts instead of caching Supabase's first page", async () => {
   const source = await readFile(new URL("../app/api/sklejki/route.ts", import.meta.url), "utf8");
+  assert.match(source, /loadCabinetPimRowsHourly/);
+  assert.match(source, /imtID: row\.imtId/);
+  assert.doesNotMatch(source, /карточек больше безопасного лимита 3000/);
+  assert.doesNotMatch(source, /for \(let page = 0; page <= 30; page\+\+\)/);
   assert.match(source, /\.range\(page \* PAGE_SIZE, page \* PAGE_SIZE \+ PAGE_SIZE - 1\)/);
   assert.match(source, /Воронка WB превысила безопасный лимит/);
   assert.match(source, /Реклама WB превысила безопасный лимит/);

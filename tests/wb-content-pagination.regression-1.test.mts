@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { fetchWbCardPages } from "../lib/wb/cardPagination";
+import { fetchWbCardPages, fetchWbCardsByNmIds } from "../lib/wb/cardPagination";
 
 test("Content API pagination continues beyond the old 30-page ceiling", async () => {
   let calls = 0;
@@ -46,4 +46,33 @@ test("Content API pagination bounds every upstream page request", async () => {
   });
 
   assert.equal(hasTimeoutSignal, true);
+});
+
+test("scoped Content API lookup searches exact nmIDs without scanning the seller catalog", async () => {
+  const requests: Array<{ textSearch?: string; updatedAt?: string }> = [];
+  const slept: number[] = [];
+  const rows = await fetchWbCardsByNmIds<{ nmID: number }>({
+    token: "test-token",
+    nmIds: [1244157225, 1244157226, 1244157225],
+    minIntervalMs: 600,
+    sleep: async (ms) => { slept.push(ms); },
+    fetchImpl: async (_input, init) => {
+      const body = JSON.parse(String(init?.body)) as {
+        settings: { cursor: { updatedAt?: string }; filter: { textSearch?: string } };
+      };
+      requests.push({
+        textSearch: body.settings.filter.textSearch,
+        updatedAt: body.settings.cursor.updatedAt,
+      });
+      const nmID = Number(body.settings.filter.textSearch);
+      return Response.json({ cards: [{ nmID }, { nmID: 999 }] });
+    },
+  });
+
+  assert.deepEqual(rows.map((row) => row.nmID), [1244157225, 1244157226]);
+  assert.deepEqual(requests, [
+    { textSearch: "1244157225", updatedAt: undefined },
+    { textSearch: "1244157226", updatedAt: undefined },
+  ]);
+  assert.deepEqual(slept, [600]);
 });

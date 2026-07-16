@@ -2,16 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { hasCabinetAccess } from "@/lib/auth/cabinetAccess";
 import { wbCardImageUrl } from "@/lib/wb/cardImage";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
-import { getWbCabinetSources } from "@/lib/wb/cabinetTokens";
 import { resolveShopCabinet } from "@/lib/rnp/resolveShop";
-import { allowsProduct, type WbProductScope } from "@/lib/wb/productScope";
 import { closedMoscowDates } from "@/lib/wb/sklejki";
-import { loadHourlyDashboard } from "@/lib/cache/hourlyDashboard";
+import { loadHourlyDashboard, type HourlyDashboardCacheOptions } from "@/lib/cache/hourlyDashboard";
+import { loadCabinetPimRowsHourly } from "@/lib/wb/cards";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
-
-const CARDS_URL = "https://content-api.wildberries.ru/content/v2/get/cards/list";
 
 interface WbCard {
   nmID: number;
@@ -19,7 +16,6 @@ interface WbCard {
   vendorCode: string;
   title?: string;
   subjectName?: string;
-  brand?: string;
   _shop?: string;
 }
 
@@ -32,8 +28,6 @@ const MAX_DB_PAGES = 30;
 
 const r1 = (v: number) => Math.round(v * 10) / 10;
 
-const EMPTY = { groups_multi: [], groups_solo: [], total_sku: 0, multi_groups: 0, solo_skus: 0, covered: 0 };
-
 // Контракт inferno: {groups_multi, groups_solo, total_sku, multi_groups, solo_skus, covered}.
 // ?cabinet=<uuid|all> — карточки тянем токеном Контент каждого кабинета, тегируем кабинетом.
 export async function GET(request: NextRequest) {
@@ -41,43 +35,24 @@ export async function GET(request: NextRequest) {
   if (!(await hasCabinetAccess(cabinetId))) {
     return NextResponse.json({ error: "Нет доступа к кабинету" }, { status: 403 });
   }
+  const cacheOptions: HourlyDashboardCacheOptions = {
+    forceRefresh: request.nextUrl.searchParams.get("refresh") === "1",
+    backgroundRefresh: request.nextUrl.searchParams.get("background") === "1",
+  };
   const payload = await loadHourlyDashboard(
     "wb-sklejki",
-    { cabinetId },
+    { cabinetId, schema: 2 },
     async () => {
-      const sources = await getWbCabinetSources(cabinetId, "content");
-      if (!sources.length) return EMPTY;
-
-  // 1) карточки из Content API — по каждому кабинету своим токеном, с тегом кабинета.
-  //    Кабинеты независимы (свой токен, свой курсор) — тянем их ПАРАЛЛЕЛЬНО; внутри
-  //    одного кабинета страницы курсора остаются последовательными (так требует API).
-  const fetchCabinetCards = async (src: { token: string; name: string; productScope: WbProductScope }): Promise<WbCard[]> => {
-    const out: WbCard[] = [];
-    let cursor: { updatedAt?: string; nmID?: number } = {};
-    for (let page = 0; page <= 30; page++) {
-      const res = await fetch(CARDS_URL, {
-        method: "POST",
-        headers: { Authorization: src.token, "Content-Type": "application/json" },
-        body: JSON.stringify({ settings: { cursor: { limit: 100, ...cursor }, filter: { withPhoto: -1 } } }),
-        cache: "no-store",
-      });
-      if (!res.ok) {
-        throw new Error(`${src.name}: Content API ${res.status}: ${(await res.text()).slice(0, 180)}`);
-      }
-      const json = (await res.json()) as { cards?: WbCard[]; cursor?: { updatedAt?: string; nmID?: number } };
-      const batch = json.cards ?? [];
-      if (page === 30 && batch.length) {
-        throw new Error(`${src.name}: карточек больше безопасного лимита 3000`);
-      }
-      for (const c of batch) {
-        if (!allowsProduct(src.productScope, c.nmID, c.brand)) continue;
-        out.push({ ...c, _shop: src.name });
-      }
-      if (batch.length < 100) break;
-      cursor = { updatedAt: json.cursor?.updatedAt, nmID: json.cursor?.nmID };
-    }
-    return out;
-  };
+  // 1) Один общий часовой снимок карточек для PIM, поставок и склеек.
+  //    У scoped-кабинетов он ищет только разрешённые nmID, не обходит весь чужой каталог.
+  const cardsPromise = loadCabinetPimRowsHourly(cabinetId, cacheOptions).then((rows): WbCard[] => rows.map((row) => ({
+    nmID: row.nmId,
+    imtID: row.imtId,
+    vendorCode: row.article,
+    title: row.name,
+    subjectName: row.subject,
+    _shop: row.shop,
+  })));
 
   // 2) метрики воронки/рекламы по nm (7д и 14д) из синка — не зависят от карточек,
   //    запускаем ОДНОВРЕМЕННО с их фетчем, а не после.
@@ -130,11 +105,10 @@ export async function GET(request: NextRequest) {
     db.rpc("rnp_report", { p_cabinet: cabinetId }),
   ]);
 
-  const [cardsBySource, metricsRes] = await Promise.all([
-    Promise.all(sources.map(fetchCabinetCards)),
+  const [cards, metricsRes] = await Promise.all([
+    cardsPromise,
     metricsPromise,
   ]);
-  const cards = cardsBySource.flat();
 
   // рейтинг/отзывы по SKU — уже наполненная wb_feedbacks (см. раздел /reviews), просто джойн
   const ratingAgg = new Map<number, { sum: number; count: number }>();
@@ -247,10 +221,7 @@ export async function GET(request: NextRequest) {
         covered,
       };
     },
-    {
-      forceRefresh: request.nextUrl.searchParams.get("refresh") === "1",
-      backgroundRefresh: request.nextUrl.searchParams.get("background") === "1",
-    },
+    cacheOptions,
   );
   return NextResponse.json(payload, { headers: { "X-Dashboard-Cache": "hourly-snapshot" } });
 }

@@ -3,7 +3,7 @@ import { getWbCabinetSources } from "@/lib/wb/cabinetTokens";
 import { allowsProduct } from "@/lib/wb/productScope";
 import type { ProductReadinessStatus } from "@/lib/wb/productReadiness";
 import { loadHourlyDashboard, type HourlyDashboardCacheOptions } from "@/lib/cache/hourlyDashboard";
-import { fetchWbCardPages } from "@/lib/wb/cardPagination";
+import { fetchWbCardPages, fetchWbCardsByNmIds } from "@/lib/wb/cardPagination";
 
 const CARDS_URL = "https://content-api.wildberries.ru/content/v2/get/cards/list";
 
@@ -11,7 +11,7 @@ interface Characteristic { name?: string; value?: string | string[] }
 interface RawDimensions { length?: number; width?: number; height?: number; weightBrutto?: number }
 interface RawPhoto { big?: string; c246x328?: string }
 interface RawCard {
-  nmID: number; vendorCode: string; title?: string; subjectName?: string; brand?: string;
+  nmID: number; imtID?: number; vendorCode: string; title?: string; subjectName?: string; brand?: string;
   characteristics?: Characteristic[]; dimensions?: RawDimensions; photos?: RawPhoto[];
   // Точное поле WB под видео не подтверждено документацией (сайт блокирует прямой
   // fetch спецификации) — проверяем оба правдоподобных места best-effort. См.
@@ -27,7 +27,7 @@ function hasVideoOn(c: RawCard): boolean {
 export interface CabinetCard { article: string; nm_id: number; name: string; color: string; subject: string; shop: string }
 
 export interface PimRow {
-  nmId: number; article: string; name: string; brand: string; subject: string; shop: string;
+  nmId: number; imtId: number; article: string; name: string; brand: string; subject: string; shop: string;
   cabinetId: string | null;
   length: number | null; width: number | null; height: number | null; weightBrutto: number | null;
   materials: string; photosCount: number; photos: string[]; hasVideo: boolean; wbUrl: string;
@@ -48,6 +48,18 @@ function colorOf(c: RawCard): string {
   return characteristicOf(c, /цвет/i);
 }
 
+async function fetchSourceCatalog(src: Awaited<ReturnType<typeof getWbCabinetSources>>[number]): Promise<RawCard[]> {
+  if (src.productScope.allowedNmIds !== null) {
+    return fetchWbCardsByNmIds<RawCard>({
+      token: src.token,
+      nmIds: src.productScope.allowedNmIds,
+    });
+  }
+  const catalog = await fetchWbCardPages<RawCard>({ token: src.token });
+  if (!catalog.caughtUp) throw new Error("каталог не догружен до конца курсора");
+  return catalog.rows;
+}
+
 // cabinetId задан → один кабинет; null → все активные.
 export async function fetchCabinetCards(cabinetId: string | null): Promise<CabinetCard[]> {
   const sources = await getWbCabinetSources(cabinetId, "content");
@@ -55,9 +67,8 @@ export async function fetchCabinetCards(cabinetId: string | null): Promise<Cabin
   const failures: string[] = [];
   for (const src of sources) {
     try {
-      const catalog = await fetchWbCardPages<RawCard>({ token: src.token });
-      if (!catalog.caughtUp) throw new Error("каталог не догружен до конца курсора");
-      for (const c of catalog.rows) {
+      const catalog = await fetchSourceCatalog(src);
+      for (const c of catalog) {
         if (!allowsProduct(src.productScope, c.nmID, c.brand)) continue;
         out.push({ article: c.vendorCode || String(c.nmID), nm_id: c.nmID, name: c.title || "", color: colorOf(c), subject: c.subjectName || "", shop: src.name });
       }
@@ -76,13 +87,13 @@ export async function fetchCabinetPimRows(cabinetId: string | null): Promise<Pim
   const results = await Promise.all(sources.map(async (src) => {
     const rows: PimRow[] = [];
     try {
-      const catalog = await fetchWbCardPages<RawCard>({ token: src.token });
-      if (!catalog.caughtUp) throw new Error("каталог не догружен до конца курсора");
-      for (const c of catalog.rows) {
+      const catalog = await fetchSourceCatalog(src);
+      for (const c of catalog) {
         if (!allowsProduct(src.productScope, c.nmID, c.brand)) continue;
         const photos = (c.photos || []).map((p) => p.c246x328 || p.big || "").filter(Boolean);
         rows.push({
           nmId: c.nmID,
+          imtId: Number.isFinite(c.imtID) ? Number(c.imtID) : c.nmID,
           article: c.vendorCode || String(c.nmID),
           name: c.title || "",
           brand: c.brand || "",
@@ -120,7 +131,7 @@ export function loadCabinetPimRowsHourly(
 ): Promise<PimRow[]> {
   return loadHourlyDashboard(
     "wb-pim-cards",
-    { cabinetId, schema: 2 },
+    { cabinetId, schema: 3 },
     () => fetchCabinetPimRows(cabinetId),
     options,
   );

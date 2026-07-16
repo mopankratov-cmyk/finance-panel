@@ -25,12 +25,85 @@ export interface FetchWbCardPagesOptions<Row> {
   onPage?: (page: WbCardPage<Row>) => Promise<void> | void;
 }
 
+export interface FetchWbCardsByNmIdsOptions<Row extends { nmID: number }> {
+  token: string;
+  nmIds: number[];
+  requestTimeoutMs?: number;
+  minIntervalMs?: number;
+  fetchImpl?: FetchLike;
+  sleep?: (ms: number) => Promise<void>;
+}
+
 function cursorKey(cursor: WbCardCursor): string {
   return `${cursor.updatedAt ?? ""}|${cursor.nmID ?? ""}`;
 }
 
 function compactText(value: string): string {
   return value.replace(/\s+/g, " ").trim();
+}
+
+function retryDelayMs(response: Response, fallbackMs: number): number {
+  const raw = response.headers.get("retry-after");
+  const seconds = raw ? Number(raw) : Number.NaN;
+  return Number.isFinite(seconds) ? Math.max(0, seconds * 1000) : fallbackMs;
+}
+
+async function readCardPayload<Row>(response: Response): Promise<{ cards?: Row[]; cursor?: WbCardCursor }> {
+  if (!response.ok) throw new Error(`WB Content API ${response.status}: ${(await response.text()).slice(0, 180)}`);
+  const text = await response.text();
+  try {
+    return JSON.parse(text) as { cards?: Row[]; cursor?: WbCardCursor };
+  } catch {
+    const snippet = compactText(text).slice(0, 180);
+    throw new Error(snippet ? `WB Content API вернул не JSON: ${snippet}` : "WB Content API вернул пустой ответ");
+  }
+}
+
+/**
+ * Быстрый путь для кабинетов с точным allowlist: WB поддерживает textSearch
+ * только для одного артикула за запрос, поэтому ищем разрешённые nmID
+ * последовательно и соблюдаем интервал Content API.
+ */
+export async function fetchWbCardsByNmIds<Row extends { nmID: number }>(
+  options: FetchWbCardsByNmIdsOptions<Row>,
+): Promise<Row[]> {
+  const fetchImpl = options.fetchImpl ?? fetch;
+  const sleep = options.sleep ?? ((ms: number) => new Promise((resolve) => setTimeout(resolve, ms)));
+  const requestTimeoutMs = options.requestTimeoutMs ?? 15_000;
+  const minIntervalMs = options.minIntervalMs ?? 600;
+  const nmIds = [...new Set(options.nmIds.filter((nmId) => Number.isInteger(nmId) && nmId > 0))];
+  const rows = new Map<number, Row>();
+  let requestsMade = 0;
+
+  for (const nmId of nmIds) {
+    if (requestsMade > 0 && minIntervalMs > 0) await sleep(minIntervalMs);
+    const body = JSON.stringify({
+      settings: {
+        cursor: { limit: 100 },
+        filter: { withPhoto: -1, textSearch: String(nmId) },
+      },
+    });
+    const request = () => fetchImpl(CARDS_URL, {
+      method: "POST",
+      headers: { Authorization: options.token, "Content-Type": "application/json" },
+      body,
+      cache: "no-store",
+      signal: AbortSignal.timeout(requestTimeoutMs),
+    });
+
+    let response = await request();
+    requestsMade++;
+    if (response.status === 429) {
+      await sleep(retryDelayMs(response, Math.max(minIntervalMs, 1_000)));
+      response = await request();
+      requestsMade++;
+    }
+    const payload = await readCardPayload<Row>(response);
+    const exact = (Array.isArray(payload.cards) ? payload.cards : []).find((card) => card.nmID === nmId);
+    if (exact) rows.set(nmId, exact);
+  }
+
+  return [...rows.values()];
 }
 
 /** Полный курсорный обход Content API без прежнего ограничения в 3 000 карточек. */
@@ -61,15 +134,7 @@ export async function fetchWbCardPages<Row>(options: FetchWbCardPagesOptions<Row
       }
       throw error;
     }
-    if (!response.ok) throw new Error(`WB Content API ${response.status}: ${(await response.text()).slice(0, 180)}`);
-    const text = await response.text();
-    let payload: { cards?: Row[]; cursor?: WbCardCursor };
-    try {
-      payload = JSON.parse(text) as { cards?: Row[]; cursor?: WbCardCursor };
-    } catch {
-      const snippet = compactText(text).slice(0, 180);
-      throw new Error(snippet ? `WB Content API вернул не JSON: ${snippet}` : "WB Content API вернул пустой ответ");
-    }
+    const payload = await readCardPayload<Row>(response);
     const batch = Array.isArray(payload.cards) ? payload.cards : [];
     rows.push(...batch);
 
