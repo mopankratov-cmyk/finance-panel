@@ -87,6 +87,10 @@ export async function GET(request: NextRequest) {
         .in("status", [7, 9, 11])
         .order("advert_id", { ascending: true });
       aq = t.cabinetId === null ? aq.is("cabinet_id", null) : aq.eq("cabinet_id", t.cabinetId);
+      if (isScoped(t.productScope)) {
+        const allowedNmIds = [...new Set(t.productScope.allowedNmIds ?? [])];
+        aq = aq.overlaps("nm_ids", allowedNmIds);
+      }
       const { data: advRows, error: advErr } = await aq;
       if (advErr) {
         errors.push(`${t.name}: ${advErr.message}`);
