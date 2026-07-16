@@ -59,7 +59,7 @@ export async function GET(request: NextRequest) {
 
   const payload = await loadHourlyDashboard(
     "wb-seo-skus",
-    { cabinetId, start: period.start, end: period.end, days, schema: 2 },
+    { cabinetId, start: period.start, end: period.end, days, schema: 3 },
     async () => {
       const [funnel, ad, totals, costs, dailySku] = await Promise.all([
         loadAllSupabasePages<FunnelRow>((from, to) => {

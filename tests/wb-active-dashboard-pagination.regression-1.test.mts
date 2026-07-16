@@ -13,9 +13,11 @@ test("SEO and funnel dashboards drain all daily WB fact pages", async () => {
   assert.match(seo, /loadAllSupabasePages<FunnelRow>/);
   assert.match(seo, /loadAllSupabasePages<AdRow>/);
   assert.match(seo, /"wb-seo-skus"/);
+  assert.match(seo, /schema: 3/);
   assert.match(funnel, /loadAllSupabasePages<FunnelRow>/);
   assert.match(funnel, /loadAllSupabasePages<AdRow>/);
   assert.match(funnel, /"wb-funnel-day-metrics"/);
+  assert.match(funnel, /schema: 3/);
 });
 
 test("market and review KPIs no longer stop at Supabase's first 1000 rows", async () => {

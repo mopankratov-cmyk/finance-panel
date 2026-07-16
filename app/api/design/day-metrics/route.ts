@@ -29,7 +29,7 @@ export async function GET(req: NextRequest) {
   const sp = new URL(req.url).searchParams;
   const payload = await loadHourlyDashboard(
     "wb-funnel-day-metrics",
-    { cabinetId: p_cabinet, since, schema: 2 },
+    { cabinetId: p_cabinet, since, schema: 3 },
     async () => {
       const [funnelRows, adRows] = await Promise.all([
         loadAllSupabasePages<FunnelRow>((from, to) => {
