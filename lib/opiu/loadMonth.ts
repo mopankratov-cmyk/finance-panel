@@ -1,12 +1,14 @@
 import { wbFetch } from "@/lib/wb/fetch";
 import { fetchSalesReport } from "@/lib/wb/fetchSalesReport";
-import type { WbAdStat, WbOrder } from "@/lib/wb/types";
+import type { WbOrder } from "@/lib/wb/types";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { supabase } from "@/lib/supabase";
 import { OPIU_ENTITY } from "./constants";
 import { buildOpiuReport, type OpiuReport } from "./buildReport";
 import { weeksInMonth, type MonthWeek } from "./weeks";
-import type { ProductCostRow } from "./metrics";
+import type { ProductCostRow, AdvertSpendRow } from "./metrics";
+import { fetchGoogleSheetCosts, fetchDeliveryCosts } from "./fetchGoogleCosts";
+import { fetchNmOrderStats } from "./fetchNmStats";
 
 async function fetchOrders(
   dateFrom: string,
@@ -27,36 +29,75 @@ async function fetchOrders(
   });
 }
 
-// Расход на рекламу берём из синхронизированной таблицы wb_advert_nm_daily (cron),
-// а не из живого advert/v3/fullstats — у того лимит 1 запрос/мин → ОПиУ ловил 429/500.
+interface WbAdvertUpdItem {
+  updTime?: string;
+  updSum?: number;
+  [key: string]: unknown;
+}
+
+// Расход на рекламу — advert-api.wildberries.ru/adv/v1/upd (история списаний).
+// Дата в формате YYYY-MM-DD (без времени). Использует stats-токен — WB_TOKEN_ADVERT
+// для этого endpoint отозван, stats-токен принимается.
 async function fetchAdStats(
   dateFrom: string,
   dateTo: string,
-): Promise<WbAdStat[]> {
-  const client = getSupabaseAdmin() ?? supabase;
-  const { data, error } = await client
-    .from("wb_advert_nm_daily")
-    .select("date, spent")
-    .gte("date", dateFrom)
-    .lte("date", dateTo);
-
-  if (error) {
-    console.error("[opiu] ad stats read:", error.message);
+  refresh: boolean,
+): Promise<AdvertSpendRow[]> {
+  const statsToken =
+    process.env.WB_STATS_TOKEN ?? process.env.WB_TOKEN_STATISTICS ?? "";
+  if (!statsToken) {
+    console.warn("[opiu] WB_STATS_TOKEN не настроен — реклама будет 0");
     return [];
   }
 
-  // Агрегируем расход по дате → один WbAdStat с массивом days (как ждёт adsSpendInRange).
-  const byDate = new Map<string, number>();
-  for (const row of data ?? []) {
-    const d = String(row.date).slice(0, 10);
-    byDate.set(d, (byDate.get(d) ?? 0) + Number(row.spent ?? 0));
+  const url = `https://advert-api.wildberries.ru/adv/v1/upd?from=${dateFrom}&to=${dateTo}`;
+  const cacheOpt: RequestInit = refresh
+    ? { cache: "no-store" }
+    : { next: { revalidate: 3600 } } as RequestInit;
+
+  try {
+    const res = await fetch(url, {
+      method: "GET",
+      headers: { Authorization: statsToken, "Content-Type": "application/json" },
+      ...cacheOpt,
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      console.error("[opiu] advert upd HTTP", res.status, text.slice(0, 200));
+      return [];
+    }
+    const data = (await res.json()) as WbAdvertUpdItem[];
+    if (!Array.isArray(data)) {
+      console.error("[opiu] advert upd unexpected response:", JSON.stringify(data).slice(0, 200));
+      return [];
+    }
+    return data.map((item) => ({
+      date: String(item.updTime ?? "").slice(0, 10),
+      sum: Number(item.updSum ?? 0),
+    }));
+  } catch (err) {
+    console.error("[opiu] advert upd fetch error:", err);
+    return [];
   }
-  if (byDate.size === 0) return [];
-  const days = [...byDate.entries()].map(([date, sum]) => ({ date, sum }));
-  return [{ days }];
 }
 
 async function fetchProductCosts(): Promise<ProductCostRow[]> {
+  // Сначала пробуем Google Sheets (актуальная себестоимость + подготовка)
+  try {
+    const rows = await fetchGoogleSheetCosts();
+    if (rows.length > 0) {
+      return rows.map((r) => ({
+        article: r.article,
+        wb_barcode: null,
+        cost_rub: r.cost_rub,
+        packaging_rub: r.packaging_rub,
+      }));
+    }
+  } catch (err) {
+    console.warn("[opiu] Google Sheets costs fetch failed, falling back to Supabase:", err);
+  }
+
+  // Fallback: Supabase product_costs (без packaging_rub)
   const client = getSupabaseAdmin() ?? supabase;
   const { data, error } = await client
     .from("product_costs")
@@ -64,36 +105,7 @@ async function fetchProductCosts(): Promise<ProductCostRow[]> {
     .eq("entity", OPIU_ENTITY);
 
   if (error) throw new Error(error.message);
-  return (data ?? []) as ProductCostRow[];
-}
-
-async function fetchWarehouseCosts(
-  month: string,
-  weeks: MonthWeek[],
-): Promise<Record<string, number>> {
-  const map: Record<string, number> = {};
-  const client = getSupabaseAdmin() ?? supabase;
-  const { data, error } = await client
-    .from("opiu_warehouse_costs")
-    .select("week_start, amount")
-    .eq("entity", OPIU_ENTITY)
-    .eq("month", month);
-
-  if (error) {
-    console.error("[opiu] warehouse costs read:", error.message);
-    return map;
-  }
-
-  for (const row of data ?? []) {
-    const key = String(row.week_start).slice(0, 10);
-    map[key] = Number(row.amount) || 0;
-  }
-
-  for (const w of weeks) {
-    if (!(w.weekStart in map)) map[w.weekStart] = 0;
-  }
-
-  return map;
+  return (data ?? []).map((r) => ({ ...r, packaging_rub: 0 })) as ProductCostRow[];
 }
 
 export interface OpiuLoadMeta {
@@ -122,15 +134,22 @@ export async function loadOpiuMonth(
   const dateFrom = weeks[0]!.rangeFrom;
   const dateTo = weeks[weeks.length - 1]!.rangeTo;
 
-  const [sales, orders, adStats, costs, warehouseByWeek] = await Promise.all([
+  const [sales, orders, adStats, costs, deliveryCosts, nmStats] = await Promise.all([
     fetchSalesReport(dateFrom, dateTo, refresh),
     fetchOrders(dateFrom, dateTo, refresh),
-    fetchAdStats(dateFrom, dateTo),
+    fetchAdStats(dateFrom, dateTo, refresh),
     fetchProductCosts(),
-    fetchWarehouseCosts(month, weeks),
+    fetchDeliveryCosts().catch((e) => {
+      console.warn("[opiu] delivery costs fetch failed:", e);
+      return [];
+    }),
+    fetchNmOrderStats(dateFrom, dateTo, refresh).catch((e) => {
+      console.warn("[opiu] nm-report fetch failed:", e);
+      return [];
+    }),
   ]);
 
-  const report = buildOpiuReport(weeks, sales, orders, adStats, costs, warehouseByWeek);
+  const report = buildOpiuReport(weeks, sales, orders, adStats, costs, deliveryCosts, nmStats);
 
   return {
     month,

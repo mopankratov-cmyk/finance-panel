@@ -1,4 +1,12 @@
-import { addDays, toISODate } from "@/lib/analytics/format";
+import { addDays } from "@/lib/analytics/format";
+
+// Timezone-safe: toISOString() сдвигает дату в UTC, поэтому в UTC+3 пн → вс.
+function toISODate(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
 
 export interface MonthWeek {
   weekStart: string;
