@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { LoadingBanner, SkeletonTableRows, useElapsedSeconds } from "@/components/ui/LoadingState";
 import { MARKETPLACE_METRICS, METRIC_CELL_TONE, marketplaceMetricStatus, type MarketplaceMetricId } from "@/lib/analytics/marketplaceMetrics";
 import { useDashboardFilter } from "@/lib/useDashboardFilter";
+import { closedMoscowDates } from "@/lib/wb/sklejki";
 import { WbProductImage } from "./WbProductImage";
 import { WbEmptyState, WbErrorState, WbModuleHeader } from "./WbModuleHeader";
 import { useWbCabinet } from "./WbCabinetContext";
@@ -107,10 +108,8 @@ export function WbFunnelPage({ embedded = false }: { embedded?: boolean }) {
   }, [query, skus?.skus]);
 
   const dates = useMemo(() => {
-    const all = new Set<string>();
-    for (const byDate of Object.values(daily?.metrics ?? {})) for (const date of Object.keys(byDate)) all.add(date);
-    return [...all].sort().slice(-windowDays);
-  }, [daily?.metrics, windowDays]);
+    return closedMoscowDates(windowDays);
+  }, [windowDays]);
 
   useEffect(() => setRowWindow({ start: 0, end: Math.min(18, filtered.length) }), [filtered.length, query]);
 

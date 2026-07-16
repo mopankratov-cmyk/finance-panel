@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { checkCronAuth, chunkedUpsert, writeSyncLog } from "@/lib/sync/helpers";
 import { getWbSyncTargets } from "@/lib/sync/cabinets";
 import {
+  funnelGapRecoveryPeriod,
   rotateFunnelTargets,
   runFunnelTargetsConcurrently,
   syncFunnelPeriod,
@@ -13,6 +14,7 @@ import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
 import { allowsNm } from "@/lib/wb/productScope";
 import { isWbGlobalRateLimit } from "@/lib/wb/rateLimit";
 import { claimWbSyncJob, readWbSyncState, writeWbSyncState } from "@/lib/wb/syncState";
+import { closedMoscowDates } from "@/lib/wb/sklejki";
 
 const HISTORY_URL =
   "https://seller-analytics-api.wildberries.ru/api/analytics/v3/sales-funnel/products/history";
@@ -37,6 +39,8 @@ interface HistoryItem {
   product?: { nmId?: number };
   history?: HistoryDay[];
 }
+
+interface FunnelCoverageRow { nm_id: number; date: string }
 
 // nm_id, по которым тянем воронку, в разрезе кабинета (остатки + заказы за 30 дней).
 async function nmIdsForCabinet(db: SupabaseClient, cabinetId: string | null): Promise<number[]> {
@@ -79,7 +83,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Нет активных кабинетов и WB_STATS_TOKEN не настроен" }, { status: 500 });
   }
 
-  const period = syncFunnelPeriod(request.url); // история доступна до вчера; по понедельникам восстанавливаем последние 7 дней.
+  const defaultPeriod = syncFunnelPeriod(request.url); // история доступна до вчера; по понедельникам восстанавливаем последние 7 дней.
+  const recoveryDates = closedMoscowDates(30);
 
   let total = 0;
   const errors: string[] = [];
@@ -127,6 +132,34 @@ export async function GET(request: NextRequest) {
         : 0;
       if (batches.length > 1) rotated.push(`${t.name}: срез ${startB + 1}/${batches.length}`);
       const batch = batches[startB];
+      let period = defaultPeriod;
+      if (defaultPeriod.mode !== "manual") {
+        let coverageQuery = db
+          .from("wb_funnel_daily")
+          .select("nm_id, date")
+          .in("nm_id", batch)
+          .gte("date", recoveryDates[0])
+          .lte("date", recoveryDates[recoveryDates.length - 1]);
+        coverageQuery = t.cabinetId === null
+          ? coverageQuery.is("cabinet_id", null)
+          : coverageQuery.eq("cabinet_id", t.cabinetId);
+        const coverageResult = await coverageQuery;
+        if (coverageResult.error) {
+          const message = `проверка истории: ${coverageResult.error.message}`;
+          errors.push(`${t.name}: ${message}`);
+          if (t.cabinetId) await writeWbSyncState(db, t.cabinetId, "funnel", {
+            cursor: String(startB), status: "error", attempts: (previous?.attempts ?? 0) + 1, lastError: message,
+            state: { ...(previous?.state ?? {}), nextBatch: startB, totalBatches: batches.length, totalSku: nmIds.length },
+          });
+          return;
+        }
+        period = funnelGapRecoveryPeriod(
+          recoveryDates,
+          batch,
+          (coverageResult.data ?? []) as FunnelCoverageRow[],
+          defaultPeriod,
+        );
+      }
       const res = await fetchWbFunnelHistory({
         url: HISTORY_URL,
         token: t.statsToken,
@@ -149,7 +182,7 @@ export async function GET(request: NextRequest) {
               lastRateLimitedAt: new Date().toISOString(),
             },
           });
-          progress.push({ cabinet: t.name, status: "rate_limited", batch: startB + 1, batches: batches.length, nextBatch: startB });
+          progress.push({ cabinet: t.name, status: "rate_limited", batch: startB + 1, batches: batches.length, nextBatch: startB, period });
           return;
         }
         errors.push(`${t.name}: ${message}`);
@@ -210,18 +243,19 @@ export async function GET(request: NextRequest) {
             coveragePct,
             maxAgeHours: nextBatch === 0 ? 0 : Math.max(1, batches.length - startB - 1),
             lastSyncedAt: syncedAt,
+            lastPeriod: period,
           },
         });
         if (stateError) errors.push(`${t.name}: состояние funnel: ${stateError}`);
       }
-      progress.push({ cabinet: t.name, batch: startB + 1, batches: batches.length, sku: batch.length, coveragePct, nextBatch });
+      progress.push({ cabinet: t.name, batch: startB + 1, batches: batches.length, sku: batch.length, coveragePct, nextBatch, period });
     });
 
     const ok = errors.length === 0;
     const note = rotated.length ? ` [ротация: ${rotated.join(", ")}]` : "";
     await writeSyncLog("funnel", ok ? "ok" : "error", total, errors.length ? (errors.join("; ") + note).trim() : null, startedAt);
     return NextResponse.json(
-      { ok, rows: total, cabinets: targets.length, period, progress, rotated, errors },
+      { ok, rows: total, cabinets: targets.length, period: defaultPeriod, progress, rotated, errors },
       { status: ok ? 200 : 502 },
     );
   } catch (err) {

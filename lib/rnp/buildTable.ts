@@ -253,6 +253,19 @@ function knownSum(values: (number | null)[]) {
   return known.length ? known.reduce((sum, value) => sum + value, 0) : null;
 }
 
+/**
+ * Остатки WB — текущий снимок, а не исторический ряд. Показываем известный KPI
+ * только в колонке даты факта, чтобы РНП не оставлял актуальную ячейку пустой и
+ * при этом не выдавал сегодняшний остаток за остаток прошлых дней.
+ */
+export function pointInTimeMetricDaily(
+  days: string[],
+  asOf: string,
+  value: number | null,
+): (number | null)[] {
+  return days.map((day) => day === asOf && value != null && Number.isFinite(value) ? value : null);
+}
+
 export function buildFunnelMetrics(
   days: string[],
   asOf: string,
@@ -368,11 +381,12 @@ function buildMetrics(
   const turnover = dailyBuyouts > 0 ? Math.round(stock / dailyBuyouts) : null;
   const gmroi = grossTotalForGmroi != null && stockMoney > 0 ? r1(Math.min(999, (grossTotalForGmroi / stockMoney) * 100)) : null;
   const knownStockMoney = stockMoney > 0 || stock === 0 ? Math.round(stockMoney) : null;
+  const snapshotNote = "Текущий снимок показан в дате факта; прошлые дни не подменяются сегодняшним остатком.";
   out.push(
-    { field: "stock", label: "Остаток, шт", kind: "int", daily: days.map(() => null), total: stock, forecast: null, source: "WB Остатки", group_start: true },
-    { field: "money", label: "Деньги в остатках, ₽", kind: "money", daily: days.map(() => null), total: knownStockMoney, forecast: null, source: "WB Остатки + себестоимость", qualityReason: knownStockMoney == null && stock > 0 ? "missing_cost" : undefined },
-    { field: "turnover", label: "Оборачиваемость, дней", kind: "int", daily: days.map(() => null), total: turnover, forecast: null, source: "WB Остатки + выкупы", qualityReason: turnover == null ? "no_activity" : undefined },
-    { field: "gmroi", label: "GMROI, %", kind: "pct", daily: days.map(() => null), total: gmroi, forecast: null, source: "Расчётная прибыль / деньги в остатках", qualityReason: cost <= 0 && stock > 0 ? "missing_cost" : wbCostPct == null ? "missing_rates" : gmroi == null ? "no_activity" : undefined },
+    { field: "stock", label: "Остаток, шт", kind: "int", daily: pointInTimeMetricDaily(days, asOf, stock), total: stock, forecast: null, source: "WB Остатки", note: snapshotNote, group_start: true },
+    { field: "money", label: "Деньги в остатках, ₽", kind: "money", daily: pointInTimeMetricDaily(days, asOf, knownStockMoney), total: knownStockMoney, forecast: null, source: "WB Остатки + себестоимость", note: snapshotNote, qualityReason: knownStockMoney == null && stock > 0 ? "missing_cost" : undefined },
+    { field: "turnover", label: "Оборачиваемость, дней", kind: "int", daily: pointInTimeMetricDaily(days, asOf, turnover), total: turnover, forecast: null, source: "WB Остатки + выкупы", note: snapshotNote, qualityReason: turnover == null ? "no_activity" : undefined },
+    { field: "gmroi", label: "GMROI, %", kind: "pct", daily: pointInTimeMetricDaily(days, asOf, gmroi), total: gmroi, forecast: null, source: "Расчётная прибыль / деньги в остатках", note: snapshotNote, qualityReason: cost <= 0 && stock > 0 ? "missing_cost" : wbCostPct == null ? "missing_rates" : gmroi == null ? "no_activity" : undefined },
   );
   return applyMetricForecasts(out, days, asOf);
 }
@@ -895,7 +909,10 @@ export async function buildRnpTable(from: string, to: string, cabinetId?: string
     }
     // GMROI сводки — из агрегированной валовой / деньги в остатках
     const gmroiM = summary.find((m) => m.field === "gmroi");
-    if (gmroiM) gmroiM.total = costedSkuCount && grossTotal != null && stockMoneyTotal > 0 ? Math.round(Math.min(999, (grossTotal / stockMoneyTotal) * 100) * 10) / 10 : null;
+    if (gmroiM) {
+      gmroiM.total = costedSkuCount && grossTotal != null && stockMoneyTotal > 0 ? Math.round(Math.min(999, (grossTotal / stockMoneyTotal) * 100) * 10) / 10 : null;
+      gmroiM.daily = pointInTimeMetricDaily(days, asOf, gmroiM.total);
+    }
     for (const metric of summary.filter((item) => ["gross", "margin_pct", "money", "gmroi"].includes(item.field))) {
       applyEconomyMetricCoverage(
         metric,
