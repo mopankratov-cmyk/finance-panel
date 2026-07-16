@@ -361,11 +361,13 @@ export function SalesPlanPage({
           : loadError ? <PageError message={loadError} onRetry={() => setReloadKey((value) => value + 1)} />
             : mode === "rnp" ? <>
               {approvedPlan ? <section className="rounded-xl border border-slate-200 bg-white p-3" aria-label="Период план-факт">
-                <div className="flex flex-wrap gap-2" role="tablist" aria-label="Месяц план-факт">
-                  {visibleMonths.map((monthKey) => {
-                    const monthTotal = calculateSalesPlanSummary(approvedPlan, [monthKey]).orders;
-                    return <button key={monthKey} type="button" role="tab" aria-selected={activeMonth === monthKey} onClick={() => setActiveMonth(monthKey)} className={`min-h-11 rounded-lg border px-4 text-xs font-semibold transition sm:min-h-9 ${activeMonth === monthKey ? `${selectedTab} border-transparent` : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"}`}>{salesPlanMonthLabel(year, monthKey)} <span className={`ml-2 rounded-md px-1.5 py-0.5 text-[10px] ${activeMonth === monthKey ? "bg-white/20" : "bg-slate-100 text-slate-500"}`}>{number(monthTotal)} шт.</span></button>;
-                  })}
+                <div className="max-w-full overflow-x-auto overscroll-x-contain pb-1">
+                  <div className="grid w-full min-w-[780px] grid-cols-6 gap-2" role="tablist" aria-label="Месяц план-факт">
+                    {visibleMonths.map((monthKey) => {
+                      const monthTotal = calculateSalesPlanSummary(approvedPlan, [monthKey]).orders;
+                      return <button key={monthKey} type="button" role="tab" aria-selected={activeMonth === monthKey} onClick={() => setActiveMonth(monthKey)} className={`min-h-11 min-w-0 whitespace-nowrap rounded-lg border px-2 text-xs font-semibold transition ${activeMonth === monthKey ? `${selectedTab} border-transparent` : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"}`}>{salesPlanMonthLabel(year, monthKey)} <span className={`ml-1 rounded-md px-1.5 py-0.5 text-[10px] ${activeMonth === monthKey ? "bg-white/20" : "bg-slate-100 text-slate-500"}`}>{number(monthTotal)} шт.</span></button>;
+                    })}
+                  </div>
                 </div>
               </section> : null}
               <SalesPlanFactView marketplace={marketplace} cabinetId={cabinetId} monthKey={activeMonth} approvedPlan={approvedPlan} />
@@ -380,14 +382,16 @@ export function SalesPlanPage({
                   </section> : null}
 
                   <section className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-3">
-                    <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                      <div className="flex flex-wrap gap-2" role="tablist" aria-label="Месяц плана">
-                        {visibleMonths.map((monthKey) => {
-                          const monthTotal = calculateSalesPlanSummary(displayPlan, [monthKey]).orders;
-                          return <button key={monthKey} type="button" role="tab" aria-selected={activeMonth === monthKey} onClick={() => setActiveMonth(monthKey)} className={`min-h-11 rounded-lg border px-4 text-xs font-semibold transition sm:min-h-9 ${activeMonth === monthKey ? `${selectedTab} border-transparent` : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"}`}>{salesPlanMonthLabel(year, monthKey)} <span className={`ml-2 rounded-md px-1.5 py-0.5 text-[10px] ${activeMonth === monthKey ? "bg-white/20" : "bg-slate-100 text-slate-500"}`}>{number(monthTotal)} шт.</span></button>;
-                        })}
+                    <div className="flex flex-col gap-3">
+                      <div className="max-w-full overflow-x-auto overscroll-x-contain pb-1">
+                        <div className="grid w-full min-w-[780px] grid-cols-6 gap-2" role="tablist" aria-label="Месяц плана">
+                          {visibleMonths.map((monthKey) => {
+                            const monthTotal = calculateSalesPlanSummary(displayPlan, [monthKey]).orders;
+                            return <button key={monthKey} type="button" role="tab" aria-selected={activeMonth === monthKey} onClick={() => setActiveMonth(monthKey)} className={`min-h-11 min-w-0 whitespace-nowrap rounded-lg border px-2 text-xs font-semibold transition ${activeMonth === monthKey ? `${selectedTab} border-transparent` : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"}`}>{salesPlanMonthLabel(year, monthKey)} <span className={`ml-1 rounded-md px-1.5 py-0.5 text-[10px] ${activeMonth === monthKey ? "bg-white/20" : "bg-slate-100 text-slate-500"}`}>{number(monthTotal)} шт.</span></button>;
+                          })}
+                        </div>
                       </div>
-                      <div className="flex flex-col gap-2 sm:flex-row">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
                         <label className="relative block min-w-[220px]"><span className="sr-only">Поиск в плане</span><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Артикул, цвет или ID" className="h-11 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-xs outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100 sm:h-9" /></label>
                         {!readOnly ? <button type="button" onClick={() => setAddOpen(true)} className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border px-3 text-xs font-semibold focus-visible:outline-none focus-visible:ring-2 sm:min-h-9 ${soft}`}><PackagePlus className="h-4 w-4" /> Добавить SKU</button> : null}
                       </div>
