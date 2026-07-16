@@ -136,8 +136,8 @@ export async function GET(request: NextRequest) {
       let processed = 0;
       for (let k = 0; k < idBatches.length; k++) {
         if (Date.now() > deadline) break; // тайм-бокс: остальное доберём следующим прогоном
-        // следующий батч ТОГО ЖЕ кабинета требует паузу 61с (WB 1 req/min) — она одна не влезает
-        // в 60с-функцию, поэтому за прогон берём максимум 1 батч на кабинет, остальное — ротацией по дням
+        // WB fullstats требует интервал 20с. За прогон берём максимум один батч
+        // на кабинет, чтобы оставить бюджет функции остальным кабинетам.
         if (processed > 0) break;
         const batch = idBatches[(startB + k) % idBatches.length];
         processed++;
@@ -151,7 +151,7 @@ export async function GET(request: NextRequest) {
           url: url.toString(),
           token: t.advertToken,
           deadline,
-          fallbackWaitMs: 1_000,
+          fallbackWaitMs: 20_000,
         });
         if (!res.ok) {
           const message = `WB ${res.status}: ${(await res.text()).slice(0, 120)}`;
