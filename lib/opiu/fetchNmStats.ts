@@ -83,7 +83,6 @@ export async function fetchNmOrderStats(
       for (const p of products) {
         totalOrderSum += p.statistic?.selected?.orderSum ?? 0;
       }
-
       if (!data.data?.isNextPage) break;
       page++;
     }

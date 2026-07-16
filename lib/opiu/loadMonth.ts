@@ -134,7 +134,7 @@ export async function loadOpiuMonth(
   const dateFrom = weeks[0]!.rangeFrom;
   const dateTo = weeks[weeks.length - 1]!.rangeTo;
 
-  const [sales, orders, adStats, costs, deliveryCosts, nmStats] = await Promise.all([
+  const [sales, orders, adStats, costs, deliveryCosts, nmStatsByWeek] = await Promise.all([
     fetchSalesReport(dateFrom, dateTo, refresh),
     fetchOrders(dateFrom, dateTo, refresh),
     fetchAdStats(dateFrom, dateTo, refresh),
@@ -143,11 +143,18 @@ export async function loadOpiuMonth(
       console.warn("[opiu] delivery costs fetch failed:", e);
       return [];
     }),
-    fetchNmOrderStats(dateFrom, dateTo, refresh).catch((e) => {
-      console.warn("[opiu] nm-report fetch failed:", e);
-      return [];
-    }),
+    // Воронка продаж v3: запрашиваем отдельно для каждой недели,
+    // чтобы date совпадал с rangeFrom недели при агрегации
+    Promise.all(
+      weeks.map((w) =>
+        fetchNmOrderStats(w.rangeFrom, w.rangeTo, refresh).catch((e) => {
+          console.warn("[opiu] sales-funnel fetch failed:", e);
+          return [];
+        }),
+      ),
+    ).then((arr) => arr.flat()),
   ]);
+  const nmStats = nmStatsByWeek;
 
   const report = buildOpiuReport(weeks, sales, orders, adStats, costs, deliveryCosts, nmStats);
 
