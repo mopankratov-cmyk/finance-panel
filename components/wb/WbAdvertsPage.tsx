@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { LoadingBanner, SkeletonCards, useElapsedSeconds } from "@/components/ui/LoadingState";
 import { MARKETPLACE_METRICS, METRIC_BADGE_TONE, marketplaceMetricStatus } from "@/lib/analytics/marketplaceMetrics";
 import { compareAdvertCampaigns } from "@/lib/adverts/campaignSort";
+import { deploymentPinnedFetch } from "@/lib/http/deploymentPinnedFetch";
 import { readApiResponse } from "@/lib/http/readApiResponse";
 import { useDashboardFilter } from "@/lib/useDashboardFilter";
 import { WbProductImage } from "./WbProductImage";
@@ -164,7 +165,7 @@ export function WbAdvertsPage() {
     const deadline = window.setTimeout(() => { timedOut = true; controller.abort(); }, 45_000);
     setLoading(true);
     setError(null);
-    fetch(`/api/adverts/list?cabinet=${encodeURIComponent(cabinetId || "all")}`, { cache: "no-store", signal: controller.signal })
+    deploymentPinnedFetch(`/api/adverts/list?cabinet=${encodeURIComponent(cabinetId || "all")}`, { cache: "no-store", signal: controller.signal })
       .then(async (response) => {
         const body = await readApiResponse<AdvertsData>(response, "Реклама WB");
         if (!response.ok) throw new Error(body.error || `Ошибка ${response.status}`);
