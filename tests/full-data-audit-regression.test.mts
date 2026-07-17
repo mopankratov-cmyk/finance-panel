@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
-import { rotatingSyncTargets } from "../lib/sync/rotation";
+import { rotatingSyncTargets, stalestSyncTargets } from "../lib/sync/rotation";
 import { mergeSklejkiPayloads, type SklejkiPayload } from "../lib/wb/sklejki";
 
 test("finance screens use synced WB facts and the multi-cabinet Ozon resolver", async () => {
@@ -27,6 +27,19 @@ test("hourly long-running sync jobs rotate across cabinets", () => {
   assert.deepEqual(rotatingSyncTargets(cabinets, { nowMs: 2 * 60 * 60 * 1_000 }), [{ id: "c" }]);
   assert.deepEqual(rotatingSyncTargets(cabinets, { requestedId: "b" }), [{ id: "b" }]);
   assert.deepEqual(rotatingSyncTargets(cabinets, { runAll: true }), cabinets);
+});
+
+test("stale-first rotation repairs missing and oldest cabinet caches before fresh ones", () => {
+  const cabinets = [{ id: "missing" }, { id: "old" }, { id: "fresh" }];
+  const timestamps = new Map<string, string | null>([
+    ["old", "2026-07-14T00:00:00.000Z"],
+    ["fresh", "2026-07-17T00:00:00.000Z"],
+  ]);
+
+  assert.deepEqual(stalestSyncTargets(cabinets, timestamps, 2), [
+    { id: "missing" },
+    { id: "old" },
+  ]);
 });
 
 test("all-cabinet sklejki are merged from independent snapshots", () => {

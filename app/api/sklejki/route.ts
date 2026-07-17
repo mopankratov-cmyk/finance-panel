@@ -34,11 +34,11 @@ const r1 = (v: number) => Math.round(v * 10) / 10;
 async function loadSklejkiSnapshot(cabinetId: string, cacheOptions: HourlyDashboardCacheOptions) {
   return loadHourlyDashboard(
     "wb-sklejki",
-    { cabinetId, schema: 2 },
+    { cabinetId, schema: 3 },
     async () => {
   // 1) Один общий часовой снимок карточек для PIM, поставок и склеек.
   //    У scoped-кабинетов он ищет только разрешённые nmID, не обходит весь чужой каталог.
-  const cardsPromise = loadCabinetPimRowsHourly(cabinetId, cacheOptions).then((rows): WbCard[] => rows.map((row) => ({
+  const cardsPromise = loadCabinetPimRowsHourly(cabinetId).then((rows): WbCard[] => rows.map((row) => ({
     nmID: row.nmId,
     imtID: row.imtId,
     vendorCode: row.article,
@@ -110,12 +110,14 @@ async function loadSklejkiSnapshot(cabinetId: string, cacheOptions: HourlyDashbo
     for (let offset = 0; offset < nmIds.length; offset += 100) {
       const chunk = nmIds.slice(offset, offset + 100);
       for (let page = 0; page < MAX_DB_PAGES; page++) {
-        const { data, error } = await db
+        let feedbackQuery = db
           .from("wb_feedbacks")
           .select("nm_id, rating")
           .in("nm_id", chunk)
           .order("nm_id", { ascending: true })
           .range(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE - 1);
+        if (cabinetId) feedbackQuery = feedbackQuery.eq("cabinet_id", cabinetId);
+        const { data, error } = await feedbackQuery;
         if (error) throw new Error(`Отзывы WB: ${error.message}`);
         const batch = data ?? [];
         for (const r of batch) {

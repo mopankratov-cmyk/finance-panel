@@ -33,4 +33,7 @@ test("feedbacks sync route resets a stale WB feedback cursor before failing red"
   assert.match(source, /unansweredSkip = 0/);
   assert.match(source, /answeredSkip = 0/);
   assert.match(source, /cursorResets/);
+  assert.match(source, /export const maxDuration = 300/);
+  assert.match(source, /MAX_PAGES_PER_RUN = 30/);
+  assert.match(source, /orderedCabs/);
 });

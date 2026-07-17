@@ -7,10 +7,10 @@ import { fetchWbFeedbacksPage, WbFeedbacksCursorError, WbFeedbacksScopeError, ty
 import { allowsProduct } from "@/lib/wb/productScope";
 import { claimWbSyncJob, readWbSyncState, writeWbSyncState } from "@/lib/wb/syncState";
 
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 const TAKE = 5_000;
-const MAX_PAGES_PER_RUN = 6;
+const MAX_PAGES_PER_RUN = 30;
 const ANSWERED_WINDOW_DAYS = 35;
 
 interface FeedbackCursorState extends Record<string, unknown> {
@@ -59,26 +59,29 @@ export async function GET(request: NextRequest) {
   if (authError) return authError;
 
   const startedAt = new Date();
-  const deadline = Date.now() + 50_000;
+  const deadline = Date.now() + 280_000;
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 500 });
   const allCabs = await getActiveWbCabinets();
   const onlyCabinet = request.nextUrl.searchParams.get("cabinet");
   const cabs = onlyCabinet ? allCabs.filter((cabinet) => cabinet.id === onlyCabinet) : allCabs;
   if (!cabs.length) return NextResponse.json({ ok: true, rows: 0, cabinets: 0, progress: [] });
+  const hourIndex = Math.floor(Date.now() / 3_600_000);
+  const offset = onlyCabinet || cabs.length < 2 ? 0 : hourIndex % cabs.length;
+  const orderedCabs = [...cabs.slice(offset), ...cabs.slice(0, offset)];
 
   const cutoff = Date.now() - ANSWERED_WINDOW_DAYS * 86_400_000;
   let total = 0;
   const errors: string[] = [];
   const progress: Array<Record<string, unknown>> = [];
 
-  for (const cabinet of cabs) {
+  for (const cabinet of orderedCabs) {
     if (Date.now() > deadline) {
       errors.push(`${cabinet.name}: продолжение перенесено на следующий запуск`);
       continue;
     }
     const previous = await readWbSyncState<FeedbackCursorState>(db, cabinet.id, "feedbacks");
-    if (!(await claimWbSyncJob(db, cabinet.id, "feedbacks", 15 * 60))) {
+    if (!(await claimWbSyncJob(db, cabinet.id, "feedbacks", 6 * 60))) {
       progress.push({ cabinet: cabinet.name, status: "running", skipped: true });
       continue;
     }

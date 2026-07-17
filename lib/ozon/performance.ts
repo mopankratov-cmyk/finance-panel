@@ -51,8 +51,27 @@ export async function runWithConcurrency<T, R>(
   return result;
 }
 
+export interface PerfProductReportBatchState {
+  campaigns: string[];
+  uuid?: string;
+  done?: boolean;
+  bySku?: Record<string, { spent: number; ordersMoney: number }>;
+}
+
+export interface PerfProductReportResumeState {
+  periodFrom: string;
+  periodTo: string;
+  campaignIds: string[];
+  batches: PerfProductReportBatchState[];
+}
+
 interface PerfProductReportOptions {
   throwOnError?: boolean;
+  allowPending?: boolean;
+  resumeState?: PerfProductReportResumeState | null;
+  onState?: (state: PerfProductReportResumeState) => Promise<void> | void;
+  pollAttempts?: number;
+  pollIntervalMs?: number;
 }
 
 export function performanceReportQuality(
@@ -87,6 +106,8 @@ export async function perfProductReport(
   bySku: Record<string, { spent: number; ordersMoney: number }>;
   partial: boolean;
   errors: string[];
+  complete: boolean;
+  resumeState: PerfProductReportResumeState;
 } | null> {
   const fail = (message: string): null => {
     if (options.throwOnError) throw new Error(message);
@@ -102,27 +123,57 @@ export async function perfProductReport(
     const cj = (await cr.json()) as { list?: { id: string | number; advObjectType?: string; state?: string }[] };
     const allIds = (cj.list ?? []).filter((c) => c.advObjectType === "SKU").map((c) => String(c.id));
     const ids = allIds.slice(0, maxCampaigns);
-    if (!ids.length) return { bySku: {}, partial: false, errors: [] };
+    if (!ids.length) return {
+      bySku: {},
+      partial: false,
+      errors: [],
+      complete: true,
+      resumeState: { periodFrom: fromIso, periodTo: toIso, campaignIds: [], batches: [] },
+    };
 
     const bySku: Record<string, { spent: number; ordersMoney: number }> = {};
-    // 2) отчёт батчами по 10 кампаний. Ozon нестабильно создаёт пять async-
-    // отчётов одновременно; два параллельных батча укладываются в 60с и не
-    // превращают весь кабинет в ошибку при временном сбое одного отчёта.
-    const batches = Array.from({ length: Math.ceil(ids.length / 10) }, (_, index) => ids.slice(index * 10, index * 10 + 10));
-    const loadBatch = async (batch: string[]) => {
-      const gen = await tfetch(`${BASE}/api/client/statistics/json`, {
-        method: "POST", headers: { ...auth, "Content-Type": "application/json" },
-        body: JSON.stringify({ campaigns: batch, from: fromIso, to: toIso, groupBy: "NO_GROUP_BY" }),
-        cache: "no-store",
-      });
-      if (!gen.ok) return { ok: false as const, error: `create HTTP ${gen.status}` };
-      const uuid = ((await gen.json()) as { UUID?: string }).UUID;
-      if (!uuid) return { ok: false as const, error: "create: UUID отсутствует" };
-      // 3) поллинг (до 15с на батч)
+    // Ozon готовит Performance-отчёты асинхронно. Сохраняем UUID и уже
+    // скачанные батчи, чтобы serverless-запуск мог продолжить их через час,
+    // а не создавать новые отчёты бесконечно.
+    const canResume = options.resumeState
+      && options.resumeState.periodFrom === fromIso
+      && options.resumeState.periodTo === toIso
+      && options.resumeState.campaignIds.join(",") === ids.join(",");
+    const resumeState: PerfProductReportResumeState = canResume
+      ? structuredClone(options.resumeState!)
+      : {
+          periodFrom: fromIso,
+          periodTo: toIso,
+          campaignIds: ids,
+          batches: Array.from(
+            { length: Math.ceil(ids.length / 10) },
+            (_, index) => ({ campaigns: ids.slice(index * 10, index * 10 + 10) }),
+          ),
+        };
+    const persistState = async () => options.onState?.(structuredClone(resumeState));
+    const loadBatch = async (batchState: PerfProductReportBatchState) => {
+      if (batchState.done) return { ok: true as const, error: null };
+      let uuid = batchState.uuid;
+      if (!uuid) {
+        const gen = await tfetch(`${BASE}/api/client/statistics/json`, {
+          method: "POST", headers: { ...auth, "Content-Type": "application/json" },
+          body: JSON.stringify({ campaigns: batchState.campaigns, from: fromIso, to: toIso, groupBy: "NO_GROUP_BY" }),
+          cache: "no-store",
+        });
+        if (!gen.ok) return { ok: false as const, error: `create HTTP ${gen.status}` };
+        uuid = ((await gen.json()) as { UUID?: string }).UUID;
+        if (!uuid) return { ok: false as const, error: "create: UUID отсутствует" };
+        batchState.uuid = uuid;
+        await persistState();
+      }
+      // По умолчанию сохраняем прежнее короткое ожидание для интерактивных
+      // экранов. Фоновый синк задаёт больше попыток и сохраняет UUID между ними.
       let ready = false;
       let lastState = "pending";
-      for (let t = 0; t < 10; t++) {
-        await sleep(1500);
+      const pollAttempts = Math.max(1, options.pollAttempts ?? 10);
+      const pollIntervalMs = Math.max(0, options.pollIntervalMs ?? 1_500);
+      for (let t = 0; t < pollAttempts; t++) {
+        await sleep(pollIntervalMs);
         const st = await tfetch(`${BASE}/api/client/statistics/${uuid}`, { headers: auth, cache: "no-store" });
         if (!st.ok) {
           lastState = `HTTP ${st.status}`;
@@ -132,29 +183,57 @@ export async function perfProductReport(
         if (lastState === "OK") { ready = true; break; }
         if (["ERROR", "FAILED"].includes(lastState)) break;
       }
-      if (!ready) return { ok: false as const, error: `status ${lastState}` };
+      if (!ready) {
+        if (/^(?:ERROR|FAILED|HTTP 404)$/i.test(lastState)) {
+          delete batchState.uuid;
+          await persistState();
+        }
+        return { ok: false as const, error: `status ${lastState}` };
+      }
       // 4) скачать
       const rep = await tfetch(`${BASE}/api/client/statistics/report?UUID=${uuid}`, { headers: auth, cache: "no-store" });
-      if (!rep.ok) return { ok: false as const, error: `download HTTP ${rep.status}` };
+      if (!rep.ok) {
+        if (rep.status === 404) {
+          delete batchState.uuid;
+          await persistState();
+        }
+        return { ok: false as const, error: `download HTTP ${rep.status}` };
+      }
       const data = (await rep.json()) as Record<string, { report?: { rows?: { sku?: string; moneySpent?: string; ordersMoney?: string }[] } }>;
+      const batchBySku: Record<string, { spent: number; ordersMoney: number }> = {};
       for (const camp of Object.values(data)) {
         for (const row of camp.report?.rows ?? []) {
           const sku = String(row.sku ?? "");
           if (!sku) continue;
-          const e = bySku[sku] ?? { spent: 0, ordersMoney: 0 };
+          const e = batchBySku[sku] ?? { spent: 0, ordersMoney: 0 };
           e.spent += numRu(row.moneySpent);
           e.ordersMoney += numRu(row.ordersMoney);
-          bySku[sku] = e;
+          batchBySku[sku] = e;
         }
       }
+      batchState.bySku = batchBySku;
+      batchState.done = true;
+      await persistState();
       return { ok: true as const, error: null };
     };
-    const results = await runWithConcurrency(batches, 2, loadBatch);
+    // Создаём/поллим отчёты последовательно: параллельные create-запросы Ozon
+    // регулярно отвечают 429. Состояние после каждого батча уже сохранено.
+    const results = [];
+    for (const batch of resumeState.batches) results.push(await loadBatch(batch));
+    for (const batch of resumeState.batches) {
+      for (const [sku, value] of Object.entries(batch.bySku ?? {})) {
+        const aggregate = bySku[sku] ?? { spent: 0, ordersMoney: 0 };
+        aggregate.spent += value.spent;
+        aggregate.ordersMoney += value.ordersMoney;
+        bySku[sku] = aggregate;
+      }
+    }
     const completedBatches = results.filter((result) => result.ok).length;
     const errors = results.flatMap((result, index) => result.ok ? [] : [`batch ${index + 1}: ${result.error}`]);
-    const quality = performanceReportQuality(allIds.length, ids.length, batches.length, completedBatches);
-    if (!quality.available) return fail(`Performance report: ${errors.join("; ") || "нет готовых батчей"}`);
-    return { bySku, partial: quality.partial, errors };
+    const quality = performanceReportQuality(allIds.length, ids.length, resumeState.batches.length, completedBatches);
+    const complete = completedBatches === resumeState.batches.length;
+    if (!quality.available && !options.allowPending) return fail(`Performance report: ${errors.join("; ") || "нет готовых батчей"}`);
+    return { bySku, partial: quality.partial, errors, complete, resumeState };
   } catch (error) {
     if (options.throwOnError) throw error instanceof Error ? error : new Error(String(error));
     return null;

@@ -57,3 +57,14 @@ test("sales route defers WB global-limiter 429 and refreshes freshness on succes
   assert.match(source, /lastSyncedAt: syncedAt/);
   assert.match(source, /deferred/);
 });
+
+test("orders route also defers WB global-limiter 429 and refreshes empty-run freshness", () => {
+  const source = readFileSync(new URL("../app/api/sync/orders/route.ts", import.meta.url), "utf8");
+
+  assert.match(source, /groupWbStatisticsTargets\(targets\)/);
+  assert.match(source, /isWbGlobalRateLimit\(res\.status, message\)/);
+  assert.match(source, /status: "deferred"/);
+  assert.match(source, /reason: "wb_global_rate_limit"/);
+  assert.match(source, /lastSyncedAt: syncedAt/);
+  assert.match(source, /deferred/);
+});

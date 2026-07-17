@@ -83,15 +83,9 @@ export async function GET(request: NextRequest) {
         progressRows.data ?? [],
         cabinets.map((cabinet) => ({ id: cabinet.id, scoped: cabinet.brand_filters.length > 0 })),
       );
-      if (!readiness.ready || !progressReadiness.ready) {
-        return NextResponse.json({
-          ok: false,
-          marketplace: "wb",
-          skipped: true,
-          error: "Кэш WB не обновлён: обязательные источники ещё не завершились успешно",
-          readiness: { jobs: readiness, progress: progressReadiness },
-        }, { status: 409 });
-      }
+      // Прогреваем из последнего сохранённого набора фактов даже пока один из
+      // длинных курсоров догоняет историю. Иначе отзывы/реклама блокировали PIM
+      // и «Склейки», хотя их каталог уже был полностью доступен.
       const rnp = await warmWbRnp();
       const scopes = await listWbRnpScopes();
       const secondary = await warmWbSecondaryDashboards(request.nextUrl.origin, scopes);
@@ -99,6 +93,7 @@ export async function GET(request: NextRequest) {
         ok: rnp.ok && secondary.ok,
         marketplace: "wb",
         views: { rnp, secondary },
+        readiness: { ready: readiness.ready && progressReadiness.ready, jobs: readiness, progress: progressReadiness },
         durationMs: rnp.durationMs + secondary.durationMs,
       };
       return NextResponse.json(result, { status: result.ok ? 200 : 502 });

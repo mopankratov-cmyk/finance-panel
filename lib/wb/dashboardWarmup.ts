@@ -60,6 +60,9 @@ async function warmPimCards(scope: WbDashboardScope): Promise<WarmCallResult> {
 
 export async function warmWbSecondaryDashboards(origin: string, scopes: WbDashboardScope[]) {
   const startedAt = Date.now();
+  // Сначала один раз прогреваем общий PIM. Он компонуется из кабинетных
+  // снимков, поэтому последующие Sklejki/PIM не дублируют Content API.
+  const pim = await warmPimCards({ cabinetId: null, label: "Все кабинеты" });
   const snapshots: Array<{
     scope: string;
     ok: boolean;
@@ -73,10 +76,9 @@ export async function warmWbSecondaryDashboards(origin: string, scopes: WbDashbo
   }> = [];
 
   const warm = async (scope: WbDashboardScope) => {
-    const [sklejki, nichesResult, pim, unit, seo, funnelMetrics] = await Promise.all([
+    const [sklejki, nichesResult, unit, seo, funnelMetrics] = await Promise.all([
       fetchWarmSnapshot(wbDashboardWarmUrl(origin, "sklejki", scope)),
       fetchWarmSnapshot(wbDashboardWarmUrl(origin, "market-niches", scope)),
-      warmPimCards(scope),
       fetchWarmSnapshot(wbDashboardWarmUrl(origin, "unit", scope)),
       fetchWarmSnapshot(wbDashboardWarmUrl(origin, "seo", scope)),
       fetchWarmSnapshot(wbDashboardWarmUrl(origin, "funnel-metrics", scope)),

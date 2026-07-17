@@ -3,7 +3,7 @@ import { checkCronAuth, chunkedUpsert, writeSyncLog } from "@/lib/sync/helpers";
 import { cabinetProductScope, getActiveWbCabinets } from "@/lib/wb/cabinetTokens";
 import { getWbCommission } from "@/lib/wb/commissions";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
-import { rotatingSyncTargets } from "@/lib/sync/rotation";
+import { rotatingSyncTargets, stalestSyncTargets } from "@/lib/sync/rotation";
 
 // Finance API допускает только один запрос в минуту (burst 1). Даже отчёт из
 // одной страницы требует второй запрос через минуту, чтобы получить финальный
@@ -21,16 +21,24 @@ export async function GET(request: NextRequest) {
   const startedAt = new Date();
   const allCabs = await getActiveWbCabinets();
   const onlyCabinet = request.nextUrl.searchParams.get("cabinet");
-  const cabs = rotatingSyncTargets(allCabs, {
-    requestedId: onlyCabinet,
-    runAll: request.nextUrl.searchParams.get("all") === "1",
-  });
+  const runAll = request.nextUrl.searchParams.get("all") === "1";
+  const db = getSupabaseAdmin();
+  let cabs = rotatingSyncTargets(allCabs, { requestedId: onlyCabinet, runAll });
+  if (!onlyCabinet && !runAll && db && allCabs.length > 1) {
+    const { data: freshness, error: freshnessError } = await db
+      .from("wb_cabinet_commission_overhead")
+      .select("cabinet_id, synced_at")
+      .in("cabinet_id", allCabs.map((cabinet) => cabinet.id));
+    if (!freshnessError) {
+      const syncedAtById = new Map((freshness ?? []).map((row) => [String(row.cabinet_id), row.synced_at as string | null]));
+      cabs = stalestSyncTargets(allCabs, syncedAtById);
+    }
+  }
   if (onlyCabinet && !cabs.length) {
     return NextResponse.json({ ok: false, error: "WB-кабинет не найден" }, { status: 404 });
   }
   if (!cabs.length) return NextResponse.json({ ok: true, rows: 0, cabinets: 0 });
 
-  const db = getSupabaseAdmin();
   let total = 0;
   const errors: string[] = [];
 

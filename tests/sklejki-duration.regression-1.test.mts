@@ -8,4 +8,6 @@ test("sklejki cold snapshot has enough time to populate the hourly cache", async
   assert.match(route, /maxDuration\s*=\s*300/);
   assert.match(route, /Promise\.allSettled/);
   assert.match(route, /loadSklejkiSnapshot\(cabinet\.id/);
+  assert.match(route, /feedbackQuery = feedbackQuery\.eq\("cabinet_id", cabinetId\)/);
+  assert.match(route, /loadCabinetPimRowsHourly\(cabinetId\)/);
 });

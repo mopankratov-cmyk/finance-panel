@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFile } from "node:fs/promises";
 import {
   HOURLY_DASHBOARD_CACHE_SECONDS,
   HOURLY_DASHBOARD_CACHE_VERSION,
@@ -60,4 +61,18 @@ test("hourly warmup targets every cabinet scope and the default market view", ()
   const funnel = new URL(wbDashboardWarmUrl("https://panel.test", "funnel-metrics", { cabinetId: "cab-a", label: "Cab A" }));
   assert.equal(funnel.pathname, "/api/design/day-metrics");
   assert.equal(funnel.searchParams.get("refresh"), "1");
+});
+
+test("WB warmup reuses per-cabinet PIM snapshots and does not wait for every long cursor", async () => {
+  const [cards, warmup, route] = await Promise.all([
+    readFile(new URL("../lib/wb/cards.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/wb/dashboardWarmup.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/sync/dashboard-cache/route.ts", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(cards, /loadCabinetPimRowsHourly\(cabinet\.id, options\)/);
+  assert.match(warmup, /const pim = await warmPimCards/);
+  assert.doesNotMatch(warmup, /nichesResult, pim, unit/);
+  assert.doesNotMatch(route, /if \(!readiness\.ready \|\| !progressReadiness\.ready\)/);
+  assert.match(route, /readiness: \{ ready:/);
 });

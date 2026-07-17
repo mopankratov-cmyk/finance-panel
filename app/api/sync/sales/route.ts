@@ -1,14 +1,26 @@
 import { NextRequest, NextResponse } from "next/server";
 import { checkCronAuth, chunkedUpsert, writeSyncLog } from "@/lib/sync/helpers";
-import { getWbSyncTargets, lastSyncDate, rememberScopedProducts } from "@/lib/sync/cabinets";
+import {
+  getWbSyncTargets,
+  groupWbStatisticsTargets,
+  lastSyncDate,
+  rememberScopedProducts,
+  type SyncTarget,
+} from "@/lib/sync/cabinets";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { allowsProduct } from "@/lib/wb/productScope";
 import { isWbGlobalRateLimit } from "@/lib/wb/rateLimit";
 import { initialStatisticsCursor, statisticsCursor } from "@/lib/wb/syncRecovery";
-import { claimWbSyncJob, readWbSyncState, writeWbSyncState } from "@/lib/wb/syncState";
+import { claimWbSyncJob, readWbSyncState, writeWbSyncState, type WbSyncState } from "@/lib/wb/syncState";
 import { fetchWbStatistics } from "@/lib/wb/statisticsRequest";
 
 export const maxDuration = 60; // глубокий бэкфилл (?from=) пишет десятки тысяч строк
+
+interface SalesSyncContext {
+  target: SyncTarget;
+  saved: WbSyncState | null;
+  dateFrom: string;
+}
 
 export async function GET(request: NextRequest) {
   const authError = checkCronAuth(request);
@@ -41,120 +53,133 @@ export async function GET(request: NextRequest) {
   const db = getSupabaseAdmin();
 
   try {
-    for (const t of targets) {
-      const saved = !forceFrom && db && t.cabinetId
-        ? await readWbSyncState(db, t.cabinetId, "sales")
-        : null;
-      const existingDate = !forceFrom && !saved
-        ? await lastSyncDate("wb_sales", t.cabinetId)
-        : null;
-      const dateFrom = forceFrom
-        ? new Date(forceFrom).toISOString().slice(0, 19)
-        : saved?.cursor
-          ?? (existingDate ? new Date(existingDate).toISOString().slice(0, 19) : initialStatisticsCursor());
-      if (!forceFrom && db && t.cabinetId && !(await claimWbSyncJob(db, t.cabinetId, "sales", 15 * 60))) {
-        progress.push({ cabinet: t.name, status: "running", skipped: true });
-        continue;
+    for (const sourceTargets of groupWbStatisticsTargets(targets)) {
+      const contexts: SalesSyncContext[] = [];
+      for (const target of sourceTargets) {
+        const saved = !forceFrom && db && target.cabinetId
+          ? await readWbSyncState(db, target.cabinetId, "sales")
+          : null;
+        const existingDate = !forceFrom && !saved
+          ? await lastSyncDate("wb_sales", target.cabinetId)
+          : null;
+        const dateFrom = forceFrom
+          ? new Date(forceFrom).toISOString().slice(0, 19)
+          : saved?.cursor
+            ?? (existingDate ? new Date(existingDate).toISOString().slice(0, 19) : initialStatisticsCursor());
+        if (!forceFrom && db && target.cabinetId && !(await claimWbSyncJob(db, target.cabinetId, "sales", 15 * 60))) {
+          progress.push({ cabinet: target.name, status: "running", skipped: true });
+          continue;
+        }
+        contexts.push({ target, saved, dateFrom });
       }
+      if (!contexts.length) continue;
+
+      const dateFrom = contexts.reduce((oldest, context) => context.dateFrom < oldest ? context.dateFrom : oldest, contexts[0].dateFrom);
 
       const url = new URL("https://statistics-api.wildberries.ru/api/v1/supplier/sales");
       url.searchParams.set("dateFrom", dateFrom);
       url.searchParams.set("flag", "0");
 
-      const res = await fetchWbStatistics({ url: url.toString(), token: t.statsToken, deadline });
+      const res = await fetchWbStatistics({ url: url.toString(), token: contexts[0].target.statsToken, deadline });
       if (!res.ok) {
         const message = `WB ${res.status}: ${(await res.text()).slice(0, 120)}`;
         if (isWbGlobalRateLimit(res.status, message)) {
-          deferred.push(`${t.name}: ${message}`);
-          if (!forceFrom && db && t.cabinetId) {
-            const nowIso = new Date().toISOString();
-            await writeWbSyncState(db, t.cabinetId, "sales", {
-              cursor: dateFrom,
-              status: "running",
-              attempts: 0,
-              lastError: message,
-              state: {
-                ...(saved?.state ?? {}),
-                historyStart: saved?.state.historyStart ?? dateFrom,
-                lastRateLimitedAt: nowIso,
-                lastRunAt: nowIso,
-              },
-            });
+          const nowIso = new Date().toISOString();
+          for (const context of contexts) {
+            const { target, saved } = context;
+            deferred.push(`${target.name}: ${message}`);
+            if (!forceFrom && db && target.cabinetId) {
+              await writeWbSyncState(db, target.cabinetId, "sales", {
+                cursor: context.dateFrom,
+                status: "running",
+                attempts: 0,
+                lastError: message,
+                state: {
+                  ...(saved?.state ?? {}),
+                  historyStart: saved?.state.historyStart ?? context.dateFrom,
+                  lastRateLimitedAt: nowIso,
+                  lastRunAt: nowIso,
+                },
+              });
+            }
+            progress.push({ cabinet: target.name, status: "deferred", reason: "wb_global_rate_limit", cursor: context.dateFrom });
           }
-          progress.push({ cabinet: t.name, status: "deferred", reason: "wb_global_rate_limit", cursor: dateFrom });
           continue;
         }
-        errors.push(`${t.name}: ${message}`);
-        if (!forceFrom && db && t.cabinetId) await writeWbSyncState(db, t.cabinetId, "sales", {
-          cursor: dateFrom,
-          status: "error",
-          attempts: (saved?.attempts ?? 0) + 1,
-          lastError: message,
-          state: { ...(saved?.state ?? {}), historyStart: saved?.state.historyStart ?? dateFrom, lastRunAt: new Date().toISOString() },
-        });
+        for (const context of contexts) {
+          const { target, saved } = context;
+          errors.push(`${target.name}: ${message}`);
+          if (!forceFrom && db && target.cabinetId) await writeWbSyncState(db, target.cabinetId, "sales", {
+            cursor: context.dateFrom,
+            status: "error",
+            attempts: (saved?.attempts ?? 0) + 1,
+            lastError: message,
+            state: { ...(saved?.state ?? {}), historyStart: saved?.state.historyStart ?? context.dateFrom, lastRunAt: new Date().toISOString() },
+          });
+        }
         continue;
       }
 
       const sales: Record<string, unknown>[] = await res.json();
       scanned += sales.length;
-      if (sales.length) await rememberScopedProducts(t, sales);
-
-      const syncedAt = new Date().toISOString();
-      const rows = sales
-        .filter((s) => allowsProduct(t.productScope, s.nmId, s.brand))
-        .map((s) => ({
-          sale_id: s.saleID as string,
-          nm_id: s.nmId as number,
-          date: s.date as string,
-          for_pay: s.forPay as number | null,
-          finished_price: s.finishedPrice as number | null,
-          // цена до СПП: priceWithDisc, иначе totalPrice×(1−disc%)
-          price_with_disc: (s.priceWithDisc as number | null) ?? (s.totalPrice != null ? Number(s.totalPrice) * (1 - Number(s.discountPercent ?? 0) / 100) : null),
-          cabinet_id: t.cabinetId,
-          synced_at: syncedAt,
-        }))
-        .filter((r) => r.sale_id)
-        .filter((r) => !toDate || String(r.date) < toDate);
-
-      const upsertError = await chunkedUpsert("wb_sales", rows, "sale_id", forceFrom ? 100_000 : undefined);
-      if (upsertError) {
-        errors.push(`${t.name}: ${upsertError}`);
-        if (!forceFrom && db && t.cabinetId) await writeWbSyncState(db, t.cabinetId, "sales", {
-          cursor: dateFrom,
-          status: "error",
-          attempts: (saved?.attempts ?? 0) + 1,
-          lastError: upsertError,
-          state: { ...(saved?.state ?? {}), historyStart: saved?.state.historyStart ?? dateFrom, lastRunAt: new Date().toISOString() },
-        });
-        continue;
-      }
-      total += rows.length;
-
       const nextCursor = sales.length
         ? statisticsCursor(sales, dateFrom)
         : new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
       const caughtUp = sales.length < 80_000;
-      let stateError: string | null = null;
-      if (!forceFrom && db && t.cabinetId) {
-        stateError = await writeWbSyncState(db, t.cabinetId, "sales", {
-          cursor: nextCursor,
-          status: caughtUp ? "caught_up" : "backfill",
-          attempts: 0,
-          lastError: null,
-          state: {
-            historyStart: saved?.state.historyStart ?? dateFrom,
-            lastRowDate: nextCursor,
-            rowsLoaded: Number(saved?.state.rowsLoaded ?? 0) + rows.length,
-            scanned: sales.length,
-            caughtUp,
-            coveragePct: caughtUp ? 100 : 0,
-            lastSyncedAt: syncedAt,
-            lastRunAt: syncedAt,
-          },
-        });
+      for (const context of contexts) {
+        const { target, saved } = context;
+        if (sales.length) await rememberScopedProducts(target, sales);
+        const syncedAt = new Date().toISOString();
+        const rows = sales
+          .filter((sale) => allowsProduct(target.productScope, sale.nmId, sale.brand))
+          .map((sale) => ({
+            sale_id: sale.saleID as string,
+            nm_id: sale.nmId as number,
+            date: sale.date as string,
+            for_pay: sale.forPay as number | null,
+            finished_price: sale.finishedPrice as number | null,
+            // цена до СПП: priceWithDisc, иначе totalPrice×(1−disc%)
+            price_with_disc: (sale.priceWithDisc as number | null) ?? (sale.totalPrice != null ? Number(sale.totalPrice) * (1 - Number(sale.discountPercent ?? 0) / 100) : null),
+            cabinet_id: target.cabinetId,
+            synced_at: syncedAt,
+          }))
+          .filter((row) => row.sale_id)
+          .filter((row) => !toDate || String(row.date) < toDate);
+        const upsertError = await chunkedUpsert("wb_sales", rows, "sale_id", forceFrom ? 100_000 : undefined);
+        if (upsertError) {
+          errors.push(`${target.name}: ${upsertError}`);
+          if (!forceFrom && db && target.cabinetId) await writeWbSyncState(db, target.cabinetId, "sales", {
+            cursor: context.dateFrom,
+            status: "error",
+            attempts: (saved?.attempts ?? 0) + 1,
+            lastError: upsertError,
+            state: { ...(saved?.state ?? {}), historyStart: saved?.state.historyStart ?? context.dateFrom, lastRunAt: syncedAt },
+          });
+          continue;
+        }
+        total += rows.length;
+        let stateError: string | null = null;
+        if (!forceFrom && db && target.cabinetId) {
+          stateError = await writeWbSyncState(db, target.cabinetId, "sales", {
+            cursor: nextCursor,
+            status: caughtUp ? "caught_up" : "backfill",
+            attempts: 0,
+            lastError: null,
+            state: {
+              historyStart: saved?.state.historyStart ?? context.dateFrom,
+              lastRowDate: nextCursor,
+              rowsLoaded: Number(saved?.state.rowsLoaded ?? 0) + rows.length,
+              scanned: sales.length,
+              caughtUp,
+              coveragePct: caughtUp ? 100 : 0,
+              lastSyncedAt: syncedAt,
+              lastRunAt: syncedAt,
+            },
+          });
+        }
+        if (stateError) errors.push(`${target.name}: состояние sales: ${stateError}`);
+        progress.push({ cabinet: target.name, scanned: sales.length, matched: rows.length, cursor: nextCursor, caughtUp, sharedRequest: contexts.length > 1, stateError });
       }
-      if (stateError) errors.push(`${t.name}: состояние sales: ${stateError}`);
-      progress.push({ cabinet: t.name, scanned: sales.length, matched: rows.length, cursor: nextCursor, caughtUp, stateError });
     }
 
     const ok = errors.length === 0;

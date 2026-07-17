@@ -16,6 +16,41 @@ export interface SyncTarget {
   advertToken: string; // Продвижение (adverts/advert-stats)
   contentToken: string; // Карточки товаров: полный каталог + точный бренд
   productScope: WbProductScope; // null allowlist = весь кабинет; массив = только выбранные nm_id
+  // Лимит supplier/orders и supplier/sales действует на продавца, а не на токен.
+  // Несколько виртуальных кабинетов одного seller должны делить один API-вызов.
+  statisticsSourceKey?: string;
+}
+
+export function wbStatisticsSourceKey(input: {
+  sellerId?: string | null;
+  inn?: string | null;
+  token: string;
+}): string {
+  if (input.sellerId?.trim()) return `seller:${input.sellerId.trim()}`;
+  if (input.inn?.trim()) return `inn:${input.inn.trim()}`;
+  try {
+    const payload = JSON.parse(Buffer.from(input.token.split(".")[1] ?? "", "base64url").toString("utf8")) as {
+      oid?: string | number;
+      sid?: string | number;
+    };
+    // oid — организация продавца; sid оставлен fallback для старых JWT.
+    const identity = payload.oid ?? payload.sid;
+    if (identity != null && String(identity).trim()) return `jwt-seller:${String(identity).trim()}`;
+  } catch {
+    // Legacy/non-JWT токены группируются только при полном совпадении.
+  }
+  return `token:${input.token}`;
+}
+
+export function groupWbStatisticsTargets(targets: readonly SyncTarget[]): SyncTarget[][] {
+  const groups = new Map<string, SyncTarget[]>();
+  for (const target of targets) {
+    const key = target.statisticsSourceKey || target.statsToken;
+    const group = groups.get(key) ?? [];
+    group.push(target);
+    groups.set(key, group);
+  }
+  return [...groups.values()];
 }
 
 export async function getWbSyncTargets(): Promise<SyncTarget[]> {
@@ -28,6 +63,7 @@ export async function getWbSyncTargets(): Promise<SyncTarget[]> {
       advertToken: c.token_advert || c.token,
       contentToken: c.token_content || c.token,
       productScope: cabinetProductScope(c),
+      statisticsSourceKey: wbStatisticsSourceKey({ sellerId: c.seller_id, inn: c.inn, token: c.token }),
     }));
   }
   const env = process.env.WB_STATS_TOKEN || process.env.WB_TOKEN_STATISTICS;
@@ -40,6 +76,7 @@ export async function getWbSyncTargets(): Promise<SyncTarget[]> {
       advertToken: process.env.WB_TOKEN_ADVERT || env,
       contentToken: process.env.WB_TOKEN_CONTENT || env,
       productScope: { brandFilters: [], allowedNmIds: null },
+      statisticsSourceKey: wbStatisticsSourceKey({ token: env }),
     },
   ];
 }

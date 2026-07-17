@@ -10,11 +10,12 @@ import { fetchWbStatistics } from "@/lib/wb/statisticsRequest";
 const FULLSTATS_URL = "https://advert-api.wildberries.ru/adv/v3/fullstats";
 // fullstats: до 50 кампаний за раз (WB 400 при >50).
 const ID_BATCH = 50;
+const MAX_BATCHES_PER_CABINET_PER_RUN = 4;
 // сколько дней истории тянем
 const DAYS_BACK = 14;
 
 // fullstats с паузами между батчами может идти дольше дефолта — поднимаем лимит
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 interface NmStat {
   nmId?: number;
@@ -68,17 +69,19 @@ export async function GET(request: NextRequest) {
   const rotated: string[] = [];
   const progress: Array<Record<string, unknown>> = [];
 
-  // Тайм-бокс на 60с-функцию + почасовая ротация среза кампаний.
-  const deadline = Date.now() + 50_000;
+  // До четырёх fullstats-батчей на кабинет с обязательным интервалом WB 20с.
+  // 300с хватает четырём кабинетам, а при общем seller порядок приоритета
+  // каждый час сдвигается, поэтому один большой кабинет не блокирует остальные.
+  const deadline = Date.now() + 280_000;
   const hourIndex = Math.floor(Date.now() / 3_600_000);
+  const targetOffset = onlyCabinet || targets.length < 2 ? 0 : hourIndex % targets.length;
+  const orderedTargets = [...targets.slice(targetOffset), ...targets.slice(0, targetOffset)];
 
   try {
-    for (const t of targets) {
+    for (const t of orderedTargets) {
       if (Date.now() > deadline) { rotated.push(`${t.name}: пропущен (бюджет)`); break; } // докрутим следующим прогоном
       const previous = t.cabinetId ? await readWbSyncState(db, t.cabinetId, "advert-stats") : null;
-      // Функция живёт максимум 60 секунд. Двухминутной аренды достаточно,
-      // чтобы не наложить два запуска и быстро восстановиться после WB 429.
-      if (t.cabinetId && !(await claimWbSyncJob(db, t.cabinetId, "advert-stats", 2 * 60))) {
+      if (t.cabinetId && !(await claimWbSyncJob(db, t.cabinetId, "advert-stats", 6 * 60))) {
         rotated.push(`${t.name}: уже выполняется`);
         continue;
       }
@@ -131,16 +134,15 @@ export async function GET(request: NextRequest) {
         : 0;
       if (idBatches.length > 1) rotated.push(`${t.name}: срез ${startB + 1}/${idBatches.length}`);
 
-      let failed = false;
-      let deferred = false;
-      let processed = 0;
+      let failedMessage: string | null = null;
+      let deferredMessage: string | null = null;
+      let nextBatchOnFailure: number | null = null;
+      const processedBatches: number[][] = [];
       for (let k = 0; k < idBatches.length; k++) {
         if (Date.now() > deadline) break; // тайм-бокс: остальное доберём следующим прогоном
-        // WB fullstats требует интервал 20с. За прогон берём максимум один батч
-        // на кабинет, чтобы оставить бюджет функции остальным кабинетам.
-        if (processed > 0) break;
-        const batch = idBatches[(startB + k) % idBatches.length];
-        processed++;
+        if (processedBatches.length >= MAX_BATCHES_PER_CABINET_PER_RUN) break;
+        const batchIndex = (startB + k) % idBatches.length;
+        const batch = idBatches[batchIndex];
 
         const url = new URL(FULLSTATS_URL);
         url.searchParams.set("ids", batch.join(","));
@@ -156,37 +158,19 @@ export async function GET(request: NextRequest) {
         if (!res.ok) {
           const message = `WB ${res.status}: ${(await res.text()).slice(0, 120)}`;
           if (isWbAdvertRateLimit(res.status, message)) {
-            rotated.push(`${t.name}: лимит WB fullstats, повторим срез ${startB + 1}/${idBatches.length || 1}`);
-            if (t.cabinetId) await writeWbSyncState(db, t.cabinetId, "advert-stats", {
-              cursor: String(startB),
-              status: "running",
-              attempts: 0,
-              lastError: null,
-              state: {
-                ...(previous?.state ?? {}),
-                nextBatch: startB,
-                totalBatches: idBatches.length,
-                totalCampaigns: ids.length,
-                lastRateLimitedAt: new Date().toISOString(),
-              },
-            });
-            progress.push({ cabinet: t.name, status: "rate_limited", batch: startB + 1, batches: idBatches.length, nextBatch: startB });
-            deferred = true;
+            rotated.push(`${t.name}: лимит WB fullstats, повторим срез ${batchIndex + 1}/${idBatches.length || 1}`);
+            deferredMessage = message;
+            nextBatchOnFailure = batchIndex;
             break;
           }
           errors.push(`${t.name}: ${message}`);
-          if (t.cabinetId) await writeWbSyncState(db, t.cabinetId, "advert-stats", {
-            cursor: String(startB),
-            status: "error",
-            attempts: (previous?.attempts ?? 0) + 1,
-            lastError: message,
-            state: { ...(previous?.state ?? {}), nextBatch: startB, totalBatches: idBatches.length, totalCampaigns: ids.length },
-          });
-          failed = true;
+          failedMessage = message;
+          nextBatchOnFailure = batchIndex;
           break;
         }
 
         const stats = ((await res.json()) ?? []) as AdvertStat[];
+        processedBatches.push(batch);
         for (const adv of stats) {
           if (!adv.advertId || !adv.days) continue;
           for (const day of adv.days) {
@@ -243,8 +227,29 @@ export async function GET(request: NextRequest) {
             });
           }
         }
+        // Завершаем текущий цикл ровно на последнем батче. Следующий запуск
+        // начнёт новый круг с нуля и coverage не смешает два разных круга.
+        if (batchIndex === idBatches.length - 1) break;
       }
-      if (failed || deferred) continue;
+
+      if (!processedBatches.length && (failedMessage || deferredMessage)) {
+        const nextBatch = nextBatchOnFailure ?? startB;
+        if (t.cabinetId) await writeWbSyncState(db, t.cabinetId, "advert-stats", {
+          cursor: String(nextBatch),
+          status: failedMessage ? "error" : "running",
+          attempts: failedMessage ? (previous?.attempts ?? 0) + 1 : 0,
+          lastError: failedMessage,
+          state: {
+            ...(previous?.state ?? {}),
+            nextBatch,
+            totalBatches: idBatches.length,
+            totalCampaigns: ids.length,
+            ...(deferredMessage ? { lastRateLimitedAt: new Date().toISOString() } : {}),
+          },
+        });
+        progress.push({ cabinet: t.name, status: failedMessage ? "error" : "rate_limited", batch: nextBatch + 1, batches: idBatches.length, nextBatch });
+        continue;
+      }
 
       const nmRows = [...nmDaily.values()].map((r) => ({ ...r, synced_at: new Date().toISOString() }));
 
@@ -269,22 +274,22 @@ export async function GET(request: NextRequest) {
       advertDays += dayRows.length;
       nmDays += nmRows.length;
       const syncedAt = new Date().toISOString();
-      const batch = idBatches[startB] ?? [];
-      if (batch.length) {
-        let update = db.from("wb_adverts").update({ last_stats_synced_at: syncedAt }).in("advert_id", batch);
+      const processedCampaignIds = processedBatches.flat();
+      if (processedCampaignIds.length) {
+        let update = db.from("wb_adverts").update({ last_stats_synced_at: syncedAt }).in("advert_id", processedCampaignIds);
         update = t.cabinetId === null ? update.is("cabinet_id", null) : update.eq("cabinet_id", t.cabinetId);
         await update;
       }
-      const nextBatch = idBatches.length ? (startB + 1) % idBatches.length : 0;
+      const nextBatch = nextBatchOnFailure ?? (idBatches.length ? (startB + processedBatches.length) % idBatches.length : 0);
       const previousProcessed = Number(previous?.state.cycleProcessed ?? 0);
-      const cycleProcessed = nextBatch === 0 ? ids.length : Math.min(ids.length, previousProcessed + batch.length);
+      const cycleProcessed = nextBatch === 0 ? ids.length : Math.min(ids.length, previousProcessed + processedCampaignIds.length);
       const coveragePct = ids.length ? Math.round(cycleProcessed / ids.length * 1_000) / 10 : 100;
       if (t.cabinetId) {
         const stateError = await writeWbSyncState(db, t.cabinetId, "advert-stats", {
           cursor: String(nextBatch),
-          status: nextBatch === 0 ? "caught_up" : "running",
-          attempts: 0,
-          lastError: null,
+          status: failedMessage ? "error" : nextBatch === 0 ? "caught_up" : "running",
+          attempts: failedMessage ? (previous?.attempts ?? 0) + 1 : 0,
+          lastError: failedMessage,
           state: {
             nextBatch,
             totalBatches: idBatches.length,
@@ -292,11 +297,21 @@ export async function GET(request: NextRequest) {
             cycleProcessed: nextBatch === 0 ? 0 : cycleProcessed,
             coveragePct,
             lastSyncedAt: syncedAt,
+            ...(deferredMessage ? { lastRateLimitedAt: syncedAt } : {}),
           },
         });
         if (stateError) errors.push(`${t.name}: состояние advert-stats: ${stateError}`);
       }
-      progress.push({ cabinet: t.name, batch: startB + 1, batches: idBatches.length, campaigns: batch.length, coveragePct, nextBatch });
+      progress.push({
+        cabinet: t.name,
+        status: failedMessage ? "error" : deferredMessage ? "rate_limited" : nextBatch === 0 ? "caught_up" : "running",
+        batch: startB + 1,
+        batches: idBatches.length,
+        batchesProcessed: processedBatches.length,
+        campaigns: processedCampaignIds.length,
+        coveragePct,
+        nextBatch,
+      });
     }
 
     const ok = errors.length === 0;

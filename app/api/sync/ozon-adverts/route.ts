@@ -1,10 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { checkCronAuth, writeSyncLog } from "@/lib/sync/helpers";
-import { isOzonPerformanceReportDeferredMessage, perfProductReport } from "@/lib/ozon/performance";
+import {
+  isOzonPerformanceReportDeferredMessage,
+  perfProductReport,
+  type PerfProductReportResumeState,
+} from "@/lib/ozon/performance";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { rotatingSyncTargets } from "@/lib/sync/rotation";
+import { claimWbSyncJob, readWbSyncState, writeWbSyncState } from "@/lib/wb/syncState";
 
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 type OzonCabinet = {
   id: string;
@@ -13,6 +18,12 @@ type OzonCabinet = {
   perf_client_id: string | null;
   perf_secret: string | null;
 };
+
+interface OzonAdvertSyncState extends Record<string, unknown> {
+  report?: PerfProductReportResumeState;
+  lastSyncedAt?: string;
+  lastRunAt?: string;
+}
 
 // Ozon analytics/stocks читаются из почасовых снимков. Эта задача каждый час
 // обновляет Performance-рекламу. Один async-отчёт Ozon может занимать до 45с,
@@ -48,26 +59,60 @@ export async function GET(request: NextRequest) {
   const to = new Date().toISOString();
   const from = new Date(Date.now() - 14 * 86_400_000).toISOString();
   const results = await Promise.all(cabinets.map(async (cabinet) => {
+    const saved = await readWbSyncState<OzonAdvertSyncState>(db, cabinet.id, "ozon-adverts");
     try {
       if (!cabinet.client_id || !cabinet.perf_client_id || !cabinet.perf_secret) {
         throw new Error("Нет Ozon Performance API");
       }
+      if (!(await claimWbSyncJob(db, cabinet.id, "ozon-adverts", 6 * 60))) {
+        return { cabinet: cabinet.name, ok: false, rows: 0, partial: false, deferred: true, error: "Синхронизация уже выполняется" };
+      }
+      // Незавершённый отчёт продолжаем с тем же периодом. Иначе ежедневный
+      // сдвиг 14-дневного окна делал бы сохранённый UUID несовместимым.
+      const reportFrom = saved?.state.report?.periodFrom ?? from;
+      const reportTo = saved?.state.report?.periodTo ?? to;
       const report = await perfProductReport(
         { clientId: cabinet.perf_client_id, secret: cabinet.perf_secret },
-        from,
-        to,
+        reportFrom,
+        reportTo,
         60,
-        { throwOnError: true },
+        {
+          throwOnError: true,
+          allowPending: true,
+          resumeState: saved?.state.report ?? null,
+          pollAttempts: 30,
+          onState: async (reportState) => {
+            const stateError = await writeWbSyncState(db, cabinet.id, "ozon-adverts", {
+              status: "running",
+              attempts: 0,
+              lastError: null,
+              state: { ...(saved?.state ?? {}), report: reportState, lastRunAt: new Date().toISOString() },
+            });
+            if (stateError) throw new Error(`состояние ozon-adverts: ${stateError}`);
+          },
+        },
       );
       if (!report) throw new Error("Performance report failed");
 
+      if (!report.complete) {
+        const message = `Performance report: ${report.errors.join("; ") || "нет готовых батчей"}`;
+        await writeWbSyncState(db, cabinet.id, "ozon-adverts", {
+          status: "running",
+          attempts: 0,
+          lastError: message,
+          state: { ...(saved?.state ?? {}), report: report.resumeState, lastRunAt: new Date().toISOString() },
+        });
+        return { cabinet: cabinet.name, ok: false, rows: 0, partial: true, deferred: true, error: message };
+      }
+
+      const syncedAt = new Date().toISOString();
       const rows = Object.entries(report.bySku).map(([sku, value]) => ({
         client_id: cabinet.client_id,
         sku,
         days: 14,
         spent: Math.round(value.spent),
         orders_money: Math.round(value.ordersMoney),
-        updated_at: new Date().toISOString(),
+        updated_at: syncedAt,
       }));
       if (rows.length) {
         const { error: upsertError } = await db
@@ -75,6 +120,13 @@ export async function GET(request: NextRequest) {
           .upsert(rows, { onConflict: "client_id,sku,days" });
         if (upsertError) throw new Error(upsertError.message);
       }
+      const stateError = await writeWbSyncState(db, cabinet.id, "ozon-adverts", {
+        status: "caught_up",
+        attempts: 0,
+        lastError: null,
+        state: { lastSyncedAt: syncedAt, lastRunAt: syncedAt },
+      });
+      if (stateError) throw new Error(`состояние ozon-adverts: ${stateError}`);
       return {
         cabinet: cabinet.name,
         ok: true,
@@ -85,6 +137,12 @@ export async function GET(request: NextRequest) {
       };
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unknown error";
+      await writeWbSyncState(db, cabinet.id, "ozon-adverts", {
+        status: isOzonPerformanceReportDeferredMessage(message) ? "running" : "error",
+        attempts: isOzonPerformanceReportDeferredMessage(message) ? 0 : (saved?.attempts ?? 0) + 1,
+        lastError: message,
+        state: { ...(saved?.state ?? {}), lastRunAt: new Date().toISOString() },
+      });
       return {
         cabinet: cabinet.name,
         ok: false,

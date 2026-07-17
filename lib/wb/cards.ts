@@ -1,5 +1,5 @@
 // Карточки товаров кабинета(ов) через WB Content API: article + nm_id + name + цвет + ниша(subject).
-import { getWbCabinetSources } from "@/lib/wb/cabinetTokens";
+import { getActiveWbCabinets, getWbCabinetSources } from "@/lib/wb/cabinetTokens";
 import { allowsProduct } from "@/lib/wb/productScope";
 import type { ProductReadinessStatus } from "@/lib/wb/productReadiness";
 import { loadHourlyDashboard, type HourlyDashboardCacheOptions } from "@/lib/cache/hourlyDashboard";
@@ -131,8 +131,18 @@ export function loadCabinetPimRowsHourly(
 ): Promise<PimRow[]> {
   return loadHourlyDashboard(
     "wb-pim-cards",
-    { cabinetId, schema: 3 },
-    () => fetchCabinetPimRows(cabinetId),
+    { cabinetId, schema: 4 },
+    async () => {
+      // Общий снимок компонуется из кабинетных. Так один холодный обход
+      // одновременно прогревает PIM, поставки и «Склейки» для каждого кабинета.
+      if (cabinetId === null) {
+        const cabinets = await getActiveWbCabinets();
+        if (cabinets.length) {
+          return (await Promise.all(cabinets.map((cabinet) => loadCabinetPimRowsHourly(cabinet.id, options)))).flat();
+        }
+      }
+      return fetchCabinetPimRows(cabinetId);
+    },
     options,
   );
 }
