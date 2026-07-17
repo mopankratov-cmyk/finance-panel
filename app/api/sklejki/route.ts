@@ -9,7 +9,9 @@ import { loadCabinetPimRowsHourly } from "@/lib/wb/cards";
 import { getActiveWbCabinets } from "@/lib/wb/cabinetTokens";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+// Холодный all-cabinet снимок может впервые обойти несколько больших Content API
+// каталогов. После завершения результат хранится час; 60с обрывали запрос до записи.
+export const maxDuration = 300;
 
 interface WbCard {
   nmID: number;

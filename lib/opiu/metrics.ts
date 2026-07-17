@@ -45,10 +45,11 @@ function isSale(row: WbReportRow): boolean {
 }
 
 function orderRub(row: WbOrder): number {
-  if (row.finishedPrice != null) return Math.abs(num(row.finishedPrice));
   const price = num(row.totalPrice);
   const discount = num(row.discountPercent);
-  return Math.abs(price * (1 - discount / 100));
+  const beforeSpp = Math.abs(price * (1 - discount / 100));
+  if (beforeSpp > 0) return beforeSpp;
+  return Math.abs(num(row.finishedPrice));
 }
 
 function revenueRub(row: WbReportRow): number {
