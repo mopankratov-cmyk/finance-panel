@@ -8,7 +8,10 @@ import { resolveSyncBase } from "@/lib/sync/orchestrator";
 // клиент его не видит. Допустимые задания фиксированы.
 const ALLOWED = ["orders", "sales", "stocks", "adverts", "advert-stats", "funnel", "ozon-adverts", "commissions", "feedbacks", "token-health", "moysklad", "history", "all"];
 
-export const maxDuration = 60;
+// Ручной запуск комиссий ждёт дочерний Finance API sync, где между страницами
+// обязателен минутный интервал WB. Остальные задания от увеличения лимита не
+// становятся дольше — они по-прежнему завершаются по собственным ограничениям.
+export const maxDuration = 300;
 
 export async function POST(request: NextRequest) {
   const gate = await requireApiSession(["director", "manager"]);

@@ -5,12 +5,15 @@ import { getWbCommission } from "@/lib/wb/commissions";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { rotatingSyncTargets } from "@/lib/sync/rotation";
 
-export const maxDuration = 60;
+// Finance API допускает только один запрос в минуту (burst 1). Даже отчёт из
+// одной страницы требует второй запрос через минуту, чтобы получить финальный
+// 204, поэтому стандартных 60 секунд недостаточно для корректной пагинации.
+export const maxDuration = 300;
 
 // Наполняет wb_nm_commissions/wb_cabinet_commission_overhead — кэш факт-комиссии по nm,
 // чтобы РНП/юнит не платили ~12с холодного финотчёта на каждый кабинет на каждом запросе
 // (см. lib/wb/commissions.ts). Полный финотчёт одного большого кабинета занимает
-// почти весь лимит функции, поэтому почасовой cron обходит кабинеты по кругу.
+// несколько минут, поэтому почасовой cron обходит кабинеты по кругу.
 export async function GET(request: NextRequest) {
   const authError = checkCronAuth(request);
   if (authError) return authError;

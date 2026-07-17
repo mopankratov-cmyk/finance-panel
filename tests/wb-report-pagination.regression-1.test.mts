@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import { fetchWbReportPages } from "../lib/wb/reportPagination";
 
@@ -88,4 +89,12 @@ test("WB financial report obeys X-Ratelimit-Retry without losing its cursor", as
   assert.equal(result.rows.length, 1);
   assert.equal(calls, 3);
   assert.deepEqual(waits, [2_000]);
+});
+
+test("commission sync can outlive the documented one-minute page interval", () => {
+  const commissionsRoute = readFileSync(new URL("../app/api/sync/commissions/route.ts", import.meta.url), "utf8");
+  const triggerRoute = readFileSync(new URL("../app/api/sync/trigger/route.ts", import.meta.url), "utf8");
+
+  assert.match(commissionsRoute, /export const maxDuration = 300/);
+  assert.match(triggerRoute, /export const maxDuration = 300/);
 });
