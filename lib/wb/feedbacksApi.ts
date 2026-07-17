@@ -36,16 +36,29 @@ export interface WbFeedbackRaw {
   productDetails?: { nmId: number; imtId?: number; productName?: string; supplierArticle?: string; brandName?: string };
 }
 
+export interface WbFeedbacksPageFilters {
+  nmId?: number;
+  dateFrom?: number;
+  dateTo?: number;
+}
+
 // Одна страница. 401/403 → WbFeedbacksScopeError (не путать с сетевой/прочей ошибкой,
 // чтобы вызывающий код мог не падать, а внятно сообщить о нехватке скоупа).
 export async function fetchWbFeedbacksPage(
-  token: string, isAnswered: boolean, skip: number, take = 5000,
+  token: string,
+  isAnswered: boolean,
+  skip: number,
+  take = 5000,
+  filters: WbFeedbacksPageFilters = {},
 ): Promise<WbFeedbackRaw[]> {
   const url = new URL(BASE);
   url.searchParams.set("isAnswered", String(isAnswered));
   url.searchParams.set("take", String(take));
   url.searchParams.set("skip", String(skip));
   url.searchParams.set("order", "dateDesc");
+  if (filters.nmId && Number.isFinite(filters.nmId)) url.searchParams.set("nmId", String(filters.nmId));
+  if (filters.dateFrom && Number.isFinite(filters.dateFrom)) url.searchParams.set("dateFrom", String(Math.floor(filters.dateFrom)));
+  if (filters.dateTo && Number.isFinite(filters.dateTo)) url.searchParams.set("dateTo", String(Math.floor(filters.dateTo)));
   let lastError = "WB не ответил";
   for (let attempt = 0; attempt < 3; attempt++) {
     try {

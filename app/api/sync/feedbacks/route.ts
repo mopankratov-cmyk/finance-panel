@@ -24,6 +24,10 @@ interface FeedbackCursorState extends Record<string, unknown> {
   coveragePct: number;
   lastSyncedAt?: string;
   completedAt?: string;
+  scopedKey?: string;
+  scopedNmIndex?: number;
+  scopedAnswered?: boolean;
+  scopedSkip?: number;
 }
 
 function feedbackRow(cabinetId: string, feedback: WbFeedbackRaw, isAnswered: boolean, stamp: string) {
@@ -95,6 +99,138 @@ export async function GET(request: NextRequest) {
     let rowsInCycle = Number(previous?.state.rowsInCycle ?? 0);
     let pages = 0;
     let cursorResets = 0;
+
+    // Для ограниченных кабинетов WB сам поддерживает nmId/dateFrom. Не сканируем
+    // сотни тысяч чужих отзывов Optima: обходим только разрешённые SKU, сохраняя
+    // позицию SKU/потока/страницы между serverless-запусками.
+    if (productScope.allowedNmIds !== null) {
+      const nmIds = [...new Set(productScope.allowedNmIds.map(Number).filter(Number.isFinite))].sort((a, b) => a - b);
+      const scopedKey = nmIds.join(",");
+      const canResumeScoped = previous?.state.scopedKey === scopedKey && previous.status !== "caught_up";
+      let scopedNmIndex = canResumeScoped ? Number(previous?.state.scopedNmIndex ?? 0) : 0;
+      let scopedAnswered = canResumeScoped ? Boolean(previous?.state.scopedAnswered) : false;
+      let scopedSkip = canResumeScoped ? Number(previous?.state.scopedSkip ?? 0) : 0;
+      let scopedCursorResets = 0;
+
+      try {
+        while (pages < MAX_PAGES_PER_RUN && Date.now() < deadline && scopedNmIndex < nmIds.length) {
+          const nmId = nmIds[scopedNmIndex]!;
+          let list: WbFeedbackRaw[];
+          try {
+            list = await fetchWbFeedbacksPage(token, scopedAnswered, scopedSkip, TAKE, {
+              nmId,
+              ...(scopedAnswered ? {
+                dateFrom: Math.floor(cutoff / 1_000),
+                dateTo: Math.floor(Date.now() / 1_000),
+              } : {}),
+            });
+          } catch (error) {
+            if (error instanceof WbFeedbacksCursorError && scopedSkip > 0 && scopedCursorResets < 2) {
+              scopedCursorResets++;
+              scopedSkip = 0;
+              continue;
+            }
+            throw error;
+          }
+
+          const stamp = new Date().toISOString();
+          const rows = list
+            .filter((feedback) => {
+              const product = feedback.productDetails;
+              if (!feedback.id || !product?.nmId) return false;
+              return allowsProduct(productScope, product.nmId, product.brandName)
+                && (!scopedAnswered || !feedback.createdDate || new Date(feedback.createdDate).getTime() >= cutoff);
+            })
+            .map((feedback) => feedbackRow(cabinet.id, feedback, scopedAnswered, stamp));
+          const upsertError = rows.length ? await chunkedUpsert("wb_feedbacks", rows, "id") : null;
+          if (upsertError) throw new Error(upsertError);
+          total += rows.length;
+          rowsInCycle += rows.length;
+          pages++;
+
+          if (list.length < TAKE) {
+            if (scopedAnswered) {
+              scopedNmIndex++;
+              scopedAnswered = false;
+            } else {
+              scopedAnswered = true;
+            }
+            scopedSkip = 0;
+          } else {
+            scopedSkip += TAKE;
+          }
+        }
+
+        const completed = scopedNmIndex >= nmIds.length;
+        const syncedAt = new Date().toISOString();
+        const completedStreams = Math.min(nmIds.length * 2, scopedNmIndex * 2 + (scopedAnswered ? 1 : 0));
+        const coveragePct = completed || nmIds.length === 0
+          ? 100
+          : Math.floor((completedStreams / (nmIds.length * 2)) * 100);
+        const cursor = JSON.stringify({ scopedNmIndex, scopedAnswered, scopedSkip });
+        const stateError = await writeWbSyncState(db, cabinet.id, "feedbacks", {
+          cursor,
+          status: completed ? "caught_up" : "pending",
+          attempts: 0,
+          lastError: null,
+          state: {
+            unansweredSkip: 0,
+            answeredSkip: 0,
+            unansweredDone: false,
+            answeredDone: false,
+            nextKind: "unanswered",
+            rowsInCycle: completed ? 0 : rowsInCycle,
+            retentionDays: ANSWERED_WINDOW_DAYS,
+            coveragePct,
+            lastSyncedAt: syncedAt,
+            scopedKey,
+            scopedNmIndex: completed ? 0 : scopedNmIndex,
+            scopedAnswered: completed ? false : scopedAnswered,
+            scopedSkip: completed ? 0 : scopedSkip,
+            ...(completed ? { completedAt: syncedAt } : {}),
+          },
+        });
+        if (stateError) throw new Error(`состояние feedbacks: ${stateError}`);
+        progress.push({
+          cabinet: cabinet.name,
+          status: completed ? "caught_up" : "pending",
+          pages,
+          rows: rowsInCycle,
+          coveragePct,
+          scopedNmIndex,
+          scopedAnswered,
+          scopedSkip,
+          cursorResets: scopedCursorResets,
+        });
+      } catch (error) {
+        const message = error instanceof WbFeedbacksScopeError
+          ? "Нет категории токена «Вопросы и Отзывы»"
+          : error instanceof Error ? error.message : "Unknown error";
+        errors.push(`${cabinet.name}: ${message}`);
+        await writeWbSyncState(db, cabinet.id, "feedbacks", {
+          cursor: JSON.stringify({ scopedNmIndex, scopedAnswered, scopedSkip }),
+          status: "error",
+          attempts: (previous?.attempts ?? 0) + 1,
+          lastError: message,
+          state: {
+            unansweredSkip: 0,
+            answeredSkip: 0,
+            unansweredDone: false,
+            answeredDone: false,
+            nextKind: "unanswered",
+            rowsInCycle,
+            retentionDays: ANSWERED_WINDOW_DAYS,
+            coveragePct: 0,
+            lastSyncedAt: new Date().toISOString(),
+            scopedKey,
+            scopedNmIndex,
+            scopedAnswered,
+            scopedSkip,
+          },
+        });
+      }
+      continue;
+    }
 
     try {
       while (pages < MAX_PAGES_PER_RUN && Date.now() < deadline) {
