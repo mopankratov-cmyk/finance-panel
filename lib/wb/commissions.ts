@@ -1,4 +1,4 @@
-// Фактические ставки WB по каждому nm_id — из детального финотчёта (reportDetailByPeriod).
+// Фактические ставки WB по каждому nm_id — из актуального Finance API детализации отчётов.
 // Комиссия: commission_percent (взвеш. по выручке). Эквайринг: acquiring_fee / выручка.
 // extraPct: ВСЕ прочие удержания МП (логистика+хранение+штрафы+приёмка+прочие, КРОМЕ рекламы —
 // она вычитается отдельно как ad_spent) / выручка — для «маржи после всех расходов МП».
@@ -13,6 +13,23 @@ import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { fetchWbReportPages } from "./reportPagination";
 
 const WB_STATS_TOKEN = process.env.WB_STATS_TOKEN || process.env.WB_TOKEN_STATISTICS;
+const COMMISSION_REPORT_FIELDS = [
+  "rrdId",
+  "nmId",
+  "brandName",
+  "sellerOperName",
+  "bonusTypeName",
+  "commissionPercent",
+  "ppvzSalesCommission",
+  "acquiringFee",
+  "retailPriceWithDisc",
+  "retailAmount",
+  "deliveryService",
+  "paidStorage",
+  "penalty",
+  "paidAcceptance",
+  "deduction",
+] as const;
 
 interface ReportRow {
   rrd_id?: number;
@@ -106,6 +123,7 @@ export async function getWbCommission(days = 30, opts?: { token?: string; cacheK
       dateFrom: from,
       dateTo: to,
       cacheKey: opts?.cacheKey || "env",
+      fields: [...COMMISSION_REPORT_FIELDS],
     })).rows;
   } catch (error) {
     if (opts?.throwOnError) throw error;
