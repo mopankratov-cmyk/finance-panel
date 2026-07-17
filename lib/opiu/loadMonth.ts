@@ -51,17 +51,22 @@ async function fetchSalesFromCache(dateFrom: string, dateTo: string): Promise<Wb
       .order("date", { ascending: true })
       .order("sale_id", { ascending: true })
       .range(from, to), { maxPages: 300, label: "ОПиУ: продажи WB" }),
-    loadAllSupabasePages<{ nm_id: number; supplier_article: string | null }>((from, to) => client
-      .from("wb_stocks")
-      .select("nm_id, supplier_article")
-      .eq("cabinet_id", OPIU_WB_CABINET_ID)
-      .order("nm_id", { ascending: true })
-      .range(from, to), { maxPages: 100, label: "ОПиУ: товары WB" }),
+    loadAllSupabasePages<{ nm_id: number; article: string | null }>(async (from, to) => {
+      const result = await client
+        .rpc("rnp_report", { p_cabinet: OPIU_WB_CABINET_ID })
+        .select("nm_id, article")
+        .order("nm_id", { ascending: true })
+        .range(from, to);
+      return {
+        data: (result.data ?? []) as unknown as Array<{ nm_id: number; article: string | null }>,
+        error: result.error,
+      };
+    }, { maxPages: 100, label: "ОПиУ: товары WB" }),
     getWbCommissionForCabinet(OPIU_WB_CABINET_ID, 30, { allowLiveFallback: false }),
   ]);
   const articleByNm = new Map<number, string>();
   for (const row of stocks) {
-    const article = String(row.supplier_article || "").trim();
+    const article = String(row.article || "").trim();
     if (article && !articleByNm.has(Number(row.nm_id))) articleByNm.set(Number(row.nm_id), article);
   }
   return sales.map((row) => {

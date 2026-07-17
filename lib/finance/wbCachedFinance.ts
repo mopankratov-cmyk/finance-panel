@@ -33,10 +33,9 @@ interface AdvertRow {
   spent: number;
 }
 
-interface StockRow {
-  cabinet_id: string | null;
+interface ProductRow {
   nm_id: number;
-  supplier_article: string | null;
+  article: string | null;
 }
 
 interface CostRow {
@@ -149,24 +148,20 @@ export async function loadWbCachedFinance(options: {
     costsPromise,
   ]);
 
-  const nmIds = [...new Set(sales.map((row) => Number(row.nm_id)).filter(Number.isFinite))];
-  const stocks: StockRow[] = [];
-  for (let offset = 0; offset < nmIds.length; offset += 500) {
-    let query = db
-      .from("wb_stocks")
-      .select("cabinet_id, nm_id, supplier_article")
-      .in("nm_id", nmIds.slice(offset, offset + 500));
-    if (cabinetId) query = query.eq("cabinet_id", cabinetId);
-    const result = await query;
-    if (result.error) throw new Error(`Финансы WB: товары: ${result.error.message}`);
-    stocks.push(...((result.data ?? []) as StockRow[]));
-  }
+  const products = await loadAllSupabasePages<ProductRow>(async (from, to) => {
+    const result = await db
+      .rpc("rnp_report", { p_cabinet: cabinetId })
+      .select("nm_id, article")
+      .order("nm_id", { ascending: true })
+      .range(from, to);
+    return { data: (result.data ?? []) as unknown as ProductRow[], error: result.error };
+  }, { maxPages: 100, label: "Финансы WB: товары" });
 
   const costByArticle = new Map(costs.map((row) => [String(row.article || "").trim().toUpperCase(), num(row.cost_rub)]));
-  const articleByNm = new Map<string, string>();
-  for (const row of stocks) {
-    const article = String(row.supplier_article || "").trim().toUpperCase();
-    if (article) articleByNm.set(rateKey(row.cabinet_id, Number(row.nm_id)), article);
+  const articleByNm = new Map<number, string>();
+  for (const row of products) {
+    const article = String(row.article || "").trim().toUpperCase();
+    if (article) articleByNm.set(Number(row.nm_id), article);
   }
 
   const ratesByNm = new Map<string, RateRow>();
@@ -223,7 +218,7 @@ export async function loadWbCachedFinance(options: {
     acquiring += amount * acqPct / 100;
     marketplaceOther += amount * (extraPct + num(overheadByCabinet.get(cabinet))) / 100;
 
-    const article = articleByNm.get(rateKey(row.cabinet_id, Number(row.nm_id)));
+    const article = articleByNm.get(Number(row.nm_id));
     const unitCost = article ? costByArticle.get(article) : undefined;
     if (unitCost == null) missingCosts.add(Number(row.nm_id));
     else cogs += unitCost;
