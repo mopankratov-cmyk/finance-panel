@@ -13,6 +13,13 @@ interface FunnelHistoryRequestOptions {
 }
 
 export function retryAfterMs(response: Response, fallbackMs: number, nowMs = Date.now()) {
+  // WB документирует собственный заголовок с числом секунд до следующей
+  // разрешённой попытки. Он важнее общего Retry-After: глобальный лимитер WB
+  // часто присылает только X-Ratelimit-Retry.
+  const wbRaw = response.headers.get("x-ratelimit-retry");
+  const wbSeconds = wbRaw ? Number(wbRaw) : Number.NaN;
+  if (Number.isFinite(wbSeconds)) return Math.max(0, wbSeconds * 1000);
+
   const raw = response.headers.get("retry-after");
   const seconds = raw ? Number(raw) : Number.NaN;
   if (Number.isFinite(seconds)) return Math.max(0, seconds * 1000);

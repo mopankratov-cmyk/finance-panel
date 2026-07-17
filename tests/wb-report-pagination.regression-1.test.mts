@@ -67,7 +67,7 @@ test("WB financial report treats an initial 204 as a successful empty report", a
   assert.equal(result.complete, true);
 });
 
-test("WB financial report retries a temporary 429 without losing its cursor", async () => {
+test("WB financial report obeys X-Ratelimit-Retry without losing its cursor", async () => {
   let calls = 0;
   const waits: number[] = [];
   const result = await fetchWbReportPages<{ rrd_id: number }>({
@@ -79,7 +79,7 @@ test("WB financial report retries a temporary 429 without losing its cursor", as
     sleep: async (ms) => { waits.push(ms); },
     fetchImpl: async () => {
       calls += 1;
-      if (calls === 1) return new Response("rate limited", { status: 429, headers: { "retry-after": "0" } });
+      if (calls === 1) return new Response("rate limited", { status: 429, headers: { "x-ratelimit-retry": "2" } });
       if (calls === 2) return Response.json([{ rrdId: 7 }]);
       return new Response(null, { status: 204 });
     },
@@ -87,5 +87,5 @@ test("WB financial report retries a temporary 429 without losing its cursor", as
 
   assert.equal(result.rows.length, 1);
   assert.equal(calls, 3);
-  assert.deepEqual(waits, [0]);
+  assert.deepEqual(waits, [2_000]);
 });
