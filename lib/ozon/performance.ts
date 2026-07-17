@@ -72,6 +72,7 @@ interface PerfProductReportOptions {
   onState?: (state: PerfProductReportResumeState) => Promise<void> | void;
   pollAttempts?: number;
   pollIntervalMs?: number;
+  maxBatchesPerRun?: number;
 }
 
 export function performanceReportQuality(
@@ -218,8 +219,11 @@ export async function perfProductReport(
     };
     // Создаём/поллим отчёты последовательно: параллельные create-запросы Ozon
     // регулярно отвечают 429. Состояние после каждого батча уже сохранено.
+    const pendingBatches = resumeState.batches.filter((batch) => !batch.done);
+    const maxBatchesPerRun = Math.max(1, Math.floor((options.maxBatchesPerRun ?? pendingBatches.length) || 1));
+    const selectedBatches = pendingBatches.slice(0, maxBatchesPerRun);
     const results = [];
-    for (const batch of resumeState.batches) results.push(await loadBatch(batch));
+    for (const batch of selectedBatches) results.push(await loadBatch(batch));
     for (const batch of resumeState.batches) {
       for (const [sku, value] of Object.entries(batch.bySku ?? {})) {
         const aggregate = bySku[sku] ?? { spent: 0, ordersMoney: 0 };
@@ -228,8 +232,11 @@ export async function perfProductReport(
         bySku[sku] = aggregate;
       }
     }
-    const completedBatches = results.filter((result) => result.ok).length;
+    const completedBatches = resumeState.batches.filter((batch) => batch.done).length;
     const errors = results.flatMap((result, index) => result.ok ? [] : [`batch ${index + 1}: ${result.error}`]);
+    if (completedBatches < resumeState.batches.length && selectedBatches.length < pendingBatches.length) {
+      errors.push(`ещё батчей: ${resumeState.batches.length - completedBatches}`);
+    }
     const quality = performanceReportQuality(allIds.length, ids.length, resumeState.batches.length, completedBatches);
     const complete = completedBatches === resumeState.batches.length;
     if (!quality.available && !options.allowPending) return fail(`Performance report: ${errors.join("; ") || "нет готовых батчей"}`);

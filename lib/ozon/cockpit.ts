@@ -873,20 +873,37 @@ export async function loadHealth(scope: OzonCabinetScope) {
   const to = new Date();
   const from = new Date(Date.now() - DAY);
   const cacheUpdated = new Map<string, string>();
+  const syncCompleted = new Map<string, string>();
   if (db) {
-    const { data } = await db
-      .from("ozon_ad_cache")
-      .select("client_id, updated_at")
-      .in("client_id", scope.cabinets.map((cabinet) => cabinet.clientId))
-      .order("updated_at", { ascending: false });
-    for (const row of data ?? []) if (!cacheUpdated.has(String(row.client_id))) cacheUpdated.set(String(row.client_id), String(row.updated_at));
+    const [cacheResult, stateResult] = await Promise.all([
+      db.from("ozon_ad_cache")
+        .select("client_id, updated_at")
+        .in("client_id", scope.cabinets.map((cabinet) => cabinet.clientId))
+        .order("updated_at", { ascending: false }),
+      db.from("wb_sync_state")
+        .select("cabinet_id, status, state")
+        .in("cabinet_id", scope.cabinets.map((cabinet) => cabinet.id))
+        .eq("job", "ozon-adverts"),
+    ]);
+    for (const row of cacheResult.data ?? []) {
+      if (!cacheUpdated.has(String(row.client_id))) cacheUpdated.set(String(row.client_id), String(row.updated_at));
+    }
+    for (const row of stateResult.data ?? []) {
+      const state = row.state as Record<string, unknown> | null;
+      if (row.status === "caught_up" && typeof state?.lastSyncedAt === "string") {
+        syncCompleted.set(String(row.cabinet_id), state.lastSyncedAt);
+      }
+    }
   }
   const cabinets = await Promise.all(scope.cabinets.map(async (cabinet) => {
     const [seller, performance] = await Promise.all([
       ozonTransactionTotals(cabinet.creds, from.toISOString(), to.toISOString()),
       cabinet.perf ? getPerfToken(cabinet.perf) : Promise.resolve(null),
     ]);
-    const adUpdatedAt = cacheUpdated.get(cabinet.clientId) ?? null;
+    // Полный отчёт без рекламных строк — валидный нулевой результат. В таком
+    // случае таблицу обновлять нечем, поэтому свежесть берём из caught_up state.
+    const candidates = [cacheUpdated.get(cabinet.clientId), syncCompleted.get(cabinet.id)].filter(Boolean) as string[];
+    const adUpdatedAt = candidates.sort((left, right) => Date.parse(right) - Date.parse(left))[0] ?? null;
     const adAgeHours = adUpdatedAt ? r1((Date.now() - new Date(adUpdatedAt).getTime()) / 3_600_000) : null;
     const issues: string[] = [];
     if (!seller.ok) issues.push(seller.error);

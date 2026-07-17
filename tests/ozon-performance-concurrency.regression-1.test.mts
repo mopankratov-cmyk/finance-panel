@@ -74,3 +74,52 @@ test("Ozon Performance resumes a saved async UUID instead of creating a new repo
   assert.equal(createCalls, 1);
   assert.deepEqual(second?.bySku, { "sku-1": { spent: 12.5, ordersMoney: 100 } });
 });
+
+test("Ozon Performance covers every campaign across resumable batch-limited runs", async (t) => {
+  const originalFetch = globalThis.fetch;
+  const campaignIds = Array.from({ length: 25 }, (_, index) => String(index + 1));
+  let createCalls = 0;
+  let saved: PerfProductReportResumeState | null = null;
+  globalThis.fetch = (async (input) => {
+    const url = String(input);
+    if (url.endsWith("/api/client/token")) return Response.json({ access_token: "token" });
+    if (url.endsWith("/api/client/campaign")) {
+      return Response.json({ list: campaignIds.map((id) => ({ id, advObjectType: "SKU" })) });
+    }
+    if (url.endsWith("/api/client/statistics/json")) {
+      createCalls += 1;
+      return Response.json({ UUID: `uuid-${createCalls}` });
+    }
+    if (/\/api\/client\/statistics\/uuid-\d+$/.test(url)) return Response.json({ state: "OK" });
+    if (url.includes("/api/client/statistics/report?UUID=")) {
+      const uuid = url.split("UUID=")[1];
+      return Response.json({ campaign: { report: { rows: [{ sku: uuid, moneySpent: "1", ordersMoney: "2" }] } } });
+    }
+    throw new Error(`Unexpected URL: ${url}`);
+  }) as typeof fetch;
+  t.after(() => { globalThis.fetch = originalFetch; });
+
+  for (let run = 0; run < 3; run++) {
+    const report = await perfProductReport(
+      { clientId: "client", secret: "secret" },
+      "2026-07-01T00:00:00.000Z",
+      "2026-07-14T23:59:59.999Z",
+      10_000,
+      {
+        allowPending: true,
+        resumeState: saved,
+        pollAttempts: 1,
+        pollIntervalMs: 0,
+        maxBatchesPerRun: 1,
+        onState: (state) => { saved = state; },
+      },
+    );
+    assert.equal(report?.resumeState.campaignIds.length, 25);
+    assert.equal(report?.resumeState.batches.length, 3);
+    assert.equal(report?.complete, run === 2);
+    saved = report?.resumeState ?? null;
+  }
+
+  assert.equal(createCalls, 3);
+  assert.equal(saved?.batches.every((batch) => batch.done), true);
+});

@@ -17,6 +17,9 @@
 4. Feedback sync alternated answered/unanswered streams but allowed only six pages per hour, so a saved 145,000-row cursor needed many hours.
 5. Commission rotation ignored cache age instead of repairing the stalest or missing cabinet first.
 6. Dashboard warmup was cancelled while any long cursor was incomplete and could fetch the same WB Content catalogue concurrently for PIM and Sklejki.
+7. A large WB Finance report could require more than five one-minute pages; Vercel killed the request at 300 seconds and the commission cursor and partial aggregate were lost.
+8. Successful partial feedback and Ozon Performance runs left a six-minute `running` lease after returning, delaying an immediate continuation.
+9. Ozon advertising permanently selected only the first 60 campaigns, so a completed run could still publish a partial cache.
 
 ## Fixes
 
@@ -26,14 +29,17 @@
 - Allow up to 30 feedback pages in a 300-second run and rotate cabinet priority.
 - Select the stalest commission cache before the normal time-based fallback.
 - Compose all-cabinet PIM from per-cabinet hourly snapshots, warm it once before dependent dashboards, keep warming from last-good facts while long cursors catch up, and scope Sklejki feedback queries by cabinet.
+- Persist the WB Finance cursor and a compact per-SKU commission accumulator after every page; resume until the terminal 204 response, then publish the cache atomically.
+- Release completed partial cursors as `pending`, while keeping `running` only during the active request, so manual and scheduled continuations can start immediately.
+- Include all Ozon SKU campaigns, process at most four async report batches per run, and persist completed batch aggregates. Treat a completed zero-row report as a fresh health heartbeat.
 
 ## Verification
 
-- Full Node regression suite: 272/272 passed.
+- Full Node regression suite: 279/279 passed.
 - ESLint: passed.
 - Next.js production build: passed with non-secret build-only Supabase placeholders because Vercel sensitive values are not exportable locally.
 - Development server: ready; `/login` returned 200 and protected `/wb/adverts` returned the expected 307 redirect without a session.
 
 ## Status
 
-LOCAL_VERIFIED. Production verification follows after the Gitea PR is merged and Vercel deploys it.
+LOCAL_VERIFIED. Production checks before the final cursor patch confirmed: Optima advertising statistics fresh at 100% (88 rows); Optima Sklejki contains all three windbreakers; Ozon 1933484 recovered to a fresh cache. The remaining commission/feedback/Ozon continuation changes require deployment and a final production pass.

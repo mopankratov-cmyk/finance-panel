@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { fetchWbReportPages } from "../lib/wb/reportPagination";
+import { fetchWbReportPage, fetchWbReportPages, WbReportDeadlineError } from "../lib/wb/reportPagination";
 
 test("WB financial report uses the current Finance API until 204 and deduplicates rows", async () => {
   const requested: number[] = [];
@@ -91,10 +91,45 @@ test("WB financial report obeys X-Ratelimit-Retry without losing its cursor", as
   assert.deepEqual(waits, [2_000]);
 });
 
+test("a resumable WB report page drops the repeated boundary row", async () => {
+  const page = await fetchWbReportPage<{ rrd_id?: number }>({
+    token: "test-token",
+    dateFrom: "2026-07-01",
+    dateTo: "2026-07-14",
+    initialRrdId: 7,
+    fetchImpl: async () => Response.json([{ rrdId: 7 }, { rrdId: 8 }, { rrdId: 9 }]),
+  });
+
+  assert.equal(page.complete, false);
+  assert.equal(page.lastRrdId, 9);
+  assert.deepEqual(page.rows.map((row) => row.rrd_id), [8, 9]);
+});
+
+test("WB report defers a rate-limit wait that would exceed the server deadline", async () => {
+  await assert.rejects(
+    fetchWbReportPage({
+      token: "test-token",
+      dateFrom: "2026-07-01",
+      dateTo: "2026-07-14",
+      deadlineMs: 65_000,
+      now: () => 0,
+      fetchImpl: async () => new Response("rate limited", {
+        status: 429,
+        headers: { "x-ratelimit-retry": "61" },
+      }),
+    }),
+    WbReportDeadlineError,
+  );
+});
+
 test("commission sync can outlive the documented one-minute page interval", () => {
   const commissionsRoute = readFileSync(new URL("../app/api/sync/commissions/route.ts", import.meta.url), "utf8");
+  const feedbacksRoute = readFileSync(new URL("../app/api/sync/feedbacks/route.ts", import.meta.url), "utf8");
   const triggerRoute = readFileSync(new URL("../app/api/sync/trigger/route.ts", import.meta.url), "utf8");
 
   assert.match(commissionsRoute, /export const maxDuration = 300/);
+  assert.match(commissionsRoute, /fetchWbReportPage/);
+  assert.match(commissionsRoute, /writeWbSyncState/);
+  assert.match(feedbacksRoute, /status: completed \? "caught_up" : "pending"/);
   assert.match(triggerRoute, /export const maxDuration = 300/);
 });

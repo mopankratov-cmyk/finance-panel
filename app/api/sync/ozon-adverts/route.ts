@@ -75,12 +75,13 @@ export async function GET(request: NextRequest) {
         { clientId: cabinet.perf_client_id, secret: cabinet.perf_secret },
         reportFrom,
         reportTo,
-        60,
+        10_000,
         {
           throwOnError: true,
           allowPending: true,
           resumeState: saved?.state.report ?? null,
           pollAttempts: 30,
+          maxBatchesPerRun: 4,
           onState: async (reportState) => {
             const stateError = await writeWbSyncState(db, cabinet.id, "ozon-adverts", {
               status: "running",
@@ -97,7 +98,10 @@ export async function GET(request: NextRequest) {
       if (!report.complete) {
         const message = `Performance report: ${report.errors.join("; ") || "нет готовых батчей"}`;
         await writeWbSyncState(db, cabinet.id, "ozon-adverts", {
-          status: "running",
+          // UUID и готовые батчи уже сохранены. pending снимает lease после
+          // возврата функции и позволяет следующему cron/ручному запуску сразу
+          // продолжить отчёт, не создавая новый.
+          status: "pending",
           attempts: 0,
           lastError: message,
           state: { ...(saved?.state ?? {}), report: report.resumeState, lastRunAt: new Date().toISOString() },
@@ -138,7 +142,7 @@ export async function GET(request: NextRequest) {
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unknown error";
       await writeWbSyncState(db, cabinet.id, "ozon-adverts", {
-        status: isOzonPerformanceReportDeferredMessage(message) ? "running" : "error",
+        status: isOzonPerformanceReportDeferredMessage(message) ? "pending" : "error",
         attempts: isOzonPerformanceReportDeferredMessage(message) ? 0 : (saved?.attempts ?? 0) + 1,
         lastError: message,
         state: { ...(saved?.state ?? {}), lastRunAt: new Date().toISOString() },

@@ -160,7 +160,10 @@ export async function GET(request: NextRequest) {
       const coveragePct = completed ? 100 : unansweredDone || answeredDone ? 50 : 0;
       const stateError = await writeWbSyncState(db, cabinet.id, "feedbacks", {
         cursor: JSON.stringify({ unansweredSkip, answeredSkip, nextKind }),
-        status: completed ? "caught_up" : "running",
+        // Во время запроса claim держит статус running. После безопасно
+        // сохранённого курсора pending освобождает lease для немедленного ручного
+        // продолжения; параллельный запуск снова атомарно захватит job.
+        status: completed ? "caught_up" : "pending",
         attempts: 0,
         lastError: null,
         state: {
@@ -177,7 +180,7 @@ export async function GET(request: NextRequest) {
         },
       });
       if (stateError) throw new Error(`состояние feedbacks: ${stateError}`);
-      progress.push({ cabinet: cabinet.name, status: completed ? "caught_up" : "running", pages, rows: rowsInCycle, coveragePct, unansweredSkip, answeredSkip, cursorResets });
+      progress.push({ cabinet: cabinet.name, status: completed ? "caught_up" : "pending", pages, rows: rowsInCycle, coveragePct, unansweredSkip, answeredSkip, cursorResets });
     } catch (error) {
       const message = error instanceof WbFeedbacksScopeError
         ? "Нет категории токена «Вопросы и Отзывы»"

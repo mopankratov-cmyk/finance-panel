@@ -31,7 +31,7 @@ const COMMISSION_REPORT_FIELDS = [
   "deduction",
 ] as const;
 
-interface ReportRow {
+export interface ReportRow {
   rrd_id?: number;
   nm_id?: number;
   brand_name?: string;
@@ -47,6 +47,15 @@ interface ReportRow {
   penalty?: number;
   acceptance?: number;
   deduction?: number;
+}
+
+export interface CommissionAccumulator extends Record<string, unknown> {
+  byNm: Record<string, { wpct: number; acq: number; extra: number; rev: number }>;
+  totalWeightedCommission: number;
+  totalAcquiring: number;
+  totalRevenue: number;
+  totalExtra: number;
+  noNmExtra: number;
 }
 
 export interface NmRates { pct: number; acqPct: number; extraPct: number; rev: number }
@@ -76,6 +85,87 @@ const nonNegativeRate = (value: number) => Number.isFinite(value) && value >= 0;
 
 export function emptyWbCommission(): WbCommission {
   return { byNm: new Map(), avgPct: 0, avgAcqPct: 0, avgExtraPct: 0, overheadPct: 0 };
+}
+
+export function emptyCommissionAccumulator(): CommissionAccumulator {
+  return {
+    byNm: {},
+    totalWeightedCommission: 0,
+    totalAcquiring: 0,
+    totalRevenue: 0,
+    totalExtra: 0,
+    noNmExtra: 0,
+  };
+}
+
+export function accumulateCommissionRows(
+  current: CommissionAccumulator,
+  rows: ReportRow[],
+  scope: WbProductScope,
+): CommissionAccumulator {
+  const next: CommissionAccumulator = {
+    ...current,
+    byNm: { ...current.byNm },
+  };
+  for (const r of rows) {
+    if (!allowsProduct(scope, r.nm_id, r.brand_name)) continue;
+    const op = r.supplier_oper_name ?? "";
+    const nm = Number(r.nm_id ?? 0);
+    const isSale = !op || op === "Продажа";
+    const rev = num(r.retail_price_withdisc_rub) || num(r.retail_amount);
+    let deduction = num(r.deduction);
+    const bonusType = (r.bonus_type_name ?? "").toLowerCase();
+    if (bonusType.includes("продвижени") || bonusType.includes("реклам")) deduction = 0;
+    const extraRow = Math.abs(num(r.delivery_rub))
+      + Math.abs(num(r.storage_fee))
+      + Math.abs(num(r.penalty))
+      + Math.abs(num(r.acceptance))
+      + Math.max(0, deduction);
+
+    if (nm) {
+      const key = String(nm);
+      const entry = next.byNm[key]
+        ? { ...next.byNm[key] }
+        : { wpct: 0, acq: 0, extra: 0, rev: 0 };
+      if (isSale && rev > 0) {
+        let pct = Math.abs(num(r.commission_percent));
+        if (pct <= 0) pct = (Math.abs(num(r.ppvz_sales_commission)) / rev) * 100;
+        const acquiring = Math.abs(num(r.acquiring_fee));
+        entry.wpct += pct * rev;
+        entry.acq += acquiring;
+        entry.rev += rev;
+        next.totalWeightedCommission += pct * rev;
+        next.totalAcquiring += acquiring;
+        next.totalRevenue += rev;
+      }
+      entry.extra += extraRow;
+      next.byNm[key] = entry;
+      next.totalExtra += extraRow;
+    } else {
+      next.noNmExtra += extraRow;
+    }
+  }
+  return next;
+}
+
+export function commissionFromAccumulator(accumulator: CommissionAccumulator): WbCommission {
+  const byNm = new Map<number, NmRates>();
+  for (const [key, entry] of Object.entries(accumulator.byNm)) {
+    byNm.set(Number(key), {
+      pct: entry.rev > 0 ? r1(entry.wpct / entry.rev) : 0,
+      acqPct: entry.rev > 0 ? r1((entry.acq / entry.rev) * 100) : 0,
+      extraPct: entry.rev > 0 ? r1((entry.extra / entry.rev) * 100) : 0,
+      rev: entry.rev,
+    });
+  }
+  const totalRevenue = accumulator.totalRevenue;
+  return {
+    byNm,
+    avgPct: totalRevenue > 0 ? r1(accumulator.totalWeightedCommission / totalRevenue) : 0,
+    avgAcqPct: totalRevenue > 0 ? r1((accumulator.totalAcquiring / totalRevenue) * 100) : 0,
+    avgExtraPct: totalRevenue > 0 ? r1((accumulator.totalExtra / totalRevenue) * 100) : 0,
+    overheadPct: totalRevenue > 0 ? r1((accumulator.noNmExtra / totalRevenue) * 100) : 0,
+  };
 }
 
 export function resolveWbRatesForNm(comm: WbCommission, nm: number): ResolvedWbRates {
@@ -131,50 +221,8 @@ export async function getWbCommission(days = 30, opts?: { token?: string; cacheK
   }
   if (!Array.isArray(rows)) return empty;
 
-  // На nm: Σ(commission% × rev), Σ acquiring, Σ extra (прочие удержания МП), Σ rev. Без nm → overhead.
-  const acc = new Map<number, { wpct: number; acq: number; extra: number; rev: number }>();
-  let totW = 0, totAcq = 0, totRev = 0, totExtra = 0, noNmExtra = 0;
-  for (const r of rows) {
-    if (!allowsProduct(scope, r.nm_id, r.brand_name)) continue;
-    const op = r.supplier_oper_name ?? "";
-    const nm = Number(r.nm_id ?? 0);
-    const isSale = !op || op === "Продажа";
-    const rev = num(r.retail_price_withdisc_rub) || num(r.retail_amount);
-    // прочие расходы МП в этой строке (КРОМЕ рекламы — она отдельно как ad_spent)
-    let ded = num(r.deduction);
-    const bt = (r.bonus_type_name ?? "").toLowerCase();
-    if (bt.includes("продвижени") || bt.includes("реклам")) ded = 0;
-    const extraRow = Math.abs(num(r.delivery_rub)) + Math.abs(num(r.storage_fee)) + Math.abs(num(r.penalty)) + Math.abs(num(r.acceptance)) + Math.max(0, ded);
-
-    if (nm) {
-      const e = acc.get(nm) ?? { wpct: 0, acq: 0, extra: 0, rev: 0 };
-      if (isSale && rev > 0) {
-        let pct = Math.abs(num(r.commission_percent));
-        if (pct <= 0) pct = (Math.abs(num(r.ppvz_sales_commission)) / rev) * 100;
-        const acq = Math.abs(num(r.acquiring_fee));
-        e.wpct += pct * rev; e.acq += acq; e.rev += rev;
-        totW += pct * rev; totAcq += acq; totRev += rev;
-      }
-      e.extra += extraRow;
-      acc.set(nm, e);
-      totExtra += extraRow;
-    } else {
-      noNmExtra += extraRow;
-    }
-  }
-
-  const byNm = new Map<number, NmRates>();
-  for (const [nm, e] of acc) byNm.set(nm, {
-    pct: e.rev > 0 ? r1(e.wpct / e.rev) : 0,
-    acqPct: e.rev > 0 ? r1((e.acq / e.rev) * 100) : 0,
-    extraPct: e.rev > 0 ? r1((e.extra / e.rev) * 100) : 0,
-    rev: e.rev,
-  });
-  const avgPct = totRev > 0 ? r1(totW / totRev) : 0;
-  const avgAcqPct = totRev > 0 ? r1((totAcq / totRev) * 100) : 0;
-  const avgExtraPct = totRev > 0 ? r1((totExtra / totRev) * 100) : 0;
-  const overheadPct = totRev > 0 ? r1((noNmExtra / totRev) * 100) : 0;
-  const val: WbCommission = { byNm, avgPct, avgAcqPct, avgExtraPct, overheadPct };
+  const val = commissionFromAccumulator(accumulateCommissionRows(emptyCommissionAccumulator(), rows, scope));
+  const { byNm } = val;
   if (byNm.size > 0) _memo.set(key, { ts: Date.now(), val });
   return val;
 }

@@ -21,6 +21,8 @@ export interface WbReportPaginationOptions {
   fields?: string[];
   fetchImpl?: FetchLike;
   sleep?: (ms: number) => Promise<void>;
+  deadlineMs?: number;
+  now?: () => number;
 }
 
 export interface WbReportPaginationResult<Row> {
@@ -28,6 +30,19 @@ export interface WbReportPaginationResult<Row> {
   lastRrdId: number;
   pages: number;
   complete: true;
+}
+
+export interface WbReportPageResult<Row> {
+  rows: Row[];
+  lastRrdId: number;
+  complete: boolean;
+}
+
+export class WbReportDeadlineError extends Error {
+  constructor() {
+    super("WB финансовый отчёт продолжится в следующем запуске");
+    this.name = "WbReportDeadlineError";
+  }
 }
 
 const REPORT_URL = "https://finance-api.wildberries.ru/api/finance/v1/sales-reports/detailed";
@@ -95,6 +110,7 @@ async function requestReportPage<Row>(
 ): Promise<Row[]> {
   const fetchImpl = options.fetchImpl ?? fetch;
   const sleep = options.sleep ?? ((ms: number) => new Promise((resolve) => setTimeout(resolve, ms)));
+  const now = options.now ?? Date.now;
   const maxRetries = options.maxRetries ?? 3;
   const retryBaseMs = options.retryBaseMs ?? 1_000;
   let lastError = "WB не ответил";
@@ -130,15 +146,43 @@ async function requestReportPage<Row>(
       const waitMs = response.status === 429
         ? retryAfterMs(response, retryBaseMs * 2 ** attempt)
         : retryBaseMs * 2 ** attempt;
+      if (options.deadlineMs && now() + waitMs + 5_000 >= options.deadlineMs) {
+        throw new WbReportDeadlineError();
+      }
       await sleep(waitMs);
     } catch (error) {
+      if (error instanceof WbReportDeadlineError) throw error;
       lastError = error instanceof Error ? error.message : "Ошибка сети WB";
       if (attempt === maxRetries) break;
-      await sleep(retryBaseMs * 2 ** attempt);
+      const waitMs = retryBaseMs * 2 ** attempt;
+      if (options.deadlineMs && now() + waitMs + 5_000 >= options.deadlineMs) {
+        throw new WbReportDeadlineError();
+      }
+      await sleep(waitMs);
     }
   }
 
   throw new Error(lastError);
+}
+
+/** Одна продолжимая страница отчёта. Строки до курсора отбрасываются, чтобы
+ * повтор на границе страниц не задвоил финансовые суммы. */
+export async function fetchWbReportPage<Row extends ReportRowLike = ReportRowLike>(
+  options: WbReportPaginationOptions,
+): Promise<WbReportPageResult<Row>> {
+  const cursor = options.initialRrdId ?? 0;
+  const chunk = await requestReportPage<Row>(cursor, options.limit ?? 100_000, options);
+  if (chunk.length === 0) return { rows: [], lastRrdId: cursor, complete: true };
+
+  const next = pageCursor(chunk);
+  if (!next || next <= cursor) {
+    throw new Error(`WB финансовый отчёт неполон: курсор rrdid не продвинулся после ${cursor}`);
+  }
+  const rows = chunk.filter((row) => {
+    const id = rowRrdId(row);
+    return id === 0 || id > cursor;
+  });
+  return { rows, lastRrdId: next, complete: false };
 }
 
 /**
@@ -156,12 +200,12 @@ export async function fetchWbReportPages<Row extends ReportRowLike = ReportRowLi
   const seen = new Set<number>();
 
   for (let page = 0; page < maxPages; page++) {
-    const chunk = await requestReportPage<Row>(cursor, limit, options);
-    if (chunk.length === 0) {
+    const result = await fetchWbReportPage<Row>({ ...options, initialRrdId: cursor, limit });
+    if (result.complete) {
       return { rows, lastRrdId: cursor, pages: page + 1, complete: true };
     }
 
-    for (const row of chunk) {
+    for (const row of result.rows) {
       const id = rowRrdId(row);
       if (id > 0) {
         if (seen.has(id)) continue;
@@ -170,11 +214,7 @@ export async function fetchWbReportPages<Row extends ReportRowLike = ReportRowLi
       rows.push(row);
     }
 
-    const next = pageCursor(chunk);
-    if (!next || next <= cursor) {
-      throw new Error(`WB финансовый отчёт неполон: курсор rrdid не продвинулся после ${cursor}`);
-    }
-    cursor = next;
+    cursor = result.lastRrdId;
   }
 
   throw new Error(`WB финансовый отчёт неполон: превышен лимит ${maxPages} страниц`);

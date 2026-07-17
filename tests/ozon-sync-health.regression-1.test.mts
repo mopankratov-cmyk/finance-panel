@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFileSync } from "node:fs";
 import { ozonSyncStatus, summarizeOzonHealth } from "../lib/ozon/cockpitQuality";
 import { isOzonPerformanceReportDeferredMessage, performanceReportQuality } from "../lib/ozon/performance";
 
@@ -41,4 +42,17 @@ test("Ozon Performance async report wait and 429 are warnings on the health dash
 test("Ozon health still keeps real sync failures red", () => {
   assert.equal(isOzonPerformanceReportDeferredMessage("Ozon COSMOS: Supabase insert failed"), false);
   assert.equal(ozonSyncStatus({ status: "error", error: "Supabase insert failed" }), "error");
+});
+
+test("deferred Ozon reports release the sync lease after saving their UUID", () => {
+  const route = readFileSync(new URL("../app/api/sync/ozon-adverts/route.ts", import.meta.url), "utf8");
+  assert.match(route, /if \(!report\.complete\)[\s\S]*?status: "pending"/);
+  assert.match(route, /isOzonPerformanceReportDeferredMessage\(message\) \? "pending" : "error"/);
+});
+
+test("Ozon health accepts a completed zero-row report as a fresh sync", () => {
+  const cockpit = readFileSync(new URL("../lib/ozon/cockpit.ts", import.meta.url), "utf8");
+  assert.match(cockpit, /\.eq\("job", "ozon-adverts"\)/);
+  assert.match(cockpit, /row\.status === "caught_up"/);
+  assert.match(cockpit, /syncCompleted\.get\(cabinet\.id\)/);
 });
