@@ -27,6 +27,28 @@ export interface SklejkiGroup {
   skus: SklejkiSkuMetrics[];
 }
 
+export interface SklejkiPayload {
+  groups_multi: SklejkiGroup[];
+  groups_solo: SklejkiGroup[];
+  total_sku: number;
+  multi_groups: number;
+  solo_skus: number;
+  covered: number;
+}
+
+export function mergeSklejkiPayloads(payloads: SklejkiPayload[]): SklejkiPayload {
+  const groups_multi = payloads.flatMap((payload) => payload.groups_multi);
+  const groups_solo = payloads.flatMap((payload) => payload.groups_solo);
+  return {
+    groups_multi,
+    groups_solo,
+    total_sku: payloads.reduce((sum, payload) => sum + payload.total_sku, 0),
+    multi_groups: groups_multi.length,
+    solo_skus: groups_solo.length,
+    covered: payloads.reduce((sum, payload) => sum + payload.covered, 0),
+  };
+}
+
 export type GlueVerdictKind = "green" | "red" | "amber" | "gray" | "slate";
 
 export interface GlueVerdict {

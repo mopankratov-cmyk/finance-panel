@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { checkCronAuth, writeSyncLog } from "@/lib/sync/helpers";
 import { isOzonPerformanceReportDeferredMessage, perfProductReport } from "@/lib/ozon/performance";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { rotatingSyncTargets } from "@/lib/sync/rotation";
 
 export const maxDuration = 60;
 
@@ -14,8 +15,9 @@ type OzonCabinet = {
 };
 
 // Ozon analytics/stocks читаются из почасовых снимков. Эта задача каждый час
-// обновляет Performance-рекламу для всех активных кабинетов,
-// причём отдельно для каждого активного кабинета.
+// обновляет Performance-рекламу. Один async-отчёт Ozon может занимать до 45с,
+// поэтому почасовой cron обрабатывает кабинеты по кругу; ручной ?all=1 оставлен
+// для окружений с увеличенным лимитом функции.
 export async function GET(request: NextRequest) {
   const authError = checkCronAuth(request);
   if (authError) return authError;
@@ -34,7 +36,15 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ ok: false, error: error.message }, { status: 502 });
   }
 
-  const cabinets = (data ?? []) as OzonCabinet[];
+  const allCabinets = (data ?? []) as OzonCabinet[];
+  const requestedId = request.nextUrl.searchParams.get("cabinet");
+  const cabinets = rotatingSyncTargets(allCabinets, {
+    requestedId,
+    runAll: request.nextUrl.searchParams.get("all") === "1",
+  });
+  if (requestedId && !cabinets.length) {
+    return NextResponse.json({ ok: false, error: "Ozon-кабинет не найден" }, { status: 404 });
+  }
   const to = new Date().toISOString();
   const from = new Date(Date.now() - 14 * 86_400_000).toISOString();
   const results = await Promise.all(cabinets.map(async (cabinet) => {
@@ -99,7 +109,7 @@ export async function GET(request: NextRequest) {
   const ok = failures.length === 0;
   await writeSyncLog("ozon-adverts", ok ? "ok" : "error", total, notes.join("; ") || null, startedAt);
   return NextResponse.json(
-    { ok, rows: total, cabinets: cabinets.length, results, warnings: [...partial, ...deferred.map((result) => result.cabinet)] },
+    { ok, rows: total, cabinets: cabinets.length, availableCabinets: allCabinets.length, results, warnings: [...partial, ...deferred.map((result) => result.cabinet)] },
     { status: ok ? 200 : 502 },
   );
 }

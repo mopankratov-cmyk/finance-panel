@@ -1,64 +1,93 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
-import { ozonTransactionTotals, ozonServiceBreakdown } from "@/lib/ozon/api";
+import { ozonServiceBreakdown, ozonTransactionTotals, type OzonTotals } from "@/lib/ozon/api";
+import { getOzonCabinetScope } from "@/lib/ozon/cabinet";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-const r0 = (v: number) => Math.round(v);
+const num = (value: unknown) => Number(value ?? 0) || 0;
+const r0 = (value: number) => Math.round(value);
 
-// Ozon-аналог «где теряем»: итоги транзакций (комиссия/логистика/услуги/возвраты) + разбор услуг.
+function emptyTotals(): OzonTotals {
+  return {
+    accruals_for_sale: 0,
+    sale_commission: 0,
+    processing_and_delivery: 0,
+    refunds_and_cancellations: 0,
+    services_amount: 0,
+    compensation_amount: 0,
+    money_transfer: 0,
+    others_amount: 0,
+  };
+}
+
+function addTotals(target: OzonTotals, value: OzonTotals) {
+  for (const key of Object.keys(target) as Array<keyof OzonTotals>) target[key] += num(value[key]);
+}
+
+// Ozon-аналог «где теряем» с агрегацией выбранного кабинета, группы или всех
+// доступных кабинетов. Ошибка одного кабинета не скрывает данные остальных.
 export async function GET(request: NextRequest) {
-  const db = getSupabaseAdmin();
-  if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 500 });
-  const sp = new URL(request.url).searchParams;
+  const sp = request.nextUrl.searchParams;
   const weeks = Math.min(8, Math.max(1, Number(sp.get("weeks")) || 4));
-  const cabinetId = sp.get("cabinet");
-
-  // выбираем Ozon-кабинет (конкретный или первый активный)
-  let q = db.from("wb_cabinets").select("id, name, client_id, token").eq("marketplace", "ozon").eq("is_active", true);
-  if (cabinetId) q = q.eq("id", cabinetId);
-  const { data: cabs } = await q.limit(1);
-  const cab = cabs?.[0];
-  if (!cab?.client_id || !cab?.token) {
-    return NextResponse.json({ error: "Нет подключённого Ozon-кабинета. Добавьте его в разделе «Кабинеты WB».", noCabinet: true });
+  const resolved = await getOzonCabinetScope(sp.get("cabinet"));
+  if (!resolved.ok) {
+    return NextResponse.json({ error: resolved.error, noCabinet: true }, { status: 404 });
   }
 
-  const creds = { clientId: cab.client_id as string, apiKey: cab.token as string };
-  const toD = new Date(), fromD = new Date(Date.now() - weeks * 7 * 86400000);
-  const fromIso = fromD.toISOString(), toIso = toD.toISOString();
+  const toDate = new Date();
+  const fromDate = new Date(Date.now() - weeks * 7 * 86_400_000);
+  const fromIso = fromDate.toISOString();
+  const toIso = toDate.toISOString();
+  const results = await Promise.all(resolved.scope.cabinets.map(async (cabinet) => {
+    const totals = await ozonTransactionTotals(cabinet.creds, fromIso, toIso);
+    if (!totals.ok) return { cabinet: cabinet.name, ok: false as const, error: totals.error };
+    const services = await ozonServiceBreakdown(cabinet.creds, fromIso, toIso);
+    return { cabinet: cabinet.name, ok: true as const, totals: totals.totals, services };
+  }));
+  const ready = results.filter((result) => result.ok);
+  if (!ready.length) {
+    return NextResponse.json({
+      error: results.map((result) => `${result.cabinet}: ${result.ok ? "нет данных" : result.error}`).join("; ") || "Ozon не вернул данные",
+    }, { status: 502 });
+  }
 
-  const t = await ozonTransactionTotals(creds, fromIso, toIso);
-  if (!t.ok) return NextResponse.json({ error: t.error }, { status: 502 });
-  const services = await ozonServiceBreakdown(creds, fromIso, toIso);
+  const totals = emptyTotals();
+  const servicesByName = new Map<string, number>();
+  for (const result of ready) {
+    if (!result.ok) continue;
+    addTotals(totals, result.totals);
+    for (const [name, value] of Object.entries(result.services)) {
+      servicesByName.set(name, (servicesByName.get(name) ?? 0) + Math.abs(num(value)));
+    }
+  }
 
-  const tot = t.totals;
-  // удержания Ozon (берём по модулю — это вычеты из выручки)
   const items = [
-    { key: "commission", label: "Комиссия Ozon", rub: r0(Math.abs(tot.sale_commission)), tip: "Комиссия за продажу" },
-    { key: "delivery", label: "Логистика и обработка", rub: r0(Math.abs(tot.processing_and_delivery)), tip: "Обработка отправлений и доставка" },
-    { key: "services", label: "Услуги (реклама, хранение и др.)", rub: r0(Math.abs(tot.services_amount)), tip: "Платные услуги Ozon: продвижение, хранение, размещение" },
-    { key: "refunds", label: "Возвраты и отмены", rub: r0(Math.abs(tot.refunds_and_cancellations)), tip: "Возвраты и отмены заказов" },
-    { key: "other", label: "Прочие удержания", rub: r0(Math.abs(tot.others_amount)), tip: "Прочее" },
-  ].filter((i) => i.rub !== 0).sort((a, b) => b.rub - a.rub);
-
-  // топ услуг (если есть детализация)
-  const serviceItems = Object.entries(services)
-    .map(([name, rub]) => ({ name, rub: r0(Math.abs(rub)) }))
-    .filter((s) => s.rub > 0).sort((a, b) => b.rub - a.rub).slice(0, 10);
-
-  const totalDeductions = items.reduce((s, i) => s + i.rub, 0);
-  const retail = r0(Math.abs(tot.accruals_for_sale));
+    { key: "commission", label: "Комиссия Ozon", rub: r0(Math.abs(totals.sale_commission)), tip: "Комиссия за продажу" },
+    { key: "delivery", label: "Логистика и обработка", rub: r0(Math.abs(totals.processing_and_delivery)), tip: "Обработка отправлений и доставка" },
+    { key: "services", label: "Услуги (реклама, хранение и др.)", rub: r0(Math.abs(totals.services_amount)), tip: "Платные услуги Ozon: продвижение, хранение, размещение" },
+    { key: "refunds", label: "Возвраты и отмены", rub: r0(Math.abs(totals.refunds_and_cancellations)), tip: "Возвраты и отмены заказов" },
+    { key: "other", label: "Прочие удержания", rub: r0(Math.abs(totals.others_amount)), tip: "Прочее" },
+  ].filter((item) => item.rub !== 0).sort((left, right) => right.rub - left.rub);
+  const serviceItems = [...servicesByName.entries()]
+    .map(([name, rub]) => ({ name, rub: r0(rub) }))
+    .filter((item) => item.rub > 0)
+    .sort((left, right) => right.rub - left.rub)
+    .slice(0, 10);
+  const totalDeductions = items.reduce((sum, item) => sum + item.rub, 0);
 
   return NextResponse.json({
     marketplace: "ozon",
-    cabinet: cab.name,
+    cabinet: resolved.scope.label,
+    cabinets: ready.map((result) => result.cabinet),
+    scope: resolved.scope.mode,
     period: { from: fromIso.slice(0, 10), to: toIso.slice(0, 10), weeks },
-    retail,
-    payout: r0(tot.accruals_for_sale - Math.abs(tot.sale_commission) - Math.abs(tot.processing_and_delivery) - Math.abs(tot.services_amount) + tot.compensation_amount),
-    returns: r0(Math.abs(tot.refunds_and_cancellations)),
+    retail: r0(Math.abs(totals.accruals_for_sale)),
+    payout: r0(totals.accruals_for_sale - Math.abs(totals.sale_commission) - Math.abs(totals.processing_and_delivery) - Math.abs(totals.services_amount) + totals.compensation_amount),
+    returns: r0(Math.abs(totals.refunds_and_cancellations)),
     totalDeductions,
     items,
     serviceItems,
+    warnings: results.flatMap((result) => result.ok ? [] : [`${result.cabinet}: ${result.error}`]),
   });
 }

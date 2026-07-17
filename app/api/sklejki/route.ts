@@ -3,9 +3,10 @@ import { hasCabinetAccess } from "@/lib/auth/cabinetAccess";
 import { wbCardImageUrl } from "@/lib/wb/cardImage";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { resolveShopCabinet } from "@/lib/rnp/resolveShop";
-import { closedMoscowDates } from "@/lib/wb/sklejki";
+import { closedMoscowDates, mergeSklejkiPayloads, type SklejkiPayload } from "@/lib/wb/sklejki";
 import { loadHourlyDashboard, type HourlyDashboardCacheOptions } from "@/lib/cache/hourlyDashboard";
 import { loadCabinetPimRowsHourly } from "@/lib/wb/cards";
+import { getActiveWbCabinets } from "@/lib/wb/cabinetTokens";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -28,18 +29,8 @@ const MAX_DB_PAGES = 30;
 
 const r1 = (v: number) => Math.round(v * 10) / 10;
 
-// Контракт inferno: {groups_multi, groups_solo, total_sku, multi_groups, solo_skus, covered}.
-// ?cabinet=<uuid|all> — карточки тянем токеном Контент каждого кабинета, тегируем кабинетом.
-export async function GET(request: NextRequest) {
-  const { cabinetId } = await resolveShopCabinet(new URL(request.url).searchParams.get("cabinet") ?? undefined);
-  if (!(await hasCabinetAccess(cabinetId))) {
-    return NextResponse.json({ error: "Нет доступа к кабинету" }, { status: 403 });
-  }
-  const cacheOptions: HourlyDashboardCacheOptions = {
-    forceRefresh: request.nextUrl.searchParams.get("refresh") === "1",
-    backgroundRefresh: request.nextUrl.searchParams.get("background") === "1",
-  };
-  const payload = await loadHourlyDashboard(
+async function loadSklejkiSnapshot(cabinetId: string, cacheOptions: HourlyDashboardCacheOptions) {
+  return loadHourlyDashboard(
     "wb-sklejki",
     { cabinetId, schema: 2 },
     async () => {
@@ -223,5 +214,38 @@ export async function GET(request: NextRequest) {
     },
     cacheOptions,
   );
-  return NextResponse.json(payload, { headers: { "X-Dashboard-Cache": "hourly-snapshot" } });
+}
+
+// Контракт inferno: {groups_multi, groups_solo, total_sku, multi_groups, solo_skus, covered}.
+// «Все кабинеты» собирается из отдельных почасовых снимков параллельно: холодный
+// ответ ограничен самым медленным кабинетом, а не полным последовательным обходом.
+export async function GET(request: NextRequest) {
+  const { cabinetId } = await resolveShopCabinet(request.nextUrl.searchParams.get("cabinet") ?? undefined);
+  if (!(await hasCabinetAccess(cabinetId))) {
+    return NextResponse.json({ error: "Нет доступа к кабинету" }, { status: 403 });
+  }
+  const cacheOptions: HourlyDashboardCacheOptions = {
+    forceRefresh: request.nextUrl.searchParams.get("refresh") === "1",
+    backgroundRefresh: request.nextUrl.searchParams.get("background") === "1",
+  };
+  try {
+    if (cabinetId) {
+      const payload = await loadSklejkiSnapshot(cabinetId, cacheOptions);
+      return NextResponse.json(payload, { headers: { "X-Dashboard-Cache": "hourly-snapshot" } });
+    }
+    const cabinets = await getActiveWbCabinets();
+    const results = await Promise.allSettled(cabinets.map((cabinet) => loadSklejkiSnapshot(cabinet.id, cacheOptions)));
+    const payloads: SklejkiPayload[] = results.flatMap((result) => result.status === "fulfilled" ? [result.value] : []);
+    if (!payloads.length && cabinets.length) {
+      const errors = results.flatMap((result) => result.status === "rejected" ? [String(result.reason)] : []);
+      throw new Error(errors.join("; ") || "Снимки кабинетов не загрузились");
+    }
+    const payload = mergeSklejkiPayloads(payloads);
+    const warnings = results.flatMap((result, index) => result.status === "rejected"
+      ? [`${cabinets[index]?.name ?? "Кабинет"}: ${result.reason instanceof Error ? result.reason.message : String(result.reason)}`]
+      : []);
+    return NextResponse.json({ ...payload, warnings }, { headers: { "X-Dashboard-Cache": "per-cabinet-hourly-snapshots" } });
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Не удалось загрузить склейки" }, { status: 502 });
+  }
 }

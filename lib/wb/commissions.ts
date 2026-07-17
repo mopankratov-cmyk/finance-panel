@@ -89,7 +89,7 @@ const _memo = new Map<string, { ts: number; val: WbCommission }>();
 const MEMO_TTL = 6 * 3600 * 1000;
 
 // opts.token — токен конкретного кабинета (per-cabinet факт-комиссия); opts.cacheKey — id кабинета.
-export async function getWbCommission(days = 30, opts?: { token?: string; cacheKey?: string; scope?: WbProductScope }): Promise<WbCommission> {
+export async function getWbCommission(days = 30, opts?: { token?: string; cacheKey?: string; scope?: WbProductScope; throwOnError?: boolean }): Promise<WbCommission> {
   const token = opts?.token || WB_STATS_TOKEN;
   const scope = opts?.scope ?? { brandFilters: [], allowedNmIds: null };
   const key = `${opts?.cacheKey || "env"}|${days}|${scope.allowedNmIds?.join(",") ?? "all"}`;
@@ -107,7 +107,8 @@ export async function getWbCommission(days = 30, opts?: { token?: string; cacheK
       dateTo: to,
       cacheKey: opts?.cacheKey || "env",
     })).rows;
-  } catch {
+  } catch (error) {
+    if (opts?.throwOnError) throw error;
     return empty;
   }
   if (!Array.isArray(rows)) return empty;

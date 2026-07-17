@@ -14,7 +14,7 @@
     { "path": "/api/sync/dashboard-cache?view=orders", "schedule": "47 * * * *" },
     { "path": "/api/sync/dashboard-cache?view=economy", "schedule": "51 * * * *" },
     { "path": "/api/sync/dashboard-cache?view=health", "schedule": "55 * * * *" },
-    { "path": "/api/sync/commissions", "schedule": "25 6 * * *" },
+    { "path": "/api/sync/commissions", "schedule": "15 * * * *" },
     { "path": "/api/sync/token-health", "schedule": "15 6 * * *" },
     { "path": "/api/repricer/run/cron", "schedule": "30 6 * * *" },
     { "path": "/api/signals?persist=1", "schedule": "40 6 * * *" }

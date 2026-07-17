@@ -1,7 +1,6 @@
-import { wbFetch } from "@/lib/wb/fetch";
-import { fetchSalesReport } from "@/lib/wb/fetchSalesReport";
-import { getWbCabinet, resolveWbToken } from "@/lib/wb/cabinetTokens";
-import type { WbAdStat, WbOrder } from "@/lib/wb/types";
+import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
+import { getWbCommissionForCabinet, resolveWbRatesForNm } from "@/lib/wb/commissions";
+import type { WbAdStat, WbOrder, WbReportRow } from "@/lib/wb/types";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { supabase } from "@/lib/supabase";
 import { OPIU_ENTITY, OPIU_WB_CABINET_ID } from "./constants";
@@ -9,31 +8,80 @@ import { buildOpiuReport, type OpiuReport } from "./buildReport";
 import { weeksInMonth, type MonthWeek } from "./weeks";
 import type { ProductCostRow } from "./metrics";
 
-// Токен статистики для отчёта ОПиУ — из wb_cabinets (кабинет ИП ПАНКРАТОВ), а не из
-// протухшего ENV. Кабинет удалили/не нашли в БД → null (fetchOrders/fetchSalesReport
-// сами упадут на ENV-фолбэк внутри wbFetch, как было раньше).
-async function resolveOpiuWbToken(): Promise<string | undefined> {
-  const cab = await getWbCabinet(OPIU_WB_CABINET_ID);
-  return cab ? resolveWbToken(cab, "statistics") : undefined;
-}
-
-async function fetchOrders(
+async function fetchOrdersFromCache(
   dateFrom: string,
   dateTo: string,
-  refresh: boolean,
-  token?: string,
 ): Promise<WbOrder[]> {
-  const url = new URL(
-    "https://statistics-api.wildberries.ru/api/v1/supplier/orders",
-  );
-  url.searchParams.set("dateFrom", dateFrom);
-  url.searchParams.set("flag", "0");
+  const client = getSupabaseAdmin() ?? supabase;
+  const rows = await loadAllSupabasePages<{
+    nm_id: number; supplier_article: string | null; date: string; total_price: number | null;
+    discount_percent: number | null; finished_price: number | null; is_cancel: boolean | null; warehouse: string | null;
+  }>((from, to) => client
+    .from("wb_orders")
+    .select("nm_id, supplier_article, date, total_price, discount_percent, finished_price, is_cancel, warehouse")
+    .eq("cabinet_id", OPIU_WB_CABINET_ID)
+    .gte("date", dateFrom)
+    .lte("date", `${dateTo}T23:59:59.999Z`)
+    .order("date", { ascending: true })
+    .range(from, to), { maxPages: 300, label: "ОПиУ: заказы WB" });
+  return rows.map((row) => ({
+    date: row.date,
+    nmId: row.nm_id,
+    supplierArticle: row.supplier_article ?? undefined,
+    totalPrice: row.total_price ?? undefined,
+    discountPercent: row.discount_percent ?? undefined,
+    finishedPrice: row.finished_price ?? undefined,
+    isCancel: Boolean(row.is_cancel),
+    warehouseName: row.warehouse ?? undefined,
+  }));
+}
 
-  const res = await wbFetch<WbOrder[]>(url.toString(), { method: "GET" }, { refresh, token });
-  if (res.error) throw new Error(res.error);
-  return (res.data ?? []).filter((o) => {
-    const d = String(o.date ?? "").slice(0, 10);
-    return d >= dateFrom && d <= dateTo;
+async function fetchSalesFromCache(dateFrom: string, dateTo: string): Promise<WbReportRow[]> {
+  const client = getSupabaseAdmin() ?? supabase;
+  const [sales, stocks, commission] = await Promise.all([
+    loadAllSupabasePages<{
+      nm_id: number; date: string; sale_id: string; for_pay: number | null;
+      finished_price: number | null; price_with_disc: number | null;
+    }>((from, to) => client
+      .from("wb_sales")
+      .select("nm_id, date, sale_id, for_pay, finished_price, price_with_disc")
+      .eq("cabinet_id", OPIU_WB_CABINET_ID)
+      .gte("date", dateFrom)
+      .lte("date", `${dateTo}T23:59:59.999Z`)
+      .order("date", { ascending: true })
+      .order("sale_id", { ascending: true })
+      .range(from, to), { maxPages: 300, label: "ОПиУ: продажи WB" }),
+    loadAllSupabasePages<{ nm_id: number; supplier_article: string | null }>((from, to) => client
+      .from("wb_stocks")
+      .select("nm_id, supplier_article")
+      .eq("cabinet_id", OPIU_WB_CABINET_ID)
+      .order("nm_id", { ascending: true })
+      .range(from, to), { maxPages: 100, label: "ОПиУ: товары WB" }),
+    getWbCommissionForCabinet(OPIU_WB_CABINET_ID, 30, { allowLiveFallback: false }),
+  ]);
+  const articleByNm = new Map<number, string>();
+  for (const row of stocks) {
+    const article = String(row.supplier_article || "").trim();
+    if (article && !articleByNm.has(Number(row.nm_id))) articleByNm.set(Number(row.nm_id), article);
+  }
+  return sales.map((row) => {
+    const amount = Math.abs(Number(row.price_with_disc ?? row.finished_price ?? row.for_pay ?? 0));
+    const returned = String(row.sale_id || "").toUpperCase().startsWith("R");
+    const rates = resolveWbRatesForNm(commission, Number(row.nm_id));
+    return {
+      rr_dt: row.date,
+      nm_id: row.nm_id,
+      sa_name: articleByNm.get(Number(row.nm_id)) ?? "",
+      quantity: 1,
+      doc_type_name: returned ? "Возврат" : "Продажа",
+      supplier_oper_name: returned ? "Возврат" : "Продажа",
+      retail_amount: returned ? 0 : amount,
+      retail_price_withdisc_rub: returned ? 0 : amount,
+      ppvz_for_pay: Number(row.for_pay ?? 0),
+      ppvz_sales_commission: returned ? 0 : amount * rates.commissionPct / 100,
+      acquiring_fee: returned ? 0 : amount * rates.acquiringPct / 100,
+      deduction: returned ? 0 : amount * (rates.extraPct + rates.overheadPct) / 100,
+    } satisfies WbReportRow;
   });
 }
 
@@ -47,6 +95,7 @@ async function fetchAdStats(
   const { data, error } = await client
     .from("wb_advert_nm_daily")
     .select("date, spent")
+    .eq("cabinet_id", OPIU_WB_CABINET_ID)
     .gte("date", dateFrom)
     .lte("date", dateTo);
 
@@ -131,11 +180,9 @@ export async function loadOpiuMonth(
 
   const dateFrom = weeks[0]!.rangeFrom;
   const dateTo = weeks[weeks.length - 1]!.rangeTo;
-  const token = await resolveOpiuWbToken();
-
   const [sales, orders, adStats, costs, warehouseByWeek] = await Promise.all([
-    fetchSalesReport(dateFrom, dateTo, refresh, token),
-    fetchOrders(dateFrom, dateTo, refresh, token),
+    fetchSalesFromCache(dateFrom, dateTo),
+    fetchOrdersFromCache(dateFrom, dateTo),
     fetchAdStats(dateFrom, dateTo),
     fetchProductCosts(),
     fetchWarehouseCosts(month, weeks),
